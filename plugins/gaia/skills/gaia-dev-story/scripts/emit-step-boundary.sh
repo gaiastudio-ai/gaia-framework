@@ -12,8 +12,13 @@
 #   emit-step-boundary.sh 1 load-story {story_key} --tokens '{"input_tokens":5000,...}'
 #
 # The --tokens flag accepts a JSON object of cumulative token counts (best-effort
-# context-window snapshot). The object MUST contain ONLY numeric leaf values —
-# any string value causes the snapshot to be silently dropped (privacy guard).
+# context-window snapshot). The object is validated by a two-layer privacy guard:
+#   1. All scalar (leaf) values must be numbers — no strings, no booleans, no nulls.
+#   2. All keys must be a SUBSET of the canonical allowlist:
+#      input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens
+# Any violation (non-numeric value OR non-allowlisted key) causes the snapshot to
+# be silently dropped (graceful-skip). This guarantees that neither arbitrary text
+# in values NOR arbitrary text in key names can ever reach the telemetry payload.
 # When --tokens is absent or invalid, the event lands without a tokens_snapshot
 # field (graceful-skip — timing data is never blocked by token unavailability).
 #
@@ -47,7 +52,17 @@ shift 3
 TOKENS_JSON=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --tokens) TOKENS_JSON="${2:-}"; shift 2 ;;
+    --tokens)
+      # Guard: require a value argument after the flag. If --tokens is the
+      # last arg with nothing following, treat it as a missing value and
+      # graceful-skip (omit the token field) instead of crashing on shift 2.
+      if [ "$#" -ge 2 ]; then
+        TOKENS_JSON="$2"
+        shift 2
+      else
+        shift  # consume the bare --tokens flag, leave TOKENS_JSON empty
+      fi
+      ;;
     *) shift ;;  # silently skip unknown flags (forward-compat)
   esac
 done
@@ -66,16 +81,24 @@ fi
 DATA_JSON=$(jq -nc --arg name "$STEP_NAME" '{"step_name":$name}')
 
 # Merge tokens_snapshot into --data when the --tokens flag was supplied AND the
-# payload passes the privacy gate: (a) valid JSON, (b) is an object (not array
-# or scalar), (c) ALL leaf (scalar) values are numbers — no strings, no booleans,
-# no nulls. This is the hard guarantee that prompt/response text can NEVER land
-# in the payload. When any check fails the snapshot is silently dropped and the
-# event lands with timing data only (graceful-skip).
+# payload passes the two-layer privacy gate:
+#   Layer 1 — shape + values: (a) valid JSON, (b) is an object (not array or
+#     scalar), (c) ALL leaf (scalar) values are numbers — no strings, booleans,
+#     or nulls.
+#   Layer 2 — key allowlist: every key in the object must be one of the four
+#     canonical context-window fields. This closes the key-name smuggling path
+#     where arbitrary text could reach the payload via object keys (jq's
+#     `.. | scalars` does not surface keys).
+# When any check fails the snapshot is silently dropped and the event lands
+# with timing data only (graceful-skip).
 if [ -n "$TOKENS_JSON" ]; then
-  # Validate: parseable JSON + object type + all scalars are numbers.
-  VALID=$(printf '%s' "$TOKENS_JSON" | jq -e \
-    'type == "object" and ([.. | scalars] | length > 0) and ([.. | scalars] | map(type == "number") | all)' \
-    2>/dev/null || printf 'false')
+  # Validate: parseable JSON + object type + all scalars numeric + keys allowlisted.
+  VALID=$(printf '%s' "$TOKENS_JSON" | jq -e '
+    type == "object"
+    and ([.. | scalars] | length > 0)
+    and ([.. | scalars] | map(type == "number") | all)
+    and ((keys - ["input_tokens","output_tokens","cache_creation_input_tokens","cache_read_input_tokens"]) | length == 0)
+  ' 2>/dev/null || printf 'false')
   if [ "$VALID" = "true" ]; then
     # Merge tokens_snapshot into the data object. The jq -s slurp merges the
     # base data with the snapshot wrapped as {tokens_snapshot: <snapshot>}.
