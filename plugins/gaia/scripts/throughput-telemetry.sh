@@ -292,29 +292,24 @@ if [ "$STEP_DURATIONS" -eq 1 ]; then
   # De-dup: keep the FIRST occurrence of each (story_key, step) pair, then
   # sort by story_key + step and difference consecutive epochs.
   # Now also carries tokens_json as a 4th column for the token-diff derivation.
+  #
+  # Dedup-awk emits ALL 4 columns as TSV; external sort replaces the prior
+  # in-awk bubble sort (O(n log n) vs O(n^2)); diff-awk reads back and
+  # differences consecutive same-story steps.
   STEP_DURATION_LINES="$(printf '%s\n' "$STEP_ROWS" | awk -F'\t' '
     NF>=3 {
       key = $1 SUBSEP $2
       if (!(key in seen)) {
         seen[key] = 1
-        n++
-        sk[n] = $1
-        st[n] = $2 + 0
-        ep[n] = $3 + 0
-        tk[n] = (NF >= 4) ? $4 : "null"
+        printf "%s\t%s\t%s\t%s\n", $1, $2+0, $3+0, (NF>=4)?$4:"null"
       }
     }
+  ' | sort -t"$(printf '\t')" -k1,1 -k2,2n | awk -F'\t' '
+    {
+      sk[NR] = $1; st[NR] = $2+0; ep[NR] = $3+0; tk[NR] = $4
+      n = NR
+    }
     END {
-      # sort by story_key then step
-      for (i = 1; i <= n; i++)
-        for (j = i + 1; j <= n; j++)
-          if (sk[j] < sk[i] || (sk[j] == sk[i] && st[j] < st[i])) {
-            t = sk[i]; sk[i] = sk[j]; sk[j] = t
-            t = st[i]; st[i] = st[j]; st[j] = t
-            t = ep[i]; ep[i] = ep[j]; ep[j] = t
-            t = tk[i]; tk[i] = tk[j]; tk[j] = t
-          }
-      # difference consecutive same-story steps
       for (i = 1; i < n; i++) {
         if (sk[i] == sk[i+1]) {
           dur = int((ep[i+1] - ep[i]) / 60)
@@ -367,11 +362,16 @@ if [ "$STEP_DURATIONS" -eq 1 ]; then
       fi
 
       if [ -n "$TOKEN_EST" ]; then
-        # Format: each field as "~N tok (approx)" or "n/a"
-        _in=$(printf '%s' "$TOKEN_EST" | jq -r '.input_tokens // empty' 2>/dev/null)
-        _out=$(printf '%s' "$TOKEN_EST" | jq -r '.output_tokens // empty' 2>/dev/null)
-        _cc=$(printf '%s' "$TOKEN_EST" | jq -r '.cache_creation_input_tokens // empty' 2>/dev/null)
-        _cr=$(printf '%s' "$TOKEN_EST" | jq -r '.cache_read_input_tokens // empty' 2>/dev/null)
+        # Single jq call to extract all four fields as TSV (replaces 4 separate forks).
+        # Null fields map to "null" sentinel so IFS-read column positions are preserved.
+        IFS=$'\t' read -r _in _out _cc _cr < <(
+          printf '%s' "$TOKEN_EST" | jq -r '[
+            (.input_tokens | if . == null then "null" else tostring end),
+            (.output_tokens | if . == null then "null" else tostring end),
+            (.cache_creation_input_tokens | if . == null then "null" else tostring end),
+            (.cache_read_input_tokens | if . == null then "null" else tostring end)
+          ] | @tsv' 2>/dev/null
+        ) || true
         _in_f=$(_fmt_token_field "$_in" "input")
         _out_f=$(_fmt_token_field "$_out" "output")
         _cc_f=$(_fmt_token_field "$_cc" "cache_create")

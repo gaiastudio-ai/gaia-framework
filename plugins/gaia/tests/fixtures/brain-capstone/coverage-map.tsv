@@ -55,7 +55,7 @@ TC-BRN-93	brain-update-index.bats	incremental second-emit appends without clobbe
 TC-BRN-94	brain-update-index.bats	duplicate-key collision replaces the existing lesson
 TC-BRN-95	brain-update-index.bats	category empty-result from query returns zero entries
 TC-BRN-96	brain-update-index.bats	awk tags-parse works when python3 is absent
-TC-BRN-97	brain-update-index.bats	concurrent flock serialization preserves both writes
+TC-BRN-97	brain-update-index.bats	sequential writes both land (sequential-execution contract)
 TC-BRN-98	brain-update-index.bats	replace-existing-lesson-by-key preserves other entries
 TC-BRN-99	brain-update-index.bats	edge-append to an already-edged entry appends without duplication
 TC-BRN-100	brain-update-index.bats	stdin mode appends multiple lessons in one call

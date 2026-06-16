@@ -358,34 +358,32 @@ SH
   grep -q 'tool-constraint' "$MANIFEST"
 }
 
-@test "TC-BRN-97 — concurrent flock serialization preserves both writes" {
+@test "TC-BRN-97 — sequential writes both land (sequential-execution contract)" {
   [ -f "$UPDATER" ]
-  command -v flock >/dev/null 2>&1 || skip "flock not available"
 
+  # The updater's documented concurrency model is SEQUENTIAL execution with
+  # key-ownership partitioning + atomic sibling-tempfile-then-mv writes — it
+  # does NOT serialize concurrent writers with a lock (see the script header).
+  # This test pins the invariant the script actually guarantees: two writes
+  # performed in sequence each land without clobbering the other.
   cat > "$MANIFEST" <<'YAML'
 schema_version: 1
 entries:
 YAML
 
-  # Launch two concurrent writes.
   bash "$UPDATER" --manifest "$MANIFEST" --add-lesson \
-    --key "lesson-concurrent-a" --source-type lesson \
+    --key "lesson-sequential-a" --source-type lesson \
     --path "a.md" --tags "strategy" --synopsis "A." \
-    --content-hash "ha" --source-url "retro:a" &
-  local pid1=$!
+    --content-hash "ha" --source-url "retro:a"
 
   bash "$UPDATER" --manifest "$MANIFEST" --add-lesson \
-    --key "lesson-concurrent-b" --source-type lesson \
+    --key "lesson-sequential-b" --source-type lesson \
     --path "b.md" --tags "strategy" --synopsis "B." \
-    --content-hash "hb" --source-url "retro:b" &
-  local pid2=$!
+    --content-hash "hb" --source-url "retro:b"
 
-  wait "$pid1"
-  wait "$pid2"
-
-  # Both entries should exist (flock serialization prevented data loss).
-  grep -q 'lesson-concurrent-a' "$MANIFEST"
-  grep -q 'lesson-concurrent-b' "$MANIFEST"
+  # Both entries survive the second atomic write (no clobber).
+  grep -q 'lesson-sequential-a' "$MANIFEST"
+  grep -q 'lesson-sequential-b' "$MANIFEST"
 }
 
 @test "TC-BRN-98 — replace-existing-lesson-by-key preserves other entries" {

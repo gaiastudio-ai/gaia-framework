@@ -131,31 +131,25 @@ fi
 # Keep the FIRST occurrence of each (story_key, step), sort by story_key + step,
 # then difference consecutive same-story steps.
 # Output: story_key <TAB> step <TAB> duration_min <TAB> step_name <TAB> tokens_cur <TAB> tokens_next
+#
+# Dedup-awk emits ALL 5 columns as TSV; external sort replaces the prior
+# in-awk bubble sort (O(n log n) vs O(n^2)); diff-awk reads back and
+# differences consecutive same-story steps. The step_name column is a
+# non-key data column — preserved through the sort.
 STEP_DIFF_LINES="$(printf '%s\n' "$STEP_ROWS" | awk -F'\t' '
   NF>=4 {
     key = $1 SUBSEP $2
     if (!(key in seen)) {
       seen[key] = 1
-      n++
-      sk[n] = $1
-      st[n] = $2 + 0
-      ep[n] = $3 + 0
-      nm[n] = $4
-      tk[n] = (NF >= 5) ? $5 : "null"
+      printf "%s\t%s\t%s\t%s\t%s\n", $1, $2+0, $3+0, $4, (NF>=5)?$5:"null"
     }
   }
+' | sort -t"$(printf '\t')" -k1,1 -k2,2n | awk -F'\t' '
+  {
+    sk[NR] = $1; st[NR] = $2+0; ep[NR] = $3+0; nm[NR] = $4; tk[NR] = $5
+    n = NR
+  }
   END {
-    # sort by story_key then step
-    for (i = 1; i <= n; i++)
-      for (j = i + 1; j <= n; j++)
-        if (sk[j] < sk[i] || (sk[j] == sk[i] && st[j] < st[i])) {
-          t = sk[i]; sk[i] = sk[j]; sk[j] = t
-          t = st[i]; st[i] = st[j]; st[j] = t
-          t = ep[i]; ep[i] = ep[j]; ep[j] = t
-          t = nm[i]; nm[i] = nm[j]; nm[j] = t
-          t = tk[i]; tk[i] = tk[j]; tk[j] = t
-        }
-    # difference consecutive same-story steps
     for (i = 1; i < n; i++) {
       if (sk[i] == sk[i+1]) {
         dur = int((ep[i+1] - ep[i]) / 60)
@@ -262,11 +256,13 @@ while IFS= read -r current_story; do
   total_cr=0
   has_any_tokens=0
 
-  printf '%s\n' "$STEP_DIFF_LINES" | grep -E "^${current_story}	" | while IFS=$'\t' read -r sk step dur sname tk_cur tk_next; do
+  # Single-pass: process-substitution so running totals survive the loop.
+  while IFS=$'\t' read -r sk step dur sname tk_cur tk_next; do
     [ -n "$sk" ] || continue
     total_dur=$(( total_dur + dur ))
 
-    # Derive per-step token estimate
+    # Derive per-step token estimate via a single jq call that also performs
+    # the all-null guard (returns "null" when every field is negative).
     TOKEN_EST=""
     if [ "$tk_cur" != "null" ] && [ "$tk_next" != "null" ] && command -v jq >/dev/null 2>&1; then
       TOKEN_EST=$(printf '%s\n%s' "$tk_cur" "$tk_next" | jq -sc '
@@ -280,67 +276,39 @@ while IFS= read -r current_story; do
           | to_entries
           | map(if .value < 0 then .value = null else . end)
           | from_entries
+          | if [.[]] | all(. == null) then null else . end
         else null end
       ' 2>/dev/null)
       [ "$TOKEN_EST" = "null" ] && TOKEN_EST=""
     fi
 
     if [ -n "$TOKEN_EST" ]; then
-      _in=$(printf '%s' "$TOKEN_EST" | jq -r '.input_tokens // empty' 2>/dev/null)
-      _out=$(printf '%s' "$TOKEN_EST" | jq -r '.output_tokens // empty' 2>/dev/null)
-      _cc=$(printf '%s' "$TOKEN_EST" | jq -r '.cache_creation_input_tokens // empty' 2>/dev/null)
-      _cr=$(printf '%s' "$TOKEN_EST" | jq -r '.cache_read_input_tokens // empty' 2>/dev/null)
+      # Single jq call to extract all four fields as TSV (replaces 4 separate jq forks).
+      # Null fields map to "null" sentinel so IFS-read column positions are preserved.
+      IFS=$'\t' read -r _in _out _cc _cr < <(
+        printf '%s' "$TOKEN_EST" | jq -r '[
+          (.input_tokens | if . == null then "null" else tostring end),
+          (.output_tokens | if . == null then "null" else tostring end),
+          (.cache_creation_input_tokens | if . == null then "null" else tostring end),
+          (.cache_read_input_tokens | if . == null then "null" else tostring end)
+        ] | @tsv' 2>/dev/null
+      ) || true
       _in_f=$(_fmt_token_field "$_in" "input")
       _out_f=$(_fmt_token_field "$_out" "output")
       _cc_f=$(_fmt_token_field "$_cc" "cache_create")
       _cr_f=$(_fmt_token_field "$_cr" "cache_read")
       printf '  %-6s %-20s %-12s %s, %s, %s, %s\n' \
         "$step" "$sname" "${dur} min" "$_in_f" "$_out_f" "$_cc_f" "$_cr_f"
+
+      # Accumulate totals (non-null fields only)
+      [ -n "$_in" ] && [ "$_in" != "null" ] && total_input=$(( total_input + _in )) && has_any_tokens=1
+      [ -n "$_out" ] && [ "$_out" != "null" ] && total_output=$(( total_output + _out )) && has_any_tokens=1
+      [ -n "$_cc" ] && [ "$_cc" != "null" ] && total_cc=$(( total_cc + _cc )) && has_any_tokens=1
+      [ -n "$_cr" ] && [ "$_cr" != "null" ] && total_cr=$(( total_cr + _cr )) && has_any_tokens=1
     else
       printf '  %-6s %-20s %-12s n/a\n' "$step" "$sname" "${dur} min"
     fi
-  done
-
-  # Compute totals (re-process since the while loop was in a subshell)
-  total_dur=0
-  has_any_tokens=0
-  total_input=0
-  total_output=0
-  total_cc=0
-  total_cr=0
-
-  while IFS=$'\t' read -r sk step dur sname tk_cur tk_next; do
-    [ -n "$sk" ] || continue
-    [ "$sk" = "$current_story" ] || continue
-    total_dur=$(( total_dur + dur ))
-
-    if [ "$tk_cur" != "null" ] && [ "$tk_next" != "null" ] && command -v jq >/dev/null 2>&1; then
-      TOKEN_EST=$(printf '%s\n%s' "$tk_cur" "$tk_next" | jq -sc '
-        if (.[0] | type) == "object" and (.[1] | type) == "object" then
-          {
-            input_tokens:  ((.[1].input_tokens // 0) - (.[0].input_tokens // 0)),
-            output_tokens: ((.[1].output_tokens // 0) - (.[0].output_tokens // 0)),
-            cache_creation_input_tokens: ((.[1].cache_creation_input_tokens // 0) - (.[0].cache_creation_input_tokens // 0)),
-            cache_read_input_tokens: ((.[1].cache_read_input_tokens // 0) - (.[0].cache_read_input_tokens // 0))
-          }
-          | to_entries
-          | map(if .value < 0 then .value = null else . end)
-          | from_entries
-        else null end
-      ' 2>/dev/null)
-      if [ -n "$TOKEN_EST" ] && [ "$TOKEN_EST" != "null" ]; then
-        _in=$(printf '%s' "$TOKEN_EST" | jq -r '.input_tokens // 0' 2>/dev/null)
-        _out=$(printf '%s' "$TOKEN_EST" | jq -r '.output_tokens // 0' 2>/dev/null)
-        _cc=$(printf '%s' "$TOKEN_EST" | jq -r '.cache_creation_input_tokens // 0' 2>/dev/null)
-        _cr=$(printf '%s' "$TOKEN_EST" | jq -r '.cache_read_input_tokens // 0' 2>/dev/null)
-        # Only count non-null fields (null fields from negative clamping = 0 contribution)
-        [ "$_in" != "null" ] && total_input=$(( total_input + _in )) && has_any_tokens=1
-        [ "$_out" != "null" ] && total_output=$(( total_output + _out )) && has_any_tokens=1
-        [ "$_cc" != "null" ] && total_cc=$(( total_cc + _cc )) && has_any_tokens=1
-        [ "$_cr" != "null" ] && total_cr=$(( total_cr + _cr )) && has_any_tokens=1
-      fi
-    fi
-  done <<< "$(printf '%s\n' "$STEP_DIFF_LINES")"
+  done < <(printf '%s\n' "$STEP_DIFF_LINES" | awk -F'\t' -v sk="$current_story" '$1==sk')
 
   printf '\n  Total wall-clock: %d min (approx)\n' "$total_dur"
   if [ "$has_any_tokens" -eq 1 ]; then
