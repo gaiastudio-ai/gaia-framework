@@ -196,7 +196,12 @@ jobs:
       - name: Open release PR
         if: steps.bump.outputs.has_commits == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer a PAT (RELEASE_PAT) when present — the default GITHUB_TOKEN
+          # is blocked from opening PRs unless the org/repo enables
+          # "Allow GitHub Actions to create and approve pull requests", which is
+          # not always reachable. The PAT path works regardless of that setting.
+          # Falls back to GITHUB_TOKEN when no PAT secret is configured.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         run: |
           NEW_VERSION="${{ steps.version.outputs.new_version }}"
           BRANCH="release/v${NEW_VERSION}"
@@ -212,19 +217,28 @@ jobs:
           git commit -m "chore(release): v${NEW_VERSION}"
           git push -f origin "$BRANCH"
 
-          # Open or update the PR
+          # Open or update the PR. The branch is already pushed above, so if the
+          # token cannot open a PR (the Actions-token PR restriction), do NOT
+          # red-fail the run — print the one-click PR URL and exit 0 so the
+          # branch + changelog still land and a human can open the PR in one click.
           EXISTING=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number' || echo "")
           if [ -n "$EXISTING" ]; then
             echo "Updating existing PR #$EXISTING"
             gh pr edit "$EXISTING" \
               --title "chore(release): v${NEW_VERSION}" \
-              --body-file /tmp/changelog-delta.md
-          else
-            gh pr create \
+              --body-file /tmp/changelog-delta.md || {
+                echo "::warning::Could not edit PR #$EXISTING with the available token; the branch is pushed."
+              }
+          elif gh pr create \
               --base main \
               --head "$BRANCH" \
               --title "chore(release): v${NEW_VERSION}" \
-              --body-file /tmp/changelog-delta.md
+              --body-file /tmp/changelog-delta.md; then
+            echo "Opened release PR for $BRANCH."
+          else
+            echo "::warning::GitHub Actions token is not permitted to open PRs (set a RELEASE_PAT secret, or enable 'Allow GitHub Actions to create and approve pull requests'). The branch $BRANCH is pushed — open the PR manually:"
+            echo "::warning::https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1"
+            echo "Branch pushed; PR not auto-created (token restriction). Run not failed."
           fi
 
   publish:
