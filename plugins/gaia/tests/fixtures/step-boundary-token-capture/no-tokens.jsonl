@@ -1,0 +1,2 @@
+{"timestamp":"2026-06-15T10:00:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":401,"story_key":"E961-S1","step":1,"data":{"step_name":"load-story"}}
+{"timestamp":"2026-06-15T10:05:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":401,"story_key":"E961-S1","step":2,"data":{"step_name":"update-status"}}
