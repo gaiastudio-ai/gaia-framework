@@ -52,16 +52,15 @@ teardown() {
     || { echo "Expected 'output: ~1500 tok (approx)' for step 2" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC2: three consecutive steps yield two per-step token estimate lines" {
+@test "AC2: three consecutive steps yield 8 approx token fields (4 fields x 2 steps)" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/with-tokens.jsonl" --step-durations
   [ "$status" -eq 0 ]
-  # Steps 1,2,3 -> diffs for steps 1 and 2 (last step is open-ended)
-  local token_lines
-  token_lines=$(printf '%s\n' "$output" | grep -c "tok (approx)" | tr -d ' ')
-  # Each step line carries 4 token fields; 2 steps with token diffs = at least 8
-  # occurrences of "tok (approx)" across the output
-  [ "$token_lines" -ge 2 ] \
-    || { echo "Expected at least 2 lines with token estimates, got $token_lines" >&2; echo "$output" >&2; false; }
+  # Steps 1,2,3 -> diffs for steps 1 and 2 (last step is open-ended).
+  # Each step line carries 4 token fields with "tok (approx)"; 2 steps = 8 total.
+  local tok_count
+  tok_count=$(printf '%s\n' "$output" | grep -o "tok (approx)" | wc -l | tr -d ' ')
+  [ "$tok_count" -eq 8 ] \
+    || { echo "Expected exactly 8 'tok (approx)' occurrences, got $tok_count" >&2; echo "$output" >&2; false; }
 }
 
 # ---------- Scenario B: graceful-skip ----------
@@ -94,9 +93,13 @@ teardown() {
   # input_tokens goes 15000 -> 9000 (diff = -6000). Must NOT appear as -6000.
   ! printf '%s\n' "$output" | grep -qE '\-[0-9]+ tok' \
     || { echo "Negative token count found in output" >&2; echo "$output" >&2; false; }
-  # The negative field should render as n/a
-  printf '%s\n' "$output" | grep -qi "n/a" \
-    || { echo "Expected n/a for negative diff but not found" >&2; echo "$output" >&2; false; }
+  # The negative field (input) should render as n/a scoped to the step line.
+  # output_tokens goes 3000 -> 3500 (diff = +500), so the line has BOTH n/a and approx.
+  printf '%s\n' "$output" | grep "E962-S1" | grep "step 1" | grep -qF "input: n/a" \
+    || { echo "Expected 'input: n/a' for negative diff on step 1" >&2; echo "$output" >&2; false; }
+  # The positive field (output) should still show an approximate value.
+  printf '%s\n' "$output" | grep "E962-S1" | grep "step 1" | grep -qF "output: ~500 tok (approx)" \
+    || { echo "Expected 'output: ~500 tok (approx)' for positive diff on step 1" >&2; echo "$output" >&2; false; }
 }
 
 # ---------- Scenario D: PRIVACY payload assertion ----------
@@ -186,6 +189,9 @@ teardown() {
   has_tokens=$(echo "$line" | jq '.data | has("tokens_snapshot")')
   [ "$has_tokens" = "false" ] \
     || { echo "PRIVACY VIOLATION: tokens_snapshot present despite string value in payload" >&2; echo "$line" >&2; false; }
+  # Belt-and-suspenders: the smuggled string must not appear anywhere in the raw JSONL
+  ! grep -qF "prompt text that must never land" "$TEST_TMP/lifecycle-events.jsonl" \
+    || { echo "PRIVACY VIOLATION: smuggled string found in raw JSONL" >&2; cat "$TEST_TMP/lifecycle-events.jsonl" >&2; false; }
 }
 
 @test "AC4-PRIVACY: --tokens with nested string is rejected" {
@@ -200,6 +206,9 @@ teardown() {
   has_tokens=$(echo "$line" | jq '.data | has("tokens_snapshot")')
   [ "$has_tokens" = "false" ] \
     || { echo "PRIVACY VIOLATION: tokens_snapshot present despite nested string" >&2; echo "$line" >&2; false; }
+  # Belt-and-suspenders: nested string must not appear in raw JSONL
+  ! grep -qF "should be rejected" "$TEST_TMP/lifecycle-events.jsonl" \
+    || { echo "PRIVACY VIOLATION: nested string found in raw JSONL" >&2; cat "$TEST_TMP/lifecycle-events.jsonl" >&2; false; }
 }
 
 @test "AC4-PRIVACY: --tokens with invalid JSON is silently skipped" {
@@ -229,4 +238,82 @@ teardown() {
   has_tokens=$(echo "$line" | jq '.data | has("tokens_snapshot")')
   [ "$has_tokens" = "false" ] \
     || { echo "tokens_snapshot present despite array payload (not object)" >&2; echo "$line" >&2; false; }
+}
+
+# ---------- Scenario G: Key-name smuggling (Fix-1 hardening) ----------
+
+@test "AC4-PRIVACY: smuggled key name is REJECTED (key text never serialized)" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  export MEMORY_PATH="$TEST_TMP"
+  # All VALUES are numeric, but one KEY carries arbitrary text — this MUST be rejected
+  run bash "$EMIT_HELPER" 1 load-story E998-S1 \
+    --tokens '{"prompt text here":1}'
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/lifecycle-events.jsonl" ]
+  local line
+  line=$(cat "$TEST_TMP/lifecycle-events.jsonl")
+  # Event still lands (graceful-skip)
+  echo "$line" | jq -e '.event_type == "step_boundary"' >/dev/null
+  echo "$line" | jq -e '.data.step_name == "load-story"' >/dev/null
+  # tokens_snapshot must be absent — the non-allowlisted key blocks the whole payload
+  local has_tokens
+  has_tokens=$(echo "$line" | jq '.data | has("tokens_snapshot")')
+  [ "$has_tokens" = "false" ] \
+    || { echo "PRIVACY VIOLATION: tokens_snapshot present despite smuggled key name" >&2; echo "$line" >&2; false; }
+  # Belt-and-suspenders: the key text must not appear in the raw JSONL
+  ! grep -qF "prompt text here" "$TEST_TMP/lifecycle-events.jsonl" \
+    || { echo "PRIVACY VIOLATION: smuggled key text found in raw JSONL" >&2; cat "$TEST_TMP/lifecycle-events.jsonl" >&2; false; }
+}
+
+@test "AC4-PRIVACY: partial smuggled key mixed with valid keys is REJECTED" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  export MEMORY_PATH="$TEST_TMP"
+  # Three valid keys + one non-allowlisted key — entire payload must be rejected
+  run bash "$EMIT_HELPER" 1 load-story E998-S1 \
+    --tokens '{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":3,"evil key":4}'
+  [ "$status" -eq 0 ]
+  local line
+  line=$(cat "$TEST_TMP/lifecycle-events.jsonl")
+  local has_tokens
+  has_tokens=$(echo "$line" | jq '.data | has("tokens_snapshot")')
+  [ "$has_tokens" = "false" ] \
+    || { echo "PRIVACY VIOLATION: tokens_snapshot present despite non-allowlisted key" >&2; echo "$line" >&2; false; }
+  ! grep -qF "evil key" "$TEST_TMP/lifecycle-events.jsonl" \
+    || { echo "PRIVACY VIOLATION: non-allowlisted key text in raw JSONL" >&2; cat "$TEST_TMP/lifecycle-events.jsonl" >&2; false; }
+}
+
+@test "AC4-PRIVACY: valid subset payload (2 of 4 allowlisted keys) is ACCEPTED" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  export MEMORY_PATH="$TEST_TMP"
+  # Only input_tokens and output_tokens — valid subset of the allowlist
+  run bash "$EMIT_HELPER" 1 load-story E998-S1 \
+    --tokens '{"input_tokens":500,"output_tokens":200}'
+  [ "$status" -eq 0 ]
+  local line
+  line=$(cat "$TEST_TMP/lifecycle-events.jsonl")
+  echo "$line" | jq -e '.data.tokens_snapshot.input_tokens == 500' >/dev/null \
+    || { echo "Expected input_tokens=500 in accepted subset payload" >&2; echo "$line" >&2; false; }
+  echo "$line" | jq -e '.data.tokens_snapshot.output_tokens == 200' >/dev/null \
+    || { echo "Expected output_tokens=200 in accepted subset payload" >&2; echo "$line" >&2; false; }
+}
+
+# ---------- Scenario H: --tokens missing value (Fix-2 shift foot-gun) ----------
+
+@test "AC3: --tokens as last arg with no value degrades gracefully (no crash)" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  export MEMORY_PATH="$TEST_TMP"
+  # --tokens is the last argument with no value following — must not crash
+  run bash "$EMIT_HELPER" 1 load-story E998-S1 --tokens
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/lifecycle-events.jsonl" ]
+  local line
+  line=$(cat "$TEST_TMP/lifecycle-events.jsonl")
+  # Event still lands with timing data
+  echo "$line" | jq -e '.event_type == "step_boundary"' >/dev/null
+  echo "$line" | jq -e '.data.step_name == "load-story"' >/dev/null
+  # tokens_snapshot should not be present (missing value = graceful skip)
+  local has_tokens
+  has_tokens=$(echo "$line" | jq '.data | has("tokens_snapshot")')
+  [ "$has_tokens" = "false" ] \
+    || { echo "tokens_snapshot should not be present with missing --tokens value" >&2; echo "$line" >&2; false; }
 }
