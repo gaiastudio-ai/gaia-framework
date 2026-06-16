@@ -69,8 +69,10 @@ teardown() {
 @test "AC3: two consecutive step events yield correct 5-minute duration" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/two-steps.jsonl" --step-durations
   [ "$status" -eq 0 ]
-  # Step 1 -> Step 2 is 5 minutes
-  echo "$output" | grep -Eq 'E951-S1.*step[[:space:]]*1.*5[[:space:]]*min' \
+  # Step 1 -> Step 2 is 5 minutes. Match with a literal tab after the step
+  # number so "step 1" cannot match "step 10" or "step 11" (F-2 precision fix).
+  local tab=$'\t'
+  printf '%s\n' "$output" | grep -qF "step 1${tab}5 min" \
     || { echo "Expected step 1 duration of 5 min, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -78,7 +80,7 @@ teardown() {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/sixteen-steps.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Count duration lines for E950-S1 (should be 15, steps 1-15 each have a next)
-  dur_count=$(echo "$output" | grep -c 'E950-S1.*step' || true)
+  dur_count=$(printf '%s\n' "$output" | grep 'E950-S1.*step' | wc -l | tr -d ' ')
   [ "$dur_count" -eq 15 ] \
     || { echo "Expected 15 step-duration lines, got $dur_count:" >&2; echo "$output" >&2; false; }
 }
@@ -98,31 +100,50 @@ teardown() {
 # ---------- Scenario 3: state_transition byte-stability ----------
 
 @test "AC4: state_transition-only fixture produces byte-identical output (text)" {
-  # Capture baseline from the original throughput-telemetry fixture
-  baseline=$(bash "$SCRIPT" \
+  # Full byte-comparison of the derivation body (skip the first 2 header lines
+  # which contain absolute paths that vary per host). The expected body is the
+  # golden output frozen at the time the step_boundary feature landed.
+  local body
+  body=$(bash "$SCRIPT" \
     --events "$FIXTURE_DIR/state-transition-only.jsonl" \
-    --sprint-yaml "$FIXTURE_DIR/sprint-status.yaml")
-  # The expected output is the same derivation as before the step_boundary change
-  echo "$baseline" | grep -Eq 'median_minutes_per_story:[[:space:]]*50' \
-    || { echo "Median minutes/story changed from 50:" >&2; echo "$baseline" >&2; false; }
-  echo "$baseline" | grep -Eq 'median_minutes_per_point:[[:space:]]*20' \
-    || { echo "Median minutes/point changed from 20:" >&2; echo "$baseline" >&2; false; }
-  echo "$baseline" | grep -Eq 'stories_counted:[[:space:]]*2' \
-    || { echo "Stories counted changed from 2:" >&2; echo "$baseline" >&2; false; }
-  echo "$baseline" | grep -Eq 'E900-S1.*40 min' \
-    || { echo "E900-S1 wall-clock changed:" >&2; echo "$baseline" >&2; false; }
-  echo "$baseline" | grep -Eq 'E900-S2.*60 min' \
-    || { echo "E900-S2 wall-clock changed:" >&2; echo "$baseline" >&2; false; }
+    --sprint-yaml "$FIXTURE_DIR/sprint-status.yaml" | tail -n +3)
+  local tab=$'\t'
+  local expected
+  expected=$(cat <<EOF
+
+median_minutes_per_story: 50
+median_minutes_per_point: 20
+stories_counted: 2
+
+Per-story wall-clock:
+  E900-S1${tab}40 min${tab}4 pts${tab}10 min/pt
+  E900-S2${tab}60 min${tab}2 pts${tab}30 min/pt
+
+Skipped (recorded notes):
+  E900-S3${tab}skip: insufficient transitions (count=1) — note recorded
+EOF
+)
+  [ "$body" = "$expected" ] \
+    || { echo "Text output body is NOT byte-identical to golden:" >&2
+         diff <(printf '%s\n' "$expected") <(printf '%s\n' "$body") >&2; false; }
 }
 
 @test "AC4: state_transition-only fixture produces byte-identical output (json)" {
-  run bash "$SCRIPT" \
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  local actual
+  actual=$(bash "$SCRIPT" \
     --events "$FIXTURE_DIR/state-transition-only.jsonl" \
-    --sprint-yaml "$FIXTURE_DIR/sprint-status.yaml" --json
-  [ "$status" -eq 0 ]
-  echo "$output" | jq -e '.median_minutes_per_story == 50' >/dev/null
-  echo "$output" | jq -e '.median_minutes_per_point == 20' >/dev/null
-  echo "$output" | jq -e '.stories_counted == 2' >/dev/null
+    --sprint-yaml "$FIXTURE_DIR/sprint-status.yaml" --json)
+  # Golden JSON output — the exact bytes jq -n produces for these values.
+  local expected='{"median_minutes_per_story":50,"median_minutes_per_point":20,"stories_counted":2}'
+  # Normalize both through jq -Sc for deterministic key-order comparison.
+  local norm_actual norm_expected
+  norm_actual=$(printf '%s' "$actual" | jq -Sc '.')
+  norm_expected=$(printf '%s' "$expected" | jq -Sc '.')
+  [ "$norm_actual" = "$norm_expected" ] \
+    || { echo "JSON output is NOT byte-identical to golden:" >&2
+         echo "expected: $norm_expected" >&2
+         echo "actual:   $norm_actual" >&2; false; }
 }
 
 @test "AC4: step_boundary events in fixture do not affect state_transition derivation" {
@@ -153,17 +174,25 @@ teardown() {
 @test "AC4: duplicate step boundary does not double-count" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/duplicate-step.jsonl" --step-durations
   [ "$status" -eq 0 ]
-  # Step 1 appears twice at t=0 and t=5, step 2 at t=10
-  # The derivation should use the FIRST occurrence of each step for duration
-  # Step 1 -> Step 2 = 10 min (from first step-1 to step-2), not negative or doubled
-  dur_count=$(echo "$output" | grep -c 'E952-S1.*step' || true)
-  [ "$dur_count" -ge 1 ] \
-    || { echo "Expected at least 1 step-duration line, got $dur_count" >&2; false; }
+  # Fixture: step 1 at t=0 and t=5 (duplicate), step 2 at t=10.
+  # Dedup contract: keep FIRST occurrence of each step.
+  # Expected: exactly 1 duration line — step 1 (first at t=0) -> step 2 (t=10) = 10 min.
+  local tab=$'\t'
+  local dur_lines
+  dur_lines=$(printf '%s\n' "$output" | grep "E952-S1.*step")
+  local dur_count
+  dur_count=$(printf '%s\n' "$dur_lines" | grep '.' | wc -l | tr -d ' ')
+  [ "$dur_count" -eq 1 ] \
+    || { echo "Expected exactly 1 duration line, got $dur_count:" >&2; echo "$dur_lines" >&2; false; }
+  # Assert the value is 10 min (first-occurrence difference), not 5 min (second).
+  printf '%s\n' "$dur_lines" | grep -qF "step 1${tab}10 min" \
+    || { echo "Expected step 1 = 10 min (first-occurrence diff), got:" >&2; echo "$dur_lines" >&2; false; }
 }
 
 # ---------- emit-step-boundary.sh contract ----------
 
 @test "emit-step-boundary.sh emits a valid step_boundary event to jsonl" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   run bash "$EMIT_HELPER" 1 load-story E999-S1
   [ "$status" -eq 0 ]
