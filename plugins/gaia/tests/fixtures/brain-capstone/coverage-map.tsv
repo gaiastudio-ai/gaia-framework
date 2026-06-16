@@ -39,3 +39,12 @@ TC-BRN-77	brain-freshness-hooks.bats	review-gate.sh review-write appends a revie
 TC-BRN-78	brain-freshness-hooks.bats	repeated lifecycle events produce no duplicate edges
 TC-BRN-79	brain-freshness-hooks.bats	full gaia-brain-reindex sweep preserves lesson entries verbatim
 TC-BRN-80	brain-freshness-hooks.bats	lesson entries survive a full index rebuild
+TC-BRN-81	brain-unfeed.bats	unfeed removes the ingested file and its brain-index entry
+TC-BRN-82	brain-unfeed.bats	atomic de-register preserves prior index when validation fails
+TC-BRN-83	brain-unfeed.bats	unfeed never removes a project-artifact entry sharing the slug
+TC-BRN-84	brain-unfeed.bats	unfeed on absent slug exits 0 with nothing-to-remove message
+TC-BRN-85	brain-unfeed.bats	containment guard refuses adversarial slugs with traversal sequences
+TC-BRN-86	brain-unfeed.bats	MOC is re-rendered after successful removal and entry is gone
+TC-BRN-87	brain-unfeed.bats	removal succeeds with warning when render-moc.sh is unavailable
+TC-BRN-88	brain-unfeed.bats	unfeed with dual entries removes ingested and preserves project-artifact
+TC-BRN-89	brain-unfeed.bats	awk fallback removes only ingested entry when dual entries share a key

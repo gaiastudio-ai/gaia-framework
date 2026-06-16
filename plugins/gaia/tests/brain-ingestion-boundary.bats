@@ -112,17 +112,24 @@ INGEST
 # ---- AC2: ingestion writer never writes project-artifact --------------------
 
 @test "the ingestion writer rejects writing a project-artifact entry" {
-  # The ingestion writer (_gf_register_brain_index) hardcodes source_type: ingested.
-  # Verify by grepping the script — no code path can emit project-artifact.
+  # The ingestion registration logic lives in the shared brain-index-write.sh
+  # helper (factored out of gaia-feed.sh). The helper hardcodes
+  # source_type: ingested. Verify by grepping — no code path can emit
+  # project-artifact.
+  local WRITER="$SCRIPTS_DIR/brain/lib/brain-index-write.sh"
   [ -f "$FEED" ]
+  [ -f "$WRITER" ]
   # The register function only ever emits source_type: ingested.
   # In the python path:
-  grep -q "'source_type': \"ingested\"" "$FEED" || grep -q '"source_type": "ingested"' "$FEED" || \
-    grep -q "source_type.*ingested" "$FEED"
+  grep -q "'source_type': \"ingested\"" "$WRITER" || grep -q '"source_type": "ingested"' "$WRITER" || \
+    grep -q "source_type.*ingested" "$WRITER"
   # And the awk fallback path:
-  grep -q 'source_type: ingested' "$FEED"
-  # Neither path ever writes project-artifact.
-  ! grep -q 'source_type: project-artifact' "$FEED"
+  grep -q 'source_type: ingested' "$WRITER"
+  # Neither the feed script nor the shared writer ever writes project-artifact.
+  local rc=0
+  grep -q 'source_type: project-artifact' "$FEED" && rc=1
+  grep -q 'source_type: project-artifact' "$WRITER" && rc=1
+  [ "$rc" -eq 0 ]
 }
 
 # ---- AC4: no-vector-dep audit covers ingestion path -------------------------

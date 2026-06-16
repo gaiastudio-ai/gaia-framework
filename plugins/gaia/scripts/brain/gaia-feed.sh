@@ -53,6 +53,13 @@ _gf_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
   return 1 2>/dev/null || exit 1
 }
 
+# Source the shared atomic index writer.
+# shellcheck source=lib/brain-index-write.sh
+. "$_gf_self_dir/lib/brain-index-write.sh" || {
+  printf 'gaia-feed.sh: could not source brain-index-write.sh\n' >&2
+  return 1 2>/dev/null || exit 1
+}
+
 # Sibling validator.
 _GF_VALIDATE="$_gf_self_dir/validate-brain-index.sh"
 
@@ -188,6 +195,8 @@ _gf_write_ingested_file() {
 
 # ---------------------------------------------------------------------------
 # Register brain-index entry (append/replace ingested entry; atomic write)
+# Delegates to the shared brain-index-write.sh helper so feed and unfeed
+# share the same sibling-tempfile -> validate -> mv idiom.
 # ---------------------------------------------------------------------------
 _gf_register_brain_index() {
   local slug="$1"
@@ -211,8 +220,6 @@ _gf_register_brain_index() {
   # from gaia-paths.sh to handle macOS /var vs /private/var symlink mismatch.
   local project_root_canon="${_GAIA_ROOT_CANON:-${CLAUDE_PROJECT_ROOT:-$PWD}}"
   local rel_path
-  # Canonicalize the incoming path so the prefix strip works regardless of
-  # symlink differences (e.g. /var/... vs /private/var/... on macOS).
   local abs_path
   if [ -f "$path" ]; then
     abs_path="$(_gaia_paths_canonicalize "$path")"
@@ -228,113 +235,14 @@ _gf_register_brain_index() {
       ;;
   esac
 
-  # Build the new entry YAML.
   local synopsis="Ingested document: ${title}"
   local tag_list
   tag_list="$(printf '%s' "$tags" | sed 's/,/", "/g')"
 
-  local entry
-  entry="$(cat <<ENTRY
-  - key: "$slug"
-    source_type: ingested
-    path: "$rel_path"
-    tags: ["$tag_list"]
-    synopsis: "$synopsis"
-    edges: []
-    trust:
-      confidence: $confidence
-      content_hash: "$content_hash"
-      source_url: ${source_url:-null}
-      fetched_at: ${fetched_at:-null}
-      expires_at: ${expires_at:-null}
-ENTRY
-)"
-
-  # Build the new manifest: remove any existing entry with this key, then append.
-  # The validator dispatches on file extension — only .yaml/.yml/.json/.md are
-  # recognized. Give the staging file a .yaml suffix (same pattern as the reindex
-  # sweep) so validation works on hosts WITH a JSON-schema backend (CI).
-  local tmpfile="${manifest}.tmp.$$.yaml"
-
-  # Use python3+PyYAML if available for safe YAML manipulation; fall back to
-  # awk-based append for portability.
-  if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
-    python3 - "$manifest" "$slug" "$rel_path" "$tag_list" "$synopsis" \
-      "$confidence" "$content_hash" "${source_url:-}" "${fetched_at:-}" "${expires_at:-}" \
-      "$tmpfile" <<'PYEOF'
-import sys, yaml
-
-manifest_path = sys.argv[1]
-slug = sys.argv[2]
-rel_path = sys.argv[3]
-tag_list_str = sys.argv[4]
-synopsis = sys.argv[5]
-confidence = float(sys.argv[6])
-content_hash = sys.argv[7]
-source_url = sys.argv[8] if sys.argv[8] else None
-fetched_at = sys.argv[9] if sys.argv[9] else None
-expires_at = sys.argv[10] if sys.argv[10] else None
-tmpfile = sys.argv[11]
-
-with open(manifest_path) as f:
-    doc = yaml.safe_load(f) or {}
-
-entries = doc.get("entries") or []
-# Remove existing entry with same key.
-entries = [e for e in entries if e.get("key") != slug]
-
-tags = [t.strip().strip('"') for t in tag_list_str.split(",")]
-new_entry = {
-    "key": slug,
-    "source_type": "ingested",
-    "path": rel_path,
-    "tags": tags,
-    "synopsis": synopsis,
-    "edges": [],
-    "trust": {
-        "confidence": confidence,
-        "content_hash": content_hash,
-        "source_url": source_url,
-        "fetched_at": fetched_at,
-        "expires_at": expires_at,
-    },
-}
-entries.append(new_entry)
-doc["entries"] = entries
-doc["schema_version"] = 1
-
-with open(tmpfile, "w") as f:
-    yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-PYEOF
-  else
-    # Fallback: awk-based append for environments without python3+PyYAML.
-    # Copy existing manifest without the trailing empty line, append entry.
-    cp "$manifest" "$tmpfile"
-    # If entries is empty array [], replace it.
-    if grep -q '^entries: \[\]' "$tmpfile"; then
-      sed -i.bak 's/^entries: \[\]/entries:/' "$tmpfile"
-      rm -f "${tmpfile}.bak"
-    fi
-    printf '%s\n' "$entry" >> "$tmpfile"
-  fi
-
-  # Validate the tempfile BEFORE renaming into place.
-  # Unset _GAIA_PATHS_LOADED so the validator's subprocess re-sources
-  # gaia-paths.sh fresh (it's exported by the parent and the idempotent
-  # guard would otherwise skip the load, leaving functions undefined).
-  local val_rc=0
-  env -u _GAIA_PATHS_LOADED bash "$_GF_VALIDATE" "$tmpfile" || val_rc=$?
-  case "$val_rc" in
-    0|3)
-      # 0=valid, 3=schema backend unavailable (structural check skipped).
-      mv "$tmpfile" "$manifest"
-      ;;
-    *)
-      printf 'gaia-feed.sh: brain-index validation failed (exit %d); prior manifest preserved\n' "$val_rc" >&2
-      rm -f "$tmpfile"
-      return 1
-      ;;
-  esac
+  # Delegate to the shared atomic index writer.
+  _biw_register_entry "$manifest" "$slug" "$rel_path" "$tag_list" "$synopsis" \
+    "$confidence" "$content_hash" "${source_url:-}" "${fetched_at:-}" "${expires_at:-}" \
+    || return $?
 
   return 0
 }
