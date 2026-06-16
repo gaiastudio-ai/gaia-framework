@@ -65,5 +65,14 @@ else
   log "checkpoint.sh not found at $CHECKPOINT — skipping checkpoint load (non-fatal)"
 fi
 
+# ---------- 3. Surface passthrough ----------
+# If MANUAL_TEST_SURFACE is set by the caller, export it for downstream
+# scripts (surface-adapter.sh, dispatch-surface.sh). Default is empty,
+# which lets the SKILL.md orchestration default to "api".
+if [ -n "${MANUAL_TEST_SURFACE:-}" ]; then
+  export MANUAL_TEST_SURFACE
+  log "surface override: $MANUAL_TEST_SURFACE"
+fi
+
 log "setup complete for $WORKFLOW_NAME"
 exit 0
