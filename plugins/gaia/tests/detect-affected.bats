@@ -25,6 +25,11 @@ stacks:
     paths:
       - "gaia-public/packages/**"
       - "gaia-public/config/*.yaml"
+  - name: stack-plugin
+    language: bash
+    paths:
+      - "gaia-public/plugins/gaia/scripts/**"
+      - "gaia-public/plugins/gaia/config/**"
 EOF
 }
 
@@ -260,6 +265,43 @@ EOF
 
   [ "$status" -eq 0 ]
   [ "$elapsed" -lt 5 ]
+}
+
+# ---------------------------------------------------------------------------
+# Real-config sanity: agents/ path → gaia-plugin (uses real project-config)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# config-path-to-stack coverage — plugin config tree must resolve to a stack
+# ---------------------------------------------------------------------------
+
+@test "config-only path resolves to the owning plugin stack" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/config/project-config.yaml"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "config path and scripts path in one run produce deduplicated single-entry affected-set" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/config/project-config.yaml" "plugins/gaia/scripts/detect-affected.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "verbose stderr includes the config glob match decision" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --verbose \
+    --files "plugins/gaia/config/project-config.yaml"
+  [ "$status" -eq 0 ]
+  # --verbose writes per-path decisions to stderr; bats captures both in $output
+  # when using run. The config/** glob is prefix-type, so expect [PREFIX-MATCH].
+  [[ "$output" == *"[PREFIX-MATCH]"* ]]
+  [[ "$output" == *"plugins/gaia/config/project-config.yaml"* ]]
+  [[ "$output" == *"stack-plugin"* ]]
 }
 
 # ---------------------------------------------------------------------------
