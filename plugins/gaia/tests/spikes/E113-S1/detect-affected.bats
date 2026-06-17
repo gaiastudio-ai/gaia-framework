@@ -142,11 +142,11 @@ stacks:
   - name: test-stack
     language: bash
     paths:
-      - "gaia-public/plugins/gaia/scripts/**"
+      - "gaia-public/plugins/gaia/agents/**"
 YAML
 
   # Feed a path WITHOUT the prefix
-  printf '%s\n' "plugins/gaia/scripts/some-script.sh" > "$files_list"
+  printf '%s\n' "plugins/gaia/agents/example-dev.md" > "$files_list"
 
   run "$SCRIPT" --config "$cfg" --files-from "$files_list"
   [ "$status" -eq 0 ]
