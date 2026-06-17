@@ -394,6 +394,7 @@
       "description": "Per-trigger scope rules controlling which tests run. Each key is a CI trigger type; its value specifies included/excluded stacks or test tags. When absent, all tests run for all stacks on every trigger (backward-compatible default). This section controls test SCOPE only — pass/fail thresholds are governed by severity and gates (orthogonal).",
       "type": "object",
       "additionalProperties": false,
+      "x-no-auto-hydration": true,
       "properties": {
         "always_run": {
           "description": "Stack or suite identifiers that always run regardless of affected-set narrowing.",
