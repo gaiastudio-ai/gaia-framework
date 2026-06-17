@@ -41,7 +41,7 @@ SH
   chmod +x "$root/$name/run.sh"
 }
 
-@test "AC3: /gaia-tool-info <name> renders all required adapter.json fields" {
+@test "gaia-tool-info <name> renders all required adapter.json fields" {
   local builtin="$TEST_TMP/builtin"; mkdir -p "$builtin"
   _make_adapter "$builtin" semgrep sast semgrep ">=1.0.0"
 
@@ -57,7 +57,7 @@ SH
   echo "$output" | grep -qi "fixture adapter"
 }
 
-@test "AC4: /gaia-tool-info <name> output includes an availability slot" {
+@test "gaia-tool-info <name> output includes an availability slot" {
   local builtin="$TEST_TMP/builtin"; mkdir -p "$builtin"
   _make_adapter "$builtin" semgrep sast semgrep ">=1.0.0"
 
@@ -68,7 +68,7 @@ SH
   echo "$output" | grep -qi "availability"
 }
 
-@test "AC5: unknown adapter exits non-zero and lists available adapters" {
+@test "unknown adapter exits non-zero and lists available adapters" {
   local builtin="$TEST_TMP/builtin"; mkdir -p "$builtin"
   _make_adapter "$builtin" semgrep  sast        semgrep  ">=1.0.0"
   _make_adapter "$builtin" gitleaks secret-scan gitleaks ">=8.0.0"
@@ -81,7 +81,7 @@ SH
   echo "$output" | grep -q "gitleaks"
 }
 
-@test "AC3: custom adapter wins over built-in when both exist" {
+@test "custom adapter wins over built-in when both exist" {
   local builtin="$TEST_TMP/builtin"; local custom="$TEST_TMP/custom"
   mkdir -p "$builtin" "$custom"
   _make_adapter "$builtin" semgrep sast semgrep ">=1.0.0"

@@ -26,22 +26,22 @@ teardown() { common_teardown; }
 
 # --- gaia-create-arch: fail-safe detects missing stacks / platforms ---
 
-@test "AF-22-7 Bug-21: gaia-create-arch finalize.sh has the hydration fail-safe block" {
+@test "gaia-create-arch finalize.sh has the hydration fail-safe block" {
   grep -qF "Config hydration fail-safe" "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
 }
 
-@test "AF-22-7 Bug-21: gaia-create-arch fail-safe greps for stacks: + platforms: in project-config.yaml" {
+@test "gaia-create-arch fail-safe greps for stacks: + platforms: in project-config.yaml" {
   grep -qF '^stacks:' "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
   grep -qF '^platforms:' "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
 }
 
-@test "AF-22-7 Bug-21: gaia-create-arch fail-safe warning names downstream skills (/gaia-bridge-enable, /gaia-create-epics, /gaia-ci-setup)" {
+@test "gaia-create-arch fail-safe warning names downstream skills (/gaia-bridge-enable, /gaia-create-epics, /gaia-ci-setup)" {
   grep -qF '/gaia-bridge-enable' "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
   grep -qF '/gaia-create-epics' "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
   grep -qF '/gaia-ci-setup' "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
 }
 
-@test "AF-22-7 Bug-21: gaia-create-arch fail-safe references config-hydration.sh + config_hydrate_section" {
+@test "gaia-create-arch fail-safe references config-hydration.sh + config_hydrate_section" {
   grep -qF 'scripts/lib/config-hydration.sh' "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
   grep -qF 'config_hydrate_section stacks' "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
   grep -qF 'config_hydrate_section platforms' "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/finalize.sh"
@@ -49,38 +49,38 @@ teardown() { common_teardown; }
 
 # --- gaia-test-strategy: fail-safe detects missing test_execution / test_execution_bridge / environments ---
 
-@test "AF-22-7 Bug-21: gaia-test-strategy finalize.sh has the hydration fail-safe block" {
+@test "gaia-test-strategy finalize.sh has the hydration fail-safe block" {
   grep -qF "Config hydration fail-safe" "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
 }
 
-@test "AF-22-7 Bug-21: gaia-test-strategy fail-safe greps for test_execution + test_execution_bridge + environments" {
+@test "gaia-test-strategy fail-safe greps for test_execution + test_execution_bridge + environments" {
   grep -qF '^test_execution:' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   grep -qF '^test_execution_bridge:' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   grep -qF '^environments:' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
 }
 
-@test "AF-22-7 Bug-21: gaia-test-strategy fail-safe warning names downstream skills" {
+@test "gaia-test-strategy fail-safe warning names downstream skills" {
   grep -qF '/gaia-bridge-enable' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   grep -qF '/gaia-test-automate' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
 }
 
 # --- gaia-ci-setup: fail-safe detects missing ci_cd ---
 
-@test "AF-22-7 Bug-21: gaia-ci-setup finalize.sh has the hydration fail-safe block" {
+@test "gaia-ci-setup finalize.sh has the hydration fail-safe block" {
   grep -qF "Config hydration fail-safe" "$PLUGIN_ROOT/skills/gaia-ci-setup/scripts/finalize.sh"
 }
 
-@test "AF-22-7 Bug-21: gaia-ci-setup fail-safe greps for ci_cd: in project-config.yaml" {
+@test "gaia-ci-setup fail-safe greps for ci_cd: in project-config.yaml" {
   grep -qF '^ci_cd:' "$PLUGIN_ROOT/skills/gaia-ci-setup/scripts/finalize.sh"
 }
 
-@test "AF-22-7 Bug-21: gaia-ci-setup fail-safe warning names downstream /gaia-bridge-enable" {
+@test "gaia-ci-setup fail-safe warning names downstream /gaia-bridge-enable" {
   grep -qF '/gaia-bridge-enable' "$PLUGIN_ROOT/skills/gaia-ci-setup/scripts/finalize.sh"
 }
 
 # --- All three accept canonical OR legacy config-yaml location ---
 
-@test "AF-22-7 Bug-21: all three fail-safes accept both .gaia/config/ (canonical) and config/ (legacy) yaml locations" {
+@test "all three fail-safes accept both .gaia/config/ (canonical) and config/ (legacy) yaml locations" {
   for skill in gaia-create-arch gaia-test-strategy gaia-ci-setup; do
     grep -qF '.gaia/config/project-config.yaml' "$PLUGIN_ROOT/skills/$skill/scripts/finalize.sh"
     grep -qF '"config/project-config.yaml"' "$PLUGIN_ROOT/skills/$skill/scripts/finalize.sh"
@@ -89,7 +89,7 @@ teardown() { common_teardown; }
 
 # --- End-to-end: fail-safe fires when sections missing ---
 
-@test "AF-22-7 Bug-21 e2e: gaia-create-arch finalize.sh prints WARNING when stacks: + platforms: are missing" {
+@test "e2e: gaia-create-arch finalize.sh prints WARNING when stacks: + platforms: are missing" {
   # Set up a minimal config + a written architecture artifact + run finalize.
   local tmp="$BATS_TEST_TMPDIR/yara-fixture"
   mkdir -p "$tmp/.gaia/config" "$tmp/.gaia/artifacts/planning-artifacts" "$tmp/_memory/checkpoints"
@@ -112,7 +112,7 @@ EOF
   grep -qF "config_phase is still 'minimal'" "$tmp/out.log"
 }
 
-@test "AF-22-7 Bug-21 e2e: gaia-create-arch finalize.sh does NOT warn when stacks: + platforms: are present" {
+@test "e2e: gaia-create-arch finalize.sh does NOT warn when stacks: + platforms: are present" {
   local tmp="$BATS_TEST_TMPDIR/yara-fixture-hydrated"
   mkdir -p "$tmp/.gaia/config" "$tmp/.gaia/artifacts/planning-artifacts" "$tmp/_memory/checkpoints"
   cat > "$tmp/.gaia/config/project-config.yaml" <<'EOF'

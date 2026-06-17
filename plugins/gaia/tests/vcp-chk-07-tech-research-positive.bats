@@ -33,27 +33,27 @@ teardown() { common_teardown; }
 # VCP-CHK-07 — Positive: all 22 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-07: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export TECH_RESEARCH_ARTIFACT="$FIXTURES/tech-research-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-07: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export TECH_RESEARCH_ARTIFACT="$FIXTURES/tech-research-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-07: finalize.sh reports PASS for the 'At least 2 alternatives compared' anchor item" {
+@test "finalize.sh reports PASS for the 'At least 2 alternatives compared' anchor item" {
   export TECH_RESEARCH_ARTIFACT="$FIXTURES/tech-research-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"alternatives"* ]]
 }
 
-@test "VCP-CHK-07: finalize.sh reports PASS for Technology Overview / Evaluation / Trade-off / Recommendation sections" {
+@test "finalize.sh reports PASS for Technology Overview / Evaluation / Trade-off / Recommendation sections" {
   export TECH_RESEARCH_ARTIFACT="$FIXTURES/tech-research-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -69,7 +69,7 @@ teardown() { common_teardown; }
 # the count must be exactly 22.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 22 classified items" {
+@test "SKILL.md ## Validation section contains exactly 22 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -80,7 +80,7 @@ teardown() { common_teardown; }
   [ "$output" = "22" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }

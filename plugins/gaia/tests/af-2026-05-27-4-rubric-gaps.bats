@@ -72,7 +72,7 @@ Decisions recorded in the devops-sidecar.
 EOF
 }
 
-@test "F-027: infra finalize.sh PASSES SV-07 + SV-11 on an on-prem doc (no cloud keywords)" {
+@test "infra finalize.sh PASSES + on an on-prem doc (no cloud keywords)" {
   local doc="$TEST_TMP/infrastructure-design.md"
   _write_onprem_infra "$doc"
   run env INFRA_DESIGN_ARTIFACT="$doc" bash "$INFRA_FINAL"
@@ -89,11 +89,11 @@ EOF
   [[ "$output" != *"SV-11"*"violation"* ]]
 }
 
-@test "F-027: infra finalize.sh SV-07 allowlist includes on-prem scaling idioms" {
+@test "infra finalize.sh allowlist includes on-prem scaling idioms" {
   grep -qE 'systemd|supervisor|pm2|process[[:space:]]+manager|worker[[:space:]]+\(count|replicas\?|single\[\[:space:\]-\]instance' "$INFRA_FINAL"
 }
 
-@test "F-027: infra finalize.sh SV-11 allowlist includes local/stateless idioms" {
+@test "infra finalize.sh allowlist includes local/stateless idioms" {
   grep -qE 'local\[\[:space:\]\]\+state|stateless|idempotent|declarative' "$INFRA_FINAL"
 }
 

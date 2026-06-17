@@ -43,34 +43,34 @@ teardown() { common_teardown; }
 # VCP-CHK-25 — Positive: all 65 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-25: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-25: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-25: finalize.sh reports PASS for status frontmatter anchor" {
+@test "finalize.sh reports PASS for status frontmatter anchor" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status field present in YAML frontmatter"* ]]
 }
 
-@test "VCP-CHK-25: finalize.sh reports 25/25 script-verifiable PASS items" {
+@test "finalize.sh reports 25/25 script-verifiable PASS items" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"25/25 script-verifiable items PASS"* ]]
 }
 
-@test "VCP-CHK-25: output enumerates every category header (AC1)" {
+@test "output enumerates every category header" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -82,7 +82,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"[category: gate verdict]"* ]]
 }
 
-@test "VCP-CHK-25: total items summary reports 65" {
+@test "total items summary reports 65" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -95,7 +95,7 @@ teardown() { common_teardown; }
 # the count must be exactly 65.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 65 classified items" {
+@test "SKILL.md ## Validation section contains exactly 65 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -106,7 +106,7 @@ teardown() { common_teardown; }
   [ "$output" = "65" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -117,14 +117,14 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: status-frontmatter check is classified script-verifiable" {
+@test "status-frontmatter check is classified script-verifiable" {
   # Per epic design: the gate-verdict "status field" anchor MUST land
   # on script-verifiable (YAML frontmatter structural check).
   run grep -E '^\- \[script-verifiable\].*status field present in YAML frontmatter' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }
@@ -139,7 +139,7 @@ teardown() { common_teardown; }
   [ "$output" = "ok" ]
 }
 
-@test "AC3: script-verifiable count is 25 in SKILL.md Validation" {
+@test "script-verifiable count is 25 in SKILL.md Validation" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -150,7 +150,7 @@ teardown() { common_teardown; }
   [ "$output" = "25" ]
 }
 
-@test "AC3: LLM-checkable count is 40 in SKILL.md Validation" {
+@test "LLM-checkable count is 40 in SKILL.md Validation" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }

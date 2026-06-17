@@ -33,37 +33,37 @@ teardown() { common_teardown; }
 # NFR-052: source the script and verify every public function resolves
 # ---------------------------------------------------------------------------
 
-@test "NFR-052: source script — parse_args is callable" {
+@test "source script — parse_args is callable" {
   source "$SCRIPTS_DIR/generate-pipeline.sh"
   type parse_args
 }
 
-@test "NFR-052: source script — read_affected_json is callable" {
+@test "source script — read_affected_json is callable" {
   source "$SCRIPTS_DIR/generate-pipeline.sh"
   type read_affected_json
 }
 
-@test "NFR-052: source script — parse_affected_array is callable" {
+@test "source script — parse_affected_array is callable" {
   source "$SCRIPTS_DIR/generate-pipeline.sh"
   type parse_affected_array
 }
 
-@test "NFR-052: source script — parse_stacks_names is callable" {
+@test "source script — parse_stacks_names is callable" {
   source "$SCRIPTS_DIR/generate-pipeline.sh"
   type parse_stacks_names
 }
 
-@test "NFR-052: source script — build_matrix_json is callable" {
+@test "source script — build_matrix_json is callable" {
   source "$SCRIPTS_DIR/generate-pipeline.sh"
   type build_matrix_json
 }
 
-@test "NFR-052: source script — main is callable" {
+@test "source script — main is callable" {
   source "$SCRIPTS_DIR/generate-pipeline.sh"
   type main
 }
 
-@test "NFR-052: main-guard — sourcing does NOT invoke main" {
+@test "main-guard — sourcing does NOT invoke main" {
   # If main runs on source it will fail (no args) and exit 1.
   # Reaching this line means the guard worked.
   source "$SCRIPTS_DIR/generate-pipeline.sh"
@@ -122,7 +122,7 @@ teardown() { common_teardown; }
 # AC1: selective affected-set → exactly those stack entries, no others
 # ---------------------------------------------------------------------------
 
-@test "AC1: two-element set → exactly 2 include entries" {
+@test "two-element set → exactly 2 include entries" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["stack-alpha","stack-beta"]'
   [ "$status" -eq 0 ]
@@ -133,7 +133,7 @@ teardown() { common_teardown; }
   [[ "$output" != *'"stack":"stack-gamma"'* ]]
 }
 
-@test "AC1: 3-stack config + 1-element set → exactly 1 include entry" {
+@test "3-stack config + 1-element set → exactly 1 include entry" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["stack-gamma"]'
   [ "$status" -eq 0 ]
@@ -142,7 +142,7 @@ teardown() { common_teardown; }
   [[ "$output" != *'"stack":"stack-beta"'* ]]
 }
 
-@test "AC1: hyphen-name stack works (R2 guard)" {
+@test "hyphen-name stack works (R2 guard)" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["stack-alpha"]'
   [ "$status" -eq 0 ]
@@ -153,7 +153,7 @@ teardown() { common_teardown; }
 # AC2: ["*"] wildcard expands to all config stacks in declaration order
 # ---------------------------------------------------------------------------
 
-@test "AC2: wildcard expands to all 3 stacks in declaration order" {
+@test "wildcard expands to all 3 stacks in declaration order" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["*"]' \
     --config "$TEST_TMP/project-config.yaml"
@@ -174,7 +174,7 @@ teardown() { common_teardown; }
   [ "$beta_pos" -lt "$gamma_pos" ]
 }
 
-@test "AC2: wildcard without --config → exit 1 with stderr" {
+@test "wildcard without --config → exit 1 with stderr" {
   run --separate-stderr "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["*"]'
   [ "$status" -eq 1 ]
@@ -184,20 +184,20 @@ teardown() { common_teardown; }
 # AC3: empty affected-set → {"include":[]} exit 0
 # ---------------------------------------------------------------------------
 
-@test "AC3: empty set via --affected-set → include empty, exit 0" {
+@test "empty set via --affected-set → include empty, exit 0" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '[]'
   [ "$status" -eq 0 ]
   [[ "$output" == *'"include":[]'* ]]
 }
 
-@test "AC3: empty set via stdin → include empty, exit 0" {
+@test "empty set via stdin → include empty, exit 0" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" <<< '[]'
   [ "$status" -eq 0 ]
   [[ "$output" == *'"include":[]'* ]]
 }
 
-@test "AC3: empty set via --from file → include empty, exit 0" {
+@test "empty set via --from file → include empty, exit 0" {
   printf '[]' > "$TEST_TMP/empty-set.json"
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --from "$TEST_TMP/empty-set.json"
@@ -209,7 +209,7 @@ teardown() { common_teardown; }
 # AC4: output NEVER contains GitHub native paths: trigger blocks
 # ---------------------------------------------------------------------------
 
-@test "AC4: two-stack output has zero 'paths:' occurrences" {
+@test "two-stack output has zero 'paths:' occurrences" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["stack-alpha","stack-beta"]'
   [ "$status" -eq 0 ]
@@ -220,7 +220,7 @@ teardown() { common_teardown; }
   [ "$yaml_count" -eq 0 ]
 }
 
-@test "AC4: wildcard output has zero 'paths:' occurrences" {
+@test "wildcard output has zero 'paths:' occurrences" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["*"]' \
     --config "$TEST_TMP/project-config.yaml"
@@ -229,7 +229,7 @@ teardown() { common_teardown; }
   [ "$count" -eq 0 ]
 }
 
-@test "AC4: empty-set output has zero 'paths:' occurrences" {
+@test "empty-set output has zero 'paths:' occurrences" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '[]'
   [ "$status" -eq 0 ]
@@ -241,7 +241,7 @@ teardown() { common_teardown; }
 # AC5: 1:1 correspondence between affected stacks and include entries
 # ---------------------------------------------------------------------------
 
-@test "AC5: 3-entry set → 3 'stack': keys in output" {
+@test "3-entry set → 3 'stack': keys in output" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["stack-alpha","stack-beta","stack-gamma"]'
   [ "$status" -eq 0 ]
@@ -249,7 +249,7 @@ teardown() { common_teardown; }
   [ "$count" -eq 3 ]
 }
 
-@test "AC5: 1-entry set → exactly 1 'stack': key in output" {
+@test "1-entry set → exactly 1 'stack': key in output" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["stack-alpha"]'
   [ "$status" -eq 0 ]
@@ -257,7 +257,7 @@ teardown() { common_teardown; }
   [ "$count" -eq 1 ]
 }
 
-@test "AC5: wildcard → 3 stack entries matching all config stacks" {
+@test "wildcard → 3 stack entries matching all config stacks" {
   run "$SCRIPTS_DIR/generate-pipeline.sh" \
     --affected-set '["*"]' \
     --config "$TEST_TMP/project-config.yaml"

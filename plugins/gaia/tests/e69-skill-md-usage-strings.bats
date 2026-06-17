@@ -30,7 +30,7 @@ is_deprecated_alias() {
 
 # AC1: each renamed skill SKILL.md body uses the new canonical
 # `usage: /gaia-{new}` slash-command name (no legacy aliases in usage prose).
-@test "AC1: gaia-code-review/SKILL.md body uses /gaia-review-code in usage strings" {
+@test "gaia-code-review/SKILL.md body uses /gaia-review-code in usage strings" {
   local f="$SKILLS_DIR/gaia-code-review/SKILL.md"
   is_deprecated_alias "$f" && skip "deprecation alias stub"
   run grep -nE 'usage: /gaia-code-review' "$f"
@@ -40,7 +40,7 @@ is_deprecated_alias() {
   [ "$output" -ge 2 ]
 }
 
-@test "AC1: gaia-qa-tests/SKILL.md body uses /gaia-review-qa in usage strings" {
+@test "gaia-qa-tests/SKILL.md body uses /gaia-review-qa in usage strings" {
   local f="$SKILLS_DIR/gaia-qa-tests/SKILL.md"
   is_deprecated_alias "$f" && skip "deprecation alias stub"
   run grep -nE 'usage: /gaia-qa-tests' "$f"
@@ -50,7 +50,7 @@ is_deprecated_alias() {
   [ "$output" -ge 2 ]
 }
 
-@test "AC1: gaia-test-review/SKILL.md body uses /gaia-review-test in usage strings" {
+@test "gaia-test-review/SKILL.md body uses /gaia-review-test in usage strings" {
   local f="$SKILLS_DIR/gaia-test-review/SKILL.md"
   is_deprecated_alias "$f" && skip "deprecation alias stub"
   run grep -nE 'usage: /gaia-test-review' "$f"
@@ -60,7 +60,7 @@ is_deprecated_alias() {
   [ "$output" -ge 2 ]
 }
 
-@test "AC1: gaia-performance-review/SKILL.md body uses /gaia-perf-deepdive in usage strings (E69-S5 baseline)" {
+@test "gaia-performance-review/SKILL.md body uses /gaia-perf-deepdive in usage strings ( baseline)" {
   local f="$SKILLS_DIR/gaia-performance-review/SKILL.md"
   is_deprecated_alias "$f" && skip "deprecation alias stub"
   run grep -nE 'usage: /gaia-performance-review' "$f"
@@ -74,7 +74,7 @@ is_deprecated_alias() {
 # generic "[story-key]" / "[target …]" / etc., never the legacy slash
 # command literal). Verified by ensuring no argument-hint line embeds
 # `/gaia-` followed by a legacy slug.
-@test "AC2: no SKILL.md argument-hint embeds a legacy /gaia-<old-slug> literal" {
+@test "no SKILL.md argument-hint embeds a legacy /gaia-<old-slug> literal" {
   for d in gaia-code-review gaia-qa-tests gaia-test-review gaia-review-security gaia-review-perf gaia-performance-review gaia-a11y-testing gaia-ci-setup; do
     local f="$SKILLS_DIR/$d/SKILL.md"
     [ -f "$f" ] || continue
@@ -90,7 +90,7 @@ is_deprecated_alias() {
 
 # AC3: every renamed skill exposes the new canonical name as its
 # frontmatter `name:` (the addressable slash-command surface).
-@test "AC3: each renamed SKILL.md frontmatter name reflects the new canonical command" {
+@test "each renamed SKILL.md frontmatter name reflects the new canonical command" {
   local pairs=(
     "gaia-code-review:gaia-review-code"
     "gaia-qa-tests:gaia-review-qa"
@@ -120,7 +120,7 @@ is_deprecated_alias() {
 # notice routing to the canonical replacement — i.e. AC4 forbids us
 # from "fixing" alias stubs into canonical names. This guards against
 # accidental over-sweep.
-@test "AC4: deprecated-* alias stubs preserve their legacy slash-command name and route to the canonical replacement" {
+@test "deprecated-* alias stubs preserve their legacy slash-command name and route to the canonical replacement" {
   local f="$SKILLS_DIR/gaia-security-review/SKILL.md"
   if [ -f "$f" ] && is_deprecated_alias "$f"; then
     run grep -F 'usage: /gaia-security-review' "$f"

@@ -217,7 +217,7 @@ EOF
 
 # AC3 / TC-CSP-14 — idempotent rerun on a converged tree emits no-op notice
 # and produces a byte-identical tree.
-@test "AC3: idempotent rerun emits no-op notice (zero moves, zero writes)" {
+@test "idempotent rerun emits no-op notice (zero moves, zero writes)" {
   # Seed an already-converged per-epic story plus per-epic index. No flat files.
   mkdir -p "docs/implementation-artifacts/epic-E77-plugin-project-shape-and-tooling/stories"
   cat > "docs/implementation-artifacts/epic-E77-plugin-project-shape-and-tooling/stories/E77-S10-some-slug.md" <<'EOF'
@@ -257,7 +257,7 @@ EOF
 }
 
 # AC4 / TC-CSP-15 — E77-S10 / E77-S11 regression repro.
-@test "AC4: E77-S10/E77-S11 regression repro lands both under nested layout" {
+@test "/ regression repro lands both under nested layout" {
   _make_flat_story "E77-S10" "flat-landing"
   _make_flat_story "E77-S11" "flat-landing"
 
@@ -274,7 +274,7 @@ EOF
 
 # AC5 — post-condition probe: check-story-layout-sync.sh reports zero
 # WARNING / CRITICAL after migration.
-@test "AC5: post-condition probe — check-story-layout-sync.sh clean" {
+@test "post-condition probe — check-story-layout-sync.sh clean" {
   _make_flat_story "E77-S10" "some-slug"
 
   run --separate-stderr "$MIGRATE_SCRIPT"

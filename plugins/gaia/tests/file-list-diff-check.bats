@@ -77,7 +77,7 @@ init_git_repo() {
   [[ "$output" == *"file-list-diff-check.sh"* ]]
 }
 
-@test "TC-DEJ-DIVERGENCE-1: File List lists a.ts; git diff shows a.ts + b.ts -> emits divergence Warning naming b.ts" {
+@test "File List lists a.ts; git diff shows a.ts + b.ts -> emits divergence Warning naming b.ts" {
   init_git_repo
   write_story_with_filelist
   run "$SCRIPT" --story-file "$STORY" --base main
@@ -86,7 +86,7 @@ init_git_repo() {
   [[ "$output" == *"b.ts"* ]]
 }
 
-@test "EC-8: not in a git repo -> stderr 'git diff unavailable'; exit 0" {
+@test "not in a git repo -> stderr 'git diff unavailable'; exit 0" {
   cd "$TEST_TMP"   # no git init
   write_story_with_filelist
   run --separate-stderr "$SCRIPT" --story-file "$STORY"
@@ -94,7 +94,7 @@ init_git_repo() {
   [[ "$stderr" == *"git diff unavailable"* ]]
 }
 
-@test "EC-9a: missing File List section -> divergence Warning reason=no-file-list" {
+@test "missing File List section -> divergence Warning reason=no-file-list" {
   init_git_repo
   write_story_no_filelist
   run "$SCRIPT" --story-file "$STORY" --base main
@@ -102,7 +102,7 @@ init_git_repo() {
   [[ "$output" == *"no-file-list"* ]]
 }
 
-@test "EC-9b: empty File List section -> divergence Warning reason=empty-file-list" {
+@test "empty File List section -> divergence Warning reason=empty-file-list" {
   init_git_repo
   write_story_empty_filelist
   run "$SCRIPT" --story-file "$STORY" --base main

@@ -22,7 +22,7 @@ assert_json_finding_category() {
   printf '%s\n' "$1" | grep -F "\"category\":\"$2\"" >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-3.1: oversized fixture flagged at default threshold (500 lines)" {
+@test ".1: oversized fixture flagged at default threshold (500 lines)" {
   mkdir -p "$TEST_TMP/fixtures"
   awk 'BEGIN{ for (i=0; i<600; i++) print "{}" }' > "$TEST_TMP/fixtures/big.json"
   run "$SCRIPT" "$TEST_TMP"
@@ -32,7 +32,7 @@ assert_json_finding_category() {
   assert_json_finding_category "$output" "fixture-quality"
 }
 
-@test "TC-RSV2-TESTREVIEW-3.2: oversized fixture NOT flagged with custom --max-lines 700" {
+@test ".2: oversized fixture NOT flagged with custom --max-lines 700" {
   mkdir -p "$TEST_TMP/fixtures"
   awk 'BEGIN{ for (i=0; i<600; i++) print "{}" }' > "$TEST_TMP/fixtures/big.json"
   run "$SCRIPT" --max-lines 700 "$TEST_TMP"
@@ -40,7 +40,7 @@ assert_json_finding_category() {
   ! printf '%s\n' "$output" | grep -F '"rule":"oversized-fixture"' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-3.3: mutation-during-run flagged for fs.writeFileSync to fixture path" {
+@test ".3: mutation-during-run flagged for fs.writeFileSync to fixture path" {
   mkdir -p "$TEST_TMP/tests"
   cat > "$TEST_TMP/tests/m.test.ts" <<'EOF'
 import fs from "fs";
@@ -51,7 +51,7 @@ EOF
   assert_json_finding_rule "$output" "mutation-during-run"
 }
 
-@test "TC-RSV2-TESTREVIEW-3.4: pytest fixture cycle detected" {
+@test ".4: pytest fixture cycle detected" {
   cat > "$TEST_TMP/conftest.py" <<'EOF'
 import pytest
 
@@ -68,7 +68,7 @@ EOF
   assert_json_finding_rule "$output" "fixture-cycle"
 }
 
-@test "TC-RSV2-TESTREVIEW-3.5: clean fixture and test produce status passed" {
+@test ".5: clean fixture and test produce status passed" {
   mkdir -p "$TEST_TMP/fixtures"
   awk 'BEGIN{ for (i=0; i<50; i++) print "{}" }' > "$TEST_TMP/fixtures/small.json"
   cat > "$TEST_TMP/clean.test.ts" <<'EOF'
@@ -80,12 +80,12 @@ EOF
   assert_json_check_status "$output" "passed"
 }
 
-@test "TC-RSV2-TESTREVIEW-3.6: --max-lines rejects non-numeric value" {
+@test ".6: --max-lines rejects non-numeric value" {
   run "$SCRIPT" --max-lines abc /tmp/nope
   [ "$status" -eq 1 ]
 }
 
-@test "TC-RSV2-TESTREVIEW-3.7: pytest fixture without cycle does not trigger fixture-cycle" {
+@test ".7: pytest fixture without cycle does not trigger fixture-cycle" {
   cat > "$TEST_TMP/conftest.py" <<'EOF'
 import pytest
 
@@ -102,16 +102,16 @@ EOF
   ! printf '%s\n' "$output" | grep -F '"rule":"fixture-cycle"' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-3.8: script uses set -euo pipefail and LC_ALL=C" {
+@test ".8: script uses set -euo pipefail and LC_ALL=C" {
   grep -Fq "set -euo pipefail" "$SCRIPT"
   grep -Fq "LC_ALL=C" "$SCRIPT"
 }
 
-@test "TC-RSV2-TESTREVIEW-3.9: script does not invoke jq as runtime command" {
+@test ".9: script does not invoke jq as runtime command" {
   ! grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -E '(^|[[:space:]\|;])jq([[:space:]]|$)' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-3.10: --help exits 0" {
+@test ".10: --help exits 0" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
 }

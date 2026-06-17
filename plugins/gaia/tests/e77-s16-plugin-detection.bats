@@ -15,7 +15,7 @@ teardown() { common_teardown; }
 
 PLUGIN_DETECT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/plugin-detection.sh"
 
-@test "AC4: 3+ signals (SKILL.md + adapter.json + manifest) classifies as plugin" {
+@test "3+ signals (SKILL.md + adapter.json + manifest) classifies as plugin" {
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/plugins/foo" "$proj/scripts/adapters/bar" "$proj/.claude-plugin"
   echo '---' > "$proj/plugins/foo/SKILL.md"
@@ -27,7 +27,7 @@ PLUGIN_DETECT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/plugin-detection.sh"
   [[ "$output" == *'"signal_count": 3'* ]]
 }
 
-@test "AC4: single signal (only SKILL.md) does NOT classify as plugin" {
+@test "single signal (only SKILL.md) does NOT classify as plugin" {
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/plugins/foo"
   echo '---' > "$proj/plugins/foo/SKILL.md"
@@ -37,7 +37,7 @@ PLUGIN_DETECT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/plugin-detection.sh"
   [[ "$output" == *'"signal_count": 1'* ]]
 }
 
-@test "AC4: two signals (SKILL.md + adapter.json) does NOT classify as plugin" {
+@test "two signals (SKILL.md + adapter.json) does NOT classify as plugin" {
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/plugins/foo" "$proj/scripts/adapters/bar"
   echo '---' > "$proj/plugins/foo/SKILL.md"
@@ -48,7 +48,7 @@ PLUGIN_DETECT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/plugin-detection.sh"
   [[ "$output" == *'"signal_count": 2'* ]]
 }
 
-@test "AC4: zero signals — empty project — emits is_plugin=false, signal_count=0" {
+@test "zero signals — empty project — emits is_plugin=false, signal_count=0" {
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj"
   run "$PLUGIN_DETECT" --project-root "$proj"
@@ -57,7 +57,7 @@ PLUGIN_DETECT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/plugin-detection.sh"
   [[ "$output" == *'"signal_count": 0'* ]]
 }
 
-@test "AC4: 4 signals (SKILL.md + adapter.json + manifest + commands/) classifies as plugin" {
+@test "4 signals (SKILL.md + adapter.json + manifest + commands/) classifies as plugin" {
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/plugins/foo" "$proj/scripts/adapters/bar" "$proj/.claude-plugin" "$proj/commands"
   echo '---' > "$proj/plugins/foo/SKILL.md"
@@ -70,7 +70,7 @@ PLUGIN_DETECT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/plugin-detection.sh"
   [[ "$output" == *'"signal_count": 4'* ]]
 }
 
-@test "AC4: manifest.yaml at project root counts as a manifest signal" {
+@test "manifest.yaml at project root counts as a manifest signal" {
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/plugins/foo" "$proj/scripts/adapters/bar"
   echo '---' > "$proj/plugins/foo/SKILL.md"
@@ -81,7 +81,7 @@ PLUGIN_DETECT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/plugin-detection.sh"
   [[ "$output" == *'"is_plugin": true'* ]]
 }
 
-@test "AC4: emits a 'signals' array listing each matched signal name" {
+@test "emits a 'signals' array listing each matched signal name" {
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/plugins/foo" "$proj/scripts/adapters/bar" "$proj/.claude-plugin"
   echo '---' > "$proj/plugins/foo/SKILL.md"

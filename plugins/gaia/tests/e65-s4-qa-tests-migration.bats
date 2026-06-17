@@ -24,24 +24,24 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-WRITE-S4-2 — fork allowlist read-only ---
 
-@test "TC-DEJ-WRITE-S4-2: allowed-tools is exactly [Read, Grep, Glob, Bash]" {
+@test "allowed-tools is exactly [Read, Grep, Glob, Bash]" {
   run grep -E '^allowed-tools:' "$SKILL_FILE"
   [ "$status" -eq 0 ]
   echo "$output" | grep -E '\[Read, Grep, Glob, Bash\]' >/dev/null
 }
 
-@test "TC-DEJ-WRITE-S4-2: no Write or Edit appears in allowed-tools" {
+@test "no Write or Edit appears in allowed-tools" {
   run grep -E '^allowed-tools:.*(Write|Edit)' "$SKILL_FILE"
   [ "$status" -ne 0 ]
 }
 
 # --- TC-DEJ-PHASE-S4 — unifying principle + seven phase headers in order ---
 
-@test "TC-DEJ-PHASE-S4: unifying principle present verbatim" {
+@test "unifying principle present verbatim" {
   grep -F 'Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-PHASE-S4: seven canonical phase headers in order" {
+@test "seven canonical phase headers in order" {
   local got
   got="$(grep -nE '^### Phase [1-7]' "$SKILL_FILE" || true)"
   echo "$got" | grep -F 'Phase 1' >/dev/null
@@ -56,29 +56,29 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-DET-S4 — determinism settings ---
 
-@test "TC-DEJ-DET-S4: temperature: 0 declared" {
+@test "temperature: 0 declared" {
   grep -F 'temperature: 0' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-DET-S4: model pinned to claude-opus-4-7" {
+@test "model pinned to claude-opus-4-7" {
   grep -F 'claude-opus-4-7' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-DET-S4: prompt_hash recording declared" {
+@test "prompt_hash recording declared" {
   grep -F 'prompt_hash' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-TOOLKIT-QA-01 — QA toolkit declared ---
 
-@test "TC-DEJ-TOOLKIT-QA-01: test-discovery section present" {
+@test "test-discovery section present" {
   grep -iF 'test-discovery' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-QA-01: AC-coverage analyzer section present" {
+@test "AC-coverage analyzer section present" {
   grep -iF 'AC-coverage' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-QA-01: stack-toolkit table declares per-stack discovery globs" {
+@test "stack-toolkit table declares per-stack discovery globs" {
   grep -F 'ts-dev' "$SKILL_FILE" >/dev/null
   grep -F 'python-dev' "$SKILL_FILE" >/dev/null
   grep -F 'go-dev' "$SKILL_FILE" >/dev/null
@@ -88,67 +88,67 @@ teardown() { common_teardown; }
   grep -F 'angular-dev' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-QA-01: ts-dev test glob declared" {
+@test "ts-dev test glob declared" {
   grep -F '*.{test,spec}.{ts,tsx,js,jsx}' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-QA-01: python-dev test glob declared" {
+@test "python-dev test glob declared" {
   grep -F 'test_*.py' "$SKILL_FILE" >/dev/null
   grep -F '*_test.py' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-QA-01: go-dev test glob declared" {
+@test "go-dev test glob declared" {
   grep -F '*_test.go' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-QA-01: dual-strategy AC-matching documented" {
+@test "dual-strategy AC-matching documented" {
   # AC-ID prefix matching
   grep -iE 'AC-?ID' "$SKILL_FILE" >/dev/null
   # Given/When/Then fallback
   grep -F 'Given/When/Then' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-QA-01: primary vs edge-case differential weighting documented" {
+@test "primary vs edge-case differential weighting documented" {
   grep -iF 'primary' "$SKILL_FILE" >/dev/null
   grep -iE 'edge[- ]case' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-RUBRIC-S4 — severity rubric examples ---
 
-@test "TC-DEJ-RUBRIC-S4: Critical tier present" {
+@test "Critical tier present" {
   grep -E '^### Critical' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S4: Warning tier present" {
+@test "Warning tier present" {
   grep -E '^### Warning' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S4: Suggestion tier present" {
+@test "Suggestion tier present" {
   grep -E '^### Suggestion' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S4: Critical examples include missing AC coverage and untested error path" {
+@test "Critical examples include missing AC coverage and untested error path" {
   grep -iE 'missing.*coverage|missing.*AC' "$SKILL_FILE" >/dev/null
   grep -iE 'untested.*error|error.*path' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S4: Warning examples include weak assertion and brittle selector" {
+@test "Warning examples include weak assertion and brittle selector" {
   grep -iE 'weak.*assert|toBeDefined' "$SKILL_FILE" >/dev/null
   grep -iE 'brittle.*selector|CSS class' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S4: Suggestion examples include redundant tests and FR-traceability" {
+@test "Suggestion examples include redundant tests and FR-traceability" {
   grep -iE 'redundant.*test|over[- ]coverage' "$SKILL_FILE" >/dev/null
   grep -iE 'FR[- ]?traceab|traceability' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-WRITE-S4-1 — FR-402 review-file path declared ---
 
-@test "TC-DEJ-WRITE-S4-1: FR-402 path qa-tests-{story_key}.md declared" {
+@test "path qa-tests-{story_key}.md declared" {
   grep -F 'qa-tests-' "$SKILL_FILE" | grep -F 'docs/implementation-artifacts/' >/dev/null
 }
 
-@test "TC-DEJ-WRITE-S4-1: parent-mediated write (Option A) documented" {
+@test "parent-mediated write (Option A) documented" {
   grep -iF 'parent-mediated' "$SKILL_FILE" >/dev/null
   grep -iF 'the parent writes the file' "$SKILL_FILE" >/dev/null
 }
@@ -174,7 +174,7 @@ teardown() { common_teardown; }
 
 # --- evidence-judgment-parity.bats registration check ---
 
-@test "TC-DEJ-PARITY-S4: gaia-qa-tests registered in REVIEW_SKILLS array" {
+@test "gaia-qa-tests registered in REVIEW_SKILLS array" {
   local parity="$BATS_TEST_DIRNAME/evidence-judgment-parity.bats"
   grep -F 'skills/gaia-qa-tests/SKILL.md' "$parity" >/dev/null
 }

@@ -15,21 +15,21 @@ setup() {
 
 teardown() { common_teardown; }
 
-@test "AF-21-17: gaia-brownfield/SKILL.md uses canonical .gaia/artifacts/planning-artifacts/ paths" {
+@test "gaia-brownfield/SKILL.md uses canonical .gaia/artifacts/planning-artifacts/ paths" {
   grep -qF '.gaia/artifacts/planning-artifacts/brownfield-assessment.md' "$BROWNFIELD_SKILL"
   grep -qF '.gaia/artifacts/planning-artifacts/project-documentation.md' "$BROWNFIELD_SKILL"
   grep -qF '.gaia/artifacts/planning-artifacts/api-documentation.md' "$BROWNFIELD_SKILL"
 }
 
-@test "AF-21-17: gaia-brownfield/SKILL.md uses canonical .gaia/artifacts/test-artifacts/ paths" {
+@test "gaia-brownfield/SKILL.md uses canonical .gaia/artifacts/test-artifacts/ paths" {
   grep -qF '.gaia/artifacts/test-artifacts/' "$BROWNFIELD_SKILL"
 }
 
-@test "AF-21-17: gaia-brownfield/SKILL.md has zero remaining legacy docs/ literals" {
+@test "gaia-brownfield/SKILL.md has zero remaining legacy docs/ literals" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts)' "$BROWNFIELD_SKILL"
 }
 
-@test "AF-21-17: gaia-brownfield/SKILL.md Mission paragraph documents canonical destinations" {
+@test "gaia-brownfield/SKILL.md Mission paragraph documents canonical destinations" {
   grep -qF 'all target canonical destinations' "$BROWNFIELD_SKILL"
   grep -qF 'Path resolution' "$BROWNFIELD_SKILL"
 }

@@ -47,7 +47,7 @@ _has_backend() {
 # TC-ASJ-1 (AC1) — schema is valid JSON, declares draft-2020-12 + canonical $id
 # ---------------------------------------------------------------------------
 
-@test "TC-ASJ-1/AC1: adversarial-sidecar.schema.json exists and is valid JSON" {
+@test "adversarial-sidecar.schema.json exists and is valid JSON" {
   [ -f "$SCHEMA" ]
   if command -v python3 >/dev/null 2>&1; then
     run python3 -c "import json,sys; json.load(open('$SCHEMA'))"
@@ -58,7 +58,7 @@ _has_backend() {
   fi
 }
 
-@test "TC-ASJ-1/AC1: schema declares draft-2020-12 and the canonical \$id" {
+@test "schema declares draft-2020-12 and the canonical \$id" {
   grep -q 'json-schema.org/draft/2020-12/schema' "$SCHEMA"
   grep -q '"\$id"' "$SCHEMA"
   # $id is the gaia.studio canonical, mirroring brownfield-gap-entry.schema.json.
@@ -67,7 +67,7 @@ _has_backend() {
   [[ "$output" == *"https://gaia.studio/schemas/adversarial-sidecar.schema.json"* ]]
 }
 
-@test "TC-ASJ-1/AC2: schema models the exact S11 emitter shape" {
+@test "schema models the exact S11 emitter shape" {
   # review_type const "adversarial".
   grep -q '"const": "adversarial"' "$SCHEMA"
   # status enum is the ADR-037 verdict vocab.
@@ -89,7 +89,7 @@ _has_backend() {
 # TC-ASJ-2 (AC4) — known-good fixture validates against the schema (backend-guarded)
 # ---------------------------------------------------------------------------
 
-@test "TC-ASJ-2/AC4: known-good fixture exists and is valid JSON" {
+@test "known-good fixture exists and is valid JSON" {
   [ -f "$FIXTURE" ]
   if command -v python3 >/dev/null 2>&1; then
     run python3 -c "import json; json.load(open('$FIXTURE'))"
@@ -97,7 +97,7 @@ _has_backend() {
   fi
 }
 
-@test "TC-ASJ-2/AC4: known-good fixture validates via validate-artifact-schema.sh (backend-guarded)" {
+@test "known-good fixture validates via validate-artifact-schema.sh (backend-guarded)" {
   [ -f "$VALIDATOR" ]
   if ! _has_backend; then
     skip "no JSON-schema validator backend on host (ajv|python3+jsonschema)"
@@ -110,7 +110,7 @@ _has_backend() {
 # TC-ASJ-3 (AC3 / NFR-96) — schema FORBIDS timestamp/persona_sig/sentinel_envelope
 # ---------------------------------------------------------------------------
 
-@test "TC-ASJ-3/AC3: root is additionalProperties:false and forbidden keys absent from properties" {
+@test "root is additionalProperties:false and forbidden keys absent from properties" {
   # additionalProperties:false at the root encodes the forbid-everything-else rule.
   grep -q '"additionalProperties": false' "$SCHEMA"
   # The three forbidden provenance/forgery/gate keys MUST NOT appear as schema
@@ -139,7 +139,7 @@ for k in ('timestamp', 'persona_sig', 'sentinel_envelope'):
 # TC-ASJ-4 (AC4) — an off-vocab / forbidden-key sidecar is REJECTED (backend-guarded)
 # ---------------------------------------------------------------------------
 
-@test "TC-ASJ-4/AC4: sidecar carrying a forbidden timestamp key is rejected (backend-guarded)" {
+@test "sidecar carrying a forbidden timestamp key is rejected (backend-guarded)" {
   if ! _has_backend; then
     skip "no JSON-schema validator backend on host (ajv|python3+jsonschema)"
   fi
@@ -157,7 +157,7 @@ JSON
   [ "$status" -eq 1 ]
 }
 
-@test "TC-ASJ-4/AC4: sidecar with an off-vocab status is rejected (backend-guarded)" {
+@test "sidecar with an off-vocab status is rejected (backend-guarded)" {
   if ! _has_backend; then
     skip "no JSON-schema validator backend on host (ajv|python3+jsonschema)"
   fi
@@ -178,7 +178,7 @@ JSON
 # TC-ASJ-5 (NFR-96) — byte-identical determinism: double-emit via the writer + diff
 # ---------------------------------------------------------------------------
 
-@test "TC-ASJ-5/NFR-96: write-adversarial-sidecar.sh emits byte-identical output on repeat" {
+@test "write-adversarial-sidecar.sh emits byte-identical output on repeat" {
   [ -x "$EMITTER" ] || [ -f "$EMITTER" ]
   command -v jq >/dev/null 2>&1 || skip "jq not on host (emitter requires jq)"
 
@@ -203,7 +203,7 @@ JSON
   [ -z "$output" ]
 }
 
-@test "TC-ASJ-5/NFR-96: emitted sidecar omits timestamp/persona_sig/sentinel_envelope" {
+@test "emitted sidecar omits timestamp/persona_sig/sentinel_envelope" {
   command -v jq >/dev/null 2>&1 || skip "jq not on host (emitter requires jq)"
   local envelope='{"status":"PASS","summary":"clean","next":"none","findings":[]}'
   local md="$TEST_TMP/emit/adversarial-review-arch-2026-06-03.md"

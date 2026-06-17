@@ -64,7 +64,7 @@ teardown() { common_teardown; }
 # AC1 — ADR memo on disk records Option A vs B and the chosen path.
 # ---------------------------------------------------------------------------
 
-@test "AC1: ADR memo records Option A vs Option B and the chosen path" {
+@test "ADR memo records Option A vs Option B and the chosen path" {
   [ -f "$ADR_MEMO" ]
   grep -F "Option A" "$ADR_MEMO"
   grep -F "Option B" "$ADR_MEMO"
@@ -78,7 +78,7 @@ teardown() { common_teardown; }
 # AC2 — Frontmatter contract: context=fork, allowed-tools exact list.
 # ---------------------------------------------------------------------------
 
-@test "AC2: agent frontmatter has context: fork and the read-only allowlist" {
+@test "agent frontmatter has context: fork and the read-only allowlist" {
   [ -f "$AGENT_FILE" ]
   # Extract the YAML frontmatter block (between the first two '---' lines).
   awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print}' "$AGENT_FILE" > "$TEST_TMP/frontmatter.yaml"
@@ -99,7 +99,7 @@ teardown() { common_teardown; }
 # AC3 — Persona contains exactly 7+4+3 = 14 checklist items.
 # ---------------------------------------------------------------------------
 
-@test "AC3: persona contains 7 after-Red + 4 after-Green + 3 after-Refactor items" {
+@test "persona contains 7 after-Red + 4 after-Green + 3 after-Refactor items" {
   [ -f "$AGENT_FILE" ]
 
   # Section headers — locked literals so the contract is greppable.
@@ -140,7 +140,7 @@ teardown() { common_teardown; }
 # AC4 — ADR-067 hard-CRITICAL clause documented.
 # ---------------------------------------------------------------------------
 
-@test "AC4: agent documents ADR-067 hard-CRITICAL halt clause for both YOLO modes" {
+@test "agent documents hard-CRITICAL halt clause for both YOLO modes" {
   [ -f "$AGENT_FILE" ]
 
   # Hard-CRITICAL halt contract — behavioral phrase must name the halt clause.
@@ -159,7 +159,7 @@ teardown() { common_teardown; }
 # AC5 — WARNING surfacing contract documented.
 # ---------------------------------------------------------------------------
 
-@test "AC5: agent documents WARNING surfacing + continue contract" {
+@test "agent documents WARNING surfacing + continue contract" {
   [ -f "$AGENT_FILE" ]
 
   grep -F "WARNING" "$AGENT_FILE"
@@ -175,7 +175,7 @@ teardown() { common_teardown; }
 # AC6 — INFO suppression contract documented.
 # ---------------------------------------------------------------------------
 
-@test "AC6: agent documents INFO suppression from user-visible transcript" {
+@test "agent documents INFO suppression from user-visible transcript" {
   [ -f "$AGENT_FILE" ]
 
   grep -F "INFO" "$AGENT_FILE"
@@ -189,7 +189,7 @@ teardown() { common_teardown; }
 # AC7 — Timeout SKIP-with-audit + allowlist preservation documented.
 # ---------------------------------------------------------------------------
 
-@test "AC7: agent documents qa_timeout_seconds + SKIP-with-audit fallback" {
+@test "agent documents qa_timeout_seconds + SKIP-with-audit fallback" {
   [ -f "$AGENT_FILE" ]
 
   # The timeout config key the agent consumes.

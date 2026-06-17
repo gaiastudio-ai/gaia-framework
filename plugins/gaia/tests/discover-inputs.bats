@@ -69,7 +69,7 @@ _read_strategy() {
 
 # ---------- VCP-DSC-07: strategy declaration audit (script-verifiable) ----------
 
-@test "VCP-DSC-07: every in-scope SKILL.md declares discover_inputs in frontmatter" {
+@test "every in-scope SKILL.md declares discover_inputs in frontmatter" {
   local missing=""
   for skill in "${INDEX_GUIDED_SKILLS[@]}" "${SELECTIVE_LOAD_SKILLS[@]}"; do
     local file="$SKILLS_DIR/$skill/SKILL.md"
@@ -89,7 +89,7 @@ _read_strategy() {
   fi
 }
 
-@test "VCP-DSC-07: every discover_inputs value is a canonical enum (FULL_LOAD|SELECTIVE_LOAD|INDEX_GUIDED)" {
+@test "every discover_inputs value is a canonical enum (FULL_LOAD|SELECTIVE_LOAD|INDEX_GUIDED)" {
   local offenders=""
   for skill in "${INDEX_GUIDED_SKILLS[@]}" "${SELECTIVE_LOAD_SKILLS[@]}"; do
     local file="$SKILLS_DIR/$skill/SKILL.md"
@@ -106,7 +106,7 @@ _read_strategy() {
   fi
 }
 
-@test "VCP-DSC-07: each SKILL.md declares discover_inputs exactly once (no duplicate keys)" {
+@test "each SKILL.md declares discover_inputs exactly once (no duplicate keys)" {
   local offenders=""
   for skill in "${INDEX_GUIDED_SKILLS[@]}" "${SELECTIVE_LOAD_SKILLS[@]}"; do
     local file="$SKILLS_DIR/$skill/SKILL.md"
@@ -124,32 +124,32 @@ _read_strategy() {
 
 # ---------- Per-skill strategy assertions (VCP-DSC-01..06) ----------
 
-@test "VCP-DSC-01: gaia-product-brief declares INDEX_GUIDED" {
+@test "gaia-product-brief declares INDEX_GUIDED" {
   local file="$SKILLS_DIR/gaia-product-brief/SKILL.md"
   [ "$(_read_strategy "$file")" = "INDEX_GUIDED" ]
 }
 
-@test "VCP-DSC-02: gaia-create-prd declares INDEX_GUIDED" {
+@test "gaia-create-prd declares INDEX_GUIDED" {
   local file="$SKILLS_DIR/gaia-create-prd/SKILL.md"
   [ "$(_read_strategy "$file")" = "INDEX_GUIDED" ]
 }
 
-@test "VCP-DSC-03: gaia-create-arch declares INDEX_GUIDED" {
+@test "gaia-create-arch declares INDEX_GUIDED" {
   local file="$SKILLS_DIR/gaia-create-arch/SKILL.md"
   [ "$(_read_strategy "$file")" = "INDEX_GUIDED" ]
 }
 
-@test "VCP-DSC-04: gaia-create-epics declares INDEX_GUIDED" {
+@test "gaia-create-epics declares INDEX_GUIDED" {
   local file="$SKILLS_DIR/gaia-create-epics/SKILL.md"
   [ "$(_read_strategy "$file")" = "INDEX_GUIDED" ]
 }
 
-@test "VCP-DSC-05: gaia-readiness-check declares INDEX_GUIDED" {
+@test "gaia-readiness-check declares INDEX_GUIDED" {
   local file="$SKILLS_DIR/gaia-readiness-check/SKILL.md"
   [ "$(_read_strategy "$file")" = "INDEX_GUIDED" ]
 }
 
-@test "VCP-DSC-06: gaia-edit-test-plan declares SELECTIVE_LOAD" {
+@test "gaia-edit-test-plan declares SELECTIVE_LOAD" {
   local file="$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
   [ "$(_read_strategy "$file")" = "SELECTIVE_LOAD" ]
 }
@@ -172,32 +172,32 @@ _read_strategy() {
 
 # ---------- Per-skill loading-behavior assertions (AC2, AC3) ----------
 
-@test "VCP-DSC-01 behavior: gaia-product-brief body references INDEX_GUIDED loading pattern" {
+@test "behavior: gaia-product-brief body references INDEX_GUIDED loading pattern" {
   local file="$SKILLS_DIR/gaia-product-brief/SKILL.md"
   grep -qE 'INDEX_GUIDED|index-first|index/TOC|heading scan' "$file"
 }
 
-@test "VCP-DSC-02 behavior: gaia-create-prd body references INDEX_GUIDED loading pattern" {
+@test "behavior: gaia-create-prd body references INDEX_GUIDED loading pattern" {
   local file="$SKILLS_DIR/gaia-create-prd/SKILL.md"
   grep -qE 'INDEX_GUIDED|index-first|index/TOC|heading scan' "$file"
 }
 
-@test "VCP-DSC-03 behavior: gaia-create-arch body references INDEX_GUIDED loading pattern" {
+@test "behavior: gaia-create-arch body references INDEX_GUIDED loading pattern" {
   local file="$SKILLS_DIR/gaia-create-arch/SKILL.md"
   grep -qE 'INDEX_GUIDED|index-first|index/TOC|heading scan' "$file"
 }
 
-@test "VCP-DSC-04 behavior: gaia-create-epics body references INDEX_GUIDED loading pattern" {
+@test "behavior: gaia-create-epics body references INDEX_GUIDED loading pattern" {
   local file="$SKILLS_DIR/gaia-create-epics/SKILL.md"
   grep -qE 'INDEX_GUIDED|index-first|index/TOC|heading scan' "$file"
 }
 
-@test "VCP-DSC-05 behavior: gaia-readiness-check body references INDEX_GUIDED loading pattern" {
+@test "behavior: gaia-readiness-check body references INDEX_GUIDED loading pattern" {
   local file="$SKILLS_DIR/gaia-readiness-check/SKILL.md"
   grep -qE 'INDEX_GUIDED|index-first|index/TOC|heading scan' "$file"
 }
 
-@test "VCP-DSC-06 behavior: gaia-edit-test-plan body references SELECTIVE_LOAD diff-only pattern" {
+@test "behavior: gaia-edit-test-plan body references SELECTIVE_LOAD diff-only pattern" {
   local file="$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
   grep -qE 'SELECTIVE_LOAD|diff section|diff-only|named sections only' "$file"
 }

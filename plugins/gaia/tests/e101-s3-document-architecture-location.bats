@@ -26,7 +26,7 @@ teardown() { common_teardown; }
 # TC-AAT-3a — README exists at .gaia/artifacts/README.md
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-3a: .gaia/artifacts/README.md exists" {
+@test ".gaia/artifacts/README.md exists" {
   [ -f "$README" ]
 }
 
@@ -35,7 +35,7 @@ teardown() { common_teardown; }
 # statement (semantic equivalent — pattern allows minor phrasing variation).
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-3b: README states there is no architecture-artifacts/ phase directory" {
+@test "README states there is no architecture-artifacts/ phase directory" {
   [ -f "$README" ]
   grep -qE "no \`?architecture-artifacts/?\`? phase" "$README"
 }
@@ -45,7 +45,7 @@ teardown() { common_teardown; }
 # architecture root.
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-3c: README names planning-artifacts/architecture/ as architecture root" {
+@test "README names planning-artifacts/architecture/ as architecture root" {
   [ -f "$README" ]
   grep -q "planning-artifacts/architecture/" "$README"
 }
@@ -54,7 +54,7 @@ teardown() { common_teardown; }
 # TC-AAT-3d — README cross-references ADR-118
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-3d: README references ADR-118" {
+@test "README references" {
   [ -f "$README" ]
   grep -q "ADR-118" "$README"
 }
@@ -66,7 +66,7 @@ teardown() { common_teardown; }
 # architecture-artifacts string in test names and assertion patterns.
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-3e: plugin grep sweep for architecture-artifacts has only allowlisted hits" {
+@test "plugin grep sweep for architecture-artifacts has only allowlisted hits" {
   cd "$REPO_ROOT"
   # Get all hits, then exclude allowlisted paths.
   hits="$(grep -rln "architecture-artifacts" gaia-public/plugins/gaia/ 2>/dev/null || true)"
@@ -87,7 +87,7 @@ teardown() { common_teardown; }
 # architecture-artifacts/ is a real phase.
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-3f: four audited SKILL.md files free of architecture-artifacts implication" {
+@test "four audited SKILL.md files free of architecture-artifacts implication" {
   for skill in gaia-create-arch gaia-create-epics gaia-test-strategy gaia-adversarial; do
     skill_md="$PLUGIN_ROOT/skills/$skill/SKILL.md"
     [ -f "$skill_md" ] || continue

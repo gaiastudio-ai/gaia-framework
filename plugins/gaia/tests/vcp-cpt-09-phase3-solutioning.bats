@@ -52,7 +52,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC1/AC2/AC4: canonical invocation line present per step ----------
 
-@test "AC1/AC2/AC4: each Phase 3 solutioning SKILL.md has one canonical invocation per declared step" {
+@test "each Phase 3 solutioning SKILL.md has one canonical invocation per declared step" {
   local i=0
   for slug in "${PHASE3_SOL_SLUGS[@]}"; do
     local expected="${PHASE3_SOL_STEPS[$i]}"
@@ -92,7 +92,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC5: per-skill key_variables surface ----------
 
-@test "AC5: each Phase 3 solutioning SKILL.md declares required per-skill key_variables" {
+@test "each Phase 3 solutioning SKILL.md declares required per-skill key_variables" {
   # Minimum one skill-specific key_variable per SKILL.md. The story requires
   # non-empty subset of skill-own context (project_name plus at least one
   # skill-local state variable).
@@ -122,7 +122,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC2 (VCP-CPT-09): no inline checkpoint writes in Phase 3 solutioning SKILL.md ----------
 
-@test "AC2: no Phase 3 solutioning SKILL.md contains inline _memory/checkpoints writes" {
+@test "no Phase 3 solutioning SKILL.md contains inline _memory/checkpoints writes" {
   local offenders=""
   for slug in "${PHASE3_SOL_SLUGS[@]}"; do
     local file="$SKILLS_DIR/$slug/SKILL.md"
@@ -146,7 +146,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC2: no inline writes in Phase 3 solutioning co-located scripts ----------
 
-@test "AC2: Phase 3 solutioning co-located scripts do not write to _memory/checkpoints" {
+@test "Phase 3 solutioning co-located scripts do not write to _memory/checkpoints" {
   local offenders=""
   for slug in "${PHASE3_SOL_SLUGS[@]}"; do
     local scripts_dir="$SKILLS_DIR/$slug/scripts"
@@ -166,7 +166,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC2: canonical helper line is the only checkpoint writer ----------
 
-@test "AC2: every checkpoint-related line in Phase 3 solutioning SKILL.md routes through write-checkpoint.sh" {
+@test "every checkpoint-related line in Phase 3 solutioning SKILL.md routes through write-checkpoint.sh" {
   for slug in "${PHASE3_SOL_SLUGS[@]}"; do
     local file="$SKILLS_DIR/$slug/SKILL.md"
     [ -f "$file" ] || continue
@@ -181,7 +181,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC4: skill_name discipline — literal slug, no slash ----------
 
-@test "AC4: every invocation uses the literal skill slug as skill_name (no leading slash, no truncation)" {
+@test "every invocation uses the literal skill slug as skill_name (no leading slash, no truncation)" {
   for slug in "${PHASE3_SOL_SLUGS[@]}"; do
     local file="$SKILLS_DIR/$slug/SKILL.md"
     [ -f "$file" ] || continue
@@ -197,7 +197,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC1/AC3/AC6 (VCP-CPT-11): schema consistency across all 8 skills ----------
 
-@test "VCP-CPT-11 AC1/AC6: simulating gaia-create-arch 13-step run writes 13 sequential checkpoints" {
+@test "simulating gaia-create-arch 13-step run writes 13 sequential checkpoints" {
   local slug="gaia-create-arch"
   local artifact="$TEST_TMP/architecture.md"
   printf '# arch\n' > "$artifact"
@@ -220,7 +220,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
   [ "$numbers" = "1 2 3 4 5 6 7 8 9 10 11 12 13 " ]
 }
 
-@test "VCP-CPT-11 AC1/AC6: simulating gaia-edit-arch 9-step run writes 9 sequential checkpoints" {
+@test "simulating gaia-edit-arch 9-step run writes 9 sequential checkpoints" {
   local slug="gaia-edit-arch"
   local artifact="$TEST_TMP/architecture.md"
   printf '# arch\n' > "$artifact"
@@ -240,7 +240,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
   [ "$count" = "9" ]
 }
 
-@test "VCP-CPT-11 AC1/AC6: simulating gaia-review-api 6-step run writes 6 sequential checkpoints" {
+@test "simulating gaia-review-api 6-step run writes 6 sequential checkpoints" {
   local slug="gaia-review-api"
   local artifact="$TEST_TMP/api-review.md"
   printf '# api\n' > "$artifact"
@@ -260,7 +260,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
   [ "$count" = "6" ]
 }
 
-@test "VCP-CPT-11 AC1/AC6: simulating gaia-adversarial 4-step run writes 4 sequential checkpoints" {
+@test "simulating gaia-adversarial 4-step run writes 4 sequential checkpoints" {
   local slug="gaia-adversarial"
   local artifact="$TEST_TMP/adversarial.md"
   printf '# adv\n' > "$artifact"
@@ -280,7 +280,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
   [ "$count" = "4" ]
 }
 
-@test "VCP-CPT-11 AC1/AC6/AC-EC8: simulating gaia-create-epics 12-step run writes 12 sequential checkpoints with multi-file step" {
+@test "simulating gaia-create-epics 12-step run writes 12 sequential checkpoints with multi-file step" {
   local slug="gaia-create-epics"
   local epics="$TEST_TMP/epics-and-stories.md"
   local arch="$TEST_TMP/architecture.md"
@@ -313,7 +313,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
   [ "$step8_checksums" = "2" ]
 }
 
-@test "VCP-CPT-11 AC1/AC6: simulating gaia-threat-model 8-step run writes 8 sequential checkpoints" {
+@test "simulating gaia-threat-model 8-step run writes 8 sequential checkpoints" {
   local slug="gaia-threat-model"
   local artifact="$TEST_TMP/threat-model.md"
   printf '# tm\n' > "$artifact"
@@ -333,7 +333,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
   [ "$count" = "8" ]
 }
 
-@test "VCP-CPT-11 AC1/AC6: simulating gaia-infra-design 7-step run writes 7 sequential checkpoints" {
+@test "simulating gaia-infra-design 7-step run writes 7 sequential checkpoints" {
   local slug="gaia-infra-design"
   local artifact="$TEST_TMP/infra.md"
   printf '# infra\n' > "$artifact"
@@ -353,7 +353,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
   [ "$count" = "7" ]
 }
 
-@test "VCP-CPT-11 AC1/AC6: simulating gaia-readiness-check 13-step run writes 13 sequential checkpoints" {
+@test "simulating gaia-readiness-check 13-step run writes 13 sequential checkpoints" {
   local slug="gaia-readiness-check"
   local artifact="$TEST_TMP/readiness.md"
   printf '# r\n' > "$artifact"
@@ -375,7 +375,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- VCP-CPT-11 AC6: schema consistency across all 8 skills ----------
 
-@test "VCP-CPT-11 AC6: checkpoints from all 8 skills share identical schema shape" {
+@test "checkpoints from all 8 skills share identical schema shape" {
   # Run one step of each of the 8 skills, then assert every emitted JSON
   # has the same top-level keys in the same order.
   local artifact="$TEST_TMP/out.md"
@@ -424,7 +424,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC-EC7: missing helper trips a loud error ----------
 
-@test "AC-EC7: invoking a renamed helper fails loudly (missing write-checkpoint.sh path)" {
+@test "invoking a renamed helper fails loudly (missing write-checkpoint.sh path)" {
   # Simulate the helper being absent by pointing at a non-existent path.
   # The SKILL.md uses the literal `scripts/write-checkpoint.sh`; if the
   # helper is removed from the installed framework, the step fails.
@@ -434,7 +434,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC-EC1: step with empty --paths still writes a valid checkpoint ----------
 
-@test "AC-EC1: Phase 3 solutioning step with zero output paths still writes a valid checkpoint" {
+@test "Phase 3 solutioning step with zero output paths still writes a valid checkpoint" {
   local slug="gaia-adversarial"
   "$SCRIPT" "$slug" 2 target_artifact_path=prd.md adversarial_angle=feasibility
   local f
@@ -446,7 +446,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC-EC6: metacharacters in key_variable value preserved verbatim ----------
 
-@test "AC-EC6: metacharacters in key_variable are preserved without command injection" {
+@test "metacharacters in key_variable are preserved without command injection" {
   local slug="gaia-infra-design"
   "$SCRIPT" "$slug" 1 target_environments='prod;rm -rf /' iac_stack='$(whoami)'
   local f
@@ -462,7 +462,7 @@ PHASE3_SOL_STEPS=(13 9 6 4 12 8 7 13)
 
 # ---------- AC-EC4: two skills running concurrently write to distinct dirs ----------
 
-@test "AC-EC4: two Phase 3 solutioning skills write checkpoints to distinct per-skill dirs" {
+@test "two Phase 3 solutioning skills write checkpoints to distinct per-skill dirs" {
   local art="$TEST_TMP/art.md"
   printf 'x\n' > "$art"
   "$SCRIPT" gaia-create-arch  3 project_name=a arch_version=1.0 --paths "$art" &

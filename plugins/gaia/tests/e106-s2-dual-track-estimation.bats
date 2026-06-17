@@ -25,7 +25,7 @@ setup() {
 
 # ---------- AC2 / TS1: calibrated dual-track render ----------
 
-@test "AC2/TS1: calibrated render emits points + numeric agent-hours estimate" {
+@test "calibrated render emits points + numeric agent-hours estimate" {
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 5
   [ "$status" -eq 0 ]
   # 20 min/pt * 5 pt = 100 min ≈ 1.7h
@@ -37,7 +37,7 @@ setup() {
     || { echo "expected ~1.7h (100 min) estimate, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC2/TS1: json output carries both tracks" {
+@test "json output carries both tracks" {
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 5 --json
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.points == 5' >/dev/null
@@ -47,7 +47,7 @@ setup() {
 
 # ---------- AC1 / TS4: points unchanged (additive) ----------
 
-@test "AC1/TS4: points value is echoed unchanged regardless of telemetry" {
+@test "points value is echoed unchanged regardless of telemetry" {
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 8 --json
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.points == 8' >/dev/null
@@ -55,7 +55,7 @@ setup() {
 
 # ---------- AC4 / TS2: cold-start uncalibrated, no fabricated number ----------
 
-@test "AC4/TS2: cold-start (no telemetry) renders uncalibrated marker" {
+@test "cold-start (no telemetry) renders uncalibrated marker" {
   run bash "$SCRIPT" --events "$EVENTS_EMPTY" --sprint-yaml "$SPRINT_YAML" --points 5
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eiq 'uncalibrated' \
@@ -64,7 +64,7 @@ setup() {
     || { echo "expected the 'no closed-sprint telemetry' reason, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC4/TS2: cold-start emits NO fabricated wall-clock number" {
+@test "cold-start emits NO fabricated wall-clock number" {
   run bash "$SCRIPT" --events "$EVENTS_EMPTY" --sprint-yaml "$SPRINT_YAML" --points 5
   [ "$status" -eq 0 ]
   # the agent-wall-clock line must NOT carry a numeric hour/minute figure
@@ -73,7 +73,7 @@ setup() {
     || { echo "cold-start must not fabricate a number, got: $awc_line" >&2; false; }
 }
 
-@test "AC4/TS2: cold-start json marks calibrated=false, null estimate" {
+@test "cold-start json marks calibrated=false, null estimate" {
   run bash "$SCRIPT" --events "$EVENTS_EMPTY" --sprint-yaml "$SPRINT_YAML" --points 5 --json
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.calibrated == false' >/dev/null
@@ -83,14 +83,14 @@ setup() {
 
 # ---------- AC3 / TS3: agent-hours/days, never months ----------
 
-@test "AC3/TS3: render never emits calendar-month units" {
+@test "render never emits calendar-month units" {
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 5
   [ "$status" -eq 0 ]
   ! echo "$output" | grep -Eiq '\bmonths?\b' \
     || { echo "render must not emit month units, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC3/TS3: large estimate rolls up to agent-days, not months" {
+@test "large estimate rolls up to agent-days, not months" {
   # 20 min/pt * 100 pt = 2000 min = 33.3h -> should render as days (~4.2d), never months
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 100
   [ "$status" -eq 0 ]
@@ -114,7 +114,7 @@ setup() {
 
 # ---------- AC5: both render paths asserted (calibrated + cold-start) ----------
 
-@test "AC5: both calibrated and cold-start paths are exercised above" {
+@test "both calibrated and cold-start paths are exercised above" {
   # meta-assertion: the calibrated (TS1) and cold-start (TS2) tests above both run.
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 5 --json
   [ "$status" -eq 0 ]

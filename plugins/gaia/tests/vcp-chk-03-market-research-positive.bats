@@ -33,27 +33,27 @@ teardown() { common_teardown; }
 # VCP-CHK-03 — Positive: all 28 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-03: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export MARKET_RESEARCH_ARTIFACT="$FIXTURES/market-research-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-03: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export MARKET_RESEARCH_ARTIFACT="$FIXTURES/market-research-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-03: finalize.sh reports PASS for the competitor-count item" {
+@test "finalize.sh reports PASS for the competitor-count item" {
   export MARKET_RESEARCH_ARTIFACT="$FIXTURES/market-research-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"competitor"* ]]
 }
 
-@test "VCP-CHK-03: finalize.sh reports PASS for TAM/SAM/SOM estimate items" {
+@test "finalize.sh reports PASS for TAM/SAM/SOM estimate items" {
   export MARKET_RESEARCH_ARTIFACT="$FIXTURES/market-research-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -68,7 +68,7 @@ teardown() { common_teardown; }
 # [LLM-checkable] tag, and the count must be exactly 28.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 28 classified items" {
+@test "SKILL.md ## Validation section contains exactly 28 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -79,7 +79,7 @@ teardown() { common_teardown; }
   [ "$output" = "28" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }

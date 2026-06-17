@@ -63,42 +63,42 @@ teardown() { common_teardown; }
 # NFR-052: source the script and verify every public function resolves
 # ---------------------------------------------------------------------------
 
-@test "NFR-052: source script — read_test_policy_always_run is callable" {
+@test "source script — read_test_policy_always_run is callable" {
   source "$SCRIPTS_DIR/apply-test-policy.sh"
   type read_test_policy_always_run
 }
 
-@test "NFR-052: source script — read_test_policy_flaky is callable" {
+@test "source script — read_test_policy_flaky is callable" {
   source "$SCRIPTS_DIR/apply-test-policy.sh"
   type read_test_policy_flaky
 }
 
-@test "NFR-052: source script — read_test_policy_retry_limit is callable" {
+@test "source script — read_test_policy_retry_limit is callable" {
   source "$SCRIPTS_DIR/apply-test-policy.sh"
   type read_test_policy_retry_limit
 }
 
-@test "NFR-052: source script — merge_always_run is callable" {
+@test "source script — merge_always_run is callable" {
   source "$SCRIPTS_DIR/apply-test-policy.sh"
   type merge_always_run
 }
 
-@test "NFR-052: source script — apply_force_full_run is callable" {
+@test "source script — apply_force_full_run is callable" {
   source "$SCRIPTS_DIR/apply-test-policy.sh"
   type apply_force_full_run
 }
 
-@test "NFR-052: source script — parse_args is callable" {
+@test "source script — parse_args is callable" {
   source "$SCRIPTS_DIR/apply-test-policy.sh"
   type parse_args
 }
 
-@test "NFR-052: source script — main is callable" {
+@test "source script — main is callable" {
   source "$SCRIPTS_DIR/apply-test-policy.sh"
   type main
 }
 
-@test "NFR-052: main-guard — sourcing does not run main" {
+@test "main-guard — sourcing does not run main" {
   run bash -c 'source "'"$SCRIPTS_DIR/apply-test-policy.sh"'" && echo "source-ok"'
   [ "$status" -eq 0 ]
   [[ "$output" == *"source-ok"* ]]
@@ -108,7 +108,7 @@ teardown() { common_teardown; }
 # AC1: always-run set merges with affected-set
 # ---------------------------------------------------------------------------
 
-@test "AC1: inline always_run merges with affected-set" {
+@test "inline always_run merges with affected-set" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-inline.yaml" \
     --affected-set '["stack-alpha"]'
@@ -119,7 +119,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"stack-alpha"* ]]
 }
 
-@test "AC1: block-style always_run merges with affected-set" {
+@test "block-style always_run merges with affected-set" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-block.yaml" \
     --affected-set '["stack-alpha"]'
@@ -129,7 +129,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"stack-alpha"* ]]
 }
 
-@test "AC1: empty affected-set with always_run → always-run-only" {
+@test "empty affected-set with always_run → always-run-only" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-inline.yaml" \
     --affected-set '[]'
@@ -138,7 +138,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"smoke-b"* ]]
 }
 
-@test "AC1: always_run items are not duplicated when already in affected-set" {
+@test "always_run items are not duplicated when already in affected-set" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-inline.yaml" \
     --affected-set '["smoke-a","stack-alpha"]'
@@ -153,7 +153,7 @@ teardown() { common_teardown; }
 # AC3: --force-full-run overrides affected-set to ["*"]
 # ---------------------------------------------------------------------------
 
-@test "AC3: --force-full-run with affected-set → outputs wildcard" {
+@test "force-full-run with affected-set → outputs wildcard" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-inline.yaml" \
     --affected-set '["stack-alpha"]' \
@@ -162,7 +162,7 @@ teardown() { common_teardown; }
   [[ "$output" == *'["*"]'* ]]
 }
 
-@test "AC3: --force-full-run with always_run config → still outputs wildcard" {
+@test "force-full-run with always_run config → still outputs wildcard" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-inline.yaml" \
     --affected-set '["stack-alpha","stack-beta"]' \
@@ -175,7 +175,7 @@ teardown() { common_teardown; }
 # AC4: absent/empty always_run → affected-set unchanged
 # ---------------------------------------------------------------------------
 
-@test "AC4: no test_policy section → affected-set passthrough" {
+@test "no test_policy section → affected-set passthrough" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-no-policy.yaml" \
     --affected-set '["stack-beta"]'
@@ -187,7 +187,7 @@ teardown() { common_teardown; }
   [[ "$output" != *"smoke-b"* ]]
 }
 
-@test "AC4: empty always_run list → affected-set passthrough" {
+@test "empty always_run list → affected-set passthrough" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-empty-always-run.yaml" \
     --affected-set '["stack-beta"]'
@@ -199,7 +199,7 @@ teardown() { common_teardown; }
   [[ "$output" != *"smoke-b"* ]]
 }
 
-@test "AC4: test_policy present but no always_run key → affected-set passthrough" {
+@test "test_policy present but no always_run key → affected-set passthrough" {
   run "$SCRIPTS_DIR/apply-test-policy.sh" \
     --config "$TEST_TMP/config-no-always-run.yaml" \
     --affected-set '["stack-beta"]'

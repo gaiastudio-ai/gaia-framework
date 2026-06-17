@@ -16,28 +16,28 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 
 # --- AC1 / AC-EC12: hybrid section preservation ---
 
-@test "adr-051: SKILL.md contains 'ADR-051 Approval Gate' section AFTER seven-phase block" {
+@test "SKILL.md contains ' Approval Gate' section AFTER seven-phase block" {
   grep -F 'Approval Gate' "$SKILL_FILE" >/dev/null
 }
 
-@test "adr-051: SKILL.md preserves plan-tamper detection sequence" {
+@test "SKILL.md preserves plan-tamper detection sequence" {
   grep -F 'plan_tamper_detected' "$SKILL_FILE" >/dev/null
 }
 
-@test "adr-051: SKILL.md preserves plan-id-keyed review-gate.sh invocation" {
+@test "SKILL.md preserves plan-id-keyed review-gate.sh invocation" {
   # review-gate.sh must be invoked with --plan-id flag
   grep -E 'review-gate.sh.*--plan-id|--plan-id.*review-gate.sh' "$SKILL_FILE" >/dev/null \
     || grep -B1 -A4 'review-gate.sh update' "$SKILL_FILE" | grep -F -- '--plan-id' >/dev/null
 }
 
-@test "adr-051: SKILL.md references the canonical plan file path test-automate-plan- (canonical post-AF-21-21)" {
+@test "SKILL.md references the canonical plan file path test-automate-plan" {
   # AF-2026-05-21-21 canonicalized this path. Accept canonical or legacy.
   grep -E '(docs|\.gaia/artifacts)/test-artifacts/test-automate-plan-' "$SKILL_FILE" >/dev/null
 }
 
 # --- AC-EC1: Phase 6 does NOT invoke review-gate.sh ---
 
-@test "adr-051: Phase 6 explicitly states review-gate.sh is NOT invoked there" {
+@test "Phase 6 explicitly states review-gate.sh is NOT invoked there" {
   # Look for an explicit non-invocation marker in or near the Phase 6 section.
   # Acceptable markers include phrases like "NO review-gate.sh", "does NOT
   # invoke review-gate.sh", or "review-gate.sh is NOT invoked" in the SKILL.md.
@@ -46,7 +46,7 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 
 # --- AC-EC7: phase vocabulary disambiguation ---
 
-@test "adr-051: SKILL.md contains the phase-vocabulary disambiguation note" {
+@test "SKILL.md contains the phase-vocabulary disambiguation note" {
   # The note states the seven Review Phases all execute within the planning phase (fork-isolated analysis).
   grep -F 'Phase vocabulary disambiguation' "$SKILL_FILE" >/dev/null
   # Disambiguation note refers to seven Review Phases — accept any common phrasing.
@@ -55,7 +55,7 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 
 # --- AC-EC9: test-execution toolkit is GAP-FOCUSED, NOT execution ---
 
-@test "adr-051: stack-toolkit table uses listing commands (not execution)" {
+@test "stack-toolkit table uses listing commands (not execution)" {
   # The toolkit must reference at least one of the canonical listing commands
   # (jest --listTests, pytest --collect-only, go test -list, etc.) — NOT
   # `jest run`, `pytest run`, `go test ./...`.
@@ -64,13 +64,13 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 
 # --- AC2 / AC-EC2: schema separation between analysis-results.json and plan file ---
 
-@test "adr-051: SKILL.md references analysis-results.json under .gaia/state/review/test-automate/" {
+@test "SKILL.md references analysis-results.json under .gaia/state/review/test-automate/" {
   grep -F '.gaia/state/review/test-automate/' "$SKILL_FILE" >/dev/null
 }
 
 # --- AC-EC3 / AC-EC11: three-way verdict mapping with BLOCKED short-circuit ---
 
-@test "adr-051: SKILL.md documents BLOCKED short-circuit behavior" {
+@test "SKILL.md documents BLOCKED short-circuit behavior" {
   # On BLOCKED, the skill emits a stub plan with verdict: BLOCKED — NOT a full
   # plan body — and does NOT invoke review-gate.sh.
   grep -E 'verdict:.*BLOCKED|verdict.*BLOCKED.*frontmatter|BLOCKED.*short-circuit|short-circuit.*BLOCKED' "$SKILL_FILE" >/dev/null
@@ -78,7 +78,7 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 
 # --- AC-EC8: plan_id determinism via canonicalization ---
 
-@test "adr-051: SKILL.md documents plan_id canonicalization (textual variation excluded)" {
+@test "SKILL.md documents plan_id canonicalization (textual variation excluded)" {
   # plan_id is computed from a canonical / normalized form so textually-
   # different LLM finding messages do NOT change plan_id.
   grep -Ei 'plan_id.*canonicaliz|normaliz.*plan_id|plan_id.*normaliz|canonical.{0,30}plan_id|plan_id.{0,40}message|message.{0,40}excluded' "$SKILL_FILE" >/dev/null
@@ -86,26 +86,26 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 
 # --- AC-EC4: file-naming coexistence (review report vs plan file) ---
 
-@test "adr-051: SKILL.md references both test-automate-review-* and test-automate-plan-* paths" {
+@test "SKILL.md references both test-automate-review-* and test-automate-plan-* paths" {
   grep -F 'test-automate-review-' "$SKILL_FILE" >/dev/null
   grep -F 'test-automate-plan-' "$SKILL_FILE" >/dev/null
 }
 
 # --- AC-EC6: shared file_hashes single source of truth ---
 
-@test "adr-051: SKILL.md documents shared file_hashes between analysis-results.json and plan file" {
+@test "SKILL.md documents shared file_hashes between analysis-results.json and plan file" {
   grep -E 'file_hashes' "$SKILL_FILE" >/dev/null
 }
 
 # --- AC5: fork allowlist sanity ---
 
-@test "adr-051: frontmatter allowed-tools is exactly [Read, Grep, Glob, Bash]" {
+@test "frontmatter allowed-tools is exactly [Read, Grep, Glob, Bash]" {
   grep -E '^allowed-tools:' "$SKILL_FILE" | grep -E '\[\s*Read\s*,\s*Grep\s*,\s*Glob\s*,\s*Bash\s*\]' >/dev/null
 }
 
 # --- AC1: determinism settings preserved per template ---
 
-@test "adr-051: determinism settings (temperature: 0, model: claude-opus-4-7, prompt_hash) present" {
+@test "determinism settings (temperature: 0, model: claude-opus-4-7, prompt_hash) present" {
   grep -F 'temperature: 0' "$SKILL_FILE" >/dev/null
   grep -F 'claude-opus-4-7' "$SKILL_FILE" >/dev/null
   grep -F 'prompt_hash' "$SKILL_FILE" >/dev/null
@@ -113,6 +113,6 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-test-automate/SKILL.md"
 
 # --- AC1: unifying principle verbatim (also asserted by parity but useful skill-specific check) ---
 
-@test "adr-051: SKILL.md contains the FR-DEJ-1 unifying principle verbatim" {
+@test "SKILL.md contains the unifying principle verbatim" {
   grep -F 'Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.' "$SKILL_FILE" >/dev/null
 }

@@ -46,7 +46,7 @@ _ajv_validate_fail() {
 
 # ---------- AC1: schema declares the 4 required common fields ----------
 
-@test "AC1: schema declares distribution single-channel shape with 4 required common fields" {
+@test "schema declares distribution single-channel shape with 4 required common fields" {
   # Multiple oneOf branches may have .required arrays; pick the branch that
   # has the new single-channel shape (it requires "channel" at the top level).
   local req
@@ -61,7 +61,7 @@ _ajv_validate_fail() {
 
 # ---------- AC2: schema declares the closed 10-channel enum ----------
 
-@test "AC2: schema declares the closed 10-channel enum" {
+@test "schema declares the closed 10-channel enum" {
   # Use select(.properties.channel.enum) to skip the legacy-channels-array
   # branch of the oneOf (which has no .properties.channel.enum).
   local values
@@ -76,7 +76,7 @@ _ajv_validate_fail() {
 
 # ---------- AC3: per-channel sub-field schemas co-located with adapters ----------
 
-@test "AC3: per-channel sub-field schemas exist for all 10 channels" {
+@test "per-channel sub-field schemas exist for all 10 channels" {
   for ch in claude-marketplace npm pypi maven homebrew github-releases mobile-app container-registry static-site custom; do
     [ -f "$PLUGIN_DIR/scripts/adapters/publish-$ch/schema.yaml" ] || {
       echo "missing: $PLUGIN_DIR/scripts/adapters/publish-$ch/schema.yaml" >&2
@@ -87,7 +87,7 @@ _ajv_validate_fail() {
 
 # ---------- TC-DCH-1: claude-marketplace happy path ----------
 
-@test "TC-DCH-1: claude-marketplace with 4 required common fields validates" {
+@test "claude-marketplace with 4 required common fields validates" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: claude-marketplace
@@ -100,7 +100,7 @@ YAML
 
 # ---------- TC-DCH-2: npm happy path ----------
 
-@test "TC-DCH-2: npm validates with required common fields" {
+@test "npm validates with required common fields" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: npm
@@ -113,7 +113,7 @@ YAML
 
 # ---------- TC-DCH-3: mobile-app requires platform + store_id + review_required ----------
 
-@test "TC-DCH-3: mobile-app happy path with all sub-fields validates" {
+@test "mobile-app happy path with all sub-fields validates" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: mobile-app
@@ -127,7 +127,7 @@ YAML
   _ajv_validate_pass
 }
 
-@test "TC-DCH-3: mobile-app missing platform fails" {
+@test "mobile-app missing platform fails" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: mobile-app
@@ -140,7 +140,7 @@ YAML
   _ajv_validate_fail
 }
 
-@test "TC-DCH-3: mobile-app missing store_id fails" {
+@test "mobile-app missing store_id fails" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: mobile-app
@@ -153,7 +153,7 @@ YAML
   _ajv_validate_fail
 }
 
-@test "TC-DCH-3: mobile-app missing review_required fails" {
+@test "mobile-app missing review_required fails" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: mobile-app
@@ -168,7 +168,7 @@ YAML
 
 # ---------- TC-DCH-4: container-registry requires image_name + tag_strategy ----------
 
-@test "TC-DCH-4: container-registry happy path validates" {
+@test "container-registry happy path validates" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: container-registry
@@ -181,7 +181,7 @@ YAML
   _ajv_validate_pass
 }
 
-@test "TC-DCH-4: container-registry missing image_name fails" {
+@test "container-registry missing image_name fails" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: container-registry
@@ -193,7 +193,7 @@ YAML
   _ajv_validate_fail
 }
 
-@test "TC-DCH-4: container-registry missing tag_strategy fails" {
+@test "container-registry missing tag_strategy fails" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: container-registry
@@ -207,7 +207,7 @@ YAML
 
 # ---------- TC-DCH-5: static-site requires provider + domain (and the ADR-115 invariant is enforced via SKILL-level coupling) ----------
 
-@test "TC-DCH-5: static-site happy path with provider + domain validates" {
+@test "static-site happy path with provider + domain validates" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: static-site
@@ -220,7 +220,7 @@ YAML
   _ajv_validate_pass
 }
 
-@test "TC-DCH-5: static-site missing provider fails" {
+@test "static-site missing provider fails" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: static-site
@@ -234,7 +234,7 @@ YAML
 
 # ---------- TC-DCH-6: custom requires adapter_name ----------
 
-@test "TC-DCH-6: custom happy path with adapter_name validates" {
+@test "custom happy path with adapter_name validates" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: custom
@@ -246,7 +246,7 @@ YAML
   _ajv_validate_pass
 }
 
-@test "TC-DCH-6: custom missing adapter_name fails" {
+@test "custom missing adapter_name fails" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: custom
@@ -259,7 +259,7 @@ YAML
 
 # ---------- TC-DCH-7: unknown channel rejected ----------
 
-@test "TC-DCH-7: unknown channel value 'ftp-server' is rejected" {
+@test "unknown channel value 'ftp-server' is rejected" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: ftp-server
@@ -272,7 +272,7 @@ YAML
 
 # ---------- TC-DCH-8: missing required common fields rejected (matrix of 4) ----------
 
-@test "TC-DCH-8: missing channel rejected" {
+@test "missing channel rejected" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   registry: https://registry.npmjs.org
@@ -282,7 +282,7 @@ YAML
   _ajv_validate_fail
 }
 
-@test "TC-DCH-8: missing registry rejected" {
+@test "missing registry rejected" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: npm
@@ -292,7 +292,7 @@ YAML
   _ajv_validate_fail
 }
 
-@test "TC-DCH-8: missing manifest rejected" {
+@test "missing manifest rejected" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: npm
@@ -302,7 +302,7 @@ YAML
   _ajv_validate_fail
 }
 
-@test "TC-DCH-8: missing release_workflow rejected" {
+@test "missing release_workflow rejected" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: npm
@@ -326,20 +326,20 @@ YAML
 
 # ---------- AC3: per-channel schema files declare expected required sub-fields ----------
 
-@test "AC3: publish-mobile-app/schema.yaml declares platform + store_id + review_required required" {
+@test "publish-mobile-app/schema.yaml declares platform + store_id + review_required required" {
   local f="$PLUGIN_DIR/scripts/adapters/publish-mobile-app/schema.yaml"
   grep -q 'platform' "$f"
   grep -q 'store_id' "$f"
   grep -q 'review_required' "$f"
 }
 
-@test "AC3: publish-container-registry/schema.yaml declares image_name + tag_strategy required" {
+@test "publish-container-registry/schema.yaml declares image_name + tag_strategy required" {
   local f="$PLUGIN_DIR/scripts/adapters/publish-container-registry/schema.yaml"
   grep -q 'image_name' "$f"
   grep -q 'tag_strategy' "$f"
 }
 
-@test "AC3: publish-custom/schema.yaml declares adapter_name required" {
+@test "publish-custom/schema.yaml declares adapter_name required" {
   local f="$PLUGIN_DIR/scripts/adapters/publish-custom/schema.yaml"
   grep -q 'adapter_name' "$f"
 }

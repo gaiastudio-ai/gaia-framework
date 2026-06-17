@@ -27,11 +27,11 @@ teardown() { common_teardown; }
 # AC1 — SKILL.md structure (TC-DEJ-PHASE-S3, TC-DEJ-DET-S3)
 # ----------------------------------------------------------------------
 
-@test "AC1 (a): unifying principle present verbatim" {
+@test "a): unifying principle present verbatim" {
   grep -F 'Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.' "$SKILL_FILE"
 }
 
-@test "AC1 (b): seven phase headers present in canonical order" {
+@test "b): seven phase headers present in canonical order" {
   local got
   got="$(grep -nE '^### |^## ' "$SKILL_FILE" || true)"
   local expected=(Setup "Story Gate" "Phase 3A" "Phase 3B" "Architecture Conformance" Verdict Output Finalize)
@@ -45,13 +45,13 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC1 (c): determinism settings (temperature 0, model claude-opus-4-7, prompt_hash)" {
+@test "c): determinism settings (temperature 0, model claude-opus-4-7, prompt_hash)" {
   grep -F 'temperature: 0' "$SKILL_FILE"
   grep -F 'claude-opus-4-7' "$SKILL_FILE"
   grep -F 'prompt_hash' "$SKILL_FILE"
 }
 
-@test "AC1 (d): allowed-tools is exactly [Read, Grep, Glob, Bash] (no Write/Edit)" {
+@test "d): allowed-tools is exactly [Read, Grep, Glob, Bash] (no Write/Edit)" {
   local line
   line="$(grep -E '^allowed-tools:' "$SKILL_FILE")"
   [[ "$line" == *Read* ]]
@@ -62,14 +62,14 @@ teardown() { common_teardown; }
   [[ "$line" != *Edit* ]]
 }
 
-@test "AC1 (e): per-skill stack-toolkit table covers all 7 canonical stacks" {
+@test "e): per-skill stack-toolkit table covers all 7 canonical stacks" {
   for s in ts-dev java-dev python-dev go-dev flutter-dev mobile-dev angular-dev; do
     grep -F "$s" "$SKILL_FILE" >/dev/null || { echo "missing stack: $s" >&2; return 1; }
   done
 }
 
 # AC3 — severity rubric: >=2 examples per tier (Critical, Warning, Suggestion)
-@test "AC3: severity rubric has >=2 examples per tier" {
+@test "severity rubric has >=2 examples per tier" {
   count_examples() {
     local tier="$1"
     awk -v tier="$tier" '
@@ -88,7 +88,7 @@ teardown() { common_teardown; }
   [ "$s" -ge 2 ] || { echo "Suggestion examples: $s (<2)" >&2; return 1; }
 }
 
-@test "AC3: severity rubric mentions OWASP categories A01, A02, A03, A05, A07" {
+@test "severity rubric mentions OWASP categories A01, A02, A03, A05, A07" {
   for cat in A01 A02 A03 A05 A07; do
     grep -F "$cat" "$SKILL_FILE" >/dev/null || { echo "missing OWASP category: $cat" >&2; return 1; }
   done
@@ -98,7 +98,7 @@ teardown() { common_teardown; }
 # AC2 — Phase 3A toolkit scope = Semgrep + secret scan + dep audit
 # ----------------------------------------------------------------------
 
-@test "AC2: Phase 3A invokes Semgrep + secret scanner + dep audit" {
+@test "Phase 3A invokes Semgrep + secret scanner + dep audit" {
   local p3a
   p3a="$(awk '
     /^### Phase 3A/ { in_p=1; next }
@@ -111,7 +111,7 @@ teardown() { common_teardown; }
   printf '%s' "$p3a" | grep -iE '(npm audit|pip-audit|govulncheck)' >/dev/null || { echo "Phase 3A must invoke dep audit" >&2; return 1; }
 }
 
-@test "AC2: Phase 3A excludes code-review tools (eslint/prettier/tsc as primary)" {
+@test "Phase 3A excludes code-review tools (eslint/prettier/tsc as primary)" {
   # Phase 3A scope is security-only; code-review's eslint/prettier/tsc are NOT
   # the primary toolkit. They MAY appear in cross-references to E65-S2.
   # Strict check: the canonical security tools must be present.
@@ -122,7 +122,7 @@ teardown() { common_teardown; }
 # AC-EC1 — Semgrep noise threshold documented
 # ----------------------------------------------------------------------
 
-@test "AC-EC1: SKILL.md documents Semgrep critical-promotion threshold (confidence-high + severity-high)" {
+@test "SKILL.md documents Semgrep critical-promotion threshold (confidence-high + severity-high)" {
   grep -iE '(confidence.*high|rule_confidence)' "$SKILL_FILE" >/dev/null
 }
 
@@ -130,7 +130,7 @@ teardown() { common_teardown; }
 # AC-EC2 — Secret-scan scope: working tree, NOT git history
 # ----------------------------------------------------------------------
 
-@test "AC-EC2: SKILL.md documents secret-scan scope = File List + working tree, NOT git history" {
+@test "SKILL.md documents secret-scan scope = File List + working tree, NOT git history" {
   grep -iE '(working tree|working-tree)' "$SKILL_FILE" >/dev/null
   grep -iE '(NOT git history|not git history|exclude.*history)' "$SKILL_FILE" >/dev/null
 }
@@ -139,7 +139,7 @@ teardown() { common_teardown; }
 # AC-EC3 — Advisory DB fingerprint in cache key
 # ----------------------------------------------------------------------
 
-@test "AC-EC3: SKILL.md includes advisory_db_fingerprint in cache key" {
+@test "SKILL.md includes advisory_db_fingerprint in cache key" {
   grep -iF 'advisory_db_fingerprint' "$SKILL_FILE" >/dev/null
 }
 
@@ -147,7 +147,7 @@ teardown() { common_teardown; }
 # AC-EC4 — Test-fixture secret downgrade to Suggestion
 # ----------------------------------------------------------------------
 
-@test "AC-EC4: SKILL.md documents test-fixture path downgrade for secret findings" {
+@test "SKILL.md documents test-fixture path downgrade for secret findings" {
   grep -iE '(test fixture|test-fixture|tests/)' "$SKILL_FILE" >/dev/null
   grep -iF 'Suggestion' "$SKILL_FILE" >/dev/null
 }
@@ -156,7 +156,7 @@ teardown() { common_teardown; }
 # AC-EC5 — Semgrep crash → BLOCKED (verdict resolver fixture)
 # ----------------------------------------------------------------------
 
-@test "AC-EC5: semgrep-crash fixture (status=errored) => verdict BLOCKED" {
+@test "semgrep-crash fixture (status=errored) => verdict BLOCKED" {
   local fix="$FIX_DIR/semgrep-crash"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   run "$RESOLVER" --analysis-results "$fix/analysis-results.json" --llm-findings "$fix/llm-findings.json"
@@ -168,7 +168,7 @@ teardown() { common_teardown; }
 # AC-EC7 — Transitive dev-only CVE downgrade documented
 # ----------------------------------------------------------------------
 
-@test "AC-EC7: SKILL.md documents transitive dev-only CVE downgrade rule" {
+@test "SKILL.md documents transitive dev-only CVE downgrade rule" {
   grep -iE '(dev-only|transitive)' "$SKILL_FILE" >/dev/null
 }
 
@@ -176,7 +176,7 @@ teardown() { common_teardown; }
 # AC-EC8 — Per-stack dep-audit selection (canonical names)
 # ----------------------------------------------------------------------
 
-@test "AC-EC8: SKILL.md toolkit table uses canonical stack names emitted by load-stack-persona.sh" {
+@test "SKILL.md toolkit table uses canonical stack names emitted by load-stack-persona.sh" {
   for canonical in ts-dev java-dev python-dev go-dev flutter-dev mobile-dev angular-dev; do
     grep -F "$canonical" "$SKILL_FILE" >/dev/null \
       || { echo "missing canonical stack key in SKILL.md: $canonical" >&2; return 1; }
@@ -189,7 +189,7 @@ teardown() { common_teardown; }
 # AC-EC9 — Missing custom Semgrep rules: silent skip
 # ----------------------------------------------------------------------
 
-@test "AC-EC9: SKILL.md documents skip when .semgrep/ custom rules absent" {
+@test "SKILL.md documents skip when .semgrep/ custom rules absent" {
   grep -F '.semgrep/' "$SKILL_FILE" >/dev/null
   grep -iE '(skip|skip_reason)' "$SKILL_FILE" >/dev/null
 }
@@ -198,12 +198,12 @@ teardown() { common_teardown; }
 # AC-EC10 — Phase 3A budget enforcement per tool
 # ----------------------------------------------------------------------
 
-@test "AC-EC10: SKILL.md documents per-tool wall-clock caps (Semgrep 30s, secret scan 15s, dep audit 15s)" {
+@test "SKILL.md documents per-tool wall-clock caps (Semgrep 30s, secret scan 15s, dep audit 15s)" {
   grep -iE '(30s|≤30s)' "$SKILL_FILE" >/dev/null
   grep -iE '(15s|≤15s)' "$SKILL_FILE" >/dev/null
 }
 
-@test "AC-EC10: tool-timeout fixture (status=errored on timeout) => verdict BLOCKED" {
+@test "tool-timeout fixture (status=errored on timeout) => verdict BLOCKED" {
   local fix="$FIX_DIR/tool-timeout"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   run "$RESOLVER" --analysis-results "$fix/analysis-results.json" --llm-findings "$fix/llm-findings.json"
@@ -215,7 +215,7 @@ teardown() { common_teardown; }
 # AC-EC11 — Finding deduplication by (file, line, finding-type)
 # ----------------------------------------------------------------------
 
-@test "AC-EC11: SKILL.md documents dedup tuple (file, line, finding-type)" {
+@test "SKILL.md documents dedup tuple (file, line, finding-type)" {
   grep -iE '(dedup|deduplicat)' "$SKILL_FILE" >/dev/null
 }
 
@@ -223,7 +223,7 @@ teardown() { common_teardown; }
 # AC-EC12 — Entropy false-positive downgrade
 # ----------------------------------------------------------------------
 
-@test "AC-EC12: SKILL.md documents entropy false-positive downgrade (hex hash, base64 UUID)" {
+@test "SKILL.md documents entropy false-positive downgrade (hex hash, base64 UUID)" {
   grep -iE '(entropy|hex hash|base64)' "$SKILL_FILE" >/dev/null
 }
 
@@ -231,7 +231,7 @@ teardown() { common_teardown; }
 # AC-EC13 — Path normalization to repo-relative
 # ----------------------------------------------------------------------
 
-@test "AC-EC13: SKILL.md documents path normalization to repo-relative across tools" {
+@test "SKILL.md documents path normalization to repo-relative across tools" {
   grep -iE '(repo-relative|path normalization|normaliz)' "$SKILL_FILE" >/dev/null
 }
 
@@ -239,7 +239,7 @@ teardown() { common_teardown; }
 # AC4 — parity bats registers gaia-security-review
 # ----------------------------------------------------------------------
 
-@test "AC4: gaia-security-review SKILL.md is registered in evidence-judgment-parity.bats REVIEW_SKILLS" {
+@test "gaia-security-review SKILL.md is registered in evidence-judgment-parity.bats REVIEW_SKILLS" {
   grep -F 'skills/gaia-security-review/SKILL.md' "$PARITY_BATS" >/dev/null
 }
 
@@ -247,14 +247,14 @@ teardown() { common_teardown; }
 # AC5 — End-to-end persist + fork allowlist (FR-402, NFR-DEJ-4)
 # ----------------------------------------------------------------------
 
-@test "AC5 (a): SKILL.md prescribes parent-mediated write to FR-402 path security-review-{key}.md (canonical post-AF-21-22)" {
+@test "a): SKILL.md prescribes parent-mediated write to path security-review-{key}.md" {
   grep -F 'security-review-' "$SKILL_FILE" >/dev/null
   # AF-2026-05-21-22 canonicalized this path. Accept canonical or legacy.
   grep -qE '(docs|\.gaia/artifacts)/implementation-artifacts/' "$SKILL_FILE"
   grep -iF 'parent' "$SKILL_FILE" >/dev/null
 }
 
-@test "AC5 (b): end-to-end-real-story fixture has expected report shape" {
+@test "b): end-to-end-real-story fixture has expected report shape" {
   local fix="$FIX_DIR/end-to-end-real-story"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   local rep="$fix/expected-report.md"
@@ -268,7 +268,7 @@ teardown() { common_teardown; }
 # Verdict-resolver smoke: LLM-cannot-override on Semgrep failure
 # ----------------------------------------------------------------------
 
-@test "AC-EC1 (resolver): semgrep-noise fixture with synthetic LLM=APPROVE => verdict matches resolver precedence" {
+@test "resolver): semgrep-noise fixture with synthetic LLM=APPROVE => verdict matches resolver precedence" {
   local fix="$FIX_DIR/semgrep-noise"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   run "$RESOLVER" --analysis-results "$fix/analysis-results.json" --llm-findings "$fix/llm-findings.json"
@@ -305,11 +305,11 @@ REVIEW_COMMON_DIR="$BATS_TEST_DIRNAME/../scripts/review-common"
 PROBE_SCRIPT="$BATS_TEST_DIRNAME/../scripts/tool-availability-probe.sh"
 OVERLAY_SCRIPT="$REVIEW_COMMON_DIR/agent-overlay.sh"
 
-@test "RSV2 AC2/PROBE-SEC-01: SKILL.md references tool-availability-probe.sh for Phase 3A toolkit" {
+@test "RSV2 /: SKILL.md references tool-availability-probe.sh for Phase 3A toolkit" {
   grep -F 'tool-availability-probe.sh' "$SKILL_FILE" >/dev/null
 }
 
-@test "RSV2 AC2/PROBE-SEC-01: SKILL.md documents three-state probe taxonomy (available/expected_and_missing/ran_and_errored/not_applicable)" {
+@test "RSV2 /: SKILL.md documents three-state probe taxonomy (available/expected_and_missing/ran_and_errored/not_applicable)" {
   grep -iE '(expected.and.missing|expected_and_missing)' "$SKILL_FILE" >/dev/null
   grep -iE '(ran.and.errored|ran_and_errored)' "$SKILL_FILE" >/dev/null
   grep -iE '(not.applicable|not_applicable)' "$SKILL_FILE" >/dev/null
@@ -334,12 +334,12 @@ OVERLAY_SCRIPT="$REVIEW_COMMON_DIR/agent-overlay.sh"
   grep -iE '(file.hashes|file_list_hash|file_hashes)' "$SKILL_FILE" >/dev/null
 }
 
-@test "RSV2 AC6/OVERLAY-SEC-01: SKILL.md references agent-overlay.sh for Zara persona resolution" {
+@test "RSV2 /: SKILL.md references agent-overlay.sh for Zara persona resolution" {
   grep -F 'agent-overlay.sh' "$SKILL_FILE" >/dev/null
   grep -iE '(zara|gaia-review-security)' "$SKILL_FILE" >/dev/null
 }
 
-@test "RSV2 AC6/OVERLAY-SEC-01: agent-overlay.sh resolves gaia-review-security -> zara" {
+@test "RSV2 /: agent-overlay.sh resolves gaia-review-security -> zara" {
   [ -x "$OVERLAY_SCRIPT" ] || skip "agent-overlay.sh not executable"
   run "$OVERLAY_SCRIPT" --skill gaia-review-security
   [ "$status" -eq 0 ]

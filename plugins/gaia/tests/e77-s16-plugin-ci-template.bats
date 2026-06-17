@@ -24,17 +24,17 @@ teardown() { common_teardown; }
 
 TEMPLATE="$(cd "$BATS_TEST_DIRNAME/../templates/ci" 2>/dev/null && pwd || echo MISSING)/plugin-ci.yml"
 
-@test "AC1: plugin-ci.yml template file exists at the canonical path" {
+@test "plugin-ci.yml template file exists at the canonical path" {
   [ -f "$TEMPLATE" ]
 }
 
-@test "AC1: template parses as valid YAML" {
+@test "template parses as valid YAML" {
   if ! command -v python3 >/dev/null 2>&1; then skip "python3 not on PATH"; fi
   run python3 -c "import sys, yaml; yaml.safe_load(open('$TEMPLATE'))"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: exactly eight active jobs are defined" {
+@test "exactly eight active jobs are defined" {
   if ! command -v python3 >/dev/null 2>&1; then skip "python3 not on PATH"; fi
   run python3 -c "
 import yaml
@@ -47,7 +47,7 @@ print('count:', len(jobs))
   [[ "$output" == *"count: 8"* ]]
 }
 
-@test "AC1: the eight canonical job names are present" {
+@test "the eight canonical job names are present" {
   if ! command -v python3 >/dev/null 2>&1; then skip "python3 not on PATH"; fi
   run python3 -c "
 import yaml
@@ -64,7 +64,7 @@ if extra:   print('EXTRA:',   sorted(extra))
   [[ "$output" != *"EXTRA:"* ]]
 }
 
-@test "AC1: NO regression-audit job is defined (must move to gaia-internal-ci-extras)" {
+@test "NO regression-audit job is defined (must move to gaia-internal-ci-extras)" {
   if ! command -v python3 >/dev/null 2>&1; then skip "python3 not on PATH"; fi
   run python3 -c "
 import yaml
@@ -75,7 +75,7 @@ print('regression-audit' in jobs)
   [ "$output" == "False" ]
 }
 
-@test "AC1: NO drift-guard job is defined" {
+@test "NO drift-guard job is defined" {
   if ! command -v python3 >/dev/null 2>&1; then skip "python3 not on PATH"; fi
   run python3 -c "
 import yaml
@@ -86,17 +86,17 @@ print('drift-guard' in jobs)
   [ "$output" == "False" ]
 }
 
-@test "AC1: LLM-review placeholder is present as a YAML comment block" {
+@test "LLM-review placeholder is present as a YAML comment block" {
   # The placeholder MUST sit in the file as commented YAML so it is
   # syntactically inactive but still discoverable in a textual grep.
   grep -qE '^\s*#.*llm-review' "$TEMPLATE"
 }
 
-@test "AC1: LLM-review placeholder carries the canonical advisory comment" {
+@test "LLM-review placeholder carries the canonical advisory comment" {
   grep -q 'uncomment when Anthropic CI integration available' "$TEMPLATE"
 }
 
-@test "AC6: each job carries an adapter-dependency declaration in a comment" {
+@test "each job carries an adapter-dependency declaration in a comment" {
   # Each of the eight jobs must call out its required adapter (or "built-in")
   # in a leading comment so the dependency is explicit per AC6.
   for job in frontmatter-lint manifest-validate structure-validate bats-tests \
@@ -115,7 +115,7 @@ print('drift-guard' in jobs)
   done
 }
 
-@test "AC6: NO inter-job needs: dependency exists (jobs run isolated, no cascade)" {
+@test "NO inter-job needs: dependency exists (jobs run isolated, no cascade)" {
   if ! command -v python3 >/dev/null 2>&1; then skip "python3 not on PATH"; fi
   run python3 -c "
 import yaml
@@ -128,14 +128,14 @@ for name, job in (d.get('jobs') or {}).items():
   [[ "$output" != *"CASCADE:"* ]]
 }
 
-@test "AC1: bats-tests job invokes bats-budget-watch.sh" {
+@test "bats-tests job invokes bats-budget-watch.sh" {
   grep -q 'bats-budget-watch.sh' "$TEMPLATE"
 }
 
-@test "AC1: shellcheck job references the shellcheck adapter" {
+@test "shellcheck job references the shellcheck adapter" {
   grep -qE 'adapters/shellcheck/run\.sh|shellcheck' "$TEMPLATE"
 }
 
-@test "AC1: markdownlint job references the markdownlint adapter" {
+@test "markdownlint job references the markdownlint adapter" {
   grep -qE 'adapters/markdownlint/run\.sh|markdownlint' "$TEMPLATE"
 }

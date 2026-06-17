@@ -59,31 +59,31 @@ teardown() { common_teardown; }
 # AC1 — Each SKILL.md embeds the Val Auto-Fix Loop step
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-create-arch SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-create-arch SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-create-arch/SKILL.md"
 }
 
-@test "AC1: gaia-edit-arch SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-edit-arch SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-edit-arch/SKILL.md"
 }
 
-@test "AC1: gaia-review-api SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-review-api SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-review-api/SKILL.md"
 }
 
-@test "AC1: gaia-create-epics SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-create-epics SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-create-epics/SKILL.md"
 }
 
-@test "AC1: gaia-threat-model SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-threat-model SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-threat-model/SKILL.md"
 }
 
-@test "AC1: gaia-infra-design SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-infra-design SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-infra-design/SKILL.md"
 }
 
-@test "AC1: each Phase 3 Solutioning skill invokes /gaia-val-validate with artifact_path and artifact_type" {
+@test "each Phase 3 Solutioning skill invokes /gaia-val-validate with artifact_path and artifact_type" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -q '/gaia-val-validate' "$SKILLS_DIR/$skill/SKILL.md"
     grep -q 'artifact_path' "$SKILLS_DIR/$skill/SKILL.md"
@@ -95,27 +95,27 @@ teardown() { common_teardown; }
 # AC4 — Correct artifact_type per skill
 # ---------------------------------------------------------------------------
 
-@test "AC4: gaia-create-arch uses artifact_type=architecture" {
+@test "gaia-create-arch uses artifact_type=architecture" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*architecture' "$SKILLS_DIR/gaia-create-arch/SKILL.md"
 }
 
-@test "AC4: gaia-edit-arch uses artifact_type=architecture" {
+@test "gaia-edit-arch uses artifact_type=architecture" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*architecture' "$SKILLS_DIR/gaia-edit-arch/SKILL.md"
 }
 
-@test "AC4: gaia-review-api uses artifact_type=api-design-review" {
+@test "gaia-review-api uses artifact_type=api-design-review" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*api-design-review' "$SKILLS_DIR/gaia-review-api/SKILL.md"
 }
 
-@test "AC4: gaia-create-epics uses artifact_type=epics-and-stories" {
+@test "gaia-create-epics uses artifact_type=epics-and-stories" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*epics-and-stories' "$SKILLS_DIR/gaia-create-epics/SKILL.md"
 }
 
-@test "AC4: gaia-threat-model uses artifact_type=threat-model" {
+@test "gaia-threat-model uses artifact_type=threat-model" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*threat-model' "$SKILLS_DIR/gaia-threat-model/SKILL.md"
 }
 
-@test "AC4: gaia-infra-design uses artifact_type=infrastructure-design" {
+@test "gaia-infra-design uses artifact_type=infrastructure-design" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*infrastructure-design' "$SKILLS_DIR/gaia-infra-design/SKILL.md"
 }
 
@@ -123,33 +123,33 @@ teardown() { common_teardown; }
 # AC4 — Correct artifact_path per skill
 # ---------------------------------------------------------------------------
 
-@test "AC4: gaia-create-arch references architecture.md artifact_path (canonical post-AF-21-11)" {
+@test "gaia-create-arch references architecture.md artifact_path" {
   # AF-2026-05-21-11 canonicalized this path. Accept either canonical .gaia/
   # or legacy docs/ for back-compat with pre-ADR-111 forks.
   grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/architecture\.md' "$SKILLS_DIR/gaia-create-arch/SKILL.md"
 }
 
-@test "AC4: gaia-edit-arch references architecture.md artifact_path (canonical post-AF-21-11)" {
+@test "gaia-edit-arch references architecture.md artifact_path" {
   grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/architecture\.md' "$SKILLS_DIR/gaia-edit-arch/SKILL.md"
 }
 
-@test "AC4: gaia-review-api references api-design-review-{date} artifact_path" {
+@test "gaia-review-api references api-design-review-{date} artifact_path" {
   grep -qE 'api-design-review-\{date\}' "$SKILLS_DIR/gaia-review-api/SKILL.md"
 }
 
-@test "AC4: gaia-create-epics references epics-and-stories.md artifact_path (canonical post-AF-21-13)" {
+@test "gaia-create-epics references epics-and-stories.md artifact_path" {
   # AF-2026-05-21-13 canonicalized this path. Accept either canonical .gaia/
   # or legacy docs/ for back-compat with pre-ADR-111 forks.
   grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/epics-and-stories\.md' "$SKILLS_DIR/gaia-create-epics/SKILL.md"
 }
 
-@test "AC4: gaia-threat-model references threat-model.md artifact_path (canonical post-AF-21-14)" {
+@test "gaia-threat-model references threat-model.md artifact_path" {
   # Future AF-21-14+ will canonicalize this path. Accept either canonical .gaia/
   # or legacy docs/ for back-compat with pre-ADR-111 forks.
   grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/threat-model\.md' "$SKILLS_DIR/gaia-threat-model/SKILL.md"
 }
 
-@test "AC4: gaia-infra-design references infrastructure-design.md artifact_path (canonical post-AF-21-X)" {
+@test "gaia-infra-design references infrastructure-design.md artifact_path" {
   # Future AF will canonicalize this path. Accept canonical OR legacy.
   grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/infrastructure-design\.md' "$SKILLS_DIR/gaia-infra-design/SKILL.md"
 }
@@ -158,7 +158,7 @@ teardown() { common_teardown; }
 # AC8 (no val_validate_output flag introduced) — Phase 3 wire-in is direct-call only
 # ---------------------------------------------------------------------------
 
-@test "AC8: no Phase 3 Solutioning SKILL.md introduces val_validate_output flag" {
+@test "no Phase 3 Solutioning SKILL.md introduces val_validate_output flag" {
   for skill in $PHASE3_SKILLS_LIST; do
     ! grep -q 'val_validate_output' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -168,31 +168,31 @@ teardown() { common_teardown; }
 # AC2 / AC5 — Provenance and 3-iteration cap referenced
 # ---------------------------------------------------------------------------
 
-@test "AC5: each Phase 3 Solutioning skill references gaia-val-validate (pattern provenance)" {
+@test "each Phase 3 Solutioning skill references gaia-val-validate (pattern provenance)" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -q 'gaia-val-validate' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC5: each Phase 3 Solutioning skill defers to canonical pattern anchor (decision provenance)" {
+@test "each Phase 3 Solutioning skill defers to canonical pattern anchor (decision provenance)" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -q 'cite this anchor' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC2: each Phase 3 Solutioning skill documents iteration counter (iteration = 1)" {
+@test "each Phase 3 Solutioning skill documents iteration counter (iteration = 1)" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -qE 'iteration[[:space:]]*=[[:space:]]*1' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC2: each Phase 3 Solutioning skill documents the 3-iteration cap" {
+@test "each Phase 3 Solutioning skill documents the 3-iteration cap" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -qE 'iteration[[:space:]]*<=[[:space:]]*3' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC2: each Phase 3 Solutioning skill cites the canonical Auto-Fix Loop Pattern anchor" {
+@test "each Phase 3 Solutioning skill cites the canonical Auto-Fix Loop Pattern anchor" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -q 'Auto-Fix Loop Pattern' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -202,7 +202,7 @@ teardown() { common_teardown; }
 # AC-EC3 — Artifact-existence guard
 # ---------------------------------------------------------------------------
 
-@test "AC-EC3: each Phase 3 Solutioning skill includes an artifact-existence guard" {
+@test "each Phase 3 Solutioning skill includes an artifact-existence guard" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -qE 'if[[:space:]]+not[[:space:]]+exists' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -212,7 +212,7 @@ teardown() { common_teardown; }
 # AC-EC6 — Val-skill-availability guard with documented warning text
 # ---------------------------------------------------------------------------
 
-@test "AC-EC6: each Phase 3 Solutioning skill emits the canonical missing-Val warning" {
+@test "each Phase 3 Solutioning skill emits the canonical missing-Val warning" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -q 'Val auto-review unavailable' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -222,7 +222,7 @@ teardown() { common_teardown; }
 # AC-EC8 — YOLO hard-gate invariant; no bypass branch introduced
 # ---------------------------------------------------------------------------
 
-@test "AC-EC8: each Phase 3 Solutioning skill references the YOLO hard-gate invariant" {
+@test "each Phase 3 Solutioning skill references the YOLO hard-gate invariant" {
   for skill in $PHASE3_SKILLS_LIST; do
     grep -qE 'YOLO' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -241,7 +241,7 @@ teardown() { common_teardown; }
 # AC1: gaia-infra-design Val loop runs after Step 6 (Generate Output).
 # ---------------------------------------------------------------------------
 
-@test "AC7 placement: gaia-create-arch Val loop step appears after Step 9 (Generate Output) and before Adversarial Review" {
+@test "placement: gaia-create-arch Val loop step appears after Step 9 (Generate Output) and before Adversarial Review" {
   local skill="$SKILLS_DIR/gaia-create-arch/SKILL.md"
   local write_line val_line adv_line
   write_line="$(grep -n '^### Step 9 — Generate Output' "$skill" | head -1 | cut -d: -f1)"
@@ -254,7 +254,7 @@ teardown() { common_teardown; }
   [ "$val_line" -lt "$adv_line" ]
 }
 
-@test "AC8 placement: gaia-edit-arch Val loop step appears after Step 6 (Save and Review Gate)" {
+@test "placement: gaia-edit-arch Val loop step appears after Step 6 (Save and Review Gate)" {
   local skill="$SKILLS_DIR/gaia-edit-arch/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 6 — Save and Review Gate' "$skill" | head -1 | cut -d: -f1)"
@@ -264,7 +264,7 @@ teardown() { common_teardown; }
   [ "$val_line" -gt "$write_line" ]
 }
 
-@test "AC1 placement: gaia-review-api Val loop step appears after Step 5 (Report)" {
+@test "placement: gaia-review-api Val loop step appears after Step 5 (Report)" {
   local skill="$SKILLS_DIR/gaia-review-api/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 5 — Report' "$skill" | head -1 | cut -d: -f1)"
@@ -274,7 +274,7 @@ teardown() { common_teardown; }
   [ "$val_line" -gt "$write_line" ]
 }
 
-@test "AC1 placement: gaia-create-epics Val loop step appears after Step 8 (Generate Output)" {
+@test "placement: gaia-create-epics Val loop step appears after Step 8 (Generate Output)" {
   local skill="$SKILLS_DIR/gaia-create-epics/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 8 — Generate Output' "$skill" | head -1 | cut -d: -f1)"
@@ -284,7 +284,7 @@ teardown() { common_teardown; }
   [ "$val_line" -gt "$write_line" ]
 }
 
-@test "AC1 placement: gaia-threat-model Val loop step appears after Step 7 (Generate Output)" {
+@test "placement: gaia-threat-model Val loop step appears after Step 7 (Generate Output)" {
   local skill="$SKILLS_DIR/gaia-threat-model/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 7 — Generate Output' "$skill" | head -1 | cut -d: -f1)"
@@ -294,7 +294,7 @@ teardown() { common_teardown; }
   [ "$val_line" -gt "$write_line" ]
 }
 
-@test "AC1 placement: gaia-infra-design Val loop step appears after Step 6 (Generate Output)" {
+@test "placement: gaia-infra-design Val loop step appears after Step 6 (Generate Output)" {
   local skill="$SKILLS_DIR/gaia-infra-design/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 6 — Generate Output' "$skill" | head -1 | cut -d: -f1)"

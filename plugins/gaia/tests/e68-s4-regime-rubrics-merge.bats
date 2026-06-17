@@ -35,7 +35,7 @@ teardown() { common_teardown; }
 # regimes specialize the base by replacing the rule list, with metadata
 # layered on top.
 # ---------------------------------------------------------------------------
-@test "AC13: GDPR + base/code merge succeeds and produces GDPR-prefixed rules" {
+@test "GDPR + base/code merge succeeds and produces GDPR-prefixed rules" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi
@@ -62,7 +62,7 @@ teardown() { common_teardown; }
 # we assert the final severity_rules array is HIPAA's (array replace per
 # RFC 7396) and the regime `name` field came from HIPAA.
 # ---------------------------------------------------------------------------
-@test "AC13: GDPR -> HIPAA regime merge applies HIPAA as final layer" {
+@test "GDPR -> HIPAA regime merge applies HIPAA as final layer" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi
@@ -85,7 +85,7 @@ teardown() { common_teardown; }
 # AAA layers on AA via declaration-order merge. With array-replace semantics,
 # the merged severity_rules equal AAA's. We assert AAA prefix presence.
 # ---------------------------------------------------------------------------
-@test "AC12: WCAG AA -> AAA layering applies AAA rules in final merge" {
+@test "WCAG AA -> AAA layering applies AAA rules in final merge" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi
@@ -108,7 +108,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # Sanity — solo regime (no base) still produces a valid merged document.
 # ---------------------------------------------------------------------------
-@test "AC13: solo GDPR regime through the merger emits valid JSON" {
+@test "solo GDPR regime through the merger emits valid JSON" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi

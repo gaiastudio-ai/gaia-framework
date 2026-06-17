@@ -127,7 +127,7 @@ EOF
 #       phase + non-YOLO -> PROMPT.
 # ---------------------------------------------------------------------------
 
-@test "AC1: threshold=medium + risk=medium + phase=red + non-YOLO -> PROMPT" {
+@test "threshold=medium + risk=medium + phase=red + non-YOLO -> PROMPT" {
   run "$GATE" E99-S1 red
   [ "$status" -eq 0 ]
   [ "$output" = "PROMPT" ]
@@ -137,21 +137,21 @@ EOF
 # AC2 — risk below threshold -> SKIP (any phase).
 # ---------------------------------------------------------------------------
 
-@test "AC2: threshold=high + risk=medium + phase=red -> SKIP" {
+@test "threshold=high + risk=medium + phase=red -> SKIP" {
   configure_tdd_review high "[red]" true
   run "$GATE" E99-S1 red
   [ "$status" -eq 0 ]
   [ "$output" = "SKIP" ]
 }
 
-@test "AC2: threshold=high + risk=medium + phase=green -> SKIP" {
+@test "threshold=high + risk=medium + phase=green -> SKIP" {
   configure_tdd_review high "[red, green]" true
   run "$GATE" E99-S1 green
   [ "$status" -eq 0 ]
   [ "$output" = "SKIP" ]
 }
 
-@test "AC2: threshold=high + risk=medium + phase=refactor -> SKIP" {
+@test "threshold=high + risk=medium + phase=refactor -> SKIP" {
   configure_tdd_review high "[red, green, refactor]" true
   run "$GATE" E99-S1 refactor
   [ "$status" -eq 0 ]
@@ -162,14 +162,14 @@ EOF
 # AC3 — phase not in configured phases -> SKIP.
 # ---------------------------------------------------------------------------
 
-@test "AC3: phases=[red,green] + phase=refactor -> SKIP" {
+@test "phases=[red,green] + phase=refactor -> SKIP" {
   configure_tdd_review medium "[red, green]" true
   run "$GATE" E99-S1 refactor
   [ "$status" -eq 0 ]
   [ "$output" = "SKIP" ]
 }
 
-@test "AC3: phases=[red] + phase=green -> SKIP" {
+@test "phases=[red] + phase=green -> SKIP" {
   # Default config (medium / [red] / true).
   run "$GATE" E99-S1 green
   [ "$status" -eq 0 ]
@@ -180,7 +180,7 @@ EOF
 # AC4 — YOLO active + qa_auto_in_yolo=true -> QA_AUTO.
 # ---------------------------------------------------------------------------
 
-@test "AC4: YOLO + qa_auto_in_yolo=true + risk>=threshold -> QA_AUTO" {
+@test "YOLO + qa_auto_in_yolo=true + risk>=threshold -> QA_AUTO" {
   write_story E99-S2 high
   configure_tdd_review medium "[red]" true
   GAIA_YOLO_FLAG=1 run "$GATE" E99-S2 red
@@ -188,7 +188,7 @@ EOF
   [ "$output" = "QA_AUTO" ]
 }
 
-@test "AC4: YOLO + qa_auto_in_yolo=false -> PROMPT (not QA_AUTO)" {
+@test "YOLO + qa_auto_in_yolo=false -> PROMPT (not QA_AUTO)" {
   write_story E99-S2 high
   configure_tdd_review medium "[red]" false
   GAIA_YOLO_FLAG=1 run "$GATE" E99-S2 red
@@ -236,7 +236,7 @@ EOF
 # (PROMPT or QA_AUTO depending on YOLO branch). Stderr names the missing field.
 # ---------------------------------------------------------------------------
 
-@test "AC5: missing risk_level -> PROMPT + stderr warning" {
+@test "missing risk_level -> PROMPT + stderr warning" {
   write_story E99-S6 NORISK
   run "$GATE" E99-S6 red
   [ "$status" -eq 0 ]
@@ -247,7 +247,7 @@ EOF
   [[ "$output" == *"risk"* ]]
 }
 
-@test "AC5: unrecognized risk value -> PROMPT + stderr warning" {
+@test "unrecognized risk value -> PROMPT + stderr warning" {
   write_story E99-S7 banana
   run "$GATE" E99-S7 red
   [ "$status" -eq 0 ]
@@ -255,7 +255,7 @@ EOF
   [[ "$output" == *"risk"* ]]
 }
 
-@test "AC5: missing risk_level under YOLO + qa_auto_in_yolo=true -> QA_AUTO" {
+@test "missing risk_level under YOLO + qa_auto_in_yolo=true -> QA_AUTO" {
   write_story E99-S8 NORISK
   configure_tdd_review medium "[red]" true
   GAIA_YOLO_FLAG=1 run "$GATE" E99-S8 red
@@ -267,17 +267,17 @@ EOF
 # AC6 — malicious story_key rejected before any read.
 # ---------------------------------------------------------------------------
 
-@test "AC6: path-traversal story_key -> non-zero exit" {
+@test "path-traversal story_key -> non-zero exit" {
   run "$GATE" "../etc/passwd" red
   [ "$status" -ne 0 ]
 }
 
-@test "AC6: empty story_key -> non-zero exit" {
+@test "empty story_key -> non-zero exit" {
   run "$GATE" "" red
   [ "$status" -ne 0 ]
 }
 
-@test "AC6: lowercase story_key -> non-zero exit (must match ^E[0-9]+-S[0-9]+\$)" {
+@test "lowercase story_key -> non-zero exit (must match ^E[0-9]+-S[0-9]+\$)" {
   run "$GATE" "e99-s1" red
   [ "$status" -ne 0 ]
 }
@@ -306,7 +306,7 @@ EOF
 # (E79-S7 shared helper) instead of using a private IMPL_DIR/${STORY_KEY}-*.md
 # glob. Reduces drift between dev-story scripts that all need the same
 # canonical resolution semantics.
-@test "TC-DSF-3: tdd-review-gate.sh sources the shared resolve-story-file.sh helper" {
+@test "tdd-review-gate.sh sources the shared resolve-story-file.sh helper" {
   # Accept either a direct `source ...resolve-story-file.sh` or an
   # assignment-then-source pattern (the script uses the latter form).
   run grep -E 'resolve-story-file\.sh' "$GATE"
@@ -316,7 +316,7 @@ EOF
 }
 
 # TC-DSF-3b: the legacy private nullglob for story matches MUST be gone.
-@test "TC-DSF-3b: tdd-review-gate.sh no longer uses the private STORY_MATCHES nullglob" {
+@test "tdd-review-gate.sh no longer uses the private STORY_MATCHES nullglob" {
   run grep -E 'STORY_MATCHES=\(.*"\$\{STORY_KEY\}-"' "$GATE"
   [ "$status" -ne 0 ]
 }

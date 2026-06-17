@@ -29,16 +29,16 @@ teardown() { common_teardown; }
 # FR-566 — writer emits original_status (additive)
 # ---------------------------------------------------------------------------
 
-@test "TC-OSV trace: FR-566 — write-val-envelope.sh source carries original_status" {
+@test "TC-OSV trace: — write-val-envelope.sh source carries original_status" {
   grep -q 'original_status' "$PLUGIN/scripts/lib/write-val-envelope.sh"
 }
 
-@test "TC-OSV trace: TC-OSV-1 behavioral assertion is wired in write-val-envelope.bats" {
+@test "TC-OSV trace: behavioral assertion is wired in write-val-envelope.bats" {
   grep -q 'TC-OSV-1' "$PLUGIN/tests/write-val-envelope.bats"
   grep -q 'writer preserves original_status' "$PLUGIN/tests/write-val-envelope.bats"
 }
 
-@test "TC-OSV trace: TC-OSV-2 (writer-absent) behavioral assertion is wired" {
+@test "TC-OSV trace: (writer-absent) behavioral assertion is wired" {
   grep -q 'TC-OSV-2' "$PLUGIN/tests/write-val-envelope.bats"
   grep -q 'has("original_status")' "$PLUGIN/tests/write-val-envelope.bats"
 }
@@ -47,15 +47,15 @@ teardown() { common_teardown; }
 # FR-567 — asserter accepts original_status as OPTIONAL
 # ---------------------------------------------------------------------------
 
-@test "TC-OSV trace: FR-567 — assert-agent-envelope.sh source carries original_status" {
+@test "TC-OSV trace: — assert-agent-envelope.sh source carries original_status" {
   grep -q 'original_status' "$PLUGIN/scripts/lib/assert-agent-envelope.sh"
 }
 
-@test "TC-OSV trace: TC-OSV-3 (asserter-passes-with) behavioral assertion is wired" {
+@test "TC-OSV trace: (asserter-passes-with) behavioral assertion is wired" {
   grep -q 'TC-OSV-3' "$PLUGIN/tests/assert-agent-envelope.bats"
 }
 
-@test "TC-OSV trace: TC-OSV-4 (asserter-passes-without, back-compat) behavioral assertion is wired" {
+@test "TC-OSV trace: (asserter-passes-without, back-compat) behavioral assertion is wired" {
   grep -q 'TC-OSV-4' "$PLUGIN/tests/assert-agent-envelope.bats"
 }
 
@@ -63,12 +63,12 @@ teardown() { common_teardown; }
 # NFR-95 — original_status MUST NOT be required (golden invariant)
 # ---------------------------------------------------------------------------
 
-@test "TC-OSV trace: NFR-95 — TC-OSV-5 (with-and-without both exit 0) is wired on both writer + asserter bats" {
+@test "TC-OSV trace: — (with-and-without both exit 0) is wired on both writer + asserter bats" {
   grep -q 'TC-OSV-5' "$PLUGIN/tests/write-val-envelope.bats"
   grep -q 'TC-OSV-5' "$PLUGIN/tests/assert-agent-envelope.bats"
 }
 
-@test "TC-OSV trace: NFR-95 scope fence — validate-adr037-envelope.sh does NOT require original_status (publish-adapter envelope out of scope)" {
+@test "TC-OSV trace: scope fence — validate-adr037-envelope.sh does NOT require original_status (publish-adapter envelope out of scope)" {
   # The ADR-113 publish-adapter envelope {verdict,evidence,summary,adapter_metadata}
   # is OUT OF SCOPE; original_status must not have leaked into its validator.
   local validator

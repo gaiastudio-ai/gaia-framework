@@ -14,16 +14,16 @@ teardown() {
   rm -rf "$TMPDIR_TEST" 2>/dev/null || true
 }
 
-@test "TC-ENV-1: helper exists at canonical path" {
+@test "helper exists at canonical path" {
   [ -f "$HELPER" ]
 }
 
-@test "TC-ENV-2: helper exports build_env_args function when sourced" {
+@test "helper exports build_env_args function when sourced" {
   source "$HELPER"
   type build_env_args >/dev/null 2>&1
 }
 
-@test "TC-ENV-3: build_env_args emits exactly the 7 canonical vars when all present in parent env" {
+@test "build_env_args emits exactly the 7 canonical vars when all present in parent env" {
   source "$HELPER"
   export PATH="/usr/bin" HOME="/tmp" USER="t" TMPDIR="/tmp" TERM="xterm" LANG="C" LC_ALL="C"
   out=$(build_env_args)
@@ -33,7 +33,7 @@ teardown() {
   done
 }
 
-@test "TC-ENV-4: build_env_args omits non-allowlisted vars (secrets do not leak)" {
+@test "build_env_args omits non-allowlisted vars (secrets do not leak)" {
   source "$HELPER"
   export AWS_SECRET_ACCESS_KEY="leak-me"
   export GITHUB_TOKEN="ghp-leak"
@@ -45,7 +45,7 @@ teardown() {
   return 0
 }
 
-@test "TC-ENV-5: env -i with build_env_args output spawns process with only allowlist vars" {
+@test "env -i with build_env_args output spawns process with only allowlist vars" {
   source "$HELPER"
   export AWS_SECRET_ACCESS_KEY="leak-me"
   args=$(build_env_args)
@@ -56,7 +56,7 @@ teardown() {
   return 0
 }
 
-@test "TC-ENV-6: build_env_args handles missing parent vars gracefully (no error)" {
+@test "build_env_args handles missing parent vars gracefully (no error)" {
   source "$HELPER"
   unset LC_ALL LANG TERM TMPDIR
   build_env_args >/dev/null

@@ -18,7 +18,7 @@ HELP_MANIFEST="$PLUGIN_DIR/knowledge/gaia-help.csv"
 
 SKILL_NAMES=(gaia-list-tools gaia-tool-info gaia-validate-rubric)
 
-@test "AC8: each skill ships a SKILL.md with a frontmatter name field" {
+@test "each skill ships a SKILL.md with a frontmatter name field" {
   for skill in "${SKILL_NAMES[@]}"; do
     [ -f "$SKILLS_DIR/$skill/SKILL.md" ] || { echo "missing SKILL.md for $skill" >&2; return 1; }
     grep -q "^name: $skill\$" "$SKILLS_DIR/$skill/SKILL.md" \
@@ -28,14 +28,14 @@ SKILL_NAMES=(gaia-list-tools gaia-tool-info gaia-validate-rubric)
   done
 }
 
-@test "AC8: each skill is registered in workflow-manifest.csv" {
+@test "each skill is registered in workflow-manifest.csv" {
   for skill in "${SKILL_NAMES[@]}"; do
     grep -q "\"$skill\"" "$WORKFLOW_MANIFEST" \
       || { echo "$skill missing from workflow-manifest.csv" >&2; return 1; }
   done
 }
 
-@test "AC8: each skill is registered in gaia-help.csv" {
+@test "each skill is registered in gaia-help.csv" {
   for skill in "${SKILL_NAMES[@]}"; do
     grep -q "\"$skill\"" "$HELP_MANIFEST" \
       || { echo "$skill missing from gaia-help.csv" >&2; return 1; }

@@ -60,27 +60,27 @@ teardown() { common_teardown; }
 # NFR-052: source the script and verify every public function resolves
 # ---------------------------------------------------------------------------
 
-@test "NFR-052: source script — is_flaky_test is callable" {
+@test "source script — is_flaky_test is callable" {
   source "$SCRIPTS_DIR/run-with-retry.sh"
   type is_flaky_test
 }
 
-@test "NFR-052: source script — run_with_retry is callable" {
+@test "source script — run_with_retry is callable" {
   source "$SCRIPTS_DIR/run-with-retry.sh"
   type run_with_retry
 }
 
-@test "NFR-052: source script — parse_args is callable" {
+@test "source script — parse_args is callable" {
   source "$SCRIPTS_DIR/run-with-retry.sh"
   type parse_args
 }
 
-@test "NFR-052: source script — main is callable" {
+@test "source script — main is callable" {
   source "$SCRIPTS_DIR/run-with-retry.sh"
   type main
 }
 
-@test "NFR-052: main-guard — sourcing does not run main" {
+@test "main-guard — sourcing does not run main" {
   run bash -c 'source "'"$SCRIPTS_DIR/run-with-retry.sh"'" && echo "source-ok"'
   [ "$status" -eq 0 ]
   [[ "$output" == *"source-ok"* ]]
@@ -90,7 +90,7 @@ teardown() { common_teardown; }
 # AC2: flaky test retries — fails then passes
 # ---------------------------------------------------------------------------
 
-@test "AC2: flaky test fails once then passes — exit 0" {
+@test "flaky test fails once then passes — exit 0" {
   export FAIL_COUNT=1
   echo "0" > "$COUNTER_FILE"
   run "$SCRIPTS_DIR/run-with-retry.sh" \
@@ -99,7 +99,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AC2: flaky test fails twice then passes with retry-limit 3 — exit 0" {
+@test "flaky test fails twice then passes with retry-limit 3 — exit 0" {
   export FAIL_COUNT=2
   echo "0" > "$COUNTER_FILE"
   run "$SCRIPTS_DIR/run-with-retry.sh" \
@@ -108,7 +108,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AC2: flaky test always-fail with retry-limit 2 → nonzero + ESCALATED" {
+@test "flaky test always-fail with retry-limit 2 → nonzero + ESCALATED" {
   run --separate-stderr "$SCRIPTS_DIR/run-with-retry.sh" \
     --test-id "t1" --retry-limit 2 --is-flaky \
     -- "$fake_bin/always-fail"
@@ -120,7 +120,7 @@ teardown() { common_teardown; }
 # AC5: escalation blocks the pipeline
 # ---------------------------------------------------------------------------
 
-@test "AC5: always-fail flaky escalation → nonzero exit (blocks)" {
+@test "always-fail flaky escalation → nonzero exit (blocks)" {
   run --separate-stderr "$SCRIPTS_DIR/run-with-retry.sh" \
     --test-id "t-critical" --retry-limit 1 --is-flaky \
     -- "$fake_bin/always-fail"
@@ -129,7 +129,7 @@ teardown() { common_teardown; }
   [[ "$stderr" == *"t-critical"* ]]
 }
 
-@test "AC5: non-flaky failure — immediate passthrough, no retry, no ESCALATED" {
+@test "non-flaky failure — immediate passthrough, no retry, no ESCALATED" {
   run --separate-stderr "$SCRIPTS_DIR/run-with-retry.sh" \
     --test-id "t2" --retry-limit 3 \
     -- "$fake_bin/always-fail"
@@ -138,7 +138,7 @@ teardown() { common_teardown; }
   [[ "$stderr" != *"ESCALATED_FLAKY_FAILURE"* ]]
 }
 
-@test "AC5: non-flaky failure does not retry (counter stays at 1)" {
+@test "non-flaky failure does not retry (counter stays at 1)" {
   echo "0" > "$COUNTER_FILE"
   export FAIL_COUNT=999
   run "$SCRIPTS_DIR/run-with-retry.sh" \

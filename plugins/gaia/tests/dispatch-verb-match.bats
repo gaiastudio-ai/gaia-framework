@@ -50,7 +50,7 @@ teardown() {
 # TC-DPD-4 — stem-collision: 'wires the production wiring up' matches 'wires'
 # (dispatch) and MUST NOT erroneously match a deferral substring through this
 # matcher.
-@test "TC-DPD-4: stem-collision — 'wires the production wiring up' matches 'wires'" {
+@test "stem-collision — 'wires the production wiring up' matches 'wires'" {
   run "$MATCHER" "wires the production wiring up"
   [ "$status" -eq 0 ]
   [[ "$output" == *wires* ]]
@@ -60,7 +60,7 @@ teardown() {
 
 # TC-DPD-4 — stem-collision: 'harness wiring lands in next sprint' MUST NOT
 # match any dispatch verb (no bare 'wires' with word boundaries).
-@test "TC-DPD-4: stem-collision — 'harness wiring lands in next sprint' does NOT match dispatch" {
+@test "stem-collision — 'harness wiring lands in next sprint' does NOT match dispatch" {
   run "$MATCHER" "harness wiring lands in next sprint"
   [ "$status" -eq 1 ]
 }
@@ -72,7 +72,7 @@ teardown() {
 }
 
 # TC-DPD-7 — sourcing the matcher exposes the function.
-@test "TC-DPD-7: sourcing matcher exposes match_dispatch_verb_in_text" {
+@test "sourcing matcher exposes match_dispatch_verb_in_text" {
   # shellcheck source=/dev/null
   source "$MATCHER"
   run match_dispatch_verb_in_text "spawns the subagent"

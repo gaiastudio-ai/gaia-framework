@@ -74,7 +74,7 @@ write_marker() { : > "$MARKER"; }
 # TC-GTS-16 — marker cleared ONLY by a successful refresh; survives other ops.
 # ---------------------------------------------------------------------------
 
-@test "TC-GTS-16: successful refresh finalize clears the .ground-truth-stale marker" {
+@test "successful refresh finalize clears the .ground-truth-stale marker" {
   write_marker
   [ -f "$MARKER" ]
   run bash "$REFRESH_FINALIZE"
@@ -86,7 +86,7 @@ write_marker() { : > "$MARKER"; }
   [[ "$output" == *".ground-truth-stale"* ]]
 }
 
-@test "TC-GTS-16: marker survives an unrelated operation (only refresh clears it)" {
+@test "marker survives an unrelated operation (only refresh clears it)" {
   write_marker
   # An unrelated read-only operation: load ground-truth via memory-loader.
   # Per TC-GTS-19/20 (memory-loader.bats) the backstop NEVER clears the marker.
@@ -98,7 +98,7 @@ write_marker() { : > "$MARKER"; }
   [ -f "$MARKER" ]
 }
 
-@test "TC-GTS-16: clearing is idempotent — refresh with no marker present is a no-op success" {
+@test "clearing is idempotent — refresh with no marker present is a no-op success" {
   # No marker written. A successful refresh must still exit 0 (rm -f no-op).
   [ ! -f "$MARKER" ]
   run bash "$REFRESH_FINALIZE"
@@ -115,7 +115,7 @@ write_marker() { : > "$MARKER"; }
 # ever reaching the marker-clear. The clear is positioned AFTER the steps that
 # can die, so a die means the marker is never removed.
 
-@test "TC-GTS-17: a failed refresh (finalize dies before the clear) leaves the marker intact" {
+@test "a failed refresh (finalize dies before the clear) leaves the marker intact" {
   write_marker
   [ -f "$MARKER" ]
   # Force the checkpoint pre-clear step to fail: CHECKPOINT_PATH's parent is a
@@ -130,7 +130,7 @@ write_marker() { : > "$MARKER"; }
   [ -f "$MARKER" ]
 }
 
-@test "TC-GTS-17: the marker-clear is positioned AFTER the steps that can die" {
+@test "the marker-clear is positioned AFTER the steps that can die" {
   # Static structural proof: in finalize.sh, both required steps that can `die`
   # (checkpoint write, lifecycle-event emit) must appear BEFORE the marker-clear
   # rm. If the clear ever moved above a die-capable step, a failed refresh could
@@ -151,13 +151,13 @@ write_marker() { : > "$MARKER"; }
 # TC-GTS-21 — manual `--agent all` carve-out unchanged; auto-triggers never use it.
 # ---------------------------------------------------------------------------
 
-@test "TC-GTS-21: refresh SKILL.md still documents the manual --agent all full-refresh carve-out" {
+@test "refresh SKILL.md still documents the manual --agent all full-refresh carve-out" {
   [ -f "$REFRESH_SKILL" ]
   # The manual full-refresh carve-out is documented (FR-578).
   grep -q -- '--agent all' "$REFRESH_SKILL"
 }
 
-@test "TC-GTS-21: the auto-trigger gate diagnostic instructs --incremental, never --agent all" {
+@test "the auto-trigger gate diagnostic instructs --incremental, never --agent all" {
   [ -f "$GATE_LIB" ]
   # The auto-trigger remediation hint points at the incremental refresh.
   grep -q -- '--incremental' "$GATE_LIB"
@@ -179,7 +179,7 @@ write_marker() { : > "$MARKER"; }
 # successful refresh and could false-clear it. This is the load-bearing
 # residual-reducer — it mirrors the Val sentinel↔dispatch static binding.
 
-@test "T-GTR-4 guard: the .ground-truth-stale marker-clear appears ONLY in the refresh finalize success path" {
+@test "T- guard: the .ground-truth-stale marker-clear appears ONLY in the refresh finalize success path" {
   # Find every line in scripts/ + skills/ that removes the marker. We match an
   # `rm`/`unlink` on the same line that names the marker, plus the canonical
   # `rm -f "$marker"` idiom where $marker is the resolved marker path.
@@ -203,20 +203,20 @@ write_marker() { : > "$MARKER"; }
   [ "$offenders" = "$REFRESH_FINALIZE" ]
 }
 
-@test "T-GTR-4 guard: the refresh finalize success path DOES contain the marker-clear" {
+@test "T- guard: the refresh finalize success path DOES contain the marker-clear" {
   # The positive half of the binding: the sanctioned site actually clears it.
   grep -Eq 'marker=.*ground-truth-stale' "$REFRESH_FINALIZE"
   grep -Eq 'rm -f "\$marker"' "$REFRESH_FINALIZE"
 }
 
-@test "T-GTR-4 guard: the memory-loader backstop must NOT clear the marker" {
+@test "T- guard: the memory-loader backstop must NOT clear the marker" {
   # The lazy backstop (S4) only WARNS; clearing it there would couple a passive
   # read to the refresh contract.
   run grep -Eq '(rm|unlink)[^#]*ground-truth-stale' "$SCRIPTS_TREE/memory-loader.sh"
   [ "$status" -ne 0 ]
 }
 
-@test "T-GTR-4 guard: the lifecycle gates must NOT clear the marker" {
+@test "T- guard: the lifecycle gates must NOT clear the marker" {
   # The blocking/best-effort gates (S2) only detect + diagnose staleness.
   run grep -Eq '(rm|unlink)[^#]*ground-truth-stale' "$GATE_LIB"
   [ "$status" -ne 0 ]

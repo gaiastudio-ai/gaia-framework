@@ -33,20 +33,20 @@ teardown() { common_teardown; }
 # VCP-CHK-13 — Positive: all 26 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-13: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export UX_DESIGN_ARTIFACT="$FIXTURES/ux-design-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-13: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export UX_DESIGN_ARTIFACT="$FIXTURES/ux-design-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-13: finalize.sh reports PASS for each required section" {
+@test "finalize.sh reports PASS for each required section" {
   export UX_DESIGN_ARTIFACT="$FIXTURES/ux-design-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -65,7 +65,7 @@ teardown() { common_teardown; }
 # the count must be exactly 26.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 26 classified items" {
+@test "SKILL.md ## Validation section contains exactly 26 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -76,7 +76,7 @@ teardown() { common_teardown; }
   [ "$output" = "26" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -87,7 +87,7 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: structural items are classified script-verifiable" {
+@test "structural items are classified script-verifiable" {
   # FR-to-Screen Mapping, Personas presence, Wireframes presence —
   # MUST be SV, never LLM.
   run grep -E '^\- \[script-verifiable\].*FR-to-Screen Mapping' "$SKILL_MD"
@@ -98,7 +98,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/     { steps = NR }
     /^## Validation/ { validation = NR }

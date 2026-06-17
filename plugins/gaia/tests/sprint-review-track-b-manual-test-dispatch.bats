@@ -77,7 +77,7 @@ teardown() {
 # AC1: configured surface produces manual-test envelope with type field
 # ---------------------------------------------------------------------------
 
-@test "AC1: Track B emits manual-test envelopes for configured surfaces" {
+@test "Track B emits manual-test envelopes for configured surfaces" {
   write_config 5 "server,web"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
@@ -85,7 +85,7 @@ teardown() {
   echo "$output" | grep -q '"type"[[:space:]]*:[[:space:]]*"manual-test"'
 }
 
-@test "AC1: manual-test envelope contains surface field matching dispatch output" {
+@test "manual-test envelope contains surface field matching dispatch output" {
   write_config 5 "server,web"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
@@ -93,7 +93,7 @@ teardown() {
   echo "$output" | grep -q '"surface"[[:space:]]*:[[:space:]]*"api"'
 }
 
-@test "AC1: stack-command envelopes also carry type field" {
+@test "stack-command envelopes also carry type field" {
   write_config 5 "server,web"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
@@ -105,7 +105,7 @@ teardown() {
 # AC1: unconfigured surfaces produce SKIPPED and do NOT fail Track B
 # ---------------------------------------------------------------------------
 
-@test "AC1: unconfigured surface (mobile) returns SKIPPED without failing Track B" {
+@test "unconfigured surface (mobile) returns SKIPPED without failing Track B" {
   # Only server platform — mobile is not configured
   write_config 5 "server"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
@@ -113,7 +113,7 @@ teardown() {
   # Track B should still succeed (SKIPPED is PASSED-equivalent)
 }
 
-@test "AC1: all-unconfigured surfaces produce only stack-command envelopes when no platforms match" {
+@test "all-unconfigured surfaces produce only stack-command envelopes when no platforms match" {
   # No platforms that match any manual-test surface
   cat >"$CONFIG" <<EOF
 project_name: test-project
@@ -134,7 +134,7 @@ EOF
 # AC1: mixed configured + unconfigured surfaces
 # ---------------------------------------------------------------------------
 
-@test "AC1: mixed surfaces — api PASSED, browser PENDING, mobile SKIPPED, desktop SKIPPED" {
+@test "mixed surfaces — api PASSED, browser PENDING, mobile SKIPPED, desktop SKIPPED" {
   write_config 5 "server,web"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
@@ -155,7 +155,7 @@ EOF
 # AC1: dispatch-surface.sh absent → graceful skip with warning
 # ---------------------------------------------------------------------------
 
-@test "AC1: track-b-dispatch.sh has pre-flight existence check for dispatch-surface.sh" {
+@test "track-b-dispatch.sh has pre-flight existence check for dispatch-surface.sh" {
   # Verify the runner checks whether dispatch-surface.sh exists before
   # attempting the manual-test loop. The check must be a file-existence
   # test followed by a graceful-degradation path (warning + skip).
@@ -163,7 +163,7 @@ EOF
   grep -qi 'skip.*manual-test\|graceful degradation' "$RUNNER"
 }
 
-@test "AC1: track-b-dispatch.sh resolves dispatch-surface.sh via two-level parent (../../gaia-test-manual)" {
+@test "track-b-dispatch.sh resolves dispatch-surface.sh via two-level parent (../../gaia-test-manual)" {
   # Verify the sibling path uses TWO parent dirs, not one
   grep -q 'SCRIPT_DIR/../../gaia-test-manual/scripts/dispatch-surface.sh' "$RUNNER"
 }
@@ -172,7 +172,7 @@ EOF
 # AC1: envelope has type field for both stack-command and manual-test kinds
 # ---------------------------------------------------------------------------
 
-@test "AC1: every envelope in the output array has a type field" {
+@test "every envelope in the output array has a type field" {
   write_config 5 "server,web"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
@@ -188,14 +188,14 @@ EOF
 # AC1: PENDING and SKIPPED surfaces do NOT fail Track B
 # ---------------------------------------------------------------------------
 
-@test "AC1: PENDING verdict from browser surface does not fail Track B" {
+@test "PENDING verdict from browser surface does not fail Track B" {
   write_config 5 "server,web"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
   # Track B script-level exit code is 0 even with PENDING surfaces
 }
 
-@test "AC1: SKIPPED verdict from unconfigured surface does not fail Track B" {
+@test "SKIPPED verdict from unconfigured surface does not fail Track B" {
   write_config 5 "server"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]

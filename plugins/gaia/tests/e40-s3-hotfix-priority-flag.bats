@@ -157,7 +157,7 @@ EOF
 # AC5 — anti-regression: pflag_scan_backlog still returns next-sprint stories
 # (the existing E38-S4 contract is preserved bit-identical)
 # ============================================================================
-@test "AC5: pflag_scan_backlog still returns next-sprint backlog stories" {
+@test "pflag_scan_backlog still returns next-sprint backlog stories" {
   _load_pflag_helpers
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
@@ -175,7 +175,7 @@ EOF
 # AC5 extension — shared _pflag_scan_by_flag helper exists and parameterizes
 # both status filter and flag value
 # ============================================================================
-@test "AC5: _pflag_scan_by_flag delegates correctly for arbitrary status/flag pairs" {
+@test "_pflag_scan_by_flag delegates correctly for arbitrary status/flag pairs" {
   _load_pflag_helpers
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
@@ -194,7 +194,7 @@ EOF
 # Uses PATH override to mock sprint-state.sh — assert one invocation per
 # scanned key. This exercises the gaia-sprint-plan SKILL.md "Hotfix active-
 # sprint inject" branch via the same loop pattern an orchestrator would use.
-@test "AC4c / TC-HPF-3: orchestrator invokes sprint-state.sh inject once per hotfix story" {
+@test "c / : orchestrator invokes sprint-state.sh inject once per hotfix story" {
   _load_pflag_helpers
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
@@ -241,7 +241,7 @@ EOF
 # Sprint-state.sh inject is the canonical writer (ADR-095); this test asserts
 # that orchestrator code calls inject exactly once per matched story (not
 # twice from re-running pflag_scan_active_hotfix mid-flow).
-@test "AC4f / TC-HPF-6: scanning twice does NOT cause double inject" {
+@test "f / : scanning twice does NOT cause double inject" {
   _load_pflag_helpers
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"

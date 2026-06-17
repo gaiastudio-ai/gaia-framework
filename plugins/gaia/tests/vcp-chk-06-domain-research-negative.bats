@@ -26,27 +26,27 @@ teardown() { common_teardown; }
 # VCP-CHK-06 — Negative: Terminology Glossary missing.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-06: finalize.sh exits non-zero when Terminology Glossary missing" {
+@test "finalize.sh exits non-zero when Terminology Glossary missing" {
   export DOMAIN_RESEARCH_ARTIFACT="$FIXTURES/domain-research-missing-glossary.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-06: finalize.sh names the Terminology Glossary in the failure output" {
+@test "finalize.sh names the Terminology Glossary in the failure output" {
   export DOMAIN_RESEARCH_ARTIFACT="$FIXTURES/domain-research-missing-glossary.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Terminology Glossary"* ]] || [[ "$output" == *"glossary"* ]]
 }
 
-@test "VCP-CHK-06: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export DOMAIN_RESEARCH_ARTIFACT="$FIXTURES/domain-research-missing-glossary.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-06: finalize.sh guides user back to /gaia-domain-research" {
+@test "finalize.sh guides user back to /gaia-domain-research" {
   export DOMAIN_RESEARCH_ARTIFACT="$FIXTURES/domain-research-missing-glossary.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]

@@ -13,6 +13,7 @@
 #   - **/tests/fixtures/**
 #   - _memory/**
 #   - docs/**
+#   - documentation/**
 #   - .github/**
 #   - any *.bats file (defense-in-depth)
 #
@@ -85,7 +86,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # git diff --name-only against the base ref. Filter to production paths.
 PROD_PATHS="$(git diff --name-only "${BASE_REF}..HEAD" 2>/dev/null \
-  | grep -vE '^(gaia-framework/plugins/gaia/tests/|.*/tests/fixtures/|_memory/|docs/|\.github/)' \
+  | grep -vE '^(gaia-framework/plugins/gaia/tests/|.*/tests/fixtures/|_memory/|docs/|documentation/|\.github/)' \
   | grep -vE '\.bats$' || true)"
 
 if [[ -z "$PROD_PATHS" ]]; then

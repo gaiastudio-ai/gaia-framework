@@ -55,19 +55,19 @@ _step_count() {
 
 # ---------- fixtures present ----------
 
-@test "VCP-RC-03/04 fixture exists: readiness-compliance-conflict/epics-and-stories.md" {
+@test "04 fixture exists: readiness-compliance-conflict/epics-and-stories.md" {
   [ -f "$FIXTURES_DIR/readiness-compliance-conflict/epics-and-stories.md" ]
 }
 
-@test "VCP-RC-05 fixture exists: readiness-compliance-mix/epics-and-stories.md" {
+@test "fixture exists: readiness-compliance-mix/epics-and-stories.md" {
   [ -f "$FIXTURES_DIR/readiness-compliance-mix/epics-and-stories.md" ]
 }
 
-@test "VCP-RC-06 fixture exists: readiness-no-compliance/epics-and-stories.md" {
+@test "fixture exists: readiness-no-compliance/epics-and-stories.md" {
   [ -f "$FIXTURES_DIR/readiness-no-compliance/epics-and-stories.md" ]
 }
 
-@test "VCP-RC-02 fixture exists: readiness-self-contradiction/readiness-report.md" {
+@test "fixture exists: readiness-self-contradiction/readiness-report.md" {
   [ -f "$FIXTURES_DIR/readiness-self-contradiction/readiness-report.md" ]
 }
 
@@ -102,7 +102,7 @@ _step_count() {
   ! grep -qE 'GDPR|PCI[- ]DSS|HIPAA' "$f"
 }
 
-@test "self-contradiction fixture has FR-1 fully traced and FR-1 no test coverage" {
+@test "self-contradiction fixture has fully traced and no test coverage" {
   local f="$FIXTURES_DIR/readiness-self-contradiction/readiness-report.md"
   grep -qE 'FR-1.*fully traced' "$f"
   grep -qE 'FR-1.*no test coverage' "$f"
@@ -199,7 +199,7 @@ _step_count() {
 
 # ---------- traceability: FR-352 row references E46-S4 + VCP-RC-01..06 ----------
 
-@test "traceability matrix row for FR-352 references VCP-RC-01..06" {
+@test "traceability matrix row for references ..06" {
   local trace
   trace="$BATS_TEST_DIRNAME/../../../../docs/test-artifacts/traceability-matrix.md"
   if [ ! -f "$trace" ]; then
@@ -212,7 +212,7 @@ _step_count() {
 
 # ---------- test-plan: VCP-RC-02..06 status flipped from Planned ----------
 
-@test "test plan VCP-RC-02..06 rows no longer say 'Planned / Not Yet Written'" {
+@test "test plan ..06 rows no longer say 'Planned / Not Yet Written'" {
   local plan
   plan="$BATS_TEST_DIRNAME/../../../../docs/test-artifacts/test-plan.md"
   if [ ! -f "$plan" ]; then

@@ -37,34 +37,34 @@ teardown() { common_teardown; }
 # VCP-CHK-19 — Positive: all 31 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-19: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-19: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-19: finalize.sh reports PASS for No circular dependencies" {
+@test "finalize.sh reports PASS for No circular dependencies" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"No circular dependencies"* ]]
 }
 
-@test "VCP-CHK-19: finalize.sh reports PASS for test-plan.md read and risk levels extracted" {
+@test "finalize.sh reports PASS for test-plan.md read and risk levels extracted" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"test-plan.md read and risk levels extracted"* ]]
 }
 
-@test "VCP-CHK-19: finalize.sh reports 21 script-verifiable PASS items" {
+@test "finalize.sh reports 21 script-verifiable PASS items" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -77,7 +77,7 @@ teardown() { common_teardown; }
 # the count must be exactly 31.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 31 classified items" {
+@test "SKILL.md ## Validation section contains exactly 31 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -88,7 +88,7 @@ teardown() { common_teardown; }
   [ "$output" = "31" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -99,14 +99,14 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: circular-dependency check is classified script-verifiable" {
+@test "circular-dependency check is classified script-verifiable" {
   # Per epic design and VCP-CHK-37 audit: "No circular dependencies" MUST
   # land on script-verifiable (topological sort is tractable in bash/awk).
   run grep -E '^\- \[script-verifiable\].*(circular dependencies|topological sort)' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }

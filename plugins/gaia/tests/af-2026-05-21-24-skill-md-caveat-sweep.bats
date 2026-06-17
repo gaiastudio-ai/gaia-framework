@@ -25,45 +25,45 @@ _assert_cap() {
   [ "$actual" -le "$expected" ]
 }
 
-@test "AF-21-24: gaia-create-arch/SKILL.md cap 1 (Path-resolution caveat)" {
+@test "gaia-create-arch/SKILL.md cap 1 (Path-resolution caveat)" {
   _assert_cap gaia-create-arch/SKILL.md 1
 }
-@test "AF-21-24: gaia-create-prd/SKILL.md cap 1 (Path-resolution caveat)" {
+@test "gaia-create-prd/SKILL.md cap 1 (Path-resolution caveat)" {
   _assert_cap gaia-create-prd/SKILL.md 1
 }
-@test "AF-21-24: gaia-edit-arch/SKILL.md cap 1 (Path-resolution caveat)" {
+@test "gaia-edit-arch/SKILL.md cap 1 (Path-resolution caveat)" {
   _assert_cap gaia-edit-arch/SKILL.md 1
 }
-@test "AF-21-24: gaia-edit-prd/SKILL.md cap 1 (Path-resolution caveat)" {
+@test "gaia-edit-prd/SKILL.md cap 1 (Path-resolution caveat)" {
   _assert_cap gaia-edit-prd/SKILL.md 1
 }
-@test "AF-21-24: gaia-edit-ux/SKILL.md cap 1 (Path-resolution caveat)" {
+@test "gaia-edit-ux/SKILL.md cap 1 (Path-resolution caveat)" {
   _assert_cap gaia-edit-ux/SKILL.md 1
 }
-@test "AF-21-24: gaia-help/SKILL.md cap 6 (intentional dual-layout detector + phase indicators)" {
+@test "gaia-help/SKILL.md cap 6 (intentional dual-layout detector + phase indicators)" {
   _assert_cap gaia-help/SKILL.md 6
 }
-@test "AF-21-24: gaia-meeting/SKILL.md cap 1 (Path-resolution caveat)" {
+@test "gaia-meeting/SKILL.md cap 1 (Path-resolution caveat)" {
   _assert_cap gaia-meeting/SKILL.md 1
 }
-@test "AF-21-24: gaia-qa-tests/SKILL.md cap 3 (Do-NOT-hardcode caveats)" {
+@test "gaia-qa-tests/SKILL.md cap 3 (Do-NOT-hardcode caveats)" {
   _assert_cap gaia-qa-tests/SKILL.md 3
 }
-@test "AF-21-24: gaia-review-perf/SKILL.md cap 4 (Do-NOT-hardcode caveats)" {
+@test "gaia-review-perf/SKILL.md cap 4 (Do-NOT-hardcode caveats)" {
   _assert_cap gaia-review-perf/SKILL.md 4
 }
-@test "AF-21-24: gaia-run-all-reviews/SKILL.md cap 3 (ADR-070 dual-layout caveats)" {
+@test "gaia-run-all-reviews/SKILL.md cap 3" {
   _assert_cap gaia-run-all-reviews/SKILL.md 3
 }
-@test "AF-21-24: gaia-test-automate/SKILL.md cap 3 (Do-NOT-hardcode caveats)" {
+@test "gaia-test-automate/SKILL.md cap 3 (Do-NOT-hardcode caveats)" {
   _assert_cap gaia-test-automate/SKILL.md 3
 }
-@test "AF-21-24: gaia-test-review/SKILL.md cap 3 (Do-NOT-hardcode caveats)" {
+@test "gaia-test-review/SKILL.md cap 3 (Do-NOT-hardcode caveats)" {
   _assert_cap gaia-test-review/SKILL.md 3
 }
-@test "AF-21-24: gaia-val-validate/SKILL.md cap 8 (JSON envelope example payloads — illustrative)" {
+@test "gaia-val-validate/SKILL.md cap 8 (JSON envelope example payloads — illustrative)" {
   _assert_cap gaia-val-validate/SKILL.md 8
 }
-@test "AF-21-24: gaia-add-stories/SKILL.md zero legacy hits (fully canonical)" {
+@test "gaia-add-stories/SKILL.md zero legacy hits (fully canonical)" {
   _assert_cap gaia-add-stories/SKILL.md 0
 }

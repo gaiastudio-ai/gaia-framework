@@ -131,30 +131,30 @@ teardown() { common_teardown; }
 # Task 3 / AC1 / AC5 — VCP-FIX-07 LLM-checkable test exists with thrash shape
 # ---------------------------------------------------------------------------
 
-@test "Task3: VCP-FIX-07 test file exists" {
+@test "Task3: test file exists" {
   [ -f "$VCP_FIX_07" ]
 }
 
-@test "Task3/AC5: VCP-FIX-07 documents a 3-iteration thrash scenario" {
+@test "Task3/: documents a 3-iteration thrash scenario" {
   grep -q -E '3[- ]iteration|Iteration 1.*Iteration 2.*Iteration 3' "$VCP_FIX_07"
   grep -q 'Iteration 1' "$VCP_FIX_07"
   grep -q 'Iteration 2' "$VCP_FIX_07"
   grep -q 'Iteration 3' "$VCP_FIX_07"
 }
 
-@test "Task3/AC1: VCP-FIX-07 asserts unique iteration_number per record" {
+@test "Task3/: asserts unique iteration_number per record" {
   grep -q -E 'iteration_number = 1, 2, 3|distinguishable by .*iteration' "$VCP_FIX_07"
 }
 
-@test "Task3/AC3: VCP-FIX-07 asserts findings list present per iteration" {
+@test "Task3/: asserts findings list present per iteration" {
   grep -q '`findings`' "$VCP_FIX_07"
 }
 
-@test "Task3/AC3: VCP-FIX-07 asserts fix_diff captured per iteration" {
+@test "Task3/: asserts fix_diff captured per iteration" {
   grep -q -E 'fix_diff|fix_diff_summary' "$VCP_FIX_07"
 }
 
-@test "Task3/AC2: VCP-FIX-07 references checkpoint custom namespace or val_loop_iterations" {
+@test "Task3/: references checkpoint custom namespace or val_loop_iterations" {
   grep -q -E 'val_loop_iterations|custom\.' "$VCP_FIX_07"
 }
 
@@ -169,7 +169,7 @@ teardown() { common_teardown; }
   [ -f "$TEST_PLAN" ]
 }
 
-@test "Task5.2: test-plan.md VCP-FIX-07 row is marked Written (not Planned)" {
+@test "Task5.2: test-plan.md row is marked Written (not Planned)" {
   if [ -z "$TEST_PLAN" ] || [ ! -f "$TEST_PLAN" ]; then
     skip "test-plan.md is at project-root (docs/test-artifacts/), outside gaia-public/"
   fi

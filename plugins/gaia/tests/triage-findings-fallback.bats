@@ -24,7 +24,7 @@ teardown() {
 }
 
 # ---------------- TC-OEXP-1: fixture passes 3 inline checks + audit-trail ----------------
-@test "TC-OEXP-1: direct-write fixture story passes inline canonical-filename + frontmatter + audit-trail checks" {
+@test "direct-write fixture story passes inline canonical-filename + frontmatter + audit-trail checks" {
   local story_key="E92-S1"
   local slug="main-turn-direct-write-fallback-for-gaia-create-story-spawn-under-broken-context-fork"
   local fixture="$TEST_TMP/${story_key}-${slug}.md"
@@ -91,7 +91,7 @@ EOF
 }
 
 # ---------------- TC-OEXP-2: prose-script parity ----------------
-@test "TC-OEXP-2: canonical-filename regex in SKILL.md prose matches on-disk validator behavior (no drift)" {
+@test "canonical-filename regex in SKILL.md prose matches on-disk validator behavior (no drift)" {
   # The SKILL.md fallback prose MUST document the same regex shape the
   # validator enforces. The validator's algorithm is:
   #   basename == "{key}-{slugify(title)}.md"
@@ -109,7 +109,7 @@ EOF
 }
 
 # ---------------- AC1: fallback subsection present in triage-findings SKILL.md ----------------
-@test "AC1: /gaia-triage-findings SKILL.md has Main-turn direct-write fallback subsection" {
+@test "gaia-triage-findings SKILL.md has Main-turn direct-write fallback subsection" {
   run grep -F "Main-turn direct-write fallback" "$TRIAGE_SKILL"
   [ "$status" -eq 0 ]
   # Cite the canonical trigger conditions
@@ -120,13 +120,13 @@ EOF
 }
 
 # ---------------- AC1: prose says fallback is NOT preemptive ----------------
-@test "AC1: fallback prose explicitly states spawn is still the default" {
+@test "fallback prose explicitly states spawn is still the default" {
   run grep -F "spawn is still the default" "$TRIAGE_SKILL"
   [ "$status" -eq 0 ]
 }
 
 # ---------------- AC5: gaia-correct-course also documents the fallback ----------------
-@test "AC5: /gaia-correct-course SKILL.md has Main-turn direct-write fallback subsection" {
+@test "gaia-correct-course SKILL.md has Main-turn direct-write fallback subsection" {
   local cc_skill="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-correct-course" && pwd)/SKILL.md"
   run grep -F "Main-turn direct-write fallback" "$cc_skill"
   [ "$status" -eq 0 ]

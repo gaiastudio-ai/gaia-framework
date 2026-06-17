@@ -50,7 +50,7 @@ gaia-val-validate
 EOF
 }
 
-@test "AC5: every Phase 1-3 skill has a finalize.sh" {
+@test "every Phase 1-3 skill has a finalize.sh" {
     local missing=()
     while IFS= read -r s; do
         [ -n "$s" ] || continue
@@ -66,7 +66,7 @@ EOF
     fi
 }
 
-@test "AC5: every Phase 1-3 finalize.sh sources auto-save-memory.sh" {
+@test "every Phase 1-3 finalize.sh sources auto-save-memory.sh" {
     local missing=()
     while IFS= read -r s; do
         [ -n "$s" ] || continue
@@ -83,7 +83,7 @@ EOF
     fi
 }
 
-@test "AC5: every Phase 1-3 finalize.sh calls _auto_save_memory" {
+@test "every Phase 1-3 finalize.sh calls _auto_save_memory" {
     local missing=()
     while IFS= read -r s; do
         [ -n "$s" ] || continue
@@ -100,7 +100,7 @@ EOF
     fi
 }
 
-@test "AC5: every Phase 1-3 finalize.sh references the E45-S3 marker" {
+@test "every Phase 1-3 finalize.sh references the marker" {
     # Canonical comment so future audits can grep one token.
     # The durable anchor is the section heading 'Auto-save session memory'
     # present in every wired finalize.sh (the bookkeeping ID was removed by
@@ -121,7 +121,7 @@ EOF
     fi
 }
 
-@test "AC5: count of wired Phase 1-3 finalize.sh equals 24" {
+@test "count of wired Phase 1-3 finalize.sh equals 24" {
     local count=0
     while IFS= read -r s; do
         [ -n "$s" ] || continue
@@ -133,7 +133,7 @@ EOF
     [ "$count" -eq 24 ]
 }
 
-@test "AC-EC1: gaia-dev-story finalize.sh does NOT auto-save (Phase 4)" {
+@test "gaia-dev-story finalize.sh does NOT auto-save (Phase 4)" {
     # The Phase 4 wire-in MUST NOT be present in dev-story's finalize.sh.
     # The dev-story finalize is allowed to call the helper if it ever
     # extends the contract — but as of E45-S3 it must not. The
@@ -149,7 +149,7 @@ EOF
     fi
 }
 
-@test "AC-EC10: phase-classification.sh treats Phase 4 as fail-closed" {
+@test "phase-classification.sh treats Phase 4 as fail-closed" {
     # Cross-check via the helper directly — gaia-dev-story is in the Phase
     # 4 set and must return false from _is_phase_1_3 even after mutation.
     local script="$SKILLS_DIR/../scripts/lib/phase-classification.sh"

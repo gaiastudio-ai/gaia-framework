@@ -211,7 +211,7 @@ teardown() { common_teardown; }
 # Fixtures live under tests/fixtures/{sharded,flat,empty}-planning-artifacts/.
 # The fixtures path is resolved relative to BATS_TEST_DIRNAME (the tests/ dir).
 
-@test "validate-gate.sh: AC1 (TC-DRO-19) prd_exists accepts sharded prd/index.md layout" {
+@test "validate-gate.sh: prd_exists accepts sharded prd/index.md layout" {
   export PLANNING_ARTIFACTS="$BATS_TEST_DIRNAME/fixtures/sharded-planning-artifacts/docs/planning-artifacts"
   # Fixture has prd/index.md but NO flat prd.md.
   [ ! -f "$PLANNING_ARTIFACTS/prd.md" ]
@@ -220,7 +220,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "validate-gate.sh: AC2 (TC-DRO-19) epics_and_stories_exists accepts sharded epics-and-stories/index.md layout" {
+@test "validate-gate.sh: epics_and_stories_exists accepts sharded epics-and-stories/index.md layout" {
   # NOTE: AC2 literal fixture text in story E53-S233 says `epics/index.md`, but Task 1
   # mandates generic ${P%.md}/index.md derivation per AC9. Fixture path here matches
   # the generic rule (epics-and-stories/index.md). See Findings table for downstream
@@ -233,7 +233,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "validate-gate.sh: AC4 (TC-DRO-20) prd_exists still accepts legacy flat prd.md layout (regression guard)" {
+@test "validate-gate.sh: prd_exists still accepts legacy flat prd.md layout (regression guard)" {
   export PLANNING_ARTIFACTS="$BATS_TEST_DIRNAME/fixtures/flat-planning-artifacts/docs/planning-artifacts"
   # Fixture has flat prd.md but NO sharded prd/index.md.
   [ -s "$PLANNING_ARTIFACTS/prd.md" ]
@@ -242,7 +242,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "validate-gate.sh: AC5 (TC-DRO-20) epics_and_stories_exists still accepts legacy flat layout (regression guard)" {
+@test "validate-gate.sh: epics_and_stories_exists still accepts legacy flat layout (regression guard)" {
   export PLANNING_ARTIFACTS="$BATS_TEST_DIRNAME/fixtures/flat-planning-artifacts/docs/planning-artifacts"
   [ -s "$PLANNING_ARTIFACTS/epics-and-stories.md" ]
   [ ! -f "$PLANNING_ARTIFACTS/epics/index.md" ]

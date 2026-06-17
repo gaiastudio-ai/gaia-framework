@@ -25,34 +25,34 @@ teardown() { common_teardown; }
 # VCP-CHK-35 — Positive: all 8 items mapped (6 SV PASS, 2 LLM deferred).
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-35: finalize.sh exits 0 when all 6 script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all 6 script-verifiable items satisfied" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-35: finalize.sh emits a checklist header on positive path" {
+@test "finalize.sh emits a checklist header on positive path" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist: /gaia-ci-setup (8 items"* ]]
 }
 
-@test "VCP-CHK-35: finalize.sh reports 6/6 script-verifiable PASS" {
+@test "finalize.sh reports 6/6 script-verifiable PASS" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"6/6 script-verifiable items PASS"* ]]
 }
 
-@test "VCP-CHK-35: finalize.sh reports total items: 8" {
+@test "finalize.sh reports total items: 8" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Total items: 8"* ]]
 }
 
-@test "VCP-CHK-35: every SV-01..SV-06 item appears as PASS verbatim" {
+@test "every .. item appears as PASS verbatim" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -64,7 +64,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"[PASS] SV-06 — Pipeline config generated"* ]]
 }
 
-@test "VCP-CHK-35: finalize.sh enumerates 2 LLM-checkable items" {
+@test "finalize.sh enumerates 2 LLM-checkable items" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -72,7 +72,7 @@ teardown() { common_teardown; }
   [ "$llm_count" = "2" ]
 }
 
-@test "VCP-CHK-35: finalize.sh tags PASS lines with [skill: ci-setup]" {
+@test "finalize.sh tags PASS lines with [skill: ci-setup]" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -83,27 +83,27 @@ teardown() { common_teardown; }
 # VCP-CHK-36 — Negative: artifact missing the Secrets Management section.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-36: finalize.sh exits non-zero when Secrets Management missing" {
+@test "finalize.sh exits non-zero when Secrets Management missing" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-missing-secrets.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-36: finalize.sh names SV-03 (Secrets Management) in violations" {
+@test "finalize.sh names (Secrets Management) in violations" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-missing-secrets.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SV-03 — Secrets management documented"* ]]
 }
 
-@test "VCP-CHK-36: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-missing-secrets.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations:"* ]]
 }
 
-@test "VCP-CHK-36: finalize.sh guides user back to /gaia-ci-setup" {
+@test "finalize.sh guides user back to /gaia-ci-setup" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-missing-secrets.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -114,7 +114,7 @@ teardown() { common_teardown; }
 # AC5 — Classification audit on SKILL.md ## Validation section.
 # -------------------------------------------------------------------------
 
-@test "AC5: SKILL.md ## Validation section contains exactly 8 classified items" {
+@test "SKILL.md ## Validation section contains exactly 8 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -125,7 +125,7 @@ teardown() { common_teardown; }
   [ "$output" = "8" ]
 }
 
-@test "AC5: SKILL.md script-verifiable count is 6" {
+@test "SKILL.md script-verifiable count is 6" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -136,7 +136,7 @@ teardown() { common_teardown; }
   [ "$output" = "6" ]
 }
 
-@test "AC5: SKILL.md LLM-checkable count is 2" {
+@test "SKILL.md LLM-checkable count is 2" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -147,7 +147,7 @@ teardown() { common_teardown; }
   [ "$output" = "2" ]
 }
 
-@test "AC5: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }
@@ -166,14 +166,14 @@ teardown() { common_teardown; }
 # AC6 — Non-regression: checkpoint + lifecycle event still run.
 # -------------------------------------------------------------------------
 
-@test "AC6: checkpoint written on positive path" {
+@test "checkpoint written on positive path" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   [ -f "$CHECKPOINT_PATH/ci-setup.yaml" ]
 }
 
-@test "AC6: checkpoint written even when checklist fails" {
+@test "checkpoint written even when checklist fails" {
   export CI_SETUP_ARTIFACT="$FIXTURES/ci-setup-missing-secrets.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
@@ -184,14 +184,14 @@ teardown() { common_teardown; }
 # AC4 — CI_SETUP_ARTIFACT pointing at missing or empty file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when CI_SETUP_ARTIFACT missing" {
+@test "finalize.sh reports 'no artifact to validate' when CI_SETUP_ARTIFACT missing" {
   export CI_SETUP_ARTIFACT="$BATS_TMPDIR/does-not-exist-ci-setup-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"no artifact to validate"* ]]
 }
 
-@test "AC4: finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
+@test "finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
   local empty
   empty="$TEST_TMP/empty-ci-setup.md"
   : > "$empty"

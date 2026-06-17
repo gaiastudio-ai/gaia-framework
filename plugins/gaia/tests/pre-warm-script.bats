@@ -103,7 +103,7 @@ run_prewarm() { PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM" "$@"; }
 
 # --- Scenario 1 — cold cache ---------------------------------------------
 
-@test "E70-S7 AC1/AC4: cold cache runs grype db update + cdxgen warm + logs checksum, exit 0" {
+@test "cold cache runs grype db update + cdxgen warm + logs checksum, exit 0" {
   _mk_grype cold; _mk_cdxgen
   run_prewarm
   [ "$status" -eq 0 ]
@@ -113,7 +113,7 @@ run_prewarm() { PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM" "$@"; }
   [[ "$output" == *"$GAIA_SESSION_ID"* ]]
 }
 
-@test "E70-S7 AC4: checksum-log row is valid JSONL with required keys" {
+@test "checksum-log row is valid JSONL with required keys" {
   _mk_grype cold; _mk_cdxgen
   run_prewarm
   [ "$status" -eq 0 ]
@@ -124,7 +124,7 @@ run_prewarm() { PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM" "$@"; }
 
 # --- Scenario 2 — warm cache (idempotent, zero net I/O) ------------------
 
-@test "E70-S7 AC3: warm cache emits 'cache warm', exits 0, performs zero network I/O" {
+@test "warm cache emits 'cache warm', exits 0, performs zero network I/O" {
   _mk_grype present_fresh; _mk_cdxgen
   # Seed a fresh cdxgen sentinel-cache marker so the warm path triggers.
   mkdir -p "$GAIA_PREWARM_CACHE_DIR"; touch "$GAIA_PREWARM_CACHE_DIR/cdxgen-warm.marker"
@@ -137,7 +137,7 @@ run_prewarm() { PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM" "$@"; }
 
 # --- Scenario 3 — grype unavailable → graceful degrade -------------------
 
-@test "E70-S7 AC5: grype unavailable emits WARNING and exits 0 (graceful degrade)" {
+@test "grype unavailable emits WARNING and exits 0 (graceful degrade)" {
   # No fake grype on PATH; provide cdxgen only.
   _mk_cdxgen
   # Strip any real grype by using ONLY the fake bin dir as PATH plus coreutils.
@@ -148,7 +148,7 @@ run_prewarm() { PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM" "$@"; }
 
 # --- Scenario 4 — network failure → retry once → exit 0 ------------------
 
-@test "E70-S7 AC5: network failure on db update retries once then exits 0" {
+@test "network failure on db update retries once then exits 0" {
   _mk_grype netfail_once; _mk_cdxgen
   run_prewarm
   [ "$status" -eq 0 ]
@@ -158,7 +158,7 @@ run_prewarm() { PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM" "$@"; }
 
 # --- Scenario 5 — flag-off skip ------------------------------------------
 
-@test "E70-S7 AC-X1: flag-off (master flag false) emits INFO skip and exits 0 with no work" {
+@test "flag-off (master flag false) emits INFO skip and exits 0 with no work" {
   _mk_grype cold; _mk_cdxgen
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=false PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM"
   [ "$status" -eq 0 ]
@@ -167,7 +167,7 @@ run_prewarm() { PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM" "$@"; }
   [ ! -f "$GAIA_BROWNFIELD_AUDIT_DIR/grype-db-checksum.log" ]
 }
 
-@test "E70-S7 AC-X1: per-tool override off emits INFO skip and exits 0" {
+@test "per-tool override off emits INFO skip and exits 0" {
   _mk_grype cold; _mk_cdxgen
   GAIA_BROWNFIELD_PREWARM_ENABLED=false PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM"
   [ "$status" -eq 0 ]
@@ -176,7 +176,7 @@ run_prewarm() { PATH="$FAKE_BIN:$PATH" run bash "$PRE_WARM" "$@"; }
 
 # --- Scenario 6 — checksum-log append, same session ----------------------
 
-@test "E70-S7 AC4: two same-session invocations append two JSONL rows sharing session_id" {
+@test "two same-session invocations append two JSONL rows sharing session_id" {
   _mk_grype cold; _mk_cdxgen
   run_prewarm
   [ "$status" -eq 0 ]
@@ -213,7 +213,7 @@ YAML
   cp "$(cd "$BATS_TEST_DIRNAME/../config" && pwd)/project-config.schema.yaml" "$TEST_TMP/project-config.schema.yaml"
 }
 
-@test "E70-S7 AC-X1: resolve-config.sh --field brownfield.deterministic_tools is whitelisted and resolves true" {
+@test "resolve-config.sh --field brownfield.deterministic_tools is whitelisted and resolves true" {
   _mk_brownfield_config true true
   run bash "$SCRIPTS_DIR/resolve-config.sh" --shared "$TEST_TMP/project-config.yaml" \
     --schema "$TEST_TMP/project-config.schema.yaml" --field brownfield.deterministic_tools
@@ -221,7 +221,7 @@ YAML
   [ "$output" = "true" ]
 }
 
-@test "E70-S7 AC-X1: resolve-config.sh --field brownfield.prewarm_enabled is whitelisted and resolves true" {
+@test "resolve-config.sh --field brownfield.prewarm_enabled is whitelisted and resolves true" {
   _mk_brownfield_config true true
   run bash "$SCRIPTS_DIR/resolve-config.sh" --shared "$TEST_TMP/project-config.yaml" \
     --schema "$TEST_TMP/project-config.schema.yaml" --field brownfield.prewarm_enabled
@@ -229,14 +229,14 @@ YAML
   [ "$output" = "true" ]
 }
 
-@test "E70-S7 AC-X1: brownfield top-level key passes schema validation (--all exits 0)" {
+@test "brownfield top-level key passes schema validation (--all exits 0)" {
   _mk_brownfield_config true true
   run bash "$SCRIPTS_DIR/resolve-config.sh" --shared "$TEST_TMP/project-config.yaml" \
     --schema "$TEST_TMP/project-config.schema.yaml" --all
   [ "$status" -eq 0 ]
 }
 
-@test "E70-S7 AC-X1: absent brownfield block resolves empty (consumers treat as false)" {
+@test "absent brownfield block resolves empty (consumers treat as false)" {
   _mk_brownfield_config "" ""
   run bash "$SCRIPTS_DIR/resolve-config.sh" --shared "$TEST_TMP/project-config.yaml" \
     --schema "$TEST_TMP/project-config.schema.yaml" --field brownfield.deterministic_tools
@@ -246,7 +246,7 @@ YAML
 
 # --- AC-X2 / AC-X3 — pre_warm telemetry via the shared writer (E104-S1) -----
 
-@test "E70-S7 AC-X2/AC-X3: brownfield-telemetry.sh populates *.pre_warm fields on the report frontmatter" {
+@test "AC-X2/AC-X3: brownfield-telemetry.sh populates *.pre_warm fields on the report frontmatter" {
   TELEM="$(cd "$BATS_TEST_DIRNAME/../scripts/adapters/brownfield" && pwd)/brownfield-telemetry.sh"
   [ -x "$TELEM" ]
   cat > "$TEST_TMP/report.md" <<'MD'
@@ -267,7 +267,7 @@ MD
 
 # --- Hygiene --------------------------------------------------------------
 
-@test "E70-S7: pre-warm.sh exists, is executable, and passes bash -n" {
+@test "pre-warm.sh exists, is executable, and passes bash -n" {
   [ -x "$PRE_WARM" ]
   run bash -n "$PRE_WARM"
   [ "$status" -eq 0 ]

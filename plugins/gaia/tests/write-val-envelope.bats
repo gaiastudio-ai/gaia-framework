@@ -32,7 +32,7 @@ setup() {
 
 teardown() { common_teardown; }
 
-@test "TC-WVE-1: valid envelope writes sentinel + prints sentinel path on stdout" {
+@test "valid envelope writes sentinel + prints sentinel path on stdout" {
   local artifact="/tmp/some-artifact"
   local envelope='{"agent":"val","persona_sig":"val-dev-deadbeef00000000","timestamp":"2026-05-13T17:52:45Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
@@ -45,34 +45,34 @@ teardown() { common_teardown; }
   [ -f "$expected_path" ]
 }
 
-@test "TC-WVE-2: missing 'agent' field rejected with non-zero exit" {
+@test "missing 'agent' field rejected with non-zero exit" {
   local envelope='{"persona_sig":"val-dev-deadbeef00000000","timestamp":"2026-05-13T17:52:45Z","artifact_path":"/tmp/x","verdict":"PASSED"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
   [ "$status" -ne 0 ]
   [[ "$output" == *"agent"* ]]
 }
 
-@test "TC-WVE-3: missing 'persona_sig' field rejected with non-zero exit" {
+@test "missing 'persona_sig' field rejected with non-zero exit" {
   local envelope='{"agent":"val","timestamp":"2026-05-13T17:52:45Z","artifact_path":"/tmp/x","verdict":"PASSED"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
   [ "$status" -ne 0 ]
   [[ "$output" == *"persona_sig"* ]]
 }
 
-@test "TC-WVE-4: agent value != 'val' is rejected" {
+@test "agent value != 'val' is rejected" {
   local envelope='{"agent":"architect","persona_sig":"val-dev-deadbeef00000000","timestamp":"2026-05-13T17:52:45Z","artifact_path":"/tmp/x","verdict":"PASSED"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
   [ "$status" -ne 0 ]
   [[ "$output" == *"agent"* ]]
 }
 
-@test "TC-WVE-5: malformed JSON envelope rejected" {
+@test "malformed JSON envelope rejected" {
   local envelope='{not valid json'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
   [ "$status" -ne 0 ]
 }
 
-@test "TC-WVE-6: hash path uses sha256(artifact_path) first 16 hex" {
+@test "hash path uses sha256(artifact_path) first 16 hex" {
   local artifact="AF-2026-05-13-1"
   local expected_hash
   expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
@@ -82,7 +82,7 @@ teardown() { common_teardown; }
   [ -f "$CHECKPOINT_DIR/val-envelope-${expected_hash}.json" ]
 }
 
-@test "TC-WVE-7: write is atomic (no .tmp file left behind on success)" {
+@test "write is atomic (no .tmp file left behind on success)" {
   local artifact="/tmp/atomic-test"
   local envelope='{"agent":"val","persona_sig":"val-dev-x","timestamp":"2026-05-13T17:52:45Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
@@ -92,7 +92,7 @@ teardown() { common_teardown; }
   [ -z "$output" ]
 }
 
-@test "TC-WVE-8: re-write for same artifact_path overwrites prior sentinel" {
+@test "re-write for same artifact_path overwrites prior sentinel" {
   local artifact="/tmp/rewrite-test"
   local envelope_v1='{"agent":"val","persona_sig":"val-dev-v1","timestamp":"2026-05-13T17:52:45Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
   local envelope_v2='{"agent":"val","persona_sig":"val-dev-v2","timestamp":"2026-05-13T18:00:00Z","artifact_path":"'"$artifact"'","verdict":"FAILED"}'
@@ -109,7 +109,7 @@ teardown() { common_teardown; }
   [[ "$contents" == *"FAILED"* ]]
 }
 
-@test "TC-WVE-9: --envelope-stdin reads JSON from stdin" {
+@test "envelope-stdin reads JSON from stdin" {
   local artifact="/tmp/stdin-test"
   local envelope='{"agent":"val","persona_sig":"val-dev-x","timestamp":"2026-05-13T17:52:45Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run bash -c "printf '%s' '$envelope' | '$HELPER' --envelope-stdin"
@@ -119,7 +119,7 @@ teardown() { common_teardown; }
   [ -f "$CHECKPOINT_DIR/val-envelope-${expected_hash}.json" ]
 }
 
-@test "TC-WVE-10: helper script header identifies it as an orchestrator-side sentinel writer" {
+@test "helper script header identifies it as an orchestrator-side sentinel writer" {
   [ -f "$HELPER" ]
   run head -40 "$HELPER"
   [[ "$output" == *"orchestrator"* ]]
@@ -132,7 +132,7 @@ teardown() { common_teardown; }
 # directory the orchestrator happened to be running from when Val was
 # dispatched, and `assert_agent_envelope` (which itself runs from project
 # root) cannot find them.
-@test "TC-DSF-4: CHECKPOINT_PATH unset -> resolves via resolve-config.sh, sentinel lands at project-root path" {
+@test "CHECKPOINT_PATH unset -> resolves via resolve-config.sh, sentinel lands at project-root path" {
   # Arrange: per-test "project root" with a config/project-config.yaml.
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/config" "$proj/_memory/checkpoints"
@@ -169,7 +169,7 @@ YAML
 
 # TC-DSF-4b: explicit CHECKPOINT_PATH override MUST still win over the
 # config-resolver fallback (preserves test-fixture override semantics).
-@test "TC-DSF-4b: CHECKPOINT_PATH env-var override still wins over config resolver" {
+@test "CHECKPOINT_PATH env-var override still wins over config resolver" {
   local override_dir="$TEST_TMP/override-checkpoints"
   mkdir -p "$override_dir"
   local artifact="/tmp/d4b-fixture-artifact"
@@ -189,7 +189,7 @@ YAML
 # ============================================================================
 
 # TC-OSV-1: writer preserves `original_status` when present (pass-through).
-@test "TC-OSV-1: writer preserves original_status field when present" {
+@test "writer preserves original_status field when present" {
   local artifact="/tmp/osv1-artifact"
   local envelope='{"agent":"val","persona_sig":"val-dev-osv1","timestamp":"2026-06-03T12:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED","original_status":"WARNING"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
@@ -205,7 +205,7 @@ YAML
 }
 
 # TC-OSV-2: writer output unchanged when original_status absent (back-compat).
-@test "TC-OSV-2: writer output has no original_status key when input lacks it" {
+@test "writer output has no original_status key when input lacks it" {
   local artifact="/tmp/osv2-artifact"
   local envelope='{"agent":"val","persona_sig":"val-dev-osv2","timestamp":"2026-06-03T12:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
@@ -222,7 +222,7 @@ YAML
 # TC-OSV-5 (writer half): NFR-95 — original_status is NOT a required field.
 # An envelope MISSING it still writes fine (exit 0). This pins the invariant
 # against any future strict-schema regression in the required-key loop.
-@test "TC-OSV-5w: NFR-95 — envelope without original_status writes successfully (not required)" {
+@test "envelope without original_status writes successfully (not required)" {
   local artifact="/tmp/osv5w-artifact"
   local envelope='{"agent":"val","persona_sig":"val-dev-osv5w","timestamp":"2026-06-03T12:00:00Z","artifact_path":"'"$artifact"'","verdict":"FAILED"}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$envelope"
@@ -253,7 +253,7 @@ ASSERT_HELPER="$SCRIPTS_DIR/lib/assert-agent-envelope.sh"
 # object is unwrapped and written verbatim. The on-disk sentinel carries the
 # inner object's fields (NOT the outer wrapper), and persona_sig is preserved
 # exactly as the agent returned it.
-@test "TC-RSP-1: nested sentinel_envelope is unwrapped and written verbatim (persona_sig passthrough)" {
+@test "nested sentinel_envelope is unwrapped and written verbatim (persona_sig passthrough)" {
   local artifact="/tmp/rsp1-artifact"
   local inner_sig="val-dev-rsp1-passthrough"
   # The agent's full returned envelope: outer status/findings + nested sentinel.
@@ -279,7 +279,7 @@ ASSERT_HELPER="$SCRIPTS_DIR/lib/assert-agent-envelope.sh"
 
 # Nested passthrough end-to-end: the directly-written sentinel passes
 # assert_agent_envelope with no caller-side reshaping.
-@test "TC-RSP-2: nested-shape sentinel passes assert_agent_envelope end-to-end" {
+@test "nested-shape sentinel passes assert_agent_envelope end-to-end" {
   local artifact="/tmp/rsp2-artifact"
   local returned='{"status":"PASS","sentinel_envelope":{"agent":"val","persona_sig":"val-dev-rsp2","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}}'
   local sentinel_path
@@ -292,7 +292,7 @@ ASSERT_HELPER="$SCRIPTS_DIR/lib/assert-agent-envelope.sh"
 
 # Flat normalization: a returned envelope with canonical sentinel fields at
 # the top level (no `sentinel_envelope` wrapper) is accepted as-is.
-@test "TC-RSP-3: flat top-level sentinel is accepted and passes assert_agent_envelope" {
+@test "flat top-level sentinel is accepted and passes assert_agent_envelope" {
   local artifact="/tmp/rsp3-artifact"
   local flat='{"agent":"val","persona_sig":"val-dev-rsp3-flat","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
   local sentinel_path
@@ -307,7 +307,7 @@ ASSERT_HELPER="$SCRIPTS_DIR/lib/assert-agent-envelope.sh"
 
 # Nested passthrough preserves additive fields on the inner object
 # (e.g. original_status) — the whole inner object is serialized verbatim.
-@test "TC-RSP-4: nested unwrap preserves additive inner fields (original_status)" {
+@test "nested unwrap preserves additive inner fields (original_status)" {
   local artifact="/tmp/rsp4-artifact"
   local returned='{"status":"WARNING","sentinel_envelope":{"agent":"val","persona_sig":"val-dev-rsp4","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED","original_status":"WARNING"}}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$returned"
@@ -320,7 +320,7 @@ ASSERT_HELPER="$SCRIPTS_DIR/lib/assert-agent-envelope.sh"
 
 # Forgery resistance under nested shape: an inner sentinel with an empty
 # persona_sig is rejected by the writer regardless of the wrapper.
-@test "TC-RSP-5: nested sentinel with empty persona_sig is rejected by the writer" {
+@test "nested sentinel with empty persona_sig is rejected by the writer" {
   local artifact="/tmp/rsp5-artifact"
   local returned='{"status":"PASS","sentinel_envelope":{"agent":"val","persona_sig":"","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}}'
   CHECKPOINT_PATH="$CHECKPOINT_DIR" run "$HELPER" --envelope "$returned"
@@ -331,7 +331,7 @@ ASSERT_HELPER="$SCRIPTS_DIR/lib/assert-agent-envelope.sh"
 # Forgery resistance end-to-end: a forged sentinel written directly (agent=val
 # but persona_sig stripped post-write) fails assert_agent_envelope. Pins that
 # normalization does NOT weaken the asserter's persona_sig presence check.
-@test "TC-RSP-6: forged sentinel (persona_sig stripped) fails assert_agent_envelope" {
+@test "forged sentinel (persona_sig stripped) fails assert_agent_envelope" {
   local artifact="/tmp/rsp6-artifact"
   local flat='{"agent":"val","persona_sig":"val-dev-rsp6","timestamp":"2026-06-13T10:00:00Z","artifact_path":"'"$artifact"'","verdict":"PASSED"}'
   local sentinel_path
@@ -348,7 +348,7 @@ ASSERT_HELPER="$SCRIPTS_DIR/lib/assert-agent-envelope.sh"
 # rooted at the project_root normalizes to the SAME sentinel path a caller
 # computes from the project-relative spelling — so dispatch→write→assert agree
 # without manual reshaping.
-@test "TC-RSP-7: nested absolute artifact_path normalizes to the project-relative sentinel path" {
+@test "nested absolute artifact_path normalizes to the project-relative sentinel path" {
   local rel="artifacts/planning-artifacts/prd.md"
   local proj="$TEST_TMP/proj-rsp7"
   mkdir -p "$proj"

@@ -70,20 +70,20 @@ teardown() { common_teardown; }
 
 # ---------- AC1 — dry-run section header ----------
 
-@test "AC1: dry-run lists a 'Legacy command stubs to remove' section" {
+@test "dry-run lists a 'Legacy command stubs to remove' section" {
   run "$SCRIPT" dry-run --project-root "$PROJECT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Legacy command stubs to remove"* ]]
 }
 
-@test "AC1: dry-run enumerates each .claude/commands/gaia-*.md file" {
+@test "dry-run enumerates each .claude/commands/gaia-*.md file" {
   run "$SCRIPT" dry-run --project-root "$PROJECT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"gaia-help.md"* ]]
   [[ "$output" == *"gaia-migrate.md"* ]]
 }
 
-@test "AC1/AC4: dry-run does NOT list non-GAIA command files" {
+@test "dry-run does NOT list non-GAIA command files" {
   run "$SCRIPT" dry-run --project-root "$PROJECT"
   [ "$status" -eq 0 ]
   # The dry-run plan must include the stubs section (guards against a vacuous
@@ -106,21 +106,21 @@ teardown() { common_teardown; }
 
 # ---------- AC2 + AC3 — apply removes stubs ----------
 
-@test "AC3: apply removes every .claude/commands/gaia-*.md file" {
+@test "apply removes every .claude/commands/gaia-*.md file" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
   [ ! -f "$PROJECT/.claude/commands/gaia-help.md" ]
   [ ! -f "$PROJECT/.claude/commands/gaia-migrate.md" ]
 }
 
-@test "AC4: apply preserves non-GAIA command files (leading-prefix glob)" {
+@test "apply preserves non-GAIA command files (leading-prefix glob)" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
   [ -f "$PROJECT/.claude/commands/my-tool.md" ]
   [ -f "$PROJECT/.claude/commands/my-gaia-tool.md" ]
 }
 
-@test "AC5: apply leaves .claude/commands/ directory in place even if empty" {
+@test "apply leaves .claude/commands/ directory in place even if empty" {
   # Remove the non-GAIA files to force the directory empty after apply.
   rm "$PROJECT/.claude/commands/my-tool.md" "$PROJECT/.claude/commands/my-gaia-tool.md"
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
@@ -130,7 +130,7 @@ teardown() { common_teardown; }
 
 # ---------- AC2 + AC6 — backup precedes delete; sha256 verbatim ----------
 
-@test "AC2/AC6: apply writes a verbatim sha256 copy of each stub into the backup tree" {
+@test "apply writes a verbatim sha256 copy of each stub into the backup tree" {
   # Capture pre-apply checksums of the stubs.
   pre_help_sha=$(shasum -a 256 "$PROJECT/.claude/commands/gaia-help.md" | awk '{print $1}')
   pre_migr_sha=$(shasum -a 256 "$PROJECT/.claude/commands/gaia-migrate.md" | awk '{print $1}')
@@ -153,7 +153,7 @@ teardown() { common_teardown; }
 
 # ---------- AC7 — rollback path in summary ----------
 
-@test "AC7: apply summary references .claude/commands backup path for rollback" {
+@test "apply summary references .claude/commands backup path for rollback" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
   # Final summary must mention the backup path AND the .claude/commands subtree.
@@ -170,7 +170,7 @@ teardown() { common_teardown; }
   fi
 }
 
-@test "AC7: apply summary documents the global ~/.claude/commands limitation" {
+@test "apply summary documents the global ~/.claude/commands limitation" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
   # User must be told about the global stub directory the project-local
@@ -218,7 +218,7 @@ _seed_v1_content() {
 
 # ---------- AC1 — dry-run lists v1 dirs + size ----------
 
-@test "E28-S188 AC1: dry-run lists v1 directories section with size" {
+@test "dry-run lists v1 directories section with size" {
   _seed_v1_content
   run "$SCRIPT" dry-run --project-root "$PROJECT"
   [ "$status" -eq 0 ]
@@ -237,7 +237,7 @@ _seed_v1_content() {
 
 # ---------- AC2 + AC4 + AC6 — apply backs up, deletes, prints rollback ----------
 
-@test "E28-S188 AC2/AC4/AC6: apply --yes backs up and deletes v1 dirs and prints rollback" {
+@test "apply --yes backs up and deletes v1 dirs and prints rollback" {
   _seed_v1_content
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
@@ -259,7 +259,7 @@ _seed_v1_content() {
 
 # ---------- AC8 — graceful single-dir removal ----------
 
-@test "E28-S188 AC8: apply --yes gracefully handles only _gaia/ present" {
+@test "apply --yes gracefully handles only _gaia/ present" {
   # Remove _memory and custom before apply — only _gaia/ remains.
   rm -rf "$PROJECT/_memory" "$PROJECT/custom"
   # The partial-install HALT at detect-time only fires when the v1 MARKERS
@@ -278,7 +278,7 @@ _seed_v1_content() {
 
 # ---------- AC5 + exit 5 — safety gate refuses without v2 marker ----------
 
-@test "E28-S188 AC5: delete refused if v2 marker config missing (exit 5)" {
+@test "delete refused if v2 marker config missing (exit 5)" {
   # Sabotage the config-split step's output so the v2 marker is absent at
   # safety-gate time. We stage a wrapper script that runs the real migration
   # but removes config/project-config.yaml before _migrate_v1_directories.
@@ -338,7 +338,7 @@ EOF
 
 # ---------- AC7 — idempotent re-run exits 0 on v2-only ----------
 
-@test "E28-S188 AC7: re-run on v2-only project exits 0 with 'already on v2'" {
+@test "re-run on v2-only project exits 0 with 'already on v2'" {
   # First run: full migration.
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
@@ -353,7 +353,7 @@ EOF
 
 # ---------- AC10 + W2 — non-TTY without --yes must exit 7, not hang ----------
 
-@test "E28-S188 W2: non-TTY apply without --yes exits 7 (no hang)" {
+@test "W2: non-TTY apply without --yes exits 7 (no hang)" {
   # Under bats `run`, stdin is not a TTY. Without --yes, the script must
   # detect non-TTY and abort with exit 7 — not block on `read`.
   run "$SCRIPT" apply --project-root "$PROJECT"
@@ -367,7 +367,7 @@ EOF
 
 # ---------- AC10 — --force is equivalent to --yes ----------
 
-@test "E28-S188 AC10: --force bypasses confirmation prompt" {
+@test "force bypasses confirmation prompt" {
   run "$SCRIPT" apply --project-root "$PROJECT" --force
   [ "$status" -eq 0 ]
   [ ! -d "$PROJECT/_gaia" ]
@@ -375,7 +375,7 @@ EOF
 
 # ---------- SKILL.md — user-facing doc updated (W3) ----------
 
-@test "E28-S188 W3: SKILL.md documents v1 directory deletion" {
+@test "W3: SKILL.md documents v1 directory deletion" {
   skill="$SCRIPTS_DIR/../skills/gaia-migrate/SKILL.md"
   [ -f "$skill" ]
   # Must explicitly mention that v1 dirs are DELETED (not just backed up).
@@ -395,7 +395,7 @@ EOF
 # the command unambiguously exercises the plugin's gaia-help skill.
 # ---------------------------------------------------------------------------
 
-@test "E28-S189 AC1: SKILL.md Step 6 smoke-test prose uses namespaced /gaia:gaia-help" {
+@test "SKILL.md Step 6 smoke-test prose uses namespaced /gaia:gaia-help" {
   skill="$SCRIPTS_DIR/../skills/gaia-migrate/SKILL.md"
   [ -f "$skill" ]
   # Extract Step 6 body: everything from the "6. **Manual post-migration"
@@ -424,7 +424,7 @@ EOF
   fi
 }
 
-@test "E28-S189 AC2: SKILL.md smoke-test prose explains the namespace rationale" {
+@test "SKILL.md smoke-test prose explains the namespace rationale" {
   skill="$SCRIPTS_DIR/../skills/gaia-migrate/SKILL.md"
   [ -f "$skill" ]
   # The prose must explain WHY the gaia: prefix matters — reference the legacy
@@ -432,7 +432,7 @@ EOF
   grep -qiE 'gaia:[^[:space:]]*prefix|namespace|legacy.{0,40}stub|plugin.{0,20}(skill|gaia-help).{0,40}(invoked|exercised|routed)' "$skill"
 }
 
-@test "E28-S189 AC3: gaia-migrate.sh success summary points users to /gaia:gaia-help" {
+@test "gaia-migrate.sh success summary points users to /gaia:gaia-help" {
   script="$SCRIPTS_DIR/gaia-migrate.sh"
   [ -f "$script" ]
   # The script must include the namespaced smoke-test hint somewhere in its
@@ -449,7 +449,7 @@ EOF
   fi
 }
 
-@test "E28-S189 AC3 runtime: apply summary prints /gaia:gaia-help smoke-test hint" {
+@test "runtime: apply summary prints /gaia:gaia-help smoke-test hint" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
   # The user-facing summary block printed to stdout must mention the
@@ -518,7 +518,7 @@ EOF
 # during the split BEFORE the destructive delete runs — otherwise the v2
 # project fails resolver's required-field check on first skill invocation.
 
-@test "E28-S200 AC3: apply writes the 3 new artifact-dir keys into project-config.yaml" {
+@test "apply writes the 3 new artifact-dir keys into project-config.yaml" {
   # The setup already seeds planning_artifacts/test_artifacts/creative_artifacts/
   # implementation_artifacts into v1 global.yaml (lines 44-47 in this file).
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
@@ -537,7 +537,7 @@ EOF
   done
 }
 
-@test "E28-S200 AC3: missing test_artifacts in v1 config → abort BEFORE delete" {
+@test "missing test_artifacts in v1 config → abort BEFORE delete" {
   # Remove test_artifacts from the v1 config; migration must refuse to delete.
   sed -i.bak '/^test_artifacts:/d' "$PROJECT/_gaia/_config/global.yaml"
   rm -f "$PROJECT/_gaia/_config/global.yaml.bak"

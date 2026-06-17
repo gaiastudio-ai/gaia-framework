@@ -44,7 +44,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
 # AC5 — each of the 5 SKILL.md files wires the shared helper uniformly
 # ---------------------------------------------------------------------------
 
-@test "AC5: gaia-create-story SKILL.md invokes val-sidecar-write.sh as final step" {
+@test "gaia-create-story SKILL.md invokes val-sidecar-write.sh as final step" {
   local skill="$SKILLS_DIR/gaia-create-story/SKILL.md"
   [ -f "$skill" ]
   grep -q 'val-sidecar-write.sh' "$skill"
@@ -53,7 +53,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q -- '--decision-payload' "$skill"
 }
 
-@test "AC5: gaia-validate-story SKILL.md invokes val-sidecar-write.sh as final step" {
+@test "gaia-validate-story SKILL.md invokes val-sidecar-write.sh as final step" {
   local skill="$SKILLS_DIR/gaia-validate-story/SKILL.md"
   [ -f "$skill" ]
   grep -q 'val-sidecar-write.sh' "$skill"
@@ -62,7 +62,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q -- '--decision-payload' "$skill"
 }
 
-@test "AC5: gaia-sprint-plan SKILL.md invokes val-sidecar-write.sh as final step" {
+@test "gaia-sprint-plan SKILL.md invokes val-sidecar-write.sh as final step" {
   local skill="$SKILLS_DIR/gaia-sprint-plan/SKILL.md"
   [ -f "$skill" ]
   grep -q 'val-sidecar-write.sh' "$skill"
@@ -73,7 +73,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q 'sprint-state.sh' "$skill"
 }
 
-@test "AC5: gaia-triage-findings SKILL.md invokes val-sidecar-write.sh as final step" {
+@test "gaia-triage-findings SKILL.md invokes val-sidecar-write.sh as final step" {
   local skill="$SKILLS_DIR/gaia-triage-findings/SKILL.md"
   [ -f "$skill" ]
   grep -q 'val-sidecar-write.sh' "$skill"
@@ -84,7 +84,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -Eq 'triage-[A-Za-z0-9{}%+-]+' "$skill"
 }
 
-@test "AC5: gaia-retro SKILL.md invokes val-sidecar-write.sh as final step" {
+@test "gaia-retro SKILL.md invokes val-sidecar-write.sh as final step" {
   local skill="$SKILLS_DIR/gaia-retro/SKILL.md"
   [ -f "$skill" ]
   grep -q 'val-sidecar-write.sh' "$skill"
@@ -93,7 +93,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q -- '--decision-payload' "$skill"
 }
 
-@test "AC5: gaia-retro SKILL.md Val-sidecar writes delegate to shared helper (no retro-sidecar-write for validator-sidecar targets)" {
+@test "gaia-retro SKILL.md Val-sidecar writes delegate to shared helper (no retro-sidecar-write for validator-sidecar targets)" {
   local skill="$SKILLS_DIR/gaia-retro/SKILL.md"
   # The Step 7 "Val Memory Persistence" section must not use retro-sidecar-write
   # for validator-sidecar targets — it must delegate to val-sidecar-write.sh
@@ -125,7 +125,7 @@ _run_consumer() {
     --sprint-id "$sprint"
 }
 
-@test "TC-VSP-4: /gaia-create-story final-step invocation appends one tagged entry" {
+@test "gaia-create-story final-step invocation appends one tagged entry" {
   run _run_consumer "/gaia-create-story" "E99-S1" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
@@ -134,7 +134,7 @@ _run_consumer() {
   grep -q 'input_id: E99-S1' "$log"
 }
 
-@test "TC-VSP-4: /gaia-validate-story final-step invocation appends one tagged entry" {
+@test "gaia-validate-story final-step invocation appends one tagged entry" {
   run _run_consumer "/gaia-validate-story" "E99-S2" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
@@ -143,7 +143,7 @@ _run_consumer() {
   grep -q 'input_id: E99-S2' "$log"
 }
 
-@test "TC-VSP-4: /gaia-sprint-plan final-step invocation appends one tagged entry" {
+@test "gaia-sprint-plan final-step invocation appends one tagged entry" {
   run _run_consumer "/gaia-sprint-plan" "sprint-26" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
@@ -152,7 +152,7 @@ _run_consumer() {
   grep -q 'input_id: sprint-26' "$log"
 }
 
-@test "TC-VSP-4: /gaia-triage-findings final-step invocation appends one tagged entry" {
+@test "gaia-triage-findings final-step invocation appends one tagged entry" {
   run _run_consumer "/gaia-triage-findings" "triage-2026-04-22-001" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
@@ -161,7 +161,7 @@ _run_consumer() {
   grep -q 'input_id: triage-2026-04-22-001' "$log"
 }
 
-@test "TC-VSP-4: /gaia-retro final-step invocation appends one tagged entry" {
+@test "gaia-retro final-step invocation appends one tagged entry" {
   run _run_consumer "/gaia-retro" "sprint-26" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
@@ -170,7 +170,7 @@ _run_consumer() {
   grep -q 'input_id: sprint-26' "$log"
 }
 
-@test "TC-VSP-4: all 5 commands in sequence append 5 distinct entries in execution order" {
+@test "all 5 commands in sequence append 5 distinct entries in execution order" {
   _run_consumer "/gaia-create-story"    "E99-S1"                  "sprint-26"
   _run_consumer "/gaia-validate-story"  "E99-S1"                  "sprint-26"
   _run_consumer "/gaia-sprint-plan"     "sprint-26"               "sprint-26"
@@ -191,7 +191,7 @@ _run_consumer() {
 # TC-VSP-5 — /gaia-tech-debt-review is untouched (regression guard)
 # ---------------------------------------------------------------------------
 
-@test "TC-VSP-5: gaia-tech-debt-review SKILL.md does NOT reference val-sidecar-write.sh" {
+@test "gaia-tech-debt-review SKILL.md does NOT reference val-sidecar-write.sh" {
   local skill="$SKILLS_DIR/gaia-tech-debt-review/SKILL.md"
   [ -f "$skill" ]
   run grep -q 'val-sidecar-write.sh' "$skill"
@@ -203,7 +203,7 @@ _run_consumer() {
 # deprecation redirect (E39-S6) — the tech-debt review capability is now a
 # phase of /gaia-triage-findings, which carries the Val-sidecar persistence.
 # Retargeted to assert the redirect (no Step 7) + that triage owns the write.
-@test "TC-VSP-5: gaia-tech-debt-review retired to a redirect; triage carries the Val-sidecar write" {
+@test "gaia-tech-debt-review retired to a redirect; triage carries the Val-sidecar write" {
   local redirect="$SKILLS_DIR/gaia-tech-debt-review/SKILL.md"
   # The redirect no longer has a Step 7 / inline sidecar write.
   run grep -q '### Step 7 — Save to Val Memory' "$redirect"
@@ -220,7 +220,7 @@ _run_consumer() {
 # confirm the files are byte-identical)
 # ---------------------------------------------------------------------------
 
-@test "TC-VSP-6: upstream failure before helper invocation leaves sidecar byte-identical" {
+@test "upstream failure before helper invocation leaves sidecar byte-identical" {
   local log="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   local ctx="$PROJECT_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
   # Seed both files with known content via a dry prior-run.
@@ -240,7 +240,7 @@ _run_consumer() {
 # TC-VSP-2e — end-to-end idempotency through each consumer command
 # ---------------------------------------------------------------------------
 
-@test "TC-VSP-2e: re-running /gaia-create-story with identical payload yields skipped_duplicate" {
+@test "re-running /gaia-create-story with identical payload yields skipped_duplicate" {
   run _run_consumer "/gaia-create-story" "E99-S1" "sprint-26"
   [ "$status" -eq 0 ]
   [[ "$output" == *"status=written"* ]]
@@ -252,7 +252,7 @@ _run_consumer() {
   [ "$before" -eq "$after" ]
 }
 
-@test "TC-VSP-2e: re-running /gaia-retro with identical payload yields skipped_duplicate" {
+@test "re-running /gaia-retro with identical payload yields skipped_duplicate" {
   run _run_consumer "/gaia-retro" "sprint-26" "sprint-26"
   [ "$status" -eq 0 ]
   run _run_consumer "/gaia-retro" "sprint-26" "sprint-26"
@@ -260,7 +260,7 @@ _run_consumer() {
   [[ "$output" == *"status=skipped_duplicate"* ]]
 }
 
-@test "TC-VSP-2e: re-running /gaia-sprint-plan with identical payload yields skipped_duplicate" {
+@test "re-running /gaia-sprint-plan with identical payload yields skipped_duplicate" {
   run _run_consumer "/gaia-sprint-plan" "sprint-26" "sprint-26"
   [ "$status" -eq 0 ]
   run _run_consumer "/gaia-sprint-plan" "sprint-26" "sprint-26"
@@ -268,7 +268,7 @@ _run_consumer() {
   [[ "$output" == *"status=skipped_duplicate"* ]]
 }
 
-@test "TC-VSP-2e: re-running /gaia-validate-story with identical payload yields skipped_duplicate" {
+@test "re-running /gaia-validate-story with identical payload yields skipped_duplicate" {
   run _run_consumer "/gaia-validate-story" "E99-S2" "sprint-26"
   [ "$status" -eq 0 ]
   run _run_consumer "/gaia-validate-story" "E99-S2" "sprint-26"
@@ -276,7 +276,7 @@ _run_consumer() {
   [[ "$output" == *"status=skipped_duplicate"* ]]
 }
 
-@test "TC-VSP-2e: re-running /gaia-triage-findings with identical payload yields skipped_duplicate" {
+@test "re-running /gaia-triage-findings with identical payload yields skipped_duplicate" {
   run _run_consumer "/gaia-triage-findings" "triage-2026-04-22-001" "sprint-26"
   [ "$status" -eq 0 ]
   run _run_consumer "/gaia-triage-findings" "triage-2026-04-22-001" "sprint-26"

@@ -18,7 +18,7 @@ setup() {
 }
 teardown() { common_teardown; }
 
-@test "issue-1314: the shipped ux-design template satisfies SV-09 (Components heading)" {
+@test "issue-1314: the shipped ux-design template satisfies (Components heading)" {
   [ -f "$TEMPLATE" ]
   [ -f "$HEADING_LIB" ]
   # shellcheck disable=SC1090

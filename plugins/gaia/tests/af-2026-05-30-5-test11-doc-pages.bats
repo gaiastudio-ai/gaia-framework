@@ -19,20 +19,20 @@ teardown() { common_teardown; }
 # D-04: gaia-readiness-check.html documents the frontmatter contract
 # ===========================================================================
 
-@test "AF-30-5 D-04: readiness-check.html lists the required frontmatter fields" {
+@test "D-04: readiness-check.html lists the required frontmatter fields" {
   for f in checks_passed critical_blockers contradictions_found; do
     run grep -F "$f" "$DOC_ROOT/commands/gaia-readiness-check.html"
     [ "$status" -eq 0 ] || { echo "missing field: $f" >&2; return 1; }
   done
 }
 
-@test "AF-30-5 D-04: readiness-check.html documents the Output Verification section" {
+@test "D-04: readiness-check.html documents the Output Verification section" {
   run grep -F 'Output Verification' \
         "$DOC_ROOT/commands/gaia-readiness-check.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-5 D-04: readiness-check.html documents the frontmatter contract" {
+@test "D-04: readiness-check.html documents the frontmatter contract" {
   # Assert the documented contract, not an internal anchor identifier (scrubbed
   # from published docs).
   run grep -F 'Readiness-report frontmatter contract' \
@@ -45,20 +45,20 @@ teardown() { common_teardown; }
 # D-05: gaia-create-story.html documents the --file vs positional CLI shape
 # ===========================================================================
 
-@test "AF-30-5 D-05: create-story.html documents the canonical --file form" {
+@test "D-05: create-story.html documents the canonical --file form" {
   # Use -e -- so grep doesn't interpret --file as its own flag.
   run grep -F -e '--file' \
         "$DOC_ROOT/commands/gaia-create-story.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-5 D-05: create-story.html documents the positional deprecation NOTICE" {
+@test "D-05: create-story.html documents the positional deprecation NOTICE" {
   run grep -F 'positional path is deprecated' \
         "$DOC_ROOT/commands/gaia-create-story.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-5 D-05: create-story.html lists all three validators" {
+@test "D-05: create-story.html lists all three validators" {
   for v in validate-frontmatter validate-ac-format validate-canonical-filename; do
     run grep -F "$v" \
           "$DOC_ROOT/commands/gaia-create-story.html"
@@ -66,7 +66,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AF-30-5 D-05: create-story.html sidebar TOC includes the new section" {
+@test "D-05: create-story.html sidebar TOC includes the new section" {
   run grep -F '#story-validators' \
         "$DOC_ROOT/commands/gaia-create-story.html"
   [ "$status" -eq 0 ]

@@ -20,7 +20,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
 
 # ---------- AC4 / TS4: resolve latest dated artifact ----------
 
-@test "AC4/TS4: resolver returns the newest dated artifact (glob + sort)" {
+@test "resolver returns the newest dated artifact (glob + sort)" {
   run bash "$RESOLVER" --dir "$FX/dated/nfr-assessment" --base nfr-assessment
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq 'nfr-assessment-2026-05-26\.md$' \
@@ -31,14 +31,14 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
 
 # ---------- AC4 / TS5: undated-legacy read-side fallback ----------
 
-@test "AC4/TS5: resolver falls back to the undated legacy file when no dated form exists" {
+@test "resolver falls back to the undated legacy file when no dated form exists" {
   run bash "$RESOLVER" --dir "$FX/undated" --base nfr-assessment
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq 'nfr-assessment\.md$' \
     || { echo "expected undated fallback, got: $output" >&2; false; }
 }
 
-@test "AC4: a dated file wins over an undated sibling for the same base" {
+@test "a dated file wins over an undated sibling for the same base" {
   d="$TEST_TMP/both"; mkdir -p "$d"
   printf 'x\n' > "$d/nfr-assessment.md"
   printf 'x\n' > "$d/nfr-assessment-2026-05-20.md"
@@ -48,7 +48,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
     || { echo "dated must win over undated when both exist, got: $output" >&2; false; }
 }
 
-@test "AC4: not-found (neither dated nor undated) exits non-zero with actionable error" {
+@test "not-found (neither dated nor undated) exits non-zero with actionable error" {
   d="$TEST_TMP/empty"; mkdir -p "$d"
   run bash "$RESOLVER" --dir "$d" --base nfr-assessment
   [ "$status" -ne 0 ]
@@ -71,7 +71,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
 
 # ---------- AC1 / AC2 / AC3: convention documented + producers + conformance ----------
 
-@test "AC1: ADR-127 Pillar 3 documents the three-class date-suffix rule" {
+@test "Pillar 3 documents the three-class date-suffix rule" {
   # ADR-127 is a PROJECT-ROOT artifact (.gaia/artifacts/planning-artifacts/), which
   # is NOT part of the gaia-public checkout that CI runs against. Per
   # feedback_no_project_root_artifact_assert_in_gaia_public_bats, this test must
@@ -83,7 +83,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
     || { echo "ADR-127 should name the three date-suffix classes" >&2; grep -in 'date-suffix\|living\|per-event' "$ADR" | head >&2; false; }
 }
 
-@test "AC2: gaia-nfr + gaia-perf-testing producers write the dated + grouped form" {
+@test "gaia-nfr + gaia-perf-testing producers write the dated + grouped form" {
   NFR="$REPO_ROOT/plugins/gaia/skills/gaia-nfr/SKILL.md"
   PERF="$REPO_ROOT/plugins/gaia/skills/gaia-perf-testing/SKILL.md"
   [ -f "$NFR" ] && [ -f "$PERF" ]
@@ -95,7 +95,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
     || { echo "gaia-perf-testing SKILL.md should write the dated + grouped performance-test-plan form" >&2; grep -n 'performance-test-plan' "$PERF" | head >&2; false; }
 }
 
-@test "AC3: retrospective producer writes the ADR-119 grouped+dated subdir; adversarial is dated (grouping caller-side) — confirm, no relocation" {
+@test "retrospective producer writes the grouped+dated subdir; adversarial is dated (grouping caller-side) — confirm, no relocation" {
   ADV="$REPO_ROOT/plugins/gaia/skills/gaia-adversarial/SKILL.md"
   RETRO="$REPO_ROOT/plugins/gaia/skills/gaia-retro/SKILL.md"
   [ -f "$ADV" ] && [ -f "$RETRO" ]

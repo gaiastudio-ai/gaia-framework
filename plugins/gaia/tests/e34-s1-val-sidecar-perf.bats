@@ -51,7 +51,7 @@ teardown() { common_teardown; }
 
 SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
 
-@test "TC-VSP-7: 100 invocations with distinct payloads — median latency <= 75ms, no single call > 1s" {
+@test "100 invocations with distinct payloads — median latency <= 75ms, no single call > 1s" {
   # Five warm-up invocations to amortize OS page-cache, fork/exec, and
   # interpreter startup costs before any sample is recorded. NFR-VSP-1
   # measures steady-state median, not cold start.

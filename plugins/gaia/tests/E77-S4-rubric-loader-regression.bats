@@ -26,7 +26,7 @@ setup() {
 }
 
 # AC9.1 — every base skill loads byte-identically with no regimes/domain/project.
-@test "AC9.1: base-only load is identity-merge for skill=code" {
+@test ".1: base-only load is identity-merge for skill=code" {
   local out expected
   out=$("$LOADER" --skill code \
                   --rubrics-root "$PLUGIN_DIR/rubrics" \
@@ -35,7 +35,7 @@ setup() {
   [ "$out" = "$expected" ]
 }
 
-@test "AC9.2: base-only load is identity-merge for skill=qa" {
+@test ".2: base-only load is identity-merge for skill=qa" {
   local out expected
   out=$("$LOADER" --skill qa \
                   --rubrics-root "$PLUGIN_DIR/rubrics" \
@@ -44,7 +44,7 @@ setup() {
   [ "$out" = "$expected" ]
 }
 
-@test "AC9.3: base-only load is identity-merge for skill=test" {
+@test ".3: base-only load is identity-merge for skill=test" {
   local out expected
   out=$("$LOADER" --skill test \
                   --rubrics-root "$PLUGIN_DIR/rubrics" \
@@ -53,7 +53,7 @@ setup() {
   [ "$out" = "$expected" ]
 }
 
-@test "AC9.4: base-only load is identity-merge for skill=security" {
+@test ".4: base-only load is identity-merge for skill=security" {
   local out expected
   out=$("$LOADER" --skill security \
                   --rubrics-root "$PLUGIN_DIR/rubrics" \
@@ -62,7 +62,7 @@ setup() {
   [ "$out" = "$expected" ]
 }
 
-@test "AC9.5: base-only load is identity-merge for skill=perf" {
+@test ".5: base-only load is identity-merge for skill=perf" {
   local out expected
   out=$("$LOADER" --skill perf \
                   --rubrics-root "$PLUGIN_DIR/rubrics" \
@@ -71,7 +71,7 @@ setup() {
   [ "$out" = "$expected" ]
 }
 
-@test "AC9.6: base-only load is identity-merge for skill=a11y" {
+@test ".6: base-only load is identity-merge for skill=a11y" {
   local out expected
   out=$("$LOADER" --skill a11y \
                   --rubrics-root "$PLUGIN_DIR/rubrics" \
@@ -81,7 +81,7 @@ setup() {
 }
 
 # AC9.7 — base + regime overlay (HIPAA + code).
-@test "AC9.7: base + HIPAA regime overlay merges byte-identically vs direct merger call" {
+@test ".7: base + HIPAA regime overlay merges byte-identically vs direct merger call" {
   [ -f "$RUBRICS_REGIMES/hipaa.json" ] || skip "hipaa regime not present"
   local out_loader out_merger
   out_loader=$("$LOADER" --skill code \
@@ -92,7 +92,7 @@ setup() {
 }
 
 # AC9.8 — multiple regimes in declaration order.
-@test "AC9.8: base + multi-regime overlay (PCI then SOC2) preserves declaration order" {
+@test ".8: base + multi-regime overlay (PCI then SOC2) preserves declaration order" {
   [ -f "$RUBRICS_REGIMES/pci-dss.json" ] || skip "pci-dss regime not present"
   [ -f "$RUBRICS_REGIMES/soc2.json" ] || skip "soc2 regime not present"
   local out_loader out_merger
@@ -107,7 +107,7 @@ setup() {
 
 # AC9.9 — empty sub-rubrics directory must produce the same output as no
 # sub-rubrics directory at all (default backward-compat invariant).
-@test "AC9.9: empty sub-rubrics directory is a no-op (backward-compat)" {
+@test ".9: empty sub-rubrics directory is a no-op (backward-compat)" {
   local sandbox="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$sandbox/base" "$sandbox/sub-rubrics"
   cp "$RUBRICS_BASE/code.json" "$sandbox/base/code.json"
@@ -123,7 +123,7 @@ setup() {
 # AC9.10 — missing project_kind in config must NOT include any sub-rubric
 # whose `when:` predicate references project_kind. This protects projects
 # that never set project_kind (the typical brownfield case).
-@test "AC9.10: missing project_kind in config excludes project_kind-gated sub-rubrics" {
+@test ".10: missing project_kind in config excludes project_kind-gated sub-rubrics" {
   local sandbox="$BATS_TEST_TMPDIR/sandbox-no-pk"
   mkdir -p "$sandbox/base" "$sandbox/sub-rubrics"
   cp "$RUBRICS_BASE/code.json" "$sandbox/base/code.json"
@@ -146,7 +146,7 @@ EOF
 }
 
 # AC9.11 — null `when:` (or missing `when:`) means unconditional include.
-@test "AC9.11: sub-rubric with no when: is included unconditionally" {
+@test ".11: sub-rubric with no when: is included unconditionally" {
   local sandbox="$BATS_TEST_TMPDIR/sandbox-uncond"
   mkdir -p "$sandbox/base" "$sandbox/sub-rubrics"
   cp "$RUBRICS_BASE/code.json" "$sandbox/base/code.json"
@@ -168,7 +168,7 @@ EOF
 }
 
 # AC10 — regression suite presence and minimum density.
-@test "AC10: regression suite ships in this story with >= 10 @test entries" {
+@test "regression suite ships in this story with >= 10 @test entries" {
   local file="$PLUGIN_DIR/tests/E77-S4-rubric-loader-regression.bats"
   [ -f "$file" ]
   local count

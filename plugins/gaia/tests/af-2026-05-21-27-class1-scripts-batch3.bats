@@ -11,14 +11,14 @@ setup() {
 
 teardown() { common_teardown; }
 
-@test "AF-21-27: tdd-review-gate.sh IMPLEMENTATION_ARTIFACTS canonical-first" {
+@test "tdd-review-gate.sh IMPLEMENTATION_ARTIFACTS canonical-first" {
   grep -qF '.gaia/artifacts/implementation-artifacts' "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/tdd-review-gate.sh"
 }
 
-@test "AF-21-27: auto-detect-stack.sh SPEC_PATH canonical-first" {
+@test "auto-detect-stack.sh SPEC_PATH canonical-first" {
   grep -qF '.gaia/artifacts/implementation-artifacts/quick-spec-' "$PLUGIN_ROOT/skills/gaia-quick-dev/scripts/auto-detect-stack.sh"
 }
 
-@test "AF-21-27: test/runners/review-gate.sh artifact dir canonical-first" {
+@test "test/runners/review-gate.sh artifact dir canonical-first" {
   grep -qF '.gaia/artifacts/implementation-artifacts' "$PLUGIN_ROOT/test/runners/review-gate.sh"
 }

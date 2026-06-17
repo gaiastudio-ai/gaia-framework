@@ -41,7 +41,7 @@ mk_action_items_yaml_with_entry() {
 # AC1 — Delegation marker: action-items-increment.sh sources the shared writer
 # ===========================================================================
 
-@test "AC1: action-items-increment.sh sources retro-sidecar-write.sh" {
+@test "action-items-increment.sh sources retro-sidecar-write.sh" {
   [ -f "$INC" ]
   # The delegation wrapper must explicitly source the shared writer so its
   # helper functions (allowlist_match, resolve_real, normalize_payload) are
@@ -52,14 +52,14 @@ mk_action_items_yaml_with_entry() {
   grep -qE '^[[:space:]]*(\.|source)[[:space:]]+' "$INC"
 }
 
-@test "AC1: shared writer remains executable after delegation refactor" {
+@test "shared writer remains executable after delegation refactor" {
   [ -x "$WRITER" ]
   # Sanity: shared writer's --help still works (CLI body intact).
   run "$WRITER" --help
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: shared writer can be sourced as a library without side effects" {
+@test "shared writer can be sourced as a library without side effects" {
   # When sourced (BASH_SOURCE != 0), the CLI body must not run; the script
   # must expose helper functions only. Otherwise sourcing crashes with a
   # missing-args exit and the delegation pattern is impossible.
@@ -74,14 +74,14 @@ mk_action_items_yaml_with_entry() {
 # AC2 — No duplicate allowlist / normalization logic in increment.sh
 # ===========================================================================
 
-@test "AC2: action-items-increment.sh does not duplicate allowlist enforcement" {
+@test "action-items-increment.sh does not duplicate allowlist enforcement" {
   [ -f "$INC" ]
   # Inline pre-swap script had its own basename allowlist; after delegation
   # the allowlist comes from the shared writer's allowlist_match helper.
   ! grep -qE 'case "\$\(basename "\$AI_FILE"\)"' "$INC"
 }
 
-@test "AC2: action-items-increment.sh delegates allowlist to shared writer" {
+@test "action-items-increment.sh delegates allowlist to shared writer" {
   [ -f "$INC" ]
   # The wrapper must reference the shared writer's allowlist primitive so the
   # NFR-RIM-2 boundary is enforced exactly once.
@@ -92,7 +92,7 @@ mk_action_items_yaml_with_entry() {
 # AC3 — CLI contract preservation (idempotency, allowlist, increment)
 # ===========================================================================
 
-@test "AC3: CLI rejects non-action-items.yaml targets via shared allowlist" {
+@test "CLI rejects non-action-items.yaml targets via shared allowlist" {
   [ -x "$INC" ]
   local bad="$TEST_TMP/not-action-items.txt"
   printf '# nope\n' > "$bad"
@@ -100,7 +100,7 @@ mk_action_items_yaml_with_entry() {
   [ "$status" -ne 0 ]
 }
 
-@test "AC3: CLI bumps escalation_count on first invocation" {
+@test "CLI bumps escalation_count on first invocation" {
   [ -x "$INC" ]
   local ai_yaml="$TEST_TMP/action-items.yaml"
   mk_action_items_yaml_with_entry "$ai_yaml" "AI-1" "sprint-1" "Theme A" "abc123"
@@ -110,7 +110,7 @@ mk_action_items_yaml_with_entry() {
   grep -q "escalation_count: 1" "$ai_yaml"
 }
 
-@test "AC3: CLI is idempotent per (sprint_id, theme_hash)" {
+@test "CLI is idempotent per (sprint_id, theme_hash)" {
   [ -x "$INC" ]
   local ai_yaml="$TEST_TMP/action-items.yaml"
   mk_action_items_yaml_with_entry "$ai_yaml" "AI-1" "sprint-1" "Theme A" "abc123"
@@ -127,7 +127,7 @@ mk_action_items_yaml_with_entry() {
   grep -q "escalation_count: 2" "$ai_yaml"
 }
 
-@test "AC3: CLI is a silent no-op when target file is missing" {
+@test "CLI is a silent no-op when target file is missing" {
   [ -x "$INC" ]
   # action-items.yaml not yet created — increment is a non-fatal warning.
   run "$INC" --file "$TEST_TMP/missing/action-items.yaml" --theme-hash "abc" --sprint-id "sprint-1"
@@ -138,7 +138,7 @@ mk_action_items_yaml_with_entry() {
 # AC4 — TODO (E36-S2 swap-in) markers are removed from all call sites
 # ===========================================================================
 
-@test "AC4: no 'TODO (E36-S2 swap-in)' markers remain in plugin tree" {
+@test "no 'TODO ( swap-in)' markers remain in plugin tree" {
   local plugin_root
   plugin_root="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   # Search excludes this very test file (which references the marker as an

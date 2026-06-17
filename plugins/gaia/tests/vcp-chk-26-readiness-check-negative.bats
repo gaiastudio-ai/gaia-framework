@@ -37,34 +37,34 @@ teardown() { common_teardown; }
 # VCP-CHK-26 — Negative: artifact missing 3 items across categories.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-26: finalize.sh exits non-zero when 3 items are missing" {
+@test "finalize.sh exits non-zero when 3 items are missing" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-missing-3-across-categories.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-26: finalize.sh names the status field anchor in failure output" {
+@test "finalize.sh names the status field anchor in failure output" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-missing-3-across-categories.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"status field present in YAML frontmatter"* ]]
 }
 
-@test "VCP-CHK-26: finalize.sh names the traceability_complete anchor in failure output" {
+@test "finalize.sh names the traceability_complete anchor in failure output" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-missing-3-across-categories.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Traceability complete field present in YAML frontmatter"* ]]
 }
 
-@test "VCP-CHK-26: finalize.sh names the Pending Cascades anchor in failure output" {
+@test "finalize.sh names the Pending Cascades anchor in failure output" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-missing-3-across-categories.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Pending Cascades section present if cascades tracked"* ]]
 }
 
-@test "VCP-CHK-26: every violation carries [category: ...] context (AC2)" {
+@test "every violation carries [category: ...] context" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-missing-3-across-categories.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -73,7 +73,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"[category: gate verdict]"* ]]
 }
 
-@test "VCP-CHK-26: violations span three distinct categories (AC2)" {
+@test "violations span three distinct categories" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-missing-3-across-categories.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -84,14 +84,14 @@ teardown() { common_teardown; }
   [ "$count" = "3" ]
 }
 
-@test "VCP-CHK-26: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-missing-3-across-categories.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-26: finalize.sh guides user back to /gaia-readiness-check" {
+@test "finalize.sh guides user back to /gaia-readiness-check" {
   export READINESS_ARTIFACT="$FIXTURES/readiness-report-missing-3-across-categories.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -115,7 +115,7 @@ teardown() { common_teardown; }
 # AC4 / AC-EC3 — READINESS_ARTIFACT points at a missing file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no readiness report to validate' when READINESS_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no readiness report to validate' when READINESS_ARTIFACT points at a missing file" {
   export READINESS_ARTIFACT="$BATS_TMPDIR/does-not-exist-readiness-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -129,7 +129,7 @@ teardown() { common_teardown; }
 # variant below (AC-EC3 / empty artifact).
 # -------------------------------------------------------------------------
 
-@test "AC-EC3: finalize.sh reports 'no readiness report to validate' when the artifact is 0 bytes" {
+@test "finalize.sh reports 'no readiness report to validate' when the artifact is 0 bytes" {
   local empty
   empty="$TEST_TMP/empty-readiness-report.md"
   : > "$empty"
@@ -148,7 +148,7 @@ teardown() { common_teardown; }
 # validate" violation when the file does not exist.
 # -------------------------------------------------------------------------
 
-@test "AC-EC8: shell metacharacters in READINESS_ARTIFACT do not cause command injection" {
+@test "shell metacharacters in READINESS_ARTIFACT do not cause command injection" {
   local crafted
   crafted="$TEST_TMP/weird; name \$(touch $TEST_TMP/injected).md"
   export READINESS_ARTIFACT="$crafted"

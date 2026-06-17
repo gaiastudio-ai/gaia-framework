@@ -47,7 +47,7 @@ EOF
 
 # --- AC4: --skill flag accepted; non-code-review skill input works ---
 
-@test "TC-RSV2-FOUND-02a: --skill flag accepted for gaia-review-security" {
+@test "skill flag accepted for gaia-review-security" {
   write_analysis_for_skill "$TEST_TMP/a.json" "gaia-review-security" '[{"name":"semgrep","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run --separate-stderr "$SCRIPT" --skill gaia-review-security --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -56,7 +56,7 @@ EOF
   [[ "$stderr" == *"skill=gaia-review-security"* ]]   # provenance logged
 }
 
-@test "TC-RSV2-FOUND-02b: --skill flag accepted for gaia-review-qa" {
+@test "skill flag accepted for gaia-review-qa" {
   write_analysis_for_skill "$TEST_TMP/a.json" "gaia-review-qa" '[{"name":"qa-runner","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run --separate-stderr "$SCRIPT" --skill gaia-review-qa --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -64,7 +64,7 @@ EOF
   [ "$output" = "APPROVE" ]
 }
 
-@test "TC-RSV2-FOUND-02c: --skill flag accepted for gaia-review-perf" {
+@test "skill flag accepted for gaia-review-perf" {
   write_analysis_for_skill "$TEST_TMP/a.json" "gaia-review-perf" '[{"name":"perf-bench","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run --separate-stderr "$SCRIPT" --skill gaia-review-perf --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -72,7 +72,7 @@ EOF
   [ "$output" = "APPROVE" ]
 }
 
-@test "TC-RSV2-FOUND-02d: --skill flag accepted for gaia-test-automate" {
+@test "skill flag accepted for gaia-test-automate" {
   write_analysis_for_skill "$TEST_TMP/a.json" "gaia-test-automate" '[{"name":"coverage","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run --separate-stderr "$SCRIPT" --skill gaia-test-automate --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -82,7 +82,7 @@ EOF
 
 # --- AC5: precedence rules preserved under parameterized form ---
 
-@test "TC-RSV2-FOUND-03: errored check on non-code-review skill -> BLOCKED" {
+@test "errored check on non-code-review skill -> BLOCKED" {
   write_analysis_for_skill "$TEST_TMP/a.json" "gaia-review-security" '[{"name":"semgrep","status":"errored","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run --separate-stderr "$SCRIPT" --skill gaia-review-security --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -90,7 +90,7 @@ EOF
   [ "$output" = "BLOCKED" ]
 }
 
-@test "TC-RSV2-FOUND-04: tool-failed-blocking on non-code-review skill -> REQUEST_CHANGES" {
+@test "tool-failed-blocking on non-code-review skill -> REQUEST_CHANGES" {
   write_analysis_for_skill "$TEST_TMP/a.json" "gaia-review-security" '[{"name":"semgrep","status":"failed","findings":[{"severity":"error","blocking":true,"message":"sql injection"}]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run --separate-stderr "$SCRIPT" --skill gaia-review-security --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -98,7 +98,7 @@ EOF
   [ "$output" = "REQUEST_CHANGES" ]
 }
 
-@test "TC-RSV2-FOUND-05: LLM-Critical on non-code-review skill -> REQUEST_CHANGES" {
+@test "LLM-Critical on non-code-review skill -> REQUEST_CHANGES" {
   write_analysis_for_skill "$TEST_TMP/a.json" "gaia-review-perf" '[{"name":"perf-bench","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[{"severity":"Critical","message":"O(n^2) hot path"}]'
   run --separate-stderr "$SCRIPT" --skill gaia-review-perf --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -106,7 +106,7 @@ EOF
   [ "$output" = "REQUEST_CHANGES" ]
 }
 
-@test "TC-RSV2-FOUND-06: clean run on non-code-review skill -> APPROVE" {
+@test "clean run on non-code-review skill -> APPROVE" {
   write_analysis_for_skill "$TEST_TMP/a.json" "gaia-review-test" '[{"name":"coverage","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[{"severity":"Warning","message":"long function"}]'
   run --separate-stderr "$SCRIPT" --skill gaia-review-test --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"

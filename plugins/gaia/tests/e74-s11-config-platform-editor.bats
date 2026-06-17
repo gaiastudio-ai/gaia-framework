@@ -88,7 +88,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"harmonyos"* ]]
 }
 
-@test "add empty id is discoverability prompt (E71-S9 AC1): exit 0 with baseline menu" {
+@test "add empty id is discoverability prompt : exit 0 with baseline menu" {
   # E71-S9 AC1 amended the contract: no-arg `add` is a discoverability prompt
   # (SKILL.md Step 2c: "Re-prompt the user for an identifier — DO NOT exit
   # non-zero. The empty argument is a discoverability hint, not a validation

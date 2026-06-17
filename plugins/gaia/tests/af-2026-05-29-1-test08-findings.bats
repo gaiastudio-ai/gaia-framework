@@ -39,7 +39,7 @@ teardown() { common_teardown; }
 # F-012 HIGH — dod-check.sh exercises the Test Execution Bridge
 # ===========================================================================
 
-@test "AF-29-1 F-12: dod-check resolves bridge tier-1 runner when bridge_enabled=true" {
+@test "dod-check resolves bridge tier-1 runner when bridge_enabled=true" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config .gaia/artifacts/test-artifacts
   cat > .gaia/config/project-config.yaml <<'EOF'
@@ -64,7 +64,7 @@ EOF
   [ "$output" = "echo BRIDGE_TIER_1" ]
 }
 
-@test "AF-29-1 F-12: bridge disabled falls through to legacy test_cmd tier" {
+@test "bridge disabled falls through to legacy test_cmd tier" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'EOF'
@@ -80,7 +80,7 @@ EOF
   [ "$output" = "echo LEGACY" ]
 }
 
-@test "AF-29-1 F-12: bridge enabled but manifest absent falls through cleanly" {
+@test "bridge enabled but manifest absent falls through cleanly" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'EOF'
@@ -100,7 +100,7 @@ EOF
 # F-016 HIGH — review-summary-gen.sh locates E105-S1 per-story layout
 # ===========================================================================
 
-@test "AF-29-1 F-16: _locate_story_file finds E105-S1 per-story story.md" {
+@test "_locate_story_file finds per-story story.md" {
   IA="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   mkdir -p "$IA/epic-E1-vault/E1-S1-scaffold"
   cat > "$IA/epic-E1-vault/E1-S1-scaffold/story.md" <<'EOF'
@@ -124,7 +124,7 @@ EOF
   [[ "$output" == *"epic-E1-vault/E1-S1-scaffold/story.md" ]]
 }
 
-@test "AF-29-1 F-16: boundary guard — E1-S2 does NOT match E1-S21" {
+@test "boundary guard — does NOT match" {
   IA="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   mkdir -p "$IA/epic-E1-x/E1-S21-other"
   cat > "$IA/epic-E1-x/E1-S21-other/story.md" <<'EOF'
@@ -147,7 +147,7 @@ EOF
   [[ "$output" == *"story not found: E1-S2"* ]] || [[ "$output" == *"DIE"* ]]
 }
 
-@test "AF-29-1 F-16: legacy nested layout still resolves" {
+@test "legacy nested layout still resolves" {
   IA="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   mkdir -p "$IA/epic-E2-bar/stories"
   cat > "$IA/epic-E2-bar/stories/E2-S1-legacy.md" <<'EOF'
@@ -175,7 +175,7 @@ EOF
 # per-stack excludes
 # ===========================================================================
 
-@test "AF-29-1 F-1: generate-config transforms list-form environments to mapping" {
+@test "generate-config transforms list-form environments to mapping" {
   cd "$TEST_TMP"
   cat > bundle.json <<'EOF'
 {
@@ -197,7 +197,7 @@ EOF
   [[ "$cfg" == *"token: STAGING_TOKEN"* ]]
 }
 
-@test "AF-29-1 F-4: generate-config preserves per-stack excludes" {
+@test "generate-config preserves per-stack excludes" {
   cd "$TEST_TMP"
   cat > bundle.json <<'EOF'
 {
@@ -226,7 +226,7 @@ EOF
 # F-005 — threat-model SV-07/SV-09 accept numbered H2 headings
 # ===========================================================================
 
-@test "AF-29-1 F-5: stride_six_categories_per_component accepts '## 3. STRIDE Analysis' + numbered DREAD section" {
+@test "stride_six_categories_per_component accepts '## 3. STRIDE Analysis' + numbered DREAD section" {
   cat > "$TEST_TMP/tm.md" <<'EOF'
 ## 1. Executive Summary
 
@@ -255,7 +255,7 @@ EOF
   [ "$output" = "pass" ]
 }
 
-@test "AF-29-1 F-5: unnumbered STRIDE/DREAD headings still pass (regression)" {
+@test "unnumbered STRIDE/DREAD headings still pass (regression)" {
   cat > "$TEST_TMP/tm.md" <<'EOF'
 ## STRIDE Analysis
 ### Web frontend
@@ -277,19 +277,19 @@ EOF
 # F-013 + F-014 — backlog story flow
 # ===========================================================================
 
-@test "AF-29-1 F-13: backlog -> in-progress edge is now in the adjacency table" {
+@test "backlog -> in-progress edge is now in the adjacency table" {
   grep -qF '"backlog|in-progress"' "$PLUGIN_ROOT/scripts/lib/story-state-machine.sh"
   # validate_story_transition should accept it
   ( source "$PLUGIN_ROOT/scripts/lib/story-state-machine.sh"
     validate_story_transition backlog in-progress ) >/dev/null 2>&1
 }
 
-@test "AF-29-1 F-13: invalid edges still rejected (regression)" {
+@test "invalid edges still rejected (regression)" {
   ! ( source "$PLUGIN_ROOT/scripts/lib/story-state-machine.sh"
       validate_story_transition backlog done ) >/dev/null 2>&1
 }
 
-@test "AF-29-1 F-14: detect-mode classifies status:backlog as FRESH" {
+@test "detect-mode classifies status:backlog as FRESH" {
   cat > "$TEST_TMP/story.md" <<'EOF'
 ---
 key: E1-S1
@@ -302,7 +302,7 @@ EOF
   [ "$output" = "FRESH" ]
 }
 
-@test "AF-29-1 F-14: status:in-progress without FAILED rows still classifies RESUME (regression)" {
+@test "status:in-progress without FAILED rows still classifies RESUME (regression)" {
   cat > "$TEST_TMP/story.md" <<'EOF'
 ---
 key: E1-S1
@@ -319,7 +319,7 @@ EOF
 # F-015 — atdd-gate.sh honors GAIA_SKIP_ATDD=1
 # ===========================================================================
 
-@test "AF-29-1 F-15: GAIA_SKIP_ATDD=1 bypasses the high-risk ATDD halt" {
+@test "GAIA_SKIP_ATDD=1 bypasses the high-risk ATDD halt" {
   grep -qF 'GAIA_SKIP_ATDD' "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/atdd-gate.sh"
   # WARN line in the script body
   grep -qF "ATDD gate skipped via GAIA_SKIP_ATDD=1" "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/atdd-gate.sh"
@@ -329,7 +329,7 @@ EOF
 # F-017 — load-stack-persona.sh accepts --story-file
 # ===========================================================================
 
-@test "AF-29-1 F-17: load-stack-persona.sh accepts --story-file and derives stack from frontmatter" {
+@test "load-stack-persona.sh accepts --story-file and derives stack from frontmatter" {
   mkdir -p "$TEST_TMP/.gaia/artifacts/implementation-artifacts/epic-E1/E1-S1-x"
   cat > "$TEST_TMP/.gaia/artifacts/implementation-artifacts/epic-E1/E1-S1-x/story.md" <<'EOF'
 ---
@@ -346,13 +346,13 @@ EOF
   [[ "$output" == *"stack='python-dev'"* ]]
 }
 
-@test "AF-29-1 F-17: --stack still works directly (regression)" {
+@test "stack still works directly (regression)" {
   run bash "$PLUGIN_ROOT/scripts/load-stack-persona.sh" --stack ts-dev --project-root "$TEST_TMP"
   [ "$status" -eq 0 ]
   [[ "$output" == *"stack='ts-dev'"* ]]
 }
 
-@test "AF-29-1 F-17: unknown flags still rejected (regression)" {
+@test "unknown flags still rejected (regression)" {
   run bash "$PLUGIN_ROOT/scripts/load-stack-persona.sh" --bogus
   [ "$status" -ne 0 ]
   [[ "$output" == *"unknown argument: --bogus"* ]]
@@ -362,7 +362,7 @@ EOF
 # F-019 — retro finalize accepts JSON checkpoint form
 # ===========================================================================
 
-@test "AF-29-1 F-19: retro finalize accepts the canonical write-checkpoint.sh JSON form" {
+@test "retro finalize accepts the canonical write-checkpoint.sh JSON form" {
   mkdir -p "$TEST_TMP/.gaia/memory/validator-sidecar" "$TEST_TMP/.gaia/memory/checkpoints/retrospective"
   echo "log" > "$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md"
   echo "{}" > "$TEST_TMP/.gaia/memory/checkpoints/retrospective/20260529-step-7.json"
@@ -373,7 +373,7 @@ EOF
   [[ "$output" == *"sentinel: PRESENT"* ]]
 }
 
-@test "AF-29-1 F-19: retro finalize ALSO accepts the legacy retrospective.yaml form (regression)" {
+@test "retro finalize ALSO accepts the legacy retrospective.yaml form (regression)" {
   mkdir -p "$TEST_TMP/.gaia/memory/validator-sidecar" "$TEST_TMP/.gaia/memory/checkpoints"
   echo "log" > "$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md"
   echo "---" > "$TEST_TMP/.gaia/memory/checkpoints/retrospective.yaml"
@@ -393,7 +393,7 @@ EOF
 # flags are accepted by the script's argv parser. Catches the class in CI
 # before the next manual test.
 
-@test "AF-29-1 sweep: documented load-stack-persona.sh flags are accepted by the script" {
+@test "sweep: documented load-stack-persona.sh flags are accepted by the script" {
   # The SKILL.md invocations across the plugin reference these flags. The
   # script's case-arm parser must list each one. Grep for the canonical case-arm
   # form (`--<flag>)`) so a flag named in a comment doesn't count.
@@ -403,7 +403,7 @@ EOF
   done
 }
 
-@test "AF-29-1 sweep: gaia-init SKILL.md environments shape matches generate-config.sh accepted form" {
+@test "sweep: gaia-init SKILL.md environments shape matches generate-config.sh accepted form" {
   # SKILL.md Step 2.6 documents iterative {name, url, auth_type} entries.
   # generate-config.sh MUST handle a list of those objects (post-F-1 transform).
   grep -qF 'isinstance(envs, list)' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
@@ -411,7 +411,7 @@ EOF
   grep -qF '"auth_type"' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
 }
 
-@test "AF-29-1 sweep: write-checkpoint.sh's output shape matches retro finalize.sh acceptance" {
+@test "sweep: write-checkpoint.sh's output shape matches retro finalize.sh acceptance" {
   # write-checkpoint emits {skill_name}/{ts}-step-{N}.json; retro finalize MUST
   # accept that form (F-19). The legacy retrospective.yaml form is also accepted
   # as a back-compat allowance.

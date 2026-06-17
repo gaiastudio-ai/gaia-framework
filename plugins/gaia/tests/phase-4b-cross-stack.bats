@@ -37,14 +37,14 @@ run_xstack() {
 }
 
 # --- AC2 / TC-MSP-4 — WARNING on unsanctioned cross-stack edge ----------------
-@test "E104-S5 (TC-MSP-4 emission): api→web with empty cross_refs → canonical WARNING" {
+@test "api→web with empty cross_refs → canonical WARNING" {
   run_xstack three-stack
   [ "$status" -eq 0 ]
   [[ "$output" == *"unsanctioned-cross-stack-reference: api:services/api/main.go -> web:services/web/handler.ts"* ]]
 }
 
 # --- AC1 / TC-MSP-4 — scoping isolation: intra-stack edges never warn ---------
-@test "E104-S5 (TC-MSP-4 scoping): intra-stack edges do NOT warn (no cross-contamination)" {
+@test "intra-stack edges do NOT warn (no cross-contamination)" {
   run_xstack three-stack
   [ "$status" -eq 0 ]
   # exactly ONE warning (the api→web edge); the two intra-stack edges are silent.
@@ -54,7 +54,7 @@ run_xstack() {
 }
 
 # --- AC3 — cross_stack_warnings[] telemetry detail rows -----------------------
-@test "E104-S5 AC3: cross_stack_warnings[] populated with stack+file pair detail" {
+@test "cross_stack_warnings populated with stack+file pair detail" {
   cat > "$TEST_TMP/report.md" <<'MD'
 ---
 title: gaps
@@ -72,7 +72,7 @@ MD
 }
 
 # --- AC4 / TC-MSP-5 — bypass with reason suppresses + logs --------------------
-@test "E104-S5 (TC-MSP-5 bypass): --bypass cross-stack-refs --reason suppresses + logs" {
+@test "bypass cross-stack-refs --reason suppresses + logs" {
   run_xstack three-stack --bypass cross-stack-refs --reason "needed for migration step"
   [ "$status" -eq 0 ]
   [[ "$output" != *"unsanctioned-cross-stack-reference"* ]]
@@ -87,14 +87,14 @@ MD
 }
 
 # --- AC4 / scenario 4 — bypass missing reason REJECTED ------------------------
-@test "E104-S5 (scenario 4): --bypass without --reason → REJECTED (ADR-120)" {
+@test "scenario 4): --bypass without --reason → REJECTED" {
   run_xstack three-stack --bypass cross-stack-refs
   [ "$status" -ne 0 ]
   [[ "$output" == *"reason"* ]]
 }
 
 # --- AC4 / scenario 5 — malformed (shell-metachar) reason REJECTED (SR-86) ----
-@test "E104-S5 (scenario 5): --reason with shell metachars → REJECTED (SR-86 allowlist)" {
+@test "scenario 5): --reason with shell metachars → REJECTED" {
   run_xstack three-stack --bypass cross-stack-refs --reason "; rm -rf /"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SR-86"* ]] || [[ "$output" == *"reason"* ]] || [[ "$output" == *"invalid"* ]]
@@ -103,14 +103,14 @@ MD
 }
 
 # --- AC6 / TC-MSP-11 — shared-subdir: both allowlist → no WARNING -------------
-@test "E104-S5 (TC-MSP-11 symmetric): both stacks cross_refs:[shared] → no WARNING" {
+@test "both stacks cross_refs:[shared] → no WARNING" {
   run_xstack shared-subdir
   [ "$status" -eq 0 ]
   [[ "$output" != *"unsanctioned-cross-stack-reference"* ]]
 }
 
 # --- AC6 / TC-MSP-11 — asymmetric: web drops shared → only web→shared warns ---
-@test "E104-S5 (TC-MSP-11 asymmetric): web missing cross_refs → one WARNING (web→shared only)" {
+@test "web missing cross_refs → one WARNING (web→shared only)" {
   cfg="$TEST_TMP/asym-config.yaml"
   # Copy shared-subdir config but strip `shared` from web's cross_refs.
   yq eval '(.stacks[] | select(.name == "web") | .cross_refs) = []' "$FX/shared-subdir/project-config.yaml" > "$cfg"
@@ -123,7 +123,7 @@ MD
 }
 
 # --- AC5 / TC-MSP-8 — NFR-89: 5-stack 8-edge, total well under budget ---------
-@test "E104-S5 (TC-MSP-8 NFR-89): 5-stack 8-edge cross-stack detection under perf budget" {
+@test "5-stack 8-edge cross-stack detection under perf budget" {
   start=$(date +%s%N)
   run_xstack five-stack-eight-edge
   end=$(date +%s%N)
@@ -135,7 +135,7 @@ MD
 }
 
 # --- AC-X1 / scenario 9 — per-tool flag off → skip ----------------------------
-@test "E104-S5 (scenario 9): phase_4b_cross_stack_enabled=false → INFO skip, no warnings" {
+@test "scenario 9): phase_4b_cross_stack_enabled=false → INFO skip, no warnings" {
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_PHASE_4B_CROSS_STACK_ENABLED=false \
     XSTACK_CONFIG="$FX/three-stack/project-config.yaml" XSTACK_DEPGRAPH="$FX/three-stack/depgraph.json" \
     XSTACK_BYPASS_LOG="$BLOG" run bash "$ADAPTER"
@@ -145,7 +145,7 @@ MD
 }
 
 # --- AC-X1 — master flag off → skip -------------------------------------------
-@test "E104-S5: master flag off → skipped regardless of per-tool" {
+@test "master flag off → skipped regardless of per-tool" {
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=false GAIA_BROWNFIELD_PHASE_4B_CROSS_STACK_ENABLED=true \
     XSTACK_CONFIG="$FX/three-stack/project-config.yaml" XSTACK_DEPGRAPH="$FX/three-stack/depgraph.json" \
     XSTACK_BYPASS_LOG="$BLOG" run bash "$ADAPTER"
@@ -154,14 +154,14 @@ MD
 }
 
 # --- scenario 11 — single-stack (path:null) zero-regression -------------------
-@test "E104-S5 (scenario 11): single-stack path:null → zero cross-edges, no WARNING" {
+@test "scenario 11): single-stack path:null → zero cross-edges, no WARNING" {
   run_xstack single-stack
   [ "$status" -eq 0 ]
   [[ "$output" != *"unsanctioned-cross-stack-reference"* ]]
 }
 
 # --- degrade — missing dep-graph → INFO skip, never abort ---------------------
-@test "E104-S5: missing dep-graph → INFO skip, exit 0 (degrade; producer is E104-S2)" {
+@test "missing dep-graph → INFO skip, exit 0 (degrade; producer is )" {
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_PHASE_4B_CROSS_STACK_ENABLED=true \
     XSTACK_CONFIG="$FX/three-stack/project-config.yaml" XSTACK_DEPGRAPH="$TEST_TMP/nope.json" \
     XSTACK_BYPASS_LOG="$BLOG" run bash "$ADAPTER"
@@ -171,7 +171,7 @@ MD
 }
 
 # --- AC-X1 — resolve-config exposes the flag ----------------------------------
-@test "E104-S5 AC-X1: resolve-config.sh --field brownfield.phase_4b_cross_stack_enabled whitelisted" {
+@test "resolve-config.sh --field brownfield.phase_4b_cross_stack_enabled whitelisted" {
   cat > "$TEST_TMP/pc.yaml" <<YAML
 project_root: /tmp/gaia
 project_path: /tmp/gaia/app
@@ -191,7 +191,7 @@ YAML
 }
 
 # --- Hygiene ------------------------------------------------------------------
-@test "E104-S5: reconcile-cross-stack.sh exists, executable, bash -n clean" {
+@test "reconcile-cross-stack.sh exists, executable, bash -n clean" {
   [ -x "$ADAPTER" ]
   run bash -n "$ADAPTER"
   [ "$status" -eq 0 ]

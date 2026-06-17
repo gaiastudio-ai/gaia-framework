@@ -30,7 +30,7 @@ teardown() { common_teardown; }
 
 # --- SKILL.md prose canonical assertions ---
 
-@test "AF-21-13: gaia-create-epics/SKILL.md write-path prose uses canonical .gaia/ paths" {
+@test "gaia-create-epics/SKILL.md write-path prose uses canonical .gaia/ paths" {
   # Primary write target (epics-and-stories.md) MUST be canonical
   grep -qF '.gaia/artifacts/planning-artifacts/epics-and-stories.md' "$CREATE_EPICS_SKILL"
   # Cross-references to PRD, architecture, test-plan MUST be canonical
@@ -39,44 +39,44 @@ teardown() { common_teardown; }
   grep -qF '.gaia/artifacts/test-artifacts/test-plan.md' "$CREATE_EPICS_SKILL"
 }
 
-@test "AF-21-13: gaia-create-epics/SKILL.md sharded-fallback uses canonical roots (ADR-069 preserved)" {
+@test "gaia-create-epics/SKILL.md sharded-fallback uses canonical roots" {
   # Sharded PRD form must also be canonical
   grep -qF '.gaia/artifacts/planning-artifacts/prd/prd.md' "$CREATE_EPICS_SKILL"
   # Sharded test-plan index must be canonical
   grep -qF '.gaia/artifacts/test-artifacts/test-plan/index.md' "$CREATE_EPICS_SKILL"
 }
 
-@test "AF-21-13: gaia-create-epics/SKILL.md brownfield-onboarding.md write-path is canonical" {
+@test "gaia-create-epics/SKILL.md brownfield-onboarding.md write-path is canonical" {
   # Line 188 establishes canonical destination for brownfield onboarding artifact
   grep -qF '.gaia/artifacts/planning-artifacts/brownfield-onboarding.md' "$CREATE_EPICS_SKILL"
 }
 
-@test "AF-21-13: gaia-create-epics/SKILL.md has no remaining legacy docs/ write-path literals" {
+@test "gaia-create-epics/SKILL.md has no remaining legacy docs/ write-path literals" {
   # All literals MUST be canonical; the post-edit Mission paragraph names only
   # `.gaia/artifacts/...` canonical paths (the prose talks about pre-ADR-111
   # fallback in abstract terms without naming a `docs/` literal).
   ! grep -qE 'docs/(planning-artifacts|test-artifacts)' "$CREATE_EPICS_SKILL"
 }
 
-@test "AF-21-13: gaia-add-stories/SKILL.md write-path prose uses canonical .gaia/ paths" {
+@test "gaia-add-stories/SKILL.md write-path prose uses canonical .gaia/ paths" {
   grep -qF '.gaia/artifacts/planning-artifacts/epics-and-stories.md' "$ADD_STORIES_SKILL"
   grep -qF '.gaia/artifacts/planning-artifacts/architecture.md' "$ADD_STORIES_SKILL"
   grep -qF '.gaia/artifacts/planning-artifacts/prd.md' "$ADD_STORIES_SKILL"
 }
 
-@test "AF-21-13: gaia-add-stories/SKILL.md test-plan strategy-fallback uses canonical roots (ADR-072 preserved)" {
+@test "gaia-add-stories/SKILL.md test-plan strategy-fallback uses canonical roots" {
   # Both flat and strategy/ forms must be canonical
   grep -qF '.gaia/artifacts/test-artifacts/test-plan.md' "$ADD_STORIES_SKILL"
   grep -qF '.gaia/artifacts/test-artifacts/strategy/test-plan.md' "$ADD_STORIES_SKILL"
 }
 
-@test "AF-21-13: gaia-add-stories/SKILL.md has no remaining legacy docs/ write-path literals" {
+@test "gaia-add-stories/SKILL.md has no remaining legacy docs/ write-path literals" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts)' "$ADD_STORIES_SKILL"
 }
 
 # --- Regression guards: existing canonical-first script resolution intact ---
 
-@test "AF-21-13: gaia-create-epics/scripts/finalize.sh retains canonical-first ARTIFACT resolution (E96-S7)" {
+@test "gaia-create-epics/scripts/finalize.sh retains canonical-first ARTIFACT resolution" {
   # The script's existing two-tier smart-fallback MUST stay intact — this AF
   # does not modify scripts. Drift would be caught here. Match on the
   # executable `if [ -f ... ]` line, not docstrings, to assert canonical
@@ -85,7 +85,7 @@ teardown() { common_teardown; }
   grep -qE 'elif \[ -f "docs/planning-artifacts/epics-and-stories\.md" \]' "$CREATE_EPICS_FINALIZE"
 }
 
-@test "AF-21-13: gaia-add-stories/scripts/setup.sh retains canonical-first PLANNING_ARTIFACTS resolution (E96-S7)" {
+@test "gaia-add-stories/scripts/setup.sh retains canonical-first PLANNING_ARTIFACTS resolution" {
   # Assert the existing canonical-first two-tier resolution: canonical assignment
   # appears in an `if [ -d ... ]; then` branch and legacy is the `else` fallback.
   grep -qE '\.gaia/artifacts/planning-artifacts' "$ADD_STORIES_SETUP"

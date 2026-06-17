@@ -30,7 +30,7 @@ teardown() {
 
 # ---------- AC1 / rollup math: per-step durations sum to per-story total ----------
 
-@test "AC1: per-step durations sum to per-story total wall-clock" {
+@test "per-step durations sum to per-story total wall-clock" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP" --json
   [ "$status" -eq 0 ]
   # step 1=5, step 2=8, step 3=12 => total=25
@@ -48,7 +48,7 @@ teardown() {
   [ "$computed_total" -eq "$total" ]
 }
 
-@test "AC1: per-step token estimates sum to per-story total token estimate" {
+@test "per-step token estimates sum to per-story total token estimate" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP" --json
   [ "$status" -eq 0 ]
   # step 1: input=3200, output=1400, cache_creation=170, cache_read=400
@@ -71,7 +71,7 @@ teardown() {
   [ "$computed" -eq "$total_input" ]
 }
 
-@test "AC1: text mode emits per-step rows with duration and token columns" {
+@test "text mode emits per-step rows with duration and token columns" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP"
   [ "$status" -eq 0 ]
   # Verify step rows are present
@@ -82,7 +82,7 @@ teardown() {
   echo "$output" | grep -Eq 'Total wall-clock.*25 min'
 }
 
-@test "AC1: text mode labels token estimates as approximate" {
+@test "text mode labels token estimates as approximate" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP"
   [ "$status" -eq 0 ]
   # Token values must always be labelled approximate
@@ -91,7 +91,7 @@ teardown() {
   echo "$output" | grep -Eq 'Total token estimate.*approx'
 }
 
-@test "AC1: last step (open-ended) is excluded from the table" {
+@test "last step (open-ended) is excluded from the table" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP" --json
   [ "$status" -eq 0 ]
   # Only 3 measured steps (step 4 is open-ended boundary, not a measured step)
@@ -101,7 +101,7 @@ teardown() {
 
 # ---------- AC2: n/a rendering for missing token cells ----------
 
-@test "AC2: steps with missing token snapshots render n/a in text mode" {
+@test "steps with missing token snapshots render n/a in text mode" {
   run bash "$SCRIPT" --events "$EVENTS_MISSING"
   [ "$status" -eq 0 ]
   # Steps 1 and 2 should have n/a tokens (step 1: next has no snapshot;
@@ -111,7 +111,7 @@ teardown() {
   echo "$output" | grep -Eq 'validate.*n/a'
 }
 
-@test "AC2: steps with missing tokens have null tokens in JSON" {
+@test "steps with missing tokens have null tokens in JSON" {
   run bash "$SCRIPT" --events "$EVENTS_MISSING" --json
   [ "$status" -eq 0 ]
   # Steps 0 and 1 (0-indexed) should have null tokens
@@ -124,7 +124,7 @@ teardown() {
   [ "$s2_tok" != "null" ]
 }
 
-@test "AC2: total token estimate excludes n/a steps" {
+@test "total token estimate excludes n/a steps" {
   run bash "$SCRIPT" --events "$EVENTS_MISSING" --json
   [ "$status" -eq 0 ]
   # Only step 3 contributes: input=3000, output=1500, cache_creation=200, cache_read=300
@@ -134,7 +134,7 @@ teardown() {
   [ "$total_output" -eq 1500 ]
 }
 
-@test "AC2: text mode never implies exact token count" {
+@test "text mode never implies exact token count" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP"
   [ "$status" -eq 0 ]
   # Every token number must be preceded by ~ or labelled approx — never bare
@@ -150,13 +150,13 @@ teardown() {
 
 # ---------- AC3: --json and text modes, read-only ----------
 
-@test "AC3: --json produces valid JSON" {
+@test "json produces valid JSON" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP" --json
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.' >/dev/null
 }
 
-@test "AC3: text mode produces human-readable table" {
+@test "text mode produces human-readable table" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP"
   [ "$status" -eq 0 ]
   # Must have a story header and a table-like structure
@@ -164,7 +164,7 @@ teardown() {
   echo "$output" | grep -Eq 'Step'
 }
 
-@test "AC3: script is read-only (writes nothing to disk)" {
+@test "script is read-only (writes nothing to disk)" {
   before=$(cd "$REPO_ROOT" && git status --porcelain=v1 2>/dev/null | sort)
   fbefore=$(find "$FIXTURE_DIR" -type f -exec shasum -a 256 {} \; | sort | shasum -a 256 | awk '{print $1}')
   run bash "$SCRIPT" --events "$EVENTS_3STEP"
@@ -175,7 +175,7 @@ teardown() {
   [ "$before" = "$after" ] || { echo "working tree mutated:" >&2; diff <(echo "$before") <(echo "$after") >&2; false; }
 }
 
-@test "AC3: --story flag filters to a single story" {
+@test "story flag filters to a single story" {
   # Create a fixture with two stories
   cat > "$TEST_TMP/multi-story.jsonl" <<'EOF'
 {"timestamp":"2026-06-01T10:00:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":300,"story_key":"E960-S1","step":1,"data":{"step_name":"load-story","tokens_snapshot":{"input_tokens":1000,"output_tokens":500,"cache_creation_input_tokens":100,"cache_read_input_tokens":200}}}
@@ -193,7 +193,7 @@ EOF
 
 # ---------- AC4: rollup math proofs ----------
 
-@test "AC4: sum of per-step durations equals per-story total (rollup proof)" {
+@test "sum of per-step durations equals per-story total (rollup proof)" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP" --json
   [ "$status" -eq 0 ]
   # Extract all step durations and verify their sum equals total
@@ -202,7 +202,7 @@ EOF
   [ "$step_sum" -eq "$total" ]
 }
 
-@test "AC4: sum of available token estimates equals per-story total (rollup proof)" {
+@test "sum of available token estimates equals per-story total (rollup proof)" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP" --json
   [ "$status" -eq 0 ]
   # Sum input_tokens across steps where tokens is not null
@@ -215,7 +215,7 @@ EOF
   [ "$step_output_sum" -eq "$total_output" ]
 }
 
-@test "AC4: n/a steps excluded from token total (missing-tokens fixture)" {
+@test "n/a steps excluded from token total (missing-tokens fixture)" {
   run bash "$SCRIPT" --events "$EVENTS_MISSING" --json
   [ "$status" -eq 0 ]
   # Steps 0 and 1 have null tokens; only step 2 contributes
@@ -227,7 +227,7 @@ EOF
   [ "$step_input" -eq "$total_input" ]
 }
 
-@test "AC4: duration rollup for missing-tokens fixture" {
+@test "duration rollup for missing-tokens fixture" {
   run bash "$SCRIPT" --events "$EVENTS_MISSING" --json
   [ "$status" -eq 0 ]
   # step 1=10, step 2=10, step 3=15 => total=35

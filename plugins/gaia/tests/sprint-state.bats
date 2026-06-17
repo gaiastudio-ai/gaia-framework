@@ -190,7 +190,7 @@ SIBLING
   done
 }
 
-@test "sprint-state.sh: locate_story_file ignores review sibling files (E28-S76 AC1)" {
+@test "sprint-state.sh: locate_story_file ignores review sibling files" {
   seed_story C1 in-progress
   seed_review_siblings C1
   seed_yaml C1 in-progress
@@ -199,7 +199,7 @@ SIBLING
   [ "$output" = "in-progress" ]
 }
 
-@test "sprint-state.sh: transition --to done succeeds with review siblings present (E28-S76 AC2)" {
+@test "sprint-state.sh: transition --to done succeeds with review siblings present" {
   seed_story C2 review PASSED
   seed_review_siblings C2
   seed_yaml C2 review
@@ -208,7 +208,7 @@ SIBLING
   grep -q '^status: done' "$ART/C2-fake.md"
 }
 
-@test "sprint-state.sh: locate_story_file errors when only review siblings exist (E28-S76 AC3)" {
+@test "sprint-state.sh: locate_story_file errors when only review siblings exist" {
   seed_review_siblings C3
   run "$SCRIPT" get --story C3
   [ "$status" -ne 0 ]
@@ -321,7 +321,7 @@ CANONICAL_STATES_LIST=(backlog validating ready-for-dev in-progress blocked revi
   [ "$status" -eq 0 ] || { echo "AC3F failed: $output"; false; }
 }
 
-@test "sprint-state.sh: AC5 sprint-27 regression — E42-S5/E42-S6/E42-S7 all write 'done', never 'PASSED'" {
+@test "sprint-state.sh: sprint-27 regression — // all write 'done', never 'PASSED'" {
   # Mirrors the sprint-27 close-out finding (F2): three stories had their
   # sprint-status.yaml entries written as status: "PASSED" instead of "done"
   # and required manual sed cleanup. This test stamps that exact scenario:
@@ -450,7 +450,7 @@ OUTER
   [ "$status" -eq 0 ]
 }
 
-@test "sprint-state.sh: locate_story_file errors on genuine duplicate canonical files (E28-S76 AC4)" {
+@test "sprint-state.sh: locate_story_file errors on genuine duplicate canonical files" {
   # Create two files that both have template: 'story' frontmatter
   cat > "$ART/C4-first.md" <<EOF
 ---

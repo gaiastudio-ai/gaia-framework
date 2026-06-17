@@ -23,7 +23,7 @@ teardown() { common_teardown; }
 
 # ---------- AC1, AC2: tree-wide frontmatter key ----------
 
-@test "AC1: no plugin SKILL.md uses the post-E28-S185 tools: top-level key" {
+@test "no plugin SKILL.md uses the post-migration tools: top-level key" {
   local hits
   hits="$(grep -l '^tools:' "$PLUGIN_SKILLS_DIR"/*/SKILL.md 2>/dev/null || true)"
   if [ -n "$hits" ]; then
@@ -33,7 +33,7 @@ teardown() { common_teardown; }
   fi
 }
 
-@test "AC2: every plugin SKILL.md declares allowed-tools: as top-level key" {
+@test "every plugin SKILL.md declares allowed-tools: as top-level key" {
   local total with_allowed
   total="$(ls "$PLUGIN_SKILLS_DIR"/*/SKILL.md | wc -l | tr -d ' ')"
   with_allowed="$(grep -l '^allowed-tools:' "$PLUGIN_SKILLS_DIR"/*/SKILL.md | wc -l | tr -d ' ')"
@@ -43,7 +43,7 @@ teardown() { common_teardown; }
 
 # ---------- AC3: list form for allowed-tools: ----------
 
-@test "AC3: every allowed-tools: value uses YAML list form [A, B, C]" {
+@test "every allowed-tools: value uses YAML list form [A, B, C]" {
   local offenders=""
   while IFS= read -r file; do
     local line
@@ -157,7 +157,7 @@ EOF
 
 # ---------- Enterprise mirror (AC4) ----------
 
-@test "AC4: enterprise SKILL.md files do not use the post-E28-S185 tools: key" {
+@test "enterprise SKILL.md files do not use the post-migration tools: key" {
   local framework_root
   framework_root="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
   local ent_dir="$framework_root/gaia-enterprise/plugins/gaia-enterprise/skills"
@@ -175,14 +175,14 @@ EOF
 
 # ---------- AC5: skill-frontmatter-guard.bats enforces the reverted direction ----------
 
-@test "AC5: skill-frontmatter-guard.bats enforces allowed-tools as canonical key" {
+@test "skill-frontmatter-guard.bats enforces allowed-tools as canonical key" {
   local guard="$BATS_TEST_DIRNAME/skill-frontmatter-guard.bats"
   # The guard must assert that allowed-tools: is required (not forbidden).
   grep -q 'allowed-tools.*required\|allowed-tools.*declare\|declares.*allowed-tools\|allowed-tools frontmatter' "$guard" \
     || grep -q 'every plugin SKILL.md declares an allowed-tools' "$guard"
 }
 
-@test "AC5: skill-frontmatter-guard.bats forbids tools: as top-level key" {
+@test "skill-frontmatter-guard.bats forbids tools: as top-level key" {
   local guard="$BATS_TEST_DIRNAME/skill-frontmatter-guard.bats"
   grep -q 'legacy tools\|retired tools\|no plugin SKILL.md uses.*tools:' "$guard" \
     || grep -q '"\^tools:".*legacy\|forbidden.*tools:\|forbid.*tools:' "$guard"
@@ -190,7 +190,7 @@ EOF
 
 # ---------- AC6: CI lint flipped ----------
 
-@test "AC6: lint-skill-frontmatter.sh accepts allowed-tools and rejects tools:" {
+@test "lint-skill-frontmatter.sh accepts allowed-tools and rejects tools" {
   # AF-2026-06-02-3: derive repo_root from $BATS_TEST_DIRNAME so the test
   # is dir-rename-resilient. $BATS_TEST_DIRNAME is
   # <checkout>/plugins/gaia/tests; the checkout root is three levels up.

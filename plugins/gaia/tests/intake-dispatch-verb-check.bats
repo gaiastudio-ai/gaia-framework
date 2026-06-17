@@ -50,7 +50,7 @@ EOF
 }
 
 # ---------------- TC-DPD-7 (positive) ----------------
-@test "TC-DPD-7: dispatch-verb AC + companion integration-test AC -> intake passes" {
+@test "dispatch-verb AC + companion integration-test AC -> intake passes" {
   local story="$TEST_TMP/positive.md"
   _write_story "$story" \
 $'**AC1.** When the orchestrator spawns the subagent...\n\n**AC2.** bats integration test exists at tests/foo.bats covering the spawn path.\n'
@@ -59,7 +59,7 @@ $'**AC1.** When the orchestrator spawns the subagent...\n\n**AC2.** bats integra
 }
 
 # ---------------- TC-DPD-8 (negative) ----------------
-@test "TC-DPD-8: dispatch-verb AC alone -> intake HALTs with canonical message" {
+@test "dispatch-verb AC alone -> intake HALTs with canonical message" {
   local story="$TEST_TMP/negative.md"
   _write_story "$story" \
 $'**AC1.** When the orchestrator spawns the subagent, then the envelope must round-trip.\n\n**AC2.** Unrelated AC about prose.\n'
@@ -70,7 +70,7 @@ $'**AC1.** When the orchestrator spawns the subagent, then the envelope must rou
 }
 
 # ---------------- TC-DPD-9 (override) ----------------
-@test "TC-DPD-9: contract-only override -> intake passes; reason recorded in Dev Notes" {
+@test "contract-only override -> intake passes; reason recorded in Dev Notes" {
   local story="$TEST_TMP/override.md"
   _write_story "$story" \
 $'**AC1.** When the orchestrator spawns the subagent. <!-- gaia:contract-only: dispatch is to test substrate only -->\n\n**AC2.** Unrelated AC.\n'
@@ -81,7 +81,7 @@ $'**AC1.** When the orchestrator spawns the subagent. <!-- gaia:contract-only: d
 }
 
 # ---------------- TC-DPD-11 (SSOT static audit) ----------------
-@test "TC-DPD-11: SKILL.md files reference matcher library, not inline taxonomy" {
+@test "SKILL.md files reference matcher library, not inline taxonomy" {
   local PLUGIN_DIR
   PLUGIN_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 

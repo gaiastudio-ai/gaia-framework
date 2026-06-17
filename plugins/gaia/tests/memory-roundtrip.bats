@@ -88,7 +88,7 @@ teardown() { common_teardown; }
 # Edge case EC-1 — multi-line content with shell-special chars (data fidelity)
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-1: multi-line content with backticks, code fences, and shell specials is byte-for-byte preserved" {
+@test "roundtrip : multi-line content with backticks, code fences, and shell specials is byte-for-byte preserved" {
   # Write the fixture from a file to avoid quoting games at the shell boundary.
   local fixture_file="$TEST_TMP/ec1-fixture.txt"
   cat > "$fixture_file" <<'FIX'
@@ -122,7 +122,7 @@ FIX
 # Edge case EC-2 — concurrent writers before a read
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-2: two parallel writers both land; loader surfaces both entries" {
+@test "roundtrip : two parallel writers both land; loader surfaces both entries" {
   mkdir -p "$MEMORY_PATH/sm-sidecar"
   (bash -c "MEMORY_PATH='$MEMORY_PATH' '$WRITER' --agent sm --type decision --content 'EC2-ALPHA' --source dev-story") &
   local p1=$!
@@ -141,7 +141,7 @@ FIX
 # Edge case EC-3 — fresh agent (no sidecar directory pre-existing)
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-3: first-ever write for a never-seen agent creates sidecar dir and is loadable" {
+@test "roundtrip : first-ever write for a never-seen agent creates sidecar dir and is loadable" {
   local fresh="brand-new-agent-$$"
   [ ! -d "$MEMORY_PATH/${fresh}-sidecar" ]
 
@@ -158,7 +158,7 @@ FIX
 # Edge case EC-4 — over-budget ground-truth, loader --max-tokens caps output
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-4: loader --max-tokens truncates an oversize ground-truth at read time" {
+@test "roundtrip : loader --max-tokens truncates an oversize ground-truth at read time" {
   # Write a ground-truth section whose body is ~4000 chars, then ask the
   # loader to cap at 100 tokens (== 400 chars by default token_approximation).
   local big
@@ -180,7 +180,7 @@ FIX
 # Edge case EC-5 — create new ground-truth section that didn't previously exist
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-5: writing a brand-new ground-truth section is surfaced by the loader" {
+@test "roundtrip : writing a brand-new ground-truth section is surfaced by the loader" {
   mkdir -p "$MEMORY_PATH/sm-sidecar"
   cat > "$MEMORY_PATH/sm-sidecar/ground-truth.md" <<'EOF'
 ## Pre-Existing
@@ -202,7 +202,7 @@ EOF
 # Edge case EC-6 — missing config.yaml between write and read, fallback path
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-6: config.yaml deleted after the write; loader falls back to <agent>-sidecar/" {
+@test "roundtrip : config.yaml deleted after the write; loader falls back to <agent>-sidecar/" {
   # Session A — write under a config.yaml that maps sm to sm-sidecar.
   cat > "$MEMORY_PATH/config.yaml" <<'EOF'
 agents:
@@ -225,7 +225,7 @@ EOF
 # Edge case EC-7 — aged entry: loader is not a hygiene filter
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-7: loader returns entries regardless of age (hygiene is a separate concern)" {
+@test "roundtrip : loader returns entries regardless of age (hygiene is a separate concern)" {
   mkdir -p "$MEMORY_PATH/sm-sidecar"
   # Write a decision normally.
   bash -c "MEMORY_PATH='$MEMORY_PATH' '$WRITER' --agent sm --type decision --content 'EC7-AGED' --source dev-story"
@@ -242,7 +242,7 @@ EOF
 # Edge case EC-8 — writer crash mid-write: lock released, log remains well-formed
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-8: killing writer mid-operation leaves log well-formed; lock is released" {
+@test "roundtrip : killing writer mid-operation leaves log well-formed; lock is released" {
   mkdir -p "$MEMORY_PATH/sm-sidecar"
   # Seed a first, clean entry.
   bash -c "MEMORY_PATH='$MEMORY_PATH' '$WRITER' --agent sm --type decision --content 'EC8-BEFORE' --source dev-story"
@@ -302,7 +302,7 @@ EOF
 # Edge case EC-9 — reader-before-writer race against an existing log
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-9: reader with pre-existing content sees it; in-flight writer does not corrupt the read" {
+@test "roundtrip : reader with pre-existing content sees it; in-flight writer does not corrupt the read" {
   mkdir -p "$MEMORY_PATH/sm-sidecar"
   bash -c "MEMORY_PATH='$MEMORY_PATH' '$WRITER' --agent sm --type decision --content 'EC9-PRE-EXISTING' --source dev-story"
 
@@ -329,7 +329,7 @@ EOF
 # Edge case EC-10 — no-`flock` environment, POSIX mkdir fallback path
 # ---------------------------------------------------------------------------
 
-@test "roundtrip EC-10: round-trip succeeds with flock hidden from PATH (mkdir-lock fallback)" {
+@test "roundtrip : round-trip succeeds with flock hidden from PATH (mkdir-lock fallback)" {
   # Craft a PATH that excludes any directory holding `flock`. Assemble a
   # stub PATH with just bash/core utilities — enough for the writer but
   # without flock on disk.

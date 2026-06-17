@@ -24,14 +24,14 @@ run_finalize_and_capture_resolution() {
   bash "$FINALIZE" 2>&1 || true
 }
 
-@test "AF-21-11 edit-arch: greenfield (no architecture anywhere) → finalize.sh skips checklist gracefully" {
+@test "edit-arch: greenfield (no architecture anywhere) → finalize.sh skips checklist gracefully" {
   [ ! -d ".gaia" ] && [ ! -d "docs" ]
   OUTPUT="$(run_finalize_and_capture_resolution)"
   echo "$OUTPUT" | grep -qF "no architecture artifact found"
   ! echo "$OUTPUT" | grep -qF "running 25-item checklist"
 }
 
-@test "AF-21-11 edit-arch: post-ADR-111 (only .gaia/ exists) → resolves to canonical" {
+@test "edit-arch: post-migration (only .gaia/ exists) → resolves to canonical" {
   mkdir -p ".gaia/artifacts/planning-artifacts"
   cat > ".gaia/artifacts/planning-artifacts/architecture.md" <<'ARCH'
 # Test Architecture
@@ -43,7 +43,7 @@ ARCH
   [ ! -d "docs" ]
 }
 
-@test "AF-21-11 edit-arch: pre-ADR-111 (only docs/, no .gaia/) → legacy back-compat preserved" {
+@test "edit-arch: pre-migration (only docs/, no .gaia/) → legacy back-compat preserved" {
   mkdir -p "docs/planning-artifacts"
   cat > "docs/planning-artifacts/architecture.md" <<'ARCH'
 # Legacy Architecture
@@ -55,7 +55,7 @@ ARCH
   [ ! -d ".gaia" ]
 }
 
-@test "AF-21-11 edit-arch: both present (mid-migration) → canonical wins" {
+@test "edit-arch: both present (mid-migration) → canonical wins" {
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts"
   cat > ".gaia/artifacts/planning-artifacts/architecture.md" <<'ARCH'
 # Canonical Architecture
@@ -68,7 +68,7 @@ ARCH
   ! echo "$OUTPUT" | grep -qF "running 25-item checklist against docs/planning-artifacts/architecture.md"
 }
 
-@test "AF-21-11 edit-arch: ARCHITECTURE_ARTIFACT env-var override (Tier 1) wins over both legacy and canonical" {
+@test "edit-arch: ARCHITECTURE_ARTIFACT env-var override (Tier 1) wins over both legacy and canonical" {
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts"
   echo "# Canonical" > ".gaia/artifacts/planning-artifacts/architecture.md"
   echo "# Legacy" > "docs/planning-artifacts/architecture.md"

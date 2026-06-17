@@ -34,12 +34,12 @@ SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
 # The canonical precedence sentence — must appear identically in both artifacts (AC4).
 PRECEDENCE_SENTENCE="When the same key appears in both \`global.yaml\` (local) and \`config/project-config.yaml\` (shared), the local value wins."
 
-@test "AC1: MIGRATION doc exists and is non-empty" {
+@test "MIGRATION doc exists and is non-empty" {
   [ -f "$MIGRATION" ]
   [ -s "$MIGRATION" ]
 }
 
-@test "AC1: every top-level field in legacy global.yaml appears in MIGRATION disposition table" {
+@test "every top-level field in legacy global.yaml appears in MIGRATION disposition table" {
   # CI skip: the legacy global.yaml lives in the developer workspace outside
   # the plugin repo. The plugin-ci.yml job checks out gaia-public standalone
   # so the _gaia/_config mirror is absent — skip the disposition cross-check
@@ -73,7 +73,7 @@ PRECEDENCE_SENTENCE="When the same key appears in both \`global.yaml\` (local) a
   fi
 }
 
-@test "AC2: schema declares required shared fields" {
+@test "schema declares required shared fields" {
   [ -f "$SCHEMA" ]
   # AC2 required shared keys (per feature brief P20-S1)
   grep -qE "^  project_path:" "$SCHEMA"
@@ -85,7 +85,7 @@ PRECEDENCE_SENTENCE="When the same key appears in both \`global.yaml\` (local) a
   grep -qE "^  agent_customizations:" "$SCHEMA"
 }
 
-@test "AC3: MIGRATION doc documents local fields (stays-in-global)" {
+@test "MIGRATION doc documents local fields (stays-in-global)" {
   [ -f "$MIGRATION" ]
   # AC3 required local keys: installed_path + machine-specific paths
   grep -qE "\| \`installed_path\` \|" "$MIGRATION"
@@ -93,31 +93,31 @@ PRECEDENCE_SENTENCE="When the same key appears in both \`global.yaml\` (local) a
   grep -qE "stays-in-global" "$MIGRATION"
 }
 
-@test "AC4: precedence rule appears identically in schema header" {
+@test "precedence rule appears identically in schema header" {
   [ -f "$SCHEMA" ]
   grep -qF "$PRECEDENCE_SENTENCE" "$SCHEMA"
 }
 
-@test "AC4: precedence rule appears identically in MIGRATION doc" {
+@test "precedence rule appears identically in MIGRATION doc" {
   [ -f "$MIGRATION" ]
   grep -qF "$PRECEDENCE_SENTENCE" "$MIGRATION"
 }
 
-@test "AC4: MIGRATION doc has worked example for local-override pattern" {
+@test "MIGRATION doc has worked example for local-override pattern" {
   [ -f "$MIGRATION" ]
   # Worked example must show a shared-default with local-override.
   # Heuristic: heading + code fence demonstrating override.
   grep -qE "Worked [Ee]xample|worked example" "$MIGRATION"
 }
 
-@test "AC5: round-trip fixtures exist" {
+@test "round-trip fixtures exist" {
   [ -f "$FIXTURES/shared-project-config.yaml" ]
   [ -f "$FIXTURES/local-global.yaml" ]
   [ -f "$FIXTURES/expected-resolved.yaml" ]
   [ -f "$FIXTURES/README.md" ]
 }
 
-@test "AC5: expected-resolved fixture shows project_path as local value (local overrides shared)" {
+@test "expected-resolved fixture shows project_path as local value (local overrides shared)" {
   [ -f "$FIXTURES/expected-resolved.yaml" ]
   [ -f "$FIXTURES/shared-project-config.yaml" ]
   [ -f "$FIXTURES/local-global.yaml" ]
@@ -134,7 +134,7 @@ PRECEDENCE_SENTENCE="When the same key appears in both \`global.yaml\` (local) a
   [ "$expected_value" = "$local_value" ]
 }
 
-@test "AC5: expected-resolved fixture passes resolve-config.sh without errors" {
+@test "expected-resolved fixture passes resolve-config.sh without errors" {
   [ -f "$FIXTURES/expected-resolved.yaml" ]
   [ -x "$SCRIPTS_DIR/resolve-config.sh" ]
 
@@ -152,7 +152,7 @@ PRECEDENCE_SENTENCE="When the same key appears in both \`global.yaml\` (local) a
   [[ "$output" == *"project_path="* ]]
 }
 
-@test "AC5: README in fixtures directory explains the round-trip contract" {
+@test "README in fixtures directory explains the round-trip contract" {
   [ -f "$FIXTURES/README.md" ]
   grep -qE "E28-S141" "$FIXTURES/README.md"
   grep -qiE "local overrides shared|local.*wins" "$FIXTURES/README.md"

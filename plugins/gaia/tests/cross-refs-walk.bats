@@ -131,42 +131,42 @@ teardown() { common_teardown; }
 # NFR-052: source the script and verify every public function resolves
 # ---------------------------------------------------------------------------
 
-@test "NFR-052: source script — parse_args is callable" {
+@test "source script — parse_args is callable" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   type parse_args
 }
 
-@test "NFR-052: source script — parse_cross_refs is callable" {
+@test "source script — parse_cross_refs is callable" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   type parse_cross_refs
 }
 
-@test "NFR-052: source script — build_inverted_index is callable" {
+@test "source script — build_inverted_index is callable" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   type build_inverted_index
 }
 
-@test "NFR-052: source script — parse_stacks_json is callable" {
+@test "source script — parse_stacks_json is callable" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   type parse_stacks_json
 }
 
-@test "NFR-052: source script — bfs_walk is callable" {
+@test "source script — bfs_walk is callable" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   type bfs_walk
 }
 
-@test "NFR-052: source script — build_json_array is callable" {
+@test "source script — build_json_array is callable" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   type build_json_array
 }
 
-@test "NFR-052: source script — main is callable" {
+@test "source script — main is callable" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   type main
 }
 
-@test "NFR-052: main-guard — sourcing does NOT invoke main" {
+@test "main-guard — sourcing does NOT invoke main" {
   # If main runs on source, it will fail (no --config arg) and the exit 1
   # would be caught. A clean source means the guard works.
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
@@ -208,7 +208,7 @@ teardown() { common_teardown; }
 # AC1: inverted index built correctly
 # ---------------------------------------------------------------------------
 
-@test "AC1: parse_cross_refs emits TSV consumer<TAB>dependency" {
+@test "parse_cross_refs emits TSV consumer<TAB>dependency" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   local tsv
   tsv="$(parse_cross_refs "$TEST_TMP/config-chain.yaml")"
@@ -218,7 +218,7 @@ teardown() { common_teardown; }
   printf '%s\n' "$tsv" | grep -qF $'stack-b\tstack-c'
 }
 
-@test "AC1: build_inverted_index maps dependency to its consumer" {
+@test "build_inverted_index maps dependency to its consumer" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   local tsv
   tsv="$(parse_cross_refs "$TEST_TMP/config-chain.yaml")"
@@ -233,7 +233,7 @@ teardown() { common_teardown; }
   rm -f "$tmp_tsv"
 }
 
-@test "AC1: inline cross_refs YAML flow form is parsed correctly" {
+@test "inline cross_refs YAML flow form is parsed correctly" {
   source "$SCRIPTS_DIR/cross-refs-walk.sh"
   local tsv
   tsv="$(parse_cross_refs "$TEST_TMP/config-inline.yaml")"
@@ -246,7 +246,7 @@ teardown() { common_teardown; }
 # AC2: transitive DAG walk expands affected set
 # ---------------------------------------------------------------------------
 
-@test "AC2: 3-chain seed [stack-c] returns all 3 stacks" {
+@test "3-chain seed [stack-c] returns all 3 stacks" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-chain.yaml" \
     --stacks '["stack-c"]'
@@ -257,7 +257,7 @@ teardown() { common_teardown; }
   [[ "$output" == *'"stack-c"'* ]]
 }
 
-@test "AC2: 3-chain seed midpoint [stack-b] returns stack-b and stack-a" {
+@test "3-chain seed midpoint [stack-b] returns stack-b and stack-a" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-chain.yaml" \
     --stacks '["stack-b"]'
@@ -268,7 +268,7 @@ teardown() { common_teardown; }
   [[ "$output" != *'"stack-c"'* ]]
 }
 
-@test "AC2: seed with no consumers returns just the seed" {
+@test "seed with no consumers returns just the seed" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-chain.yaml" \
     --stacks '["stack-a"]'
@@ -276,7 +276,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["stack-a"]' ]]
 }
 
-@test "AC2: empty seed [] returns []" {
+@test "empty seed returns" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-chain.yaml" \
     --stacks '[]'
@@ -284,7 +284,7 @@ teardown() { common_teardown; }
   [[ "$output" == '[]' ]]
 }
 
-@test "AC2: diamond graph seed [stack-z] reaches all 4 stacks once" {
+@test "diamond graph seed [stack-z] reaches all 4 stacks once" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-diamond.yaml" \
     --stacks '["stack-z"]'
@@ -295,7 +295,7 @@ teardown() { common_teardown; }
   [[ "$output" == *'"stack-w"'* ]]
 }
 
-@test "AC2: no cross_refs — seed [stack-x] returns just stack-x" {
+@test "no cross_refs — seed [stack-x] returns just stack-x" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-nocrossrefs.yaml" \
     --stacks '["stack-x"]'
@@ -307,7 +307,7 @@ teardown() { common_teardown; }
 # AC3: cycle detection reports the cycle by name to stderr
 # ---------------------------------------------------------------------------
 
-@test "AC3: 3-cycle A->B->C->A detected and cycle names appear on stderr" {
+@test "3-cycle A->B->C->A detected and cycle names appear on stderr" {
   run --separate-stderr "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-cycle.yaml" \
     --stacks '["stack-a"]'
@@ -316,14 +316,14 @@ teardown() { common_teardown; }
   [[ "$stderr" == *"stack-a"* ]]
 }
 
-@test "AC3: self-loop cycle detected and reported on stderr" {
+@test "self-loop cycle detected and reported on stderr" {
   run --separate-stderr "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-selfloop.yaml" \
     --stacks '["stack-a"]'
   [[ "$stderr" == *"CYCLE"* ]]
 }
 
-@test "AC3: 3-cycle path closes loop exactly once — no doubled tail node" {
+@test "3-cycle path closes loop exactly once — no doubled tail node" {
   # The DFS inverted-index traversal order for this fixture visits:
   # stack-a -> (consumer stack-c) -> (consumer stack-b) -> back-edge stack-a
   # so the reported path is: stack-a -> stack-c -> stack-b -> stack-a
@@ -341,7 +341,7 @@ teardown() { common_teardown; }
 # AC4: cycle escalates output to ["*"] and exits 0
 # ---------------------------------------------------------------------------
 
-@test "AC4: cycle detected — stdout is exactly [\"*\"]" {
+@test "cycle detected — stdout is exactly [\"*\"]" {
   run --separate-stderr "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-cycle.yaml" \
     --stacks '["stack-a"]'
@@ -349,7 +349,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["*"]' ]]
 }
 
-@test "AC4: self-loop cycle — stdout is exactly [\"*\"]" {
+@test "self-loop cycle — stdout is exactly [\"*\"]" {
   run --separate-stderr "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-selfloop.yaml" \
     --stacks '["stack-a"]'
@@ -357,7 +357,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["*"]' ]]
 }
 
-@test "AC4: wildcard seed [\"*\"] passes through immediately as [\"*\"]" {
+@test "wildcard seed [\"*\"] passes through immediately as [\"*\"]" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-chain.yaml" \
     --stacks '["*"]'
@@ -369,7 +369,7 @@ teardown() { common_teardown; }
 # AC5: visited exactly once — no duplicates in output
 # ---------------------------------------------------------------------------
 
-@test "AC5: 5-chain seed [stack-a] visits each node exactly once" {
+@test "5-chain seed [stack-a] visits each node exactly once" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-5chain.yaml" \
     --stacks '["stack-a"]'
@@ -394,7 +394,7 @@ teardown() { common_teardown; }
   [ "$count_e" -eq 1 ]
 }
 
-@test "AC5: diamond graph — stack-w appears exactly once in output" {
+@test "diamond graph — stack-w appears exactly once in output" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-diamond.yaml" \
     --stacks '["stack-z"]'
@@ -404,7 +404,7 @@ teardown() { common_teardown; }
   [ "$count_w" -eq 1 ]
 }
 
-@test "AC5: output is valid JSON array (parseable)" {
+@test "output is valid JSON array (parseable)" {
   run "$SCRIPTS_DIR/cross-refs-walk.sh" \
     --config "$TEST_TMP/config-chain.yaml" \
     --stacks '["stack-c"]'

@@ -27,30 +27,30 @@ teardown() {
 
 # ---------------- AC7 — SKILL.md registration -----------------------------
 
-@test "AC7: gaia-test-device-matrix SKILL.md exists" {
+@test "gaia-test-device-matrix SKILL.md exists" {
   [ -f "$SKILL_MD" ]
 }
 
-@test "AC7: SKILL.md declares runtime-profile: network" {
+@test "SKILL.md declares runtime-profile: network" {
   grep -Eq '^runtime-profile:[[:space:]]+network[[:space:]]*$' "$SKILL_MD"
 }
 
-@test "AC7: SKILL.md registers /gaia-test-device-matrix trigger" {
+@test "SKILL.md registers /gaia-test-device-matrix trigger" {
   grep -Fq '/gaia-test-device-matrix' "$SKILL_MD"
 }
 
-@test "AC7: SKILL.md declares 'run device matrix' natural-language trigger" {
+@test "SKILL.md declares 'run device matrix' natural-language trigger" {
   grep -Eq 'run device matrix' "$SKILL_MD"
 }
 
-@test "AC7: SKILL.md declares argument-hint with --platform and --filter flags" {
+@test "SKILL.md declares argument-hint with --platform and --filter flags" {
   grep -Eq '^argument-hint:.*--platform' "$SKILL_MD"
   grep -Eq '^argument-hint:.*--filter' "$SKILL_MD"
 }
 
 # ---------------- AC2 — matrix expansion ---------------------------------
 
-@test "AC2: expand-matrix expands 2 OS x 2 form-factors into 4 entries" {
+@test "expand-matrix expands 2 OS x 2 form-factors into 4 entries" {
   cat > "$TMPDIR_BATS/cfg.yaml" <<'YAML'
 device_farm:
   adapter: firebase-test-lab
@@ -66,7 +66,7 @@ YAML
   [ "$count" = "4" ]
 }
 
-@test "AC2: expand-matrix expands 3 x 2 x 2 into 12 entries" {
+@test "expand-matrix expands 3 x 2 x 2 into 12 entries" {
   cat > "$TMPDIR_BATS/cfg.yaml" <<'YAML'
 device_farm:
   adapter: firebase-test-lab
@@ -81,7 +81,7 @@ YAML
   [ "$count" = "12" ]
 }
 
-@test "AC2: expanded entries carry os_version, form_factor, screen_size" {
+@test "expanded entries carry os_version, form_factor, screen_size" {
   cat > "$TMPDIR_BATS/cfg.yaml" <<'YAML'
 device_farm:
   adapter: firebase-test-lab
@@ -99,37 +99,37 @@ YAML
 
 # ---------------- AC4 — composite verdict logic ---------------------------
 
-@test "AC4: composite-verdict — all PASSED yields PASSED" {
+@test "composite-verdict — all PASSED yields PASSED" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-all-pass.json"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"PASSED"'
 }
 
-@test "AC4: composite-verdict — any FAILED yields FAILED" {
+@test "composite-verdict — any FAILED yields FAILED" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-one-fail.json"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"FAILED"'
 }
 
-@test "AC4: composite-verdict — ERROR with no FAILED yields ERROR" {
+@test "composite-verdict — ERROR with no FAILED yields ERROR" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-one-error.json"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"ERROR"'
 }
 
-@test "AC4: composite-verdict — TIMEOUT with no FAILED/ERROR yields TIMEOUT" {
+@test "composite-verdict — TIMEOUT with no FAILED/ERROR yields TIMEOUT" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-one-timeout.json"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"TIMEOUT"'
 }
 
-@test "AC4: composite-verdict — FAILED dominates ERROR (priority)" {
+@test "composite-verdict — FAILED dominates ERROR (priority)" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-fail-and-error.json"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"FAILED"'
 }
 
-@test "AC4: composite-verdict emits summary counts" {
+@test "composite-verdict emits summary counts" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-mixed.json"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq '"passed_count"'
@@ -140,7 +140,7 @@ YAML
 
 # ---------------- AC3 — per-device structure carried through dispatch ----
 
-@test "AC3: dispatch produces per_device_results entries with canonical schema" {
+@test "dispatch produces per_device_results entries with canonical schema" {
   GAIA_DEVICE_FARM_MOCK=1 \
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-matrix.yaml"
   [ "$status" -eq 0 ]
@@ -154,14 +154,14 @@ YAML
 # AF-2026-05-17-10 — platforms-mobile defense-in-depth gate (mirror of
 # AF-2026-05-17-9 for the mobile family).
 
-@test "AF-2026-05-17-10: dispatch SKIPS with no_mobile_platform on non-mobile project" {
+@test "dispatch SKIPS with no_mobile_platform on non-mobile project" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-mobile-platforms.yaml"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Fq '"verdict":"SKIPPED"'
   echo "$output" | grep -Fq '"reason":"no_mobile_platform"'
 }
 
-@test "AF-2026-05-17-10: honest device_farm.adapter diagnostic names canonical adapters" {
+@test "honest device_farm.adapter diagnostic names canonical adapters" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
   echo "$output" | grep -Fq '"verdict":"ERROR"'
   echo "$output" | grep -Fq '"reason":"no_device_farm_adapter"'
@@ -170,7 +170,7 @@ YAML
   echo "$output" | grep -Fq 'sauce-labs'
 }
 
-@test "AF-2026-05-17-10: dispatch.sh contains the platforms-mobile gate logic" {
+@test "dispatch.sh contains the platforms-mobile gate logic" {
   run grep -E 'no_mobile_platform|AF-2026-05-17-10' "$DISPATCH"
   [ "$status" -eq 0 ]
 }

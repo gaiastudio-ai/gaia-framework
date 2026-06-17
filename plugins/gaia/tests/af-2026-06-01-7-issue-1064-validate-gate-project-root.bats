@@ -33,17 +33,17 @@ teardown() { common_teardown; }
 # F-01 — resolve-config.sh now accepts `project_root` as a positional query
 # ===========================================================================
 
-@test "AF-32-5 #1064 F-01: resolve-config.sh allowlist includes project_root" {
+@test "#1064 F-01: resolve-config.sh allowlist includes project_root" {
   run grep -E 'project_root\|planning_artifacts\|implementation_artifacts' "$RC"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-5 #1064 F-01: resolve-config.sh emit-case prints v_project_root" {
+@test "#1064 F-01: resolve-config.sh emit-case prints v_project_root" {
   run grep -F 'project_root)            printf' "$RC"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-5 #1064 F-01: resolve-config.sh CLI surface project_root exits 0" {
+@test "#1064 F-01: resolve-config.sh CLI surface project_root exits 0" {
   # Build a minimal-valid fixture project (resolve-config.sh enforces 7 required
   # top-level keys; mirror an existing fixture's shape).
   local proj
@@ -68,17 +68,17 @@ YAML
 # F-02 — validate-gate.sh PROJECT_ROOT resolution helper exists + cites #1064
 # ===========================================================================
 
-@test "AF-32-5 #1064 F-02: validate-gate.sh declares _vg_resolve_project_root() helper" {
+@test "#1064 F-02: validate-gate.sh declares _vg_resolve_project_root helper" {
   run grep -F '_vg_resolve_project_root()' "$VG"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-5 #1064 F-02: validate-gate.sh helper queries resolve-config.sh as a tier" {
+@test "#1064 F-02: validate-gate.sh helper queries resolve-config.sh as a tier" {
   run grep -F 'resolve-config.sh' "$VG"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-5 #1064 F-02: validate-gate.sh helper walks up looking for the canonical anchor" {
+@test "#1064 F-02: validate-gate.sh helper walks up looking for the canonical anchor" {
   run grep -F '.gaia/config/project-config.yaml' "$VG"
   [ "$status" -eq 0 ]
 }
@@ -88,7 +88,7 @@ YAML
 # Behavioural — the originally-reported repro path now passes
 # ===========================================================================
 
-@test "AF-32-5 #1064 behavioural: gate passes when CWD = project root with PROJECT_ROOT unset" {
+@test "#1064 behavioural: gate passes when CWD = project root with PROJECT_ROOT unset" {
   local proj="$(mktemp -d -t af325-1064-a.XXXXXX)"
   mkdir -p "$proj/.gaia/config" "$proj/.gaia/artifacts/planning-artifacts"
   touch "$proj/.gaia/config/project-config.yaml"
@@ -102,7 +102,7 @@ YAML
   rm -rf "$proj"
 }
 
-@test "AF-32-5 #1064 behavioural: gate passes from a SUBDIR via walk-up with PROJECT_ROOT unset" {
+@test "#1064 behavioural: gate passes from a SUBDIR via walk-up with PROJECT_ROOT unset" {
   local proj="$(mktemp -d -t af325-1064-b.XXXXXX)"
   mkdir -p "$proj/.gaia/config" "$proj/.gaia/artifacts/planning-artifacts" "$proj/some/sub/dir"
   touch "$proj/.gaia/config/project-config.yaml"
@@ -116,7 +116,7 @@ YAML
   rm -rf "$proj"
 }
 
-@test "AF-32-5 #1064 behavioural: PROJECT_ROOT env-var STILL wins when set (precedence rule 1)" {
+@test "#1064 behavioural: PROJECT_ROOT env-var STILL wins when set (precedence rule 1)" {
   # Two fixtures: one with the PRD, one without. PROJECT_ROOT points at the
   # one WITH the PRD; CWD is the one WITHOUT. The gate must follow the
   # env var, not the walk-up.
@@ -136,7 +136,7 @@ YAML
   rm -rf "$with_prd" "$no_prd"
 }
 
-@test "AF-32-5 #1064 behavioural: legacy last-resort \$PWD fallback preserved when no anchor exists" {
+@test "#1064 behavioural: legacy last-resort \$PWD fallback preserved when no anchor exists" {
   # A directory with no .gaia/config/ anywhere up to / or $HOME. The
   # gate must NOT crash; it just fails the gate (artifact really is
   # missing at $PWD/docs/...).

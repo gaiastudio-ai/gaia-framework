@@ -25,13 +25,13 @@ teardown() {
 
 # ---------- AC4 / TC-CCL-1: gaia- prefix → generated ----------
 
-@test "TC-CCL-1: gaia-ci.yml classifies as generated" {
+@test "gaia-ci.yml classifies as generated" {
   run bash -c "source '$HELPER' && gaia_ci_classify gaia-ci.yml"
   [ "$status" -eq 0 ]
   [ "$output" = "generated" ]
 }
 
-@test "TC-CCL-1 variant: gaia-pre-merge.yml classifies as generated" {
+@test "variant: gaia-pre-merge.yml classifies as generated" {
   run bash -c "source '$HELPER' && gaia_ci_classify gaia-pre-merge.yml"
   [ "$status" -eq 0 ]
   [ "$output" = "generated" ]
@@ -39,7 +39,7 @@ teardown() {
 
 # ---------- AC4 / TC-CCL-2: user- prefix → user-authored ----------
 
-@test "TC-CCL-2: user-custom-deploy.yml classifies as user-authored" {
+@test "user-custom-deploy.yml classifies as user-authored" {
   run bash -c "source '$HELPER' && gaia_ci_classify user-custom-deploy.yml"
   [ "$status" -eq 0 ]
   [ "$output" = "user-authored" ]
@@ -47,13 +47,13 @@ teardown() {
 
 # ---------- AC4 / TC-CCL-3: no prefix → unprefixed (migration-eligible) ----------
 
-@test "TC-CCL-3: ci.yml (no prefix) classifies as unprefixed" {
+@test "ci.yml (no prefix) classifies as unprefixed" {
   run bash -c "source '$HELPER' && gaia_ci_classify ci.yml"
   [ "$status" -eq 0 ]
   [ "$output" = "unprefixed" ]
 }
 
-@test "TC-CCL-3 variant: deploy.yml (no prefix) classifies as unprefixed" {
+@test "variant: deploy.yml (no prefix) classifies as unprefixed" {
   run bash -c "source '$HELPER' && gaia_ci_classify deploy.yml"
   [ "$status" -eq 0 ]
   [ "$output" = "unprefixed" ]
@@ -124,7 +124,7 @@ teardown() {
 
 # ---------- AC5: no side effects / no global-state mutation ----------
 
-@test "AC5: gaia_ci_classify has no side effects (no global state mutation)" {
+@test "gaia_ci_classify has no side effects (no global state mutation)" {
   # Source once; capture environment-variable count before/after invocation.
   # shellcheck disable=SC1090
   source "$HELPER"
@@ -137,7 +137,7 @@ teardown() {
   [ "$before" = "$after" ]
 }
 
-@test "AC5: source-guard prevents double-source side effect" {
+@test "source-guard prevents double-source side effect" {
   run bash -c "source '$HELPER' && source '$HELPER' && declare -F gaia_ci_classify >/dev/null && echo OK"
   [ "$status" -eq 0 ]
   [ "$output" = "OK" ]

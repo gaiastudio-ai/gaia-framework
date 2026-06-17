@@ -40,14 +40,14 @@ teardown() { common_teardown; }
 # TC-SGR-42 — skill scaffold structural smoke
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-42 skill scaffold: SKILL.md exists at canonical path" {
+@test "skill scaffold: SKILL.md exists at canonical path" {
   [ -f "$SKILL_MD" ] || {
     echo "SKILL.md not found at $SKILL_MD (TDD red)"
     return 1
   }
 }
 
-@test "TC-SGR-42 skill scaffold: SKILL.md frontmatter contains required keys" {
+@test "skill scaffold: SKILL.md frontmatter contains required keys" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   frontmatter=$(awk '/^---$/{f++; next} f==1{print}' "$SKILL_MD")
   for key in 'name:[[:space:]]*gaia-sprint-review' 'description:' 'argument-hint:' 'allowed-tools:' 'orchestration_class:[[:space:]]*heavy-procedural'; do
@@ -60,7 +60,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "TC-SGR-42 skill scaffold: SKILL.md body has 4 canonical top-level sections (Setup, Critical Rules, Steps, Finalize)" {
+@test "skill scaffold: SKILL.md body has 4 canonical top-level sections (Setup, Critical Rules, Steps, Finalize)" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   for section in '^## Setup$' '^## Critical Rules$' '^## Steps$' '^## Finalize$'; do
     grep -qE "$section" "$SKILL_MD" || {
@@ -70,7 +70,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "TC-SGR-42 skill scaffold: 5 helper scripts present + executable" {
+@test "skill scaffold: 5 helper scripts present + executable" {
   for script in "$SETUP_SH" "$FINALIZE_SH" "$WRITE_VAL_SENTINEL" "$TRACK_B_DISPATCH" "$COMPOSE_VERDICT"; do
     [ -x "$script" ] || {
       echo "Missing or non-executable script: $script"
@@ -84,7 +84,7 @@ teardown() { common_teardown; }
 # script tier OR via SKILL.md prose grep — Step 1 prose mentions the gate)
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-18 pre-condition gate: SKILL.md Step 1 prose names the all-stories-done check" {
+@test "pre-condition gate: SKILL.md Step 1 prose names the all-stories-done check" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'all[- ]stories[- ]done|stories must be.*done|status.*done.*before' "$SKILL_MD" || {
     echo "Step 1 prose does not document the all-stories-done pre-condition gate (AC3)"
@@ -92,7 +92,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-19 pre-condition refusal: SKILL.md documents canonical refusal stderr" {
+@test "pre-condition refusal: SKILL.md documents canonical refusal stderr" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'refuse|REFUSE.*non-done|non-done.*REFUSE|complete or roll-over' "$SKILL_MD" || {
     echo "Step 1 prose does not document the canonical refusal message for non-done stories (AC3)"
@@ -100,7 +100,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-20 no-goals refusal: SKILL.md Step 1 documents no-goals refusal path" {
+@test "no-goals refusal: SKILL.md Step 1 documents no-goals refusal path" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'no sprint goals|empty goals|goals.*missing|no.*goals.*defined' "$SKILL_MD" || {
     echo "Step 1 prose does not document the no-sprint-goals refusal path (FR-488 AC3)"
@@ -112,43 +112,43 @@ teardown() { common_teardown; }
 # TC-SGR-21, 26, 27 — composite verdict reducer happy + edge cases
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-21 composite PASSED: compose-verdict.sh emits PASSED for (PASSED, PASSED)" {
+@test "composite PASSED: compose-verdict.sh emits PASSED for (PASSED, PASSED)" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a PASSED --track-b PASSED 2>&1)
   [ "$result" = "PASSED" ]
 }
 
-@test "TC-SGR-21 composite PASSED-equivalent: SKIPPED Track B + PASSED Track A → PASSED (E93-S3 stub path)" {
+@test "composite PASSED-equivalent: SKIPPED Track B + PASSED Track A → PASSED ( stub path)" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a PASSED --track-b SKIPPED 2>&1)
   [ "$result" = "PASSED" ]
 }
 
-@test "TC-SGR-26 composite PARTIAL: PARTIAL Track A + PASSED Track B → PASSED (PARTIAL does not block)" {
+@test "composite PARTIAL: PARTIAL Track A + PASSED Track B → PASSED (PARTIAL does not block)" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a PARTIAL --track-b PASSED 2>&1)
   [ "$result" = "PASSED" ]
 }
 
-@test "TC-SGR-27 composite FAILED on Track B one-FAILED: PASSED A + FAILED B → FAILED" {
+@test "composite FAILED on Track B one-FAILED: PASSED A + FAILED B → FAILED" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a PASSED --track-b FAILED 2>&1)
   [ "$result" = "FAILED" ]
 }
 
-@test "TC-SGR-25 composite FAILED (Track A all-FAILED): FAILED A + any B → FAILED" {
+@test "composite FAILED (Track A all-FAILED): FAILED A + any B → FAILED" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a FAILED --track-b PASSED 2>&1)
   [ "$result" = "FAILED" ]
 }
 
-@test "TC-SGR-25 composite UNVERIFIED: UNVERIFIED A + PASSED B → UNVERIFIED" {
+@test "composite UNVERIFIED: UNVERIFIED A + PASSED B → UNVERIFIED" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a UNVERIFIED --track-b PASSED 2>&1)
   [ "$result" = "UNVERIFIED" ]
 }
 
-@test "TC-SGR-25 composite-verdict rejects non-canonical inputs with canonical stderr (Tex TDR-E93S3-002 tightening)" {
+@test "composite-verdict rejects non-canonical inputs with canonical stderr (Tex tightening)" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   run bash "$COMPOSE_VERDICT" --track-a foo --track-b PASSED
   [ "$status" -ne 0 ]
@@ -162,19 +162,19 @@ teardown() { common_teardown; }
 # confirm that precedence under composition.
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-25 composite (FAILED, FAILED) → FAILED" {
+@test "composite (FAILED, FAILED) → FAILED" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a FAILED --track-b FAILED 2>&1)
   [ "$result" = "FAILED" ]
 }
 
-@test "TC-SGR-25 composite (UNVERIFIED, FAILED) → FAILED (FAILED precedence over UNVERIFIED)" {
+@test "composite (UNVERIFIED, FAILED) → FAILED (FAILED precedence over UNVERIFIED)" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a UNVERIFIED --track-b FAILED 2>&1)
   [ "$result" = "FAILED" ]
 }
 
-@test "TC-SGR-25 composite (UNVERIFIED, UNVERIFIED) → UNVERIFIED" {
+@test "composite (UNVERIFIED, UNVERIFIED) → UNVERIFIED" {
   [ -x "$COMPOSE_VERDICT" ] || skip "compose-verdict.sh not yet implemented (TDD red)"
   result=$(bash "$COMPOSE_VERDICT" --track-a UNVERIFIED --track-b UNVERIFIED 2>&1)
   [ "$result" = "UNVERIFIED" ]
@@ -184,7 +184,7 @@ teardown() { common_teardown; }
 # Tex TDR-E93S3-003 — AC4 + AC8 prose-grep coverage (was missing in Red phase).
 # ---------------------------------------------------------------------------
 
-@test "AC4 prose: SKILL.md Step 2 invokes sprint-state.sh transition --to review" {
+@test "prose: SKILL.md Step 2 invokes sprint-state.sh transition --to review" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'sprint-state\.sh transition.*--sprint.*--to review' "$SKILL_MD" || {
     echo "Step 2 prose does not invoke sprint-state.sh transition --to review (AC4)"
@@ -192,7 +192,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "AC8 prose: SKILL.md Step 6 PASSED handoff names /gaia-sprint-close" {
+@test "prose: SKILL.md Step 6 PASSED handoff names /gaia-sprint-close" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE '/gaia-sprint-close.*finalize|invoke /gaia-sprint-close' "$SKILL_MD" || {
     echo "Step 6 prose does not emit canonical handoff to /gaia-sprint-close (AC8)"
@@ -205,7 +205,7 @@ teardown() { common_teardown; }
 # UNVERIFIED (SKILL.md prose-level verification)
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-22 FAILED routing: SKILL.md Step 7 prose documents correction transition + action-items + handoff" {
+@test "FAILED routing: SKILL.md Step 7 prose documents correction transition + action-items + handoff" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'review.*correction|active.*correction|sprint-state\.sh.*correction' "$SKILL_MD" || {
     echo "Step 7 prose does not document the review→correction transition (AC9)"
@@ -217,7 +217,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-23 UNVERIFIED routing: SKILL.md Step 8 prose documents AI-5 criteria spec bypass path" {
+@test "UNVERIFIED routing: SKILL.md Step 8 prose documents criteria spec bypass path" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'sprint-review-unverifiable-criteria\.md|AI-2026-05-16-5|UNVERIFIED.*bypass' "$SKILL_MD" || {
     echo "Step 8 prose does not document the UNVERIFIED bypass path per AI-5 criteria spec (AC10)"
@@ -233,7 +233,7 @@ teardown() { common_teardown; }
 # TC-SGR-33, 34 — correction-loop findings + handoff
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-33 correction-loop findings: SKILL.md Step 7 invokes type-target-resolver via /gaia-meeting path" {
+@test "correction-loop findings: SKILL.md Step 7 invokes type-target-resolver via /gaia-meeting path" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'type-target-resolver\.sh|sprint-correction' "$SKILL_MD" || {
     echo "Step 7 prose does not invoke type-target-resolver.sh or use type: sprint-correction (AC9)"
@@ -241,7 +241,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-34 story_injection handoff: SKILL.md Step 7 references /gaia-correct-course story_injection" {
+@test "story_injection handoff: SKILL.md Step 7 references /gaia-correct-course story_injection" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE '/gaia-correct-course.*story_injection|story_injection.*correct-course' "$SKILL_MD" || {
     echo "Step 7 prose does not emit canonical handoff to /gaia-correct-course story_injection (AC9)"
@@ -254,7 +254,7 @@ teardown() { common_teardown; }
 # justification-validation routing
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-35 UNVERIFIED bypass: SKILL.md Step 8 captures mechanical signals (C1/C2/C3, qualifying_ratio)" {
+@test "UNVERIFIED bypass: SKILL.md Step 8 captures mechanical signals (C1/C2/C3, qualifying_ratio)" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'C1.*C2.*C3|primary_criterion|qualifying_ratio' "$SKILL_MD" || {
     echo "Step 8 prose does not collect AI-5 mechanical signals (AC10)"
@@ -262,7 +262,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-36 UNVERIFIED bypass: SKILL.md Step 8 dispatches Val justification-validation + handoff to sprint-close" {
+@test "UNVERIFIED bypass: SKILL.md Step 8 dispatches Val justification-validation + handoff to sprint-close" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'justification.*validation|Val.*UNVERIFIED.*PASSED|Val.*justification' "$SKILL_MD" || {
     echo "Step 8 prose does not dispatch the second Val pass for justification-validation (AC10)"
@@ -279,7 +279,7 @@ teardown() { common_teardown; }
 # helper smoke + Step 3 prose verification)
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-44 dual-sentinel: write-val-sentinel.sh exists + writes E83 dispatch sentinel" {
+@test "dual-sentinel: write-val-sentinel.sh exists + writes E83 dispatch sentinel" {
   [ -x "$WRITE_VAL_SENTINEL" ] || skip "write-val-sentinel.sh not yet implemented (TDD red)"
   # Smoke-test: feed mock Val return JSON, expect sentinel at the canonical path
   cd "$TEST_TMP"
@@ -295,7 +295,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-44 dual-sentinel: SKILL.md Step 3 prose names both dispatch sentinel + envelope sentinel" {
+@test "dual-sentinel: SKILL.md Step 3 prose names both dispatch sentinel + envelope sentinel" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'sprint-review-.*-val-dispatched\.json' "$SKILL_MD" || {
     echo "Step 3 prose does not name the dispatch sentinel path (AC5)"

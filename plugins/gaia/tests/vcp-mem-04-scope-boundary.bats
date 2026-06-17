@@ -84,7 +84,7 @@ _run_save() {
 
 # --- Existence + traceability anchors --------------------------------------
 
-@test "VCP-MEM-04: regression test file references the load-bearing ADRs" {
+@test "regression test file references the load-bearing ADRs" {
     # Future readers must land on the right ADRs from the test header alone.
     grep -q "VCP-MEM-04"      "$BATS_TEST_FILENAME"
     grep -q "FR-349"          "$BATS_TEST_FILENAME"
@@ -93,12 +93,12 @@ _run_save() {
     grep -q "FR-YOLO-2(f)"    "$BATS_TEST_FILENAME"
 }
 
-@test "VCP-MEM-04: yolo-mode.sh exists and is executable" {
+@test "yolo-mode.sh exists and is executable" {
     [ -f "$YOLO_SCRIPT" ]
     [ -x "$YOLO_SCRIPT" ]
 }
 
-@test "VCP-MEM-04: phase-classification.sh exists and is sourceable" {
+@test "phase-classification.sh exists and is sourceable" {
     [ -f "$PHASE_LIB" ]
     run bash -c ". '$PHASE_LIB'"
     [ "$status" -eq 0 ]
@@ -106,13 +106,13 @@ _run_save() {
 
 # --- AC2 — GAIA_CONTEXT=memory-save forces is_yolo exit 1 ------------------
 
-@test "VCP-MEM-04 AC2: GAIA_CONTEXT=memory-save forces is_yolo exit 1" {
+@test "GAIA_CONTEXT=memory-save forces is_yolo exit 1" {
     _clean_yolo_env
     run bash -c "GAIA_CONTEXT=memory-save '$YOLO_SCRIPT' is_yolo"
     [ "$status" -eq 1 ]
 }
 
-@test "VCP-MEM-04 AC2: GAIA_CONTEXT=memory-save still forces exit 1 with GAIA_YOLO_FLAG=1" {
+@test "GAIA_CONTEXT=memory-save still forces exit 1 with GAIA_YOLO_FLAG=1" {
     _clean_yolo_env
     run bash -c "GAIA_CONTEXT=memory-save GAIA_YOLO_FLAG=1 '$YOLO_SCRIPT' is_yolo"
     [ "$status" -eq 1 ]
@@ -120,13 +120,13 @@ _run_save() {
 
 # --- AC4 — GAIA_CONTEXT=memory-save overrides GAIA_YOLO_MODE=1 -------------
 
-@test "VCP-MEM-04 AC4: GAIA_CONTEXT=memory-save overrides GAIA_YOLO_MODE=1 (context wins)" {
+@test "GAIA_CONTEXT=memory-save overrides GAIA_YOLO_MODE=1 (context wins)" {
     _clean_yolo_env
     run bash -c "GAIA_CONTEXT=memory-save GAIA_YOLO_MODE=1 '$YOLO_SCRIPT' is_yolo"
     [ "$status" -eq 1 ]
 }
 
-@test "VCP-MEM-04 AC4: GAIA_CONTEXT=memory-save overrides every YOLO signal combined" {
+@test "GAIA_CONTEXT=memory-save overrides every YOLO signal combined" {
     # All four signals set simultaneously — context still forces interactive.
     _clean_yolo_env
     run bash -c "GAIA_CONTEXT=memory-save GAIA_YOLO_MODE=1 GAIA_YOLO_FLAG=1 GAIA_YOLO_OVERRIDE=no '$YOLO_SCRIPT' is_yolo"
@@ -135,7 +135,7 @@ _run_save() {
 
 # --- Sanity counter-tests for the YOLO precedence table --------------------
 
-@test "VCP-MEM-04 sanity: GAIA_YOLO_FLAG=1 alone returns exit 0 (YOLO active)" {
+@test "sanity: GAIA_YOLO_FLAG=1 alone returns exit 0 (YOLO active)" {
     # Confirms the test does not over-block — when GAIA_CONTEXT is unset,
     # YOLO activation works normally. Without this, AC2/AC4 could pass on a
     # globally-broken yolo-mode.sh that always returned 1.
@@ -144,7 +144,7 @@ _run_save() {
     [ "$status" -eq 0 ]
 }
 
-@test "VCP-MEM-04 sanity: no env signals -> default exit 1 (interactive)" {
+@test "sanity: no env signals -> default exit 1 (interactive)" {
     _clean_yolo_env
     run bash -c "unset GAIA_YOLO_FLAG GAIA_YOLO_MODE GAIA_YOLO_OVERRIDE GAIA_CONTEXT; '$YOLO_SCRIPT' is_yolo"
     [ "$status" -eq 1 ]
@@ -152,13 +152,13 @@ _run_save() {
 
 # --- AC1 — Phase 4 skill defers to interactive prompt (no auto-save) -------
 
-@test "VCP-MEM-04 AC1: _is_phase_1_3 gaia-dev-story returns false (Phase 4 wins)" {
+@test "_is_phase_1_3 gaia-dev-story returns false (Phase 4 wins)" {
     # /gaia-dev-story is the canonical Phase 4 skill cited by the story.
     run bash -c ". '$PHASE_LIB'; _is_phase_1_3 gaia-dev-story"
     [ "$status" -eq 1 ]
 }
 
-@test "VCP-MEM-04 AC1: _auto_save_memory short-circuits for Phase 4 skill (no write)" {
+@test "_auto_save_memory short-circuits for Phase 4 skill (no write)" {
     # Per architecture §10.31.5 the auto-save library MUST defer to the
     # skill's interactive memory-save logic for Phase 4 skills. Verify by
     # observing that no sidecar file is written under MEMORY_PATH.
@@ -170,7 +170,7 @@ _run_save() {
     [ -z "$output" ]
 }
 
-@test "VCP-MEM-04 AC1: _auto_save_memory Phase 4 short-circuit does not log a save" {
+@test "_auto_save_memory Phase 4 short-circuit does not log a save" {
     # Auto-save Phase 4 short-circuit must be silent w.r.t. "saved" lines.
     # The function may emit a generic "auto-save:" diagnostic in some paths,
     # but it MUST NOT report a synchronous OR async save for Phase 4.
@@ -182,12 +182,12 @@ _run_save() {
 
 # --- AC5 — Phase 1-3 counterexample: auto-save fires, no prompt ------------
 
-@test "VCP-MEM-04 AC5: _is_phase_1_3 gaia-create-prd returns true (Phase 1-3)" {
+@test "_is_phase_1_3 gaia-create-prd returns true (Phase 1-3)" {
     run bash -c ". '$PHASE_LIB'; _is_phase_1_3 gaia-create-prd"
     [ "$status" -eq 0 ]
 }
 
-@test "VCP-MEM-04 AC5: Phase 1-3 skill auto-save fires without prompting" {
+@test "Phase 1-3 skill auto-save fires without prompting" {
     # /gaia-create-prd is one of the 24 Phase 1-3 skills. Run auto-save and
     # assert (a) success exit, (b) no `[y]/[n]/[e]` interactive prompt
     # appeared in the captured output, and (c) the fake sidecar received a
@@ -209,11 +209,11 @@ _run_save() {
 
 # --- AC3 — CI workflow path filter covers the script surface ---------------
 
-@test "VCP-MEM-04 AC3: plugin-ci.yml exists at the canonical path" {
+@test "plugin-ci.yml exists at the canonical path" {
     [ -f "$PLUGIN_CI" ]
 }
 
-@test "VCP-MEM-04 AC3: plugin-ci.yml path filter covers plugins/gaia/** (catches finalize/yolo-mode.sh edits)" {
+@test "plugin-ci.yml path filter covers plugins/gaia/** (catches finalize/yolo-mode.sh edits)" {
     # The repo-wide path filter `plugins/gaia/**` automatically covers any
     # edit under plugins/gaia/scripts/, including finalize.sh (the future
     # per-skill shim) and yolo-mode.sh. The bats job reads the entire
@@ -222,19 +222,19 @@ _run_save() {
     grep -qE "'plugins/gaia/\*\*'" "$PLUGIN_CI"
 }
 
-@test "VCP-MEM-04 AC3: plugin-ci.yml runs the bats suite (regression test gets executed)" {
+@test "plugin-ci.yml runs the bats suite (regression test gets executed)" {
     # The bats job invokes run-with-coverage.sh which discovers every .bats
     # file under plugins/gaia/tests/ — including this one.
     grep -qE 'run-with-coverage\.sh' "$PLUGIN_CI"
 }
 
-@test "VCP-MEM-04 AC3: this regression file lives where run-with-coverage.sh discovers it" {
+@test "this regression file lives where run-with-coverage.sh discovers it" {
     [ -f "$SCRIPTS_DIR/../tests/vcp-mem-04-scope-boundary.bats" ]
 }
 
 # --- Determinism / cleanup -------------------------------------------------
 
-@test "VCP-MEM-04: tmp sidecar is under BATS_TEST_TMPDIR (no real _memory pollution)" {
+@test "tmp sidecar is under BATS_TEST_TMPDIR (no real _memory pollution)" {
     # Guard against accidental writes to the developer's real _memory/.
     case "$FAKE_MEMORY" in
         "$BATS_TEST_TMPDIR"/*|/tmp/*|"$BATS_TMPDIR"/*) : ;;

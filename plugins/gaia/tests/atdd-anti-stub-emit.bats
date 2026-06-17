@@ -32,21 +32,21 @@ teardown() {
 }
 
 # ---------------- TC-DPD-18: single dispatch verb -> one Then-clause ----------------
-@test "TC-DPD-18: AC containing 'spawns' emits 'Agent-tool spawn' anti-stub Then" {
+@test "AC containing 'spawns' emits 'Agent-tool spawn' anti-stub Then" {
   run "$HELPER" --ac-text "the orchestrator spawns the Agent subagent"
   [ "$status" -eq 0 ]
   [[ "$output" == *'Then: $*_STUB env vars are unset AND a real Agent-tool spawn was logged'* ]]
 }
 
 # ---------------- TC-DPD-19: no dispatch verb -> no clause ----------------
-@test "TC-DPD-19: AC containing no dispatch verb emits no anti-stub Then" {
+@test "AC containing no dispatch verb emits no anti-stub Then" {
   run "$HELPER" --ac-text "the user is shown an error message on invalid input"
   [ "$status" -eq 0 ]
   [[ "$output" != *'$*_STUB'* ]]
 }
 
 # ---------------- TC-DPD-20: multi-verb dedup ----------------
-@test "TC-DPD-20: multi-verb AC emits exactly one Then per unique primitive (dedup)" {
+@test "multi-verb AC emits exactly one Then per unique primitive (dedup)" {
   run "$HELPER" --ac-text "the workflow spawns the agent, dispatches the task, and spawns a follow-up"
   [ "$status" -eq 0 ]
   # Exactly two Then-clauses: 'Agent-tool spawn' and 'Agent-tool dispatch'.
@@ -58,14 +58,14 @@ teardown() {
 }
 
 # ---------------- TC-DPD-21: retroactive E76-S10 AC2 ----------------
-@test "TC-DPD-21: retroactive E76-S10 AC2 emits canonical Agent-tool spawn clause" {
+@test "retroactive emits canonical Agent-tool spawn clause" {
   run "$HELPER" --ac-text "the meeting prelude turn spawns the Agent subagent"
   [ "$status" -eq 0 ]
   [[ "$output" == *'Then: $*_STUB env vars are unset AND a real Agent-tool spawn was logged'* ]]
 }
 
 # ---------------- TC-DPD-22: canonicalization map coverage ----------------
-@test "TC-DPD-22: all five canonicalization map verbs emit expected primitives" {
+@test "all five canonicalization map verbs emit expected primitives" {
   for verb in dispatches invokes wires calls; do
     run "$HELPER" --ac-text "the system $verb the target"
     [ "$status" -eq 0 ]
@@ -74,7 +74,7 @@ teardown() {
 }
 
 # ---------------- TC-DPD-23: canonicalize-dispatch-verb.sh contract ----------------
-@test "TC-DPD-23: canonicalize-dispatch-verb.sh maps inflections to base primitive" {
+@test "canonicalize-dispatch-verb.sh maps inflections to base primitive" {
   local helper="$LIB_DIR/canonicalize-dispatch-verb.sh"
   [ -x "$helper" ]
   run "$helper" spawns

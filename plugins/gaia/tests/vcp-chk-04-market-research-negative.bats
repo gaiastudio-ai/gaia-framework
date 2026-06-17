@@ -27,27 +27,27 @@ teardown() { common_teardown; }
 # VCP-CHK-04 — Negative: TAM/SAM/SOM assumptions missing.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-04: finalize.sh exits non-zero when TAM/SAM/SOM assumptions missing" {
+@test "finalize.sh exits non-zero when TAM/SAM/SOM assumptions missing" {
   export MARKET_RESEARCH_ARTIFACT="$FIXTURES/market-research-missing-tam-assumptions.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-04: finalize.sh names assumptions in the failure output" {
+@test "finalize.sh names assumptions in the failure output" {
   export MARKET_RESEARCH_ARTIFACT="$FIXTURES/market-research-missing-tam-assumptions.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"assumptions"* ]]
 }
 
-@test "VCP-CHK-04: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export MARKET_RESEARCH_ARTIFACT="$FIXTURES/market-research-missing-tam-assumptions.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-04: finalize.sh guides user back to /gaia-market-research" {
+@test "finalize.sh guides user back to /gaia-market-research" {
   export MARKET_RESEARCH_ARTIFACT="$FIXTURES/market-research-missing-tam-assumptions.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]

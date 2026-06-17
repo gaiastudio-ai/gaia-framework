@@ -22,29 +22,29 @@ teardown() { common_teardown; }
 
 # --- AC1: SKILL.md menu lists option 6 ------------------------------------
 
-@test "AC1: SKILL.md project-shape list includes claude-code-plugin (option 6)" {
+@test "SKILL.md project-shape list includes claude-code-plugin (option 6)" {
   grep -F 'claude-code-plugin' "$SKILL_DIR/SKILL.md"
 }
 
-@test "AC1: SKILL.md describes claude-code-plugin as 'Claude Code plugin'" {
+@test "SKILL.md describes claude-code-plugin as 'Claude Code plugin'" {
   # The user-facing label for option 6.
   grep -E 'Claude Code plugin' "$SKILL_DIR/SKILL.md"
 }
 
 # --- AC4: option 7 ("multi-plugin marketplace") is NOT in menu ------------
 
-@test "AC4: SKILL.md does NOT include option 7 'multi-plugin marketplace'" {
+@test "SKILL.md does NOT include option 7 'multi-plugin marketplace'" {
   ! grep -F 'multi-plugin marketplace' "$SKILL_DIR/SKILL.md"
 }
 
-@test "AC4: SKILL.md does NOT include 'marketplace' in project-shape list" {
+@test "SKILL.md does NOT include 'marketplace' in project-shape list" {
   # The project-shape question MUST stay at 6 options. Marketplace is out of scope.
   ! grep -E '^[[:space:]]*-[[:space:]]+marketplace[[:space:]]*$' "$SKILL_DIR/SKILL.md"
 }
 
 # --- AC2: generate-config.sh emits project_kind + stack reference ---------
 
-@test "AC2: generate-config.sh emits project_kind: claude-code-plugin when project_shape=claude-code-plugin" {
+@test "generate-config.sh emits project_kind: claude-code-plugin when project_shape=claude-code-plugin" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -56,7 +56,7 @@ JSON
     "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
-@test "AC2: generate-config.sh emits stacks block referencing claude-code-plugin when project_shape=claude-code-plugin" {
+@test "generate-config.sh emits stacks block referencing claude-code-plugin when project_shape=claude-code-plugin" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -71,7 +71,7 @@ JSON
 
 # --- AC3: tool_adapters seeded with shellcheck/bats/markdownlint/yamllint -
 
-@test "AC3: generate-config.sh seeds tool_adapters when project_shape=claude-code-plugin" {
+@test "generate-config.sh seeds tool_adapters when project_shape=claude-code-plugin" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -81,7 +81,7 @@ JSON
   grep -F 'tool_adapters:' "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
-@test "AC3: tool_adapters includes shellcheck for plugin shape" {
+@test "tool_adapters includes shellcheck for plugin shape" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -94,7 +94,7 @@ JSON
     "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
-@test "AC3: tool_adapters includes bats for plugin shape" {
+@test "tool_adapters includes bats for plugin shape" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -105,7 +105,7 @@ JSON
     "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
-@test "AC3: tool_adapters includes markdownlint for plugin shape" {
+@test "tool_adapters includes markdownlint for plugin shape" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -116,7 +116,7 @@ JSON
     "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
-@test "AC3: tool_adapters includes yamllint for plugin shape" {
+@test "tool_adapters includes yamllint for plugin shape" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -129,7 +129,7 @@ JSON
 
 # --- AC4: NOT seeded with multi-plugin marketplace ------------------------
 
-@test "AC4: generate-config.sh does NOT seed 'multi-plugin' or 'marketplace' for claude-code-plugin shape" {
+@test "generate-config.sh does NOT seed 'multi-plugin' or 'marketplace' for claude-code-plugin shape" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -148,7 +148,7 @@ JSON
 
 # --- AC5: backward compatibility — non-plugin shapes do NOT seed plugin defaults
 
-@test "AC5: non-plugin shape (single backend) does NOT emit project_kind: claude-code-plugin" {
+@test "non-plugin shape (single backend) does NOT emit project_kind: claude-code-plugin" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -160,7 +160,7 @@ JSON
     "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
-@test "AC5: non-plugin shape (single backend) does NOT seed tool_adapters: with plugin defaults" {
+@test "non-plugin shape (single backend) does NOT seed tool_adapters: with plugin defaults" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {
@@ -173,7 +173,7 @@ JSON
     "$TEST_TMP/proj/.gaia/config/project-config.yaml"
 }
 
-@test "AC5: backward compat — mobile shape still emits stacks/platforms unchanged" {
+@test "backward compat — mobile shape still emits stacks/platforms unchanged" {
   mkdir -p "$TEST_TMP/proj/.gaia/config"
   cat <<JSON | "$SKILL_SCRIPTS/generate-config.sh" --path "$TEST_TMP/proj" --name demo
 {

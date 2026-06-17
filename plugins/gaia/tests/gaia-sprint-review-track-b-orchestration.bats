@@ -34,20 +34,20 @@ teardown() {
   rm -rf "$TMPDIR_TEST"
 }
 
-@test "TC-SGR-1: runner stub replacement — no longer emits 'E93-S4 not yet shipped' SKIPPED placeholder" {
+@test "runner stub replacement — no longer emits ' not yet shipped' SKIPPED placeholder" {
   ! grep -q "E93-S4 not yet shipped" "$RUNNER"
 }
 
-@test "TC-SGR-2: runner preserves --sprint + --config CLI contract" {
+@test "runner preserves --sprint + --config CLI contract" {
   grep -q -- "--sprint" "$RUNNER"
   grep -q -- "--config" "$RUNNER"
 }
 
-@test "TC-SGR-3: fixture command exists and is executable" {
+@test "fixture command exists and is executable" {
   [ -x "$FIXTURE" ]
 }
 
-@test "TC-SGR-27: env-allowlist strips secrets — AWS_SECRET_ACCESS_KEY not visible to subprocess" {
+@test "env-allowlist strips secrets — AWS_SECRET_ACCESS_KEY not visible to subprocess" {
   export AWS_SECRET_ACCESS_KEY="sekret-do-not-leak"
   export GITHUB_TOKEN="ghp-leak"
   export FIXTURE_PRINT_ENV=1
@@ -59,7 +59,7 @@ teardown() {
   return 0
 }
 
-@test "TC-SGR-28: timeout hard-kill — fixture sleep 30s with timeout=1 returns within 5s with TIMEOUT verdict" {
+@test "timeout hard-kill — fixture sleep 30s with timeout=1 returns within 5s with TIMEOUT verdict" {
   export FIXTURE_SLEEP_SECONDS=30
   export FIXTURE_EXIT_CODE=0
   write_config 1
@@ -71,7 +71,7 @@ teardown() {
   echo "$output" | grep -q "TIMEOUT"
 }
 
-@test "TC-SGR-29: transcript file lands under .gaia/memory/checkpoints/sprint-review-{sprint_id}/ at mode 0600" {
+@test "transcript file lands under .gaia/memory/checkpoints/sprint-review-{sprint_id}/ at mode 0600" {
   export FIXTURE_STDOUT="hello-from-node"
   export FIXTURE_EXIT_CODE=0
   write_config 5
@@ -87,7 +87,7 @@ teardown() {
   grep -q "hello-from-node" "$transcript"
 }
 
-@test "TC-SGR-30: .gitignore pre-flight HALTs when sprint-review-* pattern missing" {
+@test ".gitignore pre-flight HALTs when sprint-review-* pattern missing" {
   echo "# no sprint-review coverage" >"$TMPDIR_TEST/.gitignore"
   export FIXTURE_EXIT_CODE=0
   write_config 5
@@ -96,21 +96,21 @@ teardown() {
   echo "$output" | grep -qi "gitignore"
 }
 
-@test "TC-SGR-31a: exit code 0 yields verdict PASSED" {
+@test "exit code 0 yields verdict PASSED" {
   export FIXTURE_EXIT_CODE=0
   write_config 5
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
   echo "$output" | grep -q "PASSED"
 }
 
-@test "TC-SGR-31b: exit code 42 yields verdict FAILED" {
+@test "exit code 42 yields verdict FAILED" {
   export FIXTURE_EXIT_CODE=42
   write_config 5
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
   echo "$output" | grep -q "FAILED"
 }
 
-@test "TC-SGR-32: envelope JSON has all 9 required fields" {
+@test "envelope JSON has all 9 required fields" {
   export FIXTURE_EXIT_CODE=0
   write_config 5
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
@@ -120,7 +120,7 @@ teardown() {
   done
 }
 
-@test "TC-SGR-33: GAIA_HEADLESS=1 HALTs with canonical stderr" {
+@test "GAIA_HEADLESS=1 HALTs with canonical stderr" {
   export GAIA_HEADLESS=1
   export FIXTURE_EXIT_CODE=0
   write_config 5
@@ -130,7 +130,7 @@ teardown() {
   echo "$output" | grep -q "Track B requires foreground"
 }
 
-@test "TC-SGR-34: non-TTY stdout emits WARNING (not HALT) and continues" {
+@test "non-TTY stdout emits WARNING (not HALT) and continues" {
   export FIXTURE_EXIT_CODE=0
   write_config 5
   # When run via bats, stdout is not a TTY anyway. Just verify the runner doesn't HALT under non-TTY.
@@ -140,12 +140,12 @@ teardown() {
   echo "$output" | grep -qi "WARNING.*TTY" || true  # WARNING is optional under bats, but no HALT
 }
 
-@test "TC-SGR-35: runner does NOT invoke AskUserQuestion (NFR-067 regression guard)" {
+@test "runner does NOT invoke AskUserQuestion" {
   # Strip comment lines, then assert no actual invocation of AskUserQuestion
   ! grep -v '^[[:space:]]*#' "$RUNNER" | grep -q "AskUserQuestion("
 }
 
-@test "TC-SGR-9: empty sprint_review section → empty array + stderr warning, exit 0 (E93-S3 soft-fail preserved)" {
+@test "empty sprint_review section → empty array + stderr warning, exit 0 ( soft-fail preserved)" {
   echo "{}" >"$CONFIG"
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
   [ "$status" -eq 0 ]

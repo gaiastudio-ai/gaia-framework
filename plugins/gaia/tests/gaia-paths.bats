@@ -59,7 +59,7 @@ teardown() {
   [[ "$output" == *"outside project root"* ]] || [[ "$output" == *"CRITICAL"* ]]
 }
 
-@test "gaia-paths.sh: shell-metacharacter in override rejected (AC2, SR-75)" {
+@test "gaia-paths.sh: shell-metacharacter in override rejected" {
   run bash -c "export GAIA_MEMORY_PATH='./x;rm -rf /'; source '$LIB' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"shell-metacharacter rejected"* ]]

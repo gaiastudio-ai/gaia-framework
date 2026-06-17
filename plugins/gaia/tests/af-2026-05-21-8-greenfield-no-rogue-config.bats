@@ -37,7 +37,7 @@ teardown() { common_teardown; }
 # install-test-environment-example.sh — Category A install script
 # ---------------------------------------------------------------------------
 
-@test "AF-21-8 / install-test-environment-example.sh: greenfield → canonical .gaia/config/" {
+@test "install-test-environment-example.sh: greenfield → canonical .gaia/config/" {
   [ ! -d "config" ] && [ ! -d ".gaia/config" ]
   run bash "$EXAMPLE_HELPER" --target "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -46,7 +46,7 @@ teardown() { common_teardown; }
   [ ! -d "config" ]
 }
 
-@test "AF-21-8 / install-test-environment-example.sh: pre-ADR-111 (only config/) → legacy honored" {
+@test "install-test-environment-example.sh: pre-migration (only config/) → legacy honored" {
   mkdir -p "config"
   run bash "$EXAMPLE_HELPER" --target "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -55,7 +55,7 @@ teardown() { common_teardown; }
   [ ! -d ".gaia/config" ]
 }
 
-@test "AF-21-8 / install-test-environment-example.sh: post-ADR-111 (only .gaia/config/) → canonical wins" {
+@test "install-test-environment-example.sh: post-migration (only .gaia/config/) → canonical wins" {
   mkdir -p ".gaia/config"
   run bash "$EXAMPLE_HELPER" --target "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -63,7 +63,7 @@ teardown() { common_teardown; }
   [ ! -d "config" ]
 }
 
-@test "AF-21-8 / install-test-environment-example.sh: both dirs present → canonical wins" {
+@test "install-test-environment-example.sh: both dirs present → canonical wins" {
   mkdir -p "config" ".gaia/config"
   run bash "$EXAMPLE_HELPER" --target "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -76,7 +76,7 @@ teardown() { common_teardown; }
 # lib/test-environment-manifest.sh — F3 sequencing-critical site
 # ---------------------------------------------------------------------------
 
-@test "AF-21-8 / lib/test-environment-manifest.sh: greenfield --write → canonical .gaia/config/" {
+@test "lib/test-environment-manifest.sh: greenfield --write → canonical .gaia/config/" {
   echo '{"name":"test","devDependencies":{"jest":"^29.0.0"}}' > "$TEST_TMP/package.json"
   run bash "$GENERATOR" --target "$TEST_TMP" --write
   [ "$status" -eq 0 ]
@@ -84,7 +84,7 @@ teardown() { common_teardown; }
   [ ! -d "config" ]
 }
 
-@test "AF-21-8 / lib/test-environment-manifest.sh: pre-ADR-111 + existing legacy file → short-circuit preserves it (sequencing)" {
+@test "lib/test-environment-manifest.sh: pre-migration + existing legacy file → short-circuit preserves it (sequencing)" {
   # This is the F3 CRITICAL sequencing test — the canonical-default guard
   # MUST resolve MANIFEST_REL BEFORE the line-77 copy-if-absent short-circuit,
   # so a legacy user's existing file is preserved (not shadowed).
@@ -107,7 +107,7 @@ teardown() { common_teardown; }
 # install-test-environment-manifest.sh — Category A sibling
 # ---------------------------------------------------------------------------
 
-@test "AF-21-8 / install-test-environment-manifest.sh: greenfield → canonical .gaia/config/" {
+@test "install-test-environment-manifest.sh: greenfield → canonical .gaia/config/" {
   # First materialize the .example template via the install helper.
   run bash "$EXAMPLE_HELPER" --target "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -123,7 +123,7 @@ teardown() { common_teardown; }
 # migrate-test-environment-path.sh — Category A migration helper
 # ---------------------------------------------------------------------------
 
-@test "AF-21-8 / migrate-test-environment-path.sh: greenfield no-op → no rogue config/ or _memory/" {
+@test "migrate-test-environment-path.sh: greenfield no-op → no rogue config/ or _memory/" {
   run bash "$MIGRATE_HELPER" --target "$TEST_TMP"
   [ "$status" -eq 0 ]
   # No legacy file to migrate — script no-ops.
@@ -131,7 +131,7 @@ teardown() { common_teardown; }
   [ ! -d "_memory" ]
 }
 
-@test "AF-21-8 / migrate-test-environment-path.sh: legacy file on greenfield-y project → moves to canonical .gaia/config/" {
+@test "migrate-test-environment-path.sh: legacy file on greenfield-y project → moves to canonical .gaia/config/" {
   # docs/test-artifacts/ legacy file present; nothing else (no .gaia/, no config/, no _memory/).
   mkdir -p "docs/test-artifacts"
   echo "version: 2" > "docs/test-artifacts/test-environment.yaml"

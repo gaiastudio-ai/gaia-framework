@@ -14,16 +14,16 @@ setup() {
   SPRINT_CLOSE_DIR="$PLUGIN_DIR/gaia-sprint-close"
 }
 
-@test "TC-SGR-44.1: gaia-sprint-plan has no direct 'yq -i' against sprint-status.yaml" {
+@test ".1: gaia-sprint-plan has no direct 'yq -i' against sprint-status.yaml" {
   # Scope to executable script files (skip SKILL.md docs/examples).
   ! grep -rE 'yq[[:space:]]+(eval[[:space:]]+)?-i[^|]*sprint-status' "$SPRINT_PLAN_DIR/scripts" 2>/dev/null
 }
 
-@test "TC-SGR-44.2: gaia-correct-course has no direct 'yq -i' against sprint-status.yaml" {
+@test ".2: gaia-correct-course has no direct 'yq -i' against sprint-status.yaml" {
   ! grep -rE 'yq[[:space:]]+(eval[[:space:]]+)?-i[^|]*sprint-status' "$CORRECT_COURSE_DIR/scripts" 2>/dev/null
 }
 
-@test "TC-SGR-44.3: gaia-sprint-close NEW review→closed path uses sprint-state.sh (legacy active→closed path documented exception)" {
+@test ".3: gaia-sprint-close NEW review→closed path uses sprint-state.sh (legacy active→closed path documented exception)" {
   # The existing close.sh (pre-E93-S5) uses `yq -i` for the active→closed direct edge.
   # That pre-existing path is a documented exception (backward-compat per AC6).
   # The NEW review→closed path added in E93-S5 MUST use sprint-state.sh.
@@ -33,14 +33,14 @@ setup() {
     || grep -qE "transition[[:space:]]+--sprint.*--to[[:space:]]+closed" "$SPRINT_CLOSE_DIR/SKILL.md"
 }
 
-@test "TC-SGR-44.4: gaia-sprint-plan has no 'sed -i' against sprint-status.yaml" {
+@test ".4: gaia-sprint-plan has no 'sed -i' against sprint-status.yaml" {
   ! grep -rE 'sed[[:space:]]+-i[^|]*sprint-status' "$SPRINT_PLAN_DIR/scripts" 2>/dev/null
 }
 
-@test "TC-SGR-44.5: gaia-correct-course has no 'sed -i' against sprint-status.yaml" {
+@test ".5: gaia-correct-course has no 'sed -i' against sprint-status.yaml" {
   ! grep -rE 'sed[[:space:]]+-i[^|]*sprint-status' "$CORRECT_COURSE_DIR/scripts" 2>/dev/null
 }
 
-@test "TC-SGR-44.6: gaia-sprint-close has no 'sed -i' against sprint-status.yaml" {
+@test ".6: gaia-sprint-close has no 'sed -i' against sprint-status.yaml" {
   ! grep -rE 'sed[[:space:]]+-i[^|]*sprint-status' "$SPRINT_CLOSE_DIR/scripts" 2>/dev/null
 }

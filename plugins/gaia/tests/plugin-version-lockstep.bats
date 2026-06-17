@@ -18,7 +18,7 @@ teardown() {
   common_teardown
 }
 
-@test "AC1: .plugin-version exists and is semver-shaped" {
+@test ".plugin-version exists and is semver-shaped" {
   [ -f "$PLUGIN_DIR/.plugin-version" ]
   run cat "$PLUGIN_DIR/.plugin-version"
   [ "$status" -eq 0 ]
@@ -26,7 +26,7 @@ teardown() {
   [[ "$output" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]
 }
 
-@test "AC2: .plugin-version and plugin.json agree on the version string" {
+@test ".plugin-version and plugin.json agree on the version string" {
   local plugin_version
   plugin_version="$(cat "$PLUGIN_DIR/.plugin-version" | tr -d '[:space:]')"
   local json_version
@@ -38,7 +38,7 @@ teardown() {
   [ "$plugin_version" = "$json_version" ]
 }
 
-@test "AC3: release.yml maintains .plugin-version alongside plugin.json" {
+@test "release.yml maintains .plugin-version alongside plugin.json" {
   local rel="$REPO_ROOT/.github/workflows/release.yml"
   [ -f "$rel" ]
   # The `git add` line in the release-PR step must stage .plugin-version too.
@@ -46,7 +46,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC4: release.yml writes .plugin-version with the bumped version" {
+@test "release.yml writes .plugin-version with the bumped version" {
   local rel="$REPO_ROOT/.github/workflows/release.yml"
   # Some step must echo / printf / write the bumped version into .plugin-version.
   run grep -E '(\.plugin-version|plugin-version)' "$rel"
@@ -56,7 +56,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC5: validator.md still cites .plugin-version as persona_sig anchor" {
+@test "validator.md still cites .plugin-version as persona_sig anchor" {
   # E89-S4 invariant — ensure we did not break the persona_sig contract.
   run grep -F '.plugin-version' "$PLUGIN_DIR/agents/validator.md"
   [ "$status" -eq 0 ]

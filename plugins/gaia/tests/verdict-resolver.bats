@@ -51,7 +51,7 @@ EOF
   [[ "$output" == *"verdict-resolver.sh"* ]]
 }
 
-@test "TC-DEJ-VERDICT-01: errored check -> BLOCKED" {
+@test "errored check -> BLOCKED" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"errored","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -59,7 +59,7 @@ EOF
   [ "$output" = "BLOCKED" ]
 }
 
-@test "TC-DEJ-VERDICT-02: tool failed-blocking -> REQUEST_CHANGES" {
+@test "tool failed-blocking -> REQUEST_CHANGES" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"failed","findings":[{"severity":"error","blocking":true,"message":"type error"}]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -67,7 +67,7 @@ EOF
   [ "$output" = "REQUEST_CHANGES" ]
 }
 
-@test "TC-DEJ-VERDICT-03: LLM-Critical finding -> REQUEST_CHANGES" {
+@test "LLM-Critical finding -> REQUEST_CHANGES" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[{"severity":"Critical","message":"off-by-one"}]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -75,7 +75,7 @@ EOF
   [ "$output" = "REQUEST_CHANGES" ]
 }
 
-@test "TC-DEJ-VERDICT-04: all pass + no Critical -> APPROVE" {
+@test "all pass + no Critical -> APPROVE" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]},{"name":"eslint","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[{"severity":"Warning","message":"long function"}]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -85,7 +85,7 @@ EOF
 
 # --- LLM-cannot-override invariant ---
 
-@test "TC-DEJ-OVERRIDE-1a: tool-failed + LLM=APPROVE => REQUEST_CHANGES (LLM cannot override)" {
+@test "tool-failed + LLM=APPROVE => REQUEST_CHANGES (LLM cannot override)" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"failed","findings":[{"severity":"error","blocking":true}]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -93,7 +93,7 @@ EOF
   [ "$output" = "REQUEST_CHANGES" ]
 }
 
-@test "TC-DEJ-OVERRIDE-1b: tool=passed + LLM=Critical => REQUEST_CHANGES" {
+@test "tool=passed + LLM=Critical => REQUEST_CHANGES" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[{"severity":"Critical","message":"null deref"}]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -103,7 +103,7 @@ EOF
 
 # --- edge cases ---
 
-@test "EC-1: all-skipped checks -> APPROVE (default rule)" {
+@test "all-skipped checks -> APPROVE (default rule)" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"skipped","skip_reason":"not applicable","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -111,7 +111,7 @@ EOF
   [ "$output" = "APPROVE" ]
 }
 
-@test "EC-1b: empty checks array -> APPROVE" {
+@test "empty checks array -> APPROVE" {
   write_analysis "$TEST_TMP/a.json" '[]'
   write_findings "$TEST_TMP/f.json" '[]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -119,7 +119,7 @@ EOF
   [ "$output" = "APPROVE" ]
 }
 
-@test "EC-2a: malformed JSON -> BLOCKED + stderr error; exit 0" {
+@test "malformed JSON -> BLOCKED + stderr error; exit 0" {
   printf '{ "schema_version": "1.0", "checks":' > "$TEST_TMP/a.json"   # truncated
   write_findings "$TEST_TMP/f.json" '[]'
   run --separate-stderr "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
@@ -128,7 +128,7 @@ EOF
   [[ "$stderr" == *"malformed analysis-results.json"* ]]
 }
 
-@test "EC-2b: missing schema_version -> BLOCKED" {
+@test "missing schema_version -> BLOCKED" {
   cat > "$TEST_TMP/a.json" <<'EOF'
 { "story_key":"X", "checks": [] }
 EOF
@@ -139,7 +139,7 @@ EOF
   [[ "$stderr" == *"missing schema_version"* ]]
 }
 
-@test "EC-10: errored + tool-failed + LLM-Critical collision -> BLOCKED (errored wins)" {
+@test "errored + tool-failed + LLM-Critical collision -> BLOCKED (errored wins)" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"errored","findings":[]},{"name":"eslint","status":"failed","findings":[{"severity":"error","blocking":true}]}]'
   write_findings "$TEST_TMP/f.json" '[{"severity":"Critical","message":"x"}]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"

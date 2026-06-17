@@ -22,7 +22,7 @@ teardown() { common_teardown; }
 # TC-ASG-2a — gaia-create-prd Step 13 references nested path
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-2a: gaia-create-prd/SKILL.md Step 13 writes to nested adversarial dir" {
+@test "gaia-create-prd/SKILL.md Step 13 writes to nested adversarial dir" {
   [ -f "$PRD_SKILL" ]
   grep -qF "planning-artifacts/adversarial/adversarial-review-prd-" "$PRD_SKILL"
 }
@@ -31,7 +31,7 @@ teardown() { common_teardown; }
 # TC-ASG-2b — gaia-create-arch Step 12 references nested path
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-2b: gaia-create-arch/SKILL.md Step 12 writes to nested adversarial dir" {
+@test "gaia-create-arch/SKILL.md Step 12 writes to nested adversarial dir" {
   [ -f "$ARCH_SKILL" ]
   grep -qF "planning-artifacts/adversarial/adversarial-review-architecture-" "$ARCH_SKILL"
 }
@@ -40,7 +40,7 @@ teardown() { common_teardown; }
 # TC-ASG-2c — neither file retains a flat adversarial write reference
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-2c: neither SKILL.md retains flat adversarial-review-(prd|architecture)- write path" {
+@test "neither SKILL.md retains flat adversarial-review-(prd|architecture)- write path" {
   [ -f "$PRD_SKILL" ]
   [ -f "$ARCH_SKILL" ]
   # Flat path: "planning-artifacts/adversarial-review-(prd|architecture)-" — i.e. NOT followed by "adversarial/"
@@ -52,7 +52,7 @@ teardown() { common_teardown; }
 # TC-ASG-2d — both Step prose blocks mention mkdir -p (or equivalent) guidance
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-2d: both SKILL.md prose blocks include mkdir -p guidance for nested dir" {
+@test "both SKILL.md prose blocks include mkdir -p guidance for nested dir" {
   [ -f "$PRD_SKILL" ]
   [ -f "$ARCH_SKILL" ]
   grep -qF "mkdir -p" "$PRD_SKILL"

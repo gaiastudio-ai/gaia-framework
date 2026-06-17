@@ -75,7 +75,7 @@ _make_brief() {
 # -------------------------------------------------------------------------
 # VCP-PB-03 — post_complete gate passes when all 9 sections present.
 # -------------------------------------------------------------------------
-@test "VCP-PB-03: finalize.sh exits 0 when all 9 sections are present" {
+@test "finalize.sh exits 0 when all 9 sections are present" {
   _make_brief "$TEST_TMP/docs/creative-artifacts/product-brief-foo.md"
   cd "$TEST_TMP"
   export PRODUCT_BRIEF_ARTIFACT="$TEST_TMP/docs/creative-artifacts/product-brief-foo.md"
@@ -92,7 +92,7 @@ _make_brief() {
 # VCP-PB-04 — post_complete gate halts when one section is missing,
 # error message names exactly the missing section.
 # -------------------------------------------------------------------------
-@test "VCP-PB-04: finalize.sh exits non-zero when Success Metrics missing" {
+@test "finalize.sh exits non-zero when Success Metrics missing" {
   _make_brief "$TEST_TMP/docs/creative-artifacts/product-brief-foo.md" \
     "Success Metrics"
   cd "$TEST_TMP"
@@ -106,7 +106,7 @@ _make_brief() {
   [[ "$output" == *"Success Metrics"* ]]
 }
 
-@test "VCP-PB-04: 2 missing sections both appear in the failure line" {
+@test "2 missing sections both appear in the failure line" {
   _make_brief "$TEST_TMP/docs/creative-artifacts/product-brief-foo.md" \
     "Risks and Assumptions" "Competitive Landscape"
   cd "$TEST_TMP"
@@ -121,18 +121,18 @@ _make_brief() {
 # -------------------------------------------------------------------------
 # VCP-PB-05 — Template reference is present in SKILL.md.
 # -------------------------------------------------------------------------
-@test "VCP-PB-05: SKILL.md references product-brief-template.md by name" {
+@test "SKILL.md references product-brief-template.md by name" {
   run grep -F 'product-brief-template.md' \
     "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-PB-05: plugin-shipped template file exists on disk" {
+@test "plugin-shipped template file exists on disk" {
   template="$BATS_TEST_DIRNAME/../templates/product-brief-template.md"
   [ -f "$template" ]
 }
 
-@test "VCP-PB-05: plugin template carries all 9 canonical FR-358 headings" {
+@test "plugin template carries all 9 canonical headings" {
   template="$BATS_TEST_DIRNAME/../templates/product-brief-template.md"
   [ -f "$template" ]
   for h in \
@@ -152,7 +152,7 @@ _make_brief() {
 # -------------------------------------------------------------------------
 # VCP-PB-06 — Analyst (Elena) agent is assigned in SKILL.md.
 # -------------------------------------------------------------------------
-@test "VCP-PB-06: SKILL.md mentions both 'analyst' and 'Elena' tokens" {
+@test "SKILL.md mentions both 'analyst' and 'Elena' tokens" {
   run grep -E '(analyst|Elena)' "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
   # Both identifiers must be present at least once.

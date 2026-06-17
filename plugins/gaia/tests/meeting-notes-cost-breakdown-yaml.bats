@@ -73,7 +73,7 @@ EOF
 }
 
 # TC-CBYAML-1 — the emitted frontmatter (incl. cost_breakdown) is valid YAML.
-@test "TC-CBYAML-1: emitted cost_breakdown frontmatter parses as valid YAML" {
+@test "emitted cost_breakdown frontmatter parses as valid YAML" {
   _run_writer_and_extract_frontmatter
   _yaml_ok "$FM"
   rc=$?
@@ -83,7 +83,7 @@ EOF
 
 # TC-CBYAML-2 — each attendee nests correctly: cost_breakdown is a list of
 # mappings, and field access resolves the right values (not flattened siblings).
-@test "TC-CBYAML-2: cost_breakdown attendees nest as proper mappings" {
+@test "cost_breakdown attendees nest as proper mappings" {
   _run_writer_and_extract_frontmatter
   if ! command -v yq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
     skip "no yq or python3 available to validate YAML"
@@ -101,7 +101,7 @@ EOF
 # TC-CBYAML-3 — structural guard against the regression: continuation fields
 # are emitted at 4-space indent under a 2-space list item. A flattening regression
 # (both at 2 spaces) would put `role:` at the same indent as `- name:`.
-@test "TC-CBYAML-3: continuation fields are emitted at 4-space indent (no flatten regression)" {
+@test "continuation fields are emitted at 4-space indent (no flatten regression)" {
   _run_writer_and_extract_frontmatter
   # The list-item line is at exactly 2 spaces.
   grep -qE '^  - name: Derek$' "$NOTES"

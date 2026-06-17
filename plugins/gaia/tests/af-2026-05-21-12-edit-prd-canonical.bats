@@ -48,7 +48,7 @@ resolve_prd_path() {
 # Verification guard: assert the setup.sh on disk implements the same idiom.
 # If setup.sh is edited and the logic drifts from resolve_prd_path() above,
 # this test catches it.
-@test "AF-21-12 edit-prd: setup.sh implements three-tier idiom verbatim" {
+@test "edit-prd: setup.sh implements three-tier idiom verbatim" {
   # Verify the canonical default branch is present
   grep -qF '.gaia/artifacts/planning-artifacts/prd.md' "$SETUP_SH"
   # Verify the positive-evidence-legacy guard is present
@@ -57,13 +57,13 @@ resolve_prd_path() {
   grep -qE 'if \[ -z "\$\{PRD_PATH:-\}" \]' "$SETUP_SH"
 }
 
-@test "AF-21-12 edit-prd: greenfield (no PRD anywhere) → resolves to canonical default" {
+@test "edit-prd: greenfield (no PRD anywhere) → resolves to canonical default" {
   unset PRD_PATH
   result=$(resolve_prd_path "$TEST_TMP")
   [ "$result" = "$TEST_TMP/.gaia/artifacts/planning-artifacts/prd.md" ]
 }
 
-@test "AF-21-12 edit-prd: post-ADR-111 (only .gaia/ exists) → resolves to canonical" {
+@test "edit-prd: post-migration (only .gaia/ exists) → resolves to canonical" {
   unset PRD_PATH
   mkdir -p ".gaia/artifacts/planning-artifacts"
   echo "# PRD" > ".gaia/artifacts/planning-artifacts/prd.md"
@@ -73,7 +73,7 @@ resolve_prd_path() {
   [ ! -d "docs" ]
 }
 
-@test "AF-21-12 edit-prd: pre-ADR-111 (only docs/, no .gaia/) → legacy back-compat preserved" {
+@test "edit-prd: pre-migration (only docs/, no .gaia/) → legacy back-compat preserved" {
   unset PRD_PATH
   mkdir -p "docs/planning-artifacts"
   echo "# Legacy PRD" > "docs/planning-artifacts/prd.md"
@@ -83,7 +83,7 @@ resolve_prd_path() {
   [ ! -d ".gaia" ]
 }
 
-@test "AF-21-12 edit-prd: both present (mid-migration) → canonical wins" {
+@test "edit-prd: both present (mid-migration) → canonical wins" {
   unset PRD_PATH
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts"
   echo "# Canonical" > ".gaia/artifacts/planning-artifacts/prd.md"
@@ -92,7 +92,7 @@ resolve_prd_path() {
   [ "$result" = "$TEST_TMP/.gaia/artifacts/planning-artifacts/prd.md" ]
 }
 
-@test "AF-21-12 edit-prd: PRD_PATH env-var override (Tier 1) wins over both legacy and canonical" {
+@test "edit-prd: PRD_PATH env-var override (Tier 1) wins over both legacy and canonical" {
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts" "custom-location"
   echo "# Canonical" > ".gaia/artifacts/planning-artifacts/prd.md"
   echo "# Legacy" > "docs/planning-artifacts/prd.md"

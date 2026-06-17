@@ -36,7 +36,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "plugin-ci.yml: bats-tests apt install line does NOT install kcov (E28-S175 AC2)" {
+@test "plugin-ci.yml: bats-tests apt install line does NOT install kcov" {
   # Extract the apt-get install line(s) inside the bats-tests job. The bug
   # was: `sudo apt-get install -y jq kcov`. After the fix, kcov must not
   # appear as an apt package token.
@@ -66,12 +66,12 @@ teardown() { common_teardown; }
   fi
 }
 
-@test "plugin-ci.yml: bats-tests still invokes run-with-coverage.sh (E28-S175 AC3)" {
+@test "plugin-ci.yml: bats-tests still invokes run-with-coverage.sh" {
   run grep -F 'plugins/gaia/tests/run-with-coverage.sh' "$WORKFLOW"
   [ "$status" -eq 0 ]
 }
 
-@test "plugin-ci.yml: carries an E28-S175 comment explaining the kcov decision (AC4)" {
+@test "plugin-ci.yml: carries an comment explaining the kcov decision" {
   # If kcov is dropped from apt install, the workflow yaml must carry a
   # comment referencing E28-S175 (or kcov) so the decision is discoverable
   # from the file itself.

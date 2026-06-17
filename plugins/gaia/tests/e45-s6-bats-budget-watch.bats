@@ -82,7 +82,7 @@ _source_budget_watch_lib() {
   [ "$status" -ne 0 ]
 }
 
-@test "bats_budget_watch_check accepts no --threshold-seconds (FR-419 defaults)" {
+@test "bats_budget_watch_check accepts no --threshold-seconds" {
   # E77-S16 / FR-419 amends the original "missing --threshold-seconds is an
   # error" contract: when no threshold flag is passed, the wrapper now
   # applies the canonical FR-419 defaults (soft=270, hard=480) and runs the

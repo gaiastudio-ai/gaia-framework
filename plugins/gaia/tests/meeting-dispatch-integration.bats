@@ -29,7 +29,7 @@ teardown() {
 }
 
 # ---------------- TC-MTG-DPC-1: substrate-boundary integration ----------------
-@test "TC-MTG-DPC-1: dispatch-agent-turn.sh exists and is executable (foundation)" {
+@test "dispatch-agent-turn.sh exists and is executable (foundation)" {
   # E88-S6 enforcement-side test. The full integration requires E90-S2
   # (envelope assertion wiring) which is a separate story. For E88-S6's
   # scope-split implementation, we assert the foundation: the dispatch
@@ -41,13 +41,13 @@ teardown() {
 }
 
 # ---------------- TC-MTG-DPC-1b: GAIA_DISPATCH_AGENT_STUB env-var contract ----------------
-@test "TC-MTG-DPC-1b: GAIA_DISPATCH_AGENT_STUB env var contract — unset by default" {
+@test "GAIA_DISPATCH_AGENT_STUB env var contract — unset by default" {
   unset GAIA_DISPATCH_AGENT_STUB 2>/dev/null || true
   [ -z "${GAIA_DISPATCH_AGENT_STUB:-}" ]
 }
 
 # ---------------- TC-MTG-DPC-1c: assertion vocabulary ----------------
-@test "TC-MTG-DPC-1c: dispatch-agent-turn.sh source contains substrate-boundary contract" {
+@test "dispatch-agent-turn.sh source contains substrate-boundary contract" {
   # Verify the dispatch script is documented as the integration target;
   # this is the foundation a future E90-S2 fixture will exercise with a
   # real substrate-boundary mock.

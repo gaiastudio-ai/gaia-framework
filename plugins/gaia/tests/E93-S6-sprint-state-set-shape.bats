@@ -42,27 +42,27 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1 — set-shape accepts valid enum values and writes the field.
 # ---------------------------------------------------------------------------
-@test "AC1: set-shape --shape completion-pass writes sprint_shape field" {
+@test "set-shape --shape completion-pass writes sprint_shape field" {
   run bash "$SPRINT_STATE" set-shape --sprint test-sprint --shape completion-pass
   [ "$status" -eq 0 ]
   run grep -E '^sprint_shape:[[:space:]]*completion-pass' "$PROJECT_ROOT/.gaia/state/sprint-status.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: set-shape --shape thrust writes sprint_shape field" {
+@test "set-shape --shape thrust writes sprint_shape field" {
   run bash "$SPRINT_STATE" set-shape --sprint test-sprint --shape thrust
   [ "$status" -eq 0 ]
   run grep -E '^sprint_shape:[[:space:]]*thrust' "$PROJECT_ROOT/.gaia/state/sprint-status.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: set-shape --shape bogus rejects with canonical stderr and exits non-zero" {
+@test "set-shape --shape bogus rejects with canonical stderr and exits non-zero" {
   run bash -c "bash '$SPRINT_STATE' set-shape --sprint test-sprint --shape bogus 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"sprint_shape must be one of"* ]]
 }
 
-@test "AC1: set-shape preserves existing YAML structure (comments and ordering)" {
+@test "set-shape preserves existing YAML structure (comments and ordering)" {
   # Add a comment line before re-running
   cat > "$PROJECT_ROOT/.gaia/state/sprint-status.yaml" <<'YAML'
 # Sprint-50 — completion-pass sweep
@@ -88,7 +88,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: set-shape idempotent — running twice with same value yields same final content" {
+@test "set-shape idempotent — running twice with same value yields same final content" {
   bash "$SPRINT_STATE" set-shape --sprint test-sprint --shape completion-pass
   cp "$PROJECT_ROOT/.gaia/state/sprint-status.yaml" "$TEST_TMP/first.yaml"
   bash "$SPRINT_STATE" set-shape --sprint test-sprint --shape completion-pass
@@ -96,7 +96,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: set-shape updates the field on re-run with a new value" {
+@test "set-shape updates the field on re-run with a new value" {
   bash "$SPRINT_STATE" set-shape --sprint test-sprint --shape thrust
   run bash "$SPRINT_STATE" set-shape --sprint test-sprint --shape completion-pass
   [ "$status" -eq 0 ]

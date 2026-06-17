@@ -31,19 +31,19 @@ teardown() {
 
 # ---------- Scenario 1: 16-boundary emission ----------
 
-@test "AC1/AC2: fixture with 16 step_boundary events contains exactly 16 events" {
+@test "fixture with 16 step_boundary events contains exactly 16 events" {
   count=$(grep -c '"event_type":"step_boundary"' "$FIXTURE_DIR/sixteen-steps.jsonl")
   [ "$count" -eq 16 ]
 }
 
-@test "AC2: SKILL.md contains an emit-step-boundary directive for each of the 16 principal steps" {
+@test "SKILL.md contains an emit-step-boundary directive for each of the 16 principal steps" {
   for step_num in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
     grep -qE "emit-step-boundary\.sh[[:space:]]+${step_num}[[:space:]]" "$SKILL_MD" \
       || { echo "Missing emit-step-boundary directive for step $step_num" >&2; false; }
   done
 }
 
-@test "AC2: SKILL.md documents 9 lettered sub-steps as out of scope for v1" {
+@test "SKILL.md documents 9 lettered sub-steps as out of scope for v1" {
   grep -q 'out of scope for v1' "$SKILL_MD" \
     || { echo "Missing out-of-scope sub-step documentation" >&2; false; }
   # All 9 sub-steps must be listed
@@ -54,19 +54,19 @@ teardown() {
   done
 }
 
-@test "AC1: emit-step-boundary helper script exists and is executable" {
+@test "emit-step-boundary helper script exists and is executable" {
   [ -f "$EMIT_HELPER" ]
   [ -x "$EMIT_HELPER" ]
 }
 
-@test "AC1: emit-step-boundary helper invokes lifecycle-event.sh with step_boundary type" {
+@test "emit-step-boundary helper invokes lifecycle-event.sh with step_boundary type" {
   grep -qF 'step_boundary' "$EMIT_HELPER"
   grep -qF 'lifecycle-event.sh' "$EMIT_HELPER"
 }
 
 # ---------- Scenario 2: per-step duration derivation ----------
 
-@test "AC3: two consecutive step events yield correct 5-minute duration" {
+@test "two consecutive step events yield correct 5-minute duration" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/two-steps.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Step 1 -> Step 2 is 5 minutes. Match with a literal tab after the step
@@ -76,7 +76,7 @@ teardown() {
     || { echo "Expected step 1 duration of 5 min, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC3: sixteen-step fixture derives 15 durations (last step is open-ended)" {
+@test "sixteen-step fixture derives 15 durations (last step is open-ended)" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/sixteen-steps.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Count duration lines for E950-S1 (should be 15, steps 1-15 each have a next)
@@ -85,7 +85,7 @@ teardown() {
     || { echo "Expected 15 step-duration lines, got $dur_count:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC3: step durations are ordered by (story_key, step)" {
+@test "step durations are ordered by (story_key, step)" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/sixteen-steps.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Extract step numbers in order, verify they are ascending
@@ -99,7 +99,7 @@ teardown() {
 
 # ---------- Scenario 3: state_transition byte-stability ----------
 
-@test "AC4: state_transition-only fixture produces byte-identical output (text)" {
+@test "state_transition-only fixture produces byte-identical output (text)" {
   # Full byte-comparison of the derivation body (skip the first 2 header lines
   # which contain absolute paths that vary per host). The expected body is the
   # golden output frozen at the time the step_boundary feature landed.
@@ -128,7 +128,7 @@ EOF
          diff <(printf '%s\n' "$expected") <(printf '%s\n' "$body") >&2; false; }
 }
 
-@test "AC4: state_transition-only fixture produces byte-identical output (json)" {
+@test "state_transition-only fixture produces byte-identical output (json)" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   local actual
   actual=$(bash "$SCRIPT" \
@@ -146,7 +146,7 @@ EOF
          echo "actual:   $norm_actual" >&2; false; }
 }
 
-@test "AC4: step_boundary events in fixture do not affect state_transition derivation" {
+@test "step_boundary events in fixture do not affect state_transition derivation" {
   # Mix step_boundary and state_transition events
   cat "$FIXTURE_DIR/state-transition-only.jsonl" "$FIXTURE_DIR/sixteen-steps.jsonl" \
     > "$TEST_TMP/mixed.jsonl"
@@ -163,7 +163,7 @@ EOF
 
 # ---------- Scenario 4: duplicate/self boundary ----------
 
-@test "AC4: duplicate step boundary does not produce negative duration" {
+@test "duplicate step boundary does not produce negative duration" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/duplicate-step.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # No negative durations should appear
@@ -171,7 +171,7 @@ EOF
     || { echo "Negative duration found:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC4: duplicate step boundary does not double-count" {
+@test "duplicate step boundary does not double-count" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/duplicate-step.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Fixture: step 1 at t=0 and t=5 (duplicate), step 2 at t=10.

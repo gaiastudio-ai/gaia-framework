@@ -32,7 +32,7 @@ setup() {
 #   - gaia-brownfield currently has only a prose mention of memory-loader;
 #     the canonical block uses architect (the primary persona brownfield
 #     delegates its architecture-generation phase to).
-@test "AC1: each WorkerSpawn skill contains canonical memory-loader invocation" {
+@test "each WorkerSpawn skill contains canonical memory-loader invocation" {
   # skill:agent:tier triples; multi-dispatch skills have multiple entries.
   declare -a expected=(
     "gaia-add-feature:pm:decision-log"
@@ -78,7 +78,7 @@ setup() {
   done
 }
 
-@test "AC1: every invocation uses a valid tier argument" {
+@test "every invocation uses a valid tier argument" {
   # Scan each WorkerSpawn skill for memory-loader lines; every line must
   # use one of decision-log | ground-truth | all.
   skills="gaia-add-feature gaia-add-stories gaia-brownfield gaia-create-arch \
@@ -107,18 +107,18 @@ gaia-test-design gaia-threat-model gaia-validate-prd"
   done
 }
 
-@test "AC3: validator script exists and is executable" {
+@test "validator script exists and is executable" {
   [ -f "$VALIDATOR" ]
   [ -x "$VALIDATOR" ]
 }
 
-@test "AC3: validator exits 0 when every WorkerSpawn skill complies" {
+@test "validator exits 0 when every WorkerSpawn skill complies" {
   run "$VALIDATOR" --plugin-root "$PLUGIN_ROOT"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "CLEAN"
 }
 
-@test "AC3: validator fails when a skill's memory-loader invocation is missing" {
+@test "validator fails when a skill's memory-loader invocation is missing" {
   # Deliberately corrupt one skill in a temp copy of the plugin tree and
   # run the validator against the copy. This proves the check is not a
   # no-op.
@@ -138,7 +138,7 @@ gaia-test-design gaia-threat-model gaia-validate-prd"
   rm -rf "$tmp_root"
 }
 
-@test "AC3: validator fails when a skill's memory-loader tier is malformed" {
+@test "validator fails when a skill's memory-loader tier is malformed" {
   tmp_root="$(mktemp -d)"
   cp -R "$PLUGIN_ROOT/skills" "$tmp_root/skills"
   cp -R "$PLUGIN_ROOT/scripts" "$tmp_root/scripts"
@@ -155,7 +155,7 @@ gaia-test-design gaia-threat-model gaia-validate-prd"
   rm -rf "$tmp_root"
 }
 
-@test "AC-EC2/AC-EC3: WorkerSpawn manifest lists exactly 20 skills" {
+@test "WorkerSpawn manifest lists exactly 20 skills" {
   [ -f "$MANIFEST" ]
   # Count skill entries (lines beginning with "- name:").
   count=$(grep -c -E '^\s*-\s+name:' "$MANIFEST")
@@ -165,7 +165,7 @@ gaia-test-design gaia-threat-model gaia-validate-prd"
 # NFR-052 coverage: parse_manifest is a public function in validate-workerspawn-memory.sh
 # and must be exercised directly. Source the script with MANIFEST pointed at a
 # minimal fixture and assert the tab-separated output is well-formed.
-@test "NFR-052: parse_manifest emits tab-separated skill/agent/tier triples from manifest" {
+@test "parse_manifest emits tab-separated skill/agent/tier triples from manifest" {
   # Build a minimal manifest fixture with 2 skills, one multi-persona.
   tmp_dir="$(mktemp -d)"
   cat > "${tmp_dir}/manifest.yaml" <<'YAML'

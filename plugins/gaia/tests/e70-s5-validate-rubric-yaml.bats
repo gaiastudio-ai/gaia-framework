@@ -70,7 +70,7 @@ skill: code
 YAML
 }
 
-@test "TS-5 / AC6, AC7: validate-rubric.sh PASSes a conforming JSON rubric" {
+@test "validate-rubric.sh PASSes a conforming JSON rubric" {
   local f="$TEST_TMP/rubric.json"
   _write_valid_json_rubric "$f"
   run "$VALIDATOR" "$f"
@@ -78,7 +78,7 @@ YAML
   echo "$output" | grep -q "PASS"
 }
 
-@test "TS-6 / AC7: validate-rubric.sh PASSes a conforming YAML rubric" {
+@test "validate-rubric.sh PASSes a conforming YAML rubric" {
   _yaml_supported || skip "no yaml->json converter (yq or python3+PyYAML) available"
   local f="$TEST_TMP/rubric.yaml"
   _write_valid_yaml_rubric "$f"
@@ -87,7 +87,7 @@ YAML
   echo "$output" | grep -q "PASS"
 }
 
-@test "TS-7 / AC6: validate-rubric.sh FAILs a YAML rubric missing required fields" {
+@test "validate-rubric.sh FAILs a YAML rubric missing required fields" {
   _yaml_supported || skip "no yaml->json converter (yq or python3+PyYAML) available"
   local f="$TEST_TMP/rubric-bad.yaml"
   _write_invalid_yaml_rubric "$f"
@@ -99,13 +99,13 @@ YAML
   echo "$output" | grep -qi "severity_rules"
 }
 
-@test "AC6: validate-rubric.sh emits file-not-found for a non-existent path" {
+@test "validate-rubric.sh emits file-not-found for a non-existent path" {
   run "$VALIDATOR" "$TEST_TMP/does-not-exist.yaml"
   [ "$status" -ne 0 ]
   echo "$output" | grep -qi "not found"
 }
 
-@test "AC7: .yml extension is accepted as YAML" {
+@test ".yml extension is accepted as YAML" {
   _yaml_supported || skip "no yaml->json converter (yq or python3+PyYAML) available"
   local f="$TEST_TMP/rubric.yml"
   _write_valid_yaml_rubric "$f"

@@ -24,14 +24,14 @@ _gen() {
   [ -f "$REPORT" ]
 }
 
-@test "issue-1394 (SV-19): generated report has a 'date:' YAML frontmatter key" {
+@test "issue-1394: generated report has a 'date:' YAML frontmatter key" {
   _gen
   # The frontmatter must carry a top-level `date:` field (not only generated_at:).
   run grep -nE '^date:[[:space:]]' "$REPORT"
   [ "$status" -eq 0 ]
 }
 
-@test "issue-1394 (SV-17): generated report body mentions ADR (Architecture ADR review)" {
+@test "issue-1394: generated report body mentions ADR (Architecture ADR review)" {
   _gen
   grep -qE '\bADR\b' "$REPORT"
 }
@@ -42,7 +42,7 @@ _gen() {
 }
 
 # Drive the actual finalize checklist: the generator output must PASS SV-17 + SV-19.
-@test "issue-1394: generator output passes the skill's own SV-17 + SV-19 checks" {
+@test "issue-1394: generator output passes the skill's own + checks" {
   _gen
   FINALIZE="$PLUGIN_ROOT/skills/gaia-readiness-check/scripts/finalize.sh"
   [ -f "$FINALIZE" ]

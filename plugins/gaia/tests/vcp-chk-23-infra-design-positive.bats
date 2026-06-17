@@ -33,34 +33,34 @@ teardown() { common_teardown; }
 # VCP-CHK-23 — Positive: all 25 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-23: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export INFRA_DESIGN_ARTIFACT="$FIXTURES/infrastructure-design-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-23: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export INFRA_DESIGN_ARTIFACT="$FIXTURES/infrastructure-design-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-23: finalize.sh reports PASS for State management strategy specified" {
+@test "finalize.sh reports PASS for State management strategy specified" {
   export INFRA_DESIGN_ARTIFACT="$FIXTURES/infrastructure-design-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"State management strategy specified"* ]]
 }
 
-@test "VCP-CHK-23: finalize.sh reports PASS for Environments include dev, staging, and production" {
+@test "finalize.sh reports PASS for Environments include dev, staging, and production" {
   export INFRA_DESIGN_ARTIFACT="$FIXTURES/infrastructure-design-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Environments include dev, staging, and production"* ]]
 }
 
-@test "VCP-CHK-23: finalize.sh reports 15 script-verifiable PASS items" {
+@test "finalize.sh reports 15 script-verifiable PASS items" {
   export INFRA_DESIGN_ARTIFACT="$FIXTURES/infrastructure-design-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -73,7 +73,7 @@ teardown() { common_teardown; }
 # the count must be exactly 25.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 25 classified items" {
+@test "SKILL.md ## Validation section contains exactly 25 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -84,7 +84,7 @@ teardown() { common_teardown; }
   [ "$output" = "25" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -95,14 +95,14 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: state-management check is classified script-verifiable" {
+@test "state-management check is classified script-verifiable" {
   # Per epic design: "State management strategy specified" MUST land on
   # script-verifiable (structural keyword check).
   run grep -E '^\- \[script-verifiable\].*State management strategy specified' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }

@@ -46,14 +46,14 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1 — file exists + is valid JSON.
 # ---------------------------------------------------------------------------
-@test "AC1: coppa.json exists under rubrics/regimes/" {
+@test "coppa.json exists under rubrics/regimes/" {
   [ -f "$COPPA_RUBRIC" ] || {
     echo "missing rubric: $COPPA_RUBRIC" >&2
     return 1
   }
 }
 
-@test "AC1: coppa.json parses as valid JSON" {
+@test "coppa.json parses as valid JSON" {
   jq -e . "$COPPA_RUBRIC" >/dev/null || {
     echo "coppa.json is not valid JSON" >&2
     return 1
@@ -66,7 +66,7 @@ teardown() { common_teardown; }
 # applies_to_skills, description, metadata, name, schema_version,
 # severity_rules, skill (alphabetical, jq's `keys` default sort).
 # ---------------------------------------------------------------------------
-@test "AC2: validate-rubric.sh exits 0 for coppa.json" {
+@test "validate-rubric.sh exits 0 for coppa.json" {
   run "$VALIDATOR" "$COPPA_RUBRIC"
   [ "$status" -eq 0 ] || {
     echo "validate-rubric.sh failed:" >&2
@@ -75,14 +75,14 @@ teardown() { common_teardown; }
   }
 }
 
-@test "AC2: coppa.json declares applies_to_skills covering review-code and review-security" {
+@test "coppa.json declares applies_to_skills covering review-code and review-security" {
   has_code=$(jq '[.applies_to_skills[] | select(. == "review-code")] | length' "$COPPA_RUBRIC")
   has_sec=$(jq '[.applies_to_skills[] | select(. == "review-security")] | length' "$COPPA_RUBRIC")
   [ "$has_code" -ge 1 ] || { echo "applies_to_skills missing review-code" >&2; return 1; }
   [ "$has_sec" -ge 1 ] || { echo "applies_to_skills missing review-security" >&2; return 1; }
 }
 
-@test "AC2: coppa.json carries the canonical top-level key set" {
+@test "coppa.json carries the canonical top-level key set" {
   expected='applies_to_skills
 description
 metadata
@@ -101,7 +101,7 @@ skill'
   }
 }
 
-@test "AC2: coppa.json declares schema_version matching N.N pattern" {
+@test "coppa.json declares schema_version matching N.N pattern" {
   sv=$(jq -r '.schema_version' "$COPPA_RUBRIC")
   printf '%s' "$sv" | grep -Eq '^[0-9]+\.[0-9]+$' || {
     echo "schema_version='$sv' does not match N.N" >&2
@@ -109,7 +109,7 @@ skill'
   }
 }
 
-@test "AC2: coppa.json name field equals 'coppa'" {
+@test "coppa.json name field equals 'coppa'" {
   name=$(jq -r '.name' "$COPPA_RUBRIC")
   [ "$name" = "coppa" ] || {
     echo "name='$name' (expected 'coppa')" >&2
@@ -122,7 +122,7 @@ skill'
 # Each rule must declare id, category, severity, and either pattern or a
 # detector hint via 'pattern' (the schema's required field).
 # ---------------------------------------------------------------------------
-@test "AC3: coppa.json carries a data-collection-without-consent rule" {
+@test "coppa.json carries a data-collection-without-consent rule" {
   count=$(jq '[.severity_rules[] | select(.category == "data-collection")] | length' "$COPPA_RUBRIC")
   [ "$count" -ge 1 ] || {
     echo "no severity_rules with category 'data-collection'" >&2
@@ -130,7 +130,7 @@ skill'
   }
 }
 
-@test "AC3: coppa.json carries a behavioral-advertising-identifier rule" {
+@test "coppa.json carries a behavioral-advertising-identifier rule" {
   count=$(jq '[.severity_rules[] | select(.category == "behavioral-advertising")] | length' "$COPPA_RUBRIC")
   [ "$count" -ge 1 ] || {
     echo "no severity_rules with category 'behavioral-advertising'" >&2
@@ -138,7 +138,7 @@ skill'
   }
 }
 
-@test "AC3: coppa.json carries a persistent-identifier-profiling rule" {
+@test "coppa.json carries a persistent-identifier-profiling rule" {
   count=$(jq '[.severity_rules[] | select(.category == "persistent-identifier")] | length' "$COPPA_RUBRIC")
   [ "$count" -ge 1 ] || {
     echo "no severity_rules with category 'persistent-identifier'" >&2
@@ -146,7 +146,7 @@ skill'
   }
 }
 
-@test "AC3: every coppa rule has id, category, pattern, severity, description" {
+@test "every coppa rule has id, category, pattern, severity, description" {
   bad=$(jq '[.severity_rules[]
             | select(
                 (has("id") and has("category") and has("pattern")
@@ -161,7 +161,7 @@ skill'
 # ---------------------------------------------------------------------------
 # AC4 — parental-consent flow rule family.
 # ---------------------------------------------------------------------------
-@test "AC4: coppa.json carries a verifiable-parental-consent rule" {
+@test "coppa.json carries a verifiable-parental-consent rule" {
   count=$(jq '[.severity_rules[] | select(.category == "parental-consent")] | length' "$COPPA_RUBRIC")
   [ "$count" -ge 1 ] || {
     echo "no severity_rules with category 'parental-consent'" >&2
@@ -169,7 +169,7 @@ skill'
   }
 }
 
-@test "AC4: coppa.json carries a parental-access-delete rule" {
+@test "coppa.json carries a parental-access-delete rule" {
   count=$(jq '[.severity_rules[] | select(.category == "parental-access")] | length' "$COPPA_RUBRIC")
   [ "$count" -ge 1 ] || {
     echo "no severity_rules with category 'parental-access'" >&2
@@ -177,7 +177,7 @@ skill'
   }
 }
 
-@test "AC4: coppa.json carries a data-retention-limit rule" {
+@test "coppa.json carries a data-retention-limit rule" {
   count=$(jq '[.severity_rules[] | select(.category == "data-retention")] | length' "$COPPA_RUBRIC")
   [ "$count" -ge 1 ] || {
     echo "no severity_rules with category 'data-retention'" >&2
@@ -189,7 +189,7 @@ skill'
 # AC5 — opt-in activation: merger surfaces COPPA rules ONLY when the
 # regime file is in the layer list. Mirrors the E68-S4 merger contract.
 # ---------------------------------------------------------------------------
-@test "AC5: rubric-merger loads coppa rules when coppa.json is in the layer list" {
+@test "rubric-merger loads coppa rules when coppa.json is in the layer list" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi
@@ -207,7 +207,7 @@ skill'
   }
 }
 
-@test "AC5: rubric-merger does NOT inject coppa rules when coppa.json is omitted" {
+@test "rubric-merger does NOT inject coppa rules when coppa.json is omitted" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi
@@ -220,7 +220,7 @@ skill'
   }
 }
 
-@test "AC5: merger output is byte-identical across two runs (no drift)" {
+@test "merger output is byte-identical across two runs (no drift)" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi
@@ -235,7 +235,7 @@ skill'
 # ---------------------------------------------------------------------------
 # AC6 — last_updated and source_reference metadata.
 # ---------------------------------------------------------------------------
-@test "AC6: coppa.json metadata.last_updated is present and ISO 8601 (YYYY-MM-DD)" {
+@test "coppa.json metadata.last_updated is present and ISO 8601 (YYYY-MM-DD)" {
   ts=$(jq -r '.metadata.last_updated // empty' "$COPPA_RUBRIC")
   [ -n "$ts" ] || { echo "metadata.last_updated missing" >&2; return 1; }
   printf '%s' "$ts" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || {
@@ -244,7 +244,7 @@ skill'
   }
 }
 
-@test "AC6: coppa.json metadata.source_reference cites FTC COPPA Rule" {
+@test "coppa.json metadata.source_reference cites FTC COPPA Rule" {
   ref=$(jq -r '.metadata.source_reference // empty' "$COPPA_RUBRIC")
   [ -n "$ref" ] || { echo "metadata.source_reference missing" >&2; return 1; }
   printf '%s' "$ref" | grep -Fq '16 CFR Part 312' || {
@@ -256,7 +256,7 @@ skill'
 # ---------------------------------------------------------------------------
 # AC7 — cross-platform applicability: NO top-level `platforms` key.
 # ---------------------------------------------------------------------------
-@test "AC7: coppa.json does NOT declare a top-level 'platforms' constraint" {
+@test "coppa.json does NOT declare a top-level 'platforms' constraint" {
   has_platforms=$(jq 'has("platforms")' "$COPPA_RUBRIC")
   [ "$has_platforms" = "false" ] || {
     echo "coppa.json carries top-level 'platforms' (COPPA is jurisdiction-scoped)" >&2

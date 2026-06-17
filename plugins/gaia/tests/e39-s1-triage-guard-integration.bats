@@ -47,7 +47,7 @@ EOF
 # TC-FITP-1 — Done-story guard fires on ADD TO EXISTING against done story
 # ===========================================================================
 
-@test "TC-FITP-1: guard halts on done target with guidance" {
+@test "guard halts on done target with guidance" {
   local file
   file="$(_make_story "$TEST_TMP" "E1-S1" "done" "sprint-20")"
   run "$TRIAGE_GUARD_SH" check "$file"
@@ -58,7 +58,7 @@ EOF
   echo "$output" | grep -q "/gaia-add-feature"
 }
 
-@test "TC-FITP-1: guard emits retrospective-linkage sentence" {
+@test "guard emits retrospective-linkage sentence" {
   local file
   file="$(_make_story "$TEST_TMP" "E1-S1" "done")"
   run "$TRIAGE_GUARD_SH" check "$file"
@@ -66,7 +66,7 @@ EOF
   echo "$output" | grep -qi "retro"
 }
 
-@test "TC-FITP-1: guard performs NO mutation to story file on halt" {
+@test "guard performs NO mutation to story file on halt" {
   local file
   file="$(_make_story "$TEST_TMP" "E1-S1" "done")"
   local before_sha
@@ -82,35 +82,35 @@ EOF
 # TC-FITP-2 — Guard allows ADD TO EXISTING against in-progress or review
 # ===========================================================================
 
-@test "TC-FITP-2: guard passes through in-progress target" {
+@test "guard passes through in-progress target" {
   local file
   file="$(_make_story "$TEST_TMP" "E2-S1" "in-progress")"
   run "$TRIAGE_GUARD_SH" check "$file"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-2: guard passes through review target" {
+@test "guard passes through review target" {
   local file
   file="$(_make_story "$TEST_TMP" "E2-S1" "review")"
   run "$TRIAGE_GUARD_SH" check "$file"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-2: guard passes through ready-for-dev target" {
+@test "guard passes through ready-for-dev target" {
   local file
   file="$(_make_story "$TEST_TMP" "E2-S1" "ready-for-dev")"
   run "$TRIAGE_GUARD_SH" check "$file"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-2: guard passes through backlog target" {
+@test "guard passes through backlog target" {
   local file
   file="$(_make_story "$TEST_TMP" "E2-S1" "backlog")"
   run "$TRIAGE_GUARD_SH" check "$file"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-2: guard passes through validating target" {
+@test "guard passes through validating target" {
   local file
   file="$(_make_story "$TEST_TMP" "E2-S1" "validating")"
   run "$TRIAGE_GUARD_SH" check "$file"
@@ -121,7 +121,7 @@ EOF
 # TC-FITP-3 — Guard override is recorded with flag in triage report
 # ===========================================================================
 
-@test "TC-FITP-3: override flag bypasses guard and records entry" {
+@test "override flag bypasses guard and records entry" {
   local file
   file="$(_make_story "$TEST_TMP" "E3-S1" "done")"
   local report="$TEST_TMP/triage-report.md"
@@ -143,7 +143,7 @@ EOF
   grep -q "retro_flag: true" "$report"
 }
 
-@test "TC-FITP-3: override without --report flag fails" {
+@test "override without --report flag fails" {
   local file
   file="$(_make_story "$TEST_TMP" "E3-S1" "done")"
   run "$TRIAGE_GUARD_SH" check \
@@ -156,7 +156,7 @@ EOF
   [ "$status" -ne 0 ]
 }
 
-@test "TC-FITP-3: override still NO mutation to story file" {
+@test "override still NO mutation to story file" {
   local file
   file="$(_make_story "$TEST_TMP" "E3-S1" "done")"
   local before_sha

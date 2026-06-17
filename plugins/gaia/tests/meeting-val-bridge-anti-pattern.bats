@@ -18,14 +18,14 @@ teardown() {
   common_teardown
 }
 
-@test "TC-MVB-6: gaia-meeting/SKILL.md contains no 'context: fork' strings" {
+@test "gaia-meeting/SKILL.md contains no 'context: fork' strings" {
   [ -f "$SKILL_MD" ]
   local count
   count="$(grep -c 'context: fork' "$SKILL_MD" || true)"
   [ "${count:-0}" -eq 0 ]
 }
 
-@test "TC-MVB-7: anti-pattern bats fails CI when 'context: fork' is reintroduced (synthetic)" {
+@test "anti-pattern bats fails CI when 'context: fork' is reintroduced (synthetic)" {
   local synthetic="$TEST_TMP/synthetic-skill.md"
   printf 'Some prose about context: fork is forbidden after E90-S2.\n' > "$synthetic"
   local count

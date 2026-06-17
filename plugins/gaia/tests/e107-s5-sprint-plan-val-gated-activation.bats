@@ -20,7 +20,7 @@ setup() {
 
 # ---------- sprint-plan Step 4a: Val-gated activation ----------
 
-@test "AC1: sprint-plan SKILL.md adds a Val-gated activation step (backlog -> ready-for-dev)" {
+@test "sprint-plan SKILL.md adds a Val-gated activation step (backlog -> ready-for-dev)" {
   [ -f "$PLAN_SKILL" ]
   grep -Eq 'Step 4a' "$PLAN_SKILL" \
     || { echo "SKILL.md should add Step 4a (Val-gated activation)" >&2; false; }
@@ -28,23 +28,23 @@ setup() {
     || { echo "SKILL.md should document the backlog -> ready-for-dev transition" >&2; false; }
 }
 
-@test "AC2: activation validates each story via /gaia-validate-story" {
+@test "activation validates each story via /gaia-validate-story" {
   grep -Fq '/gaia-validate-story' "$PLAN_SKILL" \
     || { echo "Step 4a should validate via /gaia-validate-story" >&2; false; }
 }
 
-@test "AC3: activation transitions passers via transition-story-status.sh --to ready-for-dev" {
+@test "activation transitions passers via transition-story-status.sh --to ready-for-dev" {
   grep -Eq 'transition-story-status\.sh .*--to[[:space:]]*\n?[[:space:]]*ready-for-dev|transition-story-status\.sh' "$PLAN_SKILL" \
     || { echo "Step 4a should transition via transition-story-status.sh" >&2; false; }
   grep -Fq 'ready-for-dev' "$PLAN_SKILL"
 }
 
-@test "AC4: SM fix loop is bounded at 3 attempts" {
+@test "SM fix loop is bounded at 3 attempts" {
   grep -Eiq '3[[:space:]]*attempts|≤[[:space:]]*3|up to .*3' "$PLAN_SKILL" \
     || { echo "Step 4a should bound the SM fix loop at 3 attempts" >&2; false; }
 }
 
-@test "AC5: sprint cannot start while any selected story remains backlog (HALT)" {
+@test "sprint cannot start while any selected story remains backlog (HALT)" {
   grep -Eiq 'cannot start|can.?t start' "$PLAN_SKILL" \
     || { echo "SKILL.md should HALT sprint start when a story remains backlog" >&2; false; }
   grep -Eiq 'remove .*from the sprint|fix .*re-?validate' "$PLAN_SKILL" \
@@ -58,7 +58,7 @@ setup() {
 
 # ---------- dev-story FRESH-mode reconcile (single activation path) ----------
 
-@test "AC6: dev-story FRESH mode owns ready-for-dev -> in-progress only" {
+@test "dev-story FRESH mode owns ready-for-dev -> in-progress only" {
   [ -f "$DEV_SKILL" ]
   grep -Eiq 'ready-for-dev .*in-progress|single activation path' "$DEV_SKILL" \
     || { echo "dev-story should document the ready-for-dev -> in-progress single path" >&2; false; }
@@ -71,6 +71,6 @@ setup() {
 
 # ---------- the single-writer it depends on exists ----------
 
-@test "AC7: transition-story-status.sh (the sanctioned single-writer) exists and is executable" {
+@test "transition-story-status.sh (the sanctioned single-writer) exists and is executable" {
   [ -x "$TRANSITION" ]
 }

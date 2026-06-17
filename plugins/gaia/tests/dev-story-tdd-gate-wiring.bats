@@ -36,7 +36,7 @@ teardown() { common_teardown; }
 # naming the missing hook.
 # ---------------------------------------------------------------------------
 
-@test "AC5: Step 5 (Red) tdd-review-gate hook block is present" {
+@test "Step 5 (Red) tdd-review-gate hook block is present" {
   run grep -c '<!-- step5 tdd-review-gate begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
@@ -45,7 +45,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC5: Step 6 (Green) tdd-review-gate hook block is present" {
+@test "Step 6 (Green) tdd-review-gate hook block is present" {
   run grep -c '<!-- step6 tdd-review-gate begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
@@ -54,7 +54,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC5: Step 7 (Refactor) tdd-review-gate hook block is present" {
+@test "Step 7 (Refactor) tdd-review-gate hook block is present" {
   run grep -c '<!-- step7 tdd-review-gate begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
@@ -67,14 +67,14 @@ teardown() { common_teardown; }
 # Hook invocation — the gate script call MUST appear inside each block.
 # ---------------------------------------------------------------------------
 
-@test "AC5: each tdd-review-gate hook block invokes tdd-review-gate.sh" {
+@test "each tdd-review-gate hook block invokes tdd-review-gate.sh" {
   # The script name must appear at least 3 times — once per hook block.
   run grep -c 'tdd-review-gate\.sh' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" -ge 3 ]
 }
 
-@test "AC5: Step 5 hook block passes phase=red to tdd-review-gate.sh" {
+@test "Step 5 hook block passes phase=red to tdd-review-gate.sh" {
   # Extract the Step 5 hook block and verify it contains 'red' as the phase.
   block="$(awk '/<!-- step5 tdd-review-gate begin -->/,/<!-- step5 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
@@ -82,14 +82,14 @@ teardown() { common_teardown; }
   echo "$block" | grep -Eq '\bred\b'
 }
 
-@test "AC5: Step 6 hook block passes phase=green to tdd-review-gate.sh" {
+@test "Step 6 hook block passes phase=green to tdd-review-gate.sh" {
   block="$(awk '/<!-- step6 tdd-review-gate begin -->/,/<!-- step6 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   echo "$block" | grep -Fq 'tdd-review-gate.sh'
   echo "$block" | grep -Eq '\bgreen\b'
 }
 
-@test "AC5: Step 7 hook block passes phase=refactor to tdd-review-gate.sh" {
+@test "Step 7 hook block passes phase=refactor to tdd-review-gate.sh" {
   block="$(awk '/<!-- step7 tdd-review-gate begin -->/,/<!-- step7 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   echo "$block" | grep -Fq 'tdd-review-gate.sh'
@@ -112,19 +112,19 @@ assert_block_has_verbatim_labels() {
   echo "$block" | grep -Fq 'proceed-anyway'
 }
 
-@test "AC2: Step 5 hook contains verbatim labels review-myself, route-to-qa, proceed-anyway" {
+@test "Step 5 hook contains verbatim labels review-myself, route-to-qa, proceed-anyway" {
   assert_block_has_verbatim_labels step5
 }
 
-@test "AC2: Step 6 hook contains verbatim labels review-myself, route-to-qa, proceed-anyway" {
+@test "Step 6 hook contains verbatim labels review-myself, route-to-qa, proceed-anyway" {
   assert_block_has_verbatim_labels step6
 }
 
-@test "AC2: Step 7 hook contains verbatim labels review-myself, route-to-qa, proceed-anyway" {
+@test "Step 7 hook contains verbatim labels review-myself, route-to-qa, proceed-anyway" {
   assert_block_has_verbatim_labels step7
 }
 
-@test "AC2: verbatim labels appear in canonical order review-myself, route-to-qa, proceed-anyway" {
+@test "verbatim labels appear in canonical order review-myself, route-to-qa, proceed-anyway" {
   # In each block, the order MUST be review-myself first, then route-to-qa,
   # then proceed-anyway. Use byte offsets (grep -bo) so labels on the same
   # line still resolve a strict relative order.
@@ -144,7 +144,7 @@ assert_block_has_verbatim_labels() {
 # the next step without prompting).
 # ---------------------------------------------------------------------------
 
-@test "AC1: each hook block documents the SKIP dispatch (no prompt)" {
+@test "each hook block documents the SKIP dispatch (no prompt)" {
   for marker in step5 step6 step7; do
     block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     [ -n "$block" ]
@@ -157,7 +157,7 @@ assert_block_has_verbatim_labels() {
 # names QA_AUTO and the tdd-reviewer dispatch.
 # ---------------------------------------------------------------------------
 
-@test "AC3: each hook block dispatches QA_AUTO to the tdd-reviewer subagent" {
+@test "each hook block dispatches QA_AUTO to the tdd-reviewer subagent" {
   for marker in step5 step6 step7; do
     block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     [ -n "$block" ]
@@ -171,7 +171,7 @@ assert_block_has_verbatim_labels() {
 # AC4 — `proceed-anyway` records a timestamped decision in the checkpoint.
 # ---------------------------------------------------------------------------
 
-@test "AC4: each hook block documents proceed-anyway checkpoint persistence" {
+@test "each hook block documents proceed-anyway checkpoint persistence" {
   for marker in step5 step6 step7; do
     block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     [ -n "$block" ]
@@ -233,7 +233,7 @@ assert_block_has_verbatim_labels() {
 # ADR-067.
 # ---------------------------------------------------------------------------
 
-@test "tdd-review-gate hook blocks reference ADR-063 verdict surfacing" {
+@test "tdd-review-gate hook blocks reference verdict surfacing" {
   # ADR-063 governs verdict surfacing from the tdd-reviewer subagent.
   # The behavioral anchor is "Surface the verdict" — present in each block's
   # route-to-qa and QA_AUTO branches.
@@ -241,7 +241,7 @@ assert_block_has_verbatim_labels() {
   echo "$hooks" | grep -Fq 'Surface the verdict'
 }
 
-@test "tdd-review-gate hook blocks reference ADR-067 hard-CRITICAL halt" {
+@test "tdd-review-gate hook blocks reference hard-CRITICAL halt" {
   # ADR-067 governs the hard-CRITICAL halt that YOLO MUST NOT auto-resolve.
   # The behavioral anchor is "YOLO MUST NOT auto-resolve CRITICAL findings" —
   # present in the step5 block and mirrored by "HALT on \`severity: CRITICAL\`"

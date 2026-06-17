@@ -30,7 +30,7 @@ teardown() {
 }
 
 # ---------------- TC-DPD-15: unmatched deferral -> finding ----------------
-@test "TC-DPD-15: unmatched deferral phrase in Completion Notes -> emit paired=false" {
+@test "unmatched deferral phrase in Completion Notes -> emit paired=false" {
   local fixture="$FIXTURES_DIR/unmatched.md"
   [ -f "$fixture" ]
   run "$HELPER" --story-file "$fixture"
@@ -40,7 +40,7 @@ teardown() {
 }
 
 # ---------------- TC-DPD-16: matched deferral -> no emission ----------------
-@test "TC-DPD-16: matched deferral phrase (Findings row pair) -> paired=true" {
+@test "matched deferral phrase (Findings row pair) -> paired=true" {
   local fixture="$FIXTURES_DIR/matched.md"
   [ -f "$fixture" ]
   run "$HELPER" --story-file "$fixture"
@@ -51,7 +51,7 @@ teardown() {
 }
 
 # ---------------- TC-DPD-17: triage source-column extension ----------------
-@test "TC-DPD-17: helper output is consumable as triage-row source=completion-notes-deferral-scan" {
+@test "helper output is consumable as triage-row source=completion-notes-deferral-scan" {
   local fixture="$FIXTURES_DIR/unmatched.md"
   run "$HELPER" --story-file "$fixture"
   [ "$status" -eq 0 ]
@@ -64,7 +64,7 @@ teardown() {
 }
 
 # ---------------- TC-DPD-18 (SSOT static audit) ----------------
-@test "TC-DPD-18: SKILL.md files reference matcher library, not inline taxonomy" {
+@test "SKILL.md files reference matcher library, not inline taxonomy" {
   local PLUGIN_DIR
   PLUGIN_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 

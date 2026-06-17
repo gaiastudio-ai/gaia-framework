@@ -97,7 +97,7 @@ have_validator() {
 # AC1-AC3 + AC9: Structural greps (no validator dependency)
 # ----------------------------------------------------------------------------
 
-@test "AC1: schema declares config_phase property with enum and default" {
+@test "schema declares config_phase property with enum and default" {
   [ -f "$SCHEMA" ]
   # config_phase property block exists
   run python3 -c "
@@ -115,7 +115,7 @@ print('ok')
   [[ "$output" == *"ok"* ]]
 }
 
-@test "AC2: schema declares schema_version property" {
+@test "schema declares schema_version property" {
   [ -f "$SCHEMA" ]
   run python3 -c "
 import json
@@ -130,7 +130,7 @@ print('ok')
   [[ "$output" == *"ok"* ]]
 }
 
-@test "AC3: schema title references v2.0.0 and E85-S2" {
+@test "schema title references v2.0.0 and" {
   [ -f "$SCHEMA" ]
   run python3 -c "
 import json
@@ -143,7 +143,7 @@ print('ok')
   [ "$status" -eq 0 ]
 }
 
-@test "AC8: schema has allOf conditional blocks for each config_phase" {
+@test "schema has allOf conditional blocks for each config_phase" {
   [ -f "$SCHEMA" ]
   run python3 -c "
 import json
@@ -162,7 +162,7 @@ print('ok')
   [[ "$output" == *"ok"* ]]
 }
 
-@test "AC9: config_phase is NOT in top-level required array (backward compat)" {
+@test "config_phase is NOT in top-level required array (backward compat)" {
   [ -f "$SCHEMA" ]
   run python3 -c "
 import json
@@ -175,7 +175,7 @@ print('ok')
   [ "$status" -eq 0 ]
 }
 
-@test "AC8: minimal phase requires only project_name + project_kind (additive)" {
+@test "minimal phase requires only project_name + project_kind (additive)" {
   run python3 -c "
 import json
 with open('$SCHEMA') as f:
@@ -194,7 +194,7 @@ exit(2)
   [ "$status" -eq 0 ]
 }
 
-@test "AC8: partial phase requires project_name, project_kind, stacks, platforms" {
+@test "partial phase requires project_name, project_kind, stacks, platforms" {
   run python3 -c "
 import json
 with open('$SCHEMA') as f:
@@ -213,7 +213,7 @@ exit(2)
   [ "$status" -eq 0 ]
 }
 
-@test "AC8: full phase requires the complete set including environments + ci_cd" {
+@test "full phase requires the complete set including environments + ci_cd" {
   run python3 -c "
 import json
 with open('$SCHEMA') as f:
@@ -231,7 +231,7 @@ exit(2)
   [ "$status" -eq 0 ]
 }
 
-@test "AC8: every if block guards with required:[config_phase] (so absence skips)" {
+@test "every if block guards with required:[config_phase] (so absence skips)" {
   run python3 -c "
 import json
 with open('$SCHEMA') as f:
@@ -249,7 +249,7 @@ print('ok')
 # AC10 / TS1-TS8: Fixture-based validation
 # ----------------------------------------------------------------------------
 
-@test "AC10/TS1: minimal-valid fixture validates against schema" {
+@test "minimal-valid fixture validates against schema" {
   if ! have_validator; then
     skip "no JSON Schema validator available (ajv or python-jsonschema)"
   fi
@@ -259,7 +259,7 @@ print('ok')
   [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
 }
 
-@test "AC10/TS2: partial-valid fixture validates against schema" {
+@test "partial-valid fixture validates against schema" {
   if ! have_validator; then
     skip "no JSON Schema validator available"
   fi
@@ -269,7 +269,7 @@ print('ok')
   [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
 }
 
-@test "AC10/TS3: full-valid fixture validates against schema" {
+@test "full-valid fixture validates against schema" {
   if ! have_validator; then
     skip "no JSON Schema validator available"
   fi
@@ -279,7 +279,7 @@ print('ok')
   [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
 }
 
-@test "AC7/AC10/TS4: legacy-no-phase fixture validates (NFR-062 backward compat)" {
+@test "legacy-no-phase fixture validates" {
   if ! have_validator; then
     skip "no JSON Schema validator available"
   fi
@@ -289,7 +289,7 @@ print('ok')
   [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
 }
 
-@test "AC10/TS5: minimal-deferrable-absent fixture validates" {
+@test "minimal-deferrable-absent fixture validates" {
   if ! have_validator; then
     skip "no JSON Schema validator available"
   fi
@@ -299,7 +299,7 @@ print('ok')
   [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
 }
 
-@test "AC6/TS6: full-config-missing-stacks fixture FAILS validation" {
+@test "full-config-missing-stacks fixture FAILS validation" {
   if ! have_validator; then
     skip "no JSON Schema validator available"
   fi

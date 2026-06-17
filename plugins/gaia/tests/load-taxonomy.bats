@@ -15,7 +15,7 @@ teardown() {
 }
 
 # TC-DPD-1 — deferral mode emits exactly 6 lines.
-@test "TC-DPD-1: load-taxonomy.sh --taxonomy deferral emits exactly 6 v1 phrases" {
+@test "load-taxonomy.sh --taxonomy deferral emits exactly 6 v1 phrases" {
   run "$LIB_DIR/load-taxonomy.sh" --taxonomy deferral
   [ "$status" -eq 0 ]
   # Count non-empty lines.
@@ -32,7 +32,7 @@ teardown() {
 }
 
 # TC-DPD-2 — dispatch mode emits exactly 5 lines.
-@test "TC-DPD-2: load-taxonomy.sh --taxonomy dispatch emits exactly 5 v1 verbs" {
+@test "load-taxonomy.sh --taxonomy dispatch emits exactly 5 v1 verbs" {
   run "$LIB_DIR/load-taxonomy.sh" --taxonomy dispatch
   [ "$status" -eq 0 ]
   local n
@@ -46,7 +46,7 @@ teardown() {
 }
 
 # TC-DPD-3 — unknown taxonomy exits 1 with stderr enumerating valid names.
-@test "TC-DPD-3: load-taxonomy.sh --taxonomy unknown exits 1 with helpful stderr" {
+@test "load-taxonomy.sh --taxonomy unknown exits 1 with helpful stderr" {
   # Capture stderr into output for `run`-friendly assertion (combined 2>&1).
   run bash -c '"$0" --taxonomy frobnicate 2>&1' "$LIB_DIR/load-taxonomy.sh"
   [ "$status" -eq 1 ]
@@ -55,7 +55,7 @@ teardown() {
 }
 
 # AC3 — --as-grep-file produces a path consumable by grep -wFf.
-@test "AC3: --as-grep-file deferral writes tempfile usable by grep -wFf" {
+@test "as-grep-file deferral writes tempfile usable by grep -wFf" {
   run "$LIB_DIR/load-taxonomy.sh" --taxonomy deferral --as-grep-file
   [ "$status" -eq 0 ]
   local tmp="$output"
@@ -69,7 +69,7 @@ teardown() {
   rm -f "$tmp"
 }
 
-@test "AC3: --as-grep-file dispatch writes tempfile usable by grep -wFf" {
+@test "as-grep-file dispatch writes tempfile usable by grep -wFf" {
   run "$LIB_DIR/load-taxonomy.sh" --taxonomy dispatch --as-grep-file
   [ "$status" -eq 0 ]
   local tmp="$output"

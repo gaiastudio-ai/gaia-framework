@@ -16,26 +16,26 @@ setup() {
   POST_FIX_FILE="$FIXTURE_DIR/post-fix-warnings.txt"
 }
 
-@test "TC-MSS-SUBSHARD-10: pre-fix fixture is 12 WARNINGs (historical baseline)" {
+@test "pre-fix fixture is 12 WARNINGs (historical baseline)" {
   [ -f "$PRE_FIX_FILE" ]
   count=$(grep -c '^WARNING' "$PRE_FIX_FILE")
   [ "$count" -eq 12 ]
 }
 
-@test "TC-MSS-SUBSHARD-10: post-fix fixture is 9 WARNINGs (expected after E53-S249 + E53-S250)" {
+@test "post-fix fixture is 9 WARNINGs (expected after + )" {
   [ -f "$POST_FIX_FILE" ]
   count=$(grep -c '^WARNING' "$POST_FIX_FILE")
   [ "$count" -eq 9 ]
 }
 
-@test "TC-MSS-SUBSHARD-10: count delta is 12 -> 9 (3 cleared)" {
+@test "count delta is 12 -> 9 (3 cleared)" {
   pre=$(grep -c '^WARNING' "$PRE_FIX_FILE")
   post=$(grep -c '^WARNING' "$POST_FIX_FILE")
   delta=$((pre - post))
   [ "$delta" -eq 3 ]
 }
 
-@test "TC-MSS-SUBSHARD-10: 3 cleared lines are the structural sub-shard false-positives" {
+@test "3 cleared lines are the structural sub-shard false-positives" {
   # The lines in pre-fix but NOT in post-fix MUST be the 3 structural
   # false-positives (PRD §4 missing-shard + PRD §4 Sub-Sharded absent +
   # architecture §10 Sub-Sharded absent).
@@ -48,7 +48,7 @@ setup() {
   printf '%s\n' "$cleared" | grep -q 'Sub-Sharded'
 }
 
-@test "TC-MSS-SUBSHARD-10: 9 unchanged lines are real per-section drift (out of scope for this AF)" {
+@test "9 unchanged lines are real per-section drift (out of scope for this AF)" {
   unchanged=$(comm -12 <(sort "$PRE_FIX_FILE") <(sort "$POST_FIX_FILE"))
   unchanged_count=$(printf '%s\n' "$unchanged" | grep -c '^WARNING' || true)
   [ "$unchanged_count" -eq 9 ]
@@ -58,7 +58,7 @@ setup() {
   [ "$unchanged_diverges" -eq 9 ]
 }
 
-@test "TC-MSS-SUBSHARD-10: live drift-report output matches post-fix fixture" {
+@test "live drift-report output matches post-fix fixture" {
   # AC1 — the live `check-monolith-shard-sync.sh` from project root must
   # emit exactly the 9 WARNINGs captured in the post-fix fixture.
   # Skip cleanly when running outside the live project-root checkout

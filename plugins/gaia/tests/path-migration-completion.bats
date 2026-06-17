@@ -72,14 +72,14 @@ resolve_target() {
 
 # ---------- TC-PRC-1..5: canonical-first resolution ----------
 
-@test "TC-PRC-1: gaia-canonical fixture resolves \${GAIA_CONFIG_DIR}/project-config.yaml" {
+@test "gaia-canonical fixture resolves \${GAIA_CONFIG_DIR}/project-config.yaml" {
   seed_gaia_canonical
   run resolve_target
   [ "$status" -eq 0 ]
   [[ "$output" == *"/.gaia/config/project-config.yaml" ]]
 }
 
-@test "TC-PRC-2: hybrid fixture prefers .gaia/config/ over legacy config/" {
+@test "hybrid fixture prefers .gaia/config/ over legacy config/" {
   seed_hybrid
   run resolve_target
   [ "$status" -eq 0 ]
@@ -87,7 +87,7 @@ resolve_target() {
   [[ "$output" != *"$PROJECT_ROOT/config/project-config.yaml" ]]
 }
 
-@test "TC-PRC-3: gaia-only project-phase detector references .gaia/ first" {
+@test "gaia-only project-phase detector references .gaia/ first" {
   # SKILL.md sweep: detector code at lines 60-90 must reference .gaia/ artifacts/config.
   run grep -nE '\.gaia/config|\.gaia/artifacts' "$SKILL_MD"
   [ "$status" -eq 0 ]
@@ -96,14 +96,14 @@ resolve_target() {
   [ "$status" -eq 0 ]
 }
 
-@test "TC-PRC-4: pre-migration fixture (legacy only) still resolves legacy config/" {
+@test "pre-migration fixture (legacy only) still resolves legacy config/" {
   seed_legacy_only
   run resolve_target
   [ "$status" -eq 0 ]
   [[ "$output" == *"$PROJECT_ROOT/config/project-config.yaml" ]]
 }
 
-@test "TC-PRC-5: legacy-only-baseline byte-identical to pre-fix" {
+@test "legacy-only-baseline byte-identical to pre-fix" {
   # AC3 invariant: legacy resolution behavior is unchanged.
   seed_legacy_only
   run resolve_target
@@ -116,19 +116,19 @@ resolve_target() {
 
 # ---------- TC-BC-1..3: back-compat invariants ----------
 
-@test "TC-BC-1: config-hydration helper present on pre-migration install" {
+@test "config-hydration helper present on pre-migration install" {
   seed_legacy_only
   run bash -c "source '$CH' && declare -F config_hydration_resolve_target"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-BC-2: gaia-help detector code still contains legacy fallback" {
+@test "gaia-help detector code still contains legacy fallback" {
   # AC3 back-compat: legacy paths must still appear as fallback in the detector.
   run grep -nE '^[^#]*config/project-config\.yaml|^[^#]*docs/planning-artifacts' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-BC-3: hybrid install with stale legacy file — canonical wins, legacy still readable" {
+@test "hybrid install with stale legacy file — canonical wins, legacy still readable" {
   seed_hybrid
   # Canonical wins
   run resolve_target

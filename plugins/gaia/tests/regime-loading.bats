@@ -19,13 +19,13 @@ mkfile() {
   printf '%s\n' "$@" > "$path"
 }
 
-@test "TC-RSV2-PRIVACY-1.26: GDPR rubric file exists and contains privacy section" {
+@test ".26: GDPR rubric file exists and contains privacy section" {
   [ -f "$GDPR_RUBRIC" ]
   grep -F '"privacy"' "$GDPR_RUBRIC" >/dev/null
   grep -F '"patterns"' "$GDPR_RUBRIC" >/dev/null
 }
 
-@test "TC-RSV2-PRIVACY-1.27: regime declared via env -> IBAN active" {
+@test ".27: regime declared via env -> IBAN active" {
   local f="$TEST_TMP/src/iban.ts"
   mkfile "$f" 'const iban = "DE89370400440532013000";'
   GAIA_COMPLIANCE_REGIMES="gdpr" run "$SCRIPT" "$f"
@@ -33,7 +33,7 @@ mkfile() {
   printf '%s\n' "$output" | grep -F '"rule":"iban"' >/dev/null
 }
 
-@test "TC-RSV2-PRIVACY-1.28: no regime declared -> IBAN not active" {
+@test ".28: no regime declared -> IBAN not active" {
   local f="$TEST_TMP/src/iban.ts"
   mkfile "$f" 'const iban = "DE89370400440532013000";'
   unset GAIA_COMPLIANCE_REGIMES
@@ -42,7 +42,7 @@ mkfile() {
   ! printf '%s\n' "$output" | grep -F '"rule":"iban"' >/dev/null
 }
 
-@test "TC-RSV2-PRIVACY-1.29: regime is additive — base patterns still run with regime" {
+@test ".29: regime is additive — base patterns still run with regime" {
   local f="$TEST_TMP/src/multi.ts"
   mkfile "$f" 'const e = "alice@example.com"; const i = "DE89370400440532013000";'
   GAIA_COMPLIANCE_REGIMES="gdpr" run "$SCRIPT" "$f"
@@ -51,7 +51,7 @@ mkfile() {
   printf '%s\n' "$output" | grep -F '"rule":"iban"' >/dev/null
 }
 
-@test "TC-RSV2-PRIVACY-1.30: graceful degrade — missing rubric file does not fail script" {
+@test ".30: graceful degrade — missing rubric file does not fail script" {
   local f="$TEST_TMP/src/clean.ts"
   mkfile "$f" 'const x = 1;'
   GAIA_COMPLIANCE_REGIMES="nonexistent-regime" run "$SCRIPT" "$f"

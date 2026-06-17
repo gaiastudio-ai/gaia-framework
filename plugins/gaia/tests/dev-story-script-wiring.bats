@@ -33,7 +33,7 @@ teardown() { common_teardown; }
 # regression failures name the offending step.
 # ---------------------------------------------------------------------------
 
-@test "AC5: Step 1 script-wiring marker pair is present" {
+@test "Step 1 script-wiring marker pair is present" {
   run grep -c '<!-- step1 script-wiring begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
@@ -42,7 +42,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC5: Step 10 script-wiring marker pair is present" {
+@test "Step 10 script-wiring marker pair is present" {
   run grep -c '<!-- step10 script-wiring begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
@@ -51,7 +51,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC5: Step 11 script-wiring marker pair is present" {
+@test "Step 11 script-wiring marker pair is present" {
   run grep -c '<!-- step11 script-wiring begin -->' "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
@@ -65,25 +65,25 @@ teardown() { common_teardown; }
 # contains a narrative-fallback block.
 # ---------------------------------------------------------------------------
 
-@test "AC1: Step 1 block invokes story-parse.sh" {
+@test "Step 1 block invokes story-parse.sh" {
   block="$(awk '/<!-- step1 script-wiring begin -->/,/<!-- step1 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'story-parse.sh' <<<"$block"
 }
 
-@test "AC1: Step 1 block invokes detect-mode.sh" {
+@test "Step 1 block invokes detect-mode.sh" {
   block="$(awk '/<!-- step1 script-wiring begin -->/,/<!-- step1 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'detect-mode.sh' <<<"$block"
 }
 
-@test "AC1: Step 1 block invokes check-deps.sh" {
+@test "Step 1 block invokes check-deps.sh" {
   block="$(awk '/<!-- step1 script-wiring begin -->/,/<!-- step1 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'check-deps.sh' <<<"$block"
 }
 
-@test "AC1: Step 1 block contains a Narrative Fallback section" {
+@test "Step 1 block contains a Narrative Fallback section" {
   block="$(awk '/<!-- step1 script-wiring begin -->/,/<!-- step1 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'Narrative Fallback' <<<"$block"
@@ -96,26 +96,26 @@ teardown() { common_teardown; }
 # AND commit-msg.sh in the commit subsection.
 # ---------------------------------------------------------------------------
 
-@test "AC2: Step 10 block invokes promotion-chain-guard.sh" {
+@test "Step 10 block invokes promotion-chain-guard.sh" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'promotion-chain-guard.sh' <<<"$block"
 }
 
-@test "AC2: Step 10 block invokes commit-msg.sh" {
+@test "Step 10 block invokes commit-msg.sh" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'commit-msg.sh' <<<"$block"
 }
 
-@test "AC2: Step 10 block contains a Narrative Fallback section" {
+@test "Step 10 block contains a Narrative Fallback section" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'Narrative Fallback' <<<"$block"
   grep -Fq 'command -v commit-msg.sh' <<<"$block"
 }
 
-@test "AC2: promotion-chain-guard.sh appears BEFORE commit-msg.sh inside Step 10 block" {
+@test "promotion-chain-guard.sh appears BEFORE commit-msg.sh inside Step 10 block" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   guard_off="$(printf '%s\n' "$block" | grep -boF 'promotion-chain-guard.sh' | head -1 | cut -d: -f1)"
@@ -128,19 +128,19 @@ teardown() { common_teardown; }
 # AC3 — Step 11 documents that pr-create.sh reads its body from pr-body.sh.
 # ---------------------------------------------------------------------------
 
-@test "AC3: Step 11 block invokes pr-body.sh" {
+@test "Step 11 block invokes pr-body.sh" {
   block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'pr-body.sh' <<<"$block"
 }
 
-@test "AC3: Step 11 block references pr-create.sh" {
+@test "Step 11 block references pr-create.sh" {
   block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'pr-create.sh' <<<"$block"
 }
 
-@test "AC3: Step 11 block contains a Narrative Fallback section" {
+@test "Step 11 block contains a Narrative Fallback section" {
   block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   grep -Fq 'Narrative Fallback' <<<"$block"
@@ -178,7 +178,7 @@ teardown() { common_teardown; }
 # removal window so brownfield users can plan the upgrade.
 # ---------------------------------------------------------------------------
 
-@test "AC5: each fallback block names the v1.131.x deprecation cadence" {
+@test "each fallback block names the v1.131.x deprecation cadence" {
   for marker in step1 step10 step11; do
     block="$(awk "/<!-- ${marker} script-wiring begin -->/,/<!-- ${marker} script-wiring end -->/" "$SKILL_MD")"
     [ -n "$block" ]
@@ -214,7 +214,7 @@ _skill_md_minus_wiring_blocks() {
   ' "$SKILL_MD"
 }
 
-@test "AC5 absence: Step 1 — no inline frontmatter parsing outside wiring block" {
+@test "absence: Step 1 — no inline frontmatter parsing outside wiring block" {
   residue="$(_skill_md_minus_wiring_blocks)"
   # Legacy inline narrative: 'Read the story file: extract' / 'Detect execution mode' / 'FRESH (new implementation)'.
   # Any of these outside the wiring block means a regression has re-introduced
@@ -226,7 +226,7 @@ _skill_md_minus_wiring_blocks() {
   fi
 }
 
-@test "AC5 absence: Step 10 — no inline commit-subject construction outside wiring block" {
+@test "absence: Step 10 — no inline commit-subject construction outside wiring block" {
   residue="$(_skill_md_minus_wiring_blocks)"
   # Legacy inline narrative: 'Conventional Commit' subject composition guidance, or
   # an inline 'git commit -m' usage that hand-crafts the subject. commit-msg.sh
@@ -238,7 +238,7 @@ _skill_md_minus_wiring_blocks() {
   fi
 }
 
-@test "AC5 absence: Step 11 — no inline PR-body construction outside wiring block" {
+@test "absence: Step 11 — no inline PR-body construction outside wiring block" {
   residue="$(_skill_md_minus_wiring_blocks)"
   # Legacy inline narrative: heredoc-built PR body fed straight to gh, or
   # 'pr-create.sh ... --body "$(cat <<' inline-body construction. pr-body.sh is
@@ -250,7 +250,7 @@ _skill_md_minus_wiring_blocks() {
   fi
 }
 
-@test "AC5 absence: residue still names every wired step (sanity — strip didn't eat the world)" {
+@test "absence: residue still names every wired step (sanity — strip didn't eat the world)" {
   residue="$(_skill_md_minus_wiring_blocks)"
   # Sanity guard: if the awk strip ever over-deletes (e.g. a regex change drops
   # too much), this test fails loudly rather than silently passing the absence
@@ -276,7 +276,7 @@ _skill_md_minus_wiring_blocks() {
 # fixture without LLM involvement.
 # ---------------------------------------------------------------------------
 
-@test "AC4 integration: cluster-7-chain smoke — Step 1 + Step 10 + Step 11 scripts all invokable" {
+@test "integration: cluster-7-chain smoke — Step 1 + Step 10 + Step 11 scripts all invokable" {
   local fixture_src dev_scripts plugin_scripts
   fixture_src="$(cd "$BATS_TEST_DIRNAME/../../../tests/fixtures/cluster-7-chain" && pwd)"
   dev_scripts="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts" && pwd)"

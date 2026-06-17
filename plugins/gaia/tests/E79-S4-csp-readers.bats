@@ -91,13 +91,13 @@ EOF
 # ---------------------------------------------------------------------------
 # TC-CSP-10 — sprint-plan SKILL.md prose contract describes recursive walk
 # ---------------------------------------------------------------------------
-@test "TC-CSP-10: sprint-plan Step 2 prose names the canonical recursive idiom" {
+@test "sprint-plan Step 2 prose names the canonical recursive idiom" {
   [ -f "$SPRINT_PLAN_SKILL" ]
   run grep -E "epic-\*/stories/|find .* -path .\*/stories/\*\.md" "$SPRINT_PLAN_SKILL"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-CSP-10: sprint-plan Step 2 prose mentions legacy-flat fallback warning" {
+@test "sprint-plan Step 2 prose mentions legacy-flat fallback warning" {
   [ -f "$SPRINT_PLAN_SKILL" ]
   run grep -F "legacy-flat" "$SPRINT_PLAN_SKILL"
   [ "$status" -eq 0 ]
@@ -106,7 +106,7 @@ EOF
 # ---------------------------------------------------------------------------
 # TC-CSP-11 — pflag_scan_backlog walks nested epic dirs recursively
 # ---------------------------------------------------------------------------
-@test "TC-CSP-11: pflag_scan_backlog finds nested-flagged stories under epic-*/stories/" {
+@test "pflag_scan_backlog finds nested-flagged stories under epic-*/stories/" {
   write_nested_story "E79-canonical" "E79-S99" "demo-flagged" "backlog" "next-sprint" >/dev/null
   write_nested_story "E76-meeting"   "E76-S99" "demo-flagged" "backlog" "next-sprint" >/dev/null
 
@@ -117,7 +117,7 @@ EOF
   echo "$output" | grep -qx "E76-S99"
 }
 
-@test "TC-CSP-11: pflag_scan_backlog excludes nested-null stories" {
+@test "pflag_scan_backlog excludes nested-null stories" {
   write_nested_story "E79-canonical" "E79-S99" "demo-flagged" "backlog" "next-sprint" >/dev/null
   write_nested_story "E79-canonical" "E79-S98" "demo-unflagged" "backlog" "null" >/dev/null
 
@@ -131,7 +131,7 @@ EOF
   fi
 }
 
-@test "TC-CSP-11: pflag_scan_backlog still surfaces flat-flagged stories (legacy fallback)" {
+@test "pflag_scan_backlog still surfaces flat-flagged stories (legacy fallback)" {
   write_flat_story "E20-S99" "demo-flat-flagged" "backlog" "next-sprint" >/dev/null
 
   source "$PRIORITY_FLAG_SH"
@@ -140,7 +140,7 @@ EOF
   echo "$output" | grep -qx "E20-S99"
 }
 
-@test "TC-CSP-11 edge: pflag_scan_backlog skips non-story .md under stories/ without erroring" {
+@test "edge: pflag_scan_backlog skips non-story .md under stories/ without erroring" {
   mkdir -p "$IMPL/epic-E79-canonical/stories"
   printf '# Just a README, no frontmatter\n' >"$IMPL/epic-E79-canonical/stories/README.md"
   write_nested_story "E79-canonical" "E79-S99" "demo-flagged" "backlog" "next-sprint" >/dev/null
@@ -151,7 +151,7 @@ EOF
   echo "$output" | grep -qx "E79-S99"
 }
 
-@test "TC-CSP-11 edge: pflag_scan_backlog tolerates empty epic dir without stories/ subdir" {
+@test "edge: pflag_scan_backlog tolerates empty epic dir without stories/ subdir" {
   mkdir -p "$IMPL/epic-E99-empty"
 
   source "$PRIORITY_FLAG_SH"
@@ -162,7 +162,7 @@ EOF
 # ---------------------------------------------------------------------------
 # TC-CSP-12 — validate-canonical-filename rejects shadow (nested + flat sibling)
 # ---------------------------------------------------------------------------
-@test "TC-CSP-12: validate-canonical-filename rejects legacy-flat shadow for same key" {
+@test "validate-canonical-filename rejects legacy-flat shadow for same key" {
   # Use the slugify the script will produce to ensure basename matches.
   local nested_path
   nested_path=$(write_nested_story "E79-canonical" "E79-S99" "demo-shadow-title" "ready-for-dev" "null")
@@ -182,7 +182,7 @@ EOF
   echo "$output" | grep -F "legacy-flat sibling detected for E79-S99"
 }
 
-@test "TC-CSP-12: validate-canonical-filename accepts nested-only (no shadow)" {
+@test "validate-canonical-filename accepts nested-only (no shadow)" {
   local nested_path
   nested_path=$(write_nested_story "E79-canonical" "E79-S99" "demo-nested-only-title" "ready-for-dev" "null")
   local slug
@@ -196,7 +196,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "TC-CSP-12: validate-canonical-filename accepts flat-only with WARNING (legacy fallback)" {
+@test "validate-canonical-filename accepts flat-only with WARNING (legacy fallback)" {
   local flat_path
   flat_path=$(write_flat_story "E20-S99" "demo-flat-fallback-title" "ready-for-dev" "null")
   local slug
@@ -214,7 +214,7 @@ EOF
 # ---------------------------------------------------------------------------
 # TC-CSP-13 — dead-reference-scan.sh empty-dir tolerance & no false positive
 # ---------------------------------------------------------------------------
-@test "TC-CSP-13: dead-reference-scan tolerates an empty epic-* dir under docs/implementation-artifacts" {
+@test "dead-reference-scan tolerates an empty epic-* dir under docs/implementation-artifacts" {
   # Set up minimal project root with empty epic-* subdir
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/docs/implementation-artifacts/epic-E99-empty"
@@ -225,7 +225,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "TC-CSP-13: dead-reference-scan does not false-positive on canonical nested story-file path strings" {
+@test "dead-reference-scan does not false-positive on canonical nested story-file path strings" {
   # A canonical-nested story-file path is NOT a retired engine path, so the
   # scan PATTERN must not match. Plant a fake plugin script that mentions a
   # canonical nested path as a comment — the scan should still report CLEAN.

@@ -50,19 +50,19 @@ teardown() { common_teardown; }
 # AC1 — Each SKILL.md embeds the Val Auto-Fix Loop step
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-create-prd SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-create-prd SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-create-prd/SKILL.md"
 }
 
-@test "AC1: gaia-create-ux SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-create-ux SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-create-ux/SKILL.md"
 }
 
-@test "AC1: gaia-product-brief SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-product-brief SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-product-brief/SKILL.md"
 }
 
-@test "AC1: each Phase 2 skill invokes /gaia-val-validate with artifact_path and artifact_type" {
+@test "each Phase 2 skill invokes /gaia-val-validate with artifact_path and artifact_type" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q '/gaia-val-validate' "$SKILLS_DIR/$skill/SKILL.md"
     grep -q 'artifact_path' "$SKILLS_DIR/$skill/SKILL.md"
@@ -70,29 +70,29 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC1: gaia-create-prd uses artifact_type=prd" {
+@test "gaia-create-prd uses artifact_type=prd" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*prd' "$SKILLS_DIR/gaia-create-prd/SKILL.md"
 }
 
-@test "AC1: gaia-create-ux uses artifact_type=ux-design" {
+@test "gaia-create-ux uses artifact_type=ux-design" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*ux-design' "$SKILLS_DIR/gaia-create-ux/SKILL.md"
 }
 
-@test "AC1: gaia-product-brief uses artifact_type=product-brief" {
+@test "gaia-product-brief uses artifact_type=product-brief" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*product-brief' "$SKILLS_DIR/gaia-product-brief/SKILL.md"
 }
 
-@test "AC1: gaia-create-prd references prd.md artifact_path (canonical post-AF-21-10)" {
+@test "gaia-create-prd references prd.md artifact_path" {
   # AF-2026-05-21-10 canonicalized this path. Accept canonical or legacy.
   grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/prd\.md' "$SKILLS_DIR/gaia-create-prd/SKILL.md"
 }
 
-@test "AC1: gaia-create-ux references ux-design.md artifact_path (canonical post-AF-21-X)" {
+@test "gaia-create-ux references ux-design.md artifact_path" {
   # Future AF will canonicalize this path. Accept canonical or legacy.
   grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/ux-design\.md' "$SKILLS_DIR/gaia-create-ux/SKILL.md"
 }
 
-@test "AC1: gaia-product-brief references product-brief-{slug}.md artifact_path" {
+@test "gaia-product-brief references product-brief-{slug}.md artifact_path" {
   grep -q 'product-brief-{slug}.md' "$SKILLS_DIR/gaia-product-brief/SKILL.md"
 }
 
@@ -100,15 +100,15 @@ teardown() { common_teardown; }
 # AC8 — Deprecated flag `val_validate_output` absent from all 3 SKILL.md
 # ---------------------------------------------------------------------------
 
-@test "AC8: gaia-create-prd SKILL.md does NOT use val_validate_output flag" {
+@test "gaia-create-prd SKILL.md does NOT use val_validate_output flag" {
   ! grep -q 'val_validate_output' "$SKILLS_DIR/gaia-create-prd/SKILL.md"
 }
 
-@test "AC8: gaia-create-ux SKILL.md does NOT use val_validate_output flag" {
+@test "gaia-create-ux SKILL.md does NOT use val_validate_output flag" {
   ! grep -q 'val_validate_output' "$SKILLS_DIR/gaia-create-ux/SKILL.md"
 }
 
-@test "AC8: gaia-product-brief SKILL.md does NOT use val_validate_output flag" {
+@test "gaia-product-brief SKILL.md does NOT use val_validate_output flag" {
   ! grep -q 'val_validate_output' "$SKILLS_DIR/gaia-product-brief/SKILL.md"
 }
 
@@ -116,31 +116,31 @@ teardown() { common_teardown; }
 # AC2 / AC5 (E44-S2 inheritance) — provenance and 3-iteration cap referenced
 # ---------------------------------------------------------------------------
 
-@test "AC2: each Phase 2 skill references gaia-val-validate/SKILL.md (pattern provenance)" {
+@test "each Phase 2 skill references gaia-val-validate/SKILL.md (pattern provenance)" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q 'gaia-val-validate/SKILL.md' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC2: each Phase 2 skill delegates to canonical pattern without duplication (decision provenance)" {
+@test "each Phase 2 skill delegates to canonical pattern without duplication (decision provenance)" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q 'cite this anchor' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC2: each Phase 2 skill documents iteration counter (iteration = 1)" {
+@test "each Phase 2 skill documents iteration counter (iteration = 1)" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q -E 'iteration[[:space:]]*=[[:space:]]*1' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC2: each Phase 2 skill documents the 3-iteration cap" {
+@test "each Phase 2 skill documents the 3-iteration cap" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q -E 'iteration[[:space:]]*<=[[:space:]]*3' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC2: each Phase 2 skill cites the canonical Auto-Fix Loop Pattern anchor" {
+@test "each Phase 2 skill cites the canonical Auto-Fix Loop Pattern anchor" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q 'Auto-Fix Loop Pattern' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -150,7 +150,7 @@ teardown() { common_teardown; }
 # AC-EC3 — Artifact-existence guard
 # ---------------------------------------------------------------------------
 
-@test "AC-EC3: each Phase 2 skill includes an artifact-existence guard" {
+@test "each Phase 2 skill includes an artifact-existence guard" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q -E 'if[[:space:]]+not[[:space:]]+exists' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -160,7 +160,7 @@ teardown() { common_teardown; }
 # AC-EC6 — Val-skill-availability guard with documented warning text
 # ---------------------------------------------------------------------------
 
-@test "AC-EC6: each Phase 2 skill emits the canonical missing-Val warning" {
+@test "each Phase 2 skill emits the canonical missing-Val warning" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q 'Val auto-review unavailable' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -170,7 +170,7 @@ teardown() { common_teardown; }
 # AC-EC8 — YOLO hard-gate invariant; no bypass branch introduced
 # ---------------------------------------------------------------------------
 
-@test "AC-EC8: each Phase 2 skill references the YOLO hard-gate invariant" {
+@test "each Phase 2 skill references the YOLO hard-gate invariant" {
   for skill in $PHASE2_SKILLS_LIST; do
     grep -q -E 'YOLO' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -184,7 +184,7 @@ teardown() { common_teardown; }
 # AC5: product-brief Val loop runs after Step 8 (Generate Output).
 # ---------------------------------------------------------------------------
 
-@test "AC3 placement: gaia-create-prd Val loop step appears after Step 11 (Generate Output) and before Adversarial Review" {
+@test "placement: gaia-create-prd Val loop step appears after Step 11 (Generate Output) and before Adversarial Review" {
   local skill="$SKILLS_DIR/gaia-create-prd/SKILL.md"
   local write_line val_line adv_line
   write_line="$(grep -n '^### Step 11 — Generate Output' "$skill" | head -1 | cut -d: -f1)"
@@ -197,7 +197,7 @@ teardown() { common_teardown; }
   [ "$val_line" -lt "$adv_line" ]
 }
 
-@test "AC4 placement: gaia-create-ux Val loop step appears after Step 10 (Generate Output)" {
+@test "placement: gaia-create-ux Val loop step appears after Step 10 (Generate Output)" {
   local skill="$SKILLS_DIR/gaia-create-ux/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 10 — Generate Output' "$skill" | head -1 | cut -d: -f1)"
@@ -207,7 +207,7 @@ teardown() { common_teardown; }
   [ "$val_line" -gt "$write_line" ]
 }
 
-@test "AC5 placement: gaia-product-brief Val loop step appears after Step 8 (Generate Output)" {
+@test "placement: gaia-product-brief Val loop step appears after Step 8 (Generate Output)" {
   local skill="$SKILLS_DIR/gaia-product-brief/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 8 — Generate Output' "$skill" | head -1 | cut -d: -f1)"

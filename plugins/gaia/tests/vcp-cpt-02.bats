@@ -43,7 +43,7 @@ PHASE1_STEPS=(6 7 6 6 5 9)
 
 # ---------- AC3/AC7: canonical invocation line present per step ----------
 
-@test "AC3/AC4/AC7: each Phase 1 SKILL.md has one canonical invocation per declared step" {
+@test "each Phase 1 SKILL.md has one canonical invocation per declared step" {
   local i=0
   for slug in "${PHASE1_SLUGS[@]}"; do
     local expected="${PHASE1_STEPS[$i]}"
@@ -83,7 +83,7 @@ PHASE1_STEPS=(6 7 6 6 5 9)
 
 # ---------- AC1/AC2/AC6: end-to-end checkpoint sequence for brainstorm ----------
 
-@test "AC1/AC6: simulating gaia-brainstorm 5-step run writes 5 sequential checkpoints" {
+@test "simulating gaia-brainstorm 5-step run writes 5 sequential checkpoints" {
   local slug="gaia-brainstorm"
   local artifact="$TEST_TMP/brainstorm-acme.md"
   printf '# brainstorm\n' > "$artifact"
@@ -132,7 +132,7 @@ PHASE1_STEPS=(6 7 6 6 5 9)
 
 # ---------- AC5: per-skill key_variables surface ----------
 
-@test "AC5: each Phase 1 SKILL.md declares the required per-skill key_variables on at least one invocation" {
+@test "each Phase 1 SKILL.md declares the required per-skill key_variables on at least one invocation" {
   # Paired list: slug|space-separated key names. Avoids bash 4 assoc arrays
   # whose declare -A interacts badly with bats' set -u harness.
   local spec
@@ -159,7 +159,7 @@ PHASE1_STEPS=(6 7 6 6 5 9)
 
 # ---------- AC-EC1: zero-artifact steps use --paths omission ----------
 
-@test "AC-EC1: skill steps that produce no artifact emit checkpoints without --paths" {
+@test "skill steps that produce no artifact emit checkpoints without --paths" {
   # At least one Phase 1 skill step (e.g., gaia-market-research Step 2
   # Web Access Check) produces no artifact. Simulate: invocation without
   # --paths must yield output_paths=[] and file_checksums={}.

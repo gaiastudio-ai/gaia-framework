@@ -89,7 +89,7 @@ teardown() { common_teardown; }
 
 # --- AC5 — the prose mentions ADR-042 + bypass remediation ---
 
-@test "F-33: setup.sh prose names ADR-042 + canonical --bypass gaia-trace remediation" {
+@test "setup.sh prose names + canonical --bypass gaia-trace remediation" {
   grep -qF "mandatory quality gates" "$SETUP_SH"
   grep -qF "bypass gaia-trace" "$SETUP_SH"
   grep -qF "Distributed traceability gate" "$SETUP_SH"

@@ -97,28 +97,28 @@ _assert_required_fields() {
 
 # --- AC1: swift.yaml -------------------------------------------------------
 
-@test "AC1: swift.yaml exists" {
+@test "swift.yaml exists" {
   [ -f "$SWIFT_YAML" ]
 }
 
-@test "AC1: swift.yaml is valid YAML" {
+@test "swift.yaml is valid YAML" {
   _yaml_supported || skip "python3+yaml unavailable"
   python3 -c "import yaml; yaml.safe_load(open('$SWIFT_YAML'))"
 }
 
-@test "AC1: swift.yaml declares required fields" {
+@test "swift.yaml declares required fields" {
   _yaml_supported || skip "python3+yaml unavailable"
   _assert_required_fields "$SWIFT_YAML"
 }
 
-@test "AC1/AC5: swift.yaml platform is [ios]" {
+@test "swift.yaml platform is [ios]" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_platforms_csv "$SWIFT_YAML"
   [ "$status" -eq 0 ]
   [ "$output" = "ios" ]
 }
 
-@test "AC1: swift.yaml language is Swift" {
+@test "swift.yaml language is Swift" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_scalar "$SWIFT_YAML" language
   [ "$status" -eq 0 ]
@@ -127,28 +127,28 @@ _assert_required_fields() {
 
 # --- AC2: kotlin.yaml ------------------------------------------------------
 
-@test "AC2: kotlin.yaml exists" {
+@test "kotlin.yaml exists" {
   [ -f "$KOTLIN_YAML" ]
 }
 
-@test "AC2: kotlin.yaml is valid YAML" {
+@test "kotlin.yaml is valid YAML" {
   _yaml_supported || skip "python3+yaml unavailable"
   python3 -c "import yaml; yaml.safe_load(open('$KOTLIN_YAML'))"
 }
 
-@test "AC2: kotlin.yaml declares required fields" {
+@test "kotlin.yaml declares required fields" {
   _yaml_supported || skip "python3+yaml unavailable"
   _assert_required_fields "$KOTLIN_YAML"
 }
 
-@test "AC2/AC5: kotlin.yaml platform is [android]" {
+@test "kotlin.yaml platform is [android]" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_platforms_csv "$KOTLIN_YAML"
   [ "$status" -eq 0 ]
   [ "$output" = "android" ]
 }
 
-@test "AC2: kotlin.yaml language is Kotlin" {
+@test "kotlin.yaml language is Kotlin" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_scalar "$KOTLIN_YAML" language
   [ "$status" -eq 0 ]
@@ -157,21 +157,21 @@ _assert_required_fields() {
 
 # --- AC3: react-native.yaml ------------------------------------------------
 
-@test "AC3: react-native.yaml exists" {
+@test "react-native.yaml exists" {
   [ -f "$RN_YAML" ]
 }
 
-@test "AC3: react-native.yaml is valid YAML" {
+@test "react-native.yaml is valid YAML" {
   _yaml_supported || skip "python3+yaml unavailable"
   python3 -c "import yaml; yaml.safe_load(open('$RN_YAML'))"
 }
 
-@test "AC3: react-native.yaml declares required fields" {
+@test "react-native.yaml declares required fields" {
   _yaml_supported || skip "python3+yaml unavailable"
   _assert_required_fields "$RN_YAML"
 }
 
-@test "AC3: react-native.yaml has bridge field" {
+@test "react-native.yaml has bridge field" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_scalar "$RN_YAML" bridge
   [ "$status" -eq 0 ]
@@ -179,7 +179,7 @@ _assert_required_fields() {
   [[ "$output" == *"JSI"* || "$output" == *"Bridge"* ]]
 }
 
-@test "AC3/AC5: react-native.yaml platform is [android, ios]" {
+@test "react-native.yaml platform is [android, ios]" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_platforms_csv "$RN_YAML"
   [ "$status" -eq 0 ]
@@ -188,35 +188,35 @@ _assert_required_fields() {
 
 # --- AC4: flutter.yaml + extends ------------------------------------------
 
-@test "AC4: flutter.yaml exists" {
+@test "flutter.yaml exists" {
   [ -f "$FLUTTER_YAML" ]
 }
 
-@test "AC4: flutter.yaml is valid YAML" {
+@test "flutter.yaml is valid YAML" {
   _yaml_supported || skip "python3+yaml unavailable"
   python3 -c "import yaml; yaml.safe_load(open('$FLUTTER_YAML'))"
 }
 
-@test "AC4: flutter.yaml declares required fields" {
+@test "flutter.yaml declares required fields" {
   _yaml_supported || skip "python3+yaml unavailable"
   _assert_required_fields "$FLUTTER_YAML"
 }
 
-@test "AC4: flutter.yaml has 'extends: dart'" {
+@test "flutter.yaml has 'extends: dart'" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_scalar "$FLUTTER_YAML" extends
   [ "$status" -eq 0 ]
   [ "$output" = "dart" ]
 }
 
-@test "AC4: flutter.yaml language is Dart" {
+@test "flutter.yaml language is Dart" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_scalar "$FLUTTER_YAML" language
   [ "$status" -eq 0 ]
   [ "$output" = "Dart" ]
 }
 
-@test "AC4/AC5: flutter.yaml platform is [android, ios]" {
+@test "flutter.yaml platform is [android, ios]" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_platforms_csv "$FLUTTER_YAML"
   [ "$status" -eq 0 ]
@@ -225,7 +225,7 @@ _assert_required_fields() {
 
 # --- AC6: adapter references match stack language -------------------------
 
-@test "AC6: swift.yaml adapters.static contains SwiftLint and SwiftFormat" {
+@test "swift.yaml adapters.static contains SwiftLint and SwiftFormat" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$SWIFT_YAML"
   [ "$status" -eq 0 ]
@@ -233,7 +233,7 @@ _assert_required_fields() {
   echo "$output" | grep -qi 'swiftformat'
 }
 
-@test "AC6: swift.yaml adapters.static does NOT include kotlin/js tools" {
+@test "swift.yaml adapters.static does NOT include kotlin/js tools" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$SWIFT_YAML"
   [ "$status" -eq 0 ]
@@ -242,7 +242,7 @@ _assert_required_fields() {
   ! echo "$output" | grep -qi 'eslint'
 }
 
-@test "AC6: kotlin.yaml adapters.static contains Detekt and ktlint" {
+@test "kotlin.yaml adapters.static contains Detekt and ktlint" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$KOTLIN_YAML"
   [ "$status" -eq 0 ]
@@ -250,7 +250,7 @@ _assert_required_fields() {
   echo "$output" | grep -qi 'ktlint'
 }
 
-@test "AC6: kotlin.yaml adapters.static does NOT include swift/js tools" {
+@test "kotlin.yaml adapters.static does NOT include swift/js tools" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$KOTLIN_YAML"
   [ "$status" -eq 0 ]
@@ -259,14 +259,14 @@ _assert_required_fields() {
   ! echo "$output" | grep -qi 'eslint'
 }
 
-@test "AC6: react-native.yaml adapters.static contains ESLint" {
+@test "react-native.yaml adapters.static contains ESLint" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$RN_YAML"
   [ "$status" -eq 0 ]
   echo "$output" | grep -qi 'eslint'
 }
 
-@test "AC6: flutter.yaml adapters.static references dart analyzer / flutter lints" {
+@test "flutter.yaml adapters.static references dart analyzer / flutter lints" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$FLUTTER_YAML"
   [ "$status" -eq 0 ]
@@ -276,7 +276,7 @@ _assert_required_fields() {
 
 # --- AC7: resolve-config.sh / parser load --------------------------------
 
-@test "AC7: all four stack files parse without YAML errors" {
+@test "all four stack files parse without YAML errors" {
   _yaml_supported || skip "python3+yaml unavailable"
   for f in "$SWIFT_YAML" "$KOTLIN_YAML" "$RN_YAML" "$FLUTTER_YAML"; do
     python3 -c "import yaml; doc = yaml.safe_load(open('$f')); assert isinstance(doc, dict), '$f did not parse as a mapping'"
@@ -285,7 +285,7 @@ _assert_required_fields() {
 
 # --- AC8: YAML lint -------------------------------------------------------
 
-@test "AC8: no tab characters in any stack file (YAML disallows tabs for indent)" {
+@test "no tab characters in any stack file (YAML disallows tabs for indent)" {
   for f in "$SWIFT_YAML" "$KOTLIN_YAML" "$RN_YAML" "$FLUTTER_YAML"; do
     [ -f "$f" ] || { echo "missing $f" >&2; return 1; }
     if grep -qP '^\t' "$f" 2>/dev/null; then
@@ -295,7 +295,7 @@ _assert_required_fields() {
   done
 }
 
-@test "AC8: no trailing whitespace in any stack file" {
+@test "no trailing whitespace in any stack file" {
   for f in "$SWIFT_YAML" "$KOTLIN_YAML" "$RN_YAML" "$FLUTTER_YAML"; do
     [ -f "$f" ] || { echo "missing $f" >&2; return 1; }
     if grep -nE ' +$' "$f"; then
@@ -305,7 +305,7 @@ _assert_required_fields() {
   done
 }
 
-@test "AC8: no duplicate top-level keys (PyYAML strict load)" {
+@test "no duplicate top-level keys (PyYAML strict load)" {
   _yaml_supported || skip "python3+yaml unavailable"
   for f in "$SWIFT_YAML" "$KOTLIN_YAML" "$RN_YAML" "$FLUTTER_YAML"; do
     python3 - "$f" <<'PY'

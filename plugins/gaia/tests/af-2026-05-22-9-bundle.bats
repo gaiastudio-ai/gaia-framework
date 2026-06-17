@@ -28,7 +28,7 @@ teardown() { common_teardown; }
 
 # --- Bug 1: ci_cd: {} stub at phase=full ---
 
-@test "AF-22-9 Bug-1: generate-config.sh emits ci_cd: {} at phase=full" {
+@test "generate-config.sh emits ci_cd: {} at phase=full" {
   # The ci_cd: {} stub is emitted inside the `if phase == "full":` block so
   # the generated config validates against the schema's full-phase allOf constraint.
   grep -qF 'validates against its own schema at phase=full' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
@@ -37,7 +37,7 @@ teardown() { common_teardown; }
 
 # --- Bug 2: PRD numbered headings ---
 
-@test "AF-22-9 Bug-2: PRD section_body_nonempty regex tolerates numbered prefix" {
+@test "PRD section_body_nonempty regex tolerates numbered prefix" {
   # The framework's prd-template.md uses numeric outline prefixes so the awk
   # regex must accept them or the template fails its own checklist.
   grep -qF "framework's own prd-template.md uses numeric outline prefixes" "$PLUGIN_ROOT/skills/gaia-create-prd/scripts/finalize.sh"
@@ -47,7 +47,7 @@ teardown() { common_teardown; }
 
 # --- Bug 3: epics bolded **Priority:** labels ---
 
-@test "AF-22-9 Bug-3: epics per_story_field_present regex accepts bolded labels" {
+@test "epics per_story_field_present regex accepts bolded labels" {
   # The per_story_field_present awk explicitly tolerates **Priority:** etc.
   grep -qF 'Also accept bolded' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
   grep -qF '(\\*\\*)?" lab "(\\*\\*)?' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
@@ -55,7 +55,7 @@ teardown() { common_teardown; }
 
 # --- Bug 7: bridge-enable scaffold ---
 
-@test "AF-22-9 Bug-7: gaia-bridge-enable SKILL.md scaffolds stub instead of halting" {
+@test "gaia-bridge-enable SKILL.md scaffolds stub instead of halting" {
   grep -qF 'bridge-stub-scaffold.sh' "$PLUGIN_ROOT/skills/gaia-bridge-enable/SKILL.md"
   grep -qF 'scaffold a minimal stub' "$PLUGIN_ROOT/skills/gaia-bridge-enable/SKILL.md"
   # Negative: the old "fail fast" wording is gone from the relevant step.
@@ -64,19 +64,19 @@ teardown() { common_teardown; }
 
 # --- Bug 8: sprint-state.sh init subcommand ---
 
-@test "AF-22-9 Bug-8: sprint-state.sh declares cmd_init + init case branch" {
+@test "sprint-state.sh declares cmd_init + init case branch" {
   # cmd_init() implements the init subcommand for seeding a fresh sprint yaml.
   grep -qF 'cmd_init()' "$PLUGIN_ROOT/scripts/sprint-state.sh"
   # init MUST be a routed subcommand in the dispatcher.
   grep -qE '^[[:space:]]+init\)$' "$PLUGIN_ROOT/scripts/sprint-state.sh"
 }
 
-@test "AF-22-9 Bug-8: gaia-dev-story sprint-state.sh wrapper is byte-identical to canonical" {
+@test "gaia-dev-story sprint-state.sh wrapper is byte-identical to canonical" {
   diff -q "$PLUGIN_ROOT/scripts/sprint-state.sh" \
           "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/sprint-state.sh"
 }
 
-@test "AF-22-9 Bug-8: sprint-state.sh init seeds yaml shape end-to-end" {
+@test "sprint-state.sh init seeds yaml shape end-to-end" {
   local tmp="$BATS_TEST_TMPDIR/init-fixture"
   mkdir -p "$tmp"
   SPRINT_STATUS_YAML="$tmp/sprint-status.yaml" \
@@ -91,7 +91,7 @@ teardown() { common_teardown; }
   grep -qF 'items: []' "$tmp/sprint-status.yaml"
 }
 
-@test "AF-22-9 Bug-8: sprint-state.sh init refuses to overwrite existing yaml" {
+@test "sprint-state.sh init refuses to overwrite existing yaml" {
   local tmp="$BATS_TEST_TMPDIR/init-noclobber"
   mkdir -p "$tmp"
   printf 'sprint_id: existing\n' > "$tmp/sprint-status.yaml"
@@ -103,7 +103,7 @@ teardown() { common_teardown; }
 
 # --- Bug 9: set-goals replaces goals: [] (end-to-end) ---
 
-@test "AF-22-9 Bug-9: set-goals replaces goals: [] without duplicating the key" {
+@test "set-goals replaces goals: without duplicating the key" {
   local tmp="$BATS_TEST_TMPDIR/setgoals-fixture"
   mkdir -p "$tmp"
   cat > "$tmp/sprint-status.yaml" <<'EOF'
@@ -125,7 +125,7 @@ EOF
 
 # --- Bug 11: gaia-init/setup.sh yq preflight ---
 
-@test "AF-22-9 Bug-11: gaia-init/setup.sh preflights yq presence" {
+@test "gaia-init/setup.sh preflights yq presence" {
   # setup.sh surfaces missing runtime deps at init time so the operator can
   # install yq before reaching a mid-sprint-close failure.
   grep -qF 'Surface missing runtime dependencies at init time' "$PLUGIN_ROOT/skills/gaia-init/scripts/setup.sh"
@@ -134,7 +134,7 @@ EOF
 
 # --- Bug 12: sprint-review SPRINT_ID hard error unless fixture flag ---
 
-@test "AF-22-9 Bug-12: sprint-review/finalize.sh halts without SPRINT_ID unless fixture flag" {
+@test "sprint-review/finalize.sh halts without SPRINT_ID unless fixture flag" {
   # finalize.sh die's when SPRINT_ID is unset to prevent silent sentinel bypass.
   grep -qF 'SPRINT_ID is unset' "$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/finalize.sh"
   grep -qF 'GAIA_SPRINT_REVIEW_FIXTURE' "$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/finalize.sh"
@@ -142,7 +142,7 @@ EOF
 
 # --- Bug 13: compose-verdict accepts WARNING ---
 
-@test "AF-22-9 Bug-13: compose-verdict.sh accepts WARNING on track-a and yields PASSED" {
+@test "compose-verdict.sh accepts WARNING on track-a and yields PASSED" {
   # Val emits WARNING as a non-blocking verdict; compose-verdict normalizes it to PASSED.
   grep -qF 'Val emits WARNING as a non-blocking verdict' "$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/compose-verdict.sh"
   run bash "$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/compose-verdict.sh" \
@@ -151,14 +151,14 @@ EOF
   [ "$output" = "PASSED" ]
 }
 
-@test "AF-22-9 Bug-13: compose-verdict.sh accepts WARNING on track-b and yields PASSED" {
+@test "compose-verdict.sh accepts WARNING on track-b and yields PASSED" {
   run bash "$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/compose-verdict.sh" \
     --track-a PASSED --track-b WARNING
   [ "$status" -eq 0 ]
   [ "$output" = "PASSED" ]
 }
 
-@test "AF-22-9 Bug-13: compose-verdict.sh still rejects truly bogus verdicts" {
+@test "compose-verdict.sh still rejects truly bogus verdicts" {
   run bash "$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/compose-verdict.sh" \
     --track-a BOGUS --track-b SKIPPED
   [ "$status" -ne 0 ]
@@ -166,7 +166,7 @@ EOF
 
 # --- Bug 15: list-form compliance doesn't crash ---
 
-@test "AF-22-9 Bug-15: generate-config.sh declares list-form compliance coercion" {
+@test "generate-config.sh declares list-form compliance coercion" {
   # Coerce list-form compliance into the object form so `compliance: []` input
   # doesn't crash on `.get()` against a list.
   grep -qF 'Coerce list-form compliance' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
@@ -175,7 +175,7 @@ EOF
 
 # --- Bug 16: test-strategy stderr surfacing ---
 
-@test "AF-22-9 Bug-16: test-strategy/finalize.sh surfaces stderr from non-fatal observability failures" {
+@test "test-strategy/finalize.sh surfaces stderr from non-fatal observability failures" {
   # Confirm the new pattern captures stderr and concatenates it into log.
   grep -qF 'observability gap only): ${_cp_err' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   grep -qF 'observability gap only): ${_le_err' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"

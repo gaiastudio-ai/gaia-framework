@@ -22,7 +22,7 @@ assert_json_finding_category() {
   printf '%s\n' "$1" | grep -F "\"category\":\"$2\"" >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-2.1: retry-heuristic detected (.retry / retries:)" {
+@test ".1: retry-heuristic detected (.retry / retries:)" {
   local f="$TEST_TMP/r.test.ts"
   printf 'it("flaky", { retries: 3 }, () => { expect(1).toBe(1); });\n' > "$f"
   run "$SCRIPT" "$f"
@@ -32,7 +32,7 @@ assert_json_finding_category() {
   assert_json_finding_category "$output" "flakiness"
 }
 
-@test "TC-RSV2-TESTREVIEW-2.2: time-dependent assertion detected" {
+@test ".2: time-dependent assertion detected" {
   local f="$TEST_TMP/t.test.ts"
   printf 'it("times", () => {\n  const start = Date.now();\n  doWork();\n  expect(Date.now() - start).toBeLessThan(100);\n});\n' > "$f"
   run "$SCRIPT" "$f"
@@ -41,7 +41,7 @@ assert_json_finding_category() {
   assert_json_finding_rule "$output" "time-dependent-assertion"
 }
 
-@test "TC-RSV2-TESTREVIEW-2.3: shared-state mutation in beforeAll without teardown" {
+@test ".3: shared-state mutation in beforeAll without teardown" {
   local f="$TEST_TMP/s.test.ts"
   cat > "$f" <<'EOF'
 let userStore = [];
@@ -58,7 +58,7 @@ EOF
   assert_json_finding_rule "$output" "shared-state-mutation"
 }
 
-@test "TC-RSV2-TESTREVIEW-2.4: clean test file produces empty findings + status passed" {
+@test ".4: clean test file produces empty findings + status passed" {
   local f="$TEST_TMP/clean.test.ts"
   printf 'it("clean", () => { expect(1).toBe(1); });\n' > "$f"
   run "$SCRIPT" "$f"
@@ -67,7 +67,7 @@ EOF
   printf '%s\n' "$output" | grep -F '"findings":[]' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-2.5: pytest @pytest.mark.flaky detected" {
+@test ".5: pytest @pytest.mark.flaky detected" {
   local f="$TEST_TMP/test_p.py"
   printf 'import pytest\n@pytest.mark.flaky\ndef test_a():\n    assert True\n' > "$f"
   run "$SCRIPT" "$f"
@@ -75,7 +75,7 @@ EOF
   assert_json_finding_rule "$output" "retry-heuristic"
 }
 
-@test "TC-RSV2-TESTREVIEW-2.6: JUnit @RepeatedTest detected" {
+@test ".6: JUnit @RepeatedTest detected" {
   local f="$TEST_TMP/MyTest.java"
   printf '@RepeatedTest(5)\nvoid foo() {}\n' > "$f"
   run "$SCRIPT" "$f"
@@ -83,7 +83,7 @@ EOF
   assert_json_finding_rule "$output" "retry-heuristic"
 }
 
-@test "TC-RSV2-TESTREVIEW-2.7: time-API not flagged when far from any assertion" {
+@test ".7: time-API not flagged when far from any assertion" {
   local f="$TEST_TMP/notime.test.ts"
   cat > "$f" <<'EOF'
 const start = Date.now();
@@ -109,21 +109,21 @@ EOF
   ! printf '%s\n' "$output" | grep -F '"rule":"time-dependent-assertion"' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-2.8: script uses set -euo pipefail and LC_ALL=C" {
+@test ".8: script uses set -euo pipefail and LC_ALL=C" {
   grep -Fq "set -euo pipefail" "$SCRIPT"
   grep -Fq "LC_ALL=C" "$SCRIPT"
 }
 
-@test "TC-RSV2-TESTREVIEW-2.9: script does not invoke jq as a runtime command" {
+@test ".9: script does not invoke jq as a runtime command" {
   ! grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -E '(^|[[:space:]\|;])jq([[:space:]]|$)' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-2.10: --help exits 0" {
+@test ".10: --help exits 0" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
 }
 
-@test "TC-RSV2-TESTREVIEW-2.11: unknown flag exits 1" {
+@test ".11: unknown flag exits 1" {
   run "$SCRIPT" --bogus
   [ "$status" -eq 1 ]
 }

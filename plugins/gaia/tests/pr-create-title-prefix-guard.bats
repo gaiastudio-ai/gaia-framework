@@ -61,7 +61,7 @@ STUB
 }
 teardown() { common_teardown; }
 
-@test "TC-PCG-1: title with conventional-commits prefix is NOT re-prepended" {
+@test "title with conventional-commits prefix is NOT re-prepended" {
   run "$PR_CREATE" E88-S1 "feat(E88-S1): foo" --base staging --body-file "$BODY_FILE"
   [ "$status" -eq 0 ]
   # The captured TITLE must equal the input title exactly — no E88-S1: prefix.
@@ -69,20 +69,20 @@ teardown() { common_teardown; }
   [[ "$output" != *"TITLE=E88-S1: feat(E88-S1):"* ]]
 }
 
-@test "TC-PCG-2: bare title (no conventional-commits prefix) is prepended with story key" {
+@test "bare title (no conventional-commits prefix) is prepended with story key" {
   run "$PR_CREATE" E88-S1 "add foo to bar" --base staging --body-file "$BODY_FILE"
   [ "$status" -eq 0 ]
   [[ "$output" == *"TITLE=E88-S1: add foo to bar"* ]]
 }
 
-@test "TC-PCG-3: title with conventional-commits prefix anchored at start is detected even with extra text after" {
+@test "title with conventional-commits prefix anchored at start is detected even with extra text after" {
   run "$PR_CREATE" E92-S3 "fix(E92-S3): swap hook to PLUGIN_ROOT" --base staging --body-file "$BODY_FILE"
   [ "$status" -eq 0 ]
   [[ "$output" == *"TITLE=fix(E92-S3): swap hook to PLUGIN_ROOT"* ]]
   [[ "$output" != *"TITLE=E92-S3: fix("* ]]
 }
 
-@test "TC-PCG-4: title with non-conventional shape that happens to contain parentheses is still prepended" {
+@test "title with non-conventional shape that happens to contain parentheses is still prepended" {
   run "$PR_CREATE" E88-S1 "Refactor (cleanup)" --base staging --body-file "$BODY_FILE"
   [ "$status" -eq 0 ]
   [[ "$output" == *"TITLE=E88-S1: Refactor (cleanup)"* ]]

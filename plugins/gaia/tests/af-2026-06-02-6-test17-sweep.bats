@@ -18,27 +18,27 @@ teardown() { common_teardown; }
 # F-H02 — sprint-state.sh dep-resolver Tier-1 top-level + Tier-2 dual-glob
 # ===========================================================================
 
-@test "AF-33-6 F-H02: sprint-state.sh dep-resolver Tier-1 queries top-level .stories[]" {
+@test "F-H02: sprint-state.sh dep-resolver Tier-1 queries top-level .stories" {
   # Per Val V-01: source escapes the dep key as \"${_dep}\" inside the
   # yq query (the yq string is shell-double-quoted). Match the literal
   # as written on disk.
   grep -qF '.stories[] | select(.key == \"${_dep}\")' "$PLUGIN/scripts/sprint-state.sh"
 }
 
-@test "AF-33-6 F-H02: sprint-state.sh dep-resolver Tier-2 includes canonical per-story-dir glob" {
+@test "F-H02: sprint-state.sh dep-resolver Tier-2 includes canonical per-story-dir glob" {
   # The dual-glob fallback MUST list epic-*/${_dep}-*/story.md alongside
   # the legacy epic-*/stories/${_dep}-*.md.
   grep -qF 'epic-*/"${_dep}-"*/story.md' "$PLUGIN/scripts/sprint-state.sh"
 }
 
-@test "AF-33-6 F-H02: sprint-state.sh dep-resolver Tier-1 fallback to legacy .sprints[].stories[]" {
+@test "F-H02: sprint-state.sh dep-resolver Tier-1 fallback to legacy .sprints.stories" {
   # Defense in depth: the canonical query above runs first, but if it returns
   # null the script falls back to the legacy roll-up shape so vestigial
   # multi-sprint yamls still resolve. Match the on-disk escape per Val V-01.
   grep -qF '.sprints[].stories[] | select(.key == \"${_dep}\")' "$PLUGIN/scripts/sprint-state.sh"
 }
 
-@test "AF-33-6 F-H02: sprint-state.sh wrapper at gaia-dev-story is byte-identical to canonical" {
+@test "F-H02: sprint-state.sh wrapper at gaia-dev-story is byte-identical to canonical" {
   diff "$PLUGIN/scripts/sprint-state.sh" "$PLUGIN/skills/gaia-dev-story/scripts/sprint-state.sh"
 }
 
@@ -46,7 +46,7 @@ teardown() { common_teardown; }
 # F-M01 — sarif-merge SKILL comment no longer claims provenance survives
 # ===========================================================================
 
-@test "AF-33-6 F-M01: sarif-merge.sh comment no longer claims clean-scan provenance is preserved" {
+@test "F-M01: sarif-merge.sh comment no longer claims clean-scan provenance is preserved" {
   # The prior incorrect claim said "...so a zero-finding clean scan still
   # emits a per-tool run". After the fix that wording is gone and the
   # comment explicitly states real findings survive while clean-scan
@@ -59,7 +59,7 @@ teardown() { common_teardown; }
 # F-M02 — generate-pipeline.sh comment has no literal "exit 1"
 # ===========================================================================
 
-@test "AF-33-6 F-M02: generate-pipeline.sh header comment does not contain literal 'exit 1'" {
+@test "F-M02: generate-pipeline.sh header comment does not contain literal 'exit 1'" {
   # The prior literal `the prior \`exit 1\` stub` matched naive
   # `grep "exit 1"` checks on the generated workflow comment. The fix
   # replaces the wording so the comment can't trigger that false positive.
@@ -71,7 +71,7 @@ teardown() { common_teardown; }
 # F-M03 — generate-frontmatter.sh normalizes risk to lowercase
 # ===========================================================================
 
-@test "AF-33-6 F-M03: generate-frontmatter.sh lowercases risk before emit" {
+@test "F-M03: generate-frontmatter.sh lowercases risk before emit" {
   grep -qF "risk=\"\$(printf '%s' \"\$risk\" | tr '[:upper:]' '[:lower:]')\"" \
     "$PLUGIN/skills/gaia-create-story/scripts/generate-frontmatter.sh"
 }
@@ -80,7 +80,7 @@ teardown() { common_teardown; }
 # F-M04 — materialize-sprint-stories.sh bulk path populates required fields
 # ===========================================================================
 
-@test "AF-33-6 F-M04: materialize-sprint-stories.sh frontmatter includes date author depends_on blocks traces_to delivered" {
+@test "F-M04: materialize-sprint-stories.sh frontmatter includes date author depends_on blocks traces_to delivered" {
   # All fields the validator requires must appear in the printf format.
   grep -qE 'date: "%s"' "$PLUGIN/scripts/materialize-sprint-stories.sh"
   grep -qE 'author: "gaia-create-story"' "$PLUGIN/scripts/materialize-sprint-stories.sh"
@@ -91,7 +91,7 @@ teardown() { common_teardown; }
   grep -qF 'deferred_implementation: false' "$PLUGIN/scripts/materialize-sprint-stories.sh"
 }
 
-@test "AF-33-6 F-M03/F-M04 bulk path: materialize lowercases risk too" {
+@test "F-M03/F-M04 bulk path: materialize lowercases risk too" {
   grep -qF "risk=\"\$(printf '%s' \"\$risk\" | tr '[:upper:]' '[:lower:]')\"" \
     "$PLUGIN/scripts/materialize-sprint-stories.sh"
 }
@@ -100,19 +100,19 @@ teardown() { common_teardown; }
 # F-M05 — compose-verdict.sh accepts PASS (and CRITICAL) synonyms
 # ===========================================================================
 
-@test "AF-33-6 F-M05: compose-verdict.sh accepts PASS as PASSED synonym" {
+@test "F-M05: compose-verdict.sh accepts PASS as PASSED synonym" {
   run bash "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh" --track-a PASS --track-b PASSED
   [ "$status" -eq 0 ]
   [ "$output" = "PASSED" ]
 }
 
-@test "AF-33-6 F-M05: compose-verdict.sh accepts CRITICAL as FAILED synonym" {
+@test "F-M05: compose-verdict.sh accepts CRITICAL as FAILED synonym" {
   run bash "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh" --track-a CRITICAL --track-b PASSED
   [ "$status" -eq 0 ]
   [ "$output" = "FAILED" ]
 }
 
-@test "AF-33-6 F-M05: compose-verdict.sh still accepts WARNING" {
+@test "F-M05: compose-verdict.sh still accepts WARNING" {
   run bash "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh" --track-a WARNING --track-b PASSED
   [ "$status" -eq 0 ]
   [ "$output" = "PASSED" ]
@@ -122,7 +122,7 @@ teardown() { common_teardown; }
 # D-9 — close.sh usage doc points at canonical .gaia/ path
 # ===========================================================================
 
-@test "AF-33-6 D-9: close.sh usage documents retro at .gaia/ path" {
+@test "D-9: close.sh usage documents retro at .gaia/ path" {
   grep -qF '.gaia/artifacts/implementation-artifacts/retrospective/retrospective-{sprint_id}-' \
     "$PLUGIN/skills/gaia-sprint-close/scripts/close.sh"
   ! grep -nE 'retro doc must exist at docs/implementation-artifacts/retrospective-' \
@@ -133,7 +133,7 @@ teardown() { common_teardown; }
 # L-02 — render-test-quality.sh sets 0644 on the report
 # ===========================================================================
 
-@test "AF-33-6 L-02: render-test-quality.sh chmod 644 the report after mv" {
+@test "L-02: render-test-quality.sh chmod 644 the report after mv" {
   grep -qF 'chmod 644 "$REPORT"' "$PLUGIN/scripts/adapters/dead-code/render-test-quality.sh"
 }
 
@@ -141,7 +141,7 @@ teardown() { common_teardown; }
 # L-04 — devops persona splits design vs deployment by artifact KIND
 # ===========================================================================
 
-@test "AF-33-6 L-04: devops persona explicitly splits design vs deployment routing" {
+@test "L-04: devops persona explicitly splits design vs deployment routing" {
   grep -qF 'planning artifact' "$PLUGIN/agents/devops.md"
   grep -qF 'implementation artifacts' "$PLUGIN/agents/devops.md"
   grep -qF 'Do NOT route an infra DESIGN into' "$PLUGIN/agents/devops.md"
@@ -151,7 +151,7 @@ teardown() { common_teardown; }
 # L-05 — scaffold-story.sh emits section-distinct placeholders
 # ===========================================================================
 
-@test "AF-33-6 L-05: scaffold-story.sh has per-section placeholder helper" {
+@test "L-05: scaffold-story.sh has per-section placeholder helper" {
   grep -qF '{USER_STORY_PLACEHOLDER}' "$PLUGIN/skills/gaia-create-story/scripts/scaffold-story.sh"
   grep -qF '{ACCEPTANCE_CRITERIA_PLACEHOLDER}' "$PLUGIN/skills/gaia-create-story/scripts/scaffold-story.sh"
   grep -qF '{TASKS_PLACEHOLDER}' "$PLUGIN/skills/gaia-create-story/scripts/scaffold-story.sh"
@@ -165,7 +165,7 @@ teardown() { common_teardown; }
 # L-07 — resolve-epic-slug.sh accepts ASCII-double-hyphen Epic-prefix heading
 # ===========================================================================
 
-@test "AF-33-6 L-07: resolve-epic-slug.sh accepts '## Epic E5 -- Title' (ASCII --) heading" {
+@test "L-07: resolve-epic-slug.sh accepts '## Epic E5 -- Title' (ASCII --) heading" {
   local tmp
   tmp="$(mktemp)"
   cat > "$tmp" <<'EOF'
@@ -180,7 +180,7 @@ EOF
   rm -f "$tmp"
 }
 
-@test "AF-33-6 L-07: resolve-epic-slug.sh accepts '## Epic E5 — Title' (em-dash with Epic prefix) heading" {
+@test "L-07: resolve-epic-slug.sh accepts '## Epic E5 — Title' (em-dash with Epic prefix) heading" {
   local tmp
   tmp="$(mktemp)"
   printf '## Epic E5 \xe2\x80\x94 Em-Dash Variant\n\n- content\n' > "$tmp"
@@ -195,7 +195,7 @@ EOF
 # L-08 — materialize-sprint-stories.sh invokes backfill-story-index.sh
 # ===========================================================================
 
-@test "AF-33-6 L-08: materialize-sprint-stories.sh invokes backfill-story-index.sh" {
+@test "L-08: materialize-sprint-stories.sh invokes backfill-story-index.sh" {
   grep -qF 'backfill-story-index.sh' "$PLUGIN/scripts/materialize-sprint-stories.sh"
 }
 
@@ -203,7 +203,7 @@ EOF
 # L-09 — test-environment-manifest.sh emits .yaml.example alongside
 # ===========================================================================
 
-@test "AF-33-6 L-09: test-environment-manifest.sh invokes install-test-environment-example.sh" {
+@test "L-09: test-environment-manifest.sh invokes install-test-environment-example.sh" {
   grep -qF 'install-test-environment-example.sh' "$PLUGIN/scripts/lib/test-environment-manifest.sh"
 }
 
@@ -211,7 +211,7 @@ EOF
 # D-1 — brownfield-gap-entry.schema.json has claim_type + stale-claim
 # ===========================================================================
 
-@test "AF-33-6 D-1: brownfield-gap-entry schema has claim_type enum" {
+@test "D-1: brownfield-gap-entry schema has claim_type enum" {
   run jq -e '.properties.claim_type.enum | index("positive")' \
     "$PLUGIN/schemas/brownfield-gap-entry.schema.json"
   [ "$status" -eq 0 ]
@@ -220,13 +220,13 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AF-33-6 D-1: brownfield-gap-entry schema category enum includes stale-claim" {
+@test "D-1: brownfield-gap-entry schema category enum includes stale-claim" {
   run jq -e '.properties.category.enum | index("stale-claim")' \
     "$PLUGIN/schemas/brownfield-gap-entry.schema.json"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-33-6 D-1: gaia-brownfield SKILL.md surfaces the gap-entry schema fragment" {
+@test "D-1: gaia-brownfield SKILL.md surfaces the gap-entry schema fragment" {
   grep -qF 'brownfield-gap-entry.schema.json' "$PLUGIN/skills/gaia-brownfield/SKILL.md"
   grep -qF 'gap-entry-schema-ref' "$PLUGIN/skills/gaia-brownfield/SKILL.md"
 }
@@ -235,7 +235,7 @@ EOF
 # D-8 — test-architect persona splits planning vs test-tier routing
 # ===========================================================================
 
-@test "AF-33-6 D-8: test-architect persona references planning-tier homogeneity contract + splits routing" {
+@test "D-8: test-architect persona references planning-tier homogeneity contract + splits routing" {
   grep -qF 'planning-tier homogeneity contract' "$PLUGIN/agents/test-architect.md"
   grep -qF 'Planning-tier artifacts' "$PLUGIN/agents/test-architect.md"
   grep -qF 'Test-tier artifacts' "$PLUGIN/agents/test-architect.md"
@@ -245,17 +245,17 @@ EOF
 # D-4 — PRD template: 3-tier severity columns + Priority Matrix + stale-claim
 # ===========================================================================
 
-@test "AF-33-6 D-4: PRD template Gap Analysis Summary uses 3-tier CRITICAL/WARNING/INFO columns" {
+@test "D-4: PRD template Gap Analysis Summary uses 3-tier CRITICAL/WARNING/INFO columns" {
   grep -qF '| Category | CRITICAL | WARNING | INFO | Total |' \
     "$PLUGIN/skills/gaia-create-prd/prd-template.md"
 }
 
-@test "AF-33-6 D-4: PRD template has Priority Matrix section" {
+@test "D-4: PRD template has Priority Matrix section" {
   grep -qF '## Priority Matrix (brownfield)' \
     "$PLUGIN/skills/gaia-create-prd/prd-template.md"
 }
 
-@test "AF-33-6 D-4: PRD template has Stale Claims category section" {
+@test "D-4: PRD template has Stale Claims category section" {
   grep -qF '### Stale Claims (`stale-claim`)' \
     "$PLUGIN/skills/gaia-create-prd/prd-template.md"
 }
@@ -264,7 +264,7 @@ EOF
 # D-5 — adversarial SKILL description vs persona reconciliation
 # ===========================================================================
 
-@test "AF-33-6 D-5: gaia-adversarial SKILL description names Proposed refinement at artifact level" {
+@test "D-5: gaia-adversarial SKILL description names Proposed refinement at artifact level" {
   grep -qF 'Proposed refinement' "$PLUGIN/skills/gaia-adversarial/SKILL.md"
   grep -qF 'NOT a downstream implementation fix' "$PLUGIN/skills/gaia-adversarial/SKILL.md"
 }
@@ -273,7 +273,7 @@ EOF
 # D-7 — gaia-create-prd brownfield freshness re-check rule
 # ===========================================================================
 
-@test "AF-33-6 D-7: gaia-create-prd SKILL has brownfield freshness re-check Critical Rule" {
+@test "D-7: gaia-create-prd SKILL has brownfield freshness re-check Critical Rule" {
   grep -qF 'Brownfield freshness re-check' "$PLUGIN/skills/gaia-create-prd/SKILL.md"
   grep -qF 're-stat the `evidence_file`' "$PLUGIN/skills/gaia-create-prd/SKILL.md"
 }
@@ -292,35 +292,35 @@ CV() { echo "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh"; }
 
 # --- (a) coercion emits original_status with the pre-coercion value ---
 
-@test "E87-S9: --with-provenance emits original_status=track_a=WARNING on coerced WARNING" {
+@test "with-provenance emits original_status=track_a=WARNING on coerced WARNING" {
   run bash "$(CV)" --track-a WARNING --track-b PASSED --with-provenance
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "PASSED" ]
   [ "${lines[1]}" = "original_status=track_a=WARNING" ]
 }
 
-@test "E87-S9: --with-provenance emits original_status=track_a=PASS on coerced PASS" {
+@test "with-provenance emits original_status=track_a=PASS on coerced PASS" {
   run bash "$(CV)" --track-a PASS --track-b PASSED --with-provenance
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "PASSED" ]
   [ "${lines[1]}" = "original_status=track_a=PASS" ]
 }
 
-@test "E87-S9: --with-provenance emits original_status=track_a=CRITICAL on coerced CRITICAL" {
+@test "with-provenance emits original_status=track_a=CRITICAL on coerced CRITICAL" {
   run bash "$(CV)" --track-a CRITICAL --track-b PASSED --with-provenance
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "FAILED" ]
   [ "${lines[1]}" = "original_status=track_a=CRITICAL" ]
 }
 
-@test "E87-S9: --with-provenance emits original_status for track_b coercion" {
+@test "with-provenance emits original_status for track_b coercion" {
   run bash "$(CV)" --track-a PASSED --track-b WARNING --with-provenance
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "PASSED" ]
   [ "${lines[1]}" = "original_status=track_b=WARNING" ]
 }
 
-@test "E87-S9: --with-provenance records BOTH tracks when both are coerced" {
+@test "with-provenance records BOTH tracks when both are coerced" {
   run bash "$(CV)" --track-a PASS --track-b CRITICAL --with-provenance
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "FAILED" ]
@@ -329,7 +329,7 @@ CV() { echo "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh"; }
 
 # --- (b) no coercion → no original_status line (absent-when-not-coerced) ---
 
-@test "E87-S9: --with-provenance emits NO original_status line when neither track coerced" {
+@test "with-provenance emits NO original_status line when neither track coerced" {
   run bash "$(CV)" --track-a PASSED --track-b SKIPPED --with-provenance
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "PASSED" ]
@@ -337,7 +337,7 @@ CV() { echo "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh"; }
   ! printf '%s\n' "${lines[@]}" | grep -q 'original_status'
 }
 
-@test "E87-S9: --with-provenance emits NO original_status line for FAILED/UNVERIFIED canonical inputs" {
+@test "with-provenance emits NO original_status line for FAILED/UNVERIFIED canonical inputs" {
   run bash "$(CV)" --track-a FAILED --track-b UNVERIFIED --with-provenance
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "FAILED" ]
@@ -346,14 +346,14 @@ CV() { echo "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh"; }
 
 # --- (c) default (no flag): single-line verdict contract preserved ---
 
-@test "E87-S9: default invocation (no --with-provenance) emits ONLY the verdict line for coerced input" {
+@test "default invocation (no --with-provenance) emits ONLY the verdict line for coerced input" {
   run bash "$(CV)" --track-a WARNING --track-b PASSED
   [ "$status" -eq 0 ]
   [ "$output" = "PASSED" ]
   ! echo "$output" | grep -q 'original_status'
 }
 
-@test "E87-S9: default invocation never leaks original_status even when both tracks coerced" {
+@test "default invocation never leaks original_status even when both tracks coerced" {
   run bash "$(CV)" --track-a PASS --track-b CRITICAL
   [ "$status" -eq 0 ]
   [ "$output" = "FAILED" ]
@@ -362,7 +362,7 @@ CV() { echo "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh"; }
 
 # --- (c) regression: composite verdict UNCHANGED across all existing cases ---
 
-@test "E87-S9 regression: composite verdict unchanged for the canonical reduction matrix" {
+@test "regression: composite verdict unchanged for the canonical reduction matrix" {
   # Each row: track-a track-b expected-composite. Provenance bookkeeping must
   # NOT alter any of these — they are the pre-S9 contract.
   while read -r a b expected; do
@@ -389,7 +389,7 @@ FAILED UNVERIFIED FAILED
 MATRIX
 }
 
-@test "E87-S9 regression: --with-provenance verdict line matches the no-flag verdict for coerced input" {
+@test "regression: --with-provenance verdict line matches the no-flag verdict for coerced input" {
   run bash "$(CV)" --track-a WARNING --track-b PASSED
   noflag="$output"
   run bash "$(CV)" --track-a WARNING --track-b PASSED --with-provenance
@@ -398,11 +398,11 @@ MATRIX
 
 # --- consumer propagation: SKILL.md Step 5 captures + propagates original_status ---
 
-@test "E87-S9: sprint-review SKILL.md Step 5 invokes the reducer with --with-provenance" {
+@test "sprint-review SKILL.md Step 5 invokes the reducer with --with-provenance" {
   grep -qF -- '--with-provenance' "$PLUGIN/skills/gaia-sprint-review/SKILL.md"
 }
 
-@test "E87-S9: sprint-review SKILL.md Step 5 captures + propagates original_status (does not strip)" {
+@test "sprint-review SKILL.md Step 5 captures + propagates original_status (does not strip)" {
   grep -qF 'ORIGINAL_STATUS=' "$PLUGIN/skills/gaia-sprint-review/SKILL.md"
   grep -qF 'do NOT strip it' "$PLUGIN/skills/gaia-sprint-review/SKILL.md"
 }

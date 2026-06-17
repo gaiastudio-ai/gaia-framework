@@ -23,7 +23,7 @@ teardown() { common_teardown; }
 
 # --- F-7: SKILL.md Step 6 absence-guarded init ---
 
-@test "AF-26-3 F-7: sprint-plan Step 6 calls sprint-state.sh init guarded on yaml absence" {
+@test "sprint-plan Step 6 calls sprint-state.sh init guarded on yaml absence" {
   local skill="$PLUGIN_ROOT/skills/gaia-sprint-plan/SKILL.md"
   run grep -F 'sprint-state.sh init --sprint-id' "$skill"
   [ "$status" -eq 0 ]
@@ -32,7 +32,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-26-3 F-7: sprint-state.sh init seeds the canonical shape on a fresh tree" {
+@test "sprint-state.sh init seeds the canonical shape on a fresh tree" {
   local out="$BATS_TEST_TMPDIR/proj"
   mkdir -p "$out"
   ( cd "$out" && CLAUDE_PROJECT_ROOT="$out" bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --sprint-id sprint-1 )
@@ -47,7 +47,7 @@ teardown() { common_teardown; }
   grep -q 'goals: \[\]' "$yaml"
 }
 
-@test "AF-26-3 F-7: sprint-state.sh init refuses to overwrite an existing yaml (guard is required)" {
+@test "sprint-state.sh init refuses to overwrite an existing yaml (guard is required)" {
   local out="$BATS_TEST_TMPDIR/proj"
   mkdir -p "$out"
   ( cd "$out" && CLAUDE_PROJECT_ROOT="$out" bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --sprint-id sprint-1 )
@@ -58,7 +58,7 @@ teardown() { common_teardown; }
 
 # --- F-9: bracketed-form array parsing ---
 
-@test "AF-26-3 F-9: multi-element bracketed depends_on parses without embedded brackets" {
+@test "multi-element bracketed depends_on parses without embedded brackets" {
   run "$GF" --story-key E50-S2 \
     --epics-file "$FIXTURES/epics-frontmatter-bracketed.md" \
     --project-config "$FIXTURES/project-config-frontmatter-default.yaml"
@@ -71,7 +71,7 @@ teardown() { common_teardown; }
   ! [[ "$output" == *'S3]"'* ]]
 }
 
-@test "AF-26-3 F-9: single-element bracketed dep + empty bracketed blocks parse correctly" {
+@test "single-element bracketed dep + empty bracketed blocks parse correctly" {
   run "$GF" --story-key E50-S5 \
     --epics-file "$FIXTURES/epics-frontmatter-bracketed.md" \
     --project-config "$FIXTURES/project-config-frontmatter-default.yaml"
@@ -83,7 +83,7 @@ teardown() { common_teardown; }
   ! [[ "$output" == *'"[]"'* ]]
 }
 
-@test "AF-26-3 F-9: unbracketed comma form still parses (no regression)" {
+@test "unbracketed comma form still parses (no regression)" {
   run "$GF" --story-key E99-S1 \
     --epics-file "$FIXTURES/epics-frontmatter-happy.md" \
     --project-config "$FIXTURES/project-config-frontmatter-default.yaml"
@@ -94,7 +94,7 @@ teardown() { common_teardown; }
 
 # --- F-10: SKILL.md goals doc is pipe-delimited ---
 
-@test "AF-26-3 F-10: sprint-plan Step 6a documents --goals as pipe-delimited (not JSON)" {
+@test "sprint-plan Step 6a documents --goals as pipe-delimited (not JSON)" {
   local skill="$PLUGIN_ROOT/skills/gaia-sprint-plan/SKILL.md"
   run grep -F 'PIPE-DELIMITED' "$skill"
   [ "$status" -eq 0 ]

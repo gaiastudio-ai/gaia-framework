@@ -114,7 +114,7 @@ EOF
 # AC1: manual-test on the extended ledger tier
 # =====================================================================
 
-@test "AC1: manual-test update writes to ledger, not to the markdown table" {
+@test "manual-test update writes to ledger, not to the markdown table" {
   seed_story MG01 PASSED
   run bash "$SCRIPT" update --story MG01 --gate "manual-test" \
     --verdict FAILED --plan-id "mt-run-001"
@@ -128,7 +128,7 @@ EOF
   assert_file_excludes "$ART/MG01-fixture.md" "manual-test"
 }
 
-@test "AC1: review-gate-check stays COMPLETE with manual-test FAILED in ledger" {
+@test "review-gate-check stays COMPLETE with manual-test FAILED in ledger" {
   seed_story MG02 PASSED
   # Record a FAILED manual-test verdict on the ledger
   bash "$SCRIPT" update --story MG02 --gate "manual-test" \
@@ -138,7 +138,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: CANONICAL_GATES has exactly 6 entries (regression guard)" {
+@test "CANONICAL_GATES has exactly 6 entries (regression guard)" {
   # Extract the CANONICAL_GATES array from review-gate.sh and count entries
   local count
   count=$(awk '
@@ -150,14 +150,14 @@ EOF
   [ "$count" -eq 6 ]
 }
 
-@test "AC1: manual-test gate requires --plan-id" {
+@test "manual-test gate requires --plan-id" {
   seed_story MG03 PASSED
   run bash "$SCRIPT" update --story MG03 --gate "manual-test" --verdict PASSED
   [ "$status" -ne 0 ]
   [[ "$output" == *"requires --plan-id"* ]]
 }
 
-@test "AC1: status returns ledger verdict for manual-test gate" {
+@test "status returns ledger verdict for manual-test gate" {
   seed_story MG04 PASSED
   bash "$SCRIPT" update --story MG04 --gate "manual-test" \
     --verdict PASSED --plan-id "mt-run-004"
@@ -171,7 +171,7 @@ EOF
 # AC2: advisory FAILED -> WARNING, not blocked
 # =====================================================================
 
-@test "AC2: manual_verification:true + six PASSED + manual-test FAILED -> transition exit 0 + stderr WARNING" {
+@test "manual_verification:true + six PASSED + manual-test FAILED -> transition exit 0 + stderr WARNING" {
   seed_story MG05 PASSED "true"
   seed_transition_env MG05
   # Record FAILED manual-test in ledger
@@ -184,7 +184,7 @@ EOF
   [[ "$output" == *"manual-test"* ]]
 }
 
-@test "AC2: manual_verification:true + six PASSED + manual-test PASSED -> no warning" {
+@test "manual_verification:true + six PASSED + manual-test PASSED -> no warning" {
   seed_story MG06 PASSED "true"
   seed_transition_env MG06
   bash "$SCRIPT" update --story MG06 --gate "manual-test" \
@@ -197,7 +197,7 @@ EOF
   [ "$warning_count" -eq 0 ]
 }
 
-@test "AC2: manual_verification:true + six PASSED + no manual-test entry -> no warning" {
+@test "manual_verification:true + six PASSED + no manual-test entry -> no warning" {
   seed_story MG07 PASSED "true"
   seed_transition_env MG07
   # No manual-test ledger entry at all
@@ -208,7 +208,7 @@ EOF
   [ "$warning_count" -eq 0 ]
 }
 
-@test "AC2: manual_test_mode=gating + FAILED -> transition exits non-zero" {
+@test "manual_test_mode=gating + FAILED -> transition exits non-zero" {
   seed_story MG08 PASSED "true"
   seed_transition_env MG08
   bash "$SCRIPT" update --story MG08 --gate "manual-test" \

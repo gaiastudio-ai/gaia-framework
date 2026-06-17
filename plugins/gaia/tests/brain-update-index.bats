@@ -59,7 +59,7 @@ _extract_entry_block() {
 
 # ---- TC-BRN-73 — partition-disjoint: lesson write never mutates project-artifact rows
 
-@test "TC-BRN-73 — update-brain-index.sh writes only lesson entries; project-artifact rows are byte-identical" {
+@test "update-brain-index.sh writes only lesson entries; project-artifact rows are byte-identical" {
   [ -f "$UPDATER" ]
 
   # Seed manifest with one project-artifact entry and one lesson entry.
@@ -125,7 +125,7 @@ YAML
 
 # ---- TC-BRN-74 — edge mutation does not alter source_type
 
-@test "TC-BRN-74 — edge mutation does not alter the source_type of existing entries" {
+@test "edge mutation does not alter the source_type of existing entries" {
   [ -f "$UPDATER" ]
 
   # Seed manifest with one lesson entry that has no edges.
@@ -175,7 +175,7 @@ YAML
 
 # ---- AC2: _ubi_batch_edges found-guard parity ----
 
-@test "TC-BRN-91 — batch-edges on a non-existent target key exits non-zero" {
+@test "batch-edges on a non-existent target key exits non-zero" {
   [ -f "$UPDATER" ]
 
   # Seed manifest with a single entry.
@@ -204,7 +204,7 @@ YAML
   grep -q 'key: "existing-entry"' "$MANIFEST"
 }
 
-@test "TC-BRN-92 — batch-edges on entry lacking trust line still injects edges" {
+@test "batch-edges on entry lacking trust line still injects edges" {
   [ -f "$UPDATER" ]
 
   # Entry whose trust: block is absent — edge injection must NOT silently
@@ -235,7 +235,7 @@ YAML
 
 # ---- AC6 backfill tests for update-brain-index.sh ----
 
-@test "TC-BRN-93 — incremental second-emit appends without clobbering first" {
+@test "incremental second-emit appends without clobbering first" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -265,7 +265,7 @@ YAML
   [ "$count" -eq 2 ]
 }
 
-@test "TC-BRN-94 — duplicate-key collision replaces the existing lesson" {
+@test "duplicate-key collision replaces the existing lesson" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -301,7 +301,7 @@ YAML
   assert_file_excludes "$MANIFEST" "Old version."
 }
 
-@test "TC-BRN-95 — category empty-result from query returns zero entries" {
+@test "category empty-result from query returns zero entries" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -331,7 +331,7 @@ YAML
   [[ "$output" != *"lesson-only-strategy"* ]]
 }
 
-@test "TC-BRN-96 — awk tags-parse works when python3 is absent" {
+@test "awk tags-parse works when python3 is absent" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -358,7 +358,7 @@ SH
   grep -q 'tool-constraint' "$MANIFEST"
 }
 
-@test "TC-BRN-97 — sequential writes both land (sequential-execution contract)" {
+@test "sequential writes both land (sequential-execution contract)" {
   [ -f "$UPDATER" ]
 
   # The updater's documented concurrency model is SEQUENTIAL execution with
@@ -386,7 +386,7 @@ YAML
   grep -q 'lesson-sequential-b' "$MANIFEST"
 }
 
-@test "TC-BRN-98 — replace-existing-lesson-by-key preserves other entries" {
+@test "replace-existing-lesson-by-key preserves other entries" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -433,7 +433,7 @@ YAML
   assert_file_excludes "$MANIFEST" "Old content."
 }
 
-@test "TC-BRN-99 — edge-append to an already-edged entry appends without duplication" {
+@test "edge-append to an already-edged entry appends without duplication" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -470,7 +470,7 @@ YAML
   [ "$edge_count" -eq 2 ]
 }
 
-@test "TC-BRN-100 — stdin mode appends multiple lessons in one call" {
+@test "stdin mode appends multiple lessons in one call" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -514,7 +514,7 @@ YAML
   grep -q 'lesson-stdin-2' "$MANIFEST"
 }
 
-@test "TC-BRN-101 — partition guard rejects non-lesson source_type" {
+@test "partition guard rejects non-lesson source_type" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -530,7 +530,7 @@ YAML
   [[ "$output" == *"partition guard"* ]]
 }
 
-@test "TC-BRN-102 — UNVERIFIED verdict produces zero edges" {
+@test "UNVERIFIED verdict produces zero edges" {
   [ -f "$UPDATER" ]
 
   # This validates the caller logic, not the updater itself:
@@ -560,7 +560,7 @@ YAML
   [ "$edge_count" -eq 0 ]
 }
 
-@test "TC-BRN-103 — writer-absent best-effort no-op from emit-brain-lessons" {
+@test "writer-absent best-effort no-op from emit-brain-lessons" {
   local emit="$BATS_TEST_DIRNAME/../skills/gaia-retro/scripts/emit-brain-lessons.sh"
   [ -f "$emit" ] || skip "emit-brain-lessons.sh not found"
 
@@ -587,7 +587,7 @@ YAML
   grep -q 'source_type: lesson' "$fake_proj/.gaia/knowledge/brain-index.yaml"
 }
 
-@test "TC-BRN-104 — add-edge on non-existent story node exits non-zero" {
+@test "add-edge on non-existent story node exits non-zero" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -613,7 +613,7 @@ YAML
   [[ "$output" == *"target key not found"* ]]
 }
 
-@test "TC-BRN-105 — empty slug is rejected by add-lesson" {
+@test "empty slug is rejected by add-lesson" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -628,7 +628,7 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-@test "TC-BRN-106 — missing manifest for add-edge exits with error" {
+@test "missing manifest for add-edge exits with error" {
   [ -f "$UPDATER" ]
 
   run bash "$UPDATER" --manifest "$TEST_TMP/nonexistent.yaml" --add-edge \
@@ -637,7 +637,7 @@ YAML
   [[ "$output" == *"manifest not found"* ]]
 }
 
-@test "TC-BRN-107 — lesson-type entry sharing slug with project-artifact is refused" {
+@test "lesson-type entry sharing slug with project-artifact is refused" {
   [ -f "$UPDATER" ]
 
   cat > "$MANIFEST" <<'YAML'
@@ -672,7 +672,7 @@ YAML
 
 # ---- AC7: manifest path resolution from env var ----
 
-@test "TC-BRN-108 — update-brain-index.sh resolves manifest from GAIA_KNOWLEDGE_PATH env var" {
+@test "update-brain-index.sh resolves manifest from GAIA_KNOWLEDGE_PATH env var" {
   [ -f "$UPDATER" ]
 
   # Set up a custom project root with a non-default knowledge dir.
@@ -704,7 +704,7 @@ YAML
   grep -q 'lesson-env-test' "$custom_know/brain-index.yaml"
 }
 
-@test "TC-BRN-109 — update-brain-index.sh hard-errors when no manifest and no env var" {
+@test "update-brain-index.sh hard-errors when no manifest and no env var" {
   [ -f "$UPDATER" ]
 
   # No --manifest, no CLAUDE_PROJECT_ROOT, no GAIA_KNOWLEDGE_PATH, and
@@ -723,7 +723,7 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-@test "TC-BRN-110 — explicit --manifest still works alongside env var" {
+@test "explicit --manifest still works alongside env var" {
   [ -f "$UPDATER" ]
 
   # Set both an env var AND --manifest. --manifest must win.

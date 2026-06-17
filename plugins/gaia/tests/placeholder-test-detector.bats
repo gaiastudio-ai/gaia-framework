@@ -21,7 +21,7 @@ teardown() {
 # AC1 — single-pattern detection per documented placeholder
 # ---------------------------------------------------------------------------
 
-@test "AC1: detects expect(true) placeholder" {
+@test "detects expect(true) placeholder" {
   cat > "${TMPDIR_LOCAL}/a.test.ts" <<'EOF'
 test('a', () => { expect(true).toBe(true); });
 EOF
@@ -31,7 +31,7 @@ EOF
   [[ "$output" == *"a.test.ts:1"* ]]
 }
 
-@test "AC1: detects expect(false) placeholder" {
+@test "detects expect(false) placeholder" {
   cat > "${TMPDIR_LOCAL}/b.test.ts" <<'EOF'
 test('b', () => { expect(false).toBe(true); });
 EOF
@@ -40,7 +40,7 @@ EOF
   [[ "$output" == *"low_quality_test_generated"* ]]
 }
 
-@test "AC1: detects assert True (Python)" {
+@test "detects assert True (Python)" {
   cat > "${TMPDIR_LOCAL}/c_test.py" <<'EOF'
 def test_c():
     assert True
@@ -50,7 +50,7 @@ EOF
   [[ "$output" == *"low_quality_test_generated"* ]]
 }
 
-@test "AC1: detects assert False (Python)" {
+@test "detects assert False (Python)" {
   cat > "${TMPDIR_LOCAL}/d_test.py" <<'EOF'
 def test_d():
     assert False
@@ -60,7 +60,7 @@ EOF
   [[ "$output" == *"low_quality_test_generated"* ]]
 }
 
-@test "AC1: detects assert_true / assert_false" {
+@test "detects assert_true / assert_false" {
   cat > "${TMPDIR_LOCAL}/e.test.ts" <<'EOF'
 test('e', () => { assert_true(1); });
 EOF
@@ -74,7 +74,7 @@ EOF
   [ "$status" -ne 0 ]
 }
 
-@test "AC1: detects test.todo()" {
+@test "detects test.todo" {
   cat > "${TMPDIR_LOCAL}/f.test.ts" <<'EOF'
 test.todo('not yet implemented');
 EOF
@@ -83,7 +83,7 @@ EOF
   [[ "$output" == *"low_quality_test_generated"* ]]
 }
 
-@test "AC1: detects test.skip() / it.skip() / xit() / xdescribe() / xcontext() / describe.skip()" {
+@test "detects test.skip / it.skip / xit / xdescribe / xcontext / describe.skip" {
   for pattern in 'test.skip(' 'it.skip(' 'xit(' 'xdescribe(' 'xcontext(' 'describe.skip('; do
     cat > "${TMPDIR_LOCAL}/p.test.ts" <<EOF
 ${pattern}'x', () => {});
@@ -93,7 +93,7 @@ EOF
   done
 }
 
-@test "AC1: detects empty it block (no assertion)" {
+@test "detects empty it block (no assertion)" {
   cat > "${TMPDIR_LOCAL}/g.test.ts" <<'EOF'
 it('does nothing', () => {});
 EOF
@@ -209,27 +209,27 @@ EOF
 # AC8 — single-instance shared script (no duplication under skill scripts/)
 # ---------------------------------------------------------------------------
 
-@test "AC8: detector ships under review-common/ (single instance)" {
+@test "detector ships under review-common/ (single instance)" {
   REVIEW_COMMON="${BATS_TEST_DIRNAME}/../scripts/review-common/placeholder-test-detector.sh"
   [ -x "$REVIEW_COMMON" ]
 }
 
-@test "AC8: no duplicate copy under gaia-test-automate/scripts/" {
+@test "no duplicate copy under gaia-test-automate/scripts/" {
   DUP="${BATS_TEST_DIRNAME}/../skills/gaia-test-automate/scripts/placeholder-test-detector.sh"
   [ ! -e "$DUP" ]
 }
 
-@test "AC8: no duplicate copy under gaia-test-review/scripts/" {
+@test "no duplicate copy under gaia-test-review/scripts/" {
   DUP="${BATS_TEST_DIRNAME}/../skills/gaia-test-review/scripts/placeholder-test-detector.sh"
   [ ! -e "$DUP" ]
 }
 
-@test "AC8: gaia-test-automate SKILL.md references the shared detector" {
+@test "gaia-test-automate SKILL.md references the shared detector" {
   SKILL_FILE="${BATS_TEST_DIRNAME}/../skills/gaia-test-automate/SKILL.md"
   grep -q "review-common/placeholder-test-detector.sh" "$SKILL_FILE"
 }
 
-@test "AC8: gaia-test-review SKILL.md references the shared detector" {
+@test "gaia-test-review SKILL.md references the shared detector" {
   SKILL_FILE="${BATS_TEST_DIRNAME}/../skills/gaia-test-review/SKILL.md"
   grep -q "review-common/placeholder-test-detector.sh" "$SKILL_FILE"
 }
@@ -238,7 +238,7 @@ EOF
 # AC6 — /gaia-run-all-reviews excludes /gaia-test-automate by default
 # ---------------------------------------------------------------------------
 
-@test "AC6: gaia-run-all-reviews SKILL.md documents test-automate exclusion" {
+@test "gaia-run-all-reviews SKILL.md documents test-automate exclusion" {
   SKILL_FILE="${BATS_TEST_DIRNAME}/../skills/gaia-run-all-reviews/SKILL.md"
   # Either an explicit exclusion note OR test-automate is documented as
   # action-skill triggered only on demand / by qa or test-review gaps.
@@ -250,7 +250,7 @@ EOF
 # AC2 — Phase 2 detector wiring (presence of mandatory gate call)
 # ---------------------------------------------------------------------------
 
-@test "AC2: phase2-execute.sh invokes placeholder-test-detector.sh by default" {
+@test "phase2-execute.sh invokes placeholder-test-detector.sh by default" {
   PHASE2="${BATS_TEST_DIRNAME}/../skills/gaia-test-automate/scripts/phase2-execute.sh"
   grep -q "placeholder-test-detector.sh" "$PHASE2"
 }
@@ -259,7 +259,7 @@ EOF
 # AC3 — --scaffold flag skips detector
 # ---------------------------------------------------------------------------
 
-@test "AC3: phase2-execute.sh recognizes --scaffold and skips detector when set" {
+@test "phase2-execute.sh recognizes --scaffold and skips detector when set" {
   PHASE2="${BATS_TEST_DIRNAME}/../skills/gaia-test-automate/scripts/phase2-execute.sh"
   grep -q -- "--scaffold" "$PHASE2"
   # The skip path mentions "scaffold" near the detector invocation
@@ -270,12 +270,12 @@ EOF
 # AC7 — verdict-resolver action-skill semantics
 # ---------------------------------------------------------------------------
 
-@test "AC7: verdict-resolver supports --action-mode for test-automate" {
+@test "verdict-resolver supports --action-mode for test-automate" {
   RESOLVER="${BATS_TEST_DIRNAME}/../scripts/verdict-resolver.sh"
   grep -E -- "(--action-mode|action_mode|action-skill)" "$RESOLVER"
 }
 
-@test "AC7: action-mode APPROVE — plan present, execution success, no placeholders" {
+@test "action-mode APPROVE — plan present, execution success, no placeholders" {
   RESOLVER="${BATS_TEST_DIRNAME}/../scripts/verdict-resolver.sh"
   cat > "${TMPDIR_LOCAL}/approve.json" <<'EOF'
 {"plan":"present","execution":"success","placeholders":false,"mocks_sut":false,"breaks_suite":false}
@@ -285,7 +285,7 @@ EOF
   [[ "$output" == "APPROVE" ]]
 }
 
-@test "AC7: action-mode REQUEST_CHANGES — placeholders detected" {
+@test "action-mode REQUEST_CHANGES — placeholders detected" {
   RESOLVER="${BATS_TEST_DIRNAME}/../scripts/verdict-resolver.sh"
   cat > "${TMPDIR_LOCAL}/req-ph.json" <<'EOF'
 {"plan":"present","execution":"success","placeholders":true,"mocks_sut":false,"breaks_suite":false}
@@ -295,7 +295,7 @@ EOF
   [[ "$output" == "REQUEST_CHANGES" ]]
 }
 
-@test "AC7: action-mode REQUEST_CHANGES — tests mock the SUT" {
+@test "action-mode REQUEST_CHANGES — tests mock the SUT" {
   RESOLVER="${BATS_TEST_DIRNAME}/../scripts/verdict-resolver.sh"
   cat > "${TMPDIR_LOCAL}/req-mock.json" <<'EOF'
 {"plan":"present","execution":"success","placeholders":false,"mocks_sut":true,"breaks_suite":false}
@@ -304,7 +304,7 @@ EOF
   [[ "$output" == "REQUEST_CHANGES" ]]
 }
 
-@test "AC7: action-mode REQUEST_CHANGES — generated tests break the suite" {
+@test "action-mode REQUEST_CHANGES — generated tests break the suite" {
   RESOLVER="${BATS_TEST_DIRNAME}/../scripts/verdict-resolver.sh"
   cat > "${TMPDIR_LOCAL}/req-break.json" <<'EOF'
 {"plan":"present","execution":"success","placeholders":false,"mocks_sut":false,"breaks_suite":true}
@@ -313,7 +313,7 @@ EOF
   [[ "$output" == "REQUEST_CHANGES" ]]
 }
 
-@test "AC7: action-mode BLOCKED — plan_tamper / target_outside / runner_unavailable / drift / malformed" {
+@test "action-mode BLOCKED — plan_tamper / target_outside / runner_unavailable / drift / malformed" {
   RESOLVER="${BATS_TEST_DIRNAME}/../scripts/verdict-resolver.sh"
   for failure_mode in plan_tamper target_outside_allowlist runner_unavailable plan_drift malformed_output; do
     cat > "${TMPDIR_LOCAL}/blocked.json" <<EOF

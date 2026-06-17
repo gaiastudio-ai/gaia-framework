@@ -68,7 +68,7 @@ EOF
   done
 }
 
-@test "TC-OTP-1: .gaia/-canonical fixture — summary writes to .gaia/artifacts/implementation-artifacts/" {
+@test ".gaia/-canonical fixture — summary writes to .gaia/artifacts/implementation-artifacts/" {
   seed_gaia_canonical "E99-S1"
   STORY_KEY=E99-S1 bash "$GEN" --story E99-S1 2>&1
   # Output is the review-summary; it MUST land under .gaia/artifacts/implementation-artifacts/
@@ -77,7 +77,7 @@ EOF
   [ ! -f "$PROJECT_ROOT/docs/implementation-artifacts/E99-S1-review-summary.md" ]
 }
 
-@test "TC-OTP-2: .gaia/-canonical fixture — proof-of-execution finds reports without MISSING flags" {
+@test ".gaia/-canonical fixture — proof-of-execution finds reports without MISSING flags" {
   seed_gaia_canonical "E99-S2"
   STORY_KEY=E99-S2 bash "$GEN" --story E99-S2 2>&1
   # The summary body must NOT contain "MISSING" markers since all 6 reports
@@ -90,7 +90,7 @@ EOF
   [ "$status" -ne 0 ]
 }
 
-@test "TC-OTP-3: legacy-only-baseline — summary still writes to docs/implementation-artifacts/" {
+@test "legacy-only-baseline — summary still writes to docs/implementation-artifacts/" {
   # Pre-migration install where only legacy docs/ exists.
   mkdir -p "$PROJECT_ROOT/docs/implementation-artifacts/epic-Etest/stories"
   mkdir -p "$PROJECT_ROOT/docs/test-artifacts"

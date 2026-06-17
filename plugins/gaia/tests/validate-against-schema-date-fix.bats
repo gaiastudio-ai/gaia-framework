@@ -22,7 +22,7 @@ teardown() {
   common_teardown
 }
 
-@test "AF-2026-05-21-3 #1: validate-against-schema.sh yaml_to_json passes default=str" {
+@test "#1: validate-against-schema.sh yaml_to_json passes default=str" {
   # The fix is the addition of `default=str` to the json.dumps() call.
   # Assert the literal token is present in the script body.
   run grep -F 'default=str' "$SCRIPT"
@@ -32,7 +32,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-3 #1: python3 round-trip of a config with date: line does NOT crash" {
+@test "#1: python3 round-trip of a config with date: line does NOT crash" {
   # Reproduces the exact failure mode generate-config.sh produces.
   # Skip when PyYAML is absent (matches the script's `import yaml` guard).
   python3 -c 'import yaml' 2>/dev/null || skip "PyYAML not installed"
@@ -54,7 +54,7 @@ print(json.dumps(yaml.safe_load(sys.stdin), default=str))
   [[ "$output" == *'"date": "2026-05-21"'* ]]
 }
 
-@test "AF-2026-05-21-3 #1: regression — without default=str the same fixture crashes" {
+@test "#1: regression — without default=str the same fixture crashes" {
   # Document the pre-fix failure mode so this test would have caught it.
   python3 -c 'import yaml' 2>/dev/null || skip "PyYAML not installed"
   local fixture="$TEST_TMP/cfg.yaml"
@@ -67,7 +67,7 @@ print(json.dumps(yaml.safe_load(sys.stdin)))
   [[ "$output" == *"not JSON serializable"* ]]
 }
 
-@test "AF-2026-05-21-3 #2: SKILL.md refusal message no longer steers user toward --full" {
+@test "#2: SKILL.md refusal message no longer steers user toward --full" {
   # The misleading `--full to reinitialize` guidance MUST NOT appear in
   # the canonical refusal error since AC11 says --full does not override
   # the re-init guard.
@@ -75,7 +75,7 @@ print(json.dumps(yaml.safe_load(sys.stdin)))
   [ "$status" -ne 0 ]
 }
 
-@test "AF-2026-05-21-3 #2: SKILL.md refusal message points at /gaia-config-* and /gaia-brownfield" {
+@test "#2: SKILL.md refusal message points at /gaia-config-* and /gaia-brownfield" {
   run grep -F 'use /gaia-config-* to edit' "$SKILL_MD"
   [ "$status" -eq 0 ]
   run grep -F '/gaia-brownfield' "$SKILL_MD"

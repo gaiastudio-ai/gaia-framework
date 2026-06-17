@@ -25,7 +25,7 @@ _write() {
     --root "$1"
 }
 
-@test "AF-27-2: .gaia/ tree present but memory subdir absent → writes to .gaia/memory/ (NOT _memory/)" {
+@test ".gaia/ tree present but memory subdir absent → writes to .gaia/memory/ (NOT _memory/)" {
   local root="$TEST_TMP/p1"
   mkdir -p "$root/.gaia/config"   # .gaia layout, but NO .gaia/memory/ yet
   run _write "$root" "t-001"
@@ -35,7 +35,7 @@ _write() {
   [ ! -f "$root/_memory/validator-sidecar/decision-log.md" ]
 }
 
-@test "AF-27-2: bare root (no .gaia/, no _memory/) → defaults to canonical .gaia/memory/" {
+@test "bare root (no .gaia/, no _memory/) → defaults to canonical .gaia/memory/" {
   local root="$TEST_TMP/p2"
   mkdir -p "$root"
   run _write "$root" "t-002"
@@ -44,7 +44,7 @@ _write() {
   [ ! -f "$root/_memory/validator-sidecar/decision-log.md" ]
 }
 
-@test "AF-27-2: AF-2026-05-27-3 — even a pre-existing _memory/ is IGNORED; writer uses .gaia/memory/" {
+@test "even a pre-existing _memory/ is IGNORED; writer uses .gaia/memory/" {
   # The legacy _memory/ arm was removed (ADR-111, .gaia/ is the only tree). Even
   # when a stray _memory/ tree exists, the writer targets .gaia/memory/ and does
   # NOT append to the legacy file.
@@ -57,7 +57,7 @@ _write() {
   ! grep -q 't-003' "$root/_memory/validator-sidecar/decision-log.md"
 }
 
-@test "AF-27-2: .gaia/ AND legacy _memory/ both present → writes .gaia/memory/ only" {
+@test ".gaia/ AND legacy _memory/ both present → writes .gaia/memory/ only" {
   local root="$TEST_TMP/p4"
   mkdir -p "$root/.gaia/config" "$root/_memory/validator-sidecar"
   printf '# Val Validator — Decision Log\n\n' > "$root/_memory/validator-sidecar/decision-log.md"
@@ -68,7 +68,7 @@ _write() {
   ! grep -q 't-004' "$root/_memory/validator-sidecar/decision-log.md"
 }
 
-@test "AF-27-2: writer routes to .gaia/memory unconditionally (no _memory arm, no subdir probe)" {
+@test "writer routes to .gaia/memory unconditionally (no _memory arm, no subdir probe)" {
   # AF-2026-05-27-3: the transitional layout probe AND the legacy _memory arm are
   # both gone — the writer hardcodes the canonical .gaia/memory/ target.
   ! grep -qF 'if [ -d "$REAL_ROOT/.gaia/memory" ]; then' "$WRITER"
@@ -78,7 +78,7 @@ _write() {
 
 # --- cross-writer hygiene detector in memory-loader.sh ---
 
-@test "AF-27-2: memory-loader warns when a stray _memory/ coexists with .gaia/memory/" {
+@test "memory-loader warns when a stray _memory/ coexists with .gaia/memory/" {
   local ml="$PLUGIN_ROOT/scripts/memory-loader.sh"
   local root="$TEST_TMP/hy1"
   mkdir -p "$root/.gaia/memory" "$root/_memory"
@@ -88,7 +88,7 @@ _write() {
   printf '%s\n' "$output" | grep -qF 'a project-root _memory/ tree coexists with the canonical .gaia/memory/'
 }
 
-@test "AF-27-2: memory-loader is silent on a clean .gaia project (no stray _memory/)" {
+@test "memory-loader is silent on a clean .gaia project (no stray _memory/)" {
   local ml="$PLUGIN_ROOT/scripts/memory-loader.sh"
   local root="$TEST_TMP/hy2"
   mkdir -p "$root/.gaia/memory"

@@ -39,7 +39,7 @@ teardown() { common_teardown; }
 # direct yq -i against sprint-status.yaml
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-43 anti-pattern: SKILL.md does not contain literal 'context: fork' directive (filter-allowed)" {
+@test "anti-pattern: SKILL.md does not contain literal 'context: fork' directive (filter-allowed)" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   # Scan SKILL.md for `context: fork` outside filter-allow lines.
   hits=$(grep -nE 'context:[[:space:]]*fork' "$SKILL_MD" 2>/dev/null | grep -vE "$FILTER_ALLOW" || true)
@@ -50,7 +50,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-43 anti-pattern: SKILL.md does not contain stdout-sentinel tokens (<<YIELD-STOP, <<TURN-END)" {
+@test "anti-pattern: SKILL.md does not contain stdout-sentinel tokens (<<YIELD-STOP, <<TURN-END)" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   hits=$(grep -nE '<<YIELD-STOP|<<TURN-END' "$SKILL_MD" 2>/dev/null | grep -vE "$FILTER_ALLOW" || true)
   [ -z "$hits" ] || {
@@ -60,7 +60,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "TC-SGR-43 anti-pattern: scripts/ directory has no direct 'yq -i' against sprint-status.yaml" {
+@test "anti-pattern: scripts/ directory has no direct 'yq -i' against sprint-status.yaml" {
   [ -d "$SKILL_DIR/scripts" ] || skip "scripts/ not yet implemented (TDD red)"
   hits=$(grep -rnE 'yq[[:space:]]+-i' "$SKILL_DIR/scripts" 2>/dev/null | grep sprint-status.yaml | grep -vE "$FILTER_ALLOW" || true)
   [ -z "$hits" ] || {
@@ -76,7 +76,7 @@ teardown() { common_teardown; }
 # Step 8 PM explanation for UNVERIFIED bypass)
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-43 anti-pattern: SKILL.md mentions AskUserQuestion at least 3 times (3 mandatory boundaries)" {
+@test "anti-pattern: SKILL.md mentions AskUserQuestion at least 3 times (3 mandatory boundaries)" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   count=$(grep -cE 'AskUserQuestion' "$SKILL_MD")
   [ "$count" -ge 3 ] || {
@@ -89,7 +89,7 @@ teardown() { common_teardown; }
 # TC-SGR-24: main-turn Mode A orchestration class assertion
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-24 main-turn Mode A: SKILL.md frontmatter declares orchestration_class: heavy-procedural" {
+@test "main-turn Mode A: SKILL.md frontmatter declares orchestration_class: heavy-procedural" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   # Extract frontmatter block (between first two --- lines) via awk state-machine.
   frontmatter=$(awk '/^---$/{f++; next} f==1{print}' "$SKILL_MD")
@@ -108,7 +108,7 @@ teardown() { common_teardown; }
 # documented per R7.
 # ---------------------------------------------------------------------------
 
-@test "TC-SGR-43 anti-pattern: SKILL.md references write-val-envelope.sh + assert_agent_envelope" {
+@test "anti-pattern: SKILL.md references write-val-envelope.sh + assert_agent_envelope" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   grep -qE 'write-val-envelope\.sh' "$SKILL_MD" || {
     echo "SKILL.md does not reference write-val-envelope.sh (ADR-105 orchestrator-side writer contract — R7)"

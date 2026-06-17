@@ -38,45 +38,45 @@ resolve_ux_design_path() {
 
 # --- SKILL.md prose canonical assertions ---
 
-@test "AF-21-14: gaia-create-ux/SKILL.md write-path prose uses canonical .gaia/ paths" {
+@test "gaia-create-ux/SKILL.md write-path prose uses canonical .gaia/ paths" {
   grep -qF '.gaia/artifacts/planning-artifacts/ux-design.md' "$CREATE_UX_SKILL"
 }
 
-@test "AF-21-14: gaia-create-ux/SKILL.md has no remaining legacy docs/ write-path literals" {
+@test "gaia-create-ux/SKILL.md has no remaining legacy docs/ write-path literals" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts)' "$CREATE_UX_SKILL"
 }
 
-@test "AF-21-14: gaia-edit-ux/SKILL.md write-path prose uses canonical .gaia/ paths" {
+@test "gaia-edit-ux/SKILL.md write-path prose uses canonical .gaia/ paths" {
   grep -qF '.gaia/artifacts/planning-artifacts/ux-design.md' "$EDIT_UX_SKILL"
 }
 
-@test "AF-21-14: gaia-edit-ux/SKILL.md Mission paragraph documents the three-tier idiom" {
+@test "gaia-edit-ux/SKILL.md Mission paragraph documents the three-tier idiom" {
   grep -qF 'three-tier idiom' "$EDIT_UX_SKILL"
   grep -qF 'UX_DESIGN_PATH' "$EDIT_UX_SKILL"
 }
 
 # --- Regression guard: gaia-create-ux/scripts/finalize.sh canonical-first intact ---
 
-@test "AF-21-14: gaia-create-ux/scripts/finalize.sh retains canonical-first resolution (E96-S7 from AF-21-13 pattern)" {
+@test "gaia-create-ux/scripts/finalize.sh retains canonical-first resolution" {
   grep -qE 'if \[ -f "\.gaia/artifacts/planning-artifacts/ux-design\.md" \]' "$CREATE_UX_FINALIZE"
   grep -qE 'elif \[ -f "docs/planning-artifacts/ux-design\.md" \]' "$CREATE_UX_FINALIZE"
 }
 
 # --- New three-tier idiom assertions for gaia-edit-ux/scripts/setup.sh ---
 
-@test "AF-21-14: gaia-edit-ux/scripts/setup.sh implements three-tier idiom verbatim" {
+@test "gaia-edit-ux/scripts/setup.sh implements three-tier idiom verbatim" {
   grep -qF '.gaia/artifacts/planning-artifacts/ux-design.md' "$EDIT_UX_SETUP"
   grep -qF '[ ! -d "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts" ]' "$EDIT_UX_SETUP"
   grep -qE 'if \[ -z "\$\{UX_DESIGN_PATH:-\}" \]' "$EDIT_UX_SETUP"
 }
 
-@test "AF-21-14: edit-ux setup.sh — greenfield (no UX anywhere) → resolves to canonical default" {
+@test "edit-ux setup.sh — greenfield (no UX anywhere) → resolves to canonical default" {
   unset UX_DESIGN_PATH
   result=$(resolve_ux_design_path "$TEST_TMP")
   [ "$result" = "$TEST_TMP/.gaia/artifacts/planning-artifacts/ux-design.md" ]
 }
 
-@test "AF-21-14: edit-ux setup.sh — post-ADR-111 (only .gaia/ exists) → resolves to canonical" {
+@test "edit-ux setup.sh — post-migration (only .gaia/ exists) → resolves to canonical" {
   unset UX_DESIGN_PATH
   mkdir -p ".gaia/artifacts/planning-artifacts"
   echo "# UX" > ".gaia/artifacts/planning-artifacts/ux-design.md"
@@ -85,7 +85,7 @@ resolve_ux_design_path() {
   [ ! -d "docs" ]
 }
 
-@test "AF-21-14: edit-ux setup.sh — pre-ADR-111 (only docs/, no .gaia/) → legacy back-compat preserved" {
+@test "edit-ux setup.sh — pre-migration (only docs/, no .gaia/) → legacy back-compat preserved" {
   unset UX_DESIGN_PATH
   mkdir -p "docs/planning-artifacts"
   echo "# Legacy UX" > "docs/planning-artifacts/ux-design.md"
@@ -94,7 +94,7 @@ resolve_ux_design_path() {
   [ ! -d ".gaia" ]
 }
 
-@test "AF-21-14: edit-ux setup.sh — both present (mid-migration) → canonical wins" {
+@test "edit-ux setup.sh — both present (mid-migration) → canonical wins" {
   unset UX_DESIGN_PATH
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts"
   echo "# Canonical" > ".gaia/artifacts/planning-artifacts/ux-design.md"
@@ -103,7 +103,7 @@ resolve_ux_design_path() {
   [ "$result" = "$TEST_TMP/.gaia/artifacts/planning-artifacts/ux-design.md" ]
 }
 
-@test "AF-21-14: edit-ux setup.sh — UX_DESIGN_PATH env-var override (Tier 1) wins" {
+@test "edit-ux setup.sh — UX_DESIGN_PATH env-var override (Tier 1) wins" {
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts" "custom-location"
   echo "# Canonical" > ".gaia/artifacts/planning-artifacts/ux-design.md"
   echo "# Legacy" > "docs/planning-artifacts/ux-design.md"

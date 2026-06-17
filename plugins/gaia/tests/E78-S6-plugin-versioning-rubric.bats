@@ -48,31 +48,31 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC1 — Sub-rubric file exists, schema-valid, carries six bump rules
 # ---------------------------------------------------------------------------
-@test "AC1: plugin-versioning sub-rubric file exists at the canonical location" {
+@test "plugin-versioning sub-rubric file exists at the canonical location" {
   [ -f "$SUB_RUBRIC" ] \
     || { echo "AC1 FAIL: plugin-versioning sub-rubric not found at $SUB_RUBRIC" >&2; return 1; }
 }
 
-@test "AC1: plugin-versioning sub-rubric is well-formed JSON" {
+@test "plugin-versioning sub-rubric is well-formed JSON" {
   jq empty "$SUB_RUBRIC" \
     || { echo "AC1 FAIL: plugin-versioning sub-rubric is not well-formed JSON" >&2; return 1; }
 }
 
-@test "AC1: plugin-versioning sub-rubric carries skill=code" {
+@test "plugin-versioning sub-rubric carries skill=code" {
   local skill
   skill=$(jq -r '.skill // empty' "$SUB_RUBRIC")
   [ "$skill" = "code" ] \
     || { echo "AC1 FAIL: expected .skill=code, got=$skill" >&2; return 1; }
 }
 
-@test "AC1: plugin-versioning carries when.project_kind=claude-code-plugin" {
+@test "plugin-versioning carries when.project_kind=claude-code-plugin" {
   local kind
   kind=$(jq -r '.when.project_kind // empty' "$SUB_RUBRIC")
   [ "$kind" = "claude-code-plugin" ] \
     || { echo "AC1 FAIL: expected when.project_kind=claude-code-plugin, got=$kind" >&2; return 1; }
 }
 
-@test "AC1: plugin-versioning encodes the six bump-rule mappings" {
+@test "plugin-versioning encodes the six bump-rule mappings" {
   for id in \
     plugin-versioning-skill-description-changed-minor \
     plugin-versioning-skill-removed-major \
@@ -86,7 +86,7 @@ setup() {
   done
 }
 
-@test "AC1: plugin-versioning sub-rubric passes validate-rubric.sh schema check" {
+@test "plugin-versioning sub-rubric passes validate-rubric.sh schema check" {
   run "$VALIDATOR" "$SUB_RUBRIC"
   [ "$status" -eq 0 ] \
     || { echo "AC1 FAIL: validate-rubric.sh exited $status — output: $output" >&2; return 1; }
@@ -95,35 +95,35 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC2 — Contract change without bump → Critical/High severity (FAILED verdict)
 # ---------------------------------------------------------------------------
-@test "AC2: skill-removed rule is severity Critical (forces FAILED verdict)" {
+@test "skill-removed rule is severity Critical (forces FAILED verdict)" {
   local sev
   sev=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-skill-removed-major") | .severity' "$SUB_RUBRIC")
   [ "$sev" = "Critical" ] \
     || { echo "AC2 FAIL: expected severity=Critical for skill-removed-major, got=$sev" >&2; return 1; }
 }
 
-@test "AC2: command-or-agent-removed-or-renamed rule is severity Critical" {
+@test "command-or-agent-removed-or-renamed rule is severity Critical" {
   local sev
   sev=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-command-or-agent-removed-or-renamed-major") | .severity' "$SUB_RUBRIC")
   [ "$sev" = "Critical" ] \
     || { echo "AC2 FAIL: expected severity=Critical for command/agent-removed-major, got=$sev" >&2; return 1; }
 }
 
-@test "AC2: manifest-schema-changed rule is severity Critical" {
+@test "manifest-schema-changed rule is severity Critical" {
   local sev
   sev=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-manifest-schema-changed-major") | .severity' "$SUB_RUBRIC")
   [ "$sev" = "Critical" ] \
     || { echo "AC2 FAIL: expected severity=Critical for manifest-schema-changed, got=$sev" >&2; return 1; }
 }
 
-@test "AC2: frontmatter-required-field-added rule is severity Critical" {
+@test "frontmatter-required-field-added rule is severity Critical" {
   local sev
   sev=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-frontmatter-required-field-added-major") | .severity' "$SUB_RUBRIC")
   [ "$sev" = "Critical" ] \
     || { echo "AC2 FAIL: expected severity=Critical for frontmatter-required-field, got=$sev" >&2; return 1; }
 }
 
-@test "AC2: bump-rule pattern names the required bump level" {
+@test "bump-rule pattern names the required bump level" {
   jq -r '.severity_rules[] | select(.id == "plugin-versioning-skill-removed-major") | .pattern' "$SUB_RUBRIC" \
     | grep -qi 'major' \
       || { echo "AC2 FAIL: skill-removed-major pattern must reference 'major' bump" >&2; return 1; }
@@ -132,7 +132,7 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC3 — Correct bump present → no finding (silent pass documented in pattern)
 # ---------------------------------------------------------------------------
-@test "AC3: bump-rule patterns document the 'without a corresponding bump' guard" {
+@test "bump-rule patterns document the 'without a corresponding bump' guard" {
   # Each contract-change rule's pattern MUST include the conditional clause
   # "without ... bump" so the rule fires only on missing bumps. A PR with the
   # correct bump satisfies the pattern's negative-clause and produces no
@@ -153,14 +153,14 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC4 — Bug fix only → patch (Info severity)
 # ---------------------------------------------------------------------------
-@test "AC4: bug-fix-patch rule is severity Info (advisory, non-blocking)" {
+@test "bug-fix-patch rule is severity Info (advisory, non-blocking)" {
   local sev
   sev=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-bug-fix-patch") | .severity' "$SUB_RUBRIC")
   [ "$sev" = "Info" ] \
     || { echo "AC4 FAIL: expected severity=Info for bug-fix-patch, got=$sev" >&2; return 1; }
 }
 
-@test "AC4: bug-fix-patch pattern names 'patch' bump level" {
+@test "bug-fix-patch pattern names 'patch' bump level" {
   jq -r '.severity_rules[] | select(.id == "plugin-versioning-bug-fix-patch") | .pattern' "$SUB_RUBRIC" \
     | grep -qi 'patch' \
       || { echo "AC4 FAIL: bug-fix-patch pattern must reference 'patch' bump" >&2; return 1; }
@@ -169,7 +169,7 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC5 — Composite pre-deploy gate blocks non-APPROVE composite
 # ---------------------------------------------------------------------------
-@test "AC5: pre-deploy-gate.sh BLOCKS on non-APPROVE composite (UNVERIFIED collapses to BLOCKED upstream)" {
+@test "pre-deploy-gate.sh BLOCKS on non-APPROVE composite (UNVERIFIED collapses to BLOCKED upstream)" {
   local fixture="$BATS_TEST_TMPDIR/composite.json"
   cat >"$fixture" <<'EOF'
 {
@@ -184,7 +184,7 @@ EOF
     || { echo "AC5 FAIL: pre-deploy-gate must exit non-zero for non-APPROVE composite" >&2; return 1; }
 }
 
-@test "AC5: pre-deploy-gate.sh PASSES on APPROVE composite" {
+@test "pre-deploy-gate.sh PASSES on APPROVE composite" {
   local fixture="$BATS_TEST_TMPDIR/composite-ok.json"
   cat >"$fixture" <<'EOF'
 {
@@ -202,7 +202,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC6 — project_kind guard
 # ---------------------------------------------------------------------------
-@test "AC6: plugin-versioning rules INCLUDED for project_kind=claude-code-plugin" {
+@test "plugin-versioning rules INCLUDED for project_kind=claude-code-plugin" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: claude-code-plugin
 EOF
@@ -212,7 +212,7 @@ EOF
     || { echo "AC6 FAIL: expected plugin-versioning-* rules INCLUDED for plugin project" >&2; return 1; }
 }
 
-@test "AC6: plugin-code rules ALSO included alongside plugin-versioning under skill=code (skill-collision coordination)" {
+@test "plugin-code rules ALSO included alongside plugin-versioning under skill=code (skill-collision coordination)" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: claude-code-plugin
 EOF
@@ -230,7 +230,7 @@ EOF
     || { echo "AC6 FAIL: plugin-code-coverage-default-threshold lost in merged output" >&2; return 1; }
 }
 
-@test "AC6: plugin-versioning rules EXCLUDED for project_kind=web-app" {
+@test "plugin-versioning rules EXCLUDED for project_kind=web-app" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: web-app
 EOF
@@ -240,7 +240,7 @@ EOF
     || { echo "AC6 FAIL: expected plugin-versioning rules EXCLUDED for non-plugin project" >&2; return 1; }
 }
 
-@test "AC6: plugin-versioning rules EXCLUDED when project_kind unset" {
+@test "plugin-versioning rules EXCLUDED when project_kind unset" {
   cat >"$TMP_CONFIG" <<'EOF'
 {}
 EOF
@@ -253,19 +253,19 @@ EOF
 # ---------------------------------------------------------------------------
 # AC7 — adapter.schema.json category enum contains "deploy" (14 values)
 # ---------------------------------------------------------------------------
-@test "AC7: adapter.schema.json category enum contains 'deploy'" {
+@test "adapter.schema.json category enum contains 'deploy'" {
   jq -e '.properties.category.enum | index("deploy") != null' "$ADAPTER_SCHEMA" >/dev/null \
     || { echo "AC7 FAIL: adapter.schema.json category enum must include 'deploy'" >&2; return 1; }
 }
 
-@test "AC7: adapter.schema.json category enum has exactly 14 canonical values" {
+@test "adapter.schema.json category enum has exactly 14 canonical values" {
   local count
   count=$(jq '.properties.category.enum | length' "$ADAPTER_SCHEMA")
   [ "$count" -eq 14 ] \
     || { echo "AC7 FAIL: expected 14 category enum values, got=$count" >&2; return 1; }
 }
 
-@test "AC7: script-deploy/adapter.json has category=deploy and is in the enum" {
+@test "script-deploy/adapter.json has category=deploy and is in the enum" {
   [ -f "$SCRIPT_DEPLOY_ADAPTER" ] \
     || { echo "AC7 FAIL: script-deploy adapter.json missing at $SCRIPT_DEPLOY_ADAPTER" >&2; return 1; }
   local cat
@@ -279,7 +279,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC8 — Unknown adapter category → WARNING finding (severity Medium)
 # ---------------------------------------------------------------------------
-@test "AC8: adapter-category-hygiene rule exists with severity Medium (WARNING)" {
+@test "adapter-category-hygiene rule exists with severity Medium (WARNING)" {
   local rule
   rule=$(jq -c '.severity_rules[] | select(.id == "plugin-versioning-adapter-category-unknown-warning")' "$SUB_RUBRIC")
   [ -n "$rule" ] \
@@ -290,7 +290,7 @@ EOF
     || { echo "AC8 FAIL: expected severity=Medium, got=$sev" >&2; return 1; }
 }
 
-@test "AC8: adapter-category-hygiene rule pattern references the canonical 14-value enum" {
+@test "adapter-category-hygiene rule pattern references the canonical 14-value enum" {
   local pattern
   pattern=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-adapter-category-unknown-warning") | .pattern' "$SUB_RUBRIC")
   printf '%s' "$pattern" | grep -q '14' \
@@ -300,7 +300,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC9 — Valid adapter category → silent pass (rule documents the canonical enum)
 # ---------------------------------------------------------------------------
-@test "AC9: adapter-category-hygiene rule documents the 14 canonical enum values in references or pattern" {
+@test "adapter-category-hygiene rule documents the 14 canonical enum values in references or pattern" {
   # Each canonical enum value MUST be discoverable from the rule's pattern,
   # description, or references — the rubric is the ground-truth document the
   # reviewer reads to know what categories are valid.
@@ -316,7 +316,7 @@ EOF
   done
 }
 
-@test "AC9: adapter-category-unknown-warning rule is in the adapter-schema-hygiene category" {
+@test "adapter-category-unknown-warning rule is in the adapter-schema-hygiene category" {
   local cat
   cat=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-adapter-category-unknown-warning") | .category' "$SUB_RUBRIC")
   [ "$cat" = "adapter-schema-hygiene" ] \
