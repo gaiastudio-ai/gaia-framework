@@ -1,0 +1,14 @@
+plugins/gaia/scripts/step-report.sh
+plugins/gaia/scripts/throughput-telemetry.sh
+plugins/gaia/tests/brain-update-index.bats
+plugins/gaia/tests/fixtures/brain-capstone/coverage-map.tsv
+plugins/gaia/tests/fixtures/observability-hardening/all-negative-diff.jsonl
+plugins/gaia/tests/fixtures/observability-hardening/all-tokens-missing.jsonl
+plugins/gaia/tests/fixtures/observability-hardening/cache-field-diffs.jsonl
+plugins/gaia/tests/fixtures/observability-hardening/ere-metachar.jsonl
+plugins/gaia/tests/fixtures/observability-hardening/missing-step-number.jsonl
+plugins/gaia/tests/fixtures/observability-hardening/mixed-presence.jsonl
+plugins/gaia/tests/fixtures/observability-hardening/multi-story-interleaved.jsonl
+plugins/gaia/tests/fixtures/observability-hardening/out-of-order.jsonl
+plugins/gaia/tests/fixtures/observability-hardening/single-step.jsonl
+plugins/gaia/tests/observability-hardening.bats
