@@ -48,8 +48,8 @@ teardown() {
   local total unique
   total="$(grep -c . "$MAP")"
   unique="$(cut -f1 "$MAP" | sort | uniq | grep -c .)"
-  [ "$total" -eq 50 ]
-  [ "$unique" -eq 50 ]
+  [ "$total" -eq 71 ]
+  [ "$unique" -eq 71 ]
 }
 
 @test "every brain bats file referenced by the coverage map exists in the suite" {

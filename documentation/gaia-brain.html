@@ -48,6 +48,7 @@
           <li><a href="#commands">Commands</a></li>
           <li><a href="#ingested-lifecycle">Ingested-document lifecycle</a></li>
           <li><a href="#update-or-remove">Update or remove a source</a></li>
+          <li><a href="#obsidian">Browse in Obsidian</a></li>
         </ul>
       </nav>
     </aside>
@@ -412,6 +413,27 @@
             no-op if the slug is not present.
           </li>
         </ul>
+      </section>
+
+      <section id="obsidian">
+        <h2>Browse in Obsidian</h2>
+        <p>
+          The knowledge store at <code>.gaia/knowledge/</code> is an
+          Obsidian-native vault. Open it in
+          <a href="https://obsidian.md/">Obsidian</a> to navigate the
+          Map of Content visually, follow wiki-links between artifacts, and
+          explore the governance graph through Obsidian's graph view.
+        </p>
+        <p>
+          The vault's <code>.obsidian/</code> directory (workspace layout,
+          graph settings, installed community plugins) is <strong>per-user
+          chrome</strong>. The <code>/gaia-init</code> gitignore seed
+          ignores <code>.gaia/knowledge/.obsidian/</code> so vault
+          preferences never create commit churn across contributors. The
+          brain content itself -- <code>brain-index.yaml</code>,
+          <code>brain-index.md</code>, and ingested entries -- is shared
+          and tracked in version control.
+        </p>
       </section>
 
       <footer class="page-footer">

@@ -1,0 +1,3 @@
+{"timestamp":"2026-06-16T10:00:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":1200,"story_key":"ATM-S1","step":1,"data":{"step_name":"load-story"}}
+{"timestamp":"2026-06-16T10:05:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":1201,"story_key":"ATM-S1","step":2,"data":{"step_name":"validate"}}
+{"timestamp":"2026-06-16T10:10:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":1202,"story_key":"ATM-S1","step":3,"data":{"step_name":"implement"}}

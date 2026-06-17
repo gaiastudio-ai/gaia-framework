@@ -167,6 +167,16 @@ is_allowlisted() {
   # e70-s5-skill-registration.bats and gaia-init.bats — the literal filename
   # mention is the contractual assertion target.
   [[ "$path" == */plugins/gaia/test/scripts/e72-s1-test-run.bats ]] && return 0
+  # test-manual-skill.bats asserts that the gaia-test-manual skill is registered
+  # in workflow-manifest.csv and gaia-help.csv. The CSVs are themselves
+  # allowlisted under plugins/gaia/knowledge/, so the filename mentions in the
+  # test body are the contractual assertion target — same precedent as
+  # e72-s1-test-run.bats and gaia-init.bats above.
+  [[ "$path" == */plugins/gaia/tests/test-manual-skill.bats ]] && return 0
+  # manual-test-docs.bats asserts that the gaia-test-manual doc page exists and
+  # that gaia-help.csv + workflow-manifest.csv contain the registration row.
+  # Same precedent as test-manual-skill.bats above.
+  [[ "$path" == */plugins/gaia/tests/manual-test-docs.bats ]] && return 0
   # static-next-steps.bats is the parity guard for next-step routing.
   # It asserts zero `lifecycle-sequence.yaml` references across the target
   # SKILL.md files; the literal token appears in assertions and prose

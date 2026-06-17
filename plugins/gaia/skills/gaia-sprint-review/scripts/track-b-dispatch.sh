@@ -22,9 +22,13 @@
 # Usage:
 #   track-b-dispatch.sh --sprint <sprint_id> [--config <project-config.yaml>]
 #
-# Output (stdout): JSON array, one envelope per configured stack.
-#   Envelope shape: {stack, verdict, exit_code, stdout, stderr,
-#                    transcript_path, duration_seconds, started_at, ended_at}
+# Output (stdout): JSON object with two fields:
+#   track_b_verdict — composite verdict (PASSED or FAILED). FAILED iff any
+#                     envelope verdict is FAILED or TIMEOUT; SKIPPED and
+#                     PENDING are PASSED-equivalent.
+#   envelopes       — JSON array, one envelope per configured stack/surface.
+#     Envelope shape: {type, stack|surface, verdict, exit_code, stdout, stderr,
+#                      transcript_path, duration_seconds, started_at, ended_at}
 #
 # Exit codes:
 #   0 — all stacks dispatched (verdicts in envelopes; even FAILED is exit 0
@@ -295,6 +299,7 @@ for stack in $all_stacks; do
     --arg started_at "$started_at" \
     --arg ended_at "$ended_at" \
     '. + [{
+      type: "stack-command",
       stack: $stack,
       verdict: $verdict,
       exit_code: $exit_code,
@@ -307,6 +312,91 @@ for stack in $all_stacks; do
     }]')
 done
 
-printf '%s\n' "$envelopes"
-log "Track B: ran $(printf '%s' "$envelopes" | jq 'length') stack(s)"
+# ---------- Manual-test surface dispatch loop ----------
+#
+# After the per-stack command loop, iterate the four manual-test surfaces
+# (browser, api, mobile, desktop). For each, invoke dispatch-surface.sh
+# which calls the surface-adapter to determine whether the surface is
+# configured. The dispatch script emits a JSON verdict per surface
+# (PASSED, FAILED, PENDING, or SKIPPED). SKIPPED and PENDING are
+# PASSED-equivalent — they do NOT fail Track B.
+
+DISPATCH_SURFACE="${DISPATCH_SURFACE_BIN:-$SCRIPT_DIR/../../gaia-test-manual/scripts/dispatch-surface.sh}"
+
+if [ ! -f "$DISPATCH_SURFACE" ]; then
+  log "WARNING: dispatch-surface.sh not found at $DISPATCH_SURFACE — skipping manual-test surface loop (graceful degradation)"
+else
+  evidence_base=".gaia/memory/checkpoints/sprint-review-${sprint_id}/manual-test"
+
+  for surface in browser api mobile desktop; do
+    evidence_dir="${evidence_base}/${surface}"
+    mkdir -p "$evidence_dir"
+
+    config_flags=""
+    if [ -n "$config_path" ]; then
+      config_flags="--config $config_path"
+    fi
+
+    set +e
+    # shellcheck disable=SC2086
+    surface_json=$(bash "$DISPATCH_SURFACE" --surface "$surface" \
+      --target "sprint-review-${sprint_id}" \
+      --evidence-dir "$evidence_dir" \
+      $config_flags 2>&1)
+    surface_rc=$?
+    set -e
+
+    # Parse the verdict from the JSON output. Fallback to SKIPPED on error.
+    if [ "$surface_rc" -ne 0 ] && [ "$surface_rc" -ne 2 ]; then
+      surface_verdict="SKIPPED"
+      log "dispatch-surface.sh for '$surface' exited $surface_rc — treating as SKIPPED"
+    else
+      surface_verdict=$(printf '%s' "$surface_json" | grep -o '"verdict"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"verdict"[[:space:]]*:[[:space:]]*"//;s/"//' || echo "SKIPPED")
+      if [ -z "$surface_verdict" ]; then
+        surface_verdict="SKIPPED"
+      fi
+    fi
+
+    # Append manual-test envelope. SKIPPED and PENDING are PASSED-equivalent;
+    # only FAILED (or TIMEOUT→FAILED) fails Track B.
+    envelopes=$(printf '%s' "$envelopes" | jq \
+      --arg surface "$surface" \
+      --arg verdict "$surface_verdict" \
+      --arg raw_json "$surface_json" \
+      '. + [{
+        type: "manual-test",
+        surface: $surface,
+        verdict: $verdict,
+        raw: $raw_json
+      }]')
+  done
+fi
+
+# ---------- Compute Track B composite verdict ----------
+#
+# Rule: FAILED if ANY envelope verdict is FAILED or TIMEOUT.
+# SKIPPED, PENDING, and PASSED are non-failing — they reduce to PASSED.
+# TIMEOUT already maps to FAILED in the per-stack loop (exit 124/137), so the
+# only two failing values to check are FAILED and TIMEOUT (the latter covers
+# dispatch-surface returning a raw TIMEOUT string).
+
+track_b_verdict="PASSED"
+envelope_count=$(printf '%s' "$envelopes" | jq 'length')
+idx=0
+while [ "$idx" -lt "$envelope_count" ]; do
+  v=$(printf '%s' "$envelopes" | jq -r ".[$idx].verdict")
+  case "$v" in
+    FAILED|TIMEOUT) track_b_verdict="FAILED"; break ;;
+  esac
+  idx=$((idx + 1))
+done
+
+# Wrap envelopes + verdict into a top-level object so the caller can read
+# track_b_verdict without re-deriving it.
+result=$(printf '%s' "$envelopes" | jq \
+  --arg track_b_verdict "$track_b_verdict" \
+  '{track_b_verdict: $track_b_verdict, envelopes: .}')
+
+printf '%s\n' "$result"
+log "Track B: $track_b_verdict ($(printf '%s' "$envelopes" | jq 'length') envelope(s))"
 exit 0

@@ -458,15 +458,39 @@ YAML
 # ---- Test 6: MOC re-render after removal (AC6) -------------------------------
 
 @test "MOC is re-rendered after successful removal and entry is gone" {
+  # Seed TWO ingested entries so the manifest is non-empty after removal.
   _seed_ingested "moc-test"
+  # Add a second entry so the manifest still has content after removing moc-test.
+  cat >> "$MANIFEST" <<YAML
+  - key: "moc-keeper"
+    source_type: ingested
+    path: ".gaia/knowledge/ingested/moc-keeper.md"
+    tags: ["ingested", "file"]
+    synopsis: "Ingested document: moc-keeper"
+    edges: []
+    trust:
+      confidence: 0.8
+      content_hash: "keeper123"
+      source_url: null
+      fetched_at: "2026-01-01T00:00:00Z"
+      expires_at: "2026-02-01T00:00:00Z"
+YAML
+  cat > "$KNOW/ingested/moc-keeper.md" <<'MD'
+---
+title: moc-keeper
+slug: moc-keeper
+---
+Keeper body.
+MD
 
-  # Create a minimal brain-index.md (MOC) containing the entry.
+  # Create a minimal brain-index.md (MOC) containing both entries.
   cat > "$KNOW/brain-index.md" <<'MD'
 # Brain Index
 
 ## Ingested
 
 - [[moc-test]]
+- [[moc-keeper]]
 MD
 
   run bash -c "
@@ -479,16 +503,12 @@ MD
   # The ingested file must be gone.
   [ ! -f "$KNOW/ingested/moc-test.md" ]
 
-  # If render-moc.sh ran, the MOC should no longer reference the slug.
-  # render-moc.sh requires a manifest with entries to produce output;
-  # after removing the only entry the MOC may be empty or regenerated.
-  # Assert the removed slug no longer appears. If render-moc.sh failed
-  # (best-effort), the stale MOC may still have it — skip the check.
-  if [ -f "$KNOW/brain-index.md" ]; then
-    local moc_match
-    moc_match="$(grep -c 'moc-test' "$KNOW/brain-index.md" 2>/dev/null || true)"
-    [ "$moc_match" -eq 0 ]
-  fi
+  # Concrete assertion: the MOC file MUST exist (non-vacuous) and the
+  # removed slug must be absent from it.
+  [ -f "$KNOW/brain-index.md" ]
+  local moc_match
+  moc_match="$(grep -c 'moc-test' "$KNOW/brain-index.md" 2>/dev/null || true)"
+  [ "$moc_match" -eq 0 ]
 }
 
 # ---- Test 7: MOC-unavailable degradation (AC6 edge) --------------------------
