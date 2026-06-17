@@ -3,6 +3,44 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.196.1] — 2026-06-17
+
+### Changed
+
+- promote staging to main (sprint-61) (#1550)
+
+## [1.196.0] — 2026-06-16
+
+### Added
+
+- (E112-S3) per-story step report joining timing and token rollup (#1533)
+- (E112-S2) best-effort per-step token capture with privacy guard (#1531)
+- (E112-S1) emit per-step boundary events and derive step durations (#1528)
+- (E110-S16) add gaia-unfeed sanctioned removal of an ingested brain document (#1527)
+- (E110-S15) wire event-driven brain freshness hooks into lifecycle paths (#1526)
+- (E110-S14) add partitioned update-brain-index.sh lesson/edge writer (#1525)
+- (E110-S13) emit first-class retro lesson entries to the brain index (#1524)
+- (E111-S7) consult dedup + governing brain context at add-feature entry (#1518)
+- (E111-S6) consult per-story brain context at run-all-reviews entry (#1516)
+- (E111-S5) consult governing brain context at create-story entry (#1515)
+- (E111-S4) consult governing brain context at dev-story entry (#1514)
+- (E110-S12) safe-fetch SSRF mitigation + slug write-boundary containment (#1512)
+- (E110-S10) gaia-knowledge-refresh hash-gated re-fetch lifecycle (#1511)
+- (E110-S9) wire `gaia-feed` one-gesture external-document ingestion (#1510)
+
+### Changed
+
+- promote staging to main (v1.195.0)
+
+### Fixed
+
+- (E112-S2) reject non-allowlisted snapshot keys and guard the tokens flag (#1532)
+- (E112-S1) strengthen step-timing tests and harden step_name JSON (#1530)
+- (brain) make unfeed awk fallbacks robust to the structured-writer format (#1529)
+- (brain) ingest strip, refresh expiry/stale lifecycle, and feed docs (#1521)
+- (E110-S12) use GNU-first stat idiom in the file-mode test for Linux CI (#1513)
+- (scripts) emit state_transition lifecycle event on unified status writes (#1508)
+
 ## [1.195.0] — 2026-06-16
 
 ### Added
