@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.196.1] — 2026-06-17
+
+### Changed
+
+- promote staging to main (sprint-61) (#1550)
+
 ## [1.196.0] — 2026-06-16
 
 ### Added
