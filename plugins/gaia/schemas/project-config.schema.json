@@ -127,6 +127,21 @@
         }
       }
     },
+    "triggerScopeRule": {
+      "description": "Scope rule for a single CI trigger — specifies which stacks and test tags are included or excluded. include_stacks and exclude_stacks are mutually exclusive; include_tags and exclude_tags are mutually exclusive.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include_stacks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run tests only for these stacks." },
+        "exclude_stacks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run tests for all stacks EXCEPT these." },
+        "include_tags":   { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run only tests matching these tags." },
+        "exclude_tags":   { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Exclude tests matching these tags." }
+      },
+      "allOf": [
+        { "not": { "required": ["include_stacks", "exclude_stacks"] } },
+        { "not": { "required": ["include_tags",   "exclude_tags"]   } }
+      ]
+    },
     "healthCheck": {
       "description": "Post-deploy health-check phase configuration. Drives the `/gaia-deploy` Phase 3 behavior. Optional — backward compatibility is preserved when the key is omitted (resolver defaults to mode=poll). The `skip` mode is intended for projects that have no reachable health-check endpoint (e.g., marketplace-published plugins) — when set, the deploy skill bypasses the poll loop and writes an audit-trail evidence entry recording the configured skip.",
       "type": "object",
@@ -371,6 +386,41 @@
             "placement":       { "$ref": "#/definitions/testPlacement" },
             "command":         { "type": "string", "minLength": 1 },
             "timeout_seconds": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "test_policy": {
+      "description": "Per-trigger scope rules controlling which tests run. Each key is a CI trigger type; its value specifies included/excluded stacks or test tags. When absent, all tests run for all stacks on every trigger (backward-compatible default). This section controls test SCOPE only — pass/fail thresholds are governed by severity and gates (orthogonal).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "always_run": {
+          "description": "Stack or suite identifiers that always run regardless of affected-set narrowing.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "flaky": {
+          "description": "Test identifiers flagged as flaky for retry-aware execution.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "retry_limit": {
+          "description": "Maximum retries for flaky-flagged tests. Default 2.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "triggers": {
+          "description": "Per-trigger scope rules. Each key is a CI trigger type; each value specifies include/exclude filters for stacks and tags.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pr":       { "$ref": "#/definitions/triggerScopeRule" },
+            "push":     { "$ref": "#/definitions/triggerScopeRule" },
+            "schedule": { "$ref": "#/definitions/triggerScopeRule" }
           }
         }
       }
