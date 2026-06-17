@@ -58,8 +58,8 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_NAME="reconcile-stale-graph.sh"
-log_info()  { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
-log_warn()  { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
+_log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
+_log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
 HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 DETECTOR_PATH="${HERE}/adapters/brownfield/reconcile-cross-stack.sh"
@@ -190,7 +190,7 @@ invoke_detector() {
   DETECTOR_OUTPUT=""
 
   if [ ! -f "$DETECTOR_PATH" ]; then
-    log_warn "detector not found at $DETECTOR_PATH — passthrough"
+    _log_warn "detector not found at $DETECTOR_PATH — passthrough"
     return 0
   fi
 
@@ -294,12 +294,12 @@ emit_report() {
 reconcile() {
   # AC4 pre-flight: if yq or jq are absent, degrade gracefully.
   if ! command -v yq >/dev/null 2>&1; then
-    log_warn "yq not found — stale-graph reconciliation skipped (passthrough)"
+    _log_warn "yq not found — stale-graph reconciliation skipped (passthrough)"
     printf '%s\n' "$AFFECTED_SET_JSON"
     return 0
   fi
   if ! command -v jq >/dev/null 2>&1; then
-    log_warn "jq not found — stale-graph reconciliation skipped (passthrough)"
+    _log_warn "jq not found — stale-graph reconciliation skipped (passthrough)"
     printf '%s\n' "$AFFECTED_SET_JSON"
     return 0
   fi
@@ -307,13 +307,13 @@ reconcile() {
   build_depgraph_for_detector
 
   if [ "$DEPGRAPH_MISSING" -eq 1 ]; then
-    log_info "dep-graph not found at $DEPGRAPH_PATH — stale-graph reconciliation skipped (passthrough)"
+    _log_info "dep-graph not found at $DEPGRAPH_PATH — stale-graph reconciliation skipped (passthrough)"
     printf '%s\n' "$AFFECTED_SET_JSON"
     return 0
   fi
 
   if [ -z "$CONFIG" ] || [ ! -f "$CONFIG" ]; then
-    log_info "no project-config — stale-graph reconciliation skipped (passthrough)"
+    _log_info "no project-config — stale-graph reconciliation skipped (passthrough)"
     printf '%s\n' "$AFFECTED_SET_JSON"
     return 0
   fi
