@@ -272,6 +272,86 @@ teardown() { common_teardown; }
 }
 
 # ---------------------------------------------------------------------------
+# paths-glob config: undeclared edge → escalation to ["*"]
+# ---------------------------------------------------------------------------
+
+@test "paths-glob config with undeclared edge escalates to full suite" {
+  command -v yq >/dev/null 2>&1 || skip "yq absent"
+  command -v jq >/dev/null 2>&1 || skip "jq absent"
+
+  # Config using paths[] list (no scalar path field).
+  cat > "$TEST_TMP/config-paths-glob.yaml" <<'YAML'
+stacks:
+  - name: frontend
+    language: typescript
+    paths:
+      - "app/web/**"
+    cross_refs: []
+  - name: backend
+    language: python
+    paths:
+      - "services/api/**"
+    cross_refs: []
+YAML
+
+  # Unsanctioned edge: frontend -> backend (no cross_refs).
+  cat > "$TEST_TMP/depgraph-paths-unsanctioned.json" <<'JSON'
+{
+  "edges": [
+    {"source": "app/web/src/client.ts", "target": "services/api/routes.py"}
+  ]
+}
+JSON
+
+  run --separate-stderr "$SCRIPTS_DIR/reconcile-stale-graph.sh" \
+    --config "$TEST_TMP/config-paths-glob.yaml" \
+    --affected-set '["frontend","backend"]' \
+    --detected-edges-file "$TEST_TMP/depgraph-paths-unsanctioned.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["*"]' ]]
+}
+
+# ---------------------------------------------------------------------------
+# paths-glob config: all edges declared → clean passthrough
+# ---------------------------------------------------------------------------
+
+@test "paths-glob config with all edges declared passes through unmodified" {
+  command -v yq >/dev/null 2>&1 || skip "yq absent"
+  command -v jq >/dev/null 2>&1 || skip "jq absent"
+
+  # Config using paths[] list with cross_refs that cover the edge.
+  cat > "$TEST_TMP/config-paths-glob-clean.yaml" <<'YAML'
+stacks:
+  - name: frontend
+    language: typescript
+    paths:
+      - "app/web/**"
+    cross_refs:
+      - backend
+  - name: backend
+    language: python
+    paths:
+      - "services/api/**"
+    cross_refs: []
+YAML
+
+  cat > "$TEST_TMP/depgraph-paths-sanctioned.json" <<'JSON'
+{
+  "edges": [
+    {"source": "app/web/src/client.ts", "target": "services/api/routes.py"}
+  ]
+}
+JSON
+
+  run --separate-stderr "$SCRIPTS_DIR/reconcile-stale-graph.sh" \
+    --config "$TEST_TMP/config-paths-glob-clean.yaml" \
+    --affected-set '["frontend"]' \
+    --detected-edges-file "$TEST_TMP/depgraph-paths-sanctioned.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["frontend"]' ]]
+}
+
+# ---------------------------------------------------------------------------
 # Tool-absent guard: when yq or jq is absent, script degrades to passthrough
 # ---------------------------------------------------------------------------
 
