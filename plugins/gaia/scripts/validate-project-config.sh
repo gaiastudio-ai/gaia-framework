@@ -40,6 +40,56 @@ prog="validate-project-config.sh"
 err()  { printf '%s: %s\n' "$prog" "$*" >&2; }
 fail() { printf 'FAIL: %s — %s\n' "${1:-unknown}" "${2:-violation}" >&2; }
 
+# ---------------------------------------------------------------------------
+# _post_validate_test_policy_refs — cross-property referential-integrity check
+#
+# Validates that every stack name in test_policy.triggers.<t>.include_stacks
+# and test_policy.triggers.<t>.exclude_stacks references a stack declared in
+# stacks[].name. Called on ALL engine success paths before exit 0.
+#
+# Args: $1 = path to the converted JSON file
+# Returns: 0 if valid or no test_policy.triggers present; 1 if violations found.
+# ---------------------------------------------------------------------------
+_post_validate_test_policy_refs() {
+  local json_file="$1"
+
+  # Guard: jq required for this cross-property check
+  if ! command -v jq >/dev/null 2>&1; then
+    err "WARNING: jq not available — skipping test_policy stack-name referential check"
+    return 0
+  fi
+
+  # No-op when test_policy.triggers is absent
+  if ! jq -e '.test_policy.triggers // empty' "$json_file" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local violations=0
+  local declared_stacks
+  declared_stacks="$(jq -r '[.stacks[]?.name // empty] | join(",")' "$json_file" 2>/dev/null)"
+
+  local trigger field count i stack_name
+  for trigger in pr push schedule; do
+    for field in include_stacks exclude_stacks; do
+      count="$(jq -r ".test_policy.triggers.${trigger}.${field} // [] | length" "$json_file" 2>/dev/null)"
+      [ "$count" = "0" ] && continue
+      i=0
+      while [ "$i" -lt "$count" ]; do
+        stack_name="$(jq -r ".test_policy.triggers.${trigger}.${field}[$i]" "$json_file")"
+        if ! printf '%s' ",$declared_stacks," | grep -qF ",$stack_name,"; then
+          fail "\$.test_policy.triggers.${trigger}.${field}[$i]" \
+            "stack '${stack_name}' is not declared in stacks[]; declared: ${declared_stacks//,/, }"
+          violations=$((violations + 1))
+        fi
+        i=$((i + 1))
+      done
+    done
+  done
+
+  [ "$violations" -gt 0 ] && return 1
+  return 0
+}
+
 if [ "$#" -lt 1 ]; then
   err "usage: $prog <project-config.yaml>"
   exit 2
@@ -91,6 +141,7 @@ fi
 # ----------------------------------------------------------------------------
 if command -v ajv >/dev/null 2>&1; then
   if ajv_out="$(ajv validate -s "$SCHEMA" -d "$TMP_JSON" 2>&1)"; then
+    _post_validate_test_policy_refs "$TMP_JSON" || exit 1
     printf 'PASS: %s\n' "$INPUT"
     exit 0
   else
@@ -137,6 +188,7 @@ for e in errors:
 sys.exit(1)
 PY
 )"; then
+    _post_validate_test_policy_refs "$TMP_JSON" || exit 1
     printf 'PASS: %s\n' "$INPUT"
     exit 0
   else
@@ -214,6 +266,8 @@ if [ "$violations" -gt 0 ]; then
   err "$violations violation(s) found"
   exit 1
 fi
+
+_post_validate_test_policy_refs "$TMP_JSON" || exit 1
 
 # Emit the DEGRADED marker so downstream consumers (CI, /gaia-config-validate
 # skill) can distinguish a full schema-engine PASS from a structural-only PASS.
