@@ -187,40 +187,25 @@ _extract_entry_block() {
 
 # ---- TC-BRN-75 — story→done invokes update-brain-index.sh to mark node closed
 
-@test "TC-BRN-75 — transition story→done invokes update-brain-index.sh to mark node closed" {
+@test "TC-BRN-75 — transition story→done marks reviewed-in edges on the story node" {
   [ -f "$TRANSITION" ]
   [ -f "$UPDATER" ]
 
-  # The hook resolves the writer via SCRIPT_DIR (derived from $0), which is
-  # not injectable. We verify the hook fired by checking the manifest mtime
-  # changed after the transition — a modification proves the writer ran.
   export REVIEW_GATE_PROOF_OF_EXECUTION=off
-
-  # Record manifest mtime before transition.
-  local mtime_before
-  if stat -f '%m' "$MANIFEST" >/dev/null 2>&1; then
-    mtime_before=$(stat -f '%m' "$MANIFEST")
-  else
-    mtime_before=$(stat -c '%Y' "$MANIFEST")
-  fi
-
-  # Give it a moment so mtime can differ (APFS has 1s granularity).
-  sleep 1
 
   # Run the transition to done.
   run bash "$TRANSITION" E99-S1 --to done
   [ "$status" -eq 0 ]
 
-  # Verify the manifest was modified (hook fired).
-  local mtime_after
-  if stat -f '%m' "$MANIFEST" >/dev/null 2>&1; then
-    mtime_after=$(stat -f '%m' "$MANIFEST")
-  else
-    mtime_after=$(stat -c '%Y' "$MANIFEST")
-  fi
+  # Content assertion: the manifest must now contain reviewed-in edges on the
+  # story node. The fixture story file has 6 PASSED review gates, so we expect
+  # reviewed-in edges (at least one) rather than relying on a flaky mtime proxy.
+  local entry_block
+  entry_block="$(_extract_entry_block "$MANIFEST" "E99-S1")"
+  [ -n "$entry_block" ]
 
-  # The hook should have written to the manifest.
-  [ "$mtime_after" -gt "$mtime_before" ]
+  # At least one reviewed-in edge must be present.
+  printf '%s\n' "$entry_block" | grep -q 'type: reviewed-in'
 }
 
 # ---- TC-BRN-76 — story→done links final reviews via reviewed-in edges

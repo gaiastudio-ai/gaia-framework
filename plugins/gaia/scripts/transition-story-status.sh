@@ -1541,6 +1541,78 @@ if [ "$RECONCILE_ONLY" != "1" ] \
   fi
 fi
 
+# Advisory manual-test gate. Fires AFTER the composite (six-gate) check
+# passes and ONLY when the story opts in via `manual_verification: true`
+# frontmatter. Reads the latest manual-test verdict from the review-gate
+# ledger. In advisory mode (default): a FAILED verdict emits a WARNING to
+# stderr WITHOUT changing the exit code. In gating mode (config:
+# review_gate.manual_test_mode = gating): a FAILED verdict blocks the
+# transition.
+if [ "$RECONCILE_ONLY" != "1" ] \
+   && [ "$CURRENT_STATUS" = "review" ] \
+   && [ "$NEW_STATUS" = "done" ]; then
+  _mt_flag="$(read_frontmatter_field "$STORY_FILE" manual_verification 2>/dev/null || true)"
+  if [ "$_mt_flag" = "true" ]; then
+    _mt_ledger="${REVIEW_GATE_LEDGER:-}"
+    if [ -z "$_mt_ledger" ]; then
+      if [ -d "${PROJECT_PATH:-.}/.gaia/state" ]; then
+        _mt_ledger="${PROJECT_PATH:-.}/.gaia/state/.review-gate-ledger"
+      else
+        _mt_ledger="${PROJECT_PATH:-.}/.review-gate-ledger"
+      fi
+    fi
+    if [ -f "$_mt_ledger" ]; then
+      # Read the latest manual-test verdict for this story (last match wins).
+      _mt_verdict=""
+      while IFS=$'\t' read -r _mt_sk _mt_g _mt_p _mt_v; do
+        if [ "$_mt_sk" = "$STORY_KEY" ] && [ "$_mt_g" = "manual-test" ]; then
+          _mt_verdict="$_mt_v"
+        fi
+      done < "$_mt_ledger"
+      if [ "$_mt_verdict" = "FAILED" ]; then
+        # Determine mode: advisory (default) or gating.
+        # Read directly from project-config.yaml using inline awk (same
+        # idiom as read_frontmatter_field). Avoids a resolve-config.sh
+        # fork which requires a fully populated config.
+        _mt_mode="advisory"
+        _mt_cfg="${GAIA_SHARED_CONFIG:-}"
+        if [ -z "$_mt_cfg" ]; then
+          for _mt_cfg_candidate in \
+            "${PROJECT_PATH:-.}/.gaia/config/project-config.yaml" \
+            "${PROJECT_PATH:-.}/config/project-config.yaml"; do
+            if [ -f "$_mt_cfg_candidate" ]; then
+              _mt_cfg="$_mt_cfg_candidate"
+              break
+            fi
+          done
+        fi
+        if [ -n "$_mt_cfg" ] && [ -f "$_mt_cfg" ]; then
+          _mt_mode_val="$(awk '
+            /^review_gate:/ { in_section=1; next }
+            in_section && /^[^ ]/ { exit }
+            in_section && /^[[:space:]]+manual_test_mode:/ {
+              v=$0; sub(/^[[:space:]]+manual_test_mode:[[:space:]]*/, "", v)
+              gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", v)
+              print v; exit
+            }
+          ' "$_mt_cfg")"
+          if [ "$_mt_mode_val" = "gating" ]; then
+            _mt_mode="gating"
+          fi
+        fi
+        if [ "$_mt_mode" = "gating" ]; then
+          log "ERROR: review -> done refused — manual-test gate is FAILED (gating mode)."
+          log "       Set review_gate.manual_test_mode to advisory in project-config.yaml"
+          log "       to downgrade to a non-blocking WARNING."
+          exit 8
+        else
+          log "WARNING: advisory manual-test gate is FAILED for $STORY_KEY. Transition proceeds (advisory mode)."
+        fi
+      fi
+    fi
+  fi
+fi
+
 # Snapshot every file we may touch so we can roll back on partial failure.
 SNAP_STORY="$(snapshot_for_rollback "$STORY_FILE")"
 SNAP_YAML=""

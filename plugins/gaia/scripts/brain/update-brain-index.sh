@@ -335,11 +335,9 @@ _ubi_add_edge() {
       }
     }
   ' "$manifest" > "$tmp"
-  local awk_rc=$?
-  if [ "$awk_rc" -ne 0 ]; then
-    rm -f "$tmp" 2>/dev/null || true
-    return 1
-  fi
+  # Under set -e the awk redirect failure exits before reaching this point,
+  # and _ubi_die exits (not returns). The prior awk_rc error-handling block
+  # was unreachable — removed for clarity.
 
   # Edge-mutation source_type check: edge appends are safe on ANY source_type
   # because they modify ONLY the edges list (per the EDGE MUTATION INVARIANT).
@@ -487,12 +485,12 @@ _ubi_batch_edges() {
         etargets[n] = parts[2]
       }
       close(edgefile)
-      in_target = 0; edge_injected = 0
+      in_target = 0; edge_injected = 0; found = 0
     }
 
     /^- key:/ {
       k = $0; sub(/^- key:[[:space:]]*"?/, "", k); sub(/"?[[:space:]]*$/, "", k)
-      if (k == tkey) { in_target = 1 }
+      if (k == tkey) { in_target = 1; found = 1 }
       else { in_target = 0 }
     }
 
@@ -515,6 +513,17 @@ _ubi_batch_edges() {
     }
 
     { print }
+
+    END {
+      if (!found) {
+        printf "update-brain-index.sh: target key not found: %s\n", tkey > "/dev/stderr"
+        exit 1
+      }
+      if (found && !edge_injected) {
+        printf "update-brain-index.sh: edge injection failed for key %s (no trust: or edges: [] anchor)\n", tkey > "/dev/stderr"
+        exit 1
+      }
+    }
   ' "$manifest" > "$tmp"
 
   rm -f "$edges_data" 2>/dev/null || true
@@ -556,9 +565,36 @@ main() {
   done
 
   # Resolve manifest path — default to the canonical brain-index.yaml location.
+  # When running as CLI (not sourced), honor GAIA_KNOWLEDGE_PATH via the shared
+  # paths helper so this script behaves consistently with sibling brain scripts.
+  # No silent $PWD fallback in CLI mode — require an explicit source.
   if [ -z "$manifest" ]; then
-    local _root="${CLAUDE_PROJECT_ROOT:-$PWD}"
-    manifest="$_root/.gaia/knowledge/brain-index.yaml"
+    if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+      # CLI mode: check for an explicit GAIA_KNOWLEDGE_PATH or
+      # CLAUDE_PROJECT_ROOT before falling back. Source gaia-paths.sh to
+      # resolve GAIA_KNOWLEDGE_DIR from the env-var override (if exported).
+      if [ -n "${GAIA_KNOWLEDGE_PATH:-}" ] || [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+        local _self_dir
+        _self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        local _paths_helper="$_self_dir/../lib/gaia-paths.sh"
+        if [ -r "$_paths_helper" ]; then
+          # shellcheck source=../lib/gaia-paths.sh
+          . "$_paths_helper" || true
+        fi
+        if [ -n "${GAIA_KNOWLEDGE_DIR:-}" ]; then
+          manifest="$GAIA_KNOWLEDGE_DIR/brain-index.yaml"
+        else
+          manifest="${CLAUDE_PROJECT_ROOT:-.}/.gaia/knowledge/brain-index.yaml"
+        fi
+      else
+        _ubi_die "no --manifest specified and neither GAIA_KNOWLEDGE_PATH nor CLAUDE_PROJECT_ROOT is set" 1
+      fi
+    else
+      # Sourced mode: callers always set CLAUDE_PROJECT_ROOT or pass --manifest.
+      # Fall back to $PWD for backward compatibility with direct-source callers.
+      local _root="${CLAUDE_PROJECT_ROOT:-$PWD}"
+      manifest="$_root/.gaia/knowledge/brain-index.yaml"
+    fi
   fi
 
   case "$mode" in

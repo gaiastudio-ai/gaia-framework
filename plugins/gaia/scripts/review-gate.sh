@@ -101,7 +101,7 @@ CANONICAL_VERDICTS=("UNVERIFIED" "PASSED" "FAILED")
 # pattern without overwriting the six canonical Review Gate table rows
 # (which belong to the six downstream review commands). Uses the same
 # ledger-keyed path as test-automate-plan.
-PLAN_ID_GATES=("test-automate-plan" "story-validation")
+PLAN_ID_GATES=("test-automate-plan" "story-validation" "manual-test")
 
 # plan_id canonical regex: alphanumerics plus ._:+- (security guard).
 # Permissive for UUIDs and timestamp-nonce fallbacks; strict against shell injection.
@@ -1287,7 +1287,8 @@ main() {
             if [ -x "$_brain_update_sh" ]; then
               _brain_slug="$(printf '%s' "$gate_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
               _brain_edge_target="${_brain_slug}-${story_key}"
-              "$_brain_update_sh" --add-edge \
+              _brain_manifest="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$PWD}}/.gaia/knowledge/brain-index.yaml"
+              "$_brain_update_sh" --manifest "$_brain_manifest" --add-edge \
                 --target-key "$story_key" \
                 --edge-type "reviewed-in" \
                 --edge-target "$_brain_edge_target" >/dev/null 2>&1 || true

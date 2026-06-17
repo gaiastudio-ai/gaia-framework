@@ -11,6 +11,22 @@ This project uses the **GAIA** (Generative Agile Intelligence Architecture) fram
   - `.gaia/state/` — mutable runtime state (sprint status, action items, review-gate ledger, etc.)
   - `.gaia/memory/` — agent sidecars, checkpoints, lifecycle events
   - `.gaia/custom/` — user-extension seam
+  - `.gaia/knowledge/` — the Brain knowledge layer (see below)
+
+## GAIA Brain
+
+The Brain is a read-only knowledge layer that indexes your project's artifacts into a queryable governance graph. It lives at `.gaia/knowledge/` as a pair of files: `brain-index.yaml` (the machine-readable manifest) and `brain-index.md` (a human-browsable Map of Content). The Brain does not copy artifact bytes — each index entry points at the artifact's canonical path in place.
+
+Key gestures:
+
+- **`/gaia-feed`** — ingest an external document (URL, local file, or pasted text) into the knowledge store with provenance tracking. The slug and tags are auto-inferred.
+- **`/gaia-brain-query`** — query a story's governance envelope: the requirements and decisions above it (UP), the tests and reviews below it (DOWN), and the design companions alongside it (LATERAL) — all in one read-only call.
+- **`/gaia-brain-reindex`** — rebuild the index from source. Runs automatically at sprint-close and on demand.
+- **`/gaia-brain-health`** — list every indexed artifact with no governance link (a passive quality signal, not an error).
+- **`/gaia-unfeed`** — remove an ingested document. The inverse of `/gaia-feed`.
+- **`/gaia-knowledge-refresh`** — re-fetch ingested sources and update only what changed.
+
+**Browse in Obsidian:** open `.gaia/knowledge/` as an Obsidian vault to navigate the Map of Content visually. The vault's `.obsidian/` directory (workspace layout, graph settings, installed plugins) is per-user chrome and is gitignored by `/gaia-init` so it never creates commit churn. The brain content itself (`brain-index.yaml`, `brain-index.md`, ingested entries) is shared and tracked in version control.
 
 ## How to Start
 

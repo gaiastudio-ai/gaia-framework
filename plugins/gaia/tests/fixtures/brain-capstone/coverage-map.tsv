@@ -33,7 +33,7 @@ TC-BRN-71	brain-retro-lesson.bats	malformed lessons are rejected and manifest is
 TC-BRN-72	brain-retro-lesson.bats	gaia-brain-query --category strategy returns only strategy lessons
 TC-BRN-73	brain-update-index.bats	update-brain-index.sh writes only lesson entries; project-artifact rows are byte-identical
 TC-BRN-74	brain-update-index.bats	edge mutation does not alter the source_type of existing entries
-TC-BRN-75	brain-freshness-hooks.bats	transition story→done invokes update-brain-index.sh to mark node closed
+TC-BRN-75	brain-freshness-hooks.bats	transition story→done marks reviewed-in edges on the story node
 TC-BRN-76	brain-freshness-hooks.bats	story→done links final reviews via reviewed-in edges
 TC-BRN-77	brain-freshness-hooks.bats	review-gate.sh review-write appends a reviewed-in edge
 TC-BRN-78	brain-freshness-hooks.bats	repeated lifecycle events produce no duplicate edges
@@ -48,3 +48,24 @@ TC-BRN-86	brain-unfeed.bats	MOC is re-rendered after successful removal and entr
 TC-BRN-87	brain-unfeed.bats	removal succeeds with warning when render-moc.sh is unavailable
 TC-BRN-88	brain-unfeed.bats	unfeed with dual entries removes ingested and preserves project-artifact
 TC-BRN-89	brain-unfeed.bats	awk fallback removes only ingested entry when dual entries share a key
+TC-BRN-90	brain-retro-lesson.bats	backslash in synopsis does not inject a sibling YAML key
+TC-BRN-91	brain-update-index.bats	batch-edges on a non-existent target key exits non-zero
+TC-BRN-92	brain-update-index.bats	batch-edges on entry lacking trust line still injects edges
+TC-BRN-93	brain-update-index.bats	incremental second-emit appends without clobbering first
+TC-BRN-94	brain-update-index.bats	duplicate-key collision replaces the existing lesson
+TC-BRN-95	brain-update-index.bats	category empty-result from query returns zero entries
+TC-BRN-96	brain-update-index.bats	awk tags-parse works when python3 is absent
+TC-BRN-97	brain-update-index.bats	sequential writes both land (sequential-execution contract)
+TC-BRN-98	brain-update-index.bats	replace-existing-lesson-by-key preserves other entries
+TC-BRN-99	brain-update-index.bats	edge-append to an already-edged entry appends without duplication
+TC-BRN-100	brain-update-index.bats	stdin mode appends multiple lessons in one call
+TC-BRN-101	brain-update-index.bats	partition guard rejects non-lesson source_type
+TC-BRN-102	brain-update-index.bats	UNVERIFIED verdict produces zero edges
+TC-BRN-103	brain-update-index.bats	writer-absent best-effort no-op from emit-brain-lessons
+TC-BRN-104	brain-update-index.bats	add-edge on non-existent story node exits non-zero
+TC-BRN-105	brain-update-index.bats	empty slug is rejected by add-lesson
+TC-BRN-106	brain-update-index.bats	missing manifest for add-edge exits with error
+TC-BRN-107	brain-update-index.bats	lesson-type entry sharing slug with project-artifact is refused
+TC-BRN-108	brain-update-index.bats	update-brain-index.sh resolves manifest from GAIA_KNOWLEDGE_PATH env var
+TC-BRN-109	brain-update-index.bats	update-brain-index.sh hard-errors when no manifest and no env var
+TC-BRN-110	brain-update-index.bats	explicit --manifest still works alongside env var

@@ -202,7 +202,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "Review Gate configuration — required review types and gate ordering before a story transitions to done. Shared team config."
+    description: "Review Gate configuration — required review types and gate ordering before a story transitions to done. Shared team config. Nested keys: manual_test_mode (enum: advisory | gating, default advisory) — controls whether a FAILED manual-test verdict blocks the review-to-done transition (gating) or emits a non-blocking WARNING (advisory)."
 
   team_conventions:
     type: map
@@ -312,3 +312,9 @@ fields:
     required: false
     default: null
     description: "Device/OS matrix for mobile platforms. Sub-keys: ios (list of device identifiers), android (list of device identifiers). Full mobile semantics are available via /gaia-config-device-target."
+
+  visual_diff:
+    type: map
+    required: false
+    default: null
+    description: "Visual regression configuration for the browser surface pixel-diff. Sub-keys: threshold_percent (float, default 0.1 — percentage of pixels allowed to differ before a diff is considered FAILED; at-threshold passes); breakpoints (list of viewport widths, default [1440]); mask_regions (list of {x, y, w, h, label} rectangles excluded from comparison before diffing — use for dynamic content like clocks or ads)."

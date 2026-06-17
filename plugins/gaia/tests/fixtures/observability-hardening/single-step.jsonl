@@ -1,0 +1,1 @@
+{"timestamp":"2026-06-16T10:00:00.000Z","event_type":"step_boundary","workflow":"dev-story","pid":1100,"story_key":"SNG-S1","step":1,"data":{"step_name":"load-story","tokens_snapshot":{"input_tokens":1000,"output_tokens":500,"cache_creation_input_tokens":100,"cache_read_input_tokens":200}}}
