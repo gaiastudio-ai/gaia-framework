@@ -37,6 +37,43 @@ if [ -z "$PROJECT_PATH" ]; then
   PROJECT_PATH="$PWD"
 fi
 
+# ---- Persist the context-window snapshot for dev-step token telemetry -------
+# statusline.sh is the ONLY component the Claude Code substrate hands the
+# `.context_window.current_usage` object to (via hook stdin). The dev-step
+# observability layer needs that cumulative token snapshot at step boundaries,
+# but emit-step-boundary.sh has no access to the hook stdin. We bridge the two
+# by persisting the latest snapshot to a small reusable file that
+# emit-step-boundary.sh reads when no explicit --tokens payload is supplied.
+#
+# Privacy: we project the object through the SAME four-field numeric allowlist
+# the consumer enforces (input_tokens, output_tokens, cache_creation_input_tokens,
+# cache_read_input_tokens) and persist ONLY when every retained value is numeric.
+# Any non-numeric value or non-allowlisted key is dropped here too, so neither
+# arbitrary value text nor key-name text can ever reach the persisted file.
+# Best-effort: a null/absent current_usage or any jq failure leaves the prior
+# file untouched and never disrupts the statusline render.
+if command -v jq >/dev/null 2>&1; then
+  _CW_SNAPSHOT="$(printf '%s' "$INPUT" | jq -c '
+    .context_window.current_usage
+    | if type == "object" then
+        with_entries(select(.key as $k | ["input_tokens","output_tokens","cache_creation_input_tokens","cache_read_input_tokens"] | index($k)))
+        | if (length > 0) and ([.[] | type == "number"] | all) then . else empty end
+      else empty end
+  ' 2>/dev/null || printf '')"
+  if [ -n "$_CW_SNAPSHOT" ]; then
+    _CW_DIR="$PROJECT_PATH/.gaia/memory"
+    if mkdir -p "$_CW_DIR" 2>/dev/null; then
+      # Atomic-ish write: tmpfile + mv so a concurrent reader never sees a
+      # half-written file.
+      _CW_TMP="$_CW_DIR/.context-window-snapshot.json.tmp.$$"
+      if printf '%s\n' "$_CW_SNAPSHOT" > "$_CW_TMP" 2>/dev/null; then
+        mv -f "$_CW_TMP" "$_CW_DIR/.context-window-snapshot.json" 2>/dev/null \
+          || rm -f "$_CW_TMP" 2>/dev/null || true
+      fi
+    fi
+  fi
+fi
+
 # Locate this script's directory so we can source the lib helpers when the
 # runtime is run in-tree (tests). When installed under ~/.claude, the lib
 # helpers live alongside under ./lib/.

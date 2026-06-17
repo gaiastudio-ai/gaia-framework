@@ -67,6 +67,24 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# Auto-capture the persisted context-window snapshot when no explicit --tokens
+# payload was supplied. statusline.sh is the only component the substrate hands
+# `.context_window.current_usage` to, and it persists the latest cumulative
+# snapshot to ${MEMORY_PATH}/.context-window-snapshot.json. Reading it here is
+# what connects the producer (statusline) to the consumer (this event), so real
+# dev-story runs land per-step token data instead of timing only. The snapshot
+# is re-validated by the same privacy gate below, so a stale/garbage file can
+# never smuggle anything in — worst case it is dropped (graceful-skip). An
+# explicit --tokens always wins (this branch only runs when it was absent).
+# Best-effort: an absent or unreadable file leaves TOKENS_JSON empty and the
+# event lands with timing data only.
+if [ -z "$TOKENS_JSON" ]; then
+  SNAPSHOT_FILE="${MEMORY_PATH:-.gaia/memory}/.context-window-snapshot.json"
+  if [ -r "$SNAPSHOT_FILE" ]; then
+    TOKENS_JSON="$(cat "$SNAPSHOT_FILE" 2>/dev/null || printf '')"
+  fi
+fi
+
 # Resolve lifecycle-event.sh relative to this script's location
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LIFECYCLE_EVENT="${SCRIPT_DIR}/../../../scripts/lifecycle-event.sh"
