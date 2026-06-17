@@ -103,7 +103,11 @@
         <p>
           Six scripts run in sequence during each CI invocation. Each stage
           can escalate the affected set to <code>["*"]</code> (all stacks),
-          but none can subtract from it.
+          but none can subtract from it. The <code>selective-test-driver.sh</code>
+          script chains stages 1 through 5 into a single invocation that emits
+          the final GitHub Actions matrix JSON on stdout. The
+          <code>selective-tests.yml</code> workflow calls the driver in a
+          <code>plan</code> job and fans out per-stack test jobs via the matrix.
         </p>
         <table>
           <thead>
@@ -138,21 +142,21 @@
                 under-testing.</td>
             </tr>
             <tr>
-              <td>4. Generate</td>
+              <td>4. Policy</td>
+              <td><code>apply-test-policy.sh</code></td>
+              <td>Merges the <code>always_run</code> set additively and applies
+                per-trigger scope narrowing from <code>test_policy.triggers</code>.
+                The <code>--force-full-run</code> flag escalates to
+                <code>["*"]</code>.</td>
+            </tr>
+            <tr>
+              <td>5. Generate</td>
               <td><code>generate-pipeline.sh</code></td>
               <td>Converts the affected-set JSON into a GitHub Actions matrix:
                 <code>{"include":[{"stack":"x"}]}</code>. A wildcard
                 <code>["*"]</code> expands to every stack. An empty set
                 (<code>[]</code>, e.g. a docs-only change) produces no jobs
                 and exits cleanly.</td>
-            </tr>
-            <tr>
-              <td>5. Policy</td>
-              <td><code>apply-test-policy.sh</code></td>
-              <td>Merges the <code>always_run</code> set additively and applies
-                per-trigger scope narrowing from <code>test_policy.triggers</code>.
-                The <code>--force-full-run</code> flag escalates to
-                <code>["*"]</code>.</td>
             </tr>
             <tr>
               <td>6. Retry</td>

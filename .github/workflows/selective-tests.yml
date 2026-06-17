@@ -1,0 +1,72 @@
+name: selective-tests
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main, staging]
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.driver.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Determine trigger type
+        id: trigger
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "type=pr" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=push" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect changed files
+        id: changes
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" > changed-files.txt
+          else
+            git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" > changed-files.txt
+          fi
+          echo "files=changed-files.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Run selective-test-driver
+        id: driver
+        run: |
+          config_path=".gaia/config/project-config.yaml"
+          if [[ ! -f "$config_path" ]]; then
+            echo "[NOTICE] selective-tests: no project-config at ${config_path} — emitting empty matrix (reference workflow; configure .gaia/config/project-config.yaml in your project to enable)"
+            echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          matrix_json="$(plugins/gaia/scripts/selective-test-driver.sh \
+            --config "$config_path" \
+            --trigger "${{ steps.trigger.outputs.type }}" \
+            --files-from "${{ steps.changes.outputs.files }}")"
+          echo "matrix=${matrix_json}" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: test (${{ matrix.stack }})
+    needs: plan
+    if: needs.plan.outputs.matrix != '{"include":[]}' && needs.plan.outputs.matrix != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+
+      - name: Run stack tests with retry
+        run: |
+          plugins/gaia/scripts/run-with-retry.sh \
+            --test-id "${{ matrix.stack }}" \
+            --flaky-list-file .gaia/config/flaky-tests.txt \
+            -- plugins/gaia/scripts/run-stack-tests.sh \
+              --config .gaia/config/project-config.yaml \
+              "${{ matrix.stack }}"
