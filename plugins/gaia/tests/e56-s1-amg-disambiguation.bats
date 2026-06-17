@@ -56,7 +56,7 @@ clean_env() {
 
 # --- TC-AMG-1: GAIA YOLO active via direct flag -----------------------------
 
-@test "TC-AMG-1: GAIA_YOLO_FLAG=1 (direct flag) yields is_yolo exit 0" {
+@test "GAIA_YOLO_FLAG=1 (direct flag) yields is_yolo exit 0" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_FLAG=1 is_yolo"
   [ "$status" -eq 0 ]
@@ -64,7 +64,7 @@ clean_env() {
 
 # --- TC-AMG-2: GAIA YOLO active via inheritance -----------------------------
 
-@test "TC-AMG-2: GAIA_YOLO_MODE=1 (inheritance) yields is_yolo exit 0" {
+@test "GAIA_YOLO_MODE=1 (inheritance) yields is_yolo exit 0" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_MODE=1 is_yolo"
   [ "$status" -eq 0 ]
@@ -72,7 +72,7 @@ clean_env() {
 
 # --- TC-AMG-3: Non-canonical override falls through -------------------------
 
-@test "TC-AMG-3: GAIA_YOLO_OVERRIDE=disabled (non-canonical) yields is_yolo exit 1" {
+@test "GAIA_YOLO_OVERRIDE=disabled (non-canonical) yields is_yolo exit 1" {
   # Only the literal string "no" is recognized as opt-out (architecture
   # §10.30.4 Rule 2). Any other override value falls through to the default
   # exit-1 branch — i.e., interactive default since no activation flag set.
@@ -83,7 +83,7 @@ clean_env() {
 
 # --- TC-AMG-4: Clean env (interactive default) ------------------------------
 
-@test "TC-AMG-4: clean env (no YOLO vars set) yields is_yolo exit 1" {
+@test "clean env (no YOLO vars set) yields is_yolo exit 1" {
   clean_env
   run bash -c "source '$SCRIPT' && is_yolo"
   [ "$status" -eq 1 ]
@@ -91,7 +91,7 @@ clean_env() {
 
 # --- TC-AMG-5: Harness Auto Mode WITHOUT GAIA YOLO --------------------------
 
-@test "TC-AMG-5: harness-Auto-Mode-only session (no GAIA YOLO env) yields is_yolo exit 1" {
+@test "harness-Auto-Mode-only session (no GAIA YOLO env) yields is_yolo exit 1" {
   # Simulates a session where the Claude Code harness has Auto Mode active
   # (system-reminder injected) but the user has NOT activated GAIA YOLO.
   # Per the §10.32.5 disambiguation guard, the helper has no harness

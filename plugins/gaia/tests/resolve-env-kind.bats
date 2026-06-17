@@ -27,7 +27,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-EKD-1: legacy fixture, missing kind → resolves to deployable ----------
 
-@test "TC-EKD-1: missing kind: resolves to 'deployable' (NFR-080 silent default)" {
+@test "missing kind: resolves to 'deployable'" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -45,7 +45,7 @@ YAML
   [ "$output" = "deployable" ]
 }
 
-@test "TC-EKD-1: NO stderr WARNING on missing kind at read time" {
+@test "NO stderr WARNING on missing kind at read time" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -57,7 +57,7 @@ YAML
 
 # ---------- AC1: all three legal kinds resolve to themselves ----------
 
-@test "AC1: kind: deployable resolves verbatim" {
+@test "kind: deployable resolves verbatim" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -68,7 +68,7 @@ YAML
   [ "$output" = "deployable" ]
 }
 
-@test "AC1: kind: branch-only resolves verbatim" {
+@test "kind: branch-only resolves verbatim" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: marketplace
@@ -79,7 +79,7 @@ YAML
   [ "$output" = "branch-only" ]
 }
 
-@test "AC1: kind: distribution-only resolves verbatim" {
+@test "kind: distribution-only resolves verbatim" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: cdn
@@ -92,7 +92,7 @@ YAML
 
 # ---------- AC6 / TC-EKD-6: closed-enum rejects unknown values ----------
 
-@test "TC-EKD-6: unknown kind value 'hybrid' is rejected with non-zero exit" {
+@test "unknown kind value 'hybrid' is rejected with non-zero exit" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -108,7 +108,7 @@ YAML
   echo "$output" | grep -q 'distribution-only'
 }
 
-@test "TC-EKD-6: unknown value is NEVER silently coerced to deployable" {
+@test "unknown value is NEVER silently coerced to deployable" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -122,7 +122,7 @@ YAML
 
 # ---------- AC8 / TC-NFR-080-2: default propagation across consumers ----------
 
-@test "TC-NFR-080-2: every entry in a no-kind fixture resolves to deployable" {
+@test "every entry in a no-kind fixture resolves to deployable" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -168,7 +168,7 @@ YAML
 
 # ---------- AC1: JSON schema declares the closed 3-value enum ----------
 
-@test "AC1: schema declares environments[].kind as closed enum of exactly 3 values" {
+@test "schema declares environments.kind as closed enum of exactly 3 values" {
   # The schema uses oneOf to admit both the legacy map-of-entries shape and
   # the FR-520 array-of-entries shape. The enum lives on the array branch.
   local values

@@ -35,7 +35,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-1: valid sentinel passes ----------------
-@test "TC-VBR-1: valid sentinel JSON passes assert_agent_envelope" {
+@test "valid sentinel JSON passes assert_agent_envelope" {
   [ -f "$HELPER" ] || skip "helper not authored yet (Red phase)"
   source "$HELPER"
   run assert_agent_envelope "$FIXTURES_DIR/valid.json"
@@ -45,7 +45,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-2: missing sentinel HALTs ----------------
-@test "TC-VBR-2: missing sentinel file HALTs with canonical error" {
+@test "missing sentinel file HALTs with canonical error" {
   [ -f "$HELPER" ] || skip "helper not authored yet (Red phase)"
   source "$HELPER"
   local missing="$TEST_TMP/does-not-exist.json"
@@ -55,7 +55,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-3: malformed JSON HALTs ----------------
-@test "TC-VBR-3: malformed JSON HALTs with canonical error" {
+@test "malformed JSON HALTs with canonical error" {
   [ -f "$HELPER" ] || skip "helper not authored yet (Red phase)"
   source "$HELPER"
   run assert_agent_envelope "$FIXTURES_DIR/malformed.json"
@@ -64,7 +64,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-4: forged sentinel HALTs (NFR-064) ----------------
-@test "TC-VBR-4: forged sentinel (no persona_sig) HALTs — proves NFR-064 forgery resistance" {
+@test "forged sentinel (no persona_sig) HALTs — proves forgery resistance" {
   [ -f "$HELPER" ] || skip "helper not authored yet (Red phase)"
   source "$HELPER"
   run assert_agent_envelope "$FIXTURES_DIR/forged.json"
@@ -73,7 +73,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-1b: double-source idempotent ----------------
-@test "TC-VBR-1b: double-source returns 0 without redefining the function" {
+@test "double-source returns 0 without redefining the function" {
   [ -f "$HELPER" ] || skip "helper not authored yet (Red phase)"
   # Source once
   source "$HELPER"
@@ -90,7 +90,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-1c: Val-bridge migration contract documented in header ----------------
-@test "TC-VBR-1c: helper script header documents the Val-bridge migration context (AC7)" {
+@test "helper script header documents the Val-bridge migration context" {
   [ -f "$HELPER" ] || skip "helper not authored yet (Red phase)"
   # The header must document the sentinel-write context: the orchestrator
   # main-turn writer (write-val-envelope.sh) and why the writer was shifted.
@@ -107,7 +107,7 @@ teardown() {
 # ============================================================================
 
 # ---------------- TC-MVB-1: no flag continues to assert agent=val ----------------
-@test "TC-MVB-1: invocation without flag continues to assert agent=val (backward-compat)" {
+@test "invocation without flag continues to assert agent=val (backward-compat)" {
   source "$HELPER"
   local sentinel="$TEST_TMP/val-sentinel.json"
   printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-test"}' > "$sentinel"
@@ -116,7 +116,7 @@ teardown() {
 }
 
 # ---------------- TC-MVB-2a: --expected-agent pm rejects val sentinel ----------------
-@test "TC-MVB-2a: --expected-agent pm rejects a val sentinel (HALT)" {
+@test "expected-agent pm rejects a val sentinel (HALT)" {
   source "$HELPER"
   local sentinel="$TEST_TMP/val-sentinel.json"
   printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-test"}' > "$sentinel"
@@ -129,7 +129,7 @@ teardown() {
 }
 
 # ---------------- TC-MVB-2b: --expected-agent pm accepts pm sentinel ----------------
-@test "TC-MVB-2b: --expected-agent pm accepts a pm sentinel (return 0)" {
+@test "expected-agent pm accepts a pm sentinel (return 0)" {
   source "$HELPER"
   local sentinel="$TEST_TMP/pm-sentinel.json"
   printf '%s\n' '{"agent": "pm", "persona_sig": "pm-test"}' > "$sentinel"
@@ -138,7 +138,7 @@ teardown() {
 }
 
 # ---------------- TC-MVB-3: persona_sig presence check agent-agnostic ----------------
-@test "TC-MVB-3: empty persona_sig HALTs regardless of agent id" {
+@test "empty persona_sig HALTs regardless of agent id" {
   source "$HELPER"
   local sentinel="$TEST_TMP/pm-no-persona.json"
   printf '%s\n' '{"agent": "pm", "persona_sig": ""}' > "$sentinel"
@@ -148,7 +148,7 @@ teardown() {
 }
 
 # ---------------- TC-MVB-4: unknown flag HALTs ----------------
-@test "TC-MVB-4: unknown flag HALTs" {
+@test "unknown flag HALTs" {
   source "$HELPER"
   local sentinel="$TEST_TMP/val-sentinel.json"
   printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-test"}' > "$sentinel"
@@ -158,7 +158,7 @@ teardown() {
 }
 
 # ---------------- TC-MVB-5: --expected-agent=val inline form ----------------
-@test "TC-MVB-5: --expected-agent=val inline form is supported" {
+@test "expected-agent=val inline form is supported" {
   source "$HELPER"
   local sentinel="$TEST_TMP/val-sentinel.json"
   printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-test"}' > "$sentinel"
@@ -167,7 +167,7 @@ teardown() {
 }
 
 # ---------------- TC-MVB-6: HALT substring constancy across failure modes ----------------
-@test "TC-MVB-6: canonical HALT substring preserved across all 4 failure modes" {
+@test "canonical HALT substring preserved across all 4 failure modes" {
   source "$HELPER"
   local missing="$TEST_TMP/does-not-exist.json"
   run assert_agent_envelope "$missing" --expected-agent pm
@@ -194,7 +194,7 @@ teardown() {
 }
 
 # ---------------- TC-MVB-7: header references --expected-agent ----------------
-@test "TC-MVB-7: helper header documents --expected-agent flag" {
+@test "helper header documents --expected-agent flag" {
   [ "$(grep -c 'expected-agent' "$HELPER")" -ge 3 ]
 }
 
@@ -206,7 +206,7 @@ teardown() {
 # ============================================================================
 
 # TC-OSV-3: asserter passes when sentinel carries original_status (optional).
-@test "TC-OSV-3: asserter passes with original_status present (exit 0)" {
+@test "asserter passes with original_status present (exit 0)" {
   source "$HELPER"
   local sentinel="$TEST_TMP/osv3-sentinel.json"
   printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-osv3", "original_status": "WARNING"}' > "$sentinel"
@@ -215,7 +215,7 @@ teardown() {
 }
 
 # TC-OSV-4: asserter passes when sentinel lacks original_status (back-compat).
-@test "TC-OSV-4: asserter passes without original_status (exit 0, back-compat)" {
+@test "asserter passes without original_status (exit 0, back-compat)" {
   source "$HELPER"
   local sentinel="$TEST_TMP/osv4-sentinel.json"
   printf '%s\n' '{"agent": "val", "persona_sig": "val-dev-osv4"}' > "$sentinel"
@@ -226,7 +226,7 @@ teardown() {
 # TC-OSV-5 (assert half): NFR-95 — original_status is NOT required. A sentinel
 # missing it asserts identically to one carrying it; both exit 0. Pins the
 # invariant against a future strict-required-set regression.
-@test "TC-OSV-5a: NFR-95 — with and without original_status both assert exit 0" {
+@test "with and without original_status both assert exit 0" {
   source "$HELPER"
   local with="$TEST_TMP/osv5-with.json"
   local without="$TEST_TMP/osv5-without.json"
@@ -240,14 +240,14 @@ teardown() {
 
 # TC-OSV-6: helper header documents original_status as an OPTIONAL field
 # so the additive contract is locked against future regression.
-@test "TC-OSV-6: helper header documents original_status as optional (non-required)" {
+@test "helper header documents original_status as optional (non-required)" {
   grep -q 'original_status' "$HELPER"
   # The header must state the asserter is agnostic to the field's presence.
   grep -q 'agnostic to its presence' "$HELPER"
 }
 
 # ---------------- TC-MVB-8: validator.md + ADR-104 shard cross-refs ----------------
-@test "TC-MVB-8: validator.md and ADR-104 shard reference expected-agent generalization" {
+@test "validator.md and shard reference expected-agent generalization" {
   # validator.md cross-reference required.
   local validator_md="$BATS_TEST_DIRNAME/../agents/validator.md"
   [ -f "$validator_md" ]

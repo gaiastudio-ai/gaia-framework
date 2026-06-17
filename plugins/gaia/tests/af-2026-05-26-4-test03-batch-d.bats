@@ -36,24 +36,24 @@ _artifact_default_probe() {
   fi
 }
 
-@test "AF-26-4 F-1: resolve-config.sh uses the inverted idiom (docs only when legacy && !.gaia)" {
+@test "resolve-config.sh uses the inverted idiom (docs only when legacy && !.gaia)" {
   run grep -F 'docs/${subdir}" ] && [ ! -d "${v_project_root}/.gaia" ]' "$PLUGIN_ROOT/scripts/resolve-config.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-26-4 F-1: greenfield (.gaia/config only, no artifacts subdir) → .gaia/artifacts" {
+@test "greenfield (.gaia/config only, no artifacts subdir) → .gaia/artifacts" {
   local r="$BATS_TEST_TMPDIR/gf"; mkdir -p "$r/.gaia/config"
   run _artifact_default_probe "$r" implementation-artifacts
   [ "$output" = "$r/.gaia/artifacts/implementation-artifacts" ]
 }
 
-@test "AF-26-4 F-1: legacy (docs/ exists, no .gaia/) → docs/ (back-compat)" {
+@test "legacy (docs/ exists, no .gaia/) → docs/ (back-compat)" {
   local r="$BATS_TEST_TMPDIR/lg"; mkdir -p "$r/docs/implementation-artifacts"
   run _artifact_default_probe "$r" implementation-artifacts
   [ "$output" = "$r/docs/implementation-artifacts" ]
 }
 
-@test "AF-26-4 F-1: mixed (docs/ + stray .gaia/) → .gaia/ (no mis-route off populated docs/)" {
+@test "mixed (docs/ + stray .gaia/) → .gaia/ (no mis-route off populated docs/)" {
   local r="$BATS_TEST_TMPDIR/mix"; mkdir -p "$r/docs/implementation-artifacts" "$r/.gaia/memory"
   run _artifact_default_probe "$r" implementation-artifacts
   [ "$output" = "$r/.gaia/artifacts/implementation-artifacts" ]
@@ -61,14 +61,14 @@ _artifact_default_probe() {
 
 # --- F-17: TEST_PLAN strategy/ fallback ---
 
-@test "AF-26-4 F-17: create-epics finalize TEST_PLAN chain includes the strategy/ subdir" {
+@test "create-epics finalize TEST_PLAN chain includes the strategy/ subdir" {
   # finalize.sh now delegates to the shared resolver; the strategy/ rung lives there.
   run grep -F 'strategy/test-plan.md' \
     "$PLUGIN_ROOT/scripts/lib/resolve-artifact-path.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-26-4 F-17: flat path is still tried before strategy/ (ADR-072 order)" {
+@test "flat path is still tried before strategy/" {
   # AF-2026-05-27-8 / Test06 F-008: create-epics finalize.sh no longer carries an
   # inline TEST_PLAN precedence list — it delegates to the shared
   # scripts/lib/resolve-artifact-path.sh. The ADR-072 flat-before-strategy order
@@ -87,24 +87,24 @@ _artifact_default_probe() {
 
 # --- F-18 / F-19 / F-20: infra-design SV checks ---
 
-@test "AF-26-4 F-18: SV-08 networking regex includes firewall/loopback/localhost" {
+@test "networking regex includes firewall/loopback/localhost" {
   local f="$PLUGIN_ROOT/skills/gaia-infra-design/scripts/finalize.sh"
   grep -qF 'firewall' "$f"
   grep -qF 'loopback' "$f"
   grep -qF 'localhost' "$f"
 }
 
-@test "AF-26-4 F-19: SV-09 accepts Infrastructure as Code heading" {
+@test "accepts Infrastructure as Code heading" {
   run grep -F '(IaC|Infrastructure as Code)' "$PLUGIN_ROOT/skills/gaia-infra-design/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-26-4 F-19: '## Infrastructure as Code' matches the heading_present anchor" {
+@test "'## Infrastructure as Code' matches the heading_present anchor" {
   run grep -Eiq "^##[[:space:]]+(IaC|Infrastructure as Code)([[:space:]]|\$|[[:punct:]])" <(echo "## Infrastructure as Code")
   [ "$status" -eq 0 ]
 }
 
-@test "AF-26-4 F-20: SV-10 IaC tool regex includes Chef and Puppet" {
+@test "IaC tool regex includes Chef and Puppet" {
   local f="$PLUGIN_ROOT/skills/gaia-infra-design/scripts/finalize.sh"
   grep -qF 'Chef' "$f"
   grep -qF 'Puppet' "$f"
@@ -112,12 +112,12 @@ _artifact_default_probe() {
 
 # --- F-22: yq-less story-key extraction ---
 
-@test "AF-26-4 F-22: review-extract.sh has a yq-less key-extraction fallback" {
+@test "review-extract.sh has a yq-less key-extraction fallback" {
   run grep -F "grep -oE 'E[0-9]+-S[0-9]+'" "$PLUGIN_ROOT/skills/gaia-retro/scripts/review-extract.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-26-4 F-22: yq-less extraction pulls keys from a sprint-status.yaml shape" {
+@test "yq-less extraction pulls keys from a sprint-status.yaml shape" {
   local yaml="$BATS_TEST_TMPDIR/sprint-status.yaml"
   cat > "$yaml" <<'YAML'
 sprint_id: "sprint-1"

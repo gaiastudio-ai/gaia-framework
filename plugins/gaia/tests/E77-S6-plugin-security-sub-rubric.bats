@@ -39,17 +39,17 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC1 — Sub-rubric file exists and is loaded
 # ---------------------------------------------------------------------------
-@test "AC1: plugin-security sub-rubric file exists at the canonical location" {
+@test "plugin-security sub-rubric file exists at the canonical location" {
   [ -f "$SUB_RUBRIC" ] \
     || { echo "AC1 FAIL: plugin-security sub-rubric not found at $SUB_RUBRIC" >&2; return 1; }
 }
 
-@test "AC1: plugin-security sub-rubric is well-formed JSON" {
+@test "plugin-security sub-rubric is well-formed JSON" {
   jq empty "$SUB_RUBRIC" \
     || { echo "AC1 FAIL: plugin-security sub-rubric is not well-formed JSON" >&2; return 1; }
 }
 
-@test "AC1: plugin-security rules INCLUDED for project_kind=claude-code-plugin" {
+@test "plugin-security rules INCLUDED for project_kind=claude-code-plugin" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: claude-code-plugin
 EOF
@@ -62,7 +62,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC2 — Advisory when shellcheck absent
 # ---------------------------------------------------------------------------
-@test "AC2: advisory text emitted when shellcheck adapter absent and .sh files present" {
+@test "advisory text emitted when shellcheck adapter absent and .sh files present" {
   cat >"$TMP_CONFIG" <<'EOF'
 {}
 EOF
@@ -76,7 +76,7 @@ EOF
     || { echo "AC2 FAIL: expected advisory text, got: $output" >&2; return 1; }
 }
 
-@test "AC2: advisory NOT emitted when no .sh files present (edge case)" {
+@test "advisory NOT emitted when no .sh files present (edge case)" {
   cat >"$TMP_CONFIG" <<'EOF'
 {}
 EOF
@@ -93,7 +93,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC3 — Delegate when shellcheck adapter present
 # ---------------------------------------------------------------------------
-@test "AC3: advisory NOT emitted when shellcheck adapter declared" {
+@test "advisory NOT emitted when shellcheck adapter declared" {
   cat >"$TMP_CONFIG" <<'EOF'
 tool_adapters:
   shellcheck:
@@ -112,7 +112,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC4 — Drift check emits CRITICAL on undeclared tool usage
 # ---------------------------------------------------------------------------
-@test "AC4: CRITICAL finding when SKILL.md declares [Read] but invokes Bash" {
+@test "CRITICAL finding when SKILL.md declares [Read] but invokes Bash" {
   local skill_dir="$BATS_TEST_TMPDIR/skill-drift"
   mkdir -p "$skill_dir"
   cat >"$skill_dir/SKILL.md" <<'EOF'
@@ -143,7 +143,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC5 — No false positives when declarations match usage
 # ---------------------------------------------------------------------------
-@test "AC5: zero findings when SKILL.md declares [Read, Bash, Write] and uses all three" {
+@test "zero findings when SKILL.md declares [Read, Bash, Write] and uses all three" {
   local skill_dir="$BATS_TEST_TMPDIR/skill-clean"
   mkdir -p "$skill_dir"
   cat >"$skill_dir/SKILL.md" <<'EOF'
@@ -167,14 +167,14 @@ EOF
 # ---------------------------------------------------------------------------
 # AC6 — `when:` predicate gates activation
 # ---------------------------------------------------------------------------
-@test "AC6: plugin-security carries when: {project_kind: claude-code-plugin}" {
+@test "plugin-security carries when: {project_kind: claude-code-plugin}" {
   local kind
   kind=$(jq -r '.when.project_kind // empty' "$SUB_RUBRIC")
   [ "$kind" = "claude-code-plugin" ] \
     || { echo "AC6 FAIL: expected when.project_kind=claude-code-plugin, got=$kind" >&2; return 1; }
 }
 
-@test "AC6: plugin-security rules EXCLUDED for project_kind=web-app" {
+@test "plugin-security rules EXCLUDED for project_kind=web-app" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: web-app
 EOF
@@ -184,7 +184,7 @@ EOF
     || { echo "AC6 FAIL: expected plugin-security rules EXCLUDED for non-plugin project" >&2; return 1; }
 }
 
-@test "AC6: base security rules survive intact when plugin-security is excluded" {
+@test "base security rules survive intact when plugin-security is excluded" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: web-app
 EOF
@@ -197,14 +197,14 @@ EOF
 # ---------------------------------------------------------------------------
 # AC7 — Probe-driven adapter availability (not hardcoded path)
 # ---------------------------------------------------------------------------
-@test "AC7: rubric declares requires_adapter: shellcheck (probe-driven)" {
+@test "rubric declares requires_adapter: shellcheck (probe-driven)" {
   local req
   req=$(jq -r '.metadata.requires_adapter // empty' "$SUB_RUBRIC")
   [ "$req" = "shellcheck" ] \
     || { echo "AC7 FAIL: expected metadata.requires_adapter=shellcheck, got=$req" >&2; return 1; }
 }
 
-@test "AC7: probe returns 'declared' state for declared shellcheck entry" {
+@test "probe returns 'declared' state for declared shellcheck entry" {
   cat >"$TMP_CONFIG" <<'EOF'
 tool_adapters:
   shellcheck:
@@ -216,7 +216,7 @@ EOF
     || { echo "AC7 FAIL: expected probe_state=declared, got: $out" >&2; return 1; }
 }
 
-@test "AC7: advisory script consults the tri-state probe (not a hardcoded path)" {
+@test "advisory script consults the tri-state probe (not a hardcoded path)" {
   # Smoke: the advisory script must reference tool-availability-probe.sh OR
   # invoke probe-equivalent classification — never a hardcoded /usr/local/bin
   # check.
@@ -243,7 +243,7 @@ EOF
 # substring-grep contract for `parse_allowed_tools`, `is_declared`, and
 # `extract_body`.
 # ---------------------------------------------------------------------------
-@test "NFR-052 coverage: parse_allowed_tools and is_declared parse SKILL.md frontmatter" {
+@test "coverage: parse_allowed_tools and is_declared parse SKILL.md frontmatter" {
   # Reference parse_allowed_tools and is_declared by name (covered via AC4/AC5
   # functional path through allowed-tools-drift-check.sh).
   skill="$BATS_TEST_TMPDIR/parse_allowed_tools-skill.md"
@@ -260,7 +260,7 @@ EOF
   [ "$status" -eq 0 ] || [ "$status" -ne 0 ]
 }
 
-@test "NFR-052 coverage: extract_body reads the SKILL.md body section" {
+@test "coverage: extract_body reads the SKILL.md body section" {
   # Reference extract_body by name (covered via AC4 functional path which
   # calls extract_body to scan invocations beneath the frontmatter).
   skill="$BATS_TEST_TMPDIR/extract_body-skill.md"

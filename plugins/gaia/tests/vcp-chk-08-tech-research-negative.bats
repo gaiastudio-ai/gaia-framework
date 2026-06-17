@@ -26,27 +26,27 @@ teardown() { common_teardown; }
 # VCP-CHK-08 — Negative: "At least 2 alternatives compared" missing.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-08: finalize.sh exits non-zero when only 1 alternative present" {
+@test "finalize.sh exits non-zero when only 1 alternative present" {
   export TECH_RESEARCH_ARTIFACT="$FIXTURES/tech-research-missing-alternatives.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-08: finalize.sh names the alternatives item in the failure output" {
+@test "finalize.sh names the alternatives item in the failure output" {
   export TECH_RESEARCH_ARTIFACT="$FIXTURES/tech-research-missing-alternatives.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"alternatives"* ]]
 }
 
-@test "VCP-CHK-08: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export TECH_RESEARCH_ARTIFACT="$FIXTURES/tech-research-missing-alternatives.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-08: finalize.sh guides user back to /gaia-tech-research" {
+@test "finalize.sh guides user back to /gaia-tech-research" {
   export TECH_RESEARCH_ARTIFACT="$FIXTURES/tech-research-missing-alternatives.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -75,7 +75,7 @@ teardown() { common_teardown; }
 # a missing file triggers the AC4 missing-artifact violation path.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when TECH_RESEARCH_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when TECH_RESEARCH_ARTIFACT points at a missing file" {
   export TECH_RESEARCH_ARTIFACT="$BATS_TMPDIR/does-not-exist-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]

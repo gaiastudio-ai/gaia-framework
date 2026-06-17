@@ -80,7 +80,7 @@ production_skills_for_class() {
 
 # ---- TC-WIRE-1..4: production-tree invocation presence ------------------
 
-@test "TC-WIRE-1: every heavy-procedural SKILL.md invokes detect-orchestration-mode.sh" {
+@test "every heavy-procedural SKILL.md invokes detect-orchestration-mode.sh" {
   files="$(production_skills_for_class heavy-procedural)"
   [ -n "$files" ]
   missing=""
@@ -92,7 +92,7 @@ production_skills_for_class() {
   [ -z "$missing" ] || { printf 'missing detect-orchestration-mode.sh:\n%b' "$missing" >&2; false; }
 }
 
-@test "TC-WIRE-2: every heavy-procedural SKILL.md invokes orchestration-warning.sh" {
+@test "every heavy-procedural SKILL.md invokes orchestration-warning.sh" {
   files="$(production_skills_for_class heavy-procedural)"
   [ -n "$files" ]
   missing=""
@@ -104,7 +104,7 @@ production_skills_for_class() {
   [ -z "$missing" ] || { printf 'missing orchestration-warning.sh:\n%b' "$missing" >&2; false; }
 }
 
-@test "TC-WIRE-3: every conversational SKILL.md invokes detect-orchestration-mode.sh" {
+@test "every conversational SKILL.md invokes detect-orchestration-mode.sh" {
   files="$(production_skills_for_class conversational)"
   [ -n "$files" ]
   missing=""
@@ -116,7 +116,7 @@ production_skills_for_class() {
   [ -z "$missing" ] || { printf 'missing detect-orchestration-mode.sh:\n%b' "$missing" >&2; false; }
 }
 
-@test "TC-WIRE-4: every conversational SKILL.md invokes orchestration-warning.sh" {
+@test "every conversational SKILL.md invokes orchestration-warning.sh" {
   files="$(production_skills_for_class conversational)"
   [ -n "$files" ]
   missing=""
@@ -130,7 +130,7 @@ production_skills_for_class() {
 
 # ---- TC-WIRE-5..7: invocation-shape assertions --------------------------
 
-@test "TC-WIRE-5: invocation appears in a fenced bash block (no HTML comment, no prose)" {
+@test "invocation appears in a fenced bash block (no HTML comment, no prose)" {
   files="$(production_skills_for_class heavy-procedural)
 $(production_skills_for_class conversational)"
   [ -n "$files" ]
@@ -163,7 +163,7 @@ $(production_skills_for_class conversational)"
   [ -z "$bad" ] || { printf '%b' "$bad" >&2; false; }
 }
 
-@test "TC-WIRE-6: --skill-class flag value matches orchestration_class frontmatter verbatim" {
+@test "skill-class flag value matches orchestration_class frontmatter verbatim" {
   files="$(production_skills_for_class heavy-procedural)
 $(production_skills_for_class conversational)"
   [ -n "$files" ]
@@ -178,7 +178,7 @@ $(production_skills_for_class conversational)"
   [ -z "$bad" ] || { printf '%b' "$bad" >&2; false; }
 }
 
-@test "TC-WIRE-7: --mode flag value is captured stdout of detect-orchestration-mode.sh (SESSION_MODE pattern)" {
+@test "mode flag value is captured stdout of detect-orchestration-mode.sh (SESSION_MODE pattern)" {
   files="$(production_skills_for_class heavy-procedural)
 $(production_skills_for_class conversational)"
   [ -n "$files" ]
@@ -199,7 +199,7 @@ $(production_skills_for_class conversational)"
 
 # ---- TC-WIRE-8..9: production-tree out-of-scope class assertions --------
 
-@test "TC-WIRE-8: light-procedural SKILL.md files do NOT invoke either helper" {
+@test "light-procedural SKILL.md files do NOT invoke either helper" {
   files="$(production_skills_for_class light-procedural)"
   [ -n "$files" ]
   bad=""
@@ -211,7 +211,7 @@ $(production_skills_for_class conversational)"
   [ -z "$bad" ] || { printf '%b' "$bad" >&2; false; }
 }
 
-@test "TC-WIRE-9: reviewer SKILL.md files do NOT invoke either helper (NFR-060)" {
+@test "reviewer SKILL.md files do NOT invoke either helper" {
   # AC9 intent: reviewer skills MUST NOT execute the one-shot warning at
   # startup. "Invocation" means the canonical --skill-class call site, not
   # mere prose mention of the script name. gaia-validate-framework is the
@@ -231,7 +231,7 @@ $(production_skills_for_class conversational)"
 
 # ---- TC-WIRE-10: positive check on production tree ----------------------
 
-@test "TC-WIRE-10: check-orchestration-warning-wired.sh against production exits 0 with PASS" {
+@test "check-orchestration-warning-wired.sh against production exits 0 with PASS" {
   run "$SCRIPT" --skills-dir "$PRODUCTION_SKILLS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"PASS"* ]]
@@ -239,7 +239,7 @@ $(production_skills_for_class conversational)"
 
 # ---- TC-WIRE-11: synthetic heavy-procedural missing invocation -------
 
-@test "TC-WIRE-11: heavy-procedural fixture missing invocation -> CRITICAL" {
+@test "heavy-procedural fixture missing invocation -> CRITICAL" {
   make_fixture alpha heavy-procedural no
   run "$SCRIPT" --skills-dir "$FAKE_SKILLS"
   [ "$status" -ne 0 ]
@@ -247,7 +247,7 @@ $(production_skills_for_class conversational)"
   [[ "$output" == *"alpha"* ]]
 }
 
-@test "TC-WIRE-11b: conversational fixture missing invocation -> CRITICAL" {
+@test "conversational fixture missing invocation -> CRITICAL" {
   make_fixture beta conversational no
   run "$SCRIPT" --skills-dir "$FAKE_SKILLS"
   [ "$status" -ne 0 ]
@@ -255,7 +255,7 @@ $(production_skills_for_class conversational)"
   [[ "$output" == *"beta"* ]]
 }
 
-@test "TC-WIRE-11c: heavy-procedural fixture WITH invocation -> PASS" {
+@test "heavy-procedural fixture WITH invocation -> PASS" {
   make_fixture gamma heavy-procedural yes
   run "$SCRIPT" --skills-dir "$FAKE_SKILLS"
   [ "$status" -eq 0 ]
@@ -264,7 +264,7 @@ $(production_skills_for_class conversational)"
 
 # ---- TC-WIRE-12: light-procedural without invocation is silent ---------
 
-@test "TC-WIRE-12: light-procedural fixture without invocation exits 0 with no CRITICAL" {
+@test "light-procedural fixture without invocation exits 0 with no CRITICAL" {
   make_fixture delta light-procedural no
   run "$SCRIPT" --skills-dir "$FAKE_SKILLS"
   [ "$status" -eq 0 ]
@@ -273,7 +273,7 @@ $(production_skills_for_class conversational)"
 
 # ---- TC-WIRE-13: reviewer without invocation is silent (NFR-060) -------
 
-@test "TC-WIRE-13: reviewer fixture without invocation exits 0 with no CRITICAL" {
+@test "reviewer fixture without invocation exits 0 with no CRITICAL" {
   make_fixture epsilon reviewer no
   run "$SCRIPT" --skills-dir "$FAKE_SKILLS"
   [ "$status" -eq 0 ]

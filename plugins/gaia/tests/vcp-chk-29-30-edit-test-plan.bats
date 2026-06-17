@@ -30,34 +30,34 @@ teardown() { common_teardown; }
 # VCP-CHK-29 — Positive: all 21 items mapped (7 SV PASS, 14 LLM deferred).
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-29: finalize.sh exits 0 when all 7 script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all 7 script-verifiable items satisfied" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-29: finalize.sh emits a checklist header on positive path" {
+@test "finalize.sh emits a checklist header on positive path" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist: /gaia-edit-test-plan (21 items"* ]]
 }
 
-@test "VCP-CHK-29: finalize.sh reports 7/7 script-verifiable PASS" {
+@test "finalize.sh reports 7/7 script-verifiable PASS" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"7/7 script-verifiable items PASS"* ]]
 }
 
-@test "VCP-CHK-29: finalize.sh reports total items: 21" {
+@test "finalize.sh reports total items: 21" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Total items: 21"* ]]
 }
 
-@test "VCP-CHK-29: every SV-01..SV-07 item appears as PASS verbatim" {
+@test "every .. item appears as PASS verbatim" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -70,7 +70,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"[PASS] SV-07 — Validates field maps to FR/NFR IDs"* ]]
 }
 
-@test "VCP-CHK-29: finalize.sh enumerates 14 LLM-checkable items" {
+@test "finalize.sh enumerates 14 LLM-checkable items" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -78,7 +78,7 @@ teardown() { common_teardown; }
   [ "$llm_count" = "14" ]
 }
 
-@test "VCP-CHK-29: finalize.sh enumerates the V1 category headers" {
+@test "finalize.sh enumerates the V1 category headers" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -92,34 +92,34 @@ teardown() { common_teardown; }
 # VCP-CHK-30 — Negative: artifact missing Version History (SV-03 + SV-04).
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-30: finalize.sh exits non-zero when Version History missing" {
+@test "finalize.sh exits non-zero when Version History missing" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-version-history.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-30: finalize.sh names SV-03 (Version History heading) in violations" {
+@test "finalize.sh names (Version History heading) in violations" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-version-history.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SV-03 — Version History section present"* ]]
 }
 
-@test "VCP-CHK-30: finalize.sh names SV-04 (Version History row) in violations" {
+@test "finalize.sh names (Version History row) in violations" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-version-history.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SV-04 — Version History row"* ]]
 }
 
-@test "VCP-CHK-30: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-version-history.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations:"* ]]
 }
 
-@test "VCP-CHK-30: violations block lists exactly 2 SV failures" {
+@test "violations block lists exactly 2 SV failures" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-version-history.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -129,7 +129,7 @@ teardown() { common_teardown; }
   [ "$count" = "2" ]
 }
 
-@test "VCP-CHK-30: finalize.sh guides user back to /gaia-edit-test-plan" {
+@test "finalize.sh guides user back to /gaia-edit-test-plan" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-version-history.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -140,7 +140,7 @@ teardown() { common_teardown; }
 # AC3 — Classification audit on SKILL.md ## Validation section.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 21 classified items" {
+@test "SKILL.md ## Validation section contains exactly 21 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -151,7 +151,7 @@ teardown() { common_teardown; }
   [ "$output" = "21" ]
 }
 
-@test "AC3: SKILL.md script-verifiable count is 7" {
+@test "SKILL.md script-verifiable count is 7" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -162,7 +162,7 @@ teardown() { common_teardown; }
   [ "$output" = "7" ]
 }
 
-@test "AC3: SKILL.md LLM-checkable count is 14" {
+@test "SKILL.md LLM-checkable count is 14" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -173,7 +173,7 @@ teardown() { common_teardown; }
   [ "$output" = "14" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -184,7 +184,7 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }
@@ -204,14 +204,14 @@ teardown() { common_teardown; }
 # positive and negative paths.
 # -------------------------------------------------------------------------
 
-@test "AC5: checkpoint written on positive path" {
+@test "checkpoint written on positive path" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   [ -f "$CHECKPOINT_PATH/edit-test-plan.yaml" ]
 }
 
-@test "AC5: checkpoint written even when checklist fails" {
+@test "checkpoint written even when checklist fails" {
   export EDITED_TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-version-history.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
@@ -222,14 +222,14 @@ teardown() { common_teardown; }
 # AC4 — EDITED_TEST_PLAN_ARTIFACT pointing at missing or empty file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when EDITED_TEST_PLAN_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when EDITED_TEST_PLAN_ARTIFACT points at a missing file" {
   export EDITED_TEST_PLAN_ARTIFACT="$BATS_TMPDIR/does-not-exist-edit-test-plan-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"no artifact to validate"* ]]
 }
 
-@test "AC4: finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
+@test "finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
   local empty
   empty="$TEST_TMP/empty-edit-test-plan.md"
   : > "$empty"
@@ -268,7 +268,7 @@ teardown() { common_teardown; }
 # AC-EC8 — Shell metacharacter safety (parity with sibling E42-S* tests).
 # -------------------------------------------------------------------------
 
-@test "AC-EC8: shell metacharacters in EDITED_TEST_PLAN_ARTIFACT do not cause command injection" {
+@test "shell metacharacters in EDITED_TEST_PLAN_ARTIFACT do not cause command injection" {
   local crafted
   crafted="$TEST_TMP/weird; name \$(touch $TEST_TMP/injected).md"
   export EDITED_TEST_PLAN_ARTIFACT="$crafted"

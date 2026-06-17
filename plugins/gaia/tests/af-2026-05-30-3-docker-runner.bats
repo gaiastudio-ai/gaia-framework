@@ -34,11 +34,11 @@ teardown() { common_teardown; }
 # gaia-tools image
 # ===========================================================================
 
-@test "AF-30-3 image: Dockerfile present at plugins/gaia/tools/gaia-tools/" {
+@test "image: Dockerfile present at plugins/gaia/tools/gaia-tools/" {
   [ -f "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile" ]
 }
 
-@test "AF-30-3 image: Dockerfile pins grype/syft/osv-scanner/spotbugs versions" {
+@test "image: Dockerfile pins grype/syft/osv-scanner/spotbugs versions" {
   run grep -E '^ARG (GRYPE|SYFT|OSV_SCANNER|SPOTBUGS)_VERSION=' \
         "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile"
   [ "$status" -eq 0 ]
@@ -46,31 +46,31 @@ teardown() { common_teardown; }
   [ "$(echo "$output" | wc -l | tr -d ' ')" -ge 4 ]
 }
 
-@test "AF-30-3 image: Dockerfile installs pure-pip Tier-1 tools" {
+@test "image: Dockerfile installs pure-pip Tier-1 tools" {
   run grep -E 'vulture|pip-audit|cyclonedx-bom|yamllint' \
         "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 image: Dockerfile sets canonical /workspace and /out mounts" {
+@test "image: Dockerfile sets canonical /workspace and /out mounts" {
   run grep -F 'mkdir -p /workspace /out' "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 image: Dockerfile declares OCI labels" {
+@test "image: Dockerfile declares OCI labels" {
   run grep -E 'org\.opencontainers\.image\.title.*gaia-tools' \
         "$PLUGIN_ROOT/tools/gaia-tools/Dockerfile"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 image: entrypoint is shipped and executable" {
+@test "image: entrypoint is shipped and executable" {
   [ -x "$PLUGIN_ROOT/tools/gaia-tools/gaia-tools-entrypoint.sh" ] || \
     [ -f "$PLUGIN_ROOT/tools/gaia-tools/gaia-tools-entrypoint.sh" ]
   run bash -n "$PLUGIN_ROOT/tools/gaia-tools/gaia-tools-entrypoint.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 image: entrypoint --version prints a BOM line" {
+@test "image: entrypoint --version prints a BOM line" {
   # Spoof env so the BOM template doesn't probe binaries that aren't on
   # the test host.
   run env GAIA_TOOLS_VERSION=test GAIA_TOOLS_DB_DATE=2026-05-30 \
@@ -79,7 +79,7 @@ teardown() { common_teardown; }
   [[ "$output" =~ gaia-tools[[:space:]]test ]]
 }
 
-@test "AF-30-3 image: README documents pull + use + image policy" {
+@test "image: README documents pull + use + image policy" {
   [ -f "$PLUGIN_ROOT/tools/gaia-tools/README.md" ]
   run grep -E 'docker pull|tools\.runner|brownfield\.tools' \
         "$PLUGIN_ROOT/tools/gaia-tools/README.md"
@@ -90,17 +90,17 @@ teardown() { common_teardown; }
 # GHCR publish workflow
 # ===========================================================================
 
-@test "AF-30-3 ci: publish workflow file exists" {
+@test "ci: publish workflow file exists" {
   [ -f "$PLUGIN_ROOT/../../.github/workflows/gaia-tools-image.yml" ]
 }
 
-@test "AF-30-3 ci: publish workflow targets ghcr.io with multi-arch buildx" {
+@test "ci: publish workflow targets ghcr.io with multi-arch buildx" {
   run grep -E 'ghcr\.io|linux/amd64|linux/arm64' \
         "$PLUGIN_ROOT/../../.github/workflows/gaia-tools-image.yml"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 ci: publish workflow runs on monthly cron + push to main" {
+@test "ci: publish workflow runs on monthly cron + push to main" {
   run grep -E 'cron:|branches:' \
         "$PLUGIN_ROOT/../../.github/workflows/gaia-tools-image.yml"
   [ "$status" -eq 0 ]
@@ -110,12 +110,12 @@ teardown() { common_teardown; }
 # Schema: brownfield.tools.runner
 # ===========================================================================
 
-@test "AF-30-3 schema: YAML descriptor mentions tools.runner enum docker|native" {
+@test "schema: YAML descriptor mentions tools.runner enum docker|native" {
   run grep -F 'tools.runner' "$PLUGIN_ROOT/config/project-config.schema.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 schema: JSON schema permits the brownfield section" {
+@test "schema: JSON schema permits the brownfield section" {
   run jq -e '.properties.brownfield' "$PLUGIN_ROOT/schemas/project-config.schema.json"
   [ "$status" -eq 0 ]
   [ "$output" != "null" ]
@@ -125,11 +125,11 @@ teardown() { common_teardown; }
 # docker-runner.sh shared lib
 # ===========================================================================
 
-@test "AF-30-3 lib: docker-runner.sh exists and is executable" {
+@test "lib: docker-runner.sh exists and is executable" {
   [ -x "$PLUGIN_ROOT/scripts/lib/docker-runner.sh" ]
 }
 
-@test "AF-30-3 lib: docker-runner.sh image resolves to default when nothing set" {
+@test "lib: docker-runner.sh image resolves to default when nothing set" {
   cd "$TEST_TMP"
   run env -u GAIA_TOOLS_IMAGE -u PROJECT_CONFIG \
         bash "$PLUGIN_ROOT/scripts/lib/docker-runner.sh" image
@@ -137,7 +137,7 @@ teardown() { common_teardown; }
   [[ "$output" =~ gaia-tools ]]
 }
 
-@test "AF-30-3 lib: docker-runner.sh image honors GAIA_TOOLS_IMAGE env override" {
+@test "lib: docker-runner.sh image honors GAIA_TOOLS_IMAGE env override" {
   cd "$TEST_TMP"
   run env GAIA_TOOLS_IMAGE=ghcr.io/gaiastudio-ai/gaia-tools:0.1.0-2026-05-30 \
         bash "$PLUGIN_ROOT/scripts/lib/docker-runner.sh" image
@@ -145,7 +145,7 @@ teardown() { common_teardown; }
   [ "$output" = "ghcr.io/gaiastudio-ai/gaia-tools:0.1.0-2026-05-30" ]
 }
 
-@test "AF-30-3 lib: docker-runner.sh mode defaults to native" {
+@test "lib: docker-runner.sh mode defaults to native" {
   cd "$TEST_TMP"
   run env -u GAIA_TOOLS_RUNNER -u PROJECT_CONFIG -u CLAUDE_PROJECT_ROOT \
         bash "$PLUGIN_ROOT/scripts/lib/docker-runner.sh" mode
@@ -153,7 +153,7 @@ teardown() { common_teardown; }
   [ "$output" = "native" ]
 }
 
-@test "AF-30-3 lib: docker-runner.sh mode honors GAIA_TOOLS_RUNNER override" {
+@test "lib: docker-runner.sh mode honors GAIA_TOOLS_RUNNER override" {
   cd "$TEST_TMP"
   run env GAIA_TOOLS_RUNNER=docker \
         bash "$PLUGIN_ROOT/scripts/lib/docker-runner.sh" mode
@@ -161,7 +161,7 @@ teardown() { common_teardown; }
   [ "$output" = "docker" ]
 }
 
-@test "AF-30-3 lib: docker-runner.sh mode reads brownfield.tools.runner from project-config" {
+@test "lib: docker-runner.sh mode reads brownfield.tools.runner from project-config" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'YAML'
@@ -175,7 +175,7 @@ YAML
   [ "$output" = "docker" ]
 }
 
-@test "AF-30-3 lib: docker_runner_pull surfaces docker errors when daemon is absent" {
+@test "lib: docker_runner_pull surfaces docker errors when daemon is absent" {
   cd "$TEST_TMP"
   STUB_BIN="$TEST_TMP/stub-pull"
   mkdir -p "$STUB_BIN"
@@ -192,7 +192,7 @@ STUB
   [[ "$output" =~ pulling ]] || [[ "${stderr:-}" =~ pulling ]]
 }
 
-@test "AF-30-3 lib: docker_runner_available exits non-zero when docker is absent" {
+@test "lib: docker_runner_available exits non-zero when docker is absent" {
   cd "$TEST_TMP"
   STUB_BIN="$TEST_TMP/stub-avail"
   mkdir -p "$STUB_BIN"
@@ -206,7 +206,7 @@ STUB
   [ "$status" -ne 0 ]
 }
 
-@test "AF-30-3 lib: dispatch refuses when docker is absent (exit 125)" {
+@test "lib: dispatch refuses when docker is absent (exit 125)" {
   cd "$TEST_TMP"
   # Make the docker subcommand resolution fail by shadowing `docker` with a
   # stub that exits 1 — the lib's `docker info` probe in
@@ -228,14 +228,14 @@ STUB
 # Tier-2 adapter docker dispatch
 # ===========================================================================
 
-@test "AF-30-3 grype: adapter sources docker-runner.sh + dispatches on docker mode" {
+@test "grype: adapter sources docker-runner.sh + dispatches on docker mode" {
   run grep -F 'docker_runner_mode' "$PLUGIN_ROOT/scripts/adapters/grype/adapter.sh"
   [ "$status" -eq 0 ]
   run grep -F 'docker_runner_dispatch grype' "$PLUGIN_ROOT/scripts/adapters/grype/adapter.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 spotbugs: adapter sources docker-runner.sh + dispatches on docker mode" {
+@test "spotbugs: adapter sources docker-runner.sh + dispatches on docker mode" {
   run grep -F 'docker_runner_mode' \
         "$PLUGIN_ROOT/scripts/adapters/dead-code/jvm-spotbugs/adapter.sh"
   [ "$status" -eq 0 ]
@@ -244,7 +244,7 @@ STUB
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 grype: adapter falls through to native dispatch on docker runner exit 125" {
+@test "grype: adapter falls through to native dispatch on docker runner exit 125" {
   run grep -F 'falling through to native dispatch' \
         "$PLUGIN_ROOT/scripts/adapters/grype/adapter.sh"
   [ "$status" -eq 0 ]
@@ -254,20 +254,20 @@ STUB
 # /gaia-doctor docker mode
 # ===========================================================================
 
-@test "AF-30-3 doctor: install-tools.sh --help documents --docker / --no-docker" {
+@test "doctor: install-tools.sh --help documents --docker / --no-docker" {
   run bash "$PLUGIN_ROOT/skills/gaia-doctor/scripts/install-tools.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" =~ "--docker" ]]
   [[ "$output" =~ "--no-docker" ]]
 }
 
-@test "AF-30-3 doctor: check-tools.sh _compute_tier has docker-runner promotion branch" {
+@test "doctor: check-tools.sh _compute_tier has docker-runner promotion branch" {
   run grep -F 'docker runner (gaia-tools image cached)' \
         "$PLUGIN_ROOT/skills/gaia-doctor/scripts/check-tools.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 doctor: SKILL.md documents the --install --docker invocation" {
+@test "doctor: SKILL.md documents the --install --docker invocation" {
   run grep -F -e '--install --docker' \
         "$PLUGIN_ROOT/skills/gaia-doctor/SKILL.md"
   [ "$status" -eq 0 ]
@@ -277,7 +277,7 @@ STUB
 # Default-ON flag flip (deterministic_tools, prewarm, sarif_merge)
 # ===========================================================================
 
-@test "AF-30-3 defaults: brownfield SKILL.md Phase 3 prelude defaults deterministic_tools to true" {
+@test "defaults: brownfield SKILL.md Phase 3 prelude defaults deterministic_tools to true" {
   run grep -F 'GAIA_BROWNFIELD_DETERMINISTIC_TOOLS="${DET_TOOLS:-true}"' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
@@ -286,19 +286,19 @@ STUB
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
 }
 
-@test "AF-30-3 defaults: brownfield SKILL.md prewarm_enabled defaults to true" {
+@test "defaults: brownfield SKILL.md prewarm_enabled defaults to true" {
   run grep -F 'GAIA_BROWNFIELD_PREWARM_ENABLED="${PREWARM_ON:-true}"' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 defaults: brownfield SKILL.md sarif_merge_enabled defaults to true" {
+@test "defaults: brownfield SKILL.md sarif_merge_enabled defaults to true" {
   run grep -F 'GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="${SARIF_ON:-true}"' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 defaults: defectdojo_enabled remains opt-in (false default preserved)" {
+@test "defaults: defectdojo_enabled remains opt-in (false default preserved)" {
   # External integration — needs an API token the operator must configure.
   # Defaulting on would either silently fail or leak findings to a third
   # party. The bats checks the export line is unchanged from the AF-30-2
@@ -308,13 +308,13 @@ STUB
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 defaults: YAML schema descriptor documents the new default for deterministic_tools" {
+@test "defaults: YAML schema descriptor documents the new default for deterministic_tools" {
   run grep -F 'deterministic_tools (master flag, bool, default true' \
         "$PLUGIN_ROOT/config/project-config.schema.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-3 defaults: every adapter master-flag fallback is :-true (consistent with prelude)" {
+@test "defaults: every adapter master-flag fallback is :-true (consistent with prelude)" {
   # Audit every brownfield adapter — they MUST default the master flag
   # to true so a standalone invocation outside the Phase 3 prelude
   # behaves consistently with /gaia-brownfield. The adapter-side default
@@ -330,7 +330,7 @@ STUB
 # /gaia-config-brownfield runner doc
 # ===========================================================================
 
-@test "AF-30-3 config-brownfield: SKILL.md prompts /gaia-doctor on runner=docker flip" {
+@test "config-brownfield: SKILL.md prompts /gaia-doctor on runner=docker flip" {
   run grep -F 'tools.runner=docker' \
         "$PLUGIN_ROOT/skills/gaia-config-brownfield/SKILL.md"
   [ "$status" -eq 0 ]

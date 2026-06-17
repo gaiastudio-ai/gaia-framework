@@ -64,7 +64,7 @@ run_all_three() {
 }
 
 # --- scenario 4 — all three fire; per-tool JSON present ----------------------
-@test "E70-S8 join (scenario 4): all three adapters write per-tool JSON" {
+@test "join (scenario 4): all three adapters write per-tool JSON" {
   run_all_three
   [ -f "$OUT/dead-code/go-deadcode.json" ]
   [ -f "$OUT/dead-code/python-vulture.json" ]
@@ -72,7 +72,7 @@ run_all_three() {
 }
 
 # --- universal file_path JOIN — every finding carries repo-relative file_path -
-@test "E70-S8 join: universal file_path JOIN key present across all stacks" {
+@test "join: universal file_path JOIN key present across all stacks" {
   run_all_three
   # Concatenate all findings; every entry must have a non-empty file_path.
   total="$(jq -s 'add | length' "$OUT/dead-code/go-deadcode.json" "$OUT/dead-code/python-vulture.json" "$OUT/dead-code/jvm-spotbugs.json")"
@@ -87,7 +87,7 @@ run_all_three() {
 }
 
 # --- Val F1 fix — all three SARIF inputs land in sarif/ for the dedup ladder --
-@test "E70-S8 join: three SARIF inputs with .properties.symbol for dedup" {
+@test "join: three SARIF inputs with .properties.symbol for dedup" {
   run_all_three
   for t in go-deadcode python-vulture jvm-spotbugs; do
     [ -f "$OUT/sarif/$t.sarif" ]
@@ -97,7 +97,7 @@ run_all_three() {
 }
 
 # --- AC4 / scenario 9 — ONE section, THREE per-stack sub-sections ------------
-@test "E70-S8 join (AC4/scenario 9): render emits ONE Test Quality section, THREE per-stack sub-sections" {
+@test "join (/scenario 9): render emits ONE Test Quality section, THREE per-stack sub-sections" {
   run_all_three
   report="$TEST_TMP/consolidated-gaps.md"
   cat > "$report" <<'MD'
@@ -123,7 +123,7 @@ MD
 }
 
 # --- render helper hygiene ---------------------------------------------------
-@test "E70-S8 join: render-test-quality.sh exists, executable, bash -n clean" {
+@test "join: render-test-quality.sh exists, executable, bash -n clean" {
   [ -x "$RENDER" ]
   run bash -n "$RENDER"
   [ "$status" -eq 0 ]

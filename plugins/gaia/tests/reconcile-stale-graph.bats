@@ -79,52 +79,52 @@ teardown() { common_teardown; }
 # NFR-052: source script — every public function must be callable
 # ---------------------------------------------------------------------------
 
-@test "NFR-052: source script — usage is callable" {
+@test "source script — usage is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type usage
 }
 
-@test "NFR-052: source script — parse_args is callable" {
+@test "source script — parse_args is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type parse_args
 }
 
-@test "NFR-052: source script — parse_affected_set is callable" {
+@test "source script — parse_affected_set is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type parse_affected_set
 }
 
-@test "NFR-052: source script — build_depgraph_for_detector is callable" {
+@test "source script — build_depgraph_for_detector is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type build_depgraph_for_detector
 }
 
-@test "NFR-052: source script — invoke_detector is callable" {
+@test "source script — invoke_detector is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type invoke_detector
 }
 
-@test "NFR-052: source script — parse_unsanctioned_edges is callable" {
+@test "source script — parse_unsanctioned_edges is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type parse_unsanctioned_edges
 }
 
-@test "NFR-052: source script — emit_report is callable" {
+@test "source script — emit_report is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type emit_report
 }
 
-@test "NFR-052: source script — reconcile is callable" {
+@test "source script — reconcile is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type reconcile
 }
 
-@test "NFR-052: source script — main is callable" {
+@test "source script — main is callable" {
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   type main
 }
 
-@test "NFR-052: main-guard — sourcing does NOT invoke main" {
+@test "main-guard — sourcing does NOT invoke main" {
   # If main runs on source it will fail (missing args) — exit 1 would surface here.
   source "$SCRIPTS_DIR/reconcile-stale-graph.sh"
   true
@@ -145,7 +145,7 @@ teardown() { common_teardown; }
 # not reimplement edge detection.
 # ---------------------------------------------------------------------------
 
-@test "AC5 structural: script references reconcile-cross-stack or unsanctioned-cross-stack-reference" {
+@test "structural: script references reconcile-cross-stack or unsanctioned-cross-stack-reference" {
   grep -E 'unsanctioned-cross-stack-reference|reconcile-cross-stack' \
     "$SCRIPTS_DIR/reconcile-stale-graph.sh"
 }
@@ -156,7 +156,7 @@ teardown() { common_teardown; }
 # (Guarded: requires yq + jq; skipped when absent.)
 # ---------------------------------------------------------------------------
 
-@test "AC5 format-pin: real detector emits WARNING on STDOUT (not stderr)" {
+@test "format-pin: real detector emits WARNING on STDOUT (not stderr)" {
   command -v yq >/dev/null 2>&1 || skip "yq absent"
   command -v jq >/dev/null 2>&1 || skip "jq absent"
 
@@ -180,7 +180,7 @@ teardown() { common_teardown; }
 # ["*"] early passthrough — AC2 edge case (already-full-suite input)
 # ---------------------------------------------------------------------------
 
-@test "AC2 passthrough: [\"*\"] input echoes [\"*\"] without calling detector" {
+@test "passthrough: [\"*\"] input echoes [\"*\"] without calling detector" {
   # No --config needed — early passthrough before any detector call.
   run --separate-stderr "$SCRIPTS_DIR/reconcile-stale-graph.sh" \
     --affected-set '["*"]'
@@ -192,7 +192,7 @@ teardown() { common_teardown; }
 # AC4: missing dep-graph → graceful passthrough (no escalation)
 # ---------------------------------------------------------------------------
 
-@test "AC4 graceful: missing dep-graph path emits affected-set unmodified" {
+@test "graceful: missing dep-graph path emits affected-set unmodified" {
   run --separate-stderr "$SCRIPTS_DIR/reconcile-stale-graph.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --affected-set '["stack-alpha"]' \
@@ -205,7 +205,7 @@ teardown() { common_teardown; }
 # AC1 / AC2: undeclared edge → escalation to ["*"]
 # ---------------------------------------------------------------------------
 
-@test "AC1+AC2: undeclared edge triggers escalation to [\"*\"]" {
+@test "+: undeclared edge triggers escalation to [\"*\"]" {
   command -v yq >/dev/null 2>&1 || skip "yq absent"
   command -v jq >/dev/null 2>&1 || skip "jq absent"
 
@@ -221,7 +221,7 @@ teardown() { common_teardown; }
 # AC3: escalation report names the specific undeclared edge
 # ---------------------------------------------------------------------------
 
-@test "AC3: escalation report names source stack, target stack, and import path" {
+@test "escalation report names source stack, target stack, and import path" {
   command -v yq >/dev/null 2>&1 || skip "yq absent"
   command -v jq >/dev/null 2>&1 || skip "jq absent"
 
@@ -247,7 +247,7 @@ teardown() { common_teardown; }
 # unmodified (no false escalation)
 # ---------------------------------------------------------------------------
 
-@test "AC4: sanctioned edges only → affected-set passes through unmodified" {
+@test "sanctioned edges only → affected-set passes through unmodified" {
   command -v yq >/dev/null 2>&1 || skip "yq absent"
   command -v jq >/dev/null 2>&1 || skip "jq absent"
 
@@ -259,7 +259,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["stack-alpha"]' ]]
 }
 
-@test "AC4: empty dep-graph edges → affected-set passes through unmodified" {
+@test "empty dep-graph edges → affected-set passes through unmodified" {
   command -v yq >/dev/null 2>&1 || skip "yq absent"
   command -v jq >/dev/null 2>&1 || skip "jq absent"
 

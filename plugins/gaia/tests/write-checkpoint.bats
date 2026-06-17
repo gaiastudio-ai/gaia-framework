@@ -46,7 +46,7 @@ teardown() { common_teardown; }
 
 # ---------- AC1: happy path write ----------
 
-@test "AC1: valid invocation writes JSON to _memory/checkpoints/{skill}/{ts}-step-{N}.json" {
+@test "valid invocation writes JSON to _memory/checkpoints/{skill}/{ts}-step-{N}.json" {
   local touched="$TEST_TMP/touched.md"
   printf 'hello\n' > "$touched"
   run "$SCRIPT" gaia-brainstorm 3 slug=test --paths "$touched"
@@ -68,7 +68,7 @@ teardown() { common_teardown; }
 
 # ---------- AC4 / VCP-CPT-01: schema v1 shape + types ----------
 
-@test "AC4/VCP-CPT-01: JSON carries all 7 mandatory schema fields with correct types" {
+@test "JSON carries all 7 mandatory schema fields with correct types" {
   local touched="$TEST_TMP/touched.md"
   printf 'hi\n' > "$touched"
   "$SCRIPT" gaia-brainstorm 2 slug=test --paths "$touched"
@@ -105,7 +105,7 @@ teardown() { common_teardown; }
 
 # ---------- AC5: checksums match on-disk contents ----------
 
-@test "AC5: file_checksums match actual sha256 of output_paths" {
+@test "file_checksums match actual sha256 of output_paths" {
   local a="$TEST_TMP/a.md" b="$TEST_TMP/b.md"
   printf 'alpha\n' > "$a"
   printf 'beta\n'  > "$b"
@@ -123,7 +123,7 @@ teardown() { common_teardown; }
 
 # ---------- AC3: custom: namespace preserved ----------
 
-@test "AC3: --custom JSON block preserved verbatim under 'custom' key" {
+@test "custom JSON block preserved verbatim under 'custom' key" {
   local custom="$TEST_TMP/custom.json"
   printf '{"foo":"bar","nested":{"x":1}}' > "$custom"
   "$SCRIPT" gaia-skill 0 --custom "$custom"
@@ -137,7 +137,7 @@ teardown() { common_teardown; }
 
 # ---------- VCP-CPT-10 / AC2: atomic write (SIGKILL mid-run leaves no partial) ----------
 
-@test "VCP-CPT-10/AC2: SIGKILL during write leaves no partial JSON file" {
+@test "SIGKILL during write leaves no partial JSON file" {
   local big="$TEST_TMP/big.bin"
   # Create a file large enough that checksum + write take measurable time.
   dd if=/dev/zero of="$big" bs=1M count=8 status=none
@@ -162,7 +162,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC1: zero output paths ----------
 
-@test "AC-EC1: zero --paths writes empty output_paths and file_checksums" {
+@test "zero --paths writes empty output_paths and file_checksums" {
   run "$SCRIPT" gaia-skill 4
   [ "$status" -eq 0 ]
   local json
@@ -175,7 +175,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC2: missing output path ----------
 
-@test "AC-EC2: missing output path exits non-zero and writes no file" {
+@test "missing output path exits non-zero and writes no file" {
   run "$SCRIPT" gaia-skill 1 --paths "$TEST_TMP/does-not-exist.md"
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]] || [[ "$output" == *"does not exist"* ]] || [[ "$output" == *"no such file"* ]]
@@ -189,7 +189,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC3: unwriteable checkpoint dir ----------
 
-@test "AC-EC3: unwriteable checkpoint root exits non-zero with clear error" {
+@test "unwriteable checkpoint root exits non-zero with clear error" {
   # Point at a location under a file (not a directory), forcing mkdir to fail.
   local blocker="$TEST_TMP/blocker"
   printf 'block\n' > "$blocker"
@@ -205,7 +205,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC4: concurrent same-step writes ----------
 
-@test "AC-EC4: two same-step concurrent writes produce distinct valid files" {
+@test "two same-step concurrent writes produce distinct valid files" {
   local f="$TEST_TMP/f.md"; printf 'x\n' > "$f"
   "$SCRIPT" gaia-skill 5 --paths "$f" &
   local pid1=$!
@@ -224,7 +224,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC5: path-traversal in skill_name ----------
 
-@test "AC-EC5: malicious skill_name (path traversal) is rejected" {
+@test "malicious skill_name (path traversal) is rejected" {
   run "$SCRIPT" "../etc" 1
   [ "$status" -ne 0 ]
   [[ "$output" == *"invalid skill_name"* ]]
@@ -232,13 +232,13 @@ teardown() { common_teardown; }
   ! [ -e "$TEST_TMP/../etc" ]
 }
 
-@test "AC-EC5: absolute path in skill_name is rejected" {
+@test "absolute path in skill_name is rejected" {
   run "$SCRIPT" "/tmp/evil" 1
   [ "$status" -ne 0 ]
   [[ "$output" == *"invalid skill_name"* ]]
 }
 
-@test "AC-EC5: uppercase skill_name is rejected" {
+@test "uppercase skill_name is rejected" {
   run "$SCRIPT" "BadName" 1
   [ "$status" -ne 0 ]
   [[ "$output" == *"invalid skill_name"* ]]
@@ -246,7 +246,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC6: shell metacharacters in key_variables ----------
 
-@test "AC-EC6: shell metacharacters in key_variables are preserved verbatim" {
+@test "shell metacharacters in key_variables are preserved verbatim" {
   local evil='$(rm -rf /)'
   "$SCRIPT" gaia-skill 1 "danger=$evil"
   local json
@@ -260,7 +260,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC7: missing sha256 tool ----------
 
-@test "AC-EC7: sha256 tool missing exits non-zero with clear error" {
+@test "sha256 tool missing exits non-zero with clear error" {
   local f="$TEST_TMP/f.md"; printf 'x\n' > "$f"
   # Shadow shasum and sha256sum with a stubdir placed AHEAD of the real PATH.
   # Each stub is an executable that returns 127 (not found). This simulates
@@ -314,7 +314,7 @@ STUB
 
 # ---------- AC-EC8: clock regression (step_number is authoritative) ----------
 
-@test "AC-EC8: two writes with step_number 1 then 2 both succeed (step ordering authoritative)" {
+@test "two writes with step_number 1 then 2 both succeed (step ordering authoritative)" {
   local f="$TEST_TMP/f.md"; printf 'x\n' > "$f"
   "$SCRIPT" gaia-skill 1 --paths "$f"
   "$SCRIPT" gaia-skill 2 --paths "$f"
@@ -327,14 +327,14 @@ STUB
 
 # ---------- AC-EC9: invalid step_number ----------
 
-@test "AC-EC9: negative step_number is rejected" {
+@test "negative step_number is rejected" {
   run "$SCRIPT" gaia-skill -1
   [ "$status" -ne 0 ]
   [[ "$output" == *"step_number"* ]]
   [[ "$output" == *"non-negative integer"* ]]
 }
 
-@test "AC-EC9: non-numeric step_number is rejected" {
+@test "non-numeric step_number is rejected" {
   run "$SCRIPT" gaia-skill abc
   [ "$status" -ne 0 ]
   [[ "$output" == *"step_number"* ]]
@@ -342,7 +342,7 @@ STUB
 
 # ---------- AC-EC10: symlink output path ----------
 
-@test "AC-EC10: symlink output path is followed and checksum matches target" {
+@test "symlink output path is followed and checksum matches target" {
   local target="$TEST_TMP/target.md"
   local link="$TEST_TMP/link.md"
   printf 'linked\n' > "$target"
@@ -358,7 +358,7 @@ STUB
 
 # ---------- AC3 negative: unknown top-level key rejected ----------
 
-@test "AC3: unknown top-level key in --custom is preserved UNDER custom (not promoted)" {
+@test "unknown top-level key in --custom is preserved UNDER custom (not promoted)" {
   # --custom contents land under "custom" — any non-schema top-level key MUST
   # NOT be injected at the root. This is enforced implicitly because we only
   # ever place user data under the "custom" key.

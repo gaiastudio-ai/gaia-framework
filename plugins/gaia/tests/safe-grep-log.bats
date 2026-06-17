@@ -42,7 +42,7 @@ setup() {
 teardown() { common_teardown; }
 
 # ---------------- TC-1: -q invocation, pattern matches early ----------------
-@test "TC-1: safe_grep_log -q returns 0 (NOT 141) when pattern matches under pipefail" {
+@test "safe_grep_log -q returns 0 (NOT 141) when pattern matches under pipefail" {
   cd "$REPO"
   git commit -q --allow-empty -m "match-this-pattern at the top"
   git commit -q --allow-empty -m "filler 1"
@@ -57,7 +57,7 @@ teardown() { common_teardown; }
 }
 
 # ---------------- TC-2: -q invocation, no match ----------------
-@test "TC-2: safe_grep_log -q returns 1 (NOT 141) when pattern does not match under pipefail" {
+@test "safe_grep_log -q returns 1 (NOT 141) when pattern does not match under pipefail" {
   cd "$REPO"
   git commit -q --allow-empty -m "only filler commits here"
   git commit -q --allow-empty -m "still no match"
@@ -70,7 +70,7 @@ teardown() { common_teardown; }
 }
 
 # ---------------- TC-3: unknown git ref ----------------
-@test "TC-3: safe_grep_log returns 1 (NOT 141) on unknown git ref under pipefail" {
+@test "safe_grep_log returns 1 (NOT 141) on unknown git ref under pipefail" {
   cd "$REPO"
   git commit -q --allow-empty -m "single commit"
   run bash -c "
@@ -82,7 +82,7 @@ teardown() { common_teardown; }
 }
 
 # ---------------- TC-4: long-stream regression (E83-S6 / E87-S1) ----------------
-@test "TC-4: safe_grep_log -q returns 0 on long log stream when match is near the top under pipefail" {
+@test "safe_grep_log -q returns 0 on long log stream when match is near the top under pipefail" {
   cd "$REPO"
   # Match commit at the TOP (newest) of a ≥50-commit log — exactly mirrors
   # the E87-S1 in-the-wild reproduction: pattern present in newest commit
@@ -119,7 +119,7 @@ teardown() { common_teardown; }
 }
 
 # ---------------- TC-5: usage error (missing pattern) ----------------
-@test "TC-5: safe_grep_log exits 2 on missing pattern" {
+@test "safe_grep_log exits 2 on missing pattern" {
   run bash -c "
     set -o pipefail
     source '$HELPER_LIB'

@@ -110,7 +110,7 @@ EOF
 # AC3: opt-in via manual_verification frontmatter
 # =====================================================================
 
-@test "AC3: manual_verification: true + FAILED -> warning emitted on transition" {
+@test "manual_verification: true + FAILED -> warning emitted on transition" {
   seed_story_opt OI01 PASSED "true"
   seed_transition_env OI01
   bash "$SCRIPT" update --story OI01 --gate "manual-test" \
@@ -120,7 +120,7 @@ EOF
   [[ "$output" == *"manual-test"* ]]
 }
 
-@test "AC3: manual_verification absent -> no warning even with FAILED manual-test" {
+@test "manual_verification absent -> no warning even with FAILED manual-test" {
   seed_story_opt OI02 PASSED "__absent__"
   seed_transition_env OI02
   bash "$SCRIPT" update --story OI02 --gate "manual-test" \
@@ -132,7 +132,7 @@ EOF
   [ "$advisory_count" -eq 0 ]
 }
 
-@test "AC3: manual_verification: false -> no warning even with FAILED manual-test" {
+@test "manual_verification: false -> no warning even with FAILED manual-test" {
   seed_story_opt OI03 PASSED "false"
   seed_transition_env OI03
   bash "$SCRIPT" update --story OI03 --gate "manual-test" \
@@ -144,7 +144,7 @@ EOF
   [ "$advisory_count" -eq 0 ]
 }
 
-@test "AC3: six gates not all PASSED -> composite still refuses (advisory is not a bypass)" {
+@test "six gates not all PASSED -> composite still refuses (advisory is not a bypass)" {
   seed_story_opt OI04 UNVERIFIED "true"
   seed_transition_env OI04
   # Even with manual_verification: true, if the six canonical gates aren't

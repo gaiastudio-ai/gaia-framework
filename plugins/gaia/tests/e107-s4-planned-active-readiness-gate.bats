@@ -54,7 +54,7 @@ all_ready() {
 
 # ---------- AC1 / AC2 / TS1: all-ready (materialized + ready + ATDD) passes ----------
 
-@test "AC1/AC2/TS1: gate PASSES when all stories are materialized, ready-for-dev, and ATDD'd" {
+@test "gate PASSES when all stories are materialized, ready-for-dev, and ATDD'd" {
   all_ready
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
   [ "$status" -eq 0 ] \
@@ -63,7 +63,7 @@ all_ready() {
 
 # ---------- AC1 / TS2: an unmaterialized story blocks ----------
 
-@test "AC1/TS2/AC4: an unmaterialized story REFUSES activation and is named" {
+@test "TS2/: an unmaterialized story REFUSES activation and is named" {
   all_ready
   rm -rf "$IMPL/epic-E900-fixture/E900-S3-slug"   # remove S3's file
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
@@ -76,7 +76,7 @@ all_ready() {
 
 # ---------- AC1 / TS2: a not-ready story blocks ----------
 
-@test "AC1/AC4: a not-ready (in-progress) story REFUSES activation and is named" {
+@test "a not-ready (in-progress) story REFUSES activation and is named" {
   all_ready
   mk_story E900-S1 in-progress low   # flip S1 to in-progress
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
@@ -88,7 +88,7 @@ all_ready() {
 
 # ---------- AC2 / TS3: a high-risk story missing ATDD blocks ----------
 
-@test "AC2/TS3/AC4: a high-risk story missing its ATDD artifact REFUSES activation and is named" {
+@test "TS3/: a high-risk story missing its ATDD artifact REFUSES activation and is named" {
   all_ready
   rm -f "$TA/atdd-E900-S2.md"   # remove the high-risk story's ATDD
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
@@ -99,7 +99,7 @@ all_ready() {
   echo "$output" | grep -Eiq 'atdd'
 }
 
-@test "AC2: a low-risk story with no ATDD does NOT block (ATDD only required for high-risk)" {
+@test "a low-risk story with no ATDD does NOT block (ATDD only required for high-risk)" {
   all_ready
   # S1/S3 are low-risk with no ATDD; only S2 (high) needs one and has it -> pass
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
@@ -109,7 +109,7 @@ all_ready() {
 
 # ---------- AC3 / TS4: agent-native capacity overflow blocks ----------
 
-@test "AC3/TS4: an agent-native capacity overflow REFUSES activation (sm-capacity-check via .flagged)" {
+@test "an agent-native capacity overflow REFUSES activation (sm-capacity-check via .flagged)" {
   all_ready
   # force a coherence overflow with a tiny ceiling (3 stories > ceiling 2)
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA" --coherence-ceiling 2
@@ -120,7 +120,7 @@ all_ready() {
 
 # ---------- AC4: multi-failure message names each failing story ----------
 
-@test "AC4: a multi-failure gate names each failing story per check" {
+@test "a multi-failure gate names each failing story per check" {
   all_ready
   rm -rf "$IMPL/epic-E900-fixture/E900-S3-slug"   # S3 unmaterialized
   rm -f "$TA/atdd-E900-S2.md"                      # S2 missing ATDD
@@ -145,7 +145,7 @@ all_ready() {
 
 # ---------- AC-INT1 / TS5: SKILL.md documents the gate-before-activate hook ----------
 
-@test "AC-INT1: sprint-plan SKILL.md documents the planned->active gate before the activate transition" {
+@test "sprint-plan SKILL.md documents the planned->active gate before the activate transition" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-sprint-plan/SKILL.md"
   grep -Eiq 'planned-active-gate|planned.*active.*gate|readiness gate' "$SKILL" \
     || { echo "SKILL.md should document the planned->active readiness gate" >&2; false; }

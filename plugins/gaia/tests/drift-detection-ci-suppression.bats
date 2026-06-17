@@ -73,7 +73,7 @@ run_resolver_no_ci() {
 
 # ===== AC1 — CI=true + non-TTY suppresses stderr warning ==============
 
-@test "AC1 / CI suppression: CI=true + non-TTY suppresses stderr warning, marker still written" {
+@test "CI suppression: CI=true + non-TTY suppresses stderr warning, marker still written" {
   write_drifted_config
   # `run --separate-stderr` already runs without a TTY (stdout/stderr piped).
   run_resolver_env "CI=true"
@@ -89,7 +89,7 @@ run_resolver_no_ci() {
 # stderr, defeating `[ -t 1 ]`). Structurally test the guard's logic
 # instead — confirm the guard requires BOTH CI=true AND `! [ -t 1 ]`.
 
-@test "AC2 (structural): CI suppression guard requires BOTH CI=true AND non-TTY" {
+@test "structural): CI suppression guard requires BOTH CI=true AND non-TTY" {
   # Verify the implementation gates suppression on the AND of both conditions
   # (not just CI=true). Look for the canonical pattern:
   #   [ "${CI:-}" = "true" ] && [ ! -t 1 ]
@@ -101,7 +101,7 @@ run_resolver_no_ci() {
 
 # ===== AC3 — non-CI + non-TTY → warning shown =========================
 
-@test "AC3 / non-CI non-TTY: warning IS shown when CI is unset" {
+@test "non-CI non-TTY: warning IS shown when CI is unset" {
   write_drifted_config
   # CI unset, non-TTY (bats pipes stderr). Suppression should NOT fire.
   run_resolver_no_ci
@@ -112,7 +112,7 @@ run_resolver_no_ci() {
 
 # ===== AC4 — GAIA_SKIP_VERSION_CHECK=1 full skip ======================
 
-@test "AC4 / GAIA_SKIP_VERSION_CHECK=1: full skip — no marker, no warning, no sentinel" {
+@test "GAIA_SKIP_VERSION_CHECK=1: full skip — no marker, no warning, no sentinel" {
   write_drifted_config
   run_resolver_env "GAIA_SKIP_VERSION_CHECK=1"
   [ "$status" -eq 0 ]
@@ -126,7 +126,7 @@ run_resolver_no_ci() {
 
 # ===== AC5 — GAIA_SKIP_VERSION_CHECK=0 treated as unset ===============
 
-@test "AC5 / GAIA_SKIP_VERSION_CHECK=0: value 0 is treated as unset — check runs normally" {
+@test "GAIA_SKIP_VERSION_CHECK=0: value 0 is treated as unset — check runs normally" {
   write_drifted_config
   # Explicitly unset CI so the AC5 warning-emit path is exercised regardless of
   # host env (GitHub Actions inherits CI=true into the test process).
@@ -140,7 +140,7 @@ run_resolver_no_ci() {
 
 # ===== AC6 — GAIA_SKIP_VERSION_CHECK unset → normal ===================
 
-@test "AC6 / GAIA_SKIP_VERSION_CHECK unset: drift check runs normally" {
+@test "GAIA_SKIP_VERSION_CHECK unset: drift check runs normally" {
   write_drifted_config
   run_resolver_no_ci  # CI= and GAIA_SKIP_VERSION_CHECK= (both empty)
   [ "$status" -eq 0 ]
@@ -149,7 +149,7 @@ run_resolver_no_ci() {
 
 # ===== AC7 — SKIP=1 takes precedence over CI=true =====================
 
-@test "AC7 / precedence: GAIA_SKIP_VERSION_CHECK=1 + CI=true → full skip wins" {
+@test "precedence: GAIA_SKIP_VERSION_CHECK=1 + CI=true → full skip wins" {
   write_drifted_config
   run_resolver_env "GAIA_SKIP_VERSION_CHECK=1" "CI=true"
   [ "$status" -eq 0 ]
@@ -161,14 +161,14 @@ run_resolver_no_ci() {
 
 # ===== AC8 / SR-56 — verbose-mode visibility ==========================
 
-@test "AC8 / SR-56: SKILL.md documents the GAIA_SKIP_VERSION_CHECK verbose note" {
+@test "SKILL.md documents the GAIA_SKIP_VERSION_CHECK verbose note" {
   # The note must appear verbatim per AC8:
   #   "Note: version drift check is disabled (GAIA_SKIP_VERSION_CHECK=1)."
   grep -F 'GAIA_SKIP_VERSION_CHECK' "$SKILL_MD"
   grep -F 'version drift check is disabled' "$SKILL_MD"
 }
 
-@test "AC8 / SR-56: verbose-note guard gates on both --verbose AND env var" {
+@test "verbose-note guard gates on both --verbose AND env var" {
   # The SKILL.md prose must explicitly say BOTH the --verbose flag AND
   # GAIA_SKIP_VERSION_CHECK=1 must be true for the note to fire.
   local section
@@ -232,7 +232,7 @@ run_resolver_no_ci() {
 # them via `bats --filter-tags '!hardware-dependent'`.
 
 # bats test_tags=hardware-dependent
-@test "TC-FVD-49 (hardware-dependent): warm-cache resolve-config.sh completes in <50ms" {
+@test "hardware-dependent): warm-cache resolve-config.sh completes in <50ms" {
   # NFR-063 budget: warm-cache path ≤5ms. We use ≤50ms here as a generous
   # bound that's robust across CI runners (Azure agents vary widely).
   # If this fails on slow hardware, it's tagged for `--filter-tags
@@ -254,7 +254,7 @@ run_resolver_no_ci() {
 }
 
 # bats test_tags=hardware-dependent
-@test "TC-FVD-50 (hardware-dependent): full-skip path is faster than full-check" {
+@test "hardware-dependent): full-skip path is faster than full-check" {
   # The GAIA_SKIP_VERSION_CHECK=1 path returns before any I/O. It should
   # always be at least as fast as the full check. We assert a weak
   # ordering — skip ≤ full + 100ms (CI variance budget).
@@ -275,7 +275,7 @@ run_resolver_no_ci() {
 }
 
 # bats test_tags=hardware-dependent
-@test "TC-FVD-51 (hardware-dependent): cold-cache resolve-config.sh completes in <500ms" {
+@test "hardware-dependent): cold-cache resolve-config.sh completes in <500ms" {
   # NFR-063 budget: cold-cache path ≤50ms. We use ≤500ms as a generous
   # CI-safe bound. Test exercises a fresh fixture with no sentinel.
   [ "${CI:-}" = "true" ] && skip "hardware-dependent on CI runners"

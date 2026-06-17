@@ -137,11 +137,11 @@ PY
 # action-items consumer read `planning-artifacts/`). The assertions
 # below are updated to match the new canonical home.
 
-@test "F-25 (post-AF-30-2): gaia-retro SKILL.md uses canonical planning-artifacts/action-items.yaml" {
+@test "gaia-retro SKILL.md uses canonical planning-artifacts/action-items.yaml" {
   grep -qF ".gaia/artifacts/planning-artifacts/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-retro/SKILL.md"
 }
 
-@test "F-25 (post-AF-30-2): gaia-triage-findings SKILL.md uses canonical planning-artifacts/action-items.yaml" {
+@test "gaia-triage-findings SKILL.md uses canonical planning-artifacts/action-items.yaml" {
   # Triage-findings still references action-items.yaml at the canonical
   # planning-artifacts location for new-story creation and existing-story
   # lookup paths.

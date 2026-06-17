@@ -30,14 +30,14 @@ DEVICE_FARM_ADAPTERS=(firebase-test-lab browserstack sauce-labs)
 
 # ---------------- AC1 — five dynamic adapters registered ------------------
 
-@test "AC1: dynamic adapter registry contains exactly five manifests" {
+@test "dynamic adapter registry contains exactly five manifests" {
   [ -d "$DYNAMIC_DIR" ]
   local count
   count="$(find "$DYNAMIC_DIR" -maxdepth 1 -name '*.yaml' -type f | wc -l | tr -d ' ')"
   [ "$count" = "5" ]
 }
 
-@test "AC1: each dynamic manifest has required fields (name, type, platform, binary, config_file_pattern, output_format)" {
+@test "each dynamic manifest has required fields (name, type, platform, binary, config_file_pattern, output_format)" {
   for adapter in "${DYNAMIC_ADAPTERS[@]}"; do
     local f="$DYNAMIC_DIR/$adapter.yaml"
     [ -f "$f" ] || { echo "missing $f" >&2; return 1; }
@@ -52,14 +52,14 @@ DEVICE_FARM_ADAPTERS=(firebase-test-lab browserstack sauce-labs)
 
 # ---------------- AC2 — three device-farm adapters registered -------------
 
-@test "AC2: device-farm adapter registry contains exactly three manifests" {
+@test "device-farm adapter registry contains exactly three manifests" {
   [ -d "$DEVICE_FARM_DIR" ]
   local count
   count="$(find "$DEVICE_FARM_DIR" -maxdepth 1 -name '*.yaml' -type f | wc -l | tr -d ' ')"
   [ "$count" = "3" ]
 }
 
-@test "AC2: each device-farm manifest has required fields (runtime_profile=network, auth_env_var, api_base_url, device_matrix_format, result_polling_strategy)" {
+@test "each device-farm manifest has required fields (runtime_profile=network, auth_env_var, api_base_url, device_matrix_format, result_polling_strategy)" {
   for adapter in "${DEVICE_FARM_ADAPTERS[@]}"; do
     local f="$DEVICE_FARM_DIR/$adapter.yaml"
     [ -f "$f" ] || { echo "missing $f" >&2; return 1; }
@@ -75,7 +75,7 @@ DEVICE_FARM_ADAPTERS=(firebase-test-lab browserstack sauce-labs)
 
 # ---------------- AC3 — dynamic adapter dispatch --------------------------
 
-@test "AC3: dispatch-dynamic-test.sh resolves manifest and emits structured JSON" {
+@test "dispatch-dynamic-test.sh resolves manifest and emits structured JSON" {
   [ -x "$DISPATCH_DYN" ]
   local fakebin="$BATS_TEST_TMPDIR/fakebin"
   mkdir -p "$fakebin"
@@ -99,7 +99,7 @@ EOF
 
 # ---------------- AC4 — device-farm adapter dispatch ----------------------
 
-@test "AC4: dispatch-device-farm.sh emits structured JSON with composite_verdict" {
+@test "dispatch-device-farm.sh emits structured JSON with composite_verdict" {
   [ -x "$DISPATCH_DF" ]
   FIREBASE_TEST_LAB_TOKEN="dummy" \
     GAIA_DEVICE_FARM_MOCK=1 \
@@ -116,7 +116,7 @@ EOF
 
 # ---------------- AC5 — runtime-profile: network enforcement --------------
 
-@test "AC5: dispatch-device-farm.sh exits 2 with offline mode (GAIA_OFFLINE=true)" {
+@test "dispatch-device-farm.sh exits 2 with offline mode (GAIA_OFFLINE=true)" {
   GAIA_OFFLINE=true \
     FIREBASE_TEST_LAB_TOKEN="dummy" \
     run "$DISPATCH_DF" --adapter firebase-test-lab --suite "$BATS_TEST_TMPDIR/suite" \
@@ -127,7 +127,7 @@ EOF
 
 # ---------------- AC6 — missing auth credential detection -----------------
 
-@test "AC6: dispatch-device-farm.sh exits 3 when auth_env_var unset" {
+@test "dispatch-device-farm.sh exits 3 when auth_env_var unset" {
   unset FIREBASE_TEST_LAB_TOKEN
   run "$DISPATCH_DF" --adapter firebase-test-lab --suite "$BATS_TEST_TMPDIR/suite" \
     --device-matrix "$BATS_TEST_TMPDIR/matrix.yaml"
@@ -137,12 +137,12 @@ EOF
 
 # ---------------- AC7 — adapter output normalization ----------------------
 
-@test "AC7: schemas/adapter-output.schema.json exists and is valid JSON" {
+@test "schemas/adapter-output.schema.json exists and is valid JSON" {
   [ -f "$SCHEMA_FILE" ]
   jq empty "$SCHEMA_FILE"
 }
 
-@test "AC7: normalize-adapter-output.sh produces canonical JSON from JUnit XML" {
+@test "normalize-adapter-output.sh produces canonical JSON from JUnit XML" {
   [ -x "$NORMALIZE" ]
   local junit="$BATS_TEST_TMPDIR/junit.xml"
   cat > "$junit" <<'XML'
@@ -169,7 +169,7 @@ XML
   echo "$output" | jq -e 'has("duration_ms")' >/dev/null
 }
 
-@test "AC7: normalize-adapter-output.sh produces canonical JSON from Maestro JSON output" {
+@test "normalize-adapter-output.sh produces canonical JSON from Maestro JSON output" {
   local maestro="$BATS_TEST_TMPDIR/maestro.json"
   cat > "$maestro" <<'JSON'
 {
@@ -190,7 +190,7 @@ JSON
 
 # ---------------- AC8 — device-farm result polling ------------------------
 
-@test "AC8: dispatch-device-farm.sh poll strategy times out -> exit 4" {
+@test "dispatch-device-farm.sh poll strategy times out -> exit 4" {
   FIREBASE_TEST_LAB_TOKEN="dummy" \
     GAIA_DEVICE_FARM_MOCK=timeout \
     run "$DISPATCH_DF" --adapter firebase-test-lab --suite "$BATS_TEST_TMPDIR/suite" \
@@ -200,7 +200,7 @@ JSON
   echo "$output" | grep -qi 'timeout\|max_poll_attempts' || { echo "expected poll-timeout diag, got: $output" >&2; return 1; }
 }
 
-@test "AC8: dispatch-device-farm.sh webhook strategy times out -> exit 4" {
+@test "dispatch-device-farm.sh webhook strategy times out -> exit 4" {
   BROWSERSTACK_ACCESS_KEY="dummy" \
     GAIA_DEVICE_FARM_MOCK=webhook-timeout \
     run "$DISPATCH_DF" --adapter browserstack --suite "$BATS_TEST_TMPDIR/suite" \
@@ -212,7 +212,7 @@ JSON
 
 # ---------------- AC2 specifics — polling-strategy mapping ----------------
 
-@test "AC2: firebase-test-lab and sauce-labs declare poll strategy with max_poll_attempts/poll_interval_seconds" {
+@test "firebase-test-lab and sauce-labs declare poll strategy with max_poll_attempts/poll_interval_seconds" {
   for adapter in firebase-test-lab sauce-labs; do
     local f="$DEVICE_FARM_DIR/$adapter.yaml"
     grep -Eq '^result_polling_strategy:[[:space:]]+poll[[:space:]]*$' "$f" || { echo "$adapter: not poll" >&2; return 1; }
@@ -221,7 +221,7 @@ JSON
   done
 }
 
-@test "AC2: browserstack declares webhook strategy with webhook_timeout_seconds" {
+@test "browserstack declares webhook strategy with webhook_timeout_seconds" {
   local f="$DEVICE_FARM_DIR/browserstack.yaml"
   grep -Eq '^result_polling_strategy:[[:space:]]+webhook[[:space:]]*$' "$f"
   grep -Eq '^webhook_timeout_seconds:[[:space:]]+[0-9]+' "$f"

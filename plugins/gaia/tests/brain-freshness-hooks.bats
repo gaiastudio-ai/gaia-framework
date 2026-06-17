@@ -187,7 +187,7 @@ _extract_entry_block() {
 
 # ---- TC-BRN-75 — story→done invokes update-brain-index.sh to mark node closed
 
-@test "TC-BRN-75 — transition story→done marks reviewed-in edges on the story node" {
+@test "transition story→done marks reviewed-in edges on the story node" {
   [ -f "$TRANSITION" ]
   [ -f "$UPDATER" ]
 
@@ -210,7 +210,7 @@ _extract_entry_block() {
 
 # ---- TC-BRN-76 — story→done links final reviews via reviewed-in edges
 
-@test "TC-BRN-76 — story→done links final reviews via reviewed-in edges" {
+@test "story→done links final reviews via reviewed-in edges" {
   [ -f "$TRANSITION" ]
   [ -f "$UPDATER" ]
 
@@ -232,7 +232,7 @@ _extract_entry_block() {
 
 # ---- TC-BRN-77 — review-gate.sh review-write appends a reviewed-in edge
 
-@test "TC-BRN-77 — review-gate.sh review-write appends a reviewed-in edge" {
+@test "review-gate.sh review-write appends a reviewed-in edge" {
   [ -f "$REVIEW_GATE" ]
   [ -f "$UPDATER" ]
 
@@ -309,7 +309,7 @@ YAML
 
 # ---- TC-BRN-78 — repeated lifecycle events are idempotent
 
-@test "TC-BRN-78 — repeated lifecycle events produce no duplicate edges" {
+@test "repeated lifecycle events produce no duplicate edges" {
   [ -f "$UPDATER" ]
 
   # Add an edge to the manifest directly.
@@ -339,7 +339,7 @@ YAML
 
 # ---- TC-BRN-79 — full reindex sweep preserves lesson entries verbatim
 
-@test "TC-BRN-79 — full gaia-brain-reindex sweep preserves lesson entries verbatim" {
+@test "full gaia-brain-reindex sweep preserves lesson entries verbatim" {
   [ -f "$REINDEX" ]
 
   # Add a lesson entry with an edge to the manifest.
@@ -402,7 +402,7 @@ YAML
 
 # ---- TC-BRN-80 — lesson entries survive a full index rebuild
 
-@test "TC-BRN-80 — lesson entries survive a full index rebuild (not pruned as orphans)" {
+@test "lesson entries survive a full index rebuild (not pruned as orphans)" {
   [ -f "$REINDEX" ]
 
   # Add TWO lesson entries to the manifest.

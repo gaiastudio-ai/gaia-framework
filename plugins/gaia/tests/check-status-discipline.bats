@@ -13,6 +13,6 @@
 #   - marker_story_key
 #   - story_key_from_path
 
-@test "check-status-discipline: NFR-052 anchor file exists (sentinel)" {
+@test "check-status-discipline: anchor file exists (sentinel)" {
   [ -f "$BATS_TEST_FILENAME" ]
 }

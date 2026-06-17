@@ -28,13 +28,13 @@ teardown() { common_teardown; }
 # fallback-behavior coverage.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-12: finalize.sh exits non-zero when dep failure modes missing" {
+@test "finalize.sh exits non-zero when dep failure modes missing" {
   export PRD_ARTIFACT="$FIXTURES/prd-missing-deps-failure-modes.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-12: finalize.sh names the Critical dependencies item in the failure output" {
+@test "finalize.sh names the Critical dependencies item in the failure output" {
   export PRD_ARTIFACT="$FIXTURES/prd-missing-deps-failure-modes.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -42,14 +42,14 @@ teardown() { common_teardown; }
   [[ "$output" == *"fallback"* ]]
 }
 
-@test "VCP-CHK-12: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export PRD_ARTIFACT="$FIXTURES/prd-missing-deps-failure-modes.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-12: finalize.sh guides user back to /gaia-create-prd" {
+@test "finalize.sh guides user back to /gaia-create-prd" {
   export PRD_ARTIFACT="$FIXTURES/prd-missing-deps-failure-modes.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -72,7 +72,7 @@ teardown() { common_teardown; }
 # AC-EC3 — PRD_ARTIFACT points at a missing file. Mirrors E42-S5 AC4.
 # -------------------------------------------------------------------------
 
-@test "AC-EC3: finalize.sh reports 'no artifact to validate' when PRD_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when PRD_ARTIFACT points at a missing file" {
   export PRD_ARTIFACT="$BATS_TMPDIR/does-not-exist-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]

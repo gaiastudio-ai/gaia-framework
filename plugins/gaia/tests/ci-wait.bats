@@ -25,7 +25,7 @@ teardown() { common_teardown; }
 # TC-DSF-1 — ci-wait.sh MUST not request the deprecated `status` / `conclusion`
 # fields from `gh pr checks`. The fix renames the field path to `state` /
 # `bucket` (the canonical fields exposed by gh 2.88.x).
-@test "TC-DSF-1: ci-wait.sh references only canonical gh pr-checks JSON fields" {
+@test "ci-wait.sh references only canonical gh pr-checks JSON fields" {
   # Negative: no request for the deprecated `status` field path.
   run grep -c -- '--json[^"]*status' "$CI_WAIT"
   [ "$status" -eq 0 ] || [ "$output" = "0" ]
@@ -39,7 +39,7 @@ teardown() { common_teardown; }
 # TC-DSF-1b — Pending / failure detection MUST use the new field path.
 # The legacy implementation grepped for `"status":"IN_PROGRESS"` and
 # `"conclusion":"FAILURE"`. The fix uses `bucket` (pass/fail/pending/skipping).
-@test "TC-DSF-1b: ci-wait.sh detection uses the new field path (bucket)" {
+@test "ci-wait.sh detection uses the new field path (bucket)" {
   # The legacy patterns must be gone.
   run grep -E '"status":"(IN_PROGRESS|QUEUED|PENDING)"' "$CI_WAIT"
   [ "$status" -ne 0 ]

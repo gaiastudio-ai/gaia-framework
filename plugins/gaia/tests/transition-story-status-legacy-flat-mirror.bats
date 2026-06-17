@@ -208,7 +208,7 @@ EOF
 # top, repeated here for safety in case of comment churn).
 # ---------------------------------------------------------------------------
 
-@test "function name reference (NFR-052 coverage gate)" {
+@test "function name reference" {
   # legacy_flat_index_mirror_update is exercised by every test above; this
   # case exists solely to keep the name visible to the grep-based coverage
   # gate if the top-of-file comment block is ever trimmed.

@@ -64,7 +64,7 @@ write_fragment() {
 
 # ---- AC1: Library location and sourcing contract -------------------------
 
-@test "AC1: library file exists and is sourceable, not executable as binary" {
+@test "library file exists and is sourceable, not executable as binary" {
   [ -f "$LIB" ]
   # Must not have a shebang-then-exec form — it is sourced
   run head -1 "$LIB"
@@ -74,13 +74,13 @@ write_fragment() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: sourcing exports config_hydrate_section function" {
+@test "sourcing exports config_hydrate_section function" {
   run bash -c "source '$LIB' && declare -F config_hydrate_section"
   [ "$status" -eq 0 ]
   [[ "$output" == *"config_hydrate_section"* ]]
 }
 
-@test "AC1: library guard prevents double-sourcing side-effects" {
+@test "library guard prevents double-sourcing side-effects" {
   run bash -c "source '$LIB'; source '$LIB'; declare -F config_hydrate_section"
   [ "$status" -eq 0 ]
   [[ "$output" == *"config_hydrate_section"* ]]
@@ -88,7 +88,7 @@ write_fragment() {
 
 # ---- AC4 / Scenario 3: Section allowlist enforcement --------------------
 
-@test "AC4 / Scenario 3: reject unknown section name with non-zero exit" {
+@test "Scenario 3: reject unknown section name with non-zero exit" {
   write_minimal_config
   write_fragment "${TMP}/frag.yaml" "custom_section: value"
   run bash -c "source '$LIB' && config_hydrate_section custom_section '${TMP}/frag.yaml'"
@@ -96,7 +96,7 @@ write_fragment() {
   [[ "$output" == *"not in allowlist"* || "$output" == *"allowlist"* ]]
 }
 
-@test "AC4: allowlist accepts the curated configuration set (E85-S11 / AF-2026-05-13-2)" {
+@test "allowlist accepts the curated configuration set" {
   # Original E85-S1 allowlist had 7 entries (stacks, platforms, environments,
   # ci_cd, compliance, project_name, project_shape). E85-S11 (AF-2026-05-13-2)
   # expanded the allowlist to the curated 24-entry configuration set and
@@ -118,7 +118,7 @@ write_fragment() {
 
 # ---- AC2 / Scenario 1: Hydrate new section on minimal config ------------
 
-@test "AC2 / Scenario 1: hydrate new section inserts content and advances phase" {
+@test "Scenario 1: hydrate new section inserts content and advances phase" {
   write_minimal_config
   write_fragment "${TMP}/stacks.yaml" \
     "stacks:" \
@@ -135,7 +135,7 @@ write_fragment() {
 
 # ---- AC5 / Scenario 8: Audit comment presence ---------------------------
 
-@test "AC5 / Scenario 8: audit comment appended above hydrated section" {
+@test "Scenario 8: audit comment appended above hydrated section" {
   write_minimal_config
   write_fragment "${TMP}/stacks.yaml" \
     "stacks:" \
@@ -150,7 +150,7 @@ write_fragment() {
 
 # ---- AC6 / Scenario 5: config_phase minimal -> partial -----------------
 
-@test "AC6 / Scenario 5: hydration on minimal advances phase to partial" {
+@test "Scenario 5: hydration on minimal advances phase to partial" {
   write_minimal_config
   write_fragment "${TMP}/frag.yaml" "stacks:" "  - name: a"
   run bash -c "source '$LIB' && config_hydrate_section stacks '${TMP}/frag.yaml'"
@@ -158,7 +158,7 @@ write_fragment() {
   grep -q "^config_phase: partial$" "$CONFIG"
 }
 
-@test "AC6: hydration on partial keeps phase at partial (idempotent)" {
+@test "hydration on partial keeps phase at partial (idempotent)" {
   write_partial_config_with_stacks
   write_fragment "${TMP}/frag.yaml" "platforms:" "  - web"
   run bash -c "source '$LIB' && config_hydrate_section platforms '${TMP}/frag.yaml'"
@@ -168,7 +168,7 @@ write_fragment() {
 
 # ---- AC7 / Scenario 6: monotonic forward invariant ---------------------
 
-@test "AC7 / Scenario 6: helper never writes config_phase: full" {
+@test "Scenario 6: helper never writes config_phase: full" {
   write_partial_config_with_stacks
   write_fragment "${TMP}/frag.yaml" "platforms:" "  - web"
   run bash -c "source '$LIB' && config_hydrate_section platforms '${TMP}/frag.yaml'"
@@ -178,7 +178,7 @@ write_fragment() {
 
 # ---- AC8 / Scenario 7: Absent config_phase treated as full -------------
 
-@test "AC8 / Scenario 7: absent config_phase treated as full, no field added" {
+@test "Scenario 7: absent config_phase treated as full, no field added" {
   write_config_without_phase
   write_fragment "${TMP}/frag.yaml" "stacks:" "  - name: a"
   run bash -c "source '$LIB' && config_hydrate_section stacks '${TMP}/frag.yaml' 2>&1"
@@ -198,7 +198,7 @@ write_fragment() {
 
 # ---- AC9: YAML-comment preservation via delegation ---------------------
 
-@test "AC9 / Scenario 12: existing YAML comments survive a hydration cycle" {
+@test "Scenario 12: existing YAML comments survive a hydration cycle" {
   cat > "$CONFIG" <<EOF
 # Header comment
 project_name: "test-project"
@@ -216,7 +216,7 @@ EOF
 
 # ---- AC10 / Scenario 2: Idempotent re-hydration (overwrite) ------------
 
-@test "AC10 / Scenario 2: re-hydrate existing section overwrites without error" {
+@test "Scenario 2: re-hydrate existing section overwrites without error" {
   write_partial_config_with_stacks
   write_fragment "${TMP}/stacks-v2.yaml" "stacks:" "  - name: new-stack"
   run bash -c "source '$LIB' && config_hydrate_section stacks '${TMP}/stacks-v2.yaml' 2>&1"
@@ -233,7 +233,7 @@ EOF
 
 # ---- AC11 / Scenario 11: Lock timeout ----------------------------------
 
-@test "AC11 / Scenario 11: lock contention times out with diagnostic" {
+@test "Scenario 11: lock contention times out with diagnostic" {
   write_minimal_config
   write_fragment "${TMP}/frag.yaml" "stacks:" "  - name: a"
   # Hold the lock with a still-living subshell PID so stale-lock recovery
@@ -257,7 +257,7 @@ EOF
 
 # ---- AC13 edge cases ----------------------------------------------------
 
-@test "AC13 edge: empty payload file errors gracefully" {
+@test "edge: empty payload file errors gracefully" {
   write_minimal_config
   : > "${TMP}/empty.yaml"
   run bash -c "source '$LIB' && config_hydrate_section stacks '${TMP}/empty.yaml' 2>&1"
@@ -267,7 +267,7 @@ EOF
   grep -q "^config_phase: minimal$" "$CONFIG"
 }
 
-@test "AC13 edge: missing config file errors gracefully" {
+@test "edge: missing config file errors gracefully" {
   rm -f "$CONFIG"
   write_fragment "${TMP}/frag.yaml" "stacks:" "  - name: a"
   run bash -c "source '$LIB' && config_hydrate_section stacks '${TMP}/frag.yaml' 2>&1"
@@ -276,14 +276,14 @@ EOF
   [[ "$output" == *"not"* || "$output" == *"missing"* ]]
 }
 
-@test "AC13 edge: missing fragment file errors gracefully" {
+@test "edge: missing fragment file errors gracefully" {
   write_minimal_config
   run bash -c "source '$LIB' && config_hydrate_section stacks '${TMP}/nonexistent.yaml' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"fragment"* || "$output" == *"not"* ]]
 }
 
-@test "AC3 / AC13 edge: two parallel hydrations are serialized (no lost writes)" {
+@test "edge: two parallel hydrations are serialized (no lost writes)" {
   write_minimal_config
   write_fragment "${TMP}/stacks.yaml" "stacks:" "  - name: a"
   write_fragment "${TMP}/platforms.yaml" "platforms:" "  - web"

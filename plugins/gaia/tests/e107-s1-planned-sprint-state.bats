@@ -34,7 +34,7 @@ EOF
 
 # ---------- AC1 / TS1: cmd_init seeds status: planned ----------
 
-@test "AC1/TS1: cmd_init seeds status: planned (not active, not the orphan state:)" {
+@test "cmd_init seeds status: planned (not active, not the orphan state:)" {
   rm -f "$SPRINT_STATUS_YAML"
   run bash "$SS" init --sprint-id sprint-900
   [ "$status" -eq 0 ]
@@ -46,7 +46,7 @@ EOF
 
 # ---------- AC2 / AC3 / TS2: planned -> active accepted (unconditional) ----------
 
-@test "AC2/AC3/TS2: planned -> active transition is accepted (unconditional)" {
+@test "planned -> active transition is accepted (unconditional)" {
   seed_yaml planned
   run bash "$SS" transition --sprint sprint-900 --to active
   [ "$status" -eq 0 ] \
@@ -67,20 +67,20 @@ EOF
 
 # ---------- AC5 / TS3: illegal edges into/out of planned are rejected ----------
 
-@test "AC5/TS3: planned -> review is rejected" {
+@test "planned -> review is rejected" {
   seed_yaml planned
   run bash "$SS" transition --sprint sprint-900 --to review
   [ "$status" -ne 0 ]
   grep -Eq '^status:[[:space:]]*planned' "$SPRINT_STATUS_YAML"  # unchanged
 }
 
-@test "AC5/TS3: closed -> planned is rejected" {
+@test "closed -> planned is rejected" {
   seed_yaml closed
   run bash "$SS" transition --sprint sprint-900 --to planned
   [ "$status" -ne 0 ]
 }
 
-@test "AC5/TS3: review -> planned is rejected" {
+@test "review -> planned is rejected" {
   seed_yaml review
   run bash "$SS" transition --sprint sprint-900 --to planned
   [ "$status" -ne 0 ]
@@ -88,7 +88,7 @@ EOF
 
 # ---------- AC2 / TS4: existing edges still accepted ----------
 
-@test "AC2/TS4: active -> review still accepted (existing edge unchanged)" {
+@test "active -> review still accepted (existing edge unchanged)" {
   seed_yaml active
   run bash "$SS" transition --sprint sprint-900 --to review
   [ "$status" -eq 0 ] \
@@ -96,7 +96,7 @@ EOF
   grep -Eq '^status:[[:space:]]*review' "$SPRINT_STATUS_YAML"
 }
 
-@test "AC2/TS4: review -> closed still accepted (existing edge unchanged)" {
+@test "review -> closed still accepted (existing edge unchanged)" {
   # AF-2026-05-31-3 / Test14 F-13: the review→closed edge now requires a
   # Val sentinel by default. This test asserts the EDGE itself remains
   # legal (ADR-108 D1 + FR-452); the sentinel gate is a separate guard
@@ -111,7 +111,7 @@ EOF
 
 # ---------- AC4: ADR-108 vocab enumerates planned ----------
 
-@test "AC4: the ADR-108 vocabulary shard enumerates the planned sprint state" {
+@test "the vocabulary shard enumerates the planned sprint state" {
   ADR="$REPO_ROOT/../.gaia/artifacts/planning-artifacts/architecture/12-12-adr-detail-records.md"
   # project-root artifact, not in the gaia-public CI checkout -> skip when absent
   [ -f "$ADR" ] || skip "ADR shard is a project-root artifact not present in the gaia-public checkout"

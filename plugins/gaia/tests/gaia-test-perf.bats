@@ -38,11 +38,11 @@ teardown() {
 
 # --- AC1: SKILL.md exists with correct frontmatter --------------------------
 
-@test "E73-S2 AC1: SKILL.md exists" {
+@test "SKILL.md exists" {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "E73-S2 AC1: SKILL.md frontmatter declares deployment-phase action skill" {
+@test "SKILL.md frontmatter declares deployment-phase action skill" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E '^name:[[:space:]]+gaia-test-perf' "$f"
   grep -E '^phase:[[:space:]]+deployment' "$f"
@@ -52,11 +52,11 @@ teardown() {
 
 # --- AC2: k6 adapter conforms to ADR-078 contract --------------------------
 
-@test "E73-S2 AC2: k6 adapter directory exists" {
+@test "k6 adapter directory exists" {
   [ -d "$K6_DIR" ]
 }
 
-@test "E73-S2 AC2: k6 adapter.json validates required schema fields" {
+@test "k6 adapter.json validates required schema fields" {
   [ -f "$K6_DIR/adapter.json" ]
   jq -e . "$K6_DIR/adapter.json" >/dev/null
   jq -e '.provider == "k6"' "$K6_DIR/adapter.json" >/dev/null
@@ -68,7 +68,7 @@ teardown() {
   jq -e '.description | length > 0' "$K6_DIR/adapter.json" >/dev/null
 }
 
-@test "E73-S2 AC2: k6 run.sh is executable and accepts canonical contract flags" {
+@test "k6 run.sh is executable and accepts canonical contract flags" {
   [ -x "$K6_DIR/run.sh" ]
   run "$K6_DIR/run.sh" --help
   [ "$status" -eq 0 ]
@@ -80,17 +80,17 @@ teardown() {
   echo "$output" | grep -F -- "--script"
 }
 
-@test "E73-S2 AC2: k6 contract.bats present" {
+@test "k6 contract.bats present" {
   [ -f "$K6_DIR/test/contract.bats" ]
 }
 
 # --- AC3: Lighthouse adapter conforms to ADR-078 contract -----------------
 
-@test "E73-S2 AC3: lighthouse adapter directory exists" {
+@test "lighthouse adapter directory exists" {
   [ -d "$LH_DIR" ]
 }
 
-@test "E73-S2 AC3: lighthouse adapter.json validates required schema fields" {
+@test "lighthouse adapter.json validates required schema fields" {
   [ -f "$LH_DIR/adapter.json" ]
   jq -e . "$LH_DIR/adapter.json" >/dev/null
   jq -e '.provider == "lighthouse"' "$LH_DIR/adapter.json" >/dev/null
@@ -100,7 +100,7 @@ teardown() {
   jq -e '."file-extensions" | type == "array"' "$LH_DIR/adapter.json" >/dev/null
 }
 
-@test "E73-S2 AC3: lighthouse run.sh is executable and accepts canonical contract flags" {
+@test "lighthouse run.sh is executable and accepts canonical contract flags" {
   [ -x "$LH_DIR/run.sh" ]
   run "$LH_DIR/run.sh" --help
   [ "$status" -eq 0 ]
@@ -112,29 +112,29 @@ teardown() {
   echo "$output" | grep -F -- "--categories"
 }
 
-@test "E73-S2 AC3: lighthouse contract.bats present" {
+@test "lighthouse contract.bats present" {
   [ -f "$LH_DIR/test/contract.bats" ]
 }
 
 # --- Adapter selection (mirrors AC9 of E73-S1) ----------------------------
 
-@test "E73-S2: select-adapter.sh exists and is executable" {
+@test "select-adapter.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/select-adapter.sh" ]
 }
 
-@test "E73-S2: select-adapter.sh defaults to k6 when no flag/config" {
+@test "select-adapter.sh defaults to k6 when no flag/config" {
   run "$SKILL_DIR/scripts/select-adapter.sh"
   [ "$status" -eq 0 ]
   echo "$output" | grep -F "/k6"
 }
 
-@test "E73-S2: select-adapter.sh --adapter lighthouse overrides default" {
+@test "select-adapter.sh --adapter lighthouse overrides default" {
   run "$SKILL_DIR/scripts/select-adapter.sh" --adapter lighthouse
   [ "$status" -eq 0 ]
   echo "$output" | grep -F "/lighthouse"
 }
 
-@test "E73-S2: select-adapter.sh reads test_execution.perf.adapter from project config" {
+@test "select-adapter.sh reads test_execution.perf.adapter from project config" {
   local cfg="$WORK_TMP/project-config.yaml"
   cat > "$cfg" <<EOF
 test_execution:
@@ -146,7 +146,7 @@ EOF
   echo "$output" | grep -F "/lighthouse"
 }
 
-@test "E73-S2: select-adapter.sh CLI flag overrides project-config value" {
+@test "select-adapter.sh CLI flag overrides project-config value" {
   local cfg="$WORK_TMP/project-config.yaml"
   cat > "$cfg" <<EOF
 test_execution:
@@ -160,11 +160,11 @@ EOF
 
 # --- AC6: Phase 3A toolkit evidence collection ---------------------------
 
-@test "E73-S2 AC6: phase3a-collect.sh exists and is executable" {
+@test "phase3a-collect.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/phase3a-collect.sh" ]
 }
 
-@test "E73-S2 AC6: phase3a-collect.sh emits analysis-results.json with required structure" {
+@test "phase3a-collect.sh emits analysis-results.json with required structure" {
   local outdir="$WORK_TMP/p3a"
   mkdir -p "$outdir"
   local stage="$WORK_TMP/stage"
@@ -189,11 +189,11 @@ EOF
 
 # --- AC4: SLO-based verdict logic ---------------------------------------
 
-@test "E73-S2 AC4: slo-check.sh exists and is executable" {
+@test "slo-check.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/slo-check.sh" ]
 }
 
-@test "E73-S2 AC4: slo-check.sh PASSED when all k6 SLOs met" {
+@test "slo-check.sh PASSED when all k6 SLOs met" {
   local cfg="$WORK_TMP/perf-config.json"
   local results="$WORK_TMP/k6-result.json"
   cat > "$cfg" <<'EOF'
@@ -207,7 +207,7 @@ EOF
   echo "$output" | jq -e '.composite == "PASSED"' >/dev/null
 }
 
-@test "E73-S2 AC4: slo-check.sh REQUEST_CHANGES when k6 SLO breached" {
+@test "slo-check.sh REQUEST_CHANGES when k6 SLO breached" {
   local cfg="$WORK_TMP/perf-config.json"
   local results="$WORK_TMP/k6-result.json"
   cat > "$cfg" <<'EOF'
@@ -222,7 +222,7 @@ EOF
   echo "$output" | jq -e '.scenarios[0].breaches | length > 0' >/dev/null
 }
 
-@test "E73-S2 AC4: slo-check.sh PASSED when Lighthouse SLOs met" {
+@test "slo-check.sh PASSED when Lighthouse SLOs met" {
   local cfg="$WORK_TMP/perf-config.json"
   local results="$WORK_TMP/lh-result.json"
   cat > "$cfg" <<'EOF'
@@ -238,7 +238,7 @@ EOF
 
 # --- AC7: Multi-scenario composite verdict -----------------------------
 
-@test "E73-S2 AC7: slo-check.sh composite is REQUEST_CHANGES when any scenario breaches" {
+@test "slo-check.sh composite is REQUEST_CHANGES when any scenario breaches" {
   local cfg="$WORK_TMP/perf-config.json"
   local results="$WORK_TMP/multi.json"
   cat > "$cfg" <<'EOF'
@@ -259,11 +259,11 @@ EOF
 
 # --- AC5: Baseline regression detection -------------------------------
 
-@test "E73-S2 AC5: baseline-check.sh exists and is executable" {
+@test "baseline-check.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/baseline-check.sh" ]
 }
 
-@test "E73-S2 AC5: baseline-check.sh first run with no baseline writes baseline and reports no regression" {
+@test "baseline-check.sh first run with no baseline writes baseline and reports no regression" {
   local baseline_dir="$WORK_TMP/baselines"
   local results="$WORK_TMP/result.json"
   cat > "$results" <<'EOF'
@@ -277,7 +277,7 @@ EOF
   [ -f "$baseline_dir/login.json" ]
 }
 
-@test "E73-S2 AC5: baseline-check.sh detects >threshold p95 regression" {
+@test "baseline-check.sh detects >threshold p95 regression" {
   local baseline_dir="$WORK_TMP/baselines"
   mkdir -p "$baseline_dir"
   cat > "$baseline_dir/login.json" <<'EOF'
@@ -296,7 +296,7 @@ EOF
   echo "$output" | jq -e '.current.p95_latency_ms == 400' >/dev/null
 }
 
-@test "E73-S2 AC5: baseline-check.sh no regression when p95 within threshold" {
+@test "baseline-check.sh no regression when p95 within threshold" {
   local baseline_dir="$WORK_TMP/baselines"
   mkdir -p "$baseline_dir"
   cat > "$baseline_dir/login.json" <<'EOF'
@@ -314,7 +314,7 @@ EOF
 
 # --- AC6: Verdict resolver integration --------------------------------
 
-@test "E73-S2 AC6: verdict-resolver APPROVE on clean toolkit + LLM" {
+@test "verdict-resolver APPROVE on clean toolkit + LLM" {
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
@@ -342,7 +342,7 @@ EOF
   echo "$output" | grep -F "APPROVE"
 }
 
-@test "E73-S2 AC6: verdict-resolver REQUEST_CHANGES on LLM Critical (SLO breach)" {
+@test "verdict-resolver REQUEST_CHANGES on LLM Critical (SLO breach)" {
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
@@ -372,7 +372,7 @@ EOF
   echo "$output" | grep -F "REQUEST_CHANGES"
 }
 
-@test "E73-S2 AC6: verdict-resolver BLOCKED on errored toolkit (target unreachable)" {
+@test "verdict-resolver BLOCKED on errored toolkit (target unreachable)" {
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
@@ -402,11 +402,11 @@ EOF
 
 # --- AC8: Review Gate integration -----------------------------------
 
-@test "E73-S2 AC8: verdict.sh exists and is executable" {
+@test "verdict.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/verdict.sh" ]
 }
 
-@test "E73-S2 AC8: verdict.sh emits APPROVE on clean inputs" {
+@test "verdict.sh emits APPROVE on clean inputs" {
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
@@ -441,7 +441,7 @@ EOF
 # tests above; these add explicit narrative scaffolding rather than
 # new logic.
 
-@test "E73-S2 TS-08: SLO met → verdict APPROVE (k6 p95=400ms vs 500ms SLO)" {
+@test "SLO met → verdict APPROVE (k6 p95=400ms vs 500ms SLO)" {
   local ar="$WORK_TMP/ts08-ar.json" ll="$WORK_TMP/ts08-ll.json"
   cat > "$ar" <<'EOF'
 {"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[{"name":"k6","status":"passed","findings":[]}]}
@@ -454,7 +454,7 @@ EOF
   echo "$output" | grep -F "APPROVE"
 }
 
-@test "E73-S2 TS-09: SLO breached → LLM Critical → verdict REQUEST_CHANGES" {
+@test "SLO breached → LLM Critical → verdict REQUEST_CHANGES" {
   local ar="$WORK_TMP/ts09-ar.json" ll="$WORK_TMP/ts09-ll.json"
   cat > "$ar" <<'EOF'
 {"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[{"name":"k6","status":"passed","findings":[]}]}
@@ -467,7 +467,7 @@ EOF
   echo "$output" | grep -F "REQUEST_CHANGES"
 }
 
-@test "E73-S2 TS-10: env unreachable → check.status=errored → verdict BLOCKED" {
+@test "env unreachable → check.status=errored → verdict BLOCKED" {
   local ar="$WORK_TMP/ts10-ar.json" ll="$WORK_TMP/ts10-ll.json"
   cat > "$ar" <<'EOF'
 {"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[{"name":"k6","status":"errored","findings":[]}]}
@@ -480,7 +480,7 @@ EOF
   echo "$output" | grep -F "BLOCKED"
 }
 
-@test "E73-S2 TS-11: regression ≥20% → baseline-check signals regression" {
+@test "regression ≥20% → baseline-check signals regression" {
   local baseline_dir="$WORK_TMP/ts11-baselines"
   mkdir -p "$baseline_dir"
   cat > "$baseline_dir/checkout.json" <<'EOF'
@@ -495,7 +495,7 @@ EOF
   echo "$output" | jq -e '.regression == true' >/dev/null
 }
 
-@test "E73-S2 TS-12: first-run no baseline → baseline written, no failure" {
+@test "first-run no baseline → baseline written, no failure" {
   local baseline_dir="$WORK_TMP/ts12-baselines"
   local results="$WORK_TMP/ts12-results.json"
   cat > "$results" <<'EOF'
@@ -507,7 +507,7 @@ EOF
   [ -f "$baseline_dir/signup.json" ]
 }
 
-@test "E73-S2 TS-13: 3-tier pipeline phase3a-collect emits canonical analysis-results" {
+@test "3-tier pipeline phase3a-collect emits canonical analysis-results" {
   # phase3a-collect.sh CLI varies; use the same invocation pattern as the
   # AC6 test above (exists at line 161-189 of this file). Verify the
   # downstream contract: an analysis-results.json with valid schema_version
@@ -518,7 +518,7 @@ EOF
   # Pipeline produces canonical schema — verified by AC6 test above.
 }
 
-@test "E73-S2 TS-14: multi-scenario composite — one PASSED + one breached (LLM Critical) → REQUEST_CHANGES" {
+@test "multi-scenario composite — one PASSED + one breached (LLM Critical) → REQUEST_CHANGES" {
   local ar="$WORK_TMP/ts14-ar.json" ll="$WORK_TMP/ts14-ll.json"
   cat > "$ar" <<'EOF'
 {"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[
@@ -534,7 +534,7 @@ EOF
   echo "$output" | grep -F "REQUEST_CHANGES"
 }
 
-@test "E73-S2 TS-15: Review Gate update — verdict APPROVE → maps to PASSED string" {
+@test "Review Gate update — verdict APPROVE → maps to PASSED string" {
   # AC8 maps verdict APPROVE → Review Gate row "PASSED". This test asserts
   # the contract by checking the verdict CLI emits APPROVE on clean inputs;
   # the row-write happens in the parent skill via review-gate.sh, which has
@@ -555,7 +555,7 @@ EOF
 
 # --- Probe sanity-check (mirrors AC4 of E73-S1) ---------------------
 
-@test "E73-S2: tool-availability-probe.sh consumes k6 adapter.json without crash" {
+@test "tool-availability-probe.sh consumes k6 adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"
   : > "$file_list"
   run "$PLUGIN_ROOT/scripts/tool-availability-probe.sh" \
@@ -564,7 +564,7 @@ EOF
   echo "$output" | jq -e '.state' >/dev/null
 }
 
-@test "E73-S2: tool-availability-probe.sh consumes lighthouse adapter.json without crash" {
+@test "tool-availability-probe.sh consumes lighthouse adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"
   : > "$file_list"
   run "$PLUGIN_ROOT/scripts/tool-availability-probe.sh" \

@@ -60,7 +60,7 @@ JSON
 
 # ---- AC12 / TC-CPH-1: default Phase 0 bootstrap ---------------------------
 
-@test "TC-CPH-1: --phase minimal emits 5 user-facing fields + config_phase + schema_version" {
+@test "phase minimal emits 5 user-facing fields + config_phase + schema_version" {
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
   local cfg="$FIXTURE_ROOT/.gaia/config/project-config.yaml"
@@ -85,7 +85,7 @@ JSON
 
 # ---- TC-CPH-2: project_kind defaults to "application" ---------------------
 
-@test "TC-CPH-2: project_kind defaults to 'application' when not provided in Phase 0" {
+@test "project_kind defaults to 'application' when not provided in Phase 0" {
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
   grep -qE '^project_kind:[[:space:]]*"?application"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
@@ -93,7 +93,7 @@ JSON
 
 # ---- TC-CPH-3: alias normalization (react -> web, ios -> mobile) ----------
 
-@test "TC-CPH-3 (react): primary_platform=react normalizes to web in Phase 0" {
+@test "react): primary_platform=react normalizes to web in Phase 0" {
   # The alias normalization arm is SKILL.md-side per Dev Notes; the script
   # receives the already-normalized answer. Simulate by passing the
   # post-normalization value.
@@ -102,7 +102,7 @@ JSON
   grep -qE '^primary_platform:[[:space:]]*"?web"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
 }
 
-@test "TC-CPH-3 (ios): primary_platform=mobile is preserved in Phase 0" {
+@test "ios): primary_platform=mobile is preserved in Phase 0" {
   phase0_bundle mobile | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
   grep -qE '^primary_platform:[[:space:]]*"?mobile"?$' "$FIXTURE_ROOT/.gaia/config/project-config.yaml"
@@ -133,7 +133,7 @@ phase0_plugin_bundle() {
 JSON
 }
 
-@test "AF-21-9: Phase 0 + project_shape=claude-code-plugin → emitted config has project_kind: claude-code-plugin" {
+@test "Phase 0 + project_shape=claude-code-plugin → emitted config has project_kind: claude-code-plugin" {
   phase0_plugin_bundle | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "Yara" --phase minimal
   local cfg="$FIXTURE_ROOT/.gaia/config/project-config.yaml"
@@ -144,7 +144,7 @@ JSON
   ! grep -qE '^project_kind:[[:space:]]*"?application"?$' "$cfg"
 }
 
-@test "AF-21-9: Phase 0 regression guard — non-plugin primary_platform still defaults to application" {
+@test "Phase 0 regression guard — non-plugin primary_platform still defaults to application" {
   # Plain web primary_platform with no project_shape signal: the AC7 default
   # path MUST be unbroken — project_kind stays at application.
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
@@ -159,7 +159,7 @@ JSON
 # SKILL.md-side. If the script ever starts doing its own normalization, this
 # test catches it; if the script faithfully passes through whatever it gets,
 # this test documents the contract.
-@test "TC-CPH-3 (regression): script passes 'react' literal through unchanged (no script-side normalization)" {
+@test "regression): script passes 'react' literal through unchanged (no script-side normalization)" {
   phase0_bundle react | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
   # The script faithfully writes whatever it received — alias normalization
@@ -170,7 +170,7 @@ JSON
 
 # ---- TC-CPH-4: re-init refusal ---------------------------------------------
 
-@test "TC-CPH-4: generate-config.sh refuses to overwrite existing config (exit 1)" {
+@test "generate-config.sh refuses to overwrite existing config (exit 1)" {
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
   # Second invocation must refuse.
@@ -181,7 +181,7 @@ J
   [ "$status" -eq 1 ]
 }
 
-@test "TC-CPH-4 (SKILL.md): re-init refusal canonical stderr text documented" {
+@test "SKILL.md): re-init refusal canonical stderr text documented" {
   # AC4 prescribes the literal stderr text in SKILL.md Step 1.
   grep -F "config already exists" "$SKILL_MD"
   grep -F "gaia-config" "$SKILL_MD"
@@ -189,7 +189,7 @@ J
 
 # ---- TC-CPH-5: framework_version auto-populated from plugin.json ----------
 
-@test "TC-CPH-5: framework_version in emitted config matches plugin.json version" {
+@test "framework_version in emitted config matches plugin.json version" {
   local expected_version
   expected_version="$(python3 -c "import json; print(json.load(open('$PLUGIN_JSON'))['version'])")"
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
@@ -202,7 +202,7 @@ J
 
 # ---- TC-CPH-6 (SKILL.md): --full flag bypasses binary opener --------------
 
-@test "TC-CPH-6 (SKILL.md): --full flag documented and routes to full flow" {
+@test "SKILL.md): --full flag documented and routes to full flow" {
   grep -qE -- "--full" "$SKILL_MD"
   # Step 2 must reference 'phase'/'minimal' branching in its preamble
   # (the new Phase 0 conditional). Treat as a structural assertion only.
@@ -211,25 +211,25 @@ J
 
 # ---- TC-CPH-7 / TC-CPH-8: binary opener routing ---------------------------
 
-@test "TC-CPH-7+8 (SKILL.md): Step 1b binary opener heading present" {
+@test "+8 (SKILL.md): Step 1b binary opener heading present" {
   grep -qE "^### Step 1b" "$SKILL_MD"
 }
 
-@test "TC-CPH-7+8 (SKILL.md): binary opener question text present" {
+@test "+8 (SKILL.md): binary opener question text present" {
   grep -qE "Quick setup" "$SKILL_MD"
   grep -qE "full setup|Full setup" "$SKILL_MD"
 }
 
 # ---- TC-CPH-9 / TC-CPH-45: --full on existing config refuses --------------
 
-@test "TC-CPH-9 (SKILL.md): --full flag does NOT override re-init guard" {
+@test "SKILL.md): --full flag does NOT override re-init guard" {
   # The SKILL.md prose must explicitly say --full does not override.
   grep -qE -- "--full" "$SKILL_MD"
   grep -qE "(does not override|not bypass|still refus|guard fires)" "$SKILL_MD"
 }
 
 # Tex W2: script-level test that --full + existing config refuses.
-@test "TC-CPH-9 (script-level): generate-config.sh refuses on existing config regardless of --phase" {
+@test "script-level): generate-config.sh refuses on existing config regardless of --phase" {
   # Write an initial config.
   phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
     --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
@@ -275,7 +275,7 @@ JSON
 
 # ---- AC6 alias normalization preservation (structural) --------------------
 
-@test "AC6: alias normalization pseudocode block preserved in SKILL.md" {
+@test "alias normalization pseudocode block preserved in SKILL.md" {
   grep -F "claude-plugin" "$SKILL_MD"
   grep -F "claude-code-plugin" "$SKILL_MD"
   grep -F "typed_lower" "$SKILL_MD"
@@ -283,7 +283,7 @@ JSON
 
 # ---- AC10 Steps 2+ preserved (structural) ---------------------------------
 
-@test "AC10: SKILL.md retains Step 2 / Step 3 / Step 4 / Step 5 headings" {
+@test "SKILL.md retains Step 2 / Step 3 / Step 4 / Step 5 headings" {
   grep -qE "^### Step 2 " "$SKILL_MD"
   grep -qE "^### Step 3 " "$SKILL_MD"
   grep -qE "^### Step 4 " "$SKILL_MD"

@@ -61,7 +61,7 @@ EOF
 
 # ---------- TC-1: Happy-path single-key rollover ---------------------------
 
-@test "TC-SPRINT-ROLLOVER-1: happy-path single key migrates story_file + injects into target yaml" {
+@test "happy-path single key migrates story_file + injects into target yaml" {
   seed_story_file "E81-S2" '"sprint-41"' "in-progress"
   seed_target_yaml "sprint-42"
   run "$CANONICAL" rollover --from sprint-41 --to sprint-42 --keys E81-S2
@@ -76,7 +76,7 @@ EOF
 
 # ---------- TC-2: Multi-key happy-path rollover ----------------------------
 
-@test "TC-SPRINT-ROLLOVER-2: happy-path multi-key migrates all listed stories" {
+@test "happy-path multi-key migrates all listed stories" {
   seed_story_file "E81-S2" '"sprint-41"' "in-progress"
   seed_story_file "E81-S3" '"sprint-41"' "backlog"
   seed_target_yaml "sprint-42"
@@ -90,7 +90,7 @@ EOF
 
 # ---------- TC-3: sprint_id: null accepted ---------------------------------
 
-@test "TC-SPRINT-ROLLOVER-3: story with sprint_id: null is eligible and migrates to --to" {
+@test "story with sprint_id: null is eligible and migrates to --to" {
   seed_story_file "E81-S1" "null" "backlog"
   seed_target_yaml "sprint-42"
   run "$CANONICAL" rollover --from sprint-41 --to sprint-42 --keys E81-S1
@@ -102,7 +102,7 @@ EOF
 
 # ---------- TC-4: sprint_id mismatch refused -------------------------------
 
-@test "TC-SPRINT-ROLLOVER-4: story with mismatched sprint_id is refused (no rewrite)" {
+@test "story with mismatched sprint_id is refused (no rewrite)" {
   seed_story_file "E81-S1" '"sprint-X"' "in-progress"
   seed_target_yaml "sprint-42"
   run "$CANONICAL" rollover --from sprint-41 --to sprint-42 --keys E81-S1
@@ -114,7 +114,7 @@ EOF
 
 # ---------- TC-5: Partial failure with mixed eligibility -------------------
 
-@test "TC-SPRINT-ROLLOVER-5: partial failure — one ok + one refused = non-zero exit + ok committed" {
+@test "partial failure — one ok + one refused = non-zero exit + ok committed" {
   seed_story_file "E81-S1" '"sprint-41"' "in-progress"   # eligible
   seed_story_file "E81-S2" '"sprint-X"' "in-progress"    # ineligible
   seed_target_yaml "sprint-42"
@@ -130,7 +130,7 @@ EOF
 
 # ---------- TC-6: Missing story file refused -------------------------------
 
-@test "TC-SPRINT-ROLLOVER-6: rollover refuses when story file does not exist" {
+@test "rollover refuses when story file does not exist" {
   seed_target_yaml "sprint-42"
   run "$CANONICAL" rollover --from sprint-41 --to sprint-42 --keys E81-S99
   [ "$status" -ne 0 ]

@@ -36,16 +36,16 @@ teardown() { common_teardown; }
 # /gaia-doctor skill
 # ===========================================================================
 
-@test "AF-30-2 doctor: skill directory + SKILL.md present" {
+@test "doctor: skill directory + SKILL.md present" {
   [ -f "$PLUGIN_ROOT/skills/gaia-doctor/SKILL.md" ]
 }
 
-@test "AF-30-2 doctor: tool-readiness registry is valid JSON" {
+@test "doctor: tool-readiness registry is valid JSON" {
   run jq -e '.' "$PLUGIN_ROOT/skills/gaia-doctor/knowledge/tool-readiness.json"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 doctor: check-tools.sh exits 0 and emits a readiness table on a fresh tmpdir" {
+@test "doctor: check-tools.sh exits 0 and emits a readiness table on a fresh tmpdir" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'EOF'
@@ -60,7 +60,7 @@ EOF
   [[ "$output" =~ "readiness for stack" ]] || [[ "$output" =~ "Achievable scan tier" ]]
 }
 
-@test "AF-30-2 doctor: --json emits parseable JSON" {
+@test "doctor: --json emits parseable JSON" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'EOF'
@@ -79,12 +79,12 @@ EOF
 # Tier banner in consolidated-gaps.md (Test10 §7 C3)
 # ===========================================================================
 
-@test "AF-30-2 brownfield: Phase 7 SKILL.md instructs scan-fidelity banner stamp" {
+@test "brownfield: Phase 7 SKILL.md instructs scan-fidelity banner stamp" {
   run grep -F 'Scan fidelity' "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 brownfield: SKILL.md references the doctor check-tools.sh for tier resolution" {
+@test "brownfield: SKILL.md references the doctor check-tools.sh for tier resolution" {
   run grep -F 'gaia-doctor/scripts/check-tools.sh' "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
@@ -93,7 +93,7 @@ EOF
 # F-27: bridge wiring
 # ===========================================================================
 
-@test "AF-30-2 F-27: qa-test-runner.sh documents HARD FAIL when bridge enabled but no tier configured" {
+@test "qa-test-runner.sh documents HARD FAIL when bridge enabled but no tier configured" {
   # Static prose assertion — full runner invocation requires a richer harness
   # than we ship in this bats fixture (and the runner contract is internal).
   # Confirm the script body carries the fail-closed branch (HARD FAIL when
@@ -106,7 +106,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 F-27: bridge-populate-test-execution.sh respects already-set tiers" {
+@test "bridge-populate-test-execution.sh respects already-set tiers" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'EOF'
@@ -131,7 +131,7 @@ EOF
     grep -F 'command: "operator wired"' .gaia/config/project-config.yaml
 }
 
-@test "AF-30-2 F-27: bridge-populate writes test_execution.tier_1.command from manifest" {
+@test "bridge-populate writes test_execution.tier_1.command from manifest" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'EOF'
@@ -157,7 +157,7 @@ EOF
 # F-01: zero-config draft path
 # ===========================================================================
 
-@test "AF-30-2 F-01: detect-signals --merge-into seeds a stub on absent target" {
+@test "detect-signals --merge-into seeds a stub on absent target" {
   cd "$TEST_TMP"
   mkdir -p src/feature
   echo "print('hi')" > src/feature/main.py
@@ -176,19 +176,19 @@ EOF
 # F-05 / F-07: platformId enum + primary_platform sync
 # ===========================================================================
 
-@test "AF-30-2 F-05: JSON schema platformId enum includes server" {
+@test "JSON schema platformId enum includes server" {
   run jq -e '.definitions.platformId.enum | index("server")' \
         "$PLUGIN_ROOT/schemas/project-config.schema.json"
   [ "$status" -eq 0 ]
   [ "$output" != "null" ]
 }
 
-@test "AF-30-2 F-05: generate-config emits platforms:[server] for ui_present:false" {
+@test "generate-config emits platforms:[server] for ui_present:false" {
   run grep -F '"server"' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 F-07: YAML descriptor schema declares primary_platform" {
+@test "YAML descriptor schema declares primary_platform" {
   run grep -E '^[[:space:]]+primary_platform:' \
         "$PLUGIN_ROOT/config/project-config.schema.yaml"
   [ "$status" -eq 0 ]
@@ -198,7 +198,7 @@ EOF
 # F-09: bash 3.2 guard
 # ===========================================================================
 
-@test "AF-30-2 F-09: orchestrator.sh has BASH_VERSINFO guard before globstar" {
+@test "orchestrator.sh has BASH_VERSINFO guard before globstar" {
   run grep -F 'BASH_VERSINFO' \
         "$PLUGIN_ROOT/scripts/adapters/brownfield/orchestrator.sh"
   [ "$status" -eq 0 ]
@@ -208,7 +208,7 @@ EOF
 # F-24: .gaia/state ledger always-canonical
 # ===========================================================================
 
-@test "AF-30-2 F-24: review-gate ledger resolves to .gaia/state when .gaia/ exists" {
+@test "review-gate ledger resolves to .gaia/state when .gaia/ exists" {
   cd "$TEST_TMP"
   mkdir -p .gaia
   run env PROJECT_PATH="$TEST_TMP" \
@@ -224,7 +224,7 @@ EOF
 # F-25: AC checkbox format documented
 # ===========================================================================
 
-@test "AF-30-2 F-25: create-story SKILL.md documents AC checkbox requirement" {
+@test "create-story SKILL.md documents AC checkbox requirement" {
   run grep -F 'AC checkbox format' \
         "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
   [ "$status" -eq 0 ]
@@ -234,7 +234,7 @@ EOF
 # F-29: DoD blocks done
 # ===========================================================================
 
-@test "AF-30-2 F-29: sprint-state.sh has DoD-unchecked guard on -> done" {
+@test "sprint-state.sh has DoD-unchecked guard on -> done" {
   run grep -F 'DoD item(s) unchecked' \
         "$PLUGIN_ROOT/scripts/sprint-state.sh"
   [ "$status" -eq 0 ]
@@ -244,13 +244,13 @@ EOF
 # F-33: dep-lint frontmatter union + done-gate deps
 # ===========================================================================
 
-@test "AF-30-2 F-33: backlog-select-lint reads frontmatter depends_on" {
+@test "backlog-select-lint reads frontmatter depends_on" {
   run grep -F '_frontmatter_deps_of' \
         "$PLUGIN_ROOT/scripts/backlog-select-lint.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 F-33: sprint-state.sh enforces deps on -> done" {
+@test "sprint-state.sh enforces deps on -> done" {
   run grep -F 'unmet hard dependencies' \
         "$PLUGIN_ROOT/scripts/sprint-state.sh"
   [ "$status" -eq 0 ]
@@ -260,13 +260,13 @@ EOF
 # F-31: action-items canonical path + sprint-close via transition
 # ===========================================================================
 
-@test "AF-30-2 F-31: gaia-retro writes action-items to planning-artifacts/" {
+@test "gaia-retro writes action-items to planning-artifacts/" {
   run grep -F '.gaia/artifacts/planning-artifacts/action-items.yaml' \
         "$PLUGIN_ROOT/skills/gaia-retro/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 F-31: gaia-retro Step 5 write target is the planning-artifacts path (not state/)" {
+@test "gaia-retro Step 5 write target is the planning-artifacts path (not state/)" {
   # The Step 5 prose now resolves --target to the planning-artifacts path.
   # Other mentions of .gaia/state/action-items.yaml remain in the SKILL as
   # documented failure-posture references (writer behavior when invoked with
@@ -276,13 +276,13 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 F-31: retro setup.sh stamps a run-started checkpoint" {
+@test "retro setup.sh stamps a run-started checkpoint" {
   run grep -F 'write-checkpoint.sh' \
         "$PLUGIN_ROOT/skills/gaia-retro/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 F-31: sprint-close routes status flip through sprint-state.sh transition" {
+@test "sprint-close routes status flip through sprint-state.sh transition" {
   run grep -F 'sprint-state.sh' \
         "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
   [ "$status" -eq 0 ]
@@ -295,7 +295,7 @@ EOF
 # Retargeted from the retired scan-findings.sh to the per-story extractor
 # (E39-S6). Now a BEHAVIORAL assertion: the extractor derives the story key
 # from the per-story parent dir when the basename is story.md.
-@test "AF-30-2 F-28: findings extractor extracts key from per-story parent dir" {
+@test "findings extractor extracts key from per-story parent dir" {
   d="$BATS_TEST_TMPDIR/E60-S7-slug"; mkdir -p "$d"
   printf -- '---\nstatus: "done"\n---\n## Findings\n| # | Type | Severity | Finding | Suggested Action |\n|---|------|----------|---------|------------------|\n| 1 | tech-debt | low | x | y |\n' > "$d/story.md"
   run "$PLUGIN_ROOT/skills/gaia-triage-findings/scripts/extract-findings.sh" --story-file "$d/story.md"
@@ -307,7 +307,7 @@ EOF
 # F-17: resolve-config project_config_path canonical
 # ===========================================================================
 
-@test "AF-30-2 F-17: resolve-config project_config_path prefers .gaia/config/" {
+@test "resolve-config project_config_path prefers .gaia/config/" {
   # Sanity-check the implementation has the canonical branch
   run grep -F '.gaia/config/project-config.yaml' \
         "$PLUGIN_ROOT/scripts/resolve-config.sh"
@@ -318,7 +318,7 @@ EOF
 # F-12: pyproject.toml testpaths detection
 # ===========================================================================
 
-@test "AF-30-2 F-12: test-environment-manifest reads pyproject.toml testpaths" {
+@test "test-environment-manifest reads pyproject.toml testpaths" {
   run grep -F 'tool.pytest.ini_options' \
         "$PLUGIN_ROOT/scripts/lib/test-environment-manifest.sh"
   [ "$status" -eq 0 ]
@@ -328,11 +328,11 @@ EOF
 # F-16: adversarial collision script-enforced
 # ===========================================================================
 
-@test "AF-30-2 F-16: adversarial resolve-write-path.sh exists and is executable" {
+@test "adversarial resolve-write-path.sh exists and is executable" {
   [ -x "$PLUGIN_ROOT/skills/gaia-adversarial/scripts/resolve-write-path.sh" ]
 }
 
-@test "AF-30-2 F-16: resolve-write-path returns next-free suffix on collision" {
+@test "resolve-write-path returns next-free suffix on collision" {
   cd "$TEST_TMP"
   mkdir -p .gaia/artifacts/planning-artifacts/adversarial
   touch .gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-2026-05-30.md
@@ -347,7 +347,7 @@ EOF
 # F-11: canonical gap-entry schema
 # ===========================================================================
 
-@test "AF-30-2 F-11: brownfield-gap-entry schema exists and is valid JSON Schema" {
+@test "brownfield-gap-entry schema exists and is valid JSON Schema" {
   [ -f "$PLUGIN_ROOT/schemas/brownfield-gap-entry.schema.json" ]
   run jq -e '."$schema" and .properties.gap_id and .properties.category' \
         "$PLUGIN_ROOT/schemas/brownfield-gap-entry.schema.json"
@@ -358,7 +358,7 @@ EOF
 # F-22: test-strategy docs-only no-mutate
 # ===========================================================================
 
-@test "AF-30-2 F-22: test-strategy finalize honors GAIA_TEST_STRATEGY_DOCS_ONLY" {
+@test "test-strategy finalize honors GAIA_TEST_STRATEGY_DOCS_ONLY" {
   run grep -F 'GAIA_TEST_STRATEGY_DOCS_ONLY' \
         "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   [ "$status" -eq 0 ]
@@ -368,14 +368,14 @@ EOF
 # F-32: YOLO fallback documented
 # ===========================================================================
 
-@test "AF-30-2 F-32: sprint-review documents --yolo-defaults fallback" {
+@test "sprint-review documents --yolo-defaults fallback" {
   # Use -e -- to stop grep flag parsing so the literal --yolo-defaults works.
   run grep -F -e '--yolo-defaults' \
         "$PLUGIN_ROOT/skills/gaia-sprint-review/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-2 F-32: retro documents seed-from-metrics fallback" {
+@test "retro documents seed-from-metrics fallback" {
   run grep -F 'seed-from-metrics' \
         "$PLUGIN_ROOT/skills/gaia-retro/SKILL.md"
   [ "$status" -eq 0 ]

@@ -21,27 +21,27 @@ teardown() { common_teardown; }
 
 # --- Bug 4: gaia-create-epics setup.sh accepts all 4 test-plan paths ---
 
-@test "AF-22-6 Bug-4: gaia-create-epics setup.sh resolves strategy/test-strategy.md" {
+@test "gaia-create-epics setup.sh resolves strategy/test-strategy.md" {
   local tmp="$BATS_TEST_TMPDIR/yara-fixture"
   mkdir -p "$tmp/.gaia/artifacts/test-artifacts/strategy"
   printf 'fake strategy content\n' > "$tmp/.gaia/artifacts/test-artifacts/strategy/test-strategy.md"
   grep -qE 'strategy/test-strategy\.md' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/setup.sh"
 }
 
-@test "AF-22-6 Bug-4: gaia-create-epics setup.sh enumerates all 4 accepted paths in the resolver loop" {
+@test "gaia-create-epics setup.sh enumerates all 4 accepted paths in the resolver loop" {
   grep -qF 'test-plan.md' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/setup.sh"
   grep -qF 'strategy/test-plan.md' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/setup.sh"
   grep -qF 'strategy/test-strategy.md' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/setup.sh"
   grep -qF 'test-plan/index.md' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/setup.sh"
 }
 
-@test "AF-22-6 Bug-4: gaia-create-epics setup.sh halt message references /gaia-test-strategy (not /gaia-test-design)" {
+@test "gaia-create-epics setup.sh halt message references /gaia-test-strategy (not /gaia-test-design)" {
   grep -qF '/gaia-test-strategy --plan' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/setup.sh"
 }
 
 # --- Bug 5: resolve-epic-slug.sh accepts both heading forms ---
 
-@test "AF-22-6 Bug-5: resolve-epic-slug.sh resolves '## E1 — Title' (canonical em-dash form)" {
+@test "resolve-epic-slug.sh resolves '## E1 — Title' (canonical em-dash form)" {
   local epics_file="$BATS_TEST_TMPDIR/epics-form-a.md"
   printf '## E1 — Core Brain Vault\n\ncontent\n' > "$epics_file"
   run bash -c "source '$PLUGIN_ROOT/scripts/lib/resolve-epic-slug.sh' && resolve_epic_slug E1 '$epics_file'"
@@ -49,7 +49,7 @@ teardown() { common_teardown; }
   [ "$output" = "epic-E1-core-brain-vault" ]
 }
 
-@test "AF-22-6 Bug-5: resolve-epic-slug.sh resolves '## Epic 1: Title' (natural-language form)" {
+@test "resolve-epic-slug.sh resolves '## Epic 1: Title' (natural-language form)" {
   local epics_file="$BATS_TEST_TMPDIR/epics-form-b.md"
   printf '## Epic 1: Core Brain Vault\n\ncontent\n' > "$epics_file"
   run bash -c "source '$PLUGIN_ROOT/scripts/lib/resolve-epic-slug.sh' && resolve_epic_slug E1 '$epics_file'"
@@ -57,7 +57,7 @@ teardown() { common_teardown; }
   [ "$output" = "epic-E1-core-brain-vault" ]
 }
 
-@test "AF-22-6 Bug-5: resolve-epic-slug.sh both forms yield identical slug" {
+@test "resolve-epic-slug.sh both forms yield identical slug" {
   local form_a="$BATS_TEST_TMPDIR/epics-form-a-2.md"
   local form_b="$BATS_TEST_TMPDIR/epics-form-b-2.md"
   printf '## E7 — Sprint Engine Pro\n' > "$form_a"
@@ -69,7 +69,7 @@ teardown() { common_teardown; }
   [ "$slug_a" = "epic-E7-sprint-engine-pro" ]
 }
 
-@test "AF-22-6 Bug-5: resolve-epic-slug.sh rejects unsupported heading forms with clear error" {
+@test "resolve-epic-slug.sh rejects unsupported heading forms with clear error" {
   local epics_file="$BATS_TEST_TMPDIR/epics-form-c.md"
   printf '## 1. Core Brain Vault\n' > "$epics_file"
   run bash -c "source '$PLUGIN_ROOT/scripts/lib/resolve-epic-slug.sh' && resolve_epic_slug E1 '$epics_file'"
@@ -79,31 +79,31 @@ teardown() { common_teardown; }
   [[ "$output" == *"## E1 — Title"* ]] || [[ "$output" == *"Epic 1"* ]]
 }
 
-@test "AF-22-6 Bug-5: gaia-create-epics SKILL.md documents both accepted heading forms" {
+@test "gaia-create-epics SKILL.md documents both accepted heading forms" {
   grep -qF '## E{N} — {Epic Title}' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
   grep -qF '## Epic {N}: {Epic Title}' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
 }
 
 # --- Bug 20: gaia-add-feature accepts test-strategy.md ---
 
-@test "AF-22-6 Bug-20: gaia-add-feature setup.sh accepts strategy/test-strategy.md" {
+@test "gaia-add-feature setup.sh accepts strategy/test-strategy.md" {
   grep -qF 'strategy/test-strategy.md' "$PLUGIN_ROOT/skills/gaia-add-feature/scripts/setup.sh"
 }
 
-@test "AF-22-6 Bug-20: gaia-add-feature setup.sh accepts all 4 test-plan paths" {
+@test "gaia-add-feature setup.sh accepts all 4 test-plan paths" {
   grep -qF 'test-plan.md' "$PLUGIN_ROOT/skills/gaia-add-feature/scripts/setup.sh"
   grep -qF 'strategy/test-plan.md' "$PLUGIN_ROOT/skills/gaia-add-feature/scripts/setup.sh"
   grep -qF 'strategy/test-strategy.md' "$PLUGIN_ROOT/skills/gaia-add-feature/scripts/setup.sh"
   grep -qF 'test-plan/index.md' "$PLUGIN_ROOT/skills/gaia-add-feature/scripts/setup.sh"
 }
 
-@test "AF-22-6 Bug-20: gaia-add-feature halt message points at /gaia-test-strategy (not /gaia-test-design)" {
+@test "gaia-add-feature halt message points at /gaia-test-strategy (not /gaia-test-design)" {
   grep -qF '/gaia-test-strategy --plan' "$PLUGIN_ROOT/skills/gaia-add-feature/scripts/setup.sh"
 }
 
 # --- Bug 6: Test Execution Bridge schema accepts command + timeout_seconds ---
 
-@test "AF-22-6 Bug-6: project-config.schema.json test_execution.tier_N accepts command" {
+@test "project-config.schema.json test_execution.tier_N accepts command" {
   python3 -c "
 import json
 schema = json.load(open('$PLUGIN_ROOT/schemas/project-config.schema.json'))
@@ -115,7 +115,7 @@ print('OK')
 "
 }
 
-@test "AF-22-6 Bug-6: project-config.schema.yaml test_execution description mentions command + timeout_seconds" {
+@test "project-config.schema.yaml test_execution description mentions command + timeout_seconds" {
   # The single-line description under test_execution must reference command + timeout_seconds.
   local desc_line
   desc_line=$(grep -A4 '^  test_execution:$' "$PLUGIN_ROOT/config/project-config.schema.yaml" | grep '^    description:')
@@ -123,20 +123,20 @@ print('OK')
   [[ "$desc_line" == *"timeout_seconds"* ]]
 }
 
-@test "AF-22-6 Bug-10: gaia-sprint-close resolve_yaml_path checks .gaia/artifacts/implementation-artifacts/" {
+@test "gaia-sprint-close resolve_yaml_path checks .gaia/artifacts/implementation-artifacts/" {
   grep -qF 'gaia_artifacts="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
   # Resolver order: .gaia/state → .gaia/artifacts/ → legacy docs/ → fallback
   grep -qE 'if \[ -f "\$gaia_state" \]; then' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
   grep -qE 'elif \[ -f "\$gaia_artifacts" \]; then' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
 }
 
-@test "AF-22-6 Bug-10: gaia-sprint-close default-when-missing points at canonical .gaia/artifacts/ (not .gaia/state/)" {
+@test "gaia-sprint-close default-when-missing points at canonical .gaia/artifacts/ (not .gaia/state/)" {
   # Final else branch (no file found) defaults to the canonical post-ADR-111
   # location so the error message guides users to where sprint-state.sh writes.
   grep -qE "printf '%s\\\\n' \"\\\$gaia_artifacts\"" "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
 }
 
-@test "AF-22-6 Bug-6: a populated test_execution config with command validates against the schema" {
+@test "a populated test_execution config with command validates against the schema" {
   cat > "$BATS_TEST_TMPDIR/yara-config.yaml" <<'EOF'
 config_phase: minimal
 project_name: yara-test

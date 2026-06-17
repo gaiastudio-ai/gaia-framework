@@ -95,14 +95,14 @@ teardown() { common_teardown; }
 # AC6 — sprint-50 regression replay: zero HIGH findings + one sgr-velocity-006
 # + all per-goal verdicts PASSED.
 # ---------------------------------------------------------------------------
-@test "AC6: sprint-50 replay under completion-pass — zero HIGH sgr-velocity-003 findings" {
+@test "sprint-50 replay under completion-pass — zero HIGH sgr-velocity-003 findings" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/sprint-50-replay-completion-pass.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
   high_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"High"' || true)
   [ "$high_count" -eq 0 ]
 }
 
-@test "AC6: sprint-50 replay under completion-pass — exactly one sgr-velocity-006 advisory" {
+@test "sprint-50 replay under completion-pass — exactly one sgr-velocity-006 advisory" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/sprint-50-replay-completion-pass.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
   advisory_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-006"' || true)
@@ -112,13 +112,13 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC2 — sgr-velocity-003 in JSON carries the scaled-floor formula description.
 # ---------------------------------------------------------------------------
-@test "AC2: sgr-velocity-003 rubric pattern describes the scaled-floor formula" {
+@test "sgr-velocity-003 rubric pattern describes the scaled-floor formula" {
   run jq -r '.severity_rules[] | select(.id=="sgr-velocity-003") | .pattern' "$RUBRIC"
   [ "$status" -eq 0 ]
   [[ "$output" == *"floor_pct"* || "$output" == *"4 / max(4"* || "$output" == *"scaled"* ]]
 }
 
-@test "AC2: sgr-velocity-003 rubric carries a formula field with the scaling expression" {
+@test "sgr-velocity-003 rubric carries a formula field with the scaling expression" {
   run jq -r '.severity_rules[] | select(.id=="sgr-velocity-003") | .formula' "$RUBRIC"
   [ "$status" -eq 0 ]
   [ -n "$output" ]
@@ -128,13 +128,13 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC3 — sgr-velocity-006 advisory rule exists in the rubric at severity Low.
 # ---------------------------------------------------------------------------
-@test "AC3: sgr-velocity-006 rule exists in rubric at severity Low" {
+@test "sgr-velocity-006 rule exists in rubric at severity Low" {
   run jq -r '.severity_rules[] | select(.id=="sgr-velocity-006") | .severity' "$RUBRIC"
   [ "$status" -eq 0 ]
   [ "$output" = "Low" ]
 }
 
-@test "AC3: sgr-velocity-006 category is rubric-applicability" {
+@test "sgr-velocity-006 category is rubric-applicability" {
   run jq -r '.severity_rules[] | select(.id=="sgr-velocity-006") | .category' "$RUBRIC"
   [ "$status" -eq 0 ]
   [ "$output" = "rubric-applicability" ]
@@ -143,7 +143,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC4 — rubric-loader.sh loads the calibrated rubric with zero schema errors.
 # ---------------------------------------------------------------------------
-@test "AC4: validate-rubric.sh passes against calibrated sprint-review.json" {
+@test "validate-rubric.sh passes against calibrated sprint-review.json" {
   run bash "$PLUGIN_DIR/scripts/validate-rubric.sh" "$RUBRIC"
   [ "$status" -eq 0 ]
 }

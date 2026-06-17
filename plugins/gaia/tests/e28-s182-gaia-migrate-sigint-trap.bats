@@ -101,7 +101,7 @@ _spawn_and_signal() {
 
 # ---------- AC1 — trap registration ----------
 
-@test "AC1: gaia-migrate.sh source registers traps for INT and TERM" {
+@test "gaia-migrate.sh source registers traps for INT and TERM" {
   # Static check: the script MUST install a trap covering BOTH SIGINT and
   # SIGTERM. Allow either form: a single-line `trap '...' INT TERM` or two
   # separate `trap '... INT' INT` and `trap '... TERM' TERM` lines.
@@ -113,14 +113,14 @@ _spawn_and_signal() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: gaia-migrate.sh defines the _on_interrupt handler function" {
+@test "gaia-migrate.sh defines the _on_interrupt handler function" {
   run grep -E "^_on_interrupt[[:space:]]*\(\)" "$SCRIPT"
   [ "$status" -eq 0 ]
 }
 
 # ---------- AC2/AC3 — SIGINT mid-run prints banner + backup path + restore command, non-zero exit ----------
 
-@test "AC2/AC3: SIGINT mid-apply prints banner, backup path, restore command, exits non-zero" {
+@test "SIGINT mid-apply prints banner, backup path, restore command, exits non-zero" {
   dd if=/dev/zero of="$PROJECT/_memory/filler.bin" bs=1M count=120 status=none 2>/dev/null
 
   local rc
@@ -135,7 +135,7 @@ _spawn_and_signal() {
   grep -qE "Restore: cp -a" "$TEST_TMP/script.out"
 }
 
-@test "AC2/AC3: SIGINT exit code is exactly 130 (128 + SIGINT)" {
+@test "SIGINT exit code is exactly 130 (128 + SIGINT)" {
   dd if=/dev/zero of="$PROJECT/_memory/filler.bin" bs=1M count=120 status=none 2>/dev/null
 
   local rc
@@ -144,7 +144,7 @@ _spawn_and_signal() {
   [ "$rc" -eq 130 ]
 }
 
-@test "AC2/AC3: SIGTERM mid-apply prints banner, backup path, restore command, exits non-zero" {
+@test "SIGTERM mid-apply prints banner, backup path, restore command, exits non-zero" {
   dd if=/dev/zero of="$PROJECT/_memory/filler.bin" bs=1M count=120 status=none 2>/dev/null
 
   local rc
@@ -159,7 +159,7 @@ _spawn_and_signal() {
 
 # ---------- AC2 — printed backup path is real and absolute ----------
 
-@test "AC2: trap-printed backup path is an absolute path under the project's .gaia-migrate-backup/" {
+@test "trap-printed backup path is an absolute path under the project's .gaia-migrate-backup/" {
   dd if=/dev/zero of="$PROJECT/_memory/filler.bin" bs=1M count=120 status=none 2>/dev/null
 
   local rc
@@ -178,7 +178,7 @@ _spawn_and_signal() {
 
 # ---------- AC5 — happy path unaffected ----------
 
-@test "AC5: happy-path apply (no interrupt) completes normally and prints no interrupt banner" {
+@test "happy-path apply (no interrupt) completes normally and prints no interrupt banner" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
   # Negative assertions — the interrupt banner must NOT appear on the happy path.
@@ -187,7 +187,7 @@ _spawn_and_signal() {
   [[ "$output" == *"SUCCESS"* ]]
 }
 
-@test "AC5: happy-path dry-run completes normally and prints no interrupt banner" {
+@test "happy-path dry-run completes normally and prints no interrupt banner" {
   run "$SCRIPT" dry-run --project-root "$PROJECT"
   [ "$status" -eq 0 ]
   ! grep -q "partial migration" <<< "$output"

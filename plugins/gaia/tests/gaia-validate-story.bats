@@ -66,7 +66,7 @@ EOF
   [[ "$output" == *"name: gaia-validate-story"* ]]
 }
 
-@test "SKILL.md frontmatter: allowed-tools includes Read Write Edit Bash (inline SM fix requirement, NFR-046)" {
+@test "SKILL.md frontmatter: allowed-tools includes Read Write Edit Bash" {
   run awk '/^---$/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"allowed-tools:"* ]]
   [[ "$output" == *"Read"* ]]
@@ -75,7 +75,7 @@ EOF
   [[ "$output" == *"Bash"* ]]
 }
 
-@test "POST-E87-S3: SKILL.md frontmatter migrated off context: fork (ADR-104)" {
+@test "SKILL.md frontmatter migrated off context: fork" {
   # Originally pinned `context: fork preserved` (AC4, AC-EC2, NFR-046) under
   # the fork-based dispatch model. E87-S3 (Val Bridge Migration, ADR-104)
   # retargets /gaia-validate-story to main-turn Agent dispatch — the
@@ -93,7 +93,7 @@ EOF
 # These are prose-anchor tests -- common pattern across gaia-create-story.bats.
 # ---------------------------------------------------------------------------
 
-@test "POST-E87-S3: SKILL.md documents main-turn Agent-tool dispatch + envelope assert (ADR-104)" {
+@test "SKILL.md documents main-turn Agent-tool dispatch + envelope assert" {
   # Originally VLR-01 asserted the body prose contained `context: fork`
   # under the fork-based dispatch model. E87-S3 retargets the body to
   # main-turn Agent-tool dispatch with the envelope-assert step. The test
@@ -104,53 +104,53 @@ EOF
   grep -q 'assert_agent_envelope' "$SKILL_DIR/SKILL.md"
 }
 
-@test "VLR-01: SKILL.md documents Val read-only allowlist [Read, Grep, Glob, Bash]" {
+@test "SKILL.md documents Val read-only allowlist [Read, Grep, Glob, Bash]" {
   run grep -qE "Read.*Grep.*Glob.*Bash|\[Read, Grep, Glob, Bash\]" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-02: Step 3 documents 3-attempt cap" {
+@test "Step 3 documents 3-attempt cap" {
   run grep -qiE "3.attempt|three.attempt|attempt.*3|cap.*3|max.*3" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-02: Step 3 documents terminal FAILED verdict on exhaustion via review-gate.sh" {
+@test "Step 3 documents terminal FAILED verdict on exhaustion via review-gate.sh" {
   run grep -qE "review-gate\.sh" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
   run grep -qE "FAILED" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-03: Step 3 documents early-exit on PASSED before cap" {
+@test "Step 3 documents early-exit on PASSED before cap" {
   run grep -qiE "PASSED|passed.*verdict|zero.*CRITICAL" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-04: Step 3 documents sprint-status.yaml sync via sprint-state.sh after each attempt" {
+@test "Step 3 documents sprint-status.yaml sync via sprint-state.sh after each attempt" {
   run grep -qE "sprint-state\.sh" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-05: Step 3 documents INFO-only findings bypass the fix loop" {
+@test "Step 3 documents INFO-only findings bypass the fix loop" {
   run grep -qiE "INFO.only|INFO.*findings.*(log|bypass|not trigger|no.*loop)|FR-339" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-06: Step 3 references canonical vocabulary PASSED/FAILED/UNVERIFIED" {
+@test "Step 3 references canonical vocabulary PASSED/FAILED/UNVERIFIED" {
   local file="$SKILL_DIR/SKILL.md"
   grep -q "PASSED" "$file"
   grep -q "FAILED" "$file"
   grep -q "UNVERIFIED" "$file"
 }
 
-@test "VLR-06: Step 3 documents ledger-keyed query shape with --plan-id and gate story-validation" {
+@test "Step 3 documents ledger-keyed query shape with --plan-id and gate story-validation" {
   run grep -qE "story-validation" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
   run grep -qE "plan-id|plan_id" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-07: Step 3 documents fix loop convergence within 3 attempts (E33-S2 dedicated scenario)" {
+@test "Step 3 documents fix loop convergence within 3 attempts ( dedicated scenario)" {
   # VLR-07 is dedicated to this story: the validate-story skill must document
   # the fix loop that converges within 3 attempts.
   run grep -qiE "fix.loop|fix.*attempt|SM.*fix|inline.*fix" "$SKILL_DIR/SKILL.md"
@@ -179,52 +179,52 @@ EOF
 # AC-EC edge case prose markers
 # ---------------------------------------------------------------------------
 
-@test "AC-EC1: Step 3 documents Edit/Write scoped to story file + review-gate.sh output (SR-24)" {
+@test "Step 3 documents Edit/Write scoped to story file + review-gate.sh output" {
   run grep -qiE "scoped|story file.*review-gate|SR-24|allowlist" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC2: Step 3 documents no nested subagent spawn (NFR-046, SR-25)" {
+@test "Step 3 documents no nested subagent spawn" {
   run grep -qiE "no.*nested|inline.*SM|NFR-046|SR-25|no.*Agent.*tool" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC3: Step 3 documents YOLO cannot bypass cap or FAILED verdict (FR-340, SR-23)" {
+@test "Step 3 documents YOLO cannot bypass cap or FAILED verdict" {
   run grep -qiE "YOLO.*(not bypass|does not|cannot)|FR-340|SR-23" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC4: Step 3 documents Val timeout -> HALT with UNVERIFIED" {
+@test "Step 3 documents Val timeout -> HALT with UNVERIFIED" {
   run grep -qiE "timeout|could not complete|unavailable" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC5: Step 3 documents oscillation / non-convergence cap enforcement (no short-circuit)" {
+@test "Step 3 documents oscillation / non-convergence cap enforcement (no short-circuit)" {
   run grep -qiE "oscillation|non.convergence|stall|identical.*finding|no.*short.circuit" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC6: Step 3 documents self-transition rejection is benign" {
+@test "Step 3 documents self-transition rejection is benign" {
   run grep -qiE "self.transition|benign|non.blocking" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC7: Step 3 documents INFO severity filter out of loop trigger (FR-339)" {
+@test "Step 3 documents INFO severity filter out of loop trigger" {
   run grep -qiE "INFO.*(log|not trigger|bypass|do not)|FR-339" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC8: Step 3 documents adversarial path-escape write rejection (T-27, T-29)" {
+@test "Step 3 documents adversarial path-escape write rejection (T-27, T-29)" {
   run grep -qiE "adversarial|path.escape|fail.closed|T-27|T-29|out.of.scope" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC9: Step 3 documents HALT on missing review-gate.sh" {
+@test "Step 3 documents HALT on missing review-gate.sh" {
   run grep -qiE "review-gate\.sh.*(missing|not.*present|not.*executable)|HALT.*review-gate" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC10: Step 3 documents interactive-only known limitation (GR-VS-5 deferred)" {
+@test "Step 3 documents interactive-only known limitation" {
   run grep -qiE "interactive.only|GR-VS-5|deferred.*YOLO" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
@@ -233,7 +233,7 @@ EOF
 # NFR-046 single-spawn-level preservation (inline SM fix, not a nested spawn)
 # ---------------------------------------------------------------------------
 
-@test "NFR-046: SKILL.md documents inline SM fix (no nested Agent/Task spawn)" {
+@test "SKILL.md documents inline SM fix (no nested Agent/Task spawn)" {
   run grep -qiE "inline.*SM|SM.*inline|NFR-046|single.spawn|no.*nested" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
@@ -242,7 +242,7 @@ EOF
 # ADR cross-reference
 # ---------------------------------------------------------------------------
 
-@test "Step 3 references ADR-050 (canonical pattern origin)" {
+@test "Step 3 references (canonical pattern origin)" {
   # ADR-050 defined the six-component dispatch pattern implemented in Step 3.
   # The prose no longer cites the internal ADR ID; instead pin the behavioral
   # anchor — the "six-component dispatch pattern" phrase — which names the
@@ -262,7 +262,7 @@ EOF
 # Critical Rules section checks
 # ---------------------------------------------------------------------------
 
-@test "Critical Rules: SR-23 referenced (3-attempt cap; YOLO cannot bypass)" {
+@test "Critical Rules: referenced (3-attempt cap; YOLO cannot bypass)" {
   # SR-23 mandates the 3-attempt hard cap and prohibits YOLO bypass.
   # The prose no longer cites the internal SR ID; pin the behavioral rule
   # that YOLO must not bypass the cap — still present in Critical Rules.
@@ -270,7 +270,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "Critical Rules: SR-24 referenced (tool allowlist scoped)" {
+@test "Critical Rules: referenced (tool allowlist scoped)" {
   # SR-24 requires Edit/Write to be scoped to the story file and
   # review-gate.sh output only. The prose no longer cites the SR ID;
   # pin the behavioral rule that tools are scoped to the story file path.
@@ -278,7 +278,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "Critical Rules: SR-25 referenced (inline fix only; no nested subagent)" {
+@test "Critical Rules: referenced (inline fix only; no nested subagent)" {
   # SR-25 forbids spawning a nested subagent during the fix loop; inline
   # Edit/Write only. The prose no longer cites the SR ID; pin the
   # behavioral rule against nested Agent/Task spawn in Critical Rules.
@@ -304,7 +304,7 @@ EOF
   grep -q "$plan_id" "$LEDGER"
 }
 
-@test "review-gate.sh: story-validation gate accepts FAILED verdict with validate-story plan-id (VLR-06)" {
+@test "review-gate.sh: story-validation gate accepts FAILED verdict with validate-story plan-id" {
   seed_story VRS2 UNVERIFIED
   local plan_id="validate-story-val-def456"
 

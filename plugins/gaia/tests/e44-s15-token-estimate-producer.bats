@@ -30,12 +30,12 @@ teardown() {
 
 # ---------- Producer existence ----------
 
-@test "E44-S15 producer: append-val-iteration.sh exists and is executable" {
+@test "producer: append-val-iteration.sh exists and is executable" {
   [ -f "$PRODUCER" ]
   [ -x "$PRODUCER" ]
 }
 
-@test "E44-S15 producer: --help exits 0 and documents token_estimate" {
+@test "producer: --help exits 0 and documents token_estimate" {
   run "$PRODUCER" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"token_estimate"* ]]
@@ -44,7 +44,7 @@ teardown() {
 
 # ---------- AC1: token_estimate populated as numeric > 0 ----------
 
-@test "E44-S15 AC1: producer writes checkpoint with numeric token_estimate > 0" {
+@test "producer writes checkpoint with numeric token_estimate > 0" {
   run "$PRODUCER" \
     --skill gaia-brainstorm \
     --step 6 \
@@ -75,7 +75,7 @@ assert isinstance(rec["timestamp"], str)
 PY
 }
 
-@test "E44-S15 AC1: rejects token-estimate that is not numeric" {
+@test "rejects token-estimate that is not numeric" {
   run "$PRODUCER" \
     --skill gaia-brainstorm \
     --step 6 \
@@ -87,7 +87,7 @@ PY
   [[ "$output" == *"numeric"* || "$output" == *"token-estimate"* ]]
 }
 
-@test "E44-S15 AC1: rejects token-estimate <= 0" {
+@test "rejects token-estimate <= 0" {
   run "$PRODUCER" \
     --skill gaia-brainstorm \
     --step 6 \
@@ -98,7 +98,7 @@ PY
   [ "$status" -ne 0 ]
 }
 
-@test "E44-S15 AC1: omits token_estimate field when --token-estimate=null is passed (AC-EC8 fallback)" {
+@test "omits token_estimate field when --token-estimate=null is passed (AC-EC8 fallback)" {
   run "$PRODUCER" \
     --skill gaia-brainstorm \
     --step 6 \
@@ -122,7 +122,7 @@ PY
 
 # ---------- Append semantics: subsequent iterations append to existing array ----------
 
-@test "E44-S15: subsequent iterations append to the same skill's checkpoint stream" {
+@test "subsequent iterations append to the same skill's checkpoint stream" {
   # Iteration 1
   run "$PRODUCER" \
     --skill gaia-brainstorm \
@@ -169,7 +169,7 @@ PY
 
 # ---------- AC2: harness consumes the populated checkpoint without parser errors ----------
 
-@test "E44-S15 AC2: harness parses producer-emitted checkpoint and reports a verdict" {
+@test "harness parses producer-emitted checkpoint and reports a verdict" {
   # Three iterations of 1500 tokens; baseline 1000 → per_iteration 1.5, total 4.5 → PASS
   for i in 1 2 3; do
     "$PRODUCER" \
@@ -191,7 +191,7 @@ PY
 
 # ---------- AC3: no iterations emitted when single-pass clean ----------
 
-@test "E44-S15 AC3: zero iterations emit no val_loop_iterations records" {
+@test "zero iterations emit no val_loop_iterations records" {
   # When the loop terminates on the first Val invocation (clean / INFO-only),
   # the producer is never invoked. We assert here that no checkpoint with a
   # val_loop_iterations array is created in the brainstorm skill directory.
@@ -201,7 +201,7 @@ PY
 
 # ---------- Wire-in: gaia-brainstorm SKILL.md cites the producer ----------
 
-@test "E44-S15 wire-in: gaia-brainstorm SKILL.md invokes the producer in the val auto-fix loop" {
+@test "wire-in: gaia-brainstorm SKILL.md invokes the producer in the val auto-fix loop" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-brainstorm/SKILL.md"
   [ -f "$SKILL" ]
   grep -q "append-val-iteration.sh" "$SKILL"
@@ -210,7 +210,7 @@ PY
 
 # ---------- Canonical record-shape doc carries token_estimate field ----------
 
-@test "E44-S15 contract: gaia-val-validate SKILL.md documents token_estimate as the harness contract field" {
+@test "contract: gaia-val-validate SKILL.md documents token_estimate as the harness contract field" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-val-validate/SKILL.md"
   [ -f "$SKILL" ]
   grep -q "token_estimate" "$SKILL"

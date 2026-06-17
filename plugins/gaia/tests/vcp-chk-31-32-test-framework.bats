@@ -30,34 +30,34 @@ teardown() { common_teardown; }
 # VCP-CHK-31 — Positive: all 7 items mapped (4 SV PASS, 3 LLM deferred).
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-31: finalize.sh exits 0 when all 4 script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all 4 script-verifiable items satisfied" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-31: finalize.sh emits a checklist header on positive path" {
+@test "finalize.sh emits a checklist header on positive path" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist: /gaia-test-framework (7 items"* ]]
 }
 
-@test "VCP-CHK-31: finalize.sh reports 4/4 script-verifiable PASS" {
+@test "finalize.sh reports 4/4 script-verifiable PASS" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"4/4 script-verifiable items PASS"* ]]
 }
 
-@test "VCP-CHK-31: finalize.sh reports total items: 7" {
+@test "finalize.sh reports total items: 7" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Total items: 7"* ]]
 }
 
-@test "VCP-CHK-31: every SV-01..SV-04 item appears as PASS verbatim" {
+@test "every .. item appears as PASS verbatim" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -67,7 +67,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"[PASS] SV-04 — Fixture architecture designed"* ]]
 }
 
-@test "VCP-CHK-31: finalize.sh enumerates 3 LLM-checkable items" {
+@test "finalize.sh enumerates 3 LLM-checkable items" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -75,7 +75,7 @@ teardown() { common_teardown; }
   [ "$llm_count" = "3" ]
 }
 
-@test "VCP-CHK-31: finalize.sh tags PASS lines with [skill: test-framework]" {
+@test "finalize.sh tags PASS lines with [skill: test-framework]" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -86,27 +86,27 @@ teardown() { common_teardown; }
 # VCP-CHK-32 — Negative: artifact missing the test-runner section (SV-03).
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-32: finalize.sh exits non-zero when test runner missing" {
+@test "finalize.sh exits non-zero when test runner missing" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-missing-runner.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-32: finalize.sh names SV-03 (Test runner script) in violations" {
+@test "finalize.sh names (Test runner script) in violations" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-missing-runner.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SV-03 — Test runner script configured and executable"* ]]
 }
 
-@test "VCP-CHK-32: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-missing-runner.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations:"* ]]
 }
 
-@test "VCP-CHK-32: finalize.sh guides user back to /gaia-test-framework" {
+@test "finalize.sh guides user back to /gaia-test-framework" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-missing-runner.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -117,7 +117,7 @@ teardown() { common_teardown; }
 # AC5 — Classification audit on SKILL.md ## Validation section.
 # -------------------------------------------------------------------------
 
-@test "AC5: SKILL.md ## Validation section contains exactly 7 classified items" {
+@test "SKILL.md ## Validation section contains exactly 7 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -128,7 +128,7 @@ teardown() { common_teardown; }
   [ "$output" = "7" ]
 }
 
-@test "AC5: SKILL.md script-verifiable count is 4" {
+@test "SKILL.md script-verifiable count is 4" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -139,7 +139,7 @@ teardown() { common_teardown; }
   [ "$output" = "4" ]
 }
 
-@test "AC5: SKILL.md LLM-checkable count is 3" {
+@test "SKILL.md LLM-checkable count is 3" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -150,7 +150,7 @@ teardown() { common_teardown; }
   [ "$output" = "3" ]
 }
 
-@test "AC5: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }
@@ -170,14 +170,14 @@ teardown() { common_teardown; }
 # positive and negative paths.
 # -------------------------------------------------------------------------
 
-@test "AC6: checkpoint written on positive path" {
+@test "checkpoint written on positive path" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   [ -f "$CHECKPOINT_PATH/test-framework.yaml" ]
 }
 
-@test "AC6: checkpoint written even when checklist fails" {
+@test "checkpoint written even when checklist fails" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$FIXTURES/test-framework-setup-missing-runner.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
@@ -188,14 +188,14 @@ teardown() { common_teardown; }
 # AC4 — TEST_FRAMEWORK_SETUP_ARTIFACT pointing at missing or empty file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when artifact path missing" {
+@test "finalize.sh reports 'no artifact to validate' when artifact path missing" {
   export TEST_FRAMEWORK_SETUP_ARTIFACT="$BATS_TMPDIR/does-not-exist-test-framework-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"no artifact to validate"* ]]
 }
 
-@test "AC4: finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
+@test "finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
   local empty
   empty="$TEST_TMP/empty-test-framework.md"
   : > "$empty"

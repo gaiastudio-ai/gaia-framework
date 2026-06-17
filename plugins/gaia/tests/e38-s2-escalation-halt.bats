@@ -91,7 +91,7 @@ _run_escalation_halt() {
 # ===========================================================================
 # Scenario 2 — Halt fires (AC2, TC-SPQG-5)
 # ===========================================================================
-@test "integration: halt fires with blocking list (AC2, TC-SPQG-5)" {
+@test "integration: halt fires with blocking list" {
   local ai="$TEST_TMP/action-items.yaml"
   local ss="$TEST_TMP/sprint-status.yaml"
   _write_action_items "$ai" "AI-42|Long-running|HIGH|open|2"
@@ -116,7 +116,7 @@ _run_escalation_halt() {
 # ===========================================================================
 # Scenario 3 — Override proceeds + records (AC3, TC-SPQG-6)
 # ===========================================================================
-@test "integration: override flag proceeds and records override (AC3, TC-SPQG-6)" {
+@test "integration: override flag proceeds and records override" {
   local ai="$TEST_TMP/action-items.yaml"
   local ss="$TEST_TMP/sprint-status.yaml"
   _write_action_items "$ai" "AI-42|Long-running|HIGH|open|2"

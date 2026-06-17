@@ -35,16 +35,16 @@ teardown() { common_teardown; }
 # AC1 — Section anchor present
 # ---------------------------------------------------------------------------
 
-@test "AC1: SKILL.md exists and is readable" {
+@test "SKILL.md exists and is readable" {
   [ -f "$SKILL" ]
   [ -r "$SKILL" ]
 }
 
-@test "AC1: SKILL.md contains '## Auto-Fix Loop Pattern' anchor" {
+@test "SKILL.md contains '## Auto-Fix Loop Pattern' anchor" {
   grep -q '^## Auto-Fix Loop Pattern' "$SKILL"
 }
 
-@test "AC1: SKILL.md documents the canonical auto-fix-loop pattern section" {
+@test "SKILL.md documents the canonical auto-fix-loop pattern section" {
   # Assert the contract (the canonical auto-fix-loop spec), not an internal
   # story key (scrubbed from published source).
   grep -qE '^## Auto-Fix Loop Pattern' "$SKILL"
@@ -55,15 +55,15 @@ teardown() { common_teardown; }
 # AC1/AC4 — State machine documented with iteration numbering
 # ---------------------------------------------------------------------------
 
-@test "AC1: SKILL.md documents the canonical state machine" {
+@test "SKILL.md documents the canonical state machine" {
   grep -q -E 'State [Mm]achine' "$SKILL"
 }
 
-@test "AC1: SKILL.md states iteration counter starts at 1" {
+@test "SKILL.md states iteration counter starts at 1" {
   grep -q -E 'iteration *= *1' "$SKILL"
 }
 
-@test "AC1/AC2: SKILL.md states 3-iteration hard cap" {
+@test "SKILL.md states 3-iteration hard cap" {
   grep -q -E '3-iteration|iteration *<= *3|iteration *> *3' "$SKILL"
 }
 
@@ -71,23 +71,23 @@ teardown() { common_teardown; }
 # AC2 — Iteration-3 prompt verbatim with exactly 3 options
 # ---------------------------------------------------------------------------
 
-@test "AC2: SKILL.md contains canonical iteration-3 prompt text" {
+@test "SKILL.md contains canonical iteration-3 prompt text" {
   grep -q 'Iteration 3 of Val auto-fix did not converge' "$SKILL"
 }
 
-@test "AC2: prompt offers Continue option (key c)" {
+@test "prompt offers Continue option (key c)" {
   grep -q -F '[c] Continue' "$SKILL"
 }
 
-@test "AC2: prompt offers Accept-as-is option (key a)" {
+@test "prompt offers Accept-as-is option (key a)" {
   grep -q -F '[a] Accept as-is' "$SKILL"
 }
 
-@test "AC2: prompt offers Abort option (key x)" {
+@test "prompt offers Abort option (key x)" {
   grep -q -F '[x] Abort' "$SKILL"
 }
 
-@test "AC2: SKILL.md documents accepted input synonyms (continue/accept/abort)" {
+@test "SKILL.md documents accepted input synonyms (continue/accept/abort)" {
   grep -q -E 'continue' "$SKILL"
   grep -q -E 'accept' "$SKILL"
   grep -q -E 'abort' "$SKILL"
@@ -97,11 +97,11 @@ teardown() { common_teardown; }
 # AC3 — Post-escape semantics (no implicit cap after user "continue")
 # ---------------------------------------------------------------------------
 
-@test "AC3: SKILL.md documents post-escape continue semantics" {
+@test "SKILL.md documents post-escape continue semantics" {
   grep -q -E -i 'post-?escape' "$SKILL"
 }
 
-@test "AC3: SKILL.md states no implicit cap after first escape" {
+@test "SKILL.md states no implicit cap after first escape" {
   grep -q -E -i 'no implicit cap' "$SKILL"
 }
 
@@ -109,18 +109,18 @@ teardown() { common_teardown; }
 # AC4 — Iteration log record shape
 # ---------------------------------------------------------------------------
 
-@test "AC4: SKILL.md documents per-iteration log record shape" {
+@test "SKILL.md documents per-iteration log record shape" {
   grep -q -E 'iteration number' "$SKILL"
   grep -q -E 'timestamp' "$SKILL"
   grep -q -E 'findings' "$SKILL"
   grep -q -E 'fix.diff' "$SKILL"
 }
 
-@test "AC4: SKILL.md routes iteration logs to checkpoint custom.val_loop_iterations" {
+@test "SKILL.md routes iteration logs to checkpoint custom.val_loop_iterations" {
   grep -q 'val_loop_iterations' "$SKILL"
 }
 
-@test "AC4: SKILL.md documents checkpoint custom namespace for iteration log storage" {
+@test "SKILL.md documents checkpoint custom namespace for iteration log storage" {
   grep -q -E "checkpoint.*custom.*namespace|custom.*namespace.*checkpoint|custom:.*namespace" "$SKILL"
 }
 
@@ -128,15 +128,15 @@ teardown() { common_teardown; }
 # AC5 — Token budget targets documented
 # ---------------------------------------------------------------------------
 
-@test "AC5: SKILL.md states per-iteration <= 2x single-pass baseline" {
+@test "SKILL.md states per-iteration <= 2x single-pass baseline" {
   grep -q -E '(2x|<= *2x|<=2x)' "$SKILL"
 }
 
-@test "AC5: SKILL.md states 3-iteration total <= 6x baseline" {
+@test "SKILL.md states 3-iteration total <= 6x baseline" {
   grep -q -E '(6x|<= *6x|<=6x)' "$SKILL"
 }
 
-@test "AC5: SKILL.md documents token-budget envelope section" {
+@test "SKILL.md documents token-budget envelope section" {
   grep -q -E '## Token Budget|token-budget envelope|token budget' "$SKILL"
 }
 
@@ -144,17 +144,17 @@ teardown() { common_teardown; }
 # AC6 / AC-EC7 — YOLO hard-gate invariant
 # ---------------------------------------------------------------------------
 
-@test "AC6: SKILL.md documents YOLO hard-gate invariant" {
+@test "SKILL.md documents YOLO hard-gate invariant" {
   grep -q -E -i 'YOLO' "$SKILL"
   grep -q -E -i 'hard.?gate' "$SKILL"
 }
 
-@test "AC6: SKILL.md states YOLO hard-gate is invariant and prompt must not be auto-answered" {
+@test "SKILL.md states YOLO hard-gate is invariant and prompt must not be auto-answered" {
   grep -q -E 'invariant under YOLO|YOLO.*invariant' "$SKILL"
   grep -q -E 'MUST NOT.*auto-answer|auto-answered.*YOLO|yolo_hard_gate_violation' "$SKILL"
 }
 
-@test "AC-EC7: SKILL.md documents bypass-attempt logging" {
+@test "SKILL.md documents bypass-attempt logging" {
   grep -q -E -i 'bypass' "$SKILL"
 }
 
@@ -162,11 +162,11 @@ teardown() { common_teardown; }
 # AC-EC4 — Thrash detection
 # ---------------------------------------------------------------------------
 
-@test "AC-EC4: SKILL.md documents thrash detection rule" {
+@test "SKILL.md documents thrash detection rule" {
   grep -q -E -i 'thrash' "$SKILL"
 }
 
-@test "AC-EC4: SKILL.md states thrash still advances iteration counter" {
+@test "SKILL.md states thrash still advances iteration counter" {
   # Thrashes are logged but DO NOT short-circuit the 3-cap.
   grep -q -E 'short.circuit|advance.*counter|still increments|increments the iteration' "$SKILL"
 }
@@ -175,11 +175,11 @@ teardown() { common_teardown; }
 # AC-EC6 — Accept-as-is creates ## Open Questions section
 # ---------------------------------------------------------------------------
 
-@test "AC-EC6: SKILL.md documents Open Questions section creation on accept-as-is" {
+@test "SKILL.md documents Open Questions section creation on accept-as-is" {
   grep -q '## Open Questions' "$SKILL"
 }
 
-@test "AC-EC6: SKILL.md documents accept-as-is record template" {
+@test "SKILL.md documents accept-as-is record template" {
   grep -q -E 'Unresolved after 3 Val iterations' "$SKILL"
 }
 
@@ -187,7 +187,7 @@ teardown() { common_teardown; }
 # AC-EC10 — INFO-only findings exit without fix
 # ---------------------------------------------------------------------------
 
-@test "AC-EC10: SKILL.md states INFO does not trigger auto-fix" {
+@test "SKILL.md states INFO does not trigger auto-fix" {
   grep -q -E -i 'INFO.*(informational|does not trigger|not.*trigger)' "$SKILL"
 }
 
@@ -195,7 +195,7 @@ teardown() { common_teardown; }
 # Severity contract — only CRITICAL and WARNING drive the loop
 # ---------------------------------------------------------------------------
 
-@test "AC1: SKILL.md states CRITICAL and WARNING drive the loop" {
+@test "SKILL.md states CRITICAL and WARNING drive the loop" {
   grep -q -E 'CRITICAL.*WARNING|CRITICAL or WARNING' "$SKILL"
 }
 

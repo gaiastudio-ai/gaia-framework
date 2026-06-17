@@ -171,7 +171,7 @@ STORY
 # [TC-TAF-7, FR-TAF-4]
 # ---------------------------------------------------------------------------
 
-@test "AC1: happy_path_triple_source_verdict_all_agree_phase2_proceeds" {
+@test "happy_path_triple_source_verdict_all_agree_phase2_proceeds" {
   local story_key="E35-S3-AC1"
   local plan_id="plan-$(date +%s)-ac1"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -204,7 +204,7 @@ STORY
 # [TC-TAF-6, FR-TAF-4]
 # ---------------------------------------------------------------------------
 
-@test "AC2: halt_on_plan_id_mismatch_concurrent_race" {
+@test "halt_on_plan_id_mismatch_concurrent_race" {
   local story_key="E35-S3-AC2"
   local plan_id_disk="plan-disk-$(date +%s)"
   local plan_id_ledger="plan-ledger-$(date +%s)-different"
@@ -237,7 +237,7 @@ STORY
 # [TC-TAF-9, FR-TAF-4]
 # ---------------------------------------------------------------------------
 
-@test "AC3: halt_on_plan_tamper_frontmatter_verdict_plan_id_divergence" {
+@test "halt_on_plan_tamper_frontmatter_verdict_plan_id_divergence" {
   local story_key="E35-S3-AC3"
   local plan_id="plan-$(date +%s)-ac3"
   local tampered_id="plan-tampered-$(date +%s)"
@@ -270,7 +270,7 @@ STORY
 # [TC-TAF-4, FR-TAF-3]
 # ---------------------------------------------------------------------------
 
-@test "AC4: halt_on_source_drift_sha256_mismatch" {
+@test "halt_on_source_drift_sha256_mismatch" {
   local story_key="E35-S3-AC4"
   local plan_id="plan-$(date +%s)-ac4"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -315,7 +315,7 @@ STORY
 # [TC-TAF-5, FR-TAF-3]
 # ---------------------------------------------------------------------------
 
-@test "AC5: halt_on_proposed_test_path_outside_tier_allowlist" {
+@test "halt_on_proposed_test_path_outside_tier_allowlist" {
   local story_key="E35-S3-AC5"
   local plan_id="plan-$(date +%s)-ac5"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -352,7 +352,7 @@ STORY
 # [TC-TAF-7, FR-TAF-1, FR-TAF-3]
 # ---------------------------------------------------------------------------
 
-@test "AC6: happy_path_end_to_end_minimal_fixture_test_written_evidence_produced" {
+@test "happy_path_end_to_end_minimal_fixture_test_written_evidence_produced" {
   local story_key="E35-S3-AC6"
   local plan_id="plan-$(date +%s)-ac6"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -398,7 +398,7 @@ STORY
 # [FR-TAF-1]
 # ---------------------------------------------------------------------------
 
-@test "AC7: phase2_runs_in_main_context_write_and_edit_allowed" {
+@test "phase2_runs_in_main_context_write_and_edit_allowed" {
   local story_key="E35-S3-AC7"
   local plan_id="plan-$(date +%s)-ac7"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -440,7 +440,7 @@ STORY
 # [FR-TAF-1]
 # ---------------------------------------------------------------------------
 
-@test "AC8: phase2_complete_plan_phase_executed_story_sprint_updated" {
+@test "phase2_complete_plan_phase_executed_story_sprint_updated" {
   local story_key="E35-S3-AC8"
   local plan_id="plan-$(date +%s)-ac8"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -489,7 +489,7 @@ STORY
 # [TC-TAF-7]
 # ---------------------------------------------------------------------------
 
-@test "AC9: v1_regression_fixture_test_files_written_and_executed" {
+@test "v1_regression_fixture_test_files_written_and_executed" {
   local story_key="E35-S3-AC9"
   local plan_id="plan-v1-parity-$(date +%s)"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -537,7 +537,7 @@ SHELL
 # [boundary]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC1: edge_empty_analyzed_sources_drift_check_noop" {
+@test "edge_empty_analyzed_sources_drift_check_noop" {
   local story_key="E35-S3-EC1"
   local plan_id="plan-$(date +%s)-ec1"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -572,7 +572,7 @@ SHELL
 # [boundary]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC2: edge_empty_proposed_tests_zero_files_written" {
+@test "edge_empty_proposed_tests_zero_files_written" {
   local story_key="E35-S3-EC2"
   local plan_id="plan-$(date +%s)-ec2"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -611,7 +611,7 @@ SHELL
 # [error]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC3: edge_plan_file_missing_halt_not_found" {
+@test "edge_plan_file_missing_halt_not_found" {
   local story_key="E35-S3-EC3"
   local plan_path="$TEST_TMP/does-not-exist/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
@@ -640,7 +640,7 @@ SHELL
 # [data]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC4: edge_malformed_yaml_frontmatter_halt_plan_tamper_detected" {
+@test "edge_malformed_yaml_frontmatter_halt_plan_tamper_detected" {
   local story_key="E35-S3-EC4"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
   local ledger_path="$TEST_TMP/.review-gate-ledger"
@@ -683,7 +683,7 @@ BROKEN
 # [security]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC5: edge_path_traversal_in_proposed_test_file_halts" {
+@test "edge_path_traversal_in_proposed_test_file_halts" {
   local story_key="E35-S3-EC5"
   local plan_id="plan-$(date +%s)-ec5"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -722,7 +722,7 @@ BROKEN
 # [environment]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC6: edge_test_environment_yaml_missing_halt_no_fallback" {
+@test "edge_test_environment_yaml_missing_halt_no_fallback" {
   local story_key="E35-S3-EC6"
   local plan_id="plan-$(date +%s)-ec6"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -763,7 +763,7 @@ BROKEN
 # The Bridge executes against the modified filesystem.
 # When a mid-phase detection mechanism is added, update this test to assert
 # HALT status: mid_phase_drift.
-@test "AC-EC7: edge_source_modified_during_phase2_documented_limitation" {
+@test "edge_source_modified_during_phase2_documented_limitation" {
   skip "Known limitation: concurrent modification between drift-check (Step 1) and Bridge invocation (Step 4) is not detected. Bridge executes against current filesystem. See ADR-028 known limitations and FR-TAF-CONCURRENCY."
 }
 
@@ -773,7 +773,7 @@ BROKEN
 # [integration]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC8: edge_bridge_unavailable_files_written_annotation_added" {
+@test "edge_bridge_unavailable_files_written_annotation_added" {
   local story_key="E35-S3-EC8"
   local plan_id="plan-$(date +%s)-ec8"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -825,7 +825,7 @@ BROKEN
 # [integration]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC9: edge_ledger_empty_missing_halt_at_step0" {
+@test "edge_ledger_empty_missing_halt_at_step0" {
   local story_key="E35-S3-EC9"
   local plan_id="plan-$(date +%s)-ec9"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"
@@ -857,7 +857,7 @@ BROKEN
 # [error]
 # ---------------------------------------------------------------------------
 
-@test "AC-EC10: edge_target_test_file_already_exists_halt" {
+@test "edge_target_test_file_already_exists_halt" {
   local story_key="E35-S3-EC10"
   local plan_id="plan-$(date +%s)-ec10"
   local plan_path="$TEST_TMP/docs/test-artifacts/plans/${story_key}-plan.md"

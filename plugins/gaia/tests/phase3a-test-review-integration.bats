@@ -27,7 +27,7 @@ EOF
   awk 'BEGIN{ for (i=0; i<600; i++) print "{}" }' > "$TEST_TMP/fixtures/big.json"
 }
 
-@test "TC-RSV2-TESTREVIEW-5.1: Phase 3A driver produces schema-valid analysis-results.json" {
+@test ".1: Phase 3A driver produces schema-valid analysis-results.json" {
   make_workspace
   run "$DRIVER" --story-key E67-S1 --stack ts-dev "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -39,7 +39,7 @@ EOF
   printf '%s\n' "$output" | grep -F '"checks":[' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-5.2: all four scanners contribute checks[] entries" {
+@test ".2: all four scanners contribute checks entries" {
   make_workspace
   run "$DRIVER" --story-key E67-S1 --stack ts-dev "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -49,7 +49,7 @@ EOF
   printf '%s\n' "$output" | grep -F '"name":"tag-conformance-detector"' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-5.3: smell + flakiness + tag findings each surface for the bad fixture" {
+@test ".3: smell + flakiness + tag findings each surface for the bad fixture" {
   make_workspace
   run "$DRIVER" --story-key E67-S1 --stack ts-dev "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -63,7 +63,7 @@ EOF
   printf '%s\n' "$output" | grep -F '"rule":"missing-tag"' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-5.4: schema validation passes when ajv is available (AC7)" {
+@test ".4: schema validation passes when ajv is available" {
   make_workspace
   run "$DRIVER" --story-key E67-S1 --stack ts-dev "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -76,7 +76,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "TC-RSV2-TESTREVIEW-5.5: schema validation passes when python jsonschema is available (AC7)" {
+@test ".5: schema validation passes when python jsonschema is available" {
   make_workspace
   run "$DRIVER" --story-key E67-S1 --stack ts-dev "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -97,7 +97,7 @@ jsonschema.validate(data, schema)
   [ "$status" -eq 0 ]
 }
 
-@test "TC-RSV2-TESTREVIEW-5.6: clean workspace produces all-passed checks" {
+@test ".6: clean workspace produces all-passed checks" {
   mkdir -p "$TEST_TMP/tests"
   cat > "$TEST_TMP/tests/clean.test.ts" <<'EOF'
 import { fixtures } from "./fixtures";
@@ -111,21 +111,21 @@ EOF
   ! printf '%s\n' "$output" | grep -F '"status":"failed"' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-5.7: --story-key validation rejects non-canonical keys" {
+@test ".7: --story-key validation rejects non-canonical keys" {
   run "$DRIVER" --story-key bogus --stack ts-dev "$TEST_TMP"
   [ "$status" -eq 1 ]
 }
 
-@test "TC-RSV2-TESTREVIEW-5.8: --stack required" {
+@test ".8: --stack required" {
   run "$DRIVER" --story-key E67-S1 "$TEST_TMP"
   [ "$status" -eq 1 ]
 }
 
-@test "TC-RSV2-TESTREVIEW-5.9: phase3a driver does not invoke jq as a runtime command" {
+@test ".9: phase3a driver does not invoke jq as a runtime command" {
   ! grep -vE '^[[:space:]]*#' "$DRIVER" | grep -E '(^|[[:space:]\|;])jq([[:space:]]|$)' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-5.10: phase3a driver uses set -euo pipefail and LC_ALL=C" {
+@test ".10: phase3a driver uses set -euo pipefail and LC_ALL=C" {
   grep -Fq "set -euo pipefail" "$DRIVER"
   grep -Fq "LC_ALL=C" "$DRIVER"
 }

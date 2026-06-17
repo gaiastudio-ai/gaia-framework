@@ -237,7 +237,7 @@ assert_analysis_results_schema_ref() {
 # E67/E73 lands the references over time). Once a skill adopts a reference
 # any future drift fails CI.
 
-@test "parity (ADR-077): agent-overlay.sh integration referenced where adopted" {
+@test "parity: agent-overlay.sh integration referenced where adopted" {
   if [ "${#REVIEW_SKILLS[@]}" -eq 0 ]; then
     skip "no consumers registered yet — parity not enforceable"
   fi
@@ -265,7 +265,7 @@ assert_analysis_results_schema_ref() {
   done
 }
 
-@test "parity (ADR-077): tool-availability-probe.sh integration referenced where adopted" {
+@test "parity: tool-availability-probe.sh integration referenced where adopted" {
   if [ "${#REVIEW_SKILLS[@]}" -eq 0 ]; then
     skip "no consumers registered yet — parity not enforceable"
   fi
@@ -289,7 +289,7 @@ assert_analysis_results_schema_ref() {
   done
 }
 
-@test "parity (ADR-077): analysis-results.json schema reference present where adopted" {
+@test "parity: analysis-results.json schema reference present where adopted" {
   if [ "${#REVIEW_SKILLS[@]}" -eq 0 ]; then
     skip "no consumers registered yet — parity not enforceable"
   fi

@@ -19,44 +19,44 @@ teardown() { common_teardown; }
 
 # ---------- AC1: Frontmatter ----------
 
-@test "AC1: SKILL.md exists in gaia-create-ux skill directory" {
+@test "SKILL.md exists in gaia-create-ux skill directory" {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "AC1: frontmatter contains name: gaia-create-ux" {
+@test "frontmatter contains name: gaia-create-ux" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"name: gaia-create-ux"* ]]
 }
 
-@test "AC1: frontmatter contains description field" {
+@test "frontmatter contains description field" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"description:"* ]]
 }
 
-@test "AC1: frontmatter declares orchestration_class (post-ADR-093)" {
+@test "frontmatter declares orchestration_class (post-migration)" {
   # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
   # SKILL.md. gaia-create-ux is heavy-procedural.
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"orchestration_class: heavy-procedural"* ]]
 }
 
-@test "AC1: frontmatter contains allowed-tools" {
+@test "frontmatter contains allowed-tools" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"allowed-tools:"* ]]
 }
 
 # ---------- AC2: Template carried into skill directory ----------
 
-@test "AC2: ux-design-assessment-template.md exists in skill directory" {
+@test "ux-design-assessment-template.md exists in skill directory" {
   [ -f "$SKILL_DIR/ux-design-assessment-template.md" ]
 }
 
-@test "AC2: SKILL.md references ux-design-assessment-template.md" {
+@test "SKILL.md references ux-design-assessment-template.md" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"ux-design-assessment-template.md"* ]]
 }
 
-@test "AC2: ux-design-assessment-template.md contains UX Assessment section headers" {
+@test "ux-design-assessment-template.md contains UX Assessment section headers" {
   run cat "$SKILL_DIR/ux-design-assessment-template.md"
   [[ "$output" == *"## 1. UX Overview"* ]]
   [[ "$output" == *"## 5. Accessibility Assessment"* ]]
@@ -64,100 +64,100 @@ teardown() { common_teardown; }
 
 # ---------- AC3: Shared scripts exist ----------
 
-@test "AC3: scripts/setup.sh exists in gaia-create-ux" {
+@test "scripts/setup.sh exists in gaia-create-ux" {
   [ -f "$SKILL_DIR/scripts/setup.sh" ]
 }
 
-@test "AC3: scripts/finalize.sh exists in gaia-create-ux" {
+@test "scripts/finalize.sh exists in gaia-create-ux" {
   [ -f "$SKILL_DIR/scripts/finalize.sh" ]
 }
 
-@test "AC3: setup.sh is executable" {
+@test "setup.sh is executable" {
   [ -x "$SKILL_DIR/scripts/setup.sh" ]
 }
 
-@test "AC3: finalize.sh is executable" {
+@test "finalize.sh is executable" {
   [ -x "$SKILL_DIR/scripts/finalize.sh" ]
 }
 
-@test "AC3: setup.sh sources resolve-config.sh" {
+@test "setup.sh sources resolve-config.sh" {
   run cat "$SKILL_DIR/scripts/setup.sh"
   [[ "$output" == *"resolve-config.sh"* ]]
 }
 
-@test "AC3: finalize.sh sources checkpoint.sh" {
+@test "finalize.sh sources checkpoint.sh" {
   run cat "$SKILL_DIR/scripts/finalize.sh"
   [[ "$output" == *"checkpoint.sh"* ]]
 }
 
-@test "AC3: setup.sh uses set -euo pipefail" {
+@test "setup.sh uses set -euo pipefail" {
   run cat "$SKILL_DIR/scripts/setup.sh"
   [[ "$output" == *"set -euo pipefail"* ]]
 }
 
-@test "AC3: finalize.sh uses set -euo pipefail" {
+@test "finalize.sh uses set -euo pipefail" {
   run cat "$SKILL_DIR/scripts/finalize.sh"
   [[ "$output" == *"set -euo pipefail"* ]]
 }
 
 # ---------- AC4: Subagent routing ----------
 
-@test "AC4: SKILL.md delegates to ux-designer subagent" {
+@test "SKILL.md delegates to ux-designer subagent" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"ux-designer"* ]]
 }
 
-@test "AC4: SKILL.md does not contain inline persona content" {
+@test "SKILL.md does not contain inline persona content" {
   run cat "$SKILL_DIR/SKILL.md"
   # Should reference the subagent, not embed Christy's full persona
   [[ "$output" != *"You are Christy"* ]]
 }
 
-@test "AC4: SKILL.md routes via agents/ux-designer" {
+@test "SKILL.md routes via agents/ux-designer" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"agents/ux-designer"* ]]
 }
 
 # ---------- AC5: Multi-step reasoning preserved from legacy workflow ----------
 
-@test "AC5: SKILL.md contains Step 1 — Load PRD" {
+@test "SKILL.md contains Step 1 — Load PRD" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"Load PRD"* ]]
 }
 
-@test "AC5: SKILL.md contains User Personas step" {
+@test "SKILL.md contains User Personas step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"User Personas"* ]]
 }
 
-@test "AC5: SKILL.md contains Information Architecture step" {
+@test "SKILL.md contains Information Architecture step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"Information Architecture"* ]]
 }
 
-@test "AC5: SKILL.md contains Wireframes step" {
+@test "SKILL.md contains Wireframes step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"Wireframes"* ]]
 }
 
-@test "AC5: SKILL.md contains Interaction Patterns step" {
+@test "SKILL.md contains Interaction Patterns step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"Interaction Patterns"* ]]
 }
 
-@test "AC5: SKILL.md contains Accessibility step" {
+@test "SKILL.md contains Accessibility step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"Accessibility"* ]]
 }
 
-@test "AC5: SKILL.md contains Generate Output step" {
+@test "SKILL.md contains Generate Output step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"Generate Output"* ]]
 }
 
 # ---------- AC5: Frontmatter linter ----------
 
-@test "AC5: frontmatter linter passes on gaia-create-ux/SKILL.md" {
+@test "frontmatter linter passes on gaia-create-ux/SKILL.md" {
   cd "$BATS_TEST_DIRNAME/../../.."
   run bash .github/scripts/lint-skill-frontmatter.sh
   [ "$status" -eq 0 ]

@@ -15,13 +15,13 @@ ADAPTERS=(swiftlint swiftformat detekt ktlint mobsf xcsize apkanalyzer)
 
 # ---------------- AC1 — seven adapter directories present -----------------
 
-@test "AC1: all seven mobile-static adapter directories exist" {
+@test "all seven mobile-static adapter directories exist" {
   for tool in "${ADAPTERS[@]}"; do
     [ -d "$ADAPTERS_DIR/$tool" ] || { echo "missing $tool directory" >&2; return 1; }
   done
 }
 
-@test "AC1: each adapter ships adapter.json + run.sh + test/contract.bats" {
+@test "each adapter ships adapter.json + run.sh + test/contract.bats" {
   for tool in "${ADAPTERS[@]}"; do
     [ -f "$ADAPTERS_DIR/$tool/adapter.json" ] || { echo "missing $tool/adapter.json" >&2; return 1; }
     [ -x "$ADAPTERS_DIR/$tool/run.sh" ]       || { echo "missing/non-exec $tool/run.sh" >&2; return 1; }
@@ -45,7 +45,7 @@ PY
   return 99
 }
 
-@test "AC2: each adapter.json validates against the canonical schema" {
+@test "each adapter.json validates against the canonical schema" {
   local skipped=1
   for tool in "${ADAPTERS[@]}"; do
     run _validate_adapter "$ADAPTERS_DIR/$tool/adapter.json"
@@ -55,7 +55,7 @@ PY
   if [ "$skipped" -eq 1 ]; then skip "python3 jsonschema not available"; fi
 }
 
-@test "AC2: each adapter.json declares 'category' from canonical enum" {
+@test "each adapter.json declares 'category' from canonical enum" {
   for tool in "${ADAPTERS[@]}"; do
     run jq -r '.category // ""' "$ADAPTERS_DIR/$tool/adapter.json"
     [ "$status" -eq 0 ]
@@ -66,7 +66,7 @@ PY
   done
 }
 
-@test "AC2: each adapter.json declares 'platforms' (ios|android|both)" {
+@test "each adapter.json declares 'platforms' (ios|android|both)" {
   for tool in "${ADAPTERS[@]}"; do
     run jq -e '.platforms | type == "array" and length > 0' "$ADAPTERS_DIR/$tool/adapter.json"
     [ "$status" -eq 0 ] || { echo "$tool: missing or empty 'platforms' array" >&2; return 1; }
@@ -77,7 +77,7 @@ PY
   done
 }
 
-@test "AC2: each adapter.json declares 'applies_to_skills' including review-code and review-mobile" {
+@test "each adapter.json declares 'applies_to_skills' including review-code and review-mobile" {
   for tool in "${ADAPTERS[@]}"; do
     run jq -e '.applies_to_skills | type == "array" and (index("review-code") != null) and (index("review-mobile") != null)' \
       "$ADAPTERS_DIR/$tool/adapter.json"
@@ -87,32 +87,32 @@ PY
 
 # ---------------- AC2 — platform mapping matches the story spec -----------
 
-@test "AC2: SwiftLint, SwiftFormat, xcsize declare platforms=[ios]" {
+@test "SwiftLint, SwiftFormat, xcsize declare platforms=[ios]" {
   for tool in swiftlint swiftformat xcsize; do
     run jq -r '.platforms | sort | join(",")' "$ADAPTERS_DIR/$tool/adapter.json"
     [ "$output" = "ios" ] || { echo "$tool platforms: $output" >&2; return 1; }
   done
 }
 
-@test "AC2: Detekt, ktlint, apkanalyzer declare platforms=[android]" {
+@test "Detekt, ktlint, apkanalyzer declare platforms=[android]" {
   for tool in detekt ktlint apkanalyzer; do
     run jq -r '.platforms | sort | join(",")' "$ADAPTERS_DIR/$tool/adapter.json"
     [ "$output" = "android" ] || { echo "$tool platforms: $output" >&2; return 1; }
   done
 }
 
-@test "AC2: MobSF declares platforms=[ios, android] (cross-platform)" {
+@test "MobSF declares platforms=[ios, android] (cross-platform)" {
   run jq -r '.platforms | sort | join(",")' "$ADAPTERS_DIR/mobsf/adapter.json"
   [ "$output" = "android,ios" ]
 }
 
 # ---------------- AC5 — platform-gated adapter resolver --------------------
 
-@test "AC5: adapter-platform-resolver.sh is present and executable" {
+@test "adapter-platform-resolver.sh is present and executable" {
   [ -x "$RESOLVER" ]
 }
 
-@test "AC5: --platforms ios returns ios adapters + cross-platform mobsf" {
+@test "platforms ios returns ios adapters + cross-platform mobsf" {
   run "$RESOLVER" --platforms ios --adapters-dir "$ADAPTERS_DIR"
   [ "$status" -eq 0 ]
   echo "$output" | grep -qx 'swiftlint'
@@ -124,7 +124,7 @@ PY
   ! echo "$output" | grep -qx 'apkanalyzer'
 }
 
-@test "AC5: --platforms android returns android adapters + cross-platform mobsf" {
+@test "platforms android returns android adapters + cross-platform mobsf" {
   run "$RESOLVER" --platforms android --adapters-dir "$ADAPTERS_DIR"
   [ "$status" -eq 0 ]
   echo "$output" | grep -qx 'detekt'
@@ -136,7 +136,7 @@ PY
   ! echo "$output" | grep -qx 'xcsize'
 }
 
-@test "AC5: --platforms ios,android returns both-platform sets" {
+@test "platforms ios,android returns both-platform sets" {
   run "$RESOLVER" --platforms ios,android --adapters-dir "$ADAPTERS_DIR"
   [ "$status" -eq 0 ]
   for adapter in swiftlint swiftformat xcsize detekt ktlint apkanalyzer mobsf; do
@@ -144,7 +144,7 @@ PY
   done
 }
 
-@test "AC5: --platforms web returns no mobile-static adapters" {
+@test "platforms web returns no mobile-static adapters" {
   run "$RESOLVER" --platforms web --adapters-dir "$ADAPTERS_DIR"
   [ "$status" -eq 0 ]
   for adapter in "${ADAPTERS[@]}"; do
@@ -154,7 +154,7 @@ PY
 
 # ---------------- AC7 — evidence layer integration ------------------------
 
-@test "AC7: each run.sh emits canonical fragment shape with findings array" {
+@test "each run.sh emits canonical fragment shape with findings array" {
   # Stub the binary on PATH and assert the fragment shape.
   local fakebin; fakebin="$BATS_TEST_TMPDIR/fakebin"
   mkdir -p "$fakebin"

@@ -17,7 +17,7 @@ EOF
 }
 
 # TC-ORM-1 — from a NESTED SUBDIR, with both signals set, returns team.
-@test "TC-ORM-1: detector returns team from a nested subdir of the project root" {
+@test "detector returns team from a nested subdir of the project root" {
   run env -u CLAUDE_PROJECT_ROOT CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
       bash -c "cd '$PROJ/src/components' && bash '$DETECT'"
   [ "$status" -eq 0 ]
@@ -25,7 +25,7 @@ EOF
 }
 
 # TC-ORM-2 — neither signal present → subagent (no false-positive).
-@test "TC-ORM-2: detector returns subagent when no signals are set" {
+@test "detector returns subagent when no signals are set" {
   # No env var, and run from a CWD with no discoverable .gaia/ (a bare tmp dir).
   bare="$BATS_TEST_TMPDIR/bare"; mkdir -p "$bare"
   run env -u CLAUDE_PROJECT_ROOT -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS \
@@ -35,7 +35,7 @@ EOF
 }
 
 # TC-ORM-3 — CLAUDE_PROJECT_ROOT override still wins.
-@test "TC-ORM-3: CLAUDE_PROJECT_ROOT override is honored (no walk-up needed)" {
+@test "CLAUDE_PROJECT_ROOT override is honored (no walk-up needed)" {
   # Run from an unrelated CWD; point CLAUDE_PROJECT_ROOT at the fake project.
   bare="$BATS_TEST_TMPDIR/bare2"; mkdir -p "$bare"
   run env CLAUDE_PROJECT_ROOT="$PROJ" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
@@ -47,7 +47,7 @@ EOF
 # TC-ORM-4 — the walk-up is bounded: it must not escape past $HOME / root and
 # pick up an unrelated .gaia/ above $HOME. Set HOME to the project's parent so
 # the walk from a sibling dir is bounded and finds nothing.
-@test "TC-ORM-4: walk-up is bounded by \$HOME (does not escape upward)" {
+@test "walk-up is bounded by \$HOME (does not escape upward)" {
   # A sibling tree with NO .gaia/, under a HOME that stops the walk before PROJ.
   sib="$BATS_TEST_TMPDIR/home/elsewhere"; mkdir -p "$sib"
   run env -u CLAUDE_PROJECT_ROOT CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \

@@ -28,27 +28,27 @@ teardown() { common_teardown; }
 # V1 anchor "Version History" must appear verbatim in violation output.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-18: finalize.sh exits non-zero when Version History missing" {
+@test "finalize.sh exits non-zero when Version History missing" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-missing-version-history.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-18: finalize.sh names the Version History item in failure output" {
+@test "finalize.sh names the Version History item in failure output" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-missing-version-history.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Version History"* ]]
 }
 
-@test "VCP-CHK-18: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-missing-version-history.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-18: finalize.sh guides user back to /gaia-edit-arch" {
+@test "finalize.sh guides user back to /gaia-edit-arch" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-missing-version-history.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -71,7 +71,7 @@ teardown() { common_teardown; }
 # AC4 — ARCHITECTURE_ARTIFACT points at a missing file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when ARCHITECTURE_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when ARCHITECTURE_ARTIFACT points at a missing file" {
   export ARCHITECTURE_ARTIFACT="$BATS_TMPDIR/does-not-exist-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]

@@ -157,7 +157,7 @@ teardown() {
 # AC1 — No-drift state reports "no drift"
 # [TC-SPQG-1, FR-SPQG-4]
 # ===========================================================================
-@test "AC1: no-drift state reports 'no drift' and exits 0" {
+@test "no-drift state reports 'no drift' and exits 0" {
   mk_sprint_status "$SPRINT_YAML" "E99-S1" "in-progress"
   mk_story_file    "$ARTIFACTS_DIR" "E99-S1" "in-progress" > /dev/null
 
@@ -172,7 +172,7 @@ teardown() {
 #        old status, and new status.
 # [TC-SPQG-2, FR-SPQG-4]
 # ===========================================================================
-@test "AC2: divergent status is corrected in yaml and divergence is reported with key, old, new status" {
+@test "divergent status is corrected in yaml and divergence is reported with key, old, new status" {
   # yaml says "in-progress"; story file frontmatter says "review" — drift exists.
   mk_sprint_status "$SPRINT_YAML" "E99-S2" "in-progress"
   mk_story_file    "$ARTIFACTS_DIR" "E99-S2" "review" > /dev/null
@@ -196,7 +196,7 @@ teardown() {
 # AC3 — Idempotency: second run on reconciled state reports "no drift"
 # [TC-SPQG-3, NFR-SPQG-1]
 # ===========================================================================
-@test "AC3: second reconcile on already-reconciled state reports 'no drift' (idempotency)" {
+@test "second reconcile on already-reconciled state reports 'no drift' (idempotency)" {
   mk_sprint_status "$SPRINT_YAML" "E99-S3" "in-progress"
   mk_story_file    "$ARTIFACTS_DIR" "E99-S3" "review" > /dev/null
 
@@ -215,7 +215,7 @@ teardown() {
 # AC4 — Story files byte-identical before and after reconcile
 # [TC-SPQG-4, NFR-SPQG-2]
 # ===========================================================================
-@test "AC4: story files are byte-identical after reconcile (reconcile never modifies story files)" {
+@test "story files are byte-identical after reconcile (reconcile never modifies story files)" {
   # Guard: fails immediately if reconcile is not yet implemented.
   assert_reconcile_recognized
 
@@ -240,7 +240,7 @@ teardown() {
 # AC5 — HIGH-risk story gets inline mitigation from catalog on dashboard
 # [TC-SPQG-5, FR-SPQG-5]
 # ===========================================================================
-@test "AC5: HIGH-risk story shows inline mitigation suggestion from catalog on dashboard" {
+@test "HIGH-risk story shows inline mitigation suggestion from catalog on dashboard" {
   mk_sprint_status "$SPRINT_YAML" "E99-S5" "in-progress"
   mk_story_file    "$ARTIFACTS_DIR" "E99-S5" "in-progress" "high" > /dev/null
   mk_catalog "$MITIGATION_CATALOG"
@@ -264,7 +264,7 @@ teardown() {
 # AC6 — No HIGH-risk stories: no mitigation block in dashboard output
 # [FR-SPQG-5]
 # ===========================================================================
-@test "AC6: when no story has risk: HIGH, dashboard renders no mitigation block" {
+@test "when no story has risk: HIGH, dashboard renders no mitigation block" {
   mk_sprint_status "$SPRINT_YAML" "E99-S6" "in-progress"
   mk_story_file    "$ARTIFACTS_DIR" "E99-S6" "in-progress" "low" > /dev/null
   mk_catalog "$MITIGATION_CATALOG"
@@ -284,7 +284,7 @@ teardown() {
 # AC-EC1 — Empty sprint: exits 0, "0 stories checked, 0 divergences"
 # [category: boundary]
 # ===========================================================================
-@test "AC-EC1: empty sprint-status.yaml exits 0 with '0 stories checked, 0 divergences'" {
+@test "empty sprint-status.yaml exits 0 with '0 stories checked, 0 divergences'" {
   mkdir -p "$(dirname "$SPRINT_YAML")"
   printf 'sprint_id: "sprint-test"\nstories: []\n' > "$SPRINT_YAML"
 
@@ -299,7 +299,7 @@ teardown() {
 # AC-EC2 — Missing story file: logs error, skips, continues, exits 1
 # [category: error]
 # ===========================================================================
-@test "AC-EC2: story key in yaml with no matching file logs error and exits 1" {
+@test "story key in yaml with no matching file logs error and exits 1" {
   # Guard: fails immediately if reconcile is not yet implemented.
   assert_reconcile_recognized
 
@@ -318,7 +318,7 @@ teardown() {
 # AC-EC3 — Malformed frontmatter: logs parse error with key+path, exits 1
 # [category: error]
 # ===========================================================================
-@test "AC-EC3: malformed story frontmatter logs parse error with key and path, exits 1" {
+@test "malformed story frontmatter logs parse error with key and path, exits 1" {
   mk_sprint_status "$SPRINT_YAML" "E99-S7" "in-progress"
   mk_malformed_story_file "$ARTIFACTS_DIR" "E99-S7" > /dev/null
 
@@ -335,7 +335,7 @@ teardown() {
 # AC-EC4 — --dry-run on divergent state: DRY-RUN tag, no writes, exits 2
 # [category: boundary]
 # ===========================================================================
-@test "AC-EC4: --dry-run on divergent state reports DRY-RUN, writes nothing, exits 2" {
+@test "dry-run on divergent state reports DRY-RUN, writes nothing, exits 2" {
   mk_sprint_status "$SPRINT_YAML" "E99-S8" "backlog"
   mk_story_file    "$ARTIFACTS_DIR" "E99-S8" "in-progress" > /dev/null
 
@@ -357,7 +357,7 @@ teardown() {
 # AC-EC5 — Concurrent invocations: lock prevents partial writes / corruption
 # [category: concurrency]
 # ===========================================================================
-@test "AC-EC5: concurrent reconcile invocations do not corrupt sprint-status.yaml" {
+@test "concurrent reconcile invocations do not corrupt sprint-status.yaml" {
   # Guard: fails immediately if reconcile is not yet implemented.
   assert_reconcile_recognized
 
@@ -391,7 +391,7 @@ teardown() {
 # AC-EC6 — Missing catalog: dashboard renders with warning, does not halt
 # [category: error]
 # ===========================================================================
-@test "AC-EC6: missing mitigation catalog allows dashboard to render with warning, does not halt" {
+@test "missing mitigation catalog allows dashboard to render with warning, does not halt" {
   mk_sprint_status "$SPRINT_YAML" "E99-S9" "in-progress"
   mk_story_file    "$ARTIFACTS_DIR" "E99-S9" "in-progress" "high" > /dev/null
   # Deliberately do NOT create the catalog file.
@@ -412,7 +412,7 @@ teardown() {
 # AC-EC7 — Unexpected catalog entry rendered verbatim; no enum rejection
 # [category: data]
 # ===========================================================================
-@test "AC-EC7: unexpected catalog entry is rendered verbatim without enum validation error" {
+@test "unexpected catalog entry is rendered verbatim without enum validation error" {
   mk_sprint_status "$SPRINT_YAML" "E99-S10" "in-progress"
   mk_story_file    "$ARTIFACTS_DIR" "E99-S10" "in-progress" "high" > /dev/null
 
@@ -441,7 +441,7 @@ CATALOG
 # AC-EC8 — Read-only yaml: surfaces OS error, exits 1, story files intact
 # [category: environment]
 # ===========================================================================
-@test "AC-EC8: read-only sprint-status.yaml causes reconcile to exit 1; story files byte-identical" {
+@test "read-only sprint-status.yaml causes reconcile to exit 1; story files byte-identical" {
   # Guard: fails immediately if reconcile is not yet implemented.
   assert_reconcile_recognized
 

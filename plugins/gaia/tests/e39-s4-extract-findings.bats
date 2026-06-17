@@ -44,7 +44,7 @@ EOF
 }
 
 # TC-STCL-3 — extractor emits ONLY frontmatter + Findings, never the body.
-@test "TC-STCL-3: extractor emits frontmatter + Findings only, never the story body" {
+@test "extractor emits frontmatter + Findings only, never the story body" {
   local f="$TMP/E39-S99-x/story.md"
   _make_story "$f" "E39-S99" "sprint-99" \
     "| 1 | tech-debt | medium | refactor the widget | create story |"
@@ -59,7 +59,7 @@ EOF
 }
 
 # Extractor: a story with no ## Findings section emits no finding rows (clean).
-@test "TC-STCL-3b: extractor handles a story with no Findings section" {
+@test "extractor handles a story with no Findings section" {
   local f="$TMP/E39-S98-y/story.md"
   mkdir -p "$(dirname "$f")"
   cat > "$f" <<'EOF'
@@ -82,7 +82,7 @@ EOF
 
 # Extractor resolves the story key from the per-story directory name when the
 # basename is story.md (new canonical layout).
-@test "TC-STCL-3c: extractor resolves key from per-story dir when basename is story.md" {
+@test "extractor resolves key from per-story dir when basename is story.md" {
   local f="$TMP/E39-S97-from-dir/story.md"
   _make_story "$f" "" "sprint-97" \
     "| 1 | tech-debt | low | tidy imports | dismiss |"
@@ -92,7 +92,7 @@ EOF
 }
 
 # Missing-file guard: a non-existent path errors cleanly (non-zero), no crash.
-@test "TC-STCL-3d: extractor errors cleanly on a missing file" {
+@test "extractor errors cleanly on a missing file" {
   run "$EXTRACT" --story-file "$TMP/does-not-exist.md"
   [ "$status" -ne 0 ]
 }

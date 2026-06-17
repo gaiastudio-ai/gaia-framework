@@ -115,7 +115,7 @@ EOF
 
 # ---------- E64-S7: lint_err_file mktemp registers in _GAIA_TMP_PATHS ----------
 
-@test "sprint-state.sh: lint_err_file mktemp is registered in _GAIA_TMP_PATHS (E64-S7)" {
+@test "sprint-state.sh: lint_err_file mktemp is registered in _GAIA_TMP_PATHS" {
   # The lint_err_file mktemp uses the .lint-err.XXXXXX suffix — distinct from
   # the .tmp.XXXXXX atomic-write pattern. It must now be registered so
   # _cleanup_tmps catches it on EXIT/INT/TERM.
@@ -131,7 +131,7 @@ EOF
   [ $((lint_err_register_line - lint_err_mktemp_line)) -le 10 ]
 }
 
-@test "sprint-state.sh: lint_err_file slot cleared after rm -f (E64-S7)" {
+@test "sprint-state.sh: lint_err_file slot cleared after rm -f" {
   # Both rm -f "$lint_err_file" sites (success path + die path) must be
   # followed by a _GAIA_TMP_PATHS[$_lint_err_idx]="" slot-clear so the trap
   # does not double-rm a freed inode.

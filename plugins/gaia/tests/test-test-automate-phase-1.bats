@@ -91,7 +91,7 @@ frontmatter_value() {
 # AC1 / AC5 — SKILL.md frontmatter contract (INFO-2 assertions)
 # ===========================================================================
 
-@test "AC1: SKILL.md declares orchestration_class (post-ADR-093)" {
+@test "SKILL.md declares orchestration_class (post-migration)" {
   # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
   # SKILL.md. gaia-test-automate is light-procedural.
   [ -f "$SKILL_MD" ]
@@ -100,7 +100,7 @@ frontmatter_value() {
   [ "$cls" = "light-procedural" ]
 }
 
-@test "AC1: SKILL.md allowed-tools contains Read, Grep, Glob, Bash" {
+@test "SKILL.md allowed-tools contains Read, Grep, Glob, Bash" {
   [ -f "$SKILL_MD" ]
   local tools_line
   tools_line="$(grep '^allowed-tools:' "$SKILL_MD" | head -1)"
@@ -110,14 +110,14 @@ frontmatter_value() {
   [[ "$tools_line" == *"Bash"* ]]
 }
 
-@test "AC5: SKILL.md allowed-tools does NOT contain Write" {
+@test "SKILL.md allowed-tools does NOT contain Write" {
   [ -f "$SKILL_MD" ]
   local tools_line
   tools_line="$(grep '^allowed-tools:' "$SKILL_MD" | head -1)"
   [[ "$tools_line" != *"Write"* ]]
 }
 
-@test "AC5: SKILL.md allowed-tools does NOT contain Edit" {
+@test "SKILL.md allowed-tools does NOT contain Edit" {
   [ -f "$SKILL_MD" ]
   local tools_line
   tools_line="$(grep '^allowed-tools:' "$SKILL_MD" | head -1)"
@@ -130,7 +130,7 @@ frontmatter_value() {
 #   in allowed-tools, fork isolation is broken. These tests lock that contract.
 # ===========================================================================
 
-@test "AC-EC1: allowed-tools list has exactly 4 tools (Read, Grep, Glob, Bash)" {
+@test "allowed-tools list has exactly 4 tools (Read, Grep, Glob, Bash)" {
   [ -f "$SKILL_MD" ]
   local tools_line
   tools_line="$(grep '^allowed-tools:' "$SKILL_MD" | head -1)"
@@ -147,12 +147,12 @@ frontmatter_value() {
 # AC2 — Plan-file schema v1 required fields (emit-plan-file.sh)
 # ===========================================================================
 
-@test "AC2: emit-plan-file.sh exists and is executable" {
+@test "emit-plan-file.sh exists and is executable" {
   [ -f "$EMIT_PLAN" ]
   [ -x "$EMIT_PLAN" ]
 }
 
-@test "AC2: emit-plan-file.sh produces schema_version 1 in frontmatter" {
+@test "emit-plan-file.sh produces schema_version 1 in frontmatter" {
   local out_path="$TEST_TMP/test-automate-plan-E99-S1.md"
 
   run "$EMIT_PLAN" \
@@ -167,7 +167,7 @@ frontmatter_value() {
   grep -q '^schema_version: 1' "$out_path"
 }
 
-@test "AC2: plan file contains all required frontmatter fields" {
+@test "plan file contains all required frontmatter fields" {
   local out_path="$TEST_TMP/test-automate-plan-E99-S2.md"
 
   run "$EMIT_PLAN" \
@@ -192,7 +192,7 @@ frontmatter_value() {
   grep -q '^proposed_tests:' "$out_path"
 }
 
-@test "AC2: plan file phase is 'plan' on emission" {
+@test "plan file phase is 'plan' on emission" {
   local out_path="$TEST_TMP/test-automate-plan-E99-S3.md"
 
   run "$EMIT_PLAN" \
@@ -206,7 +206,7 @@ frontmatter_value() {
   grep -q 'phase: "plan"\|phase: plan' "$out_path"
 }
 
-@test "AC2: plan file generator is 'gaia-test-automate'" {
+@test "plan file generator is 'gaia-test-automate'" {
   local out_path="$TEST_TMP/test-automate-plan-E99-S4.md"
 
   run "$EMIT_PLAN" \
@@ -220,7 +220,7 @@ frontmatter_value() {
   grep -q 'generator:.*gaia-test-automate' "$out_path"
 }
 
-@test "AC2: plan file approval block has gate, verdict, verdict_plan_id" {
+@test "plan file approval block has gate, verdict, verdict_plan_id" {
   local out_path="$TEST_TMP/test-automate-plan-E99-S5.md"
 
   run "$EMIT_PLAN" \
@@ -236,7 +236,7 @@ frontmatter_value() {
   grep -q 'verdict_plan_id: null\|verdict_plan_id:$' "$out_path"
 }
 
-@test "AC2: plan file has no extraneous top-level keys" {
+@test "plan file has no extraneous top-level keys" {
   local out_path="$TEST_TMP/test-automate-plan-E99-S6.md"
 
   run "$EMIT_PLAN" \
@@ -260,7 +260,7 @@ frontmatter_value() {
 # AC3 — plan_id uniqueness (rapid re-invocation)
 # ===========================================================================
 
-@test "AC3: two rapid invocations produce distinct plan_id values" {
+@test "two rapid invocations produce distinct plan_id values" {
   local out1="$TEST_TMP/plan1.md"
   local out2="$TEST_TMP/plan2.md"
 
@@ -293,7 +293,7 @@ frontmatter_value() {
 # AC-EC3 — plan_id uniqueness within 1ms (sub-millisecond collision guard)
 # ===========================================================================
 
-@test "AC-EC3: 10 rapid invocations all produce unique plan_ids" {
+@test "10 rapid invocations all produce unique plan_ids" {
   local ids=()
   for i in $(seq 1 10); do
     local out="$TEST_TMP/plan-ec3-${i}.md"
@@ -319,7 +319,7 @@ frontmatter_value() {
 # AC4 — SHA-256 format in analyzed_sources
 # ===========================================================================
 
-@test "AC4: analyzed_sources SHA-256 uses sha256:{hex} format" {
+@test "analyzed_sources SHA-256 uses sha256:{hex} format" {
   local source_file="$FIXTURES_DIR/minimal-source.sh"
   local sha_hex
   sha_hex="$(sha256_of "$source_file")"
@@ -340,7 +340,7 @@ frontmatter_value() {
   grep -qE 'sha256:[0-9a-f]{64}' "$out_path"
 }
 
-@test "AC4: analyzed_sources entry has path, sha256, last_modified" {
+@test "analyzed_sources entry has path, sha256, last_modified" {
   local source_file="$FIXTURES_DIR/minimal-source.sh"
   local sha_hex
   sha_hex="$(sha256_of "$source_file")"
@@ -372,7 +372,7 @@ frontmatter_value() {
 #   plan even when sources[] is empty.
 # ===========================================================================
 
-@test "AC-EC2: plan emission succeeds with empty analyzed_sources" {
+@test "plan emission succeeds with empty analyzed_sources" {
   local out_path="$TEST_TMP/plan-ec2.md"
 
   run "$EMIT_PLAN" \
@@ -393,7 +393,7 @@ frontmatter_value() {
 #   1MB representative with comment that shasum streams files regardless of size.
 # ===========================================================================
 
-@test "AC-EC4: SHA-256 of 1MB file succeeds (representative of 100MB+ streaming)" {
+@test "SHA-256 of 1MB file succeeds (representative of 100MB+ streaming)" {
   # shasum streams files regardless of size — this 1MB test validates the
   # mechanism; real 100MB+ files behave identically via streaming I/O.
   local large_file="$TEST_TMP/large-fixture.bin"
@@ -423,7 +423,7 @@ frontmatter_value() {
 # AC-EC5 — Non-UTF-8 binary content SHA-256
 # ===========================================================================
 
-@test "AC-EC5: SHA-256 of binary (non-UTF-8) file produces valid hex" {
+@test "SHA-256 of binary (non-UTF-8) file produces valid hex" {
   local bin_file="$TEST_TMP/binary-fixture.bin"
   # Write non-UTF-8 bytes
   printf '\x00\x01\x02\xff\xfe\xfd\x80\x81' > "$bin_file"
@@ -454,7 +454,7 @@ frontmatter_value() {
 #   If the process is interrupted, no partial plan file should remain.
 # ===========================================================================
 
-@test "AC-EC6: emit-plan-file.sh writes atomically (no partial file on success)" {
+@test "emit-plan-file.sh writes atomically (no partial file on success)" {
   local out_path="$TEST_TMP/plan-ec6.md"
 
   run "$EMIT_PLAN" \
@@ -478,7 +478,7 @@ frontmatter_value() {
   [ -n "$last_line" ]
 }
 
-@test "AC-EC6: emit-plan-file.sh fails on unwritable output directory" {
+@test "emit-plan-file.sh fails on unwritable output directory" {
   local out_path="$TEST_TMP/no-such-dir/deep/plan-ec6-fail.md"
   # Parent directory does not exist and we do not create it.
 
@@ -500,7 +500,7 @@ frontmatter_value() {
 #   contract that locks that allowlist.
 # ===========================================================================
 
-@test "AC-EC7: SKILL.md fork-context blocks tool escalation (no Write, no Edit in allowlist)" {
+@test "SKILL.md fork-context blocks tool escalation (no Write, no Edit in allowlist)" {
   [ -f "$SKILL_MD" ]
   local tools_line
   tools_line="$(grep '^allowed-tools:' "$SKILL_MD" | head -1)"
@@ -518,7 +518,7 @@ frontmatter_value() {
 #   Phase 1 should emit a valid plan with empty test_cases[].
 # ===========================================================================
 
-@test "AC-EC8: plan emission with empty proposed_tests produces valid schema" {
+@test "plan emission with empty proposed_tests produces valid schema" {
   local out_path="$TEST_TMP/plan-ec8.md"
 
   run "$EMIT_PLAN" \
@@ -541,7 +541,7 @@ frontmatter_value() {
 #   re-read minutes or days later.
 # ===========================================================================
 
-@test "AC-EC9: plan_id in file remains stable across re-reads" {
+@test "plan_id in file remains stable across re-reads" {
   local out_path="$TEST_TMP/plan-ec9.md"
 
   run "$EMIT_PLAN" \
@@ -568,7 +568,7 @@ frontmatter_value() {
 #   the old plan or the new plan, never a partial file.
 # ===========================================================================
 
-@test "AC-EC10: re-invocation overwrites plan file with new plan_id" {
+@test "re-invocation overwrites plan file with new plan_id" {
   local out_path="$TEST_TMP/plan-ec10.md"
 
   # First invocation
@@ -611,13 +611,13 @@ frontmatter_value() {
 #   NOT the legacy {story_key}-test-automation.md report path
 # ===========================================================================
 
-@test "INFO-1: SKILL.md Steps 4-6 reference plan file at test-automate-plan path" {
+@test "SKILL.md Steps 4-6 reference plan file at test-automate-plan path" {
   [ -f "$SKILL_MD" ]
   # SKILL.md must reference the plan file path format
   grep -q 'test-automate-plan' "$SKILL_MD"
 }
 
-@test "INFO-1: SKILL.md does NOT invoke review-gate.sh in analysis phases (Review Phase 3A-7)" {
+@test "SKILL.md does NOT invoke review-gate.sh in analysis phases (Review Phase 3A-7)" {
   [ -f "$SKILL_MD" ]
   # Per E65-S5 hybrid migration (AC-EC1), the seven Review Phases all execute
   # INSIDE ADR-051 Phase 1 (fork-isolated analysis). The seven Review Phases

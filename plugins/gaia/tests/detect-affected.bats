@@ -34,47 +34,47 @@ teardown() { common_teardown; }
 # NFR-052: source the script and verify every public function resolves
 # ---------------------------------------------------------------------------
 
-@test "NFR-052: source script — parse_args is callable" {
+@test "source script — parse_args is callable" {
   source "$SCRIPTS_DIR/detect-affected.sh"
   type parse_args
 }
 
-@test "NFR-052: source script — parse_stacks is callable" {
+@test "source script — parse_stacks is callable" {
   source "$SCRIPTS_DIR/detect-affected.sh"
   type parse_stacks
 }
 
-@test "NFR-052: source script — normalize_glob is callable" {
+@test "source script — normalize_glob is callable" {
   source "$SCRIPTS_DIR/detect-affected.sh"
   type normalize_glob
 }
 
-@test "NFR-052: source script — find_best_prefix_match is callable" {
+@test "source script — find_best_prefix_match is callable" {
   source "$SCRIPTS_DIR/detect-affected.sh"
   type find_best_prefix_match
 }
 
-@test "NFR-052: source script — find_glob_match is callable" {
+@test "source script — find_glob_match is callable" {
   source "$SCRIPTS_DIR/detect-affected.sh"
   type find_glob_match
 }
 
-@test "NFR-052: source script — match_path is callable" {
+@test "source script — match_path is callable" {
   source "$SCRIPTS_DIR/detect-affected.sh"
   type match_path
 }
 
-@test "NFR-052: source script — build_json_array is callable" {
+@test "source script — build_json_array is callable" {
   source "$SCRIPTS_DIR/detect-affected.sh"
   type build_json_array
 }
 
-@test "NFR-052: source script — main is callable" {
+@test "source script — main is callable" {
   source "$SCRIPTS_DIR/detect-affected.sh"
   type main
 }
 
-@test "NFR-052: main-guard — sourcing does NOT invoke main" {
+@test "main-guard — sourcing does NOT invoke main" {
   # If main runs on source, it will fail (no --config arg) and the test
   # would catch the exit 1. A clean source means the guard works.
   source "$SCRIPTS_DIR/detect-affected.sh"
@@ -86,7 +86,7 @@ teardown() { common_teardown; }
 # AC1: prefix match → valid JSON array
 # ---------------------------------------------------------------------------
 
-@test "AC1: path under agents/ prefix returns stack-alpha as JSON" {
+@test "path under agents/ prefix returns stack-alpha as JSON" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --files "agents/my-agent.md"
@@ -94,7 +94,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["stack-alpha"]' ]]
 }
 
-@test "AC1: path under packages/shared/ returns stack-alpha (prefix match)" {
+@test "path under packages/shared/ returns stack-alpha (prefix match)" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --files "packages/shared/utils.sh"
@@ -102,7 +102,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["stack-alpha"]' ]]
 }
 
-@test "AC1: dedup — same stack matched by two files emits one entry" {
+@test "dedup — same stack matched by two files emits one entry" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --files "agents/agent1.md" "agents/agent2.md"
@@ -114,7 +114,7 @@ teardown() { common_teardown; }
 # AC2: glob fallback for non-/** globs (config/*.yaml)
 # ---------------------------------------------------------------------------
 
-@test "AC2: glob fallback — config/settings.yaml matches stack-beta via glob" {
+@test "glob fallback — config/settings.yaml matches stack-beta via glob" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --files "config/settings.yaml"
@@ -122,7 +122,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["stack-beta"]' ]]
 }
 
-@test "AC2: glob fallback does NOT fire for deep nested path under config/" {
+@test "glob fallback does NOT fire for deep nested path under config/" {
   # config/subdir/deep.yaml is NOT matched by config/*.yaml (single-level glob)
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
@@ -136,7 +136,7 @@ teardown() { common_teardown; }
 # packages/shared/ is deeper than packages/ — stack-alpha should win
 # ---------------------------------------------------------------------------
 
-@test "AC3: longest-prefix wins — packages/shared/util.sh → stack-alpha not stack-beta" {
+@test "longest-prefix wins — packages/shared/util.sh → stack-alpha not stack-beta" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --files "packages/shared/util.sh"
@@ -144,7 +144,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["stack-alpha"]' ]]
 }
 
-@test "AC3: shallower path under packages/ (not shared/) → stack-beta" {
+@test "shallower path under packages/ (not shared/) → stack-beta" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --files "packages/other/module.sh"
@@ -152,7 +152,7 @@ teardown() { common_teardown; }
   [[ "$output" == '["stack-beta"]' ]]
 }
 
-@test "AC3: reorder-invariant — same result with stacks in reversed declaration order" {
+@test "reorder-invariant — same result with stacks in reversed declaration order" {
   # Build a config with reversed declaration order
   cat > "$TEST_TMP/reversed-config.yaml" <<'EOF'
 stacks:
@@ -179,7 +179,7 @@ EOF
 # AC4: promotion-push event → ["*"] wildcard
 # ---------------------------------------------------------------------------
 
-@test "AC4: promotion-push with files → outputs [\"*\"]" {
+@test "promotion-push with files → outputs [\"*\"]" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --event promotion-push \
@@ -188,7 +188,7 @@ EOF
   [[ "$output" == '["*"]' ]]
 }
 
-@test "AC4: promotion-push with no files → still outputs [\"*\"]" {
+@test "promotion-push with no files → still outputs [\"*\"]" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --event promotion-push
@@ -200,7 +200,7 @@ EOF
 # AC5: valid JSON array / empty → [] / unmatched → []
 # ---------------------------------------------------------------------------
 
-@test "AC5: unmatched path → []" {
+@test "unmatched path →" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --files "some/unknown/path.txt"
@@ -208,7 +208,7 @@ EOF
   [[ "$output" == '[]' ]]
 }
 
-@test "AC5: empty files list (files-from of empty file) → []" {
+@test "empty files list (files-from of empty file) →" {
   printf '' > "$TEST_TMP/empty-list.txt"
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
@@ -217,7 +217,7 @@ EOF
   [[ "$output" == '[]' ]]
 }
 
-@test "AC5: output is parseable JSON array (jq check)" {
+@test "output is parseable JSON array (jq check)" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/project-config.yaml" \
     --files "agents/agent.md"
@@ -226,12 +226,12 @@ EOF
   printf '%s\n' "$output" | jq -e '. | type == "array"'
 }
 
-@test "AC5: missing --config flag → exit 1 with error on stderr" {
+@test "missing --config flag → exit 1 with error on stderr" {
   run "$SCRIPTS_DIR/detect-affected.sh" --files "agents/agent.md"
   [ "$status" -eq 1 ]
 }
 
-@test "AC5: --config pointing to non-existent file → exit 1" {
+@test "config pointing to non-existent file → exit 1" {
   run "$SCRIPTS_DIR/detect-affected.sh" \
     --config "$TEST_TMP/does-not-exist.yaml" \
     --files "agents/agent.md"
@@ -242,7 +242,7 @@ EOF
 # AC6: latency — 50 paths resolved within 5 seconds
 # ---------------------------------------------------------------------------
 
-@test "AC6: 50 paths resolved within 5 seconds" {
+@test "50 paths resolved within 5 seconds" {
   # Build a list of 50 synthetic paths
   local list_file="$TEST_TMP/fifty-paths.txt"
   local i

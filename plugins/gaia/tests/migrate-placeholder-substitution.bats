@@ -44,7 +44,7 @@ teardown() { common_teardown; }
 # AC3 — placeholder substitution under apply
 # ---------------------------------------------------------------------------
 
-@test "AC3: apply substitutes {project-root} placeholders in preserved required fields" {
+@test "apply substitutes {project-root} placeholders in preserved required fields" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
 
@@ -61,7 +61,7 @@ teardown() { common_teardown; }
   fi
 }
 
-@test "AC3: each preserved required field is an absolute path under --project-root" {
+@test "each preserved required field is an absolute path under --project-root" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
 
@@ -89,7 +89,7 @@ teardown() { common_teardown; }
 # AC1 — substitution applies in the missing-field probe loop too
 # ---------------------------------------------------------------------------
 
-@test "AC1: probe loop sees post-substitution values (no spurious 'missing' error)" {
+@test "probe loop sees post-substitution values (no spurious 'missing' error)" {
   # If substitution only ran in the write loop, the probe loop would still
   # see the literal `{project-root}` string — which is non-empty, so this
   # test would not catch that bug. To make the probe-vs-write distinction
@@ -106,7 +106,7 @@ teardown() { common_teardown; }
 # AC2 + AC4 — absolute paths round-trip byte-identical
 # ---------------------------------------------------------------------------
 
-@test "AC4: v1 config with absolute paths round-trips byte-identical for required fields" {
+@test "v1 config with absolute paths round-trips byte-identical for required fields" {
   # Replace the placeholder fixture's v1 config with one whose required
   # fields are already absolute. The migration must NOT rewrite or otherwise
   # touch their values — substitution is exact-token, not regex-greedy.
@@ -160,7 +160,7 @@ EOF
   done
 }
 
-@test "AC2: values without {project-root} pass through unchanged" {
+@test "values without {project-root} pass through unchanged" {
   run "$SCRIPT" apply --project-root "$PROJECT" --yes
   [ "$status" -eq 0 ]
 
@@ -178,7 +178,7 @@ EOF
 # AC6 — PROJECT_ROOT precondition guard
 # ---------------------------------------------------------------------------
 
-@test "AC6: relative --project-root aborts BEFORE the destructive _gaia delete" {
+@test "relative --project-root aborts BEFORE the destructive _gaia delete" {
   # Move into a parent directory and pass a RELATIVE --project-root. The
   # precondition guard inside _derive_required_fields MUST reject this with
   # a non-zero exit and a clear error, BEFORE any destructive write runs.

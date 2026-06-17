@@ -50,7 +50,7 @@ teardown() {
 
 # ── TC-BRN-65 — emit one strategy lesson ─────────────────────────────────────
 
-@test "TC-BRN-65 — emit one strategy lesson produces a lesson entry in brain-index.yaml" {
+@test "emit one strategy lesson produces a lesson entry in brain-index.yaml" {
   run bash "$EMIT" \
     --sprint-id sprint-57 \
     --retro-artifact "$FIX/retro-artifact.md" \
@@ -65,7 +65,7 @@ teardown() {
 
 # ── TC-BRN-66 — all 5 lesson categories round-trip ───────────────────────────
 
-@test "TC-BRN-66 — five-category payload produces 5 lesson entries with all category tags" {
+@test "five-category payload produces 5 lesson entries with all category tags" {
   # Reset to empty seed before bulk emit.
   cp "$FIX/seed-manifest.yaml" "$MANIFEST"
 
@@ -91,7 +91,7 @@ teardown() {
 
 # ── TC-BRN-67 — lesson path is non-empty and equals the retro artifact ───────
 
-@test "TC-BRN-67 — lesson entry path is non-empty and points to the retro artifact" {
+@test "lesson entry path is non-empty and points to the retro artifact" {
   run bash "$EMIT" \
     --sprint-id sprint-57 \
     --retro-artifact "$FIX/retro-artifact.md" \
@@ -113,7 +113,7 @@ teardown() {
 
 # ── TC-BRN-68 — provenance source_url and numeric confidence ─────────────────
 
-@test "TC-BRN-68 — source_url carries retro provenance and confidence is numeric 1.0" {
+@test "source_url carries retro provenance and confidence is numeric 1.0" {
   run bash "$EMIT" \
     --sprint-id sprint-57 \
     --retro-artifact "$FIX/retro-artifact.md" \
@@ -138,7 +138,7 @@ teardown() {
 
 # ── TC-BRN-69 — TTL defaults to null; explicit expiry honoured ───────────────
 
-@test "TC-BRN-69 — default expires_at is null and explicit expiry is honoured" {
+@test "default expires_at is null and explicit expiry is honoured" {
   # Default: no --expires-at flag.
   cp "$FIX/seed-manifest.yaml" "$MANIFEST"
   run bash "$EMIT" \
@@ -167,7 +167,7 @@ teardown() {
 
 # ── TC-BRN-70 — schema validation ────────────────────────────────────────────
 
-@test "TC-BRN-70 — emitted manifest validates against brain-index.schema.json" {
+@test "emitted manifest validates against brain-index.schema.json" {
   run bash "$EMIT" \
     --sprint-id sprint-57 \
     --retro-artifact "$FIX/retro-artifact.md" \
@@ -222,7 +222,7 @@ teardown() {
 
 # ── TC-BRN-71 — malformed lessons rejected ───────────────────────────────────
 
-@test "TC-BRN-71 — malformed lessons are rejected and manifest is unchanged" {
+@test "malformed lessons are rejected and manifest is unchanged" {
   # Guard: the emit script must exist for this test to be meaningful.
   [ -x "$EMIT" ] || [ -f "$EMIT" ]
 
@@ -266,7 +266,7 @@ teardown() {
 
 # ── TC-BRN-72 — gaia-brain-query --category filters lesson entries ────────────
 
-@test "TC-BRN-72 — gaia-brain-query --category strategy returns only strategy lessons" {
+@test "gaia-brain-query --category strategy returns only strategy lessons" {
   # Pre-populate the manifest with 2 lessons and 1 project-artifact.
   cat > "$MANIFEST" <<'YAML'
 schema_version: 1
@@ -326,7 +326,7 @@ YAML
 
 # -- AC1 hardening: backslash-bearing synopsis cannot inject a sibling YAML key
 
-@test "TC-BRN-90 — backslash in synopsis does not inject a sibling YAML key" {
+@test "backslash in synopsis does not inject a sibling YAML key" {
   cp "$FIX/seed-manifest.yaml" "$MANIFEST"
 
   # Synopsis containing backslashes — in a YAML double-quoted scalar these

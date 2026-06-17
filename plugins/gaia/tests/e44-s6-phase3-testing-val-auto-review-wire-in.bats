@@ -69,19 +69,19 @@ teardown() { common_teardown; }
 # AC1/AC2/AC3 — Each SKILL.md embeds the Val Auto-Fix Loop step
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-readiness-check SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-readiness-check SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-readiness-check/SKILL.md"
 }
 
-@test "AC2: gaia-test-design SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-test-design SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-test-design/SKILL.md"
 }
 
-@test "AC3: gaia-edit-test-plan SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-edit-test-plan SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
 }
 
-@test "AC1/AC2/AC3: each Phase 3 Testing skill invokes /gaia-val-validate with artifact_path and artifact_type" {
+@test "each Phase 3 Testing skill invokes /gaia-val-validate with artifact_path and artifact_type" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -q '/gaia-val-validate' "$SKILLS_DIR/$skill/SKILL.md"
     grep -q 'artifact_path' "$SKILLS_DIR/$skill/SKILL.md"
@@ -93,15 +93,15 @@ teardown() { common_teardown; }
 # AC1/AC2/AC3 — Correct artifact_type per skill
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-readiness-check uses artifact_type=readiness" {
+@test "gaia-readiness-check uses artifact_type=readiness" {
   grep -qE 'artifact_type[[:space:]]*=[[:space:]]*readiness' "$SKILLS_DIR/gaia-readiness-check/SKILL.md"
 }
 
-@test "AC2: gaia-test-design uses artifact_type=test-plan" {
+@test "gaia-test-design uses artifact_type=test-plan" {
   grep -qE 'artifact_type[[:space:]]*=[[:space:]]*test-plan' "$SKILLS_DIR/gaia-test-design/SKILL.md"
 }
 
-@test "AC3: gaia-edit-test-plan uses artifact_type=test-plan" {
+@test "gaia-edit-test-plan uses artifact_type=test-plan" {
   grep -qE 'artifact_type[[:space:]]*=[[:space:]]*test-plan' "$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
 }
 
@@ -109,16 +109,16 @@ teardown() { common_teardown; }
 # AC1/AC2/AC3 — Correct artifact_path per skill
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-readiness-check references readiness-report.md (canonical post-AF-21-X)" {
+@test "gaia-readiness-check references readiness-report.md" {
   # Future AF will canonicalize this path. Accept canonical or legacy.
   grep -qE '(docs/planning-artifacts|\.gaia/artifacts/planning-artifacts)/readiness-report\.md' "$SKILLS_DIR/gaia-readiness-check/SKILL.md"
 }
 
-@test "AC2: gaia-test-design references test-plan.md (canonical post-AF-21-X)" {
+@test "gaia-test-design references test-plan.md" {
   grep -qE '(docs/test-artifacts|\.gaia/artifacts/test-artifacts)/test-plan\.md' "$SKILLS_DIR/gaia-test-design/SKILL.md"
 }
 
-@test "AC3: gaia-edit-test-plan references test-plan.md (canonical post-AF-21-X)" {
+@test "gaia-edit-test-plan references test-plan.md" {
   grep -qE '(docs/test-artifacts|\.gaia/artifacts/test-artifacts)/test-plan\.md' "$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
 }
 
@@ -129,7 +129,7 @@ teardown() { common_teardown; }
 # (line 33 in pre-wire-in snapshot) is also removed.
 # ---------------------------------------------------------------------------
 
-@test "AC2/AC3: no Phase 3 Testing SKILL.md mentions val_validate_output (frontmatter or prose)" {
+@test "no Phase 3 Testing SKILL.md mentions val_validate_output (frontmatter or prose)" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     ! grep -q 'val_validate_output' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -139,31 +139,31 @@ teardown() { common_teardown; }
 # AC4 — Provenance and 3-iteration cap referenced in each wire-in
 # ---------------------------------------------------------------------------
 
-@test "AC4: each Phase 3 Testing skill references the canonical pattern (pattern provenance)" {
+@test "each Phase 3 Testing skill references the canonical pattern (pattern provenance)" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -q 'Reuses the canonical pattern' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC4: each Phase 3 Testing skill defers to the canonical spec rather than duplicating it (decision provenance)" {
+@test "each Phase 3 Testing skill defers to the canonical spec rather than duplicating it (decision provenance)" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -q 'cite this anchor' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC4: each Phase 3 Testing skill documents iteration counter (iteration = 1)" {
+@test "each Phase 3 Testing skill documents iteration counter (iteration = 1)" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -qE 'iteration[[:space:]]*=[[:space:]]*1' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC4: each Phase 3 Testing skill documents the 3-iteration cap" {
+@test "each Phase 3 Testing skill documents the 3-iteration cap" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -qE 'iteration[[:space:]]*<=[[:space:]]*3' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC4: each Phase 3 Testing skill cites the canonical Auto-Fix Loop Pattern anchor" {
+@test "each Phase 3 Testing skill cites the canonical Auto-Fix Loop Pattern anchor" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -q 'Auto-Fix Loop Pattern' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -173,7 +173,7 @@ teardown() { common_teardown; }
 # AC6 / AC-EC3 — Artifact-existence guard
 # ---------------------------------------------------------------------------
 
-@test "AC-EC3 (AC6): each Phase 3 Testing skill includes an artifact-existence guard" {
+@test "each Phase 3 Testing skill includes an artifact-existence guard" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -qE 'if[[:space:]]+not[[:space:]]+exists' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -183,7 +183,7 @@ teardown() { common_teardown; }
 # AC-EC6 — Val-skill-availability guard with documented warning text
 # ---------------------------------------------------------------------------
 
-@test "AC-EC6: each Phase 3 Testing skill emits the canonical missing-Val warning" {
+@test "each Phase 3 Testing skill emits the canonical missing-Val warning" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -q 'Val auto-review unavailable' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -193,7 +193,7 @@ teardown() { common_teardown; }
 # AC-EC8 — YOLO hard-gate invariant; no bypass branch introduced
 # ---------------------------------------------------------------------------
 
-@test "AC-EC8: each Phase 3 Testing skill references the YOLO hard-gate invariant" {
+@test "each Phase 3 Testing skill references the YOLO hard-gate invariant" {
   for skill in $PHASE3_TEST_SKILLS_LIST; do
     grep -qE 'YOLO' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -210,7 +210,7 @@ teardown() { common_teardown; }
 #        and Save) and BEFORE Step 7 (Next Steps, renumbered from 6).
 # ---------------------------------------------------------------------------
 
-@test "AC1 placement: gaia-readiness-check Val loop step appears after Step 10 (Generate Gate Report) and before Adversarial Review" {
+@test "placement: gaia-readiness-check Val loop step appears after Step 10 (Generate Gate Report) and before Adversarial Review" {
   local skill="$SKILLS_DIR/gaia-readiness-check/SKILL.md"
   local write_line val_line adv_line
   write_line="$(grep -n '^### Step 10 — Generate Gate Report' "$skill" | head -1 | cut -d: -f1)"
@@ -223,7 +223,7 @@ teardown() { common_teardown; }
   [ "$val_line" -lt "$adv_line" ]
 }
 
-@test "AC2 placement: gaia-test-design Val loop step appears after Step 7 (Generate Output)" {
+@test "placement: gaia-test-design Val loop step appears after Step 7 (Generate Output)" {
   local skill="$SKILLS_DIR/gaia-test-design/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 7 -- Generate Output' "$skill" | head -1 | cut -d: -f1)"
@@ -233,7 +233,7 @@ teardown() { common_teardown; }
   [ "$val_line" -gt "$write_line" ]
 }
 
-@test "AC3 placement: gaia-edit-test-plan Val loop step appears after Step 5 (Add Version Note and Save)" {
+@test "placement: gaia-edit-test-plan Val loop step appears after Step 5 (Add Version Note and Save)" {
   local skill="$SKILLS_DIR/gaia-edit-test-plan/SKILL.md"
   local write_line val_line
   write_line="$(grep -n '^### Step 5 — Add Version Note and Save' "$skill" | head -1 | cut -d: -f1)"
@@ -298,11 +298,11 @@ teardown() { common_teardown; }
 # cannot accidentally introduce recursion (AC5 / Task 4.3).
 # ---------------------------------------------------------------------------
 
-@test "AC5: gaia-val-validate SKILL.md retains the Iterative Re-Invocation subsection" {
+@test "gaia-val-validate SKILL.md retains the Iterative Re-Invocation subsection" {
   grep -qE '^### Iterative Re-Invocation' "$SKILLS_DIR/gaia-val-validate/SKILL.md"
 }
 
-@test "AC5: gaia-val-validate SKILL.md documents the no-self-invoke invariant (Task 4)" {
+@test "gaia-val-validate SKILL.md documents the no-self-invoke invariant (Task 4)" {
   # Phrasing: "does NOT self-invoke" — case-sensitive on the NOT to match the
   # canonical invariant text from sibling wire-in stories (E44-S3..S5) and
   # this story's Task 4.3.

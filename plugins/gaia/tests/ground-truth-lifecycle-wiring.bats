@@ -104,7 +104,7 @@ make_no_sidecar() {
 # ---------------------------------------------------------------------------
 # TC-GTS-7 (AC1): sprint-plan entry gate halts-with-diagnostic on stale.
 # ---------------------------------------------------------------------------
-@test "TC-GTS-7: sprint-plan entry gate halts-with-diagnostic on stale" {
+@test "sprint-plan entry gate halts-with-diagnostic on stale" {
   make_stale
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-sprint-plan/scripts/ground-truth-gate.sh"
   [ "$status" -ne 0 ]
@@ -116,7 +116,7 @@ make_no_sidecar() {
 # ---------------------------------------------------------------------------
 # TC-GTS-8 (AC1): sprint-plan entry gate passes (exit 0) when fresh.
 # ---------------------------------------------------------------------------
-@test "TC-GTS-8: sprint-plan entry gate passes (exit 0) when fresh" {
+@test "sprint-plan entry gate passes (exit 0) when fresh" {
   make_fresh
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-sprint-plan/scripts/ground-truth-gate.sh"
   [ "$status" -eq 0 ]
@@ -125,7 +125,7 @@ make_no_sidecar() {
 # ---------------------------------------------------------------------------
 # TC-GTS-9 (AC2): add-feature completion gate halts-with-diagnostic on stale.
 # ---------------------------------------------------------------------------
-@test "TC-GTS-9: add-feature finalize gate halts-with-diagnostic on stale" {
+@test "add-feature finalize gate halts-with-diagnostic on stale" {
   make_stale
   # FEATURE_ID unset → Val-sentinel guard is skipped; the staleness gate must
   # still fire and BLOCK before the lifecycle-event emit.
@@ -142,7 +142,7 @@ make_no_sidecar() {
 # "lifecycle event emitted" success log is absent, and that the staleness
 # diagnostic IS present.
 # ---------------------------------------------------------------------------
-@test "TC-GTS-10: add-feature blocking gate fires strictly before lifecycle-event emit" {
+@test "add-feature blocking gate fires strictly before lifecycle-event emit" {
   make_stale
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-add-feature/scripts/finalize.sh"
   [ "$status" -ne 0 ]
@@ -155,7 +155,7 @@ make_no_sidecar() {
 # ---------------------------------------------------------------------------
 # TC-GTS-11 (AC2): blocking gate not bypassed by yolo / best-effort flags.
 # ---------------------------------------------------------------------------
-@test "TC-GTS-11: blocking gate not bypassed by yolo/best-effort env flags" {
+@test "blocking gate not bypassed by yolo/best-effort env flags" {
   make_stale
   GAIA_YOLO_MODE=1 GAIA_YOLO_FLAG=1 GAIA_GT_BEST_EFFORT=1 \
     run bash "$BATS_TEST_DIRNAME/../skills/gaia-add-feature/scripts/finalize.sh"
@@ -166,7 +166,7 @@ make_no_sidecar() {
 # ---------------------------------------------------------------------------
 # TC-GTS-12 (AC3): sprint-close warns-and-continues on stale (exit 0, stderr).
 # ---------------------------------------------------------------------------
-@test "TC-GTS-12: sprint-close finalize warns-and-continues on stale" {
+@test "sprint-close finalize warns-and-continues on stale" {
   make_stale
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/finalize.sh"
   [ "$status" -eq 0 ]
@@ -180,7 +180,7 @@ make_no_sidecar() {
 # transition-story-status.sh sources in its --to done path), proving warn +
 # exit 0 even when STALE.
 # ---------------------------------------------------------------------------
-@test "TC-GTS-13: story-done best-effort gate warns-and-continues on stale" {
+@test "story-done best-effort gate warns-and-continues on stale" {
   make_stale
   run bash -c '. "$GATE"; gt_gate_best_effort "story-done"'
   [ "$status" -eq 0 ]
@@ -190,14 +190,14 @@ make_no_sidecar() {
 # ---------------------------------------------------------------------------
 # TC-GTS-14 (AC3): best-effort points are silent when fresh.
 # ---------------------------------------------------------------------------
-@test "TC-GTS-14: best-effort gate is silent when fresh" {
+@test "best-effort gate is silent when fresh" {
   make_fresh
   run bash -c '. "$GATE"; gt_gate_best_effort "story-done"'
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
-@test "TC-GTS-14b: sprint-close finalize is quiet about ground-truth when fresh" {
+@test "sprint-close finalize is quiet about ground-truth when fresh" {
   make_fresh
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/finalize.sh"
   [ "$status" -eq 0 ]
@@ -207,7 +207,7 @@ make_no_sidecar() {
 # ---------------------------------------------------------------------------
 # AC4: STALE diagnostic instructs the INCREMENTAL refresh, never --agent all.
 # ---------------------------------------------------------------------------
-@test "AC4: blocking diagnostic instructs --incremental and never --agent all" {
+@test "blocking diagnostic instructs --incremental and never --agent all" {
   make_stale
   run bash -c '. "$GATE"; gt_gate_blocking "sprint-plan-entry"'
   [ "$status" -ne 0 ]
@@ -228,7 +228,7 @@ make_no_sidecar() {
 # stat forks. We trace the predicate on a tie tree with `stat` shadowed by a
 # counter; the count must be small and bounded (NOT O(file-count)).
 # ---------------------------------------------------------------------------
-@test "PERF-GUARD: tie-detection issues no per-file stat fork (bounded stat count)" {
+@test "tie-detection issues no per-file stat fork (bounded stat count)" {
   # Worst case for the OLD per-file probe: NO tie and NO newer file — every
   # artifact is strictly OLDER than ground-truth. The old probe had to walk +
   # stat-fork EVERY file to confirm "no equal-mtime sibling" before returning

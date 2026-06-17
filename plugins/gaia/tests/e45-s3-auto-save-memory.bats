@@ -94,7 +94,7 @@ run_save() {
 
 # --- AC1 + AC2: Phase 1-3 happy path --------------------------------------
 
-@test "AC1: Phase 1-3 skill writes session summary to agent sidecar" {
+@test "Phase 1-3 skill writes session summary to agent sidecar" {
     # Arrange — fake artifact for /gaia-create-prd.
     local artifact="$TEST_TMP/prd.md"
     printf '# PRD\n\n## Goals\n\n- Solve the world.\n' > "$artifact"
@@ -108,7 +108,7 @@ run_save() {
     grep -q 'gaia-create-prd Session Summary' "$sidecar"
 }
 
-@test "AC2: written entry contains Inputs/Outputs/Open questions sections" {
+@test "written entry contains Inputs/Outputs/Open questions sections" {
     local artifact="$TEST_TMP/brief.md"
     printf '# Brief\n\n## Vision\n\nSomething.\n' > "$artifact"
 
@@ -122,7 +122,7 @@ run_save() {
     grep -q '\*\*Open questions:\*\*' "$sidecar"
 }
 
-@test "AC3: no [y]/[n]/[e] prompt appears in any output stream" {
+@test "no [y]/[n]/[e] prompt appears in any output stream" {
     local artifact="$TEST_TMP/arch.md"
     printf '# Arch\n' > "$artifact"
 
@@ -136,7 +136,7 @@ run_save() {
 
 # --- AC-EC1: Phase 4 boundary preserved ------------------------------------
 
-@test "AC-EC1: Phase 4 skill (gaia-dev-story) is a no-op (no write happens)" {
+@test "Phase 4 skill (gaia-dev-story) is a no-op (no write happens)" {
     run_save gaia-dev-story
     [ "$status" -eq 0 ]
 
@@ -148,7 +148,7 @@ run_save() {
 
 # --- AC-EC3: sidecar directory missing -------------------------------------
 
-@test "AC-EC3: missing sidecar directory is created with canonical header" {
+@test "missing sidecar directory is created with canonical header" {
     # Confirm pre-state: directory absent.
     [ ! -d "$FAKE_MEMORY/architect-sidecar" ]
 
@@ -167,7 +167,7 @@ run_save() {
 
 # --- AC-EC5: empty session ------------------------------------------------
 
-@test "AC-EC5: empty session writes minimal No persistable decisions entry" {
+@test "empty session writes minimal No persistable decisions entry" {
     # Invoke without any artifact paths.
     run_save gaia-brainstorm
     [ "$status" -eq 0 ]
@@ -179,7 +179,7 @@ run_save() {
 
 # --- AC-EC7: unknown skill ------------------------------------------------
 
-@test "AC-EC7: unknown skill exits 64 with actionable error" {
+@test "unknown skill exits 64 with actionable error" {
     run_save gaia-not-real-skill
     [ "$status" -eq 64 ]
     printf '%s' "$output" | grep -q 'cannot resolve agent sidecar'
@@ -187,7 +187,7 @@ run_save() {
 
 # --- AC-EC8: secret redaction ---------------------------------------------
 
-@test "AC-EC8: API key in summary is redacted before write" {
+@test "API key in summary is redacted before write" {
     # Inject a secret into the artifact filename and content.
     local artifact="$TEST_TMP/notes.md"
     printf '# Notes\n\nKey: sk-abcdefghijklmnopqrstuvwxyz123\n' > "$artifact"
@@ -201,7 +201,7 @@ run_save() {
     ! grep -q 'sk-abcdefghijklmnopqrstuvwxyz123' "$sidecar"
 }
 
-@test "AC-EC8: redact_secrets pure function replaces sk- pattern" {
+@test "redact_secrets pure function replaces sk- pattern" {
     run bash -c "
         source '$SCRIPT'
         _autosave_redact_secrets 'token sk-abcdefghijklmnopqrstuvwxyz1'
@@ -211,7 +211,7 @@ run_save() {
     [[ "$output" != *"sk-abcdefghijklmnopqrstuvwxyz1"* ]]
 }
 
-@test "AC-EC8: redact_secrets pure function replaces AWS access key" {
+@test "redact_secrets pure function replaces AWS access key" {
     run bash -c "
         source '$SCRIPT'
         _autosave_redact_secrets 'AKIAIOSFODNN7EXAMPLE'
@@ -221,7 +221,7 @@ run_save() {
     [[ "$output" != *"AKIAIOSFODNN7EXAMPLE"* ]]
 }
 
-@test "AC-EC8: redact_secrets pure function replaces Bearer token" {
+@test "redact_secrets pure function replaces Bearer token" {
     run bash -c "
         source '$SCRIPT'
         _autosave_redact_secrets 'Authorization: Bearer abcdef0123456789ABCDEFGHIJ'
@@ -233,7 +233,7 @@ run_save() {
 
 # --- AC-EC10: ambiguous classification fails closed ------------------------
 
-@test "AC-EC10: skill in both Phase 1-3 and Phase 4 lists is treated as Phase 4 (no auto-save)" {
+@test "skill in both Phase 1-3 and Phase 4 lists is treated as Phase 4 (no auto-save)" {
     # Mutate the in-memory _PHASE_4_SKILLS so a Phase 1-3 skill collides.
     run bash -c "
         export MEMORY_PATH='$FAKE_MEMORY'

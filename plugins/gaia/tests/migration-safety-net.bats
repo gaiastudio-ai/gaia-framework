@@ -22,7 +22,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-MSN-1: clean migrated config emits no warning ----------
 
-@test "TC-MSN-1: clean config with both kind: and distribution: emits no warning" {
+@test "clean config with both kind: and distribution: emits no warning" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -40,7 +40,7 @@ YAML
   [ "$output" = "clean" ]
 }
 
-@test "TC-MSN-1 variant: all-deployable historical project (no distribution needed) emits no warning" {
+@test "variant: all-deployable historical project (no distribution needed) emits no warning" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -55,7 +55,7 @@ YAML
 
 # ---------- TC-MSN-2 / TC-EKD-5: pre-migration config (no kind, no distribution) emits warning ----------
 
-@test "TC-MSN-2: pre-migration config (no kind, no distribution) emits warning" {
+@test "pre-migration config (no kind, no distribution) emits warning" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -68,7 +68,7 @@ YAML
   [ "$output" = "pre-migration" ]
 }
 
-@test "TC-EKD-5: pre-migration config produces actionable WARNING text" {
+@test "pre-migration config produces actionable WARNING text" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -84,7 +84,7 @@ YAML
 
 # ---------- TC-MSN-3: partial migration enumerates missing pieces ----------
 
-@test "TC-MSN-3: partial migration (kind: present, distribution: absent) enumerates missing distribution:" {
+@test "partial migration (kind: present, distribution: absent) enumerates missing distribution" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: marketplace
@@ -98,7 +98,7 @@ YAML
   ! echo "$output" | grep -qE 'kind:.*missing'
 }
 
-@test "TC-MSN-3: partial migration (distribution: present, no kind:) enumerates missing kind:" {
+@test "partial migration (distribution: present, no kind:) enumerates missing kind" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -118,7 +118,7 @@ YAML
 
 # ---------- AC1: drift detector .config-stale marker writer ----------
 
-@test "AC1: drift-marker write — pre-migration triggers stale-flag write" {
+@test "drift-marker write — pre-migration triggers stale-flag write" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -130,7 +130,7 @@ YAML
   grep -qE 'FR-528|E99|kind.*distribution' "$PROJECT_ROOT/_memory/.config-stale"
 }
 
-@test "AC1: clean config does NOT write a stale-flag" {
+@test "clean config does NOT write a stale-flag" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -144,7 +144,7 @@ YAML
 
 # ---------- AC2: /gaia-config-validate SKILL.md cites the migration warning ----------
 
-@test "AC2: /gaia-config-validate SKILL.md cites the E99 migration warning path" {
+@test "gaia-config-validate SKILL.md cites the E99 migration warning path" {
   grep -qE 'E99-S6|config-migration-status|FR-528' "$VALIDATE_SKILL"
 }
 

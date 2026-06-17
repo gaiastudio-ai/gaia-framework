@@ -96,7 +96,7 @@ YAML
 # runs AFTER env overrides and AFTER artifact-dir defaulting so a placeholder
 # from ANY source layer is caught.
 
-@test "resolve-config.sh E29-S9 AC4: literal {project-root} in project_root → exit 2, stderr names field + placeholder" {
+@test "resolve-config.sh : literal {project-root} in project_root → exit 2, stderr names field + placeholder" {
   local bad="$TEST_TMP/ph-root"
   mkdir -p "$bad/config"
   cat > "$bad/config/project-config.yaml" <<'YAML'
@@ -114,7 +114,7 @@ YAML
   [[ "$output" == *"{project-root}"* ]]
 }
 
-@test "resolve-config.sh E29-S9 AC5: embedded {project-root} in installed_path → exit 2, stderr names field + placeholder" {
+@test "resolve-config.sh : embedded {project-root} in installed_path → exit 2, stderr names field + placeholder" {
   local bad="$TEST_TMP/ph-installed"
   mkdir -p "$bad/config"
   cat > "$bad/config/project-config.yaml" <<'YAML'
@@ -132,7 +132,7 @@ YAML
   [[ "$output" == *"{project-root}"* ]]
 }
 
-@test "resolve-config.sh E29-S9 AC6: fully resolved config (no braces in any required field) still exits 0" {
+@test "resolve-config.sh : fully resolved config (no braces in any required field) still exits 0" {
   # Negative case — guard must not false-positive on a clean config. Mirrors
   # the happy-path test above; asserts exit 0 and the canonical project_root
   # key/value pair are present in stdout.
@@ -145,7 +145,7 @@ YAML
   [[ "$output" != *"unsubstituted placeholder"* ]]
 }
 
-@test "resolve-config.sh E29-S9: shell-style \${VAR} references are NOT rejected (carve-out for fixture configs)" {
+@test "resolve-config.sh : shell-style \${VAR} references are NOT rejected (carve-out for fixture configs)" {
   # Defense-in-depth carve-out: the guard targets literal `{...}` template
   # tokens, NOT shell-style `${VAR}` references. Fixture configs across the
   # cluster-4..9 e2e suites use `${GAIA_*}` placeholders that are supplied
@@ -207,7 +207,7 @@ YAML
   [[ "$output" == *"CLAUDE_SKILL_DIR"* ]]
 }
 
-@test "resolve-config.sh AI-2026-05-13-12: walk-up finds project-config.yaml in parent dir" {
+@test "resolve-config.sh : walk-up finds project-config.yaml in parent dir" {
   # Build a fake project root with config and a deep nested CWD.
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/config"
@@ -231,7 +231,7 @@ YAML
   [[ "$output" == *"framework_version='1.149.0'"* ]]
 }
 
-@test "resolve-config.sh AI-2026-05-13-12: GAIA_NO_PROJECT_WALKUP disables walk-up" {
+@test "resolve-config.sh : GAIA_NO_PROJECT_WALKUP disables walk-up" {
   local proj="$TEST_TMP/proj2"
   mkdir -p "$proj/config" "$proj/nested"
   cat > "$proj/config/project-config.yaml" <<'YAML'
@@ -449,7 +449,7 @@ implementation_artifacts: /custom/docs/impl
 YAML
 }
 
-@test "E28-S200 AC1/AC2: default artifact-dir keys emitted relative to project_root" {
+@test "default artifact-dir keys emitted relative to project_root" {
   mk_cfg_no_artifacts "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT"
   [ "$status" -eq 0 ]
@@ -461,7 +461,7 @@ YAML
   [[ "$output" == *"implementation_artifacts='/tmp/gaia-art/.gaia/artifacts/implementation-artifacts'"* ]]
 }
 
-@test "E28-S200 AC11: project-config.yaml values override the defaults" {
+@test "project-config.yaml values override the defaults" {
   mk_cfg_with_artifacts "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT"
   [ "$status" -eq 0 ]
@@ -470,7 +470,7 @@ YAML
   [[ "$output" == *"implementation_artifacts='/custom/docs/impl'"* ]]
 }
 
-@test "E28-S200 AC11: GAIA_TEST_ARTIFACTS env var wins over project-config.yaml" {
+@test "GAIA_TEST_ARTIFACTS env var wins over project-config.yaml" {
   mk_cfg_with_artifacts "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" \
     GAIA_TEST_ARTIFACTS=/env/test \
@@ -483,7 +483,7 @@ YAML
   [[ "$output" == *"implementation_artifacts='/env/impl'"* ]]
 }
 
-@test "E28-S200 AC1: --format json includes the 3 artifact-dir keys" {
+@test "format json includes the 3 artifact-dir keys" {
   mk_cfg_no_artifacts "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT" --format json
   [ "$status" -eq 0 ]
@@ -496,7 +496,7 @@ YAML
   [[ "$output" == *'/tmp/gaia-art/.gaia/artifacts/implementation-artifacts'* ]]
 }
 
-@test "E28-S200 AC4: --help documents the 3 new artifact-dir keys" {
+@test "help documents the 3 new artifact-dir keys" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"test_artifacts"* ]]
@@ -527,7 +527,7 @@ creative_artifacts: /custom/docs/creative
 YAML
 }
 
-@test "E46-S9: default creative_artifacts emitted relative to project_root" {
+@test "default creative_artifacts emitted relative to project_root" {
   mk_cfg_no_artifacts "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT"
   [ "$status" -eq 0 ]
@@ -535,14 +535,14 @@ YAML
   [[ "$output" == *"creative_artifacts='/tmp/gaia-art/.gaia/artifacts/creative-artifacts'"* ]]
 }
 
-@test "E46-S9: project-config.yaml creative_artifacts overrides the default" {
+@test "project-config.yaml creative_artifacts overrides the default" {
   mk_cfg_with_creative "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"creative_artifacts='/custom/docs/creative'"* ]]
 }
 
-@test "E46-S9: GAIA_CREATIVE_ARTIFACTS env var wins over project-config.yaml" {
+@test "GAIA_CREATIVE_ARTIFACTS env var wins over project-config.yaml" {
   mk_cfg_with_creative "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" \
     GAIA_CREATIVE_ARTIFACTS=/env/creative \
@@ -551,7 +551,7 @@ YAML
   [[ "$output" == *"creative_artifacts='/env/creative'"* ]]
 }
 
-@test "E46-S9: --format json includes the creative_artifacts key" {
+@test "format json includes the creative_artifacts key" {
   mk_cfg_no_artifacts "$TEST_TMP/skill"
   CLAUDE_SKILL_DIR="$TEST_TMP/skill" run "$SCRIPT" --format json
   [ "$status" -eq 0 ]
@@ -560,7 +560,7 @@ YAML
   [[ "$output" == *'/tmp/gaia-art/.gaia/artifacts/creative-artifacts'* ]]
 }
 
-@test "E46-S9: --help documents the GAIA_CREATIVE_ARTIFACTS env var" {
+@test "help documents the GAIA_CREATIVE_ARTIFACTS env var" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"GAIA_CREATIVE_ARTIFACTS"* ]] || [[ "$output" == *"creative_artifacts"* ]]

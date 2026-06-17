@@ -16,28 +16,28 @@ setup() {
 
 teardown() { common_teardown; }
 
-@test "TC-ASG-3a: SKILL.md references nested sprint-plan path" {
+@test "SKILL.md references nested sprint-plan path" {
   [ -f "$SKILL" ]
   grep -qF "implementation-artifacts/sprint-plan/" "$SKILL"
 }
 
-@test "TC-ASG-3b: no script writes to legacy flat sprint-plan path" {
+@test "no script writes to legacy flat sprint-plan path" {
   [ -d "$SCRIPTS_DIR" ]
   # Pattern matches the legacy flat path; should be zero hits.
   ! grep -rnE 'implementation-artifacts/\$\{?sprint_id\}?-plan\.md' "$SCRIPTS_DIR" 2>/dev/null
 }
 
-@test "TC-ASG-3c: SKILL.md includes mkdir -p guidance for nested directory" {
+@test "SKILL.md includes mkdir -p guidance for nested directory" {
   [ -f "$SKILL" ]
   grep -qF "mkdir -p" "$SKILL"
 }
 
-@test "TC-ASG-3d: Step 7 write target ends with {sprint_id}-plan.md under sprint-plan/" {
+@test "Step 7 write target ends with {sprint_id}-plan.md under sprint-plan/" {
   [ -f "$SKILL" ]
   grep -qE "implementation-artifacts/sprint-plan/.*sprint_id.*-plan\.md" "$SKILL"
 }
 
-@test "TC-ASG-3e: Step 11 Val-sidecar artifact_path uses nested form" {
+@test "Step 11 Val-sidecar artifact_path uses nested form" {
   [ -f "$SKILL" ]
   grep -qF "artifact_path \".gaia/artifacts/implementation-artifacts/sprint-plan/" "$SKILL"
 }

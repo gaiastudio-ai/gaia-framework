@@ -53,7 +53,7 @@ teardown() { common_teardown; }
 # AC1 — default value when nothing is set in user config.
 # ---------------------------------------------------------------------------
 
-@test "AC1: default dev_story.tdd_review.threshold is 'medium'" {
+@test "default dev_story.tdd_review.threshold is 'medium'" {
   run "$RESOLVE" --shared "$TEST_TMP/config/project-config.yaml" \
                  --field dev_story.tdd_review.threshold
   [ "$status" -eq 0 ]
@@ -64,7 +64,7 @@ teardown() { common_teardown; }
 # AC2 — user override via threshold: high in the shared config.
 # ---------------------------------------------------------------------------
 
-@test "AC2: user override threshold: high resolves to 'high'" {
+@test "user override threshold: high resolves to 'high'" {
   cat >> "$TEST_TMP/config/project-config.yaml" <<'EOF'
 dev_story:
   tdd_review:
@@ -81,7 +81,7 @@ EOF
 # the offending key and allowed enum values.
 # ---------------------------------------------------------------------------
 
-@test "AC3: invalid threshold value fails fast (exit 2)" {
+@test "invalid threshold value fails fast (exit 2)" {
   cat >> "$TEST_TMP/config/project-config.yaml" <<'EOF'
 dev_story:
   tdd_review:
@@ -104,21 +104,21 @@ EOF
 # phases default round-trip.
 # ---------------------------------------------------------------------------
 
-@test "AC1: default qa_auto_in_yolo is 'true'" {
+@test "default qa_auto_in_yolo is 'true'" {
   run "$RESOLVE" --shared "$TEST_TMP/config/project-config.yaml" \
                  --field dev_story.tdd_review.qa_auto_in_yolo
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]
 }
 
-@test "AC1: default qa_timeout_seconds is '600'" {
+@test "default qa_timeout_seconds is '600'" {
   run "$RESOLVE" --shared "$TEST_TMP/config/project-config.yaml" \
                  --field dev_story.tdd_review.qa_timeout_seconds
   [ "$status" -eq 0 ]
   [ "$output" = "600" ]
 }
 
-@test "AC1: default phases is '[red]'" {
+@test "default phases is '[red]'" {
   run "$RESOLVE" --shared "$TEST_TMP/config/project-config.yaml" \
                  --field dev_story.tdd_review.phases
   [ "$status" -eq 0 ]
@@ -129,7 +129,7 @@ EOF
 # AC4 — schema declares phases default = [red] and type = array.
 # ---------------------------------------------------------------------------
 
-@test "AC4: schema declares dev_story.tdd_review.phases default [red] / type array" {
+@test "schema declares dev_story.tdd_review.phases default [red] / type array" {
   # The committed schema is descriptor-based (each top-level field has a
   # type/required/default/description block). The dev_story descriptor
   # documents the four nested keys inline; AC4 inspects the schema for
@@ -144,7 +144,7 @@ EOF
 # AC5 — CHANGELOG migration entry present and complete.
 # ---------------------------------------------------------------------------
 
-@test "AC5: CHANGELOG contains v1.131.x TDD Review Gate Default entry" {
+@test "CHANGELOG contains v1.131.x TDD Review Gate Default entry" {
   [ -f "$CHANGELOG" ]
   grep -F "v1.131.x — TDD Review Gate Default" "$CHANGELOG"
   grep -F "threshold: medium" "$CHANGELOG"

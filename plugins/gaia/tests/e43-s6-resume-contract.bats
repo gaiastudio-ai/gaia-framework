@@ -116,7 +116,7 @@ latest_checkpoint_for() {
 
 # ---------- VCP-CPT-03 — checksum-pass resume (AC1) ----------
 
-@test "VCP-CPT-03/AC1: valid checkpoint passes checksum validation and reports safe-to-resume" {
+@test "valid checkpoint passes checksum validation and reports safe-to-resume" {
   local a="$TEST_TMP/prd.md"; printf 'PRD v1\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL body\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 3 "$sk" "$a"
@@ -128,7 +128,7 @@ latest_checkpoint_for() {
   [[ "$output" == *"match"* ]] || [[ "$output" == *"clean"* ]] || [[ "$output" == *"safe"* ]]
 }
 
-@test "VCP-CPT-03/AC1: read subcommand returns JSON with step_number for routing (step_number + 1)" {
+@test "read subcommand returns JSON with step_number for routing (step_number + 1)" {
   local a="$TEST_TMP/prd.md"; printf 'PRD v1\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL body\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 3 "$sk" "$a"
@@ -144,7 +144,7 @@ latest_checkpoint_for() {
 
 # ---------- VCP-CPT-04 — checksum mismatch drift report (AC2) ----------
 
-@test "VCP-CPT-04/AC2: single-file drift exits 1 and names the drifted path + both hashes" {
+@test "single-file drift exits 1 and names the drifted path + both hashes" {
   local a="$TEST_TMP/prd.md"; printf 'PRD v1\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL body\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 3 "$sk" "$a"
@@ -163,7 +163,7 @@ latest_checkpoint_for() {
   [[ "$output" == *"recomputed"* ]] || [[ "$output" == *"actual"* ]] || [[ "$output" == *"current"* ]]
 }
 
-@test "VCP-CPT-04/AC2: missing output file exits 2 with classified message" {
+@test "missing output file exits 2 with classified message" {
   local a="$TEST_TMP/prd.md"; printf 'PRD v1\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL body\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 3 "$sk" "$a"
@@ -179,7 +179,7 @@ latest_checkpoint_for() {
 
 # ---------- VCP-CPT-05 — no checkpoint (AC3, AC-EC7) ----------
 
-@test "VCP-CPT-05/AC3: no checkpoint for skill exits 2 and lists alternatives from other skills" {
+@test "no checkpoint for skill exits 2 and lists alternatives from other skills" {
   local a="$TEST_TMP/a.md"; printf 'art\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL\n' > "$sk"
   # Populate TWO other skills so there's something to list
@@ -194,7 +194,7 @@ latest_checkpoint_for() {
   [[ "$output" == *"gaia-create-arch"* ]]
 }
 
-@test "AC-EC7/AC3: empty skill directory behaves like no-checkpoint" {
+@test "empty skill directory behaves like no-checkpoint" {
   mkdir -p "$CHECKPOINT_ROOT/gaia-create-prd"
   local a="$TEST_TMP/a.md"; printf 'art\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL\n' > "$sk"
@@ -207,7 +207,7 @@ latest_checkpoint_for() {
 
 # ---------- VCP-CPT-07 — SKILL.md version mismatch (AC4) ----------
 
-@test "VCP-CPT-07/AC4: SKILL.md content-hash drift exits 3 with version-mismatch message" {
+@test "SKILL.md content-hash drift exits 3 with version-mismatch message" {
   local a="$TEST_TMP/prd.md"; printf 'PRD v1\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL body v1\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 3 "$sk" "$a"
@@ -222,7 +222,7 @@ latest_checkpoint_for() {
   [[ "$output" == *"changed"* ]] || [[ "$output" == *"mismatch"* ]] || [[ "$output" == *"differ"* ]]
 }
 
-@test "VCP-CPT-07/AC4: SKILL.md hash missing from checkpoint is not a version mismatch" {
+@test "SKILL.md hash missing from checkpoint is not a version mismatch" {
   # Back-compat: checkpoints written without --skill-md flag should not
   # trigger version-mismatch exit 3 on resume.
   local a="$TEST_TMP/prd.md"; printf 'PRD v1\n' > "$a"
@@ -238,7 +238,7 @@ latest_checkpoint_for() {
 
 # ---------- AC6 — JSON format detection + shell parse (no LLM YAML) ----------
 
-@test "AC6: validate rejects YAML checkpoint with clear error (no silent fallthrough)" {
+@test "validate rejects YAML checkpoint with clear error (no silent fallthrough)" {
   # Write a legacy-shaped YAML file — must not be parsed as ADR-059.
   mkdir -p "$CHECKPOINT_ROOT/gaia-create-prd"
   local yaml="$CHECKPOINT_ROOT/gaia-create-prd/legacy.yaml"
@@ -250,7 +250,7 @@ latest_checkpoint_for() {
 
 # ---------- AC-EC1 — step_number=1 boundary ----------
 
-@test "AC-EC1: checkpoint at step_number=1 validates cleanly (no off-by-one)" {
+@test "checkpoint at step_number=1 validates cleanly (no off-by-one)" {
   local a="$TEST_TMP/a.md"; printf 'art\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 1 "$sk" "$a"
@@ -269,7 +269,7 @@ latest_checkpoint_for() {
 
 # ---------- AC-EC2 — corrupted JSON routes to E43-S7 handler ----------
 
-@test "AC-EC2: corrupted checkpoint JSON is reported via E43-S7 discovery handoff (no crash)" {
+@test "corrupted checkpoint JSON is reported via discovery handoff (no crash)" {
   local a="$TEST_TMP/a.md"; printf 'art\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 2 "$sk" "$a"
@@ -291,7 +291,7 @@ latest_checkpoint_for() {
 
 # ---------- AC-EC3 — two same-step checkpoints (concurrency) ----------
 
-@test "AC-EC3: two checkpoints at same step_number — most-recent wins (lexicographic sort)" {
+@test "two checkpoints at same step_number — most-recent wins (lexicographic sort)" {
   local a="$TEST_TMP/a.md"; printf 'art\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 3 "$sk" "$a"
@@ -313,7 +313,7 @@ latest_checkpoint_for() {
 
 # ---------- AC-EC4 — cross-skill isolation ----------
 
-@test "AC-EC4: read --skill X does NOT return a checkpoint from skill Y" {
+@test "read --skill X does NOT return a checkpoint from skill Y" {
   local a="$TEST_TMP/a.md"; printf 'art\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 1 "$sk" "$a"
@@ -330,7 +330,7 @@ latest_checkpoint_for() {
 
 # ---------- AC-EC5 — multi-line key_variables preserved verbatim ----------
 
-@test "AC-EC5: multi-line key_variables value round-trips cleanly through read" {
+@test "multi-line key_variables value round-trips cleanly through read" {
   local a="$TEST_TMP/a.md"; printf 'art\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL\n' > "$sk"
   local blob=$'line1\nline2\nline3'
@@ -346,7 +346,7 @@ latest_checkpoint_for() {
 
 # ---------- AC-EC6 — read-only invariant ----------
 
-@test "AC-EC6: read/validate never write, delete, or modify the checkpoint file" {
+@test "read/validate never write, delete, or modify the checkpoint file" {
   local a="$TEST_TMP/a.md"; printf 'art\n' > "$a"
   local sk="$TEST_TMP/SKILL.md"; printf 'SKILL\n' > "$sk"
   write_checkpoint_with_skill_md gaia-create-prd 3 "$sk" "$a"
@@ -399,7 +399,7 @@ latest_checkpoint_for() {
 
 # ---------- SKILL.md documents ADR-059 consumption contract ----------
 
-@test "SKILL.md documents ADR-059 JSON checkpoint format (not legacy YAML)" {
+@test "SKILL.md documents JSON checkpoint format (not legacy YAML)" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-resume/SKILL.md"
   # New content must describe JSON schema v1 / ADR-059
   grep -qE 'ADR-059|schema_version|\.json' "$skill"
@@ -434,7 +434,7 @@ latest_checkpoint_for() {
   grep -q 'Abort' "$skill"
 }
 
-@test "SKILL.md documents the JSON glob pattern for checkpoint files (canonical or legacy, post-AF-22-4)" {
+@test "SKILL.md documents the JSON glob pattern for checkpoint files" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-resume/SKILL.md"
   # AF-2026-05-22-4 canonicalized memory paths. Accept canonical .gaia/memory/ or legacy _memory/.
   grep -qE '(_memory|\.gaia/memory)/checkpoints/.*\.json' "$skill"

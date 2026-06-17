@@ -277,7 +277,7 @@ EOF
   [ "$before_count" = "$after_count" ]
 }
 
-@test "review-gate-check: TC-CRG-7 — idempotent reruns yield identical stdout + exit" {
+@test "review-gate-check: — idempotent reruns yield identical stdout + exit" {
   seed_story_mixed CRG7 PASSED PASSED UNVERIFIED PASSED PASSED PASSED
   run "$SCRIPT" review-gate-check --story CRG7
   local status1="$status" output1="$output"
@@ -312,28 +312,28 @@ EOF
 # the sub-operation with hand-crafted fixtures that isolate each verdict
 # branch.
 
-@test "nfr-052: classify_review_gate — all-PASSED classifies as COMPLETE via cmd_review_gate_check" {
+@test "classify_review_gate — all-PASSED classifies as COMPLETE via cmd_review_gate_check" {
   seed_story_mixed NFR1 PASSED PASSED PASSED PASSED PASSED PASSED
   run "$SCRIPT" review-gate-check --story NFR1
   [ "$status" -eq 0 ]
   [[ "$output" == *"Review Gate: COMPLETE"* ]]
 }
 
-@test "nfr-052: classify_review_gate — single FAILED classifies as BLOCKED via cmd_review_gate_check" {
+@test "classify_review_gate — single FAILED classifies as BLOCKED via cmd_review_gate_check" {
   seed_story_mixed NFR2 PASSED PASSED PASSED PASSED FAILED PASSED
   run "$SCRIPT" review-gate-check --story NFR2
   [ "$status" -eq 1 ]
   [[ "$output" == *"Review Gate: BLOCKED"* ]]
 }
 
-@test "nfr-052: classify_review_gate — only UNVERIFIED classifies as PENDING via cmd_review_gate_check" {
+@test "classify_review_gate — only UNVERIFIED classifies as PENDING via cmd_review_gate_check" {
   seed_story_mixed NFR3 UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED
   run "$SCRIPT" review-gate-check --story NFR3
   [ "$status" -eq 2 ]
   [[ "$output" == *"Review Gate: PENDING"* ]]
 }
 
-@test "nfr-052: cmd_review_gate_check — all six PENDING gates listed in Pending gates" {
+@test "cmd_review_gate_check — all six PENDING gates listed in Pending gates" {
   seed_story_mixed NFR4 UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED
   run "$SCRIPT" review-gate-check --story NFR4
   [ "$status" -eq 2 ]
@@ -358,35 +358,35 @@ _load_classify_helper() {
   ' "$SCRIPT")"
 }
 
-@test "nfr-052: classify_review_gate — extracted helper returns BLOCKED for any FAILED" {
+@test "classify_review_gate — extracted helper returns BLOCKED for any FAILED" {
   _load_classify_helper
   run classify_review_gate PASSED PASSED FAILED PASSED PASSED PASSED
   [ "$status" -eq 0 ]
   [ "$output" = "BLOCKED" ]
 }
 
-@test "nfr-052: classify_review_gate — extracted helper returns PENDING for UNVERIFIED no FAILED" {
+@test "classify_review_gate — extracted helper returns PENDING for UNVERIFIED no FAILED" {
   _load_classify_helper
   run classify_review_gate PASSED PASSED UNVERIFIED PASSED PASSED PASSED
   [ "$status" -eq 0 ]
   [ "$output" = "PENDING" ]
 }
 
-@test "nfr-052: classify_review_gate — extracted helper returns COMPLETE when all PASSED" {
+@test "classify_review_gate — extracted helper returns COMPLETE when all PASSED" {
   _load_classify_helper
   run classify_review_gate PASSED PASSED PASSED PASSED PASSED PASSED
   [ "$status" -eq 0 ]
   [ "$output" = "COMPLETE" ]
 }
 
-@test "nfr-052: classify_review_gate — extracted helper treats NOT STARTED as PENDING" {
+@test "classify_review_gate — extracted helper treats NOT STARTED as PENDING" {
   _load_classify_helper
   run classify_review_gate PASSED PASSED PASSED PASSED PASSED "NOT STARTED"
   [ "$status" -eq 0 ]
   [ "$output" = "PENDING" ]
 }
 
-@test "nfr-052: classify_review_gate — extracted helper FAILED dominates over PENDING" {
+@test "classify_review_gate — extracted helper FAILED dominates over PENDING" {
   _load_classify_helper
   run classify_review_gate PASSED UNVERIFIED FAILED PASSED "NOT STARTED" PASSED
   [ "$status" -eq 0 ]

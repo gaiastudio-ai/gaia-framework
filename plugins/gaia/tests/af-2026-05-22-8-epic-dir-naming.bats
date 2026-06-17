@@ -25,18 +25,18 @@ teardown() { common_teardown; }
 
 # --- gaia-create-story SKILL.md uses ${EPIC_DIR} verbatim (no redundant epic- prefix) ---
 
-@test "AF-22-8 Bug-18: gaia-create-story SKILL.md uses EPIC_DIR (resolver output) verbatim" {
+@test "gaia-create-story SKILL.md uses EPIC_DIR (resolver output) verbatim" {
   # The new variable is EPIC_DIR; the construction is ${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories/...
   grep -qF '${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/stories' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
 }
 
-@test "AF-22-8 Bug-18: gaia-create-story SKILL.md does NOT prepend redundant 'epic-' before EPIC_SLUG / EPIC_DIR" {
+@test "gaia-create-story SKILL.md does NOT prepend redundant 'epic-' before EPIC_SLUG / EPIC_DIR" {
   # The buggy form was: epic-${EPIC_SLUG}/stories/... (resolver already prefixes with epic-).
   ! grep -qF 'epic-${EPIC_SLUG}/stories' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
   ! grep -qF 'epic-${EPIC_DIR}/stories' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
 }
 
-@test "AF-22-8 Bug-18: gaia-create-story SKILL.md Critical Rules document the naming contract" {
+@test "gaia-create-story SKILL.md Critical Rules document the naming contract" {
   # Assert the naming contract itself, not an internal identifier (scrubbed
   # from published source).
   grep -qF 'epic-{N}/stories/' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
@@ -44,7 +44,7 @@ teardown() { common_teardown; }
     || grep -qF 'split state' "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
 }
 
-@test "AF-22-8 Bug-18: gaia-create-epics SKILL.md Critical Rules document the naming contract" {
+@test "gaia-create-epics SKILL.md Critical Rules document the naming contract" {
   # The internal tracking ID was removed from the published file; assert the durable
   # behavioral contract instead: the prose must name the SPLIT STATE failure mode and
   # prohibit the numeric-only epic-{N}/stories/... path.
@@ -54,7 +54,7 @@ teardown() { common_teardown; }
 
 # --- transition-story-status.sh uses resolver output verbatim (no redundant prefix) ---
 
-@test "AF-22-8 Bug-18: transition-story-status.sh uses \${epic_slug} verbatim (no extra epic- prefix)" {
+@test "transition-story-status.sh uses \${epic_slug} verbatim (no extra epic- prefix)" {
   # E105-S1 / ADR-127 made resolve_story_index_path layout-aware: the single
   # printf line was replaced by epic_root + legacy_index/new_index variables.
   # The Bug-18 invariant is unchanged — the epic dir is ${IMPLEMENTATION_ARTIFACTS}/${epic_slug}
@@ -68,7 +68,7 @@ teardown() { common_teardown; }
 
 # --- resolve-epic-slug.sh outputs the COMPLETE directory name (includes epic- prefix) ---
 
-@test "AF-22-8 Bug-18: resolve-epic-slug.sh output starts with 'epic-' (the full directory basename)" {
+@test "resolve-epic-slug.sh output starts with 'epic-' (the full directory basename)" {
   local epics_file="$BATS_TEST_TMPDIR/epics-a.md"
   printf '## E1 — Core Brain Vault\n' > "$epics_file"
   run bash -c "source '$PLUGIN_ROOT/scripts/lib/resolve-epic-slug.sh' && resolve_epic_slug E1 '$epics_file'"
@@ -76,7 +76,7 @@ teardown() { common_teardown; }
   [[ "$output" == epic-* ]]
 }
 
-@test "AF-22-8 Bug-18: a path built from resolver output + IMPLEMENTATION_ARTIFACTS matches the canonical shape" {
+@test "a path built from resolver output + IMPLEMENTATION_ARTIFACTS matches the canonical shape" {
   local epics_file="$BATS_TEST_TMPDIR/epics-b.md"
   printf '## Epic 7: Sprint Engine Pro\n' > "$epics_file"
   local epic_dir

@@ -36,22 +36,22 @@ teardown() { common_teardown; }
 # AC1 / AC3 — SECTION markers exist for each Phase 1 artifact type.
 # -------------------------------------------------------------------------
 
-@test "AC1: brainstorm-rules SECTION marker is present in document-rulesets" {
+@test "brainstorm-rules SECTION marker is present in document-rulesets" {
   run grep -F -- "<!-- SECTION: brainstorm-rules -->" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: market-research-rules SECTION marker is present in document-rulesets" {
+@test "market-research-rules SECTION marker is present in document-rulesets" {
   run grep -F -- "<!-- SECTION: market-research-rules -->" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: domain-research-rules SECTION marker is present in document-rulesets" {
+@test "domain-research-rules SECTION marker is present in document-rulesets" {
   run grep -F -- "<!-- SECTION: domain-research-rules -->" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: technical-research-rules SECTION marker is present in document-rulesets" {
+@test "technical-research-rules SECTION marker is present in document-rulesets" {
   run grep -F -- "<!-- SECTION: technical-research-rules -->" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
@@ -60,22 +60,22 @@ teardown() { common_teardown; }
 # AC1 — sections frontmatter list includes all four Phase 1 ruleset IDs.
 # -------------------------------------------------------------------------
 
-@test "AC1: sections frontmatter lists brainstorm-rules" {
+@test "sections frontmatter lists brainstorm-rules" {
   run grep -F -- "brainstorm-rules" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: sections frontmatter lists market-research-rules" {
+@test "sections frontmatter lists market-research-rules" {
   run grep -F -- "market-research-rules" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: sections frontmatter lists domain-research-rules" {
+@test "sections frontmatter lists domain-research-rules" {
   run grep -F -- "domain-research-rules" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: sections frontmatter lists technical-research-rules" {
+@test "sections frontmatter lists technical-research-rules" {
   run grep -F -- "technical-research-rules" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
@@ -84,27 +84,27 @@ teardown() { common_teardown; }
 # AC1 — Artifact-Type Slug Mapping table exists with all four Phase 1 slugs.
 # -------------------------------------------------------------------------
 
-@test "AC1: Artifact-Type Slug Mapping section is documented" {
+@test "Artifact-Type Slug Mapping section is documented" {
   run grep -F -- "Artifact-Type Slug Mapping" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: slug map declares brainstorm -> brainstorm-rules" {
+@test "slug map declares brainstorm -> brainstorm-rules" {
   run grep -F -- "| \`brainstorm\` | brainstorm-rules" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: slug map declares market-research -> market-research-rules" {
+@test "slug map declares market-research -> market-research-rules" {
   run grep -F -- "| \`market-research\` | market-research-rules" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: slug map declares domain-research -> domain-research-rules" {
+@test "slug map declares domain-research -> domain-research-rules" {
   run grep -F -- "| \`domain-research\` | domain-research-rules" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: slug map declares technical-research -> technical-research-rules" {
+@test "slug map declares technical-research -> technical-research-rules" {
   run grep -F -- "| \`technical-research\` | technical-research-rules" "$RULESETS_MD"
   [ "$status" -eq 0 ]
 }
@@ -115,27 +115,27 @@ teardown() { common_teardown; }
 # factual-claim).
 # -------------------------------------------------------------------------
 
-@test "AC1: val-validate Step 2 documents Upstream artifact_type slug precedence" {
+@test "val-validate Step 2 documents Upstream artifact_type slug precedence" {
   run grep -F -- "Upstream \`artifact_type\` slug" "$VAL_VALIDATE_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: val-validate enum lists brainstorm" {
+@test "val-validate enum lists brainstorm" {
   run grep -F -- "\`brainstorm\`" "$VAL_VALIDATE_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: val-validate enum lists market-research" {
+@test "val-validate enum lists market-research" {
   run grep -F -- "\`market-research\`" "$VAL_VALIDATE_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: val-validate enum lists domain-research" {
+@test "val-validate enum lists domain-research" {
   run grep -F -- "\`domain-research\`" "$VAL_VALIDATE_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: val-validate enum lists technical-research" {
+@test "val-validate enum lists technical-research" {
   run grep -F -- "\`technical-research\`" "$VAL_VALIDATE_MD"
   [ "$status" -eq 0 ]
 }
@@ -146,7 +146,7 @@ teardown() { common_teardown; }
 # not silent passes).
 # -------------------------------------------------------------------------
 
-@test "AC2: brainstorm-rules section declares severity classifications" {
+@test "brainstorm-rules section declares severity classifications" {
   run awk '
     /<!-- SECTION: brainstorm-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0 }
@@ -157,7 +157,7 @@ teardown() { common_teardown; }
   [ "$output" -ge 2 ]
 }
 
-@test "AC2: market-research-rules section declares severity classifications" {
+@test "market-research-rules section declares severity classifications" {
   run awk '
     /<!-- SECTION: market-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0 }
@@ -168,7 +168,7 @@ teardown() { common_teardown; }
   [ "$output" -ge 2 ]
 }
 
-@test "AC2: domain-research-rules section declares severity classifications" {
+@test "domain-research-rules section declares severity classifications" {
   run awk '
     /<!-- SECTION: domain-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0 }
@@ -179,7 +179,7 @@ teardown() { common_teardown; }
   [ "$output" -ge 2 ]
 }
 
-@test "AC2: technical-research-rules section declares severity classifications" {
+@test "technical-research-rules section declares severity classifications" {
   run awk '
     /<!-- SECTION: technical-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0 }
@@ -195,7 +195,7 @@ teardown() { common_teardown; }
 # footer (traceability hook back to E42 / E44 stories).
 # -------------------------------------------------------------------------
 
-@test "AC3: brainstorm-rules declares Required Sections" {
+@test "brainstorm-rules declares Required Sections" {
   run awk '
     /<!-- SECTION: brainstorm-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0; exit }
@@ -206,7 +206,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC3: market-research-rules declares Required Sections" {
+@test "market-research-rules declares Required Sections" {
   run awk '
     /<!-- SECTION: market-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0; exit }
@@ -217,7 +217,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC3: domain-research-rules declares Required Sections" {
+@test "domain-research-rules declares Required Sections" {
   run awk '
     /<!-- SECTION: domain-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0; exit }
@@ -228,7 +228,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC3: technical-research-rules declares Required Sections" {
+@test "technical-research-rules declares Required Sections" {
   run awk '
     /<!-- SECTION: technical-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0; exit }
@@ -239,7 +239,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC3: brainstorm-rules declares References footer" {
+@test "brainstorm-rules declares References footer" {
   run awk '
     /<!-- SECTION: brainstorm-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0; exit }
@@ -250,7 +250,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC3: market-research-rules declares References footer" {
+@test "market-research-rules declares References footer" {
   run awk '
     /<!-- SECTION: market-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0; exit }
@@ -261,7 +261,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC3: domain-research-rules declares References footer" {
+@test "domain-research-rules declares References footer" {
   run awk '
     /<!-- SECTION: domain-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0; exit }
@@ -272,7 +272,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC3: technical-research-rules declares References footer" {
+@test "technical-research-rules declares References footer" {
   run awk '
     /<!-- SECTION: technical-research-rules -->/ { in_section = 1; next }
     in_section && /<!-- END SECTION -->/ { in_section = 0; exit }
@@ -289,7 +289,7 @@ teardown() { common_teardown; }
 # canonical artifact shape).
 # -------------------------------------------------------------------------
 
-@test "AC4 positive: brainstorm-complete fixture contains all required sections" {
+@test "positive: brainstorm-complete fixture contains all required sections" {
   local fixture="$FIXTURES/brainstorm-complete.md"
   for section in "## Vision Summary" "## Target Users" "## Pain Points" \
                  "## Differentiators" "## Competitive Landscape" \
@@ -301,7 +301,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC4 positive: market-research-complete fixture contains all required sections" {
+@test "positive: market-research-complete fixture contains all required sections" {
   local fixture="$FIXTURES/market-research-complete.md"
   for section in "## Executive Summary" "## Market Definition" \
                  "## Competitive Analysis" "## Customer Segments" \
@@ -314,7 +314,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC4 positive: domain-research-complete fixture contains all required sections" {
+@test "positive: domain-research-complete fixture contains all required sections" {
   local fixture="$FIXTURES/domain-research-complete.md"
   for section in "## Domain Overview" "## Key Players" \
                  "## Regulatory Landscape" "## Trends" \
@@ -327,7 +327,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC4 positive: tech-research-complete fixture contains all required sections" {
+@test "positive: tech-research-complete fixture contains all required sections" {
   local fixture="$FIXTURES/tech-research-complete.md"
   for section in "## Technology Overview" "## Evaluation Matrix" \
                  "## Trade-off Analysis" "## Recommendation" \
@@ -345,7 +345,7 @@ teardown() { common_teardown; }
 # the negative fixture is the witness for the ruleset's CRITICAL finding.
 # -------------------------------------------------------------------------
 
-@test "AC4 negative: brainstorm-missing-opportunities fixture has fewer than 3 opportunities" {
+@test "negative: brainstorm-missing-opportunities fixture has fewer than 3 opportunities" {
   local fixture="$FIXTURES/brainstorm-missing-opportunities.md"
   run awk '
     /^## Opportunity Areas/ { in_section = 1; next }
@@ -357,13 +357,13 @@ teardown() { common_teardown; }
   [ "$output" -lt 3 ]
 }
 
-@test "AC4 negative: market-research-missing-tam-assumptions fixture omits TAM assumptions" {
+@test "negative: market-research-missing-tam-assumptions fixture omits TAM assumptions" {
   local fixture="$FIXTURES/market-research-missing-tam-assumptions.md"
   run grep -F -- "TAM assumptions" "$fixture"
   [ "$status" -ne 0 ]
 }
 
-@test "AC4 negative: domain-research-missing-glossary fixture omits Terminology Glossary header" {
+@test "negative: domain-research-missing-glossary fixture omits Terminology Glossary header" {
   # The fixture's leading > comment intentionally NAMES the omitted section
   # for debuggability. Assert that no real H2 heading exists — line begins
   # with "## " and the rest is exactly "Terminology Glossary".
@@ -376,7 +376,7 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC4 negative: tech-research-missing-alternatives fixture compares only one alternative" {
+@test "negative: tech-research-missing-alternatives fixture compares only one alternative" {
   local fixture="$FIXTURES/tech-research-missing-alternatives.md"
   run awk '
     /^## Trade-off Analysis/ { in_section = 1; next }

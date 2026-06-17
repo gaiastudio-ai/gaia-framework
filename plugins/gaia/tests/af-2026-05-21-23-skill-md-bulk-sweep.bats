@@ -32,7 +32,7 @@ SIMPLE_FILES=(
   gaia-validate-prd gaia-validate-story
 )
 
-@test "AF-21-23: all 58 simple SKILL.md files have zero legacy docs/ literals" {
+@test "all 58 simple SKILL.md files have zero legacy docs/ literals" {
   local failed=()
   for skill in "${SIMPLE_FILES[@]}"; do
     if grep -qE 'docs/(planning-artifacts|test-artifacts|creative-artifacts|implementation-artifacts|research-artifacts)' "$PLUGIN_ROOT/skills/$skill/SKILL.md"; then

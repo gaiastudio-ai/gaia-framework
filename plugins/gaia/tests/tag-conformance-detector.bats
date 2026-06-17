@@ -21,7 +21,7 @@ assert_json_finding_rule() {
 
 # --- ts-dev (Vitest/Jest) ---
 
-@test "TC-RSV2-TESTREVIEW-4.1: ts-dev untagged it() flagged as missing-tag" {
+@test ".1: ts-dev untagged it flagged as missing-tag" {
   local f="$TEST_TMP/no.test.ts"
   printf 'it("works", () => { expect(1).toBe(1); });\n' > "$f"
   run "$SCRIPT" --stack ts-dev "$f"
@@ -30,7 +30,7 @@ assert_json_finding_rule() {
   assert_json_finding_rule "$output" "missing-tag"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.2: ts-dev describe.each test passes" {
+@test ".2: ts-dev describe.each test passes" {
   local f="$TEST_TMP/yes.test.ts"
   printf 'describe.each([[1],[2]])("w %%i", (x) => { it("does", () => expect(x).toBe(x)); });\n' > "$f"
   run "$SCRIPT" --stack ts-dev "$f"
@@ -40,7 +40,7 @@ assert_json_finding_rule() {
 
 # --- java-dev (JUnit) ---
 
-@test "TC-RSV2-TESTREVIEW-4.3: java-dev untagged @Test flagged" {
+@test ".3: java-dev untagged @Test flagged" {
   local f="$TEST_TMP/PlainTest.java"
   printf 'public class PlainTest { @Test void foo() {} }\n' > "$f"
   run "$SCRIPT" --stack java-dev "$f"
@@ -49,7 +49,7 @@ assert_json_finding_rule() {
   assert_json_finding_rule "$output" "missing-tag"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.4: java-dev @Tag annotation passes" {
+@test ".4: java-dev @Tag annotation passes" {
   local f="$TEST_TMP/TaggedTest.java"
   printf '@Tag("slow")\npublic class TaggedTest { @Test void foo() {} }\n' > "$f"
   run "$SCRIPT" --stack java-dev "$f"
@@ -59,7 +59,7 @@ assert_json_finding_rule() {
 
 # --- python-dev (pytest) ---
 
-@test "TC-RSV2-TESTREVIEW-4.5: python-dev untagged def test_ flagged" {
+@test ".5: python-dev untagged def test_ flagged" {
   local f="$TEST_TMP/test_x.py"
   printf 'def test_a():\n    assert True\n' > "$f"
   run "$SCRIPT" --stack python-dev "$f"
@@ -68,7 +68,7 @@ assert_json_finding_rule() {
   assert_json_finding_rule "$output" "missing-tag"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.6: python-dev @pytest.mark.<name> passes" {
+@test ".6: python-dev @pytest.mark.<name> passes" {
   local f="$TEST_TMP/test_y.py"
   printf 'import pytest\n@pytest.mark.smoke\ndef test_a():\n    assert True\n' > "$f"
   run "$SCRIPT" --stack python-dev "$f"
@@ -78,7 +78,7 @@ assert_json_finding_rule() {
 
 # --- go-dev (build tags) ---
 
-@test "TC-RSV2-TESTREVIEW-4.7: go-dev test without //go:build flagged" {
+@test ".7: go-dev test without //go:build flagged" {
   local f="$TEST_TMP/foo_test.go"
   printf 'package foo\nimport "testing"\nfunc TestA(t *testing.T) {}\n' > "$f"
   run "$SCRIPT" --stack go-dev "$f"
@@ -87,7 +87,7 @@ assert_json_finding_rule() {
   assert_json_finding_rule "$output" "missing-tag"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.8: go-dev test with //go:build passes" {
+@test ".8: go-dev test with //go:build passes" {
   local f="$TEST_TMP/bar_test.go"
   printf '//go:build integration\n\npackage foo\nimport "testing"\nfunc TestA(t *testing.T) {}\n' > "$f"
   run "$SCRIPT" --stack go-dev "$f"
@@ -97,7 +97,7 @@ assert_json_finding_rule() {
 
 # --- mobile-dev (Maestro front-matter) ---
 
-@test "TC-RSV2-TESTREVIEW-4.9: mobile-dev Maestro flow without tags: flagged" {
+@test ".9: mobile-dev Maestro flow without tags: flagged" {
   local f="$TEST_TMP/flow_no.yaml"
   printf 'appId: com.example\n---\n- launchApp\n' > "$f"
   run "$SCRIPT" --stack mobile-dev "$f"
@@ -106,7 +106,7 @@ assert_json_finding_rule() {
   assert_json_finding_rule "$output" "missing-tag"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.10: mobile-dev Maestro flow with tags: passes" {
+@test ".10: mobile-dev Maestro flow with tags: passes" {
   local f="$TEST_TMP/flow_yes.yaml"
   printf 'appId: com.example\ntags:\n  - smoke\n---\n- launchApp\n' > "$f"
   run "$SCRIPT" --stack mobile-dev "$f"
@@ -116,7 +116,7 @@ assert_json_finding_rule() {
 
 # --- error / arg parsing ---
 
-@test "TC-RSV2-TESTREVIEW-4.11: missing --stack auto-detects per file (E72-S4 AC9)" {
+@test ".11: missing --stack auto-detects per file" {
   # E72-S4 AC9: when --stack is omitted, auto-detect stack per-file by
   # extension. A bare invocation against a directory of mixed test files
   # therefore succeeds (exit 0) — not the legacy E67-S1 exit 1 behavior.
@@ -128,17 +128,17 @@ assert_json_finding_rule() {
   assert_json_finding_rule "$output" "missing-tag"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.12: unknown stack exits 1" {
+@test ".12: unknown stack exits 1" {
   run "$SCRIPT" --stack foo-dev "$TEST_TMP"
   [ "$status" -eq 1 ]
 }
 
-@test "TC-RSV2-TESTREVIEW-4.13: --help exits 0" {
+@test ".13: --help exits 0" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
 }
 
-@test "TC-RSV2-TESTREVIEW-4.14: script uses set -euo pipefail and LC_ALL=C" {
+@test ".14: script uses set -euo pipefail and LC_ALL=C" {
   grep -Fq "set -euo pipefail" "$SCRIPT"
   grep -Fq "LC_ALL=C" "$SCRIPT"
 }
@@ -149,7 +149,7 @@ assert_json_finding_severity() {
   printf '%s\n' "$1" | grep -F "\"severity\":\"$2\"" >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-4.15: --strict flag emits warning severity (E72-S4 AC7)" {
+@test ".15: --strict flag emits warning severity" {
   local f="$TEST_TMP/strict.test.ts"
   printf 'it("a", () => {});\n' > "$f"
   run "$SCRIPT" --stack ts-dev --strict "$f"
@@ -158,7 +158,7 @@ assert_json_finding_severity() {
   assert_json_finding_severity "$output" "warning"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.16: non-strict emits info (Suggestion) severity (E72-S4 AC6)" {
+@test ".16: non-strict emits info (Suggestion) severity" {
   local f="$TEST_TMP/lax.test.ts"
   printf 'it("a", () => {});\n' > "$f"
   run "$SCRIPT" --stack ts-dev "$f"
@@ -168,7 +168,7 @@ assert_json_finding_severity() {
   assert_json_finding_severity "$output" "info"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.17: --files glob expands and scans matching files (E72-S4 AC10)" {
+@test ".17: --files glob expands and scans matching files" {
   mkdir -p "$TEST_TMP/sub"
   printf 'it("a", () => {});\n' > "$TEST_TMP/sub/a.test.ts"
   printf 'it("b", () => {});\n' > "$TEST_TMP/sub/b.test.ts"
@@ -180,7 +180,7 @@ assert_json_finding_severity() {
   printf '%s\n' "$output" | grep -F 'b.test.ts' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-4.18: multi-stack auto-detect routes per file extension (E72-S4 AC9)" {
+@test ".18: multi-stack auto-detect routes per file extension" {
   # Mixed monorepo: a Vitest file (untagged → flagged) and a pytest file
   # WITH a @pytest.mark decorator (NOT flagged). Verify the auto-detect
   # path applies the right detector to each file.
@@ -198,7 +198,7 @@ assert_json_finding_severity() {
   fi
 }
 
-@test "TC-RSV2-TESTREVIEW-4.19: GAIA_TEST_TAGGING_STRICT=1 env upgrades severity to warning (E72-S4 AC7)" {
+@test ".19: GAIA_TEST_TAGGING_STRICT=1 env upgrades severity to warning" {
   local f="$TEST_TMP/envstrict.test.ts"
   printf 'it("a", () => {});\n' > "$f"
   GAIA_TEST_TAGGING_STRICT=1 run "$SCRIPT" --stack ts-dev "$f"
@@ -206,7 +206,7 @@ assert_json_finding_severity() {
   assert_json_finding_severity "$output" "warning"
 }
 
-@test "TC-RSV2-TESTREVIEW-4.20: --files combined with --strict produces JSON-valid output (E72-S4 AC8, AC10)" {
+@test ".20: --files combined with --strict produces JSON-valid output" {
   mkdir -p "$TEST_TMP/m"
   printf 'it("a", () => {});\n' > "$TEST_TMP/m/x.test.ts"
   run "$SCRIPT" --stack ts-dev --strict --files "$TEST_TMP/m/*.test.ts"

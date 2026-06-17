@@ -163,7 +163,7 @@ HARNESS
   [ "$output" = "review" ]
 }
 
-@test "F-031: prefix boundary — get E1-S2 does not resolve the E1-S21 dir" {
+@test "prefix boundary — get does not resolve the dir" {
   _write_story "$IA/epic-E1-core/E1-S21-twentyone/story.md" "E1-S21" backlog
   run "$SS" get --story E1-S2
   [ "$status" -ne 0 ]

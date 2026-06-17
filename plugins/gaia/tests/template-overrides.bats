@@ -40,7 +40,7 @@ YAML
 
 # ---------- TC-TOV-1: disable removes named job ----------
 
-@test "TC-TOV-1: disable: [shellcheck] removes the job from generated workflow" {
+@test "disable: [shellcheck] removes the job from generated workflow" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -56,7 +56,7 @@ YAML
 
 # ---------- TC-TOV-2: timeout_overrides rewrites timeout-minutes ----------
 
-@test "TC-TOV-2: timeout_overrides: {bats-tests: 15} sets timeout-minutes: 15" {
+@test "timeout_overrides: {bats-tests: 15} sets timeout-minutes: 15" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -75,7 +75,7 @@ YAML
 
 # ---------- TC-TOV-3: adapter_versions pins version ----------
 
-@test "TC-TOV-3: adapter_versions: {markdownlint: 0.41.0} pins the version in the job invocation" {
+@test "adapter_versions: {markdownlint: 0.41.0} pins the version in the job invocation" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -90,7 +90,7 @@ YAML
 
 # ---------- TC-TOV-4 / SR-78: refuse security-critical disable entries ----------
 
-@test "SR-78: disable: [commitlint] is rejected with canonical error citing SR-78 + T-TOV-1" {
+@test "disable: [commitlint] is rejected with canonical error citing + T" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -103,7 +103,7 @@ YAML
   echo "$output" | grep -q 'commitlint'
 }
 
-@test "SR-78: hyphenated form commit-lint is canonicalized and STILL rejected" {
+@test "hyphenated form commit-lint is canonicalized and STILL rejected" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -115,7 +115,7 @@ YAML
   echo "$output" | grep -qE 'refusal|security-critical'
 }
 
-@test "SR-78: uppercase form Commit-Lint is canonicalized and STILL rejected" {
+@test "uppercase form Commit-Lint is canonicalized and STILL rejected" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -127,7 +127,7 @@ YAML
   echo "$output" | grep -qE 'refusal|security-critical'
 }
 
-@test "SR-78: each of the 5 security-critical names is rejected" {
+@test "each of the 5 security-critical names is rejected" {
   _canonical_workflow
   for name in commitlint adr-048-guard no-claude-attribution secrets-scan nfr-082-credential-audit; do
     cat > "$WORKDIR/project-config.yaml" <<YAML
@@ -142,7 +142,7 @@ YAML
 
 # ---------- AC6: per-field validation ----------
 
-@test "AC6: unknown disable name emits WARNING but does not fail" {
+@test "unknown disable name emits WARNING but does not fail" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -154,7 +154,7 @@ YAML
   echo "$output" | grep -qiE 'WARN|warning'
 }
 
-@test "AC6: timeout out of range (> 360 min) is HARD ERROR" {
+@test "timeout out of range (> 360 min) is HARD ERROR" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -167,7 +167,7 @@ YAML
   echo "$output" | grep -qE 'timeout|range|360'
 }
 
-@test "AC6: timeout below range (< 1 min) is HARD ERROR" {
+@test "timeout below range (< 1 min) is HARD ERROR" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:
@@ -179,7 +179,7 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-@test "AC6: unparseable semver in adapter_versions is HARD ERROR" {
+@test "unparseable semver in adapter_versions is HARD ERROR" {
   _canonical_workflow
   cat > "$WORKDIR/project-config.yaml" <<'YAML'
 ci_cd:

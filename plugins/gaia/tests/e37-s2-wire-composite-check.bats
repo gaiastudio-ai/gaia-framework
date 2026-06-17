@@ -37,7 +37,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
 # AC1 — each of the 6 SKILL.md files invokes review-gate-check
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-code-review SKILL.md invokes review-gate-check" {
+@test "gaia-code-review SKILL.md invokes review-gate-check" {
   local skill="$SKILLS_DIR/gaia-code-review/SKILL.md"
   [ -f "$skill" ]
   grep -q 'review-gate-check' "$skill"
@@ -45,7 +45,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q -- '--story' "$skill"
 }
 
-@test "AC1: gaia-qa-tests SKILL.md invokes review-gate-check" {
+@test "gaia-qa-tests SKILL.md invokes review-gate-check" {
   local skill="$SKILLS_DIR/gaia-qa-tests/SKILL.md"
   [ -f "$skill" ]
   grep -q 'review-gate-check' "$skill"
@@ -53,7 +53,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q -- '--story' "$skill"
 }
 
-@test "AC1: gaia-test-review SKILL.md invokes review-gate-check" {
+@test "gaia-test-review SKILL.md invokes review-gate-check" {
   local skill="$SKILLS_DIR/gaia-test-review/SKILL.md"
   [ -f "$skill" ]
   grep -q 'review-gate-check' "$skill"
@@ -61,7 +61,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q -- '--story' "$skill"
 }
 
-@test "AC1: gaia-security-review SKILL.md invokes review-gate-check" {
+@test "gaia-security-review SKILL.md invokes review-gate-check" {
   local skill="$SKILLS_DIR/gaia-security-review/SKILL.md"
   [ -f "$skill" ]
   grep -q 'review-gate-check' "$skill"
@@ -69,7 +69,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q -- '--story' "$skill"
 }
 
-@test "AC1: gaia-test-automate SKILL.md invokes review-gate-check" {
+@test "gaia-test-automate SKILL.md invokes review-gate-check" {
   local skill="$SKILLS_DIR/gaia-test-automate/SKILL.md"
   [ -f "$skill" ]
   grep -q 'review-gate-check' "$skill"
@@ -77,7 +77,7 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
   grep -q -- '--story' "$skill"
 }
 
-@test "AC1: gaia-review-perf SKILL.md invokes review-gate-check" {
+@test "gaia-review-perf SKILL.md invokes review-gate-check" {
   local skill="$SKILLS_DIR/gaia-review-perf/SKILL.md"
   [ -f "$skill" ]
   grep -q 'review-gate-check' "$skill"
@@ -90,32 +90,32 @@ SKILLS_DIR="$(cd "$BATS_TEST_DIRNAME/../skills" && pwd)"
 # (review-gate.sh review-gate-check --story "{story_key}")
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-code-review uses correct invocation shape" {
+@test "gaia-code-review uses correct invocation shape" {
   local skill="$SKILLS_DIR/gaia-code-review/SKILL.md"
   grep -Eq 'review-gate\.sh\s+review-gate-check\s+--story' "$skill"
 }
 
-@test "AC1: gaia-qa-tests uses correct invocation shape" {
+@test "gaia-qa-tests uses correct invocation shape" {
   local skill="$SKILLS_DIR/gaia-qa-tests/SKILL.md"
   grep -Eq 'review-gate\.sh\s+review-gate-check\s+--story' "$skill"
 }
 
-@test "AC1: gaia-test-review uses correct invocation shape" {
+@test "gaia-test-review uses correct invocation shape" {
   local skill="$SKILLS_DIR/gaia-test-review/SKILL.md"
   grep -Eq 'review-gate\.sh\s+review-gate-check\s+--story' "$skill"
 }
 
-@test "AC1: gaia-security-review uses correct invocation shape" {
+@test "gaia-security-review uses correct invocation shape" {
   local skill="$SKILLS_DIR/gaia-security-review/SKILL.md"
   grep -Eq 'review-gate\.sh\s+review-gate-check\s+--story' "$skill"
 }
 
-@test "AC1: gaia-test-automate uses correct invocation shape" {
+@test "gaia-test-automate uses correct invocation shape" {
   local skill="$SKILLS_DIR/gaia-test-automate/SKILL.md"
   grep -Eq 'review-gate\.sh\s+review-gate-check\s+--story' "$skill"
 }
 
-@test "AC1: gaia-review-perf uses correct invocation shape" {
+@test "gaia-review-perf uses correct invocation shape" {
   local skill="$SKILLS_DIR/gaia-review-perf/SKILL.md"
   grep -Eq 'review-gate\.sh\s+review-gate-check\s+--story' "$skill"
 }
@@ -137,23 +137,23 @@ _assert_composite_after_individual() {
   [ "$composite_line" -gt "$update_line" ]
 }
 
-@test "AC2: gaia-code-review composite step appears after individual update" {
+@test "gaia-code-review composite step appears after individual update" {
   _assert_composite_after_individual "$SKILLS_DIR/gaia-code-review/SKILL.md"
 }
 
-@test "AC2: gaia-qa-tests composite step appears after individual update" {
+@test "gaia-qa-tests composite step appears after individual update" {
   _assert_composite_after_individual "$SKILLS_DIR/gaia-qa-tests/SKILL.md"
 }
 
-@test "AC2: gaia-test-review composite step appears after individual update" {
+@test "gaia-test-review composite step appears after individual update" {
   _assert_composite_after_individual "$SKILLS_DIR/gaia-test-review/SKILL.md"
 }
 
-@test "AC2: gaia-security-review composite step appears after individual update" {
+@test "gaia-security-review composite step appears after individual update" {
   _assert_composite_after_individual "$SKILLS_DIR/gaia-security-review/SKILL.md"
 }
 
-@test "AC2: gaia-test-automate composite step appears after approval gate" {
+@test "gaia-test-automate composite step appears after approval gate" {
   local skill="$SKILLS_DIR/gaia-test-automate/SKILL.md"
   # test-automate uses a two-phase architecture. The composite check must
   # appear after the approval gate (Step 7) PASSED branch, not after a
@@ -167,7 +167,7 @@ _assert_composite_after_individual() {
   [ "$composite_line" -gt "$passed_line" ]
 }
 
-@test "AC2: gaia-review-perf composite step appears after individual update" {
+@test "gaia-review-perf composite step appears after individual update" {
   _assert_composite_after_individual "$SKILLS_DIR/gaia-review-perf/SKILL.md"
 }
 
@@ -177,7 +177,7 @@ _assert_composite_after_individual() {
 # must not be wired into the Abort path)
 # ---------------------------------------------------------------------------
 
-@test "AC3: gaia-test-automate Abort path does not invoke composite check" {
+@test "gaia-test-automate Abort path does not invoke composite check" {
   local skill="$SKILLS_DIR/gaia-test-automate/SKILL.md"
   # Extract the Abort section text. The Abort action starts with "On **Abort**"
   # or "- On **Abort**" and ends at the next major section (Step, ##, or **7.6**).
@@ -201,33 +201,33 @@ _assert_composite_after_individual() {
 # check do not halt the command.
 # ---------------------------------------------------------------------------
 
-@test "AC4: gaia-code-review documents composite check as informational" {
+@test "gaia-code-review documents composite check as informational" {
   local skill="$SKILLS_DIR/gaia-code-review/SKILL.md"
   # Must mention informational/non-halt semantics near the composite check
   grep -iq 'informational\|non-halt\|do not halt\|does not halt\|no halt' "$skill"
 }
 
-@test "AC4: gaia-qa-tests documents composite check as informational" {
+@test "gaia-qa-tests documents composite check as informational" {
   local skill="$SKILLS_DIR/gaia-qa-tests/SKILL.md"
   grep -iq 'informational\|non-halt\|do not halt\|does not halt\|no halt' "$skill"
 }
 
-@test "AC4: gaia-test-review documents composite check as informational" {
+@test "gaia-test-review documents composite check as informational" {
   local skill="$SKILLS_DIR/gaia-test-review/SKILL.md"
   grep -iq 'informational\|non-halt\|do not halt\|does not halt\|no halt' "$skill"
 }
 
-@test "AC4: gaia-security-review documents composite check as informational" {
+@test "gaia-security-review documents composite check as informational" {
   local skill="$SKILLS_DIR/gaia-security-review/SKILL.md"
   grep -iq 'informational\|non-halt\|do not halt\|does not halt\|no halt' "$skill"
 }
 
-@test "AC4: gaia-test-automate documents composite check as informational" {
+@test "gaia-test-automate documents composite check as informational" {
   local skill="$SKILLS_DIR/gaia-test-automate/SKILL.md"
   grep -iq 'informational\|non-halt\|do not halt\|does not halt\|no halt' "$skill"
 }
 
-@test "AC4: gaia-review-perf documents composite check as informational" {
+@test "gaia-review-perf documents composite check as informational" {
   local skill="$SKILLS_DIR/gaia-review-perf/SKILL.md"
   grep -iq 'informational\|non-halt\|do not halt\|does not halt\|no halt' "$skill"
 }

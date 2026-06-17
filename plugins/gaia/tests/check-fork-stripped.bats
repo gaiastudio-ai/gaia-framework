@@ -135,7 +135,7 @@ EOF
 
 # ---- regression guard: agent persona files left alone ----
 
-@test "POST-E87-S2: validator agent declares context: main (was: context: fork)" {
+@test "validator agent declares context: main (was: context: fork)" {
   # Originally authored by E84-S3 to pin the pre-migration `context: fork`
   # state on validator.md while skill-side fork stripping was in flight.
   # E87-S2 (Val Bridge Migration, ADR-104) shifts the Val DISPATCH primitive

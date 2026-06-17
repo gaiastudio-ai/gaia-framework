@@ -23,7 +23,7 @@ teardown() {
 }
 
 # AC4 — Legacy file detect-and-moved to config/
-@test "AC4: legacy file at docs/test-artifacts/ moved to config/ + sentinel emitted" {
+@test "legacy file at docs/test-artifacts/ moved to config/ + sentinel emitted" {
   [ -x "${HELPER}" ]
   echo "version: 2" > "${LEGACY}"
   echo "runners: []" >> "${LEGACY}"
@@ -37,7 +37,7 @@ teardown() {
   [ "${EXPECTED_HASH}" = "${ACTUAL_HASH}" ]
 }
 
-@test "AC4: detect-and-move emits canonical stderr deprecation warning" {
+@test "detect-and-move emits canonical stderr deprecation warning" {
   echo "version: 2" > "${LEGACY}"
   echo "runners: []" >> "${LEGACY}"
 
@@ -48,7 +48,7 @@ teardown() {
   [[ "${output}" == *"config/"* ]]
 }
 
-@test "AC4: post-move, sentinel file is created at .gaia/memory/.test-environment-path-migrated" {
+@test "post-move, sentinel file is created at .gaia/memory/.test-environment-path-migrated" {
   echo "version: 2" > "${LEGACY}"
   echo "runners: []" >> "${LEGACY}"
 
@@ -58,7 +58,7 @@ teardown() {
 }
 
 # AC5 — Both files present → prefer config/, legacy untouched
-@test "AC5: both files present → canonical preferred, legacy untouched, INFO log emitted" {
+@test "both files present → canonical preferred, legacy untouched, INFO log emitted" {
   echo "# legacy" > "${LEGACY}"
   echo "# canonical" > "${CANONICAL}"
   LEGACY_HASH=$(shasum -a 256 "${LEGACY}" | awk '{print $1}')
@@ -74,7 +74,7 @@ teardown() {
 }
 
 # Idempotency — no-op when only canonical exists (no legacy, nothing to migrate)
-@test "AC4 idempotency: no-op when only canonical exists (no legacy)" {
+@test "idempotency: no-op when only canonical exists (no legacy)" {
   echo "version: 2" > "${CANONICAL}"
   CANONICAL_HASH=$(shasum -a 256 "${CANONICAL}" | awk '{print $1}')
 
@@ -100,7 +100,7 @@ teardown() {
 }
 
 # AC1 — install-test-environment-example.sh writes to .gaia/config/ on greenfield (AF-2026-05-21-8)
-@test "AC1: install-test-environment-example.sh writes to .gaia/config/test-environment.yaml.example" {
+@test "install-test-environment-example.sh writes to .gaia/config/test-environment.yaml.example" {
   EXAMPLE_HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-example.sh"
   # Fresh TARGET_DIR for greenfield assertion (per-test isolation).
   GREENFIELD_DIR="$(mktemp -d -t e17s32-greenfield-XXXXXX)"
@@ -116,7 +116,7 @@ teardown() {
 }
 
 # AC1 — install-test-environment-manifest.sh copies .gaia/config/.example → .gaia/config/.yaml on greenfield
-@test "AC1: install-test-environment-manifest.sh copies .gaia/config/.example → .gaia/config/.yaml" {
+@test "install-test-environment-manifest.sh copies .gaia/config/.example → .gaia/config/.yaml" {
   EXAMPLE_HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-example.sh"
   MANIFEST_HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-manifest.sh"
   GREENFIELD_DIR="$(mktemp -d -t e17s32-greenfield2-XXXXXX)"

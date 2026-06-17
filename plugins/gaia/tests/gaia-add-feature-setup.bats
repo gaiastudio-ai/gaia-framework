@@ -28,28 +28,28 @@ teardown() {
 }
 
 # ---------------- TC-AFE-5: invalid classification rejected ----------------
-@test "TC-AFE-5: invalid --classification value is rejected before resolve-config" {
+@test "invalid --classification value is rejected before resolve-config" {
   run "$SETUP_SH" --classification frobnicate
   [ "$status" -ne 0 ]
   [[ "$output" == *"invalid classification"* ]]
   [[ "$output" == *"frobnicate"* ]]
 }
 
-@test "TC-AFE-5b: classification inline form (--classification=X) is parsed" {
+@test "classification inline form (--classification=X) is parsed" {
   run "$SETUP_SH" --classification=frobnicate
   [ "$status" -ne 0 ]
   [[ "$output" == *"invalid classification"* ]]
 }
 
 # ---------------- TC-AFE-6: unknown flag -> exit 1 ----------------
-@test "TC-AFE-6: unknown flag is rejected before resolve-config" {
+@test "unknown flag is rejected before resolve-config" {
   run "$SETUP_SH" --frobnicate quux
   [ "$status" -ne 0 ]
   [[ "$output" == *"unknown flag"* ]]
 }
 
 # ---------------- TC-AFE-7: SKILL.md no legacy advisory-mode prose ----------------
-@test "TC-AFE-7: SKILL.md Steps 6 and 8b contain no legacy advisory-mode strings" {
+@test "SKILL.md Steps 6 and 8b contain no legacy advisory-mode strings" {
   [ -f "$SKILL_MD" ]
   ! grep -qi "advisory mode" "$SKILL_MD"
   ! grep -qi "log a warning and skip" "$SKILL_MD"
@@ -57,7 +57,7 @@ teardown() {
 }
 
 # ---------------- TC-AFE-8: classification flag accepts all 3 valid values ----------------
-@test "TC-AFE-8a: classification=patch is accepted (passes flag-parsing)" {
+@test "classification=patch is accepted (passes flag-parsing)" {
   # The setup.sh will exit at resolve-config (no fully-staged root) but
   # the flag parser MUST accept 'patch' as a valid value (no
   # 'invalid classification' error).
@@ -67,27 +67,27 @@ teardown() {
   [[ "$output" != *"invalid classification"* ]]
 }
 
-@test "TC-AFE-8b: classification=enhancement is accepted" {
+@test "classification=enhancement is accepted" {
   run "$SETUP_SH" --classification enhancement
   [[ "$output" != *"invalid classification"* ]]
 }
 
-@test "TC-AFE-8c: classification=feature is accepted" {
+@test "classification=feature is accepted" {
   run "$SETUP_SH" --classification feature
   [[ "$output" != *"invalid classification"* ]]
 }
 
 # ---------------- TC-AFE-9: HALT message canonical-substring contract ----------------
-@test "TC-AFE-9: setup.sh source contains canonical test-plan HALT message verbatim" {
+@test "setup.sh source contains canonical test-plan HALT message verbatim" {
   # The canonical substring is the contract bats consumers grep for.
   grep -F "test-plan.md is missing — run /gaia-test-design first, then re-invoke /gaia-add-feature" "$SETUP_SH"
 }
 
-@test "TC-AFE-9b: setup.sh source contains canonical traceability HALT message verbatim" {
+@test "setup.sh source contains canonical traceability HALT message verbatim" {
   grep -F "traceability-matrix.md is missing — run /gaia-trace first, then re-invoke /gaia-add-feature" "$SETUP_SH"
 }
 
-@test "TC-AFE-9c: setup.sh contains classification-conditional gate" {
+@test "setup.sh contains classification-conditional gate" {
   grep -F 'CLASSIFICATION" = "enhancement"' "$SETUP_SH"
   grep -F 'CLASSIFICATION" = "feature"' "$SETUP_SH"
 }

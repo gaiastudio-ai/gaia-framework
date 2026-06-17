@@ -183,7 +183,7 @@ depends_on: $deps
 EOF
 }
 
-@test "TC-CDX-1: cross-epic dep (story in epic-E90, depends_on points at done story in epic-E87)" {
+@test "cross-epic dep (story in epic-E90, depends_on points at done story in epic-E87)" {
   unset IMPLEMENTATION_ARTIFACTS_DIR
   _write_nested_story "E87-S7" "done" '[]' "E87"
   _write_nested_story "E90-S99" "in-progress" '["E87-S7"]' "E90"
@@ -192,7 +192,7 @@ EOF
   [ -z "$stderr" ]
 }
 
-@test "TC-CDX-2: same-epic dep (depends_on points at sibling in epic-E88) — regression" {
+@test "same-epic dep (depends_on points at sibling in epic-E88) — regression" {
   unset IMPLEMENTATION_ARTIFACTS_DIR
   _write_nested_story "E88-S1" "done" '[]' "E88"
   _write_nested_story "E88-S2" "in-progress" '["E88-S1"]' "E88"
@@ -201,7 +201,7 @@ EOF
   [ -z "$stderr" ]
 }
 
-@test "TC-CDX-3: truly-missing dep — exit 2 with stderr naming the missing key" {
+@test "truly-missing dep — exit 2 with stderr naming the missing key" {
   unset IMPLEMENTATION_ARTIFACTS_DIR
   _write_nested_story "E90-S99" "in-progress" '["E99-S99"]' "E90"
   run --separate-stderr "$CHECK_DEPS" "$TEST_TMP/docs/implementation-artifacts/epic-E90/stories/E90-S99-test.md"
@@ -209,7 +209,7 @@ EOF
   [[ "$stderr" == *"E99-S99"* ]]
 }
 
-@test "TC-CDX-4: IMPLEMENTATION_ARTIFACTS_DIR env-var explicitly set — search constrained" {
+@test "IMPLEMENTATION_ARTIFACTS_DIR env-var explicitly set — search constrained" {
   _write_nested_story "E87-S7" "done" '[]' "E87"
   _write_nested_story "E90-S99" "in-progress" '["E87-S7"]' "E90"
   # Point env-var at E90's stories/ only — dep in E87 must NOT be found.
@@ -219,7 +219,7 @@ EOF
   [[ "$stderr" == *"E87-S7"* ]]
 }
 
-@test "TC-CDX-5: legacy flat-layout fixture (one-level deep) — exit 0 for matching dep" {
+@test "legacy flat-layout fixture (one-level deep) — exit 0 for matching dep" {
   unset IMPLEMENTATION_ARTIFACTS_DIR
   _write_story "E1-S1" "done" '[]'
   _write_story "E1-S2" "in-progress" '["E1-S1"]'
@@ -243,7 +243,7 @@ EOF
 # the dep correctly resolved to `status: done`.
 # ---------------------------------------------------------------------------
 
-@test "TC-CDX-6: regression — *-review-summary.md sibling does not shadow nested story file" {
+@test "regression — *-review-summary.md sibling does not shadow nested story file" {
   unset IMPLEMENTATION_ARTIFACTS_DIR
   # Real story at the nested per-epic path, status: done.
   _write_nested_story "E93-S1" "done" '[]' "E93"
@@ -261,7 +261,7 @@ EOF
   [ -z "$stderr" ]
 }
 
-@test "TC-CDX-6b: regression — only review-summary.md exists for a key (no real story) — exit 2 missing" {
+@test "regression — only review-summary.md exists for a key (no real story) — exit 2 missing" {
   unset IMPLEMENTATION_ARTIFACTS_DIR
   # Sibling review-summary.md ONLY — no real story file anywhere.
   cat > "docs/implementation-artifacts/E99-S99-review-summary.md" <<'EOF'

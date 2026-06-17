@@ -31,13 +31,13 @@ teardown() { common_teardown; }
 # H-2 / sweep — SKILL.md docs reference the CANONICAL .gaia/state/ path
 # ===========================================================================
 
-@test "AF-28-1 H-2: gaia-sprint-plan SKILL.md uses .gaia/state/sprint-status.yaml (no impl-artifacts)" {
+@test "H-2: gaia-sprint-plan SKILL.md uses .gaia/state/sprint-status.yaml (no impl-artifacts)" {
   local f="$PLUGIN_ROOT/skills/gaia-sprint-plan/SKILL.md"
   grep -qF '.gaia/state/sprint-status.yaml' "$f"
   ! grep -qF '.gaia/artifacts/implementation-artifacts/sprint-status.yaml' "$f"
 }
 
-@test "AF-28-1 sweep: NO SKILL.md or agents/*.md references stale impl-artifacts sprint-status.yaml path" {
+@test "sweep: NO SKILL.md or agents/*.md references stale impl-artifacts sprint-status.yaml path" {
   # Bats sweep-discipline guard so the path-drift class can't recur in another
   # SKILL.md. Scripts (close.sh comments, dev-story wrapper) are exempt — they
   # carry the legacy reference as documented read-compat fallbacks.
@@ -52,7 +52,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "AF-28-1 sweep: gaia-trace + gaia-readiness-check SKILL.md cite the canonical planning-artifacts traceability home" {
+@test "sweep: gaia-trace + gaia-readiness-check SKILL.md cite the canonical planning-artifacts traceability home" {
   grep -qF '.gaia/artifacts/planning-artifacts/traceability-matrix.md' \
     "$PLUGIN_ROOT/skills/gaia-trace/SKILL.md"
   grep -qF '.gaia/artifacts/planning-artifacts/traceability-matrix.md' \
@@ -63,12 +63,12 @@ teardown() { common_teardown; }
 # H-3 — dev-story setup.sh trace gate routes through shared resolver
 # ===========================================================================
 
-@test "AF-28-1 H-3: dev-story setup.sh references resolve-artifact-path.sh for traceability" {
+@test "H-3: dev-story setup.sh references resolve-artifact-path.sh for traceability" {
   grep -qF 'resolve-artifact-path.sh' "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/setup.sh"
   grep -qF '" traceability ' "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/setup.sh"
 }
 
-@test "AF-28-1 H-3: resolver finds traceability at canonical planning-artifacts path" {
+@test "H-3: resolver finds traceability at canonical planning-artifacts path" {
   mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
   printf '# Traceability\n| FR | t |\n|---|---|\n| FR-1 | t1 |\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/traceability-matrix.md"
   run "$RESOLVER" traceability --project-root "$TEST_TMP" --existing-only
@@ -80,12 +80,12 @@ teardown() { common_teardown; }
 # H-4 — transition-story-status.sh sprint-status.yaml via shared resolver
 # ===========================================================================
 
-@test "AF-28-1 H-4: transition-story-status.sh routes sprint-status.yaml through resolve-artifact-path.sh" {
+@test "H-4: transition-story-status.sh routes sprint-status.yaml through resolve-artifact-path.sh" {
   grep -qF 'resolve-artifact-path.sh' "$PLUGIN_ROOT/scripts/transition-story-status.sh"
   grep -qF '" sprint_status ' "$PLUGIN_ROOT/scripts/transition-story-status.sh"
 }
 
-@test "AF-28-1 H-4: transition does NOT default to .gaia/artifacts/impl-artifacts when env unset" {
+@test "H-4: transition does NOT default to .gaia/artifacts/impl-artifacts when env unset" {
   # Negative: the literal hardcoded default path must NOT appear as the env-unset
   # default (it's allowed to appear in the resolver's read-compat list).
   ! grep -qF 'SPRINT_STATUS_YAML:-${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml' \
@@ -96,13 +96,13 @@ teardown() { common_teardown; }
 # H-1 — create-epics SKILL.md story heading placeholder
 # ===========================================================================
 
-@test "AF-28-1 H-1: create-epics SKILL.md uses E{N}-S{N} placeholder (not the ambiguous {epic-N}-{story-N})" {
+@test "H-1: create-epics SKILL.md uses E{N}-S{N} placeholder (not the ambiguous {epic-N}-{story-N})" {
   local f="$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
   grep -qF '### Story E{N}-S{N}: {Title}' "$f"
   ! grep -qF '### Story {epic-N}-{story-N}:' "$f"
 }
 
-@test "AF-28-1 H-1: create-epics SKILL.md publishes a concrete E1-S1 example matching the regex" {
+@test "H-1: create-epics SKILL.md publishes a concrete example matching the regex" {
   local f="$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
   grep -qF '### Story E1-S1:' "$f"
   # The regex itself in finalize.sh — re-asserted so the docs↔code coupling
@@ -114,7 +114,7 @@ teardown() { common_teardown; }
 # M-1 — brainstorm SV-13 accepts bare-relative paths
 # ===========================================================================
 
-@test "AF-28-1 M-1: brainstorm SV-13 case arms include bare-relative paths" {
+@test "M-1: brainstorm case arms include bare-relative paths" {
   local f="$PLUGIN_ROOT/skills/gaia-brainstorm/scripts/finalize.sh"
   grep -qF '.gaia/artifacts/creative-artifacts/*|docs/creative-artifacts/*|fixtures/*' "$f"
 }
@@ -123,7 +123,7 @@ teardown() { common_teardown; }
 # M-2 — product-brief persona regex accepts H3 + bold-bullet role + numbered ##
 # ===========================================================================
 
-@test "AF-28-1 M-2: product-brief persona_count counts H3 Persona + bold-bulleted role (numbered Target Users)" {
+@test "M-2: product-brief persona_count counts H3 Persona + bold-bulleted role (numbered Target Users)" {
   cat > "$TEST_TMP/brief.md" <<'EOF'
 ## 2. Target Users
 
@@ -144,7 +144,7 @@ EOF
   [ "$output" -ge 2 ]
 }
 
-@test "AF-28-1 M-2: product-brief persona_count still counts legacy bold-span + plain bullet" {
+@test "M-2: product-brief persona_count still counts legacy bold-span + plain bullet" {
   cat > "$TEST_TMP/brief.md" <<'EOF'
 ## Target Users
 
@@ -161,7 +161,7 @@ EOF
   [ "$output" -ge 2 ]
 }
 
-@test "AF-28-1 M-2: persona_count returns 0 on a section with no personas" {
+@test "M-2: persona_count returns 0 on a section with no personas" {
   printf '## Target Users\n(no personas)\n' > "$TEST_TMP/brief.md"
   awk '/^persona_count\(\)/,/^}/' "$PLUGIN_ROOT/skills/gaia-product-brief/scripts/finalize.sh" > "$TEST_TMP/pc.sh"
   echo 'persona_count "$1"' >> "$TEST_TMP/pc.sh"
@@ -174,12 +174,12 @@ EOF
 # M-3 — sprint-review SKILL.md documents the agent='val' literal contract
 # ===========================================================================
 
-@test "AF-28-1 M-3: sprint-review SKILL.md documents the agent='val' literal contract" {
+@test "M-3: sprint-review SKILL.md documents the agent='val' literal contract" {
   grep -qF 'agent`' "$PLUGIN_ROOT/skills/gaia-sprint-review/SKILL.md" || skip "agent contract phrasing not present"
   grep -qF '"val"' "$PLUGIN_ROOT/skills/gaia-sprint-review/SKILL.md"
 }
 
-@test "AF-28-1 M-3: write-val-sentinel.sh error msg surfaces the expected literal" {
+@test "M-3: write-val-sentinel.sh error msg surfaces the expected literal" {
   grep -qF "must be 'val'" "$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/write-val-sentinel.sh"
   # The expanded hint (Test07 M-3) explicitly contrasts with 'gaia:validator'.
   grep -qF "gaia:validator" "$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/write-val-sentinel.sh"
@@ -189,7 +189,7 @@ EOF
 # M-5 — market/domain-research finalize uses glob (slug freedom)
 # ===========================================================================
 
-@test "AF-28-1 M-5: market-research finalize accepts market-research-<slug>.md" {
+@test "M-5: market-research finalize accepts market-research-<slug>.md" {
   mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
   echo "# slug-suffixed" > "$TEST_TMP/.gaia/artifacts/planning-artifacts/market-research-yara.md"
   awk '/^_pick_market\(\)/,/^}/' "$PLUGIN_ROOT/skills/gaia-market-research/scripts/finalize.sh" > "$TEST_TMP/pm.sh"
@@ -199,7 +199,7 @@ EOF
   [[ "$output" == *"market-research-yara.md" ]]
 }
 
-@test "AF-28-1 M-5: domain-research finalize accepts domain-research-<slug>.md" {
+@test "M-5: domain-research finalize accepts domain-research-<slug>.md" {
   mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
   echo "# slug-suffixed" > "$TEST_TMP/.gaia/artifacts/planning-artifacts/domain-research-yara.md"
   awk '/^_pick_domain\(\)/,/^}/' "$PLUGIN_ROOT/skills/gaia-domain-research/scripts/finalize.sh" > "$TEST_TMP/pd.sh"
@@ -209,7 +209,7 @@ EOF
   [[ "$output" == *"domain-research-yara.md" ]]
 }
 
-@test "AF-28-1 M-5: market-research finalize still resolves the exact filename when present" {
+@test "M-5: market-research finalize still resolves the exact filename when present" {
   mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
   echo "# canonical" > "$TEST_TMP/.gaia/artifacts/planning-artifacts/market-research.md"
   echo "# slug" > "$TEST_TMP/.gaia/artifacts/planning-artifacts/market-research-yara.md"
@@ -224,7 +224,7 @@ EOF
 # D-6 — validate-gate traceability_exists error names all 4 accepted paths
 # ===========================================================================
 
-@test "AF-28-1 D-6: validate-gate traceability_exists error lists canonical planning-artifacts first" {
+@test "D-6: validate-gate traceability_exists error lists canonical planning-artifacts first" {
   ( cd "$TEST_TMP" && run bash "$PLUGIN_ROOT/scripts/validate-gate.sh" traceability_exists 2>&1 )
   out=$(cd "$TEST_TMP" && bash "$PLUGIN_ROOT/scripts/validate-gate.sh" traceability_exists 2>&1 || true)
   [[ "$out" == *"planning-artifacts/traceability-matrix.md"* ]]
@@ -236,7 +236,7 @@ EOF
 # Wrapper byte-identity (sprint-state.sh — touched indirectly via transition)
 # ===========================================================================
 
-@test "AF-28-1: dev-story sprint-state.sh wrapper still byte-identical to canonical" {
+@test "dev-story sprint-state.sh wrapper still byte-identical to canonical" {
   run diff "$PLUGIN_ROOT/scripts/sprint-state.sh" "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/sprint-state.sh"
   [ "$status" -eq 0 ]
 }

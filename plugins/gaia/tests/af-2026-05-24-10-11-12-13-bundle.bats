@@ -67,7 +67,7 @@ EOF
 
 # --- F-15 ---
 
-@test "F-15: sprint-review SKILL.md documents YOLO contract per AF-24-11" {
+@test "sprint-review SKILL.md documents YOLO contract per" {
   grep -qF "yolo_steps: []" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
   grep -qiE "NOT YOLO-able|yolo_steps.*\[\]|YOLO mode contract" "${PLUGIN_ROOT}/skills/gaia-sprint-review/SKILL.md"
 }

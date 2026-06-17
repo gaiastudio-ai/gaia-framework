@@ -16,32 +16,32 @@ setup() {
 
 teardown() { common_teardown; }
 
-@test "AF-21-18: gaia-test-design/SKILL.md has zero legacy docs/ literals" {
+@test "gaia-test-design/SKILL.md has zero legacy docs/ literals" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts|implementation-artifacts)' "$PLUGIN_ROOT/skills/gaia-test-design/SKILL.md"
 }
 
-@test "AF-21-18: gaia-test-strategy/SKILL.md has zero legacy docs/ literals" {
+@test "gaia-test-strategy/SKILL.md has zero legacy docs/ literals" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts|implementation-artifacts)' "$PLUGIN_ROOT/skills/gaia-test-strategy/SKILL.md"
 }
 
-@test "AF-21-18: gaia-test-framework/SKILL.md has zero legacy docs/ literals" {
+@test "gaia-test-framework/SKILL.md has zero legacy docs/ literals" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts|implementation-artifacts)' "$PLUGIN_ROOT/skills/gaia-test-framework/SKILL.md"
 }
 
-@test "AF-21-18: gaia-edit-test-plan/SKILL.md has zero legacy docs/ literals" {
+@test "gaia-edit-test-plan/SKILL.md has zero legacy docs/ literals" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts|implementation-artifacts)' "$PLUGIN_ROOT/skills/gaia-edit-test-plan/SKILL.md"
 }
 
-@test "AF-21-18: gaia-atdd/SKILL.md has zero legacy docs/ literals" {
+@test "gaia-atdd/SKILL.md has zero legacy docs/ literals" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts|implementation-artifacts)' "$PLUGIN_ROOT/skills/gaia-atdd/SKILL.md"
 }
 
-@test "AF-21-18: all 5 SKILL.md files use canonical .gaia/artifacts/test-artifacts/test-plan.md" {
+@test "all 5 SKILL.md files use canonical .gaia/artifacts/test-artifacts/test-plan.md" {
   for skill in gaia-test-design gaia-test-strategy gaia-test-framework gaia-edit-test-plan; do
     grep -qF '.gaia/artifacts/test-artifacts/' "$PLUGIN_ROOT/skills/$skill/SKILL.md"
   done
 }
 
-@test "AF-21-18: gaia-atdd/SKILL.md uses canonical .gaia/artifacts/test-artifacts/atdd-{story_key}.md" {
+@test "gaia-atdd/SKILL.md uses canonical .gaia/artifacts/test-artifacts/atdd-{story_key}.md" {
   grep -qF '.gaia/artifacts/test-artifacts/atdd-' "$PLUGIN_ROOT/skills/gaia-atdd/SKILL.md"
 }

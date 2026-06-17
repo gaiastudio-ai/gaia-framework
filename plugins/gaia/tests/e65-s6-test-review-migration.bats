@@ -25,24 +25,24 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-WRITE-S6-2 — fork allowlist read-only ---
 
-@test "TC-DEJ-WRITE-S6-2: allowed-tools is exactly [Read, Grep, Glob, Bash]" {
+@test "allowed-tools is exactly [Read, Grep, Glob, Bash]" {
   run grep -E '^allowed-tools:' "$SKILL_FILE"
   [ "$status" -eq 0 ]
   echo "$output" | grep -E '\[Read, Grep, Glob, Bash\]' >/dev/null
 }
 
-@test "TC-DEJ-WRITE-S6-2: no Write or Edit appears in allowed-tools" {
+@test "no Write or Edit appears in allowed-tools" {
   run grep -E '^allowed-tools:.*(Write|Edit)' "$SKILL_FILE"
   [ "$status" -ne 0 ]
 }
 
 # --- TC-DEJ-PHASE-S6 — unifying principle + seven phase headers in order ---
 
-@test "TC-DEJ-PHASE-S6: unifying principle present verbatim" {
+@test "unifying principle present verbatim" {
   grep -F 'Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-PHASE-S6: seven canonical phase headers in order" {
+@test "seven canonical phase headers in order" {
   local got
   got="$(grep -nE '^### Phase [1-7]' "$SKILL_FILE" || true)"
   echo "$got" | grep -F 'Phase 1' >/dev/null
@@ -57,34 +57,34 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-DET-S6 — determinism settings ---
 
-@test "TC-DEJ-DET-S6: temperature: 0 declared" {
+@test "temperature: 0 declared" {
   grep -F 'temperature: 0' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-DET-S6: model pinned to claude-opus-4-7" {
+@test "model pinned to claude-opus-4-7" {
   grep -F 'claude-opus-4-7' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-DET-S6: prompt_hash recording declared" {
+@test "prompt_hash recording declared" {
   grep -F 'prompt_hash' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-TOOLKIT-TR-01 — test-quality toolkit declared ---
 
-@test "TC-DEJ-TOOLKIT-TR-01: test-smell detection section present" {
+@test "test-smell detection section present" {
   grep -iE 'test[- ]smell' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-TR-01: flakiness retry-history analysis declared" {
+@test "flakiness retry-history analysis declared" {
   grep -iE 'flakiness' "$SKILL_FILE" >/dev/null
   grep -iE 'retry[- ]history|retry rate|retry count' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-TR-01: fixture analysis declared" {
+@test "fixture analysis declared" {
   grep -iE 'fixture analysis|shared mutable fixture|setup/teardown' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-TR-01: stack-toolkit table declares all seven canonical stacks" {
+@test "stack-toolkit table declares all seven canonical stacks" {
   grep -F 'ts-dev' "$SKILL_FILE" >/dev/null
   grep -F 'python-dev' "$SKILL_FILE" >/dev/null
   grep -F 'go-dev' "$SKILL_FILE" >/dev/null
@@ -94,20 +94,20 @@ teardown() { common_teardown; }
   grep -F 'angular-dev' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-TR-01: per-stack CI test-result formats declared" {
+@test "per-stack CI test-result formats declared" {
   # junit XML, jest JSON, go test -json, pytest junitxml
   grep -iE 'junit.*xml|junitxml' "$SKILL_FILE" >/dev/null
   grep -iE 'jest.*json|--json' "$SKILL_FILE" >/dev/null
   grep -iE 'go test -json|go-test-json' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-TR-01: three-tier flakiness signal source documented" {
+@test "three-tier flakiness signal source documented" {
   # CI history → annotations → skip
   grep -iE 'CI history|CI test-result' "$SKILL_FILE" >/dev/null
   grep -iE '@flaky|pytest.mark.flaky|@retry' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-TR-01: scope boundary vs S4 documented" {
+@test "scope boundary vs S4 documented" {
   grep -iE 'scope boundary|S4|coverage existence|test quality' "$SKILL_FILE" >/dev/null
   # Specifically the S4 vs S6 boundary
   grep -F 'S4' "$SKILL_FILE" >/dev/null
@@ -115,39 +115,39 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-RUBRIC-S6 — severity rubric examples ---
 
-@test "TC-DEJ-RUBRIC-S6: Critical tier present" {
+@test "Critical tier present" {
   grep -E '^### Critical' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S6: Warning tier present" {
+@test "Warning tier present" {
   grep -E '^### Warning' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S6: Suggestion tier present" {
+@test "Suggestion tier present" {
   grep -E '^### Suggestion' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S6: Critical examples include flaky test and shared mutable fixture" {
+@test "Critical examples include flaky test and shared mutable fixture" {
   grep -iE 'flaky test|>5%|retry rate' "$SKILL_FILE" >/dev/null
   grep -iE 'shared mutable fixture|singleton.*mutable' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S6: Warning examples include hardcoded sleep and conditional-in-test" {
+@test "Warning examples include hardcoded sleep and conditional-in-test" {
   grep -iE 'hardcoded sleep|setTimeout' "$SKILL_FILE" >/dev/null
   grep -iE 'conditional[- ]in[- ]test|conditional logic' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S6: Suggestion examples include magic number and missing docstring" {
+@test "Suggestion examples include magic number and missing docstring" {
   grep -iE 'magic number' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-WRITE-S6-1 — FR-402 review-file path declared ---
 
-@test "TC-DEJ-WRITE-S6-1: FR-402 path test-review-{story_key}.md declared" {
+@test "path test-review-{story_key}.md declared" {
   grep -F 'test-review-' "$SKILL_FILE" | grep -F 'docs/implementation-artifacts/' >/dev/null
 }
 
-@test "TC-DEJ-WRITE-S6-1: parent-mediated write (Option A) documented" {
+@test "parent-mediated write (Option A) documented" {
   grep -iF 'parent-mediated' "$SKILL_FILE" >/dev/null
   grep -iF 'Option A' "$SKILL_FILE" >/dev/null
 }
@@ -173,7 +173,7 @@ teardown() { common_teardown; }
 
 # --- evidence-judgment-parity.bats registration check ---
 
-@test "TC-DEJ-PARITY-S6: gaia-test-review registered in REVIEW_SKILLS array" {
+@test "gaia-test-review registered in REVIEW_SKILLS array" {
   local parity="$BATS_TEST_DIRNAME/evidence-judgment-parity.bats"
   grep -F 'skills/gaia-test-review/SKILL.md' "$parity" >/dev/null
 }

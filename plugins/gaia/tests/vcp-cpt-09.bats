@@ -33,7 +33,7 @@ PHASE1_SLUGS=(
 
 # ---------- AC7/AC-EC2: no inline checkpoint writes in SKILL.md ----------
 
-@test "AC7/AC-EC2: no Phase 1 SKILL.md contains inline _memory/checkpoints writes" {
+@test "no Phase 1 SKILL.md contains inline _memory/checkpoints writes" {
   # Three signatures the grep must never match:
   #   printf ... > _memory/checkpoints...
   #   cat ... > _memory/checkpoints/...
@@ -68,7 +68,7 @@ PHASE1_SLUGS=(
 
 # ---------- AC7: no inline writes in co-located skill scripts ----------
 
-@test "AC7: Phase 1 co-located scripts do not write to _memory/checkpoints" {
+@test "Phase 1 co-located scripts do not write to _memory/checkpoints" {
   local offenders=""
   for slug in "${PHASE1_SLUGS[@]}"; do
     local scripts_dir="$SKILLS_DIR/$slug/scripts"
@@ -95,7 +95,7 @@ PHASE1_SLUGS=(
 
 # ---------- AC7: canonical helper line is the ONLY checkpoint writer ----------
 
-@test "AC7: every checkpoint-related line in Phase 1 SKILL.md routes through write-checkpoint.sh" {
+@test "every checkpoint-related line in Phase 1 SKILL.md routes through write-checkpoint.sh" {
   # For each SKILL.md: any line mentioning _memory/checkpoints or
   # `step-` JSON filenames must be either (a) a blockquote that invokes
   # write-checkpoint.sh, or (b) a narrative reference in Dev/Critical

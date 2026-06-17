@@ -30,7 +30,7 @@ run_proposal() {
 
 # --- AC5(a) — single-stack degenerate: no draft + "nothing to propose" ----
 
-@test "E70-S11 AC5(a): single-stack repo emits NO draft and logs 'nothing to propose'" {
+@test "a): single-stack repo emits NO draft and logs 'nothing to propose'" {
   run_proposal single-stack
   [ "$status" -eq 0 ]
   [[ "$output" == *"nothing to propose"* ]]
@@ -39,7 +39,7 @@ run_proposal() {
 
 # --- AC1 / AC5(b) — 3-stack proposal correctness --------------------------
 
-@test "E70-S11 AC1 (AC5b): 3-stack repo proposes Go + TS + Python paths in the draft" {
+@test "b): 3-stack repo proposes Go + TS + Python paths in the draft" {
   run_proposal three-stack
   [ "$status" -eq 0 ]
   [ -f "$DRAFT_OUT" ]
@@ -47,7 +47,7 @@ run_proposal() {
   [ "$output" = "services/api,services/batch,services/web" ]
 }
 
-@test "E70-S11 AC1: draft includes a header comment on how to accept" {
+@test "draft includes a header comment on how to accept" {
   run_proposal three-stack
   [ "$status" -eq 0 ]
   run head -5 "$DRAFT_OUT"
@@ -56,7 +56,7 @@ run_proposal() {
 
 # --- AC4 / AC5(d) — nested-manifest scoping -------------------------------
 
-@test "E70-S11 AC4 (AC5d): nested package.json under a Go stack does NOT spawn a phantom JS stack" {
+@test "d): nested package.json under a Go stack does NOT spawn a phantom JS stack" {
   run_proposal nested-manifest
   [ "$status" -eq 0 ]
   [ -f "$DRAFT_OUT" ]
@@ -69,7 +69,7 @@ run_proposal() {
 
 # --- Proposal idempotency (Scenario 6) ------------------------------------
 
-@test "E70-S11 (scenario 6): proposal is idempotent (byte-identical re-run)" {
+@test "scenario 6): proposal is idempotent (byte-identical re-run)" {
   run_proposal three-stack; [ "$status" -eq 0 ]; cp "$DRAFT_OUT" "$TEST_TMP/first"
   run_proposal three-stack; [ "$status" -eq 0 ]
   run diff "$TEST_TMP/first" "$DRAFT_OUT"
@@ -78,7 +78,7 @@ run_proposal() {
 
 # --- AC2 / AC5(c) — audit mode disagreement -------------------------------
 
-@test "E70-S11 AC2 (AC5c): audit mode logs disagreement, does NOT regenerate the draft" {
+@test "c): audit mode logs disagreement, does NOT regenerate the draft" {
   # Declared 2 stacks (api, web); the three-stack tree also has batch → disagreement_count 1.
   PATH="$PATH" run bash "$DS" --project-root "$FX/three-stack" \
     --stacks-path-mode audit \
@@ -98,7 +98,7 @@ run_proposal() {
 
 # --- AC3 / AC5(e) — NFR-88 10-manifest ≤2s latency ------------------------
 
-@test "E70-S11 AC3 (AC5e / NFR-88): 10-manifest proposal completes in <= 2s wall-clock" {
+@test "10-manifest proposal completes in <= 2s wall-clock" {
   local start end elapsed
   start=$(date +%s)
   PATH="$PATH" bash "$DS" --project-root "$FX/ten-manifest" \
@@ -108,7 +108,7 @@ run_proposal() {
   [ "$elapsed" -le 2 ]
 }
 
-@test "E70-S11 (scenario 10): 10-manifest proposal detects all ten ecosystems" {
+@test "scenario 10): 10-manifest proposal detects all ten ecosystems" {
   run_proposal ten-manifest
   [ "$status" -eq 0 ]
   run yq eval '.stacks | length' "$DRAFT_OUT"
@@ -117,7 +117,7 @@ run_proposal() {
 
 # --- AC-X1 — flag-off skip + detect_signals_mode --------------------------
 
-@test "E70-S11 AC-X1: stacks-path-mode unset → existing E71-S2 root-only detection is unchanged (no draft)" {
+@test "stacks-path-mode unset → existing root-only detection is unchanged (no draft)" {
   # No --stacks-path-mode flag: the legacy detection path runs, emits its JSON,
   # and writes NO draft (the new capability is opt-in).
   PATH="$PATH" run bash "$DS" --project-root "$FX/three-stack" --format json
@@ -128,7 +128,7 @@ run_proposal() {
 
 # --- AC-X3 — detect_signals_mode reporting --------------------------------
 
-@test "E70-S11 AC-X3: proposal mode reports detect_signals_mode=proposal" {
+@test "proposal mode reports detect_signals_mode=proposal" {
   run_proposal three-stack
   [ "$status" -eq 0 ]
   [[ "$output" == *"detect_signals_mode"* ]]
@@ -137,14 +137,14 @@ run_proposal() {
 
 # --- Robustness (Val F1/F2) — degenerate empty inputs ---------------------
 
-@test "E70-S11 (F1): manifest-free repo proposes nothing, writes NO draft (no blank-path draft)" {
+@test "F1): manifest-free repo proposes nothing, writes NO draft (no blank-path draft)" {
   run_proposal no-manifest
   [ "$status" -eq 0 ]
   [[ "$output" == *"nothing to propose"* ]]
   [ ! -f "$DRAFT_OUT" ]
 }
 
-@test "E70-S11 (F2): audit mode with empty --declared-paths emits a valid audit (all detected = disagreement)" {
+@test "F2): audit mode with empty --declared-paths emits a valid audit (all detected = disagreement)" {
   PATH="$PATH" run bash "$DS" --project-root "$FX/three-stack" \
     --stacks-path-mode audit --declared-paths "" \
     --audit-out "$AUDIT_OUT" --format json
@@ -159,13 +159,13 @@ run_proposal() {
 
 # --- Regression: existing detect-signals tests still pass (sentinel) ------
 
-@test "E70-S11: existing cluster-14/detect-signals.bats is present (E71-S2 regression guard)" {
+@test "existing cluster-14/detect-signals.bats is present ( regression guard)" {
   [ -f "$BATS_TEST_DIRNAME/cluster-14/detect-signals.bats" ]
 }
 
 # --- Hygiene --------------------------------------------------------------
 
-@test "E70-S11: detect-signals.sh is executable and passes bash -n" {
+@test "detect-signals.sh is executable and passes bash -n" {
   [ -x "$DS" ]
   run bash -n "$DS"
   [ "$status" -eq 0 ]

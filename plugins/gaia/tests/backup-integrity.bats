@@ -18,21 +18,21 @@ teardown() { common_teardown; }
 
 # ---------- TC-ARM-6: tutorial contains '.gaia-backup/' literal ----------
 
-@test "TC-ARM-6: tutorial contains the literal '.gaia-backup/' string" {
+@test "tutorial contains the literal '.gaia-backup/' string" {
   [ -f "$TUTORIAL" ]
   grep -q '\.gaia-backup/' "$TUTORIAL"
 }
 
 # ---------- TC-MSN-4: tutorial contains '30 day' or '30-day' ----------
 
-@test "TC-MSN-4: tutorial contains '30-day' or '30 day' retention reference" {
+@test "tutorial contains '30-day' or '30 day' retention reference" {
   [ -f "$TUTORIAL" ]
   grep -qE '30[ -]day' "$TUTORIAL"
 }
 
 # ---------- AC1/TC-ARM-7: .sha256-manifest written for every backed-up file ----------
 
-@test "TC-ARM-7: backup directory contains .sha256-manifest with one line per backed-up file" {
+@test "backup directory contains .sha256-manifest with one line per backed-up file" {
   printf 'name: ci\n' > "$WORKDIR/ci.yml"
   printf 'name: deploy\n' > "$WORKDIR/deploy.yml"
   run env GAIA_MIGRATE_DECISION_ci_yml=y GAIA_MIGRATE_DECISION_deploy_yml=n \
@@ -51,7 +51,7 @@ teardown() { common_teardown; }
 
 # ---------- AC2/AC3: verify-backup-integrity.sh helper ----------
 
-@test "AC2: verify-backup-integrity.sh exits 0 on clean backup" {
+@test "verify-backup-integrity.sh exits 0 on clean backup" {
   printf 'name: ci\n' > "$WORKDIR/ci.yml"
   env GAIA_MIGRATE_DECISION_ci_yml=y bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
   backup_dir=$(find "$PROJECT_ROOT/.gaia-backup" -maxdepth 1 -type d -name 'ci-regen-*' | head -1)
@@ -61,7 +61,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-ARM-8: silent corruption detected ----------
 
-@test "TC-ARM-8: verify-backup-integrity.sh detects byte-level corruption" {
+@test "verify-backup-integrity.sh detects byte-level corruption" {
   printf 'name: ci\non: [push]\n' > "$WORKDIR/ci.yml"
   env GAIA_MIGRATE_DECISION_ci_yml=y bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
   backup_dir=$(find "$PROJECT_ROOT/.gaia-backup" -maxdepth 1 -type d -name 'ci-regen-*' | head -1)
@@ -73,7 +73,7 @@ teardown() { common_teardown; }
   echo "$output" | grep -q 'ci.yml'
 }
 
-@test "AC3: verify failure emits the canonical SR-84 HALT message" {
+@test "verify failure emits the canonical HALT message" {
   printf 'name: ci\n' > "$WORKDIR/ci.yml"
   env GAIA_MIGRATE_DECISION_ci_yml=y bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
   backup_dir=$(find "$PROJECT_ROOT/.gaia-backup" -maxdepth 1 -type d -name 'ci-regen-*' | head -1)

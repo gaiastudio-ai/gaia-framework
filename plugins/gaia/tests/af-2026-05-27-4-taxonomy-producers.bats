@@ -30,7 +30,7 @@ teardown() { common_teardown; }
   grep -qE 'Write the compiled test strategy to .*planning-artifacts/test-strategy\.md' "$TS_SKILL"
 }
 
-@test "F-023: gaia-test-strategy SKILL.md cites E105-S2 / ADR-127 for the move" {
+@test "gaia-test-strategy SKILL.md cites / for the move" {
   # ID-free rewrite: the behavioral contract is that the file documents the
   # docs-ABOUT-testing placement rule and names migrate-planning-vs-test.sh
   # as the migration helper — both durable anchors that survive ID scrubbing.
@@ -96,7 +96,7 @@ teardown() { common_teardown; }
 
 # ---------- migration script smoke (already landed; guard it stays) ----------
 
-@test "E105-S2: migrate-planning-vs-test.sh exists, dry-run is the default, no rm -rf command" {
+@test "migrate-planning-vs-test.sh exists, dry-run is the default, no rm -rf command" {
   local M="$PLUGIN_ROOT/scripts/migrate-planning-vs-test.sh"
   [ -f "$M" ]
   bash -n "$M"

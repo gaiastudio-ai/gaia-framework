@@ -115,7 +115,7 @@ EOF
   [[ "$output" == *"L3"* ]]
 }
 
-@test "detect-open-questions.sh: VCP-OQD-06 word boundaries — STUBBORN/ATODOLIST/METHODOLOGY do not hit" {
+@test "detect-open-questions.sh: word boundaries — STUBBORN/ATODOLIST/METHODOLOGY do not hit" {
   cat > "$TEST_TMP/wb.md" <<'EOF'
 # Tone
 
@@ -128,7 +128,7 @@ EOF
   [ -z "$output" ]
 }
 
-@test "detect-open-questions.sh: VCP-OQD-07 checked checkboxes are not flagged" {
+@test "detect-open-questions.sh: checked checkboxes are not flagged" {
   cat > "$TEST_TMP/checked.md" <<'EOF'
 # Tasks
 

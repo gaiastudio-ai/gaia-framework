@@ -21,17 +21,17 @@ CATALOG_PATH="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-sprint-status" && pwd)/mit
 # ---------------------------------------------------------------------------
 # AC1 — fixture no longer performs cp/rm backup of the real CATALOG path
 # ---------------------------------------------------------------------------
-@test "AC1: fixture does not 'cp \$CATALOG' (no backup of real on-disk catalog)" {
+@test "fixture does not 'cp \$CATALOG' (no backup of real on-disk catalog)" {
   run grep -nE 'cp[[:space:]]+"\$CATALOG"' "$FIXTURE_FILE"
   [ "$status" -ne 0 ]
 }
 
-@test "AC1: fixture does not 'rm -f \$CATALOG' in setup/teardown" {
+@test "fixture does not 'rm -f \$CATALOG' in setup/teardown" {
   run grep -nE 'rm[[:space:]]+-f[[:space:]]+"\$CATALOG"' "$FIXTURE_FILE"
   [ "$status" -ne 0 ]
 }
 
-@test "AC1: fixture does not declare CATALOG_BACKUP" {
+@test "fixture does not declare CATALOG_BACKUP" {
   run grep -nE 'CATALOG_BACKUP' "$FIXTURE_FILE"
   [ "$status" -ne 0 ]
 }
@@ -39,7 +39,7 @@ CATALOG_PATH="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-sprint-status" && pwd)/mit
 # ---------------------------------------------------------------------------
 # AC2 — fixture sets MITIGATION_CATALOG="$BATS_TEST_TMPDIR/..." per test
 # ---------------------------------------------------------------------------
-@test "AC2: fixture exports MITIGATION_CATALOG pointing at BATS_TEST_TMPDIR" {
+@test "fixture exports MITIGATION_CATALOG pointing at BATS_TEST_TMPDIR" {
   run grep -nE 'export[[:space:]]+MITIGATION_CATALOG=.*BATS_TEST_TMPDIR' "$FIXTURE_FILE"
   [ "$status" -eq 0 ]
 }
@@ -47,7 +47,7 @@ CATALOG_PATH="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-sprint-status" && pwd)/mit
 # ---------------------------------------------------------------------------
 # AC4 — running the suite leaves real on-disk catalog byte-identical
 # ---------------------------------------------------------------------------
-@test "AC4: real on-disk mitigation-catalog.yaml is byte-identical after running e38-s1-reconcile-risk.bats" {
+@test "real on-disk mitigation-catalog.yaml is byte-identical after running -risk.bats" {
   [ -f "$CATALOG_PATH" ] || skip "real catalog not present in this checkout"
 
   local before
@@ -61,7 +61,7 @@ CATALOG_PATH="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-sprint-status" && pwd)/mit
   [ "$before" = "$after" ]
 }
 
-@test "AC4: real on-disk mitigation-catalog.yaml is byte-identical after --random-order" {
+@test "real on-disk mitigation-catalog.yaml is byte-identical after --random-order" {
   [ -f "$CATALOG_PATH" ] || skip "real catalog not present in this checkout"
 
   local before

@@ -20,7 +20,7 @@ teardown() { common_teardown; }
 
 # ---------- AC1: deterministic shell aggregator, first-match-wins ----------
 
-@test "AC1 (TC-1): all five always-gates APPROVE, no conditional gates -> APPROVE/PASSED" {
+@test "all five always-gates APPROVE, no conditional gates -> APPROVE/PASSED" {
   run --separate-stderr "$SCRIPT" \
     --code APPROVE --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "compliance.ui_present: false" \
@@ -32,7 +32,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"skipped=a11y,mobile"* ]]
 }
 
-@test "AC1 (TC-2): one gate BLOCKED -> composite BLOCKED/FAILED" {
+@test "one gate BLOCKED -> composite BLOCKED/FAILED" {
   run --separate-stderr "$SCRIPT" \
     --code BLOCKED --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "ui_present false" --skip-mobile "no mobile"
@@ -41,7 +41,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"review_gate=FAILED"* ]]
 }
 
-@test "AC1 (TC-3): one gate REQUEST_CHANGES -> composite REQUEST_CHANGES/FAILED" {
+@test "one gate REQUEST_CHANGES -> composite REQUEST_CHANGES/FAILED" {
   run --separate-stderr "$SCRIPT" \
     --code APPROVE --qa REQUEST_CHANGES --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "x" --skip-mobile "y"
@@ -50,7 +50,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"review_gate=FAILED"* ]]
 }
 
-@test "AC1 (TC-4): mixed BLOCKED + REQUEST_CHANGES -> BLOCKED dominates" {
+@test "mixed BLOCKED + REQUEST_CHANGES -> BLOCKED dominates" {
   run --separate-stderr "$SCRIPT" \
     --code REQUEST_CHANGES --qa BLOCKED --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "x" --skip-mobile "y"
@@ -61,7 +61,7 @@ teardown() { common_teardown; }
 
 # ---------- AC2: skipped conditional gate neutrality ----------
 
-@test "AC2 (TC-5): a11y conditional included and APPROVE -> all-APPROVE composite" {
+@test "a11y conditional included and APPROVE -> all-APPROVE composite" {
   run --separate-stderr "$SCRIPT" \
     --code APPROVE --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --a11y APPROVE --skip-mobile "platforms[] empty"
@@ -71,7 +71,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"skipped=mobile"* ]]
 }
 
-@test "AC2 (TC-6): mobile conditional included and REQUEST_CHANGES" {
+@test "mobile conditional included and REQUEST_CHANGES" {
   run --separate-stderr "$SCRIPT" \
     --code APPROVE --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "ui false" --mobile REQUEST_CHANGES
@@ -80,7 +80,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"included=code,qa,test,security,perf,mobile"* ]]
 }
 
-@test "AC2: skipped gates enumerate the skip reason" {
+@test "skipped gates enumerate the skip reason" {
   run --separate-stderr "$SCRIPT" \
     --code APPROVE --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "compliance.ui_present: false" \
@@ -92,7 +92,7 @@ teardown() { common_teardown; }
 
 # ---------- AC3: verdict mapping ----------
 
-@test "AC3: APPROVE maps to PASSED" {
+@test "APPROVE maps to PASSED" {
   run --separate-stderr "$SCRIPT" \
     --code APPROVE --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "x" --skip-mobile "y"
@@ -100,7 +100,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"review_gate=PASSED"* ]]
 }
 
-@test "AC3: REQUEST_CHANGES maps to FAILED" {
+@test "REQUEST_CHANGES maps to FAILED" {
   run --separate-stderr "$SCRIPT" \
     --code REQUEST_CHANGES --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "x" --skip-mobile "y"
@@ -108,7 +108,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"review_gate=FAILED"* ]]
 }
 
-@test "AC3: BLOCKED maps to FAILED" {
+@test "BLOCKED maps to FAILED" {
   run --separate-stderr "$SCRIPT" \
     --code APPROVE --qa BLOCKED --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "x" --skip-mobile "y"
@@ -118,7 +118,7 @@ teardown() { common_teardown; }
 
 # ---------- AC9: byte-identical determinism ----------
 
-@test "AC9 (TC-10): identical input -> byte-identical output across runs" {
+@test "identical input -> byte-identical output across runs" {
   local out1 out2
   out1="$("$SCRIPT" --code APPROVE --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
         --skip-a11y "x" --skip-mobile "y" 2>/dev/null)"
@@ -127,7 +127,7 @@ teardown() { common_teardown; }
   [ "$out1" = "$out2" ]
 }
 
-@test "AC9: byte-identical sha256 on repeated runs" {
+@test "byte-identical sha256 on repeated runs" {
   local h1 h2
   h1="$("$SCRIPT" --code BLOCKED --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
         --skip-a11y "x" --skip-mobile "y" 2>/dev/null | shasum -a 256 | awk '{print $1}')"
@@ -138,7 +138,7 @@ teardown() { common_teardown; }
 
 # ---------- AC10: YOLO mode invariance ----------
 
-@test "AC10 (TC-11): YOLO_MODE=true does not alter composite verdict" {
+@test "YOLO_MODE=true does not alter composite verdict" {
   local out_yolo out_normal
   out_yolo="$(YOLO_MODE=true "$SCRIPT" --code BLOCKED --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
               --skip-a11y "x" --skip-mobile "y" 2>/dev/null)"

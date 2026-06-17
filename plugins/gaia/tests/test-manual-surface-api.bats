@@ -34,7 +34,7 @@ teardown() {
 
 # ---------- AC3: api surface captures transcript ----------
 
-@test "AC3: api dispatch with passing command produces PASSED verdict" {
+@test "api dispatch with passing command produces PASSED verdict" {
   run bash "$DISPATCH" --surface api --target "echo hello-api" \
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
@@ -42,7 +42,7 @@ teardown() {
   echo "$output" | grep -qi "PASSED"
 }
 
-@test "AC3: api dispatch writes run-record.md with transcript" {
+@test "api dispatch writes run-record.md with transcript" {
   bash "$DISPATCH" --surface api --target "echo hello-api" \
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
@@ -50,14 +50,14 @@ teardown() {
   grep -q "hello-api" "$EVIDENCE_DIR/run-record.md"
 }
 
-@test "AC3: api dispatch writes exit-code.log" {
+@test "api dispatch writes exit-code.log" {
   bash "$DISPATCH" --surface api --target "echo hello-api" \
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ -s "$EVIDENCE_DIR/exit-code.log" ]
 }
 
-@test "AC3: api dispatch with failing command produces FAILED verdict" {
+@test "api dispatch with failing command produces FAILED verdict" {
   run bash "$DISPATCH" --surface api --target "exit 1" \
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
@@ -66,7 +66,7 @@ teardown() {
   echo "$output" | grep -qi "FAILED"
 }
 
-@test "AC3: api dispatch captures exit code in evidence for failing command" {
+@test "api dispatch captures exit code in evidence for failing command" {
   bash "$DISPATCH" --surface api --target "exit 42" \
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml" || true
@@ -77,7 +77,7 @@ teardown() {
   grep -q "42" "$EVIDENCE_DIR/exit-code.log"
 }
 
-@test "AC3: api dispatch does not reference pixel or screenshot" {
+@test "api dispatch does not reference pixel or screenshot" {
   run bash "$DISPATCH" --surface api --target "echo test" \
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
@@ -87,7 +87,7 @@ teardown() {
 
 # ---------- AC3: non-api surfaces emit PENDING ----------
 
-@test "AC3: browser dispatch runs pixel-diff when configured (UNVERIFIED without baselines)" {
+@test "browser dispatch runs pixel-diff when configured (UNVERIFIED without baselines)" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [web]
@@ -100,7 +100,7 @@ YAML
   echo "$output" | grep -qi "UNVERIFIED"
 }
 
-@test "AC3: mobile dispatch emits PENDING when configured" {
+@test "mobile dispatch emits PENDING when configured" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [ios]
@@ -112,7 +112,7 @@ YAML
   echo "$output" | grep -qi "PENDING"
 }
 
-@test "AC3: desktop dispatch emits PENDING when configured" {
+@test "desktop dispatch emits PENDING when configured" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [web]
@@ -130,7 +130,7 @@ YAML
 
 # ---------- AC3: SKIPPED surface passes through ----------
 
-@test "AC3: dispatch for unconfigured surface emits SKIPPED JSON" {
+@test "dispatch for unconfigured surface emits SKIPPED JSON" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [server]

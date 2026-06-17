@@ -213,7 +213,7 @@ index_status() {
 }
 
 # AC3 / TC-CSE-11
-@test "TC-CSE-11: idempotent self-transition (backlog->backlog) exits 0 with no-op log and no writes" {
+@test "idempotent self-transition (backlog->backlog) exits 0 with no-op log and no writes" {
   local before_sha; before_sha=$(shasum "$STORY_FILE" "$SPRINT_YAML" "$EPICS_MD" "$INDEX_YAML" | shasum)
 
   run "$TRANSITION" "$STORY_KEY" --to backlog
@@ -225,7 +225,7 @@ index_status() {
 }
 
 # AC7
-@test "AC7: invalid transition (done -> backlog) rejected with state-machine error" {
+@test "invalid transition (done -> backlog) rejected with state-machine error" {
   # Force fixture to done by editing frontmatter directly (bypassing the state machine).
   sed -i.bak 's/^status: backlog$/status: done/' "$STORY_FILE"
   rm -f "$STORY_FILE.bak"
@@ -238,7 +238,7 @@ index_status() {
 }
 
 # AC6 — preserves epics-and-stories.md ordering byte-stable except the target story's status line
-@test "AC6: epics-and-stories.md status line is updated; surrounding bytes preserved" {
+@test "epics-and-stories.md status line is updated; surrounding bytes preserved" {
   # Compute a normalised hash that masks only the TSS-E2E-01 Status line.
   local mask_target
   mask_target='
@@ -261,7 +261,7 @@ index_status() {
 }
 
 # AC2 / TC-CSE-10
-@test "TC-CSE-10: rollback on partial failure leaves no half-updated state" {
+@test "rollback on partial failure leaves no half-updated state" {
   # Block the epics-and-stories.md rewrite by removing write+execute on its parent
   # directory — `mv tmp -> epics-and-stories.md` then fails because rename(2)
   # requires write+exec on the destination directory, not on the file itself.
@@ -282,7 +282,7 @@ index_status() {
 }
 
 # AC1 / TC-CSE-09
-@test "TC-CSE-09: concurrent invocations serialize via flock; final state is consistent" {
+@test "concurrent invocations serialize via flock; final state is consistent" {
   local out1="$TEST_TMP/out1.log" out2="$TEST_TMP/out2.log"
 
   # First valid edge: backlog -> validating
@@ -320,7 +320,7 @@ index_status() {
 }
 
 # AC4 / TC-CSE-12 — Step 6 PASSED canonical ordering documented in SKILL.md
-@test "TC-CSE-12: /gaia-create-story Step 6 PASSED ordering is documented review-gate -> transition -> val-sidecar" {
+@test "gaia-create-story Step 6 PASSED ordering is documented review-gate -> transition -> val-sidecar" {
   local skill="$REPO_ROOT/plugins/gaia/skills/gaia-create-story/SKILL.md"
   [ -f "$skill" ]
 
@@ -344,7 +344,7 @@ index_status() {
 }
 
 # Happy path: backlog -> validating -> ready-for-dev updates ALL four files
-@test "AC1+AC6: full transition updates all four locations consistently" {
+@test "+: full transition updates all four locations consistently" {
   run "$TRANSITION" "$STORY_KEY" --to validating
   [ "$status" -eq 0 ]
   [ "$(fm_status)" = "validating" ]
@@ -440,7 +440,7 @@ EOF
 }
 
 # AC1 — first transition with explicit metadata flags populates all 7 fields + status
-@test "E63-S10 AC1: explicit flags populate all 7 metadata fields + status" {
+@test "explicit flags populate all 7 metadata fields + status" {
   # Pre-empty the index so we can observe a fresh write.
   rm -f "$INDEX_YAML"
 
@@ -464,7 +464,7 @@ EOF
 }
 
 # AC4 — frontmatter fallback when no metadata flags are passed
-@test "E63-S10 AC4: frontmatter fallback populates 7 fields when no flags supplied" {
+@test "frontmatter fallback populates 7 fields when no flags supplied" {
   local key="TSS-FM-01"
   local fixture
   fixture="$(seed_metadata_fixture "$key")"
@@ -486,7 +486,7 @@ EOF
 }
 
 # AC4 — explicit flag overrides frontmatter value
-@test "E63-S10 AC4: explicit flag overrides frontmatter value" {
+@test "explicit flag overrides frontmatter value" {
   local key="TSS-FM-02"
   seed_metadata_fixture "$key" >/dev/null
   rm -f "$INDEX_YAML"
@@ -501,7 +501,7 @@ EOF
 }
 
 # AC2 — idempotent re-run with identical inputs is byte-identical
-@test "E63-S10 AC2: idempotent re-run is byte-identical for the entry block" {
+@test "idempotent re-run is byte-identical for the entry block" {
   local key="TSS-IDEM-01"
   seed_metadata_fixture "$key" >/dev/null
   rm -f "$INDEX_YAML"
@@ -523,7 +523,7 @@ EOF
 }
 
 # AC3 — update-not-duplicate when a metadata field changes
-@test "E63-S10 AC3: changed metadata updates entry in place; exactly one entry remains" {
+@test "changed metadata updates entry in place; exactly one entry remains" {
   local key="TSS-UPD-01"
   seed_metadata_fixture "$key" >/dev/null
   rm -f "$INDEX_YAML"
@@ -544,7 +544,7 @@ EOF
 }
 
 # AC5 — missing optional metadata in frontmatter renders as empty string
-@test "E63-S10 AC5: missing optional frontmatter field renders as empty string" {
+@test "missing optional frontmatter field renders as empty string" {
   local key="TSS-MISS-01"
   local file="$TEST_TMP/docs/implementation-artifacts/${key}-fixture.md"
   # Fixture omits `risk` and `author` from frontmatter.
@@ -583,7 +583,7 @@ EOF
 }
 
 # AC5 — multi-story preservation: existing entries are byte-untouched
-@test "E63-S10 AC5: multi-story file preserves unrelated entries byte-untouched" {
+@test "multi-story file preserves unrelated entries byte-untouched" {
   local key="TSS-MULTI-04"
   seed_metadata_fixture "$key" >/dev/null
 
@@ -777,7 +777,7 @@ e64_s4_run_transition() {
     "$TRANSITION" "$key" --to "$target"
 }
 
-@test "E64-S4 / AC1 — flat layout: transition resolves with no env override" {
+@test "flat layout: transition resolves with no env override" {
   proj="$(e64_s4_setup_project flat)"
   e64_s4_write_story "$proj" "E64-AC1" >/dev/null
 
@@ -791,7 +791,7 @@ e64_s4_run_transition() {
   grep -q '^- \*\*Status:\*\* in-progress' "$proj/docs/planning-artifacts/epics-and-stories.md"
 }
 
-@test "E64-S4 / AC2 — sharded layout: resolves to epics-and-stories/index.md" {
+@test "sharded layout: resolves to epics-and-stories/index.md" {
   proj="$(e64_s4_setup_project sharded)"
   e64_s4_write_story "$proj" "E64-AC2" >/dev/null
 
@@ -807,7 +807,7 @@ e64_s4_run_transition() {
   grep -q '^- \*\*Status:\*\* in-progress' "$proj/docs/planning-artifacts/epics-and-stories/index.md"
 }
 
-@test "E64-S4 / AC2-legacy — sharded layout via legacy epics/index.md alias" {
+@test "legacy — sharded layout via legacy epics/index.md alias" {
   proj="$(e64_s4_setup_project sharded-legacy)"
   e64_s4_write_story "$proj" "E64-AC2L" >/dev/null
 
@@ -821,7 +821,7 @@ e64_s4_run_transition() {
   grep -q '^- \*\*Status:\*\* in-progress' "$proj/docs/planning-artifacts/epics/index.md"
 }
 
-@test "E64-S4 / AC3 — both layouts present: flat takes precedence" {
+@test "both layouts present: flat takes precedence" {
   proj="$(e64_s4_setup_project both)"
   e64_s4_write_story "$proj" "E64-AC3" >/dev/null
 
@@ -834,7 +834,7 @@ e64_s4_run_transition() {
   grep -q 'WRONG' "$proj/docs/planning-artifacts/epics-and-stories/index.md"
 }
 
-@test "E64-S4 / AC4 — neither layout present: helpful error preserved" {
+@test "neither layout present: helpful error preserved" {
   proj="$(e64_s4_setup_project neither)"
   e64_s4_write_story "$proj" "E64-NEG" >/dev/null
 
@@ -849,7 +849,7 @@ e64_s4_run_transition() {
   [[ "$output" =~ "not found" ]]
 }
 
-@test "E64-S4 / AC5 — no regression: flat-layout behavior byte-stable" {
+@test "no regression: flat-layout behavior byte-stable" {
   # Build two identical flat-layout fixtures and run the transition on each
   # under different env-override modes (explicit override vs. default
   # resolver). The post-transition flat file should be byte-identical.
@@ -980,7 +980,7 @@ e59_s6_shard_status() {
 }
 
 # TC-TSS-SHARD-1 — One-shard match + status rewrite (AC1)
-@test "TC-TSS-SHARD-1: one-shard match rewrites per-story Status line in shard" {
+@test "one-shard match rewrites per-story Status line in shard" {
   local proj; proj="$(e59_s6_setup_project shard1)"
   local key="E99-S1"
   local shard; shard="$(e59_s6_write_shard "$proj" 01 99 "$key" backlog)"
@@ -1005,7 +1005,7 @@ e59_s6_shard_status() {
 }
 
 # TC-TSS-SHARD-2 — Zero-shard match → INFO + exit 0 (AC1)
-@test "TC-TSS-SHARD-2: zero-shard match emits INFO + exits 0; monolith-only write" {
+@test "zero-shard match emits INFO + exits 0; monolith-only write" {
   local proj; proj="$(e59_s6_setup_project shard2)"
   local key="E99-S2"
   # NO shard for epic 99 in this project.
@@ -1030,7 +1030,7 @@ e59_s6_shard_status() {
 }
 
 # TC-TSS-SHARD-3 — Multi-shard match → canonical error + rollback (AC1, AC2)
-@test "TC-TSS-SHARD-3: multi-shard match triggers canonical error + rollback" {
+@test "multi-shard match triggers canonical error + rollback" {
   local proj; proj="$(e59_s6_setup_project shard3)"
   local key="E99-S3"
   e59_s6_write_shard "$proj" 01 99 "$key" backlog >/dev/null
@@ -1056,7 +1056,7 @@ e59_s6_shard_status() {
 }
 
 # TC-TSS-SHARD-4 — Flock + rollback symmetry across five snapshots (AC2)
-@test "TC-TSS-SHARD-4: rollback restores all five touched files including shard" {
+@test "rollback restores all five touched files including shard" {
   local proj; proj="$(e59_s6_setup_project shard4)"
   local key="E99-S4"
   local shard; shard="$(e59_s6_write_shard "$proj" 01 99 "$key" backlog)"
@@ -1092,7 +1092,7 @@ e59_s6_shard_status() {
 }
 
 # TC-TSS-SHARD-5 — Self-transition idempotency across all five files (AC3)
-@test "TC-TSS-SHARD-5: self-transition is byte-stable across all five files (incl. shard)" {
+@test "self-transition is byte-stable across all five files (incl. shard)" {
   local proj; proj="$(e59_s6_setup_project shard5)"
   local key="E99-S5"
   local shard; shard="$(e59_s6_write_shard "$proj" 01 99 "$key" done)"
@@ -1119,7 +1119,7 @@ e59_s6_shard_status() {
 }
 
 # TC-TSS-SHARD-RECONCILE — `--reconcile-only` flag forces replay across all five writers (AC6)
-@test "TC-TSS-SHARD-RECONCILE: --reconcile-only forces shard rewrite at current frontmatter status" {
+@test "reconcile-only forces shard rewrite at current frontmatter status" {
   local proj; proj="$(e59_s6_setup_project recon)"
   local key="E99-S99"
   # Drift fixture: story-file = done, monolith = done, shard = backlog (drifted).
@@ -1147,7 +1147,7 @@ e59_s6_shard_status() {
 # legitimate backlog-state events, not error conditions, so they MUST be
 # suppressed when BOTH conditions hold. Warnings MUST still fire when only
 # one holds (e.g., sprint_id set but yaml entry missing == real drift).
-@test "TC-DSF-6: backlog story (sprint_id null + no shard) suppresses both skip warnings" {
+@test "backlog story (sprint_id null + no shard) suppresses both skip warnings" {
   # Per-test fixture: backlog story, no sprint-status.yaml entry, no shard.
   local proj="$TEST_TMP/d6-proj"
   mkdir -p "$proj/docs/implementation-artifacts" "$proj/docs/planning-artifacts" "$proj/_memory"
@@ -1197,7 +1197,7 @@ EOF2
 
 # TC-DSF-6b: when sprint_id IS set but the yaml entry is missing (real drift),
 # the warning MUST still fire — not silently swallowed.
-@test "TC-DSF-6b: drift case (sprint_id set, yaml entry missing) still warns" {
+@test "drift case (sprint_id set, yaml entry missing) still warns" {
   local proj="$TEST_TMP/d6b-proj"
   mkdir -p "$proj/docs/implementation-artifacts" "$proj/docs/planning-artifacts" "$proj/_memory"
   local key="DSF-E1-S7"

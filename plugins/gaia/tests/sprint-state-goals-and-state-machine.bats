@@ -98,7 +98,7 @@ EOF
 # Goals field round-trip (FR-485)
 # ============================================================
 
-@test "TC-SGR-1: sprint-state.sh get-goals reads goals[] verbatim from yaml" {
+@test "sprint-state.sh get-goals reads goals verbatim from yaml" {
   seed_yaml_with_goals sprint-1 S1 done active "Ship the foo refactor" "Reduce p99 latency under 200ms"
   run "$SCRIPT" get-goals --sprint sprint-1
   [ "$status" -eq 0 ]
@@ -106,7 +106,7 @@ EOF
   [[ "$output" == *"Reduce p99 latency under 200ms"* ]]
 }
 
-@test "TC-SGR-2: sprint-state.sh update-goals REPLACES (not appends) goals list" {
+@test "sprint-state.sh update-goals REPLACES (not appends) goals list" {
   seed_yaml_with_goals sprint-1 S1 done active "Goal A" "Goal B"
   run "$SCRIPT" update-goals --sprint sprint-1 --goals "Goal C|Goal D"
   [ "$status" -eq 0 ]
@@ -117,7 +117,7 @@ EOF
   grep -q 'Goal D' "$YAML"
 }
 
-@test "TC-SGR-3: sprint-state.sh get-goals on legacy yaml without goals key returns empty (backward-compat)" {
+@test "sprint-state.sh get-goals on legacy yaml without goals key returns empty (backward-compat)" {
   seed_legacy_yaml sprint-1 S1 done
   run "$SCRIPT" get-goals --sprint sprint-1
   [ "$status" -eq 0 ]
@@ -125,7 +125,7 @@ EOF
   [ -z "${output// /}" ] || [[ "$output" == "[]" ]] || [[ "$output" == "" ]]
 }
 
-@test "TC-SGR-4: sprint-state.sh set-goals refuses 281-char goal (280-char limit per FR-485 AC6)" {
+@test "sprint-state.sh set-goals refuses 281-char goal" {
   seed_yaml_with_goals sprint-1 S1 done active
   # Build a 281-char string
   local long_goal
@@ -141,7 +141,7 @@ EOF
 # Sprint-level state machine edges (FR-487, ADR-108 D1)
 # ============================================================
 
-@test "TC-SGR-11: sprint-state.sh transition --sprint active→review accepts when all stories done" {
+@test "sprint-state.sh transition --sprint active→review accepts when all stories done" {
   seed_yaml_with_goals sprint-1 S1 done active "Goal A"
   seed_story S1 done
   run "$SCRIPT" transition --sprint sprint-1 --to review
@@ -149,7 +149,7 @@ EOF
   grep -q '^status: review' "$YAML"
 }
 
-@test "TC-SGR-12: sprint-state.sh transition --sprint active→review REFUSES when any story not done" {
+@test "sprint-state.sh transition --sprint active→review REFUSES when any story not done" {
   seed_yaml_with_goals sprint-1 S1 in-progress active "Goal A"
   seed_story S1 in-progress
   run "$SCRIPT" transition --sprint sprint-1 --to review
@@ -159,7 +159,7 @@ EOF
   grep -q '^status: active' "$YAML"
 }
 
-@test "TC-SGR-13: sprint-state.sh transition --sprint review→correction accepts" {
+@test "sprint-state.sh transition --sprint review→correction accepts" {
   seed_yaml_with_goals sprint-1 S1 done review "Goal A"
   seed_story S1 done
   run "$SCRIPT" transition --sprint sprint-1 --to correction
@@ -167,7 +167,7 @@ EOF
   grep -q '^status: correction' "$YAML"
 }
 
-@test "TC-SGR-14: sprint-state.sh transition --sprint correction→active accepts" {
+@test "sprint-state.sh transition --sprint correction→active accepts" {
   seed_yaml_with_goals sprint-1 S1 done correction "Goal A"
   seed_story S1 done
   run "$SCRIPT" transition --sprint sprint-1 --to active
@@ -175,7 +175,7 @@ EOF
   grep -q '^status: active' "$YAML"
 }
 
-@test "TC-SGR-15: sprint-state.sh transition --sprint review→closed accepts (FR-452 contract preserved)" {
+@test "sprint-state.sh transition --sprint review→closed accepts" {
   # AF-2026-05-31-3 / Test14 F-13: review→closed now requires a Val sentinel
   # by default. This test targets the state-machine edge itself (FR-452 +
   # ADR-108 D1), not the sentinel guard — set the escape-hatch env var
@@ -189,7 +189,7 @@ EOF
   grep -q '^status: closed' "$YAML"
 }
 
-@test "TC-SGR-16: transition --sprint refuses illegal edges (5 cases)" {
+@test "transition --sprint refuses illegal edges (5 cases)" {
   # active → closed (illegal — must go through review)
   seed_yaml_with_goals sprint-1 S1 done active "G"; seed_story S1 done
   run "$SCRIPT" transition --sprint sprint-1 --to closed
@@ -219,7 +219,7 @@ EOF
 # Regression guard — story-level state machine UNCHANGED (ADR-108 Constraint A)
 # ============================================================
 
-@test "TC-SGR-17: story-level state machine — done back-edges still refused (regression guard, ADR-108)" {
+@test "story-level state machine — done back-edges still refused" {
   # Confirm that adding sprint-level edges did NOT introduce story-level
   # done → in-progress / done → review / done → ready-for-dev back-edges.
   seed_story S1 done

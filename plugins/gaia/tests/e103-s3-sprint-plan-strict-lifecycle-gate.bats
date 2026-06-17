@@ -14,27 +14,27 @@ setup() {
 
 teardown() { common_teardown; }
 
-@test "TC-LOE-3a: setup.sh sources the lifecycle-overrides helper" {
+@test "setup.sh sources the lifecycle-overrides helper" {
   [ -f "$SETUP_SH" ]
   grep -qF "lifecycle-overrides.sh" "$SETUP_SH"
 }
 
-@test "TC-LOE-3b: setup.sh references the traceability-matrix.md artifact" {
+@test "setup.sh references the traceability-matrix.md artifact" {
   [ -f "$SETUP_SH" ]
   grep -qF "traceability-matrix.md" "$SETUP_SH"
 }
 
-@test "TC-LOE-3c: setup.sh names the --bypass remediation in error output" {
+@test "setup.sh names the --bypass remediation in error output" {
   [ -f "$SETUP_SH" ]
   grep -qF -- "--bypass gaia-trace" "$SETUP_SH"
 }
 
-@test "TC-LOE-3d: setup.sh names the readiness-check skill" {
+@test "setup.sh names the readiness-check skill" {
   [ -f "$SETUP_SH" ]
   grep -qF "/gaia-readiness-check" "$SETUP_SH"
 }
 
-@test "TC-LOE-3e: setup.sh names --bypass gaia-readiness-check remediation" {
+@test "setup.sh names --bypass gaia-readiness-check remediation" {
   [ -f "$SETUP_SH" ]
   grep -qF -- "--bypass gaia-readiness-check" "$SETUP_SH"
 }

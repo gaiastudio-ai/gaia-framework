@@ -51,7 +51,7 @@ _write_story() { # $1 path ; $2 key
   [[ "$output" == *"/implementation-artifacts/security-review-E3-S1.md" ]]
 }
 
-@test "F-046: resolver basename is FR-402 type-first for every review type" {
+@test "resolver basename is type-first for every review type" {
   _write_story "$IA/E4-S1-x.md" "E4-S1"
   for t in code-review qa-tests security-review test-automate-review test-review performance-review; do
     run bash "$RES" --key E4-S1 --type "$t"
@@ -75,7 +75,7 @@ _write_story() { # $1 path ; $2 key
 
 # ---------- the six review skills reference the resolver ----------
 
-@test "F-046: all six FR-402 review skills resolve their path via the shared helper" {
+@test "all six review skills resolve their path via the shared helper" {
   for s in gaia-code-review gaia-qa-tests gaia-test-review gaia-review-perf gaia-test-automate; do
     grep -qF 'resolve-review-report-path.sh' "$P/skills/$s/SKILL.md" \
       || { echo "missing resolver ref in $s"; false; }

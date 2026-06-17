@@ -31,7 +31,7 @@ teardown() { common_teardown; }
 
 # ---------- AC1, AC3: no SKILL.md may contain ${CLAUDE_PLUGIN_ROOT}/../scripts/ ----------
 
-@test "AC1/AC3: no SKILL.md contains \${CLAUDE_PLUGIN_ROOT}/../scripts/<helper> (the '../' path typo)" {
+@test "no SKILL.md contains \${CLAUDE_PLUGIN_ROOT}/../scripts/<helper> (the '../' path typo)" {
   local hits
   hits="$(grep -rnE '\$\{CLAUDE_PLUGIN_ROOT\}/\.\./scripts' "$SKILLS_DIR"/*/SKILL.md 2>/dev/null || true)"
   if [ -n "$hits" ]; then

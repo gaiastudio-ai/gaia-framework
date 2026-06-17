@@ -72,7 +72,7 @@ EOF
 
 # ---------- AC4: sprint-boundary deployment guard ----------
 
-@test "AC4 (TC-12): mid-sprint flip rejected (any in-progress story)" {
+@test "mid-sprint flip rejected (any in-progress story)" {
   local yaml="$TEST_TMP/sprint-status.yaml"
   write_sprint_status "$yaml" "E1-S1:in-progress" "E1-S2:done"
   run --separate-stderr "$SCRIPT" --check-boundary --sprint-status "$yaml"
@@ -80,14 +80,14 @@ EOF
   [[ "$stderr" == *"sprint-boundary"* ]] || [[ "$stderr" == *"in-progress"* ]]
 }
 
-@test "AC4: sprint-boundary deploy allowed when no story is in-progress" {
+@test "sprint-boundary deploy allowed when no story is in-progress" {
   local yaml="$TEST_TMP/sprint-status.yaml"
   write_sprint_status "$yaml" "E1-S1:done" "E1-S2:done"
   run --separate-stderr "$SCRIPT" --check-boundary --sprint-status "$yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AC4: missing sprint-status.yaml -> exit 1 with clear message" {
+@test "missing sprint-status.yaml -> exit 1 with clear message" {
   run --separate-stderr "$SCRIPT" --check-boundary --sprint-status "$TEST_TMP/nonexistent.yaml"
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"not found"* ]] || [[ "$stderr" == *"missing"* ]]
@@ -95,7 +95,7 @@ EOF
 
 # ---------- AC5: one-time pre-flip review-status scan ----------
 
-@test "AC5: scan enumerates status:review stories with non-PASSED rows" {
+@test "scan enumerates status:review stories with non-PASSED rows" {
   local impl="$TEST_TMP/impl"
   mkdir -p "$impl"
   # Story A in review, all PASSED (should NOT appear in the scan)
@@ -115,7 +115,7 @@ EOF
   [[ "$output" != *"E2-S4"* ]]
 }
 
-@test "AC5: scan with no problem stories prints empty enumeration" {
+@test "scan with no problem stories prints empty enumeration" {
   local impl="$TEST_TMP/impl"
   mkdir -p "$impl"
   write_story_file "$impl/E3-S1-clean.md" review PASSED PASSED PASSED PASSED PASSED PASSED
@@ -124,7 +124,7 @@ EOF
   [[ "$output" == *"no stories require resolution"* ]] || [[ "$output" == *"0 stories"* ]]
 }
 
-@test "AC5: scan output includes which gate failed for each story" {
+@test "scan output includes which gate failed for each story" {
   local impl="$TEST_TMP/impl"
   mkdir -p "$impl"
   write_story_file "$impl/E4-S1-mix.md" review PASSED FAILED PASSED PASSED PASSED PASSED

@@ -49,7 +49,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1 — six base rubric files exist at canonical paths.
 # ---------------------------------------------------------------------------
-@test "AC1: all six base rubric files exist" {
+@test "all six base rubric files exist" {
   for s in "${SKILLS[@]}"; do
     [ -f "$RUBRICS_BASE/${s}.json" ] || {
       echo "missing rubric: $RUBRICS_BASE/${s}.json" >&2
@@ -61,7 +61,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC2 — every base rubric validates against rubric.schema.json.
 # ---------------------------------------------------------------------------
-@test "AC2: each base rubric passes schema validation" {
+@test "each base rubric passes schema validation" {
   for s in "${SKILLS[@]}"; do
     run "$VALIDATOR" "$RUBRICS_BASE/${s}.json"
     [ "$status" -eq 0 ] || {
@@ -75,7 +75,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC3 — each rubric declares schema_version "1.0" and skill matching its stem.
 # ---------------------------------------------------------------------------
-@test "AC3: each rubric declares schema_version 1.0 and matching skill" {
+@test "each rubric declares schema_version 1.0 and matching skill" {
   for s in "${SKILLS[@]}"; do
     sv=$(jq -r '.schema_version' "$RUBRICS_BASE/${s}.json")
     skill=$(jq -r '.skill' "$RUBRICS_BASE/${s}.json")
@@ -93,7 +93,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC4 — each rubric contains >= 5 severity rules with required fields.
 # ---------------------------------------------------------------------------
-@test "AC4: each rubric has at least five severity rules" {
+@test "each rubric has at least five severity rules" {
   for s in "${SKILLS[@]}"; do
     n=$(jq '.severity_rules | length' "$RUBRICS_BASE/${s}.json")
     [ "$n" -ge 5 ] || {
@@ -103,7 +103,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC4: every rule has required fields with correct types" {
+@test "every rule has required fields with correct types" {
   for s in "${SKILLS[@]}"; do
     bad=$(jq '[.severity_rules[]
               | select(
@@ -128,7 +128,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC4: every rule pattern is >= 4 characters" {
+@test "every rule pattern is >= 4 characters" {
   for s in "${SKILLS[@]}"; do
     bad=$(jq '[.severity_rules[].pattern | select(length < 4)] | length' "$RUBRICS_BASE/${s}.json")
     [ "$bad" -eq 0 ] || {
@@ -138,7 +138,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC4: severity values match the schema enum" {
+@test "severity values match the schema enum" {
   for s in "${SKILLS[@]}"; do
     bad=$(jq '[.severity_rules[].severity
               | select(. != "Critical" and . != "High" and . != "Medium" and . != "Low" and . != "Info")
@@ -153,7 +153,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC5 — code.json covers required categories.
 # ---------------------------------------------------------------------------
-@test "AC5: code.json covers solid/complexity/naming/error-handling/duplication" {
+@test "code.json covers solid/complexity/naming/error-handling/duplication" {
   required=(solid-violations complexity naming-conventions error-handling code-duplication)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/code.json" | sort -u)
   for c in "${required[@]}"; do
@@ -169,7 +169,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC6 — security.json covers OWASP categories with Critical severities.
 # ---------------------------------------------------------------------------
-@test "AC6: security.json covers OWASP Top 10 categories" {
+@test "security.json covers OWASP Top 10 categories" {
   required=(injection authentication sensitive-data-exposure access-control security-misconfiguration)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/security.json" | sort -u)
   for c in "${required[@]}"; do
@@ -180,7 +180,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC6: security.json marks injection and authentication Critical" {
+@test "security.json marks injection and authentication Critical" {
   for cat in injection authentication; do
     n=$(jq --arg c "$cat" \
         '[.severity_rules[] | select(.category == $c and .severity == "Critical")] | length' \
@@ -195,7 +195,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC7 — perf.json covers required categories.
 # ---------------------------------------------------------------------------
-@test "AC7: perf.json covers n+1/bundle/caching/complexity/memory" {
+@test "perf.json covers n+1/bundle/caching/complexity/memory" {
   required=(n-plus-one-queries bundle-size caching algorithmic-complexity memory-management)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/perf.json" | sort -u)
   for c in "${required[@]}"; do
@@ -209,7 +209,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC8 — a11y.json covers WCAG categories with Critical Level-A severities.
 # ---------------------------------------------------------------------------
-@test "AC8: a11y.json covers WCAG 2.1 A/AA categories" {
+@test "a11y.json covers WCAG 2.1 A/AA categories" {
   required=(semantic-html aria-usage keyboard-navigation color-contrast screen-reader-support)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/a11y.json" | sort -u)
   for c in "${required[@]}"; do
@@ -220,7 +220,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC8: a11y.json marks keyboard-navigation and color-contrast Critical" {
+@test "a11y.json marks keyboard-navigation and color-contrast Critical" {
   for cat in keyboard-navigation color-contrast; do
     n=$(jq --arg c "$cat" \
         '[.severity_rules[] | select(.category == $c and .severity == "Critical")] | length' \
@@ -235,7 +235,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC9 — qa.json covers test-quality categories.
 # ---------------------------------------------------------------------------
-@test "AC9: qa.json covers assertion/isolation/coverage/flakiness/naming" {
+@test "qa.json covers assertion/isolation/coverage/flakiness/naming" {
   required=(assertion-quality test-isolation test-coverage flaky-test-patterns test-naming)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/qa.json" | sort -u)
   for c in "${required[@]}"; do
@@ -249,7 +249,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC10 — test.json covers test-framework categories.
 # ---------------------------------------------------------------------------
-@test "AC10: test.json covers structure/mocks/fixtures/data/integration" {
+@test "test.json covers structure/mocks/fixtures/data/integration" {
   required=(test-structure mock-usage fixture-management test-data integration-test-isolation)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/test.json" | sort -u)
   for c in "${required[@]}"; do
@@ -264,7 +264,7 @@ teardown() { common_teardown; }
 # AC11 — globally-unique rule IDs that follow the {skill}-{category}-{NNN}
 # convention.
 # ---------------------------------------------------------------------------
-@test "AC11: rule IDs follow {skill}-{category}-{NNN} convention" {
+@test "rule IDs follow {skill}-{category}-{NNN} convention" {
   for s in "${SKILLS[@]}"; do
     bad=$(jq -r --arg s "$s" \
           '[.severity_rules[].id
@@ -278,7 +278,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC11: no rule-id collisions across the six base rubrics" {
+@test "no rule-id collisions across the six base rubrics" {
   ids_file="$TEST_TMP/all-ids.txt"
   : > "$ids_file"
   for s in "${SKILLS[@]}"; do
@@ -299,7 +299,7 @@ teardown() { common_teardown; }
 # JSON equals jq --sort-keys on the base file (the merger normalises through
 # --sort-keys per NFR-RSV2-10).
 # ---------------------------------------------------------------------------
-@test "AC12: base-only rubric loader produces identity-merge output" {
+@test "base-only rubric loader produces identity-merge output" {
   if [ ! -x "$LOADER" ] || [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-loader.sh / rubric-merger.sh"
   fi

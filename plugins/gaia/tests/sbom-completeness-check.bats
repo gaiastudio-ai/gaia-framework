@@ -31,7 +31,7 @@ run_chk() {
 
 # --- AC2 — npm 2% divergence: no WARNING (under 10%) ----------------------
 
-@test "E104-S3 (scenario 1): npm 2% divergence → no WARNING (under 10% default threshold)" {
+@test "scenario 1): npm 2% divergence → no WARNING (under 10% default threshold)" {
   run_chk npm
   [ "$status" -eq 0 ]
   [[ "$output" != *"sbom_completeness_warning: true"* ]] && [[ "$output" != *"WARNING"* ]]
@@ -39,7 +39,7 @@ run_chk() {
 
 # --- AC2 — no-carve-out 11% divergence: WARNING @10% ----------------------
 
-@test "E104-S3 (scenario 8): no-carve-out 11% divergence → WARNING (10% threshold, no carve-outs)" {
+@test "scenario 8): no-carve-out 11% divergence → WARNING (10% threshold, no carve-outs)" {
   run_chk no-carve-out
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARNING"* ]]
@@ -49,7 +49,7 @@ run_chk() {
 
 # --- AC2/AC5 — Yarn Berry PnP carve-out: 17% → WARNING @15% ----------------
 
-@test "E104-S3 (scenario 3): Yarn Berry PnP 17% → WARNING @15% (carve-out detected)" {
+@test "scenario 3): Yarn Berry PnP 17% → WARNING @15% (carve-out detected)" {
   run_chk yarn-berry-pnp
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARNING"* ]]
@@ -59,7 +59,7 @@ run_chk() {
 
 # --- AC2/AC5 — conda carve-out: 12% → no WARNING (under 15%) ---------------
 
-@test "E104-S3 (scenario 6): conda 12% → no WARNING (carve-out applies, under 15%)" {
+@test "scenario 6): conda 12% → no WARNING (carve-out applies, under 15%)" {
   run_chk conda
   [ "$status" -eq 0 ]
   [[ "$output" != *"WARNING"* ]]
@@ -68,7 +68,7 @@ run_chk() {
 
 # --- AC2/AC5 — Go vendor carve-out: 8% → no WARNING -----------------------
 
-@test "E104-S3 (scenario 4): Go vendor 8% → no WARNING (carve-out applies)" {
+@test "scenario 4): Go vendor 8% → no WARNING (carve-out applies)" {
   run_chk go-vendor
   [ "$status" -eq 0 ]
   [[ "$output" != *"WARNING"* ]]
@@ -77,7 +77,7 @@ run_chk() {
 
 # --- AC2/AC5 — Gradle shadow carve-out: 18% → WARNING @15% ----------------
 
-@test "E104-S3 (scenario 5): Gradle shadow 18% → WARNING @15% (carve-out detected)" {
+@test "scenario 5): Gradle shadow 18% → WARNING @15% (carve-out detected)" {
   run_chk gradle-shadow
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARNING"* ]]
@@ -86,7 +86,7 @@ run_chk() {
 
 # --- AC2/AC5 — Gradle no-lockfile carve-out detection ---------------------
 
-@test "E104-S3 (scenario 12): Gradle without lockfile → carve-out detected (15% threshold)" {
+@test "scenario 12): Gradle without lockfile → carve-out detected (15% threshold)" {
   run_chk gradle-no-lockfile
   [ "$status" -eq 0 ]
   [[ "$output" == *"gradle-no-lockfile"* ]]
@@ -95,7 +95,7 @@ run_chk() {
 
 # --- AC5 — multi-ecosystem: ANY carve-out → 15% ---------------------------
 
-@test "E104-S3 (scenario 7): multi-ecosystem (npm + Go vendor) → carve-out APPLIES (15%)" {
+@test "scenario 7): multi-ecosystem (npm + Go vendor) → carve-out APPLIES (15%)" {
   run_chk multi-ecosystem
   [ "$status" -eq 0 ]
   [[ "$output" == *"applied_threshold=15"* ]]
@@ -104,7 +104,7 @@ run_chk() {
 
 # --- AC-X1 — flag-off skip ------------------------------------------------
 
-@test "E104-S3 AC-X1: master flag off → check skipped (INFO, exit 0)" {
+@test "master flag off → check skipped (INFO, exit 0)" {
   PATH="$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=false \
     SBOM_PROJECT_ROOT="$FX/npm" SBOM_FILE="$FX/npm/sbom.json" run bash "$CHK"
   [ "$status" -eq 0 ]
@@ -113,7 +113,7 @@ run_chk() {
 
 # --- F1 (Val) — missing SBOM → INFO skip, never abort ---------------------
 
-@test "E104-S3 (F1): missing SBOM file → INFO skip, exit 0 (never aborts; E70-S7 producer unbuilt)" {
+@test "F1): missing SBOM file → INFO skip, exit 0 (never aborts; producer unbuilt)" {
   PATH="$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_SBOM_COMPLETENESS_ENABLED=true \
     SBOM_PROJECT_ROOT="$FX/npm" SBOM_FILE="$TEST_TMP/does-not-exist.json" run bash "$CHK"
   [ "$status" -eq 0 ]
@@ -124,7 +124,7 @@ run_chk() {
 
 # --- AC3 — frontmatter fields populated on WARNING ------------------------
 
-@test "E104-S3 AC3: WARNING run populates report frontmatter fields" {
+@test "WARNING run populates report frontmatter fields" {
   cat > "$TEST_TMP/report.md" <<'MD'
 ---
 title: brownfield report
@@ -145,7 +145,7 @@ MD
 
 # --- AC-X1 flag-resolution integration ------------------------------------
 
-@test "E104-S3 AC-X1: resolve-config.sh --field brownfield.sbom_completeness_enabled is whitelisted" {
+@test "resolve-config.sh --field brownfield.sbom_completeness_enabled is whitelisted" {
   cat > "$TEST_TMP/project-config.yaml" <<YAML
 project_root: /tmp/gaia
 project_path: /tmp/gaia/app
@@ -168,7 +168,7 @@ YAML
 
 # --- Hygiene --------------------------------------------------------------
 
-@test "E104-S3: sbom-completeness-check.sh exists, is executable, passes bash -n" {
+@test "sbom-completeness-check.sh exists, is executable, passes bash -n" {
   [ -x "$CHK" ]
   run bash -n "$CHK"
   [ "$status" -eq 0 ]

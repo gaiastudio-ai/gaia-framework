@@ -33,20 +33,20 @@ teardown() { common_teardown; }
 # VCP-CHK-11 — Positive: all 36 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-11: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export PRD_ARTIFACT="$FIXTURES/prd-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-11: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export PRD_ARTIFACT="$FIXTURES/prd-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-11: finalize.sh reports PASS for each required section" {
+@test "finalize.sh reports PASS for each required section" {
   export PRD_ARTIFACT="$FIXTURES/prd-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -69,7 +69,7 @@ teardown() { common_teardown; }
 # the count must be exactly 36.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 36 classified items" {
+@test "SKILL.md ## Validation section contains exactly 36 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -80,7 +80,7 @@ teardown() { common_teardown; }
   [ "$output" = "36" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -91,7 +91,7 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: at least structural items are classified script-verifiable" {
+@test "at least structural items are classified script-verifiable" {
   # Requirements Summary Table present, FR-### / NFR-### ID format,
   # section headings — MUST be SV, never LLM.
   run grep -E '^\- \[script-verifiable\].*Requirements Summary Table' "$SKILL_MD"

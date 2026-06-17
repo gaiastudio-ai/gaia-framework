@@ -32,34 +32,34 @@ teardown() { common_teardown; }
 # VCP-CHK-21 — Positive: all 25 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-21: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-21: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-21: finalize.sh reports PASS for All six STRIDE categories" {
+@test "finalize.sh reports PASS for All six STRIDE categories" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"All six STRIDE categories evaluated per component"* ]]
 }
 
-@test "VCP-CHK-21: finalize.sh reports PASS for Each threat scored on all 5 DREAD dimensions" {
+@test "finalize.sh reports PASS for Each threat scored on all 5 DREAD dimensions" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Each threat scored on all 5 DREAD dimensions"* ]]
 }
 
-@test "VCP-CHK-21: finalize.sh reports 15 script-verifiable PASS items" {
+@test "finalize.sh reports 15 script-verifiable PASS items" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -72,7 +72,7 @@ teardown() { common_teardown; }
 # the count must be exactly 25.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 25 classified items" {
+@test "SKILL.md ## Validation section contains exactly 25 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -83,7 +83,7 @@ teardown() { common_teardown; }
   [ "$output" = "25" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -94,14 +94,14 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: STRIDE per-component check is classified script-verifiable" {
+@test "STRIDE per-component check is classified script-verifiable" {
   # Per epic design: "All six STRIDE categories evaluated per
   # component" MUST land on script-verifiable (structural check).
   run grep -E '^\- \[script-verifiable\].*(All six STRIDE|STRIDE categories evaluated)' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }

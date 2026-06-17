@@ -29,7 +29,7 @@ teardown() {
 # Positive cases — skill scripts/finalize.sh and scripts/setup.sh are exempt
 # ---------------------------------------------------------------------------
 
-@test "E29-S6: skill scripts/finalize.sh with _gaia/...instructions.xml provenance comment is allowlisted" {
+@test "skill scripts/finalize.sh with _gaia/...instructions.xml provenance comment is allowlisted" {
   cat > "$TMP/plugins/gaia/skills/fake-skill/scripts/finalize.sh" <<'EOF'
 #!/usr/bin/env bash
 # Native conversion of _gaia/lifecycle/workflows/fake/instructions.xml — see ADR-048.
@@ -39,7 +39,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "E29-S6: skill scripts/finalize.sh referencing checklist.md in a comment is allowlisted" {
+@test "skill scripts/finalize.sh referencing checklist.md in a comment is allowlisted" {
   cat > "$TMP/plugins/gaia/skills/fake-skill/scripts/finalize.sh" <<'EOF'
 #!/usr/bin/env bash
 # Ports the checklist.md gates from the v1 workflow.
@@ -49,7 +49,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "E29-S6: skill scripts/setup.sh with _gaia/...instructions.xml provenance comment is allowlisted" {
+@test "skill scripts/setup.sh with _gaia/...instructions.xml provenance comment is allowlisted" {
   cat > "$TMP/plugins/gaia/skills/fake-skill/scripts/setup.sh" <<'EOF'
 #!/usr/bin/env bash
 # Native conversion of _gaia/lifecycle/workflows/fake/instructions.xml — see ADR-048.
@@ -59,7 +59,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "E29-S6: skill scripts/setup.sh referencing workflow.yaml in a comment is allowlisted" {
+@test "skill scripts/setup.sh referencing workflow.yaml in a comment is allowlisted" {
   cat > "$TMP/plugins/gaia/skills/fake-skill/scripts/setup.sh" <<'EOF'
 #!/usr/bin/env bash
 # Replaces the legacy workflow.yaml driver from v1.
@@ -73,7 +73,7 @@ EOF
 # Negative cases — same content elsewhere still fails
 # ---------------------------------------------------------------------------
 
-@test "E29-S6: instructions.xml in a non-allowlisted skill script (other.sh) still triggers failure" {
+@test "instructions.xml in a non-allowlisted skill script (other.sh) still triggers failure" {
   cat > "$TMP/plugins/gaia/skills/fake-skill/scripts/other.sh" <<'EOF'
 #!/usr/bin/env bash
 # Native conversion of _gaia/lifecycle/workflows/fake/instructions.xml — see ADR-048.
@@ -84,7 +84,7 @@ EOF
   [[ "$output" == *"instructions.xml"* ]]
 }
 
-@test "E29-S6: checklist.md in a top-level plugins/gaia/scripts/ file still triggers failure" {
+@test "checklist.md in a top-level plugins/gaia/scripts/ file still triggers failure" {
   cat > "$TMP/plugins/gaia/scripts/random.sh" <<'EOF'
 #!/usr/bin/env bash
 # Refers to checklist.md from the legacy workflow.
@@ -95,7 +95,7 @@ EOF
   [[ "$output" == *"checklist.md"* ]]
 }
 
-@test "E29-S6: a file named finalize.sh outside plugins/gaia/skills/<skill>/scripts/ is NOT allowlisted" {
+@test "a file named finalize.sh outside plugins/gaia/skills/<skill>/scripts/ is NOT allowlisted" {
   # finalize.sh sitting directly under plugins/gaia/scripts/ (not inside a skill's scripts/ dir)
   # must NOT be allowlisted by the new rule — the rule scopes to skills only.
   cat > "$TMP/plugins/gaia/scripts/finalize.sh" <<'EOF'
@@ -112,7 +112,7 @@ EOF
 # Regression — existing allowlist behavior unchanged (AC3)
 # ---------------------------------------------------------------------------
 
-@test "E29-S6: existing SKILL.md allowlist still works (gaia-memory-management)" {
+@test "existing SKILL.md allowlist still works (gaia-memory-management)" {
   mkdir -p "$TMP/plugins/gaia/skills/gaia-memory-management"
   cat > "$TMP/plugins/gaia/skills/gaia-memory-management/SKILL.md" <<'EOF'
 # Memory management
@@ -122,7 +122,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "E29-S6: arbitrary skill SKILL.md (not in case allowlist) still triggers failure" {
+@test "arbitrary skill SKILL.md (not in case allowlist) still triggers failure" {
   cat > "$TMP/plugins/gaia/skills/fake-skill/SKILL.md" <<'EOF'
 # Fake skill
 Load _gaia/core/engine/workflow.xml before running.
@@ -132,7 +132,7 @@ EOF
   [[ "$output" == *"workflow.xml"* ]]
 }
 
-@test "E29-S6: clean tree (no v1 tokens) returns exit 0" {
+@test "clean tree (no v1 tokens) returns exit 0" {
   echo '# clean skill' > "$TMP/plugins/gaia/skills/fake-skill/SKILL.md"
   run "$SCRIPT" --project-root "$TMP"
   [ "$status" -eq 0 ]

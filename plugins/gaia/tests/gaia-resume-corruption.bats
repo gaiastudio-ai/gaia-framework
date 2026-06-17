@@ -87,7 +87,7 @@ latest_checkpoint_for() {
 
 # ---------- VCP-CPT-06 — truncated JSON ----------
 
-@test "VCP-CPT-06: truncated JSON exits 3 with corrupted checkpoint message" {
+@test "truncated JSON exits 3 with corrupted checkpoint message" {
   write_valid_checkpoint gaia-create-prd 2
   local cp
   cp=$(latest_checkpoint_for gaia-create-prd)
@@ -144,7 +144,7 @@ latest_checkpoint_for() {
 
 # ---------- VCP-CPT-10 — orphan temp file alongside valid checkpoint ----------
 
-@test "VCP-CPT-10: orphan temp file alongside valid checkpoint is filtered from discovery" {
+@test "orphan temp file alongside valid checkpoint is filtered from discovery" {
   write_valid_checkpoint gaia-create-prd 3
   # Drop an orphan temp file matching the write-checkpoint.sh convention
   # ({FINAL}.tmp.$$) and the alternative leading-dot convention.
@@ -262,7 +262,7 @@ latest_checkpoint_for() {
   grep -qiE 'cleanup|safe to delete' "$skill"
 }
 
-@test "SKILL.md references resume-discovery.sh as the delegated script (ADR-042)" {
+@test "SKILL.md references resume-discovery.sh as the delegated script" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-resume/SKILL.md"
   grep -q 'resume-discovery.sh' "$skill"
 }

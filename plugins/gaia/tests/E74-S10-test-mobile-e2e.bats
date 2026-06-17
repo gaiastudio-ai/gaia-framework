@@ -29,37 +29,37 @@ teardown() {
 
 # ---------------- AC7 — SKILL.md registration -----------------------------
 
-@test "AC7: gaia-test-mobile-e2e SKILL.md exists" {
+@test "gaia-test-mobile-e2e SKILL.md exists" {
   [ -f "$SKILL_MD" ]
 }
 
-@test "AC7: SKILL.md declares runtime-profile: network" {
+@test "SKILL.md declares runtime-profile: network" {
   grep -Eq '^runtime-profile:[[:space:]]+network[[:space:]]*$' "$SKILL_MD"
 }
 
-@test "AC7: SKILL.md registers /gaia-test-mobile-e2e trigger" {
+@test "SKILL.md registers /gaia-test-mobile-e2e trigger" {
   grep -Fq '/gaia-test-mobile-e2e' "$SKILL_MD"
 }
 
-@test "AC7: SKILL.md declares 'run mobile e2e' natural-language trigger" {
+@test "SKILL.md declares 'run mobile e2e' natural-language trigger" {
   grep -Eq 'run mobile e2e' "$SKILL_MD"
 }
 
-@test "AC7: SKILL.md declares argument-hint with --suite and --device flags" {
+@test "SKILL.md declares argument-hint with --suite and --device flags" {
   grep -Eq '^argument-hint:.*--suite' "$SKILL_MD"
   grep -Eq '^argument-hint:.*--device' "$SKILL_MD"
 }
 
 # ---------------- AC1 — skill resolves and dispatches ---------------------
 
-@test "AC1: dispatch.sh resolves Firebase adapter from config and dispatches" {
+@test "dispatch.sh resolves Firebase adapter from config and dispatches" {
   GAIA_DEVICE_FARM_MOCK=1 \
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-farm-firebase.yaml"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"verdict":"PASSED"'* ]] || [[ "$output" == *'"verdict": "PASSED"'* ]]
 }
 
-@test "AC1: dispatch.sh resolves BrowserStack adapter from config and dispatches" {
+@test "dispatch.sh resolves BrowserStack adapter from config and dispatches" {
   GAIA_DEVICE_FARM_MOCK=1 \
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-farm-browserstack.yaml"
   [ "$status" -eq 0 ]
@@ -68,7 +68,7 @@ teardown() {
 
 # ---------------- AC3 — per-device verdict structure ----------------------
 
-@test "AC3: per_device_results entries contain canonical schema fields" {
+@test "per_device_results entries contain canonical schema fields" {
   GAIA_DEVICE_FARM_MOCK=1 \
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-farm-firebase.yaml"
   [ "$status" -eq 0 ]
@@ -82,7 +82,7 @@ teardown() {
 
 # ---------------- AC5 — bridge-disabled enforcement -----------------------
 
-@test "AC5: bridge_enabled=false yields verdict=SKIPPED with diagnostic" {
+@test "bridge_enabled=false yields verdict=SKIPPED with diagnostic" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-bridge-disabled.yaml"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"SKIPPED"'
@@ -91,14 +91,14 @@ teardown() {
 
 # ---------------- AC6 — missing adapter fails gracefully ------------------
 
-@test "AC6: missing device_farm adapter yields verdict=ERROR with guidance" {
+@test "missing device_farm adapter yields verdict=ERROR with guidance" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
   [ "$status" -ne 0 ] || [ "$status" -eq 0 ]   # non-throwing path; either is acceptable
   echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"ERROR"'
   echo "$output" | grep -iEq 'device-farm|gaia-config-device-target'
 }
 
-@test "AC6: dispatch.sh does not throw an unhandled exception on missing adapter" {
+@test "dispatch.sh does not throw an unhandled exception on missing adapter" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
   # Exit codes must be deterministic — 0 (graceful) or any controlled non-zero
   # but never 127 (cmd not found) or 139 (segfault) or 134 (abort).
@@ -109,7 +109,7 @@ teardown() {
 
 # ---------------- AC1 — setup.sh hook -------------------------------------
 
-@test "AC1: setup.sh exists and is executable" {
+@test "setup.sh exists and is executable" {
   [ -x "$SETUP" ]
 }
 
@@ -117,14 +117,14 @@ teardown() {
 # Skip neutrally when platforms[] contains no mobile target (ios|android).
 # Mirrors AF-2026-05-17-9 (compliance.ui_present guard on a11y family).
 
-@test "AF-2026-05-17-10: dispatch SKIPS with no_mobile_platform on non-mobile project" {
+@test "dispatch SKIPS with no_mobile_platform on non-mobile project" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-mobile-platforms.yaml"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Fq '"verdict":"SKIPPED"'
   echo "$output" | grep -Fq '"reason":"no_mobile_platform"'
 }
 
-@test "AF-2026-05-17-10: dispatch proceeds past the gate when platforms[] contains ios" {
+@test "dispatch proceeds past the gate when platforms contains ios" {
   # Existing firebase fixture now declares ios+android (per AF-17-10 fixture
   # update). Must NOT skip with no_mobile_platform.
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-farm-firebase.yaml"
@@ -135,7 +135,7 @@ teardown() {
   fi
 }
 
-@test "AF-2026-05-17-10: honest device_farm.adapter diagnostic names canonical adapters" {
+@test "honest device_farm.adapter diagnostic names canonical adapters" {
   # The no-device-farm fixture declares platforms but no adapter; should ERROR
   # with the new honest diagnostic naming firebase/browserstack/sauce.
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
@@ -146,7 +146,7 @@ teardown() {
   echo "$output" | grep -Fq 'sauce-labs'
 }
 
-@test "AF-2026-05-17-10: dispatch.sh contains the platforms-mobile gate logic" {
+@test "dispatch.sh contains the platforms-mobile gate logic" {
   run grep -E 'no_mobile_platform|AF-2026-05-17-10' "$DISPATCH"
   [ "$status" -eq 0 ]
 }

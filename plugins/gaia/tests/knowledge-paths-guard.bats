@@ -31,11 +31,11 @@ teardown() { common_teardown; }
 
 # ---------- AC1, AC2: CSVs ship inside the plugin ----------
 
-@test "AC1: plugins/gaia/knowledge/gaia-help.csv exists" {
+@test "plugins/gaia/knowledge/gaia-help.csv exists" {
   [ -f "$KNOWLEDGE_DIR/gaia-help.csv" ]
 }
 
-@test "AC2: plugins/gaia/knowledge/workflow-manifest.csv exists" {
+@test "plugins/gaia/knowledge/workflow-manifest.csv exists" {
   [ -f "$KNOWLEDGE_DIR/workflow-manifest.csv" ]
 }
 
@@ -58,7 +58,7 @@ teardown() { common_teardown; }
 # agent-manifest.csv) remain out of scope for this story and are flagged in
 # Findings for a follow-up cleanup pass.
 
-@test "AC6: no SKILL.md contains an unprefixed _gaia/_config/<csv> path for the two B3 CSVs" {
+@test "no SKILL.md contains an unprefixed _gaia/_config/<csv> path for the two B3 CSVs" {
   # The two B3 CSVs MUST NOT appear under the legacy _gaia/_config/ path.
   # Any other _gaia/_config/* reference is deliberately out of scope here.
   local hits remaining
@@ -74,7 +74,7 @@ teardown() { common_teardown; }
   fi
 }
 
-@test "AC4/AC5: every PATH reference to gaia-help.csv or workflow-manifest.csv inside SKILL.md uses the plugin knowledge path" {
+@test "every PATH reference to gaia-help.csv or workflow-manifest.csv inside SKILL.md uses the plugin knowledge path" {
   # Scope: only LITERAL PATH references — i.e., the CSV filename appears with
   # a directory prefix like `_gaia/_config/<csv>` or `${CLAUDE_PLUGIN_ROOT}/knowledge/<csv>`.
   # Bare filename mentions ("see workflow-manifest.csv", "the gaia-help.csv columns")
@@ -210,7 +210,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "S196 AC9a (superseded by ADR-060/E45-S1): brainstorm SKILL.md no longer references lifecycle-sequence.yaml" {
+@test "S196 AC9a: brainstorm SKILL.md no longer references lifecycle-sequence.yaml" {
   # E28-S196 originally required gaia-brainstorm to resolve lifecycle-sequence.yaml
   # via ${CLAUDE_PLUGIN_ROOT}/knowledge/. ADR-060 / FR-348 (E45-S1) supersedes this:
   # the 10 lifecycle skills now ship a static `## Next Steps` H2 section instead of

@@ -15,7 +15,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-CCL-7 protected names exit non-zero ----------
 
-@test "TC-CCL-7: bats-tests is protected → exit non-zero with canonical stderr" {
+@test "bats-tests is protected → exit non-zero with canonical stderr" {
   cat > "$WORKDIR/gaia-ci.user-jobs.yml" <<'YAML'
 jobs:
   bats-tests:
@@ -30,7 +30,7 @@ YAML
   echo "$output" | grep -q 'gaia-ci.user-jobs.yml'
 }
 
-@test "TC-CCL-7: shellcheck is protected → exit non-zero" {
+@test "shellcheck is protected → exit non-zero" {
   cat > "$WORKDIR/gaia-ci.user-jobs.yml" <<'YAML'
 jobs:
   shellcheck:
@@ -43,7 +43,7 @@ YAML
   echo "$output" | grep -q 'shellcheck'
 }
 
-@test "TC-CCL-7: markdownlint is protected → exit non-zero" {
+@test "markdownlint is protected → exit non-zero" {
   cat > "$WORKDIR/gaia-ci.user-jobs.yml" <<'YAML'
 jobs:
   markdownlint:
@@ -58,7 +58,7 @@ YAML
 
 # ---------- TC-CCL-7 non-protected names exit 0 ----------
 
-@test "TC-CCL-7: non-protected-1 (coverage-upload) → exit 0" {
+@test "non-protected-1 (coverage-upload) → exit 0" {
   cat > "$WORKDIR/gaia-ci.user-jobs.yml" <<'YAML'
 jobs:
   coverage-upload:
@@ -70,7 +70,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "TC-CCL-7: non-protected-2 (notify-slack) → exit 0" {
+@test "non-protected-2 (notify-slack) → exit 0" {
   cat > "$WORKDIR/gaia-ci.user-jobs.yml" <<'YAML'
 jobs:
   notify-slack:
@@ -82,7 +82,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "TC-CCL-7: non-protected-3 (deploy-prod) → exit 0" {
+@test "non-protected-3 (deploy-prod) → exit 0" {
   cat > "$WORKDIR/gaia-ci.user-jobs.yml" <<'YAML'
 jobs:
   deploy-prod:
@@ -96,7 +96,7 @@ YAML
 
 # ---------- AC5: actionable error mentions remediation + ADR cite ----------
 
-@test "AC5: collision error names file + job + remediation + ADR-114 cite" {
+@test "collision error names file + job + remediation + cite" {
   cat > "$WORKDIR/gaia-ci.user-jobs.yml" <<'YAML'
 jobs:
   bats-tests:
@@ -112,7 +112,7 @@ YAML
 
 # ---------- TC-CCL-6: stitcher HALTs on collision; no file written ----------
 
-@test "TC-CCL-6: stitcher HALTs on protected-job collision; output NOT written" {
+@test "stitcher HALTs on protected-job collision; output NOT written" {
   cat > "$WORKDIR/gaia-ci.yml" <<'YAML'
 name: ci
 on: [push]

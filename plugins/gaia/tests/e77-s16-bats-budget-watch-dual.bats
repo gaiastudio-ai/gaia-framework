@@ -78,7 +78,7 @@ BUDGET_WATCH="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/bats-budget-watch.sh"
   grep -q 'bats budget exceeded\|soft budget exceeded' "$summary"
 }
 
-@test "back-compat: legacy E45-S6 flag-form still exits 0 advisory under threshold" {
+@test "back-compat: legacy flag-form still exits 0 advisory under threshold" {
   run "$BUDGET_WATCH" --threshold-seconds 60 -- /bin/sh -c 'exit 0'
   [ "$status" -eq 0 ]
 }

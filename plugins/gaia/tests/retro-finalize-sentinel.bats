@@ -35,7 +35,7 @@ write_sidecar_newer() {
 }
 
 # ---------------- Test A: in-window sidecar -> exit 0 ----------------
-@test "TC-OEXP-4 Test A: in-window Val sidecar entry passes retro finalize precondition" {
+@test "Test A: in-window Val sidecar entry passes retro finalize precondition" {
   stage_run_started
   write_sidecar_newer
   GAIA_FINALIZE_SENTINEL_REQUIRED=1 CLAUDE_PROJECT_ROOT="$TEST_TMP" \
@@ -44,7 +44,7 @@ write_sidecar_newer() {
 }
 
 # ---------------- Test B: missing sidecar -> non-zero + canonical error ----------------
-@test "TC-OEXP-4 Test B: missing Val sidecar entry fails retro finalize with canonical error" {
+@test "Test B: missing Val sidecar entry fails retro finalize with canonical error" {
   stage_run_started
   GAIA_FINALIZE_SENTINEL_REQUIRED=1 CLAUDE_PROJECT_ROOT="$TEST_TMP" \
     run "$FINALIZE"
@@ -54,7 +54,7 @@ write_sidecar_newer() {
 }
 
 # ---------------- Test C: out-of-window sidecar -> non-zero ----------------
-@test "TC-OEXP-4 Test C: out-of-window Val sidecar entry fails retro finalize" {
+@test "Test C: out-of-window Val sidecar entry fails retro finalize" {
   printf '### [2026-05-14] Prior retro entry\n' \
     >> "$MEM_ROOT/validator-sidecar/decision-log.md"
   sleep 1
@@ -66,7 +66,7 @@ write_sidecar_newer() {
 }
 
 # ---------------- Backward-compat ----------------
-@test "TC-OEXP-4 backward-compat: GAIA_FINALIZE_SENTINEL_REQUIRED unset preserves legacy behavior" {
+@test "backward-compat: GAIA_FINALIZE_SENTINEL_REQUIRED unset preserves legacy behavior" {
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }

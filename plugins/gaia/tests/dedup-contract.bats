@@ -40,7 +40,7 @@ run_dedup() {
 
 # --- AC4 / Scenario 1 — CVE collision -------------------------------------
 
-@test "E104-S1 AC4: CVE collision (grype+osv same CVE/file/sev) dedupes to 1, grype canonical" {
+@test "CVE collision (grype+osv same CVE/file/sev) dedupes to 1, grype canonical" {
   run_dedup cve-collision.json
   [ "$status" -eq 0 ]
   run jq -r 'length' "$DEDUP_OUTPUT"
@@ -53,7 +53,7 @@ run_dedup() {
 
 # --- Scenario 2 — CVE no-collision baseline -------------------------------
 
-@test "E104-S1: 5 distinct CVE findings pass through (no dedup)" {
+@test "5 distinct CVE findings pass through (no dedup)" {
   run_dedup cve-no-collision.json
   [ "$status" -eq 0 ]
   run jq -r 'length' "$DEDUP_OUTPUT"
@@ -62,7 +62,7 @@ run_dedup() {
 
 # --- Scenario 3 — non-CVE collision (precision ladder) --------------------
 
-@test "E104-S1 AC1: non-CVE collision (deadcode-go+vulture same file/symbol) dedupes to 1, deadcode-go wins" {
+@test "non-CVE collision (deadcode-go+vulture same file/symbol) dedupes to 1, deadcode-go wins" {
   run_dedup noncve-collision.json
   [ "$status" -eq 0 ]
   run jq -r 'length' "$DEDUP_OUTPUT"
@@ -73,7 +73,7 @@ run_dedup() {
 
 # --- AC4 — inflation reduction 8 → 2 --------------------------------------
 
-@test "E104-S1 AC4: 8 raw findings (CVE group of 4 + non-CVE group of 4) dedupe to 2 with correct winners" {
+@test "8 raw findings (CVE group of 4 + non-CVE group of 4) dedupe to 2 with correct winners" {
   run_dedup inflation-8to2.json
   [ "$status" -eq 0 ]
   run jq -r 'length' "$DEDUP_OUTPUT"
@@ -90,7 +90,7 @@ run_dedup() {
 
 # --- Scenario 6 — empty input ---------------------------------------------
 
-@test "E104-S1: two distinct symbol-less non-CVE findings in same file are NOT over-deduped (F1)" {
+@test "two distinct symbol-less non-CVE findings in same file are NOT over-deduped (F1)" {
   run_dedup noncve-no-symbol.json
   [ "$status" -eq 0 ]
   # Distinct ruleId + startLine, empty qualifier → must remain TWO findings.
@@ -100,7 +100,7 @@ run_dedup() {
   [ "$output" = "no-shadow,no-unused" ]
 }
 
-@test "E104-S1: empty input emits empty deduped stream, both counters 0" {
+@test "empty input emits empty deduped stream, both counters 0" {
   run_dedup empty.json
   [ "$status" -eq 0 ]
   run jq -r 'length' "$DEDUP_OUTPUT"
@@ -109,7 +109,7 @@ run_dedup() {
 
 # --- AC-X1 / Scenario 7 — master-flag-off passthrough ---------------------
 
-@test "E104-S1 AC-X1: flag-off skips dedup (INFO), raw stream passes through unchanged" {
+@test "flag-off skips dedup (INFO), raw stream passes through unchanged" {
   cp "$FIXTURES/cve-collision.json" "$DEDUP_INPUT"
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEDUP_ENABLED=false \
     DEDUP_INPUT="$DEDUP_INPUT" DEDUP_OUTPUT="$DEDUP_OUTPUT" run bash "$DEDUP"
@@ -120,7 +120,7 @@ run_dedup() {
   [ "$output" -eq 2 ]
 }
 
-@test "E104-S1 AC-X1: master flag off skips dedup" {
+@test "master flag off skips dedup" {
   cp "$FIXTURES/cve-collision.json" "$DEDUP_INPUT"
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=false \
     DEDUP_INPUT="$DEDUP_INPUT" DEDUP_OUTPUT="$DEDUP_OUTPUT" run bash "$DEDUP"
@@ -130,7 +130,7 @@ run_dedup() {
 
 # --- Scenario 9 — path canonicalization (dedup operates on given paths) ----
 
-@test "E104-S1: collision detected on already-canonical repo-root-relative paths" {
+@test "collision detected on already-canonical repo-root-relative paths" {
   # The merged-SARIF is canonicalized upstream by E104-S4; dedup keys on those
   # paths verbatim. Assert collision detection works on canonical paths.
   run_dedup cve-collision.json
@@ -141,7 +141,7 @@ run_dedup() {
 
 # --- AC3 / AC-X2 / AC-X3 — telemetry writer -------------------------------
 
-@test "E104-S1 AC3: telemetry writer sets gap_count_before/after_dedup on report frontmatter" {
+@test "telemetry writer sets gap_count_before/after_dedup on report frontmatter" {
   # A minimal report with YAML frontmatter.
   cat > "$TEST_TMP/report.md" <<'MD'
 ---
@@ -165,7 +165,7 @@ MD
   [ "$status" -eq 0 ]
 }
 
-@test "E104-S1 AC-X2: telemetry writer sets nested phase_runtime_seconds.dedup" {
+@test "telemetry writer sets nested phase_runtime_seconds.dedup" {
   cat > "$TEST_TMP/report.md" <<'MD'
 ---
 title: brownfield report
@@ -180,7 +180,7 @@ MD
   [ "$output" = "3" ]
 }
 
-@test "E104-S1 AC-X3: telemetry writer sets deterministic_tool_seconds.dedup and llm_token_count:0" {
+@test "telemetry writer sets deterministic_tool_seconds.dedup and llm_token_count:0" {
   cat > "$TEST_TMP/report.md" <<'MD'
 ---
 title: brownfield report
@@ -199,7 +199,7 @@ MD
 
 # --- AC-X1 flag-resolution integration (resolve-config path) --------------
 
-@test "E104-S1 AC-X1: resolve-config.sh --field brownfield.dedup_enabled is whitelisted" {
+@test "resolve-config.sh --field brownfield.dedup_enabled is whitelisted" {
   cat > "$TEST_TMP/project-config.yaml" <<YAML
 project_root: /tmp/gaia
 project_path: /tmp/gaia/app
@@ -221,7 +221,7 @@ YAML
 
 # --- Hygiene --------------------------------------------------------------
 
-@test "E104-S1: dedup.sh + brownfield-telemetry.sh exist, executable, pass bash -n" {
+@test "dedup.sh + brownfield-telemetry.sh exist, executable, pass bash -n" {
   [ -x "$DEDUP" ]; [ -x "$TELEM" ]
   run bash -n "$DEDUP"; [ "$status" -eq 0 ]
   run bash -n "$TELEM"; [ "$status" -eq 0 ]

@@ -32,7 +32,7 @@ assert_severity() {
 
 # --- AC3 happy path: PII field without TTL ---
 
-@test "TC-RSV2-PRIVACY-2.1: Prisma PII field without TTL flagged" {
+@test ".1: Prisma PII field without TTL flagged" {
   local f="$TEST_TMP/prisma/schema.prisma"
   mkfile "$f" 'model User {
   id    Int    @id
@@ -45,7 +45,7 @@ assert_severity() {
   assert_rule "$output" "pii-field-no-ttl"
 }
 
-@test "TC-RSV2-PRIVACY-2.2: SQLAlchemy/Django PII column without expiry flagged" {
+@test ".2: SQLAlchemy/Django PII column without expiry flagged" {
   local f="$TEST_TMP/models/user.py"
   mkfile "$f" 'class User(Model):
     email = CharField(max_length=255)
@@ -58,7 +58,7 @@ assert_severity() {
 
 # --- AC3 session/token store ---
 
-@test "TC-RSV2-PRIVACY-2.3: Redis session config missing TTL flagged" {
+@test ".3: Redis session config missing TTL flagged" {
   local f="$TEST_TMP/config/session.json"
   mkfile "$f" '{
   "store": "redis",
@@ -72,7 +72,7 @@ assert_severity() {
 
 # --- AC3 retention threshold ---
 
-@test "TC-RSV2-PRIVACY-2.4: --max-retention-days flag overrides default" {
+@test ".4: --max-retention-days flag overrides default" {
   local f="$TEST_TMP/config/retention.yaml"
   mkfile "$f" 'retention:
   default_days: 90
@@ -83,7 +83,7 @@ assert_severity() {
   assert_rule "$output" "retention-exceeds-threshold"
 }
 
-@test "TC-RSV2-PRIVACY-2.5: default threshold (365) does not flag short retention" {
+@test ".5: default threshold (365) does not flag short retention" {
   local f="$TEST_TMP/config/retention.yaml"
   mkfile "$f" 'retention:
   default_days: 90
@@ -95,7 +95,7 @@ assert_severity() {
 
 # --- AC3 clean pass ---
 
-@test "TC-RSV2-PRIVACY-2.6: PII field with @ttl annotation -> not flagged" {
+@test ".6: PII field with @ttl annotation -> not flagged" {
   local f="$TEST_TMP/prisma/schema.prisma"
   mkfile "$f" 'model User {
   id    Int    @id
@@ -106,7 +106,7 @@ assert_severity() {
   ! printf '%s\n' "$output" | grep -F '"rule":"pii-field-no-ttl"' >/dev/null
 }
 
-@test "TC-RSV2-PRIVACY-2.7: clean config -> status passed" {
+@test ".7: clean config -> status passed" {
   local f="$TEST_TMP/config/non-pii.json"
   mkfile "$f" '{"feature":"enabled","limit":100}'
   run "$SCRIPT" "$f"
@@ -116,7 +116,7 @@ assert_severity() {
 
 # --- AC8 severity ---
 
-@test "TC-RSV2-PRIVACY-2.8: retention findings -> Medium severity" {
+@test ".8: retention findings -> Medium severity" {
   local f="$TEST_TMP/prisma/schema.prisma"
   mkfile "$f" 'model U { email String }'
   run "$SCRIPT" "$f"
@@ -126,16 +126,16 @@ assert_severity() {
 
 # --- AC6 POSIX discipline ---
 
-@test "TC-RSV2-PRIVACY-2.9: script uses set -euo pipefail and LC_ALL=C" {
+@test ".9: script uses set -euo pipefail and LC_ALL=C" {
   grep -Fq "set -euo pipefail" "$SCRIPT"
   grep -Fq "LC_ALL=C" "$SCRIPT"
 }
 
-@test "TC-RSV2-PRIVACY-2.10: script does not invoke jq" {
+@test ".10: script does not invoke jq" {
   ! grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -E '(^|[[:space:]\|;])jq([[:space:]]|$)' >/dev/null
 }
 
-@test "TC-RSV2-PRIVACY-2.11: --help exits 0 and prints usage" {
+@test ".11: --help exits 0 and prints usage" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | grep -F "Usage:" >/dev/null
@@ -143,7 +143,7 @@ assert_severity() {
 
 # --- AC7 schema-shape ---
 
-@test "TC-RSV2-PRIVACY-2.12: output emits required check fields" {
+@test ".12: output emits required check fields" {
   local f="$TEST_TMP/prisma/schema.prisma"
   mkfile "$f" 'model U { email String }'
   run "$SCRIPT" "$f"

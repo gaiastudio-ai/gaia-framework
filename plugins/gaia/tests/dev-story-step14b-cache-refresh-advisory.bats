@@ -18,7 +18,7 @@ setup() {
 }
 teardown() { common_teardown; }
 
-@test "TC-DCR-1: diff touches a SKILL.md -> advisory line emitted to stderr" {
+@test "diff touches a SKILL.md -> advisory line emitted to stderr" {
   cat > diff.txt <<EOF
 plugins/gaia/skills/gaia-dev-story/SKILL.md
 plugins/gaia/skills/gaia-dev-story/scripts/checkpoint.sh
@@ -29,7 +29,7 @@ EOF
   [[ "$stderr" == *"plugins/gaia/skills/gaia-dev-story/SKILL.md"* ]]
 }
 
-@test "TC-DCR-2: diff touches only docs/**/*.md -> no advisory" {
+@test "diff touches only docs/**/*.md -> no advisory" {
   cat > diff.txt <<EOF
 docs/planning-artifacts/architecture.md
 docs/implementation-artifacts/some-story.md
@@ -39,7 +39,7 @@ EOF
   [ -z "$stderr" ]
 }
 
-@test "TC-DCR-3: diff touches both SKILL.md and tests/*.bats -> advisory fires once" {
+@test "diff touches both SKILL.md and tests/*.bats -> advisory fires once" {
   cat > diff.txt <<EOF
 plugins/gaia/skills/gaia-add-feature/SKILL.md
 plugins/gaia/tests/example.bats
@@ -56,14 +56,14 @@ EOF
   [[ "$stderr" != *"plugins/gaia/tests/example.bats"* ]]
 }
 
-@test "TC-DCR-4: empty diff file -> no advisory, exit 0" {
+@test "empty diff file -> no advisory, exit 0" {
   : > diff.txt
   run --separate-stderr "$ADVISORY" --diff-files diff.txt
   [ "$status" -eq 0 ]
   [ -z "$stderr" ]
 }
 
-@test "TC-DCR-5: diff touches plugins/gaia/agents/*.md -> advisory fires (agents also need refresh)" {
+@test "diff touches plugins/gaia/agents/*.md -> advisory fires (agents also need refresh)" {
   cat > diff.txt <<EOF
 plugins/gaia/agents/validator.md
 EOF

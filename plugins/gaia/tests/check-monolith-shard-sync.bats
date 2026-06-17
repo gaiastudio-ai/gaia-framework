@@ -368,7 +368,7 @@ EOF
 }
 
 # TC-TSS-SHARD-6 (a) — divergent monolith vs shard pair triggers WARNING.
-@test "TC-TSS-SHARD-6a: divergent per-story status emits epics-shard WARNING" {
+@test "divergent per-story status emits epics-shard WARNING" {
   _write_synced_prd
   _write_synced_arch
   _write_epics_monolith_story "E99-S1" "done"
@@ -395,7 +395,7 @@ EOF
 }
 
 # TC-TSS-SHARD-6 (b) — absent shard does NOT emit a WARNING.
-@test "TC-TSS-SHARD-6b: absent per-epic shard emits NO epics-shard WARNING" {
+@test "absent per-epic shard emits NO epics-shard WARNING" {
   _write_synced_prd
   _write_synced_arch
   _write_epics_monolith_story "E99-S1" "done"
@@ -410,7 +410,7 @@ EOF
 # TC-TSS-SHARD-6 (c) — regression guard: existing 12 prd/architecture WARNINGs are preserved
 # byte-untouched when the per-story status walk runs. We use synced fixtures so this AC reads
 # as: zero new false-positive WARNINGs from the new walk.
-@test "TC-TSS-SHARD-6c: synced fixture stays clean — new walk introduces no false positives" {
+@test "synced fixture stays clean — new walk introduces no false positives" {
   _write_synced_prd
   _write_synced_arch
   _write_synced_epics
@@ -513,7 +513,7 @@ Other content.
 SH
 }
 
-@test "TC-MSS-SUBSHARD-1: PRD-§4 marker-pair fixture emits 0 WARNINGs related to §4" {
+@test "PRD-§4 marker-pair fixture emits 0 WARNINGs related to §4" {
   _seed_sub_shard_fixture
   run "$CHECK_SCRIPT" --root "$TEST_TMP"
   [ "$status" -eq 0 ]
@@ -523,7 +523,7 @@ SH
   ! echo "$output" | grep -q 'section "4. Functional Requirements" diverges'
 }
 
-@test "TC-MSS-SUBSHARD-2: marker-shard without sibling dir KEEPS the WARNING (corruption signal)" {
+@test "marker-shard without sibling dir KEEPS the WARNING (corruption signal)" {
   local prd_dir="$TEST_TMP/docs/planning-artifacts/prd"
   mkdir -p "$prd_dir"
   cat > "$prd_dir/prd.md" <<'PRD'
@@ -546,7 +546,7 @@ SH
   echo "$output" | grep -q "WARNING: prd"
 }
 
-@test "TC-MSS-SUBSHARD-3: _strip_sub_sharded_suffix strips em-dash + literal token" {
+@test "_strip_sub_sharded_suffix strips em-dash + literal token" {
   # Extract just the function definition and exec it in a sub-bash that
   # doesn't run the script's main logic. The script's main pass exits
   # under `set -e`, so we can't `source` it directly.
@@ -561,7 +561,7 @@ _strip_sub_sharded_suffix \"4. Functional Requirements\"")
   [ "$result2" = "4. Functional Requirements" ]
 }
 
-@test "TC-MSS-SUBSHARD-5: flat-layout (no sibling dirs) regression-guard — output unchanged" {
+@test "flat-layout (no sibling dirs) regression-guard — output unchanged" {
   # Pure flat shard layout — no marker pairs anywhere.
   local prd_dir="$TEST_TMP/docs/planning-artifacts/prd"
   mkdir -p "$prd_dir"

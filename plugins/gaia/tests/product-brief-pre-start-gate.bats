@@ -47,7 +47,7 @@ teardown() { common_teardown; }
 # -------------------------------------------------------------------------
 # VCP-PB-01 — pre_start gate passes when brainstorm artifact exists.
 # -------------------------------------------------------------------------
-@test "VCP-PB-01: setup.sh exits 0 when a brainstorm artifact exists" {
+@test "setup.sh exits 0 when a brainstorm artifact exists" {
   # AF-2026-05-21-20: canonical .gaia/artifacts/ path.
   printf '# brainstorm fixture\n' \
     >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-foo.md"
@@ -60,7 +60,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"setup complete for create-product-brief"* ]]
 }
 
-@test "VCP-PB-01: pre_start passes with multiple brainstorm artifacts" {
+@test "pre_start passes with multiple brainstorm artifacts" {
   printf '# bs1\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-one.md"
   printf '# bs2\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-two.md"
   cd "$TEST_TMP"
@@ -71,7 +71,7 @@ teardown() { common_teardown; }
 # -------------------------------------------------------------------------
 # VCP-PB-02 — pre_start gate halts when no brainstorm artifact exists.
 # -------------------------------------------------------------------------
-@test "VCP-PB-02: setup.sh exits non-zero when brainstorm artifact missing" {
+@test "setup.sh exits non-zero when brainstorm artifact missing" {
   cd "$TEST_TMP"
   run "$SETUP"
   [ "$status" -ne 0 ]
@@ -83,7 +83,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"quality-gate"* ]]
 }
 
-@test "VCP-PB-02: halt happens before checkpoint load (no checkpoint side effect)" {
+@test "halt happens before checkpoint load (no checkpoint side effect)" {
   cd "$TEST_TMP"
   run "$SETUP"
   [ "$status" -ne 0 ]
@@ -92,7 +92,7 @@ teardown() { common_teardown; }
   [ ! -f "$CHECKPOINT_PATH/create-product-brief.yaml" ]
 }
 
-@test "VCP-PB-02: an unrelated creative-artifact does not satisfy the gate" {
+@test "an unrelated creative-artifact does not satisfy the gate" {
   # market-research-*.md is NOT a brainstorm artifact.
   printf '# market\n' \
     >"$TEST_TMP/docs/creative-artifacts/market-research-foo.md"

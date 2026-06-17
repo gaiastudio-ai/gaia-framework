@@ -125,7 +125,7 @@ EOF
 # TC-SPQG-7: Clean sprint + inversions
 # ===========================================================================
 
-@test "TC-SPQG-7: clean sprint exits 0 (AC1)" {
+@test "clean sprint exits 0" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   _make_story_file "$dir" "E1-S1" "ready-for-dev"
@@ -148,7 +148,7 @@ EOF
   echo "$output" | grep -q '"stories_analyzed": 5'
 }
 
-@test "TC-SPQG-7: forward-reference inversion flagged (AC2)" {
+@test "forward-reference inversion flagged" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   _make_story_file "$dir" "E1-S1" "ready-for-dev"
@@ -177,7 +177,7 @@ EOF
 # Edge cases (AC-EC1 through AC-EC13)
 # ===========================================================================
 
-@test "AC-EC1: empty sprint reports 0 stories, clean, exit 0" {
+@test "empty sprint reports 0 stories, clean, exit 0" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   local yaml="$TEST_TMP/sprint-status.yaml"
@@ -195,7 +195,7 @@ EOF
   echo "$output" | grep -q '"status": "clean"'
 }
 
-@test "AC-EC3: external dependency emits heuristic inversion" {
+@test "external dependency emits heuristic inversion" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   _make_story_file "$dir" "E1-S1" "ready-for-dev" '"E2-S1"'
@@ -212,7 +212,7 @@ EOF
   echo "$output" | grep -q "External dependency"
 }
 
-@test "AC-EC4: circular A->B->A reports inversions, terminates" {
+@test "circular A->B->A reports inversions, terminates" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   _make_story_file "$dir" "E1-S1" "ready-for-dev" '"E1-S2"'
@@ -228,7 +228,7 @@ EOF
   [ "$status" -eq 2 ]
 }
 
-@test "AC-EC8: malformed yaml exits 1" {
+@test "malformed yaml exits 1" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   local yaml="$TEST_TMP/sprint-status.yaml"
@@ -240,7 +240,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "AC-EC10: story file not found exits 1" {
+@test "story file not found exits 1" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   _make_yaml "$TEST_TMP/sprint-status.yaml" \
@@ -253,7 +253,7 @@ EOF
   echo "$output" | grep -qi "not found"
 }
 
-@test "AC-EC11: Unicode in AC text does not crash" {
+@test "Unicode in AC text does not crash" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   _make_story_file "$dir" "E1-S1" "ready-for-dev" "" \
@@ -267,7 +267,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC13: read-only guarantee — no writes to any file" {
+@test "read-only guarantee — no writes to any file" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   _make_story_file "$dir" "E1-S1" "ready-for-dev" '"E1-S2"'

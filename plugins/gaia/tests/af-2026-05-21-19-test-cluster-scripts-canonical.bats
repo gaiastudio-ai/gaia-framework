@@ -22,39 +22,39 @@ teardown() { common_teardown; }
 
 # --- Display string canonicalization ---
 
-@test "AF-21-19: gaia-test-design/finalize.sh SV-01 display string uses canonical path" {
+@test "gaia-test-design/finalize.sh display string uses canonical path" {
   grep -qF 'Output file saved to .gaia/artifacts/test-artifacts/test-plan.md' "$TEST_DESIGN_FINALIZE"
   ! grep -qF 'Output file saved to docs/test-artifacts/test-plan.md' "$TEST_DESIGN_FINALIZE"
 }
 
-@test "AF-21-19: gaia-edit-test-plan/finalize.sh SV-01 display string uses canonical path" {
+@test "gaia-edit-test-plan/finalize.sh display string uses canonical path" {
   grep -qF 'Output file saved to .gaia/artifacts/test-artifacts/test-plan.md' "$EDIT_TEST_PLAN_FINALIZE"
   ! grep -qF 'Output file saved to docs/test-artifacts/test-plan.md' "$EDIT_TEST_PLAN_FINALIZE"
 }
 
-@test "AF-21-19: gaia-test-framework/finalize.sh remediation uses canonical path" {
+@test "gaia-test-framework/finalize.sh remediation uses canonical path" {
   grep -qF '.gaia/artifacts/test-artifacts/test-framework-setup.md' "$TEST_FRAMEWORK_FINALIZE"
 }
 
 # --- Three-tier idiom assertions ---
 
-@test "AF-21-19: gaia-edit-test-plan/setup.sh implements three-tier idiom (TEST_PLAN_PATH)" {
+@test "gaia-edit-test-plan/setup.sh implements three-tier idiom (TEST_PLAN_PATH)" {
   grep -qF '.gaia/artifacts/test-artifacts/test-plan.md' "$EDIT_TEST_PLAN_SETUP"
   grep -qE 'if \[ -z "\$\{TEST_PLAN_PATH:-\}" \]' "$EDIT_TEST_PLAN_SETUP"
   grep -qF '[ ! -d "$PROJECT_ROOT/.gaia/artifacts/test-artifacts" ]' "$EDIT_TEST_PLAN_SETUP"
 }
 
-@test "AF-21-19: gaia-atdd/finalize.sh implements canonical-first with positive-evidence legacy" {
+@test "gaia-atdd/finalize.sh implements canonical-first with positive-evidence legacy" {
   grep -qF '.gaia/artifacts/test-artifacts/atdd-' "$ATDD_FINALIZE"
   grep -qE '\[ ! -d "\$derive_root/\.gaia/artifacts/test-artifacts" \]' "$ATDD_FINALIZE"
 }
 
-@test "AF-21-19: gaia-atdd/run-red-phase.sh _BRIDGE_FILE uses canonical-first" {
+@test "gaia-atdd/run-red-phase.sh _BRIDGE_FILE uses canonical-first" {
   grep -qF '.gaia/artifacts/test-artifacts/test-environment.yaml' "$ATDD_RUN_RED"
   grep -qE '\[ ! -d "\$_PROJECT_ROOT/\.gaia/artifacts/test-artifacts" \]' "$ATDD_RUN_RED"
 }
 
-@test "AF-21-19: gaia-atdd/discover-stories.sh docstring uses canonical path" {
+@test "gaia-atdd/discover-stories.sh docstring uses canonical path" {
   grep -qF '.gaia/artifacts/planning-artifacts/epics-and-stories.md' "$ATDD_DISCOVER"
   ! grep -qF 'Scans docs/planning-artifacts' "$ATDD_DISCOVER"
 }

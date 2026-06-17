@@ -52,7 +52,7 @@ EOF
 
 # ---- AC1: empty-state files detected ----
 
-@test "AC1: single empty-state checkpoint is flagged" {
+@test "single empty-state checkpoint is flagged" {
   make_empty_state validate-story
   run "$SCRIPT" --checkpoint-path "$FAKE_CHECKPOINTS"
   [ "$status" -eq 0 ]
@@ -60,7 +60,7 @@ EOF
   [[ "$output" == *"Empty-state matches: 1"* ]]
 }
 
-@test "AC1: multiple empty-state checkpoints all flagged" {
+@test "multiple empty-state checkpoints all flagged" {
   make_empty_state validate-story
   make_empty_state validate-prd
   make_empty_state add-feature
@@ -74,7 +74,7 @@ EOF
 
 # ---- AC2: valid Val-PASS checkpoints NOT flagged ----
 
-@test "AC2: valid Val-PASS checkpoint NOT flagged (no false positive)" {
+@test "valid Val-PASS checkpoint NOT flagged (no false positive)" {
   make_valid_pass validate-story-E40-S1
   run "$SCRIPT" --checkpoint-path "$FAKE_CHECKPOINTS"
   [ "$status" -eq 0 ]
@@ -82,7 +82,7 @@ EOF
   [[ "$output" != *"validate-story-E40-S1.yaml"* ]]
 }
 
-@test "AC2: valid checkpoint with verdict but empty files_touched NOT flagged" {
+@test "valid checkpoint with verdict but empty files_touched NOT flagged" {
   # Edge case: variables: {} and files_touched: [] but verdict is present.
   # This is NOT the bypass signature — verdict means Val actually returned.
   make_valid_no_files some-skill
@@ -93,7 +93,7 @@ EOF
 
 # ---- AC2: mixed scenarios ----
 
-@test "AC2: mixed valid + empty-state - only empty flagged" {
+@test "mixed valid + empty-state - only empty flagged" {
   make_empty_state bypass-1
   make_valid_pass real-pass-1
   make_empty_state bypass-2

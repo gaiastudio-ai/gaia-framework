@@ -40,7 +40,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-12: forged sentinel rejected (primary) ----------------
-@test "TC-VBR-12: forged sentinel (no persona_sig) is rejected by assert_agent_envelope — NFR-064" {
+@test "forged sentinel (no persona_sig) is rejected by assert_agent_envelope" {
   [ -f "$HELPER" ] || skip "E87-S1 helper not present"
   [ -f "$FORGED_FIXTURE" ] || skip "E87-S1 forged fixture not present"
   source "$HELPER"
@@ -50,7 +50,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-12c: frontmatter migration ----------------
-@test "TC-VBR-12c: /gaia-val-validate SKILL.md frontmatter does not declare context: fork" {
+@test "gaia-val-validate SKILL.md frontmatter does not declare context: fork" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not present"
   # Inspect only the frontmatter block (between the leading --- and the next ---).
   run awk '/^---$/{c++; next} c==1{print}' "$SKILL_MD"
@@ -60,7 +60,7 @@ teardown() {
   ! grep -Eq '^context:[[:space:]]*fork' <<< "$output"
 }
 
-@test "TC-VBR-12c (validator.md sibling): validator.md frontmatter does not declare context: fork" {
+@test "validator.md sibling): validator.md frontmatter does not declare context: fork" {
   [ -f "$VALIDATOR_MD" ] || skip "validator.md not present"
   run awk '/^---$/{c++; next} c==1{print}' "$VALIDATOR_MD"
   [ "$status" -eq 0 ]
@@ -69,14 +69,14 @@ teardown() {
 }
 
 # ---------------- TC-VBR-12d: helper consumption ----------------
-@test "TC-VBR-12d: SKILL.md references assert_agent_envelope (helper is consumed)" {
+@test "SKILL.md references assert_agent_envelope (helper is consumed)" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not present"
   count=$(grep -c "assert_agent_envelope" "$SKILL_MD" || true)
   [ "$count" -ge 1 ]
 }
 
 # ---------------- TC-VBR-12e: ADR-104 changelog ----------------
-@test "TC-VBR-12e: SKILL.md documents the orchestrator-side sentinel-writer contract" {
+@test "SKILL.md documents the orchestrator-side sentinel-writer contract" {
   [ -f "$SKILL_MD" ] || skip "SKILL.md not present"
   # Assert the contract the migration note records, not an internal identifier
   # (scrubbed from published source): the sentinel write relocated to the
@@ -86,7 +86,7 @@ teardown() {
 }
 
 # ---------------- TC-VBR-12f: persona sentinel-write contract ----------------
-@test "TC-VBR-12f: validator.md instructs the Val persona to emit the envelope sentinel" {
+@test "validator.md instructs the Val persona to emit the envelope sentinel" {
   [ -f "$VALIDATOR_MD" ] || skip "validator.md not present"
   # Any of three markers is sufficient: persona_sig field, envelope-sentinel prose, or canonical sentinel path slug.
   grep -Eq 'persona_sig|envelope sentinel|val-envelope-' "$VALIDATOR_MD"
@@ -110,14 +110,14 @@ VALIDATE_STORY_MD="$PLUGIN_ROOT/skills/gaia-validate-story/SKILL.md"
 FIX_STORY_MD="$PLUGIN_ROOT/skills/gaia-fix-story/SKILL.md"
 
 # ---------------- TC-VBR-9: validate-story envelope-assert grep ----------------
-@test "TC-VBR-9: /gaia-validate-story SKILL.md references assert_agent_envelope" {
+@test "gaia-validate-story SKILL.md references assert_agent_envelope" {
   [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
   count=$(grep -c "assert_agent_envelope" "$VALIDATE_STORY_MD" || true)
   [ "$count" -ge 1 ]
 }
 
 # ---------------- TC-VBR-9-runtime: validate-story forgery HALT ----------------
-@test "TC-VBR-9-runtime: validate-story dispatch path HALTs on forged sentinel — NFR-064" {
+@test "runtime: validate-story dispatch path HALTs on forged sentinel" {
   [ -f "$HELPER" ] || skip "E87-S1 helper not present"
   [ -f "$FORGED_FIXTURE" ] || skip "E87-S1 forged fixture not present"
   source "$HELPER"
@@ -127,7 +127,7 @@ FIX_STORY_MD="$PLUGIN_ROOT/skills/gaia-fix-story/SKILL.md"
 }
 
 # ---------------- TC-VBR-9b: validate-story frontmatter migrated ----------------
-@test "TC-VBR-9b: /gaia-validate-story SKILL.md frontmatter does not declare context: fork" {
+@test "gaia-validate-story SKILL.md frontmatter does not declare context: fork" {
   [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
   run awk '/^---$/{c++; next} c==1{print}' "$VALIDATE_STORY_MD"
   [ "$status" -eq 0 ]
@@ -136,7 +136,7 @@ FIX_STORY_MD="$PLUGIN_ROOT/skills/gaia-fix-story/SKILL.md"
 }
 
 # ---------------- TC-VBR-9c: validate-story no fallthrough prose ----------------
-@test "TC-VBR-9c: /gaia-validate-story SKILL.md contains no inline-Val / auto-judged fallthrough prose" {
+@test "gaia-validate-story SKILL.md contains no inline-Val / auto-judged fallthrough prose" {
   [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
   # Scan for the documented bypass class. A "removed" callout in a Changelog
   # entry could legitimately mention these phrases; we exempt explicit
@@ -146,14 +146,14 @@ FIX_STORY_MD="$PLUGIN_ROOT/skills/gaia-fix-story/SKILL.md"
 }
 
 # ---------------- TC-VBR-10: fix-story envelope-assert grep ----------------
-@test "TC-VBR-10: /gaia-fix-story SKILL.md references assert_agent_envelope" {
+@test "gaia-fix-story SKILL.md references assert_agent_envelope" {
   [ -f "$FIX_STORY_MD" ] || skip "fix-story SKILL.md not present"
   count=$(grep -c "assert_agent_envelope" "$FIX_STORY_MD" || true)
   [ "$count" -ge 1 ]
 }
 
 # ---------------- TC-VBR-10-runtime: fix-story forgery HALT ----------------
-@test "TC-VBR-10-runtime: fix-story dispatch path HALTs on forged sentinel — closes feedback_fix_story_inline_revalidation_bypass.md" {
+@test "runtime: fix-story dispatch path HALTs on forged sentinel — closes feedback_fix_story_inline_revalidation_bypass.md" {
   [ -f "$HELPER" ] || skip "E87-S1 helper not present"
   [ -f "$FORGED_FIXTURE" ] || skip "E87-S1 forged fixture not present"
   source "$HELPER"
@@ -163,14 +163,14 @@ FIX_STORY_MD="$PLUGIN_ROOT/skills/gaia-fix-story/SKILL.md"
 }
 
 # ---------------- TC-VBR-10b: fix-story no fallthrough prose ----------------
-@test "TC-VBR-10b: /gaia-fix-story SKILL.md contains no inline-Val / main-turn-inline-validation fallthrough prose" {
+@test "gaia-fix-story SKILL.md contains no inline-Val / main-turn-inline-validation fallthrough prose" {
   [ -f "$FIX_STORY_MD" ] || skip "fix-story SKILL.md not present"
   hits=$(grep -E 'inline Val|auto-judged|main-turn inline validation' "$FIX_STORY_MD" 2>/dev/null | grep -v -E 'Changelog|\(removed\)|removed the|no longer|MUST NOT|do NOT fall' || true)
   [ -z "$hits" ]
 }
 
 # ---------------- TC-VBR-10c: both migrated SKILL.md files document the Val Bridge Migration ----------------
-@test "TC-VBR-10c: both validate-story and fix-story SKILL.md contain Val Bridge Migration reference" {
+@test "both validate-story and fix-story SKILL.md contain Val Bridge Migration reference" {
   [ -f "$VALIDATE_STORY_MD" ] || skip "validate-story SKILL.md not present"
   [ -f "$FIX_STORY_MD" ] || skip "fix-story SKILL.md not present"
   grep -q 'Val Bridge Migration' "$VALIDATE_STORY_MD"
@@ -202,7 +202,7 @@ _extract_region() {
 }
 
 # ---------------- TC-VBR-7: Step 4 envelope-assert ----------------
-@test "TC-VBR-7: /gaia-dev-story Step 4 region references assert_agent_envelope" {
+@test "gaia-dev-story Step 4 region references assert_agent_envelope" {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   region=$(_extract_region "4" "5" "$DEV_STORY_MD")
   [ -n "$region" ]
@@ -210,7 +210,7 @@ _extract_region() {
 }
 
 # ---------------- TC-VBR-7b: Step 4 no context: fork Val-dispatch refs ----------------
-@test "TC-VBR-7b: /gaia-dev-story Step 4 region has no context: fork Val-dispatch refs" {
+@test "gaia-dev-story Step 4 region has no context: fork Val-dispatch refs" {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   region=$(_extract_region "4" "5" "$DEV_STORY_MD")
   [ -n "$region" ]
@@ -222,7 +222,7 @@ _extract_region() {
 }
 
 # ---------------- TC-VBR-8: Step 7b envelope-assert ----------------
-@test "TC-VBR-8: /gaia-dev-story Step 7b region references assert_agent_envelope" {
+@test "gaia-dev-story Step 7b region references assert_agent_envelope" {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   region=$(_extract_region "7b" "8" "$DEV_STORY_MD")
   [ -n "$region" ]
@@ -230,7 +230,7 @@ _extract_region() {
 }
 
 # ---------------- TC-VBR-8b: Step 7b no context: fork Val-dispatch refs ----------------
-@test "TC-VBR-8b: /gaia-dev-story Step 7b region has no context: fork Val-dispatch refs" {
+@test "gaia-dev-story Step 7b region has no context: fork Val-dispatch refs" {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   region=$(_extract_region "7b" "8" "$DEV_STORY_MD")
   [ -n "$region" ]
@@ -239,7 +239,7 @@ _extract_region() {
 }
 
 # ---------------- TC-VBR-8c: total grep count >= 2 ----------------
-@test "TC-VBR-8c: /gaia-dev-story SKILL.md total assert_agent_envelope count >= 2" {
+@test "gaia-dev-story SKILL.md total assert_agent_envelope count >= 2" {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   count=$(grep -c "assert_agent_envelope" "$DEV_STORY_MD" || true)
   [ "$count" -ge 2 ]
@@ -258,7 +258,7 @@ _extract_steps_10_to_16() {
 }
 
 # ---------------- TC-VBR-8d: Steps 10-16 canonical tokens preserved (regression) ----------------
-@test "TC-VBR-8d: /gaia-dev-story Steps 10-16 retain canonical push/PR/CI/merge tokens" {
+@test "gaia-dev-story Steps 10-16 retain canonical push/PR/CI/merge tokens" {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   region=$(_extract_steps_10_to_16 "$DEV_STORY_MD")
   [ -n "$region" ]
@@ -272,7 +272,7 @@ _extract_steps_10_to_16() {
 }
 
 # ---------------- TC-VBR-8e: Steps 10-16 leak guard ----------------
-@test "TC-VBR-8e: /gaia-dev-story Steps 10-16 contain no assert_agent_envelope leak" {
+@test "gaia-dev-story Steps 10-16 contain no assert_agent_envelope leak" {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   region=$(_extract_steps_10_to_16 "$DEV_STORY_MD")
   [ -n "$region" ]
@@ -306,7 +306,7 @@ _extract_add_feature_step_2() {
 }
 
 # ---------------- TC-VBR-11: Step 2 envelope-assert ----------------
-@test "TC-VBR-11: /gaia-add-feature Step 2 region references assert_agent_envelope" {
+@test "gaia-add-feature Step 2 region references assert_agent_envelope" {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
   region=$(_extract_add_feature_step_2 "$ADD_FEATURE_MD")
   [ -n "$region" ]
@@ -314,7 +314,7 @@ _extract_add_feature_step_2() {
 }
 
 # ---------------- TC-VBR-11b: Step 2 main-turn dispatch token ----------------
-@test "TC-VBR-11b: /gaia-add-feature Step 2 region contains main-turn Agent tool token" {
+@test "gaia-add-feature Step 2 region contains main-turn Agent tool token" {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
   region=$(_extract_add_feature_step_2 "$ADD_FEATURE_MD")
   [ -n "$region" ]
@@ -322,7 +322,7 @@ _extract_add_feature_step_2() {
 }
 
 # ---------------- TC-VBR-11c: Step 2 no context: fork Val-dispatch refs (region-scoped) ----------------
-@test "TC-VBR-11c: /gaia-add-feature Step 2 region has no context: fork Val-dispatch refs" {
+@test "gaia-add-feature Step 2 region has no context: fork Val-dispatch refs" {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
   region=$(_extract_add_feature_step_2 "$ADD_FEATURE_MD")
   [ -n "$region" ]
@@ -333,20 +333,20 @@ _extract_add_feature_step_2() {
 }
 
 # ---------------- TC-VBR-11d: total grep count >= 1 ----------------
-@test "TC-VBR-11d: /gaia-add-feature SKILL.md total assert_agent_envelope count >= 1" {
+@test "gaia-add-feature SKILL.md total assert_agent_envelope count >= 1" {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
   count=$(grep -c "assert_agent_envelope" "$ADD_FEATURE_MD" || true)
   [ "$count" -ge 1 ]
 }
 
 # ---------------- TC-VBR-11e: Val Bridge Migration documented in Changelog ----------------
-@test "TC-VBR-11e: /gaia-add-feature SKILL.md contains Val Bridge Migration reference" {
+@test "gaia-add-feature SKILL.md contains Val Bridge Migration reference" {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
   grep -q 'Val Bridge Migration' "$ADD_FEATURE_MD"
 }
 
 # ---------------- TC-VBR-11f: finalize.sh sentinel leak guard (AC3) ----------------
-@test "TC-VBR-11f: /gaia-add-feature/scripts/finalize.sh contains no envelope-sentinel write" {
+@test "gaia-add-feature/scripts/finalize.sh contains no envelope-sentinel write" {
   [ -f "$ADD_FEATURE_FINALIZE" ] || skip "add-feature finalize.sh not present"
   # The E87 envelope sentinel is written by the Val persona (per E87-S2 contract);
   # finalize.sh validates only the SEPARATE E83 dispatch checkpoint
@@ -356,7 +356,7 @@ _extract_add_feature_step_2() {
 }
 
 # ---------------- TC-VBR-11g: E83 + E87 sentinel coexistence (AC4) ----------------
-@test "TC-VBR-11g: /gaia-add-feature SKILL.md references BOTH E83 dispatch checkpoint AND E87 envelope sentinel" {
+@test "gaia-add-feature SKILL.md references BOTH E83 dispatch checkpoint AND E87 envelope sentinel" {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
   # E83 dispatch checkpoint reference (existing).
   grep -q 'add-feature-.*val-dispatched' "$ADD_FEATURE_MD"
@@ -378,7 +378,7 @@ WRITE_ENVELOPE_HELPER="$SCRIPTS_DIR/lib/write-val-envelope.sh"
 VALIDATOR_MD="$SCRIPTS_DIR/../agents/validator.md"
 
 # ---------------- TC-VBR-13: write-val-envelope.sh helper exists ----------------
-@test "TC-VBR-13: write-val-envelope.sh helper exists at canonical path (E87-S7)" {
+@test "write-val-envelope.sh helper exists at canonical path" {
   [ -f "$WRITE_ENVELOPE_HELPER" ]
   [ -x "$WRITE_ENVELOPE_HELPER" ]
   # Header documents the writer-shift contract: sentinel write moves to the
@@ -389,7 +389,7 @@ VALIDATOR_MD="$SCRIPTS_DIR/../agents/validator.md"
 }
 
 # ---------------- TC-VBR-14: validator.md §Sentinel-Write Contract specifies sentinel_envelope return-channel ----------------
-@test "TC-VBR-14: validator.md Sentinel-Write Contract references sentinel_envelope return-channel (E87-S7)" {
+@test "validator.md Sentinel-Write Contract references sentinel_envelope return-channel" {
   [ -f "$VALIDATOR_MD" ]
   # The new contract specifies that Val embeds the sentinel content in the
   # ADR-037 envelope as a `sentinel_envelope` field.
@@ -401,7 +401,7 @@ VALIDATOR_MD="$SCRIPTS_DIR/../agents/validator.md"
 }
 
 # ---------------- TC-VBR-15: validator.md Write allowlist removal (E87-S7 / AC7) ----------------
-@test "TC-VBR-15: validator.md frontmatter allowed-tools omits 'Write' (E87-S7)" {
+@test "validator.md frontmatter allowed-tools omits 'Write'" {
   [ -f "$VALIDATOR_MD" ]
   # Extract the frontmatter allowed-tools line. Val is now read-only on the
   # filesystem under the new contract — Write is removed.

@@ -21,14 +21,14 @@ teardown() {
 }
 
 # ---------------- TC-AFE-5: Step 8 documents both modes ----------------
-@test "TC-AFE-5: SKILL.md Step 8 documents inline-dispatch and deferred-seed-brief modes" {
+@test "SKILL.md Step 8 documents inline-dispatch and deferred-seed-brief modes" {
   [ -f "$SKILL_MD" ]
   grep -qF "inline-dispatch" "$SKILL_MD"
   grep -qF "deferred-seed-brief" "$SKILL_MD"
 }
 
 # ---------------- TC-AFE-6: Before/After default flip documented ----------------
-@test "TC-AFE-6: SKILL.md documents the Before/After default flip" {
+@test "SKILL.md documents the Before/After default flip" {
   [ -f "$SKILL_MD" ]
   grep -qE 'Before/After default selection' "$SKILL_MD"
   grep -qE '\*\*BEFORE:\*\*' "$SKILL_MD"
@@ -36,23 +36,23 @@ teardown() {
 }
 
 # ---------------- TC-AFE-7: --step-8-mode accepts valid values ----------------
-@test "TC-AFE-7a: --step-8-mode=inline-dispatch is accepted (passes flag-parsing)" {
+@test "step-8-mode=inline-dispatch is accepted (passes flag-parsing)" {
   run "$SETUP_SH" --step-8-mode=inline-dispatch
   [[ "$output" != *"invalid --step-8-mode value"* ]]
 }
 
-@test "TC-AFE-7b: --step-8-mode=deferred-seed-brief is accepted" {
+@test "step-8-mode=deferred-seed-brief is accepted" {
   run "$SETUP_SH" --step-8-mode=deferred-seed-brief
   [[ "$output" != *"invalid --step-8-mode value"* ]]
 }
 
-@test "TC-AFE-7c: --step-8-mode <value> next-arg form is accepted" {
+@test "step-8-mode <value> next-arg form is accepted" {
   run "$SETUP_SH" --step-8-mode inline-dispatch
   [[ "$output" != *"invalid --step-8-mode value"* ]]
 }
 
 # ---------------- TC-AFE-8: --step-8-mode rejects invalid values ----------------
-@test "TC-AFE-8: --step-8-mode=invalid-value is rejected with canonical stderr" {
+@test "step-8-mode=invalid-value is rejected with canonical stderr" {
   run "$SETUP_SH" --step-8-mode=frobnicate
   [ "$status" -ne 0 ]
   [[ "$output" == *"gaia-add-feature: invalid --step-8-mode value"* ]]
@@ -60,7 +60,7 @@ teardown() {
 }
 
 # ---------------- TC-AFE-9: SKILL.md Step 8 documents YOLO-keyed default ----------------
-@test "TC-AFE-9: SKILL.md documents YOLO-keyed default selection (AC2)" {
+@test "SKILL.md documents YOLO-keyed default selection" {
   [ -f "$SKILL_MD" ]
   # Both branches must be documented.
   grep -qE 'YOLO active.*inline-dispatch|YOLO active.*default mode is .inline-dispatch.' "$SKILL_MD"
@@ -68,7 +68,7 @@ teardown() {
 }
 
 # ---------------- TC-AFE-10: SKILL.md documents the seed-brief shape (AC4) ----------------
-@test "TC-AFE-10: SKILL.md Step 8 documents the seed-brief content shape" {
+@test "SKILL.md Step 8 documents the seed-brief content shape" {
   [ -f "$SKILL_MD" ]
   grep -qF "Story seed brief for <story_key>" "$SKILL_MD"
   grep -qF "next-story-id.sh" "$SKILL_MD"

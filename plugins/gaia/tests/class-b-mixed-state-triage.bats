@@ -83,7 +83,7 @@ teardown() {
   [[ "$output" == *"docs/implementation-artifacts/retrospective"* ]]
 }
 
-@test "retro-sidecar-write.sh — allowlist accepts .gaia/memory/ sidecars only (AF-2026-05-27-3)" {
+@test "retro-sidecar-write.sh — allowlist accepts .gaia/memory/ sidecars only" {
   # AF-2026-05-27-3 (ADR-111): the legacy _memory/ allowlist arm was removed.
   run grep -E '\.gaia/memory/\*-sidecar' "$PLUGIN_SCRIPTS/retro-sidecar-write.sh"
   [ "$status" -eq 0 ]

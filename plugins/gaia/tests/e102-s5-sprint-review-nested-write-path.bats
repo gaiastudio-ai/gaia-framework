@@ -14,17 +14,17 @@ setup() {
 
 teardown() { common_teardown; }
 
-@test "TC-ASG-5a: SKILL.md references nested sprint-review path" {
+@test "SKILL.md references nested sprint-review path" {
   [ -f "$SKILL" ]
   grep -qF "implementation-artifacts/sprint-review/sprint-review-" "$SKILL"
 }
 
-@test "TC-ASG-5b: no script writes to legacy flat sprint-review path" {
+@test "no script writes to legacy flat sprint-review path" {
   [ -d "$SCRIPTS_DIR" ]
   ! grep -rnE 'implementation-artifacts/sprint-review-\$\{?SPRINT_ID' "$SCRIPTS_DIR" 2>/dev/null
 }
 
-@test "TC-ASG-5c: SKILL.md includes mkdir -p guidance for nested directory" {
+@test "SKILL.md includes mkdir -p guidance for nested directory" {
   [ -f "$SKILL" ]
   grep -qF "mkdir -p" "$SKILL"
 }

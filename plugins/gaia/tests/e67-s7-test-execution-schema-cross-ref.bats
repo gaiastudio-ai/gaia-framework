@@ -50,31 +50,31 @@ scan_for_divergent_usage() {
   run bash -c "grep -rn '$DIVERGENT_RE' '$dir' | grep -v '$PROHIBITION_FILTER' || true"
 }
 
-@test "E67-S7 AC3: zero test_execution.{context}.{tier} hits in normative PRD text" {
+@test "zero test_execution.{context}.{tier} hits in normative PRD text" {
   scan_for_divergent_usage "$PROJECT_ROOT/docs/planning-artifacts/prd/"
   [ -z "$output" ]
 }
 
-@test "E67-S7 AC3: zero test_execution.{context}.{tier} hits in test-plan / traceability" {
+@test "zero test_execution.{context}.{tier} hits in test-plan / traceability" {
   scan_for_divergent_usage "$PROJECT_ROOT/docs/test-artifacts/strategy/"
   [ -z "$output" ]
 }
 
-@test "E67-S7 AC1: canonical concrete schema documented in FR-RSV2-11 shard" {
+@test "canonical concrete schema documented in shard" {
   shard="$PROJECT_ROOT/docs/planning-artifacts/prd/04-functional-requirements/39-4-38-gaia-review-system-v2-three-tier-pipeline-tool-adapter-framework-layered-ru.md"
   [ -f "$shard" ]
   run grep -F 'test_execution.tier_' "$shard"
   [ "$status" -eq 0 ]
 }
 
-@test "E67-S7 AC1: canonical concrete schema documented in merged prd.md" {
+@test "canonical concrete schema documented in merged prd.md" {
   monolith="$PROJECT_ROOT/docs/planning-artifacts/prd/prd.md"
   [ -f "$monolith" ]
   run grep -F 'test_execution.tier_' "$monolith"
   [ "$status" -eq 0 ]
 }
 
-@test "E67-S7 AC4: traceability matrix has an E67-S7 row referencing the reconciliation" {
+@test "traceability matrix has an row referencing the reconciliation" {
   matrix="$PROJECT_ROOT/docs/test-artifacts/strategy/traceability-matrix.md"
   [ -f "$matrix" ]
   run grep -F 'E67-S7' "$matrix"

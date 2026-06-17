@@ -25,7 +25,7 @@ EOF
 }
 
 # TC-MNOTE-1 — writer emits the notes file under meeting-notes/ (not flat).
-@test "TC-MNOTE-1: meeting notes write under creative-artifacts/meeting-notes/" {
+@test "meeting notes write under creative-artifacts/meeting-notes/" {
   run "$WRITER" --root "$ROOT" --payload "$PAYLOAD" --date 2026-06-11 --slug test-meeting
   [ "$status" -eq 0 ]
   [ -f "$ROOT/.gaia/artifacts/creative-artifacts/meeting-notes/meeting-2026-06-11-test-meeting.md" ]
@@ -34,13 +34,13 @@ EOF
 }
 
 # TC-MNOTE-2 — the meeting-notes/ subpath passes write-boundary.sh (exit 0).
-@test "TC-MNOTE-2: meeting-notes/ subpath passes write-boundary" {
+@test "meeting-notes/ subpath passes write-boundary" {
   run "$BOUNDARY" ".gaia/artifacts/creative-artifacts/meeting-notes/meeting-2026-06-11-x.md"
   [ "$status" -eq 0 ]
 }
 
 # TC-MNOTE-3 — a pre-existing flat-location note is migrated into meeting-notes/.
-@test "TC-MNOTE-3: back-compat migrates a pre-existing flat note into the subdir" {
+@test "back-compat migrates a pre-existing flat note into the subdir" {
   # Simulate an old flat-layout note for the same meeting.
   old="$ROOT/.gaia/artifacts/creative-artifacts/meeting-2026-06-11-legacy.md"
   printf 'OLD_FLAT_NOTE_SENTINEL\n' > "$old"
@@ -54,7 +54,7 @@ EOF
 
 # TC-MNOTE-4 — SKILL.md carries the NEW per-turn surface contracts for both
 # RESEARCH and DISCUSS (distinct from the pre-existing Mode-A warning relay).
-@test "TC-MNOTE-4: SKILL.md mandates surfacing research/discuss output to the user" {
+@test "SKILL.md mandates surfacing research/discuss output to the user" {
   # Both the RESEARCH and the DISCUSS surface contracts must be present.
   grep -qF "Surface contract (RESEARCH output to the user)" "$SKILL"
   grep -qF "Surface contract (DISCUSS output to the user)" "$SKILL"

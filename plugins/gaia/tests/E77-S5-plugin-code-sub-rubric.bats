@@ -31,12 +31,12 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC1 — Sub-rubric file exists and is schema-valid
 # ---------------------------------------------------------------------------
-@test "AC1: plugin-code sub-rubric file exists at the canonical location" {
+@test "plugin-code sub-rubric file exists at the canonical location" {
   [ -f "$SUB_RUBRIC" ] \
     || { echo "AC1 FAIL: plugin-code sub-rubric not found at $SUB_RUBRIC" >&2; return 1; }
 }
 
-@test "AC1: plugin-code sub-rubric is well-formed JSON" {
+@test "plugin-code sub-rubric is well-formed JSON" {
   jq empty "$SUB_RUBRIC" \
     || { echo "AC1 FAIL: plugin-code sub-rubric is not well-formed JSON" >&2; return 1; }
 }
@@ -44,14 +44,14 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC2 — `when:` predicate gates activation
 # ---------------------------------------------------------------------------
-@test "AC2: plugin-code sub-rubric carries when: {project_kind: claude-code-plugin}" {
+@test "plugin-code sub-rubric carries when: {project_kind: claude-code-plugin}" {
   local kind
   kind=$(jq -r '.when.project_kind // empty' "$SUB_RUBRIC")
   [ "$kind" = "claude-code-plugin" ] \
     || { echo "AC2 FAIL: expected when.project_kind=claude-code-plugin, got=$kind" >&2; return 1; }
 }
 
-@test "AC2: plugin-code rules INCLUDED for project_kind=claude-code-plugin" {
+@test "plugin-code rules INCLUDED for project_kind=claude-code-plugin" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: claude-code-plugin
 EOF
@@ -61,7 +61,7 @@ EOF
     || { echo "AC2 FAIL: expected plugin-code SKILL.md WARNING rule INCLUDED" >&2; return 1; }
 }
 
-@test "AC2: plugin-code rules EXCLUDED for project_kind=web-app" {
+@test "plugin-code rules EXCLUDED for project_kind=web-app" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: web-app
 EOF
@@ -74,14 +74,14 @@ EOF
 # ---------------------------------------------------------------------------
 # AC3 — 80% coverage threshold default
 # ---------------------------------------------------------------------------
-@test "AC3: plugin-code sub-rubric encodes 80% coverage threshold default" {
+@test "plugin-code sub-rubric encodes 80% coverage threshold default" {
   local pct
   pct=$(jq -r '.metadata.coverage.threshold_default_percent // empty' "$SUB_RUBRIC")
   [ "$pct" = "80" ] \
     || { echo "AC3 FAIL: expected metadata.coverage.threshold_default_percent=80, got=$pct" >&2; return 1; }
 }
 
-@test "AC3: plugin-code sub-rubric carries a coverage rule" {
+@test "plugin-code sub-rubric carries a coverage rule" {
   jq -e '.severity_rules[] | select(.category == "coverage")' "$SUB_RUBRIC" >/dev/null \
     || { echo "AC3 FAIL: expected at least one rule with category=coverage" >&2; return 1; }
 }
@@ -89,14 +89,14 @@ EOF
 # ---------------------------------------------------------------------------
 # AC4 — Allowlist override mechanism documented in metadata
 # ---------------------------------------------------------------------------
-@test "AC4: plugin-code sub-rubric documents allowlist override config key" {
+@test "plugin-code sub-rubric documents allowlist override config key" {
   local key
   key=$(jq -r '.metadata.coverage.allowlist_override_config_key // empty' "$SUB_RUBRIC")
   [ "$key" = "plugin-code.coverage_allowlist" ] \
     || { echo "AC4 FAIL: expected metadata.coverage.allowlist_override_config_key=plugin-code.coverage_allowlist, got=$key" >&2; return 1; }
 }
 
-@test "AC4: plugin-code sub-rubric documents per-path allowlist schema" {
+@test "plugin-code sub-rubric documents per-path allowlist schema" {
   jq -e '.metadata.coverage.allowlist_schema | type == "object"' "$SUB_RUBRIC" >/dev/null \
     || { echo "AC4 FAIL: expected metadata.coverage.allowlist_schema object" >&2; return 1; }
 }
@@ -104,7 +104,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC5 — SKILL.md token budget two-tier enforcement
 # ---------------------------------------------------------------------------
-@test "AC5: SKILL.md WARNING rule fires at >1500 tokens" {
+@test "SKILL.md WARNING rule fires at >1500 tokens" {
   local rule
   rule=$(jq -c '.severity_rules[] | select(.id == "plugin-code-skill-md-token-budget-warning")' "$SUB_RUBRIC")
   [ -n "$rule" ] \
@@ -117,7 +117,7 @@ EOF
     || { echo "AC5 FAIL: WARNING pattern must reference 1500-token threshold" >&2; return 1; }
 }
 
-@test "AC5: SKILL.md CRITICAL rule fires at >=2000 tokens" {
+@test "SKILL.md CRITICAL rule fires at >=2000 tokens" {
   local rule
   rule=$(jq -c '.severity_rules[] | select(.id == "plugin-code-skill-md-token-budget-critical")' "$SUB_RUBRIC")
   [ -n "$rule" ] \
@@ -133,7 +133,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC6 — Backward compatibility (no project_kind set)
 # ---------------------------------------------------------------------------
-@test "AC6: plugin-code rules EXCLUDED when project_kind unset" {
+@test "plugin-code rules EXCLUDED when project_kind unset" {
   cat >"$TMP_CONFIG" <<'EOF'
 {}
 EOF
@@ -143,7 +143,7 @@ EOF
     || { echo "AC6 FAIL: plugin-code rules must be EXCLUDED when project_kind is unset" >&2; return 1; }
 }
 
-@test "AC6: base code rules survive intact when plugin-code is excluded" {
+@test "base code rules survive intact when plugin-code is excluded" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: web-app
 EOF
@@ -156,7 +156,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC7 — Schema validation passes
 # ---------------------------------------------------------------------------
-@test "AC7: plugin-code sub-rubric passes validate-rubric.sh schema check" {
+@test "plugin-code sub-rubric passes validate-rubric.sh schema check" {
   run "$VALIDATOR" "$SUB_RUBRIC"
   [ "$status" -eq 0 ] \
     || { echo "AC7 FAIL: validate-rubric.sh exited $status — output: $output" >&2; return 1; }

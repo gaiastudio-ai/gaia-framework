@@ -24,7 +24,7 @@ teardown() {
 
 # ---------- TC-CCL-4: user-jobs.yml YAML-merge into managed jobs: map ----------
 
-@test "TC-CCL-4: user-jobs.yml jobs merge into managed jobs: map" {
+@test "user-jobs.yml jobs merge into managed jobs: map" {
   cat > "$WORKDIR/gaia-ci.yml" <<'YAML'
 # Managed by GAIA
 name: ci
@@ -60,7 +60,7 @@ YAML
 
 # ---------- TC-CCL-5: steps_before_gaia / steps_after_gaia splicing ----------
 
-@test "TC-CCL-5: user-steps overlay splices steps_before / steps_after around managed steps" {
+@test "user-steps overlay splices steps_before / steps_after around managed steps" {
   cat > "$WORKDIR/gaia-ci.yml" <<'YAML'
 name: ci
 on: [push]
@@ -104,7 +104,7 @@ YAML
 
 # ---------- TC-CCL-8: ten-run byte-identical determinism ----------
 
-@test "TC-CCL-8: ten consecutive runs produce byte-identical output (sha256 match)" {
+@test "ten consecutive runs produce byte-identical output (sha256 match)" {
   cat > "$WORKDIR/gaia-ci.yml" <<'YAML'
 name: ci
 on: [push]
@@ -264,7 +264,7 @@ YAML
 
 # ---------- Block-level only: no per-step insert_after/insert_before honored ----------
 
-@test "block-level only: per-step markers are NOT honored (deliberate FR-517 scope cut)" {
+@test "block-level only: per-step markers are NOT honored" {
   cat > "$WORKDIR/gaia-ci.yml" <<'YAML'
 name: ci
 on: [push]

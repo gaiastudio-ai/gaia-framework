@@ -67,7 +67,7 @@ _has_backend() {
   grep -Eq '^LC_ALL=C' "$SCRIPT"
 }
 
-@test "AC6: helper declares mktemp + trap cleanup (no leaked temp on conversion)" {
+@test "helper declares mktemp + trap cleanup (no leaked temp on conversion)" {
   grep -q 'mktemp' "$SCRIPT"
   grep -q 'trap' "$SCRIPT"
 }
@@ -82,7 +82,7 @@ _has_backend() {
   [ "$output" = "function" ]
 }
 
-@test "AC2: source guard prevents redefinition warnings on double-source" {
+@test "source guard prevents redefinition warnings on double-source" {
   run bash -c "source '$SCRIPT'; source '$SCRIPT'; echo OK"
   [ "$status" -eq 0 ]
   [[ "$output" == *"OK"* ]]
@@ -97,7 +97,7 @@ _has_backend() {
   [ "$status" -eq 2 ]
 }
 
-@test "AC5: unreadable schema file → exit 2 (usage error)" {
+@test "unreadable schema file → exit 2 (usage error)" {
   run bash "$SCRIPT" "$TEST_TMP/nope.schema.json" "$FIX/valid-instance.json"
   [ "$status" -eq 2 ]
 }
@@ -152,7 +152,7 @@ _has_backend() {
 # ===========================================================================
 
 # TS1/AC1 — schema file exists and is valid JSON.
-@test "E108-S1 TS1/AC1: nfr-assessment.schema.json exists and is valid JSON" {
+@test "TS1/: nfr-assessment.schema.json exists and is valid JSON" {
   [ -f "$NFR_SCHEMA" ]
   # Validate JSON well-formedness without depending on jq (not guaranteed on
   # the bare host). python3 is present even when jsonschema is not; fall back
@@ -168,7 +168,7 @@ _has_backend() {
 }
 
 # TS2/AC1 — draft-2020-12 + non-test-artifacts/strategy/ $id.
-@test "E108-S1 TS2/AC1: schema declares draft-2020-12 and a non-strategy-scoped \$id" {
+@test "TS2/: schema declares draft-2020-12 and a non-strategy-scoped \$id" {
   grep -q 'json-schema.org/draft/2020-12/schema' "$NFR_SCHEMA"
   grep -q '"\$id"' "$NFR_SCHEMA"
   # The $id MUST NOT be scoped to test-artifacts/strategy/ (E105-S2 coordination).
@@ -180,7 +180,7 @@ _has_backend() {
 }
 
 # TS3/AC2 — required frontmatter fields + template const.
-@test "E108-S1 TS3/AC2: schema requires template/version/date/project and pins template const" {
+@test "TS3/: schema requires template/version/date/project and pins template const" {
   grep -q '"template"' "$NFR_SCHEMA"
   grep -q '"version"' "$NFR_SCHEMA"
   grep -q '"date"' "$NFR_SCHEMA"
@@ -189,7 +189,7 @@ _has_backend() {
 }
 
 # AC3 — eight-section annotation present.
-@test "E108-S1 AC3: schema documents the eight canonical H2 sections" {
+@test "schema documents the eight canonical H2 sections" {
   grep -q 'Code Quality Baselines' "$NFR_SCHEMA"
   grep -q 'Security Posture' "$NFR_SCHEMA"
   grep -q 'Performance Baselines' "$NFR_SCHEMA"
@@ -201,7 +201,7 @@ _has_backend() {
 }
 
 # TS4/AC2/AC6 — (backend-guarded) known-good fixture validates → exit 0.
-@test "E108-S1 TS4/AC6: known-good nfr-assessment fixture validates (exit 0)" {
+@test "TS4/: known-good nfr-assessment fixture validates (exit 0)" {
   [ -f "$NFR_FIXTURE" ]
   if ! _has_backend; then
     skip "no JSON-schema validator backend on host"
@@ -211,7 +211,7 @@ _has_backend() {
 }
 
 # TS5/AC5 — enum extended 16→17 contains nfr-assessment.
-@test "E108-S1 TS5/AC5: val-validate artifact_type enum contains nfr-assessment" {
+@test "TS5/: val-validate artifact_type enum contains nfr-assessment" {
   local skill="$SKILLS_DIR/gaia-val-validate/SKILL.md"
   [ -f "$skill" ]
   # The enum line carries 'artifact_type' + the backticked value.
@@ -219,7 +219,7 @@ _has_backend() {
 }
 
 # TS6/AC4 — /gaia-nfr SKILL.md has a ## References section.
-@test "E108-S1 TS6/AC4: gaia-nfr SKILL.md has a ## References section" {
+@test "TS6/: gaia-nfr SKILL.md has a ## References section" {
   local skill="$SKILLS_DIR/gaia-nfr/SKILL.md"
   [ -f "$skill" ]
   grep -Eq '^## References[[:space:]]*$' "$skill"
@@ -232,7 +232,7 @@ _has_backend() {
 # ===========================================================================
 
 # TS1/AC1 — schema file exists and is valid JSON.
-@test "E108-S2 TS1/AC1: performance-test-plan.schema.json exists and is valid JSON" {
+@test "TS1/: performance-test-plan.schema.json exists and is valid JSON" {
   [ -f "$PERF_SCHEMA" ]
   # Validate JSON well-formedness without depending on jq (not guaranteed on
   # the bare host). python3 is present even when jsonschema is not; fall back
@@ -247,7 +247,7 @@ _has_backend() {
 }
 
 # TS2/AC1 — draft-2020-12 + non-test-artifacts/strategy/ $id.
-@test "E108-S2 TS2/AC1: schema declares draft-2020-12 and a non-strategy-scoped \$id" {
+@test "TS2/: schema declares draft-2020-12 and a non-strategy-scoped \$id (2)" {
   grep -q 'json-schema.org/draft/2020-12/schema' "$PERF_SCHEMA"
   grep -q '"\$id"' "$PERF_SCHEMA"
   # The $id MUST NOT be scoped to test-artifacts/strategy/ (E105-S2 coordination).
@@ -259,7 +259,7 @@ _has_backend() {
 }
 
 # TS3/AC2 — required frontmatter fields + template const.
-@test "E108-S2 TS3/AC2: schema requires template/version/date/project and pins template const" {
+@test "TS3/: schema requires template/version/date/project and pins template const (2)" {
   grep -q '"template"' "$PERF_SCHEMA"
   grep -q '"version"' "$PERF_SCHEMA"
   grep -q '"date"' "$PERF_SCHEMA"
@@ -268,7 +268,7 @@ _has_backend() {
 }
 
 # AC3 — seven-section annotation present.
-@test "E108-S2 AC3: schema documents the seven canonical H2 sections" {
+@test "schema documents the seven canonical H2 sections" {
   grep -q 'Overview' "$PERF_SCHEMA"
   grep -q 'Performance Budgets' "$PERF_SCHEMA"
   grep -q 'Test Scenarios' "$PERF_SCHEMA"
@@ -279,7 +279,7 @@ _has_backend() {
 }
 
 # TS4/AC2/AC6 — (backend-guarded) known-good fixture validates → exit 0.
-@test "E108-S2 TS4/AC6: known-good performance-test-plan fixture validates (exit 0)" {
+@test "TS4/: known-good performance-test-plan fixture validates (exit 0)" {
   [ -f "$PERF_FIXTURE" ]
   if ! _has_backend; then
     skip "no JSON-schema validator backend on host"
@@ -289,7 +289,7 @@ _has_backend() {
 }
 
 # TS5/AC5 — enum extended 17→18 contains performance-test-plan.
-@test "E108-S2 TS5/AC5: val-validate artifact_type enum contains performance-test-plan" {
+@test "TS5/: val-validate artifact_type enum contains performance-test-plan" {
   local skill="$SKILLS_DIR/gaia-val-validate/SKILL.md"
   [ -f "$skill" ]
   # The enum line carries 'artifact_type' + the backticked value.
@@ -297,7 +297,7 @@ _has_backend() {
 }
 
 # TS6/AC4 — /gaia-perf-testing SKILL.md has a ## References section.
-@test "E108-S2 TS6/AC4: gaia-perf-testing SKILL.md has a ## References section" {
+@test "TS6/: gaia-perf-testing SKILL.md has a ## References section" {
   local skill="$SKILLS_DIR/gaia-perf-testing/SKILL.md"
   [ -f "$skill" ]
   grep -Eq '^## References[[:space:]]*$' "$skill"
@@ -310,7 +310,7 @@ _has_backend() {
 # ===========================================================================
 
 # TS1/AC1 — schema file exists and is valid JSON.
-@test "E108-S3 TS1/AC1: threat-model.schema.json exists and is valid JSON" {
+@test "TS1/: threat-model.schema.json exists and is valid JSON" {
   [ -f "$TM_SCHEMA" ]
   # Validate JSON well-formedness without depending on jq (not guaranteed on
   # the bare host). python3 is present even when jsonschema is not; fall back
@@ -325,7 +325,7 @@ _has_backend() {
 }
 
 # TS2/AC1 — draft-2020-12 + non-strategy-scoped $id.
-@test "E108-S3 TS2/AC1: schema declares draft-2020-12 and a non-strategy-scoped \$id" {
+@test "TS2/: schema declares draft-2020-12 and a non-strategy-scoped \$id (3)" {
   grep -q 'json-schema.org/draft/2020-12/schema' "$TM_SCHEMA"
   grep -q '"\$id"' "$TM_SCHEMA"
   # The $id MUST NOT be scoped to test-artifacts/strategy/ (E105-S2 coordination).
@@ -338,7 +338,7 @@ _has_backend() {
 }
 
 # TS3/AC2 — required frontmatter fields + template const.
-@test "E108-S3 TS3/AC2: schema requires template/version/date/project and pins template const" {
+@test "TS3/: schema requires template/version/date/project and pins template const (3)" {
   grep -q '"template"' "$TM_SCHEMA"
   grep -q '"version"' "$TM_SCHEMA"
   grep -q '"date"' "$TM_SCHEMA"
@@ -347,7 +347,7 @@ _has_backend() {
 }
 
 # TS4/AC3 — nine-section annotation present.
-@test "E108-S3 TS4/AC3: schema documents the nine canonical H2 sections" {
+@test "TS4/: schema documents the nine canonical H2 sections" {
   grep -q 'Assets Inventory' "$TM_SCHEMA"
   grep -q 'Trust Boundaries' "$TM_SCHEMA"
   grep -q 'STRIDE Analysis' "$TM_SCHEMA"
@@ -360,7 +360,7 @@ _has_backend() {
 }
 
 # TS5/AC2/AC6 — (backend-guarded) known-good fixture validates → exit 0.
-@test "E108-S3 TS5/AC6: known-good threat-model fixture validates (exit 0)" {
+@test "TS5/: known-good threat-model fixture validates (exit 0)" {
   [ -f "$TM_FIXTURE" ]
   if ! _has_backend; then
     skip "no JSON-schema validator backend on host"
@@ -370,7 +370,7 @@ _has_backend() {
 }
 
 # TS6/AC5 — enum ALREADY contains threat-model (asserted, NOT edited by this story).
-@test "E108-S3 TS6/AC5: val-validate artifact_type enum already contains threat-model (no enum change)" {
+@test "TS6/: val-validate artifact_type enum already contains threat-model (no enum change)" {
   local skill="$SKILLS_DIR/gaia-val-validate/SKILL.md"
   [ -f "$skill" ]
   # threat-model is at position 5 in the enum — present before E108-S3.
@@ -378,7 +378,7 @@ _has_backend() {
 }
 
 # TS7/AC4 — /gaia-threat-model SKILL.md has a ## References section.
-@test "E108-S3 TS7/AC4: gaia-threat-model SKILL.md has a ## References section" {
+@test "TS7/: gaia-threat-model SKILL.md has a ## References section" {
   local skill="$SKILLS_DIR/gaia-threat-model/SKILL.md"
   [ -f "$skill" ]
   grep -Eq '^## References[[:space:]]*$' "$skill"
@@ -391,7 +391,7 @@ _has_backend() {
 # ===========================================================================
 
 # TS1/AC1 — schema file exists and is valid JSON.
-@test "E108-S4 TS1/AC1: infrastructure-design.schema.json exists and is valid JSON" {
+@test "TS1/: infrastructure-design.schema.json exists and is valid JSON" {
   [ -f "$INFRA_SCHEMA" ]
   # Validate JSON well-formedness without depending on jq (not guaranteed on
   # the bare host). python3 is present even when jsonschema is not; fall back
@@ -406,7 +406,7 @@ _has_backend() {
 }
 
 # TS2/AC1 — draft-2020-12 + non-strategy-scoped $id.
-@test "E108-S4 TS2/AC1: schema declares draft-2020-12 and a non-strategy-scoped \$id" {
+@test "TS2/: schema declares draft-2020-12 and a non-strategy-scoped \$id (4)" {
   grep -q 'json-schema.org/draft/2020-12/schema' "$INFRA_SCHEMA"
   grep -q '"\$id"' "$INFRA_SCHEMA"
   # The $id MUST NOT be scoped to test-artifacts/strategy/ (E105-S2 coordination).
@@ -419,7 +419,7 @@ _has_backend() {
 }
 
 # TS3/AC2 — required frontmatter fields + template const.
-@test "E108-S4 TS3/AC2: schema requires template/version/date/project and pins template const" {
+@test "TS3/: schema requires template/version/date/project and pins template const (4)" {
   grep -q '"template"' "$INFRA_SCHEMA"
   grep -q '"version"' "$INFRA_SCHEMA"
   grep -q '"date"' "$INFRA_SCHEMA"
@@ -428,7 +428,7 @@ _has_backend() {
 }
 
 # AC3 — eleven-section annotation present.
-@test "E108-S4 AC3: schema documents the eleven canonical H2 sections" {
+@test "schema documents the eleven canonical H2 sections" {
   grep -q 'Infrastructure Context' "$INFRA_SCHEMA"
   grep -q 'Environment Design' "$INFRA_SCHEMA"
   grep -q 'Deployment Topology' "$INFRA_SCHEMA"
@@ -443,7 +443,7 @@ _has_backend() {
 }
 
 # TS4/AC2/AC6 — (backend-guarded) known-good fixture validates → exit 0.
-@test "E108-S4 TS4/AC6: known-good infrastructure-design fixture validates (exit 0)" {
+@test "TS4/: known-good infrastructure-design fixture validates (exit 0)" {
   [ -f "$INFRA_FIXTURE" ]
   if ! _has_backend; then
     skip "no JSON-schema validator backend on host"
@@ -453,7 +453,7 @@ _has_backend() {
 }
 
 # TS5/AC5 — enum extended 18→19 contains infrastructure-design.
-@test "E108-S4 TS5/AC5: val-validate artifact_type enum contains infrastructure-design" {
+@test "TS5/: val-validate artifact_type enum contains infrastructure-design" {
   local skill="$SKILLS_DIR/gaia-val-validate/SKILL.md"
   [ -f "$skill" ]
   # The enum line carries 'artifact_type' + the backticked value.
@@ -461,7 +461,7 @@ _has_backend() {
 }
 
 # TS5b/AC5 — enum now totals 19 backticked values on the artifact_type enum line.
-@test "E108-S4 TS5b/AC5: val-validate artifact_type enum totals 19 values" {
+@test "TS5b/: val-validate artifact_type enum totals 19 values" {
   local skill="$SKILLS_DIR/gaia-val-validate/SKILL.md"
   [ -f "$skill" ]
   # The enum is on the single 'One of:' table row. Extract the segment from
@@ -477,7 +477,7 @@ _has_backend() {
 }
 
 # TS6/AC4 — /gaia-infra-design SKILL.md has a ## References section.
-@test "E108-S4 TS6/AC4: gaia-infra-design SKILL.md has a ## References section" {
+@test "TS6/: gaia-infra-design SKILL.md has a ## References section" {
   local skill="$SKILLS_DIR/gaia-infra-design/SKILL.md"
   [ -f "$skill" ]
   grep -Eq '^## References[[:space:]]*$' "$skill"

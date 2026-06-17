@@ -36,12 +36,12 @@ teardown() {
 GAIA_MARKER="<!-- >>> GAIA (managed by /gaia-init · /gaia-brownfield) -->"
 
 # AC1 — template ships at canonical plugin path, marker-bounded
-@test "AC1: canonical CLAUDE.md template exists and is non-empty" {
+@test "canonical CLAUDE.md template exists and is non-empty" {
   [ -f "${TEMPLATE}" ]
   [ -s "${TEMPLATE}" ]
 }
 
-@test "AC1: template is GAIA-marker-bounded and names the runtime tree" {
+@test "template is GAIA-marker-bounded and names the runtime tree" {
   grep -qF "${GAIA_MARKER}" "${TEMPLATE}"
   grep -qF "<!-- <<< GAIA -->" "${TEMPLATE}"
   grep -qF "GAIA" "${TEMPLATE}"
@@ -50,7 +50,7 @@ GAIA_MARKER="<!-- >>> GAIA (managed by /gaia-init · /gaia-brownfield) -->"
 }
 
 # AC2 — greenfield: seed the template verbatim
-@test "AC2: greenfield (no CLAUDE.md) seeds the template verbatim" {
+@test "greenfield (no CLAUDE.md) seeds the template verbatim" {
   [ -x "${HELPER}" ]
   run "${HELPER}" --target "${TARGET_DIR}"
   [ "${status}" -eq 0 ]
@@ -59,7 +59,7 @@ GAIA_MARKER="<!-- >>> GAIA (managed by /gaia-init · /gaia-brownfield) -->"
 }
 
 # AC3 — brownfield: existing CLAUDE.md, no GAIA block -> append, preserve user content
-@test "AC3: brownfield appends the GAIA block and preserves the user's content above it" {
+@test "brownfield appends the GAIA block and preserves the user's content above it" {
   cat > "${TARGET_FILE}" <<'USERMD'
 # My App
 
@@ -80,7 +80,7 @@ USERMD
 }
 
 # AC4 — idempotent: re-run on a managed file is a byte-identical no-op
-@test "AC4: re-run on a greenfield-seeded file is a no-op (no duplicate block)" {
+@test "re-run on a greenfield-seeded file is a no-op (no duplicate block)" {
   "${HELPER}" --target "${TARGET_DIR}" >/dev/null
   before="$(cksum "${TARGET_FILE}")"
   run "${HELPER}" --target "${TARGET_DIR}"
@@ -90,7 +90,7 @@ USERMD
   [ "$(grep -cF "${GAIA_MARKER}" "${TARGET_FILE}")" -eq 1 ]
 }
 
-@test "AC4: re-run on a brownfield-appended file does not duplicate the GAIA block" {
+@test "re-run on a brownfield-appended file does not duplicate the GAIA block" {
   printf '# My App\nNever touch legacy/.\n' > "${TARGET_FILE}"
   "${HELPER}" --target "${TARGET_DIR}" >/dev/null   # append
   before="$(cksum "${TARGET_FILE}")"
@@ -102,7 +102,7 @@ USERMD
 }
 
 # AC5 — missing plugin source template fails loud
-@test "AC5: missing plugin template source exits 1 with a clear error" {
+@test "missing plugin template source exits 1 with a clear error" {
   fake_plugin="$(mktemp -d)"
   mkdir -p "${fake_plugin}/scripts" "${fake_plugin}/templates"
   cp "${HELPER}" "${fake_plugin}/scripts/install-claude-md.sh"
@@ -114,12 +114,12 @@ USERMD
 }
 
 # AC6 — usage errors
-@test "AC6: no --target exits 2" {
+@test "no --target exits 2" {
   run "${HELPER}"
   [ "${status}" -eq 2 ]
 }
 
-@test "AC6: nonexistent target dir exits 2" {
+@test "nonexistent target dir exits 2" {
   run "${HELPER}" --target "${TARGET_DIR}/does-not-exist"
   [ "${status}" -eq 2 ]
 }

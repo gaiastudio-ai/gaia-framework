@@ -94,7 +94,7 @@ _load_proposal_helpers() {
 # canonical_header for .customize.yaml (already tested in e36-s2, verify still works)
 # ===========================================================================
 
-@test "canonical_header for custom/skills/*.customize.yaml emits ADR-053 header" {
+@test "canonical_header for custom/skills/*.customize.yaml emits header" {
   _load_writer_helpers
   local got
   got="$(canonical_header "/x/custom/skills/all-dev.customize.yaml")"
@@ -275,7 +275,7 @@ DASH
 # AC3 / TC-RIM-9: write_approved_proposal — writes custom/skills/ and .customize.yaml
 # ===========================================================================
 
-@test "write_approved_proposal writes custom/skills/{skill}.md (TC-RIM-9)" {
+@test "write_approved_proposal writes custom/skills/{skill}.md" {
   _load_proposal_helpers
   mkdir -p "$TEST_TMP/custom/skills"
 
@@ -302,7 +302,7 @@ DASH
   [ "$post_plugin_files" -eq 0 ]
 }
 
-@test "write_approved_proposal registers skill_overrides in .customize.yaml (TC-RIM-9)" {
+@test "write_approved_proposal registers skill_overrides in .customize.yaml" {
   _load_proposal_helpers
   mkdir -p "$TEST_TMP/custom/skills"
 
@@ -351,7 +351,7 @@ DASH
 # AC4 / TC-RIM-10: Rejected proposal = no write
 # ===========================================================================
 
-@test "rejected proposal produces zero filesystem writes (TC-RIM-10)" {
+@test "rejected proposal produces zero filesystem writes" {
   _load_proposal_helpers
   mkdir -p "$TEST_TMP/custom/skills"
 
@@ -394,7 +394,7 @@ DASH
 # EC8 filesystem snapshot: plugins/ dir byte-identical
 # ===========================================================================
 
-@test "TC-RIM-9 filesystem snapshot diff: zero writes under plugins/gaia/skills/ (EC8)" {
+@test "filesystem snapshot diff: zero writes under plugins/gaia/skills/ (EC8)" {
   # Pre-capture: create the plugins dir with a known marker file
   mkdir -p "$TEST_TMP/gaia-public/plugins/gaia/skills"
   echo "original" > "$TEST_TMP/gaia-public/plugins/gaia/skills/existing-skill.md"

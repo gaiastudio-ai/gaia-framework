@@ -60,23 +60,23 @@ _assert_section_with_primary() {
 
 # ---------- VCP-NXT-01..NXT-10: per-skill section + primary successor ----------
 
-@test "VCP-NXT-01: /gaia-create-epics has '## Next Steps' with primary /gaia-atdd" {
+@test "gaia-create-epics has '## Next Steps' with primary /gaia-atdd" {
   _assert_section_with_primary gaia-create-epics "/gaia-atdd"
 }
 
-@test "VCP-NXT-02: /gaia-threat-model has '## Next Steps' with primary /gaia-infra-design" {
+@test "gaia-threat-model has '## Next Steps' with primary /gaia-infra-design" {
   _assert_section_with_primary gaia-threat-model "/gaia-infra-design"
 }
 
-@test "VCP-NXT-03: /gaia-infra-design has '## Next Steps' with primary /gaia-trace" {
+@test "gaia-infra-design has '## Next Steps' with primary /gaia-trace" {
   _assert_section_with_primary gaia-infra-design "/gaia-trace"
 }
 
-@test "VCP-NXT-04: /gaia-test-design has '## Next Steps' with primary /gaia-create-epics" {
+@test "gaia-test-design has '## Next Steps' with primary /gaia-create-epics" {
   _assert_section_with_primary gaia-test-design "/gaia-create-epics"
 }
 
-@test "VCP-NXT-05: /gaia-trace has '## Next Steps' with /gaia-ci-setup or /gaia-readiness-check" {
+@test "gaia-trace has '## Next Steps' with /gaia-ci-setup or /gaia-readiness-check" {
   local file="$SKILLS_DIR/gaia-trace/SKILL.md"
   [ -f "$file" ]
   grep -qE '^## Next Steps[[:space:]]*$' "$file"
@@ -86,29 +86,29 @@ _assert_section_with_primary() {
     || { echo "gaia-trace: neither /gaia-ci-setup nor /gaia-readiness-check found in '## Next Steps' body. Body was:"; echo "$body"; return 1; }
 }
 
-@test "VCP-NXT-06: /gaia-ci-setup has '## Next Steps' with primary /gaia-readiness-check" {
+@test "gaia-ci-setup has '## Next Steps' with primary /gaia-readiness-check" {
   _assert_section_with_primary gaia-ci-setup "/gaia-readiness-check"
 }
 
-@test "VCP-NXT-07: /gaia-brainstorm has '## Next Steps' with primary /gaia-product-brief" {
+@test "gaia-brainstorm has '## Next Steps' with primary /gaia-product-brief" {
   _assert_section_with_primary gaia-brainstorm "/gaia-product-brief"
 }
 
-@test "VCP-NXT-08: /gaia-market-research has '## Next Steps' with primary /gaia-product-brief" {
+@test "gaia-market-research has '## Next Steps' with primary /gaia-product-brief" {
   _assert_section_with_primary gaia-market-research "/gaia-product-brief"
 }
 
-@test "VCP-NXT-09: /gaia-domain-research has '## Next Steps' with primary /gaia-product-brief" {
+@test "gaia-domain-research has '## Next Steps' with primary /gaia-product-brief" {
   _assert_section_with_primary gaia-domain-research "/gaia-product-brief"
 }
 
-@test "VCP-NXT-10: /gaia-tech-research has '## Next Steps' with primary /gaia-create-arch" {
+@test "gaia-tech-research has '## Next Steps' with primary /gaia-create-arch" {
   _assert_section_with_primary gaia-tech-research "/gaia-create-arch"
 }
 
 # ---------- VCP-NXT-11: zero lifecycle-sequence.yaml references ----------
 
-@test "VCP-NXT-11: no SKILL.md in the 10-file set references lifecycle-sequence.yaml" {
+@test "no SKILL.md in the 10-file set references lifecycle-sequence.yaml" {
   local skills=(gaia-brainstorm gaia-market-research gaia-domain-research gaia-tech-research \
                 gaia-create-epics gaia-threat-model gaia-infra-design gaia-test-design \
                 gaia-trace gaia-ci-setup)
@@ -129,7 +129,7 @@ _assert_section_with_primary() {
 
 # ---------- Static-markdown guard (AC3): no templating in '## Next Steps' bodies ----------
 
-@test "AC3 guard: no '## Next Steps' section contains { or \$( templating tokens" {
+@test "guard: no '## Next Steps' section contains { or \$( templating tokens" {
   local skills=(gaia-brainstorm gaia-market-research gaia-domain-research gaia-tech-research \
                 gaia-create-epics gaia-threat-model gaia-infra-design gaia-test-design \
                 gaia-trace gaia-ci-setup)

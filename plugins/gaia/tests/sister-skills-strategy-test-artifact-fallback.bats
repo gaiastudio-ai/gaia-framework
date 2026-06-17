@@ -64,7 +64,7 @@ setup() {
   done
 }
 
-@test "every in-scope SKILL.md references ADR-072 in its fallback rule" {
+@test "every in-scope SKILL.md references in its fallback rule" {
   # ADR-072 codified the flat->strategy/ placement fallback rule. The published
   # prose no longer names the ADR identifier, but every skill MUST still
   # document the named fallback contract. Assert on the durable behavioral

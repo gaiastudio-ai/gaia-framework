@@ -26,7 +26,7 @@ _compute_version() {
 }
 
 # ---------------- TC-AFE-13: idiom returns VERSION=<semver> when present ----------------
-@test "TC-AFE-13: reference idiom returns the semver when .plugin-version is present" {
+@test "reference idiom returns the semver when .plugin-version is present" {
   local fake_plugin="$TEST_TMP/fake-plugin"
   mkdir -p "$fake_plugin"
   printf '%s' "1.152.0" > "$fake_plugin/.plugin-version"
@@ -36,7 +36,7 @@ _compute_version() {
 }
 
 # ---------------- TC-AFE-14a: dev fallback when absent ----------------
-@test "TC-AFE-14a: reference idiom falls back to 'dev' when .plugin-version is absent" {
+@test "reference idiom falls back to 'dev' when .plugin-version is absent" {
   local fake_plugin="$TEST_TMP/fake-plugin-no-version"
   mkdir -p "$fake_plugin"
   local result
@@ -45,7 +45,7 @@ _compute_version() {
 }
 
 # ---------------- TC-AFE-14b: actual plugin .plugin-version exists + semver-shaped ----------------
-@test "TC-AFE-14b: plugin .plugin-version exists and is semver-shaped" {
+@test "plugin .plugin-version exists and is semver-shaped" {
   [ -f "$PLUGIN_DIR/.plugin-version" ]
   local content
   content="$(cat "$PLUGIN_DIR/.plugin-version")"
@@ -54,7 +54,7 @@ _compute_version() {
 }
 
 # ---------------- TC-AFE-14c: validator.md documents the contract ----------------
-@test "TC-AFE-14c: validator.md documents the .plugin-version + dev fallback contract" {
+@test "validator.md documents the .plugin-version + dev fallback contract" {
   local validator_md="$PLUGIN_DIR/agents/validator.md"
   [ -f "$validator_md" ]
   grep -qF ".plugin-version" "$validator_md"
@@ -63,7 +63,7 @@ _compute_version() {
 }
 
 # ---------------- TC-AFE-14d: persona_sig pattern regex ----------------
-@test "TC-AFE-14d: persona_sig pattern matches val-<semver>-<digest>" {
+@test "persona_sig pattern matches val-<semver>-<digest>" {
   local plugin_version
   plugin_version="$(cat "$PLUGIN_DIR/.plugin-version")"
   # Simulated persona_sig (the actual digest comes from validator.md sha256).
@@ -73,7 +73,7 @@ _compute_version() {
 }
 
 # ---------------- TC-AFE-14e: version-bump.js documents .plugin-version write ----------------
-@test "TC-AFE-14e: version-bump.js writes .plugin-version alongside plugin.json" {
+@test "version-bump.js writes .plugin-version alongside plugin.json" {
   local bump_js="$PLUGIN_DIR/../../scripts/version-bump.js"
   [ -f "$bump_js" ]
   grep -qF "PLUGIN_VERSION_REL" "$bump_js"

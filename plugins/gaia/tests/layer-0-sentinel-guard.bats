@@ -22,12 +22,12 @@ teardown() {
 }
 
 # AC1 — example template ships with canonical sentinel
-@test "AC1: example template contains canonical GAIA-MANIFEST-TEMPLATE sentinel" {
+@test "example template contains canonical GAIA-MANIFEST-TEMPLATE sentinel" {
   grep -qF "# GAIA-MANIFEST-TEMPLATE" "${TEMPLATE}"
 }
 
 # AC2 — Layer 0 sentinel guard FAILS with canonical error when sentinel present
-@test "AC2: check-manifest-sentinel.sh FAILS when sentinel present" {
+@test "check-manifest-sentinel.sh FAILS when sentinel present" {
   [ -x "${GUARD}" ]
   mkdir -p "${TARGET_DIR}/config"
   echo "${SENTINEL_LINE}" > "${MANIFEST}"
@@ -40,7 +40,7 @@ teardown() {
 }
 
 # AC2 — bridge_status: manifest_unmodified_template surfaced
-@test "AC2: check-manifest-sentinel.sh emits bridge_status: manifest_unmodified_template" {
+@test "check-manifest-sentinel.sh emits bridge_status: manifest_unmodified_template" {
   mkdir -p "${TARGET_DIR}/config"
   echo "${SENTINEL_LINE}" > "${MANIFEST}"
 
@@ -49,7 +49,7 @@ teardown() {
 }
 
 # AC3 — sentinel-absent manifest PASSES
-@test "AC3: check-manifest-sentinel.sh PASSES when sentinel absent" {
+@test "check-manifest-sentinel.sh PASSES when sentinel absent" {
   mkdir -p "${TARGET_DIR}/config"
   cat > "${MANIFEST}" << 'YAML'
 version: 2
@@ -64,7 +64,7 @@ YAML
 }
 
 # AC4 — E17-S33 generator output with stack-match does NOT include sentinel
-@test "AC4: generator with stack-match does NOT include sentinel" {
+@test "generator with stack-match does NOT include sentinel" {
   echo '{"name":"test","devDependencies":{"jest":"^29.0.0"}}' > "${TARGET_DIR}/package.json"
 
   run "${GENERATOR}" --target "${TARGET_DIR}"
@@ -73,7 +73,7 @@ YAML
 }
 
 # AC4 — E17-S33 generator output with NO stack-match DOES include sentinel
-@test "AC4: generator with no-stack-match (FR-497 placeholder) DOES include sentinel" {
+@test "generator with no-stack-match DOES include sentinel" {
   # Bare empty target — no stack signals
   run "${GENERATOR}" --target "${TARGET_DIR}"
   [ "${status}" -eq 0 ]

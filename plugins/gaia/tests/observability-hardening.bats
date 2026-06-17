@@ -22,7 +22,7 @@ teardown() {
 # AC1: text/JSON n/a consistency — all-negative-diff renders n/a in BOTH modes
 # ==========================================================================
 
-@test "AC1: all-negative-diff story renders n/a total tokens in JSON mode" {
+@test "all-negative-diff story renders n/a total tokens in JSON mode" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/all-negative-diff.jsonl" --json
   [ "$status" -eq 0 ]
   total_tok=$(echo "$output" | jq -r '.stories[0].total_tokens_approx')
@@ -30,7 +30,7 @@ teardown() {
     || { echo "Expected null total_tokens_approx for all-negative-diff, got: $total_tok" >&2; false; }
 }
 
-@test "AC1: all-negative-diff story renders n/a total tokens in text mode" {
+@test "all-negative-diff story renders n/a total tokens in text mode" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/all-negative-diff.jsonl"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq 'Total token estimate.*n/a' \
@@ -40,7 +40,7 @@ teardown() {
     || { echo "Found '~0 tok' in all-negative-diff output (bug)" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC1: all-negative-diff throughput step-durations renders all per-field n/a" {
+@test "all-negative-diff throughput step-durations renders all per-field n/a" {
   run bash "$THROUGHPUT" --events "$FIXTURE_DIR/all-negative-diff.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Both step lines should have all four fields as n/a (all diffs negative, but
@@ -58,7 +58,7 @@ teardown() {
 # AC2: grep escaping — ERE metacharacters in story keys must not cross-match
 # ==========================================================================
 
-@test "AC2: story key with ERE metachar does not cross-match (text mode)" {
+@test "story key with ERE metachar does not cross-match (text mode)" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/ere-metachar.jsonl" --story "E1-S1"
   [ "$status" -eq 0 ]
   # Must contain E1-S1 data
@@ -69,7 +69,7 @@ teardown() {
     || { echo "E+1-S1 cross-matched into E1-S1 filter (ERE escaping bug)" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC2: story key with ERE metachar does not cross-match (JSON mode)" {
+@test "story key with ERE metachar does not cross-match (JSON mode)" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/ere-metachar.jsonl" --story "E1-S1" --json
   [ "$status" -eq 0 ]
   count=$(echo "$output" | jq '.stories | length')
@@ -80,7 +80,7 @@ teardown() {
     || { echo "Expected story_key E1-S1, got $key" >&2; false; }
 }
 
-@test "AC2: text-mode display row matches its story section (no ERE cross-match)" {
+@test "text-mode display row matches its story section (no ERE cross-match)" {
   # Run the full report (no --story filter) to exercise the grep at the
   # text-mode display loop. E+1-S1 in ERE matches "E" followed by one-or-more
   # of any char, then "1-S1" — so grep -E "^E+1-S1\t" matches E1-S1 too.
@@ -98,7 +98,7 @@ teardown() {
 # AC4: telemetry sort — out-of-order events are sorted correctly
 # ==========================================================================
 
-@test "AC4: out-of-order step events produce sorted step-duration output" {
+@test "out-of-order step events produce sorted step-duration output" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/out-of-order.jsonl" --json
   [ "$status" -eq 0 ]
   # Steps must be in ascending order: 1, 2, 3
@@ -117,7 +117,7 @@ teardown() {
   [ "$d3" -eq 10 ]
 }
 
-@test "AC4: out-of-order throughput step-durations produce sorted output" {
+@test "out-of-order throughput step-durations produce sorted output" {
   run bash "$THROUGHPUT" --events "$FIXTURE_DIR/out-of-order.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Steps must appear in ascending order
@@ -135,7 +135,7 @@ teardown() {
 # ==========================================================================
 
 # --- empty events for --step-durations ---
-@test "AC5: --step-durations with empty events file produces (none)" {
+@test "step-durations with empty events file produces (none)" {
   : > "$TEST_TMP/empty.jsonl"
   run bash "$THROUGHPUT" --events "$TEST_TMP/empty.jsonl" --step-durations
   [ "$status" -eq 0 ]
@@ -144,7 +144,7 @@ teardown() {
 }
 
 # --- multi-story interleaving ---
-@test "AC5: multi-story interleaving produces correct per-story data (step-report)" {
+@test "multi-story interleaving produces correct per-story data (step-report)" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/multi-story-interleaved.jsonl" --json
   [ "$status" -eq 0 ]
   count=$(echo "$output" | jq '.stories | length')
@@ -161,7 +161,7 @@ teardown() {
 }
 
 # --- step_boundary missing step number ---
-@test "AC5: step_boundary with missing step number does not crash" {
+@test "step_boundary with missing step number does not crash" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/missing-step-number.jsonl" --json
   [ "$status" -eq 0 ]
   # The event with no step number gets step=null from jq, which awk coerces to 0.
@@ -176,7 +176,7 @@ teardown() {
 }
 
 # --- cache_* field diffs value-pinned ---
-@test "AC5: cache field diffs are value-pinned to exact expected values" {
+@test "cache field diffs are value-pinned to exact expected values" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl" --json
   [ "$status" -eq 0 ]
   # Step 1->2: cache_creation = 350-100=250, cache_read = 700-200=500
@@ -192,7 +192,7 @@ teardown() {
 }
 
 # --- mixed-presence (tokens on step N, absent N+1) ---
-@test "AC5: mixed-presence tokens render correctly (step report)" {
+@test "mixed-presence tokens render correctly (step report)" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/mixed-presence.jsonl" --json
   [ "$status" -eq 0 ]
   # Step 1->2: both have tokens -> real diff
@@ -204,7 +204,7 @@ teardown() {
 }
 
 # --- single-step story ---
-@test "AC5: single-step story produces empty steps array (no diff possible)" {
+@test "single-step story produces empty steps array (no diff possible)" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/single-step.jsonl" --json
   [ "$status" -eq 0 ]
   # A single step cannot be differenced, so the story has zero measured steps
@@ -214,7 +214,7 @@ teardown() {
 }
 
 # --- all-tokens-missing -> null total ---
-@test "AC5: all-tokens-missing story renders null total tokens in JSON" {
+@test "all-tokens-missing story renders null total tokens in JSON" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/all-tokens-missing.jsonl" --json
   [ "$status" -eq 0 ]
   total_tok=$(echo "$output" | jq -r '.stories[0].total_tokens_approx')
@@ -222,7 +222,7 @@ teardown() {
     || { echo "Expected null total_tokens_approx for all-missing, got: $total_tok" >&2; false; }
 }
 
-@test "AC5: all-tokens-missing story renders n/a in text mode" {
+@test "all-tokens-missing story renders n/a in text mode" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/all-tokens-missing.jsonl"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq 'Total token estimate.*n/a' \
@@ -230,7 +230,7 @@ teardown() {
 }
 
 # --- --story unknown-key ---
-@test "AC5: --story with unknown key produces empty output" {
+@test "story with unknown key produces empty output" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl" --story "NOPE-S99" --json
   [ "$status" -eq 0 ]
   count=$(echo "$output" | jq '.stories | length')
@@ -238,7 +238,7 @@ teardown() {
     || { echo "Expected 0 stories for unknown key, got $count" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC5: --story unknown-key text mode produces no-events message" {
+@test "story unknown-key text mode produces no-events message" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl" --story "NOPE-S99"
   [ "$status" -eq 0 ]
   echo "$output" | grep -qF 'no step_boundary events found' \
@@ -246,7 +246,7 @@ teardown() {
 }
 
 # --- JSON-vs-text numeric parity cross-check ---
-@test "AC5: JSON and text mode duration totals match (parity cross-check)" {
+@test "JSON and text mode duration totals match (parity cross-check)" {
   # Use the cache-field-diffs fixture: 2 steps, durations 5+5=10
   local json_out text_out
   json_out=$(bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl" --json)
@@ -257,7 +257,7 @@ teardown() {
     || { echo "Duration parity mismatch: JSON=$json_total, text=$text_total" >&2; false; }
 }
 
-@test "AC5: JSON and text mode token totals match (parity cross-check)" {
+@test "JSON and text mode token totals match (parity cross-check)" {
   local json_out text_out
   json_out=$(bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl" --json)
   text_out=$(bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl")
@@ -269,7 +269,7 @@ teardown() {
 }
 
 # --- full output-line format golden for step-report text ---
-@test "AC5: step-report text output-line format matches golden structure" {
+@test "step-report text output-line format matches golden structure" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl"
   [ "$status" -eq 0 ]
   # Header line

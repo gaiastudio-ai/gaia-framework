@@ -46,7 +46,7 @@ _run_default() {
 }
 
 # TC-STCL-2 — --all emits every story file (full historical sweep).
-@test "TC-STCL-2: --all scans every story file in the tree" {
+@test "all scans every story file in the tree" {
   run _run_default --all
   [ "$status" -eq 0 ]
   count=$(printf '%s\n' "$output" | grep -c 'story.md')
@@ -57,7 +57,7 @@ _run_default() {
 # The helper resolves via the real resolve-story-file.sh against the project
 # root; in the temp tree it uses the glob fallback. Either way it must yield
 # at most the 3 sprint keys, never the 2 out-of-sprint keys.
-@test "TC-STCL-1: sprint-scoped default scopes to committed stories only" {
+@test "sprint-scoped default scopes to committed stories only" {
   run _run_default
   [ "$status" -eq 0 ]
   # Exactly the 3 committed stories resolve...
@@ -69,7 +69,7 @@ _run_default() {
 }
 
 # Gating: a closed sprint emits nothing + an informational stderr message.
-@test "TC-STCL-1b: closed sprint emits nothing with an informational message" {
+@test "closed sprint emits nothing with an informational message" {
   cat > "$TMP/closed.yaml" <<'EOF'
 sprint_id: "sprint-98"
 status: closed

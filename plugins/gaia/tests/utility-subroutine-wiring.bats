@@ -28,7 +28,7 @@ teardown() { common_teardown; }
 
 # ---------- AC1: dep-audit-subroutine invoked when manifests present ----------
 
-@test "AC1 (TC-1): dep-audit invoked when package.json present -> emits checks fragment" {
+@test "dep-audit invoked when package.json present -> emits checks fragment" {
   mkdir -p "$TEST_TMP/proj"
   printf '{"name":"x","version":"0.0.1","dependencies":{}}\n' > "$TEST_TMP/proj/package.json"
   run --separate-stderr "$DEP_SUB" --target "$TEST_TMP/proj"
@@ -37,7 +37,7 @@ teardown() { common_teardown; }
   [[ "$output" == *'"category":"dependency_audit"'* ]]
 }
 
-@test "AC1 (TC-2): dep-audit invoked for requirements.txt" {
+@test "dep-audit invoked for requirements.txt" {
   mkdir -p "$TEST_TMP/proj"
   printf 'requests==2.0.0\n' > "$TEST_TMP/proj/requirements.txt"
   run --separate-stderr "$DEP_SUB" --target "$TEST_TMP/proj"
@@ -45,7 +45,7 @@ teardown() { common_teardown; }
   [[ "$output" == *'"name":"dependency-audit"'* ]]
 }
 
-@test "AC1 (TC-3): dep-audit invoked for pom.xml / pubspec.yaml / go.mod / Gemfile / Cargo.toml" {
+@test "dep-audit invoked for pom.xml / pubspec.yaml / go.mod / Gemfile / Cargo.toml" {
   for manifest in pom.xml pubspec.yaml go.mod Gemfile Cargo.toml; do
     rm -rf "$TEST_TMP/m"
     mkdir -p "$TEST_TMP/m"
@@ -59,7 +59,7 @@ teardown() { common_teardown; }
 
 # ---------- AC3: dep-audit skipped when no manifests ----------
 
-@test "AC3 (TC-4): dep-audit skipped when no manifests -> emits skipped status with reason" {
+@test "dep-audit skipped when no manifests -> emits skipped status with reason" {
   mkdir -p "$TEST_TMP/proj"
   printf 'hello\n' > "$TEST_TMP/proj/README.md"
   run --separate-stderr "$DEP_SUB" --target "$TEST_TMP/proj"
@@ -70,7 +70,7 @@ teardown() { common_teardown; }
 
 # ---------- AC2: api-design-subroutine invoked when endpoints detected ----------
 
-@test "AC2 (TC-5): api-design invoked when routes/ directory present -> emits checks fragment" {
+@test "api-design invoked when routes/ directory present -> emits checks fragment" {
   mkdir -p "$TEST_TMP/proj/routes"
   printf 'router.get("/users", h);\n' > "$TEST_TMP/proj/routes/users.ts"
   run --separate-stderr "$API_SUB" --target "$TEST_TMP/proj"
@@ -79,7 +79,7 @@ teardown() { common_teardown; }
   [[ "$output" == *'"category":"api_design_audit"'* ]]
 }
 
-@test "AC2 (TC-6): api-design invoked when controllers/ directory present" {
+@test "api-design invoked when controllers/ directory present" {
   mkdir -p "$TEST_TMP/proj/src/controllers"
   : > "$TEST_TMP/proj/src/controllers/users_controller.py"
   run --separate-stderr "$API_SUB" --target "$TEST_TMP/proj"
@@ -87,7 +87,7 @@ teardown() { common_teardown; }
   [[ "$output" == *'"name":"api-design-audit"'* ]]
 }
 
-@test "AC2 (TC-7): api-design invoked when openapi.yaml present" {
+@test "api-design invoked when openapi.yaml present" {
   mkdir -p "$TEST_TMP/proj"
   : > "$TEST_TMP/proj/openapi.yaml"
   run --separate-stderr "$API_SUB" --target "$TEST_TMP/proj"
@@ -97,7 +97,7 @@ teardown() { common_teardown; }
 
 # ---------- AC3: api-design skipped when no endpoints ----------
 
-@test "AC3 (TC-8): api-design skipped when no endpoints -> emits skipped status with reason" {
+@test "api-design skipped when no endpoints -> emits skipped status with reason" {
   mkdir -p "$TEST_TMP/proj"
   : > "$TEST_TMP/proj/README.md"
   run --separate-stderr "$API_SUB" --target "$TEST_TMP/proj"
@@ -108,7 +108,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC1: sub-routine failure does not cascade as parent BLOCKED ----------
 
-@test "AC-EC1 (TC-9): dep-audit reports failure as WARNING when audit tool errors" {
+@test "dep-audit reports failure as WARNING when audit tool errors" {
   mkdir -p "$TEST_TMP/proj"
   : > "$TEST_TMP/proj/package.json"
   # Force a simulated audit-tool failure via env override; the subroutine MUST
@@ -119,7 +119,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"Dependency audit unavailable"* ]]
 }
 
-@test "AC-EC1 (TC-10): api-design reports failure as WARNING on tool error" {
+@test "api-design reports failure as WARNING on tool error" {
   mkdir -p "$TEST_TMP/proj"
   : > "$TEST_TMP/proj/openapi.yaml"
   GAIA_API_AUDIT_FORCE_FAIL=1 run --separate-stderr "$API_SUB" --target "$TEST_TMP/proj"

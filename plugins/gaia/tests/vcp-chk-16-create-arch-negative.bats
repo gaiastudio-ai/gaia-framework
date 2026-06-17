@@ -29,27 +29,27 @@ teardown() { common_teardown; }
 # V1 anchor "Decisions recorded" must appear verbatim.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-16: finalize.sh exits non-zero when Decision Log table empty" {
+@test "finalize.sh exits non-zero when Decision Log table empty" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-missing-adrs.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-16: finalize.sh names the Decisions recorded item in the failure output" {
+@test "finalize.sh names the Decisions recorded item in the failure output" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-missing-adrs.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Decisions recorded"* ]]
 }
 
-@test "VCP-CHK-16: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-missing-adrs.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-16: finalize.sh guides user back to /gaia-create-arch" {
+@test "finalize.sh guides user back to /gaia-create-arch" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-missing-adrs.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -72,7 +72,7 @@ teardown() { common_teardown; }
 # AC4 — ARCHITECTURE_ARTIFACT points at a missing file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when ARCHITECTURE_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when ARCHITECTURE_ARTIFACT points at a missing file" {
   export ARCHITECTURE_ARTIFACT="$BATS_TMPDIR/does-not-exist-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]

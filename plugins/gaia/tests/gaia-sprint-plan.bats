@@ -19,37 +19,37 @@ teardown() { common_teardown; }
 
 # ---------- AC1: Frontmatter ----------
 
-@test "AC1: SKILL.md exists in gaia-sprint-plan skill directory" {
+@test "SKILL.md exists in gaia-sprint-plan skill directory" {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "AC1: frontmatter contains name: gaia-sprint-plan" {
+@test "frontmatter contains name: gaia-sprint-plan" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"name: gaia-sprint-plan"* ]]
 }
 
-@test "AC1: frontmatter contains description field" {
+@test "frontmatter contains description field" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"description:"* ]]
 }
 
-@test "AC1: frontmatter contains argument-hint" {
+@test "frontmatter contains argument-hint" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *'argument-hint:'* ]]
   [[ "$output" == *'sprint-scope'* ]]
 }
 
-@test "AC1: frontmatter contains allowed-tools" {
+@test "frontmatter contains allowed-tools" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"allowed-tools:"* ]]
 }
 
-@test "AC1: frontmatter does NOT contain context: fork (sprint planning is synchronous)" {
+@test "frontmatter does NOT contain context: fork (sprint planning is synchronous)" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" != *"context: fork"* ]]
 }
 
-@test "AC1: sm subagent is wired as planning persona" {
+@test "sm subagent is wired as planning persona" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"sm"* ]]
   [[ "$output" == *"Nate"* ]] || [[ "$output" == *"Scrum Master"* ]]
@@ -57,57 +57,57 @@ teardown() { common_teardown; }
 
 # ---------- AC2: sprint-state.sh integration ----------
 
-@test "AC2: SKILL.md references sprint-state.sh for state mutations" {
+@test "SKILL.md references sprint-state.sh for state mutations" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"sprint-state.sh"* ]]
 }
 
-@test "AC2: SKILL.md does NOT contain direct Write/Edit calls to sprint-status.yaml" {
+@test "SKILL.md does NOT contain direct Write/Edit calls to sprint-status.yaml" {
   run cat "$SKILL_DIR/SKILL.md"
   # The skill must not instruct direct YAML mutation
   [[ "$output" != *'Write.*sprint-status.yaml'* ]]
   [[ "$output" != *'Edit.*sprint-status.yaml'* ]]
 }
 
-@test "AC2: SKILL.md explicitly forbids direct YAML writes" {
+@test "SKILL.md explicitly forbids direct YAML writes" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"MUST NOT"* ]] || [[ "$output" == *"NEVER write"* ]]
 }
 
 # ---------- AC3: Cluster 8 shared scripts ----------
 
-@test "AC3: scripts/setup.sh exists and is executable" {
+@test "scripts/setup.sh exists and is executable" {
   [ -f "$SKILL_DIR/scripts/setup.sh" ]
   [ -x "$SKILL_DIR/scripts/setup.sh" ]
 }
 
-@test "AC3: scripts/finalize.sh exists and is executable" {
+@test "scripts/finalize.sh exists and is executable" {
   [ -f "$SKILL_DIR/scripts/finalize.sh" ]
   [ -x "$SKILL_DIR/scripts/finalize.sh" ]
 }
 
-@test "AC3: setup.sh sources resolve-config.sh from foundation scripts" {
+@test "setup.sh sources resolve-config.sh from foundation scripts" {
   run cat "$SKILL_DIR/scripts/setup.sh"
   [[ "$output" == *"resolve-config.sh"* ]]
 }
 
-@test "AC3: finalize.sh sources checkpoint.sh from foundation scripts" {
+@test "finalize.sh sources checkpoint.sh from foundation scripts" {
   run cat "$SKILL_DIR/scripts/finalize.sh"
   [[ "$output" == *"checkpoint.sh"* ]]
 }
 
-@test "AC3: finalize.sh emits lifecycle event" {
+@test "finalize.sh emits lifecycle event" {
   run cat "$SKILL_DIR/scripts/finalize.sh"
   [[ "$output" == *"lifecycle-event.sh"* ]]
 }
 
-@test "AC3: setup.sh resolves plugin scripts dir via relative path" {
+@test "setup.sh resolves plugin scripts dir via relative path" {
   run cat "$SKILL_DIR/scripts/setup.sh"
   [[ "$output" == *'PLUGIN_SCRIPTS_DIR'* ]]
   [[ "$output" == *'../../../scripts'* ]]
 }
 
-@test "AC3: finalize.sh resolves plugin scripts dir via relative path" {
+@test "finalize.sh resolves plugin scripts dir via relative path" {
   run cat "$SKILL_DIR/scripts/finalize.sh"
   [[ "$output" == *'PLUGIN_SCRIPTS_DIR'* ]]
   [[ "$output" == *'../../../scripts'* ]]
@@ -115,7 +115,7 @@ teardown() { common_teardown; }
 
 # ---------- AC4: Frontmatter linter conformance ----------
 
-@test "AC4: SKILL.md frontmatter opens and closes with ---" {
+@test "SKILL.md frontmatter opens and closes with" {
   local first_line
   first_line=$(head -1 "$SKILL_DIR/SKILL.md")
   [ "$first_line" = "---" ]
@@ -126,22 +126,22 @@ teardown() { common_teardown; }
   [ -n "$closing_line" ]
 }
 
-@test "AC4: SKILL.md body contains ## Setup section" {
+@test "SKILL.md body contains ## Setup section" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"## Setup"* ]]
 }
 
-@test "AC4: SKILL.md body contains ## Finalize section" {
+@test "SKILL.md body contains ## Finalize section" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"## Finalize"* ]]
 }
 
-@test "AC4: SKILL.md Setup references the skill's own setup.sh" {
+@test "SKILL.md Setup references the skill's own setup.sh" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *'gaia-sprint-plan/scripts/setup.sh'* ]]
 }
 
-@test "AC4: SKILL.md Finalize references the skill's own finalize.sh" {
+@test "SKILL.md Finalize references the skill's own finalize.sh" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *'gaia-sprint-plan/scripts/finalize.sh'* ]]
 }
@@ -184,7 +184,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"P1"* ]]
 }
 
-@test "SKILL.md references ADR-042 (scripted state mutators)" {
+@test "SKILL.md references (scripted state mutators)" {
   run cat "$SKILL_DIR/SKILL.md"
   # The behavioral contract is the sanctioned-writer pattern: all sprint-state
   # mutations go through sprint-state.sh (the scripted state mutator), not
@@ -201,7 +201,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"GAIA-native replacement"* ]] || [[ "$output" == *"native Claude Code"* ]]
 }
 
-@test "SKILL.md references NFR-048 token footprint" {
+@test "SKILL.md references token footprint" {
   run cat "$SKILL_DIR/SKILL.md"
   # The behavioral substance is the token footprint measurement step (Step 9).
   # The prose still documents the contract — it just no longer names the internal ID.
@@ -263,7 +263,7 @@ _run_guard_idiom() {
   "
 }
 
-@test "TC-SPRINT-PLAN-GUARD-1: prior sprint active -> guard refuses with canonical error" {
+@test "prior sprint active -> guard refuses with canonical error" {
   _seed_prior_sprint_yaml "sprint-40" "active"
   local prior_yaml="$TEST_TMP/docs/implementation-artifacts/sprint-status-sprint-40.yaml"
   run _run_guard_idiom "$prior_yaml" ""
@@ -272,7 +272,7 @@ _run_guard_idiom() {
   [[ "$output" == *"error: previous sprint sprint-40 not closed"* ]]
 }
 
-@test "TC-SPRINT-PLAN-GUARD-2: prior sprint closed -> guard passes silently" {
+@test "prior sprint closed -> guard passes silently" {
   _seed_prior_sprint_yaml "sprint-40" "closed"
   local prior_yaml="$TEST_TMP/docs/implementation-artifacts/sprint-status-sprint-40.yaml"
   run _run_guard_idiom "$prior_yaml" ""
@@ -280,7 +280,7 @@ _run_guard_idiom() {
   [[ "$output" == *"ok"* ]]
 }
 
-@test "TC-SPRINT-PLAN-GUARD-3: no prior sprint yaml (first sprint) -> guard skipped silently" {
+@test "no prior sprint yaml (first sprint) -> guard skipped silently" {
   # Deliberately do NOT create any prior sprint yaml.
   local prior_yaml="$TEST_TMP/docs/implementation-artifacts/sprint-status-sprint-40.yaml"
   [ ! -f "$prior_yaml" ]
@@ -288,7 +288,7 @@ _run_guard_idiom() {
   [ "$status" -eq 0 ]
 }
 
-@test "TC-SPRINT-PLAN-GUARD-4: --allow-stale-prior bypasses guard with warning" {
+@test "allow-stale-prior bypasses guard with warning" {
   _seed_prior_sprint_yaml "sprint-40" "active"
   local prior_yaml="$TEST_TMP/docs/implementation-artifacts/sprint-status-sprint-40.yaml"
   run _run_guard_idiom "$prior_yaml" "--allow-stale-prior"
@@ -296,7 +296,7 @@ _run_guard_idiom() {
   [[ "$output" == *"warning: proceeding despite prior sprint sprint-40 not closed"* ]]
 }
 
-@test "TC-SPRINT-PLAN-GUARD-5: SKILL.md documents the Step 0 prior-close guard" {
+@test "SKILL.md documents the Step 0 prior-close guard" {
   # Verify the prose anchor is present so the LLM-driven dispatch finds it.
   run grep -q "Step 0 -- Prior-close guard" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]

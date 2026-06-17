@@ -47,14 +47,14 @@ ajv_validate() {
 # AC1 — schema gains the 4 optional properties with correct types/defaults
 # ---------------------------------------------------------------------------
 
-@test "E85-S14 AC1: stacks.items declares the 4 new optional properties" {
+@test "stacks.items declares the 4 new optional properties" {
   for prop in path excludes cross_refs ignore_nested_manifests; do
     run jq -e --arg p "$prop" '.properties.stacks.items.properties[$p]' "$SCHEMA"
     [ "$status" -eq 0 ] || { echo "missing property: $prop"; return 1; }
   done
 }
 
-@test "E85-S14 AC1: path is string, excludes/cross_refs are arrays-of-string, ignore_nested_manifests is boolean" {
+@test "path is string, excludes/cross_refs are arrays-of-string, ignore_nested_manifests is boolean" {
   run jq -r '.properties.stacks.items.properties.path.type' "$SCHEMA"
   [ "$output" = "string" ]
   run jq -r '.properties.stacks.items.properties.excludes.type' "$SCHEMA"
@@ -69,12 +69,12 @@ ajv_validate() {
   [ "$output" = "boolean" ]
 }
 
-@test "E85-S14 AC1: ignore_nested_manifests default is true" {
+@test "ignore_nested_manifests default is true" {
   run jq -r '.properties.stacks.items.properties.ignore_nested_manifests.default' "$SCHEMA"
   [ "$output" = "true" ]
 }
 
-@test "E85-S14 AC1: new fields stay OPTIONAL — required remains exactly [name, language, paths]" {
+@test "new fields stay OPTIONAL — required remains exactly [name, language, paths]" {
   run jq -c '.properties.stacks.items.required' "$SCHEMA"
   [ "$output" = '["name","language","paths"]' ]
 }
@@ -86,7 +86,7 @@ ajv_validate() {
 #  only the items schema is closed. We assert the items schema only.)
 # ---------------------------------------------------------------------------
 
-@test "E85-S14 AC1: additionalProperties:false preserved on stacks.items" {
+@test "additionalProperties:false preserved on stacks.items" {
   run jq -r '.properties.stacks.items.additionalProperties' "$SCHEMA"
   [ "$output" = "false" ]
 }
@@ -95,22 +95,22 @@ ajv_validate() {
 # AC6 — TC-MSP-1 / TC-MSP-2
 # ---------------------------------------------------------------------------
 
-@test "E85-S14 TC-MSP-1: pre-deploy stacks[] fixture validates byte-compatible after bump" {
+@test "pre-deploy stacks fixture validates byte-compatible after bump" {
   ajv_validate "$FIXTURES/pre-deploy.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "E85-S14 TC-MSP-2: 4-field stacks[] entry validates with additionalProperties:false preserved" {
+@test "4-field stacks entry validates with additionalProperties:false preserved" {
   ajv_validate "$FIXTURES/four-field.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "E85-S14: single-stack fixture (no path field) validates unchanged" {
+@test "single-stack fixture (no path field) validates unchanged" {
   ajv_validate "$FIXTURES/single-stack.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "E85-S14: multi-stack 3-stack monorepo fixture validates with all new fields" {
+@test "multi-stack 3-stack monorepo fixture validates with all new fields" {
   ajv_validate "$FIXTURES/multi-stack.yaml"
   [ "$status" -eq 0 ]
 }
@@ -119,31 +119,31 @@ ajv_validate() {
 # Per-field type boundaries — negative cases (MUST be rejected)
 # ---------------------------------------------------------------------------
 
-@test "E85-S14: path as array is rejected by the path TYPE keyword (must be string)" {
+@test "path as array is rejected by the path TYPE keyword (must be string)" {
   ajv_validate "$FIXTURES/bad-path-type.yaml"
   [ "$status" -ne 0 ]
   [[ "$output" == *"properties/stacks/items/properties/path/type"* ]]
 }
 
-@test "E85-S14: excludes as string is rejected by the excludes TYPE keyword (array of string)" {
+@test "excludes as string is rejected by the excludes TYPE keyword (array of string)" {
   ajv_validate "$FIXTURES/bad-excludes-type.yaml"
   [ "$status" -ne 0 ]
   [[ "$output" == *"properties/stacks/items/properties/excludes/type"* ]]
 }
 
-@test "E85-S14: cross_refs as string is rejected by the cross_refs TYPE keyword (array of string)" {
+@test "cross_refs as string is rejected by the cross_refs TYPE keyword (array of string)" {
   ajv_validate "$FIXTURES/bad-cross-refs-type.yaml"
   [ "$status" -ne 0 ]
   [[ "$output" == *"properties/stacks/items/properties/cross_refs/type"* ]]
 }
 
-@test "E85-S14: ignore_nested_manifests as string is rejected by the TYPE keyword (boolean)" {
+@test "ignore_nested_manifests as string is rejected by the TYPE keyword (boolean)" {
   ajv_validate "$FIXTURES/bad-ignore-nested-type.yaml"
   [ "$status" -ne 0 ]
   [[ "$output" == *"properties/stacks/items/properties/ignore_nested_manifests/type"* ]]
 }
 
-@test "E85-S14: unknown property on stacks item is rejected (additionalProperties:false trap)" {
+@test "unknown property on stacks item is rejected (additionalProperties:false trap)" {
   ajv_validate "$FIXTURES/bad-unknown-field.yaml"
   [ "$status" -ne 0 ]
 }
@@ -155,26 +155,26 @@ ajv_validate() {
 # keywords (no allowlist gate), so cross-stack-refs is a recognized keyword.
 # ---------------------------------------------------------------------------
 
-@test "E85-S14 AC5 (scenario 8): cross-stack-refs bypass with 14-char reason is accepted" {
+@test "scenario 8): cross-stack-refs bypass with 14-char reason is accepted" {
   run bash "$LIB/parse-bypass-flag.sh" --bypass cross-stack-refs --reason "fix-CVE-2024-X"
   [ "$status" -eq 0 ]
   [[ "$output" == *"BYPASS_SKILL=cross-stack-refs"* ]]
   [[ "$output" == *"BYPASS_REASON=fix-CVE-2024-X"* ]]
 }
 
-@test "E85-S14 AC5 (scenario 9): too-short reason (3 chars) is rejected under SR-86 min-length 10" {
+@test "scenario 9): too-short reason (3 chars) is rejected under min-length 10" {
   run bash "$LIB/parse-bypass-flag.sh" --bypass cross-stack-refs --reason "fix"
   [ "$status" -ne 0 ]
   [[ "$output" == *"at least 10"* ]]
 }
 
-@test "E85-S14 AC5 (scenario 10): missing --reason is rejected with no-anonymous-bypass error" {
+@test "scenario 10): missing --reason is rejected with no-anonymous-bypass error" {
   run bash "$LIB/parse-bypass-flag.sh" --bypass cross-stack-refs
   [ "$status" -ne 0 ]
   [[ "$output" == *"requires --reason"* ]]
 }
 
-@test "E85-S14 AC5: max-length 500 boundary — 501-char reason is rejected" {
+@test "max-length 500 boundary — 501-char reason is rejected" {
   local long
   long="$(printf 'a%.0s' $(seq 1 501))"
   run bash "$LIB/parse-bypass-flag.sh" --bypass cross-stack-refs --reason "$long"
@@ -188,14 +188,14 @@ ajv_validate() {
 #  per Val F2 — CI-self-enforced here.)
 # ---------------------------------------------------------------------------
 
-@test "E85-S14 AC-X2: gaia-config-stack SKILL.md carries the CRUD-menu disclaimer + orchestration_class" {
+@test "gaia-config-stack SKILL.md carries the CRUD-menu disclaimer + orchestration_class" {
   run grep -F "LLM-driven interaction pattern under Claude Code main-turn orchestration" "$SKILLS/gaia-config-stack/SKILL.md"
   [ "$status" -eq 0 ]
   run grep -F "orchestration_class" "$SKILLS/gaia-config-stack/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "E85-S14 AC-X2: gaia-init SKILL.md carries the CRUD-menu disclaimer + orchestration_class" {
+@test "gaia-init SKILL.md carries the CRUD-menu disclaimer + orchestration_class" {
   run grep -F "LLM-driven interaction pattern under Claude Code main-turn orchestration" "$SKILLS/gaia-init/SKILL.md"
   [ "$status" -eq 0 ]
   run grep -F "orchestration_class" "$SKILLS/gaia-init/SKILL.md"
@@ -207,12 +207,12 @@ ajv_validate() {
 # are LLM-driven prose; assert the canonical anchors are present).
 # ---------------------------------------------------------------------------
 
-@test "E85-S14 AC2: gaia-init gates the per-stack path prompt on multi-stack" {
+@test "gaia-init gates the per-stack path prompt on multi-stack" {
   run grep -Ei "more than one stack|multi-stack|len\(stacks\) ?> ?1|> 1" "$SKILLS/gaia-init/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "E85-S14 AC4: gaia-init offers the SR-87 default secret-exclude patterns" {
+@test "gaia-init offers the default secret-exclude patterns" {
   run grep -F ".env" "$SKILLS/gaia-init/SKILL.md"
   [ "$status" -eq 0 ]
   run grep -F "*.pem" "$SKILLS/gaia-init/SKILL.md"
@@ -221,7 +221,7 @@ ajv_validate() {
   [ "$status" -eq 0 ]
 }
 
-@test "E85-S14 AC3: gaia-config-stack documents set/show/clear for the 4 new fields" {
+@test "gaia-config-stack documents set/show/clear for the 4 new fields" {
   for field in path excludes cross_refs ignore_nested_manifests; do
     run grep -F "$field" "$SKILLS/gaia-config-stack/SKILL.md"
     [ "$status" -eq 0 ] || { echo "field not documented: $field"; return 1; }

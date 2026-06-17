@@ -88,12 +88,12 @@ scan_pattern() {
 
 # ---------- AC tests ----------
 
-@test "AC1: allowlist file exists and is non-empty" {
+@test "allowlist file exists and is non-empty" {
   [ -f "$ALLOWLIST" ]
   [ -s "$ALLOWLIST" ]
 }
 
-@test "AC1: bats file sources helpers from audit-v2-migration.bats OR self-contained" {
+@test "bats file sources helpers from audit-v2-migration.bats OR self-contained" {
   # Story AC1 says "sources helper functions from audit-v2-migration.bats
   # rather than duplicating them." The audit-v2-migration.bats precedent
   # does NOT export grep-allowlist helpers — its helpers are audit-harness
@@ -104,7 +104,7 @@ scan_pattern() {
   [ "$status" -eq 0 ]
 }
 
-@test "TC-PMG-1: clean tree passes (all known legacy refs allowlisted)" {
+@test "clean tree passes (all known legacy refs allowlisted)" {
   # Aggregate scan across all 4 root patterns. The current tree MUST pass
   # because every legacy reference today is either in a fallback chain,
   # a doc comment, or a retired script — all covered by the allowlist.
@@ -127,7 +127,7 @@ scan_pattern() {
   return 0
 }
 
-@test "TC-PMG-2: injected un-allowlisted literal fails with actionable error" {
+@test "injected un-allowlisted literal fails with actionable error" {
   # Simulate an injection by creating a synthetic non-allowlisted file
   # under PLUGIN_DIR and asserting the scanner picks it up.
   # We use TEST_TMP so no real files are touched.
@@ -147,7 +147,7 @@ EOF
   [[ "$output" == *"docs/implementation-artifacts/foo.md"* ]]
 }
 
-@test "TC-PMG-3: same literal added to allowlist suppresses the violation" {
+@test "same literal added to allowlist suppresses the violation" {
   # Build a synthetic project tree + allowlist, assert allowlisted file
   # is treated as PASS.
   local synthetic_allowlist="$TEST_TMP/allowlist.txt"
@@ -167,14 +167,14 @@ EOF
   [ "$matched" -eq 0 ]
 }
 
-@test "TC-PMG-4: pattern set covers all four legacy roots" {
+@test "pattern set covers all four legacy roots" {
   # Verify the scan_pattern helper is invoked with all 4 root patterns.
   # We grep the bats file body for the 4 expected regex literals.
   run grep -E "config/project-config\\\\\\\\.yaml|docs/\\(planning\\||_memory/" "$BATS_TEST_DIRNAME/path-migration-guard.bats"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-PMG-5: broader-regex variant catches \${VAR:-\${PROJECT_PATH}/...} form" {
+@test "broader-regex variant catches \${VAR:-\${PROJECT_PATH}/...} form" {
   # Per memory rule feedback_audit_grep_broader_pattern: the narrow
   # `${VAR:-default}` form misses `${VAR:-${PROJECT_PATH}/...}`. Assert
   # the broader-regex pattern is documented in the guard file.
@@ -182,7 +182,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AC6: closes sprint-49 retro AI-RETRO-S49-4 reference is present" {
+@test "closes sprint-49 retro reference is present" {
   # The bats header MUST cite AI-RETRO-S49-4 so the retro action item can be
   # auto-closed by the audit trail.
   run grep -F 'AI-RETRO-S49-4' "$BATS_TEST_DIRNAME/path-migration-guard.bats"

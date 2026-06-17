@@ -78,7 +78,7 @@ _load_helpers() {
   allowlist_match "$root" "$root/.gaia/memory/architect-sidecar/decision-log.md"
 }
 
-@test "allowlist_match REJECTS the legacy _memory/{agent}-sidecar/ path (AF-2026-05-27-3)" {
+@test "allowlist_match REJECTS the legacy _memory/{agent}-sidecar/ path" {
   _load_helpers
   local root="/tmp/gaia-al-root"
   ! allowlist_match "$root" "$root/_memory/architect-sidecar/decision-log.md"

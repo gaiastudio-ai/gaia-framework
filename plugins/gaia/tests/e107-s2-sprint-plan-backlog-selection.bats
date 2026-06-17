@@ -22,7 +22,7 @@ setup() {
 
 # ---------- AC1 / TS1: enumerate backlog candidates from columns (no files) ----------
 
-@test "AC1/TS1: lint enumerates backlog candidates from the roster columns (no story files)" {
+@test "lint enumerates backlog candidates from the roster columns (no story files)" {
   run bash "$LINT" --epics "$EPICS" --candidates "E900-S1,E900-S2" --done "" --json
   [ "$status" -eq 0 ] \
     || { echo "lint should enumerate column candidates with no files, got $status: $output" >&2; false; }
@@ -31,7 +31,7 @@ setup() {
 
 # ---------- AC2 / TS2: dependency lint reads the Depends on COLUMN ----------
 
-@test "AC2/TS2: lint reads Depends on from the roster column, not the bold-label block" {
+@test "lint reads Depends on from the roster column, not the bold-label block" {
   # E900-S2 deps E900-S1 (column). With E900-S1 co-selected, S2 is satisfied.
   run bash "$LINT" --epics "$EPICS" --candidates "E900-S1,E900-S2" --done "" --json
   [ "$status" -eq 0 ]
@@ -41,7 +41,7 @@ setup() {
 
 # ---------- AC3 / TS3: cross-sprint dep hard-block ----------
 
-@test "AC3/TS3: cross-sprint dep (target not done, not co-selected) HARD-BLOCKS with a message" {
+@test "cross-sprint dep (target not done, not co-selected) HARD-BLOCKS with a message" {
   # E900-S3 deps E901-S9 which is neither done nor co-selected.
   run bash "$LINT" --epics "$EPICS" --candidates "E900-S3" --done ""
   [ "$status" -ne 0 ] \
@@ -60,7 +60,7 @@ setup() {
   echo "$output" | jq -e '.blocked == []' >/dev/null
 }
 
-@test "AC3: a hard dep satisfied by --done (not co-selected) is allowed" {
+@test "a hard dep satisfied by --done (not co-selected) is allowed" {
   run bash "$LINT" --epics "$EPICS" --candidates "E900-S2" --done "E900-S1" --json
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.blocked == []' >/dev/null
@@ -68,7 +68,7 @@ setup() {
 
 # ---------- Val W2: soft-deps + parenthetical annotations do NOT hard-block ----------
 
-@test "W2: a soft dep (E900-S1; soft on E902-S2) does not hard-block on the soft target" {
+@test "W2: a soft dep (; soft on ) does not hard-block on the soft target" {
   # E900-S4 hard-deps E900-S1 (co-selected) + softly E902-S2 (absent). Soft must not block.
   run bash "$LINT" --epics "$EPICS" --candidates "E900-S1,E900-S4" --done "" --json
   [ "$status" -eq 0 ] \
@@ -76,7 +76,7 @@ setup() {
   echo "$output" | jq -e '.blocked == []' >/dev/null
 }
 
-@test "W2: a parenthetical-annotated dep (E900-S1 (Step 4 hook)) parses the bare key" {
+@test "W2: a parenthetical-annotated dep ( (Step 4 hook)) parses the bare key" {
   # E900-S5 hard-deps E900-S1 with a parenthetical annotation; with S1 co-selected, allowed.
   run bash "$LINT" --epics "$EPICS" --candidates "E900-S1,E900-S5" --done "" --json
   [ "$status" -eq 0 ] \
@@ -84,7 +84,7 @@ setup() {
   echo "$output" | jq -e '.blocked == []' >/dev/null
 }
 
-@test "W2: a 'none' dep cell yields no dependencies (E900-S1 is selectable alone)" {
+@test "W2: a 'none' dep cell yields no dependencies ( is selectable alone)" {
   run bash "$LINT" --epics "$EPICS" --candidates "E900-S1" --done "" --json
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.blocked == []' >/dev/null
@@ -114,7 +114,7 @@ setup() {
 
 # ---------- AC4 / TS5: SKILL.md commits as planned + inverts selectability ----------
 
-@test "AC1/AC4: sprint-plan SKILL.md selects from backlog (no ready-for-dev-file precondition) + commits planned" {
+@test "sprint-plan SKILL.md selects from backlog (no ready-for-dev-file precondition) + commits planned" {
   [ -f "$PLAN_SKILL" ]
   # the inverted contract: backlog selection from epics-and-stories columns
   grep -Eiq 'backlog|epics-and-stories.*column|backlog-select-lint' "$PLAN_SKILL" \

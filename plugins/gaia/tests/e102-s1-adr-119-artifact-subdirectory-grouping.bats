@@ -33,7 +33,7 @@ teardown() { common_teardown; }
 # TC-ASG-1a — ADR shard exists
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-1a: ADR-119 shard exists under planning-artifacts/architecture/" {
+@test "shard exists under planning-artifacts/architecture/" {
   [ -n "$ADR_FILE" ]
   [ -f "$ADR_FILE" ]
 }
@@ -42,7 +42,7 @@ teardown() { common_teardown; }
 # TC-ASG-1b — All 4 canonical nested paths present verbatim
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-1b: ADR names all four canonical nested paths verbatim" {
+@test "ADR names all four canonical nested paths verbatim" {
   [ -n "$ADR_FILE" ]
   grep -qF ".gaia/artifacts/planning-artifacts/adversarial/adversarial-review-" "$ADR_FILE"
   grep -qF ".gaia/artifacts/implementation-artifacts/sprint-plan/" "$ADR_FILE"
@@ -54,7 +54,7 @@ teardown() { common_teardown; }
 # TC-ASG-1c — Three-Tier Idiom section present with 3 numbered tiers
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-1c: ADR Three-Tier Idiom section has three numbered tiers" {
+@test "ADR Three-Tier Idiom section has three numbered tiers" {
   [ -n "$ADR_FILE" ]
   grep -qE "^## Three-Tier" "$ADR_FILE"
   tier_count="$(awk '
@@ -69,7 +69,7 @@ teardown() { common_teardown; }
 # TC-ASG-1d — /gaia-sprint-close retro backward-compat requirement
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-1d: ADR names /gaia-sprint-close retro backward-compat requirement" {
+@test "ADR names /gaia-sprint-close retro backward-compat requirement" {
   [ -n "$ADR_FILE" ]
   grep -qF "/gaia-sprint-close" "$ADR_FILE"
   grep -qiE "retro|retrospective" "$ADR_FILE"
@@ -80,7 +80,7 @@ teardown() { common_teardown; }
 # TC-ASG-1e — Out of Scope names all four broader families
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-1e: ADR Out of Scope names code-review/qa-tests/test-review/performance-review" {
+@test "ADR Out of Scope names code-review/qa-tests/test-review/performance-review" {
   [ -n "$ADR_FILE" ]
   grep -qF "code-review" "$ADR_FILE"
   grep -qF "qa-tests" "$ADR_FILE"
@@ -92,7 +92,7 @@ teardown() { common_teardown; }
 # TC-ASG-1f — Related section cross-references ADR-111, ADR-070, AF-2026-05-24-2
 # ---------------------------------------------------------------------------
 
-@test "TC-ASG-1f: ADR Related section cross-references ADR-111, ADR-070, AF-2026-05-24-2" {
+@test "ADR Related section cross-references" {
   [ -n "$ADR_FILE" ]
   grep -q "ADR-111" "$ADR_FILE"
   grep -q "ADR-070" "$ADR_FILE"

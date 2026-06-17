@@ -91,7 +91,7 @@ teardown() { common_teardown; }
 
 # --- AC-EC10 fail-closed: skill in BOTH lists -----------------------------
 
-@test "AC-EC10: skill present in both Phase 1-3 and Phase 4 fails closed (Phase 4 wins)" {
+@test "skill present in both Phase 1-3 and Phase 4 fails closed (Phase 4 wins)" {
     # Synthesize a collision by stubbing the env. The classifier uses the
     # in-script literal lists, so the most reliable way to verify the
     # fail-closed behaviour is to source the script and then mutate the

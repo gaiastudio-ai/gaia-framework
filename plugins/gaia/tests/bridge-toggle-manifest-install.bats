@@ -39,7 +39,7 @@ seed_example() {
 }
 
 # AC1/AC2 — copy .example → .yaml
-@test "AC1/AC2: helper copies test-environment.yaml.example to test-environment.yaml" {
+@test "helper copies test-environment.yaml.example to test-environment.yaml" {
   [ -x "${HELPER}" ]
   seed_example
   run "${HELPER}" --target "${TARGET_DIR}"
@@ -49,7 +49,7 @@ seed_example() {
 }
 
 # AC1/AC2 idempotency — re-running with manifest present is a no-op
-@test "AC1/AC2: re-running with manifest present preserves user customizations byte-identical" {
+@test "re-running with manifest present preserves user customizations byte-identical" {
   seed_example
   run "${HELPER}" --target "${TARGET_DIR}"
   [ "${status}" -eq 0 ]
@@ -69,7 +69,7 @@ seed_example() {
 }
 
 # AC4 — fail-fast when .example source is absent
-@test "AC4: helper exits non-zero with clear error when .example source is missing" {
+@test "helper exits non-zero with clear error when .example source is missing" {
   # Do NOT seed_example — .example is absent
   run "${HELPER}" --target "${TARGET_DIR}"
   [ "${status}" -ne 0 ]
@@ -77,12 +77,12 @@ seed_example() {
 }
 
 # AC1 / AC5 — SKILL.md prose update
-@test "AC1: bridge-toggle SKILL.md Step 4 option [b] references the new install helper" {
+@test "bridge-toggle SKILL.md Step 4 option [b] references the new install helper" {
   # The new prose must mention install-test-environment-manifest.sh
   grep -q "install-test-environment-manifest.sh" "${SKILL_MD}"
 }
 
-@test "AC3 / AC5: bridge-toggle SKILL.md AC-EC5 YOLO-absent branch does NOT auto-skip-to-[c]" {
+@test "bridge-toggle SKILL.md AC-EC5 YOLO-absent branch does NOT auto-skip-to-[c]" {
   # The YOLO-absent branch must NOT degrade to "auto-skip option [c]".
   # E17-S31 originally introduced "auto-copied test-environment.yaml from template (YOLO mode)";
   # E17-S34 superseded that with the inline-generator log line
@@ -95,7 +95,7 @@ seed_example() {
   ! grep -q "auto-select option \`\[c\]\` Skip" "${SKILL_MD}"
 }
 
-@test "AC5: bridge-toggle SKILL.md non-YOLO option [b] still copies but now from a real path" {
+@test "bridge-toggle SKILL.md non-YOLO option [b] still copies but now from a real path" {
   # Option [b] must still describe a copy from .example
   grep -qE "\\[b\\].*Copy.*test-environment\\.yaml\\.example" "${SKILL_MD}"
 }

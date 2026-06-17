@@ -23,7 +23,7 @@ teardown() {
 }
 
 # ---------------- TC-DPC-1: clean transcript PASSES ----------------
-@test "TC-DPC-1: clean transcript (all turns dispatched_via:subagent) passes audit" {
+@test "clean transcript (all turns dispatched_via:subagent) passes audit" {
   local t="$TEST_TMP/transcript-clean.md"
   cat > "$t" <<'EOF'
 [round 1 / turn 1 / Theo (Architect) / per-turn-cost 100 tokens / running-total 100 tokens]
@@ -41,7 +41,7 @@ EOF
 }
 
 # ---------------- TC-DPC-2: missing dispatched_via -> HALT ----------------
-@test "TC-DPC-2: DISCUSS turn missing dispatched_via fails audit" {
+@test "DISCUSS turn missing dispatched_via fails audit" {
   local t="$TEST_TMP/transcript-missing.md"
   cat > "$t" <<'EOF'
 [round 1 / turn 1 / Theo (Architect) / per-turn-cost 100 tokens / running-total 100 tokens]
@@ -54,7 +54,7 @@ EOF
 }
 
 # ---------------- TC-DPC-3: inline-surrogate prelude -> HALT ----------------
-@test "TC-DPC-3: prelude turn with dispatched_via:inline-surrogate fails audit" {
+@test "prelude turn with dispatched_via:inline-surrogate fails audit" {
   local t="$TEST_TMP/transcript-inline.md"
   cat > "$t" <<'EOF'
 [round 1 / turn 1 / Theo (Architect) / per-turn-cost 100 tokens / running-total 100 tokens]
@@ -68,7 +68,7 @@ EOF
 }
 
 # ---------------- TC-DPC-4: canonical error format ----------------
-@test "TC-DPC-4: SKILL.md Phase 7 SAVE wires the canonical halt-event error string" {
+@test "SKILL.md Phase 7 SAVE wires the canonical halt-event error string" {
   # The SKILL.md wiring at Phase 7 SAVE must reference the canonical error
   # substring per AC3.
   run grep -F "dispatch-provenance-check failed" "$SKILL_MD"
@@ -76,7 +76,7 @@ EOF
 }
 
 # ---------------- TC-DPC-5: stdin-mode invocation ----------------
-@test "TC-DPC-5: stdin-mode invocation works on clean transcript" {
+@test "stdin-mode invocation works on clean transcript" {
   local content
   content="$(cat <<'EOF'
 [round 1 / turn 1 / Theo (Architect) / per-turn-cost 100 tokens / running-total 100 tokens]
@@ -89,7 +89,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "TC-DPC-5b: stdin-mode invocation fails on bad transcript" {
+@test "stdin-mode invocation fails on bad transcript" {
   local content
   content="$(cat <<'EOF'
 [round 1 / turn 1 / Theo (Architect) / per-turn-cost 100 tokens / running-total 100 tokens]
@@ -102,18 +102,18 @@ EOF
 }
 
 # ---------------- AC6: audit-script header lists production callsites ----------------
-@test "AC6: dispatch-provenance-check.sh header has Production callsites section" {
+@test "dispatch-provenance-check.sh header has Production callsites section" {
   run grep -F "Production callsites" "$CHECKER"
   [ "$status" -eq 0 ]
 }
 
-@test "AC6: production callsite cites gaia-meeting SKILL.md Phase 7 SAVE" {
+@test "production callsite cites gaia-meeting SKILL.md Phase 7 SAVE" {
   run grep -F "gaia-meeting/SKILL.md" "$CHECKER"
   [ "$status" -eq 0 ]
 }
 
 # ---------------- AC2: SKILL.md Phase 7 SAVE invokes dispatch-provenance-check.sh ----------------
-@test "AC2: SKILL.md Phase 7 SAVE invokes dispatch-provenance-check.sh" {
+@test "SKILL.md Phase 7 SAVE invokes dispatch-provenance-check.sh" {
   run grep -F "dispatch-provenance-check.sh" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
