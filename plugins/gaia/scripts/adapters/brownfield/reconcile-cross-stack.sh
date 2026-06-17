@@ -3,7 +3,7 @@
 # WARNING emission + scope respect.
 #
 # A Phase 4b sub-step (sibling to reconcile.sh — composition, not a hard
-# dep). It (a) partitions reconciliation scope by stacks[].path, and (b) inspects
+# dep). It (a) partitions reconciliation scope by stacks[].path + stacks[].paths[], and (b) inspects
 # the dependency-graph for edges that cross a stack boundary. An edge from stack A
 # to stack B where B is NOT in A's cross_refs[] allowlist surfaces the canonical
 # WARNING:
@@ -22,7 +22,7 @@
 # stack table) makes each edge an O(1) stack lookup — no per-edge graph walk.
 #
 # Env seams (tests/phase-4b-cross-stack.bats):
-#   XSTACK_CONFIG     project-config.yaml (stacks[].path + cross_refs[])
+#   XSTACK_CONFIG     project-config.yaml (stacks[].path + stacks[].paths[] + cross_refs[])
 #   XSTACK_DEPGRAPH   dep-graph JSON {edges:[{source,target}]} (producer is reconcile.sh; degrade if absent)
 #   XSTACK_REPORT     telemetry report frontmatter (optional)
 #   XSTACK_BYPASS_LOG bypass-log JSONL (default .gaia/memory/brownfield-audit/bypass-log.json)
@@ -104,18 +104,33 @@ stack_count="$(yq eval '.stacks | length' "$CONFIG" 2>/dev/null || printf '0')"
 # The lookup `${CROSS_REFS[$src]}` becomes a linear scan via the new helper
 # `_cross_refs_for()`. The stack count in practice is small (single-digit),
 # so O(N) is fine.
+#
+# STACK_PATHS_GLOBS[] holds the stacks[].paths[] glob-list entries
+# (newline-separated per stack). This EXTENDS the scalar path field —
+# a file matches a stack if it matches either the path prefix OR any paths[] glob.
 STACK_NAMES=()
 STACK_PREFIXES=()
 STACK_CROSS_REFS=()
+STACK_PATHS_GLOBS=()
 i=0
 while [ "$i" -lt "$stack_count" ]; do
   name="$(yq eval ".stacks[$i].name" "$CONFIG")"
-  path_root="$(yq eval ".stacks[$i].path // \".\"" "$CONFIG")"
-  [ "$path_root" = "null" ] && path_root="."
+  # Read the scalar path field WITHOUT a "." fallback first.
+  path_root="$(yq eval ".stacks[$i].path" "$CONFIG")"
+  [ "$path_root" = "null" ] && path_root=""
   refs="$(yq eval ".stacks[$i].cross_refs[]?" "$CONFIG" 2>/dev/null | tr '\n' ' ')"
+  # Read the paths[] glob-list (empty-not-error when absent via ?).
+  paths_globs="$(yq eval ".stacks[$i].paths[]?" "$CONFIG" 2>/dev/null || true)"
+  # Apply the "." catch-all fallback ONLY when NEITHER path NOR paths[] is declared.
+  # When paths[] is present without a scalar path, the stack is glob-only — the
+  # "." fallback would make it own every file, defeating glob specificity.
+  if [ -z "$path_root" ] && [ -z "$paths_globs" ]; then
+    path_root="."
+  fi
   STACK_NAMES+=("$name")
   STACK_PREFIXES+=("$path_root")
   STACK_CROSS_REFS+=("$refs")
+  STACK_PATHS_GLOBS+=("$paths_globs")
   i=$((i+1))
 done
 
@@ -132,9 +147,44 @@ _cross_refs_for() {
   return 0
 }
 
-# file_to_stack <path> -> stack name (longest matching prefix; "." matches all).
+# _glob_matches <file> <pattern> -> 0 if file matches the glob pattern.
+# Supports ** (recursive) by decomposing "prefix/**" into a prefix check,
+# and delegates other patterns to bash [[ == ]] glob matching.
+_glob_matches() {
+  local file="$1" pattern="$2"
+  # Strip surrounding quotes if present (YAML artifacts).
+  pattern="${pattern#\"}"
+  pattern="${pattern%\"}"
+  pattern="${pattern#\'}"
+  pattern="${pattern%\'}"
+  [ -n "$pattern" ] || return 1
+
+  # Common case: "some/dir/**" — match any file under that directory.
+  if [ "${pattern%/\*\*}" != "$pattern" ]; then
+    local dir_prefix="${pattern%/\*\*}"
+    if [ "$file" = "$dir_prefix" ] || [ "${file#"$dir_prefix"/}" != "$file" ]; then
+      return 0
+    fi
+    return 1
+  fi
+
+  # Fall through to bash glob matching for other patterns.
+  # shellcheck disable=SC2254
+  case "$file" in
+    $pattern) return 0 ;;
+  esac
+  return 1
+}
+
+# file_to_stack <path> -> stack name (longest matching prefix or glob; "." matches all).
+# Resolution order:
+#   1. Longest path-prefix match (stacks[].path scalar)
+#   2. First paths-glob match (stacks[].paths[] list)
+# The path scalar is preferred because it is more specific (directory ownership).
+# paths[] globs EXTEND the scalar — they do not replace it.
 file_to_stack() {
   local f="$1" best="" best_len=-1 j=0
+  # Pass 1: prefix matching against the scalar path field (existing behavior).
   while [ "$j" -lt "${#STACK_NAMES[@]}" ]; do
     local pfx="${STACK_PREFIXES[$j]}" nm="${STACK_NAMES[$j]}"
     if [ "$pfx" = "." ]; then
@@ -145,7 +195,37 @@ file_to_stack() {
     fi
     j=$((j+1))
   done
-  printf '%s' "$best"
+  # If a non-catch-all prefix matched, use it (most-specific binding).
+  if [ "$best_len" -gt 0 ]; then
+    printf '%s' "$best"
+    return 0
+  fi
+
+  # Pass 2: glob matching against the paths[] list.
+  j=0
+  while [ "$j" -lt "${#STACK_NAMES[@]}" ]; do
+    local globs="${STACK_PATHS_GLOBS[$j]}" nm="${STACK_NAMES[$j]}" g
+    if [ -n "$globs" ]; then
+      while IFS= read -r g; do
+        [ -n "$g" ] || continue
+        if _glob_matches "$f" "$g"; then
+          # First glob match wins (declaration order, consistent with prefix tiebreak).
+          printf '%s' "$nm"
+          return 0
+        fi
+      done <<< "$globs"
+    fi
+    j=$((j+1))
+  done
+
+  # Pass 3: fall back to catch-all (".") if one was found in pass 1.
+  if [ -n "$best" ]; then
+    printf '%s' "$best"
+    return 0
+  fi
+
+  # No match at all — return empty string.
+  printf '%s' ""
 }
 
 # ref_allowed <src_stack> <tgt_stack> -> 0 if tgt in src.cross_refs[] else 1.
@@ -172,6 +252,13 @@ while IFS=$'\t' read -r src tgt; do
   [ -n "$src" ] || continue
   src_stack="$(file_to_stack "$src")"
   tgt_stack="$(file_to_stack "$tgt")"
+  # Log unowned files (matched by neither path scalar nor paths[] globs).
+  if [ -z "$src_stack" ]; then
+    log_info "unowned file (no stack match): $src" >&2
+  fi
+  if [ -z "$tgt_stack" ]; then
+    log_info "unowned file (no stack match): $tgt" >&2
+  fi
   # Same stack (or unresolved) => not a cross-stack edge.
   [ -n "$src_stack" ] && [ -n "$tgt_stack" ] || continue
   [ "$src_stack" = "$tgt_stack" ] && continue
