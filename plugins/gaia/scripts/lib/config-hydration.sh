@@ -148,6 +148,9 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # defense-in-depth documentation; this entry registers it for the
   # reconciler's managed-elsewhere check.
   brownfield
+  # test_policy (1): operator-managed per-trigger scope rules;
+  # x-no-auto-hydration. Never auto-hydrated by the reconciler.
+  test_policy
 )
 
 # ---- Logging helpers ------------------------------------------------------
