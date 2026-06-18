@@ -241,12 +241,14 @@ EOF
 }
 
 # ===========================================================================
-# F-16 — sprint-state.sh implementation-artifacts mirror
+# F-16 — implementation-artifacts mirror RETIRED (Issue #1109 deprecation)
 # ===========================================================================
 
-@test "sprint-state.sh mirrors yaml to implementation-artifacts/" {
-  run grep -F 'implementation-artifacts/sprint-status.yaml' "$PLUGIN_ROOT/scripts/sprint-state.sh"
-  [ "$status" -eq 0 ]
+@test "sprint-state.sh no longer references .gaia/artifacts/implementation-artifacts/sprint-status.yaml" {
+  # The .gaia/artifacts/ mirror is retired. The docs/ legacy path is a
+  # legitimate read-compat fallback and is NOT flagged by this guard.
+  run grep -F '.gaia/artifacts/implementation-artifacts/sprint-status.yaml' "$PLUGIN_ROOT/scripts/sprint-state.sh"
+  [ "$status" -ne 0 ]
 }
 
 @test "sprint-state.sh wrapper byte-identical to canonical" {
@@ -255,17 +257,16 @@ EOF
   diff -q "$src" "$dst"
 }
 
-@test "end-to-end mirror writes when target dir exists" {
-  # Pre-create the impl-artifacts dir so the non-creating mirror engages.
+@test "end-to-end: init does NOT mirror to implementation-artifacts (mirror retired)" {
+  # Pre-create the impl-artifacts dir — the retired mirror must not write there.
   mkdir -p "$TEST_TMP/.gaia/state" "$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   run bash -c "cd '$TEST_TMP' && PROJECT_PATH='$TEST_TMP' bash '$PLUGIN_ROOT/scripts/sprint-state.sh' init --sprint-id sprint-1"
   [ "$status" -eq 0 ]
   [ -f "$TEST_TMP/.gaia/state/sprint-status.yaml" ]
-  [ -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
+  [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
 }
 
-@test "end-to-end mirror NO-OPS when target dir absent (legacy projects)" {
-  # Don't create the impl-artifacts dir; mirror must NOT auto-create it.
+@test "end-to-end: impl-artifacts dir stays untouched when absent" {
   mkdir -p "$TEST_TMP/.gaia/state"
   run bash -c "cd '$TEST_TMP' && PROJECT_PATH='$TEST_TMP' bash '$PLUGIN_ROOT/scripts/sprint-state.sh' init --sprint-id sprint-1"
   [ "$status" -eq 0 ]

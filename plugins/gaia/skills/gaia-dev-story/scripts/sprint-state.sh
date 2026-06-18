@@ -362,48 +362,23 @@ resolve_paths() {
       IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT}/docs/implementation-artifacts"
     fi
   fi
-  # Prefer `.gaia/state/sprint-status.yaml` (mutable-runtime-state tier) over
-  # the legacy `docs/implementation-artifacts/sprint-status.yaml`
-  # (artifacts-tier). Legacy fallback retained during the transition window.
+  # `.gaia/state/sprint-status.yaml` is the sole canonical home for
+  # sprint-status.yaml.  The .gaia/artifacts/implementation-artifacts/
+  # mirror has been retired (Issue #1109 deprecation).  The legacy
+  # docs/implementation-artifacts/ path is still a read-compat fallback for
+  # projects seeded before the state-tier migration.  Resolution order:
+  #   1. existing .gaia/state/ yaml — canonical
+  #   2. existing docs/implementation-artifacts/ yaml — legacy read-compat
+  #   3. existing project-root fallback (bats fixtures)
+  #   4. fresh write → canonical .gaia/state/ default
   if [ -z "${SPRINT_STATUS_YAML:-}" ]; then
     local gaia_state="${PROJECT_ROOT}/.gaia/state/sprint-status.yaml"
-    local canonical="${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml"
+    local legacy_docs="${PROJECT_ROOT}/docs/implementation-artifacts/sprint-status.yaml"
     local fallback="${PROJECT_ROOT}/sprint-status.yaml"
-    # .gaia/state/ is the canonical home for sprint-status.yaml and is what
-    # sprint-status-dashboard.sh reads first. Resolution order:
-    #   1. existing .gaia/state/   yaml — canonical, already seeded
-    #   2. existing impl-artifacts yaml — read-compat for projects seeded there
-    #      before this fix (the prior default write target)
-    #   3. existing project-root fallback (bats fixtures)
-    #   4. fresh write → canonical .gaia/state/ default
-    # Previously fresh writes (rung 4) defaulted to impl-artifacts, a path the
-    # dashboard never looked at — so `init` succeeded but `/gaia-sprint-status`
-    # then errored "not found". Defaulting fresh writes to .gaia/state/ aligns
-    # the writer with the canonical reader.
     if [ -e "$gaia_state" ]; then
       SPRINT_STATUS_YAML="$gaia_state"
-      # When the canonical .gaia/state/ copy wins but a LEGACY impl-artifacts
-      # copy is also present, the two can silently diverge (the legacy one
-      # freezes at its pre-migration state because every writer now targets
-      # .gaia/state/). Surface it loudly so the operator can remove the stale
-      # shadow — and so a later transient absence of .gaia/state/ cannot fall
-      # through to rung 2 (the stale copy) unnoticed. Non-fatal: the canonical
-      # copy is still used; we only warn.
-      #
-      # issue-1392: gate on CONTENT divergence, not mere co-existence. This
-      # skill itself mirrors .gaia/state/ → impl-artifacts/ on every mutation
-      # (the layout-conformance mirror), so the two are routinely byte-identical
-      # — warning on co-existence alone fired on every command against a fresh
-      # project where the files were identical (and "removing" the shadow just
-      # regenerated it on the next mutation). `cmp -s` is true (exit 0) when the
-      # files match, so we warn only when they actually differ.
-      if [ -e "$canonical" ] && [ "$canonical" != "$gaia_state" ] \
-         && ! cmp -s "$gaia_state" "$canonical" 2>/dev/null; then
-        printf '%s: WARNING: stale legacy sprint-status.yaml at %s shadows the canonical .gaia/state/ copy — remove it to avoid divergence\n' \
-          "${SCRIPT_NAME:-sprint-state.sh}" "$canonical" >&2
-      fi
-    elif [ -e "$canonical" ]; then
-      SPRINT_STATUS_YAML="$canonical"
+    elif [ -e "$legacy_docs" ]; then
+      SPRINT_STATUS_YAML="$legacy_docs"
     elif [ -e "$fallback" ]; then
       SPRINT_STATUS_YAML="$fallback"
     else
@@ -3429,31 +3404,6 @@ main() {
       cmd_rollover "$rollover_from" "$to_state" "$rollover_keys" ;;
   esac
 
-  # Implementation-artifacts/ mirror. Target layout co-locates
-  # sprint-status.yaml with sprint-plan/, sprint-archive/, retrospective/
-  # under implementation-artifacts/. The canonical write home stays at
-  # .gaia/state/; after every successful mutation we additionally mirror
-  # the file to implementation-artifacts/sprint-status.yaml so the target
-  # layout has it too. The mirror is best-effort (copy errors are non-fatal):
-  # the canonical write is the source of truth.
-  #
-  # Non-creating mirror semantics: we only copy when the
-  # implementation-artifacts/ dir ALREADY exists. Creating it on every state
-  # mutation would shadow legacy fixtures and confuse validate-locate glob
-  # resolution in any project that hasn't migrated to the canonical tree.
-  case "$subcmd" in
-    init|transition|inject|reconcile|rollover|set-story-sprint|set-goals|update-goals|set-review-justification|set-shape|record-escalation-override)
-      _canonical_yaml="$(_resolve_active_yaml)"
-      _proj_root="${PROJECT_PATH:-${CLAUDE_PROJECT_ROOT:-.}}"
-      _mirror_dir="$_proj_root/.gaia/artifacts/implementation-artifacts"
-      _mirror_yaml="$_mirror_dir/sprint-status.yaml"
-      if [ -f "$_canonical_yaml" ] \
-         && [ "$_canonical_yaml" != "$_mirror_yaml" ] \
-         && [ -d "$_mirror_dir" ]; then
-        cp "$_canonical_yaml" "$_mirror_yaml" 2>/dev/null || true
-      fi
-      ;;
-  esac
 }
 
 main "$@"

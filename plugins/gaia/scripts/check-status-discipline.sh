@@ -14,7 +14,7 @@
 #   1. Story frontmatter `status:` line in either layout:
 #      - canonical: `.gaia/artifacts/implementation-artifacts/epic-*/stories/E*-S*-*.md`
 #      - legacy flat: `docs/implementation-artifacts/E*-S*-*.md`
-#   2. `.gaia/artifacts/implementation-artifacts/sprint-status.yaml` per-story `status:` keys
+#   2. `.gaia/state/sprint-status.yaml` per-story `status:` keys
 #   3. `.gaia/artifacts/planning-artifacts/epics-and-stories.md` per-story `**Status:** ...`
 #      indicators
 #

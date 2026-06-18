@@ -125,7 +125,6 @@ case "$KIND" in
   sprint_status)
     CANDIDATES=(
       "${ST}/sprint-status.yaml"
-      "${IA}/sprint-status.yaml"
       "${LEGACY_IA}/sprint-status.yaml"
       "${PROJECT_ROOT}/sprint-status.yaml"
     )
