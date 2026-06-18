@@ -4,7 +4,7 @@
 # Covers the paths-glob-list extension to stacks[].paths[] (alongside the
 # existing stacks[].path scalar). Also covers the unowned-file stderr log.
 #
-# Public functions covered (NFR-052): file_to_stack, ref_allowed,
+# Public functions covered (per the public-function coverage gate): file_to_stack, ref_allowed,
 # _cross_refs_for.
 
 bats_require_minimum_version 1.5.0

@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # run-stack-tests.bats — TDD tests for run-stack-tests.sh
 #
-# Public functions covered (NFR-052): parse_args, resolve_test_command,
+# Public functions covered (per the public-function coverage gate): parse_args, resolve_test_command,
 # resolve_language_for_stack, main.
 
 load 'test_helper.bash'
@@ -46,7 +46,7 @@ YAML
 teardown() { common_teardown; }
 
 # =========================================================================
-# NFR-052: source the script and verify every public function resolves
+# Public-function coverage gate: source the script and verify every public function resolves
 # =========================================================================
 
 @test "source script — parse_args is callable" {
