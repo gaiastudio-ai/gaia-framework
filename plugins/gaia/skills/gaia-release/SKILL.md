@@ -24,17 +24,32 @@ The script (`skills/gaia-release/scripts/version-bump.js`) is a **project-generi
 
 ### Configuration
 
-Add a `release.version_files` list to your `project-config.yaml`:
+Add a `release` block to your `project-config.yaml`:
 
 ```yaml
 release:
+  strategy: conventional-commits   # or: manual | calendar
   version_files:
     - package.json
     - plugin.json
     - VERSION
 ```
 
-Each entry is a file path **relative to the project root**. The script resolves them against `--project-root`.
+Each `version_files` entry is a file path **relative to the project root**. The script resolves them against `--project-root`.
+
+### Release strategy — `release.strategy`
+
+The `release.strategy` key controls how `/gaia-release` determines the next version. Three modes are supported:
+
+| Strategy | Behavior |
+| --- | --- |
+| `conventional-commits` | Classify commits since the last `v*` tag using the Conventional Commits spec. `feat` → minor bump, `fix` → patch bump, `BREAKING CHANGE` or `!` suffix → major bump. The highest-precedence bump wins. When no qualifying commits exist in the range, the release exits cleanly (exit 0) with a "no releasable changes" message and no version bump. |
+| `manual` | Signal the caller to prompt for the target version. No commit-derivation is performed — the user supplies `patch`, `minor`, `major`, or an explicit `X.Y.Z`. |
+| `calendar` | Derive a CalVer version from the current date: `YYYY.MM.PATCH` where PATCH auto-increments based on existing tags for the current month. |
+
+When `release.strategy` is **absent**, the behavior defaults to `manual` — this preserves backward compatibility for projects that do not set the key.
+
+The strategy resolver (`skills/gaia-release/scripts/resolve-release-version.sh`) reads the strategy from config, dispatches to the appropriate derivation, and emits a machine-readable output that Step 3 (below) consumes to determine the bump specifier for `version-bump.js`.
 
 ### Supported file formats
 
@@ -106,40 +121,54 @@ HALT if the current branch is not `main` or the working tree is dirty. Releases 
 !PROJECT_ROOT=$("$CLAUDE_PLUGIN_ROOT/scripts/resolve-config.sh" project_root)
 ```
 
-### Step 3 — Dry-run the bump
+### Step 3 — Resolve the release strategy
 
 ```
-!node "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/version-bump.js" <patch|minor|major|X.Y.Z> --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --dry-run
+!bash "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/resolve-release-version.sh" --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT"
+```
+
+The resolver reads `release.strategy` from config (defaulting to `manual` when absent) and emits a machine-readable output:
+
+- **`conventional-commits`**: emits `bump=<major|minor|patch|none>`. When `bump=none`, report "no releasable changes" to the user and stop — do not proceed to version-bump. This is a clean exit (exit 0), not an error.
+- **`manual`**: emits `strategy=manual`. Prompt the user for a bump specifier (`patch`, `minor`, `major`, or `X.Y.Z`).
+- **`calendar`**: emits `version=YYYY.MM.PATCH`. Pass that version string directly to version-bump.js as an explicit version.
+
+### Step 4 — Dry-run the bump
+
+Using the bump specifier from Step 3:
+
+```
+!node "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/version-bump.js" <bump-from-step-3> --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --dry-run
 ```
 
 Inspect the JSON output: the current version, the new version, and the files that would change. If the preview is wrong, adjust the arguments and re-run. The script exits 0 and writes nothing.
 
-### Step 4 — Execute the bump
+### Step 5 — Execute the bump
 
 Drop `--dry-run` and run for real:
 
 ```
-!node "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/version-bump.js" <patch|minor|major|X.Y.Z> --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT"
+!node "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/version-bump.js" <bump-from-step-3> --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT"
 ```
 
 The script writes all configured version files and prints the JSON summary.
 
-### Step 5 — Commit the bump
+### Step 6 — Commit the bump
 
-Use a conventional commit — no emoji, no Claude attribution. Stage exactly the files listed in the `bumped[]` array from Step 4's output:
+Use a conventional commit — no emoji, no Claude attribution. Stage exactly the files listed in the `bumped[]` array from Step 5's output:
 
 ```
 !git add <files-from-bumped-array>
 !git commit -m "chore(release): bump version to vX.Y.Z"
 ```
 
-### Step 6 — Tag
+### Step 7 — Tag
 
 ```
 !git tag -a vX.Y.Z -m "vX.Y.Z"
 ```
 
-### Step 7 — Push
+### Step 8 — Push
 
 Push the bump commit and the tag together:
 
@@ -148,7 +177,7 @@ Push the bump commit and the tag together:
 !git push origin vX.Y.Z
 ```
 
-### Step 8 — Create the GitHub Release
+### Step 9 — Create the GitHub Release
 
 Draft release notes from the changelog entry. If a changelog is missing, generate one first with `/gaia-changelog`.
 
@@ -156,7 +185,7 @@ Draft release notes from the changelog entry. If a changelog is missing, generat
 !gh release create vX.Y.Z --title "vX.Y.Z" --notes-file CHANGELOG-vX.Y.Z.md
 ```
 
-### Step 9 — Post-release verification
+### Step 10 — Post-release verification
 
 - `gh release view vX.Y.Z` — confirm the release is published.
 - `git describe --tags --abbrev=0` on a fresh clone matches the new tag.
@@ -169,7 +198,9 @@ Draft release notes from the changelog entry. If a changelog is missing, generat
 
 ## References
 
-- Source: `skills/gaia-release/scripts/version-bump.js` (zero-dependency Node.js script).
+- Version bump: `skills/gaia-release/scripts/version-bump.js` (zero-dependency Node.js script).
+- Strategy resolver: `skills/gaia-release/scripts/resolve-release-version.sh` (reads `release.strategy` from config).
+- Commit classification: `scripts/classify-commits.js` (Conventional Commits parser, reused by the conventional-commits strategy).
 - Config resolution: `scripts/resolve-config.sh` (foundation script with walk-up discovery).
-- Configuration: `release.version_files[]` in `project-config.yaml`.
+- Configuration: `release.version_files[]` and `release.strategy` in `project-config.yaml`.
 - Related: `/gaia-changelog` for release-note generation.
