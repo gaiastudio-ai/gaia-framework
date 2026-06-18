@@ -155,6 +155,44 @@
         }
       }
     },
+    "stackHealthCheck": {
+      "description": "Per-stack health-check configuration. Specifies a command to execute after deploying the stack and a timeout in seconds. The health check must pass before deploying the next stack in deploy_order. Distinct from the top-level healthCheck definition (which configures poll/skip mode for the environment-level check).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "description": "Shell command to execute as the health check. Exit code 0 = healthy, non-zero = unhealthy.",
+          "type": "string",
+          "minLength": 1
+        },
+        "timeout": {
+          "description": "Maximum seconds to wait for the health-check command to complete. If exceeded, the check is treated as failed. Default 30.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        }
+      }
+    },
+    "stackPostDeploySmoke": {
+      "description": "Per-stack post-deploy smoke test configuration. Specifies a command to run after a stack passes its health check (or immediately after deploy when no health check is configured).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "description": "Shell command to execute as the post-deploy smoke test.",
+          "type": "string",
+          "minLength": 1
+        },
+        "timeout": {
+          "description": "Maximum seconds to wait for the smoke command to complete. Default 60.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 60
+        }
+      }
+    },
     "distributionChannel": {
       "description": "A single distribution channel entry. Declarative configuration for marketplace publishing — `type` is intentionally generic (e.g., `marketplace` rather than `github` or `npm`) so future channel types (`registry`, `cdn`, etc.) can be added to the enum without breaking existing configs. `version_file` is a flat filesystem path (NOT a JSON Pointer); the resolved deploy_adapter is responsible for reading the file and extracting `version_key` from it. `additionalProperties: false` prevents typo'd field names from silently passing validation.",
       "type": "object",
@@ -539,6 +577,19 @@
             "description": "When true (default), ecosystem-manifest auto-detection ignores manifests nested under this stack's `path` so a monorepo subtree is not double-counted as its own stack.",
             "type": "boolean",
             "default": true
+          },
+          "deploy_order": {
+            "description": "Integer controlling the order in which stacks deploy within a single environment. Lower values deploy first. Stacks without deploy_order are deployed AFTER all ordered stacks, in alphabetical name order. Optional — when absent, the stack participates in the alphabetical-default group.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "health_check": {
+            "description": "Per-stack health-check configuration. The command runs after this stack deploys; it must exit 0 before the next stack (by deploy_order) begins. Timeout exceeded = treated as failure, halting downstream stacks.",
+            "$ref": "#/definitions/stackHealthCheck"
+          },
+          "post_deploy_smoke": {
+            "description": "Per-stack post-deploy smoke test. Runs after the stack passes its health check (or immediately after deploy when no health check is configured).",
+            "$ref": "#/definitions/stackPostDeploySmoke"
           }
         }
       }
