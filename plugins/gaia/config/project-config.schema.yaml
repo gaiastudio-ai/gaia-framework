@@ -275,7 +275,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "Ordered list of stack-path rules for multi-service repos. Each entry has name (string), language (string), and paths (list of glob patterns). Optional per-stack deploy fields: deploy_order (integer — lower deploys first; absent stacks deploy after all ordered stacks, alphabetically by name), health_check (object with command + timeout — runs after the stack deploys and must pass before the next stack begins), post_deploy_smoke (object with command + timeout — runs after health check passes). Review skills resolve the active stack by walking entries in declaration order against the changed-file list. (The descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema.)"
+    description: "Ordered list of stack-path rules for multi-service repos. Each entry has name (string), language (string), and paths (list of glob patterns). Optional per-stack fields: test_cmd (string — custom test command that overrides the language default; executed relative to repo root), deploy_order (integer — lower deploys first; absent stacks deploy after all ordered stacks, alphabetically by name), health_check (object with command + timeout — runs after the stack deploys and must pass before the next stack begins), post_deploy_smoke (object with command + timeout — runs after health check passes). Review skills resolve the active stack by walking entries in declaration order against the changed-file list. (The descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema.)"
 
   cross_service_tests:
     type: map
