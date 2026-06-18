@@ -96,3 +96,60 @@ EOF
   run "$EXTRACT" --story-file "$TMP/does-not-exist.md"
   [ "$status" -ne 0 ]
 }
+
+# ---------- Marker-exclusion idempotency tests ----------
+
+# A tech-debt finding marked [TRIAGED] must not be emitted.
+@test "triaged tech-debt finding is excluded from output" {
+  local f="$TMP/E39-S80-triaged-td/story.md"
+  _make_story "$f" "E39-S80" "sprint-80" \
+    "| 1 | tech-debt | medium | refactor the widget [TRIAGED] | create story |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"refactor the widget"* ]]
+}
+
+# A tech-debt finding marked [DISMISSED] must not be emitted.
+@test "dismissed tech-debt finding is excluded from output" {
+  local f="$TMP/E39-S81-dismissed-td/story.md"
+  _make_story "$f" "E39-S81" "sprint-81" \
+    "| 1 | tech-debt | low | dead code path [DISMISSED] | dismiss |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"dead code path"* ]]
+}
+
+# Regression guard: a bug finding marked [TRIAGED] is still excluded (existing behaviour).
+@test "triaged bug finding is excluded from output" {
+  local f="$TMP/E39-S82-triaged-bug/story.md"
+  _make_story "$f" "E39-S82" "sprint-82" \
+    "| 1 | bug | medium | null pointer on empty input [TRIAGED] | fix |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"null pointer on empty input"* ]]
+}
+
+# An unmarked tech-debt finding must still be emitted normally.
+@test "unmarked tech-debt finding is emitted" {
+  local f="$TMP/E39-S83-unmarked-td/story.md"
+  _make_story "$f" "E39-S83" "sprint-83" \
+    "| 1 | tech-debt | medium | consolidate helper functions | create story |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"consolidate helper functions"* ]]
+}
+
+# Idempotency: running the extractor twice on the same file produces identical output.
+@test "double run on file with marked rows yields identical output" {
+  local f="$TMP/E39-S84-idempotent/story.md"
+  _make_story "$f" "E39-S84" "sprint-84" \
+    "| 1 | tech-debt | medium | stale import [TRIAGED] | create story |
+| 2 | tech-debt | low | unused variable | create story |
+| 3 | bug | medium | off-by-one [DISMISSED] | fix |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  local first="$output"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "$first" = "$output" ]
+}
