@@ -356,13 +356,55 @@ is_allowlisted() {
   return 1
 }
 
+# Detect whether the project root is inside a git work tree.  When it is,
+# enumerate only git-tracked files so untracked scratch directories
+# (.review/, .scan-tmp/, Source/, _memory/ sentinels, etc.) can never
+# perturb the verdict.  This matches CI semantics where the clean checkout
+# contains only tracked files.  When git is unavailable or the root is
+# outside any work tree, fall back to grep -rEn with explicit
+# --exclude-dir guards and deterministic sort.
+_in_git_worktree=false
+if git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  _in_git_worktree=true
+fi
+
+# Scratch-dir exclusion list for the non-git fallback path.
+_EXCLUDE_DIRS=(
+  .git .review .scan-tmp Source _memory node_modules
+  .next .nuxt __pycache__ .pytest_cache .mypy_cache
+  .turbo .cache dist build coverage .obsidian
+)
+
 # Collect matches.
 matches=""
 for root in "${SCAN_PATHS[@]}"; do
   [[ -d "$root" ]] || continue
-  # grep exits 1 on no match; `|| true` keeps the script running under `set -e`.
-  # shellcheck disable=SC2016
-  found=$(grep -rEn "$PATTERN" "$root" 2>/dev/null || true)
+
+  if $_in_git_worktree; then
+    # Preferred path: enumerate only git-tracked files under this scan root.
+    # Strip PROJECT_ROOT prefix from $root to get the relative path that
+    # git ls-files expects, then re-prefix each result for grep.
+    local_root="${root#"$PROJECT_ROOT"/}"
+    # git ls-files returns paths relative to the repo root.
+    # shellcheck disable=SC2016
+    found=$(
+      git -C "$PROJECT_ROOT" ls-files -- "$local_root" 2>/dev/null \
+        | while IFS= read -r f; do
+            grep -EHn "$PATTERN" "$PROJECT_ROOT/$f" 2>/dev/null || true
+          done \
+        | sort
+    )
+  else
+    # Fallback: recursive grep with scratch-dir exclusions and sorted output.
+    exclude_args=()
+    for d in "${_EXCLUDE_DIRS[@]}"; do
+      exclude_args+=(--exclude-dir="$d")
+    done
+    # grep exits 1 on no match; `|| true` keeps the script running under `set -e`.
+    # shellcheck disable=SC2016
+    found=$(grep -rEn "${exclude_args[@]}" "$PATTERN" "$root" 2>/dev/null | sort || true)
+  fi
+
   matches+="${found}"$'\n'
 done
 
@@ -382,7 +424,7 @@ while IFS= read -r line; do
   offending+="${line}"$'\n'
 done <<< "$matches"
 
-offending=$(printf '%s' "$offending" | sed '/^$/d')
+offending=$(printf '%s' "$offending" | sed '/^$/d' | sort)
 
 if [[ -z "$offending" ]]; then
   echo "dead-reference-scan: CLEAN — no active-code references to legacy-engine deletion targets"
