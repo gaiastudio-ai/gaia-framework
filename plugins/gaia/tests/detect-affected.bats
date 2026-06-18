@@ -29,7 +29,18 @@ stacks:
     language: bash
     paths:
       - "gaia-public/plugins/gaia/scripts/**"
+      - "gaia-public/plugins/gaia/skills/**"
+      - "gaia-public/plugins/gaia/agents/**"
+      - "gaia-public/plugins/gaia/knowledge/**"
+      - "gaia-public/plugins/gaia/tests/**"
+      - "gaia-public/plugins/gaia/schemas/**"
+      - "gaia-public/plugins/gaia/templates/**"
       - "gaia-public/plugins/gaia/config/**"
+      - "gaia-public/plugins/gaia/hooks/**"
+      - "gaia-public/plugins/gaia/rubrics/**"
+      - "gaia-public/plugins/gaia/tools/**"
+      - "gaia-public/plugins/gaia/docs/**"
+      - "gaia-public/plugins/gaia/test/**"
 EOF
 }
 
@@ -268,8 +279,80 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Real-config sanity: agents/ path → gaia-plugin (uses real project-config)
+# Subtree-to-stack coverage — every load-bearing plugin subtree resolves
 # ---------------------------------------------------------------------------
+
+@test "hooks subtree resolves to the owning plugin stack" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/hooks/post-commit.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "rubrics subtree resolves to the owning plugin stack" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/rubrics/base/code-review.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "tools subtree resolves to the owning plugin stack" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/tools/gaia-tools/entrypoint.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "docs subtree resolves to the owning plugin stack" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/docs/CI-NOTES.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "test subtree resolves to the owning plugin stack" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/test/scripts/some-test.bats"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "hooks path and scripts path deduplicate to single stack entry" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/hooks/post-commit.json" "plugins/gaia/scripts/detect-affected.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "existing scripts-only path still resolves after glob additions" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/scripts/detect-affected.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '["stack-plugin"]' ]]
+}
+
+@test "excluded _memory path returns empty affected-set" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/_memory/sidecar.yaml"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '[]' ]]
+}
+
+@test "excluded spikes path returns empty affected-set" {
+  run "$SCRIPTS_DIR/detect-affected.sh" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --files "plugins/gaia/spikes/some-spike/readme.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '[]' ]]
+}
 
 # ---------------------------------------------------------------------------
 # config-path-to-stack coverage — plugin config tree must resolve to a stack
