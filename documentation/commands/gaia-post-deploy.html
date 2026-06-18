@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>/gaia-post-deploy - GAIA Documentation</title>
+  <title>/gaia-post-deploy (renamed) - GAIA Documentation</title>
   <link rel="stylesheet" href="../styles.css">
 </head>
 <body>
@@ -29,20 +29,6 @@
           <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
           <li><a href="../categories/internal.html">Internal Skills</a></li>
         </ul>
-        <p class="sidebar-section-title">On this page</p>
-        <ul>
-          <li><a href="#what-it-does">What it does</a></li>
-          <li><a href="#when-to-use">When to use it</a></li>
-          <li><a href="#prerequisites">Prerequisites</a></li>
-          <li><a href="#how-to-invoke">How to invoke</a></li>
-          <li><a href="#step-by-step">Step by step</a></li>
-          <li><a href="#inputs">Inputs</a></li>
-          <li><a href="#outputs">Outputs</a></li>
-          <li><a href="#example">Example session</a></li>
-          <li><a href="#what-next">What to run next</a></li>
-          <li><a href="#troubleshooting">Troubleshooting</a></li>
-          <li><a href="#related">Related commands</a></li>
-        </ul>
       </nav>
     </aside>
     <main class="main-content">
@@ -54,89 +40,25 @@
       <header class="command-header">
         <div class="command-title">
           <h1>/gaia-post-deploy</h1>
-          <span class="tag tag-user">user-facing</span>
+          <span class="tag tag-deprecated">renamed</span>
         </div>
-        <dl class="command-meta">
-          <dt>Category:</dt><dd><a href="../categories/deployment.html">Deployment</a></dd>
-          <dt>Lifecycle phase:</dt><dd>5 -- Deployment</dd>
-          
-        </dl>
       </header>
 
-      <section id="what-it-does">
-        <h2>What it does</h2>
-        <p><code>/gaia-post-deploy</code> validates a deployment by checking service health, running smoke tests, and verifying that production metrics remain within SLO bounds. The output is a structured pass/fail report. If any critical check fails, it recommends rollback.</p>
+      <section>
+        <h2>This command has been renamed</h2>
+        <p>
+          <code>/gaia-post-deploy</code> has been renamed to
+          <a href="gaia-deploy-post.html"><code>/gaia-deploy-post</code></a>
+          to follow category-first naming conventions.
+        </p>
+        <p>
+          Please update your bookmarks. The old name continues to redirect to
+          the new command, but all new documentation references use the
+          canonical name
+          <a href="gaia-deploy-post.html"><code>/gaia-deploy-post</code></a>.
+        </p>
       </section>
 
-      <section id="when-to-use">
-        <h2>When to use it</h2>
-        <ul><li>You just deployed a new version and want to verify it is healthy.</li><li>You want to compare production metrics (error rate, latency, throughput) against baselines.</li><li>A canary deployment is running and you need to evaluate whether to proceed or rollback.</li></ul>
-      </section>
-
-      <section id="prerequisites">
-        <h2>Prerequisites</h2>
-        <ul><li><strong>A deployment must have occurred.</strong> This command validates an already-deployed version.</li></ul>
-      </section>
-
-      <section id="how-to-invoke">
-        <h2>How to invoke</h2>
-        <pre><code>/gaia-post-deploy</code></pre>
-      </section>
-
-      <section id="step-by-step">
-        <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Health checks</span> Verifies all configured health endpoints respond with 2xx status codes within timeout.</li><li><span class="step-title">Smoke tests</span> Runs critical path validation: login flow, core feature happy path, key API endpoints.</li><li><span class="step-title">Metric validation</span> Checks error rate, latency (P50/P95/P99), throughput, and resource utilization against SLO bounds.</li><li><span class="step-title">Canary analysis</span> If using canary deployment, compares canary metrics against baseline and recommends proceed, hold, or rollback.</li><li><span class="step-title">Generate report</span> Writes the post-deployment report with per-check pass/fail status and an overall deployment verdict.</li></ol>
-      </section>
-
-      <section id="inputs">
-        <h2>Inputs</h2>
-        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Health endpoints</td><td>Project configuration</td><td>Configured health check URLs and timeouts.</td></tr><tr><td>SLO bounds</td><td>Project configuration</td><td>Error rate, latency, and throughput thresholds.</td></tr></tbody></table>
-      </section>
-
-      <section id="outputs">
-        <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Post-deployment report</td><td><code>.gaia/artifacts/implementation-artifacts/post-deploy-{date}.md</code></td><td>Structured report with health, smoke, metric, and canary results.</td></tr></tbody></table>
-      </section>
-
-      <section id="example">
-        <h2>Example session</h2>
-        <pre><code>> /gaia-post-deploy
-
-Health Checks:
-  /health: PASS (142ms)
-  /ready: PASS (89ms)
-
-Smoke Tests:
-  Login flow: PASS
-  Core feature: PASS
-  API /users: PASS
-
-Metrics:
-  Error rate: 0.02% (threshold: 1%) -- PASS
-  Latency P99: 245ms (threshold: 500ms) -- PASS
-  Throughput: 1,240 rps -- PASS
-
-Canary analysis: N/A (full deployment)
-
-Overall Deployment Status: PASS
-
-Report written to .gaia/artifacts/implementation-artifacts/post-deploy-2026-05-07.md</code></pre>
-      </section>
-
-      <section id="what-next">
-        <h2>What to run next</h2>
-        <ul><li>If PASS: deployment is verified. No further action needed.</li><li>If FAIL: review the failing checks and consider <a href="gaia-rollback-plan.html"><code>/gaia-rollback-plan</code></a>.</li></ul>
-      </section>
-
-      <section id="troubleshooting">
-        <h2>Troubleshooting</h2>
-        <h3>Endpoint unreachable</h3><p>Check that the service is running and network routing is correct. The report includes the specific error type (timeout, DNS failure, connection refused).</p><h3>Metrics exceed thresholds</h3><p>The deployed version may have a performance regression. Compare against the baseline and consider rolling back.</p>
-      </section>
-
-      <section id="related">
-        <h2>Related commands</h2>
-        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-deploy.html"><code>/gaia-deploy</code></a></td><td>Runs the deployment that this command validates.</td></tr><tr><td><a href="gaia-rollback-plan.html"><code>/gaia-rollback-plan</code></a></td><td>Defines rollback procedures if post-deploy verification fails.</td></tr></tbody></table>
-      </section>
       <footer class="page-footer">
         <p><a href="../categories/deployment.html">Back to Deployment</a></p>
       </footer>

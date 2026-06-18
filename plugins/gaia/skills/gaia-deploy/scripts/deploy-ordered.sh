@@ -470,9 +470,11 @@ run_ordered_deploy() {
         _log_info "crash-recovery: skipping already-deployed stack=$name"
         local prev_health
         prev_health="$(printf '%s' "$resume_manifest" | jq -r --arg n "$name" '.components[] | select(.name == $n) | .health_result // "n/a"')"
+        local prev_smoke
+        prev_smoke="$(printf '%s' "$resume_manifest" | jq -r --arg n "$name" '.components[] | select(.name == $n) | .smoke_result // "n/a"')"
         component_status="$(printf '%s' "$component_status" | jq \
-          --arg comp "$name" --arg ver "$version" --arg health "$prev_health" \
-          '. + [{"component": $comp, "target_version": $ver, "outcome": "DEPLOYED", "health_result": $health}]')"
+          --arg comp "$name" --arg ver "$version" --arg health "$prev_health" --arg smoke "$prev_smoke" \
+          '. + [{"component": $comp, "target_version": $ver, "outcome": "DEPLOYED", "health_result": $health, "smoke_result": $smoke}]')"
         deployed=$((deployed + 1))
         continue
       fi
@@ -483,7 +485,7 @@ run_ordered_deploy() {
       _log_info "skipping downstream stack=$name (upstream component on HOLD)"
       component_status="$(printf '%s' "$component_status" | jq \
         --arg comp "$name" --arg ver "$version" \
-        '. + [{"component": $comp, "target_version": $ver, "outcome": "SKIPPED", "health_result": "n/a"}]')"
+        '. + [{"component": $comp, "target_version": $ver, "outcome": "SKIPPED", "health_result": "n/a", "smoke_result": "n/a"}]')"
       has_skip=1
       if [ -n "$state_dir" ]; then
         _update_manifest_component "$state_dir" "$name" "SKIPPED" "n/a"
@@ -502,7 +504,7 @@ run_ordered_deploy() {
       if [ "$mode" = "best-effort" ]; then
         component_status="$(printf '%s' "$component_status" | jq \
           --arg comp "$name" --arg ver "$version" \
-          '. + [{"component": $comp, "target_version": $ver, "outcome": "HOLD", "health_result": "deploy-failed"}]')"
+          '. + [{"component": $comp, "target_version": $ver, "outcome": "HOLD", "health_result": "deploy-failed", "smoke_result": "n/a"}]')"
         has_hold=1
         if [ -n "$state_dir" ]; then
           _update_manifest_component "$state_dir" "$name" "HOLD" "deploy-failed"
@@ -530,7 +532,7 @@ run_ordered_deploy() {
           hc_result="timeout"
           component_status="$(printf '%s' "$component_status" | jq \
             --arg comp "$name" --arg ver "$version" --arg health "$hc_result" \
-            '. + [{"component": $comp, "target_version": $ver, "outcome": "HOLD", "health_result": $health}]')"
+            '. + [{"component": $comp, "target_version": $ver, "outcome": "HOLD", "health_result": $health, "smoke_result": "n/a"}]')"
           has_hold=1
           if [ -n "$state_dir" ]; then
             _update_manifest_component "$state_dir" "$name" "HOLD" "$hc_result"
@@ -551,7 +553,7 @@ run_ordered_deploy() {
           hc_result="fail"
           component_status="$(printf '%s' "$component_status" | jq \
             --arg comp "$name" --arg ver "$version" --arg health "$hc_result" \
-            '. + [{"component": $comp, "target_version": $ver, "outcome": "HOLD", "health_result": $health}]')"
+            '. + [{"component": $comp, "target_version": $ver, "outcome": "HOLD", "health_result": $health, "smoke_result": "n/a"}]')"
           has_hold=1
           if [ -n "$state_dir" ]; then
             _update_manifest_component "$state_dir" "$name" "HOLD" "$hc_result"
@@ -568,6 +570,7 @@ run_ordered_deploy() {
     fi
 
     # --- Post-deploy smoke (if configured) ---
+    local smoke_result="n/a"
     if [ -n "$smoke_cmd" ]; then
       local smoke_rc=0
       _run_smoke "$name" "$smoke_cmd" "$smoke_timeout" "$smoke_bin" || smoke_rc=$?
@@ -576,8 +579,8 @@ run_ordered_deploy() {
         _log_err "post-deploy-smoke FAILED for stack=$name (exit $smoke_rc)"
         if [ "$mode" = "best-effort" ]; then
           component_status="$(printf '%s' "$component_status" | jq \
-            --arg comp "$name" --arg ver "$version" \
-            '. + [{"component": $comp, "target_version": $ver, "outcome": "HOLD", "health_result": "smoke-failed"}]')"
+            --arg comp "$name" --arg ver "$version" --arg health "$hc_result" \
+            '. + [{"component": $comp, "target_version": $ver, "outcome": "HOLD", "health_result": $health, "smoke_result": "fail"}]')"
           has_hold=1
           if [ -n "$state_dir" ]; then
             _update_manifest_component "$state_dir" "$name" "HOLD" "smoke-failed"
@@ -587,14 +590,15 @@ run_ordered_deploy() {
         printf 'HALTED: post-deploy smoke failed for stack %s — downstream stacks not deployed\n' "$name"
         return 1
       fi
+      smoke_result="pass"
       _log_info "post-deploy-smoke PASSED for stack=$name"
     fi
 
     # Component deployed successfully.
     if [ "$mode" = "best-effort" ]; then
       component_status="$(printf '%s' "$component_status" | jq \
-        --arg comp "$name" --arg ver "$version" --arg health "$hc_result" \
-        '. + [{"component": $comp, "target_version": $ver, "outcome": "DEPLOYED", "health_result": $health}]')"
+        --arg comp "$name" --arg ver "$version" --arg health "$hc_result" --arg smoke "$smoke_result" \
+        '. + [{"component": $comp, "target_version": $ver, "outcome": "DEPLOYED", "health_result": $health, "smoke_result": $smoke}]')"
       if [ -n "$state_dir" ]; then
         _update_manifest_component "$state_dir" "$name" "DEPLOYED" "$hc_result"
       fi

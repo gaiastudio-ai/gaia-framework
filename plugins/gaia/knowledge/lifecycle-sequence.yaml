@@ -368,12 +368,12 @@ sequence:
     phase: 5-deployment
     command: /gaia-deploy-checklist
     next:
-      primary: /gaia-post-deploy
+      primary: /gaia-deploy-post
       note: "Deploy to production first, then run post-deploy verification"
 
   post-deploy-verify:
     phase: 5-deployment
-    command: /gaia-post-deploy
+    command: /gaia-deploy-post
     next:
       terminal: true
       note: "Lifecycle complete. Start new cycle with /gaia-retro for lessons learned."

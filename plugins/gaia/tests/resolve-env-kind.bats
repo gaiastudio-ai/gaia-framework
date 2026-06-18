@@ -7,7 +7,7 @@
 #   - closed-enum rejection of unknown values
 #   - default propagation to downstream consumers
 #
-# The four downstream skill gates (/gaia-deploy HALT, /gaia-post-deploy HALT,
+# The four downstream skill gates (/gaia-deploy HALT, /gaia-deploy-post HALT,
 # /gaia-deploy-checklist shape-agnostic, /gaia-config-validate WARN) are
 # documentation-orchestrated via SKILL.md prose since the production skills
 # are LLM-driven, not script-callable. The resolver IS the script-callable
