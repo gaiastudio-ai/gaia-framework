@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# detect-affected.bats — TDD tests for detect-affected.sh (E113-S2)
+# detect-affected.bats — TDD tests for detect-affected.sh
 #
-# Public functions covered (NFR-052): parse_args, parse_stacks,
+# Public functions covered (per the public-function coverage gate): parse_args, parse_stacks,
 # normalize_glob, find_best_prefix_match, find_glob_match, match_path,
 # build_json_array, main.
 
@@ -47,7 +47,7 @@ EOF
 teardown() { common_teardown; }
 
 # ---------------------------------------------------------------------------
-# NFR-052: source the script and verify every public function resolves
+# Public-function coverage gate: source the script and verify every public function resolves
 # ---------------------------------------------------------------------------
 
 @test "source script — parse_args is callable" {

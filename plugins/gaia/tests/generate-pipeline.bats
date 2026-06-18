@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# generate-pipeline.bats — TDD tests for generate-pipeline.sh (E113-S4)
+# generate-pipeline.bats — TDD tests for generate-pipeline.sh
 #
-# Public functions covered (NFR-052): parse_args, read_affected_json,
+# Public functions covered (per the public-function coverage gate): parse_args, read_affected_json,
 # parse_affected_array, parse_stacks_names, build_matrix_json, main.
 
 load 'test_helper.bash'
@@ -30,7 +30,7 @@ EOF
 teardown() { common_teardown; }
 
 # ---------------------------------------------------------------------------
-# NFR-052: source the script and verify every public function resolves
+# Public-function coverage gate: source the script and verify every public function resolves
 # ---------------------------------------------------------------------------
 
 @test "source script — parse_args is callable" {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# cross-refs-walk.bats — TDD tests for cross-refs-walk.sh (E113-S3)
+# cross-refs-walk.bats — TDD tests for cross-refs-walk.sh
 #
-# Public functions covered (NFR-052): parse_args, parse_cross_refs,
+# Public functions covered (per the public-function coverage gate): parse_args, parse_cross_refs,
 # build_inverted_index, parse_stacks_json, bfs_walk, build_json_array, main.
 # Private function _consumers_of is deliberately skipped (underscore prefix).
 
@@ -128,7 +128,7 @@ EOF
 teardown() { common_teardown; }
 
 # ---------------------------------------------------------------------------
-# NFR-052: source the script and verify every public function resolves
+# Public-function coverage gate: source the script and verify every public function resolves
 # ---------------------------------------------------------------------------
 
 @test "source script — parse_args is callable" {
