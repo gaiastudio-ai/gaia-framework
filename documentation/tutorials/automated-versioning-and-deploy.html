@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automated Versioning and Deploy - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="selective-test-execution.html">Selective Test Execution</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="automated-versioning-and-deploy.html" class="active">Automated Versioning &amp; Deploy</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#release-strategies">Release strategies</a></li>
+          <li><a href="#scenario-conventional">Scenario 1: Conventional commits</a></li>
+          <li><a href="#scenario-manual">Scenario 2: Manual versioning</a></li>
+          <li><a href="#scenario-calendar">Scenario 3: Calendar versioning</a></li>
+          <li><a href="#per-component-deploy">Per-component deploy</a></li>
+          <li><a href="#scenario-ordered-deploy">Scenario 4: Ordered multi-stack deploy</a></li>
+          <li><a href="#scenario-partial-recovery">Scenario 5: Partial-deploy recovery</a></li>
+          <li><a href="#affected-set">The affected-set data contract</a></li>
+          <li><a href="#affected-ci-artifact">Channel 1: CI artifact</a></li>
+          <li><a href="#affected-commit-trailer">Channel 2: Commit trailer</a></li>
+          <li><a href="#affected-full-deploy">Channel 3: Full-deploy fallback</a></li>
+          <li><a href="#configuration-reference">Configuration reference</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        Automated Versioning &amp; Deploy
+      </nav>
+
+      <h1>Automated Versioning and Deploy</h1>
+      <p>
+        GAIA automates the full release-to-deploy pipeline: derive a version
+        from your commit history (or calendar, or a manual prompt), bump every
+        version-carrying file in one atomic operation, then deploy affected
+        components in dependency order with health gates between each stack.
+        This tutorial walks through three release-strategy scenarios, a
+        multi-stack ordered deploy with health gates, and a partial-deploy
+        recovery scenario. It finishes with the affected-set data contract
+        that ties CI, commit trailers, and the deploy pipeline together.
+      </p>
+
+      <div class="callout">
+        <p class="callout-title">Prerequisites</p>
+        <p>
+          You need a <code>project-config.yaml</code> with a
+          <code>release</code> section and at least one entry in
+          <code>stacks</code>. Read
+          <a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a>
+          and
+          <a href="environments-and-promotion.html">Environments &amp; Promotion</a>
+          first if you have not set those up yet.
+        </p>
+      </div>
+
+      <!-- ================================================================ -->
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          The release and deploy pipeline has two stages:
+        </p>
+        <ol>
+          <li>
+            <strong>Release</strong> -- resolve the next version (using the
+            configured strategy), bump every file listed in
+            <code>release.version_files[]</code>, commit, tag, push, and
+            create a GitHub Release. The
+            <a href="../commands/gaia-release.html"><code>/gaia-release</code></a>
+            command orchestrates this.
+          </li>
+          <li>
+            <strong>Deploy</strong> -- after the release merge, the promotion
+            trigger fires, resolves which components changed (the
+            <em>affected set</em>), and dispatches per-environment deploys
+            in dependency order with health gates. The
+            <a href="../commands/gaia-deploy.html"><code>/gaia-deploy</code></a>
+            command orchestrates this.
+          </li>
+        </ol>
+        <p>
+          The two stages are independent: you can run
+          <code>/gaia-release</code> without deploying (for libraries), or
+          run <code>/gaia-deploy</code> without a release (for manual
+          version management). When both are configured, the promotion trigger
+          chains them automatically after a merge to the promotion branch.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="release-strategies">
+        <h2>Release strategies</h2>
+        <p>
+          The <code>release.strategy</code> key in your
+          <code>project-config.yaml</code> controls how the next version is
+          determined. Three strategies are available:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>How the version is derived</th>
+              <th>Best for</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>conventional-commits</code></td>
+              <td>
+                Classifies commits since the last <code>v*</code> tag using
+                the Conventional Commits spec. <code>feat</code> = minor,
+                <code>fix</code> = patch,
+                <code>BREAKING CHANGE</code> or <code>!</code> suffix = major.
+                The highest-precedence bump wins. When no qualifying commits
+                exist, the release exits cleanly with no version bump.
+              </td>
+              <td>Libraries, APIs, frameworks that follow semver strictly.</td>
+            </tr>
+            <tr>
+              <td><code>manual</code></td>
+              <td>
+                Prompts the user for the target version. No commit-derivation
+                is performed -- the user supplies <code>patch</code>,
+                <code>minor</code>, <code>major</code>, or an explicit
+                <code>X.Y.Z</code>.
+              </td>
+              <td>
+                Projects with non-standard versioning, or teams that want
+                explicit control over every version number.
+              </td>
+            </tr>
+            <tr>
+              <td><code>calendar</code></td>
+              <td>
+                Derives a CalVer version from the current date:
+                <code>YYYY.MM.PATCH</code> where <code>PATCH</code>
+                auto-increments based on existing tags for the current month.
+              </td>
+              <td>SaaS products, documentation sites, projects that ship on a regular cadence.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          When <code>release.strategy</code> is absent from your config, the
+          behavior defaults to <code>manual</code>.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-conventional">
+        <h2>Scenario 1: Conventional commits</h2>
+        <h3>Configuration</h3>
+        <p>
+          A Node.js API that follows Conventional Commits. The version lives
+          in <code>package.json</code> and a plain-text <code>VERSION</code>
+          file.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+release:
+  strategy: conventional-commits
+  version_files:
+    - package.json
+    - VERSION</code></pre>
+
+        <h3>Walkthrough</h3>
+        <ol>
+          <li>
+            <strong>Verify you are on <code>main</code>.</strong>
+            <code>/gaia-release</code> refuses to run on any other branch.
+          </li>
+          <li>
+            <strong>The strategy resolver runs.</strong>
+            It reads <code>release.strategy: conventional-commits</code> from
+            config, classifies all commits since the last <code>v*</code> tag,
+            and emits a machine-readable result.
+          </li>
+          <li>
+            <strong>Example: three commits since <code>v1.2.3</code>.</strong>
+            <pre><code>fix(auth): handle expired tokens gracefully
+feat(api): add bulk-import endpoint
+fix(docs): correct API example</code></pre>
+            The resolver classifies: <code>fix</code> (patch),
+            <code>feat</code> (minor), <code>fix</code> (patch). The
+            highest-precedence bump is <strong>minor</strong>.
+          </li>
+          <li>
+            <strong>Dry-run preview.</strong>
+            The version-bump script runs with <code>--dry-run</code> first,
+            printing the planned changes without writing:
+            <pre><code>{
+  "old_version": "1.2.3",
+  "new_version": "1.3.0",
+  "bump_type": "minor",
+  "bumped": [
+    { "file": "package.json", "format": "json", "old": "1.2.3", "new": "1.3.0" },
+    { "file": "VERSION", "format": "text", "old": "1.2.3", "new": "1.3.0" }
+  ]
+}</code></pre>
+          </li>
+          <li>
+            <strong>Execute the bump.</strong>
+            The script writes both files atomically -- either all listed files
+            are bumped, or none are. On success, it emits the same JSON
+            summary.
+          </li>
+          <li>
+            <strong>Commit, tag, push, GitHub Release.</strong>
+            <code>/gaia-release</code> stages exactly the files from the
+            <code>bumped[]</code> array, commits with a conventional message
+            (<code>chore(release): bump version to v1.3.0</code>), creates
+            an annotated tag <code>v1.3.0</code>, pushes both, and creates a
+            GitHub Release.
+          </li>
+        </ol>
+
+        <h3>No releasable changes</h3>
+        <p>
+          When all commits since the last tag are non-qualifying (e.g., only
+          <code>chore:</code> or <code>docs:</code> commits), the resolver
+          emits <code>bump=none</code>. The release exits cleanly (exit 0)
+          with a "no releasable changes" message. No version bump, no tag, no
+          release.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-manual">
+        <h2>Scenario 2: Manual versioning</h2>
+        <h3>Configuration</h3>
+        <p>
+          A mobile app where the product team controls version numbers
+          explicitly.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+release:
+  strategy: manual
+  version_files:
+    - package.json
+    - ios/App/Info.plist
+    - android/app/build.gradle</code></pre>
+
+        <h3>Walkthrough</h3>
+        <ol>
+          <li>
+            <strong>The strategy resolver emits <code>strategy=manual</code>.</strong>
+            No commit classification happens.
+          </li>
+          <li>
+            <strong>You provide the bump specifier.</strong>
+            <code>/gaia-release</code> prompts you: supply <code>patch</code>,
+            <code>minor</code>, <code>major</code>, or an explicit version
+            like <code>2.0.0</code>.
+          </li>
+          <li>
+            <strong>Dry-run, then execute.</strong>
+            Same two-phase process as Scenario 1 -- preview with
+            <code>--dry-run</code>, then execute.
+            <pre><code>{
+  "old_version": "1.4.2",
+  "new_version": "2.0.0",
+  "bump_type": "2.0.0",
+  "bumped": [
+    { "file": "package.json", "format": "json", "old": "1.4.2", "new": "2.0.0" },
+    { "file": "ios/App/Info.plist", "format": "json", "old": "1.4.2", "new": "2.0.0" },
+    { "file": "android/app/build.gradle", "format": "json", "old": "1.4.2", "new": "2.0.0" }
+  ]
+}</code></pre>
+          </li>
+          <li>
+            <strong>Commit, tag, push, GitHub Release.</strong>
+            Identical to Scenario 1.
+          </li>
+        </ol>
+
+        <h3>When to use manual</h3>
+        <p>
+          Choose <code>manual</code> when your version numbers carry
+          product-level meaning (e.g., marketing versions, app store
+          submission versions) that cannot be derived from commit messages
+          alone.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-calendar">
+        <h2>Scenario 3: Calendar versioning</h2>
+        <h3>Configuration</h3>
+        <p>
+          A SaaS platform that ships on a regular cadence and uses CalVer.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+release:
+  strategy: calendar
+  version_files:
+    - plugin.json
+    - VERSION</code></pre>
+
+        <h3>Walkthrough</h3>
+        <ol>
+          <li>
+            <strong>The strategy resolver derives the version from today's date.</strong>
+            Format: <code>YYYY.MM.PATCH</code>.
+            If no tags exist for the current month, <code>PATCH</code>
+            starts at <code>0</code>. If <code>v2026.06.0</code> already
+            exists, the next version is <code>2026.06.1</code>.
+          </li>
+          <li>
+            <strong>The version is passed directly to the bump script.</strong>
+            Unlike <code>conventional-commits</code>, no commit classification
+            is needed. The resolver emits the full version string.
+            <pre><code>{
+  "old_version": "2026.05.3",
+  "new_version": "2026.06.0",
+  "bump_type": "2026.06.0",
+  "bumped": [
+    { "file": "plugin.json", "format": "json", "old": "2026.05.3", "new": "2026.06.0" },
+    { "file": "VERSION", "format": "text", "old": "2026.05.3", "new": "2026.06.0" }
+  ]
+}</code></pre>
+          </li>
+          <li>
+            <strong>Commit, tag, push, GitHub Release.</strong>
+            Identical to the other strategies.
+          </li>
+        </ol>
+
+        <h3>When to use calendar</h3>
+        <p>
+          Choose <code>calendar</code> when your users expect time-based
+          versions (e.g., documentation sites, SaaS platforms, internal
+          tools with regular release trains). The auto-incrementing
+          <code>PATCH</code> handles multiple releases within the same month.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="per-component-deploy">
+        <h2>Per-component deploy</h2>
+        <p>
+          When your project has multiple stacks, <code>/gaia-deploy</code>
+          deploys them in dependency order using the <code>deploy_order</code>
+          field on each stack. A health check runs after each stack deploys;
+          the next stack in order does not begin until the previous stack's
+          health check passes.
+        </p>
+        <p>
+          Two deploy modes are available:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th>Behavior on health-check failure</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>strict</code> (default)</td>
+              <td>Halt all downstream stacks immediately. No further deploys
+                happen. Exit code 1.</td>
+            </tr>
+            <tr>
+              <td><code>best-effort</code></td>
+              <td>Mark the failing stack <code>HOLD</code>. Already-deployed
+                stacks stay live. Downstream dependents are marked
+                <code>SKIPPED</code>. Emit a <code>PARTIAL-DEPLOY</code>
+                verdict with a per-component status table. Exit code 3.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-ordered-deploy">
+        <h2>Scenario 4: Ordered multi-stack deploy with health gates</h2>
+        <h3>Configuration</h3>
+        <p>
+          A microservices project with three stacks deployed in a specific
+          order: the database migration runs first, then the API, then the
+          frontend.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+stacks:
+  - name: db-migrate
+    path: packages/db
+    language: typescript
+    deploy_order: 1
+    health_check:
+      command: "pg_isready -h localhost -p 5432"
+      timeout: 30
+
+  - name: api
+    path: packages/api
+    language: typescript
+    deploy_order: 2
+    health_check:
+      command: "curl -sf http://localhost:3000/health"
+      timeout: 60
+    post_deploy_smoke:
+      command: "npm run smoke:api"
+      timeout: 120
+
+  - name: web
+    path: packages/web
+    language: typescript
+    deploy_order: 3
+    health_check:
+      command: "curl -sf http://localhost:8080/health"
+      timeout: 30
+    post_deploy_smoke:
+      command: "npx playwright test --project=smoke"
+      timeout: 180</code></pre>
+
+        <h3>Deploy sequence (strict mode)</h3>
+        <ol>
+          <li>
+            <strong>db-migrate</strong> (deploy_order: 1) deploys first. After
+            deploy, its health check runs:
+            <code>pg_isready -h localhost -p 5432</code>. Timeout: 30 seconds.
+          </li>
+          <li>
+            <strong>api</strong> (deploy_order: 2) deploys next -- only after
+            db-migrate's health check passes. After deploy, its health check
+            runs: <code>curl -sf http://localhost:3000/health</code>. If
+            healthy, its smoke test runs:
+            <code>npm run smoke:api</code>.
+          </li>
+          <li>
+            <strong>web</strong> (deploy_order: 3) deploys last. Health check,
+            then smoke test.
+          </li>
+        </ol>
+
+        <h3>What happens when a health check fails (strict mode)</h3>
+        <p>
+          If the <code>api</code> health check fails (non-zero exit or
+          timeout exceeded), all downstream stacks (<code>web</code>) are
+          skipped. The deploy exits with code 1 and a failure diagnostic.
+          The skill suggests consulting your rollback plan but does not
+          execute a rollback automatically.
+        </p>
+
+        <h3>Stacks without deploy_order</h3>
+        <p>
+          Stacks that do not set <code>deploy_order</code> are deployed
+          <strong>after</strong> all ordered stacks, in alphabetical order by
+          name. This ensures deterministic behavior without requiring every
+          stack to specify an order.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-partial-recovery">
+        <h2>Scenario 5: Partial-deploy recovery (best-effort mode)</h2>
+        <h3>What best-effort mode does differently</h3>
+        <p>
+          In <code>best-effort</code> mode, a health-check failure does not
+          halt everything. Instead:
+        </p>
+        <ol>
+          <li>The failing stack is marked <code>HOLD</code>.</li>
+          <li>Already-deployed stacks remain live.</li>
+          <li>
+            Downstream stacks that depend on the failing stack are marked
+            <code>SKIPPED</code>.
+          </li>
+          <li>
+            The deploy emits a <code>PARTIAL-DEPLOY</code> composite verdict
+            and writes a per-component status table.
+          </li>
+        </ol>
+
+        <h3>Example: api health check fails</h3>
+        <p>
+          Using the same three-stack configuration from Scenario 4, but with
+          <code>--mode best-effort</code>:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Stack</th>
+              <th>Status</th>
+              <th>Explanation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>db-migrate</code></td>
+              <td>DEPLOYED</td>
+              <td>Deployed and healthy.</td>
+            </tr>
+            <tr>
+              <td><code>api</code></td>
+              <td>HOLD</td>
+              <td>Deployed, but health check failed. Marked HOLD.</td>
+            </tr>
+            <tr>
+              <td><code>web</code></td>
+              <td>SKIPPED</td>
+              <td>Not deployed. Skipped because upstream (<code>api</code>)
+                is in HOLD.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Composite verdict: <code>PARTIAL-DEPLOY</code>. Exit code: 3.
+        </p>
+
+        <h3>Version-manifest snapshot and crash recovery</h3>
+        <p>
+          Before the first component deploys, best-effort mode writes a
+          version-manifest snapshot recording each component's pre-deploy
+          version. If a crash or interrupt occurs mid-deploy, a restart reads
+          the snapshot and resumes from the last incomplete component rather
+          than redeploying components that already succeeded. On successful
+          completion, the snapshot is archived.
+        </p>
+
+        <h3>Recovering from a HOLD</h3>
+        <p>
+          After diagnosing and fixing the failing stack:
+        </p>
+        <ol>
+          <li>Fix the root cause (e.g., the <code>api</code> health endpoint).</li>
+          <li>Re-run <code>/gaia-deploy --env staging --version v1.3.0 --mode best-effort</code>.</li>
+          <li>
+            The crash-recovery logic reads the version manifest and resumes
+            from the <code>api</code> stack, then continues to <code>web</code>.
+          </li>
+        </ol>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="affected-set">
+        <h2>The affected-set data contract</h2>
+        <p>
+          The deploy pipeline needs to know <em>which components changed</em>
+          in a given CI run. The affected-set resolver answers this question
+          using a three-channel fallback chain. It always resolves to
+          something -- the deploy pipeline never silently deploys nothing.
+        </p>
+        <p>
+          The resolver
+          (<code>resolve-affected-set.sh</code>) emits a JSON object naming
+          both the affected stacks and which resolution channel succeeded:
+        </p>
+        <pre><code>{"stacks":["api","web"],"channel":"ci-artifact"}</code></pre>
+        <p>
+          The <code>channel</code> field is one of: <code>ci-artifact</code>,
+          <code>commit-trailer</code>, or <code>full-deploy</code>. Consumers
+          can log this value for observability without parsing the resolution
+          logic themselves.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="affected-ci-artifact">
+        <h2>Channel 1: CI artifact (primary)</h2>
+        <p>
+          The selective-test pipeline's <code>plan</code> job writes a JSON
+          file and uploads it as a GitHub Actions artifact named
+          <code>affected-set</code>. The file is named
+          <code>affected-set.json</code> and contains a single
+          <code>stacks</code> array:
+        </p>
+        <pre><code>// Selective deploy -- only api and web changed
+{"stacks":["api","web"]}
+
+// Full deploy (escalation from stale dependency graph)
+{"stacks":["*"]}
+
+// Docs-only change -- no deploy needed
+{"stacks":[]}</code></pre>
+        <p>
+          Rules:
+        </p>
+        <ul>
+          <li>
+            <code>stacks</code> is a JSON array of strings. Each string is a
+            stack name declared in <code>project-config.yaml</code> under
+            <code>stacks[].name</code>.
+          </li>
+          <li>
+            The wildcard sentinel <code>["*"]</code> means "all stacks" (full
+            deploy).
+          </li>
+          <li>
+            An empty array <code>[]</code> means "no stacks affected" -- no
+            deploy needed.
+          </li>
+        </ul>
+        <p>
+          The promotion trigger downloads this artifact and passes its path
+          to the resolver via <code>--artifact &lt;path&gt;</code>. If the
+          download fails (artifact expired, manual trigger), the resolver
+          transparently falls through to the next channel.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="affected-commit-trailer">
+        <h2>Channel 2: Commit trailer (secondary)</h2>
+        <p>
+          When the CI artifact is unavailable (manual deploy, workflow re-run,
+          or cross-workflow trigger), the resolver falls back to parsing a
+          commit trailer from the HEAD commit message. Two trailer names are
+          accepted:
+        </p>
+        <pre><code>Affected-Set: ["api","worker"]
+Affected-Components: ["web"]</code></pre>
+        <p>
+          The trailer value must be a JSON array of stack-name strings. The
+          resolver reads the first matching trailer (<code>Affected-Set</code>
+          preferred, then <code>Affected-Components</code>). Invalid or absent
+          trailers cause the resolver to fall through to the safety net.
+        </p>
+        <h3>When to use commit trailers</h3>
+        <p>
+          Commit trailers are useful when you need to manually control which
+          components deploy -- for example, during a hotfix where CI did not
+          run the full selective-test pipeline, or when deploying from a
+          manually-triggered workflow.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="affected-full-deploy">
+        <h2>Channel 3: Full-deploy fallback (safety net)</h2>
+        <p>
+          When neither the CI artifact nor a commit trailer is available, the
+          resolver emits the <strong>full-deploy sentinel</strong> -- every
+          component deploys. This guarantees that the deploy pipeline never
+          silently deploys nothing.
+        </p>
+        <p>
+          When <code>--config</code> points to a valid
+          <code>project-config.yaml</code>, the resolver enumerates all
+          <code>stacks[].name</code> entries from the config and lists them
+          explicitly. Without a config file, it emits the wildcard sentinel
+          <code>["*"]</code>.
+        </p>
+        <pre><code>// With config -- all named stacks
+{"stacks":["db-migrate","api","web"],"channel":"full-deploy"}
+
+// Without config -- wildcard
+{"stacks":["*"],"channel":"full-deploy"}</code></pre>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="configuration-reference">
+        <h2>Configuration reference</h2>
+        <p>
+          This section collects every configuration field covered in this
+          tutorial. All fields live in
+          <code>.gaia/config/project-config.yaml</code>.
+        </p>
+
+        <h3>Release configuration</h3>
+        <pre><code># .gaia/config/project-config.yaml
+release:
+  strategy: conventional-commits   # or: manual | calendar (default: manual)
+  version_files:
+    - package.json                 # JSON with a top-level "version" key
+    - plugin.json                  # Also JSON
+    - VERSION                      # Plain-text file: bare semver string</code></pre>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Default</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>release.strategy</code></td>
+              <td>string</td>
+              <td><code>manual</code></td>
+              <td>
+                How the next version is derived:
+                <code>conventional-commits</code>, <code>manual</code>, or
+                <code>calendar</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>release.version_files</code></td>
+              <td>string[]</td>
+              <td>(none)</td>
+              <td>
+                File paths relative to the project root. Each file is bumped
+                by the version-bump script. Supported formats: JSON with a
+                top-level <code>"version"</code> key, or a plain-text file
+                containing only a semver string.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Per-stack deploy configuration</h3>
+        <pre><code># .gaia/config/project-config.yaml
+stacks:
+  - name: api
+    path: packages/api
+    language: typescript
+    deploy_order: 2                # Lower deploys first; absent = after all ordered stacks (alpha)
+    health_check:
+      command: "curl -sf http://localhost:3000/health"
+      timeout: 60                  # Seconds; default 30
+    post_deploy_smoke:
+      command: "npm run smoke:api"
+      timeout: 120                 # Seconds; default 60</code></pre>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Default</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>stacks[].deploy_order</code></td>
+              <td>integer</td>
+              <td>(none)</td>
+              <td>
+                Controls the order in which stacks deploy. Lower values deploy
+                first. Stacks without <code>deploy_order</code> deploy after
+                all ordered stacks, in alphabetical order by name.
+              </td>
+            </tr>
+            <tr>
+              <td><code>stacks[].health_check.command</code></td>
+              <td>string</td>
+              <td>(none)</td>
+              <td>
+                Shell command to execute after deploying the stack. Exit code
+                0 = healthy, non-zero = unhealthy. Must pass before the next
+                stack in deploy_order begins.
+              </td>
+            </tr>
+            <tr>
+              <td><code>stacks[].health_check.timeout</code></td>
+              <td>integer</td>
+              <td><code>30</code></td>
+              <td>
+                Maximum seconds to wait for the health-check command. Timeout
+                exceeded = treated as failure.
+              </td>
+            </tr>
+            <tr>
+              <td><code>stacks[].post_deploy_smoke.command</code></td>
+              <td>string</td>
+              <td>(none)</td>
+              <td>
+                Shell command to execute as a post-deploy smoke test. Runs
+                after the health check passes (or immediately after deploy
+                when no health check is configured).
+              </td>
+            </tr>
+            <tr>
+              <td><code>stacks[].post_deploy_smoke.timeout</code></td>
+              <td>integer</td>
+              <td><code>60</code></td>
+              <td>
+                Maximum seconds to wait for the smoke command.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Validating your configuration</h3>
+        <p>
+          After editing release or deploy configuration, validate:
+        </p>
+        <pre><code>/gaia-config-validate</code></pre>
+        <p>
+          Invalid field types, unknown strategy values, or missing required
+          fields produce a validation error with the exact JSONPath location.
+          Fix the error and re-validate.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="../commands/gaia-release.html">/gaia-release</a> -- command reference for cutting a release.</li>
+          <li><a href="../commands/gaia-deploy.html">/gaia-deploy</a> -- command reference for the five-phase deploy pipeline.</li>
+          <li><a href="../commands/gaia-deploy-post.html">/gaia-deploy-post</a> -- post-deploy health and metric validation.</li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a> -- promotion chains and environment configuration.</li>
+          <li><a href="selective-test-execution.html">Selective Test Execution</a> -- the CI pipeline that produces the affected-set artifact.</li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a> -- the layered CI model and presets.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
