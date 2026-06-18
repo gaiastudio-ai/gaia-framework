@@ -137,3 +137,108 @@ EOF
   run "$SCRIPT" --project-root "$TMP"
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Determinism — scan produces identical verdicts on repeated runs (AC2)
+# ---------------------------------------------------------------------------
+
+@test "scan produces identical output across two successive runs with scratch dirs present" {
+  # Create a git-tracked fixture tree: a tracked file (clean) plus an
+  # untracked scratch directory containing a legacy-pattern file.  Under the
+  # old code, the scratch directory would be walked by grep -rEn in
+  # filesystem order (non-deterministic), potentially perturbing the verdict.
+  # After the fix, untracked scratch dirs inside SCAN_PATHS are excluded.
+
+  # Initialize a git repo in the fixture so the scan can use git ls-files.
+  git -C "$TMP" init --quiet
+  git -C "$TMP" config user.email "test@test"
+  git -C "$TMP" config user.name "test"
+
+  # Tracked file: clean (no legacy references).
+  echo '# clean skill' > "$TMP/plugins/gaia/skills/fake-skill/SKILL.md"
+  git -C "$TMP" add plugins/gaia/skills/fake-skill/SKILL.md
+  git -C "$TMP" commit --quiet -m "init"
+
+  # Untracked scratch directory with a file that contains a legacy pattern.
+  mkdir -p "$TMP/plugins/gaia/.scan-tmp"
+  echo 'load _gaia/core/engine/workflow.xml now' \
+    > "$TMP/plugins/gaia/.scan-tmp/scratch-ref.sh"
+  mkdir -p "$TMP/plugins/gaia/.review"
+  echo 'stale ref to workflow.xml engine' \
+    > "$TMP/plugins/gaia/.review/review-notes.md"
+
+  # Run 1
+  run "$SCRIPT" --project-root "$TMP"
+  local status1="$status"
+  local output1="$output"
+
+  # Run 2
+  run "$SCRIPT" --project-root "$TMP"
+  local status2="$status"
+  local output2="$output"
+
+  # Both runs must produce the same exit code and output.
+  [ "$status1" -eq "$status2" ]
+  [ "$output1" = "$output2" ]
+
+  # The verdict should be CLEAN because the only tracked file is clean and
+  # the untracked scratch files should be excluded from the scan.
+  [ "$status1" -eq 0 ]
+  [[ "$output1" == *"CLEAN"* ]]
+}
+
+@test "untracked scratch dirs inside scan roots do not change verdict from CLEAN to FAILED" {
+  # Baseline: scan on a clean git tree produces CLEAN.
+  git -C "$TMP" init --quiet
+  git -C "$TMP" config user.email "test@test"
+  git -C "$TMP" config user.name "test"
+
+  echo '# nothing here' > "$TMP/plugins/gaia/skills/fake-skill/SKILL.md"
+  git -C "$TMP" add plugins/gaia/skills/fake-skill/SKILL.md
+  git -C "$TMP" commit --quiet -m "init"
+
+  # Baseline run — must be CLEAN.
+  run "$SCRIPT" --project-root "$TMP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CLEAN"* ]]
+
+  # Now add untracked scratch dirs with legacy-pattern files.
+  mkdir -p "$TMP/plugins/gaia/.scan-tmp"
+  echo 'load workflow.xml engine' > "$TMP/plugins/gaia/.scan-tmp/junk.sh"
+  mkdir -p "$TMP/plugins/gaia/Source"
+  echo 'core/protocols/old' > "$TMP/plugins/gaia/Source/leftover.txt"
+  mkdir -p "$TMP/.github/workflows/.review"
+  echo 'ref to instructions.xml' > "$TMP/.github/workflows/.review/tmp.yml"
+
+  # After adding scratch dirs, verdict must still be CLEAN.
+  run "$SCRIPT" --project-root "$TMP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CLEAN"* ]]
+}
+
+@test "scan output is deterministically sorted across repeated runs" {
+  # Create a fixture with multiple non-allowlisted files that all contain
+  # legacy patterns.  The scan should report them in a stable sorted order.
+  git -C "$TMP" init --quiet
+  git -C "$TMP" config user.email "test@test"
+  git -C "$TMP" config user.name "test"
+
+  # Create several tracked files with legacy references (not allowlisted).
+  mkdir -p "$TMP/plugins/gaia/scripts"
+  echo 'load workflow.xml' > "$TMP/plugins/gaia/scripts/z-script.sh"
+  echo 'load workflow.xml' > "$TMP/plugins/gaia/scripts/a-script.sh"
+  echo 'load workflow.xml' > "$TMP/plugins/gaia/scripts/m-script.sh"
+  git -C "$TMP" add .
+  git -C "$TMP" commit --quiet -m "init"
+
+  # Run the scan 5 times and collect outputs.
+  local prev_output=""
+  for i in 1 2 3 4 5; do
+    run "$SCRIPT" --project-root "$TMP"
+    [ "$status" -eq 1 ]  # FAILED expected
+    if [ -n "$prev_output" ]; then
+      [ "$output" = "$prev_output" ]
+    fi
+    prev_output="$output"
+  done
+}
