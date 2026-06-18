@@ -54,6 +54,11 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Source the shared file-to-stack resolution library.
+_DETECT_AFFECTED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/resolve-file-to-stack.sh
+. "${_DETECT_AFFECTED_DIR}/lib/resolve-file-to-stack.sh"
+
 # ---------------------------------------------------------------------------
 # usage — print help to stdout and exit 0
 # ---------------------------------------------------------------------------
@@ -281,104 +286,47 @@ normalize_glob() {
 }
 
 # ---------------------------------------------------------------------------
-# find_best_prefix_match — longest-prefix match across all prefix-type rows
+# find_best_prefix_match — thin delegator to the shared resolution library.
 #
-# Args:
-#   $1 — changed file path (no gaia-public/ prefix)
-#   $2 — path to stacks table file (TSV: name<TAB>candidate<TAB>match_type)
-#
-# Output: the stack name with the longest matching prefix, or empty string.
-# Ties break by declaration order (first declared wins among equal-length).
+# Retained for backward compatibility (NFR-052 callable assertions).
+# The implementation lives in lib/resolve-file-to-stack.sh.
 # ---------------------------------------------------------------------------
 find_best_prefix_match() {
-  local path="$1"
-  local stacks_table="$2"
-  local best_name=""
-  local best_len=0
-  local name candidate match_type clen
-
-  while IFS=$'\t' read -r name candidate match_type; do
-    [[ "$match_type" == "prefix" ]] || continue
-    # Require a path-segment boundary: path must be candidate/... or == candidate
-    if [[ "$path" == "${candidate}/"* ]] || [[ "$path" == "$candidate" ]]; then
-      clen="${#candidate}"
-      if (( clen > best_len )); then
-        best_len=$clen
-        best_name=$name
-      fi
-    fi
-  done < "$stacks_table"
-
-  printf '%s' "$best_name"
+  _fts_find_best_prefix_match "$@"
 }
 
 # ---------------------------------------------------------------------------
-# find_glob_match — bash glob match across all glob-type rows
+# find_glob_match — thin delegator to the shared resolution library.
 #
-# Args:
-#   $1 — changed file path (no gaia-public/ prefix)
-#   $2 — path to stacks table file (TSV: name<TAB>candidate<TAB>match_type)
-#
-# Output: the first stack name whose glob pattern covers the path, or empty.
-# Declaration order is the tiebreaker (first match wins).
+# Retained for backward compatibility (NFR-052 callable assertions).
+# The implementation lives in lib/resolve-file-to-stack.sh.
 # ---------------------------------------------------------------------------
 find_glob_match() {
-  local path="$1"
-  local stacks_table="$2"
-  local name candidate match_type
-
-  while IFS=$'\t' read -r name candidate match_type; do
-    [[ "$match_type" == "glob" ]] || continue
-    # bash [[ == ]] glob: * matches / so we must guard against single-level globs
-    # matching deep paths (e.g. config/*.yaml must NOT match config/sub/deep.yaml).
-    # Strategy: when the glob does NOT contain **, strip the literal prefix up to
-    # the first wildcard; if the remaining path segment contains a /, the path is
-    # deeper than the glob allows.
-    if [[ "$candidate" != *"**"* ]]; then
-      local glob_prefix="${candidate%%\**}"
-      local glob_remainder="${path#$glob_prefix}"
-      # If the remainder (after the literal prefix) contains a slash, the path
-      # goes deeper than a single * can legitimately reach.
-      if [[ "$glob_remainder" == */* ]]; then
-        continue
-      fi
-    fi
-    if [[ "$path" == $candidate ]]; then
-      printf '%s' "$name"
-      return 0
-    fi
-  done < "$stacks_table"
-
-  printf ''
+  _fts_find_glob_match "$@"
 }
 
 # ---------------------------------------------------------------------------
 # match_path — resolve a single path to its owning stack name (or empty)
 #
-# Strategy (AC1/AC2/AC3):
-#   1. find_best_prefix_match — longest-prefix wins
-#   2. find_glob_match — fallback for non-/** patterns
-#
-# Outputs the matched stack name to stdout, or nothing on no match.
-# Verbose decisions go to stderr.
+# Delegates resolution to the shared lib/resolve-file-to-stack.sh helper.
+# Adds verbose logging around the shared resolution call.
 # ---------------------------------------------------------------------------
 match_path() {
   local path="$1"
   local stacks_table="$2"
   local matched=""
 
-  matched="$(find_best_prefix_match "$path" "$stacks_table")"
+  matched="$(resolve_file_to_stack "$path" "$stacks_table")"
 
   if [[ -n "$matched" ]]; then
-    [[ "$VERBOSE" -eq 1 ]] && printf '[PREFIX-MATCH] path=%s stack=%s\n' "$path" "$matched" >&2
-    printf '%s\n' "$matched"
-    return 0
-  fi
-
-  matched="$(find_glob_match "$path" "$stacks_table")"
-
-  if [[ -n "$matched" ]]; then
-    [[ "$VERBOSE" -eq 1 ]] && printf '[GLOB-MATCH] path=%s stack=%s\n' "$path" "$matched" >&2
+    if [[ "$VERBOSE" -eq 1 ]]; then
+      # Determine match type for verbose logging (prefix or glob)
+      local _match_type="PREFIX-MATCH"
+      local _pfx_hit
+      _pfx_hit="$(_fts_find_best_prefix_match "$path" "$stacks_table")"
+      [[ -z "$_pfx_hit" ]] && _match_type="GLOB-MATCH"
+      printf '[%s] path=%s stack=%s\n' "$_match_type" "$path" "$matched" >&2
+    fi
     printf '%s\n' "$matched"
     return 0
   fi

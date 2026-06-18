@@ -38,6 +38,10 @@ die()      { printf 'ERROR: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
+# Source the shared file-to-stack resolution library.
+# shellcheck source=../../lib/resolve-file-to-stack.sh
+. "$HERE/../../lib/resolve-file-to-stack.sh"
+
 # --- Bypass parse (reuse parse-bypass-flag.sh helper: required-reason + length 10-500) ----
 BYPASS_SKILL="" BYPASS_REASON=""
 PARSE="$(cd "$HERE/../../lib" 2>/dev/null && pwd)/parse-bypass-flag.sh"
@@ -89,6 +93,10 @@ if [ ! -f "$DEPGRAPH" ]; then
 fi
 
 start=$(date +%s%N)
+
+# Global for the lazy-built TSV stacks table used by file_to_stack.
+_FTS_TABLE=""
+trap 'rm -f "${_FTS_TABLE:-}"' EXIT
 
 # --- Build the {file->stack} reverse-index + per-stack cross_refs ------------
 # Stacks are read once. file_to_stack resolves a file path to its owning stack by
@@ -147,85 +155,48 @@ _cross_refs_for() {
   return 0
 }
 
-# _glob_matches <file> <pattern> -> 0 if file matches the glob pattern.
-# Supports ** (recursive) by decomposing "prefix/**" into a prefix check,
-# and delegates other patterns to bash [[ == ]] glob matching.
-_glob_matches() {
-  local file="$1" pattern="$2"
-  # Strip surrounding quotes if present (YAML artifacts).
-  pattern="${pattern#\"}"
-  pattern="${pattern%\"}"
-  pattern="${pattern#\'}"
-  pattern="${pattern%\'}"
-  [ -n "$pattern" ] || return 1
-
-  # Common case: "some/dir/**" — match any file under that directory.
-  if [ "${pattern%/\*\*}" != "$pattern" ]; then
-    local dir_prefix="${pattern%/\*\*}"
-    if [ "$file" = "$dir_prefix" ] || [ "${file#"$dir_prefix"/}" != "$file" ]; then
-      return 0
-    fi
-    return 1
+# file_to_stack <path> -> stack name. Delegates to the shared resolution
+# library (lib/resolve-file-to-stack.sh) via a TSV stacks table built from
+# the parallel arrays above. The TSV is built once and cached in _FTS_TABLE.
+file_to_stack() {
+  local f="$1"
+  # Lazy-build the TSV stacks table on first call.
+  if [ -z "${_FTS_TABLE:-}" ]; then
+    _FTS_TABLE="$(mktemp)"
+    _build_fts_table > "$_FTS_TABLE"
   fi
-
-  # Fall through to bash glob matching for other patterns.
-  # shellcheck disable=SC2254
-  case "$file" in
-    $pattern) return 0 ;;
-  esac
-  return 1
+  resolve_file_to_stack "$f" "$_FTS_TABLE"
 }
 
-# file_to_stack <path> -> stack name (longest matching prefix or glob; "." matches all).
-# Resolution order:
-#   1. Longest path-prefix match (stacks[].path scalar)
-#   2. First paths-glob match (stacks[].paths[] list)
-# The path scalar is preferred because it is more specific (directory ownership).
-# paths[] globs EXTEND the scalar — they do not replace it.
-file_to_stack() {
-  local f="$1" best="" best_len=-1 j=0
-  # Pass 1: prefix matching against the scalar path field (existing behavior).
+# _build_fts_table — convert parallel arrays to TSV format for the shared resolver.
+# Emits name<TAB>candidate<TAB>match_type rows to stdout.
+_build_fts_table() {
+  local j=0
   while [ "$j" -lt "${#STACK_NAMES[@]}" ]; do
-    local pfx="${STACK_PREFIXES[$j]}" nm="${STACK_NAMES[$j]}"
-    if [ "$pfx" = "." ]; then
-      # Catch-all: only wins if nothing more specific matched (len 0).
-      if [ "$best_len" -lt 0 ]; then best="$nm"; best_len=0; fi
-    elif [ "$f" = "$pfx" ] || [ "${f#"$pfx"/}" != "$f" ]; then
-      if [ "${#pfx}" -gt "$best_len" ]; then best="$nm"; best_len="${#pfx}"; fi
+    local nm="${STACK_NAMES[$j]}" pfx="${STACK_PREFIXES[$j]}" globs="${STACK_PATHS_GLOBS[$j]}"
+    # Emit scalar path prefix (including "." catch-all)
+    if [ -n "$pfx" ]; then
+      printf '%s\t%s\tprefix\n' "$nm" "$pfx"
     fi
-    j=$((j+1))
-  done
-  # If a non-catch-all prefix matched, use it (most-specific binding).
-  if [ "$best_len" -gt 0 ]; then
-    printf '%s' "$best"
-    return 0
-  fi
-
-  # Pass 2: glob matching against the paths[] list.
-  j=0
-  while [ "$j" -lt "${#STACK_NAMES[@]}" ]; do
-    local globs="${STACK_PATHS_GLOBS[$j]}" nm="${STACK_NAMES[$j]}" g
+    # Emit paths[] globs: classify /** as prefix, others as glob
     if [ -n "$globs" ]; then
+      local g
       while IFS= read -r g; do
         [ -n "$g" ] || continue
-        if _glob_matches "$f" "$g"; then
-          # First glob match wins (declaration order, consistent with prefix tiebreak).
-          printf '%s' "$nm"
-          return 0
+        # Strip surrounding quotes (YAML artifacts)
+        g="${g#\"}" ; g="${g%\"}"
+        g="${g#\'}" ; g="${g%\'}"
+        [ -n "$g" ] || continue
+        if [ "${g%/\*\*}" != "$g" ]; then
+          # /** glob -> prefix type (strip the /** suffix)
+          printf '%s\t%s\tprefix\n' "$nm" "${g%/\*\*}"
+        else
+          printf '%s\t%s\tglob\n' "$nm" "$g"
         fi
       done <<< "$globs"
     fi
     j=$((j+1))
   done
-
-  # Pass 3: fall back to catch-all (".") if one was found in pass 1.
-  if [ -n "$best" ]; then
-    printf '%s' "$best"
-    return 0
-  fi
-
-  # No match at all — return empty string.
-  printf '%s' ""
 }
 
 # ref_allowed <src_stack> <tgt_stack> -> 0 if tgt in src.cross_refs[] else 1.

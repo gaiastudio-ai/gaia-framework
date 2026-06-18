@@ -27,6 +27,11 @@
 
 set -euo pipefail
 
+# Source the shared file-to-stack resolution library (for locate_repo_script).
+_RRV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../scripts/lib/resolve-file-to-stack.sh
+. "$_RRV_DIR/../../../scripts/lib/resolve-file-to-stack.sh"
+
 # ---------------------------------------------------------------------------
 # Internal helpers (prefixed with _ to satisfy NFR-052 naming convention)
 # ---------------------------------------------------------------------------
@@ -123,21 +128,11 @@ _resolve_conventional_commits() {
 
   # Locate classify-commits.js. Discovery order:
   #   1. CLASSIFY_COMMITS_JS env var (explicit override for tests / CI).
-  #   2. Relative to CLAUDE_PLUGIN_ROOT (framework install).
-  #   3. Walk up from project-root to find scripts/classify-commits.js.
+  #   2. Shared locate_repo_script helper (walks up from lib dir and
+  #      CLAUDE_PLUGIN_ROOT, then CWD — no brittle relative traversal).
   local classify_js="${CLASSIFY_COMMITS_JS:-}"
-  if [ -z "$classify_js" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/../../scripts/classify-commits.js" ]; then
-    classify_js="$(cd "${CLAUDE_PLUGIN_ROOT}/../.." && pwd)/scripts/classify-commits.js"
-  fi
   if [ -z "$classify_js" ]; then
-    local search_dir="$project_root"
-    while [ "$search_dir" != "/" ]; do
-      if [ -f "$search_dir/scripts/classify-commits.js" ]; then
-        classify_js="$search_dir/scripts/classify-commits.js"
-        break
-      fi
-      search_dir="$(dirname "$search_dir")"
-    done
+    classify_js="$(locate_repo_script "classify-commits.js")"
   fi
 
   if [ -z "$classify_js" ] || [ ! -f "$classify_js" ]; then
