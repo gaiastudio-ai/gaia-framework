@@ -140,3 +140,91 @@ evidence/
 ```
 
 The final verdict (`PASSED` | `FAILED`) is emitted on stdout by `verdict-aggregate.sh`.
+
+## Affected-set data contract
+
+The deploy workflow consumes an **affected-set** that names which stacks
+(components) changed in a given CI run. This section documents the schema,
+resolution channels, and fallback chain that governs how the affected-set
+reaches the deploy pipeline.
+
+### CI artifact (primary channel)
+
+The selective-test pipeline's `plan` job writes a JSON file and uploads it
+as a GitHub Actions artifact named **`affected-set`**. The file is named
+`affected-set.json` and conforms to this schema:
+
+```json
+{
+  "stacks": ["<stack-name>", ...]
+}
+```
+
+Rules:
+
+- `stacks` is a JSON array of strings. Each string is a stack name declared
+  in `project-config.yaml` under `stacks[].name`.
+- The wildcard sentinel `["*"]` means "all stacks" (full deploy).
+- An empty array `[]` means "no stacks affected" (docs-only change; no
+  deploy needed).
+
+Example — selective:
+```json
+{"stacks":["api","web"]}
+```
+
+Example — full deploy (escalation):
+```json
+{"stacks":["*"]}
+```
+
+Example — docs-only (no deploy):
+```json
+{"stacks":[]}
+```
+
+### Commit trailer (secondary channel)
+
+When the CI artifact is unavailable (manual deploy, workflow re-run, or
+cross-workflow trigger), the resolver falls back to parsing a commit trailer
+from the HEAD commit message. Two trailer names are accepted:
+
+```
+Affected-Set: ["api","worker"]
+Affected-Components: ["web"]
+```
+
+The trailer value must be a JSON array of stack-name strings. The resolver
+reads the first matching trailer (`Affected-Set` preferred, then
+`Affected-Components`). Invalid or absent trailers cause the resolver to
+fall through to the safety net.
+
+### Full-deploy safety net (fallback)
+
+When neither the CI artifact nor a commit trailer is available, the resolver
+emits the **full-deploy sentinel** — every component deploys. This guarantees
+that the deploy pipeline **never silently deploys nothing**.
+
+When `--config` points to a valid `project-config.yaml`, the resolver
+enumerates all `stacks[].name` entries from the config. Without a config, it
+emits the wildcard sentinel `["*"]`.
+
+### Resolver output
+
+`plugins/gaia/scripts/resolve-affected-set.sh` implements the three-tier
+fallback chain. Its output is a JSON object on stdout:
+
+```json
+{"stacks":["api","web"],"channel":"ci-artifact"}
+```
+
+The `channel` field names which resolution tier succeeded:
+`ci-artifact`, `commit-trailer`, or `full-deploy`. Consumers can log
+this value for observability without parsing the resolution logic themselves.
+
+### Wiring seam
+
+The promotion-trigger workflow (deploy pipeline) downloads the `affected-set`
+artifact and passes its path to `resolve-affected-set.sh --artifact <path>`.
+If the download step fails (artifact expired, manual trigger), the resolver
+transparently falls through to the commit-trailer and full-deploy tiers.
