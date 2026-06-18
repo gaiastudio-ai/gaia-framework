@@ -94,6 +94,10 @@ parse_deploy_args() {
     _log_err "invalid --mode: $DEPLOY_MODE (must be strict or best-effort)"
     exit 2
   fi
+  if [ "$DEPLOY_MODE" = "best-effort" ] && [ -z "$STATE_DIR" ]; then
+    _log_err "--state-dir is required for best-effort mode (manifest/crash-recovery needs a writable state directory)"
+    exit 2
+  fi
   mkdir -p "$OUTPUT_DIR"
   if [ -n "$STATE_DIR" ]; then
     mkdir -p "$STATE_DIR"

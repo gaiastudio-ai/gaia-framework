@@ -141,6 +141,8 @@ evidence/
 
 The final verdict (`PASSED` | `FAILED`) is emitted on stdout by `verdict-aggregate.sh`.
 
+> **Gitignore note:** The promotion trigger writes evidence to `.gaia/evidence/deploy/<env>/`. Projects initialised with `/gaia-init` automatically ignore `.gaia/evidence/` via the seeded `.gitignore`. Existing projects should add `.gaia/evidence/` to their `.gitignore` to avoid accidentally committing ephemeral deploy evidence.
+
 ## Affected-set data contract
 
 The deploy workflow consumes an **affected-set** that names which stacks
