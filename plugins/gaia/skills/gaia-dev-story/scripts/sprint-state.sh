@@ -335,10 +335,9 @@ validate_transition() {
 # Resolve configuration — PROJECT_PATH, IMPLEMENTATION_ARTIFACTS, and yaml path.
 # Honor pre-exported SPRINT_STATUS_YAML so tests can point the script at a
 # temp-dir yaml that does not live under IMPLEMENTATION_ARTIFACTS.
-# When SPRINT_STATUS_YAML is unset, resolve to the canonical location under
-# IMPLEMENTATION_ARTIFACTS, then fall back to $PROJECT_PATH/sprint-status.yaml
-# if the canonical path does not exist but the fallback does — supports bats
-# fixtures which place the yaml at $TEST_TMP root for test speed.
+# When SPRINT_STATUS_YAML is unset, resolve to the canonical .gaia/state/
+# location, then fall back through legacy docs/ and project-root paths
+# for bats fixtures and in-deprecation-window consumers.
 resolve_paths() {
   # PROJECT_ROOT is the directory containing `.gaia/` (per CLAUDE.md).
   # PROJECT_PATH is application-code only; in a split-repo layout (app in a
@@ -2279,22 +2278,11 @@ cmd_record_escalation_override() {
 # remains an operator-driven manual action — auto-flipping would create
 # false confidence that the next sprint was scaffolded too.
 cmd_detect_auto_close() {
-  # Honor pre-exported SPRINT_STATUS_YAML; otherwise fall back to the same
-  # canonical/fallback lookup used by sprint-status-dashboard.sh lines 54-64.
+  # SPRINT_STATUS_YAML is set by resolve_paths() — canonical home is
+  # .gaia/state/sprint-status.yaml. resolve_paths() runs unconditionally
+  # before any subcommand dispatch, so the variable is always populated.
   local yaml_path="${SPRINT_STATUS_YAML:-}"
-  if [ -z "$yaml_path" ]; then
-    local canonical="${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml"
-    local fallback="${PROJECT_PATH}/sprint-status.yaml"
-    if [ -f "$canonical" ]; then
-      yaml_path="$canonical"
-    elif [ -f "$fallback" ]; then
-      yaml_path="$fallback"
-    else
-      # Missing yaml: emit nothing, exit 0 (advisory).
-      return 0
-    fi
-  fi
-  [ -f "$yaml_path" ] || return 0
+  [ -n "$yaml_path" ] && [ -f "$yaml_path" ] || return 0
 
   # Helper: extract top-level YAML scalar (same convention as dashboard).
   # `|| true` swallows the grep-no-match-exit-1 + pipefail combination so a
@@ -2524,12 +2512,12 @@ _rollover_one() {
 
 # Resolve the path of the active sprint yaml. Caller has already called
 # resolve_paths(). We honor SPRINT_STATUS_YAML if pre-set; else default to
-# ${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml. Read-only — does not write.
+# .gaia/state/sprint-status.yaml (the sole canonical home). Read-only.
 _resolve_active_yaml() {
   if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
     # resolve_paths() is the single source of truth for this value — it applies
     # the canonical-state-tier resolution order (.gaia/state/ first,
-    # impl-artifacts read-compat, fresh writes → state).
+    # legacy docs/ read-compat, fresh writes → .gaia/state/).
     printf '%s' "$SPRINT_STATUS_YAML"
   else
     # Safety net for callers that invoke this without resolve_paths() first.

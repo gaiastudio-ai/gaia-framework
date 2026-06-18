@@ -46,8 +46,37 @@ _seed_legacy() {
 
 @test "issue #1109 (deprecated): reconcile does NOT mirror to implementation-artifacts" {
   _seed_canonical active
-  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
+  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile
   [ "$status" -eq 0 ]
+  [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
+}
+
+@test "issue #1109 (deprecated): transition does NOT mirror to implementation-artifacts" {
+  # Seed the canonical sprint yaml with one story in ready-for-dev.
+  cat > .gaia/state/sprint-status.yaml <<'YAML'
+sprint_id: "sprint-22"
+status: active
+stories:
+  - key: "T1"
+    title: "Fake"
+    status: "ready-for-dev"
+YAML
+  # Seed a story file that locate_story_file can find.
+  cat > .gaia/artifacts/implementation-artifacts/T1-fake.md <<'STORY'
+---
+template: 'story'
+key: "T1"
+title: "Fake"
+status: ready-for-dev
+---
+
+# Story: Fake
+
+> **Status:** ready-for-dev
+STORY
+  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" transition --story T1 --to in-progress
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/.gaia/state/sprint-status.yaml" ]
   [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
 }
 
