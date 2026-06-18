@@ -726,6 +726,12 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "minItems": 1
+        },
+        "strategy": {
+          "description": "How /gaia-release derives the next version. conventional-commits: auto-derive semver bump from Conventional Commits in the release range. manual: prompt for the target version (no commit-derivation). calendar: derive CalVer (YYYY.MM.PATCH) from the current date. Defaults to manual when absent.",
+          "type": "string",
+          "enum": ["conventional-commits", "manual", "calendar"],
+          "default": "manual"
         }
       }
     }

@@ -323,4 +323,4 @@ fields:
     type: map
     required: false
     default: null
-    description: "Release version-bump configuration. Sub-keys: version_files (list of file paths relative to project root — each file is bumped by /gaia-release's version-bump.js). Supported file formats: JSON files with a top-level \"version\" key (package.json, plugin.json) and plain-text files containing only a semver string (VERSION). When absent, /gaia-release emits a clear error naming `release.version_files` as the missing key."
+    description: "Release version-bump configuration. Sub-keys: version_files (list of file paths relative to project root — each file is bumped by /gaia-release's version-bump.js); strategy (enum: conventional-commits | manual | calendar — how /gaia-release derives the next version; defaults to manual when absent). Supported file formats: JSON files with a top-level \"version\" key (package.json, plugin.json) and plain-text files containing only a semver string (VERSION). When absent, /gaia-release emits a clear error naming `release.version_files` as the missing key."
