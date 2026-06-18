@@ -319,3 +319,65 @@ print('ok')
   run validate_fixture "$fixture"
   [ "$status" -ne 0 ]
 }
+
+# ----------------------------------------------------------------------------
+# stacks items: test_cmd property is declared (schema-script drift fix)
+# ----------------------------------------------------------------------------
+
+@test "stacks items schema declares test_cmd property (type string, minLength 1)" {
+  [ -f "$SCHEMA" ]
+  run python3 -c "
+import json
+with open('$SCHEMA') as f:
+    s = json.load(f)
+items = s['properties']['stacks']['items']['properties']
+tc = items.get('test_cmd')
+assert tc is not None, 'test_cmd property missing from stacks items'
+assert tc.get('type') == 'string', f'test_cmd type is {tc.get(\"type\")}, expected string'
+assert tc.get('minLength') == 1, f'test_cmd minLength is {tc.get(\"minLength\")}, expected 1'
+print('ok')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok"* ]]
+}
+
+@test "stacks items test_cmd is NOT in required array" {
+  [ -f "$SCHEMA" ]
+  run python3 -c "
+import json
+with open('$SCHEMA') as f:
+    s = json.load(f)
+req = s['properties']['stacks']['items'].get('required', [])
+assert 'test_cmd' not in req, f'test_cmd MUST NOT be required: {req}'
+print('ok')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok"* ]]
+}
+
+@test "config with per-stack test_cmd validates against schema" {
+  if ! have_validator; then
+    skip "no JSON Schema validator available (ajv or python-jsonschema)"
+  fi
+  # Write a minimal config with test_cmd under a stack entry.
+  cat > "${TMP}/config-test-cmd.yaml" <<'YAML'
+project_name: test-project
+project_kind: web-app
+project_root: "/tmp/test-project"
+project_path: "/tmp/test-project/src"
+memory_path: "/tmp/test-project/_memory"
+checkpoint_path: "/tmp/test-project/_memory/checkpoints"
+installed_path: "/tmp/test-project/.gaia"
+framework_version: "1.146.1"
+date: "2026-05-12"
+stacks:
+  - name: custom
+    language: bash
+    paths: ["src/**"]
+    test_cmd: "make test-custom"
+platforms:
+  - web
+YAML
+  run validate_fixture "${TMP}/config-test-cmd.yaml"
+  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
+}

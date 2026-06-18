@@ -590,6 +590,11 @@
           "post_deploy_smoke": {
             "description": "Per-stack post-deploy smoke test. Runs after the stack passes its health check (or immediately after deploy when no health check is configured).",
             "$ref": "#/definitions/stackPostDeploySmoke"
+          },
+          "test_cmd": {
+            "description": "Optional custom test command for this stack. When set, the test runner uses this command instead of the language default. The command is executed relative to the repository root.",
+            "type": "string",
+            "minLength": 1
           }
         }
       }
