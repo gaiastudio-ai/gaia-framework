@@ -26,6 +26,20 @@
 #     prefix  — longest-prefix matching (/** glob or scalar path field or ".")
 #     glob    — bash glob matching (non-/** patterns like config/*.yaml)
 #
+# Glob depth semantics — uniform across all consumers:
+#   Non-** globs (e.g. config/*.yaml) match a SINGLE directory level only.
+#   The wildcard * does NOT span /. So config/*.yaml matches config/foo.yaml
+#   but NOT config/sub/deep.yaml. Use ** (e.g. config/**/*.yaml) to match
+#   across arbitrary depth.
+#
+#   This depth guard applies uniformly to every consumer of this library.
+#   Before reconcile-cross-stack.sh was migrated to use this shared lib, its
+#   inline _glob_matches function used a bare bash case-glob where * spans /.
+#   The migration intentionally tightened reconcile to the same single-level
+#   semantics that detect-affected.sh already enforced. The tighter behavior
+#   is more correct (POSIX-style depth semantics for *, not bash case-glob
+#   semantics) and is regression-pinned in reconcile-cross-stack.bats.
+#
 # This library is consumed by detect-affected.sh and reconcile-cross-stack.sh
 # to eliminate duplicated resolution logic. Each consumer maintains its own
 # config-parsing (awk / yq) and builds the TSV stacks table; this library
