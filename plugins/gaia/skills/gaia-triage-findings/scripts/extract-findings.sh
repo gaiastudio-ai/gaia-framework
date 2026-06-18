@@ -109,15 +109,20 @@ while IFS= read -r line; do
       esac
       severity="$col2"; finding="$col3"; action="$col4" ;;
   esac
+  # Universal marker exclusion: skip any finding already processed by a
+  # prior triage run, regardless of type. The markers [TRIAGED] and
+  # [DISMISSED] are appended to the finding or action text by the triage
+  # workflow; re-emitting them would break idempotency.
+  if printf '%s' "$finding $action" | grep -qE '\[TRIAGED|\[DISMISSED'; then
+    continue
+  fi
   include=0
   case "$type" in
     tech-debt|framework-defect|test-debt|process-debt|code-debt|doc-debt|design-debt|security)
       include=1 ;;
     bug)
       if [ "$severity" = "medium" ] || [ "$severity" = "low" ]; then
-        if ! printf '%s' "$finding $action" | grep -qE '\[TRIAGED|\[DISMISSED'; then
-          include=1; type="bug:$severity"
-        fi
+        include=1; type="bug:$severity"
       fi ;;
   esac
   [ "$include" -eq 1 ] || continue
