@@ -123,17 +123,19 @@ print('OK')
   [[ "$desc_line" == *"timeout_seconds"* ]]
 }
 
-@test "gaia-sprint-close resolve_yaml_path checks .gaia/artifacts/implementation-artifacts/" {
-  grep -qF 'gaia_artifacts="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
-  # Resolver order: .gaia/state → .gaia/artifacts/ → legacy docs/ → fallback
+@test "gaia-sprint-close resolve_yaml_path drops retired impl-artifacts rung" {
+  # The .gaia/artifacts/implementation-artifacts/ mirror has been retired
+  # (Issue #1109 deprecation). close.sh must no longer reference it.
+  ! grep -qF 'gaia_artifacts="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
+  # Resolver order: .gaia/state → legacy docs/ → fallback
   grep -qE 'if \[ -f "\$gaia_state" \]; then' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
-  grep -qE 'elif \[ -f "\$gaia_artifacts" \]; then' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
+  grep -qE 'elif \[ -f "\$legacy_docs" \]; then' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
 }
 
-@test "gaia-sprint-close default-when-missing points at canonical .gaia/artifacts/ (not .gaia/state/)" {
-  # Final else branch (no file found) defaults to the canonical post-ADR-111
-  # location so the error message guides users to where sprint-state.sh writes.
-  grep -qE "printf '%s\\\\n' \"\\\$gaia_artifacts\"" "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
+@test "gaia-sprint-close default-when-missing points at canonical .gaia/state/" {
+  # Final else branch (no file found) defaults to .gaia/state/ — the sole
+  # canonical write target after the impl-artifacts mirror was retired.
+  grep -qE "printf '%s\\\\n' \"\\\$gaia_state\"" "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
 }
 
 @test "a populated test_execution config with command validates against the schema" {

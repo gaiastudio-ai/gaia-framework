@@ -76,12 +76,14 @@ teardown() { common_teardown; }
   [[ "$output" == *"/.gaia/state/sprint-status.yaml" ]]
 }
 
-@test "sprint_status read-compat finds impl-artifacts copy" {
+@test "sprint_status resolver ignores retired impl-artifacts copy" {
+  # The impl-artifacts mirror has been retired (Issue #1109 deprecation).
+  # A stale copy at this path must NOT be resolved.
   mkdir -p "$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   printf 'sprint_id: s1\n' > "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"
   run "$RESOLVER" sprint_status --project-root "$TEST_TMP" --existing-only
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]]
+  # No canonical .gaia/state/ copy exists, so --existing-only finds nothing.
+  [[ -z "$output" || "$output" != *"/implementation-artifacts/sprint-status.yaml" ]]
 }
 
 @test "unknown kind exits non-zero" {
@@ -110,12 +112,8 @@ teardown() { common_teardown; }
   run env PROJECT_PATH="$TEST_TMP" bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --sprint-id sprint-1
   [ "$status" -eq 0 ]
   [ -f "$TEST_TMP/.gaia/state/sprint-status.yaml" ]
-  # AF-2026-05-31-3 / Test14 F-16: sprint-state.sh mirrors the canonical yaml
-  # to implementation-artifacts/sprint-status.yaml ONLY when the target dir
-  # ALREADY EXISTS (the mirror is non-creating to avoid shadowing legacy
-  # fixtures). On a fresh project the dir doesn't exist yet, so the mirror
-  # cleanly no-ops here. The F-16 mirror has its own dedicated coverage in
-  # af-2026-05-31-3-test14-findings.bats that creates the dir first.
+  # The implementation-artifacts mirror has been retired (Issue #1109
+  # deprecation) — init must never write to the legacy path.
   [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
 }
 
@@ -127,13 +125,16 @@ teardown() { common_teardown; }
   [[ "$output" != *"not found"* ]]
 }
 
-@test "dashboard read-compat finds a project seeded at impl-artifacts" {
+@test "dashboard does NOT resolve a stale impl-artifacts copy (mirror retired)" {
+  # The implementation-artifacts mirror has been retired. The dashboard must
+  # NOT resolve a copy at the legacy path when the canonical .gaia/state/
+  # path is absent.
   mkdir -p "$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   printf 'sprint_id: "s9"\nstatus: active\ntotal_points: 5\ngoals: []\nitems: []\n' \
     > "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"
   run env PROJECT_PATH="$TEST_TMP" bash "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"s9"* ]]
+  # Dashboard should report "not found" or fail — it must not read the retired path.
+  [[ "$output" != *"s9"* ]] || [ "$status" -ne 0 ]
 }
 
 @test "dev-story sprint-state.sh wrapper stays byte-identical to canonical" {
