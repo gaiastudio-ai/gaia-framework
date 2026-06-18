@@ -1,17 +1,16 @@
 #!/usr/bin/env bats
-# gaia-release.bats — E28-S167 tests for the /gaia-release native skill.
+# gaia-release.bats — tests for the /gaia-release native skill.
 #
 # Validates:
 #   AC1: SKILL.md documents the full release procedure (version bump, commit,
 #        tag, push, GitHub Release).
-#   AC2: SKILL.md references scripts/version-bump.js.
+#   AC2: SKILL.md references the skill-local version-bump.js script path.
 #   AC3: /gaia-release is discoverable via the native plugin skills tree —
 #        SKILL.md sits under plugins/gaia/skills/gaia-release/ alongside peer
 #        skills such as gaia-release-plan and gaia-changelog.
-#   Val INFO 1: CURRENT version-bump behavior (2 global files per ADR-025
-#               Model B) — no stale "6 files" claim.
-#   Val INFO 2: Full CLI surface — --modules, --prerelease rc,
-#               --strip-prerelease, --dry-run.
+#   Val INFO 1: CURRENT version-bump behavior — config-driven
+#               release.version_files[] (no stale "6 files" claim).
+#   Val INFO 2: CLI surface — --dry-run.
 
 load 'test_helper.bash'
 
@@ -80,15 +79,14 @@ teardown() { common_teardown; }
 
 # ---------- AC2: version-bump.js reference ----------
 
-@test "SKILL.md references scripts/version-bump.js" {
+@test "SKILL.md references the skill-local version-bump.js path" {
   run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"scripts/version-bump.js"* ]]
+  [[ "$output" == *"skills/gaia-release/scripts/version-bump.js"* ]]
 }
 
-@test "SKILL.md shows npm run version:bump or the node invocation" {
+@test "SKILL.md shows the node invocation for version-bump.js" {
   run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"npm run version:bump"* ]] \
-    || [[ "$output" == *"node scripts/version-bump.js"* ]]
+  [[ "$output" == *"node"*"version-bump.js"* ]]
 }
 
 # ---------- AC3: /gaia-help discoverability ----------
@@ -116,15 +114,14 @@ teardown() { common_teardown; }
   [[ "$output" == *"/gaia-release"* ]] || [[ "$output" == *"gaia-release"* ]]
 }
 
-# ---------- Val INFO 1: ADR-025 Model B (2 global files) ----------
+# ---------- Val INFO 1: config-driven version file list ----------
 
-@test "SKILL.md documents Model B (2 global files)" {
+@test "SKILL.md documents config-driven release.version_files list" {
   run cat "$SKILL_DIR/SKILL.md"
-  # The version-bump script updates exactly 2 global targets; verify the
-  # SKILL.md names both and states the 2-target constraint.
-  [[ "$output" == *"package.json"* ]]
-  [[ "$output" == *"global.yaml"* ]]
-  [[ "$output" =~ "2 global" ]]
+  # The project-generic rebuild reads version files from config rather than
+  # hardcoding a fixed target set. Verify the config key is documented.
+  [[ "$output" == *"release.version_files"* ]]
+  [[ "$output" == *"project-config.yaml"* ]]
 }
 
 @test "SKILL.md does NOT claim the script updates 6 files" {
@@ -135,23 +132,8 @@ teardown() { common_teardown; }
   [[ "$output" != *"six files"* ]]
 }
 
-# ---------- Val INFO 2: full CLI surface ----------
+# ---------- Val INFO 2: CLI surface ----------
 
-@test "SKILL.md documents --modules flag" {
-  run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"--modules"* ]]
-}
-
-@test "SKILL.md documents --prerelease rc flag" {
-  run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"--prerelease"* ]]
-  [[ "$output" == *"rc"* ]]
-}
-
-@test "SKILL.md documents --strip-prerelease flag" {
-  run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"--strip-prerelease"* ]]
-}
 
 @test "SKILL.md documents --dry-run flag" {
   run cat "$SKILL_DIR/SKILL.md"
