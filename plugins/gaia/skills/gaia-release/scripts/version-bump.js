@@ -384,10 +384,23 @@ function main() {
   }
 
   // Resolve file paths relative to project root.
+  const normalizedRoot = path.resolve(args.projectRoot);
   const resolvedFiles = versionFiles.map(f => ({
     relative: f,
     absolute: path.resolve(args.projectRoot, f),
   }));
+
+  // Path-traversal guard: every resolved path must be inside the project root.
+  for (const entry of resolvedFiles) {
+    if (entry.absolute !== normalizedRoot &&
+        !entry.absolute.startsWith(normalizedRoot + path.sep)) {
+      process.stderr.write(
+        `version-bump: path-traversal rejected — ${entry.relative} resolves to ` +
+        `${entry.absolute} which is outside the repository root ${normalizedRoot}\n`
+      );
+      process.exit(2);
+    }
+  }
 
   // Validate all files exist before making any changes.
   for (const entry of resolvedFiles) {

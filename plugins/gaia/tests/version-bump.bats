@@ -264,3 +264,102 @@ YAML
   " "$output"
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Path-traversal guard — version file outside project root is rejected
+# ---------------------------------------------------------------------------
+@test "version-bump rejects a version file that escapes the project root" {
+  _scaffold_project "1.0.0"
+
+  # Overwrite config to include a path-traversal entry.
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<YAML
+project_root: "$TEST_TMP"
+project_path: "$TEST_TMP"
+memory_path: "$TEST_TMP/.gaia/memory"
+checkpoint_path: "$TEST_TMP/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP"
+framework_version: "1.197.0"
+date: "2026-06-18"
+
+release:
+  version_files:
+    - ../../etc/evil-version
+YAML
+
+  # Create the target file so the "file not found" check doesn't fire first.
+  mkdir -p "$(dirname "$TEST_TMP/../../etc/evil-version")"
+  printf '1.0.0\n' > "$TEST_TMP/../../etc/evil-version"
+
+  run node "$VERSION_BUMP_JS" patch \
+    --config "$TEST_TMP/.gaia/config/project-config.yaml" \
+    --project-root "$TEST_TMP"
+
+  echo "output: $output"
+  echo "status: $status"
+
+  # Must exit non-zero.
+  [ "$status" -ne 0 ]
+  # Error must mention the offending path and "outside".
+  [[ "$output" == *"outside"* ]]
+  [[ "$output" == *"evil-version"* ]] || [[ "$output" == *"../../etc/evil-version"* ]]
+}
+
+@test "version-bump rejects path-traversal even when resolved path shares a prefix with root" {
+  # Ensure /repo-evil does not pass a /repo prefix check (trailing-sep safety).
+  _scaffold_project "1.0.0"
+
+  # Create a sibling directory that shares a prefix with the project root.
+  local sibling="${TEST_TMP}-evil"
+  mkdir -p "$sibling"
+  printf '1.0.0\n' > "$sibling/VERSION"
+
+  # Compute relative path from TEST_TMP to sibling/VERSION.
+  # Since sibling is TEST_TMP + "-evil", the relative path is ../<basename>-evil/VERSION
+  local base
+  base="$(basename "$TEST_TMP")"
+  local relative="../${base}-evil/VERSION"
+
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<YAML
+project_root: "$TEST_TMP"
+project_path: "$TEST_TMP"
+memory_path: "$TEST_TMP/.gaia/memory"
+checkpoint_path: "$TEST_TMP/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP"
+framework_version: "1.197.0"
+date: "2026-06-18"
+
+release:
+  version_files:
+    - $relative
+YAML
+
+  run node "$VERSION_BUMP_JS" patch \
+    --config "$TEST_TMP/.gaia/config/project-config.yaml" \
+    --project-root "$TEST_TMP"
+
+  echo "output: $output"
+  echo "status: $status"
+
+  # Must exit non-zero — the path shares a prefix but is outside the root.
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"outside"* ]]
+}
+
+@test "version-bump allows a valid in-repo path after path-traversal guard is in place" {
+  _scaffold_project "5.0.0"
+
+  run node "$VERSION_BUMP_JS" patch \
+    --config "$TEST_TMP/.gaia/config/project-config.yaml" \
+    --project-root "$TEST_TMP"
+
+  echo "output: $output"
+  echo "status: $status"
+
+  # Must succeed — all paths are inside the project root.
+  [ "$status" -eq 0 ]
+
+  # Files must have been bumped.
+  local pj_ver
+  pj_ver=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$TEST_TMP/plugin.json','utf8')).version)")
+  [ "$pj_ver" = "5.0.1" ]
+}

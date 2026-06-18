@@ -619,3 +619,96 @@ YAML
   [[ "$output" == *"run_ordered_deploy is a function"* ]]
   [[ "$output" == *"main is a function"* ]]
 }
+
+# ===========================================================================
+# best-effort mode requires --state-dir
+# ===========================================================================
+
+@test "best-effort mode without --state-dir exits non-zero and names the missing flag" {
+  write_config "$TEST_TMP/project-config.yaml"
+
+  run bash "$DEPLOY_ORDERED" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --env staging \
+    --version "1.0.0" \
+    --output-dir "$TEST_TMP/evidence" \
+    --deploy-bin "$TEST_TMP/shims/deploy-ok.sh" \
+    --health-bin "$TEST_TMP/shims/health-ok.sh" \
+    --smoke-bin "$TEST_TMP/shims/smoke-ok.sh" \
+    --mode best-effort
+
+  echo "output: $output"
+  echo "status: $status"
+
+  # Must exit non-zero (usage error).
+  [ "$status" -eq 2 ]
+  # Error message must name the missing flag.
+  [[ "$output" == *"--state-dir"* ]]
+  [[ "$output" == *"best-effort"* ]]
+}
+
+@test "best-effort mode with empty --state-dir exits non-zero and names the missing flag" {
+  write_config "$TEST_TMP/project-config.yaml"
+
+  run bash "$DEPLOY_ORDERED" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --env staging \
+    --version "1.0.0" \
+    --output-dir "$TEST_TMP/evidence" \
+    --deploy-bin "$TEST_TMP/shims/deploy-ok.sh" \
+    --health-bin "$TEST_TMP/shims/health-ok.sh" \
+    --smoke-bin "$TEST_TMP/shims/smoke-ok.sh" \
+    --mode best-effort \
+    --state-dir ""
+
+  echo "output: $output"
+  echo "status: $status"
+
+  # Must exit non-zero (usage error).
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--state-dir"* ]]
+  [[ "$output" == *"best-effort"* ]]
+}
+
+@test "best-effort mode with --state-dir works normally" {
+  write_config "$TEST_TMP/project-config.yaml"
+  mkdir -p "$TEST_TMP/state"
+
+  run bash "$DEPLOY_ORDERED" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --env staging \
+    --version "1.0.0" \
+    --output-dir "$TEST_TMP/evidence" \
+    --deploy-bin "$TEST_TMP/shims/deploy-ok.sh" \
+    --health-bin "$TEST_TMP/shims/health-ok.sh" \
+    --smoke-bin "$TEST_TMP/shims/smoke-ok.sh" \
+    --mode best-effort \
+    --state-dir "$TEST_TMP/state"
+
+  echo "output: $output"
+  echo "status: $status"
+
+  # Must succeed.
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASSED"* ]]
+}
+
+@test "strict mode without --state-dir works normally (no regression)" {
+  write_config "$TEST_TMP/project-config.yaml"
+
+  run bash "$DEPLOY_ORDERED" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --env staging \
+    --version "1.0.0" \
+    --output-dir "$TEST_TMP/evidence" \
+    --deploy-bin "$TEST_TMP/shims/deploy-ok.sh" \
+    --health-bin "$TEST_TMP/shims/health-ok.sh" \
+    --smoke-bin "$TEST_TMP/shims/smoke-ok.sh" \
+    --mode strict
+
+  echo "output: $output"
+  echo "status: $status"
+
+  # Must succeed — strict mode never requires --state-dir.
+  [ "$status" -eq 0 ]
+}

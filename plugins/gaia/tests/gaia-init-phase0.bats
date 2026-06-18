@@ -289,3 +289,30 @@ JSON
   grep -qE "^### Step 4 " "$SKILL_MD"
   grep -qE "^### Step 5 " "$SKILL_MD"
 }
+
+# ---- gitignore scaffold includes evidence directory ignore -------------------
+
+@test "init scaffold gitignore template includes .gaia/evidence/ entry" {
+  # The gitignore block is defined inline in generate-config.sh.
+  # Verify the script's gaia_block variable includes .gaia/evidence/.
+  grep -q '\.gaia/evidence/' "$SKILL_SCRIPTS/generate-config.sh"
+}
+
+@test "init scaffold seeds .gaia/evidence/ in generated .gitignore" {
+  phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
+    --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
+  local gi="$FIXTURE_ROOT/.gitignore"
+  [ -f "$gi" ]
+  grep -qF '.gaia/evidence/' "$gi"
+}
+
+@test "init scaffold back-fills .gaia/evidence/ into existing .gitignore" {
+  # Seed a .gitignore that already has the marker but lacks the evidence entry.
+  mkdir -p "$FIXTURE_ROOT"
+  printf '# --- GAIA (added by /gaia-init) ---\n.gaia/memory/\n.gaia/state/\n.gaia/config/\n' \
+    > "$FIXTURE_ROOT/.gitignore"
+
+  phase0_bundle web | "$SKILL_SCRIPTS/generate-config.sh" \
+    --path "$FIXTURE_ROOT" --name "myapp" --phase minimal
+  grep -qF '.gaia/evidence/' "$FIXTURE_ROOT/.gitignore"
+}
