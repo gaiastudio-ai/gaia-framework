@@ -43,6 +43,9 @@ jobs:
           if [[ ! -f "$config_path" ]]; then
             echo "[NOTICE] selective-tests: no project-config at ${config_path} — emitting empty matrix (reference workflow; configure .gaia/config/project-config.yaml in your project to enable)"
             echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+            # Write a full-deploy artifact so downstream consumers always
+            # have a file to read, even when config is absent.
+            echo '{"stacks":["*"]}' > affected-set.json
             exit 0
           fi
           matrix_json="$(plugins/gaia/scripts/selective-test-driver.sh \
@@ -50,6 +53,30 @@ jobs:
             --trigger "${{ steps.trigger.outputs.type }}" \
             --files-from "${{ steps.changes.outputs.files }}")"
           echo "matrix=${matrix_json}" >> "$GITHUB_OUTPUT"
+
+          # Extract affected stack names from the matrix JSON and write the
+          # affected-set artifact. The artifact uses a simple schema:
+          #   {"stacks": ["stack-a", "stack-b"]}
+          # The wildcard sentinel ["*"] means "all stacks" (full deploy).
+          # An empty array [] means "no stacks affected" (docs-only change).
+          python3 -c "
+          import json, sys
+          matrix = json.loads(sys.argv[1])
+          includes = matrix.get('include', [])
+          stacks = [entry['stack'] for entry in includes if 'stack' in entry]
+          # Preserve the wildcard if the pipeline escalated to all stacks
+          if not stacks and sys.argv[1].strip() not in ('', '{\"include\":[]}'):
+              stacks = ['*']
+          json.dump({'stacks': stacks}, sys.stdout, separators=(',', ':'))
+          " "$matrix_json" > affected-set.json
+
+      - name: Upload affected-set artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: affected-set
+          path: affected-set.json
+          retention-days: 5
+          if-no-files-found: warn
 
   test:
     name: test (${{ matrix.stack }})
