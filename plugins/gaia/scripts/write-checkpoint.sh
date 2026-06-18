@@ -259,11 +259,31 @@ iso8601_us() {
 
 TIMESTAMP=$(iso8601_us)
 
-# Guarantee uniqueness: if a file with this name somehow already exists
-# (same-microsecond concurrent write on slow sha256), append pid.
+# Guarantee a distinct file per write, even under same-microsecond
+# concurrency. A plain check-then-write ([ -e ] then later mv) has a
+# TOCTOU window: two concurrent same-step writers can both observe the
+# bare name as absent, both pick it, and the second mv clobbers the first
+# — yielding one file where the contract requires two. Instead, claim the
+# target name ATOMICALLY now (noclobber `> file`, which is O_EXCL) and, on
+# collision, fall through to a pid- then counter-disambiguated name until
+# the claim succeeds. The reservation closes the race window at selection
+# time, not after the long JSON/checksum build. The basename always ends
+# in `-step-N.json`, so globs and the filename-convention test are
+# unaffected.
+_claim() {
+  # Atomically create an empty placeholder at "$1"; succeed only if it did
+  # not already exist. Returns non-zero on collision or mkdir-less failure.
+  ( set -C; : > "$1" ) 2>/dev/null
+}
 FINAL="$SKILL_DIR/${TIMESTAMP}-step-${STEP_NUMBER}.json"
-if [ -e "$FINAL" ]; then
+if ! _claim "$FINAL"; then
   FINAL="$SKILL_DIR/${TIMESTAMP}-pid${$}-step-${STEP_NUMBER}.json"
+  _claim_n=0
+  while ! _claim "$FINAL"; do
+    _claim_n=$((_claim_n + 1))
+    FINAL="$SKILL_DIR/${TIMESTAMP}-pid${$}-${_claim_n}-step-${STEP_NUMBER}.json"
+    [ "$_claim_n" -gt 1000 ] && die 3 "could not allocate a unique checkpoint filename under $SKILL_DIR"
+  done
 fi
 TMP="${FINAL}.tmp.$$"
 
