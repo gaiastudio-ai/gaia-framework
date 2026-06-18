@@ -567,6 +567,8 @@ This fallback is retained for ONE minor version (v1.131.x → v1.132.0) so brown
 users with stale plugins do not break mid-upgrade. It will be removed in v1.132.0.
 <!-- step10 script-wiring end -->
 
+**Skill rename advisory (optional).** If the story involves renaming a skill directory or test file, run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/skill-rename-preflight.sh --old <old-name> --new <new-name>` before pushing. The helper scans CI workflows, knowledge CSVs, lifecycle YAML, both test directories, and the renamed SKILL.md for stale references. It always exits 0 (advisory, non-blocking).
+
 - Run `scripts/git-branch.sh` to verify branch state.
 - Stage and commit with conventional commit format.
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh` to push the current branch to `origin`. The shared helper (a) refuses to push from `main` / `staging` (delegating to `lib/dev-story-security-invariants.sh::assert_branch_not_protected` when present), (b) retries ONCE on transient network errors (e.g., `Could not resolve host`, `Operation timed out`) with a 5-second backoff, and (c) fails LOUDLY on auth / permission errors with no retry. DO NOT inline `git push` here — the helper is the single source of truth.

@@ -181,6 +181,15 @@ is_allowlisted() {
   # registered in workflow-manifest.csv, gaia-help.csv, and
   # lifecycle-sequence.yaml. Same precedent as test-manual-skill.bats above.
   [[ "$path" == */plugins/gaia/tests/deploy-skill-rename.bats ]] && return 0
+  # skill-rename-preflight.sh is the rename pre-flight helper itself: it greps
+  # for the very rename surfaces (workflow-manifest.csv, gaia-help.csv,
+  # lifecycle-sequence.yaml) so a maintainer renaming a skill sees every place
+  # the old name must change. The literal tokens appear as the helper's search
+  # targets and in its usage comments, not as active dead references. Its bats
+  # companion fixtures and asserts the same tokens. Same precedent as
+  # deploy-skill-rename.bats above.
+  [[ "$path" == */plugins/gaia/skills/gaia-dev-story/scripts/skill-rename-preflight.sh ]] && return 0
+  [[ "$path" == */plugins/gaia/tests/skill-rename-preflight.bats ]] && return 0
   # static-next-steps.bats is the parity guard for next-step routing.
   # It asserts zero `lifecycle-sequence.yaml` references across the target
   # SKILL.md files; the literal token appears in assertions and prose
