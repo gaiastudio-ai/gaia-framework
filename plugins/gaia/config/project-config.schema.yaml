@@ -318,3 +318,9 @@ fields:
     required: false
     default: null
     description: "Visual regression configuration for the browser surface pixel-diff. Sub-keys: threshold_percent (float, default 0.1 — percentage of pixels allowed to differ before a diff is considered FAILED; at-threshold passes); breakpoints (list of viewport widths, default [1440]); mask_regions (list of {x, y, w, h, label} rectangles excluded from comparison before diffing — use for dynamic content like clocks or ads)."
+
+  release:
+    type: map
+    required: false
+    default: null
+    description: "Release version-bump configuration. Sub-keys: version_files (list of file paths relative to project root — each file is bumped by /gaia-release's version-bump.js). Supported file formats: JSON files with a top-level \"version\" key (package.json, plugin.json) and plain-text files containing only a semver string (VERSION). When absent, /gaia-release emits a clear error naming `release.version_files` as the missing key."

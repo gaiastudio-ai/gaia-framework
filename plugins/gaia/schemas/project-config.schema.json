@@ -715,7 +715,20 @@
         }
       ]
     },
-    "health_check": { "$ref": "#/definitions/healthCheck" }
+    "health_check": { "$ref": "#/definitions/healthCheck" },
+    "release": {
+      "description": "Release version-bump configuration. version_files lists file paths (relative to project root) that /gaia-release bumps. Supported formats: JSON with a top-level \"version\" key, and plain-text files containing only a semver string.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version_files": {
+          "description": "List of file paths (relative to project root) whose version string is bumped by version-bump.js.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    }
   },
   "allOf": [
     {

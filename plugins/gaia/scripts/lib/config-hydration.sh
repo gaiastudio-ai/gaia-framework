@@ -90,6 +90,7 @@ _CONFIG_HYDRATION_ALLOWLIST=(
   distribution
   health_check
   val_integration
+  release
 )
 
 # Sections that are intentionally NOT auto-hydrated. The reconciler MUST recognize these
