@@ -77,7 +77,7 @@ REQUIRED_FILES=(
   "tests/skills/gaia-nfr.bats"
   "tests/skills/gaia-perf-testing-hints.bats"
   "tests/skills/gaia-perf-testing.bats"
-  "tests/skills/gaia-post-deploy.bats"
+  "tests/skills/gaia-deploy-post.bats"
   "tests/skills/gaia-refresh-ground-truth-hints.bats"
   "tests/skills/gaia-release-plan.bats"
   "tests/skills/gaia-review-deps-hints.bats"

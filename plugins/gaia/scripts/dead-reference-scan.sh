@@ -177,6 +177,10 @@ is_allowlisted() {
   # that gaia-help.csv + workflow-manifest.csv contain the registration row.
   # Same precedent as test-manual-skill.bats above.
   [[ "$path" == */plugins/gaia/tests/manual-test-docs.bats ]] && return 0
+  # deploy-skill-rename.bats asserts the category-first skill rename is
+  # registered in workflow-manifest.csv, gaia-help.csv, and
+  # lifecycle-sequence.yaml. Same precedent as test-manual-skill.bats above.
+  [[ "$path" == */plugins/gaia/tests/deploy-skill-rename.bats ]] && return 0
   # static-next-steps.bats is the parity guard for next-step routing.
   # It asserts zero `lifecycle-sequence.yaml` references across the target
   # SKILL.md files; the literal token appears in assertions and prose

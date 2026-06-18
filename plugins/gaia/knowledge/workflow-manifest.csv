@@ -56,7 +56,7 @@ name,displayName,description,module,phase,path,command,agent
 "infrastructure-design","Infrastructure Design","Design deployment topology and IaC","lifecycle","3-solutioning","_gaia/lifecycle/workflows/3-solutioning/infrastructure-design/workflow.yaml","gaia-infra-design","devops"
 "deployment-checklist","Deployment Checklist","Pre-deployment verification checklist","lifecycle","5-deployment","_gaia/lifecycle/workflows/5-deployment/deployment-checklist/workflow.yaml","gaia-deploy-checklist","devops"
 "release-plan","Release Plan","Staged rollout and release strategy","lifecycle","5-deployment","_gaia/lifecycle/workflows/5-deployment/release-plan/workflow.yaml","gaia-release-plan","devops"
-"post-deploy-verify","Post-Deploy Verify","Post-deployment health validation","lifecycle","5-deployment","_gaia/lifecycle/workflows/5-deployment/post-deploy-verify/workflow.yaml","gaia-post-deploy","devops"
+"post-deploy-verify","Post-Deploy Verify","Post-deployment health validation","lifecycle","5-deployment","_gaia/lifecycle/workflows/5-deployment/post-deploy-verify/workflow.yaml","gaia-deploy-post","devops"
 "rollback-plan","Rollback Plan","Rollback trigger criteria and procedures","lifecycle","5-deployment","_gaia/lifecycle/workflows/5-deployment/rollback-plan/workflow.yaml","gaia-rollback-plan","devops"
 "perf-deepdive","Performance Review","Analyze performance bottlenecks","lifecycle","anytime","_gaia/lifecycle/workflows/anytime/performance-review/workflow.yaml","gaia-perf-deepdive","performance"
 "slide-deck","Slide Deck","Create presentation slide deck","creative","anytime","_gaia/creative/workflows/slide-deck/workflow.yaml","gaia-slide-deck","presentation-designer"

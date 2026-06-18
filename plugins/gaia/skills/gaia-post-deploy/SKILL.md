@@ -1,97 +1,43 @@
 ---
 name: gaia-post-deploy
-description: Post-deployment health and metric validation with structured pass/fail report. Use when "post-deploy verify" or /gaia-post-deploy.
-version: 1.0.0
-agent: any
-triggers:
-  - post-deploy verify
-  - post-deploy
-  - deployment verification
-  - health check
-allowed-tools: [Read, Grep, Glob, Bash, Write, Edit]
+description: "DEPRECATED — This skill has been renamed to /gaia-deploy-post (category-first naming). Preserved as a thin one-sprint deprecation redirect."
+argument-hint: ""
+allowed-tools: [Read, Bash, Skill]
+deprecated_aliases: [gaia-post-deploy]
+deprecated_since: sprint-63
+replaced_by: [gaia-deploy-post]
 orchestration_class: light-procedural
 ---
 
 ## Setup
 
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-post-deploy/scripts/setup.sh
+!${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo >/dev/null 2>&1 || true
+
+## Deprecation Notice
+
+> **This skill has been renamed.** `/gaia-post-deploy` is now `/gaia-deploy-post` to follow category-first naming (`gaia-deploy-*`) consistent with the rest of the deploy/release skill family (`gaia-deploy`, `gaia-deploy-checklist`, `gaia-release`, `gaia-release-plan`).
+>
+> The full capability — health checks, smoke tests, metric validation, canary analysis, and post-deployment report generation — is unchanged and lives at `/gaia-deploy-post`. This stub exists for one sprint to redirect callers; it will be removed after sprint-64.
 
 ## Mission
 
-You are validating a deployment by checking service health, running smoke tests, and verifying that production metrics remain within SLO bounds. Your output is a structured pass/fail report covering every verification dimension.
+This skill is a thin deprecation redirect. It exists only to surface the rename notice and point callers at the canonical replacement:
 
-This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/5-deployment/post-deploy-verify` workflow. It follows the canonical skill pattern established by the code-review and deploy-checklist skills.
-
-**Write context:** This skill uses `allowed-tools: Read Grep Glob Bash Write Edit` because it writes the post-deployment report artifact to `.gaia/artifacts/implementation-artifacts/`.
-
-**Foundation script integration:** Health endpoint checks, error rate calculations, and metric validation are deterministic operations -- they belong in bash scripts invoked inline via `!scripts/*.sh` calls, not in LLM prose. The skill delegates all measurable checks to scripts and reserves prose for analysis, canary comparison, and report generation.
-
-## Critical Rules
-
-- Health checks MUST pass before declaring a deployment successful.
-- Metrics MUST be within SLO bounds -- error rate, latency, and throughput all verified.
-- If any critical check fails, the report MUST recommend rollback and link to `/gaia-rollback-plan`.
-- The `resolve-config.sh` foundation script MUST be present and executable. If missing or not executable, HALT with: "resolve-config.sh not found at {path}. Ensure foundation scripts are deployed." (AC-EC3).
-- Unreachable endpoints MUST be reported with specific error details (timeout, DNS failure, connection refused) and remediation guidance -- never silently ignored (AC-EC1).
-- Error rate threshold boundary behavior: `<= threshold` passes, `> threshold` fails. This boundary rule is deterministic and documented here for consistency (AC-EC5).
-- Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
-- **`environments[].kind` gate.** BEFORE any post-deploy verification phase runs, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-env-kind.sh` and call `gaia_resolve_env_kind <project-config.yaml> <env-id>`. If the resolved kind is NOT `deployable`, HALT non-zero with the canonical stderr text: `environment '<env-id>' is kind: <kind> — use /gaia-publish instead`. Symmetric to `/gaia-deploy`'s gate. No post-deploy step runs; no health-check probes fire.
+- To run post-deployment verification -> run **`/gaia-deploy-post`**.
 
 ## Steps
 
-### Step 1 -- Health Checks
+> **Note:** This redirect performs no writes. The full post-deploy verification skill lives at `plugins/gaia/skills/gaia-deploy-post/`.
 
-Verify application health endpoints respond correctly:
+### Step 1 -- Display Deprecation Banner
 
-- Check all configured health endpoints respond within the configured timeout.
-- For each endpoint, verify HTTP status code is 2xx.
-- Confirm service connectivity: databases, caches, queues, external APIs.
-- Check all containers/instances are running and report healthy status.
+Display:
 
-**Unreachable endpoint handling (AC-EC1):** If any endpoint is unreachable (timeout, DNS failure, connection refused), do NOT skip it. Record the specific error type, the endpoint URL, and the failure reason. Mark the endpoint as FAILED in the report with remediation guidance:
-- Timeout: "Endpoint {url} timed out after {N}s. Check service is running and network routing."
-- DNS failure: "Endpoint {url} DNS resolution failed. Verify DNS records and service discovery."
-- Connection refused: "Endpoint {url} connection refused. Verify service is listening on expected port."
+```
+/gaia-post-deploy has been renamed to /gaia-deploy-post (category-first naming).
+Run /gaia-deploy-post for post-deployment health and metric validation.
+```
 
-### Step 2 -- Smoke Tests
+### Step 2 -- Offer the Replacement
 
-Execute critical path validation against the deployed version:
-
-- Login flow or primary authentication path.
-- Core feature happy path (the single most important user journey).
-- Key API endpoints return expected response shapes and status codes.
-- Static assets and CDN serving correctly (if applicable).
-
-### Step 3 -- Metric Validation
-
-Check production metrics against SLO bounds:
-
-- **Error rate:** Must be at or below the configured threshold. Boundary rule: error rate `<= threshold` passes, error rate `> threshold` fails (AC-EC5). This is deterministic -- use `!scripts/*.sh` for the comparison.
-- **Latency:** P50, P95, P99 must be within acceptable range compared to baseline.
-- **Throughput:** Request rate should match expected levels for the deployment window.
-- **Resource utilization:** CPU, memory, and disk usage within normal operating bounds.
-
-### Step 4 -- Canary Analysis
-
-If the deployment uses a canary strategy:
-
-- Compare canary instance metrics against baseline (non-canary) instances.
-- Evaluate statistical significance of any metric differences.
-- Recommend one of: **proceed** (metrics equivalent or better), **hold** (inconclusive, extend observation), or **rollback** (statistically significant regression).
-
-If the deployment is not a canary deployment, note "Canary analysis: N/A -- full deployment" in the report.
-
-### Step 5 -- Generate Post-Deployment Report
-
-Write the post-deployment report to `.gaia/artifacts/implementation-artifacts/post-deploy-{date}.md` containing:
-
-1. **Deployment Summary** -- version deployed, environment, timestamp, deployment method.
-2. **Health Check Results** -- table of endpoints with status (PASS/FAIL), response time, and error details for failures.
-3. **Smoke Test Results** -- each test with pass/fail status and any failure details.
-4. **Metric Comparison** -- current vs baseline for error rate, latency (P50/P95/P99), throughput, resource utilization.
-5. **Canary Analysis** -- comparison results and recommendation (if applicable).
-6. **Overall Deployment Status** -- **PASS** (all checks green) or **FAIL** (any critical check failed, with rollback recommendation).
-
-## Finalize
-
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-post-deploy/scripts/finalize.sh
+If the user confirms they want post-deploy verification, dispatch `/gaia-deploy-post` via the Skill tool. Otherwise stop.

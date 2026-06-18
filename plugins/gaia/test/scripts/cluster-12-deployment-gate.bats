@@ -141,12 +141,13 @@ run_deploy_gates() {
 # ---------- AC5: post-deploy-verify validates health endpoints ----------
 
 @test "AC5: post-deploy-verify skill is wired and fixture contains health endpoint data" {
-  # Given the gaia-post-deploy SKILL.md exists with correct frontmatter
-  local skill_file="$SKILLS_DIR/gaia-post-deploy/SKILL.md"
+  # Given the gaia-deploy-post SKILL.md exists with correct frontmatter
+  # (renamed from gaia-post-deploy to category-first gaia-deploy-post)
+  local skill_file="$SKILLS_DIR/gaia-deploy-post/SKILL.md"
   [ -f "$skill_file" ]
 
   # And the skill has a scripts directory with setup.sh
-  local setup_script="$SKILLS_DIR/gaia-post-deploy/scripts/setup.sh"
+  local setup_script="$SKILLS_DIR/gaia-deploy-post/scripts/setup.sh"
   [ -f "$setup_script" ]
 
   # And the health endpoints fixture contains endpoint configuration
@@ -162,6 +163,6 @@ run_deploy_gates() {
   [ "$output" -ge 2 ]
 
   # And the SKILL.md frontmatter declares the correct skill name
-  run grep "name: gaia-post-deploy" "$skill_file"
+  run grep "name: gaia-deploy-post" "$skill_file"
   [ "$status" -eq 0 ]
 }

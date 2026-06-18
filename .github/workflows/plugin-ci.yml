@@ -148,6 +148,7 @@ jobs:
             tests/skills/gaia-deploy-adapter-dispatch.bats \
             tests/skills/gaia-deploy-checklist.bats \
             tests/skills/gaia-deploy-failures.bats \
+            tests/skills/gaia-deploy-post.bats \
             tests/skills/gaia-deploy.bats \
             tests/skills/gaia-dev-story-e41-s3-yolo-val-on-tdd-phases.bats \
             tests/skills/gaia-dev-story-figma-degrade.bats \
@@ -165,7 +166,6 @@ jobs:
             tests/skills/gaia-nfr.bats \
             tests/skills/gaia-perf-testing-hints.bats \
             tests/skills/gaia-perf-testing.bats \
-            tests/skills/gaia-post-deploy.bats \
             tests/skills/gaia-refresh-ground-truth-hints.bats \
             tests/skills/gaia-release-plan.bats \
             tests/skills/gaia-review-deps-hints.bats \

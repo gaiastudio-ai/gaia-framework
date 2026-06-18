@@ -59,7 +59,7 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "lifecycle","3-solutioning","infrastructure-design","infra-design","gaia-infra-design","false","devops","Design deployment topology and IaC",".gaia/artifacts/planning-artifacts"
 "lifecycle","5-deployment","deployment-checklist","deploy-checklist","gaia-deploy-checklist","false","devops","Pre-deployment verification checklist",".gaia/artifacts/implementation-artifacts"
 "lifecycle","5-deployment","release-plan","release-plan","gaia-release-plan","false","devops","Staged rollout and release strategy",".gaia/artifacts/implementation-artifacts"
-"lifecycle","5-deployment","post-deploy-verify","post-deploy","gaia-post-deploy","false","devops","Post-deployment health validation",".gaia/artifacts/implementation-artifacts"
+"lifecycle","5-deployment","post-deploy-verify","deploy-post","gaia-deploy-post","false","devops","Post-deployment health validation",".gaia/artifacts/implementation-artifacts"
 "lifecycle","5-deployment","rollback-plan","rollback-plan","gaia-rollback-plan","false","devops","Rollback trigger criteria and procedures",".gaia/artifacts/implementation-artifacts"
 "lifecycle","anytime","perf-deepdive","perf-deepdive","gaia-perf-deepdive","false","performance","Analyze performance bottlenecks",".gaia/artifacts/test-artifacts"
 "creative","anytime","slide-deck","slide-deck","gaia-slide-deck","false","presentation-designer","Create presentation slide deck",".gaia/artifacts/creative-artifacts"

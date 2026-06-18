@@ -59,7 +59,7 @@
       <h1>Phase 5 for Non-Deployable Projects</h1>
       <p>
         Phase 5 is the deployment phase of the GAIA lifecycle. Before the multi-shape model,
-        Phase 5 always meant <code>/gaia-deploy</code> + <code>/gaia-post-deploy</code>.
+        Phase 5 always meant <code>/gaia-deploy</code> + <code>/gaia-deploy-post</code>.
         That assumption breaks for plugins, libraries, CLIs, mobile apps, container images, and
         static sites -- none of which have a deployable URL to push to. This tutorial covers the
         routing extension that lets <code>/gaia-help</code> recommend the right command
@@ -70,7 +70,7 @@
         <h2>What Phase 5 used to mean</h2>
         <p>
           The original Phase 5 contract: you have a staging URL and a production URL, you run
-          <code>/gaia-deploy --env staging</code>, then <code>/gaia-post-deploy --env staging</code>
+          <code>/gaia-deploy --env staging</code>, then <code>/gaia-deploy-post --env staging</code>
           to verify, then promote to production via the promotion chain. That's still the correct
           flow when you HAVE deployable environments. The problem is GAIA assumed everyone did.
         </p>
