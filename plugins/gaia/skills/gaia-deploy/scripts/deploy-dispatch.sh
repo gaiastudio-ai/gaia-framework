@@ -2,7 +2,8 @@
 # deploy-dispatch.sh — /gaia-deploy Pattern A deploy phase.
 #
 # Resolves the deploy adapter command and invokes it with --env / --version /
-# --output-dir. No retries. Captures stdout/stderr to evidence files.
+# --output-dir / [--components]. No retries. Captures stdout/stderr to
+# evidence files.
 #
 # Adapter resolution precedence:
 #   1. GAIA_DEPLOY_ADAPTER_CMD env-var (test seam — invoked positionally for
@@ -25,6 +26,11 @@
 #   (the user must configure `deployment.adapter` or
 #   `distribution.channels[].deploy_adapter` to dispatch a non-default
 #   adapter).
+#
+# Optional flags:
+#   --components <list>  Comma-separated list of component names to deploy.
+#                        When provided, passed through to the adapter.
+#                        Omitted → full deploy (all components).
 #
 # Exit codes:
 #   0  — adapter exited 0
@@ -52,16 +58,18 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 ENV_NAME=""
 VERSION=""
 OUTPUT_DIR=""
+COMPONENTS=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --env) ENV_NAME="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+    --components) COMPONENTS="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
 $SCRIPT_NAME — deploy adapter dispatch.
-Usage: $SCRIPT_NAME --env <env> --version <ver> --output-dir <dir>
+Usage: $SCRIPT_NAME --env <env> --version <ver> --output-dir <dir> [--components <list>]
 EOF
       exit 0 ;;
     *) log "unknown arg: $1"; exit 2 ;;
@@ -98,13 +106,17 @@ if [ -n "$ADAPTER_CMD" ]; then
     exit 127
   fi
   rc=0
-  "$ADAPTER_CMD" "$ENV_NAME" "$VERSION" "$OUTPUT_DIR" || rc=$?
+  if [ -n "$COMPONENTS" ]; then
+    "$ADAPTER_CMD" "$ENV_NAME" "$VERSION" "$OUTPUT_DIR" "$COMPONENTS" || rc=$?
+  else
+    "$ADAPTER_CMD" "$ENV_NAME" "$VERSION" "$OUTPUT_DIR" || rc=$?
+  fi
   if [ "$rc" -ne 0 ]; then
     log "BLOCKED: deploy adapter exited $rc (no auto-retry)"
     log "  remediation: investigate adapter logs in $OUTPUT_DIR; consider /gaia-rollback-plan (manual)"
     exit 1
   fi
-  log "deploy phase: PASSED (env=$ENV_NAME version=$VERSION)"
+  log "deploy phase: PASSED (env=$ENV_NAME version=$VERSION${COMPONENTS:+ components=$COMPONENTS})"
   exit 0
 fi
 
@@ -136,8 +148,8 @@ resolve_config_path() {
     printf '%s' ".gaia/config/project-config.yaml"
     return 0
   fi
-  if [ -f ".gaia/config/project-config.yaml" ]; then
-    printf '%s' ".gaia/config/project-config.yaml"
+  if [ -f "config/project-config.yaml" ]; then
+    printf '%s' "config/project-config.yaml"
     return 0
   fi
   if [ -f "project-config.yaml" ]; then
@@ -359,9 +371,13 @@ fi
 
 # Single-shot invocation — no retries. On failure, suggest rollback in
 # the conversation log but never invoke /gaia-rollback-plan.
-log "deploy phase: dispatching '$ADAPTER_NAME' (source: $RESOLUTION_SOURCE)"
+log "deploy phase: dispatching '$ADAPTER_NAME' (source: $RESOLUTION_SOURCE)${COMPONENTS:+ components=$COMPONENTS}"
 rc=0
-"$RUN_SH" --env "$ENV_NAME" --version "$VERSION" --output-dir "$OUTPUT_DIR" || rc=$?
+if [ -n "$COMPONENTS" ]; then
+  "$RUN_SH" --env "$ENV_NAME" --version "$VERSION" --output-dir "$OUTPUT_DIR" --components "$COMPONENTS" || rc=$?
+else
+  "$RUN_SH" --env "$ENV_NAME" --version "$VERSION" --output-dir "$OUTPUT_DIR" || rc=$?
+fi
 
 if [ "$rc" -ne 0 ]; then
   log "BLOCKED: deploy adapter '$ADAPTER_NAME' exited $rc (no auto-retry)"
@@ -369,5 +385,5 @@ if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
-log "deploy phase: PASSED (env=$ENV_NAME version=$VERSION adapter=$ADAPTER_NAME)"
+log "deploy phase: PASSED (env=$ENV_NAME version=$VERSION adapter=$ADAPTER_NAME${COMPONENTS:+ components=$COMPONENTS})"
 exit 0
