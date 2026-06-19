@@ -14,6 +14,15 @@ orchestration_class: light-procedural
 
 You are running the Phase 5 publish action for a non-deployable project. The skill mirrors `/gaia-deploy` semantics — sequential, transparent, no auto-retry, no auto-rollback — but targets `distribution.channel` adapters instead of deploy adapters. The orchestrator is the canonical five-step sequential flow. This command is the recommended Phase 5 action for projects whose detector token is `publish-primary` or `deploy-and-publish` (see `gaia-help` SKILL.md).
 
+## Relationship to `distribution.release_workflow` (which mechanism ships the artifact?)
+
+Two publish mechanisms can coexist; this section defines which is canonical so an operator following the docs is never surprised by "the release was driven by something other than `/gaia-publish`."
+
+- **When `distribution.release_workflow` is set** (e.g. `release.yml`) AND the channel is a path-based marketplace where the workflow itself cuts the tag + GitHub Release on the merged `chore(release): vX.Y.Z` commit: **the `release_workflow` IS the publish.** It is triggered by the human-merged release PR, not by this skill. In that configuration, `/gaia-publish`'s role is to **await and verify** that workflow's outcome — Step 3 (trigger) confirms/awaits the `release_workflow` run rather than dispatching a `distribution.channel` adapter, and Steps 4-5 perform the post-publish registry probe + verdict against the published tag/Release. `/gaia-publish` does NOT open or merge the release PR (the Actions-token PR-create restriction means a human or a `RELEASE_PAT` opens it — see the release workflow's job summary).
+- **When `distribution.release_workflow` is unset** (a direct registry channel such as `npm`, `pypi`, `app-store-connect`): `/gaia-publish` Step 3 dispatches the `distribution.channel` adapter directly — this is the original five-step flow.
+
+`/gaia-help` routes branch-only + `release_workflow` projects with this contract in mind: the auto path is `release.yml` (merge the release PR → tag + Release), and `/gaia-publish` is the post-hoc verify/verdict gate, not a second, competing publish trigger. Never drive both as independent publishers of the same version.
+
 ## Critical Rules
 
 - The five-step order is **non-negotiable**: (1) pre-publish gate → (2) manifest version check → (3) trigger publish → (4) post-publish verify → (5) final verdict. No reordering, no step skipping (except `--dry-run` and `--skip-verify` per the documented opt-out).
