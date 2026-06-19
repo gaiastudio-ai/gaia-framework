@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.201.0] — 2026-06-19
+
+### Added
+
+- (E117-S4) documentation sync for the two new developer agents (#1602)
+- (E117-S3) tag-conformance patterns + closed-set bats 7→9 expansio (#1601)
+- (E117-S2) embedded-dev agent (Nils) + canonical-stack wiring + high (#1600)
+- (E117-S1) bash-dev agent (Shay) + canonical-stack wiring (#1599)
+
+### Fixed
+
+- (framework) yolo session-binding, squash under-bump, config walk, release-PR signal (#1608)
+
 ## [1.200.0] — 2026-06-19
 
 ### Added
