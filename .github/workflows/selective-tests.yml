@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.driver.outputs.matrix }}
+      config_path: ${{ steps.cfg.outputs.config_path }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
         with:
@@ -196,9 +197,15 @@ jobs:
 
       - name: Run stack tests with retry
         run: |
+          # Use the config the plan job resolved (GAIA_CONFIG / the tracked
+          # .gaia/ci-config.yaml slice / CLAUDE_PROJECT_ROOT / upward-walk), not
+          # a hard-coded path — run-stack-tests.sh reads the stack's test command
+          # from it, so it must be the SAME config the matrix was built from.
+          config_path="${{ needs.plan.outputs.config_path }}"
+          [[ -n "$config_path" ]] || config_path=".gaia/config/project-config.yaml"
           plugins/gaia/scripts/run-with-retry.sh \
             --test-id "${{ matrix.stack }}" \
             --flaky-list-file .gaia/config/flaky-tests.txt \
             -- plugins/gaia/scripts/run-stack-tests.sh \
-              --config .gaia/config/project-config.yaml \
+              --config "$config_path" \
               "${{ matrix.stack }}"
