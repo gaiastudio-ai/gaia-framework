@@ -1,0 +1,50 @@
+# Generated CI-scoped config slice — DO NOT EDIT BY HAND.
+# Source: the canonical project-config.yaml (kept outside / gitignored within this repo).
+# Regenerate: plugins/gaia/scripts/gen-ci-config.sh --config <canonical> --out .gaia/ci-config.yaml
+# Carries ONLY CI-matrix inputs (stacks + ci_cd.promotion_chain + test_policy) —
+# no secrets, no local paths, no environments/release/distribution. A CI lint
+# regenerates this and fails on drift.
+stacks:
+  - name: gaia-plugin
+    language: bash
+    paths:
+      - plugins/gaia/scripts/**
+      - plugins/gaia/skills/**
+      - plugins/gaia/agents/**
+      - plugins/gaia/hooks/**
+      - plugins/gaia/tools/**
+      - plugins/gaia/config/**
+      - plugins/gaia/schemas/**
+      - plugins/gaia/rubrics/**
+      - plugins/gaia/templates/**
+      - plugins/gaia/knowledge/**
+      - plugins/gaia/docs/**
+      - plugins/gaia/tests/**
+      - plugins/gaia/test/**
+ci_cd:
+  promotion_chain:
+    - id: staging
+      name: Staging
+      branch: staging
+      ci_provider: github_actions
+      merge_strategy: squash
+      ci_checks:
+        - lint
+        - unit
+        - integration
+        - smoke
+    - id: main
+      name: main
+      branch: main
+      ci_provider: github_actions
+      merge_strategy: squash
+      ci_checks:
+        - smoke
+test_policy:
+  always_run:
+    - gaia-plugin
+  retry_limit: 2
+  triggers:
+    pr:
+      include_stacks:
+        - gaia-plugin

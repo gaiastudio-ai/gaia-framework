@@ -37,15 +37,26 @@ jobs:
           # would miss it, take the "no config -> empty matrix" branch, and
           # silently run the FULL suite on every PR — defeating selective tests.
           #
-          # Resolve via, in order: GAIA_CONFIG (explicit), CLAUDE_PROJECT_ROOT
-          # (project root), then an upward walk from CWD. Mirrors how
-          # gaia-paths.sh / resolve-config.sh resolve a config above a sub-tree.
+          # Resolve via, in order: GAIA_CONFIG (explicit), the tracked in-repo
+          # CI slice (.gaia/ci-config.yaml), CLAUDE_PROJECT_ROOT (project root),
+          # then an upward walk from CWD. Mirrors how gaia-paths.sh /
+          # resolve-config.sh resolve a config above a sub-tree.
+          #
+          # The .gaia/ci-config.yaml tier handles the layout where the canonical
+          # config lives ABOVE the checkout root AND is untracked/gitignored
+          # within the repo (so it is in NO checkout). A minimal, generated,
+          # CI-scoped slice (stacks + ci_cd.promotion_chain + test_policy) is
+          # committed at that path so CI resolves it at the checkout root. See
+          # gen-ci-config.sh + the ci-config-slice drift lint.
           rel=".gaia/config/project-config.yaml"
+          ci_slice=".gaia/ci-config.yaml"
           config_path=""
           location=""
 
           if [[ -n "${GAIA_CONFIG:-}" && -f "${GAIA_CONFIG}" ]]; then
             config_path="${GAIA_CONFIG}"; location="env:GAIA_CONFIG"
+          elif [[ -f "${ci_slice}" ]]; then
+            config_path="${ci_slice}"; location="ci-slice"
           elif [[ -n "${CLAUDE_PROJECT_ROOT:-}" && -f "${CLAUDE_PROJECT_ROOT}/${rel}" ]]; then
             config_path="${CLAUDE_PROJECT_ROOT}/${rel}"; location="env:CLAUDE_PROJECT_ROOT"
           else
@@ -65,7 +76,7 @@ jobs:
           if [[ -n "$config_path" ]]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "config_path=${config_path}" >> "$GITHUB_OUTPUT"
-            if [[ "$location" == "checkout-root" ]]; then
+            if [[ "$location" == "checkout-root" || "$location" == "ci-slice" || "$location" == "env:GAIA_CONFIG" ]]; then
               echo "[selective-tests] project config: ${config_path} (${location})"
             else
               # Present but NOT at the checkout root — a loud warning, because a
