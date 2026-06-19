@@ -200,7 +200,11 @@ jobs:
       # a reference workflow whose test job 127s on a bash/bats stack is broken
       # for every bats-using project. Projects on other stacks can add their own
       # toolchain setup step here (setup-node, setup-go, …) for their languages.
+      # Pin bats >= 1.5.0 — suites that call `bats_require_minimum_version 1.5.0`
+      # fail on the action's older default (1.2.1). Matches the dedicated bats job.
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
+        with:
+          bats-version: 1.10.0
 
       - name: Run stack tests with retry
         run: |
