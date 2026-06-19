@@ -21,8 +21,21 @@
 #   2. GAIA_YOLO_OVERRIDE=no     -> exit 1   (explicit opt-out, e.g. --no-yolo)
 #   3. GAIA_YOLO_FLAG=1          -> exit 0   (direct invocation)
 #   4. GAIA_YOLO_MODE=1          -> exit 0   (inheritance)
-#   5. .yolo-active sentinel     -> exit 0   (cross-tool-call persistence)
+#   5. .yolo-active sentinel     -> exit 0   (cross-tool-call persistence,
+#                                             session-bound — see below)
 #   6. default                   -> exit 1   (interactive)
+#
+# Session binding (Rule 5):
+#   The sentinel is a property of the SESSION that set it, not of the project
+#   forever. `yolo_set` stamps the current session id (CLAUDE_CODE_SESSION_ID,
+#   then CLAUDE_SESSION_ID) into the sentinel file. `is_yolo` honors the
+#   sentinel only when its stored session id matches the current session; a
+#   sentinel from a prior session (or a legacy empty/0-byte one) is treated as
+#   STALE — ignored AND reaped — so it can never silently flip a later
+#   interactive session into YOLO. When NO session id is resolvable on either
+#   side (e.g. CI with neither var exported), the legacy existence-based
+#   contract still applies so the cross-Bash-tool-call persistence within a
+#   single run is preserved.
 #
 # Both GAIA_YOLO_FLAG and GAIA_YOLO_MODE accept ONLY the exact string "1".
 # Values "0", "false", "no", and the empty string fall through to the
@@ -50,10 +63,37 @@
 #
 # Shellcheck: clean (no unsupported constructs).
 
+# _yolo_resolve_sentinel
+# ----------------------
+# Echo the resolved sentinel path. Single source of truth shared by is_yolo,
+# yolo_set, and yolo_clear so the three never drift. Honors an explicit
+# GAIA_YOLO_SENTINEL override, then GAIA_STATE_DIR, then the canonical default.
+_yolo_resolve_sentinel() {
+    if [ -n "${GAIA_YOLO_SENTINEL:-}" ]; then
+        printf '%s' "$GAIA_YOLO_SENTINEL"
+    elif [ -n "${GAIA_STATE_DIR:-}" ]; then
+        printf '%s' "${GAIA_STATE_DIR}/.yolo-active"
+    else
+        printf '%s' ".gaia/state/.yolo-active"
+    fi
+}
+
+# _yolo_session_id
+# ----------------
+# Echo a stable identifier for the CURRENT session, or empty string when none
+# is resolvable. Claude Code exports CLAUDE_CODE_SESSION_ID; CLAUDE_SESSION_ID
+# is the documented manual fallback (see orchestration-warning.sh). When both
+# are unset (CI, sourced unit tests) the empty string signals "no session
+# binding available" and Rule 5 falls back to the legacy existence contract.
+_yolo_session_id() {
+    printf '%s' "${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+}
+
 # is_yolo
 # -------
 # Returns 0 (YOLO active) or 1 (interactive) based on the precedence table
-# above. Pure function — reads env, writes nothing, has no side effects.
+# above. Rule 5 (sentinel) is session-bound and MAY reap a stale sentinel as a
+# side effect; Rules 1-4 and 6 are pure.
 is_yolo() {
     # Rule 1 — Memory-save context is always interactive. The memory-save
     # prompt MUST remain interactive even when YOLO is active at the session
@@ -80,21 +120,32 @@ is_yolo() {
         return 0
     fi
 
-    # Rule 5 — Sentinel file persistence.
+    # Rule 5 — Sentinel file persistence (session-bound).
     # Env vars don't survive across Bash tool calls in Claude Code; the
-    # sentinel file is the cross-call YOLO state contract.
-    local sentinel="${GAIA_YOLO_SENTINEL:-}"
-    if [ -z "$sentinel" ]; then
-        if [ -n "${GAIA_STATE_DIR:-}" ]; then
-            sentinel="${GAIA_STATE_DIR}/.yolo-active"
-        elif [ -d ".gaia/state" ]; then
-            sentinel=".gaia/state/.yolo-active"
-        else
-            sentinel=".gaia/state/.yolo-active"  # default even if dir absent
-        fi
-    fi
+    # sentinel file is the cross-call YOLO state contract. To stop a sentinel
+    # left by a PRIOR session from silently flipping a fresh interactive
+    # session into YOLO, the sentinel is session-bound: it is honored only when
+    # the session id it stores matches the current session.
+    local sentinel
+    sentinel="$(_yolo_resolve_sentinel)"
     if [ -f "$sentinel" ]; then
-        return 0
+        local cur_session stored_session
+        cur_session="$(_yolo_session_id)"
+        if [ -z "$cur_session" ]; then
+            # No current session id resolvable (CI, sourced unit tests):
+            # preserve the legacy existence-based contract so cross-Bash-call
+            # persistence within a single run still works.
+            return 0
+        fi
+        # First line of the sentinel is the session id stamped by yolo_set.
+        stored_session="$(head -n1 -- "$sentinel" 2>/dev/null || printf '')"
+        if [ -n "$stored_session" ] && [ "$stored_session" = "$cur_session" ]; then
+            return 0
+        fi
+        # Stale sentinel — prior session, or legacy empty/0-byte file. Reap it
+        # so it cannot leak YOLO into this or any later session, then fall
+        # through to the interactive default.
+        rm -f -- "$sentinel" 2>/dev/null || true
     fi
 
     # Rule 6 — Default: interactive.
@@ -107,20 +158,16 @@ is_yolo() {
 # Bash tool calls in environments where env vars do not survive between
 # invocations (Claude Code, CI). Idempotent. Returns 0 on write, 1 on error.
 yolo_set() {
-    local sentinel="${GAIA_YOLO_SENTINEL:-}"
-    if [ -z "$sentinel" ]; then
-        if [ -n "${GAIA_STATE_DIR:-}" ]; then
-            sentinel="${GAIA_STATE_DIR}/.yolo-active"
-        elif [ -d ".gaia/state" ] || mkdir -p ".gaia/state" 2>/dev/null; then
-            sentinel=".gaia/state/.yolo-active"
-        else
-            sentinel=".gaia/state/.yolo-active"
-        fi
-    fi
+    local sentinel
+    sentinel="$(_yolo_resolve_sentinel)"
     local dir
     dir="$(dirname -- "$sentinel")"
     mkdir -p -- "$dir" 2>/dev/null || return 1
-    : > "$sentinel" || return 1
+    # Stamp the current session id so is_yolo can session-bind the sentinel
+    # (closes the stale-cross-session-sentinel leak). An empty stamp is written
+    # when no session id is resolvable; is_yolo's no-current-session branch then
+    # preserves the legacy existence contract for that (CI / sourced) case.
+    printf '%s\n' "$(_yolo_session_id)" > "$sentinel" || return 1
     return 0
 }
 
@@ -128,16 +175,8 @@ yolo_set() {
 # ----------
 # Remove the .yolo-active sentinel. Idempotent — absent file is a no-op.
 yolo_clear() {
-    local sentinel="${GAIA_YOLO_SENTINEL:-}"
-    if [ -z "$sentinel" ]; then
-        if [ -n "${GAIA_STATE_DIR:-}" ]; then
-            sentinel="${GAIA_STATE_DIR}/.yolo-active"
-        elif [ -f ".gaia/state/.yolo-active" ]; then
-            sentinel=".gaia/state/.yolo-active"
-        else
-            return 0  # nothing to clear
-        fi
-    fi
+    local sentinel
+    sentinel="$(_yolo_resolve_sentinel)"
     rm -f -- "$sentinel" 2>/dev/null || true
     return 0
 }

@@ -26,6 +26,58 @@ jobs:
             echo "type=push" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve project config
+        id: cfg
+        run: |
+          # The project config is normally at the checkout root
+          # (.gaia/config/project-config.yaml). But the supported
+          # non-git-workspace layout puts .gaia/config/ one or more directories
+          # ABOVE the git work tree (the published sub-tree is checked out as
+          # the CI root). A repo-root-relative probe with no parent fallback
+          # would miss it, take the "no config -> empty matrix" branch, and
+          # silently run the FULL suite on every PR — defeating selective tests.
+          #
+          # Resolve via, in order: GAIA_CONFIG (explicit), CLAUDE_PROJECT_ROOT
+          # (project root), then an upward walk from CWD. Mirrors how
+          # gaia-paths.sh / resolve-config.sh resolve a config above a sub-tree.
+          rel=".gaia/config/project-config.yaml"
+          config_path=""
+          location=""
+
+          if [[ -n "${GAIA_CONFIG:-}" && -f "${GAIA_CONFIG}" ]]; then
+            config_path="${GAIA_CONFIG}"; location="env:GAIA_CONFIG"
+          elif [[ -n "${CLAUDE_PROJECT_ROOT:-}" && -f "${CLAUDE_PROJECT_ROOT}/${rel}" ]]; then
+            config_path="${CLAUDE_PROJECT_ROOT}/${rel}"; location="env:CLAUDE_PROJECT_ROOT"
+          else
+            # Upward walk from the checkout root.
+            dir="$PWD"
+            while :; do
+              if [[ -f "${dir}/${rel}" ]]; then
+                config_path="${dir}/${rel}"
+                [[ "$dir" == "$PWD" ]] && location="checkout-root" || location="parent:${dir}"
+                break
+              fi
+              [[ "$dir" == "/" || -z "$dir" ]] && break
+              dir="$(dirname -- "$dir")"
+            done
+          fi
+
+          if [[ -n "$config_path" ]]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "config_path=${config_path}" >> "$GITHUB_OUTPUT"
+            if [[ "$location" == "checkout-root" ]]; then
+              echo "[selective-tests] project config: ${config_path} (${location})"
+            else
+              # Present but NOT at the checkout root — a loud warning, because a
+              # silent miss here is exactly the failure mode of #1606.
+              echo "::warning::selective-tests: project config found via ${location} at ${config_path} (not the checkout root). Selective tests will run; if you expected the empty-matrix branch, check your checkout layout."
+            fi
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "config_path=${rel}" >> "$GITHUB_OUTPUT"
+            echo "[selective-tests] no project config found at the checkout root or any parent (looked for ${rel}; checked GAIA_CONFIG, CLAUDE_PROJECT_ROOT, and an upward walk)."
+          fi
+
       - name: Determine promotion event
         id: promotion
         run: |
@@ -40,9 +92,9 @@ jobs:
           # named something other than "main" still escalates correctly, and a
           # project that promotes feature -> staging -> main runs narrow on
           # feature->staging and full only on staging->main.
-          config_path=".gaia/config/project-config.yaml"
+          config_path="${{ steps.cfg.outputs.config_path }}"
           final_branch=""
-          if [[ -f "$config_path" ]] && command -v yq >/dev/null 2>&1; then
+          if [[ "${{ steps.cfg.outputs.found }}" == "true" ]] && command -v yq >/dev/null 2>&1; then
             final_branch="$(yq -r '.ci_cd.promotion_chain[-1].branch // ""' "$config_path" 2>/dev/null || echo "")"
           fi
           # Fallback: if the chain cannot be read, treat "main" as the final
@@ -72,9 +124,9 @@ jobs:
       - name: Run selective-test-driver
         id: driver
         run: |
-          config_path=".gaia/config/project-config.yaml"
-          if [[ ! -f "$config_path" ]]; then
-            echo "[NOTICE] selective-tests: no project-config at ${config_path} — emitting empty matrix (reference workflow; configure .gaia/config/project-config.yaml in your project to enable)"
+          config_path="${{ steps.cfg.outputs.config_path }}"
+          if [[ "${{ steps.cfg.outputs.found }}" != "true" ]]; then
+            echo "[NOTICE] selective-tests: no project-config found at the checkout root or any parent — emitting empty matrix (reference workflow; add .gaia/config/project-config.yaml to your project, or set GAIA_CONFIG / CLAUDE_PROJECT_ROOT, to enable)"
             echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
             # Write a full-deploy artifact so downstream consumers always
             # have a file to read, even when config is absent.

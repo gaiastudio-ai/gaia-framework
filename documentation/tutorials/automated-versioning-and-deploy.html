@@ -727,6 +727,55 @@ release:
           </tbody>
         </table>
 
+        <h3>Releasing: the auto-prepared release PR (and the token it needs)</h3>
+        <p>
+          On a push to the final promotion branch, <code>release.yml</code>
+          runs in <strong>prepare</strong> mode: it computes the next version,
+          bumps the <code>version_files</code> + CHANGELOG on a
+          <code>release/vX.Y.Z</code> branch, pushes that branch, and opens a
+          <code>chore(release): vX.Y.Z</code> pull request. Merging that PR
+          fires <code>release.yml</code> in <strong>publish</strong> mode,
+          which cuts the tag and the GitHub Release.
+        </p>
+        <p>
+          <strong>The release PR open requires a token that may not be the
+          default.</strong> The built-in <code>GITHUB_TOKEN</code> is blocked
+          from creating PRs unless the repository enables
+          <em>Settings → Actions → General → Workflow permissions →
+          "Allow GitHub Actions to create and approve pull requests."</em>
+          When that setting is off and no PAT is configured, prepare mode
+          still pushes the <code>release/vX.Y.Z</code> branch but
+          <strong>cannot open the PR</strong> — it writes a prominent job-summary
+          notice with a one-click "open PR" link, and a human must open + merge
+          it to ship. To make releases fully hands-off, configure one of:
+        </p>
+        <ul>
+          <li>a <code>RELEASE_PAT</code> repository secret (a PAT with
+            <code>repo</code> scope) — <code>release.yml</code> prefers it over
+            <code>GITHUB_TOKEN</code> and it works regardless of the org
+            setting; or</li>
+          <li>enable the "Allow GitHub Actions to create and approve pull
+            requests" workflow permission above.</li>
+        </ul>
+
+        <h3>Which command ships the artifact: <code>release.yml</code> vs <code>/gaia-publish</code></h3>
+        <p>
+          For a project whose <code>distribution.release_workflow</code> is set
+          and whose channel is a path-based marketplace (the workflow itself
+          cuts the tag + Release), <strong>the <code>release_workflow</code> is
+          the publish</strong> — driven by the merged release PR above.
+          <code>/gaia-publish</code> is then the post-hoc
+          <em>await-and-verify</em> gate (pre-publish CI gate → confirm the
+          release-workflow outcome → post-publish registry probe → verdict), not
+          a second, competing publish trigger. For a direct registry channel
+          (<code>npm</code>, <code>pypi</code>, app stores) with no
+          <code>release_workflow</code>, <code>/gaia-publish</code> dispatches
+          the channel adapter directly. Never drive both as independent
+          publishers of the same version. <code>/gaia-deploy</code> correctly
+          HALTs for <code>kind: branch-only</code> environments and points you
+          to <code>/gaia-publish</code>.
+        </p>
+
         <h3>Per-stack deploy configuration</h3>
         <pre><code># .gaia/config/project-config.yaml
 stacks:
