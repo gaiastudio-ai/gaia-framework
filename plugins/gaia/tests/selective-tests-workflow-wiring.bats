@@ -57,3 +57,28 @@ teardown() { common_teardown; }
     skip "python3 not available to lint YAML"
   fi
 }
+
+# --- #1606: config resolution must walk up / honor env, not assume the root ---
+
+@test "workflow resolves project config via an upward parent walk (not root-only)" {
+  # A dirname-based upward walk so a config above the checkout root is found
+  # (the non-git-workspace layout).
+  grep -qE 'dir="\$\(dirname -- "\$dir"\)"' "$WORKFLOW"
+}
+
+@test "workflow honors GAIA_CONFIG / CLAUDE_PROJECT_ROOT for config resolution" {
+  grep -qE 'GAIA_CONFIG' "$WORKFLOW"
+  grep -qE 'CLAUDE_PROJECT_ROOT' "$WORKFLOW"
+}
+
+@test "config found above the checkout root warns (loud), not a benign NOTICE" {
+  # A present-but-not-at-root config must be a ::warning::, never silently
+  # treated as absent.
+  grep -qE '::warning::selective-tests: project config found via' "$WORKFLOW"
+}
+
+@test "empty-matrix NOTICE fires only when config is genuinely not found" {
+  # The driver gates the empty-matrix branch on the resolver's found=false,
+  # not on a bare repo-root file test.
+  grep -qE 'steps\.cfg\.outputs\.found.*!=.*"true"' "$WORKFLOW"
+}

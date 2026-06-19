@@ -56,47 +56,50 @@ function classifyCommitType(message) {
   // Check for BREAKING CHANGE in body
   if (/BREAKING CHANGE[:\s]/i.test(message)) return "major";
 
-  // Parse Conventional Commit subject line
+  const precedence = { major: 3, minor: 2, patch: 1 };
+  const maxBump = (a, b) => {
+    if (!a) return b;
+    if (!b) return a;
+    return precedence[a] >= precedence[b] ? a : b;
+  };
+
+  // (1) Conventional Commit SUBJECT line.
   const subjectLine = message.split("\n")[0];
   const match = subjectLine.match(
     /^(feat|fix|chore|docs|refactor|test|build|ci|perf|style)(\(.+?\))?(!)?:\s/
   );
+  let subjectBump = null;
   if (match) {
     const type = match[1];
     const breaking = match[3] === "!";
-    if (breaking) return "major";
-    return TYPE_MAP[type] || null;
+    subjectBump = breaking ? "major" : TYPE_MAP[type] || null;
   }
 
-  // E40-S4: subject regex did not match a Conventional Commit type. GitHub's
-  // squash-merge collapses N commits into a single commit whose body
-  // preserves the original subjects as bullet lines (e.g. "* feat(scope): ...").
-  // Fall back to scanning the message body for those bullet-prefixed CC
-  // type markers. The body-scan recognizes only the BUMP-class types
-  // (feat → minor, fix → patch) plus the breaking-change marker (`!` suffix
-  // → major). Non-bump types (chore, docs, refactor, test, build, ci, perf,
-  // style) in body bullets do NOT escalate the bump — they're informational
-  // for a non-CC-subject commit. This is intentional per E40-S4 AC2: a
-  // squashed `promote:` PR whose body contains only chore/docs bullets MUST
-  // NOT trigger a release. For subject-typed commits, the existing TYPE_MAP
-  // (lines 18-29) is honored as-is — this body-scan branch only fires when
-  // the subject did NOT match the CC regex above.
-  // BREAKING CHANGE detection above runs BEFORE this fallback, so a
-  // `BREAKING CHANGE:` line in the body already returned "major" earlier.
+  // (2) BODY bullet scan. GitHub's squash-merge collapses N commits into a
+  // single commit whose body preserves the original subjects as bullet lines
+  // (e.g. "* feat(scope): ..."). The body-scan recognizes only the BUMP-class
+  // types (feat → minor, fix → patch) plus the breaking-change marker (`!`
+  // suffix → major). Non-bump body bullets (chore/docs/refactor/...) do NOT
+  // escalate. BREAKING CHANGE in the body already returned "major" above.
   const bodyLines = message.split("\n").slice(1);
   const bodyRegex = /^\s*\*?\s*(feat|fix)(\(.+?\))?(!)?:\s/;
-  const precedence = { major: 3, minor: 2, patch: 1 };
-  let highest = null;
+  let bodyBump = null;
   for (const line of bodyLines) {
     const m = line.match(bodyRegex);
     if (!m) continue;
     const bump = m[3] === "!" ? "major" : TYPE_MAP[m[1]];
     if (!bump) continue;
-    if (!highest || precedence[bump] > precedence[highest]) {
-      highest = bump;
-    }
+    bodyBump = maxBump(bodyBump, bump);
   }
-  return highest;
+
+  // Return the HIGHEST-precedence bump of subject and body. This fixes the
+  // squash-promotion under-bump (#1605): a `chore:` (or docs/refactor/...)
+  // subject no longer masks `feat:`/`fix:` bullets in the body. The subject's
+  // own bump is still honored, so a `chore:`-only squash with chore/docs body
+  // bullets stays `patch` and a `feat:` subject stays `minor` (unchanged).
+  // Earlier behavior returned the subject bump and short-circuited before the
+  // body scan ran — that early return was the defect.
+  return maxBump(subjectBump, bodyBump);
 }
 
 /**
