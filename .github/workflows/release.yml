@@ -1,17 +1,21 @@
 name: release
 
-# main has branch protection
-# requiring PR + status checks, so the release bot cannot push directly.
-# Instead, the workflow opens a release PR. Merging that PR re-fires the
-# workflow, which detects the release commit on main and cuts tag + GitHub
-# Release.
+# Command-driven release (operator intent): this workflow is MANUAL-ONLY. It no
+# longer auto-fires on push-to-main — merging to main never auto-cuts a release.
+# The operator drives the release by command: /gaia-release bumps the version
+# (release.version_files[]) + tags, and /gaia-publish verifies the marketplace.
+# This workflow remains available as a manual fallback (workflow_dispatch) for
+# the prepare-PR / publish-tag mechanics, dispatched on demand from the Actions
+# tab or `gh workflow run release.yml`. main has branch protection (PR + status
+# checks), so even the manual dispatch opens a release PR rather than pushing.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'plugins/gaia/**'
-      - '.github/workflows/release.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional explicit version (X.Y.Z). Leave blank to derive.'
+        required: false
+        type: string
 
 permissions:
   contents: write
