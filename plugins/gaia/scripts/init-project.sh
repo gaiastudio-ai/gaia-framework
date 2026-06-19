@@ -296,7 +296,7 @@ tiers:
     files: 1  # decision-log.md
     session_budget: null
     has_ground_truth: false
-    agents: [typescript-dev, angular-dev, flutter-dev, java-dev, python-dev, mobile-dev, bash-dev, embedded-dev, storyteller, tech-writer, qa, analyst, brainstorming-coach, data-engineer, design-thinking-coach, innovation-strategist, performance, presentation-designer, problem-solver, ux-designer]
+    agents: [typescript-dev, angular-dev, flutter-dev, java-dev, python-dev, go-dev, mobile-dev, bash-dev, embedded-dev, storyteller, tech-writer, qa, analyst, brainstorming-coach, data-engineer, design-thinking-coach, innovation-strategist, performance, presentation-designer, problem-solver, ux-designer]
 
 # Per-agent ground truth budgets (Tier 1 only) and sidecar directory mapping.
 agents:
@@ -334,6 +334,8 @@ agents:
     sidecar: java-dev-sidecar
   python-dev:
     sidecar: python-dev-sidecar
+  go-dev:
+    sidecar: go-dev-sidecar
   mobile-dev:
     sidecar: mobile-dev-sidecar
   bash-dev:
@@ -476,6 +478,7 @@ gaia_agent_display_name() {
     flutter-dev)            printf "Flutter Dev" ;;
     java-dev)               printf "Java Dev" ;;
     python-dev)             printf "Python Dev" ;;
+    go-dev)                 printf "Go Dev" ;;
     mobile-dev)             printf "Mobile Dev" ;;
     bash-dev)               printf "Bash Dev" ;;
     embedded-dev)           printf "Embedded Dev" ;;
