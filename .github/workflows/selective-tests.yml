@@ -26,6 +26,39 @@ jobs:
             echo "type=push" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Determine promotion event
+        id: promotion
+        run: |
+          # Safety Rail 3 (promotion-push wildcard): when a change is promoted
+          # to the FINAL tier of the promotion chain, the full suite must run
+          # — promotion merges are the last gate before production, where
+          # cross-stack integration issues that were tested independently
+          # during the per-stack PR phase get caught.
+          #
+          # The full-suite tier is DERIVED from ci_cd.promotion_chain (the last
+          # tier's branch), never hard-coded — a project whose final tier is
+          # named something other than "main" still escalates correctly, and a
+          # project that promotes feature -> staging -> main runs narrow on
+          # feature->staging and full only on staging->main.
+          config_path=".gaia/config/project-config.yaml"
+          final_branch=""
+          if [[ -f "$config_path" ]] && command -v yq >/dev/null 2>&1; then
+            final_branch="$(yq -r '.ci_cd.promotion_chain[-1].branch // ""' "$config_path" 2>/dev/null || echo "")"
+          fi
+          # Fallback: if the chain cannot be read, treat "main" as the final
+          # tier so the rail still fires on the conventional promotion target.
+          [[ -z "$final_branch" || "$final_branch" == "null" ]] && final_branch="main"
+
+          # The base of a PR is its target branch; for a push it is the ref
+          # being pushed to.
+          base="${{ github.event.pull_request.base.ref || github.ref_name }}"
+          if [[ "$base" == "$final_branch" ]]; then
+            echo "is_promotion=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_promotion=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "[selective-tests] base=${base} final_tier=${final_branch} promotion=$([[ "$base" == "$final_branch" ]] && echo true || echo false)"
+
       - name: Collect changed files
         id: changes
         run: |
@@ -48,9 +81,18 @@ jobs:
             echo '{"stacks":["*"]}' > affected-set.json
             exit 0
           fi
+          # Safety Rail 3: a promotion to the final tier forces the full suite.
+          # detect-affected.sh early-returns ["*"] on --event promotion-push,
+          # before any changed-file inspection or per-trigger policy narrowing,
+          # so include_stacks filters cannot reduce a promotion push.
+          driver_extra=()
+          if [[ "${{ steps.promotion.outputs.is_promotion }}" == "true" ]]; then
+            driver_extra+=(--event promotion-push)
+          fi
           matrix_json="$(plugins/gaia/scripts/selective-test-driver.sh \
             --config "$config_path" \
             --trigger "${{ steps.trigger.outputs.type }}" \
+            "${driver_extra[@]}" \
             --files-from "${{ steps.changes.outputs.files }}")"
           echo "matrix=${matrix_json}" >> "$GITHUB_OUTPUT"
 

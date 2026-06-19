@@ -554,18 +554,35 @@ test_policy:
 
         <h3 id="safety-promotion-push">3. Promotion-push wildcard</h3>
         <p>
-          When a change is promoted to a protected branch (e.g., a merge to
-          <code>staging</code> or <code>main</code>), <code>detect-affected.sh</code>
-          receives a <code>--event promotion-push</code> flag and immediately
-          returns <code>["*"]</code> without inspecting any files. Every
-          stack's tests run on every promotion.
+          When a change is promoted to the <strong>final tier</strong> of your
+          promotion chain, <code>detect-affected.sh</code> receives a
+          <code>--event promotion-push</code> flag and immediately returns
+          <code>["*"]</code> without inspecting any files. Every stack's tests
+          run on that promotion.
         </p>
         <p>
-          <strong>Why this matters:</strong> Promotion merges are the last
-          gate before production. Running the full suite here catches
-          integration issues between stacks that were tested independently
-          during the PR phase. The wildcard is applied before any policy
-          narrowing, so per-trigger <code>include_stacks</code> filters
+          The full-suite tier is <strong>derived from</strong>
+          <code>ci_cd.promotion_chain</code> &mdash; specifically the
+          <em>last</em> tier's branch &mdash; never hard-coded. The reference
+          <code>selective-tests.yml</code> reads the chain, determines the
+          PR/push base branch, and passes <code>--event promotion-push</code>
+          only when the base is that final tier. So a project that promotes
+          <code>feature&nbsp;&rarr;&nbsp;staging&nbsp;&rarr;&nbsp;main</code>
+          runs the <em>narrowed</em> affected-set on
+          <code>feature&nbsp;&rarr;&nbsp;staging</code> (the fast dev loop) and
+          the <em>full</em> suite only on
+          <code>staging&nbsp;&rarr;&nbsp;main</code> (the promotion gate). A
+          project whose final tier is named something other than
+          <code>main</code> still escalates correctly. If the chain cannot be
+          read, the workflow falls back to treating <code>main</code> as the
+          final tier.
+        </p>
+        <p>
+          <strong>Why this matters:</strong> Promotion merges to the final
+          tier are the last gate before production. Running the full suite here
+          catches integration issues between stacks that were tested
+          independently during the PR phase. The wildcard is applied before any
+          policy narrowing, so per-trigger <code>include_stacks</code> filters
           cannot reduce a promotion push.
         </p>
 
