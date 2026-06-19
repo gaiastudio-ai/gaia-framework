@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.197.0] — 2026-06-17
+
+### Added
+
+- (E115-S5) pixel-diff visual regression + baseline lifecycle (#1545)
+- (E115-S4) advisory manual-test review gate on the ledger tier (#1544)
+- (E115-S3) run manual testing in the sprint-review execution track (#1543)
+- (E115-S2) 4-surface manual-test adapter, dormant when unconfigured (#1542)
+- (E115-S1) manual-tester agent (Reese) + /gaia-test-manual command (#1541)
+
+### Changed
+
+- reconcile staging with main (v1.196.1 release commits) before promotion
+- (E110-S17) document the brain for users + gitignore the obsidian vault chrome (#1549)
+- (E115-S6) manual-testing user documentation + doc-site sync (#1546)
+
+### Fixed
+
+- (dev-story) wire context-window snapshot into per-step token telemetry (#1553)
+- (E112-S4) harden observability reports + replace bubble sort with external sort (#1548)
+- (E110-S18) harden the brain lesson layer + backfill test coverage (#1547)
+
 ## [1.196.1] — 2026-06-17
 
 ### Changed
