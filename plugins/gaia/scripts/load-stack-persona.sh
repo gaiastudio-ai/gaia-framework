@@ -26,6 +26,7 @@
 #   flutter-dev -> flutter-dev.md
 #   mobile-dev  -> mobile-dev.md
 #   angular-dev -> angular-dev.md
+#   bash-dev    -> bash-dev.md      (explicit-only — no auto-detect tier)
 #
 # Output (stdout) — KEY='VALUE' shell-evalable lines:
 #   stack='<canonical-stack>'
@@ -66,7 +67,8 @@ Usage:
 
 Options:
   --stack <name>          Skip heuristics; force stack (one of: ts-dev, java-dev,
-                          python-dev, go-dev, flutter-dev, mobile-dev, angular-dev)
+                          python-dev, go-dev, flutter-dev, mobile-dev, angular-dev,
+                          bash-dev)
   --project-root <dir>    Where to run file-glob heuristics (default: cwd)
   --agents-dir <dir>      Where to find <stack>.md agent files (default: plugin agents)
   --memory-dir <dir>      Where to find <stack>-sidecar.md (default: .gaia/memory/)
@@ -161,6 +163,7 @@ canonical_to_filename() {
     flutter-dev) echo "flutter-dev.md" ;;
     mobile-dev)  echo "mobile-dev.md" ;;
     angular-dev) echo "angular-dev.md" ;;
+    bash-dev)    echo "bash-dev.md" ;;
     *)           return 1 ;;
   esac
 }
@@ -168,6 +171,10 @@ canonical_to_filename() {
 detect_stack_from_files() {
   local root="$1"
   # Highest-specificity wins. Order matters: angular.json beats tsconfig.json.
+  # NOTE: no bash auto-detect — explicit-only via --stack/config/frontmatter.
+  # *.sh files appear in nearly every repo (polyglot or not), so file-glob
+  # detection would misclassify most projects. Bash resolves only through
+  # explicit stack selection.
   if [ -f "$root/angular.json" ]; then
     echo "angular-dev"; return 0
   fi
@@ -215,7 +222,7 @@ fi
 
 # Validate the canonical stack name and resolve filename.
 if ! AGENT_FILENAME="$(canonical_to_filename "$STACK")"; then
-  printf '%s: unsupported stack: %s (expected one of: ts-dev, java-dev, python-dev, go-dev, flutter-dev, mobile-dev, angular-dev)\n' \
+  printf '%s: unsupported stack: %s (expected one of: ts-dev, java-dev, python-dev, go-dev, flutter-dev, mobile-dev, angular-dev, bash-dev)\n' \
     "$SCRIPT_NAME" "$STACK" >&2
   exit 2
 fi

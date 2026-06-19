@@ -340,6 +340,10 @@ _push_stack() {
   STACKS_JSON="$(jq --argjson o "$obj" '. + [$o]' <<<"$STACKS_JSON")"
 }
 
+# NOTE: no bash auto-detect — explicit-only via --stack/config/frontmatter.
+# *.sh files appear in nearly every repo, so file-based detection would
+# misclassify polyglot projects. Bash resolves only through explicit selection.
+
 # Detect Node-family stack from package.json (emit at most one stack object).
 _detect_node_family() {
   local pj="$PROJECT_ROOT/package.json"
