@@ -1,7 +1,7 @@
 ---
 name: gaia-config-ci
-description: Scaffold or regenerate a CI pipeline with quality checks. Use when "setup CI pipeline" or /gaia-config-ci (formerly /gaia-ci-setup); pass --regenerate to refresh generated workflows with the backup-before-overwrite UX and *.user-steps.yml include pattern.
-argument-hint: "[--preset solo|small-team|standard|enterprise|custom] [--regenerate]"
+description: Scaffold or regenerate a CI pipeline with quality checks. Use when "setup CI pipeline" or /gaia-config-ci (formerly /gaia-ci-setup); pass --regenerate to refresh generated workflows with the backup-before-overwrite UX and *.user-steps.yml include pattern; pass --project-slice <service> to project a minimal per-service config slice into a multi-repo / per-service service repo.
+argument-hint: "[--preset solo|small-team|standard|enterprise|custom] [--regenerate] [--project-slice <owner/repo|stack> [--out <path>]]"
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit]
 deprecated_aliases: [gaia-ci-setup]
 deprecated_since: sprint-37
@@ -31,6 +31,34 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - The promotion chain written to `global.yaml` MUST use the canonical field order: id, name, branch, ci_provider, merge_strategy, ci_checks (AC4).
 - Pipeline configuration MUST include quality gate checks: lint, unit, test at minimum.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
+- `--project-slice <service>` runs the per-service projection mode (below) and is mutually exclusive with the scaffold/`--regenerate` flow — when present, skip Steps 1-9 entirely and run only the projection.
+
+## Per-Service Config Projection (`--project-slice`)
+
+For **multi-repo / per-service** layouts — where each service is its own git repository (a `backend` repo, `frontend` repo, …) and the shared `.gaia/` project config lives at a non-git project root **above** them — a service repo's CI clones only that service repo, so the central config (which sits above the clone) is invisible to it. The workflow config-resolution chain (checkout-root → `CLAUDE_PROJECT_ROOT` → upward-walk) finds nothing, and selective tests / per-component deploy / version-bump all fall back to "do everything."
+
+`--project-slice` solves this by **projecting** the minimal self-contained config slice each service repo needs, so it can be checked into that repo's `.gaia/config/` and resolved at the service repo's own checkout root.
+
+When the invocation contains `--project-slice <service>`:
+
+1. Resolve the central config via `resolve-config.sh` (or `--config <path>`).
+2. Run the deterministic projection:
+
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/scripts/project-config-slice.sh" \
+     --config "<central project-config.yaml>" \
+     --service "<owner/repo or stack name>" \
+     [--out "<service-repo>/.gaia/config/project-config.yaml"]
+   ```
+
+   The slice contains the service's own `stacks[]` entries (selected by `repository` match, or by stack `name`) PLUS the **transitive `cross_refs` closure**, and carries `ci_cd.promotion_chain`, `release`, `environments`, `platforms`, and `project_name` verbatim — so the promotion-push full-suite rail still fires and version-bump still resolves inside the service repo.
+
+3. The script is **idempotent** — re-run it whenever the central config changes to refresh each service repo's slice. The emitted slice carries a `DO NOT EDIT BY HAND` header naming the source + the regenerate command.
+4. Exit codes: `0` ok, `1` usage/IO error, `2` no stack matches the service. On exit 2, name the available `stacks[].repository` / `name` values so the operator can pick a valid service id.
+
+**Mapping prerequisite:** each stack that lives in its own repo SHOULD declare `stacks[].repository: owner/repo` in the central config (added to the schema for this purpose). Stacks without a `repository` are assumed to live in the same repo as the central config (the single-repo default), and can still be sliced by `name`.
+
+This mode does NOT scaffold or regenerate workflows — it only emits the config slice. Generate/refresh the service repo's actual workflows by running the normal `/gaia-config-ci` scaffold inside that service repo against its projected slice.
 
 ## Steps
 

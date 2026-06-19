@@ -555,6 +555,12 @@
             "items":    { "type": "string", "minLength": 1 },
             "minItems": 1
           },
+          "repository": {
+            "description": "Target git repository for this stack in `owner/repo` format, for multi-repo / per-service layouts where each service is its own git repository under a shared (non-git) project root. Optional — when absent (the single-repo default), the stack lives in the same repo as the central config. Used by the per-service config-slice projection (`project-config-slice.sh` / `/gaia-config-ci --project-slice`) to map stacks to repos and emit each service repo a self-contained config slice. Pattern matches GitHub repository naming rules (alphanumeric, dot, hyphen, underscore, exactly one slash).",
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$",
+            "default": null
+          },
           "path": {
             "description": "Stack ROOT directory — a coarse-grained partitioning anchor. Distinct from `paths` (the in-stack glob list): the deterministic-tools orchestrator scopes adapter dispatch to this subtree BEFORE applying `paths` glob matching. Default null (unset) — single-stack repos omit it entirely.",
             "type": "string",
