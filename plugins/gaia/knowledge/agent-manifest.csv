@@ -15,6 +15,8 @@ name,displayName,title,icon,module
 "python-dev","Ravi","Python Developer","💻","dev"
 "mobile-dev","Talia","Mobile Developer","📱","dev"
 "go-dev","Kai","Go Developer","💻","dev"
+"bash-dev","Shay","Bash Developer","💻","dev"
+"embedded-dev","Nils","Embedded Developer","💻","dev"
 "brainstorming-coach","Rex","Brainstorming Facilitator","🧠","creative"
 "problem-solver","Nova","Problem-Solving Expert","🔬","creative"
 "design-thinking-coach","Lyra","Design Thinking Expert","🎨","creative"

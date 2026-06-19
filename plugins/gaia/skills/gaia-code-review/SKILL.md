@@ -57,6 +57,8 @@ The toolkit invoked by Phase 3A is selected by the canonical stack name emitted 
 | `flutter-dev`         | `dart format --output=none --set-exit-if-changed`, `dart analyze` | `flutter build` |
 | `mobile-dev`          | `swiftlint`, `ktlint`                     | `xcodebuild build` / `gradle assemble` |
 | `angular-dev`         | `eslint`, `prettier`                      | `tsc --noEmit`, `ng build`    |
+| `bash-dev`            | `shellcheck`                              | `bash -n` (syntax check)      |
+| `embedded-dev`        | `cppcheck`, `clang-tidy`                  | `cmake --build` / `idf.py build` |
 
 The table is authoritative for Phase 3A toolkit selection. Phase 3A scope is **strict**: file-scoped (linter, formatter, per-file rules) plus project-scoped (type checker, build verification). Phase 3A does NOT invoke Semgrep, gitleaks, secret scan, dep audit (`npm audit`, `pip-audit`), or test-runner execution (`go test`, `jest`, `vitest`). Those belong to sibling review skills.
 
@@ -105,7 +107,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - If no story key was provided as an argument, fail with: "usage: /gaia-review-code [story-key]"
 - Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
-- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
+- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
 - **Tool prereq probe (EC-4).** For each tool listed in the stack-toolkit table row matched by the canonical stack name: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
 - **Expected-missing-tool (case 1).** If a required toolkit binary is absent and not optional for the stack: emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
 

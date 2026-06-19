@@ -340,6 +340,10 @@ _push_stack() {
   STACKS_JSON="$(jq --argjson o "$obj" '. + [$o]' <<<"$STACKS_JSON")"
 }
 
+# NOTE: no bash auto-detect — explicit-only via --stack/config/frontmatter.
+# *.sh files appear in nearly every repo, so file-based detection would
+# misclassify polyglot projects. Bash resolves only through explicit selection.
+
 # Detect Node-family stack from package.json (emit at most one stack object).
 _detect_node_family() {
   local pj="$PROJECT_ROOT/package.json"
@@ -436,6 +440,24 @@ _detect_python_stack() {
 _detect_java_stack() {
   if [ -f "$PROJECT_ROOT/pom.xml" ] || [ -f "$PROJECT_ROOT/build.gradle" ] || [ -f "$PROJECT_ROOT/build.gradle.kts" ]; then
     _push_stack '{"name":"java","test_runner":"junit"}'
+  fi
+}
+
+_detect_embedded_stack() {
+  # High-specificity embedded firmware markers: ESP-IDF (sdkconfig,
+  # idf_component.yml), PlatformIO (platformio.ini), or a CMakeLists.txt
+  # that references FreeRTOS. A bare CMakeLists.txt without FreeRTOS content
+  # is NOT classified as embedded (false-positive guard).
+  if [ -f "$PROJECT_ROOT/sdkconfig" ] \
+    || [ -f "$PROJECT_ROOT/idf_component.yml" ] \
+    || [ -f "$PROJECT_ROOT/platformio.ini" ]; then
+    _push_stack '{"name":"embedded"}'
+    return 0
+  fi
+  if [ -f "$PROJECT_ROOT/CMakeLists.txt" ] \
+    && grep -qiE 'FreeRTOS|freertos' "$PROJECT_ROOT/CMakeLists.txt" 2>/dev/null; then
+    _push_stack '{"name":"embedded"}'
+    return 0
   fi
 }
 
@@ -626,6 +648,7 @@ _detect_tool_providers() {
 # Run all detectors
 # ---------------------------------------------------------------------------
 
+_detect_embedded_stack
 _detect_node_family
 _detect_python_stack
 _detect_java_stack

@@ -220,3 +220,89 @@ assert_json_finding_severity() {
   printf '%s\n' "$output" | grep -F '"rule":' >/dev/null
   printf '%s\n' "$output" | grep -F '"message":' >/dev/null
 }
+
+# --- bash-dev (bats/shell) ---
+
+@test ".21: bash-dev bats file without tag flagged as missing-tag (AC1)" {
+  local f="$TEST_TMP/foo.bats"
+  printf '#!/usr/bin/env bats\n@test "hello" { true; }\n' > "$f"
+  run "$SCRIPT" --stack bash-dev "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  assert_json_finding_rule "$output" "missing-tag"
+}
+
+@test ".22: bash-dev bats file with tags() passes (AC1)" {
+  local f="$TEST_TMP/tagged.bats"
+  printf '#!/usr/bin/env bats\nbats_require_minimum_version 1.5.0\nfunction setup() { :; }\n@test "hello" { :; }\n' > "$f"
+  # bats tag mechanism: bats_test_tags at file level
+  printf '#!/usr/bin/env bats\n# bats test_tags=smoke\n@test "hello" { :; }\n' > "$f"
+  run "$SCRIPT" --stack bash-dev "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "passed"
+}
+
+@test ".23: bash-dev test_*.sh file without tag flagged (AC1)" {
+  local f="$TEST_TMP/test_utils.sh"
+  printf '#!/bin/bash\ntest_something() { echo ok; }\n' > "$f"
+  run "$SCRIPT" --stack bash-dev "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  assert_json_finding_rule "$output" "missing-tag"
+}
+
+@test ".24: --stack bash-dev is accepted by the enum (AC1)" {
+  run "$SCRIPT" --stack bash-dev "$TEST_TMP"
+  [ "$status" -eq 0 ]
+}
+
+@test ".25: --stack embedded-dev is accepted by the enum (AC1)" {
+  run "$SCRIPT" --stack embedded-dev "$TEST_TMP"
+  [ "$status" -eq 0 ]
+}
+
+# --- embedded-dev (C test files) ---
+
+@test ".26: embedded-dev test_*.c file without tag flagged as missing-tag (AC1)" {
+  local f="$TEST_TMP/test_gpio.c"
+  printf '#include "unity.h"\nvoid test_gpio_init(void) { TEST_ASSERT(1); }\n' > "$f"
+  run "$SCRIPT" --stack embedded-dev "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  assert_json_finding_rule "$output" "missing-tag"
+}
+
+@test ".27: embedded-dev *_test.c file without tag flagged (AC1)" {
+  local f="$TEST_TMP/gpio_test.c"
+  printf '#include "unity.h"\nvoid test_gpio(void) { TEST_ASSERT(1); }\n' > "$f"
+  run "$SCRIPT" --stack embedded-dev "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  assert_json_finding_rule "$output" "missing-tag"
+}
+
+@test ".28: embedded-dev test_*.c with TEST_TAG passes (AC1)" {
+  local f="$TEST_TMP/test_tagged.c"
+  printf '// TEST_TAG: integration\n#include "unity.h"\nvoid test_foo(void) { TEST_ASSERT(1); }\n' > "$f"
+  run "$SCRIPT" --stack embedded-dev "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "passed"
+}
+
+@test ".29: auto-detect classifies .bats to bash-dev (AC1)" {
+  local f="$TEST_TMP/check.bats"
+  printf '#!/usr/bin/env bats\n@test "x" { true; }\n' > "$f"
+  run "$SCRIPT" "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  printf '%s\n' "$output" | grep -F '"stack":"bash-dev"' >/dev/null
+}
+
+@test ".30: auto-detect classifies test_*.c to embedded-dev (AC1)" {
+  local f="$TEST_TMP/test_led.c"
+  printf '#include "unity.h"\nvoid test_led(void) {}\n' > "$f"
+  run "$SCRIPT" "$f"
+  [ "$status" -eq 0 ]
+  assert_json_check_status "$output" "failed"
+  printf '%s\n' "$output" | grep -F '"stack":"embedded-dev"' >/dev/null
+}
