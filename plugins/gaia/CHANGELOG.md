@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.202.0] — 2026-06-19
+
+### Added
+
+- (config) per-service config-slice projection for multi-repo layouts (#1612)
+
+### Fixed
+
+- (ci) resolve config from a tracked in-repo CI slice when config lives above the checkout (#1615)
+
 ## [1.201.0] — 2026-06-19
 
 ### Added
