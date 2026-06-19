@@ -60,6 +60,8 @@ The toolkit invoked by Phase 3A is selected by the canonical stack name emitted 
 | `flutter-dev`         | `p/security-audit` + `p/secrets` (+ `.semgrep/` if present) | `gitleaks`     | `dart pub audit` (or `pub-audit`)            |
 | `mobile-dev`          | `p/security-audit` + `p/secrets` (+ `.semgrep/` if present) | `gitleaks`     | `swift package audit` / `gradle dependencyCheckAnalyze` |
 | `angular-dev`         | `p/security-audit` + `p/secrets` (+ `.semgrep/` if present) | `gitleaks`     | `npm audit`                                  |
+| `bash-dev`            | `p/security-audit` + `p/secrets` (+ `.semgrep/` if present) | `gitleaks`     | (none — shell scripts have no package registry) |
+| `embedded-dev`        | `p/security-audit` + `p/secrets` (+ `.semgrep/` if present) | `gitleaks`     | (none — firmware deps are vendored or managed by build system) |
 
 Phase 3A scope is **strict**: Semgrep static analysis + secret scan + dep CVE audit. Phase 3A does NOT invoke linters, formatters, type checkers, or build verification — those belong to `gaia-code-review`. Phase 3A does NOT invoke test runners — those belong to `gaia-qa-tests` / `gaia-test-automate`.
 
@@ -136,7 +138,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - If no story key was provided as an argument, fail with: "usage: /gaia-security-review [story-key]"
 - Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
-- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`).
+- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`).
 - **Persona resolution via `agent-overlay.sh` (V2).** In the parent context, resolve the security reviewer persona via the shared overlay:
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/agent-overlay.sh --skill gaia-review-security
