@@ -61,6 +61,8 @@ The toolkit invoked by Phase 3A is selected by the canonical stack name emitted 
 | `flutter-dev`         | `await Future.delayed(...)`, `if (...)`               | `dart test --reporter=json`                       | `@Skip()`, `@Tags(['flaky'])`               |
 | `mobile-dev`          | `Thread.sleep(...)`, `XCTSkip(...)`, `if (...)`       | XCTest result bundle / Android junit XML          | `@Disabled`, `XCTSkip`, `@Ignore`           |
 | `angular-dev`         | `await sleep(...)`, `setTimeout(...)`, `fakeAsync`    | jest `--json` (jest convention)                   | `xit`, `@flaky`                             |
+| `bash-dev`            | `sleep ...`, hardcoded timeouts in `@test`            | bats TAP output                                   | `skip`, `# TODO`                            |
+| `embedded-dev`        | `delay(...)`, `vTaskDelay(...)`, `HAL_Delay(...)`     | Unity / CTest XML                                 | `TEST_IGNORE()`, `CTEST_SKIP`               |
 
 The table is authoritative for Phase 3A toolkit selection. Phase 3A scope is **strict**: test-smell detection + flakiness retry-history analysis + fixture analysis. Phase 3A does NOT invoke linters, formatters, type checkers, or build verification — those belong to `gaia-code-review`. Phase 3A does NOT invoke Semgrep or secret scanners — those belong to `gaia-security-review`. Phase 3A does NOT enumerate AC-coverage gaps — that belongs to `gaia-qa-tests` (the S4 vs S6 scope boundary).
 
@@ -126,7 +128,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - If no story key was provided as an argument, fail with: "usage: /gaia-review-test [story-key]"
 - Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper. It honors the canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then falls back to legacy `docs/implementation-artifacts/{story_key}-*.md`. Exit codes: 0 = single match resolved (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches ambiguity (fail with "multiple story files matched key {story_key}"). Do NOT inline-hardcode the legacy `docs/` glob.
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
-- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
+- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
 - **Tool prereq probe.** For each parser in the stack-toolkit row matched by the canonical stack name (junit-xml parser, jest JSON parser, go-test-json parser, pytest junitxml parser, dart test JSON parser): probe via `command -v <tool>` first. Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
 - **CI-history token probe (EC-14).** For the resolved CI provider (GitHub Actions / CircleCI / Jenkins): probe for the required environment variable (`GITHUB_TOKEN`, `CIRCLE_TOKEN`, `JENKINS_TOKEN`). On missing token, mark CI history fetch as unavailable in `tool_versions` and fall back to the static flakiness signal source (annotation scan). Never crash on missing token.
 - **Three-tier flakiness signal source.** Preferred source: parse CI test-result XML/JSON for retry counts. Fallback: source-level annotations (`@flaky`, `@retry`, `pytest.mark.flaky`). Skip: neither available — emit `status: skipped` with `skip_reason: "no flakiness signal source available (no CI history, no flakiness annotations)"`.
@@ -159,6 +161,8 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 | `go-dev`         | `//go:build <tag>` directive in first 10 lines of the file       |
 | `flutter-dev`    | `@Tags(['…'])` annotation                                        |
 | `mobile-dev`     | Maestro front-matter `tags:` (YAML) or `@Tag("…")` (Kotlin/Java) |
+| `bash-dev`       | `# bats test_tags=…` comment or `@test "…" { # tag:…` inline     |
+| `embedded-dev`   | `TEST_CASE("…", "[tag]")` (Catch2) or CTest `LABELS` property    |
 
 **Severity mode.** Findings emit at `info` (Suggestion) by default — they surface in `analysis-results.json` but DO NOT escalate Phase 3A verdicts. Strict mode upgrades severity to `warning` (factored into the LLM Phase 3B judgment but still non-blocking). Strict-mode resolution precedence (highest first): CLI `--strict` flag → `GAIA_TEST_TAGGING_STRICT=1` env override → `test_tagging.strict: true` in `.gaia/config/project-config.yaml` → default false. `phase3a-test-review.sh` propagates `GAIA_TEST_TAGGING_STRICT` to `tag-conformance-detector.sh` so a single env toggle flips the project-wide tagging regime.
 
@@ -181,6 +185,8 @@ The four scanners cover the analyzers below (1–3 plus the new tag-conformance 
    - `go-dev`: `go test -json` (`Action: "rerun"` events).
    - `flutter-dev`: `dart test --reporter=json` (test events with `result: "flaky"`).
    - `mobile-dev`: XCTest result bundle (`xccov`) or Android junit XML.
+   - `bash-dev`: bats TAP output (`ok` / `not ok` lines with retry counts).
+   - `embedded-dev`: Unity test runner output or CTest XML (`<Test>` elements with `Status="notrun"` / retry).
    Fallback: static-source flakiness annotations (`@flaky`, `@retry`, `pytest.mark.flaky`) when CI history unavailable (EC-2). Skip: when neither source is available — `status: skipped`, `skip_reason: "no flakiness signal source available (no CI history, no flakiness annotations)"`.
 
    Flakiness threshold: default >5% retry rate = Critical, 1-5% = Warning, <1% = Suggestion (EC-9). Threshold is per-stack overridable via `.gaia-config`.

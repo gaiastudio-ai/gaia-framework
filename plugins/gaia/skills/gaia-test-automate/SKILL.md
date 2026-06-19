@@ -82,7 +82,7 @@ usage: /gaia-test-automate {story_key} --scaffold
 
 **Arguments**
 - `{story_key}` — required.
-- `--stack` — optional; canonical stack key (`ts-dev`, `python-dev`, `java-dev`, `go-dev`, `flutter-dev`, `angular-dev`). Defaults to `ts-dev`.
+- `--stack` — optional; canonical stack key (`ts-dev`, `python-dev`, `java-dev`, `go-dev`, `flutter-dev`, `angular-dev`, `bash-dev`, `embedded-dev`). Defaults to `ts-dev`.
 
 **Output format**
 - Stdout: a `scaffold: N skeleton(s) generated for {story_key} under {dir}` line followed by the hard-invariant marker `scaffold: review gate not updated (skeleton-only output is not coverage)`.
@@ -215,6 +215,8 @@ The toolkit invoked by Review Phase 3A is selected by the canonical stack name e
 | `flutter-dev`         | `command -v dart` AND `command -v flutter`                               | `dart test --reporter=json` (collection mode, NOT execution) |
 | `mobile-dev`          | iOS `command -v xcodebuild`; Android `command -v gradle`                 | iOS `xcodebuild -showtests`; Android `gradle test --dry-run` |
 | `angular-dev`         | `command -v jest`                                                        | `jest --listTests` (Angular jest convention)                 |
+| `bash-dev`            | `command -v bats`                                                        | `find . -name '*.bats' -maxdepth 3`                         |
+| `embedded-dev`        | `command -v cmake` OR `command -v idf.py`                                | `ctest --show-only=json-v1` (CTest) or Unity test file scan |
 
 Phase 3A scope is **strict**: per-stack test-runner availability probe + "tests-that-would-run" inventory + missing-fixture / missing-mock / untestable-assertion analysis. Phase 3A does NOT invoke linters, formatters, type checkers, or build verification — those belong to `gaia-code-review`. Phase 3A does NOT invoke Semgrep, secret scanners, or dep audits — those belong to `gaia-security-review`. Phase 3A does NOT execute tests — actual execution is the execution phase's territory.
 
@@ -277,7 +279,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - If no story key was provided as an argument, fail with: "usage: /gaia-test-automate [story-key]"
 - Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper. It honors the canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then falls back to legacy `docs/implementation-artifacts/{story_key}-*.md`. Exit codes: 0 = single match (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches (fail with "multiple story files matched key {story_key}"). Do NOT inline-hardcode the legacy `docs/` glob.
 - Read the resolved story file; parse YAML frontmatter to extract `status`, `traces_to`, and `figma:` block (if any).
-- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
+- Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
 - **Tool prereq probe.** For each tool listed in the stack-toolkit table row matched by the canonical stack name: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
 - **Test-runner availability probe.** Verify the per-stack test runner is present (e.g., `jest`, `pytest`, `go`, `dart test`). If the test runner is absent for a stack that requires it, emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. **BLOCKED short-circuits BEFORE the FULL Review Phase 6 plan write** — a stub plan file with `verdict: BLOCKED` in frontmatter IS still emitted by Phase 6 so the user has a record of the failed run; NO `review-gate.sh` invocation occurs.
 

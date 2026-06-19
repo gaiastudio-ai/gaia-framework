@@ -37,7 +37,7 @@ fi
 
 ## Mission
 
-You are implementing a quick spec end-to-end — the fastest path from idea to code in GAIA. Given `.gaia/artifacts/implementation-artifacts/quick-spec-{spec-name}.md`, load the spec, check for an in-progress WIP checkpoint, auto-detect the project's stack, delegate implementation to the matching native stack-dev subagent (`typescript-dev`, `angular-dev`, `flutter-dev`, `java-dev`, `python-dev`, `mobile-dev`, or `go-dev`) via `context: fork`, run the project's tests, validate against the spec's acceptance criteria, and archive the checkpoint.
+You are implementing a quick spec end-to-end — the fastest path from idea to code in GAIA. Given `.gaia/artifacts/implementation-artifacts/quick-spec-{spec-name}.md`, load the spec, check for an in-progress WIP checkpoint, auto-detect the project's stack, delegate implementation to the matching native stack-dev subagent (`typescript-dev`, `angular-dev`, `flutter-dev`, `java-dev`, `python-dev`, `mobile-dev`, `go-dev`, `bash-dev`, or `embedded-dev`) via `context: fork`, run the project's tests, validate against the spec's acceptance criteria, and archive the checkpoint.
 
 This skill is the native Claude Code conversion of the legacy quick-dev workflow at `_gaia/lifecycle/workflows/quick-flow/quick-dev/`. The five-step order, the WIP checkpoint resume UX (Proceed / Start fresh / Review), the `files_touched` shape with sha256 checksums, and the legacy dev agent auto-detect behavior (rule-76 "Auto-detected developer: {agent_name} based on {detection_source}") are preserved verbatim.
 
@@ -46,8 +46,8 @@ This skill is the native Claude Code conversion of the legacy quick-dev workflow
 - **Five steps, strict order, no skipping.** Load Spec -> Resolve WIP Checkpoint -> Delegate to gaia:stack-dev subagent -> Verify -> Complete. The legacy engine executed these sequentially; the native skill must too.
 - **Deterministic operations live in `scripts/`.** Spec loading, sha256 validation on checkpoints, stack auto-detection, and checkpoint archival are handled by the four scripts under `scripts/`. Do NOT inline these operations in prose.
 - **Dev agent delegation stays at exactly 1 level of subagent nesting (AC-EC6).** `gaia-quick-dev` spawns one stack-dev subagent via `context: fork`. The stack-dev subagent loads shared skills JIT in-context — it does NOT spawn further nested subagents. The legacy shim pattern is NOT needed here because the native `context: fork` primitive replaces it.
-- **Auto-detect first, user-select fallback — same UX as the legacy engine (AC-EC2).** If `auto-detect-stack.sh` emits a stack on stdout (exit 0), use it. If ambiguous (exit 1), ask the user to pick one of the seven supported stacks. Never silently default.
-- **Validate the selected stack against the plugin agents tree (AC-EC3).** Before spawning the subagent, confirm `plugins/gaia/agents/{stack}-dev.md` exists. If a user picks a stack that has no corresponding agent file (e.g., `rust-dev`), HALT with a clear message listing the seven available stacks — do NOT silently fall back to another stack.
+- **Auto-detect first, user-select fallback — same UX as the legacy engine (AC-EC2).** If `auto-detect-stack.sh` emits a stack on stdout (exit 0), use it. If ambiguous (exit 1), ask the user to pick one of the supported stacks. Never silently default.
+- **Validate the selected stack against the plugin agents tree (AC-EC3).** Before spawning the subagent, confirm `plugins/gaia/agents/{stack}-dev.md` exists. If a user picks a stack that has no corresponding agent file (e.g., `rust-dev`), HALT with a clear message listing the available stacks — do NOT silently fall back to another stack.
 - **Pass `project_path` explicitly to the subagent (AC-EC8).** The stack-dev subagent must write application code to the resolved `project-path`, not `project-root`. The CLAUDE.md directory-identity rule is enforced here: the skill passes `project_path` as a named parameter, and the subagent prompt asserts the discipline.
 - **JIT-load shared skills by section — never pre-load (AC3).** The stack-dev subagent references shared skills via `{skill}#{section}` selectors (e.g., `gaia-testing-patterns#tdd-cycle`, `gaia-git-workflow#commits`, `gaia-code-review-standards#review-gate-completion`). Only the requested section is loaded at runtime.
 - **Preserve the legacy WIP checkpoint shape (AC5, AC-EC5).** `.gaia/memory/checkpoints/quick-dev-{spec-name}.yaml` with `files_touched` entries containing `path`, `checksum: "sha256:{hex}"`, and `last_modified: ISO-8601`. The skill writes in this shape so `/gaia-resume` continues to work.
@@ -98,13 +98,13 @@ Run the auto-detector to resolve the stack:
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-quick-dev/scripts/auto-detect-stack.sh {spec_name}
 ```
 
-- **Exit 0**: stdout carries one of `typescript | angular | flutter | java | python | mobile | go`. Log "Auto-detected developer: {stack}-dev based on filesystem signals." (this message matches the legacy engine rule-76 wording). Skip the user prompt.
-- **Exit 1**: ambiguous — no conclusive signals, or multiple competing signals with no spec-body hint to disambiguate. Ask the user: "Which stack developer should implement this spec? [typescript / angular / flutter / java / python / mobile / go]". Validate the answer against the seven supported stacks.
+- **Exit 0**: stdout carries one of `typescript | angular | flutter | java | python | mobile | go | bash | embedded`. Log "Auto-detected developer: {stack}-dev based on filesystem signals." (this message matches the legacy engine rule-76 wording). Skip the user prompt. Note: `bash` is explicit-only and will not be auto-detected; `embedded` auto-detects from `sdkconfig`/`idf_component.yml`/`platformio.ini`/FreeRTOS-`CMakeLists.txt`.
+- **Exit 1**: ambiguous — no conclusive signals, or multiple competing signals with no spec-body hint to disambiguate. Ask the user: "Which stack developer should implement this spec? [typescript / angular / flutter / java / python / mobile / go / bash / embedded]". Validate the answer against the supported stacks.
 
 Validate the selected stack against the plugin agents tree:
 
 - Verify `plugins/gaia/agents/{stack}-dev.md` exists before spawning.
-- If the file is missing (e.g., user picked a non-existent stack like `rust-dev`): HALT with "No native subagent for '{stack}'. Available: typescript, angular, flutter, java, python, mobile, go." (AC-EC3)
+- If the file is missing (e.g., user picked a non-existent stack like `rust-dev`): HALT with "No native subagent for '{stack}'. Available: typescript, angular, flutter, java, python, mobile, go, bash, embedded." (AC-EC3)
 
 Spawn the matching subagent with `context: fork` — this is the isolation pattern. The subagent prompt must carry:
 
@@ -147,7 +147,7 @@ Report implementation complete to the user with the final `files_touched` summar
 
 - **AC-EC1 — Malformed frontmatter** detected by `.github/scripts/lint-skill-frontmatter.sh`. The CI gate rejects the PR; the story cannot merge until the frontmatter is fixed.
 - **AC-EC2 — Ambiguous auto-detect**: `auto-detect-stack.sh` exits 1. The skill falls back to the user prompt matching the legacy engine rule-76 UX. No silent default, no halt.
-- **AC-EC3 — Non-existent stack**: user picks a stack with no corresponding `plugins/gaia/agents/{stack}-dev.md` file. HALT with a clear message listing the seven available stacks. Do NOT attempt to spawn a non-existent subagent.
+- **AC-EC3 — Non-existent stack**: user picks a stack with no corresponding `plugins/gaia/agents/{stack}-dev.md` file. HALT with a clear message listing the available stacks. Do NOT attempt to spawn a non-existent subagent.
 - **AC-EC4 — Missing spec file**: `load-spec.sh` exits 2. Surface the legacy error message verbatim and HALT.
 - **AC-EC5 — sha256 mismatch on resume**: `wip-checkpoint-resolve.sh` exits 1 with MODIFIED or DELETED rows. Offer Proceed / Start fresh / Review — never silently resume.
 - **AC-EC6 — Nesting discipline**: the quick-dev skill spawns 1 level of subagent (the stack-dev). Shared skills load JIT in-context, NOT as nested subagent spawns. The 2-level nesting warning is respected.
