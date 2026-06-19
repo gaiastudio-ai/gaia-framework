@@ -15,7 +15,7 @@
 #   --stack <stack>         Required only for --skill gaia-review-code (the
 #                           stack-conditional row). One of: ts-dev, java-dev,
 #                           python-dev, go-dev, flutter-dev, mobile-dev,
-#                           angular-dev. Ignored for non-stack skills.
+#                           angular-dev, bash-dev. Ignored for non-stack skills.
 #   --help                  Print this help and exit 0.
 #
 # Output (stdout, single line, no jq dependency):
@@ -29,7 +29,7 @@
 # WIRING TABLE:
 #   gaia-review-code               -> stack-specific reviewer (ts-dev, java-dev,
 #                                     python-dev, go-dev, flutter-dev,
-#                                     mobile-dev, angular-dev)
+#                                     mobile-dev, angular-dev, bash-dev)
 #   gaia-review-qa                 -> vera
 #   gaia-review-test               -> sable
 #   gaia-test-automate             -> sable
@@ -74,7 +74,7 @@ Options:
   --skill <name>          Required. Wiring-table skill variant.
   --stack <stack>         Required for gaia-review-code only. One of:
                           ts-dev, java-dev, python-dev, go-dev, flutter-dev,
-                          mobile-dev, angular-dev.
+                          mobile-dev, angular-dev, bash-dev.
   --help                  Show this help and exit 0.
 
 Stdout: {"agent_id":"<id>","sidecar_path":"<path>"}
@@ -93,7 +93,7 @@ emit() {
 # is_canonical_stack <stack>
 is_canonical_stack() {
   case "$1" in
-    ts-dev|java-dev|python-dev|go-dev|flutter-dev|mobile-dev|angular-dev) return 0 ;;
+    ts-dev|java-dev|python-dev|go-dev|flutter-dev|mobile-dev|angular-dev|bash-dev) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -122,8 +122,8 @@ done
 case "$SKILL" in
   gaia-review-code)
     # Stack-conditional row: --stack required.
-    [ -n "$STACK" ] || die 1 "--stack required for skill 'gaia-review-code' (one of: ts-dev, java-dev, python-dev, go-dev, flutter-dev, mobile-dev, angular-dev)"
-    is_canonical_stack "$STACK" || die 1 "invalid stack '$STACK' for gaia-review-code (expected one of: ts-dev, java-dev, python-dev, go-dev, flutter-dev, mobile-dev, angular-dev)"
+    [ -n "$STACK" ] || die 1 "--stack required for skill 'gaia-review-code' (one of: ts-dev, java-dev, python-dev, go-dev, flutter-dev, mobile-dev, angular-dev, bash-dev)"
+    is_canonical_stack "$STACK" || die 1 "invalid stack '$STACK' for gaia-review-code (expected one of: ts-dev, java-dev, python-dev, go-dev, flutter-dev, mobile-dev, angular-dev, bash-dev)"
     emit "$STACK" "_memory/${STACK}-sidecar.md"
     ;;
   gaia-review-qa)
