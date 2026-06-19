@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape: Multi-Repo / Per-Service - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="selective-test-execution.html">Selective Test Execution</a></li>
+          <li><a href="automated-versioning-and-deploy.html">Automated Versioning &amp; Deploy</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="shape-multi-repo.html" class="active">Shape: Multi-Repo / Per-Service</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html">Shape: Library</a></li>
+          <li><a href="shape-cli.html">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#when">When this shape applies</a></li>
+          <li><a href="#problem">The config-visibility problem</a></li>
+          <li><a href="#config">Central config with per-service repositories</a></li>
+          <li><a href="#project">Projecting per-service slices</a></li>
+          <li><a href="#slice">What a slice contains</a></li>
+          <li><a href="#sync">Keeping slices in sync</a></li>
+          <li><a href="#worked-when">You'll know it worked when</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        <a href="project-shapes-overview.html">Project Shapes</a>
+        <span class="separator">/</span>
+        Multi-Repo / Per-Service
+      </nav>
+
+      <h1>Shape: Multi-Repo / Per-Service</h1>
+      <p>
+        In a multi-repo layout, each service is its <strong>own git repository</strong> — a
+        <code>backend</code> repo, a <code>frontend</code> repo, a <code>desktop</code> repo, a
+        <code>marketing-site</code> repo — each cloned, built, tested, and deployed independently. The
+        shared GAIA project config lives <strong>above</strong> them at a non-git project root that ties the
+        services together for planning, while each service repo carries only the slice of config its own CI
+        needs.
+      </p>
+      <p>
+        This is distinct from <a href="shape-microservices.html">Shape: Microservices</a> (many services in
+        <em>one</em> monorepo) and from the single-clone "config above a published sub-tree" case. Here the
+        config is in <em>no</em> service clone at all.
+      </p>
+
+      <h2 id="when">When this shape applies</h2>
+      <ul>
+        <li>Each deployable service is a separate GitHub repository, deployed on its own cadence.</li>
+        <li>A shared project root (often not itself a git work tree) holds the planning artifacts and the
+          central <code>.gaia/config/project-config.yaml</code>.</li>
+        <li>You want each service repo's CI to run only <em>that service's</em> affected tests and deploy only
+          <em>that service</em> — the benefits of selective test execution and per-component deploy, applied
+          per repository.</li>
+      </ul>
+
+      <h2 id="problem">The config-visibility problem</h2>
+      <p>
+        Every generated GAIA workflow resolves the project config by looking at the checkout root, then
+        <code>CLAUDE_PROJECT_ROOT</code>, then walking <em>up</em> from the working directory. In a multi-repo
+        layout this finds nothing: a service repo's CI clones <strong>only that service repo</strong>, so there
+        is no parent directory in the runner to walk up into, and <code>CLAUDE_PROJECT_ROOT</code> points at a
+        path that does not exist on the runner. With no config found, the workflow takes the
+        "no config &rarr; do everything" branch — the full test suite runs and the whole service redeploys on
+        every change, defeating selective tests and per-component deploy for the entire multi-repo project.
+      </p>
+      <p>
+        The fix is to <strong>project</strong> a minimal, self-contained config slice into each service repo,
+        checked in at its own <code>.gaia/config/project-config.yaml</code>, so the workflow resolves it at the
+        service repo's own checkout root.
+      </p>
+
+      <h2 id="config">Central config with per-service repositories</h2>
+      <p>
+        Declare each stack's owning repository with <code>stacks[].repository</code> (in
+        <code>owner/repo</code> form). Stacks without a <code>repository</code> are assumed to live alongside
+        the central config (the single-repo default).
+      </p>
+      <pre><code># &lt;project-root&gt;/.gaia/config/project-config.yaml  (the central config)
+project_name: acme-platform
+platforms: [web]
+ci_cd:
+  promotion_chain:
+    - { id: staging, branch: staging }
+    - { id: main,    branch: main }
+release:
+  strategy: conventional-commits
+  version_files: [backend/package.json, frontend/package.json]
+environments:
+  - { id: production, branch: main, kind: deploy }
+stacks:
+  - name: backend
+    language: typescript
+    paths: ["backend/**"]
+    repository: acme/backend
+    cross_refs: ["shared-lib"]
+  - name: frontend
+    language: typescript
+    paths: ["frontend/**"]
+    repository: acme/frontend
+    cross_refs: ["shared-lib"]
+  - name: shared-lib
+    language: typescript
+    paths: ["shared/**"]
+    repository: acme/shared-lib
+  - name: marketing
+    language: html
+    paths: ["marketing/**"]
+    repository: acme/marketing</code></pre>
+
+      <h2 id="project">Projecting per-service slices</h2>
+      <p>
+        From the project root, project a slice for each service repo:
+      </p>
+      <pre><code># Drive it via the config-CI skill (recommended):
+/gaia-config-ci --project-slice acme/backend --out ../backend/.gaia/config/project-config.yaml
+
+# …or call the deterministic script directly:
+plugins/gaia/scripts/project-config-slice.sh \
+  --config .gaia/config/project-config.yaml \
+  --service acme/backend \
+  --out ../backend/.gaia/config/project-config.yaml</code></pre>
+      <p>
+        <code>--service</code> accepts an <code>owner/repo</code> value (matched against
+        <code>stacks[].repository</code>) or a stack <code>name</code>. Commit the generated slice into the
+        service repo so its CI resolves it at the service's checkout root.
+      </p>
+
+      <h2 id="slice">What a slice contains</h2>
+      <p>
+        The slice is the minimal self-contained config that service needs — <em>not</em> the whole
+        multi-service config. For <code>acme/backend</code> above (which <code>cross_refs</code>
+        <code>shared-lib</code>):
+      </p>
+      <ul>
+        <li>the service's own <code>stacks[]</code> entry, <strong>plus the transitive
+          <code>cross_refs</code> closure</strong> (so <code>shared-lib</code> is carried along, and
+          within-service transitive narrowing still works);</li>
+        <li><code>ci_cd.promotion_chain</code> verbatim — so the <code>staging&rarr;main</code> promotion-push
+          full-suite rail still fires in the service repo;</li>
+        <li><code>release</code> (<code>version_files</code>) — so version-bump still resolves;</li>
+        <li><code>environments</code>, <code>platforms</code>, and <code>project_name</code>.</li>
+      </ul>
+      <p>
+        Unrelated services (<code>frontend</code>, <code>marketing</code>) are excluded. Each slice carries a
+        <code>DO NOT EDIT BY HAND</code> header naming its source and the regenerate command.
+      </p>
+
+      <h2 id="sync">Keeping slices in sync</h2>
+      <p>
+        The projection is <strong>idempotent</strong>: whenever the central config changes (a new stack, a
+        changed promotion chain, a new cross-ref), re-run <code>--project-slice</code> for each affected
+        service and commit the refreshed slice. A simple project-root script can loop over every
+        <code>stacks[].repository</code> and regenerate all slices in one pass.
+      </p>
+      <p>
+        <strong>Cross-repo affected-set / deploy (current scope).</strong> Within a service repo, selective
+        tests narrow to that service's changed files and the carried <code>cross_refs</code> closure. Full
+        cross-repo affected-set hand-off (one service's change triggering a dependent service's pipeline) and
+        cross-repo deploy ordering are tracked as follow-on work — the slice declares the cross-repo
+        dependencies so they are visible, and the promotion-push rail still guarantees a full suite at the
+        final-tier gate.
+      </p>
+
+      <h2 id="worked-when">You'll know it worked when</h2>
+      <ul>
+        <li>Each service repo has a checked-in <code>.gaia/config/project-config.yaml</code> containing only
+          its own stack(s) + cross-ref closure.</li>
+        <li>A feature PR in the <code>backend</code> repo runs the backend's affected tests — not a blanket
+          full suite — and the promotion PR to the final tier still escalates to the full suite.</li>
+        <li>Re-running <code>--project-slice</code> after editing the central config produces a byte-identical
+          slice when nothing relevant changed, and an updated slice when it did.</li>
+      </ul>
+    </main>
+  </div>
+</body>
+</html>
