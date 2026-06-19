@@ -60,6 +60,23 @@ When the invocation contains `--project-slice <service>`:
 
 This mode does NOT scaffold or regenerate workflows — it only emits the config slice. Generate/refresh the service repo's actual workflows by running the normal `/gaia-config-ci` scaffold inside that service repo against its projected slice.
 
+## Tracked in-repo CI config slice (`gen-ci-config.sh`)
+
+A related-but-distinct layout: a **single** repo whose canonical `.gaia/config/project-config.yaml` lives **above** the checkout root at an untracked project root AND is `.gitignore`d inside the repo (the published repo must not ship a particular project's config). The config is then in **no** checkout, so CI's config-resolution chain finds nothing and selective tests fall back to the full suite on every PR.
+
+The fix is a **tracked, CI-scoped config slice** committed into the repo at `.gaia/ci-config.yaml` (via a `.gitignore` negation), which the CI workflows resolve at the checkout root. Generate it with:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/gen-ci-config.sh" \
+  --config "<canonical project-config.yaml>" \
+  [--strip-prefix "<sub-tree>/"] \
+  --out ".gaia/ci-config.yaml"
+```
+
+The slice carries ONLY the CI-matrix inputs — `stacks` (matrix construction), `ci_cd.promotion_chain` (so the promotion-push full-suite rail fires), and `test_policy` — with **all comments stripped** and **no** secrets, local paths, `environments`, `release`, or `distribution`. Pass `--strip-prefix <sub-tree>/` when the canonical config uses project-root-relative globs (e.g. `gaia-public/plugins/**`) but CI checks out the sub-tree as the root, so the slice's globs are rebased to the checkout root.
+
+The CI config-resolution precedence is: `GAIA_CONFIG` → `.gaia/ci-config.yaml` (this tracked slice) → `CLAUDE_PROJECT_ROOT/.gaia/config/project-config.yaml` → upward-walk from CWD → no-config full-suite fallback. The slice is a **derived projection** of the canonical config — regenerate it whenever the canonical config changes; a drift lint (regenerate-and-diff) catches divergence (lockfile pattern).
+
 ## Steps
 
 ### Step 1 -- Detect CI Platform

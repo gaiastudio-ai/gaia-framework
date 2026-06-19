@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.driver.outputs.matrix }}
+      config_path: ${{ steps.cfg.outputs.config_path }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
         with:
@@ -37,15 +38,26 @@ jobs:
           # would miss it, take the "no config -> empty matrix" branch, and
           # silently run the FULL suite on every PR — defeating selective tests.
           #
-          # Resolve via, in order: GAIA_CONFIG (explicit), CLAUDE_PROJECT_ROOT
-          # (project root), then an upward walk from CWD. Mirrors how
-          # gaia-paths.sh / resolve-config.sh resolve a config above a sub-tree.
+          # Resolve via, in order: GAIA_CONFIG (explicit), the tracked in-repo
+          # CI slice (.gaia/ci-config.yaml), CLAUDE_PROJECT_ROOT (project root),
+          # then an upward walk from CWD. Mirrors how gaia-paths.sh /
+          # resolve-config.sh resolve a config above a sub-tree.
+          #
+          # The .gaia/ci-config.yaml tier handles the layout where the canonical
+          # config lives ABOVE the checkout root AND is untracked/gitignored
+          # within the repo (so it is in NO checkout). A minimal, generated,
+          # CI-scoped slice (stacks + ci_cd.promotion_chain + test_policy) is
+          # committed at that path so CI resolves it at the checkout root. See
+          # gen-ci-config.sh + the ci-config-slice drift lint.
           rel=".gaia/config/project-config.yaml"
+          ci_slice=".gaia/ci-config.yaml"
           config_path=""
           location=""
 
           if [[ -n "${GAIA_CONFIG:-}" && -f "${GAIA_CONFIG}" ]]; then
             config_path="${GAIA_CONFIG}"; location="env:GAIA_CONFIG"
+          elif [[ -f "${ci_slice}" ]]; then
+            config_path="${ci_slice}"; location="ci-slice"
           elif [[ -n "${CLAUDE_PROJECT_ROOT:-}" && -f "${CLAUDE_PROJECT_ROOT}/${rel}" ]]; then
             config_path="${CLAUDE_PROJECT_ROOT}/${rel}"; location="env:CLAUDE_PROJECT_ROOT"
           else
@@ -65,7 +77,7 @@ jobs:
           if [[ -n "$config_path" ]]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "config_path=${config_path}" >> "$GITHUB_OUTPUT"
-            if [[ "$location" == "checkout-root" ]]; then
+            if [[ "$location" == "checkout-root" || "$location" == "ci-slice" || "$location" == "env:GAIA_CONFIG" ]]; then
               echo "[selective-tests] project config: ${config_path} (${location})"
             else
               # Present but NOT at the checkout root — a loud warning, because a
@@ -183,11 +195,28 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
 
+      # The per-stack test command may be a bats suite (the bash-language
+      # default is `bats <tests dir>`). Install bats so the test job can run it;
+      # a reference workflow whose test job 127s on a bash/bats stack is broken
+      # for every bats-using project. Projects on other stacks can add their own
+      # toolchain setup step here (setup-node, setup-go, …) for their languages.
+      # Pin bats >= 1.5.0 — suites that call `bats_require_minimum_version 1.5.0`
+      # fail on the action's older default (1.2.1). Matches the dedicated bats job.
+      - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
+        with:
+          bats-version: 1.10.0
+
       - name: Run stack tests with retry
         run: |
+          # Use the config the plan job resolved (GAIA_CONFIG / the tracked
+          # .gaia/ci-config.yaml slice / CLAUDE_PROJECT_ROOT / upward-walk), not
+          # a hard-coded path — run-stack-tests.sh reads the stack's test command
+          # from it, so it must be the SAME config the matrix was built from.
+          config_path="${{ needs.plan.outputs.config_path }}"
+          [[ -n "$config_path" ]] || config_path=".gaia/config/project-config.yaml"
           plugins/gaia/scripts/run-with-retry.sh \
             --test-id "${{ matrix.stack }}" \
             --flaky-list-file .gaia/config/flaky-tests.txt \
             -- plugins/gaia/scripts/run-stack-tests.sh \
-              --config .gaia/config/project-config.yaml \
+              --config "$config_path" \
               "${{ matrix.stack }}"
