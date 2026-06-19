@@ -3,6 +3,52 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.199.0] — 2026-06-19
+
+### Added
+
+- (E28-S233) add sprint-progress audit for merged-but-not-done stories (#1590)
+- (E28-S229) add skill-rename pre-flight checklist helper (#1582)
+- (E114-S9) harden deploy/release with flag + path-traversal guards (#1581)
+- (E113-S15) add optional per-stack test_cmd schema field (#1579)
+- (E113-S13) cover hooks/rubrics/tools plugin subtrees with stack globs (#1577)
+- (E114-S7) per-component smoke results + category-first deploy skill rename (#1575)
+- (E114-S6) partial-deploy best-effort with HOLD, manifest snapshot, crash recovery (#1574)
+- (E114-S5) dependency-ordered per-stack deploy with health gate (#1573)
+- (E114-S4) post-merge promotion trigger — release then per-env component deploy (#1572)
+- (E114-S3) affected-set data contract with artifact, trailer, and full-deploy fallback (#1571)
+- (E114-S2) add release.strategy config (conventional-commits/manual/calendar) (#1570)
+- (E114-S1) rebuild gaia-release project-generic with config-driven version-bump (#1569)
+- (E113-S11) wire selective-test pipeline driver + CI workflow (#1568)
+- (E113-S10) map files to stacks via paths glob-list in cross-stack edge detector (#1567)
+- (E113-S7) add test_policy config section with per-trigger scope rules (#1562)
+- (E113-S6) always-run set, flaky retry/escalate, force-full-run (#1561)
+- (E113-S5) stale cross_refs graph reconciliation with full-suite escalation (#1560)
+- (E113-S4) generate-pipeline.sh per-stack CI matrix from affected-set (#1559)
+- (E113-S3) cross_refs inverted index + transitive DAG walk (#1558)
+- (E113-S2) detect-affected.sh changed-path-to-stack resolution (#1557)
+- (E113-S1) spike detect-affected prototype + go/no-go report (#1556)
+
+### Changed
+
+- (E28-S234) batch dead-reference-scan grep via xargs instead of per-file fork (#1589)
+- (E28-S232) harden leaked-ID lint, sprint-state doc-rot, deprecated-mirror test (#1587)
+- (E28-S231) deprecate the legacy implementation-artifacts sprint-status mirror (#1585)
+- (E113-S16) document + regression-pin reconcile glob depth semantics (#1584)
+- (E113-S17) scrub leaked internal-ID prose from selective-test bats headers (#1583)
+- (E113-S14) extract shared file-to-stack resolution helper (#1578)
+- (E114-S8) scenario-driven versioning + per-component deploy tutorial (#1576)
+- (E113-S9) pin config-path-to-stack mapping in detect-affected (zero false-negative) (#1566)
+- (E113-S12) scrub internal-ID prefixes from shipped bats names; exempt documentation/ from scan (#1565)
+
+### Fixed
+
+- (ci) wire promotion-push wildcard into selective-tests reference workflow (#1596)
+- (E28-S234) make dead-reference-scan deterministic and scratch-insensitive (#1588)
+- (write-checkpoint) close TOCTOU race on concurrent same-step writes (#1586)
+- (E28-S230) make triage finding extraction idempotent for all types (#1580)
+- (E113-S7) register test_policy in reconciler managed-elsewhere list (#1563)
+
 ## [1.198.0] — 2026-06-19
 
 ### Added
