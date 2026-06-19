@@ -443,6 +443,24 @@ _detect_java_stack() {
   fi
 }
 
+_detect_embedded_stack() {
+  # High-specificity embedded firmware markers: ESP-IDF (sdkconfig,
+  # idf_component.yml), PlatformIO (platformio.ini), or a CMakeLists.txt
+  # that references FreeRTOS. A bare CMakeLists.txt without FreeRTOS content
+  # is NOT classified as embedded (false-positive guard).
+  if [ -f "$PROJECT_ROOT/sdkconfig" ] \
+    || [ -f "$PROJECT_ROOT/idf_component.yml" ] \
+    || [ -f "$PROJECT_ROOT/platformio.ini" ]; then
+    _push_stack '{"name":"embedded"}'
+    return 0
+  fi
+  if [ -f "$PROJECT_ROOT/CMakeLists.txt" ] \
+    && grep -qiE 'FreeRTOS|freertos' "$PROJECT_ROOT/CMakeLists.txt" 2>/dev/null; then
+    _push_stack '{"name":"embedded"}'
+    return 0
+  fi
+}
+
 _detect_go_stack() {
   if [ -f "$PROJECT_ROOT/go.mod" ]; then
     _push_stack '{"name":"go","test_runner":"go-test"}'
@@ -630,6 +648,7 @@ _detect_tool_providers() {
 # Run all detectors
 # ---------------------------------------------------------------------------
 
+_detect_embedded_stack
 _detect_node_family
 _detect_python_stack
 _detect_java_stack
