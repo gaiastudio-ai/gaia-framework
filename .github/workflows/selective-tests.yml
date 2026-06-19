@@ -195,6 +195,13 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
 
+      # The per-stack test command may be a bats suite (the bash-language
+      # default is `bats <tests dir>`). Install bats so the test job can run it;
+      # a reference workflow whose test job 127s on a bash/bats stack is broken
+      # for every bats-using project. Projects on other stacks can add their own
+      # toolchain setup step here (setup-node, setup-go, …) for their languages.
+      - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
+
       - name: Run stack tests with retry
         run: |
           # Use the config the plan job resolved (GAIA_CONFIG / the tracked
