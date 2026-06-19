@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.200.0] — 2026-06-19
+
+### Added
+
+- New **bash-dev** developer agent (Shay) for Bash/shell-scripting work, with shellcheck-based review tooling. The `bash` stack is resolved explicitly (via `--stack` / project config / story frontmatter); it is not auto-detected.
+- New **embedded-dev** developer agent (Nils) for C/C++/ESP-IDF/FreeRTOS firmware, with high-specificity auto-detection from `sdkconfig`, `idf_component.yml`, `platformio.ini`, or a FreeRTOS-referencing `CMakeLists.txt` (a bare `CMakeLists.txt` is not misclassified).
+- Tag-conformance patterns and per-stack test discovery for the two new stacks, plus documentation across the developer/review skills and the documentation site.
+
 ## [1.199.0] — 2026-06-19
 
 ### Added
