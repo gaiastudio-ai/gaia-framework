@@ -82,3 +82,24 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
   [ -s "$p/CLAUDE.md" ]
 }
+
+@test "init-project.sh: seeded roster contains all 9 dev stacks (AC2b)" {
+  local p="$TEST_TMP/roster-check"
+  "$SCRIPT" --name roster --path "$p"
+  local cfg="$p/.gaia/memory/config.yaml"
+  [ -s "$cfg" ]
+  # All 9 canonical dev stacks must appear in the agents section.
+  for stack in typescript-dev angular-dev java-dev python-dev go-dev flutter-dev mobile-dev bash-dev embedded-dev; do
+    grep -q "$stack" "$cfg" || { echo "missing stack: $stack"; return 1; }
+  done
+}
+
+@test "init-project.sh: go-dev sidecar directory is seeded (AC2b)" {
+  local p="$TEST_TMP/sidecar-check"
+  "$SCRIPT" --name sidecar --path "$p"
+  [ -d "$p/.gaia/memory/go-dev-sidecar" ]
+}
+
+@test "init-project.sh: display-name case covers go-dev (AC2b)" {
+  grep -qE 'go-dev\)' "$SCRIPT"
+}

@@ -183,6 +183,20 @@ assert_json_field() {
   assert_json_field "$output" "sidecar_path" "_memory/angular-dev-sidecar.md"
 }
 
+@test "gaia-review-code --stack bash-dev (AC2)" {
+  run "$SCRIPT" --skill gaia-review-code --stack bash-dev
+  [ "$status" -eq 0 ]
+  assert_json_field "$output" "agent_id" "bash-dev"
+  assert_json_field "$output" "sidecar_path" "_memory/bash-dev-sidecar.md"
+}
+
+@test "gaia-review-code --stack embedded-dev (AC2)" {
+  run "$SCRIPT" --skill gaia-review-code --stack embedded-dev
+  [ "$status" -eq 0 ]
+  assert_json_field "$output" "agent_id" "embedded-dev"
+  assert_json_field "$output" "sidecar_path" "_memory/embedded-dev-sidecar.md"
+}
+
 # --- error contract ---
 
 @test "unknown skill -> exit 1 + stderr diagnostic" {

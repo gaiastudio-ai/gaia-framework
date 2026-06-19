@@ -112,3 +112,17 @@ teardown() { common_teardown; }
   [[ "$output" == *"ts-dev"* ]]
   [[ "$output" == *"typescript-dev.md"* ]]
 }
+
+@test "explicit --stack bash-dev resolves persona (AC2)" {
+  run "$SCRIPT" --stack bash-dev --agents-dir "$AGENTS_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"stack='bash-dev'"* ]] || [[ "$output" == *"stack=bash-dev"* ]]
+  [[ "$output" == *"bash-dev.md"* ]]
+}
+
+@test "explicit --stack embedded-dev resolves persona (AC2)" {
+  run "$SCRIPT" --stack embedded-dev --agents-dir "$AGENTS_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"stack='embedded-dev'"* ]] || [[ "$output" == *"stack=embedded-dev"* ]]
+  [[ "$output" == *"embedded-dev.md"* ]]
+}

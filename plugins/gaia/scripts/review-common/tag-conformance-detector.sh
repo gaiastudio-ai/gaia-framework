@@ -22,6 +22,10 @@
 #                                            (defers to JUnit for Android, XCTest tagging
 #                                            via @MainActor / @available currently
 #                                            treated as missing — story scope)
+#   bash-dev     bats / shell              — `# bats test_tags=<tag>` directive or
+#                                            `# TEST_TAG:` comment convention
+#   embedded-dev Unity / CMock / Ceedling  — `// TEST_TAG:` or `/* TEST_TAG: */`
+#                                            comment convention in C test files
 #
 # Output (stdout): a JSON fragment of the canonical Phase 3A check shape:
 #
@@ -90,7 +94,7 @@ Usage:
   $SCRIPT_NAME --help
 
 <stack> is one of: ts-dev | angular-dev | java-dev | python-dev | go-dev |
-                   flutter-dev | mobile-dev
+                   flutter-dev | mobile-dev | bash-dev | embedded-dev
 
 When --stack is omitted, each file is classified by extension. Files that
 do not match any known stack are skipped.
@@ -137,8 +141,8 @@ done
 # Validate explicit --stack value (auto-detect when omitted).
 if [ -n "$STACK" ]; then
   case "$STACK" in
-    ts-dev|angular-dev|java-dev|python-dev|go-dev|flutter-dev|mobile-dev) ;;
-    *) die "unknown stack: '$STACK' (expected ts-dev|angular-dev|java-dev|python-dev|go-dev|flutter-dev|mobile-dev)" ;;
+    ts-dev|angular-dev|java-dev|python-dev|go-dev|flutter-dev|mobile-dev|bash-dev|embedded-dev) ;;
+    *) die "unknown stack: '$STACK' (expected ts-dev|angular-dev|java-dev|python-dev|go-dev|flutter-dev|mobile-dev|bash-dev|embedded-dev)" ;;
   esac
 fi
 
@@ -207,6 +211,10 @@ classify_file_to_stack() {
       printf 'mobile-dev\n' ;;
     *Test.kt|*Tests.kt)
       printf 'mobile-dev\n' ;;
+    *.bats|test_*.sh)
+      printf 'bash-dev\n' ;;
+    test_*.c|*_test.c)
+      printf 'embedded-dev\n' ;;
     *) printf '\n' ;;
   esac
 }
@@ -250,6 +258,10 @@ discover_test_files_for_stack() {
           find "$p" -type f \( -name '*_test.dart' -o -name '*.test.dart' \) 2>/dev/null ;;
         mobile-dev)
           find "$p" -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*Test.kt' -o -name '*Tests.kt' -o -name '*Test.java' -o -name '*Tests.java' \) 2>/dev/null ;;
+        bash-dev)
+          find "$p" -type f \( -name '*.bats' -o -name 'test_*.sh' \) 2>/dev/null ;;
+        embedded-dev)
+          find "$p" -type f \( -name 'test_*.c' -o -name '*_test.c' \) 2>/dev/null ;;
       esac
     fi
   done
@@ -271,6 +283,8 @@ discover_test_files_auto() {
         -o -name '*_test.dart' -o -name '*.test.dart' \
         -o -name '*.yaml' -o -name '*.yml' \
         -o -name '*Test.kt' -o -name '*Tests.kt' \
+        -o -name '*.bats' -o -name 'test_*.sh' \
+        -o -name 'test_*.c' -o -name '*_test.c' \
       \) 2>/dev/null
     fi
   done
@@ -389,6 +403,20 @@ has_tag_flutter() {
   grep -Eq "@Tags\(\[" "$f" 2>/dev/null
 }
 
+has_tag_bash() {
+  local f="$1"
+  # Bats tagging: `# bats test_tags=<tag>[,<tag>]` comment directive.
+  # Shell test tagging: a `# TEST_TAG:` comment convention.
+  grep -Eq '^#[[:space:]]*bats[[:space:]]+test_tags=|^#[[:space:]]*TEST_TAG:' "$f" 2>/dev/null
+}
+
+has_tag_embedded() {
+  local f="$1"
+  # Embedded C test tagging: `// TEST_TAG: <tag>` or `/* TEST_TAG: <tag> */`
+  # comment convention (Unity/CMock/Ceedling projects).
+  grep -Eq '(//|/\*)[[:space:]]*TEST_TAG:' "$f" 2>/dev/null
+}
+
 has_tag_mobile() {
   local f="$1"
   case "$f" in
@@ -441,6 +469,8 @@ while IFS= read -r f || [ -n "$f" ]; do
     go-dev)             has_tag_go "$f" || ok=0 ;;
     flutter-dev)        has_tag_flutter "$f" || ok=0 ;;
     mobile-dev)         has_tag_mobile "$f" || ok=0 ;;
+    bash-dev)           has_tag_bash "$f" || ok=0 ;;
+    embedded-dev)       has_tag_embedded "$f" || ok=0 ;;
     *) continue ;;
   esac
   if [ "$ok" = "0" ]; then
@@ -463,6 +493,12 @@ while IFS= read -r f || [ -n "$f" ]; do
       mobile-dev)
         emit_finding "$f" 1 "missing-tag" \
           "no Maestro front-matter tags: field (or JUnit @Tag) found in test file" "$s" ;;
+      bash-dev)
+        emit_finding "$f" 1 "missing-tag" \
+          "no bats test_tags= directive or TEST_TAG: comment found in test file" "$s" ;;
+      embedded-dev)
+        emit_finding "$f" 1 "missing-tag" \
+          "no TEST_TAG: comment found in test file" "$s" ;;
     esac
   fi
 done < "$DEDUPED_FILE"
