@@ -17,7 +17,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-ARM-1: Y-branch (rename to gaia-*.yml + scaffold overlays) ----------
 
-@test "TC-ARM-1: Y-branch renames ci.yml to gaia-ci.yml and scaffolds overlay stubs" {
+@test "Y-branch renames ci.yml to gaia-ci.yml and scaffolds overlay stubs" {
   printf 'name: ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: [{run: echo build}]\n' > "$WORKDIR/ci.yml"
   # Non-interactive Y-branch via the documented per-file decision env var
   run env GAIA_MIGRATE_DECISION_ci_yml=y bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
@@ -34,7 +34,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-ARM-2: N-branch (rename to user-*.yml, no overlays, byte-identical) ----------
 
-@test "TC-ARM-2: N-branch renames ci.yml to user-ci.yml with no overlays + byte-identical content" {
+@test "N-branch renames ci.yml to user-ci.yml with no overlays + byte-identical content" {
   printf 'name: ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: [{run: echo build}]\n' > "$WORKDIR/ci.yml"
   pre_sha=$(shasum -a 256 "$WORKDIR/ci.yml" | awk '{print $1}')
   run env GAIA_MIGRATE_DECISION_ci_yml=n bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
@@ -49,7 +49,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-ARM-3: S-branch (skip-all + .config-stale) ----------
 
-@test "TC-ARM-3: S-branch leaves file unchanged + writes .gaia/memory/.config-stale" {
+@test "S-branch leaves file unchanged + writes .gaia/memory/.config-stale" {
   printf 'name: ci\non: [push]\n' > "$WORKDIR/ci.yml"
   pre_sha=$(shasum -a 256 "$WORKDIR/ci.yml" | awk '{print $1}')
   run env GAIA_MIGRATE_DECISION_ci_yml=s bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration 2>&1"
@@ -66,7 +66,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-ARM-4: idempotent (already-prefixed files skip the prompt) ----------
 
-@test "TC-ARM-4: idempotent — already gaia-prefixed files do not re-fire the prompt" {
+@test "idempotent — already gaia-prefixed files do not re-fire the prompt" {
   printf 'name: ci\non: [push]\n' > "$WORKDIR/gaia-ci.yml"
   printf 'name: deploy\non: [push]\n' > "$WORKDIR/user-deploy.yml"
   # No decision env vars set; if the migration tried to fire, it would HALT
@@ -79,7 +79,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-ARM-5: backup created with byte-identical content + sha256 verified ----------
 
-@test "TC-ARM-5: backup directory contains byte-identical original (sha256 match)" {
+@test "backup directory contains byte-identical original (sha256 match)" {
   printf 'name: ci\non: [push]\njobs:\n  build: {runs-on: ubuntu-latest, steps: [{run: echo build}]}\n' > "$WORKDIR/ci.yml"
   pre_sha=$(shasum -a 256 "$WORKDIR/ci.yml" | awk '{print $1}')
   run env GAIA_MIGRATE_DECISION_ci_yml=y bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
@@ -115,7 +115,7 @@ teardown() { common_teardown; }
 
 # ---------- AC6: SR-84 non-interactive HALT ----------
 
-@test "AC6/SR-84: non-interactive run without flags HALTs with canonical message" {
+@test "non-interactive run without flags HALTs with canonical message" {
   printf 'name: ci\non: [push]\n' > "$WORKDIR/ci.yml"
   # No GAIA_MIGRATE_DECISION_*, no --force, no GAIA_MIGRATE_ALLOW_FORCE
   # GAIA_NONINTERACTIVE=1 simulates the substrate's non-interactive detection
@@ -125,7 +125,7 @@ teardown() { common_teardown; }
   echo "$output" | grep -qE 'force|GAIA_MIGRATE_ALLOW_FORCE'
 }
 
-@test "AC6/SR-84: --force alone (without env-var) still HALTs" {
+@test "force alone (without env-var) still HALTs" {
   printf 'name: ci\non: [push]\n' > "$WORKDIR/ci.yml"
   run env -u GAIA_MIGRATE_DECISION_ci_yml -u GAIA_MIGRATE_ALLOW_FORCE GAIA_NONINTERACTIVE=1 \
     bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration --force"
@@ -133,7 +133,7 @@ teardown() { common_teardown; }
   echo "$output" | grep -qE 'SR-84|GAIA_MIGRATE_ALLOW_FORCE'
 }
 
-@test "AC6/SR-84: env-var alone (without --force) still HALTs" {
+@test "env-var alone (without --force) still HALTs" {
   printf 'name: ci\non: [push]\n' > "$WORKDIR/ci.yml"
   run env -u GAIA_MIGRATE_DECISION_ci_yml GAIA_NONINTERACTIVE=1 GAIA_MIGRATE_ALLOW_FORCE=1 \
     bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
@@ -141,7 +141,7 @@ teardown() { common_teardown; }
   echo "$output" | grep -qE 'SR-84|--force'
 }
 
-@test "AC6/SR-84: --force AND env-var together succeed" {
+@test "force AND env-var together succeed" {
   printf 'name: ci\non: [push]\n' > "$WORKDIR/ci.yml"
   # When dual flags pass, the migration falls back to a default decision
   # (skip-all) since no GAIA_MIGRATE_DECISION_* is set — but it MUST NOT HALT

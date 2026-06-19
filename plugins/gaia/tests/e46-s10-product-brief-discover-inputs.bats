@@ -37,7 +37,7 @@ _step1_body() {
 
 # ---------- AC5: documented grep incantation matches (Subtask 3.1) ----------
 
-@test "AC5: grep -E 'discover_inputs:\\s*INDEX_GUIDED' matches at least once" {
+@test "grep -E 'discover_inputs:\\s*INDEX_GUIDED' matches at least once" {
   run grep -cE 'discover_inputs:[[:space:]]*INDEX_GUIDED' "$SKILL_FILE"
   [ "$status" -eq 0 ]
   [ "$output" -ge 1 ]
@@ -45,7 +45,7 @@ _step1_body() {
 
 # ---------- AC1 / AC6: declaration shape — uppercase, exact spelling ----------
 
-@test "AC1: discover_inputs uses exact INDEX_GUIDED spelling (no aliases)" {
+@test "discover_inputs uses exact INDEX_GUIDED spelling (no aliases)" {
   # No lowercase or kebab-case aliases anywhere in the file
   run grep -E 'discover_inputs:[[:space:]]*(index_guided|index-guided|IndexGuided|index-first|index_first)' "$SKILL_FILE"
   [ "$status" -ne 0 ]
@@ -53,13 +53,13 @@ _step1_body() {
 
 # ---------- AC4: Step 1 prose anchors INDEX_GUIDED specifically to brainstorm ----------
 
-@test "AC4: Step 1 prose explicitly mentions the brainstorm artifact" {
+@test "Step 1 prose explicitly mentions the brainstorm artifact" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
   echo "$body" | grep -qiE 'brainstorm'
 }
 
-@test "AC4: Step 1 prose names INDEX_GUIDED in the body (not just frontmatter)" {
+@test "Step 1 prose names INDEX_GUIDED in the body (not just frontmatter)" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
   echo "$body" | grep -qE 'INDEX_GUIDED'
@@ -67,7 +67,7 @@ _step1_body() {
 
 # ---------- AC4 / Subtask 2.3: research artifacts permitted to FULL_LOAD ----------
 
-@test "AC4: Step 1 prose acknowledges FULL_LOAD is acceptable for smaller research artifacts" {
+@test "Step 1 prose acknowledges FULL_LOAD is acceptable for smaller research artifacts" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
   # The prose must explicitly note that research artifacts (market / domain /
@@ -79,7 +79,7 @@ _step1_body() {
   echo "$body" | grep -qiE 'smaller|typically small|under 20 ?kb|under 50 ?kb|small file'
 }
 
-@test "AC4: Step 1 prose narrows INDEX_GUIDED to the brainstorm artifact (Subtask 2.3)" {
+@test "Step 1 prose narrows INDEX_GUIDED to the brainstorm artifact (Subtask 2.3)" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
   # Look for an explicit narrowing phrase: "INDEX_GUIDED applies … brainstorm"
@@ -88,7 +88,7 @@ _step1_body() {
   echo "$body" | grep -qiE 'INDEX_GUIDED applies|INDEX_GUIDED.*brainstorm|brainstorm.*INDEX_GUIDED|narrowly|specifically.*brainstorm|brainstorm artifact'
 }
 
-@test "AC4: Step 1 prose names at least one of the research artifact types" {
+@test "Step 1 prose names at least one of the research artifact types" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
   echo "$body" | grep -qiE 'market research|domain research|technical research|tech research'
@@ -96,7 +96,7 @@ _step1_body() {
 
 # ---------- AC2: brainstorm path is named so the runtime heuristic can target it ----------
 
-@test "AC2: Step 1 prose references the brainstorm artifact glob" {
+@test "Step 1 prose references the brainstorm artifact glob" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
   echo "$body" | grep -qE 'brainstorm-\*\.md|brainstorm\*\.md|(docs|\.gaia/artifacts)/creative-artifacts/brainstorm'
@@ -104,7 +104,7 @@ _step1_body() {
 
 # ---------- AC3: graceful fallback prose (no halt for small artifacts) ----------
 
-@test "AC3: Step 1 prose documents fallback when an artifact lacks a parseable index" {
+@test "Step 1 prose documents fallback when an artifact lacks a parseable index" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
   echo "$body" | grep -qiE 'fall ?back|fallback|degrade|degrades gracefully'
@@ -122,7 +122,7 @@ _step1_body() {
 
 # ---------- Regression: output file path unchanged (DoD line) ----------
 
-@test "regression: output path product-brief- is unchanged (canonical post-AF-21-20)" {
+@test "regression: output path product-brief- is unchanged" {
   # AF-2026-05-21-20 canonicalized this path. Accept canonical or legacy.
   grep -qE '(docs|\.gaia/artifacts)/creative-artifacts/product-brief-' "$SKILL_FILE"
 }

@@ -29,27 +29,27 @@ teardown() { common_teardown; }
 # appear verbatim in violation output.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-22: finalize.sh exits non-zero when a STRIDE category is missing for a component" {
+@test "finalize.sh exits non-zero when a STRIDE category is missing for a component" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-missing-stride.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-22: finalize.sh names the All six STRIDE categories item in failure output" {
+@test "finalize.sh names the All six STRIDE categories item in failure output" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-missing-stride.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"All six STRIDE categories evaluated per component"* ]]
 }
 
-@test "VCP-CHK-22: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-missing-stride.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-22: finalize.sh guides user back to /gaia-threat-model" {
+@test "finalize.sh guides user back to /gaia-threat-model" {
   export THREAT_MODEL_ARTIFACT="$FIXTURES/threat-model-missing-stride.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -73,7 +73,7 @@ teardown() { common_teardown; }
 # AC4 — THREAT_MODEL_ARTIFACT points at a missing file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when THREAT_MODEL_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when THREAT_MODEL_ARTIFACT points at a missing file" {
   export THREAT_MODEL_ARTIFACT="$BATS_TMPDIR/does-not-exist-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -84,7 +84,7 @@ teardown() { common_teardown; }
 # AC-EC1 — THREAT_MODEL_ARTIFACT points at an empty (0-byte) file.
 # -------------------------------------------------------------------------
 
-@test "AC-EC1: finalize.sh reports 'no artifact to validate' when the artifact is 0 bytes" {
+@test "finalize.sh reports 'no artifact to validate' when the artifact is 0 bytes" {
   local empty
   empty="$TEST_TMP/empty-threat-model.md"
   : > "$empty"

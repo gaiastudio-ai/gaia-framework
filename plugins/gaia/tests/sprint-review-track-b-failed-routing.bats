@@ -65,12 +65,12 @@ MOCK
 # AC2: Track B FAILED + Track A PASSED → composite FAILED
 # ---------------------------------------------------------------------------
 
-@test "AC2: compose-verdict (PASSED, FAILED) → FAILED" {
+@test "compose-verdict (PASSED, FAILED) → FAILED" {
   result=$(bash "$COMPOSE_VERDICT" --track-a PASSED --track-b FAILED 2>/dev/null)
   [ "$result" = "FAILED" ]
 }
 
-@test "AC2: compose-verdict (FAILED, FAILED) → FAILED" {
+@test "compose-verdict (FAILED, FAILED) → FAILED" {
   result=$(bash "$COMPOSE_VERDICT" --track-a FAILED --track-b FAILED 2>/dev/null)
   [ "$result" = "FAILED" ]
 }
@@ -79,7 +79,7 @@ MOCK
 # AC2: type-target-resolver sprint-correction → /gaia-correct-course
 # ---------------------------------------------------------------------------
 
-@test "AC2: type-target-resolver resolves sprint-correction to /gaia-correct-course" {
+@test "type-target-resolver resolves sprint-correction to /gaia-correct-course" {
   result=$(bash "$RESOLVER" sprint-correction)
   [ "$result" = "/gaia-correct-course" ]
 }
@@ -88,12 +88,12 @@ MOCK
 # AC2: SKIPPED-only Track B does NOT produce FAILED
 # ---------------------------------------------------------------------------
 
-@test "AC2: compose-verdict (PASSED, SKIPPED) → PASSED (not FAILED)" {
+@test "compose-verdict (PASSED, SKIPPED) → PASSED (not FAILED)" {
   result=$(bash "$COMPOSE_VERDICT" --track-a PASSED --track-b SKIPPED 2>/dev/null)
   [ "$result" = "PASSED" ]
 }
 
-@test "AC2: compose-verdict (PASSED, PASSED) → PASSED (regression guard)" {
+@test "compose-verdict (PASSED, PASSED) → PASSED (regression guard)" {
   result=$(bash "$COMPOSE_VERDICT" --track-a PASSED --track-b PASSED 2>/dev/null)
   [ "$result" = "PASSED" ]
 }
@@ -102,12 +102,12 @@ MOCK
 # AC2: Track A FAILED regression guard — Track A FAILED still produces FAILED
 # ---------------------------------------------------------------------------
 
-@test "AC2: compose-verdict (FAILED, PASSED) → FAILED (Track A FAILED regression guard)" {
+@test "compose-verdict (FAILED, PASSED) → FAILED (Track A FAILED regression guard)" {
   result=$(bash "$COMPOSE_VERDICT" --track-a FAILED --track-b PASSED 2>/dev/null)
   [ "$result" = "FAILED" ]
 }
 
-@test "AC2: compose-verdict (FAILED, SKIPPED) → FAILED (Track A FAILED + stub Track B)" {
+@test "compose-verdict (FAILED, SKIPPED) → FAILED (Track A FAILED + stub Track B)" {
   result=$(bash "$COMPOSE_VERDICT" --track-a FAILED --track-b SKIPPED 2>/dev/null)
   [ "$result" = "FAILED" ]
 }
@@ -116,12 +116,12 @@ MOCK
 # AC2: SKILL.md Step 7 documents the sprint-correction → /gaia-correct-course routing
 # ---------------------------------------------------------------------------
 
-@test "AC2: SKILL.md Step 7 documents sprint-correction type and /gaia-correct-course handoff" {
+@test "SKILL.md Step 7 documents sprint-correction type and /gaia-correct-course handoff" {
   grep -q 'sprint-correction' "$SKILL_MD"
   grep -q '/gaia-correct-course' "$SKILL_MD"
 }
 
-@test "AC2: SKILL.md Step 7 documents that manual-test findings follow the same envelope pipeline" {
+@test "SKILL.md Step 7 documents that manual-test findings follow the same envelope pipeline" {
   # Step 7 should explicitly note manual-test findings route through the
   # same action-items pipeline (not an ad-hoc path)
   grep -qiE 'manual-test.*finding.*same.*pipeline|manual-test.*envelope.*review-gate.*action-items' "$SKILL_MD"
@@ -131,7 +131,7 @@ MOCK
 # AC2: track_b_verdict — composite verdict derivation is script-proven
 # ---------------------------------------------------------------------------
 
-@test "AC2: track_b_verdict is FAILED when any envelope verdict is FAILED" {
+@test "track_b_verdict is FAILED when any envelope verdict is FAILED" {
   write_config_for_verdict 0
   # Mock: one surface returns FAILED
   cat >"$MOCK_DISPATCH_DIR/dispatch-surface.sh" <<'MOCK'
@@ -157,7 +157,7 @@ MOCK
   [ "$track_b_v" = "FAILED" ]
 }
 
-@test "AC2: track_b_verdict is PASSED when all envelopes are SKIPPED" {
+@test "track_b_verdict is PASSED when all envelopes are SKIPPED" {
   write_config_for_verdict 0
   write_mock_dispatch "SKIPPED"
   cd "$TMPDIR_TEST"
@@ -168,7 +168,7 @@ MOCK
   [ "$track_b_v" = "PASSED" ]
 }
 
-@test "AC2: track_b_verdict is PASSED for a PASSED+PENDING mix" {
+@test "track_b_verdict is PASSED for a PASSED+PENDING mix" {
   write_config_for_verdict 0
   # Mock: api PASSED, browser PENDING, rest SKIPPED
   cat >"$MOCK_DISPATCH_DIR/dispatch-surface.sh" <<'MOCK'
@@ -195,7 +195,7 @@ MOCK
   [ "$track_b_v" = "PASSED" ]
 }
 
-@test "AC2: track_b_verdict is always a canonical value (never raw PENDING)" {
+@test "track_b_verdict is always a canonical value (never raw PENDING)" {
   write_config_for_verdict 0
   # All surfaces return PENDING — track_b_verdict must still be PASSED, not PENDING
   write_mock_dispatch "PENDING"
@@ -212,7 +212,7 @@ MOCK
 # W4: compose-verdict rejects raw PENDING (negative guard)
 # ---------------------------------------------------------------------------
 
-@test "AC2: compose-verdict rejects raw PENDING as non-canonical input" {
+@test "compose-verdict rejects raw PENDING as non-canonical input" {
   run bash "$COMPOSE_VERDICT" --track-a PASSED --track-b PENDING 2>&1
   [ "$status" -eq 1 ]
   [[ "$output" == *"non-canonical"* ]]

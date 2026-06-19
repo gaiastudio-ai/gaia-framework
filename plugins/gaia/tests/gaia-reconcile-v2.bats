@@ -156,7 +156,7 @@ write_minimal_config() {
 }
 
 # Scenario 4b — SR-54 phase-downgrade defense-in-depth (AC14)
-@test "SR-54 phase-downgrade: warning emitted when retired section removal would regress phase" {
+@test "phase-downgrade: warning emitted when retired section removal would regress phase" {
   write_schema_with_retired "$CLAUDE_PLUGIN_ROOT/schemas/project-config.schema.json" "2.1.0"
   # config_phase=partial and legacy_section is one of the sections; if it were removed,
   # phase could regress. Warn-keep policy keeps section, but SR-54 warning still fires.

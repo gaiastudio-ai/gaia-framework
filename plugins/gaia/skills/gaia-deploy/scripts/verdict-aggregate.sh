@@ -7,8 +7,13 @@
 #   - all suite verdicts ∈ {APPROVE} → final PASSED
 #   - --skip-smoke → final PASSED with `skip_smoke: true` and a WARNING note
 #
+# If a per-component status table exists at <evidence-dir>/component-status.json
+# and contains mixed outcomes (at least one DEPLOYED alongside HOLD or SKIPPED),
+# the verdict is overridden to PARTIAL-DEPLOY — distinct from both PASSED and
+# FAILED. This indicates a best-effort deploy where some components succeeded.
+#
 # Writes <evidence-dir>/deployment-report.json. Echoes the final verdict on
-# stdout (PASSED | FAILED).
+# stdout (PASSED | FAILED | PARTIAL-DEPLOY).
 
 set -euo pipefail
 LC_ALL=C
@@ -77,6 +82,26 @@ else
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# Per-component status table: PARTIAL-DEPLOY override
+# ---------------------------------------------------------------------------
+# If a component-status.json exists and has mixed outcomes, override the
+# verdict to PARTIAL-DEPLOY regardless of smoke results.
+
+component_status_json="[]"
+COMPONENT_STATUS="$EVIDENCE_DIR/component-status.json"
+if [ -f "$COMPONENT_STATUS" ]; then
+  component_status_json="$(cat "$COMPONENT_STATUS")"
+  deployed_count="$(printf '%s' "$component_status_json" | jq '[.[] | select(.outcome == "DEPLOYED")] | length')"
+  hold_count="$(printf '%s' "$component_status_json" | jq '[.[] | select(.outcome == "HOLD")] | length')"
+  skipped_count="$(printf '%s' "$component_status_json" | jq '[.[] | select(.outcome == "SKIPPED")] | length')"
+
+  if [ "$deployed_count" -gt 0 ] && [ "$((hold_count + skipped_count))" -gt 0 ]; then
+    final="PARTIAL-DEPLOY"
+    log "component status table has mixed outcomes (DEPLOYED=$deployed_count HOLD=$hold_count SKIPPED=$skipped_count)"
+  fi
+fi
+
 jq -n \
   --arg env "$ENV_NAME" \
   --arg version "$VERSION" \
@@ -84,13 +109,15 @@ jq -n \
   --arg final "$final" \
   --argjson skip "$([ "$SKIP_SMOKE" = "true" ] && echo true || echo false)" \
   --argjson suites "$per_suite_json" \
+  --argjson components "$component_status_json" \
   '{
      environment: $env,
      version: $version,
      timestamp: $timestamp,
      final_verdict: $final,
      skip_smoke: $skip,
-     suites: $suites
+     suites: $suites,
+     components: $components
    }' \
   > "$REPORT"
 
@@ -99,6 +126,10 @@ printf '%s\n' "$final"
 if [ "$final" = "PASSED" ]; then
   log "final verdict: PASSED (env=$ENV_NAME version=$VERSION)"
   exit 0
+fi
+if [ "$final" = "PARTIAL-DEPLOY" ]; then
+  log "final verdict: PARTIAL-DEPLOY — see $REPORT"
+  exit 3
 fi
 log "final verdict: FAILED — see $REPORT"
 exit 1

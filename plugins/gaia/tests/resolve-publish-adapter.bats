@@ -34,7 +34,7 @@ YAML
 
 # ---------- TC-PUB-9: custom-only discovery ----------
 
-@test "TC-PUB-9: custom adapter at .gaia/custom/adapters/publish-my-custom/ is discovered" {
+@test "custom adapter at .gaia/custom/adapters/publish-my-custom/ is discovered" {
   _make_custom_adapter my-custom
   run "$RESOLVER" --adapter my-custom --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
@@ -42,7 +42,7 @@ YAML
   echo "$output" | grep -qF "/.gaia/custom/adapters/publish-my-custom"
 }
 
-@test "TC-PUB-9: custom adapter manifest exists at the resolved path" {
+@test "custom adapter manifest exists at the resolved path" {
   _make_custom_adapter my-custom
   run "$RESOLVER" --adapter my-custom --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
@@ -53,7 +53,7 @@ YAML
 
 # ---------- TC-PUB-10 (shadow): custom shadows built-in ----------
 
-@test "TC-PUB-10 (shadow): custom npm shadows built-in; canonical WARN on stderr" {
+@test "shadow): custom npm shadows built-in; canonical WARN on stderr" {
   _make_custom_adapter npm
   run "$RESOLVER" --adapter npm --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
@@ -63,7 +63,7 @@ YAML
   echo "$output" | grep -qF "WARN: custom adapter at .gaia/custom/adapters/publish-npm/ shadows built-in adapter"
 }
 
-@test "TC-PUB-10 (built-in only): no custom → built-in wins, no WARN" {
+@test "built-in only): no custom → built-in wins, no WARN" {
   # No custom adapter — should resolve built-in npm.
   run "$RESOLVER" --adapter npm --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
@@ -73,14 +73,14 @@ YAML
 
 # ---------- TC-PUB-10 (strict): --strict-builtin refuses sensitive shadow ----------
 
-@test "TC-PUB-10 (strict): --strict-builtin HALTs on custom shadow of sensitive npm" {
+@test "strict): --strict-builtin HALTs on custom shadow of sensitive npm" {
   _make_custom_adapter npm
   run "$RESOLVER" --adapter npm --strict-builtin --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 3 ]
   echo "$output" | grep -qF "HALT: --strict-builtin refuses custom shadow for sensitive channel"
 }
 
-@test "TC-PUB-10 (strict, non-sensitive): --strict-builtin does NOT block custom shadow on non-sensitive channel" {
+@test "strict, non-sensitive): --strict-builtin does NOT block custom shadow on non-sensitive channel" {
   _make_custom_adapter homebrew  # homebrew is NOT in default sensitive list
   run "$RESOLVER" --adapter homebrew --strict-builtin --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
@@ -91,7 +91,7 @@ YAML
 
 # ---------- SR-81 negative case: path-traversal payload ----------
 
-@test "SR-81 (symlink-traversal — C1 from E100-S8 code review): symlinked custom-adapter dir pointing outside .gaia/custom/adapters/ is rejected by physical-path containment" {
+@test "symlink-traversal — C1 from code review): symlinked custom-adapter dir pointing outside .gaia/custom/adapters/ is rejected by physical-path containment" {
   # Construct a custom-adapter directory OUTSIDE the project root, then
   # symlink it into .gaia/custom/adapters/publish-evil/. With `pwd -L` the
   # logical path would resolve under the custom-adapter root and bypass the
@@ -110,39 +110,39 @@ SHIM
   echo "$output" | grep -qF "HALT: custom adapter resolves outside .gaia/custom/adapters/"
 }
 
-@test "SR-81: traversal payload (../../bin/sh) rejected by regex" {
+@test "traversal payload (../../bin/sh) rejected by regex" {
   run "$RESOLVER" --adapter "../../bin/sh" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
   echo "$output" | grep -qF "violates regex"
 }
 
-@test "SR-81: uppercase in adapter_name rejected" {
+@test "uppercase in adapter_name rejected" {
   run "$RESOLVER" --adapter "MyAdapter" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
   echo "$output" | grep -qF "violates regex"
 }
 
-@test "SR-81: underscore in adapter_name rejected" {
+@test "underscore in adapter_name rejected" {
   run "$RESOLVER" --adapter "my_adapter" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
   echo "$output" | grep -qF "violates regex"
 }
 
-@test "SR-81: 65-char name rejected (exceeds 64-char limit)" {
+@test "65-char name rejected (exceeds 64-char limit)" {
   local n
   n=$(printf 'a%.0s' {1..65})
   run "$RESOLVER" --adapter "$n" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
 }
 
-@test "SR-81: dots in adapter_name rejected" {
+@test "dots in adapter_name rejected" {
   run "$RESOLVER" --adapter "my.adapter" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
 }
 
 # ---------- AC1 manifest validation (C1 fix from E100-S8 third pass) ----------
 
-@test "AC1 (C1 fix): custom adapter without adapter-manifest.yaml is REJECTED" {
+@test "C1 fix): custom adapter without adapter-manifest.yaml is REJECTED" {
   local dir="$PROJECT_ROOT/.gaia/custom/adapters/publish-noyaml"
   mkdir -p "$dir"
   cat > "$dir/run.sh" <<'SHIM'
@@ -156,7 +156,7 @@ SHIM
   echo "$output" | grep -qF "HALT: custom adapter missing adapter-manifest.yaml"
 }
 
-@test "AC1 (C1 fix): custom adapter with missing required field is REJECTED" {
+@test "C1 fix): custom adapter with missing required field is REJECTED" {
   local dir="$PROJECT_ROOT/.gaia/custom/adapters/publish-incomplete"
   mkdir -p "$dir"
   cat > "$dir/run.sh" <<'SHIM'
@@ -173,7 +173,7 @@ YAML
   echo "$output" | grep -qiE 'HALT: custom adapter manifest missing required field'
 }
 
-@test "AC1 (C1 fix): custom adapter with complete manifest is ACCEPTED" {
+@test "C1 fix): custom adapter with complete manifest is ACCEPTED" {
   _make_custom_adapter complete-test
   run "$RESOLVER" --adapter complete-test --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
@@ -189,7 +189,7 @@ YAML
 
 # ---------- Project-config schema regex (SR-81 enforced schema-side) ----------
 
-@test "SR-81 (schema): project-config.schema.json adapter_name pattern is ^[a-z0-9-]{1,64}\$" {
+@test "schema): project-config.schema.json adapter_name pattern is ^[a-z0-9-]{1,64}\$" {
   local schema="$PLUGIN_DIR/schemas/project-config.schema.json"
   [ -f "$schema" ]
   local pattern

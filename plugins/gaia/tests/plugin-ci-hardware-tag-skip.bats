@@ -21,14 +21,14 @@ teardown() {
 }
 
 # ---------------- TC-SRF-1: plugin-ci.yml sets BATS_FILTER_TAGS ----------------
-@test "TC-SRF-1: plugin-ci.yml sets BATS_FILTER_TAGS='!hardware-dependent' in bats-tests job" {
+@test "plugin-ci.yml sets BATS_FILTER_TAGS='!hardware-dependent' in bats-tests job" {
   [ -f "$CI_YAML" ]
   grep -qF "BATS_FILTER_TAGS:" "$CI_YAML"
   grep -qF "'!hardware-dependent'" "$CI_YAML"
 }
 
 # ---------------- TC-SRF-1b: plugin-ci.yml documents the hardware-tag-skip convention ----------------
-@test "TC-SRF-1b: plugin-ci.yml bats-tests job documents the hardware-tag-skip convention" {
+@test "plugin-ci.yml bats-tests job documents the hardware-tag-skip convention" {
   [ -f "$CI_YAML" ]
   # The bats-tests job default-skips @hardware-dependent tests in CI; the
   # convention is documented in the job comment and enforced by the env var.
@@ -37,21 +37,21 @@ teardown() {
 }
 
 # ---------------- TC-SRF-2: run-with-coverage.sh honors BATS_FILTER_TAGS ----------------
-@test "TC-SRF-2: run-with-coverage.sh forwards BATS_FILTER_TAGS env to bats" {
+@test "run-with-coverage.sh forwards BATS_FILTER_TAGS env to bats" {
   [ -f "$RUN_WITH_COVERAGE" ]
   grep -qF "BATS_FILTER_TAGS" "$RUN_WITH_COVERAGE"
   grep -qF -- "--filter-tags" "$RUN_WITH_COVERAGE"
 }
 
 # ---------------- TC-SRF-3: drift-detection-ci-suppression.bats has file_tag ----------------
-@test "TC-SRF-3: drift-detection-ci-suppression.bats carries 'bats file_tags=hardware-dependent'" {
+@test "drift-detection-ci-suppression.bats carries 'bats file_tags=hardware-dependent'" {
   local target="$PLUGIN_DIR/tests/drift-detection-ci-suppression.bats"
   [ -f "$target" ]
   grep -qF "bats file_tags=hardware-dependent" "$target"
 }
 
 # ---------------- TC-SRF-4: documentation discoverability ----------------
-@test "TC-SRF-4: tests README documents the @hardware-dependent convention" {
+@test "tests README documents the @hardware-dependent convention" {
   local readme="$PLUGIN_DIR/tests/README.md"
   if [ -f "$readme" ]; then
     grep -qF "hardware-dependent" "$readme"

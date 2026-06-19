@@ -26,27 +26,27 @@ teardown() { common_teardown; }
 # VCP-CHK-10 — Negative: Vision Statement section stripped.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-10: finalize.sh exits non-zero when Vision Statement section missing" {
+@test "finalize.sh exits non-zero when Vision Statement section missing" {
   export PRODUCT_BRIEF_ARTIFACT="$FIXTURES/product-brief-missing-vision.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-10: finalize.sh names the Vision Statement item in the failure output" {
+@test "finalize.sh names the Vision Statement item in the failure output" {
   export PRODUCT_BRIEF_ARTIFACT="$FIXTURES/product-brief-missing-vision.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Vision Statement"* ]]
 }
 
-@test "VCP-CHK-10: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export PRODUCT_BRIEF_ARTIFACT="$FIXTURES/product-brief-missing-vision.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-10: finalize.sh guides user back to /gaia-product-brief" {
+@test "finalize.sh guides user back to /gaia-product-brief" {
   export PRODUCT_BRIEF_ARTIFACT="$FIXTURES/product-brief-missing-vision.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -70,7 +70,7 @@ teardown() { common_teardown; }
 # to a missing file triggers the AC4 missing-artifact violation path.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when PRODUCT_BRIEF_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when PRODUCT_BRIEF_ARTIFACT points at a missing file" {
   export PRODUCT_BRIEF_ARTIFACT="$BATS_TMPDIR/does-not-exist-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]

@@ -65,7 +65,7 @@ EOF
 # TC-VFC-1 — happy path
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-1: write-val-sentinel.sh writes the canonical sentinel JSON" {
+@test "write-val-sentinel.sh writes the canonical sentinel JSON" {
   [ -x "$WRITE_SENTINEL" ] || skip "write-val-sentinel.sh not yet implemented"
   payload="$(_well_formed_payload)"
   run "$WRITE_SENTINEL" --feature-id AF-2026-05-10-1 --payload-stdin <<<"$payload"
@@ -77,7 +77,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "TC-VFC-1: finalize.sh PASSes when the sentinel exists and is well-formed" {
+@test "finalize.sh PASSes when the sentinel exists and is well-formed" {
   [ -x "$WRITE_SENTINEL" ] || skip "write-val-sentinel.sh not yet implemented"
   payload="$(_well_formed_payload)"
   "$WRITE_SENTINEL" --feature-id AF-2026-05-10-1 --payload-stdin <<<"$payload"
@@ -90,7 +90,7 @@ EOF
 # TC-VFC-2 — bypass: sentinel missing
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-2: finalize.sh fails non-zero when sentinel is missing" {
+@test "finalize.sh fails non-zero when sentinel is missing" {
   export FEATURE_ID="AF-2026-05-10-2"
   # No sentinel written.
   run "$FINALIZE"
@@ -99,7 +99,7 @@ EOF
   [[ "$output" == *"re-invoke from a parent orchestrator thread"* ]]
 }
 
-@test "TC-VFC-2: finalize.sh fails non-zero when sentinel is deleted before run" {
+@test "finalize.sh fails non-zero when sentinel is deleted before run" {
   [ -x "$WRITE_SENTINEL" ] || skip "write-val-sentinel.sh not yet implemented"
   payload="$(_well_formed_payload)"
   "$WRITE_SENTINEL" --feature-id AF-2026-05-10-3 <<<"$payload"
@@ -114,7 +114,7 @@ EOF
 # TC-VFC-3 — malformed sentinel
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-3: finalize.sh rejects sentinel missing the status key" {
+@test "finalize.sh rejects sentinel missing the status key" {
   export FEATURE_ID="AF-2026-05-10-4"
   printf '%s\n' '{"summary":"x","findings":[],"agent":"val"}' \
     > "$CHECKPOINT_PATH/add-feature-AF-2026-05-10-4-val-dispatched.json"
@@ -123,7 +123,7 @@ EOF
   [[ "$output" == *"status"* ]]
 }
 
-@test "TC-VFC-3: finalize.sh rejects sentinel with invalid status enum" {
+@test "finalize.sh rejects sentinel with invalid status enum" {
   export FEATURE_ID="AF-2026-05-10-5"
   printf '%s\n' '{"status":"FAKE","summary":"x","findings":[],"agent":"val"}' \
     > "$CHECKPOINT_PATH/add-feature-AF-2026-05-10-5-val-dispatched.json"
@@ -132,7 +132,7 @@ EOF
   [[ "$output" == *"FAKE"* || "$output" == *"status"* ]]
 }
 
-@test "TC-VFC-3: finalize.sh rejects sentinel with wrong agent value" {
+@test "finalize.sh rejects sentinel with wrong agent value" {
   export FEATURE_ID="AF-2026-05-10-6"
   printf '%s\n' '{"status":"PASS","summary":"x","findings":[],"agent":"impostor"}' \
     > "$CHECKPOINT_PATH/add-feature-AF-2026-05-10-6-val-dispatched.json"
@@ -141,7 +141,7 @@ EOF
   [[ "$output" == *"agent"* ]]
 }
 
-@test "TC-VFC-3: finalize.sh rejects sentinel missing the findings array" {
+@test "finalize.sh rejects sentinel missing the findings array" {
   export FEATURE_ID="AF-2026-05-10-7"
   printf '%s\n' '{"status":"PASS","summary":"x","agent":"val"}' \
     > "$CHECKPOINT_PATH/add-feature-AF-2026-05-10-7-val-dispatched.json"
@@ -154,7 +154,7 @@ EOF
 # TC-VFC-4 — static check: no hand-rolled JSON via heredoc/printf
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-4: sentinel-writer scripts contain no 'cat <<EOF' JSON" {
+@test "sentinel-writer scripts contain no 'cat <<EOF' JSON" {
   # Scan only sentinel-write paths — finalize.sh and write-val-sentinel.sh.
   # We exclude setup.sh (no JSON write) and any future scripts via explicit list.
   for f in "$ADD_FEATURE_SCRIPTS/finalize.sh" "$WRITE_SENTINEL"; do
@@ -172,7 +172,7 @@ EOF
   done
 }
 
-@test "TC-VFC-4: sentinel-writer invokes jq for JSON construction" {
+@test "sentinel-writer invokes jq for JSON construction" {
   [ -f "$WRITE_SENTINEL" ] || skip "write-val-sentinel.sh not yet implemented"
   run grep -E "\\bjq\\b" "$WRITE_SENTINEL"
   [ "$status" -eq 0 ]
@@ -182,7 +182,7 @@ EOF
 # TC-VFC-5 — concurrent writes: atomic
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-5: parallel writers + readers see only complete JSON" {
+@test "parallel writers + readers see only complete JSON" {
   [ -x "$WRITE_SENTINEL" ] || skip "write-val-sentinel.sh not yet implemented"
   # Skip on systems where flock isn't available — atomicity then relies on
   # mv-rename which is still POSIX-atomic on the same filesystem.
@@ -222,7 +222,7 @@ EOF
 # TC-VFC-7 — static check: AskUserQuestion is sole interactive primitive
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-7: SKILL.md Step 2 contains AskUserQuestion precondition" {
+@test "SKILL.md Step 2 contains AskUserQuestion precondition" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   # Scoped to Step 2 — extract Step 2 region between '### Step 2' and '### Step 3'.
   run awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL"
@@ -230,7 +230,7 @@ EOF
   [[ "$output" == *"AskUserQuestion"* ]]
 }
 
-@test "TC-VFC-7: SKILL.md Step 2 contains no stdout-sentinel anti-patterns" {
+@test "SKILL.md Step 2 contains no stdout-sentinel anti-patterns" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   # Step 2 region — must NOT mention legacy interactive primitives.
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
@@ -244,7 +244,7 @@ EOF
   [[ "$step2" != *"YIELD_FOR_USER"* ]]
 }
 
-@test "TC-VFC-7: SKILL.md Critical Rules lists sentinel + AskUserQuestion" {
+@test "SKILL.md Critical Rules lists sentinel + AskUserQuestion" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   # Extract Critical Rules region.
   rules="$(awk '/^## Critical Rules/{flag=1} /^## Subagent Dispatch Contract/{flag=0} flag' "$ADD_FEATURE_SKILL")"
@@ -260,7 +260,7 @@ EOF
 # and AF-2026-05-09-4 self-license bypass class. The wording is intentional —
 # E83-S3's bats anti-pattern check will fail the build if the strings drift.
 
-@test "TC-VFC-8: SKILL.md Step 2 prose forbids the patch-mode exception" {
+@test "SKILL.md Step 2 prose forbids the patch-mode exception" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   # Step 2 region must contain the explicit forbidden-pattern clause.
   # The phrase "There is NO patch-mode exception" may wrap across lines in the
@@ -270,7 +270,7 @@ EOF
   printf '%s\n' "$step2" | grep -Eq 'patch-mode exception.*patch.*enhancement|[Tt]here is NO patch-mode exception'
 }
 
-@test "TC-VFC-8: SKILL.md does not license auto-judging in patch mode" {
+@test "SKILL.md does not license auto-judging in patch mode" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   # Negative guard — the AF-2026-05-09-3 bypass phrase must NOT appear as license.
   run grep -F "auto-judged in patch mode" "$ADD_FEATURE_SKILL"
@@ -281,7 +281,7 @@ EOF
 # TC-VFC-9 — static check: Agent-tool dispatch requirement + parent-thread halt
 # ---------------------------------------------------------------------------
 
-@test "POST-E87-S5: SKILL.md Step 2 prose mandates Agent-tool dispatch with main-turn dispatch (ADR-104)" {
+@test "SKILL.md Step 2 prose mandates Agent-tool dispatch with main-turn dispatch" {
   # Originally pinned `Val MUST be dispatched as a context: fork subagent`
   # (E83-S2 / AI-2026-05-09-12). E87-S5 (Val Bridge Migration, ADR-104)
   # migrates the dispatch model to main-turn Agent-tool dispatch. The two
@@ -294,13 +294,13 @@ EOF
   printf '%s\n' "$step2" | grep -Eq 'Val MUST be dispatched via the .*main-turn Agent tool'
 }
 
-@test "TC-VFC-9: SKILL.md Step 2 contains parent-thread re-invoke HALT instruction" {
+@test "SKILL.md Step 2 contains parent-thread re-invoke HALT instruction" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
   printf '%s\n' "$step2" | grep -Eq 're-invoke .* from a parent orchestrator thread'
 }
 
-@test "TC-VFC-9: SKILL.md Step 2 prose does not license inline-Val verdicts" {
+@test "SKILL.md Step 2 prose does not license inline-Val verdicts" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
   # Negative guard — no sentence licensing inline review as a Val verdict.
@@ -311,7 +311,7 @@ EOF
 # Critical Rules — cite AI-2026-05-09-12 precedent (E83-S2 AC4)
 # ---------------------------------------------------------------------------
 
-@test "TC-VFC-8/9: SKILL.md Critical Rules documents the auto-judge bypass class and its closures" {
+@test "9: SKILL.md Critical Rules documents the auto-judge bypass class and its closures" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   # Originally verified by an internal defect ID (now removed from published prose).
   # Re-anchored to the behavioral contract phrases that close the same bypass class:

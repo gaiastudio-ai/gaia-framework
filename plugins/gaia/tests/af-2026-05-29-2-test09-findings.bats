@@ -61,7 +61,7 @@ teardown() { common_teardown; }
 # F1 CRITICAL — brownfield setup.sh degrades on missing project-config.yaml
 # ===========================================================================
 
-@test "AF-29-2 F1: brownfield setup.sh exits 0 on no-config (fresh project)" {
+@test "F1: brownfield setup.sh exits 0 on no-config (fresh project)" {
   cd "$TEST_TMP"
   # Fresh project: no .gaia/, no config/. setup.sh used to exit 1 on
   # "no canonical config path resolved".
@@ -70,7 +70,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F1: brownfield setup.sh seeds artifact tree on no-config" {
+@test "F1: brownfield setup.sh seeds artifact tree on no-config" {
   cd "$TEST_TMP"
   run env CLAUDE_PROJECT_ROOT="$TEST_TMP" \
         bash "$PLUGIN_ROOT/skills/gaia-brownfield/scripts/setup.sh"
@@ -80,7 +80,7 @@ teardown() { common_teardown; }
   [ -d "$TEST_TMP/.gaia/artifacts/test-artifacts" ]
 }
 
-@test "AF-29-2 F1: brownfield setup.sh still HALTs on malformed config" {
+@test "F1: brownfield setup.sh still HALTs on malformed config" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   printf 'project_name: [unclosed list\n' > .gaia/config/project-config.yaml
@@ -93,23 +93,23 @@ teardown() { common_teardown; }
 # F3 CRITICAL — schema.yaml v1.1.0 desync with schema.json v2.0.0
 # ===========================================================================
 
-@test "AF-29-2 F3: project-config.schema.yaml declares schema_version 2.0.0" {
+@test "F3: project-config.schema.yaml declares schema_version 2.0.0" {
   run grep -E '^schema_version:[[:space:]]*"2\.0\.0"' \
         "$PLUGIN_ROOT/config/project-config.schema.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F3: schema.yaml declares schema_version field" {
+@test "F3: schema.yaml declares schema_version field" {
   run grep -E '^\s+schema_version:' "$PLUGIN_ROOT/config/project-config.schema.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F3: schema.yaml declares config_phase field" {
+@test "F3: schema.yaml declares config_phase field" {
   run grep -E '^\s+config_phase:' "$PLUGIN_ROOT/config/project-config.schema.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F3: schema.yaml declares project_name field" {
+@test "F3: schema.yaml declares project_name field" {
   run grep -E '^\s+project_name:' "$PLUGIN_ROOT/config/project-config.schema.yaml"
   [ "$status" -eq 0 ]
 }
@@ -118,7 +118,7 @@ teardown() { common_teardown; }
 # F16 HIGH — brownfield post-complete gates use supported names
 # ===========================================================================
 
-@test "AF-29-2 F16: brownfield SKILL.md no longer USES nfr_assessment_exists as a gate type" {
+@test "F16: brownfield SKILL.md no longer USES nfr_assessment_exists as a gate type" {
   # Historical mentions (in the F-16 rationale / prior-name retrospective)
   # are allowed. What's not allowed is invoking the unsupported gate type
   # as a `--type` argument to validate-gate.sh.
@@ -127,13 +127,13 @@ teardown() { common_teardown; }
   [ "$status" -eq 1 ]
 }
 
-@test "AF-29-2 F16: brownfield SKILL.md no longer USES performance_test_plan_exists as a gate type" {
+@test "F16: brownfield SKILL.md no longer USES performance_test_plan_exists as a gate type" {
   run grep -E '\-\-type[[:space:]]+performance_test_plan_exists' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 1 ]
 }
 
-@test "AF-29-2 F16: brownfield SKILL.md uses file_exists gate form" {
+@test "F16: brownfield SKILL.md uses file_exists gate form" {
   run grep -c 'file_exists --file' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
@@ -143,7 +143,7 @@ teardown() { common_teardown; }
 # F17 HIGH — write-val-envelope.sh normalises path before hashing
 # ===========================================================================
 
-@test "AF-29-2 F17: absolute and relative artifact paths produce identical sentinel hash" {
+@test "F17: absolute and relative artifact paths produce identical sentinel hash" {
   cd "$TEST_TMP"
   mkdir -p .gaia/artifacts/planning-artifacts/epics/E1
   : > .gaia/artifacts/planning-artifacts/epics/E1/prd.md
@@ -175,49 +175,49 @@ teardown() { common_teardown; }
 # F20 HIGH — setup.sh PROJECT_ROOT precedence chain honors CLAUDE_PROJECT_ROOT
 # ===========================================================================
 
-@test "AF-29-2 F20: validate-prd setup.sh honors CLAUDE_PROJECT_ROOT" {
+@test "F20: validate-prd setup.sh honors CLAUDE_PROJECT_ROOT" {
   run grep -E 'PROJECT_ROOT="\$\{PROJECT_ROOT:-\$\{CLAUDE_PROJECT_ROOT:-\$\{GAIA_PROJECT_ROOT:-' \
         "$PLUGIN_ROOT/skills/gaia-validate-prd/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F20: create-prd setup.sh honors CLAUDE_PROJECT_ROOT" {
+@test "F20: create-prd setup.sh honors CLAUDE_PROJECT_ROOT" {
   run grep -E 'PROJECT_ROOT="\$\{PROJECT_ROOT:-\$\{CLAUDE_PROJECT_ROOT:-\$\{GAIA_PROJECT_ROOT:-' \
         "$PLUGIN_ROOT/skills/gaia-create-prd/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F20: create-arch setup.sh honors CLAUDE_PROJECT_ROOT" {
+@test "F20: create-arch setup.sh honors CLAUDE_PROJECT_ROOT" {
   run grep -E 'PROJECT_ROOT="\$\{PROJECT_ROOT:-\$\{CLAUDE_PROJECT_ROOT:-\$\{GAIA_PROJECT_ROOT:-' \
         "$PLUGIN_ROOT/skills/gaia-create-arch/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F20: create-ux setup.sh honors CLAUDE_PROJECT_ROOT" {
+@test "F20: create-ux setup.sh honors CLAUDE_PROJECT_ROOT" {
   run grep -E 'PROJECT_ROOT="\$\{PROJECT_ROOT:-\$\{CLAUDE_PROJECT_ROOT:-\$\{GAIA_PROJECT_ROOT:-' \
         "$PLUGIN_ROOT/skills/gaia-create-ux/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F20: edit-prd setup.sh honors CLAUDE_PROJECT_ROOT" {
+@test "F20: edit-prd setup.sh honors CLAUDE_PROJECT_ROOT" {
   run grep -E 'PROJECT_ROOT="\$\{PROJECT_ROOT:-\$\{CLAUDE_PROJECT_ROOT:-\$\{GAIA_PROJECT_ROOT:-' \
         "$PLUGIN_ROOT/skills/gaia-edit-prd/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F20: edit-arch setup.sh honors CLAUDE_PROJECT_ROOT" {
+@test "F20: edit-arch setup.sh honors CLAUDE_PROJECT_ROOT" {
   run grep -E 'PROJECT_ROOT="\$\{PROJECT_ROOT:-\$\{CLAUDE_PROJECT_ROOT:-\$\{GAIA_PROJECT_ROOT:-' \
         "$PLUGIN_ROOT/skills/gaia-edit-arch/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F20: edit-ux setup.sh honors CLAUDE_PROJECT_ROOT" {
+@test "F20: edit-ux setup.sh honors CLAUDE_PROJECT_ROOT" {
   run grep -E 'PROJECT_ROOT="\$\{PROJECT_ROOT:-\$\{CLAUDE_PROJECT_ROOT:-\$\{GAIA_PROJECT_ROOT:-' \
         "$PLUGIN_ROOT/skills/gaia-edit-ux/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F20: edit-test-plan setup.sh honors CLAUDE_PROJECT_ROOT" {
+@test "F20: edit-test-plan setup.sh honors CLAUDE_PROJECT_ROOT" {
   run grep -E 'PROJECT_ROOT="\$\{PROJECT_ROOT:-\$\{CLAUDE_PROJECT_ROOT:-\$\{GAIA_PROJECT_ROOT:-' \
         "$PLUGIN_ROOT/skills/gaia-edit-test-plan/scripts/setup.sh"
   [ "$status" -eq 0 ]
@@ -227,13 +227,13 @@ teardown() { common_teardown; }
 # F28 HIGH — /gaia-create-story Step 5 uses --reconcile-only
 # ===========================================================================
 
-@test "AF-29-2 F28: create-story SKILL.md uses --reconcile-only at Step 5" {
+@test "F28: create-story SKILL.md uses --reconcile-only at Step 5" {
   run grep -c 'transition-story-status.sh.*--reconcile-only' \
         "$PLUGIN_ROOT/skills/gaia-create-story/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F28: create-story SKILL.md no longer issues --to backlog as the registration call" {
+@test "F28: create-story SKILL.md no longer issues --to backlog as the registration call" {
   # The registration call MUST use --reconcile-only. References to
   # `--to backlog` are allowed in the F-28 rationale (explaining why
   # --reconcile-only replaced it). The forbidden shape is an actual
@@ -258,7 +258,7 @@ teardown() { common_teardown; }
 # F2 MED — /gaia-init platforms default skip on backend-only / no UI
 # ===========================================================================
 
-@test "AF-29-2 F2: generate-config.sh has ui_present-aware platforms default" {
+@test "F2: generate-config.sh has ui_present-aware platforms default" {
   run grep -c 'ui_present.*[Ff]alse' \
         "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
@@ -268,7 +268,7 @@ teardown() { common_teardown; }
 # F4 + F15 MED — test-environment-manifest detect_stack config fallback
 # ===========================================================================
 
-@test "AF-29-2 F4: detect_stack falls back to config stacks[].language" {
+@test "F4: detect_stack falls back to config stacks.language" {
   run grep -c 'stacks\[\].language\|stacks\[\] | .language' \
         "$PLUGIN_ROOT/scripts/lib/test-environment-manifest.sh"
   [ "$status" -eq 0 ]
@@ -278,7 +278,7 @@ teardown() { common_teardown; }
 # F7 MED — pytest runner uses python3 -m pytest
 # ===========================================================================
 
-@test "AF-29-2 F7: pytest runner template uses python3 -m pytest" {
+@test "F7: pytest runner template uses python3 -m pytest" {
   run grep -c 'python3 -m pytest' \
         "$PLUGIN_ROOT/scripts/lib/test-environment-manifest.sh"
   [ "$status" -eq 0 ]
@@ -288,7 +288,7 @@ teardown() { common_teardown; }
 # F11 MED — brownfield Phase 8b YOLO downgrade
 # ===========================================================================
 
-@test "AF-29-2 F11: brownfield SKILL.md documents Phase 8b YOLO CRITICAL→WARNING" {
+@test "F11: brownfield SKILL.md documents Phase 8b YOLO CRITICAL→WARNING" {
   run grep -c '[Pp]hase 8b\|YOLO.*[Cc]ontract\|YOLO.*adversarial' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
@@ -298,7 +298,7 @@ teardown() { common_teardown; }
 # F19 MED — /gaia-create-ux ui_present guard
 # ===========================================================================
 
-@test "AF-29-2 F19: create-ux SKILL.md guards on compliance.ui_present" {
+@test "F19: create-ux SKILL.md guards on compliance.ui_present" {
   run grep -c 'ui_present' \
         "$PLUGIN_ROOT/skills/gaia-create-ux/SKILL.md"
   [ "$status" -eq 0 ]
@@ -308,7 +308,7 @@ teardown() { common_teardown; }
 # F22 MED — /gaia-trace surface-aware coverage
 # ===========================================================================
 
-@test "AF-29-2 F22: trace SKILL.md surface_type drives required tier count" {
+@test "F22: trace SKILL.md surface_type drives required tier count" {
   run grep -c 'surface_type' \
         "$PLUGIN_ROOT/skills/gaia-trace/SKILL.md"
   [ "$status" -eq 0 ]
@@ -318,7 +318,7 @@ teardown() { common_teardown; }
 # F23 MED — /gaia-trace READY-FOR-DEV verdict
 # ===========================================================================
 
-@test "AF-29-2 F23: trace SKILL.md defines READY-FOR-DEV verdict" {
+@test "F23: trace SKILL.md defines READY-FOR-DEV verdict" {
   run grep -c 'READY-FOR-DEV' \
         "$PLUGIN_ROOT/skills/gaia-trace/SKILL.md"
   [ "$status" -eq 0 ]
@@ -328,7 +328,7 @@ teardown() { common_teardown; }
 # F27 MED — /gaia-bridge-enable canonical manifest path
 # ===========================================================================
 
-@test "AF-29-2 F27: bridge-enable SKILL.md stats .gaia/config/test-environment.yaml" {
+@test "F27: bridge-enable SKILL.md stats .gaia/config/test-environment.yaml" {
   run grep -c '\.gaia/config/test-environment\.yaml' \
         "$PLUGIN_ROOT/skills/gaia-bridge-enable/SKILL.md"
   [ "$status" -eq 0 ]
@@ -338,7 +338,7 @@ teardown() { common_teardown; }
 # F29 MED — validator forward-edge tolerance
 # ===========================================================================
 
-@test "AF-29-2 F29: validator agent documents forward-edge tolerance" {
+@test "F29: validator agent documents forward-edge tolerance" {
   run grep -c 'orward-edge\|forward edge\|planned-but-uncreated' \
         "$PLUGIN_ROOT/agents/validator.md"
   [ "$status" -eq 0 ]
@@ -348,13 +348,13 @@ teardown() { common_teardown; }
 # F32 MED — sprint planned → active auto-activation
 # ===========================================================================
 
-@test "AF-29-2 F32: dev-story SKILL.md auto-activates planned sprint at Step 2a" {
+@test "F32: dev-story SKILL.md auto-activates planned sprint at Step 2a" {
   run grep -c 'Step 2a\|Auto-activate sprint\|auto-activated sprint' \
         "$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-29-2 F32: dev-story SKILL.md transitions sprint via sprint-state.sh" {
+@test "F32: dev-story SKILL.md transitions sprint via sprint-state.sh" {
   # The auto-activation should call the canonical boundary writer, not
   # hand-edit sprint-status.yaml.
   run grep -c 'sprint-state.sh transition.*--to active' \

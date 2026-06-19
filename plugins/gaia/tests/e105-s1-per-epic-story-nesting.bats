@@ -36,7 +36,7 @@ mkroot() { # $1 = root name ; remaining = fixture subdirs to copy in
 
 # ---------- AC2 / TS1: resolver finds a NEW-layout story ----------
 
-@test "AC2/TS1: resolver finds a story in the new nested layout" {
+@test "resolver finds a story in the new nested layout" {
   root="$(mkroot r1 new-layout)"
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E900-S1
   [ "$status" -eq 0 ]
@@ -46,14 +46,14 @@ mkroot() { # $1 = root name ; remaining = fixture subdirs to copy in
 
 # ---------- AC2 / TS2: legacy epic-*/stories/ read-side fallback ----------
 
-@test "AC2/TS2: resolver finds a legacy epic-*/stories/ story (fallback tier 2)" {
+@test "resolver finds a legacy epic-*/stories/ story (fallback tier 2)" {
   root="$(mkroot r2 legacy-stories)"
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E901-S1
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq 'stories/E901-S1-beta\.md$'
 }
 
-@test "AC2: resolver finds a legacy flat story (fallback tier 3)" {
+@test "resolver finds a legacy flat story (fallback tier 3)" {
   root="$(mkroot r3 flat)"
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E902-S1
   [ "$status" -eq 0 ]
@@ -62,7 +62,7 @@ mkroot() { # $1 = root name ; remaining = fixture subdirs to copy in
 
 # ---------- AC2: precedence — nested wins over legacy stories for same key ----------
 
-@test "AC2: new nested layout wins over a legacy epic-*/stories sibling for the same key" {
+@test "new nested layout wins over a legacy epic-*/stories sibling for the same key" {
   root="$(mkroot r4 new-layout)"
   # add a legacy stories sibling for the SAME key E900-S1
   mkdir -p "$root/epic-E900-demo/stories"
@@ -95,7 +95,7 @@ EOF
     || { echo "E28-S2 must not match E28-S21 evidence dir, got: $output" >&2; false; }
 }
 
-@test "WARNING-1: tier-0 excludes a SAME-KEY story.md under epic-*/stories/ (evidence dir)" {
+@test "tier-0 excludes a SAME-KEY story.md under epic-*/stories/ (evidence dir)" {
   root="$(mkroot rw1 new-layout)"
   # plant a same-key (E900-S1) evidence dir WITH a literal story.md UNDER stories/
   mkdir -p "$root/epic-E900-demo/stories/E900-S1-evidence"
@@ -110,7 +110,7 @@ EOF
     || { echo "must exclude the stories/ evidence story.md, got: $output" >&2; false; }
 }
 
-@test "C1: key prefix boundary — E28-S2 does not match E28-S21" {
+@test "C1: key prefix boundary — does not match" {
   root="$(mkroot rc2)"
   # only an E28-S21 new-layout story exists; resolving E28-S2 must NOT find it
   mkdir -p "$root/epic-E28-prog/E28-S21-twentyone/reviews"
@@ -130,7 +130,7 @@ EOF
 
 # ---------- AC3 / TS5: validate-canonical-filename accepts the new layout ----------
 
-@test "AC3/TS5: validate-canonical-filename accepts new-layout story.md (key from dir)" {
+@test "validate-canonical-filename accepts new-layout story.md (key from dir)" {
   root="$(mkroot rv new-layout)"
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$VALIDATE" --file "$root/epic-E900-demo/E900-S1-alpha/story.md"
   [ "$status" -eq 0 ] \
@@ -157,7 +157,7 @@ EOF
 
 # ---------- AC4 / TS4: reviews/ FR-402 type-first names, no check-deps collision ----------
 
-@test "AC4/TS4: per-story reviews/ uses FR-402 type-first names (no {key}-<type> collision)" {
+@test "per-story reviews/ uses type-first names (no {key}-<type> collision)" {
   root="$(mkroot r5 new-layout)"
   reviews="$root/epic-E900-demo/E900-S1-alpha/reviews"
   [ -d "$reviews" ]
@@ -170,7 +170,7 @@ EOF
 
 # ---------- AC1 / AC-INT1 / TS3,TS6: create + transition wiring (doc-level) ----------
 
-@test "AC1: gaia-create-story EXECUTABLE scaffold writes to the nested per-story path" {
+@test "gaia-create-story EXECUTABLE scaffold writes to the nested per-story path" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-create-story/SKILL.md"
   # Assert the EXECUTABLE write target (not a doc comment): scaffold --output must
   # point at ${STORY_DIR}/story.md and the mkdir must create the per-story dir.
@@ -198,7 +198,7 @@ EOF
 
 # ---------- AC5 / AC-INT1 functional: transition locate finds the nested story ----------
 
-@test "AC5/AC-INT1: transition locate_story_file functionally resolves a new-layout story (no split-state)" {
+@test "transition locate_story_file functionally resolves a new-layout story (no split-state)" {
   TR="$REPO_ROOT/plugins/gaia/scripts/transition-story-status.sh"
   root="$(mkroot rfunc new-layout)"
   # source the script's locate_story_file in isolation against the temp root

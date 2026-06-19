@@ -33,27 +33,27 @@ teardown() { common_teardown; }
 # output.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-20: finalize.sh exits non-zero when a cycle is present" {
+@test "finalize.sh exits non-zero when a cycle is present" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-cycle.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-20: finalize.sh names the No circular dependencies item in failure output" {
+@test "finalize.sh names the No circular dependencies item in failure output" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-cycle.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"No circular dependencies"* ]]
 }
 
-@test "VCP-CHK-20: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-cycle.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-20: finalize.sh guides user back to /gaia-create-epics" {
+@test "finalize.sh guides user back to /gaia-create-epics" {
   export EPICS_ARTIFACT="$FIXTURES/epics-and-stories-cycle.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -77,7 +77,7 @@ teardown() { common_teardown; }
 # AC4 — EPICS_ARTIFACT points at a missing file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when EPICS_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when EPICS_ARTIFACT points at a missing file" {
   export EPICS_ARTIFACT="$BATS_TMPDIR/does-not-exist-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -88,7 +88,7 @@ teardown() { common_teardown; }
 # AC-EC1 — EPICS_ARTIFACT points at an empty (0-byte) file.
 # -------------------------------------------------------------------------
 
-@test "AC-EC1: finalize.sh reports 'no artifact to validate' when the artifact is 0 bytes" {
+@test "finalize.sh reports 'no artifact to validate' when the artifact is 0 bytes" {
   local empty
   empty="$TEST_TMP/empty-epics.md"
   : > "$empty"

@@ -36,17 +36,17 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC1 — Sub-rubric file exists and is loaded
 # ---------------------------------------------------------------------------
-@test "AC1: plugin-test sub-rubric file exists at the canonical location" {
+@test "plugin-test sub-rubric file exists at the canonical location" {
   [ -f "$SUB_RUBRIC" ] \
     || { echo "AC1 FAIL: plugin-test sub-rubric not found at $SUB_RUBRIC" >&2; return 1; }
 }
 
-@test "AC1: plugin-test sub-rubric is well-formed JSON" {
+@test "plugin-test sub-rubric is well-formed JSON" {
   jq empty "$SUB_RUBRIC" \
     || { echo "AC1 FAIL: plugin-test sub-rubric is not well-formed JSON" >&2; return 1; }
 }
 
-@test "AC1: plugin-test rules INCLUDED for project_kind=claude-code-plugin" {
+@test "plugin-test rules INCLUDED for project_kind=claude-code-plugin" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: claude-code-plugin
 EOF
@@ -59,7 +59,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC2 — Bats coverage rule semantics: script-to-bats pairing, not line cov
 # ---------------------------------------------------------------------------
-@test "AC2: bats coverage rule encodes script-to-bats pairing semantics" {
+@test "bats coverage rule encodes script-to-bats pairing semantics" {
   # The rule's pattern field must reference 'script-to-bats' or 'pairing'
   # (not 'line coverage'), per FR-416 / TC-PLUGIN-RUBRIC-5.
   local pat
@@ -77,7 +77,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC3 — bats-script-refs-lint detects broken references
 # ---------------------------------------------------------------------------
-@test "AC3: rubric encodes a bats-script-refs-lint rule with WARNING severity" {
+@test "rubric encodes a bats-script-refs-lint rule with WARNING severity" {
   local rule
   rule=$(jq -r '.severity_rules[] | select(.id == "plugin-test-bats-script-refs-lint")' "$SUB_RUBRIC")
   [ -n "$rule" ] \
@@ -89,7 +89,7 @@ EOF
     || { echo "AC3 FAIL: expected severity=Medium (WARNING-class), got=$sev" >&2; return 1; }
 }
 
-@test "AC3: lint-bats-script-refs.sh detects broken script reference and exits non-zero" {
+@test "lint-bats-script-refs.sh detects broken script reference and exits non-zero" {
   local fixture="$BATS_TEST_TMPDIR/fixture-broken"
   mkdir -p "$fixture/plugins/gaia/tests" "$fixture/plugins/gaia/scripts"
   # NOTE: the literal token "@test" is constructed via printf so the bats
@@ -116,7 +116,7 @@ EOF
     || { echo "AC3 FAIL: expected referenced script name in output, got: $output" >&2; return 1; }
 }
 
-@test "AC3: lint-bats-script-refs.sh exits zero when reference resolves" {
+@test "lint-bats-script-refs.sh exits zero when reference resolves" {
   local fixture="$BATS_TEST_TMPDIR/fixture-good"
   mkdir -p "$fixture/plugins/gaia/tests" "$fixture/plugins/gaia/scripts"
   : > "$fixture/plugins/gaia/scripts/e77-s14-fixture-exists.sh"
@@ -136,7 +136,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC4 — `# skip-permanent:` annotation excluded from 90-day check
 # ---------------------------------------------------------------------------
-@test "AC4: rubric encodes skip-directive 90-day rule with skip-permanent exception" {
+@test "rubric encodes skip-directive 90-day rule with skip-permanent exception" {
   local rule
   rule=$(jq -r '.severity_rules[] | select(.id == "plugin-test-skip-directive-90-day")' "$SUB_RUBRIC")
   [ -n "$rule" ] \
@@ -147,7 +147,7 @@ EOF
     || { echo "AC4 FAIL: rule description must reference 90-day threshold" >&2; return 1; }
 }
 
-@test "AC4: skip-permanent annotation excludes a skip from the 90-day age check" {
+@test "skip-permanent annotation excludes a skip from the 90-day age check" {
   local fixture="$BATS_TEST_TMPDIR/skip-permanent.bats"
   local AT_TEST
   AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
@@ -169,7 +169,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC5 — Bare skip older than 90 days is flagged
 # ---------------------------------------------------------------------------
-@test "AC5: bare skip older than threshold emits STALE-SKIP finding" {
+@test "bare skip older than threshold emits STALE-SKIP finding" {
   local fixture="$BATS_TEST_TMPDIR/bare-skip.bats"
   local AT_TEST
   AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
@@ -187,7 +187,7 @@ EOF
     || { echo "AC5 FAIL: expected STALE-SKIP marker in output, got: $output" >&2; return 1; }
 }
 
-@test "AC5: bare skip younger than threshold does NOT emit a finding" {
+@test "bare skip younger than threshold does NOT emit a finding" {
   local fixture="$BATS_TEST_TMPDIR/fresh-skip.bats"
   local AT_TEST
   AT_TEST=$(printf '%s' '@'; printf '%s' 'test')
@@ -206,14 +206,14 @@ EOF
 # ---------------------------------------------------------------------------
 # AC6 — Predicate excludes rubric for non-plugin projects
 # ---------------------------------------------------------------------------
-@test "AC6: plugin-test carries when: {project_kind: claude-code-plugin}" {
+@test "plugin-test carries when: {project_kind: claude-code-plugin}" {
   local kind
   kind=$(jq -r '.when.project_kind // empty' "$SUB_RUBRIC")
   [ "$kind" = "claude-code-plugin" ] \
     || { echo "AC6 FAIL: expected when.project_kind=claude-code-plugin, got=$kind" >&2; return 1; }
 }
 
-@test "AC6: plugin-test rules EXCLUDED for project_kind=web-app" {
+@test "plugin-test rules EXCLUDED for project_kind=web-app" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: web-app
 EOF
@@ -223,7 +223,7 @@ EOF
     || { echo "AC6 FAIL: expected plugin-test rules EXCLUDED for non-plugin project" >&2; return 1; }
 }
 
-@test "AC6: base test rules survive intact when plugin-test is excluded" {
+@test "base test rules survive intact when plugin-test is excluded" {
   cat >"$TMP_CONFIG" <<'EOF'
 project_kind: web-app
 EOF
@@ -250,7 +250,7 @@ EOF
 # above; these stubs satisfy the gate's substring-grep contract for
 # `compute_age_days` and `scan_bats_file`.
 # ---------------------------------------------------------------------------
-@test "NFR-052 coverage: compute_age_days and scan_bats_file are exercised via AC4/AC5" {
+@test "coverage: compute_age_days and scan_bats_file are exercised via /" {
   # Reference compute_age_days and scan_bats_file by name (covered via AC4 / AC5
   # functional path through skip-permanent-check.sh).
   local fixture="$BATS_TEST_TMPDIR/compute_age_days-scan_bats_file-fixture.bats"

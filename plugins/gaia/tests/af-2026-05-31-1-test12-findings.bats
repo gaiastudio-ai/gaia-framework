@@ -23,19 +23,19 @@ teardown() { common_teardown; }
 # F-01 + F-04 + F-06 — bash 3.2 portability
 # ===========================================================================
 
-@test "AF-31-1 F-01: validate-platform-stack.sh parses cleanly on bash 3.2" {
+@test "validate-platform-stack.sh parses cleanly on bash 3.2" {
   run bash -n "$PLUGIN_ROOT/skills/gaia-init/scripts/validate-platform-stack.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-01: validate-platform-stack.sh has no case-in-\$() pattern" {
+@test "validate-platform-stack.sh has no case-in-\$ pattern" {
   # The fix is the absence of the `$(case ...)` idiom that bash 3.2 cannot
   # parse. Confirm the helper function we introduced is what's used.
   run grep -F '_capable_langs_for' "$PLUGIN_ROOT/skills/gaia-init/scripts/validate-platform-stack.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-02: validate-platform-stack.sh accepts 'server' platform" {
+@test "validate-platform-stack.sh accepts 'server' platform" {
   cfg="$TEST_TMP/cfg.yaml"
   cat >"$cfg" <<EOF
 platforms:
@@ -47,7 +47,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-03: validate-platform-stack.sh accepts 'backend' alias" {
+@test "validate-platform-stack.sh accepts 'backend' alias" {
   cfg="$TEST_TMP/cfg.yaml"
   cat >"$cfg" <<EOF
 platforms:
@@ -59,43 +59,43 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-03: generate-config.sh normalizes backend → server" {
+@test "generate-config.sh normalizes backend → server" {
   run grep -F 'p.lower() == "backend"' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-04: detect-signals.sh parses on bash 3.2" {
+@test "detect-signals.sh parses on bash 3.2" {
   run bash -n "$PLUGIN_ROOT/scripts/detect-signals.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-04: detect-signals.sh no longer uses 'declare -A'" {
+@test "detect-signals.sh no longer uses 'declare -A'" {
   # Allow occurrences inside comments; reject in code.
   run grep -nE '^[[:space:]]*declare -A' "$PLUGIN_ROOT/scripts/detect-signals.sh"
   [ "$status" -ne 0 ]
 }
 
-@test "AF-31-1 F-04: detect-signals.sh no longer uses 'mapfile'" {
+@test "detect-signals.sh no longer uses 'mapfile'" {
   run grep -nE '^[[:space:]]*mapfile ' "$PLUGIN_ROOT/scripts/detect-signals.sh"
   [ "$status" -ne 0 ]
 }
 
-@test "AF-31-1 F-06: brownfield orchestrator.sh parses on bash 3.2" {
+@test "brownfield orchestrator.sh parses on bash 3.2" {
   run bash -n "$PLUGIN_ROOT/scripts/adapters/brownfield/orchestrator.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-06: orchestrator.sh no longer guards on BASH_VERSINFO>=4" {
+@test "orchestrator.sh no longer guards on BASH_VERSINFO>=4" {
   run grep -F 'BASH_VERSINFO[0]:-0' "$PLUGIN_ROOT/scripts/adapters/brownfield/orchestrator.sh"
   [ "$status" -ne 0 ]
 }
 
-@test "AF-31-1 F-06: orchestrator.sh dropped 'shopt -s globstar'" {
+@test "orchestrator.sh dropped 'shopt -s globstar'" {
   run grep -E '^shopt -s globstar' "$PLUGIN_ROOT/scripts/adapters/brownfield/orchestrator.sh"
   [ "$status" -ne 0 ]
 }
 
-@test "AF-31-1 F-06 class: reconcile-cross-stack.sh + 4 adapter run.sh files parse on bash 3.2" {
+@test "class: reconcile-cross-stack.sh + 4 adapter run.sh files parse on bash 3.2" {
   for f in scripts/adapters/brownfield/reconcile-cross-stack.sh \
            scripts/adapters/semgrep/run.sh \
            scripts/adapters/gocyclo/run.sh \
@@ -110,17 +110,17 @@ EOF
 # D-01 + F-09 — init platform vocab + .gitignore back-fill
 # ===========================================================================
 
-@test "AF-31-1 D-01: brownfield doc no longer claims /gaia-init seeds brownfield.* block" {
+@test "D-01: brownfield doc no longer claims /gaia-init seeds brownfield.* block" {
   run grep -F 'brownfield.*</code> block is populated by' "$DOC_ROOT/commands/gaia-brownfield.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-09: generate-config.sh seeded gitignore lists .gaia/config/" {
+@test "generate-config.sh seeded gitignore lists .gaia/config/" {
   run grep -F '.gaia/config/' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-09: generate-config.sh has back-fill branch for legacy gitignore" {
+@test "generate-config.sh has back-fill branch for legacy gitignore" {
   run grep -F 'back-filled' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
 }
@@ -129,12 +129,12 @@ EOF
 # F-10 — check-tools.sh ANSI strip
 # ===========================================================================
 
-@test "AF-31-1 F-10: check-tools.sh strips ANSI escape sequences from version" {
+@test "check-tools.sh strips ANSI escape sequences from version" {
   run grep -F 'NO_COLOR=1 TERM=dumb' "$PLUGIN_ROOT/skills/gaia-doctor/scripts/check-tools.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-10: check-tools.sh sed strips CSI escapes" {
+@test "check-tools.sh sed strips CSI escapes" {
   # The sed expression uses ESC literal — match the textual marker.
   run grep -F "s/\\x1b" "$PLUGIN_ROOT/skills/gaia-doctor/scripts/check-tools.sh"
   [ "$status" -eq 0 ]
@@ -144,12 +144,12 @@ EOF
 # F-11 — YOLO CRITICAL semantics extended to Phase 3 + Phase 6
 # ===========================================================================
 
-@test "AF-31-1 F-11: brownfield SKILL.md YOLO contract covers Phase 3 + Phase 6" {
+@test "brownfield SKILL.md YOLO contract covers Phase 3 + Phase 6" {
   run grep -F 'Phase 6** test-architect (Sable) NFR assessment' "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-11: brownfield Subagent Dispatch Contract notes the per-phase carve-outs" {
+@test "brownfield Subagent Dispatch Contract notes the per-phase carve-outs" {
   run grep -F 'per-phase carve-outs' "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
@@ -158,12 +158,12 @@ EOF
 # F-12 — write-val-envelope.sh CHECKPOINT_PATH default docstring
 # ===========================================================================
 
-@test "AF-31-1 F-12: write-val-envelope.sh docstring states .gaia/memory/checkpoints" {
+@test "write-val-envelope.sh docstring states .gaia/memory/checkpoints" {
   run grep -F 'defaults to ".gaia/memory/checkpoints"' "$PLUGIN_ROOT/scripts/lib/write-val-envelope.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-12: write-val-envelope.sh usage prose no longer says _memory/checkpoints" {
+@test "write-val-envelope.sh usage prose no longer says _memory/checkpoints" {
   run grep -F '_memory/checkpoints relative to PWD' "$PLUGIN_ROOT/scripts/lib/write-val-envelope.sh"
   [ "$status" -ne 0 ]
 }
@@ -172,12 +172,12 @@ EOF
 # F-13 — test-strategy --plan finalize NOTICE before mutation
 # ===========================================================================
 
-@test "AF-31-1 F-13: test-strategy finalize emits pre-mutation NOTICE" {
+@test "test-strategy finalize emits pre-mutation NOTICE" {
   run grep -F 'NOTICE — test-strategy --plan will APPEND empty stubs' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-13: finalize NOTICE names the opt-out env var" {
+@test "finalize NOTICE names the opt-out env var" {
   run grep -F 'GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
@@ -186,17 +186,17 @@ EOF
 # F-14 — create-epics relaxes Review Findings Incorporated for brownfield arch
 # ===========================================================================
 
-@test "AF-31-1 F-14: create-epics SKILL.md documents the brownfield-mode carve-out" {
+@test "create-epics SKILL.md documents the brownfield-mode carve-out" {
   run grep -F 'its absence emits a NOTICE but does not HALT' "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-14: create-epics finalize.sh probes mode: brownfield frontmatter" {
+@test "create-epics finalize.sh probes mode: brownfield frontmatter" {
   run grep -F '_arch_mode' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-14: item_check supports 'notice' verdict" {
+@test "item_check supports 'notice' verdict" {
   run grep -F 'advisory; not blocking' "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
@@ -205,29 +205,29 @@ EOF
 # F-15 — sprint-state.sh init seeds start_date / end_date / capacity_points
 # ===========================================================================
 
-@test "AF-31-1 F-15: sprint-state.sh init accepts --start-date" {
+@test "sprint-state.sh init accepts --start-date" {
   run bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --help 2>&1
   # init has no --help; just verify the flag-parse vocabulary by grep.
   run grep -F -e '--start-date)' "$PLUGIN_ROOT/scripts/sprint-state.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-15: sprint-state.sh init accepts --capacity-points" {
+@test "sprint-state.sh init accepts --capacity-points" {
   run grep -F -e '--capacity-points)' "$PLUGIN_ROOT/scripts/sprint-state.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-15: cmd_init writes start_date when provided" {
+@test "cmd_init writes start_date when provided" {
   run grep -F 'start_date: "%s"' "$PLUGIN_ROOT/scripts/sprint-state.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-15: sprint-plan SKILL.md forwards date + capacity to init" {
+@test "sprint-plan SKILL.md forwards date + capacity to init" {
   run grep -F -e '--start-date "{start_date YYYY-MM-DD}"' "$PLUGIN_ROOT/skills/gaia-sprint-plan/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-15: dev-story wrapper is byte-identical to canonical sprint-state.sh" {
+@test "dev-story wrapper is byte-identical to canonical sprint-state.sh" {
   src="$PLUGIN_ROOT/scripts/sprint-state.sh"
   dst="$PLUGIN_ROOT/skills/gaia-dev-story/scripts/sprint-state.sh"
   diff -q "$src" "$dst"
@@ -237,17 +237,17 @@ EOF
 # F-16 — run-tests.sh per-test pass_count (pytest / bats / go)
 # ===========================================================================
 
-@test "AF-31-1 F-16: run-tests.sh parses pytest 'N passed' line" {
+@test "run-tests.sh parses pytest 'N passed' line" {
   run grep -F "'[0-9]+ passed'" "$PLUGIN_ROOT/scripts/run-tests.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-16: run-tests.sh parses bats TAP 'ok N'" {
+@test "run-tests.sh parses bats TAP 'ok N'" {
   run grep -F "'^ok [0-9]+'" "$PLUGIN_ROOT/scripts/run-tests.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-16: run-tests.sh parses go test '--- PASS:'" {
+@test "run-tests.sh parses go test '--- PASS:'" {
   run grep -F "'^--- PASS:'" "$PLUGIN_ROOT/scripts/run-tests.sh"
   [ "$status" -eq 0 ]
 }
@@ -256,12 +256,12 @@ EOF
 # F-17 — review-gate.sh --sprint flag
 # ===========================================================================
 
-@test "AF-31-1 F-17: review-gate.sh accepts --sprint flag" {
+@test "review-gate.sh accepts --sprint flag" {
   run grep -F -e '--sprint)' "$PLUGIN_ROOT/scripts/review-gate.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-17: review-gate.sh short-circuits sprint-scoped invocations to ledger" {
+@test "review-gate.sh short-circuits sprint-scoped invocations to ledger" {
   run grep -F 'sprint:' "$PLUGIN_ROOT/scripts/review-gate.sh"
   [ "$status" -eq 0 ]
 }
@@ -270,7 +270,7 @@ EOF
 # F-18 — run-tests.sh bridge_used reflects actual indirection
 # ===========================================================================
 
-@test "AF-31-1 F-18: run-tests.sh main JSON printf substitutes _bridge_used variable" {
+@test "run-tests.sh main JSON printf substitutes _bridge_used variable" {
   # The main emit path now writes ',%s,...' with $_bridge_used as the arg,
   # rather than the literal `"bridge_used":false` that prior runs hardcoded.
   # The SKIP path (emit_skipped) keeps a literal `false` because a skipped
@@ -279,12 +279,12 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-18: run-tests.sh checks GAIA_BRIDGE_INVOKE env var" {
+@test "run-tests.sh checks GAIA_BRIDGE_INVOKE env var" {
   run grep -F 'GAIA_BRIDGE_INVOKE' "$PLUGIN_ROOT/scripts/run-tests.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-18: run-tests.sh has yaml_get_bridge_field helper" {
+@test "run-tests.sh has yaml_get_bridge_field helper" {
   run grep -F 'yaml_get_bridge_field' "$PLUGIN_ROOT/scripts/run-tests.sh"
   [ "$status" -eq 0 ]
 }
@@ -293,12 +293,12 @@ EOF
 # F-19 + D-03 — state machine adds ready-for-dev → backlog
 # ===========================================================================
 
-@test "AF-31-1 F-19: sprint-state.sh ALLOWED_EDGES includes ready-for-dev|backlog" {
+@test "sprint-state.sh ALLOWED_EDGES includes ready-for-dev|backlog" {
   run grep -F '"ready-for-dev|backlog"' "$PLUGIN_ROOT/scripts/sprint-state.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-19: ready-for-dev → backlog transition succeeds end-to-end" {
+@test "ready-for-dev → backlog transition succeeds end-to-end" {
   # Build a minimal sprint-status.yaml and story, then drive a real transition.
   # The transition machinery requires several surfaces; this test just verifies
   # the adjacency-allow gate at the sprint-state.sh layer.
@@ -312,12 +312,12 @@ EOF
 # V-01 — cdxgen output redirect
 # ===========================================================================
 
-@test "AF-31-1 V-01: pre-warm.sh redirects cdxgen output via -o" {
+@test "V-01: pre-warm.sh redirects cdxgen output via -o" {
   run grep -F -e '-o "$CACHE_DIR/warm-bom.json"' "$PLUGIN_ROOT/scripts/adapters/brownfield/pre-warm.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 V-01: pre-warm.sh no longer uses bare '--no-recurse --print' without -o" {
+@test "V-01: pre-warm.sh no longer uses bare '--no-recurse --print' without -o" {
   # The fixed form has both --print AND -o on the same line.
   run grep -E "cdxgen --no-recurse --print -o " "$PLUGIN_ROOT/scripts/adapters/brownfield/pre-warm.sh"
   [ "$status" -eq 0 ]
@@ -327,16 +327,16 @@ EOF
 # F-05 — brownfield-assessment template ships with plugin
 # ===========================================================================
 
-@test "AF-31-1 F-05: brownfield-assessment-template.md exists under templates/" {
+@test "brownfield-assessment-template.md exists under templates/" {
   [ -f "$PLUGIN_ROOT/templates/brownfield-assessment-template.md" ]
 }
 
-@test "AF-31-1 F-05: template carries mode: brownfield frontmatter" {
+@test "template carries mode: brownfield frontmatter" {
   run grep -F 'mode: brownfield' "$PLUGIN_ROOT/templates/brownfield-assessment-template.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-05: brownfield SKILL.md points Phase 1 at the canonical template path" {
+@test "brownfield SKILL.md points Phase 1 at the canonical template path" {
   run grep -F 'brownfield-assessment-template.md' "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
@@ -345,12 +345,12 @@ EOF
 # F-07 — grype/syft adapters wired into brownfield Phase 3
 # ===========================================================================
 
-@test "AF-31-1 F-07: brownfield SKILL.md Phase 3 dispatches grype adapter" {
+@test "brownfield SKILL.md Phase 3 dispatches grype adapter" {
   run grep -F 'scripts/adapters/grype/adapter.sh' "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-07: brownfield SKILL.md Phase 3 produces syft SBOM" {
+@test "brownfield SKILL.md Phase 3 produces syft SBOM" {
   run grep -F 'syft scan dir:' "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
@@ -359,12 +359,12 @@ EOF
 # F-08 — checkpoint.sh flag set documented in brownfield SKILL.md
 # ===========================================================================
 
-@test "AF-31-1 F-08: brownfield SKILL.md shows canonical checkpoint.sh write invocation" {
+@test "brownfield SKILL.md shows canonical checkpoint.sh write invocation" {
   run grep -F -- '--workflow brownfield' "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 F-08: SKILL.md lists the four accepted checkpoint flags" {
+@test "SKILL.md lists the four accepted checkpoint flags" {
   for flag in '--workflow' '--step' '--var' '--file'; do
     run grep -F -e "$flag" "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
     [ "$status" -eq 0 ] || { echo "missing checkpoint flag doc: $flag" >&2; return 1; }
@@ -375,27 +375,27 @@ EOF
 # D-02 — Platform Requirements documented (brownfield + troubleshooting)
 # ===========================================================================
 
-@test "AF-31-1 D-02: gaia-brownfield.html mentions platform support" {
+@test "D-02: gaia-brownfield.html mentions platform support" {
   run grep -F 'Platform support' "$DOC_ROOT/commands/gaia-brownfield.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 D-02: gaia-brownfield.html mentions bash-3.2 compatibility" {
+@test "D-02: gaia-brownfield.html mentions bash-3.2 compatibility" {
   run grep -F 'bash-3.2 compatible' "$DOC_ROOT/commands/gaia-brownfield.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 D-02: troubleshooting.html has platform-requirements section" {
+@test "D-02: troubleshooting.html has platform-requirements section" {
   run grep -F 'id="platform-requirements"' "$DOC_ROOT/troubleshooting.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 D-02: troubleshooting.html documents Windows WSL2 path" {
+@test "D-02: troubleshooting.html documents Windows WSL2 path" {
   run grep -F 'WSL2' "$DOC_ROOT/troubleshooting.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 D-02: troubleshooting.html TOC links to platform-requirements" {
+@test "D-02: troubleshooting.html TOC links to platform-requirements" {
   run grep -F '#platform-requirements' "$DOC_ROOT/troubleshooting.html"
   [ "$status" -eq 0 ]
 }
@@ -404,12 +404,12 @@ EOF
 # D-04 — AC checkbox shape shown in create-story HTML
 # ===========================================================================
 
-@test "AF-31-1 D-04: gaia-create-story.html has ac-checkbox-shape section" {
+@test "D-04: gaia-create-story.html has ac-checkbox-shape section" {
   run grep -F 'id="ac-checkbox-shape"' "$DOC_ROOT/commands/gaia-create-story.html"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 D-04: gaia-create-story.html shows worked AC example with - [ ] prefix" {
+@test "D-04: gaia-create-story.html shows worked AC example with - prefix" {
   run grep -F -e '- [ ] **AC1:**' "$DOC_ROOT/commands/gaia-create-story.html"
   [ "$status" -eq 0 ]
 }
@@ -418,12 +418,12 @@ EOF
 # §9.0 — Cross-platform CI matrix wired
 # ===========================================================================
 
-@test "AF-31-1 §9.0: plugin-ci.yml has cross-platform-portability job" {
+@test "§9.0: plugin-ci.yml has cross-platform-portability job" {
   run grep -F 'cross-platform-portability' "$PLUGIN_ROOT/../../.github/workflows/plugin-ci.yml"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-31-1 §9.0: portability job matrix includes macos-latest + windows-latest" {
+@test "§9.0: portability job matrix includes macos-latest + windows-latest" {
   run grep -F 'macos-latest, windows-latest' "$PLUGIN_ROOT/../../.github/workflows/plugin-ci.yml"
   [ "$status" -eq 0 ]
 }

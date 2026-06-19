@@ -145,7 +145,7 @@ assert "ios" not in d, d
 # reconciler-hydrated baseline shape so trailing comments stay anchored as
 # child-position comments of the empty mapping.
 
-@test "AF-2026-05-17-7: clear writes bare device_targets: (no inline-flow {})" {
+@test "clear writes bare device_targets: (no inline-flow {})" {
   run "$EDITOR" --config "$CFG" set ios \
     --os-versions "16.0" --form-factors "phone" --screen-sizes "390x844@3.0"
   [ "$status" -eq 0 ]
@@ -159,7 +159,7 @@ assert "ios" not in d, d
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-17-7: post-clear YAML is well-formed and device_targets resolves to empty mapping" {
+@test "post-clear YAML is well-formed and device_targets resolves to empty mapping" {
   run "$EDITOR" --config "$CFG" set ios \
     --os-versions "16.0" --form-factors "phone" --screen-sizes "390x844@3.0"
   [ "$status" -eq 0 ]

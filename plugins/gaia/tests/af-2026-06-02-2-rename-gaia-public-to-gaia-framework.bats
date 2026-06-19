@@ -21,31 +21,31 @@ teardown() { common_teardown; }
 # F-01 — Critical operational items point at gaia-framework
 # ===========================================================================
 
-@test "AF-33-2 F-01: plugin.json homepage points at gaia-framework" {
+@test "plugin.json homepage points at gaia-framework" {
   run grep -F '"homepage": "https://github.com/gaiastudio-ai/gaia-framework"' \
     "$PLUGIN_ROOT/.claude-plugin/plugin.json"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-33-2 F-01: statusline-update-check.sh API endpoint targets gaia-framework" {
+@test "statusline-update-check.sh API endpoint targets gaia-framework" {
   run grep -F 'repos/gaiastudio-ai/gaia-framework/releases/latest' \
     "$PLUGIN_ROOT/scripts/statusline-update-check.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-33-2 F-01: statusline-update-check.sh https API endpoint targets gaia-framework" {
+@test "statusline-update-check.sh https API endpoint targets gaia-framework" {
   run grep -F 'api.github.com/repos/gaiastudio-ai/gaia-framework/releases/latest' \
     "$PLUGIN_ROOT/scripts/statusline-update-check.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-33-2 F-01: statusline.sh OSC8 release-link targets gaia-framework" {
+@test "statusline.sh OSC8 release-link targets gaia-framework" {
   run grep -F 'github.com/gaiastudio-ai/gaia-framework/releases/tag' \
     "$PLUGIN_ROOT/scripts/statusline.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-33-2 F-01: plugin-cache directory slug uses gaia-framework" {
+@test "plugin-cache directory slug uses gaia-framework" {
   run grep -F 'gaiastudio-ai-gaia-framework' "$PLUGIN_ROOT/scripts/statusline-update-check.sh"
   [ "$status" -eq 0 ]
 }
@@ -54,17 +54,17 @@ teardown() { common_teardown; }
 # F-02 — User-facing install instructions
 # ===========================================================================
 
-@test "AF-33-2 F-02: README install command names gaia-framework" {
+@test "README install command names gaia-framework" {
   run grep -F '/plugin marketplace add gaiastudio-ai/gaia-framework' "$REPO_ROOT/README.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-33-2 F-02: CLAUDE.md install citation names gaia-framework" {
+@test "CLAUDE.md install citation names gaia-framework" {
   run grep -F '/plugin marketplace add gaiastudio-ai/gaia-framework' "$REPO_ROOT/CLAUDE.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-33-2 F-02: gaia-migrate SKILL.md install hint names gaia-framework" {
+@test "gaia-migrate SKILL.md install hint names gaia-framework" {
   run grep -F '/plugin marketplace add gaiastudio-ai/gaia-framework' \
     "$PLUGIN_ROOT/skills/gaia-migrate/SKILL.md"
   [ "$status" -eq 0 ]
@@ -74,7 +74,7 @@ teardown() { common_teardown; }
 # F-03 — Documentation site URL
 # ===========================================================================
 
-@test "AF-33-2 F-03: CLAUDE.md docs site URL points at gaia-framework Pages" {
+@test "CLAUDE.md docs site URL points at gaia-framework Pages" {
   run grep -F 'gaiastudio-ai.github.io/gaia-framework' "$REPO_ROOT/CLAUDE.md"
   [ "$status" -eq 0 ]
 }
@@ -83,7 +83,7 @@ teardown() { common_teardown; }
 # F-04 — CHANGELOG entry documents the rename
 # ===========================================================================
 
-@test "AF-33-2 F-04: CHANGELOG.md describes the rename + GitHub redirect contract" {
+@test "CHANGELOG.md describes the rename + GitHub redirect contract" {
   # The rename + redirect contract is documented by naming both the old and new
   # repository paths so clones and web traffic keep working across the rename.
   run grep -F 'gaiastudio-ai/gaia-public' "$REPO_ROOT/CHANGELOG.md"
@@ -96,7 +96,7 @@ teardown() { common_teardown; }
 # F-05 — Anti-regression: NO active operational reference still names gaia-public
 # ===========================================================================
 
-@test "AF-33-2 F-05: no active operational reference to gaiastudio-ai/gaia-public outside CHANGELOGs" {
+@test "no active operational reference to gaiastudio-ai/gaia-public outside CHANGELOGs" {
   # The CHANGELOG files intentionally preserve historical URLs. The
   # AF-33-2 bats file itself names the old token in its anti-regression
   # grep patterns by necessity; exclude it. Test fixtures (under
@@ -118,7 +118,7 @@ teardown() { common_teardown; }
   [ -z "$output" ]
 }
 
-@test "AF-33-2 F-05: no active operational reference to gaiastudio-ai-gaia-public outside CHANGELOGs" {
+@test "no active operational reference to gaiastudio-ai-gaia-public outside CHANGELOGs" {
   run bash -c "
     grep -rln 'gaiastudio-ai-gaia-public' '$REPO_ROOT' \
       --include='*.sh' --include='*.json' --include='*.yaml' --include='*.yml' \
@@ -137,7 +137,7 @@ teardown() { common_teardown; }
 # F-06 — Repo-name H1 heading updated in README
 # ===========================================================================
 
-@test "AF-33-2 F-06: README H1 names gaia-framework" {
+@test "README H1 names gaia-framework" {
   run grep -E '^# gaia-framework' "$REPO_ROOT/README.md"
   [ "$status" -eq 0 ]
 }

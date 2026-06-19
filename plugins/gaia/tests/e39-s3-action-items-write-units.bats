@@ -104,7 +104,7 @@ HEADER
 # aiw_next_id — compute next AI-{n} from existing entries
 # ===========================================================================
 
-@test "aiw_next_id: returns AI-1 when file has no entries" {
+@test "aiw_next_id: returns when file has no entries" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
   aiw_bootstrap_file "$target"
@@ -113,7 +113,7 @@ HEADER
   [ "$got" = "AI-1" ]
 }
 
-@test "aiw_next_id: returns AI-4 when highest is AI-3" {
+@test "aiw_next_id: returns when highest is" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
   _make_action_items "$target" \

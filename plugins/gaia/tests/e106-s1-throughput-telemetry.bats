@@ -31,7 +31,7 @@ teardown() {
 
 # ---------- AC1 / TS1: per-story wall-clock + per-sprint median ----------
 
-@test "AC1/TS1: derives median minutes/story from differenced transition timestamps" {
+@test "derives median minutes/story from differenced transition timestamps" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S1 = 10:00->10:40 = 40, E900-S2 = 11:00->12:00 = 60 ; median{40,60} = 50
@@ -39,7 +39,7 @@ teardown() {
     || { echo "expected median_minutes_per_story: 50, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC1/TS1: derives median minutes/point joining story points" {
+@test "derives median minutes/point joining story points" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S1 = 40min/4pt = 10 ; E900-S2 = 60min/2pt = 30 ; median{10,30} = 20
@@ -47,7 +47,7 @@ teardown() {
     || { echo "expected median_minutes_per_point: 20, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC1/TS1: emits per-story wall-clock for a clean multi-transition story" {
+@test "emits per-story wall-clock for a clean multi-transition story" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eq 'E900-S1.*40'
@@ -55,7 +55,7 @@ teardown() {
 
 # ---------- AC2 / TS2: rework loop, no double-count ----------
 
-@test "AC2/TS2: rework loop yields a single coherent wall-clock (no double-count)" {
+@test "rework loop yields a single coherent wall-clock (no double-count)" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S2 has review->in-progress->review loop; total span 11:00->12:00 = 60 (not 30+20+10 summed twice)
@@ -64,14 +64,14 @@ teardown() {
 
 # ---------- AC3 / TS3: missing/partial pair -> skip + note ----------
 
-@test "AC3/TS3: single-transition story is skipped with a recorded note, not crash" {
+@test "single-transition story is skipped with a recorded note, not crash" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S3 has only review->done (1 transition) -> skipped with note
   echo "$output" | grep -Eq 'E900-S3.*(skip|note|insufficient)'
 }
 
-@test "AC3/TS3: skipped story does not count as zero in the median" {
+@test "skipped story does not count as zero in the median" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # if E900-S3 counted as 0, median{0,40,60} = 40, not 50
@@ -80,7 +80,7 @@ teardown() {
 
 # ---------- AC4 / TS4: pre-log story excluded from median ----------
 
-@test "AC4/TS4: story with no events is excluded from the median" {
+@test "story with no events is excluded from the median" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S4 (5pt) has zero events; if counted as 0 the medians would shift
@@ -132,7 +132,7 @@ teardown() {
 
 # ---------- AC5: /gaia-history renders trend, accuracy, recurring findings ----------
 
-@test "AC5: history-render surfaces velocity trend across closed sprints" {
+@test "history-render surfaces velocity trend across closed sprints" {
   run bash "$HISTORY" --archive-dir "$ARCHIVE_DIR" --retros-dir "$RETROS_DIR" \
     --events "$EVENTS"
   [ "$status" -eq 0 ]
@@ -142,7 +142,7 @@ teardown() {
   echo "$output" | grep -Eq 'sprint-898' && echo "$output" | grep -Eq 'sprint-900'
 }
 
-@test "AC5: history-render surfaces estimate-accuracy (estimated vs measured)" {
+@test "history-render surfaces estimate-accuracy (estimated vs measured)" {
   run bash "$HISTORY" --archive-dir "$ARCHIVE_DIR" --retros-dir "$RETROS_DIR" \
     --events "$EVENTS"
   [ "$status" -eq 0 ]
@@ -150,7 +150,7 @@ teardown() {
     || { echo "expected an estimate-accuracy section, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC5: history-render surfaces recurring-finding patterns from retros" {
+@test "history-render surfaces recurring-finding patterns from retros" {
   run bash "$HISTORY" --archive-dir "$ARCHIVE_DIR" --retros-dir "$RETROS_DIR" \
     --events "$EVENTS"
   [ "$status" -eq 0 ]
@@ -163,7 +163,7 @@ teardown() {
 
 # ---------- AC6 / TS6: /gaia-history read-only contract ----------
 
-@test "AC6/TS6: throughput-telemetry.sh writes nothing (read-only)" {
+@test "throughput-telemetry.sh writes nothing (read-only)" {
   # Broadened guard: snapshot the whole REPO_ROOT working tree state + the
   # project .gaia/ runtime dirs, not just the fixture dir (TDD WARNING bats:123).
   before=$(cd "$REPO_ROOT" && git status --porcelain=v1 2>/dev/null | sort)
@@ -176,7 +176,7 @@ teardown() {
   [ "$before" = "$after" ] || { echo "working tree mutated:" >&2; diff <(echo "$before") <(echo "$after") >&2; false; }
 }
 
-@test "AC6/TS6: history-render writes nothing (read-only)" {
+@test "history-render writes nothing (read-only)" {
   before=$(cd "$REPO_ROOT" && git status --porcelain=v1 2>/dev/null | sort)
   run bash "$HISTORY" --archive-dir "$ARCHIVE_DIR" --retros-dir "$RETROS_DIR" --events "$EVENTS"
   [ "$status" -eq 0 ]
@@ -184,7 +184,7 @@ teardown() {
   [ "$before" = "$after" ] || { echo "history-render mutated working tree" >&2; false; }
 }
 
-@test "AC6/TS6: gaia-history skill is read-only (allowed-tools has no Write/Edit)" {
+@test "gaia-history skill is read-only (allowed-tools has no Write/Edit)" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-history/SKILL.md"
   [ -f "$SKILL" ]
   # allowed-tools must not grant Write or Edit

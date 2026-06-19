@@ -33,7 +33,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
 
 # ---------- AC1 / TS1: batch materialize N missing keys in one run ----------
 
-@test "AC1/TS1: --keys materializes every missing selected story in one invocation" {
+@test "keys materializes every missing selected story in one invocation" {
   run bash "$MAT" --keys "E900-S1,E900-S2,E900-S3" --epics "$EPICS" --impl-root "$IMPL"
   [ "$status" -eq 0 ] \
     || { echo "materialize should succeed, got $status: $output" >&2; false; }
@@ -43,7 +43,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
 
 # ---------- AC1 / TS2: idempotent re-run ----------
 
-@test "AC1/TS2: re-run is idempotent (no new files, skips already-materialized)" {
+@test "re-run is idempotent (no new files, skips already-materialized)" {
   bash "$MAT" --keys "E900-S1,E900-S2,E900-S3" --epics "$EPICS" --impl-root "$IMPL"
   before="$(count_stories)"
   run bash "$MAT" --keys "E900-S1,E900-S2,E900-S3" --epics "$EPICS" --impl-root "$IMPL"
@@ -54,7 +54,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
     || { echo "re-run should report skipped/already-materialized, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC1: partial materialization — only the missing key is created on a mixed run" {
+@test "partial materialization — only the missing key is created on a mixed run" {
   bash "$MAT" --keys "E900-S1" --epics "$EPICS" --impl-root "$IMPL"
   [ "$(count_stories)" -eq 1 ]
   run bash "$MAT" --keys "E900-S1,E900-S2" --epics "$EPICS" --impl-root "$IMPL"
@@ -64,7 +64,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
 
 # ---------- AC4 / TS4: priority_flag null + per-story layout ----------
 
-@test "AC4/TS4: materialized stories have priority_flag null and land in the per-story layout" {
+@test "materialized stories have priority_flag null and land in the per-story layout" {
   bash "$MAT" --keys "E900-S1" --epics "$EPICS" --impl-root "$IMPL"
   sf="$(find "$IMPL" -type f -name 'story.md' | head -1)"
   [ -n "$sf" ]
@@ -78,7 +78,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
 
 # ---------- AC3 / TS4: ready-for-dev transition (manifest / elaboration flag) ----------
 
-@test "AC3: materializer emits an elaboration manifest naming the newly-scaffolded keys" {
+@test "materializer emits an elaboration manifest naming the newly-scaffolded keys" {
   run bash "$MAT" --keys "E900-S1,E900-S2" --epics "$EPICS" --impl-root "$IMPL" --manifest "$TEST_TMP/manifest.txt"
   [ "$status" -eq 0 ]
   [ -f "$TEST_TMP/manifest.txt" ] \
@@ -106,7 +106,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
 
 # ---------- AC2 / TS3: --refresh guards in-progress stories ----------
 
-@test "AC2/TS3: --refresh does NOT clobber an in-progress story (status guard)" {
+@test "refresh does NOT clobber an in-progress story (status guard)" {
   bash "$MAT" --keys "E900-S1" --epics "$EPICS" --impl-root "$IMPL"
   sf="$(find "$IMPL" -type f -name 'story.md' | head -1)"
   # simulate the story progressing to in-progress
@@ -135,7 +135,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
 
 # ---------- AC3 doc: SKILL.md documents the --for-sprint mode ----------
 
-@test "AC1/AC3: gaia-create-story SKILL.md documents the --for-sprint batch mode" {
+@test "gaia-create-story SKILL.md documents the --for-sprint batch mode" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-create-story/SKILL.md"
   grep -Eiq -- '--for-sprint' "$SKILL" \
     || { echo "create-story SKILL.md should document the --for-sprint mode" >&2; false; }

@@ -26,14 +26,14 @@ setup() {
   [ -f "$BATS_FILE" ]
 }
 
-@test "resolve-config.bats setup() cd's into TEST_TMP (AF-2026-05-17-2)" {
+@test "resolve-config.bats setup cd's into TEST_TMP" {
   # The setup function must contain a 'cd "$TEST_TMP"' line so the L5
   # $PWD-discovery step misses and falls through to CLAUDE_SKILL_DIR.
   run grep -E 'cd "\$TEST_TMP"' "$BATS_FILE"
   [ "$status" -eq 0 ]
 }
 
-@test "resolve-config.bats setup() references AF-2026-05-17-2 lineage" {
+@test "resolve-config.bats setup references lineage" {
   run grep -E 'AF-2026-05-17-2' "$BATS_FILE"
   [ "$status" -eq 0 ]
 }

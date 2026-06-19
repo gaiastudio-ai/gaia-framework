@@ -44,7 +44,7 @@ _path_without_tools() {
 
 # ---------------- AC1 — five adapters exist with conforming files ---------
 
-@test "AC1: all five adapters exist with adapter.json + executable run.sh" {
+@test "all five adapters exist with adapter.json + executable run.sh" {
   for tool in semgrep gitleaks radon gocyclo eslint-plugin-sonarjs; do
     [ -d "${ADAPTERS_DIR}/${tool}" ] || { echo "missing dir: ${tool}" >&2; return 1; }
     [ -f "${ADAPTERS_DIR}/${tool}/adapter.json" ] || { echo "missing adapter.json: ${tool}" >&2; return 1; }
@@ -70,34 +70,34 @@ _assert_fragment_shape_in_source() {
     || { echo "missing 'findings: []' in $script" >&2; return 1; }
 }
 
-@test "AC2: semgrep run.sh emits canonical analysis-results fragment shape" {
+@test "semgrep run.sh emits canonical analysis-results fragment shape" {
   _assert_fragment_shape_in_source "${ADAPTERS_DIR}/semgrep/run.sh"
 }
 
-@test "AC3: gitleaks run.sh emits canonical analysis-results fragment shape" {
+@test "gitleaks run.sh emits canonical analysis-results fragment shape" {
   _assert_fragment_shape_in_source "${ADAPTERS_DIR}/gitleaks/run.sh"
 }
 
-@test "AC4: radon run.sh emits canonical analysis-results fragment shape" {
+@test "radon run.sh emits canonical analysis-results fragment shape" {
   _assert_fragment_shape_in_source "${ADAPTERS_DIR}/radon/run.sh"
 }
 
-@test "AC5: gocyclo run.sh emits canonical analysis-results fragment shape" {
+@test "gocyclo run.sh emits canonical analysis-results fragment shape" {
   _assert_fragment_shape_in_source "${ADAPTERS_DIR}/gocyclo/run.sh"
 }
 
-@test "AC6: eslint-plugin-sonarjs run.sh emits canonical analysis-results fragment shape" {
+@test "eslint-plugin-sonarjs run.sh emits canonical analysis-results fragment shape" {
   _assert_fragment_shape_in_source "${ADAPTERS_DIR}/eslint-plugin-sonarjs/run.sh"
 }
 
 # ---------------- AC7 — backward-compat alias layer -----------------------
 
-@test "AC7: legacy-tool-aliases.sh exists and is sourceable" {
+@test "legacy-tool-aliases.sh exists and is sourceable" {
   [ -f "$LEGACY_ALIASES" ]
   bash -n "$LEGACY_ALIASES"
 }
 
-@test "AC7: legacy alias defines run_<tool>_legacy functions for all five tools" {
+@test "legacy alias defines run_<tool>_legacy functions for all five tools" {
   # shellcheck disable=SC1090
   source "$LEGACY_ALIASES"
   for fn in run_semgrep_legacy run_gitleaks_legacy run_radon_legacy run_gocyclo_legacy run_eslint_sonarjs_legacy; do
@@ -105,7 +105,7 @@ _assert_fragment_shape_in_source() {
   done
 }
 
-@test "AC7: legacy alias emits DEPRECATION warning to stderr including canonical adapter path" {
+@test "legacy alias emits DEPRECATION warning to stderr including canonical adapter path" {
   # shellcheck disable=SC1090
   source "$LEGACY_ALIASES"
   local list; list="$(_empty_filelist)"
@@ -128,7 +128,7 @@ _assert_fragment_shape_in_source() {
 
 # ---------------- AC8 — deprecation window documented ---------------------
 
-@test "AC8: story Dev Notes documents one-sprint deprecation window + out-of-scope removal" {
+@test "story Dev Notes documents one-sprint deprecation window + out-of-scope removal" {
   local story_file
   story_file="$(ls $STORY_FILE_GLOB 2>/dev/null | head -n1)"
   # The story file lives outside the gaia-public/ git tree (in the parent
@@ -150,7 +150,7 @@ _assert_fragment_shape_in_source() {
 
 # ---------------- AC9 — each adapter passes contract.bats template -------
 
-@test "AC9: each adapter ships a contract.bats matching the E70-S1 template structure" {
+@test "each adapter ships a contract.bats matching the template structure" {
   local schema_template="${ADAPTERS_DIR}/_schema/test/contract.bats"
   [ -f "$schema_template" ]
   for tool in semgrep gitleaks radon gocyclo eslint-plugin-sonarjs; do
@@ -167,7 +167,7 @@ _assert_fragment_shape_in_source() {
 
 # ---------------- AC10 — missing tool propagates to BLOCKED + exit 127 ---
 
-@test "AC10: probe returns expected_and_missing when adapter provider is absent from PATH" {
+@test "probe returns expected_and_missing when adapter provider is absent from PATH" {
   [ -x "$PROBE" ]
   local list; list="$(_filelist "${BATS_TEST_TMPDIR}/x.py")"
   : > "${BATS_TEST_TMPDIR}/x.py"
@@ -182,7 +182,7 @@ _assert_fragment_shape_in_source() {
   jq -e '.failure_kind == "tool_missing"' "$stdout_capture" >/dev/null
 }
 
-@test "AC10: adapter run.sh exits with unavailable code 127 when provider absent from PATH" {
+@test "adapter run.sh exits with unavailable code 127 when provider absent from PATH" {
   local list; list="$(_filelist "${BATS_TEST_TMPDIR}/x.py")"
   : > "${BATS_TEST_TMPDIR}/x.py"
   for tool in semgrep gitleaks radon gocyclo eslint-plugin-sonarjs; do

@@ -42,7 +42,7 @@ teardown() { common_teardown; }
 # TC-AAT-1a — ADR shard exists at canonical sharded location
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-1a: ADR-118 shard exists under .gaia/artifacts/planning-artifacts/architecture/" {
+@test "shard exists under .gaia/artifacts/planning-artifacts/architecture/" {
   [ -n "$ADR_FILE" ]
   [ -f "$ADR_FILE" ]
 }
@@ -51,7 +51,7 @@ teardown() { common_teardown; }
 # TC-AAT-1b — Decision section names exactly one of {MOVE, DOCUMENT}
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-1b: ADR Decision section contains Selected: MOVE or Selected: DOCUMENT" {
+@test "ADR Decision section contains Selected: MOVE or Selected: DOCUMENT" {
   [ -n "$ADR_FILE" ]
   grep -qE "^Selected: (MOVE|DOCUMENT)" "$ADR_FILE"
 }
@@ -60,7 +60,7 @@ teardown() { common_teardown; }
 # TC-AAT-1c — Rejected Alternatives section is present and non-empty
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-1c: ADR has a non-empty Rejected Alternatives section" {
+@test "ADR has a non-empty Rejected Alternatives section" {
   [ -n "$ADR_FILE" ]
   # Extract Rejected Alternatives section body (between its heading and the
   # next ## heading) and assert non-empty after trim.
@@ -76,7 +76,7 @@ teardown() { common_teardown; }
 # TC-AAT-1d — Related section cross-references ADR-111 and AF-2026-05-24-1
 # ---------------------------------------------------------------------------
 
-@test "TC-AAT-1d: ADR Related section names ADR-111 and AF-2026-05-24-1" {
+@test "ADR Related section names and" {
   [ -n "$ADR_FILE" ]
   grep -q "ADR-111" "$ADR_FILE"
   grep -q "AF-2026-05-24-1" "$ADR_FILE"
@@ -88,7 +88,7 @@ teardown() { common_teardown; }
 # When Selected: DOCUMENT, then E101-S3 stays backlog/ready-for-dev (chosen
 # path) and E101-S2 is superseded-by-decision. Mirror case for MOVE.
 
-@test "TC-AAT-1e: downstream story status aligns with ADR-118 decision" {
+@test "downstream story status aligns with decision" {
   [ -n "$ADR_FILE" ]
   STORIES_DIR="$REPO_ROOT/.gaia/artifacts/implementation-artifacts/epic-E101-architecture-artifacts-ghost-directory-resolution/stories"
   E101_S2="$STORIES_DIR/E101-S2-move-architecture-docs-update-producer-consumer-skills.md"

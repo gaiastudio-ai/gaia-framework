@@ -77,7 +77,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
 
 # --- AC5 / Scenario 1 — three-tool merge ----------------------------------
 
-@test "E104-S4 AC5: three-tool merge preserves each tool.driver.name + all findings" {
+@test "three-tool merge preserves each tool.driver.name + all findings" {
   seed_inputs grype semgrep gitleaks
   run_merge
   [ "$status" -eq 0 ]
@@ -95,7 +95,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
 
 # --- AC2 / Scenario 2 — six-tool deterministic ordering -------------------
 
-@test "E104-S4 AC2: six-tool merge is deterministically sorted alpha by driver name" {
+@test "six-tool merge is deterministically sorted alpha by driver name" {
   seed_inputs grype semgrep codeql gitleaks gosec spotbugs
   run_merge
   [ "$status" -eq 0 ]
@@ -103,7 +103,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
   [ "$output" = "codeql,gitleaks,gosec,grype,semgrep,spotbugs" ]
 }
 
-@test "E104-S4 AC2: merge output is byte-identical across two runs (determinism)" {
+@test "merge output is byte-identical across two runs (determinism)" {
   seed_inputs grype semgrep gitleaks
   run_merge; [ "$status" -eq 0 ]; cp "$SARIF_MERGED_OUT" "$TEST_TMP/first.json"
   run_merge; [ "$status" -eq 0 ]
@@ -113,7 +113,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
 
 # --- AC3 / AC-X1 / Scenario 3 — empty input → migration-shim fallback -----
 
-@test "E104-S4 AC3: zero SARIF inputs emits WARN fallback and exits 0 (legacy path)" {
+@test "zero SARIF inputs emits WARN fallback and exits 0 (legacy path)" {
   # No inputs seeded.
   run_merge
   [ "$status" -eq 0 ]
@@ -125,7 +125,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
 
 # --- AC-X1 / Scenario 4 — flag-off skip -----------------------------------
 
-@test "E104-S4 AC-X1: master flag off skips merge with INFO and exits 0" {
+@test "master flag off skips merge with INFO and exits 0" {
   seed_inputs grype semgrep
   PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=false run bash "$MERGE"
   [ "$status" -eq 0 ]
@@ -133,7 +133,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
   [ ! -f "$SARIF_MERGED_OUT" ]
 }
 
-@test "E104-S4 AC-X1: per-tool override off skips merge with INFO and exits 0" {
+@test "per-tool override off skips merge with INFO and exits 0" {
   seed_inputs grype semgrep
   PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_SARIF_MERGE_ENABLED=false run bash "$MERGE"
   [ "$status" -eq 0 ]
@@ -187,7 +187,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
 
 # --- AC4 / Scenario 5 — DefectDojo opt-in disabled (default) → no network --
 
-@test "E104-S4 AC4: DefectDojo export disabled by default makes zero network calls" {
+@test "DefectDojo export disabled by default makes zero network calls" {
   seed_inputs grype
   PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DEFECTDOJO_ENABLED=false run bash "$DDEXPORT" "$SARIF_MERGED_OUT"
   [ "$status" -eq 0 ]
@@ -195,7 +195,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
   [ ! -s "$NET_LOG" ]
 }
 
-@test "E104-S4 AC4 / Scenario 7: DefectDojo enabled but missing api_url WARNs and skips (no failure)" {
+@test "Scenario 7: DefectDojo enabled but missing api_url WARNs and skips (no failure)" {
   seed_inputs grype
   PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DEFECTDOJO_ENABLED=true run bash "$DDEXPORT" "$SARIF_MERGED_OUT"
   [ "$status" -eq 0 ]
@@ -205,7 +205,7 @@ run_merge() { PATH="$FAKE_BIN:$PATH" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GA
 
 # --- Scenario 9 — path canonicalization to repo-root-relative -------------
 
-@test "E104-S4: artifactLocation URIs are canonicalized to repo-root-relative (F1)" {
+@test "artifactLocation URIs are canonicalized to repo-root-relative (F1)" {
   # Build inputs with a mix of absolute, file://, and already-relative URIs
   # all under a known repo root.
   local root="$TEST_TMP/repo"
@@ -246,7 +246,7 @@ YAML
   cp "$(cd "$BATS_TEST_DIRNAME/../config" && pwd)/project-config.schema.yaml" "$TEST_TMP/project-config.schema.yaml"
 }
 
-@test "E104-S4 AC-X1: resolve-config.sh --field brownfield.sarif_merge_enabled is whitelisted" {
+@test "resolve-config.sh --field brownfield.sarif_merge_enabled is whitelisted" {
   _mk_bf_config true true
   run bash "$SCRIPTS_DIR/resolve-config.sh" --shared "$TEST_TMP/project-config.yaml" \
     --schema "$TEST_TMP/project-config.schema.yaml" --field brownfield.sarif_merge_enabled
@@ -254,7 +254,7 @@ YAML
   [ "$output" = "true" ]
 }
 
-@test "E104-S4 AC4: resolve-config.sh --field brownfield.defectdojo_enabled is whitelisted" {
+@test "resolve-config.sh --field brownfield.defectdojo_enabled is whitelisted" {
   _mk_bf_config true true
   run bash "$SCRIPTS_DIR/resolve-config.sh" --shared "$TEST_TMP/project-config.yaml" \
     --schema "$TEST_TMP/project-config.schema.yaml" --field brownfield.defectdojo_enabled
@@ -263,7 +263,7 @@ YAML
 
 # --- AC-X2/AC-X3 — sarif_merge telemetry via the shared writer (E104-S1) ----
 
-@test "E104-S4 AC-X2/AC-X3: brownfield-telemetry.sh populates *.sarif_merge fields on the report" {
+@test "AC-X2/AC-X3: brownfield-telemetry.sh populates *.sarif_merge fields on the report" {
   TELEM="$(cd "$BATS_TEST_DIRNAME/../scripts/adapters/brownfield" && pwd)/brownfield-telemetry.sh"
   [ -x "$TELEM" ]
   cat > "$TEST_TMP/report.md" <<'MD'
@@ -284,7 +284,7 @@ MD
 
 # --- Hygiene --------------------------------------------------------------
 
-@test "E104-S4: sarif-merge.sh + defectdojo-export.sh exist, executable, pass bash -n" {
+@test "sarif-merge.sh + defectdojo-export.sh exist, executable, pass bash -n" {
   [ -x "$MERGE" ]; [ -x "$DDEXPORT" ]
   run bash -n "$MERGE"; [ "$status" -eq 0 ]
   run bash -n "$DDEXPORT"; [ "$status" -eq 0 ]

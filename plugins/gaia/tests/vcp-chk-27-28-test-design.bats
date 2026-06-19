@@ -30,34 +30,34 @@ teardown() { common_teardown; }
 # VCP-CHK-27 — Positive: all 8 items satisfied (6 SV PASS, 2 LLM deferred).
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-27: finalize.sh exits 0 when all 6 script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all 6 script-verifiable items satisfied" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-27: finalize.sh emits a checklist header on positive path" {
+@test "finalize.sh emits a checklist header on positive path" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist: /gaia-test-design (8 items"* ]]
 }
 
-@test "VCP-CHK-27: finalize.sh reports 6/6 script-verifiable PASS" {
+@test "finalize.sh reports 6/6 script-verifiable PASS" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"6/6 script-verifiable items PASS"* ]]
 }
 
-@test "VCP-CHK-27: finalize.sh reports total items: 8" {
+@test "finalize.sh reports total items: 8" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Total items: 8"* ]]
 }
 
-@test "VCP-CHK-27: every SV-01..SV-06 item appears as PASS verbatim" {
+@test "every .. item appears as PASS verbatim" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -69,7 +69,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"[PASS] SV-06 — Quality gates specified for CI"* ]]
 }
 
-@test "VCP-CHK-27: finalize.sh enumerates the 2 LLM-checkable items" {
+@test "finalize.sh enumerates the 2 LLM-checkable items" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -81,27 +81,27 @@ teardown() { common_teardown; }
 # VCP-CHK-28 — Negative: artifact missing 1 item (SV-06 quality gates).
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-28: finalize.sh exits non-zero when SV-06 missing" {
+@test "finalize.sh exits non-zero when missing" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-quality-gates.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-28: finalize.sh names SV-06 in the violations block" {
+@test "finalize.sh names in the violations block" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-quality-gates.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SV-06 — Quality gates specified for CI"* ]]
 }
 
-@test "VCP-CHK-28: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-quality-gates.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations:"* ]]
 }
 
-@test "VCP-CHK-28: failure output contains exactly 1 violation row" {
+@test "failure output contains exactly 1 violation row" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-quality-gates.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -111,7 +111,7 @@ teardown() { common_teardown; }
   [ "$count" = "1" ]
 }
 
-@test "VCP-CHK-28: finalize.sh guides user back to /gaia-test-design" {
+@test "finalize.sh guides user back to /gaia-test-design" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-quality-gates.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -122,7 +122,7 @@ teardown() { common_teardown; }
 # AC3 — Classification audit on SKILL.md ## Validation section.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 8 classified items" {
+@test "SKILL.md ## Validation section contains exactly 8 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -133,7 +133,7 @@ teardown() { common_teardown; }
   [ "$output" = "8" ]
 }
 
-@test "AC3: SKILL.md script-verifiable count is 6" {
+@test "SKILL.md script-verifiable count is 6" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -144,7 +144,7 @@ teardown() { common_teardown; }
   [ "$output" = "6" ]
 }
 
-@test "AC3: SKILL.md LLM-checkable count is 2" {
+@test "SKILL.md LLM-checkable count is 2" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -155,7 +155,7 @@ teardown() { common_teardown; }
   [ "$output" = "2" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -166,7 +166,7 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }
@@ -186,14 +186,14 @@ teardown() { common_teardown; }
 # positive and negative paths.
 # -------------------------------------------------------------------------
 
-@test "AC5: checkpoint written on positive path" {
+@test "checkpoint written on positive path" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   [ -f "$CHECKPOINT_PATH/test-design.yaml" ]
 }
 
-@test "AC5: checkpoint written even when checklist fails" {
+@test "checkpoint written even when checklist fails" {
   export TEST_PLAN_ARTIFACT="$FIXTURES/test-plan-missing-quality-gates.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
@@ -204,14 +204,14 @@ teardown() { common_teardown; }
 # AC4 — TEST_PLAN_ARTIFACT pointing at missing or empty file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when TEST_PLAN_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when TEST_PLAN_ARTIFACT points at a missing file" {
   export TEST_PLAN_ARTIFACT="$BATS_TMPDIR/does-not-exist-test-plan-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"no artifact to validate"* ]]
 }
 
-@test "AC4: finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
+@test "finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
   local empty
   empty="$TEST_TMP/empty-test-plan.md"
   : > "$empty"

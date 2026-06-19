@@ -63,32 +63,32 @@ _make_story() {
 # TC-FITP-4 — correct-course spawn pre-validation (origin_ref sanitization)
 # ===========================================================================
 
-@test "TC-FITP-4: validate-ref accepts sprint ID format" {
+@test "validate-ref accepts sprint ID format" {
   run "$SPAWN_GUARD_SH" validate-ref "sprint-26"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-4: validate-ref accepts finding ID format" {
+@test "validate-ref accepts finding ID format" {
   run "$SPAWN_GUARD_SH" validate-ref "F-2026-04-22-1"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-4: validate-ref rejects shell injection attempt" {
+@test "validate-ref rejects shell injection attempt" {
   run "$SPAWN_GUARD_SH" validate-ref ";rm -rf /"
   [ "$status" -eq 1 ]
 }
 
-@test "TC-FITP-4: validate-ref rejects empty string" {
+@test "validate-ref rejects empty string" {
   run "$SPAWN_GUARD_SH" validate-ref ""
   [ "$status" -eq 1 ]
 }
 
-@test "TC-FITP-4: validate-ref rejects null literal" {
+@test "validate-ref rejects null literal" {
   run "$SPAWN_GUARD_SH" validate-ref "null"
   [ "$status" -eq 1 ]
 }
 
-@test "TC-FITP-4: validate-ref rejects path traversal" {
+@test "validate-ref rejects path traversal" {
   run "$SPAWN_GUARD_SH" validate-ref "../../etc/passwd"
   [ "$status" -eq 1 ]
 }
@@ -98,19 +98,19 @@ _make_story() {
 # Covers AC-EC1 (idempotent retry), AC-EC3 (pre-existing stub), AC-EC6 (race)
 # ===========================================================================
 
-@test "TC-FITP-5: check-collision passes when no file exists" {
+@test "check-collision passes when no file exists" {
   run "$SPAWN_GUARD_SH" check-collision "$TEST_TMP" "E99-S99"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-5: check-collision halts when story file already exists" {
+@test "check-collision halts when story file already exists" {
   touch "$TEST_TMP/E5-S1-existing-story.md"
   run "$SPAWN_GUARD_SH" check-collision "$TEST_TMP" "E5-S1"
   [ "$status" -eq 1 ]
   echo "$output" | grep -q "E5-S1"
 }
 
-@test "TC-FITP-5-COLL: collision prevents duplicate on parent retry (AC-EC1)" {
+@test "COLL: collision prevents duplicate on parent retry (AC-EC1)" {
   # Simulate: subagent wrote file, parent crashed, retry detects collision
   _make_story "$TEST_TMP" "E10-S5" "correct-course" "sprint-26" >/dev/null
   run "$SPAWN_GUARD_SH" check-collision "$TEST_TMP" "E10-S5"
@@ -118,19 +118,19 @@ _make_story() {
   echo "$output" | grep -q "E10-S5"
 }
 
-@test "TC-FITP-5: check-collision does not false-positive on different key" {
+@test "check-collision does not false-positive on different key" {
   touch "$TEST_TMP/E5-S10-other-story.md"
   run "$SPAWN_GUARD_SH" check-collision "$TEST_TMP" "E5-S1"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-5: check-collision requires directory argument" {
+@test "check-collision requires directory argument" {
   run "$SPAWN_GUARD_SH" check-collision "" "E1-S1"
   [ "$status" -eq 1 ]
   echo "$output" | grep -qi "missing\|required\|usage\|argument"
 }
 
-@test "TC-FITP-5: check-collision requires story key argument" {
+@test "check-collision requires story key argument" {
   run "$SPAWN_GUARD_SH" check-collision "$TEST_TMP" ""
   [ "$status" -eq 1 ]
   echo "$output" | grep -qi "missing\|required\|usage\|argument"
@@ -141,21 +141,21 @@ _make_story() {
 # Covers AC-EC8 (schema regression detection)
 # ===========================================================================
 
-@test "TC-FITP-6: verify passes with matching origin and origin_ref" {
+@test "verify passes with matching origin and origin_ref" {
   local file
   file="$(_make_story "$TEST_TMP" "E1-S1" "correct-course" "sprint-26")"
   run "$SPAWN_GUARD_SH" verify "$file" "correct-course" "sprint-26"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-6: verify passes for triage-findings origin" {
+@test "verify passes for triage-findings origin" {
   local file
   file="$(_make_story "$TEST_TMP" "E2-S1" "triage-findings" "F-2026-04-22-1")"
   run "$SPAWN_GUARD_SH" verify "$file" "triage-findings" "F-2026-04-22-1"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-6: verify fails when origin missing from frontmatter" {
+@test "verify fails when origin missing from frontmatter" {
   local file="$TEST_TMP/no-origin.md"
   cat > "$file" <<'EOF'
 ---
@@ -169,7 +169,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "TC-FITP-6: verify fails when origin_ref missing from frontmatter" {
+@test "verify fails when origin_ref missing from frontmatter" {
   local file="$TEST_TMP/no-ref.md"
   cat > "$file" <<'EOF'
 ---
@@ -183,7 +183,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "TC-FITP-6: verify fails on origin value mismatch (AC-EC8 drift)" {
+@test "verify fails on origin value mismatch (AC-EC8 drift)" {
   local file
   file="$(_make_story "$TEST_TMP" "E1-S1" "triage-findings" "sprint-26")"
   run "$SPAWN_GUARD_SH" verify "$file" "correct-course" "sprint-26"
@@ -191,14 +191,14 @@ EOF
   echo "$output" | grep -qi "mismatch\|drift\|schema"
 }
 
-@test "TC-FITP-6: verify fails on origin_ref value mismatch" {
+@test "verify fails on origin_ref value mismatch" {
   local file
   file="$(_make_story "$TEST_TMP" "E1-S1" "correct-course" "sprint-25")"
   run "$SPAWN_GUARD_SH" verify "$file" "correct-course" "sprint-26"
   [ "$status" -eq 1 ]
 }
 
-@test "TC-FITP-6: verify fails when file does not exist" {
+@test "verify fails when file does not exist" {
   run "$SPAWN_GUARD_SH" verify "$TEST_TMP/nonexistent.md" "correct-course" "sprint-26"
   [ "$status" -eq 1 ]
 }
@@ -208,7 +208,7 @@ EOF
 # Covers AC4, AC-EC4 (partial file), AC-EC5 (timeout cleanup)
 # ===========================================================================
 
-@test "TC-FITP-7: cleanup removes partial file" {
+@test "cleanup removes partial file" {
   local file="$TEST_TMP/E1-S1-partial.md"
   echo "partial" > "$file"
   run "$SPAWN_GUARD_SH" cleanup "$file"
@@ -216,12 +216,12 @@ EOF
   [ ! -f "$file" ]
 }
 
-@test "TC-FITP-7: cleanup is idempotent (no file = no error)" {
+@test "cleanup is idempotent (no file = no error)" {
   run "$SPAWN_GUARD_SH" cleanup "$TEST_TMP/already-gone.md"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-FITP-7: cleanup rejects empty path" {
+@test "cleanup rejects empty path" {
   run "$SPAWN_GUARD_SH" cleanup ""
   [ "$status" -eq 1 ]
 }

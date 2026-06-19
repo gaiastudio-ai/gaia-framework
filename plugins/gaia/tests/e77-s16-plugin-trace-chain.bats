@@ -50,7 +50,7 @@ _build_plugin_fixture() {
 # AC5 — happy-path chain.
 # ---------------------------------------------------------------------------
 
-@test "AC5: traces manifest -> SKILL.md -> scripts -> bats for a complete plugin" {
+@test "traces manifest -> SKILL.md -> scripts -> bats for a complete plugin" {
   local proj="$TEST_TMP/plugin"
   _build_plugin_fixture "$proj"
   run "$PLUGIN_TRACE" --project-root "$proj"
@@ -61,7 +61,7 @@ _build_plugin_fixture() {
   [[ "$output" == *'foo.bats'* ]]
 }
 
-@test "AC5: chain entry records covered=true when every script has bats coverage" {
+@test "chain entry records covered=true when every script has bats coverage" {
   local proj="$TEST_TMP/plugin"
   _build_plugin_fixture "$proj"
   # Ensure run.sh is referenced by a bats fixture file too. We build the
@@ -78,7 +78,7 @@ _build_plugin_fixture() {
   [[ "$output" == *'"covered": true'* ]]
 }
 
-@test "AC5: surfaces gap when a SKILL.md references a non-existent script" {
+@test "surfaces gap when a SKILL.md references a non-existent script" {
   local proj="$TEST_TMP/plugin"
   _build_plugin_fixture "$proj"
   # Add a !scripts/missing.sh ref to SKILL.md without creating the file.
@@ -89,7 +89,7 @@ _build_plugin_fixture() {
   [[ "$output" == *'missing.sh'* ]]
 }
 
-@test "AC5: surfaces gap when a script has no bats coverage" {
+@test "surfaces gap when a script has no bats coverage" {
   local proj="$TEST_TMP/plugin"
   _build_plugin_fixture "$proj"
   # No bats file references run.sh — only setup.sh — so run.sh is orphaned.
@@ -99,7 +99,7 @@ _build_plugin_fixture() {
   [[ "$output" == *'run.sh'* ]]
 }
 
-@test "AC5: surfaces gap when manifest lists a skill but SKILL.md is missing" {
+@test "surfaces gap when manifest lists a skill but SKILL.md is missing" {
   local proj="$TEST_TMP/plugin"
   _build_plugin_fixture "$proj"
   # Reference a phantom skill in the manifest.
@@ -113,7 +113,7 @@ _build_plugin_fixture() {
 # AC5 — non-plugin projects: chain MUST NOT be triggered.
 # ---------------------------------------------------------------------------
 
-@test "AC5: --require-plugin exits 0 with empty chain on a non-plugin project" {
+@test "require-plugin exits 0 with empty chain on a non-plugin project" {
   local proj="$TEST_TMP/notplugin"
   mkdir -p "$proj"
   echo '# README' > "$proj/README.md"

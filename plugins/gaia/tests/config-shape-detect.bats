@@ -21,7 +21,7 @@ teardown() { common_teardown; }
 
 # ---------- TC-PR5-1: all branch-only + distribution → publish-primary shape ----------
 
-@test "TC-PR5-1: all envs branch-only + distribution: present → publish-primary" {
+@test "all envs branch-only + distribution: present → publish-primary" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: marketplace
@@ -39,7 +39,7 @@ YAML
 
 # ---------- TC-PR5-2: mixed envs + distribution → deploy-and-publish ----------
 
-@test "TC-PR5-2: mixed envs + distribution: → deploy-and-publish" {
+@test "mixed envs + distribution: → deploy-and-publish" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -59,7 +59,7 @@ YAML
 
 # ---------- TC-PR5-3: all deployable + no distribution → deploy-only (back-compat baseline) ----------
 
-@test "TC-PR5-3: all deployable + no distribution: → deploy-only (NFR-080 back-compat)" {
+@test "all deployable + no distribution: → deploy-only" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -72,7 +72,7 @@ YAML
   [ "$output" = "deploy-only" ]
 }
 
-@test "TC-PR5-3 variant: legacy fixture (no kind field) → deploy-only (NFR-080 default)" {
+@test "variant: legacy fixture (no kind field) → deploy-only" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -87,7 +87,7 @@ YAML
 
 # ---------- TC-PR5-4 (publish-readiness): no deployable + distribution → publish-readiness mode ----------
 
-@test "TC-PR5-4: no deployable envs + distribution: present → publish-readiness mode" {
+@test "no deployable envs + distribution: present → publish-readiness mode" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: marketplace
@@ -110,7 +110,7 @@ YAML
 
 # ---------- TC-PR5-5 meta: 5-case decision table coverage ----------
 
-@test "TC-PR5-5 meta: 5-case decision table all reachable by detector" {
+@test "meta: 5-case decision table all reachable by detector" {
   # (i) all-deployable + no-dist → deploy-only
   cat > "$CONFIG" <<'YAML'
 environments:
@@ -209,12 +209,12 @@ YAML
 
 # ---------- SKILL.md citations (AC1, AC5) ----------
 
-@test "AC1: /gaia-help SKILL.md cites the config-shape detector and Phase 5 routing" {
+@test "gaia-help SKILL.md cites the config-shape detector and Phase 5 routing" {
   grep -qF 'config-shape-detect.sh' "$GAIA_HELP_SKILL"
   grep -qE 'Phase 5|FR-524|ADR-112' "$GAIA_HELP_SKILL"
 }
 
-@test "AC5: /gaia-deploy-checklist SKILL.md documents publish-readiness mode" {
+@test "gaia-deploy-checklist SKILL.md documents publish-readiness mode" {
   grep -qE 'publish.readiness|publish-shape' "$CHECKLIST_SKILL"
   grep -qF 'config-shape-detect.sh' "$CHECKLIST_SKILL"
 }

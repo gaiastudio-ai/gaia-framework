@@ -56,7 +56,7 @@ mtime() {
 }
 
 # TC-GTS-1 (AC1): a tracked source newer than ground-truth.md → STALE.
-@test "TC-GTS-1: planning source newer than ground-truth → STALE" {
+@test "planning source newer than ground-truth → STALE" {
   printf 'gt\n' > "$GT"
   printf 'prd\n' > "$PLANNING/prd.md"
   stamp "$GT" 202601010000
@@ -67,7 +67,7 @@ mtime() {
   [ "$output" = "STALE" ]
 }
 
-@test "TC-GTS-1b: implementation-tree source newer than ground-truth → STALE" {
+@test "implementation-tree source newer than ground-truth → STALE" {
   printf 'gt\n' > "$GT"
   printf 'story\n' > "$IMPL/story.md"
   stamp "$GT" 202601010000
@@ -79,7 +79,7 @@ mtime() {
 }
 
 # TC-GTS-2 (AC2): ground-truth.md newest → FRESH, and NO marker written.
-@test "TC-GTS-2: ground-truth newest → FRESH and no marker written" {
+@test "ground-truth newest → FRESH and no marker written" {
   printf 'prd\n' > "$PLANNING/prd.md"
   printf 'story\n' > "$IMPL/story.md"
   printf 'gt\n' > "$GT"
@@ -94,7 +94,7 @@ mtime() {
 }
 
 # TC-GTS-2 also asserts test-artifacts / state are NOT compared roots (AC1).
-@test "TC-GTS-2b: newer test-artifacts/state files do NOT make it stale (out of compared roots)" {
+@test "newer test-artifacts/state files do NOT make it stale (out of compared roots)" {
   mkdir -p "$PROJ/.gaia/artifacts/test-artifacts" "$PROJ/.gaia/state"
   printf 'gt\n' > "$GT"
   printf 'tp\n' > "$PROJ/.gaia/artifacts/test-artifacts/test-plan.md"
@@ -110,7 +110,7 @@ mtime() {
 }
 
 # TC-GTS-3 (AC3): UNCERTAIN → STALE. Absent gt.md.
-@test "TC-GTS-3a: absent ground-truth.md → STALE (fail-safe)" {
+@test "absent ground-truth.md → STALE (fail-safe)" {
   printf 'prd\n' > "$PLANNING/prd.md"
   # No $GT file at all.
   run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
@@ -119,7 +119,7 @@ mtime() {
 }
 
 # TC-GTS-3 (AC3): equal mtime → STALE (find -newer is strict; tie is ambiguous → fail-safe).
-@test "TC-GTS-3b: equal mtime source vs ground-truth → STALE (fail-safe)" {
+@test "equal mtime source vs ground-truth → STALE (fail-safe)" {
   printf 'gt\n' > "$GT"
   printf 'prd\n' > "$PLANNING/prd.md"
   stamp "$GT" 202601010000
@@ -131,7 +131,7 @@ mtime() {
 }
 
 # TC-GTS-3 (AC3): unresolvable / missing memory dir → STALE.
-@test "TC-GTS-3c: unresolvable ground-truth (missing sidecar dir) → STALE" {
+@test "unresolvable ground-truth (missing sidecar dir) → STALE" {
   rm -rf "$SIDECAR"
   printf 'prd\n' > "$PLANNING/prd.md"
   run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
@@ -142,7 +142,7 @@ mtime() {
 # TC-GTS-4 (AC3): CI checkout mtime-reset — all files get the SAME fresh mtime.
 # find -newer is strict so equal mtimes are not "newer"; tie → UNCERTAIN → STALE.
 # This guards against a false-negative (false-FRESH) on a CI checkout.
-@test "TC-GTS-4: CI checkout resets all mtimes equal → UNCERTAIN → STALE (no false-negative)" {
+@test "CI checkout resets all mtimes equal → UNCERTAIN → STALE (no false-negative)" {
   printf 'gt\n' > "$GT"
   printf 'prd\n' > "$PLANNING/prd.md"
   printf 'story\n' > "$IMPL/story.md"
@@ -155,13 +155,13 @@ mtime() {
 }
 
 # TC-GTS-5 (AC5/AC6): sourceable smoke — file sources cleanly and exposes the fn.
-@test "TC-GTS-5: helper is sourceable and exposes check_ground_truth_staleness" {
+@test "helper is sourceable and exposes check_ground_truth_staleness" {
   run bash -c '. "$LIB"; type -t check_ground_truth_staleness'
   [ "$status" -eq 0 ]
   [ "$output" = "function" ]
 }
 
-@test "TC-GTS-5b: sourcing the helper has no side effects (writes no marker on load)" {
+@test "sourcing the helper has no side effects (writes no marker on load)" {
   printf 'gt\n' > "$GT"
   stamp "$GT" 202601010000
   run bash -c '. "$LIB"; true'
@@ -170,7 +170,7 @@ mtime() {
 }
 
 # TC-GTS-6 (AC4): idempotent + read-only w.r.t. compared inputs.
-@test "TC-GTS-6: STALE run is idempotent and never mutates input mtimes" {
+@test "STALE run is idempotent and never mutates input mtimes" {
   printf 'gt\n' > "$GT"
   printf 'prd\n' > "$PLANNING/prd.md"
   printf 'story\n' > "$IMPL/story.md"
@@ -203,7 +203,7 @@ mtime() {
 
 # TC-GTS-15 (AC4): STALE verdict writes the marker at the marker path,
 # discoverable by a maxdepth-1 `_memory/.*-stale` scan.
-@test "TC-GTS-15: STALE writes .ground-truth-stale marker at memory-dir top level" {
+@test "STALE writes .ground-truth-stale marker at memory-dir top level" {
   printf 'gt\n' > "$GT"
   printf 'prd\n' > "$PLANNING/prd.md"
   stamp "$GT" 202601010000

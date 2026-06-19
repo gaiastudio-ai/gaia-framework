@@ -14,28 +14,28 @@ setup() {
 
 teardown() { common_teardown; }
 
-@test "TC-LOE-6a: setup.sh references compliance.ui_present" {
+@test "setup.sh references compliance.ui_present" {
   [ -f "$SETUP_SH" ]
   grep -qF "compliance.ui_present" "$SETUP_SH"
 }
 
-@test "TC-LOE-6b: setup.sh references threat-model.md artifact" {
+@test "setup.sh references threat-model.md artifact" {
   [ -f "$SETUP_SH" ]
   grep -qF "threat-model.md" "$SETUP_SH"
 }
 
-@test "TC-LOE-6c: setup.sh sources the lifecycle-overrides helper" {
+@test "setup.sh sources the lifecycle-overrides helper" {
   [ -f "$SETUP_SH" ]
   grep -qF "lifecycle-overrides.sh" "$SETUP_SH"
 }
 
-@test "TC-LOE-6d: setup.sh emits the canonical AC1 remediation message" {
+@test "setup.sh emits the canonical remediation message" {
   [ -f "$SETUP_SH" ]
   grep -qF "/gaia-threat-model" "$SETUP_SH"
   grep -qF -- "--bypass gaia-threat-model" "$SETUP_SH"
 }
 
-@test "TC-LOE-6e: setup.sh names the AC2 skip log marker" {
+@test "setup.sh names the skip log marker" {
   [ -f "$SETUP_SH" ]
   grep -qF "threat-model gate skipped" "$SETUP_SH"
 }

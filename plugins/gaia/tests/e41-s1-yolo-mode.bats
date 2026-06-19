@@ -57,7 +57,7 @@ clean_env() {
 
 # --- TC-YOLO-1 -------------------------------------------------------------
 
-@test "TC-YOLO-1: GAIA_YOLO_FLAG=1 yields exit 0" {
+@test "GAIA_YOLO_FLAG=1 yields exit 0" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_FLAG=1 is_yolo"
   [ "$status" -eq 0 ]
@@ -65,7 +65,7 @@ clean_env() {
 
 # --- TC-YOLO-2 -------------------------------------------------------------
 
-@test "TC-YOLO-2: GAIA_YOLO_MODE=1 (inheritance) yields exit 0" {
+@test "GAIA_YOLO_MODE=1 (inheritance) yields exit 0" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_MODE=1 is_yolo"
   [ "$status" -eq 0 ]
@@ -73,7 +73,7 @@ clean_env() {
 
 # --- TC-YOLO-3 -------------------------------------------------------------
 
-@test "TC-YOLO-3: neither flag nor inheritance set yields exit 1" {
+@test "neither flag nor inheritance set yields exit 1" {
   clean_env
   run bash -c "source '$SCRIPT' && is_yolo"
   [ "$status" -eq 1 ]
@@ -81,13 +81,13 @@ clean_env() {
 
 # --- TC-YOLO-12 ------------------------------------------------------------
 
-@test "TC-YOLO-12: GAIA_CONTEXT=memory-save forces exit 1 even with GAIA_YOLO_MODE=1" {
+@test "GAIA_CONTEXT=memory-save forces exit 1 even with GAIA_YOLO_MODE=1" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_CONTEXT=memory-save GAIA_YOLO_MODE=1 is_yolo"
   [ "$status" -eq 1 ]
 }
 
-@test "TC-YOLO-12: GAIA_CONTEXT=memory-save forces exit 1 even with GAIA_YOLO_FLAG=1" {
+@test "GAIA_CONTEXT=memory-save forces exit 1 even with GAIA_YOLO_FLAG=1" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_CONTEXT=memory-save GAIA_YOLO_FLAG=1 is_yolo"
   [ "$status" -eq 1 ]
@@ -95,7 +95,7 @@ clean_env() {
 
 # --- ECI-496: --yolo + --no-yolo (opt-out wins) ----------------------------
 
-@test "ECI-496: GAIA_YOLO_FLAG=1 + GAIA_YOLO_OVERRIDE=no => exit 1 (opt-out wins)" {
+@test "GAIA_YOLO_FLAG=1 + GAIA_YOLO_OVERRIDE=no => exit 1 (opt-out wins)" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_FLAG=1 GAIA_YOLO_OVERRIDE=no is_yolo"
   [ "$status" -eq 1 ]
@@ -103,7 +103,7 @@ clean_env() {
 
 # --- ECI-497: inheritance env + explicit opt-out ---------------------------
 
-@test "ECI-497: GAIA_YOLO_MODE=1 + GAIA_YOLO_OVERRIDE=no => exit 1 (opt-out wins)" {
+@test "GAIA_YOLO_MODE=1 + GAIA_YOLO_OVERRIDE=no => exit 1 (opt-out wins)" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_MODE=1 GAIA_YOLO_OVERRIDE=no is_yolo"
   [ "$status" -eq 1 ]
@@ -111,37 +111,37 @@ clean_env() {
 
 # --- ECI-500: only the exact string "1" activates --------------------------
 
-@test "ECI-500: GAIA_YOLO_MODE=0 => exit 1" {
+@test "GAIA_YOLO_MODE=0 => exit 1" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_MODE=0 is_yolo"
   [ "$status" -eq 1 ]
 }
 
-@test "ECI-500: GAIA_YOLO_MODE=false => exit 1" {
+@test "GAIA_YOLO_MODE=false => exit 1" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_MODE=false is_yolo"
   [ "$status" -eq 1 ]
 }
 
-@test "ECI-500: GAIA_YOLO_MODE=no => exit 1" {
+@test "GAIA_YOLO_MODE=no => exit 1" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_MODE=no is_yolo"
   [ "$status" -eq 1 ]
 }
 
-@test "ECI-500: GAIA_YOLO_MODE=\"\" (empty string) => exit 1" {
+@test "GAIA_YOLO_MODE=\"\" (empty string) => exit 1" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_MODE='' is_yolo"
   [ "$status" -eq 1 ]
 }
 
-@test "ECI-500: GAIA_YOLO_FLAG=0 => exit 1 (only \"1\" activates)" {
+@test "GAIA_YOLO_FLAG=0 => exit 1 (only \"1\" activates)" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_FLAG=0 is_yolo"
   [ "$status" -eq 1 ]
 }
 
-@test "ECI-500: GAIA_YOLO_FLAG=true => exit 1 (only \"1\" activates)" {
+@test "GAIA_YOLO_FLAG=true => exit 1 (only \"1\" activates)" {
   clean_env
   run bash -c "source '$SCRIPT' && GAIA_YOLO_FLAG=true is_yolo"
   [ "$status" -eq 1 ]
@@ -149,7 +149,7 @@ clean_env() {
 
 # --- ECI-507: Nested subagent propagation ----------------------------------
 
-@test "ECI-507: parent YOLO env propagates to child and grandchild via GAIA_YOLO_MODE" {
+@test "parent YOLO env propagates to child and grandchild via GAIA_YOLO_MODE" {
   clean_env
   # Simulate two levels of nested subprocess that inherit env.
   run bash -c "
@@ -162,7 +162,7 @@ clean_env() {
   [ "$status" -eq 0 ]
 }
 
-@test "ECI-507: grandchild --no-yolo override breaks propagation" {
+@test "grandchild --no-yolo override breaks propagation" {
   clean_env
   run bash -c "
     source '$SCRIPT'

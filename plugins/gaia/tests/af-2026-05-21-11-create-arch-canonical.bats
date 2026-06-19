@@ -40,7 +40,7 @@ run_finalize_and_capture_resolution() {
 # Greenfield — neither directory exists
 # ---------------------------------------------------------------------------
 
-@test "AF-21-11 create-arch: greenfield (no architecture anywhere) → finalize.sh skips checklist gracefully" {
+@test "create-arch: greenfield (no architecture anywhere) → finalize.sh skips checklist gracefully" {
   [ ! -d ".gaia" ] && [ ! -d "docs" ]
   OUTPUT="$(run_finalize_and_capture_resolution)"
   echo "$OUTPUT" | grep -qF "no architecture artifact found"
@@ -51,7 +51,7 @@ run_finalize_and_capture_resolution() {
 # Post-ADR-111 — only canonical exists
 # ---------------------------------------------------------------------------
 
-@test "AF-21-11 create-arch: post-ADR-111 (only .gaia/ exists) → resolves to canonical" {
+@test "create-arch: post-migration (only .gaia/ exists) → resolves to canonical" {
   mkdir -p ".gaia/artifacts/planning-artifacts"
   cat > ".gaia/artifacts/planning-artifacts/architecture.md" <<'ARCH'
 # Test Architecture
@@ -68,7 +68,7 @@ ARCH
 # Pre-ADR-111 — only legacy exists (positive-evidence guard fires)
 # ---------------------------------------------------------------------------
 
-@test "AF-21-11 create-arch: pre-ADR-111 (only docs/, no .gaia/) → legacy back-compat preserved" {
+@test "create-arch: pre-migration (only docs/, no .gaia/) → legacy back-compat preserved" {
   mkdir -p "docs/planning-artifacts"
   cat > "docs/planning-artifacts/architecture.md" <<'ARCH'
 # Legacy Architecture
@@ -85,7 +85,7 @@ ARCH
 # Both present (mid-migration) — canonical wins (positive-evidence fails)
 # ---------------------------------------------------------------------------
 
-@test "AF-21-11 create-arch: both present (mid-migration) → canonical wins" {
+@test "create-arch: both present (mid-migration) → canonical wins" {
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts"
   cat > ".gaia/artifacts/planning-artifacts/architecture.md" <<'ARCH'
 # Canonical Architecture
@@ -104,7 +104,7 @@ ARCH
 # Env-var override (Tier 1) wins regardless of on-disk state
 # ---------------------------------------------------------------------------
 
-@test "AF-21-11 create-arch: ARCHITECTURE_ARTIFACT env-var override (Tier 1) wins over both legacy and canonical" {
+@test "create-arch: ARCHITECTURE_ARTIFACT env-var override (Tier 1) wins over both legacy and canonical" {
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts"
   echo "# Canonical" > ".gaia/artifacts/planning-artifacts/architecture.md"
   echo "# Legacy" > "docs/planning-artifacts/architecture.md"

@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Selective Test Execution - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="selective-test-execution.html" class="active">Selective Test Execution</a></li>
+          <li><a href="automated-versioning-and-deploy.html">Automated Versioning &amp; Deploy</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#how-it-works">How it works</a></li>
+          <li><a href="#scenario-single-stack">Scenario 1: Single-stack project</a></li>
+          <li><a href="#scenario-monorepo">Scenario 2: Full monorepo</a></li>
+          <li><a href="#scenario-shared-lib">Scenario 3: Shared library / cross-stack dependency</a></li>
+          <li><a href="#scenario-per-trigger">Scenario 4: Per-trigger test policy</a></li>
+          <li><a href="#safety-rails">Safety rails</a></li>
+          <li><a href="#configuring-test-policy">Configuring test_policy</a></li>
+          <li><a href="#flaky-test-retries">Flaky test retries</a></li>
+          <li><a href="#whats-next">What to read next</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="first-30-minutes.html">Tutorials</a>
+        <span class="separator">/</span>
+        Selective Test Execution
+      </nav>
+
+      <h1>Selective Test Execution</h1>
+      <p>
+        By default, every CI run executes every test suite for every stack in
+        your project. This is safe but slow. Selective test execution runs
+        only the test suites for stacks affected by a change, cutting CI time
+        without sacrificing coverage. This tutorial walks through four
+        real-world scenarios, shows the before/after CI job differences, and
+        explains the safety rails that prevent under-testing.
+      </p>
+
+      <div class="callout">
+        <p class="callout-title">Prerequisites</p>
+        <p>
+          You need a <code>project-config.yaml</code> with at least one entry
+          in the <code>stacks</code> section. Each stack must have a
+          <code>name</code> and a <code>paths</code> list (or a scalar
+          <code>path</code>). Read
+          <a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a>
+          and
+          <a href="test-strategy-configuration.html">Test Strategy Configuration</a>
+          first if you have not set those up yet.
+        </p>
+      </div>
+
+      <!-- ================================================================ -->
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          Selective test execution is a GAIA-owned CI pipeline feature. It
+          replaces GitHub's native <code>paths:</code> triggers (which cannot
+          express transitive dependencies between stacks) with a six-stage
+          pipeline that maps changed files to affected stacks, walks the
+          dependency graph, applies safety escalations, and emits a GitHub
+          Actions matrix so only the relevant jobs run.
+        </p>
+        <p>
+          When <code>test_policy</code> is absent from your config, every
+          stack's tests run on every trigger -- identical to the behavior
+          before selective execution existed. Adding the section is opt-in
+          and backward-compatible.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="how-it-works">
+        <h2>How it works</h2>
+        <p>
+          Six scripts run in sequence during each CI invocation. Each stage
+          can escalate the affected set to <code>["*"]</code> (all stacks),
+          but none can subtract from it. The <code>selective-test-driver.sh</code>
+          script chains stages 1 through 5 into a single invocation that emits
+          the final GitHub Actions matrix JSON on stdout. The
+          <code>selective-tests.yml</code> workflow calls the driver in a
+          <code>plan</code> job and fans out per-stack test jobs via the matrix.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>Script</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1. Detect</td>
+              <td><code>detect-affected.sh</code></td>
+              <td>Maps each changed file to its owning stack via longest-prefix
+                match against <code>stacks[].paths</code> globs. A
+                promotion-push event short-circuits to <code>["*"]</code>.</td>
+            </tr>
+            <tr>
+              <td>2. Walk</td>
+              <td><code>cross-refs-walk.sh</code></td>
+              <td>Reads the <code>cross_refs</code> dependency index for each
+                stack. If stack A is affected and stack C declares A in its
+                <code>cross_refs</code>, C is pulled in transitively. A
+                dependency cycle escalates to <code>["*"]</code>.</td>
+            </tr>
+            <tr>
+              <td>3. Reconcile</td>
+              <td><code>reconcile-stale-graph.sh</code></td>
+              <td>Detects undeclared import edges (code that imports a stack
+                not listed in <code>cross_refs</code>). An undeclared edge
+                escalates to <code>["*"]</code> so a stale graph never causes
+                under-testing.</td>
+            </tr>
+            <tr>
+              <td>4. Policy</td>
+              <td><code>apply-test-policy.sh</code></td>
+              <td>Merges the <code>always_run</code> set additively and applies
+                per-trigger scope narrowing from <code>test_policy.triggers</code>.
+                The <code>--force-full-run</code> flag escalates to
+                <code>["*"]</code>.</td>
+            </tr>
+            <tr>
+              <td>5. Generate</td>
+              <td><code>generate-pipeline.sh</code></td>
+              <td>Converts the affected-set JSON into a GitHub Actions matrix:
+                <code>{"include":[{"stack":"x"}]}</code>. A wildcard
+                <code>["*"]</code> expands to every stack. An empty set
+                (<code>[]</code>, e.g. a docs-only change) produces no jobs
+                and exits cleanly.</td>
+            </tr>
+            <tr>
+              <td>6. Retry</td>
+              <td><code>run-with-retry.sh</code></td>
+              <td>Retries tests tagged as <code>flaky</code> up to
+                <code>retry_limit</code> times. An exhausted retry escalates
+                the failure to a real CI-blocking failure.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-single-stack">
+        <h2>Scenario 1: Single-stack project</h2>
+        <h3>Setup</h3>
+        <p>
+          A Node.js API with one stack. All source lives under <code>src/</code>.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+stacks:
+  - name: api
+    path: src
+    language: typescript
+    test_command: npm test</code></pre>
+
+        <h3>What happens</h3>
+        <p>
+          Every code change touches the single stack, so <code>detect-affected.sh</code>
+          always returns <code>["api"]</code>. There is no dependency graph to walk
+          and no cross-stack narrowing to apply. The CI matrix contains one job.
+        </p>
+
+        <h3>Before / after comparison</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Change</th>
+              <th>Without selective execution</th>
+              <th>With selective execution</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Edit <code>src/handler.ts</code></td>
+              <td>1 job: <code>api</code></td>
+              <td>1 job: <code>api</code></td>
+            </tr>
+            <tr>
+              <td>Edit <code>README.md</code></td>
+              <td>1 job: <code>api</code></td>
+              <td>0 jobs (docs-only, no stack matched)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Takeaway</h3>
+        <p>
+          For a single-stack project the main benefit is skipping CI entirely
+          on documentation-only changes. If your CI takes 8 minutes, that is
+          8 minutes saved on every README or config edit.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-monorepo">
+        <h2>Scenario 2: Full monorepo</h2>
+        <h3>Setup</h3>
+        <p>
+          A monorepo with three independent stacks: a React frontend, a Python
+          API, and a Go worker service. No stack imports code from another.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+stacks:
+  - name: frontend
+    path: packages/web
+    language: typescript
+    test_command: npm test
+  - name: backend
+    path: packages/api
+    language: python
+    test_command: pytest
+  - name: worker
+    path: packages/worker
+    language: go
+    test_command: go test ./...</code></pre>
+
+        <h3>What happens</h3>
+        <p>
+          <code>detect-affected.sh</code> maps each changed file to its owning
+          stack. Because no stack declares <code>cross_refs</code>, the
+          dependency walk adds nothing.
+        </p>
+
+        <h3>Before / after comparison</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Change</th>
+              <th>Without selective execution</th>
+              <th>With selective execution</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Edit <code>packages/web/src/App.tsx</code></td>
+              <td>3 jobs: <code>frontend</code>, <code>backend</code>, <code>worker</code></td>
+              <td>1 job: <code>frontend</code></td>
+            </tr>
+            <tr>
+              <td>Edit <code>packages/api/routes.py</code></td>
+              <td>3 jobs: <code>frontend</code>, <code>backend</code>, <code>worker</code></td>
+              <td>1 job: <code>backend</code></td>
+            </tr>
+            <tr>
+              <td>Edit both <code>packages/web/</code> and <code>packages/api/</code></td>
+              <td>3 jobs: <code>frontend</code>, <code>backend</code>, <code>worker</code></td>
+              <td>2 jobs: <code>frontend</code>, <code>backend</code></td>
+            </tr>
+            <tr>
+              <td>Edit <code>docs/architecture.md</code></td>
+              <td>3 jobs: <code>frontend</code>, <code>backend</code>, <code>worker</code></td>
+              <td>0 jobs (docs-only)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Expected CI matrix output</h3>
+        <p>
+          For a change to <code>packages/web/src/App.tsx</code> only:
+        </p>
+        <pre><code>{"include":[{"stack":"frontend"}]}</code></pre>
+
+        <h3>Takeaway</h3>
+        <p>
+          A three-stack monorepo with no cross-dependencies sees a 66%
+          reduction in CI jobs on single-stack changes. The savings scale
+          linearly with the number of independent stacks.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-shared-lib">
+        <h2>Scenario 3: Shared library / cross-stack dependency</h2>
+        <h3>Setup</h3>
+        <p>
+          Same three stacks as Scenario 2, but now the frontend and backend
+          both import from a shared utility library. The library is a fourth
+          stack.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+stacks:
+  - name: shared-lib
+    path: packages/shared
+    language: typescript
+    test_command: npm test
+
+  - name: frontend
+    path: packages/web
+    language: typescript
+    test_command: npm test
+    cross_refs:
+      - shared-lib
+
+  - name: backend
+    path: packages/api
+    language: python
+    test_command: pytest
+    cross_refs:
+      - shared-lib
+
+  - name: worker
+    path: packages/worker
+    language: go
+    test_command: go test ./...</code></pre>
+
+        <h3>What happens</h3>
+        <p>
+          When a file in <code>packages/shared/</code> changes, <code>detect-affected.sh</code>
+          returns <code>["shared-lib"]</code>. Then <code>cross-refs-walk.sh</code>
+          reads the dependency graph: <code>frontend</code> declares
+          <code>shared-lib</code> in its <code>cross_refs</code>, so
+          <code>frontend</code> is pulled in. <code>backend</code> does the
+          same. <code>worker</code> has no dependency on <code>shared-lib</code>,
+          so it stays out. The final affected set is
+          <code>["shared-lib", "frontend", "backend"]</code>.
+        </p>
+
+        <h3>Before / after comparison</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Change</th>
+              <th>Without selective execution</th>
+              <th>With selective execution</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Edit <code>packages/shared/utils.ts</code></td>
+              <td>4 jobs: all stacks</td>
+              <td>3 jobs: <code>shared-lib</code>, <code>frontend</code>, <code>backend</code></td>
+            </tr>
+            <tr>
+              <td>Edit <code>packages/web/src/App.tsx</code></td>
+              <td>4 jobs: all stacks</td>
+              <td>1 job: <code>frontend</code></td>
+            </tr>
+            <tr>
+              <td>Edit <code>packages/worker/main.go</code></td>
+              <td>4 jobs: all stacks</td>
+              <td>1 job: <code>worker</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Expected CI matrix output</h3>
+        <p>
+          For a change to <code>packages/shared/utils.ts</code>:
+        </p>
+        <pre><code>{"include":[{"stack":"shared-lib"},{"stack":"frontend"},{"stack":"backend"}]}</code></pre>
+
+        <h3>What if the dependency graph is wrong?</h3>
+        <p>
+          Suppose the <code>worker</code> stack starts importing from
+          <code>shared-lib</code> but nobody updates <code>cross_refs</code>.
+          <code>reconcile-stale-graph.sh</code> detects the undeclared import
+          edge and escalates the entire run to <code>["*"]</code> (all stacks).
+          The CI output will include a warning naming the undeclared edge so
+          you can fix the config. See
+          <a href="#safety-stale-graph">stale-graph escalation</a> below.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="scenario-per-trigger">
+        <h2>Scenario 4: Per-trigger test policy configuration</h2>
+        <h3>Setup</h3>
+        <p>
+          The same four-stack project, now with a <code>test_policy</code>
+          section that scopes test execution differently depending on the CI
+          trigger.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+test_policy:
+  always_run:
+    - shared-lib
+
+  flaky:
+    - frontend-e2e-checkout
+
+  retry_limit: 3
+
+  triggers:
+    pr:
+      exclude_tags:
+        - slow
+    push:
+      include_stacks:
+        - backend
+        - worker
+    schedule:
+      include_tags:
+        - slow
+        - e2e</code></pre>
+
+        <h3>What each trigger does</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Trigger</th>
+              <th>Scope rule</th>
+              <th>Effect</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>pr</code></td>
+              <td><code>exclude_tags: [slow]</code></td>
+              <td>Run the affected stacks' tests but skip tests tagged
+                <code>slow</code>. The <code>always_run</code> set
+                (<code>shared-lib</code>) is added on top.</td>
+            </tr>
+            <tr>
+              <td><code>push</code></td>
+              <td><code>include_stacks: [backend, worker]</code></td>
+              <td>After affected-set detection, narrow the matrix to only
+                <code>backend</code> and <code>worker</code>. Any other
+                affected stack is excluded from this trigger. The
+                <code>always_run</code> set is still added.</td>
+            </tr>
+            <tr>
+              <td><code>schedule</code></td>
+              <td><code>include_tags: [slow, e2e]</code></td>
+              <td>Run only tests tagged <code>slow</code> or <code>e2e</code>
+                across all stacks. This is the nightly full-coverage tier.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Before / after comparison (on a PR that touches the frontend)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Trigger</th>
+              <th>Without test_policy</th>
+              <th>With test_policy</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>PR opened</td>
+              <td>4 jobs, all tests</td>
+              <td>2 jobs (<code>frontend</code> + <code>shared-lib</code>
+                from <code>always_run</code>), no <code>slow</code> tests</td>
+            </tr>
+            <tr>
+              <td>Push to staging</td>
+              <td>4 jobs, all tests</td>
+              <td>1 job (<code>shared-lib</code> from
+                <code>always_run</code>); frontend is not in
+                <code>include_stacks</code> for the push trigger</td>
+            </tr>
+            <tr>
+              <td>Nightly schedule</td>
+              <td>4 jobs, all tests</td>
+              <td>4 jobs, but only <code>slow</code> and <code>e2e</code>
+                tagged tests</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Important: include and exclude are mutually exclusive</h3>
+        <p>
+          For each trigger, you can specify <code>include_stacks</code>
+          <strong>or</strong> <code>exclude_stacks</code>, but not both.
+          The same applies to <code>include_tags</code> and
+          <code>exclude_tags</code>. The config schema rejects combinations
+          that specify both, with a validation error pointing to the exact
+          location in your YAML.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="safety-rails">
+        <h2>Safety rails</h2>
+        <p>
+          Selective execution trades completeness for speed. The pipeline
+          includes four safety mechanisms that prevent this trade-off from
+          causing under-testing. Each one is explained below with a concrete
+          example.
+        </p>
+
+        <h3 id="safety-always-run">1. The always_run set</h3>
+        <p>
+          The <code>test_policy.always_run</code> array lists stacks (or
+          suite identifiers) whose tests run on every CI invocation,
+          regardless of which files changed. This is additive -- it can
+          never subtract from the affected set.
+        </p>
+        <pre><code>test_policy:
+  always_run:
+    - shared-lib
+    - critical-auth</code></pre>
+        <p>
+          <strong>Example:</strong> A developer edits only
+          <code>packages/web/src/Button.tsx</code>. The affected set is
+          <code>["frontend"]</code>. After applying <code>always_run</code>,
+          the set becomes <code>["frontend", "shared-lib", "critical-auth"]</code>.
+          The shared library and authentication tests run even though their
+          code did not change.
+        </p>
+
+        <h3 id="safety-stale-graph">2. Stale-graph escalation</h3>
+        <p>
+          <code>reconcile-stale-graph.sh</code> reuses the brownfield
+          cross-stack import-edge detector to find undeclared dependencies.
+          If your code imports a module from another stack but that stack is
+          not listed in <code>cross_refs</code>, the dependency graph is
+          stale. The script escalates the entire run to <code>["*"]</code>
+          (all stacks) and logs a warning naming the undeclared edge.
+        </p>
+        <pre><code># Example warning on stderr:
+# reconcile-stale-graph: undeclared import edge: worker -> shared-lib
+# Escalating to full suite ["*"]</code></pre>
+        <p>
+          <strong>Why this matters:</strong> Without this check, a change to
+          <code>shared-lib</code> would not trigger the worker's tests even
+          though the worker depends on it. The escalation ensures you are
+          never under-tested because of a stale config. Fix the config by
+          adding the missing <code>cross_refs</code> entry, and subsequent
+          runs will narrow correctly again.
+        </p>
+
+        <h3 id="safety-promotion-push">3. Promotion-push wildcard</h3>
+        <p>
+          When a change is promoted to a protected branch (e.g., a merge to
+          <code>staging</code> or <code>main</code>), <code>detect-affected.sh</code>
+          receives a <code>--event promotion-push</code> flag and immediately
+          returns <code>["*"]</code> without inspecting any files. Every
+          stack's tests run on every promotion.
+        </p>
+        <p>
+          <strong>Why this matters:</strong> Promotion merges are the last
+          gate before production. Running the full suite here catches
+          integration issues between stacks that were tested independently
+          during the PR phase. The wildcard is applied before any policy
+          narrowing, so per-trigger <code>include_stacks</code> filters
+          cannot reduce a promotion push.
+        </p>
+
+        <h3 id="safety-force-full-run">4. The --force-full-run escape hatch</h3>
+        <p>
+          Pass <code>--force-full-run</code> to <code>apply-test-policy.sh</code>
+          to override all narrowing and run every stack's tests. This
+          escalates the affected set to <code>["*"]</code>.
+        </p>
+        <pre><code># In your CI workflow step:
+apply-test-policy.sh --force-full-run --trigger pr \
+  --config .gaia/config/project-config.yaml</code></pre>
+        <p>
+          <strong>When to use it:</strong> After a major dependency upgrade,
+          a framework version bump, or any change where you are uncertain
+          which stacks may be affected. The flag is a manual override, not
+          an automatic behavior -- use it when you want explicit full
+          coverage.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="configuring-test-policy">
+        <h2>Configuring test_policy</h2>
+        <p>
+          The <code>test_policy</code> section lives in
+          <code>.gaia/config/project-config.yaml</code>. When the section is
+          absent, all tests run for all stacks on every trigger. Adding it
+          opts you into selective execution.
+        </p>
+
+        <h3>Minimal configuration</h3>
+        <p>
+          The simplest useful configuration sets an <code>always_run</code>
+          list and nothing else. All other fields have safe defaults.
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+test_policy:
+  always_run:
+    - core</code></pre>
+
+        <h3>Full configuration</h3>
+        <p>
+          A complete <code>test_policy</code> section with all fields:
+        </p>
+        <pre><code># .gaia/config/project-config.yaml
+test_policy:
+  always_run:
+    - shared-lib
+    - auth-service
+
+  flaky:
+    - checkout-e2e
+    - payment-integration
+
+  retry_limit: 2
+
+  triggers:
+    pr:
+      exclude_tags:
+        - slow
+        - nightly
+    push:
+      exclude_stacks:
+        - docs
+    schedule:
+      include_tags:
+        - slow
+        - e2e
+        - security</code></pre>
+
+        <h3>Field reference</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Default</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>always_run</code></td>
+              <td>string[]</td>
+              <td><code>[]</code></td>
+              <td>Stacks or suite identifiers that always run, regardless of
+                affected-set narrowing.</td>
+            </tr>
+            <tr>
+              <td><code>flaky</code></td>
+              <td>string[]</td>
+              <td><code>[]</code></td>
+              <td>Test identifiers flagged for retry-aware execution.</td>
+            </tr>
+            <tr>
+              <td><code>retry_limit</code></td>
+              <td>integer</td>
+              <td><code>2</code></td>
+              <td>Maximum retries for flaky tests. A test that still fails
+                after all retries is treated as a real failure.</td>
+            </tr>
+            <tr>
+              <td><code>triggers.pr</code></td>
+              <td>scope rule</td>
+              <td>(none)</td>
+              <td>Scope filters for pull-request triggers.</td>
+            </tr>
+            <tr>
+              <td><code>triggers.push</code></td>
+              <td>scope rule</td>
+              <td>(none)</td>
+              <td>Scope filters for push triggers.</td>
+            </tr>
+            <tr>
+              <td><code>triggers.schedule</code></td>
+              <td>scope rule</td>
+              <td>(none)</td>
+              <td>Scope filters for scheduled (nightly/weekly) triggers.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Scope rule fields (per trigger)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>include_stacks</code></td>
+              <td>string[]</td>
+              <td>Run tests only for these stacks.</td>
+            </tr>
+            <tr>
+              <td><code>exclude_stacks</code></td>
+              <td>string[]</td>
+              <td>Run tests for all stacks except these.</td>
+            </tr>
+            <tr>
+              <td><code>include_tags</code></td>
+              <td>string[]</td>
+              <td>Run only tests matching these tags.</td>
+            </tr>
+            <tr>
+              <td><code>exclude_tags</code></td>
+              <td>string[]</td>
+              <td>Exclude tests matching these tags.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout callout-warning">
+          <p class="callout-title">Mutual exclusivity</p>
+          <p>
+            Within a single trigger, you cannot combine
+            <code>include_stacks</code> with <code>exclude_stacks</code>, or
+            <code>include_tags</code> with <code>exclude_tags</code>. The
+            config schema rejects these combinations with a validation error
+            that includes the JSONPath location of the conflict.
+          </p>
+        </div>
+
+        <h3>Validating your configuration</h3>
+        <p>
+          After editing <code>test_policy</code>, validate the config:
+        </p>
+        <pre><code>/gaia-config-validate</code></pre>
+        <p>
+          Invalid stack references in <code>always_run</code>,
+          <code>include_stacks</code>, or <code>exclude_stacks</code> produce
+          a validation error with the exact JSONPath location. Fix the
+          reference and re-validate.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="flaky-test-retries">
+        <h2>Flaky test retries</h2>
+        <p>
+          <code>run-with-retry.sh</code> handles tests flagged in the
+          <code>test_policy.flaky</code> list. When a flaky-tagged test
+          fails, it is retried up to <code>retry_limit</code> times. If it
+          passes on any retry, the failure is suppressed. If it exhausts all
+          retries, the failure escalates to a real CI-blocking failure --
+          flaky tests never silently pass.
+        </p>
+        <pre><code>test_policy:
+  flaky:
+    - checkout-e2e
+  retry_limit: 3</code></pre>
+        <p>
+          In this example, the <code>checkout-e2e</code> test gets up to 3
+          retries on failure. If it fails 4 times in a row (1 initial + 3
+          retries), the CI run fails.
+        </p>
+      </section>
+
+      <!-- ================================================================ -->
+      <section id="whats-next">
+        <h2>What to read next</h2>
+        <ul>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a> -- how to configure test tiers, the test pyramid, and the Test Execution Bridge.</li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a> -- promotion chains, presets, triggers, and the layered CI model.</li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a> -- concrete configurations for solo through enterprise setups.</li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a> -- how project structure affects CI and test configuration.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

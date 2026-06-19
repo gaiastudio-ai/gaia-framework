@@ -24,7 +24,7 @@ setup() {
 }
 teardown() { common_teardown; }
 
-@test "TC-VSJ-1: object-shape findings payload writes cleanly (no jq error)" {
+@test "object-shape findings payload writes cleanly (no jq error)" {
   PAYLOAD='{"artifact_path":"docs/x.md","verdict":"PASSED","findings":[{"id":"F1","severity":"INFO","detail":"ok"}]}'
   run --separate-stderr "$WRITER" \
     --command-name "/gaia-test" \
@@ -35,7 +35,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"status=written"* ]] || [[ "$output" == *"status=skipped"* ]]
 }
 
-@test "TC-VSJ-2: string-shape findings payload writes cleanly (regression — original bug shape)" {
+@test "string-shape findings payload writes cleanly (regression — original bug shape)" {
   # The original bug: triage passes findings as an array of STRINGS, not
   # objects. The pre-fix jq filter exploded with `Cannot index string with
   # string "id"`. Post-fix the type-guard sorts strings via tostring.
@@ -49,7 +49,7 @@ teardown() { common_teardown; }
   [[ "$stderr" != *"Cannot index string"* ]]
 }
 
-@test "TC-VSJ-3: heterogeneous findings list (mixed strings + objects) sorts cleanly" {
+@test "heterogeneous findings list (mixed strings + objects) sorts cleanly" {
   # E63-S14 AC2 type-guard handles mixed inputs without error. The sort
   # key path is `if type == \"object\" then (.id // tostring) else tostring end`
   # which never throws on a per-element type change.
@@ -63,7 +63,7 @@ teardown() { common_teardown; }
   [[ "$stderr" != *"Cannot index string"* ]]
 }
 
-@test "TC-VSJ-4: fallback path (canonicalize_payload via _VS_HASH_BACKEND=shasum) cleans string-shape findings" {
+@test "fallback path (canonicalize_payload via _VS_HASH_BACKEND=shasum) cleans string-shape findings" {
   # When openssl is unavailable, compute_dedup_key routes through
   # canonicalize_payload (L213-L224) which has its own jq sort_by filter.
   # Same fix applied; this test exercises the formerly-uncovered path.

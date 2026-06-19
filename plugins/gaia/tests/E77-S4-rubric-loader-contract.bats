@@ -32,7 +32,7 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC1 — byte-identical merged rubric vs legacy snapshot for every fixture
 # ---------------------------------------------------------------------------
-@test "AC1: migrated loader output is byte-identical to legacy snapshot for every fixture" {
+@test "migrated loader output is byte-identical to legacy snapshot for every fixture" {
   [ -d "$FIXTURES_DIR" ] || skip "fixtures directory not yet present"
   local fixtures=( "$FIXTURES_DIR"/baseline-non-plugin-* )
   [ -d "${fixtures[0]}" ] || skip "no baseline fixtures present"
@@ -64,7 +64,7 @@ setup() {
 # ---------------------------------------------------------------------------
 # AC2 — `when:` equality predicate (project_kind)
 # ---------------------------------------------------------------------------
-@test "AC2: when: project_kind equality includes only on exact match" {
+@test "when: project_kind equality includes only on exact match" {
   cat >"$TMP_RUBRICS/sub-rubrics/plugin-only.json" <<'EOF'
 {
   "schema_version": "1.0",
@@ -114,7 +114,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC3 — `when:` array intersection predicate (platforms)
 # ---------------------------------------------------------------------------
-@test "AC3: when: platforms array intersection includes when overlap exists" {
+@test "when: platforms array intersection includes when overlap exists" {
   cat >"$TMP_RUBRICS/sub-rubrics/ios-clause.json" <<'EOF'
 {
   "schema_version": "1.0",
@@ -158,7 +158,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC4 — `when:` AND across multiple clauses
 # ---------------------------------------------------------------------------
-@test "AC4: when: multiple clauses require all-match (AND semantics)" {
+@test "when: multiple clauses require all-match (AND semantics)" {
   cat >"$TMP_RUBRICS/sub-rubrics/multi-clause.json" <<'EOF'
 {
   "schema_version": "1.0",
@@ -201,7 +201,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC5 — LC_ALL=C alpha-sort default for non-prefixed sub-rubrics
 # ---------------------------------------------------------------------------
-@test "AC5: default sort uses LC_ALL=C alphabetical ordering for non-prefixed files" {
+@test "default sort uses LC_ALL=C alphabetical ordering for non-prefixed files" {
   # Three sub-rubrics with no numeric prefix; loader must merge them in
   # LC_ALL=C alpha order. Each adds a metadata key whose value is its own
   # filename basename — the LAST writer in merge order wins under RFC 7396
@@ -234,7 +234,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC6 — numeric prefix overrides alpha-sort default
 # ---------------------------------------------------------------------------
-@test "AC6: numeric prefix (^N+-) overrides alpha-sort default" {
+@test "numeric prefix (^N+-) overrides alpha-sort default" {
   # Mix of prefixed and non-prefixed files. Sort contract:
   #   prefixed files BEFORE non-prefixed files;
   #   prefixed files in numeric ASC by prefix;
@@ -286,7 +286,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC7 — mobile SKILL-side loader path zero-diff guard (ADR-090)
 # ---------------------------------------------------------------------------
-@test "AC7: mobile SKILL-side loader path is UNTOUCHED relative to staging" {
+@test "mobile SKILL-side loader path is UNTOUCHED relative to staging" {
   cd "$PLUGIN_DIR/.." || skip "cannot cd into git work tree"
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     skip "not inside a git work tree"
@@ -318,7 +318,7 @@ EOF
 # textual-grep coverage check picks them up (per E28-S184 / NFR-052).
 # ---------------------------------------------------------------------------
 
-@test "NFR-052 coverage: emit_subrubric_sort_key produces ADR-088 sort order" {
+@test "coverage: emit_subrubric_sort_key produces sort order" {
   # Drives emit_subrubric_sort_key indirectly via --debug-order. The
   # function name appears verbatim in this test's title so the textual
   # public-function coverage gate (NFR-052, run-with-coverage.sh) registers
@@ -341,7 +341,7 @@ EOF
   [ "$(printf '%s\n' "$order" | sed -n '2p')" = "zebra.json" ]
 }
 
-@test "NFR-052 coverage: subrubric_predicate_passes evaluates equality + array + AND grammar" {
+@test "coverage: subrubric_predicate_passes evaluates equality + array + AND grammar" {
   # Drives subrubric_predicate_passes via three end-to-end loader runs that
   # exercise (1) equality match, (2) array intersection match, (3) AND
   # across two clauses with one mismatch (must EXCLUDE). The function
@@ -380,7 +380,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC8 — contract canary: an intentionally-diffing fixture FAILS the gate
 # ---------------------------------------------------------------------------
-@test "AC8: contract canary fixture FAILS the byte-identical gate" {
+@test "contract canary fixture FAILS the byte-identical gate" {
   local canary="$FIXTURES_DIR/diff-canary"
   [ -d "$canary" ] || skip "diff-canary fixture not yet present"
 

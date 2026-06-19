@@ -58,7 +58,7 @@ run_check() {
 
 # ===== TS-4 — Registered marker only → exit 0 =========================
 
-@test "AC4 / TS-4: only registered markers in .gaia/memory/ → exit 0, no output" {
+@test "only registered markers in .gaia/memory/ → exit 0, no output" {
   : > "$FIXTURE_DIR/.gaia/memory/.config-stale"
   : > "$FIXTURE_DIR/.gaia/memory/.framework-version-stale"
   run_check
@@ -68,7 +68,7 @@ run_check() {
 
 # ===== TS-5 — Unregistered marker → CRITICAL ==========================
 
-@test "AC4 / TS-5: unregistered marker emits CRITICAL and exits non-zero" {
+@test "unregistered marker emits CRITICAL and exits non-zero" {
   : > "$FIXTURE_DIR/.gaia/memory/.bogus-stale"
   run_check
   [ "$status" -ne 0 ]
@@ -78,7 +78,7 @@ run_check() {
 
 # ===== TS-6 — No markers → exit 0 =====================================
 
-@test "AC4 / TS-6: no .*-stale files in .gaia/memory/ → exit 0, no output" {
+@test "no .*-stale files in .gaia/memory/ → exit 0, no output" {
   run_check
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -86,7 +86,7 @@ run_check() {
 
 # ===== TS-7 — Mixed registered + unregistered =========================
 
-@test "AC4 / TS-7: mixed markers — CRITICAL fires only for unregistered" {
+@test "mixed markers — CRITICAL fires only for unregistered" {
   : > "$FIXTURE_DIR/.gaia/memory/.config-stale"        # registered
   : > "$FIXTURE_DIR/.gaia/memory/.framework-version-stale"  # registered
   : > "$FIXTURE_DIR/.gaia/memory/.rogue-stale"         # unregistered
@@ -102,7 +102,7 @@ run_check() {
 
 # ===== TS-8 — Registry parsing ========================================
 
-@test "AC6 / registry parsing: tolerates blank lines and header row" {
+@test "registry parsing: tolerates blank lines and header row" {
   # Append a second blank line + a trailing comment to ensure the parser
   # is not brittle to surrounding markdown.
   cat >> "$REGISTRY" <<'MD'
@@ -120,7 +120,7 @@ MD
 # top level (-maxdepth 1). Nested markers under .gaia/memory/checkpoints/
 # are deliberately out of scope for this check.
 
-@test "AC4 / scope: nested markers under .gaia/memory/checkpoints/ are ignored" {
+@test "scope: nested markers under .gaia/memory/checkpoints/ are ignored" {
   mkdir -p "$FIXTURE_DIR/.gaia/memory/checkpoints"
   : > "$FIXTURE_DIR/.gaia/memory/checkpoints/.deep-stale"
   run_check
@@ -130,7 +130,7 @@ MD
 
 # ===== Defensive: missing registry file is a CRITICAL =================
 
-@test "AC4 / missing-registry: absent registry file → CRITICAL, exit non-zero" {
+@test "missing-registry: absent registry file → CRITICAL, exit non-zero" {
   : > "$FIXTURE_DIR/.gaia/memory/.config-stale"
   rm "$REGISTRY"
   run_check
@@ -140,7 +140,7 @@ MD
 
 # ===== TC-GTS-18 — .ground-truth-stale registered → exit 0 ============
 
-@test "TC-GTS-18: registered .ground-truth-stale marker present → exit 0, no output" {
+@test "registered .ground-truth-stale marker present → exit 0, no output" {
   write_registry_with_ground_truth
   : > "$FIXTURE_DIR/.gaia/memory/.ground-truth-stale"
   run_check
@@ -150,7 +150,7 @@ MD
 
 # Negative companion — proves TC-GTS-18 would catch a silent de-registration:
 # the marker on disk but NO ground-truth row in the registry → CRITICAL.
-@test "TC-GTS-18 guard: .ground-truth-stale marker NOT in registry → CRITICAL, exit non-zero" {
+@test "guard: .ground-truth-stale marker NOT in registry → CRITICAL, exit non-zero" {
   write_registry_canonical   # canonical table only — no ground-truth row
   : > "$FIXTURE_DIR/.gaia/memory/.ground-truth-stale"
   run_check

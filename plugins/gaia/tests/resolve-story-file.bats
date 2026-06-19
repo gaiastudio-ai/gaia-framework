@@ -35,7 +35,7 @@ teardown() {
 # ---------------------------------------------------------------------------
 # TC-VSG-1 — Nested-only positive: nested path returned, no WARNING
 # ---------------------------------------------------------------------------
-@test "TC-VSG-1: nested-only positive returns nested path, exit 0, no WARNING" {
+@test "nested-only positive returns nested path, exit 0, no WARNING" {
   mkdir -p "$STORY_TREE/epic-Etest/stories"
   : > "$STORY_TREE/epic-Etest/stories/E1-S1-foo.md"
 
@@ -51,7 +51,7 @@ teardown() {
 # ---------------------------------------------------------------------------
 # TC-VSG-2 — Flat-only legacy positive + WARNING
 # ---------------------------------------------------------------------------
-@test "TC-VSG-2: flat-only legacy returns flat path, exit 0, stderr WARNING" {
+@test "flat-only legacy returns flat path, exit 0, stderr WARNING" {
   : > "$STORY_TREE/E2-S1-bar.md"
 
   run --separate-stderr resolve_story_file "E2-S1"
@@ -66,7 +66,7 @@ teardown() {
 # ---------------------------------------------------------------------------
 # TC-VSG-3 — Both-exist nested-wins shadow: nested returned, flat ignored
 # ---------------------------------------------------------------------------
-@test "TC-VSG-3: both-exist returns nested, stderr WARNING shadow ignored" {
+@test "both-exist returns nested, stderr WARNING shadow ignored" {
   mkdir -p "$STORY_TREE/epic-Eshadow/stories"
   : > "$STORY_TREE/epic-Eshadow/stories/E3-S1-nested.md"
   : > "$STORY_TREE/E3-S1-flat.md"
@@ -84,7 +84,7 @@ teardown() {
 # ---------------------------------------------------------------------------
 # TC-VSG-4 — Zero matches: exit 1, actionable stderr with searched paths
 # ---------------------------------------------------------------------------
-@test "TC-VSG-4: zero matches exits 1 with actionable error listing paths" {
+@test "zero matches exits 1 with actionable error listing paths" {
   run --separate-stderr resolve_story_file "E4-S1"
 
   [ "$status" -eq 1 ]
@@ -97,7 +97,7 @@ teardown() {
 # ---------------------------------------------------------------------------
 # TC-VSG-5 — Multi-nested ambiguity: exit 2, both paths on stderr
 # ---------------------------------------------------------------------------
-@test "TC-VSG-5: multi-nested ambiguity exits 2 listing both paths" {
+@test "multi-nested ambiguity exits 2 listing both paths" {
   mkdir -p "$STORY_TREE/epic-Efoo/stories" "$STORY_TREE/epic-Ebar/stories"
   : > "$STORY_TREE/epic-Efoo/stories/E5-S1-a.md"
   : > "$STORY_TREE/epic-Ebar/stories/E5-S1-b.md"

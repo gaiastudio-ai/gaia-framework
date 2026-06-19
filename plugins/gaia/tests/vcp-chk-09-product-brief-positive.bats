@@ -33,20 +33,20 @@ teardown() { common_teardown; }
 # VCP-CHK-09 — Positive: all 27 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-09: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export PRODUCT_BRIEF_ARTIFACT="$FIXTURES/product-brief-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-09: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export PRODUCT_BRIEF_ARTIFACT="$FIXTURES/product-brief-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-09: finalize.sh reports PASS for each of the 9 required sections" {
+@test "finalize.sh reports PASS for each of the 9 required sections" {
   export PRODUCT_BRIEF_ARTIFACT="$FIXTURES/product-brief-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -67,7 +67,7 @@ teardown() { common_teardown; }
 # the count must be exactly 27.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 27 classified items" {
+@test "SKILL.md ## Validation section contains exactly 27 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -78,7 +78,7 @@ teardown() { common_teardown; }
   [ "$output" = "27" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }

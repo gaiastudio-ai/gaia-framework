@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# finalize.sh — gaia-post-deploy skill finalize
+# finalize.sh — gaia-deploy-post skill finalize
 #
 # Mechanical copy of the reference implementation in
 # gaia-code-review/scripts/finalize.sh. Only WORKFLOW_NAME and
@@ -17,7 +17,7 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
-SCRIPT_NAME="gaia-post-deploy/finalize.sh"
+SCRIPT_NAME="gaia-deploy-post/finalize.sh"
 WORKFLOW_NAME="post-deploy-verify"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

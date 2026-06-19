@@ -20,13 +20,13 @@ teardown() {
 }
 
 # AC1 — helper exists + executable
-@test "AC1: helper exists + executable at scripts/lib/test-environment-manifest.sh" {
+@test "helper exists + executable at scripts/lib/test-environment-manifest.sh" {
   [ -f "${HELPER}" ]
   [ -x "${HELPER}" ]
 }
 
 # AC2 — stdout emit + --write semantics
-@test "AC2: --target alone emits yaml on stdout (no write)" {
+@test "target alone emits yaml on stdout (no write)" {
   echo '{"name":"test","version":"0.0.1"}' > "${TARGET_DIR}/package.json"
 
   run "${HELPER}" --target "${TARGET_DIR}"
@@ -36,7 +36,7 @@ teardown() {
   [ ! -f "${TARGET_YAML}" ]
 }
 
-@test "AC2: --write creates config/test-environment.yaml at canonical path" {
+@test "write creates config/test-environment.yaml at canonical path" {
   echo '{"name":"test","version":"0.0.1"}' > "${TARGET_DIR}/package.json"
 
   run "${HELPER}" --target "${TARGET_DIR}" --write
@@ -47,7 +47,7 @@ teardown() {
 }
 
 # AC2 — copy-if-absent preserves existing user-edited manifest
-@test "AC2: --write preserves user-edited manifest byte-identical (copy-if-absent)" {
+@test "write preserves user-edited manifest byte-identical (copy-if-absent)" {
   # AF-2026-05-21-8: canonical post-ADR-111 .gaia/config/ path.
   mkdir -p "${TARGET_DIR}/.gaia/config"
   cat > "${TARGET_YAML}" << 'YAML'
@@ -71,7 +71,7 @@ YAML
 }
 
 # AC3 — no-stack project → generic single-tier-1 fallback runner
-@test "AC3: no-stack project emits generic single-tier-1 runner" {
+@test "no-stack project emits generic single-tier-1 runner" {
   # No package.json, pyproject.toml, etc. — bare empty target.
   run "${HELPER}" --target "${TARGET_DIR}"
   [ "${status}" -eq 0 ]
@@ -84,7 +84,7 @@ YAML
 }
 
 # AC4 — Helper consults detection-signals.yaml (delegates to detect-signals.sh)
-@test "AC4: helper output is driven by detection signals (Node detected → node-runner)" {
+@test "helper output is driven by detection signals (Node detected → node-runner)" {
   echo '{"name":"test","devDependencies":{"jest":"^29.0.0"}}' > "${TARGET_DIR}/package.json"
 
   run "${HELPER}" --target "${TARGET_DIR}"
@@ -94,7 +94,7 @@ YAML
 }
 
 # AC6/c — bash/bats stack regression guard (AF-4 root-cause guard)
-@test "AC6/c: bash/bats project (GAIA itself) → bats-runner (NOT npm) [AF-4 regression guard]" {
+@test "c: bash/bats project (GAIA itself) → bats-runner (NOT npm) [ regression guard]" {
   # Simulate a bats-detected project — no package.json, presence of .bats files
   mkdir -p "${TARGET_DIR}/tests"
   echo '@test "smoke" { true; }' > "${TARGET_DIR}/tests/smoke.bats"
@@ -107,7 +107,7 @@ YAML
 }
 
 # AC6/f — byte-stable: rerunning helper on same project produces identical output
-@test "AC6/f: byte-stable output across runs (deterministic)" {
+@test "f: byte-stable output across runs (deterministic)" {
   echo '{"name":"test","devDependencies":{"jest":"^29.0.0"}}' > "${TARGET_DIR}/package.json"
 
   run "${HELPER}" --target "${TARGET_DIR}"
@@ -122,7 +122,7 @@ YAML
 }
 
 # AC5 — brownfield Phase 5 delegates to the helper (prose grep)
-@test "AC5: gaia-brownfield/SKILL.md Phase 5 prose references the new helper" {
+@test "gaia-brownfield/SKILL.md Phase 5 prose references the new helper" {
   grep -q "test-environment-manifest.sh" "${PLUGIN_ROOT}/gaia/skills/gaia-brownfield/SKILL.md"
 }
 

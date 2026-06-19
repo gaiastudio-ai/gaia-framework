@@ -39,7 +39,7 @@ PHASE2_STEPS=(14 12)
 
 # ---------- AC1/AC2/AC3: canonical invocation line present per step ----------
 
-@test "AC1/AC2/AC3: each Phase 2 SKILL.md has one canonical invocation per declared step" {
+@test "each Phase 2 SKILL.md has one canonical invocation per declared step" {
   local i=0
   for slug in "${PHASE2_SLUGS[@]}"; do
     local expected="${PHASE2_STEPS[$i]}"
@@ -79,7 +79,7 @@ PHASE2_STEPS=(14 12)
 
 # ---------- AC4: per-skill key_variables surface ----------
 
-@test "AC4: each Phase 2 SKILL.md declares required per-skill key_variables" {
+@test "each Phase 2 SKILL.md declares required per-skill key_variables" {
   # Per the story spec AC4:
   #   gaia-create-prd: project_name, prd_version, feature_slug
   #   gaia-create-ux:  project_name, ux_slug, prd_path
@@ -103,7 +103,7 @@ PHASE2_STEPS=(14 12)
 
 # ---------- AC3/AC6 (VCP-CPT-09): no inline checkpoint writes in Phase 2 SKILL.md ----------
 
-@test "AC3/AC6: no Phase 2 SKILL.md contains inline _memory/checkpoints writes" {
+@test "no Phase 2 SKILL.md contains inline _memory/checkpoints writes" {
   local offenders=""
   for slug in "${PHASE2_SLUGS[@]}"; do
     local file="$SKILLS_DIR/$slug/SKILL.md"
@@ -127,7 +127,7 @@ PHASE2_STEPS=(14 12)
 
 # ---------- AC3/AC6: no inline writes in Phase 2 co-located scripts ----------
 
-@test "AC3/AC6: Phase 2 co-located scripts do not write to _memory/checkpoints" {
+@test "Phase 2 co-located scripts do not write to _memory/checkpoints" {
   local offenders=""
   for slug in "${PHASE2_SLUGS[@]}"; do
     local scripts_dir="$SKILLS_DIR/$slug/scripts"
@@ -152,7 +152,7 @@ PHASE2_STEPS=(14 12)
 
 # ---------- AC3/AC6: canonical helper line is the only checkpoint writer ----------
 
-@test "AC3/AC6: every checkpoint-related line in Phase 2 SKILL.md routes through write-checkpoint.sh" {
+@test "every checkpoint-related line in Phase 2 SKILL.md routes through write-checkpoint.sh" {
   for slug in "${PHASE2_SLUGS[@]}"; do
     local file="$SKILLS_DIR/$slug/SKILL.md"
     [ -f "$file" ] || continue
@@ -167,7 +167,7 @@ PHASE2_STEPS=(14 12)
 
 # ---------- AC1/AC5 (VCP-CPT-02 Phase 2): end-to-end checkpoint sequence ----------
 
-@test "AC1/AC5: simulating gaia-create-prd 14-step run writes 14 sequential checkpoints" {
+@test "simulating gaia-create-prd 14-step run writes 14 sequential checkpoints" {
   local slug="gaia-create-prd"
   local artifact="$TEST_TMP/prd.md"
   printf '# prd\n' > "$artifact"
@@ -196,7 +196,7 @@ PHASE2_STEPS=(14 12)
   [ "$numbers" = "1 2 3 4 5 6 7 8 9 10 11 12 13 14 " ]
 }
 
-@test "AC2/AC5: simulating gaia-create-ux 12-step run writes 12 sequential checkpoints" {
+@test "simulating gaia-create-ux 12-step run writes 12 sequential checkpoints" {
   local slug="gaia-create-ux"
   local artifact="$TEST_TMP/ux.md"
   printf '# ux\n' > "$artifact"

@@ -25,41 +25,41 @@ teardown() { common_teardown; }
 # VCP-CHK-33 — Positive: all 5 items mapped (1 SV PASS, 4 LLM deferred).
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-33: finalize.sh exits 0 when the script-verifiable item satisfied" {
+@test "finalize.sh exits 0 when the script-verifiable item satisfied" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-33: finalize.sh emits a checklist header on positive path" {
+@test "finalize.sh emits a checklist header on positive path" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist: /gaia-atdd (5 items"* ]]
 }
 
-@test "VCP-CHK-33: finalize.sh reports 1/1 script-verifiable PASS" {
+@test "finalize.sh reports 1/1 script-verifiable PASS" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"1/1 script-verifiable items PASS"* ]]
 }
 
-@test "VCP-CHK-33: finalize.sh reports total items: 5" {
+@test "finalize.sh reports total items: 5" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Total items: 5"* ]]
 }
 
-@test "VCP-CHK-33: SV-01 (Test-to-AC traceability documented) appears as PASS" {
+@test "(Test-to-AC traceability documented) appears as PASS" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[PASS] SV-01 — Test-to-AC traceability documented"* ]]
 }
 
-@test "VCP-CHK-33: finalize.sh enumerates 4 LLM-checkable items" {
+@test "finalize.sh enumerates 4 LLM-checkable items" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -67,7 +67,7 @@ teardown() { common_teardown; }
   [ "$llm_count" = "4" ]
 }
 
-@test "VCP-CHK-33: finalize.sh tags PASS lines with [skill: atdd]" {
+@test "finalize.sh tags PASS lines with [skill: atdd]" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -78,27 +78,27 @@ teardown() { common_teardown; }
 # VCP-CHK-34 — Negative: artifact missing the AC-to-Test traceability table.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-34: finalize.sh exits non-zero when traceability missing" {
+@test "finalize.sh exits non-zero when traceability missing" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-missing-traceability.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-34: finalize.sh names SV-01 (Test-to-AC traceability) in violations" {
+@test "finalize.sh names (Test-to-AC traceability) in violations" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-missing-traceability.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SV-01 — Test-to-AC traceability documented"* ]]
 }
 
-@test "VCP-CHK-34: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-missing-traceability.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations:"* ]]
 }
 
-@test "VCP-CHK-34: finalize.sh guides user back to /gaia-atdd" {
+@test "finalize.sh guides user back to /gaia-atdd" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-missing-traceability.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -109,7 +109,7 @@ teardown() { common_teardown; }
 # AC5 — Classification audit on SKILL.md ## Validation section.
 # -------------------------------------------------------------------------
 
-@test "AC5: SKILL.md ## Validation section contains exactly 5 classified items" {
+@test "SKILL.md ## Validation section contains exactly 5 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -120,7 +120,7 @@ teardown() { common_teardown; }
   [ "$output" = "5" ]
 }
 
-@test "AC5: SKILL.md script-verifiable count is 1" {
+@test "SKILL.md script-verifiable count is 1" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -131,7 +131,7 @@ teardown() { common_teardown; }
   [ "$output" = "1" ]
 }
 
-@test "AC5: SKILL.md LLM-checkable count is 4" {
+@test "SKILL.md LLM-checkable count is 4" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -142,7 +142,7 @@ teardown() { common_teardown; }
   [ "$output" = "4" ]
 }
 
-@test "AC5: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }
@@ -161,14 +161,14 @@ teardown() { common_teardown; }
 # AC6 — Non-regression: checkpoint + lifecycle event still run.
 # -------------------------------------------------------------------------
 
-@test "AC6: checkpoint written on positive path" {
+@test "checkpoint written on positive path" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   [ -f "$CHECKPOINT_PATH/atdd.yaml" ]
 }
 
-@test "AC6: checkpoint written even when checklist fails" {
+@test "checkpoint written even when checklist fails" {
   export ATDD_ARTIFACT="$FIXTURES/atdd-missing-traceability.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
@@ -179,14 +179,14 @@ teardown() { common_teardown; }
 # AC4 — ATDD_ARTIFACT pointing at missing or empty file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when ATDD_ARTIFACT missing" {
+@test "finalize.sh reports 'no artifact to validate' when ATDD_ARTIFACT missing" {
   export ATDD_ARTIFACT="$BATS_TMPDIR/does-not-exist-atdd-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"no artifact to validate"* ]]
 }
 
-@test "AC4: finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
+@test "finalize.sh reports 'no artifact to validate' on an empty (0-byte) artifact" {
   local empty
   empty="$TEST_TMP/empty-atdd.md"
   : > "$empty"

@@ -22,13 +22,13 @@ setup() {
 teardown() { common_teardown; }
 
 # TC-DSF-2 — pr-create.sh advertises the --body-file flag in its usage banner.
-@test "TC-DSF-2: pr-create.sh usage advertises --body-file" {
+@test "pr-create.sh usage advertises --body-file" {
   run grep -E -- '--body-file' "$PR_CREATE"
   [ "$status" -eq 0 ]
 }
 
 # TC-DSF-2b — pr-create.sh accepts the -F short alias.
-@test "TC-DSF-2b: pr-create.sh accepts -F as a --body-file alias" {
+@test "pr-create.sh accepts -F as a --body-file alias" {
   run grep -E -- '-F\)|-F ' "$PR_CREATE"
   [ "$status" -eq 0 ]
 }
@@ -36,7 +36,7 @@ teardown() { common_teardown; }
 # TC-DSF-2c — When --body-file is parsed, the script reads the file content
 # and forwards it to gh pr create. Verified via stub gh that records argv
 # to a sidecar file.
-@test "TC-DSF-2c: --body-file content is consumed verbatim as PR body" {
+@test "body-file content is consumed verbatim as PR body" {
   STAGED_BIN="$TEST_TMP/bin"
   mkdir -p "$STAGED_BIN"
   cat > "$STAGED_BIN/gh" <<'STUB'

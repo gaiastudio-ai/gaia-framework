@@ -103,7 +103,7 @@ EOF
 }
 
 # TS2 / AC1 — single legacy flat-path story emits exactly one WARNING legacy-flat-path line.
-@test "AC1: legacy flat-path single offender emits one WARNING legacy-flat-path line" {
+@test "legacy flat-path single offender emits one WARNING legacy-flat-path line" {
   _make_canonical_story "E79" "canonical-layout" "E79-S5" "story-layout-sync"
   _make_flat_story "E80-S1" "test-flat"
 
@@ -119,7 +119,7 @@ EOF
 }
 
 # AC1 — multiple legacy flat-path stories each get one WARNING line.
-@test "AC1: multiple legacy flat-path offenders each get a WARNING line" {
+@test "multiple legacy flat-path offenders each get a WARNING line" {
   _make_canonical_story "E79" "canonical-layout" "E79-S5" "story-layout-sync"
   _make_flat_story "E80-S1" "alpha"
   _make_flat_story "E80-S2" "beta"
@@ -134,7 +134,7 @@ EOF
 }
 
 # TS3 / AC2 — heterogeneous story-index: exactly one WARNING line.
-@test "AC2: heterogeneous story-index emits exactly one WARNING line with flat + first per-epic path" {
+@test "heterogeneous story-index emits exactly one WARNING line with flat + first per-epic path" {
   _make_canonical_story "E78" "alpha" "E78-S1" "x"
   _make_canonical_story "E79" "canonical-layout" "E79-S5" "story-layout-sync"
   _make_flat_story_index
@@ -159,7 +159,7 @@ EOF
 }
 
 # AC2 — only flat story-index (no per-epic ones) does NOT trigger heterogeneous warning.
-@test "AC2: only flat story-index alone does not trigger heterogeneous-story-index" {
+@test "only flat story-index alone does not trigger heterogeneous-story-index" {
   _make_canonical_story "E79" "canonical-layout" "E79-S5" "story-layout-sync"
   _make_flat_story_index
 
@@ -169,7 +169,7 @@ EOF
 }
 
 # AC2 — only per-epic story-index files (no flat) do NOT trigger heterogeneous warning.
-@test "AC2: only per-epic story-index files alone do not trigger heterogeneous-story-index" {
+@test "only per-epic story-index files alone do not trigger heterogeneous-story-index" {
   _make_canonical_story "E79" "canonical-layout" "E79-S5" "story-layout-sync"
   _make_per_epic_story_index "E79" "canonical-layout"
 
@@ -179,7 +179,7 @@ EOF
 }
 
 # TS4 / AC3 — epic-slug-mismatch: one WARNING line naming the file, dir epic-key, frontmatter value.
-@test "AC3: epic-slug-mismatch emits one WARNING line with file, dir epic-key, fm value" {
+@test "epic-slug-mismatch emits one WARNING line with file, dir epic-key, fm value" {
   # Story file lives under epic-E79-... but its frontmatter declares epic: "E80".
   _make_canonical_story "E79" "canonical-layout" "E80-S1" "wrong-epic" "E80"
 
@@ -204,7 +204,7 @@ EOF
 }
 
 # AC3 — matching frontmatter does not trigger mismatch.
-@test "AC3: matching epic frontmatter does not trigger epic-slug-mismatch" {
+@test "matching epic frontmatter does not trigger epic-slug-mismatch" {
   _make_canonical_story "E79" "canonical-layout" "E79-S5" "story-layout-sync" "E79"
 
   run "$CHECK_SCRIPT"
@@ -232,7 +232,7 @@ EOF
 }
 
 # TS6 / AC4 — advisory exit invariant: exit 0 in every scenario.
-@test "AC4: advisory exit invariant — exit 0 with all three drift classes" {
+@test "advisory exit invariant — exit 0 with all three drift classes" {
   _make_canonical_story "E79" "canonical-layout" "E80-S1" "wrong-epic" "E80"
   _make_flat_story "E81-S1" "legacy"
   _make_flat_story_index
@@ -244,7 +244,7 @@ EOF
 
 # AC5 — line format parity: every emitted finding line conforms to
 # `WARNING story-layout-sync: {check-id} ...` and uses one of the three known check-ids.
-@test "AC5: emitted lines conform to canonical line format" {
+@test "emitted lines conform to canonical line format" {
   _make_canonical_story "E79" "canonical-layout" "E80-S1" "wrong-epic" "E80"
   _make_flat_story "E81-S1" "legacy"
   _make_flat_story_index
@@ -270,7 +270,7 @@ EOF
 
 # AC7 — pattern parity: the script lives at the canonical path, has the right shebang,
 # and uses `set -euo pipefail`.
-@test "AC7: script has correct shebang, set -euo pipefail, and lives at canonical path" {
+@test "script has correct shebang, set -euo pipefail, and lives at canonical path" {
   [ -f "$CHECK_SCRIPT" ]
   [ -x "$CHECK_SCRIPT" ]
 

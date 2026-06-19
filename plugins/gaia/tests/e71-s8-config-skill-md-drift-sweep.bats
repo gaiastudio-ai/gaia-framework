@@ -43,7 +43,7 @@ YAML
 # ───────────────────────── AC1 — D1: resolve-config.sh project_config_path ─────────────────────────
 
 # TC-CFGD-1
-@test "AC1 (TC-CFGD-1): resolve-config.sh project_config_path returns <project_root>/config/project-config.yaml" {
+@test "resolve-config.sh project_config_path returns <project_root>/config/project-config.yaml" {
   mk_project "$TEST_TMP/skill"
   run "$RESOLVE" --config "$TEST_TMP/skill/config/project-config.yaml" project_config_path
   [ "$status" -eq 0 ]
@@ -51,14 +51,14 @@ YAML
 }
 
 # TC-CFGD-6 (mirror existing memory_path/checkpoint_path coverage)
-@test "AC1 (TC-CFGD-6): resolve-config.sh --field project_config_path emits the resolved scalar" {
+@test "resolve-config.sh --field project_config_path emits the resolved scalar" {
   mk_project "$TEST_TMP/skill"
   run "$RESOLVE" --config "$TEST_TMP/skill/config/project-config.yaml" --field project_config_path
   [ "$status" -eq 0 ]
   [ "$output" = "/tmp/gaia-e71s8/config/project-config.yaml" ]
 }
 
-@test "AC1: resolve-config.sh --all emits project_config_path key" {
+@test "resolve-config.sh --all emits project_config_path key" {
   mk_project "$TEST_TMP/skill"
   run "$RESOLVE" --config "$TEST_TMP/skill/config/project-config.yaml" --all
   [ "$status" -eq 0 ]
@@ -68,7 +68,7 @@ YAML
 # ───────────────────────── AC2 — D2: stale enumeration sweep (8 files) ─────────────────────────
 
 # TC-CFGD-2
-@test "AC2 (TC-CFGD-2): zero /gaia-config-* SKILL.md files contain the stale eleven-section enumeration" {
+@test "zero /gaia-config-* SKILL.md files contain the stale eleven-section enumeration" {
   # The forbidden enumeration mixes 5 nonexistent names (project, regimes,
   # tool_adapters, rubrics, deployment) into a top-level-sections list.
   # Match the literal joined form to avoid false positives on prose that
@@ -87,42 +87,42 @@ YAML
 }
 
 # Per-file scoped check for the 8 files E71-S8 owns
-@test "AC2: /gaia-config-compliance/SKILL.md no longer enumerates the 11 stale sections" {
+@test "gaia-config-compliance/SKILL.md no longer enumerates the 11 stale sections" {
   ! grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' \
     "$SKILLS/gaia-config-compliance/SKILL.md"
 }
 
-@test "AC2: /gaia-config-device-target/SKILL.md no longer enumerates the 11 stale sections" {
+@test "gaia-config-device-target/SKILL.md no longer enumerates the 11 stale sections" {
   ! grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' \
     "$SKILLS/gaia-config-device-target/SKILL.md"
 }
 
-@test "AC2: /gaia-config-env/SKILL.md no longer enumerates the 11 stale sections" {
+@test "gaia-config-env/SKILL.md no longer enumerates the 11 stale sections" {
   ! grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' \
     "$SKILLS/gaia-config-env/SKILL.md"
 }
 
-@test "AC2: /gaia-config-platform/SKILL.md no longer enumerates the 11 stale sections" {
+@test "gaia-config-platform/SKILL.md no longer enumerates the 11 stale sections" {
   ! grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' \
     "$SKILLS/gaia-config-platform/SKILL.md"
 }
 
-@test "AC2: /gaia-config-show/SKILL.md no longer enumerates the 11 stale sections" {
+@test "gaia-config-show/SKILL.md no longer enumerates the 11 stale sections" {
   ! grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' \
     "$SKILLS/gaia-config-show/SKILL.md"
 }
 
-@test "AC2: /gaia-config-stack/SKILL.md no longer enumerates the 11 stale sections" {
+@test "gaia-config-stack/SKILL.md no longer enumerates the 11 stale sections" {
   ! grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' \
     "$SKILLS/gaia-config-stack/SKILL.md"
 }
 
-@test "AC2: /gaia-config-test/SKILL.md no longer enumerates the 11 stale sections" {
+@test "gaia-config-test/SKILL.md no longer enumerates the 11 stale sections" {
   ! grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' \
     "$SKILLS/gaia-config-test/SKILL.md"
 }
 
-@test "AC2: /gaia-config-validate/SKILL.md no longer enumerates the 11 stale sections" {
+@test "gaia-config-validate/SKILL.md no longer enumerates the 11 stale sections" {
   ! grep -qE '`project`,? `stacks`,? `platforms`,? `regimes`' \
     "$SKILLS/gaia-config-validate/SKILL.md"
 }
@@ -130,7 +130,7 @@ YAML
 # ───────────────────────── AC3 — D3: canonical CRUD-menu disclaimer ─────────────────────────
 
 # TC-CFGD-3 — disclaimer present in all 10 files
-@test "AC3 (TC-CFGD-3): canonical disclaimer present in all 10 /gaia-config-* SKILL.md files" {
+@test "canonical disclaimer present in all 10 /gaia-config-* SKILL.md files" {
   local f missing=()
   for f in "$SKILLS"/gaia-config-compliance/SKILL.md \
            "$SKILLS"/gaia-config-device-target/SKILL.md \
@@ -152,7 +152,7 @@ YAML
   }
 }
 
-@test "AC3: disclaimer identifies the LLM orchestrator as the menu executor" {
+@test "disclaimer identifies the LLM orchestrator as the menu executor" {
   local f missing=()
   for f in "$SKILLS"/gaia-config-{compliance,env,platform,show,stack,test,tool,validate}/SKILL.md; do
     if ! grep -qF 'the menu is performed by the LLM orchestrator from this SKILL.md, not by a TUI' "$f"; then
@@ -168,7 +168,7 @@ YAML
 # ───────────────────────── AC5 — test plan + traceability cascade ─────────────────────────
 
 # TC-CFGD-5
-@test "AC5 (TC-CFGD-5): test plan §11.74 contains TC-CFGD-1..5 rows" {
+@test "test plan §11.74 contains ..5 rows" {
   [ -n "$DOCS_ROOT" ] || skip "DOCS_ROOT not resolvable from this test location"
   local tp="$DOCS_ROOT/test-artifacts/strategy/test-plan.md"
   [ -f "$tp" ] || skip "test plan not present at $tp"
@@ -180,7 +180,7 @@ YAML
   grep -qE 'TC-CFGD-5' "$tp"
 }
 
-@test "AC5: traceability matrix §31 maps E71-S8 → TC-CFGD-1..5" {
+@test "traceability matrix §31 maps → ..5" {
   [ -n "$DOCS_ROOT" ] || skip "DOCS_ROOT not resolvable from this test location"
   local trm="$DOCS_ROOT/test-artifacts/strategy/traceability-matrix.md"
   [ -f "$trm" ] || skip "traceability matrix not present at $trm"

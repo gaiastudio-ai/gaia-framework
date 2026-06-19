@@ -48,7 +48,7 @@ write_sidecar_older() {
 }
 
 # ---------------- Test A: in-window sidecar -> exit 0 ----------------
-@test "TC-OEXP-3 Test A: in-window Val sidecar entry passes finalize precondition" {
+@test "Test A: in-window Val sidecar entry passes finalize precondition" {
   stage_run_started
   write_sidecar_newer
   GAIA_FINALIZE_SENTINEL_REQUIRED=1 CLAUDE_PROJECT_ROOT="$TEST_TMP" \
@@ -57,7 +57,7 @@ write_sidecar_older() {
 }
 
 # ---------------- Test B: missing sidecar -> non-zero + canonical error ----------------
-@test "TC-OEXP-3 Test B: missing Val sidecar entry fails finalize with canonical error" {
+@test "Test B: missing Val sidecar entry fails finalize with canonical error" {
   stage_run_started
   # No sidecar write at all.
   GAIA_FINALIZE_SENTINEL_REQUIRED=1 CLAUDE_PROJECT_ROOT="$TEST_TMP" \
@@ -68,7 +68,7 @@ write_sidecar_older() {
 }
 
 # ---------------- Test C: out-of-window sidecar -> non-zero ----------------
-@test "TC-OEXP-3 Test C: out-of-window Val sidecar entry fails finalize" {
+@test "Test C: out-of-window Val sidecar entry fails finalize" {
   write_sidecar_older
   # write_sidecar_older() stages the checkpoint AFTER the sidecar, so the
   # sidecar's mtime is older than the checkpoint — should fail.
@@ -79,7 +79,7 @@ write_sidecar_older() {
 }
 
 # ---------------- Backward-compat: env var unset -> legacy behavior ----------------
-@test "TC-OEXP-3 backward-compat: GAIA_FINALIZE_SENTINEL_REQUIRED unset preserves legacy behavior" {
+@test "backward-compat: GAIA_FINALIZE_SENTINEL_REQUIRED unset preserves legacy behavior" {
   # No sentinel marker exported -> finalize must NOT enforce the guard.
   # (Mirror of gaia-add-feature/finalize.sh:77 conditional FEATURE_ID guard.)
   run "$FINALIZE"

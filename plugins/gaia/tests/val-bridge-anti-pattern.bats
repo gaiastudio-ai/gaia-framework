@@ -52,7 +52,7 @@ teardown() { common_teardown; }
 # ============================================================================
 # TC-VBR-5 — context: fork anti-pattern absent from all 5 migrated SKILL.md
 # ============================================================================
-@test "TC-VBR-5: no 'context: fork' Val-dispatch refs in 5 migrated SKILL.md files" {
+@test "no 'context: fork' Val-dispatch refs in 5 migrated SKILL.md files" {
   local violations=""
   for slug in "${MIGRATED_SKILLS[@]}"; do
     local file="$PLUGIN_ROOT/skills/$slug/SKILL.md"
@@ -74,7 +74,7 @@ teardown() { common_teardown; }
 # ============================================================================
 # TC-VBR-6 — self-judgment fallthrough prose absent from Val-dispatch contexts
 # ============================================================================
-@test "TC-VBR-6: no 'inline Val' / 'auto-judged' / 'main-turn inline validation' self-judgment prose in 5 migrated SKILL.md files" {
+@test "no 'inline Val' / 'auto-judged' / 'main-turn inline validation' self-judgment prose in 5 migrated SKILL.md files" {
   local violations=""
   for slug in "${MIGRATED_SKILLS[@]}"; do
     local file="$PLUGIN_ROOT/skills/$slug/SKILL.md"
@@ -95,7 +95,7 @@ teardown() { common_teardown; }
 # TC-VBR-meta — all 5 migrated SKILL.md files contain Val Bridge Migration
 #               changelog entry (durable anchor for the migration cascade)
 # ============================================================================
-@test "TC-VBR-meta: all 5 migrated SKILL.md files contain ADR-104 reference (Changelog cascade)" {
+@test "TC-VBR-meta: all 5 migrated SKILL.md files contain reference (Changelog cascade)" {
   local missing=""
   for slug in "${MIGRATED_SKILLS[@]}"; do
     local file="$PLUGIN_ROOT/skills/$slug/SKILL.md"

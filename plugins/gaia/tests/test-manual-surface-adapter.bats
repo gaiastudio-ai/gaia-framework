@@ -34,22 +34,22 @@ teardown() {
 
 # ---------- AC1: All 4 surfaces selectable ----------
 
-@test "AC1: browser surface returns CONFIGURED when web platform present" {
+@test "browser surface returns CONFIGURED when web platform present" {
   run bash "$ADAPTER" --surface browser --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: api surface returns CONFIGURED when server platform present" {
+@test "api surface returns CONFIGURED when server platform present" {
   run bash "$ADAPTER" --surface api --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: mobile surface returns CONFIGURED when ios platform present" {
+@test "mobile surface returns CONFIGURED when ios platform present" {
   run bash "$ADAPTER" --surface mobile --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: mobile surface returns CONFIGURED when android platform present" {
+@test "mobile surface returns CONFIGURED when android platform present" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [android]
@@ -58,22 +58,22 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: desktop surface returns CONFIGURED when desktop_commands present" {
+@test "desktop surface returns CONFIGURED when desktop_commands present" {
   run bash "$ADAPTER" --surface desktop --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: unknown surface returns error exit 1" {
+@test "unknown surface returns error exit 1" {
   run bash "$ADAPTER" --surface hologram --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 1 ]
 }
 
-@test "AC1: missing --surface flag returns error exit 1" {
+@test "missing --surface flag returns error exit 1" {
   run bash "$ADAPTER" --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 1 ]
 }
 
-@test "AC1: output contains surface name on CONFIGURED" {
+@test "output contains surface name on CONFIGURED" {
   run bash "$ADAPTER" --surface api --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
   echo "$output" | grep -qi "api"
@@ -81,7 +81,7 @@ YAML
 
 # ---------- AC1: block-style YAML platforms ----------
 
-@test "AC1: browser CONFIGURED with block-style YAML platforms list" {
+@test "browser CONFIGURED with block-style YAML platforms list" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms:
@@ -93,7 +93,7 @@ YAML
   echo "$output" | grep -qi "CONFIGURED"
 }
 
-@test "AC1: api CONFIGURED with block-style YAML platforms list" {
+@test "api CONFIGURED with block-style YAML platforms list" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms:

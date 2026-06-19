@@ -24,7 +24,7 @@ teardown() { common_teardown; }
 # Issue #1052 — gaia-reconcile-v2 emits `section: {}` (object), not bare null
 # ===========================================================================
 
-@test "AF-32-3 #1052: reconciler fragment writer uses 'section: {}' (empty object)" {
+@test "#1052: reconciler fragment writer uses 'section: {}' (empty object)" {
   # The fragment-build block (around line 388 of gaia-reconcile-v2.sh) MUST
   # emit `section: {}` so the section parses as an empty object, not null.
   # Use grep -E with literal-bracket escape; bash and grep handle the
@@ -33,7 +33,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-3 #1052: reconciler fragment writer does NOT emit a bare 'section:' line" {
+@test "#1052: reconciler fragment writer does NOT emit a bare 'section:' line" {
   # The pre-fix shape `printf '%s:\n' "$s"` produced null sections. It must
   # be gone from the missing-section hydration loop. A separate
   # `printf '%s:\n'` in unrelated scaffolding is fine — we scope by looking
@@ -44,7 +44,7 @@ teardown() { common_teardown; }
   [ "$status" -ne 0 ]
 }
 
-@test "AF-32-3 #1052: 'section: {}' parses as an empty object (sanity check)" {
+@test "#1052: 'section: {}' parses as an empty object (sanity check)" {
   # yq sanity — `section: {}` is the actual YAML shape we now write.
   local fixture
   fixture="$(mktemp -t af325-1052.XXXXXX).yaml"
@@ -61,7 +61,7 @@ YAML
   rm -f "$fixture"
 }
 
-@test "AF-32-3 #1052: bare 'section:' parses as null (regression evidence)" {
+@test "#1052: bare 'section:' parses as null (regression evidence)" {
   # The exact pre-fix shape that issue #1052 reported. Confirms the bug
   # class exists in YAML semantics, not in the schema.
   local fixture
@@ -80,27 +80,27 @@ YAML
 # Issue #1051 — validate-project-config.sh tier-aware backend selection
 # ===========================================================================
 
-@test "AF-32-3 #1051: validator script declares a python3+jsonschema backend tier" {
+@test "#1051: validator script declares a python3+jsonschema backend tier" {
   run grep -F "import jsonschema" "$VALIDATOR"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-3 #1051: validator emits a DEGRADED marker when running structural-only" {
+@test "#1051: validator emits a DEGRADED marker when running structural-only" {
   run grep -F 'PASS (DEGRADED):' "$VALIDATOR"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-3 #1051: validator emits a WARNING listing the skipped checks in degraded mode" {
+@test "#1051: validator emits a WARNING listing the skipped checks in degraded mode" {
   run grep -F "WARNING: the following schema checks are SKIPPED" "$VALIDATOR"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-3 #1051: validator WARNING names enum, additionalProperties, type, pattern" {
+@test "#1051: validator WARNING names enum, additionalProperties, type, pattern" {
   run grep -F "enum, additionalProperties, type, pattern" "$VALIDATOR"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-32-3 #1051: validator WARNING recommends ajv-cli or python3 jsonschema install" {
+@test "#1051: validator WARNING recommends ajv-cli or python3 jsonschema install" {
   run grep -F "ajv-cli" "$VALIDATOR"
   [ "$status" -eq 0 ]
   run grep -F "pip install jsonschema" "$VALIDATOR"
@@ -112,7 +112,7 @@ YAML
 # (instead of silently passing) when a real validator backend is available.
 # ===========================================================================
 
-@test "AF-32-3 #1051: schema-invalid input (enum mismatch + null section) is REJECTED end-to-end" {
+@test "#1051: schema-invalid input (enum mismatch + null section) is REJECTED end-to-end" {
   # Skip when no real validator backend is on the runner — the structural
   # path is exercised by the script-level greps above; this test pins the
   # behavioural outcome when the runner CAN reach a real engine.
@@ -150,7 +150,7 @@ YAML
 # Compound regression — reconciler-produced sections validate clean
 # ===========================================================================
 
-@test "AF-32-3 #1051+#1052 compound: a fragment-shaped 'section: {}' validates clean" {
+@test "#1051+#1052 compound: a fragment-shaped 'section: {}' validates clean" {
   # Pins the closure: with the reconciler now emitting `section: {}`, a
   # config that contains only those reconciled sections (plus the required
   # top-level keys) MUST validate clean against a real engine. Confirms

@@ -68,7 +68,7 @@ EOF
   [[ "$output" == *"name: gaia-create-story"* ]]
 }
 
-@test "SKILL.md frontmatter: allowed-tools includes Read Write Edit Bash (inline SM fix requirement, NFR-046)" {
+@test "SKILL.md frontmatter: allowed-tools includes Read Write Edit Bash" {
   run awk '/^---$/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"allowed-tools:"* ]]
   [[ "$output" == *"Read"* ]]
@@ -85,56 +85,56 @@ EOF
 # gaia-dev-story.bats, gaia-sprint-plan.bats, etc.
 # ---------------------------------------------------------------------------
 
-@test "VLR-01: Step 6 documents Val subagent dispatch with context: fork" {
+@test "Step 6 documents Val subagent dispatch with context: fork" {
   run grep -qE "context:[[:space:]]*fork" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-01: Step 6 documents Val read-only allowlist [Read, Grep, Glob, Bash]" {
+@test "Step 6 documents Val read-only allowlist [Read, Grep, Glob, Bash]" {
   run grep -qE "Read.*Grep.*Glob.*Bash|\[Read, Grep, Glob, Bash\]" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-01: Step 6 references 8-part structured response contract" {
+@test "Step 6 references 8-part structured response contract" {
   run grep -qiE "8-part|eight.part|frontmatter.*completeness.*clarity|structured.*response" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-02: Step 6 documents 3-attempt cap" {
+@test "Step 6 documents 3-attempt cap" {
   run grep -qiE "3.attempt|three.attempt|attempt.*3|cap.*3|max.*3" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-02: Step 6 documents terminal FAILED verdict on exhaustion via review-gate.sh" {
+@test "Step 6 documents terminal FAILED verdict on exhaustion via review-gate.sh" {
   run grep -qE "review-gate\.sh" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
   run grep -qE "FAILED" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-03: Step 6 documents early-exit on PASSED before cap" {
+@test "Step 6 documents early-exit on PASSED before cap" {
   run grep -qiE "PASSED|passed.*verdict|zero.*CRITICAL" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-04: Step 6 documents sprint-status.yaml sync via transition-story-status.sh after each attempt" {
+@test "Step 6 documents sprint-status.yaml sync via transition-story-status.sh after each attempt" {
   run grep -qE "transition-story-status\.sh" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-05: Step 6 documents INFO-only findings bypass the fix loop" {
+@test "Step 6 documents INFO-only findings bypass the fix loop" {
   run grep -qiE "INFO.only|INFO.*findings.*(log|bypass|not trigger|no.*loop)|FR-339" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "VLR-06: Step 6 references canonical vocabulary PASSED/FAILED/UNVERIFIED" {
+@test "Step 6 references canonical vocabulary PASSED/FAILED/UNVERIFIED" {
   local file="$SKILL_DIR/SKILL.md"
   grep -q "PASSED" "$file"
   grep -q "FAILED" "$file"
   grep -q "UNVERIFIED" "$file"
 }
 
-@test "VLR-06: Step 6 documents ledger-keyed query shape with --plan-id and gate story-validation" {
+@test "Step 6 documents ledger-keyed query shape with --plan-id and gate story-validation" {
   run grep -qE "story-validation" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
   run grep -qE "plan-id|plan_id" "$SKILL_DIR/SKILL.md"
@@ -145,42 +145,42 @@ EOF
 # AC-EC edge case prose markers
 # ---------------------------------------------------------------------------
 
-@test "AC-EC1: Step 6 documents malformed 8-part response → WARNING + UNVERIFIED treatment" {
+@test "Step 6 documents malformed 8-part response → WARNING + UNVERIFIED treatment" {
   run grep -qiE "malformed|missing.*part|UNVERIFIED" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC2: Step 6 documents HALT on missing review-gate.sh" {
+@test "Step 6 documents HALT on missing review-gate.sh" {
   run grep -qiE "HALT|halt" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC3: Step 6 documents self-transition rejection is benign" {
+@test "Step 6 documents self-transition rejection is benign" {
   run grep -qiE "self.transition|benign|non.blocking|same.*status" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC4: Step 6 documents oscillation / non-convergence cap enforcement (no short-circuit)" {
+@test "Step 6 documents oscillation / non-convergence cap enforcement (no short-circuit)" {
   run grep -qiE "oscillation|non.convergence|stall|identical.*findings|no.*short.circuit" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC5: Step 6 documents that new findings do not reset attempt counter" {
+@test "Step 6 documents that new findings do not reset attempt counter" {
   run grep -qiE "do not reset|no.*reset|counter.*not|attempt.*count" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC6: Step 6 documents Val timeout → HALT with UNVERIFIED" {
+@test "Step 6 documents Val timeout → HALT with UNVERIFIED" {
   run grep -qiE "timeout|could not complete|unavailable" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC7: Step 6 documents INFO severity filter out of loop trigger" {
+@test "Step 6 documents INFO severity filter out of loop trigger" {
   run grep -qiE "INFO.*(log|not trigger|bypass|do not)" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC8: Step 6 documents YOLO cannot bypass cap or FAILED verdict (FR-340)" {
+@test "Step 6 documents YOLO cannot bypass cap or FAILED verdict" {
   run grep -qiE "YOLO.*(not bypass|does not|cannot)|FR-340|bypass" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
@@ -189,7 +189,7 @@ EOF
 # NFR-046 single-spawn-level preservation (inline SM fix, not a nested spawn)
 # ---------------------------------------------------------------------------
 
-@test "NFR-046: Step 6 documents inline SM fix (no nested Agent/Task spawn)" {
+@test "Step 6 documents inline SM fix (no nested Agent/Task spawn)" {
   run grep -qiE "inline.*SM|SM.*inline|NFR-046|single.spawn|no.*nested" "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
@@ -223,7 +223,7 @@ EOF
   grep -q "$plan_id" "$LEDGER"
 }
 
-@test "review-gate.sh: story-validation gate accepts FAILED verdict via --plan-id (VLR-06 Tier 1)" {
+@test "review-gate.sh: story-validation gate accepts FAILED verdict via --plan-id" {
   seed_story RGS2 UNVERIFIED
   local plan_id="create-story-val-def456"
 

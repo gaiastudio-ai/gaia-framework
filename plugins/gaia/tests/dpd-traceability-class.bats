@@ -47,7 +47,7 @@ EOF
 }
 
 # ---------------- TC-DPD-22: dispatch-verb medium-risk AC without integration row -> HALT ----------------
-@test "TC-DPD-22: dispatch-verb medium-risk AC with no integration row HALTs" {
+@test "dispatch-verb medium-risk AC with no integration row HALTs" {
   local story="$TEST_TMP/story.md"
   local matrix="$TEST_TMP/matrix.md"
   _write_story "$story" "medium" "the orchestrator spawns the subagent"
@@ -62,7 +62,7 @@ EOF
 }
 
 # ---------------- TC-DPD-23: same fixture with integration row -> PASS ----------------
-@test "TC-DPD-23: same fixture with test_class: integration row added passes" {
+@test "same fixture with test_class: integration row added passes" {
   local story="$TEST_TMP/story.md"
   local matrix="$TEST_TMP/matrix.md"
   _write_story "$story" "medium" "the orchestrator spawns the subagent"
@@ -74,7 +74,7 @@ EOF
 }
 
 # ---------------- TC-DPD-23b: low-risk dispatch-verb AC -> not enforced ----------------
-@test "TC-DPD-23b: low-risk dispatch-verb AC does NOT require integration row" {
+@test "low-risk dispatch-verb AC does NOT require integration row" {
   local story="$TEST_TMP/story.md"
   local matrix="$TEST_TMP/matrix.md"
   _write_story "$story" "low" "the orchestrator spawns the subagent"
@@ -86,7 +86,7 @@ EOF
 }
 
 # ---------------- TC-DPD-23c: high-risk non-dispatch AC -> not enforced ----------------
-@test "TC-DPD-23c: high-risk non-dispatch AC does NOT require integration row" {
+@test "high-risk non-dispatch AC does NOT require integration row" {
   local story="$TEST_TMP/story.md"
   local matrix="$TEST_TMP/matrix.md"
   _write_story "$story" "high" "the user is shown an error message"
@@ -96,7 +96,7 @@ EOF
 }
 
 # ---------------- TC-DPD-24: E76-S10 frontmatter delivered:false + status:done coexist ----------------
-@test "TC-DPD-24: synthetic E76-S10-shaped fixture passes delivered:false + status:done coexistence" {
+@test "synthetic fixture passes delivered:false + status:done coexistence" {
   # Run against a synthetic fixture rather than the project-root E76-S10
   # story file. The real E76-S10 lives at project-root docs/ (outside the
   # gaia-public/ repo CI sees), so a project-root lookup would always

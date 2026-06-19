@@ -52,15 +52,10 @@ YAML_PATH="${SPRINT_STATUS_YAML:-}"
 if [[ -z "$YAML_PATH" ]]; then
   # Prefer .gaia/state/sprint-status.yaml (post-migration canonical) over
   # the legacy docs/ canonical.
-  # Same pattern as PR #809 sprint-close/close.sh resolve_yaml_path.
-  # Route through the shared resolve-artifact-path.sh helper, whose
-  # sprint_status precedence is [.gaia/state/,
-  # .gaia/artifacts/implementation-artifacts/, docs/impl-artifacts/, ./].
-  # The middle rung was MISSING from this reader before — sprint-state.sh
-  # init seeded the yaml there on fresh projects, so /gaia-sprint-status
-  # errored "not found" despite a successful sprint-plan. The writer now
-  # defaults to .gaia/state/, but the impl-artifacts rung stays for projects
-  # seeded earlier.
+  # Route through the shared resolve-artifact-path.sh helper whose
+  # sprint_status precedence is [.gaia/state/, docs/impl-artifacts/, ./].
+  # The .gaia/artifacts/implementation-artifacts/ mirror has been retired
+  # (Issue #1109 deprecation).
   _DASH_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   _RESOLVE_ARTIFACT_PATH="$_DASH_SCRIPT_DIR/lib/resolve-artifact-path.sh"
   if [[ -x "$_RESOLVE_ARTIFACT_PATH" ]]; then
@@ -69,15 +64,12 @@ if [[ -z "$YAML_PATH" ]]; then
     # not-found error below names the canonical location.
     [[ -z "$YAML_PATH" ]] && YAML_PATH="$("$_RESOLVE_ARTIFACT_PATH" sprint_status --project-root "$PROJECT_PATH" 2>/dev/null || echo "$PROJECT_PATH/.gaia/state/sprint-status.yaml")"
   else
-    # Resolver unavailable — preserve the legacy local precedence.
+    # Resolver unavailable — local precedence without the retired mirror.
     GAIA_STATE_YAML="$PROJECT_PATH/.gaia/state/sprint-status.yaml"
-    IMPL_YAML="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"
     CANONICAL_YAML="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
     FALLBACK_YAML="$PROJECT_PATH/sprint-status.yaml"
     if [[ -f "$GAIA_STATE_YAML" ]]; then
       YAML_PATH="$GAIA_STATE_YAML"
-    elif [[ -f "$IMPL_YAML" ]]; then
-      YAML_PATH="$IMPL_YAML"
     elif [[ -f "$CANONICAL_YAML" ]]; then
       YAML_PATH="$CANONICAL_YAML"
     elif [[ -f "$FALLBACK_YAML" ]]; then

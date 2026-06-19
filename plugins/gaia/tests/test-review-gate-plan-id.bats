@@ -70,7 +70,7 @@ EOF
 # update with --plan-id, then status should return verdict + matching plan_id
 # ---------------------------------------------------------------------------
 
-@test "AC1: update with --plan-id writes ledger record; status returns verdict with plan_id" {
+@test "update with --plan-id writes ledger record; status returns verdict with plan_id" {
   seed_story PID1 UNVERIFIED
   local plan_id="plan-abc123-def456"
 
@@ -98,7 +98,7 @@ EOF
 # update + status WITHOUT --plan-id must produce byte-identical behavior
 # ---------------------------------------------------------------------------
 
-@test "AC2: update without --plan-id preserves pre-E35 byte-identical behavior" {
+@test "update without --plan-id preserves pre-migration byte-identical behavior" {
   seed_story PID2 UNVERIFIED
 
   # The existing code path: update a canonical Review Gate row WITHOUT --plan-id
@@ -122,7 +122,7 @@ EOF
 # Regression guard: round-trip without --plan-id = byte-identical to pre-E35
 # ---------------------------------------------------------------------------
 
-@test "AC6: ADR-045 caller round-trip without --plan-id is byte-identical to pre-E35" {
+@test "caller round-trip without --plan-id is byte-identical to pre-migration" {
   seed_story PID3 UNVERIFIED
 
   # Capture pre-update file content for comparison
@@ -150,7 +150,7 @@ EOF
 # Both records preserved; atomic write semantics hold
 # ---------------------------------------------------------------------------
 
-@test "AC-EC1: concurrent ledger writes on different stories both preserved" {
+@test "concurrent ledger writes on different stories both preserved" {
   seed_story CONC1 UNVERIFIED
   seed_story CONC2 UNVERIFIED
 
@@ -176,7 +176,7 @@ EOF
 # AC-EC2: Shell-injection --plan-id payload rejected
 # ---------------------------------------------------------------------------
 
-@test "AC-EC2: shell-injection --plan-id payload rejected" {
+@test "shell-injection --plan-id payload rejected" {
   seed_story INJECT1 UNVERIFIED
 
   # Attempt shell injection via --plan-id
@@ -188,14 +188,14 @@ EOF
   [ ! -f "$LEDGER" ] || ! grep -q "rm -rf" "$LEDGER"
 }
 
-@test "AC-EC2: backtick shell injection in --plan-id rejected" {
+@test "backtick shell injection in --plan-id rejected" {
   seed_story INJECT2 UNVERIFIED
 
   run "$SCRIPT" update --story INJECT2 --gate "test-automate-plan" --verdict PASSED --plan-id '`whoami`'
   [ "$status" -ne 0 ]
 }
 
-@test "AC-EC2: dollar-paren shell injection in --plan-id rejected" {
+@test "dollar-paren shell injection in --plan-id rejected" {
   seed_story INJECT3 UNVERIFIED
 
   run "$SCRIPT" update --story INJECT3 --gate "test-automate-plan" --verdict PASSED --plan-id '$(cat /etc/passwd)'
@@ -206,7 +206,7 @@ EOF
 # AC-EC3: Empty --plan-id= value rejected
 # ---------------------------------------------------------------------------
 
-@test "AC-EC3: empty --plan-id= value exits 1 with requires-a-value message" {
+@test "empty --plan-id= value exits 1 with requires-a-value message" {
   seed_story EMPTY1 UNVERIFIED
 
   run "$SCRIPT" update --story EMPTY1 --gate "test-automate-plan" --verdict PASSED --plan-id ""
@@ -218,7 +218,7 @@ EOF
 # AC-EC9: status --plan-id miss returns UNVERIFIED
 # ---------------------------------------------------------------------------
 
-@test "AC-EC9: status --plan-id with non-matching id returns UNVERIFIED" {
+@test "status --plan-id with non-matching id returns UNVERIFIED" {
   seed_story MISS1 UNVERIFIED
 
   local real_plan_id="plan-real-$(date +%s)"
@@ -239,7 +239,7 @@ EOF
 # AC-EC10: Legacy ledger record without plan_id field
 # ---------------------------------------------------------------------------
 
-@test "AC-EC10: legacy record without plan_id; no-plan-id callers succeed" {
+@test "legacy record without plan_id; no-plan-id callers succeed" {
   seed_story LEGACY1 UNVERIFIED
 
   # Simulate a pre-E35 update (no --plan-id)
@@ -252,7 +252,7 @@ EOF
   [[ "$output" == *"PASSED"* ]]
 }
 
-@test "AC-EC10: --plan-id query against legacy record returns no-match" {
+@test "plan-id query against legacy record returns no-match" {
   seed_story LEGACY2 UNVERIFIED
 
   # Write a record via the canonical six gates (no --plan-id, no ledger)

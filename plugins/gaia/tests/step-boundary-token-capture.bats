@@ -25,7 +25,7 @@ teardown() {
 
 # ---------- Scenario A: snapshot-diff derivation ----------
 
-@test "AC1/AC2: with-tokens fixture yields per-step token estimates labelled approximate" {
+@test "with-tokens fixture yields per-step token estimates labelled approximate" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/with-tokens.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Step 1 -> Step 2: input_tokens diff = 8200-5000 = 3200
@@ -34,7 +34,7 @@ teardown() {
     || { echo "Missing '~3200 tok (approx)' input diff label in token output" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC2: per-step token diff values are correct positive differences" {
+@test "per-step token diff values are correct positive differences" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/with-tokens.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Step 1->2 diffs (fixtures chosen so every diff != any raw snapshot value):
@@ -52,7 +52,7 @@ teardown() {
     || { echo "Expected 'output: ~1500 tok (approx)' for step 2" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC2: three consecutive steps yield 8 approx token fields (4 fields x 2 steps)" {
+@test "three consecutive steps yield 8 approx token fields (4 fields x 2 steps)" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/with-tokens.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Steps 1,2,3 -> diffs for steps 1 and 2 (last step is open-ended).
@@ -65,7 +65,7 @@ teardown() {
 
 # ---------- Scenario B: graceful-skip ----------
 
-@test "AC3: no-tokens fixture still produces timing data with exit 0" {
+@test "no-tokens fixture still produces timing data with exit 0" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/no-tokens.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Timing data (step durations) must still appear
@@ -73,7 +73,7 @@ teardown() {
     || { echo "Expected step 1 timing in output" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC3: no-tokens fixture renders explicit n/a token column" {
+@test "no-tokens fixture renders explicit n/a token column" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/no-tokens.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # When tokens are absent, the output MUST contain an explicit "tokens: n/a"
@@ -87,7 +87,7 @@ teardown() {
 
 # ---------- Scenario C: negative-diff clamped to n/a ----------
 
-@test "AC2: negative token diff (compaction) is clamped to n/a, never negative" {
+@test "negative token diff (compaction) is clamped to n/a, never negative" {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/negative-diff.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # input_tokens goes 15000 -> 9000 (diff = -6000). Must NOT appear as -6000.
@@ -104,7 +104,7 @@ teardown() {
 
 # ---------- Scenario D: PRIVACY payload assertion ----------
 
-@test "AC4: emit-step-boundary with --tokens produces tokens_snapshot with only numeric values" {
+@test "emit-step-boundary with --tokens produces tokens_snapshot with only numeric values" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   run bash "$EMIT_HELPER" 1 load-story E998-S1 \
@@ -127,7 +127,7 @@ teardown() {
   echo "$line" | jq -e '.data.tokens_snapshot.cache_read_input_tokens == 800' >/dev/null
 }
 
-@test "AC4: payload data contains ONLY step_name and tokens_snapshot — no prompt or response text" {
+@test "payload data contains ONLY step_name and tokens_snapshot — no prompt or response text" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   run bash "$EMIT_HELPER" 1 load-story E998-S1 \
@@ -146,7 +146,7 @@ teardown() {
 
 # ---------- Scenario E: backwards-compat ----------
 
-@test "AC3: emit-step-boundary without --tokens produces event with no tokens_snapshot" {
+@test "emit-step-boundary without --tokens produces event with no tokens_snapshot" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   run bash "$EMIT_HELPER" 1 load-story E998-S1
@@ -171,7 +171,7 @@ teardown() {
 
 # ---------- Scenario F: Privacy guard non-vacuity (AC4 hard guarantee) ----------
 
-@test "AC4-PRIVACY: --tokens payload with a string value is REJECTED (tokens_snapshot omitted)" {
+@test "PRIVACY: --tokens payload with a string value is REJECTED (tokens_snapshot omitted)" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   # Payload contains a string "sneaky" — this MUST be rejected
@@ -194,7 +194,7 @@ teardown() {
     || { echo "PRIVACY VIOLATION: smuggled string found in raw JSONL" >&2; cat "$TEST_TMP/lifecycle-events.jsonl" >&2; false; }
 }
 
-@test "AC4-PRIVACY: --tokens with nested string is rejected" {
+@test "PRIVACY: --tokens with nested string is rejected" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   run bash "$EMIT_HELPER" 1 load-story E998-S1 \
@@ -211,7 +211,7 @@ teardown() {
     || { echo "PRIVACY VIOLATION: nested string found in raw JSONL" >&2; cat "$TEST_TMP/lifecycle-events.jsonl" >&2; false; }
 }
 
-@test "AC4-PRIVACY: --tokens with invalid JSON is silently skipped" {
+@test "PRIVACY: --tokens with invalid JSON is silently skipped" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   run bash "$EMIT_HELPER" 1 load-story E998-S1 \
@@ -226,7 +226,7 @@ teardown() {
     || { echo "tokens_snapshot present despite invalid JSON" >&2; echo "$line" >&2; false; }
 }
 
-@test "AC4-PRIVACY: --tokens with array (not object) is rejected" {
+@test "PRIVACY: --tokens with array (not object) is rejected" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   run bash "$EMIT_HELPER" 1 load-story E998-S1 \
@@ -242,7 +242,7 @@ teardown() {
 
 # ---------- Scenario G: Key-name smuggling (Fix-1 hardening) ----------
 
-@test "AC4-PRIVACY: smuggled key name is REJECTED (key text never serialized)" {
+@test "PRIVACY: smuggled key name is REJECTED (key text never serialized)" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   # All VALUES are numeric, but one KEY carries arbitrary text — this MUST be rejected
@@ -265,7 +265,7 @@ teardown() {
     || { echo "PRIVACY VIOLATION: smuggled key text found in raw JSONL" >&2; cat "$TEST_TMP/lifecycle-events.jsonl" >&2; false; }
 }
 
-@test "AC4-PRIVACY: partial smuggled key mixed with valid keys is REJECTED" {
+@test "PRIVACY: partial smuggled key mixed with valid keys is REJECTED" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   # Three valid keys + one non-allowlisted key — entire payload must be rejected
@@ -282,7 +282,7 @@ teardown() {
     || { echo "PRIVACY VIOLATION: non-allowlisted key text in raw JSONL" >&2; cat "$TEST_TMP/lifecycle-events.jsonl" >&2; false; }
 }
 
-@test "AC4-PRIVACY: valid subset payload (2 of 4 allowlisted keys) is ACCEPTED" {
+@test "PRIVACY: valid subset payload (2 of 4 allowlisted keys) is ACCEPTED" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   # Only input_tokens and output_tokens — valid subset of the allowlist
@@ -299,7 +299,7 @@ teardown() {
 
 # ---------- Scenario H: --tokens missing value (Fix-2 shift foot-gun) ----------
 
-@test "AC3: --tokens as last arg with no value degrades gracefully (no crash)" {
+@test "tokens as last arg with no value degrades gracefully (no crash)" {
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   export MEMORY_PATH="$TEST_TMP"
   # --tokens is the last argument with no value following — must not crash

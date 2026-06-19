@@ -74,25 +74,25 @@ _have_workspace_artifact() {
 # AC1 — File presence (fixture-based, CI-stable).
 # ---------------------------------------------------------------------------
 
-@test "AC1: deletion plan fixture exists at the canonical path" {
+@test "deletion plan fixture exists at the canonical path" {
   [ -f "$PLAN_FIXTURE" ]
 }
 
-@test "AC1: deletion plan fixture is non-empty" {
+@test "deletion plan fixture is non-empty" {
   [ -s "$PLAN_FIXTURE" ]
 }
 
-@test "AC1: deletion plan frontmatter pins type to deletion-plan" {
+@test "deletion plan frontmatter pins type to deletion-plan" {
   run grep -E "^type: ['\"]deletion-plan['\"]" "$PLAN_FIXTURE"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: deletion plan frontmatter references ADR-049" {
+@test "deletion plan frontmatter references" {
   run grep -E "ADR-049" "$PLAN_FIXTURE"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: deletion plan frontmatter back-references story E29-S7" {
+@test "deletion plan frontmatter back-references story" {
   run grep -E "E29-S7" "$PLAN_FIXTURE"
   [ "$status" -eq 0 ]
 }
@@ -101,27 +101,27 @@ _have_workspace_artifact() {
 # AC2 — Inventory section enumerates V1-shaped checkpoints.
 # ---------------------------------------------------------------------------
 
-@test "AC2: plan contains an Inventory section" {
+@test "plan contains an Inventory section" {
   _grep_section "$PLAN_FIXTURE" "Inventory"
 }
 
-@test "AC2: inventory enumerates flat YAML checkpoints" {
+@test "inventory enumerates flat YAML checkpoints" {
   _grep_keyword "$PLAN_FIXTURE" "yaml"
 }
 
-@test "AC2: inventory enumerates flat MD checkpoints" {
+@test "inventory enumerates flat MD checkpoints" {
   _grep_keyword "$PLAN_FIXTURE" "\.md"
 }
 
-@test "AC2: inventory enumerates legacy JSON checkpoints" {
+@test "inventory enumerates legacy JSON checkpoints" {
   _grep_keyword "$PLAN_FIXTURE" "json"
 }
 
-@test "AC2: inventory enumerates the completed/ archive subtree" {
+@test "inventory enumerates the completed/ archive subtree" {
   _grep_keyword "$PLAN_FIXTURE" "completed/"
 }
 
-@test "AC2: inventory describes V1 schema markers" {
+@test "inventory describes V1 schema markers" {
   _grep_keyword "$PLAN_FIXTURE" "schema marker|workflow:|files_touched"
 }
 
@@ -129,19 +129,19 @@ _have_workspace_artifact() {
 # AC3 — Recommended sunset window dated relative to V1 sunset (ADR-049).
 # ---------------------------------------------------------------------------
 
-@test "AC3: plan declares a Recommended Sunset Window section" {
+@test "plan declares a Recommended Sunset Window section" {
   _grep_section "$PLAN_FIXTURE" "Recommended Sunset Window"
 }
 
-@test "AC3: sunset window references ADR-049 sunset date 2026-04-20" {
+@test "sunset window references sunset date 2026-04-20" {
   _grep_keyword "$PLAN_FIXTURE" "2026-04-20"
 }
 
-@test "AC3: sunset window declares a hard cutoff date" {
+@test "sunset window declares a hard cutoff date" {
   _grep_keyword "$PLAN_FIXTURE" "cutoff"
 }
 
-@test "AC3: sunset window includes a soak phase" {
+@test "sunset window includes a soak phase" {
   _grep_keyword "$PLAN_FIXTURE" "soak"
 }
 
@@ -149,19 +149,19 @@ _have_workspace_artifact() {
 # AC4 — Archive-vs-delete policy with one-sentence rationale per case.
 # ---------------------------------------------------------------------------
 
-@test "AC4: plan contains an Archive-vs-Delete Policy section" {
+@test "plan contains an Archive-vs-Delete Policy section" {
   _grep_section "$PLAN_FIXTURE" "Archive-vs-Delete Policy"
 }
 
-@test "AC4: policy enumerates the archive-then-delete case" {
+@test "policy enumerates the archive-then-delete case" {
   _grep_keyword "$PLAN_FIXTURE" "archive-then-delete|Archive-then-delete"
 }
 
-@test "AC4: policy enumerates the straight-delete case" {
+@test "policy enumerates the straight-delete case" {
   _grep_keyword "$PLAN_FIXTURE" "straight-delete|Straight-delete"
 }
 
-@test "AC4: policy includes a rationale column or paragraph" {
+@test "policy includes a rationale column or paragraph" {
   _grep_keyword "$PLAN_FIXTURE" "rationale"
 }
 
@@ -169,20 +169,20 @@ _have_workspace_artifact() {
 # AC5 — Coordination with /gaia-resume.
 # ---------------------------------------------------------------------------
 
-@test "AC5: plan contains a Coordination section for /gaia-resume" {
+@test "plan contains a Coordination section for /gaia-resume" {
   _grep_section "$PLAN_FIXTURE" "Coordination with"
   _grep_keyword "$PLAN_FIXTURE" "/gaia-resume"
 }
 
-@test "AC5: coordination section calls out the no-crash invariant" {
+@test "coordination section calls out the no-crash invariant" {
   _grep_keyword "$PLAN_FIXTURE" "no-crash|No-crash|crash"
 }
 
-@test "AC5: coordination section references no-active-workflows path" {
+@test "coordination section references no-active-workflows path" {
   _grep_keyword "$PLAN_FIXTURE" "No active workflows to resume|no-active-workflows"
 }
 
-@test "AC5: coordination section excludes V2 per-skill subdirectories from sweep" {
+@test "coordination section excludes V2 per-skill subdirectories from sweep" {
   _grep_keyword "$PLAN_FIXTURE" "per-skill|V2|ADR-059"
 }
 

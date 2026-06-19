@@ -18,34 +18,34 @@ teardown() { common_teardown; }
 
 # ---------- AC1: SKILL.md frontmatter ----------
 
-@test "AC1: SKILL.md exists" {
+@test "SKILL.md exists" {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "AC1: SKILL.md frontmatter contains name: gaia-dev-story" {
+@test "SKILL.md frontmatter contains name: gaia-dev-story" {
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"name: gaia-dev-story"* ]]
 }
 
-@test "AC1: SKILL.md frontmatter contains description" {
+@test "SKILL.md frontmatter contains description" {
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"description:"* ]]
 }
 
-@test "AC1: SKILL.md frontmatter contains argument-hint: [story-key]" {
+@test "SKILL.md frontmatter contains argument-hint: [story-key]" {
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"argument-hint:"* ]]
   [[ "$output" == *"story-key"* ]]
 }
 
-@test "AC1: SKILL.md frontmatter declares orchestration_class (post-ADR-093)" {
+@test "SKILL.md frontmatter declares orchestration_class (post-migration)" {
   # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
   # SKILL.md. gaia-dev-story is heavy-procedural.
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"orchestration_class: heavy-procedural"* ]]
 }
 
-@test "AC1: SKILL.md frontmatter contains allowed-tools with Read Write Edit Grep Glob Bash" {
+@test "SKILL.md frontmatter contains allowed-tools with Read Write Edit Grep Glob Bash" {
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"allowed-tools:"* ]]
   [[ "$output" == *"Read"* ]]
@@ -56,13 +56,13 @@ teardown() { common_teardown; }
   [[ "$output" == *"Bash"* ]]
 }
 
-@test "AC1: SKILL.md frontmatter contains PostToolUse hook with Edit|Write matcher" {
+@test "SKILL.md frontmatter contains PostToolUse hook with Edit|Write matcher" {
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"PostToolUse"* ]]
   [[ "$output" == *'matcher: "Edit|Write"'* ]]
 }
 
-@test "AC1: SKILL.md PostToolUse hook command invokes checkpoint.sh write gaia-dev-story" {
+@test "SKILL.md PostToolUse hook command invokes checkpoint.sh write gaia-dev-story" {
   run awk '/^---/{n++; next} n==1' "$SKILL_DIR/SKILL.md"
   [[ "$output" == *'checkpoint.sh write gaia-dev-story'* ]]
   # E92-S3: hook command MUST use ${CLAUDE_PLUGIN_ROOT} (substrate-supplied), not ${CLAUDE_SKILL_DIR} (silently empty).
@@ -72,44 +72,44 @@ teardown() { common_teardown; }
 
 # ---------- AC2: playbook.md reasoning only ----------
 
-@test "AC2: playbook.md exists" {
+@test "playbook.md exists" {
   [ -f "$SKILL_DIR/playbook.md" ]
 }
 
-@test "AC2: playbook.md contains zero shell commands" {
+@test "playbook.md contains zero shell commands" {
   run grep -ciE '^\s*(git |shasum |npm |bats |gh |cd |mkdir |chmod |cp |mv |rm )' "$SKILL_DIR/playbook.md"
   [ "$status" -ne 0 ] || [ "$output" = "0" ]
 }
 
-@test "AC2: playbook.md contains zero sprint-state transitions" {
+@test "playbook.md contains zero sprint-state transitions" {
   run grep -ciE 'sprint-state\.sh|update-story-status\.sh|status.*transition' "$SKILL_DIR/playbook.md"
   [ "$status" -ne 0 ] || [ "$output" = "0" ]
 }
 
-@test "AC2: playbook.md contains zero sha256 computations" {
+@test "playbook.md contains zero sha256 computations" {
   run grep -ci 'shasum' "$SKILL_DIR/playbook.md"
   [ "$status" -ne 0 ] || [ "$output" = "0" ]
 }
 
 # ---------- AC3: scripts directory completeness ----------
 
-@test "AC3: scripts/ directory exists" {
+@test "scripts/ directory exists" {
   [ -d "$SKILL_DIR/scripts" ]
 }
 
-@test "AC3: setup.sh exists and is executable" {
+@test "setup.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/setup.sh" ]
 }
 
-@test "AC3: finalize.sh exists and is executable" {
+@test "finalize.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/finalize.sh" ]
 }
 
-@test "AC3: load-story.sh exists and is executable" {
+@test "load-story.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/load-story.sh" ]
 }
 
-@test "AC3: SKILL.md references transition-story-status.sh directly (post E59-S2 wrapper migration)" {
+@test "SKILL.md references transition-story-status.sh directly (post wrapper migration)" {
   # Post-E59-S1 contract: gaia-dev-story SKILL.md must invoke
   # plugins/gaia/scripts/transition-story-status.sh directly, not the
   # update-story-status.sh deprecation wrapper. The wrapper is removed in E59-S3;
@@ -124,31 +124,31 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: git-branch.sh exists and is executable" {
+@test "git-branch.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/git-branch.sh" ]
 }
 
-@test "AC3: checkpoint.sh exists and is executable" {
+@test "checkpoint.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/checkpoint.sh" ]
 }
 
-@test "AC3: sprint-state.sh exists and is executable" {
+@test "sprint-state.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/sprint-state.sh" ]
 }
 
-@test "AC3: pr-create.sh exists and is executable" {
+@test "pr-create.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/pr-create.sh" ]
 }
 
-@test "AC3: ci-wait.sh exists and is executable" {
+@test "ci-wait.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/ci-wait.sh" ]
 }
 
-@test "AC3: merge.sh exists and is executable" {
+@test "merge.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/merge.sh" ]
 }
 
-@test "AC3: all scripts are POSIX-safe (no bashisms beyond [[ ]] and arrays)" {
+@test "all scripts are POSIX-safe (no bashisms beyond [] and arrays)" {
   for script in "$SKILL_DIR"/scripts/*.sh; do
     # Check that each script starts with bash shebang (allowing [[ ]] per GAIA convention)
     run head -1 "$script"
@@ -158,7 +158,7 @@ teardown() { common_teardown; }
 
 # ---------- AC4: PostToolUse checkpoint hook ----------
 
-@test "AC4: checkpoint.sh write creates checkpoint file" {
+@test "checkpoint.sh write creates checkpoint file" {
   export CLAUDE_SKILL_DIR="$SKILL_DIR"
   run "$SKILL_DIR/scripts/checkpoint.sh" write gaia-dev-story
   [ "$status" -eq 0 ]
@@ -168,7 +168,7 @@ teardown() { common_teardown; }
   [ "$count" -gt 0 ]
 }
 
-@test "AC4: checkpoint file is non-empty" {
+@test "checkpoint file is non-empty" {
   export CLAUDE_SKILL_DIR="$SKILL_DIR"
   "$SKILL_DIR/scripts/checkpoint.sh" write gaia-dev-story
   local f
@@ -176,7 +176,7 @@ teardown() { common_teardown; }
   [ -s "$f" ]
 }
 
-@test "AC4: checkpoint file contains workflow name gaia-dev-story" {
+@test "checkpoint file contains workflow name gaia-dev-story" {
   export CLAUDE_SKILL_DIR="$SKILL_DIR"
   "$SKILL_DIR/scripts/checkpoint.sh" write gaia-dev-story
   local f
@@ -187,7 +187,7 @@ teardown() { common_teardown; }
 
 # ---------- AC7: frontmatter linter ----------
 
-@test "AC7: frontmatter linter passes on SKILL.md" {
+@test "frontmatter linter passes on SKILL.md" {
   cd "$BATS_TEST_DIRNAME/../../.."
   run .github/scripts/lint-skill-frontmatter.sh
   [ "$status" -eq 0 ]
@@ -195,7 +195,7 @@ teardown() { common_teardown; }
 
 # ---------- AC-EC1: missing checkpoint.sh ----------
 
-@test "AC-EC1: missing checkpoint.sh logs error and exits non-zero" {
+@test "missing checkpoint.sh logs error and exits non-zero" {
   local tmp_skill="$TEST_TMP/fake-skill/scripts"
   mkdir -p "$tmp_skill"
   # Create a minimal checkpoint.sh that delegates to missing shared script
@@ -218,7 +218,7 @@ SCRIPT
 
 # ---------- AC-EC3: zero file modifications ----------
 
-@test "AC-EC3: no PostToolUse checkpoints when no Edit/Write occurs" {
+@test "no PostToolUse checkpoints when no Edit/Write occurs" {
   # When no Edit/Write happens, the PostToolUse hook does not fire.
   # Only finalize.sh writes a terminal checkpoint.
   # This test verifies checkpoint.sh is not invoked without arguments.
@@ -233,7 +233,7 @@ SCRIPT
 
 # ---------- AC-EC9: missing CLAUDE_SKILL_DIR ----------
 
-@test "AC-EC9: checkpoint.sh warns when CLAUDE_SKILL_DIR is unset" {
+@test "checkpoint.sh warns when CLAUDE_SKILL_DIR is unset" {
   unset CLAUDE_SKILL_DIR
   export CHECKPOINT_PATH="$TEST_TMP/_memory/checkpoints"
   run "$SKILL_DIR/scripts/checkpoint.sh" write gaia-dev-story
@@ -244,7 +244,7 @@ SCRIPT
 
 # ---------- AC-EC2: atomic checkpoint writes ----------
 
-@test "AC-EC2: checkpoint.sh uses atomic write (temp + rename)" {
+@test "checkpoint.sh uses atomic write (temp + rename)" {
   # Verify the script contains temp file + rename pattern
   run grep -cE 'mv |rename|tmp|\.tmp' "$SKILL_DIR/scripts/checkpoint.sh"
   [ "$status" -eq 0 ]
@@ -253,7 +253,7 @@ SCRIPT
 
 # ---------- AC-EC4: git branch collision detection ----------
 
-@test "AC-EC4: git-branch.sh detects existing branch and does not force-overwrite" {
+@test "git-branch.sh detects existing branch and does not force-overwrite" {
   cd "$TEST_TMP"
   git init -q test-repo && cd test-repo
   # Set a repo-scoped identity so CI runners without a global user.email

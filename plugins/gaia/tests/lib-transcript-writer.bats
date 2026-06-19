@@ -12,24 +12,24 @@ teardown() {
   rm -rf "$TMPDIR_TEST"
 }
 
-@test "TC-TW-1: helper exists at canonical path" {
+@test "helper exists at canonical path" {
   [ -f "$HELPER" ]
 }
 
-@test "TC-TW-2: helper exports the 3 required functions when sourced" {
+@test "helper exports the 3 required functions when sourced" {
   source "$HELPER"
   type write_transcript >/dev/null 2>&1
   type transcript_path_for >/dev/null 2>&1
   type assert_gitignored >/dev/null 2>&1
 }
 
-@test "TC-TW-3: transcript_path_for emits canonical path under .gaia/memory/checkpoints/" {
+@test "transcript_path_for emits canonical path under .gaia/memory/checkpoints/" {
   source "$HELPER"
   out=$(transcript_path_for "sprint-47" "node")
   echo "$out" | grep -q ".gaia/memory/checkpoints/sprint-review-sprint-47/node.log"
 }
 
-@test "TC-TW-4: write_transcript creates file with mode 0600" {
+@test "write_transcript creates file with mode 0600" {
   source "$HELPER"
   fpath="$TMPDIR_TEST/test-transcript.log"
   printf "hello\n" | write_transcript "$fpath"
@@ -43,7 +43,7 @@ teardown() {
   [ "$mode" = "600" ]
 }
 
-@test "TC-TW-5: write_transcript writes stdin content to file" {
+@test "write_transcript writes stdin content to file" {
   source "$HELPER"
   fpath="$TMPDIR_TEST/test-transcript.log"
   printf "line-one\nline-two\n" | write_transcript "$fpath"
@@ -51,7 +51,7 @@ teardown() {
   grep -q "line-two" "$fpath"
 }
 
-@test "TC-TW-6: assert_gitignored passes when pattern is covered" {
+@test "assert_gitignored passes when pattern is covered" {
   source "$HELPER"
   cd "$TMPDIR_TEST"
   cat >.gitignore <<'EOF'
@@ -60,7 +60,7 @@ EOF
   assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
 }
 
-@test "TC-TW-7: assert_gitignored HALTs when pattern is missing" {
+@test "assert_gitignored HALTs when pattern is missing" {
   source "$HELPER"
   cd "$TMPDIR_TEST"
   echo "# empty" >.gitignore
@@ -69,7 +69,7 @@ EOF
   echo "$output" | grep -qi "HALT" || echo "$output" | grep -qi "gitignore"
 }
 
-@test "TC-TW-8: assert_gitignored HALT message names the required pattern (SR-65)" {
+@test "assert_gitignored HALT message names the required pattern" {
   source "$HELPER"
   cd "$TMPDIR_TEST"
   echo "" >.gitignore

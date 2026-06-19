@@ -28,11 +28,11 @@ teardown() { common_teardown; }
 # AC1 — SKILL.md structure (TC-DEJ-PHASE-01, TC-DEJ-DET-01)
 # ----------------------------------------------------------------------
 
-@test "AC1 (a): unifying principle present verbatim at top of SKILL.md" {
+@test "a): unifying principle present verbatim at top of SKILL.md" {
   grep -F 'Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.' "$SKILL_FILE"
 }
 
-@test "AC1 (b): seven phase headers present in canonical order" {
+@test "b): seven phase headers present in canonical order" {
   # Extract H2/H3 headers in document order; assert phases appear in order.
   local got
   got="$(grep -nE '^### |^## ' "$SKILL_FILE" || true)"
@@ -48,13 +48,13 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC1 (c): determinism settings (temperature 0, model claude-opus-4-7, prompt_hash) declared in body" {
+@test "c): determinism settings (temperature 0, model claude-opus-4-7, prompt_hash) declared in body" {
   grep -F 'temperature: 0' "$SKILL_FILE"
   grep -F 'claude-opus-4-7' "$SKILL_FILE"
   grep -F 'prompt_hash' "$SKILL_FILE"
 }
 
-@test "AC1 (d): allowed-tools frontmatter is exactly [Read, Grep, Glob, Bash]" {
+@test "d): allowed-tools frontmatter is exactly [Read, Grep, Glob, Bash]" {
   local line
   line="$(grep -E '^allowed-tools:' "$SKILL_FILE")"
   [[ "$line" == *Read* ]]
@@ -66,13 +66,13 @@ teardown() { common_teardown; }
   [[ "$line" != *Edit* ]]
 }
 
-@test "AC1 (e): per-skill stack-toolkit table present with all 7 canonical stacks" {
+@test "e): per-skill stack-toolkit table present with all 7 canonical stacks" {
   for s in ts-dev java-dev python-dev go-dev flutter-dev mobile-dev angular-dev; do
     grep -F "$s" "$SKILL_FILE" >/dev/null || { echo "missing stack: $s" >&2; return 1; }
   done
 }
 
-@test "AC1 (e): severity rubric has >=2 examples per tier (Critical, Warning, Suggestion)" {
+@test "e): severity rubric has >=2 examples per tier (Critical, Warning, Suggestion)" {
   # Extract Critical/Warning/Suggestion sections; each must have >=2 list items.
   # Heuristic: between '### Critical' and the next '### ' header, count `- ` list items.
   count_examples() {
@@ -97,7 +97,7 @@ teardown() { common_teardown; }
 # AC2 — Phase 3A toolkit scope strict (TC-DEJ-TOOLKIT-01)
 # ----------------------------------------------------------------------
 
-@test "AC2: Phase 3A toolkit excludes Semgrep, secret scan, dep audit, test execution" {
+@test "Phase 3A toolkit excludes Semgrep, secret scan, dep audit, test execution" {
   # The migrated SKILL.md MUST NOT prescribe Semgrep / gitleaks / npm-audit /
   # test-runner invocations in Phase 3A. Phase 3A scope = linter, formatter,
   # per-file rules, type checker, build verification ONLY.
@@ -121,7 +121,7 @@ teardown() { common_teardown; }
 # AC3 — LLM-cannot-override (TC-DEJ-OVERRIDE-1)
 # ----------------------------------------------------------------------
 
-@test "AC3: tsc-error fixture + synthetic LLM=APPROVE => verdict resolver emits REQUEST_CHANGES" {
+@test "tsc-error fixture + synthetic LLM=APPROVE => verdict resolver emits REQUEST_CHANGES" {
   local fix="$FIX_DIR/tsc-error"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   run "$RESOLVER" --analysis-results "$fix/analysis-results.json" --llm-findings "$fix/llm-findings.json"
@@ -133,7 +133,7 @@ teardown() { common_teardown; }
 # AC4 — eslint-crash → BLOCKED (TC-DEJ-TOOLKIT-03)
 # ----------------------------------------------------------------------
 
-@test "AC4: eslint-crash fixture (status=errored) => verdict BLOCKED" {
+@test "eslint-crash fixture (status=errored) => verdict BLOCKED" {
   local fix="$FIX_DIR/eslint-crash"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   run "$RESOLVER" --analysis-results "$fix/analysis-results.json" --llm-findings "$fix/llm-findings.json"
@@ -145,7 +145,7 @@ teardown() { common_teardown; }
 # AC5 — Python-only skip (TC-DEJ-TOOLKIT-02)
 # ----------------------------------------------------------------------
 
-@test "AC5: python-only-repo fixture records tsc skipped + skip_reason verbatim" {
+@test "python-only-repo fixture records tsc skipped + skip_reason verbatim" {
   local fix="$FIX_DIR/python-only-repo"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   # The fixture's analysis-results.json MUST contain tsc with status=skipped
@@ -168,7 +168,7 @@ teardown() { common_teardown; }
 # AC6 — end-to-end persist + fork allowlist (TC-DEJ-WRITE-1, TC-DEJ-WRITE-02)
 # ----------------------------------------------------------------------
 
-@test "AC6 (b): SKILL.md frontmatter declares allowed-tools without Write/Edit" {
+@test "b): SKILL.md frontmatter declares allowed-tools without Write/Edit" {
   # Same as AC1(d) — repeated per acceptance criterion mapping.
   local line
   line="$(grep -E '^allowed-tools:' "$SKILL_FILE")"
@@ -176,7 +176,7 @@ teardown() { common_teardown; }
   [[ "$line" != *Edit* ]]
 }
 
-@test "AC6 (a): SKILL.md prescribes parent-mediated write to FR-402 path (canonical post-AF-21-23)" {
+@test "a): SKILL.md prescribes parent-mediated write to path" {
   # The output phase MUST mention the FR-402 locked path code-review-E<NN>-S<NNN>.md.
   grep -F 'code-review-' "$SKILL_FILE" >/dev/null
   # AF-2026-05-21-23 canonicalized this path. Accept canonical or legacy.
@@ -185,7 +185,7 @@ teardown() { common_teardown; }
   grep -iF 'parent' "$SKILL_FILE" >/dev/null
 }
 
-@test "AC6: end-to-end-real-story fixture has expected report shape" {
+@test "end-to-end-real-story fixture has expected report shape" {
   local fix="$FIX_DIR/end-to-end-real-story"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   # Expected report contains both top-level sections + verdict line.
@@ -215,35 +215,35 @@ compute_cache_key() {
     | shasum -a 256 | awk '{print $1}'
 }
 
-@test "AC7: cache key is stable across identical inputs" {
+@test "cache key is stable across identical inputs" {
   local k1 k2
   k1="$(compute_cache_key "src/a.ts" "src/a.ts:abc" "cfg-blob" "eslint:9.0.0" "resolved-rules")"
   k2="$(compute_cache_key "src/a.ts" "src/a.ts:abc" "cfg-blob" "eslint:9.0.0" "resolved-rules")"
   [ "$k1" = "$k2" ]
 }
 
-@test "AC-EC1: cache key changes when resolved-config changes (extended-config bump)" {
+@test "cache key changes when resolved-config changes (extended-config bump)" {
   local k1 k2
   k1="$(compute_cache_key "src/a.ts" "src/a.ts:abc" "cfg-blob" "eslint:9.0.0" "resolved-rules-v1")"
   k2="$(compute_cache_key "src/a.ts" "src/a.ts:abc" "cfg-blob" "eslint:9.0.0" "resolved-rules-v2")"
   [ "$k1" != "$k2" ]
 }
 
-@test "AC-EC3: cache key changes when file_hashes diverge from on-disk" {
+@test "cache key changes when file_hashes diverge from on-disk" {
   local k1 k2
   k1="$(compute_cache_key "src/a.ts" "src/a.ts:abc" "cfg-blob" "eslint:9.0.0" "resolved")"
   k2="$(compute_cache_key "src/a.ts" "src/a.ts:def" "cfg-blob" "eslint:9.0.0" "resolved")"
   [ "$k1" != "$k2" ]
 }
 
-@test "AC-EC13: cache key changes when tool_versions changes" {
+@test "cache key changes when tool_versions changes" {
   local k1 k2
   k1="$(compute_cache_key "src/a.ts" "src/a.ts:abc" "cfg-blob" "eslint:9.0.0" "resolved")"
   k2="$(compute_cache_key "src/a.ts" "src/a.ts:abc" "cfg-blob" "eslint:9.1.0" "resolved")"
   [ "$k1" != "$k2" ]
 }
 
-@test "AC7: cache-hit fixture has analysis-results.json that validates against schema" {
+@test "cache-hit fixture has analysis-results.json that validates against schema" {
   local fix="$FIX_DIR/cache-hit"
   [ -d "$fix" ] || { echo "fixture missing: $fix" >&2; return 1; }
   # JSON parses
@@ -260,7 +260,7 @@ compute_cache_key() {
 # AC8 — parity bats (TC-DEJ-PARITY-01)
 # ----------------------------------------------------------------------
 
-@test "AC8: gaia-code-review SKILL.md is registered in evidence-judgment-parity.bats REVIEW_SKILLS" {
+@test "gaia-code-review SKILL.md is registered in evidence-judgment-parity.bats REVIEW_SKILLS" {
   grep -E 'REVIEW_SKILLS=.*gaia-code-review' "$PARITY_BATS" >/dev/null \
     || grep -F 'skills/gaia-code-review/SKILL.md' "$PARITY_BATS" >/dev/null
 }
@@ -269,7 +269,7 @@ compute_cache_key() {
 # AC-EC2 — File List references missing file → warning, no crash
 # ----------------------------------------------------------------------
 
-@test "AC-EC2: file-list-diff-check.sh handles missing-file gracefully (no crash)" {
+@test "file-list-diff-check.sh handles missing-file gracefully (no crash)" {
   # Build a minimal story and call the script — it must not crash.
   local story="$TEST_TMP/story.md"
   cat > "$story" <<'EOF'
@@ -294,7 +294,7 @@ EOF
 # AC-EC5 — same-story parallel safe (mkdir -p idempotent)
 # ----------------------------------------------------------------------
 
-@test "AC-EC5: per-PID temp + atomic rename pattern documented in SKILL.md" {
+@test "per-PID temp + atomic rename pattern documented in SKILL.md" {
   # Surface the documented pattern: per-PID temp + atomic rename, OR flock.
   grep -iE '(per-PID|atomic rename|mkdir -p)' "$SKILL_FILE" >/dev/null
 }
@@ -303,7 +303,7 @@ EOF
 # AC-EC6 — failed vs errored distinction
 # ----------------------------------------------------------------------
 
-@test "AC-EC6: status=failed (findings) maps to REQUEST_CHANGES" {
+@test "status=failed (findings) maps to REQUEST_CHANGES" {
   local results="$TEST_TMP/results.json"
   cat > "$results" <<'EOF'
 {
@@ -325,7 +325,7 @@ EOF
   [ "$output" = "REQUEST_CHANGES" ]
 }
 
-@test "AC-EC6: status=errored (crash) maps to BLOCKED" {
+@test "status=errored (crash) maps to BLOCKED" {
   local results="$TEST_TMP/results.json"
   cat > "$results" <<'EOF'
 {
@@ -351,7 +351,7 @@ EOF
 # AC-EC7 — File-List-driven skip (not tsconfig-driven)
 # ----------------------------------------------------------------------
 
-@test "AC-EC7: SKILL.md documents File-List-driven tsc skip decision (not tsconfig-driven)" {
+@test "SKILL.md documents File-List-driven tsc skip decision (not tsconfig-driven)" {
   # The SKILL.md Phase 3A MUST document that skip decision uses File List, not project root tsconfig.
   grep -iF 'File List' "$SKILL_FILE" >/dev/null
   # Documented exact skip_reason string
@@ -362,7 +362,7 @@ EOF
 # AC-EC8 — re-run-different-verdict overwrites
 # ----------------------------------------------------------------------
 
-@test "AC-EC8: SKILL.md prescribes overwrite-not-append for review file persistence" {
+@test "SKILL.md prescribes overwrite-not-append for review file persistence" {
   # The output phase MUST say latest verdict overwrites; no version-suffix.
   grep -iE '(overwrite|latest verdict wins|replace)' "$SKILL_FILE" >/dev/null
 }
@@ -371,12 +371,12 @@ EOF
 # AC-EC9 — malformed fork payload → BLOCKED + [INCOMPLETE]
 # ----------------------------------------------------------------------
 
-@test "AC-EC9: SKILL.md prescribes payload validation + INCOMPLETE marker on malformed fork output" {
+@test "SKILL.md prescribes payload validation + INCOMPLETE marker on malformed fork output" {
   grep -F '[INCOMPLETE]' "$SKILL_FILE" >/dev/null
   grep -iF 'malformed' "$SKILL_FILE" >/dev/null
 }
 
-@test "AC-EC9: malformed analysis-results (missing schema_version) → BLOCKED" {
+@test "malformed analysis-results (missing schema_version) → BLOCKED" {
   local results="$TEST_TMP/results.json"
   echo '{"checks": []}' > "$results"   # no schema_version
   local llm="$TEST_TMP/llm.json"
@@ -394,7 +394,7 @@ EOF
 # AC-EC10 — fork allowlist regression guard (covered by parity bats)
 # ----------------------------------------------------------------------
 
-@test "AC-EC10: parity bats assert_allowed_tools_allowlist would catch Write addition" {
+@test "parity bats assert_allowed_tools_allowlist would catch Write addition" {
   # Build a synthetic SKILL.md with Edit added; the assertion must reject it.
   local synthetic="$TEST_TMP/SKILL.md"
   cat > "$synthetic" <<'EOF'
@@ -417,7 +417,7 @@ EOF
 # AC-EC11 — determinism category+severity (textual variation OK)
 # ----------------------------------------------------------------------
 
-@test "AC-EC11: SKILL.md documents determinism contract (category+severity match, text may vary)" {
+@test "SKILL.md documents determinism contract (category+severity match, text may vary)" {
   # The SKILL.md MUST surface the NFR-DEJ-2 determinism contract.
   grep -iE '(category.*severity|severity.*category)' "$SKILL_FILE" >/dev/null
   grep -iF 'temperature' "$SKILL_FILE" >/dev/null
@@ -427,7 +427,7 @@ EOF
 # AC-EC12 — partial findings + crash → BLOCKED still wins
 # ----------------------------------------------------------------------
 
-@test "AC-EC12: status=errored with partial findings still maps to BLOCKED" {
+@test "status=errored with partial findings still maps to BLOCKED" {
   local results="$TEST_TMP/results.json"
   cat > "$results" <<'EOF'
 {
@@ -454,7 +454,7 @@ EOF
 # AC-EC14 — stack-key vocabulary consistency
 # ----------------------------------------------------------------------
 
-@test "AC-EC14: SKILL.md toolkit table uses canonical stack names emitted by load-stack-persona.sh" {
+@test "SKILL.md toolkit table uses canonical stack names emitted by load-stack-persona.sh" {
   # The canonical names emitted by load-stack-persona.sh's canonical_to_filename
   # function. Each MUST appear in SKILL.md.
   for canonical in ts-dev java-dev python-dev go-dev flutter-dev mobile-dev angular-dev; do

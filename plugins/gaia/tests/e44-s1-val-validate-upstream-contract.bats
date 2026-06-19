@@ -34,24 +34,24 @@ teardown() { common_teardown; }
 # AC1 — Section anchors present
 # ---------------------------------------------------------------------------
 
-@test "AC1: SKILL.md exists and is readable" {
+@test "SKILL.md exists and is readable" {
   [ -f "$SKILL" ]
   [ -r "$SKILL" ]
 }
 
-@test "AC1: SKILL.md contains '## Upstream Integration Contract' anchor" {
+@test "SKILL.md contains '## Upstream Integration Contract' anchor" {
   grep -q '^## Upstream Integration Contract' "$SKILL"
 }
 
-@test "AC1: SKILL.md documents Invocation Method subsection" {
+@test "SKILL.md documents Invocation Method subsection" {
   grep -q 'Invocation Method' "$SKILL"
 }
 
-@test "AC1: SKILL.md documents Required Parameters subsection" {
+@test "SKILL.md documents Required Parameters subsection" {
   grep -q 'Required Parameters' "$SKILL"
 }
 
-@test "AC1: SKILL.md documents Response Schema subsection" {
+@test "SKILL.md documents Response Schema subsection" {
   grep -q 'Response Schema' "$SKILL"
 }
 
@@ -59,11 +59,11 @@ teardown() { common_teardown; }
 # AC1 — Required parameter names present
 # ---------------------------------------------------------------------------
 
-@test "AC1: SKILL.md mentions artifact_path parameter" {
+@test "SKILL.md mentions artifact_path parameter" {
   grep -q 'artifact_path' "$SKILL"
 }
 
-@test "AC1: SKILL.md mentions artifact_type parameter" {
+@test "SKILL.md mentions artifact_type parameter" {
   grep -q 'artifact_type' "$SKILL"
 }
 
@@ -71,19 +71,19 @@ teardown() { common_teardown; }
 # AC1 — Response schema fields present
 # ---------------------------------------------------------------------------
 
-@test "AC1: SKILL.md documents 'severity' response field" {
+@test "SKILL.md documents 'severity' response field" {
   grep -q 'severity' "$SKILL"
 }
 
-@test "AC1: SKILL.md documents 'description' response field" {
+@test "SKILL.md documents 'description' response field" {
   grep -q 'description' "$SKILL"
 }
 
-@test "AC1: SKILL.md documents 'location' response field" {
+@test "SKILL.md documents 'location' response field" {
   grep -q 'location' "$SKILL"
 }
 
-@test "AC1: SKILL.md lists CRITICAL, WARNING, INFO severity levels" {
+@test "SKILL.md lists CRITICAL, WARNING, INFO severity levels" {
   grep -q 'CRITICAL' "$SKILL"
   grep -q 'WARNING' "$SKILL"
   grep -q 'INFO' "$SKILL"
@@ -93,15 +93,15 @@ teardown() { common_teardown; }
 # AC1 — Iterative re-invocation semantics documented
 # ---------------------------------------------------------------------------
 
-@test "AC1/AC2: SKILL.md documents iterative re-invocation semantics" {
+@test "SKILL.md documents iterative re-invocation semantics" {
   grep -q -E 'Iterative Re-?Invocation' "$SKILL"
 }
 
-@test "AC2: SKILL.md states Val re-reads artifact from disk per invocation" {
+@test "SKILL.md states Val re-reads artifact from disk per invocation" {
   grep -q -E -i 're-?read' "$SKILL"
 }
 
-@test "AC2: SKILL.md states Val MUST NOT cache findings across invocations" {
+@test "SKILL.md states Val MUST NOT cache findings across invocations" {
   grep -q -i 'cache' "$SKILL"
 }
 
@@ -109,20 +109,20 @@ teardown() { common_teardown; }
 # AC4 — Deprecation callout + cross-references present
 # ---------------------------------------------------------------------------
 
-@test "AC4: SKILL.md contains a Deprecated callout" {
+@test "SKILL.md contains a Deprecated callout" {
   grep -q -E '^> \*\*Deprecated:?\*\*' "$SKILL"
 }
 
-@test "AC4: SKILL.md flags val_validate_output: true as deprecated" {
+@test "SKILL.md flags val_validate_output: true as deprecated" {
   grep -q 'val_validate_output' "$SKILL"
 }
 
-@test "AC4: SKILL.md documents the auto-fix-loop contract" {
+@test "SKILL.md documents the auto-fix-loop contract" {
   # Assert the contract, not an internal identifier (scrubbed from published source).
   grep -qiE '3-iteration|auto-fix loop' "$SKILL"
 }
 
-@test "AC4: SKILL.md documents that val_validate_output is superseded by direct-invocation" {
+@test "SKILL.md documents that val_validate_output is superseded by direct-invocation" {
   grep -q 'superseded' "$SKILL"
 }
 
@@ -130,7 +130,7 @@ teardown() { common_teardown; }
 # AC1 — Canonical JSON example present (one per severity level)
 # ---------------------------------------------------------------------------
 
-@test "AC1: SKILL.md contains a JSON example of the response schema" {
+@test "SKILL.md contains a JSON example of the response schema" {
   # Look for fenced json block plus a findings array marker
   grep -q '```json' "$SKILL"
   grep -q '"findings"' "$SKILL"

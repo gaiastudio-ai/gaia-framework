@@ -255,7 +255,7 @@ MOCK
 # them as covered.
 
 # mock_verdict_for_index — exercised by every MOCK_VERDICTS run.
-@test "E58-S5 mock_verdict_for_index: PASS token returns PASSED verdict" {
+@test "mock_verdict_for_index: PASS token returns PASSED verdict" {
   seed_story "E99-S1"
   export MOCK_MODE=true
   export MOCK_VERDICTS="PASS,PASS,PASS,PASS,PASS,PASS"
@@ -268,7 +268,7 @@ MOCK
 }
 
 # assert_mock_verdicts_when_mock_mode — guard fires before any iteration.
-@test "E58-S5 assert_mock_verdicts_when_mock_mode: missing MOCK_VERDICTS exits non-zero" {
+@test "assert_mock_verdicts_when_mock_mode: missing MOCK_VERDICTS exits non-zero" {
   seed_story "E99-S1"
   unset MOCK_VERDICTS
   export MOCK_MODE=true
@@ -279,7 +279,7 @@ MOCK
 
 # run_skip_check + is_skipped — when REVIEW_SKIP_CHECK_SCRIPT skips a reviewer,
 # the loop skips it and emits no gate row for that reviewer in the log.
-@test "E58-S5 run_skip_check + is_skipped: skipped reviewers are omitted from the loop" {
+@test "run_skip_check + is_skipped: skipped reviewers are omitted from the loop" {
   seed_story "E99-S1"
   local stub_dir="$TEST_TMP/orch-stubs"
   mkdir -p "$stub_dir"
@@ -303,7 +303,7 @@ MOCK
 }
 
 # run_summary_gen — soft-dep call site. Stub returns 0 so no warning fires.
-@test "E58-S5 run_summary_gen: stub is invoked after the per-reviewer loop" {
+@test "run_summary_gen: stub is invoked after the per-reviewer loop" {
   seed_story "E99-S1"
   local stub_dir="$TEST_TMP/orch-stubs"
   mkdir -p "$stub_dir"
@@ -323,7 +323,7 @@ MOCK
 }
 
 # run_nudge — soft-dep call site. Stub returns 0 so no warning fires.
-@test "E58-S5 run_nudge: stub is invoked after summary-gen" {
+@test "run_nudge: stub is invoked after summary-gen" {
   seed_story "E99-S1"
   local stub_dir="$TEST_TMP/orch-stubs"
   mkdir -p "$stub_dir"
@@ -344,7 +344,7 @@ MOCK
 
 # resolve_soft_dep_script — exercised twice above (run_summary_gen + run_nudge);
 # this test names the helper explicitly to satisfy the coverage gate.
-@test "E58-S5 resolve_soft_dep_script: returns empty for unconfigured soft-dep" {
+@test "resolve_soft_dep_script: returns empty for unconfigured soft-dep" {
   seed_story "E99-S1"
   unset REVIEW_SUMMARY_GEN_SCRIPT REVIEW_NUDGE_SCRIPT REVIEW_RUNNER_USE_SUMMARY_GEN REVIEW_RUNNER_USE_NUDGE
   export MOCK_MODE=true

@@ -44,7 +44,7 @@ EOF
 }
 
 # TC-STCL-3 — extractor emits ONLY frontmatter + Findings, never the body.
-@test "TC-STCL-3: extractor emits frontmatter + Findings only, never the story body" {
+@test "extractor emits frontmatter + Findings only, never the story body" {
   local f="$TMP/E39-S99-x/story.md"
   _make_story "$f" "E39-S99" "sprint-99" \
     "| 1 | tech-debt | medium | refactor the widget | create story |"
@@ -59,7 +59,7 @@ EOF
 }
 
 # Extractor: a story with no ## Findings section emits no finding rows (clean).
-@test "TC-STCL-3b: extractor handles a story with no Findings section" {
+@test "extractor handles a story with no Findings section" {
   local f="$TMP/E39-S98-y/story.md"
   mkdir -p "$(dirname "$f")"
   cat > "$f" <<'EOF'
@@ -82,7 +82,7 @@ EOF
 
 # Extractor resolves the story key from the per-story directory name when the
 # basename is story.md (new canonical layout).
-@test "TC-STCL-3c: extractor resolves key from per-story dir when basename is story.md" {
+@test "extractor resolves key from per-story dir when basename is story.md" {
   local f="$TMP/E39-S97-from-dir/story.md"
   _make_story "$f" "" "sprint-97" \
     "| 1 | tech-debt | low | tidy imports | dismiss |"
@@ -92,7 +92,64 @@ EOF
 }
 
 # Missing-file guard: a non-existent path errors cleanly (non-zero), no crash.
-@test "TC-STCL-3d: extractor errors cleanly on a missing file" {
+@test "extractor errors cleanly on a missing file" {
   run "$EXTRACT" --story-file "$TMP/does-not-exist.md"
   [ "$status" -ne 0 ]
+}
+
+# ---------- Marker-exclusion idempotency tests ----------
+
+# A tech-debt finding marked [TRIAGED] must not be emitted.
+@test "triaged tech-debt finding is excluded from output" {
+  local f="$TMP/E39-S80-triaged-td/story.md"
+  _make_story "$f" "E39-S80" "sprint-80" \
+    "| 1 | tech-debt | medium | refactor the widget [TRIAGED] | create story |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"refactor the widget"* ]]
+}
+
+# A tech-debt finding marked [DISMISSED] must not be emitted.
+@test "dismissed tech-debt finding is excluded from output" {
+  local f="$TMP/E39-S81-dismissed-td/story.md"
+  _make_story "$f" "E39-S81" "sprint-81" \
+    "| 1 | tech-debt | low | dead code path [DISMISSED] | dismiss |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"dead code path"* ]]
+}
+
+# Regression guard: a bug finding marked [TRIAGED] is still excluded (existing behaviour).
+@test "triaged bug finding is excluded from output" {
+  local f="$TMP/E39-S82-triaged-bug/story.md"
+  _make_story "$f" "E39-S82" "sprint-82" \
+    "| 1 | bug | medium | null pointer on empty input [TRIAGED] | fix |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"null pointer on empty input"* ]]
+}
+
+# An unmarked tech-debt finding must still be emitted normally.
+@test "unmarked tech-debt finding is emitted" {
+  local f="$TMP/E39-S83-unmarked-td/story.md"
+  _make_story "$f" "E39-S83" "sprint-83" \
+    "| 1 | tech-debt | medium | consolidate helper functions | create story |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"consolidate helper functions"* ]]
+}
+
+# Idempotency: running the extractor twice on the same file produces identical output.
+@test "double run on file with marked rows yields identical output" {
+  local f="$TMP/E39-S84-idempotent/story.md"
+  _make_story "$f" "E39-S84" "sprint-84" \
+    "| 1 | tech-debt | medium | stale import [TRIAGED] | create story |
+| 2 | tech-debt | low | unused variable | create story |
+| 3 | bug | medium | off-by-one [DISMISSED] | fix |"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  local first="$output"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "$first" = "$output" ]
 }

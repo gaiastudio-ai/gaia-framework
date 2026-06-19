@@ -39,34 +39,34 @@ teardown() { common_teardown; }
 
 # ---------- AC3 / AC6: SKILL.md wiring ----------
 
-@test "AC3-1: SKILL.md argument-hint advertises [--auto-file?]" {
+@test "1: SKILL.md argument-hint advertises [--auto-file?]" {
   run grep -F 'argument-hint: "[sprint-id?] [--auto-file?]"' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC3-2: SKILL.md introduces Step 5b auto-file branch" {
+@test "2: SKILL.md introduces Step 5b auto-file branch" {
   run grep -F '#### Step 5b --- Optional auto-file pass (opt-in via `--auto-file`)' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC3-3: SKILL.md Step 5b documents the AC-EC7 invariant (auto-file does NOT bypass gate)" {
+@test "3: SKILL.md Step 5b documents the AC-EC7 invariant (auto-file does NOT bypass gate)" {
   run grep -F 'auto-spawn the gate' "$SKILL_MD"
   [ "$status" -eq 0 ]
   run grep -F 'NOT' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC3-4: SKILL.md Step 5b enumerates the eligible types per the design note" {
+@test "4: SKILL.md Step 5b enumerates the eligible types per the design note" {
   run grep -F '`feature`, `new-story`, `bug`, `enhancement`, `automation`' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC6-1: SKILL.md Changelog row references E92-S5 / AI-84 / AI-RETRO-S46-3" {
+@test "1: SKILL.md Changelog row references / /" {
   run grep -F 'Opt-in `--auto-file` flag for retro action items' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC6-2: SKILL.md ## Refs section names the design note (canonical post-AF-21-21)" {
+@test "2: SKILL.md ## Refs section names the design note" {
   # AF-2026-05-21-21 canonicalized this path. Accept canonical or legacy.
   run grep -E '(docs|\.gaia/artifacts)/planning-artifacts/retro-auto-file-design\.md' "$SKILL_MD"
   [ "$status" -eq 0 ]
@@ -74,12 +74,12 @@ teardown() { common_teardown; }
 
 # ---------- AC1: Design note delivered ----------
 
-@test "AC1-1: design note exists at the canonical path" {
+@test "1: design note exists at the canonical path" {
   [ -f "$DESIGN_NOTE" ] || skip "design note path resolves only with the parent project checked out (CI sees plugin-only)"
   [ -f "$DESIGN_NOTE" ]
 }
 
-@test "AC1-2: design note documents eligibility rubric (11 v2 types mapped)" {
+@test "2: design note documents eligibility rubric (11 v2 types mapped)" {
   [ -f "$DESIGN_NOTE" ] || skip "design note path resolves only with the parent project checked out"
   run grep -F '| `feature` | YES' "$DESIGN_NOTE"
   [ "$status" -eq 0 ]
@@ -89,13 +89,13 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AC1-3: design note picks Option B (opt-in) as the recommendation" {
+@test "3: design note picks Option B (opt-in) as the recommendation" {
   [ -f "$DESIGN_NOTE" ] || skip "design note path resolves only with the parent project checked out"
   run grep -F '**Recommendation: Option B.**' "$DESIGN_NOTE"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1-4: design note documents AC-EC7 gate interaction" {
+@test "4: design note documents AC-EC7 gate interaction" {
   [ -f "$DESIGN_NOTE" ] || skip "design note path resolves only with the parent project checked out"
   run grep -F 'Auto-file means "auto-spawn the AskUserQuestion bucket prompt at retro close", not "auto-bypass the prompt".' "$DESIGN_NOTE"
   [ "$status" -eq 0 ]
@@ -106,7 +106,7 @@ teardown() { common_teardown; }
 # TC-RAF-3 — v1 classification entries are read-only (no auto-file). The
 # SKILL.md prose documents this; assert the documentation invariant since
 # the runtime path is substrate-deferred.
-@test "TC-RAF-3: SKILL.md Step 5b documents v1 (classification:) entries are NEVER auto-filed" {
+@test "SKILL.md Step 5b documents v1 (classification:) entries are NEVER auto-filed" {
   run grep -F 'Items written via the v1 dual-schema path' "$SKILL_MD"
   [ "$status" -eq 0 ]
   run grep -F 'NEVER auto-filed' "$SKILL_MD"
@@ -116,7 +116,7 @@ teardown() { common_teardown; }
 # TC-RAF-4 — backward-compat preserved when --auto-file flag is absent.
 # Assert the explicit default-OFF documentation in the SKILL.md prose
 # (full runtime test deferred with TC-RAF-1/-2).
-@test "TC-RAF-4: SKILL.md Step 5b documents default-OFF backward-compat" {
+@test "SKILL.md Step 5b documents default-OFF backward-compat" {
   run grep -F 'Default is OFF — when the flag is absent, this step is a no-op' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }

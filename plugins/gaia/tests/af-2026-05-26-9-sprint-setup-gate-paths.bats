@@ -34,24 +34,24 @@ teardown() { common_teardown; }
 
 # --- F1: sprint-plan traceability gate is multi-path ---
 
-@test "AF-26-9 F1: sprint-plan setup delegates traceability to validate-gate.sh (multi-path)" {
+@test "F1: sprint-plan setup delegates traceability to validate-gate.sh (multi-path)" {
   grep -qF 'traceability_exists' "$SP_SETUP"
   grep -qF '_trace_present' "$SP_SETUP"
 }
 
-@test "AF-26-9 F1: sprint-plan no longer hardcodes the flat-only TRACE_ART probe" {
+@test "F1: sprint-plan no longer hardcodes the flat-only TRACE_ART probe" {
   # The old flat-only active-gate assignment is gone.
   run grep -F 'TRACE_ART="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"' "$SP_SETUP"
   [ "$status" -ne 0 ]
 }
 
-@test "AF-26-9 F1: sprint-plan preserves the strict-mode + bypass wrapper" {
+@test "F1: sprint-plan preserves the strict-mode + bypass wrapper" {
   grep -qF -- '--bypass gaia-trace' "$SP_SETUP"
   grep -qF '_has_bypass_for' "$SP_SETUP"
   grep -qF 'strict_mode_on' "$SP_SETUP"
 }
 
-@test "AF-26-9 F1: _trace_present fallback accepts flat | strategy/ | sharded" {
+@test "F1: _trace_present fallback accepts flat | strategy/ | sharded" {
   # AF-2026-05-26-9 (follow-up): the fallback was refactored to build paths from
   # a resolver-aligned base dir ($td = _resolve_test_dir, always ending in
   # test-artifacts) instead of inlining the GAIA_ARTIFACTS_DIR literal. Assert
@@ -66,11 +66,11 @@ teardown() { common_teardown; }
 
 # --- F2: dev-story F-33 gate resolves the sharded form ---
 
-@test "AF-26-9 F2: dev-story setup resolves the sharded traceability-matrix/index.md form" {
+@test "F2: dev-story setup resolves the sharded traceability-matrix/index.md form" {
   grep -qF 'traceability-matrix/index.md' "$DS_SETUP"
 }
 
-@test "AF-26-9 F2: dev-story still resolves strategy/ and flat placements" {
+@test "F2: dev-story still resolves strategy/ and flat placements" {
   grep -qF 'strategy/traceability-matrix.md' "$DS_SETUP"
   # flat form is resolved via the $_ta base-dir variable: $_ta/traceability-matrix.md
   grep -qF '$_ta/traceability-matrix.md' "$DS_SETUP"
@@ -78,25 +78,25 @@ teardown() { common_teardown; }
 
 # --- F3: readiness-check zero-byte guard is multi-path ---
 
-@test "AF-26-9 F3: readiness-check resolves all 3 placements before the -s zero-byte check" {
+@test "F3: readiness-check resolves all 3 placements before the -s zero-byte check" {
   grep -qF 'strategy/traceability-matrix.md' "$RC_SETUP"
   grep -qF 'traceability-matrix/index.md' "$RC_SETUP"
 }
 
-@test "AF-26-9 F3: readiness-check no longer emits the misleading 'exists but empty' for a strategy/ matrix" {
+@test "F3: readiness-check no longer emits the misleading 'exists but empty' for a strategy/ matrix" {
   # The die message was reworded to name all three accepted placements.
   grep -qF 'any accepted placement' "$RC_SETUP"
 }
 
 # --- F4: sprint-plan readiness gate keys off the report, not the phantom ledger ---
 
-@test "AF-26-9 F4: sprint-plan readiness gate keys off readiness-report frontmatter status" {
+@test "F4: sprint-plan readiness gate keys off readiness-report frontmatter status" {
   grep -qF 'readiness_report_exists' "$SP_SETUP"
   grep -qE 'status:\[\[:space:\]\]\*\(PASS\|PASSED\|CONDITIONAL\)' "$SP_SETUP" \
     || grep -qF 'status:[[:space:]]*(PASS|PASSED|CONDITIONAL)' "$SP_SETUP"
 }
 
-@test "AF-26-9 F4: sprint-plan no longer greps the never-written ledger verdict line" {
+@test "F4: sprint-plan no longer greps the never-written ledger verdict line" {
   # The dead `readiness-check-ledger.yaml` verdict grep is gone from the gate.
   run grep -F 'verdict:[[:space:]]*PASSED' "$SP_SETUP"
   [ "$status" -ne 0 ]
@@ -104,7 +104,7 @@ teardown() { common_teardown; }
 
 # --- basis: validate-gate predicates accept the placements the fixes rely on ---
 
-@test "AF-26-9 basis: validate-gate.sh traceability_exists accepts the strategy/ placement" {
+@test "basis: validate-gate.sh traceability_exists accepts the strategy/ placement" {
   local ta="$BATS_TEST_TMPDIR/test-artifacts"
   mkdir -p "$ta/strategy"
   printf 'matrix\n' > "$ta/strategy/traceability-matrix.md"
@@ -112,7 +112,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-26-9 basis: validate-gate.sh traceability_exists accepts the sharded index.md form" {
+@test "basis: validate-gate.sh traceability_exists accepts the sharded index.md form" {
   local ta="$BATS_TEST_TMPDIR/test-artifacts"
   mkdir -p "$ta/traceability-matrix"
   printf 'matrix\n' > "$ta/traceability-matrix/index.md"
@@ -120,7 +120,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AF-26-9 basis: validate-gate.sh readiness_report_exists accepts the canonical report" {
+@test "basis: validate-gate.sh readiness_report_exists accepts the canonical report" {
   local pa="$BATS_TEST_TMPDIR/planning-artifacts"
   mkdir -p "$pa"
   printf -- '---\nstatus: CONDITIONAL\n---\n' > "$pa/readiness-report.md"
@@ -159,7 +159,7 @@ test_artifacts: "$root/docs/test-artifacts"
 YAML
 }
 
-@test "AF-26-9 follow-up: statusless placeholder readiness-report → setup warns, exits 0" {
+@test "follow-up: statusless placeholder readiness-report → setup warns, exits 0" {
   local root="$BATS_TEST_TMPDIR/proj"
   local pa="$root/docs/planning-artifacts" ta="$root/docs/test-artifacts"
   mkdir -p "$pa" "$ta"
@@ -178,7 +178,7 @@ YAML
   printf '%s\n' "$output" | grep -qF 'no status: field'
 }
 
-@test "AF-26-9 follow-up: real readiness-report with status: FAIL still gates (strict)" {
+@test "follow-up: real readiness-report with status: FAIL still gates (strict)" {
   local root="$BATS_TEST_TMPDIR/proj2"
   local pa="$root/docs/planning-artifacts" ta="$root/docs/test-artifacts"
   mkdir -p "$pa" "$ta"

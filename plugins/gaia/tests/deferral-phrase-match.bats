@@ -56,14 +56,14 @@ teardown() {
 # TC-DPD-5 — stem-collision: 'wires the production wiring up' matches the
 # multi-word deferral phrase 'production wiring' (grep -wF matches a whole-word
 # phrase boundary).
-@test "TC-DPD-5: stem-collision — 'wires the production wiring up' matches 'production wiring'" {
+@test "stem-collision — 'wires the production wiring up' matches 'production wiring'" {
   run "$MATCHER" "wires the production wiring up"
   [ "$status" -eq 0 ]
   [[ "$output" == *"production wiring"* ]]
 }
 
 # TC-DPD-5 — negative: 'uses workflow internally' must NOT match.
-@test "TC-DPD-5: 'uses workflow internally' does NOT match any deferral phrase" {
+@test "'uses workflow internally' does NOT match any deferral phrase" {
   run "$MATCHER" "uses workflow internally"
   [ "$status" -eq 1 ]
 }

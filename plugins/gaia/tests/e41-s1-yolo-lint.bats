@@ -60,7 +60,7 @@ write_skill() {
 
 # --- TC-YOLO-13: hard-gate violations FAIL ---------------------------------
 
-@test "TC-YOLO-13(b): yolo_steps:[1] on a status-guard step FAILS" {
+@test "b): yolo_steps:[1] on a status-guard step FAILS" {
   write_skill demo-status-guard "$(cat <<'YAML'
 ---
 name: demo-status-guard
@@ -80,7 +80,7 @@ YAML
   [[ "$output" == *"demo-status-guard"* ]]
 }
 
-@test "TC-YOLO-13(a): yolo_steps:[1] on a pre-start gate step FAILS" {
+@test "a): yolo_steps:[1] on a pre-start gate step FAILS" {
   write_skill demo-pre-start "$(cat <<'YAML'
 ---
 name: demo-pre-start
@@ -100,7 +100,7 @@ YAML
   [[ "$output" == *"demo-pre-start"* ]]
 }
 
-@test "TC-YOLO-13(c): yolo_steps:[2] on an allowlist-rejection step FAILS" {
+@test "c): yolo_steps:[2] on an allowlist-rejection step FAILS" {
   write_skill demo-allowlist "$(cat <<'YAML'
 ---
 name: demo-allowlist
@@ -119,7 +119,7 @@ YAML
   [[ "$output" == *"demo-allowlist"* ]]
 }
 
-@test "TC-YOLO-13(d): yolo_steps:[2] on a destructive-write approval step FAILS" {
+@test "d): yolo_steps:[2] on a destructive-write approval step FAILS" {
   write_skill demo-destructive "$(cat <<'YAML'
 ---
 name: demo-destructive
@@ -138,7 +138,7 @@ YAML
   [[ "$output" == *"demo-destructive"* ]]
 }
 
-@test "TC-YOLO-13(e): yolo_steps:[3] on the attempt-cap step FAILS" {
+@test "e): yolo_steps:[3] on the attempt-cap step FAILS" {
   write_skill demo-attempt-cap "$(cat <<'YAML'
 ---
 name: demo-attempt-cap
@@ -159,7 +159,7 @@ YAML
   [[ "$output" == *"demo-attempt-cap"* ]]
 }
 
-@test "TC-YOLO-13(f): yolo_steps:[2] on a memory-save prompt step FAILS" {
+@test "f): yolo_steps:[2] on a memory-save prompt step FAILS" {
   write_skill demo-memory-save "$(cat <<'YAML'
 ---
 name: demo-memory-save
@@ -180,7 +180,7 @@ YAML
 
 # --- TC-YOLO-13 happy path: legal yolo_steps PASS --------------------------
 
-@test "TC-YOLO-13 happy: yolo_steps:[3] on a non-hard-gate Elaborate step PASSES" {
+@test "happy: yolo_steps:[3] on a non-hard-gate Elaborate step PASSES" {
   write_skill demo-elaborate "$(cat <<'YAML'
 ---
 name: demo-elaborate
@@ -204,7 +204,7 @@ YAML
 
 # --- ECI-498: empty yolo_steps:[] is a no-op -------------------------------
 
-@test "ECI-498: yolo_steps:[] (empty) emits no lint output and PASSES" {
+@test "yolo_steps: (empty) emits no lint output and PASSES" {
   write_skill demo-empty "$(cat <<'YAML'
 ---
 name: demo-empty
@@ -223,7 +223,7 @@ YAML
   ! [[ "$output" == *"demo-empty"*"WARN"* ]]
 }
 
-@test "ECI-498: missing yolo_steps key behaves identically to [] (no lint output)" {
+@test "missing yolo_steps key behaves identically to (no lint output)" {
   write_skill demo-missing "$(cat <<'YAML'
 ---
 name: demo-missing
@@ -240,7 +240,7 @@ YAML
 
 # --- ECI-499: out-of-range step number => WARNING (non-blocking) -----------
 
-@test "ECI-499: yolo_steps:[99] when skill has 3 steps emits WARNING (exit 0)" {
+@test "yolo_steps:[99] when skill has 3 steps emits WARNING (exit 0)" {
   write_skill demo-oor "$(cat <<'YAML'
 ---
 name: demo-oor

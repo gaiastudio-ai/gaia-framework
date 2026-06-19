@@ -40,7 +40,7 @@ teardown() {
 }
 
 # ---------------- TC-SRF-4: CSV missing column -> exit 1 ----------------
-@test "TC-SRF-4: CSV target with missing column emits stderr valid-columns list" {
+@test "CSV target with missing column emits stderr valid-columns list" {
   run "$HELPER" --target "$FIXTURE_CSV" --name dependencies
   [ "$status" -eq 1 ]
   [[ "$output" == *"valid columns"* ]]
@@ -49,7 +49,7 @@ teardown() {
 }
 
 # ---------------- TC-SRF-5: SKILL.md missing key -> exit 1 ----------------
-@test "TC-SRF-5: SKILL.md target with missing frontmatter key emits stderr valid-keys list" {
+@test "SKILL.md target with missing frontmatter key emits stderr valid-keys list" {
   run "$HELPER" --target "$FIXTURE_MD" --name when_to_use
   [ "$status" -eq 1 ]
   [[ "$output" == *"valid frontmatter keys"* ]]
@@ -58,30 +58,30 @@ teardown() {
 }
 
 # ---------------- TC-SRF-6: CSV with real column -> exit 0 ----------------
-@test "TC-SRF-6: CSV target with real column exits 0" {
+@test "CSV target with real column exits 0" {
   run "$HELPER" --target "$FIXTURE_CSV" --name agent
   [ "$status" -eq 0 ]
 }
 
-@test "TC-SRF-6b: CSV target with the first column (name) exits 0" {
+@test "CSV target with the first column (name) exits 0" {
   run "$HELPER" --target "$FIXTURE_CSV" --name name
   [ "$status" -eq 0 ]
 }
 
 # ---------------- TC-SRF-7: SKILL.md with real frontmatter key -> exit 0 ----------------
-@test "TC-SRF-7: SKILL.md target with real frontmatter key exits 0" {
+@test "SKILL.md target with real frontmatter key exits 0" {
   run "$HELPER" --target "$FIXTURE_MD" --name description
   [ "$status" -eq 0 ]
 }
 
 # ---------------- TC-SRF-8: Missing target file -> exit 2 (usage error) ----------------
-@test "TC-SRF-8: missing target file exits 2 (usage error)" {
+@test "missing target file exits 2 (usage error)" {
   run "$HELPER" --target "$TEST_TMP/nonexistent.csv" --name foo
   [ "$status" -eq 2 ]
 }
 
 # ---------------- TC-SRF-9: Unsupported target extension -> exit 2 ----------------
-@test "TC-SRF-9: unsupported target extension exits 2" {
+@test "unsupported target extension exits 2" {
   local fixture="$TEST_TMP/unknown.txt"
   printf 'not a csv or md\n' > "$fixture"
   run "$HELPER" --target "$fixture" --name foo
@@ -90,7 +90,7 @@ teardown() {
 }
 
 # ---------------- TC-SRF-10: Retroactive — E86-S6-style 'dependencies column' drift ----------------
-@test "TC-SRF-10: retroactive — E86-S6 'dependencies column' drift is caught by schema-lookup" {
+@test "retroactive — 'dependencies column' drift is caught by schema-lookup" {
   # Reproduces the column shape from Val F6 on AF-2026-05-14-9
   # (canonical columns: name,displayName,description,module,phase,path,command,agent).
   # E86-S6 AC2 cited 'dependencies column' — non-existent.
@@ -103,7 +103,7 @@ EOF
 }
 
 # ---------------- TC-SRF-11: Retroactive — E86-S6-style 'when_to_use' drift ----------------
-@test "TC-SRF-11: retroactive — E86-S6 'when_to_use' frontmatter drift is caught" {
+@test "retroactive — 'when_to_use' frontmatter drift is caught" {
   local fixture="$TEST_TMP/claude-code-skill-shape.md"
   cat > "$fixture" <<'EOF'
 ---

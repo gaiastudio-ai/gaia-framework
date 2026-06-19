@@ -29,7 +29,7 @@ _assert_envelope_well_formed() {
 
 # ---------- TC-PUB-1: claude-marketplace trigger + verify happy path ----------
 
-@test "TC-PUB-1: claude-marketplace trigger emits PASSED envelope (credentials via env only)" {
+@test "claude-marketplace trigger emits PASSED envelope (credentials via env only)" {
   MARKETPLACE_PUBLISH_MOCK=1 run _run_adapter claude-marketplace \
     --action trigger --manifest plugin.json --version 1.0.0 \
     --registry https://anthropic.com/marketplace
@@ -39,7 +39,7 @@ _assert_envelope_well_formed() {
   [ "$(jq -r '.adapter_metadata.channel' "$OUTPUT")" = "claude-marketplace" ]
 }
 
-@test "TC-PUB-1: claude-marketplace verify emits PASSED envelope on success" {
+@test "claude-marketplace verify emits PASSED envelope on success" {
   MARKETPLACE_VERIFY_MOCK_OUTCOME=PASSED run _run_adapter claude-marketplace \
     --action verify --manifest plugin.json --version 1.0.0 \
     --registry https://anthropic.com/marketplace
@@ -49,7 +49,7 @@ _assert_envelope_well_formed() {
   [ "$(jq -r '.adapter_metadata.action' "$OUTPUT")" = "verify" ]
 }
 
-@test "TC-PUB-1: claude-marketplace verify emits FAILED envelope on 404" {
+@test "claude-marketplace verify emits FAILED envelope on 404" {
   MARKETPLACE_VERIFY_MOCK_OUTCOME=FAILED run _run_adapter claude-marketplace \
     --action verify --manifest plugin.json --version 1.0.0 \
     --registry https://anthropic.com/marketplace
@@ -58,7 +58,7 @@ _assert_envelope_well_formed() {
   [ "$(jq -r '.verdict' "$OUTPUT")" = "FAILED" ]
 }
 
-@test "TC-PUB-1 (NFR-081): missing CLAUDE_MARKETPLACE_TOKEN → trigger FAILED" {
+@test "missing CLAUDE_MARKETPLACE_TOKEN → trigger FAILED" {
   # No mock, no token → adapter MUST refuse to publish.
   unset CLAUDE_MARKETPLACE_TOKEN MARKETPLACE_PUBLISH_MOCK
   run _run_adapter claude-marketplace \
@@ -72,7 +72,7 @@ _assert_envelope_well_formed() {
 
 # ---------- TC-PUB-2: npm NPM_TOKEN + dry-run ----------
 
-@test "TC-PUB-2: npm dry-run with NPM_TOKEN reads token from env (NFR-081)" {
+@test "npm dry-run with NPM_TOKEN reads token from env" {
   NPM_PUBLISH_MOCK=1 NPM_TOKEN=test-token-value run _run_adapter npm \
     --action trigger --manifest package.json --version 1.0.0 \
     --registry https://registry.npmjs.org/ --dry-run
@@ -83,7 +83,7 @@ _assert_envelope_well_formed() {
   jq -r '.summary' "$OUTPUT" | grep -qi 'env'
 }
 
-@test "TC-PUB-2 (NFR-081): missing NPM_TOKEN → trigger FAILED (refuses ~/.npmrc fallback)" {
+@test "missing NPM_TOKEN → trigger FAILED (refuses ~/.npmrc fallback)" {
   unset NPM_TOKEN NPM_PUBLISH_MOCK
   run _run_adapter npm \
     --action trigger --manifest package.json --version 1.0.0 \
@@ -96,7 +96,7 @@ _assert_envelope_well_formed() {
 
 # ---------- TC-PUB-3: pypi twine exit-code matrix ----------
 
-@test "TC-PUB-3: pypi twine exit 0 → PASSED" {
+@test "pypi twine exit 0 → PASSED" {
   TWINE_MOCK_EXIT=0 run _run_adapter pypi \
     --action trigger --manifest pyproject.toml --version 1.0.0 \
     --registry https://upload.pypi.org/legacy/
@@ -105,7 +105,7 @@ _assert_envelope_well_formed() {
   [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
 }
 
-@test "TC-PUB-3: pypi twine exit 1 → FAILED with stderr in evidence" {
+@test "pypi twine exit 1 → FAILED with stderr in evidence" {
   TWINE_MOCK_EXIT=1 TWINE_MOCK_STDERR="auth failure: HTTPError 401" run _run_adapter pypi \
     --action trigger --manifest pyproject.toml --version 1.0.0 \
     --registry https://upload.pypi.org/legacy/
@@ -115,7 +115,7 @@ _assert_envelope_well_formed() {
   jq -r '.evidence[0].content' "$OUTPUT" | grep -qF '401'
 }
 
-@test "TC-PUB-3: pypi twine exit 2 → FAILED distinguishable (usage/argument error)" {
+@test "pypi twine exit 2 → FAILED distinguishable (usage/argument error)" {
   TWINE_MOCK_EXIT=2 TWINE_MOCK_STDERR="twine: argument error" run _run_adapter pypi \
     --action trigger --manifest pyproject.toml --version 1.0.0 \
     --registry https://upload.pypi.org/legacy/
@@ -125,7 +125,7 @@ _assert_envelope_well_formed() {
   jq -r '.summary' "$OUTPUT" | grep -qF 'exit 2'
 }
 
-@test "TC-PUB-3: NO silent coercion to PASSED on twine exit 1" {
+@test "NO silent coercion to PASSED on twine exit 1" {
   TWINE_MOCK_EXIT=1 TWINE_MOCK_STDERR="x" run _run_adapter pypi \
     --action trigger --manifest pyproject.toml --version 1.0.0 \
     --registry https://upload.pypi.org/legacy/
@@ -134,7 +134,7 @@ _assert_envelope_well_formed() {
 
 # ---------- TC-PUB-4: homebrew 600s window declared ----------
 
-@test "TC-PUB-4: homebrew adapter-manifest declares verify_retry_window_seconds: 600" {
+@test "homebrew adapter-manifest declares verify_retry_window_seconds: 600" {
   local manifest="$PLUGIN_DIR/scripts/adapters/publish-homebrew/adapter-manifest.yaml"
   [ -f "$manifest" ]
   local window
@@ -142,7 +142,7 @@ _assert_envelope_well_formed() {
   [ "$window" = "600" ]
 }
 
-@test "TC-PUB-4: homebrew verify single-shot returns PASSED on tap-200 mock" {
+@test "homebrew verify single-shot returns PASSED on tap-200 mock" {
   HOMEBREW_VERIFY_MOCK_OUTCOME=PASSED run _run_adapter homebrew \
     --action verify --manifest Formula/mytool.rb --version 1.0.0 \
     --registry https://github.com/myorg/homebrew-tap
@@ -151,7 +151,7 @@ _assert_envelope_well_formed() {
   [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
 }
 
-@test "TC-PUB-4: homebrew verify single-shot returns FAILED on tap-404 (orchestrator handles retry)" {
+@test "homebrew verify single-shot returns FAILED on tap-404 (orchestrator handles retry)" {
   # NOTE: orchestrator step-4 owns the 600s retry-window loop per E100-S3.
   # The adapter itself is single-shot — a single 404 from the tap probe.
   HOMEBREW_VERIFY_MOCK_OUTCOME=FAILED run _run_adapter homebrew \
@@ -164,7 +164,7 @@ _assert_envelope_well_formed() {
 
 # ---------- TC-PUB-5: github-releases ----------
 
-@test "TC-PUB-5: github-releases trigger emits PASSED envelope with release URL in summary" {
+@test "github-releases trigger emits PASSED envelope with release URL in summary" {
   GH_PUBLISH_MOCK=1 GH_TOKEN=test run _run_adapter github-releases \
     --action trigger --manifest x --version 1.0.0 --registry https://github.com/myorg/myrepo
   [ "$status" -eq 0 ]
@@ -173,7 +173,7 @@ _assert_envelope_well_formed() {
   jq -r '.summary' "$OUTPUT" | grep -qF 'releases/tag/v1.0.0'
 }
 
-@test "TC-PUB-5: github-releases trigger FAILED → stderr surfaced in evidence" {
+@test "github-releases trigger FAILED → stderr surfaced in evidence" {
   GH_PUBLISH_MOCK=1 GH_TOKEN=test GH_PUBLISH_OUTCOME=FAILED GH_PUBLISH_STDERR="tag v1.0.0 already exists" \
     run _run_adapter github-releases \
     --action trigger --manifest x --version 1.0.0 --registry https://github.com/myorg/myrepo
@@ -183,7 +183,7 @@ _assert_envelope_well_formed() {
   jq -r '.evidence[0].content' "$OUTPUT" | grep -qF 'already exists'
 }
 
-@test "TC-PUB-5 (NFR-081): missing GH_TOKEN → trigger FAILED" {
+@test "missing GH_TOKEN → trigger FAILED" {
   unset GH_TOKEN GH_PUBLISH_MOCK
   run _run_adapter github-releases \
     --action trigger --manifest x --version 1.0.0 --registry https://github.com/myorg/myrepo
@@ -195,7 +195,7 @@ _assert_envelope_well_formed() {
 
 # ---------- TC-PUB-6: mobile-app STUB returns UNVERIFIED ----------
 
-@test "TC-PUB-6: mobile-app STUB trigger returns UNVERIFIED with next_step marker" {
+@test "mobile-app STUB trigger returns UNVERIFIED with next_step marker" {
   run _run_adapter mobile-app \
     --action trigger --manifest x --version 1.0.0 --registry app-store \
     --platform ios --store-id 12345
@@ -206,7 +206,7 @@ _assert_envelope_well_formed() {
   jq -r '.summary' "$OUTPUT" | grep -qi 'human review required'
 }
 
-@test "TC-PUB-6: mobile-app STUB verify also returns UNVERIFIED" {
+@test "mobile-app STUB verify also returns UNVERIFIED" {
   run _run_adapter mobile-app \
     --action verify --manifest x --version 1.0.0 --registry app-store \
     --platform android --store-id com.foo.bar
@@ -215,7 +215,7 @@ _assert_envelope_well_formed() {
   [ "$(jq -r '.verdict' "$OUTPUT")" = "UNVERIFIED" ]
 }
 
-@test "TC-PUB-6 (AC3): mobile-app adapter-manifest verify_retry_window_seconds is null" {
+@test "mobile-app adapter-manifest verify_retry_window_seconds is null" {
   local manifest="$PLUGIN_DIR/scripts/adapters/publish-mobile-app/adapter-manifest.yaml"
   [ -f "$manifest" ]
   local window
@@ -225,7 +225,7 @@ _assert_envelope_well_formed() {
 
 # ---------- TC-PUB-7: container-registry matrix ----------
 
-@test "TC-PUB-7: container-registry docker.io + semver tag strategy" {
+@test "container-registry docker.io + semver tag strategy" {
   CONTAINER_PUSH_MOCK=1 DOCKER_TOKEN=t run _run_adapter container-registry \
     --action trigger --manifest x --version 1.2.3 --registry docker.io \
     --image-name myorg/myimg --tag-strategy semver
@@ -238,7 +238,7 @@ _assert_envelope_well_formed() {
   jq -r '.summary' "$OUTPUT" | grep -qF 'latest'
 }
 
-@test "TC-PUB-7: container-registry ghcr.io + commit-sha strategy" {
+@test "container-registry ghcr.io + commit-sha strategy" {
   CONTAINER_PUSH_MOCK=1 GH_TOKEN=t run _run_adapter container-registry \
     --action trigger --manifest x --version 1.0.0 --registry ghcr.io \
     --image-name myorg/myimg --tag-strategy commit-sha --commit-sha abc123def
@@ -248,7 +248,7 @@ _assert_envelope_well_formed() {
   jq -r '.summary' "$OUTPUT" | grep -qF 'abc123def'
 }
 
-@test "TC-PUB-7 (NFR-081): container-registry docker.io requires DOCKER_TOKEN" {
+@test "container-registry docker.io requires DOCKER_TOKEN" {
   unset DOCKER_TOKEN GH_TOKEN CONTAINER_PUSH_MOCK
   run _run_adapter container-registry \
     --action trigger --manifest x --version 1.0.0 --registry docker.io \
@@ -259,7 +259,7 @@ _assert_envelope_well_formed() {
   jq -r '.summary' "$OUTPUT" | grep -qi 'credential.*docker'
 }
 
-@test "TC-PUB-7 (NFR-081): container-registry ghcr.io requires GH_TOKEN" {
+@test "container-registry ghcr.io requires GH_TOKEN" {
   unset DOCKER_TOKEN GH_TOKEN CONTAINER_PUSH_MOCK
   run _run_adapter container-registry \
     --action trigger --manifest x --version 1.0.0 --registry ghcr.io \
@@ -279,7 +279,7 @@ _run_static_site() {
     --output "$OUTPUT" --provider "$provider" --domain example.com --dry-run "$@"
 }
 
-@test "TC-PUB-8 (cloudflare-pages): provider dispatch + envelope PASSED" {
+@test "cloudflare-pages): provider dispatch + envelope PASSED" {
   run _run_static_site cloudflare-pages
   [ "$status" -eq 0 ]
   _assert_envelope_well_formed
@@ -288,7 +288,7 @@ _run_static_site() {
   jq -r '.summary' "$OUTPUT" | grep -qi 'wrangler\|cloudflare'
 }
 
-@test "TC-PUB-8 (s3 no cdn): aws s3 sync invoked, NO CloudFront invalidation" {
+@test "s3 no cdn): aws s3 sync invoked, NO CloudFront invalidation" {
   run _run_static_site s3 --cdn-invalidation false
   [ "$status" -eq 0 ]
   _assert_envelope_well_formed
@@ -298,7 +298,7 @@ _run_static_site() {
   ! jq -r '.evidence[].content' "$OUTPUT" | grep -qi 'cloudfront'
 }
 
-@test "TC-PUB-8 (s3 + cdn): aws s3 sync THEN cloudfront create-invalidation" {
+@test "s3 + cdn): aws s3 sync THEN cloudfront create-invalidation" {
   # Non-dry-run path to exercise the CDN branch.
   STATIC_SITE_MOCK=1 run "$PLUGIN_DIR/scripts/adapters/publish-static-site/run.sh" \
     --action trigger --manifest x --version 1.0.0 --registry https://s3.example.com \
@@ -310,35 +310,35 @@ _run_static_site() {
   jq -r '.evidence[].content' "$OUTPUT" | grep -qF 'cloudfront create-invalidation'
 }
 
-@test "TC-PUB-8 (netlify): provider dispatch" {
+@test "netlify): provider dispatch" {
   run _run_static_site netlify
   [ "$status" -eq 0 ]
   [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
   jq -r '.summary' "$OUTPUT" | grep -qi 'netlify'
 }
 
-@test "TC-PUB-8 (vercel): provider dispatch" {
+@test "vercel): provider dispatch" {
   run _run_static_site vercel
   [ "$status" -eq 0 ]
   [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
   jq -r '.summary' "$OUTPUT" | grep -qi 'vercel'
 }
 
-@test "TC-PUB-8 (github-pages): provider dispatch" {
+@test "github-pages): provider dispatch" {
   run _run_static_site github-pages
   [ "$status" -eq 0 ]
   [ "$(jq -r '.verdict' "$OUTPUT")" = "PASSED" ]
   jq -r '.summary' "$OUTPUT" | grep -qi 'gh-pages\|github pages'
 }
 
-@test "TC-PUB-8 (custom): escape-hatch returns UNVERIFIED with deferred-to-wrapper marker" {
+@test "custom): escape-hatch returns UNVERIFIED with deferred-to-wrapper marker" {
   run _run_static_site custom
   [ "$status" -eq 0 ]
   [ "$(jq -r '.verdict' "$OUTPUT")" = "UNVERIFIED" ]
   jq -r '.summary' "$OUTPUT" | grep -qi 'user-supplied\|custom'
 }
 
-@test "TC-PUB-8 (unknown provider): closed-enum rejection with documented error" {
+@test "unknown provider): closed-enum rejection with documented error" {
   run "$PLUGIN_DIR/scripts/adapters/publish-static-site/run.sh" \
     --action trigger --manifest x --version 1.0.0 --registry x \
     --output "$OUTPUT" --provider invalid --domain x
@@ -347,7 +347,7 @@ _run_static_site() {
   echo "$output" | grep -qF 'must be one of {cloudflare-pages, s3, netlify, vercel, github-pages, custom}'
 }
 
-@test "TC-PUB-8 (NFR-081): netlify non-mock without NETLIFY_AUTH_TOKEN → FAILED" {
+@test "netlify non-mock without NETLIFY_AUTH_TOKEN → FAILED" {
   unset NETLIFY_AUTH_TOKEN
   unset STATIC_SITE_MOCK
   run "$PLUGIN_DIR/scripts/adapters/publish-static-site/run.sh" \
@@ -359,7 +359,7 @@ _run_static_site() {
   jq -r '.summary' "$OUTPUT" | grep -qF 'NETLIFY_AUTH_TOKEN'
 }
 
-@test "TC-PUB-8 (manifest): static-site adapter-manifest declares verify_retry_window_seconds: 30" {
+@test "manifest): static-site adapter-manifest declares verify_retry_window_seconds: 30" {
   local manifest="$PLUGIN_DIR/scripts/adapters/publish-static-site/adapter-manifest.yaml"
   [ -f "$manifest" ]
   local window
@@ -369,14 +369,14 @@ _run_static_site() {
 
 # ---------- Contract conformance: all 4 adapters ----------
 
-@test "All 8 adapters comply with FR-526 (--action mandatory, fails on missing)" {
+@test "All 8 adapters comply with (--action mandatory, fails on missing)" {
   for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app static-site; do
     run "$PLUGIN_DIR/scripts/adapters/publish-$ch/run.sh" --version 1.0.0 --manifest x --registry x --output "$TEST_TMP/o-$ch.json"
     [ "$status" -ne 0 ] || { echo "$ch did not fail on missing --action" >&2; false; }
   done
 }
 
-@test "All adapters accept --dry-run without crashing (FR-526)" {
+@test "All adapters accept --dry-run without crashing" {
   # Mobile-app STUB and container-registry need channel-specific flags; tested separately above.
   for ch in claude-marketplace npm pypi homebrew github-releases; do
     case "$ch" in
@@ -395,7 +395,7 @@ _run_static_site() {
   done
 }
 
-@test "All 8 adapters comply with FR-526 (unknown flag rejected — fail-closed AC2)" {
+@test "All 8 adapters comply with (unknown flag rejected — fail-closed )" {
   # mobile-app STUB also rejects unknown flags via EXTRA_ARGS parse.
   for ch in claude-marketplace npm pypi homebrew github-releases container-registry mobile-app static-site; do
     run "$PLUGIN_DIR/scripts/adapters/publish-$ch/run.sh" \

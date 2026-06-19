@@ -55,7 +55,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1 — nine regime rubric files exist at canonical paths.
 # ---------------------------------------------------------------------------
-@test "AC1: all nine regime rubric files exist" {
+@test "all nine regime rubric files exist" {
   for r in "${REGIMES[@]}"; do
     [ -f "$RUBRICS_REGIMES/${r}.json" ] || {
       echo "missing rubric: $RUBRICS_REGIMES/${r}.json" >&2
@@ -64,7 +64,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC1: out-of-scope store regime files are NOT shipped (E74 scope)" {
+@test "out-of-scope store regime files are NOT shipped (E74 scope)" {
   # apple-app-store.json was lifted out of this scope by E74-S4 (now shipped).
   # google-play-store.json was lifted out of this scope by E74-S5 (now shipped).
   # coppa.json was lifted out of this scope by E74-S6 (now shipped).
@@ -76,7 +76,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC2 — every regime rubric validates against rubric.schema.json.
 # ---------------------------------------------------------------------------
-@test "AC2: each regime rubric passes schema validation" {
+@test "each regime rubric passes schema validation" {
   for r in "${REGIMES[@]}"; do
     run "$VALIDATOR" "$RUBRICS_REGIMES/${r}.json"
     [ "$status" -eq 0 ] || {
@@ -92,7 +92,7 @@ teardown() { common_teardown; }
 # `name` is the story-level regime identifier; the canonical schema also
 # requires `skill` (singular) which we set to the primary applicable skill.
 # ---------------------------------------------------------------------------
-@test "AC3: each rubric declares schema_version, name, applies_to_skills" {
+@test "each rubric declares schema_version, name, applies_to_skills" {
   for r in "${REGIMES[@]}"; do
     sv=$(jq -r '.schema_version' "$RUBRICS_REGIMES/${r}.json")
     [ "$sv" = "1.0" ] || {
@@ -122,7 +122,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC3: each rubric has at least 5 severity rules with required fields" {
+@test "each rubric has at least 5 severity rules with required fields" {
   for r in "${REGIMES[@]}"; do
     n=$(jq '.severity_rules | length' "$RUBRICS_REGIMES/${r}.json")
     [ "$n" -ge 5 ] || {
@@ -193,151 +193,151 @@ check_applies() {
 # ---------------------------------------------------------------------------
 # AC4 — GDPR rubric.
 # ---------------------------------------------------------------------------
-@test "AC4: gdpr.json covers PII / retention / consent / DSAR / transfer / erasure" {
+@test "gdpr.json covers PII / retention / consent / DSAR / transfer / erasure" {
   check_categories "$RUBRICS_REGIMES/gdpr.json" \
     pii-handling data-retention consent dsar cross-border-transfer right-to-erasure
 }
 
-@test "AC4: gdpr.json rule ids prefixed gdpr-" {
+@test "gdpr.json rule ids prefixed gdpr" {
   check_prefix "$RUBRICS_REGIMES/gdpr.json" "gdpr-"
 }
 
-@test "AC4: gdpr.json applies to review-code and review-security" {
+@test "gdpr.json applies to review-code and review-security" {
   check_applies "$RUBRICS_REGIMES/gdpr.json" review-code review-security
 }
 
 # ---------------------------------------------------------------------------
 # AC5 — HIPAA rubric.
 # ---------------------------------------------------------------------------
-@test "AC5: hipaa.json covers PHI / access-audit / minimum-necessary / encryption / baa / breach" {
+@test "hipaa.json covers PHI / access-audit / minimum-necessary / encryption / baa / breach" {
   check_categories "$RUBRICS_REGIMES/hipaa.json" \
     phi-handling access-audit minimum-necessary encryption baa breach-notification
 }
 
-@test "AC5: hipaa.json rule ids prefixed hipaa-" {
+@test "hipaa.json rule ids prefixed hipaa" {
   check_prefix "$RUBRICS_REGIMES/hipaa.json" "hipaa-"
 }
 
-@test "AC5: hipaa.json applies to review-code and review-security" {
+@test "hipaa.json applies to review-code and review-security" {
   check_applies "$RUBRICS_REGIMES/hipaa.json" review-code review-security
 }
 
 # ---------------------------------------------------------------------------
 # AC6 — PCI-DSS rubric.
 # ---------------------------------------------------------------------------
-@test "AC6: pci-dss.json covers cardholder / segmentation / tls / access / audit / vuln" {
+@test "pci-dss.json covers cardholder / segmentation / tls / access / audit / vuln" {
   check_categories "$RUBRICS_REGIMES/pci-dss.json" \
     cardholder-data network-segmentation tls-enforcement access-control audit-log vuln-management
 }
 
-@test "AC6: pci-dss.json rule ids prefixed pci-" {
+@test "pci-dss.json rule ids prefixed pci" {
   check_prefix "$RUBRICS_REGIMES/pci-dss.json" "pci-"
 }
 
-@test "AC6: pci-dss.json applies to review-code and review-security" {
+@test "pci-dss.json applies to review-code and review-security" {
   check_applies "$RUBRICS_REGIMES/pci-dss.json" review-code review-security
 }
 
 # ---------------------------------------------------------------------------
 # AC7 — SOX rubric.
 # ---------------------------------------------------------------------------
-@test "AC7: sox.json covers audit-trail / sod / change-management / integrity / access" {
+@test "sox.json covers audit-trail / sod / change-management / integrity / access" {
   check_categories "$RUBRICS_REGIMES/sox.json" \
     financial-audit-trail segregation-of-duties change-management data-integrity access-control
 }
 
-@test "AC7: sox.json rule ids prefixed sox-" {
+@test "sox.json rule ids prefixed sox" {
   check_prefix "$RUBRICS_REGIMES/sox.json" "sox-"
 }
 
-@test "AC7: sox.json applies to review-code and review-security" {
+@test "sox.json applies to review-code and review-security" {
   check_applies "$RUBRICS_REGIMES/sox.json" review-code review-security
 }
 
 # ---------------------------------------------------------------------------
 # AC8 — CCPA rubric.
 # ---------------------------------------------------------------------------
-@test "AC8: ccpa.json covers disclosure / opt-out / deletion / policy / sharing / incentive" {
+@test "ccpa.json covers disclosure / opt-out / deletion / policy / sharing / incentive" {
   check_categories "$RUBRICS_REGIMES/ccpa.json" \
     pi-disclosure opt-out deletion-handler privacy-policy third-party-sharing financial-incentive
 }
 
-@test "AC8: ccpa.json rule ids prefixed ccpa-" {
+@test "ccpa.json rule ids prefixed ccpa" {
   check_prefix "$RUBRICS_REGIMES/ccpa.json" "ccpa-"
 }
 
-@test "AC8: ccpa.json applies to review-code and review-security" {
+@test "ccpa.json applies to review-code and review-security" {
   check_applies "$RUBRICS_REGIMES/ccpa.json" review-code review-security
 }
 
 # ---------------------------------------------------------------------------
 # AC9 — SOC2 rubric.
 # ---------------------------------------------------------------------------
-@test "AC9: soc2.json covers security / availability / processing-integrity / confidentiality / privacy" {
+@test "soc2.json covers security / availability / processing-integrity / confidentiality / privacy" {
   check_categories "$RUBRICS_REGIMES/soc2.json" \
     security availability processing-integrity confidentiality privacy
 }
 
-@test "AC9: soc2.json rule ids prefixed soc2-" {
+@test "soc2.json rule ids prefixed soc2" {
   check_prefix "$RUBRICS_REGIMES/soc2.json" "soc2-"
 }
 
-@test "AC9: soc2.json applies to review-code and review-security" {
+@test "soc2.json applies to review-code and review-security" {
   check_applies "$RUBRICS_REGIMES/soc2.json" review-code review-security
 }
 
 # ---------------------------------------------------------------------------
 # AC10 — ISO-27001 rubric.
 # ---------------------------------------------------------------------------
-@test "AC10: iso-27001.json covers asset / risk / access / crypto / ops / comms / incident" {
+@test "iso-27001.json covers asset / risk / access / crypto / ops / comms / incident" {
   check_categories "$RUBRICS_REGIMES/iso-27001.json" \
     asset-inventory risk-assessment access-control cryptography operations-security communications-security incident-management
 }
 
-@test "AC10: iso-27001.json rule ids prefixed iso27k-" {
+@test "iso-27001.json rule ids prefixed iso27k" {
   check_prefix "$RUBRICS_REGIMES/iso-27001.json" "iso27k-"
 }
 
-@test "AC10: iso-27001.json applies to review-code and review-security" {
+@test "iso-27001.json applies to review-code and review-security" {
   check_applies "$RUBRICS_REGIMES/iso-27001.json" review-code review-security
 }
 
 # ---------------------------------------------------------------------------
 # AC11 — WCAG 2.1 AA rubric.
 # ---------------------------------------------------------------------------
-@test "AC11: wcag-2.1-aa.json covers perceivable / operable / understandable / robust" {
+@test "wcag-2.1-aa.json covers perceivable / operable / understandable / robust" {
   check_categories "$RUBRICS_REGIMES/wcag-2.1-aa.json" \
     perceivable operable understandable robust
 }
 
-@test "AC11: wcag-2.1-aa.json rule ids prefixed wcag-aa-" {
+@test "wcag-2.1-aa.json rule ids prefixed wcag-aa" {
   check_prefix "$RUBRICS_REGIMES/wcag-2.1-aa.json" "wcag-aa-"
 }
 
-@test "AC11: wcag-2.1-aa.json applies to review-a11y and review-code" {
+@test "wcag-2.1-aa.json applies to review-a11y and review-code" {
   check_applies "$RUBRICS_REGIMES/wcag-2.1-aa.json" review-a11y review-code
 }
 
 # ---------------------------------------------------------------------------
 # AC12 — WCAG 2.1 AAA rubric.
 # ---------------------------------------------------------------------------
-@test "AC12: wcag-2.1-aaa.json covers AAA enhancements" {
+@test "wcag-2.1-aaa.json covers AAA enhancements" {
   check_categories "$RUBRICS_REGIMES/wcag-2.1-aaa.json" \
     enhanced-contrast sign-language extended-audio-description reading-level pronunciation timing-and-animation
 }
 
-@test "AC12: wcag-2.1-aaa.json rule ids prefixed wcag-aaa-" {
+@test "wcag-2.1-aaa.json rule ids prefixed wcag-aaa" {
   check_prefix "$RUBRICS_REGIMES/wcag-2.1-aaa.json" "wcag-aaa-"
 }
 
-@test "AC12: wcag-2.1-aaa.json applies to review-a11y and review-code" {
+@test "wcag-2.1-aaa.json applies to review-a11y and review-code" {
   check_applies "$RUBRICS_REGIMES/wcag-2.1-aaa.json" review-a11y review-code
 }
 
 # ---------------------------------------------------------------------------
 # AC14 — no duplicate rule ids across the nine regime rubrics.
 # ---------------------------------------------------------------------------
-@test "AC14: no rule-id collisions across the nine regime rubrics" {
+@test "no rule-id collisions across the nine regime rubrics" {
   ids_file="$TEST_TMP/all-regime-ids.txt"
   : > "$ids_file"
   for r in "${REGIMES[@]}"; do

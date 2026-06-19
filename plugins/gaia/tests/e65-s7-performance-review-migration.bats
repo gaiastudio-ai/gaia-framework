@@ -41,28 +41,28 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-WRITE-S7-2 — fork allowlist read-only ---
 
-@test "TC-DEJ-WRITE-S7-2: allowed-tools is exactly [Read, Grep, Glob, Bash]" {
+@test "allowed-tools is exactly [Read, Grep, Glob, Bash]" {
   run grep -E '^allowed-tools:' "$SKILL_FILE"
   [ "$status" -eq 0 ]
   echo "$output" | grep -E '\[Read, Grep, Glob, Bash\]' >/dev/null
 }
 
-@test "TC-DEJ-WRITE-S7-2: no Write or Edit appears in allowed-tools" {
+@test "no Write or Edit appears in allowed-tools" {
   run grep -E '^allowed-tools:.*(Write|Edit)' "$SKILL_FILE"
   [ "$status" -ne 0 ]
 }
 
-@test "TC-DEJ-WRITE-S7-2: context: fork declared in frontmatter" {
+@test "context: fork declared in frontmatter" {
   grep -F 'context: fork' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-PHASE-S7 — unifying principle + seven phase headers in order ---
 
-@test "TC-DEJ-PHASE-S7: unifying principle present verbatim" {
+@test "unifying principle present verbatim" {
   grep -F 'Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-PHASE-S7: seven canonical phase headers in order" {
+@test "seven canonical phase headers in order" {
   local got
   got="$(grep -nE '^### Phase [1-7]' "$SKILL_FILE" || true)"
   echo "$got" | grep -F 'Phase 1' >/dev/null
@@ -77,34 +77,34 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-DET-S7 — determinism settings ---
 
-@test "TC-DEJ-DET-S7: temperature: 0 declared" {
+@test "temperature: 0 declared" {
   grep -F 'temperature: 0' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-DET-S7: model pinned to claude-opus-4-7" {
+@test "model pinned to claude-opus-4-7" {
   grep -F 'claude-opus-4-7' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-DET-S7: prompt_hash recording declared" {
+@test "prompt_hash recording declared" {
   grep -F 'prompt_hash' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-TOOLKIT-PR-01 — perf toolkit declared ---
 
-@test "TC-DEJ-TOOLKIT-PR-01: N+1 query detection declared" {
+@test "N+1 query detection declared" {
   grep -iE 'N\+1' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: complexity analysis declared" {
+@test "complexity analysis declared" {
   grep -iE 'cyclomatic|complexity analysis' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: bundle/memory budget checks declared" {
+@test "bundle/memory budget checks declared" {
   grep -iE 'bundle' "$SKILL_FILE" >/dev/null
   grep -iE 'memory' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: stack-toolkit table declares all seven canonical stacks" {
+@test "stack-toolkit table declares all seven canonical stacks" {
   grep -F 'ts-dev' "$SKILL_FILE" >/dev/null
   grep -F 'python-dev' "$SKILL_FILE" >/dev/null
   grep -F 'go-dev' "$SKILL_FILE" >/dev/null
@@ -114,19 +114,19 @@ teardown() { common_teardown; }
   grep -F 'angular-dev' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: per-stack ORM patterns declared (EC-1)" {
+@test "per-stack ORM patterns declared" {
   grep -iE 'Prisma' "$SKILL_FILE" >/dev/null
   grep -iE 'JPA|@OneToMany' "$SKILL_FILE" >/dev/null
   grep -iE 'SQLAlchemy|Django' "$SKILL_FILE" >/dev/null
   grep -iE 'GORM' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: raw-SQL fallback documented (EC-1)" {
+@test "raw-SQL fallback documented" {
   grep -iE 'raw[- ]SQL|raw-sql' "$SKILL_FILE" >/dev/null
   grep -iE 'fallback' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: per-stack complexity tools declared (EC-9)" {
+@test "per-stack complexity tools declared" {
   grep -iE 'eslint-plugin-sonarjs|eslint-plugin-complexity' "$SKILL_FILE" >/dev/null
   grep -iE 'radon' "$SKILL_FILE" >/dev/null
   grep -iE 'gocyclo' "$SKILL_FILE" >/dev/null
@@ -134,74 +134,74 @@ teardown() { common_teardown; }
   grep -iE 'dart_code_metrics' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: runtime profiling out-of-scope documented (EC-4, EC-5)" {
+@test "runtime profiling out-of-scope documented" {
   grep -iE 'out of scope|out-of-scope' "$SKILL_FILE" >/dev/null
   grep -iE 'Lighthouse' "$SKILL_FILE" >/dev/null
   grep -iE 'pprof|heap profiler|heap analysis' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: hot-path tagging documented (EC-8)" {
+@test "hot-path tagging documented" {
   grep -iE 'hot[- ]path|hot_path' "$SKILL_FILE" >/dev/null
   grep -iE '/api/|handlers|routes|resolvers' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: per-tool timeout caps documented (EC-14)" {
+@test "per-tool timeout caps documented" {
   grep -iE 'N\+1.*15s|15s.*N\+1' "$SKILL_FILE" >/dev/null
   grep -iE 'complexity.*15s|15s.*complexity' "$SKILL_FILE" >/dev/null
   grep -iE 'bundle.*30s|30s.*bundle' "$SKILL_FILE" >/dev/null
   grep -iE 'memory.*10s|10s.*memory' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: NFR-DEJ-1 cumulative 60s budget documented" {
+@test "cumulative 60s budget documented" {
   grep -iE '60s|NFR-DEJ-1' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: blocking sync I/O per stack documented (EC-10)" {
+@test "blocking sync I/O per stack documented" {
   grep -iE 'readFileSync|fs\.\*Sync' "$SKILL_FILE" >/dev/null
   grep -iE 'requests\.|sync HTTP' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: index-hint analysis schema-gated (EC-12)" {
+@test "index-hint analysis schema-gated" {
   grep -iE 'index[- ]hint|missing index' "$SKILL_FILE" >/dev/null
   grep -iE 'schema' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-TOOLKIT-PR-01: cache key includes bundle_config_hash + schema_hash" {
+@test "cache key includes bundle_config_hash + schema_hash" {
   grep -F 'bundle_config_hash' "$SKILL_FILE" >/dev/null
   grep -F 'schema_hash' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-RUBRIC-S7 — severity rubric examples ---
 
-@test "TC-DEJ-RUBRIC-S7: Critical tier present" {
+@test "Critical tier present" {
   grep -E '^### Critical' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S7: Warning tier present" {
+@test "Warning tier present" {
   grep -E '^### Warning' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S7: Suggestion tier present" {
+@test "Suggestion tier present" {
   grep -E '^### Suggestion' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S7: Critical examples include N+1 on hot path and blocking sync I/O" {
+@test "Critical examples include N+1 on hot path and blocking sync I/O" {
   grep -iE 'N\+1.*hot|hot.*N\+1' "$SKILL_FILE" >/dev/null
   grep -iE 'blocking.*sync|sync.*blocking|readFileSync' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S7: Warning examples include high complexity and missing index hint and large dep import" {
+@test "Warning examples include high complexity and missing index hint and large dep import" {
   grep -iE 'cyclomatic complexity|high complexity' "$SKILL_FILE" >/dev/null
   grep -iE 'missing index' "$SKILL_FILE" >/dev/null
   grep -iE 'large dep import|30KB' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S7: Suggestion examples include recursive-exempt and known-small-collection" {
+@test "Suggestion examples include recursive-exempt and known-small-collection" {
   grep -iE 'recursive' "$SKILL_FILE" >/dev/null
   grep -iE 'known[- ]small|statically[- ]bounded|small collection' "$SKILL_FILE" >/dev/null
 }
 
-@test "TC-DEJ-RUBRIC-S7: bounded-vs-unbounded memory idiom documented (EC-11)" {
+@test "bounded-vs-unbounded memory idiom documented" {
   grep -iE 'bounded' "$SKILL_FILE" >/dev/null
   grep -iE 'unbounded' "$SKILL_FILE" >/dev/null
   grep -iE 'shift|circular buffer|LRU' "$SKILL_FILE" >/dev/null
@@ -209,12 +209,12 @@ teardown() { common_teardown; }
 
 # --- TC-DEJ-WRITE-S7-1 — FR-402 review-file path declared ---
 
-@test "TC-DEJ-WRITE-S7-1: FR-402 path performance-review-{story_key}.md declared (canonical post-AF-21-23)" {
+@test "path performance-review-{story_key}.md declared" {
   # AF-2026-05-21-23 canonicalized this path. Accept canonical or legacy.
   grep -F 'performance-review-' "$SKILL_FILE" | grep -qE '(docs|\.gaia/artifacts)/implementation-artifacts/'
 }
 
-@test "TC-DEJ-WRITE-S7-1: parent-mediated write (Option A) documented" {
+@test "parent-mediated write (Option A) documented" {
   grep -iF 'parent-mediated' "$SKILL_FILE" >/dev/null
   grep -iF 'the parent writes the file' "$SKILL_FILE" >/dev/null
 }
@@ -240,7 +240,7 @@ teardown() { common_teardown; }
 
 # --- evidence-judgment-parity.bats registration check ---
 
-@test "TC-DEJ-PARITY-S7: gaia-performance-review registered in REVIEW_SKILLS array" {
+@test "gaia-performance-review registered in REVIEW_SKILLS array" {
   local parity="$BATS_TEST_DIRNAME/evidence-judgment-parity.bats"
   grep -F 'skills/gaia-performance-review/SKILL.md' "$parity" >/dev/null
 }

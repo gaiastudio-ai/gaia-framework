@@ -340,7 +340,7 @@ CCEOF
   done
 }
 
-@test "val-integration cycle: gaia-val-validate migrated off context: fork (E87-S2 / ADR-104)" {
+@test "val-integration cycle: gaia-val-validate migrated off context: fork" {
   # Post-E87-S2 invariant: /gaia-val-validate SKILL.md does NOT declare
   # `context: fork` in its frontmatter — it is dispatched via the main-turn
   # Agent tool per ADR-093 / ADR-104. The Main-Turn Dispatch Contract

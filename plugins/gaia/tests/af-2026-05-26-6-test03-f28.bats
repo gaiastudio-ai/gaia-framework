@@ -18,19 +18,19 @@ teardown() { common_teardown; }
 
 # --- review-summary-gen.sh CANONICAL_REPORT_RELPATHS is type-first ---
 
-@test "AF-26-6 F-28: CANONICAL_REPORT_RELPATHS uses type-first names" {
+@test "CANONICAL_REPORT_RELPATHS uses type-first names" {
   for tok in code-review qa-tests security-review test-automate-review test-review performance-review; do
     run grep -F "/${tok}-{key}.md" "$SUMMARY"
     [ "$status" -eq 0 ] || { echo "missing type-first relpath for $tok"; false; }
   done
 }
 
-@test "AF-26-6 F-28: CANONICAL_REPORT_RELPATHS no longer uses the reversed {key}-type form" {
+@test "CANONICAL_REPORT_RELPATHS no longer uses the reversed {key}-type form" {
   run grep -E '\{key\}-(code-review|qa-tests|security-review|test-automation|test-review|performance-review)\.md' "$SUMMARY"
   [ "$status" -ne 0 ]
 }
 
-@test "AF-26-6 F-28: all six canonical relpaths resolve under implementation-artifacts" {
+@test "all six canonical relpaths resolve under implementation-artifacts" {
   # No {test_artifacts} placeholder remains in the report relpaths array.
   run bash -c "awk '/CANONICAL_REPORT_RELPATHS=\\(/{f=1} f&&/^\\)/{f=0} f' '$SUMMARY' | grep -c test_artifacts"
   [ "$output" = "0" ]
@@ -38,14 +38,14 @@ teardown() { common_teardown; }
 
 # --- gaia-run-all-reviews SKILL.md table is type-first ---
 
-@test "AF-26-6 F-28: run-all-reviews table uses type-first impl-artifacts paths" {
+@test "run-all-reviews table uses type-first impl-artifacts paths" {
   for tok in code-review qa-tests security-review test-automate-review test-review performance-review; do
     run grep -F "implementation-artifacts/${tok}-{key}.md" "$RUNALL"
     [ "$status" -eq 0 ] || { echo "table missing type-first path for $tok"; false; }
   done
 }
 
-@test "AF-26-6 F-28: run-all-reviews table no longer routes test-aligned reviews to test-artifacts/" {
+@test "run-all-reviews table no longer routes test-aligned reviews to test-artifacts/" {
   run grep -E 'test-artifacts/\{key\}-(qa-tests|test-automation|test-review)\.md' "$RUNALL"
   [ "$status" -ne 0 ]
 }

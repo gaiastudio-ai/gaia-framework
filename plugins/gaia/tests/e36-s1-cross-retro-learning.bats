@@ -79,7 +79,7 @@ mk_action_items_yaml() {
 # AC1 — systemic theme detection + escalation_count increment (TC-RIM-1, FR-RIM-1)
 # ===========================================================================
 
-@test "AC1: 2+ prior retros sharing theme flagged systemic and escalation_count increments" {
+@test "2+ prior retros sharing theme flagged systemic and escalation_count increments" {
   [ -x "$CROSS_RETRO" ] || skip "GUARD: cross-retro-detect.sh does not exist — RED phase expected to fail here"
 
   local retros_dir="$TEST_TMP/retros"
@@ -102,7 +102,7 @@ mk_action_items_yaml() {
 # AC2 — review artifact verdicts appear in data-driven findings block (TC-RIM-2)
 # ===========================================================================
 
-@test "AC2: review verdicts surfaced in data-driven findings block" {
+@test "review verdicts surfaced in data-driven findings block" {
   [ -x "$REVIEW_EXTRACT" ] || skip "GUARD: review-extract.sh does not exist — RED phase expected to fail here"
 
   local sprint_dir="$TEST_TMP/impl"
@@ -123,7 +123,7 @@ mk_action_items_yaml() {
 # AC3 — no prior retros → zero escalations, no error
 # ===========================================================================
 
-@test "AC3: no prior retros — detection completes with zero escalations" {
+@test "no prior retros — detection completes with zero escalations" {
   [ -x "$CROSS_RETRO" ] || skip "GUARD: cross-retro-detect.sh does not exist — RED phase expected to fail here"
 
   local retros_dir="$TEST_TMP/empty-retros"
@@ -141,7 +141,7 @@ mk_action_items_yaml() {
 # AC-EC1 — prior retro with no Action Items section contributes zero themes
 # ===========================================================================
 
-@test "AC-EC1: retro file missing Action Items section contributes zero themes" {
+@test "retro file missing Action Items section contributes zero themes" {
   [ -x "$CROSS_RETRO" ] || skip "GUARD: cross-retro-detect.sh does not exist"
 
   local retros_dir="$TEST_TMP/retros"
@@ -160,7 +160,7 @@ mk_action_items_yaml() {
 # AC-EC2 — missing action-items.yaml → warning logged, retro continues
 # ===========================================================================
 
-@test "AC-EC2: missing action-items.yaml — non-blocking warning, exit 0" {
+@test "missing action-items.yaml — non-blocking warning, exit 0" {
   [ -x "$CROSS_RETRO" ] || skip "GUARD: cross-retro-detect.sh does not exist"
 
   local retros_dir="$TEST_TMP/retros"
@@ -177,7 +177,7 @@ mk_action_items_yaml() {
 # AC-EC3 — same sprint, same theme hash → increment exactly once
 # ===========================================================================
 
-@test "AC-EC3: same sprint + same hash increments once, not twice" {
+@test "same sprint + same hash increments once, not twice" {
   [ -x "$CROSS_RETRO" ] || skip "GUARD: cross-retro-detect.sh does not exist"
 
   local retros_dir="$TEST_TMP/retros"
@@ -200,7 +200,7 @@ mk_action_items_yaml() {
 # AC-EC4 — malformed review artifact → UNKNOWN verdict + parse-warning
 # ===========================================================================
 
-@test "AC-EC4: malformed review artifact yields UNKNOWN verdict" {
+@test "malformed review artifact yields UNKNOWN verdict" {
   [ -x "$REVIEW_EXTRACT" ] || skip "GUARD: review-extract.sh does not exist"
 
   local sprint_dir="$TEST_TMP/impl"
@@ -218,7 +218,7 @@ mk_action_items_yaml() {
 # AC-EC5 — only prior-sprint review artifacts present → empty findings
 # ===========================================================================
 
-@test "AC-EC5: prior-sprint reviews do not leak into current-sprint findings" {
+@test "prior-sprint reviews do not leak into current-sprint findings" {
   [ -x "$REVIEW_EXTRACT" ] || skip "GUARD: review-extract.sh does not exist"
 
   local sprint_dir="$TEST_TMP/impl"
@@ -238,7 +238,7 @@ mk_action_items_yaml() {
 # AC-EC6 — orphan AI-{n} reference → logged, skipped, no crash
 # ===========================================================================
 
-@test "AC-EC6: orphan AI-{n} reference does not crash the scanner" {
+@test "orphan AI-{n} reference does not crash the scanner" {
   [ -x "$CROSS_RETRO" ] || skip "GUARD: cross-retro-detect.sh does not exist"
 
   local retros_dir="$TEST_TMP/retros"
@@ -258,7 +258,7 @@ mk_action_items_yaml() {
 # AC-EC9 — empty / zero-byte retro file contributes zero themes
 # ===========================================================================
 
-@test "AC-EC9: empty retro file does not produce a parse error" {
+@test "empty retro file does not produce a parse error" {
   [ -x "$CROSS_RETRO" ] || skip "GUARD: cross-retro-detect.sh does not exist"
 
   local retros_dir="$TEST_TMP/retros"
@@ -276,7 +276,7 @@ mk_action_items_yaml() {
 # AC-EC10 — mixed-case / whitespace themes normalize to the same hash
 # ===========================================================================
 
-@test "AC-EC10: mixed-case and whitespace variants hash identically" {
+@test "mixed-case and whitespace variants hash identically" {
   [ -x "$CROSS_RETRO" ] || skip "GUARD: cross-retro-detect.sh does not exist"
 
   local retros_dir="$TEST_TMP/retros"

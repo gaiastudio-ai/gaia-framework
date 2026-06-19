@@ -43,7 +43,7 @@ EOF
 # Flip-rate computation
 # =====================================================================
 
-@test "AC4: 0% flip rate when all verdicts are identical (no flips)" {
+@test "0% flip rate when all verdicts are identical (no flips)" {
   # story_key<TAB>run_id<TAB>verdict<TAB>timestamp
   printf '%s\t%s\t%s\t%s\n' "FK01" "run-1" "PASSED" "2026-01-01T00:00:00Z" > "$VERDICTS_TSV"
   printf '%s\t%s\t%s\t%s\n' "FK01" "run-2" "PASSED" "2026-01-01T01:00:00Z" >> "$VERDICTS_TSV"
@@ -54,7 +54,7 @@ EOF
   [[ "$output" == *"flip_rate=0%"* ]]
 }
 
-@test "AC4: 50% flip rate with one flip in two transitions (PASSED then FAILED)" {
+@test "50% flip rate with one flip in two transitions (PASSED then FAILED)" {
   printf '%s\t%s\t%s\t%s\n' "FK02" "run-1" "PASSED" "2026-01-01T00:00:00Z" > "$VERDICTS_TSV"
   printf '%s\t%s\t%s\t%s\n' "FK02" "run-2" "FAILED" "2026-01-01T01:00:00Z" >> "$VERDICTS_TSV"
 
@@ -69,7 +69,7 @@ EOF
 # Promotion check
 # =====================================================================
 
-@test "AC4: --check-promotion with 3 closed sprints under threshold -> exit 0" {
+@test "check-promotion with 3 closed sprints under threshold -> exit 0" {
   seed_closed_sprints 3
   # All verdicts stable — 0% flip rate
   printf '%s\t%s\t%s\t%s\n' "FK03" "run-1" "PASSED" "2026-01-01T00:00:00Z" > "$VERDICTS_TSV"
@@ -80,7 +80,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "AC4: --check-promotion with only 2 closed sprints -> exit 1" {
+@test "check-promotion with only 2 closed sprints -> exit 1" {
   seed_closed_sprints 2
   printf '%s\t%s\t%s\t%s\n' "FK04" "run-1" "PASSED" "2026-01-01T00:00:00Z" > "$VERDICTS_TSV"
 
@@ -88,7 +88,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "AC4: --check-promotion with 3 sprints but one over threshold -> exit 1" {
+@test "check-promotion with 3 sprints but one over threshold -> exit 1" {
   seed_closed_sprints 3
   # Inject flip: PASSED -> FAILED (50% flip rate, above 10% default threshold)
   printf '%s\t%s\t%s\t%s\n' "FK05" "run-1" "PASSED" "2026-01-01T00:00:00Z" > "$VERDICTS_TSV"
@@ -98,7 +98,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "AC4: aggregate flip rate counts only within-story flips (interleaved TSV)" {
+@test "aggregate flip rate counts only within-story flips (interleaved TSV)" {
   # Two stories interleaved chronologically:
   #   FK10: PASSED -> PASSED  (0 flips, 2 runs)
   #   FK11: PASSED -> FAILED  (1 flip,  2 runs)
@@ -126,7 +126,7 @@ EOF
   [[ "$output" == *"flip_rate=50%"* ]]
 }
 
-@test "AC4: --check-promotion with empty verdicts file -> exit 1" {
+@test "check-promotion with empty verdicts file -> exit 1" {
   seed_closed_sprints 3
   touch "$VERDICTS_TSV"
 

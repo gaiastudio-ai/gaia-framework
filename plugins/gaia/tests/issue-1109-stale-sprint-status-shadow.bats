@@ -1,17 +1,15 @@
 #!/usr/bin/env bats
 # issue-1109-stale-sprint-status-shadow.bats
 #
-# Issue #1109: after the ADR-111 move of sprint-status.yaml to .gaia/state/,
-# a legacy …/implementation-artifacts/sprint-status.yaml left on disk could
-# silently diverge from (and, on transient .gaia/state/ absence, shadow) the
-# canonical copy. The resolver now (a) still lets .gaia/state/ win, and (b)
-# emits a loud WARNING when a divergent legacy copy is also present so the
-# stale shadow never goes unnoticed.
+# Issue #1109 (deprecated): the legacy mirror that copied
+# .gaia/state/sprint-status.yaml to .gaia/artifacts/implementation-artifacts/
+# has been retired.  The canonical home for sprint-status.yaml is
+# .gaia/state/ — period.  This test pins the post-deprecation contract:
 #
-# `reconcile --dry-run` is used as the probe: it triggers resolve_paths,
-# reads state, mutates nothing, and exits 0. The WARNING is emitted from the
-# `$gaia_state` (rung-1) branch, so its presence ALSO proves the canonical
-# .gaia/state/ copy won the resolution.
+#   (a) sprint-state.sh mutations do NOT write a mirror copy.
+#   (b) the resolver resolves ONLY .gaia/state/sprint-status.yaml.
+#   (c) a pre-existing stale copy at the legacy path is silently ignored
+#       (no WARNING emitted).
 
 load 'test_helper.bash'
 
@@ -19,6 +17,7 @@ setup() {
   common_setup
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SPRINT_STATE="$PLUGIN_ROOT/scripts/sprint-state.sh"
+  RESOLVER="$PLUGIN_ROOT/scripts/lib/resolve-artifact-path.sh"
   cd "$TEST_TMP"
   mkdir -p .gaia/state .gaia/artifacts/implementation-artifacts
 }
@@ -34,57 +33,83 @@ _seed_legacy() {
     > .gaia/artifacts/implementation-artifacts/sprint-status.yaml
 }
 
-@test "issue #1109: WARNING when canonical .gaia/state/ and legacy impl-artifacts copy both exist" {
+# ---------------------------------------------------------------------------
+# Contract (a): mirror is NOT written after a sprint-state mutation
+# ---------------------------------------------------------------------------
+
+@test "issue #1109 (deprecated): init does NOT mirror to implementation-artifacts" {
+  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" init --sprint-id sprint-55
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/.gaia/state/sprint-status.yaml" ]
+  [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
+}
+
+@test "issue #1109 (deprecated): reconcile does NOT mirror to implementation-artifacts" {
+  _seed_canonical active
+  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile
+  [ "$status" -eq 0 ]
+  [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
+}
+
+@test "issue #1109 (deprecated): transition does NOT mirror to implementation-artifacts" {
+  # Seed the canonical sprint yaml with one story in ready-for-dev.
+  cat > .gaia/state/sprint-status.yaml <<'YAML'
+sprint_id: "sprint-22"
+status: active
+stories:
+  - key: "T1"
+    title: "Fake"
+    status: "ready-for-dev"
+YAML
+  # Seed a story file that locate_story_file can find.
+  cat > .gaia/artifacts/implementation-artifacts/T1-fake.md <<'STORY'
+---
+template: 'story'
+key: "T1"
+title: "Fake"
+status: ready-for-dev
+---
+
+# Story: Fake
+
+> **Status:** ready-for-dev
+STORY
+  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" transition --story T1 --to in-progress
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/.gaia/state/sprint-status.yaml" ]
+  [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
+}
+
+# ---------------------------------------------------------------------------
+# Contract (b): resolver resolves ONLY .gaia/state/
+# ---------------------------------------------------------------------------
+
+@test "issue #1109 (deprecated): resolver ignores a stale legacy copy at implementation-artifacts" {
+  _seed_canonical closed
+  _seed_legacy active
+  run "$RESOLVER" sprint_status --project-root "$TEST_TMP" --existing-only
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/.gaia/state/sprint-status.yaml" ]]
+  [[ "$output" != *"/implementation-artifacts/sprint-status.yaml" ]]
+}
+
+# ---------------------------------------------------------------------------
+# Contract (c): NO divergence WARNING — the warning block is removed
+# ---------------------------------------------------------------------------
+
+@test "issue #1109 (deprecated): no WARNING when canonical and divergent legacy copy coexist" {
   _seed_canonical closed
   _seed_legacy active
   run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
   [ "$status" -eq 0 ]
-  echo "$output" | grep -F "stale legacy sprint-status.yaml"
-  echo "$output" | grep -F "remove it to avoid divergence"
+  ! echo "$output" | grep -qF "stale legacy sprint-status.yaml"
+  ! echo "$output" | grep -qF "remove it to avoid divergence"
+  ! echo "$output" | grep -qF "shadows the canonical"
 }
 
-@test "issue #1109: WARNING proves the canonical .gaia/state/ copy won (rung-1 branch)" {
-  _seed_canonical closed
-  _seed_legacy active
-  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
-  [ "$status" -eq 0 ]
-  # The warning is emitted only from the gaia_state (rung-1) branch — its
-  # presence is proof the canonical copy was selected, not the stale legacy one.
-  echo "$output" | grep -F "shadows the canonical .gaia/state/ copy"
-}
-
-@test "issue #1109: NO warning when only the canonical .gaia/state/ copy exists" {
+@test "issue #1109 (deprecated): no WARNING when only the canonical copy exists" {
   _seed_canonical closed
   run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
   [ "$status" -eq 0 ]
   ! echo "$output" | grep -qF "stale legacy sprint-status.yaml"
-}
-
-@test "issue #1109: NO warning when impl-artifacts dir exists but holds no sprint-status.yaml" {
-  _seed_canonical closed
-  # Directory present (from setup) but no sprint-status.yaml inside it.
-  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
-  [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qF "stale legacy sprint-status.yaml"
-}
-
-# --- issue-1392 — no false positive on the byte-identical layout mirror ------
-# sprint-state.sh mirrors .gaia/state/ → impl-artifacts/ on every mutation, so
-# the two are routinely byte-identical. The warning must fire only on genuine
-# content divergence, not mere co-existence.
-@test "issue-1392: NO warning when the legacy copy is byte-identical to the canonical" {
-  _seed_canonical closed
-  # Identical content (same status), i.e. the intentional layout-conformance mirror.
-  cp .gaia/state/sprint-status.yaml .gaia/artifacts/implementation-artifacts/sprint-status.yaml
-  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
-  [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qF "stale legacy sprint-status.yaml"
-}
-
-@test "issue-1392: WARNING still fires when the legacy copy genuinely diverges" {
-  _seed_canonical closed
-  _seed_legacy active   # different status → real divergence
-  run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
-  [ "$status" -eq 0 ]
-  echo "$output" | grep -F "stale legacy sprint-status.yaml"
 }

@@ -24,7 +24,7 @@ teardown() {
 
 # ---------- AC2: browser SKIPPED when web not in platforms ----------
 
-@test "AC2: browser SKIPPED when web not in platforms" {
+@test "browser SKIPPED when web not in platforms" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [server]
@@ -33,7 +33,7 @@ YAML
   [ "$status" -eq 2 ]
 }
 
-@test "AC2: browser SKIPPED output contains 'not configured'" {
+@test "browser SKIPPED output contains 'not configured'" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [server]
@@ -43,7 +43,7 @@ YAML
   echo "$output" | grep -qi "not configured"
 }
 
-@test "AC2: browser SKIPPED output does not contain UNVERIFIED" {
+@test "browser SKIPPED output does not contain UNVERIFIED" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [server]
@@ -52,7 +52,7 @@ YAML
   ! echo "$output" | grep -qi "UNVERIFIED"
 }
 
-@test "AC2: browser SKIPPED output does not contain FAILED" {
+@test "browser SKIPPED output does not contain FAILED" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [server]
@@ -63,7 +63,7 @@ YAML
 
 # ---------- AC2: api SKIPPED when server not in platforms ----------
 
-@test "AC2: api SKIPPED when server not in platforms" {
+@test "api SKIPPED when server not in platforms" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [web]
@@ -72,7 +72,7 @@ YAML
   [ "$status" -eq 2 ]
 }
 
-@test "AC2: api SKIPPED exit code is exactly 2 not 1" {
+@test "api SKIPPED exit code is exactly 2 not 1" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [web]
@@ -84,7 +84,7 @@ YAML
 
 # ---------- AC2: mobile SKIPPED when neither ios nor android ----------
 
-@test "AC2: mobile SKIPPED when neither ios nor android in platforms" {
+@test "mobile SKIPPED when neither ios nor android in platforms" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [web, server]
@@ -95,7 +95,7 @@ YAML
 
 # ---------- AC2: desktop SKIPPED when no desktop_commands ----------
 
-@test "AC2: desktop SKIPPED when no desktop_commands section" {
+@test "desktop SKIPPED when no desktop_commands section" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [web, server]
@@ -104,7 +104,7 @@ YAML
   [ "$status" -eq 2 ]
 }
 
-@test "AC2: desktop SKIPPED when desktop_commands is empty" {
+@test "desktop SKIPPED when desktop_commands is empty" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 platforms: [web, server]
@@ -117,7 +117,7 @@ YAML
 
 # ---------- AC2: empty platforms list → all platform-keyed surfaces SKIPPED ----------
 
-@test "AC2: all surfaces SKIPPED when config has no platforms and no desktop_commands" {
+@test "all surfaces SKIPPED when config has no platforms and no desktop_commands" {
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 YAML

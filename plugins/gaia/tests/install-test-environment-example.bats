@@ -31,13 +31,13 @@ teardown() {
 }
 
 # AC1 — template ships at canonical plugin path
-@test "AC1: canonical template exists at plugins/gaia/templates/test-environment.yaml.example" {
+@test "canonical template exists at plugins/gaia/templates/test-environment.yaml.example" {
   [ -f "${TEMPLATE}" ]
   # Non-empty
   [ -s "${TEMPLATE}" ]
 }
 
-@test "AC1: canonical template is byte-identical to V1 source-of-truth" {
+@test "canonical template is byte-identical to V1 source-of-truth" {
   # The canonical template MUST be byte-identical to the V1 source at
   # Gaia-framework/docs/test-artifacts/test-environment.yaml.example
   # so the schema captured by E17-S7/S25 is preserved verbatim.
@@ -50,7 +50,7 @@ teardown() {
 }
 
 # AC2 — install helper copies template into target project
-@test "AC2: install helper copies template to target/docs/test-artifacts/" {
+@test "install helper copies template to target/docs/test-artifacts/" {
   [ -x "${HELPER}" ]
   run "${HELPER}" --target "${TARGET_DIR}"
   [ "${status}" -eq 0 ]
@@ -58,14 +58,14 @@ teardown() {
   [ -s "${TARGET_FILE}" ]
 }
 
-@test "AC2: install helper copy is byte-identical to template" {
+@test "install helper copy is byte-identical to template" {
   run "${HELPER}" --target "${TARGET_DIR}"
   [ "${status}" -eq 0 ]
   cmp "${TEMPLATE}" "${TARGET_FILE}"
 }
 
 # AC3 — re-running install preserves byte-identical user customization
-@test "AC3: re-running install preserves user-edited target file byte-identical" {
+@test "re-running install preserves user-edited target file byte-identical" {
   # First install — copies template
   run "${HELPER}" --target "${TARGET_DIR}"
   [ "${status}" -eq 0 ]
@@ -87,7 +87,7 @@ teardown() {
 }
 
 # AC4 — fail-fast when template source is missing (validate_source equivalent)
-@test "AC4: install helper exits non-zero with clear error when template source is missing" {
+@test "install helper exits non-zero with clear error when template source is missing" {
   # Move the template aside temporarily
   TEMPLATE_BACKUP="${TEMPLATE}.bats-backup-$$"
   mv "${TEMPLATE}" "${TEMPLATE_BACKUP}"
@@ -104,7 +104,7 @@ teardown() {
 }
 
 # Idempotency in absent-target path (AC2 + AC3 combined)
-@test "AC2+AC3: install on absent target creates the file, second run is a no-op preserving identity" {
+@test "+: install on absent target creates the file, second run is a no-op preserving identity" {
   # First run creates
   run "${HELPER}" --target "${TARGET_DIR}"
   [ "${status}" -eq 0 ]

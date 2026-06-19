@@ -34,20 +34,20 @@ teardown() { common_teardown; }
 # VCP-CHK-15 — Positive: all 33 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-15: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-15: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-15: finalize.sh reports PASS for each required section" {
+@test "finalize.sh reports PASS for each required section" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -67,7 +67,7 @@ teardown() { common_teardown; }
 # the count must be exactly 33.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 33 classified items" {
+@test "SKILL.md ## Validation section contains exactly 33 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -78,7 +78,7 @@ teardown() { common_teardown; }
   [ "$output" = "33" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -89,7 +89,7 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: structural items are classified script-verifiable" {
+@test "structural items are classified script-verifiable" {
   # Decision Log, Tech Stack, System Components — structural anchors
   # MUST be SV, never LLM.
   run grep -E '^\- \[script-verifiable\].*Decision Log' "$SKILL_MD"
@@ -100,7 +100,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/     { steps = NR }
     /^## Validation/ { validation = NR }

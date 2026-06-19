@@ -60,7 +60,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- AC1/AC2/AC4: canonical invocation line present per step ----------
 
-@test "AC1/AC2/AC4: each Phase 3 testing SKILL.md has one canonical invocation per declared step" {
+@test "each Phase 3 testing SKILL.md has one canonical invocation per declared step" {
   local i=0
   for slug in "${PHASE3_TEST_SLUGS[@]}"; do
     local expected="${PHASE3_TEST_STEPS[$i]}"
@@ -100,7 +100,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- AC5: per-skill key_variables surface ----------
 
-@test "AC5: each Phase 3 testing SKILL.md declares required per-skill key_variables" {
+@test "each Phase 3 testing SKILL.md declares required per-skill key_variables" {
   # Minimum one skill-specific key_variable per SKILL.md. The story requires
   # a non-empty subset of skill-own context.
   local spec
@@ -129,7 +129,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- AC2 (VCP-CPT-09): no inline checkpoint writes in Phase 3 testing SKILL.md ----------
 
-@test "AC2: no Phase 3 testing SKILL.md contains inline _memory/checkpoints writes" {
+@test "no Phase 3 testing SKILL.md contains inline _memory/checkpoints writes" {
   local offenders=""
   for slug in "${PHASE3_TEST_SLUGS[@]}"; do
     local file="$SKILLS_DIR/$slug/SKILL.md"
@@ -153,7 +153,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- AC2: no inline writes in Phase 3 testing co-located scripts ----------
 
-@test "AC2: Phase 3 testing co-located scripts do not write to _memory/checkpoints" {
+@test "Phase 3 testing co-located scripts do not write to _memory/checkpoints" {
   local offenders=""
   for slug in "${PHASE3_TEST_SLUGS[@]}"; do
     local scripts_dir="$SKILLS_DIR/$slug/scripts"
@@ -173,7 +173,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- AC2: canonical helper line is the only checkpoint writer ----------
 
-@test "AC2: every checkpoint-related line in Phase 3 testing SKILL.md routes through write-checkpoint.sh" {
+@test "every checkpoint-related line in Phase 3 testing SKILL.md routes through write-checkpoint.sh" {
   for slug in "${PHASE3_TEST_SLUGS[@]}"; do
     local file="$SKILLS_DIR/$slug/SKILL.md"
     [ -f "$file" ] || continue
@@ -188,7 +188,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- AC4: skill_name discipline — literal slug, no slash ----------
 
-@test "AC4: every invocation uses the literal skill slug as skill_name (no leading slash, no truncation)" {
+@test "every invocation uses the literal skill slug as skill_name (no leading slash, no truncation)" {
   for slug in "${PHASE3_TEST_SLUGS[@]}"; do
     local file="$SKILLS_DIR/$slug/SKILL.md"
     [ -f "$file" ] || continue
@@ -211,7 +211,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 # step_numbers 1..N. gaia-ci-setup has its own @test below because it also
 # validates the multi-file step (AC-EC8).
 
-@test "VCP-CPT-11 AC1/AC6: per-skill step-count coverage (single-file skills)" {
+@test "per-skill step-count coverage (single-file skills)" {
   # slug|expected|key_var_1|val_1|key_var_2|val_2
   local spec
   for spec in \
@@ -244,7 +244,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
   done
 }
 
-@test "VCP-CPT-11 AC1/AC6/AC-EC8: simulating gaia-ci-setup 9-step run writes 9 sequential checkpoints with multi-file step" {
+@test "simulating gaia-ci-setup 9-step run writes 9 sequential checkpoints with multi-file step" {
   local slug="gaia-ci-setup"
   local f1="$TEST_TMP/.github/workflows/ci.yml"
   local f2="$TEST_TMP/.github/workflows/release.yml"
@@ -276,7 +276,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- VCP-CPT-11 AC6: schema consistency across all 8 skills ----------
 
-@test "VCP-CPT-11 AC6: checkpoints from all 8 skills share identical schema shape" {
+@test "checkpoints from all 8 skills share identical schema shape" {
   # Run one step of each of the 8 skills, then assert every emitted JSON
   # has the same top-level keys in the same order.
   local artifact="$TEST_TMP/out.md"
@@ -325,14 +325,14 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- AC-EC7: missing helper trips a loud error ----------
 
-@test "AC-EC7: invoking a renamed helper fails loudly (missing write-checkpoint.sh path)" {
+@test "invoking a renamed helper fails loudly (missing write-checkpoint.sh path)" {
   run -127 bash -c '/nonexistent/scripts/write-checkpoint.sh gaia-val-validate 1 x=y 2>&1'
   [ "$status" -ne 0 ]
 }
 
 # ---------- AC-EC1 + AC-EC5: empty --paths and metacharacter preservation ----------
 
-@test "AC-EC1 + AC-EC5: empty --paths writes valid checkpoint; metacharacters preserved verbatim" {
+@test "+ AC-EC5: empty --paths writes valid checkpoint; metacharacters preserved verbatim" {
   # AC-EC1: zero-output step.
   "$SCRIPT" gaia-val-validate 2 artifact_path=prd.md iteration_number=1
   local f
@@ -350,7 +350,7 @@ PHASE3_TEST_STEPS=(9 7 5 5 6 9 5 8)
 
 # ---------- AC-EC3/AC-EC4/AC-EC9: per-skill directory isolation (concurrent + nested) ----------
 
-@test "AC-EC3/AC-EC4/AC-EC9: Phase 3 testing skills write checkpoints to distinct per-skill dirs (concurrent + nested)" {
+@test "Phase 3 testing skills write checkpoints to distinct per-skill dirs (concurrent + nested)" {
   local art="$TEST_TMP/art.md"
   printf 'x\n' > "$art"
   # Concurrent writes (AC-EC4) + two-skill isolation (AC-EC3).

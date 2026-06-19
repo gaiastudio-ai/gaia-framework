@@ -182,21 +182,21 @@ YAML
 
 # ---------- AC1: skill scaffold + script ----------
 
-@test "AC1: SKILL.md exists at canonical path" {
+@test "SKILL.md exists at canonical path" {
   [ -f "$SKILL" ]
 }
 
-@test "AC1: orchestrator script exists + executable" {
+@test "orchestrator script exists + executable" {
   [ -x "$ORCH" ]
 }
 
-@test "AC1: SKILL.md frontmatter name is gaia-publish" {
+@test "SKILL.md frontmatter name is gaia-publish" {
   grep -q '^name: gaia-publish$' "$SKILL"
 }
 
 # ---------- AC3: argument parsing ----------
 
-@test "AC3: missing --version fails with usage error (exit 2)" {
+@test "missing --version fails with usage error (exit 2)" {
   _write_config
   _write_plugin_json
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH"
@@ -204,7 +204,7 @@ YAML
   echo "$output" | grep -qi 'usage'
 }
 
-@test "AC3: unknown flag rejected with usage error" {
+@test "unknown flag rejected with usage error" {
   _write_config
   _write_plugin_json
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --bogus
@@ -212,7 +212,7 @@ YAML
   echo "$output" | grep -q 'unknown flag'
 }
 
-@test "AC3: --version= form accepted" {
+@test "version= form accepted" {
   _write_config
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version=1.0.0
@@ -221,7 +221,7 @@ YAML
 
 # ---------- AC2 / TC-GPO-1: happy path five-step flow ----------
 
-@test "TC-GPO-1: happy-path five steps PASSED with documented markers" {
+@test "happy-path five steps PASSED with documented markers" {
   _write_config
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
@@ -233,7 +233,7 @@ YAML
   echo "$output" | grep -q 'step 5/5 (final-verdict): PASSED'
 }
 
-@test "TC-GPO-1: assessment doc written + names channel + verdict PASSED" {
+@test "assessment doc written + names channel + verdict PASSED" {
   _write_config
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
@@ -266,7 +266,7 @@ YAML
 
 # ---------- AC3 / TC-GPO-4: --dry-run ----------
 
-@test "TC-GPO-4: --dry-run exits 0 with steps 4-5 SKIPPED + dry-run marker" {
+@test "dry-run exits 0 with steps 4-5 SKIPPED + dry-run marker" {
   _write_config
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --dry-run
@@ -277,7 +277,7 @@ YAML
   echo "$output" | grep -q 'step 5/5 (final-verdict): SKIPPED'
 }
 
-@test "TC-GPO-4: --dry-run records the dry-run in the assessment doc" {
+@test "dry-run records the dry-run in the assessment doc" {
   _write_config
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --dry-run
@@ -302,13 +302,13 @@ YAML
 
 # ---------- AC4: config resolution ----------
 
-@test "AC4: missing project-config.yaml fails with clear error" {
+@test "missing project-config.yaml fails with clear error" {
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 2 ]
   echo "$output" | grep -q 'project-config.yaml not found'
 }
 
-@test "AC4: missing distribution.channel fails with clear error" {
+@test "missing distribution.channel fails with clear error" {
   cat > "$CONFIG" <<'YAML'
 project_name: example
 YAML
@@ -319,7 +319,7 @@ YAML
 
 # ---------- AC5: per-step progress markers consistent ----------
 
-@test "AC5: 5 distinct step markers emitted in canonical order" {
+@test "5 distinct step markers emitted in canonical order" {
   _write_config
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
@@ -335,7 +335,7 @@ YAML
 
 # ---------- AC5: SKILL.md cites the five-step canonical order ----------
 
-@test "AC5: SKILL.md cites the five steps in canonical order" {
+@test "SKILL.md cites the five steps in canonical order" {
   grep -q 'Step 1.*[Pp]re-publish gate' "$SKILL"
   grep -q 'Step 2.*[Mm]anifest version check' "$SKILL"
   grep -q 'Step 3.*[Tt]rigger publish' "$SKILL"
@@ -345,7 +345,7 @@ YAML
 
 # ---------- TC-GPO-2: red CI HALTs step 1 BEFORE step 2 ----------
 
-@test "TC-GPO-2: red CI on source-branch HEAD HALTs after step 1 (exit 1, reason pre-publish-gate-failed)" {
+@test "red CI on source-branch HEAD HALTs after step 1 (exit 1, reason pre-publish-gate-failed)" {
   _write_config_with_ci_checks "test lint"
   _write_plugin_json 1.0.0
   _install_gh_shim
@@ -369,7 +369,7 @@ YAML
   grep -q 'pre-publish-gate-failed' "$doc"
 }
 
-@test "TC-GPO-2: all required ci_checks green → step 1 PASSED → flow proceeds" {
+@test "all required ci_checks green → step 1 PASSED → flow proceeds" {
   _write_config_with_ci_checks "test lint"
   _write_plugin_json 1.0.0
   _install_gh_shim
@@ -379,7 +379,7 @@ YAML
   echo "$output" | grep -q 'step 1/5 (pre-publish-gate): PASSED'
 }
 
-@test "TC-GPO-2: missing required check on HEAD → step 1 FAILED (treated as not-success)" {
+@test "missing required check on HEAD → step 1 FAILED (treated as not-success)" {
   _write_config_with_ci_checks "test lint required-extra"
   _write_plugin_json 1.0.0
   _install_gh_shim
@@ -391,7 +391,7 @@ YAML
   echo "$output" | grep -q 'required-extra'
 }
 
-@test "TC-GPO-2: pending CI conclusion → step 1 FAILED" {
+@test "pending CI conclusion → step 1 FAILED" {
   _write_config_with_ci_checks "test"
   _write_plugin_json 1.0.0
   _install_gh_shim
@@ -403,7 +403,7 @@ YAML
 
 # ---------- TC-GPO-3: manifest version mismatch verbatim stderr ----------
 
-@test "TC-GPO-3: manifest version mismatch produces verbatim AC4 stderr" {
+@test "manifest version mismatch produces verbatim stderr" {
   _write_config_with_ci_checks "test"
   _write_plugin_json 1.2.4
   _install_gh_shim
@@ -424,7 +424,7 @@ YAML
 
 # ---------- AC5: --dry-run still runs gates ----------
 
-@test "AC5: --dry-run + red CI still HALTs at step 1 (gates fail-closed in dry-run)" {
+@test "dry-run + red CI still HALTs at step 1 (gates fail-closed in dry-run)" {
   _write_config_with_ci_checks "test"
   _write_plugin_json 1.0.0
   _install_gh_shim
@@ -448,7 +448,7 @@ YAML
 
 # ---------- TC-GPO-5: post-publish verify adapter dispatch ----------
 
-@test "TC-GPO-5: adapter verify returns PASSED → step 4 PASSED → flow proceeds" {
+@test "adapter verify returns PASSED → step 4 PASSED → flow proceeds" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -458,7 +458,7 @@ YAML
   echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
 }
 
-@test "TC-GPO-5: adapter verify returns FAILED → step 4 FAILED → orchestrator FAILED (AC4)" {
+@test "adapter verify returns FAILED → step 4 FAILED → orchestrator FAILED" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -473,7 +473,7 @@ YAML
   grep -qi 'verify-failed\|post-publish-verify-failed' "$doc"
 }
 
-@test "TC-GPO-5: UNVERIFIED envelope (mobile-app STUB) → step 4 PASSED with warning" {
+@test "UNVERIFIED envelope (mobile-app STUB) → step 4 PASSED with warning" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -486,7 +486,7 @@ YAML
 
 # ---------- TC-GPO-6: --skip-verify NFR-082 opt-out ----------
 
-@test "TC-GPO-6: --skip-verify emits WARNING + verify-skipped audit flag" {
+@test "skip-verify emits WARNING + verify-skipped audit flag" {
   _write_config
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --skip-verify
@@ -502,7 +502,7 @@ YAML
 
 # ---------- TC-NFR-082-2: orchestrator respects per-adapter window ----------
 
-@test "TC-NFR-082-2: 2s window + FAILED throughout → loop times out at ~2s (±5s tolerance)" {
+@test "2s window + FAILED throughout → loop times out at ~2s (±5s tolerance)" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -520,7 +520,7 @@ YAML
 
 # ---------- SR-83: 3600s defensive cap ----------
 
-@test "SR-83: manifest declares 7200s → orchestrator clamps to 3600 + WARNING" {
+@test "manifest declares 7200s → orchestrator clamps to 3600 + WARNING" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 7200
@@ -533,7 +533,7 @@ YAML
 
 # ---------- Backward-compat: no adapter binary AND no manifest ----------
 
-@test "no adapter + no manifest → step 4 PASSED stub-fallback (TC-GPO-1 happy path preserved)" {
+@test "no adapter + no manifest → step 4 PASSED stub-fallback" {
   _write_config
   _write_plugin_json 1.0.0
   # No adapter shim, no adapter manifest.
@@ -544,7 +544,7 @@ YAML
 
 # ---------- TC-GPO-7: FAILED verdict propagation with adapter findings ----------
 
-@test "TC-GPO-7: well-formed envelope with verdict FAILED → orchestrator FAILED + adapter findings surfaced" {
+@test "well-formed envelope with verdict FAILED → orchestrator FAILED + adapter findings surfaced" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -563,7 +563,7 @@ YAML
 
 # ---------- TC-GPO-8: adapter-internal-failure ----------
 
-@test "TC-GPO-8: adapter exits non-zero BEFORE findings.json → adapter-internal-failure (distinct from FAILED)" {
+@test "adapter exits non-zero BEFORE findings.json → adapter-internal-failure (distinct from FAILED)" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -576,7 +576,7 @@ YAML
 
 # ---------- TC-GPO-9: envelope schema violation ----------
 
-@test "TC-GPO-9: missing verdict in findings.json → envelope-schema-violation HALT" {
+@test "missing verdict in findings.json → envelope-schema-violation HALT" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -588,7 +588,7 @@ YAML
   echo "$output" | grep -qi 'verdict'
 }
 
-@test "TC-GPO-9: verdict outside enum → envelope-schema-violation HALT" {
+@test "verdict outside enum → envelope-schema-violation HALT" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -600,7 +600,7 @@ YAML
   echo "$output" | grep -qF 'SUCCESS'
 }
 
-@test "TC-GPO-9: evidence not an array → envelope-schema-violation HALT" {
+@test "evidence not an array → envelope-schema-violation HALT" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -611,7 +611,7 @@ YAML
   echo "$output" | grep -qi 'envelope.*schema.*violation\|adr-037'
 }
 
-@test "TC-GPO-9: malformed JSON in findings.json → envelope-schema-violation HALT" {
+@test "malformed JSON in findings.json → envelope-schema-violation HALT" {
   _write_config
   _write_plugin_json 1.0.0
   _write_adapter_manifest claude-marketplace 2
@@ -623,16 +623,16 @@ YAML
 
 # ---------- Adapter-manifest JSON Schema validation (SR-77 + SR-83) ----------
 
-@test "SR-77: validate-adapter-manifest.sh accepts well-formed manifest" {
+@test "validate-adapter-manifest.sh accepts well-formed manifest" {
   local helper="$PLUGIN_DIR/scripts/lib/validate-adr037-envelope.sh"
   [ -x "$helper" ]
 }
 
-@test "SR-77: adapter-manifest.schema.json exists" {
+@test "adapter-manifest.schema.json exists" {
   [ -f "$PLUGIN_DIR/schemas/adapter-manifest.schema.json" ]
 }
 
-@test "SR-83: schema rejects verify_retry_window_seconds > 3600" {
+@test "schema rejects verify_retry_window_seconds > 3600" {
   local schema="$PLUGIN_DIR/schemas/adapter-manifest.schema.json"
   [ -f "$schema" ]
   # Verify the schema declares the maximum=3600 constraint (within oneOf branch).

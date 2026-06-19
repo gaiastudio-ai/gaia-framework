@@ -25,24 +25,24 @@ teardown() { common_teardown; }
 
 # ---------- AC1: skill exists at canonical path with 4 sub-commands ----------
 
-@test "AC1: skill SKILL.md exists at canonical path" {
+@test "skill SKILL.md exists at canonical path" {
   [ -f "$SKILL" ]
 }
 
-@test "AC1: SKILL.md documents the four FR-523 sub-commands (add/show/clear/set)" {
+@test "SKILL.md documents the four sub-commands (add/show/clear/set)" {
   grep -q '^### `add`' "$SKILL"
   grep -q '^### `show`' "$SKILL"
   grep -q '^### `clear`' "$SKILL"
   grep -q '^### `set`' "$SKILL"
 }
 
-@test "AC1: SKILL.md frontmatter name is gaia-config-distribution" {
+@test "SKILL.md frontmatter name is gaia-config-distribution" {
   grep -q '^name: gaia-config-distribution$' "$SKILL"
 }
 
 # ---------- AC2 / TC-GCD-1: add preserves YAML comments ----------
 
-@test "TC-GCD-1: config-yaml-editor preserves comments around added distribution section" {
+@test "config-yaml-editor preserves comments around added distribution section" {
   cat > "$CONFIG" <<'YAML'
 # Top-level project comment
 project_name: example
@@ -71,7 +71,7 @@ YAML
 
 # ---------- AC3 / TC-GCD-2: set preserves formatting on existing section ----------
 
-@test "TC-GCD-2: config-yaml-editor preserves surrounding formatting on section extract+replace" {
+@test "config-yaml-editor preserves surrounding formatting on section extract+replace" {
   cat > "$CONFIG" <<'YAML'
 # Pre-distribution comment
 ci_cd:
@@ -99,7 +99,7 @@ YAML
 
 # ---------- AC4 / TC-GCD-3: invalid channel rejected by the schema ----------
 
-@test "TC-GCD-3: distribution-canonicalize rejects shell-metachar in registry (SR-80 gate)" {
+@test "distribution-canonicalize rejects shell-metachar in registry" {
   # The schema rejection is exercised by E99-S2 bats; here we exercise the
   # gate-2 SR-80 string-validator that the skill calls before any write.
   run bash -c "source '$CANON' && gaia_distribution_validate_url 'https://evil.com; rm -rf /'"
@@ -107,12 +107,12 @@ YAML
   echo "$output" | grep -q 'shell-metacharacter'
 }
 
-@test "TC-GCD-3: distribution-canonicalize rejects non-https registry (SR-80 URL-shape)" {
+@test "distribution-canonicalize rejects non-https registry" {
   run bash -c "source '$CANON' && gaia_distribution_validate_url 'ftp://example.com/path'"
   [ "$status" -ne 0 ]
 }
 
-@test "TC-GCD-3: distribution-canonicalize rejects manifest traversal (SR-79)" {
+@test "distribution-canonicalize rejects manifest traversal" {
   mkdir -p "$TEST_TMP/proj"
   run bash -c "source '$CANON' && gaia_distribution_canonicalize_manifest '$TEST_TMP/proj' '../../../etc/passwd'"
   [ "$status" -ne 0 ]
@@ -121,7 +121,7 @@ YAML
 
 # ---------- AC5: clear removes section ----------
 
-@test "AC5: config-yaml-editor delete removes distribution section, preserves siblings" {
+@test "config-yaml-editor delete removes distribution section, preserves siblings" {
   cat > "$CONFIG" <<'YAML'
 # top comment
 ci_cd:
@@ -149,7 +149,7 @@ YAML
 
 # ---------- AC8: --force gate — all-deployable environments ----------
 
-@test "AC8: resolve-env-kind reports all envs as deployable (FR-523 --force gate fires when this holds)" {
+@test "resolve-env-kind reports all envs as deployable" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -166,7 +166,7 @@ YAML
   # is the deterministic primitive — gate logic lives in SKILL.md prose.
 }
 
-@test "AC8: resolve-env-kind reports mixed kinds (--force gate does NOT fire when a non-deployable exists)" {
+@test "resolve-env-kind reports mixed kinds (--force gate does NOT fire when a non-deployable exists)" {
   cat > "$CONFIG" <<'YAML'
 environments:
   - id: staging
@@ -183,7 +183,7 @@ YAML
 
 # ---------- AC9 / TC-GCD-4: /gaia-config-show extension ----------
 
-@test "TC-GCD-4: distribution is a top-level section that config-yaml-editor can extract" {
+@test "distribution is a top-level section that config-yaml-editor can extract" {
   cat > "$CONFIG" <<'YAML'
 distribution:
   channel: npm
@@ -201,20 +201,20 @@ YAML
 
 # ---------- AC7: pre-write validation chain wired in SKILL.md ----------
 
-@test "AC7: SKILL.md cites the three pre-write validation gates (schema + canon + denylist)" {
+@test "SKILL.md cites the three pre-write validation gates (schema + canon + denylist)" {
   grep -q 'Schema validation' "$SKILL"
   grep -q 'realpath' "$SKILL"
   grep -q 'denylist' "$SKILL"
 }
 
-@test "AC7: SKILL.md names the four config-yaml-editor primitives (extract/replace/delete/insert)" {
+@test "SKILL.md names the four config-yaml-editor primitives (extract/replace/delete/insert)" {
   # The skill uses config-yaml-editor as the comment-preserving mutation primitive
   grep -q 'config-yaml-editor.sh' "$SKILL"
 }
 
 # ---------- AC8 SKILL.md prose check ----------
 
-@test "AC8: SKILL.md documents the --force gate against all-deployable projects" {
+@test "SKILL.md documents the --force gate against all-deployable projects" {
   grep -qE 'force|deployable' "$SKILL"
   grep -qE '\-\-force|all-`deployable`|all-deployable' "$SKILL"
 }

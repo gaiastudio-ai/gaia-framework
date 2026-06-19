@@ -12,7 +12,7 @@ setup() {
 
 # TC-STCL-4 — the writer's marker uses the canonical ASCII '->' (bytes 2d 3e),
 # never the Unicode arrow (bytes e2 86 92).
-@test "TC-STCL-4: written marker uses ASCII '->' not the Unicode arrow" {
+@test "written marker uses ASCII '->' not the Unicode arrow" {
   local m; m="$(triaged_marker E12-S3)"
   [ "$m" = "[TRIAGED -> E12-S3]" ]
   # Byte assertion: the arrow is 2d 3e, and e2 86 92 (→) never appears.
@@ -24,7 +24,7 @@ setup() {
 # TC-STCL-4b — the reader's regex matches a marker the writer produced, and
 # extracts the target key. This is the byte-equality handoff: writer output
 # feeds reader pattern with zero glyph drift.
-@test "TC-STCL-4b: reader regex matches the writer's marker and captures the key" {
+@test "reader regex matches the writer's marker and captures the key" {
   local line; line="finding text $(triaged_marker E40-S7) trailing"
   run bash -c "printf '%s\n' '$line' | grep -E '$(triaged_match_regex)'"
   [ "$status" -eq 0 ]
@@ -36,7 +36,7 @@ setup() {
 # TC-STCL-4c — a Unicode-arrow marker (the retired form) is NOT matched by the
 # reader regex, proving the two forms are not silently interchangeable and the
 # canonical form is enforced.
-@test "TC-STCL-4c: the retired Unicode-arrow form is not matched" {
+@test "the retired Unicode-arrow form is not matched" {
   # Construct the retired form explicitly with the Unicode arrow.
   local retired
   retired="$(printf '[TRIAGED \xe2\x86\x92 E1-S1]')"

@@ -35,11 +35,11 @@ teardown() {
 
 # --- AC1: SKILL.md exists with action-skill frontmatter --------------------
 
-@test "E73-S4 AC1: SKILL.md exists" {
+@test "SKILL.md exists" {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "E73-S4 AC1: SKILL.md frontmatter declares deployment-phase action skill" {
+@test "SKILL.md frontmatter declares deployment-phase action skill" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E '^name:[[:space:]]+gaia-test-a11y' "$f"
   grep -E '^phase:[[:space:]]+deployment' "$f"
@@ -47,14 +47,14 @@ teardown() {
   grep -E '^type:[[:space:]]+action' "$f"
 }
 
-@test "E73-S4 AC1: SKILL.md description references axe-core, pa11y, Lighthouse" {
+@test "SKILL.md description references axe-core, pa11y, Lighthouse" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E -i 'axe' "$f"
   grep -E -i 'pa11y' "$f"
   grep -E -i 'lighthouse' "$f"
 }
 
-@test "E73-S4 AC1: SKILL.md allowed-tools includes Read and Bash" {
+@test "SKILL.md allowed-tools includes Read and Bash" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E '^allowed-tools:.*Read' "$f"
   grep -E '^allowed-tools:.*Bash' "$f"
@@ -78,11 +78,11 @@ _assert_a11y_adapter_contract() {
   [ -f "$adir/test/contract.bats" ]
 }
 
-@test "E73-S4 AC2: axe-core-a11y adapter conforms to ADR-078 contract" {
+@test "axe-core-a11y adapter conforms to contract" {
   _assert_a11y_adapter_contract "$AXE_DIR" "axe-core"
 }
 
-@test "E73-S4 AC2: axe-core-a11y run.sh accepts canonical contract flags + a11y-specific args" {
+@test "axe-core-a11y run.sh accepts canonical contract flags + a11y-specific args" {
   [ -x "$AXE_DIR/run.sh" ]
   run "$AXE_DIR/run.sh" --help
   [ "$status" -eq 0 ]
@@ -94,11 +94,11 @@ _assert_a11y_adapter_contract() {
   echo "$output" | grep -F -- "--wcag-level"
 }
 
-@test "E73-S4 AC3: pa11y-a11y adapter conforms to ADR-078 contract" {
+@test "pa11y-a11y adapter conforms to contract" {
   _assert_a11y_adapter_contract "$PA11Y_DIR" "pa11y"
 }
 
-@test "E73-S4 AC3: pa11y-a11y run.sh accepts canonical contract flags + a11y-specific args" {
+@test "pa11y-a11y run.sh accepts canonical contract flags + a11y-specific args" {
   [ -x "$PA11Y_DIR/run.sh" ]
   run "$PA11Y_DIR/run.sh" --help
   [ "$status" -eq 0 ]
@@ -106,11 +106,11 @@ _assert_a11y_adapter_contract() {
   echo "$output" | grep -F -- "--wcag-level"
 }
 
-@test "E73-S4 AC4: lighthouse-a11y adapter conforms to ADR-078 contract" {
+@test "lighthouse-a11y adapter conforms to contract" {
   _assert_a11y_adapter_contract "$LH_DIR" "lighthouse"
 }
 
-@test "E73-S4 AC4: lighthouse-a11y run.sh accepts --categories accessibility" {
+@test "lighthouse-a11y run.sh accepts --categories accessibility" {
   [ -x "$LH_DIR/run.sh" ]
   run "$LH_DIR/run.sh" --help
   [ "$status" -eq 0 ]
@@ -120,33 +120,33 @@ _assert_a11y_adapter_contract() {
 
 # --- AC5: Shared rubric loading from E69-S2 ----------------------------------
 
-@test "E73-S4 AC5: SKILL.md references shared a11y rubric (rubrics/base/a11y.json)" {
+@test "SKILL.md references shared a11y rubric (rubrics/base/a11y.json)" {
   local f="$SKILL_DIR/SKILL.md"
   grep -F 'rubrics/base/a11y.json' "$f"
 }
 
-@test "E73-S4 AC5: SKILL.md references WCAG level escalation (AA / AAA)" {
+@test "SKILL.md references WCAG level escalation (AA / AAA)" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E -i 'wcag.*aa' "$f"
   grep -E -i 'aaa' "$f"
 }
 
-@test "E73-S4 AC5: rubrics/base/a11y.json exists (E68-S3 + E69-S2 prerequisite)" {
+@test "rubrics/base/a11y.json exists ( + prerequisite)" {
   [ -f "$PLUGIN_ROOT/rubrics/base/a11y.json" ]
   jq -e '.skill == "a11y"' "$PLUGIN_ROOT/rubrics/base/a11y.json" >/dev/null
 }
 
-@test "E73-S4 AC5: rubrics/regimes/wcag-2.1-aa.json present (level escalation source)" {
+@test "rubrics/regimes/wcag-2.1-aa.json present (level escalation source)" {
   [ -f "$PLUGIN_ROOT/rubrics/regimes/wcag-2.1-aa.json" ]
 }
 
-@test "E73-S4 AC5: rubrics/regimes/wcag-2.1-aaa.json present (AAA opt-in regime)" {
+@test "rubrics/regimes/wcag-2.1-aaa.json present (AAA opt-in regime)" {
   [ -f "$PLUGIN_ROOT/rubrics/regimes/wcag-2.1-aaa.json" ]
 }
 
 # --- AC6: Seven-phase pipeline (ADR-077) -----------------------------------
 
-@test "E73-S4 AC6: SKILL.md Steps section names all seven ADR-077 phases" {
+@test "SKILL.md Steps section names all seven phases" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E -i 'config' "$f"
   grep -E -i 'availability probe|tool-availability-probe' "$f"
@@ -159,7 +159,7 @@ _assert_a11y_adapter_contract() {
 
 # --- AC7: Three-state availability probe ----------------------------------
 
-@test "E73-S4 AC7: tool-availability-probe.sh consumes axe-core-a11y adapter.json without crash" {
+@test "tool-availability-probe.sh consumes axe-core-a11y adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"
   : > "$file_list"
   run "$PLUGIN_ROOT/scripts/tool-availability-probe.sh" \
@@ -168,7 +168,7 @@ _assert_a11y_adapter_contract() {
   echo "$output" | jq -e '.state' >/dev/null
 }
 
-@test "E73-S4 AC7: tool-availability-probe.sh consumes pa11y-a11y adapter.json without crash" {
+@test "tool-availability-probe.sh consumes pa11y-a11y adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"
   : > "$file_list"
   run "$PLUGIN_ROOT/scripts/tool-availability-probe.sh" \
@@ -177,7 +177,7 @@ _assert_a11y_adapter_contract() {
   echo "$output" | jq -e '.state' >/dev/null
 }
 
-@test "E73-S4 AC7: tool-availability-probe.sh consumes lighthouse-a11y adapter.json without crash" {
+@test "tool-availability-probe.sh consumes lighthouse-a11y adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"
   : > "$file_list"
   run "$PLUGIN_ROOT/scripts/tool-availability-probe.sh" \
@@ -188,23 +188,23 @@ _assert_a11y_adapter_contract() {
 
 # --- AC8: Adapter selection via project config + CLI override -------------
 
-@test "E73-S4 AC8: select-adapter.sh exists and is executable" {
+@test "select-adapter.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/select-adapter.sh" ]
 }
 
-@test "E73-S4 AC8: select-adapter.sh defaults to axe-core-a11y" {
+@test "select-adapter.sh defaults to axe-core-a11y" {
   run "$SKILL_DIR/scripts/select-adapter.sh"
   [ "$status" -eq 0 ]
   echo "$output" | grep -F "/axe-core-a11y"
 }
 
-@test "E73-S4 AC8: select-adapter.sh honours --adapter CLI override" {
+@test "select-adapter.sh honours --adapter CLI override" {
   run "$SKILL_DIR/scripts/select-adapter.sh" --adapter pa11y-a11y
   [ "$status" -eq 0 ]
   echo "$output" | grep -F "/pa11y-a11y"
 }
 
-@test "E73-S4 AC8: select-adapter.sh reads test_execution.a11y.adapter from project-config" {
+@test "select-adapter.sh reads test_execution.a11y.adapter from project-config" {
   local cfg="$WORK_TMP/project-config.yaml"
   cat > "$cfg" <<'EOF'
 test_execution:
@@ -216,7 +216,7 @@ EOF
   echo "$output" | grep -F "/lighthouse-a11y"
 }
 
-@test "E73-S4 AC8: select-adapter.sh CLI override beats project-config" {
+@test "select-adapter.sh CLI override beats project-config" {
   local cfg="$WORK_TMP/project-config.yaml"
   cat > "$cfg" <<'EOF'
 test_execution:
@@ -230,11 +230,11 @@ EOF
 
 # --- AC9: Verdict resolver emits correct verdict --------------------------
 
-@test "E73-S4 AC9: phase3a-collect.sh exists and is executable" {
+@test "phase3a-collect.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/phase3a-collect.sh" ]
 }
 
-@test "E73-S4 AC9: phase3a-collect.sh emits analysis-results.json with required envelope" {
+@test "phase3a-collect.sh emits analysis-results.json with required envelope" {
   local outdir="$WORK_TMP/p3a"
   mkdir -p "$outdir"
   local stage="$WORK_TMP/stage"
@@ -257,7 +257,7 @@ EOF
   jq -e '.skill == "gaia-test-a11y"' "$outdir/analysis-results.json" >/dev/null
 }
 
-@test "E73-S4 AC9: verdict.sh exists and emits APPROVE on clean inputs" {
+@test "verdict.sh exists and emits APPROVE on clean inputs" {
   [ -x "$SKILL_DIR/scripts/verdict.sh" ]
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
@@ -279,7 +279,7 @@ EOF
   echo "$output" | grep -F "APPROVE"
 }
 
-@test "E73-S4 AC9: verdict.sh emits BLOCKED when adapter check is errored" {
+@test "verdict.sh emits BLOCKED when adapter check is errored" {
   local ar="$WORK_TMP/ar.json" ll="$WORK_TMP/ll.json"
   cat > "$ar" <<'EOF'
 {
@@ -304,7 +304,7 @@ EOF
 
 # --- AC10: PRD/threat-model traceability -----------------------------------
 
-@test "E73-S4 AC10: SKILL.md documents env-var-only credentials and deployment-phase action skill contract" {
+@test "SKILL.md documents env-var-only credentials and deployment-phase action skill contract" {
   local f="$SKILL_DIR/SKILL.md"
   grep -qiE 'env.var.only credentials|Env-var-only credentials' "$f"
   grep -qiE 'deployment.phase action skill|deployment-phase action skill' "$f"
@@ -312,7 +312,7 @@ EOF
 
 # --- Agent overlay wiring (already shipped, sanity check) ------------------
 
-@test "E73-S4: agent-overlay.sh --skill gaia-test-a11y returns sable" {
+@test "agent-overlay.sh --skill gaia-test-a11y returns sable" {
   local overlay="$PLUGIN_ROOT/scripts/review-common/agent-overlay.sh"
   [ -x "$overlay" ]
   run "$overlay" --skill gaia-test-a11y

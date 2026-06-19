@@ -20,7 +20,7 @@ mkfile() {
   printf '%s\n' "$@" > "$path"
 }
 
-@test "TC-RSV2-PRIVACY-INTEG-1: all three scanners run + merge produces three categories" {
+@test "all three scanners run + merge produces three categories" {
   # Story-shaped fixture:
   #   - source file logs an email                  -> data-handling-lint
   #   - test fixture has credit-card               -> pii-detector (medium severity)
@@ -55,7 +55,7 @@ mkfile() {
   printf '%s\n' "$merged" | grep -F '"checks":[' >/dev/null
 }
 
-@test "TC-RSV2-PRIVACY-INTEG-2: all three scanners exit 0 even with findings" {
+@test "all three scanners exit 0 even with findings" {
   local f="$TEST_TMP/src/dirty.ts"
   mkfile "$f" 'logger.info("u:", email); const e = "a@b.co";'
 
@@ -71,7 +71,7 @@ mkfile() {
   [ "$status" -eq 0 ]
 }
 
-@test "TC-RSV2-PRIVACY-INTEG-3: gaia-review-security SKILL.md wires Phase 3C scripts" {
+@test "gaia-review-security SKILL.md wires Phase 3C scripts" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-review-security/SKILL.md"
   [ -f "$skill" ]
   grep -F "pii-detector.sh" "$skill" >/dev/null

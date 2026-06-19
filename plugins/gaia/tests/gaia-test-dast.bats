@@ -34,11 +34,11 @@ teardown() {
 
 # --- AC1: SKILL.md exists with action-skill frontmatter --------------------
 
-@test "E73-S3 AC1: SKILL.md exists" {
+@test "SKILL.md exists" {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "E73-S3 AC1: SKILL.md frontmatter declares deployment-phase action skill" {
+@test "SKILL.md frontmatter declares deployment-phase action skill" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E '^name:[[:space:]]+gaia-test-dast' "$f"
   grep -E '^phase:[[:space:]]+deployment' "$f"
@@ -46,12 +46,12 @@ teardown() {
   grep -E '^type:[[:space:]]+action' "$f"
 }
 
-@test "E73-S3 AC1: SKILL.md description references OWASP ZAP and DAST" {
+@test "SKILL.md description references OWASP ZAP and DAST" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E '^description:.*(ZAP|DAST)' "$f"
 }
 
-@test "E73-S3 AC1: SKILL.md allowed-tools includes Read Bash" {
+@test "SKILL.md allowed-tools includes Read Bash" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E '^allowed-tools:.*Read' "$f"
   grep -E '^allowed-tools:.*Bash' "$f"
@@ -59,11 +59,11 @@ teardown() {
 
 # --- AC2: OWASP ZAP adapter conforms to ADR-078 contract -------------------
 
-@test "E73-S3 AC2: owasp-zap adapter directory exists" {
+@test "owasp-zap adapter directory exists" {
   [ -d "$ZAP_DIR" ]
 }
 
-@test "E73-S3 AC2: owasp-zap adapter.json validates required schema fields" {
+@test "owasp-zap adapter.json validates required schema fields" {
   [ -f "$ZAP_DIR/adapter.json" ]
   jq -e . "$ZAP_DIR/adapter.json" >/dev/null
   jq -e '.category == "dast"' "$ZAP_DIR/adapter.json" >/dev/null
@@ -74,14 +74,14 @@ teardown() {
   jq -e '.description | length > 0' "$ZAP_DIR/adapter.json" >/dev/null
 }
 
-@test "E73-S3 AC2: owasp-zap adapter.json declares env-allowlist (T-RSV2-1)" {
+@test "owasp-zap adapter.json declares env-allowlist (T-RSV2-1)" {
   [ -f "$ZAP_DIR/adapter.json" ]
   jq -e '.["env-allowlist"] | type == "array" and length > 0' "$ZAP_DIR/adapter.json"
 }
 
 # --- AC3: run.sh ADR-078 contract -------------------------------------------
 
-@test "E73-S3 AC3: owasp-zap run.sh executable and accepts canonical contract flags" {
+@test "owasp-zap run.sh executable and accepts canonical contract flags" {
   [ -x "$ZAP_DIR/run.sh" ]
   run "$ZAP_DIR/run.sh" --help
   [ "$status" -eq 0 ]
@@ -92,37 +92,37 @@ teardown() {
   echo "$output" | grep -F -- "--target-url"
 }
 
-@test "E73-S3 AC3: owasp-zap contract.bats present" {
+@test "owasp-zap contract.bats present" {
   [ -f "$ZAP_DIR/test/contract.bats" ]
 }
 
 # --- AC5: SKILL.md Secret Handling documents env-allowlist contract --------
 
-@test "E73-S3 AC5: SKILL.md has '## Secret Handling' section" {
+@test "SKILL.md has '## Secret Handling' section" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E '^## Secret Handling' "$f"
 }
 
-@test "E73-S3 AC5: Secret Handling references env-allowlist + credential-leakage mitigation" {
+@test "Secret Handling references env-allowlist + credential-leakage mitigation" {
   local f="$SKILL_DIR/SKILL.md"
   grep -F 'env-allowlist' "$f"
   grep -E -i 'credential.leakage|credential leakage|DAST tooling surface' "$f"
 }
 
-@test "E73-S3 AC5: Secret Handling enumerates permitted env vars (ZAP_API_KEY, TARGET_URL)" {
+@test "Secret Handling enumerates permitted env vars (ZAP_API_KEY, TARGET_URL)" {
   local f="$SKILL_DIR/SKILL.md"
   grep -F 'ZAP_API_KEY' "$f"
   grep -F 'TARGET_URL' "$f"
 }
 
-@test "E73-S3 AC5: Secret Handling warns that adding allowlist entries requires security review" {
+@test "Secret Handling warns that adding allowlist entries requires security review" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E -i 'security review|requires.*review' "$f"
 }
 
 # --- AC6: Seven-phase pipeline (ADR-077) ----------------------------------
 
-@test "E73-S3 AC6: SKILL.md Steps section names all seven ADR-077 phases" {
+@test "SKILL.md Steps section names all seven phases" {
   local f="$SKILL_DIR/SKILL.md"
   # Seven phases: 1 config, 2 availability probe, 3A toolkit, 3B LLM judgment,
   # 4 verdict resolution, 5 gate update, 6 report.
@@ -137,7 +137,7 @@ teardown() {
 
 # --- AC9: Agent overlay wiring ---------------------------------------------
 
-@test "E73-S3 AC9: agent-overlay.sh --skill gaia-test-dast returns sable" {
+@test "agent-overlay.sh --skill gaia-test-dast returns sable" {
   local overlay="$PLUGIN_ROOT/scripts/review-common/agent-overlay.sh"
   [ -x "$overlay" ]
   run "$overlay" --skill gaia-test-dast
@@ -148,7 +148,7 @@ teardown() {
 
 # --- AC10: PRD/threat-model traceability -----------------------------------
 
-@test "E73-S3 AC10: SKILL.md documents env-allowlist contract and DAST tooling surface threat" {
+@test "SKILL.md documents env-allowlist contract and DAST tooling surface threat" {
   local f="$SKILL_DIR/SKILL.md"
   grep -E 'Per-adapter env-allowlist contract|env-allowlist contract' "$f"
   grep -E 'DAST tooling surface|deployment-phase.*DAST|Deployment-phase DAST' "$f"
@@ -156,21 +156,21 @@ teardown() {
 
 # --- Skill scripts exist ---------------------------------------------------
 
-@test "E73-S3: select-adapter.sh exists and is executable" {
+@test "select-adapter.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/select-adapter.sh" ]
 }
 
-@test "E73-S3: select-adapter.sh defaults to owasp-zap" {
+@test "select-adapter.sh defaults to owasp-zap" {
   run "$SKILL_DIR/scripts/select-adapter.sh"
   [ "$status" -eq 0 ]
   echo "$output" | grep -F "/owasp-zap"
 }
 
-@test "E73-S3: phase3a-collect.sh exists and is executable" {
+@test "phase3a-collect.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/phase3a-collect.sh" ]
 }
 
-@test "E73-S3: phase3a-collect.sh emits analysis-results.json with required envelope" {
+@test "phase3a-collect.sh emits analysis-results.json with required envelope" {
   local outdir="$WORK_TMP/p3a"
   mkdir -p "$outdir"
   local stage="$WORK_TMP/stage"
@@ -193,7 +193,7 @@ EOF
   jq -e '.skill == "gaia-test-dast"' "$outdir/analysis-results.json" >/dev/null
 }
 
-@test "E73-S3: verdict.sh exists and emits APPROVE on clean inputs" {
+@test "verdict.sh exists and emits APPROVE on clean inputs" {
   [ -x "$SKILL_DIR/scripts/verdict.sh" ]
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
@@ -215,7 +215,7 @@ EOF
   echo "$output" | grep -F "APPROVE"
 }
 
-@test "E73-S3: verdict.sh emits BLOCKED when adapter check is errored" {
+@test "verdict.sh emits BLOCKED when adapter check is errored" {
   local ar="$WORK_TMP/ar.json" ll="$WORK_TMP/ll.json"
   cat > "$ar" <<'EOF'
 {
@@ -240,7 +240,7 @@ EOF
 
 # --- Probe sanity check ----------------------------------------------------
 
-@test "E73-S3: tool-availability-probe.sh consumes owasp-zap adapter.json without crash" {
+@test "tool-availability-probe.sh consumes owasp-zap adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"
   : > "$file_list"
   run "$PLUGIN_ROOT/scripts/tool-availability-probe.sh" \

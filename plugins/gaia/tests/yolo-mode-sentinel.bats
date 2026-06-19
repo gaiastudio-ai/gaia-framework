@@ -23,26 +23,26 @@ teardown() {
   common_teardown
 }
 
-@test "AF-2026-05-21-4 #2: is_yolo returns 1 when no env and no sentinel" {
+@test "#2: is_yolo returns 1 when no env and no sentinel" {
   [ ! -f "$GAIA_YOLO_SENTINEL" ]
   run bash "$YOLO" is_yolo
   [ "$status" -eq 1 ]
 }
 
-@test "AF-2026-05-21-4 #2: yolo-mode.sh set creates the sentinel file" {
+@test "#2: yolo-mode.sh set creates the sentinel file" {
   run bash "$YOLO" set
   [ "$status" -eq 0 ]
   [ -f "$GAIA_YOLO_SENTINEL" ]
 }
 
-@test "AF-2026-05-21-4 #2: is_yolo returns 0 when sentinel exists (no env)" {
+@test "#2: is_yolo returns 0 when sentinel exists (no env)" {
   bash "$YOLO" set
   [ -f "$GAIA_YOLO_SENTINEL" ]
   run bash "$YOLO" is_yolo
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-4 #2: cross-process persistence — sentinel survives bash invocations" {
+@test "#2: cross-process persistence — sentinel survives bash invocations" {
   # The root failure: env-var YOLO state is lost between Bash tool calls.
   # Demonstrate the sentinel survives.
   bash "$YOLO" set
@@ -51,7 +51,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-4 #2: yolo-mode.sh clear removes the sentinel" {
+@test "#2: yolo-mode.sh clear removes the sentinel" {
   bash "$YOLO" set
   [ -f "$GAIA_YOLO_SENTINEL" ]
   run bash "$YOLO" clear
@@ -59,7 +59,7 @@ teardown() {
   [ ! -f "$GAIA_YOLO_SENTINEL" ]
 }
 
-@test "AF-2026-05-21-4 #2: set + clear are idempotent" {
+@test "#2: set + clear are idempotent" {
   # set twice
   bash "$YOLO" set
   run bash "$YOLO" set
@@ -72,19 +72,19 @@ teardown() {
   [ ! -f "$GAIA_YOLO_SENTINEL" ]
 }
 
-@test "AF-2026-05-21-4 #2: GAIA_YOLO_OVERRIDE=no wins over the sentinel" {
+@test "#2: GAIA_YOLO_OVERRIDE=no wins over the sentinel" {
   bash "$YOLO" set
   GAIA_YOLO_OVERRIDE=no run bash "$YOLO" is_yolo
   [ "$status" -eq 1 ]
 }
 
-@test "AF-2026-05-21-4 #2: GAIA_CONTEXT=memory-save wins over the sentinel" {
+@test "#2: GAIA_CONTEXT=memory-save wins over the sentinel" {
   bash "$YOLO" set
   GAIA_CONTEXT=memory-save run bash "$YOLO" is_yolo
   [ "$status" -eq 1 ]
 }
 
-@test "AF-2026-05-21-4 #2: help text documents the sentinel + set/clear subcommands" {
+@test "#2: help text documents the sentinel + set/clear subcommands" {
   run bash "$YOLO" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"set"* ]]
@@ -92,7 +92,7 @@ teardown() {
   [[ "$output" == *"sentinel"* ]]
 }
 
-@test "AF-2026-05-21-4 #2: env-var GAIA_YOLO_FLAG=1 still wins (precedence rule 3)" {
+@test "#2: env-var GAIA_YOLO_FLAG=1 still wins (precedence rule 3)" {
   # Regression guard: the new sentinel rule must NOT shadow the env-var rules
   # for callers that DO export GAIA_YOLO_FLAG=1 (e.g. tests with controlled env).
   [ ! -f "$GAIA_YOLO_SENTINEL" ]
@@ -100,7 +100,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-4 #2: yolo_set + yolo_clear are sourceable library functions" {
+@test "#2: yolo_set + yolo_clear are sourceable library functions" {
   # NFR-052 public-function coverage: explicitly reference the function names
   # so the deterministic public-function grep at run-with-coverage.sh sees
   # them in this bats file. The functions ARE exercised by the `bash

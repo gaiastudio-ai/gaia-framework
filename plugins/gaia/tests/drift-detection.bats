@@ -54,7 +54,7 @@ run_resolver() {
 
 # ---- AC1+AC2+AC4+AC5+AC10: drift detected → marker + WARNING --------------
 
-@test "AC1-2-4-5-10 / Scenario 1: drift detected writes marker + emits stderr WARNING" {
+@test "2-4-5-10 / Scenario 1: drift detected writes marker + emits stderr WARNING" {
   write_config "9.9.9-different-from-plugin"
   run_resolver
   [ "$status" -eq 0 ]
@@ -74,7 +74,7 @@ run_resolver() {
 
 # ---- AC11: versions match → no marker, no warning -------------------------
 
-@test "AC11 / Scenario 2: versions match — no marker, no warning" {
+@test "Scenario 2: versions match — no marker, no warning" {
   write_config "$PLUGIN_VERSION"
   run_resolver
   [ "$status" -eq 0 ]
@@ -84,14 +84,14 @@ run_resolver() {
 
 # ---- AC9: sentinel created (whether drift or not) -------------------------
 
-@test "AC9 / Scenario 4 (sentinel touch on match): sentinel file is created" {
+@test "Scenario 4 (sentinel touch on match): sentinel file is created" {
   write_config "$PLUGIN_VERSION"
   run_resolver
   [ "$status" -eq 0 ]
   [ -f "$FIXTURE_DIR/_memory/.framework-version-checked-$PLUGIN_VERSION" ]
 }
 
-@test "AC9 (sentinel touch on drift): sentinel file is created after drift detection" {
+@test "sentinel touch on drift): sentinel file is created after drift detection" {
   write_config "1.0.0-old"
   run_resolver
   [ "$status" -eq 0 ]
@@ -100,7 +100,7 @@ run_resolver() {
 
 # ---- AC8: session-cache sentinel → second call is no-op -------------------
 
-@test "AC8 / Scenario 4 (warm cache): second invocation produces no warning" {
+@test "Scenario 4 (warm cache): second invocation produces no warning" {
   write_config "1.0.0-old"
   # First call — drift detected, sentinel created.
   run_resolver
@@ -117,7 +117,7 @@ run_resolver() {
 
 # ---- AC6+AC7: write failure tolerance (_memory missing) --------------------
 
-@test "AC7 / Scenario 7 (write tolerance): _memory missing → no crash, no marker" {
+@test "Scenario 7 (write tolerance): _memory missing → no crash, no marker" {
   write_config "1.0.0-old"
   # Remove the _memory directory entirely. resolve-config.sh should NOT die.
   rm -rf "$FIXTURE_DIR/_memory"
@@ -130,7 +130,7 @@ run_resolver() {
 
 # ---- AC5: marker content exact format check -------------------------------
 
-@test "AC5 marker content: single line with stale_since= installed= config= fields" {
+@test "marker content: single line with stale_since= installed= config= fields" {
   write_config "0.1.2"
   run_resolver
   [ -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
@@ -145,7 +145,7 @@ run_resolver() {
 
 # ---- AC4 marker naming collision guard -------------------------------------
 
-@test "AC4: marker is .framework-version-stale, NOT .config-stale" {
+@test "marker is .framework-version-stale, NOT .config-stale" {
   write_config "1.0.0-old"
   run_resolver
   [ -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
@@ -154,17 +154,17 @@ run_resolver() {
 
 # ---- AC1 hook placement: function exists in resolve-config.sh -------------
 
-@test "AC1 placement: resolve-config.sh contains _drift_detect function" {
+@test "placement: resolve-config.sh contains _drift_detect function" {
   grep -qE '^[[:space:]]*_drift_detect[[:space:]]*\(\)' "$SCRIPT"
 }
 
-@test "AC1 placement: resolve-config.sh sources lib/framework-version.sh" {
+@test "placement: resolve-config.sh sources lib/framework-version.sh" {
   grep -qE '(source|\.)[[:space:]]+["$]*[^[:space:]]*lib/framework-version\.sh' "$SCRIPT"
 }
 
 # ---- W1 (Tex Red review): AC3 defense-in-depth — empty config version ----
 
-@test "AC3 (defense-in-depth): _drift_detect skips when v_framework_version is empty" {
+@test "defense-in-depth): _drift_detect skips when v_framework_version is empty" {
   # Today the L923 required-field check dies on empty v_framework_version
   # before the hook can see it. This test exercises the hook function in
   # isolation by invoking resolve-config.sh in --field mode with an env
@@ -182,7 +182,7 @@ run_resolver() {
 
 # ---- W3 (Tex Red review): AC6 atomic-write runtime evidence -------------
 
-@test "AC6 (atomic write): marker write goes through tempfile + mv" {
+@test "atomic write): marker write goes through tempfile + mv" {
   # Verify by source-inspection that the hook uses the SR-55 pattern:
   # tempfile path includes a PID suffix and the final write is via `mv`.
   # A truly runtime test would require strace, which is heavy and not
@@ -200,7 +200,7 @@ run_resolver() {
 
 # ---- AC1 / TC-FVD-12: clear on match -----------------------------------
 
-@test "E86-S3 AC1 / TC-FVD-12: marker present + versions match → marker cleared" {
+@test "marker present + versions match → marker cleared" {
   write_config "$PLUGIN_VERSION"
   # Pre-create the stale marker as if a previous drifted run had emitted it.
   printf 'stale_since=2026-05-01T00:00:00Z installed=0.0.0 config=0.0.0\n' \
@@ -216,7 +216,7 @@ run_resolver() {
 
 # ---- AC2 / TC-FVD-13: idempotent clear (no marker present) -------------
 
-@test "E86-S3 AC2 / TC-FVD-13: no marker + versions match → no error, no marker created" {
+@test "no marker + versions match → no error, no marker created" {
   write_config "$PLUGIN_VERSION"
   # No marker exists at the start (fresh fixture).
   [ ! -f "$FIXTURE_DIR/_memory/.framework-version-stale" ]
@@ -229,7 +229,7 @@ run_resolver() {
 
 # ---- AC3 / TC-FVD-14: sentinel prevents re-clear in same session -------
 
-@test "E86-S3 AC3 / TC-FVD-14: sentinel fast-path prevents second clear" {
+@test "sentinel fast-path prevents second clear" {
   write_config "$PLUGIN_VERSION"
   # First invocation: clear-on-match runs and sentinel is touched.
   printf 'stale_since=2026-05-01T00:00:00Z installed=0.0.0 config=0.0.0\n' \
@@ -251,7 +251,7 @@ run_resolver() {
 
 # ---- AC4: no coupling to gaia-reconcile-v2.sh in the clear path --------
 
-@test "E86-S3 AC4: drift hook has zero references to gaia-reconcile-v2.sh" {
+@test "drift hook has zero references to gaia-reconcile-v2.sh" {
   # The self-healing clear is observation-based (post-condition: version
   # match), NOT coupled to the E85-S8 reconciler. Verify by grep — the
   # entire resolve-config.sh script must not reference gaia-reconcile-v2.

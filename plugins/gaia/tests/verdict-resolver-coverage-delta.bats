@@ -62,7 +62,7 @@ EOF
 
 # --- AC2: positive delta -> APPROVE ------------------------------------
 
-@test "AC2: positive coverage delta -> APPROVE" {
+@test "positive coverage delta -> APPROVE" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"coverage","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   write_coverage_delta "$TEST_TMP/cd.json" 5.0 80.0 85.0
@@ -76,7 +76,7 @@ EOF
 
 # --- AC3: zero delta -> REQUEST_CHANGES --------------------------------
 
-@test "AC3: zero coverage delta -> REQUEST_CHANGES" {
+@test "zero coverage delta -> REQUEST_CHANGES" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"coverage","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   write_coverage_delta "$TEST_TMP/cd.json" 0.0 80.0 80.0
@@ -91,7 +91,7 @@ EOF
 
 # --- AC4: negative delta -> REQUEST_CHANGES ----------------------------
 
-@test "AC4: negative coverage delta -> REQUEST_CHANGES" {
+@test "negative coverage delta -> REQUEST_CHANGES" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"coverage","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   write_coverage_delta "$TEST_TMP/cd.json" -2.5 80.0 77.5
@@ -106,7 +106,7 @@ EOF
 
 # --- AC6: precedence preserved -- errored beats negative delta --------
 
-@test "AC6: errored check beats negative coverage delta -> BLOCKED" {
+@test "errored check beats negative coverage delta -> BLOCKED" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"coverage","status":"errored","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   write_coverage_delta "$TEST_TMP/cd.json" -2.5 80.0 77.5
@@ -120,7 +120,7 @@ EOF
 
 # --- AC6: tool-failed-blocking beats negative delta ------------------
 
-@test "AC6: tool-failed-blocking beats negative coverage delta -> REQUEST_CHANGES (failure-driven)" {
+@test "tool-failed-blocking beats negative coverage delta -> REQUEST_CHANGES (failure-driven)" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"coverage","status":"failed","findings":[{"severity":"error","blocking":true,"message":"runner crashed"}]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   write_coverage_delta "$TEST_TMP/cd.json" -2.5 80.0 77.5
@@ -134,7 +134,7 @@ EOF
 
 # --- AC6: LLM-Critical beats positive delta (no spurious APPROVE) ----
 
-@test "AC6: LLM-Critical with positive delta still -> REQUEST_CHANGES" {
+@test "LLM-Critical with positive delta still -> REQUEST_CHANGES" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"coverage","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[{"severity":"Critical","message":"unsafe pattern"}]'
   write_coverage_delta "$TEST_TMP/cd.json" 5.0 80.0 85.0
@@ -148,7 +148,7 @@ EOF
 
 # --- AC6: backward compat -- omitting --coverage-delta unchanged -----
 
-@test "AC6: omitting --coverage-delta preserves pre-S3 behavior" {
+@test "omitting --coverage-delta preserves pre-S3 behavior" {
   write_analysis "$TEST_TMP/a.json" '[{"name":"coverage","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f.json" '[]'
   run --separate-stderr "$SCRIPT" --skill gaia-test-automate \

@@ -76,7 +76,7 @@ mtime() {
 
 # ---------- TC-SPRINT-CLOSE-1: Happy-path close (AC1) ----------
 
-@test "TC-SPRINT-CLOSE-1: happy-path close writes status:closed + closed_at to yaml" {
+@test "happy-path close writes status:closed + closed_at to yaml" {
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
   run "$FINALIZE"
@@ -88,7 +88,7 @@ mtime() {
 
 # ---------- TC-SPRINT-CLOSE-2: Archive copy at canonical path (AC2) ----------
 
-@test "TC-SPRINT-CLOSE-2: archive copy lands at sprint-archive/{id}-closed-{date}.yaml" {
+@test "archive copy lands at sprint-archive/{id}-closed-{date}.yaml" {
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
   run "$FINALIZE"
@@ -101,7 +101,7 @@ mtime() {
 
 # ---------- TC-SPRINT-CLOSE-3: Lifecycle event new-file + append (AC3) ----------
 
-@test "TC-SPRINT-CLOSE-3a: lifecycle event creates the jsonl when absent" {
+@test "lifecycle event creates the jsonl when absent" {
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
   [ ! -f "$LIFECYCLE" ]
@@ -112,7 +112,7 @@ mtime() {
   [ "$output" -eq 1 ]
 }
 
-@test "TC-SPRINT-CLOSE-3b: lifecycle event appends to existing jsonl preserving prior lines" {
+@test "lifecycle event appends to existing jsonl preserving prior lines" {
   printf '%s\n' '{"event_type":"story_created","story_key":"E1-S1"}' > "$LIFECYCLE"
   printf '%s\n' '{"event_type":"sprint_started","sprint_id":"sprint-41"}' >> "$LIFECYCLE"
   seed_yaml "sprint-41" "active" 3 3
@@ -125,7 +125,7 @@ mtime() {
   [[ "$output" == *'"event_type":"sprint_closed"'* ]]
 }
 
-@test "TC-SPRINT-CLOSE-3c: lifecycle event nested-data carries all required fields" {
+@test "lifecycle event nested-data carries all required fields" {
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
   run "$FINALIZE"
@@ -144,7 +144,7 @@ mtime() {
 
 # ---------- TC-SPRINT-CLOSE-4: Refuse without retro (AC4) ----------
 
-@test "TC-SPRINT-CLOSE-4: refuses when retro doc absent, no yaml mutation" {
+@test "refuses when retro doc absent, no yaml mutation" {
   seed_yaml "sprint-41" "active" 3 3
   # Deliberately do NOT seed_retro
   # Assert no-mutation by CONTENT HASH, not mtime: a refusal that reads and
@@ -169,7 +169,7 @@ mtime() {
 
 # ---------- TC-SPRINT-CLOSE-5: Refuse non-done without force (AC5) ----------
 
-@test "TC-SPRINT-CLOSE-5: refuses when non-done stories present without --force-with-rollover" {
+@test "refuses when non-done stories present without --force-with-rollover" {
   seed_yaml "sprint-41" "active" 2 3
   seed_retro "sprint-41"
   # No-mutation asserted by content hash (see TC-SPRINT-CLOSE-4 rationale) —
@@ -189,7 +189,7 @@ mtime() {
 
 # ---------- TC-SPRINT-CLOSE-6: Force-with-rollover (AC6) ----------
 
-@test "TC-SPRINT-CLOSE-6a: --force-with-rollover with exact non-done keys proceeds and records rollover" {
+@test "force-with-rollover with exact non-done keys proceeds and records rollover" {
   seed_yaml "sprint-41" "active" 2 3
   seed_retro "sprint-41"
   run "$FINALIZE" --force-with-rollover "E81-S3"
@@ -204,7 +204,7 @@ mtime() {
   [[ "$line" == *'"stories_rolled_over":["E81-S3"]'* ]]
 }
 
-@test "TC-SPRINT-CLOSE-6b: --force-with-rollover with wrong key refuses with mismatch error" {
+@test "force-with-rollover with wrong key refuses with mismatch error" {
   seed_yaml "sprint-41" "active" 2 3
   seed_retro "sprint-41"
   # No-mutation asserted by content hash (see TC-SPRINT-CLOSE-4 rationale) —
@@ -223,7 +223,7 @@ mtime() {
 
 # ---------- TC-SPRINT-CLOSE-7: Idempotent re-close (AC7) ----------
 
-@test "TC-SPRINT-CLOSE-7: idempotent re-close on already-closed sprint emits warning, no mutation, no new event" {
+@test "idempotent re-close on already-closed sprint emits warning, no mutation, no new event" {
   seed_yaml "sprint-41" "closed" 3 3
   seed_retro "sprint-41"
   # Pre-record state. Use both content hash AND mtime — content hash is the
@@ -259,7 +259,7 @@ mtime() {
 
 # ---------- TC-SPRINT-CLOSE-8: Backward-compat missing status field ----------
 
-@test "TC-SPRINT-CLOSE-8: missing status field is treated as active, close proceeds" {
+@test "missing status field is treated as active, close proceeds" {
   mkdir -p "$(dirname "$YAML")"
   cat > "$YAML" <<'EOF'
 sprint_id: "sprint-41"

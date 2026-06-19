@@ -43,7 +43,7 @@ write_config() {
 
 # ---------- AC6: trigger evaluation maps to skip flags ----------
 
-@test "AC6 (TC-1): ui_present=false -> emits --skip-a11y with reason" {
+@test "ui_present=false -> emits --skip-a11y with reason" {
   write_config false "web"
   run --separate-stderr "$EVAL" --shared "$CONFIG_DIR/project-config.yaml"
   [ "$status" -eq 0 ]
@@ -51,14 +51,14 @@ write_config() {
   [[ "$output" == *"compliance.ui_present: false"* ]]
 }
 
-@test "AC6 (TC-2): ui_present=true -> emits --a11y placeholder (caller fills verdict)" {
+@test "ui_present=true -> emits --a11y placeholder (caller fills verdict)" {
   write_config true "web,ios"
   run --separate-stderr "$EVAL" --shared "$CONFIG_DIR/project-config.yaml"
   [ "$status" -eq 0 ]
   [[ "$output" == *"a11y=included"* ]]
 }
 
-@test "AC6 (TC-3): platforms excludes mobile -> emits --skip-mobile with reason" {
+@test "platforms excludes mobile -> emits --skip-mobile with reason" {
   write_config true "web"
   run --separate-stderr "$EVAL" --shared "$CONFIG_DIR/project-config.yaml"
   [ "$status" -eq 0 ]
@@ -66,14 +66,14 @@ write_config() {
   [[ "$output" == *"platforms[] excludes mobile"* ]]
 }
 
-@test "AC6 (TC-4): platforms includes ios -> mobile included" {
+@test "platforms includes ios -> mobile included" {
   write_config true "web,ios"
   run --separate-stderr "$EVAL" --shared "$CONFIG_DIR/project-config.yaml"
   [ "$status" -eq 0 ]
   [[ "$output" == *"mobile=included"* ]]
 }
 
-@test "AC6 (TC-5): platforms includes android -> mobile included" {
+@test "platforms includes android -> mobile included" {
   write_config true "android"
   run --separate-stderr "$EVAL" --shared "$CONFIG_DIR/project-config.yaml"
   [ "$status" -eq 0 ]
@@ -82,7 +82,7 @@ write_config() {
 
 # ---------- AC-EC2: all conditionals skipped + all always-on APPROVE -> APPROVE ----------
 
-@test "AC-EC2 (TC-6): both conditionals skipped + all always-on APPROVE -> composite APPROVE" {
+@test "both conditionals skipped + all always-on APPROVE -> composite APPROVE" {
   run --separate-stderr "$AGG" \
     --code APPROVE --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "compliance.ui_present: false" \
@@ -96,7 +96,7 @@ write_config() {
 
 # ---------- AC-EC3: zero included gates degenerate case ----------
 
-@test "AC-EC3 (TC-7): --allow-zero-included with all gates skipped -> WARNING + APPROVE" {
+@test "allow-zero-included with all gates skipped -> WARNING + APPROVE" {
   run --separate-stderr "$AGG" \
     --allow-zero-included \
     --skip-code "no code changes" \
@@ -113,7 +113,7 @@ write_config() {
   [[ "$output" == *"included="* ]]
 }
 
-@test "AC-EC3 (TC-8): without --allow-zero-included, --skip-code rejected" {
+@test "without --allow-zero-included, --skip-code rejected" {
   # The opt-in flag MUST be required for the degenerate case; default behaviour
   # remains: always-on gates are required.
   run --separate-stderr "$AGG" \
@@ -125,7 +125,7 @@ write_config() {
 
 # ---------- AC8: skipped gates excluded from precedence ----------
 
-@test "AC8 (TC-9): skipped conditional contributes neutrally; precedence on included only" {
+@test "skipped conditional contributes neutrally; precedence on included only" {
   run --separate-stderr "$AGG" \
     --code APPROVE --qa APPROVE --test APPROVE --security APPROVE --perf APPROVE \
     --skip-a11y "x" --mobile REQUEST_CHANGES

@@ -1,48 +1,107 @@
 ---
 name: gaia-release
-description: Document and execute the GAIA framework release procedure — version bump, commit, tag, push, and GitHub Release. Wraps `scripts/version-bump.js` and the `main`-only release branch policy. Use when "cut a release", "release the framework", "bump the version", or /gaia-release.
-argument-hint: "[patch|minor|major|none|X.Y.Z] [--prerelease rc | --strip-prerelease] [--modules mod1,mod2] [--dry-run]"
+description: Execute a project-generic release procedure — version bump (reading release.version_files[] from config), commit, tag, push, and GitHub Release. Wraps `skills/gaia-release/scripts/version-bump.js` and the `main`-only release branch policy. Use when "cut a release", "bump the version", or /gaia-release.
+argument-hint: "[patch|minor|major|X.Y.Z] [--dry-run]"
 allowed-tools: [Read, Bash, Grep]
 orchestration_class: light-procedural
 ---
 
 ## Mission
 
-You are producing a repeatable release for the GAIA framework. The release procedure has five deterministic phases — **version bump → commit → tag → push → GitHub Release** — and they are executed only on `main` after a sprint merge. This skill is the discoverable source of truth for that procedure, replacing the inline narrative that used to live in `CLAUDE.md` before it was slimmed down.
+You are producing a repeatable, project-generic release. The release procedure has five deterministic phases — **version bump → commit → tag → push → GitHub Release** — and they are executed only on `main` after a sprint merge. This skill is the discoverable source of truth for that procedure.
 
 ## Critical Rules
 
 - **Release from `main` only.** Version bumps never happen on a feature branch or on `staging`. Cut a release only after the sprint PR has merged to `main`.
 - **No Claude/AI attribution** in commit messages, tag messages, or the GitHub Release body. Every artifact must read as if a human release engineer authored it.
-- **Never hand-edit the version strings.** Always invoke `scripts/version-bump.js` — it keeps `package.json` and the GAIA `framework_version` config key synchronized and validates drift before writing.
+- **Never hand-edit the version strings.** Always invoke the version-bump script — it reads `release.version_files[]` from project-config.yaml and bumps every listed file in its native format.
 - **Always dry-run first.** Run the bump with `--dry-run` to preview the new version and the files that would change; only then execute the real bump.
-- **Inspect the script's reported output paths.** `scripts/version-bump.js` prints the exact files it intends to touch (and re-prints them after writing). Use that output as the authoritative file list when staging the commit in Step 5 — it is resilient to the config-split and any future config-location changes.
+- **Inspect the script's reported output.** The version-bump script emits a machine-readable JSON summary listing every file it bumped and the old/new versions. Use that output as the authoritative file list when staging the commit.
+
+## How the version-bump script works
+
+The script (`skills/gaia-release/scripts/version-bump.js`) is a **project-generic, zero-dependency** Node.js script. It does not assume any particular project structure — it reads the list of version-carrying files from the project's own configuration.
+
+### Configuration
+
+Add a `release` block to your `project-config.yaml`:
+
+```yaml
+release:
+  strategy: conventional-commits   # or: manual | calendar
+  version_files:
+    - package.json
+    - plugin.json
+    - VERSION
+```
+
+Each `version_files` entry is a file path **relative to the project root**. The script resolves them against `--project-root`.
+
+### Release strategy — `release.strategy`
+
+The `release.strategy` key controls how `/gaia-release` determines the next version. Three modes are supported:
+
+| Strategy | Behavior |
+| --- | --- |
+| `conventional-commits` | Classify commits since the last `v*` tag using the Conventional Commits spec. `feat` → minor bump, `fix` → patch bump, `BREAKING CHANGE` or `!` suffix → major bump. The highest-precedence bump wins. When no qualifying commits exist in the range, the release exits cleanly (exit 0) with a "no releasable changes" message and no version bump. |
+| `manual` | Signal the caller to prompt for the target version. No commit-derivation is performed — the user supplies `patch`, `minor`, `major`, or an explicit `X.Y.Z`. |
+| `calendar` | Derive a CalVer version from the current date: `YYYY.MM.PATCH` where PATCH auto-increments based on existing tags for the current month. |
+
+When `release.strategy` is **absent**, the behavior defaults to `manual` — this preserves backward compatibility for projects that do not set the key.
+
+The strategy resolver (`skills/gaia-release/scripts/resolve-release-version.sh`) reads the strategy from config, dispatches to the appropriate derivation, and emits a machine-readable output that Step 3 (below) consumes to determine the bump specifier for `version-bump.js`.
+
+### Supported file formats
+
+| Format | Detection | Read | Write |
+| --- | --- | --- | --- |
+| **JSON** | Valid JSON with a top-level `"version"` key | `parsed.version` | Re-serializes with original indentation preserved |
+| **Plain text** | File content is a bare semver string | `content.trim()` | Writes the version string + trailing newline |
+
+Files that do not match either format (binary files, JSON without a `version` key, non-semver plain text) produce a clear error and abort — no silent corruption.
+
+### Bump types
+
+| Specifier | Example |
+| --- | --- |
+| `patch` | `1.2.3` → `1.2.4` |
+| `minor` | `1.2.3` → `1.3.0` |
+| `major` | `1.2.3` → `2.0.0` |
+| `X.Y.Z` | Sets an explicit version |
+
+### Error handling
+
+- **Missing `release.version_files`**: exits non-zero with an error that explicitly names the missing config key `release.version_files`.
+- **Missing version file on disk**: exits non-zero naming the file.
+- **Unsupported format**: exits non-zero naming the file and the detected format problem.
+- **No silent no-ops**: the script always either bumps all listed files or fails before writing any.
+
+### Machine-readable output
+
+On success (exit 0), stdout contains a single JSON object:
+
+```json
+{
+  "old_version": "1.2.3",
+  "new_version": "1.2.4",
+  "bump_type": "patch",
+  "bumped": [
+    { "file": "package.json", "format": "json", "old": "1.2.3", "new": "1.2.4" },
+    { "file": "VERSION", "format": "text", "old": "1.2.3", "new": "1.2.4" }
+  ]
+}
+```
+
+### Config resolution
+
+The script requires `--config <path>` pointing at the project-config.yaml. In practice, the release workflow resolves this path via `scripts/resolve-config.sh` (the existing foundation script with walk-up discovery), which locates the config from any working directory.
 
 ## Inputs
 
-- `$ARGUMENTS`: the bump specifier and any flags passed straight through to `scripts/version-bump.js`. Accepted values:
+- `$ARGUMENTS`: the bump specifier and optional flags:
   - `patch | minor | major` — standard semver bump.
-  - `none` — increment only the RC counter (requires the current version to already carry an `-rc.N` suffix).
-  - `X.Y.Z` or `X.Y.Z-rc.N` — set an explicit version (e.g., after resolving drift).
-  - `--prerelease rc` — turn a clean bump into an RC prerelease (`1.127.2` → `1.128.0-rc.1`).
-  - `--strip-prerelease` — drop the `-rc.N` suffix without changing numbers (promote an RC to its final cut).
-  - `--modules mod1,mod2` — also bump per-module `config.yaml` and manifest entries (valid modules: `core`, `lifecycle`, `dev`, `creative`, `testing`, or `all`).
-  - `--dry-run` — print the planned changes and exit without writing.
-
-## What `version-bump.js` actually does
-
-The script is the single source of truth for the framework version, and it updates **exactly 2 global targets**:
-
-| Target | Role |
-| --- | --- |
-| `package.json` | npm manifest — `"version": "…"` |
-| GAIA config (`framework_version` key) | framework source of truth — resolved via `scripts/resolve-config.sh`; the on-disk location follows the two-file split |
-
-Earlier drafts described a broader touch-set; that narrative no longer applies. `gaia-install.sh`, `CLAUDE.md`, and `README.md` no longer carry hardcoded versions — the installer reads from `package.json` at runtime, and the markdown files reference the version indirectly.
-
-When `--modules` is passed, the script also touches per-module `config.yaml` entries and the matching rows in the plugin's `knowledge/manifest.yaml` — these are **module**-scoped writes, separate from the 2 global targets above.
-
-Before writing anything the script validates that every global target contains the expected version pattern and detects drift. If the targets disagree, the script halts unless an explicit `X.Y.Z` version is supplied.
+  - `X.Y.Z` — set an explicit version.
+  - `--dry-run` — print the planned changes as JSON and exit without writing.
 
 ## Instructions
 
@@ -55,90 +114,93 @@ Before writing anything the script validates that every global target contains t
 
 HALT if the current branch is not `main` or the working tree is dirty. Releases are cut from a clean `main` only; pull with `git pull --ff-only` if the local branch is behind `origin/main`.
 
-### Step 2 — Dry-run the bump
-
-Run the bump with `--dry-run` first to confirm the target version:
+### Step 2 — Resolve the config path
 
 ```
-!node scripts/version-bump.js <patch|minor|major|none|X.Y.Z> [--prerelease rc] [--strip-prerelease] [--modules mod1,mod2] --dry-run
+!CONFIG_PATH=$("$CLAUDE_PLUGIN_ROOT/scripts/resolve-config.sh" project_config_path)
+!PROJECT_ROOT=$("$CLAUDE_PLUGIN_ROOT/scripts/resolve-config.sh" project_root)
 ```
 
-Inspect the output: the current version, the new version, the global targets that will change (with their resolved on-disk paths), and the per-module files (if `--modules` was supplied). If the preview is wrong, adjust the arguments and re-run the dry-run. The script exits 0 and writes nothing.
-
-### Step 3 — Execute the bump
-
-Drop `--dry-run` and run the bump for real:
+### Step 3 — Resolve the release strategy
 
 ```
-!npm run version:bump -- <patch|minor|major|none|X.Y.Z> [--prerelease rc] [--strip-prerelease] [--modules mod1,mod2]
+!bash "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/resolve-release-version.sh" --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT"
 ```
 
-(or equivalently `!node scripts/version-bump.js <args>`). The script writes `package.json` and the on-disk file backing the `framework_version` key (as reported in the script's own output), plus any module files covered by `--modules`, and prints the next-step reminder.
+The resolver reads `release.strategy` from config (defaulting to `manual` when absent) and emits a machine-readable output:
 
-### Step 4 — Commit the bump
+- **`conventional-commits`**: emits `bump=<major|minor|patch|none>`. When `bump=none`, report "no releasable changes" to the user and stop — do not proceed to version-bump. This is a clean exit (exit 0), not an error.
+- **`manual`**: emits `strategy=manual`. Prompt the user for a bump specifier (`patch`, `minor`, `major`, or `X.Y.Z`).
+- **`calendar`**: emits `version=YYYY.MM.PATCH`. Pass that version string directly to version-bump.js as an explicit version.
 
-Use a conventional commit — no emoji, no Claude attribution. Stage exactly what `version-bump.js` reported as modified in Step 3; do NOT hand-enumerate the config path, read it back from the script's output so this skill stays correct across config-layout changes:
+### Step 4 — Dry-run the bump
+
+Using the bump specifier from Step 3:
 
 ```
-!git add package.json <config-files-printed-by-version-bump.js> [module files if any]
+!node "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/version-bump.js" <bump-from-step-3> --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --dry-run
+```
+
+Inspect the JSON output: the current version, the new version, and the files that would change. If the preview is wrong, adjust the arguments and re-run. The script exits 0 and writes nothing.
+
+### Step 5 — Execute the bump
+
+Drop `--dry-run` and run for real:
+
+```
+!node "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/version-bump.js" <bump-from-step-3> --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT"
+```
+
+The script writes all configured version files and prints the JSON summary.
+
+### Step 6 — Commit the bump
+
+Use a conventional commit — no emoji, no Claude attribution. Stage exactly the files listed in the `bumped[]` array from Step 5's output:
+
+```
+!git add <files-from-bumped-array>
 !git commit -m "chore(release): bump version to vX.Y.Z"
 ```
 
-For RC prereleases use `chore(release): bump version to vX.Y.Z-rc.N`.
-
-### Step 5 — Tag
-
-Annotated tags carry the release notes summary and are what `gh release create` attaches to:
+### Step 7 — Tag
 
 ```
 !git tag -a vX.Y.Z -m "vX.Y.Z"
 ```
 
-For an RC: `git tag -a vX.Y.Z-rc.N -m "vX.Y.Z-rc.N"`.
+### Step 8 — Push
 
-### Step 6 — Push
-
-Push the bump commit and the tag together. The tag must reach the remote before Step 7:
+Push the bump commit and the tag together:
 
 ```
 !git push origin main
 !git push origin vX.Y.Z
 ```
 
-### Step 7 — Create the GitHub Release
+### Step 9 — Create the GitHub Release
 
-Draft the Release notes from the changelog entry. If a changelog is missing, generate one first with `/gaia-changelog`.
+Draft release notes from the changelog entry. If a changelog is missing, generate one first with `/gaia-changelog`.
 
 ```
 !gh release create vX.Y.Z --title "vX.Y.Z" --notes-file CHANGELOG-vX.Y.Z.md
 ```
 
-For RC builds add `--prerelease` so the release is flagged correctly on GitHub:
+### Step 10 — Post-release verification
 
-```
-!gh release create vX.Y.Z-rc.N --prerelease --title "vX.Y.Z-rc.N" --notes-file CHANGELOG-vX.Y.Z-rc.N.md
-```
-
-### Step 8 — Post-release verification
-
-- `gh release view vX.Y.Z` — confirm the release is published (or marked prerelease for RCs).
+- `gh release view vX.Y.Z` — confirm the release is published.
 - `git describe --tags --abbrev=0` on a fresh clone matches the new tag.
-- The published tarball (if any) installs cleanly via `gaia-install.sh`.
 
 ## Flag quick reference
 
 | Flag | Effect |
 | --- | --- |
-| `--dry-run` | Print the planned changes and exit without writing. Use this first on every release. |
-| `--prerelease rc` | Bump to an RC prerelease (`1.127.2` → `1.128.0-rc.1` for a minor bump). |
-| `--strip-prerelease` | Remove the `-rc.N` suffix without changing numbers — promote the final cut. |
-| `none` | Increment the RC counter only (`1.128.0-rc.1` → `1.128.0-rc.2`); requires an existing `-rc.N`. |
-| `--modules mod1,mod2` | Also bump per-module `config.yaml` + manifest rows. `all` expands to every module. |
+| `--dry-run` | Print the planned changes as JSON and exit without writing. Use this first on every release. |
 
 ## References
 
-- Source: `scripts/version-bump.js` (node script in the repo root — zero deps, file-based regex).
-- Canonical 2-target version storage — `package.json` + the `framework_version` config key (resolved via `scripts/resolve-config.sh`).
-- Two-file config split (`.gaia/config/project-config.yaml` shared + `config/global.yaml` machine-local); the `framework_version` key lives in the shared project config.
-- CLAUDE.md slim-down — procedural detail moved to SKILL.md files.
+- Version bump: `skills/gaia-release/scripts/version-bump.js` (zero-dependency Node.js script).
+- Strategy resolver: `skills/gaia-release/scripts/resolve-release-version.sh` (reads `release.strategy` from config).
+- Commit classification: `scripts/classify-commits.js` (Conventional Commits parser, reused by the conventional-commits strategy).
+- Config resolution: `scripts/resolve-config.sh` (foundation script with walk-up discovery).
+- Configuration: `release.version_files[]` and `release.strategy` in `project-config.yaml`.
 - Related: `/gaia-changelog` for release-note generation.

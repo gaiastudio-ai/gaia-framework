@@ -77,7 +77,7 @@ _stage_diff() {
 }
 
 # ---------------- TC-DPD-11: production STUB -> HALT ----------------
-@test "TC-DPD-11: production-path STUB triggers HALT with canonical stderr" {
+@test "production-path STUB triggers HALT with canonical stderr" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB  # placeholder'
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
@@ -88,7 +88,7 @@ _stage_diff() {
 }
 
 # ---------------- TC-DPD-12: test-fixture STUB -> PASS ----------------
-@test "TC-DPD-12: test-fixture path STUB does NOT trigger HALT (exempt)" {
+@test "test-fixture path STUB does NOT trigger HALT (exempt)" {
   _stage_diff "$FIXTURE_FIXTURES_PATH" \
     'echo STUB  # legitimate fixture stub'
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
@@ -96,7 +96,7 @@ _stage_diff() {
 }
 
 # ---------------- TC-DPD-13: --allow-stub with valid ID prefix -> PASS ----------------
-@test "TC-DPD-13: --allow-stub with valid story-ID prefix bypasses scan" {
+@test "allow-stub with valid story-ID prefix bypasses scan" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB  # contract-only dispatch'
   cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E76-S10: contract-only dispatch"; cd "$OLDPWD"
@@ -106,7 +106,7 @@ _stage_diff() {
   [[ "$output" == *"E76-S10: contract-only dispatch"* ]]
 }
 
-@test "TC-DPD-13b: --allow-stub with valid AI-ID prefix bypasses scan" {
+@test "allow-stub with valid AI-ID prefix bypasses scan" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB  # AI-tracked'
   cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "AI-2026-05-14-6: contract-only"; cd "$OLDPWD"
@@ -114,7 +114,7 @@ _stage_diff() {
 }
 
 # ---------------- TC-DPD-14: --allow-stub with bare prose -> REJECT ----------------
-@test "TC-DPD-14: --allow-stub with bare prose is rejected" {
+@test "allow-stub with bare prose is rejected" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB'
   cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "looks fine"; cd "$OLDPWD"
@@ -122,7 +122,7 @@ _stage_diff() {
   [[ "$output" == *"--allow-stub reason must cite a story ID"* ]]
 }
 
-@test "TC-DPD-14b: --allow-stub with story ID lacking trailing colon is rejected" {
+@test "allow-stub with story ID lacking trailing colon is rejected" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB'
   cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E76-S10 contract-only"; cd "$OLDPWD"
@@ -131,7 +131,7 @@ _stage_diff() {
 }
 
 # ---------------- TC-DPD-15: load-taxonomy enumerates 3 names ----------------
-@test "TC-DPD-15: load-taxonomy.sh --taxonomy unknown enumerates THREE supported names" {
+@test "load-taxonomy.sh --taxonomy unknown enumerates THREE supported names" {
   run bash -c '"$0" --taxonomy frobnicate 2>&1' "$LIB_DIR/load-taxonomy.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *deferral* ]]
@@ -140,7 +140,7 @@ _stage_diff() {
 }
 
 # ---------------- TC-DPD-15b: load-taxonomy forbidden-sentinels works ----------------
-@test "TC-DPD-15b: load-taxonomy --taxonomy forbidden-sentinels emits entries" {
+@test "load-taxonomy --taxonomy forbidden-sentinels emits entries" {
   run "$LIB_DIR/load-taxonomy.sh" --taxonomy forbidden-sentinels
   [ "$status" -eq 0 ]
   [[ "$output" == *"STUB"* ]]
@@ -214,6 +214,15 @@ _stage_diff() {
   [ -f "$src" ]
   ( cd "$REPO" && mkdir -p "$(dirname "$prod_rel")" && cp "$src" "$prod_rel" \
       && git add -A && git commit -q -m "fixture: real mktemp script" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------- documentation/ tree is exempt (like docs/) ----------------
+@test "documentation tree STUB does NOT trigger HALT (exempt like docs)" {
+  local doc_path="documentation/tutorials/foo.html"
+  _stage_diff "$doc_path" \
+    '<p>This is a STUB tutorial page.</p>'
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -eq 0 ]
 }

@@ -113,7 +113,7 @@ YAML
 
 # ---------- AC1 / TC-SGR-37(a): conforming sprint_review section validates ----------
 
-@test "TC-SGR-37(a): conforming sprint_review section validates clean (exit 0)" {
+@test "a): conforming sprint_review section validates clean (exit 0)" {
   local fixture="$TMPDIR_TEST/project-config.yaml"
   {
     _min_required_yaml
@@ -135,7 +135,7 @@ YAML
 
 # ---------- AC2 / TC-SGR-37(b): playwright_headed: false REJECTED (NFR-069) ----------
 
-@test "TC-SGR-37(b): playwright_headed: false REJECTED (NFR-069 / T-SGR-2)" {
+@test "b): playwright_headed: false REJECTED" {
   have_strict_validator || skip "no strict JSON-Schema validator (ajv / python jsonschema) on PATH"
   local fixture="$TMPDIR_TEST/project-config.yaml"
   {
@@ -154,7 +154,7 @@ YAML
 
 # ---------- AC2 (additional): default playwright_headed: true validates ----------
 
-@test "AC2-extra: omitting playwright_headed entirely validates clean (default true applies)" {
+@test "extra: omitting playwright_headed entirely validates clean (default true applies)" {
   local fixture="$TMPDIR_TEST/project-config.yaml"
   {
     _min_required_yaml
@@ -169,7 +169,7 @@ YAML
 
 # ---------- AC1 / TC-SGR-37(c): timeout_per_stack below min REJECTED ----------
 
-@test "TC-SGR-37(c): timeout_per_stack: 5 REJECTED (below minimum 30)" {
+@test "c): timeout_per_stack: 5 REJECTED (below minimum 30)" {
   have_strict_validator || skip "no strict JSON-Schema validator on PATH"
   local fixture="$TMPDIR_TEST/project-config.yaml"
   {
@@ -183,7 +183,7 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-@test "AC1-extra: timeout_per_stack above max REJECTED" {
+@test "extra: timeout_per_stack above max REJECTED" {
   have_strict_validator || skip "no strict JSON-Schema validator on PATH"
   local fixture="$TMPDIR_TEST/project-config.yaml"
   {
@@ -197,7 +197,7 @@ YAML
   [ "$status" -ne 0 ]
 }
 
-@test "AC1-extra: human_confirm with invalid enum value REJECTED" {
+@test "extra: human_confirm with invalid enum value REJECTED" {
   have_strict_validator || skip "no strict JSON-Schema validator on PATH"
   local fixture="$TMPDIR_TEST/project-config.yaml"
   {
@@ -213,7 +213,7 @@ YAML
 
 # ---------- TC-SGR-37(d): missing-section graceful degradation ----------
 
-@test "TC-SGR-37(d): project-config.yaml with NO sprint_review section validates clean" {
+@test "d): project-config.yaml with NO sprint_review section validates clean" {
   local fixture="$TMPDIR_TEST/project-config.yaml"
   _min_required_yaml > "$fixture"
   run "$SCRIPT" "$fixture"
@@ -224,7 +224,7 @@ YAML
 
 # ---------- TC-SGR-37(f): frontend_commands map (issue #1047 / AF-2026-06-01-4) ----------
 
-@test "TC-SGR-37(f): two-web-stack frontend_commands map validates clean (exit 0)" {
+@test "f): two-web-stack frontend_commands map validates clean (exit 0)" {
   local fixture="$TMPDIR_TEST/project-config.yaml"
   {
     _min_required_yaml
@@ -243,7 +243,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "TC-SGR-37(f): legacy frontend_command scalar + frontend_commands map co-exist (exit 0)" {
+@test "f): legacy frontend_command scalar + frontend_commands map co-exist (exit 0)" {
   # Backward-compat: existing configs that still set the scalar keep working
   # even when the new map is also present. The map wins on key collision.
   local fixture="$TMPDIR_TEST/project-config.yaml"
@@ -263,7 +263,7 @@ YAML
 
 # ---------- AC3: unknown stack identifiers in *_commands maps validate at schema level ----------
 
-@test "AC3: unknown backend-stack identifier in backend_commands validates at schema (WARN is /gaia-config-validate concern)" {
+@test "unknown backend-stack identifier in backend_commands validates at schema (WARN is /gaia-config-validate concern)" {
   local fixture="$TMPDIR_TEST/project-config.yaml"
   {
     _min_required_yaml
@@ -280,25 +280,25 @@ YAML
 
 # ---------- TC-SGR-37(e): SKILL.md surface ----------
 
-@test "TC-SGR-37(e): SKILL.md documents all four subcommands (get / set / show / clear)" {
+@test "e): SKILL.md documents all four subcommands (get / set / show / clear)" {
   grep -qE '^- `get \[--key' "$SKILL_FILE"
   grep -qE '^- `set --key' "$SKILL_FILE"
   grep -qE '^- `show`' "$SKILL_FILE"
   grep -qE '^- `clear --key' "$SKILL_FILE"
 }
 
-@test "TC-SGR-37(e): SKILL.md declares the canonical comment-preserving editor rule" {
+@test "e): SKILL.md declares the canonical comment-preserving editor rule" {
   grep -qE 'comment-preserving' "$SKILL_FILE"
   grep -qE 'config-yaml-editor\.sh' "$SKILL_FILE"
 }
 
-@test "TC-SGR-37(e): SKILL.md enforcement rule on playwright_headed: false" {
+@test "e): SKILL.md enforcement rule on playwright_headed: false" {
   # Assert the enforcement rule itself, not an internal identifier (scrubbed
   # from published source).
   grep -qE 'playwright_headed must be true' "$SKILL_FILE"
 }
 
-@test "TC-SGR-37(e): SKILL.md is listed under orchestration_class light-procedural" {
+@test "e): SKILL.md is listed under orchestration_class light-procedural" {
   grep -qE '^orchestration_class:[[:space:]]*light-procedural$' "$SKILL_FILE"
 }
 

@@ -35,14 +35,14 @@ run_check() { # $1=stories file ; remaining args appended
 
 # ---------- AC1 / TS5: sprint-53 false-positive case must NOT flag ----------
 
-@test "AC1/TS5: points-heavy (73pt) but coherent + shallow-dep batch is NOT flagged" {
+@test "points-heavy (73pt) but coherent + shallow-dep batch is NOT flagged" {
   run_check "$FIX/sprint53-like.stories"
   [ "$status" -eq 0 ]
   echo "$output" | grep -Eiq 'capacity:[[:space:]]*ok|verdict:[[:space:]]*ok|not flagged|within' \
     || { echo "sprint-53-like batch should pass capacity, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC1: the points-per-duration heuristic is gone (no points-vs-duration verdict)" {
+@test "the points-per-duration heuristic is gone (no points-vs-duration verdict)" {
   run_check "$FIX/sprint53-like.stories"
   [ "$status" -eq 0 ]
   # must NOT reason about points-per-time, velocity floors, or "too many points"
@@ -52,7 +52,7 @@ run_check() { # $1=stories file ; remaining args appended
 
 # ---------- AC2 / TS3: dependency critical-path depth ----------
 
-@test "AC2/TS3: deep dependency chain is flagged regardless of low point-sum" {
+@test "deep dependency chain is flagged regardless of low point-sum" {
   # 7-deep serial chain, 14 points total -> exceeds depth-threshold 5
   run_check "$FIX/deep-chain.stories"
   [ "$status" -eq 0 ]
@@ -62,7 +62,7 @@ run_check() { # $1=stories file ; remaining args appended
     || { echo "deep chain should be flagged, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC2: json reports the computed critical-path depth" {
+@test "json reports the computed critical-path depth" {
   run_check "$FIX/deep-chain.stories" --json
   [ "$status" -eq 0 ]
   # 7-node serial chain -> depth 7
@@ -72,7 +72,7 @@ run_check() { # $1=stories file ; remaining args appended
 
 # ---------- AC3 / TS4: context-coherence ceiling ----------
 
-@test "AC3/TS4: coherence-exceeding batch is flagged even at modest points" {
+@test "coherence-exceeding batch is flagged even at modest points" {
   # 20 distinct stories, 20 points, shallow deps -> exceeds coherence-ceiling 15
   run_check "$FIX/wide-batch.stories"
   [ "$status" -eq 0 ]
@@ -82,14 +82,14 @@ run_check() { # $1=stories file ; remaining args appended
     || { echo "wide batch should be flagged, got:" >&2; echo "$output" >&2; false; }
 }
 
-@test "AC3: json reports distinct-story coherence count" {
+@test "json reports distinct-story coherence count" {
   run_check "$FIX/wide-batch.stories" --json
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.coherence_count == 20' >/dev/null
   echo "$output" | jq -e '.coherence_flagged == true' >/dev/null
 }
 
-@test "AC5: sprint-53-like clears while wide-batch flags (the measure swap)" {
+@test "sprint-53-like clears while wide-batch flags (the measure swap)" {
   run_check "$FIX/sprint53-like.stories" --json
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.flagged == false' >/dev/null
@@ -100,7 +100,7 @@ run_check() { # $1=stories file ; remaining args appended
 
 # ---------- AC4 / TS1: cold-start (no telemetry) ----------
 
-@test "AC4/TS1: cold-start uses depth+coherence only, no fabricated constant" {
+@test "cold-start uses depth+coherence only, no fabricated constant" {
   run bash "$SCRIPT" --stories-file "$FIX/sprint53-like.stories" \
     --depth-threshold "$DEPTH" --coherence-ceiling "$COH" --session-budget-min "$BUDGET" \
     --events "$EVENTS_EMPTY" --sprint-yaml "$SPRINT_YAML" --json
@@ -112,7 +112,7 @@ run_check() { # $1=stories file ; remaining args appended
   echo "$output" | jq -e '.coherence_count != null' >/dev/null
 }
 
-@test "AC4/TS1: cold-start emits NO fabricated wall-clock number" {
+@test "cold-start emits NO fabricated wall-clock number" {
   run bash "$SCRIPT" --stories-file "$FIX/sprint53-like.stories" \
     --depth-threshold "$DEPTH" --coherence-ceiling "$COH" --session-budget-min "$BUDGET" \
     --events "$EVENTS_EMPTY" --sprint-yaml "$SPRINT_YAML"
@@ -123,7 +123,7 @@ run_check() { # $1=stories file ; remaining args appended
 
 # ---------- AC4 / TS2: warm (all three measures) ----------
 
-@test "AC4/TS2: warm path adds measured wall-clock vs session budget" {
+@test "warm path adds measured wall-clock vs session budget" {
   run bash "$SCRIPT" --stories-file "$FIX/sprint53-like.stories" \
     --depth-threshold "$DEPTH" --coherence-ceiling "$COH" --session-budget-min "$BUDGET" \
     --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --json
@@ -150,13 +150,13 @@ run_check() { # $1=stories file ; remaining args appended
 
 # ---------- AC-INT1 / TS6: sprint-plan wiring present ----------
 
-@test "AC-INT1/TS6: sprint-plan SKILL.md references the agent-native capacity check" {
+@test "sprint-plan SKILL.md references the agent-native capacity check" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-sprint-plan/SKILL.md"
   [ -f "$SKILL" ]
   grep -Eiq 'sm-capacity-check|agent-native (capacity|measures)|critical-path depth|coherence ceiling' "$SKILL"
 }
 
-@test "AC-INT1: sm.md capacity authority references agent-native measures" {
+@test "sm.md capacity authority references agent-native measures" {
   SM="$REPO_ROOT/plugins/gaia/agents/sm.md"
   [ -f "$SM" ]
   grep -Eiq 'agent-native|critical-path depth|coherence ceiling|sm-capacity-check' "$SM"

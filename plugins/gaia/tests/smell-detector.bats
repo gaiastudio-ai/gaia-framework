@@ -37,7 +37,7 @@ assert_json_finding_category() {
 
 # --- happy-path detection ---
 
-@test "TC-RSV2-TESTREVIEW-1.1: test-name-says-too-much detected" {
+@test ".1: test-name-says-too-much detected" {
   local f="$TEST_TMP/too-much.test.ts"
   mkfile "$f" 'it("should call API and return 200 and parse JSON and set state", () => { expect(1).toBe(1); });'
   run "$SCRIPT" "$f"
@@ -47,7 +47,7 @@ assert_json_finding_category() {
   assert_json_finding_category "$output" "test-quality"
 }
 
-@test "TC-RSV2-TESTREVIEW-1.2: mystery-guest detected (fixture path no setup)" {
+@test ".2: mystery-guest detected (fixture path no setup)" {
   local f="$TEST_TMP/mystery.test.ts"
   mkfile "$f" 'it("uses fixture", () => { const path = "../../fixtures/users.json"; expect(true).toBe(true); });'
   run "$SCRIPT" "$f"
@@ -56,7 +56,7 @@ assert_json_finding_category() {
   assert_json_finding_rule "$output" "mystery-guest"
 }
 
-@test "TC-RSV2-TESTREVIEW-1.3: conditional-assertion detected" {
+@test ".3: conditional-assertion detected" {
   local f="$TEST_TMP/cond.test.ts"
   printf 'it("c", () => {\n  if (env === "ci") {\n    expect(x).toBe(1);\n  }\n});\n' > "$f"
   run "$SCRIPT" "$f"
@@ -65,7 +65,7 @@ assert_json_finding_category() {
   assert_json_finding_rule "$output" "conditional-assertion"
 }
 
-@test "TC-RSV2-TESTREVIEW-1.4: clean test file produces empty findings + status passed" {
+@test ".4: clean test file produces empty findings + status passed" {
   local f="$TEST_TMP/clean.test.ts"
   mkfile "$f" 'it("clean", () => { expect(1).toBe(1); });'
   run "$SCRIPT" "$f"
@@ -76,7 +76,7 @@ assert_json_finding_category() {
 
 # --- mystery-guest negative case (require/import present -> not flagged) ---
 
-@test "TC-RSV2-TESTREVIEW-1.5: mystery-guest NOT flagged when require() is present" {
+@test ".5: mystery-guest NOT flagged when require is present" {
   local f="$TEST_TMP/with-setup.test.ts"
   printf 'const data = require("./fixtures/users.json");\nit("c", () => { const p = "../fixtures/x.json"; expect(true).toBe(true); });\n' > "$f"
   run "$SCRIPT" "$f"
@@ -86,7 +86,7 @@ assert_json_finding_category() {
 
 # --- conditional-assertion exclusion: parameterized patterns ---
 
-@test "TC-RSV2-TESTREVIEW-1.6: parameterized it.each does not trigger conditional-assertion" {
+@test ".6: parameterized it.each does not trigger conditional-assertion" {
   local f="$TEST_TMP/param.test.ts"
   printf 'it.each([[1],[2]])("works %%i", (x) => {\n  expect(x).toBe(x);\n});\n' > "$f"
   run "$SCRIPT" "$f"
@@ -97,7 +97,7 @@ assert_json_finding_category() {
 
 # --- python def test_..._and_..._and_... ---
 
-@test "TC-RSV2-TESTREVIEW-1.7: python def test_x_and_y_and_z flagged" {
+@test ".7: python def test_x_and_y_and_z flagged" {
   local f="$TEST_TMP/test_long.py"
   printf 'def test_call_api_and_check_and_persist(self):\n    assert True\n' > "$f"
   run "$SCRIPT" "$f"
@@ -107,30 +107,30 @@ assert_json_finding_category() {
 
 # --- POSIX / shell discipline ---
 
-@test "TC-RSV2-TESTREVIEW-1.8: script uses set -euo pipefail and LC_ALL=C" {
+@test ".8: script uses set -euo pipefail and LC_ALL=C" {
   grep -Fq "set -euo pipefail" "$SCRIPT"
   grep -Fq "LC_ALL=C" "$SCRIPT"
 }
 
-@test "TC-RSV2-TESTREVIEW-1.9: script does not invoke jq as a runtime command" {
+@test ".9: script does not invoke jq as a runtime command" {
   # Only forbid invocations like `jq ...` or `| jq ...` outside comment lines.
   ! grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -E '(^|[[:space:]\|;])jq([[:space:]]|$)' >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-1.10: --help exits 0 and prints usage" {
+@test ".10: --help exits 0 and prints usage" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | grep -F "Usage:" >/dev/null
 }
 
-@test "TC-RSV2-TESTREVIEW-1.11: unknown flag exits 1" {
+@test ".11: unknown flag exits 1" {
   run "$SCRIPT" --bogus
   [ "$status" -eq 1 ]
 }
 
 # --- directory walking ---
 
-@test "TC-RSV2-TESTREVIEW-1.12: directory input walks test files" {
+@test ".12: directory input walks test files" {
   mkdir -p "$TEST_TMP/dir/sub"
   mkfile "$TEST_TMP/dir/sub/a.test.ts" 'it("clean", () => { expect(1).toBe(1); });'
   mkfile "$TEST_TMP/dir/sub/b.test.ts" 'it("a and b and c", () => { expect(1).toBe(1); });'

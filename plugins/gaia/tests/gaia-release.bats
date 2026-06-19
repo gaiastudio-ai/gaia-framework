@@ -1,17 +1,16 @@
 #!/usr/bin/env bats
-# gaia-release.bats — E28-S167 tests for the /gaia-release native skill.
+# gaia-release.bats — tests for the /gaia-release native skill.
 #
 # Validates:
 #   AC1: SKILL.md documents the full release procedure (version bump, commit,
 #        tag, push, GitHub Release).
-#   AC2: SKILL.md references scripts/version-bump.js.
+#   AC2: SKILL.md references the skill-local version-bump.js script path.
 #   AC3: /gaia-release is discoverable via the native plugin skills tree —
 #        SKILL.md sits under plugins/gaia/skills/gaia-release/ alongside peer
 #        skills such as gaia-release-plan and gaia-changelog.
-#   Val INFO 1: CURRENT version-bump behavior (2 global files per ADR-025
-#               Model B) — no stale "6 files" claim.
-#   Val INFO 2: Full CLI surface — --modules, --prerelease rc,
-#               --strip-prerelease, --dry-run.
+#   Val INFO 1: CURRENT version-bump behavior — config-driven
+#               release.version_files[] (no stale "6 files" claim).
+#   Val INFO 2: CLI surface — --dry-run.
 
 load 'test_helper.bash'
 
@@ -23,26 +22,26 @@ teardown() { common_teardown; }
 
 # ---------- AC1: SKILL.md structure ----------
 
-@test "AC1: SKILL.md exists in gaia-release skill directory" {
+@test "SKILL.md exists in gaia-release skill directory" {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "AC1: frontmatter contains name: gaia-release" {
+@test "frontmatter contains name: gaia-release" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"name: gaia-release"* ]]
 }
 
-@test "AC1: frontmatter contains description field" {
+@test "frontmatter contains description field" {
   run head -20 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"description:"* ]]
 }
 
-@test "AC1: frontmatter contains allowed-tools" {
+@test "frontmatter contains allowed-tools" {
   run head -30 "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"allowed-tools:"* ]]
 }
 
-@test "AC1: frontmatter opens and closes with ---" {
+@test "frontmatter opens and closes with" {
   local first_line
   first_line=$(head -1 "$SKILL_DIR/SKILL.md")
   [ "$first_line" = "---" ]
@@ -52,43 +51,42 @@ teardown() { common_teardown; }
   [ -n "$closing_line" ]
 }
 
-@test "AC1: SKILL.md documents the version-bump step" {
+@test "SKILL.md documents the version-bump step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"version"* ]]
   [[ "$output" == *"bump"* ]] || [[ "$output" == *"Bump"* ]]
 }
 
-@test "AC1: SKILL.md documents the commit step" {
+@test "SKILL.md documents the commit step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"commit"* ]] || [[ "$output" == *"Commit"* ]]
 }
 
-@test "AC1: SKILL.md documents the tag step" {
+@test "SKILL.md documents the tag step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"tag"* ]] || [[ "$output" == *"Tag"* ]]
 }
 
-@test "AC1: SKILL.md documents the push step" {
+@test "SKILL.md documents the push step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"push"* ]] || [[ "$output" == *"Push"* ]]
 }
 
-@test "AC1: SKILL.md documents the GitHub Release step" {
+@test "SKILL.md documents the GitHub Release step" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"GitHub Release"* ]] || [[ "$output" == *"gh release"* ]]
 }
 
 # ---------- AC2: version-bump.js reference ----------
 
-@test "AC2: SKILL.md references scripts/version-bump.js" {
+@test "SKILL.md references the skill-local version-bump.js path" {
   run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"scripts/version-bump.js"* ]]
+  [[ "$output" == *"skills/gaia-release/scripts/version-bump.js"* ]]
 }
 
-@test "AC2: SKILL.md shows npm run version:bump or the node invocation" {
+@test "SKILL.md shows the node invocation for version-bump.js" {
   run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"npm run version:bump"* ]] \
-    || [[ "$output" == *"node scripts/version-bump.js"* ]]
+  [[ "$output" == *"node"*"version-bump.js"* ]]
 }
 
 # ---------- AC3: /gaia-help discoverability ----------
@@ -100,7 +98,7 @@ teardown() { common_teardown; }
 # help-surface CSV registration lives in the legacy Gaia-framework tree and
 # is covered by the companion PR there.
 
-@test "AC3: gaia-release skill dir is a peer of other skills under plugins/gaia/skills/" {
+@test "gaia-release skill dir is a peer of other skills under plugins/gaia/skills/" {
   [ -d "$SKILLS_ROOT" ]
   [ -d "$SKILL_DIR" ]
   # Sibling check — the new skill sits next to existing skills such as
@@ -109,25 +107,24 @@ teardown() { common_teardown; }
   [ -d "$SKILLS_ROOT/gaia-changelog" ]
 }
 
-@test "AC3: SKILL.md frontmatter declares the discoverable trigger phrase" {
+@test "SKILL.md frontmatter declares the discoverable trigger phrase" {
   run head -20 "$SKILL_DIR/SKILL.md"
   # The description field is what Claude Code surfaces when the user asks
   # for help; it must mention /gaia-release so the skill is nameable.
   [[ "$output" == *"/gaia-release"* ]] || [[ "$output" == *"gaia-release"* ]]
 }
 
-# ---------- Val INFO 1: ADR-025 Model B (2 global files) ----------
+# ---------- Val INFO 1: config-driven version file list ----------
 
-@test "VAL-INFO-1: SKILL.md documents Model B (2 global files)" {
+@test "SKILL.md documents config-driven release.version_files list" {
   run cat "$SKILL_DIR/SKILL.md"
-  # The version-bump script updates exactly 2 global targets; verify the
-  # SKILL.md names both and states the 2-target constraint.
-  [[ "$output" == *"package.json"* ]]
-  [[ "$output" == *"global.yaml"* ]]
-  [[ "$output" =~ "2 global" ]]
+  # The project-generic rebuild reads version files from config rather than
+  # hardcoding a fixed target set. Verify the config key is documented.
+  [[ "$output" == *"release.version_files"* ]]
+  [[ "$output" == *"project-config.yaml"* ]]
 }
 
-@test "VAL-INFO-1: SKILL.md does NOT claim the script updates 6 files" {
+@test "SKILL.md does NOT claim the script updates 6 files" {
   run cat "$SKILL_DIR/SKILL.md"
   # The stale "6 files" narrative came from a pre-ADR-025 version. The
   # current script touches exactly 2 global files.
@@ -135,25 +132,10 @@ teardown() { common_teardown; }
   [[ "$output" != *"six files"* ]]
 }
 
-# ---------- Val INFO 2: full CLI surface ----------
+# ---------- Val INFO 2: CLI surface ----------
 
-@test "VAL-INFO-2: SKILL.md documents --modules flag" {
-  run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"--modules"* ]]
-}
 
-@test "VAL-INFO-2: SKILL.md documents --prerelease rc flag" {
-  run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"--prerelease"* ]]
-  [[ "$output" == *"rc"* ]]
-}
-
-@test "VAL-INFO-2: SKILL.md documents --strip-prerelease flag" {
-  run cat "$SKILL_DIR/SKILL.md"
-  [[ "$output" == *"--strip-prerelease"* ]]
-}
-
-@test "VAL-INFO-2: SKILL.md documents --dry-run flag" {
+@test "SKILL.md documents --dry-run flag" {
   run cat "$SKILL_DIR/SKILL.md"
   [[ "$output" == *"--dry-run"* ]]
 }

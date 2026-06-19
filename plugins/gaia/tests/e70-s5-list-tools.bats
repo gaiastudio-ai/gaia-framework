@@ -45,7 +45,7 @@ SH
   chmod +x "$root/$name/run.sh"
 }
 
-@test "TS-1 / AC1: list-adapters.sh enumerates built-in adapters with name, version, provider, runtime-profile" {
+@test "list-adapters.sh enumerates built-in adapters with name, version, provider, runtime-profile" {
   local builtin="$TEST_TMP/builtin"
   mkdir -p "$builtin"
   _make_adapter "$builtin" semgrep sast semgrep ">=1.0.0"
@@ -60,7 +60,7 @@ SH
   echo "$output" | grep -q "subprocess"
 }
 
-@test "TS-1 / AC1: empty adapter directory emits a 'No adapters found' notice and exits 0" {
+@test "empty adapter directory emits a 'No adapters found' notice and exits 0" {
   local builtin="$TEST_TMP/builtin-empty"
   mkdir -p "$builtin"
 
@@ -70,7 +70,7 @@ SH
   echo "$output" | grep -qi "No adapters found"
 }
 
-@test "TS-2 / AC2: custom adapter shadows built-in — custom shows [custom], built-in shows [shadowed]" {
+@test "custom adapter shadows built-in — custom shows [custom], built-in shows [shadowed]" {
   local builtin="$TEST_TMP/builtin"
   local custom="$TEST_TMP/custom"
   mkdir -p "$builtin" "$custom"
@@ -84,7 +84,7 @@ SH
   echo "$output" | grep -q "\[shadowed\]"
 }
 
-@test "AC1: malformed adapter.json is skipped with a warning, listing continues" {
+@test "malformed adapter.json is skipped with a warning, listing continues" {
   local builtin="$TEST_TMP/builtin"
   mkdir -p "$builtin"
   _make_adapter "$builtin" semgrep sast semgrep ">=1.0.0"
@@ -101,7 +101,7 @@ SH
   echo "$output" | grep -qi "broken"
 }
 
-@test "AC1: output is grouped by category — same category clusters together" {
+@test "output is grouped by category — same category clusters together" {
   local builtin="$TEST_TMP/builtin"
   mkdir -p "$builtin"
   _make_adapter "$builtin" semgrep   sast        semgrep   ">=1.0.0"

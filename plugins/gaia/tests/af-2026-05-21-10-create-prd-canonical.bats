@@ -47,7 +47,7 @@ run_finalize_and_capture_resolution() {
 # Greenfield — neither directory exists
 # ---------------------------------------------------------------------------
 
-@test "AF-21-10: greenfield (no PRD anywhere) → finalize.sh skips checklist gracefully" {
+@test "greenfield (no PRD anywhere) → finalize.sh skips checklist gracefully" {
   [ ! -d ".gaia" ] && [ ! -d "docs" ]
   OUTPUT="$(run_finalize_and_capture_resolution)"
   # finalize.sh logs the skip message when ARTIFACT is empty.
@@ -60,7 +60,7 @@ run_finalize_and_capture_resolution() {
 # Post-ADR-111 — only canonical exists (the dominant case post-migration)
 # ---------------------------------------------------------------------------
 
-@test "AF-21-10: post-ADR-111 (only .gaia/ exists) → resolves to canonical" {
+@test "post-migration (only .gaia/ exists) → resolves to canonical" {
   mkdir -p ".gaia/artifacts/planning-artifacts"
   cat > ".gaia/artifacts/planning-artifacts/prd.md" <<'PRD'
 # Test PRD
@@ -77,7 +77,7 @@ PRD
 # Pre-ADR-111 — only legacy exists (positive-evidence guard fires)
 # ---------------------------------------------------------------------------
 
-@test "AF-21-10: pre-ADR-111 (only docs/, no .gaia/) → legacy back-compat preserved" {
+@test "pre-migration (only docs/, no .gaia/) → legacy back-compat preserved" {
   mkdir -p "docs/planning-artifacts"
   cat > "docs/planning-artifacts/prd.md" <<'PRD'
 # Legacy PRD
@@ -94,7 +94,7 @@ PRD
 # Both present (mid-migration) — canonical wins (positive-evidence fails)
 # ---------------------------------------------------------------------------
 
-@test "AF-21-10: both present (mid-migration) → canonical wins" {
+@test "both present (mid-migration) → canonical wins" {
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts"
   cat > ".gaia/artifacts/planning-artifacts/prd.md" <<'PRD'
 # Canonical PRD
@@ -114,7 +114,7 @@ PRD
 # Env-var override (Tier 1) wins regardless of on-disk state
 # ---------------------------------------------------------------------------
 
-@test "AF-21-10: PRD_ARTIFACT env-var override (Tier 1) wins over both legacy and canonical" {
+@test "PRD_ARTIFACT env-var override (Tier 1) wins over both legacy and canonical" {
   mkdir -p ".gaia/artifacts/planning-artifacts" "docs/planning-artifacts"
   echo "# Canonical" > ".gaia/artifacts/planning-artifacts/prd.md"
   echo "# Legacy" > "docs/planning-artifacts/prd.md"

@@ -256,7 +256,7 @@ Release v1.128.1 published.
 
 # Deploy:
 &gt; /gaia-deploy --env production
-&gt; /gaia-post-deploy</code></pre>
+&gt; /gaia-deploy-post</code></pre>
 
         <h3>5. Promote an RC to stable with --strip-prerelease</h3>
         <pre><code>&gt; /gaia-release --strip-prerelease
@@ -288,7 +288,7 @@ Release v1.129.0 published (stable).</code></pre>
         <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
           <tr><td><a href="gaia-changelog.html"><code>/gaia-changelog</code></a></td><td>Generates the changelog entry used in the GitHub Release notes.</td></tr>
           <tr><td><a href="gaia-deploy.html"><code>/gaia-deploy</code></a></td><td>Adapter-mediated deploy orchestrator. Composes with <code>/gaia-release</code> in the hotfix flow.</td></tr>
-          <tr><td><a href="gaia-post-deploy.html"><code>/gaia-post-deploy</code></a></td><td>Post-deployment verification and smoke tests.</td></tr>
+          <tr><td><a href="gaia-deploy-post.html"><code>/gaia-deploy-post</code></a></td><td>Post-deployment verification and smoke tests.</td></tr>
           <tr><td><a href="gaia-rollback-plan.html"><code>/gaia-rollback-plan</code></a></td><td>Rollback criteria and procedures. On standby during hotfix deploys.</td></tr>
         </tbody></table>
       </section>

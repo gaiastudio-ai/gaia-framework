@@ -30,37 +30,37 @@ teardown() { common_teardown; }
 # Story AC2; Subtask 1.1.
 # -------------------------------------------------------------------------
 
-@test "VCP-UX-03: gaia-create-ux SKILL.md lists 280px viewport" {
+@test "gaia-create-ux SKILL.md lists 280px viewport" {
   run grep -F "280px" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-03: gaia-create-ux SKILL.md lists 375px viewport" {
+@test "gaia-create-ux SKILL.md lists 375px viewport" {
   run grep -F "375px" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-03: gaia-create-ux SKILL.md lists 600px viewport" {
+@test "gaia-create-ux SKILL.md lists 600px viewport" {
   run grep -F "600px" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-03: gaia-create-ux SKILL.md lists 768px viewport" {
+@test "gaia-create-ux SKILL.md lists 768px viewport" {
   run grep -F "768px" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-03: gaia-create-ux SKILL.md lists 1024px viewport" {
+@test "gaia-create-ux SKILL.md lists 1024px viewport" {
   run grep -F "1024px" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-03: gaia-create-ux SKILL.md lists 1280px viewport" {
+@test "gaia-create-ux SKILL.md lists 1280px viewport" {
   run grep -F "1280px" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-03: viewport list canonicalized as a 6-tuple" {
+@test "viewport list canonicalized as a 6-tuple" {
   # All six values must appear at least once. Distinct count = 6.
   _hits=$(grep -oE '\b(280|375|600|768|1024|1280)px' "$UX_SKILL_MD" | sort -u | wc -l | tr -d ' ')
   [ "$_hits" -eq 6 ]
@@ -71,37 +71,37 @@ teardown() { common_teardown; }
 # Story AC3; Subtask 1.2.
 # -------------------------------------------------------------------------
 
-@test "VCP-UX-08: gaia-create-ux SKILL.md documents default state variant" {
+@test "gaia-create-ux SKILL.md documents default state variant" {
   run grep -E "\b(default)\b" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-08: gaia-create-ux SKILL.md documents hover state variant" {
+@test "gaia-create-ux SKILL.md documents hover state variant" {
   run grep -F "hover" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-08: gaia-create-ux SKILL.md documents active state variant" {
+@test "gaia-create-ux SKILL.md documents active state variant" {
   run grep -F "active" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-08: gaia-create-ux SKILL.md documents disabled state variant" {
+@test "gaia-create-ux SKILL.md documents disabled state variant" {
   run grep -F "disabled" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-08: gaia-create-ux SKILL.md documents error state variant" {
+@test "gaia-create-ux SKILL.md documents error state variant" {
   run grep -F "error" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-08: gaia-create-ux SKILL.md documents loading state variant" {
+@test "gaia-create-ux SKILL.md documents loading state variant" {
   run grep -F "loading" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-08: state variant list canonicalized as a 6-tuple" {
+@test "state variant list canonicalized as a 6-tuple" {
   # The canonical list MUST appear contiguously (e.g.,
   # `default, hover, active, disabled, error, loading`) so the variant
   # enumeration is unambiguous.
@@ -115,27 +115,27 @@ teardown() { common_teardown; }
 # Story AC4; Subtask 2.1, 2.2, 2.3.
 # -------------------------------------------------------------------------
 
-@test "VCP-UX-04: figma-integration SKILL.md documents the backoff schedule (1s/2s/4s/8s/16s)" {
+@test "figma-integration SKILL.md documents the backoff schedule (1s/2s/4s/8s/16s)" {
   run grep -E "1s.*2s.*4s.*8s.*16s" "$FIGMA_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-04: figma-integration SKILL.md documents the 30s backoff cap" {
+@test "figma-integration SKILL.md documents the 30s backoff cap" {
   run grep -F "30s" "$FIGMA_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-04: figma-integration SKILL.md documents the 5-retry maximum" {
+@test "figma-integration SKILL.md documents the 5-retry maximum" {
   run grep -E "max 5 retries|5 retries|retries: 5" "$FIGMA_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-04: figma-integration SKILL.md documents the 429 trigger" {
+@test "figma-integration SKILL.md documents the 429 trigger" {
   run grep -F "429" "$FIGMA_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-04: figma-integration SKILL.md documents rate_limit_exhausted error surface" {
+@test "figma-integration SKILL.md documents rate_limit_exhausted error surface" {
   run grep -F "rate_limit_exhausted" "$FIGMA_SKILL_MD"
   [ "$status" -eq 0 ]
 }
@@ -145,29 +145,29 @@ teardown() { common_teardown; }
 # Story AC1; Subtask 3.1, 3.2, 3.3, 3.4.
 # -------------------------------------------------------------------------
 
-@test "VCP-UX-01: gaia-create-ux SKILL.md declares an FR-140 Compliance Audit section" {
+@test "gaia-create-ux SKILL.md declares an Compliance Audit section" {
   run grep -E "Compliance Audit|compliance audit" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-01: gaia-create-ux SKILL.md references the audit.json artifact" {
+@test "gaia-create-ux SKILL.md references the audit.json artifact" {
   run grep -F "audit.json" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-01: gaia-create-ux SKILL.md references fr_140_compliance status field" {
+@test "gaia-create-ux SKILL.md references fr_140_compliance status field" {
   run grep -F "fr_140_compliance" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-01: gaia-create-ux SKILL.md enumerates the three audit outcomes" {
+@test "gaia-create-ux SKILL.md enumerates the three audit outcomes" {
   # pass | fail | incomplete — all three must appear in the SKILL.md so
   # the audit logic surface is unambiguous.
   run grep -E "pass.*fail.*incomplete|pass \\| fail \\| incomplete" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-01: figma-integration SKILL.md hosts the read/write classification table" {
+@test "figma-integration SKILL.md hosts the read/write classification table" {
   # The classification table is shared by E46-S2 (Import mode), so it
   # MUST live in figma-integration/SKILL.md (Subtask 3.2 / 6.1) — not in
   # the Generate-mode-specific create-ux SKILL.md.
@@ -175,7 +175,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-01: figma-integration SKILL.md classification table references the canonical MCP read calls" {
+@test "figma-integration SKILL.md classification table references the canonical MCP read calls" {
   # Spot-check: at least three canonical read calls appear in the table.
   for _call in get_file get_components get_styles; do
     run grep -F "$_call" "$FIGMA_SKILL_MD"
@@ -183,7 +183,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "VCP-UX-01: figma-integration SKILL.md classification table references the canonical MCP write calls" {
+@test "figma-integration SKILL.md classification table references the canonical MCP write calls" {
   # Spot-check: at least three canonical write calls appear in the table.
   for _call in create_frame create_component export_asset; do
     run grep -F "$_call" "$FIGMA_SKILL_MD"
@@ -191,7 +191,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "VCP-UX-01: figma-integration SKILL.md declares fr_140_scope column" {
+@test "figma-integration SKILL.md declares fr_140_scope column" {
   # Per Subtask 6.1 — the table must surface the FR-140 scope per call so
   # the audit can reason about generate_only vs always_allowed.
   run grep -F "fr_140_scope" "$FIGMA_SKILL_MD"
@@ -204,47 +204,47 @@ teardown() { common_teardown; }
 # Story AC5; Subtask 1.4, 4.1, 4.2, 4.3.
 # -------------------------------------------------------------------------
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents iOS .xcassets layout" {
+@test "gaia-create-ux SKILL.md documents iOS .xcassets layout" {
   run grep -F ".xcassets" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents iOS imageset structure" {
+@test "gaia-create-ux SKILL.md documents iOS imageset structure" {
   run grep -F ".imageset" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents iOS Contents.json" {
+@test "gaia-create-ux SKILL.md documents iOS Contents.json" {
   run grep -F "Contents.json" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents Android drawable-mdpi bucket" {
+@test "gaia-create-ux SKILL.md documents Android drawable-mdpi bucket" {
   run grep -F "drawable-mdpi" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents Android drawable-hdpi bucket" {
+@test "gaia-create-ux SKILL.md documents Android drawable-hdpi bucket" {
   run grep -F "drawable-hdpi" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents Android drawable-xhdpi bucket" {
+@test "gaia-create-ux SKILL.md documents Android drawable-xhdpi bucket" {
   run grep -F "drawable-xhdpi" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents Android drawable-xxhdpi bucket" {
+@test "gaia-create-ux SKILL.md documents Android drawable-xxhdpi bucket" {
   run grep -F "drawable-xxhdpi" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents Android drawable-xxxhdpi bucket" {
+@test "gaia-create-ux SKILL.md documents Android drawable-xxxhdpi bucket" {
   run grep -F "drawable-xxxhdpi" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-UX-07: gaia-create-ux SKILL.md documents the 1x/2x/3x asset density set" {
+@test "gaia-create-ux SKILL.md documents the 1x/2x/3x asset density set" {
   # The trio (1x, 2x, 3x) MUST appear together in the SKILL.md so the
   # asset export contract is unambiguous.
   run grep -E "1x.*2x.*3x|1x/2x/3x" "$UX_SKILL_MD"
@@ -256,12 +256,12 @@ teardown() { common_teardown; }
 # Story AC6; Subtask 1.3.
 # -------------------------------------------------------------------------
 
-@test "AC6: gaia-create-ux SKILL.md documents prototype_flows section" {
+@test "gaia-create-ux SKILL.md documents prototype_flows section" {
   run grep -F "prototype_flows" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "AC6: gaia-create-ux SKILL.md documents flow edges between screens" {
+@test "gaia-create-ux SKILL.md documents flow edges between screens" {
   run grep -E "flow edge|prototype flow|flow connection" "$UX_SKILL_MD"
   [ "$status" -eq 0 ]
 }
@@ -274,7 +274,7 @@ teardown() { common_teardown; }
 # (#####) headings, NOT new `### Step N — Title` headings.
 # -------------------------------------------------------------------------
 
-@test "NFR-VCP-CPT-09: gaia-create-ux SKILL.md keeps exactly 12 top-level Step headings" {
+@test "gaia-create-ux SKILL.md keeps exactly 12 top-level Step headings" {
   _count=$(grep -cE '^### Step [0-9]+ —' "$UX_SKILL_MD")
   [ "$_count" -eq 12 ]
 }

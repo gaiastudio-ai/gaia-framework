@@ -20,27 +20,27 @@ teardown() {
 
 # ---------- SKILL.md updates ----------
 
-@test "AF-2026-05-21-4 #1: gaia-test-review SKILL.md uses resolve-story-file.sh helper" {
+@test "#1: gaia-test-review SKILL.md uses resolve-story-file.sh helper" {
   run grep -F 'resolve-story-file.sh' "$SKILLS_DIR/gaia-test-review/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-4 #1: gaia-review-perf SKILL.md uses resolve-story-file.sh helper" {
+@test "#1: gaia-review-perf SKILL.md uses resolve-story-file.sh helper" {
   run grep -F 'resolve-story-file.sh' "$SKILLS_DIR/gaia-review-perf/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-4 #1: gaia-qa-tests SKILL.md uses resolve-story-file.sh helper" {
+@test "#1: gaia-qa-tests SKILL.md uses resolve-story-file.sh helper" {
   run grep -F 'resolve-story-file.sh' "$SKILLS_DIR/gaia-qa-tests/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-4 #1: gaia-test-automate SKILL.md uses resolve-story-file.sh helper" {
+@test "#1: gaia-test-automate SKILL.md uses resolve-story-file.sh helper" {
   run grep -F 'resolve-story-file.sh' "$SKILLS_DIR/gaia-test-automate/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-4 #1: each SKILL.md references the canonical .gaia/artifacts/ path" {
+@test "#1: each SKILL.md references the canonical .gaia/artifacts/ path" {
   for s in gaia-test-review gaia-review-perf gaia-qa-tests gaia-test-automate; do
     run grep -F '.gaia/artifacts/implementation-artifacts' "$SKILLS_DIR/$s/SKILL.md"
     [ "$status" -eq 0 ] || { echo "$s missing .gaia/ ref" >&2; return 1; }
@@ -49,12 +49,12 @@ teardown() {
 
 # ---------- atdd-gate.sh ----------
 
-@test "AF-2026-05-21-4 #1: atdd-gate.sh uses resolve-story-file.sh helper" {
+@test "#1: atdd-gate.sh uses resolve-story-file.sh helper" {
   run grep -F 'resolve-story-file.sh' "$SKILLS_DIR/gaia-dev-story/scripts/atdd-gate.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-2026-05-21-4 #1: atdd-gate.sh resolves .gaia/-canonical low-risk story without error" {
+@test "#1: atdd-gate.sh resolves .gaia/-canonical low-risk story without error" {
   # Reproduces the original failure mode: low-risk story under
   # .gaia/artifacts/implementation-artifacts/epic-*/stories/ should
   # exit 0 (gate not enforced for low-risk) rather than "story file not
@@ -77,7 +77,7 @@ EOF
   [[ "$output" == *"risk=low"* ]] || [[ "$stderr" == *"risk=low"* ]] || true
 }
 
-@test "AF-2026-05-21-4 #1: atdd-gate.sh still HALTs high-risk story without ATDD file" {
+@test "#1: atdd-gate.sh still HALTs high-risk story without ATDD file" {
   # Regression: must still HALT on high-risk + no ATDD file.
   local proj="$TEST_TMP/proj"
   local story_dir="$proj/.gaia/artifacts/implementation-artifacts/epic-E99-test/stories"

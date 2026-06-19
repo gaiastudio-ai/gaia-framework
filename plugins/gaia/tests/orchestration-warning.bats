@@ -13,7 +13,7 @@ teardown() { common_teardown; }
 
 # ---- AC1: heavy-procedural + Mode A → warn ----
 
-@test "AC1: heavy-procedural + subagent emits warning" {
+@test "heavy-procedural + subagent emits warning" {
   run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
     --session-id sess-1 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
@@ -25,7 +25,7 @@ teardown() { common_teardown; }
 
 # ---- AC2: conversational + Mode A → warn ----
 
-@test "AC2: conversational + subagent emits warning" {
+@test "conversational + subagent emits warning" {
   run "$SCRIPT" --skill-class conversational --mode subagent \
     --session-id sess-2 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
@@ -35,7 +35,7 @@ teardown() { common_teardown; }
 
 # ---- AC3: light-procedural → no warn ----
 
-@test "AC3: light-procedural produces no warning" {
+@test "light-procedural produces no warning" {
   run "$SCRIPT" --skill-class light-procedural --mode subagent \
     --session-id sess-3 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
@@ -53,14 +53,14 @@ teardown() { common_teardown; }
 
 # ---- AC4: Mode B → no warn (any class) ----
 
-@test "AC4: heavy-procedural + team produces no warning" {
+@test "heavy-procedural + team produces no warning" {
   run "$SCRIPT" --skill-class heavy-procedural --mode team \
     --session-id sess-5 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
-@test "AC4: conversational + team produces no warning" {
+@test "conversational + team produces no warning" {
   run "$SCRIPT" --skill-class conversational --mode team \
     --session-id sess-6 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
@@ -69,7 +69,7 @@ teardown() { common_teardown; }
 
 # ---- AC5: one-shot per session ----
 
-@test "AC5: second invocation in same session is silent (marker honored)" {
+@test "second invocation in same session is silent (marker honored)" {
   # First invocation: warning emitted, marker dropped.
   run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
     --session-id sess-7 --checkpoint-path "$CHECKPOINT_DIR"
@@ -184,7 +184,7 @@ teardown() { common_teardown; }
 
 # ---- AF-2026-05-18-2: surface-above-fold contract ----
 
-@test "AF-2026-05-18-2: SURFACE-WARNING banner is the first stdout line" {
+@test "SURFACE-WARNING banner is the first stdout line" {
   run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
     --session-id sess-surface-1 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
@@ -192,7 +192,7 @@ teardown() { common_teardown; }
   [[ "$first_line" == "SURFACE-WARNING: $CHECKPOINT_DIR/orchestration-warning-pending.sess-surface-1" ]]
 }
 
-@test "AF-2026-05-18-2: sentinel file is written with the full warning body" {
+@test "sentinel file is written with the full warning body" {
   run "$SCRIPT" --skill-class conversational --mode subagent \
     --session-id sess-surface-2 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
@@ -204,7 +204,7 @@ teardown() { common_teardown; }
   [[ "$body" == *"shown once per session"* ]]
 }
 
-@test "AF-2026-05-18-2: full warning still emitted to stdout (backward compat)" {
+@test "full warning still emitted to stdout (backward compat)" {
   run "$SCRIPT" --skill-class heavy-procedural --mode subagent \
     --session-id sess-surface-3 --checkpoint-path "$CHECKPOINT_DIR"
   [ "$status" -eq 0 ]
@@ -213,7 +213,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"* ]]
 }
 
-@test "AF-2026-05-18-2: suppressed paths do NOT write sentinel" {
+@test "suppressed paths do NOT write sentinel" {
   # Mode B → no sentinel
   run "$SCRIPT" --skill-class conversational --mode team \
     --session-id sess-surface-4 --checkpoint-path "$CHECKPOINT_DIR"

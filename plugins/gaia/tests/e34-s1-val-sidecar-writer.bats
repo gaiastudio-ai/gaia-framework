@@ -29,7 +29,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
 # TC-VSP-1 — Happy path ADR-016 entry
 # ---------------------------------------------------------------------------
 
-@test "TC-VSP-1: writes ADR-016-formatted entry with standardized header" {
+@test "writes entry with standardized header" {
   local payload='{"verdict":"passed","findings":[],"artifact_path":"docs/x.md"}'
   run "$SCRIPT" \
     --root "$PROJECT_ROOT" \
@@ -54,7 +54,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
 # TC-VSP-2 — Idempotency: identical payload produces no duplicate
 # ---------------------------------------------------------------------------
 
-@test "TC-VSP-2: identical command+input+decision_hash does not duplicate" {
+@test "identical command+input+decision_hash does not duplicate" {
   local payload='{"verdict":"passed","findings":[{"id":"F1","msg":"ok"}],"artifact_path":"docs/y.md"}'
   run "$SCRIPT" --root "$PROJECT_ROOT" --command-name "/gaia-validate-story" \
     --input-id "E99-S2" --decision-payload "$payload" --sprint-id "sprint-26"
@@ -69,7 +69,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
   [ "$before" -eq "$after" ]
 }
 
-@test "TC-VSP-2b: findings order independence — same set, different order, same dedup_key" {
+@test "findings order independence — same set, different order, same dedup_key" {
   local p1='{"verdict":"passed","findings":[{"id":"F1","msg":"a"},{"id":"F2","msg":"b"}],"artifact_path":"docs/z.md"}'
   local p2='{"verdict":"passed","findings":[{"id":"F2","msg":"b"},{"id":"F1","msg":"a"}],"artifact_path":"docs/z.md"}'
   run "$SCRIPT" --root "$PROJECT_ROOT" --command-name "/gaia-retro" \
@@ -86,7 +86,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
 # TC-VSP-3 — Allowlist rejection
 # ---------------------------------------------------------------------------
 
-@test "TC-VSP-3: rejects write to path outside 2-file allowlist" {
+@test "rejects write to path outside 2-file allowlist" {
   local payload='{"verdict":"passed","findings":[],"artifact_path":"x"}'
   run "$SCRIPT" --root "$PROJECT_ROOT" --command-name "/gaia-create-story" \
     --input-id "E99-S3" --decision-payload "$payload" --sprint-id "sprint-26" \
@@ -96,7 +96,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
   [ ! -e "$PROJECT_ROOT/evil.md" ]
 }
 
-@test "TC-VSP-3b: rejects sidecar-file-sibling paths outside validator-sidecar" {
+@test "rejects sidecar-file-sibling paths outside validator-sidecar" {
   local payload='{"verdict":"passed","findings":[],"artifact_path":"x"}'
   mkdir -p "$PROJECT_ROOT/.gaia/memory/sm-sidecar"
   run "$SCRIPT" --root "$PROJECT_ROOT" --command-name "/gaia-create-story" \
@@ -106,7 +106,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
   [[ "$output" == *"status=rejected"* || "$stderr" == *"status=rejected"* ]]
 }
 
-@test "TC-VSP-3c: rejects symlink traversal escaping validator-sidecar" {
+@test "rejects symlink traversal escaping validator-sidecar" {
   local payload='{"verdict":"passed","findings":[],"artifact_path":"x"}'
   local outside="$TEST_TMP/outside.md"; : > "$outside"
   # Create a symlink inside validator-sidecar/ that points outside.
@@ -123,7 +123,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
 # AC5 — Cross-file tagging between decision-log and conversation-context
 # ---------------------------------------------------------------------------
 
-@test "AC5: conversation-context gains a session block tagged with command_name + input_id" {
+@test "conversation-context gains a session block tagged with command_name + input_id" {
   local payload='{"verdict":"passed","findings":[],"artifact_path":"docs/ctx.md"}'
   run "$SCRIPT" --root "$PROJECT_ROOT" --command-name "/gaia-create-story" \
     --input-id "E99-S4" --decision-payload "$payload" --sprint-id "sprint-26"
@@ -135,7 +135,7 @@ SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
   grep -q "input_id: E99-S4" "$ctx"
 }
 
-@test "AC5: conversation-context header above first --- is preserved on subsequent writes" {
+@test "conversation-context header above first --- is preserved on subsequent writes" {
   local ctx="$PROJECT_ROOT/.gaia/memory/validator-sidecar/conversation-context.md"
   cat > "$ctx" <<'EOF'
 # Val Validator — Conversation Context

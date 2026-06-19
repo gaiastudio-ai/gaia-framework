@@ -177,6 +177,19 @@ is_allowlisted() {
   # that gaia-help.csv + workflow-manifest.csv contain the registration row.
   # Same precedent as test-manual-skill.bats above.
   [[ "$path" == */plugins/gaia/tests/manual-test-docs.bats ]] && return 0
+  # deploy-skill-rename.bats asserts the category-first skill rename is
+  # registered in workflow-manifest.csv, gaia-help.csv, and
+  # lifecycle-sequence.yaml. Same precedent as test-manual-skill.bats above.
+  [[ "$path" == */plugins/gaia/tests/deploy-skill-rename.bats ]] && return 0
+  # skill-rename-preflight.sh is the rename pre-flight helper itself: it greps
+  # for the very rename surfaces (workflow-manifest.csv, gaia-help.csv,
+  # lifecycle-sequence.yaml) so a maintainer renaming a skill sees every place
+  # the old name must change. The literal tokens appear as the helper's search
+  # targets and in its usage comments, not as active dead references. Its bats
+  # companion fixtures and asserts the same tokens. Same precedent as
+  # deploy-skill-rename.bats above.
+  [[ "$path" == */plugins/gaia/skills/gaia-dev-story/scripts/skill-rename-preflight.sh ]] && return 0
+  [[ "$path" == */plugins/gaia/tests/skill-rename-preflight.bats ]] && return 0
   # static-next-steps.bats is the parity guard for next-step routing.
   # It asserts zero `lifecycle-sequence.yaml` references across the target
   # SKILL.md files; the literal token appears in assertions and prose
@@ -343,13 +356,57 @@ is_allowlisted() {
   return 1
 }
 
+# Detect whether the project root is inside a git work tree.  When it is,
+# enumerate only git-tracked files so untracked scratch directories
+# (.review/, .scan-tmp/, Source/, _memory/ sentinels, etc.) can never
+# perturb the verdict.  This matches CI semantics where the clean checkout
+# contains only tracked files.  When git is unavailable or the root is
+# outside any work tree, fall back to grep -rEn with explicit
+# --exclude-dir guards and deterministic sort.
+_in_git_worktree=false
+if git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  _in_git_worktree=true
+fi
+
+# Scratch-dir exclusion list for the non-git fallback path.
+_EXCLUDE_DIRS=(
+  .git .review .scan-tmp Source _memory node_modules
+  .next .nuxt __pycache__ .pytest_cache .mypy_cache
+  .turbo .cache dist build coverage .obsidian
+)
+
 # Collect matches.
 matches=""
 for root in "${SCAN_PATHS[@]}"; do
   [[ -d "$root" ]] || continue
-  # grep exits 1 on no match; `|| true` keeps the script running under `set -e`.
-  # shellcheck disable=SC2016
-  found=$(grep -rEn "$PATTERN" "$root" 2>/dev/null || true)
+
+  if $_in_git_worktree; then
+    # Preferred path: enumerate only git-tracked files under this scan root.
+    # Strip PROJECT_ROOT prefix from $root to get the relative path that
+    # git ls-files expects, then re-prefix each result for grep.
+    local_root="${root#"$PROJECT_ROOT"/}"
+    # git ls-files returns paths relative to the repo root. Batch the tracked
+    # files into a small number of grep invocations via `xargs -0` rather than
+    # forking one grep per file (which was ~2.7x slower on large trees). NUL
+    # delimiters (`-z` / `-0`) keep filenames with spaces or newlines safe.
+    # shellcheck disable=SC2016
+    found=$(
+      git -C "$PROJECT_ROOT" ls-files -z -- "$local_root" 2>/dev/null \
+        | ( cd "$PROJECT_ROOT" && xargs -0 -r grep -EHn "$PATTERN" 2>/dev/null || true ) \
+        | sed "s#^#$PROJECT_ROOT/#" \
+        | sort
+    )
+  else
+    # Fallback: recursive grep with scratch-dir exclusions and sorted output.
+    exclude_args=()
+    for d in "${_EXCLUDE_DIRS[@]}"; do
+      exclude_args+=(--exclude-dir="$d")
+    done
+    # grep exits 1 on no match; `|| true` keeps the script running under `set -e`.
+    # shellcheck disable=SC2016
+    found=$(grep -rEn "${exclude_args[@]}" "$PATTERN" "$root" 2>/dev/null | sort || true)
+  fi
+
   matches+="${found}"$'\n'
 done
 
@@ -369,7 +426,7 @@ while IFS= read -r line; do
   offending+="${line}"$'\n'
 done <<< "$matches"
 
-offending=$(printf '%s' "$offending" | sed '/^$/d')
+offending=$(printf '%s' "$offending" | sed '/^$/d' | sort)
 
 if [[ -z "$offending" ]]; then
   echo "dead-reference-scan: CLEAN — no active-code references to legacy-engine deletion targets"

@@ -3,7 +3,7 @@
 # WARNING emission + scope respect.
 #
 # A Phase 4b sub-step (sibling to reconcile.sh — composition, not a hard
-# dep). It (a) partitions reconciliation scope by stacks[].path, and (b) inspects
+# dep). It (a) partitions reconciliation scope by stacks[].path + stacks[].paths[], and (b) inspects
 # the dependency-graph for edges that cross a stack boundary. An edge from stack A
 # to stack B where B is NOT in A's cross_refs[] allowlist surfaces the canonical
 # WARNING:
@@ -22,7 +22,7 @@
 # stack table) makes each edge an O(1) stack lookup — no per-edge graph walk.
 #
 # Env seams (tests/phase-4b-cross-stack.bats):
-#   XSTACK_CONFIG     project-config.yaml (stacks[].path + cross_refs[])
+#   XSTACK_CONFIG     project-config.yaml (stacks[].path + stacks[].paths[] + cross_refs[])
 #   XSTACK_DEPGRAPH   dep-graph JSON {edges:[{source,target}]} (producer is reconcile.sh; degrade if absent)
 #   XSTACK_REPORT     telemetry report frontmatter (optional)
 #   XSTACK_BYPASS_LOG bypass-log JSONL (default .gaia/memory/brownfield-audit/bypass-log.json)
@@ -37,6 +37,10 @@ log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 die()      { printf 'ERROR: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
 
 HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+
+# Source the shared file-to-stack resolution library.
+# shellcheck source=../../lib/resolve-file-to-stack.sh
+. "$HERE/../../lib/resolve-file-to-stack.sh"
 
 # --- Bypass parse (reuse parse-bypass-flag.sh helper: required-reason + length 10-500) ----
 BYPASS_SKILL="" BYPASS_REASON=""
@@ -90,6 +94,10 @@ fi
 
 start=$(date +%s%N)
 
+# Global for the lazy-built TSV stacks table used by file_to_stack.
+_FTS_TABLE=""
+trap 'rm -f "${_FTS_TABLE:-}"' EXIT
+
 # --- Build the {file->stack} reverse-index + per-stack cross_refs ------------
 # Stacks are read once. file_to_stack resolves a file path to its owning stack by
 # LONGEST path-prefix match (so nested stack paths bind to the most-specific stack).
@@ -104,18 +112,33 @@ stack_count="$(yq eval '.stacks | length' "$CONFIG" 2>/dev/null || printf '0')"
 # The lookup `${CROSS_REFS[$src]}` becomes a linear scan via the new helper
 # `_cross_refs_for()`. The stack count in practice is small (single-digit),
 # so O(N) is fine.
+#
+# STACK_PATHS_GLOBS[] holds the stacks[].paths[] glob-list entries
+# (newline-separated per stack). This EXTENDS the scalar path field —
+# a file matches a stack if it matches either the path prefix OR any paths[] glob.
 STACK_NAMES=()
 STACK_PREFIXES=()
 STACK_CROSS_REFS=()
+STACK_PATHS_GLOBS=()
 i=0
 while [ "$i" -lt "$stack_count" ]; do
   name="$(yq eval ".stacks[$i].name" "$CONFIG")"
-  path_root="$(yq eval ".stacks[$i].path // \".\"" "$CONFIG")"
-  [ "$path_root" = "null" ] && path_root="."
+  # Read the scalar path field WITHOUT a "." fallback first.
+  path_root="$(yq eval ".stacks[$i].path" "$CONFIG")"
+  [ "$path_root" = "null" ] && path_root=""
   refs="$(yq eval ".stacks[$i].cross_refs[]?" "$CONFIG" 2>/dev/null | tr '\n' ' ')"
+  # Read the paths[] glob-list (empty-not-error when absent via ?).
+  paths_globs="$(yq eval ".stacks[$i].paths[]?" "$CONFIG" 2>/dev/null || true)"
+  # Apply the "." catch-all fallback ONLY when NEITHER path NOR paths[] is declared.
+  # When paths[] is present without a scalar path, the stack is glob-only — the
+  # "." fallback would make it own every file, defeating glob specificity.
+  if [ -z "$path_root" ] && [ -z "$paths_globs" ]; then
+    path_root="."
+  fi
   STACK_NAMES+=("$name")
   STACK_PREFIXES+=("$path_root")
   STACK_CROSS_REFS+=("$refs")
+  STACK_PATHS_GLOBS+=("$paths_globs")
   i=$((i+1))
 done
 
@@ -132,20 +155,48 @@ _cross_refs_for() {
   return 0
 }
 
-# file_to_stack <path> -> stack name (longest matching prefix; "." matches all).
+# file_to_stack <path> -> stack name. Delegates to the shared resolution
+# library (lib/resolve-file-to-stack.sh) via a TSV stacks table built from
+# the parallel arrays above. The TSV is built once and cached in _FTS_TABLE.
 file_to_stack() {
-  local f="$1" best="" best_len=-1 j=0
+  local f="$1"
+  # Lazy-build the TSV stacks table on first call.
+  if [ -z "${_FTS_TABLE:-}" ]; then
+    _FTS_TABLE="$(mktemp)"
+    _build_fts_table > "$_FTS_TABLE"
+  fi
+  resolve_file_to_stack "$f" "$_FTS_TABLE"
+}
+
+# _build_fts_table — convert parallel arrays to TSV format for the shared resolver.
+# Emits name<TAB>candidate<TAB>match_type rows to stdout.
+_build_fts_table() {
+  local j=0
   while [ "$j" -lt "${#STACK_NAMES[@]}" ]; do
-    local pfx="${STACK_PREFIXES[$j]}" nm="${STACK_NAMES[$j]}"
-    if [ "$pfx" = "." ]; then
-      # Catch-all: only wins if nothing more specific matched (len 0).
-      if [ "$best_len" -lt 0 ]; then best="$nm"; best_len=0; fi
-    elif [ "$f" = "$pfx" ] || [ "${f#"$pfx"/}" != "$f" ]; then
-      if [ "${#pfx}" -gt "$best_len" ]; then best="$nm"; best_len="${#pfx}"; fi
+    local nm="${STACK_NAMES[$j]}" pfx="${STACK_PREFIXES[$j]}" globs="${STACK_PATHS_GLOBS[$j]}"
+    # Emit scalar path prefix (including "." catch-all)
+    if [ -n "$pfx" ]; then
+      printf '%s\t%s\tprefix\n' "$nm" "$pfx"
+    fi
+    # Emit paths[] globs: classify /** as prefix, others as glob
+    if [ -n "$globs" ]; then
+      local g
+      while IFS= read -r g; do
+        [ -n "$g" ] || continue
+        # Strip surrounding quotes (YAML artifacts)
+        g="${g#\"}" ; g="${g%\"}"
+        g="${g#\'}" ; g="${g%\'}"
+        [ -n "$g" ] || continue
+        if [ "${g%/\*\*}" != "$g" ]; then
+          # /** glob -> prefix type (strip the /** suffix)
+          printf '%s\t%s\tprefix\n' "$nm" "${g%/\*\*}"
+        else
+          printf '%s\t%s\tglob\n' "$nm" "$g"
+        fi
+      done <<< "$globs"
     fi
     j=$((j+1))
   done
-  printf '%s' "$best"
 }
 
 # ref_allowed <src_stack> <tgt_stack> -> 0 if tgt in src.cross_refs[] else 1.
@@ -172,6 +223,13 @@ while IFS=$'\t' read -r src tgt; do
   [ -n "$src" ] || continue
   src_stack="$(file_to_stack "$src")"
   tgt_stack="$(file_to_stack "$tgt")"
+  # Log unowned files (matched by neither path scalar nor paths[] globs).
+  if [ -z "$src_stack" ]; then
+    log_info "unowned file (no stack match): $src" >&2
+  fi
+  if [ -z "$tgt_stack" ]; then
+    log_info "unowned file (no stack match): $tgt" >&2
+  fi
   # Same stack (or unresolved) => not a cross-stack edge.
   [ -n "$src_stack" ] && [ -n "$tgt_stack" ] || continue
   [ "$src_stack" = "$tgt_stack" ] && continue

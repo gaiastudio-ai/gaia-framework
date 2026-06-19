@@ -275,7 +275,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "Ordered list of stack-path rules for multi-service repos. Each entry has name (string), language (string), and paths (list of glob patterns). Review skills resolve the active stack by walking entries in declaration order against the changed-file list. (The descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema.)"
+    description: "Ordered list of stack-path rules for multi-service repos. Each entry has name (string), language (string), and paths (list of glob patterns). Optional per-stack fields: test_cmd (string — custom test command that overrides the language default; executed relative to repo root), deploy_order (integer — lower deploys first; absent stacks deploy after all ordered stacks, alphabetically by name), health_check (object with command + timeout — runs after the stack deploys and must pass before the next stack begins), post_deploy_smoke (object with command + timeout — runs after health check passes). Review skills resolve the active stack by walking entries in declaration order against the changed-file list. (The descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema.)"
 
   cross_service_tests:
     type: map
@@ -318,3 +318,9 @@ fields:
     required: false
     default: null
     description: "Visual regression configuration for the browser surface pixel-diff. Sub-keys: threshold_percent (float, default 0.1 — percentage of pixels allowed to differ before a diff is considered FAILED; at-threshold passes); breakpoints (list of viewport widths, default [1440]); mask_regions (list of {x, y, w, h, label} rectangles excluded from comparison before diffing — use for dynamic content like clocks or ads)."
+
+  release:
+    type: map
+    required: false
+    default: null
+    description: "Release version-bump configuration. Sub-keys: version_files (list of file paths relative to project root — each file is bumped by /gaia-release's version-bump.js); strategy (enum: conventional-commits | manual | calendar — how /gaia-release derives the next version; defaults to manual when absent). Supported file formats: JSON files with a top-level \"version\" key (package.json, plugin.json) and plain-text files containing only a semver string (VERSION). When absent, /gaia-release emits a clear error naming `release.version_files` as the missing key."

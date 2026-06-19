@@ -83,7 +83,7 @@ EOF
 
 teardown() { common_teardown; }
 
-@test "AC1+AC3: gaia-product-brief finalize auto-saves to analyst sidecar" {
+@test "+: gaia-product-brief finalize auto-saves to analyst sidecar" {
     # Run from inside the workspace so docs/creative-artifacts is found.
     pushd "$WORKSPACE" >/dev/null
     run env MEMORY_PATH="$WORKSPACE/_memory" \
@@ -107,7 +107,7 @@ teardown() { common_teardown; }
     return 0
 }
 
-@test "AC-EC1: gaia-dev-story finalize does NOT write to a Phase 1-3 sidecar" {
+@test "gaia-dev-story finalize does NOT write to a Phase 1-3 sidecar" {
     # Ensure the analyst sidecar is empty before we run dev-story finalize.
     rm -rf "$WORKSPACE/_memory/analyst-sidecar"
 

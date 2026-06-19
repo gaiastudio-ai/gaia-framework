@@ -16,7 +16,7 @@ SPRINT_STATE="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
 setup() { common_setup; }
 teardown() { common_teardown; }
 
-@test "TC-SSI-1: sprint-state.sh inject --points 5 -> helpful error message, exit non-zero" {
+@test "sprint-state.sh inject --points 5 -> helpful error message, exit non-zero" {
   run --separate-stderr "$SPRINT_STATE" inject --points 5
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"--points is not a valid flag for inject"* ]]
@@ -26,13 +26,13 @@ teardown() { common_teardown; }
   [[ "$stderr" != *"unknown flag: --points"* ]]
 }
 
-@test "TC-SSI-1b: --points=5 (long-form value) hits the same helpful error" {
+@test "points=5 (long-form value) hits the same helpful error" {
   run --separate-stderr "$SPRINT_STATE" inject --points=5
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"--points is not a valid flag for inject"* ]]
 }
 
-@test "TC-SSI-3: --help output documents total_points accumulation behavior" {
+@test "help output documents total_points accumulation behavior" {
   run "$SPRINT_STATE" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"total_points: accumulated from the injected story's"* ]]
@@ -43,7 +43,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"Boundary-write seed rule"* ]]
 }
 
-@test "TC-SSI-4: other unknown flags still get the generic 'unknown flag' rejection" {
+@test "other unknown flags still get the generic 'unknown flag' rejection" {
   run --separate-stderr "$SPRINT_STATE" inject --bogus-flag x
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"unknown flag: --bogus-flag"* ]]

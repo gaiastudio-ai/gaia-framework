@@ -121,7 +121,7 @@ teardown() { common_teardown; }
 # before the resolver gets a chance to look at CLAUDE_PROJECT_ROOT/config/…
 # See the story file at docs/implementation-artifacts/E28-S202-*.md.
 
-@test "E28-S202 / AC5.a: CHECKPOINT_PATH set → existing happy path still works" {
+@test ".a: CHECKPOINT_PATH set → existing happy path still works" {
   # Early-exit branch of resolve_checkpoint_path must be untouched by the fix.
   # CLAUDE_SKILL_DIR is deliberately absent to prove the gate isn't load-bearing
   # on this path either.
@@ -131,7 +131,7 @@ teardown() { common_teardown; }
   [ -f "$CHECKPOINT_PATH/w-ac5a.yaml" ]
 }
 
-@test "E28-S202 / AC5.b: CHECKPOINT_PATH unset + CLAUDE_PROJECT_ROOT config → resolver succeeds" {
+@test ".b: CHECKPOINT_PATH unset + CLAUDE_PROJECT_ROOT config → resolver succeeds" {
   # Build a minimal project-config.yaml at CLAUDE_PROJECT_ROOT/config/ with
   # every required field so resolve-config.sh emits a usable checkpoint_path
   # line. CLAUDE_SKILL_DIR is deliberately unset — the old pre-check would
@@ -156,7 +156,7 @@ YAML
   [ -f "$ck/w-ac5b.yaml" ]
 }
 
-@test "E28-S202 / AC5.c: resolver output missing checkpoint_path key → die 1" {
+@test ".c: resolver output missing checkpoint_path key → die 1" {
   # AC2 fail-hard preservation: if the resolver succeeds but its output never
   # contains a 'checkpoint_path=' line, checkpoint.sh must still die 1 with
   # the canonical "CHECKPOINT_PATH not resolved" message. Shim the sibling

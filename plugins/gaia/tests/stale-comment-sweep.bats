@@ -18,20 +18,20 @@ teardown() {
 
 # ---------- AC1: resolve-config.sh comments ----------
 
-@test "AC1: resolve-config.sh line 8 documents .gaia/config/ canonical" {
+@test "resolve-config.sh line 8 documents .gaia/config/ canonical" {
   # Header docstring around line 8 should mention .gaia/config/ as canonical.
   run sed -n '6,12p' "$PLUGIN_SCRIPTS/resolve-config.sh"
   [[ "$output" == *".gaia/config/"* ]]
 }
 
-@test "AC1: resolve-config.sh lines 15-18 path-precedence list mentions .gaia/config/" {
+@test "resolve-config.sh lines 15-18 path-precedence list mentions .gaia/config/" {
   run sed -n '13,22p' "$PLUGIN_SCRIPTS/resolve-config.sh"
   [[ "$output" == *".gaia/config/"* ]]
   # Legacy config/ MUST remain documented as fallback (back-compat).
   [[ "$output" == *"config/"* ]]
 }
 
-@test "AC1: resolve-config.sh Config Split Merge example block mentions .gaia/config/" {
+@test "resolve-config.sh Config Split Merge example block mentions .gaia/config/" {
   # Find the section by content rather than fixed line numbers (the line offsets
   # shift when adjacent comments are extended — see fix/staging-bats-failures
   # which moved this block from lines 58-65 to 68-77 by expanding the precedence
@@ -43,7 +43,7 @@ teardown() {
 
 # ---------- AC2: validate-gate.sh line 410 ----------
 
-@test "AC2: validate-gate.sh 'Read config_phase from' docstring documents .gaia/config/ canonical" {
+@test "validate-gate.sh 'Read config_phase from' docstring documents .gaia/config/ canonical" {
   # AF-2026-05-22-5: validate-gate.sh got new lines (test_plan_exists 4-path
   # error + strategy/test-strategy.md acceptance), shifting the original
   # line-410 docstring. Match by content instead of fixed line number so
@@ -56,7 +56,7 @@ teardown() {
   [[ "$output" != *"PROJECT_ROOT}/config/project-config.yaml."* ]] || [[ "$output" == *".gaia/config/"* ]]
 }
 
-@test "AC2: validate-gate.sh executable cfg= lines are unchanged (legacy fallback code)" {
+@test "validate-gate.sh executable cfg= lines are unchanged (legacy fallback code)" {
   # AC2 scope: line 410 docstring ONLY. The `cfg=` executable lines (legacy
   # fallback assignments) MUST NOT be touched. Locate them by content match
   # rather than fixed line numbers (the docstring edit shifts subsequent
@@ -66,7 +66,7 @@ teardown() {
   [ "$output" -eq 3 ]
 }
 
-@test "AC2: validate-gate.sh already-canonical comments are unchanged (E96-S1 / ADR-111)" {
+@test "validate-gate.sh already-canonical comments are unchanged" {
   # AC2 scope exclusion: the "prefer .gaia/config/ over legacy" comments above
   # each `if [ -f .gaia/config/...` block MUST remain present (3 occurrences:
   # read_config_phase, config_section_present, and the cross-reference block).
@@ -77,7 +77,7 @@ teardown() {
 
 # ---------- AC3: zero runtime impact ----------
 
-@test "AC3: both scripts pass bash -n syntax check" {
+@test "both scripts pass bash -n syntax check" {
   run bash -n "$PLUGIN_SCRIPTS/resolve-config.sh"
   [ "$status" -eq 0 ]
   run bash -n "$PLUGIN_SCRIPTS/validate-gate.sh"
@@ -86,7 +86,7 @@ teardown() {
 
 # ---------- AC4: TC-DH-1 smoke test ----------
 
-@test "AC4: TC-DH-1 — resolve-config.sh executes identically on a representative fixture" {
+@test "resolve-config.sh executes identically on a representative fixture" {
   # Smoke: run --help and confirm exit 0 (no behavioral surprise from comment sweep).
   run bash "$PLUGIN_SCRIPTS/resolve-config.sh" --help
   [ "$status" -eq 0 ] || [ "$status" -eq 2 ]  # --help can exit 0 or 2 depending on convention

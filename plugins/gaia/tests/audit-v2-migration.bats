@@ -62,7 +62,7 @@ SETUP_EOF
 
 # ---------- Harness argument surface ----------
 
-@test "E28-S200 AC7: --fixture-mode flag accepts minimal|enriched values" {
+@test "fixture-mode flag accepts minimal|enriched values" {
   run "$HARNESS" --help
   # --help exits 0 and prints usage; the usage must document the new flag.
   [ "$status" -eq 0 ]
@@ -71,7 +71,7 @@ SETUP_EOF
   [[ "$output" == *"enriched"* ]]
 }
 
-@test "E28-S200 AC7: default fixture mode is minimal (no pre-created artifacts)" {
+@test "default fixture mode is minimal (no pre-created artifacts)" {
   mk_skill_requiring_test_plan fake-skill
   # Explicit CI=false — without it, the E28-S195 AC7 change would default
   # to enriched mode when the test runner itself runs under CI=true.
@@ -95,7 +95,7 @@ SETUP_EOF
 
 # ---------- AC6 — enriched mode pre-creates prereq artifacts ----------
 
-@test "E28-S200 AC6: --fixture-mode enriched creates prereq artifact files" {
+@test "fixture-mode enriched creates prereq artifact files" {
   run "$HARNESS" \
     --plugin-cache "$PLUGIN_CACHE" \
     --project-root "$PROJECT_ROOT" \
@@ -112,7 +112,7 @@ SETUP_EOF
 
 # ---------- AC8 — enriched mode exports uppercase env vars ----------
 
-@test "E28-S200 AC8: enriched mode exports TEST_ARTIFACTS so skills see the prereqs" {
+@test "enriched mode exports TEST_ARTIFACTS so skills see the prereqs" {
   mk_skill_requiring_test_plan fake-skill
   run "$HARNESS" \
     --plugin-cache "$PLUGIN_CACHE" \
@@ -129,7 +129,7 @@ SETUP_EOF
 
 # ---------- AC9 — enriched mode returns 0 failing rows ----------
 
-@test "E28-S200 AC9: enriched mode — multi-prereq fake skill produces no B5 residuals" {
+@test "enriched mode — multi-prereq fake skill produces no B5 residuals" {
   # Seed two skills: one needs test-plan.md, one needs prd.md. Both should
   # pass under enriched mode because the harness pre-creates both and
   # exports the env vars.
@@ -171,7 +171,7 @@ SETUP_EOF
 
 # ---------- AC10 — minimal mode still surfaces FixtureGap ----------
 
-@test "E28-S200 AC10: minimal mode still surfaces the FixtureGap signal" {
+@test "minimal mode still surfaces the FixtureGap signal" {
   # Seed a skill that requires test-plan.md. In minimal mode there is no
   # prereq artifact and the harness must NOT pre-create one. The bucket
   # must be a failure bucket (not OK), proving the bug-detection mode was
@@ -194,7 +194,7 @@ SETUP_EOF
   [[ "$output" != *",OK"* ]]
 }
 
-@test "E28-S200 AC7: explicit --fixture-mode minimal matches default behavior" {
+@test "explicit --fixture-mode minimal matches default behavior" {
   mk_skill_requiring_test_plan fake-skill
   # Run with --fixture-mode minimal and confirm the project root stays
   # bare of prereq artifacts. The skill failure causes exit 1 under
@@ -210,7 +210,7 @@ SETUP_EOF
   [ ! -f "$PROJECT_ROOT/docs/planning-artifacts/prd.md" ]
 }
 
-@test "E28-S200: unknown --fixture-mode value rejected with exit 2" {
+@test "unknown --fixture-mode value rejected with exit 2" {
   run "$HARNESS" \
     --plugin-cache "$PLUGIN_CACHE" \
     --project-root "$PROJECT_ROOT" \
@@ -225,7 +225,7 @@ SETUP_EOF
 # AC9 #1 — machine-readable summary line at end of every run.
 # Format contract: `audit-v2-migration: result=<PASS|FAIL> total=<N> ok=<N> no_scripts=<N> failed=<N>`
 # Emitted to stderr as the final summary line so CI can parse it with a grep.
-@test "E28-S195 AC6/AC9: harness emits machine-readable summary line to stderr" {
+@test "harness emits machine-readable summary line to stderr" {
   run "$HARNESS" \
     --plugin-cache "$PLUGIN_CACHE" \
     --project-root "$PROJECT_ROOT" \
@@ -245,7 +245,7 @@ SETUP_EOF
 
 # AC9 #2 — harness error (e.g., missing fixture dir) exits 2, not 1.
 # Split exit code contract: 2 = harness itself erred.
-@test "E28-S195 AC8/AC9: missing plugin-cache dir exits 2 (harness bug, not plugin regression)" {
+@test "missing plugin-cache dir exits 2 (harness bug, not plugin regression)" {
   run "$HARNESS" \
     --plugin-cache "/nonexistent/path/does/not/exist-$$" \
     --project-root "$PROJECT_ROOT" \
@@ -260,7 +260,7 @@ SETUP_EOF
 # When CI is set, harness behaves like the CI gate: enriched fixture,
 # summary line, step-summary markdown. This test only asserts the
 # default-to-enriched behaviour.
-@test "E28-S195 AC7/AC9: CI=true + no flag defaults to --fixture-mode enriched" {
+@test "CI=true + no flag defaults to --fixture-mode enriched" {
   CI=true run "$HARNESS" \
     --plugin-cache "$PLUGIN_CACHE" \
     --project-root "$PROJECT_ROOT" \
@@ -276,7 +276,7 @@ SETUP_EOF
 # AC8 — split exit codes: one or more B1-B5 failures => exit 1 (plugin
 # regression), not 0. Covers the transition from "conflate 1 and 2" to
 # distinct regression vs. harness-bug semantics.
-@test "E28-S195 AC8: skill failure (B1-B5 bucket) triggers exit 1 (plugin regression)" {
+@test "skill failure (B1-B5 bucket) triggers exit 1 (plugin regression)" {
   # Seed a skill that fails in enriched mode even though prereqs exist.
   local skill_dir="$PLUGIN_CACHE/regress-skill"
   mkdir -p "$skill_dir/scripts"
@@ -303,7 +303,7 @@ SETUP_EOF
 # ---------- E28-S213 — config/project-config.yaml seeding in enriched fixture ----------
 
 # AC1 / Subtask 2.1 — enriched mode seeds config/project-config.yaml with all 10 required fields.
-@test "E28-S213 AC1: --fixture-mode enriched creates config/project-config.yaml with all 10 required fields" {
+@test "fixture-mode enriched creates config/project-config.yaml with all 10 required fields" {
   run "$HARNESS" \
     --plugin-cache "$PLUGIN_CACHE" \
     --project-root "$PROJECT_ROOT" \
@@ -327,7 +327,7 @@ SETUP_EOF
 }
 
 # AC3 / Subtask 2.2 — minimal mode must NOT create config/project-config.yaml.
-@test "E28-S213 AC3: --fixture-mode minimal does NOT create config/project-config.yaml" {
+@test "fixture-mode minimal does NOT create config/project-config.yaml" {
   mk_skill_requiring_test_plan fake-skill
   run "$HARNESS" \
     --plugin-cache "$PLUGIN_CACHE" \
@@ -341,7 +341,7 @@ SETUP_EOF
 }
 
 # AC4 / Subtask 2.3 — calling prepare_enriched_fixture twice is idempotent (file not overwritten).
-@test "E28-S213 AC4: enriched fixture idempotent — project-config.yaml not overwritten on second run" {
+@test "enriched fixture idempotent — project-config.yaml not overwritten on second run" {
   run "$HARNESS" \
     --plugin-cache "$PLUGIN_CACHE" \
     --project-root "$PROJECT_ROOT" \
@@ -365,7 +365,7 @@ SETUP_EOF
   [ "$cksum1" = "$cksum2" ]
 }
 
-@test "E28-S195 AC7: GITHUB_STEP_SUMMARY receives a markdown summary block" {
+@test "GITHUB_STEP_SUMMARY receives a markdown summary block" {
   local summary_file="$TEST_TMP/step-summary.md"
   : > "$summary_file"
   GITHUB_STEP_SUMMARY="$summary_file" run "$HARNESS" \

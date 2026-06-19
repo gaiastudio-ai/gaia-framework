@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — gaia-post-deploy skill setup
+# setup.sh — gaia-deploy-post skill setup
 #
 # Mechanical extension of the reference implementation authored for
 # gaia-code-review/scripts/setup.sh. Only WORKFLOW_NAME and
@@ -21,11 +21,11 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
-SCRIPT_NAME="gaia-post-deploy/setup.sh"
+SCRIPT_NAME="gaia-deploy-post/setup.sh"
 WORKFLOW_NAME="post-deploy-verify"
 
 # Resolve the GAIA plugin scripts directory from this script's location:
-#   skills/gaia-post-deploy/scripts/setup.sh → ../../../scripts
+#   skills/gaia-deploy-post/scripts/setup.sh → ../../../scripts
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 

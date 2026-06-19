@@ -17,24 +17,24 @@ teardown() {
   common_teardown
 }
 
-@test "AC1: script moved to scripts/retired/" {
+@test "script moved to scripts/retired/" {
   [ -f "$PLUGIN_ROOT/scripts/retired/migrate-stories-to-canonical-layout.sh" ]
 }
 
-@test "AC1: script no longer at original path" {
+@test "script no longer at original path" {
   [ ! -f "$PLUGIN_ROOT/scripts/migrate-stories-to-canonical-layout.sh" ]
 }
 
-@test "AC2: tombstone README exists in scripts/retired/" {
+@test "tombstone README exists in scripts/retired/" {
   [ -f "$PLUGIN_ROOT/scripts/retired/README.md" ]
 }
 
-@test "AC2: tombstone README documents E97-S2 retire + completion date" {
+@test "tombstone README documents retire + completion date" {
   run grep -E "(E97-S2|2026-05-21|one-shot)" "$PLUGIN_ROOT/scripts/retired/README.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: no references to migrate-stories-to-canonical-layout.sh in SKILL.md / runbooks" {
+@test "no references to migrate-stories-to-canonical-layout.sh in SKILL.md / runbooks" {
   # Exclude the tombstone README (which legitimately mentions the script),
   # the retired script itself, and CHANGELOG.md (which historically
   # documents the E97-S2 retirement — that is precisely what AC3 expects

@@ -105,20 +105,20 @@ _have_workspace_global_yaml() {
 # AC1 — File presence and ADR numbering (fixture-based, CI-stable).
 # ---------------------------------------------------------------------------
 
-@test "AC1: ADR fixture exists at the canonical path" {
+@test "ADR fixture exists at the canonical path" {
   [ -f "$ADR_FIXTURE" ]
 }
 
-@test "AC1: ADR fixture is non-empty" {
+@test "ADR fixture is non-empty" {
   [ -s "$ADR_FIXTURE" ]
 }
 
-@test "AC1: ADR fixture declares ADR-068 in title or frontmatter" {
+@test "ADR fixture declares in title or frontmatter" {
   run grep -E "ADR-068" "$ADR_FIXTURE"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: ADR fixture frontmatter pins adr_id to ADR-068" {
+@test "ADR fixture frontmatter pins adr_id to" {
   run grep -E "^adr_id: ['\"]ADR-068['\"]" "$ADR_FIXTURE"
   [ "$status" -eq 0 ]
 }
@@ -128,23 +128,23 @@ _have_workspace_global_yaml() {
 # Alternatives). Asserted against the in-tree fixture.
 # ---------------------------------------------------------------------------
 
-@test "AC2: ADR contains Status section" {
+@test "ADR contains Status section" {
   _grep_section "$ADR_FIXTURE" "Status"
 }
 
-@test "AC2: ADR contains Context section" {
+@test "ADR contains Context section" {
   _grep_section "$ADR_FIXTURE" "Context"
 }
 
-@test "AC2: ADR contains Decision section" {
+@test "ADR contains Decision section" {
   _grep_section "$ADR_FIXTURE" "Decision"
 }
 
-@test "AC2: ADR contains Consequences section" {
+@test "ADR contains Consequences section" {
   _grep_section "$ADR_FIXTURE" "Consequences"
 }
 
-@test "AC2: ADR contains Alternatives section" {
+@test "ADR contains Alternatives section" {
   _grep_section "$ADR_FIXTURE" "Alternatives"
 }
 
@@ -152,23 +152,23 @@ _have_workspace_global_yaml() {
 # AC3 — Decision section pins. Asserted against the in-tree fixture.
 # ---------------------------------------------------------------------------
 
-@test "AC3: Decision pins argument grammar" {
+@test "Decision pins argument grammar" {
   _grep_decision_pin "$ADR_FIXTURE" "argument grammar|argument-grammar|## Argument"
 }
 
-@test "AC3: Decision pins exit codes" {
+@test "Decision pins exit codes" {
   _grep_decision_pin "$ADR_FIXTURE" "exit code"
 }
 
-@test "AC3: Decision pins JSON output schema" {
+@test "Decision pins JSON output schema" {
   _grep_decision_pin "$ADR_FIXTURE" "JSON.{0,30}schema|output schema|json output"
 }
 
-@test "AC3: Decision pins --strict mode" {
+@test "Decision pins --strict mode" {
   _grep_decision_pin "$ADR_FIXTURE" "[-]{2}strict"
 }
 
-@test "AC3: Decision pins quality_gates.post_complete integration" {
+@test "Decision pins quality_gates.post_complete integration" {
   _grep_decision_pin "$ADR_FIXTURE" "quality_gates\.post_complete|quality_gates_post_complete"
 }
 
@@ -176,7 +176,7 @@ _have_workspace_global_yaml() {
 # AC4 — References E45-S6 sequencing dependency.
 # ---------------------------------------------------------------------------
 
-@test "AC4: ADR references E45-S6 (CI bats scaling sequencing dependency)" {
+@test "ADR references (CI bats scaling sequencing dependency)" {
   run grep -E "E45-S6|ADR-062" "$ADR_FIXTURE"
   [ "$status" -eq 0 ]
 }
@@ -187,7 +187,7 @@ _have_workspace_global_yaml() {
 # marketplace publish, where only the plugin tree is checked out).
 # ---------------------------------------------------------------------------
 
-@test "AC5: workspace ADR matches in-tree fixture (when workspace present)" {
+@test "workspace ADR matches in-tree fixture (when workspace present)" {
   if ! _have_workspace_artifact; then
     skip "workspace ADR not present (running outside GAIA-Framework workspace) — fixture-only assertion"
   fi
@@ -196,7 +196,7 @@ _have_workspace_global_yaml() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC5: ADR-068 is registered in architecture.md ADR table (workspace)" {
+@test "is registered in architecture.md ADR table (workspace)" {
   if ! _have_workspace_arch; then
     skip "workspace architecture.md not present (running outside GAIA-Framework workspace)"
   fi
@@ -205,7 +205,7 @@ _have_workspace_global_yaml() {
   [ "$rows" -ge 1 ]
 }
 
-@test "AC5: global.yaml contains an ADR registry reference (workspace)" {
+@test "global.yaml contains an ADR registry reference (workspace)" {
   if ! _have_workspace_global_yaml; then
     skip "workspace global.yaml not present (running outside GAIA-Framework workspace)"
   fi

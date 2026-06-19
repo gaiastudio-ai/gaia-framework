@@ -30,7 +30,7 @@ teardown() { common_teardown; }
 # orchestration-warning.sh — Category A smart-fallback, mkdir-active
 # ---------------------------------------------------------------------------
 
-@test "AF-21-7 / orchestration-warning.sh: greenfield → canonical .gaia/memory/checkpoints/" {
+@test "orchestration-warning.sh: greenfield → canonical .gaia/memory/checkpoints/" {
   # Fresh empty dir — neither _memory/ nor .gaia/ exists.
   [ ! -d "_memory" ] && [ ! -d ".gaia" ]
   run bash "$SCRIPTS_DIR/orchestration-warning.sh" \
@@ -41,7 +41,7 @@ teardown() { common_teardown; }
   [ ! -d "_memory" ]
 }
 
-@test "AF-21-7 / orchestration-warning.sh: post-ADR-111 → canonical wins" {
+@test "orchestration-warning.sh: post-migration → canonical wins" {
   mkdir -p ".gaia/memory/checkpoints"
   run bash "$SCRIPTS_DIR/orchestration-warning.sh" \
     --skill-class heavy-procedural --mode subagent --session-id "test-$$"
@@ -50,7 +50,7 @@ teardown() { common_teardown; }
   [ ! -d "_memory" ]
 }
 
-@test "AF-21-7 / orchestration-warning.sh: stray _memory/ present → canonical .gaia/memory wins (AF-2026-05-27-3)" {
+@test "orchestration-warning.sh: stray _memory/ present → canonical .gaia/memory wins" {
   # AF-2026-05-27-3: the legacy _memory/ fallback was removed (ADR-111). Even
   # when a stray _memory/checkpoints exists, the sentinel now lands in the
   # canonical .gaia/memory/checkpoints — the legacy dir is NOT honored.
@@ -62,7 +62,7 @@ teardown() { common_teardown; }
   ! ls _memory/checkpoints/orchestration-warning-pending.test-* >/dev/null 2>&1
 }
 
-@test "AF-21-7 / orchestration-warning.sh: both dirs present → canonical wins (Val F8)" {
+@test "orchestration-warning.sh: both dirs present → canonical wins (Val F8)" {
   mkdir -p ".gaia/memory/checkpoints"
   mkdir -p "_memory/checkpoints"
   run bash "$SCRIPTS_DIR/orchestration-warning.sh" \
@@ -79,7 +79,7 @@ teardown() { common_teardown; }
 # repro — fired before orchestration-warning.sh)
 # ---------------------------------------------------------------------------
 
-@test "AF-21-7 / lifecycle-event.sh: greenfield → canonical .gaia/memory/" {
+@test "lifecycle-event.sh: greenfield → canonical .gaia/memory/" {
   [ ! -d "_memory" ] && [ ! -d ".gaia" ]
   run bash "$SCRIPTS_DIR/lifecycle-event.sh" --type test --workflow af-21-7-test
   [ "$status" -eq 0 ]
@@ -87,7 +87,7 @@ teardown() { common_teardown; }
   [ ! -d "_memory" ]
 }
 
-@test "AF-21-7 / lifecycle-event.sh: stray _memory/ present → canonical .gaia/memory wins (AF-2026-05-27-3)" {
+@test "lifecycle-event.sh: stray _memory/ present → canonical .gaia/memory wins" {
   # AF-2026-05-27-3: legacy _memory/ fallback removed (ADR-111). Events land in
   # .gaia/memory/ even when a stray _memory/ exists; the legacy dir is untouched.
   mkdir -p "_memory"
@@ -97,7 +97,7 @@ teardown() { common_teardown; }
   [ ! -f "_memory/lifecycle-events.jsonl" ]
 }
 
-@test "AF-21-7 / lifecycle-event.sh: post-ADR-111 → canonical wins" {
+@test "lifecycle-event.sh: post-migration → canonical wins" {
   mkdir -p ".gaia/memory"
   run bash "$SCRIPTS_DIR/lifecycle-event.sh" --type test --workflow af-21-7-test
   [ "$status" -eq 0 ]
@@ -111,7 +111,7 @@ teardown() { common_teardown; }
 # append-val-iteration, dispatch-agent-turn).
 # ---------------------------------------------------------------------------
 
-@test "AF-21-7 / write-checkpoint.sh: greenfield → canonical .gaia/memory/checkpoints/" {
+@test "write-checkpoint.sh: greenfield → canonical .gaia/memory/checkpoints/" {
   [ ! -d "_memory" ] && [ ! -d ".gaia" ]
   # Minimal valid checkpoint write
   run bash "$SCRIPTS_DIR/write-checkpoint.sh" af-21-7-test 1
@@ -120,7 +120,7 @@ teardown() { common_teardown; }
   [ ! -d "_memory" ]
 }
 
-@test "AF-21-7 / write-checkpoint.sh: stray _memory/ present → canonical .gaia/memory wins (AF-2026-05-27-3)" {
+@test "write-checkpoint.sh: stray _memory/ present → canonical .gaia/memory wins" {
   # AF-2026-05-27-3: legacy _memory/ fallback removed (ADR-111). Checkpoints land
   # in .gaia/memory/checkpoints even when a stray _memory/checkpoints exists.
   mkdir -p "_memory/checkpoints"

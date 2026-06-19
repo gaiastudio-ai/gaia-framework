@@ -108,7 +108,7 @@ _make_brief() {
 # -------------------------------------------------------------------------
 # VCP-GATE-01 — pre_start gate passes when brainstorm artifact exists
 # -------------------------------------------------------------------------
-@test "VCP-GATE-01: setup.sh pre_start passes when brainstorm artifact exists" {
+@test "setup.sh pre_start passes when brainstorm artifact exists" {
   # AF-2026-05-21-20: canonical .gaia/artifacts/ path.
   printf '# brainstorm fixture\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-fixture.md"
   cd "$TEST_TMP"
@@ -121,7 +121,7 @@ _make_brief() {
 # -------------------------------------------------------------------------
 # VCP-GATE-02 — pre_start gate halts when brainstorm artifact missing
 # -------------------------------------------------------------------------
-@test "VCP-GATE-02: setup.sh pre_start halts when brainstorm artifact missing" {
+@test "setup.sh pre_start halts when brainstorm artifact missing" {
   cd "$TEST_TMP"
   run "$SETUP"
   [ "$status" -ne 0 ]
@@ -132,7 +132,7 @@ _make_brief() {
 # -------------------------------------------------------------------------
 # VCP-GATE-03 — post_complete gate passes when all 9 sections present
 # -------------------------------------------------------------------------
-@test "VCP-GATE-03: finalize.sh post_complete passes when all 9 sections present" {
+@test "finalize.sh post_complete passes when all 9 sections present" {
   _make_brief "$TEST_TMP/docs/creative-artifacts/product-brief-fixture.md"
   cd "$TEST_TMP"
   export PRODUCT_BRIEF_ARTIFACT="$TEST_TMP/docs/creative-artifacts/product-brief-fixture.md"
@@ -148,7 +148,7 @@ _make_brief() {
 # VCP-GATE-04 — post_complete gate halts when 2 sections missing,
 # error message names exactly the missing sections.
 # -------------------------------------------------------------------------
-@test "VCP-GATE-04: finalize.sh post_complete halts when 2 sections missing" {
+@test "finalize.sh post_complete halts when 2 sections missing" {
   _make_brief "$TEST_TMP/docs/creative-artifacts/product-brief-fixture.md" \
     "Vision Statement" "Success Metrics"
   cd "$TEST_TMP"
@@ -168,12 +168,12 @@ _make_brief() {
 # quality_gates block: pre_start ≥ 1 entry, post_complete = 9 entries,
 # every entry has both `condition` and `error_message` keys.
 # -------------------------------------------------------------------------
-@test "VCP-GATE-05: SKILL.md frontmatter declares quality_gates block" {
+@test "SKILL.md frontmatter declares quality_gates block" {
   run grep -E '^quality_gates:' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-GATE-05: pre_start has >= 1 entry with condition+error_message" {
+@test "pre_start has >= 1 entry with condition+error_message" {
   # Extract the pre_start sub-block and count `- condition:` lines.
   run awk '
     /^quality_gates:/ { in_qg=1; next }
@@ -187,7 +187,7 @@ _make_brief() {
   [ "$output" -ge 1 ]
 }
 
-@test "VCP-GATE-05: post_complete has exactly 9 entries" {
+@test "post_complete has exactly 9 entries" {
   run awk '
     /^quality_gates:/ { in_qg=1; next }
     in_qg && /^[a-z_]+:/ && !/^[[:space:]]/ { in_qg=0 }
@@ -199,7 +199,7 @@ _make_brief() {
   [ "$output" -eq 9 ]
 }
 
-@test "VCP-GATE-05: every quality_gates entry pairs condition with error_message" {
+@test "every quality_gates entry pairs condition with error_message" {
   # Each `- condition:` line must be followed (within the same list
   # entry) by an `error_message:` line. Counts must match.
   run awk '
@@ -220,7 +220,7 @@ _make_brief() {
 # VCP-GATE-06 — Integration: generic pre_start enforcement halts
 # before step body executes.
 # -------------------------------------------------------------------------
-@test "VCP-GATE-06: pre_start failure halts before any step body runs" {
+@test "pre_start failure halts before any step body runs" {
   # Build a fixture skill with a pre_start gate that requires a missing
   # file. The fixture's setup.sh must source the same gate-predicates
   # helper used by gaia-product-brief/setup.sh.
@@ -237,7 +237,7 @@ _make_brief() {
 # VCP-GATE-07 — Integration: post_complete halt prevents the existing
 # checklist + checkpoint side effects from masking the failure.
 # -------------------------------------------------------------------------
-@test "VCP-GATE-07: post_complete failure surfaces in finalize.sh exit code" {
+@test "post_complete failure surfaces in finalize.sh exit code" {
   # Truncated artifact: only 4 of 9 sections.
   _make_brief "$TEST_TMP/docs/creative-artifacts/product-brief-fixture.md" \
     "Key Features" "Scope and Boundaries" "Risks and Assumptions" \
@@ -252,7 +252,7 @@ _make_brief() {
 # -------------------------------------------------------------------------
 # AC-EC1 — glob pattern matches multiple brainstorm files; gate passes.
 # -------------------------------------------------------------------------
-@test "AC-EC1: pre_start passes when multiple brainstorm files match" {
+@test "pre_start passes when multiple brainstorm files match" {
   printf '# bs1\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-one.md"
   printf '# bs2\n' >"$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-two.md"
   cd "$TEST_TMP"
@@ -263,7 +263,7 @@ _make_brief() {
 # -------------------------------------------------------------------------
 # AC-EC3 — case-sensitive section header match; lowercase header fails.
 # -------------------------------------------------------------------------
-@test "AC-EC3: post_complete is case-sensitive on section headers" {
+@test "post_complete is case-sensitive on section headers" {
   # Brief has "vision statement" lowercase — must FAIL the gate.
   {
     printf '# Brief\n\n'
@@ -288,7 +288,7 @@ _make_brief() {
 # AC-EC5 — error_message containing shell metacharacters is printed
 # literally (no expansion, no command execution).
 # -------------------------------------------------------------------------
-@test "AC-EC5: error_message with shell metacharacters is printed literally" {
+@test "error_message with shell metacharacters is printed literally" {
   # Use the gate-predicates helper directly with an inline message
   # containing $(...). The helper must print it as-is to stderr.
   helper="$SKILL_DIR/../../scripts/lib/gate-predicates.sh"

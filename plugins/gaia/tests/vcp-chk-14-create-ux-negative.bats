@@ -29,27 +29,27 @@ teardown() { common_teardown; }
 # in the violation output verbatim.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-14: finalize.sh exits non-zero when Wireframes body empty" {
+@test "finalize.sh exits non-zero when Wireframes body empty" {
   export UX_DESIGN_ARTIFACT="$FIXTURES/ux-design-missing-wireframes.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-14: finalize.sh names the Key screens described item in the failure output" {
+@test "finalize.sh names the Key screens described item in the failure output" {
   export UX_DESIGN_ARTIFACT="$FIXTURES/ux-design-missing-wireframes.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Key screens described"* ]]
 }
 
-@test "VCP-CHK-14: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export UX_DESIGN_ARTIFACT="$FIXTURES/ux-design-missing-wireframes.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Checklist violations"* ]]
 }
 
-@test "VCP-CHK-14: finalize.sh guides user back to /gaia-create-ux" {
+@test "finalize.sh guides user back to /gaia-create-ux" {
   export UX_DESIGN_ARTIFACT="$FIXTURES/ux-design-missing-wireframes.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -72,7 +72,7 @@ teardown() { common_teardown; }
 # AC4 — UX_DESIGN_ARTIFACT points at a missing file.
 # -------------------------------------------------------------------------
 
-@test "AC4: finalize.sh reports 'no artifact to validate' when UX_DESIGN_ARTIFACT points at a missing file" {
+@test "finalize.sh reports 'no artifact to validate' when UX_DESIGN_ARTIFACT points at a missing file" {
   export UX_DESIGN_ARTIFACT="$BATS_TMPDIR/does-not-exist-$$.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]

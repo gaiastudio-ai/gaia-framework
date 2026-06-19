@@ -31,7 +31,7 @@ teardown() { common_teardown; }
 # F-23: check-tools.sh accepts .name and .id stack identifiers
 # ===========================================================================
 
-@test "AF-30-4 F-23: check-tools _detect_stacks accepts .name as stack identifier" {
+@test "check-tools _detect_stacks accepts .name as stack identifier" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'YAML'
@@ -46,7 +46,7 @@ YAML
   [[ "$output" =~ "for stack: python" ]]
 }
 
-@test "AF-30-4 F-23: check-tools _detect_stacks still accepts canonical .language" {
+@test "check-tools _detect_stacks still accepts canonical .language" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config
   cat > .gaia/config/project-config.yaml <<'YAML'
@@ -60,7 +60,7 @@ YAML
   [[ "$output" =~ "for stack: node" ]]
 }
 
-@test "AF-30-4 F-23: check-tools yq query supports per-element alternation" {
+@test "check-tools yq query supports per-element alternation" {
   # Static regression — confirm the canonical yq query is the one with
   # per-element parens (the F-23 fix).
   run grep -F '.stacks[] | (.language // .name // .id // "")' \
@@ -72,7 +72,7 @@ YAML
 # F-24: tier promotion when tier-2 tools present + tier-1 partial
 # ===========================================================================
 
-@test "AF-30-4 F-24: _compute_tier promotes to TIER 2 when tier-2 tools present" {
+@test "_compute_tier promotes to TIER 2 when tier-2 tools present" {
   cd "$TEST_TMP"
   mkdir -p .gaia/config stub-bin
   cat > .gaia/config/project-config.yaml <<'YAML'
@@ -94,7 +94,7 @@ STUB
   [[ "$output" =~ "TIER 2" ]]
 }
 
-@test "AF-30-4 F-24: _compute_tier uses majority gate for tier-1 promotion" {
+@test "_compute_tier uses majority gate for tier-1 promotion" {
   # Static regression — confirm the majority-promotion branch is present.
   run grep -F 'majority pure-pip tools present' \
         "$PLUGIN_ROOT/skills/gaia-doctor/scripts/check-tools.sh"
@@ -105,21 +105,21 @@ STUB
 # F-22: pip → python3 -m pip --user
 # ===========================================================================
 
-@test "AF-30-4 F-22: registry vulture install uses python3 -m pip --user" {
+@test "registry vulture install uses python3 -m pip --user" {
   run jq -r '.tools.vulture.install.macos' \
         "$PLUGIN_ROOT/skills/gaia-doctor/knowledge/tool-readiness.json"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "python3 -m pip" ]]
 }
 
-@test "AF-30-4 F-22: registry pip-audit install uses python3 -m pip --user" {
+@test "registry pip-audit install uses python3 -m pip --user" {
   run jq -r '.tools["pip-audit"].install.linux' \
         "$PLUGIN_ROOT/skills/gaia-doctor/knowledge/tool-readiness.json"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "python3 -m pip" ]]
 }
 
-@test "AF-30-4 F-22: no bare 'pip install' commands remain for pip tools" {
+@test "no bare 'pip install' commands remain for pip tools" {
   run grep -E '"(macos|linux)": "pip install' \
         "$PLUGIN_ROOT/skills/gaia-doctor/knowledge/tool-readiness.json"
   # zero matches → grep exits 1
@@ -130,13 +130,13 @@ STUB
 # F-25: sarif-multitool registry entry
 # ===========================================================================
 
-@test "AF-30-4 F-25: tool-readiness.json declares sarif-multitool as tier 2" {
+@test "tool-readiness.json declares sarif-multitool as tier 2" {
   run jq -e '.tools["sarif-multitool"].tier == 2' \
         "$PLUGIN_ROOT/skills/gaia-doctor/knowledge/tool-readiness.json"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-25: sarif-multitool install.macos uses dotnet tool install" {
+@test "sarif-multitool install.macos uses dotnet tool install" {
   run jq -r '.tools["sarif-multitool"].install.macos' \
         "$PLUGIN_ROOT/skills/gaia-doctor/knowledge/tool-readiness.json"
   [ "$status" -eq 0 ]
@@ -147,13 +147,13 @@ STUB
 # F-26: install-tools picks up outdated tools
 # ===========================================================================
 
-@test "AF-30-4 F-26: install-tools.sh filter includes state == outdated" {
+@test "install-tools.sh filter includes state == outdated" {
   run grep -F 'state == "missing" or .state == "outdated"' \
         "$PLUGIN_ROOT/skills/gaia-doctor/scripts/install-tools.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-26: check-tools.sh bash special case emits outdated (not warning)" {
+@test "check-tools.sh bash special case emits outdated (not warning)" {
   run grep -F 'echo "outdated|$ver"' \
         "$PLUGIN_ROOT/skills/gaia-doctor/scripts/check-tools.sh"
   [ "$status" -eq 0 ]
@@ -163,7 +163,7 @@ STUB
 # F-27: brownfield SKILL.md prefers syft for grype-feeding SBOM
 # ===========================================================================
 
-@test "AF-30-4 F-27: brownfield SKILL.md documents the syft/grype handoff" {
+@test "brownfield SKILL.md documents the syft/grype handoff" {
   run grep -F 'prefer **syft** as the SBOM producer' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
@@ -173,13 +173,13 @@ STUB
 # F-01 + V-01: brownfield Phase 1 step 5a draft path canonical
 # ===========================================================================
 
-@test "AF-30-4 F-01: brownfield SKILL.md step 5a writes draft under .gaia/config/" {
+@test "brownfield SKILL.md step 5a writes draft under .gaia/config/" {
   run grep -F '<project>/.gaia/config/project-config.draft.yaml' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-01: brownfield SKILL.md canonical step-5a invocation uses .gaia/config/" {
+@test "brownfield SKILL.md canonical step-5a invocation uses .gaia/config/" {
   # The canonical step-5a invocation line MUST use .gaia/config/. Lines
   # within rationale prose (which discuss the legacy form) are allowed
   # because they are quoted with backticks and labeled as "the legacy"
@@ -195,19 +195,19 @@ STUB
 # F-02: zero-config seed includes checkpoint_path + memory_path + …
 # ===========================================================================
 
-@test "AF-30-4 F-02: detect-signals zero-config seed includes checkpoint_path" {
+@test "detect-signals zero-config seed includes checkpoint_path" {
   run grep -F 'checkpoint_path:' \
         "$PLUGIN_ROOT/scripts/detect-signals.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-02: detect-signals zero-config seed includes memory_path" {
+@test "detect-signals zero-config seed includes memory_path" {
   run grep -F 'memory_path:' \
         "$PLUGIN_ROOT/scripts/detect-signals.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-02: detect-signals zero-config seed includes project_root" {
+@test "detect-signals zero-config seed includes project_root" {
   # Just confirm the seed assigns project_root from $_seed_root.
   run grep -F 'project_root: "${_seed_root}"' \
         "$PLUGIN_ROOT/scripts/detect-signals.sh"
@@ -218,7 +218,7 @@ STUB
 # F-04: full-phase config emits platforms:[server] for any shape
 # ===========================================================================
 
-@test "AF-30-4 F-04: generate-config fall-through emits platforms:[server]" {
+@test "generate-config fall-through emits platforms:[server]" {
   # The catch-all `else` branch must assign platforms = ["server"].
   run grep -B1 'platforms = \["server"\]' \
         "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
@@ -233,7 +233,7 @@ STUB
 # F-05: detect-signals --stacks-path-mode bash 4 guard
 # ===========================================================================
 
-@test "AF-30-4 F-05: detect-signals.sh stacks-path-mode runs (no bash-4 hard gate)" {
+@test "detect-signals.sh stacks-path-mode runs (no bash-4 hard gate)" {
   # AF-2026-05-31-1 / Test12 F-04 update: the original AF-30-4 F-05 fix
   # ADDED a bash-4+ hard guard that short-circuited the multi-stack branch
   # on macOS-default bash 3.2. Test12 §9.0 cross-platform mandate flipped
@@ -251,7 +251,7 @@ STUB
 # F-12 + F-13: create-epics ↔ create-story labels
 # ===========================================================================
 
-@test "AF-30-4 F-12: create-epics finalize accepts snake_case depends_on" {
+@test "create-epics finalize accepts snake_case depends_on" {
   run grep -F 'depends_on' \
         "$PLUGIN_ROOT/skills/gaia-create-epics/scripts/finalize.sh"
   [ "$status" -eq 0 ]
@@ -260,7 +260,7 @@ STUB
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-13: create-story generate-frontmatter accepts snake_case aliases" {
+@test "create-story generate-frontmatter accepts snake_case aliases" {
   run grep -F '_extract_bullet_aliased "Risk" "risk_level"' \
         "$PLUGIN_ROOT/skills/gaia-create-story/scripts/generate-frontmatter.sh"
   [ "$status" -eq 0 ]
@@ -269,7 +269,7 @@ STUB
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-12: create-epics SKILL.md prose uses Title-case Risk/Depends on" {
+@test "create-epics SKILL.md prose uses Title-case Risk/Depends on" {
   run grep -E 'set the story.*Risk:' \
         "$PLUGIN_ROOT/skills/gaia-create-epics/SKILL.md"
   [ "$status" -eq 0 ]
@@ -279,7 +279,7 @@ STUB
 # F-16: bridge-populate writes placement: local (not "unit")
 # ===========================================================================
 
-@test "AF-30-4 F-16: bridge-populate _placement_for_tier returns canonical context enum" {
+@test "bridge-populate _placement_for_tier returns canonical context enum" {
   run grep -F '_placement_for_tier' \
         "$PLUGIN_ROOT/scripts/lib/bridge-populate-test-execution.sh"
   [ "$status" -eq 0 ]
@@ -293,111 +293,111 @@ STUB
 # CI doesn't need a fully-staged GAIA project to exercise them.
 # ===========================================================================
 
-@test "AF-30-4 F-03: orchestration-warning.sh points at .gaia/config/" {
+@test "orchestration-warning.sh points at .gaia/config/" {
   run grep -F '.gaia/config/project-config.yaml' \
         "$PLUGIN_ROOT/scripts/orchestration-warning.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-06: gaia-init .gitignore seed includes .gaia/config/" {
+@test "gaia-init .gitignore seed includes .gaia/config/" {
   run grep -F '.gaia/config/' \
         "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-07: brownfield banner uses .tools[].id (not .name)" {
+@test "brownfield banner uses .tools.id (not .name)" {
   run grep -F 'select(.state=="missing") | .id' \
         "$PLUGIN_ROOT/skills/gaia-brownfield/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-08: create-prd finalize SV-20 accepts table-form Fallback column" {
+@test "create-prd finalize accepts table-form Fallback column" {
   # Look for table-column detection in the SV-20 implementation.
   run grep -E 'deps_failure_modes_defined|Fallback' \
         "$PLUGIN_ROOT/skills/gaia-create-prd/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-09: create-ux SKILL prose treats unset compliance as ui_present:false" {
+@test "create-ux SKILL prose treats unset compliance as ui_present:false" {
   # The new directive treats explicit false OR unset OR absent compliance.
   run grep -E 'absent compliance|unset|compliance section is absent' \
         "$PLUGIN_ROOT/skills/gaia-create-ux/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-10: config-compliance SKILL routes absent section to insert verb" {
+@test "config-compliance SKILL routes absent section to insert verb" {
   run grep -F 'config-yaml-editor.sh insert' \
         "$PLUGIN_ROOT/skills/gaia-config-compliance/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-11: edit-prd setup.sh prefers resolve-config.sh project_root" {
+@test "edit-prd setup.sh prefers resolve-config.sh project_root" {
   run grep -F 'resolve-config.sh' \
         "$PLUGIN_ROOT/skills/gaia-edit-prd/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-11: edit-arch setup.sh prefers resolve-config.sh project_root" {
+@test "edit-arch setup.sh prefers resolve-config.sh project_root" {
   run grep -F 'resolve-config.sh' \
         "$PLUGIN_ROOT/skills/gaia-edit-arch/scripts/setup.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-14: generate-frontmatter emits deferred_implementation: false" {
+@test "generate-frontmatter emits deferred_implementation: false" {
   run grep -F 'deferred_implementation: false' \
         "$PLUGIN_ROOT/skills/gaia-create-story/scripts/generate-frontmatter.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-15: sprint-state.sh has set-story-sprint verb" {
+@test "sprint-state.sh has set-story-sprint verb" {
   run grep -F 'set-story-sprint' \
         "$PLUGIN_ROOT/scripts/sprint-state.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-15: sprint-state.sh wrapper byte-identical with canonical" {
+@test "sprint-state.sh wrapper byte-identical with canonical" {
   diff -q "$PLUGIN_ROOT/scripts/sprint-state.sh" \
         "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/sprint-state.sh"
 }
 
-@test "AF-30-4 F-17: bridge-populate writes test_execution_bridge.run_tests_path" {
+@test "bridge-populate writes test_execution_bridge.run_tests_path" {
   run grep -F 'run_tests_path' \
         "$PLUGIN_ROOT/scripts/lib/bridge-populate-test-execution.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-18: dev-story SKILL documents the 7-day grace window" {
+@test "dev-story SKILL documents the 7-day grace window" {
   run grep -E 'NFR-RSV2-6|grace window|7-day' \
         "$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-19: retro review-extract walks per-story reviews/ layout" {
+@test "retro review-extract walks per-story reviews/ layout" {
   run grep -F 'epic-*' \
         "$PLUGIN_ROOT/skills/gaia-retro/scripts/review-extract.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 D-01: gaia-init SKILL documents ci_platform object shape" {
+@test "D-01: gaia-init SKILL documents ci_platform object shape" {
   run grep -E 'ci_platform.*provider|"provider":' \
         "$PLUGIN_ROOT/skills/gaia-init/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 D-03: create-prd argument-hint marks product-brief-path REQUIRED" {
+@test "D-03: create-prd argument-hint marks product-brief-path REQUIRED" {
   run grep -F 'REQUIRED' \
         "$PLUGIN_ROOT/skills/gaia-create-prd/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 D-04: readiness-check SKILL documents required frontmatter fields" {
+@test "D-04: readiness-check SKILL documents required frontmatter fields" {
   for f in checks_passed critical_blockers contradictions_found; do
     run grep -F "$f" "$PLUGIN_ROOT/skills/gaia-readiness-check/SKILL.md"
     [ "$status" -eq 0 ] || { echo "missing field doc: $f" >&2; return 1; }
   done
 }
 
-@test "AF-30-4 D-05: story validators accept positional path (with NOTICE)" {
+@test "D-05: story validators accept positional path (with NOTICE)" {
   for v in validate-frontmatter.sh validate-ac-format.sh validate-canonical-filename.sh; do
     run grep -F 'positional' \
           "$PLUGIN_ROOT/skills/gaia-create-story/scripts/$v"
@@ -405,13 +405,13 @@ STUB
   done
 }
 
-@test "AF-30-4 D-06: sprint-close SKILL documents the Val sentinel payload schema" {
+@test "D-06: sprint-close SKILL documents the Val sentinel payload schema" {
   run grep -F '"agent": "val"' \
         "$PLUGIN_ROOT/skills/gaia-sprint-close/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AF-30-4 F-16: bridge-populate tier 1 maps to 'local' placement" {
+@test "bridge-populate tier 1 maps to 'local' placement" {
   # Smoke-test: when tier=1, the function returns 'local'.
   run bash -c '
     source "'"$PLUGIN_ROOT"'/scripts/lib/bridge-populate-test-execution.sh" 2>/dev/null || true

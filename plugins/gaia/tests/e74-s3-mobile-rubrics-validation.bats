@@ -45,7 +45,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1, AC6 — all five mobile rubric files exist at canonical paths.
 # ---------------------------------------------------------------------------
-@test "AC1/AC6: all five mobile rubric files exist" {
+@test "all five mobile rubric files exist" {
   for f in "${MOBILE_FILES[@]}"; do
     [ -f "$RUBRICS_BASE/${f}.json" ] || {
       echo "missing rubric: $RUBRICS_BASE/${f}.json" >&2
@@ -57,7 +57,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC6 — every mobile rubric validates against rubric.schema.json.
 # ---------------------------------------------------------------------------
-@test "AC6: each mobile rubric passes schema validation" {
+@test "each mobile rubric passes schema validation" {
   for f in "${MOBILE_FILES[@]}"; do
     run "$VALIDATOR" "$RUBRICS_BASE/${f}.json"
     [ "$status" -eq 0 ] || {
@@ -71,7 +71,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1..AC5 — schema_version is "1.0" and skill matches the file stem.
 # ---------------------------------------------------------------------------
-@test "AC1..AC5: each mobile rubric declares schema_version 1.0 and matching skill" {
+@test "..: each mobile rubric declares schema_version 1.0 and matching skill" {
   for f in "${MOBILE_FILES[@]}"; do
     sv=$(jq -r '.schema_version' "$RUBRICS_BASE/${f}.json")
     skill=$(jq -r '.skill' "$RUBRICS_BASE/${f}.json")
@@ -89,7 +89,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1 — mobile.json declares type="base" and platform="mobile".
 # ---------------------------------------------------------------------------
-@test "AC1: mobile.json declares type=base and platform=mobile" {
+@test "mobile.json declares type=base and platform=mobile" {
   ty=$(jq -r '.type' "$RUBRICS_BASE/mobile.json")
   pf=$(jq -r '.platform' "$RUBRICS_BASE/mobile.json")
   [ "$ty" = "base" ] || { echo "mobile.json type='$ty' (expected 'base')" >&2; return 1; }
@@ -99,7 +99,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC2..AC5 — sub-rubrics declare extends, platform="mobile", type="sub".
 # ---------------------------------------------------------------------------
-@test "AC2: mobile-code.json declares extends=code, platform=mobile, type=sub" {
+@test "mobile-code.json declares extends=code, platform=mobile, type=sub" {
   ext=$(jq -r '.extends' "$RUBRICS_BASE/mobile-code.json")
   pf=$(jq -r '.platform' "$RUBRICS_BASE/mobile-code.json")
   ty=$(jq -r '.type' "$RUBRICS_BASE/mobile-code.json")
@@ -108,7 +108,7 @@ teardown() { common_teardown; }
   [ "$ty" = "sub" ] || { echo "mobile-code.json type='$ty' (expected 'sub')" >&2; return 1; }
 }
 
-@test "AC3: mobile-perf.json declares extends=perf, platform=mobile, type=sub" {
+@test "mobile-perf.json declares extends=perf, platform=mobile, type=sub" {
   ext=$(jq -r '.extends' "$RUBRICS_BASE/mobile-perf.json")
   pf=$(jq -r '.platform' "$RUBRICS_BASE/mobile-perf.json")
   ty=$(jq -r '.type' "$RUBRICS_BASE/mobile-perf.json")
@@ -117,7 +117,7 @@ teardown() { common_teardown; }
   [ "$ty" = "sub" ] || { echo "mobile-perf.json type='$ty' (expected 'sub')" >&2; return 1; }
 }
 
-@test "AC4: mobile-security.json declares extends=security, platform=mobile, type=sub" {
+@test "mobile-security.json declares extends=security, platform=mobile, type=sub" {
   ext=$(jq -r '.extends' "$RUBRICS_BASE/mobile-security.json")
   pf=$(jq -r '.platform' "$RUBRICS_BASE/mobile-security.json")
   ty=$(jq -r '.type' "$RUBRICS_BASE/mobile-security.json")
@@ -126,7 +126,7 @@ teardown() { common_teardown; }
   [ "$ty" = "sub" ] || { echo "mobile-security.json type='$ty' (expected 'sub')" >&2; return 1; }
 }
 
-@test "AC5: mobile-a11y.json declares extends=a11y, platform=mobile, type=sub" {
+@test "mobile-a11y.json declares extends=a11y, platform=mobile, type=sub" {
   ext=$(jq -r '.extends' "$RUBRICS_BASE/mobile-a11y.json")
   pf=$(jq -r '.platform' "$RUBRICS_BASE/mobile-a11y.json")
   ty=$(jq -r '.type' "$RUBRICS_BASE/mobile-a11y.json")
@@ -138,7 +138,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC1..AC5 — each rubric contains >= 5 severity rules with required fields.
 # ---------------------------------------------------------------------------
-@test "AC1..AC5: each mobile rubric has at least five severity rules" {
+@test "..: each mobile rubric has at least five severity rules" {
   for f in "${MOBILE_FILES[@]}"; do
     n=$(jq '.severity_rules | length' "$RUBRICS_BASE/${f}.json")
     [ "$n" -ge 5 ] || {
@@ -148,7 +148,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC1..AC5: every rule has required fields with correct types" {
+@test "..: every rule has required fields with correct types" {
   for f in "${MOBILE_FILES[@]}"; do
     bad=$(jq '[.severity_rules[]
               | select(
@@ -169,7 +169,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC2 — mobile-code categories cover memory/lifecycle/platform-api/threading.
 # ---------------------------------------------------------------------------
-@test "AC2: mobile-code.json covers memory/lifecycle/platform-api/threading" {
+@test "mobile-code.json covers memory/lifecycle/platform-api/threading" {
   required=(memory-management lifecycle-handling platform-api-usage threading-concurrency)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/mobile-code.json" | sort -u)
   for c in "${required[@]}"; do
@@ -186,7 +186,7 @@ teardown() { common_teardown; }
 # AC3 — mobile-perf categories cover startup/frame-rate/battery/binary-size/
 #       network-efficiency. Binary-size budget thresholds documented.
 # ---------------------------------------------------------------------------
-@test "AC3: mobile-perf.json covers startup/frame-rate/battery/binary-size/network" {
+@test "mobile-perf.json covers startup/frame-rate/battery/binary-size/network" {
   required=(startup-time frame-rate battery binary-size network-efficiency)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/mobile-perf.json" | sort -u)
   for c in "${required[@]}"; do
@@ -197,7 +197,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC3: mobile-perf.json documents APK <50MB and IPA <100MB binary-size budgets" {
+@test "mobile-perf.json documents APK <50MB and IPA <100MB binary-size budgets" {
   rules=$(jq -r '[.severity_rules[] | select(.category == "binary-size")] | .[] | .pattern + " " + .description + " " + (.remediation // "")' "$RUBRICS_BASE/mobile-perf.json")
   grep -F "50" <<<"$rules" >/dev/null || { echo "binary-size rule(s) missing 50 MB threshold" >&2; echo "$rules" >&2; return 1; }
   grep -F "100" <<<"$rules" >/dev/null || { echo "binary-size rule(s) missing 100 MB threshold" >&2; echo "$rules" >&2; return 1; }
@@ -209,7 +209,7 @@ teardown() { common_teardown; }
 # AC4 — mobile-security categories cover certificate-pinning, secure-storage,
 #       root-detection, code-obfuscation, local-encryption, ipc-security.
 # ---------------------------------------------------------------------------
-@test "AC4: mobile-security.json covers cert-pinning/secure-storage/root-detection/obfuscation/encryption/ipc" {
+@test "mobile-security.json covers cert-pinning/secure-storage/root-detection/obfuscation/encryption/ipc" {
   required=(certificate-pinning secure-storage root-detection code-obfuscation local-encryption ipc-security)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/mobile-security.json" | sort -u)
   for c in "${required[@]}"; do
@@ -225,7 +225,7 @@ teardown() { common_teardown; }
 #       touch-targets / reduced-motion / haptic-feedback. Touch-target
 #       thresholds 44pt iOS / 48dp Android documented.
 # ---------------------------------------------------------------------------
-@test "AC5: mobile-a11y.json covers voiceover-talkback/dynamic-type/touch-targets/reduced-motion/haptic" {
+@test "mobile-a11y.json covers voiceover-talkback/dynamic-type/touch-targets/reduced-motion/haptic" {
   required=(voiceover-talkback dynamic-type touch-targets reduced-motion haptic-feedback)
   cats=$(jq -r '.severity_rules[].category' "$RUBRICS_BASE/mobile-a11y.json" | sort -u)
   for c in "${required[@]}"; do
@@ -236,7 +236,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC5: mobile-a11y.json documents 44pt iOS / 48dp Android touch-target threshold" {
+@test "mobile-a11y.json documents 44pt iOS / 48dp Android touch-target threshold" {
   rules=$(jq -r '[.severity_rules[] | select(.category == "touch-targets")] | .[] | .pattern + " " + .description + " " + (.remediation // "")' "$RUBRICS_BASE/mobile-a11y.json")
   grep -F "44" <<<"$rules" >/dev/null || { echo "touch-targets rule(s) missing 44pt threshold" >&2; echo "$rules" >&2; return 1; }
   grep -F "48" <<<"$rules" >/dev/null || { echo "touch-targets rule(s) missing 48dp threshold" >&2; echo "$rules" >&2; return 1; }
@@ -280,7 +280,7 @@ teardown() { common_teardown; }
 # severity_rules array REPLACES the base's (per the merger contract); the
 # merged metadata picks up the sub-rubric overrides for skill/extends/etc.
 # ---------------------------------------------------------------------------
-@test "AC7: rubric-merger.sh merges code.json + mobile-code.json successfully" {
+@test "rubric-merger.sh merges code.json + mobile-code.json successfully" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi
@@ -303,7 +303,7 @@ teardown() { common_teardown; }
   }
 }
 
-@test "AC7: rubric-merger.sh produces deterministic byte-identical output" {
+@test "rubric-merger.sh produces deterministic byte-identical output" {
   if [ ! -x "$MERGER" ]; then
     skip "depends on E68-S2 rubric-merger.sh"
   fi

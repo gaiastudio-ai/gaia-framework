@@ -22,7 +22,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"load-stack-persona.sh"* ]]
 }
 
-@test "TC-DEJ-PERSONA-01 / EC-5: tsconfig.json -> ts-dev resolves to typescript-dev.md (canonical-name -> filename map)" {
+@test "tsconfig.json -> ts-dev resolves to typescript-dev.md (canonical-name -> filename map)" {
   cd "$TEST_TMP"
   echo '{}' > tsconfig.json
   run "$SCRIPT" --project-root "$TEST_TMP" --agents-dir "$AGENTS_DIR"
@@ -31,7 +31,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"typescript-dev.md"* ]]
 }
 
-@test "TC-DEJ-PERSONA-02: pom.xml -> java-dev / java-dev.md" {
+@test "pom.xml -> java-dev / java-dev.md" {
   cd "$TEST_TMP"
   printf '<project/>\n' > pom.xml
   run "$SCRIPT" --project-root "$TEST_TMP" --agents-dir "$AGENTS_DIR"
@@ -40,7 +40,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"java-dev.md"* ]]
 }
 
-@test "TC-DEJ-PERSONA-03: requirements.txt -> python-dev / python-dev.md" {
+@test "requirements.txt -> python-dev / python-dev.md" {
   cd "$TEST_TMP"
   : > requirements.txt
   run "$SCRIPT" --project-root "$TEST_TMP" --agents-dir "$AGENTS_DIR"
@@ -49,7 +49,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"python-dev.md"* ]]
 }
 
-@test "TC-DEJ-PERSONA-04: go.mod -> go-dev / go-dev.md" {
+@test "go.mod -> go-dev / go-dev.md" {
   cd "$TEST_TMP"
   : > go.mod
   run "$SCRIPT" --project-root "$TEST_TMP" --agents-dir "$AGENTS_DIR"
@@ -58,7 +58,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"go-dev.md"* ]]
 }
 
-@test "TC-DEJ-PERSONA-05: pubspec.yaml -> flutter-dev / flutter-dev.md" {
+@test "pubspec.yaml -> flutter-dev / flutter-dev.md" {
   cd "$TEST_TMP"
   : > pubspec.yaml
   run "$SCRIPT" --project-root "$TEST_TMP" --agents-dir "$AGENTS_DIR"
@@ -67,7 +67,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"flutter-dev.md"* ]]
 }
 
-@test "TC-DEJ-PERSONA-06: AndroidManifest.xml -> mobile-dev / mobile-dev.md" {
+@test "AndroidManifest.xml -> mobile-dev / mobile-dev.md" {
   cd "$TEST_TMP"
   mkdir -p app/src/main
   : > app/src/main/AndroidManifest.xml
@@ -77,7 +77,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"mobile-dev.md"* ]]
 }
 
-@test "TC-DEJ-PERSONA-07: angular.json -> angular-dev / angular-dev.md" {
+@test "angular.json -> angular-dev / angular-dev.md" {
   cd "$TEST_TMP"
   : > angular.json
   run "$SCRIPT" --project-root "$TEST_TMP" --agents-dir "$AGENTS_DIR"
@@ -86,7 +86,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"angular-dev.md"* ]]
 }
 
-@test "EC-4: unsupported stack (no canonical files) -> stderr 'unsupported stack' + exit 2" {
+@test "unsupported stack (no canonical files) -> stderr 'unsupported stack' + exit 2" {
   cd "$TEST_TMP"
   # Bare project, no canonical stack files
   run --separate-stderr "$SCRIPT" --project-root "$TEST_TMP" --agents-dir "$AGENTS_DIR"

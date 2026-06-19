@@ -38,7 +38,7 @@ mk_memory_root() {
 # AC1 / TC-RIM-3 — 6 sidecar ADR-016 writes (happy path)
 # ===========================================================================
 
-@test "AC1/TC-RIM-3: writer appends ADR-016 entry to a sidecar decision-log" {
+@test "writer appends entry to a sidecar decision-log" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -56,7 +56,7 @@ mk_memory_root() {
   [ ! -f "$target.bak" ]
 }
 
-@test "AC1: writer fans out to all 6 agent sidecars" {
+@test "writer fans out to all 6 agent sidecars" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -80,7 +80,7 @@ mk_memory_root() {
 # AC2 / TC-RIM-4 / NFR-RIM-3 — Idempotency on re-run
 # ===========================================================================
 
-@test "AC2/TC-RIM-4: re-run is byte-identical (idempotent via composite dedup key)" {
+@test "re-run is byte-identical (idempotent via composite dedup key)" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -104,7 +104,7 @@ mk_memory_root() {
 # AC6 / TC-RIM-12 / NFR-RIM-2 — Write-boundary rejection
 # ===========================================================================
 
-@test "AC6/TC-RIM-12: write to path outside allowlist is rejected" {
+@test "write to path outside allowlist is rejected" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -126,7 +126,7 @@ mk_memory_root() {
 # AC-EC1 — Concurrent retro invocations serialize via flock
 # ===========================================================================
 
-@test "AC-EC1: concurrent invocations serialize — single entry per sidecar" {
+@test "concurrent invocations serialize — single entry per sidecar" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -151,7 +151,7 @@ mk_memory_root() {
 # AC-EC2 — Missing sidecar file gets seeded with ADR-016 header
 # ===========================================================================
 
-@test "AC-EC2: missing sidecar file — writer seeds canonical header before append" {
+@test "missing sidecar file — writer seeds canonical header before append" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -171,7 +171,7 @@ mk_memory_root() {
 # AC-EC3 — action-items.yaml allowlist (happy) + malformed HALT
 # ===========================================================================
 
-@test "AC-EC3: writer creates action-items.yaml with schema header when missing" {
+@test "writer creates action-items.yaml with schema header when missing" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -189,7 +189,7 @@ mk_memory_root() {
 # AC-EC4 — Missing sprint ID halts
 # ===========================================================================
 
-@test "AC-EC4: missing sprint ID halts with missing_sprint_id" {
+@test "missing sprint ID halts with missing_sprint_id" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -206,7 +206,7 @@ mk_memory_root() {
 # AC-EC5 — Symlink allowlist bypass rejected (realpath resolution)
 # ===========================================================================
 
-@test "AC-EC5: symlink allowlist bypass rejected after realpath resolution" {
+@test "symlink allowlist bypass rejected after realpath resolution" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -233,7 +233,7 @@ mk_memory_root() {
 # AC-EC6 — Composite (sprint_id + hash) collision: writer skips
 # ===========================================================================
 
-@test "AC-EC6: identical (sprint_id, payload) skipped on second call" {
+@test "identical (sprint_id, payload) skipped on second call" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -256,7 +256,7 @@ mk_memory_root() {
 # AC-EC7 — Partial failure mid-write leaves .bak restore, no orphan .bak on success
 # ===========================================================================
 
-@test "AC-EC7: failed write restores from .bak; successful writes leave no .bak" {
+@test "failed write restores from .bak; successful writes leave no .bak" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -287,7 +287,7 @@ mk_memory_root() {
 # AC-EC9 — Auto-increment ID concurrency (via flock on target)
 # ===========================================================================
 
-@test "AC-EC9: concurrent writes on action-items.yaml are serialized by flock" {
+@test "concurrent writes on action-items.yaml are serialized by flock" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -310,7 +310,7 @@ mk_memory_root() {
 # AC-EC10 — Missing validator-sidecar directory seeded
 # ===========================================================================
 
-@test "AC-EC10: missing validator-sidecar directory is seeded with headers" {
+@test "missing validator-sidecar directory is seeded with headers" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -328,7 +328,7 @@ mk_memory_root() {
 # AC-EC11 — Oversized payload (>100KB) wrapped in <details>
 # ===========================================================================
 
-@test "AC-EC11: oversized payload (>100KB) is wrapped in <details>" {
+@test "oversized payload (>100KB) is wrapped in <details>" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -351,7 +351,7 @@ mk_memory_root() {
 # AC-EC12 — BOM normalization in idempotency scan
 # ===========================================================================
 
-@test "AC-EC12: existing file with UTF-8 BOM normalizes before hash compare" {
+@test "existing file with UTF-8 BOM normalizes before hash compare" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"
@@ -379,7 +379,7 @@ mk_memory_root() {
 # Velocity data allowlist (AC4 / TC-RIM-6)
 # ===========================================================================
 
-@test "AC4/TC-RIM-6: velocity-data.md is in the allowlist and appends rows" {
+@test "velocity-data.md is in the allowlist and appends rows" {
   [ -x "$WRITER" ] || skip "GUARD: retro-sidecar-write.sh does not exist — RED phase"
 
   local root="$TEST_TMP/repo"; mk_memory_root "$root"

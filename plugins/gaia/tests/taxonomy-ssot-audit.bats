@@ -135,7 +135,7 @@ _offenders_for_taxonomy() {
 
 # TC-DPD-6 — Audit detects inlined deferral-phrase drift (>=3 distinct entries
 # in a single non-allowlisted file).
-@test "TC-DPD-6: no inlined deferral-taxonomy lists outside allowlist" {
+@test "no inlined deferral-taxonomy lists outside allowlist" {
   local offenders
   offenders=$(_offenders_for_taxonomy deferral)
   if [ -n "$offenders" ]; then
@@ -146,7 +146,7 @@ _offenders_for_taxonomy() {
 }
 
 # TC-DPD-6 — Audit detects inlined dispatch-verb drift.
-@test "TC-DPD-6: no inlined dispatch-taxonomy lists outside allowlist" {
+@test "no inlined dispatch-taxonomy lists outside allowlist" {
   local offenders
   offenders=$(_offenders_for_taxonomy dispatch)
   if [ -n "$offenders" ]; then
@@ -157,7 +157,7 @@ _offenders_for_taxonomy() {
 }
 
 # TC-DPD-6 — Induce-then-detect: a synthetic violator must be flagged.
-@test "TC-DPD-6: audit flags a synthetic inlined-taxonomy violator" {
+@test "audit flags a synthetic inlined-taxonomy violator" {
   local fixture_dir="$PLUGIN_DIR/tests/fixtures"
   local fixture_path="$fixture_dir/inlined-taxonomy-violator-$$.md"
   mkdir -p "$fixture_dir"
@@ -186,7 +186,7 @@ FIX
 
 # Confirm 2 entries in a single file does NOT trigger drift (legitimate prose
 # can mention up to DRIFT_THRESHOLD-1 entries naturally).
-@test "TC-DPD-6: 2 distinct entries in prose is NOT flagged (under threshold)" {
+@test "2 distinct entries in prose is NOT flagged (under threshold)" {
   local fixture_dir="$PLUGIN_DIR/tests/fixtures"
   local fixture_path="$fixture_dir/legitimate-prose-$$.md"
   mkdir -p "$fixture_dir"

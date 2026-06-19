@@ -33,20 +33,20 @@ teardown() { common_teardown; }
 # VCP-CHK-01 — Positive path: all 24 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-01: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export BRAINSTORM_ARTIFACT="$FIXTURES/brainstorm-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-01: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export BRAINSTORM_ARTIFACT="$FIXTURES/brainstorm-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-01: finalize.sh reports PASS for opportunity-count item" {
+@test "finalize.sh reports PASS for opportunity-count item" {
   export BRAINSTORM_ARTIFACT="$FIXTURES/brainstorm-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -58,13 +58,13 @@ teardown() { common_teardown; }
 # item is missing (only 2 present). Must fail with actionable guidance.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-02: finalize.sh exits non-zero when opportunity areas < 3" {
+@test "finalize.sh exits non-zero when opportunity areas < 3" {
   export BRAINSTORM_ARTIFACT="$FIXTURES/brainstorm-missing-opportunities.md"
   run "$FINALIZE"
   [ "$status" -ne 0 ]
 }
 
-@test "VCP-CHK-02: finalize.sh names the failing item in its output" {
+@test "finalize.sh names the failing item in its output" {
   export BRAINSTORM_ARTIFACT="$FIXTURES/brainstorm-missing-opportunities.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -72,7 +72,7 @@ teardown() { common_teardown; }
   [[ "$output" == *"3"* ]]
 }
 
-@test "VCP-CHK-02: finalize.sh prints Checklist violations header on failure" {
+@test "finalize.sh prints Checklist violations header on failure" {
   export BRAINSTORM_ARTIFACT="$FIXTURES/brainstorm-missing-opportunities.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -ne 0 ]
@@ -85,7 +85,7 @@ teardown() { common_teardown; }
 # tag, and the count must be exactly 24.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 24 classified items" {
+@test "SKILL.md ## Validation section contains exactly 24 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -96,7 +96,7 @@ teardown() { common_teardown; }
   [ "$output" = "24" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   # Any bullet under ## Validation that is NOT classified would be a bug.
   run awk '
     /^## Validation/ { in_section = 1; next }

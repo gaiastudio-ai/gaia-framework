@@ -81,7 +81,7 @@ YAML
 # ───────────────────────── AC1 — Reconciler writes framework_version ─────────────────────────
 
 # TC-RV2-56 part (a)
-@test "AC1 (TC-RV2-56): apply writes framework_version from plugin.json into config" {
+@test "apply writes framework_version from plugin.json into config" {
   write_schema "$CLAUDE_PLUGIN_ROOT/schemas/project-config.schema.json" "2.0.0"
   write_minimal_config "$PROJECT_ROOT/config/project-config.yaml" "2.0.0" "1.127.2-rc.1"
   run "$RECONCILER"
@@ -90,7 +90,7 @@ YAML
   grep -qE '^framework_version:[[:space:]]*"?1\.152\.0"?' "$PROJECT_ROOT/config/project-config.yaml"
 }
 
-@test "AC1: framework_version write preserves YAML comments outside the section" {
+@test "framework_version write preserves YAML comments outside the section" {
   write_schema "$CLAUDE_PLUGIN_ROOT/schemas/project-config.schema.json" "2.0.0"
   local cfg="$PROJECT_ROOT/config/project-config.yaml"
   cat > "$cfg" <<'YAML'
@@ -122,13 +122,13 @@ YAML
 # ───────────────────────── AC2 — No inline yq -i ─────────────────────────
 
 # TC-RV2-56b — invariant
-@test "AC2 (TC-RV2-56b): reconciler does not invoke yq with -i flag" {
+@test "reconciler does not invoke yq with -i flag" {
   # Static-source check: the reconciler MUST NOT use `yq -i` anywhere — it
   # MUST dispatch via config-yaml-editor.sh (ADR-101 §6 reconciler-as-caller).
   ! grep -E 'yq[[:space:]]+-i\b|yq[[:space:]]+--in-place' "$RECONCILER"
 }
 
-@test "AC2: reconciler invokes config-yaml-editor.sh replace for the framework_version write" {
+@test "reconciler invokes config-yaml-editor.sh replace for the framework_version write" {
   grep -qE 'config-yaml-editor\.sh.+(replace|insert).+framework_version|config_yaml_editor.+framework_version' "$RECONCILER" \
     || grep -qE 'framework_version.+config-yaml-editor\.sh' "$RECONCILER"
 }
@@ -136,7 +136,7 @@ YAML
 # ───────────────────────── AC3 — Stale comment removed/reworded ─────────────────────────
 
 # TC-RV2-56c — content
-@test "AC3 (TC-RV2-56c): config-hydration.sh:96 no longer claims framework_version is written by resolve-config.sh" {
+@test "config-hydration.sh:96 no longer claims framework_version is written by resolve-config.sh" {
   # The stale "Computed path/identity (7): written by resolve-config.sh at runtime"
   # comment block applies to a list that includes framework_version. Per Val F-2,
   # framework_version is NOT written by resolve-config.sh (only read). The comment
@@ -160,14 +160,14 @@ YAML
   ' "$HYDRATION_LIB"
 }
 
-@test "AC3: config-hydration.sh mentions gaia-reconcile-v2.sh apply as the framework_version writer" {
+@test "config-hydration.sh mentions gaia-reconcile-v2.sh apply as the framework_version writer" {
   grep -qE 'framework_version.*reconcile|reconcile.*framework_version' "$HYDRATION_LIB"
 }
 
 # ───────────────────────── AC5 — Idempotency ─────────────────────────
 
 # TC-RV2-56 part (b/c) — second-run byte-identical
-@test "AC5 (TC-RV2-56b): second apply run yields byte-identical config (idempotent)" {
+@test "second apply run yields byte-identical config (idempotent)" {
   write_schema "$CLAUDE_PLUGIN_ROOT/schemas/project-config.schema.json" "2.0.0"
   write_minimal_config "$PROJECT_ROOT/config/project-config.yaml" "2.0.0" "1.127.2-rc.1"
 
@@ -186,7 +186,7 @@ YAML
   [ "$sha_first" = "$sha_second" ]
 }
 
-@test "AC5: when framework_version already matches plugin version, apply is no-op for this field" {
+@test "when framework_version already matches plugin version, apply is no-op for this field" {
   write_schema "$CLAUDE_PLUGIN_ROOT/schemas/project-config.schema.json" "2.0.0"
   # Config already at plugin's version (1.152.0).
   write_minimal_config "$PROJECT_ROOT/config/project-config.yaml" "2.0.0" "1.152.0"

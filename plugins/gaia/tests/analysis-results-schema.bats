@@ -13,20 +13,20 @@ setup() {
 }
 teardown() { common_teardown; }
 
-@test "TC-DEJ-JSON-01: schema file exists and is valid JSON" {
+@test "schema file exists and is valid JSON" {
   [ -f "$SCHEMA" ]
   run jq -e . "$SCHEMA"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-DEJ-JSON-02: schema declares draft-07 (or later) via \$schema" {
+@test "schema declares draft-07 (or later) via \$schema" {
   run jq -r '."$schema"' "$SCHEMA"
   [ "$status" -eq 0 ]
   [[ "$output" == *"json-schema.org"* ]]
   [[ "$output" == *"draft-07"* ]] || [[ "$output" == *"2019-09"* ]] || [[ "$output" == *"2020-12"* ]]
 }
 
-@test "TC-DEJ-JSON-03: schema requires schema_version with const '1.0'" {
+@test "schema requires schema_version with const '1.0'" {
   run jq -e '.required | index("schema_version")' "$SCHEMA"
   [ "$status" -eq 0 ]
   run jq -r '.properties.schema_version.const // .properties.schema_version.enum[0] // empty' "$SCHEMA"
@@ -34,13 +34,13 @@ teardown() { common_teardown; }
   [ "$output" = "1.0" ]
 }
 
-@test "TC-DEJ-JSON-04 / EC-7: top-level additionalProperties is true (forward-compatible)" {
+@test "top-level additionalProperties is true (forward-compatible)" {
   run jq -r '.additionalProperties' "$SCHEMA"
   [ "$status" -eq 0 ]
   [ "$output" = "true" ]
 }
 
-@test "TC-DEJ-ADR-02: example payload from PRD §4.37 validates against the schema (structurally)" {
+@test "example payload from PRD §4.37 validates against the schema (structurally)" {
   cat > "$TEST_TMP/example.json" <<'EOF'
 {
   "schema_version": "1.0",

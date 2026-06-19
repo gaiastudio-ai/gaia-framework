@@ -1,0 +1,10 @@
+plugins/gaia/scripts/brain/gaia-unfeed.sh
+plugins/gaia/scripts/brain/update-brain-index.sh
+plugins/gaia/scripts/review-gate.sh
+plugins/gaia/skills/gaia-retro/scripts/emit-brain-lessons.sh
+plugins/gaia/tests/brain-capstone.bats
+plugins/gaia/tests/brain-freshness-hooks.bats
+plugins/gaia/tests/brain-retro-lesson.bats
+plugins/gaia/tests/brain-unfeed.bats
+plugins/gaia/tests/brain-update-index.bats
+plugins/gaia/tests/fixtures/brain-capstone/coverage-map.tsv

@@ -22,12 +22,12 @@ teardown() {
 }
 
 # AC1 — Step 4 option [a] prose references the helper
-@test "AC1: Step 4 option [a] prose references the inline manifest generator" {
+@test "Step 4 option [a] prose references the inline manifest generator" {
   grep -q "test-environment-manifest.sh" "${SKILL_MD}"
 }
 
 # AC1/AC5(d) — Step 4 option [a] prose contains ZERO /gaia-brownfield substrings in user-visible text
-@test "AC1/AC5(d): Step 4 option [a] block contains no /gaia-brownfield mention in user-visible prose" {
+@test "d): Step 4 option [a] block contains no /gaia-brownfield mention in user-visible prose" {
   # Extract the Step 4 prose between "## Step 4" and "## Step 5"
   STEP4=$(awk '/^## Step 4/,/^## Step 5/' "${SKILL_MD}")
 
@@ -39,7 +39,7 @@ teardown() {
 }
 
 # AC2 — Option [b] remains as schema-doc fallback
-@test "AC2: option [b] still references install-test-environment-manifest.sh as schema-doc starter" {
+@test "option [b] still references install-test-environment-manifest.sh as schema-doc starter" {
   STEP4=$(awk '/^## Step 4/,/^## Step 5/' "${SKILL_MD}")
   # Option [b] should still exist
   echo "${STEP4}" | grep -qE "^\s+\-\s+\`\[b\]\`"
@@ -48,7 +48,7 @@ teardown() {
 }
 
 # AC3 — YOLO branch auto-invokes the generator (NOT the E17-S31 template-copy)
-@test "AC3: YOLO branch auto-invokes the inline generator with the canonical log line" {
+@test "YOLO branch auto-invokes the inline generator with the canonical log line" {
   STEP4=$(awk '/^## Step 4/,/^## Step 5/' "${SKILL_MD}")
   # YOLO branch must mention the generator helper
   echo "${STEP4}" | grep -q "absent (YOLO)"
@@ -57,14 +57,14 @@ teardown() {
 }
 
 # AC4 — Generator-failure fallback to template-copy
-@test "AC4: SKILL.md describes the generator-failure → template-copy fallback" {
+@test "SKILL.md describes the generator-failure → template-copy fallback" {
   STEP4=$(awk '/^## Step 4/,/^## Step 5/' "${SKILL_MD}")
   # Some explicit fallback prose must mention the install-test-environment-manifest.sh as a fallback
   echo "${STEP4}" | grep -qF "install-test-environment-manifest.sh"
 }
 
 # Functional check: the helper invocation pattern actually works against a real fixture
-@test "AC1/AC2: helper invocation pattern works end-to-end (smoke test)" {
+@test "helper invocation pattern works end-to-end (smoke test)" {
   # Seed a Node project so the helper has something to detect
   echo '{"name":"test","devDependencies":{"jest":"^29.0.0"}}' > "${TARGET_DIR}/package.json"
 
@@ -78,7 +78,7 @@ teardown() {
 }
 
 # AC5(c) — generator-failure fallback works (when the helper is moved aside, fallback exits gracefully)
-@test "AC4 fallback smoke: when generator is unavailable, install-test-environment-manifest.sh is the documented fallback" {
+@test "fallback smoke: when generator is unavailable, install-test-environment-manifest.sh is the documented fallback" {
   # Just verify the fallback helper exists (was shipped in E17-S31)
   FALLBACK="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-manifest.sh"
   [ -x "${FALLBACK}" ]

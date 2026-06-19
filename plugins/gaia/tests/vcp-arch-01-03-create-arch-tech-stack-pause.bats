@@ -35,22 +35,22 @@ teardown() { common_teardown; }
 # Step numbers 4..N MUST remain stable (Dev Notes invariant).
 # -------------------------------------------------------------------------
 
-@test "VCP-ARCH-01: SKILL.md declares Step 3.5 — Tech-Stack Confirmation Pause" {
+@test "SKILL.md declares Step 3.5 — Tech-Stack Confirmation Pause" {
   run grep -E "^### Step 3\.5 — Tech-Stack Confirmation Pause" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-ARCH-01: SKILL.md preserves stable Step 4 numbering (no renumber)" {
+@test "SKILL.md preserves stable Step 4 numbering (no renumber)" {
   run grep -E "^### Step 4 — System Architecture" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-ARCH-01: Step 3.5 emits the [a]ccept / [m]odify / [r]eject prompt verbatim" {
+@test "Step 3.5 emits the [a]ccept / [m]odify / [r]eject prompt verbatim" {
   run grep -F "[a]ccept / [m]odify / [r]eject" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-ARCH-01: Step 3.5 documents the YOLO auto-accept audit-log concession" {
+@test "Step 3.5 documents the YOLO auto-accept audit-log concession" {
   run grep -F "YOLO auto-accepted tech stack" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
@@ -60,12 +60,12 @@ teardown() { common_teardown; }
 # variable, NOT the original Theo response object.
 # -------------------------------------------------------------------------
 
-@test "VCP-ARCH-02: SKILL.md introduces the confirmed_tech_stack runtime variable" {
+@test "SKILL.md introduces the confirmed_tech_stack runtime variable" {
   run grep -F "confirmed_tech_stack" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-ARCH-02: SKILL.md documents the [r]eject branch (re-invoke or abort)" {
+@test "SKILL.md documents the [r]eject branch (re-invoke or abort)" {
   run grep -F "aborted at tech-stack confirmation" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
@@ -75,22 +75,22 @@ teardown() { common_teardown; }
 # append-only semantics and non-blocking failure policy.
 # -------------------------------------------------------------------------
 
-@test "VCP-ARCH-03: SKILL.md wires the sidecar path .gaia/memory/architect-sidecar/architecture-decisions.md (canonical post-AF-22-4)" {
+@test "SKILL.md wires the sidecar path .gaia/memory/architect-sidecar/architecture-decisions.md" {
   # AF-2026-05-22-4 canonicalized the sidecar path. Accept canonical or legacy.
   grep -qE '(_memory|\.gaia/memory)/architect-sidecar/architecture-decisions\.md' "$SKILL_MD"
 }
 
-@test "VCP-ARCH-03: SKILL.md documents append-only sidecar contract" {
+@test "SKILL.md documents append-only sidecar contract" {
   run grep -Ei "append-only" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-ARCH-03: SKILL.md documents non-blocking sidecar write failure policy" {
+@test "SKILL.md documents non-blocking sidecar write failure policy" {
   run grep -F "ADR sidecar write failed" "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-ARCH-03: SKILL.md mandates write-order — architecture.md before sidecar" {
+@test "SKILL.md mandates write-order — architecture.md before sidecar" {
   # The sidecar action must be described as running AFTER the
   # architecture document write succeeds (Subtask 3.1).
   run grep -Ei "AFTER the architecture" "$SKILL_MD"

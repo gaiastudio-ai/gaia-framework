@@ -294,7 +294,7 @@ EOF
 # E64-S2 / AC1 — `/bin/test` resolution must emit SKIPPED, never PASSED-skipped
 # ---------------------------------------------------------------------------
 
-@test "dod-check (E64-S2 AC1): tests row emits SKIPPED when only system /bin/test is on PATH" {
+@test "dod-check : tests row emits SKIPPED when only system /bin/test is on PATH" {
   # Story-file scenario 2: host where `/bin/test` is on PATH but no project
   # signal exists. The row MUST be SKIPPED with the canonical reason — never
   # FAILED, and not silently masked as PASSED with a "skipped" output blurb.
@@ -315,7 +315,7 @@ EOF
 # E64-S2 / AC3 — subtask scan tolerates mixed-case heading + trailing whitespace
 # ---------------------------------------------------------------------------
 
-@test "dod-check (E64-S2 AC3): subtask scan detects mixed-case '## tasks / subtasks' heading" {
+@test "dod-check : subtask scan detects mixed-case '## tasks / subtasks' heading" {
   # Story scenario 4: heading uses lowercase. Without case-insensitive
   # matching the section is missed entirely and unchecked items inside it
   # are silently ignored, producing a false PASSED. To prove the section is
@@ -344,7 +344,7 @@ EOF
   [[ "$output" != *"item: subtasks, status: PASSED"* ]]
 }
 
-@test "dod-check (E64-S2 AC3): subtask scan tolerates trailing whitespace on heading" {
+@test "dod-check : subtask scan tolerates trailing whitespace on heading" {
   _stub "build" 0 "build ok"
   _stub "test"  0 "tests ok"
   _stub "lint"  0 "lint ok"
@@ -357,7 +357,7 @@ EOF
   [[ "$output" != *"item: subtasks, status: PASSED"* ]]
 }
 
-@test "dod-check (E64-S2 AC3): mixed-case heading + unchecked DoD remains scoped to Tasks/Subtasks" {
+@test "dod-check : mixed-case heading + unchecked DoD remains scoped to Tasks/Subtasks" {
   # Mixed-case heading + only-checked Tasks/Subtasks + unchecked DoD items.
   # Even with the case-insensitive heading match in place, DoD unchecked
   # boxes must still be excluded — guards against an over-broad fix.

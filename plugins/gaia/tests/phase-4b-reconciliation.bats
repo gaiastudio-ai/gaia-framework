@@ -38,7 +38,7 @@ run_recon() {
 }
 
 # --- AC3 / AC6 / scenario 1 — barrel-file demotion to INFO --------------------
-@test "E104-S2 (scenario 1): barrel src/index.ts reachable → demoted to INFO + entry_points" {
+@test "scenario 1): barrel src/index.ts reachable → demoted to INFO + entry_points" {
   run_recon barrel
   [ "$status" -eq 0 ]
   [ -f "$OUT" ]
@@ -55,7 +55,7 @@ run_recon() {
 }
 
 # --- AC3 / scenario 2 — truly-unreferenced file: severity UNCHANGED -----------
-@test "E104-S2 (scenario 2): orphan src/orphan.ts not reachable → severity unchanged" {
+@test "scenario 2): orphan src/orphan.ts not reachable → severity unchanged" {
   run_recon barrel
   [ "$status" -eq 0 ]
   run jq -r '.[] | select(.file_path=="src/orphan.ts") | .severity' "$OUT"
@@ -65,7 +65,7 @@ run_recon() {
 }
 
 # --- AC4 / AC7 / scenario 7 — identity fields preserved verbatim --------------
-@test "E104-S2 (scenario 7): identity fields (file_path,qualifier,source_tool,ruleId,start_line) preserved" {
+@test "scenario 7): identity fields (file_path,qualifier,source_tool,ruleId,start_line) preserved" {
   run_recon barrel
   [ "$status" -eq 0 ]
   run jq -r '.[] | select(.file_path=="src/index.ts") | "\(.ruleId)|\(.source_tool)|\(.qualifier)|\(.start_line)"' "$OUT"
@@ -73,7 +73,7 @@ run_recon() {
 }
 
 # --- AC3 / scenario 3 — multi-stack: Go + JS both demoted ---------------------
-@test "E104-S2 (scenario 3): multi-stack Go + JS both reachable → both demoted to INFO" {
+@test "scenario 3): multi-stack Go + JS both reachable → both demoted to INFO" {
   run_recon multi-stack
   [ "$status" -eq 0 ]
   run jq -r '.[] | select(.file_path=="pkg/util/helper.go") | .severity' "$OUT"
@@ -86,7 +86,7 @@ run_recon() {
 }
 
 # --- multi-callgraph overlap → entry_points UNIONed (not last-write-wins) -----
-@test "E104-S2: same file across two call-graphs → entry_points unioned" {
+@test "same file across two call-graphs → entry_points unioned" {
   ov="$TEST_TMP/overlap"; mkdir -p "$ov"
   cat > "$ov/deduped-findings.json" <<'JSON'
 [ { "ruleId": "dead-code/js", "file_path": "src/shared.ts", "severity": "warning", "source_tool": "dead-exports", "qualifier": "x", "start_line": 1 } ]
@@ -106,7 +106,7 @@ JSON
 }
 
 # --- scenario 4 — empty call-graph → passthrough unchanged + WARN -------------
-@test "E104-S2 (scenario 4): empty call-graph → no demotion, findings pass through + WARN" {
+@test "scenario 4): empty call-graph → no demotion, findings pass through + WARN" {
   run_recon empty-callgraph
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARN"* ]] || [[ "$output" == *"WARNING"* ]]
@@ -115,7 +115,7 @@ JSON
 }
 
 # --- AC-X3 — telemetry: findings_demoted_by_reconciliation + phase_4b runtime -
-@test "E104-S2 AC-X3: telemetry frontmatter populated (demoted count + runtime + llm 0)" {
+@test "telemetry frontmatter populated (demoted count + runtime + llm 0)" {
   cat > "$TEST_TMP/report.md" <<'MD'
 ---
 title: gaps
@@ -139,7 +139,7 @@ MD
 }
 
 # --- AC-X1 / scenario 8 — per-tool flag off → passthrough, no reconciliation --
-@test "E104-S2 (scenario 8): phase_4b_enabled=false → skip, raw stream passes through" {
+@test "scenario 8): phase_4b_enabled=false → skip, raw stream passes through" {
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_PHASE_4B_ENABLED=false \
     RECON_FINDINGS="$FX/barrel/deduped-findings.json" RECON_CALLGRAPH_DIR="$FX/barrel" \
     RECON_OUTPUT="$OUT" run bash "$ADAPTER"
@@ -153,7 +153,7 @@ MD
 }
 
 # --- AC-X1 — master flag off → skip -------------------------------------------
-@test "E104-S2: master flag off → skipped regardless of per-tool" {
+@test "master flag off → skipped regardless of per-tool" {
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=false GAIA_BROWNFIELD_PHASE_4B_ENABLED=true \
     RECON_FINDINGS="$FX/barrel/deduped-findings.json" RECON_CALLGRAPH_DIR="$FX/barrel" \
     RECON_OUTPUT="$OUT" run bash "$ADAPTER"
@@ -162,7 +162,7 @@ MD
 }
 
 # --- AC5 / scenario 5 — wall-clock budget on a large synthesized fixture ------
-@test "E104-S2 (scenario 5): 5k findings + reachable-set → reconcile under 5s" {
+@test "scenario 5): 5k findings + reachable-set → reconcile under 5s" {
   big="$TEST_TMP/big"; mkdir -p "$big"
   # 5000 findings; even index reachable, odd not.
   jq -n '[range(0;5000) | {ruleId:"dead-code/js", file_path:("src/f\(.)" + ".ts"), severity:"warning", source_tool:"dead-exports", qualifier:"x", start_line:1}]' > "$big/deduped-findings.json"
@@ -179,7 +179,7 @@ MD
 }
 
 # --- degrade — missing findings input → empty output, exit 0 ------------------
-@test "E104-S2: missing deduped-findings input → empty stream, exit 0 (degrade)" {
+@test "missing deduped-findings input → empty stream, exit 0 (degrade)" {
   GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_PHASE_4B_ENABLED=true \
     RECON_FINDINGS="$TEST_TMP/nope.json" RECON_CALLGRAPH_DIR="$FX/barrel" RECON_OUTPUT="$OUT" run bash "$ADAPTER"
   [ "$status" -eq 0 ]
@@ -187,7 +187,7 @@ MD
 }
 
 # --- AC-X1 — resolve-config exposes the flag ----------------------------------
-@test "E104-S2 AC-X1: resolve-config.sh --field brownfield.phase_4b_enabled whitelisted" {
+@test "resolve-config.sh --field brownfield.phase_4b_enabled whitelisted" {
   cat > "$TEST_TMP/pc.yaml" <<YAML
 project_root: /tmp/gaia
 project_path: /tmp/gaia/app
@@ -210,7 +210,7 @@ YAML
 # NOTE: the ADR-124 shard lives at project-root .gaia/ (a planning artifact, NOT in
 # the gaia-public git repo), so it is intentionally NOT asserted here — CI checks out
 # only gaia-public. Shard existence is verified by Val at review time.
-@test "E104-S2: reconcile.sh exists, executable, bash -n clean" {
+@test "reconcile.sh exists, executable, bash -n clean" {
   [ -x "$ADAPTER" ]
   run bash -n "$ADAPTER"
   [ "$status" -eq 0 ]

@@ -33,34 +33,34 @@ teardown() { common_teardown; }
 # VCP-CHK-17 — Positive: all 25 items satisfied.
 # -------------------------------------------------------------------------
 
-@test "VCP-CHK-17: finalize.sh exits 0 when all script-verifiable items satisfied" {
+@test "finalize.sh exits 0 when all script-verifiable items satisfied" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-complete.md"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
 }
 
-@test "VCP-CHK-17: finalize.sh emits a checklist summary" {
+@test "finalize.sh emits a checklist summary" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Checklist"* ]]
 }
 
-@test "VCP-CHK-17: finalize.sh reports PASS for Version History item" {
+@test "finalize.sh reports PASS for Version History item" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Version History"* ]]
 }
 
-@test "VCP-CHK-17: finalize.sh reports PASS for Cascade Assessment" {
+@test "finalize.sh reports PASS for Cascade Assessment" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Cascade"* ]]
 }
 
-@test "VCP-CHK-17: finalize.sh reports PASS for superseded ADR marking" {
+@test "finalize.sh reports PASS for superseded ADR marking" {
   export ARCHITECTURE_ARTIFACT="$FIXTURES/architecture-edited-complete.md"
   run bash -c "'$FINALIZE' 2>&1"
   [ "$status" -eq 0 ]
@@ -73,7 +73,7 @@ teardown() { common_teardown; }
 # the count must be exactly 25.
 # -------------------------------------------------------------------------
 
-@test "AC3: SKILL.md ## Validation section contains exactly 25 classified items" {
+@test "SKILL.md ## Validation section contains exactly 25 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -84,7 +84,7 @@ teardown() { common_teardown; }
   [ "$output" = "25" ]
 }
 
-@test "AC3: every Validation item is classified script-verifiable or LLM-checkable" {
+@test "every Validation item is classified script-verifiable or LLM-checkable" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -95,7 +95,7 @@ teardown() { common_teardown; }
   [ "$output" = "0" ]
 }
 
-@test "AC3: structural items are classified script-verifiable" {
+@test "structural items are classified script-verifiable" {
   # Version History and Decision Log — structural anchors MUST be SV.
   run grep -E '^\- \[script-verifiable\].*Version History' "$SKILL_MD"
   [ "$status" -eq 0 ]
@@ -103,7 +103,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: SKILL.md ## Validation sits between ## Steps and ## Finalize" {
+@test "SKILL.md ## Validation sits between ## Steps and ## Finalize" {
   run awk '
     /^## Steps/      { steps = NR }
     /^## Validation/ { validation = NR }

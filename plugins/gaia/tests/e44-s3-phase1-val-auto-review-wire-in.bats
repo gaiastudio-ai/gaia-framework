@@ -52,23 +52,23 @@ teardown() { common_teardown; }
 # AC1 / AC5 — Each SKILL.md embeds the Val Auto-Fix Loop step
 # ---------------------------------------------------------------------------
 
-@test "AC1: gaia-brainstorm SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-brainstorm SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-brainstorm/SKILL.md"
 }
 
-@test "AC1: gaia-market-research SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-market-research SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-market-research/SKILL.md"
 }
 
-@test "AC1: gaia-domain-research SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-domain-research SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-domain-research/SKILL.md"
 }
 
-@test "AC1: gaia-tech-research SKILL.md contains Val Auto-Fix Loop step" {
+@test "gaia-tech-research SKILL.md contains Val Auto-Fix Loop step" {
   grep -q 'Val Auto-Fix Loop' "$SKILLS_DIR/gaia-tech-research/SKILL.md"
 }
 
-@test "AC1: each Phase 1 skill invokes /gaia-val-validate with artifact_path and artifact_type" {
+@test "each Phase 1 skill invokes /gaia-val-validate with artifact_path and artifact_type" {
   for skill in $PHASE1_SKILLS_LIST; do
     grep -q '/gaia-val-validate' "$SKILLS_DIR/$skill/SKILL.md"
     grep -q 'artifact_path' "$SKILLS_DIR/$skill/SKILL.md"
@@ -76,36 +76,36 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC1: gaia-brainstorm uses artifact_type=brainstorm" {
+@test "gaia-brainstorm uses artifact_type=brainstorm" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*brainstorm' "$SKILLS_DIR/gaia-brainstorm/SKILL.md"
 }
 
-@test "AC1: gaia-market-research uses artifact_type=market-research" {
+@test "gaia-market-research uses artifact_type=market-research" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*market-research' "$SKILLS_DIR/gaia-market-research/SKILL.md"
 }
 
-@test "AC1: gaia-domain-research uses artifact_type=domain-research" {
+@test "gaia-domain-research uses artifact_type=domain-research" {
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*domain-research' "$SKILLS_DIR/gaia-domain-research/SKILL.md"
 }
 
-@test "AC1: gaia-tech-research uses artifact_type=technical-research" {
+@test "gaia-tech-research uses artifact_type=technical-research" {
   # E44-S11: slug aligned with on-disk filename technical-research.md
   grep -q 'artifact_type[[:space:]]*=[[:space:]]*technical-research' "$SKILLS_DIR/gaia-tech-research/SKILL.md"
 }
 
-@test "AC1: gaia-brainstorm references brainstorm-{slug}.md artifact_path" {
+@test "gaia-brainstorm references brainstorm-{slug}.md artifact_path" {
   grep -q 'brainstorm-{slug}.md' "$SKILLS_DIR/gaia-brainstorm/SKILL.md"
 }
 
-@test "AC1: gaia-market-research references market-research.md artifact_path" {
+@test "gaia-market-research references market-research.md artifact_path" {
   grep -q 'market-research.md' "$SKILLS_DIR/gaia-market-research/SKILL.md"
 }
 
-@test "AC1: gaia-domain-research references domain-research.md artifact_path" {
+@test "gaia-domain-research references domain-research.md artifact_path" {
   grep -q 'domain-research.md' "$SKILLS_DIR/gaia-domain-research/SKILL.md"
 }
 
-@test "AC1: gaia-tech-research references technical-research.md artifact_path" {
+@test "gaia-tech-research references technical-research.md artifact_path" {
   grep -q 'technical-research.md' "$SKILLS_DIR/gaia-tech-research/SKILL.md"
 }
 
@@ -113,19 +113,19 @@ teardown() { common_teardown; }
 # AC4 — Deprecated flag `val_validate_output` absent from all 4 SKILL.md
 # ---------------------------------------------------------------------------
 
-@test "AC4: gaia-brainstorm SKILL.md does NOT use val_validate_output flag" {
+@test "gaia-brainstorm SKILL.md does NOT use val_validate_output flag" {
   ! grep -q 'val_validate_output' "$SKILLS_DIR/gaia-brainstorm/SKILL.md"
 }
 
-@test "AC4: gaia-market-research SKILL.md does NOT use val_validate_output flag" {
+@test "gaia-market-research SKILL.md does NOT use val_validate_output flag" {
   ! grep -q 'val_validate_output' "$SKILLS_DIR/gaia-market-research/SKILL.md"
 }
 
-@test "AC4: gaia-domain-research SKILL.md does NOT use val_validate_output flag" {
+@test "gaia-domain-research SKILL.md does NOT use val_validate_output flag" {
   ! grep -q 'val_validate_output' "$SKILLS_DIR/gaia-domain-research/SKILL.md"
 }
 
-@test "AC4: gaia-tech-research SKILL.md does NOT use val_validate_output flag" {
+@test "gaia-tech-research SKILL.md does NOT use val_validate_output flag" {
   ! grep -q 'val_validate_output' "$SKILLS_DIR/gaia-tech-research/SKILL.md"
 }
 
@@ -133,7 +133,7 @@ teardown() { common_teardown; }
 # AC5 — E44-S2 / ADR-058 provenance and 3-iteration cap referenced
 # ---------------------------------------------------------------------------
 
-@test "AC5: each Phase 1 skill references E44-S2 (pattern provenance)" {
+@test "each Phase 1 skill references (pattern provenance)" {
   # The pattern is centralized in gaia-val-validate/SKILL.md; each skill
   # cites this path as its provenance anchor instead of an internal story ID.
   for skill in $PHASE1_SKILLS_LIST; do
@@ -141,7 +141,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC5: each Phase 1 skill references ADR-058 (decision provenance)" {
+@test "each Phase 1 skill references (decision provenance)" {
   # The decision to centralize the loop spec is expressed by the canonical
   # "cite this anchor" instruction present in every wired-in skill.
   for skill in $PHASE1_SKILLS_LIST; do
@@ -149,19 +149,19 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC5: each Phase 1 skill documents iteration counter (iteration = 1)" {
+@test "each Phase 1 skill documents iteration counter (iteration = 1)" {
   for skill in $PHASE1_SKILLS_LIST; do
     grep -q -E 'iteration[[:space:]]*=[[:space:]]*1' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC5: each Phase 1 skill documents the 3-iteration cap" {
+@test "each Phase 1 skill documents the 3-iteration cap" {
   for skill in $PHASE1_SKILLS_LIST; do
     grep -q -E 'iteration[[:space:]]*<=[[:space:]]*3' "$SKILLS_DIR/$skill/SKILL.md"
   done
 }
 
-@test "AC5: each Phase 1 skill cites the canonical Auto-Fix Loop Pattern anchor" {
+@test "each Phase 1 skill cites the canonical Auto-Fix Loop Pattern anchor" {
   for skill in $PHASE1_SKILLS_LIST; do
     grep -q 'Auto-Fix Loop Pattern' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -171,7 +171,7 @@ teardown() { common_teardown; }
 # AC-EC3 — Artifact-existence guard
 # ---------------------------------------------------------------------------
 
-@test "AC-EC3: each Phase 1 skill includes an artifact-existence guard" {
+@test "each Phase 1 skill includes an artifact-existence guard" {
   for skill in $PHASE1_SKILLS_LIST; do
     grep -q -E 'if[[:space:]]+not[[:space:]]+exists' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -181,7 +181,7 @@ teardown() { common_teardown; }
 # AC-EC6 — Val-skill-availability guard with documented warning text
 # ---------------------------------------------------------------------------
 
-@test "AC-EC6: each Phase 1 skill emits the canonical missing-Val warning" {
+@test "each Phase 1 skill emits the canonical missing-Val warning" {
   for skill in $PHASE1_SKILLS_LIST; do
     grep -q 'Val auto-review unavailable' "$SKILLS_DIR/$skill/SKILL.md"
   done
@@ -191,7 +191,7 @@ teardown() { common_teardown; }
 # AC-EC8 — YOLO hard-gate invariant; no bypass branch introduced
 # ---------------------------------------------------------------------------
 
-@test "AC-EC8: each Phase 1 skill references the YOLO hard-gate invariant" {
+@test "each Phase 1 skill references the YOLO hard-gate invariant" {
   for skill in $PHASE1_SKILLS_LIST; do
     grep -q -E 'YOLO' "$SKILLS_DIR/$skill/SKILL.md"
   done

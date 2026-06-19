@@ -1058,12 +1058,8 @@ The four roots and their pin points:
    The canonical LIVE yaml home is
    `.gaia/state/` (boundary-write discipline) — this is a
    deliberate design choice, not a layout-conformance bug. The
-   `implementation-artifacts/sprint-status.yaml` mirror written by
-   `sprint-state.sh` is the layout-conformance accommodation
-   so the target layout has the file too; readers should treat the
-   `.gaia/state/` copy as authoritative. Relocating the live yaml to
-   `implementation-artifacts/` would require deprecating the
-   boundary-write contract — out of scope for this cycle.
+   former `implementation-artifacts/sprint-status.yaml` mirror has
+   been retired; readers must resolve only `.gaia/state/`.
 
 Per-story `reviews/` — test-lens artifacts live in TWO places by design:
 

@@ -52,7 +52,7 @@ teardown() { common_teardown; }
 # Catches the drift fixed by E68-S5: gdpr.json previously carried stray
 # top-level `regime` and `privacy` keys that no other regime rubric had.
 # ---------------------------------------------------------------------------
-@test "AC1: each regime rubric exposes the canonical top-level key set" {
+@test "each regime rubric exposes the canonical top-level key set" {
   for r in "${REGIMES[@]}"; do
     keys=$(jq -r 'keys[]' "$RUBRICS_REGIMES/${r}.json")
     [ "$keys" = "$CANONICAL_KEYS" ] || {
@@ -66,7 +66,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC1: no rubric carries the deprecated top-level 'regime' field" {
+@test "no rubric carries the deprecated top-level 'regime' field" {
   for r in "${REGIMES[@]}"; do
     has_regime=$(jq 'has("regime")' "$RUBRICS_REGIMES/${r}.json")
     [ "$has_regime" = "false" ] || {
@@ -76,7 +76,7 @@ teardown() { common_teardown; }
   done
 }
 
-@test "AC1: no rubric carries the deprecated top-level 'privacy' field" {
+@test "no rubric carries the deprecated top-level 'privacy' field" {
   for r in "${REGIMES[@]}"; do
     has_privacy=$(jq 'has("privacy")' "$RUBRICS_REGIMES/${r}.json")
     [ "$has_privacy" = "false" ] || {
@@ -89,7 +89,7 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 # AC2 — every reconciled rubric still validates cleanly.
 # ---------------------------------------------------------------------------
-@test "AC2: each reconciled regime rubric passes schema validation" {
+@test "each reconciled regime rubric passes schema validation" {
   for r in "${REGIMES[@]}"; do
     run "$VALIDATOR" "$RUBRICS_REGIMES/${r}.json"
     [ "$status" -eq 0 ] || {
@@ -104,7 +104,7 @@ teardown() { common_teardown; }
 # AC3 — merger output is byte-identical across two runs (no drift,
 # no functional regression vs. pre-fix golden behaviour).
 # ---------------------------------------------------------------------------
-@test "AC3: merger output is byte-identical across two runs per regime" {
+@test "merger output is byte-identical across two runs per regime" {
   # Pick the primary base rubric matching each regime's `skill` field.
   for r in "${REGIMES[@]}"; do
     skill=$(jq -r '.skill' "$RUBRICS_REGIMES/${r}.json")
@@ -125,7 +125,7 @@ teardown() { common_teardown; }
 # This is the "user-facing" assertion paralleling AC2 above; AC2 covers
 # the schema layer, AC4 covers the slash-command wrapper used by humans.
 # ---------------------------------------------------------------------------
-@test "AC4: validate-rubric.sh exits 0 for each reconciled file" {
+@test "validate-rubric.sh exits 0 for each reconciled file" {
   for r in "${REGIMES[@]}"; do
     run "$VALIDATOR" "$RUBRICS_REGIMES/${r}.json"
     [ "$status" -eq 0 ] || {

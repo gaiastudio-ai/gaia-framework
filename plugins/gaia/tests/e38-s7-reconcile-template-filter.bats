@@ -73,7 +73,7 @@ EOF
 # AC1: when a story file (template: story) and a review report co-exist for the
 # same key, reconcile reads ONLY the story file. No parse error. No drift.
 # ---------------------------------------------------------------------------
-@test "E38-S7 AC1: reconcile uses the canonical story file when a review report co-exists (canonical script)" {
+@test "reconcile uses the canonical story file when a review report co-exists (canonical script)" {
   local dir
   dir="$(mk_fixture "E99-S1" "in-progress")"
   local yaml="$TEST_TMP/sprint-status.yaml"
@@ -95,7 +95,7 @@ EOF
 # reconcile MUST pick the canonical story (review) — not the review report —
 # and correctly detect drift to "review", not error out.
 # ---------------------------------------------------------------------------
-@test "E38-S7 AC1: reconcile picks canonical story for drift detection, ignoring review sibling (canonical script)" {
+@test "reconcile picks canonical story for drift detection, ignoring review sibling (canonical script)" {
   local dir
   dir="$(mk_fixture "E99-S2" "review")"
   local yaml="$TEST_TMP/sprint-status.yaml"
@@ -115,7 +115,7 @@ EOF
 # AC2 / Val WARNING #1: per-candidate structured warning to stderr naming each
 # skipped file. Format: `RECONCILE: {key} candidate {file} skipped — no \`template: 'story'\` frontmatter`
 # ---------------------------------------------------------------------------
-@test "E38-S7 AC2: reconcile emits structured stderr warning for each skipped non-story candidate" {
+@test "reconcile emits structured stderr warning for each skipped non-story candidate" {
   local dir
   dir="$(mk_fixture "E99-S3" "in-progress")"
   local yaml="$TEST_TMP/sprint-status.yaml"
@@ -138,7 +138,7 @@ EOF
 # AC2 (continued): a .md file that is missing the template: field entirely is
 # also skipped silently from the candidate set, with the same structured warning.
 # ---------------------------------------------------------------------------
-@test "E38-S7 AC2: reconcile warns and skips a .md file missing the template: field" {
+@test "reconcile warns and skips a .md file missing the template: field" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   # Canonical story
@@ -177,7 +177,7 @@ EOF
 # AC3: wrapper copy at skills/gaia-dev-story/scripts/sprint-state.sh behaves
 # identically to the canonical on the same input set.
 # ---------------------------------------------------------------------------
-@test "E38-S7 AC3: wrapper copy produces same reconcile output as canonical (in-sync)" {
+@test "wrapper copy produces same reconcile output as canonical (in-sync)" {
   local dir
   dir="$(mk_fixture "E99-S5" "review")"
   local yaml_a="$TEST_TMP/yaml-a.yaml"
@@ -210,7 +210,7 @@ EOF
 # ---------------------------------------------------------------------------
 # AC4: idempotency — second run reports "no drift" once the first applied it.
 # ---------------------------------------------------------------------------
-@test "E38-S7 AC4: reconcile is idempotent — second run reports no drift" {
+@test "reconcile is idempotent — second run reports no drift" {
   local dir
   dir="$(mk_fixture "E99-S6" "review")"
   local yaml="$TEST_TMP/sprint-status.yaml"
@@ -238,7 +238,7 @@ EOF
 # Regression: when ONLY review siblings exist (no canonical story), reconcile
 # must report a missing-story error (not silently dispatch to the review file).
 # ---------------------------------------------------------------------------
-@test "E38-S7 regression: reconcile errors when only review siblings exist (no canonical story)" {
+@test "regression: reconcile errors when only review siblings exist (no canonical story)" {
   local dir="$TEST_TMP/impl"
   mkdir -p "$dir"
   cat > "$dir/E99-S7-review.md" <<'EOF'

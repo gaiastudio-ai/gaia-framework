@@ -34,11 +34,11 @@ teardown() {
 
 # --- AC1: SKILL.md exists with correct frontmatter --------------------------
 
-@test "E73-S1 AC1: SKILL.md exists" {
+@test "SKILL.md exists" {
   [ -f "$SKILL_DIR/SKILL.md" ]
 }
 
-@test "E73-S1 AC1: SKILL.md frontmatter declares action skill semantics" {
+@test "SKILL.md frontmatter declares action skill semantics" {
   local f="$SKILL_DIR/SKILL.md"
   # frontmatter declares a name field and the action-skill markers
   grep -E '^name:[[:space:]]+gaia-test-e2e' "$f"
@@ -50,11 +50,11 @@ teardown() {
 
 # --- AC2: Playwright adapter conforms to ADR-078 contract -------------------
 
-@test "E73-S1 AC2: playwright-e2e adapter directory exists" {
+@test "playwright-e2e adapter directory exists" {
   [ -d "$PLAYWRIGHT_DIR" ]
 }
 
-@test "E73-S1 AC2: playwright-e2e adapter.json validates against adapter.schema.json" {
+@test "playwright-e2e adapter.json validates against adapter.schema.json" {
   [ -f "$PLAYWRIGHT_DIR/adapter.json" ]
   jq -e . "$PLAYWRIGHT_DIR/adapter.json" >/dev/null
   jq -e '.provider' "$PLAYWRIGHT_DIR/adapter.json" >/dev/null
@@ -64,7 +64,7 @@ teardown() {
   jq -e '."file-extensions"' "$PLAYWRIGHT_DIR/adapter.json" >/dev/null
 }
 
-@test "E73-S1 AC2: playwright-e2e run.sh is executable and accepts canonical contract flags" {
+@test "playwright-e2e run.sh is executable and accepts canonical contract flags" {
   [ -x "$PLAYWRIGHT_DIR/run.sh" ]
   run "$PLAYWRIGHT_DIR/run.sh" --help
   [ "$status" -eq 0 ]
@@ -74,17 +74,17 @@ teardown() {
   echo "$output" | grep -F -- "--target-url"
 }
 
-@test "E73-S1 AC2: playwright-e2e contract.bats present" {
+@test "playwright-e2e contract.bats present" {
   [ -f "$PLAYWRIGHT_DIR/test/contract.bats" ]
 }
 
 # --- AC3: Cypress adapter conforms to ADR-078 contract ---------------------
 
-@test "E73-S1 AC3: cypress-e2e adapter directory exists" {
+@test "cypress-e2e adapter directory exists" {
   [ -d "$CYPRESS_DIR" ]
 }
 
-@test "E73-S1 AC3: cypress-e2e adapter.json validates against adapter.schema.json" {
+@test "cypress-e2e adapter.json validates against adapter.schema.json" {
   [ -f "$CYPRESS_DIR/adapter.json" ]
   jq -e . "$CYPRESS_DIR/adapter.json" >/dev/null
   jq -e '.provider' "$CYPRESS_DIR/adapter.json" >/dev/null
@@ -94,7 +94,7 @@ teardown() {
   jq -e '."file-extensions"' "$CYPRESS_DIR/adapter.json" >/dev/null
 }
 
-@test "E73-S1 AC3: cypress-e2e run.sh is executable and accepts canonical contract flags" {
+@test "cypress-e2e run.sh is executable and accepts canonical contract flags" {
   [ -x "$CYPRESS_DIR/run.sh" ]
   run "$CYPRESS_DIR/run.sh" --help
   [ "$status" -eq 0 ]
@@ -104,29 +104,29 @@ teardown() {
   echo "$output" | grep -F -- "--target-url"
 }
 
-@test "E73-S1 AC3: cypress-e2e contract.bats present" {
+@test "cypress-e2e contract.bats present" {
   [ -f "$CYPRESS_DIR/test/contract.bats" ]
 }
 
 # --- AC9: Adapter selection via project config ----------------------------
 
-@test "E73-S1 AC9: select-adapter.sh exists and is executable" {
+@test "select-adapter.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/select-adapter.sh" ]
 }
 
-@test "E73-S1 AC9: select-adapter.sh defaults to playwright-e2e when no flag/config" {
+@test "select-adapter.sh defaults to playwright-e2e when no flag/config" {
   run "$SKILL_DIR/scripts/select-adapter.sh"
   [ "$status" -eq 0 ]
   echo "$output" | grep -F "playwright-e2e"
 }
 
-@test "E73-S1 AC9: select-adapter.sh --adapter cypress-e2e overrides default" {
+@test "select-adapter.sh --adapter cypress-e2e overrides default" {
   run "$SKILL_DIR/scripts/select-adapter.sh" --adapter cypress-e2e
   [ "$status" -eq 0 ]
   echo "$output" | grep -F "cypress-e2e"
 }
 
-@test "E73-S1 AC9: select-adapter.sh reads test_execution.e2e.adapter from project config" {
+@test "select-adapter.sh reads test_execution.e2e.adapter from project config" {
   local cfg="$WORK_TMP/project-config.yaml"
   cat > "$cfg" <<EOF
 test_execution:
@@ -138,7 +138,7 @@ EOF
   echo "$output" | grep -F "cypress-e2e"
 }
 
-@test "E73-S1 AC9: select-adapter.sh CLI flag overrides project-config value" {
+@test "select-adapter.sh CLI flag overrides project-config value" {
   local cfg="$WORK_TMP/project-config.yaml"
   cat > "$cfg" <<EOF
 test_execution:
@@ -152,11 +152,11 @@ EOF
 
 # --- AC5: Phase 3A toolkit evidence collection ---------------------------
 
-@test "E73-S1 AC5: phase3a-collect.sh exists and is executable" {
+@test "phase3a-collect.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/phase3a-collect.sh" ]
 }
 
-@test "E73-S1 AC5: phase3a-collect.sh emits analysis-results.json with required structure" {
+@test "phase3a-collect.sh emits analysis-results.json with required structure" {
   local outdir="$WORK_TMP/p3a"
   mkdir -p "$outdir"
   # Use a stub adapter dir that always succeeds
@@ -181,7 +181,7 @@ EOF
 
 # --- AC7: Verdict resolver emits correct verdict --------------------------
 
-@test "E73-S1 AC7: verdict-resolver APPROVE on clean toolkit + LLM" {
+@test "verdict-resolver APPROVE on clean toolkit + LLM" {
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
@@ -209,7 +209,7 @@ EOF
   echo "$output" | grep -F "APPROVE"
 }
 
-@test "E73-S1 AC7: verdict-resolver REQUEST_CHANGES on LLM Critical" {
+@test "verdict-resolver REQUEST_CHANGES on LLM Critical" {
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
@@ -239,7 +239,7 @@ EOF
   echo "$output" | grep -F "REQUEST_CHANGES"
 }
 
-@test "E73-S1 AC7: verdict-resolver BLOCKED on errored toolkit check" {
+@test "verdict-resolver BLOCKED on errored toolkit check" {
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
@@ -269,7 +269,7 @@ EOF
 
 # --- AC10: Graceful degradation on unavailable adapter -------------------
 
-@test "E73-S1 AC10: phase3a-collect emits errored check when probe returns expected_and_missing" {
+@test "phase3a-collect emits errored check when probe returns expected_and_missing" {
   local outdir="$WORK_TMP/p3a"
   mkdir -p "$outdir"
   # Stage adapter with a provider guaranteed not on PATH
@@ -295,7 +295,7 @@ EOF
 # The probe is deterministic shell shipped by E66-S2. We sanity-check that
 # our adapter.json is consumable by the probe without crashing.
 
-@test "E73-S1 AC4: tool-availability-probe.sh consumes playwright-e2e adapter.json without crash" {
+@test "tool-availability-probe.sh consumes playwright-e2e adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"
   : > "$file_list"
   run "$PLUGIN_ROOT/scripts/tool-availability-probe.sh" \
@@ -306,7 +306,7 @@ EOF
   echo "$output" | jq -e '.state' >/dev/null
 }
 
-@test "E73-S1 AC4: tool-availability-probe.sh consumes cypress-e2e adapter.json without crash" {
+@test "tool-availability-probe.sh consumes cypress-e2e adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"
   : > "$file_list"
   run "$PLUGIN_ROOT/scripts/tool-availability-probe.sh" \

@@ -127,6 +127,21 @@
         }
       }
     },
+    "triggerScopeRule": {
+      "description": "Scope rule for a single CI trigger — specifies which stacks and test tags are included or excluded. include_stacks and exclude_stacks are mutually exclusive; include_tags and exclude_tags are mutually exclusive.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include_stacks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run tests only for these stacks." },
+        "exclude_stacks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run tests for all stacks EXCEPT these." },
+        "include_tags":   { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run only tests matching these tags." },
+        "exclude_tags":   { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Exclude tests matching these tags." }
+      },
+      "allOf": [
+        { "not": { "required": ["include_stacks", "exclude_stacks"] } },
+        { "not": { "required": ["include_tags",   "exclude_tags"]   } }
+      ]
+    },
     "healthCheck": {
       "description": "Post-deploy health-check phase configuration. Drives the `/gaia-deploy` Phase 3 behavior. Optional — backward compatibility is preserved when the key is omitted (resolver defaults to mode=poll). The `skip` mode is intended for projects that have no reachable health-check endpoint (e.g., marketplace-published plugins) — when set, the deploy skill bypasses the poll loop and writes an audit-trail evidence entry recording the configured skip.",
       "type": "object",
@@ -137,6 +152,44 @@
           "type": "string",
           "enum": ["poll", "skip"],
           "default": "poll"
+        }
+      }
+    },
+    "stackHealthCheck": {
+      "description": "Per-stack health-check configuration. Specifies a command to execute after deploying the stack and a timeout in seconds. The health check must pass before deploying the next stack in deploy_order. Distinct from the top-level healthCheck definition (which configures poll/skip mode for the environment-level check).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "description": "Shell command to execute as the health check. Exit code 0 = healthy, non-zero = unhealthy.",
+          "type": "string",
+          "minLength": 1
+        },
+        "timeout": {
+          "description": "Maximum seconds to wait for the health-check command to complete. If exceeded, the check is treated as failed. Default 30.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        }
+      }
+    },
+    "stackPostDeploySmoke": {
+      "description": "Per-stack post-deploy smoke test configuration. Specifies a command to run after a stack passes its health check (or immediately after deploy when no health check is configured).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "description": "Shell command to execute as the post-deploy smoke test.",
+          "type": "string",
+          "minLength": 1
+        },
+        "timeout": {
+          "description": "Maximum seconds to wait for the smoke command to complete. Default 60.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 60
         }
       }
     },
@@ -375,6 +428,42 @@
         }
       }
     },
+    "test_policy": {
+      "description": "Per-trigger scope rules controlling which tests run. Each key is a CI trigger type; its value specifies included/excluded stacks or test tags. When absent, all tests run for all stacks on every trigger (backward-compatible default). This section controls test SCOPE only — pass/fail thresholds are governed by severity and gates (orthogonal).",
+      "type": "object",
+      "additionalProperties": false,
+      "x-no-auto-hydration": true,
+      "properties": {
+        "always_run": {
+          "description": "Stack or suite identifiers that always run regardless of affected-set narrowing.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "flaky": {
+          "description": "Test identifiers flagged as flaky for retry-aware execution.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "retry_limit": {
+          "description": "Maximum retries for flaky-flagged tests. Default 2.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "triggers": {
+          "description": "Per-trigger scope rules. Each key is a CI trigger type; each value specifies include/exclude filters for stacks and tags.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pr":       { "$ref": "#/definitions/triggerScopeRule" },
+            "push":     { "$ref": "#/definitions/triggerScopeRule" },
+            "schedule": { "$ref": "#/definitions/triggerScopeRule" }
+          }
+        }
+      }
+    },
     "sprint_review": {
       "description": "Per-stack execution-review configuration consumed by /gaia-sprint-review Track B. The playwright_headed key is constrained to `true` at schema level (foreground-mode enforcement is unbypassable). Unknown stack identifiers in the *_commands maps emit a WARNING from /gaia-config-validate but do NOT fail schema validation (forward-compatibility precedent). Section is classified in _CONFIG_HYDRATION_MANAGED_ELSEWHERE (config-hydration.sh) — human-managed via /gaia-config-sprint-review only; never written by the auto-hydration reconciler.",
       "type": "object",
@@ -488,6 +577,24 @@
             "description": "When true (default), ecosystem-manifest auto-detection ignores manifests nested under this stack's `path` so a monorepo subtree is not double-counted as its own stack.",
             "type": "boolean",
             "default": true
+          },
+          "deploy_order": {
+            "description": "Integer controlling the order in which stacks deploy within a single environment. Lower values deploy first. Stacks without deploy_order are deployed AFTER all ordered stacks, in alphabetical name order. Optional — when absent, the stack participates in the alphabetical-default group.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "health_check": {
+            "description": "Per-stack health-check configuration. The command runs after this stack deploys; it must exit 0 before the next stack (by deploy_order) begins. Timeout exceeded = treated as failure, halting downstream stacks.",
+            "$ref": "#/definitions/stackHealthCheck"
+          },
+          "post_deploy_smoke": {
+            "description": "Per-stack post-deploy smoke test. Runs after the stack passes its health check (or immediately after deploy when no health check is configured).",
+            "$ref": "#/definitions/stackPostDeploySmoke"
+          },
+          "test_cmd": {
+            "description": "Optional custom test command for this stack. When set, the test runner uses this command instead of the language default. The command is executed relative to the repository root.",
+            "type": "string",
+            "minLength": 1
           }
         }
       }
@@ -664,7 +771,26 @@
         }
       ]
     },
-    "health_check": { "$ref": "#/definitions/healthCheck" }
+    "health_check": { "$ref": "#/definitions/healthCheck" },
+    "release": {
+      "description": "Release version-bump configuration. version_files lists file paths (relative to project root) that /gaia-release bumps. Supported formats: JSON with a top-level \"version\" key, and plain-text files containing only a semver string.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version_files": {
+          "description": "List of file paths (relative to project root) whose version string is bumped by version-bump.js.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "strategy": {
+          "description": "How /gaia-release derives the next version. conventional-commits: auto-derive semver bump from Conventional Commits in the release range. manual: prompt for the target version (no commit-derivation). calendar: derive CalVer (YYYY.MM.PATCH) from the current date. Defaults to manual when absent.",
+          "type": "string",
+          "enum": ["conventional-commits", "manual", "calendar"],
+          "default": "manual"
+        }
+      }
+    }
   },
   "allOf": [
     {
