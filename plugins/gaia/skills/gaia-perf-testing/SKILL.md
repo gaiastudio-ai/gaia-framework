@@ -111,3 +111,23 @@ This skill is the native Claude Code conversion of the legacy `_gaia/testing/wor
 - Validator: `gaia-public/plugins/gaia/skills/gaia-val-validate/SKILL.md` — `artifact_type` enum now carries `performance-test-plan`.
 - Shared validator lib: `gaia-public/plugins/gaia/scripts/lib/validate-artifact-schema.sh` — backend-cascade JSON-schema validator (ajv → python3+jsonschema → graceful SKIP).
 - Knowledge: `knowledge/k6-patterns.md` (Step 2 load-test design), `knowledge/lighthouse-ci.md` (Step 3 frontend performance).
+
+## Mode B Readiness
+
+This skill is ready to run under Mode B (persistent teammates). When the team
+lead routes this skill through Mode B, the performance-testing subagent (gaia:devops) runs as a
+persistent teammate instead of a foreground subagent. The output shape is
+identical between modes — only the dispatch seam differs.
+
+- **Bridge library.** Mode B routing for this skill goes through the shared
+  bridge `scripts/lib/research-mode-b-bridge.sh`, which itself routes through
+  the shared dispatch library `scripts/lib/dispatch-teammate.sh`.
+- **Spawn seam.** `research_spawn_subagent "gaia:devops" "gaia-perf-testing"` runs the
+  working teammate and returns its handle. Each working turn is relayed to the
+  team lead verbatim via `research_relay_turn`, preserving transcript parity
+  with the Mode A subagent path.
+- **Shutdown seam.** `research_shutdown` runs at skill exit, routing through
+  `shutdown_all` so no teammate pane is left orphaned.
+- **Mode A fallback.** When the Mode B substrate is absent, the bridge degrades
+  to a foreground Mode A path and surfaces a single `MODE_B_FALLBACK` token, so
+  the skill keeps working with no change to its authored output.
