@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# dispatch-agent-turn.sh — gaia-meeting subagent-dispatch wrapper.
+# dispatch-agent-turn.sh — gaia-meeting subagent-dispatch wrapper (back-compat shim).
 #
-# Single source of truth for producing RESEARCH preludes and DISCUSS turns via
-# `Agent`-tool subagent dispatch. The wrapper is the SOLE emitter of preludes
-# and DISCUSS turns — inline LLM role-play under an agent's persona is
-# forbidden by SKILL.md §Phase 3 / §Phase 4 "Dispatch contract" subsections.
+# Thin shim that preserves the original CLI contract while delegating the
+# underlying spawn to the shared dispatch-teammate library when Mode B is
+# available. When the Mode B substrate is absent (default), the shim
+# falls back to the original Mode A foreground dispatch path — so this
+# file remains the live SOLE emitter of preludes and DISCUSS turns.
+#
+# Delegation path:
+#   dispatch-agent-turn.sh -> dispatch-teammate.sh (spawn_teammate)
+#   On fallback (MODE_B_FALLBACK) -> original Mode A stub dispatch.
 #
 # Responsibilities:
 #   1. Argument parsing (--agent / --phase / --charter-ref / --session-id and
@@ -13,11 +18,9 @@
 #   2. Allowlist routing — RESEARCH delegates to `research-phase-dispatch.sh
 #      --print-allowlist [--no-web]`; DISCUSS routes the read-only minimum
 #      `Read,Grep,Glob,Bash`, exposed via `--print-discuss-allowlist`.
-#   3. Subagent spawn — invokes the named agent via the `Agent` tool with the
-#      resolved allowlist, the charter content from --charter-ref, and the
-#      session id. The actual harness invocation is delegated to a stub
-#      resolved via the GAIA_DISPATCH_AGENT_STUB env var (test seam) so unit
-#      tests can drive the wrapper without spawning real subagents.
+#   3. Subagent spawn — under Mode B, delegates to spawn_teammate from the
+#      shared dispatch-teammate library; under Mode A fallback, uses the
+#      GAIA_DISPATCH_AGENT_STUB test seam for foreground dispatch.
 #   4. Return-schema parsing — `{ status, summary, artifacts, findings,
 #      next, body }`. Malformed return -> non-zero exit + raw passthrough.
 #   5. Per-turn header rendering with `--dispatched-via subagent` via
@@ -48,6 +51,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TURN_HEADER="$SCRIPT_DIR/turn-header.sh"
 RESEARCH_DISPATCH="$SCRIPT_DIR/research-phase-dispatch.sh"
 SESSION_STATE="$SCRIPT_DIR/session-state.sh"
+
+# Shared Mode B dispatch library path — exported for downstream callers
+# (meeting-mode-b-bridge.sh) that delegate the actual spawn to
+# dispatch-teammate.sh. The library degrades to Mode A fallback when
+# the substrate is absent (the default).
+export DT_LIB
+DT_LIB="$(cd "$SCRIPT_DIR/../../../scripts/lib" 2>/dev/null && pwd)/dispatch-teammate.sh"
 
 DISCUSS_ALLOWLIST="Read,Grep,Glob,Bash"
 
