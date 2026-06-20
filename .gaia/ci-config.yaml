@@ -29,17 +29,16 @@ ci_cd:
       ci_provider: github_actions
       merge_strategy: squash
       ci_checks:
-        - lint
-        - unit
-        - integration
-        - smoke
+        - plugin-ci
+        - selective-tests
     - id: main
       name: main
       branch: main
       ci_provider: github_actions
       merge_strategy: squash
       ci_checks:
-        - smoke
+        - plugin-ci
+        - selective-tests
 test_policy:
   always_run:
     - gaia-plugin
