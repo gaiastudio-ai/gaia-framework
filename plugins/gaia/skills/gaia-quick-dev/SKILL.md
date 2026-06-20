@@ -167,3 +167,12 @@ Report implementation complete to the user with the final `files_touched` summar
   - stack-dev subagent conversions
   - shared dev skills
   - parity harness (`v-parity-baseline`)
+
+## Mode B Readiness
+
+This skill is Mode B-ready. Under the team-orchestration mode, the stack-dev work that the prose above describes as inline subagent dispatch is instead routed through the shared execution bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/execution-mode-b-bridge.sh`, which itself layers on the shared dispatch library `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`.
+
+- **Spawn seam.** The auto-detected stack developer implements the quick spec. The orchestration calls `execution_spawn_subagent <stack-dev-persona> "gaia-quick-dev"` to obtain a persistent teammate handle. The clean-room gate in the shared library refuses any reviewer persona before a teammate is created.
+- **Relay seam.** Each turn is relayed verbatim to the team lead via `execution_relay_turn <handle> <payload>`, so the produced code is identical to the Mode A subagent-dispatch path — only the dispatch seam differs, never the produced output.
+- **Shutdown seam.** At skill exit the orchestration calls `execution_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned.
+- **Honest fallback.** Live Mode B is not exercisable in every Claude Code context. When the substrate is absent the bridge degrades to the existing Mode A foreground dispatch and emits a single `MODE_B_FALLBACK` token to stderr; the Mode A behaviour documented above remains the source of truth.

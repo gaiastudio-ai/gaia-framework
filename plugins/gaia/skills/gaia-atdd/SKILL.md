@@ -177,6 +177,15 @@ After Step 5, prompt the user: **"Run generated tests now to confirm red phase? 
 
 - **2026-05-14 — Anti-stub Then-clause for dispatch-verb ACs.** Added a sub-step to Step 3 (Generate AC-to-Test Mapping) that invokes `scripts/lib/atdd-anti-stub-emit.sh --ac-text "<ac body>"` after the functional Given/When/Then is drafted. The helper sources `lib/dispatch-verb-match.sh` and `lib/canonicalize-dispatch-verb.sh` to emit one additive Then-clause per unique dispatch primitive matched in the AC body — clause shape: `Then: $*_STUB env vars are unset AND a real <primitive> was logged` with `<primitive>` from the canonicalization map (`Agent-tool spawn`, `Agent-tool dispatch`, `primitive invocation`, `wiring`, `primitive call`). Multi-verb ACs get dedup'd clauses (one per unique primitive). Non-dispatch ACs receive NO clause (byte-for-byte unchanged from prior behaviour). Closes the drift class where ATDD scenarios passed while dispatch was stub-only at the ATDD layer; the same gap is closed at the PR-creation layer (forbidden-sentinel scan).
 
+## Mode B Readiness
+
+This skill is Mode B-ready. Under the team-orchestration mode, the test-architect work that the prose above describes as inline subagent dispatch is instead routed through the shared execution bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/execution-mode-b-bridge.sh`, which itself layers on the shared dispatch library `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`.
+
+- **Spawn seam.** The acceptance-test authoring subagent converts each AC into a failing Given/When/Then skeleton. The orchestration calls `execution_spawn_subagent <persona> "gaia-atdd"` to obtain a persistent teammate handle. The clean-room gate in the shared library refuses any reviewer persona before a teammate is created.
+- **Relay seam.** Each authoring turn is relayed verbatim to the team lead via `execution_relay_turn <handle> <payload>`, so the generated test skeletons are identical to the Mode A subagent-dispatch path — only the dispatch seam differs, never the produced output.
+- **Shutdown seam.** At skill exit the orchestration calls `execution_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned.
+- **Honest fallback.** Live Mode B is not exercisable in every Claude Code context. When the substrate is absent the bridge degrades to the existing Mode A foreground dispatch and emits a single `MODE_B_FALLBACK` token to stderr; the Mode A behaviour documented above remains the source of truth.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-atdd/scripts/finalize.sh

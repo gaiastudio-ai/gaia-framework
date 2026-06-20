@@ -440,6 +440,15 @@ The helper enforces the two-file allowlist and idempotency by composite `(comman
 
 Failure posture: if the helper rejects or errors, log a warning and continue — memory persistence is best-effort and MUST NOT fail the skill.
 
+## Mode B Readiness
+
+This skill is Mode B-ready. Under the team-orchestration mode, the sm-subagent work that the prose above describes as inline subagent dispatch is instead routed through the shared execution bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/execution-mode-b-bridge.sh`, which itself layers on the shared dispatch library `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`.
+
+- **Spawn seam.** The sm subagent (Nate) performs sizing and priority selection. The orchestration calls `execution_spawn_subagent gaia:sm "gaia-sprint-plan"` to obtain a persistent teammate handle. The clean-room gate in the shared library refuses any reviewer persona before a teammate is created.
+- **Relay seam.** Each planning turn is relayed verbatim to the team lead via `execution_relay_turn <handle> <payload>`. The committed `sprint-status.yaml` is written identically to Mode A — only the dispatch seam differs, never the committed output.
+- **Shutdown seam.** At skill exit the orchestration calls `execution_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned.
+- **Honest fallback.** Live Mode B is not exercisable in every Claude Code context. When the substrate is absent the bridge degrades to the existing Mode A foreground dispatch and emits a single `MODE_B_FALLBACK` token to stderr; the Mode A behaviour documented above remains the source of truth.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-plan/scripts/finalize.sh
