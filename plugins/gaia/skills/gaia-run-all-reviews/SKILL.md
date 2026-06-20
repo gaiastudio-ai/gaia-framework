@@ -306,3 +306,13 @@ YOLO mode does NOT bypass composite gating — consistent with the CRITICAL-stil
 #### Idempotency invariant
 
 Re-invocation with unchanged gate state MUST produce a byte-identical summary file and nudge block. Determinism comes from the scripts. The SKILL.md just calls them in fixed order — it never inserts timestamps, randomness, or LLM-generated commentary into the summary file or the nudge block.
+
+## Mode B Readiness
+
+This skill is Mode B-ready for its ORCHESTRATION only. The shared execution bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/execution-mode-b-bridge.sh` (layered on `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`) supplies the team-orchestration seam — but this skill deliberately uses NONE of its spawn/relay machinery for the six reviewers themselves.
+
+- **Reviewers stay one-shot / clean-room — NON-NEGOTIABLE.** The six reviewers (code, security, QA tests, test automation, test review, performance) MUST remain one-shot subagents that judge from a clean context. They are NEVER spawned as persistent teammates. This is the clean-room invariant: a reviewer that shared a session's working context could not render an independent verdict. None of these reviewer personas appears in any teammate roster for this skill.
+- **No reviewer teammate roster.** This skill declares no Mode B teammate roster of reviewer personas. The clean-room gate in the shared library (driven by `knowledge/reviewer-personas.txt`) fails closed and refuses to create a teammate for any reviewer persona, so even an errant `execution_spawn_subagent` call against a reviewer is blocked before any teammate exists.
+- **Spawn seam (non-reviewer only).** If a future non-reviewer helper persona is ever needed, it would be obtained via `execution_spawn_subagent <non-reviewer-persona> "gaia-run-all-reviews"`; reviewers are explicitly out of scope for that seam.
+- **Shutdown seam.** At skill exit the orchestration calls `execution_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned. With reviewers kept one-shot, there is normally nothing to tear down.
+- **Honest fallback.** Live Mode B is not exercisable in every Claude Code context. The existing Mode A one-shot reviewer-dispatch documented above remains the source of truth; the bridge emits a single `MODE_B_FALLBACK` token to stderr when the substrate is absent.

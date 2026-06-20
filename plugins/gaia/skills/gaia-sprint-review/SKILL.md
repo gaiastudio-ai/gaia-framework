@@ -276,6 +276,16 @@ When `$COMPOSITE` is `UNVERIFIED`:
 
 6. On Val FAILED: revert to the FAILED verdict path (Step 7) — record the justification-validation findings as action-items + transition to `correction`.
 
+## Mode B Readiness
+
+This skill is Mode B-ready for its non-reviewer orchestration. Under the team-orchestration mode, the per-stack execution-review work that the prose above describes as inline subagent dispatch is instead routed through the shared execution bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/execution-mode-b-bridge.sh`, which itself layers on the shared dispatch library `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`.
+
+- **Spawn seam.** The non-reviewer working subagents are obtained via `execution_spawn_subagent <persona> "gaia-sprint-review"` as persistent teammates.
+- **Clean-room carve-out.** The Track A validation persona is a reviewer; it MUST stay a one-shot subagent that judges from a clean context and is NEVER spawned as a persistent teammate. The clean-room gate in the shared library blocks any reviewer persona before a teammate is created, so the validation track keeps its existing Mode A one-shot dispatch unchanged.
+- **Relay seam.** Each non-reviewer turn is relayed verbatim to the team lead via `execution_relay_turn <handle> <payload>`, so the composite verdict and routing are identical to the Mode A subagent-dispatch path — only the dispatch seam differs, never the produced output.
+- **Shutdown seam.** At skill exit the orchestration runs `execution_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned.
+- **Honest fallback.** Live Mode B is not exercisable in every Claude Code context. When the substrate is absent the bridge degrades to the existing Mode A foreground dispatch and emits a single `MODE_B_FALLBACK` token to stderr; the Mode A behaviour documented above remains the source of truth.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-review/scripts/finalize.sh

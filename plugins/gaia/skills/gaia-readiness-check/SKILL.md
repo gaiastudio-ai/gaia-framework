@@ -417,6 +417,15 @@ Update the readiness report with adversarial review findings. If any Critical fi
 - [LLM-checkable] LLM-39 [category: gate verdict] — Release strategy defined and infrastructure supports it (canary/blue-green/rolling)
 - [LLM-checkable] LLM-40 [category: gate verdict] — Overall readiness verdict narrative is well-reasoned given the category-level verdicts
 
+## Mode B Readiness
+
+This skill is Mode B-ready. Under the team-orchestration mode, the architect and devops assessment work that the prose above describes as inline subagent dispatch is instead routed through the shared execution bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/execution-mode-b-bridge.sh`, which itself layers on the shared dispatch library `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`.
+
+- **Spawn seam.** The architect (Theo) and devops (Soren) subagents perform the readiness assessment. The orchestration calls `execution_spawn_subagent <persona> "gaia-readiness-check"` per assessor to obtain a persistent teammate handle. The clean-room gate in the shared library refuses any reviewer persona before a teammate is created.
+- **Relay seam.** Each assessment turn is relayed verbatim to the team lead via `execution_relay_turn <handle> <payload>`, so the readiness report is identical to the Mode A subagent-dispatch path — only the dispatch seam differs, never the produced output.
+- **Shutdown seam.** At skill exit the orchestration calls `execution_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned.
+- **Honest fallback.** Live Mode B is not exercisable in every Claude Code context. When the substrate is absent the bridge degrades to the existing Mode A foreground dispatch and emits a single `MODE_B_FALLBACK` token to stderr; the Mode A behaviour documented above remains the source of truth.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/finalize.sh
