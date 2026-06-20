@@ -119,8 +119,8 @@ evaluate_block() {
         fail_count=$((fail_count + 1))
         return 0
       fi
-      if [[ "$turn_dispatched_via" != "subagent" && "$turn_dispatched_via" != "interject" ]]; then
-        emit_failure "RESEARCH/DISCUSS turn must carry dispatched_via: subagent or interject"
+      if [[ "$turn_dispatched_via" != "subagent" && "$turn_dispatched_via" != "interject" && "$turn_dispatched_via" != "teammate" ]]; then
+        emit_failure "RESEARCH/DISCUSS turn must carry dispatched_via: subagent, interject, or teammate"
         fail_count=$((fail_count + 1))
         return 0
       fi
