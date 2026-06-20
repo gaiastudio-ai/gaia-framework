@@ -129,24 +129,49 @@ _dt_resolve_reviewer_list() {
   fi
 }
 
+# _dt_normalize_persona NAME — trim whitespace, lowercase, strip gaia: prefix.
+# Prints the normalised name on stdout.
+_dt_normalize_persona() {
+  local raw="$1"
+  # Strip leading/trailing whitespace (tabs + spaces).
+  raw="$(printf '%s' "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  # Lowercase first so that GAIA: / Gaia: prefixes are caught.
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  # Strip gaia: prefix if present.
+  raw="${raw#gaia:}"
+  printf '%s' "$raw"
+}
+
 # _dt_is_reviewer PERSONA — return 0 if the persona is a reviewer.
-# Strips the optional "gaia:" prefix before matching against the list.
+# Normalises the name (strip gaia: prefix, trim whitespace, lowercase) before
+# matching against the list. FAIL CLOSED: if the reviewer list is missing or
+# unreadable, returns 0 (treat as reviewer / blocked) with a diagnostic.
 _dt_is_reviewer() {
   local persona="$1"
-  # Strip gaia: prefix if present.
-  local bare="${persona#gaia:}"
+  local bare
+  bare="$(_dt_normalize_persona "$persona")"
 
   _dt_resolve_reviewer_list
 
-  if [ ! -f "$_DT_REVIEWER_PERSONAS" ]; then
-    # No list file — fail open (do not block).
-    return 1
+  if [ ! -f "$_DT_REVIEWER_PERSONAS" ] || [ ! -r "$_DT_REVIEWER_PERSONAS" ]; then
+    printf 'dispatch-teammate: clean-room list unavailable — refusing to spawn\n' >&2
+    return 0
   fi
 
-  # Match against non-comment, non-blank lines.
-  grep -v '^#' "$_DT_REVIEWER_PERSONAS" \
-    | grep -v '^[[:space:]]*$' \
-    | grep -qxF "$bare"
+  # Normalise each list entry (lowercase + trim) and compare.
+  local entry
+  while IFS= read -r entry; do
+    # Skip comments and blank lines.
+    case "$entry" in
+      '#'*) continue ;;
+    esac
+    entry="$(printf '%s' "$entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')"
+    [ -z "$entry" ] && continue
+    if [ "$entry" = "$bare" ]; then
+      return 0
+    fi
+  done < "$_DT_REVIEWER_PERSONAS"
+  return 1
 }
 
 # _dt_clean_room_gate PERSONA — reject reviewer personas before spawn.
@@ -258,16 +283,25 @@ spawn_teammate() {
     return 1
   fi
 
-  # Clean-room gate — reject reviewer personas BEFORE any spawn attempt.
-  # This takes precedence over the ceiling check and Mode B fallback.
-  if [ -n "$persona" ]; then
-    _dt_clean_room_gate "$persona" || return 1
+  # Resolve persona from frontmatter if no explicit persona was given.
+  if [ -z "$persona" ] && [ -n "$skill_path" ]; then
+    local fm_output
+    fm_output="$(_dt_parse_frontmatter "$skill_path")" || return 1
+    # First non-topology line is the primary persona.
+    persona="$(printf '%s\n' "$fm_output" | grep -v '^topology:' | head -1)"
+    if [ -z "$persona" ]; then
+      _dt_die "spawn_teammate: no persona resolved from frontmatter — cannot spawn"
+      return 1
+    fi
+  elif [ -n "$skill_path" ]; then
+    # Explicit persona given alongside --from-frontmatter — parse but keep
+    # the explicit name (callers override frontmatter).
+    _dt_parse_frontmatter "$skill_path" >/dev/null || true
   fi
 
-  # Resolve from frontmatter if provided.
-  if [ -n "$skill_path" ]; then
-    _dt_parse_frontmatter "$skill_path" >/dev/null
-  fi
+  # Clean-room gate — reject reviewer personas BEFORE any spawn attempt.
+  # This takes precedence over the ceiling check and Mode B fallback.
+  _dt_clean_room_gate "$persona" || return 1
 
   _dt_ensure_registry
 

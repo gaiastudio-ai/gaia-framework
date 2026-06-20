@@ -307,3 +307,129 @@ _write_skill_fixture() {
   run bash "$CLEAN_ROOM_LINT" --callsite "$scripts_dir" "$skills_dir"
   [ "$status" -eq 0 ]
 }
+
+# ============================================================
+# Fail-closed — missing reviewer list blocks spawn (security regression)
+# ============================================================
+
+@test "missing reviewer list blocks spawn — fail-closed (security regression)" {
+  source "$LIB"
+  export _DT_REVIEWER_PERSONAS="/tmp/nonexistent-$$"
+  run spawn_teammate "validator"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room list unavailable" ]]
+}
+
+@test "missing reviewer list blocks even a non-reviewer persona — fail-closed (security regression)" {
+  source "$LIB"
+  export _DT_REVIEWER_PERSONAS="/tmp/nonexistent-$$"
+  run spawn_teammate "gaia:architect"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room list unavailable" ]]
+}
+
+@test "unreadable reviewer list blocks spawn — fail-closed (security regression)" {
+  source "$LIB"
+  local locked="$TEST_TMP/locked-personas.txt"
+  printf 'validator\n' > "$locked"
+  chmod 000 "$locked"
+  export _DT_REVIEWER_PERSONAS="$locked"
+  run spawn_teammate "gaia:architect"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room list unavailable" ]]
+  chmod 644 "$locked"
+}
+
+# ============================================================
+# Case/whitespace bypass — normalised matching (security regression)
+# ============================================================
+
+@test "uppercase VALIDATOR is rejected by clean-room gate (security regression)" {
+  source "$LIB"
+  run spawn_teammate "VALIDATOR"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room" ]] || [[ "$output" =~ "clean room" ]]
+}
+
+@test "mixed-case Validator is rejected by clean-room gate (security regression)" {
+  source "$LIB"
+  run spawn_teammate "Validator"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room" ]] || [[ "$output" =~ "clean room" ]]
+}
+
+@test "leading-space ' validator' is rejected by clean-room gate (security regression)" {
+  source "$LIB"
+  run spawn_teammate " validator"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room" ]] || [[ "$output" =~ "clean room" ]]
+}
+
+@test "trailing-space 'validator ' is rejected by clean-room gate (security regression)" {
+  source "$LIB"
+  run spawn_teammate "validator "
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room" ]] || [[ "$output" =~ "clean room" ]]
+}
+
+@test "tab-prefixed reviewer name is rejected by clean-room gate (security regression)" {
+  source "$LIB"
+  local tab_prefixed
+  tab_prefixed="$(printf '\tvalidator')"
+  run spawn_teammate "$tab_prefixed"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room" ]] || [[ "$output" =~ "clean room" ]]
+}
+
+@test "uppercase gaia:-prefixed GAIA:SECURITY is rejected (security regression)" {
+  source "$LIB"
+  run spawn_teammate "GAIA:SECURITY"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room" ]] || [[ "$output" =~ "clean room" ]]
+}
+
+# ============================================================
+# Frontmatter-resolved persona passes through clean-room gate (security regression)
+# ============================================================
+
+@test "frontmatter-resolved reviewer persona is blocked by clean-room gate (security regression)" {
+  source "$LIB"
+  local fixture="$TEST_TMP/skills/fm-reviewer/SKILL.md"
+  _write_skill_fixture "$fixture" \
+    "name: fm-reviewer" \
+    "roster:" \
+    "  - name: val" \
+    "    persona: gaia:validator" \
+    "topology: hub"
+
+  run spawn_teammate --from-frontmatter "$fixture"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "clean-room" ]] || [[ "$output" =~ "clean room" ]]
+}
+
+@test "frontmatter-resolved non-reviewer persona is allowed (security regression)" {
+  source "$LIB"
+  local fixture="$TEST_TMP/skills/fm-ok/SKILL.md"
+  _write_skill_fixture "$fixture" \
+    "name: fm-ok" \
+    "roster:" \
+    "  - name: arch" \
+    "    persona: gaia:architect" \
+    "topology: hub"
+
+  local handle
+  handle="$(spawn_teammate --from-frontmatter "$fixture" 2>/dev/null)"
+  [ -n "$handle" ]
+}
+
+@test "frontmatter with no roster and no explicit persona fails with diagnostic (security regression)" {
+  source "$LIB"
+  local fixture="$TEST_TMP/skills/fm-empty/SKILL.md"
+  _write_skill_fixture "$fixture" \
+    "name: fm-empty" \
+    "topology: hub"
+
+  run spawn_teammate --from-frontmatter "$fixture"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "no persona" ]]
+}
