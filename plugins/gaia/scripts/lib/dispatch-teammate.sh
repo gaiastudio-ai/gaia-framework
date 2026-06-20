@@ -39,6 +39,9 @@ _DT_MAX_TEAMMATES=8
 # Initialised lazily on first spawn, not at source time.
 _DT_REGISTRY_DIR=""
 
+# Path to reviewer-personas.txt — resolved relative to this library.
+_DT_REVIEWER_PERSONAS=""
+
 # ---------- Internal helpers ----------
 
 # _dt_die MSG — emit error and return 1 from sourced context.
@@ -115,6 +118,48 @@ _dt_corrupt_handle() {
   if [ -n "$target" ]; then
     printf 'CORRUPTED\n' > "$target"
   fi
+}
+
+# _dt_resolve_reviewer_list — lazily resolve the reviewer-personas.txt path.
+_dt_resolve_reviewer_list() {
+  if [ -z "$_DT_REVIEWER_PERSONAS" ]; then
+    local lib_dir
+    lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _DT_REVIEWER_PERSONAS="${lib_dir}/../../knowledge/reviewer-personas.txt"
+  fi
+}
+
+# _dt_is_reviewer PERSONA — return 0 if the persona is a reviewer.
+# Strips the optional "gaia:" prefix before matching against the list.
+_dt_is_reviewer() {
+  local persona="$1"
+  # Strip gaia: prefix if present.
+  local bare="${persona#gaia:}"
+
+  _dt_resolve_reviewer_list
+
+  if [ ! -f "$_DT_REVIEWER_PERSONAS" ]; then
+    # No list file — fail open (do not block).
+    return 1
+  fi
+
+  # Match against non-comment, non-blank lines.
+  grep -v '^#' "$_DT_REVIEWER_PERSONAS" \
+    | grep -v '^[[:space:]]*$' \
+    | grep -qxF "$bare"
+}
+
+# _dt_clean_room_gate PERSONA — reject reviewer personas before spawn.
+# Returns 0 (pass) or 1 (blocked) with a diagnostic on stderr.
+_dt_clean_room_gate() {
+  local persona="$1"
+  if _dt_is_reviewer "$persona"; then
+    local bare="${persona#gaia:}"
+    printf 'dispatch-teammate: clean-room violation — "%s" is a reviewer persona and must not be spawned as a teammate (clean-room invariant: reviewers judge from a clean context, never as participants)\n' \
+      "$bare" >&2
+    return 1
+  fi
+  return 0
 }
 
 # ---------- Frontmatter parser ----------
@@ -211,6 +256,12 @@ spawn_teammate() {
   if [ -z "$persona" ] && [ -z "$skill_path" ]; then
     _dt_die "spawn_teammate requires a persona name or --from-frontmatter path"
     return 1
+  fi
+
+  # Clean-room gate — reject reviewer personas BEFORE any spawn attempt.
+  # This takes precedence over the ceiling check and Mode B fallback.
+  if [ -n "$persona" ]; then
+    _dt_clean_room_gate "$persona" || return 1
   fi
 
   # Resolve from frontmatter if provided.
