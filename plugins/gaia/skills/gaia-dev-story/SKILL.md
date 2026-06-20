@@ -751,9 +751,9 @@ The 16 principal `### Step N` boundaries above are instrumented with `step_bound
 
 This skill is Mode B-ready. Under the team-orchestration mode, the stack-developer work that the prose above describes as inline subagent dispatch is instead routed through the shared execution bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/execution-mode-b-bridge.sh`, which itself layers on the shared dispatch library `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`.
 
-- **Spawn seam.** The auto-detected stack developer authors the implementation. The orchestration calls `execution_spawn_subagent <stack-dev-persona> "gaia-dev-story"` ONCE to obtain a persistent teammate handle. That single teammate then carries context across the plan, implement, test, and PR-creation phases — it is never re-created between phases. Each phase is driven against the same handle, so the developer's context (from stack-persona load through to PR body) persists end-to-end.
+- **Spawn seam.** The auto-detected stack developer authors the implementation. The orchestration runs `execution_spawn_subagent <stack-dev-persona> "gaia-dev-story"` ONCE to obtain a persistent teammate handle. That single teammate then carries context across the plan, implement, test, and PR-creation phases — it is never re-created between phases. Each phase is driven against the same handle, so the developer's context (from stack-persona load through to PR body) persists end-to-end.
 - **Relay seam.** Each phase turn is relayed verbatim to the team lead via `execution_relay_turn <handle> <payload>`, so the produced artifacts (code, story file, PR body) are identical to the Mode A subagent-dispatch path — only the dispatch seam differs, never the produced output.
-- **Shutdown seam.** At skill exit the orchestration calls `execution_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned.
+- **Shutdown seam.** At skill exit the orchestration runs `execution_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned.
 - **Honest fallback.** Live Mode B is not exercisable in every Claude Code context. When the substrate is absent the bridge degrades to the existing Mode A foreground dispatch and emits a single `MODE_B_FALLBACK` token to stderr; the Mode A behaviour documented above remains the source of truth.
 
 ## Finalize
