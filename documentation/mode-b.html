@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mode B -- Agent Teams - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="gaia-brain.html">GAIA Brain</a></li>
+          <li><a href="mode-b.html" class="active">Mode B -- Agent Teams</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#comparison">Mode A vs Mode B</a></li>
+          <li><a href="#enable">How to enable</a></li>
+          <li><a href="#windowed-teammates">Windowed Teammates UX</a></li>
+          <li><a href="#limitations">Known limitations</a></li>
+          <li><a href="#fallback">Substrate fallback</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        Mode B -- Agent Teams
+      </nav>
+
+      <header>
+        <h1>Mode B -- Agent Teams</h1>
+        <p>
+          GAIA runs its multi-agent work in one of two execution modes.
+          <strong>Mode A</strong> is the default: every agent turn runs as a
+          fresh, one-shot subagent that does its job and disappears.
+          <strong>Mode B (Agent Teams)</strong> is the opt-in alternative:
+          agents run as <strong>persistent, windowed teammates</strong> that
+          stay alive across the phases of a workflow, keep their working
+          context between turns, and can exchange messages with the
+          orchestrator and with each other.
+        </p>
+      </header>
+
+      <div class="callout callout-warning">
+        <p class="callout-title">Mode B is opt-in, and it degrades gracefully.</p>
+        <p>
+          Mode B's live persistent-teammate behaviour depends on runtime
+          support: background named agents and inter-agent messaging must be
+          available in the environment. The wiring for Mode B is in place
+          across the GAIA skills, but when that runtime support is absent the
+          framework transparently runs the equivalent work as Mode A and emits
+          a <code>MODE_B_FALLBACK</code> notice. Treat Mode B as an
+          enhancement that activates when the substrate supports it -- not as a
+          guarantee that persistent teammates are always live.
+        </p>
+      </div>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          In Mode A, the orchestrator hands each unit of work to a new agent
+          turn. That turn reads what it needs, produces its result, and ends.
+          The next turn starts from scratch. This is simple, predictable, and
+          works everywhere -- it is the default for good reason.
+        </p>
+        <p>
+          In Mode B, the orchestrator instead stands up a small team of named
+          teammates at the start of a workflow. Each teammate runs in its own
+          window and remains available for the duration of the run. Because a
+          teammate persists, it keeps the context it has already built up, and
+          the orchestrator can route follow-up work to the same teammate
+          rather than re-spawning a cold agent for every step. Teammates can
+          also be addressed by name, which is what makes back-and-forth
+          collaboration possible.
+        </p>
+        <p>
+          Mode B does not change <em>what</em> GAIA produces -- the artifacts,
+          gates, and review contracts are identical. It changes <em>how</em>
+          the agents are hosted while they produce it.
+        </p>
+      </section>
+
+      <section id="comparison">
+        <h2>Mode A vs Mode B</h2>
+        <p>
+          The two modes differ along three axes: how an agent is hosted, what
+          its transcript carries, and how it performs across a multi-phase
+          workflow.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Aspect</th>
+              <th>Mode A (default)</th>
+              <th>Mode B (Agent Teams)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Dispatch model</strong></td>
+              <td>One-shot subagent. Each agent turn runs fresh and ends when the work is done.</td>
+              <td>Persistent, named teammate. The same teammate stays alive and is addressed across turns.</td>
+            </tr>
+            <tr>
+              <td><strong>Transcript</strong></td>
+              <td>Standard agent transcript -- the turn's own inputs and outputs.</td>
+              <td>A superset: the standard transcript plus identity metadata (the teammate's name and team) so messages can be routed to and from the right teammate.</td>
+            </tr>
+            <tr>
+              <td><strong>Performance</strong></td>
+              <td>A new agent is spawned per call, so every step pays a cold-start cost.</td>
+              <td>The teammate persists across phases, so warm context is reused and per-step spawn cost is avoided.</td>
+            </tr>
+            <tr>
+              <td><strong>Availability</strong></td>
+              <td>Works everywhere -- no special runtime support required.</td>
+              <td>Activates only when the runtime substrate supports background named agents and inter-agent messaging; otherwise it falls back to Mode A.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="enable">
+        <h2>How to enable</h2>
+        <p>
+          Mode B is <strong>opt-in</strong>. Nothing changes until you turn it
+          on, and even then it only takes effect where the runtime supports it
+          (see <a href="#fallback">substrate fallback</a> below). There are two
+          levels of control.
+        </p>
+
+        <h3>Project-level</h3>
+        <p>
+          Set the orchestration mode for the whole project in your project
+          configuration. The orchestration section carries a
+          <code>mode</code> field; setting it to the team value opts the
+          project into Agent Teams as the preferred execution mode:
+        </p>
+        <pre><code>orchestration:
+  mode: team</code></pre>
+        <p>
+          With this set, GAIA-orchestrated workflows will prefer to run their
+          agents as persistent teammates. If the runtime cannot host
+          teammates, the same workflows run as Mode A and report the fallback
+          -- the project configuration is a <em>preference</em>, not a hard
+          requirement that can fail a run.
+        </p>
+
+        <h3>Per-skill</h3>
+        <p>
+          Individual skills that orchestrate multiple agents read the same
+          orchestration preference, so the project-level setting flows through
+          to them automatically. A skill consults the resolved mode at dispatch
+          time and routes its agent work accordingly -- as a team of persistent
+          teammates when Mode B is active and supported, or as one-shot
+          subagents when it is not. You do not need to edit each skill: the
+          single project-level preference is the switch, and each skill honours
+          it at the point where it stands up its agents.
+        </p>
+
+        <div class="callout">
+          <p class="callout-title">A note on honesty.</p>
+          <p>
+            Turning Mode B on tells GAIA what you <em>prefer</em>. Whether you
+            actually get live persistent teammates depends on the runtime. When
+            the substrate is present you get Mode B; when it is not, you get
+            Mode A with a clear <code>MODE_B_FALLBACK</code> notice. Either way
+            the work completes and the outputs are the same.
+          </p>
+        </div>
+      </section>
+
+      <section id="windowed-teammates">
+        <h2>Windowed Teammates UX</h2>
+        <p>
+          When Mode B is active, each teammate runs in its own window. This
+          gives the run a different feel from Mode A's single stream of
+          one-shot turns.
+        </p>
+
+        <h3>Teammate visibility</h3>
+        <p>
+          Every persistent teammate is a named, visible participant. You can
+          see which teammates the orchestrator has stood up, watch each one work
+          in its own window, and follow the conversation between them. Because
+          teammates carry identity metadata, it is always clear which teammate
+          produced a given message or result -- there is no anonymous pool of
+          interchangeable turns.
+        </p>
+
+        <h3>Human interjection routing</h3>
+        <p>
+          A persistent, named team also gives you a place to step in. Because
+          each teammate is addressable, a human interjection can be routed to a
+          specific teammate -- you can direct a note or a correction to exactly
+          the teammate it concerns, rather than dropping it into a single shared
+          channel and hoping the right agent picks it up. The orchestrator
+          remains the coordination point: it routes your interjection to the
+          named teammate and folds the response back into the workflow.
+        </p>
+      </section>
+
+      <section id="limitations">
+        <h2>Known limitations</h2>
+        <p>
+          Mode B is a real capability with real boundaries. Know these before
+          you rely on it.
+        </p>
+        <ul>
+          <li>
+            <strong>Eight-teammate ceiling.</strong> A team is capped at a
+            maximum of eight concurrent persistent teammates. Workflows that
+            would exceed that are kept within the ceiling -- Mode B does not
+            stand up an unbounded swarm.
+          </li>
+          <li>
+            <strong>Clean-room reviewer exclusion.</strong> Review agents are
+            deliberately excluded from the persistent team. A reviewer must run
+            in a fresh, clean-room context with no shared team memory, so that
+            its verdict is independent of the work it is reviewing. Reviewers
+            therefore always run as one-shot agents even when the rest of the
+            workflow is running as a Mode B team -- this exclusion is by design
+            and is not a fallback.
+          </li>
+          <li>
+            <strong>Opt-in fallback to Mode A.</strong> Mode B only activates
+            when the runtime substrate supports it. When background named
+            agents or inter-agent messaging are unavailable, the workflow
+            transparently runs as Mode A and emits
+            <code>MODE_B_FALLBACK</code>. The run still completes -- you simply
+            get one-shot agents instead of persistent teammates for that run.
+          </li>
+        </ul>
+      </section>
+
+      <section id="fallback">
+        <h2>Substrate fallback</h2>
+        <p>
+          The single most important thing to understand about Mode B is that it
+          is an <strong>opportunistic enhancement</strong>. The orchestration
+          wiring is present throughout the GAIA skills, and it asks the runtime,
+          at dispatch time, whether it can host a team of persistent named
+          teammates that can message one another.
+        </p>
+        <ul>
+          <li>
+            <strong>When the substrate is available</strong> -- the workflow
+            runs as Mode B: persistent windowed teammates, warm context across
+            phases, addressable for human interjection.
+          </li>
+          <li>
+            <strong>When the substrate is absent</strong> -- the workflow runs
+            as Mode A, exactly as it would with no Mode B preference set, and
+            reports a <code>MODE_B_FALLBACK</code> notice so you know the
+            persistent-teammate path was not taken on this run.
+          </li>
+        </ul>
+        <p>
+          This fallback is transparent and lossless: the same artifacts, gates,
+          and review contracts apply in both modes. Mode B never blocks a run
+          and never changes the result -- it only changes how the agents are
+          hosted while they do the work, and only when the environment can
+          support it.
+        </p>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
