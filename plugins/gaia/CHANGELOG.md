@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.203.0] — 2026-06-20
+
+### Added
+
+- **Agent Teams (Mode B) foundation.** A shared persistent-teammate dispatch library lets skills spin up teammate subagents with a uniform lifecycle — spawn, drive, relay, shutdown — under an 8-teammate ceiling, with dispatch provenance recording. Documented in the new "Mode B" page on the documentation site (Mode A vs Mode B comparison, how to enable, windowed-teammates UX, and known limitations).
+- **Reviewer clean-room enforcement under Agent Teams.** Reviewer personas can never be spawned as teammates — a fail-closed runtime gate plus static lint and call-site scans keep reviewers judging from a clean context. Persona names are normalised (case / whitespace / namespace-prefix) so the guard cannot be bypassed.
+- **Transcript fidelity contract.** An Agent-Teams transcript is guaranteed to be a superset of the equivalent single-agent transcript, with teammate identity metadata; a fail-safe captures teammate output even when a relay step is skipped (never fail-silent).
+- **Mode B readiness across the skill set.** `/gaia-meeting` is migrated as the pilot (with the legacy agent-turn dispatcher preserved as a thin backward-compatible shim), and the conversational, planning, execution, and research/testing/infra skill families are made Mode B-ready. An opt-in `mode: A` per-skill override pins any skill to single-agent dispatch, and a verification pass confirms behavioural parity + backward compatibility.
+- New **bash** knowledge guides (patterns, POSIX portability, bats testing, CI scripting) and **embedded** knowledge guides (ESP-IDF, FreeRTOS, drivers, conventions) for the bash and embedded developer agents, plus a stack-detection namespace reference.
+
+### Changed
+
+- Releases are now **command-driven**: the release workflow is manual-dispatch only (it no longer auto-fires on merge to the default branch), so version bump + tag + publish are driven explicitly by the release commands.
+
+### Note
+
+- Agent Teams ships with a transparent fallback: when the runtime substrate for persistent teammates is unavailable, every Mode B-ready skill automatically runs in single-agent mode and emits a `MODE_B_FALLBACK` signal. Live persistent-teammate behaviour activates when the substrate exposes it.
+
 ## [1.202.0] — 2026-06-19
 
 ### Added
