@@ -78,49 +78,49 @@ PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 
 @test "edge-cases SKILL.md mentions bash, go, and embedded (AC3)" {
   local f="$PLUGIN_ROOT/skills/edge-cases/SKILL.md"
-  grep -qi 'bash' "$f"
-  grep -qi 'go'   "$f"
-  grep -qi 'embedded' "$f"
+  grep -qiE '\bbash\b'     "$f"
+  grep -qiE '\bgo\b'       "$f"
+  grep -qiE '\bembedded\b' "$f"
 }
 
 @test "gaia-code-review-standards SKILL.md mentions bash, go, and embedded (AC3)" {
   local f="$PLUGIN_ROOT/skills/gaia-code-review-standards/SKILL.md"
-  grep -qi 'bash' "$f"
-  grep -qi 'go'   "$f"
-  grep -qi 'embedded' "$f"
+  grep -qiE '\bbash\b'     "$f"
+  grep -qiE '\bgo\b'       "$f"
+  grep -qiE '\bembedded\b' "$f"
 }
 
 @test "gaia-api-design SKILL.md mentions bash, go, and embedded (AC3)" {
   local f="$PLUGIN_ROOT/skills/gaia-api-design/SKILL.md"
-  grep -qi 'bash' "$f"
-  grep -qi 'go'   "$f"
-  grep -qi 'embedded' "$f"
+  grep -qiE '\bbash\b'     "$f"
+  grep -qiE '\bgo\b'       "$f"
+  grep -qiE '\bembedded\b' "$f"
 }
 
 @test "gaia-documentation-standards SKILL.md mentions bash, go, and embedded (AC3)" {
   local f="$PLUGIN_ROOT/skills/gaia-documentation-standards/SKILL.md"
-  grep -qi 'bash' "$f"
-  grep -qi 'go'   "$f"
-  grep -qi 'embedded' "$f"
+  grep -qiE '\bbash\b'     "$f"
+  grep -qiE '\bgo\b'       "$f"
+  grep -qiE '\bembedded\b' "$f"
 }
 
 @test "gaia-git-workflow SKILL.md mentions bash, go, and embedded (AC3)" {
   local f="$PLUGIN_ROOT/skills/gaia-git-workflow/SKILL.md"
-  grep -qi 'bash' "$f"
-  grep -qi 'go'   "$f"
-  grep -qi 'embedded' "$f"
+  grep -qiE '\bbash\b'     "$f"
+  grep -qiE '\bgo\b'       "$f"
+  grep -qiE '\bembedded\b' "$f"
 }
 
 @test "gaia-testing-patterns SKILL.md mentions bash, go, and embedded (AC3)" {
   local f="$PLUGIN_ROOT/skills/gaia-testing-patterns/SKILL.md"
-  grep -qi 'bash' "$f"
-  grep -qi 'go'   "$f"
-  grep -qi 'embedded' "$f"
+  grep -qiE '\bbash\b'     "$f"
+  grep -qiE '\bgo\b'       "$f"
+  grep -qiE '\bembedded\b' "$f"
 }
 
 @test "gaia-security-basics SKILL.md mentions bash, go, and embedded (AC3)" {
   local f="$PLUGIN_ROOT/skills/gaia-security-basics/SKILL.md"
-  grep -qi 'bash' "$f"
-  grep -qi 'go'   "$f"
-  grep -qi 'embedded' "$f"
+  grep -qiE '\bbash\b'     "$f"
+  grep -qiE '\bgo\b'       "$f"
+  grep -qiE '\bembedded\b' "$f"
 }

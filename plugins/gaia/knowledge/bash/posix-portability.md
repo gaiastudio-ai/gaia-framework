@@ -4,7 +4,8 @@
 ## When Portability Matters
 
 Scripts that run in CI on Alpine Linux, macOS, and WSL/Git Bash must avoid
-Bash-specific extensions. The default shell on macOS is still Bash 3.2 (2007).
+Bash-specific extensions. macOS ships an old Bash 3.2 at /bin/bash for licensing
+reasons, and defaults to zsh as the interactive shell since Catalina (2019).
 Use Bash 4+ features only when the target environment is guaranteed — and document
 the requirement at the top of the file.
 

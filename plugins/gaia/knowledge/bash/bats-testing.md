@@ -34,7 +34,7 @@ PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 ## setup and teardown
 
 `setup` runs before each `@test`; `teardown` runs after each (even on failure).
-Use `setup_file` / `teardown_file` for once-per-file work (Bats >= 1.5).
+Use `setup_file` / `teardown_file` for once-per-file work (Bats >= 1.2).
 
 ```bash
 setup() {
