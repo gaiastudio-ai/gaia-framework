@@ -9,7 +9,7 @@ orchestration_class: light-procedural
 
 Native Claude Code conversion of the legacy `_gaia/dev/skills/code-review-standards.md` skill. Preserves the four sectioned-loading IDs (`review-checklist`, `solid-principles`, `complexity-metrics`, `review-gate-completion`) verbatim. The `review-gate-completion` section documents the hard gate enforced by the `review-gate-check` protocol before a story transitions from `review` to `done`.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile) and the code-review skill. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
+> **Applicable to:** all 9 stack dev agents (typescript, angular, flutter, java, python, mobile, go, bash, embedded) and the code-review skill. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: review-checklist -->
 ## Review Checklist

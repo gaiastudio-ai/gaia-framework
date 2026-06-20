@@ -13,7 +13,7 @@ Native Claude Code conversion of the legacy `_gaia/dev/skills/security-basics.md
 - Scripts-over-LLM. Prose and pattern guidance only.
 - Hybrid memory. Shared content skill; no sidecar loading.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile) and the security-review skill. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
+> **Applicable to:** all 9 stack dev agents (typescript, angular, flutter, java, python, mobile, go, bash, embedded) and the security-review skill. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: owasp-top-10 -->
 ## OWASP Top 10 Prevention
