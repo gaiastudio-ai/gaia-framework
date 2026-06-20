@@ -236,23 +236,35 @@ _dt_resolve_reviewer_list() {
   fi
 }
 
-# _dt_normalize_persona NAME — trim whitespace, lowercase, strip gaia: prefix.
-# Prints the normalised name on stdout.
+# _dt_normalize_persona NAME — trim whitespace, strip gaia: prefix (case-insensitive).
+# Prints the normalised name on stdout. Pure bash parameter expansion + nocasematch —
+# no external process forks (sed/tr), so it is cheap to call in hot loops.
+# bash 3.2-safe: nocasematch is available since bash 3.1; ${var,,} is NOT used.
 _dt_normalize_persona() {
   local raw="$1"
-  # Strip leading/trailing whitespace (tabs + spaces).
-  raw="$(printf '%s' "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  # Lowercase first so that GAIA: / Gaia: prefixes are caught.
-  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
-  # Strip gaia: prefix if present.
-  raw="${raw#gaia:}"
+  # Strip leading whitespace (spaces + tabs).
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  # Strip trailing whitespace (spaces + tabs).
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  # Strip gaia: prefix case-insensitively via nocasematch (bash 3.2-safe; no ${,,}).
+  # Save and restore the caller's nocasematch state — this is a sourced library.
+  local _saved_nocasematch
+  _saved_nocasematch="$(shopt -p nocasematch 2>/dev/null || true)"
+  shopt -s nocasematch
+  if [[ "$raw" == gaia:* ]]; then
+    raw="${raw#*:}"
+  fi
+  # shellcheck disable=SC2064
+  eval "$_saved_nocasematch"
   printf '%s' "$raw"
 }
 
 # _dt_is_reviewer PERSONA — return 0 if the persona is a reviewer.
-# Normalises the name (strip gaia: prefix, trim whitespace, lowercase) before
-# matching against the list. FAIL CLOSED: if the reviewer list is missing or
-# unreadable, returns 0 (treat as reviewer / blocked) with a diagnostic.
+# Normalises the name (strip gaia: prefix, trim whitespace) before matching
+# against the list under nocasematch — so case/whitespace/prefix bypass is
+# blocked symmetrically on both sides without ${,,} (bash 4+) or tr/sed forks.
+# FAIL CLOSED: if the reviewer list is missing or unreadable, returns 0
+# (treat as reviewer / blocked) with a diagnostic.
 _dt_is_reviewer() {
   local persona="$1"
   local bare
@@ -265,20 +277,39 @@ _dt_is_reviewer() {
     return 0
   fi
 
-  # Normalise each list entry (lowercase + trim) and compare.
-  local entry
+  # Read the whole list once into an array (single open, no per-line forks),
+  # then normalise + compare each entry fully in-process. The read loop is
+  # bash 3.2-safe (no mapfile/readarray). nocasematch drives case-insensitive
+  # prefix-strip and comparison — no ${,,} bash-4 expansion, no tr/sed forks.
+  local _saved_nocasematch
+  _saved_nocasematch="$(shopt -p nocasematch 2>/dev/null || true)"
+  shopt -s nocasematch
+
+  local entry matched=0
   while IFS= read -r entry; do
+    # Trim leading whitespace (spaces + tabs).
+    entry="${entry#"${entry%%[![:space:]]*}"}"
     # Skip comments and blank lines.
     case "$entry" in
       '#'*) continue ;;
     esac
-    entry="$(printf '%s' "$entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')"
+    # Trim trailing whitespace.
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    # Strip gaia: prefix case-insensitively (nocasematch is active).
+    if [[ "$entry" == gaia:* ]]; then
+      entry="${entry#*:}"
+    fi
     [ -z "$entry" ] && continue
-    if [ "$entry" = "$bare" ]; then
-      return 0
+    # Compare case-insensitively (nocasematch is active).
+    if [[ "$entry" == "$bare" ]]; then
+      matched=1
+      break
     fi
   done < "$_DT_REVIEWER_PERSONAS"
-  return 1
+
+  # shellcheck disable=SC2064
+  eval "$_saved_nocasematch"
+  [ "$matched" = "1" ]
 }
 
 # _dt_clean_room_gate PERSONA — reject reviewer personas before spawn.
