@@ -97,28 +97,28 @@ teardown() { common_teardown; }
 
 @test "spawn_teammate records dispatched_via:teammate in provenance log (AC2)" {
   source "$LIB"
-  spawn_teammate "gaia:qa" --context "payload" >/dev/null
+  spawn_teammate "gaia:analyst" --context "payload" >/dev/null
   [ -f "$GAIA_PROVENANCE_LOG" ]
   grep -qF "dispatched_via:teammate" "$GAIA_PROVENANCE_LOG"
 }
 
 @test "spawn_teammate provenance entry includes the persona name (AC2)" {
   source "$LIB"
-  spawn_teammate "gaia:qa" --context "payload" >/dev/null
-  grep -qF "gaia:qa" "$GAIA_PROVENANCE_LOG"
+  spawn_teammate "gaia:analyst" --context "payload" >/dev/null
+  grep -qF "gaia:analyst" "$GAIA_PROVENANCE_LOG"
 }
 
 @test "spawn_teammate passes context payload verbatim to the provenance log (AC2)" {
   source "$LIB"
   local ctx="sprint-context: sprint-68, story: test-story"
-  spawn_teammate "gaia:qa" --context "$ctx" >/dev/null
+  spawn_teammate "gaia:analyst" --context "$ctx" >/dev/null
   grep -qF "$ctx" "$GAIA_PROVENANCE_LOG"
 }
 
 @test "spawn_teammate exits 0 and emits a non-empty handle on stdout (AC2)" {
   source "$LIB"
   local handle
-  handle="$(spawn_teammate "gaia:qa")"
+  handle="$(spawn_teammate "gaia:analyst")"
   [ -n "$handle" ]
 }
 
@@ -214,15 +214,15 @@ SKILLEOF
   _write_skill_fixture "$fixture" \
     "name: test-skill" \
     "roster:" \
-    "  - name: qa" \
-    "    persona: gaia:qa" \
+    "  - name: analyst" \
+    "    persona: gaia:analyst" \
     "  - name: architect" \
     "    persona: gaia:architect" \
     "topology: hub"
 
   run _dt_parse_frontmatter "$fixture"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "gaia:qa" ]]
+  [[ "$output" =~ "gaia:analyst" ]]
   [[ "$output" =~ "gaia:architect" ]]
   [[ "$output" =~ "hub" ]]
 }
@@ -250,7 +250,7 @@ SKILLEOF
     "topology: hub"
 
   # No roster — spawning with explicit persona should work
-  spawn_teammate "gaia:qa" >/dev/null
+  spawn_teammate "gaia:analyst" >/dev/null
 }
 
 @test "unknown topology emits warning and defaults to hub (AC4)" {
@@ -278,7 +278,7 @@ SKILLEOF
 @test "relay_to_team_lead writes output verbatim to transcript (AC5)" {
   source "$LIB"
   local handle
-  handle="$(spawn_teammate "gaia:qa")"
+  handle="$(spawn_teammate "gaia:analyst")"
   local payload
   payload="$(printf 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5')"
 
@@ -292,7 +292,7 @@ SKILLEOF
 @test "relay appends to existing transcript without overwriting (AC5)" {
   source "$LIB"
   local handle
-  handle="$(spawn_teammate "gaia:qa")"
+  handle="$(spawn_teammate "gaia:analyst")"
 
   # Seed transcript with prior content
   printf '## Prior entry 1\nfoo\n\n## Prior entry 2\nbar\n' > "$GAIA_SESSION_TRANSCRIPT"
@@ -314,7 +314,7 @@ SKILLEOF
 @test "relay transcript entry includes source teammate attribution (AC5)" {
   source "$LIB"
   local handle
-  handle="$(spawn_teammate "gaia:qa")"
+  handle="$(spawn_teammate "gaia:analyst")"
 
   relay_to_team_lead "$handle" "analysis complete"
 
@@ -324,7 +324,7 @@ SKILLEOF
 @test "relay with empty output is a no-op — no blank entry appended (AC5)" {
   source "$LIB"
   local handle
-  handle="$(spawn_teammate "gaia:qa")"
+  handle="$(spawn_teammate "gaia:analyst")"
 
   # Seed transcript
   printf '## Prior entry\nfoo\n' > "$GAIA_SESSION_TRANSCRIPT"
@@ -344,7 +344,7 @@ SKILLEOF
 
 @test "shutdown_all with 3 active teammates resets count to zero (AC6)" {
   source "$LIB"
-  spawn_teammate "gaia:qa" >/dev/null
+  spawn_teammate "gaia:analyst" >/dev/null
   spawn_teammate "gaia:architect" >/dev/null
   spawn_teammate "gaia:sm" >/dev/null
 
@@ -366,7 +366,7 @@ SKILLEOF
 
 @test "shutdown_all tolerates a single bad handle — partial failure (AC6)" {
   source "$LIB"
-  spawn_teammate "gaia:qa" >/dev/null
+  spawn_teammate "gaia:analyst" >/dev/null
   spawn_teammate "gaia:architect" >/dev/null
   spawn_teammate "gaia:sm" >/dev/null
 
@@ -392,7 +392,7 @@ SKILLEOF
   export GAIA_MODE_B_SUBSTRATE=unavailable
   local handle stderr_out
   stderr_out="$TEST_TMP/stderr.txt"
-  handle="$(spawn_teammate "gaia:qa" 2>"$stderr_out")"
+  handle="$(spawn_teammate "gaia:analyst" 2>"$stderr_out")"
   [ -n "$handle" ]
   grep -qF "MODE_B_FALLBACK" "$stderr_out"
 }
@@ -400,7 +400,7 @@ SKILLEOF
 @test "drive_turn emits MODE_B_FALLBACK when substrate is unavailable (fallback)" {
   source "$LIB"
   local handle
-  handle="$(spawn_teammate "gaia:qa" 2>/dev/null)"
+  handle="$(spawn_teammate "gaia:analyst" 2>/dev/null)"
   export GAIA_MODE_B_SUBSTRATE=unavailable
   local stderr_out="$TEST_TMP/stderr.txt"
   drive_turn "$handle" "do analysis" 2>"$stderr_out" || true
@@ -410,7 +410,7 @@ SKILLEOF
 @test "await_reply emits MODE_B_FALLBACK when substrate is unavailable (fallback)" {
   source "$LIB"
   local handle
-  handle="$(spawn_teammate "gaia:qa" 2>/dev/null)"
+  handle="$(spawn_teammate "gaia:analyst" 2>/dev/null)"
   export GAIA_MODE_B_SUBSTRATE=unavailable
   local stderr_out="$TEST_TMP/stderr.txt"
   await_reply "$handle" 2>"$stderr_out" || true

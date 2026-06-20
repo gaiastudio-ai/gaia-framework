@@ -1,0 +1,17 @@
+# Reviewer personas — clean-room invariant.
+#
+# These personas MUST NOT be spawned as teammates (Mode B persistent agents).
+# The clean-room invariant requires that a reviewer judges from a clean
+# context, never as a participant in the session it reviews.
+#
+# One persona name per line. Blank lines and lines starting with '#' are
+# ignored by the runtime gate.
+adversarial-reviewer
+code-reviewer
+performance
+qa
+reviewer
+security
+tdd-reviewer
+test-architect
+validator
