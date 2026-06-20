@@ -95,6 +95,113 @@ _dt_emit_fallback() {
   printf 'MODE_B_FALLBACK: %s degraded to Mode A foreground dispatch\n' "$1" >&2
 }
 
+# _dt_relay_dir — return (and create) the per-session relay-pending directory.
+_dt_relay_dir() {
+  local dir="${GAIA_SESSION_DIR:?}/relay-pending"
+  mkdir -p "$dir"
+  printf '%s' "$dir"
+}
+
+# _dt_set_relay_pending HANDLE — mark that a turn awaits relay.
+_dt_set_relay_pending() {
+  local handle="$1"
+  local dir
+  dir="$(_dt_relay_dir)"
+  printf '1\n' > "$dir/$handle"
+}
+
+# _dt_clear_relay_pending HANDLE — clear the pending relay flag.
+_dt_clear_relay_pending() {
+  local handle="$1"
+  local dir
+  dir="$(_dt_relay_dir)"
+  rm -f "$dir/$handle"
+}
+
+# _dt_is_relay_pending HANDLE — return 0 if a turn awaits relay.
+_dt_is_relay_pending() {
+  local handle="$1"
+  local dir
+  dir="$(_dt_relay_dir)"
+  [ -f "$dir/$handle" ]
+}
+
+# _dt_turn_count_file HANDLE — return the path to the turn counter file.
+_dt_turn_count_file() {
+  local handle="$1"
+  printf '%s' "${GAIA_SESSION_DIR:?}/turns/$handle"
+}
+
+# _dt_increment_turn HANDLE — increment and return the turn counter.
+_dt_increment_turn() {
+  local handle="$1"
+  local turns_dir="${GAIA_SESSION_DIR:?}/turns"
+  mkdir -p "$turns_dir"
+  local count_file="$turns_dir/$handle"
+  local current=0
+  if [ -f "$count_file" ]; then
+    current="$(cat "$count_file")"
+  fi
+  current=$((current + 1))
+  printf '%d' "$current" > "$count_file"
+  printf '%d' "$current"
+}
+
+# _dt_current_turn HANDLE — return the current turn counter (0 if none).
+_dt_current_turn() {
+  local handle="$1"
+  local count_file
+  count_file="$(_dt_turn_count_file "$handle")"
+  if [ -f "$count_file" ]; then
+    cat "$count_file"
+  else
+    printf '0'
+  fi
+}
+
+# _dt_read_persona HANDLE — read the persona name from the registry file.
+_dt_read_persona() {
+  local handle="$1"
+  _dt_ensure_registry
+  if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
+    sed -n 's/^persona://p' "$_DT_REGISTRY_DIR/$handle"
+  fi
+}
+
+# _dt_read_spawn_ts HANDLE — read the spawn timestamp from the registry file.
+_dt_read_spawn_ts() {
+  local handle="$1"
+  _dt_ensure_registry
+  if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
+    sed -n 's/^spawned://p' "$_DT_REGISTRY_DIR/$handle"
+  fi
+}
+
+# _dt_check_unrelayed_turn HANDLE — if a turn awaits relay, emit WARNING
+# and capture a fail-safe entry to the transcript.
+_dt_check_unrelayed_turn() {
+  local handle="$1"
+  if _dt_is_relay_pending "$handle"; then
+    printf 'dispatch-teammate: warning: unrelayed turn detected for %s — output may have been lost (fail-safe capture)\n' "$handle" >&2
+
+    local persona spawn_ts turn
+    persona="$(_dt_read_persona "$handle")"
+    spawn_ts="$(_dt_read_spawn_ts "$handle")"
+    turn="$(_dt_current_turn "$handle")"
+
+    local transcript="${GAIA_SESSION_TRANSCRIPT:-${GAIA_SESSION_DIR:?}/transcript.md}"
+    mkdir -p "$(dirname "$transcript")"
+    {
+      printf '\n<!-- persona:%s spawn_ts:%s turn:%s -->\n' \
+        "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}"
+      printf '## Unrelayed turn from %s [%s]\n\n' "$handle" "$(_dt_iso8601)"
+      printf '[fail-safe capture: teammate turn ended without relay_to_team_lead]\n'
+    } >> "$transcript"
+
+    _dt_clear_relay_pending "$handle"
+  fi
+}
+
 # _dt_log_provenance — append a provenance entry.
 _dt_log_provenance() {
   local persona="$1"
@@ -366,6 +473,10 @@ drive_turn() {
     return 1
   fi
 
+  # Track turn — increment counter and set relay-pending flag.
+  _dt_increment_turn "$handle" >/dev/null
+  _dt_set_relay_pending "$handle"
+
   # Substrate detection.
   if ! _dt_substrate_available; then
     _dt_emit_fallback "drive_turn"
@@ -428,12 +539,23 @@ relay_to_team_lead() {
     return 0
   fi
 
-  # Append to transcript.
+  # Read identity metadata for Mode B transcript entries.
+  local persona spawn_ts turn
+  persona="$(_dt_read_persona "$handle")"
+  spawn_ts="$(_dt_read_spawn_ts "$handle")"
+  turn="$(_dt_current_turn "$handle")"
+
+  # Clear relay-pending flag — this turn has been relayed.
+  _dt_clear_relay_pending "$handle"
+
+  # Append to transcript with teammate identity metadata.
   local transcript="${GAIA_SESSION_TRANSCRIPT:-${GAIA_SESSION_DIR:?}/transcript.md}"
   mkdir -p "$(dirname "$transcript")"
 
   {
-    printf '\n## Relay from %s [%s]\n\n' "$handle" "$(_dt_iso8601)"
+    printf '\n<!-- persona:%s spawn_ts:%s turn:%s -->\n' \
+      "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}"
+    printf '## Relay from %s [%s]\n\n' "$handle" "$(_dt_iso8601)"
     printf '%s\n' "$payload"
   } >> "$transcript"
 
@@ -474,8 +596,14 @@ shutdown_teammate() {
     return 1
   fi
 
-  # Remove from registry.
+  # Fail-safe: check for unrelayed turn before shutdown.
+  _dt_check_unrelayed_turn "$handle"
+
+  # Remove from registry and clean up turn counter.
   rm -f "$_DT_REGISTRY_DIR/$handle"
+  local count_file
+  count_file="$(_dt_turn_count_file "$handle")"
+  rm -f "$count_file"
   return 0
 }
 
@@ -500,7 +628,7 @@ shutdown_all() {
   for handle_file in "$_DT_REGISTRY_DIR"/*; do
     [ -f "$handle_file" ] || continue
     handle_name="$(basename "$handle_file")"
-    if ! shutdown_teammate "$handle_name" 2>/dev/null; then
+    if ! shutdown_teammate "$handle_name"; then
       had_failure=1
       printf 'dispatch-teammate: warning: failed to shut down teammate %s\n' "$handle_name" >&2
     fi
