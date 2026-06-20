@@ -563,3 +563,25 @@ switch).
 - Legacy parity source (for reference only; not invoked from this
   skill; legacy path intentionally omitted from the body to satisfy
   the "zero legacy references" parity check).
+
+## Mode B Readiness
+
+This conversational skill is Mode B-ready. Under Mode B (opt-in: persistent
+teammates), participant dispatch routes through the shared dispatch library
+at `scripts/lib/dispatch-teammate.sh` via the conversational bridge at
+`scripts/lib/conversational-mode-b-bridge.sh`. Each participant is spawned
+with `conversational_spawn_participant`, which obtains a long-lived teammate
+handle, enforces the reviewer clean-room invariant, and logs dispatch
+provenance. Turn output is relayed verbatim to the session transcript, so the
+artifact structure (transcript and synthesis) is byte-for-byte the same as
+Mode A.
+
+When the Mode B substrate is absent — the default in this build — the shared
+library degrades to Mode A foreground dispatch and emits a single
+machine-parseable `MODE_B_FALLBACK` token to stderr. Existing Mode A behavior
+is preserved unchanged; Mode B is attempted only when the substrate is live.
+
+**Shutdown discipline.** Every spawned participant MUST be cleaned up at skill
+completion. Wire `trap conversational_shutdown EXIT` around the participant
+loop; `conversational_shutdown` delegates to `shutdown_all` in the shared
+library, which sweeps every active teammate and leaves no orphaned session.

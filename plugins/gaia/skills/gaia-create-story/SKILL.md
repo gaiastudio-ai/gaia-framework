@@ -526,3 +526,12 @@ If Step 6 was skipped, use `verdict: "skipped"` and empty findings. Helper enfor
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/finalize.sh
+
+## Mode B Readiness
+
+This skill is Mode B-ready. Under the team-orchestration mode, the authoring work that the prose above describes as inline subagent dispatch is instead routed through the shared planning bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/planning-mode-b-bridge.sh`, which itself layers on the shared dispatch library `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`.
+
+- **Spawn seam.** The architect subagent (Theo), the pm subagent (Derek), and — when the UX-detection rules match — the ux-designer subagent (Christy) collaborate on the story. The single-spawn-level and frontmatter-writing contracts above are unchanged: the SM fix loop stays inline, and the routing/HALT gates remain in force. The orchestration calls `planning_spawn_subagent gaia:architect "gaia-create-story"` to obtain a persistent teammate handle. The clean-room gate in the shared library refuses any reviewer persona before a teammate is created.
+- **Relay seam.** Each authoring turn is relayed verbatim to the team lead via `planning_relay_turn <handle> <payload>`, so the produced artifact structure is identical to the Mode A subagent-dispatch path — only the dispatch seam differs, never the authored output.
+- **Shutdown seam.** At skill exit the orchestration calls `planning_shutdown`, which delegates to `shutdown_all` so no teammate pane is left orphaned.
+- **Honest fallback.** Live Mode B is not exercisable in every Claude Code context. When the substrate is absent the bridge degrades to the existing Mode A foreground dispatch and emits a single `MODE_B_FALLBACK` token to stderr; the Mode A behaviour documented above remains the source of truth.

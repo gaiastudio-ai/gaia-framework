@@ -179,3 +179,23 @@ YOLO INVARIANT: the iteration-3 prompt MUST NOT be auto-answered under YOLO. Thi
 
 - **Primary:** `/gaia-product-brief` — consolidate domain findings into a structured product brief.
 - **Alternative:** `/gaia-tech-research` — when technology trade-offs still need evaluation before the brief.
+
+## Mode B Readiness
+
+This skill is ready to run under Mode B (persistent teammates). When the team
+lead routes this skill through Mode B, the domain-research subagent (gaia:analyst) runs as a
+persistent teammate instead of a foreground subagent. The output shape is
+identical between modes — only the dispatch seam differs.
+
+- **Bridge library.** Mode B routing for this skill goes through the shared
+  bridge `scripts/lib/research-mode-b-bridge.sh`, which itself routes through
+  the shared dispatch library `scripts/lib/dispatch-teammate.sh`.
+- **Spawn seam.** `research_spawn_subagent "gaia:analyst" "gaia-domain-research"` runs the
+  working teammate and returns its handle. Each working turn is relayed to the
+  team lead verbatim via `research_relay_turn`, preserving transcript parity
+  with the Mode A subagent path.
+- **Shutdown seam.** `research_shutdown` runs at skill exit, routing through
+  `shutdown_all` so no teammate pane is left orphaned.
+- **Mode A fallback.** When the Mode B substrate is absent, the bridge degrades
+  to a foreground Mode A path and surfaces a single `MODE_B_FALLBACK` token, so
+  the skill keeps working with no change to its authored output.

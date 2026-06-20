@@ -13,7 +13,7 @@ Native Claude Code conversion of the legacy `_gaia/dev/skills/testing-patterns.m
 - Scripts-over-LLM. Prose and pattern guidance only.
 - Hybrid memory. Shared content skill; no sidecar loading.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field is dropped per the current schema.
+> **Applicable to:** all 9 stack dev agents (typescript, angular, flutter, java, python, mobile, go, bash, embedded). The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: tdd-cycle -->
 ## TDD Cycle

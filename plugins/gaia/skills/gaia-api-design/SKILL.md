@@ -13,7 +13,7 @@ Native Claude Code conversion of the legacy `_gaia/dev/skills/api-design.md` ski
 - Scripts-over-LLM. This skill is prose and pattern guidance only; no inline scripts.
 - Hybrid memory. This is a shared content skill and does NOT load agent memory sidecars.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field is dropped under the current schema.
+> **Applicable to:** all 9 stack dev agents (typescript, angular, flutter, java, python, mobile, go, bash, embedded). The legacy `applicable_agents` frontmatter field is dropped under the current schema.
 
 <!-- SECTION: rest-conventions -->
 ## REST Conventions

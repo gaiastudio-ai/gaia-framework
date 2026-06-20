@@ -12,7 +12,7 @@ orchestration_class: light-procedural
 
 > **Native Claude Code conversion.** This skill is the native Claude Code port of the legacy `_gaia/dev/skills/edge-cases.md` dev skill. Section markers (`<!-- SECTION: ... -->`) are preserved verbatim so the JIT callable contract consumed by `/gaia-create-story` Step 4b remains functionally equivalent. This is a shared content skill — no agent memory sidecars are loaded.
 
-> **Applicable to:** all stack dev agents (typescript, angular, flutter, java, python, mobile, go). The legacy `applicable_agents` frontmatter field is dropped.
+> **Applicable to:** all 9 stack dev agents (typescript, angular, flutter, java, python, mobile, go, bash, embedded). The legacy `applicable_agents` frontmatter field is dropped.
 
 ---
 
@@ -190,6 +190,6 @@ edge_case_results:
 
 - The `edge_case_results` output is captured in the caller's runtime state as a named variable before the story file is written. The create-story workflow stores these results in the story's Dev Notes or Test Scenarios section.
 - This skill does NOT modify files on disk. Callers persist the output.
-- The skill is stack-agnostic — it works for typescript, angular, flutter, java, python, mobile, and go stories.
+- The skill is stack-agnostic — it works for typescript, angular, flutter, java, python, mobile, go, bash, and embedded stories.
 - See also: `plugins/gaia/skills/gaia-edge-cases/SKILL.md` — the separate standalone `/gaia-edge-cases` slash-command skill (method-driven hunter). This skill (the JIT dev library) is distinct from that command-invoked skill.
 - Legacy source: `_gaia/dev/skills/edge-cases.md` — retained in the running framework tree per CLAUDE.md (framework vs product separation).

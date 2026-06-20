@@ -1169,3 +1169,23 @@ Legacy file paths are intentionally not re-referenced in this body per the parit
   - `plugins/gaia/skills/gaia-nfr/SKILL.md` — test-architect subagent pattern (Phase 6 mirrors this).
   - `plugins/gaia/skills/gaia-creative-sprint/SKILL.md` — sequential multi-subagent orchestration pattern.
 - Legacy parity source (for reference only; not invoked from this skill; legacy path intentionally omitted from the body to satisfy the "zero legacy references" parity check).
+
+## Mode B Readiness
+
+This skill is ready to run under Mode B (persistent teammates). When the team
+lead routes this skill through Mode B, the brownfield-analysis subagent (gaia:architect) runs as a
+persistent teammate instead of a foreground subagent. The output shape is
+identical between modes — only the dispatch seam differs.
+
+- **Bridge library.** Mode B routing for this skill goes through the shared
+  bridge `scripts/lib/research-mode-b-bridge.sh`, which itself routes through
+  the shared dispatch library `scripts/lib/dispatch-teammate.sh`.
+- **Spawn seam.** `research_spawn_subagent "gaia:architect" "gaia-brownfield"` runs the
+  working teammate and returns its handle. Each working turn is relayed to the
+  team lead verbatim via `research_relay_turn`, preserving transcript parity
+  with the Mode A subagent path.
+- **Shutdown seam.** `research_shutdown` runs at skill exit, routing through
+  `shutdown_all` so no teammate pane is left orphaned.
+- **Mode A fallback.** When the Mode B substrate is absent, the bridge degrades
+  to a foreground Mode A path and surfaces a single `MODE_B_FALLBACK` token, so
+  the skill keeps working with no change to its authored output.
