@@ -57,7 +57,7 @@ curl -H "Authorization: Bearer $TOKEN" "$URL"
 
 # BAD: logged by set -x
 set -x
-curl -H "Authorization: Bearer supersecret123" ...
+curl -H "Authorization: Bearer $SECRET_PLACEHOLDER" ...
 
 # GOOD: value comes from environment; never echoed
 : "${API_TOKEN:?API_TOKEN must be set}"
