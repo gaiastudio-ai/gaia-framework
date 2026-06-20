@@ -13,7 +13,7 @@ Native Claude Code conversion of the legacy `_gaia/dev/skills/documentation-stan
 - Scripts-over-LLM. Prose and pattern guidance only.
 - Hybrid memory. Shared content skill; no sidecar loading.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile), the tech-writer, analyst, and pm agents. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
+> **Applicable to:** all 9 stack dev agents (typescript, angular, flutter, java, python, mobile, go, bash, embedded), the tech-writer, analyst, and pm agents. The legacy `applicable_agents` frontmatter field is dropped per the current schema.
 
 <!-- SECTION: readme-template -->
 ## README Template

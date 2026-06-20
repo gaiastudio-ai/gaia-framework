@@ -34,6 +34,24 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# ---------------------------------------------------------------------------
+# Stack namespace convention
+# ---------------------------------------------------------------------------
+# This script operates in the ECOSYSTEM-NAME namespace.  Detection functions
+# emit short names such as "python", "go", "embedded", "node", "angular" —
+# these populate stacks[].name in project-config.yaml.
+#
+# The persona pipeline (load-stack-persona.sh) uses a separate CANONICAL
+# PERSONA TOKEN namespace: the same stacks are addressed as "python-dev",
+# "go-dev", "embedded-dev", "ts-dev", "angular-dev", "bash-dev", etc.
+# (the -dev suffix distinguishes persona tokens from ecosystem names).
+#
+# bash-dev is EXPLICIT-ONLY in this script — no auto-detect heuristic exists.
+# *.sh files appear in almost every polyglot repository, so file-glob
+# detection would misclassify most projects.  The bash stack resolves only
+# via --stack/config/story-frontmatter (see load-stack-persona.sh).
+# ---------------------------------------------------------------------------
+
 prog="detect-signals.sh"
 err() { printf '%s: %s\n' "$prog" "$*" >&2; }
 

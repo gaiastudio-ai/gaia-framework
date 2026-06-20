@@ -13,7 +13,7 @@ Native Claude Code conversion of the legacy `_gaia/dev/skills/git-workflow.md` s
 - Scripts-over-LLM for deterministic operations. This skill is prose-only; any concrete `git` invocation lives in the calling agent or in a skill-local script, not inline here.
 - Hybrid memory. This is a shared content skill and does NOT load agent memory sidecars.
 
-> **Applicable to:** all 6 stack dev agents (typescript, angular, flutter, java, python, mobile). The legacy `applicable_agents` frontmatter field does not map to the Claude Code SKILL schema, so it lives here as a prose note.
+> **Applicable to:** all 9 stack dev agents (typescript, angular, flutter, java, python, mobile, go, bash, embedded). The legacy `applicable_agents` frontmatter field does not map to the Claude Code SKILL schema, so it lives here as a prose note.
 
 <!-- SECTION: branching -->
 ## Branching Strategy
