@@ -53,7 +53,7 @@ A multi-step orchestration skill with three or more subagent dispatches, often w
 
 - **Invocation:** inline main-turn orchestration. Orchestrator drives each step explicitly.
 - **Mode A (default):** subagent re-dispatch with structured checkpoint payloads (see the §"Mode A Checkpoint Payload Schema"). Each re-dispatch is a fresh persona context with prior outputs threaded via the payload — sidecar memory loads on every dispatch; in-conversation continuity is lost between dispatches.
-- **Mode B (opt-in, requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` + `orchestration.mode: team` in `.gaia/config/project-config.yaml`):** persistent teammates per the Mode B Teammate Lifecycle (see the §"Mode B Teammate Lifecycle Protocol"). One teammate per persona per skill execution; teammate session stays alive across the workflow's dispatches; cleaned up on skill completion. Persona has full in-conversation continuity.
+- **Mode B (opt-in, requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` + `orchestration.mode: team` in `.gaia/config/project-config.yaml`):** persistent teammates per the Mode B Teammate Lifecycle (see the §"Mode B Teammate Lifecycle Protocol"). One teammate per persona per skill execution; teammate session stays alive across the workflow's turns; cleaned up on skill completion. Persona has full in-conversation continuity.
 - **State mutation:** allowed.
 - **Examples:** `gaia-create-story`, `gaia-dev-story`, `gaia-add-feature`, `gaia-edit-prd`, `gaia-edit-arch`, `gaia-edit-ux`, `gaia-create-prd`, `gaia-create-arch`, `gaia-create-ux`, `gaia-create-epics`, `gaia-deploy`, `gaia-deploy-checklist`.
 - **Lossy-mode warning:** **fires once per session** when invoked in Mode A.
@@ -125,7 +125,7 @@ A teammate session passes through four sequential phases. Each phase has a descr
 
 #### DRIVE
 
-**Description.** The orchestrator sends one prompt turn to an active teammate. In the live substrate this dispatches via `SendMessage`; in the fallback path it invokes a foreground `Agent()` call.
+**Description.** The orchestrator sends one prompt turn to an active teammate. In the live substrate this sends via `SendMessage`; in the fallback path it runs a foreground `Agent()` call.
 
 **Contract.**
 - Call `drive_turn HANDLE PROMPT` where `HANDLE` is the value returned by `spawn_teammate`.
