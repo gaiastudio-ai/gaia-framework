@@ -28,7 +28,6 @@ setup() {
 
 @test "the CI slice declares component stacks, not the retired single stack (AC1)" {
   grep -q 'name: gaia-core' "$CFG"
-  grep -q 'name: gaia-statusline' "$CFG"
   grep -q 'name: gaia-docs' "$CFG"
   grep -q 'name: gaia-ci' "$CFG"
   # The retired single-stack name must be gone from the slice.
@@ -36,10 +35,10 @@ setup() {
 }
 
 @test "every component stack carries an explicit test_cmd (AC1)" {
-  # Four stacks, four test_cmd lines.
+  # Three stacks, three test_cmd lines.
   run grep -c '^    test_cmd:' "$CFG"
   [ "$status" -eq 0 ]
-  [ "$output" -ge 4 ]
+  [ "$output" -ge 3 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -50,18 +49,6 @@ setup() {
   run "$DETECT" --config "$CFG" --files documentation/index.html
   [ "$status" -eq 0 ]
   [ "$output" = '["gaia-docs"]' ]
-}
-
-@test "a statusline source change resolves to gaia-statusline only (AC4)" {
-  run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/statusline.sh
-  [ "$status" -eq 0 ]
-  [ "$output" = '["gaia-statusline"]' ]
-}
-
-@test "a statusline lib change resolves to gaia-statusline only (AC4)" {
-  run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/lib/statusline-glyphs.sh
-  [ "$status" -eq 0 ]
-  [ "$output" = '["gaia-statusline"]' ]
 }
 
 @test "a CI workflow change resolves to gaia-ci only (AC4)" {
@@ -90,21 +77,41 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC3: cross_refs fan-out — a core change pulls in its dependents; a
-# narrow-only change does not over-expand.
+# AC3: cross_refs honoured — no spurious expansion when no edge is declared,
+# and a declared dependency edge fans out. The current stack set declares no
+# cross_refs (the carved-out stacks are independent of the core tree), so a
+# core change must NOT pull in the narrow stacks; the edge-fan-out behaviour is
+# pinned against a synthetic config so the capability is regression-covered for
+# the next component carve-out that does declare a dependency.
 # ---------------------------------------------------------------------------
 
-@test "a core change fans out to gaia-statusline via cross_refs (AC3)" {
+@test "no spurious fan-out: a core change does not pull in the independent narrow stacks (AC3)" {
   run "$CROSS" --config "$CFG" --stacks '["gaia-core"]'
   [ "$status" -eq 0 ]
-  [[ "$output" == *'"gaia-core"'* ]]
-  [[ "$output" == *'"gaia-statusline"'* ]]
+  [ "$output" = '["gaia-core"]' ]
 }
 
-@test "a statusline-only change does NOT expand to gaia-core (AC3)" {
-  run "$CROSS" --config "$CFG" --stacks '["gaia-statusline"]'
+@test "a declared cross_refs dependency edge fans out to the dependency (AC3)" {
+  # Synthetic config: stack 'leaf' depends on 'base'. A change to 'base' must
+  # transitively pull in 'leaf' (its consumer), proving the fan-out machinery
+  # the next component carve-out will rely on.
+  cat > "$BATS_TEST_TMPDIR/xref.yaml" <<'EOF'
+stacks:
+  - name: base
+    language: bash
+    paths:
+      - lib/**
+  - name: leaf
+    language: bash
+    paths:
+      - app/**
+    cross_refs:
+      - base
+EOF
+  run "$CROSS" --config "$BATS_TEST_TMPDIR/xref.yaml" --stacks '["base"]'
   [ "$status" -eq 0 ]
-  [ "$output" = '["gaia-statusline"]' ]
+  [[ "$output" == *'"base"'* ]]
+  [[ "$output" == *'"leaf"'* ]]
 }
 
 # ---------------------------------------------------------------------------
