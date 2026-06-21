@@ -185,6 +185,14 @@ run_resolver_isolated() {
   [ "$output" = "$first_output" ]
 }
 
+# bats test_tags=hardware-dependent
+# Asserts the cache file's mtime strictly INCREASES after a source bump. mtime
+# is second-granularity on many filesystems, so when the rewrite lands in the
+# same wall-clock second as the original write the strict `>` comparison flakes
+# on fast CI runners even though the cache was correctly invalidated. The
+# behavioural contract (a stale cache is re-evaluated, not reused) is also
+# covered by the content-based cache tests in this file; this mtime-precision
+# variant is excluded from the standard run.
 @test "cache: bumping project-config.yaml mtime invalidates cache" {
   mk_shared_minimal "$TEST_TMP/skill"
   cd "$TEST_TMP"
