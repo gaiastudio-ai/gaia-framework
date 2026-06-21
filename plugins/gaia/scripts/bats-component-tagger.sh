@@ -121,7 +121,6 @@ _refs_to_components() {
 }
 
 # Build the assignments.
-declare_assign() { :; }   # placeholder for shellcheck friendliness
 CORE_UNRESOLVED=0
 CORE_CROSSCUT=0
 TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/bats-tagger.XXXXXX")"
