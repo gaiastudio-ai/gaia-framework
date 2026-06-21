@@ -198,9 +198,13 @@ teardown() { common_teardown; }
 # AC9 — contract section: fourth theme requires ADR (R4) and zero-network
 # structural contract (NFR-STATUSLINE-2).
 # ---------------------------------------------------------------------------
-@test "SKILL.md: contract states fourth theme requires a new ADR (AC9 — R4)" {
+@test "SKILL.md: contract states fourth theme requires an architectural decision (AC9 — R4)" {
   [ -f "$SKILL_MD" ]
-  grep -qiE 'fourth theme.*ADR|ADR.*fourth theme' "$SKILL_MD"
+  # Adding a fourth theme is a deliberate architectural change, not a config
+  # flag. The literal "ADR" token was scrubbed from published source as a leaked
+  # internal identifier, so assert the contract in the published wording
+  # ("architectural decision/change") rather than restoring the scrubbed token.
+  grep -qiE 'fourth theme.*architectural (decision|change)|architectural (decision|change).*fourth theme' "$SKILL_MD"
 }
 
 @test "SKILL.md: contract states zero network primitives by structural contract (AC9 — NFR-STATUSLINE-2)" {
