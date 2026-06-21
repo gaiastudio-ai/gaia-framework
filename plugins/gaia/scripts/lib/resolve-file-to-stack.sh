@@ -57,14 +57,31 @@ set -euo pipefail
 # Output: the matched stack name on stdout, or empty string.
 #
 # Resolution order:
-#   1. Longest-prefix-wins across all prefix-type rows (excluding "." catch-all)
-#   2. First glob match across all glob-type rows (declaration-order tiebreak)
-#   3. Root-dot catch-all ("." prefix) if found and nothing more specific matched
+#   1. Exact literal-path match (a glob-type row carrying NO wildcard is a full
+#      path, not a glob — it is the most specific possible match and wins over
+#      any prefix, regardless of declaration order). This is what lets a
+#      component stack that lists individual source files (e.g. a statusline
+#      runtime split out of a broader scripts/** stack) claim a single-file
+#      change away from the broad stack.
+#   2. Longest-prefix-wins across all prefix-type rows (excluding "." catch-all)
+#   3. First wildcard-glob match across all glob-type rows (declaration-order
+#      tiebreak)
+#   4. Root-dot catch-all ("." prefix) if found and nothing more specific matched
 # ---------------------------------------------------------------------------
 resolve_file_to_stack() {
   local path="$1"
   local stacks_table="$2"
   local matched=""
+
+  # Pass 0: exact literal-path match (glob-type rows with no wildcard). A
+  # literal full path is strictly more specific than any prefix, so it is
+  # resolved before the prefix pass — otherwise a broad scripts/** prefix
+  # would always shadow an explicitly-listed file under that tree.
+  matched="$(_fts_find_exact_match "$path" "$stacks_table")"
+  if [[ -n "$matched" ]]; then
+    printf '%s' "$matched"
+    return 0
+  fi
 
   # Pass 1: longest-prefix match (prefix-type rows, excluding "." catch-all)
   matched="$(_fts_find_best_prefix_match "$path" "$stacks_table")"
@@ -73,7 +90,7 @@ resolve_file_to_stack() {
     return 0
   fi
 
-  # Pass 2: glob fallback (glob-type rows)
+  # Pass 2: wildcard-glob fallback (glob-type rows)
   matched="$(_fts_find_glob_match "$path" "$stacks_table")"
   if [[ -n "$matched" ]]; then
     printf '%s' "$matched"
@@ -141,6 +158,34 @@ locate_repo_script() {
 # ---------------------------------------------------------------------------
 # Internal helpers (underscore prefix — exempt from the public-function-coverage gate)
 # ---------------------------------------------------------------------------
+
+# _fts_find_exact_match — exact literal-path match across glob-type rows
+#
+# A glob-type row whose candidate contains NO wildcard metacharacter (* ? [) is
+# not a glob at all — it is a literal full path. Such a candidate matches one
+# and only one file: itself. Because it pins the entire path, it is the most
+# specific match possible and outranks any prefix. Wildcard-bearing glob rows
+# are skipped here (they remain Pass-2 fallback). Declaration order is the
+# tiebreak, but two stacks claiming the same literal file is a config error.
+_fts_find_exact_match() {
+  local path="$1"
+  local stacks_table="$2"
+  local name candidate match_type
+
+  while IFS=$'\t' read -r name candidate match_type; do
+    [[ "$match_type" == "glob" ]] || continue
+    # Only literal paths — skip anything carrying a wildcard metacharacter.
+    case "$candidate" in
+      *'*'* | *'?'* | *'['* ) continue ;;
+    esac
+    if [[ "$path" == "$candidate" ]]; then
+      printf '%s' "$name"
+      return 0
+    fi
+  done < "$stacks_table"
+
+  printf ''
+}
 
 # _fts_find_best_prefix_match — longest-prefix match across prefix-type rows
 #

@@ -136,6 +136,63 @@ teardown() { common_teardown; }
   [ "$result" = "root-stack" ]
 }
 
+# ---------------------------------------------------------------------------
+# Exact literal-path match wins over a broader prefix
+#
+# A glob-type candidate that carries NO wildcard is a literal full path, not a
+# glob. It pins the entire path and is the most specific match possible, so it
+# must outrank a broader prefix that also covers the file. This is what lets a
+# component stack list individual source files and claim a single-file change
+# away from the broad stack that owns the surrounding tree — without it,
+# component-level test narrowing is impossible (the broad prefix always wins).
+# ---------------------------------------------------------------------------
+
+@test "exact literal-path wins over broader prefix — narrow stack claims the file" {
+  source "$LIB_SCRIPT"
+  cat > "$TEST_TMP/exact.tsv" <<'EOF'
+broad	plugins/gaia/scripts	prefix
+narrow	plugins/gaia/scripts/statusline.sh	glob
+EOF
+  local result
+  result="$(resolve_file_to_stack "plugins/gaia/scripts/statusline.sh" "$TEST_TMP/exact.tsv")"
+  [ "$result" = "narrow" ]
+}
+
+@test "exact literal-path wins for a deep lib file under a broad scripts prefix" {
+  source "$LIB_SCRIPT"
+  cat > "$TEST_TMP/exact.tsv" <<'EOF'
+broad	plugins/gaia/scripts	prefix
+narrow	plugins/gaia/scripts/lib/statusline-glyphs.sh	glob
+EOF
+  local result
+  result="$(resolve_file_to_stack "plugins/gaia/scripts/lib/statusline-glyphs.sh" "$TEST_TMP/exact.tsv")"
+  [ "$result" = "narrow" ]
+}
+
+@test "exact match is path-precise — a sibling file under the same dir still resolves to the broad stack" {
+  source "$LIB_SCRIPT"
+  cat > "$TEST_TMP/exact.tsv" <<'EOF'
+broad	plugins/gaia/scripts	prefix
+narrow	plugins/gaia/scripts/statusline.sh	glob
+EOF
+  local result
+  result="$(resolve_file_to_stack "plugins/gaia/scripts/sprint-state.sh" "$TEST_TMP/exact.tsv")"
+  [ "$result" = "broad" ]
+}
+
+@test "wildcard glob is still Pass-2 fallback — a prefix match still beats a wildcard glob" {
+  source "$LIB_SCRIPT"
+  # A real wildcard glob must NOT be promoted to exact-match priority: a prefix
+  # that also matches the path still wins (preserves the pre-existing contract).
+  cat > "$TEST_TMP/wildcard.tsv" <<'EOF'
+prefix-stack	config	prefix
+glob-stack	config/*.yaml	glob
+EOF
+  local result
+  result="$(resolve_file_to_stack "config/settings.yaml" "$TEST_TMP/wildcard.tsv")"
+  [ "$result" = "prefix-stack" ]
+}
+
 @test "root-dot catch-all is lower priority than prefix match" {
   source "$LIB_SCRIPT"
   local result

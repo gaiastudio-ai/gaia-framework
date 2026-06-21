@@ -5,7 +5,7 @@
 # no secrets, no local paths, no environments/release/distribution. A CI lint
 # regenerates this and fails on drift.
 stacks:
-  - name: gaia-plugin
+  - name: gaia-core
     language: bash
     paths:
       - plugins/gaia/scripts/**
@@ -21,6 +21,37 @@ stacks:
       - plugins/gaia/docs/**
       - plugins/gaia/tests/**
       - plugins/gaia/test/**
+    test_cmd: "bash plugins/gaia/tests/run-with-coverage.sh"
+  - name: gaia-statusline
+    language: bash
+    paths:
+      - plugins/gaia/scripts/statusline.sh
+      - plugins/gaia/scripts/statusline-git-dirty-check.sh
+      - plugins/gaia/scripts/statusline-update-check.sh
+      - plugins/gaia/scripts/install-statusline.sh
+      - plugins/gaia/scripts/gaia-statusline-toggle.sh
+      - plugins/gaia/scripts/lib/statusline-glyphs.sh
+      - plugins/gaia/scripts/lib/statusline-colors.sh
+      - plugins/gaia/scripts/lib/statusline-plugin-cache-dir.sh
+      - plugins/gaia/scripts/lib/statusline-cache-reset.sh
+      - plugins/gaia/scripts/lib/statusline-project-cache-key.sh
+      - plugins/gaia/skills/gaia-statusline-enable/**
+      - plugins/gaia/skills/gaia-statusline-disable/**
+      - plugins/gaia/skills/gaia-statusline-refresh/**
+      - plugins/gaia/tests/statusline/**
+    test_cmd: "bats plugins/gaia/tests/statusline/"
+    cross_refs:
+      - gaia-core
+  - name: gaia-docs
+    language: bash
+    paths:
+      - documentation/**
+    test_cmd: "bats plugins/gaia/tests/af-2026-05-28-2-test07-docs.bats plugins/gaia/tests/af-2026-06-01-1-test15-findings.bats plugins/gaia/tests/af-2026-06-02-1-test16-findings.bats plugins/gaia/tests/af-2026-06-03-2-tc-osv-trace.bats plugins/gaia/tests/forbidden-sentinel-scan.bats plugins/gaia/tests/issue-1395-brownfield-walkthrough-tier2.bats plugins/gaia/tests/mode-b-docs.bats"
+  - name: gaia-ci
+    language: bash
+    paths:
+      - .github/**
+    test_cmd: "bash .github/scripts/structure-validate.sh && bash .github/scripts/lint-skill-frontmatter.sh && bash .github/scripts/lint-agent-frontmatter.sh"
 ci_cd:
   promotion_chain:
     - id: staging
@@ -40,10 +71,4 @@ ci_cd:
         - plugin-ci
         - selective-tests
 test_policy:
-  always_run:
-    - gaia-plugin
   retry_limit: 2
-  triggers:
-    pr:
-      include_stacks:
-        - gaia-plugin
