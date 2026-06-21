@@ -26,6 +26,26 @@ stacks:
       - .husky/**
       - commitlint.config.mjs
     test_cmd: "bash plugins/gaia/tests/run-with-coverage.sh"
+  - name: gaia-statusline
+    language: bash
+    paths:
+      - plugins/gaia/scripts/statusline.sh
+      - plugins/gaia/scripts/statusline-git-dirty-check.sh
+      - plugins/gaia/scripts/statusline-update-check.sh
+      - plugins/gaia/scripts/install-statusline.sh
+      - plugins/gaia/scripts/gaia-statusline-toggle.sh
+      - plugins/gaia/scripts/lib/statusline-glyphs.sh
+      - plugins/gaia/scripts/lib/statusline-colors.sh
+      - plugins/gaia/scripts/lib/statusline-plugin-cache-dir.sh
+      - plugins/gaia/scripts/lib/statusline-cache-reset.sh
+      - plugins/gaia/scripts/lib/statusline-project-cache-key.sh
+      - plugins/gaia/skills/gaia-statusline-enable/**
+      - plugins/gaia/skills/gaia-statusline-disable/**
+      - plugins/gaia/skills/gaia-statusline-refresh/**
+      - plugins/gaia/tests/statusline/**
+    test_cmd: "bats --filter-tags '!hardware-dependent' plugins/gaia/tests/statusline/"
+    cross_refs:
+      - gaia-core
   - name: gaia-docs
     language: bash
     paths:

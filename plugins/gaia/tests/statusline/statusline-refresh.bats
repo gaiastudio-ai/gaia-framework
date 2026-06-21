@@ -203,8 +203,10 @@ _run_refresh_skill() {
   [ "$status" -ne 0 ]
 }
 
-@test "SKILL.md documents the AC6 reconciliation explicitly (per Val F-01)" {
-  grep -qF 'AC6 reconciliation' "$SKILL_DIR/SKILL.md"
+@test "SKILL.md documents the hand-edit reconciliation contract explicitly (per Val F-01)" {
+  # The SKILL must document that a hand-edited statusline is reconciled only by
+  # the user's own explicit action, and must NOT be refreshed via this skill.
+  grep -qiF 'reconciliation' "$SKILL_DIR/SKILL.md"
   grep -qF 'MUST NOT invoke' "$SKILL_DIR/SKILL.md"
 }
 

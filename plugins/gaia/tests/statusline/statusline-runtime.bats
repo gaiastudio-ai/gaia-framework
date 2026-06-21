@@ -37,6 +37,25 @@ SS
 
 teardown() { common_teardown; }
 
+# Write git-state fields (git_dirty + per-class line counts) to the PER-PROJECT
+# git-state cache the runtime actually reads. These fields moved out of the
+# shared latest-release.json into git-state-<key>.json (keyed by the workspace
+# root) to fix the cross-project branch/dirty leak, so a fixture seeding
+# latest-release.json no longer reaches the runtime. Args:
+#   $1 = cache HOME (the test's effective $HOME)
+#   $2 = workspace root (the PROJECT_PATH / current_dir the runtime keys on)
+#   $3 = git-state JSON object (the {git_dirty,staged_*,...} payload)
+_seed_git_state() {
+  local home="$1" root="$2" json="$3"
+  local cache_dir="$home/.claude/gaia-statusline/cache"
+  mkdir -p "$cache_dir"
+  # shellcheck source=/dev/null
+  . "$PLUGIN_ROOT/scripts/lib/statusline-project-cache-key.sh"
+  local f
+  f="$(_statusline_git_state_cache_file "$cache_dir" "$root")"
+  printf '%s\n' "$json" > "$f"
+}
+
 # ---------------------------------------------------------------------------
 # AF-2026-05-21-5 — fresh-install render path (fetcher present, cache absent)
 #
@@ -109,7 +128,7 @@ STUB
   # win. CLAUDE_PLUGIN_ROOT is left unset — the runtime no longer consults
   # it (Claude Code does not set it for the statusLine command, which was
   # the original "GAIA dev" production bug).
-  CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.141.0-active/.claude-plugin"
+  CACHE_DIR="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/1.141.0-active/.claude-plugin"
   mkdir -p "$CACHE_DIR"
   cat > "$CACHE_DIR/plugin.json" <<'PJ'
 { "name": "gaia", "version": "1.141.0-active" }
@@ -228,6 +247,7 @@ PJ
 # TC-STATUSLINE-1 / AT-1 — p95 latency < 100ms across 200 renders, 300ms ceiling
 # ---------------------------------------------------------------------------
 
+# bats test_tags=hardware-dependent
 @test "TC-1: 200 renders p95 < 100ms, max < 300ms (AT-1)" {
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
@@ -419,10 +439,8 @@ JSON
   # read from the cache fields written by statusline-git-dirty-check.sh.
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
-  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
-  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
-{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":true,"staged_added":30,"staged_removed":4,"unstaged_added":12,"unstaged_removed":3}
-JSON
+  _seed_git_state "$TEST_TMP" "$TEST_TMP" \
+    '{"git_dirty":true,"staged_added":30,"staged_removed":4,"unstaged_added":12,"unstaged_removed":3}'
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
   line2="$(echo "$output" | tail -1)"
@@ -440,10 +458,8 @@ JSON
 @test "AF-27-5: dirty tree with no line diff (untracked-only) still shows +0 -0" {
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
-  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
-  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
-{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":true,"staged_added":0,"staged_removed":0,"unstaged_added":0,"unstaged_removed":0}
-JSON
+  _seed_git_state "$TEST_TMP" "$TEST_TMP" \
+    '{"git_dirty":true,"staged_added":0,"staged_removed":0,"unstaged_added":0,"unstaged_removed":0}'
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(echo "$output" | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
@@ -454,11 +470,8 @@ JSON
 @test "AF-27-5: counts absent from cache (legacy dirty=true) default to +0 -0" {
   [ -f "$RUNTIME" ]
   cd "$TEST_TMP"
-  mkdir -p "$TEST_TMP/.claude/gaia-statusline/cache"
   # No staged_*/unstaged_* keys — backward-compat with an old cache.
-  cat > "$TEST_TMP/.claude/gaia-statusline/cache/latest-release.json" <<'JSON'
-{"checked_at_iso":"2026-05-11T12:00:00Z","latest_tag":"1.142.0","current_tag":"1.142.0","update_available":false,"installed_version_stale":false,"git_dirty":true}
-JSON
+  _seed_git_state "$TEST_TMP" "$TEST_TMP" '{"git_dirty":true}'
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(echo "$output" | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
@@ -557,10 +570,10 @@ _model_line() { # $1 = display_name ; prints stripped line 1 (no color)
 @test "AF-27-7: installed runtime re-copies a newer cache runtime + stamps marker" {
   [ -f "$RUNTIME" ]
   local install_dir="$HOME/.claude/gaia-statusline"
-  local cache_scripts="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/scripts"
+  local cache_scripts="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/1.180.3/scripts"
   mkdir -p "$install_dir/lib" "$cache_scripts/lib" \
-           "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/.claude-plugin"
-  printf '{ "name":"gaia","version":"1.180.3" }' > "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/1.180.3/.claude-plugin/plugin.json"
+           "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/1.180.3/.claude-plugin"
+  printf '{ "name":"gaia","version":"1.180.3" }' > "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/1.180.3/.claude-plugin/plugin.json"
   # CACHE = real current runtime + helpers, with a trailing byte so it DIFFERS
   # from the installed copy (forces the self-heal trigger).
   cp "$RUNTIME" "$cache_scripts/statusline.sh"; printf '\n# newer\n' >> "$cache_scripts/statusline.sh"

@@ -22,7 +22,7 @@ teardown() { common_teardown; }
 
 _make_cache_version() {
   local version="$1"
-  local dir="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/$version/.claude-plugin"
+  local dir="$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/$version/.claude-plugin"
   mkdir -p "$dir"
   cat > "$dir/plugin.json" <<EOF
 { "name": "gaia", "version": "$version" }
@@ -72,8 +72,8 @@ _stdin() {
   # A stray non-semver dir (e.g., a backup, a .DS_Store, a partially-
   # extracted archive) MUST NOT confuse version selection.
   _make_cache_version "1.145.0"
-  mkdir -p "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/.tmp-extract"
-  mkdir -p "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-public/gaia/backup-2026-05-12"
+  mkdir -p "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/.tmp-extract"
+  mkdir -p "$HOME/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/backup-2026-05-12"
   stdin="$(_stdin)"
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]

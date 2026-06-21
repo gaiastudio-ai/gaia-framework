@@ -139,9 +139,19 @@ if [ -d "$PLUGIN_CACHE_DIR" ]; then
   fi
 fi
 
-# Tier 2: in-tree repo for dev/test runs.
+# Tier 2: in-tree repo for dev/test runs. The in-tree product source can live
+# under a gaia-public/ dir (the published-source checkout — the canonical
+# layout), a gaia-framework/ dir (legacy), or directly at the project root.
+# All three are probed so an in-tree/dev run resolves regardless of which
+# checkout dir name the workspace uses.
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json" ]; then
+  PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+fi
 if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json" ]; then
   PLUGIN_JSON="$PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json"
+fi
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/plugins/gaia/.claude-plugin/plugin.json" ]; then
+  PLUGIN_JSON="$PROJECT_PATH/plugins/gaia/.claude-plugin/plugin.json"
 fi
 
 # Read the version from whichever tier resolved.

@@ -81,10 +81,14 @@ if [ -d "$PLUGIN_CACHE_DIR" ]; then
   fi
 fi
 
-# Tier 2: in-tree repo at PROJECT_PATH/gaia-framework/... AND at
-# PROJECT_PATH/plugins/... — the second form catches cwd that's already
-# inside the gaia-framework subtree (the doubled-gaia-framework bug from the
-# original code).
+# Tier 2: in-tree repo. The in-tree product source can live under a gaia-public/
+# dir (the published-source checkout — the canonical layout), a gaia-framework/
+# dir (legacy), or directly at PROJECT_PATH/plugins/... (cwd already inside the
+# subtree). All three are probed so an in-tree/dev run resolves regardless of
+# which checkout dir name the workspace uses.
+if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json" ]; then
+  PLUGIN_JSON="$PROJECT_PATH/gaia-public/plugins/gaia/.claude-plugin/plugin.json"
+fi
 if [ -z "$PLUGIN_JSON" ] && [ -r "$PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json" ]; then
   PLUGIN_JSON="$PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json"
 fi
