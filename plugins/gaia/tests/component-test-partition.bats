@@ -35,10 +35,12 @@ setup() {
 }
 
 @test "every component stack carries an explicit test_cmd (AC1)" {
-  # Three stacks, three test_cmd lines.
-  run grep -c '^    test_cmd:' "$CFG"
-  [ "$status" -eq 0 ]
-  [ "$output" -ge 3 ]
+  # One test_cmd per declared stack — assert equality, not a loose floor, so a
+  # stack added without its own test_cmd fails the guard.
+  local stacks test_cmds
+  stacks="$(grep -c '^  - name:' "$CFG")"
+  test_cmds="$(grep -c '^    test_cmd:' "$CFG")"
+  [ "$stacks" -eq "$test_cmds" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -63,8 +65,33 @@ setup() {
   [ "$output" = '["gaia-core"]' ]
 }
 
-@test "a non-statusline shared-lib change resolves to gaia-core (the broad stack) (AC4)" {
+@test "a shared-lib change resolves to gaia-core (the broad stack) (AC4)" {
   run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/lib/resolve-file-to-stack.sh
+  [ "$status" -eq 0 ]
+  [ "$output" = '["gaia-core"]' ]
+}
+
+# ---------------------------------------------------------------------------
+# AC4 (no false-green on orphan paths): a change to a repo-root functional
+# surface that the carved-out stacks do not own (the repo-root test tree,
+# build/CI helper scripts, git hooks, commit-lint config) must resolve to
+# gaia-core and run the full suite — never to [] (which would run zero tests).
+# ---------------------------------------------------------------------------
+
+@test "a repo-root tests/ change resolves to gaia-core, not [] (AC4)" {
+  run "$DETECT" --config "$CFG" --files tests/skills/some-skill.bats
+  [ "$status" -eq 0 ]
+  [ "$output" = '["gaia-core"]' ]
+}
+
+@test "a repo-root build script change resolves to gaia-core, not [] (AC4)" {
+  run "$DETECT" --config "$CFG" --files scripts/version-bump.js
+  [ "$status" -eq 0 ]
+  [ "$output" = '["gaia-core"]' ]
+}
+
+@test "the commit-lint config change resolves to gaia-core, not [] (AC4)" {
+  run "$DETECT" --config "$CFG" --files commitlint.config.mjs
   [ "$status" -eq 0 ]
   [ "$output" = '["gaia-core"]' ]
 }
@@ -125,34 +152,29 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# AC2 drift-guard: the docs stack's pinned bats list must equal exactly the set
-# of bats that reference documentation/. A new docs-touching bats added without
-# wiring it into the docs test_cmd would be a silent narrowing gap (false-green
-# for docs changes), so this fails CI until the list is updated.
+# AC2 drift-guard: the docs stack must DERIVE its bats at run time (not pin a
+# static list that drifts silently). The test_cmd must route through
+# run-docs-stack-tests.sh, and that resolver must actually resolve a non-empty
+# set. A static list would let a new docs-page test added without re-pinning
+# silently never run on a docs-only PR (a false-green); deriving from the
+# canonical signal closes that gap by construction.
 # ---------------------------------------------------------------------------
 
-@test "the docs stack test_cmd lists exactly the bats that reference documentation/ (AC2)" {
-  # The bats that actually exercise the documentation site (by referencing the
-  # documentation/ path). This guard file itself names documentation/ in its
-  # own grep pattern, so exclude it — it tests the partition, it does not test
-  # the docs site.
-  local actual
-  actual="$(grep -lE 'documentation/' "$TESTS_DIR"/*.bats \
-            | xargs -n1 basename \
-            | grep -vx 'component-test-partition.bats' \
-            | sort -u)"
+@test "the docs stack test_cmd derives its bats via the resolver, not a static list (AC2)" {
+  # The gaia-docs test_cmd must invoke run-docs-stack-tests.sh.
+  local docs_cmd
+  docs_cmd="$(awk '/name: gaia-docs/{f=1} f&&/test_cmd:/{print; exit}' "$CFG")"
+  [[ "$docs_cmd" == *"run-docs-stack-tests.sh"* ]]
+  # It must NOT pin individual .bats paths (the drift-prone anti-pattern).
+  [[ "$docs_cmd" != *".bats"* ]]
+}
 
-  # The bats pinned into the gaia-docs stack's test_cmd in the CI slice.
-  local pinned
-  pinned="$(grep -A1 'name: gaia-docs' "$CFG" >/dev/null; \
-            awk '/name: gaia-docs/{f=1} f&&/test_cmd:/{print; exit}' "$CFG" \
-            | grep -oE 'tests/[a-zA-Z0-9._-]+\.bats' | xargs -n1 basename | sort -u)"
-
-  if [ "$actual" != "$pinned" ]; then
-    echo "documentation/-referencing bats (actual):"; echo "$actual"
-    echo "--- pinned in gaia-docs test_cmd:"; echo "$pinned"
-    echo "--- the docs stack test_cmd in .gaia/ci-config.yaml is out of sync;"
-    echo "    add/remove the drifted bats so the pinned list matches exactly."
-    return 1
-  fi
+@test "the docs-test resolver resolves a non-empty set of documentation-site bats (AC2)" {
+  local resolver="$REPO_ROOT/plugins/gaia/scripts/run-docs-stack-tests.sh"
+  [ -x "$resolver" ] || [ -f "$resolver" ]
+  run bash "$resolver" --list
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  # Sanity: the canonical docs-page test is in the resolved set.
+  [[ "$output" == *"test07-docs.bats"* ]]
 }

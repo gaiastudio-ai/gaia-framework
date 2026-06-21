@@ -6,8 +6,10 @@
 #
 #   resolve_file_to_stack <file_path> <stacks_table_file>
 #     Resolves a file path to its owning stack name using:
+#       0. Exact literal-path match (a wildcard-free glob-type row is a full
+#          path — the most specific match, resolved before any prefix)
 #       1. Longest-prefix-wins matching (prefix-type rows)
-#       2. Glob-fallback matching (glob-type rows, with single-level depth guard)
+#       2. Wildcard-glob fallback (glob-type rows, with single-level depth guard)
 #       3. Root-dot catch-all ("." candidate, lowest priority)
 #     Returns the matched stack name on stdout, or empty string on no match.
 #
