@@ -5,7 +5,7 @@
 # no secrets, no local paths, no environments/release/distribution. A CI lint
 # regenerates this and fails on drift.
 stacks:
-  - name: gaia-plugin
+  - name: gaia-core
     language: bash
     paths:
       - plugins/gaia/scripts/**
@@ -21,6 +21,21 @@ stacks:
       - plugins/gaia/docs/**
       - plugins/gaia/tests/**
       - plugins/gaia/test/**
+      - tests/**
+      - scripts/**
+      - .husky/**
+      - commitlint.config.mjs
+    test_cmd: "bash plugins/gaia/tests/run-with-coverage.sh"
+  - name: gaia-docs
+    language: bash
+    paths:
+      - documentation/**
+    test_cmd: "bash plugins/gaia/scripts/run-docs-stack-tests.sh"
+  - name: gaia-ci
+    language: bash
+    paths:
+      - .github/**
+    test_cmd: "bash .github/scripts/structure-validate.sh && bash .github/scripts/lint-skill-frontmatter.sh && bash .github/scripts/lint-agent-frontmatter.sh"
 ci_cd:
   promotion_chain:
     - id: staging
@@ -40,10 +55,4 @@ ci_cd:
         - plugin-ci
         - selective-tests
 test_policy:
-  always_run:
-    - gaia-plugin
   retry_limit: 2
-  triggers:
-    pr:
-      include_stacks:
-        - gaia-plugin
