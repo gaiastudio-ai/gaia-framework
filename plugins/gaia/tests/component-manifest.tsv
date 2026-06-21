@@ -225,15 +225,12 @@ core	plugin-ci-hardware-tag-skip.bats
 core	plugin-ci-workflow.bats
 core	plugin-version-lockstep.bats
 core	plugin-version-resolution.bats
-core	pre-warm-script.bats
 core	promotion-trigger.bats
 core	publish-adapters.bats
 core	quality-gates.bats
-core	reconcile-stale-graph.bats
 core	resolve-config-cwd-independence.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
-core	run-tests.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats
@@ -279,7 +276,6 @@ core	vcp-ux-06.bats
 core	vcp-ux-generate.bats
 core	vcp-ux-import.bats
 core	verdict-resolver-parameterized.bats
-scripts-adapters	reconcile-cross-stack.bats
 scripts-brain	brain-c2-unlinked-predicate.bats
 scripts-brain	brain-feed-smoke.bats
 scripts-brain	brain-harvest-edges.bats
@@ -427,10 +423,13 @@ scripts-core	observability-hardening.bats
 scripts-core	orchestration-warning-wiring.bats
 scripts-core	orchestration-warning.bats
 scripts-core	plugin-cache-recovery.bats
+scripts-core	pre-warm-script.bats
 scripts-core	probe-verdict-resolver-integration.bats
 scripts-core	product-brief-post-complete-gate.bats
 scripts-core	product-brief-pre-start-gate.bats
 scripts-core	project-config-slice.bats
+scripts-core	reconcile-cross-stack.bats
+scripts-core	reconcile-stale-graph.bats
 scripts-core	resolve-affected-set.bats
 scripts-core	resolve-config.bats
 scripts-core	resolve-story-file-coverage-stub.bats
@@ -442,6 +441,7 @@ scripts-core	review-gate.bats
 scripts-core	review-runner.bats
 scripts-core	review-summary-gen-canonical-relpaths.bats
 scripts-core	run-stack-tests.bats
+scripts-core	run-tests.bats
 scripts-core	run-with-retry.bats
 scripts-core	sarif-multitool-merge.bats
 scripts-core	selective-test-driver.bats

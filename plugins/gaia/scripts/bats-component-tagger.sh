@@ -75,9 +75,12 @@ _component_of_path() {
   case "$1" in
     scripts/lib/*)            printf 'scripts-lib' ;;
     scripts/brain/*)          printf 'scripts-brain' ;;
-    scripts/adapters/*)       printf 'scripts-adapters' ;;
     scripts/review-common/*)  printf 'scripts-review-common' ;;
-    scripts/*)                printf 'scripts-core' ;;   # top-level foundation
+    # scripts/adapters/* folds into scripts-core: there is no gaia-adapters
+    # stack to consume a separate bucket, and scripts/** (gaia-core) already
+    # covers scripts/adapters/, so a distinct label would be a name with no
+    # runner — fold it rather than leave a manifest-vs-config asymmetry.
+    scripts/*)                printf 'scripts-core' ;;   # top-level foundation + adapters
     skills/*)                 printf 'skills' ;;
     *)                        printf '' ;;               # unknown -> caller -> core
   esac
@@ -91,11 +94,15 @@ _refs_to_components() {
   {
     # VAR-rooted refs. SCRIPTS_DIR/LIB_DIR root at scripts/ (LIB_DIR == scripts/lib),
     # SKILLS_DIR roots at skills/, CLAUDE_PLUGIN_ROOT/PLUGIN_ROOT root at plugins/gaia/.
-    # Capture the path that follows the var, then normalise to a plugins/gaia-
-    # relative path before classifying.
-    grep -hoE '(SCRIPTS_DIR|LIB_DIR|SKILLS_DIR|CLAUDE_PLUGIN_ROOT|PLUGIN_ROOT)[/"][A-Za-z0-9_./${}-]+\.sh' "$f" 2>/dev/null \
+    # Both bare ($SCRIPTS_DIR/...) and braced (${SCRIPTS_DIR}/...) forms are
+    # matched — the optional \{? / }? in the pattern admits the braced form,
+    # which 34 bats files use. Capture the path after the var, then normalise to
+    # a plugins/gaia-relative path before classifying.
+    grep -hoE '\{?(SCRIPTS_DIR|LIB_DIR|SKILLS_DIR|CLAUDE_PLUGIN_ROOT|PLUGIN_ROOT)\}?[/"][A-Za-z0-9_./${}-]+\.sh' "$f" 2>/dev/null \
       | while IFS= read -r ref; do
           local var suffix rel
+          # Normalise away ${ } so a braced ref reduces to the bare form.
+          ref="$(printf '%s' "$ref" | tr -d '{}')"
           var="${ref%%[/\"]*}"
           suffix="${ref#"$var"}"; suffix="${suffix#[/\"]}"
           # strip any leftover ${} / quotes

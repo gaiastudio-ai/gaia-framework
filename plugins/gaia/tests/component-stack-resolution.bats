@@ -83,6 +83,7 @@ setup() {
   run "$CROSS" --config "$CFG" --stacks '["gaia-core"]'
   [ "$status" -eq 0 ]
   [[ "$output" != *'"gaia-scripts-lib"'* ]]
+  [[ "$output" != *'"gaia-skills"'* ]]
   [[ "$output" != *'"gaia-brain"'* ]]
   [[ "$output" != *'"gaia-review-common"'* ]]
 }
