@@ -4,14 +4,15 @@ name: plugin-ci
 # never ran on staging -> main sequences and the coverage wrapper's silent
 # abort stayed hidden. Path filter `plugins/gaia/**` keeps noise low by
 # scoping to the product source surface the wrapper actually guards.
+# Triggered on PRs only. The PR (pull_request) event gates every change before
+# it lands — including the staging->main promotion PR, where the promotion
+# full-suite escalation reads the PR's base.ref. The old `push:` trigger re-ran
+# the entire suite a SECOND time on the post-merge commit (feature->staging AND
+# staging->main), duplicating ~16 min of bats per story for no added safety on a
+# squash-merge flow. Dropped to remove that duplication. (Release tag/publish is
+# command-driven via /gaia-release + /gaia-publish; it never depended on this.)
 on:
   pull_request:
-    branches: [main, staging]
-    paths:
-      - 'plugins/gaia/**'
-      - '.github/workflows/plugin-ci.yml'
-      - 'scripts/audit-v2-migration.sh'
-  push:
     branches: [main, staging]
     paths:
       - 'plugins/gaia/**'
