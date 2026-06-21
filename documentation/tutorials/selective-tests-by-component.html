@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Selective Tests by Component (Multi-Language) - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="../recipes.html">Recipes</a></li>
+        </ul>
+        <p class="sidebar-section-title">Tutorials</p>
+        <ul>
+          <li><a href="first-30-minutes.html">First 30 Minutes</a></li>
+          <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
+          <li><a href="ci-scenarios-by-team-size.html">CI Scenarios by Team Size</a></li>
+          <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
+          <li><a href="selective-test-execution.html">Selective Test Execution</a></li>
+          <li><a href="selective-tests-by-component.html" class="active">Selective Tests by Component</a></li>
+          <li><a href="automated-versioning-and-deploy.html">Automated Versioning &amp; Deploy</a></li>
+          <li><a href="environments-and-promotion.html">Environments &amp; Promotion</a></li>
+          <li><a href="project-shapes-overview.html">Project Shapes Overview</a></li>
+          <li><a href="shape-single-repo.html">Shape: Single Repo</a></li>
+          <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
+          <li><a href="shape-microservices.html">Shape: Microservices</a></li>
+          <li><a href="shape-multi-repo.html">Shape: Multi-Repo / Per-Service</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#why">Why narrow by component</a></li>
+          <li><a href="#how">How narrowing works</a></li>
+          <li><a href="#one-stack-trap">The single-stack trap</a></li>
+          <li><a href="#components">Model each component as a stack</a></li>
+          <li><a href="#multi-language">Multi-language example</a></li>
+          <li><a href="#cross-refs">Dependencies with cross_refs</a></li>
+          <li><a href="#test-cmd">Per-component test commands</a></li>
+          <li><a href="#before-after">Before / after</a></li>
+          <li><a href="#checklist">Setup checklist</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <h1>Selective Tests by Component (Multi-Language)</h1>
+
+      <p>
+        Selective test execution runs only the test suites affected by a change.
+        The unit of narrowing is a <code>stacks[]</code> entry &mdash; and a
+        &ldquo;stack&rdquo; does <strong>not</strong> have to mean a separate
+        service or a separate repository. It can be a <em>component</em> inside a
+        single repo: a frontend, a backend, a shared library, a docs tree, a set
+        of scripts. This tutorial shows how to split one project into component
+        stacks &mdash; including a mixed-language example (React, Angular,
+        Python, Go, C++) &mdash; so a change to one component runs only that
+        component&rsquo;s tests.
+      </p>
+
+      <h2 id="why">Why narrow by component</h2>
+      <p>
+        On a project with several components, a one-line change to the frontend
+        should not run the backend and firmware test suites. Without narrowing, a
+        developer waits for the <em>whole</em> suite on every pull request. With
+        component narrowing, the pull request runs only the affected
+        component&rsquo;s tests &mdash; minutes instead of the full run &mdash;
+        while the <strong>full</strong> suite still runs once at the final
+        promotion (staging &rarr; main) as the last gate before release.
+      </p>
+
+      <h2 id="how">How narrowing works</h2>
+      <p>
+        Three deterministic steps drive every pull request:
+      </p>
+      <ol>
+        <li>
+          <strong>detect-affected</strong> &mdash; maps each changed file path
+          to its owning <code>stacks[]</code> entry by longest-prefix match on
+          that entry&rsquo;s <code>paths</code> globs.
+        </li>
+        <li>
+          <strong>cross-refs walk</strong> &mdash; expands the affected set along
+          declared <code>cross_refs</code> dependency edges (a change to a shared
+          component pulls in the components that depend on it).
+        </li>
+        <li>
+          <strong>generate-pipeline</strong> &mdash; emits one CI matrix job per
+          affected stack; each job runs that stack&rsquo;s own
+          <code>test_cmd</code>.
+        </li>
+      </ol>
+      <p>
+        The narrowing is therefore only as fine-grained as your
+        <code>stacks[]</code> partition. One stack covering the whole repo
+        narrows to &ldquo;everything.&rdquo; Many component stacks narrow to
+        &ldquo;just the component(s) you touched.&rdquo;
+      </p>
+
+      <h2 id="one-stack-trap">The single-stack trap</h2>
+      <p>
+        A common configuration declares a single stack whose <code>paths</code>
+        cover the entire source tree:
+      </p>
+      <pre><code># .gaia/config/project-config.yaml  (narrows to nothing useful)
+stacks:
+  - name: app
+    language: typescript
+    paths:
+      - "src/**"
+      - "lib/**"
+      - "docs/**"
+      - "tests/**"
+    test_cmd: "npm test"        # the WHOLE suite, every time</code></pre>
+      <p>
+        Here <code>detect-affected</code> always returns <code>["app"]</code>
+        &mdash; one stack out of one &mdash; so the &ldquo;narrowed&rdquo; run is
+        the full suite. The machinery works; there is simply nothing to narrow
+        <em>to</em>. The fix is to split <code>app</code> into components.
+      </p>
+
+      <h2 id="components">Model each component as a stack</h2>
+      <p>
+        Give each component its own <code>stacks[]</code> entry with a
+        non-overlapping <code>paths</code> list and its own <code>test_cmd</code>.
+        Components can share a language or mix languages &mdash; the
+        <code>language</code> field only sets the default tooling/persona; the
+        narrowing is driven entirely by <code>paths</code>.
+      </p>
+      <pre><code># .gaia/config/project-config.yaml  (single repo, four components)
+stacks:
+  - name: web
+    language: typescript
+    paths: [ "apps/web/**" ]
+    test_cmd: "npm --prefix apps/web test"
+  - name: api
+    language: python
+    paths: [ "services/api/**" ]
+    test_cmd: "pytest services/api"
+  - name: shared
+    language: typescript
+    paths: [ "packages/shared/**" ]
+    test_cmd: "npm --prefix packages/shared test"
+  - name: docs
+    language: markdown
+    paths: [ "docs/**", "*.md" ]
+    test_cmd: "markdownlint docs"</code></pre>
+      <p>
+        Now a change under <code>apps/web/</code> resolves to
+        <code>["web"]</code> and CI runs only <code>npm --prefix apps/web test</code>.
+        A docs-only change resolves to <code>["docs"]</code> and runs only the
+        markdown lint &mdash; the application suites are skipped entirely.
+      </p>
+
+      <h2 id="multi-language">Multi-language example (React, Angular, Python, Go, C++)</h2>
+      <p>
+        Components are language-agnostic, so a single repository can hold a React
+        web app, an Angular admin console, a Python API, a Go worker, and a C++
+        firmware module &mdash; each narrowing independently:
+      </p>
+      <pre><code># .gaia/config/project-config.yaml  (mixed-language monorepo)
+stacks:
+  # ---- frontend components ----
+  - name: web-react
+    language: typescript
+    paths: [ "apps/web/**" ]
+    test_cmd: "npm --prefix apps/web run test:ci"
+  - name: admin-angular
+    language: angular
+    paths: [ "apps/admin/**" ]
+    test_cmd: "npm --prefix apps/admin run test -- --watch=false"
+
+  # ---- backend components ----
+  - name: api-python
+    language: python
+    paths: [ "services/api/**" ]
+    test_cmd: "pytest services/api -q"
+  - name: worker-go
+    language: go
+    paths: [ "services/worker/**" ]
+    test_cmd: "go test ./services/worker/..."
+
+  # ---- firmware component ----
+  - name: firmware-cpp
+    language: cpp
+    paths: [ "firmware/**" ]
+    test_cmd: "ctest --test-dir firmware/build"
+
+  # ---- shared design system used by BOTH frontends ----
+  - name: design-system
+    language: typescript
+    paths: [ "packages/design-system/**" ]
+    test_cmd: "npm --prefix packages/design-system test"
+    cross_refs: [ "web-react", "admin-angular" ]</code></pre>
+      <table>
+        <thead>
+          <tr>
+            <th>You change&hellip;</th>
+            <th>Affected set</th>
+            <th>CI runs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>apps/web/src/App.tsx</code></td>
+            <td><code>["web-react"]</code></td>
+            <td>React tests only</td>
+          </tr>
+          <tr>
+            <td><code>apps/admin/src/app.component.ts</code></td>
+            <td><code>["admin-angular"]</code></td>
+            <td>Angular tests only</td>
+          </tr>
+          <tr>
+            <td><code>services/api/routes/users.py</code></td>
+            <td><code>["api-python"]</code></td>
+            <td>pytest (API) only</td>
+          </tr>
+          <tr>
+            <td><code>services/worker/main.go</code></td>
+            <td><code>["worker-go"]</code></td>
+            <td>go test (worker) only</td>
+          </tr>
+          <tr>
+            <td><code>firmware/src/driver.cpp</code></td>
+            <td><code>["firmware-cpp"]</code></td>
+            <td>ctest (firmware) only</td>
+          </tr>
+          <tr>
+            <td><code>packages/design-system/Button.tsx</code></td>
+            <td><code>["design-system", "web-react", "admin-angular"]</code></td>
+            <td>design-system + BOTH frontends (via cross_refs)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 id="cross-refs">Dependencies between components: cross_refs</h2>
+      <p>
+        Components are rarely independent. When component B imports component A, a
+        change to A must also test B &mdash; otherwise B&rsquo;s narrow run could
+        pass while A&rsquo;s change silently breaks it. Declare the dependency
+        with <code>cross_refs</code> on the <em>depended-upon</em> stack:
+      </p>
+      <pre><code>  - name: design-system
+    paths: [ "packages/design-system/**" ]
+    test_cmd: "npm --prefix packages/design-system test"
+    cross_refs: [ "web-react", "admin-angular" ]   # both frontends depend on it</code></pre>
+      <p>
+        The cross-refs walk is transitive: if <code>web-react</code> in turn had
+        dependents, they would be pulled in too. Model the real import graph;
+        when in doubt, add the edge &mdash; a missed edge is a false-green, an
+        extra edge merely runs one more suite.
+      </p>
+
+      <h2 id="test-cmd">Per-component test commands</h2>
+      <p>
+        Each stack&rsquo;s <code>test_cmd</code> is the exact command CI runs for
+        that component, executed from the repository root. It must select
+        <em>only</em> that component&rsquo;s tests &mdash; the narrowing is only
+        as good as the command&rsquo;s scoping:
+      </p>
+      <ul>
+        <li><strong>React / Angular</strong>: scope to the workspace, e.g. <code>npm --prefix apps/web test</code> or an Nx/Turbo target like <code>nx test web</code>.</li>
+        <li><strong>Python</strong>: point pytest at the package directory, e.g. <code>pytest services/api</code>.</li>
+        <li><strong>Go</strong>: scope the package pattern, e.g. <code>go test ./services/worker/...</code>.</li>
+        <li><strong>C++</strong>: target the component&rsquo;s test binary/dir, e.g. <code>ctest --test-dir firmware/build</code>.</li>
+      </ul>
+      <p>
+        If a test runner cannot select by directory, organise tests so each
+        component&rsquo;s tests live under their own path (or carry a tag the
+        command can filter on). A flat test pile where any component&rsquo;s
+        tests are interleaved cannot be narrowed reliably.
+      </p>
+
+      <h2 id="before-after">Before / after</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Change</th>
+            <th>Single stack (whole repo)</th>
+            <th>Component stacks</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>One React component</td>
+            <td>Full suite (all languages)</td>
+            <td>React tests only</td>
+          </tr>
+          <tr>
+            <td>One Python route</td>
+            <td>Full suite</td>
+            <td>pytest (API) only</td>
+          </tr>
+          <tr>
+            <td>Docs typo</td>
+            <td>Full suite</td>
+            <td>markdown lint only</td>
+          </tr>
+          <tr>
+            <td>Shared design token</td>
+            <td>Full suite</td>
+            <td>design-system + dependent frontends</td>
+          </tr>
+          <tr>
+            <td>Promotion staging &rarr; main</td>
+            <td>Full suite</td>
+            <td>Full suite (unchanged &mdash; last gate before release)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 id="checklist">Setup checklist</h2>
+      <ol>
+        <li>List your repo&rsquo;s components and the directory each owns.</li>
+        <li>Add one <code>stacks[]</code> entry per component with a
+          non-overlapping <code>paths</code> list and a <code>test_cmd</code>
+          that runs <em>only</em> that component&rsquo;s tests.</li>
+        <li>Organise tests so each component&rsquo;s tests are selectable by path
+          (or tag).</li>
+        <li>Add <code>cross_refs</code> edges for every &ldquo;B depends on
+          A&rdquo; relationship (declared on A, listing its dependents).</li>
+        <li>Validate with <code>/gaia-config-validate</code>, then open a small
+          single-component pull request and confirm CI ran only that
+          component&rsquo;s suite.</li>
+        <li>Keep the full suite on the staging &rarr; main promotion &mdash; it
+          is the final gate and is intentionally not narrowed.</li>
+      </ol>
+
+      <p>
+        <strong>What to read next:</strong>
+        <a href="selective-test-execution.html">Selective Test Execution</a> for
+        the per-trigger <code>test_policy</code> and safety rails, and
+        <a href="shape-multi-repo.html">Shape: Multi-Repo / Per-Service</a> when
+        components live in separate repositories.
+      </p>
+    </main>
+  </div>
+</body>
+</html>
