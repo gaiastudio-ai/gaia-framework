@@ -175,13 +175,16 @@ EXEMPT_FILES=(
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: skills-bats-tests job has identical on-trigger parity with bats-tests" {
-  # Both jobs share the same workflow-level `on:` block (push + pull_request to
-  # main and staging). This test asserts the workflow-level on-trigger block
-  # contains both events; per-job triggers are not used, so parity is implied
-  # by the single shared block.
+@test "AC3: skills-bats-tests job shares the workflow on-trigger with bats-tests (PR-only)" {
+  # Both jobs share the single workflow-level `on:` block, so they trigger
+  # identically (parity is implied by the shared block; per-job triggers are not
+  # used). The workflow is PR-only: it triggers on pull_request to main/staging
+  # and intentionally NOT on push — the post-merge push re-ran the full suite a
+  # second time per change (feature->staging AND staging->main) with no added
+  # safety on a squash-merge flow. The pull_request event already gates every
+  # change, including the staging->main promotion full-suite escalation.
   run grep -E '^\s*pull_request:' "$WORKFLOW"
   [ "$status" -eq 0 ]
   run grep -E '^\s*push:' "$WORKFLOW"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
 }
