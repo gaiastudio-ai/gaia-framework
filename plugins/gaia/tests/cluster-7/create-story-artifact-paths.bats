@@ -220,12 +220,15 @@ mk_shared_no_override() {
 # ---------------------------------------------------------------------------
 
 @test "EC-9: fixture isolation — host project-config.yaml unchanged" {
-  # Capture mtime of host config (if it exists) before and after the test,
-  # to assert the test fixture writes only to TEST_TMP.
+  # The fixture must write only under TEST_TMP and never MODIFY the real host
+  # config. Compare CONTENT (sha) before/after, not mtime: a read can shift
+  # atime/mtime on some filesystems/CI runners even though the file's bytes are
+  # untouched, so an mtime check flakes while a content check captures the real
+  # "was it modified" contract.
   local host_config="$SKILLS_DIR/../config/project-config.yaml"
   local before=""
   if [ -f "$host_config" ]; then
-    before=$(stat -f '%m' "$host_config" 2>/dev/null || stat -c '%Y' "$host_config" 2>/dev/null || echo "0")
+    before=$(shasum -a 256 "$host_config" 2>/dev/null | awk '{print $1}')
   fi
 
   mk_shared_with_overrides "$TEST_TMP/skill"
@@ -235,7 +238,7 @@ mk_shared_no_override() {
 
   local after=""
   if [ -f "$host_config" ]; then
-    after=$(stat -f '%m' "$host_config" 2>/dev/null || stat -c '%Y' "$host_config" 2>/dev/null || echo "0")
+    after=$(shasum -a 256 "$host_config" 2>/dev/null | awk '{print $1}')
   fi
   [ "$before" = "$after" ]
 }
