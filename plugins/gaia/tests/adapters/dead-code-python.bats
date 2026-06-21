@@ -67,8 +67,12 @@ run_adapter() {
 # --- AC5 / scenario 5 — vulture absent → graceful degrade --------------------
 @test "E70-S8 python (scenario 5): vulture absent → WARNING + exit 0" {
   rm -f "$FAKE_BIN/vulture"
-  PATH="$FAKE_BIN:/usr/bin:/bin" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_PYTHON_ENABLED=true \
-    PY_PROJECT_ROOT="$FX" PY_OUT_DIR="$OUT" run bash "$ADAPTER"
+  # Empty system PATH (FAKE_BIN only) so `command -v vulture` genuinely fails
+  # regardless of what the runner has installed; absolute /bin/bash because an
+  # empty PATH cannot resolve `bash`. The absence branch exits before any other
+  # tool is needed.
+  run env PATH="$FAKE_BIN" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_PYTHON_ENABLED=true \
+    PY_PROJECT_ROOT="$FX" PY_OUT_DIR="$OUT" /bin/bash "$ADAPTER"
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARNING"* ]]
   [[ "$output" == *"vulture"* ]]
