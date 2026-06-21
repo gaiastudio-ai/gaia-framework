@@ -9,7 +9,6 @@ stacks:
     language: bash
     paths:
       - plugins/gaia/scripts/**
-      - plugins/gaia/skills/**
       - plugins/gaia/agents/**
       - plugins/gaia/hooks/**
       - plugins/gaia/tools/**
@@ -26,6 +25,31 @@ stacks:
       - .husky/**
       - commitlint.config.mjs
     test_cmd: "BATS_FILTER_TAGS='!hardware-dependent' BATS_JOBS=2 bash plugins/gaia/tests/run-with-coverage.sh"
+    cross_refs:
+      - gaia-scripts-lib
+      - gaia-skills
+      - gaia-brain
+      - gaia-review-common
+  - name: gaia-scripts-lib
+    language: bash
+    paths:
+      - plugins/gaia/scripts/lib/**
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-lib"
+  - name: gaia-skills
+    language: bash
+    paths:
+      - plugins/gaia/skills/**
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh skills"
+  - name: gaia-brain
+    language: bash
+    paths:
+      - plugins/gaia/scripts/brain/**
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-brain"
+  - name: gaia-review-common
+    language: bash
+    paths:
+      - plugins/gaia/scripts/review-common/**
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-review-common"
   - name: gaia-statusline
     language: bash
     paths:

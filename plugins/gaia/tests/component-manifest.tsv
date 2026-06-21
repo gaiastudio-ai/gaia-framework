@@ -85,6 +85,7 @@ core	class-b-mixed-state-triage.bats
 core	classify-commits-squash-bump.bats
 core	code-review-standards-rubric.bats
 core	component-manifest-drift-guard.bats
+core	component-stack-resolution.bats
 core	component-test-partition.bats
 core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats
@@ -210,6 +211,7 @@ core	manual-test-docs.bats
 core	meeting-val-bridge-anti-pattern.bats
 core	mode-b-docs.bats
 core	mode-b-parity.bats
+core	never-run-subdir-guard.bats
 core	no-bsd-awk-incompatible-anchors.bats
 core	no-leaked-ids-in-test-names.bats
 core	non-git-cwd-guard.bats
