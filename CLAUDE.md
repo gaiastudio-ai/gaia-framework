@@ -66,6 +66,12 @@ If you are uncertain whether a behaviour is a bug or by design, **read the docs 
 
 ## Hard Rules
 
+- **NEVER defer, descope, skip, or partially-complete any work without first informing the user and getting their explicit approval. This is STRICT and non-negotiable.** If you cannot finish a task, an acceptance criterion, a story, or any part of what was asked — or you decide some part should be "out of scope", "a follow-on", "deferred to a later story", or "left as backlog" — you MUST stop, tell the user plainly what you are proposing to leave undone and why, and wait for their decision. Silence is not consent. The failure mode this prevents: an agent quietly narrows scope, marks the visible part done, and the user never learns the rest was dropped unless they happen to ask. Do not let that happen. Concretely:
+  - Surface every deferral the moment you decide it — in your turn's response, in plain language, not buried in a story file, commit message, or artifact the user may never read.
+  - A deferral is only legitimate once the user has seen it and agreed. Until then, treat the full original scope as still owed.
+  - Marking a story/AC `done` or `delivered` while any of its scope is unmet is forbidden unless the user explicitly approved that carve-out — and the deferred remainder must be filed as a tracked backlog story (never left only as prose).
+  - When work you complete *surfaces* new latent issues or follow-ons, name them explicitly to the user and ask whether to file/handle them; do not assume they will ask.
+  - Be honest by default: report what is actually done, what is not, and what you chose not to do — every time, without being prompted.
 - No secrets, credentials, or `.env` files in commits.
 - Feature branches only — never commit directly to `main` or `staging` (or whatever protected branches the project uses).
 - No Claude/AI attribution in commit messages or PR descriptions. Commits read as if a human developer wrote them.
