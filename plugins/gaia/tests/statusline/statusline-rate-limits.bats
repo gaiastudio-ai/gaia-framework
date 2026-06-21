@@ -148,11 +148,16 @@ _run_rich() { # $1 = stdin
 
 # ---------- float percentage truncation ------------------------------------
 
-@test "float used_percentage (23.5) truncates to 23" {
+@test "float used_percentage truncates to int" {
+  # used_percentage may arrive as a float; the runtime truncates before the
+  # percent is rendered. Assert on the RENDERED segment specifically — a bare
+  # "23.5" substring check is fragile (it can match unrelated harness text in
+  # some CI environments), so verify the segment shows the truncated "5h:23%"
+  # and that the float-form segment "5h:23.5%" is NOT emitted.
   _run_rich "$(_stdin_rl 23.5 7980 null '')"
   stripped="$(_strip_sgr "$output")"
   echo "$stripped" | grep -q "5h:23%"
-  ! echo "$stripped" | grep -q "23.5"
+  ! echo "$stripped" | grep -q "5h:23\.5"
 }
 
 # ---------- theme + width gating (unchanged contract) ----------------------

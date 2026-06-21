@@ -114,23 +114,18 @@ CACHE
 }
 
 @test "TC-STATUSLINE-17 (c): cache reset is idempotent — second run on canonical pruned cache is byte-identical" {
-  # Seed a pruned cache file IN CANONICAL JQ FORMAT (the post-reset
-  # shape jq produces — pretty-printed with 2-space indent). The idiom
-  # `cmp -s` short-circuits the rewrite only when byte-equal, so we
-  # compare against the exact format jq emits. A first-run jq normalizes
-  # whatever shape the input had into canonical form; the SECOND run
-  # against the canonical-shaped input is the meaningful idempotency
-  # contract.
-  cat > "$HOME/.claude/gaia-statusline/cache/latest-release.json" <<'PRE'
-{
-  "git_dirty": {
-    "is_dirty": false,
-    "added": 0,
-    "removed": 0
-  }
-}
-PRE
+  # Seed a pruned cache file in the EXACT canonical shape THIS jq produces.
+  # The reset short-circuits (no rewrite, mtime preserved) only when its
+  # freshly-pruned output is byte-identical to the current file. Hardcoding
+  # jq's pretty-print is brittle across jq versions (indent/format skew makes
+  # the bytes differ, the short-circuit misses, and the rewrite bumps mtime —
+  # a CI-only failure). Instead, derive the canonical form by running the same
+  # transform the reset uses, so the precondition holds for whatever jq is
+  # installed.
   local cache="$HOME/.claude/gaia-statusline/cache/latest-release.json"
+  printf '%s\n' '{"git_dirty":{"is_dirty":false,"added":0,"removed":0}}' \
+    | jq 'del(.checked_at_iso, .latest_tag, .current_tag, .update_available, .installed_version_stale)' \
+    > "$cache"
   source "$PLUGIN_ROOT/scripts/lib/statusline-cache-reset.sh"
   # First reset call against canonical input — should be a no-op.
   local before_sum
