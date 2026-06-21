@@ -206,13 +206,15 @@ _drifted_dirs() {
     printf '%s\n' "${fail_lines[@]}" >&2
     return 1
   fi
-  # Sanity floor: when the live tree HAS epic dirs, a healthy project has many,
-  # so a near-empty match count would signal an accidental empty-loop bug. On a
-  # bare checkout with no live epic dirs (e.g. published-source CI), there is
-  # nothing to enumerate — waive the floor rather than fail on absent state.
+  # Sanity floor: when the live tree HAS epic dirs, at least half of them
+  # (excluding the documented drift allow-list) must match byte-for-byte — a
+  # large shortfall signals a real resolver regression, while a relative floor
+  # still tolerates the allow-listed drift cases. On a bare checkout with no
+  # live epic dirs (e.g. published-source CI) there is nothing to enumerate, so
+  # the floor is waived rather than failing on absent state.
   local present; present="$(find "$impl_dir" -maxdepth 1 -type d -name 'epic-E*' 2>/dev/null | wc -l | tr -d ' ')"
   if [ "$present" -gt 0 ]; then
-    [ "$matched" -ge 1 ]
+    [ "$matched" -ge $(( present / 2 )) ]
   fi
 }
 

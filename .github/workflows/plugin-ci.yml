@@ -427,16 +427,19 @@ jobs:
       - name: Run component test subdirectories
         run: |
           # Each top-level subdir under plugins/gaia/tests/ that has no other
-          # runner. bats <dir> is non-recursive, so review-parity (nested) and
-          # scripts/review-common (nested) are expanded to explicit files.
+          # runner. bats <dir> is non-recursive, so any subdir whose tests live
+          # one level deeper (review-parity, scripts/review-common, spikes/*) is
+          # expanded to explicit files via find — listing such a subdir in the
+          # flat loop would run `bats <dir>` against an empty top level (1..0)
+          # and silently skip the nested tests.
           set -euo pipefail
-          flat_dirs="adapters cluster-1 cluster-7 cluster-14 lib skills spikes"
+          flat_dirs="adapters cluster-1 cluster-7 cluster-14 lib skills"
           for d in $flat_dirs; do
             echo "::group::tests/$d"
             bats --filter-tags '!hardware-dependent' "plugins/gaia/tests/$d/"
             echo "::endgroup::"
           done
-          for d in review-parity scripts; do
+          for d in review-parity scripts spikes; do
             echo "::group::tests/$d (recursive)"
             # shellcheck disable=SC2046
             bats --filter-tags '!hardware-dependent' $(find "plugins/gaia/tests/$d" -name '*.bats')
