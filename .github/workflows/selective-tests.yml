@@ -1,9 +1,12 @@
 name: selective-tests
 
+# PR-only. The pull_request event covers both legs: feature->staging PRs get the
+# affected-set narrowing, and the staging->main promotion PR triggers the
+# full-suite escalation (the promotion step reads github.event.pull_request.base.ref
+# == final tier). The old push: trigger re-ran the same matrix on the post-merge
+# commit — pure duplication on a squash-merge flow. Dropped.
 on:
   pull_request:
-    branches: [main, staging]
-  push:
     branches: [main, staging]
 
 jobs:
