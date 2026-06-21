@@ -148,7 +148,9 @@ mk_shared_with_kind() {
     bash -c "'$SCRIPT' --field project_kind 2> '$stderr_file'"
   [ "$status" -eq 0 ]
   [ -f "$stderr_file" ]
-  grep -qE "warning.*project_kind.*foobar|unknown project_kind.*foobar" "$stderr_file"
+  # A non-canonical value is soft-warned (accepted under the open vocabulary)
+  # with the offending value named, on stderr.
+  grep -qE "(warning|note).*project_kind.*foobar|project_kind .*foobar.* (non-canonical|unknown)" "$stderr_file"
   # Recognized-values list must be advertised so users can self-correct.
   grep -qE "claude-code-plugin" "$stderr_file"
 }

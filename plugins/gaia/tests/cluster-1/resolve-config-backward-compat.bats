@@ -131,7 +131,9 @@ YAML
   run env -u CLAUDE_PROJECT_ROOT -u GAIA_SHARED_CONFIG -u GAIA_LOCAL_CONFIG \
     CLAUDE_SKILL_DIR="$TEST_TMP/skill" "$SCRIPT" planning_artifacts
   [ "$status" -eq 0 ]
-  [[ "$output" == *"docs/planning-artifacts"* ]]
+  # The positional query still resolves; the default artifact root is the
+  # canonical .gaia/artifacts/ tree (legacy docs/ only when a docs/ tree exists).
+  [[ "$output" == *".gaia/artifacts/planning-artifacts"* ]]
 }
 
 # ---------------------------------------------------------------------------

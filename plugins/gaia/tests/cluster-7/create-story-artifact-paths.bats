@@ -193,22 +193,25 @@ mk_shared_no_override() {
 # returns the canonical `{project_root}/docs/{key}` defaults.
 # ---------------------------------------------------------------------------
 
-@test "EC-1: default fallback — planning_artifacts resolves to docs default" {
+@test "EC-1: default fallback — planning_artifacts resolves to the canonical .gaia default" {
   mk_shared_no_override "$TEST_TMP/skill"
   cd "$TEST_TMP"
   run env -u CLAUDE_PROJECT_ROOT -u GAIA_SHARED_CONFIG -u GAIA_LOCAL_CONFIG \
     CLAUDE_SKILL_DIR="$TEST_TMP/skill" "$SCRIPT" planning_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "/tmp/gaia-cs-ap/docs/planning-artifacts" ]
+  # The resolver defaults artifact dirs to the canonical .gaia/artifacts/ tree
+  # for greenfield + post-migration projects; the legacy docs/ default is used
+  # only when a docs/ tree exists and .gaia/ does not.
+  [ "$output" = "/tmp/gaia-cs-ap/.gaia/artifacts/planning-artifacts" ]
 }
 
-@test "EC-1: default fallback — implementation_artifacts resolves to docs default" {
+@test "EC-1: default fallback — implementation_artifacts resolves to the canonical .gaia default" {
   mk_shared_no_override "$TEST_TMP/skill"
   cd "$TEST_TMP"
   run env -u CLAUDE_PROJECT_ROOT -u GAIA_SHARED_CONFIG -u GAIA_LOCAL_CONFIG \
     CLAUDE_SKILL_DIR="$TEST_TMP/skill" "$SCRIPT" implementation_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "/tmp/gaia-cs-ap/docs/implementation-artifacts" ]
+  [ "$output" = "/tmp/gaia-cs-ap/.gaia/artifacts/implementation-artifacts" ]
 }
 
 # ---------------------------------------------------------------------------

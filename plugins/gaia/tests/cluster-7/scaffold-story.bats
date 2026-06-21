@@ -116,8 +116,11 @@ teardown() { common_teardown; }
     run grep -F "## $section" "$out_file"
     [ "$status" -eq 0 ]
   done
-  # Count CONTENT_PLACEHOLDER occurrences — exactly 7 (one per content section).
-  count="$(grep -c '^{CONTENT_PLACEHOLDER}$' "$out_file" || true)"
+  # Exactly 7 content placeholders — one per content section. The scaffold uses
+  # section-specific placeholder tokens ({USER_STORY_PLACEHOLDER},
+  # {ACCEPTANCE_CRITERIA_PLACEHOLDER}, …), one per section, rather than a single
+  # generic {CONTENT_PLACEHOLDER} token.
+  count="$(grep -cE '^\{[A-Z_]+_PLACEHOLDER\}$' "$out_file" || true)"
   [ "$count" = "7" ]
 }
 

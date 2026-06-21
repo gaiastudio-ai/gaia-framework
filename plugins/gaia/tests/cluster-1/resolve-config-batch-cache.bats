@@ -137,6 +137,10 @@ run_resolver_isolated() {
 # rather than enforce hardware-specific perf).
 # ---------------------------------------------------------------------------
 
+# bats test_tags=hardware-dependent
+# Wall-clock budget for 10 cold forks is host-CPU sensitive (it exceeds the
+# 5000ms ceiling on slower/loaded machines even when the code is unchanged), so
+# it is excluded from the standard run and exercised on a known-perf dev box.
 @test "benchmark: 10 cold-fork --all runs complete under budget" {
   mk_shared_minimal "$TEST_TMP/skill"
   cd "$TEST_TMP"
