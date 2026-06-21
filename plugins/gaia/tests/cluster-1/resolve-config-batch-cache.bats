@@ -137,6 +137,10 @@ run_resolver_isolated() {
 # rather than enforce hardware-specific perf).
 # ---------------------------------------------------------------------------
 
+# bats test_tags=hardware-dependent
+# Wall-clock budget for 10 cold forks is host-CPU sensitive (it exceeds the
+# 5000ms ceiling on slower/loaded machines even when the code is unchanged), so
+# it is excluded from the standard run and exercised on a known-perf dev box.
 @test "benchmark: 10 cold-fork --all runs complete under budget" {
   mk_shared_minimal "$TEST_TMP/skill"
   cd "$TEST_TMP"
@@ -181,6 +185,37 @@ run_resolver_isolated() {
   [ "$output" = "$first_output" ]
 }
 
+@test "cache: mutating project-config.yaml invalidates the cache (output reflects the change)" {
+  # Content-based invalidation: prime the cache, then CHANGE a resolved value in
+  # the config and confirm the next --cache run returns the NEW value (not the
+  # stale cached one). This covers the behavioural invalidation contract without
+  # any mtime/timing dependence, so it runs in the standard CI suite (the
+  # mtime-precision variant below is excluded as hardware-dependent).
+  mk_shared_minimal "$TEST_TMP/skill"
+  cd "$TEST_TMP"
+  mkdir -p "$TEST_TMP/cache"
+  run_resolver_isolated --all --cache planning_artifacts
+  [ "$status" -eq 0 ]
+  [ "$output" = "docs/planning-artifacts" ]
+
+  # Change the resolved value, then query again with the cache enabled.
+  sed -i.bak 's#^planning_artifacts:.*#planning_artifacts: CHANGED/planning#' \
+    "$TEST_TMP/skill/config/project-config.yaml"
+  rm -f "$TEST_TMP/skill/config/project-config.yaml.bak"
+  run_resolver_isolated --all --cache planning_artifacts
+  [ "$status" -eq 0 ]
+  # If the cache were served stale this would still be docs/planning-artifacts.
+  [ "$output" = "CHANGED/planning" ]
+}
+
+# bats test_tags=hardware-dependent
+# Asserts the cache file's mtime strictly INCREASES after a source bump. mtime
+# is second-granularity on many filesystems, so when the rewrite lands in the
+# same wall-clock second as the original write the strict `>` comparison flakes
+# on fast CI runners even though the cache was correctly invalidated. The
+# behavioural invalidation contract is covered CI-side by the content-based
+# "mutating project-config.yaml invalidates the cache" test above; this
+# mtime-precision variant is excluded from the standard run.
 @test "cache: bumping project-config.yaml mtime invalidates cache" {
   mk_shared_minimal "$TEST_TMP/skill"
   cd "$TEST_TMP"

@@ -62,8 +62,14 @@ _run_rich() { # $1 = stdin
 @test "AC1: both windows render as 5h:<pct>% (<reset>)  7d:<pct>% (<reset>)" {
   _run_rich "$(_stdin_rl 23 $((2*3600+13*60)) 63 $((4*86400+2*3600)))"
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "5h:23% (2h13m)"
-  echo "$stripped" | grep -q "7d:63% (4d2h)"
+  # Assert the percentage + that a parenthesised countdown of the right SHAPE is
+  # present, not the exact minute. The countdown is computed as resets_at - now;
+  # a single second ticking between the fixture stamping resets_at and the
+  # runtime reading `date +%s` flips 2h13m -> 2h12m, which made an exact-string
+  # match flake (even locally). The unit shape (Nh Nm / Nd Nh) is the stable
+  # contract.
+  echo "$stripped" | grep -qE "5h:23% \([0-9]+h[0-9]+m\)"
+  echo "$stripped" | grep -qE "7d:63% \([0-9]+d[0-9]+h\)"
   # The legacy combined "RL: x%/y%" form is gone.
   ! echo "$stripped" | grep -q "RL:"
   ! echo "$stripped" | grep -q "23%/63%"

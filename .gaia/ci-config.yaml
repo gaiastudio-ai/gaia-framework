@@ -25,7 +25,7 @@ stacks:
       - scripts/**
       - .husky/**
       - commitlint.config.mjs
-    test_cmd: "bash plugins/gaia/tests/run-with-coverage.sh"
+    test_cmd: "BATS_FILTER_TAGS='!hardware-dependent' BATS_JOBS=2 bash plugins/gaia/tests/run-with-coverage.sh"
   - name: gaia-statusline
     language: bash
     paths:

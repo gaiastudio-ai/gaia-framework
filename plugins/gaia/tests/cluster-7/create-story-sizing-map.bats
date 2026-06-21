@@ -94,18 +94,24 @@ extract_size_value() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: SKILL.md cross-links ADR-074 contract C1" {
-  run grep -E "ADR-074" "$SKILL_DIR/SKILL.md"
+# These assert the CONCEPTS the SKILL.md documents, not internal traceability
+# identifiers (FR-/ADR-/E<n>-S<n> are scrubbed from published source by policy —
+# asserting their presence would force a leak back into shipped prose).
+
+@test "AC1: SKILL.md documents the deterministic-script-lift contract (no algorithm re-implemented in prose)" {
+  # The SKILL must state that frontmatter/sizing/canonical-filename logic is
+  # delegated to scripts, not re-described in prose.
+  run grep -niE 'no longer (describe|re-implement)|delegated to|deterministic' "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: SKILL.md cross-links ADR-044 §10.26.3 (project-over-global precedence)" {
-  run grep -E "ADR-044" "$SKILL_DIR/SKILL.md"
+@test "AC1: SKILL.md documents project-over-global precedence for the resolved config" {
+  run grep -niE 'project-over-global|project > global|project over global' "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: SKILL.md cross-links E61-S1 (project-config.yaml sizing_map block)" {
-  run grep -E "E61-S1" "$SKILL_DIR/SKILL.md"
+@test "AC1: SKILL.md documents the project-config.yaml sizing_map block as the points source" {
+  run grep -niE 'sizing_map' "$SKILL_DIR/SKILL.md"
   [ "$status" -eq 0 ]
 }
 

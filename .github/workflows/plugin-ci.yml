@@ -405,6 +405,47 @@ jobs:
           path: /tmp/cluster-9-report.md
           if-no-files-found: ignore
 
+  component-subdir-tests:
+    name: component-subdir-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    # The full bats-tests job runs `bats <dir>` NON-recursively, so SUBDIRS of
+    # plugins/gaia/tests/ never execute there. This job runs the component test
+    # subdirectories that have no other runner (statusline is covered by the
+    # selective-test stack matrix; cluster-9 has its own job). A guard
+    # (never-run-subdir-guard.bats) fails CI if a new subdir is added without
+    # being wired here. Hardware-dependent (host-timing) tests are excluded.
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+      - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
+        with:
+          bats-version: 1.10.0
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Guard — no unwired test subdirs
+        run: bats plugins/gaia/tests/never-run-subdir-guard.bats
+      - name: Run component test subdirectories
+        run: |
+          # Each top-level subdir under plugins/gaia/tests/ that has no other
+          # runner. bats <dir> is non-recursive, so any subdir whose tests live
+          # one level deeper (review-parity, scripts/review-common, spikes/*) is
+          # expanded to explicit files via find — listing such a subdir in the
+          # flat loop would run `bats <dir>` against an empty top level (1..0)
+          # and silently skip the nested tests.
+          set -euo pipefail
+          flat_dirs="adapters cluster-1 cluster-7 cluster-14 lib skills"
+          for d in $flat_dirs; do
+            echo "::group::tests/$d"
+            bats --filter-tags '!hardware-dependent' "plugins/gaia/tests/$d/"
+            echo "::endgroup::"
+          done
+          for d in review-parity scripts spikes; do
+            echo "::group::tests/$d (recursive)"
+            # shellcheck disable=SC2046
+            bats --filter-tags '!hardware-dependent' $(find "plugins/gaia/tests/$d" -name '*.bats')
+            echo "::endgroup::"
+          done
+
   structure-validate:
     name: structure-validate
     runs-on: ubuntu-latest
