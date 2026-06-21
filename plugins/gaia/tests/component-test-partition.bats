@@ -78,10 +78,15 @@ setup() {
   [ "$output" = '["gaia-core"]' ]
 }
 
-@test "a shared-lib change resolves to gaia-core (the broad stack) (AC4)" {
+@test "a shared-lib change resolves to the gaia-scripts-lib component stack (AC4)" {
+  # The component decomposition carved scripts/lib/** into its own stack; a
+  # shared-lib change resolves there (longest-prefix beats gaia-core's
+  # scripts/**), and gaia-core is pulled back in via cross_refs at the
+  # driver/walk stage (asserted in component-stack-resolution.bats), so the full
+  # suite still runs — no false-green.
   run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/lib/resolve-file-to-stack.sh
   [ "$status" -eq 0 ]
-  [ "$output" = '["gaia-core"]' ]
+  [ "$output" = '["gaia-scripts-lib"]' ]
 }
 
 # ---------------------------------------------------------------------------
