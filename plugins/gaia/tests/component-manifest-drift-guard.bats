@@ -68,10 +68,53 @@ setup() {
   done <<< "$comps"
 }
 
+@test "every non-core component's command yields a NON-EMPTY bats plan when executed" {
+  # --list only proves files RESOLVE; it does not prove the runner's actual bats
+  # invocation produces a non-empty plan. A component whose files all happened
+  # to be filtered out (e.g. every test tagged hardware-dependent), or a future
+  # change that broke the runner's bats arg-passing, would run an empty `1..0`
+  # plan — testing NOTHING while the job still reports green (the
+  # non-recursive-bats false-green class). --count drives the SAME bats
+  # execution path as a real run (filter-tags included) but without executing
+  # the cases, so this guard cheaply asserts a real, non-empty plan for every
+  # component stack.
+  local comps
+  comps="$(cut -f1 "$MANIFEST" | sort -u | grep -v '^core$' || true)"
+  [ -n "$comps" ]
+  local c
+  while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    run bash "$RUNNER" "$c" --count
+    [ "$status" -eq 0 ]
+    # output is the bats test-case count; it must be a positive integer.
+    [[ "$output" =~ ^[0-9]+$ ]]
+    [ "$output" -gt 0 ]
+  done <<< "$comps"
+}
+
 @test "unresolved and cross-cutting tests are conservatively assigned to core" {
   # The catch-all must be non-empty (the suite has many cross-cutting tests);
   # an empty core would mean the tagger over-narrowed, risking false-greens.
   run bash -c "cut -f1 '$MANIFEST' | grep -c '^core$'"
   [ "$status" -eq 0 ]
   [ "$output" -gt 0 ]
+}
+
+@test "the runner --count for the carved sprint stack reports a positive plan" {
+  # Explicit pin for the sprint carve-out's execution path (the LOW review
+  # advisory): the runner's actual bats invocation over scripts-sprint produces
+  # a real, non-empty plan — not the empty 1..0 trap.
+  run bash "$RUNNER" scripts-sprint --count
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ ^[0-9]+$ ]]
+  [ "$output" -gt 0 ]
+}
+
+@test "the runner --count drives bats without executing the cases" {
+  # --count must be cheap (no test execution): assert it returns ONLY the count
+  # integer, with no TAP body lines (ok/not ok) that a real run would emit.
+  run bash "$RUNNER" scripts-sprint --count
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ ^[0-9]+$ ]]
+  [[ "$output" != *"ok "* ]]
 }
