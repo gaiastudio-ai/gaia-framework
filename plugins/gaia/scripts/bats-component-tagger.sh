@@ -29,7 +29,8 @@
 #   scripts-brain          scripts/brain/**          (the Brain knowledge layer)
 #   scripts-adapters       scripts/adapters/**       (deploy/publish/brownfield)
 #   scripts-review-common  scripts/review-common/**  (review skill shared code)
-#   scripts-core           scripts/*.sh              (top-level foundation scripts)
+#   scripts-sprint         scripts/*.sh (sprint set)  (sprint state-machine family)
+#   scripts-core           scripts/*.sh (the rest)    (top-level foundation scripts)
 #   skills                 skills/**                 (any SKILL.md / skill script)
 #   core                   catch-all (unresolved / cross-cutting / multi-area)
 #
@@ -67,12 +68,76 @@ done
 
 [ -d "$TESTS_DIR" ] || { printf 'bats-component-tagger.sh: tests dir not found: %s\n' "$TESTS_DIR" >&2; exit 1; }
 
+# Top-level script allowlist. A literal `scripts/<name>.sh` reference only
+# denotes the top-level foundation script `plugins/gaia/scripts/<name>.sh` when
+# that file actually exists there. Many bats reference a skill-relative
+# `scripts/<name>.sh` via a var the tagger does not track (e.g. $SKILL_DIR,
+# $SCRIPTS, $ADD_FEATURE_SCRIPTS) whose suffix `scripts/finalize.sh` LOOKS like
+# a top-level ref but resolves to `skills/<skill>/scripts/<name>.sh` at run
+# time — `finalize.sh`/`setup.sh` are the common cases (no top-level
+# `scripts/finalize.sh` exists; 80 skill-local copies do). Classifying those as
+# `scripts-core` over-counts it. We resolve the ambiguity by membership in this
+# allowlist: a `scripts/<name>.sh` ref whose basename is NOT a real top-level
+# script is treated as non-top-level (→ no scripts-core contribution; the
+# catch-all `core` claims the test unless another ref resolves it).
+#
+# The allowlist is derived from the in-repo top-level scripts dir, which is the
+# tagger's own directory (this script lives at plugins/gaia/scripts/). That
+# tree is always present in a gaia-public checkout, so the derivation is
+# hermetic and deterministic for the drift-guard — it does not depend on the
+# operator's runtime layout.
+_TOPLEVEL_SCRIPTS_DIR="$_SELF_DIR"
+TOPLEVEL_ALLOWLIST=""
+if [ -d "$_TOPLEVEL_SCRIPTS_DIR" ]; then
+  for _s in "$_TOPLEVEL_SCRIPTS_DIR"/*.sh; do
+    [ -e "$_s" ] || continue
+    TOPLEVEL_ALLOWLIST="${TOPLEVEL_ALLOWLIST} $(basename "$_s")"
+  done
+fi
+
+# _is_toplevel_script <basename.sh> -> 0 if a real top-level script, else 1
+_is_toplevel_script() {
+  case " $TOPLEVEL_ALLOWLIST " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Sprint state-machine script family. These flat top-level scripts form a
+# genuine domain boundary (the sprint/story lifecycle state machine and its
+# read-only dashboards). They live at scripts/*.sh with no scripts/sprint/
+# subdir, so the component is defined by this basename membership rather than a
+# path prefix. A bats that references ONLY scripts in this set is a pure
+# sprint-lifecycle test → component `scripts-sprint`; a bats that mixes a sprint
+# script with a non-sprint top-level script is cross-cutting → the `core`
+# catch-all (the tagger's existing >1-component rule). This keeps the carve-out
+# conservative: no false-green, because gaia-core cross_refs the sprint stack so
+# a sprint change still runs the full core suite.
+SPRINT_SCRIPT_FAMILY="\
+sprint-state.sh transition-story-status.sh set-story-sprint.sh \
+sprint-status-dashboard.sh epic-status-dashboard.sh sprint-progress-audit.sh \
+resolve-story-file.sh materialize-sprint-stories.sh backfill-story-index.sh \
+check-status-discipline.sh priority-flag.sh validate-epic-registry.sh"
+
+# _is_sprint_script <basename.sh> -> 0 if in the sprint family, else 1
+_is_sprint_script() {
+  case " $SPRINT_SCRIPT_FAMILY " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # _component_of_suffix <path-suffix-under-plugin> -> component area on stdout
 # The suffix is whatever follows the resolved root, e.g. for SCRIPTS_DIR the
 # suffix is relative to scripts/, for a literal it is relative to plugins/gaia/.
 _component_of_path() {
   # $1: a path normalised to be relative to plugins/gaia/ (e.g. scripts/brain/x.sh)
   case "$1" in
+    # A path that contains skills/ anywhere is skill-owned, even when a
+    # skill-local scripts/ subdir appears later in it (skills/<skill>/scripts/...).
+    # This MUST be tested before the scripts/* cases so a skill-local script is
+    # never mistaken for a top-level foundation script.
+    skills/*)                 printf 'skills' ;;
     scripts/lib/*)            printf 'scripts-lib' ;;
     scripts/brain/*)          printf 'scripts-brain' ;;
     scripts/review-common/*)  printf 'scripts-review-common' ;;
@@ -80,8 +145,23 @@ _component_of_path() {
     # stack to consume a separate bucket, and scripts/** (gaia-core) already
     # covers scripts/adapters/, so a distinct label would be a name with no
     # runner — fold it rather than leave a manifest-vs-config asymmetry.
-    scripts/*)                printf 'scripts-core' ;;   # top-level foundation + adapters
-    skills/*)                 printf 'skills' ;;
+    scripts/*)
+      # Top-level foundation script ONLY when the basename is a REAL top-level
+      # script. A skill-relative `scripts/<name>.sh` (referenced via a var the
+      # tagger does not track, e.g. $SKILL_DIR/scripts/finalize.sh) has a
+      # suffix that LOOKS top-level but is not — classifying it scripts-core
+      # over-counts the bucket. Unknown basenames return empty so the caller
+      # treats the ref as unresolved (→ core catch-all unless another ref
+      # resolves the test).
+      _bn="${1##*/}"
+      if _is_sprint_script "$_bn"; then
+        printf 'scripts-sprint'
+      elif _is_toplevel_script "$_bn"; then
+        printf 'scripts-core'
+      else
+        printf ''
+      fi
+      ;;
     *)                        printf '' ;;               # unknown -> caller -> core
   esac
 }
@@ -94,11 +174,15 @@ _refs_to_components() {
   {
     # VAR-rooted refs. SCRIPTS_DIR/LIB_DIR root at scripts/ (LIB_DIR == scripts/lib),
     # SKILLS_DIR roots at skills/, CLAUDE_PLUGIN_ROOT/PLUGIN_ROOT root at plugins/gaia/.
-    # Both bare ($SCRIPTS_DIR/...) and braced (${SCRIPTS_DIR}/...) forms are
-    # matched — the optional \{? / }? in the pattern admits the braced form,
-    # which 34 bats files use. Capture the path after the var, then normalise to
-    # a plugins/gaia-relative path before classifying.
-    grep -hoE '\{?(SCRIPTS_DIR|LIB_DIR|SKILLS_DIR|CLAUDE_PLUGIN_ROOT|PLUGIN_ROOT)\}?[/"][A-Za-z0-9_./${}-]+\.sh' "$f" 2>/dev/null \
+    # BATS_TEST_DIRNAME roots at the test file's dir (plugins/gaia/tests/), so a
+    # `$BATS_TEST_DIRNAME/../scripts/x.sh` ref walks up via one-or-more `../`
+    # segments to a plugins/gaia-relative path — ~54 bats use this idiom and were
+    # previously invisible to the tagger (a whole reference class fell to the
+    # no-ref catch-all). Both bare ($VAR/...) and braced (${VAR}/...) forms are
+    # matched — the optional \{? / }? in the pattern admits the braced form.
+    # Capture the path after the var, then normalise to a plugins/gaia-relative
+    # path before classifying.
+    grep -hoE '\{?(SCRIPTS_DIR|LIB_DIR|SKILLS_DIR|CLAUDE_PLUGIN_ROOT|PLUGIN_ROOT|BATS_TEST_DIRNAME)\}?[/"][A-Za-z0-9_./${}-]+\.sh' "$f" 2>/dev/null \
       | while IFS= read -r ref; do
           local var suffix rel
           # Normalise away ${ } so a braced ref reduces to the bare form.
@@ -114,6 +198,16 @@ _refs_to_components() {
             CLAUDE_PLUGIN_ROOT|PLUGIN_ROOT)
               # these root at plugins/gaia/, so the suffix already starts
               # scripts/... or skills/... in practice; pass through.
+              rel="$suffix" ;;
+            BATS_TEST_DIRNAME)
+              # rooted at plugins/gaia/tests/. Collapse the leading `../`
+              # walk-up segments; whatever remains is plugins/gaia-relative
+              # (scripts/..., skills/..., or a non-component path like
+              # .github/scripts/... which classifies to empty). Strip ALL
+              # leading `../` (and any stray `./`).
+              while case "$suffix" in ../*|./*) true ;; *) false ;; esac; do
+                suffix="${suffix#../}"; suffix="${suffix#./}"
+              done
               rel="$suffix" ;;
             *) rel="" ;;
           esac

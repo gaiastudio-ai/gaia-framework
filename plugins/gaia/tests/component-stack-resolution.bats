@@ -20,7 +20,7 @@ setup() {
 }
 
 @test "the CI slice declares the component stacks (AC3)" {
-  for s in gaia-core gaia-scripts-lib gaia-skills gaia-brain gaia-review-common; do
+  for s in gaia-core gaia-scripts-lib gaia-skills gaia-brain gaia-review-common gaia-scripts-sprint; do
     grep -q "name: $s" "$CFG"
   done
 }
@@ -51,8 +51,24 @@ setup() {
   [ "$output" = '["gaia-skills"]' ]
 }
 
-@test "a top-level scripts change stays in gaia-core (AC1)" {
+@test "a sprint state-machine script change resolves to gaia-scripts-sprint (AC1)" {
+  # sprint-state.sh is in the sprint family; its exact-literal path wins over
+  # gaia-core's broad scripts/** glob (the resolver's exact-literal pass).
   run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/sprint-state.sh
+  [ "$status" -eq 0 ]
+  [ "$output" = '["gaia-scripts-sprint"]' ]
+}
+
+@test "another sprint-family script (transition-story-status) resolves to gaia-scripts-sprint (AC1)" {
+  run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/transition-story-status.sh
+  [ "$status" -eq 0 ]
+  [ "$output" = '["gaia-scripts-sprint"]' ]
+}
+
+@test "a NON-sprint top-level scripts change stays in gaia-core (AC1)" {
+  # gen-ci-config.sh is a top-level foundation script but not in the sprint
+  # family, so it falls to gaia-core's scripts/** glob.
+  run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/gen-ci-config.sh
   [ "$status" -eq 0 ]
   [ "$output" = '["gaia-core"]' ]
 }
@@ -79,6 +95,15 @@ setup() {
   [[ "$output" == *'"gaia-core"'* ]]
 }
 
+@test "a sprint-family change fans out to gaia-core via cross_refs (AC4)" {
+  # gaia-core declares cross_refs to gaia-scripts-sprint, so a sprint change
+  # runs its fast subset AND the full core suite — no false-green.
+  run "$CROSS" --config "$CFG" --stacks '["gaia-scripts-sprint"]'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"gaia-scripts-sprint"'* ]]
+  [[ "$output" == *'"gaia-core"'* ]]
+}
+
 @test "a core-only change does NOT fan out to the component stacks (AC4)" {
   run "$CROSS" --config "$CFG" --stacks '["gaia-core"]'
   [ "$status" -eq 0 ]
@@ -86,6 +111,7 @@ setup() {
   [[ "$output" != *'"gaia-skills"'* ]]
   [[ "$output" != *'"gaia-brain"'* ]]
   [[ "$output" != *'"gaia-review-common"'* ]]
+  [[ "$output" != *'"gaia-scripts-sprint"'* ]]
 }
 
 # --- promotion still runs the full suite ------------------------------------
