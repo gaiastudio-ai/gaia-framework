@@ -3,6 +3,43 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.204.0] — 2026-06-22
+
+### Added
+
+- (selective-tests) bats-to-component tagger + carve component stacks from core (#1648)
+- (selective-tests) repair statusline suite and carve out its component stack (#1645)
+- (selective-tests) partition the plugin into component test stacks (#1644)
+- (E116-S11) wire Behavioral parity and backward-compat verification (#1636)
+- (E116-S12) wire MANDATORY user documentation for Mode B (#1635)
+- (E116-S10) wire HP batch 3 — research/testing/infra/misc Mode B m (#1634)
+- (E116-S9) make 9 execution/sprint skills Mode B-ready (#1633)
+- (E116-S8) make 10 planning-lifecycle skills Mode B-ready (#1631)
+- (E116-S7) wire Remaining 7 conversational skills Mode B migration (#1630)
+- (E116-S6) wire /gaia-meeting Mode B migration (PILOT) (#1629)
+- (E116-S5) wire Transcript fidelity contract for Mode B (#1628)
+- (E116-S4) wire Reviewer clean-room enforcement under Mode B (#1626)
+- (E116-S3) Mode B Teammate Lifecycle Protocol documentation (#1625)
+- (E116-S2) wire Dispatch-provenance gate extension for teammate disp (#1624)
+- (E116-S1) wire Shared Mode B dispatch library lib/dispatch-teammate (#1623)
+- (E117-S5) wire Stack-dev expansion doc/parity follow-ons (bash-dev (#1621)
+
+### Changed
+
+- guard component test commands against the empty-plan trap (#1650)
+- (ci) wire the never-run test subdirectories into CI + guard against new ones (#1647)
+- add component-level selective-tests tutorial (multi-language) (#1642) (#1643)
+- add component-level selective-tests tutorial (multi-language) (#1642)
+- promote CI fixes to main (PR-only triggers + real ci_checks names) (#1641)
+- run test workflows on PR only (drop duplicate post-merge runs) (#1640)
+- (E116) de-fork clean-room gate hot path (~30x/~66x) (#1632)
+
+### Fixed
+
+- correct component-tagger reference resolution and carve sprint-lifecycle stack (#1649)
+- (E116-S4) make reviewer clean-room gate fail-closed + bypass-resistant (#1627)
+- (E117-S5) harden parity guard + correct knowledge-doc inaccuracies (#1622)
+
 ## [1.203.0] — 2026-06-20
 
 ### Added
