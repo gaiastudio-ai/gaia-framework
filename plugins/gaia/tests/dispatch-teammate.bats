@@ -416,3 +416,60 @@ SKILLEOF
   await_reply "$handle" 2>"$stderr_out" || true
   grep -qF "MODE_B_FALLBACK" "$stderr_out"
 }
+
+# ============================================================
+# Gate-2 substrate-availability resolution
+# (default Mode A; experimental opt-in makes Mode B actually run)
+# ============================================================
+
+@test "substrate is UNAVAILABLE by default — no opt-in, no override (Mode A default)" {
+  source "$LIB"
+  # Clear both the inherited test override and the experimental opt-in.
+  unset GAIA_MODE_B_SUBSTRATE CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
+  run _dt_substrate_available
+  [ "$status" -ne 0 ]
+}
+
+@test "substrate is AVAILABLE when the experimental Agent-Teams flag is opted in (Mode B runs)" {
+  source "$LIB"
+  unset GAIA_MODE_B_SUBSTRATE
+  export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+  run _dt_substrate_available
+  [ "$status" -eq 0 ]
+}
+
+@test "GAIA_MODE_B_SUBSTRATE=unavailable override wins even with the opt-in flag set (roster-cost path)" {
+  source "$LIB"
+  export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+  export GAIA_MODE_B_SUBSTRATE=unavailable
+  run _dt_substrate_available
+  [ "$status" -ne 0 ]
+}
+
+@test "GAIA_MODE_B_SUBSTRATE=available override forces the live path (no opt-in flag needed)" {
+  source "$LIB"
+  unset CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
+  export GAIA_MODE_B_SUBSTRATE=available
+  run _dt_substrate_available
+  [ "$status" -eq 0 ]
+}
+
+@test "spawn_teammate does NOT emit MODE_B_FALLBACK when the experimental flag is opted in (Mode B live)" {
+  source "$LIB"
+  unset GAIA_MODE_B_SUBSTRATE
+  export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+  local stderr_out="$TEST_TMP/stderr.txt"
+  local handle
+  handle="$(spawn_teammate "gaia:analyst" 2>"$stderr_out")"
+  [ -n "$handle" ]
+  # Under the opted-in live path, the fallback token must NOT appear.
+  ! grep -qF "MODE_B_FALLBACK" "$stderr_out"
+}
+
+@test "the clean-room gate STILL blocks reviewers under the live (opted-in) path" {
+  source "$LIB"
+  unset GAIA_MODE_B_SUBSTRATE
+  export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+  run spawn_teammate "gaia:validator"
+  [ "$status" -ne 0 ]
+}

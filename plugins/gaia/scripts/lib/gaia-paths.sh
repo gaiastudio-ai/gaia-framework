@@ -148,10 +148,33 @@ _gaia_paths_resolve_override() {
 # GAIA_NO_PROJECT_WALKUP is set (test-isolation escape hatches).
 
 _gaia_paths_walk_up_root() {
-  # Echo the nearest ancestor of $PWD (inclusive) that contains .gaia/, or
+  # Echo the nearest ancestor of $PWD (inclusive) that is the project root, or
   # nothing if none is found within the $HOME / root bound.
-  local d="$PWD"
-  # Check the starting dir itself first.
+  #
+  # Two-tier match (config-bearing preferred). A bare `.gaia/` directory is NOT
+  # sufficient on its own: an in-tree sub-repo can carry its own `.gaia/` that
+  # holds only runtime state or a tracked CI slice — NOT project-config.yaml —
+  # and the old single-tier "first ancestor with any .gaia/" rule stopped there,
+  # shadowing the real project root one level up. That silently down-shifted
+  # callers to defaults (e.g. detect-orchestration-mode.sh returned Mode A even
+  # with orchestration.mode:team set in the real project-root config).
+  #
+  # Pass 1 finds the nearest ancestor whose `.gaia/config/project-config.yaml`
+  # actually exists — the authoritative project root. Pass 2 falls back to the
+  # original "nearest ancestor with any .gaia/" rule, so a greenfield / partial
+  # setup that has a `.gaia/` but not yet a config still resolves as before.
+  local d
+
+  # Pass 1: nearest ancestor with a real project-config.yaml under .gaia/config.
+  d="$PWD"
+  if [ -f "${d}/.gaia/config/project-config.yaml" ]; then printf '%s' "$d"; return 0; fi
+  while [ "$d" != "/" ] && [ "$d" != "${HOME:-/nonexistent}" ]; do
+    d="$(dirname "$d")"
+    if [ -f "${d}/.gaia/config/project-config.yaml" ]; then printf '%s' "$d"; return 0; fi
+  done
+
+  # Pass 2 (fallback): nearest ancestor with any .gaia/ directory.
+  d="$PWD"
   if [ -d "${d}/.gaia" ]; then printf '%s' "$d"; return 0; fi
   while [ "$d" != "/" ] && [ "$d" != "${HOME:-/nonexistent}" ]; do
     d="$(dirname "$d")"

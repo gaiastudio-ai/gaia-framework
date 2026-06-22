@@ -78,15 +78,37 @@ _dt_generate_handle() {
   printf 'tm-%s-%05d' "$slug" "$$"
 }
 
-# _dt_substrate_available — return 0 if live Mode B substrate is available.
+# _dt_substrate_available — return 0 if the live Mode B substrate (persistent
+# background Agent + SendMessage) is available, else 1 (→ Mode A fallback).
+#
+# Resolution order:
+#   1. Explicit override GAIA_MODE_B_SUBSTRATE (test/operator force):
+#        "available"   → return 0   (force the live path on)
+#        "unavailable" → return 1   (force the fallback path; used by
+#                                    roster-cost.sh, which never live-spawns)
+#   2. Otherwise derive from the SAME Agent-Teams capability signal the rest of
+#      the framework gates on: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1. That env
+#      flag is the user's explicit, knowing opt-in to the experimental Agent
+#      Teams substrate (set in settings.json or the environment) — the same flag
+#      detect-orchestration-mode.sh requires before it ever returns `team`. When
+#      it is set, the substrate is treated as available and Mode B actually runs;
+#      when it is absent, the substrate is unavailable and every dispatch
+#      degrades to Mode A foreground (the safe default).
+#
+# This keeps Mode A the default for everyone who has NOT opted in, while making
+# the opt-in meaningful: a user who enables the experimental flag (knowing it is
+# preview) gets real persistent-teammate dispatch, not a silent fallback. There
+# is intentionally no separate "confirmed GA" gate — the experimental flag IS
+# the availability contract; graduating it to default-on is a later config-level
+# decision, not a second hidden switch here.
 _dt_substrate_available() {
-  # Explicit override for testing.
-  if [ "${GAIA_MODE_B_SUBSTRATE:-}" = "unavailable" ]; then
-    return 1
+  case "${GAIA_MODE_B_SUBSTRATE:-}" in
+    available)   return 0 ;;
+    unavailable) return 1 ;;
+  esac
+  if [ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" = "1" ]; then
+    return 0
   fi
-  # In a real runtime, detect whether SendMessage / background Agent are
-  # available. For now, default to unavailable — the orchestrator sets the
-  # env var when the substrate is confirmed live.
   return 1
 }
 
