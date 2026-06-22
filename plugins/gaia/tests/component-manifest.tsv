@@ -522,6 +522,7 @@ scripts-lib	lib-env-allowlist.bats
 scripts-lib	lib-exec-with-timeout.bats
 scripts-lib	lib-transcript-writer.bats
 scripts-lib	load-taxonomy.bats
+scripts-lib	meeting-mode-b-dispatch-wiring.bats
 scripts-lib	meeting-mode-b-pilot.bats
 scripts-lib	migration-safety-net.bats
 scripts-lib	path-migration-completion.bats
