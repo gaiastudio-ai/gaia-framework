@@ -377,14 +377,17 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# DoD — top-of-script comment names the consumer (E63-S11 SKILL.md Step 6) and
-# the folded source story (E63-S4)
+# DoD — the validator's top-of-script comment must name its consumer skill
+# (gaia-create-story Step 6) and the frontmatter source it validates
+# (generate-frontmatter.sh).
 # ---------------------------------------------------------------------------
 
-@test "DoD: top-of-script comment names consumer (E63-S11) and folded source (E63-S4)" {
-  run grep -E 'E63-S11' "$SCRIPT"
+@test "DoD: top-of-script comment names its consumer and the folded frontmatter source" {
+  # Assert the CONCEPTS (consumer skill + the script whose schema it validates),
+  # not internal traceability IDs (scrubbed from published source by policy).
+  run grep -niE 'gaia-create-story' "$SCRIPT"
   [ "$status" -eq 0 ]
-  run grep -E 'E63-S4' "$SCRIPT"
+  run grep -niE 'generate-frontmatter\.sh' "$SCRIPT"
   [ "$status" -eq 0 ]
 }
 

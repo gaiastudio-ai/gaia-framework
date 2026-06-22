@@ -75,8 +75,14 @@ run_adapter() {
 # --- AC5 / scenario 5 — spotbugs absent → degrade ----------------------------
 @test "E70-S8 jvm (scenario 5): spotbugs absent → WARNING + exit 0" {
   rm -f "$FAKE_BIN/spotbugs"
-  PATH="$FAKE_BIN:/usr/bin:/bin" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_JVM_ENABLED=true \
-    JVM_PROJECT_ROOT="$FX" JVM_OUT_DIR="$OUT" run bash "$ADAPTER"
+  # The jvm adapter runs its no-source-file guard (find for *.java/*.kt/*.class)
+  # BEFORE the spotbugs-absence check, so this test must keep find+grep on PATH
+  # (an empty PATH would mis-trigger the no-source branch and emit INFO, not
+  # WARNING). Use the system bin dirs WITHOUT FAKE_BIN — `spotbugs` is not a
+  # standard tool, so it is genuinely absent on local and CI runners alike, and
+  # the fixture's Foo.java lets execution reach the spotbugs-absence WARNING.
+  run env PATH="/usr/bin:/bin" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_JVM_ENABLED=true \
+    JVM_PROJECT_ROOT="$FX" JVM_OUT_DIR="$OUT" bash "$ADAPTER"
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARNING"* ]]
   [[ "$output" == *"spotbugs"* ]]

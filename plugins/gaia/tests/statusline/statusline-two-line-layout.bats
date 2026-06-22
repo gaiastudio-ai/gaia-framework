@@ -27,15 +27,24 @@ PJ
 teardown() { common_teardown; }
 
 _seed_cache() {
-  # Seed the latest-release.json cache with the given active_branch + git_dirty.
+  # Seed the PER-PROJECT git-state cache with the given active_branch +
+  # git_dirty. branch/dirty moved out of the shared latest-release.json into a
+  # per-project git-state-<key>.json (keyed by the workspace root) to fix the
+  # cross-project branch leak, so the fixture must write to the same per-project
+  # file the runtime reads — keyed via the shared project-cache-key helper.
   local branch="$1" dirty="$2"
-  mkdir -p "$HOME/.claude/gaia-statusline/cache"
+  local cache_dir="$HOME/.claude/gaia-statusline/cache"
+  mkdir -p "$cache_dir"
+  # shellcheck source=/dev/null
+  . "$PLUGIN_ROOT/scripts/lib/statusline-project-cache-key.sh"
+  local cache_file
+  cache_file="$(_statusline_git_state_cache_file "$cache_dir" "$PROJECT_PATH")"
   if [ "$branch" = "null" ]; then
-    cat > "$HOME/.claude/gaia-statusline/cache/latest-release.json" <<EOF
+    cat > "$cache_file" <<EOF
 {"active_branch": null, "git_dirty": $dirty}
 EOF
   else
-    cat > "$HOME/.claude/gaia-statusline/cache/latest-release.json" <<EOF
+    cat > "$cache_file" <<EOF
 {"active_branch": "$branch", "git_dirty": $dirty}
 EOF
   fi

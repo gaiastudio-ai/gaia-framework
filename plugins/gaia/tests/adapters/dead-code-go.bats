@@ -81,10 +81,18 @@ run_adapter() {
 
 # --- AC5 / scenario 5 — graceful degrade: go absent --------------------------
 @test "E70-S8 go (scenario 5): go binary absent → WARNING + exit 0 (no findings)" {
-  # FAKE_BIN omits `go`; provide only deadcode so command -v go fails.
+  # Simulate `go` genuinely absent. PATH must NOT include /usr/bin:/bin — CI
+  # runners ship a real `go` there (or via setup-go), so a system-PATH suffix
+  # would let `command -v go` succeed and the degrade-WARNING would never fire
+  # (a CI-only false failure). The adapter's go-absence branch exits before it
+  # needs any other tool, so an empty system PATH (FAKE_BIN only, with go
+  # removed) is sufficient and is the portable absent-tool idiom.
   rm -f "$FAKE_BIN/go"
-  PATH="$FAKE_BIN:/usr/bin:/bin" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_GO_ENABLED=true \
-    DEADCODE_PROJECT_ROOT="$FX" DEADCODE_OUT_DIR="$OUT" run bash "$ADAPTER"
+  # Empty system PATH (FAKE_BIN only, go removed) so `command -v go` genuinely
+  # fails. Invoke via absolute /bin/bash because an empty PATH cannot resolve
+  # `bash` itself. The go-absence branch exits before needing any other tool.
+  run env PATH="$FAKE_BIN" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_GO_ENABLED=true \
+    DEADCODE_PROJECT_ROOT="$FX" DEADCODE_OUT_DIR="$OUT" /bin/bash "$ADAPTER"
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARNING"* ]]
   [[ "$output" == *"go"* ]]

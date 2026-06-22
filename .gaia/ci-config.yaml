@@ -5,11 +5,10 @@
 # no secrets, no local paths, no environments/release/distribution. A CI lint
 # regenerates this and fails on drift.
 stacks:
-  - name: gaia-plugin
+  - name: gaia-core
     language: bash
     paths:
       - plugins/gaia/scripts/**
-      - plugins/gaia/skills/**
       - plugins/gaia/agents/**
       - plugins/gaia/hooks/**
       - plugins/gaia/tools/**
@@ -21,6 +20,83 @@ stacks:
       - plugins/gaia/docs/**
       - plugins/gaia/tests/**
       - plugins/gaia/test/**
+      - tests/**
+      - scripts/**
+      - .husky/**
+      - commitlint.config.mjs
+    test_cmd: "BATS_FILTER_TAGS='!hardware-dependent' BATS_JOBS=2 bash plugins/gaia/tests/run-with-coverage.sh"
+    cross_refs:
+      - gaia-scripts-lib
+      - gaia-skills
+      - gaia-brain
+      - gaia-review-common
+      - gaia-scripts-sprint
+  - name: gaia-scripts-lib
+    language: bash
+    paths:
+      - plugins/gaia/scripts/lib/**
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-lib"
+  - name: gaia-skills
+    language: bash
+    paths:
+      - plugins/gaia/skills/**
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh skills"
+  - name: gaia-brain
+    language: bash
+    paths:
+      - plugins/gaia/scripts/brain/**
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-brain"
+  - name: gaia-review-common
+    language: bash
+    paths:
+      - plugins/gaia/scripts/review-common/**
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-review-common"
+  - name: gaia-scripts-sprint
+    language: bash
+    paths:
+      - plugins/gaia/scripts/sprint-state.sh
+      - plugins/gaia/scripts/transition-story-status.sh
+      - plugins/gaia/scripts/set-story-sprint.sh
+      - plugins/gaia/scripts/sprint-status-dashboard.sh
+      - plugins/gaia/scripts/epic-status-dashboard.sh
+      - plugins/gaia/scripts/sprint-progress-audit.sh
+      - plugins/gaia/scripts/resolve-story-file.sh
+      - plugins/gaia/scripts/materialize-sprint-stories.sh
+      - plugins/gaia/scripts/backfill-story-index.sh
+      - plugins/gaia/scripts/check-status-discipline.sh
+      - plugins/gaia/scripts/priority-flag.sh
+      - plugins/gaia/scripts/validate-epic-registry.sh
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-sprint"
+  - name: gaia-statusline
+    language: bash
+    paths:
+      - plugins/gaia/scripts/statusline.sh
+      - plugins/gaia/scripts/statusline-git-dirty-check.sh
+      - plugins/gaia/scripts/statusline-update-check.sh
+      - plugins/gaia/scripts/install-statusline.sh
+      - plugins/gaia/scripts/gaia-statusline-toggle.sh
+      - plugins/gaia/scripts/lib/statusline-glyphs.sh
+      - plugins/gaia/scripts/lib/statusline-colors.sh
+      - plugins/gaia/scripts/lib/statusline-plugin-cache-dir.sh
+      - plugins/gaia/scripts/lib/statusline-cache-reset.sh
+      - plugins/gaia/scripts/lib/statusline-project-cache-key.sh
+      - plugins/gaia/skills/gaia-statusline-enable/**
+      - plugins/gaia/skills/gaia-statusline-disable/**
+      - plugins/gaia/skills/gaia-statusline-refresh/**
+      - plugins/gaia/tests/statusline/**
+    test_cmd: "bats --filter-tags '!hardware-dependent' plugins/gaia/tests/statusline/"
+    cross_refs:
+      - gaia-core
+  - name: gaia-docs
+    language: bash
+    paths:
+      - documentation/**
+    test_cmd: "bash plugins/gaia/scripts/run-docs-stack-tests.sh"
+  - name: gaia-ci
+    language: bash
+    paths:
+      - .github/**
+    test_cmd: "bash .github/scripts/structure-validate.sh && bash .github/scripts/lint-skill-frontmatter.sh && bash .github/scripts/lint-agent-frontmatter.sh"
 ci_cd:
   promotion_chain:
     - id: staging
@@ -40,10 +116,4 @@ ci_cd:
         - plugin-ci
         - selective-tests
 test_policy:
-  always_run:
-    - gaia-plugin
   retry_limit: 2
-  triggers:
-    pr:
-      include_stacks:
-        - gaia-plugin

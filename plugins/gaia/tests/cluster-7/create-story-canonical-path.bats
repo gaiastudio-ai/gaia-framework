@@ -63,29 +63,46 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "TC-CSP-1: SKILL.md Step 4 writes to canonical nested path (AC1)" {
-  # The output= line must reference epic-${EPIC_SLUG}/stories/<key>-${SLUG}.md
-  run grep -nE 'output[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/epic-\$\{?EPIC_SLUG\}?/stories/' "$SKILL_MD"
+@test "TC-CSP-1: SKILL.md Step 4 writes to the canonical per-story path (AC1)" {
+  # The output= line must reference the per-story directory form
+  # ${STORY_DIR}/story.md, where STORY_DIR = ${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR}/<story_key>-${SLUG}.
+  # The `stories/` middle level was dropped: the per-story dir carries the key
+  # and the basename is the literal story.md.
+  run grep -nE -- '--output[[:space:]]+"\$\{?STORY_DIR\}?/story\.md"' "$SKILL_MD"
+  [ "$status" -eq 0 ]
+  # And STORY_DIR is defined as the per-story nested path under EPIC_DIR.
+  run grep -nE 'STORY_DIR="\$\{?IMPLEMENTATION_ARTIFACTS\}?/\$\{?EPIC_DIR\}?/' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
 @test "TC-CSP-1: SKILL.md Step 4 has zero residual flat-path output assignments (AC1)" {
   # The legacy flat output expression `--output "${IMPLEMENTATION_ARTIFACTS}/<story_key>-${SLUG}.md"`
-  # MUST NOT remain in SKILL.md once Step 4 has been migrated to the nested path.
+  # MUST NOT remain in SKILL.md once Step 4 has been migrated to the per-story path.
   run grep -nE -- '--output[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/<story_key>-\$\{?SLUG\}?\.md"' "$SKILL_MD"
   [ "$status" -ne 0 ]
 }
 
-@test "TC-CSP-1: SKILL.md Step 4 emits mkdir -p of per-epic stories dir (AC2)" {
-  run grep -nE 'mkdir -p[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/epic-\$\{?EPIC_SLUG\}?/stories"' "$SKILL_MD"
+@test "TC-CSP-1: SKILL.md Step 4 has zero residual stories/-middle-level output assignments (AC1)" {
+  # The superseded nested form with a `stories/` middle level
+  # (epic-${EPIC_SLUG}/stories/<key>-${SLUG}.md) MUST NOT remain as a NEW write
+  # target now that the per-story-dir layout replaced it (it survives only as a
+  # read-only fallback, never an --output target).
+  run grep -nE -- '--output[[:space:]]+"[^"]*/stories/' "$SKILL_MD"
+  [ "$status" -ne 0 ]
+}
+
+@test "TC-CSP-1: SKILL.md Step 4 emits mkdir -p of the per-story dir + reviews subdir (AC2)" {
+  run grep -nE 'mkdir -p[[:space:]]+"\$\{?STORY_DIR\}?/reviews"' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
 @test "TC-CSP-1: SKILL.md Step 4 mkdir -p line PRECEDES scaffold-story.sh invocation (AC2)" {
-  # Match the actual scaffold-story.sh INVOCATION line (begins with `$(!scripts/...`),
-  # not the prose comment. The invocation form has `$(!` and `scaffold-story.sh \`.
-  mkdir_line="$(grep -nE 'mkdir -p[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/epic-\$\{?EPIC_SLUG\}?/stories"' "$SKILL_MD" | head -1 | cut -d: -f1)"
-  scaffold_line="$(grep -nE '!scripts/scaffold-story\.sh' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  # The per-story-dir mkdir must precede the scaffold invocation so the output
+  # directory exists before the skeleton is written.
+  mkdir_line="$(grep -nE 'mkdir -p[[:space:]]+"\$\{?STORY_DIR\}?/reviews"' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  # Anchor to the actual scaffold INVOCATION (a `!`-prefixed run line), not a
+  # prose comment that merely names the script.
+  scaffold_line="$(grep -nE '!.*scaffold-story\.sh' "$SKILL_MD" | head -1 | cut -d: -f1)"
   [ -n "$mkdir_line" ]
   [ -n "$scaffold_line" ]
   [ "$mkdir_line" -lt "$scaffold_line" ]
@@ -118,8 +135,12 @@ teardown() { common_teardown; }
 # guard with all required tokens.
 # ---------------------------------------------------------------------------
 
-@test "TC-CSP-3: SKILL.md Step 4 probes for legacy flat sibling via compgen -G (AC3)" {
-  run grep -nE 'compgen -G[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/\$\{?STORY_KEY\}?-\*\.md"' "$SKILL_MD"
+@test "TC-CSP-3: SKILL.md Step 4 probes for a legacy flat sibling by the story-key glob (AC3)" {
+  # The probe globs for ${IMPLEMENTATION_ARTIFACTS}/${STORY_KEY}-*.md (the legacy
+  # flat sibling). The mechanism is a positional-param glob expansion
+  # (`set -- "${IMPLEMENTATION_ARTIFACTS}/${STORY_KEY}-"*.md`), which is the
+  # portable form; accept either that or a compgen -G probe of the same glob.
+  run grep -nE '(set -- |compgen -G[[:space:]]+)"\$\{?IMPLEMENTATION_ARTIFACTS\}?/\$\{?STORY_KEY\}?-"?\*\.md' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 

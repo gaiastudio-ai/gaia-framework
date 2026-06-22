@@ -50,25 +50,25 @@ teardown() { common_teardown; }
 #      under E79's canonical layout — never at the legacy flat path.
 # ---------------------------------------------------------------------------
 
-@test "TC-CSP-2: SKILL.md Step 4 output path uses both \${STORY_KEY} (or <story_key>) and \${SLUG} per-invocation" {
-  # Both placeholders must appear on the scaffold output line so that two
-  # concurrent invocations under the same epic produce distinct filenames.
-  run grep -nE 'output[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/epic-\$\{?EPIC_SLUG\}?/stories/(<story_key>|\$\{?STORY_KEY\}?)-\$\{?SLUG\}?\.md"' "$SKILL_MD"
+@test "TC-CSP-2: SKILL.md Step 4 per-story dir uses both \${STORY_KEY} (or <story_key>) and \${SLUG} per-invocation" {
+  # Both placeholders must appear in the per-story directory name so that two
+  # concurrent invocations under the same epic produce distinct directories.
+  run grep -nE 'STORY_DIR="\$\{?IMPLEMENTATION_ARTIFACTS\}?/\$\{?EPIC_DIR\}?/(<story_key>|\$\{?STORY_KEY\}?)-\$\{?SLUG\}?"' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
-@test "TC-CSP-2: SKILL.md Step 4 mkdir -p target is the per-epic stories/ directory (idempotent under concurrent invocations)" {
+@test "TC-CSP-2: SKILL.md Step 4 mkdir -p target is the per-story dir (idempotent under concurrent invocations)" {
   # POSIX `mkdir -p` is safe under concurrent invocations targeting the same
-  # path. The Step 4 prose must `mkdir -p` the per-epic stories/ directory —
-  # not just the implementation-artifacts root.
-  run grep -nE 'mkdir -p[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/epic-\$\{?EPIC_SLUG\}?/stories"' "$SKILL_MD"
+  # path. The Step 4 prose must `mkdir -p` the per-story directory (its reviews/
+  # subdir) — not just the implementation-artifacts root.
+  run grep -nE 'mkdir -p[[:space:]]+"\$\{?STORY_DIR\}?/reviews"' "$SKILL_MD"
   [ "$status" -eq 0 ]
 }
 
 @test "TC-CSP-2: SKILL.md Step 4 has zero residual flat-path scaffolds (no race onto the legacy top-level dir)" {
   # If Step 4 still wrote to the legacy flat path, two concurrent invocations
   # could race onto the same `${IMPLEMENTATION_ARTIFACTS}` directory. The
-  # canonical layout sidesteps this by writing under per-epic stories/.
+  # canonical layout sidesteps this by writing under a per-story directory.
   run grep -nE -- '--output[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/<story_key>-\$\{?SLUG\}?\.md"' "$SKILL_MD"
   [ "$status" -ne 0 ]
 }
@@ -84,8 +84,8 @@ teardown() { common_teardown; }
 @test "TC-CSP-2: SKILL.md Step 4 mkdir -p PRECEDES scaffold-story.sh (no ENOENT under concurrent first-use)" {
   # Match the actual scaffold-story.sh INVOCATION line (begins with `!scripts/`),
   # not the prose comment.
-  mkdir_line="$(grep -nE 'mkdir -p[[:space:]]+"\$\{?IMPLEMENTATION_ARTIFACTS\}?/epic-\$\{?EPIC_SLUG\}?/stories"' "$SKILL_MD" | head -1 | cut -d: -f1)"
-  scaffold_line="$(grep -nE '!scripts/scaffold-story\.sh' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  mkdir_line="$(grep -nE 'mkdir -p[[:space:]]+"\$\{?STORY_DIR\}?/reviews"' "$SKILL_MD" | head -1 | cut -d: -f1)"
+  scaffold_line="$(grep -nE '!.*scaffold-story\.sh' "$SKILL_MD" | head -1 | cut -d: -f1)"
   [ -n "$mkdir_line" ]
   [ -n "$scaffold_line" ]
   [ "$mkdir_line" -lt "$scaffold_line" ]
