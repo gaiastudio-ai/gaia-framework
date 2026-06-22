@@ -530,6 +530,26 @@ This work does not introduce a parallel cadence counter.
      `default_invitees`, gracefully degrading missing identifiers
      and surfacing a single-line WARNING per missing entry.
 3. Emit the `## Phase: INVITE` marker via `scripts/lifecycle-marker.sh`.
+4. **Mode-B teammate spawn (when `SESSION_MODE == team`).** After the invitee
+   set is resolved, spawn each invitee ONCE as a persistent teammate so the
+   RESEARCH/DISCUSS phases can drive the same long-lived agents across turns
+   (instead of the Mode A per-turn fresh subagent). For each resolved invitee
+   `<persona>`:
+   - run `bash scripts/meeting-mode-b-bridge.sh meeting_spawn_participant <persona> "<charter-context>"`
+     — the bridge does the registry write + provenance log + **fail-closed
+     reviewer clean-room gate** (a reviewer persona is REFUSED here and the
+     meeting MUST NOT proceed with it as a teammate) + the 8-teammate ceiling.
+     It returns the teammate `<handle>` on stdout. Record the
+     `<handle> → <persona>` map (the bridge persists it in the participant map).
+   - emit the main-turn `Agent(run_in_background: true, name: "<handle>")` tool
+     call with the persona's system prompt to actually launch the background
+     teammate. (The bash bridge CANNOT launch the Agent — `Agent`/`SendMessage`
+     are main-turn LLM tools; the bridge is bookkeeping.)
+   - If the bridge emits `MODE_B_FALLBACK` (substrate unavailable), abandon the
+     team path for this meeting and fall back to the Mode A per-turn subagent
+     dispatch documented in Phases 3/4.
+   Under `SESSION_MODE != team` (Mode A) this step is skipped entirely — no
+   teammates are spawned; each turn uses a fresh subagent per Phases 3/4.
 
 ### Phase 2 — CHARTER
 
@@ -566,7 +586,25 @@ Only invited agents post preludes and DISCUSS turns. The user does not appear as
 
 **Dispatch contract.** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the **main-turn Agent tool** with the per-phase tool allowlist below. After the subagent returns its envelope, `dispatch-agent-turn.sh` wires the post-dispatch envelope assertion: the script parses `.agent` from the envelope, writes the sentinel via `lib/write-val-envelope.sh`, and invokes `assert_agent_envelope --expected-agent <agent>` from `lib/assert-agent-envelope.sh`. On assertion failure, `halt-event.sh` fires. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
 
-The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase research --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header. See `scripts/dispatch-provenance-check.sh` — the **pre-save provenance gate**, wired into Phase 7 SAVE — the SAVE will HALT if any prelude/DISCUSS turn lacks `dispatched_via: subagent`.
+The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase research --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header. See `scripts/dispatch-provenance-check.sh` — the **pre-save provenance gate**, wired into Phase 7 SAVE — the SAVE will HALT if any prelude/DISCUSS turn lacks a `dispatched_via:` marker of `subagent` or `teammate`.
+
+**Mode-B dispatch branch (when `SESSION_MODE == team`).** The contract above is
+the Mode A path (fresh subagent per turn). Under Mode B the invitees were
+already spawned as persistent teammates at INVITE (Phase 1, step 4). Do NOT
+spawn a fresh subagent — instead drive the already-spawned teammate:
+- run `bash scripts/meeting-mode-b-bridge.sh drive_turn <handle> "<research-prompt>"`
+  for the pre-send bookkeeping (relay-pending + turn-counter), then emit the
+  main-turn `SendMessage(to: "<handle>", ...)` tool call carrying the research
+  prompt and await the reply;
+- relay the returned prelude body via
+  `bash scripts/meeting-mode-b-bridge.sh meeting_relay_turn <handle> "<body>"`
+  (appends to the transcript with teammate identity metadata — the superset
+  transcript-fidelity contract);
+- render the per-turn header with `--dispatched-via teammate` (not `subagent`).
+The bridge cannot itself call `SendMessage` (a main-turn tool) — it does the
+bash bookkeeping before/after the LLM tool call. If the bridge emits
+`MODE_B_FALLBACK` for a turn, fall back to the Mode A subagent dispatch for that
+turn. Inline LLM role-play under the persona is FORBIDDEN in BOTH modes.
 
 **Surface contract (RESEARCH output to the user).** A subagent dispatched via the main-turn Agent tool returns its result TO THE ORCHESTRATOR — Claude Code does NOT auto-show that result to the user (the same auto-collapse that hides Bash output and the Mode-A warning). The facilitator MUST therefore RELAY each invitee's returned prelude body to the user as user-visible LLM turn text, prefixed with the live-stream per-turn header (`[round R / turn T / Speaker (Role) / per-turn-cost N tokens / running-total M tokens]`). The meeting is a "live-streamed transcript" — every prelude the orchestrator sends to a subagent MUST appear on the user's screen as it lands; consuming a prelude silently (asserting its envelope but never re-emitting the body) violates this contract. This mirrors the §Surface contract precedent at the top of this SKILL.md (the Mode-A warning relay), applied to the per-turn agent output.
 
@@ -666,6 +704,17 @@ Only invited agents post preludes and DISCUSS turns. The user does not appear as
 **Dispatch contract.** Each invited agent's prelude (RESEARCH) AND each DISCUSS turn MUST be produced by spawning a subagent via the **main-turn Agent tool** with the per-phase tool allowlist below. After the subagent returns its envelope, `dispatch-agent-turn.sh` wires the post-dispatch envelope assertion: the script parses `.agent` from the envelope, writes the sentinel via `lib/write-val-envelope.sh`, and invokes `assert_agent_envelope --expected-agent <agent>` from `lib/assert-agent-envelope.sh`. On assertion failure, `halt-event.sh` fires. Inline LLM role-play under the agent's persona is FORBIDDEN. The facilitator does not author agent turns; the facilitator orchestrates dispatch.
 
 The canonical wrapper is `scripts/dispatch-agent-turn.sh --agent <id> --phase discuss --charter-ref <path> --session-id <id>`; every dispatched turn carries `dispatched_via: subagent` in its per-turn header. The DISCUSS allowlist is the read-only minimum `Read, Grep, Glob, Bash`, exposed via `scripts/dispatch-agent-turn.sh --print-discuss-allowlist`. User interjections via `[i]nterject` carry `dispatched_via: interject`; the CHARTER turn carries `dispatched_via: charter`.
+
+**Mode-B dispatch branch (when `SESSION_MODE == team`).** Identical to the
+RESEARCH Mode-B branch: each DISCUSS round-robin slot drives the
+already-spawned teammate via `meeting-mode-b-bridge.sh drive_turn <handle>` +
+the main-turn `SendMessage(to: "<handle>")` tool call, relays the reply via
+`meeting_relay_turn`, and renders the per-turn header with
+`--dispatched-via teammate`. The round-robin order, cadence counter,
+cite-or-flag check, raise-hand arbitration, caps, and loop detector are
+mode-agnostic — they operate per emitted turn regardless of whether the turn
+came from a persistent teammate or a fresh subagent. `MODE_B_FALLBACK` on a turn
+falls back to the Mode A subagent dispatch for that turn.
 
 **Surface contract (DISCUSS output to the user).** Exactly as in RESEARCH: each dispatched DISCUSS turn returns to the orchestrator and is NOT auto-shown to the user. The facilitator MUST RELAY every DISCUSS turn body to the user as user-visible LLM turn text, prefixed with the live-stream per-turn header, as the round-robin advances — including raise-hand insertions, research-interrupts, and facilitator loop-break turns. A DISCUSS turn that is dispatched and envelope-asserted but never re-emitted to the user is a contract violation: the user running the meeting MUST see the discussion unfold turn by turn, not just the final saved transcript.
 
@@ -820,12 +869,13 @@ per-file and the gate is the contract.
 `[c]ontinue` to the pre-SAVE AskUserQuestion and BEFORE the three writes
 below, the SAVE flow pipes the in-memory transcript through
 `scripts/dispatch-provenance-check.sh --stdin`. The audit asserts every
-prelude/DISCUSS turn carries `dispatched_via: subagent` (or `interject`); a
+prelude/DISCUSS turn carries `dispatched_via: subagent` (Mode A) or
+`dispatched_via: teammate` (Mode B) — or `interject` for a user turn; a
 non-zero exit invokes `scripts/halt-event.sh` with the canonical error
 format:
 
 ```
-HALT: dispatch-provenance-check failed — N turn(s) lack 'dispatched_via: subagent' marker. Re-run /gaia-meeting with the canonical Agent-tool dispatch primitive for the affected turns.
+HALT: dispatch-provenance-check failed — N turn(s) lack a 'dispatched_via: subagent' or 'dispatched_via: teammate' marker. Re-run /gaia-meeting with the canonical Agent-tool (Mode A) / SendMessage (Mode B) dispatch primitive for the affected turns.
 ```
 
 `halt-event.sh` emits the line to stderr and exits the skill non-zero. ALL
@@ -871,6 +921,18 @@ SAVE performs the three writes that REVIEW accepted, gated through
 
 After all three writes complete, emit the `## Phase: SAVE` marker as the final
 line of the live transcript.
+
+**Mode-B teammate teardown (when `SESSION_MODE == team`).** After the three
+writes complete and AFTER the `## Phase: SAVE` marker, tear down the persistent
+teammates spawned at INVITE by sourcing the shared dispatch library and calling
+`shutdown_all`:
+`bash -c 'source "$CLAUDE_PLUGIN_ROOT/scripts/lib/dispatch-teammate.sh" && shutdown_all'`.
+`shutdown_all` runs the unrelayed-turn fail-safe for each teammate before
+deregistering its handle, so no teammate pane is left orphaned. (The meeting
+bridge sources the dispatch library lazily per-function, so the teardown runs
+`shutdown_all` from the library directly rather than via a bridge wrapper.)
+Under `SESSION_MODE != team` this step is skipped (Mode A subagents are one-shot
+and already gone).
 
 **Anti-amnesia.** The per-agent memory entries surface
 automatically on the next session-load of that agent's sidecar via the §4.10
