@@ -15,7 +15,7 @@
 # emits the multiline provenance footer:
 #   Phase: <PHASE>
 #   Turn: <ID>             (only when --turn-id provided)
-#   dispatched_via: <subagent|interject|charter>
+#   dispatched_via: <subagent|interject|charter|teammate>
 #
 # Phase-conditional requirement:
 #   For --phase RESEARCH or --phase DISCUSS, --dispatched-via is REQUIRED;
@@ -28,7 +28,7 @@
 #                  --turn-cost 100 --running-total 100 \
 #                  [--phase RESEARCH|DISCUSS|CHARTER|INVITE|CLOSE|SAVE] \
 #                  [--turn-id <id>] \
-#                  [--dispatched-via subagent|interject|charter]
+#                  [--dispatched-via subagent|interject|charter|teammate]
 #
 # Exit codes:
 #   0 = header emitted
@@ -107,9 +107,9 @@ fi
 
 if [[ -n "$DISPATCHED_VIA" ]]; then
   case "$DISPATCHED_VIA" in
-    subagent|interject|charter) ;;
+    subagent|interject|charter|teammate) ;;
     *)
-      echo "turn-header.sh: --dispatched-via must be one of: subagent, interject, charter (got: '$DISPATCHED_VIA')" >&2
+      echo "turn-header.sh: --dispatched-via must be one of: subagent, interject, charter, teammate (got: '$DISPATCHED_VIA')" >&2
       exit 2
       ;;
   esac
@@ -117,7 +117,7 @@ fi
 
 if [[ "$PHASE_UPPER" == "RESEARCH" || "$PHASE_UPPER" == "DISCUSS" ]]; then
   if [[ -z "$DISPATCHED_VIA" ]]; then
-    echo "turn-header.sh: --dispatched-via is required for phase '$PHASE' (one of: subagent, interject, charter)" >&2
+    echo "turn-header.sh: --dispatched-via is required for phase '$PHASE' (one of: subagent, interject, charter, teammate)" >&2
     exit 2
   fi
 elif [[ -n "$PHASE_UPPER" ]]; then
