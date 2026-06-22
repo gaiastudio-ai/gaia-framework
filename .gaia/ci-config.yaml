@@ -30,6 +30,7 @@ stacks:
       - gaia-skills
       - gaia-brain
       - gaia-review-common
+      - gaia-scripts-sprint
   - name: gaia-scripts-lib
     language: bash
     paths:
@@ -50,6 +51,22 @@ stacks:
     paths:
       - plugins/gaia/scripts/review-common/**
     test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-review-common"
+  - name: gaia-scripts-sprint
+    language: bash
+    paths:
+      - plugins/gaia/scripts/sprint-state.sh
+      - plugins/gaia/scripts/transition-story-status.sh
+      - plugins/gaia/scripts/set-story-sprint.sh
+      - plugins/gaia/scripts/sprint-status-dashboard.sh
+      - plugins/gaia/scripts/epic-status-dashboard.sh
+      - plugins/gaia/scripts/sprint-progress-audit.sh
+      - plugins/gaia/scripts/resolve-story-file.sh
+      - plugins/gaia/scripts/materialize-sprint-stories.sh
+      - plugins/gaia/scripts/backfill-story-index.sh
+      - plugins/gaia/scripts/check-status-discipline.sh
+      - plugins/gaia/scripts/priority-flag.sh
+      - plugins/gaia/scripts/validate-epic-registry.sh
+    test_cmd: "bash plugins/gaia/scripts/run-component-tests.sh scripts-sprint"
   - name: gaia-statusline
     language: bash
     paths:

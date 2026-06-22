@@ -73,7 +73,10 @@ setup() {
 }
 
 @test "a core source change resolves to gaia-core (AC4)" {
-  run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/sprint-state.sh
+  # gen-ci-config.sh is a top-level foundation script that is NOT in any carved
+  # component family (the sprint family carve-out claims sprint-state.sh etc.),
+  # so a change to it falls to gaia-core's scripts/** glob.
+  run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/gen-ci-config.sh
   [ "$status" -eq 0 ]
   [ "$output" = '["gaia-core"]' ]
 }
@@ -115,7 +118,7 @@ setup() {
 }
 
 @test "a mixed core+docs change resolves to both stacks (AC4)" {
-  run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/sprint-state.sh documentation/index.html
+  run "$DETECT" --config "$CFG" --files plugins/gaia/scripts/gen-ci-config.sh documentation/index.html
   [ "$status" -eq 0 ]
   [[ "$output" == *'"gaia-core"'* ]]
   [[ "$output" == *'"gaia-docs"'* ]]
