@@ -13,9 +13,17 @@
 # tagger's classification.
 #
 # Usage:
-#   run-component-tests.sh <component> [--list]
-#     <component>  e.g. scripts-lib | scripts-brain | scripts-review-common | skills
+#   run-component-tests.sh <component> [--list|--count]
+#     <component>  e.g. scripts-lib | scripts-brain | scripts-review-common |
+#                  scripts-sprint | skills
 #     --list       print the resolved bats paths (one per line) and exit.
+#     --count      print the number of test cases bats would run over the
+#                  resolved set (via `bats --count`) and exit. This drives the
+#                  same `bats` execution path as a real run but without
+#                  executing the tests, so a guard can cheaply assert the
+#                  component's command yields a NON-EMPTY plan — catching the
+#                  non-recursive-bats trap where a misconfigured set would run
+#                  an empty `1..0` plan and silently test nothing.
 #
 # Exit codes: bats' exit code; 1 on usage / unknown component / empty set.
 
@@ -29,7 +37,11 @@ MANIFEST="${TESTS_DIR}/component-manifest.tsv"
 
 COMPONENT="${1:-}"
 LIST_ONLY=0
-[ "${2:-}" = "--list" ] && LIST_ONLY=1
+COUNT_ONLY=0
+case "${2:-}" in
+  --list)  LIST_ONLY=1 ;;
+  --count) COUNT_ONLY=1 ;;
+esac
 
 if [ -z "$COMPONENT" ] || [ "$COMPONENT" = "-h" ] || [ "$COMPONENT" = "--help" ]; then
   sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -56,6 +68,11 @@ fi
 if [ "$LIST_ONLY" -eq 1 ]; then
   printf '%s\n' "$files"
   exit 0
+fi
+
+if [ "$COUNT_ONLY" -eq 1 ]; then
+  # shellcheck disable=SC2086  # one path per arg; bats filenames never contain spaces
+  exec bats --count --filter-tags '!hardware-dependent' $files
 fi
 
 # shellcheck disable=SC2086  # one path per arg; bats filenames never contain spaces
