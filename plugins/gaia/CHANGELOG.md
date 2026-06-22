@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.205.0] — 2026-06-22
+
+### Added
+
+- make the Mode B substrate probe honor the experimental opt-in (#1654)
+
+### Fixed
+
+- stop a config-less .gaia directory from shadowing the project root (#1653)
+
 ## [1.204.0] — 2026-06-22
 
 ### Added
