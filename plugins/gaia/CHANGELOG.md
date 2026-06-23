@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.208.1] — 2026-06-23
+
+### Fixed
+
+- degrade Mode B honestly when the teammate reply leg is absent
+
 ## [1.208.0] — 2026-06-23
 
 ### Added
