@@ -1,0 +1,32 @@
+name: discovery-firewall-guard
+
+# Build-time firewall: sprint-plan surface MUST have zero read paths to the
+# discovery board. Fails closed on any reference AND on its own absence /
+# mis-scope. The job name "discovery-firewall-guard" is the REQUIRED check
+# name in branch-protection rules.
+
+on:
+  pull_request:
+    branches: [staging, main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  guard:
+    name: discovery-firewall-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+        with:
+          fetch-depth: 1
+
+      - name: Ensure guard script is executable
+        run: chmod +x plugins/gaia/scripts/discovery-firewall-guard.sh
+
+      - name: Run discovery-firewall guard
+        run: |
+          if ! plugins/gaia/scripts/discovery-firewall-guard.sh --surface-root plugins/gaia ; then
+            echo "::error::Discovery-board firewall violation: the sprint-plan surface references the discovery board. See error output above."
+            exit 1
+          fi
