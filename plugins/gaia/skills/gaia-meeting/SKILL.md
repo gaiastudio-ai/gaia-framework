@@ -533,18 +533,39 @@ This work does not introduce a parallel cadence counter.
 4. **Mode-B teammate spawn (when `SESSION_MODE == team`).** After the invitee
    set is resolved, spawn each invitee ONCE as a persistent teammate so the
    RESEARCH/DISCUSS phases can drive the same long-lived agents across turns
-   (instead of the Mode A per-turn fresh subagent). For each resolved invitee
-   `<persona>`:
-   - run `bash scripts/meeting-mode-b-bridge.sh meeting_spawn_participant <persona> "<charter-context>"`
+   (instead of the Mode A per-turn fresh subagent).
+
+   **First — bind a session-isolated `GAIA_SESSION_DIR` (MANDATORY, before any
+   spawn).** The teammate registry and participant map live under
+   `$GAIA_SESSION_DIR`. Export `GAIA_SESSION_DIR` to a fresh per-meeting
+   directory keyed on the session id —
+   `export GAIA_SESSION_DIR="$CLAUDE_PROJECT_ROOT/.gaia/memory/meeting-sessions/<session-id>"`
+   (and `mkdir -p` it) — and use that SAME value for every bridge/library call
+   in this meeting (spawn, drive, relay, shutdown). If you skip this, the
+   registry resolves to an ambient/stale dir and picks up handles from a PRIOR
+   meeting (the participant map then returns the wrong or partial handle set).
+   The directory MUST be unique per session and MUST NOT be a shared/temp path.
+
+   Then, for each resolved invitee `<persona>`:
+   - run `bash scripts/meeting-mode-b-bridge.sh meeting_spawn_participant <persona> "<session-id>"`
      — the bridge does the registry write + provenance log + **fail-closed
      reviewer clean-room gate** (a reviewer persona is REFUSED here and the
      meeting MUST NOT proceed with it as a teammate) + the 8-teammate ceiling.
-     It returns the teammate `<handle>` on stdout. Record the
-     `<handle> → <persona>` map (the bridge persists it in the participant map).
+     It returns the teammate `<handle>` on stdout. Capture that handle as the
+     authoritative one for this persona — use the value the bridge returns, do
+     NOT invent your own handle string (inventing handles desyncs the registry
+     bookkeeping from the live teammate names).
    - emit the main-turn `Agent(run_in_background: true, name: "<handle>")` tool
-     call with the persona's system prompt to actually launch the background
-     teammate. (The bash bridge CANNOT launch the Agent — `Agent`/`SendMessage`
-     are main-turn LLM tools; the bridge is bookkeeping.)
+     call to actually launch the background teammate. (The bash bridge CANNOT
+     launch the Agent — `Agent`/`SendMessage` are main-turn LLM tools; the
+     bridge is bookkeeping.) **The launch prompt MUST include the reply-routing
+     instruction** (this is REQUIRED — without it the teammate does its work and
+     goes idle, and nothing routes back to you): tell the teammate, verbatim in
+     intent, *"You are a persistent teammate in a /gaia-meeting. When you have a
+     response to any message I send you, you MUST deliver it by calling
+     `SendMessage(to: \"team-lead\", ...)` — your plain output is NOT visible to
+     the facilitator; only a SendMessage reaches me. Do not go idle without
+     sending your reply via SendMessage."*
    - If the bridge emits `MODE_B_FALLBACK` (substrate unavailable), abandon the
      team path for this meeting and fall back to the Mode A per-turn subagent
      dispatch documented in Phases 3/4.
@@ -605,11 +626,21 @@ teammate turn, in this exact order:
 2. **Send (LLM tool — this is the actual dispatch).** Emit a main-turn
    `SendMessage(to: "<handle>", summary: "<short>", message: "<research-prompt>")`
    tool call. This is what reaches the teammate. The orchestrator MUST emit this
-   real tool call — there is no bash substitute.
-3. **Receive (auto-delivered).** The teammate's reply is delivered automatically
-   into the orchestrator's conversation on the next turn (you do not poll or
-   call an `await` — `await_reply` is only a relay-pending state query, never a
-   fetch). Consume that delivered message as the turn body.
+   real tool call — there is no bash substitute. **The `message` MUST end with
+   the reply-routing reminder** — e.g. *"Reply to me by calling
+   `SendMessage(to: \"team-lead\")` with your full response; do not go idle
+   without sending it."* (The teammate's plain output is invisible to you; only
+   its own SendMessage reaches you. Omitting this is why a teammate finishes,
+   goes idle, and you receive nothing.)
+3. **Receive (teammate replies via SendMessage).** The teammate sends its reply
+   back via `SendMessage(to: "team-lead")`; that message is delivered into your
+   conversation (typically on the next turn). You do NOT poll or call a bash
+   `await` (`await_reply` is only a relay-pending state query, never a fetch).
+   **Recovery:** if a teammate transitions to idle WITHOUT a reply landing,
+   re-`SendMessage` it once with an explicit *"deliver your response now via
+   SendMessage(to: team-lead)"* nudge before treating the turn as failed — a
+   freshly-spawned teammate sometimes treats the first message as an ack. Do NOT
+   fabricate the reply.
 4. **Relay (bash bookkeeping).** Run
    `bash scripts/meeting-mode-b-bridge.sh meeting_relay_turn <handle> "<body>"`
    to append the received reply to the transcript with teammate identity
