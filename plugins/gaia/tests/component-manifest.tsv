@@ -99,6 +99,7 @@ core	dev-story-stack-dev-delegation.bats
 core	dev-story-tdd-gate-wiring.bats
 core	dev-story-yolo-activation.bats
 core	discover-inputs.bats
+core	discovery-firewall.bats
 core	dispatch-provenance-teammate.bats
 core	distribution-schema.bats
 core	e101-s1-adr-118-architecture-artifacts-decision.bats
