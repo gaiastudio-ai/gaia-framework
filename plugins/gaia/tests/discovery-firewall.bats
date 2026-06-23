@@ -230,3 +230,48 @@ plant_board_ref() {
   [[ "$output" == *"unresolvable"* ]] || [[ "$output" == *"unresolved"* ]]
   [[ "$output" == *"nonexistent-helper.sh"* ]]
 }
+
+# ---------- TC-DISCFIRE-12: SKILL.md names a .sh that does not exist — fail closed (AC1) ----------
+
+@test "guard fails closed when SKILL.md references a .sh that does not exist on disk (AC1)" {
+  seed_clean_surface
+  # Append a script reference line naming a non-existent .sh file.
+  printf 'scripts: phantom-helper.sh\n' \
+    >> "$FIXTURE_DIR/skills/gaia-sprint-plan/SKILL.md"
+
+  run "$GUARD" --surface-root "$FIXTURE_DIR"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unresolved"* ]] || [[ "$output" == *"unresolvable"* ]]
+  [[ "$output" == *"phantom-helper.sh"* ]]
+  [[ "$output" == *"SKILL.md"* ]]
+}
+
+# ---------- TC-DISCFIRE-13: uppercase board ref trips the guard (AC1) ----------
+
+@test "guard trips on uppercase board reference in surface file (AC1)" {
+  seed_clean_surface
+  # Plant an UPPERCASE board reference that case-sensitive grep would miss.
+  printf '# reads DISCOVERY-BOARD.yaml for aging\n' \
+    >> "$FIXTURE_DIR/scripts/sprint-state.sh"
+
+  run "$GUARD" --surface-root "$FIXTURE_DIR"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"DISCOVERY-BOARD"* ]] || [[ "$output" == *"discovery-board"* ]]
+}
+
+# ---------- TC-DISCFIRE-14: unreadable surface file — fail closed (AC1) ----------
+# NOTE: chmod 000 is unreliable when running as root (root can read anything).
+# The test skips explicitly under UID 0 rather than masking with bats skip.
+
+@test "guard fails closed on unreadable surface file (AC1)" {
+  # Root can read any file regardless of permissions — skip reliably.
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "running as root — chmod 000 cannot deny read access"
+  fi
+  seed_clean_surface
+  chmod 000 "$FIXTURE_DIR/scripts/sprint-state.sh"
+
+  run "$GUARD" --surface-root "$FIXTURE_DIR"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not readable"* ]] || [[ "$output" == *"fail-closed"* ]]
+}

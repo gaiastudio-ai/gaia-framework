@@ -98,15 +98,32 @@ SCRIPTS_LIB_DIR="$SURFACE_ROOT/scripts/lib"
 
 if [ -d "$SCRIPTS_DIR" ]; then
   # Extract all *.sh references from SKILL.md.
+  _skillmd_unresolved=()
   while IFS= read -r basename; do
     candidate="$SCRIPTS_DIR/$basename"
     candidate_lib="$SCRIPTS_LIB_DIR/$basename"
+    candidate_skill="$SKILL_SCRIPTS/$basename"
     if [ -f "$candidate" ]; then
       SURFACE_FILES+=("$candidate")
     elif [ -f "$candidate_lib" ]; then
       SURFACE_FILES+=("$candidate_lib")
+    elif [ -f "$candidate_skill" ]; then
+      # Already collected by the find above — no need to add again.
+      :
+    else
+      _skillmd_unresolved+=("$basename")
     fi
   done < <(grep -oE '[a-z][a-z0-9_-]+\.sh' "$SKILL_MD" | sort -u)
+  # Fail closed: every .sh basename extracted from SKILL.md must resolve
+  # to a real file. An unresolvable reference could conceal a board read.
+  if [ "${#_skillmd_unresolved[@]}" -gt 0 ]; then
+    _log "FAIL — unresolvable .sh reference(s) extracted from SKILL.md (fail-closed)"
+    for ref in "${_skillmd_unresolved[@]}"; do
+      _log "  unresolved: $ref (referenced in ${SKILL_MD#"$SURFACE_ROOT"/})"
+    done
+    _log "Cannot verify these scripts are board-free. Add the script or remove the reference."
+    exit 1
+  fi
 fi
 
 # Deduplicate (realpath may differ but basename collision is safe).
@@ -266,9 +283,9 @@ violation_details=""
 
 for f in "${SURFACE_FILES[@]}"; do
   if [ ! -r "$f" ]; then
-    continue
+    _die "surface file not readable: $f — cannot verify it is board-free (fail-closed)"
   fi
-  if hits=$(grep -nE "$PATTERN_ERE" "$f" 2>/dev/null); then
+  if hits=$(grep -inE "$PATTERN_ERE" "$f" 2>/dev/null); then
     violations=$((violations + 1))
     rel="${f#"$SURFACE_ROOT"/}"
     violation_details="${violation_details}  ${rel}:\n"
