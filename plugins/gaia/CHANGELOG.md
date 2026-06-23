@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.208.0] — 2026-06-23
+
+### Added
+
+- drive Mode B teammate round-trip across the non-meeting commands
+
 ## [1.207.1] — 2026-06-23
 
 ### Fixed
