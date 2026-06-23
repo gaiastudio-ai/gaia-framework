@@ -82,13 +82,22 @@ EOF
   grep -q 'meeting_spawn_participant' "$SKILL"
 }
 
-@test "SKILL.md RESEARCH + DISCUSS have a Mode-B dispatch branch (AC2)" {
-  # Two distinct Mode-B dispatch branch blocks (one per phase).
+@test "SKILL.md RESEARCH + DISCUSS have a MANDATORY Mode-B dispatch path (AC2)" {
+  # Two distinct "Mode B path (MANDATORY when SESSION_MODE == team)" blocks
+  # (one per phase). The path is mode-selected, not a facilitator choice.
   local n
-  n="$(grep -c 'Mode-B dispatch branch' "$SKILL")"
+  n="$(grep -c 'Mode B path (MANDATORY when' "$SKILL")"
   [ "$n" -ge 2 ]
   grep -q 'dispatched-via teammate' "$SKILL"
   grep -q 'SendMessage' "$SKILL"
+}
+
+@test "SKILL.md forbids discretionary Mode-A fallback under team mode (AC2)" {
+  # The fix for the observed defect: the orchestrator must NOT drop to subagent
+  # dispatch under team mode except on a real MODE_B_FALLBACK token.
+  grep -q 'NOT a free choice' "$SKILL"
+  grep -qE 'ONLY (path|legitimate)' "$SKILL"
+  grep -q 'MODE_B_FALLBACK' "$SKILL"
 }
 
 @test "SKILL.md SAVE has a Mode-B teammate teardown via shutdown_all (AC3)" {
