@@ -85,7 +85,10 @@ _dt_generate_handle() {
 #   1. Explicit override GAIA_MODE_B_SUBSTRATE (test/operator force):
 #        "available"   → return 0   (force the live path on)
 #        "unavailable" → return 1   (force the fallback path; used by
-#                                    roster-cost.sh, which never live-spawns)
+#                                    roster-cost.sh, which never live-spawns,
+#                                    AND by operators in a context where the
+#                                    spawned-teammate reply leg is known absent —
+#                                    see the SendMessage caveat below)
 #   2. Otherwise derive from the SAME Agent-Teams capability signal the rest of
 #      the framework gates on: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1. That env
 #      flag is the user's explicit, knowing opt-in to the experimental Agent
@@ -101,6 +104,27 @@ _dt_generate_handle() {
 # is intentionally no separate "confirmed GA" gate — the experimental flag IS
 # the availability contract; graduating it to default-on is a later config-level
 # decision, not a second hidden switch here.
+#
+# SUBSTRATE CAVEAT — the teammate reply leg (KNOWN-INCOMPLETE in some contexts).
+# The round-trip's return leg requires the SPAWNED teammate to call
+# SendMessage(to: team-lead). That tool is granted to the teammate's context by
+# the Claude Code harness, NOT by this library — and it is empirically ABSENT in
+# some contexts: a background Agent spawns fine and runs its turn, but cannot
+# emit SendMessage, so its reply only comes back as the Agent's terminal return
+# value (one task → one return = Mode-A-equivalent semantics, not a persistent
+# driven teammate). There is no bash-observable probe for this — only the
+# teammate itself can see whether it has the tool. Therefore:
+#   - The orchestrator MUST treat a teammate that reports "SendMessage isn't
+#     enabled in this context" (or that returns its reply as a terminal Agent
+#     result rather than via SendMessage) as a substrate fallback: surface the
+#     MODE_B_FALLBACK degradation honestly and continue on the Agent-return
+#     (Mode-A-equivalent) path. Do NOT claim a live round-trip occurred.
+#   - Operators in a context known to lack the teammate reply leg SHOULD set
+#     GAIA_MODE_B_SUBSTRATE=unavailable to force the honest Mode A path up front
+#     rather than spawn teammates that cannot complete the round-trip.
+# Tracked upstream (Claude Code: teammate context lacks SendMessage). Until the
+# harness grants the spawned teammate SendMessage, the env-flag path is
+# best-effort spawn, NOT a guaranteed round-trip.
 _dt_substrate_available() {
   case "${GAIA_MODE_B_SUBSTRATE:-}" in
     available)   return 0 ;;

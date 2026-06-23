@@ -63,6 +63,19 @@ each turn proceeds in this exact order:
    failed — a freshly-spawned teammate sometimes treats the first message as an ack.
    Never fabricate the reply.
 
+   **Substrate caveat — the reply leg may be absent (honest fallback, not failure).**
+   The return leg requires the SPAWNED teammate to have the `SendMessage` tool in
+   its own context. The harness grants that tool, not GAIA — and in some contexts
+   it is absent: the teammate spawns and runs, but cannot emit `SendMessage`, so its
+   reply comes back only as the Agent's TERMINAL return value (one task → one
+   return). When you observe this — the teammate reports *"SendMessage isn't enabled
+   in this context"*, or its reply arrives as the Agent's final result rather than a
+   `SendMessage` — treat it as a `MODE_B_FALLBACK`: the dispatch has honestly
+   degraded to the Agent-return (Mode-A-equivalent) path. Consume that returned
+   reply, surface the degradation plainly, and do NOT claim a live persistent
+   round-trip occurred. This is a known substrate gap tracked upstream; the spawn
+   half works, the persistent reply leg does not yet.
+
 4. **Relay (bash bookkeeping).** Run the cohort relay function
    (`<cohort>_relay_turn <handle> "<body>"`) to append the received reply to the
    transcript / artifact with teammate identity metadata and clear relay-pending.
