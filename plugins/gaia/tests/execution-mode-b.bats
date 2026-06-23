@@ -281,15 +281,19 @@ teardown() { common_teardown; }
   grep -qF "MODE_B_FALLBACK" "$stderr_out"
 }
 
-@test "execution drive emits MODE_B_FALLBACK under substrate-absent — substrate-gated (AC1)" {
+@test "execution drive_turn is bookkeeping-only — no send, no MODE_B_FALLBACK (AC1)" {
   source "$DT_LIB"
   source "$EMB_LIB"
   export GAIA_MODE_B_SUBSTRATE=unavailable
   local handle
   handle="$(execution_spawn_subagent "gaia:sm" "gaia-sprint-plan" 2>/dev/null)"
   local stderr_out="$TEST_TMP/stderr.txt"
-  drive_turn "$handle" "plan" 2>"$stderr_out" || true
-  grep -qF "MODE_B_FALLBACK" "$stderr_out"
+  run drive_turn "$handle" "plan" 2>"$stderr_out"
+  [ "$status" -eq 0 ]
+  # drive_turn never sends (the orchestrator's SendMessage does) so it never
+  # falls back — regression guard for the old fallback-emitting stub.
+  ! grep -qF "MODE_B_FALLBACK" "$stderr_out"
+  await_reply "$handle"
 }
 
 # ============================================================
