@@ -749,6 +749,24 @@ The 16 principal `### Step N` boundaries above are instrumented with `step_bound
 
 ## Mode B Readiness
 
+> **Driving teammate turns (MANDATORY under team orchestration).** Declaring
+> readiness above sets up the spawn / relay / shutdown bookkeeping seams — it does
+> NOT by itself drive a teammate. When `SESSION_MODE == team`, the orchestrator
+> MUST drive each teammate turn per the canonical **Mode B teammate round-trip
+> contract** at `knowledge/mode-b-round-trip-contract.md`: emit a real
+> `SendMessage(to: <handle>)` whose message ends with the reply-routing reminder,
+> let the teammate reply via `SendMessage(to: team-lead)` (one-shot re-prompt on
+> idle-without-reply; never fabricate the reply), then relay the received body to
+> the transcript / artifact. The bridge functions named above are bookkeeping
+> only; the round-trip itself is an orchestrator-driven, main-turn loop.
+>
+> **No discretionary Mode A fall-through.** The team-mode round-trip is mandatory
+> when the session resolves to team orchestration — "it is a small / focused /
+> quick step" is NOT a license to fall back to one-shot Mode A, and a slow reply
+> is the cross-turn-boundary case (wait or re-prompt once), not a fallback
+> trigger. The ONLY legitimate fall-through is a real `MODE_B_FALLBACK` token
+> emitted by the bridge at spawn time (substrate genuinely unavailable).
+
 This skill is Mode B-ready. Under the team-orchestration mode, the stack-developer work that the prose above describes as inline subagent dispatch is instead routed through the shared execution bridge library at `${CLAUDE_PLUGIN_ROOT}/scripts/lib/execution-mode-b-bridge.sh`, which itself layers on the shared dispatch library `${CLAUDE_PLUGIN_ROOT}/scripts/lib/dispatch-teammate.sh`.
 
 - **Spawn seam.** The auto-detected stack developer authors the implementation. The orchestration runs `execution_spawn_subagent <stack-dev-persona> "gaia-dev-story"` ONCE to obtain a persistent teammate handle. That single teammate then carries context across the plan, implement, test, and PR-creation phases — it is never re-created between phases. Each phase is driven against the same handle, so the developer's context (from stack-persona load through to PR body) persists end-to-end.

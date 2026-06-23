@@ -525,6 +525,7 @@ scripts-lib	load-taxonomy.bats
 scripts-lib	meeting-mode-b-dispatch-wiring.bats
 scripts-lib	meeting-mode-b-pilot.bats
 scripts-lib	migration-safety-net.bats
+scripts-lib	mode-b-round-trip-contract.bats
 scripts-lib	path-migration-completion.bats
 scripts-lib	path-migration-guard.bats
 scripts-lib	phase-exit-gate.bats

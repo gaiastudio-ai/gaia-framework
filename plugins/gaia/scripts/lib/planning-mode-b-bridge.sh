@@ -16,6 +16,16 @@
 # is absent (dispatch-teammate handles the fallback + MODE_B_FALLBACK
 # token emission). The planning artifact structure is identical between
 # modes: only the dispatch seam changes, never the authored output shape.
+#
+# ROUND-TRIP CONTRACT. This bridge does bookkeeping ONLY. The actual per-turn
+# teammate round-trip — the orchestrator emitting a real SendMessage with the
+# mandatory reply-routing reminder, the teammate replying via
+# SendMessage(to: team-lead), and the relay back to the transcript — is driven
+# by the skill orchestrator, not by these functions (bash cannot emit
+# SendMessage). Callers MUST drive each authoring turn per the canonical
+# contract at knowledge/mode-b-round-trip-contract.md. planning_spawn_subagent
+# / planning_relay_turn / planning_shutdown are the bookkeeping seams that
+# contract references.
 
 # ---------- Source guard ----------
 

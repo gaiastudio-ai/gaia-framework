@@ -107,6 +107,8 @@ The four-class taxonomy is being applied to existing SKILL.md files via:
 
 This section is the canonical reference for skill authors who write `heavy-procedural` or `conversational` skills that opt into persistent-teammate dispatch. It documents the full lifecycle of a teammate session — from spawn through shutdown — and the `dispatch-teammate.sh` library functions that implement each phase.
 
+> **Bookkeeping vs. the round-trip.** The phase contracts below describe the bash-library *bookkeeping* (`drive_turn` raises relay-pending, `await_reply` is a relay-pending state query, the relay functions append to the transcript). They do NOT themselves move a message to a teammate. The actual per-turn message exchange — the orchestrator emitting a real `SendMessage` with the reply-routing reminder, the teammate replying via `SendMessage(to: team-lead)`, and the relay back — is the orchestrator-driven loop specified in the companion **Mode B teammate round-trip contract** at `knowledge/mode-b-round-trip-contract.md`. Read that contract for how a turn is actually driven; read this section for what the library functions record.
+
 > **Substrate honesty.** The live Mode B primitives (`Agent` with `run_in_background:true` + `SendMessage`) may be unavailable in some Claude Code contexts. When the substrate is unavailable, `dispatch-teammate.sh` degrades silently to foreground Mode A and emits a single machine-parseable token `MODE_B_FALLBACK` to stderr. Skill authors must handle this gracefully; documentation in this section reflects both the live path and the fallback.
 
 ### Lifecycle phases

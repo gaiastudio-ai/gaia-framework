@@ -14,6 +14,16 @@
 # foreground fallback when the substrate is absent (it handles the fallback
 # and the MODE_B_FALLBACK token emission), so existing Mode A behavior is
 # preserved untouched.
+#
+# ROUND-TRIP CONTRACT. This bridge does bookkeeping ONLY. The actual per-turn
+# teammate round-trip — the orchestrator emitting a real SendMessage with the
+# mandatory reply-routing reminder, the teammate replying via
+# SendMessage(to: team-lead), and the relay back to the transcript — is driven
+# by the skill orchestrator, not by these functions (bash cannot emit
+# SendMessage). Callers MUST drive each turn per the canonical contract at
+# knowledge/mode-b-round-trip-contract.md. conversational_spawn_participant /
+# conversational_relay_turn / conversational_shutdown are the bookkeeping seams
+# that contract references.
 
 # ---------- Source guard ----------
 
