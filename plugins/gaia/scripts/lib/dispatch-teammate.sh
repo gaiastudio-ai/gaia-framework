@@ -504,13 +504,24 @@ spawn_teammate() {
 }
 
 # drive_turn HANDLE PROMPT — send a prompt to a teammate.
+# drive_turn — PRE-SEND BOOKKEEPING ONLY. This function does NOT send a prompt
+# to the teammate, because it cannot: the actual send is the main-turn
+# `SendMessage(to: <handle>, ...)` LLM tool call, which a bash script cannot
+# invoke. drive_turn's job is to record that the orchestrator is ABOUT TO drive
+# a turn — increment the turn counter and raise the relay-pending flag — so the
+# transcript-fidelity and unrelayed-turn fail-safe machinery stay consistent.
+# The orchestrator procedure (SKILL.md Mode B path) calls drive_turn for
+# bookkeeping, THEN emits the SendMessage tool call itself, THEN relays the
+# auto-delivered reply via relay_to_team_lead / meeting_relay_turn. The `prompt`
+# argument is retained for CLI symmetry and logging but is NOT transmitted here.
 drive_turn() {
   local handle="${1:-}"
-  # shellcheck disable=SC2034 # prompt consumed by live substrate path
   local prompt="${2:-}"
 
   if [ "$handle" = "--help" ]; then
-    printf 'Usage: drive_turn HANDLE PROMPT\n'
+    printf 'Usage: drive_turn HANDLE [PROMPT]\n'
+    printf '  Pre-send bookkeeping only (turn counter + relay-pending). Does NOT\n'
+    printf '  send — the orchestrator emits the SendMessage tool call after this.\n'
     return 0
   fi
 
@@ -526,26 +537,43 @@ drive_turn() {
     return 1
   fi
 
-  # Track turn — increment counter and set relay-pending flag.
+  # Record the prompt for the provenance log (audit of what the orchestrator is
+  # about to SendMessage), when a provenance log is configured. Best-effort.
+  if [ -n "$prompt" ] && [ -n "${GAIA_PROVENANCE_LOG:-}" ]; then
+    printf '%s drive_turn handle:%s prompt_len:%s\n' \
+      "$(_dt_iso8601)" "$handle" "${#prompt}" >> "$GAIA_PROVENANCE_LOG" 2>/dev/null || true
+  fi
+
+  # Pre-send bookkeeping: increment the turn counter and raise relay-pending.
+  # This always succeeds — it is local state, not a substrate call. There is no
+  # substrate gate and no MODE_B_FALLBACK here: drive_turn never sends, so it
+  # cannot "fall back". Substrate availability gates the orchestrator's decision
+  # to use the Mode B path at all (see spawn_teammate), not this bookkeeping.
   _dt_increment_turn "$handle" >/dev/null
   _dt_set_relay_pending "$handle"
 
-  # Substrate detection.
-  if ! _dt_substrate_available; then
-    _dt_emit_fallback "drive_turn"
-    return 0
-  fi
-
-  # Live substrate path — placeholder for SendMessage dispatch.
   return 0
 }
 
 # await_reply HANDLE — wait for a teammate's reply.
+# await_reply — NOT a blocking reply-fetch. A teammate's reply to a SendMessage
+# is delivered AUTOMATICALLY into the orchestrator's own conversation ("you
+# don't check an inbox") — there is no out-of-band buffer for a bash function to
+# block on or read. So await_reply is a BOOKKEEPING QUERY, not a wait: it reports
+# whether the just-driven turn is still relay-pending (exit 0 = a reply is
+# expected / pending relay; exit 1 = nothing pending). The orchestrator does NOT
+# need to call this in the normal flow — it consumes the auto-delivered reply
+# directly and calls relay_to_team_lead. await_reply is retained only as a
+# state-query helper + so the 6-fn API surface is stable; it MUST NOT be relied
+# on to produce a teammate's message.
 await_reply() {
   local handle="${1:-}"
 
   if [ "$handle" = "--help" ]; then
     printf 'Usage: await_reply HANDLE\n'
+    printf '  Bookkeeping query only: exit 0 if the turn is relay-pending, else 1.\n'
+    printf '  Does NOT block or fetch — teammate replies auto-deliver to the\n'
+    printf '  orchestrator; consume them there and call relay_to_team_lead.\n'
     return 0
   fi
 
@@ -561,14 +589,11 @@ await_reply() {
     return 1
   fi
 
-  # Substrate detection.
-  if ! _dt_substrate_available; then
-    _dt_emit_fallback "await_reply"
+  # Report relay-pending state; do not block, do not fetch.
+  if _dt_is_relay_pending "$handle"; then
     return 0
   fi
-
-  # Live substrate path — placeholder for reply retrieval.
-  return 0
+  return 1
 }
 
 # relay_to_team_lead HANDLE OUTPUT — forward teammate output verbatim to the
@@ -612,11 +637,11 @@ relay_to_team_lead() {
     printf '%s\n' "$payload"
   } >> "$transcript"
 
-  # Substrate detection.
-  if ! _dt_substrate_available; then
-    _dt_emit_fallback "relay_to_team_lead"
-  fi
-
+  # relay_to_team_lead is PURE BOOKKEEPING: it appends the (already-received)
+  # teammate reply to the transcript with identity metadata and clears the
+  # relay-pending flag. It always succeeds and never "falls back" — the reply
+  # was already obtained by the orchestrator from the auto-delivered message, so
+  # there is no substrate call to gate here.
   return 0
 }
 
