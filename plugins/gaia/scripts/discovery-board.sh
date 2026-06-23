@@ -11,6 +11,8 @@
 #   discovery-board.sh transition   --id <id> --to <state>
 #   discovery-board.sh get          --id <id>
 #   discovery-board.sh validate
+#   discovery-board.sh board        [--horizon <h>] [--priority <p>]
+#   discovery-board.sh prioritize   --id <id> --priority <p> --horizon <h>
 #   discovery-board.sh --help
 #
 # Board schema (15 fields per item):
@@ -128,6 +130,8 @@ Usage:
   discovery-board.sh transition   --id <id> --to <state>
   discovery-board.sh get          --id <id>
   discovery-board.sh validate
+  discovery-board.sh board        [--horizon <h>] [--priority <p>]
+  discovery-board.sh prioritize   --id <id> --priority <p> --horizon <h>
   discovery-board.sh --help
 
 Subcommands:
@@ -140,6 +144,11 @@ Subcommands:
   get           Print the item's YAML block to stdout (read-only).
   validate      Read-validate every item on the board. Rejects unknown
                 status values with a diagnostic. Read-only.
+  board         Render the board to stdout with optional --horizon and
+                --priority filters. Shows read-only idle advisories at
+                30/60/90 days. Never mutates state.
+  prioritize    Set priority and horizon on an item. Both --priority and
+                --horizon are required. Updates last_activity timestamp.
 
 Canonical states:
   Captured | Researching | Evaluated | Graduated | Parked | Archived
@@ -810,6 +819,196 @@ cmd_validate() {
   return 0
 }
 
+# ---------- Subcommand: board ----------
+
+# _get_now_epoch — return current time as epoch. Respects GAIA_DISCOVERY_NOW
+# for deterministic testing.
+_get_now_epoch() {
+  if [ -n "${GAIA_DISCOVERY_NOW:-}" ]; then
+    printf '%s' "$GAIA_DISCOVERY_NOW"
+  else
+    date -u +%s
+  fi
+}
+
+cmd_board() {
+  local filter_horizon="${1:-}" filter_priority="${2:-}"
+
+  if [ ! -f "$BOARD_FILE" ] || [ ! -s "$BOARD_FILE" ]; then
+    die "board file missing or empty: $BOARD_FILE"
+  fi
+
+  local now_epoch
+  now_epoch=$(_get_now_epoch)
+
+  # Read all items and render. Pure read path — no writes.
+  awk -v f_horizon="$filter_horizon" -v f_priority="$filter_priority" \
+      -v now_epoch="$now_epoch" '
+    BEGIN {
+      in_item = 0
+      item_idx = 0
+      # Terminal states get no idle advisory.
+      terminal["Graduated"] = 1
+      terminal["Archived"] = 1
+    }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+    }
+
+    # Detect start of a new item.
+    line ~ /^[[:space:]]*- id:[[:space:]]*/ {
+      # Flush previous item if any.
+      if (in_item) _flush_item()
+      in_item = 1
+      item_idx++
+      cur_id = line
+      sub(/^[[:space:]]*- id:[[:space:]]*/, "", cur_id)
+      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", cur_id)
+      cur_title = ""
+      cur_status = ""
+      cur_priority = ""
+      cur_horizon = ""
+      cur_last_activity = ""
+      next
+    }
+
+    # End of item (new list entry or top-level key).
+    in_item && (line ~ /^[[:space:]]*- id:/ || line ~ /^[^[:space:]]/) {
+      _flush_item()
+      in_item = 0
+    }
+
+    in_item && line ~ /^[[:space:]]+title:/ {
+      cur_title = line
+      sub(/^[[:space:]]+title:[[:space:]]*/, "", cur_title)
+      gsub(/^["'"'"']+|["'"'"']+$/, "", cur_title)
+    }
+    in_item && line ~ /^[[:space:]]+status:/ {
+      cur_status = line
+      sub(/^[[:space:]]+status:[[:space:]]*/, "", cur_status)
+      gsub(/^["'"'"']+|["'"'"']+$/, "", cur_status)
+    }
+    in_item && line ~ /^[[:space:]]+priority:/ {
+      cur_priority = line
+      sub(/^[[:space:]]+priority:[[:space:]]*/, "", cur_priority)
+      gsub(/^["'"'"']+|["'"'"']+$/, "", cur_priority)
+    }
+    in_item && line ~ /^[[:space:]]+horizon:/ {
+      cur_horizon = line
+      sub(/^[[:space:]]+horizon:[[:space:]]*/, "", cur_horizon)
+      gsub(/^["'"'"']+|["'"'"']+$/, "", cur_horizon)
+    }
+    in_item && line ~ /^[[:space:]]+last_activity:/ {
+      cur_last_activity = line
+      sub(/^[[:space:]]+last_activity:[[:space:]]*/, "", cur_last_activity)
+      gsub(/^["'"'"']+|["'"'"']+$/, "", cur_last_activity)
+    }
+
+    END {
+      if (in_item) _flush_item()
+    }
+
+    function _flush_item() {
+      # Apply filters.
+      if (f_horizon != "" && cur_horizon != f_horizon) return
+      if (f_priority != "" && cur_priority != f_priority) return
+
+      # Compute idle advisory (presentation-only, never mutates).
+      idle_label = ""
+      if (!(cur_status in terminal) && cur_last_activity != "") {
+        idle_label = _compute_idle(cur_last_activity, now_epoch)
+      }
+
+      # Render line.
+      printf "%s  %-14s  %-8s  %-6s", cur_id, cur_status, cur_priority, cur_horizon
+      if (idle_label != "") {
+        printf "  [%s]", idle_label
+      }
+      printf "  %s\n", cur_title
+    }
+
+    function _compute_idle(ts, now,    epoch, delta_days) {
+      # Parse ISO timestamp to epoch via shell date.
+      # awk cannot parse ISO dates natively, so we use a pre-computed
+      # formula: YYYY-MM-DDTHH:MM:SSZ -> epoch.
+      # Since awk has limited date parsing, we use mktime if available
+      # or fall back to a simplified calculation.
+      epoch = _iso_to_epoch(ts)
+      if (epoch == 0) return ""
+      delta_days = int((now - epoch) / 86400)
+      if (delta_days >= 90) return "idle >90d"
+      if (delta_days >= 60) return "idle >60d"
+      if (delta_days >= 30) return "idle >30d"
+      return ""
+    }
+
+    function _iso_to_epoch(ts,    y, m, d, h, mi, s, epoch) {
+      # Parse "YYYY-MM-DDTHH:MM:SSZ" into components.
+      if (length(ts) < 19) return 0
+      y = substr(ts, 1, 4) + 0
+      m = substr(ts, 6, 2) + 0
+      d = substr(ts, 9, 2) + 0
+      h = substr(ts, 12, 2) + 0
+      mi = substr(ts, 15, 2) + 0
+      s = substr(ts, 18, 2) + 0
+      # Use gawk mktime if available; fall back to manual calculation.
+      epoch = _manual_epoch(y, m, d, h, mi, s)
+      return epoch
+    }
+
+    function _manual_epoch(y, m, d, h, mi, s,    days, i, mdays) {
+      # Days from Unix epoch (1970-01-01) to the given UTC date.
+      # Simplified — accurate enough for idle-advisory thresholds.
+      days = 0
+      for (i = 1970; i < y; i++) {
+        days += (_is_leap(i) ? 366 : 365)
+      }
+      split("31 28 31 30 31 30 31 31 30 31 30 31", mdays, " ")
+      if (_is_leap(y)) mdays[2] = 29
+      for (i = 1; i < m; i++) {
+        days += mdays[i]
+      }
+      days += d - 1
+      return days * 86400 + h * 3600 + mi * 60 + s
+    }
+
+    function _is_leap(y) {
+      return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
+    }
+  ' "$BOARD_FILE"
+}
+
+# ---------- Subcommand: prioritize ----------
+
+_do_prioritize_locked() {
+  local item_id="$1" priority="$2" horizon="$3"
+
+  if [ ! -f "$BOARD_FILE" ] || [ ! -s "$BOARD_FILE" ]; then
+    die "board file missing or empty: $BOARD_FILE"
+  fi
+
+  # Verify item exists.
+  _read_item_field "$BOARD_FILE" "$item_id" "id" >/dev/null 2>&1 || \
+    die "item '${item_id}' not found in board"
+
+  local now
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  _rewrite_item_fields "$item_id" \
+    "priority=${priority}" \
+    "horizon=${horizon}" \
+    "last_activity=${now}"
+
+  printf '%s: %s prioritized (priority=%s, horizon=%s)\n' \
+    "$SCRIPT_NAME" "$item_id" "$priority" "$horizon"
+}
+
+cmd_prioritize() {
+  local item_id="$1" priority="$2" horizon="$3"
+  _with_lock _do_prioritize_locked "$item_id" "$priority" "$horizon"
+}
+
 # ---------- Argument parsing ----------
 
 main() {
@@ -825,7 +1024,7 @@ main() {
       usage
       exit 0
       ;;
-    capture|transition|get|validate)
+    capture|transition|get|validate|board|prioritize)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -834,7 +1033,7 @@ main() {
       ;;
   esac
 
-  local item_id="" to_state="" title="" source_text=""
+  local item_id="" to_state="" title="" source_text="" priority="" horizon=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --id)
@@ -857,6 +1056,16 @@ main() {
         source_text="$2"; shift 2 ;;
       --source=*)
         source_text="${1#--source=}"; shift ;;
+      --priority)
+        [ $# -ge 2 ] || die "--priority requires a value"
+        priority="$2"; shift 2 ;;
+      --priority=*)
+        priority="${1#--priority=}"; shift ;;
+      --horizon)
+        [ $# -ge 2 ] || die "--horizon requires a value"
+        horizon="$2"; shift 2 ;;
+      --horizon=*)
+        horizon="${1#--horizon=}"; shift ;;
       --help|-h)
         usage
         exit 0 ;;
@@ -884,6 +1093,15 @@ main() {
       ;;
     validate)
       cmd_validate
+      ;;
+    board)
+      cmd_board "$horizon" "$priority"
+      ;;
+    prioritize)
+      [ -n "$item_id" ] || die "prioritize requires --id <id>"
+      [ -n "$priority" ] || die "prioritize requires --priority <p>"
+      [ -n "$horizon" ] || die "prioritize requires --horizon <h>"
+      cmd_prioritize "$item_id" "$priority" "$horizon"
       ;;
   esac
 }

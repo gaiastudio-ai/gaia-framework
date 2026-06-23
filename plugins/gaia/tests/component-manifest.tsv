@@ -374,6 +374,7 @@ scripts-core	detect-open-questions.bats
 scripts-core	detect-orchestration-mode.bats
 scripts-core	dev-story-push-verification.bats
 scripts-core	dev-story-tdd-review-config.bats
+scripts-core	discovery-board-render.bats
 scripts-core	discovery-board-state.bats
 scripts-core	discovery-board-write.bats
 scripts-core	drift-detection-ci-suppression.bats
