@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.206.1] — 2026-06-23
+
+### Fixed
+
+- (meeting) make Mode B dispatch mandatory under team mode (#1660)
+
 ## [1.206.0] — 2026-06-22
 
 ### Added
