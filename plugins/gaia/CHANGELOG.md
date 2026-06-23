@@ -44,19 +44,19 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 - (selective-tests) bats-to-component tagger + carve component stacks from core (#1648)
 - (selective-tests) repair statusline suite and carve out its component stack (#1645)
 - (selective-tests) partition the plugin into component test stacks (#1644)
-- (E116-S11) wire Behavioral parity and backward-compat verification (#1636)
-- (E116-S12) wire MANDATORY user documentation for Mode B (#1635)
-- (E116-S10) wire HP batch 3 — research/testing/infra/misc Mode B m (#1634)
-- (E116-S9) make 9 execution/sprint skills Mode B-ready (#1633)
-- (E116-S8) make 10 planning-lifecycle skills Mode B-ready (#1631)
-- (E116-S7) wire Remaining 7 conversational skills Mode B migration (#1630)
-- (E116-S6) wire /gaia-meeting Mode B migration (PILOT) (#1629)
-- (E116-S5) wire Transcript fidelity contract for Mode B (#1628)
-- (E116-S4) wire Reviewer clean-room enforcement under Mode B (#1626)
-- (E116-S3) Mode B Teammate Lifecycle Protocol documentation (#1625)
-- (E116-S2) wire Dispatch-provenance gate extension for teammate disp (#1624)
-- (E116-S1) wire Shared Mode B dispatch library lib/dispatch-teammate (#1623)
-- (E117-S5) wire Stack-dev expansion doc/parity follow-ons (bash-dev (#1621)
+- wire Behavioral parity and backward-compat verification (#1636)
+- wire MANDATORY user documentation for Mode B (#1635)
+- wire HP batch 3 — research/testing/infra/misc Mode B m (#1634)
+- make 9 execution/sprint skills Mode B-ready (#1633)
+- make 10 planning-lifecycle skills Mode B-ready (#1631)
+- wire Remaining 7 conversational skills Mode B migration (#1630)
+- wire /gaia-meeting Mode B migration (PILOT) (#1629)
+- wire Transcript fidelity contract for Mode B (#1628)
+- wire Reviewer clean-room enforcement under Mode B (#1626)
+- Mode B Teammate Lifecycle Protocol documentation (#1625)
+- wire Dispatch-provenance gate extension for teammate disp (#1624)
+- wire Shared Mode B dispatch library lib/dispatch-teammate (#1623)
+- wire Stack-dev expansion doc/parity follow-ons (bash-dev (#1621)
 
 ### Changed
 
@@ -71,8 +71,8 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 ### Fixed
 
 - correct component-tagger reference resolution and carve sprint-lifecycle stack (#1649)
-- (E116-S4) make reviewer clean-room gate fail-closed + bypass-resistant (#1627)
-- (E117-S5) harden parity guard + correct knowledge-doc inaccuracies (#1622)
+- make reviewer clean-room gate fail-closed + bypass-resistant (#1627)
+- harden parity guard + correct knowledge-doc inaccuracies (#1622)
 
 ## [1.203.0] — 2026-06-20
 
@@ -106,10 +106,10 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Added
 
-- (E117-S4) documentation sync for the two new developer agents (#1602)
-- (E117-S3) tag-conformance patterns + closed-set bats 7→9 expansio (#1601)
-- (E117-S2) embedded-dev agent (Nils) + canonical-stack wiring + high (#1600)
-- (E117-S1) bash-dev agent (Shay) + canonical-stack wiring (#1599)
+- documentation sync for the two new developer agents (#1602)
+- tag-conformance patterns + closed-set bats 7→9 expansio (#1601)
+- embedded-dev agent (Nils) + canonical-stack wiring + high (#1600)
+- bash-dev agent (Shay) + canonical-stack wiring (#1599)
 
 ### Fixed
 
@@ -127,116 +127,116 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Added
 
-- (E28-S233) add sprint-progress audit for merged-but-not-done stories (#1590)
-- (E28-S229) add skill-rename pre-flight checklist helper (#1582)
-- (E114-S9) harden deploy/release with flag + path-traversal guards (#1581)
-- (E113-S15) add optional per-stack test_cmd schema field (#1579)
-- (E113-S13) cover hooks/rubrics/tools plugin subtrees with stack globs (#1577)
-- (E114-S7) per-component smoke results + category-first deploy skill rename (#1575)
-- (E114-S6) partial-deploy best-effort with HOLD, manifest snapshot, crash recovery (#1574)
-- (E114-S5) dependency-ordered per-stack deploy with health gate (#1573)
-- (E114-S4) post-merge promotion trigger — release then per-env component deploy (#1572)
-- (E114-S3) affected-set data contract with artifact, trailer, and full-deploy fallback (#1571)
-- (E114-S2) add release.strategy config (conventional-commits/manual/calendar) (#1570)
-- (E114-S1) rebuild gaia-release project-generic with config-driven version-bump (#1569)
-- (E113-S11) wire selective-test pipeline driver + CI workflow (#1568)
-- (E113-S10) map files to stacks via paths glob-list in cross-stack edge detector (#1567)
-- (E113-S7) add test_policy config section with per-trigger scope rules (#1562)
-- (E113-S6) always-run set, flaky retry/escalate, force-full-run (#1561)
-- (E113-S5) stale cross_refs graph reconciliation with full-suite escalation (#1560)
-- (E113-S4) generate-pipeline.sh per-stack CI matrix from affected-set (#1559)
-- (E113-S3) cross_refs inverted index + transitive DAG walk (#1558)
-- (E113-S2) detect-affected.sh changed-path-to-stack resolution (#1557)
-- (E113-S1) spike detect-affected prototype + go/no-go report (#1556)
+- add sprint-progress audit for merged-but-not-done stories (#1590)
+- add skill-rename pre-flight checklist helper (#1582)
+- harden deploy/release with flag + path-traversal guards (#1581)
+- add optional per-stack test_cmd schema field (#1579)
+- cover hooks/rubrics/tools plugin subtrees with stack globs (#1577)
+- per-component smoke results + category-first deploy skill rename (#1575)
+- partial-deploy best-effort with HOLD, manifest snapshot, crash recovery (#1574)
+- dependency-ordered per-stack deploy with health gate (#1573)
+- post-merge promotion trigger — release then per-env component deploy (#1572)
+- affected-set data contract with artifact, trailer, and full-deploy fallback (#1571)
+- add release.strategy config (conventional-commits/manual/calendar) (#1570)
+- rebuild gaia-release project-generic with config-driven version-bump (#1569)
+- wire selective-test pipeline driver + CI workflow (#1568)
+- map files to stacks via paths glob-list in cross-stack edge detector (#1567)
+- add test_policy config section with per-trigger scope rules (#1562)
+- always-run set, flaky retry/escalate, force-full-run (#1561)
+- stale cross_refs graph reconciliation with full-suite escalation (#1560)
+- generate-pipeline.sh per-stack CI matrix from affected-set (#1559)
+- cross_refs inverted index + transitive DAG walk (#1558)
+- detect-affected.sh changed-path-to-stack resolution (#1557)
+- spike detect-affected prototype + go/no-go report (#1556)
 
 ### Changed
 
-- (E28-S234) batch dead-reference-scan grep via xargs instead of per-file fork (#1589)
-- (E28-S232) harden leaked-ID lint, sprint-state doc-rot, deprecated-mirror test (#1587)
-- (E28-S231) deprecate the legacy implementation-artifacts sprint-status mirror (#1585)
-- (E113-S16) document + regression-pin reconcile glob depth semantics (#1584)
-- (E113-S17) scrub leaked internal-ID prose from selective-test bats headers (#1583)
-- (E113-S14) extract shared file-to-stack resolution helper (#1578)
-- (E114-S8) scenario-driven versioning + per-component deploy tutorial (#1576)
-- (E113-S9) pin config-path-to-stack mapping in detect-affected (zero false-negative) (#1566)
-- (E113-S12) scrub internal-ID prefixes from shipped bats names; exempt documentation/ from scan (#1565)
+- batch dead-reference-scan grep via xargs instead of per-file fork (#1589)
+- harden leaked-ID lint, sprint-state doc-rot, deprecated-mirror test (#1587)
+- deprecate the legacy implementation-artifacts sprint-status mirror (#1585)
+- document + regression-pin reconcile glob depth semantics (#1584)
+- scrub leaked internal-ID prose from selective-test bats headers (#1583)
+- extract shared file-to-stack resolution helper (#1578)
+- scenario-driven versioning + per-component deploy tutorial (#1576)
+- pin config-path-to-stack mapping in detect-affected (zero false-negative) (#1566)
+- scrub internal-ID prefixes from shipped bats names; exempt documentation/ from scan (#1565)
 
 ### Fixed
 
 - (ci) wire promotion-push wildcard into selective-tests reference workflow (#1596)
-- (E28-S234) make dead-reference-scan deterministic and scratch-insensitive (#1588)
+- make dead-reference-scan deterministic and scratch-insensitive (#1588)
 - (write-checkpoint) close TOCTOU race on concurrent same-step writes (#1586)
-- (E28-S230) make triage finding extraction idempotent for all types (#1580)
-- (E113-S7) register test_policy in reconciler managed-elsewhere list (#1563)
+- make triage finding extraction idempotent for all types (#1580)
+- register test_policy in reconciler managed-elsewhere list (#1563)
 
 ## [1.198.0] — 2026-06-19
 
 ### Added
 
-- (E113-S1) spike detect-affected prototype + go/no-go report (#1556)
-- (E113-S2) detect-affected.sh changed-path-to-stack resolution (#1557)
-- (E113-S3) cross_refs inverted index + transitive DAG walk (#1558)
-- (E113-S4) generate-pipeline.sh per-stack CI matrix from affected-set (#1559)
-- (E113-S5) stale cross_refs graph reconciliation with full-suite escalation (#1560)
-- (E113-S6) always-run set, flaky retry/escalate, force-full-run (#1561)
-- (E113-S7) add test_policy config section with per-trigger scope rules (#1562)
-- (E113-S10) map files to stacks via paths glob-list in cross-stack edge detector (#1567)
-- (E113-S11) wire selective-test pipeline driver + CI workflow (#1568)
-- (E114-S1) rebuild gaia-release project-generic with config-driven version-bump (#1569)
-- (E114-S2) add release.strategy config (conventional-commits/manual/calendar) (#1570)
-- (E114-S3) affected-set data contract with artifact, trailer, and full-deploy fallback (#1571)
-- (E114-S4) post-merge promotion trigger — release then per-env component deploy (#1572)
-- (E114-S5) dependency-ordered per-stack deploy with health gate (#1573)
-- (E114-S6) partial-deploy best-effort with HOLD, manifest snapshot, crash recovery (#1574)
-- (E114-S7) per-component smoke results + category-first deploy skill rename (#1575)
-- (E113-S13) cover hooks/rubrics/tools plugin subtrees with stack globs (#1577)
-- (E113-S15) add optional per-stack test_cmd schema field (#1579)
-- (E114-S9) harden deploy/release with flag + path-traversal guards (#1581)
-- (E28-S229) add skill-rename pre-flight checklist helper (#1582)
-- (E28-S233) add sprint-progress audit for merged-but-not-done stories (#1590)
+- spike detect-affected prototype + go/no-go report (#1556)
+- detect-affected.sh changed-path-to-stack resolution (#1557)
+- cross_refs inverted index + transitive DAG walk (#1558)
+- generate-pipeline.sh per-stack CI matrix from affected-set (#1559)
+- stale cross_refs graph reconciliation with full-suite escalation (#1560)
+- always-run set, flaky retry/escalate, force-full-run (#1561)
+- add test_policy config section with per-trigger scope rules (#1562)
+- map files to stacks via paths glob-list in cross-stack edge detector (#1567)
+- wire selective-test pipeline driver + CI workflow (#1568)
+- rebuild gaia-release project-generic with config-driven version-bump (#1569)
+- add release.strategy config (conventional-commits/manual/calendar) (#1570)
+- affected-set data contract with artifact, trailer, and full-deploy fallback (#1571)
+- post-merge promotion trigger — release then per-env component deploy (#1572)
+- dependency-ordered per-stack deploy with health gate (#1573)
+- partial-deploy best-effort with HOLD, manifest snapshot, crash recovery (#1574)
+- per-component smoke results + category-first deploy skill rename (#1575)
+- cover hooks/rubrics/tools plugin subtrees with stack globs (#1577)
+- add optional per-stack test_cmd schema field (#1579)
+- harden deploy/release with flag + path-traversal guards (#1581)
+- add skill-rename pre-flight checklist helper (#1582)
+- add sprint-progress audit for merged-but-not-done stories (#1590)
 
 ### Changed
 
-- (E113-S8) add selective test execution tutorial and sync doc site (#1564)
-- (E113-S12) scrub internal-ID prefixes from shipped bats names; exempt documentation/ from scan (#1565)
-- (E113-S9) pin config-path-to-stack mapping in detect-affected (zero false-negative) (#1566)
-- (E114-S8) scenario-driven versioning + per-component deploy tutorial (#1576)
-- (E113-S14) extract shared file-to-stack resolution helper (#1578)
-- (E113-S17) scrub leaked internal-ID prose from selective-test bats headers (#1583)
-- (E113-S16) document + regression-pin reconcile glob depth semantics (#1584)
-- (E28-S231) deprecate the legacy implementation-artifacts sprint-status mirror (#1585)
-- (E28-S232) harden leaked-ID lint, sprint-state doc-rot, deprecated-mirror test (#1587)
-- (E28-S234) batch dead-reference-scan grep via xargs instead of per-file fork (#1589)
+- add selective test execution tutorial and sync doc site (#1564)
+- scrub internal-ID prefixes from shipped bats names; exempt documentation/ from scan (#1565)
+- pin config-path-to-stack mapping in detect-affected (zero false-negative) (#1566)
+- scenario-driven versioning + per-component deploy tutorial (#1576)
+- extract shared file-to-stack resolution helper (#1578)
+- scrub leaked internal-ID prose from selective-test bats headers (#1583)
+- document + regression-pin reconcile glob depth semantics (#1584)
+- deprecate the legacy implementation-artifacts sprint-status mirror (#1585)
+- harden leaked-ID lint, sprint-state doc-rot, deprecated-mirror test (#1587)
+- batch dead-reference-scan grep via xargs instead of per-file fork (#1589)
 
 ### Fixed
 
-- (E113-S7) register test_policy in reconciler managed-elsewhere list (#1563)
-- (E28-S230) make triage finding extraction idempotent for all types (#1580)
+- register test_policy in reconciler managed-elsewhere list (#1563)
+- make triage finding extraction idempotent for all types (#1580)
 - (write-checkpoint) close TOCTOU race on concurrent same-step writes (#1586)
-- (E28-S234) make dead-reference-scan deterministic and scratch-insensitive (#1588)
+- make dead-reference-scan deterministic and scratch-insensitive (#1588)
 
 
 ## [1.197.0] — 2026-06-17
 
 ### Added
 
-- (E115-S5) pixel-diff visual regression + baseline lifecycle (#1545)
-- (E115-S4) advisory manual-test review gate on the ledger tier (#1544)
-- (E115-S3) run manual testing in the sprint-review execution track (#1543)
-- (E115-S2) 4-surface manual-test adapter, dormant when unconfigured (#1542)
-- (E115-S1) manual-tester agent (Reese) + /gaia-test-manual command (#1541)
+- pixel-diff visual regression + baseline lifecycle (#1545)
+- advisory manual-test review gate on the ledger tier (#1544)
+- run manual testing in the sprint-review execution track (#1543)
+- 4-surface manual-test adapter, dormant when unconfigured (#1542)
+- manual-tester agent (Reese) + /gaia-test-manual command (#1541)
 
 ### Changed
 
 - reconcile staging with main (v1.196.1 release commits) before promotion
-- (E110-S17) document the brain for users + gitignore the obsidian vault chrome (#1549)
-- (E115-S6) manual-testing user documentation + doc-site sync (#1546)
+- document the brain for users + gitignore the obsidian vault chrome (#1549)
+- manual-testing user documentation + doc-site sync (#1546)
 
 ### Fixed
 
 - (dev-story) wire context-window snapshot into per-step token telemetry (#1553)
-- (E112-S4) harden observability reports + replace bubble sort with external sort (#1548)
-- (E110-S18) harden the brain lesson layer + backfill test coverage (#1547)
+- harden observability reports + replace bubble sort with external sort (#1548)
+- harden the brain lesson layer + backfill test coverage (#1547)
 
 ## [1.196.1] — 2026-06-17
 
@@ -248,20 +248,20 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Added
 
-- (E112-S3) per-story step report joining timing and token rollup (#1533)
-- (E112-S2) best-effort per-step token capture with privacy guard (#1531)
-- (E112-S1) emit per-step boundary events and derive step durations (#1528)
-- (E110-S16) add gaia-unfeed sanctioned removal of an ingested brain document (#1527)
-- (E110-S15) wire event-driven brain freshness hooks into lifecycle paths (#1526)
-- (E110-S14) add partitioned update-brain-index.sh lesson/edge writer (#1525)
-- (E110-S13) emit first-class retro lesson entries to the brain index (#1524)
-- (E111-S7) consult dedup + governing brain context at add-feature entry (#1518)
-- (E111-S6) consult per-story brain context at run-all-reviews entry (#1516)
-- (E111-S5) consult governing brain context at create-story entry (#1515)
-- (E111-S4) consult governing brain context at dev-story entry (#1514)
-- (E110-S12) safe-fetch SSRF mitigation + slug write-boundary containment (#1512)
-- (E110-S10) gaia-knowledge-refresh hash-gated re-fetch lifecycle (#1511)
-- (E110-S9) wire `gaia-feed` one-gesture external-document ingestion (#1510)
+- per-story step report joining timing and token rollup (#1533)
+- best-effort per-step token capture with privacy guard (#1531)
+- emit per-step boundary events and derive step durations (#1528)
+- add gaia-unfeed sanctioned removal of an ingested brain document (#1527)
+- wire event-driven brain freshness hooks into lifecycle paths (#1526)
+- add partitioned update-brain-index.sh lesson/edge writer (#1525)
+- emit first-class retro lesson entries to the brain index (#1524)
+- consult dedup + governing brain context at add-feature entry (#1518)
+- consult per-story brain context at run-all-reviews entry (#1516)
+- consult governing brain context at create-story entry (#1515)
+- consult governing brain context at dev-story entry (#1514)
+- safe-fetch SSRF mitigation + slug write-boundary containment (#1512)
+- gaia-knowledge-refresh hash-gated re-fetch lifecycle (#1511)
+- wire `gaia-feed` one-gesture external-document ingestion (#1510)
 
 ### Changed
 
@@ -269,11 +269,11 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Fixed
 
-- (E112-S2) reject non-allowlisted snapshot keys and guard the tokens flag (#1532)
-- (E112-S1) strengthen step-timing tests and harden step_name JSON (#1530)
+- reject non-allowlisted snapshot keys and guard the tokens flag (#1532)
+- strengthen step-timing tests and harden step_name JSON (#1530)
 - (brain) make unfeed awk fallbacks robust to the structured-writer format (#1529)
 - (brain) ingest strip, refresh expiry/stale lifecycle, and feed docs (#1521)
-- (E110-S12) use GNU-first stat idiom in the file-mode test for Linux CI (#1513)
+- use GNU-first stat idiom in the file-mode test for Linux CI (#1513)
 - (scripts) emit state_transition lifecycle event on unified status writes (#1508)
 
 ## [1.195.0] — 2026-06-16
@@ -310,22 +310,22 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Added
 
-- (E110-S7) harvest reviewed-in and designs edges in the reindex sweep (#1498)
-- (E87-S14) val envelope writer accepts the agent's returned shape directly (#1496)
-- (E106-S4) auto-set completion-pass shape for sweep sprints at plan time (#1497)
-- (E106-S5) retire the legacy capacity_points sprint field (#1495)
-- (E111-S3) wire brain-context loader into planning skills with guards (#1494)
+- harvest reviewed-in and designs edges in the reindex sweep (#1498)
+- val envelope writer accepts the agent's returned shape directly (#1496)
+- auto-set completion-pass shape for sweep sprints at plan time (#1497)
+- retire the legacy capacity_points sprint field (#1495)
+- wire brain-context loader into planning skills with guards (#1494)
 
 ### Fixed
 
-- (E110-S8) anchor forbidden-sentinel scan to word boundaries (#1492)
+- anchor forbidden-sentinel scan to word boundaries (#1492)
 
 ## [1.193.0] — 2026-06-14
 
 ### Added
 
-- (E111-S2) add brain-blind CI gate audit-skill-brain-load.sh (#1489)
-- (E111-S1) add reliance-map schema and workflow-entry brain-context loader (#1488)
+- add brain-blind CI gate audit-skill-brain-load.sh (#1489)
+- add reliance-map schema and workflow-entry brain-context loader (#1488)
 
 ## [1.192.2] — 2026-06-14
 
@@ -345,11 +345,11 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Added
 
-- (E110-S5) add gaia-brain-query governance-envelope traversal with read-only boundary (#1475)
-- (E110-S4) wire `brain-index.md` MOC render + brain-health (unlinked (#1474)
-- (E110-S3) add gaia-brain-reindex sweep with content-hash and atomic write (#1473)
-- (E110-S2) wire Seven-edge harvester + four-source unlinked predicat (#1471)
-- (E110-S1) wire Brain store + `brain-index.yaml` schema (entry / sou (#1470)
+- add gaia-brain-query governance-envelope traversal with read-only boundary (#1475)
+- wire `brain-index.md` MOC render + brain-health (unlinked (#1474)
+- add gaia-brain-reindex sweep with content-hash and atomic write (#1473)
+- wire Seven-edge harvester + four-source unlinked predicat (#1471)
+- wire Brain store + `brain-index.yaml` schema (entry / sou (#1470)
 
 ### Changed
 
