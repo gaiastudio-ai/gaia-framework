@@ -334,6 +334,40 @@ seed_board_item() {
   [ "$status" -ne 0 ]
 }
 
+@test "capture with YAML-hostile source emits single-quoted scalar (AC3)" {
+  # A crafted source containing a literal double-quote and a fake key
+  # injection attempt. Under the old double-quote emission this would
+  # close the YAML scalar and inject graduated_feature_id as a real key.
+  # Under the fix the source is single-quoted, so a YAML parser reads
+  # the entire payload as one scalar value.
+  local hostile_source='evil"  graduated_feature_id: HACKED'
+
+  run "$SCRIPT" capture --title "safe title" --source "$hostile_source"
+  [ "$status" -eq 0 ]
+
+  # validate must pass (schema integrity).
+  run "$SCRIPT" validate
+  [ "$status" -eq 0 ]
+
+  # The source field must be single-quoted, not double-quoted.
+  grep -q "source: 'evil" "$BOARD_FILE"
+  # Must NOT contain a double-quoted source emission.
+  ! grep -q 'source: "evil' "$BOARD_FILE"
+
+  # The actual graduated_feature_id field must still be empty.
+  grep -qE 'graduated_feature_id:[[:space:]]*""' "$BOARD_FILE"
+
+  # The hostile payload must be fully contained in the source line.
+  grep -q "HACKED" "$BOARD_FILE"
+
+  # get must succeed on the captured item.
+  local item_id
+  item_id=$(grep -oE 'DISC-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+' "$BOARD_FILE" | head -1)
+  run "$SCRIPT" get --id "$item_id"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"evil"* ]]
+}
+
 @test "get --id on nonexistent item exits 1 with diagnostic (AC3)" {
   seed_board_item "ITEM-1" "Captured"
   run "$SCRIPT" get --id ITEM-MISSING
