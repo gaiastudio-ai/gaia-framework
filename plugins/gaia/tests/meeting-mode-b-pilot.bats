@@ -319,7 +319,7 @@ STUB
   [ -z "$target" ]
 }
 
-@test "interjection routing would emit MODE_B_FALLBACK under substrate-absent — substrate-gated (AC5)" {
+@test "interjection routing resolves a target; driving it is bookkeeping-only (AC5)" {
   source "$DT_LIB"
   source "$MEETING_BRIDGE"
   export GAIA_MODE_B_SUBSTRATE=unavailable
@@ -329,15 +329,21 @@ STUB
   drive_turn "$h1" "prompt" 2>/dev/null
   meeting_relay_turn "$h1" "output" 2>/dev/null
 
-  # Routing itself is pure shell logic (no substrate needed), but the
-  # downstream drive_turn on the target would emit fallback.
+  # Routing is pure shell logic (no substrate needed) — it resolves the target
+  # teammate handle.
   local target
   target="$(meeting_route_interjection "my comment")"
   [ -n "$target" ]
 
+  # Driving the resolved target is PRE-SEND BOOKKEEPING ONLY: it raises
+  # relay-pending and does NOT emit MODE_B_FALLBACK (the orchestrator's
+  # SendMessage performs the actual send, not drive_turn). Regression guard for
+  # the old stub that mis-emitted fallback from drive_turn.
   local stderr_out="$TEST_TMP/stderr.txt"
-  drive_turn "$target" "interjection payload" 2>"$stderr_out" || true
-  grep -qF "MODE_B_FALLBACK" "$stderr_out"
+  run drive_turn "$target" "interjection payload" 2>"$stderr_out"
+  [ "$status" -eq 0 ]
+  ! grep -qF "MODE_B_FALLBACK" "$stderr_out"
+  await_reply "$target"   # relay-pending is now raised on the target
 }
 
 # ============================================================

@@ -397,24 +397,47 @@ SKILLEOF
   grep -qF "MODE_B_FALLBACK" "$stderr_out"
 }
 
-@test "drive_turn emits MODE_B_FALLBACK when substrate is unavailable (fallback)" {
+@test "drive_turn is pre-send bookkeeping only — no send, no MODE_B_FALLBACK" {
+  # drive_turn records turn-counter + relay-pending; it never sends (the
+  # orchestrator's SendMessage tool call does that) so it never falls back —
+  # not even with the substrate forced unavailable. (Regression guard for the
+  # old stub that mis-emitted MODE_B_FALLBACK and implied a bash send.)
   source "$LIB"
   local handle
   handle="$(spawn_teammate "gaia:analyst" 2>/dev/null)"
   export GAIA_MODE_B_SUBSTRATE=unavailable
   local stderr_out="$TEST_TMP/stderr.txt"
-  drive_turn "$handle" "do analysis" 2>"$stderr_out" || true
-  grep -qF "MODE_B_FALLBACK" "$stderr_out"
+  run drive_turn "$handle" "do analysis" 2>"$stderr_out"
+  [ "$status" -eq 0 ]
+  ! grep -qF "MODE_B_FALLBACK" "$stderr_out"
 }
 
-@test "await_reply emits MODE_B_FALLBACK when substrate is unavailable (fallback)" {
+@test "drive_turn raises relay-pending (bookkeeping effect)" {
+  source "$LIB"
+  local handle
+  handle="$(spawn_teammate "gaia:analyst" 2>/dev/null)"
+  drive_turn "$handle" "do analysis" >/dev/null 2>&1
+  # await_reply reports relay-pending state — exit 0 means pending.
+  run await_reply "$handle"
+  [ "$status" -eq 0 ]
+}
+
+@test "await_reply is a relay-pending state query, not a fetch — clears after relay" {
+  # Replies auto-deliver to the orchestrator; await_reply does NOT block or
+  # fetch and does NOT emit MODE_B_FALLBACK. It returns 0 while relay-pending,
+  # 1 once the turn has been relayed.
   source "$LIB"
   local handle
   handle="$(spawn_teammate "gaia:analyst" 2>/dev/null)"
   export GAIA_MODE_B_SUBSTRATE=unavailable
+  drive_turn "$handle" "do analysis" >/dev/null 2>&1
   local stderr_out="$TEST_TMP/stderr.txt"
-  await_reply "$handle" 2>"$stderr_out" || true
-  grep -qF "MODE_B_FALLBACK" "$stderr_out"
+  run await_reply "$handle" 2>"$stderr_out"     # pending after drive
+  [ "$status" -eq 0 ]
+  ! grep -qF "MODE_B_FALLBACK" "$stderr_out"
+  relay_to_team_lead "$handle" "analyst: done" >/dev/null 2>&1
+  run await_reply "$handle"                      # not pending after relay
+  [ "$status" -ne 0 ]
 }
 
 # ============================================================
