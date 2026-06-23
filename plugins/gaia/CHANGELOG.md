@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.207.1] — 2026-06-23
+
+### Fixed
+
+- (meeting) reliable Mode B reply-routing + session-isolated registry (#1666)
+
 ## [1.207.0] — 2026-06-23
 
 ### Added
