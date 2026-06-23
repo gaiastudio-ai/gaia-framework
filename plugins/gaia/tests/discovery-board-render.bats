@@ -323,3 +323,24 @@ seed_board_item() {
   count=$(printf '%s\n' "$output" | grep -c "ITEM-1" || true)
   [ "$count" -eq 0 ]
 }
+
+# ---------- regression: pipe character in priority/horizon round-trips correctly ----------
+
+@test "prioritize with pipe in priority and horizon values round-trips correctly (AC4)" {
+  seed_board_item "ITEM-PIPE" "Captured"
+  run "$SCRIPT" prioritize --id ITEM-PIPE --priority 'A|B' --horizon 'C|D'
+  [ "$status" -eq 0 ]
+
+  # Read back the raw YAML and verify full values survived (not truncated at |).
+  local stored_priority stored_horizon
+  stored_priority=$(grep 'priority:' "$BOARD_FILE" | tail -1)
+  stored_horizon=$(grep 'horizon:' "$BOARD_FILE" | tail -1)
+  [[ "$stored_priority" == *"A|B"* ]]
+  [[ "$stored_horizon" == *"C|D"* ]]
+
+  # Verify get subcommand also returns the full values.
+  run "$SCRIPT" get --id ITEM-PIPE
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"A|B"* ]]
+  [[ "$output" == *"C|D"* ]]
+}

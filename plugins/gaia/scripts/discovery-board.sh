@@ -436,22 +436,26 @@ _rewrite_item_fields() {
 
   # Build awk field-value assignments from the pairs.
   # Escape each value for single-quoted YAML: double every internal single-quote.
+  # Use ASCII Unit Separator (0x1F) as field/value delimiter — it cannot appear
+  # in YAML scalar text, so values containing '|' round-trip correctly.
+  local us
+  us=$(printf '\037')
   local awk_fields=""
   local pair
   for pair in "$@"; do
     local f="${pair%%=*}"
     local v="${pair#*=}"
     v="${v//\'/\'\'}"
-    awk_fields="${awk_fields}${f}|${v}\n"
+    awk_fields="${awk_fields}${f}${us}${v}\n"
   done
 
-  awk -v target="$target_id" -v field_pairs="$awk_fields" '
+  awk -v target="$target_id" -v field_pairs="$awk_fields" -v sep="$(printf '\037')" '
     BEGIN {
       in_item = 0
       n = split(field_pairs, raw_pairs, "\n")
       for (i = 1; i <= n; i++) {
         if (raw_pairs[i] == "") continue
-        split(raw_pairs[i], kv, "|")
+        split(raw_pairs[i], kv, sep)
         fields[kv[1]] = kv[2]
         field_count++
       }
