@@ -212,6 +212,5 @@ STUBEOF
   [ "$before_b" = "$after_b" ]
 
   # ITEM-A must now be Researching.
-  grep -q 'status: "Researching"' "$BOARD_FILE" || \
-    grep -q "status: Researching" "$BOARD_FILE"
+  grep -qE 'status:.*Researching' "$BOARD_FILE"
 }

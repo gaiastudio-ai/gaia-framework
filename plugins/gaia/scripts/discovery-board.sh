@@ -361,7 +361,10 @@ _rewrite_item_field() {
   _GAIA_TMP_PATHS+=("$tmp")
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
 
-  awk -v target="$target_id" -v field="$field" -v val="$new_value" '
+  # Escape val for single-quoted YAML: double every internal single-quote.
+  local sq_value="${new_value//\'/\'\'}"
+
+  awk -v target="$target_id" -v field="$field" -v val="$sq_value" '
     BEGIN { in_item = 0; rewrote = 0 }
     {
       raw = $0
@@ -384,7 +387,7 @@ _rewrite_item_field() {
       if (line ~ pat) {
         match(raw, /^[[:space:]]+/)
         indent = substr(raw, RSTART, RLENGTH)
-        printf "%s%s: \"%s\"\n", indent, field, val
+        printf "%s%s: '"'"'%s'"'"'\n", indent, field, val
         rewrote = 1
         next
       }
@@ -423,11 +426,13 @@ _rewrite_item_fields() {
   _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
 
   # Build awk field-value assignments from the pairs.
+  # Escape each value for single-quoted YAML: double every internal single-quote.
   local awk_fields=""
   local pair
   for pair in "$@"; do
     local f="${pair%%=*}"
     local v="${pair#*=}"
+    v="${v//\'/\'\'}"
     awk_fields="${awk_fields}${f}|${v}\n"
   done
 
@@ -464,7 +469,7 @@ _rewrite_item_fields() {
         if (line ~ pat) {
           match(raw, /^[[:space:]]+/)
           indent = substr(raw, RSTART, RLENGTH)
-          printf "%s%s: \"%s\"\n", indent, f, fields[f]
+          printf "%s%s: '"'"'%s'"'"'\n", indent, f, fields[f]
           next
         }
       }
@@ -538,14 +543,15 @@ _do_capture_locked() {
     _GAIA_TMP_PATHS+=("$tmp")
     _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
 
-    local title_yaml
+    local title_yaml source_yaml
     title_yaml=$(yaml_single_quote "$title")
+    source_yaml=$(yaml_single_quote "$source_text")
 
     {
       cat "$BOARD_FILE"
       printf '  - id: "%s"\n' "$new_id"
       printf '    title: %s\n' "$title_yaml"
-      printf '    source: "%s"\n' "$source_text"
+      printf '    source: %s\n' "$source_yaml"
       printf '    status: "Captured"\n'
       printf '    research_type: []\n'
       printf '    artifacts: []\n'
@@ -574,14 +580,15 @@ _do_capture_locked() {
     _GAIA_TMP_PATHS+=("$tmp")
     _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
 
-    local title_yaml
+    local title_yaml source_yaml
     title_yaml=$(yaml_single_quote "$title")
+    source_yaml=$(yaml_single_quote "$source_text")
 
     {
       printf 'items:\n'
       printf '  - id: "%s"\n' "$new_id"
       printf '    title: %s\n' "$title_yaml"
-      printf '    source: "%s"\n' "$source_text"
+      printf '    source: %s\n' "$source_yaml"
       printf '    status: "Captured"\n'
       printf '    research_type: []\n'
       printf '    artifacts: []\n'
@@ -693,22 +700,22 @@ _do_transition_locked() {
       in_item && line ~ /^[[:space:]]+status:/ {
         match(raw, /^[[:space:]]+/)
         indent = substr(raw, RSTART, RLENGTH)
-        printf "%sstatus: \"%s\"\n", indent, new_status
+        printf "%sstatus: '"'"'%s'"'"'\n", indent, new_status
         next
       }
       in_item && line ~ /^[[:space:]]+last_activity:/ {
         match(raw, /^[[:space:]]+/)
         indent = substr(raw, RSTART, RLENGTH)
-        printf "%slast_activity: \"%s\"\n", indent, new_activity
+        printf "%slast_activity: '"'"'%s'"'"'\n", indent, new_activity
         next
       }
       in_item && line ~ /^[[:space:]]+status_changed_at:/ {
         match(raw, /^[[:space:]]+/)
         indent = substr(raw, RSTART, RLENGTH)
-        printf "%sstatus_changed_at: \"%s\"\n", indent, new_changed
+        printf "%sstatus_changed_at: '"'"'%s'"'"'\n", indent, new_changed
         # Insert parked_from right after status_changed_at when absent.
         if (!wrote_parked_from) {
-          printf "%sparked_from: \"%s\"\n", indent, park_from
+          printf "%sparked_from: '"'"'%s'"'"'\n", indent, park_from
           wrote_parked_from = 1
         }
         next
@@ -716,7 +723,7 @@ _do_transition_locked() {
       in_item && line ~ /^[[:space:]]+parked_from:/ {
         match(raw, /^[[:space:]]+/)
         indent = substr(raw, RSTART, RLENGTH)
-        printf "%sparked_from: \"%s\"\n", indent, park_from
+        printf "%sparked_from: '"'"'%s'"'"'\n", indent, park_from
         wrote_parked_from = 1
         next
       }
