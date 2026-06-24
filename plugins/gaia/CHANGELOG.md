@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.209.0] — 2026-06-24
+
+### Added
+
+- (E119-S5) discovery-id leak gate + lifecycle docs + doc-site sync (#1684)
+- (E119-S4) graduation tracks + --from-discovery bridge (#1682)
+- (E119-S3) sprint-decoupling firewall guard + required CI check (#1680)
+- (E119-S2) /gaia-discover skill + board render + prioritize gesture (#1678)
+
+### Changed
+
+- (E119-S5) widen leak-gate scan to py/js/ts + case-insensitive + bite-proof carve-outs (#1685)
+- (E119-S4) tighten graduate path-traversal + AC5 ordering assertions (#1683)
+
+### Fixed
+
+- (E119-S3) close firewall fail-open gaps from security review (#1681)
+- (E119-S2) use US separator in field-rewrite to stop pipe truncation (#1679)
+- (E119-S1) single-quote YAML scalars to close source-field injection (#1677)
+
 ## [1.208.1] — 2026-06-23
 
 ### Fixed
