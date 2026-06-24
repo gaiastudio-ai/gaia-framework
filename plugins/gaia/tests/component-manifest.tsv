@@ -378,6 +378,7 @@ scripts-core	dev-story-tdd-review-config.bats
 scripts-core	discovery-board-render.bats
 scripts-core	discovery-board-state.bats
 scripts-core	discovery-board-write.bats
+scripts-core	discovery-graduate.bats
 scripts-core	drift-detection-ci-suppression.bats
 scripts-core	drift-detection.bats
 scripts-core	e106-s2-dual-track-estimation.bats
