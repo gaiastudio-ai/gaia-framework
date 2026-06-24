@@ -457,6 +457,7 @@ scripts-core	reconcile-stale-graph.bats
 scripts-core	resolve-affected-set.bats
 scripts-core	resolve-config.bats
 scripts-core	review-gate-proof-of-execution.bats
+scripts-core	review-gate-sprint-scope.bats
 scripts-core	review-gate.bats
 scripts-core	review-runner.bats
 scripts-core	review-summary-gen-canonical-relpaths.bats
