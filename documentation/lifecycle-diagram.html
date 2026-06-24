@@ -91,6 +91,11 @@
           <a href="commands/gaia-brownfield.html" class="ld-entry-path-cmd">/gaia-brownfield</a>
         </div>
         <div class="ld-entry-path">
+          <span class="ld-entry-path-label">Discovery</span>
+          <a href="commands/gaia-discover.html" class="ld-entry-path-cmd">/gaia-discover</a>
+          then graduate to Add Feature
+        </div>
+        <div class="ld-entry-path">
           <span class="ld-entry-path-label">Add Feature</span>
           <a href="commands/gaia-add-feature.html" class="ld-entry-path-cmd">/gaia-add-feature</a>
         </div>
@@ -659,6 +664,41 @@
             <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
             <span style="font-size: var(--font-size-sm); color: var(--color-text-muted);">
               Continues at Phase 3: <a href="commands/gaia-create-arch.html"><code>/gaia-create-arch</code></a>
+            </span>
+          </div>
+        </div>
+
+        <!-- Discovery -->
+        <div class="ld-alt-path" style="margin-bottom: var(--space-lg);">
+          <div class="ld-alt-title">Discovery (Pre-Backlog)</div>
+          <div class="ld-alt-desc">
+            A pre-backlog staging area for raw ideas. Items flow through capture,
+            research, and evaluation before graduating into
+            <code>/gaia-add-feature</code>. Graduate is the only downstream edge.
+            Discovery synthesis is internal-only -- never paste secrets into
+            capture.
+          </div>
+          <div class="ld-alt-flow">
+            <a href="commands/gaia-discover.html" class="ld-node" style="border-left-color: var(--phase-1-color);">
+              <span class="ld-node-cmd">/gaia-discover capture</span>
+              <span class="ld-node-desc">Capture a raw idea</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
+            <a href="commands/gaia-discover.html" class="ld-node" style="border-left-color: var(--phase-1-color);">
+              <span class="ld-node-cmd">/gaia-discover research</span>
+              <span class="ld-node-desc">Research and evaluate</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
+            <a href="commands/gaia-discover.html" class="ld-node" style="border-left-color: var(--phase-1-color);">
+              <span class="ld-node-cmd">/gaia-discover graduate</span>
+              <span class="ld-node-desc">Graduate to formal backlog</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow" style="padding: 0 var(--space-sm);">&#9654;</div>
+            <span style="font-size: var(--font-size-sm); color: var(--color-text-muted);">
+              Continues at <a href="commands/gaia-add-feature.html"><code>/gaia-add-feature --from-discovery</code></a>
             </span>
           </div>
         </div>

@@ -99,6 +99,8 @@ core	dev-story-stack-dev-delegation.bats
 core	dev-story-tdd-gate-wiring.bats
 core	dev-story-yolo-activation.bats
 core	discover-inputs.bats
+core	discovery-firewall.bats
+core	discovery-leak-gate.bats
 core	dispatch-provenance-teammate.bats
 core	distribution-schema.bats
 core	e101-s1-adr-118-architecture-artifacts-decision.bats
@@ -374,6 +376,10 @@ scripts-core	detect-open-questions.bats
 scripts-core	detect-orchestration-mode.bats
 scripts-core	dev-story-push-verification.bats
 scripts-core	dev-story-tdd-review-config.bats
+scripts-core	discovery-board-render.bats
+scripts-core	discovery-board-state.bats
+scripts-core	discovery-board-write.bats
+scripts-core	discovery-graduate.bats
 scripts-core	drift-detection-ci-suppression.bats
 scripts-core	drift-detection.bats
 scripts-core	e106-s2-dual-track-estimation.bats
