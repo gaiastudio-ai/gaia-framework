@@ -293,18 +293,17 @@ EOF
 # F-19 + D-03 — state machine adds ready-for-dev → backlog
 # ===========================================================================
 
-@test "sprint-state.sh ALLOWED_EDGES includes ready-for-dev|backlog" {
-  run grep -F '"ready-for-dev|backlog"' "$PLUGIN_ROOT/scripts/sprint-state.sh"
+@test "story-state-machine SSOT includes the ready-for-dev|backlog edge" {
+  # sprint-state.sh no longer carries an inline adjacency table — story-level
+  # edge legality is owned by the shared SSOT. The defer edge lives there.
+  run grep -F '"ready-for-dev|backlog"' "$PLUGIN_ROOT/scripts/lib/story-state-machine.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "ready-for-dev → backlog transition succeeds end-to-end" {
-  # Build a minimal sprint-status.yaml and story, then drive a real transition.
-  # The transition machinery requires several surfaces; this test just verifies
-  # the adjacency-allow gate at the sprint-state.sh layer.
-  src="$PLUGIN_ROOT/scripts/sprint-state.sh"
-  # The validate-edge helper is internal; grep confirms the edge is in the list.
-  run bash -c "grep -A 12 'ALLOWED_EDGES=(' \"$src\" | grep -F 'ready-for-dev|backlog'"
+@test "sprint-state.sh accepts the ready-for-dev to backlog edge (delegates to SSOT)" {
+  # Confirm the edge is legal through sprint-state.sh's own validator, which
+  # now sources the shared SSOT rather than an embedded table.
+  run bash -c '. "'"$PLUGIN_ROOT"'/scripts/lib/story-state-machine.sh" && validate_story_transition ready-for-dev backlog'
   [ "$status" -eq 0 ]
 }
 
