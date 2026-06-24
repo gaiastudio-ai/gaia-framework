@@ -194,6 +194,7 @@ seed_artifact() {
   seed_board_full "ITEM-1" "Evaluated" "High" "Now" "Idea" "meeting" "[]" "AI-2099-01-01-1"
   run "$SCRIPT" graduate --id ITEM-1
   [ "$status" -ne 0 ]
+  [[ "$output" == *"soft-deleted"* ]] || [[ "$output" == *"deleted"* ]] || [[ "$output" == *"not graduatable"* ]]
 }
 
 @test "graduate fails closed when action-items.yaml is missing (AC2)" {
@@ -350,39 +351,45 @@ seed_artifact() {
   [ "${#desc_line}" -le 520 ]
 }
 
-@test "graduate --from-discovery rejects artifact path with traversal (AC4)" {
-  # Artifact with ../ traversal.
+@test "graduate rejects research-track artifact path with traversal (AC4)" {
+  # Artifact with ../ traversal — must be rejected outright by _confine_path.
   seed_board_full "ITEM-1" "Evaluated" "High" "Now" "Idea" "manual" \
     '["'../../etc/passwd'"]' ""
-  run "$SCRIPT" graduate --id ITEM-1 --from-discovery
-  # Must either reject outright or sanitize the path — not emit the traversal.
-  if [ "$status" -eq 0 ]; then
-    assert_file_excludes <(printf '%s\n' "$output") "../"
-  fi
-  # If status is non-zero, that is also acceptable (fail closed on bad path).
-  true
+  run "$SCRIPT" graduate --id ITEM-1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"escapes"* ]] || [[ "$output" == *"traversal"* ]] || [[ "$output" == *"repository root"* ]]
 }
 
-@test "graduate --from-discovery rejects absolute path outside repo (AC4)" {
+@test "graduate rejects research-track artifact with absolute path (AC4)" {
+  # Absolute path — must be rejected outright by _confine_path.
   seed_board_full "ITEM-1" "Evaluated" "High" "Now" "Idea" "manual" \
     '["/etc/passwd"]' ""
-  run "$SCRIPT" graduate --id ITEM-1 --from-discovery
-  if [ "$status" -eq 0 ]; then
-    assert_file_excludes <(printf '%s\n' "$output") "/etc/passwd"
-  fi
-  true
+  run "$SCRIPT" graduate --id ITEM-1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"escapes"* ]] || [[ "$output" == *"repository root"* ]]
 }
 
 # =====================================================================
 # AC5: graduate side-effect ordering — transition AFTER backlog lands
 # =====================================================================
 
-@test "graduate transitions to Graduated only after emitting hydrated intake (AC5)" {
+@test "graduate emits hydrated intake before graduation confirmation in output (AC5)" {
   seed_board_full "ITEM-1" "Evaluated" "High" "Now" "Ordered idea" "manual" "[]" ""
-  run "$SCRIPT" graduate --id ITEM-1
+  run "$SCRIPT" graduate --id ITEM-1 --from-discovery
   [ "$status" -eq 0 ]
   # Item must now be Graduated.
   grep -qE 'status:.*Graduated' "$BOARD_FILE"
+  # Hydrated intake fields must appear in output.
+  [[ "$output" == *"description:"* ]]
+  [[ "$output" == *"urgency:"* ]]
+  # Ordering: hydrated intake lines (description:) must appear BEFORE the
+  # "graduated" confirmation line — proving emission precedes state mutation.
+  local desc_line grad_line
+  desc_line=$(printf '%s\n' "$output" | grep -n 'description:' | head -1 | cut -d: -f1)
+  grad_line=$(printf '%s\n' "$output" | grep -n 'graduated' | head -1 | cut -d: -f1)
+  [ -n "$desc_line" ]
+  [ -n "$grad_line" ]
+  [ "$desc_line" -lt "$grad_line" ]
 }
 
 @test "graduate stamps graduated_feature_id after successful graduation (AC5)" {
