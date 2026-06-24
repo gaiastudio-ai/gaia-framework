@@ -1,6 +1,6 @@
 # Cluster 9 — Run-All-Reviews Integration Tests
 
-End-to-end integration tests for `gaia-run-all-reviews` (E28-S73).
+End-to-end integration tests for `gaia-run-all-reviews`.
 
 ## Fixture Layout
 

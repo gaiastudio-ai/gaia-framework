@@ -229,6 +229,7 @@ core	mode-b-docs.bats
 core	mode-b-parity.bats
 core	never-run-subdir-guard.bats
 core	no-bsd-awk-incompatible-anchors.bats
+core	no-leaked-ids-in-prose.bats
 core	no-leaked-ids-in-test-names.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
