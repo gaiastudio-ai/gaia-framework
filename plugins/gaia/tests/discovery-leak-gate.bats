@@ -28,6 +28,17 @@ teardown() {
 # NOT match (it contains brackets, not digits).
 _DISC_CONCRETE='DISC-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9]+'
 
+# Shared include list for grep — single source so the main scan and the
+# diagnostic re-grep can never drift.  Covers every text extension present
+# in the published tree (scripts, tests, docs, configs, and source files).
+_DISC_INCLUDES=(
+  --include='*.sh'   --include='*.bats'
+  --include='*.md'   --include='*.html'
+  --include='*.yaml' --include='*.yml'
+  --include='*.json' --include='*.txt' --include='*.csv'
+  --include='*.py'   --include='*.js'  --include='*.ts'
+)
+
 # _scan_published_tree — find concrete discovery-id leaks in the published
 # source tree. Returns the count of offending lines via stdout.
 # Carve-outs:
@@ -42,9 +53,7 @@ _scan_published_tree() {
   repo_root="$(cd "$root" && git rev-parse --show-toplevel 2>/dev/null || echo "$root")"
 
   local raw
-  raw="$(grep -rn --include='*.sh' --include='*.bats' --include='*.md' \
-              --include='*.html' --include='*.yaml' --include='*.yml' \
-              --include='*.json' --include='*.txt' --include='*.csv' \
+  raw="$(grep -rin "${_DISC_INCLUDES[@]}" \
               -E "$_DISC_CONCRETE" "$repo_root" 2>/dev/null \
     | grep -v '\.git/' \
     | grep -v 'tests/fixtures/' \
@@ -62,7 +71,7 @@ _scan_published_tree() {
 
   # Carve-out: printf format strings (DISC-%s-%d) are not concrete.
   filtered="$(printf '%s\n' "$filtered" \
-    | grep -vE 'DISC-%[sd]' \
+    | grep -viE 'DISC-%[sd]' \
     || true)"
 
   [[ -z "$filtered" ]] && { echo 0; return; }
@@ -84,14 +93,12 @@ _scan_published_tree() {
     local root="$BATS_TEST_DIRNAME/.."
     local repo_root
     repo_root="$(cd "$root" && git rev-parse --show-toplevel 2>/dev/null || echo "$root")"
-    grep -rn --include='*.sh' --include='*.bats' --include='*.md' \
-             --include='*.html' --include='*.yaml' --include='*.yml' \
-             --include='*.json' --include='*.txt' --include='*.csv' \
+    grep -rin "${_DISC_INCLUDES[@]}" \
              -E "$_DISC_CONCRETE" "$repo_root" 2>/dev/null \
       | grep -v '\.git/' \
       | grep -v 'tests/fixtures/' \
       | grep -vE '\[0-9\]' \
-      | grep -vE 'DISC-%[sd]' \
+      | grep -viE 'DISC-%[sd]' \
       >&2 || true
     return 1
   fi
@@ -111,14 +118,14 @@ _scan_published_tree() {
     "2026" "06" "23" "1" > "$fixture"
 
   local raw
-  raw="$(grep -E "$_DISC_CONCRETE" "$fixture" 2>/dev/null || true)"
+  raw="$(grep -iE "$_DISC_CONCRETE" "$fixture" 2>/dev/null || true)"
   [[ -n "$raw" ]]
 
   # After carve-outs, at least one line must remain (proving detection works).
   local filtered
   filtered="$(printf '%s\n' "$raw" \
     | grep -vE '\[0-9\]' \
-    | grep -vE 'DISC-%[sd]' \
+    | grep -viE 'DISC-%[sd]' \
     || true)"
   [[ -n "$filtered" ]]
 }
@@ -128,19 +135,21 @@ _scan_published_tree() {
 # ---------------------------------------------------------------------------
 
 @test "discovery-id gate does not flag load-bearing regex literals (AC1)" {
-  # Create a fixture with the regex shape (contains [0-9] character classes).
+  # Build a MIXED fixture line that DOES match the concrete DISC pattern
+  # AND contains the [0-9] regex literal.  This forces the full filter
+  # pipeline to run (the grep -vE '\[0-9\]' carve-out must exempt it).
+  # The concrete literal is assembled via printf to keep this source clean.
   local fixture="$TEST_TMP/regex-carveout.sh"
-  cat > "$fixture" <<'FIXTURE'
-#!/usr/bin/env bash
-# This line uses a regex shape: DISC-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+
-grep -E 'DISC-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+' "$file"
-FIXTURE
+  printf '#!/usr/bin/env bash\n' > "$fixture"
+  printf '# DISC-%s-%s-%s-%s matches the [0-9] class\n' \
+    "2026" "06" "23" "1" >> "$fixture"
 
   local raw
-  raw="$(grep -E "$_DISC_CONCRETE" "$fixture" 2>/dev/null || true)"
-  [[ -z "$raw" ]] && return 0
+  raw="$(grep -iE "$_DISC_CONCRETE" "$fixture" 2>/dev/null || true)"
+  # The concrete literal IS present — raw must be non-empty.
+  [[ -n "$raw" ]]
 
-  # If the regex matched the line, the [0-9] carve-out must remove it.
+  # The [0-9] carve-out filter must remove it.
   local filtered
   filtered="$(printf '%s\n' "$raw" | grep -vE '\[0-9\]' || true)"
   [[ -z "$filtered" ]]
@@ -151,17 +160,28 @@ FIXTURE
 # ---------------------------------------------------------------------------
 
 @test "discovery-id gate does not flag printf format strings (AC1)" {
+  # Build a MIXED fixture line that DOES match the concrete DISC pattern
+  # AND contains a DISC-%s format token.  This forces the full filter
+  # pipeline to run (the grep -viE 'DISC-%[sd]' carve-out must exempt it).
   local fixture="$TEST_TMP/printf-carveout.sh"
-  cat > "$fixture" <<'FIXTURE'
-#!/usr/bin/env bash
-printf 'DISC-%s-%d' "$today" "$seq"
-FIXTURE
+  printf '#!/usr/bin/env bash\n' > "$fixture"
+  printf "printf 'DISC-%%s-%%d' but also DISC-%s-%s-%s-%s\n" \
+    "2026" "06" "23" "1" >> "$fixture"
 
   local raw
-  raw="$(grep -E "$_DISC_CONCRETE" "$fixture" 2>/dev/null || true)"
-  # The printf format 'DISC-%s-%d' should NOT match the concrete pattern
-  # (it has %s and %d, not digit sequences).
-  [[ -z "$raw" ]]
+  raw="$(grep -iE "$_DISC_CONCRETE" "$fixture" 2>/dev/null || true)"
+  # The concrete literal IS present — raw must be non-empty.
+  [[ -n "$raw" ]]
+
+  # First carve-out ([0-9]) does NOT apply — no brackets in this line.
+  local after_regex_filter
+  after_regex_filter="$(printf '%s\n' "$raw" | grep -vE '\[0-9\]' || true)"
+  [[ -n "$after_regex_filter" ]]
+
+  # Second carve-out (DISC-%s/%d format) MUST remove it.
+  local filtered
+  filtered="$(printf '%s\n' "$after_regex_filter" | grep -viE 'DISC-%[sd]' || true)"
+  [[ -z "$filtered" ]]
 }
 
 # ---------------------------------------------------------------------------
