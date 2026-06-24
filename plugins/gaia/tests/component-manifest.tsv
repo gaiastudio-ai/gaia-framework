@@ -360,6 +360,7 @@ scripts-core	af-2026-06-01-7-issue-1064-validate-gate-project-root.bats
 scripts-core	af-2026-06-02-2-rename-gaia-public-to-gaia-framework.bats
 scripts-core	apply-test-policy.bats
 scripts-core	audit-silent-val-bypass.bats
+scripts-core	backlog-select-lint-detail-block-deps.bats
 scripts-core	bridge-enable-absent-key-handling.bats
 scripts-core	bridge-toggle-manifest-install.bats
 scripts-core	check-fork-stripped.bats

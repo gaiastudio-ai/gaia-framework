@@ -7,15 +7,16 @@
 # `sprint-state.sh lint-dependencies` reads story-file frontmatter + the sprint
 # roster, NOT the markdown columns.
 #
-# It parses the pipe-delimited ROSTER row (NOT the bold-label `**Depends on:**`
-# detail blocks):
-#   | Story | Title | Size | Points | Risk | Depends on | Blocks |
-# extracts HARD dependency keys from the `Depends on` cell — tolerant of the
-# real dep-cell grammar: `none`, comma-separated, semicolon soft-deps
-# (`E900-S1; soft on E902-S2` → only E900-S1 is hard), range (`E66-S1..S2`),
-# and parenthetical annotations (`E900-S1 (Step 4 hook)` → bare key E900-S1).
-# A candidate HARD-BLOCKS when a hard-dep target is neither in --done nor
-# co-selected in --candidates. Soft-deps and parentheticals never block.
+# It extracts HARD dependency keys from three sources, unioned per candidate:
+#   1. Pipe-delimited ROSTER row: | Story | ... | Depends on | Blocks |
+#   2. Bold-label detail block:  - **Depends on:** [E1-S2, E3-S4]
+#   3. Story-file frontmatter:    depends_on: [E1-S2]
+# All three share the same dep-cell grammar: `none`, comma-separated, semicolon
+# soft-deps (`E900-S1; soft on E902-S2` -> only E900-S1 is hard), range
+# (`E66-S1..S2`), and parenthetical annotations (`E900-S1 (Step 4 hook)` ->
+# bare key E900-S1). A candidate HARD-BLOCKS when a hard-dep target is neither
+# in --done nor co-selected in --candidates. Soft-deps and parentheticals never
+# block.
 #
 # Pure + READ-ONLY: the caller (gaia-sprint-plan) derives --done (closed-sprint
 # archives / epic-block status) and --candidates (the selection set); this lint
@@ -48,11 +49,12 @@ Usage:
   backlog-select-lint.sh --epics <epics-and-stories.md> --candidates "K1,K2,..."
       [--done "K1,K2,..."] [--json]
 
-Parses the epics-and-stories.md ROSTER columns (not story files, not the
-bold-label **Depends on:** blocks). For each candidate, extracts HARD deps from
-the `Depends on` cell (ignoring `; soft on ...` soft-deps and parenthetical
-annotations) and HARD-BLOCKS when a hard-dep target is neither done nor
-co-selected. Soft-deps never block. READ-ONLY.
+Extracts HARD deps from three sources per candidate, unioned together:
+  1. Pipe-delimited ROSTER row (| Story | ... | Depends on | ...)
+  2. Bold-label detail block (- **Depends on:** [...])
+  3. Story-file frontmatter (depends_on: [...])
+Soft-deps (; soft on ...) and parenthetical annotations never block.
+HARD-BLOCKS when a hard-dep target is neither done nor co-selected. READ-ONLY.
 USAGE
   exit 0
 fi
@@ -86,18 +88,46 @@ _in_set() { # $1 = key ; $2 = newline list
   printf '%s\n' "$2" | grep -Fxq "$1"
 }
 
-# Parse the `Depends on` cell for one story key from the ROSTER row, returning
-# the bare HARD-dep keys (one per line). Roster row shape (pipe-delimited):
-#   | Story | Title | Size | Points | Risk | Depends on | Blocks |
-# The `Depends on` column index is SNIFFED from the header row (do not
-# hard-code a positional field — tolerate column reorder / extra columns). Within
-# the matched candidate row, soft-deps (text after `;`) and parentheticals are
-# dropped; only bare E\d+-S\d+ tokens count as hard deps.
-_hard_deps_of() {
+# Shared dep-cell grammar normalizer. Takes a raw dep-cell string as $1
+# (e.g. "E900-S1; soft on E902-S2" or "E900-S1 (Step 4 hook), E901-S9").
+# Strips soft-dep tail (after ";"), parenthetical annotations, handles
+# none/empty, splits on commas, expands E#-S#..S# ranges, and emits one
+# bare E#-S# key per line. Used by all three extraction paths.
+_normalize_dep_cell() {
+  local raw="$1"
+  awk -v cell="$raw" '
+    BEGIN {
+      # Strip enclosing brackets.
+      gsub(/[\[\]]/, "", cell)
+      # Drop soft-dep tail: everything from the first ";" onward is soft/advisory.
+      sub(/;.*$/, "", cell)
+      # Drop parenthetical annotations.
+      gsub(/\([^)]*\)/, "", cell)
+      # Trim whitespace.
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", cell)
+      if (cell == "" || tolower(cell) == "none") exit
+      # Split on commas; emit bare story keys.
+      n = split(cell, parts, ",")
+      for (i = 1; i <= n; i++) {
+        t = parts[i]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+        # Range form E#-S#..S# -> emit both endpoint keys.
+        if (t ~ /^E[0-9]+-S[0-9]+\.\.S[0-9]+$/) {
+          split(t, rp, /\.\./); print rp[1]
+          epic = rp[1]; sub(/-S[0-9]+$/, "", epic); print epic "-" rp[2]
+          continue
+        }
+        if (t ~ /^E[0-9]+-S[0-9]+$/) print t
+      }
+    }
+  '
+}
+
+# Extract the raw `Depends on` cell for one story key from the pipe-table
+# ROSTER row. Returns the raw cell text (before normalization).
+_raw_roster_dep_cell() {
   local key="$1"
   awk -F'|' -v k="$key" '
-    # Sniff the Depends-on column index from the header row (the row whose cells
-    # include a "Story" col and a "Depends on" col). depcol stays set thereafter.
     depcol == 0 && /\|/ && tolower($0) ~ /depends on/ && tolower($0) ~ /story/ {
       for (i = 1; i <= NF; i++) {
         h = $i; gsub(/^[[:space:]]+|[[:space:]]+$/, "", h)
@@ -106,34 +136,47 @@ _hard_deps_of() {
       next
     }
     depcol > 0 {
-      # a roster data row: field 2 (after leading |) == key
       c1=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", c1)
       if (c1 != k) next
-      dep=$depcol  # the sniffed "Depends on" column
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", dep)
-      # drop soft-dep tail: everything from the first ";" onward is soft/advisory
-      sub(/;.*$/, "", dep)
-      # drop parenthetical annotations
-      gsub(/\([^)]*\)/, "", dep)
-      if (dep == "" || tolower(dep) == "none") next
-      # split on commas; emit bare E#-S# tokens (expand A..B ranges defensively
-      # by emitting both endpoints — the lint only needs the keys to match)
-      n = split(dep, parts, ",")
-      for (i = 1; i <= n; i++) {
-        t = parts[i]
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
-        # range form E#-S#..S#  -> emit the first endpoint key (and the range end)
-        if (t ~ /^E[0-9]+-S[0-9]+\.\.S[0-9]+$/) {
-          split(t, rp, /\.\./); print rp[1]
-          # synthesize the range-end key from the epic prefix
-          epic = rp[1]; sub(/-S[0-9]+$/, "", epic); print epic "-" rp[2]
-          continue
-        }
-        if (t ~ /^E[0-9]+-S[0-9]+$/) print t
-      }
-      exit
+      dep=$depcol; gsub(/^[[:space:]]+|[[:space:]]+$/, "", dep)
+      print dep; exit
     }
   ' "$EPICS"
+}
+
+# Extract the raw `- **Depends on:** ...` value for one story key from its
+# bold-label detail block under `### Story <KEY>:`. Returns raw cell text.
+_raw_detail_block_dep_cell() {
+  local key="$1"
+  awk -v k="$key" '
+    $0 ~ "^### Story " k ":" || $0 ~ "^### Story " k "[[:space:]]*$" {
+      found = 1; next
+    }
+    found && /^##/ { exit }
+    found && /^- \*\*Depends on:\*\*/ {
+      line = $0
+      sub(/^- \*\*Depends on:\*\*[[:space:]]*/, "", line)
+      print line; exit
+    }
+  ' "$EPICS"
+}
+
+# Parse hard deps from pipe-table ROSTER row for one story key.
+# Sniffs the Depends-on column index from the header row (tolerates column
+# reorder). Returns bare hard-dep keys, one per line.
+_hard_deps_of() {
+  local raw
+  raw="$(_raw_roster_dep_cell "$1")"
+  [ -n "$raw" ] || return 0
+  _normalize_dep_cell "$raw"
+}
+
+# Parse hard deps from bold-label detail block for one story key.
+_detail_block_deps_of() {
+  local raw
+  raw="$(_raw_detail_block_dep_cell "$1")"
+  [ -n "$raw" ] || return 0
+  _normalize_dep_cell "$raw"
 }
 
 blocked_json="[]"
@@ -162,8 +205,14 @@ _frontmatter_deps_of() {
     story_file=$(find "$impl_root" -maxdepth 1 -type f -name "${key}-*.md" 2>/dev/null | head -1)
   fi
   [ -n "$story_file" ] && [ -f "$story_file" ] || return 0
-  # Extract depends_on YAML list values (one E#-S# token per line).
-  awk '
+  # Extract raw depends_on tokens from YAML frontmatter, then post-filter
+  # through _normalize_dep_cell so parenthetical annotations, soft-dep tails,
+  # and range expansions are handled identically to roster and detail-block
+  # paths. The awk handles YAML structure (frontmatter delimiters, key
+  # detection, inline-list vs block-list grammar); _normalize_dep_cell handles
+  # the dep-cell grammar shared by all three extraction paths.
+  local raw_fm
+  raw_fm="$(awk '
     BEGIN { in_fm=0; in_deps=0 }
     /^---[[:space:]]*$/ { if (in_fm==0) { in_fm=1; next } else { exit } }
     !in_fm { next }
@@ -171,22 +220,30 @@ _frontmatter_deps_of() {
       # Inline list shape: depends_on: [E1-S1, E2-S3]
       line=$0; sub(/^depends_on:[[:space:]]*\[/, "", line); sub(/\].*$/, "", line)
       n=split(line, parts, ",")
-      for (i=1;i<=n;i++) { gsub(/[[:space:]"]/, "", parts[i]); if (parts[i] ~ /^E[0-9]+-S[0-9]+$/) print parts[i] }
+      for (i=1;i<=n;i++) { gsub(/[[:space:]"]/, "", parts[i]); if (parts[i] != "") print parts[i] }
       in_deps=0; next
     }
     /^depends_on:[[:space:]]*$/ { in_deps=1; next }
-    in_deps && /^[[:space:]]*-[[:space:]]*[Ee][0-9]+-[Ss][0-9]+/ {
-      t=$0; gsub(/[[:space:]"-]/, "", t); if (t ~ /^E[0-9]+-S[0-9]+$/) print t
+    in_deps && /^[[:space:]]*-[[:space:]]/ {
+      t=$0; sub(/^[[:space:]]*-[[:space:]]*/, "", t); gsub(/[[:space:]"]+$/, "", t)
+      gsub(/^"/, "", t)
+      if (t != "") print t
     }
     in_deps && /^[^[:space:]-]/ { in_deps=0 }
-  ' "$story_file"
+  ' "$story_file")"
+  [ -n "$raw_fm" ] || return 0
+  # Join tokens with commas and normalise through the shared dep-cell grammar.
+  local joined
+  joined="$(printf '%s' "$raw_fm" | tr '\n' ',' | sed 's/,$//')"
+  _normalize_dep_cell "$joined"
 }
 
 for cand in $CAND_KEYS; do
   roster_deps="$(_hard_deps_of "$cand")"
+  detail_deps="$(_detail_block_deps_of "$cand")"
   fm_deps="$(_frontmatter_deps_of "$cand")"
-  # Union the two sources, dedup.
-  deps="$(printf '%s\n%s\n' "$roster_deps" "$fm_deps" | awk 'NF && !seen[$0]++')"
+  # Union all three sources, dedup.
+  deps="$(printf '%s\n%s\n%s\n' "$roster_deps" "$detail_deps" "$fm_deps" | awk 'NF && !seen[$0]++')"
   for d in $deps; do
     [ -n "$d" ] || continue
     if _in_set "$d" "$DONE_KEYS" || _in_set "$d" "$CAND_KEYS"; then

@@ -10,5 +10,5 @@
 | E900-S4 | Soft dep | S | 3 | low | E900-S1; soft on E902-S2 | none |
 | E900-S5 | Annotated dep | S | 2 | low | E900-S1 (Step 4 hook) | none |
 
-> Detail block (the lint must IGNORE this bold-label form, parsing the roster row above):
+> Orphan bold-label (not under a ### Story heading — the detail-block parser ignores it):
 - **Depends on:** [E901-S9]
