@@ -12,7 +12,7 @@
 #   from \\ to        | backlog | ready-for-dev | in-progress | review | validating | done | blocked
 #   ----------------- | ------- | ------------- | ----------- | ------ | ---------- | ---- | -------
 #   backlog           | (no-op) | yes           | no          | no     | yes        | no   | yes
-#   ready-for-dev     | no      | (no-op)       | yes         | no     | no         | no   | yes
+#   ready-for-dev     | yes     | (no-op)       | yes         | no     | no         | no   | yes
 #   in-progress       | no      | no            | (no-op)     | yes    | no         | no   | yes
 #   review            | no      | no            | no          | (no-op)| no         | yes  | yes
 #   validating        | yes     | yes           | no          | no     | (no-op)    | no   | yes
@@ -58,7 +58,9 @@ STORY_ALLOWED_EDGES=(
   "validating|ready-for-dev"
   "validating|backlog"
   "validating|blocked"
-  # ready-for-dev
+  # ready-for-dev (backlog edge: /gaia-correct-course defer path — stories
+  # removed from a sprint sit in ready-for-dev and transition back to backlog)
+  "ready-for-dev|backlog"
   "ready-for-dev|in-progress"
   "ready-for-dev|blocked"
   # in-progress

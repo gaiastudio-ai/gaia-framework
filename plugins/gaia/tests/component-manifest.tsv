@@ -263,6 +263,7 @@ core	skill-rename-preflight.bats
 core	sprint-close-sentinel-unconditional.bats
 core	sprint-state-inject.bats
 core	sprint-state-split-repo-resolution.bats
+core	sprint-state-ssot-parity.bats
 core	sprint-state-wrapper-sync.bats
 core	sprint-state.bats
 core	stacks-schema.bats
