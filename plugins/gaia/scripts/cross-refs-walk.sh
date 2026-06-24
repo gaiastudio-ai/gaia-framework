@@ -36,6 +36,7 @@
 #     (same-process; private _ prefix convention).
 #   - _dfs_cycle_check iterates ALL stacks declared in config as DFS entry points,
 #     maintaining a gray-set (on-stack) and black-set (done) to find back-edges.
+#     The sets are newline-delimited strings (bash 3.2-safe; no associative arrays).
 #   - bfs_walk implements a FIFO queue with a visited-set for O(N+M) traversal.
 #   - build_json_array is copied verbatim from detect-affected.sh (bash fn, not awk).
 
@@ -331,22 +332,75 @@ _CYCLE_DETECTED=0
 _CYCLE_PATH=""
 
 # ---------------------------------------------------------------------------
+# Newline-delimited string-set helpers (bash 3.2-safe replacement for
+# associative arrays used as presence sets).  O(n) per lookup, acceptable
+# for the small cardinality of stack names (typically < 20).
+# ---------------------------------------------------------------------------
+_GRAY=""    # newline-delimited gray-set (on current DFS path)
+_BLACK=""   # newline-delimited black-set (fully processed)
+
+# _set_has <set-var-name> <key> — return 0 if key is in the set, 1 otherwise.
+_set_has() {
+  local _set_content="$1"
+  local _key="$2"
+  case "$_set_content" in
+    "$_key"|"$_key"$'\n'*|*$'\n'"$_key"|*$'\n'"$_key"$'\n'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# _set_add <set-var-name> <key> — append key to newline-delimited string.
+# Caller must assign result: VAR="$(_set_add "$VAR" "$key")"
+_set_add() {
+  local _set_content="$1"
+  local _key="$2"
+  if [[ -z "$_set_content" ]]; then
+    printf '%s' "$_key"
+  else
+    printf '%s\n%s' "$_set_content" "$_key"
+  fi
+}
+
+# _set_remove <set-var-name> <key> — remove key from newline-delimited string.
+# Caller must assign result: VAR="$(_set_remove "$VAR" "$key")"
+_set_remove() {
+  local _set_content="$1"
+  local _key="$2"
+  local _result=""
+  local _line
+  local _old_ifs="$IFS"
+  IFS=$'\n'
+  for _line in $_set_content; do
+    if [[ "$_line" != "$_key" ]]; then
+      if [[ -z "$_result" ]]; then
+        _result="$_line"
+      else
+        _result="${_result}"$'\n'"${_line}"
+      fi
+    fi
+  done
+  IFS="$_old_ifs"
+  printf '%s' "$_result"
+}
+
+# ---------------------------------------------------------------------------
 # _dfs_visit — recursive DFS helper for cycle detection
 #
-# Uses gray-set (on current path) and black-set (fully processed).
+# Uses gray-set (on current path) and black-set (fully processed) stored as
+# newline-delimited global strings (_GRAY / _BLACK) for bash 3.2 portability.
 # On back-edge (gray node re-visited), sets _CYCLE_DETECTED=1 and _CYCLE_PATH.
 #
 # Args:
 #   $1 — current node
 #   $2 — space-separated path so far (for cycle path string)
-# Globals read/written: _GRAY (assoc), _BLACK (assoc), _CYCLE_DETECTED, _CYCLE_PATH
+# Globals read/written: _GRAY, _BLACK, _CYCLE_DETECTED, _CYCLE_PATH
 # ---------------------------------------------------------------------------
 _dfs_visit() {
   local node="$1"
   local path="$2"
 
   # Already fully processed — no cycle through here
-  if [[ -n "${_BLACK[$node]+x}" ]]; then
+  if _set_has "$_BLACK" "$node"; then
     return 0
   fi
 
@@ -354,7 +408,7 @@ _dfs_visit() {
   # At this point $path already ends with "-> $node" (appended by the
   # caller before the recursive call), so the loop is already closed.
   # Do NOT append $node again or the closing node appears twice.
-  if [[ -n "${_GRAY[$node]+x}" ]]; then
+  if _set_has "$_GRAY" "$node"; then
     _CYCLE_DETECTED=1
     _CYCLE_PATH="$path"
     printf 'CYCLE DETECTED: %s\n' "$path" >&2
@@ -362,7 +416,7 @@ _dfs_visit() {
   fi
 
   # Mark as gray (on current DFS path)
-  _GRAY["$node"]=1
+  _GRAY="$(_set_add "$_GRAY" "$node")"
 
   # Visit all consumers of this node
   local consumers_str
@@ -377,9 +431,9 @@ _dfs_visit() {
     done
   fi
 
-  # Mark as black (done)
-  unset '_GRAY[$node]'
-  _BLACK["$node"]=1
+  # Mark as black (done); remove from gray
+  _GRAY="$(_set_remove "$_GRAY" "$node")"
+  _BLACK="$(_set_add "$_BLACK" "$node")"
 }
 
 # ---------------------------------------------------------------------------
@@ -393,8 +447,9 @@ _dfs_cycle_check() {
   _CYCLE_DETECTED=0
   _CYCLE_PATH=""
 
-  declare -gA _GRAY=()
-  declare -gA _BLACK=()
+  # bash 3.2-safe: newline-delimited strings instead of associative arrays.
+  _GRAY=""
+  _BLACK=""
 
   local node
   while IFS= read -r node; do
@@ -417,12 +472,13 @@ _dfs_cycle_check() {
 # ---------------------------------------------------------------------------
 bfs_walk() {
   local -a queue=("$@")
-  declare -A visited=()
+  # bash 3.2-safe: newline-delimited string instead of associative array.
+  local _visited=""
 
   # Seed the visited set
   local seed
   for seed in "$@"; do
-    visited["$seed"]=1
+    _visited="$(_set_add "$_visited" "$seed")"
     printf '%s\n' "$seed"
   done
 
@@ -437,8 +493,8 @@ bfs_walk() {
     fi
 
     for consumer in $consumers_str; do
-      if [[ -z "${visited[$consumer]+x}" ]]; then
-        visited["$consumer"]=1
+      if ! _set_has "$_visited" "$consumer"; then
+        _visited="$(_set_add "$_visited" "$consumer")"
         printf '%s\n' "$consumer"
         queue+=("$consumer")
       fi

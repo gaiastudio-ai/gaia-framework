@@ -127,14 +127,22 @@ if [ -d "$SCRIPTS_DIR" ]; then
 fi
 
 # Deduplicate (realpath may differ but basename collision is safe).
-declare -A _seen
+# bash 3.2-safe: newline-delimited string instead of associative array.
+_seen_paths=""
 DEDUPED_FILES=()
 for f in "${SURFACE_FILES[@]}"; do
   real="$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
-  if [ -z "${_seen[$real]:-}" ]; then
-    _seen[$real]=1
-    DEDUPED_FILES+=("$real")
-  fi
+  case "$_seen_paths" in
+    "$real"|"$real"$'\n'*|*$'\n'"$real"|*$'\n'"$real"$'\n'*) ;;
+    *)
+      if [ -z "$_seen_paths" ]; then
+        _seen_paths="$real"
+      else
+        _seen_paths="${_seen_paths}"$'\n'"${real}"
+      fi
+      DEDUPED_FILES+=("$real")
+      ;;
+  esac
 done
 SURFACE_FILES=("${DEDUPED_FILES[@]}")
 
