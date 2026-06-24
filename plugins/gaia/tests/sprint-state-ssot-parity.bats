@@ -16,6 +16,7 @@ setup() {
   SCRIPT="$SCRIPTS_DIR/sprint-state.sh"
   TSS="$SCRIPTS_DIR/transition-story-status.sh"
   LIB="$SCRIPTS_DIR/lib/story-state-machine.sh"
+  WRAPPER_LIB="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts" && pwd)/lib/story-state-machine.sh"
   export MEMORY_PATH="$TEST_TMP/_memory"
   export PROJECT_PATH="$TEST_TMP"
   ART="$TEST_TMP/docs/implementation-artifacts"
@@ -23,6 +24,16 @@ setup() {
   mkdir -p "$ART" "$PLAN"
 }
 teardown() { common_teardown; }
+
+@test "the dev-story wrapper lib is a real file (not a symlink) and byte-identical to the canonical SSOT (AC1)" {
+  # The wrapper copy of sprint-state.sh sources lib/story-state-machine.sh
+  # relative to its own dir, so a real copy must live alongside it. It MUST be
+  # a regular file (symlinks are not portable to every CI runner) and MUST stay
+  # byte-identical to the canonical SSOT so the two never drift.
+  [ -f "$WRAPPER_LIB" ]
+  [ ! -L "$WRAPPER_LIB" ]
+  diff "$LIB" "$WRAPPER_LIB"
+}
 
 seed_story() {
   local key="$1" status="$2"
