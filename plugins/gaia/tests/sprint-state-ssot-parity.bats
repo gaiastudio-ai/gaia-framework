@@ -186,10 +186,10 @@ EOF
 }
 
 # ============================================================
-# Illegal edge still rejected (TS-4)
+# Illegal edge still rejected
 # ============================================================
 
-@test "sprint-state.sh rejects backlog -> done (TS-4)" {
+@test "sprint-state.sh rejects backlog -> done" {
   seed_story R1 backlog
   seed_yaml R1 backlog
   run "$SCRIPT" transition --story R1 --to done
@@ -198,10 +198,10 @@ EOF
 }
 
 # ============================================================
-# Self-transition idempotent no-op check (TS-5)
+# Self-transition idempotent no-op check
 # ============================================================
 
-@test "sprint-state.sh self-transition is detected (TS-5)" {
+@test "sprint-state.sh self-transition is detected" {
   seed_story S1 backlog
   seed_yaml S1 backlog
   run "$SCRIPT" transition --story S1 --to backlog

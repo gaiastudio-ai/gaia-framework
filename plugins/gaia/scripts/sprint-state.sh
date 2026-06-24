@@ -107,12 +107,20 @@ trap '_cleanup_tmps' EXIT INT TERM
 
 # ---------- Canonical state machine ----------
 
-# Delegate CANONICAL_STATES to the shared SSOT (STORY_CANONICAL_STATES).
-# The local alias preserves the name used by callers inside this script
-# (assert_canonical_state, canonical_states_hint) without maintaining a
-# duplicate array.
-# shellcheck disable=SC2034
-CANONICAL_STATES=( "${STORY_CANONICAL_STATES[@]}" )
+# Canonical states. Kept as a self-contained local array (NOT delegated to the
+# SSOT's STORY_CANONICAL_STATES) so the reconcile-family helpers can be
+# function-extracted and sourced standalone by callers/tests without also
+# pulling in the SSOT lib. The two lists are pinned identical by the SSOT
+# parity test; the SSOT remains the single source of truth for the edge table.
+CANONICAL_STATES=(
+  "backlog"
+  "validating"
+  "ready-for-dev"
+  "in-progress"
+  "blocked"
+  "review"
+  "done"
+)
 
 # Source the shared story-state-machine SSOT for the allowed-edge table.
 # Provides STORY_ALLOWED_EDGES and validate_story_transition().
@@ -263,9 +271,19 @@ Exit codes:
 USAGE
 }
 
-# Delegate to SSOT helpers from story-state-machine.sh.
-is_canonical_state() { is_canonical_story_state "$1"; }
-canonical_states_hint() { canonical_story_states_hint; }
+# Self-contained canonical-state helpers (no SSOT dependency) so the
+# reconcile-family functions remain function-extractable in isolation.
+is_canonical_state() {
+  local candidate="$1" s
+  for s in "${CANONICAL_STATES[@]}"; do
+    [ "$s" = "$candidate" ] && return 0
+  done
+  return 1
+}
+canonical_states_hint() {
+  local IFS=' '
+  printf '%s' "${CANONICAL_STATES[*]}"
+}
 
 # Fail-fast guard for any value about to be written into a lifecycle
 # `status:` field. Any non-canonical value (e.g. the review-gate display
