@@ -253,6 +253,37 @@ means the artifact IS updated via the appropriate sub-workflow.
   - Expected cascade: {list of artifacts that will be updated per the
     cascade matrix}
 
+#### Step 1 `--from-discovery` mode (hydration pre-fill)
+
+When invoked as `/gaia-add-feature --from-discovery <board-item-id>`, Step 1
+pre-fills the intake fields from a graduated discovery board item instead
+of prompting the user for each field from scratch:
+
+1. **Resolve the board item.** Invoke `discovery-board.sh graduate --id
+   <board-item-id> --from-discovery` to validate graduation eligibility and
+   emit the hydrated intake fields (description from title, urgency from
+   priority, driver from source). Reject unknown, terminal, or
+   non-Evaluated item ids BEFORE any Step 1 hydration -- the resolver
+   dies with an actionable diagnostic.
+2. **Pre-fill only.** The hydrated fields populate the Step 1 intake form
+   as editable defaults. Classification is RE-DERIVED from scope analysis
+   -- never accepted from the hydrated payload. All hydrated text is
+   treated as untrusted data (sanitized, length-capped, control chars
+   stripped per the discovery-board.sh sanitization helpers).
+3. **Scope-confirmation prompt is PRESERVED.** The pre-filled scope
+   summary is still presented to the user for confirmation before
+   proceeding to Step 1c. Hydration does NOT bypass the
+   scope-confirmation prompt -- it is pre-fill only, not auto-confirm.
+4. **Step 1c re-validation is PRESERVED.** The re-validation of prereqs
+   under the captured classification still runs with a real Val dispatch.
+   Hydration does NOT bypass Step 1c or short-circuit to Step 2.
+
+After `/gaia-add-feature` completes successfully (backlog row lands),
+invoke `discovery-board.sh graduate --id <board-item-id> --feature-id
+<feature_id>` to transition the board item to Graduated and stamp the
+backlog feature id. A HALT at Step 1c or Step 2 leaves the board item in
+Evaluated state, preserving re-entrancy.
+
 ### Step 1c -- Re-validate prereqs under captured classification
 
 The initial `setup.sh` invocation ran under the default `enhancement` classification. Now that Step 1 has captured the actual classification, re-invoke `setup.sh` so the test-plan / traceability gates fire AGAINST that classification:
@@ -811,6 +842,7 @@ finding first and re-invoke the skill.
 
 ## Changelog
 
+- **2026-06-24 — `--from-discovery` hydration bridge.** Added Step 1 `--from-discovery <board-item-id>` mode that pre-fills the Step 1 intake fields (description, urgency, driver) from a graduated discovery board item. Classification is re-derived from scope analysis, never accepted from hydration. The scope-confirmation prompt and Step 1c re-validation are explicitly preserved -- hydration is pre-fill only, not bypass. The board item transitions to Graduated only after the backlog row lands; a HALT at Step 1c or Step 2 leaves the item in Evaluated state (re-entrancy preserved). All hydrated fields are sanitized (control chars stripped, length-capped) and artifact paths are confined repo-relative. Coverage: `plugins/gaia/tests/discovery-graduate.bats` (33 cases covering track auto-detect, per-track bars, fail-closed AI-id validation, hydration behaviour, side-effect ordering).
 - **2026-06-10 — Post-cascade traceability consistency gate + traceability-dispatch grounding.** Added Step 8b-check, a deterministic post-execution gate (`scripts/validate-traceability-consistency.sh`) that runs after Step 8b regenerates the matrix and HALTs when a story-detail row's scope is inconsistent with the canonical story registry (`epics-and-stories.md`, header titles + materialized story files). Closes the structural gap where the Step 2 Val gate validates only the cascade *plan* pre-execution and never re-validates the matrix the traceability sub-agent writes. Step 8b prose also gained a grounding clause: the traceability dispatch MUST pin `epics-and-stories.md` as authoritative and key each story-detail row by looking the story up by its key, never by positional/sequential numbering of the things being mapped (the defect: a sub-agent numbering rows per cloud-service produced an off-by-one that mis-mapped test cases to the wrong stories). The gate defaults to `--check scope` (gates on mis-keyed rows — the high-signal signature; invented-key references to retired epics are advisory). Sibling to the epic/story-key registry integrity audit (`validate-epic-registry.sh`) — that asserts key uniqueness + epic non-orphaning; this asserts traceability references are scope-consistent with the registry. Coverage: `plugins/gaia/tests/validate-traceability-consistency.bats` (13 cases incl. defect reproduction, false-positive guard, file-only-key registration, all three `--check` modes).
 - **2026-05-14 — Deterministic parent-epic inference.** Added `scripts/lib/infer-parent-epic.sh` — advisory helper that maps comma-separated affected_skills to open epics in `.gaia/artifacts/planning-artifacts/epics-and-stories.md`. Emits one of three modes on stdout (exit 0 always): `deterministic <epic_key>` / `ambiguous: <key1>,<key2>,...` / `no-match`. Step 8 prose updated with a pre-flight subsection that invokes the helper before story-creation logic; the result is recorded in the assessment-doc Cascade Plan as `parent_epic_match: <mode> [— <details>]`. Open-epic definition: a detail block is OPEN unless `**Status: closed**`, `**Status: retired**`, or `**Status: sunset**` appears within it. Empty `affected_skills` cleanly emits `no-match`. Closes the drift surfaced by a smoke test (LLMs reading a long epics-and-stories.md inconsistently picked between parent-epic candidates).
 - **2026-05-14 — Step 8 deferred-seed-brief mode + `step_8_mode` Cascade Plan field.** Step 8 prose rewritten to document TWO modes: `inline-dispatch` (legacy default for YOLO, materializes story files in-cascade) and `deferred-seed-brief` (new default for non-YOLO, reserves story keys + emits `### Story seed brief for <story_key>` subsections in the assessment-doc; user dispatches `/gaia-create-story <key>` as a follow-up). Default selection is YOLO-keyed: YOLO active → inline-dispatch (legacy preserved); YOLO inactive → deferred-seed-brief (new default). `setup.sh` gained a `--step-8-mode <inline-dispatch|deferred-seed-brief>` CLI override (and inline form) with canonical rejection stderr `gaia-add-feature: invalid --step-8-mode value (expected inline-dispatch or deferred-seed-brief, got: <value>)`. The Before/After default flip is documented explicitly — reviewers see the policy change, not just a new field. Rationale: the main-turn orchestration model makes inline sub-skill dispatch heavier than under the legacy fork-context model; a smoke-test surfaced this as a friction point.

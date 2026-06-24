@@ -123,6 +123,233 @@ yaml_single_quote() {
   printf "'%s'" "$s"
 }
 
+# ---------- Sanitization helpers (AC4) ----------
+
+# _sanitize_field — strip ALL ASCII control characters (0x00-0x1F, 0x7F)
+# including newline, carriage-return, and tab, then length-cap.
+# This is the SOLE defense against YAML multi-line scalar injection: if no
+# persisted value ever contains a newline, the non-quote-aware awk readers
+# are safe by construction.  Applied at EVERY write site (capture, prioritize,
+# rewrite), not just the hydration bridge.
+_sanitize_field() {
+  local raw="$1" max_len="${2:-500}"
+  # Strip every ASCII control char — no exceptions for \t, \n, \r.
+  local cleaned
+  cleaned=$(printf '%s' "$raw" | tr -d '\000-\037\177')
+  # Length cap.
+  if [ "${#cleaned}" -gt "$max_len" ]; then
+    cleaned="${cleaned:0:$max_len}"
+  fi
+  printf '%s' "$cleaned"
+}
+
+# _confine_path — reject paths that escape the repo root.
+# Returns 0 if path is safe (repo-relative, no traversal), 1 if hostile.
+_confine_path() {
+  local path="$1"
+  # Reject absolute paths.
+  if [[ "$path" == /* ]]; then
+    return 1
+  fi
+  # Reject traversal sequences.
+  if [[ "$path" == *".."* ]]; then
+    return 1
+  fi
+  return 0
+}
+
+# ---------- Track detection (AC1) ----------
+
+# _detect_track — auto-detect the graduation track from item fields.
+# Outputs one of: fast, research, decision.
+_detect_track() {
+  local artifacts="$1" decision_link="$2"
+  local trimmed_link
+  trimmed_link=$(printf '%s' "$decision_link" | tr -d '[:space:]')
+
+  # Decision track: non-null decision_link.
+  if [ -n "$trimmed_link" ]; then
+    printf 'decision'
+    return 0
+  fi
+
+  # Research track: artifacts non-empty (not [] or empty string).
+  local trimmed_artifacts
+  trimmed_artifacts=$(printf '%s' "$artifacts" | tr -d '[:space:][]"'"'"'')
+  if [ -n "$trimmed_artifacts" ]; then
+    printf 'research'
+    return 0
+  fi
+
+  # Fast track: no artifacts, no decision_link.
+  printf 'fast'
+  return 0
+}
+
+# ---------- Track bar validation (AC1) ----------
+
+# _validate_track_bar — enforce per-track minimum evidence bar.
+# Returns 0 if bar is met, dies on failure.
+_validate_track_bar() {
+  local item_id="$1" track="$2" title="$3" source="$4"
+  local artifacts="$5" decision_link="$6"
+
+  # Universal bar: title + source must be non-empty.
+  local trimmed_title trimmed_source
+  trimmed_title=$(printf '%s' "$title" | tr -d '[:space:]')
+  trimmed_source=$(printf '%s' "$source" | tr -d '[:space:]')
+  if [ -z "$trimmed_title" ]; then
+    die "item '${item_id}': title must be non-empty to graduate"
+  fi
+  if [ -z "$trimmed_source" ]; then
+    die "item '${item_id}': source must be non-empty to graduate"
+  fi
+
+  case "$track" in
+    fast)
+      # Fast track: title + source + priority + horizon — priority/horizon
+      # is already enforced by _assert_priority_horizon, so nothing extra.
+      ;;
+    research)
+      # Research track: additionally requires >=1 resolvable artifact.
+      _validate_research_artifacts "$item_id" "$artifacts"
+      ;;
+    decision)
+      # Decision track: additionally requires a valid AI-id.
+      _validate_ai_id "$item_id" "$decision_link"
+      ;;
+  esac
+}
+
+# _validate_research_artifacts — verify that at least one cited artifact
+# resolves on disk. Fails closed on all degenerate inputs.
+_validate_research_artifacts() {
+  local item_id="$1" artifacts_raw="$2"
+
+  # Parse the YAML inline list. Strip brackets and split on comma.
+  local stripped
+  stripped=$(printf '%s' "$artifacts_raw" | tr -d '[]')
+  if [ -z "$(printf '%s' "$stripped" | tr -d '[:space:]"'"'"'')" ]; then
+    die "item '${item_id}': research track requires at least one cited artifact"
+  fi
+
+  # Check each artifact path resolves on disk.
+  local IFS=','
+  local found_resolvable=0
+  local path
+  # shellcheck disable=SC2086
+  for path in $stripped; do
+    # Trim quotes and whitespace.
+    path=$(printf '%s' "$path" | sed 's/^[[:space:]"'"'"']*//; s/[[:space:]"'"'"']*$//')
+    [ -z "$path" ] && continue
+
+    # Path confinement (AC4).
+    if ! _confine_path "$path"; then
+      die "item '${item_id}': artifact path '${path}' escapes the repository root"
+    fi
+
+    if [ -f "${PROJECT_ROOT}/${path}" ]; then
+      found_resolvable=1
+    fi
+  done
+
+  if [ "$found_resolvable" -eq 0 ]; then
+    die "item '${item_id}': no cited artifact resolves on disk -- research track requires at least one resolvable artifact"
+  fi
+}
+
+# ---------- AI-id fail-closed validation (AC2) ----------
+
+# _validate_ai_id — exact-key match against a successfully-parsed
+# action-items.yaml. Fails CLOSED on every degenerate input.
+_validate_ai_id() {
+  local item_id="$1" ai_id="$2"
+
+  local ai_file="${PROJECT_ROOT}/.gaia/state/action-items.yaml"
+
+  # Fail closed: missing file.
+  if [ ! -f "$ai_file" ]; then
+    die "item '${item_id}': decision track requires action-items.yaml but the file is missing"
+  fi
+
+  # Fail closed: empty file.
+  if [ ! -s "$ai_file" ]; then
+    die "item '${item_id}': decision track requires action-items.yaml but the file is empty"
+  fi
+
+  # Fail closed: unparseable file. Check for schema_version or items: key
+  # as a minimal parseable-YAML gate.
+  if ! grep -qE '^(schema_version:|items:)' "$ai_file" 2>/dev/null; then
+    die "item '${item_id}': action-items.yaml is unparseable or malformed"
+  fi
+
+  # Exact-key match — find the id and read its status.
+  # Uses awk for exact matching (not substring).
+  local match_status
+  match_status=$(awk -v target="$ai_id" '
+    BEGIN { found = 0 }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+    }
+    line ~ /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ {
+      k = line
+      sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", k)
+      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", k)
+      if (k == target) { found = 1; next }
+      else if (found) { exit }
+      next
+    }
+    found && line ~ /^[[:space:]]+status:[[:space:]]*/ {
+      v = line
+      sub(/^[[:space:]]+status:[[:space:]]*/, "", v)
+      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", v)
+      print v
+      exit
+    }
+  ' "$ai_file")
+
+  # Fail closed: absent id.
+  if [ -z "$match_status" ]; then
+    die "item '${item_id}': action-item '${ai_id}' not found in action-items.yaml -- exact key match required"
+  fi
+
+  # Fail closed: soft-deleted statuses.
+  case "$match_status" in
+    invalid|resolved|deleted)
+      die "item '${item_id}': action-item '${ai_id}' is soft-deleted (status=${match_status}) -- not graduatable"
+      ;;
+  esac
+}
+
+# ---------- Hydration (AC3, AC4) ----------
+
+# _emit_hydrated_intake — emit hydrated intake fields for --from-discovery.
+# Classification is NEVER emitted — it is RE-DERIVED by the caller.
+_emit_hydrated_intake() {
+  local title="$1" source="$2" priority="$3"
+
+  # Sanitize all fields (AC4).
+  local clean_title clean_source clean_priority
+  clean_title=$(_sanitize_field "$title" 500)
+  clean_source=$(_sanitize_field "$source" 200)
+  clean_priority=$(_sanitize_field "$priority" 50)
+
+  # Map priority to urgency vocabulary.
+  local urgency="medium"
+  case "$clean_priority" in
+    critical|Critical|CRITICAL) urgency="critical" ;;
+    high|High|HIGH)             urgency="high" ;;
+    medium|Medium|MEDIUM)       urgency="medium" ;;
+    low|Low|LOW)                urgency="low" ;;
+  esac
+
+  # Emit as parseable key-value pairs.
+  printf 'description: %s\n' "$(yaml_single_quote "$clean_title")"
+  printf 'urgency: %s\n' "$urgency"
+  printf 'driver: %s\n' "$(yaml_single_quote "$clean_source")"
+}
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -132,6 +359,7 @@ Usage:
   discovery-board.sh validate
   discovery-board.sh board        [--horizon <h>] [--priority <p>]
   discovery-board.sh prioritize   --id <id> --priority <p> --horizon <h>
+  discovery-board.sh graduate     --id <id> [--from-discovery] [--feature-id <fid>]
   discovery-board.sh --help
 
 Subcommands:
@@ -149,6 +377,15 @@ Subcommands:
                 30/60/90 days. Never mutates state.
   prioritize    Set priority and horizon on an item. Both --priority and
                 --horizon are required. Updates last_activity timestamp.
+  graduate      Graduate an Evaluated item to the backlog. Auto-detects
+                the graduation track (fast / research / decision) and
+                enforces the per-track minimum evidence bar. Graduate is
+                the sole backlog edge.
+                --from-discovery  Emit hydrated intake fields for
+                  /gaia-add-feature Step 1 pre-fill (description, urgency,
+                  driver). Classification is RE-DERIVED, never hydrated.
+                --feature-id <fid>  Stamp the backlog feature id on the
+                  board item after successful graduation.
 
 Canonical states:
   Captured | Researching | Evaluated | Graduated | Parked | Archived
@@ -364,6 +601,9 @@ _rewrite_item_field() {
   local target_id="$1" field="$2" new_value="$3"
   local file="$BOARD_FILE"
 
+  # Sanitize the value at the write boundary — defense-in-depth.
+  new_value=$(_sanitize_field "$new_value" 500)
+
   local tmp
   tmp=$(mktemp "${file}.tmp.XXXXXX")
   local _tmp_idx
@@ -445,6 +685,8 @@ _rewrite_item_fields() {
   for pair in "$@"; do
     local f="${pair%%=*}"
     local v="${pair#*=}"
+    # Sanitize the value at the write boundary — defense-in-depth.
+    v=$(_sanitize_field "$v" 500)
     v="${v//\'/\'\'}"
     awk_fields="${awk_fields}${f}${us}${v}\n"
   done
@@ -542,6 +784,13 @@ _with_lock() {
 
 _do_capture_locked() {
   local title="$1" source_text="$2"
+
+  # Sanitize free-text inputs: strip all control chars (including newlines)
+  # to prevent YAML multi-line scalar injection into the non-quote-aware
+  # awk readers.  Applied here — the write boundary — so no injected
+  # newline ever reaches the board file.
+  title=$(_sanitize_field "$title" 500)
+  source_text=$(_sanitize_field "$source_text" 200)
 
   local now
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -992,6 +1241,11 @@ _do_prioritize_locked() {
     die "board file missing or empty: $BOARD_FILE"
   fi
 
+  # Sanitize inputs: defense-in-depth — a newline in priority/horizon would
+  # exploit the same non-quote-aware awk readers.
+  priority=$(_sanitize_field "$priority" 50)
+  horizon=$(_sanitize_field "$horizon" 50)
+
   # Verify item exists.
   _read_item_field "$BOARD_FILE" "$item_id" "id" >/dev/null 2>&1 || \
     die "item '${item_id}' not found in board"
@@ -1013,6 +1267,81 @@ cmd_prioritize() {
   _with_lock _do_prioritize_locked "$item_id" "$priority" "$horizon"
 }
 
+# ---------- Subcommand: graduate ----------
+
+_do_graduate_locked() {
+  local item_id="$1" from_discovery="$2" feature_id="$3"
+
+  if [ ! -f "$BOARD_FILE" ] || [ ! -s "$BOARD_FILE" ]; then
+    die "board file missing or empty: $BOARD_FILE"
+  fi
+
+  # Verify item exists and read status.
+  local cur_status
+  cur_status=$(_read_item_field "$BOARD_FILE" "$item_id" "status" 2>/dev/null) || \
+    die "item '${item_id}' not found in board"
+
+  # Graduate is only allowed from Evaluated (or Captured for fast-track via
+  # the transition adjacency). For the graduate subcommand, we require
+  # Evaluated — the sole sanctioned graduation edge.
+  if [ "$cur_status" = "Graduated" ]; then
+    die "item '${item_id}' is already Graduated"
+  fi
+  if _is_terminal_state "$cur_status"; then
+    die "item '${item_id}' is in terminal state '${cur_status}' -- cannot graduate"
+  fi
+  if [ "$cur_status" != "Evaluated" ]; then
+    die "item '${item_id}' is in state '${cur_status}' -- must be Evaluated before graduation"
+  fi
+
+  # Read item fields for track detection + bar validation.
+  local title source artifacts decision_link priority horizon
+  title=$(_read_item_field "$BOARD_FILE" "$item_id" "title" 2>/dev/null || true)
+  source=$(_read_item_field "$BOARD_FILE" "$item_id" "source" 2>/dev/null || true)
+  artifacts=$(_read_item_field "$BOARD_FILE" "$item_id" "artifacts" 2>/dev/null || true)
+  decision_link=$(_read_item_field "$BOARD_FILE" "$item_id" "decision_link" 2>/dev/null || true)
+  priority=$(_read_item_field "$BOARD_FILE" "$item_id" "priority" 2>/dev/null || true)
+  horizon=$(_read_item_field "$BOARD_FILE" "$item_id" "horizon" 2>/dev/null || true)
+
+  # Priority+horizon gate (composing AND with track-specific bar).
+  _assert_priority_horizon "$item_id" "Graduated"
+
+  # Auto-detect track.
+  local track
+  track=$(_detect_track "$artifacts" "$decision_link")
+
+  # Enforce per-track minimum bar (fails fast on unmet requirements).
+  _validate_track_bar "$item_id" "$track" "$title" "$source" "$artifacts" "$decision_link"
+
+  # ---- All gates passed ----
+
+  # If --from-discovery: emit hydrated intake fields BEFORE transitioning.
+  if [ "$from_discovery" = "true" ]; then
+    _emit_hydrated_intake "$title" "$source" "$priority"
+  fi
+
+  # Perform the transition to Graduated (AC5: side-effect ordering —
+  # transition happens AFTER all validation and hydration emission).
+  local now
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  local update_fields=()
+  update_fields+=("status=Graduated")
+  update_fields+=("last_activity=${now}")
+  update_fields+=("status_changed_at=${now}")
+  if [ -n "$feature_id" ]; then
+    update_fields+=("graduated_feature_id=${feature_id}")
+  fi
+
+  _rewrite_item_fields "$item_id" "${update_fields[@]}"
+
+  _log_info "${item_id} graduated via ${track} track"
+}
+
+cmd_graduate() {
+  local item_id="$1" from_discovery="$2" feature_id="$3"
+  _with_lock _do_graduate_locked "$item_id" "$from_discovery" "$feature_id"
+}
+
 # ---------- Argument parsing ----------
 
 main() {
@@ -1028,7 +1357,7 @@ main() {
       usage
       exit 0
       ;;
-    capture|transition|get|validate|board|prioritize)
+    capture|transition|get|validate|board|prioritize|graduate)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -1038,6 +1367,7 @@ main() {
   esac
 
   local item_id="" to_state="" title="" source_text="" priority="" horizon=""
+  local from_discovery="false" feature_id=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --id)
@@ -1070,6 +1400,13 @@ main() {
         horizon="$2"; shift 2 ;;
       --horizon=*)
         horizon="${1#--horizon=}"; shift ;;
+      --from-discovery)
+        from_discovery="true"; shift ;;
+      --feature-id)
+        [ $# -ge 2 ] || die "--feature-id requires a value"
+        feature_id="$2"; shift 2 ;;
+      --feature-id=*)
+        feature_id="${1#--feature-id=}"; shift ;;
       --help|-h)
         usage
         exit 0 ;;
@@ -1106,6 +1443,10 @@ main() {
       [ -n "$priority" ] || die "prioritize requires --priority <p>"
       [ -n "$horizon" ] || die "prioritize requires --horizon <h>"
       cmd_prioritize "$item_id" "$priority" "$horizon"
+      ;;
+    graduate)
+      [ -n "$item_id" ] || die "graduate requires --id <id>"
+      cmd_graduate "$item_id" "$from_discovery" "$feature_id"
       ;;
   esac
 }
