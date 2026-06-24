@@ -24,11 +24,14 @@ setup() {
   ARCHIVE="$ART/sprint-archive"
   YAML="$ART/sprint-status.yaml"
   LIFECYCLE="$MEMORY_PATH/lifecycle-events.jsonl"
+  CKPT_DIR="$TEST_TMP/.gaia/memory/checkpoints"
   # Point sprint-state.sh's canonical lookup at the test yaml.
   export SPRINT_STATUS_YAML="$YAML"
   # Force a stable close-date for predictable archive filenames in tests.
   export GAIA_SPRINT_CLOSE_DATE="2026-05-11"
-  mkdir -p "$ART" "$MEMORY_PATH"
+  # Disable sprint-state.sh routing — these tests exercise close.sh's own logic.
+  export SPRINT_STATE_SH="/nonexistent/sprint-state.sh"
+  mkdir -p "$ART" "$MEMORY_PATH" "$CKPT_DIR"
 }
 teardown() { common_teardown; }
 
@@ -66,6 +69,14 @@ seed_retro() {
   touch "$ART/retrospective-${sprint_id}-2026-05-11.md"
 }
 
+# Plant a sprint-review dispatch sentinel (satisfies the unconditional sentinel check).
+seed_sentinel() {
+  local sprint_id="$1"
+  mkdir -p "$CKPT_DIR"
+  printf '{"agent":"val","status":"PASSED","summary":"ok","findings":[]}\n' \
+    > "$CKPT_DIR/sprint-review-${sprint_id}-val-dispatched.json"
+}
+
 # Read the top-level yaml `status:` field (or empty string).
 yaml_status() { grep '^status:' "$YAML" 2>/dev/null | head -1 | sed 's/^status:[[:space:]]*//' | tr -d '"' || true; }
 
@@ -79,6 +90,7 @@ mtime() {
 @test "happy-path close writes status:closed + closed_at to yaml" {
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
+  seed_sentinel "sprint-41"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   [ "$(yaml_status)" = "closed" ]
@@ -91,6 +103,7 @@ mtime() {
 @test "archive copy lands at sprint-archive/{id}-closed-{date}.yaml" {
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
+  seed_sentinel "sprint-41"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   local expected="$ARCHIVE/sprint-41-closed-2026-05-11.yaml"
@@ -104,6 +117,7 @@ mtime() {
 @test "lifecycle event creates the jsonl when absent" {
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
+  seed_sentinel "sprint-41"
   [ ! -f "$LIFECYCLE" ]
   run "$FINALIZE"
   [ "$status" -eq 0 ]
@@ -117,6 +131,7 @@ mtime() {
   printf '%s\n' '{"event_type":"sprint_started","sprint_id":"sprint-41"}' >> "$LIFECYCLE"
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
+  seed_sentinel "sprint-41"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   run wc -l < "$LIFECYCLE"
@@ -128,6 +143,7 @@ mtime() {
 @test "lifecycle event nested-data carries all required fields" {
   seed_yaml "sprint-41" "active" 3 3
   seed_retro "sprint-41"
+  seed_sentinel "sprint-41"
   run "$FINALIZE"
   [ "$status" -eq 0 ]
   local line
@@ -192,6 +208,7 @@ mtime() {
 @test "force-with-rollover with exact non-done keys proceeds and records rollover" {
   seed_yaml "sprint-41" "active" 2 3
   seed_retro "sprint-41"
+  seed_sentinel "sprint-41"
   run "$FINALIZE" --force-with-rollover "E81-S3"
   [ "$status" -eq 0 ]
   [ "$(yaml_status)" = "closed" ]
@@ -261,6 +278,7 @@ mtime() {
 
 @test "missing status field is treated as active, close proceeds" {
   mkdir -p "$(dirname "$YAML")"
+  seed_sentinel "sprint-41"
   cat > "$YAML" <<'EOF'
 sprint_id: "sprint-41"
 total_points: 9
