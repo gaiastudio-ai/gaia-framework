@@ -48,8 +48,9 @@ _tech_token_filter='(UTF-8|UTF-16|UTF-32|SHA-256|SHA-512|SHA-1|ISO-8601|RFC-822|
 #   - bare story key            E<n>-S<n>  (not regex shapes like E[0-9]+)
 #   - requirement/decision IDs  NFR-<n>, FR-<n>, ADR-<n>, SR-<n>
 #   - test-case IDs             TC-<ALPHA>-<n>
+#   - discovery-board IDs       DISC-<date>-<serial>
 # Carve-outs: regex [0-9] character classes, tech tokens, generic AC<n>.
-_comment_id_shape='\(E[0-9]+-S[0-9]+\)|[^[a-zA-Z]E[0-9]+-S[0-9]+|^E[0-9]+-S[0-9]+|(NFR|ADR|SR)-[0-9]+[^])]|^#.*(FR-[0-9]+[^])])|TC-[A-Z]+-[A-Z0-9]+-[A-Z]*[0-9]|TC-[A-Z]+-[0-9]'
+_comment_id_shape='\(E[0-9]+-S[0-9]+\)|[^[a-zA-Z]E[0-9]+-S[0-9]+|^E[0-9]+-S[0-9]+|(NFR|ADR|SR)-[0-9]+[^])]|^#.*(FR-[0-9]+[^])])|TC-[A-Z]+-[A-Z0-9]+-[A-Z]*[0-9]|TC-[A-Z]+-[0-9]|DISC-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+'
 
 # _scan_comments FILE... — count comment lines with leaked IDs.
 # Prints the match count to stdout. Applies carve-outs (regex-literal

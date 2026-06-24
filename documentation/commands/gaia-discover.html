@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-discover - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#lifecycle">Lifecycle positioning</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#gestures">Gestures</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#operator-guidance">Operator guidance</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a>
+        <span class="separator">/</span>
+        <a href="../categories/discovery-research.html">Discovery &amp; Research</a>
+        <span class="separator">/</span>
+        /gaia-discover
+      </nav>
+
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-discover</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt>
+          <dd><a href="../categories/discovery-research.html">Discovery &amp; Research</a></dd>
+          <dt>Lifecycle phase:</dt>
+          <dd>Pre-backlog (upstream of Phase 1)</dd>
+          <dt>Arguments:</dt>
+          <dd><code>&lt;gesture&gt; [args]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p>
+          <code>/gaia-discover</code> manages the Discovery Board -- a pre-backlog
+          staging area where ideas are captured, researched, evaluated,
+          prioritized, and graduated into the formal GAIA lifecycle. Every
+          mutating gesture routes through a single sanctioned writer script,
+          ensuring consistent state management.
+        </p>
+      </section>
+
+      <section id="lifecycle">
+        <h2>Lifecycle positioning</h2>
+        <p>
+          Discovery is a <strong>pre-backlog lifecycle stage</strong> that sits
+          strictly upstream of <code>/gaia-add-feature</code>. Ideas flow through
+          the Discovery Board pipeline before entering the formal GAIA
+          lifecycle:
+        </p>
+        <pre><code>Captured --> Researching --> Evaluated --> Graduated --> /gaia-add-feature</code></pre>
+        <p>
+          The only downstream edge from Discovery into the formal backlog is
+          <strong>graduate</strong>, which bridges a validated idea into
+          <code>/gaia-add-feature --from-discovery</code>. Discovery does not
+          replace Phase 1 (Analysis). It is an informal staging area where ideas
+          are captured and evaluated before they become formal change requests.
+        </p>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You have a raw idea, user request, or observation that is not yet ready for <code>/gaia-add-feature</code>.</li>
+          <li>You want to track and prioritize pre-backlog ideas without committing them to the formal planning pipeline.</li>
+          <li>You need a lightweight capture workflow with no validation gates or subagent overhead.</li>
+        </ul>
+        <p>
+          If the idea is already validated and ready for implementation, skip
+          Discovery and go directly to
+          <a href="gaia-add-feature.html"><code>/gaia-add-feature</code></a>.
+        </p>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <p>
+          A GAIA project must be initialized (<code>/gaia-init</code> or
+          <code>/gaia-brownfield</code> completed). The Discovery Board file
+          is created automatically on first capture.
+        </p>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-discover capture "Add dark mode support" --source "user-feedback"</code></pre>
+        <p>Each gesture has its own syntax -- see the table below.</p>
+      </section>
+
+      <section id="gestures">
+        <h2>Gestures</h2>
+        <table>
+          <thead>
+            <tr><th>Gesture</th><th>Description</th><th>Mutates?</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>capture</code></td><td>Capture a new idea with a title and source tag.</td><td>Yes</td></tr>
+            <tr><td><code>board</code></td><td>View the board with optional <code>--horizon</code> and <code>--priority</code> filters.</td><td>No</td></tr>
+            <tr><td><code>research</code></td><td>Advance an item to the Researching state.</td><td>Yes</td></tr>
+            <tr><td><code>evaluate</code></td><td>Advance an item to the Evaluated state.</td><td>Yes</td></tr>
+            <tr><td><code>graduate</code></td><td>Graduate an item, bridging it to <code>/gaia-add-feature</code>.</td><td>Yes</td></tr>
+            <tr><td><code>park</code></td><td>Park an item for later consideration.</td><td>Yes</td></tr>
+            <tr><td><code>revive</code></td><td>Revive a parked item to its previous state.</td><td>Yes</td></tr>
+            <tr><td><code>prioritize</code></td><td>Set priority and horizon for an item.</td><td>Yes</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table>
+          <thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Gesture</td>
+              <td>First argument</td>
+              <td>The operation to perform (capture, board, research, etc.).</td>
+            </tr>
+            <tr>
+              <td>Title / flags</td>
+              <td>Subsequent arguments</td>
+              <td>Gesture-specific arguments (<code>--title</code>, <code>--id</code>, <code>--source</code>, <code>--priority</code>, <code>--horizon</code>).</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table>
+          <thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Discovery Board</td>
+              <td><code>.gaia/state/discovery-board.yaml</code></td>
+              <td>YAML file tracking all discovery items and their states.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>&gt; /gaia-discover capture "Add webhook retry with backoff" --source "support-ticket"
+
+Captured: item &lt;id&gt;
+  Title:    Add webhook retry with backoff
+  Source:   support-ticket
+  State:    Captured
+  Priority: (unset)
+  Horizon:  (unset)
+
+&gt; /gaia-discover board
+
+Discovery Board
+  &lt;id&gt;  Captured   Add webhook retry with backoff  [support-ticket]
+
+&gt; /gaia-discover prioritize --id &lt;id&gt; --priority High --horizon Now
+
+Prioritized: &lt;id&gt;
+  Priority: High
+  Horizon:  Now
+
+&gt; /gaia-discover graduate --id &lt;id&gt;
+
+Graduated: &lt;id&gt;
+  Next: run /gaia-add-feature --from-discovery &lt;id&gt;</code></pre>
+      </section>
+
+      <section id="operator-guidance">
+        <h2>Operator guidance</h2>
+        <ul>
+          <li>
+            <strong>Discovery synthesis is internal-only.</strong> The synthesis
+            text, notes, and research captured on the board are private project
+            artifacts. They must never appear verbatim in published source,
+            user-facing documentation, or commit messages.
+          </li>
+          <li>
+            <strong>Never paste secrets into capture.</strong> The
+            <code>capture</code> gesture writes its input directly to
+            <code>discovery-board.yaml</code>. API keys, credentials, tokens,
+            and any other sensitive material must never be used as the title or
+            source tag. Sanitize inputs before capture.
+          </li>
+        </ul>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-add-feature.html"><code>/gaia-add-feature --from-discovery</code></a> -- bridge a graduated item into the formal backlog.</li>
+          <li><a href="gaia-brainstorm.html"><code>/gaia-brainstorm</code></a> -- run a structured brainstorming session for deeper exploration.</li>
+        </ul>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Relationship</th></tr></thead>
+          <tbody>
+            <tr><td><a href="gaia-add-feature.html"><code>/gaia-add-feature</code></a></td><td>Formal change intake -- the only downstream consumer of graduated items.</td></tr>
+            <tr><td><a href="gaia-brainstorm.html"><code>/gaia-brainstorm</code></a></td><td>Structured brainstorming -- a complementary analysis tool.</td></tr>
+            <tr><td><a href="gaia-product-brief.html"><code>/gaia-product-brief</code></a></td><td>Product brief -- sits downstream of brainstorming in Phase 1.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="../categories/discovery-research.html">Back to Discovery &amp; Research</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -49,9 +49,34 @@ single sanctioned writer.
    change.
 5. **`prioritize` sets priority and horizon together.** Both fields are required.
    Horizon changes only via an explicit gesture (`prioritize`), never implicitly.
-6. **`graduate` routes to `transition --to Graduated`.** The graduation track
-   logic and `--from-discovery` bridge to `/gaia-add-feature` are out of scope
-   for the initial gesture set and ship in a subsequent story.
+6. **`graduate` routes to `transition --to Graduated`.** When `--from-discovery`
+   is set on `/gaia-add-feature`, the bridge populates the intake from the
+   graduated item's synthesis. Graduate is the only downstream edge from
+   Discovery into the formal backlog.
+
+## Lifecycle Positioning
+
+Discovery is a **pre-backlog** lifecycle stage that sits strictly upstream of
+`/gaia-add-feature`. Ideas flow through the Discovery Board pipeline
+(Captured -> Researching -> Evaluated -> Graduated) before entering the formal
+GAIA lifecycle. The only downstream edge is **graduate**, which bridges a
+validated idea into `/gaia-add-feature --from-discovery`.
+
+Discovery does not replace Phase 1 (Analysis). It is an informal staging area
+where ideas are captured, researched, and evaluated before they become formal
+change requests. Ideas that do not graduate are parked or remain on the board
+indefinitely.
+
+## Operator Guidance
+
+- **Discovery synthesis is internal-only.** The synthesis text, notes, and
+  research captured on the board are private project artifacts. They must never
+  appear verbatim in published source, user-facing documentation, or commit
+  messages.
+- **Never paste secrets into capture.** The `capture` gesture writes its input
+  directly to `discovery-board.yaml`. API keys, credentials, tokens, and any
+  other sensitive material must never be used as the title or source tag.
+  Sanitize inputs before capture.
 
 ## Steps (orchestration)
 
