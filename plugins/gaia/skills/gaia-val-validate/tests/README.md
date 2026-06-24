@@ -1,8 +1,8 @@
-# Val Auto-Fix Loop — Test Runbooks (E44-S2)
+# Val Auto-Fix Loop — Test Runbooks
 
 LLM-checkable runbooks for the Val Auto-Fix Loop Pattern (canonical spec in
-`../SKILL.md` § "Auto-Fix Loop Pattern"). Implements ADR-058 / FR-344 /
-NFR-VCP-2 (E44-S2). The companion script-verifiable bats coverage lives at
+`../SKILL.md` § "Auto-Fix Loop Pattern"). The companion script-verifiable
+bats coverage lives at
 `plugins/gaia/tests/e44-s2-val-auto-fix-loop-pattern.bats`.
 
 These runbooks are executed by the broader VCP test orchestrator (not bats).
