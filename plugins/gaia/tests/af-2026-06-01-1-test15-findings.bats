@@ -155,11 +155,11 @@ teardown() { common_teardown; }
 }
 
 # ===========================================================================
-# F-11 — sprint-close FATAL on review→closed refusal (no yq fallback bypass)
+# F-11 — sprint-close refuses when no sprint-review sentinel present
 # ===========================================================================
 
-@test "sprint-close.sh recognises the canonical refuse review→closed substring" {
-  run grep -F 'refuse review' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
+@test "sprint-close.sh carries the unconditional sentinel refusal message" {
+  run grep -F 'no sprint-review sentinel' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
   [ "$status" -eq 0 ]
 }
 
