@@ -284,10 +284,12 @@ EOF
   mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/widget.sh"
   # Create a passing bats test file adjacent to the source.
+  # NOTE: the fixture's @test line is printf-appended AFTER the heredoc so that
+  # bats' outer pre-scanner (bats <=1.10) does not count it toward the TAP plan.
   cat > "$TEST_TMP/tests/widget.bats" <<'BATS'
 #!/usr/bin/env bats
-@test "widget works" { true; }
 BATS
+  printf '%s\n' '@test "widget works" { true; }' >> "$TEST_TMP/tests/widget.bats"
 
   # Write a story file whose File List references src/widget.sh.
   local story_file="$TEST_TMP/story.md"
@@ -322,10 +324,11 @@ BATS
   # timeout (300s) but the story's own tests pass in milliseconds.
   mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/gadget.sh"
+  # NOTE: printf-append avoids bats <=1.10 heredoc @test plan-inflation.
   cat > "$TEST_TMP/tests/gadget.bats" <<'BATS'
 #!/usr/bin/env bats
-@test "gadget works" { true; }
 BATS
+  printf '%s\n' '@test "gadget works" { true; }' >> "$TEST_TMP/tests/gadget.bats"
 
   local story_file="$TEST_TMP/story.md"
   write_story_with_file_list "$story_file" "src/gadget.sh"
@@ -351,10 +354,11 @@ BATS
   # Even with --story-file, a CI context must run the full-suite command.
   mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/thing.sh"
+  # NOTE: printf-append avoids bats <=1.10 heredoc @test plan-inflation.
   cat > "$TEST_TMP/tests/thing.bats" <<'BATS'
 #!/usr/bin/env bats
-@test "thing works" { true; }
 BATS
+  printf '%s\n' '@test "thing works" { true; }' >> "$TEST_TMP/tests/thing.bats"
 
   local story_file="$TEST_TMP/story.md"
   write_story_with_file_list "$story_file" "src/thing.sh"
@@ -462,10 +466,11 @@ EOF
   # Story-scoping should replace only tier_1's command; tier_2 keeps its own.
   mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/multi.sh"
+  # NOTE: printf-append avoids bats <=1.10 heredoc @test plan-inflation.
   cat > "$TEST_TMP/tests/multi.bats" <<'BATS'
 #!/usr/bin/env bats
-@test "multi works" { true; }
 BATS
+  printf '%s\n' '@test "multi works" { true; }' >> "$TEST_TMP/tests/multi.bats"
 
   local story_file="$TEST_TMP/story-multi.md"
   write_story_with_file_list "$story_file" "src/multi.sh"
