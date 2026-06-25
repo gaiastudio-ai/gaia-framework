@@ -440,7 +440,7 @@ while [ $# -gt 0 ]; do
       # Positional block-query: emit four S/M/L/XL key=value lines
       # for the resolved sizing_map block (project > global precedence).
       POSITIONAL_QUERY="sizing_map"; shift ;;
-    project_root|planning_artifacts|implementation_artifacts|test_artifacts|creative_artifacts|project_config_path)
+    project_root|planning_artifacts|implementation_artifacts|test_artifacts|creative_artifacts|project_config_path|memory_path|checkpoint_path)
       # Positional flat-key query for artifact-path keys. Emits ONLY the
       # resolved scalar to stdout with exit 0. Project-config.yaml override
       # beats the framework default (project > global precedence). Mirrors
@@ -1409,6 +1409,8 @@ if [ -n "$POSITIONAL_QUERY" ]; then
     implementation_artifacts) printf '%s\n' "$v_implementation_artifacts" ;;
     test_artifacts)           printf '%s\n' "$v_test_artifacts" ;;
     creative_artifacts)       printf '%s\n' "$v_creative_artifacts" ;;
+    memory_path)              printf '%s\n' "$v_memory_path" ;;
+    checkpoint_path)          printf '%s\n' "$v_checkpoint_path" ;;
     # Synthetic key `project_config_path`, no schema backing. Resolves to
     # `<project_root>/.gaia/config/project-config.yaml` when that location
     # exists; otherwise preserves the legacy `<project_root>/config/...`
