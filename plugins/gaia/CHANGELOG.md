@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.209.1] — 2026-06-25
+
+### Fixed
+
+- (create-story) document the checkbox-AC requirement in the validator message + template (#1709)
+- (sprint-close) repair the dead direct-yq fallback + document the dual terminal event (#1708)
+- (qa-runner) scope single-story QA review to story-relevant tests (#1707)
+- (action-items) unify the registry path on .gaia/state via the shared tier resolver (#1706)
+- (sprint-state) rollover resolves story files via the canonical 3-tier resolver (#1705)
+- (config-ci) generate multi-stack selective-tests + per-component release workflows (#1704)
+- (version-bump) add per-component scoping + monotonic no-downgrade guard (#1703)
+- (scripts) lower cross-refs-walk + firewall-guard to Bash 3.2 + add portability lint (#1702)
+- (review-gate) make sprint-scoped verdicts record + read from the canonical ledger (#1701)
+- (leaked-ids) scrub concrete internal-IDs from published prose + add a prose leaked-ID gate (#1700)
+- (backlog-select-lint) parse hard deps from detail-block bullets, not just pipe-table rosters (#1699)
+- (sprint-state) source the shared story-state-machine SSOT instead of an embedded adjacency table (#1698)
+- (sprint-close) enforce sprint-review sentinel unconditionally + add audited --force bypass (#1697)
+
 ## [1.209.0] — 2026-06-24
 
 ### Added
