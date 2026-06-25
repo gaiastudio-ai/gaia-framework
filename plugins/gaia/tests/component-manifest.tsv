@@ -89,6 +89,7 @@ core	code-review-standards-rubric.bats
 core	component-manifest-drift-guard.bats
 core	component-stack-resolution.bats
 core	component-test-partition.bats
+core	config-brownfield-flag-coverage.bats
 core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats
 core	dead-code-join.bats
