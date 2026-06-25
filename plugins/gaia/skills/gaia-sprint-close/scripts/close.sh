@@ -342,18 +342,22 @@ CLOSED_AT="$(iso_now)"
 SPRINT_STATE_SH="${SPRINT_STATE_SH:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../../.." && pwd)}/plugins/gaia/scripts/sprint-state.sh}"
 
 if [ -x "$SPRINT_STATE_SH" ]; then
-  # Try the sprint-state.sh transition. If it succeeds (review→closed), stamp
-  # closed_at. If it fails (active→closed is not a legal edge), fall back to
-  # direct yq -i. The sentinel check above already ran unconditionally, so the
+  # Try the sprint-state.sh transition. If it succeeds (review->closed), stamp
+  # closed_at only (sprint-state.sh already wrote status:closed). If it fails
+  # (active->closed is not a legal edge in the state machine), fall back to a
+  # direct yq write. The sentinel gate (Step 3a) already passed above, so the
   # fallback is safe.
-  _ss_stderr="$("$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed 2>&1 >/dev/null)"
-  _ss_rc=$?
-  if [ "$_ss_rc" -eq 0 ]; then
+  #
+  # The `if` construct (not var=$(...); rc=$?) is required here: under
+  # `set -e`, a failing command substitution in a variable assignment exits
+  # the script before $? can be captured. The `if` suppresses `set -e` for
+  # the tested command per POSIX §2.8.1.
+  if "$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed >/dev/null 2>&1; then
     yq -i ".closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
       || die "yq closed_at write failed on $YAML_PATH after sprint-state.sh transition"
   else
-    # Transition failed (e.g. active→closed not a legal edge). Fall back to
-    # direct yq — safe because the sentinel gate already passed above.
+    # Transition failed (e.g. active->closed is not a legal edge). Fall back
+    # to direct yq — safe because the sentinel gate already passed above.
     yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
       || die "yq write failed on $YAML_PATH"
   fi
