@@ -427,6 +427,7 @@ scripts-core	gaia-test-e2e.bats
 scripts-core	gaia-test-perf.bats
 scripts-core	gaia-trace.bats
 scripts-core	gaia-validate-story.bats
+scripts-core	generate-multi-stack-ci.bats
 scripts-core	generate-pipeline.bats
 scripts-core	git-push.bats
 scripts-core	init-project.bats
