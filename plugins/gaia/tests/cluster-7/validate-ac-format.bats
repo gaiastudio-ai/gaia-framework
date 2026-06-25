@@ -171,3 +171,43 @@ teardown() { common_teardown; }
   run grep -E '^LC_ALL=C|^export LC_ALL' "$SCRIPT"
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Actionable error message for bold-bullet ACs (AC1)
+# ---------------------------------------------------------------------------
+
+@test "bold-bullet ACs (no checkboxes) -> CRITICAL names the required checkbox form (AC1)" {
+  run "$SCRIPT" --file "$FIX_DIR/story-ac-bold-bullets.md"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"CRITICAL"* ]]
+  # The message must name the required format so authors know how to fix.
+  [[ "$output" == *'- [ ]'* ]]
+  [[ "$output" == *"checkbox"* ]]
+}
+
+@test "bold-bullet ACs -> CRITICAL shows the canonical line shape (AC1)" {
+  run "$SCRIPT" --file "$FIX_DIR/story-ac-bold-bullets.md"
+  [ "$status" -ne 0 ]
+  # The message must include the canonical AC line shape for reference.
+  [[ "$output" == *"Given"* ]]
+  [[ "$output" == *"when"* ]]
+  [[ "$output" == *"then"* ]]
+}
+
+@test "valid checkbox ACs still pass after message improvement (AC4)" {
+  run "$SCRIPT" --file "$FIX_DIR/story-ac-good.md"
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
+}
+
+# ---------------------------------------------------------------------------
+# Documentation: template documents the checkbox-AC requirement (AC2)
+# ---------------------------------------------------------------------------
+
+@test "story template documents the checkbox-AC requirement (AC2)" {
+  local template="$SKILLS_DIR/gaia-create-story/story-template.md"
+  [ -f "$template" ]
+  # The template must explicitly call out the checkbox requirement.
+  run grep -i 'checkbox' "$template"
+  [ "$status" -eq 0 ]
+}

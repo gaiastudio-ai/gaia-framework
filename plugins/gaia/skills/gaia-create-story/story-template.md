@@ -46,6 +46,12 @@ As a {role}, I want to {action}, so that {benefit}.
 
 ## Acceptance Criteria
 
+<!-- Checkbox format is mandatory. Each AC line MUST begin with a `- [ ]`
+     markdown checkbox followed by the Given/When/Then sentence. The canonical
+     line shape is: `- [ ] **AC1:** Given {context}, when {action}, then {expected result}.`
+     Bold-bullet or free-form ACs (without the leading `- [ ]` checkbox) will
+     fail validation with a CRITICAL error and block story creation. -->
+
 - [ ] Given {context}, when {action}, then {expected result}
 - [ ] Given {context}, when {action}, then {expected result}
 
