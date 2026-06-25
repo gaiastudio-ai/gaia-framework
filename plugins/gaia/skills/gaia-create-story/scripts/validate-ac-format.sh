@@ -146,7 +146,7 @@ checkbox_lines="$(printf '%s\n' "$ac_lines" \
 # ---------- Empty AC section (AC3) ----------
 
 if [ -z "$checkbox_lines" ]; then
-  printf 'CRITICAL\tacceptance-criteria\tsection is empty (zero `- [ ]` lines under `## Acceptance Criteria`)\n'
+  printf 'CRITICAL\tacceptance-criteria\tsection has no checkbox ACs (zero `- [ ]` lines under `## Acceptance Criteria`). Each acceptance criterion MUST begin with a `- [ ]` markdown checkbox. Canonical line shape: `- [ ] **AC1:** Given {context}, when {action}, then {expected result}.` — convert bold-bullet or free-form ACs to this checkbox form.\n'
   exit 1
 fi
 
@@ -158,7 +158,7 @@ while IFS=$'\t' read -r lineno content; do
   # `grep -iE` matches case-insensitively under LC_ALL=C; the regex
   # accepts any non-empty bridging text between Given/when/then.
   if ! printf '%s' "$content" | grep -iqE 'Given .+, when .+, then .+'; then
-    printf 'WARNING\tacceptance-criteria\tline %d: %s\n' "$lineno" "$content"
+    printf 'WARNING\tacceptance-criteria\tline %d does not match Given/When/Then format. Expected shape: `- [ ] **AC{N}:** Given {context}, when {action}, then {expected result}.` — got: %s\n' "$lineno" "$content"
     findings=$((findings + 1))
   fi
 done <<EOF
