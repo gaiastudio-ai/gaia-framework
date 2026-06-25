@@ -45,6 +45,7 @@ REQUIRED_FILES=(
   "tests/skills/E55-S11-plugin-ci-bats-coverage.bats"
   "tests/skills/E69-S1-rename-map.bats"
   "tests/skills/E69-S3-test-strategy-collapse.bats"
+  "tests/skills/bash32-portability-lint.bats"
   "tests/skills/conditional-check-hints.bats"
   "tests/skills/e28-s113-edge-cases-figma-conversion.bats"
   "tests/skills/e28-s117-quick-dev-conversion.bats"
