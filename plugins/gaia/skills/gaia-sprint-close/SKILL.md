@@ -142,7 +142,10 @@ When the `review→closed` path is taken via `sprint-state.sh transition`, Step 
 
 ### Step 4 — Yaml write
 
-- `yq -i '.status = "closed" | .closed_at = "<ISO 8601 UTC>"' <yaml_path>`.
+The primary write path routes through `sprint-state.sh transition --to closed`. When the transition succeeds (the `review->closed` edge), `close.sh` stamps only `closed_at` (the status flip was handled by the boundary writer). When `sprint-state.sh` is absent or refuses the transition for a non-sentinel reason (e.g., `active->closed` is not a legal edge in the state machine), `close.sh` falls back to a direct `yq -i` write of both `status: closed` and `closed_at`. This fallback is safe because the sentinel gate (Step 3a) has already passed unconditionally before Step 4 runs, proving that a sprint review verdict exists (or was explicitly bypassed via `--force`).
+
+- Primary: `sprint-state.sh transition --sprint <id> --to closed` (boundary writer).
+- Fallback: `yq -i '.status = "closed" | .closed_at = "<ISO 8601 UTC>"' <yaml_path>` — fires when the transition is not a legal state-machine edge (e.g., closing from `active` without an intermediate `review` step) or when `sprint-state.sh` is not available.
 
 ### Step 5 — Archive
 
@@ -155,6 +158,16 @@ When the `review→closed` path is taken via `sprint-state.sh transition`, Step 
 - Invoke `${SCRIPTS_DIR}/lifecycle-event.sh --type sprint_closed --workflow gaia-sprint-close --data '{...}'` with the data payload `{sprint_id, closed_at, total_points, stories_done, stories_rolled_over, rollover_target_sprint}`.
 - `stories_rolled_over` is `[]` when there is no `--force-with-rollover`, else the JSON array of rolled-over keys.
 - `rollover_target_sprint` is `null` for this story; a later rollover story will populate it.
+
+#### Two-event lifecycle contract
+
+A complete sprint-close ceremony emits two intentionally distinct lifecycle events:
+
+1. **`sprint_closed`** (domain event, emitted by `close.sh` Step 6) — the domain-specific signal that a sprint has closed. Carries the full sprint metadata payload (`sprint_id`, `closed_at`, `total_points`, `stories_done`, `stories_rolled_over`, `rollover_target_sprint`). Domain consumers (brain reindex, rollover planning, sprint-archive queries) key on this event.
+
+2. **`workflow_complete`** (generic event, emitted by `finalize.sh`) — the generic plugin-lifecycle signal that the skill's execution completed. Carries no domain payload. Infrastructure consumers (throughput telemetry, step-report, audit-v2-migration harness) key on this event.
+
+Both events fire for every close ceremony. They are intentionally distinct layers: `sprint_closed` is the domain signal; `workflow_complete` is the infrastructure signal. Downstream telemetry consumers MUST NOT treat them as duplicates — each serves a different consumer set. This two-event pattern mirrors other domain-action skills (e.g., `gaia-deploy` emits both a domain `deploy_completed` event and the generic `workflow_complete`).
 
 ### Step 7 — Confirmation
 
