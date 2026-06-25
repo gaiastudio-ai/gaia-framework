@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # action-items-write.sh — inline action-items writer
 #
-# Writes structured entries to .gaia/artifacts/planning-artifacts/action-items.yaml
+# Writes structured entries to .gaia/state/action-items.yaml (canonical)
 # following the Action Items Schema.
 #
 # NOTE: The classification enum lists {clarification|implementation|process|automation}.

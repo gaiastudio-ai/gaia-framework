@@ -24,7 +24,7 @@
 # Contract:
 #   * Allowlist check: file path must satisfy the shared writer's allowlist
 #     (realpath-resolved match against allowlist patterns; for this script,
-#     the relevant pattern is `<root>/.gaia/artifacts/planning-artifacts/action-items.yaml`).
+#     the relevant pattern is `<root>/.gaia/state/action-items.yaml`).
 #   * Idempotency: a sidecar ledger next to the target file records
 #     (sprint_id, theme_hash) pairs that have already produced an increment.
 #     Re-invoking with the same pair is a silent no-op.

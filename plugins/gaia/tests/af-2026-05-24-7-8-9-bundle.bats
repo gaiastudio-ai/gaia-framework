@@ -137,8 +137,8 @@ PY
 # action-items consumer read `planning-artifacts/`). The assertions
 # below are updated to match the new canonical home.
 
-@test "gaia-retro SKILL.md uses canonical planning-artifacts/action-items.yaml" {
-  grep -qF ".gaia/artifacts/planning-artifacts/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-retro/SKILL.md"
+@test "gaia-retro SKILL.md uses state-tier canonical action-items path" {
+  grep -qF ".gaia/state/action-items.yaml" "${PLUGIN_ROOT}/skills/gaia-retro/SKILL.md"
 }
 
 @test "gaia-triage-findings SKILL.md uses canonical planning-artifacts/action-items.yaml" {

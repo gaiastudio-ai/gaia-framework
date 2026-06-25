@@ -181,7 +181,7 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/action-items-write.sh"
 2. For each dropped or deferred story, invoke the writer:
 ```bash
 aiw_write \
-  --target "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
+  --target "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
   --sprint-id "{current_sprint_id}" \
   --classification "process" \
   --text "Dropped/deferred {story_key}: {reason}" \
@@ -216,7 +216,7 @@ This step is gated: when the sprint is NOT in `review` status AND no `--from-rev
 
 When the gate fires:
 
-1. **Read failed findings** from `.gaia/artifacts/planning-artifacts/action-items.yaml`, filtered to entries originating from the current sprint-review run (matching the sprint_id).
+1. **Read failed findings** from `.gaia/state/action-items.yaml` (the canonical action-items registry, resolved via `resolve-artifact-path.sh action_items`), filtered to entries originating from the current sprint-review run (matching the sprint_id).
 2. **Draft `story_injection` proposals** — for each finding, generate a story title + AC drafts derived from the finding context. Output the drafts inline to the user.
 3. **Present drafts via `AskUserQuestion`** at main-turn with `[approve / edit / skip]` options per draft.
 4. **On approve** for a draft:
