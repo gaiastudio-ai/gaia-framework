@@ -201,10 +201,13 @@ After the test-discovery / AC-coverage analyzer completes, the skill MAY run the
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-test-runner.sh \
   --story-key {story_key} \
   --workdir .gaia/state/review/qa-tests/{story_key} \
-  --config .gaia/config/project-config.yaml
+  --config .gaia/config/project-config.yaml \
+  --story-file {story_file_path}
 ```
 
 The runner emits `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`.
+
+**Story-scoped execution.** When `--story-file` is provided and the context is `local`, the runner parses the story's File List section, discovers adjacent test files (by stem-matching against `tests/` directories), and executes only those tests instead of the full-suite tier command. This prevents false-BLOCKED verdicts on large-suite projects where the full suite exceeds the tier timeout but the story's own tests pass. CI and promotion contexts (`ci_pre_merge`, `ci_post_merge`, `deployment`, `post_deploy`) always run the full-suite tier command regardless of `--story-file`. When the File List is absent or yields no matching tests, the runner falls back to the full-suite tier command with an INFO diagnostic.
 
 **Tier resolution.** The runner reads `test_execution.tier_{1,2,3}.placement` from `project-config.yaml` and matches each tier's placement against `GAIA_EXECUTION_CONTEXT` (`local | ci_pre_merge | ci_post_merge | deployment | post_deploy`). Only tiers whose placement matches the active context run; the rest are skipped.
 
