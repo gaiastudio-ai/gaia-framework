@@ -69,12 +69,27 @@ Files that do not match either format (binary files, JSON without a `version` ke
 | `major` | `1.2.3` → `2.0.0` |
 | `X.Y.Z` | Sets an explicit version |
 
+### Per-component scoping
+
+By default, the version-bump script bumps **all** files listed in `release.version_files[]` to the same target version (lockstep mode). When a project contains independently-versioned components, two flags enable per-component bumps:
+
+- **`--scope <prefixes>`** — comma-separated path prefixes. Only version files whose relative path starts with one of the listed prefixes participate in the bump. Each participating file bumps from its **own** current version — not a shared reference. Files outside the scope are left untouched. Prefix matching is directory-boundary-safe: `packages/front` does **not** match `packages/frontend/`.
+- **`--scope-map <json>`** — a JSON object mapping path prefix to bump type, e.g. `'{"packages/api":"minor","packages/ui":"patch"}'`. Each component group bumps from its own current version by its own bump type. The positional bump specifier is not required when `--scope-map` is used — the map supplies per-component bump types.
+
+### Monotonic no-downgrade guard
+
+Before writing a bumped version, the script compares the computed target to the file's current version using numeric semver comparison. If the target is **less than or equal to** the current version, the write is skipped and a warning is emitted to stderr. This prevents accidental downgrades when components have divergent versions.
+
+The guard applies in both scoped and lockstep (unscoped) mode. In lockstep mode, the reference version comes from the first listed file — if another file is already ahead of that computed target, it is silently skipped (with the skip surfaced in the `skipped` array and stderr).
+
+If **every** candidate file is a monotonic no-op (nothing to bump), the script exits with code **4**.
+
 ### Error handling
 
 - **Missing `release.version_files`**: exits non-zero with an error that explicitly names the missing config key `release.version_files`.
 - **Missing version file on disk**: exits non-zero naming the file.
 - **Unsupported format**: exits non-zero naming the file and the detected format problem.
-- **No silent no-ops**: the script always either bumps all listed files or fails before writing any.
+- **All candidates already at or above target**: exit code 4 — no files were written.
 
 ### Machine-readable output
 
@@ -88,9 +103,20 @@ On success (exit 0), stdout contains a single JSON object:
   "bumped": [
     { "file": "package.json", "format": "json", "old": "1.2.3", "new": "1.2.4" },
     { "file": "VERSION", "format": "text", "old": "1.2.3", "new": "1.2.4" }
-  ]
+  ],
+  "skipped": []
 }
 ```
+
+The top-level `old_version`, `new_version`, and `bump_type` keys are present in lockstep (unscoped) mode for backward compatibility. In per-component (scoped) mode, only `bumped` and `skipped` are emitted.
+
+The `skipped` array contains one entry per file that the monotonic guard prevented from being written:
+
+```json
+{ "file": "lib/package.json", "reason": "monotonic-guard", "current": "2.0.0", "target": "1.2.4" }
+```
+
+On exit code 4 (all candidates were no-ops), the same JSON structure is emitted with an empty `bumped` array and a populated `skipped` array.
 
 ### Config resolution
 
@@ -102,6 +128,8 @@ The script requires `--config <path>` pointing at the project-config.yaml. In pr
   - `patch | minor | major` — standard semver bump.
   - `X.Y.Z` — set an explicit version.
   - `--dry-run` — print the planned changes as JSON and exit without writing.
+  - `--scope <prefixes>` — comma-separated path prefixes to limit the bump to named components.
+  - `--scope-map <json>` — JSON object mapping path prefix to bump type for independent per-component bumps.
 
 ## Instructions
 
@@ -195,6 +223,8 @@ Draft release notes from the changelog entry. If a changelog is missing, generat
 | Flag | Effect |
 | --- | --- |
 | `--dry-run` | Print the planned changes as JSON and exit without writing. Use this first on every release. |
+| `--scope <prefixes>` | Comma-separated path prefixes — only matching version files are bumped; each bumps from its own current version. |
+| `--scope-map <json>` | JSON object mapping prefix to bump type — enables independent per-component bumps without a positional specifier. |
 
 ## References
 
