@@ -1,6 +1,6 @@
 ---
 name: gaia-config-brownfield
-description: Edit the brownfield section of project-config.yaml — set, show, or clear deterministic-tools knobs (deterministic_tools, tools.runner, grype_enabled, scanner_tier). Section-scoped editor that preserves YAML comments and formatting. Use when "edit brownfield config" or /gaia-config-brownfield.
+description: Edit the brownfield section of project-config.yaml — deterministic-tools master flag + per-phase tool overrides (prewarm/sarif-merge/dedup/grype/sbom/deadcode/phase-4b/defectdojo). Section-scoped editor that preserves YAML comments and formatting. Use when "edit brownfield config" or /gaia-config-brownfield.
 argument-hint: "<set|show|clear> [key] [value]"
 allowed-tools: [Read, Grep, Bash, Write, Edit]
 orchestration_class: light-procedural
@@ -16,11 +16,25 @@ Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the 
 
 - Only the `brownfield` section may be modified. All other sections, all comments, and all formatting outside the edited section MUST be preserved byte-for-byte.
 - Supported keys (enums enforced):
-  - `brownfield.deterministic_tools` — `true` | `false`
-  - `brownfield.tools.runner` — `docker` | `native`
+  - `brownfield.deterministic_tools` — `true` | `false` (master flag; default `true`)
+  - `brownfield.tools.runner` — `docker` | `native` (default `native`)
   - `brownfield.tools.image` — OCI image reference (string), e.g. `ghcr.io/gaiastudio-ai/gaia-tools:0.1.1-2026-05-31`
-  - `brownfield.grype_enabled` — `true` | `false`
-  - `brownfield.scanner_tier` — `0` | `1` | `2` | `auto`
+  - `brownfield.scanner_tier` — `0` | `1` | `2` | `auto` (default `auto`)
+  - `brownfield.prewarm_enabled` — `true` | `false` (Phase 3 cdxgen+Grype pre-warm; default `true`)
+  - `brownfield.sarif_merge_enabled` — `true` | `false` (Phase 7 SARIF Multitool merge; default `true`)
+  - `brownfield.dedup_enabled` — `true` | `false` (Phase 7 cross-tool dedup; default `true`)
+  - `brownfield.grype_enabled` — `true` | `false` (Phase 3 Grype CVE-scan adapter; default `true`)
+  - `brownfield.sbom_completeness_enabled` — `true` | `false` (Phase 3 SBOM completeness check; default `true`)
+  - `brownfield.detect_signals_enabled` — `true` | `false` (Phase 1 stacks path proposal/audit; default `true`)
+  - `brownfield.deadcode_go_enabled` — `true` | `false` (Phase 3 Go dead-code adapter; default `true`)
+  - `brownfield.deadcode_python_enabled` — `true` | `false` (Phase 3 Python vulture adapter; default `true`)
+  - `brownfield.deadcode_jvm_enabled` — `true` | `false` (Phase 3 JVM SpotBugs adapter; default `true`)
+  - `brownfield.phase_4b_cross_stack_enabled` — `true` | `false` (Phase 4b cross-stack WARNING-emission + scope-respect; default `true`)
+  - `brownfield.phase_4b_enabled` — `true` | `false` (Phase 4b reconciliation pass — demote file-only findings reachable from entry points; default `true`)
+  - `brownfield.defectdojo_enabled` — `true` | `false` (opt-in DefectDojo export; default `false`)
+  - `brownfield.defectdojo_api_url` — DefectDojo server URL (string)
+  - `brownfield.defectdojo_api_token` — DefectDojo API token (string)
+  - `brownfield.defectdojo_engagement_id` — DefectDojo engagement ID (string)
 - Reject unknown keys and out-of-enum values with exit 1.
 - All set / clear operations are idempotent — setting the same value twice is a no-op success; clearing an absent key is a no-op success.
 - Writes go through `config-yaml-editor.sh replace` / `insert` so the rest of the file is untouched.
@@ -41,11 +55,25 @@ The first user-visible line of output for every invocation MUST surface the **cu
 
 ```
 current brownfield:
-  deterministic_tools: <true|false|unset>
-  tools.runner:        <docker|native|unset>
-  tools.image:         <image-ref|unset>
-  grype_enabled:       <true|false|unset>
-  scanner_tier:        <0|1|2|auto|unset>
+  deterministic_tools:        <true|false|unset>
+  tools.runner:               <docker|native|unset>
+  tools.image:                <image-ref|unset>
+  scanner_tier:               <0|1|2|auto|unset>
+  prewarm_enabled:            <true|false|unset>
+  sarif_merge_enabled:        <true|false|unset>
+  dedup_enabled:              <true|false|unset>
+  grype_enabled:              <true|false|unset>
+  sbom_completeness_enabled:  <true|false|unset>
+  detect_signals_enabled:     <true|false|unset>
+  deadcode_go_enabled:        <true|false|unset>
+  deadcode_python_enabled:    <true|false|unset>
+  deadcode_jvm_enabled:       <true|false|unset>
+  phase_4b_cross_stack_enabled: <true|false|unset>
+  phase_4b_enabled:           <true|false|unset>
+  defectdojo_enabled:         <true|false|unset>
+  defectdojo_api_url:         <url|unset>
+  defectdojo_api_token:       <token|unset>
+  defectdojo_engagement_id:   <id|unset>
 ```
 
 This applies uniformly to `set`, `show`, `clear`, and the no-subcommand case below — there is no invocation that skips the preamble.
