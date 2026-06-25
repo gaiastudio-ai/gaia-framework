@@ -2338,7 +2338,7 @@ cmd_detect_auto_close() {
 # (some keys committed + some rolled back, non-zero exit + summary).
 #
 # Per-key flow:
-#   1. Locate story file via scan of .gaia/artifacts/implementation-artifacts/**/stories/*.md
+#   1. Locate story file via the canonical shared resolver (all layout tiers)
 #   2. Read frontmatter `sprint_id` field
 #   3. Verify it matches --from value OR is `null`. Otherwise refuse this key.
 #   4. Rewrite `sprint_id:` line to the --to value.
@@ -2387,9 +2387,23 @@ cmd_rollover() {
 _rollover_one() {
   local key="$1" from_sprint="$2" to_sprint="$3"
 
-  # Locate the story file. Pattern: .gaia/artifacts/implementation-artifacts/**/stories/<key>-*.md
-  local story_file
-  story_file=$(find "${IMPLEMENTATION_ARTIFACTS}" -type f -name "${key}-*.md" 2>/dev/null | head -1)
+  # Locate the story file via the canonical shared resolver (handles all three
+  # layout tiers: per-story-nested, legacy-nested, legacy-flat).
+  # shellcheck source=resolve-story-file.sh
+  . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
+  local story_file resolver_stderr resolver_rc
+  resolver_stderr=$(resolve_story_file "$key" 2>&1 1>/dev/null) || true
+  # Re-run to capture stdout (Bash 3.2: no process substitution trick that
+  # reliably captures both stdout and the exit code in separate variables).
+  story_file=$(resolve_story_file "$key" 2>/dev/null); resolver_rc=$?
+  # On any failure the first run already captured stderr; use rc from second.
+  if [ "$resolver_rc" -eq 2 ]; then
+    printf 'sprint-state.sh rollover: ambiguous match for %s — multiple story files found; resolve manually\n' "$key" >&2
+    if [ -n "$resolver_stderr" ]; then
+      printf '%s\n' "$resolver_stderr" >&2
+    fi
+    return 1
+  fi
   if [ -z "$story_file" ] || [ ! -f "$story_file" ]; then
     printf 'sprint-state.sh rollover: story file not found for %s\n' "$key" >&2
     return 1

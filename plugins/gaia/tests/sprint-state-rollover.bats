@@ -136,3 +136,98 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"story file not found"* ]] || [[ "$stderr" == *"story file not found"* ]]
 }
+
+# ---------- TC-7: Per-story-nested layout rollover (AC1) ------------------
+
+# Seed a per-story-nested story file: epic-<slug>/<KEY>-<slug>/story.md.
+seed_nested_story_file() {
+  local key="$1" sprint_id="$2" status="${3:-in-progress}" points="${4:-3}" risk="${5:-medium}"
+  local story_dir="$ART/epic-test-epic/${key}-stub"
+  mkdir -p "$story_dir"
+  cat > "$story_dir/story.md" <<EOF
+---
+template: 'story'
+key: "$key"
+title: "Nested $key"
+status: $status
+sprint_id: $sprint_id
+points: $points
+risk: "$risk"
+---
+
+# Story: Nested $key
+EOF
+}
+
+@test "per-story-nested layout rollover rewrites sprint_id and injects (AC1)" {
+  seed_nested_story_file "E81-S10" '"sprint-old"' "in-progress"
+  seed_target_yaml "sprint-new"
+  run "$CANONICAL" rollover --from sprint-old --to sprint-new --keys E81-S10
+  [ "$status" -eq 0 ]
+  # Story file sprint_id rewritten.
+  run grep '^sprint_id: "sprint-new"' "$ART/epic-test-epic/E81-S10-stub/story.md"
+  [ "$status" -eq 0 ]
+  # Key injected into target sprint yaml.
+  run grep -E 'E81-S10' "$YAML"
+  [ "$status" -eq 0 ]
+}
+
+# ---------- TC-8: Legacy-nested rollover still works (AC2) ----------------
+
+@test "legacy-nested layout rollover still works after resolver change (AC2)" {
+  seed_story_file "E81-S11" '"sprint-old"' "in-progress"
+  seed_target_yaml "sprint-new"
+  run "$CANONICAL" rollover --from sprint-old --to sprint-new --keys E81-S11
+  [ "$status" -eq 0 ]
+  run grep '^sprint_id: "sprint-new"' "$STORIES_DIR/E81-S11-stub.md"
+  [ "$status" -eq 0 ]
+}
+
+# ---------- TC-9: Mixed-layout multi-key rollover -------------------------
+
+@test "mixed-layout rollover handles both nested and legacy keys" {
+  seed_nested_story_file "E81-S12" '"sprint-old"' "in-progress"
+  seed_story_file "E81-S13" '"sprint-old"' "in-progress"
+  seed_target_yaml "sprint-new"
+  run "$CANONICAL" rollover --from sprint-old --to sprint-new --keys E81-S12,E81-S13
+  [ "$status" -eq 0 ]
+  # Per-story-nested file rewritten.
+  run grep '^sprint_id: "sprint-new"' "$ART/epic-test-epic/E81-S12-stub/story.md"
+  [ "$status" -eq 0 ]
+  # Legacy-nested file rewritten.
+  run grep '^sprint_id: "sprint-new"' "$STORIES_DIR/E81-S13-stub.md"
+  [ "$status" -eq 0 ]
+}
+
+# ---------- TC-10: Ambiguous resolver match emits distinct diagnostic -------
+
+@test "ambiguous story file match emits distinct diagnostic and records failure" {
+  # Create two per-story-nested dirs under different epics for the same key —
+  # the resolver returns exit 2 (ambiguity).
+  local dir_a="$ART/epic-alpha/E81-S20-stub"
+  local dir_b="$ART/epic-bravo/E81-S20-stub"
+  mkdir -p "$dir_a" "$dir_b"
+  cat > "$dir_a/story.md" <<'STORY'
+---
+template: 'story'
+key: "E81-S20"
+title: "Alpha stub"
+status: in-progress
+sprint_id: "sprint-old"
+points: 3
+risk: "medium"
+---
+
+# Story: Alpha stub
+STORY
+  # Distinct title so the two files are not byte-identical (optional, but
+  # useful for manual debugging when inspecting the ambiguity stderr).
+  sed 's/Alpha/Bravo/g' "$dir_a/story.md" > "$dir_b/story.md"
+  seed_target_yaml "sprint-new"
+  run "$CANONICAL" rollover --from sprint-old --to sprint-new --keys E81-S20
+  # Non-zero exit — key recorded as failed.
+  [ "$status" -ne 0 ]
+  # Distinct "ambiguous match" diagnostic, NOT the generic "not found" message.
+  [[ "$output" == *"ambiguous match"* ]]
+  [[ "$output" != *"story file not found"* ]]
+}
