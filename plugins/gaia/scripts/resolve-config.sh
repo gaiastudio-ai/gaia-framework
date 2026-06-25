@@ -1095,6 +1095,13 @@ _artifact_default() {
 [ -z "$v_implementation_artifacts" ] && v_implementation_artifacts="$(_artifact_default implementation-artifacts)"
 [ -z "$v_creative_artifacts" ]       && v_creative_artifacts="$(_artifact_default creative-artifacts)"
 
+# Default memory_path and checkpoint_path to the canonical .gaia/ locations
+# when neither config nor GAIA_* env supplied a value. These paths have no
+# legacy docs/ form (they are always under .gaia/), so no _artifact_default
+# routing is needed — a plain project-root anchor is correct.
+[ -z "$v_memory_path" ]     && v_memory_path="${v_project_root}/.gaia/memory"
+[ -z "$v_checkpoint_path" ] && v_checkpoint_path="${v_project_root}/.gaia/memory/checkpoints"
+
 # ---------- Required-field check (post-merge, post-env) ----------
 
 [ -z "$v_checkpoint_path" ]          && die "missing required field: checkpoint_path"
