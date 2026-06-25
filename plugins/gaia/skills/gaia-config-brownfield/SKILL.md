@@ -33,7 +33,7 @@ Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the 
   - `brownfield.phase_4b_enabled` — `true` | `false` (Phase 4b reconciliation pass — demote file-only findings reachable from entry points; default `true`)
   - `brownfield.defectdojo_enabled` — `true` | `false` (opt-in DefectDojo export; default `false`)
   - `brownfield.defectdojo_api_url` — DefectDojo server URL (string)
-  - `brownfield.defectdojo_api_token` — DefectDojo API token (string)
+  - `brownfield.defectdojo_api_token` — name of the environment variable that holds the DefectDojo API token (string; NEVER a literal secret — the runtime dereferences this value as an env-var name, so writing the raw token here would commit a credential into the tracked config)
   - `brownfield.defectdojo_engagement_id` — DefectDojo engagement ID (string)
 - Reject unknown keys and out-of-enum values with exit 1.
 - All set / clear operations are idempotent — setting the same value twice is a no-op success; clearing an absent key is a no-op success.
@@ -72,7 +72,7 @@ current brownfield:
   phase_4b_enabled:           <true|false|unset>
   defectdojo_enabled:         <true|false|unset>
   defectdojo_api_url:         <url|unset>
-  defectdojo_api_token:       <token|unset>
+  defectdojo_api_token:       <env-var-name|unset>
   defectdojo_engagement_id:   <id|unset>
 ```
 

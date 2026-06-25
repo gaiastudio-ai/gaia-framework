@@ -106,6 +106,13 @@ _supported_keys_section() {
   grep -qE 'brownfield\.defectdojo_api_token' "$SKILL"
 }
 
+@test "defectdojo_api_token documents the env-var-name contract, not a literal secret (AC3)" {
+  # The runtime dereferences this value as an env-var name; the docs MUST warn
+  # against writing a literal token into the tracked config.
+  _supported_keys_section | grep -qiE 'environment variable|env-var' \
+    && _supported_keys_section | grep -qiE 'never a literal secret|NEVER a literal'
+}
+
 @test "supported-keys list documents defectdojo_engagement_id (AC3)" {
   grep -qE 'brownfield\.defectdojo_engagement_id' "$SKILL"
 }
