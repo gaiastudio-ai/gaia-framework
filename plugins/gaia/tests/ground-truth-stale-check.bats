@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# ground-truth-stale-check.bats — TC-GTS-1..6 + TC-GTS-15
+# ground-truth-stale-check.bats — TC-GTS-1..6 + TC-GTS-15 + TC-GTS-22..30
 #
 # Tests the shared ground-truth staleness predicate:
 #   scripts/lib/ground-truth-stale-check.sh :: check_ground_truth_staleness
@@ -12,6 +12,11 @@
 #   - UNCERTAIN (absent gt.md / equal mtime / unresolvable) → STALE (fail-safe).
 #   - On STALE: write the `.ground-truth-stale` marker at the TOP LEVEL of the
 #     memory dir; never touch compared-input mtimes; idempotent.
+#   - Same-session exemption: a file newer than ground-truth whose mtime is >=
+#     the current session's start reference is "same-session materialization" and
+#     does NOT cause STALE. A file newer than ground-truth AND older than the
+#     session start is genuine prior-session drift → STALE. When session identity
+#     is unavailable the exemption is disabled (CI/cron parity).
 #
 # Determinism: per-test tmpdir, CLAUDE_PROJECT_ROOT + MEMORY_PATH + root
 # overrides all point into the tmpdir; mtimes are driven by `touch -t`.
@@ -32,6 +37,10 @@ setup() {
   GT="$SIDECAR/ground-truth.md"
   MARKER="$MEM/.ground-truth-stale"
   mkdir -p "$PLANNING" "$IMPL" "$SIDECAR"
+
+  # Env hygiene: clear session variables so no-session tests deterministically
+  # exercise the pure-mtime path even when bats runs inside a Claude Code session.
+  unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID GAIA_GT_SESSION_REF
 
   export CLAUDE_PROJECT_ROOT="$PROJ"
   export MEMORY_PATH="$MEM"
@@ -217,4 +226,249 @@ mtime() {
   run bash -c 'find "$MEM" -maxdepth 1 -type f -name ".*-stale"'
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | grep -qF '.ground-truth-stale'
+}
+
+# ---------------------------------------------------------------------------
+# Same-session exemption (TC-GTS-22..25).
+#
+# Timeline for deterministic testing (UTC touch -t stamps):
+#   gt_mtime      = 202601010000  (Jan 1 — ground-truth.md)
+#   prior_file    = 202601020000  (Jan 2 — newer than gt, OLDER than session)
+#   session_start = 202601030000  (Jan 3 — session begins)
+#   same_file     = 202601040000  (Jan 4 — newer than gt AND >= session start)
+#
+# GAIA_GT_SESSION_REF is the test-override epoch for the session start.
+# CLAUDE_CODE_SESSION_ID signals "a session is active" (any non-empty value).
+# ---------------------------------------------------------------------------
+
+# Helper: compute the epoch for a deterministic touch stamp.
+epoch_of() {
+  local f="$TEST_TMP/.epoch_probe"
+  printf '' > "$f"
+  TZ=UTC touch -t "$1" "$f"
+  mtime "$f"
+}
+
+# TC-GTS-22: a source newer than gt but written within the current session
+# (mtime >= session-start ref) → FRESH (the exemption).
+@test "same-session file newer than gt is exempt → FRESH (AC1)" {
+  printf 'gt\n' > "$GT"
+  printf 'prd\n' > "$PLANNING/prd.md"
+  stamp "$GT" 202601010000
+  stamp "$PLANNING/prd.md" 202601040000   # newer than gt, within session
+
+  local session_epoch
+  session_epoch="$(epoch_of 202601030000)"
+
+  CLAUDE_CODE_SESSION_ID="test-session-1" \
+  GAIA_GT_SESSION_REF="$session_epoch" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "FRESH" ]
+  [ ! -e "$MARKER" ]
+}
+
+# TC-GTS-23: a source newer than gt AND older than session start (prior-session
+# drift) → STALE (still blocks).
+@test "prior-session file newer than gt but before session start → STALE (AC2)" {
+  printf 'gt\n' > "$GT"
+  printf 'prd\n' > "$PLANNING/prd.md"
+  stamp "$GT" 202601010000
+  stamp "$PLANNING/prd.md" 202601020000   # newer than gt, BEFORE session
+
+  local session_epoch
+  session_epoch="$(epoch_of 202601030000)"
+
+  CLAUDE_CODE_SESSION_ID="test-session-2" \
+  GAIA_GT_SESSION_REF="$session_epoch" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "STALE" ]
+  [ -f "$MARKER" ]
+}
+
+# TC-GTS-24: session identity unavailable (CLAUDE_CODE_SESSION_ID unset) →
+# behaves as today: any newer file → STALE (fail-safe / CI parity).
+@test "no session identity → no exemption, newer file → STALE (AC3)" {
+  printf 'gt\n' > "$GT"
+  printf 'prd\n' > "$PLANNING/prd.md"
+  stamp "$GT" 202601010000
+  stamp "$PLANNING/prd.md" 202601040000   # newer than gt
+
+  # Explicitly unset both session signals.
+  unset CLAUDE_CODE_SESSION_ID
+  unset CLAUDE_SESSION_ID
+  unset GAIA_GT_SESSION_REF
+
+  run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "STALE" ]
+}
+
+# TC-GTS-25: mixed — one file is same-session (exempt), another is prior-session
+# (not exempt) → STALE (the prior-session file dominates).
+@test "mixed same-session and prior-session files → prior-session dominates → STALE (AC4)" {
+  printf 'gt\n' > "$GT"
+  printf 'prd\n' > "$PLANNING/prd.md"
+  printf 'story\n' > "$IMPL/story.md"
+  stamp "$GT" 202601010000
+  stamp "$PLANNING/prd.md" 202601040000   # same-session (exempt)
+  stamp "$IMPL/story.md" 202601020000     # prior-session (NOT exempt)
+
+  local session_epoch
+  session_epoch="$(epoch_of 202601030000)"
+
+  CLAUDE_CODE_SESSION_ID="test-session-3" \
+  GAIA_GT_SESSION_REF="$session_epoch" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "STALE" ]
+  [ -f "$MARKER" ]
+}
+
+# TC-GTS-26: session ref set to epoch 0 (edge case) — every file is "within
+# session" so everything is exempt → FRESH. Verifies the >= comparison.
+@test "session ref at epoch 0 exempts everything newer than gt → FRESH (AC5)" {
+  printf 'gt\n' > "$GT"
+  printf 'prd\n' > "$PLANNING/prd.md"
+  stamp "$GT" 202601010000
+  stamp "$PLANNING/prd.md" 202601020000   # newer than gt
+
+  CLAUDE_CODE_SESSION_ID="test-session-4" \
+  GAIA_GT_SESSION_REF="0" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "FRESH" ]
+  [ ! -e "$MARKER" ]
+}
+
+# TC-GTS-27: existing fail-safes (absent gt, tie-window) still hold even when
+# a session is active. The exemption does not weaken them.
+@test "absent gt still STALE even with active session (fail-safe preserved) (AC6)" {
+  printf 'prd\n' > "$PLANNING/prd.md"
+  # No $GT file.
+  local session_epoch
+  session_epoch="$(epoch_of 202601030000)"
+
+  CLAUDE_CODE_SESSION_ID="test-session-5" \
+  GAIA_GT_SESSION_REF="$session_epoch" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "STALE" ]
+}
+
+@test "equal-mtime tie still STALE even with active session (fail-safe preserved) (AC7)" {
+  printf 'gt\n' > "$GT"
+  printf 'prd\n' > "$PLANNING/prd.md"
+  stamp "$GT" 202601030000
+  touch -r "$GT" "$PLANNING/prd.md"   # exact mtime tie
+
+  local session_epoch
+  session_epoch="$(epoch_of 202601020000)"   # session started before both
+
+  CLAUDE_CODE_SESSION_ID="test-session-6" \
+  GAIA_GT_SESSION_REF="$session_epoch" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "STALE" ]
+}
+
+# ---------------------------------------------------------------------------
+# Production marker-file session resolution (TC-GTS-28..30).
+#
+# These tests set CLAUDE_CODE_SESSION_ID WITHOUT GAIA_GT_SESSION_REF, so
+# _gts_session_start_epoch resolves via the real <memory>/.gt-session marker
+# file path instead of the fast-path test seam.
+# ---------------------------------------------------------------------------
+
+# TC-GTS-28: First call in a session (marker absent). The predicate creates
+# the marker bound to the session id; a file touched AFTER that implicit
+# marker creation has mtime >= session start → exempt → FRESH.
+@test "marker-file resolution: first call creates marker, same-session file exempt (AC8)" {
+  printf 'gt\n' > "$GT"
+  stamp "$GT" 202601010000
+
+  # Invoke the predicate once to implicitly create the .gt-session marker.
+  # This first call has no newer source files so it will be FRESH.
+  CLAUDE_CODE_SESSION_ID="marker-sess-1" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "FRESH" ]
+
+  # Verify the marker was created and contains the session id.
+  [ -f "$MEM/.gt-session" ]
+  run bash -c 'head -n1 "$MEM/.gt-session"'
+  [ "$output" = "marker-sess-1" ]
+
+  # Now write a source file whose mtime is "now" (>= marker creation).
+  # It is newer than gt but within the session → exempt.
+  printf 'prd\n' > "$PLANNING/prd.md"
+
+  CLAUDE_CODE_SESSION_ID="marker-sess-1" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "FRESH" ]
+  [ ! -e "$MARKER" ]
+}
+
+# TC-GTS-29: Session rollover (marker exists with a DIFFERENT session id).
+# The predicate detects the mismatch, overwrites the marker (resetting the
+# session-start reference to ~now). A file that was newer-than-gt but
+# older-than-the-new-session-start is genuine prior-session drift → STALE.
+# This is the safety-critical rollover case.
+@test "marker-file resolution: session rollover overwrites marker, prior file STALE (AC9)" {
+  printf 'gt\n' > "$GT"
+  stamp "$GT" 202601010000
+
+  # Pre-create a .gt-session marker for a DIFFERENT session with an OLD mtime.
+  mkdir -p "$MEM"
+  printf 'old-session-id\n' > "$MEM/.gt-session"
+  stamp "$MEM/.gt-session" 202601020000   # old marker
+
+  # Write a source file newer than gt but from the "old" session era.
+  printf 'prd\n' > "$PLANNING/prd.md"
+  stamp "$PLANNING/prd.md" 202601030000
+
+  # Now invoke with a DIFFERENT session id. The predicate must:
+  #   1. Read .gt-session, see "old-session-id" != "new-session-id"
+  #   2. Overwrite marker with "new-session-id" (mtime resets to ~now)
+  #   3. prd.md (Jan 3) is newer than gt (Jan 1) but OLDER than the new
+  #      session start (~now) → prior-session drift → STALE
+  CLAUDE_CODE_SESSION_ID="new-session-id" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "STALE" ]
+  [ -f "$MARKER" ]
+
+  # Verify the marker was overwritten with the new session id.
+  run bash -c 'head -n1 "$MEM/.gt-session"'
+  [ "$output" = "new-session-id" ]
+}
+
+# TC-GTS-30: Corrupt / empty marker file. The predicate must not crash and
+# must produce a sound verdict — the mismatch path re-creates the marker.
+@test "marker-file resolution: corrupt marker does not crash, yields sound verdict (AC10)" {
+  printf 'gt\n' > "$GT"
+  stamp "$GT" 202601010000
+
+  # Write a corrupt (empty) .gt-session marker.
+  mkdir -p "$MEM"
+  printf '' > "$MEM/.gt-session"
+  stamp "$MEM/.gt-session" 202601020000
+
+  # Source file newer than gt.
+  printf 'prd\n' > "$PLANNING/prd.md"
+  stamp "$PLANNING/prd.md" 202601030000
+
+  # The empty marker's stored_sid="" != current sid → mismatch → overwrite.
+  # Same logic as rollover: prd.md is prior-session drift → STALE.
+  CLAUDE_CODE_SESSION_ID="fresh-session" \
+    run bash -c 'set -e; . "$LIB"; check_ground_truth_staleness'
+  [ "$status" -eq 0 ]
+  [ "$output" = "STALE" ]
+  [ -f "$MARKER" ]
+
+  # Verify the marker was overwritten with the current session id.
+  run bash -c 'head -n1 "$MEM/.gt-session"'
+  [ "$output" = "fresh-session" ]
 }

@@ -49,6 +49,20 @@
 # Portability: bash 3.2 (macOS default), LC_ALL=C, BSD+GNU `find` (no GNU-only
 # `-printf`).
 #
+# Same-session exemption:
+#   Files newer than ground-truth.md but written during the CURRENT Claude Code
+#   session (mtime >= session start reference) are treated as "same-session
+#   materialization" and do NOT make the predicate return STALE. This avoids
+#   false-STALE verdicts after in-session cascades (e.g. /gaia-add-feature writes
+#   planning artifacts, then /gaia-sprint-plan runs the gate in the same session).
+#   Cross-session staleness (files newer than gt but older than session start) is
+#   genuine drift and still blocks.
+#
+#   When no session identity is available (CLAUDE_CODE_SESSION_ID unset — CI, cron,
+#   unit tests without the override) the exemption is disabled and the predicate
+#   behaves exactly as before (pure mtime). The fail-safe fail-closed guarantee
+#   is preserved.
+#
 # Environment / overrides:
 #   MEMORY_PATH                 validator-sidecar lives under here; resolved as
 #                               ${MEMORY_PATH:-${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory}
@@ -57,6 +71,9 @@
 #   GAIA_GT_PLANNING_ROOT       planning compared root override (for fixtures)
 #   GAIA_GT_IMPL_ROOT           implementation compared root override (fixtures)
 #   CLAUDE_PROJECT_ROOT         project root (base for default roots + memory)
+#   CLAUDE_CODE_SESSION_ID      session identity (enables the session exemption)
+#   GAIA_GT_SESSION_REF         test override: epoch-seconds for session start
+#                               (bypasses marker-file resolution)
 
 # Idempotent source guard — re-sourcing must not redefine or re-run anything.
 if [ "${_GAIA_GT_STALE_CHECK_LOADED:-0}" = "1" ]; then
@@ -85,6 +102,81 @@ _gts_gt_file_path() {
   printf '%s' "${mem}/${agent}-sidecar/${gt_name}"
 }
 
+# _gts_session_id — echo the current session identifier, or empty string when
+# none is resolvable. Mirrors yolo-mode.sh::_yolo_session_id.
+_gts_session_id() {
+  printf '%s' "${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+}
+
+# _gts_session_start_epoch — resolve the epoch-seconds timestamp for the current
+# session's start. Resolution order:
+#   1. GAIA_GT_SESSION_REF env override (test seam — deterministic epoch).
+#   2. The mtime of the session marker file <memory>/.gt-session, IFF its first
+#      line matches the current CLAUDE_CODE_SESSION_ID.
+#   3. Empty (no session / unavailable) — the caller disables the exemption.
+#
+# When the marker file does not exist or belongs to a different session, this
+# function creates/overwrites it with the current session ID and stamps it at
+# the current time. That timestamp becomes the session-start reference for all
+# subsequent calls in this session.
+_gts_session_start_epoch() {
+  # Fast path: test override.
+  if [ -n "${GAIA_GT_SESSION_REF:-}" ]; then
+    printf '%s' "$GAIA_GT_SESSION_REF"
+    return 0
+  fi
+
+  local sid mem marker_file stored_sid
+  sid="$(_gts_session_id)"
+  # No session identity → no exemption.
+  if [ -z "$sid" ]; then
+    return 0
+  fi
+
+  mem="$(_gts_memory_path)"
+  marker_file="${mem}/.gt-session"
+
+  # If the marker exists and belongs to this session, return its mtime.
+  if [ -f "$marker_file" ]; then
+    stored_sid="$(head -n1 -- "$marker_file" 2>/dev/null || printf '')"
+    if [ "$stored_sid" = "$sid" ]; then
+      _gts_mtime "$marker_file"
+      return 0
+    fi
+  fi
+
+  # New session (or marker from a prior session): create/overwrite.
+  mkdir -p "$mem" 2>/dev/null || return 0
+  printf '%s\n' "$sid" > "$marker_file" 2>/dev/null || return 0
+  _gts_mtime "$marker_file"
+}
+
+# _gts_build_session_ref EPOCH — create a temp reference file stamped at the
+# given epoch and print its path. The caller uses it with `find ! -newer` to
+# identify files whose mtime is >= the session start (i.e. same-session).
+# Prints empty on failure (caller disables the exemption).
+_gts_build_session_ref() {
+  local epoch="$1" stamp dir ref
+  case "$epoch" in ''|*[!0-9]*) return 0 ;; esac
+  # For epoch 0, stamp needs special handling: we want files with mtime >= 0.
+  # Build a reference at epoch - 1 so `find -newer ref` matches mtime >= epoch.
+  local ref_epoch
+  if [ "$epoch" -gt 0 ]; then
+    ref_epoch=$((epoch - 1))
+  else
+    ref_epoch=0
+  fi
+  stamp="$(_gts_epoch_to_stamp "$ref_epoch")" || return 0
+  [ -n "$stamp" ] || return 0
+  dir="${TMPDIR:-/tmp}"
+  ref="$(mktemp "${dir%/}/.gts-sess.XXXXXX" 2>/dev/null)" || return 0
+  if ! TZ=UTC touch -t "$stamp" "$ref" 2>/dev/null; then
+    rm -f "$ref" 2>/dev/null || true
+    return 0
+  fi
+  printf '%s' "$ref"
+}
+
 # check_ground_truth_staleness — the predicate. See file header for contract.
 check_ground_truth_staleness() {
   # LC_ALL=C is set function-locally so a `source` of this file never mutates
@@ -107,19 +199,46 @@ check_ground_truth_staleness() {
     return 0
   fi
 
+  # Resolve session-start epoch (empty = no session / unavailable → no exemption).
+  local session_epoch session_ref
+  session_epoch="$(_gts_session_start_epoch)"
+  session_ref=""
+  if [ -n "$session_epoch" ]; then
+    session_ref="$(_gts_build_session_ref "$session_epoch")"
+  fi
+
   # STALE: any tracked source strictly newer than ground-truth.md, under either
   # compared root. `find -newer` is strict (mtime > gt), so equal mtimes (e.g. a
   # CI checkout that stamps everything identically) do NOT register as newer —
   # which is exactly the ambiguous tie the fail-safe handles below. Missing /
   # empty roots simply yield no matches (not an error).
+  #
+  # Same-session exemption: when a session reference is available, files that are
+  # newer than ground-truth AND also newer than the session-start reference are
+  # "same-session materialization" and exempt. Only files newer than gt but NOT
+  # newer than the session ref (i.e. older than session start) are genuine
+  # cross-session drift → STALE.
   for root in "$planning_root" "$impl_root"; do
     [ -d "$root" ] || continue
-    if [ -n "$(find "$root" -type f -newer "$gt_file" 2>/dev/null | head -n 1)" ]; then
-      _gts_write_marker "$marker"
-      printf 'STALE\n'
-      return 0
+    if [ -n "$session_ref" ]; then
+      # With session exemption: find files newer than gt but NOT newer than the
+      # session ref (i.e. mtime > gt AND mtime < session_start → prior-session).
+      if [ -n "$(find "$root" -type f -newer "$gt_file" ! -newer "$session_ref" 2>/dev/null | head -n 1)" ]; then
+        rm -f "$session_ref" 2>/dev/null || true
+        _gts_write_marker "$marker"
+        printf 'STALE\n'
+        return 0
+      fi
+    else
+      # No session → pure mtime (original behavior).
+      if [ -n "$(find "$root" -type f -newer "$gt_file" 2>/dev/null | head -n 1)" ]; then
+        _gts_write_marker "$marker"
+        printf 'STALE\n'
+        return 0
+      fi
     fi
   done
+  rm -f "$session_ref" 2>/dev/null || true
 
   # UNCERTAIN (tie): a compared source whose mtime EQUALS ground-truth.md cannot
   # be ordered by `find -newer`. Treat an exact tie as ambiguous → STALE.
