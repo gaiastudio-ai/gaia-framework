@@ -5,7 +5,7 @@
 # execution-evidence.json into the per-story workdir.
 #
 # Public API:
-#   qa-test-runner.sh --story-key <key> --workdir <dir> --config <yaml> [--context <ctx>]
+#   qa-test-runner.sh --story-key <key> --workdir <dir> --config <yaml> [--context <ctx>] [--story-file <path>]
 #   qa-test-runner.sh --help
 #
 # Output:
@@ -48,6 +48,10 @@ Required:
 Optional:
   --context <ctx>     Override GAIA_EXECUTION_CONTEXT
                       (local | ci_pre_merge | ci_post_merge | deployment | post_deploy).
+  --story-file <path> Path to the story markdown file. When provided in a
+                      local context, the runner parses the File List section,
+                      discovers adjacent test files, and runs only those tests
+                      instead of the full-suite tier command.
 
 Behavior:
   - Parses test_execution.tier_{1,2,3}.placement and matches against the
@@ -67,6 +71,7 @@ STORY_KEY=""
 WORKDIR=""
 CONFIG=""
 CONTEXT_OVERRIDE=""
+STORY_FILE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -83,6 +88,9 @@ while [ $# -gt 0 ]; do
     --context)
       [ $# -ge 2 ] || die "--context requires a value"
       CONTEXT_OVERRIDE="$2"; shift 2 ;;
+    --story-file)
+      [ $# -ge 2 ] || die "--story-file requires a path"
+      STORY_FILE="$2"; shift 2 ;;
     *) die "unknown flag: $1" ;;
   esac
 done
@@ -198,6 +206,145 @@ placement_matches_context() {
   local norm
   norm="$(printf '%s' "$placement" | tr '-' '_')"
   [ "$norm" = "$context" ]
+}
+
+# ---------- story-scoped test discovery ----------
+
+# Extract the File List section from a story markdown file and return bare
+# file paths (one per line). The section begins at a `## File List` or
+# `### File List` heading and ends at the next heading of equal or higher
+# level. Parenthetical annotations and backtick wrapping are stripped.
+extract_story_file_list() {
+  local story="$1"
+  [ -r "$story" ] || return 1
+  awk '
+    BEGIN { in_section = 0 }
+    /^#{2,}[[:space:]]+[Ff]ile [Ll]ist/ { in_section = 1; next }
+    in_section && /^#{1,}[[:space:]]/    { in_section = 0 }
+    in_section { print }
+  ' "$story" \
+    | grep -E '^[[:space:]]*[-*][[:space:]]+' \
+    | sed -E 's/^[[:space:]]*[-*][[:space:]]+//; s/`//g' \
+    | awk '{
+        line = $0
+        # Strip trailing parenthetical annotation.
+        sub(/[[:space:]]*\(.*\)[[:space:]]*$/, "", line)
+        # Strip trailing comment after em-dash or " -- ".
+        sub(/[[:space:]]+(—|--|—).*$/, "", line)
+        # Trim leading/trailing whitespace.
+        sub(/^[[:space:]]+/, "", line); sub(/[[:space:]]+$/, "", line)
+        if (length(line) > 0) print line
+      }'
+}
+
+# Discover test files adjacent to the given source file paths. For each
+# source path, looks for:
+#   1. An exact test file at tests/<basename-sans-ext>.bats (relative to
+#      the project root derived from the config's project_path).
+#   2. Glob matches: tests/*<basename-sans-ext>*.bats.
+#   3. Test files already present in the source list (pass-through).
+# Returns a deduplicated, newline-separated list of absolute test paths.
+# Empty output means no tests discovered.
+discover_story_tests() {
+  local project_root="$1"
+  shift
+  # "$@" = list of source paths from the File List
+  local found=""
+  local seen=""
+  for src in "$@"; do
+    # If the path is already a test file, include it directly.
+    case "$src" in
+      *.bats|*.test.*|*_test.*|*_spec.*)
+        local abs_test
+        if [ "${src#/}" = "$src" ]; then
+          abs_test="${project_root}/${src}"
+        else
+          abs_test="$src"
+        fi
+        if [ -f "$abs_test" ]; then
+          case "$seen" in
+            *"|${abs_test}|"*) ;;
+            *)
+              found="${found}${abs_test}
+"
+              seen="${seen}|${abs_test}|"
+              ;;
+          esac
+        fi
+        continue
+        ;;
+    esac
+
+    local basename
+    basename="$(printf '%s' "$src" | sed 's|.*/||')"
+    local stem
+    stem="$(printf '%s' "$basename" | sed 's/\.[^.]*$//')"
+
+    # Resolve the directory structure. The project may have:
+    #   src/foo.sh  -> tests/foo.bats
+    #   scripts/bar.sh -> tests/bar.bats or tests/*bar*.bats
+    local src_dir
+    src_dir="$(printf '%s' "$src" | sed 's|/[^/]*$||')"
+    # If src_dir == src (no slash), clear it.
+    [ "$src_dir" != "$src" ] || src_dir=""
+
+    # Strategy 1: tests/ sibling directory relative to project root.
+    local search_base="${project_root}/tests"
+    if [ -d "$search_base" ]; then
+      # Exact match: tests/<stem>.bats
+      if [ -f "${search_base}/${stem}.bats" ]; then
+        local t="${search_base}/${stem}.bats"
+        case "$seen" in
+          *"|${t}|"*) ;;
+          *) found="${found}${t}
+"; seen="${seen}|${t}|" ;;
+        esac
+      fi
+      # Glob match: tests/*<stem>*.bats (finds e.g. tests/qa-test-runner.bats
+      # for stem=qa-test-runner).
+      for t in "${search_base}/"*"${stem}"*.bats; do
+        [ -f "$t" ] || continue
+        case "$seen" in
+          *"|${t}|"*) ;;
+          *) found="${found}${t}
+"; seen="${seen}|${t}|" ;;
+        esac
+      done
+    fi
+
+    # Strategy 2: tests/ directory adjacent to the source directory.
+    if [ -n "$src_dir" ]; then
+      local parent_test_dir="${project_root}/${src_dir}/../tests"
+      if [ -d "$parent_test_dir" ]; then
+        for t in "${parent_test_dir}/"*"${stem}"*.bats; do
+          [ -f "$t" ] || continue
+          local abs_t
+          abs_t="$(cd "$(dirname "$t")" && pwd)/$(basename "$t")"
+          case "$seen" in
+            *"|${abs_t}|"*) ;;
+            *) found="${found}${abs_t}
+"; seen="${seen}|${abs_t}|" ;;
+          esac
+        done
+      fi
+    fi
+
+    # Strategy 3: recursive find under tests/ for the stem.
+    if [ -d "$search_base" ]; then
+      while IFS= read -r t; do
+        [ -f "$t" ] || continue
+        case "$seen" in
+          *"|${t}|"*) ;;
+          *) found="${found}${t}
+"; seen="${seen}|${t}|" ;;
+        esac
+      done <<EOF
+$(find "$search_base" -name "*${stem}*.bats" -type f 2>/dev/null || true)
+EOF
+    fi
+  done
+
+  printf '%s' "$found"
 }
 
 # ---------- timeout helper (POSIX-portable) ----------
@@ -388,6 +535,66 @@ EOF
   fi
 fi
 
+# ---------- story-scoped command resolution ----------
+# When --story-file is provided and context is local, attempt to build a
+# scoped test command from the story's File List. CI/promotion contexts
+# always run the full-suite tier command.
+
+SCOPED_TEST_CMD=""
+if [ -n "$STORY_FILE" ] && [ "$CONTEXT" = "local" ]; then
+  # Resolve project_path from the config (used as base for test discovery).
+  _project_path="$(awk '
+    /^project_path[[:space:]]*:/ {
+      sub(/^project_path[[:space:]]*:[[:space:]]*/, "")
+      sub(/[[:space:]]*$/, "")
+      gsub(/"/, "")
+      gsub(/'\''/, "")
+      print
+      exit
+    }
+  ' "$CONFIG")"
+  [ -n "$_project_path" ] || _project_path="$(dirname "$CONFIG")"
+
+  if [ -r "$STORY_FILE" ]; then
+    _file_list="$(extract_story_file_list "$STORY_FILE" || true)"
+    if [ -n "$(printf '%s' "$_file_list" | tr -d '[:space:]')" ]; then
+      # Convert newline-separated list to positional args for discover_story_tests.
+      _files=()
+      while IFS= read -r _line; do
+        [ -n "$_line" ] || continue
+        _files+=("$_line")
+      done <<EOF
+$_file_list
+EOF
+      if [ "${#_files[@]}" -gt 0 ]; then
+        _test_paths="$(discover_story_tests "$_project_path" "${_files[@]}" || true)"
+        if [ -n "$(printf '%s' "$_test_paths" | tr -d '[:space:]')" ]; then
+          # Build a bats command from the discovered test files.
+          _scoped_args=""
+          while IFS= read -r _tp; do
+            [ -n "$_tp" ] || continue
+            if [ -n "$_scoped_args" ]; then
+              _scoped_args="${_scoped_args} ${_tp}"
+            else
+              _scoped_args="$_tp"
+            fi
+          done <<EOF
+$_test_paths
+EOF
+          SCOPED_TEST_CMD="bats ${_scoped_args}"
+          info "story-scoped test execution: ${SCOPED_TEST_CMD}"
+        else
+          info "no story-scoped tests discovered from File List; falling back to full-suite tier command"
+        fi
+      fi
+    else
+      info "no File List in story file; falling back to full-suite tier command"
+    fi
+  else
+    info "story file not readable: $STORY_FILE; falling back to full-suite tier command"
+  fi
+fi
+
 # Direct execution path — run each active tier with its own timeout.
 SUITES_JSON_PARTS=()
 for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
@@ -403,6 +610,18 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
       "$(json_str "$tier")" "$required")"
     SUITES_JSON_PARTS+=("$suite_json")
     continue
+  fi
+  # Story-scoped substitution: narrow a full-suite bats tier to story-
+  # relevant tests only. The scoped command is always "bats <files>", so we
+  # only replace tiers whose command ALSO starts with "bats" (same runner).
+  # Tiers that run a different runner (pytest, jest, eslint ...) or an
+  # already-narrow non-bats command keep their own command unchanged —
+  # attributing a bats invocation to a tier that configured "pytest ..." would
+  # produce misleading per-tier evidence.
+  if [ -n "$SCOPED_TEST_CMD" ]; then
+    case "$cmd" in
+      bats|bats\ *) cmd="$SCOPED_TEST_CMD" ;;
+    esac
   fi
   run_with_timeout "$cmd" "$to"
   # Best-effort case-count parse from runner stdout/stderr before deleting
