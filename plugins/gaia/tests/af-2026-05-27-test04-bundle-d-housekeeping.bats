@@ -101,6 +101,6 @@ teardown() { common_teardown; }
   grep -qF 'GAIA_TEST_STRATEGY_NO_AUTOSTUB=1' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
 }
 
-@test "F-027: GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 short-circuits the hydration branch" {
-  grep -qF 'GAIA_TEST_STRATEGY_NO_AUTOSTUB:-0}" = "1"' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
+@test "F-027: docs-only default short-circuits hydration via _autostub_enabled gate (AC2)" {
+  grep -qF '_autostub_enabled" -ne 1' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
 }
