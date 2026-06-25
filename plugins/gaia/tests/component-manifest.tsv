@@ -247,7 +247,6 @@ core	product-brief-post-complete-gate.bats
 core	product-brief-pre-start-gate.bats
 core	promotion-trigger.bats
 core	reconcile-cross-stack.bats
-core	resolve-config-cwd-independence.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
 core	retired-migrate-stories.bats
@@ -459,6 +458,7 @@ scripts-core	probe-verdict-resolver-integration.bats
 scripts-core	project-config-slice.bats
 scripts-core	reconcile-stale-graph.bats
 scripts-core	resolve-affected-set.bats
+scripts-core	resolve-config-cwd-independence.bats
 scripts-core	resolve-config.bats
 scripts-core	review-gate-proof-of-execution.bats
 scripts-core	review-gate-sprint-scope.bats
