@@ -19,6 +19,7 @@
 #   test_strategy    .gaia/artifacts/planning-artifacts/test-strategy.md
 #   traceability     .gaia/artifacts/planning-artifacts/traceability-matrix.md
 #   sprint_status    .gaia/state/sprint-status.yaml                       (mutable-state tier)
+#   action_items     .gaia/state/action-items.yaml                       (mutable-state tier)
 #   ci_setup         .gaia/artifacts/test-artifacts/ci-setup.md           (test-artifacts tier)
 #   manual_test      .gaia/artifacts/test-artifacts/manual-test/<slug>/run-record.md
 #   design_baselines .gaia/artifacts/test-artifacts/manual-test/<slug>/design-baselines/
@@ -28,7 +29,8 @@
 #                            [--slug <slug>]
 #
 #   <kind>            one of: test_plan | test_strategy | traceability |
-#                     sprint_status | ci_setup | manual_test | design_baselines
+#                     sprint_status | action_items | ci_setup | manual_test |
+#                     design_baselines
 #   --project-root    project root (default: $CLAUDE_PROJECT_ROOT or $PWD)
 #   --existing-only   print a path ONLY if a non-empty file exists at one of
 #                     the precedence rungs; exit 1 (no stdout) when none exist.
@@ -52,7 +54,7 @@ SCRIPT_NAME="resolve-artifact-path.sh"
 usage() {
   cat >&2 <<USAGE
 usage: ${SCRIPT_NAME} <kind> [--project-root <dir>] [--existing-only] [--slug <slug>]
-  kind: test_plan | test_strategy | traceability | sprint_status | ci_setup | manual_test | design_baselines
+  kind: test_plan | test_strategy | traceability | sprint_status | action_items | ci_setup | manual_test | design_baselines
   --slug is required for manual_test and design_baselines
 USAGE
   exit 1
@@ -127,6 +129,12 @@ case "$KIND" in
       "${ST}/sprint-status.yaml"
       "${LEGACY_IA}/sprint-status.yaml"
       "${PROJECT_ROOT}/sprint-status.yaml"
+    )
+    ;;
+  action_items)
+    CANDIDATES=(
+      "${ST}/action-items.yaml"
+      "${PA}/action-items.yaml"
     )
     ;;
   ci_setup)

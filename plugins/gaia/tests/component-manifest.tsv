@@ -3,6 +3,7 @@ core	E74-S10-test-mobile-e2e.bats
 core	E78-S6-plugin-versioning-rubric.bats
 core	E79-S4-csp-readers.bats
 core	a11y-three-phase-reorganization.bats
+core	action-items-canonical-path.bats
 core	action-skill-contract.bats
 core	adapter-schema-contract.bats
 core	add-feature-step8.bats

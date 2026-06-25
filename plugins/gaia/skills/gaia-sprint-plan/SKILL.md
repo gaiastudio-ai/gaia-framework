@@ -109,15 +109,17 @@ Before proceeding to sprint scoping, halt if any HIGH-priority action item has b
 
 ```bash
 !${CLAUDE_PLUGIN_ROOT}/scripts/escalation-halt.sh  # library-only; source + call
+AI_PATH="$(${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-artifact-path.sh action_items \
+  --project-root "${CLAUDE_PROJECT_ROOT}")"
 bash -c "source ${CLAUDE_PLUGIN_ROOT}/scripts/escalation-halt.sh && \
   esch_check_blocking \
-    '${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml' \
+    '${AI_PATH}' \
     '${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-status.yaml'"
 ```
 
 **Contract:**
 
-- Reads `.gaia/artifacts/planning-artifacts/action-items.yaml`.
+- Reads `.gaia/state/action-items.yaml` (canonical), resolved via `resolve-artifact-path.sh action_items` with a read-compat fallback to `.gaia/artifacts/planning-artifacts/action-items.yaml`.
 - Filter predicate: `priority == "HIGH"` AND `escalation_count >= 2` AND `status == "open"` (case-sensitive).
 - **Exit 0 (proceed):** no matching items, OR all matching items have a recorded override in the current `sprint-status.yaml`.
 - **Exit 1 (halt):** one or more matching items with no recorded override. Halt message on stdout lists each blocking item (`id`, `title`, `escalation_count`, `priority: HIGH`) followed by exit guidance pointing to `/gaia-action-items` or the explicit override flag. No `sprint-status.yaml` mutation and no story-selection prompt occur when the halt fires.

@@ -239,7 +239,7 @@ When `$COMPOSITE` is `FAILED`:
    # → /gaia-correct-course
    ```
 
-   Use type `sprint-correction` (the canonical type for sprint-review-FAILED rework). One entry per failed goal/scenario, recorded in `.gaia/artifacts/planning-artifacts/action-items.yaml`. **Invoke the resolver script — do NOT append YAML directly** (memory rule `feedback_action_items_writer_resolver_bypass.md`).
+   Use type `sprint-correction` (the canonical type for sprint-review-FAILED rework). One entry per failed goal/scenario, recorded in `.gaia/state/action-items.yaml` (the canonical action-items registry). **Invoke the resolver script — do NOT append YAML directly** (memory rule `feedback_action_items_writer_resolver_bypass.md`).
 
 3. Write the sprint-review artifact (same template as Step 6 — with composite verdict FAILED + the recorded findings).
 
