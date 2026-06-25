@@ -260,20 +260,16 @@ EOF
 # F-31: action-items canonical path + sprint-close via transition
 # ===========================================================================
 
-@test "gaia-retro writes action-items to planning-artifacts/" {
-  run grep -F '.gaia/artifacts/planning-artifacts/action-items.yaml' \
-        "$PLUGIN_ROOT/skills/gaia-retro/SKILL.md"
-  [ "$status" -eq 0 ]
+@test "gaia-retro writes action-items to state-tier canonical path" {
+  # The retro write target is the state-tier canonical: .gaia/state/action-items.yaml.
+  # The planning-artifacts path is retained as a read-compat fallback in the resolver.
+  grep -qF '.gaia/state/action-items.yaml' "$PLUGIN_ROOT/skills/gaia-retro/SKILL.md"
 }
 
-@test "gaia-retro Step 5 write target is the planning-artifacts path (not state/)" {
-  # The Step 5 prose now resolves --target to the planning-artifacts path.
-  # Other mentions of .gaia/state/action-items.yaml remain in the SKILL as
-  # documented failure-posture references (writer behavior when invoked with
-  # that target path); those are intentional historical context, not bugs.
-  run grep -F '.gaia/artifacts/planning-artifacts/action-items.yaml' \
-        "$PLUGIN_ROOT/skills/gaia-retro/SKILL.md"
-  [ "$status" -eq 0 ]
+@test "gaia-retro Step 5 write target is the state-tier path" {
+  # The --target flag in the Step 5 invocation code-fence must point to
+  # .gaia/state/action-items.yaml (the canonical write target).
+  grep -q '\-\-target.*\.gaia/state/action-items\.yaml' "$PLUGIN_ROOT/skills/gaia-retro/SKILL.md"
 }
 
 @test "retro setup.sh stamps a run-started checkpoint" {

@@ -127,7 +127,7 @@ Prompt the facilitator:
 
 > Review the proposed action items. Add, remove, or modify items. Each action item needs an owner and target sprint.
 
-Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml` using the shared retro writer helper. The YAML schema is authoritative. This path is the canonical action-items.yaml home — previously this skill wrote to `.gaia/state/action-items.yaml` while `/gaia-action-items` read from `.gaia/artifacts/planning-artifacts/action-items.yaml`, so retro-emitted items vanished from the next pre-sprint triage pass. Both producer and consumer now agree on the planning-artifacts location.
+Collect the facilitator's input and compile the final action items list, then persist each item to `${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml` using the shared retro writer helper. The YAML schema is authoritative. This path is the canonical action-items.yaml home, resolved via `resolve-artifact-path.sh action_items` (rung 1: `.gaia/state/action-items.yaml`, read-compat fallback: `.gaia/artifacts/planning-artifacts/action-items.yaml`). All producers and consumers now agree on the state-tier location.
 
 Per-item payload (one YAML list element per action):
 
@@ -148,7 +148,7 @@ Invoke the shared writer once per action item:
 ${CLAUDE_PLUGIN_ROOT}/../../scripts/retro-sidecar-write.sh \
   --root       "${CLAUDE_PROJECT_ROOT}" \
   --sprint-id  "${sprint_id}" \
-  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
+  --target     "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
   --payload    "$(emit_action_item_yaml)"
 ```
 
@@ -270,7 +270,7 @@ Invoke:
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/cross-retro-detect.sh \
   --retros-dir     "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" \
-  --action-items   "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
+  --action-items   "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
   --current-sprint "${sprint_id}"
 ```
 

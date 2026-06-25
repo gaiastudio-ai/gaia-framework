@@ -37,10 +37,10 @@ them explicitly here so they are auditable at a glance:
    `…/retrospective/retrospective-{sprint_id}-*.md` — keep the file in one of
    the two locations the close.sh scanner walks.
 
-2. **A Val-dispatch sentinel with the canonical payload schema.** When the
-   sprint is in `status: review`, Step 3a requires sentinel-verified evidence
-   that `/gaia-sprint-review` ran and produced a verdict. The sentinel MUST
-   exist at one of:
+2. **A Val-dispatch sentinel with the canonical payload schema.** Step 3a
+   unconditionally requires sentinel-verified evidence that
+   `/gaia-sprint-review` ran and produced a verdict (regardless of whether the
+   sprint is `active` or `review`). The sentinel MUST exist at one of:
    - `.gaia/memory/checkpoints/sprint-review-{sprint_id}-val-dispatched.json`
      (dispatch checkpoint, written by `/gaia-sprint-review`
      Step 3 Track A Val dispatch); OR
@@ -60,8 +60,10 @@ them explicitly here so they are auditable at a glance:
    ```
 
    The `agent` field MUST be the literal string `"val"` (lowercase). The
-   `status` enum is `PASSED | FAILED | UNVERIFIED`. On `PASSED` the
-   transition proceeds; on `UNVERIFIED` the skill reads the
+   `status` enum is `PASSED | FAILED | UNVERIFIED`. The recorded verdict can
+   also be read back via `${SCRIPTS_DIR}/review-gate.sh status --sprint <id>
+   --gate sprint-review` (the ledger mirror of the sentinel verdict). On
+   `PASSED` the transition proceeds; on `UNVERIFIED` the skill reads the
    `review_justification` block (requires both `pm_signoff` and
    `val_validation`); on `FAILED` the skill refuses and routes the operator
    to `/gaia-correct-course`; on missing sentinel the skill refuses and
@@ -122,27 +124,28 @@ The canonical sprint-close prerequisite sequence is therefore **review → triag
   - Without `--force-with-rollover`: refuse with an error listing the non-done keys; exit non-zero.
   - With `--force-with-rollover <key1,key2,...>`: validate the comma-separated keys list is **exactly** the non-done set (no extras, no missing). On mismatch, refuse with `error: --force-with-rollover key mismatch; non-done stories are: <keys>; got: <provided>`; exit non-zero.
 
-### Step 3a — Pre-condition: review→closed sentinel verification
+### Step 3a — Pre-condition: sprint-review sentinel verification (unconditional)
 
-When the sprint's current `status:` is `review` (per the sprint-level state machine), the `review → closed` edge requires sentinel-verified evidence that `/gaia-sprint-review` actually ran and produced a verdict. This step is gated on `status: review` — when the sprint is in `active` status, SKIP this step entirely (preserves backward-compat — the legacy `active → closed` direct edge runs unchanged).
+The sprint-review sentinel proves that `/gaia-sprint-review` ran and produced a verdict. This check fires **unconditionally** for all closeable source states (`active`, `review`) — it is NOT gated on the sprint's current `status:` value. Without a sentinel, close is refused unless `--force` is passed.
 
-When gated on `status: review`:
-
-1. **Read the sprint-review verdict** via `${SCRIPTS_DIR}/review-gate.sh status --sprint <id> --gate sprint-review`.
-2. **Verify the sentinel exists** — at least ONE of:
+1. **Verify the sentinel exists** — at least ONE of:
    - dispatch checkpoint: `.gaia/memory/checkpoints/sprint-review-<sprint_id>-val-dispatched.json` (written by `/gaia-sprint-review` Step 3 Track A Val dispatch).
    - envelope sentinel: `.gaia/memory/checkpoints/val-envelope-<sha256(<sprint_id>):0:16>.json` (written by the orchestrator-side writer).
-3. **Decide based on verdict:**
-   - `PASSED` — permit transition. Route via `sprint-state.sh transition --sprint <id> --to closed` (the review→closed edge handler in `cmd_transition_sprint`; via the boundary writer; never direct `yq -i`).
-   - `UNVERIFIED` with bypass — read the `review_justification` block from the sentinel (written by `set-review-justification`). When `pm_signoff` and `val_validation` are both present, permit transition via the same `sprint-state.sh transition` path.
-   - `FAILED` — REFUSE with canonical stderr `HALT: sprint-close refused — sprint-review verdict is FAILED; run /gaia-correct-course first`.
-   - Missing sentinel — REFUSE with canonical stderr `HALT: sprint-close refused — sprint-review verdict is MISSING; run /gaia-sprint-review first`.
+2. **Decide:**
+   - Sentinel present — permit close. Continue to Step 4.
+   - Sentinel missing, `--force` passed — emit a warning, record the bypass in the close-summary (audited escape hatch matching the pattern used by `GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL`), and continue to Step 4.
+   - Sentinel missing, no `--force` — REFUSE with canonical stderr `sprint-close refused: no sprint-review sentinel for {sprint_id}; run /gaia-sprint-review first, OR pass --force for the documented bypass` and exit non-zero.
 
-When the new review→closed path is taken, Step 4 (legacy yaml write) is SKIPPED — `sprint-state.sh transition` performs the equivalent write through the boundary writer. The Step 5 (Archive) and Step 6 (Lifecycle event) still run regardless of which edge was taken.
+The `--force` flag is at the close.sh (skill) level, distinct from the `GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL` env var at the `sprint-state.sh` level. Both are audited bypasses; they operate at different layers.
+
+When the `review→closed` path is taken via `sprint-state.sh transition`, Step 4 (legacy yaml write) is SKIPPED — `sprint-state.sh transition` performs the equivalent write through the boundary writer. The Step 5 (Archive) and Step 6 (Lifecycle event) still run regardless of which edge was taken.
 
 ### Step 4 — Yaml write
 
-- `yq -i '.status = "closed" | .closed_at = "<ISO 8601 UTC>"' <yaml_path>`.
+The primary write path routes through `sprint-state.sh transition --to closed`. When the transition succeeds (the `review->closed` edge), `close.sh` stamps only `closed_at` (the status flip was handled by the boundary writer). When `sprint-state.sh` is absent or refuses the transition for a non-sentinel reason (e.g., `active->closed` is not a legal edge in the state machine), `close.sh` falls back to a direct `yq -i` write of both `status: closed` and `closed_at`. This fallback is safe because the sentinel gate (Step 3a) has already passed unconditionally before Step 4 runs, proving that a sprint review verdict exists (or was explicitly bypassed via `--force`).
+
+- Primary: `sprint-state.sh transition --sprint <id> --to closed` (boundary writer).
+- Fallback: `yq -i '.status = "closed" | .closed_at = "<ISO 8601 UTC>"' <yaml_path>` — fires when the transition is not a legal state-machine edge (e.g., closing from `active` without an intermediate `review` step) or when `sprint-state.sh` is not available.
 
 ### Step 5 — Archive
 
@@ -155,6 +158,16 @@ When the new review→closed path is taken, Step 4 (legacy yaml write) is SKIPPE
 - Invoke `${SCRIPTS_DIR}/lifecycle-event.sh --type sprint_closed --workflow gaia-sprint-close --data '{...}'` with the data payload `{sprint_id, closed_at, total_points, stories_done, stories_rolled_over, rollover_target_sprint}`.
 - `stories_rolled_over` is `[]` when there is no `--force-with-rollover`, else the JSON array of rolled-over keys.
 - `rollover_target_sprint` is `null` for this story; a later rollover story will populate it.
+
+#### Two-event lifecycle contract
+
+A complete sprint-close ceremony emits two intentionally distinct lifecycle events:
+
+1. **`sprint_closed`** (domain event, emitted by `close.sh` Step 6) — the domain-specific signal that a sprint has closed. Carries the full sprint metadata payload (`sprint_id`, `closed_at`, `total_points`, `stories_done`, `stories_rolled_over`, `rollover_target_sprint`). Domain consumers (brain reindex, rollover planning, sprint-archive queries) key on this event.
+
+2. **`workflow_complete`** (generic event, emitted by `finalize.sh`) — the generic plugin-lifecycle signal that the skill's execution completed. Carries no domain payload. Infrastructure consumers (throughput telemetry, step-report, audit-v2-migration harness) key on this event.
+
+Both events fire for every close ceremony. They are intentionally distinct layers: `sprint_closed` is the domain signal; `workflow_complete` is the infrastructure signal. Downstream telemetry consumers MUST NOT treat them as duplicates — each serves a different consumer set. This two-event pattern mirrors other domain-action skills (e.g., `gaia-deploy` emits both a domain `deploy_completed` event and the generic `workflow_complete`).
 
 ### Step 7 — Confirmation
 
@@ -174,6 +187,7 @@ The report joins per-step timing and approximate per-step token estimates into p
 ## Inputs
 
 - Positional argument: none.
+- Optional flag: `--force` — bypass the sprint-review sentinel check (audited; recorded in close-summary). The sole code path that permits closing without review evidence.
 - Optional flag: `--force-with-rollover <key1,key2,...>` — comma-separated story keys to roll over.
 - Optional env: `GAIA_SPRINT_CLOSE_DATE` — override the close-date stamp used in the archive filename (default: today UTC).
 - Optional env: `SPRINT_STATUS_YAML` — override the yaml lookup (default: `.gaia/state/sprint-status.yaml` with fallback to `<project-root>/sprint-status.yaml`).

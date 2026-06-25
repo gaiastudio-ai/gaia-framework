@@ -111,10 +111,11 @@ EOF
   grep -q '^status: done' "$ART/L7-fake.md"
 }
 
-@test "sprint-state.sh: legal transition review → in-progress" {
+@test "sprint-state.sh: review -> in-progress rejected per shared SSOT" {
   seed_story L8 review UNVERIFIED; seed_yaml L8 review
   run "$SCRIPT" transition --story L8 --to in-progress
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"illegal transition"* ]]
 }
 
 # --- Illegal transitions (AC6 — sample of rejected edges) -------------------
@@ -373,29 +374,29 @@ EOF
 # from sprint-state.sh by sed range, then runs the requested call.
 _run_helper() {
   local call="$1"
+  # Source the shared SSOT lib first. sprint-state.sh delegates
+  # is_canonical_state -> is_canonical_story_state and
+  # canonical_states_hint -> canonical_story_states_hint, so the SSOT
+  # provides all the underlying plumbing. We add the thin delegating
+  # wrappers + die() + assert_canonical_state on top.
+  local ssot_lib="$SCRIPTS_DIR/lib/story-state-machine.sh"
   local harness_script
-  harness_script=$(cat <<'OUTER'
+  harness_script=$(cat <<OUTER
 #!/usr/bin/env bash
 set -uo pipefail
-die() { printf 'sprint-state.sh: error: %s\n' "$*" >&2; exit 1; }
-CANONICAL_STATES=(backlog validating ready-for-dev in-progress blocked review done)
-is_canonical_state() {
-  local candidate="$1" s
-  for s in "${CANONICAL_STATES[@]}"; do
-    [ "$s" = "$candidate" ] && return 0
-  done
-  return 1
-}
+die() { printf 'sprint-state.sh: error: %s\n' "\$*" >&2; exit 1; }
+. "${ssot_lib}"
+CANONICAL_STATES=( "\${STORY_CANONICAL_STATES[@]}" )
+is_canonical_state() { is_canonical_story_state "\$1"; }
+canonical_states_hint() { canonical_story_states_hint; }
 OUTER
 )
-  # Append the two helper definitions extracted from the canonical script.
-  # The block runs from the canonical_states_hint definition through the end
-  # of assert_canonical_state. Using sed -n with anchors keeps the test
-  # honest — if either function is renamed or removed, extraction returns
-  # empty and the test fails loudly.
+  # Extract assert_canonical_state from the canonical script. Uses
+  # sed -n with anchors so the test fails loudly if the function is
+  # renamed or removed.
   local extracted
-  extracted=$(sed -n '/^canonical_states_hint() {/,/^}/p; /^assert_canonical_state() {/,/^}/p' "$SCRIPT")
-  [ -n "$extracted" ] || { echo "extraction failed — helpers not found in $SCRIPT"; return 1; }
+  extracted=$(sed -n '/^assert_canonical_state() {/,/^}/p' "$SCRIPT")
+  [ -n "$extracted" ] || { echo "extraction failed — assert_canonical_state not found in $SCRIPT"; return 1; }
   printf '%s\n%s\n%s\n' "$harness_script" "$extracted" "$call"
 }
 

@@ -60,6 +60,20 @@ When the invocation contains `--project-slice <service>`:
 
 This mode does NOT scaffold or regenerate workflows — it only emits the config slice. Generate/refresh the service repo's actual workflows by running the normal `/gaia-config-ci` scaffold inside that service repo against its projected slice.
 
+## Multi-Stack Workflow Generation
+
+When a project has two or more entries in `stacks[]` (or a deployable shape with multiple components), the generator produces the full multi-stack CI configuration:
+
+1. **`selective-tests.yml`** — an affected-set narrowing workflow that runs only the test suites for changed stacks on PRs, with full-suite escalation on promotion merges to the final tier of `ci_cd.promotion_chain`. The workflow delegates to the existing engine scripts (`selective-test-driver.sh` chains `detect-affected.sh`, `cross-refs-walk.sh`, `reconcile-stale-graph.sh`, `apply-test-policy.sh`, `generate-pipeline.sh`).
+
+2. **`gaia-release.yml`** — a per-component release workflow scaffold that scopes version-bump and release to the affected components only, using `workflow_dispatch` with an optional component input. The release step itself is a placeholder the operator completes with their project's release tooling (the generated file marks this with a `TODO(operator)` comment).
+
+3. **Engine-script delivery** — the engine scripts that the workflows invoke are vendored under `.gaia/ci-scripts/` at the project root with a `MANIFEST.sha256` drift manifest. The manifest lists every vendored script with its sha256 hash, enabling a regenerate-and-diff lint to detect stale copies when the framework updates a script.
+
+Single-stack projects (`stacks[]` with exactly one entry, or explicit `--stack` flag) continue to receive only `gaia-pre-merge.yml` — no selective-tests, no release workflow, no engine-script delivery.
+
+The multi-stack detection is automatic when `--config` is passed to the generator. The detection counts `stacks[].name` entries in the provided project config and routes accordingly.
+
 ## Tracked in-repo CI config slice (`gen-ci-config.sh`)
 
 A related-but-distinct layout: a **single** repo whose canonical `.gaia/config/project-config.yaml` lives **above** the checkout root at an untracked project root AND is `.gitignore`d inside the repo (the published repo must not ship a particular project's config). The config is then in **no** checkout, so CI's config-resolution chain finds nothing and selective tests fall back to the full suite on every PR.
@@ -156,13 +170,22 @@ The CI config-resolution precedence is: `GAIA_CONFIG` → `.gaia/ci-config.yaml`
   _stack="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field stacks.0.language 2>/dev/null || true)"
   [ -n "$_stack" ] || _stack="$(awk '/^detected-stack:/{print $2; exit}' .gaia/config/test-environment.yaml 2>/dev/null || true)"
   _provider="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field ci_platform.provider 2>/dev/null || echo github-actions)"
+  _config="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --path 2>/dev/null || true)"
 
   # Deterministic generator — supports github-actions + python/node/go/jvm.
   # Other (provider, stack) combos fall through cleanly; the LLM authoring
   # path below handles them. The generator REFUSES to overwrite a workflow
   # the operator hand-edited (it checks for the init-stub marker line).
+  #
+  # Multi-stack detection: when --config is provided and the config has 2+
+  # stacks[], the generator produces selective-tests.yml (affected-set
+  # narrowing + promotion full-suite), gaia-release.yml (per-component
+  # release), and vendors engine scripts under .gaia/ci-scripts/ with a
+  # sha256 drift manifest. Single-stack configs still get only the
+  # gaia-pre-merge.yml workflow.
   bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-ci-setup/scripts/generate-pipeline.sh" \
     --provider "$_provider" \
+    --config "$_config" \
     --stack "$_stack" \
     --project-root "${CLAUDE_PROJECT_ROOT:-.}" \
     || true   # non-zero is "unsupported combo" — LLM authoring picks up below

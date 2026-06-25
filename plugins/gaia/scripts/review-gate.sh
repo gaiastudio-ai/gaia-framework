@@ -101,7 +101,7 @@ CANONICAL_VERDICTS=("UNVERIFIED" "PASSED" "FAILED")
 # pattern without overwriting the six canonical Review Gate table rows
 # (which belong to the six downstream review commands). Uses the same
 # ledger-keyed path as test-automate-plan.
-PLAN_ID_GATES=("test-automate-plan" "story-validation" "manual-test")
+PLAN_ID_GATES=("test-automate-plan" "story-validation" "manual-test" "sprint-review")
 
 # plan_id canonical regex: alphanumerics plus ._:+- (security guard).
 # Permissive for UUIDs and timestamp-nonce fallbacks; strict against shell injection.
@@ -1031,6 +1031,7 @@ main() {
   # fallback keeps the entry uniquely addressable per sprint so the dispatcher
   # (gaia-sprint-close Step 3a) can query the sentinel without referencing a story key.
   local report_path="" execution_evidence="" report_missing_reason=""
+  local sprint_scoped=""
   LEDGER_FLAG=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1102,8 +1103,12 @@ main() {
       plan_id="${gate_name}-${sprint_id}"
     fi
     # Ledger path is the only valid sink for sprint-scoped gates — they do
-    # NOT touch a per-story Review Gate table. Force the ledger flag on.
-    LEDGER_FLAG="story-validation"
+    # NOT touch a per-story Review Gate table. Mark sprint-scoped so
+    # downstream dispatch skips locate_story_file without polluting
+    # resolve_ledger_path (which consumes LEDGER_FLAG as a literal path).
+    # Intent flag; downstream guards use sprint_id + STORY_FILE.
+    # shellcheck disable=SC2034
+    sprint_scoped=true
     # Skip locate_story_file (no story file exists for a sprint sentinel).
   else
     [ -n "$story_key" ] || die "$subcmd requires --story <key> or --sprint <id>"

@@ -158,7 +158,7 @@ json_string_array() {
 usage() {
   cat <<'USAGE' >&2
 Usage:
-  finalize.sh [--force-with-rollover <key1,key2,...>] [--help]
+  close.sh [--force] [--force-with-rollover <key1,key2,...>] [--help]
 
 Closes the active sprint: writes status:closed + closed_at to sprint-status.yaml,
 archives the yaml under .gaia/artifacts/implementation-artifacts/sprint-archive/,
@@ -166,8 +166,13 @@ and emits a sprint_closed lifecycle event to .gaia/memory/lifecycle-events.jsonl
 
 Pre-conditions:
   - A retro doc must exist at .gaia/artifacts/implementation-artifacts/retrospective/retrospective-{sprint_id}-*.md
+  - A sprint-review sentinel must exist proving /gaia-sprint-review ran, OR --force must be passed.
   - All stories must be `done`, OR --force-with-rollover must list exactly the non-done keys.
   - Sprint must not already be closed (idempotent re-close exits 0 with warning).
+
+Flags:
+  --force                 Bypass the sprint-review sentinel check (audited; recorded in close-summary).
+  --force-with-rollover   Close with non-done stories (must list exactly the non-done keys).
 
 USAGE
 }
@@ -175,9 +180,14 @@ USAGE
 # ---------- Argument parsing ----------
 
 FORCE_ROLLOVER_RAW=""
+FORCE_BYPASS_SENTINEL=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
+    --force)
+      FORCE_BYPASS_SENTINEL=1
+      shift
+      ;;
     --force-with-rollover)
       [ "$#" -ge 2 ] || die "--force-with-rollover requires a comma-separated key list"
       FORCE_ROLLOVER_RAW="$2"
@@ -280,46 +290,74 @@ elif [ "${#rollover_keys[@]}" -gt 0 ]; then
   die "error: --force-with-rollover key mismatch; no non-done stories but got: ${rollover_keys[*]}"
 fi
 
+# ---------- Step 3a — Pre-condition: sprint-review sentinel (unconditional) --
+# The sprint-review sentinel proves that /gaia-sprint-review ran and produced
+# a verdict. This check fires for ALL closeable source states (active, review)
+# — it is NOT gated on the sprint's current status value. Without a sentinel,
+# close is refused unless --force is passed.
+#
+# Sentinel files (either one satisfies the gate):
+#   - dispatch checkpoint: .gaia/memory/checkpoints/sprint-review-{id}-val-dispatched.json
+#   - envelope sentinel:   .gaia/memory/checkpoints/val-envelope-*.json whose
+#                          artifact_path matches the sprint id.
+
+_ckpt_dir="${PROJECT_PATH}/.gaia/memory/checkpoints"
+_dispatch_sentinel="${_ckpt_dir}/sprint-review-${SPRINT_ID}-val-dispatched.json"
+_envelope_glob="${_ckpt_dir}/val-envelope-*.json"
+_sentinel_found=0
+
+if [ -f "$_dispatch_sentinel" ]; then
+  _sentinel_found=1
+else
+  # Probe envelope sentinels for a matching artifact_path.
+  for _env in $_envelope_glob; do
+    [ -f "$_env" ] || continue
+    if grep -E "\"artifact_path\":[[:space:]]*\"${SPRINT_ID}\"" "$_env" >/dev/null 2>&1; then
+      _sentinel_found=1
+      break
+    fi
+  done
+fi
+
+if [ "$_sentinel_found" -ne 1 ]; then
+  if [ "$FORCE_BYPASS_SENTINEL" -eq 1 ]; then
+    warn "warning: no sprint-review sentinel for ${SPRINT_ID}; proceeding due to --force (audited bypass)"
+    _sentinel_force_bypassed=1
+  else
+    die "sprint-close refused: no sprint-review sentinel for ${SPRINT_ID}; run /gaia-sprint-review first, OR pass --force for the documented bypass"
+  fi
+else
+  _sentinel_force_bypassed=0
+fi
+
 # ---------- Step 4 — Yaml write ----------
 # Route the status flip through sprint-state.sh transition (the sanctioned
-# review→closed boundary writer) rather than direct yq -i. The yq path
-# bypassed the transition validator and the lifecycle-event emit; routing
-# through sprint-state.sh means a single audit trail covers all status
-# changes. When sprint-state.sh is not available (e.g., legacy fixtures or
-# tests), fall back to the legacy yq -i path with the closed_at write tacked
-# on afterward.
+# review→closed boundary writer) rather than direct yq -i. When sprint-state.sh
+# is not available (e.g., legacy fixtures or tests) or when the transition is
+# not a legal edge in the state machine (e.g. active→closed), fall back to the
+# direct yq -i path. The sentinel gate above has already verified that
+# /gaia-sprint-review ran (or --force was passed), so every path below is safe.
 
 CLOSED_AT="$(iso_now)"
 SPRINT_STATE_SH="${SPRINT_STATE_SH:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../../.." && pwd)}/plugins/gaia/scripts/sprint-state.sh}"
 
 if [ -x "$SPRINT_STATE_SH" ]; then
-  # Capture stderr from sprint-state.sh so we can tell "refused because
-  # review→closed needs a Val sentinel" apart from "refused because the live
-  # yaml is not in review state" (the legitimate active→closed legacy path).
-  # The prior implementation swallowed BOTH refusals into the same `else`
-  # branch and then wrote status=closed directly via yq -i — defeating the
-  # Val sentinel guard in sprint-state.sh entirely. Now the fallback path is
-  # restricted to NON-review states (e.g. active→closed); a review→closed
-  # refusal is FATAL with the canonical "run /gaia-sprint-review first"
-  # guidance.
-  _ss_stderr="$("$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed 2>&1 >/dev/null)"
-  _ss_rc=$?
-  if [ "$_ss_rc" -eq 0 ]; then
-    # Stamp closed_at — sprint-state.sh's transition path doesn't set it.
+  # Try the sprint-state.sh transition. If it succeeds (review->closed), stamp
+  # closed_at only (sprint-state.sh already wrote status:closed). If it fails
+  # (active->closed is not a legal edge in the state machine), fall back to a
+  # direct yq write. The sentinel gate (Step 3a) already passed above, so the
+  # fallback is safe.
+  #
+  # The `if` construct (not var=$(...); rc=$?) is required here: under
+  # `set -e`, a failing command substitution in a variable assignment exits
+  # the script before $? can be captured. The `if` suppresses `set -e` for
+  # the tested command per POSIX §2.8.1.
+  if "$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed >/dev/null 2>&1; then
     yq -i ".closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
       || die "yq closed_at write failed on $YAML_PATH after sprint-state.sh transition"
   else
-    # Detect the sentinel-refusal case via the canonical stderr substring
-    # from the sprint-state.sh sentinel guard. When matched, REFUSE here too —
-    # the close ceremony cannot proceed past the sentinel gate.
-    case "$_ss_stderr" in
-      *"refuse review→closed for sprint"*|*"run /gaia-sprint-review first"*)
-        die "sprint-close refused: review→closed requires a Val sentinel. Run /gaia-sprint-review for sprint ${SPRINT_ID} first, OR set GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1 for the documented correct-course bypass. (sprint-state.sh stderr: ${_ss_stderr})"
-        ;;
-    esac
-    # Refusal was NOT about the Val sentinel — fall back to direct yq for
-    # the legacy non-review active→closed path the SKILL description
-    # documents.
+    # Transition failed (e.g. active->closed is not a legal edge). Fall back
+    # to direct yq — safe because the sentinel gate already passed above.
     yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
       || die "yq write failed on $YAML_PATH"
   fi
@@ -437,6 +475,13 @@ present_count=0
 if [ ! -f "$SUMMARY_FILE" ]; then
   printf '# Sprint %s close summary\n\nClosed at %s.\n' "$SPRINT_ID" "$CLOSED_AT" > "$SUMMARY_FILE"
 fi
+
+# Record --force sentinel bypass in the close summary (audited escape hatch).
+if [ "${_sentinel_force_bypassed:-0}" -eq 1 ]; then
+  printf '\n## Sentinel bypass (--force)\n\nSprint %s was closed with --force: no sprint-review sentinel was present.\nThis bypass is audited. The operator accepted responsibility for closing without review evidence.\n' \
+    "$SPRINT_ID" >> "$SUMMARY_FILE"
+fi
+
 cat "$checklist_tmp" >> "$SUMMARY_FILE"
 rm -f "$checklist_tmp"
 

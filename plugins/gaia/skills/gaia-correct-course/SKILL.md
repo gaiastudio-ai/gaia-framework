@@ -69,7 +69,7 @@ Classify the change into one of these types:
 
 Ask if this is linked to a change request (CR ID).
 
-> **Composite-verdict escape hatch — when to choose it.** The composite verdict is GATING after the 7-day grace window: a `REQUEST_CHANGES` or `BLOCKED` composite hard-blocks transition to `done`. The `/gaia-correct-course` escape hatch is the ONLY supported way to unblock a story without satisfying every gate — and only for the legitimate edge cases listed above. The escape hatch does NOT bypass the gating contract; it transitions the story off `review` (typically back to `in-progress` or to `backlog`) so the underlying gate can be re-resolved on its own track. Every escape-hatch invocation MUST record an audit-trail entry via Step 5b, naming the failing gate(s), the blocking edge case, and the remediation plan. Do not use this path to silence a legitimate review failure.
+> **Composite-verdict escape hatch — when to choose it.** The composite verdict is GATING after the 7-day grace window: a `REQUEST_CHANGES` or `BLOCKED` composite hard-blocks transition to `done`. The `/gaia-correct-course` escape hatch is the ONLY supported way to unblock a story without satisfying every gate — and only for the legitimate edge cases listed above. The escape hatch does NOT bypass the gating contract; it transitions the story off `review` (typically to `blocked` and then to `in-progress` via the two-hop `review -> blocked -> in-progress` path, or directly to `backlog`) so the underlying gate can be re-resolved on its own track. Every escape-hatch invocation MUST record an audit-trail entry via Step 5b, naming the failing gate(s), the blocking edge case, and the remediation plan. Do not use this path to silence a legitimate review failure.
 
 ### Step 3 --- Impact Analysis
 
@@ -181,7 +181,7 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/action-items-write.sh"
 2. For each dropped or deferred story, invoke the writer:
 ```bash
 aiw_write \
-  --target "${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml" \
+  --target "${CLAUDE_PROJECT_ROOT}/.gaia/state/action-items.yaml" \
   --sprint-id "{current_sprint_id}" \
   --classification "process" \
   --text "Dropped/deferred {story_key}: {reason}" \
@@ -216,7 +216,7 @@ This step is gated: when the sprint is NOT in `review` status AND no `--from-rev
 
 When the gate fires:
 
-1. **Read failed findings** from `.gaia/artifacts/planning-artifacts/action-items.yaml`, filtered to entries originating from the current sprint-review run (matching the sprint_id).
+1. **Read failed findings** from `.gaia/state/action-items.yaml` (the canonical action-items registry, resolved via `resolve-artifact-path.sh action_items`), filtered to entries originating from the current sprint-review run (matching the sprint_id).
 2. **Draft `story_injection` proposals** — for each finding, generate a story title + AC drafts derived from the finding context. Output the drafts inline to the user.
 3. **Present drafts via `AskUserQuestion`** at main-turn with `[approve / edit / skip]` options per draft.
 4. **On approve** for a draft:

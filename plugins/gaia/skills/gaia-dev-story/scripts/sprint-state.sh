@@ -26,18 +26,12 @@
 #   Exit codes: 0 = no drift or drift corrected; 2 = drift detected in
 #   --dry-run; 1 = error (missing file / parse error / write failure).
 #
-# Canonical state set (from CLAUDE.md#Sprint State Machine):
+# Canonical state set:
 #   backlog | validating | ready-for-dev | in-progress | blocked | review | done
 #
-# Allowed adjacency (edges encoded verbatim from CLAUDE.md):
-#   backlog        -> validating
-#   validating     -> ready-for-dev
-#   ready-for-dev  -> in-progress
-#   in-progress    -> blocked
-#   in-progress    -> review
-#   blocked        -> in-progress
-#   review         -> in-progress
-#   review         -> done
+# Allowed story-level adjacency is defined by the shared SSOT at
+# scripts/lib/story-state-machine.sh (STORY_ALLOWED_EDGES). This script
+# sources that lib and delegates edge validation to validate_story_transition().
 #
 # Sprint-Status Write Safety (CRITICAL, per CLAUDE.md):
 #   The story file is the source of truth — sprint-status.yaml is a derived
@@ -113,6 +107,11 @@ trap '_cleanup_tmps' EXIT INT TERM
 
 # ---------- Canonical state machine ----------
 
+# Canonical states. Kept as a self-contained local array (NOT delegated to the
+# SSOT's STORY_CANONICAL_STATES) so the reconcile-family helpers can be
+# function-extracted and sourced standalone by callers/tests without also
+# pulling in the SSOT lib. The two lists are pinned identical by the SSOT
+# parity test; the SSOT remains the single source of truth for the edge table.
 CANONICAL_STATES=(
   "backlog"
   "validating"
@@ -123,25 +122,15 @@ CANONICAL_STATES=(
   "done"
 )
 
-# Allowed adjacency encoded as "from|to" strings (CLAUDE.md verbatim).
-# The `ready-for-dev|backlog` defer edge restores the path documented by
-# /gaia-correct-course Step 5 ("removed stories transition --to backlog").
-# Without this edge the state machine rejects the correct-course defer path
-# and operators must fall back to sprint-close `--force-with-rollover`. The
-# edge is semantically clean: a story selected for development but not yet
-# in-progress can be returned to the backlog without traversing the full
-# `in-progress → review → done` arc.
-ALLOWED_EDGES=(
-  "backlog|validating"
-  "validating|ready-for-dev"
-  "ready-for-dev|in-progress"
-  "ready-for-dev|backlog"
-  "in-progress|blocked"
-  "in-progress|review"
-  "blocked|in-progress"
-  "review|in-progress"
-  "review|done"
-)
+# Source the shared story-state-machine SSOT for the allowed-edge table.
+# Provides STORY_ALLOWED_EDGES and validate_story_transition().
+# The double-source guard (__STORY_STATE_MACHINE_SH) makes this idempotent.
+# SPRINT_STATE_SCRIPT_DIR may not be resolved yet (it is set in main()), so
+# derive the lib path relative to this file's location.
+_SSM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/story-state-machine.sh
+. "${_SSM_DIR}/lib/story-state-machine.sh"
+unset _SSM_DIR
 
 # ---------- Helpers ----------
 
@@ -282,29 +271,18 @@ Exit codes:
 USAGE
 }
 
+# Self-contained canonical-state helpers (no SSOT dependency) so the
+# reconcile-family functions remain function-extractable in isolation.
 is_canonical_state() {
-  local candidate="$1"
-  local s
+  local candidate="$1" s
   for s in "${CANONICAL_STATES[@]}"; do
     [ "$s" = "$candidate" ] && return 0
   done
   return 1
 }
-
-# Render the canonical enum as a "value | value | value" string for use in
-# error messages. Centralised so every fail-fast path emits the same hint.
-# Operators reading the rejection see exactly which values the lifecycle
-# accepts and can fix the call site without reading source.
 canonical_states_hint() {
-  local s out=""
-  for s in "${CANONICAL_STATES[@]}"; do
-    if [ -z "$out" ]; then
-      out="$s"
-    else
-      out="${out} | ${s}"
-    fi
-  done
-  printf '%s' "$out"
+  local IFS=' '
+  printf '%s' "${CANONICAL_STATES[*]}"
 }
 
 # Fail-fast guard for any value about to be written into a lifecycle
@@ -320,16 +298,15 @@ assert_canonical_state() {
   fi
 }
 
-# Exit 1 unless "from -> to" is in ALLOWED_EDGES.
+# Exit 1 (via die) unless "from -> to" is a legal story-level edge.
+# Delegates to validate_story_transition() from the shared SSOT; wraps the
+# return code in die() to preserve sprint-state.sh's error-path contract
+# (callers depend on exit 1 + the message shape).
 validate_transition() {
   local from="$1" to="$2"
-  local edge
-  for edge in "${ALLOWED_EDGES[@]}"; do
-    if [ "$edge" = "${from}|${to}" ]; then
-      return 0
-    fi
-  done
-  die "illegal transition: '${from}' -> '${to}' is not in the allowed adjacency list"
+  if ! validate_story_transition "$from" "$to" 2>/dev/null; then
+    die "illegal transition: '${from}' -> '${to}' is not in the allowed adjacency list"
+  fi
 }
 
 # Resolve configuration — PROJECT_PATH, IMPLEMENTATION_ARTIFACTS, and yaml path.
@@ -2361,7 +2338,7 @@ cmd_detect_auto_close() {
 # (some keys committed + some rolled back, non-zero exit + summary).
 #
 # Per-key flow:
-#   1. Locate story file via scan of .gaia/artifacts/implementation-artifacts/**/stories/*.md
+#   1. Locate story file via the canonical shared resolver (all layout tiers)
 #   2. Read frontmatter `sprint_id` field
 #   3. Verify it matches --from value OR is `null`. Otherwise refuse this key.
 #   4. Rewrite `sprint_id:` line to the --to value.
@@ -2410,9 +2387,23 @@ cmd_rollover() {
 _rollover_one() {
   local key="$1" from_sprint="$2" to_sprint="$3"
 
-  # Locate the story file. Pattern: .gaia/artifacts/implementation-artifacts/**/stories/<key>-*.md
-  local story_file
-  story_file=$(find "${IMPLEMENTATION_ARTIFACTS}" -type f -name "${key}-*.md" 2>/dev/null | head -1)
+  # Locate the story file via the canonical shared resolver (handles all three
+  # layout tiers: per-story-nested, legacy-nested, legacy-flat).
+  # shellcheck source=resolve-story-file.sh
+  . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
+  local story_file resolver_stderr resolver_rc
+  resolver_stderr=$(resolve_story_file "$key" 2>&1 1>/dev/null) || true
+  # Re-run to capture stdout (Bash 3.2: no process substitution trick that
+  # reliably captures both stdout and the exit code in separate variables).
+  story_file=$(resolve_story_file "$key" 2>/dev/null); resolver_rc=$?
+  # On any failure the first run already captured stderr; use rc from second.
+  if [ "$resolver_rc" -eq 2 ]; then
+    printf 'sprint-state.sh rollover: ambiguous match for %s — multiple story files found; resolve manually\n' "$key" >&2
+    if [ -n "$resolver_stderr" ]; then
+      printf '%s\n' "$resolver_stderr" >&2
+    fi
+    return 1
+  fi
   if [ -z "$story_file" ] || [ ! -f "$story_file" ]; then
     printf 'sprint-state.sh rollover: story file not found for %s\n' "$key" >&2
     return 1

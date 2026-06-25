@@ -217,8 +217,8 @@ Each row names the canonical short-name, the skill to dispatch, the canonical ga
 > **Type-first naming reconciliation.** These paths were
 > corrected to the type-prefix-FIRST convention (`<type>-{key}.md` under
 > `implementation-artifacts/`) that the six per-review skills actually write to
-> (verified on disk: `code-review-E100-S1.md`, `qa-tests-E100-S1.md`,
-> `test-automate-review-E100-S1.md`, `test-review-E100-S1.md`, etc.). The prior
+> (verified on disk: `code-review-{key}.md`, `qa-tests-{key}.md`,
+> `test-automate-review-{key}.md`, `test-review-{key}.md`, etc.). The prior
 > reversed `{key}-<type>.md` form — and the stray `test-artifacts/` directory on
 > the test-aligned rows — disagreed with the type-first convention, made `review-summary-gen.sh`'s
 > proof-of-execution check flag every report MISSING, and risked a

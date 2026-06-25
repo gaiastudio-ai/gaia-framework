@@ -3,6 +3,7 @@ core	E74-S10-test-mobile-e2e.bats
 core	E78-S6-plugin-versioning-rubric.bats
 core	E79-S4-csp-readers.bats
 core	a11y-three-phase-reorganization.bats
+core	action-items-canonical-path.bats
 core	action-skill-contract.bats
 core	adapter-schema-contract.bats
 core	add-feature-step8.bats
@@ -229,6 +230,7 @@ core	mode-b-docs.bats
 core	mode-b-parity.bats
 core	never-run-subdir-guard.bats
 core	no-bsd-awk-incompatible-anchors.bats
+core	no-leaked-ids-in-prose.bats
 core	no-leaked-ids-in-test-names.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
@@ -260,8 +262,11 @@ core	skill-dispatch-brain-load.bats
 core	skill-frontmatter-guard.bats
 core	skill-plugin-root-paths-guard.bats
 core	skill-rename-preflight.bats
+core	sprint-close-sentinel-unconditional.bats
+core	sprint-close-yq-fallback-and-dual-event.bats
 core	sprint-state-inject.bats
 core	sprint-state-split-repo-resolution.bats
+core	sprint-state-ssot-parity.bats
 core	sprint-state-wrapper-sync.bats
 core	sprint-state.bats
 core	stacks-schema.bats
@@ -359,6 +364,7 @@ scripts-core	af-2026-06-01-7-issue-1064-validate-gate-project-root.bats
 scripts-core	af-2026-06-02-2-rename-gaia-public-to-gaia-framework.bats
 scripts-core	apply-test-policy.bats
 scripts-core	audit-silent-val-bypass.bats
+scripts-core	backlog-select-lint-detail-block-deps.bats
 scripts-core	bridge-enable-absent-key-handling.bats
 scripts-core	bridge-toggle-manifest-install.bats
 scripts-core	check-fork-stripped.bats
@@ -423,6 +429,7 @@ scripts-core	gaia-test-e2e.bats
 scripts-core	gaia-test-perf.bats
 scripts-core	gaia-trace.bats
 scripts-core	gaia-validate-story.bats
+scripts-core	generate-multi-stack-ci.bats
 scripts-core	generate-pipeline.bats
 scripts-core	git-push.bats
 scripts-core	init-project.bats
@@ -454,6 +461,7 @@ scripts-core	reconcile-stale-graph.bats
 scripts-core	resolve-affected-set.bats
 scripts-core	resolve-config.bats
 scripts-core	review-gate-proof-of-execution.bats
+scripts-core	review-gate-sprint-scope.bats
 scripts-core	review-gate.bats
 scripts-core	review-runner.bats
 scripts-core	review-summary-gen-canonical-relpaths.bats

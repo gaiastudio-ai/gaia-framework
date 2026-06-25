@@ -1,7 +1,7 @@
-# GAIA Plugin — bats-core Unit Test Suite (E28-S17)
+# GAIA Plugin — bats-core Unit Test Suite
 
 This directory contains the bats-core unit test suite for every foundation
-script in `plugins/gaia/scripts/`. It is the binding NFR-052 enforcement
+script in `plugins/gaia/scripts/`. It is the binding public-function coverage
 point — 100% of documented public functions in every foundation script are
 covered by at least one bats test.
 
@@ -72,7 +72,7 @@ The wrapper:
 1. Enumerates public functions from every `plugins/gaia/scripts/*.sh`.
 2. Runs the bats suite.
 3. Asserts every public function is referenced from at least one `.bats`
-   file (the NFR-052 binding gate). Uncovered public functions fail the
+   file (the public-function coverage binding gate). Uncovered public functions fail the
    wrapper with exit 1 and are named in stderr.
 4. If `kcov` is available on PATH, produces an advisory HTML + JSON line
    coverage report under `coverage/kcov/`. kcov is advisory only — the
@@ -82,7 +82,7 @@ Outputs:
 
 - `coverage/public-functions.json` — enumerated public functions per script.
 - `coverage/coverage-summary.json` — per-script covered / uncovered lists
-  plus the NFR-052 gate verdict.
+  plus the public-function coverage gate verdict.
 - `coverage/kcov/index.html` — advisory line coverage (if kcov is present).
 
 ## Test isolation rules
@@ -99,15 +99,15 @@ Outputs:
 The `bats-tests` job in `.github/workflows/plugin-ci.yml` runs
 `plugins/gaia/tests/run-with-coverage.sh`, enforces the 2-minute budget via
 a job-level `timeout-minutes: 2`, uploads the `coverage/` directory as an
-artifact, and fails the PR if the NFR-052 gate is not green.
+artifact, and fails the PR if the public-function coverage gate is not green.
 
-## `@hardware-dependent` tag convention (E91-S1, FR-SRF-1, AF-2026-05-14-9)
+## `@hardware-dependent` tag convention
 
 Tests that exercise host-specific timing primitives (mtime resolution,
 sleep precision, host-clock semantics) MUST be tagged
 `@hardware-dependent`. They are **excluded from CI by default** via
 `BATS_FILTER_TAGS='!hardware-dependent'` to keep the CI bats budget under
-the hard cap (sprint-43 retrospective AI-2026-05-13-14 found that
+the hard cap (a retrospective action item found that
 hardware-dependent test flake was the primary contributor to budget
 overrun).
 
