@@ -49,6 +49,7 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_NAME="lifecycle-event.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---------- Helpers ----------
 
@@ -222,8 +223,25 @@ fi
 
 # .gaia/memory is the only memory tree — the legacy _memory
 # fallback was removed with the consolidation migration. Env override wins.
+#
+# When MEMORY_PATH is unset, query the fully-resolved memory_path from the
+# shared resolver.  This honours a config-level `memory_path:` override — a
+# project that sets `memory_path: /custom/mem` in project-config.yaml gets
+# events written there, not silently under {project_root}/.gaia/memory.
+# Best-effort contract: if the resolver is absent or fails, fall back to the
+# prior CWD-relative literal so a transition is never aborted by path
+# resolution.
 if [ -z "${MEMORY_PATH:-}" ]; then
-  MEMORY_PATH=".gaia/memory"
+  _resolved_mem=""
+  if [ -x "$SCRIPT_DIR/resolve-config.sh" ]; then
+    _resolved_mem=$("$SCRIPT_DIR/resolve-config.sh" memory_path 2>/dev/null) || true
+  fi
+  if [ -n "$_resolved_mem" ]; then
+    MEMORY_PATH="$_resolved_mem"
+  else
+    MEMORY_PATH=".gaia/memory"
+  fi
+  unset _resolved_mem
 fi
 JSONL="${MEMORY_PATH}/lifecycle-events.jsonl"
 

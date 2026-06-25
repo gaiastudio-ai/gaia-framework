@@ -129,3 +129,57 @@ YAML
 
   rm -rf "$tmp"
 }
+
+# ---------------------------------------------------------------------------
+# Positional query: memory_path and checkpoint_path
+# ---------------------------------------------------------------------------
+# Verifies that `resolve-config.sh memory_path` and `resolve-config.sh
+# checkpoint_path` emit the fully-resolved scalar — including any config-level
+# override — via the same positional-query interface used by project_root,
+# planning_artifacts, etc.
+
+# Helper: create a fixture config WITH a custom memory_path / checkpoint_path
+# so the positional query returns the config override, not the default.
+_mk_custom_mem_config() {
+  local dir="$1"
+  mkdir -p "$dir/config"
+  cat > "$dir/config/project-config.yaml" <<'YAML'
+project_root: /tmp/pos-mem-test
+project_path: /tmp/pos-mem-test/app
+installed_path: /tmp/pos-mem-test/_gaia
+framework_version: 1.200.0
+date: 1970-01-01
+memory_path: /custom/mem
+checkpoint_path: /custom/checkpoints
+YAML
+}
+
+@test "positional query memory_path emits config override (AC5)" {
+  local tmp
+  tmp="$(mktemp -d)"
+  _mk_custom_mem_config "$tmp/skill"
+  cd "$tmp"
+
+  unset GAIA_MEMORY_PATH 2>/dev/null || true
+  unset GAIA_CHECKPOINT_PATH 2>/dev/null || true
+  CLAUDE_SKILL_DIR="$tmp/skill" run "$REPO_ROOT/plugins/gaia/scripts/resolve-config.sh" memory_path
+  [ "$status" -eq 0 ]
+  [[ "$output" == "/custom/mem" ]]
+
+  rm -rf "$tmp"
+}
+
+@test "positional query checkpoint_path emits config override (AC6)" {
+  local tmp
+  tmp="$(mktemp -d)"
+  _mk_custom_mem_config "$tmp/skill"
+  cd "$tmp"
+
+  unset GAIA_MEMORY_PATH 2>/dev/null || true
+  unset GAIA_CHECKPOINT_PATH 2>/dev/null || true
+  CLAUDE_SKILL_DIR="$tmp/skill" run "$REPO_ROOT/plugins/gaia/scripts/resolve-config.sh" checkpoint_path
+  [ "$status" -eq 0 ]
+  [[ "$output" == "/custom/checkpoints" ]]
+
+  rm -rf "$tmp"
+}
