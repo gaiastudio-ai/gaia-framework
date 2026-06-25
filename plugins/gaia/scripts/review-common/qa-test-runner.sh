@@ -349,6 +349,38 @@ EOF
 
 # ---------- timeout helper (POSIX-portable) ----------
 
+# Sanitize the environment for child processes so a nested bats invocation
+# does not inherit the parent bats runner's internal state. The critical
+# variable is PATH: the parent bats prepends BATS_LIBEXEC (its own libexec/
+# directory) to PATH, making bare `bats` resolve to the internal
+# libexec/bats-core/bats script instead of the bin/bats wrapper. That
+# internal script calls the exported bash function `bats_readlinkf`, which
+# is NOT propagated through dash (Ubuntu's /bin/sh) — so the nested bats
+# exits 1. Restoring PATH from BATS_SAVED_PATH (the pre-bats PATH exported
+# by bin/bats) makes `bats` resolve to the system-installed wrapper binary
+# which bootstraps correctly.
+_sanitize_bats_env() {
+  if [ -n "${BATS_SAVED_PATH:-}" ]; then
+    _RT_ORIG_PATH="$PATH"
+    export PATH="$BATS_SAVED_PATH"
+  elif [ -n "${BATS_LIBEXEC:-}" ]; then
+    _RT_ORIG_PATH="$PATH"
+    local _cleaned
+    _cleaned="$(printf '%s' "$PATH" | awk -v drop="$BATS_LIBEXEC" '
+      BEGIN { RS=":"; ORS="" }
+      { if ($0 != drop) { if (NR>1 && printed) printf ":"; printf "%s", $0; printed=1 } }
+    ')"
+    export PATH="$_cleaned"
+  fi
+}
+
+_restore_bats_env() {
+  if [ -n "${_RT_ORIG_PATH:-}" ]; then
+    export PATH="$_RT_ORIG_PATH"
+    unset _RT_ORIG_PATH
+  fi
+}
+
 # Run "$1" (full command string) with a wall-clock cap of "$2" seconds.
 # Records into globals: RT_EXIT, RT_DURATION, RT_TIMEOUT, RT_OUTPUT.
 run_with_timeout() {
@@ -360,6 +392,9 @@ run_with_timeout() {
   start_ns="$(perl -MTime::HiRes -e 'printf "%.6f", Time::HiRes::time()' 2>/dev/null \
               || awk 'BEGIN{srand(); print systime()}')"
 
+  # Sanitize PATH so nested bats invocations resolve the wrapper binary, not
+  # the internal libexec script (see _sanitize_bats_env header).
+  _sanitize_bats_env
   set +e
   if command -v timeout >/dev/null 2>&1; then
     timeout --preserve-status "${timeout_seconds}" sh -c "$cmd" >"$out_file" 2>&1
@@ -373,6 +408,7 @@ run_with_timeout() {
     RT_EXIT=$?
   fi
   set -e
+  _restore_bats_env
 
   end_ns="$(perl -MTime::HiRes -e 'printf "%.6f", Time::HiRes::time()' 2>/dev/null \
             || awk 'BEGIN{srand(); print systime()}')"
