@@ -221,13 +221,17 @@ while [ "$changed" -eq 1 ]; do
           continue  # already collected by the find above
         fi
         # Check the _seen set for any path ending in this basename.
+        # bash 3.2-safe: iterate the newline-delimited _seen_paths string.
         already_seen=0
-        for seen_path in "${!_seen[@]}"; do
+        while IFS= read -r seen_path; do
+          [ -n "$seen_path" ] || continue
           if [ "$(basename "$seen_path")" = "$bn_check" ]; then
             already_seen=1
             break
           fi
-        done
+        done <<EOF
+$_seen_paths
+EOF
         if [ "$already_seen" -eq 1 ]; then
           continue
         fi
@@ -236,11 +240,19 @@ while [ "$changed" -eq 1 ]; do
         continue
       fi
       real="$(cd "$(dirname "$resolved")" && pwd)/$(basename "$resolved")"
-      if [ -z "${_seen[$real]:-}" ]; then
-        _seen[$real]=1
-        new_files+=("$real")
-        changed=1
-      fi
+      # bash 3.2-safe membership test against the newline-delimited _seen_paths.
+      case "$_seen_paths" in
+        "$real"|"$real"$'\n'*|*$'\n'"$real"|*$'\n'"$real"$'\n'*) ;;
+        *)
+          if [ -z "$_seen_paths" ]; then
+            _seen_paths="$real"
+          else
+            _seen_paths="${_seen_paths}"$'\n'"${real}"
+          fi
+          new_files+=("$real")
+          changed=1
+          ;;
+      esac
     done < <(_extract_script_refs "$f")
   done
   SURFACE_FILES+=("${new_files[@]}")
