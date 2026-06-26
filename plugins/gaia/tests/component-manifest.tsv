@@ -670,6 +670,7 @@ skills	test-manual-surface-api.bats
 skills	test-manual-surface-dormancy.bats
 skills	test-run-detection-and-vocab.bats
 skills	test-run-invocation-mapping.bats
+skills	test-strategy-docs-only-default.bats
 skills	test-test-automate-phase-1.bats
 skills	validate-against-schema-date-fix.bats
 skills	write-val-sentinel-sprint-id-format.bats

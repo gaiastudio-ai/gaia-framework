@@ -83,7 +83,11 @@ teardown() { common_teardown; }
 @test "all three fail-safes accept both .gaia/config/ (canonical) and config/ (legacy) yaml locations" {
   for skill in gaia-create-arch gaia-test-strategy gaia-ci-setup; do
     grep -qF '.gaia/config/project-config.yaml' "$PLUGIN_ROOT/skills/$skill/scripts/finalize.sh"
-    grep -qF '"config/project-config.yaml"' "$PLUGIN_ROOT/skills/$skill/scripts/finalize.sh"
+    # The legacy `config/project-config.yaml` probe may be either CWD-relative
+    # (`"config/project-config.yaml"`) or project-root-anchored
+    # (`"$_PROJECT_ROOT/config/project-config.yaml"`); both satisfy the
+    # accepts-legacy-location contract.
+    grep -qE '(\$_PROJECT_ROOT/)?config/project-config\.yaml' "$PLUGIN_ROOT/skills/$skill/scripts/finalize.sh"
   done
 }
 

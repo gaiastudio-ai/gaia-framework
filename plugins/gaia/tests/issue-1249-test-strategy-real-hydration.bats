@@ -77,6 +77,7 @@ EOF
   local tmp="$BATS_TEST_TMPDIR/hyd-pytest"
   _mk_fixture "$tmp" pytest
   cd "$tmp"
+  GAIA_TEST_STRATEGY_AUTOSTUB=1 \
   TEST_STRATEGY_ARTIFACT="$tmp/.gaia/artifacts/planning-artifacts/test-strategy.md" \
     bash "$FINALIZE" 2>&1 | tee "$tmp/out.log" || true
   local cfg="$tmp/.gaia/config/project-config.yaml"
@@ -92,6 +93,7 @@ EOF
   local tmp="$BATS_TEST_TMPDIR/hyd-go"
   _mk_fixture "$tmp" go
   cd "$tmp"
+  GAIA_TEST_STRATEGY_AUTOSTUB=1 \
   TEST_STRATEGY_ARTIFACT="$tmp/.gaia/artifacts/planning-artifacts/test-strategy.md" \
     bash "$FINALIZE" 2>&1 || true
   local cfg="$tmp/.gaia/config/project-config.yaml"
@@ -102,7 +104,8 @@ EOF
   local tmp="$BATS_TEST_TMPDIR/hyd-none"
   _mk_fixture "$tmp" none
   cd "$tmp"
-  run env TEST_STRATEGY_ARTIFACT="$tmp/.gaia/artifacts/planning-artifacts/test-strategy.md" \
+  run env GAIA_TEST_STRATEGY_AUTOSTUB=1 \
+    TEST_STRATEGY_ARTIFACT="$tmp/.gaia/artifacts/planning-artifacts/test-strategy.md" \
     bash "$FINALIZE"
   local cfg="$tmp/.gaia/config/project-config.yaml"
   # Either the empty stub OR a present-but-empty test_execution key — but no crash.
