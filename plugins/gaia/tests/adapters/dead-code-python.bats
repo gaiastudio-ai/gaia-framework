@@ -78,6 +78,14 @@ run_adapter() {
   [[ "$output" == *"vulture"* ]]
 }
 
+@test "python adapter degrade emits a language-aware install hint" {
+  rm -f "$FAKE_BIN/vulture"
+  run env PATH="$FAKE_BIN" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_PYTHON_ENABLED=true \
+    PY_PROJECT_ROOT="$FX" PY_OUT_DIR="$OUT" /bin/bash "$ADAPTER"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pip install vulture"* ]]
+}
+
 # --- AC5 — no *.py files → no-op ---------------------------------------------
 @test "E70-S8 python: no .py files → idempotent no-op, exit 0" {
   emptyroot="$TEST_TMP/empty"; mkdir -p "$emptyroot"

@@ -89,9 +89,9 @@ echo "# CI" > "$TA/ci-setup.md"
 TEST_ARTIFACTS="$TA" run 0 - "all 3 gates passed" "AC4 #8: --multi happy" -- \
   "$VG" --multi "test_plan_exists,traceability_exists,ci_setup_exists"
 
-# Scenario 9 — --multi fail-fast
+# Scenario 9 — --multi first-gate fail
 rm -f "$TA/traceability-matrix.md"
-TEST_ARTIFACTS="$TA" run 1 - "traceability_exists" "AC4 #9: --multi fail-fast" -- \
+TEST_ARTIFACTS="$TA" run 1 - "traceability_exists" "AC4 #9: --multi first-gate fail" -- \
   "$VG" --multi "test_plan_exists,traceability_exists"
 echo "# Traceability" > "$TA/traceability-matrix.md"
 

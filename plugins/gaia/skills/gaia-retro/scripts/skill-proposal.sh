@@ -28,7 +28,7 @@
 #     → Validates the proposal (diff size, UTF-8).
 #     Stdout: empty.
 #     Stderr: `validate_proposal: <reason>` on failure.
-#     Exit: 0 = valid; 1 = invalid (diff > 8KB, non-UTF-8 content, or any
+#     Exit: 0 = valid; 1 = invalid (diff > 100 KB, non-UTF-8 content, or any
 #       required field empty).
 #
 #   write_approved_proposal <root> <sprint_id> <target_skill> <target_path> \
@@ -45,6 +45,74 @@
 
 
 set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# usage — print helper function reference; invoked via --help or when the
+# script is executed directly instead of sourced.
+# ---------------------------------------------------------------------------
+usage() {
+  cat <<'USAGE_EOF'
+skill-proposal.sh — Skill improvement proposal helpers
+
+Source this file to gain access to four public functions:
+
+  extract_tech_debt_reflection <project_root> <sprint_id>
+    Read tech-debt-dashboard.md and produce a Tech Debt Reflection
+    Markdown block for inclusion in a retrospective artifact.
+    Arguments:
+      project_root  Absolute path to the project root.
+      sprint_id     Sprint identifier (e.g. "sprint-42").
+    Reads:  .gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md
+    Writes: stdout (Markdown block with per-category debt sections).
+    Exit:   0 always; empty stdout when no dashboard or no matching rows.
+    Stderr: WARNING lines on missing dashboard or malformed rows.
+
+  build_proposal <finding_ref> <target_skill> <rationale> <diff>
+    Produce a structured YAML proposal object from the four fields.
+    Arguments:
+      finding_ref   Unique reference for the retro finding.
+      target_skill  Name of the skill to improve.
+      rationale     Free-text explanation.
+      diff          Diff content to embed.
+    Reads:  arguments only (no file I/O).
+    Writes: stdout (YAML map: finding_ref, target_skill, target_path,
+            rationale, diff).
+    Exit:   0 always.
+
+  validate_proposal <finding_ref> <target_skill> <rationale> <diff>
+    Validate a proposal before writing (size + required fields).
+    Arguments:  same as build_proposal.
+    Reads:  arguments only.
+    Writes: stderr on failure (reason text).
+    Exit:   0 = valid; 1 = invalid (diff > 100 KB or required field empty).
+
+  write_approved_proposal <root> <sprint_id> <target_skill> <target_path> \
+                          <rationale> <diff_content> <writer_script>
+    Write an approved proposal to custom/skills/{name}.md and register it
+    in .customize.yaml via the shared retro writer.
+    Arguments:
+      root           Absolute path to the project root.
+      sprint_id      Sprint identifier.
+      target_skill   Name of the skill.
+      target_path    Relative path under root (e.g. custom/skills/foo.md).
+      rationale      Free-text explanation.
+      diff_content   Content to write.
+      writer_script  Absolute path to the retro sidecar writer script.
+    Reads:  writer_script (executed).
+    Writes: custom/skills/{name}.md, custom/skills/all-dev.customize.yaml.
+    Exit:   0 = success; non-zero = writer failure (forwards exit code).
+
+Usage:
+  source skill-proposal.sh        # source to get the functions
+  skill-proposal.sh --help        # print this reference
+USAGE_EOF
+}
+
+# When executed directly (not sourced), print usage and exit.
+if [ "${BASH_SOURCE[0]}" = "$0" ] 2>/dev/null; then
+  usage
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # _parse_table_cell — extract column N (1-based) from a pipe-delimited row,

@@ -60,7 +60,7 @@ if [ -f "$_VULTURE_DOCKER_RUNNER_LIB" ]; then
 fi
 
 if [ -z "$_VULTURE_DOCKER_RUNNER" ] && ! command -v vulture >/dev/null 2>&1; then
-  log_warn "vulture toolchain absent — python-vulture skipped (graceful degrade); Phase 3 continues"
+  log_warn "vulture toolchain absent — python-vulture skipped (graceful degrade); Phase 3 continues; install via 'pip install vulture' (or 'pipx install vulture')"
   exit 0
 fi
 if ! find "$ROOT" -type f -name '*.py' -print -quit 2>/dev/null | grep -q .; then

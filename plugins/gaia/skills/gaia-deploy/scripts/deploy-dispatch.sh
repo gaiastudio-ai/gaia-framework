@@ -36,6 +36,7 @@
 #   0  — adapter exited 0
 #   1  — adapter exited non-zero (BLOCKED)
 #   2  — usage / invalid args
+#   3  — dormant environment (adapter exited 3; forwarded verbatim)
 #   127 — adapter not found (unavailable) or unknown adapter name
 #
 # Test seams (do not document outside this header):
@@ -110,6 +111,10 @@ if [ -n "$ADAPTER_CMD" ]; then
     "$ADAPTER_CMD" "$ENV_NAME" "$VERSION" "$OUTPUT_DIR" "$COMPONENTS" || rc=$?
   else
     "$ADAPTER_CMD" "$ENV_NAME" "$VERSION" "$OUTPUT_DIR" || rc=$?
+  fi
+  if [ "$rc" -eq 3 ]; then
+    log "dormant environment '${ENV_NAME}' — declared but not yet provisioned; skipping deploy (exit 3)"
+    exit 3
   fi
   if [ "$rc" -ne 0 ]; then
     log "BLOCKED: deploy adapter exited $rc (no auto-retry)"
@@ -377,6 +382,11 @@ if [ -n "$COMPONENTS" ]; then
   "$RUN_SH" --env "$ENV_NAME" --version "$VERSION" --output-dir "$OUTPUT_DIR" --components "$COMPONENTS" || rc=$?
 else
   "$RUN_SH" --env "$ENV_NAME" --version "$VERSION" --output-dir "$OUTPUT_DIR" || rc=$?
+fi
+
+if [ "$rc" -eq 3 ]; then
+  log "dormant environment '${ENV_NAME}' — declared but not yet provisioned; skipping deploy (exit 3)"
+  exit 3
 fi
 
 if [ "$rc" -ne 0 ]; then
