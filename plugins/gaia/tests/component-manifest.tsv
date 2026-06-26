@@ -264,6 +264,7 @@ core	skill-plugin-root-paths-guard.bats
 core	skill-rename-preflight.bats
 core	sprint-close-sentinel-unconditional.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
+core	sprint-review-yolo-fallback.bats
 core	sprint-state-inject.bats
 core	sprint-state-split-repo-resolution.bats
 core	sprint-state-ssot-parity.bats
