@@ -903,10 +903,12 @@ WARNING-equivalent for the purposes of the halt-check across THREE phases:
 
 - **Phase 3** scan subagents (doc-code drift, hardcoded values, integration
   seams, runtime behavior, security, config contradictions, dead code) —
-  every CRITICAL these subagents return is, by definition, a real defect
-  in the target codebase. Halting on them defeats brownfield's
-  gap-discovery mission. Subagent errors of the form "scanner crashed" /
-  "tool not available" are still halts; finding-content CRITICALs about
+  every **finding-content** CRITICAL these subagents return describes a
+  real defect in the target codebase. Halting on them defeats brownfield's
+  gap-discovery mission. The deterministic classifier
+  (`bfcc_classify_critical`) distinguishes finding-content from
+  tooling-error by shape; tooling-error CRITICALs ("scanner crashed" /
+  "tool not available") still halt. Only finding-content CRITICALs about
   the scanned code are downgraded.
 - **Phase 6** test-architect (Sable) NFR assessment — Sable routinely
   returns CRITICAL findings like "CI pre-merge gate is a no-op stub; tests
@@ -931,6 +933,23 @@ consolidated gap list — nothing is lost; only the halt-on-CRITICAL
 semantic is downgraded for these three phases under YOLO so the brownfield
 onboarding loop can actually complete on any real-world project (which by
 definition has critical gaps — that's why brownfield is being run on it).
+
+**Deterministic classifier.** The finding-content-vs-tooling-error
+classification is deterministic, produced by the shared helper
+`brownfield-critical-class.sh` (`bfcc_classify_critical`) from the
+finding shape — the orchestrator applies the deterministic classifier's
+verdict, it does not re-judge each CRITICAL. The classifier inspects
+the gap-entry shape of the JSON finding: a valid gap-entry (gap_id
+matching the canonical pattern, category from the schema enum,
+evidence.file present) is classified as `finding-content`; everything
+else (error-shaped envelope, missing required fields, malformed JSON,
+invalid gap_id, unknown category) is classified as `tooling-error`.
+The fail-safe is `tooling-error` — ambiguous or malformed CRITICALs
+always halt, never silently downgrade. The phase-aware downgrade
+decision (`bfcc_should_downgrade`) combines the shape classifier with
+the per-phase scope: Phase 3, 6, 8b downgrade finding-content
+CRITICALs; Phase 4, 8c, and all other phases halt unconditionally
+regardless of finding class.
 
 ### 8c — Code-Verified Review
 
@@ -1132,7 +1151,7 @@ Every subagent dispatched by this skill — Phase 2 documenters, Phase 3 scan su
 
 - `status: PASS` — log the subagent name, the artifacts it produced, and continue to the next phase.
 - `status: WARNING` — display the `findings` block to the user before continuing. The user remains in control: in normal mode they may approve or revise; in YOLO mode the workflow auto-continues after displaying the warning.
-- `status: CRITICAL` — HALT. The skill MUST NOT advance to the next phase until the user resolves the critical finding. This rule applies in both normal and YOLO mode (CRITICAL still halts under YOLO — see YOLO Behavior below) **with the documented per-phase carve-outs**: under YOLO, finding-content CRITICALs (CRITICALs that describe the SCANNED CODEBASE) are auto-downgraded to WARNING-equivalent at **Phase 3** (scan subagents), **Phase 6** (NFR assessment), and **Phase 8b** (PRD adversarial review) per the YOLO mode contract above. Subagent error CRITICALs (scanner crashed, tool unavailable, pipeline broken) still halt unconditionally. The carve-out is justified by brownfield's gap-discovery purpose: every Phase 3/6 CRITICAL is, by construction, a real defect in the project being onboarded — halting on each one defeats the autonomous-run promise of YOLO mode (`gaia-brownfield yolo`).
+- `status: CRITICAL` — HALT. The skill MUST NOT advance to the next phase until the user resolves the critical finding. This rule applies in both normal and YOLO mode (CRITICAL still halts under YOLO — see YOLO Behavior below) **with the documented per-phase carve-outs**: under YOLO, the `brownfield-critical-class.sh` deterministic classifier (`bfcc_classify_critical`) inspects the finding shape and returns `finding-content` (gap-entry-shaped, describes the scanned codebase) or `tooling-error` (scanner crash, tool unavailable, malformed). Finding-content CRITICALs are auto-downgraded to WARNING-equivalent at **Phase 3** (scan subagents), **Phase 6** (NFR assessment), and **Phase 8b** (PRD adversarial review) per the YOLO mode contract above. Tooling-error CRITICALs halt unconditionally at every phase. The orchestrator applies the classifier's verdict — it does not re-judge. The carve-out is justified by brownfield's gap-discovery purpose: every Phase 3/6 **finding-content** CRITICAL describes a real defect in the project being onboarded — halting on each one defeats the autonomous-run promise of YOLO mode (`gaia-brownfield yolo`). Tooling-error CRITICALs at these phases still halt.
 
 The Phase 3 per-subagent scan diagnostic table (above) is the surfacing channel for the seven scan subagents — its `Status` and `Reason` columns are the user-visible projection of each scan subagent's structured return. A subagent that crashes mid-run is treated as `CRITICAL` for the orchestrator (skill exits non-zero with a partial-result summary per AC-EC8), but the cohort's surviving scanners still appear in the diagnostic table with their own statuses. This is the canonical pattern for the six-command remediation cohort (add-feature, security-review, brownfield, test-gap-analysis, fill-test-gaps, problem-solving).
 
