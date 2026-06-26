@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.210.1] — 2026-06-26
+
+### Fixed
+
+- (framework) 9 highest-severity GitHub-issue bug fixes (sprint-72)
+- (framework) bundle of 9 highest-severity GitHub-issue bug fixes
+
 ## [1.210.0] — 2026-06-26
 
 ### Added
