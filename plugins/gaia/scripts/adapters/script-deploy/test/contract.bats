@@ -64,6 +64,31 @@ EOF
   echo "$output" | grep -qi "script.*not.*found\|not executable"
 }
 
+@test "script-deploy contract: --components accepted and surfaces GAIA_DEPLOY_COMPONENTS (AC-components)" {
+  cat > "$WORK_TMP/deploy.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "components=${GAIA_DEPLOY_COMPONENTS:-none}"
+exit 0
+EOF
+  chmod +x "$WORK_TMP/deploy.sh"
+  SCRIPT_DEPLOY_PATH="$WORK_TMP/deploy.sh" run "$RUN_SH" --env staging --version v2.0.0 --output-dir "$WORK_TMP/out" --components "backend,frontend"
+  [ "$status" -eq 0 ]
+  [ -f "$WORK_TMP/out/deploy.stdout" ]
+  grep -q "components=backend,frontend" "$WORK_TMP/out/deploy.stdout"
+}
+
+@test "script-deploy contract: omitted --components does not set GAIA_DEPLOY_COMPONENTS (AC-components-absent)" {
+  cat > "$WORK_TMP/deploy.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "components=${GAIA_DEPLOY_COMPONENTS:-none}"
+exit 0
+EOF
+  chmod +x "$WORK_TMP/deploy.sh"
+  SCRIPT_DEPLOY_PATH="$WORK_TMP/deploy.sh" run "$RUN_SH" --env staging --version v2.0.0 --output-dir "$WORK_TMP/out"
+  [ "$status" -eq 0 ]
+  grep -q "components=none" "$WORK_TMP/out/deploy.stdout"
+}
+
 @test "script-deploy contract: missing --env produces usage error" {
   run "$RUN_SH" --version v1 --output-dir "$WORK_TMP/out"
   [ "$status" -ne 0 ]

@@ -109,7 +109,10 @@ EOF
 # --- F-37 ---
 
 @test "F-37: gaia-trace SKILL.md prescribes multi-gate summary line" {
-  grep -qF 'WARNING: N of M gates failed' "${PLUGIN_ROOT}/skills/gaia-trace/SKILL.md"
+  # validate-gate --multi now emits a script-produced one-line chain summary
+  # ("chain summary — N of M gates failed (...)") instead of an LLM-scanned
+  # "WARNING: N of M gates failed" line; the SKILL.md prescribes the new form.
+  grep -qF 'chain summary — N of M gates failed' "${PLUGIN_ROOT}/skills/gaia-trace/SKILL.md"
 }
 
 # --- F-23 (already shipped in F-22 fix; assert) ---

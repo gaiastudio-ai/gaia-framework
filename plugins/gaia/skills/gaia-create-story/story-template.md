@@ -12,8 +12,8 @@ points: {story_points}
 risk: "{high/medium/low}"
 sprint_id: null
 priority_flag: null
-# delivered: set to false if production wiring is deferred — see Dev Notes "Deferred wiring" subsection.
-delivered: true
+# delivered: a freshly scaffolded story has NOT shipped, so the default is false. Set it to true ONLY when the story's production wiring has actually shipped — see Dev Notes "Deferred wiring" subsection.
+delivered: false
 # deferred_implementation: set to true if the story's implementation is deferred to a later sprint — consumed by /gaia-sprint-review's C3 criterion.
 deferred_implementation: false
 origin: {origin}

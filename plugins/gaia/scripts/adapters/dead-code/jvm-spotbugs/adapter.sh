@@ -90,7 +90,7 @@ if [ "$_SB_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>&1;
 fi
 
 if ! command -v spotbugs >/dev/null 2>&1; then
-  log_warn "spotbugs toolchain absent — jvm-spotbugs skipped (graceful degrade); Phase 3 continues"
+  log_warn "spotbugs toolchain absent — jvm-spotbugs skipped (graceful degrade); Phase 3 continues; install via 'brew install spotbugs' (or download from https://spotbugs.github.io/)"
   exit 0
 fi
 if ! find "$ROOT" -type f \( -name '*.java' -o -name '*.class' \) -print -quit 2>/dev/null | grep -q .; then

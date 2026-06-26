@@ -246,6 +246,8 @@ source "${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/skill-proposal.sh"
 extract_tech_debt_reflection "${CLAUDE_PROJECT_ROOT}" "${sprint_id}"
 ```
 
+See `scripts/skill-proposal.sh --help` (or the `usage()` function in the script header) for the full argument, I/O, and failure-mode reference for all four exported helpers: `extract_tech_debt_reflection`, `build_proposal`, `validate_proposal`, and `write_approved_proposal`.
+
 The function extracts:
 - **Debt ratio delta:** current sprint vs. prior sprint (percentage change)
 - **Aging delta:** mean age of open debt items (days change)

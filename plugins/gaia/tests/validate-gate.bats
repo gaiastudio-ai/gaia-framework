@@ -82,14 +82,34 @@ teardown() { common_teardown; }
   printf 'x' > "$TEST_ARTIFACTS/ci-setup.md"
   run "$SCRIPT" --multi "test_plan_exists,traceability_exists,ci_setup_exists"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"3 gates passed"* ]]
+  [[ "$output" == *"chain summary — all 3 gates passed"* ]]
 }
 
-@test "validate-gate.sh: --multi fails fast on first missing gate" {
+@test "validate-gate.sh: --multi exits non-zero when a gate is missing" {
   printf 'x' > "$TEST_ARTIFACTS/test-plan.md"
   run "$SCRIPT" --multi "test_plan_exists,traceability_exists"
   [ "$status" -eq 1 ]
   [[ "$output" == *"traceability_exists"* ]]
+}
+
+@test "validate-gate.sh: --multi evaluates every gate and summarizes failures" {
+  # Only test-plan present; traceability + ci-setup both missing. The chain
+  # must NOT stop at the first failure — it evaluates all three and reports a
+  # deterministic one-line summary naming the count of failed gates.
+  printf 'x' > "$TEST_ARTIFACTS/test-plan.md"
+  run "$SCRIPT" --multi "test_plan_exists,traceability_exists,ci_setup_exists"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"traceability_exists"* ]]
+  [[ "$output" == *"ci_setup_exists"* ]]
+  [[ "$output" == *"chain summary — 2 of 3 gates failed"* ]]
+}
+
+@test "validate-gate.sh: --multi summary line is emitted on full pass" {
+  printf 'x' > "$TEST_ARTIFACTS/test-plan.md"
+  printf 'x' > "$TEST_ARTIFACTS/traceability-matrix.md"
+  run "$SCRIPT" --multi "test_plan_exists,traceability_exists"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"chain summary — all 2 gates passed"* ]]
 }
 
 @test "validate-gate.sh: unknown gate type fails with non-zero" {

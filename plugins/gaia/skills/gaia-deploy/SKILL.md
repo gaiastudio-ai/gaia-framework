@@ -1,7 +1,7 @@
 ---
 name: gaia-deploy
 description: Pattern A deployment orchestrator — composite pre-deploy gate → adapter-mediated deploy → health-check → post-deploy smoke → final verdict. Sequential, transparent, no auto-retry, no auto-rollback. Use when "deploy this version" or /gaia-deploy.
-argument-hint: "--env <env> --version <ver> [--skip-smoke] [--story-key <key>]"
+argument-hint: "--env <env> --version <ver> [--components <list>] [--skip-smoke] [--story-key <key>]"
 context: main
 allowed-tools: [Read, Grep, Glob, Bash, Skill]
 type: action
@@ -60,6 +60,7 @@ Pattern A invariants:
 |---|---|---|
 | `--env <env>` | yes | Target environment (e.g., `staging`, `production`). No default. |
 | `--version <ver>` | yes | Version tag / artifact identifier passed to the deploy adapter. |
+| `--components <list>` | no | Comma-separated stack/component names to scope the deploy to (e.g. `backend,frontend`). Omitted → full deploy (all components). Passed through to the deploy adapter so an operator can deploy only what changed (the affected-set hand-off) through the sanctioned command instead of calling `deploy-dispatch.sh` directly. The value SHOULD match `stacks[].name` entries in `project-config.yaml`. |
 | `--skip-smoke` | no | Skip the post-deploy smoke phase. Final verdict is `PASSED` (deploy-only) with a `WARNING` recorded in the report (AC14). |
 | `--story-key <key>` | no | Story key for the pre-deploy composite-verdict gate. Story-less deployment-phase invocation is supported but skips Review Gate context. |
 
@@ -76,7 +77,7 @@ The skill MUST NOT proceed to deploy when the composite is not APPROVE. There is
 
 ### Phase 2 — Deploy adapter dispatch
 
-Invoke `scripts/deploy-dispatch.sh --env <env> --version <ver> --output-dir evidence/deploy/`. The script:
+Invoke `scripts/deploy-dispatch.sh --env <env> --version <ver> --output-dir evidence/deploy/ [--components <list>]`. When the caller passed `--components` to `/gaia-deploy`, forward it verbatim so the deploy is scoped to those components; when omitted, the dispatch performs a full deploy. The script:
 
 1. Resolves the adapter from `deployment.adapter` config (test seam: `GAIA_DEPLOY_ADAPTER_CMD`).
 2. Runs the three-state availability probe (`tool-availability-probe.sh`) — `unavailable` → BLOCKED with installation instructions.
@@ -122,6 +123,37 @@ After verdict aggregation, the lifecycle hook `scripts/finalize.sh` writes a che
 ## Credential Handling (AC10)
 
 Before invoking the deploy adapter or smoke runners, run `scripts/check-credentials.sh --env-var <NAME> [--env-var <NAME> ...]` for every credential env-var declared under `environments.<env>.auth.credentials_env`. Missing → BLOCKED with the expected env-var name. Credentials are passed by **name** to downstream scripts; the deploy adapter and smoke runners read the env-var from their own environment.
+
+## Dormant Environments
+
+An environment declared as `deployable` in `project-config.yaml` but not yet
+provisioned on the target infrastructure can be marked dormant:
+
+```yaml
+environments:
+  - id: production
+    kind: deployable
+    dormant: true
+```
+
+When deploying to a dormant environment, the orchestrator reads
+`environments.<env>.dormant: true` from `project-config.yaml` and exports
+`GAIA_DEPLOY_ENV_DORMANT=1` before invoking `deploy-dispatch.sh`. The dispatch
+script forwards the env-var to the adapter. The adapter emits a distinct
+diagnostic ("dormant environment ... not yet provisioned") and exits with
+code **3**. `deploy-dispatch.sh` propagates exit 3 (not 1) so that callers
+and CI can distinguish a dormant environment from a genuine misconfiguration
+(exit 127) or a deploy failure (exit 1). No deploy script invocation occurs.
+
+Exit code summary for the script-deploy adapter:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Deploy succeeded |
+| 1 | Deploy script failed (non-zero exit) |
+| 2 | Usage / missing flag |
+| 3 | Dormant environment (declared but not provisioned) |
+| 127 | Deploy script not found or not executable (misconfiguration) |
 
 ## Output Contract
 

@@ -105,7 +105,19 @@ Delegate to the **security** subagent (Zara) via `agents/security` to extract re
 
 ### Step 7 — Generate Output
 
-- Record key decisions in security-sidecar memory.
+- Record key decisions in security-sidecar memory via the general sidecar writer:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/sidecar-write.sh \
+  --agent zara --slug threat-model-review \
+  --decision "Threat model decisions for this sprint." \
+  --root "${CLAUDE_PROJECT_ROOT}"
+```
+
+  This creates/appends to `.gaia/memory/zara-sidecar/decision-log.md` with
+  atomic write discipline (tmp+mv). See `sidecar-write.sh --help` for the
+  full argument reference.
+
 - Write the threat model document to `.gaia/artifacts/planning-artifacts/threat-model.md` with: assets table, STRIDE analysis per component, DREAD scores, risk levels, mitigation strategies, and security requirements list.
 - **Durable dispatch provenance.** The single-line dispatch
   note from the Critical Rules carve-out is emitted to stdout, which Claude Code

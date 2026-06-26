@@ -122,6 +122,8 @@ core	e107-s1-planned-sprint-state.bats
 core	e107-s3-for-sprint-materializer.bats
 core	e114-docs.bats
 core	e28-s187-revert-tools-field.bats
+core	e28-s272-env-var-reference.bats
+core	e28-s276-dormant-env.bats
 core	e29-s7-v1-checkpoint-deletion-plan.bats
 core	e34-s1-val-sidecar-perf.bats
 core	e34-s1-val-sidecar-writer-units.bats
@@ -398,6 +400,8 @@ scripts-core	e107-s4-planned-active-readiness-gate.bats
 scripts-core	e28-s141-schema-coverage.bats
 scripts-core	e28-s182-gaia-migrate-sigint-trap.bats
 scripts-core	e28-s211-workerspawn-memory-load.bats
+scripts-core	e28-s274-sidecar-write.bats
+scripts-core	e28-s275-planning-vs-test-taxonomy.bats
 scripts-core	e41-s1-yolo-lint.bats
 scripts-core	e41-s1-yolo-mode.bats
 scripts-core	e43-s6-resume-contract.bats
@@ -633,6 +637,9 @@ skills	e103-s3-sprint-plan-strict-lifecycle-gate.bats
 skills	e103-s4-sprint-close-advisory-checklist.bats
 skills	e103-s6-create-arch-threat-model-gate.bats
 skills	e28-s199-ci-finalize-gate.bats
+skills	e28-s268-story-template-delivered-default.bats
+skills	e28-s269-deploy-components-flag.bats
+skills	e28-s273-skill-proposal-helper-docs.bats
 skills	e36-s1-cross-retro-learning.bats
 skills	e39-s4-extract-findings.bats
 skills	e39-s4-sprint-scope.bats

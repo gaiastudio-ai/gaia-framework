@@ -658,6 +658,11 @@
                 "enum": ["deployable", "branch-only", "distribution-only"]
               },
               "url":    { "type": "string" },
+              "dormant": {
+                "description": "When true, the environment is declared but not yet provisioned on target infrastructure. Deploy adapters emit a distinct diagnostic (exit 3) instead of a generic misconfiguration error (exit 127) when the deploy script is missing for a dormant environment.",
+                "type": "boolean",
+                "default": false
+              },
               "credentials": {
                 "type": "object",
                 "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
