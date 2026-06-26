@@ -169,6 +169,7 @@ Usage:
   sprint-state.sh reconcile                  [--sprint-id <id>] [--dry-run]
   sprint-state.sh lint-dependencies          [--sprint-id <id>] [--format json|text]
   sprint-state.sh record-escalation-override --item-ids <ids> --user <name> --reason <text>
+  sprint-state.sh advance                    --sprint-id <next-id> [--start-date ...] [--end-date ...]
   sprint-state.sh detect-auto-close
   sprint-state.sh --help
 
@@ -180,6 +181,18 @@ Subcommands:
                     review → closed). Idempotent — refuses to overwrite
                     an existing yaml. Required before the first `inject` in a
                     new project. Usage: sprint-state.sh init --sprint-id <id>.
+                    After /gaia-sprint-close, the live yaml persists with
+                    status=closed — init (and advance) re-seed over it.
+  advance           Advance to the next sprint after closing the current one.
+                    A thin, discoverable alias for `init` that makes the
+                    close-to-next-sprint intent explicit. Requires the
+                    predecessor sprint to be closed — refuses with a clear
+                    message if the current sprint is not closed (directing the
+                    operator to close it first). Delegates to the existing
+                    init re-seed path (no duplicated seeding logic). Accepts
+                    the same optional flags as init (--start-date, --end-date,
+                    --sprint-length-days).
+                    Usage: sprint-state.sh advance --sprint-id <next-id>.
   transition        Atomically transition a story to <state>. Validates
                     adjacency, re-reads sprint-status.yaml under flock,
                     rewrites story file frontmatter + body Status line +
@@ -2526,7 +2539,11 @@ _resolve_active_yaml() {
 # idempotent: re-init against an existing yaml is rejected.
 cmd_init() {
   local sprint_id="$1"
-  [ -n "$sprint_id" ] || die "init: --sprint-id is required"
+  # _INIT_VERB is set by the dispatch layer to the invoking subcommand name
+  # ("init" or "advance") so user-facing messages reflect the actual command.
+  # Defaults to "init" for backward-compat when cmd_init is called directly.
+  local init_verb="${_INIT_VERB:-init}"
+  [ -n "$sprint_id" ] || die "${init_verb}: --sprint-id is required"
   # Optional `--start-date`, `--end-date`, `--sprint-length-days` flags.
   # When a date flag is provided, the seed includes the field. When the date
   # flags are absent the seed carries only the minimal shape (sprint_id /
@@ -2546,7 +2563,7 @@ cmd_init() {
       --end-date)        end_date="${2:-}"; shift 2 ;;
       --capacity-points) shift 2 ;;  # accepted-but-inert (legacy proxy retired)
       --sprint-length-days) sprint_length="${2:-}"; shift 2 ;;
-      *) die "init: unknown flag: $1" ;;
+      *) die "${init_verb}: unknown flag: $1" ;;
     esac
   done
   local yaml
@@ -2563,10 +2580,10 @@ cmd_init() {
     local existing_status
     existing_status="$(_yaml_sprint_status "$yaml" 2>/dev/null || true)"
     if [ "$existing_status" = "closed" ]; then
-      printf '%s: init: re-seeding over closed predecessor sprint (%s, status=closed) — prior state preserved in sprint-archive/\n' \
-        "$SCRIPT_NAME" "$yaml" >&2
+      printf '%s: %s: re-seeding over closed predecessor sprint (%s, status=closed) — prior state preserved in sprint-archive/\n' \
+        "$SCRIPT_NAME" "$init_verb" "$yaml" >&2
     else
-      die "init: $yaml already exists (status=${existing_status:-unknown}) — refusing to overwrite a non-closed sprint (close it first via /gaia-sprint-close)"
+      die "${init_verb}: $yaml already exists (status=${existing_status:-unknown}) — refusing to overwrite a non-closed sprint (close it first via /gaia-sprint-close)"
     fi
   fi
   mkdir -p "$(dirname "$yaml")"
@@ -2597,7 +2614,7 @@ cmd_init() {
     printf 'items: []\n'
   } > "$tmp"
   mv "$tmp" "$yaml"
-  printf 'init: seeded %s for sprint %s\n' "$yaml" "$sprint_id"
+  printf '%s: seeded %s for sprint %s\n' "$init_verb" "$yaml" "$sprint_id"
 
   # Emit a sprint-plan/{id}-plan.md stub so the documented sprint-plan layout
   # is non-empty even when the operator drove sprint commit via direct
@@ -2614,13 +2631,13 @@ cmd_init() {
       printf -- '---\n'
       printf 'artifact_type: sprint-plan\n'
       printf 'sprint_id: "%s"\n' "$sprint_id"
-      printf 'generated_by: sprint-state.sh init\n'
+      printf 'generated_by: sprint-state.sh %s\n' "$init_verb"
       printf 'generated_at: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       [ -n "$start_date" ]      && printf 'start_date: "%s"\n' "$start_date"
       [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
       printf -- '---\n\n'
       printf '# Sprint plan: %s\n\n' "$sprint_id"
-      printf 'This stub was emitted by `sprint-state.sh init` so the sprint-plan/\n'
+      printf 'This stub was emitted by `sprint-state.sh %s` so the sprint-plan/\n' "$init_verb"
       printf 'directory has a non-empty entry per the canonical layout. The\n'
       printf '`/gaia-sprint-plan` SKILL.md Step 7 LLM-write path enriches this\n'
       printf 'file with the goals, selected stories, dependency notes, and\n'
@@ -2629,7 +2646,7 @@ cmd_init() {
       printf '## Selected stories\n\n_(populated by /gaia-sprint-plan Step 5)_\n\n'
       printf '## Notes\n\n_(populated by /gaia-sprint-plan Step 6)_\n'
     } > "$_plan_file" 2>/dev/null || true
-    printf 'init: emitted sprint-plan stub at %s\n' "$_plan_file" >&2
+    printf '%s: emitted sprint-plan stub at %s\n' "$init_verb" "$_plan_file" >&2
   fi
 }
 
@@ -3154,7 +3171,7 @@ main() {
       usage
       exit 0
       ;;
-    init|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint)
+    init|advance|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -3304,9 +3321,16 @@ main() {
   fi
 
   case "$subcmd" in
-    init)
-      # Bootstrap a fresh sprint-status.yaml.
-      [ -n "$reconcile_sprint_id" ] || die "init requires --sprint-id <id>"
+    init|advance)
+      # Bootstrap a fresh sprint-status.yaml (init) or advance to the next
+      # sprint after closing (advance). The advance subcommand is a thin,
+      # discoverable alias that delegates to cmd_init — the underlying
+      # cmd_init already handles closed-predecessor re-seeding and refuses
+      # non-closed sprints with a clear message.
+      [ -n "$reconcile_sprint_id" ] || die "${subcmd} requires --sprint-id <id>"
+      # Pass the invoking subcommand name into cmd_init so user-facing
+      # messages say "advance:" when invoked as advance, "init:" when init.
+      _INIT_VERB="$subcmd"
       # Forward optional date / capacity / length flags only when non-empty,
       # so the minimal seed shape is preserved on zero-flag invocations.
       # Branch on array length: bash 3.2 + `set -u` rejects an empty-array

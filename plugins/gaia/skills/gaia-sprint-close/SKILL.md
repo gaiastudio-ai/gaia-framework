@@ -207,6 +207,48 @@ The report joins per-step timing and approximate per-step token estimates into p
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/finalize.sh
 
+## Advancing to the next sprint
+
+After a sprint is closed, the next sprint can be scaffolded without any manual
+YAML edit. The `sprint-state.sh advance` subcommand is the sanctioned path for
+this hand-off — it validates that the predecessor sprint is closed, then seeds a
+fresh `sprint-status.yaml` with `status: planned` for the new sprint ID.
+
+```bash
+sprint-state.sh advance --sprint-id <next-sprint-id>
+```
+
+The `advance` subcommand accepts the same optional flags as `init`:
+
+- `--start-date YYYY-MM-DD` — set the sprint start date.
+- `--end-date YYYY-MM-DD` — set the sprint end date.
+- `--sprint-length-days N` — derive the end date from start + N days.
+
+**Behaviour:**
+
+- When the predecessor sprint is **closed** (which it will be after this skill
+  runs successfully), `advance` re-seeds the live `sprint-status.yaml` over the
+  closed predecessor. The closed state is already preserved in the sprint
+  archive by the close ceremony's archive step.
+- When the predecessor sprint is **not closed** (planned, active, or review),
+  `advance` refuses with a clear message directing the operator to close the
+  sprint first via `/gaia-sprint-close`.
+- When no `sprint-status.yaml` exists yet (greenfield project), `advance`
+  behaves identically to `init` — it seeds a fresh file.
+
+The typical ceremony sequence is:
+
+1. `/gaia-sprint-review` — produce the review verdict.
+2. `/gaia-triage-findings` — triage findings and review tech debt.
+3. `/gaia-retro` — produce the retrospective document.
+4. `/gaia-sprint-close` — close the sprint (this skill).
+5. `sprint-state.sh advance --sprint-id <next>` — scaffold the next sprint.
+6. `/gaia-sprint-plan` — plan the next sprint (select stories, set goals).
+
+`advance` is a thin alias for `sprint-state.sh init` — it reuses the same
+code path, so all of `init`'s guarantees (atomic write, sprint-plan stub
+generation) apply.
+
 ## Refs
 
 - Sprint close ceremony — boundary write, archive, lifecycle event
@@ -214,4 +256,5 @@ The report joins per-step timing and approximate per-step token estimates into p
 - Scripts-over-LLM principle
 - `feedback_sprint_boundary_yaml_write.md` (historical context; this skill is the official replacement)
 - `sprint-state.sh detect-auto-close` — upstream signal
+- `sprint-state.sh advance` — next-sprint scaffold after close
 - Rollover execution + sprint-plan guard — composes on top

@@ -67,8 +67,10 @@ teardown() { common_teardown; }
 @test "sprint-state.sh declares cmd_init + init case branch" {
   # cmd_init() implements the init subcommand for seeding a fresh sprint yaml.
   grep -qF 'cmd_init()' "$PLUGIN_ROOT/scripts/sprint-state.sh"
-  # init MUST be a routed subcommand in the dispatcher.
-  grep -qE '^[[:space:]]+init\)$' "$PLUGIN_ROOT/scripts/sprint-state.sh"
+  # init MUST be a routed subcommand in the dispatcher. The case label may be
+  # the bare `init)` or a shared `init|advance)` branch (advance is a thin
+  # alias that dispatches through the same init seeding path).
+  grep -qE '^[[:space:]]+init(\|advance)?\)$' "$PLUGIN_ROOT/scripts/sprint-state.sh"
 }
 
 @test "gaia-dev-story sprint-state.sh wrapper is byte-identical to canonical" {
