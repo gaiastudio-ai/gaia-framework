@@ -89,6 +89,7 @@ core	code-review-standards-rubric.bats
 core	component-manifest-drift-guard.bats
 core	component-stack-resolution.bats
 core	component-test-partition.bats
+core	config-brownfield-flag-coverage.bats
 core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats
 core	dead-code-join.bats
@@ -247,7 +248,6 @@ core	product-brief-post-complete-gate.bats
 core	product-brief-pre-start-gate.bats
 core	promotion-trigger.bats
 core	reconcile-cross-stack.bats
-core	resolve-config-cwd-independence.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
 core	retired-migrate-stories.bats
@@ -264,6 +264,7 @@ core	skill-plugin-root-paths-guard.bats
 core	skill-rename-preflight.bats
 core	sprint-close-sentinel-unconditional.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
+core	sprint-review-yolo-fallback.bats
 core	sprint-state-inject.bats
 core	sprint-state-split-repo-resolution.bats
 core	sprint-state-ssot-parity.bats
@@ -459,6 +460,7 @@ scripts-core	probe-verdict-resolver-integration.bats
 scripts-core	project-config-slice.bats
 scripts-core	reconcile-stale-graph.bats
 scripts-core	resolve-affected-set.bats
+scripts-core	resolve-config-cwd-independence.bats
 scripts-core	resolve-config.bats
 scripts-core	review-gate-proof-of-execution.bats
 scripts-core	review-gate-sprint-scope.bats
@@ -504,6 +506,8 @@ scripts-lib	assert-protected-jobs.bats
 scripts-lib	atdd-anti-stub-emit.bats
 scripts-lib	auto-rename-migration.bats
 scripts-lib	brain-index-schema.bats
+scripts-lib	brownfield-critical-class.bats
+scripts-lib	brownfield-gap-entry-claim-type.bats
 scripts-lib	ci-prefix-detection.bats
 scripts-lib	ci-workflow-stitcher.bats
 scripts-lib	clean-room-gate.bats
@@ -585,6 +589,7 @@ scripts-sprint	issue-1403-title-quote-escaping.bats
 scripts-sprint	resolve-story-file-coverage-stub.bats
 scripts-sprint	resolve-story-file.bats
 scripts-sprint	sprint-progress-audit.bats
+scripts-sprint	sprint-state-advance.bats
 scripts-sprint	sprint-state-detect-auto-close.bats
 scripts-sprint	sprint-state-goals-and-state-machine.bats
 scripts-sprint	sprint-state-inject-points-ux.bats
@@ -669,6 +674,7 @@ skills	test-manual-surface-api.bats
 skills	test-manual-surface-dormancy.bats
 skills	test-run-detection-and-vocab.bats
 skills	test-run-invocation-mapping.bats
+skills	test-strategy-docs-only-default.bats
 skills	test-test-automate-phase-1.bats
 skills	validate-against-schema-date-fix.bats
 skills	write-val-sentinel-sprint-id-format.bats

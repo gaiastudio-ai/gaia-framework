@@ -40,8 +40,10 @@ teardown() { common_teardown; }
 @test "F-023: gaia-test-strategy finalize.sh resolves planning-artifacts/ test-strategy FIRST" {
   # Compare the CODE arms (ARTIFACT= assignments), not header comments: the
   # new-home assignment must appear before the legacy strategy/ assignment.
-  new_line=$(grep -n 'ARTIFACT="\.gaia/artifacts/planning-artifacts/test-strategy.md"' "$TS_FINAL" | head -1 | cut -d: -f1)
-  legacy_line=$(grep -n 'ARTIFACT="\.gaia/artifacts/test-artifacts/strategy/test-strategy.md"' "$TS_FINAL" | head -1 | cut -d: -f1)
+  # The path may be project-root-anchored ($_PROJECT_ROOT/...) or bare; match
+  # the canonical-vs-legacy suffix regardless of the anchor prefix.
+  new_line=$(grep -n 'ARTIFACT=".*\.gaia/artifacts/planning-artifacts/test-strategy.md"' "$TS_FINAL" | head -1 | cut -d: -f1)
+  legacy_line=$(grep -n 'ARTIFACT=".*\.gaia/artifacts/test-artifacts/strategy/test-strategy.md"' "$TS_FINAL" | head -1 | cut -d: -f1)
   [ -n "$new_line" ]
   [ -n "$legacy_line" ]
   [ "$new_line" -lt "$legacy_line" ]

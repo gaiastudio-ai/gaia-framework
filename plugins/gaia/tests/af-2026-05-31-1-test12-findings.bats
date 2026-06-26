@@ -172,13 +172,13 @@ EOF
 # F-13 — test-strategy --plan finalize NOTICE before mutation
 # ===========================================================================
 
-@test "test-strategy finalize emits pre-mutation NOTICE" {
-  run grep -F 'NOTICE — test-strategy --plan will APPEND empty stubs' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
+@test "test-strategy finalize emits no-mutation-default NOTICE (AC2)" {
+  run grep -F 'Auto-stub SKIPPED (no-mutation default)' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
 
-@test "finalize NOTICE names the opt-out env var" {
-  run grep -F 'GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
+@test "finalize NOTICE names the opt-in env var and manual-add skills (AC2)" {
+  run grep -F 'GAIA_TEST_STRATEGY_AUTOSTUB=1, or add manually via /gaia-config-test' "$PLUGIN_ROOT/skills/gaia-test-strategy/scripts/finalize.sh"
   [ "$status" -eq 0 ]
 }
 

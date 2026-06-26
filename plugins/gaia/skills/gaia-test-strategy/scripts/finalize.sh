@@ -54,7 +54,12 @@ LIFECYCLE_EVENT="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
-# ---------- 0. Resolve artifact path (three-tier) ----------
+# ---------- 0. Resolve project root ----------
+# Anchor all .gaia/ and config/ probes to the project root so the script
+# works regardless of CWD.  Falls back to CWD when unset.
+_PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-.}"
+
+# ---------- 0a. Resolve artifact path (four-tier) ----------
 # Tier 1 — TEST_STRATEGY_ARTIFACT env-var override wins.
 # Tier 2 — NEW canonical home: .gaia/artifacts/planning-artifacts/test-strategy.md
 #          (docs-about-testing moved out of test-artifacts/).
@@ -67,12 +72,12 @@ ARTIFACT_REQUESTED=0
 if [ -n "${TEST_STRATEGY_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$TEST_STRATEGY_ARTIFACT"
-elif [ -f ".gaia/artifacts/planning-artifacts/test-strategy.md" ]; then
-  ARTIFACT=".gaia/artifacts/planning-artifacts/test-strategy.md"
-elif [ -f "docs/test-artifacts/strategy/test-strategy.md" ] && [ ! -d ".gaia/artifacts/test-artifacts" ]; then
-  ARTIFACT="docs/test-artifacts/strategy/test-strategy.md"
-elif [ -f ".gaia/artifacts/test-artifacts/strategy/test-strategy.md" ]; then
-  ARTIFACT=".gaia/artifacts/test-artifacts/strategy/test-strategy.md"
+elif [ -f "$_PROJECT_ROOT/.gaia/artifacts/planning-artifacts/test-strategy.md" ]; then
+  ARTIFACT="$_PROJECT_ROOT/.gaia/artifacts/planning-artifacts/test-strategy.md"
+elif [ -f "$_PROJECT_ROOT/docs/test-artifacts/strategy/test-strategy.md" ] && [ ! -d "$_PROJECT_ROOT/.gaia/artifacts/test-artifacts" ]; then
+  ARTIFACT="$_PROJECT_ROOT/docs/test-artifacts/strategy/test-strategy.md"
+elif [ -f "$_PROJECT_ROOT/.gaia/artifacts/test-artifacts/strategy/test-strategy.md" ]; then
+  ARTIFACT="$_PROJECT_ROOT/.gaia/artifacts/test-artifacts/strategy/test-strategy.md"
 fi
 
 # When the unified test-strategy SKILL `--plan` mode writes test-plan.md only,
@@ -80,8 +85,8 @@ fi
 # test-strategy.md stub that satisfies the SV checklist out-of-the-box.
 # Idempotent — does NOT touch an existing test-strategy.md.
 if [ -z "$ARTIFACT" ]; then
-  _ts_canonical=".gaia/artifacts/planning-artifacts/test-strategy.md"
-  _tp_canonical=".gaia/artifacts/planning-artifacts/test-plan.md"
+  _ts_canonical="$_PROJECT_ROOT/.gaia/artifacts/planning-artifacts/test-strategy.md"
+  _tp_canonical="$_PROJECT_ROOT/.gaia/artifacts/planning-artifacts/test-plan.md"
   if [ -f "$_tp_canonical" ] && [ ! -e "$_ts_canonical" ]; then
     mkdir -p "$(dirname "$_ts_canonical")" 2>/dev/null || true
     {
@@ -289,36 +294,43 @@ fi
 # the right upstream skill.
 if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
   CONFIG_PATH=""
-  if [ -f ".gaia/config/project-config.yaml" ]; then
-    CONFIG_PATH=".gaia/config/project-config.yaml"
-  elif [ -f "config/project-config.yaml" ]; then
-    CONFIG_PATH="config/project-config.yaml"
+  if [ -f "$_PROJECT_ROOT/.gaia/config/project-config.yaml" ]; then
+    CONFIG_PATH="$_PROJECT_ROOT/.gaia/config/project-config.yaml"
+  elif [ -f "$_PROJECT_ROOT/config/project-config.yaml" ]; then
+    CONFIG_PATH="$_PROJECT_ROOT/config/project-config.yaml"
   fi
   if [ -n "$CONFIG_PATH" ]; then
     missing_sections=""
     grep -qE "^test_execution:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution"
     grep -qE "^test_execution_bridge:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} test_execution_bridge"
     grep -qE "^environments:" "$CONFIG_PATH" 2>/dev/null || missing_sections="${missing_sections} environments"
-    # Gate the auto-stub on whether the run was a docs-only run vs a real
-    # hydration run. Docs-only runs (no --plan or --scaffold mode flag, or the
-    # strategy artifact was authored without any new test_execution-relevant
-    # input) should NOT mutate project-config.yaml — the operator just wanted
-    # the doc. The GAIA_TEST_STRATEGY_DOCS_ONLY env signal (or no-mode-signal
-    # default for invocations that produce only the artifact) skips the
-    # auto-stub silently; the NOTICE path still surfaces missing sections.
-    if [ "${GAIA_TEST_STRATEGY_DOCS_ONLY:-0}" = "1" ]; then
-      if [ -n "$missing_sections" ]; then
-        _ms="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
-        log "NOTICE (docs-only run): project-config.yaml is missing section(s) [${_ms}]. Auto-stub SKIPPED — run /gaia-test-strategy --plan to hydrate, or add manually via /gaia-config-test, /gaia-bridge-enable, /gaia-config-env."
-        missing_sections=""  # neutralize the downstream auto-stub branch
-      fi
+
+    # ---------- Hydration gate: opt-IN, not opt-OUT ----------
+    # The auto-stub fires ONLY when an explicit opt-in signal is present:
+    #   - GAIA_TEST_STRATEGY_AUTOSTUB=1  (explicit env-var opt-in), OR
+    #   - SCAFFOLD_CONFIG_PATH or SCAFFOLD_TEST_DIR set (scaffold mode).
+    # Everything else (including a plain --plan docs-only run) is no-mutation.
+    # GAIA_TEST_STRATEGY_DOCS_ONLY=1 remains honored as a backward-compat
+    # redundancy (it was the opt-out; now docs-only is the default, so the
+    # flag is harmless).
+    # GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 also stays as a harmless no-op.
+    _autostub_enabled=0
+    if [ "${GAIA_TEST_STRATEGY_AUTOSTUB:-0}" = "1" ]; then
+      _autostub_enabled=1
+    elif [ -n "${SCAFFOLD_CONFIG_PATH:-}" ] || [ -n "${SCAFFOLD_TEST_DIR:-}" ]; then
+      _autostub_enabled=1
     fi
-    if [ -n "$missing_sections" ] && [ "${GAIA_TEST_STRATEGY_NO_AUTOSTUB:-0}" = "1" ]; then
-      # Opt-out — the operator owns project-config.yaml and may not want it
-      # mutated. With GAIA_TEST_STRATEGY_NO_AUTOSTUB=1, skip the hydration and
-      # instead tell them exactly which sections to add by hand.
+    # Backward compat: explicit DOCS_ONLY=1 overrides even if scaffold vars
+    # leaked into the env (belt-and-suspenders).
+    if [ "${GAIA_TEST_STRATEGY_DOCS_ONLY:-0}" = "1" ]; then
+      _autostub_enabled=0
+    fi
+
+    if [ -n "$missing_sections" ] && [ "$_autostub_enabled" -ne 1 ]; then
+      # No-mutation default: surface the missing sections as a NOTICE so the
+      # operator knows what to populate, but do NOT write to the config.
       _ms="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
-      log "NOTICE: project-config.yaml is missing section(s) [${_ms}] but auto-stub is DISABLED (GAIA_TEST_STRATEGY_NO_AUTOSTUB=1). Add them manually via /gaia-config-test, /gaia-bridge-enable, /gaia-config-env before invoking downstream skills."
+      log "NOTICE: project-config.yaml is missing section(s) [${_ms}]. Auto-stub SKIPPED (no-mutation default). To hydrate, re-run with GAIA_TEST_STRATEGY_AUTOSTUB=1, or add manually via /gaia-config-test, /gaia-bridge-enable, /gaia-config-env."
     elif [ -n "$missing_sections" ]; then
       # Write empty stubs for the missing sections so downstream skills find
       # the keys present (with empty bodies) and can either proceed with
@@ -331,7 +343,7 @@ if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
       # the file, the sections that will be appended, and the opt-out env var
       # IN THE SAME LINE — so a single scroll-back surfaces the contract.
       _ms_pre="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
-      log "NOTICE — test-strategy --plan will APPEND empty stubs to project-config.yaml for sections [${_ms_pre}] so downstream skills (gaia-bridge-enable, gaia-test-automate, gaia-deploy) can resolve the keys. Set GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip this auto-stub and receive a manual-add NOTICE instead."
+      log "NOTICE — auto-stub-hydration will APPEND stubs to project-config.yaml for sections [${_ms_pre}] so downstream skills (gaia-bridge-enable, gaia-test-automate, gaia-deploy) can resolve the keys."
       log "test-strategy.md was written; project-config.yaml is missing sections:${missing_sections}"
       log "auto-stub-hydration: writing empty stubs for each missing section so downstream skills can resolve the keys"
       log "Downstream skills affected: /gaia-bridge-enable (test_execution_bridge), /gaia-test-automate (test_execution.tier_N.command), /gaia-deploy (environments). Populate the stubs via /gaia-config-test, /gaia-bridge-enable scaffold, /gaia-config-env before invoking those."
@@ -417,7 +429,7 @@ STUB
       # emit an explicit summary naming exactly which sections were appended and
       # how to revert, not just a generic "complete".
       _stubbed="$(printf '%s' "$missing_sections" | sed 's/^[[:space:]]*//')"
-      log "NOTICE: auto-stub-hydration MUTATED $CONFIG_PATH — appended empty stub section(s): [${_stubbed}]. Each block is tagged with an 'auto-stub' comment marker. To revert: delete those marked blocks. To populate: /gaia-config-test, /gaia-bridge-enable, /gaia-config-env. Set GAIA_TEST_STRATEGY_NO_AUTOSTUB=1 to skip this hydration entirely."
+      log "NOTICE: auto-stub-hydration MUTATED $CONFIG_PATH — appended stub section(s): [${_stubbed}]. Each block is tagged with an 'auto-stub' comment marker. To revert: delete those marked blocks. To populate: /gaia-config-test, /gaia-bridge-enable, /gaia-config-env."
       log "auto-stub-hydration complete; review $CONFIG_PATH and populate the stubs before invoking downstream skills"
     fi
   fi
