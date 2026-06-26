@@ -88,6 +88,15 @@ run_adapter() {
   [[ "$output" == *"spotbugs"* ]]
 }
 
+@test "jvm adapter degrade emits a language-aware install hint" {
+  rm -f "$FAKE_BIN/spotbugs"
+  run env PATH="/usr/bin:/bin" GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true GAIA_BROWNFIELD_DEADCODE_JVM_ENABLED=true \
+    JVM_PROJECT_ROOT="$FX" JVM_OUT_DIR="$OUT" bash "$ADAPTER"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"install via"* ]]
+  [[ "$output" == *"spotbugs"* ]]
+}
+
 # --- AC5 — no java/class files → no-op ---------------------------------------
 @test "E70-S8 jvm: no .java/.class files → idempotent no-op, exit 0" {
   emptyroot="$TEST_TMP/empty"; mkdir -p "$emptyroot"

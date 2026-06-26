@@ -798,9 +798,20 @@ if [ $DO_LIST -eq 1 ]; then
 fi
 
 if [ -n "$MULTI_LIST" ]; then
-  # Split on commas and evaluate in order; fail fast.
+  # Split on commas and evaluate EVERY gate in order. The chain no longer
+  # fail-fasts at the first failing gate: it evaluates them all so the
+  # operator gets the complete failed-gate set, then emits a single
+  # deterministic one-line CHAIN SUMMARY before exiting. The prior fail-fast
+  # behaviour stopped at the first failure and emitted only a per-gate
+  # `multi chain failed at gate N` line — operators relying on a parent
+  # skill's log scroll-back missed the aggregate signal, so a setup step
+  # could surface two per-gate warnings yet still read as "no top-line
+  # failure". The summary line below is the deterministic, script-emitted
+  # signal that no longer depends on an LLM scanning stderr.
   IFS=',' read -r -a MULTI_GATES <<< "$MULTI_LIST"
   count=0
+  failed=0
+  failed_gates=""
   for g in "${MULTI_GATES[@]}"; do
     # Trim whitespace
     g="${g#"${g%%[![:space:]]*}"}"
@@ -809,10 +820,15 @@ if [ -n "$MULTI_LIST" ]; then
     count=$((count + 1))
     if ! evaluate_gate "$g"; then
       warn "multi chain failed at gate $count: $g"
-      exit 1
+      failed=$((failed + 1))
+      failed_gates="${failed_gates:+$failed_gates,}$g"
     fi
   done
-  warn "all $count gates passed"
+  if [ "$failed" -gt 0 ]; then
+    warn "chain summary — $failed of $count gates failed ($failed_gates); downstream skills may halt"
+    exit 1
+  fi
+  warn "chain summary — all $count gates passed"
   exit 0
 fi
 
