@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.210.0] — 2026-06-26
+
+### Added
+
+- (brownfield) deterministic finding-content vs tooling-error CRITICAL classifier (#1722)
+- (sprint-state) documented advance-to-next-sprint subcommand (#1720)
+
+### Fixed
+
+- (sprint-review) reconcile the YOLO fallback contract for the Step 4a gate (#1721)
+- (brownfield) require token-anchored evidence lines and claim_type on negative findings (#1719)
+- (test-strategy) docs-only default + project-root path anchoring (#1718)
+- (config-brownfield) document defectdojo_api_token as an env-var name, not a literal secret (#1717)
+- (config-brownfield) expose the full schema-declared brownfield.* flag set (#1716)
+- (ground-truth) exempt same-session materialized artifacts from the staleness gate (#1715)
+- (lifecycle-event) resolve memory path from the project root, not a CWD-relative literal (#1714)
+- (resolve-config) synthesize project-root-anchored memory_path and checkpoint_path defaults (#1713)
+
 ## [1.209.1] — 2026-06-25
 
 ### Fixed
