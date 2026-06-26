@@ -287,10 +287,32 @@ Spawn seven scan subagents in parallel. These run alongside Phase 2 documentatio
   claim_type-enum: [positive, negative, contradiction]   # positive default; negative for absence claims like "no __main__"; contradiction for two-sided doc↔code mismatch
   evidence-required: [file]; evidence-optional: [line_range, snippet, tool]
   id-prefix-convention: see Phase 7 (DCD- HCV- ISEAM- RTB- SEC- CFGC- DC- CVE- SBM-)
+
+  EMISSION RULES (apply before emitting every gap entry):
+
+  1. evidence.line_range anchoring: For a finding whose evidence is a specific
+     YAML/config key or code token, `evidence.line_range` MUST anchor to the
+     line of the matched key/token itself — not a neighbouring or
+     section-header line. For a multi-line construct, use the start-end range
+     of the matched construct.
+
+  2. claim_type for absence/negative findings: Absence or negative findings
+     (asserting something is missing, e.g. "no __main__", "no scheduler",
+     "endpoint X absent from docs") MUST set `claim_type: negative` — the
+     line_range then points at the representative witness line proving the
+     absence. Two-sided doc-vs-code contradictions MUST set
+     `claim_type: contradiction`. Positive findings (the default) may omit
+     the field.
 </gap-entry-schema-ref>
 ```
 
-This schema fixture closes the cross-scanner drift identified across scanners: 5–6 scanners independently hit the same ambiguities (slash-field `description/evidence`, single `evidence_line` can't express two-sided contradictions, no `category` enum, mixed-case severity vocab, no `claim_type` marker for negative claims). The schema is the single source of truth; the consolidation subagent rejects entries that don't conform.
+**Gap-entry emission rules.** Every scan subagent MUST apply the following rules before emitting each gap entry:
+
+1. **evidence.line_range anchoring.** When a finding's evidence is a specific YAML key, config key, or code token, `evidence.line_range` MUST anchor to the line of the matched key/token itself, not a neighbouring or section-header line. For a multi-line construct the range covers the start-end of the matched construct.
+
+2. **claim_type for absence/negative findings.** Findings that assert something is missing (e.g. "no `__main__`", "no scheduler", "endpoint absent from docs") MUST set `claim_type: negative`. The `evidence.line_range` then points at the representative witness line that proves the absence. Two-sided doc-vs-code contradictions MUST set `claim_type: contradiction`. Positive findings (the default) may omit the field.
+
+This schema fixture closes the cross-scanner drift identified across scanners: 5-6 scanners independently hit the same ambiguities (slash-field `description/evidence`, single `evidence_line` can't express two-sided contradictions, no `category` enum, mixed-case severity vocab, no `claim_type` marker for negative claims). The schema is the single source of truth; the consolidation subagent rejects entries that don't conform.
 
 ### Doc-Code Scan
 

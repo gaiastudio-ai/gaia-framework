@@ -505,6 +505,7 @@ scripts-lib	assert-protected-jobs.bats
 scripts-lib	atdd-anti-stub-emit.bats
 scripts-lib	auto-rename-migration.bats
 scripts-lib	brain-index-schema.bats
+scripts-lib	brownfield-gap-entry-claim-type.bats
 scripts-lib	ci-prefix-detection.bats
 scripts-lib	ci-workflow-stitcher.bats
 scripts-lib	clean-room-gate.bats
