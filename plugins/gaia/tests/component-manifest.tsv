@@ -587,6 +587,7 @@ scripts-sprint	issue-1403-title-quote-escaping.bats
 scripts-sprint	resolve-story-file-coverage-stub.bats
 scripts-sprint	resolve-story-file.bats
 scripts-sprint	sprint-progress-audit.bats
+scripts-sprint	sprint-state-advance.bats
 scripts-sprint	sprint-state-detect-auto-close.bats
 scripts-sprint	sprint-state-goals-and-state-machine.bats
 scripts-sprint	sprint-state-inject-points-ux.bats
