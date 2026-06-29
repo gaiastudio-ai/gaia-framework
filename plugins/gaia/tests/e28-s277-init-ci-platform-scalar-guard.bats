@@ -13,9 +13,33 @@ setup() {
   GEN="$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
 }
 
-@test "generate-config declares the ci_platform scalar-coercion guard (AC4)" {
-  grep -qF 'Coerce scalar-form ci_platform' "$GEN"
+@test "generate-config declares the ci_platform non-object coercion guard (AC4)" {
   grep -qF 'isinstance(ci, str)' "$GEN"
+  # The guard must also collapse non-str, non-dict forms (list/int/bool) — the
+  # str-only guard left those crashing identically.
+  grep -qF 'elif not isinstance(ci, dict)' "$GEN"
+}
+
+@test "non-object ci_platform forms (list/int/bool) no longer crash (AC1)" {
+  cd "$BATS_TEST_TMPDIR"
+  for val in '[]' '123' 'true'; do
+    cat > bundle.json <<EOF
+{
+  "project_name": "test",
+  "project_kind": "service",
+  "stacks": [{"name": "backend", "language": "python", "paths": ["src/"]}],
+  "ci_platform": $val,
+  "platforms": ["github-actions"]
+}
+EOF
+    run bash "$GEN" --path "./out-$val" --name test --phase full < bundle.json
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"AttributeError"* ]]
+    [[ "$output" != *"has no attribute"* ]]
+    # Non-coercible form → block omitted (no provider to write).
+    cfg="$(cat "./out-$val/.gaia/config/project-config.yaml")"
+    [[ "$cfg" != *"ci_platform:"* ]]
+  done
 }
 
 @test "scalar ci_platform no longer crashes — exits 0 with provider set (AC1)" {

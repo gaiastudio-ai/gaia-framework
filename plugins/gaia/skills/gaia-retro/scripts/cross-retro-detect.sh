@@ -99,14 +99,22 @@ _retro_candidates=(
 shopt -u nullglob
 
 retros=()
-_seen_retros=""
+# Newline-delimited set of seen realpaths. A retro path can legitimately
+# contain a `|` but never a newline (glob basenames are single-line), so
+# newline delimiters avoid the false-collision a `|...|`-delimited set would
+# risk on a path with an embedded pipe.
+_seen_retros=$'\n'
 for _r in "${_retro_candidates[@]}"; do
-  _rp="$(cd "$(dirname "$_r")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$_r")")"
+  # The realpath is an in-memory dedup KEY only — the literal glob path "$_r"
+  # is what gets read later. `|| _rp=""` keeps the assignment non-fatal under
+  # `set -e` (a failed cd must degrade to the path-literal fallback, never
+  # abort the non-blocking scan).
+  _rp="$(cd "$(dirname "$_r")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$_r")")" || _rp=""
   [ -n "$_rp" ] || _rp="$_r"
   case "$_seen_retros" in
-    *"|$_rp|"*) continue ;;
+    *$'\n'"$_rp"$'\n'*) continue ;;
   esac
-  _seen_retros="${_seen_retros}|$_rp|"
+  _seen_retros="${_seen_retros}${_rp}"$'\n'
   retros+=("$_r")
 done
 

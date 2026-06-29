@@ -356,16 +356,20 @@ if phase == "full":
                     lines.append(f"      {yaml_quote(k)}: {yaml_quote(v)}")
 
     ci = data.get("ci_platform") or {}
-    # Coerce scalar-form ci_platform (an operator submits
-    # `ci_platform: github-actions` — a bare provider string — per a
-    # misreading of the questionnaire, which documents the object form
-    # `{ provider: ... }`). Previously this crashed at `.get("provider")`
-    # below with `AttributeError: 'str' object has no attribute 'get'`,
-    # exactly as the sibling compliance/environments blocks once did. Mirror
-    # their list-coercion guard: a bare scalar string is the provider, so
-    # promote it to the canonical `{ provider: <scalar> }` object shape.
+    # Coerce non-object ci_platform into the documented object form
+    # `{ provider: ... }`. An operator may submit a bare provider string
+    # (`ci_platform: github-actions`) or — like the misread questionnaire that
+    # the sibling compliance/environments blocks already guard against — a
+    # list/scalar (`ci_platform: []`). Previously ANY non-dict value crashed at
+    # `.get("provider")` below with `AttributeError: '<type>' object has no
+    # attribute 'get'`. Mirror the sibling list-coercion guards fully: a
+    # non-empty scalar string is the provider (promote to {provider: <scalar>});
+    # any other non-dict form (empty string, list, int, bool, None) collapses to
+    # {} so the ci_platform block is simply omitted rather than crashing.
     if isinstance(ci, str):
         ci = {"provider": ci} if ci else {}
+    elif not isinstance(ci, dict):
+        ci = {}
     if ci.get("provider"):
         # issue-1244: the schema's ciProvider enum uses hyphens
         # (github-actions, gitlab-ci, azure-pipelines, bitbucket-pipelines),
