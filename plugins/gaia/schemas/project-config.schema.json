@@ -601,6 +601,12 @@
             "description": "Optional custom test command for this stack. When set, the test runner uses this command instead of the language default. The command is executed relative to the repository root.",
             "type": "string",
             "minLength": 1
+          },
+          "environments": {
+            "description": "Declarative per-stack environment targeting — the list of environment ids this stack deploys into. Distinct from `deploy_order` (which only ORDERS stacks within a single deploy): `environments` SCOPES a stack to specific environments, so an env-asymmetric layout (e.g. a marketing site that is production-only and a pre-launch site that is staging-only) is declarable in config rather than enforced imperatively at deploy time. Each entry SHOULD name an environment present in the top-level `environments` section — referential integrity is an ADVISORY post-validation check in /gaia-config-stack and /gaia-config-validate, mirroring the `cross_refs` convention (JSON Schema cannot express the cross-property constraint). Environment ids MUST NOT contain a comma or a pipe character — the deploy resolver parses both the block (`- staging`) and inline-flow (`[staging, prod]`) YAML forms and joins entries on `|`, so those two characters are reserved delimiters. Optional with a zero-regression default: when absent OR an empty array, the stack deploys into EVERY environment exactly as before — an empty list means \"unscoped / all environments\", NOT \"no environments\". When the array is non-empty, the deploy resolver (deploy-ordered.sh) skips this stack for any deploy whose target environment is not in the list.",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "default": []
           }
         }
       }
@@ -693,6 +699,12 @@
       "description": "Project shape identifier. Foundational axis for the review / test / CI / deploy pipeline to branch behavior by project type. Documented values: claude-code-plugin, web-app, mobile-app, api, library — but the schema deliberately omits an enum constraint so the field is open-vocabulary. resolve-config.sh emits a stderr WARNING for unrecognized values (advisory, non-blocking). Optional — backward compatibility is preserved when the field is omitted (no warning, no functional regression).",
       "type": "string",
       "minLength": 1
+    },
+    "deployment_model": {
+      "description": "Explicit declarative deployment-model signal. A dedicated first-class key so the project's deployment model is DECLARED rather than inferred by overloading `compliance.ui_present` (which exists only to gate UI-specific reviews such as accessibility). Closed enum: `deployable` — the project deploys running services to environments; `distribution-only` — the project publishes an artifact to a registry/marketplace but deploys no environments (e.g. a plugin or library); `branch-only` — the project's release is a branch/tag promotion with no publish and no deploy; `ui-app` — a deployable whose primary surface is a user-facing UI (the case `compliance.ui_present: true` was historically overloaded to express). Named `deployment_model` (NOT `project_shape`) to avoid colliding with the free-text `project_shape` field on the /gaia-init questionnaire input bundle, which uses a different vocabulary (e.g. `single backend`, `microservices`, `claude-code-plugin`) and is consumed transiently by config generation rather than persisted. This key is additive and operator-managed: it does NOT change `compliance.ui_present` semantics — existing consumers of `ui_present` continue to work unchanged — it gives operators a non-overloaded place to state the deployment model directly. Optional; absent ⇒ no model declared (consumers fall back to their existing inference, zero-regression). Operator-managed only: never auto-hydrated by the config reconciler (mirrors `lifecycle` / `brownfield` / `test_policy`).",
+      "type": "string",
+      "enum": ["deployable", "distribution-only", "branch-only", "ui-app"],
+      "x-no-auto-hydration": true
     },
     "device_targets": {
       "description": "Device/OS matrix for mobile platforms. Keyed by platform identifier — keys SHOULD match entries in `platforms[]`; orphan keys (e.g., `device_targets.ios` when `platforms: [android]`) are flagged at the resolver layer, not the schema (open `additionalProperties` mirrors the extensibility principle on `platforms`). Each value is a `deviceTargetEntry` requiring `os_versions`, `screen_sizes`, and `form_factors`.",

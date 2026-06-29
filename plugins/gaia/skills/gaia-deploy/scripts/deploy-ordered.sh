@@ -131,10 +131,10 @@ read_stacks_deploy_config() {
     }
 
     BEGIN {
-      in_stacks = 0; in_item = 0; in_hc = 0; in_smoke = 0
+      in_stacks = 0; in_item = 0; in_hc = 0; in_smoke = 0; in_envs = 0
       item_indent = -1
       name = ""; deploy_order = "999999"; hc_cmd = ""; hc_timeout = "30"
-      smoke_cmd = ""; smoke_timeout = "60"
+      smoke_cmd = ""; smoke_timeout = "60"; envs = ""
     }
 
     /^[[:space:]]*#/ { next }
@@ -157,20 +157,52 @@ read_stacks_deploy_config() {
         if (dash_ind == item_indent) {
           # Flush previous item.
           if (in_item && name != "") {
-            printf "%s\t%s\t%s\t%s\t%s\t%s\n", deploy_order, name, (hc_cmd == "" ? "_NONE_" : hc_cmd), hc_timeout, (smoke_cmd == "" ? "_NONE_" : smoke_cmd), smoke_timeout
+            printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", deploy_order, name, (hc_cmd == "" ? "_NONE_" : hc_cmd), hc_timeout, (smoke_cmd == "" ? "_NONE_" : smoke_cmd), smoke_timeout, (envs == "" ? "_ALL_" : envs)
           }
-          in_item = 1; in_hc = 0; in_smoke = 0
+          in_item = 1; in_hc = 0; in_smoke = 0; in_envs = 0
           name = ""; deploy_order = "999999"; hc_cmd = ""; hc_timeout = "30"
-          smoke_cmd = ""; smoke_timeout = "60"
+          smoke_cmd = ""; smoke_timeout = "60"; envs = ""
 
-          # Check for inline name on the dash line: "- name: foo"
+          # Check for an inline key on the dash line: "- name: foo" or
+          # "- environments: [...]" / "- environments:" (block follows).
+          # A new item resets in_envs=0 above; an `environments:` key here must
+          # re-arm it, otherwise a stack that lists environments FIRST on its
+          # dash line would emit the _ALL_ sentinel and fail OPEN (the
+          # restricted stack would deploy into every environment).
           line = $0
           sub(/^[[:space:]]+-[[:space:]]+/, "", line)
           if (match(line, /^name[[:space:]]*:/)) {
             name = extract_val(line)
+          } else if (match(line, /^deploy_order[[:space:]]*:/)) {
+            deploy_order = extract_val(line) + 0
+          } else if (match(line, /^environments[[:space:]]*:/)) {
+            in_envs = 1
+            envval = line
+            sub(/^[^:]*:[[:space:]]*/, "", envval)
+            envval = trim(strip_comment(envval))
+            if (envval ~ /^\[.*\]$/) {
+              inner = substr(envval, 2, length(envval) - 2)
+              n = split(inner, parts, ",")
+              for (pi = 1; pi <= n; pi++) {
+                e = trim(parts[pi])
+                if (e ~ /^".*"$/) e = substr(e, 2, length(e) - 2)
+                else if (e ~ /^'\''.*'\''$/) e = substr(e, 2, length(e) - 2)
+                if (e != "") envs = (envs == "" ? e : envs "|" e)
+              }
+            }
           }
+        } else if (in_envs && in_item) {
+          # Deeper dash inside an `environments:` block — a scalar list entry.
+          # Collect it (pipe-joined). Other sub-array dashes (paths:, etc.)
+          # are not inside in_envs, so they remain ignored.
+          envline = $0
+          sub(/^[[:space:]]*-[[:space:]]+/, "", envline)
+          envline = trim(strip_comment(envline))
+          if (envline ~ /^".*"$/) envline = substr(envline, 2, length(envline) - 2)
+          else if (envline ~ /^'\''.*'\''$/) envline = substr(envline, 2, length(envline) - 2)
+          if (envline != "") envs = (envs == "" ? envline : envs "|" envline)
         }
-        # Sub-array items (deeper dashes) are ignored.
+        # Sub-array items (deeper dashes) are ignored unless captured above.
         next
       }
 
@@ -179,17 +211,39 @@ read_stacks_deploy_config() {
       # Item-level key indent = item_indent + 2 (e.g., 4 for 2-space items).
       item_key_indent = item_indent + 2
 
-      # health_check / post_deploy_smoke block starts.
+      # health_check / post_deploy_smoke / environments block starts.
       if (ind == item_key_indent && match($0, /health_check[[:space:]]*:/)) {
-        in_hc = 1; in_smoke = 0; next
+        in_hc = 1; in_smoke = 0; in_envs = 0; next
       }
       if (ind == item_key_indent && match($0, /post_deploy_smoke[[:space:]]*:/)) {
-        in_smoke = 1; in_hc = 0; next
+        in_smoke = 1; in_hc = 0; in_envs = 0; next
+      }
+      if (ind == item_key_indent && match($0, /environments[[:space:]]*:/)) {
+        in_envs = 1; in_hc = 0; in_smoke = 0
+        # Support the inline-flow form: `environments: [staging, prod]` (and
+        # the empty `environments: []`). The block form (deeper "- value"
+        # lines) is handled by the env-collector blocks. Extract any inline
+        # bracketed value here so the flow form is not silently dropped
+        # (which would fail OPEN — the stack would deploy into every env).
+        envval = $0
+        sub(/^[^:]*:[[:space:]]*/, "", envval)
+        envval = trim(strip_comment(envval))
+        if (envval ~ /^\[.*\]$/) {
+          inner = substr(envval, 2, length(envval) - 2)   # drop [ ]
+          n = split(inner, parts, ",")
+          for (pi = 1; pi <= n; pi++) {
+            e = trim(parts[pi])
+            if (e ~ /^".*"$/) e = substr(e, 2, length(e) - 2)
+            else if (e ~ /^'\''.*'\''$/) e = substr(e, 2, length(e) - 2)
+            if (e != "") envs = (envs == "" ? e : envs "|" e)
+          }
+        }
+        next
       }
 
       # Any item-level key exits sub-blocks.
       if (ind == item_key_indent) {
-        in_hc = 0; in_smoke = 0
+        in_hc = 0; in_smoke = 0; in_envs = 0
         if (match($0, /name[[:space:]]*:/)) { name = extract_val($0); next }
         if (match($0, /deploy_order[[:space:]]*:/)) { deploy_order = extract_val($0) + 0; next }
         # Other item-level keys (language, paths, etc.) — just skip.
@@ -205,11 +259,22 @@ read_stacks_deploy_config() {
         if (match($0, /command[[:space:]]*:/)) { smoke_cmd = extract_val($0); next }
         if (match($0, /timeout[[:space:]]*:/)) { smoke_timeout = extract_val($0) + 0; next }
       }
+      # environments sub-list entries: deeper "- envname" lines. Collect each
+      # into a pipe-joined string (the deploy resolver splits on "|").
+      if (in_envs && ind > item_key_indent && match($0, /^[[:space:]]*-[[:space:]]/)) {
+        envline = $0
+        sub(/^[[:space:]]*-[[:space:]]+/, "", envline)
+        envline = trim(strip_comment(envline))
+        if (envline ~ /^".*"$/) envline = substr(envline, 2, length(envline) - 2)
+        else if (envline ~ /^'\''.*'\''$/) envline = substr(envline, 2, length(envline) - 2)
+        if (envline != "") envs = (envs == "" ? envline : envs "|" envline)
+        next
+      }
     }
 
     END {
       if (in_item && name != "") {
-        printf "%s\t%s\t%s\t%s\t%s\t%s\n", deploy_order, name, (hc_cmd == "" ? "_NONE_" : hc_cmd), hc_timeout, (smoke_cmd == "" ? "_NONE_" : smoke_cmd), smoke_timeout
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", deploy_order, name, (hc_cmd == "" ? "_NONE_" : hc_cmd), hc_timeout, (smoke_cmd == "" ? "_NONE_" : smoke_cmd), smoke_timeout, (envs == "" ? "_ALL_" : envs)
       }
     }
   ' "$config" | sort -t$'\t' -k1,1n -k2,2
@@ -313,7 +378,7 @@ write_manifest_snapshot() {
 
   # Build components array from stacks_data (tab-separated lines).
   local components_json="[]"
-  while IFS=$'\t' read -r order name _hc_cmd _hc_timeout _smoke_cmd _smoke_timeout; do
+  while IFS=$'\t' read -r order name _hc_cmd _hc_timeout _smoke_cmd _smoke_timeout _envs; do
     [ -z "$name" ] && continue
     components_json="$(printf '%s' "$components_json" | jq \
       --arg name "$name" \
@@ -412,6 +477,23 @@ write_component_status() {
 }
 
 # ---------------------------------------------------------------------------
+# Advisory: warn when a deploy targeted ZERO stacks.
+#
+# With per-stack environment targeting it is now easy to mistype --env (e.g.
+# `--env prde`) and have EVERY stack skip as "not targeted", yielding a silent
+# 0/N no-op that still exits 0. This advisory surfaces that likely-mistake
+# without changing the exit code (the deploy genuinely did nothing wrong — it
+# just did nothing). Only fires when there ARE stacks to deploy but none were.
+# ---------------------------------------------------------------------------
+
+_warn_if_no_stacks_targeted() {
+  local deployed="$1" total="$2" env_name="$3"
+  if [ "$total" -gt 0 ] && [ "$deployed" -eq 0 ]; then
+    _log_info "WARNING: 0 of $total stack(s) deployed to env=$env_name — every stack was skipped (env not targeted or upstream HOLD). If this was unexpected, check the --env value and each stack's declared environments[]."
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Main deploy orchestrator
 # ---------------------------------------------------------------------------
 
@@ -460,11 +542,39 @@ run_ordered_deploy() {
     fi
   fi
 
-  while IFS=$'\t' read -r order name hc_cmd hc_timeout smoke_cmd smoke_timeout; do
+  while IFS=$'\t' read -r order name hc_cmd hc_timeout smoke_cmd smoke_timeout stack_envs; do
     [ -z "$name" ] && continue
     # Sentinel replacement: _NONE_ = no command configured.
     [ "$hc_cmd" = "_NONE_" ] && hc_cmd=""
     [ "$smoke_cmd" = "_NONE_" ] && smoke_cmd=""
+
+    # ----- Per-stack environment targeting: skip stacks not scoped to this env -----
+    # `stack_envs` is a pipe-joined list of declared target environments, or the
+    # `_ALL_` sentinel when the stack declared no `environments` (or an empty
+    # list). `_ALL_` / empty = deploy into every environment (zero-regression
+    # default). A non-empty list deploys ONLY into a matching environment.
+    if [ -n "$stack_envs" ] && [ "$stack_envs" != "_ALL_" ]; then
+      local _env_match=0
+      local _IFS_save="$IFS"
+      IFS='|'
+      # shellcheck disable=SC2086
+      set -- $stack_envs
+      IFS="$_IFS_save"
+      local _e
+      for _e in "$@"; do
+        if [ "$_e" = "$env_name" ]; then _env_match=1; break; fi
+      done
+      if [ "$_env_match" -eq 0 ]; then
+        _log_info "skipping stack=$name — not targeted at env=$env_name (declared environments: ${stack_envs//|/, })"
+        component_status="$(printf '%s' "$component_status" | jq \
+          --arg comp "$name" --arg ver "$version" \
+          '. + [{"component": $comp, "target_version": $ver, "outcome": "SKIPPED", "health_result": "env-not-targeted", "smoke_result": "n/a"}]')"
+        if [ -n "$state_dir" ]; then
+          _update_manifest_component "$state_dir" "$name" "SKIPPED" "env-not-targeted"
+        fi
+        continue
+      fi
+    fi
 
     # ----- Best-effort crash recovery: skip already-DEPLOYED components -----
     if [ "$mode" = "best-effort" ] && [ -n "$resume_manifest" ]; then
@@ -630,11 +740,13 @@ run_ordered_deploy() {
     if [ -n "$state_dir" ]; then
       _archive_manifest "$state_dir" "$output_dir" "completed"
     fi
+    _warn_if_no_stacks_targeted "$deployed" "$total" "$env_name"
     _log_info "ordered deploy complete: $deployed/$total stacks deployed to env=$env_name"
     printf 'PASSED\n'
     return 0
   fi
 
+  _warn_if_no_stacks_targeted "$deployed" "$total" "$env_name"
   _log_info "ordered deploy complete: $deployed/$total stacks deployed to env=$env_name"
   return 0
 }
