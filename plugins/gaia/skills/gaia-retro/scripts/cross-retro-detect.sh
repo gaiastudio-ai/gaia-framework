@@ -84,9 +84,39 @@ WORK="$(mktemp -d -t cross-retro.XXXXXX)"
 THEMES="$WORK/themes.tsv"
 : > "$THEMES"
 
+# Gather prior retros from BOTH the canonical nested `retrospective/` subdir
+# (where /gaia-retro Step 6 writes them) AND the legacy flat location directly
+# under RETROS_DIR (older projects). The previous single-level glob matched
+# only the flat form, so once retros landed in the subdir the scan matched
+# ZERO files and the systemic-theme / escalation_count mechanism silently
+# no-op'd. Collect both, then de-duplicate by realpath so a retro reachable
+# from both patterns is processed once.
 shopt -s nullglob
-retros=("$RETROS_DIR"/retrospective-*.md)
+_retro_candidates=(
+  "$RETROS_DIR"/retrospective-*.md
+  "$RETROS_DIR"/retrospective/retrospective-*.md
+)
 shopt -u nullglob
+
+retros=()
+# Newline-delimited set of seen realpaths. A retro path can legitimately
+# contain a `|` but never a newline (glob basenames are single-line), so
+# newline delimiters avoid the false-collision a `|...|`-delimited set would
+# risk on a path with an embedded pipe.
+_seen_retros=$'\n'
+for _r in "${_retro_candidates[@]}"; do
+  # The realpath is an in-memory dedup KEY only — the literal glob path "$_r"
+  # is what gets read later. `|| _rp=""` keeps the assignment non-fatal under
+  # `set -e` (a failed cd must degrade to the path-literal fallback, never
+  # abort the non-blocking scan).
+  _rp="$(cd "$(dirname "$_r")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$_r")")" || _rp=""
+  [ -n "$_rp" ] || _rp="$_r"
+  case "$_seen_retros" in
+    *$'\n'"$_rp"$'\n'*) continue ;;
+  esac
+  _seen_retros="${_seen_retros}${_rp}"$'\n'
+  retros+=("$_r")
+done
 
 if [ "${#retros[@]}" -eq 0 ]; then
   # No prior retros — success with zero escalations.
