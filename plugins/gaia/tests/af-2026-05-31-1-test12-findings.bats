@@ -60,7 +60,11 @@ EOF
 }
 
 @test "generate-config.sh normalizes backend → server" {
-  run grep -F 'p.lower() == "backend"' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
+  # The backend→server normalization now lives in the _norm_platform() helper
+  # (alongside firmware→embedded). Assert the canonical mapping is present.
+  run grep -F 'low == "backend"' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
+  [ "$status" -eq 0 ]
+  run grep -F 'return "server"' "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"
   [ "$status" -eq 0 ]
 }
 
