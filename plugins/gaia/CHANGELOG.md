@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.212.0] — 2026-06-29
+
+### Added
+
+- (brownfield) add an end-of-run 'what did I actually get?' fidelity summary
+- (brownfield) ship a canonical gap-entry fixture to scan subagents
+
+### Fixed
+
+- (brownfield) align canonical fixture gap_ids to schema short-names + guard bats
+
 ## [1.211.0] — 2026-06-29
 
 ### Added
