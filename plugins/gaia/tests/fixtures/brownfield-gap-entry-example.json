@@ -1,6 +1,6 @@
 [
   {
-    "gap_id": "DCD-001",
+    "gap_id": "DC-001",
     "category": "doc-code-drift",
     "severity": "WARNING",
     "claim_type": "positive",
@@ -16,7 +16,7 @@
     "stack": "python"
   },
   {
-    "gap_id": "DCD-002",
+    "gap_id": "DC-002",
     "category": "doc-code-drift",
     "severity": "WARNING",
     "claim_type": "negative",
@@ -41,6 +41,6 @@
       "tool": "secret-scan"
     },
     "suggested_action": "Remove the hardcoded key and read it from the documented environment variable; rotate the exposed credential.",
-    "aliases": ["HCV-009"]
+    "aliases": ["HC-009"]
   }
 ]

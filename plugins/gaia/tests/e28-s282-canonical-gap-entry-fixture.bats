@@ -32,13 +32,17 @@ _has_backend() {
   return 1
 }
 
+_has_python3() { command -v python3 >/dev/null 2>&1; }
+
 @test "canonical gap-entry fixture exists and is valid JSON (AC1)" {
   [ -f "$FIXTURE" ]
+  _has_python3 || skip "python3 not available"
   run python3 -c "import json; json.load(open('$FIXTURE'))"
   [ "$status" -eq 0 ]
 }
 
 @test "fixture demonstrates all three claim_types (AC2)" {
+  _has_python3 || skip "python3 not available"
   run python3 -c "import json; cts=sorted(e.get('claim_type','positive') for e in json.load(open('$FIXTURE'))); print(','.join(cts))"
   [ "$status" -eq 0 ]
   [[ "$output" == *"positive"* ]]
@@ -65,7 +69,12 @@ _has_backend() {
   [[ "$output" == *"found"* ]]
 }
 
-@test "fixture gap_ids match the {SCANNER}-{NNN} convention (AC1)" {
+@test "fixture gap_ids match the {SCANNER}-{NNN} convention with schema short-names (AC1)" {
+  _has_python3 || skip "python3 not available"
+  # Pattern compliance AND canonical scanner short-names (DC/HC/SEC per the schema).
   run python3 -c "import json,re; ids=[e['gap_id'] for e in json.load(open('$FIXTURE'))]; print('ok' if all(re.match(r'^[A-Z]+-[0-9]{3,}\$', i) for i in ids) else 'bad:'+str(ids))"
   [ "$output" = "ok" ]
+  # The doc-code entries use the schema's canonical DC- prefix (not DCD-).
+  grep -qF '"gap_id": "DC-001"' "$FIXTURE"
+  ! grep -qF 'DCD-' "$FIXTURE"
 }

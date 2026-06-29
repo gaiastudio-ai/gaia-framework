@@ -287,7 +287,7 @@ Spawn seven scan subagents in parallel. These run alongside Phase 2 documentatio
   severity-enum: [CRITICAL, WARNING, INFO]
   claim_type-enum: [positive, negative, contradiction]   # positive default; negative for absence claims like "no __main__"; contradiction for two-sided doc↔code mismatch
   evidence-required: [file]; evidence-optional: [line_range, snippet, tool]
-  id-prefix-convention: see Phase 7 (DCD- HCV- ISEAM- RTB- SEC- CFGC- DC- CVE- SBM-)
+  id-prefix-convention: {SCANNER}-{NNN}, SCANNER short-name per the schema (DC=doc-code, HC=hardcoded, ISEAM=integration-seam, RB=runtime-behavior, SEC=security, SBOM=sbom-completeness, CG=call-graph) — see the example fixture above; Phase 7 dedup may rewrite and record originals in aliases
 
   EMISSION RULES (apply before emitting every gap entry):
 
