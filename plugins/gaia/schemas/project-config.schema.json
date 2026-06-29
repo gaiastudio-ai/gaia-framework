@@ -83,9 +83,9 @@
       ]
     },
     "platformId": {
-      "description": "Platform identifier. Documented values are `web`, `ios`, `android`, `server`. `server` represents headless backend services with no UI surface — its presence in a full-mode config satisfies the platforms minItems:1 constraint for backend-only projects. The schema enforces this strict enum so typos and out-of-domain identifiers (e.g., `windows`, `linux`) are rejected at validation time. The surface is EXTENSIBLE at the resolver layer — `resolve-config.sh` emits a stderr warning (rather than aborting) for unknown identifiers that match the kebab-case pattern, so a project on a stale schema-version that adds a future identifier (e.g., `harmonyos`) is not blocked. Schema changes are still REQUIRED to formally document a new platform, but downstream consumers degrade gracefully in the meantime.",
+      "description": "Platform identifier. Documented values are `web`, `ios`, `android`, `server`, `embedded`. `server` represents headless backend services with no UI surface; `embedded` represents embedded/firmware targets (e.g., ESP32 microcontrollers) — both satisfy the platforms minItems:1 constraint without a UI-platform language gate. The natural-language spelling `firmware` is normalized to `embedded` on the write side (mirroring the `backend`→`server` alias). The schema enforces this strict enum so typos and out-of-domain identifiers (e.g., `windows`, `linux`) are rejected at validation time. The surface is EXTENSIBLE at the resolver layer — `resolve-config.sh` emits a stderr warning (rather than aborting) for unknown identifiers that match the kebab-case pattern, so a project on a stale schema-version that adds a future identifier (e.g., `harmonyos`) is not blocked. Schema changes are still REQUIRED to formally document a new platform, but downstream consumers degrade gracefully in the meantime.",
       "type": "string",
-      "enum": ["web", "ios", "android", "server"]
+      "enum": ["web", "ios", "android", "server", "embedded"]
     },
     "formFactor": {
       "description": "Device form-factor enum. Intentionally broader than the current iOS / Android scope to support future wearable / TV adapters without schema-version bumps.",

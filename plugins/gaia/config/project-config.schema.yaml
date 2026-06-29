@@ -299,13 +299,13 @@ fields:
     type: map
     required: false
     default: null
-    description: "List of platform identifiers (web, ios, android, server). The `server` value covers headless backend services (no UI surface). Presence of ios or android triggers mobile gates downstream. Descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema."
+    description: "List of platform identifiers (web, ios, android, server, embedded). The `server` value covers headless backend services (no UI surface); `embedded` covers embedded/firmware targets (e.g., ESP32). The natural-language spelling `firmware` is normalized to `embedded` on the write side (mirroring `backend`→`server`). Presence of ios or android triggers mobile gates downstream. Descriptor type is map for the resolver's purposes; the canonical YAML shape is a list — see project-config.schema.json for the structural schema."
 
   primary_platform:
     type: string
     required: false
     default: null
-    description: "Optional primary platform identifier (one of: web, ios, android, server). Added to the YAML descriptor schema to mirror the JSON schema's existing acceptance — previously, /gaia-init wrote primary_platform (accepted by JSON validator) but detect-signals.sh / resolve-config.sh --schema rejected it as an unknown field, emitting CRITICAL and HALTing brownfield Phase 1 on the canonical /gaia-init → /gaia-brownfield handoff. The two schemas now agree on this field."
+    description: "Optional primary platform identifier (one of: web, ios, android, server, embedded). Added to the YAML descriptor schema to mirror the JSON schema's existing acceptance — previously, /gaia-init wrote primary_platform (accepted by JSON validator) but detect-signals.sh / resolve-config.sh --schema rejected it as an unknown field, emitting CRITICAL and HALTing brownfield Phase 1 on the canonical /gaia-init → /gaia-brownfield handoff. The two schemas now agree on this field."
 
   device_targets:
     type: map

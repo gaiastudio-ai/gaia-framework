@@ -172,12 +172,14 @@ if (data.get("project_shape") or "").strip() == "claude-code-plugin":
 project_kind_val = _pkind
 version_val = data.get("version") or "0.1.0"
 primary_platform_val = data.get("primary_platform") or ""
-# issue-1393: normalize primary_platform with the SAME backend→server map
-# applied to platforms[] below, so a "backend" answer doesn't produce the
-# self-contradiction `primary_platform: backend` + `platforms: [server]` that
-# config-contradiction scanners flag (backend ∉ [server]).
+# issue-1393: normalize primary_platform with the SAME alias maps applied to
+# platforms[] below (backend→server, firmware→embedded), so an aliased answer
+# doesn't produce the self-contradiction `primary_platform: <alias>` +
+# `platforms: [<canonical>]` that config-contradiction scanners flag.
 if isinstance(primary_platform_val, str) and primary_platform_val.lower() == "backend":
     primary_platform_val = "server"
+elif isinstance(primary_platform_val, str) and primary_platform_val.lower() == "firmware":
+    primary_platform_val = "embedded"
 lines.append("")
 lines.append(f"project_name: {yaml_quote(project_name_val)}")
 lines.append(f"project_kind: {yaml_quote(project_kind_val)}")
@@ -405,14 +407,22 @@ if phase == "full":
         lines.append("ci_cd: {}")
 
     platforms = data.get("platforms") or []
-    # Normalize the `backend` alias to the canonical schema enum token
-    # `server`. The questionnaire SKILL.md documents both as accepted
-    # vocabulary (Step 2b) — `backend` reads more naturally in conversation,
-    # but the schema's platformId enum only knows `server`. Normalize on the
-    # write side so users who type either spelling produce a schema-valid
-    # config without the validator having to either widen the enum or fail
-    # with "unknown platform".
-    platforms = ["server" if (isinstance(p, str) and p.lower() == "backend") else p for p in platforms]
+    # Normalize natural-language aliases to their canonical schema enum tokens:
+    # `backend`→`server` and `firmware`→`embedded`. The questionnaire documents
+    # the friendlier spellings (Step 2b), but the platformId enum only knows the
+    # canonical tokens. Normalize on the write side so either spelling produces
+    # a schema-valid config without the validator having to widen the enum or
+    # fail with "unknown platform".
+    def _norm_platform(p):
+        if not isinstance(p, str):
+            return p
+        low = p.lower()
+        if low == "backend":
+            return "server"
+        if low == "firmware":
+            return "embedded"
+        return p
+    platforms = [_norm_platform(p) for p in platforms]
     # schema allOf[2] (config_phase=full) requires a non-empty `platforms`
     # array. gaia-init never emits config_phase=partial (only minimal|full),
     # so the gap is full-phase only. For web-oriented shapes that don't gather

@@ -643,6 +643,7 @@ skills	e28-s273-skill-proposal-helper-docs.bats
 skills	e28-s277-init-ci-platform-scalar-guard.bats
 skills	e28-s278-cross-retro-subdir-scan.bats
 skills	e28-s279-yaml-quote-newline-escape.bats
+skills	e28-s280-embedded-platform-token.bats
 skills	e36-s1-cross-retro-learning.bats
 skills	e39-s4-extract-findings.bats
 skills	e39-s4-sprint-scope.bats

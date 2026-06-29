@@ -78,6 +78,7 @@ stack_supports() {
     android)        wanted="kotlin|java|react-native|flutter" ;;
     web)            return 0 ;;
     server|backend) return 0 ;;
+    embedded)       return 0 ;;
     *)              printf '%s: unknown platform: %s\n' "$SCRIPT_NAME" "$platform" >&2; return 1 ;;
   esac
   printf '%s\n' "$normalized_langs" | grep -Eq "^($wanted)$"
