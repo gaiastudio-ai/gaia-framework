@@ -592,6 +592,7 @@ jobs:
             plugins/gaia/scripts/adapters/brownfield/pre-warm.sh
             plugins/gaia/scripts/adapters/brownfield/reconcile-cross-stack.sh
             plugins/gaia/scripts/adapters/semgrep/run.sh
+            plugins/gaia/scripts/adapters/gosec/run.sh
             plugins/gaia/scripts/adapters/gocyclo/run.sh
             plugins/gaia/scripts/adapters/radon/run.sh
             plugins/gaia/scripts/adapters/eslint-plugin-sonarjs/run.sh
