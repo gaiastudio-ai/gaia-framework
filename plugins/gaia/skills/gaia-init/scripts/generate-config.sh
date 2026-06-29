@@ -109,8 +109,18 @@ today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
 def yaml_quote(s):
     s = str(s)
-    if s == "" or any(c in s for c in ":#&*!|>'\"%@`{}[],"):
-        return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    # A newline/carriage-return MUST force the double-quoted branch AND be
+    # escaped (\n/\r). Otherwise a multi-line scalar is emitted raw into the
+    # YAML stream — and a value whose own line is `---`/`...` becomes a YAML
+    # document separator, corrupting the generated config into a multi-document
+    # stream. Escaping order matters: backslash first, then the rest.
+    if s == "" or "\n" in s or "\r" in s or any(c in s for c in ":#&*!|>'\"%@`{}[],"):
+        return ('"'
+                + s.replace('\\', '\\\\')
+                   .replace('"', '\\"')
+                   .replace('\r', '\\r')
+                   .replace('\n', '\\n')
+                + '"')
     return s
 
 lines = []
