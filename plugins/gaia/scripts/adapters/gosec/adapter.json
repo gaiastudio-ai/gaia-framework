@@ -1,0 +1,9 @@
+{
+  "provider": "gosec",
+  "category": "sast",
+  "version-range": ">=2.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 300,
+  "file-extensions": [".go"],
+  "description": "gosec static-analysis SAST scanner — Go-focused security rules (the analysis many Go projects already run via golangci-lint)."
+}
