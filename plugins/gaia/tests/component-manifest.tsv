@@ -530,6 +530,7 @@ scripts-lib	e103-s2-lifecycle-overrides-helpers.bats
 scripts-lib	e103-s5-strict-mode-retro-coverage.bats
 scripts-lib	e105-s3-date-suffix-convention.bats
 scripts-lib	e28-s282-canonical-gap-entry-fixture.bats
+scripts-lib	e28-s285-deployment-model-config-key.bats
 scripts-lib	e45-s3-auto-save-memory.bats
 scripts-lib	e45-s3-phase-classification.bats
 scripts-lib	e55-s6-security-invariants.bats
@@ -646,6 +647,7 @@ skills	e28-s277-init-ci-platform-scalar-guard.bats
 skills	e28-s278-cross-retro-subdir-scan.bats
 skills	e28-s279-yaml-quote-newline-escape.bats
 skills	e28-s280-embedded-platform-token.bats
+skills	e28-s284-per-stack-per-env-targeting.bats
 skills	e36-s1-cross-retro-learning.bats
 skills	e39-s4-extract-findings.bats
 skills	e39-s4-sprint-scope.bats
