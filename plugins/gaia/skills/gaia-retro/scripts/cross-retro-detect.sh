@@ -84,9 +84,31 @@ WORK="$(mktemp -d -t cross-retro.XXXXXX)"
 THEMES="$WORK/themes.tsv"
 : > "$THEMES"
 
+# Gather prior retros from BOTH the canonical nested `retrospective/` subdir
+# (where /gaia-retro Step 6 writes them) AND the legacy flat location directly
+# under RETROS_DIR (older projects). The previous single-level glob matched
+# only the flat form, so once retros landed in the subdir the scan matched
+# ZERO files and the systemic-theme / escalation_count mechanism silently
+# no-op'd. Collect both, then de-duplicate by realpath so a retro reachable
+# from both patterns is processed once.
 shopt -s nullglob
-retros=("$RETROS_DIR"/retrospective-*.md)
+_retro_candidates=(
+  "$RETROS_DIR"/retrospective-*.md
+  "$RETROS_DIR"/retrospective/retrospective-*.md
+)
 shopt -u nullglob
+
+retros=()
+_seen_retros=""
+for _r in "${_retro_candidates[@]}"; do
+  _rp="$(cd "$(dirname "$_r")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$_r")")"
+  [ -n "$_rp" ] || _rp="$_r"
+  case "$_seen_retros" in
+    *"|$_rp|"*) continue ;;
+  esac
+  _seen_retros="${_seen_retros}|$_rp|"
+  retros+=("$_r")
+done
 
 if [ "${#retros[@]}" -eq 0 ]; then
   # No prior retros — success with zero escalations.
