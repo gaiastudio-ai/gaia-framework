@@ -124,6 +124,7 @@ core	e114-docs.bats
 core	e28-s187-revert-tools-field.bats
 core	e28-s272-env-var-reference.bats
 core	e28-s276-dormant-env.bats
+core	e28-s283-brownfield-fidelity-summary.bats
 core	e29-s7-v1-checkpoint-deletion-plan.bats
 core	e34-s1-val-sidecar-perf.bats
 core	e34-s1-val-sidecar-writer-units.bats
@@ -528,6 +529,7 @@ scripts-lib	dpd-traceability-class.bats
 scripts-lib	e103-s2-lifecycle-overrides-helpers.bats
 scripts-lib	e103-s5-strict-mode-retro-coverage.bats
 scripts-lib	e105-s3-date-suffix-convention.bats
+scripts-lib	e28-s282-canonical-gap-entry-fixture.bats
 scripts-lib	e45-s3-auto-save-memory.bats
 scripts-lib	e45-s3-phase-classification.bats
 scripts-lib	e55-s6-security-invariants.bats
