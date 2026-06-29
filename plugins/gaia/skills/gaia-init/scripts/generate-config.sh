@@ -356,6 +356,16 @@ if phase == "full":
                     lines.append(f"      {yaml_quote(k)}: {yaml_quote(v)}")
 
     ci = data.get("ci_platform") or {}
+    # Coerce scalar-form ci_platform (an operator submits
+    # `ci_platform: github-actions` — a bare provider string — per a
+    # misreading of the questionnaire, which documents the object form
+    # `{ provider: ... }`). Previously this crashed at `.get("provider")`
+    # below with `AttributeError: 'str' object has no attribute 'get'`,
+    # exactly as the sibling compliance/environments blocks once did. Mirror
+    # their list-coercion guard: a bare scalar string is the provider, so
+    # promote it to the canonical `{ provider: <scalar> }` object shape.
+    if isinstance(ci, str):
+        ci = {"provider": ci} if ci else {}
     if ci.get("provider"):
         # issue-1244: the schema's ciProvider enum uses hyphens
         # (github-actions, gitlab-ci, azure-pipelines, bitbucket-pipelines),

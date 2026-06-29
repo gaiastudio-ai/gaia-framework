@@ -640,6 +640,7 @@ skills	e28-s199-ci-finalize-gate.bats
 skills	e28-s268-story-template-delivered-default.bats
 skills	e28-s269-deploy-components-flag.bats
 skills	e28-s273-skill-proposal-helper-docs.bats
+skills	e28-s277-init-ci-platform-scalar-guard.bats
 skills	e36-s1-cross-retro-learning.bats
 skills	e39-s4-extract-findings.bats
 skills	e39-s4-sprint-scope.bats
