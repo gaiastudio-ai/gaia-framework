@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.213.0] — 2026-06-29
+
+### Added
+
+- (config) explicit deployment_model config key
+- (deploy) declarative per-stack environment targeting
+
 ## [1.212.0] — 2026-06-29
 
 ### Added
