@@ -51,7 +51,11 @@ fi
 # Curated section allowlist + managed-elsewhere classification.
 #
 # Contract:
-#   - Every schema property MUST be in exactly one of:
+#   - Every schema property MUST be in AT LEAST ONE of the three buckets below
+#     (the reverse invariant is an OR, not mutual-exclusivity — an
+#     operator-managed property MAY appear in managed-elsewhere AND carry
+#     `x-no-auto-hydration: true` as defense-in-depth; see lifecycle /
+#     brownfield / test_policy / deployment_model):
 #       (i)  _CONFIG_HYDRATION_ALLOWLIST       — auto-hydratable; reconciler invokes
 #                                                config_hydrate_section to add an empty stub.
 #       (ii) _CONFIG_HYDRATION_MANAGED_ELSEWHERE — known to be written by /gaia-init,
@@ -62,8 +66,11 @@ fi
 #                                                                  for future schema additions.
 #   - Forward + reverse invariants are pinned by bats tests in
 #     tests/config-hydration-allowlist-invariant.bats.
-#   - `project_shape` was in the allowlist but NOT in schema v2.0.0 (dead-code drift).
-#     Removed from allowlist.
+#   - `project_shape` is a back-compat shim (init-questionnaire input field +
+#     reconciler test fixtures), NOT a persisted schema property. The
+#     operator-managed deployment-model schema key is `deployment_model`
+#     (closed enum, carries `x-no-auto-hydration: true`); both sit under
+#     managed-elsewhere, never in the auto-hydration allowlist.
 _CONFIG_HYDRATION_ALLOWLIST=(
   # Configuration sections (auto-hydratable as empty stubs).
   project_name
@@ -130,11 +137,19 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   implementation_artifacts
   test_artifacts
   creative_artifacts
-  # Legacy / back-compat (1): retained in managed-elsewhere so reconciler
-  # tests that still declare `project_shape` in the schema fixture don't
-  # trip the hard-error path. Removed from allowlist but classified here
-  # for forward-compat with any caller that still references it.
+  # project_shape (1): back-compat shim. NOT a current schema property — the
+  # init questionnaire uses a free-text `project_shape` input field (consumed
+  # transiently by generate-config.sh, never persisted), and some reconciler
+  # test fixtures still declare it. Retained here so those callers do not trip
+  # the reconciler's hard-error path. The persisted, operator-managed shape key
+  # is `deployment_model` (below).
   project_shape
+  # deployment_model (1): operator-managed declarative deployment-model signal.
+  # A real schema property (closed enum) that carries `x-no-auto-hydration:
+  # true` in the schema as defense-in-depth; this entry registers it for the
+  # reconciler's managed-elsewhere check. Never auto-hydrated by the
+  # reconciler — operators declare the deployment model explicitly.
+  deployment_model
   # sprint_review (1): human-managed exclusively via /gaia-config-sprint-review;
   # never auto-hydrated by the reconciler.
   sprint_review
