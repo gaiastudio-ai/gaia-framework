@@ -124,6 +124,7 @@ core	e114-docs.bats
 core	e28-s187-revert-tools-field.bats
 core	e28-s272-env-var-reference.bats
 core	e28-s276-dormant-env.bats
+core	e28-s283-brownfield-fidelity-summary.bats
 core	e29-s7-v1-checkpoint-deletion-plan.bats
 core	e34-s1-val-sidecar-perf.bats
 core	e34-s1-val-sidecar-writer-units.bats

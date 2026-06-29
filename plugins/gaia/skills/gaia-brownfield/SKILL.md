@@ -1035,6 +1035,38 @@ Write the final brownfield onboarding report to `.gaia/artifacts/planning-artifa
 - Test-environment generation outcome (created / merged / skipped / not-applicable)
 - Next-step recommendations (remaining Phase 3 chain)
 
+### Scan Fidelity Summary — "what did I actually get?"
+
+The report MUST end with a dedicated **Scan Fidelity Summary** section so an
+operator can see, in one place, the fidelity of the run they just got — rather
+than hunting across `consolidated-gaps.md` frontmatter, the Phase 3 diagnostic
+table, and scattered Phase 3 INFO lines. This section consolidates signals that
+already exist elsewhere; it does NOT re-run any scanner. Source each row from
+the existing signal (do not recompute):
+
+1. **Tier reached** — from the `consolidated-gaps.md` `scan_fidelity` /
+   `scan_fidelity_reason` frontmatter (the Phase 7 stamp). Render the tier and
+   its reason verbatim (e.g. `tier-1 — deterministic CVE/SBOM tools present;
+   dead-code absent`).
+2. **Scanners that ran** — the per-scanner rows from the Phase 3 diagnostic
+   table (`Scan Subagent | Status | Duration | Reason`, four canonical statuses
+   success / timeout / resource-capped / errored). **Persistence note:** that
+   diagnostic table is rendered to the conversation only and is persisted to no
+   artifact today — this summary is the FIRST persistence point, so the report
+   step MUST capture the table's row data when it is produced in Phase 3 and
+   carry it here, NOT assume it is already on disk.
+3. **Scanners skipped / unavailable, and why** — from the Phase 3 per-stack
+   INFO degrade lines (missing toolchains) and the Phase 7 banner's
+   `MISSING_TOOLS` set. State which deterministic scanners did not run and the
+   reason (tool absent / budget / error).
+4. **How to upgrade** — the remediation command to reach a higher tier:
+   `gaia-doctor --install` (the same guidance the Phase 7 banner and Phase 3
+   INFO lines already emit). Name the specific missing tools so the operator
+   knows exactly what to install.
+
+The section is purely additive — all of the existing summary bullets above are
+preserved.
+
 ## Output — Secondary Artifacts
 
 The full artifact set emitted by this skill (preserved from the legacy `output.artifacts` contract):
