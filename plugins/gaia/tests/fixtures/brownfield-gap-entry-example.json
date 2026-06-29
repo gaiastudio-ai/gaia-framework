@@ -1,0 +1,46 @@
+[
+  {
+    "gap_id": "DCD-001",
+    "category": "doc-code-drift",
+    "severity": "WARNING",
+    "claim_type": "positive",
+    "title": "README documents a --json flag the CLI no longer accepts",
+    "description": "The README usage block lists `--json` as a supported flag, but the argument parser in cli.py has no such option — invoking it errors with 'unrecognized arguments: --json'.",
+    "evidence": {
+      "file": "README.md",
+      "line_range": "57",
+      "snippet": "Run `tool report --json` to emit machine-readable output.",
+      "tool": "doc-code-scan"
+    },
+    "suggested_action": "Either restore the --json flag in cli.py or remove the stale README line.",
+    "stack": "python"
+  },
+  {
+    "gap_id": "DCD-002",
+    "category": "doc-code-drift",
+    "severity": "WARNING",
+    "claim_type": "negative",
+    "title": "No __main__ guard in cli.py despite docs calling it a runnable script",
+    "description": "An absence claim: the docs describe `python cli.py` as runnable, but cli.py defines no `if __name__ == \"__main__\":` entrypoint. The line_range anchors the representative witness line (the last top-level def) proving the absence.",
+    "evidence": {
+      "file": "src/cli.py",
+      "line_range": "84"
+    }
+  },
+  {
+    "gap_id": "SEC-014",
+    "category": "security",
+    "severity": "CRITICAL",
+    "claim_type": "contradiction",
+    "title": "Docs claim secrets come from env vars, but a literal API key is hardcoded",
+    "description": "A two-sided doc-vs-code contradiction: SECURITY.md states all credentials are injected via environment variables, while config.py assigns a literal API key. The doc side and the code side disagree.",
+    "evidence": {
+      "file": "src/config.py",
+      "line_range": "12-13",
+      "snippet": "API_KEY = \"sk-REDACTED-EXAMPLE-NOT-A-REAL-SECRET\"",
+      "tool": "secret-scan"
+    },
+    "suggested_action": "Remove the hardcoded key and read it from the documented environment variable; rotate the exposed credential.",
+    "aliases": ["HCV-009"]
+  }
+]

@@ -281,6 +281,7 @@ Spawn seven scan subagents in parallel. These run alongside Phase 2 documentatio
 ```
 <gap-entry-schema-ref>
   path: ${CLAUDE_PLUGIN_ROOT}/schemas/brownfield-gap-entry.schema.json
+  example: ${CLAUDE_PLUGIN_ROOT}/tests/fixtures/brownfield-gap-entry-example.json   # canonical worked example — three entries demonstrating positive, negative, and contradiction claim_types; copy this shape rather than inventing your own
   required: [gap_id, category, severity, title, evidence]
   category-enum: [doc-code-drift, hardcoded-value, integration-seam, runtime-behavior, security, sbom-completeness, call-graph, stale-claim]
   severity-enum: [CRITICAL, WARNING, INFO]

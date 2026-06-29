@@ -528,6 +528,7 @@ scripts-lib	dpd-traceability-class.bats
 scripts-lib	e103-s2-lifecycle-overrides-helpers.bats
 scripts-lib	e103-s5-strict-mode-retro-coverage.bats
 scripts-lib	e105-s3-date-suffix-convention.bats
+scripts-lib	e28-s282-canonical-gap-entry-fixture.bats
 scripts-lib	e45-s3-auto-save-memory.bats
 scripts-lib	e45-s3-phase-classification.bats
 scripts-lib	e55-s6-security-invariants.bats
