@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.211.0] — 2026-06-29
+
+### Added
+
+- (adapters) add a gosec SAST adapter for Go projects
+- (init) add an embedded platform token for firmware projects
+
+### Fixed
+
+- (init,adapters) address adversarial-review findings on the sprint-74 batch
+- (init) yaml_quote force-quotes and escapes newlines
+
 ## [1.210.2] — 2026-06-29
 
 ### Fixed
