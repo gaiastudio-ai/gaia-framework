@@ -31,7 +31,8 @@ EOF
 }
 
 @test "validate-platform-stack.sh stack_supports has a dedicated embedded arm (AC2)" {
-  grep -qE '^[[:space:]]*embedded\)[[:space:]]*return 0' "$PLUGIN_ROOT/skills/gaia-init/scripts/validate-platform-stack.sh"
+  # The arm also tolerates the `firmware` input alias (symmetry with backend).
+  grep -qE '^[[:space:]]*embedded\|firmware\)[[:space:]]*return 0' "$PLUGIN_ROOT/skills/gaia-init/scripts/validate-platform-stack.sh"
 }
 
 @test "generate-config.sh normalizes firmware → embedded in platforms[] (AC3)" {
@@ -58,6 +59,18 @@ EOF
   run bash "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh" --path . --name esp --phase full < bundle.json
   [ "$status" -eq 0 ]
   grep -qE '^[[:space:]]*- embedded$' .gaia/config/project-config.yaml
+}
+
+@test "validate-platform-stack.sh accepts the 'firmware' alias (symmetry with backend)" {
+  cfg="$TEST_TMP/cfg.yaml"
+  cat >"$cfg" <<EOF
+platforms:
+  - firmware
+stacks:
+  - language: c
+EOF
+  run bash "$PLUGIN_ROOT/skills/gaia-init/scripts/validate-platform-stack.sh" "$cfg"
+  [ "$status" -eq 0 ]
 }
 
 @test "backend → server alias still works — no regression (AC5)" {

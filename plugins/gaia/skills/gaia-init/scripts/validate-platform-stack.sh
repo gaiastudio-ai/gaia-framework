@@ -76,10 +76,10 @@ stack_supports() {
   case "$platform" in
     ios)            wanted="swift|objective-c|react-native|flutter" ;;
     android)        wanted="kotlin|java|react-native|flutter" ;;
-    web)            return 0 ;;
-    server|backend) return 0 ;;
-    embedded)       return 0 ;;
-    *)              printf '%s: unknown platform: %s\n' "$SCRIPT_NAME" "$platform" >&2; return 1 ;;
+    web)             return 0 ;;
+    server|backend)  return 0 ;;
+    embedded|firmware) return 0 ;;
+    *)               printf '%s: unknown platform: %s\n' "$SCRIPT_NAME" "$platform" >&2; return 1 ;;
   esac
   printf '%s\n' "$normalized_langs" | grep -Eq "^($wanted)$"
 }
