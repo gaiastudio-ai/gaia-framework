@@ -449,6 +449,7 @@ scripts-core	lifecycle-event.bats
 scripts-core	load-stack-persona-units.bats
 scripts-core	load-stack-persona.bats
 scripts-core	manual-test-flakiness-tracking.bats
+scripts-core	manual-verification-scan.bats
 scripts-core	measure-val-auto-fix-token-budget.bats
 scripts-core	memory-loader.bats
 scripts-core	memory-roundtrip.bats
