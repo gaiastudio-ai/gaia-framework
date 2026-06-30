@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.215.0] — 2026-06-30
+
+### Added
+
+- (sprint-review) functional-vs-visual manual-test surface class with fail-closed coverage gate
+- (create-story) make manual verification a first-class authoring step
+
+### Changed
+
+- (manual-test) add unit coverage for manual-verification-scan public functions
+- (tests) tag the new manual-test bats in the component manifest
+- (manual-test) consolidate the manual_verification frontmatter reader
+
+### Fixed
+
+- (manual-test) derive frontmatter-reader quote chars via sprintf, not -v
+
 ## [1.214.0] — 2026-06-30
 
 ### Added
