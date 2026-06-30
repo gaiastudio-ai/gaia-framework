@@ -181,7 +181,25 @@ for s in $stacks_plugin; do all_stacks="$all_stacks $s"; done
 # Trim leading space.
 all_stacks="${all_stacks# }"
 
-if [ -z "$all_stacks" ]; then
+# Resolve the project-supplied functional smoke command for the api manual-test
+# surface up front: it determines whether there is manual-test work to do even
+# when no per-stack execution commands are configured. The api surface runs its
+# --target as `bash -c "$TARGET"`, so a real command (not the sprint slug) is
+# what makes it a meaningful functional check.
+api_command=""
+if [ -n "$config_path" ] && [ -f "$config_path" ] && command -v yq >/dev/null 2>&1; then
+  api_command=$(yq eval '.sprint_review.manual_test.api_command // ""' "$config_path" 2>/dev/null || echo "")
+  # Trim surrounding whitespace so a whitespace-only value (which passes the
+  # schema's minLength:1) is treated as "not configured" — otherwise it would
+  # dispatch as a vacuous no-op command and report a misleading PASSED.
+  api_command="$(printf '%s' "$api_command" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+fi
+
+# Early-exit only when there is NOTHING to do — neither per-stack execution
+# commands NOR a functional manual-test command. A project may configure only
+# the api_command (functional smoke) with no per-stack Playwright runs; that is
+# still real Track B work and must reach the manual-test surface loop below.
+if [ -z "$all_stacks" ] && [ -z "$api_command" ]; then
   log "no Track B stacks configured in $config_path sprint_review section — emitting empty envelope"
   printf '[]\n'
   exit 0
@@ -337,10 +355,33 @@ else
       config_flags="--config $config_path"
     fi
 
+    # The api surface is the FUNCTIONAL path: it executes its --target as a
+    # shell command. Use the configured functional smoke command; if none is
+    # configured, skip the api surface (do not run the sprint slug as a
+    # command, which would fail with command-not-found and a false verdict).
+    surface_target="sprint-review-${sprint_id}"
+    if [ "$surface" = "api" ]; then
+      if [ -z "$api_command" ]; then
+        log "api surface: no sprint_review.manual_test.api_command configured — SKIPPED (no functional smoke command)"
+        # Record an explicit SKIPPED envelope (PASSED-equivalent) rather than
+        # running the sprint slug as a command. Keeps the audit trail complete.
+        envelopes=$(printf '%s' "$envelopes" | jq \
+          --arg surface "$surface" \
+          '. + [{
+            type: "manual-test",
+            surface: $surface,
+            verdict: "SKIPPED",
+            raw: "SKIPPED: no sprint_review.manual_test.api_command configured"
+          }]')
+        continue
+      fi
+      surface_target="$api_command"
+    fi
+
     set +e
     # shellcheck disable=SC2086
     surface_json=$(bash "$DISPATCH_SURFACE" --surface "$surface" \
-      --target "sprint-review-${sprint_id}" \
+      --target "$surface_target" \
       --evidence-dir "$evidence_dir" \
       $config_flags 2>&1)
     surface_rc=$?

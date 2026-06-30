@@ -81,7 +81,17 @@ read_platforms() {
     while ((getline line) > 0) {
       if (line !~ /^[[:space:]]*-/) break
       gsub(/^[[:space:]]*-[[:space:]]*/, "", line)
+      # Strip an inline "# comment" before the trailing-whitespace strip, so an
+      # annotated entry like "- server   # functional smoke target" yields the
+      # bare platform name ("server") rather than the literal commented string
+      # (which would fail the exact comma-delimited match downstream and
+      # silently disable the surface).
+      gsub(/[[:space:]]*#.*/, "", line)
       gsub(/[[:space:]]*$/, "", line)
+      # A list line that is only a comment (e.g. "-   # note") or otherwise
+      # empty after stripping must NOT become a bogus empty platform (which
+      # would produce a malformed "web,,server" join). Skip empties.
+      if (length(line) == 0) continue
       if (length(result) > 0) result = result "," line
       else result = line
     }

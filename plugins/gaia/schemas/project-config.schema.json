@@ -522,6 +522,18 @@
           "description": "Whether the Track B runner falls back to screen-recording capture when Playwright cannot drive the stack (e.g., native-desktop). Default true.",
           "type": "boolean",
           "default": true
+        },
+        "manual_test": {
+          "description": "Functional manual-test surface configuration for /gaia-sprint-review Track B. The browser/visual surfaces catch appearance changes; the `api` surface is the FUNCTIONAL path (a real smoke command whose transcript + exit code decide the verdict). Without `api_command` the Track B `api` surface has no meaningful command to run and is cleanly SKIPPED. Nested under the already-classified `sprint_review` section, so this adds NO top-level config-hydration property and needs no allowlist registration.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "api_command": {
+              "description": "Project-supplied functional smoke command run by the Track B `api` surface (e.g. a curl/health-check or end-to-end smoke script). Its transcript and exit code are captured as the api-surface manual-test evidence. When absent, the `api` surface is SKIPPED rather than run with a placeholder — there is no meaningful default functional command.",
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
     },

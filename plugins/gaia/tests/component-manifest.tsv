@@ -404,6 +404,7 @@ scripts-core	e28-s182-gaia-migrate-sigint-trap.bats
 scripts-core	e28-s211-workerspawn-memory-load.bats
 scripts-core	e28-s274-sidecar-write.bats
 scripts-core	e28-s275-planning-vs-test-taxonomy.bats
+scripts-core	e28-s289-manual-test-review-dispatch.bats
 scripts-core	e41-s1-yolo-lint.bats
 scripts-core	e41-s1-yolo-mode.bats
 scripts-core	e43-s6-resume-contract.bats
@@ -649,6 +650,8 @@ skills	e28-s278-cross-retro-subdir-scan.bats
 skills	e28-s279-yaml-quote-newline-escape.bats
 skills	e28-s280-embedded-platform-token.bats
 skills	e28-s284-per-stack-per-env-targeting.bats
+skills	e28-s290-manual-test-api-command.bats
+skills	e28-s291-platforms-inline-comment-strip.bats
 skills	e36-s1-cross-retro-learning.bats
 skills	e39-s4-extract-findings.bats
 skills	e39-s4-sprint-scope.bats
