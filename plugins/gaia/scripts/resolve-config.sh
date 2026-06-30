@@ -949,6 +949,19 @@ v_tools_sast_provider=$(merge_doubly_nested_key tools sast provider)
 v_tools_secrets_provider=$(merge_doubly_nested_key tools secrets provider)
 v_tools_sca_provider=$(merge_doubly_nested_key tools sca provider)
 
+# tools.aggregation.* — pipeline-wide SARIF-merge / dedup / DefectDojo export.
+# Promotes the brownfield-only aggregation knobs to the standard security gate
+# and scheduled deep-scans. The brownfield.* knobs above remain unchanged (this
+# is an additive, pipeline-wide read path). defectdojo_api_token holds the NAME
+# of an env var, never a literal secret — the same invariant as the brownfield
+# location; the token value is read from the named env var at run time.
+v_tools_aggregation_sarif_merge_enabled=$(merge_doubly_nested_key tools aggregation sarif_merge_enabled)
+v_tools_aggregation_dedup_enabled=$(merge_doubly_nested_key tools aggregation dedup_enabled)
+v_tools_aggregation_defectdojo_enabled=$(merge_doubly_nested_key tools aggregation defectdojo_enabled)
+v_tools_aggregation_defectdojo_api_url=$(merge_doubly_nested_key tools aggregation defectdojo_api_url)
+v_tools_aggregation_defectdojo_api_token=$(merge_doubly_nested_key tools aggregation defectdojo_api_token)
+v_tools_aggregation_defectdojo_engagement_id=$(merge_doubly_nested_key tools aggregation defectdojo_engagement_id)
+
 # test_execution.tier_{1,2,3}.placement
 v_test_execution_tier_1_placement=$(merge_doubly_nested_key test_execution tier_1 placement)
 v_test_execution_tier_2_placement=$(merge_doubly_nested_key test_execution tier_2 placement)
@@ -1303,6 +1316,18 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_tools_secrets_provider" ;;
     tools.sca.provider)
       printf '%s\n' "$v_tools_sca_provider" ;;
+    tools.aggregation.sarif_merge_enabled)
+      printf '%s\n' "$v_tools_aggregation_sarif_merge_enabled" ;;
+    tools.aggregation.dedup_enabled)
+      printf '%s\n' "$v_tools_aggregation_dedup_enabled" ;;
+    tools.aggregation.defectdojo_enabled)
+      printf '%s\n' "$v_tools_aggregation_defectdojo_enabled" ;;
+    tools.aggregation.defectdojo_api_url)
+      printf '%s\n' "$v_tools_aggregation_defectdojo_api_url" ;;
+    tools.aggregation.defectdojo_api_token)
+      printf '%s\n' "$v_tools_aggregation_defectdojo_api_token" ;;
+    tools.aggregation.defectdojo_engagement_id)
+      printf '%s\n' "$v_tools_aggregation_defectdojo_engagement_id" ;;
     test_execution.tier_1.placement)
       printf '%s\n' "$v_test_execution_tier_1_placement" ;;
     test_execution.tier_2.placement)

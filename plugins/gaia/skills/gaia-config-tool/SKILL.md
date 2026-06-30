@@ -14,6 +14,31 @@ orchestration_class: light-procedural
 
 You are editing the `tools` top-level section of `project-config.yaml`. The skill is one of the `/gaia-config-*` editors, each scoped to a single declared section of `schemas/project-config.schema.json`. The `tools` section maps tool categories (sast, secret-scan, dep-audit, etc.) to provider+config selections.
 
+### Tiered placement (blocking gate + scheduled deep-scans)
+
+A category's `provider` is the **blocking PR-gate scanner** — a fast, low-false-positive scanner that gates every PR. A category MAY additionally declare one or more **non-blocking scheduled deep-scan scanners** for the enterprise defense-in-depth model (heavier/noisier scanners run on a schedule rather than blocking PRs):
+
+```yaml
+# project-config.yaml — under the top-level tools: section
+  sast:
+    provider: semgrep                 # blocking PR gate (default placement: ci-pre-merge)
+    scheduled:                        # non-blocking deep scans (default placement: ci-post-merge)
+      - sonarqube                     #   bare provider name, OR
+      - { provider: codeql, placement: ci-post-merge }
+  sca:
+    provider: grype
+    scheduled: [owasp-dependency-check]
+```
+
+- `placement` (on the entry or a `scheduled[]` object) uses the `testPlacement` enum (`ci-pre-merge`/`ci-post-merge`/…), mirroring the `test_execution.tier_*.placement` model. The gate `provider` defaults to `ci-pre-merge` (blocking); a `scheduled[]` entry defaults to `ci-post-merge` (non-blocking).
+- **Back-compat:** a bare `provider: <x>` with no `scheduled`/`placement` keeps the unchanged single-blocking-gate behavior.
+- Resolve a category's tiered placement (gate + scheduled scanners, each with its pipeline stage) via `${CLAUDE_PLUGIN_ROOT}/scripts/scanner-placement.sh --config <path> --category <name>`.
+- **Not to be confused with `brownfield.scanner_tier`:** that is a DIFFERENT, orthogonal axis — `scanner_tier` (`'0'|'1'|'2'|'auto'`) caps HOW DEEP the brownfield deterministic-tools battery goes (a capability cap), whereas `tools.<category>.placement` controls WHERE in the pipeline a scanner runs (blocking gate vs scheduled deep-scan). They are independent and do not conflict.
+
+### Reserved key: `tools.aggregation`
+
+`aggregation` is a **reserved key under `tools`, NOT a scanner category.** It holds the pipeline-wide SARIF-merge / dedup / DefectDojo export settings (`sarif_merge_enabled`, `dedup_enabled`, `defectdojo_enabled`, `defectdojo_api_url`, `defectdojo_api_token`, `defectdojo_engagement_id`). Because it is reserved, `aggregation` is NOT a valid `<category>` for `/gaia-config-tool --category` — a request to configure it as a scanner category is rejected by the orphan-rejection guard (it is not in the adapter-category set). `defectdojo_api_token` holds the NAME of an env var, never a literal secret. Edit this block as the `tools.aggregation.<key>` map directly; see the security-review skill for how the standard gate consumes it.
+
 Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
 
 ## Critical Rules

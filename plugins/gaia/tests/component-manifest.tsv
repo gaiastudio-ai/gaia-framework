@@ -415,6 +415,8 @@ scripts-core	e68-s3-base-rubrics-validation.bats
 scripts-core	e68-s4-regime-rubrics-merge.bats
 scripts-core	e68-s4-regime-rubrics-validation.bats
 scripts-core	e68-s5-regime-rubrics-cohort-uniformity.bats
+scripts-core	e70-s12-tiered-scanners.bats
+scripts-core	e70-s13-pipeline-aggregation.bats
 scripts-core	e70-s2-static-tool-migration.bats
 scripts-core	e70-s5-list-tools.bats
 scripts-core	e70-s5-tool-info.bats
