@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Format Contracts - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="test-environment-yaml.html">test-environment.yaml Reference</a></li>
+          <li><a href="bridge.html">Test Execution Bridge</a></li>
+          <li><a href="format-contracts.html" class="active">Format Contracts</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#quick-spec">Quick spec</a></li>
+          <li><a href="#gap-entry">Brownfield gap entry</a></li>
+          <li><a href="#execution-evidence">Execution evidence</a></li>
+          <li><a href="#related">Related</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        Format Contracts
+      </nav>
+
+      <header>
+        <h1>Format Contracts</h1>
+        <p>
+          Several GAIA commands consume an <strong>input file</strong> with a
+          specific shape. This page collects one realistic worked example of
+          each, so you can author the file correctly the first time instead
+          of inferring the shape from prose. Every example names the command
+          that consumes the file and points at the canonical contract in the
+          plugin source, so you can always verify or go deeper.
+        </p>
+      </header>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          A <em>format contract</em> is the agreed shape of a file that flows
+          between you and a command (or between two commands). Where a shape
+          is enforced by a schema or a fixed template in the plugin, that
+          schema or template is the source of truth &mdash; the examples
+          below are grounded in it, not invented.
+        </p>
+        <table>
+          <thead>
+            <tr><th>Contract</th><th>Consumed by</th><th>Canonical source</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="#quick-spec">Quick spec</a></td>
+              <td><code>/gaia-quick-dev</code></td>
+              <td><code>plugins/gaia/skills/gaia-quick-spec/SKILL.md</code></td>
+            </tr>
+            <tr>
+              <td><a href="#gap-entry">Brownfield gap entry</a></td>
+              <td>brownfield scan / consolidation</td>
+              <td><code>plugins/gaia/schemas/brownfield-gap-entry.schema.json</code></td>
+            </tr>
+            <tr>
+              <td><a href="#execution-evidence">Execution evidence</a></td>
+              <td>review gates (via the bridge)</td>
+              <td><a href="bridge.html">Test Execution Bridge</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="quick-spec">
+        <h2>Quick spec</h2>
+        <p>
+          <strong>Consumed by:</strong> <code>/gaia-quick-dev</code>.
+          <strong>Written by:</strong> <code>/gaia-quick-spec</code>.
+          <strong>Canonical path:</strong>
+          <code>.gaia/artifacts/implementation-artifacts/quick-spec-{spec_name}.md</code>.
+        </p>
+        <p>
+          A quick spec is a lightweight implementation plan with exactly five
+          fixed sections, in this order: <em>Summary</em>, <em>Files to
+          change</em>, <em>Implementation steps</em>, <em>Acceptance
+          criteria</em>, and <em>Risks</em>. Do not add other sections &mdash;
+          a developer (or <code>/gaia-quick-dev</code>) hands the file
+          straight to implementation.
+        </p>
+        <pre><code># Quick Spec: Add a --json flag to the report command
+
+## Summary
+
+Add a `--json` flag to `report` so it can emit machine-readable output for
+CI consumption.
+
+## Files to change
+
+- src/cli.py — add the `--json` argument and branch the output formatter.
+- tests/test_report.py — cover the JSON output path.
+
+## Implementation steps
+
+1. Add `--json` to the report argument parser.
+2. Branch the formatter: JSON when the flag is set, table otherwise.
+3. Add a test asserting valid JSON is emitted with `--json`.
+
+## Acceptance criteria
+
+- Running `report --json` prints valid JSON and exits 0.
+- Running `report` without the flag prints the existing table output.
+
+## Risks
+
+- None known; the change is additive and the default path is unchanged.</code></pre>
+        <p>
+          The five-section template is defined in
+          <code>gaia-quick-spec/SKILL.md</code> (Step 4 &mdash; Generate Quick
+          Spec). The path convention is fixed; do not invent a different
+          folder or filename.
+        </p>
+      </section>
+
+      <section id="gap-entry">
+        <h2>Brownfield gap entry</h2>
+        <p>
+          <strong>Consumed by:</strong> the brownfield scan and consolidation
+          flow. <strong>Canonical source:</strong>
+          <code>plugins/gaia/schemas/brownfield-gap-entry.schema.json</code>
+          (with a shipped example at
+          <code>plugins/gaia/tests/fixtures/brownfield-gap-entry-example.json</code>).
+        </p>
+        <p>
+          A gap entry is a single JSON object describing one finding. The
+          required fields are <code>gap_id</code>, <code>category</code>,
+          <code>severity</code>, <code>title</code>, and
+          <code>evidence</code>; the rest (<code>claim_type</code>,
+          <code>description</code>, <code>suggested_action</code>,
+          <code>stack</code>, <code>aliases</code>, <code>confidence</code>,
+          <code>metadata</code>) are optional. Scan subagents emit an array
+          of these objects, each validated per entry.
+        </p>
+        <pre><code>{
+  "gap_id": "DC-001",
+  "category": "doc-code-drift",
+  "severity": "WARNING",
+  "claim_type": "positive",
+  "title": "README documents a --json flag the CLI no longer accepts",
+  "description": "The README usage block lists `--json` as a supported flag, but the argument parser in cli.py has no such option.",
+  "evidence": {
+    "file": "README.md",
+    "line_range": "57",
+    "snippet": "Run `tool report --json` to emit machine-readable output.",
+    "tool": "doc-code-scan"
+  },
+  "suggested_action": "Either restore the --json flag in cli.py or remove the stale README line.",
+  "stack": "python"
+}</code></pre>
+        <p>
+          Validate any candidate entry against the schema before relying on
+          it. The schema is the source of truth for field names, allowed
+          values, and which fields are required.
+        </p>
+      </section>
+
+      <section id="execution-evidence">
+        <h2>Execution evidence</h2>
+        <p>
+          <strong>Consumed by:</strong> test-execution review gates when the
+          Test Execution Bridge is enabled. The execution-evidence file is a
+          small JSON object the review gate inspects to decide whether a
+          <code>PASSED</code> verdict is allowed:
+        </p>
+        <pre><code>{
+  "exit_code": 0,
+  "skipped": false,
+  "suites": [
+    { "name": "unit",        "fail_count": 0 },
+    { "name": "integration", "fail_count": 0 }
+  ]
+}</code></pre>
+        <p>
+          The gate reads <code>exit_code</code>,
+          <code>suites[].fail_count</code> (summed), and <code>skipped</code>,
+          and refuses <code>PASSED</code> if the run was red or skipped. The
+          full contract &mdash; every field, the refuse-conditions, and how to
+          enable the bridge &mdash; is documented on the
+          <a href="bridge.html">Test Execution Bridge</a> page.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related</h2>
+        <table>
+          <thead>
+            <tr><th>Page / command</th><th>Why it relates</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="bridge.html">Test Execution Bridge</a></td>
+              <td>Full reference for the execution-evidence contract summarised above.</td>
+            </tr>
+            <tr>
+              <td><a href="test-environment-yaml.html">test-environment.yaml Reference</a></td>
+              <td>The manifest that tells the bridge how to run your tests.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-quick-spec.html"><code>/gaia-quick-spec</code></a></td>
+              <td>Writes the quick-spec file documented above.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-quick-dev.html"><code>/gaia-quick-dev</code></a></td>
+              <td>Consumes the quick-spec file to implement the change.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="index.html">Back to Home</a></p>
+      </footer>
+
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Execution Bridge - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="test-environment-yaml.html">test-environment.yaml Reference</a></li>
+          <li><a href="bridge.html" class="active">Test Execution Bridge</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#two-modes">Bridge on vs. bridge off</a></li>
+          <li><a href="#enable">Enabling real test execution</a></li>
+          <li><a href="#evidence">The execution-evidence contract</a></li>
+          <li><a href="#refuse-rules">When the gate refuses PASSED</a></li>
+          <li><a href="#worked-example">Worked example</a></li>
+          <li><a href="#related">Related</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        Test Execution Bridge
+      </nav>
+
+      <header>
+        <h1>Test Execution Bridge</h1>
+        <p>
+          The <strong>Test Execution Bridge</strong> is what turns GAIA's
+          test-execution review gates from <em>self-attested</em> into
+          <em>evidence-backed</em>. When the bridge is enabled, a review gate
+          that claims tests passed must be backed by a small
+          <strong>execution-evidence</strong> JSON file describing the actual
+          run. The review gate inspects that file and <em>refuses</em> to
+          record a passing verdict if the evidence shows a red or skipped
+          suite.
+        </p>
+        <p>
+          This page explains how to enable the bridge and documents the exact
+          execution-evidence shape the gate consumes &mdash; so the evidence
+          you supply actually satisfies the gate. For the companion
+          <em>input</em> manifest that tells the bridge <em>how to run</em>
+          your tests, see the
+          <a href="test-environment-yaml.html">test-environment.yaml
+          Reference</a>; this page covers the <em>evidence</em> the run
+          produces, not the manifest it consumes.
+        </p>
+      </header>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          A test-execution review gate (for example QA Tests, Test
+          Automation, or Test Review) can be recorded as
+          <code>PASSED</code>, <code>FAILED</code>, or
+          <code>UNVERIFIED</code>. With the bridge enabled, a
+          <code>PASSED</code> verdict on one of these gates is only accepted
+          when it is accompanied by an execution-evidence file whose contents
+          confirm a clean run. The gate reads three fields from that file and
+          refuses <code>PASSED</code> if any of them indicate a problem.
+        </p>
+        <p>
+          This closes a gate-integrity hole: without the content check, a
+          gate could be marked <code>PASSED</code> against evidence that
+          recorded a failing suite, and a story with a red test run could
+          reach <code>done</code> with every review gate showing
+          &ldquo;PASSED&rdquo;.
+        </p>
+      </section>
+
+      <section id="two-modes">
+        <h2>Bridge on vs. bridge off</h2>
+        <p>
+          The bridge is controlled by a single boolean in project
+          configuration:
+          <code>test_execution_bridge.bridge_enabled</code>.
+        </p>
+        <table>
+          <thead>
+            <tr><th>State</th><th>Behaviour</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>bridge_enabled: false</code> (default)</td>
+              <td>
+                Test-execution gates are recorded from a written report. No
+                execution-evidence file is required. Suitable for projects
+                that have not yet wired a real test runner.
+              </td>
+            </tr>
+            <tr>
+              <td><code>bridge_enabled: true</code></td>
+              <td>
+                A <code>PASSED</code> verdict on a test-execution gate
+                requires an execution-evidence file, and that file's contents
+                are inspected. Evidence showing a non-zero exit code, any
+                failed tests, or a skipped suite causes the gate to refuse
+                <code>PASSED</code>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="enable">
+        <h2>Enabling real test execution</h2>
+        <p>
+          Turn the bridge on with the dedicated command:
+        </p>
+        <pre><code>/gaia-bridge-enable</code></pre>
+        <p>
+          This sets <code>test_execution_bridge.bridge_enabled = true</code>
+          in <code>.gaia/config/project-config.yaml</code>. The flag takes
+          effect immediately. The command is idempotent &mdash; running it
+          when the bridge is already enabled is a no-op. To turn the bridge
+          back off, use <code>/gaia-bridge-disable</code>.
+        </p>
+        <div class="callout">
+          <p class="callout-title">You also need a manifest</p>
+          <p>
+            Enabling the bridge tells GAIA to <em>require</em> evidence. To
+            tell GAIA <em>how to run</em> your tests &mdash; the runner
+            commands, tiers, and tier-to-gate mapping &mdash; author a
+            <code>test-environment.yaml</code> manifest. See the
+            <a href="test-environment-yaml.html">test-environment.yaml
+            Reference</a>.
+          </p>
+        </div>
+      </section>
+
+      <section id="evidence">
+        <h2>The execution-evidence contract</h2>
+        <p>
+          When the bridge is enabled, a <code>PASSED</code> test-execution
+          gate is recorded with a path to an execution-evidence JSON file.
+          The review gate reads exactly three fields from that file:
+        </p>
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>exit_code</code></td>
+              <td>integer</td>
+              <td>
+                The process exit code of the test run. <code>0</code> means
+                the run succeeded. Defaults to <code>0</code> when absent.
+              </td>
+            </tr>
+            <tr>
+              <td><code>suites[].fail_count</code></td>
+              <td>array of objects</td>
+              <td>
+                Per-suite failure counts. The gate <em>sums</em>
+                <code>fail_count</code> across every entry in
+                <code>suites</code>. A missing count is treated as
+                <code>0</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>skipped</code></td>
+              <td>boolean</td>
+              <td>
+                Whether the suite was skipped (not actually exercised). A real
+                run stamps <code>false</code>; <code>true</code> means
+                &ldquo;tier not run&rdquo; and is not a passing signal.
+                Defaults to <code>false</code> when absent.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          A clean run that the gate will accept as <code>PASSED</code> looks
+          like this:
+        </p>
+        <pre><code>{
+  "exit_code": 0,
+  "skipped": false,
+  "suites": [
+    { "name": "unit",        "fail_count": 0 },
+    { "name": "integration", "fail_count": 0 }
+  ]
+}</code></pre>
+        <p>
+          Any additional fields you include (timestamps, durations, a
+          command string, per-suite pass counts) are ignored by the gate and
+          safe to add for your own auditing &mdash; only the three fields
+          above affect the verdict.
+        </p>
+      </section>
+
+      <section id="refuse-rules">
+        <h2>When the gate refuses PASSED</h2>
+        <p>
+          With the bridge enabled, the gate refuses to record
+          <code>PASSED</code> &mdash; and tells you why &mdash; when the
+          evidence shows any of:
+        </p>
+        <table>
+          <thead>
+            <tr><th>Condition</th><th>Gate response</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>exit_code</code> is not <code>0</code></td>
+              <td>
+                Refuses <code>PASSED</code> (red suite). Fix the failing tests
+                and re-capture evidence, or record <code>FAILED</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>summed <code>suites[].fail_count</code> is greater than 0</td>
+              <td>
+                Refuses <code>PASSED</code> (failing tests). Fix and
+                re-capture, or record <code>FAILED</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>skipped</code> is <code>true</code></td>
+              <td>
+                Refuses <code>PASSED</code> (suite did not run). Run the suite
+                and re-capture, or record <code>UNVERIFIED</code>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          A <code>FAILED</code> verdict is always allowed against red
+          evidence &mdash; recording that a gate failed is correct and
+          expected. The refusal applies only to a <code>PASSED</code> claim
+          that the evidence contradicts.
+        </p>
+        <div class="callout">
+          <p class="callout-title">Documented escape hatches</p>
+          <p>
+            Two deliberate bypasses exist for situations where attaching real
+            evidence is not possible. Recording a gate with an explicit
+            <em>missing-evidence reason</em> satisfies the gate without an
+            evidence file (the reason is preserved for audit), and a project
+            can disable the content check entirely via the
+            <code>REVIEW_GATE_PROOF_OF_EXECUTION=off</code> environment
+            override. Both are escape hatches &mdash; the default, enabled
+            behaviour is the evidence-backed path above.
+          </p>
+        </div>
+      </section>
+
+      <section id="worked-example">
+        <h2>Worked example</h2>
+        <p>
+          Suppose a suite ran but two integration tests failed. The
+          execution-evidence file would record:
+        </p>
+        <pre><code>{
+  "exit_code": 1,
+  "skipped": false,
+  "suites": [
+    { "name": "unit",        "fail_count": 0 },
+    { "name": "integration", "fail_count": 2 }
+  ]
+}</code></pre>
+        <p>
+          Attempting to record this gate as <code>PASSED</code> is refused on
+          two counts: <code>exit_code</code> is <code>1</code> and the summed
+          <code>fail_count</code> is <code>2</code>. The correct action is to
+          fix the two failing integration tests, re-run, and re-capture
+          evidence showing <code>exit_code: 0</code> with all
+          <code>fail_count</code> values at <code>0</code> &mdash; or to
+          record the gate as <code>FAILED</code> until the fix lands.
+        </p>
+      </section>
+
+      <section id="related">
+        <h2>Related</h2>
+        <table>
+          <thead>
+            <tr><th>Page / command</th><th>Why it relates</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="test-environment-yaml.html">test-environment.yaml Reference</a></td>
+              <td>The input manifest that tells the bridge how to run your tests; the companion to the evidence contract on this page.</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-bridge-enable.html"><code>/gaia-bridge-enable</code></a></td>
+              <td>Turns the bridge on (sets <code>bridge_enabled = true</code>).</td>
+            </tr>
+            <tr>
+              <td><a href="commands/gaia-bridge-disable.html"><code>/gaia-bridge-disable</code></a></td>
+              <td>Turns the bridge off.</td>
+            </tr>
+            <tr>
+              <td><a href="categories/testing.html">Testing category</a></td>
+              <td>The full set of testing commands whose execution the bridge backs with evidence.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="index.html">Back to Home</a></p>
+      </footer>
+
+    </main>
+  </div>
+</body>
+</html>
