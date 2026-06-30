@@ -228,6 +228,21 @@ Each row names the canonical short-name, the skill to dispatch, the canonical ga
 
 Under the `.gaia/` consolidation, the prefix `docs/` may resolve to `.gaia/artifacts/` — the report paths are constructed via `${GAIA_ARTIFACTS_DIR}` per `gaia-paths.sh`. Both layouts are accepted by `review-gate.sh --report`.
 
+### Step 2.5: Manual-test dispatch (for `manual_verification: true` stories)
+
+> Deterministic, scripts-over-LLM. The LLM does not dispatch surfaces or judge the manual-test verdict — `manual-test-review-dispatch.sh` does.
+
+After the six canonical reviews finish (Substeps 2.3–2.4) and BEFORE the summary, run the manual-test dispatch helper for the story. This closes the gap where a story declaring `manual_verification: true` could reach `done` with no functional verification (the surface dispatch + ledger gate existed, but nothing in the per-story review ever produced a verdict — so a silently-broken / unwired feature shipped green):
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/manual-test-review-dispatch.sh --story {story_key}
+```
+
+- For a story that does NOT declare `manual_verification: true`, the helper is a clean no-op (exit 0, nothing recorded) — the common case is unaffected, no new mandatory step.
+- For a `manual_verification: true` story, the helper resolves a REAL functional target (the `sprint_review.manual_test.api_command` for the api surface — the story key is NOT a runnable command), runs the surface check (REUSING `gaia-test-manual`'s `dispatch-surface.sh`), and records the verdict to the review-gate `manual-test` ledger gate via `review-gate.sh --plan-id`.
+- The mapping is **fail-closed**, because the story author asserted that verification is REQUIRED: only a surface verdict that actually ran and PASSED records `PASSED` (exit 0); a real FAILED records `FAILED` (exit 3); and anything that did NOT actually verify — no resolvable functional target, SKIPPED, PENDING, an adapter error, or an absent verdict — records `UNVERIFIED` (exit 4). A SKIPPED surface is NOT a pass here: the absence of execution for a story that requires verification is an unmet requirement, not a green gate.
+- Surface the helper's stderr to the user. A non-zero exit (3 = FAILED, 4 = UNVERIFIED) means the manual-test gate is not PASSED — the story should NOT be transitioned to `done` until the functional verification actually runs and passes. The transition is gated by the advisory/gating consumer in `transition-story-status.sh` (review→done): for a `manual_verification: true` story, ANY non-PASSED manual-test verdict (FAILED, UNVERIFIED, or absent) triggers the gate. Behavior is controlled by `review_gate.manual_test_mode` (advisory WARNING by default; `gating` blocks the transition).
+
 ### Step 3: Generate Summary (deterministic three-call sequence)
 
 > Summary file is written by script, not LLM. The LLM produces optional one-line synopses via `--synopsis-file`; everything else is deterministic.

@@ -37,6 +37,8 @@ sprint_review:
   backend_commands:
     node: "FIXTURE_EXIT_CODE=${1:-0} FIXTURE_STDOUT='ok' $FIXTURE"
   timeout_per_stack: 5
+  manual_test:
+    api_command: "echo api-smoke"
 EOF
   mkdir -p "$TMPDIR_TEST/.gaia/memory/checkpoints"
   cat >"$TMPDIR_TEST/.gitignore" <<EOF
