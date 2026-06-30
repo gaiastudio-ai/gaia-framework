@@ -72,6 +72,12 @@ Usage: generate-frontmatter.sh \
                              Emitted as `null` when omitted.
   --origin-ref <s>           Optional origin reference (e.g., "Work Item 6.1").
                              Emitted as `null` when omitted.
+  --manual-verification      Opt the story into manual verification. Sets the
+                             `manual_verification: true` frontmatter flag so the
+                             per-story-review manual-test gate is required. When
+                             omitted the flag defaults to `false` (no
+                             verification required), symmetric with how the
+                             acceptance-test offer is opt-in by risk.
 
 Output (stdout): YAML frontmatter block delimited by `---` lines, in the
 canonical 15-field order matching story-template.md.
@@ -93,6 +99,7 @@ origin=""
 origin_ref=""
 origin_set=0
 origin_ref_set=0
+manual_verification="false"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -111,6 +118,8 @@ while [ $# -gt 0 ]; do
     --origin-ref)
       [ $# -ge 2 ] || die_usage "--origin-ref requires a value"
       origin_ref="$2"; origin_ref_set=1; shift 2 ;;
+    --manual-verification)
+      manual_verification="true"; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -423,6 +432,7 @@ sprint_id: null
 priority_flag: null
 delivered: false
 deferred_implementation: false
+manual_verification: $manual_verification
 origin: $origin_yaml
 origin_ref: $origin_ref_yaml
 depends_on: $depends_on_yaml
