@@ -39,37 +39,37 @@ PY
 
 # ---------- AC1/AC2: schema — additive tiered shape + back-compat ----------
 
-@test "AC2: a bare provider validates (single-gate back-compat, unchanged)" {
+@test "a bare provider validates (single-gate back-compat, unchanged) (AC2)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"sast":{"provider":"semgrep"}}'
   [[ "$output" == *"valid"* ]]
 }
 
-@test "AC1: provider + scheduled[string] validates (tiered)" {
+@test "provider + scheduled[string] validates (tiered) (AC1)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"sast":{"provider":"semgrep","scheduled":["sonarqube"]}}'
   [[ "$output" == *"valid"* ]]
 }
 
-@test "AC1: provider + placement + scheduled[object] validates (tiered, object form)" {
+@test "provider + placement + scheduled[object] validates (tiered, object form) (AC1)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"sast":{"provider":"semgrep","placement":"ci-pre-merge","scheduled":[{"provider":"codeql","placement":"ci-post-merge"}]}}'
   [[ "$output" == *"valid"* ]]
 }
 
-@test "AC2: an unknown sibling key is still rejected (additionalProperties stays tight)" {
+@test "an unknown sibling key is still rejected (additionalProperties stays tight) (AC2)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"sast":{"provider":"semgrep","bogus":1}}'
   [[ "$output" == *"error"* ]]
 }
 
-@test "AC1: a bad placement enum value is rejected" {
+@test "a bad placement enum value is rejected (AC1)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"sast":{"provider":"semgrep","placement":"whenever"}}'
   [[ "$output" == *"error"* ]]
 }
 
-@test "AC1: a scheduled object entry without provider is rejected" {
+@test "a scheduled object entry without provider is rejected (AC1)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"sast":{"provider":"semgrep","scheduled":[{"config":{}}]}}'
   [[ "$output" == *"error"* ]]
@@ -77,7 +77,7 @@ PY
 
 # ---------- AC5: routing — gate vs scheduled placement ----------
 
-@test "AC2/AC5: bare provider resolves to a single gate at ci-pre-merge" {
+@test "bare provider resolves to a single gate at ci-pre-merge (AC2, AC5)" {
   have_yq || skip "yq not available"
   printf 'tools:\n  sast:\n    provider: semgrep\n' > "$TMP/c.yaml"
   run bash "$SP" --config "$TMP/c.yaml" --category sast
@@ -87,7 +87,7 @@ PY
   [[ "$output" != *"scheduled"* ]]
 }
 
-@test "AC5: tiered config routes the gate to pre-merge and scheduled to post-merge" {
+@test "tiered config routes the gate to pre-merge and scheduled to post-merge (AC5)" {
   have_yq || skip "yq not available"
   cat > "$TMP/c.yaml" <<'EOF'
 tools:
@@ -104,7 +104,7 @@ EOF
   [[ "$output" == *$'scheduled\tcodeql\tci-post-merge'* ]]
 }
 
-@test "AC5: an explicit scheduled placement overrides the post-merge default" {
+@test "an explicit scheduled placement overrides the post-merge default (AC5)" {
   have_yq || skip "yq not available"
   cat > "$TMP/c.yaml" <<'EOF'
 tools:
@@ -118,14 +118,14 @@ EOF
   [[ "$output" == *$'scheduled\tzap-full\tpost-deploy'* ]]
 }
 
-@test "AC5: an unconfigured category exits 2 (benign, nothing to place)" {
+@test "an unconfigured category exits 2 (benign, nothing to place) (AC5)" {
   have_yq || skip "yq not available"
   printf 'tools:\n  sast:\n    provider: semgrep\n' > "$TMP/c.yaml"
   run bash "$SP" --config "$TMP/c.yaml" --category sca
   [ "$status" -eq 2 ]
 }
 
-@test "AC5: json format emits gate + scheduled objects" {
+@test "json format emits gate + scheduled objects (AC5)" {
   have_yq || skip "yq not available"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
   cat > "$TMP/c.yaml" <<'EOF'
@@ -199,7 +199,7 @@ EOF
 
 # ---------- AC4: reconciliation with brownfield scanner_tier ----------
 
-@test "AC4: the schema documents that tools placement is orthogonal to brownfield scanner_tier" {
+@test "the schema documents that tools placement is orthogonal to brownfield scanner_tier (AC4)" {
   # The JSON schema tools.description must call out the orthogonality so the two
   # tier vocabularies are not conflated.
   run python3 -c "
@@ -213,20 +213,20 @@ print('ok')
   [[ "$output" == *"ok"* ]]
 }
 
-@test "AC4: the YAML descriptor + the helper both document the scanner_tier reconciliation" {
+@test "the YAML descriptor + the helper both document the scanner_tier reconciliation (AC4)" {
   grep -q 'scanner_tier' "$YAML_DESC"
   grep -qi 'orthogonal\|do not conflict\|independent' "$YAML_DESC"
   # The helper explicitly states it does not read scanner_tier.
   grep -q 'scanner_tier' "$SP"
 }
 
-@test "AC6: the config-tool SKILL documents the tiered model + back-compat + reconciliation" {
+@test "the config-tool SKILL documents the tiered model + back-compat + reconciliation (AC6)" {
   grep -qi 'scheduled' "$SKILL"
   grep -qi 'blocking' "$SKILL"
   grep -qi 'back-compat\|unchanged single' "$SKILL"
   grep -q 'scanner_tier' "$SKILL"
 }
 
-@test "AC6: the helper is referenced from the SKILL prose (discoverable)" {
+@test "the helper is referenced from the SKILL prose (discoverable) (AC6)" {
   grep -q 'scanner-placement.sh' "$SKILL"
 }

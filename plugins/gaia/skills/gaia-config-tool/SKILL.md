@@ -19,7 +19,7 @@ You are editing the `tools` top-level section of `project-config.yaml`. The skil
 A category's `provider` is the **blocking PR-gate scanner** — a fast, low-false-positive scanner that gates every PR. A category MAY additionally declare one or more **non-blocking scheduled deep-scan scanners** for the enterprise defense-in-depth model (heavier/noisier scanners run on a schedule rather than blocking PRs):
 
 ```yaml
-tools:
+# project-config.yaml — under the top-level tools: section
   sast:
     provider: semgrep                 # blocking PR gate (default placement: ci-pre-merge)
     scheduled:                        # non-blocking deep scans (default placement: ci-post-merge)

@@ -49,25 +49,25 @@ EOF
 
 # ---------- AC2: schema — aggregation block under tools ----------
 
-@test "AC2: tools.aggregation block validates" {
+@test "tools.aggregation block validates (AC2)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"aggregation":{"sarif_merge_enabled":true,"dedup_enabled":true,"defectdojo_enabled":true,"defectdojo_api_url":"https://dojo","defectdojo_api_token":"DOJO_TOKEN","defectdojo_engagement_id":"42"}}'
   [[ "$output" == *"valid"* ]]
 }
 
-@test "AC2: aggregation coexists with a real scanner category" {
+@test "aggregation coexists with a real scanner category (AC2)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"aggregation":{"sarif_merge_enabled":true},"sast":{"provider":"semgrep"}}'
   [[ "$output" == *"valid"* ]]
 }
 
-@test "AC2: an unknown key inside aggregation is rejected (additionalProperties:false)" {
+@test "an unknown key inside aggregation is rejected (additionalProperties:false) (AC2)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"aggregation":{"bogus":1}}'
   [[ "$output" == *"error"* ]]
 }
 
-@test "AC2: a scanner category STILL requires provider (no regression from adding aggregation)" {
+@test "a scanner category STILL requires provider (no regression from adding aggregation) (AC2)" {
   have_jsonschema || skip "python3 + jsonschema not available"
   run _validate_tools '{"sast":{"config":{}}}'
   [[ "$output" == *"error"* ]]
@@ -75,7 +75,7 @@ EOF
 
 # ---------- AC1/AC4: resolver reads pipeline-wide path; brownfield unchanged ----------
 
-@test "AC1: resolver reads tools.aggregation.* in a non-brownfield (pipeline-wide) context" {
+@test "resolver reads tools.aggregation.* in a non-brownfield (pipeline-wide) context (AC1)" {
   have_yq || skip "yq not available"
   _cfg 'tools:
   aggregation:
@@ -93,7 +93,7 @@ EOF
   [[ "$output" == *"42"* ]]
 }
 
-@test "AC4: the brownfield aggregation path still resolves unchanged (back-compat)" {
+@test "the brownfield aggregation path still resolves unchanged (back-compat) (AC4)" {
   have_yq || skip "yq not available"
   _cfg 'brownfield:
   sarif_merge_enabled: false
@@ -104,7 +104,7 @@ EOF
   [[ "$output" == *"true"* ]]
 }
 
-@test "AC3: defectdojo_api_token resolves to the env-var NAME verbatim (never a literal secret)" {
+@test "defectdojo_api_token resolves to the env-var NAME verbatim (never a literal secret) (AC3)" {
   have_yq || skip "yq not available"
   _cfg 'tools:
   aggregation:
@@ -116,7 +116,7 @@ EOF
 
 # ---------- AC3/AC5/AC7: token-name invariant carried into published prose ----------
 
-@test "AC3: the schema describes defectdojo_api_token as an env-var NAME, never a secret" {
+@test "the schema describes defectdojo_api_token as an env-var NAME, never a secret (AC3)" {
   run python3 -c "
 import json
 s=json.load(open('$SCHEMA'))
@@ -128,7 +128,7 @@ print('ok')
   [[ "$output" == *"ok"* ]]
 }
 
-@test "AC5: the security SKILL documents pipeline-wide aggregation + the token-name invariant" {
+@test "the security SKILL documents pipeline-wide aggregation + the token-name invariant (AC5)" {
   grep -qi 'tools.aggregation\|pipeline-wide' "$SKILL"
   grep -qi 'sarif' "$SKILL"
   grep -qi 'defectdojo' "$SKILL"
@@ -136,7 +136,7 @@ print('ok')
   grep -qi 'NAME of an environment variable' "$SKILL"
 }
 
-@test "AC1: the SKILL actually CONSUMES the aggregation knobs — it exports the adapter env + invokes the real adapters (not write-only config)" {
+@test "the SKILL actually CONSUMES the aggregation knobs — it exports the adapter env + invokes the real adapters (not write-only config) (AC1)" {
   # The promotion must do real work: resolve tools.aggregation.* into the env
   # contract the existing brownfield aggregation adapters consume, then run them.
   grep -q 'tools.aggregation.sarif_merge_enabled' "$SKILL"
@@ -148,7 +148,7 @@ print('ok')
   grep -q 'adapters/brownfield/defectdojo-export.sh' "$SKILL"
 }
 
-@test "AC1: the reused adapters key off the same GAIA_BROWNFIELD_* env the SKILL exports (contract match)" {
+@test "the reused adapters key off the same GAIA_BROWNFIELD_* env the SKILL exports (contract match) (AC1)" {
   ADAPTERS="$REPO_ROOT/plugins/gaia/scripts/adapters/brownfield"
   # The env-var names the SKILL exports must match what the adapters read.
   grep -q 'GAIA_BROWNFIELD_SARIF_MERGE_ENABLED' "$ADAPTERS/sarif-merge.sh"
@@ -156,11 +156,11 @@ print('ok')
   grep -q 'GAIA_BROWNFIELD_DEFECTDOJO_API_TOKEN' "$ADAPTERS/defectdojo-export.sh"
 }
 
-@test "AC7: the SKILL records the token blast-radius confirmation (does not widen it)" {
+@test "the SKILL records the token blast-radius confirmation (does not widen it) (AC7)" {
   grep -qi 'blast.radius' "$SKILL"
 }
 
-@test "AC5: the YAML descriptor documents the promoted aggregation + token-name invariant" {
+@test "the YAML descriptor documents the promoted aggregation + token-name invariant (AC5)" {
   grep -q 'tools.aggregation' "$YAML_DESC"
   grep -qi 'NAME of an env var' "$YAML_DESC"
   grep -qi 'unchanged\|additive' "$YAML_DESC"
@@ -168,7 +168,7 @@ print('ok')
 
 # ---------- AC1 consume-path: the deref + adapter wiring actually works ----------
 
-@test "AC1/AC3: the token-name deref turns the configured env-var NAME into the secret VALUE (\${!var}), never the literal name" {
+@test "the token-name deref turns the configured env-var NAME into the secret VALUE (\${!var}), never the literal name (AC1, AC3)" {
   # Reproduce the Step 5b deref contract exactly: config holds the NAME, the
   # caller resolves the name then derefs it to the value. A real secret only
   # ever lives in the env var, never in config.
@@ -179,7 +179,7 @@ print('ok')
   unset DOJO_TOKEN_ENV
 }
 
-@test "AC3: a pasted LITERAL token (not a valid var name) derefs to empty → fail-closed (no broken auth, no secret leak)" {
+@test "a pasted LITERAL token (not a valid var name) derefs to empty → fail-closed (no broken auth, no secret leak) (AC3)" {
   # The structural safeguard: a literal secret pasted into config is not a valid
   # shell var name, so \${!literal} expands to empty and the export fail-closes.
   DD_TOKEN_VAR="abcdef0123456789abcdef0123456789"   # looks like a literal token
@@ -187,7 +187,7 @@ print('ok')
   [ -z "$resolved" ]                                 # empty → defectdojo-export.sh WARN-skips
 }
 
-@test "AC1: the SKILL Step 5b derefs the token via \${!var} (not the raw resolved name)" {
+@test "the SKILL Step 5b derefs the token via \${!var} (not the raw resolved name) (AC1)" {
   # Guard against the broken-by-construction wiring the review caught: Step 5b
   # MUST deref, not export the raw resolved field into the token env var.
   grep -q 'DD_TOKEN_VAR=' "$SKILL"
@@ -196,7 +196,7 @@ print('ok')
   ! grep -qE 'GAIA_BROWNFIELD_DEFECTDOJO_API_TOKEN="\$\("\$?RC"? --field tools.aggregation.defectdojo_api_token' "$SKILL"
 }
 
-@test "AC1: the merge adapter actually runs from the promoted env contract (real adapter, gated)" {
+@test "the merge adapter actually runs from the promoted env contract (real adapter, gated) (AC1)" {
   command -v python3 >/dev/null 2>&1 || skip "python3 not available (sarif-merge needs it)"
   ADAPTERS="$REPO_ROOT/plugins/gaia/scripts/adapters/brownfield"
   WORK="$TMP/work"; mkdir -p "$WORK/.gaia/memory/brownfield-audit/sarif" "$WORK/.gaia/artifacts/planning-artifacts"
@@ -208,14 +208,14 @@ print('ok')
   [ "$?" -eq 0 ]
 }
 
-@test "AC1: defectdojo export is GATED off by default (no network when defectdojo_enabled unset/false)" {
+@test "defectdojo export is GATED off by default (no network when defectdojo_enabled unset/false) (AC1)" {
   ADAPTERS="$REPO_ROOT/plugins/gaia/scripts/adapters/brownfield"
   run env GAIA_BROWNFIELD_DEFECTDOJO_ENABLED=false bash "$ADAPTERS/defectdojo-export.sh" "$TMP/none.json"
   [ "$status" -eq 0 ]
   [[ "$output" == *"skip"* ]] || [[ "$output" == *"disabled"* ]] || [ -z "$output" ]
 }
 
-@test "AC1: Step 5b gates the DefectDojo token exports behind defectdojo_enabled == true" {
+@test "Step 5b gates the DefectDojo token exports behind defectdojo_enabled == true (AC1)" {
   # The token/url/engagement exports must be inside an enabled-guard (mirrors
   # the brownfield contract; no token resolution when export is off).
   grep -q 'GAIA_BROWNFIELD_DEFECTDOJO_ENABLED.*= *.true' "$SKILL" || grep -q 'if \[ "\${GAIA_BROWNFIELD_DEFECTDOJO_ENABLED}" = "true" \]' "$SKILL"
