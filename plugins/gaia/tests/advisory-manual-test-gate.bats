@@ -197,15 +197,17 @@ EOF
   [ "$warning_count" -eq 0 ]
 }
 
-@test "manual_verification:true + six PASSED + no manual-test entry -> no warning" {
+@test "manual_verification:true + six PASSED + no manual-test entry -> advisory warning (absent != verified)" {
   seed_story MG07 PASSED "true"
   seed_transition_env MG07
-  # No manual-test ledger entry at all
+  # No manual-test ledger entry at all. For an opt-in story, an ABSENT
+  # manual-test verdict is not a pass — the required verification never ran —
+  # so the advisory gate WARNs (transition still proceeds in advisory mode).
   run bash "$TRANSITION" MG07 --to done 2>&1
   [ "$status" -eq 0 ]
   local warning_count
   warning_count=$(printf '%s\n' "$output" | grep -ci "advisory" || true)
-  [ "$warning_count" -eq 0 ]
+  [ "$warning_count" -ge 1 ]
 }
 
 @test "manual_test_mode=gating + FAILED -> transition exits non-zero" {
@@ -223,4 +225,22 @@ EOF
   run bash "$TRANSITION" MG08 --to done 2>&1
   [ "$status" -ne 0 ]
   [[ "$output" == *"manual-test"* ]]
+}
+
+@test "manual_test_mode=gating + UNVERIFIED -> transition blocked (absent verification is not a pass)" {
+  seed_story MG09 PASSED "true"
+  seed_transition_env MG09
+  # An UNVERIFIED manual-test verdict (required verification did not produce a
+  # pass) must block in gating mode, exactly like FAILED.
+  bash "$SCRIPT" update --story MG09 --gate "manual-test" \
+    --verdict UNVERIFIED --plan-id "mt-run-009"
+  mkdir -p "$TEST_TMP/.gaia/config"
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<EOF
+review_gate:
+  manual_test_mode: gating
+EOF
+  export GAIA_SHARED_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+  run bash "$TRANSITION" MG09 --to done 2>&1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not PASSED"* ]]
 }

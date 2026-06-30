@@ -404,6 +404,7 @@ scripts-core	e28-s182-gaia-migrate-sigint-trap.bats
 scripts-core	e28-s211-workerspawn-memory-load.bats
 scripts-core	e28-s274-sidecar-write.bats
 scripts-core	e28-s275-planning-vs-test-taxonomy.bats
+scripts-core	e28-s289-manual-test-review-dispatch.bats
 scripts-core	e41-s1-yolo-lint.bats
 scripts-core	e41-s1-yolo-mode.bats
 scripts-core	e43-s6-resume-contract.bats

@@ -1561,15 +1561,24 @@ if [ "$RECONCILE_ONLY" != "1" ] \
         _mt_ledger="${PROJECT_PATH:-.}/.review-gate-ledger"
       fi
     fi
+    # Read the latest manual-test verdict for this story (last match wins).
+    # An empty/absent verdict is treated as NOT-PASSED below: for a story that
+    # opted into manual_verification, a required verification that never produced
+    # a PASSED result must not silently let the story reach `done`.
+    _mt_verdict=""
     if [ -f "$_mt_ledger" ]; then
-      # Read the latest manual-test verdict for this story (last match wins).
-      _mt_verdict=""
       while IFS=$'\t' read -r _mt_sk _mt_g _mt_p _mt_v; do
         if [ "$_mt_sk" = "$STORY_KEY" ] && [ "$_mt_g" = "manual-test" ]; then
           _mt_verdict="$_mt_v"
         fi
       done < "$_mt_ledger"
-      if [ "$_mt_verdict" = "FAILED" ]; then
+    fi
+    {
+      # The gate fires for ANY non-PASSED verdict (FAILED, UNVERIFIED, or
+      # absent) — not only FAILED. A manual_verification:true story requires a
+      # PASSED manual-test verdict to reach `done`; anything else means the
+      # required verification did not pass (or did not run).
+      if [ "$_mt_verdict" != "PASSED" ]; then
         # Determine mode: advisory (default) or gating.
         # Read directly from project-config.yaml using inline awk (same
         # idiom as read_frontmatter_field). Avoids a resolve-config.sh
@@ -1600,16 +1609,18 @@ if [ "$RECONCILE_ONLY" != "1" ] \
             _mt_mode="gating"
           fi
         fi
+        _mt_shown="${_mt_verdict:-absent}"
         if [ "$_mt_mode" = "gating" ]; then
-          log "ERROR: review -> done refused — manual-test gate is FAILED (gating mode)."
+          log "ERROR: review -> done refused — manual-test gate is not PASSED (verdict: $_mt_shown; gating mode)."
+          log "       A manual_verification:true story requires a PASSED manual-test verdict."
           log "       Set review_gate.manual_test_mode to advisory in project-config.yaml"
           log "       to downgrade to a non-blocking WARNING."
           exit 8
         else
-          log "WARNING: advisory manual-test gate is FAILED for $STORY_KEY. Transition proceeds (advisory mode)."
+          log "WARNING: advisory manual-test gate is not PASSED for $STORY_KEY (verdict: $_mt_shown). Transition proceeds (advisory mode)."
         fi
       fi
-    fi
+    }
   fi
 fi
 
