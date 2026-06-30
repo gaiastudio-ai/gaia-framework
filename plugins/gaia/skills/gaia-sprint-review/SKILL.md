@@ -167,7 +167,7 @@ For each sprint goal, fire an `AskUserQuestion` at the main-turn caller level wi
 
 Record the per-goal response into the sprint-review artifact. **This MUST run at the main turn**, not inside the forked Track B script — `AskUserQuestion` is not exposed inside forked skill executions (memory rule `feedback_askuserquestion_forked_skill_gap.md`).
 
-Track B's composite verdict is derived from the envelope array: `PASSED` when all envelopes are PASSED/SKIPPED/PENDING; `FAILED` when any envelope verdict is FAILED. The Track B verdict feeds into the compose-verdict reducer at Step 5.
+Track B's composite verdict is derived from the envelope array with precedence `FAILED > UNVERIFIED > PASSED`: `FAILED` when any envelope verdict is FAILED (a regression or a dispatch hard error); `UNVERIFIED` (fail-closed) when nothing hard-failed but functional verification did not actually happen where it should have — a configured functional smoke was UNVERIFIED, or a user-facing surface ran visual-only with no functional surface exercised (the `env_limited_surfaces` / `no_functional_surface` fields on the Track B result are non-empty/true); `PASSED` only when functional verification passed or was genuinely not applicable (no user-facing surface). The `UNVERIFIED` case routes the composite through the operator-acknowledgement bypass path (Step 8) — so an "env not available → skip" or a visual-only run can never silently auto-approve into green. The Track B verdict feeds into the compose-verdict reducer at Step 5; the `env_limited_surfaces` / `no_functional_surface` fields are recorded in the sprint-review artifact alongside the composite verdict.
 
 ### Step 5 — Compose Composite Verdict
 
