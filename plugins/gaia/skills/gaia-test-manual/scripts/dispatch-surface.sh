@@ -2,7 +2,12 @@
 # dispatch-surface.sh — dispatch a manual test for a specific surface
 #
 # Calls surface-adapter.sh to check configuration, then:
-#   - SKIPPED (exit 2) → emit JSON {"surface","verdict":"SKIPPED","reason":"not configured"}
+#   - surface-adapter SKIPPED (its internal exit 2) → this script emits JSON
+#     {"surface","class","verdict":"SKIPPED","reason":"not configured"} and
+#     exits 0 (the dormant skip is a normal, dispatched outcome — NOT a
+#     dispatch-level error). dispatch-surface.sh itself exits 0 for every
+#     dispatched outcome (PASSED/FAILED/PENDING/SKIPPED) and exits 1 ONLY on a
+#     hard error (usage / adapter failure / missing sibling script).
 #   - CONFIGURED + api → run target command, capture transcript + exit code,
 #     pipe run-record through write-evidence.sh, verdict = PASSED if exit 0
 #     else FAILED.
@@ -28,6 +33,21 @@ SCRIPT_NAME="dispatch-surface.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
+
+# surface_class — map a surface to its verification CLASS so a consumer can
+# tell whether a manual-test run included any FUNCTIONAL verification (an
+# executed smoke command whose exit code is the verdict) versus only a VISUAL
+# check (pixel-diff / appearance). The api surface is the functional path; the
+# browser/mobile/desktop surfaces are visual. A visual-only run is NOT
+# functionally verified — labeling the class makes that distinction explicit
+# instead of an unqualified green.
+surface_class() {
+  case "$1" in
+    api)               printf 'functional' ;;
+    browser|mobile|desktop) printf 'visual' ;;
+    *)                 printf 'unknown' ;;
+  esac
+}
 
 # ---------- Argument parsing ----------
 SURFACE=""
@@ -73,8 +93,12 @@ set -e
 # ---------- Handle adapter result ----------
 case "$adapter_rc" in
   2)
-    # SKIPPED — dormant surface
-    printf '{"surface":"%s","verdict":"SKIPPED","reason":"not configured"}\n' "$SURFACE"
+    # SKIPPED — dormant surface (genuinely not configured). This is the BENIGN
+    # skip: the surface is not declared, so there is nothing to verify. It is
+    # PASSED-equivalent and is distinct from the "configured-but-env-unavailable"
+    # tracked skip handled by the Track-B reducer.
+    printf '{"surface":"%s","class":"%s","verdict":"SKIPPED","reason":"not configured"}\n' \
+      "$SURFACE" "$(surface_class "$SURFACE")"
     exit 0
     ;;
   0)
@@ -129,7 +153,7 @@ EOF
     export CMD_EXIT_CODE="$cmd_exit"
     printf '%s\n' "$run_record" | bash "$WRITE_EVIDENCE" "$EVIDENCE_DIR" "$verdict"
 
-    printf '{"surface":"api","verdict":"%s","exit_code":%d}\n' "$verdict" "$cmd_exit"
+    printf '{"surface":"api","class":"functional","verdict":"%s","exit_code":%d}\n' "$verdict" "$cmd_exit"
     exit 0
     ;;
 
@@ -140,7 +164,7 @@ EOF
     READ_CONFIG="$SCRIPT_DIR/read-visual-diff-config.sh"
 
     if [ ! -f "$PIXEL_DIFF" ] || [ ! -f "$READ_CONFIG" ]; then
-      printf '{"surface":"browser","verdict":"PENDING","reason":"dispatch ready"}\n'
+      printf '{"surface":"browser","class":"visual","verdict":"PENDING","reason":"dispatch ready"}\n'
       exit 0
     fi
 
@@ -211,7 +235,7 @@ DIFFEOF
 
     printf '%s\n' "$run_record" | bash "$WRITE_EVIDENCE" "$EVIDENCE_DIR" "$pixel_verdict"
 
-    printf '{"surface":"browser","verdict":"%s","reason":"pixel-diff"}\n' "$pixel_verdict"
+    printf '{"surface":"browser","class":"visual","verdict":"%s","reason":"pixel-diff"}\n' "$pixel_verdict"
     exit 0
     ;;
 
@@ -219,7 +243,7 @@ DIFFEOF
     # Non-browser visual surfaces: agent dispatch is handled by SKILL.md.
     # Emit PENDING so the orchestrator knows the surface is ready for
     # agent-driven walkthrough.
-    printf '{"surface":"%s","verdict":"PENDING","reason":"dispatch ready"}\n' "$SURFACE"
+    printf '{"surface":"%s","class":"visual","verdict":"PENDING","reason":"dispatch ready"}\n' "$SURFACE"
     exit 0
     ;;
 

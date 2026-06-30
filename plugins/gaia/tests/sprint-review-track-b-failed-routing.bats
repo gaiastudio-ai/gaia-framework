@@ -199,14 +199,22 @@ MOCK
 
 @test "track_b_verdict is always a canonical value (never raw PENDING)" {
   write_config_for_verdict 0
-  # All surfaces return PENDING — track_b_verdict must still be PASSED, not PENDING
+  # All surfaces return PENDING — the composite must be a canonical track value,
+  # never the raw PENDING envelope verdict. With the fail-closed functional-
+  # coverage rule, an all-PENDING run with a configured functional smoke that
+  # never produced a real pass (and a user-facing surface present) composes to
+  # UNVERIFIED — canonical, and correctly NOT a silent PASSED. The invariant
+  # under test: the composite is one of {PASSED,FAILED,UNVERIFIED}, never PENDING.
   write_mock_dispatch "PENDING"
   cd "$TMPDIR_TEST"
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
   json=$(echo "$output" | sed -n '/^{/,/^}/p')
   track_b_v=$(echo "$json" | jq -r '.track_b_verdict')
-  [ "$track_b_v" = "PASSED" ] || [ "$track_b_v" = "FAILED" ]
+  case "$track_b_v" in
+    PASSED|FAILED|UNVERIFIED) : ;;
+    *) printf 'non-canonical track_b_verdict: %s\n' "$track_b_v"; false ;;
+  esac
   [ "$track_b_v" != "PENDING" ]
 }
 

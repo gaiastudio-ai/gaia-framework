@@ -337,6 +337,16 @@ check_boolean "delivered"
 # sprint-completion deferral signals.
 check_boolean "deferred_implementation"
 
+# ---------- Boolean check (`manual_verification:`) ----------
+#
+# The `manual_verification:` field is OPTIONAL (not in REQUIRED_FIELDS) so
+# legacy stories authored before the manual-test authoring step still
+# validate. When present it must be a bare `true` or `false` — `true` opts the
+# story into the per-story-review manual-test gate (the verification surface is
+# user-facing and a verdict is required), `false`/absent means no manual
+# verification is required. check_boolean is a no-op when the field is absent.
+check_boolean "manual_verification"
+
 # ---------- Review Gate body-shape check ----------
 #
 # Enforce the canonical 3-column Review Gate table shape (`Review | Status |

@@ -34,16 +34,22 @@ Use `/gaia-test-manual` when you need a human-style walkthrough with evidence. U
 
 ## Supported Surfaces
 
-The manual-test skill supports four verification surfaces, each keyed to a project-config signal:
+The manual-test skill supports four verification surfaces, each keyed to a project-config signal. Each surface carries a verification **class** — `functional` or `visual` — so a consumer can tell whether a run included any *functional* verification (a smoke command actually executed, exit code = verdict) versus only a *visual* check (appearance / pixel-diff):
 
-| Surface   | Config Signal                          | When Absent         |
-|-----------|----------------------------------------|---------------------|
-| browser   | `platforms` contains `web`             | SKIPPED (dormant) — runs pixel-diff when baselines exist |
-| api       | `platforms` contains `server`          | SKIPPED (dormant)   |
-| mobile    | `platforms` contains `ios` or `android`| SKIPPED (dormant)   |
-| desktop   | `sprint_review.desktop_commands` has entries | SKIPPED (dormant) |
+| Surface   | Class      | Config Signal                          | When Absent         |
+|-----------|------------|----------------------------------------|---------------------|
+| api       | functional | `platforms` contains `server` AND a functional smoke command (`sprint_review.manual_test.api_command`) | SKIPPED (dormant)   |
+| browser   | visual     | `platforms` contains `web`             | SKIPPED (dormant) — runs pixel-diff when baselines exist |
+| mobile    | visual     | `platforms` contains `ios` or `android`| SKIPPED (dormant)   |
+| desktop   | visual     | `sprint_review.desktop_commands` has entries | SKIPPED (dormant) |
+
+**Functional vs visual — why it matters.** The `api` surface is the only **functional** path: it runs the configured smoke command and the command's exit code is the verdict. The `browser` / `mobile` / `desktop` surfaces are **visual** — they verify appearance, not behavior. A run that exercised only visual surfaces is NOT functionally verified. Each surface's emitted JSON carries a `"class"` field, and the per-stack review reducer detects when a user-facing surface ran visual-only (no functional surface exercised): it sets `no_functional_surface` and **downgrades the Track B composite to `UNVERIFIED`** (fail-closed) so a visual-only run cannot silently auto-approve into a green PASSED — an operator must acknowledge it via the review bypass path. To get real functional coverage on a web-first project, configure `sprint_review.manual_test.api_command` with a smoke command (it does not require a `server` platform — any project can declare a functional smoke); that clears the `no_functional_surface` downgrade.
 
 A surface that is not configured is always SKIPPED (exit code 2) — never UNVERIFIED, never FAILED. SKIPPED means dormant: the surface is simply not relevant to this project. UNVERIFIED means the surface was exercised but evidence was insufficient.
+
+**Tracked (un-auto-approved) env-limited skip — enforced, not just logged.** When a configured functional smoke (`sprint_review.manual_test.api_command`) runs but cannot produce a clean pass/fail because its environment or tooling is unavailable, it reports `UNVERIFIED`. The per-stack review reducer records that surface on the result's `env_limited_surfaces` list AND **downgrades the Track B composite verdict to `UNVERIFIED`** (fail-closed) — which routes the sprint-review composite through the operator-acknowledgement bypass path (a PM explanation + a second Val pass), exactly like any other UNVERIFIED verdict. So an "env not available → functional check unverified" can NEVER silently auto-approve into a green PASSED; an operator must explicitly acknowledge it. A smoke that runs and *fails* is a hard `FAILED` (Track B fails); only the could-not-verify case becomes the tracked UNVERIFIED skip. A genuinely-dormant surface (no functional smoke configured at all, and no user-facing visual surface) stays a benign PASSED-equivalent SKIPPED.
+
+**Hermetic / staging smoke path.** To run the functional surface without standing up every stack locally, point `sprint_review.manual_test.api_command` at a hermetic or staging endpoint (e.g. a health/smoke check against a deployed staging service, or a self-contained command that needs no local environment). This gives a real functional check even on a machine that cannot run the full per-stack environment, and is the recommended way to clear an `env_limited` tracked skip.
 
 The default surface when none is specified is `api`, for backward compatibility with backend-only projects.
 

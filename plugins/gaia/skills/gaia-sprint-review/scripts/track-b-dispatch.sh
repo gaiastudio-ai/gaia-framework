@@ -346,6 +346,25 @@ if [ ! -f "$DISPATCH_SURFACE" ]; then
 else
   evidence_base=".gaia/memory/checkpoints/sprint-review-${sprint_id}/manual-test"
 
+  # Functional-coverage + tracked-skip accounting (set inside the loop):
+  #   functional_exercised  — a functional surface produced a real PASSED/FAILED
+  #                           verdict (it actually ran).
+  #   visual_exercised      — a visual surface was CONFIGURED (a user-facing
+  #                           surface is present), so "no functional" is a real
+  #                           coverage gap rather than "nothing to test at all".
+  #   functional_configured — a functional smoke command (api_command) was
+  #                           configured, so the api surface was eligible to run.
+  #   env_limited_surfaces  — space-separated list of surfaces that were
+  #                           CONFIGURED but could not run because their
+  #                           environment was unavailable. This is the
+  #                           un-auto-approvable tracked skip (NOT the benign
+  #                           "not configured" dormant skip).
+  functional_exercised="false"
+  visual_exercised="false"
+  functional_configured="false"
+  env_limited_surfaces=""
+  [ -n "$api_command" ] && functional_configured="true"
+
   for surface in browser api mobile desktop; do
     evidence_dir="${evidence_base}/${surface}"
     mkdir -p "$evidence_dir"
@@ -370,6 +389,7 @@ else
           '. + [{
             type: "manual-test",
             surface: $surface,
+            class: "functional",
             verdict: "SKIPPED",
             raw: "SKIPPED: no sprint_review.manual_test.api_command configured"
           }]')
@@ -387,10 +407,21 @@ else
     surface_rc=$?
     set -e
 
-    # Parse the verdict from the JSON output. Fallback to SKIPPED on error.
-    if [ "$surface_rc" -ne 0 ] && [ "$surface_rc" -ne 2 ]; then
-      surface_verdict="SKIPPED"
-      log "dispatch-surface.sh for '$surface' exited $surface_rc — treating as SKIPPED"
+    # Parse the verdict from the JSON output.
+    #
+    # dispatch-surface.sh exit-code contract: 0 = dispatched (the JSON verdict
+    # is authoritative — PASSED/FAILED/PENDING/SKIPPED/UNVERIFIED), 1 = a hard
+    # error (usage / adapter failure / missing sibling script — a real fault,
+    # NOT a benign skip). dispatch-surface.sh does NOT emit exit 2 itself (that
+    # is the surface-adapter's internal dormant code, which dispatch-surface
+    # re-emits as a SKIPPED JSON envelope at exit 0). So a non-zero exit here is
+    # a hard error and MUST map to FAILED — never silently downgraded to a
+    # benign SKIPPED (which would mask a broken dispatcher as a green run).
+    surface_dispatch_error="false"
+    if [ "$surface_rc" -ne 0 ]; then
+      surface_verdict="FAILED"
+      surface_dispatch_error="true"
+      log "dispatch-surface.sh for '$surface' exited $surface_rc (hard error) — recording FAILED (not a benign skip)"
     else
       surface_verdict=$(printf '%s' "$surface_json" | grep -o '"verdict"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"verdict"[[:space:]]*:[[:space:]]*"//;s/"//' || echo "SKIPPED")
       if [ -z "$surface_verdict" ]; then
@@ -398,28 +429,119 @@ else
       fi
     fi
 
+    # Parse the surface CLASS (functional|visual) emitted by dispatch-surface.sh
+    # so the reducer can tell whether any FUNCTIONAL verification was exercised.
+    # Fall back to the local class map when the JSON omits it (older surface).
+    surface_class_val=$(printf '%s' "$surface_json" | grep -o '"class"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"class"[[:space:]]*:[[:space:]]*"//;s/"//' || echo "")
+    if [ -z "$surface_class_val" ]; then
+      case "$surface" in
+        api)                    surface_class_val="functional" ;;
+        browser|mobile|desktop) surface_class_val="visual" ;;
+        *)                      surface_class_val="unknown" ;;
+      esac
+    fi
+
+    # Track whether a FUNCTIONAL surface actually RAN (produced a real verdict,
+    # not a benign skip). A functional run is api → PASSED or FAILED (it
+    # executed; the exit code became the verdict). A FAILED smoke still RAN, so
+    # it counts as exercised (the FAILED separately fails Track B). This drives
+    # the "no functional surface exercised" signal so a visual-only run is never
+    # mistaken for functionally verified. A dispatch hard error (FAILED via
+    # surface_dispatch_error) does NOT count as a real functional run.
+    if [ "$surface_class_val" = "functional" ] && [ "$surface_dispatch_error" != "true" ]; then
+      case "$surface_verdict" in
+        PASSED|FAILED) functional_exercised="true" ;;
+      esac
+    fi
+    # Track whether a VISUAL surface was CONFIGURED (present for this project).
+    # A benign-dormant SKIPPED (surface not declared) does NOT count; any other
+    # verdict (PASSED/FAILED/PENDING/UNVERIFIED) means a user-facing visual
+    # surface IS present — so "no functional surface ran" is a real coverage gap,
+    # not "nothing to test at all".
+    if [ "$surface_class_val" = "visual" ] && [ "$surface_verdict" != "SKIPPED" ]; then
+      visual_exercised="true"
+    fi
+
+    # Tracked, un-auto-approvable env-limited functional skip (VERDICT-based,
+    # not exit-code-based — the real dispatch-surface.sh exits 0 for every
+    # dispatched outcome). The case: a configured functional smoke (api_command
+    # set) whose verdict is UNVERIFIED — the smoke ran but could not produce a
+    # clean pass/fail (an env/tooling gap the command reports as UNVERIFIED).
+    # That is NOT a clean pass and MUST NOT auto-approve into green: it is
+    # recorded here and drives the composite to UNVERIFIED below. A FAILED smoke
+    # is a hard Track-B FAILED (composite reducer); a genuinely-dormant surface
+    # (no api_command) is benign and excluded.
+    if [ "$surface" = "api" ] && [ -n "$api_command" ] && \
+       [ "$surface_dispatch_error" != "true" ] && [ "$surface_verdict" = "UNVERIFIED" ]; then
+      env_limited_surfaces="$env_limited_surfaces $surface"
+      log "tracked-skip: configured functional smoke for '$surface' was UNVERIFIED (env/tooling could not verify it) — recorded as ENV_LIMITED; composite will be UNVERIFIED (not auto-approved)"
+    fi
+
     # Append manual-test envelope. SKIPPED and PENDING are PASSED-equivalent;
-    # only FAILED (or TIMEOUT→FAILED) fails Track B.
+    # only FAILED (or TIMEOUT→FAILED) fails Track B. The class field is additive
+    # metadata — it does NOT change the verdict semantics.
     envelopes=$(printf '%s' "$envelopes" | jq \
       --arg surface "$surface" \
+      --arg class "$surface_class_val" \
       --arg verdict "$surface_verdict" \
       --arg raw_json "$surface_json" \
       '. + [{
         type: "manual-test",
         surface: $surface,
+        class: $class,
         verdict: $verdict,
         raw: $raw_json
       }]')
   done
 fi
 
+# ---------- Functional-coverage signal (no-functional advisory) ----------
+#
+# A manual-test run that exercised only VISUAL surfaces (pixel-diff / appearance)
+# is NOT functionally verified. Surface that distinctly: when a user-facing
+# visual surface was present but no functional surface actually ran, emit an
+# explicit advisory and record it on the result so a visual-only run is never
+# mistaken for an unqualified green. This is a SURFACED state, not a hard fail —
+# a project may legitimately have no functional surface — but it must not be
+# silent. The variables default to "false"/empty when the surface loop did not
+# run (dispatch-surface.sh absent).
+functional_exercised="${functional_exercised:-false}"
+visual_exercised="${visual_exercised:-false}"
+functional_configured="${functional_configured:-false}"
+env_limited_surfaces="${env_limited_surfaces:-}"
+
+no_functional_surface="false"
+if [ "$visual_exercised" = "true" ] && [ "$functional_exercised" != "true" ]; then
+  no_functional_surface="true"
+  if [ "$functional_configured" = "true" ]; then
+    log "FUNCTIONAL-COVERAGE: a user-facing surface ran but the configured functional smoke did not complete — this run is NOT functionally verified (visual-only)"
+  else
+    log "FUNCTIONAL-COVERAGE: a user-facing visual surface ran but NO functional surface was exercised (no sprint_review.manual_test.api_command configured) — this run is visual-only, not functionally verified"
+  fi
+fi
+
+# Normalise the env-limited surface list (trim, dedupe-preserve-order not needed
+# — each surface is visited once).
+env_limited_surfaces="${env_limited_surfaces# }"
+if [ -n "$env_limited_surfaces" ]; then
+  log "TRACKED-SKIP: the following surfaces were configured but their environment was unavailable and were NOT auto-approved: ${env_limited_surfaces}. Acknowledge via review or provide a hermetic/staging smoke path."
+fi
+
 # ---------- Compute Track B composite verdict ----------
 #
-# Rule: FAILED if ANY envelope verdict is FAILED or TIMEOUT.
-# SKIPPED, PENDING, and PASSED are non-failing — they reduce to PASSED.
-# TIMEOUT already maps to FAILED in the per-stack loop (exit 124/137), so the
-# only two failing values to check are FAILED and TIMEOUT (the latter covers
-# dispatch-surface returning a raw TIMEOUT string).
+# Precedence: FAILED > UNVERIFIED > PASSED.
+#  - FAILED if ANY envelope verdict is FAILED or TIMEOUT (a real regression or a
+#    dispatch hard error). TIMEOUT already maps to FAILED in the per-stack loop.
+#  - UNVERIFIED (fail-CLOSED) if no hard FAILED but functional verification did
+#    not actually happen where it should have: a configured functional smoke was
+#    UNVERIFIED (env_limited), OR a user-facing surface ran visual-only with no
+#    functional surface exercised (no_functional_surface). This routes the
+#    sprint-review composite through the existing UNVERIFIED operator-
+#    acknowledgement bypass path (PM explanation + Val) — so an "env not
+#    available → skip" or a "visual-only run" can NEVER silently auto-approve
+#    into a green PASSED. This is the un-auto-approvable contract, enforced.
+#  - PASSED only when functional verification either passed or was genuinely not
+#    applicable (no user-facing surface to verify).
 
 track_b_verdict="PASSED"
 envelope_count=$(printf '%s' "$envelopes" | jq 'length')
@@ -432,12 +554,42 @@ while [ "$idx" -lt "$envelope_count" ]; do
   idx=$((idx + 1))
 done
 
+# Fail-closed downgrade to UNVERIFIED when functional verification did not
+# happen (and nothing hard-FAILED). Never an auto-approved green.
+if [ "$track_b_verdict" = "PASSED" ]; then
+  if [ -n "$env_limited_surfaces" ] || [ "$no_functional_surface" = "true" ]; then
+    track_b_verdict="UNVERIFIED"
+    log "Track B → UNVERIFIED (fail-closed): functional verification did not complete (env_limited=[${env_limited_surfaces}] no_functional_surface=${no_functional_surface}); routing to the operator-acknowledgement path rather than auto-approving."
+  fi
+fi
+
+# Build the env-limited surfaces as a JSON array (space-separated → array).
+env_limited_json='[]'
+if [ -n "$env_limited_surfaces" ]; then
+  env_limited_json=$(printf '%s\n' $env_limited_surfaces | jq -R . | jq -s .)
+fi
+
 # Wrap envelopes + verdict into a top-level object so the caller can read
-# track_b_verdict without re-deriving it.
+# track_b_verdict without re-deriving it. The functional-coverage + tracked-skip
+# signals ride alongside as distinct fields (NOT folded into the verdict) so the
+# review step surfaces them as findings to acknowledge:
+#   functional_exercised  — a functional surface actually ran (true/false)
+#   no_functional_surface — a user-facing surface ran but nothing functional did
+#   env_limited_surfaces  — configured surfaces whose env was unavailable
+#                           (un-auto-approvable tracked skip; [] when none)
 result=$(printf '%s' "$envelopes" | jq \
   --arg track_b_verdict "$track_b_verdict" \
-  '{track_b_verdict: $track_b_verdict, envelopes: .}')
+  --arg functional_exercised "$functional_exercised" \
+  --arg no_functional_surface "$no_functional_surface" \
+  --argjson env_limited_surfaces "$env_limited_json" \
+  '{
+    track_b_verdict: $track_b_verdict,
+    functional_exercised: ($functional_exercised == "true"),
+    no_functional_surface: ($no_functional_surface == "true"),
+    env_limited_surfaces: $env_limited_surfaces,
+    envelopes: .
+  }')
 
 printf '%s\n' "$result"
-log "Track B: $track_b_verdict ($(printf '%s' "$envelopes" | jq 'length') envelope(s))"
+log "Track B: $track_b_verdict ($(printf '%s' "$envelopes" | jq 'length') envelope(s)); functional_exercised=$functional_exercised no_functional_surface=$no_functional_surface env_limited=[${env_limited_surfaces}]"
 exit 0
