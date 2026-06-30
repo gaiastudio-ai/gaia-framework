@@ -262,6 +262,48 @@ The report contains:
 
 If the target is empty or resolves to no files (AC-EC6), exit with `No review target resolved` and do NOT write an empty report file.
 
+### Step 5b — Pipeline-wide scanner-output aggregation (optional)
+
+When a project runs more than one scanner per category (a blocking PR-gate scanner plus scheduled deep-scans — see `tools.<category>` tiered placement), the multi-scanner output can be **merged, deduplicated, and exported** into an ASPM / single pane of glass. This is the same SARIF-merge / dedup / DefectDojo capability previously available only under `brownfield.*`, now promoted to the standard security pipeline via the `tools.aggregation` config block. The brownfield aggregation path continues to work unchanged.
+
+This step REUSES the same aggregation adapters the brownfield scan uses (`scripts/adapters/brownfield/{sarif-merge,dedup,defectdojo-export}.sh`) — it does not re-implement merge/dedup/export. The adapters key off `GAIA_BROWNFIELD_*` env vars; the standard pipeline resolves the **promoted `tools.aggregation.*`** settings and exports those same env vars (so a project that has NOT run brownfield can still aggregate). Resolve each setting (empty when unset; the adapters apply their own defaults — `sarif_merge_enabled`/`dedup_enabled` default `true`, `defectdojo_enabled` defaults `false`):
+
+```bash
+RC="${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh"
+# Promote tools.aggregation.* into the adapter env contract. A bare `:-` keeps
+# the adapter's own default when the field resolves empty.
+export GAIA_BROWNFIELD_DETERMINISTIC_TOOLS=true   # the adapters' master gate; the standard pipeline is always "on" for aggregation. This export is subshell-scoped to this step — it does NOT change a project's brownfield.deterministic_tools config or affect a separate brownfield run.
+export GAIA_BROWNFIELD_SARIF_MERGE_ENABLED="$("$RC" --field tools.aggregation.sarif_merge_enabled --shared "$PROJECT_CONFIG")"
+export GAIA_BROWNFIELD_DEDUP_ENABLED="$("$RC" --field tools.aggregation.dedup_enabled --shared "$PROJECT_CONFIG")"
+
+# Merge + dedup are local data-shaping (no network, no secret):
+${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/sarif-merge.sh
+${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/dedup.sh
+
+# DefectDojo export is opt-in (default off → zero network). Only resolve the
+# token surface when export is enabled.
+DD_ON="$("$RC" --field tools.aggregation.defectdojo_enabled --shared "$PROJECT_CONFIG")"
+export GAIA_BROWNFIELD_DEFECTDOJO_ENABLED="${DD_ON:-false}"
+if [ "${GAIA_BROWNFIELD_DEFECTDOJO_ENABLED}" = "true" ]; then
+  export GAIA_BROWNFIELD_DEFECTDOJO_API_URL="$("$RC" --field tools.aggregation.defectdojo_api_url --shared "$PROJECT_CONFIG")"
+  export GAIA_BROWNFIELD_DEFECTDOJO_ENGAGEMENT_ID="$("$RC" --field tools.aggregation.defectdojo_engagement_id --shared "$PROJECT_CONFIG")"
+  # api_token config holds the NAME of an env var; resolve the name, then DEREF
+  # it to the value via ${!var} indirection — the structural safeguard that
+  # enforces the name-not-secret invariant: a pasted literal token is not a
+  # valid shell var name, so ${!literal} expands to empty and the export
+  # fail-CLOSES (defectdojo-export.sh WARN-skips on an empty token). Mirrors the
+  # brownfield consumer exactly; the literal token value never lands in config.
+  DD_TOKEN_VAR="$("$RC" --field tools.aggregation.defectdojo_api_token --shared "$PROJECT_CONFIG")"
+  export GAIA_BROWNFIELD_DEFECTDOJO_API_TOKEN="${!DD_TOKEN_VAR:-}"
+  ${CLAUDE_PLUGIN_ROOT}/scripts/adapters/brownfield/defectdojo-export.sh \
+    "${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/brownfield-sarif-merged.json"
+fi
+```
+
+- When `sarif_merge_enabled` is on, the per-scanner SARIF output is merged before the verdict resolver consumes it; when `dedup_enabled` is on, duplicate findings across scanners are collapsed; when `defectdojo_enabled` is on, the aggregated findings are exported to DefectDojo using `tools.aggregation.defectdojo_api_url` / `defectdojo_engagement_id`.
+- **`defectdojo_api_token` holds the NAME of an environment variable, NEVER a literal secret.** The config value is resolved as a name, then dereferenced via `${!name}` to read the token from the named env var at run time; a pasted literal is not a valid var name so the deref yields empty and the export fail-closes. The value is never persisted in config. (This is the same invariant — and the same `${!var}` structural safeguard — as `brownfield.defectdojo_api_token`; never paste a literal token into the config.)
+- **Token blast-radius note:** promoting the aggregation knobs to the standard gate makes the DefectDojo token reachable from a normal security review (not just brownfield runs), but it does NOT widen the token's blast radius beyond reading the named env var — the config only ever holds the env-var name, the value never lands in config or in any artifact, and the export adapter is the same audited code path the brownfield scan already uses.
+
 ### Step 6 — Optional Review Gate Integration
 
 This step is **optional** and **opt-in**. It bridges anytime reviews into the story workflow for teams that want findings persisted into the six-row Review Gate table. It does NOT replace the pre-merge `/gaia-security-review` gate.

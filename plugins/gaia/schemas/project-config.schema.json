@@ -382,15 +382,53 @@
       "x-no-auto-hydration": true
     },
     "tools": {
-      "description": "Provider/config selection per category.",
+      "description": "Provider/config selection per category. A category names one blocking PR-gate scanner via `provider` (the default, unchanged single-gate behavior) and MAY additionally declare one or more non-blocking scheduled deep-scan scanners via `scheduled[]` — mirroring the tiered `test_execution.tier_*.placement` model so a fast low-false-positive scanner gates every PR while heavier scanners run on a schedule. `placement` defaults the gate provider to `ci-pre-merge` (blocking); a `scheduled[]` entry's `placement` defaults to `ci-post-merge` (non-blocking). NOTE: this `placement` axis (WHERE in the pipeline a scanner runs) is orthogonal to `brownfield.scanner_tier` (HOW DEEP the brownfield deterministic-tools battery goes — a capability cap); the two are independent and do not conflict. The reserved `aggregation` key (NOT a scanner category) holds the pipeline-wide SARIF-merge / dedup / DefectDojo export settings.",
       "type": "object",
+      "properties": {
+        "aggregation": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Pipeline-wide scanner-output aggregation: merge multi-scanner SARIF, deduplicate findings, and (opt-in) export to DefectDojo. Applies to the standard `/gaia-review-security` gate AND scheduled deep-scans — the same merge/dedup/export capability previously available only under `brownfield.*`. The brownfield aggregation knobs continue to work unchanged; this block is the additive, pipeline-wide read path.",
+          "properties": {
+            "sarif_merge_enabled": { "type": "boolean", "description": "Merge multi-scanner SARIF output across the pipeline's scanners (default true at the consumer)." },
+            "dedup_enabled":       { "type": "boolean", "description": "Deduplicate findings across scanners (default true at the consumer)." },
+            "defectdojo_enabled":  { "type": "boolean", "description": "Opt-in DefectDojo export of the aggregated findings (default false)." },
+            "defectdojo_api_url":  { "type": "string",  "description": "DefectDojo API base URL (companion to defectdojo_enabled)." },
+            "defectdojo_api_token": { "type": "string", "description": "The NAME of an environment variable that holds the DefectDojo API token — NEVER a literal secret. The token value is read from the named env var at run time and is never persisted in config. (Same invariant as brownfield.defectdojo_api_token.)" },
+            "defectdojo_engagement_id": { "type": "string", "description": "DefectDojo engagement id (companion to defectdojo_enabled)." }
+          }
+        }
+      },
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "required": ["provider"],
         "properties": {
-          "provider": { "type": "string", "minLength": 1 },
-          "config":   { "type": "object" }
+          "provider":  { "type": "string", "minLength": 1, "description": "The blocking PR-gate scanner for this category." },
+          "config":    { "type": "object" },
+          "placement": {
+            "$ref": "#/definitions/testPlacement",
+            "description": "Pipeline stage for the gate `provider`. Omitted ⇒ `ci-pre-merge` (blocking)."
+          },
+          "scheduled": {
+            "type": "array",
+            "description": "Optional non-blocking deep-scan scanners run on a schedule (e.g. nightly/weekly), in addition to the blocking `provider` gate. A bare string is the deep-scan provider name; an object form carries `provider` + optional `config` + optional `placement` (defaults `ci-post-merge`, non-blocking).",
+            "items": {
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["provider"],
+                  "properties": {
+                    "provider":  { "type": "string", "minLength": 1 },
+                    "config":    { "type": "object" },
+                    "placement": { "$ref": "#/definitions/testPlacement" }
+                  }
+                }
+              ]
+            }
+          }
         }
       }
     },
