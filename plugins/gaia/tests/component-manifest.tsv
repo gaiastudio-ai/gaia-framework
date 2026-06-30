@@ -83,6 +83,7 @@ core	bridge-toggle-inline-generator.bats
 core	bridge-toggle-step-5-summary.bats
 core	check-status-discipline.bats
 core	ci-regen-helpers-coverage.bats
+core	ci-skip-shim-parity.bats
 core	class-b-mixed-state-triage.bats
 core	classify-commits-squash-bump.bats
 core	code-review-standards-rubric.bats
