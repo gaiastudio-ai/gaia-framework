@@ -51,6 +51,8 @@ sprint_review:
   backend_commands:
     node: "FIXTURE_EXIT_CODE=0 FIXTURE_STDOUT='hello' $FIXTURE"
   timeout_per_stack: $timeout
+  manual_test:
+    api_command: "echo api-smoke-ok"
 EOF
   }
 
