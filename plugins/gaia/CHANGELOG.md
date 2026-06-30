@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.214.0] — 2026-06-30
+
+### Added
+
+- (review) dispatch and require manual-test in the per-story review
+- (sprint-review) functional api smoke command for Track B manual-test
+
+### Changed
+
+- report required contexts on non-plugin PRs via skip shim
+
+### Fixed
+
+- (test-manual) strip inline comments in block-style platforms parser
+
 ## [1.213.0] — 2026-06-29
 
 ### Added
