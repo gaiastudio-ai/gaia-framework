@@ -251,7 +251,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "Provider/config selection per category. Category-keyed entries (e.g., tools.sast.provider: semgrep, tools.secrets.provider: gitleaks). Each entry has provider (string) and optional config (free-form map). Tool selection precedence: project tools.{category}.provider > regime-suggested > base default."
+    description: "Provider/config selection per category. Category-keyed entries (e.g., tools.sast.provider: semgrep, tools.secrets.provider: gitleaks). Each entry has provider (string, the blocking PR-gate scanner) and optional config (free-form map). TIERED PLACEMENT: an entry MAY also carry placement (testPlacement enum — the gate provider's pipeline stage, default ci-pre-merge / blocking) and scheduled[] (one or more non-blocking deep-scan scanners run on a schedule; each item is a bare provider name OR an object {provider, config?, placement?} defaulting to ci-post-merge). This lets a fast low-false-positive scanner gate every PR while heavier scanners run scheduled — mirroring the test_execution.tier_*.placement model. A bare provider keeps the unchanged single-gate behavior. RECONCILIATION with brownfield.scanner_tier: the two are DIFFERENT, orthogonal axes and do NOT conflict — tools.{category}.placement controls WHERE in the pipeline a scanner runs (blocking gate vs scheduled deep-scan), whereas brownfield.scanner_tier ('0'|'1'|'2'|'auto') caps HOW DEEP the brownfield deterministic-tools battery attempts to go (a capability cap). Resolve tools.{category} placement via scripts/scanner-placement.sh. Tool selection precedence: project tools.{category}.provider > regime-suggested > base default."
 
   test_execution:
     type: map
