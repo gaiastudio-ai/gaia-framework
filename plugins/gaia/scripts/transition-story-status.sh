@@ -467,6 +467,14 @@ read_frontmatter_field() {
       if ($0 ~ pat) {
         v = $0
         sub(pat, "", v)
+        # Strip an unquoted trailing "# comment" so an annotated opt-in value
+        # (e.g. `manual_verification: true  # user-facing`) is read as the bare
+        # scalar — otherwise the gate would silently drop an author's opt-in.
+        # ONLY for an UNQUOTED value: a quoted value (e.g. title: "Feature # 5")
+        # carries `#` as literal data and must NOT be truncated.
+        if (v !~ /^[[:space:]]*["'\'']/) {
+          sub(/[[:space:]]+#.*$/, "", v)
+        }
         gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", v)
         print v
         exit

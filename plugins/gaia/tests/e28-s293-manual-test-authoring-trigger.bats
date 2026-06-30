@@ -25,10 +25,10 @@ setup() {
   SCAFFOLD="$CREATE_SCRIPTS/scaffold-story.sh"
   TEMPLATE="$REPO_ROOT/plugins/gaia/skills/gaia-create-story/story-template.md"
   MVSCAN="$REPO_ROOT/plugins/gaia/scripts/manual-verification-scan.sh"
-  REVIEW_GATE="$REPO_ROOT/plugins/gaia/skills/gaia-create-story/scripts/../../../scripts/review-gate.sh"
-  # review-gate + transition live under plugins/gaia/scripts
-  REVIEW_GATE="$REPO_ROOT/plugins/gaia/scripts/review-gate.sh"
-  TRANSITION="$REPO_ROOT/plugins/gaia/scripts/transition-story-status.sh"
+  # The canonical gate reader the per-story-review manual-test dispatcher uses to
+  # decide whether a story REQUIRES manual verification. Test 14 drives it (not a
+  # generator-output tautology) to prove the authoring trigger feeds the gate.
+  MT_DISPATCH="$REPO_ROOT/plugins/gaia/scripts/manual-test-review-dispatch.sh"
 
   EPICS="$TEST_TMP/epics.md"
   cat > "$EPICS" <<'EOF'
@@ -212,11 +212,34 @@ teardown() { common_teardown; }
 # AC4: end-to-end trigger -> gate (flag set upstream is honored at review)
 # =====================================================================
 
-@test "end-to-end: a story authored with --manual-verification carries true into the review-gate-consumed flag" {
-  # Author the frontmatter exactly as the create-story step would, then assert
-  # the field the review-side advisory gate reads is set to true. This closes
-  # the trigger->gate chain: authoring sets the flag the shipped gate honors.
+@test "end-to-end: the canonical gate reader honors a story authored WITHOUT the flag as not-required (no-op)" {
+  # Drive the REAL gate consumer (manual-test-review-dispatch.sh), not the
+  # generator output. A story authored with no opt-in (manual_verification:
+  # false) must be treated as not-requiring manual verification → the dispatcher
+  # is a no-op (exit 0) and logs "not required". This proves the gate reads the
+  # authored flag, and that the default does not over-require.
+  [ -f "$MT_DISPATCH" ] || skip "manual-test-review-dispatch.sh not present"
+  fm="$(bash "$GEN" --story-key E1-S1 --epics-file "$EPICS" --project-config "$CONFIG")"
+  dir="$TEST_TMP/E1-S1-a-user-facing-story"
+  mkdir -p "$dir"
+  bash "$SCAFFOLD" --template "$TEMPLATE" --output "$dir/story.md" --frontmatter "$fm" >/dev/null
+  run bash "$MT_DISPATCH" --story-file "$dir/story.md" --story E1-S1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not required"* ]] || [[ "$output" == *"no-op"* ]] || [[ "$output" == *"does not declare"* ]]
+}
+
+@test "end-to-end: a story authored WITH --manual-verification is recognized by the gate as requiring verification" {
+  # The opt-in path: a story authored with --manual-verification scaffolds to
+  # manual_verification: true, and the REAL gate reader recognizes it as
+  # requiring verification (it does NOT take the not-required no-op branch). This
+  # is the load-bearing trigger->gate link, driven through real code.
+  [ -f "$MT_DISPATCH" ] || skip "manual-test-review-dispatch.sh not present"
   fm="$(bash "$GEN" --story-key E1-S1 --epics-file "$EPICS" --project-config "$CONFIG" --manual-verification)"
-  # The advisory gate keys off this exact frontmatter line.
-  printf '%s\n' "$fm" | grep -qx 'manual_verification: true'
+  dir="$TEST_TMP/E1-S1-a-user-facing-story"
+  mkdir -p "$dir"
+  bash "$SCAFFOLD" --template "$TEMPLATE" --output "$dir/story.md" --frontmatter "$fm" >/dev/null
+  grep -qx 'manual_verification: true' "$dir/story.md"
+  # The gate must NOT emit the not-required no-op message for an opted-in story.
+  run bash "$MT_DISPATCH" --story-file "$dir/story.md" --story E1-S1
+  [[ "$output" != *"not required"* ]] && [[ "$output" != *"does not declare"* ]]
 }

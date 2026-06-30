@@ -94,6 +94,14 @@ read_frontmatter_field() {
     in_fm {
       if ($0 ~ "^"field"[[:space:]]*:") {
         v=$0; sub("^"field"[[:space:]]*:[[:space:]]*", "", v)
+        # Strip an unquoted trailing "# comment" so an author who annotates an
+        # opt-in (e.g. `manual_verification: true  # user-facing`) is honored —
+        # otherwise the bare scalar comparison drops the flag and the required
+        # verification is silently not enforced (a fail-open against intent).
+        # ONLY for an UNQUOTED value — a quoted value carries `#` as literal data.
+        if (v !~ /^[[:space:]]*["'\'']/) {
+          sub(/[[:space:]]+#.*$/, "", v)
+        }
         gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", v)
         print v; exit
       }

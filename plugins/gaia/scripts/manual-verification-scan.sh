@@ -24,20 +24,40 @@ SCRIPT_NAME="${SCRIPT_NAME:-manual-verification-scan.sh}"
 # ---------------------------------------------------------------------------
 # _mverify_fm_field — extract a YAML frontmatter field value (private helper).
 #   $1 = field name, $2 = file path.
-# Prints the unquoted value. Exits at the closing --- fence. Empty when absent.
+# Prints the unquoted value. Empty when absent.
+#
+# This reader is intentionally byte-for-byte equivalent to the CANONICAL gate
+# reader (`read_frontmatter_field` in manual-test-review-dispatch.sh /
+# transition-story-status.sh) so the sprint-plan display annotation can NEVER
+# disagree with the enforcement gate. Two properties matter:
+#   - Line 1 MUST be the opening `---` fence (NR==1 && $0 != "---" → exit). A
+#     story with a leading blank line or no frontmatter reads as empty — same as
+#     the gate — instead of the lenient "first --- anywhere" that could read a
+#     body block and disagree with the gate in the dangerous direction.
+#   - An unquoted trailing `# comment` on the value is stripped, so an author
+#     who annotates `manual_verification: true  # user-facing` is read as `true`
+#     by BOTH this reader and the gate (avoids a silent opt-in loss).
 # ---------------------------------------------------------------------------
 _mverify_fm_field() {
   local field="$1" file="$2"
   [ -r "$file" ] || return 0
-  awk -v fld="$field" '
-    /^---$/  { fm++; next }
-    fm == 1 && $0 ~ "^" fld ":" {
-      sub("^" fld ":[[:space:]]*", "")
-      gsub(/^["'"'"']|["'"'"']$/, "")
-      print
-      exit
+  awk -v field="$field" '
+    NR==1 && $0 != "---" { exit }
+    NR==1 { in_fm=1; next }
+    in_fm && $0 == "---" { exit }
+    in_fm {
+      if ($0 ~ "^"field"[[:space:]]*:") {
+        v=$0; sub("^"field"[[:space:]]*:[[:space:]]*", "", v)
+        # Strip an unquoted trailing "# comment" so an annotated value matches
+        # the bare scalar. ONLY for an UNQUOTED value — a quoted value carries
+        # `#` as literal data (keeps this reader byte-equivalent to the gate).
+        if (v !~ /^[[:space:]]*["'\'']/) {
+          sub(/[[:space:]]+#.*$/, "", v)
+        }
+        gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", v)
+        print v; exit
+      }
     }
-    fm >= 2 { exit }
   ' "$file"
 }
 
