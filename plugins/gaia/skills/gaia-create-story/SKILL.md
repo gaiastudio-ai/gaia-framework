@@ -405,6 +405,22 @@ After the scaffold returns the seven content section names (`User Story`, `Accep
 
 The `origin` / `origin_ref` provenance contract: when the invoking command is `/gaia-correct-course` or `/gaia-triage-findings` (via Skill-to-Skill Delegation), pass through `--origin` and `--origin-ref` to `generate-frontmatter.sh`. Otherwise omit the flags and the frontmatter records `origin: null` / `origin_ref: null`.
 
+#### Step 4b -- Manual-test authoring offer (surface-aware, opt-in)
+
+A story with a user-facing surface needs a manual / functional verification pass, not just automated tests. Offer manual verification at authoring time — symmetric with how acceptance tests are offered by risk: **offered when relevant, opt-in, never silently mandatory.** This is the trigger that makes the per-story-review manual-test gate fire; without it the gate stays dormant because nothing upstream sets the flag.
+
+**Surface detection (when to offer).** Offer the manual-test prompt when the story touches a user-facing surface — any of:
+- The project declares a user-facing platform (`web`, `server` / API, `ios` / `android` mobile, or a desktop surface) in `project-config.yaml` AND the story changes behavior on that platform, OR
+- The story is UI/UX-bearing (the four-rule UX detection in Step 3 matched, or the story body describes a screen, endpoint, or user-visible flow).
+
+A pure-internal / script-only / refactor story with no user-facing surface does NOT trigger the prompt — its `manual_verification` defaults to `false` (absent prompt). Forcing the flag onto every story would make the fail-closed review gate block work that has nothing to verify manually.
+
+**The offer.** When the surface test matches, ask the author (auto-continue under YOLO with the surface-derived default = offer accepted for a clearly user-facing story, declined otherwise):
+
+> This story has a user-facing surface. Add a manual-test scenario and require a manual-verification verdict at review? `[y]` opt in / `[n]` skip.
+
+**On opt-in:** pass `--manual-verification` to `generate-frontmatter.sh` (Step 4 step 3) so the frontmatter records `manual_verification: true`, and fill the `## Manual Test` section with the scenario (what an operator / the agent-driven manual tester exercises, the expected observable behavior, and the surface(s) involved). **On skip / no-surface:** omit the flag (`manual_verification: false`) and leave the `## Manual Test` section as the `N/A` default. The generator emits the key in both cases, so the flag is always explicit in frontmatter.
+
 The sizing_map override contract is enforced by `generate-frontmatter.sh`; the canonical filename rule is enforced by `validate-canonical-filename.sh`; the 15-field schema is enforced by `validate-frontmatter.sh`. SKILL.md no longer describes any of these algorithms in prose.
 
 `points` are derived from `size` via the resolved `sizing_map` (project-over-global; the `sizing_map:` block is part of the project-config.yaml schema). The resolver is `!scripts/resolve-config.sh sizing_map` — same key consumed by `gaia-sprint-plan/SKILL.md` Step 2 for parity. HALT on resolver non-zero exit or malformed sizing_map (no silent fallback to a hardcoded constant).

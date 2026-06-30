@@ -286,6 +286,17 @@ origin_ref_v="$(extract_value_raw origin_ref)"
 depends_on_v="$(extract_value_raw depends_on)"
 blocks_v="$(extract_value_raw blocks)"
 traces_to_v="$(extract_value_raw traces_to)"
+# manual_verification is a caller-driven boolean literal (not a {token}).
+# The template carries `manual_verification: false` as its default; when the
+# caller's frontmatter opts the story in (manual_verification: true), the
+# frontmatter-region walk below rewrites the literal line to the caller value
+# — the same force-rewrite mechanism used for `status: backlog`. Default to
+# `false` when the caller omits it, so the emitted key is always explicit.
+mverify_v="$(extract_value manual_verification)"
+case "$mverify_v" in
+  true|false) : ;;
+  *)          mverify_v="false" ;;
+esac
 
 # ---------- Read template ----------
 
@@ -342,7 +353,8 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
   -v origin_ref_v="$origin_ref_v" \
   -v depends_on_v="$depends_on_v" \
   -v blocks_v="$blocks_v" \
-  -v traces_to_v="$traces_to_v" '
+  -v traces_to_v="$traces_to_v" \
+  -v mverify_v="$mverify_v" '
   # esc_repl — make a string safe as a gsub() replacement argument.
   # In POSIX awk, `&` in the replacement is interpreted as the matched text,
   # and `\` is the escape char. Without escaping, any user-supplied value
@@ -443,6 +455,15 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
       # whitespace) and rewrite the entire line.
       if (match(line, /^[[:space:]]*status:[[:space:]]*/)) {
         print "status: backlog"
+        next
+      }
+      # Caller-driven manual_verification: the template default is `false`;
+      # rewrite the literal line to the caller-supplied value so an opt-in
+      # (manual_verification: true) actually lands in the scaffolded story.
+      # Only the bare `manual_verification:` value line (not the leading
+      # comment line, which is `# manual_verification: ...`) matches.
+      if (line ~ /^manual_verification:[[:space:]]*/) {
+        print "manual_verification: " mverify_v
         next
       }
       print token_sub(line)

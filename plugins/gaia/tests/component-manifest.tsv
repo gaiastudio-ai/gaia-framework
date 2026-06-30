@@ -405,6 +405,7 @@ scripts-core	e28-s211-workerspawn-memory-load.bats
 scripts-core	e28-s274-sidecar-write.bats
 scripts-core	e28-s275-planning-vs-test-taxonomy.bats
 scripts-core	e28-s289-manual-test-review-dispatch.bats
+scripts-core	e28-s293-manual-test-authoring-trigger.bats
 scripts-core	e41-s1-yolo-lint.bats
 scripts-core	e41-s1-yolo-mode.bats
 scripts-core	e43-s6-resume-contract.bats
@@ -448,6 +449,7 @@ scripts-core	lifecycle-event.bats
 scripts-core	load-stack-persona-units.bats
 scripts-core	load-stack-persona.bats
 scripts-core	manual-test-flakiness-tracking.bats
+scripts-core	manual-verification-scan.bats
 scripts-core	measure-val-auto-fix-token-budget.bats
 scripts-core	memory-loader.bats
 scripts-core	memory-roundtrip.bats
@@ -652,6 +654,7 @@ skills	e28-s280-embedded-platform-token.bats
 skills	e28-s284-per-stack-per-env-targeting.bats
 skills	e28-s290-manual-test-api-command.bats
 skills	e28-s291-platforms-inline-comment-strip.bats
+skills	e28-s292-functional-surface-class.bats
 skills	e36-s1-cross-retro-learning.bats
 skills	e39-s4-extract-findings.bats
 skills	e39-s4-sprint-scope.bats

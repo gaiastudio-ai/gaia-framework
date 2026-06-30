@@ -16,6 +16,8 @@ priority_flag: null
 delivered: false
 # deferred_implementation: set to true if the story's implementation is deferred to a later sprint — consumed by /gaia-sprint-review's C3 criterion.
 deferred_implementation: false
+# manual_verification: set to true when the story has a user-facing surface that needs a manual / functional verification pass. true makes the per-story-review manual-test gate required (a verdict must be recorded); false/absent means no manual verification is required. Offered (opt-in by surface), not mandatory — symmetric with how acceptance tests are offered by risk. Capture the scenario in the `## Manual Test` section below.
+manual_verification: false
 origin: {origin}
 origin_ref: {origin_ref}
 depends_on: {depends_on}
@@ -92,6 +94,16 @@ As a {role}, I want to {action}, so that {benefit}.
 
 - Cite all technical details with source paths and sections, e.g. [Source: docs/<file>.md#Section]
 - For ADR lookups, reference the inline decision log in `.gaia/artifacts/planning-artifacts/architecture.md §Decision Log` — ADRs live inline in that table rather than in a separate ADR directory.
+
+## Manual Test
+
+<!-- Filled only when manual_verification: true. Describe the manual / functional
+     verification scenario for this story's user-facing surface: what an operator
+     (or the agent-driven manual tester) should exercise, the expected observable
+     behavior, and the surface(s) involved (web / api / mobile / desktop). When
+     manual_verification is false, leave this as "N/A — no manual verification". -->
+
+N/A — no manual verification required for this story.
 
 ## Dev Agent Record
 
