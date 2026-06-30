@@ -42,6 +42,7 @@ _mverify_fm_field() {
   local field="$1" file="$2"
   [ -r "$file" ] || return 0
   awk -v field="$field" '
+    BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
     NR==1 && $0 != "---" { exit }
     NR==1 { in_fm=1; next }
     in_fm && $0 == "---" { exit }
@@ -51,10 +52,13 @@ _mverify_fm_field() {
         # Strip an unquoted trailing "# comment" so an annotated value matches
         # the bare scalar. ONLY for an UNQUOTED value — a quoted value carries
         # `#` as literal data (keeps this reader byte-equivalent to the gate).
-        if (v !~ /^[[:space:]]*["'\'']/) {
+        # Quote chars come from sprintf to avoid brittle shell/awk escaping.
+        vstart = substr(v, 1, 1)
+        if (vstart != dq && vstart != sq) {
           sub(/[[:space:]]+#.*$/, "", v)
         }
-        gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", v)
+        cls = "^[" dq sq "[:space:]]+|[" dq sq "[:space:]]+$"
+        gsub(cls, "", v)
         print v; exit
       }
     }

@@ -88,6 +88,7 @@ fi
 read_frontmatter_field() {
   local file="$1" field="$2"
   awk -v field="$field" '
+    BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
     NR==1 && $0 != "---" { exit }
     NR==1 { in_fm=1; next }
     in_fm && $0 == "---" { exit }
@@ -99,10 +100,13 @@ read_frontmatter_field() {
         # otherwise the bare scalar comparison drops the flag and the required
         # verification is silently not enforced (a fail-open against intent).
         # ONLY for an UNQUOTED value — a quoted value carries `#` as literal data.
-        if (v !~ /^[[:space:]]*["'\'']/) {
+        # Quote chars come from sprintf to avoid brittle shell/awk escaping.
+        vstart = substr(v, 1, 1)
+        if (vstart != dq && vstart != sq) {
           sub(/[[:space:]]+#.*$/, "", v)
         }
-        gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", v)
+        cls = "^[" dq sq "[:space:]]+|[" dq sq "[:space:]]+$"
+        gsub(cls, "", v)
         print v; exit
       }
     }

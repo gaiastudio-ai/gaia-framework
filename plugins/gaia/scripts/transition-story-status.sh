@@ -457,7 +457,10 @@ read_frontmatter_status() {
 read_frontmatter_field() {
   local file="$1" field="$2" value
   value=$(awk -v field="$field" '
-    BEGIN { in_fm = 0; seen = 0 }
+    # sq holds a single-quote char (code 39); dq a double-quote. Defining them
+    # via sprintf avoids brittle nested shell/awk quote escaping (a prior -v
+    # form produced a 3-char value, not a quote, on some awk builds).
+    BEGIN { in_fm = 0; seen = 0; sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
     /^---[[:space:]]*$/ {
       if (!in_fm && !seen) { in_fm = 1; seen = 1; next }
       if (in_fm) exit
@@ -469,13 +472,17 @@ read_frontmatter_field() {
         sub(pat, "", v)
         # Strip an unquoted trailing "# comment" so an annotated opt-in value
         # (e.g. `manual_verification: true  # user-facing`) is read as the bare
-        # scalar — otherwise the gate would silently drop an author's opt-in.
+        # scalar — otherwise the gate would silently drop an author opt-in.
         # ONLY for an UNQUOTED value: a quoted value (e.g. title: "Feature # 5")
         # carries `#` as literal data and must NOT be truncated.
-        if (v !~ /^[[:space:]]*["'\'']/) {
+        vstart = substr(v, 1, 1)
+        if (vstart != dq && vstart != sq) {
           sub(/[[:space:]]+#.*$/, "", v)
         }
-        gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", v)
+        # Trim surrounding quotes/space. Build the char class from sq/dq so the
+        # pattern never depends on shell-level quote escaping.
+        cls = "^[" dq sq "[:space:]]+|[" dq sq "[:space:]]+$"
+        gsub(cls, "", v)
         print v
         exit
       }
