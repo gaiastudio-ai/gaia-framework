@@ -1,0 +1,71 @@
+name: plugin-ci-skip-shim
+
+# Companion to plugin-ci.yml. That workflow emits the three status-check
+# contexts branch protection marks REQUIRED on main and staging
+# (frontmatter-lint, bats-tests, structure-validate), but it is path-filtered
+# to the product-source surface (plugins/gaia/** + plugin-ci.yml +
+# scripts/audit-v2-migration.sh). A PR that touches none of those paths —
+# e.g. a documentation/**-only change, or a promotion PR carrying only such a
+# change — never triggers plugin-ci.yml, so the required contexts never report
+# and GitHub blocks the PR permanently (BLOCKED / "the base branch policy
+# prohibits the merge"), even though every check that did run is green.
+#
+# This shim triggers on the EXACT INVERSE path set (paths-ignore mirrors
+# plugin-ci.yml's paths) and reports the same three context names as trivially
+# successful no-ops. GitHub satisfies a required context from whichever
+# workflow reports it: a plugin-touching PR runs the REAL jobs in plugin-ci.yml
+# (this shim does not trigger), and a non-plugin PR gets the green shim instead.
+# No coverage is lost on real plugin changes; docs-only PRs become mergeable
+# without an admin override.
+#
+# CONTRACT: the job `name:` values below MUST stay identical to the required
+# job names in plugin-ci.yml, and the paths-ignore list below MUST stay
+# identical to plugin-ci.yml's paths list. If either drifts, a docs-only PR
+# will block again. See ci-skip-shim-parity.bats for the enforced invariant.
+#
+# The shimmed context list MUST be a SUPERSET of the branch-protection
+# required-status-checks list (Settings -> Branches). Today main requires
+# frontmatter-lint, bats-tests, structure-validate. audit-v2-migration is
+# also a path-filtered plugin-ci job whose own header instructs admins to mark
+# it required on main + staging; it is shimmed here pre-emptively so that
+# marking it required later does NOT silently re-block docs-only PRs. If a NEW
+# required context is ever added to branch protection, add a matching no-op job
+# here too. The parity bats cannot read branch-protection settings, so this
+# coupling is enforced by convention + this comment.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths-ignore:
+      - 'plugins/gaia/**'
+      - '.github/workflows/plugin-ci.yml'
+      - 'scripts/audit-v2-migration.sh'
+
+jobs:
+  frontmatter-lint:
+    name: frontmatter-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op (no product-source changes in this PR)
+        run: echo "plugin-ci paths untouched — required context satisfied by skip shim."
+
+  bats-tests:
+    name: bats-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op (no product-source changes in this PR)
+        run: echo "plugin-ci paths untouched — required context satisfied by skip shim."
+
+  structure-validate:
+    name: structure-validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op (no product-source changes in this PR)
+        run: echo "plugin-ci paths untouched — required context satisfied by skip shim."
+
+  audit-v2-migration:
+    name: audit-v2-migration
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op (no product-source changes in this PR)
+        run: echo "plugin-ci paths untouched — required context satisfied by skip shim."
