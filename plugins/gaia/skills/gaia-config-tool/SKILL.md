@@ -35,6 +35,10 @@ tools:
 - Resolve a category's tiered placement (gate + scheduled scanners, each with its pipeline stage) via `${CLAUDE_PLUGIN_ROOT}/scripts/scanner-placement.sh --config <path> --category <name>`.
 - **Not to be confused with `brownfield.scanner_tier`:** that is a DIFFERENT, orthogonal axis — `scanner_tier` (`'0'|'1'|'2'|'auto'`) caps HOW DEEP the brownfield deterministic-tools battery goes (a capability cap), whereas `tools.<category>.placement` controls WHERE in the pipeline a scanner runs (blocking gate vs scheduled deep-scan). They are independent and do not conflict.
 
+### Reserved key: `tools.aggregation`
+
+`aggregation` is a **reserved key under `tools`, NOT a scanner category.** It holds the pipeline-wide SARIF-merge / dedup / DefectDojo export settings (`sarif_merge_enabled`, `dedup_enabled`, `defectdojo_enabled`, `defectdojo_api_url`, `defectdojo_api_token`, `defectdojo_engagement_id`). Because it is reserved, `aggregation` is NOT a valid `<category>` for `/gaia-config-tool --category` — a request to configure it as a scanner category is rejected by the orphan-rejection guard (it is not in the adapter-category set). `defectdojo_api_token` holds the NAME of an env var, never a literal secret. Edit this block as the `tools.aggregation.<key>` map directly; see the security-review skill for how the standard gate consumes it.
+
 Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the edited section are preserved byte-for-byte; the edited section's content follows the existing indentation style detected from the file.
 
 ## Critical Rules
