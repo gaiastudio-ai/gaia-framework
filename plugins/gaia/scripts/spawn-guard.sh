@@ -80,6 +80,103 @@ _sg_fm_field() {
 }
 
 # ---------------------------------------------------------------------------
+# _sg_resolve_story_file — locate an on-disk story file by key, recursively
+#
+# Usage: _sg_resolve_story_file <artifacts_dir> <story_key>
+# Searches <artifacts_dir> RECURSIVELY for the canonical story file(s) of
+# <story_key>, tolerating BOTH the epic-grouped layout
+#   <artifacts_dir>/epic-<EPIC>-<slug>/stories/<story_key>-<slug>.md
+# and the legacy flat layout
+#   <artifacts_dir>/<story_key>-<slug>.md
+# (and the dir-style <story_key>-<slug>/story.md variant).
+# Prints every matching path (newline-separated); prints nothing when none
+# match. Anchors on "<story_key>-" so a short key never matches a longer key
+# that shares its prefix (e.g. E1-S1 must not match E1-S10). Mirrors the
+# resolution logic in gaia-triage-findings/scripts/resolve-sprint-stories.sh.
+# ---------------------------------------------------------------------------
+_sg_resolve_story_file() {
+  local artifacts_dir="${1:-}" story_key="${2:-}"
+  [ -n "$artifacts_dir" ] && [ -n "$story_key" ] || return 0
+  [ -d "$artifacts_dir" ] || return 0
+
+  # Collect all find results first, THEN filter. Reading into a variable (not
+  # piping into `head`) keeps this safe under `set -euo pipefail`: a downstream
+  # caller that reads only the first line cannot deliver SIGPIPE to a live
+  # `find`, which would otherwise surface as exit 141.
+  local raw
+  raw="$(find "$artifacts_dir" -type f \
+    \( -path "*/${story_key}-*/story.md" -o -name "${story_key}-*.md" \) \
+    2>/dev/null)" || raw=""
+  [ -n "$raw" ] || return 0
+
+  local match base parent_base
+  while IFS= read -r match; do
+    [ -n "$match" ] || continue
+    # Re-anchor: the file basename (or its parent dir for the story.md form)
+    # MUST start with the exact key followed by a hyphen. `find -name` already
+    # enforces this for the flat form; the parent-dir check covers the
+    # <key>-<slug>/story.md form.
+    base="${match##*/}"
+    if [ "$base" = "story.md" ]; then
+      parent_base="${match%/story.md}"
+      parent_base="${parent_base##*/}"
+      case "$parent_base" in
+        "${story_key}-"*) printf '%s\n' "$match" ;;
+      esac
+    else
+      case "$base" in
+        "${story_key}-"*) printf '%s\n' "$match" ;;
+      esac
+    fi
+  done <<EOF
+$raw
+EOF
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# _sg_resolve_from_pathspec — resolve a caller-supplied story-file argument
+#
+# Usage: _sg_resolve_from_pathspec <pathspec>
+# Callers of `verify` / `cleanup` historically pass an UNEXPANDED glob of the
+# form "<artifacts_dir>/<story_key>-*.md" (a single-level glob that the shell
+# does not expand into the epic-grouped subtree). This helper accepts either:
+#   1. a real file path (printed verbatim if it exists), OR
+#   2. a "<dir>/<story_key>-*.md" glob whose "<story_key>" segment is
+#      extracted and resolved recursively under "<dir>" via
+#      _sg_resolve_story_file.
+# Prints the first resolved path, or nothing when none match.
+# ---------------------------------------------------------------------------
+_sg_resolve_from_pathspec() {
+  local spec="${1:-}"
+  [ -n "$spec" ] || return 0
+  # Direct hit: the argument is already a real file.
+  if [ -f "$spec" ]; then
+    printf '%s\n' "$spec"
+    return 0
+  fi
+  # Glob form "<dir>/<key>-*.md": split into dir + trailing basename glob.
+  local dir base key
+  dir="${spec%/*}"
+  base="${spec##*/}"
+  case "$base" in
+    *-\*.md)
+      key="${base%-\*.md}"
+      local matches
+      matches="$(_sg_resolve_story_file "$dir" "$key")"
+      # First line only — read without `head` so no SIGPIPE reaches the
+      # producer. Emit nothing (not a blank line) when there is no match.
+      [ -n "$matches" ] && printf '%s\n' "${matches%%$'\n'*}"
+      ;;
+    *)
+      # Not a recognized glob and not a real file — nothing to resolve.
+      :
+      ;;
+  esac
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # sg_validate_origin_ref — validate origin_ref before passing to subagent
 #
 # Usage: sg_validate_origin_ref <origin_ref>
@@ -144,24 +241,19 @@ sg_check_collision() {
     return 1
   fi
 
-  # Glob for exact key prefix followed by hyphen then slug
-  # The pattern {story_key}-*.md matches the exact key prefix but not longer keys sharing the same prefix
-  local pattern="${artifacts_dir}/${story_key}-*.md"
-  local match
-  # Use nullglob-safe iteration
-  for match in $pattern; do
-    if [ -f "$match" ]; then
-      # Verify the match actually starts with the exact key followed by a hyphen
-      local basename
-      basename="$(basename "$match")"
-      # Verify the basename starts with the exact story key followed by a hyphen
-      if printf '%s' "$basename" | grep -qE "^${story_key}-"; then
-        log "sg_check_collision: story file already exists at $match — collision detected for ${story_key}"
-        printf 'Collision: %s already exists at %s. Delete or rename before retry.\n' "$story_key" "$match"
-        return 1
-      fi
-    fi
-  done
+  # Resolve RECURSIVELY under artifacts_dir so the guard sees story files in
+  # the epic-grouped layout (epic-<EPIC>-<slug>/stories/<key>-*.md) as well as
+  # the legacy flat layout. The resolver anchors on "<story_key>-" so a short
+  # key never matches a longer key sharing the same prefix (E1-S1 vs E1-S10).
+  local matches match
+  matches="$(_sg_resolve_story_file "$artifacts_dir" "$story_key")"
+  # First line only — read without `head` so no SIGPIPE reaches the producer.
+  match="${matches%%$'\n'*}"
+  if [ -n "$match" ]; then
+    log "sg_check_collision: story file already exists at $match — collision detected for ${story_key}"
+    printf 'Collision: %s already exists at %s. Delete or rename before retry.\n' "$story_key" "$match"
+    return 1
+  fi
 
   return 0
 }
@@ -174,14 +266,20 @@ sg_check_collision() {
 # absent. Returns 1 only on empty path argument.
 # ---------------------------------------------------------------------------
 sg_cleanup_partial() {
-  local file="${1:-}"
+  local arg="${1:-}"
 
-  if [ -z "$file" ]; then
+  if [ -z "$arg" ]; then
     log "sg_cleanup_partial: missing required argument: story_file_path"
     return 1
   fi
 
-  if [ -f "$file" ]; then
+  # Resolve a caller-supplied "<dir>/<key>-*.md" glob (or a real path) to the
+  # actual on-disk file, tolerating the epic-grouped layout. A partial stub
+  # left in epic-<EPIC>-<slug>/stories/ must still be removable.
+  local file
+  file="$(_sg_resolve_from_pathspec "$arg")"
+
+  if [ -n "$file" ] && [ -f "$file" ]; then
     rm -f "$file"
     log "sg_cleanup_partial: removed partial file $(basename "$file")"
   fi
@@ -200,11 +298,11 @@ sg_cleanup_partial() {
 # On mismatch, emits a schema-drift error.
 # ---------------------------------------------------------------------------
 sg_verify_frontmatter() {
-  local file="${1:-}"
+  local arg="${1:-}"
   local expected_origin="${2:-}"
   local expected_origin_ref="${3:-}"
 
-  if [ -z "$file" ]; then
+  if [ -z "$arg" ]; then
     log "sg_verify_frontmatter: missing required argument: story_file"
     return 1
   fi
@@ -217,8 +315,13 @@ sg_verify_frontmatter() {
     return 1
   fi
 
-  if [ ! -f "$file" ]; then
-    log "sg_verify_frontmatter: story file not found: $file"
+  # Resolve a caller-supplied "<dir>/<key>-*.md" glob (or a real path) to the
+  # actual on-disk file, tolerating the epic-grouped layout.
+  local file
+  file="$(_sg_resolve_from_pathspec "$arg")"
+
+  if [ -z "$file" ] || [ ! -f "$file" ]; then
+    log "sg_verify_frontmatter: story file not found: $arg"
     return 1
   fi
 
@@ -239,7 +342,7 @@ sg_verify_frontmatter() {
     printf 'Schema drift: origin field missing from story frontmatter\n'
     errors=$((errors + 1))
   elif [ "$actual_origin" != "$expected_origin" ]; then
-    log "sg_verify_frontmatter: origin mismatch — expected=%s actual=%s" "$expected_origin" "$actual_origin"
+    log "sg_verify_frontmatter: origin mismatch — expected=$expected_origin actual=$actual_origin"
     printf 'Schema drift: origin mismatch — expected "%s", got "%s"\n' "$expected_origin" "$actual_origin"
     errors=$((errors + 1))
   fi
@@ -249,7 +352,7 @@ sg_verify_frontmatter() {
     printf 'Schema drift: origin_ref field missing from story frontmatter\n'
     errors=$((errors + 1))
   elif [ "$actual_origin_ref" != "$expected_origin_ref" ]; then
-    log "sg_verify_frontmatter: origin_ref mismatch — expected=%s actual=%s" "$expected_origin_ref" "$actual_origin_ref"
+    log "sg_verify_frontmatter: origin_ref mismatch — expected=$expected_origin_ref actual=$actual_origin_ref"
     printf 'Schema drift: origin_ref mismatch — expected "%s", got "%s"\n' "$expected_origin_ref" "$actual_origin_ref"
     errors=$((errors + 1))
   fi

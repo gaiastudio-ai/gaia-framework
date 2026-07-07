@@ -74,8 +74,14 @@ _seed_ingested() {
   local hash
   hash="$(printf '%s\n' "$body" | _sha_stdin)"
 
+  # expires_at is deliberately far in the FUTURE so the default-seeded entry is
+  # always unexpired: the hash-match SKIP path is then a true no-op (no expiry
+  # revalidation write), which the "no rewrite / mtime unchanged / untouched"
+  # tests depend on. Tests that WANT expiry override this to a past date
+  # (e.g. 2020-01-01) after seeding. A fixed calendar date here is a time bomb —
+  # once it passes, every no-op test starts rewriting the file and fails.
   local fetched_at="2026-06-01T00:00:00Z"
-  local expires_at="2026-07-01T00:00:00Z"
+  local expires_at="2099-01-01T00:00:00Z"
 
   # Write the ingested file with frontmatter.
   cat > "$KNOW/ingested/${slug}.md" <<EOF
