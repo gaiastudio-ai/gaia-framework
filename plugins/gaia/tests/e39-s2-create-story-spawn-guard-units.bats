@@ -34,6 +34,8 @@ _load_spawn_helpers() {
     /^log\(\) \{/,/^\}/ { print; next }
     /^die\(\) \{/,/^\}/ { print; next }
     /^_sg_fm_field\(\) \{/,/^\}/ { print; next }
+    /^_sg_resolve_story_file\(\) \{/,/^\}/ { print; next }
+    /^_sg_resolve_from_pathspec\(\) \{/,/^\}/ { print; next }
     /^sg_validate_origin_ref\(\) \{/,/^\}/ { print; next }
     /^sg_check_collision\(\) \{/,/^\}/ { print; next }
     /^sg_cleanup_partial\(\) \{/,/^\}/ { print; next }
@@ -306,6 +308,18 @@ EOF
   [ "$status" -ne 0 ]
 }
 
+@test "sg_verify_frontmatter: diagnostic renders actual values, not literal %s" {
+  _load_spawn_helpers
+  local file
+  file="$(_make_story "$TEST_TMP" "E1-S1" "triage-findings" "F-001")"
+  # origin mismatch — the log() diagnostic must interpolate the values, not
+  # leak the printf-style "%s" placeholder (log() prints $* verbatim).
+  run sg_verify_frontmatter "$file" "correct-course" "F-001"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -q 'expected=correct-course actual=triage-findings'
+  ! echo "$output" | grep -q 'expected=%s'
+}
+
 # ===========================================================================
 # Contract: spawn-guard.sh must be executable as standalone CLI
 # ===========================================================================
@@ -316,4 +330,83 @@ EOF
 
 @test "spawn-guard.sh: shellcheck-safe shebang" {
   head -n 1 "$SPAWN_GUARD_SH" | grep -q '^#!/usr/bin/env bash'
+}
+
+# ===========================================================================
+# Epic-grouped layout regression — story files live TWO levels deep under
+#   <artifacts_dir>/epic-<EPIC>-<slug>/stories/<key>-<slug>.md
+# The collision/verify/cleanup guards MUST resolve recursively, not with a
+# single-level top-of-dir glob (which silently matched nothing and made
+# check-collision a no-op that always reported "safe to spawn").
+# ===========================================================================
+
+# Fixture: create a story in the epic-grouped layout. Prints the file path.
+_make_epic_story() {
+  local root="$1" epic_slug="$2" key="$3" origin="${4:-}" origin_ref="${5:-}"
+  local dir="${root}/epic-${epic_slug}/stories"
+  mkdir -p "$dir"
+  _make_story "$dir" "$key" "$origin" "$origin_ref"
+}
+
+@test "check-collision: detects a story nested in epic-<EPIC>/stories/ (recursive)" {
+  _load_spawn_helpers
+  _make_epic_story "$TEST_TMP" "E70-demo" "E70-S99" "triage-findings" "F-1" >/dev/null
+  run sg_check_collision "$TEST_TMP" "E70-S99"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qi "collision"
+}
+
+@test "check-collision: passes for a key absent from the epic-grouped tree" {
+  _load_spawn_helpers
+  _make_epic_story "$TEST_TMP" "E70-demo" "E70-S99" "triage-findings" "F-1" >/dev/null
+  run sg_check_collision "$TEST_TMP" "E70-S100"
+  [ "$status" -eq 0 ]
+}
+
+@test "check-collision: short key does not false-collide with longer key in epic tree" {
+  _load_spawn_helpers
+  # E70-S99 exists; E70-S9 must NOT be treated as a collision (prefix safety).
+  _make_epic_story "$TEST_TMP" "E70-demo" "E70-S99" "triage-findings" "F-1" >/dev/null
+  run sg_check_collision "$TEST_TMP" "E70-S9"
+  [ "$status" -eq 0 ]
+}
+
+@test "verify: resolves an unexpanded <dir>/<key>-*.md glob into the epic tree" {
+  _load_spawn_helpers
+  _make_epic_story "$TEST_TMP" "E70-demo" "E70-S99" "triage-findings" "F-1" >/dev/null
+  # The SKILL.md caller passes the flat glob; the guard must resolve it.
+  run sg_verify_frontmatter "$TEST_TMP/E70-S99-*.md" "triage-findings" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "verify: flags origin drift on an epic-grouped story via glob pathspec" {
+  _load_spawn_helpers
+  _make_epic_story "$TEST_TMP" "E70-demo" "E70-S99" "triage-findings" "F-1" >/dev/null
+  run sg_verify_frontmatter "$TEST_TMP/E70-S99-*.md" "correct-course" "F-1"
+  [ "$status" -ne 0 ]
+}
+
+@test "cleanup: removes a partial stub nested in the epic tree via glob pathspec" {
+  _load_spawn_helpers
+  local file
+  file="$(_make_epic_story "$TEST_TMP" "E70-demo" "E70-S99" "triage-findings" "F-1")"
+  [ -f "$file" ]
+  run sg_cleanup_partial "$TEST_TMP/E70-S99-*.md"
+  [ "$status" -eq 0 ]
+  [ ! -f "$file" ]
+}
+
+@test "check-collision: multiple matches for a key exits 1 cleanly (no SIGPIPE 141)" {
+  _load_spawn_helpers
+  # Several files share the same key across the epic tree — the first-line
+  # slice must not deliver SIGPIPE to the producer under set -euo pipefail.
+  local dir="$TEST_TMP/epic-E1-a/stories"
+  mkdir -p "$dir"
+  local n
+  for n in 1 2 3 4 5; do
+    printf -- '---\nkey: "E1-S1"\n---\n' > "$dir/E1-S1-variant-$n.md"
+  done
+  run sg_check_collision "$TEST_TMP" "E1-S1"
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qi "collision"
 }
