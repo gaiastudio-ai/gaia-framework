@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.216.1] — 2026-07-07
+
+### Changed
+
+- back-merge main (v1.216.0) into staging
+
+### Fixed
+
+- use far-future expiry in knowledge-refresh test seed to defuse date time bomb
+- resolve story files recursively in spawn-guard collision/verify/cleanup
+
 ## [1.216.0] — 2026-06-30
 
 ### Added
