@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.216.0] — 2026-06-30
+
+### Added
+
+- (security) pipeline-wide SARIF-merge + dedup + DefectDojo aggregation
+- (config) tiered / multi-provider scanners for tools.<category>
+
+### Fixed
+
+- (tests) trailing AC labels + non-col-0 tools example (full-CI guards)
+
 ## [1.215.0] — 2026-06-30
 
 ### Added
