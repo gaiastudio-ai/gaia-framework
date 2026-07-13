@@ -76,6 +76,32 @@ _has_yaml() {
   [ "$status" -eq 0 ]
 }
 
+# Regression: the guard must reject the violating path from ANY working
+# directory, not just when CWD happens to be the project root.
+#
+# The guard compares an entry's resolved path against GAIA_KNOWLEDGE_DIR. That
+# constant is derived from the paths helper's canonical root (which walks UP to
+# the .gaia/ ancestor), but the entry path used to be resolved against
+# `${CLAUDE_PROJECT_ROOT:-$PWD}` — no walk-up. Whenever CWD was a subdirectory
+# of the project root the two roots disagreed, the under-root test was false for
+# a path that genuinely IS inside the knowledge store, and the violation was
+# ACCEPTED (exit 0). The original test above ran from the bats CWD and never
+# exercised the divergence, so the fail-open shipped green.
+@test "the index-in-place guard rejects from a non-root working directory" {
+  if ! _has_yaml; then
+    skip "no python3+PyYAML on host for the path guard"
+  fi
+  local elsewhere
+  elsewhere="$(mktemp -d)"
+
+  # Run the guard with CWD outside the project tree entirely.
+  run bash -c "cd '$elsewhere' && bash '$VALIDATE_INDEX' '$FIX/path-inside-knowledge.yaml'"
+  rm -rf "$elsewhere"
+
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qi "index-in-place violation"
+}
+
 # ---------------------------------------------------------------------------
 # no-vector-dep audit (AC4)
 # ---------------------------------------------------------------------------

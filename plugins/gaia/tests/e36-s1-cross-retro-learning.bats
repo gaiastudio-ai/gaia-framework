@@ -234,6 +234,35 @@ mk_action_items_yaml() {
   echo "$output" | grep -qiE "no review artifacts|empty"
 }
 
+# Regression: a sprint-status.yaml that EXISTS but carries no story keys is a
+# legitimate empty-sprint state, not an error.
+#
+# The story-key fallback pipeline was `grep key: file | grep -oE 'E<n>-S<n>' |
+# tr`. With no matching lines the first grep exits 1, and under `set -euo
+# pipefail` that aborted the whole script — a silent exit 1 with no diagnostic,
+# on a case the script explicitly has an empty-findings message for. The
+# `2>/dev/null` already there suppressed stderr but not the exit status. This
+# only reproduced on a host where the file existed at the CWD-relative path, so
+# a runner without one skipped straight past the block and stayed green.
+@test "empty sprint-status.yaml (no story keys) is not a fatal error" {
+  [ -x "$REVIEW_EXTRACT" ] || skip "GUARD: review-extract.sh does not exist"
+
+  local sprint_dir="$TEST_TMP/impl-nokeys"
+  mkdir -p "$sprint_dir"
+  mk_review_artifact "$sprint_dir/code-review.md" "PASSED" "Code Review"
+
+  # A state dir whose sprint-status.yaml parses but yields zero story keys.
+  local state_dir="$TEST_TMP/state-nokeys"
+  mkdir -p "$state_dir"
+  printf 'sprint_id: sprint-test\nstories: []\n' > "$state_dir/sprint-status.yaml"
+
+  GAIA_STATE_DIR="$state_dir" run "$REVIEW_EXTRACT" \
+    --impl-dir "$sprint_dir" --sprint-id "sprint-test"
+
+  # Must not die on the empty key set.
+  [ "$status" -eq 0 ]
+}
+
 # ===========================================================================
 # AC-EC6 — orphan AI-{n} reference → logged, skipped, no crash
 # ===========================================================================

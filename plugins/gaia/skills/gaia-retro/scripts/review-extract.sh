@@ -188,9 +188,16 @@ if [ -f "$SPRINT_STATUS_YAML" ]; then
   fi
   # yq-less fallback (also a backstop if the yq query returned nothing): pull
   # E<N>-S<N> tokens from `key:` lines, strip quotes, space-delimit.
+  #
+  # Both greps must be `|| true`-guarded. A sprint-status.yaml with no matching
+  # `key:` lines (an empty or freshly-created sprint) makes the first grep exit
+  # 1, and under `set -euo pipefail` that aborted this script outright — a
+  # silent exit 1 with no diagnostic, on what is a legitimate empty-result case.
+  # `2>/dev/null` alone does not help: it suppresses stderr, not the status.
+  # No matching keys is "no story keys", not an error.
   if [ -z "${SPRINT_STORY_KEYS// /}" ]; then
-    SPRINT_STORY_KEYS="$(grep -E '^[[:space:]]*-?[[:space:]]*key:' "$SPRINT_STATUS_YAML" 2>/dev/null \
-      | grep -oE 'E[0-9]+-S[0-9]+' \
+    SPRINT_STORY_KEYS="$( { grep -E '^[[:space:]]*-?[[:space:]]*key:' "$SPRINT_STATUS_YAML" 2>/dev/null || true; } \
+      | { grep -oE 'E[0-9]+-S[0-9]+' || true; } \
       | tr '\n' ' ')"
   fi
 fi
