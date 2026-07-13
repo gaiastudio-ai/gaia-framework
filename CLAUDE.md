@@ -5,7 +5,7 @@ This project uses the **GAIA** (Generative Agile Intelligence Architecture) fram
 ## Environment
 
 - **Project root:** the directory containing `.gaia/` (the GAIA runtime tree) and this `CLAUDE.md`. The project root is wherever the user works from; do not assume it is named `gaia-framework/` or anything else specific.
-- **Runtime tree:** `.gaia/` carries five canonical subdirectories (resolved by the GAIA paths helper):
+- **Runtime tree:** `.gaia/` carries six canonical subdirectories (resolved by the GAIA paths helper):
   - `.gaia/config/` — project configuration
   - `.gaia/artifacts/` — planning / implementation / test / creative / research artifacts
   - `.gaia/state/` — mutable runtime state (sprint status, action items, review-gate ledger, etc.)

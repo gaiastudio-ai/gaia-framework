@@ -6,12 +6,28 @@ This project uses the **GAIA** (Generative Agile Intelligence Architecture) fram
 ## Environment
 
 - **Project root:** the directory containing `.gaia/` (the GAIA runtime tree) and this `CLAUDE.md`. The project root is wherever the user works from; do not assume it is named anything specific.
-- **Runtime tree:** `.gaia/` carries five canonical subdirectories (resolved by the GAIA paths helper):
+- **Runtime tree:** `.gaia/` carries six canonical subdirectories (resolved by the GAIA paths helper):
   - `.gaia/config/` — project configuration
   - `.gaia/artifacts/` — planning / implementation / test / creative / research artifacts
   - `.gaia/state/` — mutable runtime state (sprint status, action items, review-gate ledger, etc.)
   - `.gaia/memory/` — agent sidecars, checkpoints, lifecycle events
   - `.gaia/custom/` — user-extension seam
+  - `.gaia/knowledge/` — the Brain knowledge layer (see below)
+
+## GAIA Brain
+
+The Brain is a read-only knowledge layer that indexes your project's artifacts into a queryable governance graph. It lives at `.gaia/knowledge/` as a pair of files: `brain-index.yaml` (the machine-readable manifest) and `brain-index.md` (a human-browsable Map of Content). The Brain does not copy artifact bytes — each index entry points at the artifact's canonical path in place.
+
+Key gestures:
+
+- **`/gaia-feed`** — ingest an external document (URL, local file, or pasted text) into the knowledge store with provenance tracking. The slug and tags are auto-inferred.
+- **`/gaia-brain-query`** — query a story's governance envelope: the requirements and decisions above it (UP), the tests and reviews below it (DOWN), and the design companions alongside it (LATERAL) — all in one read-only call.
+- **`/gaia-brain-reindex`** — rebuild the index from source. Runs automatically at sprint-close and on demand.
+- **`/gaia-brain-health`** — list every indexed artifact with no governance link (a passive quality signal, not an error).
+- **`/gaia-unfeed`** — remove an ingested document. The inverse of `/gaia-feed`.
+- **`/gaia-knowledge-refresh`** — re-fetch ingested sources and update only what changed.
+
+**Browse in Obsidian:** open `.gaia/knowledge/` as an Obsidian vault to navigate the Map of Content visually. The vault's `.obsidian/` directory (workspace layout, graph settings, installed plugins) is per-user chrome and is gitignored by `/gaia-init` so it never creates commit churn. The brain content itself (`brain-index.yaml`, `brain-index.md`, ingested entries) is shared and tracked in version control.
 
 ## How to Start
 
@@ -51,6 +67,12 @@ If you are uncertain whether a behaviour is a bug or by design, **read the docs 
 
 ## Hard Rules
 
+- **NEVER defer, descope, skip, or partially-complete any work without first informing the user and getting their explicit approval. This is STRICT and non-negotiable.** If you cannot finish a task, an acceptance criterion, a story, or any part of what was asked — or you decide some part should be "out of scope", "a follow-on", "deferred to a later story", or "left as backlog" — you MUST stop, tell the user plainly what you are proposing to leave undone and why, and wait for their decision. Silence is not consent. The failure mode this prevents: an agent quietly narrows scope, marks the visible part done, and the user never learns the rest was dropped unless they happen to ask. Do not let that happen. Concretely:
+  - Surface every deferral the moment you decide it — in your turn's response, in plain language, not buried in a story file, commit message, or artifact the user may never read.
+  - A deferral is only legitimate once the user has seen it and agreed. Until then, treat the full original scope as still owed.
+  - Marking a story/AC `done` or `delivered` while any of its scope is unmet is forbidden unless the user explicitly approved that carve-out — and the deferred remainder must be filed as a tracked backlog story (never left only as prose).
+  - When work you complete *surfaces* new latent issues or follow-ons, name them explicitly to the user and ask whether to file/handle them; do not assume they will ask.
+  - Be honest by default: report what is actually done, what is not, and what you chose not to do — every time, without being prompted.
 - No secrets, credentials, or `.env` files in commits.
 - Feature branches only — never commit directly to `main` or `staging` (or whatever protected branches the project uses).
 - No Claude/AI attribution in commit messages or PR descriptions. Commits read as if a human developer wrote them.
