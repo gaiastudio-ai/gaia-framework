@@ -55,12 +55,21 @@ jobs:
       # the bats-tests signal on noble. If line-coverage reporting is needed
       # later, reintroduce kcov via a pre-built binary download from the kcov
       # GitHub releases rather than apt.
-      - name: Install jq and GNU parallel
+      - name: Install jq, GNU parallel, and the YAML/JSON-schema backends
         # GNU parallel enables `bats --jobs` in run-with-coverage.sh, which runs
         # the 580+ test files concurrently and keeps the suite well under the
         # job timeout below. Without parallel the wrapper falls back to a serial
         # run that sits right at the 15-minute wall and tips into timeout flakes.
-        run: sudo apt-get update && sudo apt-get install -y jq parallel
+        #
+        # PyYAML and jsonschema are NOT optional niceties. Several guards degrade
+        # to a bats `skip` when their backend is absent, and a skipped test
+        # reports as green — so without these the runner was reporting PASS on
+        # guards that never executed. The brain index-in-place guard shipped
+        # broken behind exactly that blind spot: it failed the moment a host with
+        # PyYAML actually ran it. A gate that skips is not a gate that passes.
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq parallel python3 python3-pip
+          python3 -m pip install --break-system-packages PyYAML jsonschema
       - name: Run bats suite with coverage wrapper (budget-watched)
         # bats-budget-watch.sh wraps the coverage wrapper and emits a structured
         # warning to $GITHUB_STEP_SUMMARY when wall-clock exceeds the threshold.
@@ -113,8 +122,12 @@ jobs:
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
         with:
           bats-version: 1.10.0
-      - name: Install jq and python3
-        run: sudo apt-get update && sudo apt-get install -y jq python3
+      - name: Install jq, python3, and the YAML/JSON-schema backends
+        # PyYAML/jsonschema must be present or the backend-guarded tests degrade
+        # to a `skip`, which reports green — see the note in the bats-tests job.
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq python3 python3-pip
+          python3 -m pip install --break-system-packages PyYAML jsonschema
       - name: Run tests/skills/*.bats coverage suite
         # Covers every tests/skills/*.bats file on staging that passes today.
         # Five legacy fixtures carry pre-existing assertion drift and are NOT

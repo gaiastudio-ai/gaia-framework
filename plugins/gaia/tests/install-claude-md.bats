@@ -123,3 +123,148 @@ USERMD
   run "${HELPER}" --target "${TARGET_DIR}/does-not-exist"
   [ "${status}" -eq 2 ]
 }
+
+# ---------------------------------------------------------------------------
+# Template content + drift guard.
+#
+# The template is what a user's project actually receives, so content missing
+# from it is content missing from every new project. The install tests above
+# exercise only the seed/append/no-op plumbing and pin no body content — which
+# is precisely why the template was able to fall two edits behind the root
+# CLAUDE.md (a whole documented subsystem and a Hard Rule) with CI green.
+# ---------------------------------------------------------------------------
+
+DRIFT_GUARD="${BATS_TEST_DIRNAME}/../scripts/check-claude-md-drift.sh"
+REPO_ROOT="${BATS_TEST_DIRNAME}/../../.."
+
+# The Brain subsystem must be documented in what ships to users.
+@test "template documents the Brain knowledge layer and its gestures (AC7)" {
+  grep -qF "## GAIA Brain" "${TEMPLATE}"
+  grep -qF ".gaia/knowledge/" "${TEMPLATE}"
+  for gesture in /gaia-feed /gaia-brain-query /gaia-brain-reindex \
+                 /gaia-brain-health /gaia-unfeed /gaia-knowledge-refresh; do
+    grep -qF "${gesture}" "${TEMPLATE}"
+  done
+}
+
+# The runtime-tree bullet list and its stated count must agree.
+@test "template runtime-tree count matches the number of listed subdirs (AC7)" {
+  listed="$(grep -cE '^  - `\.gaia/[a-z]+/`' "${TEMPLATE}")"
+  [ "${listed}" -eq 6 ]
+  grep -qF 'carries six canonical subdirectories' "${TEMPLATE}"
+}
+
+# The no-silent-deferral rule is the project's strictest behavioural contract;
+# a project that never receives it never enforces it.
+@test "template carries the no-silent-deferral Hard Rule (AC8)" {
+  grep -qF "NEVER defer, descope, skip, or partially-complete any work" "${TEMPLATE}"
+  grep -qF "Silence is not consent." "${TEMPLATE}"
+}
+
+# The guard passes on the real tree — this is the regression pin.
+@test "drift guard passes against the shipped template (AC9)" {
+  [ -x "${DRIFT_GUARD}" ]
+  run "${DRIFT_GUARD}" --root "${REPO_ROOT}"
+  [ "${status}" -eq 0 ]
+}
+
+# Drive the REAL guard against a drifted fixture — a mocked guard would have
+# missed the original bug. A section present in root but absent from the
+# template must fail.
+@test "drift guard catches a section missing from the template (AC9)" {
+  fake_root="$(mktemp -d)"
+  mkdir -p "${fake_root}/plugins/gaia/templates"
+  printf '# X\n\n## Kept\n\nbody\n\n## Hard Rules\n\n- a rule\n' \
+    > "${fake_root}/CLAUDE.md"
+  # template omits "## Kept"
+  printf '# X\n\n## Hard Rules\n\n- a rule\n' \
+    > "${fake_root}/plugins/gaia/templates/CLAUDE.md"
+
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 1 ]
+  echo "${output}" | grep -qF "## Kept"
+  rm -rf "${fake_root}"
+}
+
+# A Hard Rule present in root but absent from the template must fail. Bullets
+# start with "- ", which is why the guard's grep needs `--`; without it every
+# rule reports as missing and the output is useless.
+@test "drift guard catches a Hard Rule missing from the template (AC9)" {
+  fake_root="$(mktemp -d)"
+  mkdir -p "${fake_root}/plugins/gaia/templates"
+  printf '# X\n\n## Hard Rules\n\n- **NEVER** drop scope silently.\n- keep secrets out.\n' \
+    > "${fake_root}/CLAUDE.md"
+  # template carries only the second rule
+  printf '# X\n\n## Hard Rules\n\n- keep secrets out.\n' \
+    > "${fake_root}/plugins/gaia/templates/CLAUDE.md"
+
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 1 ]
+  echo "${output}" | grep -qF "missing hard rule"
+  echo "${output}" | grep -qF "NEVER"
+  rm -rf "${fake_root}"
+}
+
+# No false positives: a rule the template DOES carry must not be reported.
+# (Regression pin for the leading-dash grep-option bug.)
+@test "drift guard does not report rules the template carries (AC9)" {
+  fake_root="$(mktemp -d)"
+  mkdir -p "${fake_root}/plugins/gaia/templates"
+  printf '# X\n\n## Hard Rules\n\n- keep secrets out.\n- feature branches only.\n' \
+    > "${fake_root}/CLAUDE.md"
+  cp "${fake_root}/CLAUDE.md" "${fake_root}/plugins/gaia/templates/CLAUDE.md"
+
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 0 ]
+  ! echo "${output}" | grep -qF "invalid option"
+  rm -rf "${fake_root}"
+}
+
+# The template may hold content the root file does not (one-way check).
+@test "drift guard allows template-only content (AC9)" {
+  fake_root="$(mktemp -d)"
+  mkdir -p "${fake_root}/plugins/gaia/templates"
+  printf '# X\n\n## Hard Rules\n\n- a rule\n' > "${fake_root}/CLAUDE.md"
+  printf '# X\n\n## Extra\n\n## Hard Rules\n\n- a rule\n' \
+    > "${fake_root}/plugins/gaia/templates/CLAUDE.md"
+
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 0 ]
+  rm -rf "${fake_root}"
+}
+
+@test "drift guard exits 2 on a missing input file (AC9)" {
+  fake_root="$(mktemp -d)"
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 2 ]
+  rm -rf "${fake_root}"
+}
+
+# The guard's hard_rules() extractor must read ONLY the top-level bullets of
+# the "## Hard Rules" section: not bullets from other sections, and not the
+# indented sub-bullets that belong to a parent rule. Getting this wrong in
+# either direction would make the guard demand content the template should not
+# carry, or miss content it must.
+@test "drift guard hard_rules extraction is scoped to the section (AC9)" {
+  fake_root="$(mktemp -d)"
+  mkdir -p "${fake_root}/plugins/gaia/templates"
+  # Root has a bullet BEFORE Hard Rules, a real rule with a sub-bullet, and a
+  # bullet in a section AFTER Hard Rules.
+  printf '# X\n\n## Other\n\n- not a rule\n\n## Hard Rules\n\n- a real rule\n  - a sub bullet\n\n## After\n\n- also not a rule\n' \
+    > "${fake_root}/CLAUDE.md"
+  # Template carries ONLY the real top-level rule — no other section's bullets,
+  # no sub-bullet. The guard must still pass.
+  printf '# X\n\n## Other\n\n## Hard Rules\n\n- a real rule\n\n## After\n' \
+    > "${fake_root}/plugins/gaia/templates/CLAUDE.md"
+
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 0 ]
+
+  # And dropping that one real rule must fail.
+  printf '# X\n\n## Other\n\n## Hard Rules\n\n## After\n' \
+    > "${fake_root}/plugins/gaia/templates/CLAUDE.md"
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 1 ]
+  echo "${output}" | grep -qF "a real rule"
+  rm -rf "${fake_root}"
+}
