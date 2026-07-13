@@ -239,3 +239,32 @@ REPO_ROOT="${BATS_TEST_DIRNAME}/../../.."
   [ "${status}" -eq 2 ]
   rm -rf "${fake_root}"
 }
+
+# The guard's hard_rules() extractor must read ONLY the top-level bullets of
+# the "## Hard Rules" section: not bullets from other sections, and not the
+# indented sub-bullets that belong to a parent rule. Getting this wrong in
+# either direction would make the guard demand content the template should not
+# carry, or miss content it must.
+@test "drift guard hard_rules extraction is scoped to the section (AC9)" {
+  fake_root="$(mktemp -d)"
+  mkdir -p "${fake_root}/plugins/gaia/templates"
+  # Root has a bullet BEFORE Hard Rules, a real rule with a sub-bullet, and a
+  # bullet in a section AFTER Hard Rules.
+  printf '# X\n\n## Other\n\n- not a rule\n\n## Hard Rules\n\n- a real rule\n  - a sub bullet\n\n## After\n\n- also not a rule\n' \
+    > "${fake_root}/CLAUDE.md"
+  # Template carries ONLY the real top-level rule — no other section's bullets,
+  # no sub-bullet. The guard must still pass.
+  printf '# X\n\n## Other\n\n## Hard Rules\n\n- a real rule\n\n## After\n' \
+    > "${fake_root}/plugins/gaia/templates/CLAUDE.md"
+
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 0 ]
+
+  # And dropping that one real rule must fail.
+  printf '# X\n\n## Other\n\n## Hard Rules\n\n## After\n' \
+    > "${fake_root}/plugins/gaia/templates/CLAUDE.md"
+  run "${DRIFT_GUARD}" --root "${fake_root}"
+  [ "${status}" -eq 1 ]
+  echo "${output}" | grep -qF "a real rule"
+  rm -rf "${fake_root}"
+}
