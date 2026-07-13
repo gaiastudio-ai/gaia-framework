@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.216.2] — 2026-07-13
+
+### Changed
+
+- (init) cover the drift guard's hard_rules extractor
+
+### Fixed
+
+- (brain,retro,ci) close two fail-open guards that CI reported as green
+- (init) sync the shipped CLAUDE.md template and guard it against drift (#1776)
+
 ## [1.216.1] — 2026-07-07
 
 ### Changed
