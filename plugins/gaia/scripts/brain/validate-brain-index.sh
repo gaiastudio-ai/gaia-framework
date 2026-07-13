@@ -110,6 +110,17 @@ PYEOF
   local knowledge_canon
   knowledge_canon="$(_gaia_paths_canonicalize "$GAIA_KNOWLEDGE_DIR")"
 
+  # Both halves of this guard MUST resolve against the SAME project root, or it
+  # fails open. GAIA_KNOWLEDGE_DIR is derived from the helper's canonical root
+  # (_GAIA_ROOT_CANON: CLAUDE_PROJECT_ROOT, else the walked-up .gaia/ ancestor,
+  # else PWD). Resolving a relative entry path against `${CLAUDE_PROJECT_ROOT:-$PWD}`
+  # instead skips that walk-up step, so whenever the caller's CWD is a
+  # subdirectory of the project root the two roots disagree, `under_root` is
+  # false for a path that genuinely IS inside the knowledge store, and the
+  # violating entry is ACCEPTED. Anchor on the helper's root for both.
+  local root_canon
+  root_canon="$_GAIA_ROOT_CANON"
+
   local st path resolved cand
   # Iterate without mapfile (bash 3.2). The trailing printf keeps the last line
   # even when it lacks a newline.
@@ -119,8 +130,8 @@ PYEOF
     [ -n "$path" ] || continue
 
     case "$path" in
-      /*) resolved="$path" ;;                                  # already absolute
-      *)  resolved="${CLAUDE_PROJECT_ROOT:-$PWD}/$path" ;;     # relative to project root
+      /*) resolved="$path" ;;                    # already absolute
+      *)  resolved="${root_canon}/$path" ;;      # relative to the canonical project root
     esac
     cand="$(_gaia_paths_canonicalize "$resolved")"
 
