@@ -48,8 +48,9 @@ _taim_warn() { printf 'WARNING: test-artifacts-mirror: %s\n' "$*" >&2; }
 # implementation tree shape 1:1.
 _taim_resolve_target_dir() {
   local story_key="$1"
-  local impl_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
-  local test_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
+  local _taim_root="${PROJECT_ROOT:-$PWD}"
+  local impl_root="${_taim_root%/}/.gaia/artifacts/implementation-artifacts"
+  local test_root="${_taim_root%/}/.gaia/artifacts/test-artifacts"
 
   # Locate the per-story dir under impl_root: epic-{slug}/{key}-{slug}/.
   local story_dir

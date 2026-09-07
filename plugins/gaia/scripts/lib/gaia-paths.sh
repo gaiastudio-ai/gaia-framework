@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# Canonical state-tree root.
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # gaia-paths.sh — canonical-path-constants helper for the .gaia/ consolidation.
 # Sourceable, NOT executable.
 #

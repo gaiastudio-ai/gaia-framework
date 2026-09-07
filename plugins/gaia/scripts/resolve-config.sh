@@ -15,15 +15,15 @@ export LC_ALL
 #   1. --shared <path>           explicit flag wins
 #   2. --config <path>           legacy alias (single-file mode)
 #   3. $GAIA_SHARED_CONFIG       env override
-#   3b. $PROJECT_ROOT/.gaia/config/project-config.yaml        (state-tree root)
-#   3c. $PROJECT_ROOT/config/project-config.yaml              (state-tree legacy)
-#   4. $CLAUDE_PROJECT_ROOT/.gaia/config/project-config.yaml  (canonical)
-#   4b. $CLAUDE_PROJECT_ROOT/config/project-config.yaml       (legacy fallback)
-#   5. $PWD/.gaia/config/project-config.yaml                  (canonical)
-#   5b. $PWD/config/project-config.yaml                       (legacy fallback)
-#   5c. parent-of-$PWD/.gaia/config/project-config.yaml       (walk-up canonical)
-#   5d. parent-of-$PWD/config/project-config.yaml             (walk-up legacy; stops at / or $HOME)
-#   6. $CLAUDE_SKILL_DIR/config/project-config.yaml           (legacy, bats fixtures)
+#   4. $PROJECT_ROOT/.gaia/config/project-config.yaml         (state-tree root)
+#   4b. $PROJECT_ROOT/config/project-config.yaml              (state-tree legacy)
+#   5. $CLAUDE_PROJECT_ROOT/.gaia/config/project-config.yaml  (canonical)
+#   5b. $CLAUDE_PROJECT_ROOT/config/project-config.yaml       (legacy fallback)
+#   6. $PWD/.gaia/config/project-config.yaml                  (canonical)
+#   6b. $PWD/config/project-config.yaml                       (legacy fallback)
+#   6c. parent-of-$PWD/.gaia/config/project-config.yaml       (walk-up canonical)
+#   6d. parent-of-$PWD/config/project-config.yaml             (walk-up legacy; stops at / or $HOME)
+#   7. $CLAUDE_SKILL_DIR/config/project-config.yaml           (legacy, bats fixtures)
 #
 # Local overlay discovery precedence:
 #   1. --local <path>            explicit flag

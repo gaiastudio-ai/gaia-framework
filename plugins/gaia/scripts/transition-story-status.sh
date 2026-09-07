@@ -1574,7 +1574,7 @@ if [ "$RECONCILE_ONLY" != "1" ] \
       if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state" ]; then
         _mt_ledger="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/.review-gate-ledger"
       else
-        _mt_ledger="${PROJECT_ROOT}/.review-gate-ledger"
+        _mt_ledger="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.review-gate-ledger"
       fi
     fi
     # Read the latest manual-test verdict for this story (last match wins).

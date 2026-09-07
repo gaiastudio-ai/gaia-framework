@@ -348,7 +348,7 @@ resolve_paths() {
     if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
       IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
     else
-      IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT}/docs/implementation-artifacts"
+      IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}docs/implementation-artifacts"
     fi
   fi
   # `.gaia/state/sprint-status.yaml` is the sole canonical home for
@@ -362,8 +362,8 @@ resolve_paths() {
   #   4. fresh write → canonical .gaia/state/ default
   if [ -z "${SPRINT_STATUS_YAML:-}" ]; then
     local gaia_state="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
-    local legacy_docs="${PROJECT_ROOT}/docs/implementation-artifacts/sprint-status.yaml"
-    local fallback="${PROJECT_ROOT}/sprint-status.yaml"
+    local legacy_docs="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}docs/implementation-artifacts/sprint-status.yaml"
+    local fallback="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}sprint-status.yaml"
     if [ -e "$gaia_state" ]; then
       SPRINT_STATUS_YAML="$gaia_state"
     elif [ -e "$legacy_docs" ]; then
