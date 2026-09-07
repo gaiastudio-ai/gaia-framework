@@ -36,8 +36,11 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
-# Canonical state-tree root.
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+# Canonical state-tree root. PROJECT_PATH is intentionally excluded —
+# seeding from PROJECT_PATH would route a worktree-only caller into the
+# PROJECT_ROOT-set branch and bypass the upward walk needed to find the
+# real state tree. Matches the treatment in lib/gaia-paths.sh.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
 
 SCRIPT_NAME="gaia-sprint-review/write-val-sentinel.sh"
 
@@ -107,13 +110,13 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
   # for either marker.
   # Walk up for the canonical .gaia/memory only;
   # the legacy _memory probe was removed with the consolidation migration.
-  if [ -n "${PROJECT_ROOT:-}" ]; then
-    # PROJECT_ROOT is set — resolve directly, no walk needed.
-    if [ -d "${PROJECT_ROOT%/}/.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT%/}/.gaia/memory" ]; then
-      CHECKPOINT_PATH="${PROJECT_ROOT%/}/.gaia/memory/checkpoints"
-    fi
+  if [ -n "${PROJECT_ROOT:-}" ] && { [ -d "${PROJECT_ROOT%/}/.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT%/}/.gaia/memory" ]; }; then
+    # PROJECT_ROOT is set and its state tree exists — resolve directly.
+    CHECKPOINT_PATH="${PROJECT_ROOT%/}/.gaia/memory/checkpoints"
   else
     # Walk up from CWD looking for the .gaia/memory anchor.
+    # Falls through here when PROJECT_ROOT is unset OR when it points
+    # at a tree whose state directory does not exist yet.
     cwd="$(pwd)"
     while [ "$cwd" != "/" ]; do
       if [ -d "${cwd}/.gaia/memory/checkpoints" ] || [ -d "${cwd}/.gaia/memory" ]; then

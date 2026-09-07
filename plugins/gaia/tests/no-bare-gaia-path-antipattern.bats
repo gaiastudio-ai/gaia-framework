@@ -45,26 +45,8 @@ setup() {
 
 teardown() { common_teardown; }
 
-# ---- Helper: collect .sh files with carve-outs ----
-
-_collect_scripts() {
-  find "$PLUGIN_ROOT/scripts" "$PLUGIN_ROOT/skills" \
-    -name '*.sh' \
-    -not -name '*.bats' \
-    -not -path '*/tests/*' \
-    -not -path '*/fixtures/*' \
-    -not -name 'init-project.sh' \
-    -not -name 'generate-config.sh' \
-    -not -name 'generate-pipeline.sh' \
-    -not -name 'path-classification-sweep.sh'
-}
-
-# Pre-filter: only files that reference .gaia/ need the expensive detector
-# pipeline. This single grep traversal replaces three redundant per-clause
-# full-tree scans and cuts gate time from ~140s to ~40s.
-_collect_gaia_scripts() {
-  _collect_scripts | xargs grep -lF '.gaia/' 2>/dev/null || true
-}
+# _collect_scripts and _collect_gaia_scripts are sourced from the sweep
+# (path-classification-sweep.sh) — single source of truth.
 
 # ---- Source guard: sourcing the sweep must not change $- ----
 
@@ -238,14 +220,43 @@ _collect_gaia_scripts() {
   done
 
   if [ -z "$table" ]; then
-    # State tree absent (CI checkout without project root) -- verify the
-    # sweep's --totals mode produces all four classification categories.
-    # Uses the sourced detector functions (already loaded) instead of
-    # re-invoking the full sweep binary to avoid a redundant 45s tree scan.
-    [ "$(type -t _has_bare_pp_gaia)" = "function" ]
-    [ "$(type -t _has_cwd_gaia)" = "function" ]
-    [ "$(type -t _classify_script)" = "function" ]
-    [ "$(type -t _classify_skillmd_content)" = "function" ]
+    # State tree absent (CI checkout without project root) — run the sweep
+    # against the checkout and assert the generated output has the shape of
+    # the committed table.
+    run bash "$SWEEP" "$PLUGIN_ROOT"
+    [ "$status" -eq 0 ] || {
+      printf 'FAIL: sweep exited %d\n' "$status" >&2
+      return 1
+    }
+
+    # (a) Row count matches the collector's file count.
+    local collector_count sweep_rows
+    collector_count=$(_collect_scripts "$PLUGIN_ROOT" | grep -c '.' || true)
+    sweep_rows=$(printf '%s\n' "$output" | grep -c '^| `' || true)
+    [ "$sweep_rows" -ge "$collector_count" ] || {
+      printf 'FAIL: sweep produced %d rows but collector found %d files\n' \
+        "$sweep_rows" "$collector_count" >&2
+      return 1
+    }
+
+    # (b) At least one row in each expected category (or totals line is consistent).
+    local has_code has_state
+    has_code=$(printf '%s\n' "$output" | grep -c '| code-path |' || true)
+    has_state=$(printf '%s\n' "$output" | grep -c '| state-path |' || true)
+    [ "$has_code" -gt 0 ] || {
+      printf 'FAIL: sweep output has no code-path rows\n' >&2
+      return 1
+    }
+    [ "$has_state" -gt 0 ] || [ "$(printf '%s\n' "$output" | grep -c '| heuristic')" -gt 0 ] || {
+      printf 'FAIL: sweep output has no state-path or heuristic rows\n' >&2
+      return 1
+    }
+
+    # (c) Symlink-disposition heading present.
+    [[ "$output" == *'## Symlink Disposition'* ]] || {
+      printf 'FAIL: sweep output missing Symlink Disposition heading\n' >&2
+      return 1
+    }
   else
     [ -s "$table" ] || {
       printf 'FAIL: classification table is empty: %s\n' "$table" >&2

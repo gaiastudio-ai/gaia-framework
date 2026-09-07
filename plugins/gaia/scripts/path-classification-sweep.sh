@@ -39,13 +39,36 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Shared collector — used by the sweep, the anti-pattern gate, and the
+# atomicity test. Requires PLUGIN_ROOT to be set by the caller.
+# ---------------------------------------------------------------------------
+
+# Enumerate .sh files in the plugin tree, excluding carve-out paths that
+# legitimately create .gaia/ structures (init, config gen, template emission)
+# and the sweep script itself.
+_collect_scripts() {
+  local root="${1:-$PLUGIN_ROOT}"
+  find "$root/scripts" "$root/skills" \
+    -name '*.sh' \
+    -not -name '*.bats' \
+    -not -path '*/tests/*' \
+    -not -path '*/fixtures/*' \
+    -not -name 'init-project.sh' \
+    -not -name 'generate-config.sh' \
+    -not -name 'generate-pipeline.sh' \
+    -not -name 'path-classification-sweep.sh'
+}
+
+# Pre-filter: only files that reference .gaia/ need the expensive detector
+# pipeline. Requires PLUGIN_ROOT to be set by the caller.
+_collect_gaia_scripts() {
+  _collect_scripts "${1:-$PLUGIN_ROOT}" | xargs grep -lF '.gaia/' 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
 # Shared detector functions — used by both the sweep and the anti-pattern gate.
 # Prefixed with _ to stay out of the public-function coverage gate.
 # ---------------------------------------------------------------------------
-
-# Shape-3 pattern: CWD-relative .gaia/ in path construction, including
-# assignment forms, test forms, AND emitter forms (printf/echo).
-_SHAPE3_PATTERN='=.*\.gaia/|[[:space:]]-[fd][[:space:]].*\.gaia/|\[.*\.gaia/|mkdir.*\.gaia/|printf.*\.gaia/|echo.*\.gaia/'
 
 _has_bare_pp_gaia() {
   # Clause 1: bare $PROJECT_PATH/.gaia in non-comment lines.
