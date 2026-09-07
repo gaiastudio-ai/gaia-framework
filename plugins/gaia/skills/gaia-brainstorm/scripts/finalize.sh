@@ -61,7 +61,7 @@ elif [ -d "docs/creative-artifacts" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%
   ARTIFACT="$(ls -1t docs/creative-artifacts/brainstorm-*.md 2>/dev/null | head -n 1 || true)"
 elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts" ]; then
   # shellcheck disable=SC2012
-  ARTIFACT="$(ls -1t ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts/brainstorm-*.md 2>/dev/null | head -n 1 || true)"
+  ARTIFACT="$(ls -1t "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts/brainstorm-"*.md 2>/dev/null | head -n 1 || true)"
 fi
 
 # ---------- 1. Run the 24-item checklist ----------

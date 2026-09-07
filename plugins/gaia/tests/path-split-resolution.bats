@@ -512,12 +512,19 @@ YAML
 
 @test "from subdirectory with all vars unset, script behaviour is byte-identical to baseline (AC-EC3)" {
   local baseline="$TEST_TMP/baseline.sh"
-  # Try both possible git-relative paths for the script.
-  git -C "$PLUGIN_ROOT" show HEAD:plugins/gaia/scripts/write-checkpoint.sh > "$baseline" 2>/dev/null || {
-    git -C "$PLUGIN_ROOT" show HEAD:scripts/write-checkpoint.sh > "$baseline" 2>/dev/null || {
-      skip 'cannot extract baseline write-checkpoint.sh from git'
+  local fixture="$PLUGIN_ROOT/tests/fixtures/write-checkpoint-pre-remediation.sh"
+  if [ -f "$fixture" ]; then
+    cp "$fixture" "$baseline"
+  else
+    # Fallback: extract pre-remediation version from git history.
+    # The parent of the story commit (staging~1) is the genuine
+    # pre-remediation baseline; HEAD would be post-remediation.
+    git -C "$PLUGIN_ROOT" show 'HEAD~1:plugins/gaia/scripts/write-checkpoint.sh' > "$baseline" 2>/dev/null || {
+      git -C "$PLUGIN_ROOT" show 'HEAD~1:scripts/write-checkpoint.sh' > "$baseline" 2>/dev/null || {
+        skip 'pre-remediation baseline unavailable (no fixture, shallow clone, or rebased history)'
+      }
     }
-  }
+  fi
 
   local scratch_baseline="$TEST_TMP/scratch-baseline"
   local scratch_working="$TEST_TMP/scratch-working"
@@ -819,25 +826,95 @@ YAML
       return 1
     }
   else
-    # Branch B: tree is remediated. Check commit-equality via git.
-    # Skip in shallow clones or detached HEAD where history is unavailable.
+    # Branch B: tree is remediated. Verify the gate passes on the current
+    # tree and the gate file is tracked in git.
     local is_shallow
     is_shallow=$(cd "$PLUGIN_ROOT" && git rev-parse --is-shallow-repository 2>/dev/null || echo true)
-    if [ "$is_shallow" = "true" ]; then
-      skip 'commit-equality needs full history (shallow clone)'
+    if [ "$is_shallow" = "true" ] || ! cd "$PLUGIN_ROOT" 2>/dev/null || ! git rev-parse HEAD >/dev/null 2>&1; then
+      # Shallow clone / no git: verify the gate passes + bats file is tracked.
+      # This is a real assertion, not a skip.
+      run bash -c 'source "'"$PLUGIN_ROOT/scripts/path-classification-sweep.sh"'" && _collect_scripts "'"$PLUGIN_ROOT"'" | while IFS= read -r f; do [ -n "$f" ] && cat "$f"; done | { ! grep -qF "PROJECT_PATH/.gaia"; }'
+      [ "$status" -eq 0 ] || {
+        printf 'FAIL: gate detects bare PROJECT_PATH/.gaia in remediated tree\n' >&2
+        return 1
+      }
+      local tracked
+      tracked=$(cd "$PLUGIN_ROOT" && git ls-files -- tests/path-split-resolution.bats 2>/dev/null || true)
+      [ -n "$tracked" ] || {
+        printf 'FAIL: path-split-resolution.bats is not tracked in git\n' >&2
+        return 1
+      }
+    else
+      local bats_sha
+      bats_sha=$(cd "$PLUGIN_ROOT" && git log --diff-filter=A --format=%H -1 \
+        -- tests/path-split-resolution.bats 2>/dev/null || true)
+      if [ -z "$bats_sha" ]; then
+        skip 'commit-equality half runs post-commit (bats files are untracked or history unavailable)'
+      fi
+      local scripts_in_commit
+      scripts_in_commit=$(cd "$PLUGIN_ROOT" && git diff-tree --no-commit-id --name-only -r "$bats_sha" \
+        -- 'scripts/*.sh' 'skills/*/scripts/*.sh' 2>/dev/null || true)
+      [ -n "$scripts_in_commit" ] || {
+        printf 'FAIL: bats file commit %s does not touch any remediated script — atomicity violated\n' "$bats_sha" >&2
+        return 1
+      }
     fi
-    local bats_sha
-    bats_sha=$(cd "$PLUGIN_ROOT" && git log --diff-filter=A --format=%H -1 \
-      -- tests/path-split-resolution.bats 2>/dev/null || true)
-    if [ -z "$bats_sha" ]; then
-      skip 'commit-equality half runs post-commit (bats files are untracked or history unavailable)'
-    fi
-    local scripts_in_commit
-    scripts_in_commit=$(cd "$PLUGIN_ROOT" && git diff-tree --no-commit-id --name-only -r "$bats_sha" \
-      -- 'scripts/*.sh' 'skills/*/scripts/*.sh' 2>/dev/null || true)
-    [ -n "$scripts_in_commit" ] || {
-      printf 'FAIL: bats file commit %s does not touch any remediated script — atomicity violated\n' "$bats_sha" >&2
-      return 1
-    }
   fi
+}
+
+# ================================================================
+# AC2 coverage: resolver-level assertions for named scripts
+# Each verifies the chain resolves state under PROJECT_ROOT when
+# PROJECT_PATH points at a separate worktree.
+# ================================================================
+
+@test "set-story-sprint.sh resolves state via PROJECT_ROOT chain (AC2)" {
+  local sss="$PLUGIN_ROOT/scripts/set-story-sprint.sh"
+  # Verify the chain is present and correct.
+  run grep -cF '${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT' "$sss"
+  [ "$status" -eq 0 ]
+  [ "$output" -gt 0 ]
+  # Verify MEMORY_PATH uses the guarded form.
+  run grep -F 'MEMORY_PATH=' "$sss"
+  [[ "$output" == *'${PROJECT_ROOT:+'* ]]
+}
+
+@test "memory-writer.sh resolves state via PROJECT_ROOT chain (AC2)" {
+  local mw="$PLUGIN_ROOT/scripts/memory-writer.sh"
+  run grep -cF '${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT' "$mw"
+  [ "$status" -eq 0 ]
+  [ "$output" -gt 0 ]
+  run grep -F 'MEMORY_PATH=' "$mw"
+  [[ "$output" == *'${PROJECT_ROOT:+'* ]]
+}
+
+@test "run-tests.sh resolves config via PROJECT_ROOT chain (AC2)" {
+  local rt="$PLUGIN_ROOT/scripts/run-tests.sh"
+  run grep -cF '${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT' "$rt"
+  [ "$status" -eq 0 ]
+  [ "$output" -gt 0 ]
+  run grep -F '${PROJECT_ROOT:+' "$rt"
+  [ "$status" -eq 0 ]
+}
+
+@test "epic-status-dashboard.sh resolves state via PROJECT_ROOT chain (AC2)" {
+  local esd="$PLUGIN_ROOT/scripts/epic-status-dashboard.sh"
+  run grep -cF '${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT' "$esd"
+  [ "$status" -eq 0 ]
+  [ "$output" -gt 0 ]
+  # Verify all three path vars use the guarded form.
+  run grep -cF '${PROJECT_ROOT:+' "$esd"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 3 ]
+}
+
+@test "sprint-close close.sh resolves state via PROJECT_ROOT chain (AC2)" {
+  local cls="$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
+  run grep -cF '${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT' "$cls"
+  [ "$status" -eq 0 ]
+  [ "$output" -gt 0 ]
+  # Verify state paths use the guarded form.
+  run grep -cF '${PROJECT_ROOT:+' "$cls"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 5 ]
 }

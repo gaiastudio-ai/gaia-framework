@@ -107,14 +107,22 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
   # for either marker.
   # Walk up for the canonical .gaia/memory only;
   # the legacy _memory probe was removed with the consolidation migration.
-  cwd="$(pwd)"
-  while [ "$cwd" != "/" ]; do
-    if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory" ]; then
-      CHECKPOINT_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
-      break
+  if [ -n "${PROJECT_ROOT:-}" ]; then
+    # PROJECT_ROOT is set — resolve directly, no walk needed.
+    if [ -d "${PROJECT_ROOT%/}/.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT%/}/.gaia/memory" ]; then
+      CHECKPOINT_PATH="${PROJECT_ROOT%/}/.gaia/memory/checkpoints"
     fi
-    cwd="$(dirname "$cwd")"
-  done
+  else
+    # Walk up from CWD looking for the .gaia/memory anchor.
+    cwd="$(pwd)"
+    while [ "$cwd" != "/" ]; do
+      if [ -d "${cwd}/.gaia/memory/checkpoints" ] || [ -d "${cwd}/.gaia/memory" ]; then
+        CHECKPOINT_PATH="${cwd}/.gaia/memory/checkpoints"
+        break
+      fi
+      cwd="$(dirname "$cwd")"
+    done
+  fi
 fi
 [ -n "${CHECKPOINT_PATH:-}" ] || die "could not resolve the PROJECT_ROOT/.gaia/memory/checkpoints/ directory (set CHECKPOINT_PATH env var)"
 mkdir -p "$CHECKPOINT_PATH"

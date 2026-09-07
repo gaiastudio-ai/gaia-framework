@@ -53,9 +53,6 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
-# Canonical state-tree root.
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
-
 # ---------- Fallback config resolution (parallel dev with resolve-config.sh) ----------
 # Smart-fallback — env-var > .gaia/artifacts/<type>-artifacts/ (when
 # present on disk, post-migration canonical) > legacy docs/<type>-artifacts/
