@@ -820,11 +820,17 @@ YAML
     }
   else
     # Branch B: tree is remediated. Check commit-equality via git.
+    # Skip in shallow clones or detached HEAD where history is unavailable.
+    local is_shallow
+    is_shallow=$(cd "$PLUGIN_ROOT" && git rev-parse --is-shallow-repository 2>/dev/null || echo true)
+    if [ "$is_shallow" = "true" ]; then
+      skip 'commit-equality needs full history (shallow clone)'
+    fi
     local bats_sha
     bats_sha=$(cd "$PLUGIN_ROOT" && git log --diff-filter=A --format=%H -1 \
       -- tests/path-split-resolution.bats 2>/dev/null || true)
     if [ -z "$bats_sha" ]; then
-      skip 'commit-equality half runs post-commit (bats files are untracked)'
+      skip 'commit-equality half runs post-commit (bats files are untracked or history unavailable)'
     fi
     local scripts_in_commit
     scripts_in_commit=$(cd "$PLUGIN_ROOT" && git diff-tree --no-commit-id --name-only -r "$bats_sha" \

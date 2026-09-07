@@ -53,8 +53,53 @@ setup() {
   # (file_exists:.gaia/artifacts/creative-artifacts/brainstorm-*.md).
   mkdir -p "$TEST_TMP/.gaia/artifacts/creative-artifacts"
   mkdir -p "$TEST_TMP/docs/creative-artifacts"
-  printf '# brainstorm fixture (e2e cluster-4)\n' \
-    > "$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-fixture.md"
+  cat > "$TEST_TMP/.gaia/artifacts/creative-artifacts/brainstorm-fixture.md" <<'BRAINSTORM'
+# Brainstorm: Cluster-4 Fixture Project
+
+## Vision Summary
+
+A platform for automated workflow management in software teams.
+
+## Target Users
+
+- Engineering managers coordinating multi-team delivery
+- DevOps engineers automating CI/CD pipelines
+
+## Pain Points
+
+- Manual sprint coordination across distributed teams
+- Inconsistent release processes across services
+- Poor visibility into cross-team dependencies
+
+## Differentiators
+
+- Native integration with existing CI/CD tools
+- Real-time dependency graph visualization
+
+## Competitive Landscape
+
+- Jira: strong issue tracking but limited automation
+- Linear: fast UI but no CI/CD integration
+- Shortcut: balanced but no cross-team dependency view
+
+## Opportunity Areas
+
+- Automated sprint health monitoring with anomaly detection
+- Cross-service dependency resolution at planning time
+- One-click release orchestration across microservices
+- Self-healing CI pipeline recovery from transient failures
+
+## Parking Lot
+
+- Mobile companion app (deferred: low ROI at launch)
+- AI-generated sprint reports (revisit after v2)
+
+## Next Steps
+
+1. Validate opportunity areas with 5 target-user interviews
+2. Draft product brief from the top-ranked opportunities
+3. Competitive deep-dive on dependency-visualization features
+BRAINSTORM
 
   # Skills in dependency order
   SKILLS=(
