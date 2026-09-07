@@ -42,6 +42,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="adapters/brownfield/reconcile.sh"
 log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
@@ -50,7 +53,7 @@ HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
 default_audit() {
   if [ -n "${GAIA_MEMORY_DIR:-}" ]; then printf '%s/brownfield-audit' "$GAIA_MEMORY_DIR"
-  else printf '%s' "./.gaia/memory/brownfield-audit"; fi
+  else printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit"; fi
 }
 AUDIT="$(default_audit)"
 FINDINGS="${RECON_FINDINGS:-$AUDIT/deduped-findings.json}"
@@ -145,7 +148,7 @@ log_info "Phase 4b reconciliation: $demoted of $total finding(s) demoted to INFO
 
 # --- Telemetry (single-author: findings_demoted_by_reconciliation + *.phase_4b)
 # gap_count_* are dedup-owned by the dedup pass (single-author) — NOT re-authored here.
-REPORT="${RECON_REPORT:-${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md}"
+REPORT="${RECON_REPORT:-${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/planning-artifacts/consolidated-gaps.md}"
 TELEM="$HERE/brownfield-telemetry.sh"
 if [ -f "$REPORT" ] && [ -x "$TELEM" ]; then
   bash "$TELEM" --report "$REPORT" --field findings_demoted_by_reconciliation --value "$demoted" || true

@@ -27,6 +27,9 @@
 set -euo pipefail
 export LC_ALL=C
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 NO_WEB=0
 SKIP_RESEARCH=0
 MODE=""
@@ -152,7 +155,7 @@ case "$MODE" in
       exit 2
     fi
     # .gaia/memory is the canonical sidecar tree; legacy _memory fallback removed.
-    echo ".gaia/memory/${SIDECAR_AGENT}-sidecar"
+    echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/${SIDECAR_AGENT}-sidecar"
     ;;
   emit-frontmatter)
     if [[ "$SKIP_RESEARCH" -eq 1 ]]; then

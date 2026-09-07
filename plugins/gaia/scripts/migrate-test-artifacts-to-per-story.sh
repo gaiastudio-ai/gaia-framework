@@ -29,7 +29,7 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}}"
 DRY_RUN=0
 
 while [ $# -gt 0 ]; do
@@ -47,8 +47,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-TEST_ROOT="${PROJECT_ROOT}/.gaia/artifacts/test-artifacts"
-IMPL_ROOT="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+TEST_ROOT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
+IMPL_ROOT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
 
 if [ ! -d "$TEST_ROOT" ]; then
   echo "migrate-test-artifacts-to-per-story: no test-artifacts/ at $TEST_ROOT — nothing to do"

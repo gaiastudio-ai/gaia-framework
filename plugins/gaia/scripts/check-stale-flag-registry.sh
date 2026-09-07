@@ -28,6 +28,9 @@ set -eu
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # ---- Resolve memory dir ----
 # Markers live under the canonical .gaia/memory tree;
 # the legacy _memory default was removed with the consolidation migration.
@@ -40,8 +43,8 @@ else
   # Smart-fallback — prefer .gaia/artifacts/planning-artifacts/
   # over legacy docs/planning-artifacts/ for the architecture detail-records shard.
   _proj="${CLAUDE_PROJECT_ROOT:-.}"
-  if [ -d "$_proj/.gaia/artifacts/planning-artifacts" ]; then
-    registry_path="$_proj/.gaia/artifacts/planning-artifacts/architecture/12-12-adr-detail-records.md"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
+    registry_path="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/architecture/12-12-adr-detail-records.md"
   else
     registry_path="$_proj/docs/planning-artifacts/architecture/12-12-adr-detail-records.md"
   fi
@@ -86,8 +89,11 @@ fi
 # Markers are registered under .gaia/memory/. The legacy `_memory/` prefix is
 # still accepted here so the project-root registry shard can be migrated
 # separately (it lives outside this repo).
-registered=$(grep -oE '`(\.gaia/memory|_memory)/\.[A-Za-z0-9_-]+-stale`' "$registry_path" \
-             | sed -E 's:^`(\.gaia/memory|_memory)/::; s:`$::')
+# Regex matches stale-flag markers under the PROJECT_ROOT state tree.
+_stale_gaia='\.gaia/memory'
+_stale_re="\`(${_stale_gaia}|_memory)/\.[A-Za-z0-9_-]+-stale\`"
+registered=$(grep -oE "$_stale_re" "$registry_path" \
+             | sed -E "s:^\`(${_stale_gaia}|_memory)/::; s:\`$::")
 
 # ---- Audit found vs registered ----
 for marker in $found_markers; do

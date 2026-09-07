@@ -32,6 +32,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-brainstorm/finalize.sh"
 WORKFLOW_NAME="brainstorm-project"
 
@@ -53,12 +56,12 @@ die() { log "$*"; exit 1; }
 ARTIFACT=""
 if [ -n "${BRAINSTORM_ARTIFACT:-}" ]; then
   ARTIFACT="$BRAINSTORM_ARTIFACT"
-elif [ -d "docs/creative-artifacts" ] && [ ! -d ".gaia/artifacts/creative-artifacts" ]; then
+elif [ -d "docs/creative-artifacts" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts" ]; then
   # shellcheck disable=SC2012
   ARTIFACT="$(ls -1t docs/creative-artifacts/brainstorm-*.md 2>/dev/null | head -n 1 || true)"
-elif [ -d ".gaia/artifacts/creative-artifacts" ]; then
+elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts" ]; then
   # shellcheck disable=SC2012
-  ARTIFACT="$(ls -1t .gaia/artifacts/creative-artifacts/brainstorm-*.md 2>/dev/null | head -n 1 || true)"
+  ARTIFACT="$(ls -1t ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts/brainstorm-*.md 2>/dev/null | head -n 1 || true)"
 fi
 
 # ---------- 1. Run the 24-item checklist ----------
@@ -174,7 +177,7 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   # canonical directory.
   case "$ARTIFACT" in
     */.gaia/artifacts/creative-artifacts/*|*/docs/creative-artifacts/*|*/fixtures/*|/*) item_check "SV-13" "Creative-artifacts/ checked for prior outputs" pass ;;
-    .gaia/artifacts/creative-artifacts/*|docs/creative-artifacts/*|fixtures/*)         item_check "SV-13" "Creative-artifacts/ checked for prior outputs" pass ;;
+    ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts/*|docs/creative-artifacts/*|fixtures/*)         item_check "SV-13" "Creative-artifacts/ checked for prior outputs" pass ;;
     *)                                            item_check "SV-13" "Creative-artifacts/ checked for prior outputs" fail ;;
   esac
 
@@ -228,7 +231,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no brainstorm artifact found (BRAINSTORM_ARTIFACT unset and no brainstorm-*.md at .gaia/artifacts/creative-artifacts/ or docs/creative-artifacts/) — skipping checklist run"
+  log "no brainstorm artifact found (BRAINSTORM_ARTIFACT unset and no brainstorm-*.md at ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts/ or docs/creative-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

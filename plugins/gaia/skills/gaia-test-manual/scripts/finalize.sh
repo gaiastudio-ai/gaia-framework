@@ -15,6 +15,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-test-manual/finalize.sh"
 WORKFLOW_NAME="test-manual"
 
@@ -79,7 +82,7 @@ if [ -n "$_mt_verdict" ] && [ -n "$_mt_story" ]; then
   _tsv_path="${MANUAL_TEST_VERDICTS_TSV:-}"
   if [ -z "$_tsv_path" ]; then
     _root="${PROJECT_PATH:-.}"
-    _tsv_path="$_root/.gaia/state/manual-test-verdicts.tsv"
+    _tsv_path="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/manual-test-verdicts.tsv"
   fi
   _tsv_dir="$(dirname "$_tsv_path")"
   mkdir -p "$_tsv_dir" 2>/dev/null || true

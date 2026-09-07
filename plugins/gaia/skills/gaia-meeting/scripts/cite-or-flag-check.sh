@@ -28,6 +28,9 @@
 set -euo pipefail
 export LC_ALL=C
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # --- Classification primitives ---------------------------------------------
 
 # Returns one of: cited | inference | unflagged-inference | non-claim
@@ -59,7 +62,7 @@ classify_line() {
   fi
   # .gaia/memory/ reference (path component, not bare word).
   # Legacy _memory/ recognition dropped — .gaia/ is the canonical tree.
-  if printf '%s' "$trimmed" | grep -Eq '(^|[[:space:]/(])\.gaia/memory/[A-Za-z0-9._/-]+'; then
+  if printf '%s' "$trimmed" | grep -Eq '(^|[[:space:]/(])\${PROJECT_ROOT/.gaia/memory/[A-Za-z0-9._/-]+'; then
     has_citation=1
   fi
   # Project-relative file path matching docs/ or gaia-framework/ or _gaia/ prefix
@@ -143,7 +146,7 @@ cmd_gate_draft_turn() {
   echo "HALT — unflagged-inference detected; round-robin advancement halted"
   printf '%s\n' "${violators[@]}"
   echo ""
-  echo "Re-emit the turn with a citation marker (file path, URL, or .gaia/memory/ ref)"
+  echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/ ref)"
   echo "or the literal [inference] token before persistence."
   exit 2
 }

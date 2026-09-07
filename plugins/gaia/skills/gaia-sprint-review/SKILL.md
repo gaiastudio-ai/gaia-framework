@@ -217,7 +217,7 @@ Before emitting the handoff, surface the per-story step report as a best-effort 
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/step-report.sh" \
-  --events "${MEMORY_PATH:-${PROJECT_PATH:-.}/.gaia/memory}/lifecycle-events.jsonl" 2>/dev/null || true
+  --events "${MEMORY_PATH:-${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}/.gaia/memory}/lifecycle-events.jsonl" 2>/dev/null || true
 ```
 
 The report joins per-step timing and approximate per-step token estimates into per-story tables with rollup totals, giving the operator a comprehensive view of the sprint's execution cost before the close handoff.

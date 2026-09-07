@@ -103,7 +103,7 @@ EOF
 
 @test "F-34: readiness-check setup.sh defaults TEST_ARTIFACTS to canonical path" {
   grep -qF 'Default it to the canonical .gaia/artifacts/test-artifacts/' "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
-  grep -qF 'TEST_ARTIFACTS="${TEST_ARTIFACTS:-.gaia/artifacts/test-artifacts}"' "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
+  grep -qE 'TEST_ARTIFACTS="\$\{TEST_ARTIFACTS:-.*\.gaia/artifacts/test-artifacts\}"' "${PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh"
 }
 
 # --- F-37 ---

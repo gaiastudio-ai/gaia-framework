@@ -19,6 +19,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="manual-test-flakiness.sh"
 
 die() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; exit 1; }
@@ -32,8 +35,7 @@ resolve_verdicts_path() {
   if [ -n "${MANUAL_TEST_VERDICTS_TSV:-}" ]; then
     printf '%s' "$MANUAL_TEST_VERDICTS_TSV"
   else
-    local root="${PROJECT_PATH:-.}"
-    printf '%s' "$root/.gaia/state/manual-test-verdicts.tsv"
+    printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/manual-test-verdicts.tsv"
   fi
 }
 

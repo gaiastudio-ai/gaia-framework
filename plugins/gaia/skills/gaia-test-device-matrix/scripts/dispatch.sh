@@ -8,6 +8,9 @@
 # Usage: dispatch.sh --config <project-config.yaml> [--platform <ios|android|all>] [--filter <regex>]
 
 set -euo pipefail
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 LC_ALL=C; export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -81,7 +84,7 @@ fi
 
 if [ -z "$ADAPTER" ]; then
   # Honest diagnostic — see mobile-e2e dispatch.sh for rationale.
-  printf '%s\n' '{"skill":"gaia-test-device-matrix","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in .gaia/config/project-config.yaml to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
+  printf '%s\n' '{"skill":"gaia-test-device-matrix","verdict":"ERROR","reason":"no_device_farm_adapter","diagnostic":"No device-farm adapter configured. Set device_farm.adapter in the project config (project-config.yaml) to one of: firebase-test-lab | browserstack | sauce-labs. No section-scoped editor skill currently exists for this key — edit the YAML directly. The Test Execution Bridge must also be enabled (/gaia-bridge-enable)."}'
   exit 2
 fi
 

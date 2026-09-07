@@ -43,6 +43,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-create-prd/finalize.sh"
 WORKFLOW_NAME="create-prd"
 
@@ -70,10 +73,10 @@ ARTIFACT_REQUESTED=0
 if [ -n "${PRD_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$PRD_ARTIFACT"
-elif [ -f "docs/planning-artifacts/prd.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+elif [ -f "docs/planning-artifacts/prd.md" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
   ARTIFACT="docs/planning-artifacts/prd.md"
-elif [ -f ".gaia/artifacts/planning-artifacts/prd.md" ]; then
-  ARTIFACT=".gaia/artifacts/planning-artifacts/prd.md"
+elif [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/prd.md" ]; then
+  ARTIFACT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/prd.md"
 fi
 
 # ---------- 1. Run the 36-item checklist ----------
@@ -400,7 +403,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no PRD artifact found (PRD_ARTIFACT unset and no prd.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
+  log "no PRD artifact found (PRD_ARTIFACT unset and no prd.md at ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

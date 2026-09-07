@@ -70,14 +70,15 @@ reads the resulting `$PROJECT_STATE` value):
 # is the only memory tree. The first present path of each pair wins; absent
 # canonical AND absent legacy means "missing".
 
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
 PROJECT_STATE="healthy"  # default fall-through
 
 # (1) Greenfield: config absent in BOTH canonical and legacy locations — short-circuit
-if [ ! -f ".gaia/config/project-config.yaml" ] && [ ! -f ".gaia/config/project-config.yaml" ]; then
+if [ ! -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ] && [ ! -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
   PROJECT_STATE="greenfield"
 
 # (2) Brownfield: config present AND planning-artifacts missing-or-empty AND a build-system file exists
-elif { [ ! -d ".gaia/artifacts/planning-artifacts" ] || [ -z "$(ls -A .gaia/artifacts/planning-artifacts 2>/dev/null)" ]; } \
+elif { [ ! -d "${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts" ] || [ -z "$(ls -A "${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts" 2>/dev/null)" ]; } \
   && { [ ! -d "docs/planning-artifacts" ]            || [ -z "$(ls -A docs/planning-artifacts 2>/dev/null)" ]; }; then
   BUILD_FILES=("package.json" "pyproject.toml" "go.mod" "Cargo.toml" "pom.xml" "Gemfile")
   for bf in "${BUILD_FILES[@]}"; do
@@ -88,14 +89,14 @@ elif { [ ! -d ".gaia/artifacts/planning-artifacts" ] || [ -z "$(ls -A .gaia/arti
   done
   # If no build-system file matched, fall through to post-update / healthy below
   if [ "$PROJECT_STATE" != "brownfield" ]; then
-    if [ -f ".gaia/memory/.framework-version-stale" ]; then
+    if [ -f "${PROJECT_ROOT}/.gaia/memory/.framework-version-stale" ]; then
       PROJECT_STATE="post-update"
     fi
     # else: healthy (default already set)
   fi
 
 # (3) Post-update: config present, planning-artifacts non-empty, drift marker present
-elif [ -f ".gaia/memory/.framework-version-stale" ]; then
+elif [ -f "${PROJECT_ROOT}/.gaia/memory/.framework-version-stale" ]; then
   PROJECT_STATE="post-update"
 fi
 # else: healthy (default)

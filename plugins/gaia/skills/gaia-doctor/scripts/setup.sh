@@ -3,6 +3,9 @@
 # Resolves SKILL_DIR + PROJECT_ROOT, exports for downstream helpers.
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # The pre-fix walk-up `cd "$SKILL_DIR/../../../../.."` walks 5 levels above
@@ -29,7 +32,7 @@ if [ -z "$PROJECT_ROOT" ]; then
   # Walk up looking for the canonical anchor.
   _walk="$PWD"
   while [ -n "$_walk" ] && [ "$_walk" != "/" ] && [ "$_walk" != "$HOME" ]; do
-    if [ -f "${_walk}/.gaia/config/project-config.yaml" ]; then
+    if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
       PROJECT_ROOT="$_walk"
       break
     fi

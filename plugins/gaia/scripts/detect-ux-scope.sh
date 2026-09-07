@@ -34,6 +34,9 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # ---------- argv / preflight ----------
 
 if [ "$#" -lt 1 ]; then
@@ -172,8 +175,8 @@ fi
 # ---------- Rule #3: epic UX classification ----------
 # Smart-fallback for PLANNING_ARTIFACTS
 if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
-  if [ -d ".gaia/artifacts/planning-artifacts" ]; then
-    PLANNING_ARTIFACTS=".gaia/artifacts/planning-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
   else
     PLANNING_ARTIFACTS="docs/planning-artifacts"
   fi

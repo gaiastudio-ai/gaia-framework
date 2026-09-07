@@ -38,6 +38,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="resume-discovery.sh"
 
 emit() { printf '%s\n' "$*"; }
@@ -105,7 +108,7 @@ fi
 # _memory/checkpoints fallback was removed with the consolidation migration.
 # Env CHECKPOINT_ROOT override still wins.
 if [ -z "${CHECKPOINT_ROOT:-}" ]; then
-  CHECKPOINT_ROOT=".gaia/memory/checkpoints"
+  CHECKPOINT_ROOT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 fi
 SKILL_DIR="$CHECKPOINT_ROOT/$SKILL_NAME"
 

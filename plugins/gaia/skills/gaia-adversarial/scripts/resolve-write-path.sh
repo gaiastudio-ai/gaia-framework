@@ -39,7 +39,7 @@ set -euo pipefail
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}}"
 TARGET=""
 DATE_STAMP=""
-ROOT="${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts"
+ROOT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
 PAIRED=0
 
 while [ $# -gt 0 ]; do

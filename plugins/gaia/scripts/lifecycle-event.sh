@@ -239,7 +239,7 @@ if [ -z "${MEMORY_PATH:-}" ]; then
   if [ -n "$_resolved_mem" ]; then
     MEMORY_PATH="$_resolved_mem"
   else
-    MEMORY_PATH=".gaia/memory"
+    MEMORY_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
   fi
   unset _resolved_mem
 fi

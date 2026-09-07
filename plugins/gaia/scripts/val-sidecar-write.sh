@@ -39,6 +39,9 @@
 
 set -uo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -69,7 +72,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$ROOT" ]; then
-  ROOT="${CLAUDE_PROJECT_ROOT:-$(pwd)}"
+  ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-$(pwd)}}"
 fi
 if [ -z "$COMMAND_NAME" ]; then
   printf 'status=rejected\nreason=--command-name is required\n' >&2

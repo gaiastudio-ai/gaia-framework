@@ -16,6 +16,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-refresh-ground-truth/setup.sh"
 WORKFLOW_NAME="gaia-refresh-ground-truth"
 
@@ -48,7 +51,7 @@ done <<<"$config_output"
 # artifact-existence gates only), so the call silently fell through and the
 # writability precondition was skipped on every refresh.
 # Default to canonical .gaia/memory (legacy _memory removed).
-SIDECAR_DIR="${memory_path:-./.gaia/memory}/validator-sidecar"
+SIDECAR_DIR="${memory_path:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory}/validator-sidecar"
 if [ -d "$SIDECAR_DIR" ] && [ ! -w "$SIDECAR_DIR" ]; then
   log "warning: sidecar directory may not be writable: $SIDECAR_DIR (non-fatal)"
 fi

@@ -36,6 +36,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-test-perf/baseline-check.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -43,7 +46,7 @@ die() { log "$*"; exit 1; }
 
 SCENARIO=""
 RESULTS=""
-BASELINE_DIR=".gaia/perf-baselines"
+BASELINE_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/perf-baselines"
 THRESHOLD=20
 UPDATE_ON_PASS=0
 

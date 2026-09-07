@@ -192,7 +192,7 @@ overall_blocked=0
 # deps already gathered from the roster — never trusts only one source.
 _frontmatter_deps_of() {
   local key="$1"
-  local impl_root="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"
+  local impl_root="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"
   local story_file=""
   # Prefer per-story layout.
   story_file=$(find "$impl_root" -type f -path "*/epic-*/${key}-*/story.md" 2>/dev/null | head -1)

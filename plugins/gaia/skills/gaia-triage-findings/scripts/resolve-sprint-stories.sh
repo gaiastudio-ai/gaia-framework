@@ -29,6 +29,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMPL_DIR=""
 SPRINT_STATUS=""
@@ -54,7 +57,7 @@ fi
 
 # ---------- sprint-scoped default ----------
 if [ -z "$SPRINT_STATUS" ]; then
-  SPRINT_STATUS=".gaia/state/sprint-status.yaml"
+  SPRINT_STATUS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
 fi
 if [ ! -f "$SPRINT_STATUS" ]; then
   printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$SPRINT_STATUS" >&2

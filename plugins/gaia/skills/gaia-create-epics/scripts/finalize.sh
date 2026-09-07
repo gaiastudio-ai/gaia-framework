@@ -47,6 +47,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-create-epics/finalize.sh"
 WORKFLOW_NAME="create-epics-stories"
 
@@ -71,8 +74,8 @@ if [ -n "${EPICS_ARTIFACT:-}" ]; then
   ARTIFACT="$EPICS_ARTIFACT"
 else
   # smart-fallback
-  if [ -f ".gaia/artifacts/planning-artifacts/epics-and-stories.md" ]; then
-    ARTIFACT=".gaia/artifacts/planning-artifacts/epics-and-stories.md"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/epics-and-stories.md" ]; then
+    ARTIFACT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/epics-and-stories.md"
   elif [ -f "docs/planning-artifacts/epics-and-stories.md" ]; then
     ARTIFACT="docs/planning-artifacts/epics-and-stories.md"
   fi
@@ -89,21 +92,21 @@ elif [ -x "$RESOLVE_ARTIFACT_PATH" ]; then
   # Print-mode (no --existing-only): returns the first existing rung, or the
   # canonical rung-1 path when none exist (stable "expected" path for the
   # error message).
-  TEST_PLAN="$("$RESOLVE_ARTIFACT_PATH" test_plan 2>/dev/null || echo ".gaia/artifacts/planning-artifacts/test-plan.md")"
+  TEST_PLAN="$("$RESOLVE_ARTIFACT_PATH" test_plan 2>/dev/null || echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/test-plan.md")"
 else
-  TEST_PLAN=".gaia/artifacts/planning-artifacts/test-plan.md"
+  TEST_PLAN="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/test-plan.md"
 fi
 if [ -n "${ARCHITECTURE_PATH:-}" ]; then
   ARCHITECTURE="$ARCHITECTURE_PATH"
-elif [ -f ".gaia/artifacts/planning-artifacts/architecture.md" ]; then
-  ARCHITECTURE=".gaia/artifacts/planning-artifacts/architecture.md"
+elif [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/architecture.md" ]; then
+  ARCHITECTURE="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/architecture.md"
 else
   ARCHITECTURE="docs/planning-artifacts/architecture.md"
 fi
 if [ -n "${PRD_PATH:-}" ]; then
   PRD="$PRD_PATH"
-elif [ -f ".gaia/artifacts/planning-artifacts/prd.md" ]; then
-  PRD=".gaia/artifacts/planning-artifacts/prd.md"
+elif [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/prd.md" ]; then
+  PRD="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/prd.md"
 else
   PRD="docs/planning-artifacts/prd.md"
 fi
@@ -524,7 +527,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no epics-and-stories artifact found (EPICS_ARTIFACT unset and no .gaia/artifacts/planning-artifacts/epics-and-stories.md) — skipping checklist run"
+  log "no epics-and-stories artifact found (EPICS_ARTIFACT unset and no ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/epics-and-stories.md) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

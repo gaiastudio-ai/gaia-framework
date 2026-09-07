@@ -55,7 +55,7 @@
 #                                 repo root) PROJECT_PATH and PROJECT_ROOT are
 #                                 deliberately different; set PROJECT_ROOT
 #                                 explicitly to point at the repo root.
-#   IMPLEMENTATION_ARTIFACTS    — defaults to "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts".
+#   IMPLEMENTATION_ARTIFACTS    — defaults to "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts".
 #   SPRINT_STATE_SCRIPT_DIR     — internal. Directory of this script, used to
 #                                 locate sibling scripts (lifecycle-event.sh,
 #                                 review-gate.sh). Override only in tests.
@@ -270,7 +270,7 @@ Config:
                               the `.gaia/` tree (and legacy `docs/`) per CLAUDE.md.
   PROJECT_PATH                defaults to "${PROJECT_ROOT}". Application code only.
                               Differs from PROJECT_ROOT in split-repo layouts.
-  IMPLEMENTATION_ARTIFACTS    defaults to "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+  IMPLEMENTATION_ARTIFACTS    defaults to "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
                               (falls back to "${PROJECT_ROOT}/docs/implementation-artifacts").
   SPRINT_STATUS_YAML          overrides the default yaml path (tests).
 
@@ -345,8 +345,8 @@ resolve_paths() {
   # to legacy docs/implementation-artifacts/ for in-deprecation-window
   # consumers and bats fixtures. Env-var override still wins.
   if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
-    if [ -d "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" ]; then
-      IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+    if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+      IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
     else
       IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT}/docs/implementation-artifacts"
     fi
@@ -361,7 +361,7 @@ resolve_paths() {
   #   3. existing project-root fallback (bats fixtures)
   #   4. fresh write → canonical .gaia/state/ default
   if [ -z "${SPRINT_STATUS_YAML:-}" ]; then
-    local gaia_state="${PROJECT_ROOT}/.gaia/state/sprint-status.yaml"
+    local gaia_state="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
     local legacy_docs="${PROJECT_ROOT}/docs/implementation-artifacts/sprint-status.yaml"
     local fallback="${PROJECT_ROOT}/sprint-status.yaml"
     if [ -e "$gaia_state" ]; then
@@ -889,9 +889,9 @@ do_transition_locked() {
           # shape (no `.sprints[]` wrapper). Try the canonical top-level shape
           # first, then fall back to the legacy `.sprints[].stories[]` shape
           # for any vestigial multi-sprint roll-ups.
-          _dep_status=$(yq -r ".stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
+          _dep_status=$(yq -r ".stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
           if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
-            _dep_status=$(yq -r ".sprints[].stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:-.}/.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
+            _dep_status=$(yq -r ".sprints[].stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
           fi
           if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
             # Tier 2: the depended story's file frontmatter (source of truth).
@@ -899,7 +899,7 @@ do_transition_locked() {
             # canonical layout is `epic-*/{key}-*/story.md` (per-story
             # directory); legacy layout was `epic-*/stories/{key}-*.md`
             # (per-story file under stories/).
-            for _dep_sf in "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*/story.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/stories/"${_dep}-"*.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*.md; do
+            for _dep_sf in "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*/story.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"/epic-*/stories/"${_dep}-"*.md "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"/epic-*/"${_dep}-"*.md; do
               if [ -f "$_dep_sf" ]; then
                 _dep_status=$(awk '
                   BEGIN { in_fm=0 }
@@ -914,7 +914,7 @@ do_transition_locked() {
           if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
             # Tier 3: scan sprint-archive/. Pick the most-recent archive that
             # mentions the dep key. Archives are named sprint-N-closed-<ts>.yaml.
-            for _archive in $(ls -1t "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}"/sprint-archive/sprint-*-closed-*.yaml 2>/dev/null); do
+            for _archive in $(ls -1t "${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"/sprint-archive/sprint-*-closed-*.yaml 2>/dev/null); do
               # Try both yaml shapes — sprint archives may be either top-level
               # `.stories[]` (canonical) or rolled-up `.sprints[].stories[]` (legacy).
               _arch_status=$(yq -r ".stories[]? | select(.key == \"${_dep}\") | .status" "$_archive" 2>/dev/null | head -1 || true)
@@ -2528,8 +2528,7 @@ _resolve_active_yaml() {
     # `.gaia/` is anchored at PROJECT_ROOT, not PROJECT_PATH (per CLAUDE.md
     # ). Backward-compat fallback chain mirrors resolve_paths():
     # PROJECT_ROOT → CLAUDE_PROJECT_ROOT → PROJECT_PATH → ".".
-    printf '%s/.gaia/state/sprint-status.yaml' \
-      "${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+    printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
   fi
 }
 
@@ -2623,7 +2622,7 @@ cmd_init() {
   # planning-intent body the LLM authoring path can overwrite with the richer
   # narrative on the next /gaia-sprint-plan invocation. Idempotent: skip when
   # the file already exists (preserves any LLM-enrichment work done already).
-  _plan_dir="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:-.}/.gaia/artifacts/implementation-artifacts}/sprint-plan"
+  _plan_dir="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}/sprint-plan"
   _plan_file="${_plan_dir}/${sprint_id}-plan.md"
   if [ ! -e "$_plan_file" ]; then
     mkdir -p "$_plan_dir" 2>/dev/null || true
@@ -2870,7 +2869,7 @@ cmd_transition_sprint() {
   # for the documented /gaia-correct-course bypass.
   if [ "$current" = "review" ] && [ "$target" = "closed" ] \
      && [ "${GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL:-0}" != "1" ]; then
-    local _ckpt_dir="${CLAUDE_PROJECT_ROOT:-.}/.gaia/memory/checkpoints"
+    local _ckpt_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
     local _dispatch_sentinel="${_ckpt_dir}/sprint-review-${sprint_id}-val-dispatched.json"
     local _envelope_glob="${_ckpt_dir}/val-envelope-*.json"
     local _found=0

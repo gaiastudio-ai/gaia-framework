@@ -54,6 +54,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-edit-test-plan/finalize.sh"
 WORKFLOW_NAME="edit-test-plan"
 
@@ -163,7 +166,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   # --- Script-verifiable items (7) ---
 
   # SV-01 / V1 "Output file saved to {test_artifacts}/test-plan.md"
-  item_check "SV-01" "Output file saved to .gaia/artifacts/test-artifacts/test-plan.md" \
+  item_check "SV-01" "Output file saved to ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/test-plan.md" \
     "$(file_exists "$ARTIFACT")"
   # SV-02 / structural — output file non-empty
   item_check "SV-02" "Output artifact is non-empty" \
@@ -202,7 +205,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   LLM-08 — Coverage summary updated (if present)
 
   [reconciled from V1 instruction step outputs]
-  LLM-09 — Existing test plan loaded from .gaia/artifacts/test-artifacts/test-plan.md (Step 1 output)
+  LLM-09 — Existing test plan loaded from ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/test-plan.md (Step 1 output)
   LLM-10 — Highest existing test case ID identified for auto-increment (Step 1)
   LLM-11 — Existing test areas/categories identified before editing (Step 1)
   LLM-12 — Change scope captured: feature description and FR/NFR IDs recorded (Step 2)

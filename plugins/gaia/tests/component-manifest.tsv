@@ -234,11 +234,13 @@ core	migrate-stories-to-canonical-layout.bats
 core	mode-b-docs.bats
 core	mode-b-parity.bats
 core	never-run-subdir-guard.bats
+core	no-bare-gaia-path-antipattern.bats
 core	no-bsd-awk-incompatible-anchors.bats
 core	no-leaked-ids-in-prose.bats
 core	no-leaked-ids-in-test-names.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
+core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
 core	pixel-diff-ac1-capture-and-diff.bats

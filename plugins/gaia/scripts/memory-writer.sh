@@ -32,6 +32,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 readonly EX_OK=0
 readonly EX_USAGE=64
 readonly EX_IOERR=74
@@ -59,7 +62,7 @@ trap '_cleanup_tmps' EXIT INT TERM
 # .gaia/memory is the only memory tree — the legacy
 # _memory fallback was removed with the consolidation migration. Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
-  MEMORY_PATH=".gaia/memory"
+  MEMORY_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
 fi
 CONFIG="${MEMORY_PATH}/config.yaml"
 

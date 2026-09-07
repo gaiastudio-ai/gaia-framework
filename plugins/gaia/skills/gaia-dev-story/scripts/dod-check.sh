@@ -46,6 +46,8 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 SCRIPT_NAME="gaia-dev-story/dod-check.sh"
 
 log()  { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -144,8 +146,8 @@ _resolve_test_cmd() {
   # IS the project's test command. Skip silently when bridge_enabled is false,
   # the manifest is absent, or the manifest carries no tier-1 runner.
   local _cfg_bridge=""
-  if [ -f ".gaia/config/project-config.yaml" ]; then
-    _cfg_bridge=".gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    _cfg_bridge="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   elif [ -f "config/project-config.yaml" ]; then
     _cfg_bridge="config/project-config.yaml"
   fi
@@ -156,8 +158,8 @@ _resolve_test_cmd() {
       # Find the manifest. Canonical: .gaia/artifacts/test-artifacts/test-environment.yaml.
       # Honors a project-root copy too (some legacy fixtures put it there).
       local _manifest=""
-      if [ -f ".gaia/artifacts/test-artifacts/test-environment.yaml" ]; then
-        _manifest=".gaia/artifacts/test-artifacts/test-environment.yaml"
+      if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/test-environment.yaml" ]; then
+        _manifest="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/test-environment.yaml"
       elif [ -f "test-environment.yaml" ]; then
         _manifest="test-environment.yaml"
       fi
@@ -174,8 +176,8 @@ _resolve_test_cmd() {
   # 1. project-config.yaml test_cmd — prefer .gaia/config/,
   # fall back to legacy config/.
   local _cfg=""
-  if [ -f ".gaia/config/project-config.yaml" ]; then
-    _cfg=".gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    _cfg="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   elif [ -f "config/project-config.yaml" ]; then
     _cfg="config/project-config.yaml"
   fi
@@ -281,8 +283,8 @@ _resolve_script_cmd() {
   local name="$1"
   # 1. project-config.yaml <name>_cmd
   local _cfg=""
-  if [ -f ".gaia/config/project-config.yaml" ]; then
-    _cfg=".gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    _cfg="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   elif [ -f "config/project-config.yaml" ]; then
     _cfg="config/project-config.yaml"
   fi

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # auto-save-memory.sh — Auto-save session summary at finalize
 #
 # Purpose
@@ -261,7 +264,7 @@ _auto_save_memory() {
     if [ -n "${MEMORY_PATH:-}" ]; then
         memdir="$MEMORY_PATH"
     else
-        memdir=".gaia/memory"
+        memdir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
     fi
     if [ ! -f "${memdir}/config.yaml" ] || [ ! -x "$_AUTOSAVE_MEMORY_WRITER" ]; then
         return 0

@@ -79,6 +79,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root. Code-tree paths use PROJECT_PATH.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="review-gate.sh"
 
 # ---------- Canonical vocabulary ----------
@@ -123,7 +126,7 @@ resolve_ledger_path() {
   elif [ -n "${REVIEW_GATE_LEDGER:-}" ]; then
     printf '%s' "$REVIEW_GATE_LEDGER"
   else
-    local root="${PROJECT_PATH:-.}"
+    local root="${PROJECT_ROOT:-${PROJECT_PATH:-.}}"
     if [ -d "$root/.gaia" ]; then
       # Canonical ledger path. Seed .gaia/state/ on first write so
       # subsequent reads find it.
@@ -330,8 +333,8 @@ locate_story_file() {
   local impl_artifacts
   if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
     impl_artifacts="$IMPLEMENTATION_ARTIFACTS"
-  elif [ -d "${project_path}/.gaia/artifacts/implementation-artifacts" ]; then
-    impl_artifacts="${project_path}/.gaia/artifacts/implementation-artifacts"
+  elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+    impl_artifacts="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
   else
     impl_artifacts="${project_path}/docs/implementation-artifacts"
   fi
@@ -1292,7 +1295,7 @@ main() {
             if [ -x "$_brain_update_sh" ]; then
               _brain_slug="$(printf '%s' "$gate_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
               _brain_edge_target="${_brain_slug}-${story_key}"
-              _brain_manifest="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$PWD}}/.gaia/knowledge/brain-index.yaml"
+              _brain_manifest="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/knowledge/brain-index.yaml"
               "$_brain_update_sh" --manifest "$_brain_manifest" --add-edge \
                 --target-key "$story_key" \
                 --edge-type "reviewed-in" \

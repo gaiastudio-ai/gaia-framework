@@ -28,6 +28,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="set-story-sprint.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
@@ -79,7 +82,7 @@ else
 fi
 
 # Shared lock: serialise against transition-story-status.sh (same lock path).
-MEMORY_PATH="${MEMORY_PATH:-${PROJECT_PATH:-.}/.gaia/memory}"
+MEMORY_PATH="${MEMORY_PATH:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory}"
 STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
 mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
 exec 200>"$STORY_STATUS_LOCK"

@@ -179,7 +179,7 @@ After the close confirmation, surface the per-story step report as a best-effort
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/step-report.sh" \
-  --events "${MEMORY_PATH:-${PROJECT_PATH:-.}/.gaia/memory}/lifecycle-events.jsonl" 2>/dev/null || true
+  --events "${MEMORY_PATH:-${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}/.gaia/memory}/lifecycle-events.jsonl" 2>/dev/null || true
 ```
 
 The report joins per-step timing and approximate per-step token estimates into per-story tables with rollup totals. When the events file is empty or absent, the advisory emits nothing. Token estimates are approximate and labelled as such.

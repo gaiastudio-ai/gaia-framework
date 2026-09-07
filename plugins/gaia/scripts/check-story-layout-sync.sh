@@ -28,6 +28,9 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # ---------------------------------------------------------------------------
 # Args.
 # ---------------------------------------------------------------------------
@@ -70,8 +73,8 @@ if [[ -d "$ROOT" ]]; then
 fi
 
 # Path resolution: prefer .gaia/artifacts/, fall back to legacy docs/
-if [[ -d "$ROOT/.gaia/artifacts/implementation-artifacts" ]]; then
-  IMPL_DIR_ABS="$ROOT/.gaia/artifacts/implementation-artifacts"
+if [[ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]]; then
+  IMPL_DIR_ABS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
 else
   IMPL_DIR_ABS="$ROOT/docs/implementation-artifacts"
 fi

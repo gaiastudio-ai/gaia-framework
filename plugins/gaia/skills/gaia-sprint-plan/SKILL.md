@@ -61,7 +61,8 @@ Before sprint scoping begins, verify the previous sprint has been closed via `/g
 Reference shell idiom (the SKILL.md should invoke this check via a small helper or inline grep; both are acceptable):
 
 ```bash
-SS_YAML=".gaia/state/sprint-status.yaml"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+SS_YAML="${PROJECT_ROOT}/.gaia/state/sprint-status.yaml"
 if [ -r "$SS_YAML" ]; then
   prior_status="$(grep '^status:' "$SS_YAML" | head -1 | sed 's/^status:[[:space:]]*//' | tr -d '"' || true)"
   if [ "$prior_status" != "closed" ]; then
@@ -284,7 +285,7 @@ unresolved stories block the sprint start.
   # yaml is absent: `init` refuses to overwrite an existing yaml (exits
   # non-zero), so guard the call on absence rather than swallowing its error
   # (swallowing would violate the "abort on non-zero" contract below).
-  SPRINT_YAML=".gaia/state/sprint-status.yaml"
+  SPRINT_YAML="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}/.gaia/state/sprint-status.yaml"
   # Forward the planning-time date values to `init` so the burndown dashboard
   # renders concrete Duration / Dates rows instead of `N/A`. Each flag is
   # optional — when an operator omits a value the `init` shape stays

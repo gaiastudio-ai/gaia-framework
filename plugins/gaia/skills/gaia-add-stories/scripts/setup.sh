@@ -20,6 +20,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-add-stories/setup.sh"
 WORKFLOW_NAME="add-stories"
 
@@ -53,8 +56,8 @@ done <<<"$config_output"
 # ---------- 2. Validate gate (epics-and-stories.md required) ----------
 # Smart-fallback when PLANNING_ARTIFACTS is not set
 if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
-  if [ -d ".gaia/artifacts/planning-artifacts" ]; then
-    PLANNING_ARTIFACTS=".gaia/artifacts/planning-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
   else
     PLANNING_ARTIFACTS="docs/planning-artifacts"
   fi

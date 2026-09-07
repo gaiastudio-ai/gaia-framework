@@ -66,5 +66,5 @@ teardown() { common_teardown; }
   # location, not the canonical post-ADR-111 one). Assert against the new
   # name OR the old name so the fixture survives both pre- and post-AF-22-6
   # checkouts.
-  grep -qE '(canonical|legacy_docs)="\$PROJECT_PATH/docs/implementation-artifacts/sprint-status\.yaml"' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
+  grep -qE '(canonical|legacy_docs)=".*docs/implementation-artifacts/sprint-status\.yaml"' "$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
 }

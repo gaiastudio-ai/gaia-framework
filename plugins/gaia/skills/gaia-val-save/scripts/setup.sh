@@ -16,6 +16,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-val-save/setup.sh"
 WORKFLOW_NAME="gaia-val-save"
 
@@ -46,7 +49,7 @@ done <<< "$config_output"
 # .gaia/memory is the only memory tree; legacy _memory fallback removed.
 # Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
-  MEMORY_PATH=".gaia/memory"
+  MEMORY_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
 fi
 SIDECAR_DIR="${MEMORY_PATH}/validator-sidecar"
 if [ ! -d "$SIDECAR_DIR" ]; then

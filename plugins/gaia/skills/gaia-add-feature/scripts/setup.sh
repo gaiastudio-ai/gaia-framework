@@ -22,6 +22,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-add-feature/setup.sh"
 WORKFLOW_NAME="add-feature"
 
@@ -116,8 +119,8 @@ done <<<"$config_output"
 # ---------- 2. Validate gates ----------
 # Smart-fallback for missing PLANNING_ARTIFACTS env var:
 if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
-  if [ -d ".gaia/artifacts/planning-artifacts" ]; then
-    PLANNING_ARTIFACTS=".gaia/artifacts/planning-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
   else
     PLANNING_ARTIFACTS="docs/planning-artifacts"
   fi
@@ -127,8 +130,8 @@ PRD_PATH="$PLANNING/prd.md"
 EPICS_PATH="$PLANNING/epics-and-stories.md"
 
 if [ -z "${TEST_ARTIFACTS:-}" ]; then
-  if [ -d ".gaia/artifacts/test-artifacts" ]; then
-    TEST_ARTIFACTS=".gaia/artifacts/test-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts" ]; then
+    TEST_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
   else
     TEST_ARTIFACTS="docs/test-artifacts"
   fi

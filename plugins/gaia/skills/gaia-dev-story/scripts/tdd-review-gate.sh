@@ -96,7 +96,7 @@ YOLO_MODE="$SHARED_SCRIPTS/yolo-mode.sh"
 #            (per CLAUDE.md §"Non-git project-root workspace (supported mode)").
 #   Stage 2: PROJECT_PATH — legacy in-tree gaia-framework invocation override.
 #   Stage 3: $(pwd) fallback.
-PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$(pwd)}}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$(pwd)}}}"
 RESOLVE_STORY_FILE="$SHARED_SCRIPTS/resolve-story-file.sh"
 if [ ! -x "$RESOLVE_STORY_FILE" ]; then
   die "shared helper missing or not executable: $RESOLVE_STORY_FILE"

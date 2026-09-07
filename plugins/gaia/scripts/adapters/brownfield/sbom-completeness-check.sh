@@ -27,6 +27,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="adapters/brownfield/sbom-completeness-check.sh"
 log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
@@ -42,7 +45,7 @@ fi
 ROOT="${SBOM_PROJECT_ROOT:-.}"
 default_sbom() {
   if [ -n "${GAIA_MEMORY_DIR:-}" ]; then printf '%s/brownfield-audit/sbom.json' "$GAIA_MEMORY_DIR"
-  else printf '%s' "./.gaia/memory/brownfield-audit/sbom.json"; fi
+  else printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit/sbom.json"; fi
 }
 SBOM_FILE="${SBOM_FILE:-$(default_sbom)}"
 
@@ -158,7 +161,7 @@ if [ "$warning" = "true" ]; then
   log_warn "SBOM completeness: divergence_pct=$divergence_pct exceeds applied_threshold=$threshold (declared=$declared sbom=$sbom_count carve_outs=$carve_json)"
 fi
 
-REPORT="${SBOM_REPORT:-${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md}"
+REPORT="${SBOM_REPORT:-${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/planning-artifacts/consolidated-gaps.md}"
 TELEM="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/brownfield-telemetry.sh"
 if [ -f "$REPORT" ] && [ -x "$TELEM" ]; then
   bash "$TELEM" --report "$REPORT" --field sbom_completeness_warning --value "$warning" || true

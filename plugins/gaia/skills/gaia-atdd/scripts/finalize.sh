@@ -37,6 +37,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-atdd/finalize.sh"
 WORKFLOW_NAME="atdd"
 
@@ -66,10 +69,10 @@ elif [ -n "${STORY_KEY:-}" ]; then
   # falls back to GAIA_PROJECT_ROOT, then to PWD when neither is set.
   # Canonical-first with positive-evidence legacy fallback.
   derive_root="${PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
-  if [ -f "$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md" ] && [ ! -d "$derive_root/.gaia/artifacts/test-artifacts" ]; then
+  if [ -f "$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts" ]; then
     ARTIFACT="$derive_root/docs/test-artifacts/atdd-${STORY_KEY}.md"
   else
-    ARTIFACT="$derive_root/.gaia/artifacts/test-artifacts/atdd-${STORY_KEY}.md"
+    ARTIFACT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/atdd-${STORY_KEY}.md"
   fi
   ARTIFACT_REQUESTED=1
 fi
@@ -198,8 +201,8 @@ if [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
     if [ -n "${STORY_KEY:-}" ]; then
       project_root_for_risk="${PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}"
       # Canonical-first with positive-evidence legacy fallback.
-      if [ -d "$project_root_for_risk/.gaia/artifacts/implementation-artifacts" ]; then
-        story_glob="$project_root_for_risk/.gaia/artifacts/implementation-artifacts/${STORY_KEY}-"*.md
+      if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+        story_glob="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts/${STORY_KEY}-"*.md
       else
         story_glob="$project_root_for_risk/docs/implementation-artifacts/${STORY_KEY}-"*.md
       fi

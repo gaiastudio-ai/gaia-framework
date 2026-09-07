@@ -27,6 +27,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 INPUT=""
 CONFIG=""
 OUTPUT=""
@@ -69,7 +72,7 @@ fi
 
 # Resolve the k6 script. Priority: --script > $K6_SCRIPT > .gaia/perf-scripts/default.js
 if [ -z "$SCRIPT_PATH" ]; then
-  SCRIPT_PATH="${K6_SCRIPT:-.gaia/perf-scripts/default.js}"
+  SCRIPT_PATH="${K6_SCRIPT:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/perf-scripts/default.js}"
 fi
 if [ ! -r "$SCRIPT_PATH" ]; then
   echo "run.sh: k6 script not readable: $SCRIPT_PATH (set --script or K6_SCRIPT)" >&2

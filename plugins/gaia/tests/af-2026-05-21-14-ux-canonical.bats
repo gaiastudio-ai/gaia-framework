@@ -58,7 +58,7 @@ resolve_ux_design_path() {
 # --- Regression guard: gaia-create-ux/scripts/finalize.sh canonical-first intact ---
 
 @test "gaia-create-ux/scripts/finalize.sh retains canonical-first resolution" {
-  grep -qE 'if \[ -f "\.gaia/artifacts/planning-artifacts/ux-design\.md" \]' "$CREATE_UX_FINALIZE"
+  grep -qE 'if \[ -f ".*\.gaia/artifacts/planning-artifacts/ux-design\.md" \]' "$CREATE_UX_FINALIZE"
   grep -qE 'elif \[ -f "docs/planning-artifacts/ux-design\.md" \]' "$CREATE_UX_FINALIZE"
 }
 

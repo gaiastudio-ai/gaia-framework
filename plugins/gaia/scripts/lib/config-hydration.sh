@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # config-hydration.sh — shared library for hydrating sections of project-config.yaml.
 #
 # Usage (sourced library):
@@ -405,8 +408,8 @@ config_hydration_resolve_target() {
     if [ -z "$target" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
       local pr
       pr="$(cd "${CLAUDE_PLUGIN_ROOT}/../../.." 2>/dev/null && pwd || true)"
-      if [ -n "$pr" ] && [ -f "${pr}/.gaia/config/project-config.yaml" ]; then
-        target="${pr}/.gaia/config/project-config.yaml"
+      if [ -n "$pr" ] && [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+        target="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
       elif [ -n "$pr" ]; then
         target="${pr}/config/project-config.yaml"
       fi
@@ -416,8 +419,8 @@ config_hydration_resolve_target() {
       target="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
     fi
     # Tier 5: relative-canonical (default for CWD-rooted runs).
-    if [ -z "$target" ] && [ -f ".gaia/config/project-config.yaml" ]; then
-      target=".gaia/config/project-config.yaml"
+    if [ -z "$target" ] && [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+      target="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
     fi
     # Tier 6: relative-legacy fallback (pre-migration).
     [ -z "$target" ] && target="config/project-config.yaml"

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # test-artifacts-mirror.sh — shared writer for the per-story test-artifacts/ mirror.
 #
 # Shared writer for the per-story test-artifacts/ mirror + per-tier
@@ -45,9 +48,8 @@ _taim_warn() { printf 'WARNING: test-artifacts-mirror: %s\n' "$*" >&2; }
 # implementation tree shape 1:1.
 _taim_resolve_target_dir() {
   local story_key="$1"
-  local proj_root="${CLAUDE_PROJECT_ROOT:-$PWD}"
-  local impl_root="${proj_root}/.gaia/artifacts/implementation-artifacts"
-  local test_root="${proj_root}/.gaia/artifacts/test-artifacts"
+  local impl_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
+  local test_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
 
   # Locate the per-story dir under impl_root: epic-{slug}/{key}-{slug}/.
   local story_dir

@@ -27,11 +27,12 @@ LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 
 # PROJECT_PATH defaults to CWD; honor a pre-exported value (used by bats).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
 # .gaia/memory is the only memory tree; legacy _memory fallback removed.
 # Env override wins.
 if [ -z "${MEMORY_PATH:-}" ]; then
-  MEMORY_PATH="$PROJECT_PATH/.gaia/memory"
+  MEMORY_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
 fi
 export PROJECT_PATH MEMORY_PATH
 
@@ -42,9 +43,9 @@ resolve_yaml_path() {
     printf '%s\n' "$SPRINT_STATUS_YAML"
     return 0
   fi
-  local gaia_state="$PROJECT_PATH/.gaia/state/sprint-status.yaml"
-  local legacy_docs="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
-  local fallback="$PROJECT_PATH/sprint-status.yaml"
+  local gaia_state="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
+  local legacy_docs="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}docs/implementation-artifacts/sprint-status.yaml"
+  local fallback="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}sprint-status.yaml"
   if [ -f "$gaia_state" ]; then
     printf '%s\n' "$gaia_state"
   elif [ -f "$legacy_docs" ]; then
@@ -59,10 +60,10 @@ resolve_yaml_path() {
 
 # Smart-fallback for ART_DIR (implementation-artifacts root used for
 # retro-glob + sprint-archive subdir).
-if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
-  ART_DIR="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
+if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+  ART_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
 else
-  ART_DIR="$PROJECT_PATH/docs/implementation-artifacts"
+  ART_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}docs/implementation-artifacts"
 fi
 ARCHIVE_DIR="$ART_DIR/sprint-archive"
 
@@ -301,7 +302,7 @@ fi
 #   - envelope sentinel:   .gaia/memory/checkpoints/val-envelope-*.json whose
 #                          artifact_path matches the sprint id.
 
-_ckpt_dir="${PROJECT_PATH}/.gaia/memory/checkpoints"
+_ckpt_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 _dispatch_sentinel="${_ckpt_dir}/sprint-review-${SPRINT_ID}-val-dispatched.json"
 _envelope_glob="${_ckpt_dir}/val-envelope-*.json"
 _sentinel_found=0
@@ -439,7 +440,7 @@ declare -a SKILL_ARTIFACT_MAP=(
   "gaia-test-strategy|test-artifacts/test-plan.md"
 )
 
-ART_BASE="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}"
+ART_BASE="${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}"
 checklist_tmp="$(mktemp)"
 missing_count=0
 bypass_count=0

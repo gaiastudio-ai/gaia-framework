@@ -18,13 +18,13 @@ teardown() { common_teardown; }
 }
 
 @test "gaia-infra-design/finalize.sh implements three-tier idiom" {
-  grep -qE 'elif \[ -f "docs/planning-artifacts/infrastructure-design\.md" \] && \[ ! -d "\.gaia/artifacts/planning-artifacts" \]' "$PLUGIN_ROOT/skills/gaia-infra-design/scripts/finalize.sh"
-  grep -qE 'elif \[ -f "\.gaia/artifacts/planning-artifacts/infrastructure-design\.md" \]' "$PLUGIN_ROOT/skills/gaia-infra-design/scripts/finalize.sh"
+  grep -qE 'elif \[ -f "docs/planning-artifacts/infrastructure-design\.md" \] && \[ ! -d ".*\.gaia/artifacts/planning-artifacts" \]' "$PLUGIN_ROOT/skills/gaia-infra-design/scripts/finalize.sh"
+  grep -qE 'elif \[ -f ".*\.gaia/artifacts/planning-artifacts/infrastructure-design\.md" \]' "$PLUGIN_ROOT/skills/gaia-infra-design/scripts/finalize.sh"
 }
 
 @test "gaia-brainstorm/finalize.sh implements three-tier idiom" {
   grep -qF '.gaia/artifacts/creative-artifacts/brainstorm-' "$PLUGIN_ROOT/skills/gaia-brainstorm/scripts/finalize.sh"
-  grep -qF '[ ! -d ".gaia/artifacts/creative-artifacts" ]' "$PLUGIN_ROOT/skills/gaia-brainstorm/scripts/finalize.sh"
+  grep -qE '\[ ! -d ".*\.gaia/artifacts/creative-artifacts" \]' "$PLUGIN_ROOT/skills/gaia-brainstorm/scripts/finalize.sh"
 }
 
 @test "gaia-domain-research/finalize.sh implements three-tier idiom" {
@@ -46,7 +46,7 @@ teardown() { common_teardown; }
 
 @test "check-monolith-shard-sync.sh resolves canonical artifacts dir first" {
   grep -qF '.gaia/artifacts/planning-artifacts' "$PLUGIN_ROOT/scripts/check-monolith-shard-sync.sh"
-  grep -qE 'if \[ -d "\$ROOT/\.gaia/artifacts/planning-artifacts" \]' "$PLUGIN_ROOT/scripts/check-monolith-shard-sync.sh"
+  grep -qE 'if \[ -d ".*\.gaia/artifacts/planning-artifacts" \]' "$PLUGIN_ROOT/scripts/check-monolith-shard-sync.sh"
 }
 
 @test "gaia-readiness-check/finalize.sh prd_referenced_file_exists helper canonical-first" {

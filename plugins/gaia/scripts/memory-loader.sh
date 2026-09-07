@@ -29,10 +29,13 @@
 
 set -euo pipefail
 
+# Canonical state-tree root. Code-tree paths use PROJECT_PATH.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
+
 # Prefer .gaia/memory/ over legacy _memory/. Resolution order:
 #   1. ${MEMORY_PATH} env override (highest priority, unchanged contract).
-#   2. ${PROJECT_PATH}/.gaia/memory/ when the dir exists.
-#   3. ${PROJECT_PATH}/_memory/ legacy fallback during the deprecation window.
+#   2. ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/ (canonical state tree).
 _gaia_resolve_memory_path() {
   if [ -n "${MEMORY_PATH:-}" ]; then
     printf '%s' "$MEMORY_PATH"
@@ -41,7 +44,7 @@ _gaia_resolve_memory_path() {
   # `.gaia/memory/` is the canonical (and only) memory tree — the legacy
   # `_memory/` fallback was removed with the consolidation migration.
   # Resolve to `.gaia/memory/` unconditionally.
-  printf '%s' "${PROJECT_PATH:-.}/.gaia/memory"
+  printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
 }
 MEMORY_PATH="$(_gaia_resolve_memory_path)"
 CONFIG="${MEMORY_PATH}/config.yaml"
@@ -72,7 +75,7 @@ _gaia_stray_legacy_memory_warn() {
       # Only warn when BOTH the canonical .gaia/memory/ AND a stray _memory/
       # exist — i.e. a real coexistence leak, not a mid-migration project (which
       # the sentinel check above already handles via the manifest contract).
-      if [ -d "${_root}/.gaia/memory" ] && [ -d "${_root}/_memory" ]; then
+      if [ -d "$MEMORY_PATH" ] && [ -d "${_root}/_memory" ]; then
         printf 'session-load: WARNING — a project-root _memory/ tree coexists with the canonical .gaia/memory/. This usually means a writer leaked a sidecar/checkpoint outside .gaia/. Review %s and run /gaia-memory-hygiene to reconcile.\n' "${_root}/_memory" >&2
       fi
       ;;

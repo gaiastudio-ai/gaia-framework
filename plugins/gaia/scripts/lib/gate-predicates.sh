@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # gate-predicates.sh — quality-gate predicate library
 #
 # Shared library sourced by setup.sh / finalize.sh of any V2 skill that
@@ -186,8 +189,8 @@ _gate_check_story_status() {
   local impl_dir
   if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
     impl_dir="$IMPLEMENTATION_ARTIFACTS"
-  elif [ -d ".gaia/artifacts/implementation-artifacts" ]; then
-    impl_dir=".gaia/artifacts/implementation-artifacts"
+  elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+    impl_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
   else
     impl_dir="docs/implementation-artifacts"
   fi

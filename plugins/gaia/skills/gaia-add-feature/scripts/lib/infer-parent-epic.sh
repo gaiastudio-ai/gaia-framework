@@ -26,6 +26,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 AFFECTED_SKILLS=""
 EPICS_FILE=""
 
@@ -63,8 +66,8 @@ fi
 
 # Default epics file (canonical-first with legacy fallback).
 if [ -z "$EPICS_FILE" ]; then
-  if [ -f ".gaia/artifacts/planning-artifacts/epics-and-stories.md" ]; then
-    EPICS_FILE=".gaia/artifacts/planning-artifacts/epics-and-stories.md"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/epics-and-stories.md" ]; then
+    EPICS_FILE="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/epics-and-stories.md"
   else
     EPICS_FILE="docs/planning-artifacts/epics-and-stories.md"
   fi

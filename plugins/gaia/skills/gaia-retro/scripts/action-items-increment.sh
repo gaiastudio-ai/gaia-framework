@@ -66,7 +66,7 @@ fi
 # both the project root and the target file via the shared writer's
 # resolve_real() so symlinks / non-existent intermediate components are
 # handled identically across all retro writes.
-PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-$(pwd)}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-$(pwd)}}"
 REAL_ROOT="$(resolve_real "$PROJECT_ROOT")"
 [ -z "$REAL_ROOT" ] && REAL_ROOT="$PROJECT_ROOT"
 REAL_TARGET="$(resolve_real "$AI_FILE")"

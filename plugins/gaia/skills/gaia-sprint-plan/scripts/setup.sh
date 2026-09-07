@@ -20,6 +20,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-sprint-plan/setup.sh"
 WORKFLOW_NAME="sprint-plan"
 
@@ -93,7 +96,7 @@ STRICT_HELPER="$(cd "$SCRIPT_DIR/../../.." && pwd)/scripts/lib/lifecycle-strict-
 # to validate-gate.sh (which accepts flat | strategy/ | sharded) while
 # KEEPING the strict-mode + bypass-record wrapper intact
 # (validate-gate.sh has no strict/bypass awareness).
-GATE_LIFECYCLE_LEDGER="${GAIA_STATE_DIR:-.gaia/state}/lifecycle-overrides.yaml"
+GATE_LIFECYCLE_LEDGER="${GAIA_STATE_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state}/lifecycle-overrides.yaml"
 # Resolve the planning/test artifact dirs with the SAME precedence
 # validate-gate.sh uses — uppercase PLANNING_ARTIFACTS/TEST_ARTIFACTS
 # exported by resolve-config.sh (and by the audit-v2-migration enriched

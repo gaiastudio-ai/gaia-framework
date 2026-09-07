@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # transcript-writer.sh — shared per-stack transcript writer helper
 #
 # Provides three functions:
@@ -25,7 +28,7 @@ transcript_path_for() {
     printf 'transcript_path_for: usage: transcript_path_for <sprint_id> <stack>\n' >&2
     return 2
   fi
-  printf '%s\n' ".gaia/memory/checkpoints/sprint-review-${sprint_id}/${stack}.log"
+  printf '%s\n' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints/sprint-review-${sprint_id}/${stack}.log"
 }
 
 # write_transcript <path>

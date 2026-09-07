@@ -105,7 +105,7 @@ else
   # behavior for the audit harness. The default behavior now auto-picks
   # up the canonical artifact when present, fixing the interactive UX.
   if [ "${GAIA_READINESS_FIXTURE_GUARD:-0}" != "1" ]; then
-    CANONICAL_RR="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/readiness-report.md"
+    CANONICAL_RR="${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/planning-artifacts/readiness-report.md"
     LEGACY_RR="docs/planning-artifacts/readiness-report.md"
     if [ -f "$CANONICAL_RR" ] && [ -s "$CANONICAL_RR" ]; then
       ARTIFACT_REQUESTED=1
@@ -250,7 +250,8 @@ prd_referenced_file_exists() {
   local f="$1" canonical_rel="$2"
   # Derive the bare path suffix from the canonical input — strip the
   # canonical .gaia/artifacts/ prefix if present, then build both forms.
-  local suffix="${canonical_rel#.gaia/artifacts/}"
+  local _state_pfx="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/"
+  local suffix="${canonical_rel#${_state_pfx}}"
   local legacy_rel="docs/$suffix"
   # Pass if NEITHER layout is referenced
   if ! grep -Eq "($canonical_rel|$legacy_rel)" "$f" 2>/dev/null; then
@@ -286,11 +287,11 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   item_check "SV-02" "artifact presence" "Readiness report artifact is non-empty" \
     "$(file_nonempty "$ARTIFACT")"
   item_check "SV-03" "artifact presence" "Referenced PRD file exists on disk (if referenced)" \
-    "$(prd_referenced_file_exists "$ARTIFACT" ".gaia/artifacts/planning-artifacts/prd.md")"
+    "$(prd_referenced_file_exists "$ARTIFACT" "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/prd.md")"
   item_check "SV-04" "artifact presence" "Referenced architecture file exists on disk (if referenced)" \
-    "$(prd_referenced_file_exists "$ARTIFACT" ".gaia/artifacts/planning-artifacts/architecture.md")"
+    "$(prd_referenced_file_exists "$ARTIFACT" "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/architecture.md")"
   item_check "SV-05" "artifact presence" "Referenced test-plan file exists on disk (if referenced)" \
-    "$(prd_referenced_file_exists "$ARTIFACT" ".gaia/artifacts/test-artifacts/test-plan.md")"
+    "$(prd_referenced_file_exists "$ARTIFACT" "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/test-plan.md")"
 
   # -- Cross-Artifact Coherence structural checks (SV-06..SV-08, 3 items) --
   printf '\n[category: cross-artifact coherence]\n' >&2
@@ -420,7 +421,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no readiness-report artifact found (READINESS_ARTIFACT unset and no readiness-report.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
+  log "no readiness-report artifact found (READINESS_ARTIFACT unset and no readiness-report.md at ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

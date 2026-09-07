@@ -32,6 +32,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 DATE=""
 SLUG=""
 SP_N=""
@@ -147,5 +150,5 @@ if [[ -z "$auto_slug" ]]; then
 fi
 
 # Canonical-unconditional path (no legacy fallback supported).
-printf '.gaia/artifacts/creative-artifacts/meeting-scratchpad/%s/%s/%s-%s.%s\n' \
-  "$YYYY_MM" "$SLUG" "$SP_N" "$auto_slug" "$CTYPE"
+_scratchpad_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}"
+printf '%s\n' "${_scratchpad_root}.gaia/artifacts/creative-artifacts/meeting-scratchpad/${YYYY_MM}/${SLUG}/${SP_N}-${auto_slug}.${CTYPE}"

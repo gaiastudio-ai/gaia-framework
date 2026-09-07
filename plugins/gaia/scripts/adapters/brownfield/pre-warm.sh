@@ -29,6 +29,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="adapters/brownfield/pre-warm.sh"
 log_info()  { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn()  { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
@@ -54,7 +57,7 @@ default_audit_dir() {
   if [ -n "${GAIA_MEMORY_DIR:-}" ]; then
     printf '%s/brownfield-audit' "$GAIA_MEMORY_DIR"
   else
-    printf '%s' "./.gaia/memory/brownfield-audit"
+    printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit"
   fi
 }
 AUDIT_DIR="${GAIA_BROWNFIELD_AUDIT_DIR:-$(default_audit_dir)}"

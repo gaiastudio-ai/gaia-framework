@@ -53,6 +53,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # ---------- Fallback config resolution (parallel dev with resolve-config.sh) ----------
 # Smart-fallback — env-var > .gaia/artifacts/<type>-artifacts/ (when
 # present on disk, post-migration canonical) > legacy docs/<type>-artifacts/
@@ -100,24 +103,24 @@ _vg_resolve_project_root() {
 PROJECT_ROOT="$(_vg_resolve_project_root)"
 
 if [ -z "${TEST_ARTIFACTS:-}" ]; then
-  if [ -d "${PROJECT_ROOT}/.gaia/artifacts/test-artifacts" ]; then
-    TEST_ARTIFACTS="${PROJECT_ROOT}/.gaia/artifacts/test-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts" ]; then
+    TEST_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
   else
     TEST_ARTIFACTS="docs/test-artifacts"
   fi
 fi
 
 if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
-  if [ -d "${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts" ]; then
-    PLANNING_ARTIFACTS="${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
   else
     PLANNING_ARTIFACTS="docs/planning-artifacts"
   fi
 fi
 
 if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
-  if [ -d "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" ]; then
-    IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+    IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
   else
     IMPLEMENTATION_ARTIFACTS="docs/implementation-artifacts"
   fi
@@ -427,7 +430,7 @@ check_file_nonempty() {
   case "$gate" in
     test_plan_exists)
       dir="${filepath%/*}"
-      warn "$gate failed — expected one of: $abs OR $(abs_path "$dir/strategy/test-plan.md") OR $(abs_path "$dir/strategy/test-strategy.md") OR $(abs_path "${filepath%.md}/index.md") OR $(abs_path "${PLANNING_ARTIFACTS:-./.gaia/artifacts/planning-artifacts}/test-plan.md") OR $(abs_path "${PLANNING_ARTIFACTS:-./.gaia/artifacts/planning-artifacts}/test-strategy.md")"
+      warn "$gate failed — expected one of: $abs OR $(abs_path "$dir/strategy/test-plan.md") OR $(abs_path "$dir/strategy/test-strategy.md") OR $(abs_path "${filepath%.md}/index.md") OR $(abs_path "${PLANNING_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts}/test-plan.md") OR $(abs_path "${PLANNING_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts}/test-strategy.md")"
       ;;
     traceability_exists)
       # The gate accepts FOUR locations: the canonical planning-artifacts/
@@ -436,7 +439,7 @@ check_file_nonempty() {
       # users into thinking the producer wrote to the wrong place when the
       # actual issue was a missing file at any accepted location.
       dir="${filepath%/*}"
-      warn "$gate failed — expected one of: $(abs_path "${PLANNING_ARTIFACTS:-./.gaia/artifacts/planning-artifacts}/traceability-matrix.md") (canonical) OR $abs OR $(abs_path "$dir/strategy/traceability-matrix.md") OR $(abs_path "${filepath%.md}/index.md")"
+      warn "$gate failed — expected one of: $(abs_path "${PLANNING_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts}/traceability-matrix.md") (canonical) OR $abs OR $(abs_path "$dir/strategy/traceability-matrix.md") OR $(abs_path "${filepath%.md}/index.md")"
       ;;
     *)
       warn "$gate failed — expected: $abs"
@@ -506,7 +509,7 @@ sections_for_phase() {
   esac
 }
 
-# Read config_phase from ${PROJECT_ROOT}/.gaia/config/project-config.yaml
+# Read config_phase from ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml
 # (canonical location; legacy ${PROJECT_ROOT}/config/project-config.yaml
 # retained as fallback on pre-migration installs — see the `if [ -f .gaia/...`
 # / `else cfg=...` branches below).
@@ -516,8 +519,8 @@ sections_for_phase() {
 read_config_phase() {
   # Prefer `.gaia/config/` over legacy `config/` location.
   local cfg
-  if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
-    cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    cfg="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   else
     cfg="${PROJECT_ROOT}/config/project-config.yaml"
   fi
@@ -545,8 +548,8 @@ config_section_present() {
   local section="$1"
   # Prefer `.gaia/config/` over legacy `config/` location.
   local cfg
-  if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
-    cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    cfg="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   else
     cfg="${PROJECT_ROOT}/config/project-config.yaml"
   fi
@@ -644,8 +647,8 @@ evaluate_config_phase_gate() {
   # claim — there is nothing to cross-reference, so the gate passes.
   # Prefer `.gaia/config/` over legacy `config/` location.
   local cfg
-  if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
-    cfg="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    cfg="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   else
     cfg="${PROJECT_ROOT}/config/project-config.yaml"
   fi

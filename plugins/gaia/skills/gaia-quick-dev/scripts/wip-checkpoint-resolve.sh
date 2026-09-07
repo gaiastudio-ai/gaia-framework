@@ -17,6 +17,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-quick-dev/wip-checkpoint-resolve.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -34,7 +37,7 @@ WORK_DIR="${PROJECT_PATH:-$PWD}"
 if [ -n "${CHECKPOINT_PATH:-}" ]; then
   CHECKPOINT_DIR="$CHECKPOINT_PATH"
 else
-  CHECKPOINT_DIR="$WORK_DIR/.gaia/memory/checkpoints"
+  CHECKPOINT_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 fi
 CHECKPOINT="$CHECKPOINT_DIR/quick-dev-${SPEC_NAME}.yaml"
 

@@ -31,6 +31,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="adapters/brownfield/reconcile-cross-stack.sh"
 log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
@@ -82,7 +85,7 @@ command -v jq >/dev/null 2>&1 || { log_warn "jq not found — cross-stack analys
 
 default_depgraph() {
   if [ -n "${GAIA_MEMORY_DIR:-}" ]; then printf '%s/brownfield-audit/depgraph.json' "$GAIA_MEMORY_DIR"
-  else printf '%s' "./.gaia/memory/brownfield-audit/depgraph.json"; fi
+  else printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit/depgraph.json"; fi
 }
 DEPGRAPH="${XSTACK_DEPGRAPH:-$(default_depgraph)}"
 
@@ -251,7 +254,7 @@ done < <(jq -r '.edges[]? | [.source, .target] | @tsv' "$DEPGRAPH" 2>/dev/null |
 
 # --- Bypass audit log (append-only JSONL) ----------------------------------
 if [ "$bypass_applied" = "true" ]; then
-  BLOG="${XSTACK_BYPASS_LOG:-${GAIA_MEMORY_DIR:-.gaia/memory}/brownfield-audit/bypass-log.json}"
+  BLOG="${XSTACK_BYPASS_LOG:-${GAIA_MEMORY_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory}/brownfield-audit/bypass-log.json}"
   mkdir -p "$(dirname "$BLOG")"
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   sid="${GAIA_SESSION_ID:-$PPID}"
@@ -265,7 +268,7 @@ seconds=$(( (end - start) / 1000000000 ))
 log_info "cross-stack analysis: $emitted warning(s) emitted, $suppressed suppressed; runtime=${seconds}s"
 
 # --- Telemetry (single-author: cross_stack_* owned here) -------------------
-REPORT="${XSTACK_REPORT:-${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md}"
+REPORT="${XSTACK_REPORT:-${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/planning-artifacts/consolidated-gaps.md}"
 TELEM="$HERE/brownfield-telemetry.sh"
 if [ -f "$REPORT" ] && [ -x "$TELEM" ]; then
   bash "$TELEM" --report "$REPORT" --field cross_stack_warnings --value "$warnings_json" || true

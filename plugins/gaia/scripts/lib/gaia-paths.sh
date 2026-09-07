@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # gaia-paths.sh — canonical-path-constants helper for the .gaia/ consolidation.
 # Sourceable, NOT executable.
 #
@@ -167,10 +170,10 @@ _gaia_paths_walk_up_root() {
 
   # Pass 1: nearest ancestor with a real project-config.yaml under .gaia/config.
   d="$PWD"
-  if [ -f "${d}/.gaia/config/project-config.yaml" ]; then printf '%s' "$d"; return 0; fi
+  if [ -f "$d/.gaia/config/project-config.yaml" ]; then printf '%s' "$d"; return 0; fi
   while [ "$d" != "/" ] && [ "$d" != "${HOME:-/nonexistent}" ]; do
     d="$(dirname "$d")"
-    if [ -f "${d}/.gaia/config/project-config.yaml" ]; then printf '%s' "$d"; return 0; fi
+    if [ -f "$d/.gaia/config/project-config.yaml" ]; then printf '%s' "$d"; return 0; fi
   done
 
   # Pass 2 (fallback): nearest ancestor with any .gaia/ directory.
@@ -183,7 +186,9 @@ _gaia_paths_walk_up_root() {
   return 1
 }
 
-if [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+if [ -n "${PROJECT_ROOT:-}" ]; then
+  _GAIA_ROOT_RAW="$PROJECT_ROOT"
+elif [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
   _GAIA_ROOT_RAW="$CLAUDE_PROJECT_ROOT"
 elif [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ] \
      && _GAIA_WALKED_ROOT="$(_gaia_paths_walk_up_root)" && [ -n "$_GAIA_WALKED_ROOT" ]; then

@@ -79,7 +79,7 @@ fi
 
 # Resolve project-config.yaml path. Default to .gaia/config/project-config.yaml
 # under CLAUDE_PROJECT_ROOT or PWD; allow PROJECT_CONFIG env override.
-PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$PWD}}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$PWD}}}"
 PROJECT_CONFIG="${PROJECT_CONFIG:-$PROJECT_ROOT/.gaia/config/project-config.yaml}"
 
 if [ ! -f "$PROJECT_CONFIG" ]; then

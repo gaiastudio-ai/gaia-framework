@@ -15,6 +15,8 @@ export LC_ALL
 #   1. --shared <path>           explicit flag wins
 #   2. --config <path>           legacy alias (single-file mode)
 #   3. $GAIA_SHARED_CONFIG       env override
+#   3b. $PROJECT_ROOT/.gaia/config/project-config.yaml        (state-tree root)
+#   3c. $PROJECT_ROOT/config/project-config.yaml              (state-tree legacy)
 #   4. $CLAUDE_PROJECT_ROOT/.gaia/config/project-config.yaml  (canonical)
 #   4b. $CLAUDE_PROJECT_ROOT/config/project-config.yaml       (legacy fallback)
 #   5. $PWD/.gaia/config/project-config.yaml                  (canonical)
@@ -546,6 +548,14 @@ _gaia_legacy_warn() {
   fi
 }
 
+if [ -z "$SHARED_PATH" ] && [ -n "${PROJECT_ROOT:-}" ]; then
+  if [ -f "${PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+    SHARED_PATH="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+  elif [ -f "${PROJECT_ROOT}/config/project-config.yaml" ]; then
+    SHARED_PATH="${PROJECT_ROOT}/config/project-config.yaml"
+    _gaia_legacy_warn
+  fi
+fi
 if [ -z "$SHARED_PATH" ] && [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
   if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
     SHARED_PATH="${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"

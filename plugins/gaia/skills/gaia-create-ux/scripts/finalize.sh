@@ -40,6 +40,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-create-ux/finalize.sh"
 WORKFLOW_NAME="create-ux"
 
@@ -64,8 +67,8 @@ if [ -n "${UX_DESIGN_ARTIFACT:-}" ]; then
   ARTIFACT="$UX_DESIGN_ARTIFACT"
 else
   # Smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
-  if [ -f ".gaia/artifacts/planning-artifacts/ux-design.md" ]; then
-    ARTIFACT=".gaia/artifacts/planning-artifacts/ux-design.md"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/ux-design.md" ]; then
+    ARTIFACT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/ux-design.md"
   elif [ -f "docs/planning-artifacts/ux-design.md" ]; then
     ARTIFACT="docs/planning-artifacts/ux-design.md"
   fi
@@ -299,7 +302,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no UX design artifact found (UX_DESIGN_ARTIFACT unset and no .gaia/artifacts/planning-artifacts/ux-design.md) — skipping checklist run"
+  log "no UX design artifact found (UX_DESIGN_ARTIFACT unset and no ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/ux-design.md) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

@@ -28,6 +28,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-dev-story/checkpoint.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -77,7 +80,7 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
   # .gaia/memory/checkpoints is the only location —
   # the legacy _memory/checkpoints fallback was removed with the migration.
   log "WARNING: CHECKPOINT_PATH not set — using default .gaia/memory/checkpoints"
-  export CHECKPOINT_PATH=".gaia/memory/checkpoints"
+  export CHECKPOINT_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 fi
 
 mkdir -p "$CHECKPOINT_PATH"

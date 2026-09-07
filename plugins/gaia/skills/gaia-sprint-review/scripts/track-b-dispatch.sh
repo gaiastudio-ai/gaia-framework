@@ -42,6 +42,9 @@ set -uo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-sprint-review/track-b-dispatch.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -86,12 +89,12 @@ sprint_id=""
 # .gaia/config/project-config.yaml when present (post-migration layout),
 # fall back to the legacy config/project-config.yaml. Explicit --config wins.
 config_path=""
-if [ -f ".gaia/config/project-config.yaml" ]; then
-  config_path=".gaia/config/project-config.yaml"
+if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+  config_path="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
 elif [ -f "config/project-config.yaml" ]; then
   config_path="config/project-config.yaml"
 else
-  config_path=".gaia/config/project-config.yaml"  # canonical default for the missing-file diagnostic
+  config_path="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"  # canonical default for the missing-file diagnostic
 fi
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -214,7 +217,7 @@ fi
 
 # ---------- .gitignore pre-flight ----------
 
-assert_gitignored ".gaia/memory/checkpoints/sprint-review-" || exit 1
+assert_gitignored "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints/sprint-review-" || exit 1
 
 # ---------- Per-stack execution loop ----------
 
@@ -344,7 +347,7 @@ DISPATCH_SURFACE="${DISPATCH_SURFACE_BIN:-$SCRIPT_DIR/../../gaia-test-manual/scr
 if [ ! -f "$DISPATCH_SURFACE" ]; then
   log "WARNING: dispatch-surface.sh not found at $DISPATCH_SURFACE — skipping manual-test surface loop (graceful degradation)"
 else
-  evidence_base=".gaia/memory/checkpoints/sprint-review-${sprint_id}/manual-test"
+  evidence_base="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints/sprint-review-${sprint_id}/manual-test"
 
   # Functional-coverage + tracked-skip accounting (set inside the loop):
   #   functional_exercised  — a functional surface produced a real PASSED/FAILED

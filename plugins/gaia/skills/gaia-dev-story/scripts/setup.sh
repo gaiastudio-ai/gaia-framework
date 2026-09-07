@@ -19,6 +19,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-dev-story/setup.sh"
 WORKFLOW_NAME="gaia-dev-story"
 
@@ -120,8 +123,8 @@ STRICT_HELPER_F33="$(cd "$SCRIPT_DIR_F33/../../.." && pwd)/scripts/lib/lifecycle
 
 # Resolve SPRINT_ID (env or sprint-status.yaml) — gate only fires when set.
 F33_SPRINT_ID="${SPRINT_ID:-}"
-if [ -z "$F33_SPRINT_ID" ] && [ -f ".gaia/state/sprint-status.yaml" ] && command -v yq >/dev/null 2>&1; then
-  F33_SPRINT_ID="$(yq eval '.sprint_id // ""' .gaia/state/sprint-status.yaml 2>/dev/null || echo "")"
+if [ -z "$F33_SPRINT_ID" ] && [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml" ] && command -v yq >/dev/null 2>&1; then
+  F33_SPRINT_ID="$(yq eval '.sprint_id // ""' ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml 2>/dev/null || echo "")"
 fi
 
 if [ -z "$F33_SPRINT_ID" ]; then
@@ -137,7 +140,7 @@ else
   # greenfield project using the newer layout, requiring a manual copy to the
   # legacy path.
   # The legacy probe also covers the flat, strategy/, and sharded index.md placements.
-  _ta="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts"
+  _ta="${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/test-artifacts"
   _resolver_h3="$PLUGIN_SCRIPTS_DIR/lib/resolve-artifact-path.sh"
   TM_ART=""
   if [ -x "$_resolver_h3" ]; then

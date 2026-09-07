@@ -36,7 +36,7 @@ export LC_ALL
 prog="plugin-trace-chain.sh"
 err() { printf '%s: %s\n' "$prog" "$*" >&2; }
 
-PROJECT_ROOT=""
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
 REQUIRE_PLUGIN=0
 
 while [ $# -gt 0 ]; do

@@ -22,9 +22,12 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # Resolve canonical paths.
-LIFECYCLE_OVERRIDES_FILE_DEFAULT=".gaia/state/lifecycle-overrides.yaml"
-LIFECYCLE_OVERRIDES_LOCK_DEFAULT=".gaia/state/lifecycle-overrides.yaml.lock"
+LIFECYCLE_OVERRIDES_FILE_DEFAULT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/lifecycle-overrides.yaml"
+LIFECYCLE_OVERRIDES_LOCK_DEFAULT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/lifecycle-overrides.yaml.lock"
 
 # Allow callers to override paths via env var (matches sprint-state.sh pattern).
 _lifecycle_overrides_file() {

@@ -31,19 +31,22 @@
 #   # OR as a CLI:
 #   resolve-story-file.sh <story-key>
 #
+# Canonical state-tree root (file-scope so sourced callers inherit it).
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # Override $IMPLEMENTATION_ARTIFACTS to retarget the search root (defaults to
 # .gaia/artifacts/implementation-artifacts/ relative to CWD).
 
 resolve_story_file() {
     local story_key="${1:?usage: resolve_story_file <story_key>}"
+    # Uses file-scope PROJECT_ROOT.
     # Prefer .gaia/artifacts/implementation-artifacts/ when present on disk;
     # fall back to legacy docs/ during the deprecation window.
     # IMPLEMENTATION_ARTIFACTS env-var override wins over both.
     local impl_root
     if [[ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]]; then
         impl_root="$IMPLEMENTATION_ARTIFACTS"
-    elif [[ -d ".gaia/artifacts/implementation-artifacts" ]]; then
-        impl_root=".gaia/artifacts/implementation-artifacts"
+    elif [[ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]]; then
+        impl_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
     else
         impl_root="docs/implementation-artifacts"
     fi

@@ -57,8 +57,8 @@ teardown() { common_teardown; }
 
 @test "gaia-threat-model/scripts/finalize.sh implements three-tier idiom verbatim" {
   grep -qE 'if \[ -n "\$\{THREAT_MODEL_ARTIFACT:-\}" \]' "$THREAT_MODEL_FINALIZE"
-  grep -qE 'elif \[ -f "docs/planning-artifacts/threat-model\.md" \] && \[ ! -d "\.gaia/artifacts/planning-artifacts" \]' "$THREAT_MODEL_FINALIZE"
-  grep -qE 'elif \[ -f "\.gaia/artifacts/planning-artifacts/threat-model\.md" \]' "$THREAT_MODEL_FINALIZE"
+  grep -qE 'elif \[ -f "docs/planning-artifacts/threat-model\.md" \] && \[ ! -d ".*\.gaia/artifacts/planning-artifacts" \]' "$THREAT_MODEL_FINALIZE"
+  grep -qE 'elif \[ -f ".*\.gaia/artifacts/planning-artifacts/threat-model\.md" \]' "$THREAT_MODEL_FINALIZE"
 }
 
 @test "threat-model finalize.sh — greenfield → skips checklist" {

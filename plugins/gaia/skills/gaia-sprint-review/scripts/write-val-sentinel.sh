@@ -36,6 +36,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-sprint-review/write-val-sentinel.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -106,14 +109,14 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
   # the legacy _memory probe was removed with the consolidation migration.
   cwd="$(pwd)"
   while [ "$cwd" != "/" ]; do
-    if [ -d "$cwd/.gaia/memory/checkpoints" ] || [ -d "$cwd/.gaia/memory" ]; then
-      CHECKPOINT_PATH="$cwd/.gaia/memory/checkpoints"
+    if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory" ]; then
+      CHECKPOINT_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
       break
     fi
     cwd="$(dirname "$cwd")"
   done
 fi
-[ -n "${CHECKPOINT_PATH:-}" ] || die "could not resolve .gaia/memory/checkpoints/ directory (set CHECKPOINT_PATH env var)"
+[ -n "${CHECKPOINT_PATH:-}" ] || die "could not resolve the PROJECT_ROOT/.gaia/memory/checkpoints/ directory (set CHECKPOINT_PATH env var)"
 mkdir -p "$CHECKPOINT_PATH"
 
 # ---------- Read + validate payload ----------

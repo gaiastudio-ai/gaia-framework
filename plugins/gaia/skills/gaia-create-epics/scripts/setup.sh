@@ -23,6 +23,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-create-epics/setup.sh"
 WORKFLOW_NAME="create-epics-stories"
 
@@ -62,8 +65,8 @@ done <<<"$config_output"
 # Remediation: run /gaia-test-design to create test-plan.md
 # Smart-fallback:
 if [ -z "${TEST_ARTIFACTS:-}" ]; then
-  if [ -d ".gaia/artifacts/test-artifacts" ]; then
-    TEST_ARTIFACTS=".gaia/artifacts/test-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts" ]; then
+    TEST_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
   else
     TEST_ARTIFACTS="docs/test-artifacts"
   fi

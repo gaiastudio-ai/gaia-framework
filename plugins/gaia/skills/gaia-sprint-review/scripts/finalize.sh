@@ -30,6 +30,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-sprint-review/finalize.sh"
 WORKFLOW_NAME="gaia-sprint-review"
 
@@ -54,8 +57,8 @@ if [ -z "${CHECKPOINT_PATH:-}" ]; then
   while [ "$cwd" != "/" ]; do
     # Canonical .gaia/memory/checkpoints only; the legacy _memory probe was
     # removed with the consolidation migration.
-    if [ -d "$cwd/.gaia/memory/checkpoints" ] || [ -d "$cwd/.gaia/memory" ]; then
-      CHECKPOINT_PATH="$cwd/.gaia/memory/checkpoints"
+    if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory" ]; then
+      CHECKPOINT_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
       break
     fi
     cwd="$(dirname "$cwd")"

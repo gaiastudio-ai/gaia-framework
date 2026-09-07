@@ -34,6 +34,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-market-research/finalize.sh"
 WORKFLOW_NAME="market-research"
 
@@ -70,10 +73,10 @@ _pick_market() {
 }
 if [ -n "${MARKET_RESEARCH_ARTIFACT:-}" ]; then
   ARTIFACT="$MARKET_RESEARCH_ARTIFACT"
-elif [ -d "docs/planning-artifacts" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+elif [ -d "docs/planning-artifacts" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
   ARTIFACT="$(_pick_market docs/planning-artifacts)" || ARTIFACT=""
-elif [ -d ".gaia/artifacts/planning-artifacts" ]; then
-  ARTIFACT="$(_pick_market .gaia/artifacts/planning-artifacts)" || ARTIFACT=""
+elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
+  ARTIFACT="$(_pick_market ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts)" || ARTIFACT=""
 fi
 
 # ---------- 1. Run the 28-item checklist ----------

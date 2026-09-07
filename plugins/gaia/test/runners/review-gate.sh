@@ -25,6 +25,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Walk up from test/runners/ to {project-path} (gaia-framework) — 3 levels up: runners -> test -> gaia -> plugins -> gaia-framework
 PROJECT_PATH="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
 REPO_ROOT="$(cd "$PROJECT_PATH/.." && pwd)"
 NORM="$PROJECT_PATH/plugins/gaia/scripts/lib/verdict-normalizer.sh"
 

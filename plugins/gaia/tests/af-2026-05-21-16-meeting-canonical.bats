@@ -43,7 +43,7 @@ teardown() { common_teardown; }
   # Notes write under the canonical .gaia/ creative-artifacts/meeting-notes/
   # subdir (E76-S24 moved notes into the meeting-notes/ subdir); the assertion
   # is that the out_dir is canonical .gaia/, never the legacy docs/ tree.
-  grep -qE 'out_dir="\$ROOT/\.gaia/artifacts/creative-artifacts/meeting-notes"' "$NOTES_WRITER"
+  grep -qE 'out_dir=".*\.gaia/artifacts/creative-artifacts/meeting-notes"' "$NOTES_WRITER"
   ! grep -qE 'out_dir="\$ROOT/docs/creative-artifacts"' "$NOTES_WRITER"
 }
 

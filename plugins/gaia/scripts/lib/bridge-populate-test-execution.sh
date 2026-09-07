@@ -27,8 +27,8 @@
 set -euo pipefail
 
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}}"
-CONFIG="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
-MANIFEST="${PROJECT_ROOT}/.gaia/config/test-environment.yaml"
+CONFIG="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
+MANIFEST="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/test-environment.yaml"
 DRY_RUN=0
 
 while [ $# -gt 0 ]; do

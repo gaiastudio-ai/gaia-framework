@@ -15,12 +15,15 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 cmd="${1:-}"
 shift || true
 
 flag_path() {
   # .gaia/memory is the only marker home; legacy _memory fallback removed with the consolidation migration.
-  printf '%s/.gaia/memory/.config-stale\n' "${PROJECT_ROOT:-$PWD}"
+  printf '%s\n' "${PROJECT_ROOT:-$PWD}/.gaia/memory/.config-stale"
 }
 
 write_flag() {

@@ -12,6 +12,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-triage-findings/setup.sh"
 WORKFLOW_NAME="triage-findings"
 
@@ -93,7 +96,7 @@ if [ -n "${CHECKPOINT_PATH:-}" ]; then
 elif [ -n "${PROJECT_ROOT:-}" ]; then
   SENTINEL_DIR="$PROJECT_ROOT/.gaia/memory/checkpoints"
 else
-  SENTINEL_DIR=".gaia/memory/checkpoints"
+  SENTINEL_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 fi
 
 if [ -n "$SENTINEL_DIR" ]; then
