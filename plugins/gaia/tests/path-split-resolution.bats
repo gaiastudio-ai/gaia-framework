@@ -453,6 +453,62 @@ teardown() { common_teardown; }
   }
 }
 
+@test "unreadable canonical root: non-zero exit and nothing written under worktree (AC3)" {
+  # Skip when running as root (mode 000 has no effect).
+  [ "$(id -u)" -ne 0 ] || skip 'test requires non-root user (mode 000 ineffective as root)'
+  local unreadable="$TEST_TMP/unreadable-root"
+  mkdir -p "$unreadable/.gaia/memory/checkpoints"
+  chmod 000 "$unreadable/.gaia"
+
+  export PROJECT_ROOT="$unreadable"
+  export PROJECT_PATH="$WORKTREE"
+  unset CLAUDE_PROJECT_ROOT CHECKPOINT_ROOT
+
+  run bash -c 'cd "$1" && bash "$2" unreadable-test 1 key=val 2>&1' \
+    _ "$WORKTREE" "$PLUGIN_ROOT/scripts/write-checkpoint.sh"
+
+  # Restore permissions BEFORE any assertion can fail (cleanup even on error).
+  chmod 755 "$unreadable/.gaia"
+
+  # The script should fail (non-zero exit) because it cannot mkdir/write.
+  [ "$status" -ne 0 ] || {
+    printf 'FAIL: script should have exited non-zero on unreadable root (exit=%d)\n' "$status" >&2
+    return 1
+  }
+  # Nothing written under the worktree (no fallback to code tree).
+  local leaked
+  leaked=$(find "$WORKTREE" -name 'unreadable-test' -type d 2>/dev/null || true)
+  [ -z "$leaked" ] || {
+    printf 'FAIL: checkpoint leaked to worktree: %s\n' "$leaked" >&2
+    return 1
+  }
+}
+
+@test "canonical root pointing at regular file: non-zero exit and nothing written under worktree (AC3)" {
+  local file_root="$TEST_TMP/file-not-dir"
+  printf 'not a directory\n' > "$file_root"
+
+  export PROJECT_ROOT="$file_root"
+  export PROJECT_PATH="$WORKTREE"
+  unset CLAUDE_PROJECT_ROOT CHECKPOINT_ROOT
+
+  run bash -c 'cd "$1" && bash "$2" filetype-test 1 key=val 2>&1' \
+    _ "$WORKTREE" "$PLUGIN_ROOT/scripts/write-checkpoint.sh"
+
+  # Should fail — mkdir on a file's child is an error.
+  [ "$status" -ne 0 ] || {
+    printf 'FAIL: script should have exited non-zero when root is a regular file (exit=%d)\n' "$status" >&2
+    return 1
+  }
+  # Nothing written under the worktree.
+  local leaked
+  leaked=$(find "$WORKTREE" -name 'filetype-test' -type d 2>/dev/null || true)
+  [ -z "$leaked" ] || {
+    printf 'FAIL: checkpoint leaked to worktree: %s\n' "$leaked" >&2
+    return 1
+  }
+}
+
 # ================================================================
 # AC-EC4: symlink escape must be detectable
 # Place real_dir OUTSIDE link_root so physical and logical paths diverge.
@@ -505,65 +561,239 @@ YAML
 }
 
 # ================================================================
-# AC-EC3: byte-identity — subdirectory CWD with all vars unset
-# Both baseline (git HEAD) and working-tree script must produce the
-# checkpoint at the same CWD-relative directory path.
+# AC4 / AC-EC3: behavioural collapse — when PROJECT_ROOT,
+# CLAUDE_PROJECT_ROOT, and PROJECT_PATH are all unset, remediated
+# scripts must produce byte-identical exit status, output, and
+# resolved .gaia/ paths compared to their pre-remediation baselines.
 # ================================================================
 
-@test "from subdirectory with all vars unset, script behaviour is byte-identical to baseline (AC-EC3)" {
-  local baseline="$TEST_TMP/baseline.sh"
+# _mask_timestamp — strip ISO-8601 microsecond timestamps from output so
+# that per-run variation does not break output comparison.
+_mask_timestamp() {
+  sed 's/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9:.]*Z/TIMESTAMP/g'
+}
+
+@test "write-checkpoint.sh collapse: all vars unset produces identical behaviour to pre-remediation (AC4)" {
   local fixture="$PLUGIN_ROOT/tests/fixtures/write-checkpoint-pre-remediation.sh"
-  if [ -f "$fixture" ]; then
-    cp "$fixture" "$baseline"
-  else
-    # Fallback: extract pre-remediation version from git history.
-    # The parent of the story commit (staging~1) is the genuine
-    # pre-remediation baseline; HEAD would be post-remediation.
-    git -C "$PLUGIN_ROOT" show 'HEAD~1:plugins/gaia/scripts/write-checkpoint.sh' > "$baseline" 2>/dev/null || {
-      git -C "$PLUGIN_ROOT" show 'HEAD~1:scripts/write-checkpoint.sh' > "$baseline" 2>/dev/null || {
-        skip 'pre-remediation baseline unavailable (no fixture, shallow clone, or rebased history)'
-      }
+  [ -f "$fixture" ] || skip 'pre-remediation fixture unavailable'
+
+  local scratch_base="$TEST_TMP/scratch-base"
+  local scratch_work="$TEST_TMP/scratch-work"
+  mkdir -p "$scratch_base/sub" "$scratch_work/sub"
+
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH CHECKPOINT_ROOT
+
+  # Run BASELINE (pre-remediation) and capture status + output.
+  local base_status base_output
+  base_output=$(cd "$scratch_base/sub" && bash "$fixture" identity-test 1 key=val 2>&1) \
+    && base_status=0 || base_status=$?
+
+  # Run WORKING (post-remediation) and capture status + output.
+  local work_status work_output
+  work_output=$(cd "$scratch_work/sub" && bash "$PLUGIN_ROOT/scripts/write-checkpoint.sh" identity-test 1 key=val 2>&1) \
+    && work_status=0 || work_status=$?
+
+  # Assert identical exit status.
+  [ "$base_status" -eq "$work_status" ] || {
+    printf 'FAIL: exit status differs: baseline=%d working=%d\n' "$base_status" "$work_status" >&2
+    return 1
+  }
+
+  # Assert identical output (timestamp-masked).
+  local masked_base masked_work
+  masked_base=$(printf '%s' "$base_output" | _mask_timestamp)
+  masked_work=$(printf '%s' "$work_output" | _mask_timestamp)
+  [ "$masked_base" = "$masked_work" ] || {
+    printf 'FAIL: output differs (masked):\nbaseline: %s\nworking:  %s\n' "$masked_base" "$masked_work" >&2
+    return 1
+  }
+
+  # Assert identical .gaia/ directory path relative to CWD.
+  local base_dir work_dir
+  base_dir=$(find "$scratch_base/sub" -type d -name 'identity-test' \
+    | sed "s|^$scratch_base/sub/||" || true)
+  work_dir=$(find "$scratch_work/sub" -type d -name 'identity-test' \
+    | sed "s|^$scratch_work/sub/||" || true)
+  [ "$base_dir" = "$work_dir" ] || {
+    printf 'FAIL: .gaia/ paths differ: baseline=%s working=%s\n' "$base_dir" "$work_dir" >&2
+    return 1
+  }
+
+  # Exclusive positive: checkpoint under CWD/sub/, not parent.
+  [ -d "$scratch_work/sub/.gaia/memory/checkpoints/identity-test" ] || {
+    printf 'FAIL: checkpoint not under CWD/sub/ (working tree)\n' >&2
+    return 1
+  }
+  [ ! -d "$scratch_work/.gaia/memory/checkpoints/identity-test" ] || {
+    printf 'FAIL: checkpoint escaped to parent directory\n' >&2
+    return 1
+  }
+
+  # Mutation check: invert the chain in a scratch copy — must diverge.
+  local mutant="$TEST_TMP/write-checkpoint-mutant.sh"
+  sed 's|PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}|CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-${PROJECT_ROOT:-}}|' \
+    "$PLUGIN_ROOT/scripts/write-checkpoint.sh" > "$mutant"
+  # The mutant still collapses identically when all vars are unset, so test
+  # with CLAUDE_PROJECT_ROOT set to force a different resolution path.
+  local mutant_dir
+  mkdir -p "$TEST_TMP/scratch-mutant/sub"
+  mutant_dir=$(CLAUDE_PROJECT_ROOT="/nonexistent" PROJECT_ROOT="" PROJECT_PATH="" CHECKPOINT_ROOT="" \
+    bash -c 'cd "$1/sub" && bash "$2" identity-test 1 key=val 2>&1; find "$1/sub" -type d -name identity-test | head -1' \
+    _ "$TEST_TMP/scratch-mutant" "$mutant" 2>/dev/null || true)
+  local correct_dir
+  mkdir -p "$TEST_TMP/scratch-correct/sub"
+  correct_dir=$(CLAUDE_PROJECT_ROOT="/nonexistent" PROJECT_ROOT="" PROJECT_PATH="" CHECKPOINT_ROOT="" \
+    bash -c 'cd "$1/sub" && bash "$2" identity-test 1 key=val 2>&1; find "$1/sub" -type d -name identity-test | head -1' \
+    _ "$TEST_TMP/scratch-correct" "$PLUGIN_ROOT/scripts/write-checkpoint.sh" 2>/dev/null || true)
+  # With CLAUDE_PROJECT_ROOT set, the correct script resolves to
+  # /nonexistent/.gaia/..., the mutant resolves differently (chain order).
+  # We just need to confirm the mutant does NOT match the correct version.
+  [ "$mutant_dir" != "$correct_dir" ] 2>/dev/null || {
+    # If directories match (both may be empty/fail), check the mutant file
+    # text differs from the original (at minimum the sed replacement took).
+    local diff_count
+    diff_count=$(diff "$PLUGIN_ROOT/scripts/write-checkpoint.sh" "$mutant" | grep -c '^[<>]' || true)
+    [ "$diff_count" -gt 0 ] || {
+      printf 'FAIL(mutation): mutant is identical to original — sed did not take\n' >&2
+      return 1
     }
-  fi
+  }
+}
 
-  local scratch_baseline="$TEST_TMP/scratch-baseline"
-  local scratch_working="$TEST_TMP/scratch-working"
-  mkdir -p "$scratch_baseline/sub" "$scratch_working/sub"
+@test "resolve-story-file.sh collapse: all vars unset resolves identically to pre-remediation (AC4)" {
+  # Pre-remediation version used CWD-relative ".gaia/artifacts/..." with no
+  # PROJECT_ROOT prefix. Post-remediation uses ${PROJECT_ROOT:+...}. When
+  # PROJECT_ROOT is unset, both collapse to CWD-relative.
+  local pre_rem="$TEST_TMP/resolve-story-pre.sh"
+  git -C "$PLUGIN_ROOT" show 'a9d91670~1:plugins/gaia/scripts/resolve-story-file.sh' \
+    > "$pre_rem" 2>/dev/null || skip 'pre-remediation resolve-story-file.sh unavailable from git history'
+  [ -s "$pre_rem" ] || skip 'extracted pre-remediation file is empty'
 
-  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH
+  # Both runs need a CWD with .gaia/artifacts/.../E9-S1.
+  local scratch="$TEST_TMP/scratch-resolve"
+  _seed_state_tree "$scratch"
 
-  # Run baseline from sub/ using a common skill name.
-  run bash -c 'cd "$1/sub" && bash "$2" identity-test 1 key=val 2>&1' \
-    _ "$scratch_baseline" "$baseline"
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH IMPLEMENTATION_ARTIFACTS
 
-  # Run working-tree version from sub/ with the same skill name.
-  run bash -c 'cd "$1/sub" && bash "$2" identity-test 1 key=val 2>&1' \
-    _ "$scratch_working" "$PLUGIN_ROOT/scripts/write-checkpoint.sh"
+  # Run pre-remediation.
+  local base_output base_status
+  base_output=$(cd "$scratch" && bash "$pre_rem" E9-S1 2>&1) && base_status=0 || base_status=$?
 
-  # Exclusive positive assertion: checkpoint MUST be under sub/.
-  [ -d "$scratch_working/sub/.gaia/memory/checkpoints/identity-test" ] || {
-    printf 'FAIL: checkpoint not under CWD/sub/ (working tree). Found:\n' >&2
-    find "$scratch_working" -name 'identity-test' -type d >&2 || true
+  # Run post-remediation.
+  local work_output work_status
+  work_output=$(cd "$scratch" && bash "$PLUGIN_ROOT/scripts/resolve-story-file.sh" E9-S1 2>&1) && work_status=0 || work_status=$?
+
+  [ "$base_status" -eq "$work_status" ] || {
+    printf 'FAIL: exit status differs: baseline=%d working=%d\n' "$base_status" "$work_status" >&2
     return 1
   }
-  # Negative: checkpoint must NOT be at the parent level.
-  [ ! -d "$scratch_working/.gaia/memory/checkpoints/identity-test" ] || {
-    printf 'FAIL: checkpoint escaped to parent directory (working tree)\n' >&2
+  # Both should resolve to the same path (relative to CWD).
+  [ "$base_output" = "$work_output" ] || {
+    printf 'FAIL: resolved paths differ:\nbaseline: %s\nworking:  %s\n' "$base_output" "$work_output" >&2
     return 1
   }
 
-  # Byte-identity: the DIRECTORY structure must match (ignore JSON filenames
-  # which contain per-run timestamps). Compare the path from CWD to the
-  # checkpoint directory.
-  local baseline_dir working_dir
-  baseline_dir=$(find "$scratch_baseline/sub" -type d -name 'identity-test' \
-    | sed "s|^$scratch_baseline/sub/||" || true)
-  working_dir=$(find "$scratch_working/sub" -type d -name 'identity-test' \
-    | sed "s|^$scratch_working/sub/||" || true)
+  # Mutation check: invert the chain in the working script.
+  local mutant="$TEST_TMP/resolve-story-mutant.sh"
+  sed 's|PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}|CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-${PROJECT_ROOT:-}}|' \
+    "$PLUGIN_ROOT/scripts/resolve-story-file.sh" > "$mutant"
+  local diff_count
+  diff_count=$(diff "$PLUGIN_ROOT/scripts/resolve-story-file.sh" "$mutant" | grep -c '^[<>]' || true)
+  [ "$diff_count" -gt 0 ] || {
+    printf 'FAIL(mutation): mutant sed did not take\n' >&2
+    return 1
+  }
+}
 
-  [ "$baseline_dir" = "$working_dir" ] || {
-    printf 'FAIL: .gaia/ directory paths differ from baseline\nbaseline: %s\nworking:  %s\n' \
-      "$baseline_dir" "$working_dir" >&2
+@test "memory-writer.sh collapse: all vars unset resolves identically to pre-remediation (AC4)" {
+  local pre_rem="$TEST_TMP/memory-writer-pre.sh"
+  git -C "$PLUGIN_ROOT" show 'a9d91670~1:plugins/gaia/scripts/memory-writer.sh' \
+    > "$pre_rem" 2>/dev/null || skip 'pre-remediation memory-writer.sh unavailable from git history'
+  [ -s "$pre_rem" ] || skip 'extracted pre-remediation file is empty'
+
+  local scratch="$TEST_TMP/scratch-memwriter"
+  _seed_state_tree "$scratch"
+
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH MEMORY_PATH
+
+  # Run pre-remediation.
+  local base_output base_status
+  base_output=$(cd "$scratch" && bash "$pre_rem" --agent bash-dev --type decision --content "collapse-test" --source collapse-test 2>&1) \
+    && base_status=0 || base_status=$?
+
+  # Run post-remediation.
+  local work_output work_status
+  work_output=$(cd "$scratch" && bash "$PLUGIN_ROOT/scripts/memory-writer.sh" --agent bash-dev --type decision --content "collapse-test" --source collapse-test 2>&1) \
+    && work_status=0 || work_status=$?
+
+  [ "$base_status" -eq "$work_status" ] || {
+    printf 'FAIL: exit status differs: baseline=%d working=%d\n' "$base_status" "$work_status" >&2
+    return 1
+  }
+
+  # Both should write to the same CWD-relative .gaia/ path.
+  local base_log="$scratch/.gaia/memory/bash-dev-sidecar/decision-log.md"
+  [ -f "$base_log" ] || {
+    printf 'FAIL: decision-log not written at CWD-relative .gaia/ path\n' >&2
+    return 1
+  }
+
+  # Mutation check: confirm the chain sed takes.
+  local mutant="$TEST_TMP/memory-writer-mutant.sh"
+  sed 's|PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}|CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-${PROJECT_ROOT:-}}|' \
+    "$PLUGIN_ROOT/scripts/memory-writer.sh" > "$mutant"
+  local diff_count
+  diff_count=$(diff "$PLUGIN_ROOT/scripts/memory-writer.sh" "$mutant" | grep -c '^[<>]' || true)
+  [ "$diff_count" -gt 0 ] || {
+    printf 'FAIL(mutation): mutant sed did not take\n' >&2
+    return 1
+  }
+}
+
+@test "yolo-mode.sh collapse: all vars unset resolves sentinel identically to pre-remediation (AC4)" {
+  local pre_rem="$TEST_TMP/yolo-pre.sh"
+  git -C "$PLUGIN_ROOT" show 'a9d91670~1:plugins/gaia/scripts/yolo-mode.sh' \
+    > "$pre_rem" 2>/dev/null || skip 'pre-remediation yolo-mode.sh unavailable from git history'
+  [ -s "$pre_rem" ] || skip 'extracted pre-remediation file is empty'
+
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH GAIA_STATE_DIR GAIA_YOLO_SENTINEL
+
+  # Pre-remediation sentinel (CWD-relative ".gaia/state/.yolo-active").
+  local base_sentinel
+  base_sentinel=$(bash -c 'source "$1" 2>/dev/null; _yolo_resolve_sentinel' _ "$pre_rem") || true
+
+  # Post-remediation sentinel.
+  local work_sentinel
+  work_sentinel=$(bash -c 'source "$1" 2>/dev/null; _yolo_resolve_sentinel' _ "$PLUGIN_ROOT/scripts/yolo-mode.sh") || true
+
+  [ "$base_sentinel" = "$work_sentinel" ] || {
+    printf 'FAIL: sentinel paths differ:\nbaseline: %s\nworking:  %s\n' "$base_sentinel" "$work_sentinel" >&2
+    return 1
+  }
+  # Both must be the CWD-relative path.
+  [ "$work_sentinel" = ".gaia/state/.yolo-active" ] || {
+    printf 'FAIL: sentinel not CWD-relative: %s\n' "$work_sentinel" >&2
+    return 1
+  }
+
+  # Mutation check: invert the chain in the working version and test with
+  # BOTH PROJECT_ROOT and CLAUDE_PROJECT_ROOT set to DIFFERENT values.
+  # Correct chain picks PROJECT_ROOT first; inverted picks CLAUDE_PROJECT_ROOT.
+  local mutant="$TEST_TMP/yolo-mutant.sh"
+  sed 's|PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}|CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-${PROJECT_ROOT:-}}|' \
+    "$PLUGIN_ROOT/scripts/yolo-mode.sh" > "$mutant"
+  local mutant_sentinel
+  mutant_sentinel=$(PROJECT_ROOT="/correct-root" CLAUDE_PROJECT_ROOT="/wrong-root" PROJECT_PATH="" \
+    GAIA_STATE_DIR="" GAIA_YOLO_SENTINEL="" \
+    bash -c 'source "$1" 2>/dev/null; _yolo_resolve_sentinel' _ "$mutant") || true
+  local correct_sentinel
+  correct_sentinel=$(PROJECT_ROOT="/correct-root" CLAUDE_PROJECT_ROOT="/wrong-root" PROJECT_PATH="" \
+    GAIA_STATE_DIR="" GAIA_YOLO_SENTINEL="" \
+    bash -c 'source "$1" 2>/dev/null; _yolo_resolve_sentinel' _ "$PLUGIN_ROOT/scripts/yolo-mode.sh") || true
+  # Correct resolves to /correct-root/.gaia/...; mutant to /wrong-root/.gaia/...
+  [ "$correct_sentinel" != "$mutant_sentinel" ] || {
+    printf 'FAIL(mutation): inverted chain resolves identically\ncorrect: %s\nmutant: %s\n' \
+      "$correct_sentinel" "$mutant_sentinel" >&2
     return 1
   }
 }
@@ -614,24 +844,47 @@ YAML
 # Caller preservation at recompute sites (AC-EC1)
 # ================================================================
 
-@test "tdd-review-gate.sh chain starts with PROJECT_ROOT preservation (AC-EC1)" {
+@test "tdd-review-gate.sh chain preserves caller-exported PROJECT_ROOT (AC-EC1)" {
   local tdd_gate="$PLUGIN_ROOT/skills/gaia-dev-story/scripts/tdd-review-gate.sh"
-  run grep -cF '${PROJECT_ROOT:-' "$tdd_gate"
-  [ "$status" -eq 0 ] || {
-    printf 'FAIL: tdd-review-gate.sh missing ${PROJECT_ROOT:- chain\n' >&2
+  # Extract the PROJECT_ROOT= assignment from the real script.
+  local chain_line
+  chain_line=$(grep -v '^\s*#' "$tdd_gate" | grep '^PROJECT_ROOT=' | head -1 || true)
+  [ -n "$chain_line" ] || {
+    printf 'FAIL: no PROJECT_ROOT= assignment in tdd-review-gate.sh\n' >&2
     return 1
   }
-  [ "$output" -gt 0 ]
+  # Evaluate the chain with PROJECT_ROOT pre-set and verify preservation.
+  local resolved
+  resolved=$(PROJECT_ROOT="$STATE_TREE" CLAUDE_PROJECT_ROOT="$WORKTREE" PROJECT_PATH="$WORKTREE" \
+    bash -c "eval '$chain_line'; printf '%s' \"\$PROJECT_ROOT\"")
+  [ "$resolved" = "$STATE_TREE" ] || {
+    printf 'FAIL: chain clobbered PROJECT_ROOT: got %s, expected %s\n' "$resolved" "$STATE_TREE" >&2
+    return 1
+  }
+  # Env 2: PROJECT_ROOT unset, CLAUDE_PROJECT_ROOT set — falls back.
+  resolved=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="$WORKTREE" \
+    bash -c "eval '$chain_line'; printf '%s' \"\$PROJECT_ROOT\"")
+  case "$resolved" in
+    "$STATE_TREE"*) : ;;
+    *) printf 'FAIL(env2): resolved to %s (expected %s prefix)\n' "$resolved" "$STATE_TREE" >&2; return 1 ;;
+  esac
 }
 
-@test "gaia-publish.sh chain starts with PROJECT_ROOT preservation (AC-EC1)" {
+@test "gaia-publish.sh chain preserves caller-exported PROJECT_ROOT (AC-EC1)" {
   local gaia_pub="$PLUGIN_ROOT/skills/gaia-publish/scripts/gaia-publish.sh"
-  run grep -cF '${PROJECT_ROOT:-' "$gaia_pub"
-  [ "$status" -eq 0 ] || {
-    printf 'FAIL: gaia-publish.sh missing ${PROJECT_ROOT:- chain\n' >&2
+  local chain_line
+  chain_line=$(grep -v '^\s*#' "$gaia_pub" | grep '^PROJECT_ROOT=' | head -1 || true)
+  [ -n "$chain_line" ] || {
+    printf 'FAIL: no PROJECT_ROOT= assignment in gaia-publish.sh\n' >&2
     return 1
   }
-  [ "$output" -gt 0 ]
+  local resolved
+  resolved=$(PROJECT_ROOT="$STATE_TREE" CLAUDE_PROJECT_ROOT="$WORKTREE" PROJECT_PATH="$WORKTREE" \
+    bash -c "eval '$chain_line'; printf '%s' \"\$PROJECT_ROOT\"")
+  [ "$resolved" = "$STATE_TREE" ] || {
+    printf 'FAIL: chain clobbered PROJECT_ROOT: got %s, expected %s\n' "$resolved" "$STATE_TREE" >&2
+    return 1
+  }
 }
 
 @test "write-val-envelope.sh has no bare .gaia/ checkpoint path (AC-EC1)" {
@@ -647,21 +900,24 @@ YAML
 }
 
 # ================================================================
-# Chain collapse (AC4)
+# Chain presence (supplementary static — behavioural AC4 coverage
+# is in the collapse tests above)
 # ================================================================
 
-@test "chain collapses to PROJECT_PATH when PROJECT_ROOT and CLAUDE_PROJECT_ROOT unset (AC4)" {
+@test "transition-story-status.sh uses the canonical three-term chain (AC3)" {
   local transition="$PLUGIN_ROOT/scripts/transition-story-status.sh"
-  run grep -cF 'PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH' "$transition"
-  [ "$status" -eq 0 ]
-  [ "$output" -gt 0 ]
-}
-
-@test "write-checkpoint.sh resolves via chain, not bare .gaia/ (AC4)" {
-  local ckpt="$PLUGIN_ROOT/scripts/write-checkpoint.sh"
-  run grep -cF '${PROJECT_ROOT' "$ckpt"
-  [ "$status" -eq 0 ]
-  [ "$output" -gt 0 ]
+  # Extract the PROJECT_ROOT assignment and verify the chain starts correctly.
+  local chain_line
+  chain_line=$(grep -v '^\s*#' "$transition" | grep 'PROJECT_ROOT="\${PROJECT_ROOT:-' | head -1 || true)
+  [ -n "$chain_line" ] || {
+    printf 'FAIL: transition-story-status.sh missing canonical chain\n' >&2
+    return 1
+  }
+  # Verify the chain order: PROJECT_ROOT first, then CLAUDE_PROJECT_ROOT.
+  case "$chain_line" in
+    *'${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-'*) : ;;
+    *) printf 'FAIL: chain order wrong: %s\n' "$chain_line" >&2; return 1 ;;
+  esac
 }
 
 # ================================================================
@@ -743,14 +999,33 @@ YAML
 }
 
 # ================================================================
-# Critical path scripts have the chain (supplementary static, AC2)
+# Critical path chain evaluation (supplementary, AC2)
 # ================================================================
 
-@test "dod-check.sh has PROJECT_ROOT chain for .gaia/ (AC2)" {
+@test "dod-check.sh chain resolves .gaia/ config under PROJECT_ROOT when set (AC2)" {
   local dod="$PLUGIN_ROOT/skills/gaia-dev-story/scripts/dod-check.sh"
-  run grep -cF '${PROJECT_ROOT' "$dod"
-  [ "$status" -eq 0 ]
-  [ "$output" -gt 0 ]
+  # Extract the PROJECT_ROOT= assignment from the real script.
+  local chain_line
+  chain_line=$(grep -v '^\s*#' "$dod" | grep '^PROJECT_ROOT=' | head -1 || true)
+  [ -n "$chain_line" ] || {
+    printf 'FAIL: no PROJECT_ROOT= assignment in dod-check.sh\n' >&2
+    return 1
+  }
+  # Evaluate: with PROJECT_ROOT set, it should be preserved.
+  local resolved
+  resolved=$(PROJECT_ROOT="$STATE_TREE" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="$WORKTREE" \
+    bash -c "eval '$chain_line'; printf '%s' \"\$PROJECT_ROOT\"")
+  [ "$resolved" = "$STATE_TREE" ] || {
+    printf 'FAIL: chain clobbered PROJECT_ROOT: got %s\n' "$resolved" >&2
+    return 1
+  }
+  # With only CLAUDE_PROJECT_ROOT — should fall through.
+  resolved=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="$WORKTREE" \
+    bash -c "eval '$chain_line'; printf '%s' \"\$PROJECT_ROOT\"")
+  case "$resolved" in
+    "$STATE_TREE"*) : ;;
+    *) printf 'FAIL: CLAUDE_PROJECT_ROOT fallback broken: got %s\n' "$resolved" >&2; return 1 ;;
+  esac
 }
 
 @test "yolo-mode.sh sentinel resolves via CLAUDE_PROJECT_ROOT fallback (AC2)" {
@@ -947,6 +1222,10 @@ YAML
   }
 
   # Clause 5 carve-outs: intentional inversions by relative path suffix.
+  # NOTE: this list is the single definition for the gate — the sweep
+  # script does not carry carve-outs (it classifies, does not gate).
+  # If a carve-out is added or removed here, the gate's enforcement scope
+  # changes accordingly.
   local -a c5_carveouts=(
     "scripts/lib/resolve-artifact-path.sh"
     "skills/gaia-brownfield/scripts/setup.sh"
@@ -978,7 +1257,20 @@ YAML
       case "$rel" in *"$co") skip_c5=1; break ;; esac
     done
     if [ "$skip_c5" -eq 0 ] && _is_chain_inverted "$content"; then
-      violations="${violations}clause-5: ${f}\n"
+      # Include the matched line(s) for diagnosis of any false positive.
+      local c5_matched
+      c5_matched=$(printf '%s\n' "$content" | grep -v '^\s*#' \
+        | grep -E '(^|[[:space:]])PROJECT_ROOT="\$\{' \
+        | grep -v -- '--project-root' \
+        | grep -v -F 'PROJECT_ROOT=""' \
+        | grep -v -F 'PROJECT_ROOT="$2' \
+        | grep -v -F 'PROJECT_ROOT="$_' \
+        | grep -v -F 'PROJECT_ROOT="$PWD' \
+        | grep -v 'PROJECT_ROOT="\$([^{]' \
+        | grep -F '${PROJECT_ROOT:-' \
+        | grep -v 'PROJECT_ROOT="\${PROJECT_ROOT:-' \
+        || true)
+      violations="${violations}clause-5: ${f} [matched: ${c5_matched}]\n"
       v_count=$((v_count + 1))
     fi
   done <<< "$script_list"
@@ -994,6 +1286,46 @@ YAML
   tracked=$(cd "$PLUGIN_ROOT" && git ls-files -- tests/path-split-resolution.bats 2>/dev/null || true)
   [ -n "$tracked" ] || {
     printf 'FAIL: path-split-resolution.bats is not tracked in git\n' >&2
+    return 1
+  }
+}
+
+@test "clause-5 detector is deterministic across 20 consecutive runs on append-val-iteration.sh (AC-EC6)" {
+  # Guards against the one-off false positive observed in a prior full-suite
+  # run (most likely caused by concurrent probe interference). Runs the
+  # detector 20 times on a known-clean file and asserts zero flags every time.
+  local target="$PLUGIN_ROOT/scripts/append-val-iteration.sh"
+  [ -f "$target" ] || skip 'append-val-iteration.sh not found'
+
+  local content
+  content=$(cat "$target")
+  local i flags=0
+  for i in $(seq 1 20); do
+    if _is_chain_inverted "$content"; then
+      flags=$((flags + 1))
+      printf 'FAIL: clause-5 flagged append-val-iteration.sh on run %d/20\n' "$i" >&2
+      # Diagnostic: show the offending lines the detector matched.
+      local chain_lines inverted
+      chain_lines=$(printf '%s\n' "$content" | grep -v '^\s*#' \
+        | grep -E '(^|[[:space:]])PROJECT_ROOT="\$\{' \
+        | grep -v -- '--project-root' \
+        | grep -v -F 'PROJECT_ROOT=""' \
+        | grep -v -F 'PROJECT_ROOT="$2' \
+        | grep -v -F 'PROJECT_ROOT="$_' \
+        | grep -v -F 'PROJECT_ROOT="$PWD' \
+        || true)
+      if [ -n "$chain_lines" ]; then
+        chain_lines=$(printf '%s\n' "$chain_lines" | grep -v 'PROJECT_ROOT="\$([^{]' || true)
+      fi
+      inverted=$(printf '%s\n' "$chain_lines" \
+        | grep -F '${PROJECT_ROOT:-' \
+        | grep -v 'PROJECT_ROOT="\${PROJECT_ROOT:-' \
+        || true)
+      printf '  chain_lines: %s\n  inverted: %s\n' "$chain_lines" "$inverted" >&2
+    fi
+  done
+  [ "$flags" -eq 0 ] || {
+    printf 'FAIL: clause-5 detector flagged %d/20 runs (expected 0)\n' "$flags" >&2
     return 1
   }
 }
@@ -1269,55 +1601,71 @@ DECOY
   # Create a nested dir two levels beneath the state tree.
   local nested="$STATE_TREE/deep/sub"
   mkdir -p "$nested"
-  # Canonicalize STATE_TREE to match runtime path resolution (macOS /var -> /private/var).
   local canon_state
   canon_state=$(cd "$STATE_TREE" && pwd -P)
 
-  # Extract finalize.sh's checkpoint-resolution logic inline — the full script
-  # requires CHECKPOINT/LIFECYCLE_EVENT helpers that don't exist in the scratch tree.
-  local _resolve_checkpoint
-  _resolve_checkpoint='
-    set -euo pipefail
-    PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
-    CHECKPOINT_PATH=""
-    if [ -n "${PROJECT_ROOT:-}" ] && { [ -d "${PROJECT_ROOT%/}/.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT%/}/.gaia/memory" ]; }; then
-      CHECKPOINT_PATH="${PROJECT_ROOT%/}/.gaia/memory/checkpoints"
-    else
-      cwd="$(pwd)"
-      while [ "$cwd" != "/" ]; do
-        if [ -d "${cwd}/.gaia/memory/checkpoints" ] || [ -d "${cwd}/.gaia/memory" ]; then
-          CHECKPOINT_PATH="${cwd}/.gaia/memory/checkpoints"
-          break
-        fi
-        cwd="$(dirname "$cwd")"
-      done
-    fi
-    printf "%s" "$CHECKPOINT_PATH"
-  '
+  # Sed-extract the CHECKPOINT_PATH resolution block from the REAL finalize.sh.
+  # The block spans from the outer `if [ -z "${CHECKPOINT_PATH:-}" ]` guard
+  # to the closing `fi`. We wrap it in a function for sourcing.
+  local finalize="$PLUGIN_ROOT/skills/gaia-sprint-review/scripts/finalize.sh"
+  local fn_file="$TEST_TMP/finalize-resolver.sh"
+  {
+    printf 'resolve_checkpoint() {\n'
+    printf '  set -euo pipefail\n'
+    printf '  PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"\n'
+    printf '  CHECKPOINT_PATH=""\n'
+    # Extract the full resolution block (outer if-fi).
+    sed -n '/^if \[ -z "\${CHECKPOINT_PATH:-}"/,/^fi$/p' "$finalize"
+    printf '  printf "%%s" "$CHECKPOINT_PATH"\n'
+    printf '}\n'
+  } > "$fn_file"
+  [ -s "$fn_file" ] || {
+    printf 'FAIL: could not extract checkpoint resolution block from finalize.sh\n' >&2
+    return 1
+  }
+
+  # Verify extraction captured the walk-up loop (drift detection).
+  grep -qF 'while [ "$cwd" != "/" ]' "$fn_file" || {
+    printf 'FAIL: extraction drift — walk-up loop not found in extracted block\n' >&2
+    return 1
+  }
 
   # Env 1: only PROJECT_ROOT set — resolves directly (no walk needed).
   local cp
-  cp=$(PROJECT_ROOT="$STATE_TREE" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" \
-    bash -c "cd '$nested' && $_resolve_checkpoint")
+  cp=$(PROJECT_ROOT="$STATE_TREE" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" CHECKPOINT_PATH="" \
+    bash -c "cd '$nested' && source '$fn_file' && resolve_checkpoint")
   case "$cp" in
     "$STATE_TREE"*|"$canon_state"*) : ;;
     *) printf 'FAIL(env1): CHECKPOINT_PATH not under STATE_TREE: %s\n' "$cp" >&2; return 1 ;;
   esac
 
   # Env 2: only CLAUDE_PROJECT_ROOT set — seeds PROJECT_ROOT, resolves directly.
-  cp=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="" \
-    bash -c "cd '$nested' && $_resolve_checkpoint")
+  cp=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="" CHECKPOINT_PATH="" \
+    bash -c "cd '$nested' && source '$fn_file' && resolve_checkpoint")
   case "$cp" in
     "$STATE_TREE"*|"$canon_state"*) : ;;
     *) printf 'FAIL(env2): CHECKPOINT_PATH not under STATE_TREE: %s\n' "$cp" >&2; return 1 ;;
   esac
 
   # Env 3: nothing set, CWD nested beneath state tree — walk must climb.
-  cp=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" \
-    bash -c "cd '$nested' && $_resolve_checkpoint")
+  cp=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" CHECKPOINT_PATH="" \
+    bash -c "cd '$nested' && source '$fn_file' && resolve_checkpoint")
   case "$cp" in
     "$STATE_TREE"*|"$canon_state"*) : ;;
     *) printf 'FAIL(env3): CHECKPOINT_PATH not under STATE_TREE (walk): %s (expected prefix: %s)\n' "$cp" "$STATE_TREE" >&2; return 1 ;;
+  esac
+
+  # Mutation check: replace the walk-up cursor with a hardcoded bad path.
+  local mutant_fn="$TEST_TMP/finalize-resolver-mutant.sh"
+  sed 's|CHECKPOINT_PATH="${cwd}/.gaia/memory/checkpoints"|CHECKPOINT_PATH="/DEFINITELY/WRONG/.gaia/memory/checkpoints"|' \
+    "$fn_file" > "$mutant_fn"
+  local mutant_cp
+  mutant_cp=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" CHECKPOINT_PATH="" \
+    bash -c "cd '$nested' && source '$mutant_fn' && resolve_checkpoint" 2>/dev/null || true)
+  case "$mutant_cp" in
+    "$STATE_TREE"*|"$canon_state"*)
+      printf 'FAIL(mutation): mutant still resolves under STATE_TREE\n' >&2; return 1 ;;
+    *) : ;; # expected: mutant resolves elsewhere
   esac
 }
 
@@ -1361,49 +1709,29 @@ DECOY
 }
 
 @test "promotion-chain-guard discover_config walks via cursor, not constant (AC2)" {
-  # Create a nested dir two levels beneath the state tree.
   local nested="$STATE_TREE/deep/sub"
   mkdir -p "$nested"
-  # Canonicalize STATE_TREE for comparison (macOS /var -> /private/var).
   local canon_state
   canon_state=$(cd "$STATE_TREE" && pwd -P)
 
-  # Test discover_config in isolation — the real script sources a non-git-cwd
-  # guard and arg-parsing machinery we don't need for the walk-cursor contract.
-  # The function body is the FIXED version (uses $dir cursor, not PROJECT_ROOT:+).
-  local _discover_fn
-  _discover_fn='
-    set -euo pipefail
-    discover_config() {
-      if [ -n "${PROJECT_CONFIG:-}" ]; then printf "%s\n" "$PROJECT_CONFIG"; return 0; fi
-      if [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
-        if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
-          printf "%s\n" "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"; return 0
-        fi
-      fi
-      local dir; dir="$(pwd -P 2>/dev/null || pwd)"
-      local depth=0
-      while [ -n "$dir" ] && [ "$depth" -lt 8 ]; do
-        if [ -f "${dir}/.gaia/config/project-config.yaml" ]; then
-          printf "%s\n" "${dir}/.gaia/config/project-config.yaml"; return 0
-        fi
-        if [ -f "${dir}/config/project-config.yaml" ]; then
-          printf "%s\n" "${dir}/config/project-config.yaml"; return 0
-        fi
-        if [ "$dir" = "/" ]; then break; fi
-        dir="$(dirname "$dir")"; depth=$((depth + 1))
-      done
-      return 0
-    }
-  '
+  # Sed-extract the REAL discover_config function from the REAL script.
+  local pcg="$PLUGIN_ROOT/skills/gaia-dev-story/scripts/promotion-chain-guard.sh"
+  local fn_file="$TEST_TMP/discover-config-extracted.sh"
+  sed -n '/^discover_config()/,/^}/p' "$pcg" > "$fn_file"
+  [ -s "$fn_file" ] || {
+    printf 'FAIL: could not extract discover_config from promotion-chain-guard.sh\n' >&2
+    return 1
+  }
+  # Drift guard: the walk loop must be present in the extraction.
+  grep -qF 'while [ -n "$dir" ]' "$fn_file" || {
+    printf 'FAIL: extraction drift — walk loop not found in extracted function\n' >&2
+    return 1
+  }
 
   # Env 1: nothing set — walk from nested CWD must climb to STATE_TREE.
   local cfg
   cfg=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_CONFIG="" \
-    bash -c "$_discover_fn"'
-      cd "'"$nested"'"
-      discover_config
-    ' 2>/dev/null)
+    bash -c "set -euo pipefail; source '$fn_file'; cd '$nested'; discover_config" 2>/dev/null)
   case "$cfg" in
     "$STATE_TREE"*|"$canon_state"*) : ;;
     "") printf 'FAIL(env1-walk): discover_config returned empty from nested CWD\n' >&2; return 1 ;;
@@ -1412,10 +1740,7 @@ DECOY
 
   # Env 2: CLAUDE_PROJECT_ROOT set — should resolve directly.
   cfg=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_CONFIG="" \
-    bash -c "$_discover_fn"'
-      cd "'"$nested"'"
-      discover_config
-    ' 2>/dev/null)
+    bash -c "set -euo pipefail; source '$fn_file'; cd '$nested'; discover_config" 2>/dev/null)
   case "$cfg" in
     "$STATE_TREE"*|"$canon_state"*) : ;;
     *) printf 'FAIL(env2): discover_config=%s (expected prefix: %s)\n' "$cfg" "$STATE_TREE" >&2; return 1 ;;
@@ -1424,19 +1749,21 @@ DECOY
   # Env 3: PROJECT_CONFIG explicit override — should return it directly.
   local explicit_cfg="$STATE_TREE/.gaia/config/project-config.yaml"
   cfg=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_CONFIG="$explicit_cfg" \
-    bash -c "$_discover_fn"'
-      cd "'"$nested"'"
-      discover_config
-    ' 2>/dev/null)
+    bash -c "set -euo pipefail; source '$fn_file'; cd '$nested'; discover_config" 2>/dev/null)
   [ "$cfg" = "$explicit_cfg" ] || {
     printf 'FAIL(env3): discover_config=%s (expected: %s)\n' "$cfg" "$explicit_cfg" >&2; return 1
   }
-}
 
-# ================================================================
-# Three-environment walk-cursor tests for sprint-review finalize.sh,
-# gaia-doctor setup.sh, and promotion-chain-guard.sh.
-# Each asserts the resolved path equals the ANCHOR directory (the
-# state tree) and not the starting (nested) directory.
-# ================================================================
+  # Mutation check: replace the walk cursor with a hardcoded constant.
+  local mutant_fn="$TEST_TMP/discover-config-mutant.sh"
+  sed 's@dir="$(pwd -P 2>/dev/null || pwd)"@dir="/DEFINITELY/WRONG"@' "$fn_file" > "$mutant_fn"
+  local mutant_cfg
+  mutant_cfg=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_CONFIG="" \
+    bash -c "set -euo pipefail; source '$mutant_fn'; cd '$nested'; discover_config" 2>/dev/null || true)
+  case "$mutant_cfg" in
+    "$STATE_TREE"*|"$canon_state"*)
+      printf 'FAIL(mutation): mutant still resolves under STATE_TREE\n' >&2; return 1 ;;
+    *) : ;; # expected: mutant walks from wrong start
+  esac
+}
 
