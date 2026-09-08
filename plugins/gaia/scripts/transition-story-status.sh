@@ -77,6 +77,9 @@ RESOLVE_EPIC_SLUG_LIB="$LIB_DIR/resolve-epic-slug.sh"
 # shellcheck source=lib/story-state-machine.sh
 . "$STATE_MACHINE_LIB"
 
+# shellcheck source=lib/acquire-lock.sh
+. "${LIB_DIR}/acquire-lock.sh"
+
 # Sourced for resolve_epic_slug() used to derive the per-epic
 # story-index.yaml location. The library is sourceable with zero side
 # effects; the canonical-layout slug-derivation algorithm single-sources
@@ -1485,15 +1488,24 @@ fi
 # override STORY_INDEX_YAML wins unconditionally for tests / brownfield.
 STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$EPIC_KEY_FOR_SLUG")"
 
-# Acquire the cross-file lock.
+# Acquire the cross-file lock via the shared helper (flock fast path or
+# set -C fallback when flock is absent — macOS default).
 mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
-exec 200>"$STORY_STATUS_LOCK"
-if command -v flock >/dev/null 2>&1; then
-  if ! flock -w 5 200; then
-    err "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly"
-    exit 6
-  fi
+if ! acquire_lock "$STORY_STATUS_LOCK" 5 200; then
+  err "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly"
+  exit 6
 fi
+
+# Single exit handler — every trap installation calls this. Idempotent
+# (per-fd registry cleared on first release).
+_tss_release_lock() {
+  release_lock 200 2>/dev/null || true
+  # Re-touch the sentinel so the lock file exists post-run.
+  # Under flock mode, the file persists (kernel-level lock released on fd
+  # close). Under fallback mode, release_lock removes the PID-carrying file
+  # and this touch restores a zero-byte sentinel.
+  touch "$STORY_STATUS_LOCK" 2>/dev/null || true
+}
 
 CURRENT_STATUS="$(read_frontmatter_status "$STORY_FILE")"
 
@@ -1690,6 +1702,7 @@ rollback() {
 TSS_ROLLBACK_PENDING=1
 trap '
   rc=$?
+  _tss_release_lock
   if [ "${TSS_ROLLBACK_PENDING:-0}" = "1" ] && [ $rc -ne 0 ]; then
     rollback
     _cleanup_tmps
@@ -1717,7 +1730,7 @@ TSS_ROLLBACK_PENDING=0
 # Restore the plain _cleanup_tmps EXIT trap so any later failure
 # (e.g., during marker write) still cleans orphan tmps. Slots cleared above
 # make this a no-op on the happy path.
-trap '_cleanup_tmps' EXIT
+trap '_tss_release_lock; _cleanup_tmps' EXIT
 
 # Emit the state_transition lifecycle event AFTER the commit so a logged event
 # always corresponds to a durably-written transition. This is the sixth

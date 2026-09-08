@@ -226,6 +226,10 @@ core	issue-1395-brownfield-walkthrough-tier2.bats
 core	issue-1396-test-strategy-artifact-home.bats
 core	issue-1405-epic-key-normalization.bats
 core	lint-bats-script-refs.bats
+core	lock-helper.bats
+core	lock-review-gate-ledger.bats
+core	lock-sprint-state.bats
+core	lock-story-status.bats
 core	manual-test-docs.bats
 core	meeting-dispatch-envelope-assertion.bats
 core	meeting-dispatch-provenance-integration.bats

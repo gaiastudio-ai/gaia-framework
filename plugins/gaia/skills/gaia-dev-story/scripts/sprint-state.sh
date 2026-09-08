@@ -130,6 +130,8 @@ CANONICAL_STATES=(
 _SSM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/story-state-machine.sh
 . "${_SSM_DIR}/lib/story-state-machine.sh"
+# shellcheck source=lib/acquire-lock.sh
+. "${_SSM_DIR}/lib/acquire-lock.sh"
 unset _SSM_DIR
 
 # ---------- Helpers ----------
@@ -962,34 +964,14 @@ cmd_transition() {
   # invocation without reading source.
   assert_canonical_state "$to_state" "transition --to"
 
-  local flock_bin
-  flock_bin=$(command -v flock || true)
-
-  if [ -n "$flock_bin" ]; then
-    (
-      exec 9>"$SPRINT_STATUS_LOCK"
-      if ! "$flock_bin" -x -w 5 9; then
-        die "flock timeout acquiring $SPRINT_STATUS_LOCK"
-      fi
-      do_transition_locked "$story_key" "$to_state"
-    )
-  else
-    # mv-based spin-loop fallback — same pattern as sibling foundation
-    # scripts (checkpoint.sh, lifecycle-event.sh, review-gate.sh).
-    local tries=0
-    while ! ( set -C; : > "$SPRINT_STATUS_LOCK" ) 2>/dev/null; do
-      tries=$((tries + 1))
-      if [ "$tries" -ge 50 ]; then
-        die "lock timeout acquiring $SPRINT_STATUS_LOCK"
-      fi
-      sleep 0.1 2>/dev/null || sleep 1
-    done
-    # shellcheck disable=SC2064
-    trap "rm -f '$SPRINT_STATUS_LOCK'" EXIT INT TERM
+  (
+    if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
+      die "lock timeout acquiring $SPRINT_STATUS_LOCK"
+    fi
+    trap 'release_lock 9 2>/dev/null || true' EXIT
     do_transition_locked "$story_key" "$to_state"
-    rm -f "$SPRINT_STATUS_LOCK"
-    trap - EXIT INT TERM
-  fi
+    release_lock 9
+  )
 }
 
 # ---------- Subcommand: inject ----------
@@ -1337,32 +1319,14 @@ cmd_inject() {
     fi
   fi
 
-  local flock_bin
-  flock_bin=$(command -v flock || true)
-
-  if [ -n "$flock_bin" ]; then
-    (
-      exec 9>"$SPRINT_STATUS_LOCK"
-      if ! "$flock_bin" -x -w 5 9; then
-        die "flock timeout acquiring $SPRINT_STATUS_LOCK"
-      fi
-      do_inject_locked "$story_key"
-    )
-  else
-    local tries=0
-    while ! ( set -C; : > "$SPRINT_STATUS_LOCK" ) 2>/dev/null; do
-      tries=$((tries + 1))
-      if [ "$tries" -ge 50 ]; then
-        die "lock timeout acquiring $SPRINT_STATUS_LOCK"
-      fi
-      sleep 0.1 2>/dev/null || sleep 1
-    done
-    # shellcheck disable=SC2064
-    trap "rm -f '$SPRINT_STATUS_LOCK'" EXIT INT TERM
+  (
+    if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
+      die "lock timeout acquiring $SPRINT_STATUS_LOCK"
+    fi
+    trap 'release_lock 9 2>/dev/null || true' EXIT
     do_inject_locked "$story_key"
-    rm -f "$SPRINT_STATUS_LOCK"
-    trap - EXIT INT TERM
-  fi
+    release_lock 9
+  )
 }
 
 # ---------- Subcommand: reconcile ----------
@@ -1593,51 +1557,35 @@ EOF
 cmd_reconcile() {
   local dry_run="$1"
 
-  local flock_bin
-  flock_bin=$(command -v flock || true)
-
   mkdir -p "$(dirname "$SPRINT_STATUS_LOCK")" 2>/dev/null || true
 
-  # Counters persisted across the flock subshell via a side-channel file.
+  # Counters persisted across the subshell via a side-channel file.
   # The subshell writes counters on successful run; the outer shell reads
   # them back tolerantly (a missing or partial file yields zero counters
   # rather than a `set -e` abort). The `|| true` on `read` is load-bearing:
   # printf without a trailing newline makes `read` return non-zero at EOF,
   # which under `set -e` would kill the whole reconcile on Linux/bash 5.
-  if [ -n "$flock_bin" ]; then
-    set +e
-    (
-      exec 9>"$SPRINT_STATUS_LOCK" || exit 1
-      "$flock_bin" -x -w 10 9 || exit 1
-      do_reconcile_locked "$dry_run"
-      printf '%s %s %s\n' "$RECONCILE_CHECKED" "$RECONCILE_DIVERGENCES" "$RECONCILE_ERRORS" \
-        > "${SPRINT_STATUS_LOCK}.result"
-    )
-    local sub_rc=$?
-    set -e
-    if [ "$sub_rc" -ne 0 ] && [ ! -f "${SPRINT_STATUS_LOCK}.result" ]; then
-      die "reconcile failed inside flock critical section (rc=$sub_rc)"
+  set +e
+  (
+    if ! acquire_lock "$SPRINT_STATUS_LOCK" 10 9; then
+      exit 1
     fi
-    if [ -f "${SPRINT_STATUS_LOCK}.result" ]; then
-      # shellcheck disable=SC2034
-      read -r RECONCILE_CHECKED RECONCILE_DIVERGENCES RECONCILE_ERRORS \
-        < "${SPRINT_STATUS_LOCK}.result" || true
-      rm -f "${SPRINT_STATUS_LOCK}.result"
-    fi
-  else
-    local tries=0
-    while ! ( set -C; : > "$SPRINT_STATUS_LOCK" ) 2>/dev/null; do
-      tries=$((tries + 1))
-      if [ "$tries" -ge 50 ]; then
-        die "lock timeout acquiring $SPRINT_STATUS_LOCK"
-      fi
-      sleep 0.1 2>/dev/null || sleep 1
-    done
-    # shellcheck disable=SC2064
-    trap "rm -f '$SPRINT_STATUS_LOCK'" EXIT INT TERM
+    trap 'release_lock 9 2>/dev/null || true' EXIT
     do_reconcile_locked "$dry_run"
-    rm -f "$SPRINT_STATUS_LOCK"
-    trap - EXIT INT TERM
+    printf '%s %s %s\n' "$RECONCILE_CHECKED" "$RECONCILE_DIVERGENCES" "$RECONCILE_ERRORS" \
+      > "${SPRINT_STATUS_LOCK}.result"
+    release_lock 9
+  )
+  local sub_rc=$?
+  set -e
+  if [ "$sub_rc" -ne 0 ] && [ ! -f "${SPRINT_STATUS_LOCK}.result" ]; then
+    die "reconcile failed inside flock critical section (rc=$sub_rc)"
+  fi
+  if [ -f "${SPRINT_STATUS_LOCK}.result" ]; then
+    # shellcheck disable=SC2034
+    read -r RECONCILE_CHECKED RECONCILE_DIVERGENCES RECONCILE_ERRORS \
+      < "${SPRINT_STATUS_LOCK}.result" || true
+    rm -f "${SPRINT_STATUS_LOCK}.result"
   fi
 
   # Summary line.
@@ -2219,32 +2167,14 @@ cmd_record_escalation_override() {
   [ -n "$user" ]    || die "record-escalation-override requires --user <name>"
   [ -n "$reason" ]  || die "record-escalation-override requires --reason <text>"
 
-  local flock_bin
-  flock_bin=$(command -v flock || true)
-
-  if [ -n "$flock_bin" ]; then
-    (
-      exec 9>"$SPRINT_STATUS_LOCK"
-      if ! "$flock_bin" -x -w 5 9; then
-        die "flock timeout acquiring $SPRINT_STATUS_LOCK"
-      fi
-      do_record_override_locked "$ids_raw" "$user" "$reason"
-    )
-  else
-    local tries=0
-    while ! ( set -C; : > "$SPRINT_STATUS_LOCK" ) 2>/dev/null; do
-      tries=$((tries + 1))
-      if [ "$tries" -ge 50 ]; then
-        die "lock timeout acquiring $SPRINT_STATUS_LOCK"
-      fi
-      sleep 0.1 2>/dev/null || sleep 1
-    done
-    # shellcheck disable=SC2064
-    trap "rm -f '$SPRINT_STATUS_LOCK'" EXIT INT TERM
+  (
+    if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
+      die "lock timeout acquiring $SPRINT_STATUS_LOCK"
+    fi
+    trap 'release_lock 9 2>/dev/null || true' EXIT
     do_record_override_locked "$ids_raw" "$user" "$reason"
-    rm -f "$SPRINT_STATUS_LOCK"
-    trap - EXIT INT TERM
-  fi
+    release_lock 9
+  )
 }
 
 # ---------- Subcommand: detect-auto-close ----------
@@ -2438,10 +2368,8 @@ _rollover_one() {
     return 1
   fi
 
-  # Per-story flock. Reuse the same .lock suffix pattern as transition.
+  # Per-story lock. Reuse the same .lock suffix pattern as transition.
   local lock_file="${story_file}.rollover.lock"
-  local flock_bin
-  flock_bin=$(command -v flock || true)
 
   _rollover_with_lock() {
     # Rewrite sprint_id in-place. Two cases:
@@ -2492,21 +2420,23 @@ _rollover_one() {
   }
 
   local rc=0
-  if [ -n "$flock_bin" ]; then
-    (
-      exec 9>"$lock_file"
-      if ! "$flock_bin" -x -w 5 9; then
-        die "flock timeout acquiring $lock_file"
-      fi
-      _rollover_with_lock
-    )
-    rc=$?
-  else
+  (
+    if ! acquire_lock "$lock_file" 5 9; then
+      die "lock timeout acquiring $lock_file"
+    fi
+    trap 'release_lock 9 2>/dev/null || true' EXIT
+    # AUDITED NESTED-LOCK EXCEPTION: _rollover_with_lock calls cmd_inject,
+    # which acquires $SPRINT_STATUS_LOCK on fd 9 in its own subshell. No fd
+    # aliasing: this subshell's fd 9 (.rollover.lock) and cmd_inject's fd 9
+    # ($SPRINT_STATUS_LOCK) live in separate processes. Lock ordering:
+    # per-story .rollover.lock first, then sprint-status second. Reverse
+    # ordering cannot occur — cmd_inject's other caller (the dispatch at
+    # main) holds no per-story lock. Any future nested-lock site must
+    # verify ordering to prevent deadlock.
     _rollover_with_lock
-    rc=$?
-  fi
-
-  rm -f "$lock_file"
+    release_lock 9
+  )
+  rc=$?
   return $rc
 }
 
@@ -3097,10 +3027,8 @@ _cmd_set_story_sprint() {
       ;;
   esac
 
-  # Acquire a per-story flock and rewrite ONLY the sprint_id: line.
+  # Acquire a per-story lock and rewrite ONLY the sprint_id: line.
   local lock_file="${STORY_FILE}.set-sprint.lock"
-  local flock_bin
-  flock_bin=$(command -v flock || true)
 
   _rewrite_sprint_id() {
     local tmp
@@ -3132,21 +3060,17 @@ _cmd_set_story_sprint() {
   }
 
   local rc=0
-  if [ -n "$flock_bin" ]; then
-    (
-      exec 9>"$lock_file"
-      if ! "$flock_bin" -x -w 5 9; then
-        die "flock timeout acquiring $lock_file"
-      fi
-      _rewrite_sprint_id
-    )
-    rc=$?
-  else
+  set +e
+  (
+    if ! acquire_lock "$lock_file" 5 9; then
+      die "lock timeout acquiring $lock_file"
+    fi
+    trap 'release_lock 9 2>/dev/null || true' EXIT
     _rewrite_sprint_id
-    rc=$?
-  fi
-
-  rm -f "$lock_file"
+    release_lock 9
+  )
+  rc=$?
+  set -e
   if [ "$rc" -ne 0 ]; then
     die "set-story-sprint: failed to rewrite sprint_id in $STORY_FILE"
   fi
@@ -3305,6 +3229,12 @@ main() {
     SPRINT_STATE_SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
   fi
   resolve_paths
+
+  # Fail-closed parallel policy: refuse when flock is unavailable and
+  # parallel execution is requested.
+  if [ "${GAIA_PARALLEL_EXECUTION:-}" = "1" ]; then
+    require_flock_for_parallel || die "parallel execution aborted: flock unavailable"
+  fi
 
   # ---------- Startup orphan-tmp sweep ----------
   #
