@@ -32,7 +32,7 @@ if [ -z "$PROJECT_ROOT" ]; then
   # Walk up looking for the canonical anchor.
   _walk="$PWD"
   while [ -n "$_walk" ] && [ "$_walk" != "/" ] && [ "$_walk" != "$HOME" ]; do
-    if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    if [ -f "${_walk}/.gaia/config/project-config.yaml" ]; then
       PROJECT_ROOT="$_walk"
       break
     fi

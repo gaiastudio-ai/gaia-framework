@@ -89,8 +89,8 @@ discover_config() {
   dir="$(pwd -P 2>/dev/null || pwd)"
   local depth=0
   while [ -n "$dir" ] && [ "$depth" -lt 8 ]; do
-    if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
-      printf '%s\n' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
+    if [ -f "${dir}/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "${dir}/.gaia/config/project-config.yaml"
       return 0
     fi
     if [ -f "${dir}/config/project-config.yaml" ]; then

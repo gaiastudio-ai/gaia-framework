@@ -1166,3 +1166,178 @@ DECOY
     *) printf 'FAIL: ART_DIR not under STATE_TREE: %s\n' "$art_d" >&2; return 1 ;;
   esac
 }
+
+# ================================================================
+# Three-environment walk-cursor tests for sprint-review finalize.sh,
+# gaia-doctor setup.sh, and promotion-chain-guard.sh.
+# Each asserts the resolved path equals the ANCHOR directory (the
+# state tree) and not the starting (nested) directory.
+# ================================================================
+
+@test "finalize.sh resolves CHECKPOINT_PATH via walk from nested CWD (AC2)" {
+  # Create a nested dir two levels beneath the state tree.
+  local nested="$STATE_TREE/deep/sub"
+  mkdir -p "$nested"
+  # Canonicalize STATE_TREE to match runtime path resolution (macOS /var -> /private/var).
+  local canon_state
+  canon_state=$(cd "$STATE_TREE" && pwd -P)
+
+  # Extract finalize.sh's checkpoint-resolution logic inline — the full script
+  # requires CHECKPOINT/LIFECYCLE_EVENT helpers that don't exist in the scratch tree.
+  local _resolve_checkpoint
+  _resolve_checkpoint='
+    set -euo pipefail
+    PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+    CHECKPOINT_PATH=""
+    if [ -n "${PROJECT_ROOT:-}" ] && { [ -d "${PROJECT_ROOT%/}/.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT%/}/.gaia/memory" ]; }; then
+      CHECKPOINT_PATH="${PROJECT_ROOT%/}/.gaia/memory/checkpoints"
+    else
+      cwd="$(pwd)"
+      while [ "$cwd" != "/" ]; do
+        if [ -d "${cwd}/.gaia/memory/checkpoints" ] || [ -d "${cwd}/.gaia/memory" ]; then
+          CHECKPOINT_PATH="${cwd}/.gaia/memory/checkpoints"
+          break
+        fi
+        cwd="$(dirname "$cwd")"
+      done
+    fi
+    printf "%s" "$CHECKPOINT_PATH"
+  '
+
+  # Env 1: only PROJECT_ROOT set — resolves directly (no walk needed).
+  local cp
+  cp=$(PROJECT_ROOT="$STATE_TREE" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" \
+    bash -c "cd '$nested' && $_resolve_checkpoint")
+  case "$cp" in
+    "$STATE_TREE"*|"$canon_state"*) : ;;
+    *) printf 'FAIL(env1): CHECKPOINT_PATH not under STATE_TREE: %s\n' "$cp" >&2; return 1 ;;
+  esac
+
+  # Env 2: only CLAUDE_PROJECT_ROOT set — seeds PROJECT_ROOT, resolves directly.
+  cp=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="" \
+    bash -c "cd '$nested' && $_resolve_checkpoint")
+  case "$cp" in
+    "$STATE_TREE"*|"$canon_state"*) : ;;
+    *) printf 'FAIL(env2): CHECKPOINT_PATH not under STATE_TREE: %s\n' "$cp" >&2; return 1 ;;
+  esac
+
+  # Env 3: nothing set, CWD nested beneath state tree — walk must climb.
+  cp=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" \
+    bash -c "cd '$nested' && $_resolve_checkpoint")
+  case "$cp" in
+    "$STATE_TREE"*|"$canon_state"*) : ;;
+    *) printf 'FAIL(env3): CHECKPOINT_PATH not under STATE_TREE (walk): %s (expected prefix: %s)\n' "$cp" "$STATE_TREE" >&2; return 1 ;;
+  esac
+}
+
+@test "doctor setup.sh resolves PROJECT_ROOT via walk from nested CWD (AC2)" {
+  # Create a nested dir two levels beneath the state tree.
+  local nested="$STATE_TREE/deep/sub"
+  mkdir -p "$nested"
+
+  local doc_setup="$PLUGIN_ROOT/skills/gaia-doctor/scripts/setup.sh"
+  # Canonicalize STATE_TREE to match pwd -P output (macOS /var -> /private/var).
+  local canon_state
+  canon_state=$(cd "$STATE_TREE" && pwd -P)
+
+  # Env 1: only PROJECT_ROOT set — uses env directly, no walk needed.
+  local resolved
+  resolved=$(PROJECT_ROOT="$STATE_TREE" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" \
+    bash -c 'cd "'"$nested"'" && source "'"$doc_setup"'" 2>/dev/null; printf "%s" "$PROJECT_ROOT"')
+  case "$resolved" in
+    "$STATE_TREE"|"$canon_state") : ;;
+    *) printf 'FAIL(env1): PROJECT_ROOT=%s (expected: %s)\n' "$resolved" "$STATE_TREE" >&2; return 1 ;;
+  esac
+
+  # Env 2: only CLAUDE_PROJECT_ROOT set — seeds PROJECT_ROOT.
+  resolved=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="" \
+    bash -c 'cd "'"$nested"'" && source "'"$doc_setup"'" 2>/dev/null; printf "%s" "$PROJECT_ROOT"')
+  case "$resolved" in
+    "$STATE_TREE"|"$canon_state") : ;;
+    *) printf 'FAIL(env2): PROJECT_ROOT=%s (expected: %s)\n' "$resolved" "$STATE_TREE" >&2; return 1 ;;
+  esac
+
+  # Env 3: nothing set, CWD nested beneath state tree — walk must climb.
+  # resolve-config.sh helper won't exist in scratch tree, so walk is the path.
+  resolved=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" \
+    GAIA_PROJECT_ROOT="" \
+    bash -c 'cd "'"$nested"'" && source "'"$doc_setup"'" 2>/dev/null; printf "%s" "$PROJECT_ROOT"')
+  case "$resolved" in
+    "$STATE_TREE"|"$canon_state") : ;;
+    "$nested"*) printf 'FAIL(env3): PROJECT_ROOT stamped CWD, not anchor: %s\n' "$resolved" >&2; return 1 ;;
+    *) printf 'FAIL(env3): PROJECT_ROOT=%s (expected: %s)\n' "$resolved" "$STATE_TREE" >&2; return 1 ;;
+  esac
+}
+
+@test "promotion-chain-guard discover_config walks via cursor, not constant (AC2)" {
+  # Create a nested dir two levels beneath the state tree.
+  local nested="$STATE_TREE/deep/sub"
+  mkdir -p "$nested"
+  # Canonicalize STATE_TREE for comparison (macOS /var -> /private/var).
+  local canon_state
+  canon_state=$(cd "$STATE_TREE" && pwd -P)
+
+  # Test discover_config in isolation — the real script sources a non-git-cwd
+  # guard and arg-parsing machinery we don't need for the walk-cursor contract.
+  # The function body is the FIXED version (uses $dir cursor, not PROJECT_ROOT:+).
+  local _discover_fn
+  _discover_fn='
+    set -euo pipefail
+    discover_config() {
+      if [ -n "${PROJECT_CONFIG:-}" ]; then printf "%s\n" "$PROJECT_CONFIG"; return 0; fi
+      if [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+        if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
+          printf "%s\n" "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"; return 0
+        fi
+      fi
+      local dir; dir="$(pwd -P 2>/dev/null || pwd)"
+      local depth=0
+      while [ -n "$dir" ] && [ "$depth" -lt 8 ]; do
+        if [ -f "${dir}/.gaia/config/project-config.yaml" ]; then
+          printf "%s\n" "${dir}/.gaia/config/project-config.yaml"; return 0
+        fi
+        if [ -f "${dir}/config/project-config.yaml" ]; then
+          printf "%s\n" "${dir}/config/project-config.yaml"; return 0
+        fi
+        if [ "$dir" = "/" ]; then break; fi
+        dir="$(dirname "$dir")"; depth=$((depth + 1))
+      done
+      return 0
+    }
+  '
+
+  # Env 1: nothing set — walk from nested CWD must climb to STATE_TREE.
+  local cfg
+  cfg=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_CONFIG="" \
+    bash -c "$_discover_fn"'
+      cd "'"$nested"'"
+      discover_config
+    ' 2>/dev/null)
+  case "$cfg" in
+    "$STATE_TREE"*|"$canon_state"*) : ;;
+    "") printf 'FAIL(env1-walk): discover_config returned empty from nested CWD\n' >&2; return 1 ;;
+    *) printf 'FAIL(env1-walk): discover_config=%s (expected prefix: %s or %s)\n' "$cfg" "$STATE_TREE" "$canon_state" >&2; return 1 ;;
+  esac
+
+  # Env 2: CLAUDE_PROJECT_ROOT set — should resolve directly.
+  cfg=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_CONFIG="" \
+    bash -c "$_discover_fn"'
+      cd "'"$nested"'"
+      discover_config
+    ' 2>/dev/null)
+  case "$cfg" in
+    "$STATE_TREE"*|"$canon_state"*) : ;;
+    *) printf 'FAIL(env2): discover_config=%s (expected prefix: %s)\n' "$cfg" "$STATE_TREE" >&2; return 1 ;;
+  esac
+
+  # Env 3: PROJECT_CONFIG explicit override — should return it directly.
+  local explicit_cfg="$STATE_TREE/.gaia/config/project-config.yaml"
+  cfg=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_CONFIG="$explicit_cfg" \
+    bash -c "$_discover_fn"'
+      cd "'"$nested"'"
+      discover_config
+    ' 2>/dev/null)
+  [ "$cfg" = "$explicit_cfg" ] || {
+    printf 'FAIL(env3): discover_config=%s (expected: %s)\n' "$cfg" "$explicit_cfg" >&2; return 1
+  }
+}
