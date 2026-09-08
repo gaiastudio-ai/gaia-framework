@@ -59,6 +59,11 @@ EOFEPIC
 teardown() {
   jobs -p 2>/dev/null | xargs kill -9 2>/dev/null || true
   wait 2>/dev/null || true
+  # Restore write permission before the tree is removed: tests that chmod a
+  # fixture directory read-only restore it inline, but an assertion aborting
+  # in between would leave common_teardown's rm -rf unable to unlink through
+  # it, and the litter accumulates across failing runs.
+  chmod -R u+w "$IMPL" 2>/dev/null || true
   common_teardown
 }
 
@@ -228,8 +233,8 @@ YAMLEOF
     export GAIA_SKIP_ORPHAN_SWEEP=1
     bash "'"$SPRINT_STATE"'" rollover --from old-sprint --to new-sprint --keys ETEST-S1
   '
-  # RED: the current code runs UNLOCKED in flock-absent mode, so it ignores
-  # the lock file and succeeds. After migration, it will time out.
+  # Contention-observable: with the lock held, rollover must time out rather
+  # than proceed. Deleting its acquire_lock call makes this succeed instead.
   [ "$status" -ne 0 ] || {
     echo "rollover succeeded despite held lock — no contention (flock-absent branch is unlocked)" >&2
     false
@@ -260,7 +265,7 @@ YAMLEOF
     export ACQUIRE_LOCK_DEBUG_LOG="'"$debug_log"'"
     bash "'"$SPRINT_STATE"'" rollover --from sprint-a --to sprint-b --keys ETEST-S2
   '
-  # RED: with the stub, acquire_lock returns 1 so rollover dies.
+  # The nested rollover -> inject sequence must complete without deadlock.
   [ "$status" -eq 0 ] || { echo "rollover failed (status=$status): $output" >&2; false; }
   # The debug log MUST exist (the helper is required to emit it).
   [ -f "$debug_log" ] || { echo "no debug log — helper did not emit trace" >&2; false; }
@@ -279,17 +284,20 @@ YAMLEOF
 # AC2: site 6 rc capture under set -e (folded review finding)
 # ============================================================
 
-@test "set-story-sprint rc capture: failing body reaches die path under set -e (AC2)" {
-  # Seed a story whose frontmatter has a sprint_id value the awk cannot match
-  # (already set to a quoted string, not null/""). This makes _rewrite_sprint_id
-  # fail its sanity check and return 1. The set +e / rc=$? / set -e wrapper
-  # must capture that rc and route to the die path with the diagnostic message.
-  # Without the rc capture, the script would abort silently under set -e.
-  # Make the story file's directory unwritable so _rewrite_sprint_id's mktemp
-  # fails (it creates a sibling tempfile). The set +e / rc=$? / set -e
-  # wrapper must capture the non-zero rc and route to the die path with the
-  # "failed to rewrite sprint_id" diagnostic.
+@test "set-story-sprint rc capture: failing critical section reaches the die path (AC2)" {
+  # Fault injection that does NOT disable the lock: a story whose frontmatter
+  # carries no sprint_id line at all. The awk rewrite has nothing to match, so
+  # the post-rewrite sanity grep fails and _rewrite_sprint_id returns 1 from
+  # INSIDE the critical section, with the story directory fully writable and
+  # the lock genuinely taken. (Making the directory read-only instead would
+  # make acquire_lock fail first — the body under test would never run.)
   _create_story "ETEST-S3" "backlog" "null"
+  local story_file="$IMPL/epic-test/stories/ETEST-S3-test-story.md"
+  # Drop the sprint_id line from the frontmatter.
+  grep -v '^sprint_id:' "$story_file" > "$story_file.new"
+  mv "$story_file.new" "$story_file"
+  local before_sum
+  before_sum="$(cksum < "$story_file")"
   cat > "$SPRINT_STATUS_YAML" << 'YAMLEOF'
 sprint_id: "new-sprint"
 status: active
@@ -297,8 +305,6 @@ total_points: 0
 goals: []
 items: []
 YAMLEOF
-  local story_dir="$IMPL/epic-test/stories"
-  chmod 555 "$story_dir"
   run bash -c '
     export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
@@ -307,14 +313,144 @@ YAMLEOF
     export GAIA_SKIP_ORPHAN_SWEEP=1
     bash "'"$SPRINT_STATE"'" set-story-sprint --story ETEST-S3 --sprint new-sprint
   '
-  # Restore permissions for teardown.
-  chmod 755 "$story_dir"
-  # The body fails because mktemp cannot create the sibling tempfile.
-  # Without the set +e / rc=$? wrapper, the script would abort silently
-  # under set -e without reaching the die diagnostic.
-  [ "$status" -ne 0 ] || { echo "expected die path, but set-story-sprint succeeded: $output" >&2; false; }
+  # The failure must surface. A trailing release_lock as the subshell's last
+  # statement would overwrite the critical section's rc with 0, and the script
+  # would print success while having written nothing.
+  [ "$status" -ne 0 ] || {
+    echo "set-story-sprint reported SUCCESS while the rewrite failed: $output" >&2
+    false
+  }
   [[ "$output" == *"failed to rewrite sprint_id"* ]] || {
-    echo "expected 'failed to rewrite sprint_id' diagnostic, got: $output" >&2
+    echo "expected the 'failed to rewrite sprint_id' diagnostic, got: $output" >&2
+    false
+  }
+  # The success line must NOT be printed.
+  if echo "$output" | grep -qF "sprint_id bound to"; then
+    echo "printed the success line despite the failure: $output" >&2
+    false
+  fi
+  # And the story file must be untouched.
+  [ "$(cksum < "$story_file")" = "$before_sum" ] || {
+    echo "story file was modified despite the reported failure" >&2
+    false
+  }
+  # The acquisition itself must have succeeded — otherwise this test would be
+  # asserting on a lock timeout rather than on the critical section.
+  if echo "$output" | grep -qF "lock timeout"; then
+    echo "the run failed at lock acquisition, not in the critical section: $output" >&2
+    false
+  fi
+}
+
+# ============================================================
+# AC2: every migrated site actually takes its lock —
+# contention-observable coverage for inject / reconcile / set-story-sprint
+# ============================================================
+
+@test "inject blocks when the sprint-status lock is held (AC2)" {
+  # Deleting the acquire/release/trap at the inject site must break this:
+  # with a live-PID lock file in place, inject has to fail rather than
+  # proceed into the critical section.
+  _create_story "ETEST-S10" "backlog" "\"test-sprint\""
+  local holder_done="$TEST_TMP/inject-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s\n' "$holder_pid" "$(date +%s)" > "${SPRINT_STATUS_YAML}.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'"
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$SPRINT_STATE"'" inject --story ETEST-S10
+  '
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+  [ "$status" -ne 0 ] || {
+    echo "inject succeeded while the sprint-status lock was held — site is unlocked" >&2
+    echo "$output" >&2
+    false
+  }
+  # It must have failed at ACQUISITION, not for some unrelated reason.
+  [[ "$output" == *"lock timeout"* ]] || {
+    echo "inject failed, but not at lock acquisition: $output" >&2
+    false
+  }
+}
+
+@test "reconcile blocks when the sprint-status lock is held, honouring its 10s timeout (AC2)" {
+  # reconcile is the only site with a 10s (not 5s) timeout, so this also
+  # pins the per-site timeout value reaching the helper.
+  _create_story "ETEST-S11" "backlog" "\"test-sprint\""
+  local holder_done="$TEST_TMP/reconcile-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s\n' "$holder_pid" "$(date +%s)" > "${SPRINT_STATUS_YAML}.lock"
+  local start_s
+  start_s=$(date +%s)
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'"
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$SPRINT_STATE"'" reconcile
+  '
+  local elapsed=$(( $(date +%s) - start_s ))
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+  [ "$status" -ne 0 ] || {
+    echo "reconcile succeeded while the sprint-status lock was held — site is unlocked" >&2
+    echo "$output" >&2
+    false
+  }
+  # It blocked for the site's own 10s budget, not the 5s used elsewhere.
+  [ "$elapsed" -ge 9 ] || {
+    echo "reconcile gave up after ${elapsed}s — its 10s timeout did not reach the helper" >&2
+    false
+  }
+}
+
+@test "set-story-sprint blocks when its per-story lock is held (AC2)" {
+  _create_story "ETEST-S12" "backlog" "null"
+  local story_file="$IMPL/epic-test/stories/ETEST-S12-test-story.md"
+  local holder_done="$TEST_TMP/sss-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s\n' "$holder_pid" "$(date +%s)" > "${story_file}.set-sprint.lock"
+  local before_sum
+  before_sum="$(cksum < "$story_file")"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'"
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$SPRINT_STATE"'" set-story-sprint --story ETEST-S12 --sprint test-sprint
+  '
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+  [ "$status" -ne 0 ] || {
+    echo "set-story-sprint succeeded while its per-story lock was held — site is unlocked" >&2
+    echo "$output" >&2
+    false
+  }
+  # It must have failed at ACQUISITION. Without this the test would pass on
+  # any pre-lock rejection (a sprint-id mismatch, say) and would assert
+  # nothing at all about whether the site takes its lock.
+  [[ "$output" == *"lock timeout"* ]] || {
+    echo "set-story-sprint failed, but not at lock acquisition: $output" >&2
+    false
+  }
+  # And it wrote nothing.
+  [ "$(cksum < "$story_file")" = "$before_sum" ] || {
+    echo "story file modified while the lock was held by another owner" >&2
     false
   }
 }
@@ -337,9 +473,8 @@ YAMLEOF
     export GAIA_SKIP_ORPHAN_SWEEP=1
     bash "'"$SPRINT_STATE"'" transition --story ETEST-S4 --to in-progress
   '
-  # RED: the GAIA_PARALLEL_EXECUTION guard does not exist in production code,
-  # so the transition succeeds. With the guard wired, it must refuse with
-  # a "util-linux" diagnostic.
+  # Parallel mode is fail-closed without flock: the transition must refuse
+  # with a "util-linux" diagnostic rather than run on the fallback path.
   [ "$status" -ne 0 ] || { echo "expected refusal, but transition succeeded: $output" >&2; false; }
   [[ "$output" == *"util-linux"* ]] || { echo "expected util-linux refusal, got: $output" >&2; false; }
 }
@@ -412,4 +547,42 @@ YAMLEOF
     acquire_lock "'"$lock_file"'" 2 9
   '
   [ "$status" -eq 0 ] || { echo "follow-up acquire blocked (lock leaked): $output" >&2; false; }
+}
+
+# ============================================================
+# AC2: the critical section's exit status must survive the release
+# ============================================================
+
+@test "rollover reports a failed inject as failed, not succeeded (AC2)" {
+  # _rollover_one runs its critical section in a subshell whose status is the
+  # per-key verdict. A trailing release_lock as that subshell's LAST statement
+  # overwrites the status with its own always-zero one, so a key whose inject
+  # failed (and whose story file was rolled back) still gets listed under
+  # "succeeded" and the command exits 0.
+  _create_story "ETEST-S30" "done" "\"old-sprint\""
+  # Target sprint yaml that inject cannot write: not a mapping, so the
+  # injection step fails while the story-file rewrite before it succeeds.
+  printf 'this is not a sprint yaml mapping\n' > "$SPRINT_STATUS_YAML"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'"
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$SPRINT_STATE"'" rollover --from old-sprint --to new-sprint --keys ETEST-S30
+  '
+  [ "$status" -ne 0 ] || {
+    echo "rollover exited 0 despite a failed inject: $output" >&2
+    false
+  }
+  # The key must be listed as failed, not succeeded.
+  echo "$output" | grep -E '^sprint-state\.sh rollover: failed:.*ETEST-S30' >/dev/null || {
+    echo "ETEST-S30 not listed under failed: $output" >&2
+    false
+  }
+  if echo "$output" | grep -E '^sprint-state\.sh rollover: succeeded:.*ETEST-S30' >/dev/null; then
+    echo "a failed key was reported as succeeded — the critical section rc was masked" >&2
+    echo "$output" >&2
+    false
+  fi
 }

@@ -814,7 +814,7 @@ cmd_validate() {
 
 # ---------- Subcommand: transition ----------
 
-# The core of the transition logic — runs inside the flock critical section.
+# The core of the transition logic — runs inside the locked critical section.
 do_transition_locked() {
   local story_key="$1" to_state="$2"
 
@@ -970,7 +970,6 @@ cmd_transition() {
     fi
     trap 'release_lock 9 2>/dev/null || true' EXIT
     do_transition_locked "$story_key" "$to_state"
-    release_lock 9
   )
 }
 
@@ -1325,7 +1324,6 @@ cmd_inject() {
     fi
     trap 'release_lock 9 2>/dev/null || true' EXIT
     do_inject_locked "$story_key"
-    release_lock 9
   )
 }
 
@@ -1574,12 +1572,11 @@ cmd_reconcile() {
     do_reconcile_locked "$dry_run"
     printf '%s %s %s\n' "$RECONCILE_CHECKED" "$RECONCILE_DIVERGENCES" "$RECONCILE_ERRORS" \
       > "${SPRINT_STATUS_LOCK}.result"
-    release_lock 9
   )
   local sub_rc=$?
   set -e
   if [ "$sub_rc" -ne 0 ] && [ ! -f "${SPRINT_STATUS_LOCK}.result" ]; then
-    die "reconcile failed inside flock critical section (rc=$sub_rc)"
+    die "reconcile failed inside the locked critical section (rc=$sub_rc)"
   fi
   if [ -f "${SPRINT_STATUS_LOCK}.result" ]; then
     # shellcheck disable=SC2034
@@ -2173,7 +2170,6 @@ cmd_record_escalation_override() {
     fi
     trap 'release_lock 9 2>/dev/null || true' EXIT
     do_record_override_locked "$ids_raw" "$user" "$reason"
-    release_lock 9
   )
 }
 
@@ -2427,14 +2423,19 @@ _rollover_one() {
     trap 'release_lock 9 2>/dev/null || true' EXIT
     # AUDITED NESTED-LOCK EXCEPTION: _rollover_with_lock calls cmd_inject,
     # which acquires $SPRINT_STATUS_LOCK on fd 9 in its own subshell. No fd
-    # aliasing: this subshell's fd 9 (.rollover.lock) and cmd_inject's fd 9
-    # ($SPRINT_STATUS_LOCK) live in separate processes. Lock ordering:
+    # aliasing: cmd_inject runs its critical section in a nested subshell,
+    # which gets its own copy of the shell variables backing the per-fd
+    # registry (_AL_PATH_9 / _AL_MODE_9) and its own copy of the fd table.
+    # Its rebinding of fd 9 and of the registry is therefore invisible to
+    # this subshell, whose fd 9 still refers to .rollover.lock when the
+    # nested call returns. (Note this is subshell variable scoping, not
+    # process separation: a bash subshell shares $$ with its parent, and
+    # cmd_inject is an ordinary in-process function call.) Lock ordering:
     # per-story .rollover.lock first, then sprint-status second. Reverse
     # ordering cannot occur — cmd_inject's other caller (the dispatch at
     # main) holds no per-story lock. Any future nested-lock site must
     # verify ordering to prevent deadlock.
     _rollover_with_lock
-    release_lock 9
   )
   rc=$?
   return $rc
@@ -3067,7 +3068,6 @@ _cmd_set_story_sprint() {
     fi
     trap 'release_lock 9 2>/dev/null || true' EXIT
     _rewrite_sprint_id
-    release_lock 9
   )
   rc=$?
   set -e
