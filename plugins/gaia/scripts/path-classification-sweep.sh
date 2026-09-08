@@ -171,6 +171,54 @@ _is_shape4_chain_missing_pr() {
   return 1
 }
 
+_is_chain_inverted() {
+  # Clause 5: PROJECT_ROOT= chain assignment whose FIRST fallback term is
+  # not ${PROJECT_ROOT — i.e., PROJECT_ROOT appears only as an inner/nested
+  # term inside another variable's expansion. This silently discards a
+  # caller-exported PROJECT_ROOT when the outer variable is set.
+  #
+  # Canonical correct forms (pass):
+  #   PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+  #   PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
+  #   PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
+  #
+  # Inverted form (fail):
+  #   PROJECT_ROOT="${PROJECT_PATH:-${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-}}}"
+  #   PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-$PWD}}"
+  #
+  # Carve-outs: argparse ($2, --project-root), empty init (""), $PWD direct,
+  # $_walk, subshell $(cd...), if [ -z "$PROJECT_ROOT" ] guards.
+  local content="$1"
+  local chain_lines
+  # Start with all PROJECT_ROOT= assignments that use parameter expansion.
+  chain_lines=$(printf '%s\n' "$content" | grep -v '^\s*#' \
+    | grep -E '(^|[[:space:]])PROJECT_ROOT="\$\{' \
+    | grep -v -- '--project-root' \
+    | grep -v -F 'PROJECT_ROOT=""' \
+    | grep -v -F 'PROJECT_ROOT="$2' \
+    | grep -v -F 'PROJECT_ROOT="$_' \
+    | grep -v -F 'PROJECT_ROOT="$PWD' \
+    || true)
+  # Remove subshell assignments.
+  if [ -n "$chain_lines" ]; then
+    chain_lines=$(printf '%s\n' "$chain_lines" | grep -v 'PROJECT_ROOT="\$([^{]' || true)
+  fi
+  [ -n "$chain_lines" ] || return 1
+  # Keep only lines where ${PROJECT_ROOT:- IS present (inner term) but the
+  # FIRST expansion after the = is NOT ${PROJECT_ROOT.
+  local inverted
+  inverted=$(printf '%s\n' "$chain_lines" \
+    | grep -F '${PROJECT_ROOT:-' \
+    | grep -v 'PROJECT_ROOT="\${PROJECT_ROOT:-' \
+    || true)
+  [ -n "$inverted" ] || return 1
+  # Exclude lines inside an `if [ -z "$PROJECT_ROOT" ]` guard.
+  local unguarded
+  unguarded=$(printf '%s\n' "$inverted" | grep -v 'if \[ -z' || true)
+  [ -n "$unguarded" ]
+  return $?
+}
+
 _classify_skillmd_content() {
   # Classifies a SKILL.md file's content for executed heuristic .gaia/ paths.
   # Returns via stdout: "executed-heuristic" or "prose" with site count.

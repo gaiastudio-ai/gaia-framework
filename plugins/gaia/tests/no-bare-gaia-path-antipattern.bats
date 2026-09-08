@@ -10,6 +10,8 @@
 #   3. PROJECT_ROOT= chain assignments whose RHS does not begin with
 #      ${PROJECT_ROOT:- — discards a caller-exported value.
 #   4. Executed .gaia/ in SKILL.md fenced code blocks without PROJECT_ROOT.
+#   5. PROJECT_ROOT= chain inversion — ${PROJECT_ROOT:-} appears as an
+#      inner (non-first) fallback term, silently discarding a caller export.
 #
 # Detectors are sourced from path-classification-sweep.sh (single source
 # of truth). The source does NOT leak shell options into the bats runner.
@@ -190,6 +192,57 @@ teardown() { common_teardown; }
     vcount=$(printf '%b' "$violations" | grep -c '.' || true)
     printf 'FAIL: %d SKILL.md file(s) have executed .gaia/ without PROJECT_ROOT:\n%b' \
       "$vcount" "$(printf '%b' "$violations" | head -20)" >&2
+    return 1
+  fi
+}
+
+# ---- Clause 5: PROJECT_ROOT= chain inversion ----
+
+@test "no PROJECT_ROOT= chain inversion — inner PROJECT_ROOT:- fallback (AC5)" {
+  local all_files
+  all_files=$(_collect_scripts)
+  local count
+  count=$(printf '%s\n' "$all_files" | grep -c '.' || true)
+  [ "$count" -ge "$MIN_SCRIPTS" ] || {
+    printf 'FAIL: scan found only %d scripts (floor: %d) — find is broken\n' "$count" "$MIN_SCRIPTS" >&2
+    return 1
+  }
+
+  # Pre-filter: only files containing both PROJECT_ROOT= and ${PROJECT_ROOT:-
+  local chain_files
+  chain_files=$(printf '%s\n' "$all_files" | xargs grep -lF 'PROJECT_ROOT=' 2>/dev/null || true)
+
+  # Documented carve-outs: files whose inverted priority order is intentional
+  # (they prefer CLAUDE_PROJECT_ROOT over a caller-exported PROJECT_ROOT by
+  # design — brownfield fresh-project onboarding, artifact-path resolver with
+  # --project-root override, and manual-test baseline approval).
+  local -a carveouts=(
+    "scripts/lib/resolve-artifact-path.sh"
+    "skills/gaia-brownfield/scripts/setup.sh"
+    "skills/gaia-test-manual/scripts/approve-baseline.sh"
+  )
+
+  local violations=""
+  local f rel
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] || continue
+    # Skip carve-outs by relative path suffix.
+    rel="${f#"$PLUGIN_ROOT"/}"
+    local skip=0 co
+    for co in "${carveouts[@]}"; do
+      case "$rel" in *"$co") skip=1; break ;; esac
+    done
+    [ "$skip" -eq 0 ] || continue
+
+    local content
+    content=$(cat "$f")
+    if _is_chain_inverted "$content"; then
+      violations="${violations}${f}\n"
+    fi
+  done <<< "$chain_files"
+
+  if [ -n "$violations" ]; then
+    printf 'FAIL: PROJECT_ROOT= chain inversion (inner PROJECT_ROOT:- fallback):\n%b' "$violations" >&2
     return 1
   fi
 }

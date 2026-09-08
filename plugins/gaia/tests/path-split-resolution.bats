@@ -872,28 +872,58 @@ YAML
 
 @test "validate-gate.sh resolves project root via three environments (AC2)" {
   local vg="$PLUGIN_ROOT/scripts/validate-gate.sh"
-  # validate-gate.sh resolves PROJECT_ROOT internally via _vg_resolve_project_root.
-  # Drive it with --help-like to extract the resolved root. Since --help exits
-  # early before full resolution, we extract the resolver function.
+  # validate-gate.sh resolves PROJECT_ROOT via _vg_resolve_project_root (lines
+  # 70-100). The full file exits at file-scope on missing <gate_type>, so
+  # sourcing it runs the CLI entry. Extract the resolver function from the
+  # REAL script into a temp file, then source and call it in each environment.
+  local fn_file="$TEST_TMP/vg-resolver.sh"
+  sed -n '/^_vg_resolve_project_root()/,/^}/p' "$vg" > "$fn_file"
+  [ -s "$fn_file" ] || {
+    printf 'FAIL: could not extract _vg_resolve_project_root from %s\n' "$vg" >&2
+    return 1
+  }
 
-  # Env 1: only CLAUDE_PROJECT_ROOT set.
+  # Canonicalize STATE_TREE for comparison (macOS /var -> /private/var).
+  local canon_state
+  canon_state=$(cd "$STATE_TREE" && pwd -P)
+
+  # Env 1: PROJECT_ROOT pre-seeded (step 1 of the resolver picks it up).
+  # The outer chain `PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-...}}"`
+  # runs before _vg_resolve_project_root, so by the time the resolver fires,
+  # PROJECT_ROOT is already set to STATE_TREE. We simulate that.
   local resolved
-  resolved=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="$WORKTREE" \
-    bash -c '
-      source "'"$vg"'" 2>/dev/null || true
-      # _vg_resolve_project_root may not be exported; extract inline.
-      printf "%s" "$PROJECT_ROOT"
-    ' 2>/dev/null || true)
+  resolved=$(PROJECT_ROOT="$STATE_TREE" CLAUDE_PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="$WORKTREE" \
+    bash -c 'source "$1"; _vg_resolve_project_root' _ "$fn_file")
+  [ -n "$resolved" ] || {
+    printf 'FAIL(env1): resolver returned empty\n' >&2; return 1
+  }
   case "$resolved" in
-    "$STATE_TREE"*|"") : ;;  # accept STATE_TREE prefix or empty (function-internal)
-    "$WORKTREE"*) printf 'FAIL(env1): resolved to WORKTREE: %s\n' "$resolved" >&2; return 1 ;;
+    "$STATE_TREE"*|"$canon_state"*) : ;;
+    *) printf 'FAIL(env1): resolved to wrong root: %s (expected: %s)\n' "$resolved" "$STATE_TREE" >&2; return 1 ;;
   esac
 
-  # Env 2: only PROJECT_PATH set, CWD beneath state root.
+  # Env 2: only walk — PROJECT_ROOT unset, CWD beneath state root. The
+  # resolver walks up from $PWD looking for .gaia/config/project-config.yaml.
   resolved=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="$WORKTREE" \
-    bash -c 'cd "'"$STATE_TREE"'" && source "'"$vg"'" 2>/dev/null || true; printf "%s" "$PROJECT_ROOT"' 2>/dev/null || true)
+    bash -c 'source "$1"; cd "'"$STATE_TREE/.gaia"'" && _vg_resolve_project_root' _ "$fn_file")
+  [ -n "$resolved" ] || {
+    printf 'FAIL(env2): resolver returned empty\n' >&2; return 1
+  }
   case "$resolved" in
+    "$STATE_TREE"*|"$canon_state"*) : ;;
     "$WORKTREE"*) printf 'FAIL(env2): resolved to WORKTREE: %s\n' "$resolved" >&2; return 1 ;;
+    *) printf 'FAIL(env2): resolved to wrong root: %s (expected: %s)\n' "$resolved" "$STATE_TREE" >&2; return 1 ;;
+  esac
+
+  # Env 3: nothing set, CWD beneath state root — pure walk.
+  resolved=$(PROJECT_ROOT="" CLAUDE_PROJECT_ROOT="" PROJECT_PATH="" \
+    bash -c 'source "$1"; cd "'"$STATE_TREE"'" && _vg_resolve_project_root' _ "$fn_file")
+  [ -n "$resolved" ] || {
+    printf 'FAIL(env3): resolver returned empty\n' >&2; return 1
+  }
+  case "$resolved" in
+    "$STATE_TREE"*|"$canon_state"*) : ;;
+    *) printf 'FAIL(env3): resolved to wrong root: %s (expected: %s)\n' "$resolved" "$STATE_TREE" >&2; return 1 ;;
   esac
 }
 
@@ -916,6 +946,13 @@ YAML
     return 1
   }
 
+  # Clause 5 carve-outs: intentional inversions by relative path suffix.
+  local -a c5_carveouts=(
+    "scripts/lib/resolve-artifact-path.sh"
+    "skills/gaia-brownfield/scripts/setup.sh"
+    "skills/gaia-test-manual/scripts/approve-baseline.sh"
+  )
+
   # Check every script with the real detectors.
   local violations="" v_count=0
   local f content
@@ -932,6 +969,16 @@ YAML
     fi
     if _is_shape4_chain_missing_pr "$content"; then
       violations="${violations}clause-3: ${f}\n"
+      v_count=$((v_count + 1))
+    fi
+    # Clause 5: chain inversion (with carve-outs).
+    local rel="${f#"$PLUGIN_ROOT"/}"
+    local skip_c5=0 co
+    for co in "${c5_carveouts[@]}"; do
+      case "$rel" in *"$co") skip_c5=1; break ;; esac
+    done
+    if [ "$skip_c5" -eq 0 ] && _is_chain_inverted "$content"; then
+      violations="${violations}clause-5: ${f}\n"
       v_count=$((v_count + 1))
     fi
   done <<< "$script_list"
@@ -1031,31 +1078,47 @@ YAML
   export PROJECT_ROOT="$STATE_TREE"
   export PROJECT_PATH="$WORKTREE"
   export CLAUDE_PROJECT_ROOT=""
+  export GAIA_TESTS_CONFIG=""
 
-  # Seed test config under STATE_TREE with a test_execution block.
+  # Seed test config under STATE_TREE with a distinctive marker command.
   cat > "$STATE_TREE/.gaia/config/project-config.yaml" <<'YAML'
 project_name: test-project
 project_path: "."
 test_execution:
   tier_1:
     placement: local
-    command: "echo TIER1-OK"
+    command: "echo STATE-TREE-CONFIG-HIT"
     timeout_seconds: 30
 YAML
 
-  # Drive: invoke with --story-key and --context local.
-  # The script should find config under STATE_TREE. It will run `echo TIER1-OK`.
-  run bash -c 'cd "$1" && bash "$2" --story-key E9-S1 --context local --config "$3"' \
-    _ "$WORKTREE" "$PLUGIN_ROOT/scripts/run-tests.sh" \
-    "$STATE_TREE/.gaia/config/project-config.yaml"
-  # Exit 0 means config was found and parsed correctly under STATE_TREE.
+  # Seed a DECOY config under the worktree with a different marker. If the
+  # script resolved config from CWD (the worktree), it would run this instead.
+  mkdir -p "$WORKTREE/.gaia/config"
+  cat > "$WORKTREE/.gaia/config/project-config.yaml" <<'YAML'
+project_name: decoy-project
+project_path: "."
+test_execution:
+  tier_1:
+    placement: local
+    command: "echo DECOY-WORKTREE-CONFIG"
+    timeout_seconds: 30
+YAML
+
+  # Drive WITHOUT --config — the script must resolve via PROJECT_ROOT chain.
+  run bash -c 'cd "$1" && bash "$2" --story-key E9-S1 --context local' \
+    _ "$WORKTREE" "$PLUGIN_ROOT/scripts/run-tests.sh"
   [ "$status" -eq 0 ] || {
     printf 'FAIL: exit=%d output=%s\n' "$status" "$output" >&2
     return 1
   }
-  # Output should contain the tier result.
-  [[ "$output" == *'TIER1'* ]] || [[ "$output" == *'suites'* ]] || {
-    printf 'FAIL: no tier evidence in output: %s\n' "$output" >&2
+  # Positive: output contains the STATE_TREE marker.
+  [[ "$output" == *'STATE-TREE-CONFIG-HIT'* ]] || {
+    printf 'FAIL: config not resolved from STATE_TREE: %s\n' "$output" >&2
+    return 1
+  }
+  # Negative: output must NOT contain the decoy marker.
+  [[ "$output" != *'DECOY-WORKTREE-CONFIG'* ]] || {
+    printf 'FAIL: config resolved from WORKTREE decoy: %s\n' "$output" >&2
     return 1
   }
 }
@@ -1123,35 +1186,41 @@ DECOY
 
   local cls="$PLUGIN_ROOT/skills/gaia-sprint-close/scripts/close.sh"
 
-  # Replay the chain resolution logic inline (close.sh resolves at file-scope;
-  # the chain pattern is the same as every other script). This avoids eval of
-  # the full file-scope which fails on dirname $0 in a subshell.
+  # Extract the REAL resolution block (lines between "# ---------- Path"
+  # markers) from close.sh. Skip SCRIPT_DIR / PLUGIN_SCRIPTS_DIR which
+  # depend on $0, and the `export` line (not needed for resolution test).
+  # We extract: PROJECT_PATH=, PROJECT_ROOT=, MEMORY_PATH block,
+  # resolve_yaml_path function, ART_DIR block.
+  local chain_block
+  chain_block=$(sed -n '/^PROJECT_PATH=.*PWD/,/^ARCHIVE_DIR=/p' "$cls" \
+    | grep -v '^export ' | grep -v '^ARCHIVE_DIR=')
+  [ -n "$chain_block" ] || {
+    printf 'FAIL: could not extract resolution block from close.sh\n' >&2
+    return 1
+  }
+
+  # Drive the real resolution block and collect resolved paths.
   local result
   result=$(PROJECT_ROOT="$STATE_TREE" PROJECT_PATH="$WORKTREE" \
     CLAUDE_PROJECT_ROOT="" MEMORY_PATH="" SPRINT_STATUS_YAML="" \
     bash -c '
       set -euo pipefail
-      PROJECT_PATH="${PROJECT_PATH:-$PWD}"
-      PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
-      MEMORY_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
-      # resolve_yaml_path inline
-      gaia_state="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
-      # ART_DIR inline
-      if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
-        ART_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
-      else
-        ART_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}docs/implementation-artifacts"
-      fi
+      eval "$1"
+      gaia_state=$(resolve_yaml_path)
       printf "MEMORY_PATH=%s\n" "$MEMORY_PATH"
       printf "YAML_PATH=%s\n" "$gaia_state"
       printf "ART_DIR=%s\n" "$ART_DIR"
-    ')
+    ' _ "$chain_block")
 
-  # Positive: all resolved paths are under STATE_TREE.
+  # Positive: all resolved paths must be non-empty and under STATE_TREE.
   local mp yaml_p art_d
   mp=$(printf '%s\n' "$result" | grep '^MEMORY_PATH=' | cut -d= -f2-)
   yaml_p=$(printf '%s\n' "$result" | grep '^YAML_PATH=' | cut -d= -f2-)
   art_d=$(printf '%s\n' "$result" | grep '^ART_DIR=' | cut -d= -f2-)
+
+  [ -n "$mp" ] || { printf 'FAIL: MEMORY_PATH is empty\n' >&2; return 1; }
+  [ -n "$yaml_p" ] || { printf 'FAIL: YAML_PATH is empty\n' >&2; return 1; }
+  [ -n "$art_d" ] || { printf 'FAIL: ART_DIR is empty\n' >&2; return 1; }
 
   case "$mp" in
     "$STATE_TREE"*) : ;;
@@ -1164,6 +1233,28 @@ DECOY
   case "$art_d" in
     "$STATE_TREE"*) : ;;
     *) printf 'FAIL: ART_DIR not under STATE_TREE: %s\n' "$art_d" >&2; return 1 ;;
+  esac
+
+  # Mutation check: invert the chain in a scratch copy and confirm test fails.
+  local mutant_cls="$TEST_TMP/close-mutant.sh"
+  sed 's/PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}/PROJECT_ROOT:-${PROJECT_PATH:-${CLAUDE_PROJECT_ROOT:-}}/' \
+    "$cls" > "$mutant_cls"
+  local mutant_block
+  mutant_block=$(sed -n '/^PROJECT_PATH=.*PWD/,/^ARCHIVE_DIR=/p' "$mutant_cls" \
+    | grep -v '^export ' | grep -v '^ARCHIVE_DIR=')
+  # Drive the mutant with CLAUDE_PROJECT_ROOT=STATE_TREE, PROJECT_PATH=WORKTREE.
+  # If close.sh is correct, the mutant should resolve to WORKTREE (wrong).
+  local mutant_mp
+  mutant_mp=$(PROJECT_ROOT="" PROJECT_PATH="$WORKTREE" \
+    CLAUDE_PROJECT_ROOT="$STATE_TREE" MEMORY_PATH="" SPRINT_STATUS_YAML="" \
+    bash -c '
+      set -euo pipefail
+      eval "$1"
+      printf "%s" "$MEMORY_PATH"
+    ' _ "$mutant_block" 2>/dev/null || true)
+  case "$mutant_mp" in
+    "$WORKTREE"*) : ;; # expected: mutant resolves to wrong tree
+    "$STATE_TREE"*) printf 'FAIL(mutation): inverted chain still resolved to STATE_TREE\n' >&2; return 1 ;;
   esac
 }
 
@@ -1341,3 +1432,11 @@ DECOY
     printf 'FAIL(env3): discover_config=%s (expected: %s)\n' "$cfg" "$explicit_cfg" >&2; return 1
   }
 }
+
+# ================================================================
+# Three-environment walk-cursor tests for sprint-review finalize.sh,
+# gaia-doctor setup.sh, and promotion-chain-guard.sh.
+# Each asserts the resolved path equals the ANCHOR directory (the
+# state tree) and not the starting (nested) directory.
+# ================================================================
+
