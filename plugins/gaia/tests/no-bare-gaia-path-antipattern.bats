@@ -250,12 +250,76 @@ teardown() { common_teardown; }
 # ---- Classification table (AC1) ----
 
 @test "sweep produces a well-formed classification table (AC1)" {
-  # CI-verifiable half: the shipped sweep must produce output covering all
-  # four access shapes (heuristic, state-path, code-path, mixed).
+  # CI-verifiable half: the shipped sweep must produce output covering
+  # the four categories (heuristic, state-path, code-path, mixed).
   run bash "$SWEEP" "$PLUGIN_ROOT"
   [ "$status" -eq 0 ]
   [[ "$output" == *'| heuristic |'* ]] || [[ "$output" == *'| state-path |'* ]]
   [[ "$output" == *'| code-path |'* ]]
+}
+
+@test "sweep classifies each of the four heuristic shapes with per-shape reason markers (AC1)" {
+  # Purpose-built fixture tree: one script per heuristic shape so the
+  # classifier's per-shape reason-column markers are individually asserted.
+  # This detects a regression that silently stops detecting one shape.
+  local root="$TEST_TMP/shape-fixture-plugin"
+  mkdir -p "$root/scripts"
+
+  # Shape S1: bare $PROJECT_PATH/.gaia (conflates code tree with state tree).
+  cat > "$root/scripts/shape-s1-bare-pp.sh" <<'S1'
+#!/usr/bin/env bash
+CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+S1
+
+  # Shape S2: two-stage chain using PWD-derived .gaia/ path without PROJECT_ROOT.
+  # The _has_shape2 detector matches (CLAUDE_PROJECT_ROOT|PWD).*\.gaia lines
+  # that do NOT also contain PROJECT_ROOT (note: CLAUDE_PROJECT_ROOT itself
+  # contains the substring PROJECT_ROOT, so it matches the PR detector too).
+  cat > "$root/scripts/shape-s2-pwd-gaia.sh" <<'S2'
+#!/usr/bin/env bash
+CONFIG="$PWD/.gaia/config/project-config.yaml"
+S2
+
+  # Shape S3: CWD-relative .gaia/ literal in path construction.
+  cat > "$root/scripts/shape-s3-cwd-relative.sh" <<'S3'
+#!/usr/bin/env bash
+CONFIG=".gaia/config/project-config.yaml"
+S3
+
+  # Shape S4-recompute: PROJECT_ROOT reassigned discarding caller value.
+  cat > "$root/scripts/shape-s4-recompute.sh" <<'S4'
+#!/usr/bin/env bash
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+CONFIG="$PROJECT_ROOT/.gaia/config/project-config.yaml"
+S4
+
+  run bash "$SWEEP" "$root"
+  [ "$status" -eq 0 ] || {
+    printf 'FAIL: sweep exited %d\n' "$status" >&2
+    return 1
+  }
+
+  # Assert per-shape reason markers in the output rows.
+  # S1 marker: S1(n) in the reason column for shape-s1-bare-pp.sh.
+  [[ "$output" == *'shape-s1-bare-pp.sh'*'S1('* ]] || {
+    printf 'FAIL: S1 (bare PROJECT_PATH/.gaia) shape marker missing\noutput: %s\n' "$output" >&2
+    return 1
+  }
+  # S2 marker: S2 in the reason column.
+  [[ "$output" == *'shape-s2-pwd-gaia.sh'*'S2'* ]] || {
+    printf 'FAIL: S2 (PWD-derived .gaia/) shape marker missing\n' >&2
+    return 1
+  }
+  # S3 marker: S3(n) in the reason column.
+  [[ "$output" == *'shape-s3-cwd-relative.sh'*'S3('* ]] || {
+    printf 'FAIL: S3 (CWD-relative .gaia/) shape marker missing\n' >&2
+    return 1
+  }
+  # S4-recompute marker.
+  [[ "$output" == *'shape-s4-recompute.sh'*'S4-recompute'* ]] || {
+    printf 'FAIL: S4-recompute shape marker missing\n' >&2
+    return 1
+  }
 }
 
 @test "committed classification table exists when state tree is present (AC1)" {
