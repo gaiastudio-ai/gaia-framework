@@ -84,6 +84,11 @@ PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
 SCRIPT_NAME="review-gate.sh"
 
+_RG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=lib/acquire-lock.sh
+. "${_RG_DIR}/lib/acquire-lock.sh"
+unset _RG_DIR
+
 # ---------- Canonical vocabulary ----------
 
 # Six canonical gate names (exact case, exact spelling).
@@ -568,20 +573,34 @@ ledger_write() {
   ledger_dir="$(dirname "$ledger_path")"
   mkdir -p "$ledger_dir"
 
-  local tmpfile="${ledger_path}.tmp.$$"
+  local ledger_lock="${ledger_path}.lock"
 
-  # Atomic append: copy existing content + new row → tmpfile, then mv.
-  {
-    if [ -f "$ledger_path" ]; then
-      cat "$ledger_path"
+  # Subshell isolates the lock: any die() or set -e abort releases the fd
+  # on process exit, preventing a leaked PID-bearing lock.
+  (
+    if ! acquire_lock "$ledger_lock" 5 8; then
+      die "lock timeout acquiring $ledger_lock"
     fi
-    printf '%s\t%s\t%s\t%s\n' "$story_key" "$gate" "$plan_id" "$verdict"
-  } > "$tmpfile"
+    trap 'release_lock 8 2>/dev/null || true' EXIT
 
-  if ! mv -f "$tmpfile" "$ledger_path"; then
-    rm -f "$tmpfile"
-    die "failed to write ledger at '$ledger_path'"
-  fi
+    local tmpfile="${ledger_path}.tmp.$$"
+
+    # Atomic append: copy existing content + new row -> tmpfile, then mv.
+    {
+      if [ -f "$ledger_path" ]; then
+        cat "$ledger_path"
+      fi
+      printf '%s\t%s\t%s\t%s\n' "$story_key" "$gate" "$plan_id" "$verdict"
+    } > "$tmpfile"
+
+    if ! mv -f "$tmpfile" "$ledger_path"; then
+      rm -f "$tmpfile"
+      release_lock 8
+      exit 1
+    fi
+
+    release_lock 8
+  ) || die "failed to write ledger at '$ledger_path'"
 }
 
 # Read a ledger verdict for (story_key, gate, plan_id) tuple.
@@ -855,9 +874,6 @@ cmd_update() {
   local lockfile="${file}.lock"
   local tmpfile="${file}.tmp.$$"
 
-  local flock_bin
-  flock_bin=$(command -v flock || true)
-
   rewrite_body() {
     # Stream $file through awk, rewriting only the first data row of the
     # first pipe-table under `## Review Gate` whose first cell matches
@@ -969,32 +985,13 @@ cmd_update() {
     fi
   }
 
-  if [ -n "$flock_bin" ]; then
-    (
-      exec 9>"$lockfile"
-      if ! "$flock_bin" -w 5 9; then
-        die "flock timeout acquiring $lockfile"
-      fi
-      do_update
-    )
-  else
-    # Fallback: bounded spin-loop with O_EXCL lockfile create. Same pattern
-    # used in checkpoint.sh / lifecycle-event.sh for macOS /bin/bash 3.2
-    # without Homebrew util-linux flock.
-    local tries=0
-    while ! ( set -C; : > "$lockfile" ) 2>/dev/null; do
-      tries=$((tries + 1))
-      if [ $tries -ge 50 ]; then
-        die "lock timeout acquiring $lockfile"
-      fi
-      sleep 0.1
-    done
-    # shellcheck disable=SC2064
-    trap "rm -f '$lockfile'" EXIT
+  (
+    if ! acquire_lock "$lockfile" 5 9; then
+      die "flock timeout acquiring $lockfile"
+    fi
     do_update
-    rm -f "$lockfile"
-    trap - EXIT
-  fi
+    release_lock 9
+  )
 }
 
 # ---------- Argument parsing ----------
