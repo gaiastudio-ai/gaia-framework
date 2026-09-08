@@ -127,8 +127,8 @@ STORYEOF
   for pid in "${pids[@]}"; do
     wait "$pid" || true
   done
-  # RED: ledger_write is unlocked AND/OR acquire_lock stub returns 1.
-  # All 5 must exit 0.
+  # All 5 writers must exit 0: the lock serialises them, so none is lost
+  # and none fails. Unlocking ledger_write reddens this via the entry count.
   for i in 1 2 3 4 5; do
     local rcf="$TEST_TMP/rc-$i"
     [ -f "$rcf" ] || { echo "rc file missing for writer $i" >&2; false; }
@@ -181,8 +181,8 @@ STORYEOF
   for pid in "${pids[@]}"; do
     wait "$pid" || true
   done
-  # RED: cmd_update's inline flock/fallback is not yet migrated to the helper.
-  # All 3 must exit 0.
+  # All 3 writers must exit 0 and all 3 gates must land: concurrent updates
+  # on distinct gates must not lose each other's rewrites.
   for i in 0 1 2; do
     local rcf="$TEST_TMP/rcu-$i"
     [ -f "$rcf" ] || { echo "rc file missing for writer $i" >&2; false; }
@@ -243,9 +243,13 @@ STORYEOF
   [ -f "$debug_log" ] || { echo "debug log missing — lock may not have been attempted" >&2; false; }
   grep -q "^acquire " "$debug_log" \
     || { echo "debug log has no acquire entry — lock was never held: $(cat "$debug_log")" >&2; false; }
-  # The failure must NOT be a lock-acquisition timeout.
-  echo "$output" | grep -v "lock timeout" >/dev/null 2>&1 \
-    || { echo "failure was lock-timeout, not post-acquire fault: $output" >&2; false; }
+  # The failure must NOT be a lock-acquisition timeout. Assert ABSENCE
+  # directly: `grep -v` succeeds whenever any single line fails to match, so
+  # it silently stops meaning "absent" the moment the output grows a line.
+  if echo "$output" | grep -qF "lock timeout"; then
+    echo "failure was lock-timeout, not post-acquire fault: $output" >&2
+    false
+  fi
   # The error output must show the post-acquire die message.
   echo "$output" | grep -q "die-after-acquire" \
     || { echo "die message not found in output — fault did not fire after acquire: $output" >&2; false; }
@@ -268,4 +272,98 @@ STORYEOF
     acquire_lock "'"$lock_file"'" 2 8
   '
   [ "$status" -eq 0 ] || { echo "follow-up acquire blocked (lock leaked): $output" >&2; false; }
+}
+
+# ============================================================
+# AC4: cmd_update releases its lock when the critical section dies
+# ============================================================
+
+@test "cmd_update releases the lock when its critical section dies (AC4)" {
+  # The fault must fire INSIDE the critical section. Of cmd_update's two die
+  # paths, the missing-row case is rejected by load_canonical_rows before the
+  # lock is taken, so the reachable one is the failed rename. Make the story
+  # file immutable: it stays readable (pre-lock validation passes) and its
+  # lock file is still creatable (acquisition succeeds), but the final mv
+  # onto it cannot succeed. Without a releasing EXIT trap on the locked
+  # subshell, that die leaves a PID-bearing lock behind that blocks later
+  # updates for this story until it ages past the reap floor.
+  local sf
+  sf="$(_mk_rg_story "ETEST-RG9")"
+  local lock_file="${sf}.lock"
+
+  # Make the story file immutable (BSD chflags / Linux chattr).
+  local immutable=""
+  if chflags uchg "$sf" 2>/dev/null; then
+    immutable="chflags"
+  elif chattr +i "$sf" 2>/dev/null; then
+    immutable="chattr"
+  else
+    skip "cannot make a file immutable on this host (need chflags or chattr)"
+  fi
+
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export REVIEW_GATE_PROOF_OF_EXECUTION=off
+    bash "'"$REVIEW_GATE"'" update \
+      --story ETEST-RG9 \
+      --gate "QA Tests" \
+      --verdict PASSED
+  '
+  local update_status="$status"
+  local update_output="$output"
+
+  # Clear the flag so the rest of the test (and teardown) can write.
+  if [ "$immutable" = "chflags" ]; then
+    chflags nouchg "$sf" 2>/dev/null || true
+  else
+    chattr -i "$sf" 2>/dev/null || true
+  fi
+
+  [ "$update_status" -ne 0 ] || {
+    echo "update succeeded against an immutable story file: $update_output" >&2
+    false
+  }
+  # It must have failed in the rename, not at acquisition — otherwise the
+  # critical section never ran and this asserts nothing about the trap.
+  if echo "$update_output" | grep -qF "lock timeout"; then
+    echo "failed at acquisition, not inside the critical section: $update_output" >&2
+    false
+  fi
+  [[ "$update_output" == *"failed to mv tempfile"* ]] || {
+    echo "did not take the in-section rename-failure die path: $update_output" >&2
+    false
+  }
+
+  # No PID-bearing lock may survive the died critical section.
+  if [ -f "$lock_file" ] && [ -s "$lock_file" ]; then
+    local content
+    content="$(cat "$lock_file")"
+    if echo "$content" | grep -qE '^[0-9]+ [0-9]+$'; then
+      echo "cmd_update leaked a PID-bearing lock after die: $content" >&2
+      false
+    fi
+  fi
+  # Decisive check: a subsequent update on this story must succeed at once
+  # rather than block on the leaked lock.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=300
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export REVIEW_GATE_PROOF_OF_EXECUTION=off
+    bash "'"$REVIEW_GATE"'" update \
+      --story ETEST-RG9 \
+      --gate "Code Review" \
+      --verdict PASSED
+  '
+  [ "$status" -eq 0 ] || {
+    echo "the update after a died cmd_update failed — leaked lock (status=$status): $output" >&2
+    false
+  }
+  grep -qF "| Code Review | PASSED |" "$sf" || {
+    echo "follow-up update did not land in the story file" >&2
+    false
+  }
 }

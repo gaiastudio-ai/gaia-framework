@@ -50,10 +50,25 @@ _make_flock_shim() {
 echo "flock-shim-called $*" >> "${FLOCK_SHIM_LOG:-/dev/null}"
 for last_arg; do true; done
 echo "$last_arg" >> "${FLOCK_SHIM_FD_LOG:-/dev/null}"
-exit 0
+# Exit status is caller-controllable so tests can drive the acquire failure
+# branch. Default 0 keeps every pre-existing contract test unchanged.
+exit "${FLOCK_SHIM_EXIT:-0}"
 SHIMEOF
   chmod +x "$shim_dir/flock"
   printf '%s' "$shim_dir"
+}
+
+# A REAL flock, first on PATH, for tests that must execute the flock fast
+# path rather than a stub of it. Returns the directory to prepend, or empty
+# when the host has no flock (callers skip).
+_real_flock_bin() {
+  local real
+  real="$(command -v flock 2>/dev/null || true)"
+  [ -n "$real" ] || return 1
+  local dir="$TEST_TMP/real-flock-bin"
+  mkdir -p "$dir"
+  [ -e "$dir/flock" ] || ln -s "$real" "$dir/flock"
+  printf '%s' "$dir"
 }
 
 _wait_for_file() {
@@ -213,7 +228,12 @@ _wait_for_file() {
   '
   [ "$status" -eq 0 ] || { echo "positive control: acquire on unheld lock failed (status=$status): $output" >&2; false; }
   rm -f "$lock_file"
-  sleep 300 &
+  # Short-loop holder: stays genuinely alive (so kill -0 succeeds) but exits
+  # as soon as the sentinel appears. A foreground `sleep 300` would keep the
+  # grandchild alive past the kill and block teardown's `wait` for 300s.
+  local holder_done="$TEST_TMP/live-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
   local holder_pid=$!
   printf '%s %s\n' "$holder_pid" "1000000000" > "$lock_file"
   touch -t 202001010000 "$lock_file" 2>/dev/null \
@@ -225,6 +245,7 @@ _wait_for_file() {
     source "'"$HELPER"'"
     acquire_lock "'"$lock_file"'" 2 9
   '
+  touch "$holder_done"
   kill "$holder_pid" 2>/dev/null || true
   wait "$holder_pid" 2>/dev/null || true
   [ "$status" -ne 0 ] || { echo "acquire succeeded against live holder (lock was reaped)" >&2; false; }
@@ -235,10 +256,13 @@ _wait_for_file() {
 @test "crashed holder recovery end-to-end via kill -9 (AC-EC2)" {
   local lock_file="$LOCK_DIR/crashed.lock"
   local holder_ready="$TEST_TMP/holder-ready"
+  # Sleep in short slices, not one long foreground `sleep 300`: kill -9 on
+  # the wrapper cannot reap a long-running grandchild, which then survives
+  # with PPID 1 and blocks teardown's `wait` for its full duration.
   bash -c '
     printf "%s %s\n" "$$" "$(date +%s)" > "'"$lock_file"'"
     touch "'"$holder_ready"'"
-    sleep 300
+    while :; do sleep 0.1; done
   ' &
   local holder_pid=$!
   _wait_for_file "$holder_ready"
@@ -317,7 +341,7 @@ _wait_for_file() {
   bash -c '
     printf "%s %s\n" "$$" "$(date +%s)" > "'"$lock_file"'"
     touch "'"$holder_ready"'"
-    sleep 300
+    while :; do sleep 0.1; done
   ' &
   local pid_a=$!
   _wait_for_file "$holder_ready"
@@ -482,7 +506,7 @@ STORYEOF
 # AC-EC3
 # ============================================================
 
-@test "NFS caveat documented in helper source (AC-EC3)" {
+@test "helper documents the network-mount caveat — documentation pin, not behaviour (AC-EC3)" {
   grep -F "NFS" "$HELPER" >/dev/null || { echo "no NFS caveat in helper" >&2; false; }
   grep -Fi "network" "$HELPER" >/dev/null || { echo "no network-mount caveat in helper" >&2; false; }
   grep -Fi "unsupported" "$HELPER" >/dev/null || { echo "no unsupported caveat in helper" >&2; false; }
@@ -662,4 +686,292 @@ STORYEOF
   [ -f "$canonical" ]
   [ -f "$wrapper" ]
   diff -q "$canonical" "$wrapper"
+}
+
+# ============================================================
+# flock fast path: failure must NOT fail open, release must release
+# ============================================================
+
+@test "acquire_lock returns non-zero when flock reports failure (AC1)" {
+  # The flock fast path must propagate a timeout as a non-zero acquire. If it
+  # fails open, every caller believes it holds a lock nobody granted.
+  local shim_dir
+  shim_dir="$(_make_flock_shim)"
+  local lock_file="$LOCK_DIR/flock-fail.lock"
+  run bash -c '
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
+    export FLOCK_SHIM_EXIT=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9
+  '
+  [ "$status" -ne 0 ] || {
+    echo "acquire_lock reported SUCCESS while flock failed — fail-open" >&2
+    false
+  }
+}
+
+@test "flock-mode acquire failure leaves fd 9 closed (AC1)" {
+  # A failed acquire must not leave the descriptor open, or a caller that
+  # ignores the status would still hold an unlocked fd on the lock path.
+  local shim_dir
+  shim_dir="$(_make_flock_shim)"
+  local lock_file="$LOCK_DIR/flock-fail-fd.lock"
+  run bash -c '
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
+    export FLOCK_SHIM_EXIT=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 && exit 20
+    # fd 9 must be closed now.
+    if ( : >&9 ) 2>/dev/null; then exit 21; fi
+    exit 0
+  '
+  [ "$status" -eq 0 ] || { echo "fd left open after failed flock acquire (status=$status): $output" >&2; false; }
+}
+
+@test "flock-mode release_lock actually frees the lock for a re-acquire (AC1)" {
+  # Drives a REAL flock, not the stub: release_lock must drop the advisory
+  # lock, not merely clear the registry. A long-lived process that keeps the
+  # fd would otherwise self-deadlock on its next critical section.
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/flock-release.lock"
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || exit 10
+    release_lock 9
+    # An independent process must now be able to take the same lock. If
+    # release_lock did not free it, this blocks and times out.
+    "'"$flock_dir"'/flock" -x -w 3 "'"$lock_file"'" -c true || exit 11
+    exit 0
+  '
+  [ "$status" -eq 0 ] || { echo "flock-mode release did not free the lock (status=$status): $output" >&2; false; }
+}
+
+@test "flock-mode release_lock closes the descriptor (AC1)" {
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/flock-release-fd.lock"
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || exit 10
+    release_lock 9
+    if ( : >&9 ) 2>/dev/null; then exit 11; fi
+    exit 0
+  '
+  [ "$status" -eq 0 ] || { echo "fd 9 still open after release_lock (status=$status): $output" >&2; false; }
+}
+
+@test "flock fast path provides real mutual exclusion between processes (AC1)" {
+  # Behavioural, not argv-shape: a real flock holder must block a second
+  # acquirer for the whole timeout rather than granting it the lock.
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/flock-mutex.lock"
+  local holder_ready="$TEST_TMP/flock-holder-ready"
+  local holder_done="$TEST_TMP/flock-holder-done"
+  "$flock_dir/flock" -x "$lock_file" -c "touch '$holder_ready'; while [ ! -f '$holder_done' ]; do sleep 0.1; done" &
+  local holder_pid=$!
+  _wait_for_file "$holder_ready"
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 1 9
+  '
+  local acquire_status="$status"
+  touch "$holder_done"
+  wait "$holder_pid" 2>/dev/null || true
+  [ "$acquire_status" -ne 0 ] || {
+    echo "acquire_lock succeeded while a real flock holder held the lock" >&2
+    false
+  }
+}
+
+# ============================================================
+# Lock path hygiene: a symlink at the lock path is never followed
+# ============================================================
+
+@test "flock mode does not truncate a symlink target at the lock path (AC1)" {
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local victim="$TEST_TMP/victim-flock.yaml"
+  local lock_file="$LOCK_DIR/symlink-flock.lock"
+  printf 'important: data\n' > "$victim"
+  ln -s "$victim" "$lock_file"
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || true
+    release_lock 9 2>/dev/null || true
+  '
+  [ -s "$victim" ] || { echo "symlink target was truncated by flock-mode acquire" >&2; false; }
+  grep -F "important: data" "$victim" >/dev/null || {
+    echo "symlink target content destroyed: $(cat "$victim")" >&2
+    false
+  }
+}
+
+@test "fallback mode reclaims a dangling symlink at the lock path (AC-EC2)" {
+  # A dangling symlink is not a regular file, so an [ -f ] guarded reaper
+  # declines while ln(2) keeps failing EEXIST against it — the one stale
+  # state that never self-heals. It must be reclaimed immediately.
+  local lock_file="$LOCK_DIR/dangling.lock"
+  ln -s "$TEST_TMP/does-not-exist-ever" "$lock_file"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9
+  '
+  [ "$status" -eq 0 ] || {
+    echo "acquire spun out against a dangling symlink — un-reapable (status=$status): $output" >&2
+    false
+  }
+  [ ! -L "$lock_file" ] || { echo "lock path is still a symlink after acquire" >&2; false; }
+  local content
+  content="$(cat "$lock_file")"
+  [[ "$content" =~ ^[0-9]+\ [0-9]+$ ]] || { echo "bad lock format after reclaim: $content" >&2; false; }
+}
+
+@test "fallback mode does not write through a symlink at the lock path (AC1)" {
+  local victim="$TEST_TMP/victim-fallback.yaml"
+  local lock_file="$LOCK_DIR/symlink-fallback.lock"
+  printf 'important: data\n' > "$victim"
+  ln -s "$victim" "$lock_file"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9 || true
+  '
+  grep -F "important: data" "$victim" >/dev/null || {
+    echo "symlink target overwritten by fallback acquire: $(cat "$victim")" >&2
+    false
+  }
+}
+
+# ============================================================
+# AC5: the fail-closed parallel gate is not bypassable
+# ============================================================
+
+@test "require_flock_for_parallel refuses when the fallback is forced (AC5)" {
+  # flock on PATH but every acquisition forced onto the ln(2) fallback: the
+  # gate must not report a guarantee the run does not have.
+  local shim_dir
+  shim_dir="$(_make_flock_shim)"
+  run bash -c '
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    require_flock_for_parallel
+  '
+  [ "$status" -ne 0 ] || {
+    echo "gate PASSED with flock present but the fallback forced — bypassable" >&2
+    false
+  }
+  [[ "$output" == *"GAIA_LOCK_FORCE_FALLBACK"* ]] || {
+    echo "refusal does not name the forced-fallback override: $output" >&2
+    false
+  }
+}
+
+@test "--check-parallel refuses when the fallback is forced (AC5)" {
+  local shim_dir
+  shim_dir="$(_make_flock_shim)"
+  run env PATH="$shim_dir:$SAFE_PATH" GAIA_LOCK_FORCE_FALLBACK=1 bash "$HELPER" --check-parallel
+  [ "$status" -ne 0 ] || { echo "--check-parallel rc=0 with the fallback forced" >&2; false; }
+}
+
+# ============================================================
+# Temp-file naming: concurrent acquirers must not share a temp path
+# ============================================================
+
+@test "concurrent subshell acquirers use distinct temp paths (AC1)" {
+  # Bash subshells share $$ with their parent, so a temp name derived from
+  # $$ alone collides across concurrent acquirers of one script: A writes it,
+  # B reopens it with O_TRUNC, A links the emptied file into place and
+  # publishes a zero-byte lock. Names must be per-acquirer unique.
+  #
+  # The assertion reads the helper's debug trace rather than sampling the
+  # directory: each temp file exists only between its write and the ln/unlink
+  # microseconds later, so on a fast host a sampler sees almost none of them
+  # and the count it reports is a property of scheduling, not of the naming.
+  local probe_dir="$TEST_TMP/tmpname-probe"
+  mkdir -p "$probe_dir"
+  local lock_file="$probe_dir/probe.lock"
+  local debug_log="$TEST_TMP/tmpname-debug.log"
+  : > "$debug_log"
+
+  # Hold the lock with a live PID so every acquirer below is forced through
+  # at least one retry pass, creating (and tracing) its temp file.
+  local holder_done="$TEST_TMP/tmpname-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s\n' "$holder_pid" "$(date +%s)" > "$lock_file"
+
+  # Ten concurrent acquirers, all subshells of ONE bash process — the shape
+  # that makes them share $$.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export ACQUIRE_LOCK_DEBUG=1
+    export ACQUIRE_LOCK_DEBUG_LOG="'"$debug_log"'"
+    source "'"$HELPER"'"
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      ( acquire_lock "'"$lock_file"'" 2 9 >/dev/null 2>&1 || true ) &
+    done
+    wait 2>/dev/null || true
+  '
+  touch "$holder_done"
+  wait "$holder_pid" 2>/dev/null || true
+
+  # Every acquirer must have traced at least one temp path.
+  local total distinct
+  total="$(grep -c '^tmp ' "$debug_log" || true)"
+  [ "$total" -ge 10 ] || {
+    echo "expected >= 10 traced temp paths, got $total" >&2
+    cat "$debug_log" >&2
+    false
+  }
+  # And every one of them must be a DIFFERENT path. With a $$-only name all
+  # ten collide on one path; correct per-acquirer naming yields ten distinct
+  # ones, so the distinct count must reach the acquirer count.
+  distinct="$(awk '$1 == "tmp" { print $2 }' "$debug_log" | sort -u | wc -l | tr -d ' ')"
+  [ "$distinct" -ge 10 ] || {
+    echo "all concurrent acquirers shared a single temp path (distinct=$distinct of $total traced) — O_TRUNC race" >&2
+    awk '$1 == "tmp" { print $2 }' "$debug_log" | sort | uniq -c >&2
+    false
+  }
+}
+
+@test "N=10 concurrent acquirers never publish a zero-byte lock file (AC1)" {
+  # Direct assertion on the published artefact: a lock file that exists must
+  # always carry its "<pid> <epoch>" content. The temp-path collision made
+  # this observable as a 0-byte file.
+  local lock_file="$LOCK_DIR/nonempty.lock"
+  local witness="$TEST_TMP/zero-byte-witness"
+  rm -f "$witness"
+  local pids=()
+  local i
+  for i in $(seq 1 10); do
+    (
+      export PATH="$SAFE_PATH"
+      source "$HELPER"
+      local tries=0
+      while [ "$tries" -lt 25 ]; do
+        if [ -e "$lock_file" ] && [ ! -s "$lock_file" ]; then
+          echo "zero-byte lock observed by $i" >> "$witness"
+        fi
+        acquire_lock "$lock_file" 1 9 && { release_lock 9; break; }
+        tries=$((tries + 1))
+      done
+    ) &
+    pids+=($!)
+  done
+  local pid
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  [ ! -f "$witness" ] || {
+    echo "a zero-byte lock file was published:" >&2
+    cat "$witness" >&2
+    false
+  }
 }

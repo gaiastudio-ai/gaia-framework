@@ -4,9 +4,9 @@
 #
 # AC3 tests are CONTENTION-OBSERVABLE: they hold the shared
 # .story-status.lock from a background holder and assert the real
-# scripts BLOCK (contention exit / timeout) while held. Today's
-# scripts ignore the lock file when flock is absent, so these tests
-# fail at the positive "was blocked" assertion — the correct red reason.
+# scripts BLOCK (contention exit / timeout) while held. Deleting a
+# script's acquire_lock call makes the run proceed instead of blocking,
+# which is what these tests are built to detect.
 
 load 'test_helper.bash'
 
@@ -70,6 +70,11 @@ EOFEPIC
 teardown() {
   jobs -p 2>/dev/null | xargs kill -9 2>/dev/null || true
   wait 2>/dev/null || true
+  # Restore write permission before the tree is removed: tests that chmod a
+  # fixture directory read-only restore it inline, but an assertion aborting
+  # in between would leave common_teardown's rm -rf unable to unlink through
+  # it, and the litter accumulates across failing runs.
+  chmod -R u+w "$IMPL" 2>/dev/null || true
   common_teardown
 }
 
@@ -156,10 +161,9 @@ _wait_for_file() {
     export GAIA_SKIP_ORPHAN_SWEEP=1
     bash "'"$TSS"'" ETEST-S1 --to in-progress
   '
-  # RED: today's transition-story-status.sh does `exec 200>"$STORY_STATUS_LOCK"`
-  # which OVERWRITES the lock file content and does NOT honour the fallback lock.
-  # When flock is absent, it acquires no lock, so it succeeds despite contention.
-  # After migration: the helper's fallback path sees the held lock and times out.
+  # Contention-observable: with the lock held by a live PID, the transition
+  # must time out rather than proceed. A bare `exec 200>` on the lock path
+  # would overwrite the file and take no lock, and this would succeed.
   [ "$status" -ne 0 ] || {
     echo "transition succeeded despite held lock — no contention observed (flock-absent branch is unlocked)" >&2
     echo "script output: $output" >&2
@@ -185,8 +189,8 @@ _wait_for_file() {
     export GAIA_SKIP_ORPHAN_SWEEP=1
     bash "'"$SSS"'" ETEST-S2 --sprint test-sprint
   '
-  # RED: today's set-story-sprint.sh does `exec 200>"$STORY_STATUS_LOCK"` which
-  # overwrites the file and takes no fallback lock. It succeeds despite contention.
+  # Contention-observable: with the lock held, set-story-sprint must block
+  # and fail rather than proceed into its rewrite.
   [ "$status" -ne 0 ] || {
     echo "set-story-sprint succeeded despite held lock — no contention observed" >&2
     echo "script output: $output" >&2
@@ -267,7 +271,10 @@ _wait_for_file() {
   # Run TSS in a subshell with debug tracing enabled. The helper must write
   # a debug log proving it acquired the lock during the run.
   local debug_log="$TEST_TMP/lock-release-debug.log"
-  bash -c '
+  # `run`, not a bare command: under the set -e bats relies on, a bare
+  # non-zero command aborts the test at that line, so the rc capture and its
+  # diagnostic below would never execute.
+  run bash -c '
     export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
     export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
@@ -276,8 +283,7 @@ _wait_for_file() {
     export ACQUIRE_LOCK_DEBUG=1 ACQUIRE_LOCK_DEBUG_LOG="'"$debug_log"'"
     bash "'"$TSS"'" ETEST-S5 --to in-progress
   '
-  local tss_rc=$?
-  [ "$tss_rc" -eq 0 ] || { echo "transition failed (status=$tss_rc)" >&2; false; }
+  [ "$status" -eq 0 ] || { echo "transition failed (status=$status): $output" >&2; false; }
   # The debug log MUST exist, proving the helper was invoked. Today's code
   # never calls acquire_lock, so no debug log is emitted.
   [ -f "$debug_log" ] || { echo "no lock debug log — helper was not invoked during transition" >&2; false; }
@@ -310,7 +316,24 @@ _wait_for_file() {
     touch "'"$holder_ready"'"
     # Block until signalled — the trap on EXIT releases the lock.
     trap "release_lock 200" EXIT
-    sleep 300
+    # The holder must (a) stay genuinely alive until signalled, (b) run the
+    # EXIT trap promptly on SIGTERM, and (c) leave no long-lived orphan for
+    # the suite teardown'"'"'s `wait` to block on.
+    #
+    # A foreground `sleep 300` fails (b): bash defers a trapped signal until
+    # the running foreground command returns. A backgrounded `sleep 300 &`
+    # plus `wait` fixes (b) but fails (c): the sleep outlives the holder as
+    # an orphan. A `while :; do sleep 0.1; done` loop fails (b) as well —
+    # each deferred signal only lands between slices, and the loop restarts.
+    #
+    # Backgrounding SHORT slices and waiting on each satisfies all three:
+    # `wait` is interruptible so the trap runs at once, and the longest any
+    # orphan can survive is one slice.
+    trap "release_lock 200; exit 0" TERM
+    while :; do
+      sleep 0.1 &
+      wait $! 2>/dev/null || break
+    done
   ' &
   local holder_pid=$!
   _wait_for_file "$holder_ready"
@@ -406,4 +429,159 @@ _wait_for_file() {
     cat "$stderr2" >&2
     false
   fi
+}
+
+# ============================================================
+# AC3: no exit path between acquire and the releasing trap may leak the lock
+# ============================================================
+
+# Shared shape for the early-exit leak tests: run transition-story-status.sh
+# so it exits on one of the paths that sit between lock acquisition and the
+# rollback trap, then assert the lock file it leaves behind is not a
+# PID-bearing lock that would block the next run.
+_assert_no_leaked_lock() {
+  local what="$1"
+  local lock_file="$MEMORY/.story-status.lock"
+  # A leaked fallback lock is "<pid> <epoch>" with a live PID. A zero-byte
+  # sentinel (what the release path re-touches) is fine.
+  if [ -s "$lock_file" ]; then
+    local holder
+    read -r holder _ < "$lock_file" 2>/dev/null || true
+    if [ -n "$holder" ] && [ "$holder" -gt 0 ] 2>/dev/null; then
+      echo "$what left a PID-bearing lock file behind: $(cat "$lock_file")" >&2
+      return 1
+    fi
+  fi
+  # The decisive check: the very next acquirer must get the lock at once.
+  # A leaked lock has a fresh mtime, so the reaper refuses it for the full
+  # 60s floor and this blocks for the whole timeout.
+  local start_s
+  start_s=$(date +%s)
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=300
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 3 200
+  '
+  local elapsed=$(( $(date +%s) - start_s ))
+  [ "$status" -eq 0 ] || {
+    echo "$what leaked the lock — the next acquirer blocked ${elapsed}s and failed" >&2
+    return 1
+  }
+  return 0
+}
+
+@test "idempotent no-op transition does not leak the lock (AC3)" {
+  # The most frequently taken path in the script: the story is already at the
+  # requested status, so it exits 0 early. If the releasing trap is installed
+  # only further down, this routine no-op poisons its own lock.
+  local sf
+  sf="$(_mk_story "ETEST-S20" "backlog" "\"test-sprint\"")"
+  command -v yq >/dev/null 2>&1 || skip "yq not installed"
+  yq eval '.items += [{"key": "ETEST-S20", "status": "backlog", "points": 1}]' -i "$SPRINT_STATUS_YAML"
+  printf '| ETEST-S20 | Test | backlog | 1 |\n' >> "$PLAN/epics-and-stories.md"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export MEMORY_PATH="'"$MEMORY"'" STORY_STATUS_LOCK="'"$MEMORY/.story-status.lock"'"
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'" GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$TSS"'" ETEST-S20 --to backlog
+  '
+  [ "$status" -eq 0 ] || { echo "no-op transition failed (status=$status): $output" >&2; false; }
+  [[ "$output" == *"no-op"* ]] || { echo "did not take the no-op path: $output" >&2; false; }
+  _assert_no_leaked_lock "the idempotent no-op path"
+}
+
+@test "a second transition still runs right after a no-op (AC3)" {
+  # End-to-end consequence of the leak: the run immediately following a
+  # no-op must not hit lock contention.
+  local sf
+  sf="$(_mk_story "ETEST-S21" "backlog" "\"test-sprint\"")"
+  command -v yq >/dev/null 2>&1 || skip "yq not installed"
+  yq eval '.items += [{"key": "ETEST-S21", "status": "backlog", "points": 1}]' -i "$SPRINT_STATUS_YAML"
+  printf '| ETEST-S21 | Test | backlog | 1 |\n' >> "$PLAN/epics-and-stories.md"
+  local env_prelude='
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=300
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export MEMORY_PATH="'"$MEMORY"'" STORY_STATUS_LOCK="'"$MEMORY/.story-status.lock"'"
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'" GAIA_SKIP_ORPHAN_SWEEP=1
+  '
+  # First: the no-op.
+  run bash -c "$env_prelude"' bash "'"$TSS"'" ETEST-S21 --to backlog'
+  [ "$status" -eq 0 ] || { echo "no-op run failed: $output" >&2; false; }
+  # Then: a real transition, which must not block on a leaked lock.
+  run bash -c "$env_prelude"' bash "'"$TSS"'" ETEST-S21 --to in-progress'
+  [ "$status" -eq 0 ] || {
+    echo "transition after a no-op failed (status=$status) — leaked lock: $output" >&2
+    false
+  }
+  [[ "$output" != *"lock contention"* ]] || {
+    echo "transition after a no-op hit lock contention — the no-op leaked its lock" >&2
+    false
+  }
+}
+
+@test "invalid-transition exit does not leak the lock (AC3)" {
+  # The state-machine rejection (exit 7) also sits inside the window.
+  local sf
+  sf="$(_mk_story "ETEST-S22" "backlog" "\"test-sprint\"")"
+  command -v yq >/dev/null 2>&1 || skip "yq not installed"
+  yq eval '.items += [{"key": "ETEST-S22", "status": "backlog", "points": 1}]' -i "$SPRINT_STATUS_YAML"
+  printf '| ETEST-S22 | Test | backlog | 1 |\n' >> "$PLAN/epics-and-stories.md"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export MEMORY_PATH="'"$MEMORY"'" STORY_STATUS_LOCK="'"$MEMORY/.story-status.lock"'"
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'" GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$TSS"'" ETEST-S22 --to done
+  '
+  [ "$status" -ne 0 ] || { echo "backlog -> done was accepted: $output" >&2; false; }
+  _assert_no_leaked_lock "the invalid-transition path"
+}
+
+@test "--from mismatch exit does not leak the lock (AC3)" {
+  # The --from guard (exit 1) is the earliest exit inside the window.
+  local sf
+  sf="$(_mk_story "ETEST-S23" "backlog" "\"test-sprint\"")"
+  command -v yq >/dev/null 2>&1 || skip "yq not installed"
+  yq eval '.items += [{"key": "ETEST-S23", "status": "backlog", "points": 1}]' -i "$SPRINT_STATUS_YAML"
+  printf '| ETEST-S23 | Test | backlog | 1 |\n' >> "$PLAN/epics-and-stories.md"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export MEMORY_PATH="'"$MEMORY"'" STORY_STATUS_LOCK="'"$MEMORY/.story-status.lock"'"
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'" GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$TSS"'" ETEST-S23 --from review --to done
+  '
+  [ "$status" -ne 0 ] || { echo "--from mismatch was accepted: $output" >&2; false; }
+  _assert_no_leaked_lock "the --from mismatch path"
+}
+
+@test "set-story-sprint does not leak the lock when the rewrite aborts early (AC3)" {
+  # set-story-sprint has the same shape: acquire, then mktemp, then the
+  # releasing trap. If mktemp fails, set -e exits with the lock held and no
+  # trap installed. Make the story directory unwritable but keep the LOCK
+  # directory writable, so acquisition succeeds and only mktemp fails.
+  local sf
+  sf="$(_mk_story "ETEST-S24" "backlog" "null")"
+  local story_dir
+  story_dir="$(dirname "$sf")"
+  chmod 555 "$story_dir"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export MEMORY_PATH="'"$MEMORY"'" STORY_STATUS_LOCK="'"$MEMORY/.story-status.lock"'"
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'" GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$SSS"'" ETEST-S24 --sprint new-sprint
+  '
+  chmod 755 "$story_dir"
+  [ "$status" -ne 0 ] || { echo "expected failure on an unwritable story dir: $output" >&2; false; }
+  _assert_no_leaked_lock "the set-story-sprint early-abort path"
 }

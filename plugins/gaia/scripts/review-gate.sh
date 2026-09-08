@@ -595,11 +595,12 @@ ledger_write() {
 
     if ! mv -f "$tmpfile" "$ledger_path"; then
       rm -f "$tmpfile"
-      release_lock 8
       exit 1
     fi
-
-    release_lock 8
+    # No trailing release_lock: it would be the subshell's last statement and
+    # its always-zero status would become the subshell's exit status, masking
+    # a failure in the critical section above and defeating the `|| die`
+    # below. The EXIT trap releases idempotently on every path.
   ) || die "failed to write ledger at '$ledger_path'"
 }
 
@@ -987,10 +988,16 @@ cmd_update() {
 
   (
     if ! acquire_lock "$lockfile" 5 9; then
-      die "flock timeout acquiring $lockfile"
+      die "lock timeout acquiring $lockfile"
     fi
+    # Install the releasing trap on the very next line after a successful
+    # acquire: do_update dies on a missing target row or a failed rename, and
+    # both exit the subshell without reaching any trailing release, leaving a
+    # PID-bearing lock file that blocks later updates for this story until it
+    # ages past the reap floor.
+    trap 'release_lock 9 2>/dev/null || true' EXIT
+    # No trailing release_lock: it would mask do_update's exit status.
     do_update
-    release_lock 9
   )
 }
 

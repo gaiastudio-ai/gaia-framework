@@ -104,6 +104,17 @@ _al_try_reap() {
     reap_threshold=$(( triple > 60 ? triple : 60 ))
   fi
 
+  # A symlink at the lock path is never a legitimate lock. The lock file is
+  # only ever created by hard-linking a private temp file, so a symlink is
+  # either a dangling remnant (which ln(2) keeps rejecting with EEXIST, and
+  # which the [ -f ] test below would otherwise skip forever) or a planted
+  # redirect aimed at making a later write land on the target. Unlink it
+  # unconditionally and report the path as reclaimed.
+  if [ -L "$lock_file" ]; then
+    rm -f "$lock_file" 2>/dev/null || true
+    return 0
+  fi
+
   if [ ! -f "$lock_file" ]; then
     return 1
   fi
@@ -152,6 +163,14 @@ acquire_lock() {
 
   # Fast path: flock present (unless GAIA_LOCK_FORCE_FALLBACK overrides).
   if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ] && [ "${GAIA_LOCK_FORCE_FALLBACK:-}" != "1" ]; then
+    # Never open through a symlink: `exec >` follows it and truncates the
+    # target, so a symlink planted at the lock path turns lock acquisition
+    # into a write primitive against an arbitrary file. The fallback path is
+    # already safe (it unlinks the symlink itself, leaving the target
+    # intact); unlink here so both modes converge on that behaviour.
+    if [ -L "$lock_file" ]; then
+      rm -f "$lock_file" 2>/dev/null || true
+    fi
     eval "exec ${fd}>\"${lock_file}\""
     if "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$timeout" "$fd"; then
       _al_set_registry "$fd" "flock" "$lock_file"
@@ -188,30 +207,49 @@ acquire_lock() {
 
     # Atomic create-with-content: write to a temp file, then hard-link.
     # ln fails atomically if the target already exists (EEXIST).
-    local tmp_lock="${lock_dir}/.lock-tmp.$$"
-    printf '%s %s\n' "$$" "$now_epoch" > "$tmp_lock"
+    # The temp name must be unique per ACQUIRER, not per process: bash
+    # subshells share $$ with their parent, so a bare "$$" name collides
+    # between concurrent subshells of one script (and between any two
+    # acquirers that happen to share a PID namespace view). Two acquirers on
+    # one temp path race: A writes it, B reopens it with O_TRUNC, A links the
+    # now-empty file into place and publishes a zero-byte lock. BASHPID is
+    # per-subshell but is a Bash 4 feature, so fall back to $$ on Bash 3.2
+    # and add $RANDOM, which is reseeded per subshell, to disambiguate there.
+    local tmp_lock="${lock_dir}/.lock-tmp.${BASHPID:-$$}.$$.$RANDOM"
+    # Record the chosen temp path. It exists only between the write and the
+    # ln/unlink a few microseconds later, so directory sampling cannot
+    # observe it reliably; the trace is what makes per-acquirer uniqueness
+    # checkable at all.
+    _al_trace "tmp" "$tmp_lock"
+    if ! printf '%s %s\n' "$$" "$now_epoch" > "$tmp_lock" 2>/dev/null; then
+      rm -f "$tmp_lock" 2>/dev/null || true
+      return 1
+    fi
     if ln "$tmp_lock" "$lock_file" 2>/dev/null; then
-      rm -f "$tmp_lock"
+      rm -f "$tmp_lock" 2>/dev/null || true
       _al_set_registry "$fd" "fallback" "$lock_file"
       _al_trace "acquire" "$lock_file"
       return 0
     fi
-    rm -f "$tmp_lock"
+    rm -f "$tmp_lock" 2>/dev/null || true
 
     attempt=$(( attempt + 1 ))
-    # Exponential backoff: 50, 100, 200, 400, 500 (cap) ms + jitter 0-99ms.
+    # Exponential backoff: 50, 100, 150 (cap) ms + jitter 0-49ms.
+    # The cap is deliberately low. A waiter that sleeps ~500ms overshoots a
+    # lock freed early in that window: with N concurrent writers and a short
+    # hold, the queue drains slower than the work takes and waiters burn
+    # their whole timeout without ever seeing the free window. Capping the
+    # re-probe interval near 150ms keeps pickup prompt while still backing
+    # off enough to avoid a busy spin. Jitter stays proportional to the cap
+    # so concurrent waiters still desynchronise.
     if [ "$attempt" -le 1 ]; then
       base_ms=50
     elif [ "$attempt" -le 2 ]; then
       base_ms=100
-    elif [ "$attempt" -le 3 ]; then
-      base_ms=200
-    elif [ "$attempt" -le 4 ]; then
-      base_ms=400
     else
-      base_ms=500
+      base_ms=150
     fi
-    local jitter=$(( RANDOM % 100 ))
+    local jitter=$(( RANDOM % 50 ))
     local sleep_ms=$(( base_ms + jitter ))
 
     # Debug log: record each sleep value for jitter divergence testing.
@@ -238,6 +276,13 @@ release_lock() {
   _al_trace "release" "$lf"
 
   if [ "$mode" = "flock" ]; then
+    # Drop the advisory lock explicitly, then close the descriptor. Closing
+    # alone releases the lock only when the last fd referring to that open
+    # file description goes away; an explicit -u makes the release
+    # unconditional and does not depend on no duplicate fd surviving.
+    if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ]; then
+      "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+    fi
     eval "exec ${fd}>&-" 2>/dev/null || true
   elif [ "$mode" = "fallback" ]; then
     # Ownership-checked removal: only remove if we are the recorded owner.
@@ -263,6 +308,15 @@ require_flock_for_parallel() {
     printf 'Install via "brew install util-linux" (macOS) or ' >&2
     printf '"apt-get install util-linux" (Debian/Ubuntu), ' >&2
     printf 'or run sequentially.\n' >&2
+    return 1
+  fi
+  # Presence of the binary is not enough: the forced-fallback override makes
+  # every acquisition take the ln(2) path, so passing the gate on "flock is
+  # installed" while the override is set would report a guarantee the run
+  # does not have. The gate is fail-closed, so refuse instead.
+  if [ "${GAIA_LOCK_FORCE_FALLBACK:-}" = "1" ]; then
+    printf 'FATAL: parallel execution requires flock, but GAIA_LOCK_FORCE_FALLBACK=1 ' >&2
+    printf 'forces the hard-link fallback path. Unset it, or run sequentially.\n' >&2
     return 1
   fi
 }

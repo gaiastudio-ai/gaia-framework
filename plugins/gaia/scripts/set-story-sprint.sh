@@ -87,11 +87,6 @@ fi
 # Shared lock: serialise against transition-story-status.sh (same lock path).
 MEMORY_PATH="${MEMORY_PATH:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory}"
 STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
-mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
-if ! acquire_lock "$STORY_STATUS_LOCK" 5 200; then
-  die "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly" 6
-fi
-
 # Merged cleanup: lock release + tempfile removal. Idempotent.
 # tmp may be unset if the EXIT trap fires before mktemp — use ${tmp:-}.
 _sss_cleanup() {
@@ -100,10 +95,21 @@ _sss_cleanup() {
   rm -f "${tmp:-}" 2>/dev/null || true
 }
 
+mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
+if ! acquire_lock "$STORY_STATUS_LOCK" 5 200; then
+  die "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly" 6
+fi
+
+# Install the releasing trap on the very next line after a successful
+# acquire. Any exit in between — the mktemp below fails on an unwritable
+# story directory or a full filesystem, and `set -e` exits — would otherwise
+# leave a PID-bearing lock file behind that the reaper declines to clear
+# until it ages past the 60s floor. The window must be zero statements wide.
+trap '_sss_cleanup' EXIT
+
 # Rewrite (or insert) the sprint_id line inside the frontmatter block only.
 # awk state machine: fm=0 before first ---, fm=1 inside, fm=2 after close.
 tmp="$(mktemp "${STORY_FILE}.XXXXXX")"
-trap '_sss_cleanup' EXIT
 awk -v newline="$NEW_LINE" '
   BEGIN { fm = 0; done = 0 }
   /^---[[:space:]]*$/ {

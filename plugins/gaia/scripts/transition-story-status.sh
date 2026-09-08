@@ -32,7 +32,7 @@
 #   3  multiple story files match the glob
 #   4  malformed frontmatter (missing or unparseable status)
 #   5  epics-and-stories.md missing
-#   6  lock contention (5s flock timeout)
+#   6  lock contention (5s lock-acquisition timeout)
 #   7  invalid state transition
 #   8  rollback after partial failure
 #
@@ -1488,16 +1488,9 @@ fi
 # override STORY_INDEX_YAML wins unconditionally for tests / brownfield.
 STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$EPIC_KEY_FOR_SLUG")"
 
-# Acquire the cross-file lock via the shared helper (flock fast path or
-# set -C fallback when flock is absent — macOS default).
-mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
-if ! acquire_lock "$STORY_STATUS_LOCK" 5 200; then
-  err "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly"
-  exit 6
-fi
-
 # Single exit handler — every trap installation calls this. Idempotent
-# (per-fd registry cleared on first release).
+# (per-fd registry cleared on first release), so chaining it into a later
+# trap that also releases is safe.
 _tss_release_lock() {
   release_lock 200 2>/dev/null || true
   # Re-touch the sentinel so the lock file exists post-run.
@@ -1506,6 +1499,23 @@ _tss_release_lock() {
   # and this touch restores a zero-byte sentinel.
   touch "$STORY_STATUS_LOCK" 2>/dev/null || true
 }
+
+# Acquire the cross-file lock via the shared helper (flock fast path, or the
+# ln(2) hard-link fallback when flock is absent — the macOS default).
+mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
+if ! acquire_lock "$STORY_STATUS_LOCK" 5 200; then
+  err "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly"
+  exit 6
+fi
+
+# Install the releasing trap on the very next line after a successful
+# acquire. Every exit between here and the rollback trap installed further
+# down — the idempotent no-op, the --from mismatch, an invalid transition,
+# a refused review-gate — would otherwise leave a PID-bearing lock file
+# behind, and the reaper declines to clear it until it ages past the
+# 60s floor, so the next run blocks for the full timeout. The window must
+# be zero statements wide.
+trap '_tss_release_lock; _cleanup_tmps' EXIT INT TERM
 
 CURRENT_STATUS="$(read_frontmatter_status "$STORY_FILE")"
 
