@@ -159,7 +159,7 @@ usage() {
 Usage:
   sprint-state.sh transition                 --story <key> --to <state>
   sprint-state.sh transition                 --sprint <id> --to <state>
-  sprint-state.sh inject                     --story <key> [--sprint-id <id>]
+  sprint-state.sh inject                     --story <key> [--phase <n>] [--sprint-id <id>]
   sprint-state.sh get                        --story <key>
   sprint-state.sh validate                   --story <key>
   sprint-state.sh get-goals                  --sprint <id>
@@ -168,6 +168,7 @@ Usage:
   sprint-state.sh set-review-justification   --sprint <id> --file <path>
   sprint-state.sh set-shape                  --sprint <id> --shape <thrust|completion-pass>
   sprint-state.sh set-story-sprint           --story <key> --sprint <id>
+  sprint-state.sh set-phase                  --story <key> --phase <n>
   sprint-state.sh reconcile                  [--sprint-id <id>] [--dry-run]
   sprint-state.sh lint-dependencies          [--sprint-id <id>] [--format json|text]
   sprint-state.sh record-escalation-override --item-ids <ids> --user <name> --reason <text>
@@ -215,6 +216,17 @@ Subcommands:
                     onto the existing total; a non-zero seed produces
                     double-counted totals.
                     Used by /gaia-correct-course story-injection.
+                    Optional --phase <n> records the story's execution
+                    phase; omit it and no phase field is written.
+  set-phase         Set or clear the optional execution phase on an existing
+                    story row in the active sprint. `--phase <n>` sets a
+                    positive integer (no leading zeros); `--phase ""` clears
+                    the field. Idempotent — setting the value already
+                    present, or clearing an absent field, is a no-op that
+                    exits 0 without writing. Refuses a story key not present
+                    in the yaml. The phase is a scheduling attribute of ONE
+                    sprint, so `rollover` deliberately clears it when moving
+                    a story between sprints; the next sprint plan re-derives.
   get               Print the story's current status (from the story file)
                     to stdout and exit 0.
   validate          Compare story file status to sprint-status.yaml. Exit 0
@@ -1078,11 +1090,45 @@ yaml_has_story_key() {
   ' "$file"
 }
 
+# Validate an execution-phase value. A phase is a 1-based partition index
+# over ONE sprint's candidate set, so it is a small positive integer.
+# Fail-closed: non-digit, empty, zero, negative, leading-zero and
+# out-of-range forms are all rejected with a diagnostic naming the flag
+# and the offending value. Leading zeros are refused because `phase: 07`
+# round-trips as the literal string "07", which would break the
+# unquoted-integer serialisation guarantee and byte-stability.
+#
+# The LENGTH check must precede the numeric comparison and is not
+# redundant with it: `[ "$value" -gt "$max" ]` cannot parse a literal
+# wider than a machine integer, and the shell's reaction to that is to
+# emit its own diagnostic and evaluate the condition as FALSE. Because
+# that happens inside an `if` condition, `set -e` does not fire either —
+# so an over-wide value would fall straight through to ACCEPTED with raw
+# shell noise on stderr. Comparing digit counts first keeps every
+# comparison inside the representable range, and keeps the diagnostic
+# identical across shells.
+_GAIA_PHASE_MAX=999
+_validate_phase_value() {
+  local ctx="$1" value="$2"
+  case "$value" in
+    ''|*[!0-9]*) die "${ctx}: --phase must be a positive integer, got: '${value}'" ;;
+  esac
+  case "$value" in
+    0*) die "${ctx}: --phase must not have a leading zero, got: '${value}'" ;;
+  esac
+  if [ "${#value}" -gt "${#_GAIA_PHASE_MAX}" ]; then
+    die "${ctx}: --phase must be between 1 and ${_GAIA_PHASE_MAX}, got: '${value}'"
+  fi
+  if [ "$value" -gt "$_GAIA_PHASE_MAX" ]; then
+    die "${ctx}: --phase must be between 1 and ${_GAIA_PHASE_MAX}, got: '${value}'"
+  fi
+}
+
 # Append a story entry to sprint-status.yaml's stories: block. Updates
 # total_points by $points_delta and recomputes capacity_utilization using
 # velocity_capacity (when present). Tempfile + atomic mv. Exit 1 on failure.
 append_story_to_yaml() {
-  local file="$1" key="$2" title="$3" status="$4" points="$5" risk="$6"
+  local file="$1" key="$2" title="$3" status="$4" points="$5" risk="$6" phase="${7:-}"
   local today
   today=$(date -u +%Y-%m-%d)
 
@@ -1102,6 +1148,12 @@ append_story_to_yaml() {
   case "$points" in
     ''|*[!0-9]*) die "inject: story 'points' must be a non-negative integer, got: '$points'" ;;
   esac
+  # Defense-in-depth: cmd_inject validates before taking the lock, but this
+  # emitter is the chokepoint every write path flows through, so guarding
+  # here closes internal callers too.
+  if [ -n "$phase" ]; then
+    _validate_phase_value "inject" "$phase"
+  fi
   new_total=$((cur_total + points))
 
   if [ -n "$cur_velocity" ] && printf '%s' "$cur_velocity" | grep -Eq '^[0-9]+$' && [ "$cur_velocity" -gt 0 ]; then
@@ -1128,7 +1180,7 @@ append_story_to_yaml() {
 
   awk -v key="$key" -v title="$title_yaml" -v status="$status" -v points="$points" \
       -v risk="$risk" -v today="$today" -v new_total="$new_total" \
-      -v new_capacity_pct="$new_capacity_pct" '
+      -v new_capacity_pct="$new_capacity_pct" -v phase="$phase" '
     # issue-1403: `title` arrives PRE-ESCAPED as a complete single-quoted YAML
     # scalar (inner single-quotes already doubled by the shell, see the
     # `title_yaml` computation in the caller). Embedding it verbatim keeps any
@@ -1143,6 +1195,11 @@ append_story_to_yaml() {
       printf "    assignee: null\n"
       printf "    blocked_by: null\n"
       printf "    updated: \"%s\"\n", today
+      # Optional execution phase, emitted LAST and ONLY when set — a
+      # phase-less sprint must stay byte-identical to the pre-phase output,
+      # so there is deliberately no `phase: null` branch. Unquoted integer,
+      # matching the `points` field above.
+      if (phase != "") { printf "    phase: %s\n", phase }
     }
     BEGIN { in_stories = 0; appended = 0; saw_stories_key = 0 }
     {
@@ -1237,7 +1294,7 @@ emit_inject_event() {
 
 # Inject locked critical section. Mirrors do_transition_locked structure.
 do_inject_locked() {
-  local story_key="$1"
+  local story_key="$1" phase="${2:-}"
 
   if [ ! -s "$SPRINT_STATUS_YAML" ]; then
     die "sprint-status.yaml is missing or empty: $SPRINT_STATUS_YAML"
@@ -1291,7 +1348,7 @@ do_inject_locked() {
   fi
 
   # Append to yaml (also rewrites total_points and capacity_utilization).
-  append_story_to_yaml "$SPRINT_STATUS_YAML" "$story_key" "$fm_title" "$fm_status" "$fm_points" "$fm_risk"
+  append_story_to_yaml "$SPRINT_STATUS_YAML" "$story_key" "$fm_title" "$fm_status" "$fm_points" "$fm_risk" "$phase"
 
   # Re-read total_points for the lifecycle event payload.
   local new_total
@@ -1304,7 +1361,15 @@ do_inject_locked() {
 }
 
 cmd_inject() {
-  local story_key="$1" sprint_id_override="${2:-}"
+  local story_key="$1" sprint_id_override="${2:-}" phase="${3:-}"
+  # Fail fast BEFORE taking the lock, mirroring cmd_transition's posture.
+  # An empty phase means "not supplied" at THIS layer: the rollover path
+  # re-injects with no phase, so an empty value must stay legal here. The
+  # dispatch arm is what distinguishes an omitted flag from an explicitly
+  # empty one and rejects the latter, using the same validator.
+  if [ -n "$phase" ]; then
+    _validate_phase_value "inject" "$phase"
+  fi
   # sprint_id_override is accepted for forward-compat (multi-sprint yaml,
   # mirror of cmd_reconcile's --sprint-id posture). Today the drift guard
   # uses the yaml's own sprint_id; an explicit override is silently ignored
@@ -1323,7 +1388,7 @@ cmd_inject() {
       die "lock timeout acquiring $SPRINT_STATUS_LOCK"
     fi
     trap 'release_lock 9 2>/dev/null || true' EXIT
-    do_inject_locked "$story_key"
+    do_inject_locked "$story_key" "$phase"
   )
 }
 
@@ -2284,6 +2349,207 @@ cmd_detect_auto_close() {
 #   5. Call cmd_inject to register the story in the target sprint yaml.
 #   6. On any step failure within steps 4-5, roll back the story-file
 #      `sprint_id` to its original value before releasing the lock.
+# ---------- Subcommand: set-phase ----------
+
+# Extract the phase for $story_key from sprint-status.yaml. Stdout is the
+# bare value, or empty when the row carries no phase field. Entry-scoped
+# exactly like read_sprint_status_yaml_status, so a sibling row's phase can
+# never be misreported as this story's.
+read_yaml_story_phase() {
+  local story_key="$1"
+  local file="$SPRINT_STATUS_YAML"
+
+  if [ ! -s "$file" ]; then
+    die "sprint-status.yaml is missing or empty: $file"
+  fi
+
+  awk -v target="$story_key" '
+    BEGIN { in_entry = 0 }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+    }
+    line ~ /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
+      k = line
+      sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
+      gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", k)
+      if (k == target) { in_entry = 1 } else { in_entry = 0 }
+      next
+    }
+    in_entry && line ~ /^[^[:space:]]/ { in_entry = 0 }
+    in_entry && line ~ /^[[:space:]]+phase:[[:space:]]*/ {
+      v = line
+      sub(/^[[:space:]]+phase:[[:space:]]*/, "", v)
+      gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", v)
+      printf "%s", v
+      exit 0
+    }
+  ' "$file"
+}
+
+# Set (or clear) the optional `phase` field on one story row. Tempfile +
+# atomic mv, exit 2 = row not found — a structural twin of
+# rewrite_sprint_status_yaml, which only ever REPLACES a line.
+#
+# This rewriter must sometimes ADD one, and an append faces three asymmetric
+# boundaries plus a load-bearing END. flush_append() is therefore called at
+# every point that can close the target entry:
+#   1. the next `- key:` entry header — flushed BEFORE its `print raw`, or
+#      the new line lands under the following entry and attaches the phase
+#      to the WRONG story;
+#   2. a top-level key — flushed before falling through to `{ print raw }`;
+#   3. an existing `phase:` line inside the entry — replaced in place (or
+#      dropped, when clearing), which is the non-append path;
+#   4. END — a sprint-status.yaml conventionally ends with its stories list,
+#      so a target entry that is the file's last block reaches neither 1 nor
+#      2. This is the COMMON case, not a fallback.
+_rewrite_yaml_story_phase() {
+  local story_key="$1" new_phase="$2"
+  local file="$SPRINT_STATUS_YAML"
+
+  if [ ! -s "$file" ]; then
+    die "sprint-status.yaml is missing or empty: $file"
+  fi
+
+  local tmp
+  tmp=$(mktemp "${file}.tmp.XXXXXX")
+  # Register tmp for script-level EXIT/INT/TERM cleanup.
+  local _tmp_idx
+  _GAIA_TMP_PATHS+=("$tmp")
+  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
+  # shellcheck disable=SC2064
+  trap "rm -f '$tmp'" RETURN
+
+  awk -v target="$story_key" -v new_phase="$new_phase" '
+    BEGIN {
+      in_entry = 0; found_entry = 0; saw_phase = 0; done_append = 0
+      indent = "    "; crlf = ""
+    }
+    function flush_append(   ) {
+      if (in_entry && !done_append && new_phase != "" && !saw_phase) {
+        printf "%sphase: %s%s\n", indent, new_phase, crlf
+        done_append = 1
+      }
+    }
+    {
+      raw = $0
+      line = $0
+      sub(/\r$/, "", line)
+    }
+    # (1) A new list entry closes the current one.
+    line ~ /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
+      flush_append()
+      k = line
+      sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
+      gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", k)
+      if (k == target) { in_entry = 1; found_entry = 1 } else { in_entry = 0 }
+      print raw
+      next
+    }
+    # (2) A top-level key closes the current entry.
+    in_entry && line ~ /^[^[:space:]]/ { flush_append(); in_entry = 0 }
+    # Track the entry body indentation and line ending so an appended line
+    # matches the surrounding rows byte-for-byte.
+    in_entry {
+      match(raw, /^[[:space:]]+/)
+      if (RSTART > 0) { indent = substr(raw, RSTART, RLENGTH) }
+      crlf = ""
+      if (raw ~ /\r$/) { crlf = "\r" }
+    }
+    # (3) An existing phase line in the target entry: replace, or drop when
+    #     clearing.
+    in_entry && line ~ /^[[:space:]]+phase:[[:space:]]*/ {
+      saw_phase = 1; done_append = 1
+      if (new_phase != "") { printf "%sphase: %s%s\n", indent, new_phase, crlf }
+      next
+    }
+    { print raw }
+    # (4) Last block in the file — the common case.
+    END {
+      flush_append()
+      if (!found_entry) { exit 2 }
+    }
+  ' "$file" > "$tmp" || {
+    local rc=$?
+    rm -f "$tmp"
+    trap - RETURN
+    if [ $rc -eq 2 ]; then
+      die "set-phase: story '$story_key' not found in $file"
+    fi
+    die "awk rewrite of '$file' failed (rc=$rc)"
+  }
+
+  if ! mv -f "$tmp" "$file"; then
+    rm -f "$tmp"
+    trap - RETURN
+    die "failed to mv tempfile over '$file'"
+  fi
+  # mv succeeded — clear the slot.
+  _GAIA_TMP_PATHS[_tmp_idx]=""
+  trap - RETURN
+}
+
+# set-phase locked critical section. Mirrors do_inject_locked's structure.
+do_set_phase_locked() {
+  local story_key="$1" new_phase="$2"
+
+  if [ ! -s "$SPRINT_STATUS_YAML" ]; then
+    die "sprint-status.yaml is missing or empty: $SPRINT_STATUS_YAML"
+  fi
+
+  # An unknown key is a hard error, never a silent success.
+  if ! yaml_has_story_key "$SPRINT_STATUS_YAML" "$story_key"; then
+    die "set-phase: story '$story_key' not found in $SPRINT_STATUS_YAML"
+  fi
+
+  # Idempotency: setting the value already present, or clearing a row that
+  # has no phase, is a no-op that exits 0 WITHOUT opening the file for write.
+  local current
+  current=$(read_yaml_story_phase "$story_key" 2>/dev/null || printf '')
+  if [ "$current" = "$new_phase" ]; then
+    if [ -n "$new_phase" ]; then
+      printf '%s: %s phase already %s — no-op\n' "$SCRIPT_NAME" "$story_key" "$new_phase"
+    else
+      printf '%s: %s phase already unset — no-op\n' "$SCRIPT_NAME" "$story_key"
+    fi
+    return 0
+  fi
+
+  _rewrite_yaml_story_phase "$story_key" "$new_phase"
+
+  if [ -n "$new_phase" ]; then
+    printf '%s: %s phase set to %s\n' "$SCRIPT_NAME" "$story_key" "$new_phase"
+  else
+    printf '%s: %s phase cleared\n' "$SCRIPT_NAME" "$story_key"
+  fi
+}
+
+# Set or clear the execution phase on an existing story row.
+#
+# No lifecycle event: emit_inject_event exists because inject changes sprint
+# composition and total_points; set-phase changes neither, exactly as
+# set-shape emits none. A new event type would be write-only surface that no
+# consumer reads.
+#
+# This is a LEAF lock site — it calls nothing that takes another lock — so it
+# neither joins nor perturbs the audited nested-lock exception in rollover.
+cmd_set_phase() {
+  local story_key="$1" new_phase="$2"
+  [ -n "$story_key" ] || die "set-phase: --story is required"
+  # Fail fast before the lock. An empty value is the deliberate clear form.
+  if [ -n "$new_phase" ]; then
+    _validate_phase_value "set-phase" "$new_phase"
+  fi
+
+  (
+    if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
+      die "lock timeout acquiring $SPRINT_STATUS_LOCK"
+    fi
+    trap 'release_lock 9 2>/dev/null || true' EXIT
+    do_set_phase_locked "$story_key" "$new_phase"
+  )
+}
+
 cmd_rollover() {
   local from_sprint="$1" to_sprint="$2" keys_raw="$3"
   [ -n "$from_sprint" ] || die "rollover requires --from <sprint-id>"
@@ -2403,9 +2669,26 @@ _rollover_one() {
       return 1
     fi
 
-    # Now inject the story into the target sprint yaml.
+    # Now inject the story into the target sprint yaml. Two branches, and the
+    # phase reset below must hold on BOTH:
+    #   * key ABSENT  -> the append runs; passing no phase omits the field.
+    #   * key PRESENT -> the idempotency guard in do_inject_locked
+    #                    short-circuits, append_story_to_yaml is never
+    #                    reached, and the pre-existing row survives INTACT.
     if ! cmd_inject "$key" "" >/dev/null 2>&1; then
       # Rollback the story file.
+      mv -f "$backup" "$story_file" 2>/dev/null || true
+      rm -f "$backup"
+      return 1
+    fi
+
+    # Reset the execution phase EXPLICITLY rather than relying on the append
+    # path being taken. A phase is a position in ONE sprint's dependency
+    # partition, derived from that sprint's candidate set, so a carried value
+    # is a stale and actively misleading ordering hint in the target sprint —
+    # omission is the fail-safe, and the next sprint plan re-derives it.
+    # Idempotent, so this is a no-op on an already phase-less row.
+    if ! cmd_set_phase "$key" "" >/dev/null 2>&1; then
       mv -f "$backup" "$story_file" 2>/dev/null || true
       rm -f "$backup"
       return 1
@@ -2421,8 +2704,10 @@ _rollover_one() {
       die "lock timeout acquiring $lock_file"
     fi
     trap 'release_lock 9 2>/dev/null || true' EXIT
-    # AUDITED NESTED-LOCK EXCEPTION: _rollover_with_lock calls cmd_inject,
-    # which acquires $SPRINT_STATUS_LOCK on fd 9 in its own subshell. No fd
+    # AUDITED NESTED-LOCK EXCEPTION: _rollover_with_lock calls cmd_inject and
+    # then cmd_set_phase (the explicit phase reset). Each acquires
+    # $SPRINT_STATUS_LOCK on fd 9 in its own subshell — two SEQUENTIAL nested
+    # acquisitions in the same order, never overlapping. No fd
     # aliasing: cmd_inject runs its critical section in a nested subshell,
     # which gets its own copy of the shell variables backing the per-fd
     # registry (_AL_PATH_9 / _AL_MODE_9) and its own copy of the fd table.
@@ -2430,11 +2715,13 @@ _rollover_one() {
     # this subshell, whose fd 9 still refers to .rollover.lock when the
     # nested call returns. (Note this is subshell variable scoping, not
     # process separation: a bash subshell shares $$ with its parent, and
-    # cmd_inject is an ordinary in-process function call.) Lock ordering:
+    # cmd_inject is an ordinary in-process function call.) The same reasoning
+    # holds verbatim for cmd_set_phase, which is a leaf site: it takes only
+    # the sprint-status lock and calls nothing that locks. Lock ordering:
     # per-story .rollover.lock first, then sprint-status second. Reverse
-    # ordering cannot occur — cmd_inject's other caller (the dispatch at
-    # main) holds no per-story lock. Any future nested-lock site must
-    # verify ordering to prevent deadlock.
+    # ordering cannot occur — the other callers of both functions (the
+    # dispatch at main) hold no per-story lock. Any future nested-lock site
+    # must verify ordering to prevent deadlock.
     _rollover_with_lock
   )
   rc=$?
@@ -3094,7 +3381,7 @@ main() {
       usage
       exit 0
       ;;
-    init|advance|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint)
+    init|advance|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint|set-phase)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -3112,6 +3399,13 @@ main() {
   # set-review-justification + transition --sprint).
   # set-shape subcommand for sprint_shape modifier (thrust | completion-pass).
   local goals_arg="" justification_file="" shape_arg=""
+  # Optional execution phase. _GAIA_PHASE_FLAG_SEEN discriminates "--phase
+  # omitted" from "--phase given an empty value" (the deliberate clear form)
+  # — the two are indistinguishable by value alone. MUST be initialised here:
+  # under `set -u` an undeclared reference in the set-phase dispatch arm
+  # would abort with an unbound-variable crash instead of the intended usage
+  # diagnostic.
+  local phase_arg="" _GAIA_PHASE_FLAG_SEEN=0
   # Optional init-only fields.
   local init_start_date="" init_end_date="" init_capacity_points="" init_sprint_length=""
   while [ $# -gt 0 ]; do
@@ -3189,6 +3483,15 @@ main() {
         shape_arg="$2"; shift 2 ;;
       --shape=*)
         shape_arg="${1#--shape=}"; shift ;;
+      --phase)
+        # Execution phase for inject / set-phase. Like --goals, --shape and
+        # --sprint-id, the parser loop is shared across subcommands, so the
+        # flag is syntactically accepted everywhere and semantically consumed
+        # only by the two subcommands that document it.
+        [ $# -ge 2 ] || die "--phase requires a value"
+        phase_arg="$2"; _GAIA_PHASE_FLAG_SEEN=1; shift 2 ;;
+      --phase=*)
+        phase_arg="${1#--phase=}"; _GAIA_PHASE_FLAG_SEEN=1; shift ;;
       --start-date)
         # Optional sprint metadata.
         [ $# -ge 2 ] || die "--start-date requires a value"
@@ -3311,7 +3614,21 @@ main() {
       cmd_set_shape "$reconcile_sprint_id" "$shape_arg" ;;
     inject)
       [ -n "$story_key" ] || die "inject requires --story <key>"
-      cmd_inject "$story_key" "${reconcile_sprint_id:-}" ;;
+      # An explicitly-given empty --phase is a usage error on inject: there
+      # is nothing to clear on a row that does not exist yet, and silently
+      # treating it as "omitted" would mask a caller passing an unset
+      # variable. Clearing is set-phase's job. Routed through the validator
+      # rather than repeating its wording, so the diagnostic cannot drift.
+      if [ "$_GAIA_PHASE_FLAG_SEEN" = "1" ]; then
+        _validate_phase_value "inject" "$phase_arg"
+      fi
+      cmd_inject "$story_key" "${reconcile_sprint_id:-}" "${phase_arg:-}" ;;
+    set-phase)
+      [ -n "$story_key" ] || die "set-phase requires --story <key>"
+      # Clearing must be deliberate, never the residue of a forgotten flag.
+      [ "$_GAIA_PHASE_FLAG_SEEN" = "1" ] \
+        || die "set-phase requires --phase <n> (use --phase \"\" to clear)"
+      cmd_set_phase "$story_key" "$phase_arg" ;;
     set-story-sprint)
       # Bind a pre-materialized backlog story's sprint_id (currently null)
       # to the active sprint without going through `--for-sprint`

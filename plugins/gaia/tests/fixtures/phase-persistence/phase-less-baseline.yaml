@@ -1,0 +1,30 @@
+sprint_id: "sprint-99"
+status: planned
+total_points: 9
+goals: []
+items: []
+stories:
+  - key: "AAA-S1"
+    title: 'Baseline story AAA-S1'
+    status: "ready-for-dev"
+    points: 3
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "<DATE>"
+  - key: "AAA-S2"
+    title: 'Baseline story AAA-S2'
+    status: "ready-for-dev"
+    points: 3
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "<DATE>"
+  - key: "AAA-S3"
+    title: 'Baseline story AAA-S3'
+    status: "ready-for-dev"
+    points: 3
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "<DATE>"
