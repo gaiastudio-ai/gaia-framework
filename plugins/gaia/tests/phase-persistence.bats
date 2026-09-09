@@ -484,6 +484,87 @@ EOF
   done
 }
 
+@test "set-phase writes when a SIBLING row already carries the requested value (AC-EC2)" {
+  # The idempotency decision is driven by reading the TARGET row's current
+  # phase. A reader that returns the first phase found in the FILE makes this
+  # a false match: the requested value equals the sibling's, so a legitimate
+  # write is routed into the no-op branch and silently discarded at exit 0 —
+  # a lost write reported as success.
+  #
+  # Every other phase-carrying fixture in this suite is single-row, where
+  # "first phase in the file" and "this row's phase" are the same string and
+  # the two behaviours are indistinguishable. This fixture separates them.
+  seed_yaml_with_rows sprint-99 CCC-S1:2 CCC-S2
+  [ "$(entry_phase_count CCC-S1)" = "1" ]
+  [ "$(entry_phase_count CCC-S2)" = "0" ]
+
+  run bash "$CANONICAL" set-phase --story CCC-S2 --phase 2
+  [ "$status" -eq 0 ]
+  assert_surface_implemented "$output"
+
+  # The write must actually land on the target row.
+  [ "$(entry_phase_count CCC-S2)" = "1" ]
+  run entry_block CCC-S2
+  printf '%s\n' "$output" | grep -q '^    phase: 2$'
+  # And the sibling must be untouched.
+  [ "$(entry_phase_count CCC-S1)" = "1" ]
+}
+
+@test "set-phase reports no-op from the TARGET row's value, not a sibling's (AC-EC2)" {
+  # The mirror direction. Here the target already holds the requested value
+  # and the sibling holds a different one, so a reader scoped to the wrong
+  # row would miss the real match and perform a pointless rewrite while
+  # reporting a write that changed nothing.
+  seed_yaml_with_rows sprint-99 CCC-S1:5 CCC-S2:2
+  snapshot_yaml
+
+  run bash "$CANONICAL" set-phase --story CCC-S2 --phase 2
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q 'no-op'
+  cmp "$YAML.pre" "$YAML"
+
+  # Clearing a phase-less target must also read the target, not the sibling.
+  seed_yaml_with_rows sprint-99 CCC-S1:5 CCC-S2
+  snapshot_yaml
+  run bash "$CANONICAL" set-phase --story CCC-S2 --phase ""
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q 'no-op'
+  cmp "$YAML.pre" "$YAML"
+}
+
+@test "the phase reader is scoped to the target row on a three-row yaml (AC2)" {
+  # read_yaml_story_phase is not reachable by sourcing the script (loading it
+  # runs main), so its scoping is pinned through the observable behaviour it
+  # drives: the idempotency decision in do_set_phase_locked. On a three-row
+  # yaml each row holds a DIFFERENT value, so a reader that returns the first
+  # phase in the file cannot agree with a reader scoped to the target for
+  # more than one of the three cases.
+  seed_yaml_with_rows sprint-99 CCC-S1:7 CCC-S2:3 CCC-S3:5
+
+  # Middle row: no-op only if its own 3 was read (a file-first reader sees 7).
+  snapshot_yaml
+  run bash "$CANONICAL" set-phase --story CCC-S2 --phase 3
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q 'no-op'
+  cmp "$YAML.pre" "$YAML"
+
+  # Last row: same probe, different value, so no single wrong read satisfies
+  # both this assertion and the one above.
+  snapshot_yaml
+  run bash "$CANONICAL" set-phase --story CCC-S3 --phase 5
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -q 'no-op'
+  cmp "$YAML.pre" "$YAML"
+
+  # And the first row's value must NOT be reported for a row that lacks one.
+  seed_yaml_with_rows sprint-99 CCC-S1:7 CCC-S3
+  run bash "$CANONICAL" set-phase --story CCC-S3 --phase 7
+  [ "$status" -eq 0 ]
+  assert_surface_implemented "$output"
+  [ "$(entry_phase_count CCC-S3)" = "1" ]
+  [ "$(entry_phase_count CCC-S1)" = "1" ]
+}
+
 @test "set-phase on a story key absent from the yaml fails closed with a diagnostic (AC2)" {
   seed_yaml_with_rows sprint-99 CCC-S1
   snapshot_yaml
