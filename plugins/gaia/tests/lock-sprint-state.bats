@@ -415,6 +415,64 @@ YAMLEOF
   }
 }
 
+@test "set-phase blocks when the sprint-status lock is held (AC2)" {
+  # set-phase is a writer verb on sprint-status.yaml, so it must serialise
+  # against the same lock as the other write sites. Replacing its locked
+  # subshell with a bare call to the critical section leaves the phase suite
+  # entirely green — this is the test that catches it.
+  _create_story "ETEST-S13" "backlog" "\"test-sprint\""
+  cat > "$SPRINT_STATUS_YAML" << 'YAMLEOF'
+sprint_id: "test-sprint"
+status: active
+total_points: 3
+goals: []
+items: []
+stories:
+  - key: "ETEST-S13"
+    title: 'Test story'
+    status: "backlog"
+    points: 3
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+YAMLEOF
+  local before_sum
+  before_sum="$(cksum < "$SPRINT_STATUS_YAML")"
+  local holder_done="$TEST_TMP/set-phase-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s\n' "$holder_pid" "$(date +%s)" > "${SPRINT_STATUS_YAML}.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export SPRINT_STATUS_YAML="'"$SPRINT_STATUS_YAML"'"
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export GAIA_SKIP_ORPHAN_SWEEP=1
+    bash "'"$SPRINT_STATE"'" set-phase --story ETEST-S13 --phase 2
+  '
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+  [ "$status" -ne 0 ] || {
+    echo "set-phase succeeded while the sprint-status lock was held — site is unlocked" >&2
+    echo "$output" >&2
+    false
+  }
+  # It must have failed at ACQUISITION, not at some pre-lock validation —
+  # otherwise the test would pass without asserting anything about locking.
+  [[ "$output" == *"lock timeout"* ]] || {
+    echo "set-phase failed, but not at lock acquisition: $output" >&2
+    false
+  }
+  # And it wrote nothing while another owner held the lock.
+  [ "$(cksum < "$SPRINT_STATUS_YAML")" = "$before_sum" ] || {
+    echo "sprint-status.yaml modified while the lock was held by another owner" >&2
+    false
+  }
+}
+
 @test "set-story-sprint blocks when its per-story lock is held (AC2)" {
   _create_story "ETEST-S12" "backlog" "null"
   local story_file="$IMPL/epic-test/stories/ETEST-S12-test-story.md"
