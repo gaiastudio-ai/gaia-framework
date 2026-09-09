@@ -16,7 +16,7 @@ setup() {
   local tool
   for tool in bash sh env awk sed grep sort cat mv rm cp mkdir ln sleep \
               date stat ps kill head tail wc tr printf touch mktemp \
-              dirname basename readlink id tee yq jq git chmod perl find xargs cut od uname getconf; do
+              dirname basename readlink id tee yq jq git chmod perl find xargs cut od uname getconf rmdir mkfifo timeout; do
     local p
     p="$(command -v "$tool" 2>/dev/null || true)"
     if [ -n "$p" ] && [ ! -e "$NOFLOCK_BIN/$tool" ]; then
@@ -526,8 +526,13 @@ YAMLEOF
   [ "$status" -ne 0 ] || { echo "expected die inside locked subshell, but succeeded: $output" >&2; false; }
   # The failure must NOT be a lock-acquisition timeout — it must be the
   # post-acquire fault (mktemp/rewrite failure inside the critical section).
-  echo "$output" | grep -v "lock timeout" >/dev/null 2>&1 \
-    || { echo "failure was lock-timeout, not post-acquire fault: $output" >&2; false; }
+  # Assert ABSENCE directly: `grep -v` succeeds whenever any single line
+  # fails to match, so it silently stops meaning "absent" the moment the
+  # output grows a second line.
+  if echo "$output" | grep -qF "lock timeout"; then
+    echo "failure was lock-timeout, not post-acquire fault: $output" >&2
+    false
+  fi
   # The lock file must NOT contain a held PID (trap released it).
   if [ -f "$lock_file" ]; then
     local content

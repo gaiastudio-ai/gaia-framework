@@ -21,7 +21,7 @@ setup() {
   local tool
   for tool in bash sh env awk sed grep sort cat mv rm cp mkdir ln sleep \
               date stat ps kill head tail wc tr printf touch mktemp \
-              dirname basename readlink id tee yq jq git chmod perl find xargs cut od uname getconf; do
+              dirname basename readlink id tee yq jq git chmod perl find xargs cut od uname getconf rmdir mkfifo timeout; do
     local p
     p="$(command -v "$tool" 2>/dev/null || true)"
     if [ -n "$p" ] && [ ! -e "$NOFLOCK_BIN/$tool" ]; then
@@ -46,7 +46,32 @@ setup() {
 teardown() {
   jobs -p 2>/dev/null | xargs kill -9 2>/dev/null || true
   wait 2>/dev/null || true
+  # Clear any immutability flag before the tree is removed. The
+  # immutable-story test clears its own flag inline, but an assertion
+  # aborting in between would leave it set — and rm -rf cannot unlink a
+  # uchg/+i file, so common_teardown would fail and the litter would
+  # accumulate across failing runs. Restore write permission for the same
+  # reason.
+  if [ -n "${PROJ:-}" ] && [ -d "${PROJ:-}" ]; then
+    chflags -R nouchg "$PROJ" 2>/dev/null || true
+    if command -v chattr >/dev/null 2>&1; then
+      find "$PROJ" -type f -exec chattr -i {} + 2>/dev/null || true
+    fi
+    chmod -R u+w "$PROJ" 2>/dev/null || true
+  fi
   common_teardown
+}
+
+# Helper: expose a real flock(1) through a private bin dir, or fail when the
+# host has none (macOS default). Mirrors lock-helper.bats.
+_real_flock_bin() {
+  local real
+  real="$(command -v flock 2>/dev/null || true)"
+  [ -n "$real" ] || return 1
+  local dir="$TEST_TMP/real-flock-bin"
+  mkdir -p "$dir"
+  [ -e "$dir/flock" ] || ln -s "$real" "$dir/flock"
+  printf '%s' "$dir"
 }
 
 # Helper: create a story file for review-gate tests.
@@ -201,77 +226,113 @@ STORYEOF
 }
 
 # ============================================================
-# Lock released on die() inside ledger_write subshell
+# AC4: ledger_write releases its lock when the critical section dies
 # ============================================================
 
-@test "the subshell EXIT-trap release pattern used by ledger_write frees the fallback lock on die (AC4)" {
-  # review-gate.sh is not driven here because ledger_write's ! mv handler
-  # has an explicit release_lock that covers every reachable fault path.
-  # The trap is defense-in-depth; this test proves the pattern itself works.
-  #
-  # Exercises the exact lock/die/release pattern from review-gate.sh's
-  # ledger_write: acquire fd 8 fallback lock, EXIT trap as sole cleanup,
-  # then die (exit 1) inside the subshell. The die fires AFTER acquire
-  # succeeds — proved by the debug log showing "acquire" with no
-  # preceding "lock timeout" in the error output.
-  local ledger_dir="$TEST_TMP/ledger-dir"
-  mkdir -p "$ledger_dir"
-  local lock_file="$ledger_dir/.review-gate-ledger.lock"
-  local debug_log="$TEST_TMP/lock-debug.log"
+@test "ledger_write releases the lock when its critical section dies (AC4)" {
+  # Drives the REAL review-gate.sh ledger_write path. Its only in-section
+  # fault is the `! mv` handler, which exits non-zero WITHOUT releasing the
+  # lock explicitly — the EXIT trap on the locked subshell is the sole
+  # release, and `|| die "failed to write ledger"` is what turns the
+  # subshell's non-zero status into the command's failure. Make the ledger
+  # file immutable: the lock file next to it is still creatable
+  # (acquisition succeeds) and the tmpfile still writes, but the final
+  # rename onto the ledger cannot succeed. Without the trap that die leaves
+  # a PID-bearing lock that blocks every later ledger write for this
+  # project until it ages past the reap floor. A trailing `release_lock 8`
+  # as the subshell's last statement would ALSO break this: its always-zero
+  # status would become the subshell's, so the `|| die` would never fire
+  # and the write would be reported as successful.
+  local sf
+  sf="$(_mk_rg_story "ETEST-RG8")"
+  local ledger="$STATE/.review-gate-ledger"
+  local lock_file="${ledger}.lock"
+  printf 'SEED\tSeed Gate\tseed-plan\tPASSED\n' > "$ledger"
+
+  local immutable=""
+  if chflags uchg "$ledger" 2>/dev/null; then
+    immutable="chflags"
+  elif chattr +i "$ledger" 2>/dev/null; then
+    immutable="chattr"
+  else
+    skip "cannot make a file immutable on this host (need chflags or chattr)"
+  fi
+
   run bash -c '
-    set -euo pipefail
     export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
-    export ACQUIRE_LOCK_DEBUG=1
-    export ACQUIRE_LOCK_DEBUG_LOG="'"$debug_log"'"
-    source "'"$HELPER"'"
-    # Mirror ledger_write subshell pattern (fd 8, EXIT trap, die).
-    (
-      if ! acquire_lock "'"$lock_file"'" 5 8; then
-        echo "lock timeout" >&2
-        exit 1
-      fi
-      trap "release_lock 8 2>/dev/null || true" EXIT
-      # Simulate a die inside the critical section.
-      echo "die-after-acquire: simulated fault" >&2
-      exit 1
-    )
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export REVIEW_GATE_LEDGER="'"$ledger"'"
+    bash "'"$REVIEW_GATE"'" update \
+      --story ETEST-RG8 \
+      --gate "Code Review" \
+      --verdict PASSED \
+      --plan-id plan-die
   '
-  # The command must have failed (die path).
-  [ "$status" -ne 0 ] || { echo "expected die, but succeeded: $output" >&2; false; }
-  # Verify the lock was genuinely acquired (debug log records "acquire").
-  [ -f "$debug_log" ] || { echo "debug log missing — lock may not have been attempted" >&2; false; }
-  grep -q "^acquire " "$debug_log" \
-    || { echo "debug log has no acquire entry — lock was never held: $(cat "$debug_log")" >&2; false; }
-  # The failure must NOT be a lock-acquisition timeout. Assert ABSENCE
-  # directly: `grep -v` succeeds whenever any single line fails to match, so
-  # it silently stops meaning "absent" the moment the output grows a line.
-  if echo "$output" | grep -qF "lock timeout"; then
-    echo "failure was lock-timeout, not post-acquire fault: $output" >&2
+  local write_status="$status"
+  local write_output="$output"
+
+  # Clear the flag so the rest of the test (and teardown) can write.
+  if [ "$immutable" = "chflags" ]; then
+    chflags nouchg "$ledger" 2>/dev/null || true
+  else
+    chattr -i "$ledger" 2>/dev/null || true
+  fi
+
+  # The in-section fault must surface as a FAILURE, not a silent success.
+  # A trailing release_lock inside the subshell masks the rc and reddens
+  # exactly here.
+  [ "$write_status" -ne 0 ] || {
+    echo "ledger write reported success against an immutable ledger: $write_output" >&2
+    false
+  }
+  [[ "$write_output" == *"failed to write ledger"* ]] || {
+    echo "did not take the ledger-write failure die path: $write_output" >&2
+    false
+  }
+  # It must have failed in the rename, not at acquisition — otherwise the
+  # critical section never ran and this asserts nothing about the trap.
+  if echo "$write_output" | grep -qF "lock timeout"; then
+    echo "failed at acquisition, not inside the critical section: $write_output" >&2
     false
   fi
-  # The error output must show the post-acquire die message.
-  echo "$output" | grep -q "die-after-acquire" \
-    || { echo "die message not found in output — fault did not fire after acquire: $output" >&2; false; }
-  # The lock file must NOT carry a held PID (trap released it).
-  if [ -f "$lock_file" ]; then
+  # The seeded ledger content must be intact (the rename never landed).
+  grep -qF "SEED" "$ledger" || {
+    echo "the ledger was mutated despite the failed write" >&2
+    false
+  }
+
+  # No PID-bearing lock may survive the died critical section.
+  if [ -f "$lock_file" ] && [ -s "$lock_file" ]; then
     local content
     content="$(cat "$lock_file")"
-    if echo "$content" | grep -E '^[0-9]+ [0-9]+$' >/dev/null 2>&1; then
-      echo "lock file still carries PID after die (trap did not fire): $content" >&2
+    if echo "$content" | grep -qE '^[0-9]+ [0-9]+$'; then
+      echo "ledger_write leaked a PID-bearing lock after die: $content" >&2
       false
     fi
   fi
-  # Follow-up acquire with high reap threshold must succeed quickly
-  # (proving the lock was released, not just reaped from a stale file).
+  # Decisive check: a subsequent ledger write must succeed at once rather
+  # than block on the leaked lock.
   run bash -c '
     export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
     export GAIA_LOCK_REAP_SECONDS=300
-    source "'"$HELPER"'"
-    acquire_lock "'"$lock_file"'" 2 8
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export REVIEW_GATE_LEDGER="'"$ledger"'"
+    bash "'"$REVIEW_GATE"'" update \
+      --story ETEST-RG8 \
+      --gate "QA Tests" \
+      --verdict PASSED \
+      --plan-id plan-after
   '
-  [ "$status" -eq 0 ] || { echo "follow-up acquire blocked (lock leaked): $output" >&2; false; }
+  [ "$status" -eq 0 ] || {
+    echo "the write after a died ledger_write failed — leaked lock (status=$status): $output" >&2
+    false
+  }
+  grep -qF "plan-after" "$ledger" || {
+    echo "follow-up ledger write did not land" >&2
+    false
+  }
 }
 
 # ============================================================
@@ -366,4 +427,84 @@ STORYEOF
     echo "follow-up update did not land in the story file" >&2
     false
   }
+}
+
+# ============================================================
+# AC4: the flock fast path must actually WORK end-to-end
+# ============================================================
+
+@test "review-gate ledger and story writes succeed on the flock fast path (AC4)" {
+  # Every other flock-mode assertion in this story asserts a REFUSAL (a
+  # symlink, a directory, a swapped path) or a released lock. A change that
+  # made the fast path fail-closed for everyone therefore left them all
+  # green while breaking every real write on the platform where flock is
+  # present — which is the CI and production path on Linux. This is the
+  # positive control that closes that hole: drive the REAL review-gate.sh
+  # with flock genuinely on PATH and require the writes to land.
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local sf
+  sf="$(_mk_rg_story "ETEST-RG7")"
+  local ledger="$STATE/.review-gate-ledger"
+
+  # Ledger path (--plan-id present).
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export REVIEW_GATE_LEDGER="'"$ledger"'"
+    bash "'"$REVIEW_GATE"'" update \
+      --story ETEST-RG7 \
+      --gate "Code Review" \
+      --verdict PASSED \
+      --plan-id plan-flock
+  '
+  [ "$status" -eq 0 ] || {
+    echo "ledger write FAILED on the flock fast path (status=$status): $output" >&2
+    echo "— the fast path is fail-closed; every write on a flock host breaks" >&2
+    false
+  }
+  if echo "$output" | grep -qF "changed identity during open"; then
+    echo "the post-open identity check rejected a legitimate open: $output" >&2
+    false
+  fi
+  grep -qF "plan-flock" "$ledger" || {
+    echo "the ledger row did not land: $(cat "$ledger" 2>/dev/null)" >&2
+    false
+  }
+
+  # Story-file path (cmd_update, no --plan-id).
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export REVIEW_GATE_PROOF_OF_EXECUTION=off
+    bash "'"$REVIEW_GATE"'" update \
+      --story ETEST-RG7 \
+      --gate "QA Tests" \
+      --verdict PASSED
+  '
+  [ "$status" -eq 0 ] || {
+    echo "cmd_update FAILED on the flock fast path (status=$status): $output" >&2
+    false
+  }
+  grep -qF "| QA Tests | PASSED |" "$sf" || {
+    echo "the story-file update did not land on the flock fast path" >&2
+    false
+  }
+
+  # A second write must still get the lock — the first release worked.
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    export PROJECT_ROOT="'"$PROJ"'" PROJECT_PATH="'"$PROJ"'"
+    export REVIEW_GATE_LEDGER="'"$ledger"'"
+    bash "'"$REVIEW_GATE"'" update \
+      --story ETEST-RG7 \
+      --gate "Security Review" \
+      --verdict PASSED \
+      --plan-id plan-flock-2
+  '
+  [ "$status" -eq 0 ] || {
+    echo "the second flock-path write failed — the lock was not released: $output" >&2
+    false
+  }
+  grep -qF "plan-flock-2" "$ledger" || { echo "second ledger row missing" >&2; false; }
 }

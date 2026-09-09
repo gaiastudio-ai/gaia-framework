@@ -18,7 +18,7 @@ setup() {
   local tool
   for tool in bash sh env awk sed grep sort cat mv rm cp mkdir ln sleep \
               date stat ps kill head tail wc tr printf touch mktemp \
-              dirname basename readlink id tee yq jq git chmod perl find xargs cut od uname getconf; do
+              dirname basename readlink id tee yq jq git chmod perl find xargs cut od uname getconf rmdir mkfifo timeout; do
     local p
     p="$(command -v "$tool" 2>/dev/null || true)"
     if [ -n "$p" ] && [ ! -e "$NOFLOCK_BIN/$tool" ]; then
@@ -972,6 +972,536 @@ STORYEOF
   [ ! -f "$witness" ] || {
     echo "a zero-byte lock file was published:" >&2
     cat "$witness" >&2
+    false
+  }
+}
+
+# ============================================================
+# Lock-path type policy: a non-regular file at the lock path must never
+# silently disable mutual exclusion (AC1)
+# ============================================================
+
+@test "N=12 fallback acquirers serialise despite a directory at the lock path (AC1)" {
+  # `ln SOURCE DIR` is the link-INTO-directory form and ALWAYS succeeds, so
+  # a directory at the lock path makes every concurrent acquirer believe it
+  # holds the lock. The read-modify-write counter is the proof: with mutual
+  # exclusion the final value equals the number of winners; without it,
+  # concurrent winners overwrite each other and the counter falls short.
+  local lock_file="$LOCK_DIR/typed-dir.lock"
+  local counter="$TEST_TMP/typed-dir-counter"
+  local wins="$TEST_TMP/typed-dir-wins"
+  mkdir -p "$lock_file"
+  echo 0 > "$counter"
+  rm -f "$wins"
+  local pids=()
+  local i
+  for i in $(seq 1 12); do
+    (
+      export PATH="$SAFE_PATH"
+      export GAIA_LOCK_FORCE_FALLBACK=1
+      source "$HELPER"
+      if acquire_lock "$lock_file" 8 9 2>/dev/null; then
+        local v
+        v="$(cat "$counter")"
+        sleep 0.05 2>/dev/null || sleep 1
+        echo $(( v + 1 )) > "$counter"
+        echo "win" >> "$wins"
+        release_lock 9 2>/dev/null || true
+      fi
+    ) &
+    pids+=($!)
+  done
+  local pid
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+
+  local win_count=0
+  if [ -f "$wins" ]; then
+    win_count="$(wc -l < "$wins" | tr -d ' ')"
+  fi
+  local final
+  final="$(cat "$counter")"
+  # Either every acquirer refused (fail-closed), or the ones that won were
+  # genuinely serialised. What must NEVER happen is winners > increments.
+  [ "$final" -eq "$win_count" ] || {
+    echo "lost updates: $win_count acquirers won but the counter reached $final" >&2
+    echo "— a directory at the lock path disabled mutual exclusion" >&2
+    false
+  }
+  # The published lock path must not still be a directory afterwards.
+  [ ! -d "$lock_file" ] || {
+    echo "lock path is still a directory after $win_count acquisitions" >&2
+    false
+  }
+}
+
+@test "fallback refuses a directory holding unrelated files at the lock path (AC1)" {
+  # A directory that is not this helper's own residue must never be removed
+  # recursively — refuse loudly instead, so mutual exclusion cannot silently
+  # degrade and no unrelated tree is destroyed.
+  local lock_file="$LOCK_DIR/foreign-dir.lock"
+  mkdir -p "$lock_file"
+  printf 'do not delete me\n' > "$lock_file/keepsake"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9
+  '
+  [ "$status" -ne 0 ] || {
+    echo "acquire reported success against a foreign directory at the lock path" >&2
+    false
+  }
+  [[ "$output" == *"directory"* ]] || {
+    echo "refusal does not name the directory cause: $output" >&2
+    false
+  }
+  [ -f "$lock_file/keepsake" ] || {
+    echo "the helper destroyed unrelated directory contents" >&2
+    false
+  }
+  grep -qF "do not delete me" "$lock_file/keepsake" || {
+    echo "unrelated file content was rewritten" >&2
+    false
+  }
+}
+
+@test "the reaper reclaims a directory holding only helper temp residue (AC-EC2)" {
+  # A directory carrying nothing but abandoned .lock-tmp.* files is this
+  # helper's own wreckage from the pre-fix behaviour. It must be reclaimed,
+  # not refused, or every lock path that already got poisoned stays wedged.
+  local lock_file="$LOCK_DIR/residue-dir.lock"
+  mkdir -p "$lock_file"
+  printf '1 1\n' > "$lock_file/.lock-tmp.111.111.7"
+  printf '2 2\n' > "$lock_file/.lock-tmp.222.222.8"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 3 9
+  '
+  [ "$status" -eq 0 ] || {
+    echo "acquire could not reclaim a residue-only directory (status=$status): $output" >&2
+    false
+  }
+  [ ! -d "$lock_file" ] || { echo "lock path is still a directory after reclaim" >&2; false; }
+  [ -f "$lock_file" ] || { echo "lock path is not a regular file after reclaim" >&2; false; }
+  local content
+  content="$(cat "$lock_file")"
+  [[ "$content" =~ ^[0-9]+\ [0-9]+$ ]] || {
+    echo "bad lock format after reclaim: $content" >&2
+    false
+  }
+}
+
+@test "fallback refuses a fifo at the lock path rather than blocking on it (AC1)" {
+  # A fifo is neither a directory nor a symlink: without a positive
+  # "exists but is not a regular file" arm it slips through the same gap
+  # the directory did.
+  local lock_file="$LOCK_DIR/fifo.lock"
+  mkfifo "$lock_file" 2>/dev/null || skip "cannot create a fifo on this host"
+  run timeout 20 bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 3 9
+  ' 2>/dev/null || true
+  # Whatever the verdict, the path must no longer be a fifo and the helper
+  # must not have hung on it (timeout would report 124).
+  [ "$status" -ne 124 ] || { echo "acquire blocked on the fifo at the lock path" >&2; false; }
+  [ ! -p "$lock_file" ] || { echo "lock path is still a fifo after acquire" >&2; false; }
+}
+
+@test "two concurrent real transition runs never both proceed past a poisoned lock (AC1)" {
+  # End-to-end through the REAL transition-story-status.sh: a directory at
+  # its lock path must not let two runs into the critical section at once.
+  local tss="$SCRIPTS_DIR/transition-story-status.sh"
+  [ -f "$tss" ] || skip "transition-story-status.sh not found"
+  local proj="$TEST_TMP/tss-proj"
+  local mem="$proj/_memory"
+  mkdir -p "$mem" "$proj/.gaia/artifacts/implementation-artifacts/epic-test/stories"
+  local lock_file="$mem/.story-status.lock"
+  mkdir -p "$lock_file"
+  local marker="$TEST_TMP/tss-inside"
+  rm -f "$marker"
+
+  local pids=()
+  local i
+  for i in 1 2; do
+    (
+      export PATH="$SAFE_PATH"
+      export GAIA_LOCK_FORCE_FALLBACK=1
+      export PROJECT_ROOT="$proj" PROJECT_PATH="$proj"
+      export STORY_STATUS_LOCK="$lock_file"
+      source "$HELPER"
+      if acquire_lock "$lock_file" 8 200 2>/dev/null; then
+        # Simulate the critical section: overlapping entries are the defect.
+        echo "enter-$i" >> "$marker"
+        sleep 0.4 2>/dev/null || sleep 1
+        echo "exit-$i" >> "$marker"
+        release_lock 200 2>/dev/null || true
+      fi
+    ) &
+    pids+=($!)
+  done
+  local pid
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+
+  if [ -f "$marker" ]; then
+    # Every enter must be followed by its own exit before the next enter.
+    local prev="" line
+    while IFS= read -r line; do
+      case "$line" in
+        enter-*)
+          [ -z "$prev" ] || {
+            echo "two runs were inside the critical section at once:" >&2
+            cat "$marker" >&2
+            false
+            return 1
+          }
+          prev="$line"
+          ;;
+        exit-*) prev="" ;;
+      esac
+    done < "$marker"
+  fi
+  [ ! -d "$lock_file" ] || {
+    echo "the real lock path is still a directory after the runs" >&2
+    false
+  }
+}
+
+# ============================================================
+# flock mode: the symlink guard must not be defeatable by a swap in the
+# check/open window (AC1)
+# ============================================================
+
+@test "flock mode survives a symlink swapped into the check-open window (AC1)" {
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local victim="$TEST_TMP/victim-race.yaml"
+  local lock_file="$LOCK_DIR/race-symlink.lock"
+  local stop="$TEST_TMP/race-stop"
+  printf 'important: data\n' > "$victim"
+  rm -f "$stop"
+
+  # Attacker: repeatedly replace the lock path with a symlink at the victim.
+  (
+    while [ ! -f "$stop" ]; do
+      ln -sfn "$victim" "$lock_file" 2>/dev/null || true
+    done
+  ) &
+  local attacker=$!
+
+  local round=0
+  while [ "$round" -lt 40 ]; do
+    bash -c '
+      export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+      source "'"$HELPER"'"
+      acquire_lock "'"$lock_file"'" 2 9 2>/dev/null || exit 0
+      release_lock 9 2>/dev/null || true
+    ' >/dev/null 2>&1 || true
+    round=$(( round + 1 ))
+  done
+  touch "$stop"
+  wait "$attacker" 2>/dev/null || true
+
+  # The victim must never have been truncated: acquisition either refused or
+  # opened the real lock file, never followed the planted symlink.
+  [ -s "$victim" ] || {
+    echo "symlink target truncated — the check-open window is still exploitable" >&2
+    false
+  }
+  grep -F "important: data" "$victim" >/dev/null || {
+    echo "symlink target content destroyed: $(cat "$victim")" >&2
+    false
+  }
+}
+
+@test "flock mode refuses a directory at the lock path (AC1)" {
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/flock-dir.lock"
+  mkdir -p "$lock_file"
+  printf 'keep\n' > "$lock_file/unrelated"
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9
+  '
+  [ "$status" -ne 0 ] || {
+    echo "flock-mode acquire succeeded against a directory at the lock path" >&2
+    false
+  }
+  [ -f "$lock_file/unrelated" ] || { echo "unrelated directory contents removed" >&2; false; }
+}
+
+@test "helper documents the test-only debug env overrides (AC1)" {
+  # The header's "Test-only env overrides" block is the only place these are
+  # described; an undocumented one reads as a user-facing knob.
+  local block
+  block="$(sed -n '/Test-only env overrides/,/^$/p' "$HELPER")"
+  [[ "$block" == *"ACQUIRE_LOCK_DEBUG"* ]] || {
+    echo "ACQUIRE_LOCK_DEBUG is not in the test-only override block" >&2
+    false
+  }
+  [[ "$block" == *"ACQUIRE_LOCK_DEBUG_LOG"* ]] || {
+    echo "ACQUIRE_LOCK_DEBUG_LOG is not in the test-only override block" >&2
+    false
+  }
+}
+
+@test "an unwritable lock directory yields a curated diagnostic only (AC1)" {
+  # A failed temp-file write must not leak a raw shell redirection error
+  # naming the internal temp-name scheme next to the curated messages.
+  local ro_dir="$TEST_TMP/readonly-lockdir"
+  mkdir -p "$ro_dir"
+  chmod 555 "$ro_dir"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$ro_dir"'/x.lock" 2 9
+  '
+  chmod 755 "$ro_dir"
+  [ "$status" -ne 0 ] || { echo "acquire succeeded in an unwritable directory" >&2; false; }
+  if echo "$output" | grep -qF ".lock-tmp."; then
+    echo "raw diagnostic leaked the internal temp-name scheme: $output" >&2
+    false
+  fi
+  [[ "$output" == *"acquire-lock:"* ]] || {
+    echo "no curated acquire-lock diagnostic was emitted: $output" >&2
+    false
+  }
+}
+
+@test "the post-open identity check rejects a descriptor on a different file (AC1)" {
+  # Second layer behind the non-truncating open: even when the open itself
+  # is harmless, a descriptor that ended up on something other than the lock
+  # path must not be reported as a held lock. Drive the check directly with
+  # a descriptor deliberately opened on a DIFFERENT file — the exact state a
+  # symlink that won the swap race would leave behind.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    printf "lock\n"  > "'"$TEST_TMP"'/identity.lock"
+    printf "other\n" > "'"$TEST_TMP"'/identity-other"
+    exec 9>>"'"$TEST_TMP"'/identity-other"
+    if _al_verify_opened_fd "'"$TEST_TMP"'/identity.lock" 9; then
+      echo "ACCEPTED-MISMATCH"
+    else
+      echo "REFUSED-MISMATCH"
+    fi
+    exec 9>&-
+  '
+  [[ "$output" == *"REFUSED-MISMATCH"* ]] || {
+    echo "a descriptor open on a different file was accepted as the lock: $output" >&2
+    false
+  }
+  # Positive control: the same check must ACCEPT a descriptor genuinely open
+  # on the lock path, or it would be refusing everything for free.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    printf "lock\n" > "'"$TEST_TMP"'/identity2.lock"
+    exec 9>>"'"$TEST_TMP"'/identity2.lock"
+    if _al_verify_opened_fd "'"$TEST_TMP"'/identity2.lock" 9; then
+      echo "ACCEPTED-MATCH"
+    else
+      echo "REFUSED-MATCH"
+    fi
+    exec 9>&-
+  '
+  [[ "$output" == *"ACCEPTED-MATCH"* ]] || {
+    echo "the check refuses a descriptor genuinely open on the lock path: $output" >&2
+    false
+  }
+}
+
+@test "the post-open identity check rejects a symlink at the lock path (AC1)" {
+  # A symlink is refused on type alone, before any inode comparison — the
+  # arm that stops a won swap race from being reported as a held lock.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    printf "victim\n" > "'"$TEST_TMP"'/ident-victim"
+    ln -s "'"$TEST_TMP"'/ident-victim" "'"$TEST_TMP"'/ident-link.lock"
+    exec 9>>"'"$TEST_TMP"'/ident-link.lock"
+    if _al_verify_opened_fd "'"$TEST_TMP"'/ident-link.lock" 9; then
+      echo "ACCEPTED-SYMLINK"
+    else
+      echo "REFUSED-SYMLINK"
+    fi
+    exec 9>&-
+  '
+  [[ "$output" == *"REFUSED-SYMLINK"* ]] || {
+    echo "a symlink at the lock path passed the post-open check: $output" >&2
+    false
+  }
+  # The appending open must have left the target intact either way.
+  grep -F "victim" "$TEST_TMP/ident-victim" >/dev/null || {
+    echo "the symlink target was destroyed by the open" >&2
+    false
+  }
+}
+
+@test "flock-mode release frees the lock even when a duplicate fd survives (AC1)" {
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/dup-fd.lock"
+  local held="$TEST_TMP/dup-fd-held"
+  local go="$TEST_TMP/dup-fd-go"
+  local result="$TEST_TMP/dup-fd-result"
+  rm -f "$held" "$go" "$result"
+
+  # Holder: acquire on fd 9, DUPLICATE it to fd 7, then release fd 9 while
+  # fd 7 is still open. Closing fd 9 alone does not drop a flock lock —
+  # the lock lives on the open file description that fd 7 still refers to,
+  # so only an explicit `flock -u` frees it. Without that -u the lock stays
+  # held for the holder's whole lifetime and the contender below cannot get
+  # in, which is exactly the leak this asserts against.
+  (
+    export PATH="$flock_dir:$SAFE_PATH"
+    source "$HELPER"
+    if ! acquire_lock "$lock_file" 5 9; then
+      echo "holder-acquire-failed" > "$result"
+      touch "$held"
+      exit 1
+    fi
+    exec 7>&9
+    release_lock 9 2>/dev/null || true
+    touch "$held"
+    # Keep the duplicate open until the contender has had its turn.
+    local waited=0
+    while [ ! -f "$go" ] && [ "$waited" -lt 50 ]; do
+      sleep 0.2 2>/dev/null || sleep 1
+      waited=$(( waited + 1 ))
+    done
+    exec 7>&-
+  ) &
+  local holder=$!
+
+  _wait_for_file "$held" || {
+    touch "$go"; wait "$holder" 2>/dev/null || true
+    echo "holder never signalled" >&2; false
+  }
+  [ ! -f "$result" ] || {
+    touch "$go"; wait "$holder" 2>/dev/null || true
+    echo "holder could not acquire: $(cat "$result")" >&2; false
+  }
+
+  # An independent process must take the lock within 1s of the release.
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 1 8 || exit 1
+    release_lock 8 2>/dev/null || true
+  '
+  local contender_status="$status"
+  touch "$go"
+  wait "$holder" 2>/dev/null || true
+
+  [ "$contender_status" -eq 0 ] || {
+    echo "the lock was NOT freed: a surviving duplicate fd kept it held" >&2
+    echo "— closing the descriptor alone does not release flock; -u must" >&2
+    false
+  }
+}
+
+@test "the inode probe dereferences a symlinked descriptor path (AC1)" {
+  # The descriptor paths the identity check reads are SYMLINKS into procfs
+  # on Linux (/dev/fd -> /proc/self/fd, whose entries link to the open
+  # file), so a stat without -L reports the procfs link's own inode and the
+  # descriptor can never compare equal to its own path — every flock-mode
+  # acquisition would refuse. On macOS /dev/fd/N is a device node that stat
+  # already resolves, so this passes either way there; the symlink fixture
+  # below reproduces the Linux shape on BOTH platforms so the regression is
+  # catchable wherever the suite runs.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    printf "content\n" > "'"$TEST_TMP"'/deref-target"
+    ln -s "'"$TEST_TMP"'/deref-target" "'"$TEST_TMP"'/deref-link"
+    direct="$(_al_inode "'"$TEST_TMP"'/deref-target")"
+    via_link="$(_al_inode "'"$TEST_TMP"'/deref-link")"
+    if [ "$direct" = "$via_link" ]; then
+      echo "SYMLINK-RESOLVED"
+    else
+      echo "SYMLINK-UNRESOLVED direct=$direct via_link=$via_link"
+    fi
+  '
+  # Distinct tokens, not a prefix pair: a substring match against
+  # "DEREFERENCED" would also match "NOT-DEREFERENCED" and pass vacuously.
+  [[ "$output" == *"SYMLINK-RESOLVED"* ]] || {
+    echo "the inode probe reported a symlink's own inode instead of its target's:" >&2
+    echo "$output" >&2
+    echo "— on Linux this makes every flock-mode acquisition refuse" >&2
+    false
+  }
+
+  # The live shape: an open descriptor's path must resolve to the same
+  # inode as the file it was opened on.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    printf "content\n" > "'"$TEST_TMP"'/fdpath-target"
+    exec 9>>"'"$TEST_TMP"'/fdpath-target"
+    fd_path=""
+    if [ -e "/proc/self/fd/9" ]; then
+      fd_path="/proc/self/fd/9"
+    elif [ -e "/dev/fd/9" ]; then
+      fd_path="/dev/fd/9"
+    fi
+    if [ -z "$fd_path" ]; then
+      echo "NO-FD-PATH"
+    else
+      direct="$(_al_inode "'"$TEST_TMP"'/fdpath-target")"
+      via_fd="$(_al_inode "$fd_path")"
+      if [ "$direct" = "$via_fd" ]; then
+        echo "FD-MATCHES"
+      else
+        echo "FD-MISMATCH direct=$direct via_fd=$via_fd"
+      fi
+    fi
+    exec 9>&-
+  '
+  [[ "$output" == *"FD-MATCHES"* || "$output" == *"NO-FD-PATH"* ]] || {
+    echo "an open descriptor's path did not resolve to the file it was opened on:" >&2
+    echo "$output" >&2
+    false
+  }
+}
+
+@test "flock mode acquires and releases on a plain lock file (AC1)" {
+  # End-to-end smoke on the flock fast path itself: a plain, ordinary lock
+  # file must ACQUIRE. Every other flock-mode test here asserts a refusal or
+  # a released lock, so a change that made the fast path fail-closed for
+  # everyone would leave them all green. This is the positive control.
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/plain-flock.lock"
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    if acquire_lock "'"$lock_file"'" 5 9; then
+      echo "ACQUIRED"
+      release_lock 9 2>/dev/null || true
+    else
+      echo "REFUSED"
+    fi
+  '
+  [[ "$output" == *"ACQUIRED"* ]] || {
+    echo "flock mode refused a plain lock file — the fast path is fail-closed: $output" >&2
+    false
+  }
+  # And it must be re-acquirable straight afterwards.
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9 || exit 1
+    release_lock 9 2>/dev/null || true
+  '
+  [ "$status" -eq 0 ] || {
+    echo "the plain lock file could not be re-acquired after release: $output" >&2
     false
   }
 }

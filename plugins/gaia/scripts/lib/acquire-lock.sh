@@ -21,11 +21,59 @@
 # subsequent acquire attempts fail with a timeout, making the recovery
 # window self-healing but not instant.
 #
+# Lock-path type policy: a lock path is only ever a REGULAR FILE. Anything
+# else at that path breaks mutual exclusion rather than merely delaying it,
+# so both modes refuse to treat a non-regular path as a lock:
+#   - a symlink (dangling or not) is unlinked — it is never a legitimate
+#     lock, and following it would turn acquisition into a write primitive
+#     against the target;
+#   - a socket/fifo/device is unlinked for the same reason;
+#   - a DIRECTORY is never removed recursively. `ln SOURCE DIR` is the
+#     link-into-directory form and ALWAYS succeeds, so a directory at the
+#     lock path would let every concurrent acquirer "win" simultaneously.
+#     An empty directory (or one holding only this helper's own
+#     .lock-tmp.* residue) is rmdir'd after that residue is cleared;
+#     anything else is a hard failure with a diagnostic, so mutual
+#     exclusion can never silently degrade into no exclusion at all.
+# Every successful create is additionally verified: the published lock path
+# must be a regular file sharing an inode with the temp file that was linked
+# into place, so a link that landed anywhere but the intended path is
+# treated as "not acquired". On a host where neither stat(1) format works
+# the inode half degrades away and the regular-file type check carries the
+# guarantee on its own — that check is already sufficient for the directory
+# case, which is the one that breaks exclusion outright.
+#
+# flock-mode symlink handling: an lstat/unlink/open sequence is inherently
+# racy — a symlink swapped in after the check is still followed by the open,
+# and with `exec >` (O_TRUNC) that turns acquisition into a write primitive
+# that empties whatever the symlink points at. Three measures together
+# remove the primitive rather than merely narrowing the window:
+#   - the lock file is created first under `set -C` (noclobber, O_EXCL), so
+#     a symlink already in place makes the create fail rather than traverse;
+#   - the descriptor is opened with `>>` (O_APPEND), NEVER `>` (O_TRUNC).
+#     flock(2) needs an open descriptor, not an emptied file, so even a
+#     symlink that IS followed leaves its target byte-for-byte intact;
+#   - after the open the path is re-checked: it must still be a non-symlink
+#     regular file whose inode matches the descriptor's, or the descriptor
+#     is closed and acquisition refuses.
+# Residual window: bash cannot pass O_NOFOLLOW to `exec`, so an attacker
+# who wins both races can still cause the open to land on their target —
+# but with O_APPEND that open neither truncates nor writes, and the inode
+# compare turns it into a detected refusal instead of a lock that excludes
+# nobody. The fallback path (the live path wherever flock is absent) is
+# structurally immune because ln(2) never traverses a final symlink.
+#
 # Test-only env overrides (not user-facing):
 #   GAIA_LOCK_REAP_SECONDS — override the stale-lock reap threshold.
 #   GAIA_LOCK_FORCE_FALLBACK — when set to 1, forces the ln(2) hard-link
 #     fallback path even when flock is present. Used by concurrency stress
 #     tests to exercise the fallback on hosts where flock exists.
+#   ACQUIRE_LOCK_DEBUG — set to 1 (together with ACQUIRE_LOCK_DEBUG_LOG)
+#     to enable trace output. Both must be set; either alone is a no-op.
+#   ACQUIRE_LOCK_DEBUG_LOG — path the trace is appended to. Records
+#     "acquire <path> <epoch>", "release <path> <epoch>" and
+#     "tmp <temp-path> <epoch>" lines, plus raw backoff sleep_ms values
+#     (one bare integer per line) used by the jitter-divergence tests.
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL
@@ -86,6 +134,135 @@ _al_file_age() {
   printf '%s' "$(( now - mtime ))"
 }
 
+# --- Internal: inode number of a path (portable, ALWAYS dereferencing) ---
+#
+# Returns the inode as a bare integer on stdout, or fails. Uses the same
+# GNU/BSD stat format already probed at source time.
+#
+# `-L` is mandatory, not cosmetic. The descriptor paths this is used on are
+# a symlink into procfs on Linux (/dev/fd is a symlink to /proc/self/fd, and
+# each entry there is itself a symlink to the open file). Without -L, stat
+# reports the inode of that procfs symlink rather than of the file it names,
+# so a descriptor could never compare equal to its own path and every
+# identity check would refuse — fail-closed for every caller on Linux, which
+# is where the flock fast path is the live path. On macOS /dev/fd/N is a
+# device node stat already resolves to the open file, so both forms agree
+# there and the bug is invisible locally.
+#
+# A host where neither stat form works makes this fail, and every caller
+# treats an unavailable inode as "not verified" rather than assuming the
+# identity held.
+
+_al_inode() {
+  local path="$1" ino=""
+  if [ "$_ACQUIRE_LOCK_STAT_FMT" = "gnu" ]; then
+    ino="$(stat -L -c %i "$path" 2>/dev/null)" || ino=""
+  elif [ "$_ACQUIRE_LOCK_STAT_FMT" = "bsd" ]; then
+    ino="$(stat -L -f %i "$path" 2>/dev/null)" || ino=""
+  fi
+  case "$ino" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s' "$ino"
+}
+
+# --- Internal: verify an opened descriptor still refers to the lock path ---
+#
+# Closes the residual lstat/open race in flock mode: after `exec {fd}>path`
+# the path must still be a non-symlink regular file, and — where the host
+# exposes descriptors as paths (/dev/fd/N, or /proc/self/fd/N) and stat is
+# usable — the inode reachable through the descriptor must equal the inode
+# of the path. A swap that happened between the create and the open changes
+# one of those, so a mismatch is a refusal. Where descriptor paths or stat
+# are unavailable the type checks alone still stand; they are what reject a
+# symlink or directory, which is the case that breaks exclusion outright.
+
+_al_verify_opened_fd() {
+  local lock_file="$1" fd="$2"
+  [ ! -L "$lock_file" ] || return 1
+  [ -f "$lock_file" ] || return 1
+
+  # Prefer /proc/self/fd where it exists (Linux): it is the direct form,
+  # and /dev/fd there is only a symlink to it. Either works now that
+  # _al_inode dereferences, but the direct path is one less indirection.
+  local fd_path=""
+  if [ -e "/proc/self/fd/${fd}" ]; then
+    fd_path="/proc/self/fd/${fd}"
+  elif [ -e "/dev/fd/${fd}" ]; then
+    fd_path="/dev/fd/${fd}"
+  else
+    return 0
+  fi
+
+  local path_ino fd_ino
+  path_ino="$(_al_inode "$lock_file" 2>/dev/null)" || return 0
+  fd_ino="$(_al_inode "$fd_path" 2>/dev/null)" || return 0
+  [ "$path_ino" = "$fd_ino" ]
+}
+
+# --- Internal: enforce the lock-path type policy ---
+#
+# Ensures the lock path is either absent or a plain regular file before a
+# create attempt. Returns 0 when the path is usable (absent, or a regular
+# file left for the reaper/ln to arbitrate) and 1 when it is not and could
+# not be made so. The directory case emits a diagnostic and refuses rather
+# than removing a tree, so a stray mkdir is loud instead of fail-open.
+
+_al_enforce_path_type() {
+  local lock_file="$1"
+
+  # A symlink is never a legitimate lock: the file is only ever created by
+  # hard-linking a private temp, so a symlink here is a dangling remnant
+  # (which ln keeps rejecting EEXIST forever) or a planted redirect. Test
+  # for it FIRST — [ -e ] follows symlinks, so a dangling one reads as absent.
+  if [ -L "$lock_file" ]; then
+    rm -f "$lock_file" 2>/dev/null || true
+    return 0
+  fi
+
+  # Absent, or already a regular file: nothing to enforce.
+  if [ ! -e "$lock_file" ] || [ -f "$lock_file" ]; then
+    return 0
+  fi
+
+  # Exists but is not a regular file. A directory is the dangerous case:
+  # `ln SOURCE DIR` links INTO the directory and always succeeds, so every
+  # acquirer would win at once. Reclaim it only when it is provably ours to
+  # reclaim — empty, or holding nothing but this helper's own temp residue.
+  if [ -d "$lock_file" ]; then
+    # No `| head -1` here: a pipeline whose reader exits early can raise
+    # SIGPIPE under `set -o pipefail`, and the resulting empty result would
+    # read as "empty directory" and reclaim a tree that must be refused.
+    # Collect the whole listing and slice the first line in the shell.
+    local leftover
+    leftover="$(find "$lock_file" -mindepth 1 ! -name '.lock-tmp.*' 2>/dev/null)" || leftover=""
+    leftover="${leftover%%$'\n'*}"
+    if [ -n "$leftover" ]; then
+      printf 'acquire-lock: lock path is a directory with unrelated contents: %s\n' \
+        "$lock_file" >&2
+      printf 'acquire-lock: refusing to use it as a lock — remove it by hand.\n' >&2
+      return 1
+    fi
+    rm -f "$lock_file"/.lock-tmp.* 2>/dev/null || true
+    if ! rmdir "$lock_file" 2>/dev/null; then
+      printf 'acquire-lock: lock path is a directory that could not be removed: %s\n' \
+        "$lock_file" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  # Socket, fifo, device: not a directory, so ln(2) would reject it EEXIST
+  # forever and nothing would ever reclaim it. Unlink it.
+  rm -f "$lock_file" 2>/dev/null || true
+  if [ -e "$lock_file" ] || [ -L "$lock_file" ]; then
+    printf 'acquire-lock: lock path is not a regular file and could not be cleared: %s\n' \
+      "$lock_file" >&2
+    return 1
+  fi
+  return 0
+}
+
 # --- Internal: debug trace ---
 
 _al_trace() {
@@ -104,18 +281,23 @@ _al_try_reap() {
     reap_threshold=$(( triple > 60 ? triple : 60 ))
   fi
 
-  # A symlink at the lock path is never a legitimate lock. The lock file is
-  # only ever created by hard-linking a private temp file, so a symlink is
-  # either a dangling remnant (which ln(2) keeps rejecting with EEXIST, and
-  # which the [ -f ] test below would otherwise skip forever) or a planted
-  # redirect aimed at making a later write land on the target. Unlink it
-  # unconditionally and report the path as reclaimed.
-  if [ -L "$lock_file" ]; then
-    rm -f "$lock_file" 2>/dev/null || true
+  # Anything at the lock path that is not a plain regular file — a symlink,
+  # a directory, a socket, a fifo — is illegitimate. Route every such case
+  # through the single type-policy gate rather than testing only for the one
+  # type this reaper happens to know about. Using an explicit
+  # "exists but is not a regular file" arm (rather than the old negative
+  # `[ ! -f ]`, which reads a directory as "absent" and silently declines)
+  # means a third file type cannot slip through the same way.
+  # Diagnostics are suppressed here: the acquire loop re-asserts the same
+  # gate immediately afterwards and is the single place that reports the
+  # refusal, so routing it through both would double every message.
+  if [ -L "$lock_file" ] || { [ -e "$lock_file" ] && [ ! -f "$lock_file" ]; }; then
+    _al_enforce_path_type "$lock_file" 2>/dev/null || return 1
     return 0
   fi
 
-  if [ ! -f "$lock_file" ]; then
+  # Genuinely absent: nothing to reap.
+  if [ ! -e "$lock_file" ]; then
     return 1
   fi
 
@@ -165,13 +347,32 @@ acquire_lock() {
   if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ] && [ "${GAIA_LOCK_FORCE_FALLBACK:-}" != "1" ]; then
     # Never open through a symlink: `exec >` follows it and truncates the
     # target, so a symlink planted at the lock path turns lock acquisition
-    # into a write primitive against an arbitrary file. The fallback path is
-    # already safe (it unlinks the symlink itself, leaving the target
-    # intact); unlink here so both modes converge on that behaviour.
-    if [ -L "$lock_file" ]; then
-      rm -f "$lock_file" 2>/dev/null || true
+    # into a write primitive against an arbitrary file. Checking with
+    # [ -L ] and then opening is three separate syscalls on a path an
+    # attacker can rewrite in between, so do not rely on the check alone:
+    #   1. enforce the type policy (unlink a symlink/socket, refuse a
+    #      directory) so a stale artefact does not defeat step 2;
+    #   2. create the file under `set -C` (noclobber => O_EXCL): if a
+    #      symlink is planted before this, the create FAILS rather than
+    #      traversing, and an existing regular lock file is left untouched;
+    #   3. open the descriptor with `>>` (O_APPEND) rather than `>`
+    #      (O_TRUNC). flock(2) only needs an open descriptor, never an
+    #      emptied file, and O_TRUNC is the entire reason a followed symlink
+    #      was destructive: an appending open of a symlink target leaves it
+    #      byte-for-byte intact;
+    #   4. re-verify AFTER the open that the path is still a non-symlink
+    #      regular file whose inode matches the one actually opened, so a
+    #      swap that wins the remaining window becomes a detected refusal
+    #      rather than a lock nobody else is excluded from.
+    _al_enforce_path_type "$lock_file" || return 1
+    ( set -C; : > "$lock_file" ) 2>/dev/null || true
+    eval "exec ${fd}>>\"${lock_file}\""
+    if ! _al_verify_opened_fd "$lock_file" "$fd"; then
+      eval "exec ${fd}>&-" 2>/dev/null || true
+      printf 'acquire-lock: lock path changed identity during open: %s\n' \
+        "$lock_file" >&2
+      return 1
     fi
-    eval "exec ${fd}>\"${lock_file}\""
     if "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$timeout" "$fd"; then
       _al_set_registry "$fd" "flock" "$lock_file"
       _al_trace "acquire" "$lock_file"
@@ -205,6 +406,16 @@ acquire_lock() {
     # Try to reap stale lock.
     _al_try_reap "$lock_file" "$timeout" || true
 
+    # Refuse to link against anything that is not a plain regular file.
+    # `ln SOURCE DIR` is the link-INTO-directory form and always succeeds,
+    # so without this every concurrent acquirer would "win" at once and
+    # mutual exclusion would silently disappear. The reaper above already
+    # routes through the same gate; re-assert it here because it is the
+    # invariant the ln(2) below depends on for its atomicity.
+    if ! _al_enforce_path_type "$lock_file"; then
+      return 1
+    fi
+
     # Atomic create-with-content: write to a temp file, then hard-link.
     # ln fails atomically if the target already exists (EEXIST).
     # The temp name must be unique per ACQUIRER, not per process: bash
@@ -221,15 +432,41 @@ acquire_lock() {
     # observe it reliably; the trace is what makes per-acquirer uniqueness
     # checkable at all.
     _al_trace "tmp" "$tmp_lock"
-    if ! printf '%s %s\n' "$$" "$now_epoch" > "$tmp_lock" 2>/dev/null; then
+    # Brace-wrap the redirection so 2>/dev/null covers the redirection
+    # itself, not just printf's own stderr: an unwritable lock directory
+    # otherwise leaks a raw `line NNN: <temp path>: Permission denied`
+    # next to this script's curated diagnostics.
+    if ! { printf '%s %s\n' "$$" "$now_epoch" > "$tmp_lock"; } 2>/dev/null; then
       rm -f "$tmp_lock" 2>/dev/null || true
+      _al_trace "create-failed" "$tmp_lock"
+      printf 'acquire-lock: cannot create a lock file under %s\n' "$lock_dir" >&2
       return 1
     fi
     if ln "$tmp_lock" "$lock_file" 2>/dev/null; then
+      # ln succeeding is NOT proof the lock was published at the intended
+      # path: if the path is a directory the link landed INSIDE it, and
+      # treating that as acquired hands the same lock to everybody. Confirm
+      # the path is now a regular file that shares our temp's inode.
+      # The type checks alone already reject the directory case ([ -f ] is
+      # false for a directory), so a host with no usable stat still gets the
+      # fix; the inode compare is the stronger form where stat is available.
+      local published_ino tmp_ino
+      published_ino="$(_al_inode "$lock_file" 2>/dev/null)" || published_ino=""
+      tmp_ino="$(_al_inode "$tmp_lock" 2>/dev/null)" || tmp_ino=""
+      if [ ! -L "$lock_file" ] && [ -f "$lock_file" ] && \
+         [ "$published_ino" = "$tmp_ino" ]; then
+        rm -f "$tmp_lock" 2>/dev/null || true
+        _al_set_registry "$fd" "fallback" "$lock_file"
+        _al_trace "acquire" "$lock_file"
+        return 0
+      fi
+      # The link went somewhere else (or the path is not a regular file).
+      # Unlink whatever we just created and treat this as not acquired.
+      rm -f "$lock_file/$(basename "$tmp_lock")" 2>/dev/null || true
       rm -f "$tmp_lock" 2>/dev/null || true
-      _al_set_registry "$fd" "fallback" "$lock_file"
-      _al_trace "acquire" "$lock_file"
-      return 0
+      printf 'acquire-lock: refusing a lock that did not publish at %s\n' \
+        "$lock_file" >&2
+      return 1
     fi
     rm -f "$tmp_lock" 2>/dev/null || true
 
