@@ -21,6 +21,22 @@
 #   library degrades to Mode A foreground fallback and emits a single
 #   machine-parseable warning token MODE_B_FALLBACK to stderr.
 #
+#   A caller that passes --story-key additionally receives a programmatic
+#   signal, so it can branch on a return value instead of parsing stderr:
+#   exit 7 and, on stdout, one machine-readable record in place of the handle
+#     mode_b_fallback story_key:<key> persona:<persona> reason:<reason>
+#   The exit code is the control-flow contract — treat it as an instruction to
+#   degrade to sequential work with phase order preserved, never as a refusal.
+#   Keyless callers are unaffected: they still receive a handle and exit 0.
+#
+# Story-keyed handles:
+#   spawn_teammate --story-key builds the handle from the persona and the key
+#   rather than the process id. Because the process id is constant within one
+#   session, a process-derived handle collides whenever the same persona is
+#   dispatched twice; keying by story removes that collision, makes a retry
+#   land on the same handle, and lets each relayed message be attributed to
+#   the story it belongs to.
+#
 # The 8-teammate ceiling is enforced at the registry level.
 
 # ---------- Source guard ----------
@@ -34,6 +50,13 @@ fi
 
 # Maximum concurrent teammates.
 _DT_MAX_TEAMMATES=8
+
+# Exit code returned to a story-keyed caller when the substrate is absent.
+# Story-keyed callers opt into the programmatic fallback contract, so they get
+# a distinct code they can branch on instead of parsing stderr. The code is
+# named once here; every return site references the constant so the documented
+# value and the returned value cannot drift apart.
+_DT_FALLBACK_EXIT_CODE=7
 
 # Registry directory — one file per active teammate.
 # Initialised lazily on first spawn, not at source time.
@@ -70,11 +93,47 @@ _dt_iso8601() {
   date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
 
-# _dt_generate_handle PERSONA — produce a session-scoped handle.
+# Maximum length of a sanitised story key inside a handle. Bounds the handle so
+# a pathological key cannot produce a name the registry directory cannot hold.
+_DT_STORY_KEY_MAX=64
+
+# _dt_sanitize_story_key KEY — reduce a story key to a handle-safe token.
+#
+# Reuses the persona slug transform (every character outside [:alnum:] becomes
+# a dash), then collapses dash runs and trims the ends, so a key written with
+# dots, underscores or mixed separators yields one clean token. Truncation is
+# applied last, so the result is always a valid single filename component.
+# The transform is deliberately lossy: two differently-written keys can reduce
+# to the same token. Uniqueness is therefore enforced on the RAW key stored in
+# the registry, not on this token — see spawn_teammate's identity check.
+_dt_sanitize_story_key() {
+  local raw="$1" token
+  token="$(printf '%s' "$raw" | tr -c '[:alnum:]' '-' | tr -s '-')"
+  token="${token#-}"
+  token="${token%-}"
+  printf '%s' "$token" | cut -c "1-$_DT_STORY_KEY_MAX"
+}
+
+# _dt_generate_handle PERSONA [STORY_KEY] — produce a session-scoped handle.
+#
+# With a story key (the parallel-aware interface) the handle is a pure function
+# of persona and sanitised key: tm-<persona-slug>-<story-key>. No process id
+# takes part, which is what lets two same-persona teammates for two different
+# stories coexist, and what makes a retry of the same story reuse one handle.
+#
+# Without a story key the legacy process-id form is kept, and ONLY there: it
+# still serves callers of the documented keyless interface. It is never a
+# fallback for the keyed path — a keyed spawn that cannot build a keyed handle
+# is refused rather than quietly downgraded to a colliding one.
 _dt_generate_handle() {
   local persona="$1"
+  local story_key="${2:-}"
   local slug
   slug="$(printf '%s' "$persona" | tr -c '[:alnum:]' '-')"
+  if [ -n "$story_key" ]; then
+    printf 'tm-%s-%s' "$slug" "$story_key"
+    return 0
+  fi
   printf 'tm-%s-%05d' "$slug" "$$"
 }
 
@@ -136,9 +195,24 @@ _dt_substrate_available() {
   return 1
 }
 
-# _dt_emit_fallback — emit the machine-parseable fallback token once.
+# _dt_emit_fallback CALLER — emit the human-readable fallback token on stderr.
+# Byte-identical to what it has always emitted, so every consumer that greps
+# this token keeps working.
 _dt_emit_fallback() {
   printf 'MODE_B_FALLBACK: %s degraded to Mode A foreground dispatch\n' "$1" >&2
+}
+
+# _dt_emit_fallback_record STORY_KEY PERSONA REASON — emit the machine-readable
+# fallback record on stdout, for story-keyed callers only.
+#
+# The record is emitted INSTEAD OF a handle, so a caller capturing stdout
+# cannot mistake it for one: it does not begin with the handle prefix, and the
+# call returns the fallback exit code rather than success. The exit code is the
+# control-flow contract (branch on it and degrade to sequential work); this
+# record is the diagnostic detail behind it, which the cohort bridge parses and
+# republishes to the caller.
+_dt_emit_fallback_record() {
+  printf 'mode_b_fallback story_key:%s persona:%s reason:%s\n' "$1" "$2" "$3"
 }
 
 # _dt_relay_dir — return (and create) the per-session relay-pending directory.
@@ -223,6 +297,16 @@ _dt_read_spawn_ts() {
   fi
 }
 
+# _dt_read_story_key HANDLE — read the story key from the registry file.
+# Prints nothing for a keyless teammate, which callers render as "none".
+_dt_read_story_key() {
+  local handle="$1"
+  _dt_ensure_registry
+  if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
+    sed -n 's/^story_key://p' "$_DT_REGISTRY_DIR/$handle"
+  fi
+}
+
 # _dt_check_unrelayed_turn HANDLE — if a turn awaits relay, emit WARNING
 # and capture a fail-safe entry to the transcript.
 _dt_check_unrelayed_turn() {
@@ -230,16 +314,18 @@ _dt_check_unrelayed_turn() {
   if _dt_is_relay_pending "$handle"; then
     printf 'dispatch-teammate: warning: unrelayed turn detected for %s — output may have been lost (fail-safe capture)\n' "$handle" >&2
 
-    local persona spawn_ts turn
+    local persona spawn_ts turn story_key
     persona="$(_dt_read_persona "$handle")"
     spawn_ts="$(_dt_read_spawn_ts "$handle")"
     turn="$(_dt_current_turn "$handle")"
+    story_key="$(_dt_read_story_key "$handle")"
 
     local transcript="${GAIA_SESSION_TRANSCRIPT:-${GAIA_SESSION_DIR:?}/transcript.md}"
     mkdir -p "$(dirname "$transcript")"
     {
-      printf '\n<!-- persona:%s spawn_ts:%s turn:%s -->\n' \
-        "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}"
+      printf '\n<!-- persona:%s spawn_ts:%s turn:%s story_key:%s -->\n' \
+        "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}" \
+        "${story_key:-none}"
       printf '## Unrelayed turn from %s [%s]\n\n' "$handle" "$(_dt_iso8601)"
       printf '[fail-safe capture: teammate turn ended without relay_to_team_lead]\n'
     } >> "$transcript"
@@ -430,9 +516,22 @@ _dt_parse_frontmatter() {
 # ---------- Public API ----------
 
 # spawn_teammate PERSONA [--context CTX] [--from-frontmatter SKILL_PATH]
+#                        [--story-key KEY]
+#
 # Spawns a persistent teammate. Returns the session-scoped handle on stdout.
+#
+# Two interfaces, deliberately:
+#   - Keyless (the long-standing form): behaviour is unchanged in every
+#     respect. An absent substrate still returns a handle with exit 0 after
+#     emitting the stderr token, because callers of this form treat the
+#     fallback as advisory.
+#   - Story-keyed (--story-key): the parallel-aware form. The handle is built
+#     from persona and story key rather than the process id, and an absent
+#     substrate is signalled programmatically — the fallback exit code plus a
+#     machine-readable record on stdout, and NO handle. Opting into the key is
+#     what opts a caller into the stricter contract.
 spawn_teammate() {
-  local persona="" context="" skill_path=""
+  local persona="" context="" skill_path="" story_key="" story_keyed=0
 
   # Parse arguments.
   while [ $# -gt 0 ]; do
@@ -445,8 +544,26 @@ spawn_teammate() {
         skill_path="${2:-}"
         shift 2
         ;;
+      # This arm MUST stay ahead of the unknown-flag catch-all below, and MUST
+      # consume both the flag and its value. The catch-all shifts only once, so
+      # reaching it would leave the key as a positional argument and adopt it
+      # as the persona — a silent misdispatch rather than an error.
+      --story-key)
+        story_key="${2:-}"
+        story_keyed=1
+        shift 2
+        ;;
       --help)
         printf 'Usage: spawn_teammate PERSONA [--context CTX] [--from-frontmatter SKILL_PATH]\n'
+        printf '                             [--story-key KEY]\n'
+        printf '\n'
+        printf '  --story-key KEY  Build the handle from the persona and KEY instead of\n'
+        printf '                   the process id, so several same-persona teammates can\n'
+        printf '                   run at once. Retrying the same persona and key reuses\n'
+        printf '                   the one handle. With this option, an unavailable\n'
+        printf '                   substrate returns exit %d and a machine-readable\n' \
+          "$_DT_FALLBACK_EXIT_CODE"
+        printf '                   record on stdout instead of a handle.\n'
         return 0
         ;;
       -*)
@@ -498,6 +615,13 @@ spawn_teammate() {
     return 1
   fi
 
+  if [ "$story_keyed" -eq 1 ]; then
+    _dt_spawn_story_keyed "$persona" "$context" "$story_key"
+    return $?
+  fi
+
+  # Keyless path — unchanged in every respect for existing callers.
+
   # Generate handle.
   local handle
   handle="$(_dt_generate_handle "$persona")"
@@ -524,6 +648,70 @@ spawn_teammate() {
   fi
 
   # Emit handle on stdout.
+  printf '%s\n' "$handle"
+}
+
+# _dt_spawn_story_keyed PERSONA CONTEXT STORY_KEY — the story-keyed half of
+# spawn_teammate. Kept as its own function so the keyless path above stays
+# exactly as it was and the two contracts do not interleave.
+#
+# Assumes the caller has already run the clean-room gate, the ceiling check and
+# _dt_ensure_registry, so a reviewer persona or a ceiling breach is still
+# refused with exit 1 and never masked as a fallback.
+_dt_spawn_story_keyed() {
+  local persona="$1"
+  local context="$2"
+  local story_key="$3"
+
+  local sanitized
+  sanitized="$(_dt_sanitize_story_key "$story_key")"
+  if [ -z "$sanitized" ]; then
+    # A key of only separators would produce an empty token, and an empty
+    # token collapses every story onto one handle — the exact collision this
+    # interface exists to remove. Refuse rather than build it.
+    _dt_die "spawn_teammate: story key '$story_key' sanitises to nothing — refusing"
+    return 1
+  fi
+
+  local handle
+  handle="$(_dt_generate_handle "$persona" "$sanitized")"
+
+  # Retry contract. The handle is a pure function of persona and key, so a
+  # second call for the same story lands on the same handle by construction.
+  if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
+    local stored
+    stored="$(_dt_read_story_key "$handle")"
+    if [ "$stored" != "$story_key" ]; then
+      # Two different raw keys reduced to the same token. Suffixing here would
+      # hand two stories one attribution lineage, so refuse instead. Comparing
+      # the RAW key is what makes this detectable at all.
+      _dt_die "spawn_teammate: handle $handle already serves story key '$stored' — refusing '$story_key'"
+      return 1
+    fi
+    # Same story retried: reuse the one handle idempotently. The record is
+    # refreshed rather than recreated, so the turn counter and relay-pending
+    # state keyed on this handle survive the retry and no orphan is left.
+  fi
+
+  # Substrate detection runs BEFORE registration on this path, so a fallback
+  # leaves no half-live handle behind for a teammate that was never spawned.
+  if ! _dt_substrate_available; then
+    _dt_emit_fallback "spawn_teammate"
+    _dt_emit_fallback_record "$story_key" "$persona" "substrate-unavailable"
+    # Provenance still records the attempt, so the audit trail is complete.
+    _dt_log_provenance "$persona" "$context" "(fallback: substrate-unavailable)"
+    return "$_DT_FALLBACK_EXIT_CODE"
+  fi
+
+  # Register, storing the RAW key: attribution must report what the caller
+  # actually passed, and the identity check above needs it to detect a
+  # collision. Existing readers match their own field prefixes and are
+  # unaffected by the extra line.
+  printf 'persona:%s\nstatus:active\nspawned:%s\nstory_key:%s\n' \
+    "$persona" "$(_dt_iso8601)" "$story_key" > "$_DT_REGISTRY_DIR/$handle"
+
+  _dt_log_provenance "$persona" "$context" "$handle"
+
   printf '%s\n' "$handle"
 }
 
@@ -641,11 +829,14 @@ relay_to_team_lead() {
     return 0
   fi
 
-  # Read identity metadata for Mode B transcript entries.
-  local persona spawn_ts turn
+  # Read identity metadata for Mode B transcript entries. The story key is
+  # appended LAST to the metadata comment, so every pre-existing field keeps
+  # its position and readers that match on a named field are unaffected.
+  local persona spawn_ts turn story_key
   persona="$(_dt_read_persona "$handle")"
   spawn_ts="$(_dt_read_spawn_ts "$handle")"
   turn="$(_dt_current_turn "$handle")"
+  story_key="$(_dt_read_story_key "$handle")"
 
   # Clear relay-pending flag — this turn has been relayed.
   _dt_clear_relay_pending "$handle"
@@ -655,8 +846,9 @@ relay_to_team_lead() {
   mkdir -p "$(dirname "$transcript")"
 
   {
-    printf '\n<!-- persona:%s spawn_ts:%s turn:%s -->\n' \
-      "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}"
+    printf '\n<!-- persona:%s spawn_ts:%s turn:%s story_key:%s -->\n' \
+      "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}" \
+      "${story_key:-none}"
     printf '## Relay from %s [%s]\n\n' "$handle" "$(_dt_iso8601)"
     printf '%s\n' "$payload"
   } >> "$transcript"
