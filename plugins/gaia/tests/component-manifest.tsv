@@ -605,6 +605,7 @@ scripts-sprint	e106-s5-retire-capacity-points.bats
 scripts-sprint	e107-chain-integration.bats
 scripts-sprint	e107-s5-sprint-plan-val-gated-activation.bats
 scripts-sprint	issue-1403-title-quote-escaping.bats
+scripts-sprint	phase-persistence.bats
 scripts-sprint	resolve-story-file-coverage-stub.bats
 scripts-sprint	resolve-story-file.bats
 scripts-sprint	sprint-progress-audit.bats
