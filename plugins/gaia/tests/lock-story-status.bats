@@ -24,7 +24,7 @@ setup() {
   local tool
   for tool in bash sh env awk sed grep sort cat mv rm cp mkdir ln sleep \
               date stat ps kill head tail wc tr printf touch mktemp \
-              dirname basename readlink id tee yq jq git chmod perl find xargs cut od uname getconf; do
+              dirname basename readlink id tee yq jq git chmod perl find xargs cut od uname getconf rmdir mkfifo timeout; do
     local p
     p="$(command -v "$tool" 2>/dev/null || true)"
     if [ -n "$p" ] && [ ! -e "$NOFLOCK_BIN/$tool" ]; then
