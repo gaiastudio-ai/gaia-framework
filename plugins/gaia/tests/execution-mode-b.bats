@@ -307,3 +307,234 @@ teardown() { common_teardown; }
   run grep -cE 'E[0-9]+-S[0-9]+' "$f"
   [ "${output:-0}" -eq 0 ]
 }
+
+# ============================================================
+# Per-handle relay attribution and the programmatic fallback
+# ============================================================
+
+@test "the bridge spawn seam accepts a story key and returns a keyed handle (AC2)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  local handle
+  handle="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1" 2>/dev/null)"
+  [ "$handle" = "tm-gaia-python-dev-K1-K1" ]
+  [ "$(_dt_read_story_key "$handle")" = "K1-K1" ]
+}
+
+@test "a relayed turn is attributed to its own story (AC2)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  local handle
+  handle="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1" 2>/dev/null)"
+  execution_relay_turn "$handle" "implement complete" 2>/dev/null
+  # The attribution written by the relay must be readable back through the
+  # bridge's own accessor — a record nothing reads is dead state.
+  [ "$(execution_attribution_for "$handle")" = "K1-K1" ]
+}
+
+@test "concurrent relays from two teammates keep separate attribution (AC2)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  local a b
+  a="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1" 2>/dev/null)"
+  b="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K2" 2>/dev/null)"
+  [ "$a" != "$b" ]
+  bash -c '
+    source "'"$DT_LIB"'"
+    source "'"$EMB_LIB"'"
+    execution_relay_turn "'"$a"'" "from the first story" 2>/dev/null
+  ' &
+  bash -c '
+    source "'"$DT_LIB"'"
+    source "'"$EMB_LIB"'"
+    execution_relay_turn "'"$b"'" "from the second story" 2>/dev/null
+  ' &
+  wait
+  [ "$(execution_attribution_for "$a")" = "K1-K1" ]
+  [ "$(execution_attribution_for "$b")" = "K1-K2" ]
+}
+
+@test "concurrent relays to one handle preserve every relay count (AC2)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  local handle
+  handle="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1" 2>/dev/null)"
+  local i
+  for i in 1 2 3 4 5 6; do
+    bash -c '
+      source "'"$DT_LIB"'"
+      source "'"$EMB_LIB"'"
+      execution_relay_turn "'"$handle"'" "turn '"$i"'" 2>/dev/null
+    ' &
+  done
+  wait
+  # A lost update under interleaving makes the counter short of the number
+  # of relays actually performed.
+  local relays
+  relays="$(sed -n 's/^relays://p' "$GAIA_SESSION_DIR/relay-attribution/$handle")"
+  [ "$relays" -eq 6 ]
+}
+
+@test "the bridge tracks no single last-active teammate (AC-EC3)" {
+  # A single session-wide last-active scalar cannot attribute concurrent
+  # relays; the per-handle map replaces it and the scalar must be gone.
+  run grep -c "_EMB_LAST_ACTIVE_HANDLE" "$EMB_LIB"
+  [ "${output:-0}" -eq 0 ]
+}
+
+@test "every relay record carries its story key (AC2)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  local a b
+  a="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1" 2>/dev/null)"
+  b="$(execution_spawn_subagent "gaia:sm" "gaia-sprint-plan" "K1-K2" 2>/dev/null)"
+  execution_relay_turn "$a" "first payload" 2>/dev/null
+  execution_relay_turn "$b" "second payload" 2>/dev/null
+  assert_file_contains "$GAIA_SESSION_DIR/relay-attribution/$a" "story_key:K1-K1"
+  assert_file_contains "$GAIA_SESSION_DIR/relay-attribution/$b" "story_key:K1-K2"
+}
+
+@test "the bridge propagates the documented fallback code to its caller (AC3)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=unavailable
+  run execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1"
+  [ "$status" -eq 7 ]
+}
+
+@test "a caller can read why the dispatch fell back (AC3)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=unavailable
+  # Call the spawn directly rather than under `run`: `run` executes in a
+  # subshell, which would discard an in-process store and silently constrain
+  # the implementation to a cross-process one.
+  set +e
+  execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1" \
+    >/dev/null 2>&1
+  local rc=$?
+  set -e
+  [ "$rc" -eq 7 ]
+  # The machine-readable record must be parsed and surfaced, not merely
+  # emitted — an unparsed format is dead state.
+  run execution_fallback_reason
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [[ "$output" == *"substrate-unavailable"* ]]
+}
+
+@test "two concurrent relays are attributed to their own stories in the transcript (AC2, AC6)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  local a b
+  a="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1" 2>/dev/null)"
+  b="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K2" 2>/dev/null)"
+  bash -c '
+    source "'"$DT_LIB"'"
+    source "'"$EMB_LIB"'"
+    execution_relay_turn "'"$a"'" "payload from the first story" 2>/dev/null
+  ' &
+  bash -c '
+    source "'"$DT_LIB"'"
+    source "'"$EMB_LIB"'"
+    execution_relay_turn "'"$b"'" "payload from the second story" 2>/dev/null
+  ' &
+  wait
+  # Concurrent transcript appends are NOT serialised (this story scopes its
+  # lock to the attribution map), so no line-adjacency ordering may be
+  # assumed. Assert association through whole-file invariants instead: each
+  # story contributed exactly one metadata comment, and every comment binds
+  # exactly one story key.
+  local comments
+  comments="$(grep -c 'story_key:K1-K1' "$GAIA_SESSION_TRANSCRIPT" || true)"
+  [ "$comments" -eq 1 ] \
+    || { echo "expected exactly one entry for the first story, got [$comments]"; return 1; }
+  comments="$(grep -c 'story_key:K1-K2' "$GAIA_SESSION_TRANSCRIPT" || true)"
+  [ "$comments" -eq 1 ] \
+    || { echo "expected exactly one entry for the second story, got [$comments]"; return 1; }
+  # No single metadata comment may name both stories (cross-attribution).
+  local both
+  both="$(grep -c 'story_key:K1-K1.*K1-K2\|story_key:K1-K2.*K1-K1' \
+    "$GAIA_SESSION_TRANSCRIPT" || true)"
+  [ "$both" -eq 0 ] \
+    || { echo "a metadata comment names both stories: [$both]"; return 1; }
+  # Each relay payload reached the transcript exactly once.
+  assert_file_contains "$GAIA_SESSION_TRANSCRIPT" "payload from the first story"
+  assert_file_contains "$GAIA_SESSION_TRANSCRIPT" "payload from the second story"
+  # Handle-to-story binding is asserted on the attribution map, which IS
+  # serialised and therefore safe to associate per handle.
+  [ "$(execution_attribution_for "$a")" = "K1-K1" ]
+  [ "$(execution_attribution_for "$b")" = "K1-K2" ]
+}
+
+@test "a relay after a fallback is refused and adds no attribution (AC-EC5)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=unavailable
+  run execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1"
+  [ "$status" -eq 7 ]
+  local never="tm-gaia-python-dev-K1-K1"
+  local before=0
+  if [ -f "$GAIA_SESSION_TRANSCRIPT" ]; then
+    before="$(wc -c < "$GAIA_SESSION_TRANSCRIPT")"
+  fi
+  run execution_relay_turn "$never" "payload for a teammate never spawned"
+  [ "$status" -eq 7 ]
+  [ ! -f "$GAIA_SESSION_DIR/relay-attribution/$never" ]
+  local after=0
+  if [ -f "$GAIA_SESSION_TRANSCRIPT" ]; then
+    after="$(wc -c < "$GAIA_SESSION_TRANSCRIPT")"
+  fi
+  [ "$after" -eq "$before" ]
+}
+
+@test "two same-persona stories and a forced fallback hold all three properties together (AC6)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  local a b
+  a="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K1" 2>/dev/null)"
+  b="$(execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K2" 2>/dev/null)"
+  # Property one: same persona, two stories, two distinct story-keyed handles.
+  [ "$a" != "$b" ]
+  [ "$a" = "tm-gaia-python-dev-K1-K1" ]
+  [ "$b" = "tm-gaia-python-dev-K1-K2" ]
+  execution_relay_turn "$a" "first payload" 2>/dev/null
+  execution_relay_turn "$b" "second payload" 2>/dev/null
+  # Property two: each relay is attributed to its own story.
+  [ "$(execution_attribution_for "$a")" = "K1-K1" ]
+  [ "$(execution_attribution_for "$b")" = "K1-K2" ]
+  # Property three: a fallback later in the SAME session still returns the
+  # documented code, and the earlier handles keep their attribution.
+  export GAIA_MODE_B_SUBSTRATE=unavailable
+  run execution_spawn_subagent "gaia:python-dev" "gaia-dev-story" "K1-K3"
+  [ "$status" -eq 7 ]
+  [ "$(execution_attribution_for "$a")" = "K1-K1" ]
+  [ "$(execution_attribution_for "$b")" = "K1-K2" ]
+}
+
+@test "a relay that fails in the shared library reports its failure (AC2)" {
+  source "$DT_LIB"
+  source "$EMB_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  # An empty handle is refused by the shared relay itself, not by the
+  # bridge's unregistered-handle guard (which only screens non-empty
+  # handles), so this drives a genuine failure inside the library.
+  local rc=0
+  execution_relay_turn "" "payload for nobody" >/dev/null 2>&1 || rc=$?
+  # The seam must report the relay's own status. Reporting success for a
+  # relay that failed would hide a lost reply from the caller.
+  [ "$rc" -eq 1 ] \
+    || { echo "expected the failed relay's status 1, got [$rc]"; return 1; }
+  # And bookkeeping must not invent a record for a relay that never happened.
+  # Scoped to this relay's own handle: other tests in this file legitimately
+  # leave records of their own behind.
+  [ ! -e "$GAIA_SESSION_DIR/relay-attribution/" ] \
+    || { echo "attribution written for a relay that failed"; return 1; }
+}
