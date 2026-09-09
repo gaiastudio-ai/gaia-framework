@@ -7,8 +7,8 @@
 #
 # Used to verify that a Mode B transcript is a superset of the equivalent
 # Mode A transcript. Mode B adds teammate identity metadata (persona,
-# spawn timestamp, turn index) but must preserve every content line from
-# the Mode A equivalent.
+# spawn timestamp, turn index, and the story key a relay is attributed to)
+# but must preserve every content line from the Mode A equivalent.
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL
