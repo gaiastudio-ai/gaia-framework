@@ -52,6 +52,15 @@ LC_ALL=C; export LC_ALL
 _EMB_DT_LIB=""
 _EMB_LOCK_LIB=""
 
+# _emb_ensure_dt — load the bridge's dependencies on first use.
+#
+# Both libraries run `set -euo pipefail` at source time, and because this is a
+# LAZY load that happens inside whichever seam the caller reached first, those
+# options would land in the CALLER's shell — turning errexit on underneath a
+# caller that deliberately ran `set +e` to branch on the fallback exit code,
+# and doing so at an unpredictable moment (the first seam call, not the source).
+# Sampling and restoring the caller's flags HERE fixes every seam at once,
+# rather than leaving each new call site to remember the dance.
 _emb_ensure_dt() {
   if [ -z "$_EMB_DT_LIB" ] || [ -z "$_EMB_LOCK_LIB" ]; then
     local lib_dir
@@ -59,6 +68,10 @@ _emb_ensure_dt() {
     _EMB_DT_LIB="$lib_dir/dispatch-teammate.sh"
     _EMB_LOCK_LIB="$lib_dir/acquire-lock.sh"
   fi
+
+  local errexit_was_set=0
+  case "$-" in *e*) errexit_was_set=1 ;; esac
+
   if [ "${_DT_LOADED:-0}" != "1" ]; then
     # shellcheck source=/dev/null
     . "$_EMB_DT_LIB"
@@ -67,6 +80,12 @@ _emb_ensure_dt() {
   if ! declare -F acquire_lock >/dev/null 2>&1; then
     # shellcheck source=/dev/null
     . "$_EMB_LOCK_LIB"
+  fi
+
+  # Restore the caller's errexit. Only ever turns it back OFF for a caller that
+  # had it off; a caller that had it on keeps it on.
+  if [ "$errexit_was_set" -eq 0 ]; then
+    set +e
   fi
 }
 
@@ -82,10 +101,20 @@ _emb_ensure_dt() {
 # bridge used to keep — one scalar cannot describe which of several concurrent
 # teammates a message came from, and nothing ever read it.
 #
-# The reason for the most recent programmatic fallback is kept beside it at
-#   $GAIA_SESSION_DIR/mode-b-fallback-reason
+# The reason for a programmatic degradation is kept beside the attribution map,
+# one file per story key, under
+#   $GAIA_SESSION_DIR/mode-b-fallback-reason/<story-key>
 # rather than in a shell variable, so a caller that spawned in a subshell can
-# still ask why the dispatch fell back.
+# still ask why its dispatch fell back.
+#
+# One file per key, for the same reason attribution is per handle: this library
+# exists to let several stories dispatch at once, and a single session-global
+# scalar cannot say WHICH of three concurrent fallbacks it describes — the last
+# writer would simply win and the other two stories would read a reason that
+# belongs to a different story. Each record carries its own story key and the
+# reason, is written atomically (temp + mv) so a concurrent reader never sees a
+# partial line, and is cleared when a keyed spawn for that story later succeeds
+# — otherwise a stale reason outlives the condition it described.
 
 _emb_attribution_dir() {
   local dir="${GAIA_SESSION_DIR:?GAIA_SESSION_DIR must be set}/relay-attribution"
@@ -93,8 +122,49 @@ _emb_attribution_dir() {
   printf '%s' "$dir"
 }
 
-_emb_fallback_reason_file() {
-  printf '%s' "${GAIA_SESSION_DIR:?GAIA_SESSION_DIR must be set}/mode-b-fallback-reason"
+_emb_fallback_reason_dir() {
+  local dir="${GAIA_SESSION_DIR:?GAIA_SESSION_DIR must be set}/mode-b-fallback-reason"
+  # This path held a single FILE before the store became per story. A session
+  # carried over from that layout would fail every mkdir here and silently lose
+  # its reasons, so retire the stale file rather than fail around it. Its lone
+  # value described one already-finished dispatch and has no per-story identity
+  # to migrate — there is nothing in it worth keeping.
+  if [ -e "$dir" ] && [ ! -d "$dir" ]; then
+    rm -f "$dir"
+  fi
+  mkdir -p "$dir"
+  printf '%s' "$dir"
+}
+
+# _emb_reason_slug VALUE — reduce a story key or handle to one path component.
+# The dispatch boundary already refuses a key that is not [A-Za-z0-9._-], so
+# this is a defence-in-depth guard for a value arriving from anywhere else: it
+# guarantees the reason store cannot be steered outside its own directory.
+_emb_reason_slug() {
+  printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._-' '-'
+}
+
+# _emb_write_reason STORY_KEY REASON — record why a dispatch for STORY_KEY
+# degraded. Atomic (temp + mv), so a concurrent reader sees the whole record or
+# the previous one, never a half-written line.
+_emb_write_reason() {
+  local story_key="$1" reason="$2"
+  [ -n "$story_key" ] || return 0
+  local dir file tmp
+  dir="$(_emb_fallback_reason_dir)"
+  file="$dir/$(_emb_reason_slug "$story_key")"
+  tmp="$file.$$.tmp"
+  printf 'story_key:%s\nreason:%s\nrecorded:%s\n' \
+    "$story_key" "$reason" "$(_dt_iso8601)" > "$tmp"
+  mv -f "$tmp" "$file"
+}
+
+# _emb_clear_reason STORY_KEY — drop a recorded reason once a dispatch for that
+# story has succeeded, so a later reader is never told a live story degraded.
+_emb_clear_reason() {
+  local story_key="$1"
+  [ -n "$story_key" ] || return 0
+  rm -f "$(_emb_fallback_reason_dir)/$(_emb_reason_slug "$story_key")"
 }
 
 # ---------- Public API ----------
@@ -172,6 +242,10 @@ execution_spawn_subagent() {
   # even before its first relay.
   if [ -n "$story_key" ]; then
     _emb_write_attribution "$handle" "$story_key" "$persona" 0
+    # This story is now running, so any reason recorded for an earlier degraded
+    # attempt no longer describes it. Leaving it would have a later reader
+    # report a live story as fallen back.
+    _emb_clear_reason "$story_key"
   fi
 
   printf '%s\n' "$handle"
@@ -179,41 +253,109 @@ execution_spawn_subagent() {
 
 # _emb_store_fallback_reason RECORD — extract reason: from the fallback record
 # and persist it for execution_fallback_reason.
+# The record's shape is fixed by _dt_emit_fallback_record:
+#   mode_b_fallback story_key:<key> persona:<persona> reason:<reason>
+# so `reason:` is the LAST space-delimited field, and that is the field this
+# reader takes — by anchoring to the end of the record, not by relying on a
+# greedy `.*` happening to run past an earlier look-alike token. The key is
+# validated at the dispatch boundary and can no longer carry a space or a
+# colon, so no second `reason:` token can appear; anchoring means this reader
+# stays correct even so, and stays correct if the record ever gains a field.
 _emb_store_fallback_reason() {
-  local record="$1" reason
-  reason="$(printf '%s\n' "$record" | sed -n 's/.*reason:\([^ ]*\).*/\1/p' | head -1)"
-  if [ -n "$reason" ]; then
-    printf '%s\n' "$reason" > "$(_emb_fallback_reason_file)"
+  local record="$1" reason story_key
+  # ^…$ anchors the whole line; [^ ]*$ pins the captured value to the final
+  # field, so only a trailing `reason:` can match.
+  reason="$(printf '%s\n' "$record" | sed -n 's/^.* reason:\([^ ]*\)$/\1/p' | head -1)"
+  # The record carries the story key too; keeping it is what lets a caller ask
+  # about ITS story rather than about whichever dispatch degraded most recently.
+  story_key="$(printf '%s\n' "$record" | sed -n 's/^mode_b_fallback story_key:\([^ ]*\).*$/\1/p' | head -1)"
+  if [ -n "$reason" ] && [ -n "$story_key" ]; then
+    _emb_write_reason "$story_key" "$reason"
   fi
 }
 
-# execution_fallback_reason
-# Print why the most recent story-keyed dispatch fell back to foreground work.
-# This is the reader that keeps the machine-readable fallback record from being
-# write-only: the code tells a caller to degrade, this tells it what to say.
+# execution_fallback_reason [STORY_KEY]
+# Print why a story-keyed dispatch degraded to foreground work. This is the
+# reader that keeps the machine-readable fallback record from being write-only:
+# the exit code tells a caller to degrade, this tells it what to say.
+#
+# Precedence is explicit:
+#   - WITH a story key — report that story's reason, or status 1 if it has
+#     none. This is the form a parallel caller wants: it answers about the
+#     story the caller is running, regardless of what other stories did.
+#   - WITHOUT one — report the most recently recorded reason across the
+#     session. Retained for a single-story caller that never had a key to hand;
+#     under concurrency it is inherently ambiguous, so prefer the keyed form.
 execution_fallback_reason() {
   _emb_ensure_dt
-  local file
-  file="$(_emb_fallback_reason_file)"
-  if [ ! -f "$file" ]; then
-    return 1
+  local story_key="${1:-}"
+  local dir file
+  dir="$(_emb_fallback_reason_dir)"
+
+  if [ -n "$story_key" ]; then
+    file="$dir/$(_emb_reason_slug "$story_key")"
+    if [ ! -f "$file" ]; then
+      return 1
+    fi
+  else
+    # Most recent by the `recorded:` stamp inside each record rather than by
+    # filesystem mtime: the stamp is what the writer actually asserts, and
+    # sorting record contents avoids parsing `ls` output entirely. Reason slugs
+    # cannot contain whitespace or newlines (see _emb_reason_slug), so the
+    # stamp-then-path line format is unambiguous.
+    local newest
+    newest="$(
+      find "$dir" -type f -maxdepth 1 2>/dev/null | while IFS= read -r candidate; do
+        printf '%s %s\n' \
+          "$(sed -n '/^recorded:/{s/^recorded://p;q;}' "$candidate" 2>/dev/null)" \
+          "$candidate"
+      done | sort | tail -1
+    )"
+    file="${newest#* }"
+    [ -n "$file" ] && [ -f "$file" ] || return 1
   fi
-  cat "$file"
+
+  sed -n '/^reason:/{s/^reason://p;q;}' "$file"
 }
 
 # execution_attribution_for HANDLE
 # Print the story key a handle's relays are attributed to, or nothing when the
 # handle carries no story. The reader that proves attribution is consumed and
 # not merely recorded.
+# The record is written by _emb_write_attribution with `story_key:` as its
+# FIRST line, so the first match is the authoritative one and `1q` stops the
+# reader there deliberately rather than leaving a later look-alike line to be
+# discarded by luck. `^story_key:` is anchored to the start of the line, so a
+# value that merely contains the token (`relays:0 story_key:x`) is not a match.
+# Keys are validated at the dispatch boundary and can no longer span lines, so
+# a second `story_key:` line cannot be injected; the anchoring keeps this
+# reader deterministic regardless.
 execution_attribution_for() {
   _emb_ensure_dt
   local handle="${1:-}"
+
+  # Match the guard on the write path (execution_relay_turn): a handle is a
+  # single path component, never a traversal. The reader is only ever given a
+  # sanitiser-derived handle today, but a reader that silently accepts `..`
+  # would hand a future caller an arbitrary-file read.
+  case "$handle" in
+    ''|*/*|*..*)
+      printf 'execution-mode-b-bridge: invalid handle %s — refusing to read attribution\n' \
+        "$handle" >&2
+      return 1
+      ;;
+  esac
+
   local file
   file="$(_emb_attribution_dir)/$handle"
   if [ ! -f "$file" ]; then
     return 0
   fi
-  sed -n 's/^story_key://p' "$file" | head -1
+  # `s/…/p;q` on a matching line prints and quits, so the FIRST `story_key:`
+  # line wins by construction — chosen on purpose, since that is the line
+  # _emb_write_attribution authors. Quitting on the first match (rather than on
+  # line 1) keeps the reader correct if the record's field order ever changes.
+  sed -n '/^story_key:/{s/^story_key://p;q;}' "$file"
 }
 
 # _emb_write_attribution HANDLE STORY_KEY PERSONA RELAYS — write the record
@@ -247,14 +389,29 @@ _emb_bump_attribution() {
   case "$-" in *e*) errexit_was_set=1 ;; esac
   set +e
   (
-    if ! acquire_lock "$file.lock" 5 9; then
+    # Timeout is overridable because it is a throughput/accuracy trade-off, not
+    # a constant: under many concurrent relays on ONE handle, a contended waiter
+    # that times out drops its attribution increment (the relay itself still
+    # lands — attribution is observability and never costs a reply). A caller
+    # driving an unusually hot handle can raise this rather than lose counts.
+    if ! acquire_lock "$file.lock" "${GAIA_MODE_B_ATTRIBUTION_LOCK_TIMEOUT:-5}" 9; then
       exit 1
     fi
     trap 'release_lock 9 2>/dev/null || true' EXIT
     local story_key persona relays
-    story_key="$(sed -n 's/^story_key://p' "$file" 2>/dev/null | head -1)"
-    persona="$(sed -n 's/^persona://p' "$file" 2>/dev/null | head -1)"
-    relays="$(sed -n 's/^relays://p' "$file" 2>/dev/null | head -1)"
+    # Identity comes from the REGISTRY, which is where a spawn actually records
+    # it, not from the attribution file being rewritten. Reading identity out of
+    # that file only works when something seeded it first — true for a spawn
+    # through this bridge's own seam, but NOT for a handle spawned directly via
+    # the shared library and then relayed here, which would rewrite a record it
+    # had never written and produce empty story_key:/persona: fields. Seeding
+    # from the registry on every bump makes the record correct whichever way the
+    # handle was created, and refreshes it if the registry entry changed.
+    story_key="$(_dt_read_story_key "$handle")"
+    persona="$(_dt_read_persona "$handle")"
+    # The relay counter is the one field that genuinely accumulates here, so it
+    # is the only one carried forward from the previous record.
+    relays="$(sed -n '/^relays:/{s/^relays://p;q;}' "$file" 2>/dev/null)"
     [ -n "$relays" ] || relays=0
     _emb_write_attribution "$handle" "$story_key" "$persona" "$((relays + 1))"
   )
@@ -288,6 +445,13 @@ execution_relay_turn() {
   if [ -n "$handle" ] && [ ! -f "${GAIA_SESSION_DIR:?}/registry/$handle" ]; then
     printf 'execution-mode-b-bridge: no active teammate for %s — refusing to relay\n' \
       "$handle" >&2
+    # This path and a spawn-time substrate fallback both return the same code,
+    # so the code alone cannot tell a caller which happened — and they call for
+    # different responses ("degrade to sequential work" vs "a relay was
+    # dropped"). Record a distinct reason, keyed by the handle, so the two are
+    # separable by a caller that asks. Without this the reader would answer a
+    # relay refusal with a stale `substrate-unavailable` from an earlier spawn.
+    _emb_write_reason "$handle" "unregistered-handle"
     return "${_DT_FALLBACK_EXIT_CODE:-7}"
   fi
 
@@ -297,7 +461,14 @@ execution_relay_turn() {
   # Attribution describes a relay that happened. If the shared library refused
   # the relay, there is nothing to attribute, and running the bookkeeping anyway
   # would leave state behind for a message that was never delivered.
-  if [ "$relay_rc" -eq 0 ]; then
+  #
+  # It is also skipped for a KEYLESS handle. Attribution exists to say which
+  # STORY a relay belongs to, and a keyless teammate has no story — the record
+  # written for one carries an empty story_key: and answers nothing. Doing it
+  # anyway would charge every long-standing keyless caller a lock acquire and
+  # a read-modify-write per turn for a record no reader can use. Keyed relays
+  # are unaffected; only the callers that opted into stories pay for them.
+  if [ "$relay_rc" -eq 0 ] && [ -n "$(_dt_read_story_key "$handle")" ]; then
     if ! _emb_bump_attribution "$handle"; then
       printf 'execution-mode-b-bridge: attribution unavailable for %s (continuing)\n' \
         "$handle" >&2

@@ -97,6 +97,64 @@ _dt_iso8601() {
 # a pathological key cannot produce a name the registry directory cannot hold.
 _DT_STORY_KEY_MAX=64
 
+# _dt_validate_story_key KEY — accept or refuse a RAW story key at the trust
+# boundary, BEFORE it reaches any persistent sink.
+#
+# Why a boundary check rather than per-sink escaping. The sanitiser below
+# protects the HANDLE (a filename) and nothing else: the raw key is what gets
+# stored in the registry and rendered into the transcript metadata comment, and
+# both of those are structured, single-line-delimited formats. A key carrying a
+# newline therefore appends forged `field:value` records to the registry (a
+# forged `persona:` line is read straight back by _dt_read_persona), and a key
+# carrying `-->` closes the metadata comment early and lands caller-controlled
+# markup in the append-only transcript body, where nothing can retract it.
+# Escaping at each sink would mean keeping several escapers in step forever and
+# would silently mangle the stored key; refusing the input once, here, keeps a
+# single rule and stores exactly what the caller passed.
+#
+# The accepted class is deliberately conservative — ASCII letters, digits, dot,
+# underscore and hyphen, 1 to 64 characters:
+#
+#   - it admits every story-key shape the framework issues or has planned
+#     (epic/story keys, dotted and underscored variants, slugs);
+#   - it excludes, by construction and not by enumeration, every character that
+#     could punctuate a record or a comment: whitespace and control characters
+#     (so no key can span lines), `:` (the registry/record field separator),
+#     `<` and `>` (so neither `-->` nor `<!--` can be formed), `/` and the
+#     path-ish forms built from it;
+#   - the 64-character cap matches the sanitised-token bound, so a key that
+#     passes here can never outgrow the handle it produces.
+#
+# Refusal is fail-closed: status 1 with a diagnostic, and the caller returns
+# before anything is written to the registry, the transcript, the fallback
+# record or the attribution store.
+_dt_validate_story_key() {
+  local raw="$1"
+
+  if [ -z "$raw" ]; then
+    _dt_die "spawn_teammate: --story-key requires a non-empty key"
+    return 1
+  fi
+
+  # The bracket expression lists its characters explicitly rather than using a
+  # named class such as [:alnum:], so it is byte-wise and locale-independent:
+  # this is a SOURCED library and must not depend on — or mutate — the calling
+  # shell's locale to decide what it accepts.
+  case "$raw" in
+    *[!A-Za-z0-9._-]*)
+      _dt_die "spawn_teammate: story key '$raw' contains characters outside [A-Za-z0-9._-] — refusing"
+      return 1
+      ;;
+  esac
+
+  if [ "${#raw}" -gt "$_DT_STORY_KEY_MAX" ]; then
+    _dt_die "spawn_teammate: story key '$raw' exceeds $_DT_STORY_KEY_MAX characters — refusing"
+    return 1
+  fi
+
+  return 0
+}
+
 # _dt_sanitize_story_key KEY — reduce a story key to a handle-safe token.
 #
 # Reuses the persona slug transform (every character outside [:alnum:] becomes
@@ -106,9 +164,16 @@ _DT_STORY_KEY_MAX=64
 # The transform is deliberately lossy: two differently-written keys can reduce
 # to the same token. Uniqueness is therefore enforced on the RAW key stored in
 # the registry, not on this token — see spawn_teammate's identity check.
+#
+# LC_ALL=C is pinned on the `tr` invocations themselves, not exported. `[:alnum:]`
+# resolves against the ambient locale, so without this the SAME key sanitises to
+# two different tokens — and therefore two different handles, registry files and
+# attribution records — depending on the caller's locale. Scoping the setting to
+# these commands keeps the transform byte-wise without a sourced library reaching
+# out and changing the calling shell's locale.
 _dt_sanitize_story_key() {
   local raw="$1" token
-  token="$(printf '%s' "$raw" | tr -c '[:alnum:]' '-' | tr -s '-')"
+  token="$(printf '%s' "$raw" | LC_ALL=C tr -c '[:alnum:]' '-' | LC_ALL=C tr -s '-')"
   token="${token#-}"
   token="${token%-}"
   printf '%s' "$token" | cut -c "1-$_DT_STORY_KEY_MAX"
@@ -129,7 +194,9 @@ _dt_generate_handle() {
   local persona="$1"
   local story_key="${2:-}"
   local slug
-  slug="$(printf '%s' "$persona" | tr -c '[:alnum:]' '-')"
+  # LC_ALL=C for the same reason as the story-key sanitiser: the handle must be
+  # a pure function of its inputs, not of the caller's locale.
+  slug="$(printf '%s' "$persona" | LC_ALL=C tr -c '[:alnum:]' '-')"
   if [ -n "$story_key" ]; then
     printf 'tm-%s-%s' "$slug" "$story_key"
     return 0
@@ -279,12 +346,24 @@ _dt_current_turn() {
   fi
 }
 
+# Registry-record readers.
+#
+# Records are line-oriented `field:value` pairs, one line per field, so each of
+# these readers takes the FIRST matching line and stops there. Bounding them is
+# what keeps a record that is malformed — a legacy file, a partial write, or a
+# corrupted one — from returning several lines where a caller expects a scalar:
+# an unbounded read would make the same-key retry comparison fail against an
+# identical key (refusing a legitimate retry), and would let a second field line
+# reach the transcript metadata. Keys are validated at the dispatch boundary so
+# a new record cannot contain such a line, but these readers must not depend on
+# that to behave deterministically.
+
 # _dt_read_persona HANDLE — read the persona name from the registry file.
 _dt_read_persona() {
   local handle="$1"
   _dt_ensure_registry
   if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
-    sed -n 's/^persona://p' "$_DT_REGISTRY_DIR/$handle"
+    sed -n '/^persona:/{s/^persona://p;q;}' "$_DT_REGISTRY_DIR/$handle"
   fi
 }
 
@@ -293,7 +372,7 @@ _dt_read_spawn_ts() {
   local handle="$1"
   _dt_ensure_registry
   if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
-    sed -n 's/^spawned://p' "$_DT_REGISTRY_DIR/$handle"
+    sed -n '/^spawned:/{s/^spawned://p;q;}' "$_DT_REGISTRY_DIR/$handle"
   fi
 }
 
@@ -303,7 +382,7 @@ _dt_read_story_key() {
   local handle="$1"
   _dt_ensure_registry
   if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
-    sed -n 's/^story_key://p' "$_DT_REGISTRY_DIR/$handle"
+    sed -n '/^story_key:/{s/^story_key://p;q;}' "$_DT_REGISTRY_DIR/$handle"
   fi
 }
 
@@ -536,12 +615,19 @@ spawn_teammate() {
   # Parse arguments.
   while [ $# -gt 0 ]; do
     case "$1" in
+      # Every value-taking arm checks its arity BEFORE `shift 2`. Under a
+      # trailing flag with no value, `shift 2` fails WITHOUT shifting, so the
+      # `while [ $# -gt 0 ]` loop below would spin forever on the same argument
+      # — a hang rather than an error. Refusing up front turns each of those
+      # into an immediate, diagnosable exit.
       --context)
-        context="${2:-}"
+        [ $# -ge 2 ] || { _dt_die "spawn_teammate: --context requires a value"; return 1; }
+        context="$2"
         shift 2
         ;;
       --from-frontmatter)
-        skill_path="${2:-}"
+        [ $# -ge 2 ] || { _dt_die "spawn_teammate: --from-frontmatter requires a value"; return 1; }
+        skill_path="$2"
         shift 2
         ;;
       # This arm MUST stay ahead of the unknown-flag catch-all below, and MUST
@@ -549,8 +635,16 @@ spawn_teammate() {
       # reaching it would leave the key as a positional argument and adopt it
       # as the persona — a silent misdispatch rather than an error.
       --story-key)
-        story_key="${2:-}"
+        [ $# -ge 2 ] || { _dt_die "spawn_teammate: --story-key requires a value"; return 1; }
+        story_key="$2"
         story_keyed=1
+        # Validate the RAW key here, at the boundary where it enters the
+        # library, and refuse before any sink is touched. Every persistent
+        # writer downstream — registry record, transcript metadata comment,
+        # fallback record, bridge attribution file — interpolates this value
+        # into a structured single-line or comment-delimited format, so this
+        # one check is what keeps all of them well-formed.
+        _dt_validate_story_key "$story_key" || return 1
         shift 2
         ;;
       --help)

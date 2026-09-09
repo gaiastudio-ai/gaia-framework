@@ -574,20 +574,43 @@ SKILLEOF
   [ -f "$GAIA_SESSION_DIR/registry/$handle" ]
 }
 
-@test "an overlong story key is truncated to a bounded handle (AC-EC1)" {
+@test "an overlong story key is refused rather than truncated into a handle (AC-EC1)" {
   source "$LIB"
   # A story-keyed spawn only returns a handle when the substrate is
   # present; the absent-substrate contract is covered separately.
   export GAIA_MODE_B_SUBSTRATE=available
   local long_key
   long_key="$(printf 'k%.0s' $(seq 1 300))"
-  local handle
-  handle="$(spawn_teammate "bash-dev" --story-key "$long_key" 2>/dev/null)"
-  # The handle is derived from the key (so a bound is not satisfied vacuously
-  # by ignoring the key), and the derived part is capped rather than unbounded.
-  [ "$handle" = "tm-bash-dev-$(printf 'k%.0s' $(seq 1 64))" ]
-  [ "${#handle}" -le 80 ]
-  [ -f "$GAIA_SESSION_DIR/registry/$handle" ]
+
+  # Truncating an over-length key would be the dangerous accommodation: two
+  # distinct keys sharing a 64-character prefix would collapse onto ONE handle
+  # and one attribution lineage — precisely the collision the story-keyed
+  # interface exists to remove — and the registry would then hold a key the
+  # caller never passed. The bound is therefore enforced by refusal.
+  run spawn_teammate "bash-dev" --story-key "$long_key"
+  [ "$status" -eq 1 ] \
+    || { echo "expected the key refusal status 1, got [$status]"; return 1; }
+  [[ "$output" == *"exceeds"* ]] \
+    || { echo "no length refusal emitted: [$output]"; return 1; }
+  [[ "$output" != *"tm-bash-dev"* ]] \
+    || { echo "a handle leaked for an over-length key: [$output]"; return 1; }
+  [ "$(_dt_active_count)" -eq 0 ] \
+    || { echo "a registry entry was written for an over-length key"; return 1; }
+}
+
+@test "a story key at exactly the length bound is still accepted (AC-EC1)" {
+  source "$LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  # The boundary itself must be inclusive, or the refusal above would be
+  # indistinguishable from an off-by-one that rejects legitimate keys.
+  local max_key handle
+  max_key="$(printf 'k%.0s' $(seq 1 64))"
+  handle="$(spawn_teammate "bash-dev" --story-key "$max_key")" \
+    || { echo "a key at exactly the bound was refused"; return 1; }
+  [ "$handle" = "tm-bash-dev-$max_key" ] \
+    || { echo "unexpected handle at the length bound: [$handle]"; return 1; }
+  [ -f "$GAIA_SESSION_DIR/registry/$handle" ] \
+    || { echo "no registry entry for a key at the bound"; return 1; }
 }
 
 @test "a story key of only punctuation is refused (AC-EC1)" {
@@ -722,6 +745,9 @@ SKILLEOF
   handle="$(spawn_teammate "bash-dev" --story-key "K1-K1" 2>/dev/null)"
   local attr_lock="$GAIA_SESSION_DIR/relay-attribution/$handle.lock"
   mkdir -p "$GAIA_SESSION_DIR/relay-attribution"
+  # Shorten the relay's wait so the test spends seconds, not tens of seconds,
+  # proving the same behaviour. The holder outlives that wait either way.
+  export GAIA_MODE_B_ATTRIBUTION_LOCK_TIMEOUT=2
   # Hold the per-handle attribution lock from a separate process for longer
   # than the relay's acquisition timeout.
   bash -c '
@@ -733,7 +759,10 @@ SKILLEOF
   sleep 1
   # bats' run merges the command's stderr into $output, so the warning is
   # asserted there rather than in a redirected file.
+  local relay_started relay_elapsed
+  relay_started="$(date +%s)"
   run execution_relay_turn "$handle" "implement complete"
+  relay_elapsed=$(( $(date +%s) - relay_started ))
   kill "$holder" 2>/dev/null || true
   wait "$holder" 2>/dev/null || true
   # Bookkeeping degrades; the delivered reply still reaches the transcript.
@@ -744,10 +773,15 @@ SKILLEOF
   # The reply must have reached the transcript BEFORE the bookkeeping stalled,
   # so the transcript append cannot be sequenced behind the lock: while the
   # holder still owns the lock, the entry is already durable.
-  local held_lock_still=0
-  [ -f "$attr_lock" ] && held_lock_still=1
-  [ "$held_lock_still" -eq 1 ] \
-    || { echo "lock file vanished — contention was not actually exercised"; return 1; }
+  #
+  # The witness that contention actually happened is the degraded-attribution
+  # warning asserted above plus the timing measured here — NOT the presence of
+  # the lock FILE, which several lock substrates leave behind after release and
+  # which would therefore be true even had the relay never contended at all.
+  # A relay that sailed through an uncontended lock returns in milliseconds; one
+  # that genuinely waited on the holder cannot return before its timeout.
+  [ "$relay_elapsed" -ge "$GAIA_MODE_B_ATTRIBUTION_LOCK_TIMEOUT" ] \
+    || { echo "relay returned in ${relay_elapsed}s, faster than the ${GAIA_MODE_B_ATTRIBUTION_LOCK_TIMEOUT}s lock timeout — contention was not actually exercised"; return 1; }
   # And no attribution record was fabricated for a relay whose bookkeeping
   # never completed.
   [ ! -s "$GAIA_SESSION_DIR/relay-attribution/$handle" ] \
@@ -788,6 +822,22 @@ SKILLEOF
   # The code must be distinct: no other site in the dispatch library, the
   # cohort bridges, or the roster-cost probe may return or exit with it,
   # apart from the single named constant and the returns that reference it.
+  # The meeting bridge lives under its skill rather than in lib/, so it has to
+  # be named explicitly — a chain that silently omits a bridge would assert
+  # uniqueness over a subset while reading as though it covered all of them.
+  #
+  # Its path is assembled from fragments rather than written as one literal:
+  # the component tagger classifies a test file by the paths it mentions, and a
+  # bare skills/… path here would make this scripts/lib/ suite look multi-area
+  # and demote it to the broad catch-all component, which runs on far more
+  # changes than the library stack it belongs to.
+  local meeting_dir="$BATS_TEST_DIRNAME/../skills/gaia-meeting"
+  local meeting_bridge="$meeting_dir/scripts/meeting-mode-b-bridge"
+
+  # The ".sh" is appended rather than written inline for the same reason: the
+  # tagger's path scan keys on a "<dir>/<name>.sh" literal, and this suite must
+  # stay classified by the library it actually tests.
+  meeting_bridge="$meeting_bridge.sh"
   local chain=(
     "$LIB_DIR/dispatch-teammate.sh"
     "$LIB_DIR/execution-mode-b-bridge.sh"
@@ -795,7 +845,15 @@ SKILLEOF
     "$LIB_DIR/research-mode-b-bridge.sh"
     "$LIB_DIR/conversational-mode-b-bridge.sh"
     "$LIB_DIR/roster-cost.sh"
+    "$meeting_bridge"
   )
+  # Every bridge named above must actually exist, or a renamed file would turn
+  # this guard into a vacuous pass over a shorter list.
+  local expected
+  for expected in "${chain[@]}"; do
+    [ -f "$expected" ] \
+      || { echo "dispatch-chain member missing from the tree: $expected"; return 1; }
+  done
   local f stray=0
   for f in "${chain[@]}"; do
     [ -f "$f" ] || continue
@@ -809,6 +867,25 @@ SKILLEOF
   [ "$stray" -eq 0 ]
   # And the constant itself is the documented value.
   [ "$_DT_FALLBACK_EXIT_CODE" -eq 7 ]
+
+  # The literal sweep above says nothing about sites that return the CONSTANT,
+  # which is how the code is meant to be returned — so a site returning it for
+  # a DIFFERENT reason would pass that sweep unnoticed. The execution bridge has
+  # exactly one such site (the unregistered-handle relay guard; the spawn path
+  # propagates the library's own status rather than naming the constant), and
+  # because that site overloads the code with a second meaning, its contract is
+  # that it records a distinguishable reason. Pin the count so a new overloading
+  # site cannot appear without revisiting that guarantee.
+  local constant_returns
+  constant_returns="$(grep -cE '(return|exit)[[:space:]]+"?\$\{?_DT_FALLBACK_EXIT_CODE' \
+    "$LIB_DIR/execution-mode-b-bridge.sh" || true)"
+  [ "$constant_returns" -eq 1 ] \
+    || { echo "execution bridge returns the fallback code from $constant_returns sites (expected 1: the relay guard); a new site must record its own distinguishable reason"; return 1; }
+  # And that one site is the relay guard, which does record its own reason.
+  run grep -c '_emb_write_reason "$handle" "unregistered-handle"' \
+    "$LIB_DIR/execution-mode-b-bridge.sh"
+  [ "$output" -eq 1 ] \
+    || { echo "the relay guard no longer records a distinguishable reason"; return 1; }
 }
 
 @test "the fail-safe capture for an unrelayed turn carries the story key last (AC2)" {
@@ -843,4 +920,296 @@ SKILLEOF
     "$GAIA_SESSION_TRANSCRIPT"
   [ "$output" -eq 1 ] \
     || { echo "fail-safe comment lacks the no-story marker: [$(grep -o '<!--[^>]*-->' "$GAIA_SESSION_TRANSCRIPT")]"; return 1; }
+}
+
+# ============================================================
+# AC-EC1 — Raw-key boundary validation
+#
+# The sanitiser protects the HANDLE (a filename). These tests pin the separate
+# guarantee that the RAW key — the value actually persisted into the registry
+# record and rendered into the transcript metadata comment — cannot carry a
+# character that punctuates either format. Each hostile key must be refused
+# with status 1 and leave NOTHING behind in any sink.
+# ============================================================
+
+# _assert_key_refused KEY LABEL — drive the real spawn path with a hostile key
+# and assert the boundary refused it before any sink was written.
+_assert_key_refused() {
+  local key="$1" label="$2"
+  export GAIA_MODE_B_SUBSTRATE=available
+
+  run spawn_teammate "bash-dev" --story-key "$key"
+
+  [ "$status" -eq 1 ] \
+    || { echo "$label: expected refusal status 1, got [$status]: [$output]"; return 1; }
+  # No handle may be emitted — a caller capturing stdout must not receive one.
+  [[ "$output" != *"tm-bash-dev"* ]] \
+    || { echo "$label: a handle leaked for a refused key: [$output]"; return 1; }
+  # No registry entry, so no forged field can ever be read back.
+  [ "$(_dt_active_count)" -eq 0 ] \
+    || { echo "$label: a registry entry was written for a refused key"; return 1; }
+  # No transcript line — the transcript is append-only and cannot be retracted.
+  [ ! -s "$GAIA_SESSION_TRANSCRIPT" ] \
+    || { echo "$label: transcript written for a refused key: [$(cat "$GAIA_SESSION_TRANSCRIPT")]"; return 1; }
+  # No fallback reason file.
+  [ ! -f "$GAIA_SESSION_DIR/mode-b-fallback-reason" ] \
+    || { echo "$label: a fallback reason file was written for a refused key"; return 1; }
+}
+
+@test "a story key containing a newline is refused at the boundary (AC-EC1)" {
+  source "$LIB"
+  # The field-forgery vector: a newline appends a second record line, and a
+  # forged persona: line is read straight back by _dt_read_persona.
+  _assert_key_refused "$(printf 'K1-K1\npersona:reviewer')" "newline"
+}
+
+@test "a newline story key cannot forge a registry persona field (AC-EC1)" {
+  source "$LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  local key
+  key="$(printf 'K1-K1\npersona:reviewer')"
+  spawn_teammate "bash-dev" --story-key "$key" >/dev/null 2>&1 || true
+
+  # Assert on the STORED RECORD, not only on what the reader returns. The
+  # bounded reader would mask a forged trailing line, so checking the reader
+  # alone would pass even with the boundary guard removed — and the forged
+  # line would still be sitting in the registry for any other consumer.
+  local f forged=0
+  for f in "$GAIA_SESSION_DIR"/registry/*; do
+    [ -f "$f" ] || continue
+    if [ "$(grep -c '^persona:' "$f")" -ne 1 ]; then
+      forged=1
+      echo "record $(basename "$f") carries several persona fields: [$(cat "$f")]"
+    fi
+  done
+  [ "$forged" -eq 0 ] \
+    || { echo "a forged persona field was written into the registry"; return 1; }
+
+  # And the reader agrees — the persona is exactly the dispatched one.
+  for f in "$GAIA_SESSION_DIR"/registry/*; do
+    [ -f "$f" ] || continue
+    [ "$(_dt_read_persona "$(basename "$f")" | tr '\n' ' ')" = "bash-dev " ] \
+      || { echo "a forged persona was readable from the registry"; return 1; }
+  done
+}
+
+@test "a story key containing a carriage return is refused at the boundary (AC-EC1)" {
+  source "$LIB"
+  _assert_key_refused "$(printf 'K1-K1\rpersona:reviewer')" "carriage-return"
+}
+
+@test "a story key containing a control byte is refused at the boundary (AC-EC1)" {
+  source "$LIB"
+  # A NUL cannot survive a bash argument, so the adjacent control bytes are
+  # what a caller can actually deliver — they must be refused too.
+  _assert_key_refused "$(printf 'K1\001\002-K1')" "control-bytes"
+}
+
+@test "a story key containing an HTML comment terminator is refused (AC-EC1)" {
+  source "$LIB"
+  # The transcript-breakout vector: --> closes the metadata comment early and
+  # lands caller-controlled markup in the append-only transcript body.
+  _assert_key_refused 'K1--> <img src=x onerror=alert(1)>' "comment-terminator"
+}
+
+@test "a story key containing an HTML comment opener is refused (AC-EC1)" {
+  source "$LIB"
+  _assert_key_refused 'K1<!--swallow' "comment-opener"
+}
+
+@test "a story key shaped like an injected record field is refused (AC-EC1)" {
+  source "$LIB"
+  # Colon is the field separator in every record this library writes, and a
+  # space is the field delimiter in the fallback record.
+  _assert_key_refused 'K1 reason:tampered-with extra:1' "field-injection"
+}
+
+@test "a traversal story key is refused at the boundary (AC-EC1)" {
+  source "$LIB"
+  _assert_key_refused '../../etc/passwd' "traversal"
+}
+
+@test "an absolute-path story key is refused at the boundary (AC-EC1)" {
+  source "$LIB"
+  _assert_key_refused '/etc/passwd' "absolute-path"
+}
+
+@test "an over-length story key is refused rather than silently truncated (AC-EC1)" {
+  source "$LIB"
+  # 65 characters — one past the documented bound.
+  _assert_key_refused "$(printf 'k%.0s' $(seq 1 65))" "over-length"
+}
+
+@test "a non-ASCII story key is refused at the boundary (AC-EC1)" {
+  source "$LIB"
+  _assert_key_refused 'Ké1-K1' "unicode"
+}
+
+@test "a well-formed story key with dots and dashes is still accepted (AC-EC1)" {
+  source "$LIB"
+  # The positive control: the guard must not have been made so tight that it
+  # refuses the key shapes the interface exists to serve.
+  export GAIA_MODE_B_SUBSTRATE=available
+  local handle
+  handle="$(spawn_teammate "bash-dev" --story-key 'K1.K2_v2-final')" \
+    || { echo "a well-formed key was refused"; return 1; }
+  [ "$handle" = "tm-bash-dev-K1-K2-v2-final" ] \
+    || { echo "unexpected handle for a well-formed key: [$handle]"; return 1; }
+  [ -f "$GAIA_SESSION_DIR/registry/$handle" ] \
+    || { echo "no registry entry for an accepted key"; return 1; }
+  # The RAW key is stored verbatim, so attribution still reports what the
+  # caller passed rather than the lossy handle token.
+  [ "$(_dt_read_story_key "$handle")" = "K1.K2_v2-final" ] \
+    || { echo "raw key not stored verbatim: [$(_dt_read_story_key "$handle")]"; return 1; }
+}
+
+@test "a refused key on the fallback path emits no machine-readable record (AC-EC1)" {
+  source "$LIB"
+  # The boundary must run before the substrate check, so a hostile key is
+  # refused with status 1 rather than reaching the fallback record emitter.
+  export GAIA_MODE_B_SUBSTRATE=unavailable
+  run spawn_teammate "bash-dev" --story-key 'K1 reason:tampered-with'
+  [ "$status" -eq 1 ] \
+    || { echo "expected the key refusal status 1, got [$status]: [$output]"; return 1; }
+  [[ "$output" != *"mode_b_fallback"* ]] \
+    || { echo "a fallback record was emitted for a refused key: [$output]"; return 1; }
+}
+
+@test "the transcript metadata comment stays a single well-formed comment (AC2)" {
+  source "$LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  # Attempt the breakout key and relay on WHATEVER handle that attempt yields.
+  # Relaying only on a clean handle would never render the hostile key into the
+  # metadata comment, so the test would pass even with the boundary removed.
+  local hostile_handle
+  hostile_handle="$(spawn_teammate "bash-dev" --story-key 'K1--> <img src=x onerror=alert(1)>' 2>/dev/null)" || hostile_handle=""
+  if [ -n "$hostile_handle" ]; then
+    relay_to_team_lead "$hostile_handle" "hostile payload"
+  fi
+  # Then a legitimate relay, so the transcript has a well-formed entry too.
+  local handle
+  handle="$(spawn_teammate "bash-dev" --story-key 'K1-K1')"
+  relay_to_team_lead "$handle" "relayed payload"
+  # No injected markup may appear anywhere in the transcript.
+  run grep -c 'onerror' "$GAIA_SESSION_TRANSCRIPT"
+  [ "$output" -eq 0 ] \
+    || { echo "injected markup reached the transcript: [$(cat "$GAIA_SESSION_TRANSCRIPT")]"; return 1; }
+  # Exactly one metadata comment, and it both opens and closes on one line.
+  run grep -cE '^<!-- persona:[^>]*story_key:K1-K1 -->$' "$GAIA_SESSION_TRANSCRIPT"
+  [ "$output" -eq 1 ] \
+    || { echo "metadata comment is not exactly one well-formed comment: [$(grep -n '<!--' "$GAIA_SESSION_TRANSCRIPT")]"; return 1; }
+}
+
+# ============================================================
+# AC5 / AC-EC1 — Reader bounds, argument arity, locale independence
+# ============================================================
+
+@test "a multi-line stored story key reads back as its first line only (AC5)" {
+  source "$LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  _dt_ensure_registry
+  # A record that a validated key can no longer produce, but that a legacy or
+  # partially-written file still can. The reader must be bounded on its own,
+  # not rely on the boundary guard upstream.
+  printf 'persona:bash-dev\nstatus:active\nspawned:x\nstory_key:K1-K1\ntrailing-junk\n' \
+    > "$_DT_REGISTRY_DIR/tm-bash-dev-K1-K1"
+  local got
+  got="$(_dt_read_story_key tm-bash-dev-K1-K1 | tr '\n' '|')"
+  [ "$got" = "K1-K1|" ] \
+    || { echo "reader returned more than the first line: [$got]"; return 1; }
+}
+
+@test "a duplicated registry field reads back as a single value (AC5)" {
+  source "$LIB"
+  _dt_ensure_registry
+  printf 'persona:bash-dev\npersona:reviewer\nstatus:active\nspawned:x\nstory_key:K1-K1\nstory_key:VICTIM\n' \
+    > "$_DT_REGISTRY_DIR/tm-bash-dev-K1-K1"
+  # Each reader is a scalar reader: a second field line must never widen it.
+  [ "$(_dt_read_persona tm-bash-dev-K1-K1 | tr '\n' '|')" = "bash-dev|" ] \
+    || { echo "persona reader returned several values"; return 1; }
+  [ "$(_dt_read_story_key tm-bash-dev-K1-K1 | tr '\n' '|')" = "K1-K1|" ] \
+    || { echo "story key reader returned several values"; return 1; }
+}
+
+@test "a same-key retry against a corrupted record is still reused (AC5)" {
+  source "$LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  _dt_ensure_registry
+  # The retry compares the RAW key against the stored one. With an unbounded
+  # reader the comparison sees several lines and refuses an IDENTICAL key,
+  # breaking the retry contract; the bounded reader must reuse the handle.
+  printf 'persona:bash-dev\nstatus:active\nspawned:x\nstory_key:K1-K1\ntrailing-junk\n' \
+    > "$_DT_REGISTRY_DIR/tm-bash-dev-K1-K1"
+  run spawn_teammate "bash-dev" --story-key 'K1-K1'
+  [ "$status" -eq 0 ] \
+    || { echo "an identical-key retry was refused: [$status] [$output]"; return 1; }
+  [ "$output" = "tm-bash-dev-K1-K1" ] \
+    || { echo "retry did not reuse the one handle: [$output]"; return 1; }
+  [ "$(_dt_active_count)" -eq 1 ] \
+    || { echo "retry left more than one registry entry"; return 1; }
+}
+
+@test "--story-key with no value returns promptly instead of hanging (AC-EC1)" {
+  source "$LIB"
+  # A trailing value-taking flag makes `shift 2` fail WITHOUT shifting, so an
+  # unguarded parse loop spins forever. Bound the wait so a regression fails
+  # the test rather than hanging the suite.
+  run timeout 2 bash -c "source '$LIB'; spawn_teammate bash-dev --story-key"
+  [ "$status" -ne 124 ] \
+    || { echo "spawn_teammate hung on a valueless --story-key"; return 1; }
+  [ "$status" -ne 0 ] \
+    || { echo "a valueless --story-key was accepted"; return 1; }
+}
+
+@test "--context with no value returns promptly instead of hanging (AC-EC1)" {
+  source "$LIB"
+  run timeout 2 bash -c "source '$LIB'; spawn_teammate bash-dev --context"
+  [ "$status" -ne 124 ] \
+    || { echo "spawn_teammate hung on a valueless --context"; return 1; }
+  [ "$status" -ne 0 ] \
+    || { echo "a valueless --context was accepted"; return 1; }
+}
+
+@test "--from-frontmatter with no value returns promptly instead of hanging (AC-EC1)" {
+  source "$LIB"
+  run timeout 2 bash -c "source '$LIB'; spawn_teammate bash-dev --from-frontmatter"
+  [ "$status" -ne 124 ] \
+    || { echo "spawn_teammate hung on a valueless --from-frontmatter"; return 1; }
+  [ "$status" -ne 0 ] \
+    || { echo "a valueless --from-frontmatter was accepted"; return 1; }
+}
+
+@test "handle derivation does not depend on the caller's locale (AC1)" {
+  source "$LIB"
+  # `[:alnum:]` resolves against the ambient locale, so an unpinned transform
+  # yields two different handles — and therefore two registry files and two
+  # attribution records — for ONE story key.
+  # Collect first, then test: a `grep -q`-terminated pipeline exits on SIGPIPE
+  # under `pipefail` and would skip this test for the wrong reason.
+  local have_locale
+  have_locale="$(locale -a 2>/dev/null | grep -cx 'en_US.UTF-8' || true)"
+  if [ "${have_locale:-0}" -eq 0 ]; then
+    skip "en_US.UTF-8 locale not available"
+  fi
+  local under_c under_utf8
+  under_c="$(LC_ALL=C bash -c "source '$LIB'; _dt_sanitize_story_key \$'K1-Ke\xc3\xa93'")"
+  under_utf8="$(LC_ALL=en_US.UTF-8 bash -c "source '$LIB'; _dt_sanitize_story_key \$'K1-Ke\xc3\xa93'")"
+  [ "$under_c" = "$under_utf8" ] \
+    || { echo "same key sanitised differently by locale: C=[$under_c] UTF-8=[$under_utf8]"; return 1; }
+}
+
+@test "persona slug derivation does not depend on the caller's locale (AC1)" {
+  source "$LIB"
+  # Collect first, then test: a `grep -q`-terminated pipeline exits on SIGPIPE
+  # under `pipefail` and would skip this test for the wrong reason.
+  local have_locale
+  have_locale="$(locale -a 2>/dev/null | grep -cx 'en_US.UTF-8' || true)"
+  if [ "${have_locale:-0}" -eq 0 ]; then
+    skip "en_US.UTF-8 locale not available"
+  fi
+  local under_c under_utf8
+  under_c="$(LC_ALL=C bash -c "source '$LIB'; _dt_generate_handle \$'de\xc3\xa9v' 'K1'")"
+  under_utf8="$(LC_ALL=en_US.UTF-8 bash -c "source '$LIB'; _dt_generate_handle \$'de\xc3\xa9v' 'K1'")"
+  [ "$under_c" = "$under_utf8" ] \
+    || { echo "same persona slugged differently by locale: C=[$under_c] UTF-8=[$under_utf8]"; return 1; }
 }

@@ -109,7 +109,7 @@ This section is the canonical reference for skill authors who write `heavy-proce
 
 > **Bookkeeping vs. the round-trip.** The phase contracts below describe the bash-library *bookkeeping* (`drive_turn` raises relay-pending, `await_reply` is a relay-pending state query, the relay functions append to the transcript). They do NOT themselves move a message to a teammate. The actual per-turn message exchange — the orchestrator emitting a real `SendMessage` with the reply-routing reminder, the teammate replying via `SendMessage(to: team-lead)`, and the relay back — is the orchestrator-driven loop specified in the companion **Mode B teammate round-trip contract** at `knowledge/mode-b-round-trip-contract.md`. Read that contract for how a turn is actually driven; read this section for what the library functions record.
 
-> **Substrate honesty.** The live Mode B primitives (`Agent` with `run_in_background:true` + `SendMessage`) may be unavailable in some Claude Code contexts. When the substrate is unavailable, `dispatch-teammate.sh` degrades silently to foreground Mode A and emits a single machine-parseable token `MODE_B_FALLBACK` to stderr. Skill authors must handle this gracefully; documentation in this section reflects both the live path and the fallback.
+> **Substrate honesty.** The live Mode B primitives (`Agent` with `run_in_background:true` + `SendMessage`) may be unavailable in some Claude Code contexts. When the substrate is unavailable, `dispatch-teammate.sh` degrades to foreground Mode A and emits a single machine-parseable token `MODE_B_FALLBACK` to stderr. A caller that passed a story key also receives the degradation programmatically — exit code 7 plus a machine-readable record in place of the handle — so it can branch on a return value instead of parsing stderr, and can ask the execution bridge why its own story degraded. Skill authors must handle this gracefully; documentation in this section reflects both the live path and the fallback.
 
 ### Lifecycle phases
 
@@ -123,7 +123,15 @@ A teammate session passes through four sequential phases. Each phase has a descr
 - Call `spawn_teammate PERSONA [--context CTX]` to create a teammate. The function returns the handle on stdout.
 - The handle is opaque; pass it as-is to subsequent `drive_turn`, `await_reply`, `relay_to_team_lead`, and `shutdown_teammate` calls.
 - At most eight teammates may be active concurrently (enforced by the 8-teammate ceiling in the registry).
-- If the live substrate is unavailable, `spawn_teammate` emits `MODE_B_FALLBACK` to stderr and degrades to a foreground Mode A dispatch. The returned handle is still valid for subsequent library calls.
+- **Keyless callers (the long-standing form).** If the live substrate is unavailable, `spawn_teammate` emits `MODE_B_FALLBACK` to stderr and degrades to a foreground Mode A dispatch. The returned handle is still valid for subsequent library calls.
+- **Story-keyed callers.** Add `--story-key KEY` to dispatch several same-persona teammates at once — one per story. The handle is then derived from the persona and the key rather than from the process id, so two stories never collide and retrying the same persona and key idempotently reuses the one handle. The key must be 1–64 characters of letters, digits, dot, underscore or hyphen; anything else is refused with status 1 before any state is written.
+- Passing a key opts into a **stricter fallback contract**: when the substrate is unavailable the call returns exit code 7 and writes a machine-readable record to stdout **instead of a handle** — never a handle. Treat exit 7 as an instruction to degrade to sequential work with phase order preserved, never as a refusal. Because the call returns non-zero as a normal outcome, capture it in a guarded form so an `errexit` caller is not killed at the assignment:
+
+  ```bash
+  handle="$(spawn_teammate "$persona" --story-key "$key")" || rc=$?
+  ```
+
+  Declaration and assignment must stay separate — `local handle="$(...)"` reports the status of `local`, not of the spawn.
 
 #### DRIVE
 
