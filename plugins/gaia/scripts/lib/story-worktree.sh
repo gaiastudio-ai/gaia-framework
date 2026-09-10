@@ -1,0 +1,437 @@
+#!/usr/bin/env bash
+# story-worktree.sh — per-story linked git worktree lifecycle.
+#
+# Background:
+#   Developing two stories in one work tree lets their edits bleed together: the
+#   checkout is shared, and scan-based generators pick up whatever is on disk
+#   regardless of which branch is current. A linked git worktree gives each story
+#   its own working directory and index while sharing the object store, which is
+#   git's own mechanism for exactly this.
+#
+# Contract:
+#   This file is intended to be SOURCED, not executed. Sourcing makes the
+#   worktree_* functions available. Callers own their own `set -euo pipefail`;
+#   this library does not set shell options for them.
+#
+# Lifecycle:
+#   create -> export the path -> use for the story -> remove -> prune.
+#   A trap removes the worktree on any exit path. Because a trap cannot fire on
+#   SIGKILL, the next story start prunes whatever a killed run left behind.
+#
+# Mode:
+#   Worktree mode is OPT-IN. It is active only when GAIA_WORKTREE_MODE=1, so a
+#   project that does not ask for it behaves exactly as before.
+#
+# Safety:
+#   Removal NEVER uses --force. git refuses to remove a worktree holding modified
+#   or untracked files, and that refusal is honoured: the worktree is left in
+#   place with a warning rather than destroying work that was never committed.
+#
+# Portability:
+#   Bash 3.2 (no associative arrays, no mapfile/readarray). No GNU-only tools.
+
+# Refuse to be executed directly: this file defines functions for a caller and
+# does nothing on its own. When sourced, BASH_SOURCE[0] is this file while $0 is
+# the sourcing program; when executed, the two are the same path.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  printf 'story-worktree.sh: must be sourced, not executed\n' >&2
+  exit 1
+fi
+
+_SW_NAME="story-worktree.sh"
+
+# Directory name holding every story worktree, as a sibling of the code tree.
+_SW_PARENT_BASENAME=".gaia-worktrees"
+
+# Longest slug allowed in a branch name. A ref becomes a filesystem path under
+# .git/refs, so an unbounded slug hits the per-component name limit and git
+# fails with "File name too long". The story key is never truncated, so branch
+# names stay unique per story regardless of how much slug is trimmed.
+_SW_SLUG_MAX=60
+
+_sw_log() { printf '%s: %s\n' "$_SW_NAME" "$*" >&2; }
+
+# Paths already torn down in this shell, space-delimited. A trap on EXIT INT TERM
+# fires twice for a signal (once for the signal, once for the EXIT that follows),
+# so teardown must be silent on the second pass rather than repeating its warning.
+_SW_TORN_DOWN=""
+
+_sw_mark_torn() { _SW_TORN_DOWN="$_SW_TORN_DOWN $1 "; }
+_sw_already_torn() {
+  case "$_SW_TORN_DOWN" in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+# _sw_device_of <path> — filesystem device id, or empty when undeterminable.
+# BSD and GNU stat take different flags; try both.
+_sw_device_of() {
+  stat -f '%d' "$1" 2>/dev/null || stat -c '%d' "$1" 2>/dev/null || printf ''
+}
+
+# worktree_mode_enabled — 0 when worktree mode is on, 1 otherwise.
+# Single source of truth for the opt-in check; never re-implement it inline.
+# Enforced by worktree_create below, so the default-off contract is executable
+# rather than a convention a caller has to remember.
+worktree_mode_enabled() {
+  [ "${GAIA_WORKTREE_MODE:-}" = "1" ]
+}
+
+# worktree_slug_cap <slug> — the slug trimmed to a length that keeps the branch
+# ref inside filesystem limits. Echoes the result.
+worktree_slug_cap() {
+  printf '%s' "${1:-}" | cut -c "1-${_SW_SLUG_MAX}"
+}
+
+# worktree_parent_dir <code_tree> — the directory that holds story worktrees:
+# a sibling of the primary git tree. Echoes an absolute path.
+#
+# The parent is derived from the code tree's git top-level, NOT from the project
+# root: in a layout where the project root sits above the git tree, those differ,
+# and only the git-derived form keeps the worktree on the same filesystem as the
+# object store it shares.
+worktree_parent_dir() {
+  local top parent_of_top
+  top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" || {
+    _sw_log "not a git work tree: $1"
+    return 1
+  }
+  parent_of_top="$(cd "$top/.." 2>/dev/null && pwd)" || {
+    _sw_log "cannot resolve the parent directory of $top"
+    return 1
+  }
+  printf '%s' "$parent_of_top/$_SW_PARENT_BASENAME"
+}
+
+# worktree_validate_parent <parent_dir> <code_tree_toplevel> — refuse, before any
+# worktree is created, when the parent is unusable. Fails closed: a probe that
+# cannot be evaluated is treated as a refusal, never as permission.
+worktree_validate_parent() {
+  local parent="$1" top="$2" probe parent_dev top_dev
+
+  # The parent may not exist yet; judge the nearest existing ancestor.
+  probe="$parent"
+  while [ ! -d "$probe" ]; do
+    local next
+    next="$(dirname "$probe")"
+    [ "$next" != "$probe" ] || break
+    probe="$next"
+  done
+  [ -d "$probe" ] || { _sw_log "no existing ancestor for worktree parent: $parent"; return 1; }
+
+  probe="$(cd "$probe" && pwd)" || { _sw_log "cannot resolve worktree parent: $parent"; return 1; }
+  top="$(cd "$top" && pwd)" || { _sw_log "cannot resolve code tree: $2"; return 1; }
+
+  # At a filesystem root `..` resolves to itself, so the sibling directory the
+  # convention asks for cannot exist.
+  if [ "$probe" = "$top" ]; then
+    _sw_log "refusing: the worktree parent cannot ascend above the code tree ($top)"
+    return 1
+  fi
+
+  parent_dev="$(_sw_device_of "$probe")"
+  top_dev="$(_sw_device_of "$top")"
+  if [ -z "$parent_dev" ] || [ -z "$top_dev" ]; then
+    _sw_log "refusing: cannot determine the filesystem for $probe"
+    return 1
+  fi
+  if [ "$parent_dev" != "$top_dev" ]; then
+    _sw_log "refusing: $probe is on a different filesystem than $top"
+    return 1
+  fi
+
+  if [ ! -w "$probe" ]; then
+    _sw_log "refusing: worktree parent is not writable: $probe"
+    return 1
+  fi
+
+  return 0
+}
+
+# worktree_branch_state <code_tree> <branch> — one of:
+#   absent             the ref does not exist
+#   free               the ref exists and no worktree holds it
+#   checked-out:<path> the ref exists and that worktree holds it
+#
+# This is what makes creation re-entrant. A branch ref outlives every worktree
+# teardown, so a second `worktree add -b` on the same branch fails; the caller
+# needs to know which form of `add` to use.
+worktree_branch_state() {
+  local repo="$1" branch="$2" listing line current="" holder=""
+
+  if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
+    printf 'absent'
+    return 0
+  fi
+
+  listing="$(git -C "$repo" worktree list --porcelain 2>/dev/null || true)"
+  while IFS= read -r line; do
+    case "$line" in
+      "worktree "*)
+        current="${line#worktree }"
+        ;;
+      "branch refs/heads/"*)
+        if [ "${line#branch refs/heads/}" = "$branch" ]; then
+          holder="$current"
+        fi
+        ;;
+    esac
+  done <<EOF
+$listing
+EOF
+
+  if [ -n "$holder" ]; then
+    printf 'checked-out:%s' "$holder"
+  else
+    printf 'free'
+  fi
+  return 0
+}
+
+# _sw_lock_reason <story_key> — the lock text this library writes and recognises.
+_sw_lock_reason() { printf 'gaia story %s pid %s' "$1" "$2"; }
+
+# _sw_pid_from_reason <reason> — the pid recorded in one of our lock reasons, or
+# empty when the reason is not ours or carries no usable pid.
+_sw_pid_from_reason() {
+  local reason="$1" pid
+  case "$reason" in
+    *" pid "*) ;;
+    *) printf ''; return 0 ;;
+  esac
+  pid="${reason##* pid }"
+  pid="${pid%% *}"
+  case "$pid" in
+    ''|*[!0-9]*) printf '' ;;
+    *) printf '%s' "$pid" ;;
+  esac
+}
+
+# _sw_reapable <repo> <path> <locked_reason> <branch_ref> — 0 when a locked
+# record whose directory is gone may be reaped. Every condition must hold; any
+# probe that cannot be evaluated leaves the record alone.
+_sw_reapable() {
+  local repo="$1" path="$2" reason="$3" branch="$4" pid unpushed
+
+  [ -n "$path" ] || return 1
+  [ -n "$reason" ] || return 1
+  # A record whose directory still exists is live; git also reports it as not
+  # prunable. Never touch it.
+  [ ! -e "$path" ] || return 1
+
+  # Only records this library locked are ours to act on. A foreign tool's lock
+  # is left strictly alone.
+  pid="$(_sw_pid_from_reason "$reason")"
+  [ -n "$pid" ] || return 1
+
+  # A live owner means a story is still running: never pull its worktree out from
+  # under it. The current process is the exception -- its own leftover record
+  # from an earlier attempt is exactly what this run is here to clean up.
+  if [ "$pid" != "$$" ]; then
+    if kill -0 "$pid" 2>/dev/null; then
+      return 1
+    fi
+  fi
+
+  # Work that exists only locally is never destroyed, even when the owner is gone.
+  if [ -n "$branch" ]; then
+    unpushed="$(git -C "$repo" rev-list --count "$branch" --not --remotes 2>/dev/null || printf '')"
+    [ -n "$unpushed" ] || return 1
+    [ "$unpushed" = "0" ] || return 1
+  fi
+
+  return 0
+}
+
+# worktree_prune_stale <code_tree> — remove records left behind by runs that
+# ended without their trap firing (a kill, an out-of-memory stop, a power loss).
+#
+# Two passes. Pass A is git's own prune, which reaps records whose directory is
+# gone and which carry no lock. Pass B handles the shape Pass A cannot see: this
+# library locks each worktree it creates, and a locked record is never reported
+# as prunable, so a killed run leaves a record that plain pruning keeps forever.
+# Pass B unlocks only those records it can prove are safe, then prunes again.
+worktree_prune_stale() {
+  local repo="$1" listing line current="" locked="" branch=""
+
+  git -C "$repo" worktree prune >/dev/null 2>&1 || true
+
+  listing="$(git -C "$repo" worktree list --porcelain 2>/dev/null || true)"
+  while IFS= read -r line; do
+    case "$line" in
+      "worktree "*)
+        if _sw_reapable "$repo" "$current" "$locked" "$branch"; then
+          git -C "$repo" worktree unlock "$current" >/dev/null 2>&1 || true
+        fi
+        current="${line#worktree }"
+        locked=""
+        branch=""
+        ;;
+      "branch "*)
+        branch="${line#branch }"
+        ;;
+      "locked"*)
+        locked="${line#locked}"
+        locked="${locked# }"
+        # A lock with no reason still marks the record as ours to skip.
+        [ -n "$locked" ] || locked="(no reason)"
+        ;;
+    esac
+  done <<EOF
+$listing
+EOF
+  # The final record has no following "worktree " line to flush it.
+  if _sw_reapable "$repo" "$current" "$locked" "$branch"; then
+    git -C "$repo" worktree unlock "$current" >/dev/null 2>&1 || true
+  fi
+
+  git -C "$repo" worktree prune >/dev/null 2>&1 || true
+  return 0
+}
+
+# worktree_create <code_tree> <story_key> <slug> — create (or re-enter) the
+# story's worktree. Echoes its absolute path on stdout; every diagnostic goes to
+# stderr, so `PROJECT_PATH="$(worktree_create ...)"` is safe.
+worktree_create() {
+  local repo="$1" story_key="$2" raw_slug="$3"
+  local slug branch top parent path state holder
+
+  [ -n "$repo" ] && [ -n "$story_key" ] || {
+    _sw_log "usage: worktree_create <code_tree> <story_key> <slug>"
+    return 1
+  }
+
+  # Fail closed on the opt-in, with no override. Worktree mode is off unless it
+  # is switched on, and that is enforced here rather than left to the caller: a
+  # workflow step that forgot the check would otherwise silently relocate the
+  # story's working directory. There is deliberately no "I already checked"
+  # argument -- the library cannot tell an honest acknowledgement from a
+  # forgotten skip, so it re-reads the one environment variable instead.
+  if ! worktree_mode_enabled; then
+    _sw_log "worktree mode is off — set GAIA_WORKTREE_MODE=1 to enable it; no worktree created"
+    return 1
+  fi
+
+  slug="$(worktree_slug_cap "$raw_slug")"
+  branch="feat/${story_key}-${slug}"
+
+  # Clear anything a previous crashed run left behind before adding to the set.
+  worktree_prune_stale "$repo"
+
+  top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || {
+    _sw_log "not a git work tree: $repo"
+    return 1
+  }
+  parent="$(worktree_parent_dir "$repo")" || return 1
+  worktree_validate_parent "$parent" "$top" || return 1
+
+  mkdir -p "$parent" || { _sw_log "cannot create worktree parent: $parent"; return 1; }
+  path="$parent/$story_key"
+
+  # Uncommitted work in the primary tree stays there: a new worktree starts from
+  # HEAD. Say so rather than moving anyone's work around.
+  if [ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]; then
+    _sw_log "the primary tree has uncommitted changes; they stay there and the story worktree starts from HEAD"
+  fi
+
+  state="$(worktree_branch_state "$repo" "$branch")"
+  case "$state" in
+    absent)
+      git -C "$repo" worktree add "$path" -b "$branch" >/dev/null 2>&1 || {
+        # git can create the ref and still fail to lay down the directory (for
+        # example when the target path is already occupied). Leaving the ref
+        # behind would turn a clean retry into an attach of a branch nothing
+        # ever committed to, so drop it -- but only when this call is what
+        # created it and no worktree ended up holding it.
+        if [ "$(worktree_branch_state "$repo" "$branch")" = "free" ]; then
+          git -C "$repo" branch -D "$branch" >/dev/null 2>&1 || true
+        fi
+        _sw_log "cannot create worktree at $path on new branch $branch"
+        return 1
+      }
+      ;;
+    free)
+      # The branch outlived an earlier worktree (a retry, a resume, or a start
+      # after a crashed run was pruned), or was left by a partially-failed
+      # creation. Attach it instead of creating it.
+      git -C "$repo" worktree add "$path" "$branch" >/dev/null 2>&1 || {
+        _sw_log "cannot attach existing branch $branch at $path"
+        return 1
+      }
+      ;;
+    checked-out:*)
+      holder="${state#checked-out:}"
+      if [ "$holder" = "$path" ]; then
+        # Already ours: re-entry is a no-op that returns the same path.
+        printf '%s' "$path"
+        return 0
+      fi
+      _sw_log "refusing: branch $branch is already checked out at $holder"
+      return 1
+      ;;
+    *)
+      _sw_log "cannot determine the state of branch $branch"
+      return 1
+      ;;
+  esac
+
+  # Record ownership so a later prune can tell a live story from a dead one.
+  git -C "$repo" worktree lock "$path" --reason "$(_sw_lock_reason "$story_key" "$$")" >/dev/null 2>&1 || true
+
+  # A fresh worktree is a fresh teardown subject even if this shell tore down the
+  # same path earlier in the run.
+  _SW_TORN_DOWN="$(printf '%s' "$_SW_TORN_DOWN" | sed "s| $path ||g")"
+
+  printf '%s' "$path"
+  return 0
+}
+
+# worktree_teardown <code_tree> <worktree_path> — remove the story worktree and
+# prune. Idempotent, and silent on a repeat call for the same path.
+#
+# Returns non-zero WITHOUT removing anything when the worktree holds uncommitted
+# work: git refuses that removal and this honours the refusal. An orphaned
+# directory is a far smaller problem than deleted work, and the next prune will
+# not reap it either, so it survives for inspection.
+worktree_teardown() {
+  local repo="$1" path="$2"
+
+  [ -n "$repo" ] && [ -n "$path" ] || {
+    _sw_log "usage: worktree_teardown <code_tree> <worktree_path>"
+    return 1
+  }
+
+  # Second firing of a trap, or a path already gone: nothing to say.
+  if _sw_already_torn "$path" || [ ! -e "$path" ]; then
+    _sw_mark_torn "$path"
+    git -C "$repo" worktree prune >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  git -C "$repo" worktree unlock "$path" >/dev/null 2>&1 || true
+
+  if git -C "$repo" worktree remove "$path" >/dev/null 2>&1; then
+    git -C "$repo" worktree prune >/dev/null 2>&1 || true
+    _sw_mark_torn "$path"
+    return 0
+  fi
+
+  # Never --force: the refusal means there is work here that was never committed.
+  _sw_mark_torn "$path"
+  _sw_log "worktree kept: it holds modified or untracked files: $path"
+  _sw_log "review it, then remove it with: git -C \"$repo\" worktree remove \"$path\""
+  return 1
+}
+
+# worktree_teardown_trap <code_tree> <worktree_path> — trap-facing wrapper.
+# Never lets its own failure change the exit status the run was already reporting.
+#
+# Always pass the worktree path CAPTURED at creation, not a live variable that
+# later steps re-point: after a successful teardown the working-directory
+# variable moves back to the primary checkout, and a trap that read it then would
+# aim removal at the main work tree instead of the story's.
+worktree_teardown_trap() {
+  worktree_teardown "$1" "$2" || true
+  return 0
+}

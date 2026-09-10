@@ -15,7 +15,9 @@
 # instructs callers to feed `pr-body.sh` output through this flag.
 #
 # Environment:
-#   PROJECT_PATH — required. The git working directory.
+#   PROJECT_PATH — required. The git working directory. Resolved and entered
+#                  BEFORE the non-git guard runs and before arguments are
+#                  parsed, so relative path arguments resolve against it.
 #
 # Exit codes:
 #   0 — PR created or already exists
@@ -47,6 +49,13 @@ source "$INVARIANTS_LIB"
 # protected-branch / staged-secrets checks.
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 . "$SCRIPT_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+# Resolve the working directory BEFORE the non-git guard: the guard reads
+# CWD, so it must test the directory this script is meant to act on, not the
+# caller's. Argument parsing follows, so relative path arguments resolve
+# against PROJECT_PATH.
+WORK_DIR="${PROJECT_PATH:-.}"
+cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
+
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 
 if [ $# -lt 2 ]; then
@@ -71,8 +80,6 @@ if [ -n "$BODY_FILE" ] && [ ! -r "$BODY_FILE" ]; then
   die "--body-file path is not readable: $BODY_FILE"
 fi
 
-WORK_DIR="${PROJECT_PATH:-.}"
-cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
 
 # Verify gh CLI is available
 if ! command -v gh >/dev/null 2>&1; then

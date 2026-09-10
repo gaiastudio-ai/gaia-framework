@@ -8,7 +8,9 @@
 #   ci-wait.sh <pr_number> [--timeout <minutes>]
 #
 # Environment:
-#   PROJECT_PATH — required. The git working directory.
+#   PROJECT_PATH — required. The git working directory. Resolved and entered
+#                  BEFORE the non-git guard runs and before arguments are
+#                  parsed, so relative path arguments resolve against it.
 #
 # Exit codes:
 #   0 — all CI checks passed
@@ -28,6 +30,13 @@ die() { log "$*"; exit 1; }
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 GUARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$GUARD_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+# Resolve the working directory BEFORE the non-git guard: the guard reads
+# CWD, so it must test the directory this script is meant to act on, not the
+# caller's. Argument parsing follows, so relative path arguments resolve
+# against PROJECT_PATH.
+WORK_DIR="${PROJECT_PATH:-.}"
+cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
+
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 
 if [ $# -lt 1 ]; then
@@ -45,8 +54,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-WORK_DIR="${PROJECT_PATH:-.}"
-cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
 
 if ! command -v gh >/dev/null 2>&1; then
   die "Required tool gh not found. Install it to poll CI status."

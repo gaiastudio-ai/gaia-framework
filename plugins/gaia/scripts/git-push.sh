@@ -13,6 +13,10 @@
 #   <remote> — optional. The remote to push to. Defaults to "origin".
 #
 # Environment:
+#   PROJECT_PATH — optional. The git working directory (defaults to .).
+#                  Entered before any git operation, so the push acts on the
+#                  repository named here rather than the caller's directory.
+#                  The default keeps existing callers byte-identical.
 #   GAIA_GIT_PUSH_BACKOFF — optional. Seconds to sleep between the first
 #                            and second push attempt on a network retry.
 #                            Default 5. Tests set this to 0 for speed.
@@ -48,6 +52,12 @@ BACKOFF="${GAIA_GIT_PUSH_BACKOFF:-5}"
 # Resolve the security-invariants library if present.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INVARIANTS_LIB="$SCRIPT_DIR/lib/dev-story-security-invariants.sh"
+
+# Working directory: resolve from PROJECT_PATH before any git operation. This
+# comes after SCRIPT_DIR and INVARIANTS_LIB are derived from $0 above, so a
+# relative invocation path still resolves the library correctly.
+WORK_DIR="${PROJECT_PATH:-.}"
+cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
 
 # Non-git CWD guard: skip-with-warning when CWD is outside any git
 # work tree, so /gaia-dev-story steps degrade gracefully instead of HALT.
