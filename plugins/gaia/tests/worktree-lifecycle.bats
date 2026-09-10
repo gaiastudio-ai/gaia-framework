@@ -68,6 +68,30 @@ _mk_pushed_primary_repo() {
   printf '%s' "$primary"
 }
 
+# _mk_ignoring_repo <dir> — a pushed primary repo whose .gitignore excludes the
+# places local state actually lives. Committing the .gitignore matters: the
+# worktrees created from it inherit the rules, so a file placed there is
+# invisible to a plain `status --porcelain` while still being destroyed by a
+# worktree removal.
+_mk_ignoring_repo() {
+  local dir="$1"
+  local primary; primary="$(_mk_primary_repo "$dir")"
+  printf '.gaia/\nlocal.env\n' > "$primary/.gitignore"
+  git -C "$primary" add .gitignore
+  git -C "$primary" commit -qm "ignore local state"
+  local remote; remote="$(_mk_bare_remote "${dir}-remote.git")"
+  git -C "$primary" remote add origin "$remote"
+  git -C "$primary" push -q -u origin HEAD
+  printf '%s' "$primary"
+}
+
+# _seed_ignored_state <worktree> — write only gitignored local state.
+_seed_ignored_state() {
+  mkdir -p "$1/.gaia/memory"
+  printf 'resume state\n' > "$1/.gaia/memory/x"
+  printf 'SECRET=1\n' > "$1/local.env"
+}
+
 # _source_lib — source the library under test, skipping cleanly if absent so a
 # missing file reports as a real failure rather than a harness explosion.
 _source_lib() {
@@ -255,7 +279,10 @@ exit 1
 CHILD
   chmod +x "$TEST_TMP/child.sh"
   run "$TEST_TMP/child.sh"
-  [ "$status" -eq 1 ]
+  # 1 is the child's own deliberate failure; 9 would mean its worktree was never
+  # created, which would make the absence assertions below vacuous.
+  [ "$status" -eq 1 ] \
+    || { echo "expected the child's own failure (1), got $status"; return 1; }
   local wt; wt="$(cat "$TEST_TMP/wt-path")"
   [ ! -d "$wt" ]
   [ "$(_wt_count "$primary" "$wt")" -eq 0 ]
@@ -278,6 +305,10 @@ sleep 5
 CHILD
   chmod +x "$TEST_TMP/child.sh"
   run "$TEST_TMP/child.sh"
+  # The child exits 9 if its worktree was never created, so the absence
+  # assertions below cannot be satisfied by a create that did nothing.
+  [ "$status" -ne 9 ] \
+    || { echo "the worktree never existed, so teardown proved nothing"; return 1; }
   local wt; wt="$(cat "$TEST_TMP/wt-path")"
   [ ! -d "$wt" ]
   [ "$(_wt_count "$primary" "$wt")" -eq 0 ]
@@ -300,6 +331,10 @@ sleep 5
 CHILD
   chmod +x "$TEST_TMP/child.sh"
   run "$TEST_TMP/child.sh"
+  # The child exits 9 if its worktree was never created, so the absence
+  # assertions below cannot be satisfied by a create that did nothing.
+  [ "$status" -ne 9 ] \
+    || { echo "the worktree never existed, so teardown proved nothing"; return 1; }
   local wt; wt="$(cat "$TEST_TMP/wt-path")"
   [ ! -d "$wt" ]
   [ "$(_wt_count "$primary" "$wt")" -eq 0 ]
@@ -335,7 +370,7 @@ CHILD
   run --separate-stderr "$TEST_TMP/child.sh"
   # TERM then EXIT both fire the handler; the warning must appear exactly once.
   local warnings
-  warnings="$(printf '%s\n' "$stderr" | grep -c "modified or untracked" || true)"
+  warnings="$(printf '%s\n' "$stderr" | grep -c "worktree kept:" || true)"
   [ "$warnings" -eq 1 ]
 }
 
@@ -561,6 +596,139 @@ CHILD
   [ "$status" -ne 0 ] \
     || { echo "a cross-filesystem parent was accepted"; return 1; }
   [[ "$stderr" == *"different filesystem"* ]]
+}
+
+@test "a killed run holding only gitignored local state is preserved and announced (AC-EC5)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-S1" "slug")"
+
+  # Only ignored files. `status --porcelain` reports NOTHING here, yet
+  # `git worktree remove` would delete them -- and this is where the runtime
+  # tree, memory and checkpoints live, so the loss is unrecoverable.
+  _seed_ignored_state "$wt"
+  [ -z "$(git -C "$wt" status --porcelain)" ] \
+    || { echo "fixture is visibly dirty; it must be ignored-only to test this"; return 1; }
+
+  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "gaia story KG-S1 pid $dead_pid"
+
+  run --separate-stderr worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ] || { echo "a worktree holding ignored local state was reaped"; return 1; }
+  [ -f "$wt/local.env" ]
+  [ -f "$wt/.gaia/memory/x" ]
+  [ "$(_wt_count "$primary" "$wt")" -ge 1 ]
+  [[ "$stderr" == *"$wt"* ]] \
+    || { echo "the operator was never told the worktree was kept"; return 1; }
+}
+
+@test "teardown refuses a worktree holding only gitignored local state (AC4)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-S2" "slug")"
+  _seed_ignored_state "$wt"
+  [ -z "$(git -C "$wt" status --porcelain)" ]
+
+  run --separate-stderr worktree_teardown "$primary" "$wt"
+  [ "$status" -ne 0 ] \
+    || { echo "teardown removed a worktree holding ignored local state"; return 1; }
+  [ -d "$wt" ]
+  [ -f "$wt/local.env" ]
+  [ -f "$wt/.gaia/memory/x" ]
+  [[ "$stderr" == *"$wt"* ]]
+}
+
+@test "a forged lock reason cannot aim a reap at the primary checkout (AC7)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+
+  # Independently of anything git would refuse, the primary checkout is not a
+  # story worktree and must never be treated as a reap candidate.
+  run _sw_reapable "$primary" "$primary" "gaia story FORGED pid $dead_pid" "refs/heads/staging"
+  [ "$status" -ne 0 ] \
+    || { echo "the primary checkout was accepted as a reap candidate"; return 1; }
+
+  run --separate-stderr worktree_teardown "$primary" "$primary"
+  [ "$status" -ne 0 ] \
+    || { echo "teardown accepted the primary checkout"; return 1; }
+  [ -d "$primary" ]
+  [ -f "$primary/seed.txt" ]
+}
+
+@test "teardown refuses a path outside the story worktree parent (AC4)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local stranger="$TEST_TMP/not-ours"
+  mkdir -p "$stranger"
+  printf 'keep me\n' > "$stranger/file.txt"
+
+  run --separate-stderr worktree_teardown "$primary" "$stranger"
+  [ "$status" -ne 0 ]
+  [ -f "$stranger/file.txt" ]
+  [[ "$stderr" == *"not a story worktree"* ]]
+}
+
+@test "a foreign lock mentioning a pid is never claimed as ours (AC7)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+
+  # Only the library's own reason shape yields a pid. A reason from some other
+  # tool that merely contains " pid <n> " must not be claimed, or a prune would
+  # unlock, delete and unregister a worktree that was never ours.
+  [ -z "$(_sw_pid_from_reason 'held by other-tool pid 123 session')" ] \
+    || { echo "a foreign lock reason was parsed as ours"; return 1; }
+  [ -z "$(_sw_pid_from_reason 'pid 9')" ]
+  [ -z "$(_sw_pid_from_reason 'gaia story K1 pid 7 extra')" ]
+  [ "$(_sw_pid_from_reason 'gaia story K1-S1 pid 456')" = "456" ] \
+    || { echo "our own lock reason no longer parses"; return 1; }
+
+  # End to end: a present, clean, fully pushed worktree locked by another tool
+  # survives a prune untouched.
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KF-S1" "slug")"
+  git -C "$wt" push -q -u origin HEAD
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "held by other-tool pid 123 session"
+
+  worktree_prune_stale "$primary"
+  [ -d "$wt" ] \
+    || { echo "another tool's worktree was deleted from disk"; return 1; }
+  [ "$(_wt_count "$primary" "$wt")" -ge 1 ] \
+    || { echo "another tool's worktree was unregistered"; return 1; }
+  local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A3 -F "$wt" || true)"
+  printf '%s\n' "$rec" | grep -q '^locked' \
+    || { echo "another tool's lock was stripped"; return 1; }
+}
+
+@test "our own lock shape is still reaped after the prefix tightening (AC7)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KF-S2" "slug")"
+  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "$(_sw_lock_reason "KF-S2" "$dead_pid")"
+  rm -rf "$wt"
+
+  worktree_prune_stale "$primary"
+  [ "$(_wt_count "$primary" "$wt")" -eq 0 ] \
+    || { echo "our own orphan is no longer reaped"; return 1; }
+}
+
+@test "a cleanliness probe that cannot run keeps the worktree (AC4)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KH-S1" "slug")"
+
+  # A probe that cannot report must never be read as "nothing to lose".
+  git() { if [ "${3:-}" = "status" ] || [ "${1:-}" = "status" ]; then return 1; fi
+          command git "$@"; }
+  run _sw_worktree_is_clean "$primary" "$wt"
+  unset -f git
+  [ "$status" -ne 0 ] \
+    || { echo "an unusable cleanliness probe reported the worktree clean"; return 1; }
+  [ -d "$wt" ]
 }
 
 @test "prune never reaps a worktree whose owning process is still alive (AC7)" {

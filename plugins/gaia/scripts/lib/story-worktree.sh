@@ -252,20 +252,42 @@ EOF
 # _sw_lock_reason <story_key> — the lock text this library writes and recognises.
 _sw_lock_reason() { printf 'gaia story %s pid %s' "$1" "$2"; }
 
-# _sw_pid_from_reason <reason> — the pid recorded in one of our lock reasons, or
+# _sw_pid_from_reason <reason> — the pid recorded in one of OUR lock reasons, or
 # empty when the reason is not ours or carries no usable pid.
+#
+# The match is anchored on the exact shape `_sw_lock_reason` writes:
+#   gaia story <story-key> pid <digits>
+# Matching a bare " pid <n> " substring instead would claim another tool's lock
+# whose reason merely mentions a pid, and with intact-directory reaping live that
+# means unlocking, deleting and unregistering a worktree that was never ours.
+# Anything that is not our own shape yields no pid, so every veto downstream
+# treats it as foreign and leaves it strictly alone.
 _sw_pid_from_reason() {
-  local reason="$1" pid
+  local reason="${1:-}" rest pid key
+
+  # Must start with our literal prefix.
   case "$reason" in
+    "gaia story "*) rest="${reason#gaia story }" ;;
+    *) printf ''; return 0 ;;
+  esac
+
+  # <story-key> then the literal " pid " -- and the key itself must be a single
+  # token, so a crafted key cannot smuggle in a second " pid " separator.
+  case "$rest" in
     *" pid "*) ;;
     *) printf ''; return 0 ;;
   esac
-  pid="${reason##* pid }"
-  pid="${pid%% *}"
-  case "$pid" in
-    ''|*[!0-9]*) printf '' ;;
-    *) printf '%s' "$pid" ;;
+  key="${rest%% pid *}"
+  case "$key" in
+    ''|*" "*) printf ''; return 0 ;;
   esac
+
+  # Exactly one trailing token, all digits.
+  pid="${rest#* pid }"
+  case "$pid" in
+    ''|*" "*|*[!0-9]*) printf ''; return 0 ;;
+  esac
+  printf '%s' "$pid"
 }
 
 # _sw_reapable <repo> <path> <locked_reason> <branch_ref> — 0 when a locked
@@ -283,6 +305,10 @@ _sw_reapable() {
 
   [ -n "$path" ] || return 1
   [ -n "$reason" ] || return 1
+
+  # Never a candidate unless it is one of our story worktrees. A forged lock
+  # reason naming the primary checkout stops here, not at git's own refusal.
+  _sw_is_story_worktree "$repo" "$path" || return 1
 
   # Only records this library locked are ours to act on. A foreign tool's lock
   # is left strictly alone.
@@ -319,11 +345,54 @@ _sw_reapable() {
   return 0
 }
 
-# _sw_worktree_is_clean <repo> <path> — 0 when the worktree holds no modified or
-# untracked files. A checkout we cannot inspect counts as dirty (fail closed).
+# _sw_is_story_worktree <repo> <path> — 0 only when <path> is a story worktree
+# this library would have created: a direct child of the worktree parent, and
+# not the repository's own main work tree.
+#
+# Defence in depth. A forged or corrupted lock reason must never be able to aim
+# a removal at the primary checkout. Git refuses to remove a main work tree, but
+# that refusal is the last line, not the only one -- and it says nothing about
+# some unrelated directory that merely happens to be registered.
+_sw_is_story_worktree() {
+  local repo="${1:-}" path="${2:-}" parent main
+  [ -n "$repo" ] && [ -n "$path" ] || return 1
+
+  parent="$(worktree_parent_dir "$repo" 2>/dev/null)" || return 1
+
+  # Must sit directly under the story-worktree parent: <parent>/<story key>.
+  case "$path" in
+    "$parent"/*) ;;
+    *) return 1 ;;
+  esac
+  case "${path#"$parent"/}" in
+    */*) return 1 ;;
+    '') return 1 ;;
+  esac
+
+  # And must not be the repository's own main work tree.
+  main="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null || printf '')"
+  if [ -n "$main" ] && [ -e "$path" ]; then
+    local a b
+    a="$(cd "$path" 2>/dev/null && pwd)" || return 1
+    b="$(cd "$main" 2>/dev/null && pwd)" || return 1
+    [ "$a" != "$b" ] || return 1
+  fi
+  return 0
+}
+
+# _sw_worktree_is_clean <repo> <path> — 0 only when the worktree holds NOTHING
+# that removing it would destroy. A checkout we cannot inspect counts as dirty
+# (fail closed).
+#
+# `--ignored` is load-bearing. Plain `status --porcelain` omits gitignored files,
+# but `git worktree remove` deletes them along with everything else, so without
+# it a checkout holding only ignored files reads as clean and is removed — and
+# ignored is precisely where local state lives (this project ignores `.gaia/`,
+# which holds the runtime tree, memory and checkpoints). Any output at all,
+# `!!` ignored entries included, means there is something here to lose.
 _sw_worktree_is_clean() {
   local out
-  out="$(git -C "${2:-}" status --porcelain 2>/dev/null)" || return 1
+  out="$(git -C "${2:-}" status --porcelain --ignored 2>/dev/null)" || return 1
   [ -z "$out" ]
 }
 
@@ -448,8 +517,8 @@ worktree_create() {
 
   # Uncommitted work in the primary tree stays there: a new worktree starts from
   # HEAD. Say so rather than moving anyone's work around.
-  if [ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]; then
-    _sw_log "the primary tree has uncommitted changes; they stay there and the story worktree starts from HEAD"
+  if [ -n "$(git -C "$repo" status --porcelain --ignored 2>/dev/null)" ]; then
+    _sw_log "the primary tree has uncommitted or ignored local files; they stay there and the story worktree starts from HEAD"
   fi
 
   state="$(worktree_branch_state "$repo" "$branch")"
@@ -520,11 +589,26 @@ worktree_teardown() {
     return 1
   }
 
+  # Refuse outright to act on anything that is not one of our story worktrees.
+  if ! _sw_is_story_worktree "$repo" "$path"; then
+    _sw_log "refusing: not a story worktree of this repository: $path"
+    return 1
+  fi
+
   # Second firing of a trap, or a path already gone: nothing to say.
   if _sw_already_torn "$path" || [ ! -e "$path" ]; then
     _sw_mark_torn "$path"
     git -C "$repo" worktree prune >/dev/null 2>&1 || true
     return 0
+  fi
+
+  # Refuse before asking git. Git's own removal refusal does not consider
+  # gitignored files, so a checkout holding only those would be deleted.
+  if ! _sw_worktree_is_clean "$repo" "$path"; then
+    _sw_mark_torn "$path"
+    _sw_log "worktree kept: it holds modified, untracked or ignored local files: $path"
+    _sw_log "review it, then remove it with: git -C \"$repo\" worktree remove --force \"$path\""
+    return 1
   fi
 
   git -C "$repo" worktree unlock "$path" >/dev/null 2>&1 || true
@@ -535,10 +619,12 @@ worktree_teardown() {
     return 0
   fi
 
-  # Never --force: the refusal means there is work here that was never committed.
+  # The cleanliness pre-check above already reported and returned for the case
+  # git refuses on, so reaching here means removal failed for some other reason
+  # (a permission problem, a concurrent change). Never --force; say what happened
+  # once, without repeating the "kept" wording the pre-check owns.
   _sw_mark_torn "$path"
-  _sw_log "worktree kept: it holds modified or untracked files: $path"
-  _sw_log "review it, then remove it with: git -C \"$repo\" worktree remove \"$path\""
+  _sw_log "could not remove the worktree: $path"
   return 1
 }
 
