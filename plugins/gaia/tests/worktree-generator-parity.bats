@@ -45,26 +45,13 @@ _mk_scanned_repo() {
   printf '#!/usr/bin/env bash\ntrue\n' > "$dir/scripts/lib/helper-one.sh"
   printf '#!/usr/bin/env bash\ntrue\n' > "$dir/scripts/top-level-one.sh"
 
-  cat > "$dir/tests/alpha.bats" <<'EOF'
-#!/usr/bin/env bats
-setup() { LIB_DIR="$BATS_TEST_DIRNAME/../scripts/lib"; }
-  @test "alpha exercises the shared helper (fixture)" {
-  [ -f "$LIB_DIR/helper-one.sh" ]
-}
-EOF
-  cat > "$dir/tests/beta.bats" <<'EOF'
-#!/usr/bin/env bats
-setup() { SCRIPTS_DIR="$BATS_TEST_DIRNAME/../scripts"; }
-  @test "beta exercises a top-level script (fixture)" {
-  [ -f "$SCRIPTS_DIR/top-level-one.sh" ]
-}
-EOF
-  cat > "$dir/tests/gamma.bats" <<'EOF'
-#!/usr/bin/env bats
-  @test "gamma makes no resolvable code reference (fixture)" {
-  true
-}
-EOF
+  # The fixture suites are assembled with printf so that no line of THIS file
+  # starts with the bats test keyword: bats 1.10 counts such lines inside
+  # heredocs toward its plan and then reports a plan/execution mismatch.
+  local kw='@test'
+  printf '#!/usr/bin/env bats\nsetup() { LIB_DIR="$BATS_TEST_DIRNAME/../scripts/lib"; }\n%s "alpha exercises the shared helper (fixture)" {\n  [ -f "$LIB_DIR/helper-one.sh" ]\n}\n' "$kw" > "$dir/tests/alpha.bats"
+  printf '#!/usr/bin/env bats\nsetup() { SCRIPTS_DIR="$BATS_TEST_DIRNAME/../scripts"; }\n%s "beta exercises a top-level script (fixture)" {\n  [ -f "$SCRIPTS_DIR/top-level-one.sh" ]\n}\n' "$kw" > "$dir/tests/beta.bats"
+  printf '#!/usr/bin/env bats\n%s "gamma makes no resolvable code reference (fixture)" {\n  true\n}\n' "$kw" > "$dir/tests/gamma.bats"
 
   git -C "$dir" init -q -b main .
   git -C "$dir" config user.email "test@example.invalid"
