@@ -216,7 +216,86 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 3 create-branch {story_key}` to record the step-boundary event.
 
-- Run `scripts/git-branch.sh {story_key} {slug}` to create a feature branch.
+- The feature branch is created inside the story worktree established by Step 3a. When worktree mode is off, it is created in place exactly as before.
+- Step 3a below owns the branch-creating call, so that the worktree exists first.
+
+### Step 3a -- Create Story Worktree
+
+**Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 3a create-worktree {story_key}` to record the step-boundary event.
+
+Developing two stories in one work tree lets their edits bleed together: the checkout is shared, and scan-based generators read whatever is on disk regardless of which branch is current. A linked git worktree gives each story its own working directory and index while sharing the object store.
+
+**Opt-in, enforced in code.** Worktree mode is active only when `GAIA_WORKTREE_MODE=1`. `worktree_create` refuses outright unless the mode is on — there is no override argument — so a step that forgot to check cannot quietly relocate the story's working directory. Open the step by sourcing the library and opening the gate; the whole of the rest of this step runs inside its `else` arm, so the skip is control flow rather than a comment:
+
+```bash
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/story-worktree.sh"
+if ! worktree_mode_enabled; then
+  printf 'worktree mode off — running in place\n' >&2
+else
+  # ... every worktree action in this step goes here; see the create block below.
+  :
+fi
+```
+
+When the gate reports off, nothing else in the workflow changes.
+
+**Non-git project roots degrade, they do not refuse.** Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/non-git-cwd-guard.sh` and call `non_git_cwd_skip`. When it reports a non-git working directory, emit its warning, leave `PROJECT_PATH` untouched, and run the story in place.
+
+**Re-entry after a session break.** Before creating anything, read the recorded path:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh read --skill gaia-dev-story --latest
+```
+
+Extract `.key_variables.worktree_path` with `jq -r`. When it is non-empty and `git worktree list --porcelain` still shows it, re-export `PROJECT_PATH` to it and skip creation — the story re-enters the worktree it was already using instead of opening a second one. When the directory is gone but its branch survives, fall through to creation: the branch is re-attached rather than re-created.
+
+**Create and export.** Capture the primary checkout first, because teardown restores to it:
+
+```bash
+if ! worktree_mode_enabled; then
+  printf 'worktree mode off — running in place\n' >&2
+else
+  PRIMARY_CODE_TREE="${PROJECT_PATH:-.}"
+  PROJECT_PATH="$(worktree_create "$PRIMARY_CODE_TREE" {story_key} {slug})"
+  export PROJECT_PATH
+  STORY_WORKTREE_PATH="$PROJECT_PATH"
+fi
+```
+
+The create call sits inside the gate's `else` arm, so running this fence verbatim with the mode off does nothing. `worktree_create` also re-reads the mode itself and refuses when it is off, so the two agree structurally rather than by convention — and a caller that skips the gate entirely is still refused.
+
+`PROJECT_ROOT` is NOT touched: it stays on the shared state tree. Only `PROJECT_PATH`, the code path, moves.
+
+`worktree_create` prunes anything a previously killed run left behind, validates that the worktree parent is a writable sibling on the same filesystem, warns when the primary tree has uncommitted changes (they stay there; the worktree starts from HEAD), caps an over-long slug so the branch name stays inside filesystem limits, and refuses when the branch is already checked out somewhere else.
+
+**Record the path** so a resumed run can find it:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-dev-story 3 \
+  worktree_path="$PROJECT_PATH" story_key={story_key}
+```
+
+**Install the teardown trap, pinned to the captured path:**
+
+```bash
+trap 'worktree_teardown_trap "$PRIMARY_CODE_TREE" "$STORY_WORKTREE_PATH"' EXIT INT TERM
+```
+
+Both arguments MUST be the captured variables. A trap that read a live `PROJECT_PATH` would, after the restore below, aim removal at the primary checkout instead of the story's worktree. The handler fires twice for a signal (once for the signal, once for the EXIT that follows) and is silent on the second pass. Nothing fires on a kill or an out-of-memory stop — the next story start prunes that orphan, which is why reaping is scoped to worktree-mode runs. An operator running with the mode off can inspect leftovers with `git worktree list` and clear them with `git worktree prune`.
+
+**Teardown and restore — the single rule.** When worktree mode is active, the merge step at Step 13 is reached only after:
+
+```bash
+worktree_teardown "$PRIMARY_CODE_TREE" "$STORY_WORKTREE_PATH"
+```
+
+`PROJECT_PATH` is re-exported to `PRIMARY_CODE_TREE` **if and only if that removal succeeded**. On a failed removal — the refusal that protects uncommitted work — `PROJECT_PATH` deliberately stays at the worktree so the trap's later retry and any manual recovery still have a real target.
+
+Two reasons the ordering matters. The merge deletes the feature branch, and git refuses to delete a branch that a live worktree has checked out. And every step after the merge — Step 14's `verify-pr-merged.sh` and the commit/push/PR/CI/merge retry it can trigger — resolves its working directory from `PROJECT_PATH`, so a path left pointing at a removed directory would fail them at the very gate that certifies the story merged.
+
+**Finally, create the branch:**
+
+- Run `scripts/git-branch.sh {story_key} {slug}` to create a feature branch. Inside a fresh worktree the branch already exists, so the script takes its branch-already-exists resume path and exits 0.
 - The script handles collision detection and offers resume if branch exists.
 
 ### Step 3b -- Resolve Stack Developer
@@ -571,7 +650,7 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 - Run `scripts/git-branch.sh` to verify branch state.
 - Stage and commit with conventional commit format.
-- Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh` to push the current branch to `origin`. The shared helper (a) refuses to push from `main` / `staging` (delegating to `lib/dev-story-security-invariants.sh::assert_branch_not_protected` when present), (b) retries ONCE on transient network errors (e.g., `Could not resolve host`, `Operation timed out`) with a 5-second backoff, and (c) fails LOUDLY on auth / permission errors with no retry. DO NOT inline `git push` here — the helper is the single source of truth.
+- Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh` to push the current branch to `origin`. The shared helper (a) refuses to push from `main` / `staging` (delegating to `lib/dev-story-security-invariants.sh::assert_branch_not_protected` when present), (b) retries ONCE on transient network errors (e.g., `Could not resolve host`, `Operation timed out`) with a 5-second backoff, and (c) fails LOUDLY on auth / permission errors with no retry. DO NOT inline `git push` here — the helper is the single source of truth. The helper acts on `${PROJECT_PATH:-.}`, so in worktree mode it pushes the story worktree's branch; with the variable unset it uses the current directory exactly as before.
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review` after all gates pass.
 <!-- step 10 git-push wire end -->
 
@@ -661,6 +740,7 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 - After the dev-story subagent returns `status=done`, the orchestrator verifies that a merge commit containing the story key actually exists on the target branch before accepting the done transition.
 - Run `scripts/verify-pr-merged.sh {story_key} {target_branch}` where `{target_branch}` is derived from `ci_cd.promotion_chain[0].branch` in global.yaml.
 - If no promotion chain is configured, pass `--no-chain` instead of a branch name. The script exits 3 (skip) and the gate passes silently for backward compatibility.
+- In worktree mode this step runs against the primary checkout: Step 3a's teardown restores `PROJECT_PATH` there after a successful removal, so this gate and the retry it can trigger both act on a real tree.
 - **Exit code 0 (pass):** Merge commit found on target branch. Proceed to Step 15.
 - **Exit code 2 (fail):** No merge commit found. The orchestrator re-runs Steps 10-13 (commit, push, create PR, wait for CI, merge) in the main orchestrator context before advancing the story to done. This handles the case where the subagent completed implementation but failed to push or merge.
 - **Word-boundary matching:** The script uses `\b{story_key}\b` grep patterns to avoid false positives on partial key matches (e.g., a shorter key must not match a longer one sharing the same prefix). Matching is case-insensitive to handle squash-merge message rewrites.

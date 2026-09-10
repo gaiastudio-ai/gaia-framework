@@ -342,6 +342,8 @@ core	vcp-ux-06.bats
 core	vcp-ux-generate.bats
 core	vcp-ux-import.bats
 core	verdict-resolver-parameterized.bats
+core	worktree-chain-scripts.bats
+core	worktree-generator-parity.bats
 scripts-brain	brain-c2-unlinked-predicate.bats
 scripts-brain	brain-feed-smoke.bats
 scripts-brain	brain-harvest-edges.bats
@@ -516,6 +518,7 @@ scripts-core	vcp-cpt-09.bats
 scripts-core	verdict-resolver-coverage-delta.bats
 scripts-core	verdict-resolver.bats
 scripts-core	version-bump.bats
+scripts-core	worktree-git-push.bats
 scripts-core	write-checkpoint.bats
 scripts-core	yolo-mode-sentinel.bats
 scripts-core	yolo-mode-session-binding.bats
@@ -583,6 +586,7 @@ scripts-lib	taxonomy-ssot-audit.bats
 scripts-lib	template-overrides.bats
 scripts-lib	test-environment-manifest-generator.bats
 scripts-lib	transcript-fidelity.bats
+scripts-lib	worktree-lifecycle.bats
 scripts-lib	write-val-envelope.bats
 scripts-review-common	agent-overlay.bats
 scripts-review-common	composite-verdict-aggregator.bats
