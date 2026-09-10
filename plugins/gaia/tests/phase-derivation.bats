@@ -193,6 +193,69 @@ entry_phase() {
   [ "$(sorted_output)" = "K1|1 K2|1" ]
 }
 
+@test "a soft tail naming an IN-SET story still does not raise the phase (AC1)" {
+  # The companion above names a soft target that is ABSENT from the candidate
+  # set, so the out-of-set rule returns 0 for it however the cell is parsed —
+  # which means that fixture alone would pass even if the helper grew a
+  # soft-dep parser. Here K3 IS in the set and sits in phase 1, so a helper
+  # that mistook the soft tail for a hard dependency would put K1 in phase 2.
+  #
+  # That inflation is the failure this pins: it would serialize two stories the
+  # planner is entitled to run concurrently, and it would do so silently.
+  local f
+  f="$(write_stories soft_tail_inset 'K2||1' 'K3||1' 'K1|K2; soft on K3|1')"
+  run_helper "$f"
+  [ "$status" -eq 0 ]
+  [ "$(sorted_output)" = "K1|1 K2|1 K3|1" ]
+  # Stated as its own assertion because this is the exact value that moves
+  # under a soft-dep-parsing regression.
+  [[ "$output" == *"K1|1"* ]]
+  [[ "$output" != *"K1|2"* ]]
+}
+
+@test "the partition is emitted in ascending phase order (AC3)" {
+  # Asserts RAW $output, deliberately NOT sorted_output(): sorting is exactly
+  # what would discard the property under test. The helper documents its output
+  # as "ascending by phase then by first-appearance order within a phase", and
+  # the sprint-plan consumer renders phases in that order — a descending emit
+  # would put the last phase at the top of the rendered plan.
+  #
+  # Three phases, so an inverted phase loop cannot coincide with the correct
+  # sequence.
+  local f
+  f="$(write_stories order_phases 'K9||1' 'K3||1' 'K7||1' 'K5|K9|1' 'K1|K5|1')"
+  run_helper "$f"
+  [ "$status" -eq 0 ]
+
+  # The phase column, read top to bottom, never decreases.
+  local phases
+  phases="$(printf '%s\n' "$output" | cut -d'|' -f2 | tr '\n' ' ')"
+  [ "$phases" = "1 1 1 2 3 " ]
+}
+
+@test "stories within one phase are emitted in first-appearance order (AC3)" {
+  # The intra-phase half of the same contract. Phase 1 holds three stories
+  # declared K9, K3, K7 — non-alphabetical on purpose, so neither a sort nor a
+  # reversed emit loop can reproduce the expected sequence by coincidence.
+  #
+  # This is what lets the sprint plan claim "intra-phase ordering preserved":
+  # the planner's selection order (priority ordering) survives into the
+  # rendered group only because the helper emits it unchanged.
+  local f expected
+  f="$(write_stories order_intraphase 'K9||1' 'K3||1' 'K7||1' 'K5|K9|1' 'K1|K5|1')"
+  run_helper "$f"
+  [ "$status" -eq 0 ]
+
+  # Full raw sequence, exact.
+  expected="$(printf 'K9|1\nK3|1\nK7|1\nK5|2\nK1|3')"
+  [ "$output" = "$expected" ]
+
+  # And the phase-1 block specifically, in declaration order.
+  local phase1
+  phase1="$(printf '%s\n' "$output" | grep '|1$' | cut -d'|' -f1 | tr '\n' ' ')"
+  [ "$phase1" = "K9 K3 K7 " ]
+}
+
 @test "a dependency diamond assigns the deep node last regardless of line order (AC-EC1)" {
   # Permutation invariance ONLY. A symmetric diamond cannot distinguish
   # max-over-deps from first- or last-wins (both mid-nodes sit in phase 2),
@@ -230,6 +293,36 @@ entry_phase() {
   run_helper "$f"
   [ "$status" -eq 0 ]
   [ "$(sorted_output)" = "D1|3 D2|3 K1|1 K2|2" ]
+}
+
+@test "the deepest dependency wins when it is listed FIRST in the cell (AC1)" {
+  # Redundant cover for the max-over-dependencies recurrence, which is the core
+  # of the phase rule. The companion asymmetric test carries both dep orders in
+  # one fixture; this and the next split the two orders apart so the property
+  # survives the loss or weakening of any single test.
+  #
+  # D3 depends on a phase-3 story and a phase-1 story, deeper one FIRST. A
+  # last-wins reduction takes the trailing shallow dep and reports D3|2.
+  local f
+  f="$(write_stories deepest_first 'K4||1' 'K5|K4|1' 'K6|K5|1' 'D3|K6,K4|1')"
+  run_helper "$f"
+  [ "$status" -eq 0 ]
+  [ "$(sorted_output)" = "D3|4 K4|1 K5|2 K6|3" ]
+  [[ "$output" == *"D3|4"* ]]
+  [[ "$output" != *"D3|2"* ]]
+}
+
+@test "the deepest dependency wins when it is listed LAST in the cell (AC1)" {
+  # Mirror of the above: deeper dep LAST, so a first-wins reduction takes the
+  # leading shallow dep and reports D4|2. Between the two, both reductions die
+  # to a test that does not depend on the other fixture surviving.
+  local f
+  f="$(write_stories deepest_last 'K4||1' 'K5|K4|1' 'K6|K5|1' 'D4|K4,K6|1')"
+  run_helper "$f"
+  [ "$status" -eq 0 ]
+  [ "$(sorted_output)" = "D4|4 K4|1 K5|2 K6|3" ]
+  [[ "$output" == *"D4|4"* ]]
+  [[ "$output" != *"D4|2"* ]]
 }
 
 @test "a dependency cycle exits non-zero and names every member of the cycle (AC2)" {
