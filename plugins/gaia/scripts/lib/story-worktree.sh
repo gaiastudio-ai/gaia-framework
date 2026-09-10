@@ -22,6 +22,14 @@
 #   Worktree mode is OPT-IN. It is active only when GAIA_WORKTREE_MODE=1, so a
 #   project that does not ask for it behaves exactly as before.
 #
+# Exit codes (worktree_create):
+#   0  the worktree exists and its path is on stdout
+#   1  refused -- mode off, bad usage, or a real error
+#   3  no git work tree here, so there is nothing to isolate. This is a
+#      DEGRADATION, not a failure: the caller keeps its working directory and
+#      runs the story in place. It is distinct from 1 so a caller can tell
+#      "skip with a warning" from "something went wrong".
+#
 # Safety:
 #   Removal NEVER uses --force. git refuses to remove a worktree holding modified
 #   or untracked files, and that refusal is honoured: the worktree is left in
@@ -57,10 +65,51 @@ _sw_log() { printf '%s: %s\n' "$_SW_NAME" "$*" >&2; }
 _SW_TORN_DOWN=""
 
 _sw_mark_torn() { _SW_TORN_DOWN="$_SW_TORN_DOWN $1 "; }
+
+# _sw_forget_torn <path> — drop one path from the teardown bookkeeping using
+# only shell string operations, so a path is never interpreted as a pattern.
+_sw_forget_torn() {
+  local needle=" $1 " head tail rest="$_SW_TORN_DOWN" out=""
+  while :; do
+    case "$rest" in
+      *"$needle"*)
+        head="${rest%%"$needle"*}"
+        tail="${rest#*"$needle"}"
+        out="$out$head "
+        rest="$tail"
+        ;;
+      *) out="$out$rest"; break ;;
+    esac
+  done
+  _SW_TORN_DOWN="$out"
+}
 _sw_already_torn() {
   case "$_SW_TORN_DOWN" in
     *" $1 "*) return 0 ;;
   esac
+  return 1
+}
+
+# _sw_pid_alive <pid> — 0 when the process exists, 1 only when it demonstrably
+# does not. `kill -0` returns non-zero BOTH for "no such process" (ESRCH) and
+# for a live process owned by another uid (EPERM), so the exit status alone
+# would report a foreign-uid owner as dead and let its worktree be reaped out
+# from under it. Read the error text, and fall back to ps(1); anything we cannot
+# positively classify as gone counts as ALIVE (fail closed).
+_sw_pid_alive() {
+  local pid="${1:-}" err
+  case "$pid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  err="$(kill -0 "$pid" 2>&1)" && return 0
+  case "$err" in
+    *"no such process"*|*"No such process"*) ;;
+    *) return 0 ;;
+  esac
+  # ESRCH from kill(2). Confirm with ps before declaring the owner gone.
+  if [ -n "$(ps -p "$pid" -o pid= 2>/dev/null)" ]; then
+    return 0
+  fi
   return 1
 }
 
@@ -100,9 +149,10 @@ worktree_slug_cap() {
 # and only the git-derived form keeps the worktree on the same filesystem as the
 # object store it shares.
 worktree_parent_dir() {
-  local top parent_of_top
-  top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" || {
-    _sw_log "not a git work tree: $1"
+  local repo="${1:-}" top parent_of_top
+  [ -n "$repo" ] || { _sw_log "usage: worktree_parent_dir <code_tree>"; return 1; }
+  top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || {
+    _sw_log "not a git work tree: $repo"
     return 1
   }
   parent_of_top="$(cd "$top/.." 2>/dev/null && pwd)" || {
@@ -166,7 +216,9 @@ worktree_validate_parent() {
 # teardown, so a second `worktree add -b` on the same branch fails; the caller
 # needs to know which form of `add` to use.
 worktree_branch_state() {
-  local repo="$1" branch="$2" listing line current="" holder=""
+  local repo="${1:-}" branch="${2:-}" listing line current="" holder=""
+  [ -n "$repo" ] && [ -n "$branch" ] || {
+    _sw_log "usage: worktree_branch_state <code_tree> <branch>"; return 1; }
 
   if ! git -C "$repo" show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
     printf 'absent'
@@ -217,16 +269,20 @@ _sw_pid_from_reason() {
 }
 
 # _sw_reapable <repo> <path> <locked_reason> <branch_ref> — 0 when a locked
-# record whose directory is gone may be reaped. Every condition must hold; any
+# record left by a finished run may be reaped. Every condition must hold; any
 # probe that cannot be evaluated leaves the record alone.
+#
+# A kill or an out-of-memory stop leaves the worktree DIRECTORY fully intact, so
+# "directory is gone" cannot be the test for an orphan -- that shape is the
+# common one, not the rare one. What distinguishes an orphan is a dead owner.
+# The directory then decides only whether reaping is SAFE: an empty checkout has
+# nothing to lose, while one holding uncommitted work is kept (see the caller,
+# which warns and leaves it locked).
 _sw_reapable() {
-  local repo="$1" path="$2" reason="$3" branch="$4" pid unpushed
+  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" pid unpushed
 
   [ -n "$path" ] || return 1
   [ -n "$reason" ] || return 1
-  # A record whose directory still exists is live; git also reports it as not
-  # prunable. Never touch it.
-  [ ! -e "$path" ] || return 1
 
   # Only records this library locked are ours to act on. A foreign tool's lock
   # is left strictly alone.
@@ -234,12 +290,17 @@ _sw_reapable() {
   [ -n "$pid" ] || return 1
 
   # A live owner means a story is still running: never pull its worktree out from
-  # under it. The current process is the exception -- its own leftover record
-  # from an earlier attempt is exactly what this run is here to clean up.
-  if [ "$pid" != "$$" ]; then
-    if kill -0 "$pid" 2>/dev/null; then
-      return 1
-    fi
+  # under it.
+  #
+  # This run's OWN pid is a live owner too. Its records fall into two kinds: a
+  # worktree it is using right now, and a leftover from an earlier attempt whose
+  # directory is already gone. Only the second is an orphan, so the self
+  # exception is limited to a vanished directory -- otherwise a story would
+  # reap the very worktree it is working in.
+  if [ "$pid" = "$$" ]; then
+    [ ! -e "$path" ] || return 1
+  else
+    _sw_pid_alive "$pid" && return 1
   fi
 
   # Work that exists only locally is never destroyed, even when the owner is gone.
@@ -249,6 +310,55 @@ _sw_reapable() {
     [ "$unpushed" = "0" ] || return 1
   fi
 
+  # Directory still present: reap only when the checkout is clean. A dirty one
+  # holds work that was never committed anywhere, so it is preserved.
+  if [ -e "$path" ]; then
+    _sw_worktree_is_clean "$repo" "$path" || return 1
+  fi
+
+  return 0
+}
+
+# _sw_worktree_is_clean <repo> <path> — 0 when the worktree holds no modified or
+# untracked files. A checkout we cannot inspect counts as dirty (fail closed).
+_sw_worktree_is_clean() {
+  local out
+  out="$(git -C "${2:-}" status --porcelain 2>/dev/null)" || return 1
+  [ -z "$out" ]
+}
+
+# _sw_prune_flush <repo> <path> <locked_reason> <branch> — decide one record.
+# Unlocks a reapable orphan so the following prune can clear it; announces a
+# crashed run's worktree that still holds uncommitted work instead of silently
+# passing over it, and leaves that one locked.
+_sw_prune_flush() {
+  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" pid
+
+  [ -n "$path" ] || return 0
+  [ -n "$reason" ] || return 0
+
+  if _sw_reapable "$repo" "$path" "$reason" "$branch"; then
+    git -C "$repo" worktree unlock "$path" >/dev/null 2>&1 || true
+    # A vanished directory is cleared by the prune that follows; one still on
+    # disk is not (prune only clears records whose directory is gone), so remove
+    # it here. Never --force: _sw_reapable already established the checkout is
+    # clean, so a refusal here means something changed under us and the worktree
+    # should survive.
+    if [ -e "$path" ]; then
+      git -C "$repo" worktree remove "$path" >/dev/null 2>&1 || true
+    fi
+    return 0
+  fi
+
+  # Name the one case an operator has to act on: our lock, owner gone, but the
+  # checkout holds work that was never committed. Everything else -- a live
+  # owner, a foreign lock, unpushed commits -- is a routine veto and stays quiet.
+  pid="$(_sw_pid_from_reason "$reason")"
+  if [ -n "$pid" ] && [ "$pid" != "$$" ] && ! _sw_pid_alive "$pid" \
+     && [ -e "$path" ] && ! _sw_worktree_is_clean "$repo" "$path"; then
+    _sw_log "kept a stopped story's worktree: it holds modified or untracked files: $path"
+    _sw_log "review it, then remove it with: git -C \"$repo\" worktree remove \"$path\""
+  fi
   return 0
 }
 
@@ -261,7 +371,8 @@ _sw_reapable() {
 # as prunable, so a killed run leaves a record that plain pruning keeps forever.
 # Pass B unlocks only those records it can prove are safe, then prunes again.
 worktree_prune_stale() {
-  local repo="$1" listing line current="" locked="" branch=""
+  local repo="${1:-}" listing line current="" locked="" branch=""
+  [ -n "$repo" ] || { _sw_log "usage: worktree_prune_stale <code_tree>"; return 1; }
 
   git -C "$repo" worktree prune >/dev/null 2>&1 || true
 
@@ -269,9 +380,7 @@ worktree_prune_stale() {
   while IFS= read -r line; do
     case "$line" in
       "worktree "*)
-        if _sw_reapable "$repo" "$current" "$locked" "$branch"; then
-          git -C "$repo" worktree unlock "$current" >/dev/null 2>&1 || true
-        fi
+        _sw_prune_flush "$repo" "$current" "$locked" "$branch"
         current="${line#worktree }"
         locked=""
         branch=""
@@ -290,9 +399,7 @@ worktree_prune_stale() {
 $listing
 EOF
   # The final record has no following "worktree " line to flush it.
-  if _sw_reapable "$repo" "$current" "$locked" "$branch"; then
-    git -C "$repo" worktree unlock "$current" >/dev/null 2>&1 || true
-  fi
+  _sw_prune_flush "$repo" "$current" "$locked" "$branch"
 
   git -C "$repo" worktree prune >/dev/null 2>&1 || true
   return 0
@@ -302,7 +409,7 @@ EOF
 # story's worktree. Echoes its absolute path on stdout; every diagnostic goes to
 # stderr, so `PROJECT_PATH="$(worktree_create ...)"` is safe.
 worktree_create() {
-  local repo="$1" story_key="$2" raw_slug="$3"
+  local repo="${1:-}" story_key="${2:-}" raw_slug="${3:-}"
   local slug branch top parent path state holder
 
   [ -n "$repo" ] && [ -n "$story_key" ] || {
@@ -328,8 +435,10 @@ worktree_create() {
   worktree_prune_stale "$repo"
 
   top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || {
-    _sw_log "not a git work tree: $repo"
-    return 1
+    # Not a git work tree: nothing to isolate. Report this distinctly (3) so the
+    # caller degrades to running in place rather than treating it as an error.
+    _sw_log "skipped (non-git CWD) — no git work tree at $repo; running in place"
+    return 3
   }
   parent="$(worktree_parent_dir "$repo")" || return 1
   worktree_validate_parent "$parent" "$top" || return 1
@@ -388,8 +497,9 @@ worktree_create() {
   git -C "$repo" worktree lock "$path" --reason "$(_sw_lock_reason "$story_key" "$$")" >/dev/null 2>&1 || true
 
   # A fresh worktree is a fresh teardown subject even if this shell tore down the
-  # same path earlier in the run.
-  _SW_TORN_DOWN="$(printf '%s' "$_SW_TORN_DOWN" | sed "s| $path ||g")"
+  # same path earlier in the run. Rebuilt with parameter expansion rather than
+  # sed, so no character in a path (a literal `|` included) is special here.
+  _sw_forget_torn "$path"
 
   printf '%s' "$path"
   return 0
@@ -403,7 +513,7 @@ worktree_create() {
 # directory is a far smaller problem than deleted work, and the next prune will
 # not reap it either, so it survives for inspection.
 worktree_teardown() {
-  local repo="$1" path="$2"
+  local repo="${1:-}" path="${2:-}"
 
   [ -n "$repo" ] && [ -n "$path" ] || {
     _sw_log "usage: worktree_teardown <code_tree> <worktree_path>"
@@ -440,6 +550,6 @@ worktree_teardown() {
 # variable moves back to the primary checkout, and a trap that read it then would
 # aim removal at the main work tree instead of the story's.
 worktree_teardown_trap() {
-  worktree_teardown "$1" "$2" || true
+  worktree_teardown "${1:-}" "${2:-}" || true
   return 0
 }

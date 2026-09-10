@@ -66,20 +66,34 @@ _mk_scanned_repo() {
 # repository. Driving the real suite (rather than a local approximation) is what
 # makes this a parity test: the suite's own exemption rules and root resolution
 # are part of what must agree between the two trees.
+# The two named leak-gate suites. They resolve their scan roots differently
+# (one scans published prose, the other scans @test titles), so parity for one
+# does not imply parity for the other -- both are compared.
+_LEAK_SUITES="no-leaked-ids-in-prose.bats no-leaked-ids-in-test-names.bats"
+
 _install_real_leak_gate() {
-  local root="$1" src="$PLUGIN_ROOT/tests/no-leaked-ids-in-prose.bats"
-  local helper="$PLUGIN_ROOT/tests/test_helper.bash"
-  [ -f "$src" ] && [ -f "$helper" ] || return 1
+  local root="$1" helper="$PLUGIN_ROOT/tests/test_helper.bash" suite
+  [ -f "$helper" ] || return 1
   mkdir -p "$root/tests"
-  cp "$src" "$root/tests/no-leaked-ids-in-prose.bats"
   cp "$helper" "$root/tests/test_helper.bash"
+  for suite in $_LEAK_SUITES; do
+    [ -f "$PLUGIN_ROOT/tests/$suite" ] || return 1
+    cp "$PLUGIN_ROOT/tests/$suite" "$root/tests/$suite"
+  done
 }
 
 # _leak_verdict <root> — run the real leak gate inside <root> and echo a stable
 # verdict plus the sorted failing-test names, so two roots can be compared.
 _leak_verdict() {
-  local root="$1" out
-  out="$( cd "$root" && bats tests/no-leaked-ids-in-prose.bats 2>&1 )" || true
+  local root="$1" out suite all="" one
+  for suite in $_LEAK_SUITES; do
+    # A suite that finds a violation exits non-zero by design; capture its
+    # output either way rather than letting the failure abort the comparison.
+    one="$( cd "$root" && bats "tests/$suite" 2>&1 || true )"
+    all="$all$one
+"
+  done
+  out="$all"
   # A suite that failed to load reports a single gather-tests failure and would
   # make two broken runs compare equal. Refuse that rather than pass vacuously.
   if printf '%s\n' "$out" | grep -qF 'bats-gather-tests'; then
