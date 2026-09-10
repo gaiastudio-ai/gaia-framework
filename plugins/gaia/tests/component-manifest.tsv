@@ -247,6 +247,7 @@ core	orchestrator-file-list-intersection.bats
 core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
+core	phase-derivation.bats
 core	pixel-diff-ac1-capture-and-diff.bats
 core	pixel-diff-unit.bats
 core	placeholder-test-detector.bats
@@ -491,6 +492,7 @@ scripts-core	sarif-multitool-merge.bats
 scripts-core	selective-test-driver.bats
 scripts-core	skill-dispatch-memory-load.bats
 scripts-core	skill-md-claude-skill-dir-anti-pattern.bats
+scripts-core	sm-capacity-check-unchanged.bats
 scripts-core	stale-flag-registry.bats
 scripts-core	step-report.bats
 scripts-core	template-header.bats
