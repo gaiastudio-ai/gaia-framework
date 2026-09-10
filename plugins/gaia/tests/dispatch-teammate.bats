@@ -130,55 +130,89 @@ teardown() { common_teardown; }
 }
 
 # ============================================================
-# AC3 — 8-teammate ceiling enforcement
+# AC3 — configurable teammate ceiling enforcement
 # ============================================================
 
-@test "exactly 8 teammates is permitted (AC3)" {
+@test "exactly the configured number of teammates is permitted (AC3)" {
+  local cfg
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 3')"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
   source "$LIB"
   local i
-  for i in $(seq 1 8); do
+  for i in 1 2 3; do
     spawn_teammate "gaia:agent-$i" >/dev/null
   done
-  # Verify count
   local count
   count="$(_dt_active_count)"
-  [ "$count" -eq 8 ]
+  [ "$count" -eq 3 ]
+  # Boundary, both directions: at the configured ceiling the next spawn is
+  # refused. Without this the test passes against any ceiling >= 3.
+  run spawn_teammate "gaia:agent-4"
+  [ "$status" -ne 0 ]
 }
 
-@test "9th spawn_teammate fails non-zero citing the 8-teammate ceiling (AC3)" {
+@test "one spawn past the configured ceiling fails citing the ceiling (AC3)" {
+  local cfg
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 3')"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
   source "$LIB"
   local i
-  for i in $(seq 1 8); do
+  for i in 1 2 3; do
     spawn_teammate "gaia:agent-$i" >/dev/null
   done
-  run spawn_teammate "gaia:agent-9"
+  run spawn_teammate "gaia:agent-4"
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "8" ]] || [[ "$output" =~ "ceiling" ]]
+  [[ "$output" =~ "3" ]]
+  [[ "$output" =~ "ceiling" ]]
 }
 
 @test "ceiling resets after shutdown — freed slot allows new spawn (AC3)" {
+  local cfg
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 3')"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
   source "$LIB"
-  local handle last_handle
+  local last_handle
   local i
-  for i in $(seq 1 8); do
+  for i in 1 2 3; do
     last_handle="$(spawn_teammate "gaia:agent-$i")"
   done
-  # Shut down the last one
   shutdown_teammate "$last_handle"
-  # Spawn a new one — should succeed
   spawn_teammate "gaia:sm" >/dev/null
   local count
   count="$(_dt_active_count)"
-  [ "$count" -eq 8 ]
+  [ "$count" -eq 3 ]
+  # Boundary: back at the configured ceiling, the next spawn must be REFUSED.
+  # Without this, filling 3 and freeing 1 holds under any ceiling >= 3 and the
+  # config-read-deleted mutant survives.
+  run spawn_teammate "gaia:agent-extra"
+  [ "$status" -ne 0 ]
 }
 
 @test "ceiling error message contains no internal traceability IDs (AC3)" {
+  local cfg
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 3')"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
   source "$LIB"
   local i
-  for i in $(seq 1 8); do
+  for i in 1 2 3; do
     spawn_teammate "gaia:agent-$i" >/dev/null
   done
-  run spawn_teammate "gaia:agent-9"
+  # The 4th must actually be REFUSED — under a stale hardcoded default this
+  # spawn would succeed and the message under test would never be emitted.
+  run spawn_teammate "gaia:agent-4"
+  [ "$status" -ne 0 ]
   [[ ! "$output" =~ FR- ]]
   [[ ! "$output" =~ ADR- ]]
   [[ ! "$output" =~ E[0-9]+-S ]]
@@ -1212,4 +1246,237 @@ _assert_key_refused() {
   under_utf8="$(LC_ALL=en_US.UTF-8 bash -c "source '$LIB'; _dt_generate_handle \$'de\xc3\xa9v' 'K1'")"
   [ "$under_c" = "$under_utf8" ] \
     || { echo "same persona slugged differently by locale: C=[$under_c] UTF-8=[$under_utf8]"; return 1; }
+}
+
+# ============================================================
+# Configurable teammate ceiling — runtime normalisation, retry,
+# and the queue-me exit code
+# ============================================================
+
+# _pe_config <body> — write a config carrying the seven required top-level
+# keys plus the supplied parallel_execution body; echo the path.
+_pe_config() {
+  local body="$1"
+  local out="$TEST_TMP/pe-config.yaml"
+  cat > "$out" <<PEEOF
+project_root: /tmp/test-project
+project_path: /tmp/test-project/src
+memory_path: /tmp/test-project/.gaia/memory
+checkpoint_path: /tmp/test-project/.gaia/checkpoints
+installed_path: /tmp/test-project/.gaia/installed
+framework_version: "1.216.2"
+date: "2026-09-10"
+${body}
+PEEOF
+  printf '%s' "$out"
+}
+
+# _pe_resolve <config> — resolve the ceiling through the REAL library.
+_pe_resolve() {
+  GAIA_SHARED_CONFIG="$1" \
+  GAIA_SESSION_DIR="$TEST_TMP/pe-session" \
+  bash -c '
+    set -u
+    export GAIA_MODE_B_SUBSTRATE=unavailable
+    mkdir -p "$GAIA_SESSION_DIR"
+    # shellcheck disable=SC1090
+    . "$0"
+    _dt_resolve_ceiling
+    printf "%s\n" "$_DT_MAX_TEAMMATES"
+  ' "$LIB"
+}
+
+@test "a commented-parent config resolves to its configured ceiling, not the default (AC2)" {
+  # Validator-ACCEPTED (5 >= 1+4). A line-oriented reader misses the section
+  # entirely and substitutes 12 — an operator who throttled a small box to 5
+  # would silently get 12. That is over-provisioning.
+  local cfg got
+  cfg="$(_pe_config 'parallel_execution: # small CI box
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 5')"
+  got="$(_pe_resolve "$cfg")"
+  [ "$got" = "5" ]
+}
+
+@test "an anchor/alias config resolves to its configured ceiling (AC2)" {
+  local cfg got
+  cfg="$(_pe_config 'pe_defaults: &pe
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 20
+parallel_execution: *pe')"
+  got="$(_pe_resolve "$cfg")"
+  [ "$got" = "20" ]
+}
+
+@test "a multi-line flow mapping resolves to its configured ceiling (AC2)" {
+  local cfg got
+  cfg="$(_pe_config 'parallel_execution: {
+  max_parallel_dev_slots: 1,
+  teammate_dispatch_ceiling: 20 }')"
+  got="$(_pe_resolve "$cfg")"
+  [ "$got" = "20" ]
+}
+
+@test "a quoted section key resolves to its configured ceiling (AC2)" {
+  local cfg got
+  cfg="$(_pe_config '"parallel_execution":
+  teammate_dispatch_ceiling: 20')"
+  got="$(_pe_resolve "$cfg")"
+  [ "$got" = "20" ]
+}
+
+@test "a non-decimal scalar ceiling resolves to its numeric value (AC2)" {
+  local cfg got
+  cfg="$(_pe_config 'parallel_execution:
+  teammate_dispatch_ceiling: 0x14')"
+  got="$(_pe_resolve "$cfg")"
+  [ "$got" = "20" ]
+}
+
+@test "the ceiling falls back to the conservative bound when no JSON reader is available (AC2)" {
+  # With neither yq nor python3 reachable the state is UNKNOWN, not absent —
+  # it must land on the conservative 8 with a warning, never the 12 default.
+  local cfg out
+  cfg="$(_pe_config 'parallel_execution:
+  teammate_dispatch_ceiling: 20')"
+  local emptybin="$TEST_TMP/emptybin"
+  mkdir -p "$emptybin"
+  out="$(GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$TEST_TMP/pe-session2" \
+    env PATH="$emptybin" /bin/bash -c '
+      set -u
+      export GAIA_MODE_B_SUBSTRATE=unavailable
+      mkdir -p "$GAIA_SESSION_DIR"
+      # shellcheck disable=SC1090
+      . "$0"
+      _dt_resolve_ceiling 2>/dev/null
+      printf "%s\n" "$_DT_MAX_TEAMMATES"
+    ' "$LIB")"
+  [ "$out" = "8" ]
+}
+
+@test "spawning at a config-set ceiling of 3 refuses the 4th (AC2)" {
+  local cfg
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 3')"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
+  source "$LIB"
+  local i
+  for i in 1 2 3; do
+    spawn_teammate "gaia:agent-$i" >/dev/null
+  done
+  run spawn_teammate "gaia:agent-4"
+  [ "$status" -ne 0 ]
+}
+
+@test "a ceiling-reached spawn retries before giving up (AC2)" {
+  # BEHAVIOURAL, not a constant read: intercept the registry count so every
+  # ceiling evaluation appends a line to a counter file, then assert the loop
+  # evaluated it MORE THAN ONCE. A single-attempt implementation records one
+  # line and fails here even with _DT_CEILING_RETRY_MAX still defined.
+  local cfg tally
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 2')"
+  tally="$TEST_TMP/attempts.log"
+  : > "$tally"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
+  source "$LIB"
+  spawn_teammate "gaia:agent-1" >/dev/null
+  spawn_teammate "gaia:agent-2" >/dev/null
+
+  # Wrap the real counter; keep its output identical so behaviour is unchanged.
+  eval "_dt_real_active_count() { $(declare -f _dt_active_count | tail -n +2) }"
+  _dt_active_count() { printf 'x\n' >> "$tally"; _dt_real_active_count; }
+
+  run spawn_teammate "gaia:agent-3"
+  [ "$status" -ne 0 ]
+  local attempts
+  attempts="$(wc -l < "$tally" | tr -d ' ')"
+  [ "$attempts" -ge 2 ]
+  [ "$attempts" -le "${_DT_CEILING_RETRY_MAX:-5}" ]
+}
+
+@test "a slot freed during the backoff window lets the queued spawn succeed (AC2)" {
+  # The retry only has a purpose if a concurrently-freed slot can be picked up.
+  # A single-attempt implementation refuses before the slot is released and
+  # fails this test; a retrying one succeeds with rc 0.
+  local cfg
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 2')"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=1
+  source "$LIB"
+  local keep freed regdir victim
+  keep="$(spawn_teammate "gaia:agent-1")"
+  freed="$(spawn_teammate "gaia:agent-2")"
+  _dt_ensure_registry
+  regdir="$_DT_REGISTRY_DIR"
+  victim="$regdir/$freed"
+  [ -f "$victim" ]
+
+  # Free the slot from a CONCURRENT process during the backoff window. A
+  # single-attempt implementation refuses before this lands and fails here;
+  # a retrying one observes the freed slot and succeeds.
+  ( sleep 1; rm -f "$victim" ) &
+  local bgpid=$!
+  run spawn_teammate "gaia:agent-3"
+  wait "$bgpid" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [ -n "$keep" ]
+}
+
+@test "the retry is bounded and does not loop forever (AC2)" {
+  # Assert the bound is HONOURED, not merely declared: the observed attempt
+  # count must never exceed the constant.
+  local cfg tally
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 2')"
+  tally="$TEST_TMP/bounded.log"
+  : > "$tally"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
+  source "$LIB"
+  [ -n "${_DT_CEILING_RETRY_MAX:-}" ]
+  [ "$_DT_CEILING_RETRY_MAX" -ge 2 ]
+  [ "$_DT_CEILING_RETRY_MAX" -le 10 ]
+  spawn_teammate "gaia:agent-1" >/dev/null
+  spawn_teammate "gaia:agent-2" >/dev/null
+  eval "_dt_real_active_count2() { $(declare -f _dt_active_count | tail -n +2) }"
+  _dt_active_count() { printf 'x\n' >> "$tally"; _dt_real_active_count2; }
+  run spawn_teammate "gaia:agent-3"
+  local attempts
+  attempts="$(wc -l < "$tally" | tr -d ' ')"
+  [ "$attempts" -le "$_DT_CEILING_RETRY_MAX" ]
+}
+
+@test "a ceiling-reached spawn exits with the queue-me code, distinct from a real failure (AC2)" {
+  # The point of AC2: a saturated ceiling must never read as a story failure.
+  # The caller distinguishes it by exit code, not by parsing stderr.
+  local cfg
+  cfg="$(_pe_config 'parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 2')"
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
+  source "$LIB"
+  spawn_teammate "gaia:agent-1" >/dev/null
+  spawn_teammate "gaia:agent-2" >/dev/null
+  run spawn_teammate "gaia:agent-3"
+  [ "$status" -eq "${_DT_CEILING_EXIT_CODE:-8}" ]
+  [ "$status" -ne 1 ]
+  [ "$status" -ne 7 ]
+}
+
+@test "a clean-room refusal still returns the failure code, not the queue-me code (AC2)" {
+  # Guards the blanket-remap mutant: if every non-zero became the queue-me
+  # code, a real refusal would be queued forever instead of failing.
+  export _DT_CEILING_RETRY_BASE_DELAY=0
+  source "$LIB"
+  run spawn_teammate "gaia:validator"
+  [ "$status" -eq 1 ]
 }

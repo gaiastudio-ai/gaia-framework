@@ -108,13 +108,35 @@ teardown() { common_teardown; }
 }
 
 @test "clean-room gate fires BEFORE ceiling check (AC1)" {
+  # Fill to a CONFIG-SET ceiling, not a hardcoded one: a fill to the literal
+  # default would still pass if the config read were deleted.
+  local cfg="$TEST_TMP/pe-clean-room.yaml"
+  cat > "$cfg" <<'PEEOF'
+project_root: /tmp/test-project
+project_path: /tmp/test-project/src
+memory_path: /tmp/test-project/.gaia/memory
+checkpoint_path: /tmp/test-project/.gaia/checkpoints
+installed_path: /tmp/test-project/.gaia/installed
+framework_version: "1.216.2"
+date: "2026-09-10"
+parallel_execution:
+  max_parallel_dev_slots: 1
+  teammate_dispatch_ceiling: 3
+PEEOF
+  export GAIA_SHARED_CONFIG="$cfg"
+  export _DT_CEILING_RETRY_BASE_DELAY=0
   source "$LIB"
-  # Fill to ceiling
   local i
-  for i in $(seq 1 8); do
+  for i in 1 2 3; do
     spawn_teammate "gaia:agent-$i" >/dev/null
   done
-  # A reviewer persona must be rejected with clean-room, not ceiling
+  # Bind the fill to the CONFIGURED ceiling: a non-reviewer 4th spawn must be
+  # refused here, else this test passes under any ceiling >= 3 and the
+  # config-read-deleted mutant survives.
+  run spawn_teammate "gaia:agent-4"
+  [ "$status" -ne 0 ]
+  # A reviewer persona must be rejected with clean-room, not ceiling — and
+  # must not stall in the ceiling retry loop on its way there.
   run spawn_teammate "validator"
   [ "$status" -ne 0 ]
   [[ "$output" =~ "clean-room" ]] || [[ "$output" =~ "clean room" ]]

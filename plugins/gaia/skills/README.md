@@ -122,7 +122,7 @@ A teammate session passes through four sequential phases. Each phase has a descr
 **Contract.**
 - Call `spawn_teammate PERSONA [--context CTX]` to create a teammate. The function returns the handle on stdout.
 - The handle is opaque; pass it as-is to subsequent `drive_turn`, `await_reply`, `relay_to_team_lead`, and `shutdown_teammate` calls.
-- At most eight teammates may be active concurrently (enforced by the 8-teammate ceiling in the registry).
+- At most the configured number of teammates may be active concurrently (enforced by the configurable teammate ceiling in the registry, 12 by default).
 - **Keyless callers (the long-standing form).** If the live substrate is unavailable, `spawn_teammate` emits `MODE_B_FALLBACK` to stderr and degrades to a foreground Mode A dispatch. The returned handle is still valid for subsequent library calls.
 - **Story-keyed callers.** Add `--story-key KEY` to dispatch several same-persona teammates at once — one per story. The handle is then derived from the persona and the key rather than from the process id, so two stories never collide and retrying the same persona and key idempotently reuses the one handle. The key must be 1–64 characters of letters, digits, dot, underscore or hyphen; anything else is refused with status 1 before any state is written.
 - Passing a key opts into a **stricter fallback contract**: when the substrate is unavailable the call returns exit code 7 and writes a machine-readable record to stdout **instead of a handle** — never a handle. Treat exit 7 as an instruction to degrade to sequential work with phase order preserved, never as a refusal. Because the call returns non-zero as a normal outcome, capture it in a guarded form so an `errexit` caller is not killed at the assignment:
@@ -132,6 +132,20 @@ A teammate session passes through four sequential phases. Each phase has a descr
   ```
 
   Declaration and assignment must stay separate — `local handle="$(...)"` reports the status of `local`, not of the spawn.
+
+- **Ceiling saturated — exit code 8.** When the teammate ceiling is already full, `spawn_teammate` retries with bounded backoff; if every attempt still finds the registry full it returns exit code 8 and writes no handle. Exit 8 is a **capacity condition, not a failure**: it means the work could not start yet, never that it went wrong. Queue the item and retry it once a teammate shuts down and frees a slot — do not mark the work failed, and do not treat it as a refusal. A slot freed by another process during the backoff window is picked up automatically and the call then succeeds normally.
+
+  Exit 8 is returned as a normal outcome, so it needs the same guarded assignment as exit 7 — an `errexit` caller is otherwise killed at the assignment:
+
+  ```bash
+  handle="$(spawn_teammate "$persona" --story-key "$key")" || rc=$?
+  case "${rc:-0}" in
+    0) ;;   # got a handle
+    7) ;;   # substrate absent — degrade to sequential, phase order preserved
+    8) ;;   # ceiling saturated — queue and retry when a slot frees
+    *) ;;   # a real failure
+  esac
+  ```
 
 #### DRIVE
 

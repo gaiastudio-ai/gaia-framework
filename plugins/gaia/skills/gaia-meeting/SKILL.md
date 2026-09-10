@@ -550,7 +550,8 @@ This work does not introduce a parallel cadence counter.
    - run `bash scripts/meeting-mode-b-bridge.sh meeting_spawn_participant <persona> "<session-id>"`
      — the bridge does the registry write + provenance log + **fail-closed
      reviewer clean-room gate** (a reviewer persona is REFUSED here and the
-     meeting MUST NOT proceed with it as a teammate) + the 8-teammate ceiling.
+     meeting MUST NOT proceed with it as a teammate) + the configurable teammate
+     ceiling.
      It returns the teammate `<handle>` on stdout. Capture that handle as the
      authoritative one for this persona — use the value the bridge returns, do
      NOT invent your own handle string (inventing handles desyncs the registry

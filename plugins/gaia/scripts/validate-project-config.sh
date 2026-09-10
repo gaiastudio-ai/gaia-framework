@@ -90,6 +90,179 @@ _post_validate_test_policy_refs() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# _post_validate_parallel_execution — cross-field concurrency-budget check
+#
+# JSON Schema draft-07 cannot express an arithmetic relation between two
+# sibling integers, so the headroom rule lives here:
+#   teammate_dispatch_ceiling >= max_parallel_dev_slots + PE_HEADROOM
+#
+# Reads the ALREADY-CONVERTED JSON, never the raw YAML. yq/python3 have
+# normalised flow mappings, comments, quoting and signed integers into
+# canonical JSON, so a section written in an unusual-but-valid shape cannot
+# read as "absent" and silently skip the check.
+#
+# Fails CLOSED: if neither jq nor python3 can read the document the check
+# reports a violation rather than returning 0. (The YAML->JSON conversion
+# above already hard-requires yq or python3, so this cannot normally fire.)
+#
+# Args: $1 = path to the converted JSON file
+# Returns: 0 if valid or the section is absent; 1 if violations found.
+# ---------------------------------------------------------------------------
+_post_validate_parallel_execution() {
+  local json_file="$1"
+  local PE_HEADROOM=4
+  local state="" probe="" reader=""
+
+  if command -v jq >/dev/null 2>&1; then
+    state="$(jq -r '.parallel_execution
+      | if . == null then "ABSENT" elif type != "object" then "NOTOBJ" else "OBJ" end' \
+      "$json_file" 2>/dev/null)" || state=""
+    # Commit to jq only if it produced a RECOGNISED verdict. Checking mere
+    # non-emptiness would trust a jq that exits 0 while emitting garbage: the
+    # garbage falls past the ABSENT/NOTOBJ arms, the probe yields unparseable
+    # lines, and the defaults survive to satisfy the headroom rule — an
+    # under-provisioned config would then PASS.
+    case "$state" in
+      ABSENT|NOTOBJ|OBJ) reader=jq ;;
+      *) state="" ;;
+    esac
+  fi
+  if [ -z "$reader" ] && command -v python3 >/dev/null 2>&1; then
+    reader=python3
+    state="$(python3 - "$json_file" <<'PYPROBE_A' 2>/dev/null
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+s = d.get("parallel_execution", None)
+if "parallel_execution" not in d or s is None:
+    print("ABSENT")
+elif not isinstance(s, dict):
+    print("NOTOBJ")
+else:
+    print("OBJ")
+PYPROBE_A
+)" || state=""
+  fi
+
+  case "$state" in
+    ABSENT|NOTOBJ|OBJ) : ;;
+    *) state="" ;;
+  esac
+
+  if [ -z "$reader" ] || [ -z "$state" ]; then
+    fail "\$.parallel_execution" \
+      "cannot verify the concurrency budget — install jq or python3"
+    return 1
+  fi
+
+  case "$state" in
+    ABSENT) return 0 ;;
+    NOTOBJ)
+      fail "\$.parallel_execution" "must be an object"
+      return 1
+      ;;
+  esac
+
+  # Per-key probe: one tab-separated line per key carrying name, type and
+  # value. Type-tagged and self-delimiting so a value containing a space or
+  # newline cannot bleed into the next field; has() rather than // so an
+  # explicit null reads as present-but-invalid, never as absent.
+  if [ "$reader" = jq ]; then
+    probe="$(jq -r '.parallel_execution as $p
+      | (["slots",   (if ($p|has("max_parallel_dev_slots"))    then ($p.max_parallel_dev_slots|type)    else "absent" end), ($p.max_parallel_dev_slots|tostring)]    | @tsv),
+        (["ceiling", (if ($p|has("teammate_dispatch_ceiling")) then ($p.teammate_dispatch_ceiling|type) else "absent" end), ($p.teammate_dispatch_ceiling|tostring)] | @tsv)' \
+      "$json_file" 2>/dev/null)" || probe=""
+  else
+    probe="$(python3 - "$json_file" <<'PYPROBE_B' 2>/dev/null
+import json, sys
+d = json.load(open(sys.argv[1]))
+p = d.get("parallel_execution", {})
+def tag(v):
+    if isinstance(v, bool):  return "boolean"
+    if isinstance(v, int):   return "number"
+    if isinstance(v, float): return "number"
+    if isinstance(v, str):   return "string"
+    if v is None:            return "null"
+    if isinstance(v, list):  return "array"
+    return "object"
+for label, key in (("slots", "max_parallel_dev_slots"),
+                   ("ceiling", "teammate_dispatch_ceiling")):
+    if key not in p:
+        print("%s\tabsent\tnull" % label)
+    else:
+        v = p[key]
+        if v is True: sv = "true"
+        elif v is False: sv = "false"
+        elif v is None: sv = "null"
+        else: sv = str(v)
+        print("%s\t%s\t%s" % (label, tag(v), sv))
+PYPROBE_B
+)" || probe=""
+  fi
+
+  if [ -z "$probe" ]; then
+    fail "\$.parallel_execution" "cannot read the concurrency budget values"
+    return 1
+  fi
+
+  local slots=8 ceiling=12 violations=0 seen=0 unknown=0
+  local label vtype vval key tab
+  tab="$(printf '\t')"
+  while IFS="$tab" read -r label vtype vval; do
+    [ -z "$label" ] && continue
+    case "$label" in
+      slots)   key="max_parallel_dev_slots" ;;
+      ceiling) key="teammate_dispatch_ceiling" ;;
+      # An unrecognised label means the probe emitted something we did not ask
+      # for. Skipping it silently would let a reader inject extra lines while
+      # the two expected ones still arrive, so count it and refuse below.
+      *)       unknown=$((unknown + 1)); continue ;;
+    esac
+    case "$vtype" in
+      absent|number|string|null|boolean|array|object) ;;
+      *) unknown=$((unknown + 1)); continue ;;
+    esac
+    seen=$((seen + 1))
+    [ "$vtype" = "absent" ] && continue
+    if [ "$vtype" != "number" ]; then
+      fail "\$.parallel_execution.${key}" "must be an integer; got ${vtype}"
+      violations=$((violations + 1))
+      continue
+    fi
+    case "$vval" in
+      ''|*[!0-9]*)
+        fail "\$.parallel_execution.${key}" \
+          "must be a non-negative integer; got ${vval}"
+        violations=$((violations + 1))
+        continue
+        ;;
+    esac
+    if [ "$label" = slots ]; then slots="$vval"; else ceiling="$vval"; fi
+  done <<PROBE_EOF
+$probe
+PROBE_EOF
+
+  [ "$violations" -gt 0 ] && return 1
+
+  # Both keys must have been reported with a recognised type tag. Anything less
+  # means the probe output was not trustworthy, and defaulting past it would let
+  # an under-provisioned budget through.
+  if [ "$seen" -ne 2 ] || [ "$unknown" -ne 0 ]; then
+    fail "\$.parallel_execution" "cannot read the concurrency budget values"
+    return 1
+  fi
+
+  if [ "$ceiling" -lt $((slots + PE_HEADROOM)) ]; then
+    fail "\$.parallel_execution.teammate_dispatch_ceiling" \
+      "must be at least max_parallel_dev_slots + ${PE_HEADROOM} (headroom for gate agents); got ${ceiling} with max_parallel_dev_slots ${slots}"
+    return 1
+  fi
+  return 0
+}
+
 if [ "$#" -lt 1 ]; then
   err "usage: $prog <project-config.yaml>"
   exit 2
@@ -142,6 +315,7 @@ fi
 if command -v ajv >/dev/null 2>&1; then
   if ajv_out="$(ajv validate -s "$SCHEMA" -d "$TMP_JSON" 2>&1)"; then
     _post_validate_test_policy_refs "$TMP_JSON" || exit 1
+    _post_validate_parallel_execution "$TMP_JSON" || exit 1
     printf 'PASS: %s\n' "$INPUT"
     exit 0
   else
@@ -189,6 +363,7 @@ sys.exit(1)
 PY
 )"; then
     _post_validate_test_policy_refs "$TMP_JSON" || exit 1
+    _post_validate_parallel_execution "$TMP_JSON" || exit 1
     printf 'PASS: %s\n' "$INPUT"
     exit 0
   else
@@ -268,6 +443,7 @@ if [ "$violations" -gt 0 ]; then
 fi
 
 _post_validate_test_policy_refs "$TMP_JSON" || exit 1
+_post_validate_parallel_execution "$TMP_JSON" || exit 1
 
 # Emit the DEGRADED marker so downstream consumers (CI, /gaia-config-validate
 # skill) can distinguish a full schema-engine PASS from a structural-only PASS.

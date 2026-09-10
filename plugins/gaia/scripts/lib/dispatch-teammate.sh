@@ -29,6 +29,14 @@
 #   degrade to sequential work with phase order preserved, never as a refusal.
 #   Keyless callers are unaffected: they still receive a handle and exit 0.
 #
+# Ceiling saturation:
+#   When the ceiling is full, spawn_teammate retries with bounded backoff and,
+#   if the registry is still full at the end, returns exit 8 with no handle.
+#   Exit 8 is a capacity condition, never a story failure: the caller queues the
+#   work and retries once a slot frees. Because it is a normal outcome, capture
+#   it in a guarded form so an errexit caller is not killed at the assignment:
+#     handle="$(spawn_teammate "$persona" --story-key "$key")" || rc=$?
+#
 # Story-keyed handles:
 #   spawn_teammate --story-key builds the handle from the persona and the key
 #   rather than the process id. Because the process id is constant within one
@@ -37,7 +45,9 @@
 #   land on the same handle, and lets each relayed message be attributed to
 #   the story it belongs to.
 #
-# The 8-teammate ceiling is enforced at the registry level.
+# The teammate ceiling is configurable via
+# parallel_execution.teammate_dispatch_ceiling in project-config.yaml
+# (default 12) and is enforced at the registry level.
 
 # ---------- Source guard ----------
 
@@ -48,8 +58,39 @@ fi
 
 # ---------- Internal state ----------
 
-# Maximum concurrent teammates.
-_DT_MAX_TEAMMATES=8
+# Maximum concurrent teammates. Resolved lazily from project config at the
+# first ceiling check, never at source time, so sourcing stays free of side
+# effects and a test can set GAIA_SHARED_CONFIG after sourcing.
+_DT_MAX_TEAMMATES=""
+
+# Ceiling applied when the config says nothing. An ABSENT section is a fact:
+# the operator did not configure a budget, so the documented default applies.
+_DT_DEFAULT_CEILING=12
+
+# Ceiling applied when the config cannot be READ (no JSON reader on PATH, or
+# a malformed/unreadable file). That is an unknown, not a fact — so it falls
+# back to the previously shipped bound rather than the higher default, which
+# cannot over-provision relative to any machine that ran this framework
+# before. Absent -> 12; unreadable -> 8.
+_DT_CEILING_FAILCLOSED=8
+
+# Upper clamp, mirroring the schema's maximum. Only reachable when config
+# validation was skipped; without it a runaway value would stand up an
+# unbounded swarm. Symmetric with the zero-floor below.
+_DT_CEILING_MAX=64
+
+# Exit code returned to a caller whose spawn hit the ceiling and stayed
+# blocked through the whole bounded retry. Distinct from 1 (a real failure)
+# and from the fallback code below, so a saturated ceiling is never mistaken
+# for a failed story: the caller queues the work and retries later.
+_DT_CEILING_EXIT_CODE=8
+
+# Bounded retry: total attempts, and the first backoff delay in seconds.
+# The delay doubles per attempt with sub-second jitter. The delay is
+# overridable so tests need not sleep; the attempt COUNT is not, so a test
+# cannot weaken the bound it asserts.
+_DT_CEILING_RETRY_MAX=5
+_DT_CEILING_RETRY_BASE_DELAY="${_DT_CEILING_RETRY_BASE_DELAY:-1}"
 
 # Exit code returned to a story-keyed caller when the substrate is absent.
 # Story-keyed callers opt into the programmatic fallback contract, so they get
@@ -80,6 +121,127 @@ _dt_ensure_registry() {
     _DT_REGISTRY_DIR="${GAIA_SESSION_DIR:?GAIA_SESSION_DIR must be set}/registry"
   fi
   mkdir -p "$_DT_REGISTRY_DIR"
+}
+
+# _dt_config_file — echo the project-config path, using the same precedence
+# prefix resolve-config.sh uses. Echoes nothing when none is found.
+_dt_config_file() {
+  local c
+  for c in "${GAIA_SHARED_CONFIG:-}" \
+           "${PROJECT_ROOT:-}/.gaia/config/project-config.yaml" \
+           "${CLAUDE_PROJECT_ROOT:-}/.gaia/config/project-config.yaml" \
+           "$PWD/.gaia/config/project-config.yaml"; do
+    case "$c" in ''|/.gaia/config/project-config.yaml) continue ;; esac
+    if [ -f "$c" ]; then printf '%s' "$c"; return 0; fi
+  done
+  return 0
+}
+
+# _dt_config_int <parent> <child> <default> — read one integer from the
+# project config through the SAME yq->JSON normalisation the validator uses,
+# so a section written as a flow mapping, behind an anchor, with a commented
+# parent, a quoted key or a hex scalar resolves to the operator's value
+# instead of silently falling back. A line-oriented parse cannot see those
+# shapes and would over-provision a deliberately throttled machine.
+#
+# Echoes the default when the key is absent; echoes _DT_CEILING_FAILCLOSED
+# when the config exists but cannot be read.
+_dt_config_int() {
+  local parent="$1" child="$2" default="$3"
+  local cfg raw rc _dt_nl
+  _dt_nl="$(printf '\nx')"; _dt_nl="${_dt_nl%x}"
+  cfg="$(_dt_config_file)"
+  if [ -z "$cfg" ]; then printf '%s' "$default"; return 0; fi
+
+  if command -v yq >/dev/null 2>&1; then
+    raw="$(yq -o=json ".${parent}.${child}" "$cfg" 2>/dev/null)"; rc=$?
+  elif command -v python3 >/dev/null 2>&1; then
+    raw="$(python3 -c 'import sys,json,yaml' 2>/dev/null && \
+      python3 - "$cfg" "$parent" "$child" <<'DTPY' 2>/dev/null
+import sys, json, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+v = (d.get(sys.argv[2]) or {})
+v = v.get(sys.argv[3]) if isinstance(v, dict) else None
+print(json.dumps(v))
+DTPY
+    )"; rc=$?
+  else
+    # No JSON reader at all — an unknown, not an absence.
+    printf 'dispatch-teammate: no JSON reader (yq/python3) — using conservative ceiling %s\n' \
+      "$_DT_CEILING_FAILCLOSED" >&2
+    printf '%s' "$_DT_CEILING_FAILCLOSED"
+    return 0
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    # The reader RAN and FAILED: malformed or unreadable config. Empty output
+    # here is indistinguishable from "key absent" if the status is discarded,
+    # which is exactly how a broken config would silently take the default.
+    printf 'dispatch-teammate: cannot read %s — using conservative ceiling %s\n' \
+      "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+    printf '%s' "$_DT_CEILING_FAILCLOSED"
+    return 0
+  fi
+
+  # A successful read reporting nothing is a genuine absence -> default.
+  case "$raw" in '' | null) printf '%s' "$default"; return 0 ;; esac
+
+  # A reader that exits 0 must still emit ONE well-formed JSON scalar line. A
+  # multi-line or structural payload means the reader is not trustworthy (a
+  # stub emitting garbage, a wrong query), and trusting it would silently
+  # resolve to the default while the config says otherwise — an unknown, not an
+  # absence. A well-formed scalar that simply is not an integer (a quoted
+  # numeric, a string) is a different case: the config is readable, the value
+  # is merely unusable, so the documented default applies and the validator is
+  # the layer that tells the operator.
+  case "$raw" in
+    # A bare integer is the only shape we can act on.
+    '' | *[!0-9]* )
+      case "$raw" in
+        # A well-formed JSON scalar that simply is not an integer (a quoted
+        # string, a float, a bool) means the config is READABLE and the value
+        # merely unusable -> documented default; the validator is the layer
+        # that tells the operator it was rejected.
+        \"*\" | true | false | [0-9]*.[0-9]* | -[0-9]* )
+          printf '%s' "$default"
+          return 0
+          ;;
+        # Anything else (multi-line output, a structure, a bare token like
+        # `garbage`) means the reader is not trustworthy. Trusting it would
+        # silently resolve to the default while the config says otherwise.
+        *)
+          printf 'dispatch-teammate: unreadable ceiling value from %s — using conservative ceiling %s\n' \
+            "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+          printf '%s' "$_DT_CEILING_FAILCLOSED"
+          return 0
+          ;;
+      esac
+      ;;
+  esac
+
+  # Clamp both ends: 0 would refuse every spawn, and an unvalidated runaway
+  # value would ignore the schema's maximum.
+  if [ "$raw" -eq 0 ]; then printf '%s' "$default"; return 0; fi
+  if [ "$raw" -gt "$_DT_CEILING_MAX" ]; then
+    printf 'dispatch-teammate: ceiling %s exceeds the maximum %s — clamping\n' \
+      "$raw" "$_DT_CEILING_MAX" >&2
+    printf '%s' "$_DT_CEILING_MAX"
+    return 0
+  fi
+  printf '%s' "$raw"
+}
+
+# _dt_resolve_ceiling — populate _DT_MAX_TEAMMATES once per shell.
+#
+# Memoised, but note the honest bound: the bridges call spawn_teammate inside
+# a command substitution, which is a subshell, so the memo does not outlive
+# one spawn attempt. The guarantee that matters is that a retry loop resolves
+# ONCE and does not re-read the config on every attempt.
+_dt_resolve_ceiling() {
+  [ -n "$_DT_MAX_TEAMMATES" ] && return 0
+  _DT_MAX_TEAMMATES="$(_dt_config_int parallel_execution teammate_dispatch_ceiling "$_DT_DEFAULT_CEILING")"
+  [ -n "$_DT_MAX_TEAMMATES" ] || _DT_MAX_TEAMMATES="$_DT_DEFAULT_CEILING"
+  return 0
 }
 
 # _dt_active_count — print the number of active teammates.
@@ -701,13 +863,29 @@ spawn_teammate() {
   _dt_ensure_registry
 
   # Enforce ceiling.
-  local count
-  count="$(_dt_active_count)"
-  if [ "$count" -ge "$_DT_MAX_TEAMMATES" ]; then
-    printf 'dispatch-teammate: cannot spawn — %d-teammate ceiling reached (active: %d)\n' \
-      "$_DT_MAX_TEAMMATES" "$count" >&2
-    return 1
-  fi
+  _dt_resolve_ceiling
+  local count _dt_try=1 _dt_delay="$_DT_CEILING_RETRY_BASE_DELAY"
+  while :; do
+    count="$(_dt_active_count)"
+    [ "$count" -lt "$_DT_MAX_TEAMMATES" ] && break
+    if [ "$_dt_try" -ge "$_DT_CEILING_RETRY_MAX" ]; then
+      printf 'dispatch-teammate: cannot spawn — %d-teammate ceiling reached (active: %d)\n' \
+        "$_DT_MAX_TEAMMATES" "$count" >&2
+      # A saturated ceiling is a capacity condition, never a story failure:
+      # the caller queues the work and retries once a slot frees. The retry
+      # only helps when a CONCURRENT process frees a registry slot inside the
+      # window — _dt_active_count reads the shared session registry, so a
+      # parallel shutdown_teammate can release one. A single-threaded caller
+      # always exhausts the loop and lands here. The exit code is the
+      # contract, not the waiting.
+      return "$_DT_CEILING_EXIT_CODE"
+    fi
+    if [ "$_dt_delay" != "0" ]; then
+      sleep "${_dt_delay}.$(( RANDOM % 10 ))"
+      _dt_delay=$(( _dt_delay * 2 ))
+    fi
+    _dt_try=$(( _dt_try + 1 ))
+  done
 
   if [ "$story_keyed" -eq 1 ]; then
     _dt_spawn_story_keyed "$persona" "$context" "$story_key"

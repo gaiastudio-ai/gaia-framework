@@ -170,6 +170,15 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # test_policy (1): operator-managed per-trigger scope rules;
   # x-no-auto-hydration. Never auto-hydrated by the reconciler.
   test_policy
+  # parallel_execution (1): operator-managed concurrency budget. Never
+  # auto-hydrated, because an empty stub would mean exactly what the section's
+  # ABSENCE already means (the default budget) while adding a key to every
+  # project config. The effective values are applied at the read site, not
+  # materialised from the schema `default` annotations, so a stub would carry
+  # no behaviour. The schema property also carries `x-no-auto-hydration: true`
+  # as defense-in-depth documentation; this entry registers it for the
+  # reconciler's managed-elsewhere check.
+  parallel_execution
 )
 
 # ---- Logging helpers ------------------------------------------------------
