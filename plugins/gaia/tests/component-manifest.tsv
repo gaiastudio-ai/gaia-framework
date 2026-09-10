@@ -244,6 +244,7 @@ core	no-leaked-ids-in-prose.bats
 core	no-leaked-ids-in-test-names.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
+core	parallel-execution-config.bats
 core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats

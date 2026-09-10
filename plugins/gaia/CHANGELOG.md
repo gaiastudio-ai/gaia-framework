@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [Unreleased]
+
+### Changed
+
+- **Configurable teammate dispatch ceiling.** The Agent Teams ceiling is no longer
+  a hard 8. A new `parallel_execution` section in project config carries
+  `max_parallel_dev_slots` (default 8) and `teammate_dispatch_ceiling`
+  (default 12); omitting the section keeps the default budget. Configuration is
+  validated so the ceiling always leaves headroom above the dev-slot budget for
+  gate agents, and a spawn that reaches the ceiling is retried with bounded
+  backoff and reported as a capacity condition rather than a failure — it exits
+  with status 8 and no handle, which callers should queue and retry once a slot
+  frees rather than treat as a failed unit of work.
+
 ## [1.216.2] — 2026-07-13
 
 ### Changed
