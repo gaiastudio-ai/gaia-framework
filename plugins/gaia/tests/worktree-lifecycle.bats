@@ -229,6 +229,10 @@ EOF
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary")"
   local wt; wt="$(worktree_create "$primary" "K4-S1" "slug")"
+  # Positive precondition: the worktree really existed and was registered, so
+  # the absence assertions below prove a transition rather than a no-op.
+  [ -d "$wt" ]
+  [ "$(_wt_count "$primary" "$wt")" -ge 1 ]
   run worktree_teardown "$primary" "$wt"
   [ "$status" -eq 0 ]
   [ ! -d "$wt" ]
@@ -245,6 +249,7 @@ set -euo pipefail
 PRIMARY_CODE_TREE="$primary"
 STORY_WORKTREE_PATH="\$(worktree_create "\$PRIMARY_CODE_TREE" "K4-S2" "slug")"
 printf '%s\n' "\$STORY_WORKTREE_PATH" > "$TEST_TMP/wt-path"
+[ -d "\$STORY_WORKTREE_PATH" ] || exit 9
 trap 'worktree_teardown_trap "\$PRIMARY_CODE_TREE" "\$STORY_WORKTREE_PATH"' EXIT INT TERM
 exit 1
 CHILD
@@ -266,6 +271,7 @@ set -uo pipefail
 PRIMARY_CODE_TREE="$primary"
 STORY_WORKTREE_PATH="\$(worktree_create "\$PRIMARY_CODE_TREE" "K4-S3" "slug")"
 printf '%s\n' "\$STORY_WORKTREE_PATH" > "$TEST_TMP/wt-path"
+[ -d "\$STORY_WORKTREE_PATH" ] || exit 9
 trap 'worktree_teardown_trap "\$PRIMARY_CODE_TREE" "\$STORY_WORKTREE_PATH"' EXIT INT TERM
 kill -INT \$\$
 sleep 5
@@ -287,6 +293,7 @@ set -uo pipefail
 PRIMARY_CODE_TREE="$primary"
 STORY_WORKTREE_PATH="\$(worktree_create "\$PRIMARY_CODE_TREE" "K4-S4" "slug")"
 printf '%s\n' "\$STORY_WORKTREE_PATH" > "$TEST_TMP/wt-path"
+[ -d "\$STORY_WORKTREE_PATH" ] || exit 9
 trap 'worktree_teardown_trap "\$PRIMARY_CODE_TREE" "\$STORY_WORKTREE_PATH"' EXIT INT TERM
 kill -TERM \$\$
 sleep 5
@@ -431,10 +438,10 @@ CHILD
   [ "$(_wt_count "$primary" "$gone")" -eq 0 ]
 }
 
-@test "a story start prunes an orphan left by a killed prior run (AC-EC5)" {
+@test "worktree_prune_stale reaps an orphan left by a killed prior run (AC-EC5)" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   # Pushed base, so the orphan's branch carries NO unpushed commits: only the
-  # dead-owner and vanished-directory conditions decide the reap.
+  # dead-owner condition decides the reap.
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
 
   # The real crash shape: created AND locked, then the directory disappears
@@ -451,6 +458,109 @@ CHILD
   run worktree_prune_stale "$primary"
   [ "$status" -eq 0 ]
   [ "$(_wt_count "$primary" "$wt")" -eq 0 ]
+}
+
+@test "starting a story prunes a prior run's orphan before creating its worktree (AC7)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+
+  # A killed run's leftover: our lock, a dead owner, directory gone.
+  local orphan; orphan="$(worktree_create "$primary" "KX-S1" "slug")"
+  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  git -C "$primary" worktree unlock "$orphan" 2>/dev/null || true
+  git -C "$primary" worktree lock "$orphan" --reason "gaia story KX-S1 pid $dead_pid"
+  rm -rf "$orphan"
+  [ "$(_wt_count "$primary" "$orphan")" -ge 1 ]
+
+  # Start a DIFFERENT story. Nothing calls the prune helper directly: the create
+  # path must do it, and must do it before its own worktree appears.
+  local fresh; fresh="$(worktree_create "$primary" "KX-S2" "slug")"
+  [ -d "$fresh" ]
+  [ "$(_wt_count "$primary" "$orphan")" -eq 0 ] \
+    || { echo "starting a story did not prune the prior run's orphan"; return 1; }
+}
+
+@test "a killed run whose directory survives is reaped on the next story start (AC-EC5)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+
+  # The real kill shape: the process dies, so no trap runs and the checkout is
+  # left fully intact on disk -- only the owner is gone.
+  local wt; wt="$(worktree_create "$primary" "KY-S1" "slug")"
+  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "gaia story KY-S1 pid $dead_pid"
+  [ -d "$wt" ]
+
+  worktree_prune_stale "$primary"
+  [ "$(_wt_count "$primary" "$wt")" -eq 0 ] \
+    || { echo "a killed run's intact worktree was never reaped"; return 1; }
+}
+
+@test "a killed run holding uncommitted work is kept and announced (AC-EC5)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KY-S2" "slug")"
+  printf 'unsaved\n' > "$wt/untracked.txt"
+  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "gaia story KY-S2 pid $dead_pid"
+
+  run --separate-stderr worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+  # Never destroyed, and never silent about it.
+  [ -d "$wt" ]
+  [ -f "$wt/untracked.txt" ]
+  [ "$(_wt_count "$primary" "$wt")" -ge 1 ]
+  [[ "$stderr" == *"$wt"* ]] \
+    || { echo "a kept dirty worktree was not announced"; return 1; }
+}
+
+@test "prune keeps the lock on a present worktree whose owner is gone but is dirty (AC7)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KY-S3" "slug")"
+  printf 'unsaved\n' > "$wt/untracked.txt"
+  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "gaia story KY-S3 pid $dead_pid"
+
+  worktree_prune_stale "$primary"
+  # The lock is the ownership marker the next run depends on: it must survive.
+  local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A3 -F "$wt" || true)"
+  printf '%s\n' "$rec" | grep -q '^locked' \
+    || { echo "the lock was stripped from a kept worktree"; return 1; }
+}
+
+@test "a live process owned by another user counts as alive (AC7)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  # pid 1 is alive and owned by root, so kill -0 fails with EPERM rather than
+  # ESRCH. Reading only the exit status would call it dead.
+  _sw_pid_alive 1 || { echo "pid 1 (alive, foreign uid) was reported dead"; return 1; }
+
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KZ-S1" "slug")"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "gaia story KZ-S1 pid 1"
+  rm -rf "$wt"
+  worktree_prune_stale "$primary"
+  [ "$(_wt_count "$primary" "$wt")" -ge 1 ] \
+    || { echo "a record owned by a live foreign-uid process was reaped"; return 1; }
+}
+
+@test "the parent is refused when the device probe reports a different filesystem (AC-EC1)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary")"
+  local parent; parent="$(worktree_parent_dir "$primary")"
+  mkdir -p "$parent"
+
+  # Same filesystem in reality, so only the comparison is under test: override
+  # the probe to report two different device ids.
+  _sw_device_of() { case "$1" in *"/primary") printf '111' ;; *) printf '222' ;; esac; }
+  run --separate-stderr worktree_validate_parent "$parent" "$primary"
+  [ "$status" -ne 0 ] \
+    || { echo "a cross-filesystem parent was accepted"; return 1; }
+  [[ "$stderr" == *"different filesystem"* ]]
 }
 
 @test "prune never reaps a worktree whose owning process is still alive (AC7)" {
@@ -504,6 +614,29 @@ CHILD
   [ "$(_wt_count "$primary" "$wt")" -ge 1 ]
 }
 
+@test "a project path containing shell-special characters is handled literally (AC1)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  # A literal `|` in the path. Bookkeeping that fed the path to a text-processing
+  # tool as a pattern used to abort here AFTER the worktree had been created and
+  # locked, so the return code disagreed with what was on disk.
+  local odd="$TEST_TMP/p|ipe"
+  mkdir -p "$odd"
+  local primary; primary="$(_mk_primary_repo "$odd/primary")"
+
+  run worktree_create "$primary" "KS-S1" "slug"
+  [ "$status" -eq 0 ] \
+    || { echo "create failed on a path containing a pipe: $output"; return 1; }
+  local wt="$output"
+  [ -d "$wt" ] \
+    || { echo "create reported success but no worktree exists: $wt"; return 1; }
+  [ "$(git -C "$wt" rev-parse --abbrev-ref HEAD)" = "feat/KS-S1-slug" ]
+
+  # Teardown must handle the same path without complaint.
+  run worktree_teardown "$primary" "$wt"
+  [ "$status" -eq 0 ]
+  [ ! -d "$wt" ]
+}
+
 @test "two concurrent worktree creations both succeed (AC-EC4)" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary")"
@@ -535,11 +668,26 @@ CHILD
 
 @test "worktree creation is refused before any git call when the parent cannot ascend (AC-EC1)" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  if [ "$(id -u)" = "0" ]; then
+    skip "running as root: write permission bits are advisory"
+  fi
   local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary")"
-  # A parent that resolves to itself is the filesystem-root shape.
-  run --separate-stderr worktree_validate_parent "/" "/"
-  [ "$status" -ne 0 ]
-  [ -n "$stderr" ]
+
+  # A WRITABLE self-ascending fixture. Using "/" would let this pass even with
+  # the ascend guard deleted, because the call would then fall through to the
+  # unrelated writability refusal -- the guard under test has to be the only
+  # thing that can refuse here.
+  local selfdir="$TEST_TMP/self-ascend"
+  mkdir -p "$selfdir"
+  [ -w "$selfdir" ]
+
+  run --separate-stderr worktree_validate_parent "$selfdir" "$selfdir"
+  [ "$status" -ne 0 ] \
+    || { echo "a self-ascending parent was accepted"; return 1; }
+  # Assert the SPECIFIC refusal, so another guard's message cannot stand in.
+  [[ "$stderr" == *"cannot ascend"* ]] \
+    || { echo "expected the ascend refusal, got: $stderr"; return 1; }
+
   # Nothing may have been registered as a side effect.
   [ "$(_wt_count "$primary" "^worktree ")" -eq 1 ]
 }
@@ -641,6 +789,22 @@ CHILD
   [ "$output" = "$nongit" ]
 }
 
+@test "a non-git working directory degrades with its own exit code (AC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local nongit="$TEST_TMP/non-git-root"
+  mkdir -p "$nongit"
+  ( cd "$nongit" && ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 ) \
+    || skip "fixture unexpectedly inside a git work tree"
+
+  run --separate-stderr worktree_create "$nongit" "NG-S1" "slug"
+  # 3 is reserved for "nothing to isolate here", so the caller can degrade
+  # instead of halting. A plain 1 would be indistinguishable from a real error.
+  [ "$status" -eq 3 ] \
+    || { echo "expected the non-git degradation code 3, got $status"; return 1; }
+  [[ "$stderr" == *"skipped (non-git CWD)"* ]]
+  [ ! -d "$nongit/.gaia-worktrees" ]
+}
+
 @test "with worktree mode disabled the story path is unchanged (AC6)" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary")"
@@ -740,6 +904,21 @@ CHILD
     || { echo "the branch cleanup lost its free-ref condition"; return 1; }
   grep -qE 'if \[ "\$\(worktree_branch_state "\$repo" "\$branch"\)" = "free" \]; then' "$LIB" \
     || { echo "branch cleanup is no longer guarded by a free-ref check"; return 1; }
+}
+
+@test "usage errors report usage rather than an unbound variable under set -u (AC1)" {
+  [ -f "$LIB" ] || { echo "library not implemented: $LIB"; return 1; }
+  # The header tells callers to run with `set -euo pipefail`, and every workflow
+  # fence does. Assigning positionals into locals before the arity check would
+  # abort on the expansion, so the usage message would never be reached.
+  local fn
+  for fn in worktree_teardown worktree_branch_state worktree_prune_stale; do
+    run bash -c "set -euo pipefail; . '$LIB'; $fn" 2>&1
+    [[ "$output" != *"unbound variable"* ]] \
+      || { echo "$fn died on an unbound positional instead of reporting usage"; return 1; }
+    [[ "$output" == *"usage:"* ]] \
+      || { echo "$fn did not report usage; got: $output"; return 1; }
+  done
 }
 
 @test "the library refuses to be executed instead of sourced (AC1)" {

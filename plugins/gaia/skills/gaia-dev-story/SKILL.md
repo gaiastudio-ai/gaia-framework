@@ -239,7 +239,7 @@ fi
 
 When the gate reports off, nothing else in the workflow changes.
 
-**Non-git project roots degrade, they do not refuse.** Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/non-git-cwd-guard.sh` and call `non_git_cwd_skip`. When it reports a non-git working directory, emit its warning, leave `PROJECT_PATH` untouched, and run the story in place.
+**Non-git project roots degrade, they do not refuse.** `worktree_create` returns **3** — a code reserved for exactly this — when there is no git work tree to isolate. The fence below treats 3 as skip-with-warning: `PROJECT_PATH` is left untouched and the story runs in place. Any other non-zero code is a real failure and halts, so a degradation is never mistaken for an error or the reverse.
 
 **Re-entry after a session break.** Before creating anything, read the recorded path:
 
@@ -256,9 +256,18 @@ if ! worktree_mode_enabled; then
   printf 'worktree mode off — running in place\n' >&2
 else
   PRIMARY_CODE_TREE="${PROJECT_PATH:-.}"
-  PROJECT_PATH="$(worktree_create "$PRIMARY_CODE_TREE" {story_key} {slug})"
-  export PROJECT_PATH
-  STORY_WORKTREE_PATH="$PROJECT_PATH"
+  if _wt_path="$(worktree_create "$PRIMARY_CODE_TREE" {story_key} {slug})"; then
+    PROJECT_PATH="$_wt_path"
+    export PROJECT_PATH
+    STORY_WORKTREE_PATH="$PROJECT_PATH"
+  elif [ "$?" -eq 3 ]; then
+    # No git work tree here: degrade, never abort. PROJECT_PATH is untouched and
+    # the story runs in place.
+    printf 'worktree mode skipped (non-git CWD) — running in place\n' >&2
+  else
+    printf 'worktree creation failed — halting\n' >&2
+    exit 1
+  fi
 fi
 ```
 

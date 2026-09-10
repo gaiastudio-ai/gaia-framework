@@ -192,20 +192,39 @@ _assert_cd_before_guard() {
   # PROJECT_PATH is a REAL repo, so the non-git guard cannot short-circuit and
   # the readability check is genuinely reached. The body file exists ONLY inside
   # PROJECT_PATH, so a relative path resolves iff the cd already happened.
+  # BOTH fixtures must be on a NON-protected branch. pr-create.sh refuses to act
+  # from main/staging, and that refusal fires before the body-file check -- so a
+  # fixture left on the default branch makes this test pass without ever
+  # reaching the code it names.
   local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary")"
+  git -C "$primary" checkout -q -b "feat/K1-S1-slug"
   printf 'body text\n' > "$primary/body.md"
   # CWD is a DIFFERENT real repo, so the guard cannot short-circuit on either
   # ordering and the readability check is genuinely reached in both.
   local elsewhere; elsewhere="$(_mk_primary_repo "$TEST_TMP/elsewhere" main)"
+  git -C "$elsewhere" checkout -q -b "feat/other-slug"
   cd "$elsewhere"
   [ ! -e "$elsewhere/body.md" ]
 
   PROJECT_PATH="$primary" run --separate-stderr \
     "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "a title" --body-file "body.md"
+
+  # Guard against the failure mode this test previously had: if the run aborted
+  # on the protected-branch invariant it never reached the body-file logic, so
+  # the absence assertion below would prove nothing.
+  [[ "$stderr" != *"protected branch"* ]] \
+    || { echo "aborted on the protected-branch invariant before the body-file check"; return 1; }
+
   # Before the reorder the check runs pre-cd against the caller's directory and
   # dies "not readable"; after it, the file resolves under PROJECT_PATH.
   [[ "$stderr" != *"--body-file path is not readable"* ]] \
     || { echo "relative --body-file resolved against the caller CWD, not PROJECT_PATH"; return 1; }
+
+  # Positive outcome: execution proceeded past body-file resolution. With no gh
+  # CLI available in the harness the run stops at the tool check, which is
+  # itself proof the body file resolved.
+  [[ "$stderr" == *"gh"* || "$stderr" == *"Required tool"* || "$status" -ne 0 ]] \
+    || { echo "unexpected outcome after body-file resolution"; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -263,4 +282,16 @@ EOF
     echo "the step still references a gate-bypass token"
     return 1
   fi
+}
+
+@test "the step degrades on the non-git code rather than halting (AC6)" {
+  local region; region="$(_step_3a_region)" || { echo "step region not found"; return 1; }
+  local body; body="$(printf '%s\n' "$region" | awk '/```bash/{f=1;next} /```/{f=0} f')"
+
+  # The create fence must branch on the reserved degradation code, so a project
+  # root with no git work tree runs in place instead of aborting the story.
+  printf '%s\n' "$body" | grep -q -- '-eq 3' \
+    || { echo "the step does not handle the non-git degradation code"; return 1; }
+  printf '%s\n' "$body" | grep -qi 'running in place' \
+    || { echo "the step does not say it runs in place on degradation"; return 1; }
 }
