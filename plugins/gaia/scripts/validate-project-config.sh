@@ -239,7 +239,28 @@ PYPROBE_B
         violations=$((violations + 1))
         continue
         ;;
+      # Bound the DIGIT COUNT before any `[` arithmetic below. A value beyond
+      # the shell's integer range makes the headroom test abort with "integer
+      # expression expected" and evaluate FALSE, so the function falls through
+      # to `return 0` and the degraded path prints PASS — green validation for a
+      # config that bricks dispatch at runtime. The degraded path deliberately
+      # skips the schema's `maximum`, so this range check cannot be delegated
+      # to the schema engine.
+      ???????*)
+        fail "\$.parallel_execution.${key}" \
+          "must be between 1 and 64; got ${vval}"
+        violations=$((violations + 1))
+        continue
+        ;;
     esac
+    # Explicit range check, for the same reason: the degraded path never sees
+    # the schema's minimum/maximum.
+    if [ "$vval" -lt 1 ] || [ "$vval" -gt 64 ]; then
+      fail "\$.parallel_execution.${key}" \
+        "must be between 1 and 64; got ${vval}"
+      violations=$((violations + 1))
+      continue
+    fi
     if [ "$label" = slots ]; then slots="$vval"; else ceiling="$vval"; fi
   done <<PROBE_EOF
 $probe

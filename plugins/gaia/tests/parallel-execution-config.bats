@@ -10,6 +10,28 @@
 # Bypass-shape tests (flow mapping, commented parent, signed int, ...) are
 # deliberately NOT skip-guarded: a skipped bypass test is indistinguishable
 # from the fail-open it exists to catch.
+#
+# On block/flow parametrisation — what it is and is NOT worth:
+#   For the VALIDATOR tests it is defence against a future refactor, not extra
+#   coverage today: yq normalises both spellings to identical JSON before the
+#   validator reads a byte, so the two shapes exercise the same code path and
+#   the loop does not double what is proven. It is kept because the invariant
+#   "shape must not change the verdict" is cheap to pin and would otherwise be
+#   silently lost if the reader ever moved back to the raw YAML.
+#   For the RUNTIME tests it IS load-bearing: _dt_config_int parses the config
+#   itself, and a line-oriented reader sees the two shapes differently — that
+#   difference was a real over-provisioning defect.
+#
+# On the reader-trust guards — defence in depth, not three unique kills:
+#   The validator refuses an untrustworthy reader at three points (commit only
+#   on a recognised verdict, normalise the verdict, then require exactly two
+#   recognised probe lines). Reverting any ONE of them is caught by another, so
+#   no single-guard mutant reaches a PASS and the outermost guard kills no test
+#   on its own. That is deliberate layering, not redundancy to trim: the
+#   complete fail-open IS pinned (revert all three and the 8/11 config returns
+#   PASS (DEGRADED), which a test catches). The outermost guard's own unique
+#   contribution is AVAILABILITY — it keeps a valid config passing when jq is
+#   present but broken — and that is covered by its own test.
 
 bats_require_minimum_version 1.5.0
 
@@ -398,15 +420,14 @@ _resolve_ceiling() {
   command -v jq >/dev/null 2>&1 || skip "jq unavailable"
   command -v python3 >/dev/null 2>&1 || skip "python3 unavailable"
 
-  # Shadow ONLY jq: prepend a dir containing a `jq` stub that always fails, so
-  # `command -v jq` still succeeds but the jq branch errors out and the reader
-  # falls through to python3. Keeping the real PATH intact means the rest of the
-  # validator (bash, yq, sed, mktemp) still works — a stripped PATH would make
-  # the run fail for unrelated reasons and the comparison would be meaningless.
+  # Shadow jq for the parallel_execution queries ONLY, delegating everything
+  # else to the real jq. A blanket-failing stub also breaks the DEGRADED path's
+  # own required-property check, which uses jq too — on a host without the
+  # python jsonschema module (precisely what degraded mode serves) a valid
+  # fixture then fails for an unrelated reason and the two sides diverge. That
+  # would have been green here and red in an environment without jsonschema.
   local shadow="$TEST_TMP/shadow"
-  mkdir -p "$shadow"
-  printf '#!/bin/sh\nexit 127\n' > "$shadow/jq"
-  chmod +x "$shadow/jq"
+  _make_selective_jq_stub "$shadow" garbage
 
   local body cfg rc_jq rc_py
   for body in \
@@ -424,6 +445,23 @@ _resolve_ceiling() {
     cfg="$(_write_config "$body")"
     "$VALIDATOR" "$cfg" >/dev/null 2>&1 && rc_jq=0 || rc_jq=1
     PATH="$shadow:$PATH" "$VALIDATOR" "$cfg" >/dev/null 2>&1 && rc_py=0 || rc_py=1
+    [ "$rc_jq" = "$rc_py" ]
+  done
+
+  # Repeat with the jsonschema module masked: that is the environment the
+  # degraded path exists for, and it is where a blanket jq stub diverged.
+  local fakelib="$TEST_TMP/nojs-agree"
+  mkdir -p "$fakelib"
+  printf 'raise ImportError("masked")\n' > "$fakelib/jsonschema.py"
+  for body in \
+    'parallel_execution:
+  max_parallel_dev_slots: 8
+  teammate_dispatch_ceiling: 12' \
+    'parallel_execution: {max_parallel_dev_slots: 40, teammate_dispatch_ceiling: 5}'
+  do
+    cfg="$(_write_config "$body")"
+    PYTHONPATH="$fakelib" "$VALIDATOR" "$cfg" >/dev/null 2>&1 && rc_jq=0 || rc_jq=1
+    PATH="$shadow:$PATH" PYTHONPATH="$fakelib" "$VALIDATOR" "$cfg" >/dev/null 2>&1 && rc_py=0 || rc_py=1
     [ "$rc_jq" = "$rc_py" ]
   done
 }
@@ -595,6 +633,23 @@ _make_selective_jq_stub() {
   [[ "$all" == *"parallel_execution"* ]]
 }
 
+@test "a VALID budget still validates when jq is broken (AC1)" {
+  # The recognised-verdict guard's unique behaviour is AVAILABILITY, not safety:
+  # its safety role is covered downstream. Without it, a present-but-broken jq
+  # makes the reader commit to jq on non-empty garbage and hard-fail with
+  # "cannot verify", so a perfectly valid 8/12 config is REJECTED. With it, the
+  # chain falls through to python3 and the config passes.
+  command -v jq >/dev/null 2>&1 || skip "jq unavailable"
+  command -v python3 >/dev/null 2>&1 || skip "python3 unavailable"
+  local stub cfg
+  stub="$TEST_TMP/jqavail"
+  _make_selective_jq_stub "$stub" garbage
+  cfg="$(_write_pe_config block 8 12)"
+  PATH="$stub:$PATH" run "$VALIDATOR" "$cfg"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS"* ]]
+}
+
 @test "a jq emitting an extra probe line is not trusted (AC1)" {
   # Guard: exactly two recognised label lines, no unrecognised ones. The stub
   # reports a ceiling of 99 (which would satisfy 8+4) alongside a bogus third
@@ -656,6 +711,204 @@ _make_selective_jq_stub() {
 }
 
 # ---------------------------------------------------------------------------
+# Bridge errexit safety: a saturated ceiling must not kill the skill
+# ---------------------------------------------------------------------------
+
+# _bridge_ceiling_probe <bridge-file> <spawn-fn> <session> — fill the ceiling,
+# then call the bridge under `set -euo pipefail` and report the bridge's own
+# stderr. A bridge whose assignment is unguarded aborts mid-body BEFORE its
+# capacity branch runs, so only the raw library message appears; a guarded one
+# reaches its own branch and names the capacity condition.
+_bridge_ceiling_probe() {
+  local bridge="$1" fn="$2" sess="$3" cfg="$4"
+  GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$sess" _DT_CEILING_RETRY_BASE_DELAY=0 \
+  bash -c '
+    set -euo pipefail
+    export GAIA_MODE_B_SUBSTRATE=unavailable
+    mkdir -p "$GAIA_SESSION_DIR"
+    # shellcheck disable=SC1090
+    . "$1"
+    # shellcheck disable=SC1090
+    . "$2"
+    spawn_teammate "gaia:a1" >/dev/null
+    spawn_teammate "gaia:a2" >/dev/null
+    # Deliberately NOT guarded with an or-assignment: such a guard suspends
+    # errexit for the whole call and would mask an abort inside the bridge,
+    # which is exactly the defect under test. The subshell keeps an abort from
+    # killing this probe; the bridge own stderr is then the discriminator, as
+    # an unguarded bridge dies at its assignment and never reaches its
+    # capacity branch.
+    # UNGUARDED call site, in a child shell under errexit — the real skill
+    # shape. An or-guard here would suspend errexit for the whole compound and
+    # neither form would abort, which is what made an earlier version of this
+    # probe blind. A bridge whose own assignment is unguarded dies AT that
+    # assignment and never reaches its capacity branch, so its message never
+    # appears; a guarded bridge prints it and then returns the code.
+    "$3" "gaia:architect" "sess" >/dev/null 2>"$GAIA_SESSION_DIR/err.txt"
+    printf "unreachable\n"
+  ' _ "$LIB" "$bridge" "$fn" 2>/dev/null
+  printf 'stderr=%s\n' "$(tail -1 "$sess/err.txt" 2>/dev/null)"
+}
+
+@test "a saturated ceiling does not kill the planning bridge under errexit (AC2)" {
+  local cfg out
+  cfg="$(_write_pe_config block 1 2)"
+  out="$(_bridge_ceiling_probe \
+    "$(dirname "$LIB")/planning-mode-b-bridge.sh" planning_spawn_subagent \
+    "$TEST_TMP/pb" "$cfg")"
+  # The bridge reached its own capacity branch rather than aborting at the
+  # assignment — an unguarded bridge dies first and never prints this.
+  [[ "$out" == *"ceiling saturated"* ]]
+}
+
+@test "a saturated ceiling does not kill the research bridge under errexit (AC2)" {
+  local cfg out
+  cfg="$(_write_pe_config block 1 2)"
+  out="$(_bridge_ceiling_probe \
+    "$(dirname "$LIB")/research-mode-b-bridge.sh" research_spawn_subagent \
+    "$TEST_TMP/rb" "$cfg")"
+  [[ "$out" == *"ceiling saturated"* ]]
+}
+
+@test "a saturated ceiling does not kill the conversational bridge under errexit (AC2)" {
+  local cfg out
+  cfg="$(_write_pe_config block 1 2)"
+  out="$(_bridge_ceiling_probe \
+    "$(dirname "$LIB")/conversational-mode-b-bridge.sh" conversational_spawn_participant \
+    "$TEST_TMP/cb" "$cfg")"
+  [[ "$out" == *"ceiling saturated"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Out-of-range ceilings must never reach shell arithmetic (security F-1/F-2)
+# ---------------------------------------------------------------------------
+
+@test "an out-of-range ceiling is rejected on the degraded path (AC1)" {
+  # A value beyond the shell's integer range makes `[` abort and evaluate
+  # false, so the headroom test silently passes and the degraded path prints
+  # PASS for a config that bricks dispatch at runtime.
+  command -v jq >/dev/null 2>&1 || skip "jq unavailable"
+  local cfg fakelib
+  cfg="$(_write_pe_config block 8 99999999999999999999)"
+  fakelib="$TEST_TMP/nojs-range"
+  mkdir -p "$fakelib"
+  printf 'raise ImportError("masked")\n' > "$fakelib/jsonschema.py"
+  PYTHONPATH="$fakelib" run "$VALIDATOR" "$cfg"
+  [ "$status" -eq 1 ]
+}
+
+@test "an out-of-range ceiling is rejected on the full-schema path (AC1)" {
+  _has_full_schema_engine || skip "no full-schema engine"
+  local cfg
+  cfg="$(_write_pe_config block 8 99999999999999999999)"
+  run "$VALIDATOR" "$cfg"
+  [ "$status" -eq 1 ]
+}
+
+@test "a ceiling above the schema maximum is rejected by the validator (AC1)" {
+  local cfg fakelib
+  cfg="$(_write_pe_config block 8 65)"
+  fakelib="$TEST_TMP/nojs-65"
+  mkdir -p "$fakelib"
+  printf 'raise ImportError("masked")\n' > "$fakelib/jsonschema.py"
+  PYTHONPATH="$fakelib" run "$VALIDATOR" "$cfg"
+  [ "$status" -eq 1 ]
+}
+
+@test "an out-of-range ceiling resolves conservatively and leaves dispatch working (AC2)" {
+  # The bug this pins: the oversized value poisoned the enforcement comparison
+  # too, so EVERY spawn was refused against an empty registry.
+  local cfg got
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 99999999999999999999')"
+  got="$(_resolve_ceiling "$cfg")"
+  [ "$got" = "8" ]
+
+  local rc=0
+  GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$TEST_TMP/oor" \
+  bash -c '
+    set -u
+    export GAIA_MODE_B_SUBSTRATE=unavailable
+    mkdir -p "$GAIA_SESSION_DIR"
+    # shellcheck disable=SC1090
+    . "$0"
+    spawn_teammate "gaia:analyst" >/dev/null 2>&1
+  ' "$LIB" || rc=$?
+  [ "$rc" -eq 0 ]
+}
+
+@test "the runtime clamp holds in both directions at the schema maximum (AC2)" {
+  local cfg got
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 65')"
+  got="$(_resolve_ceiling "$cfg")"
+  [ "$got" = "64" ]
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 64')"
+  got="$(_resolve_ceiling "$cfg")"
+  [ "$got" = "64" ]
+}
+
+@test "twelve bridge spawns read the config once, not twelve times (AC2)" {
+  # Each spawn runs inside a command substitution, so an in-shell memo dies with
+  # the subshell and every spawn re-forks the reader. The bridge warms the cache
+  # in the PARENT and exports it, so the read happens once per session.
+  command -v yq >/dev/null 2>&1 || skip "yq unavailable"
+  local cfg bin log real
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 20')"
+  bin="$TEST_TMP/forkcount"
+  log="$TEST_TMP/forks.log"
+  mkdir -p "$bin"
+  : > "$log"
+  real="$(command -v yq)"
+  printf '#!/bin/sh\necho x >> "%s"\nexec %s "$@"\n' "$log" "$real" > "$bin/yq"
+  chmod +x "$bin/yq"
+
+  PATH="$bin:$PATH" GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$TEST_TMP/fc" \
+  bash -c '
+    set -u
+    export GAIA_MODE_B_SUBSTRATE=unavailable
+    mkdir -p "$GAIA_SESSION_DIR"
+    # shellcheck disable=SC1090
+    . "$0"
+    i=1
+    while [ "$i" -le 12 ]; do
+      planning_spawn_subagent "gaia:agent-$i" "s" >/dev/null 2>&1
+      i=$((i + 1))
+    done
+  ' "$(dirname "$LIB")/planning-mode-b-bridge.sh" 2>/dev/null || true
+
+  local forks
+  forks="$( { wc -l < "$log" || true; } | tr -d ' ')"
+  [ "$forks" -eq 1 ]
+}
+
+@test "the config section is registered as operator-managed, not auto-hydrated (AC1)" {
+  # Two registrations, with different jobs:
+  #   - the schema marker DOCUMENTS the intent (and satisfies the hydration
+  #     reverse invariant, which is an OR over three buckets);
+  #   - the managed-elsewhere entry is what the RECONCILER actually consults.
+  # Only the second is load-bearing at runtime; the marker is pinned here so it
+  # cannot be dropped silently, leaving the intent undocumented.
+  command -v jq >/dev/null 2>&1 || skip "jq unavailable"
+  local schema hydration marked
+  schema="$(cd "$BATS_TEST_DIRNAME/../schemas" && pwd)/project-config.schema.json"
+  hydration="$(dirname "$LIB")/config-hydration.sh"
+  [ -f "$schema" ]
+  [ -f "$hydration" ]
+
+  marked="$(jq -r '.properties.parallel_execution["x-no-auto-hydration"] // "absent"' "$schema")"
+  [ "$marked" = "true" ]
+
+  # The section must NOT be auto-hydrated: a stub would mean exactly what the
+  # section absence already means, while adding a key to every project config.
+  run bash -c "source '$hydration' 2>/dev/null; printf '%s\n' \"\${_CONFIG_HYDRATION_MANAGED_ELSEWHERE[@]}\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"parallel_execution"* ]]
+
+  run bash -c "source '$hydration' 2>/dev/null; printf '%s\n' \"\${_CONFIG_HYDRATION_ALLOWLIST[@]}\""
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"parallel_execution"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # Sweep-regression guard (AC3)
 # ---------------------------------------------------------------------------
 
@@ -693,15 +946,26 @@ _make_selective_jq_stub() {
 @test "no published file states a hard eight-teammate ceiling (AC3)" {
   local root hits
   root="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  # Narrowed to the ceiling CONCEPT, not the word "eight": a bare \beight\b
-  # matches ~12 innocent strings and \b8\b matches utf-8 in every HTML page.
-  # The (^|[^%d]) prefix spares the already-parameterised %d message.
-  # `|| true` inside the brace group is load-bearing: grep exits 1 on no-match,
-  # and under the helper's `set -e` the command substitution would abort the
-  # test at THIS line — so a fully-swept tree would fail here instead of
-  # reaching the assertion, making the guard red-forever and unfalsifiable.
-  hits="$( { grep -rnE '(^|[^%d])(8|[Ee]ight)[ -]?teammate|ceiling of (8|eight)|_DT_MAX_TEAMMATES=8' \
-    "$root/documentation" "$root/plugins/gaia/skills" "$root/plugins/gaia/scripts" 2>/dev/null || true; } \
+  # Scope covers every change site the story names, INCLUDING the plugin
+  # CHANGELOG and tests/ — a guard that skipped them would let the literal come
+  # back in exactly the two places the sweep also had to touch.
+  #
+  # Two allowlisted exceptions, both deliberate:
+  #   - the released [1.203.0] CHANGELOG entry, where the hard 8 was factually
+  #     correct at the time; rewriting shipped history would make it lie;
+  #   - this guard's own regex literal, which must contain what it searches for.
+  # `|| true` is load-bearing: grep exits 1 on no-match, and under the helper's
+  # `set -e` the substitution would abort the test at this line, so a fully
+  # swept tree would fail here instead of reaching the assertion.
+  # Every stage needs `|| true`: grep exits 1 both on no-match AND when the
+  # allowlist filters remove every line, and either would abort the test here.
+  hits="$( { { { grep -rnE '(^|[^%d])(8|[Ee]ight)[ -]?teammate|ceiling of (8|eight)|_DT_MAX_TEAMMATES=8' \
+    "$root/documentation" "$root/plugins/gaia/skills" "$root/plugins/gaia/scripts" \
+    "$root/plugins/gaia/CHANGELOG.md" "$root/plugins/gaia/tests" 2>/dev/null || true; } \
+    | { grep -v 'CHANGELOG.md:.*Agent Teams (Mode B) foundation' || true; }; } \
+    | { grep -v 'parallel-execution-config.bats:' || true; }; } \
     | wc -l | tr -d ' ')"
   [ "$hits" -eq 0 ]
 }
+
+

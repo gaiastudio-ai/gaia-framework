@@ -49,6 +49,13 @@ _cmb_ensure_dt() {
     # shellcheck source=/dev/null
     . "$_CMB_DT_LIB"
   fi
+  # Warm the ceiling cache in the PARENT shell. Each spawn runs inside a command
+  # substitution, so a resolve performed there dies with the subshell and the
+  # next spawn re-forks the reader. Resolving once here exports the cache into
+  # every later subshell — one read per session instead of one per spawn.
+  if [ -z "${_DT_MAX_TEAMMATES:-}" ]; then
+    _dt_resolve_ceiling 2>/dev/null || true
+  fi
 }
 
 # ---------- Public API ----------
@@ -70,10 +77,29 @@ conversational_spawn_participant() {
     return 1
   fi
 
+  # Two rules govern this capture, and both are load-bearing:
+  #   - declaration and assignment stay separate, because `local h="$(...)"`
+  #     would make the next $? the status of `local` itself, not the spawn's;
+  #   - `set -e` is lifted across the assignment, because a failing command
+  #     substitution otherwise terminates this function at the assignment and
+  #     the status is never inspected at all. A saturated ceiling returns a
+  #     non-zero code as a NORMAL capacity outcome, so it must be caught here
+  #     rather than killing the skill.
+  # This is a sourced library, so shell options are the CALLER's: the lift must
+  # be restored to whatever the caller had, never switched on unconditionally.
+  local errexit_was_set=0
+  case "$-" in *e*) errexit_was_set=1 ;; esac
+
   local handle
+  set +e
   handle="$(spawn_teammate "$persona" --context "conversational:${session_id}")"
   local rc=$?
+  if [ "$errexit_was_set" -eq 1 ]; then set -e; fi
+
   if [ "$rc" -ne 0 ]; then
+    if [ "$rc" -eq "${_DT_CEILING_EXIT_CODE:-8}" ]; then
+      printf 'conversational-mode-b-bridge: teammate ceiling saturated, queued for retry\n' >&2
+    fi
     return "$rc"
   fi
 

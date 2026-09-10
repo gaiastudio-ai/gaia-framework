@@ -87,6 +87,13 @@ _emb_ensure_dt() {
   if [ "$errexit_was_set" -eq 0 ]; then
     set +e
   fi
+  # Warm the ceiling cache in the PARENT shell. Each spawn runs inside a command
+  # substitution, so a resolve performed there dies with the subshell and the
+  # next spawn re-forks the reader. Resolving once here exports the cache into
+  # every later subshell — one read per session instead of one per spawn.
+  if [ -z "${_DT_MAX_TEAMMATES:-}" ]; then
+    _dt_resolve_ceiling 2>/dev/null || true
+  fi
 }
 
 # ---------- Internal state ----------
