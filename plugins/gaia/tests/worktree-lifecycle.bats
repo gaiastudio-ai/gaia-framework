@@ -544,6 +544,34 @@ CHILD
   [ "$(_wt_count "$primary" "^worktree ")" -eq 1 ]
 }
 
+@test "the device probe yields one numeric token shared by a directory and its child (AC-EC1)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local parent="$TEST_TMP/dev-probe"
+  mkdir -p "$parent/child"
+
+  local a b
+  a="$(_sw_device_of "$parent")"
+  b="$(_sw_device_of "$parent/child")"
+
+  # Exactly one line. The two stat dialects disagree about what -f means: under
+  # GNU it is file-SYSTEM status, so probing that dialect first prints a
+  # multi-line block on the failing branch and the fallback appends the real id
+  # after it. A multi-line or non-numeric value is that bug, whichever platform
+  # this runs on.
+  [ "$(printf '%s\n' "$a" | grep -c .)" -eq 1 ] \
+    || { echo "device probe returned multiple lines: [$a]"; return 1; }
+  case "$a" in
+    ''|*[!0-9]*) echo "device probe returned a non-numeric token: [$a]"; return 1 ;;
+  esac
+
+  # A directory and its child are on the same filesystem, so the ids must match.
+  # Under the wrong flag order they differ (the block carries free-space
+  # counters that change between calls), which is what made every creation
+  # refuse with a spurious cross-filesystem error.
+  [ "$a" = "$b" ] \
+    || { echo "same-filesystem paths reported different devices: [$a] vs [$b]"; return 1; }
+}
+
 @test "worktree creation is refused when the parent is on a different filesystem or unwritable (AC-EC1)" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   if [ "$(id -u)" = "0" ]; then

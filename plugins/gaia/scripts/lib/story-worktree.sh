@@ -65,9 +65,17 @@ _sw_already_torn() {
 }
 
 # _sw_device_of <path> — filesystem device id, or empty when undeterminable.
-# BSD and GNU stat take different flags; try both.
+#
+# Probe GNU coreutils FIRST, then BSD. The order is load-bearing, not stylistic:
+# under GNU stat, `-f` means file-SYSTEM status, so `-f '%d'` treats the format
+# as a path (which fails) AND still prints a multi-line filesystem block for the
+# real operand to stdout. Trying BSD first therefore emits that block on the
+# failing branch and the `||` fallback appends the real device id after it, so
+# the captured value contains free-block counters that differ between calls and
+# no two paths ever compare equal. BSD stat rejects `-c` with an error and an
+# EMPTY stdout, so probing GNU first fails cleanly on both platforms.
 _sw_device_of() {
-  stat -f '%d' "$1" 2>/dev/null || stat -c '%d' "$1" 2>/dev/null || printf ''
+  stat -c '%d' "$1" 2>/dev/null || stat -f '%d' "$1" 2>/dev/null || printf ''
 }
 
 # worktree_mode_enabled — 0 when worktree mode is on, 1 otherwise.
