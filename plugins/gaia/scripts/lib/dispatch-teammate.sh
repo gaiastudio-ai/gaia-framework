@@ -139,58 +139,19 @@ _dt_config_file() {
   return 0
 }
 
-# _dt_config_int <parent> <child> <default> — read one integer from the
-# project config through the SAME yq->JSON normalisation the validator uses,
-# so a section written as a flow mapping, behind an anchor, with a commented
-# parent, a quoted key or a hex scalar resolves to the operator's value
-# instead of silently falling back. A line-oriented parse cannot see those
-# shapes and would over-provision a deliberately throttled machine.
+# _dt_classify_ceiling <raw> <default> <source-label> — turn a raw ceiling value
+# into a usable one, or into a documented fallback.
 #
-# Echoes the default when the key is absent; echoes _DT_CEILING_FAILCLOSED
-# when the config exists but cannot be read.
-_dt_config_int() {
-  local parent="$1" child="$2" default="$3"
-  local cfg raw rc _dt_nl
-  _dt_nl="$(printf '\nx')"; _dt_nl="${_dt_nl%x}"
-  cfg="$(_dt_config_file)"
-  if [ -z "$cfg" ]; then printf '%s' "$default"; return 0; fi
+# This is the SINGLE place the rules live. Both the fresh read and the cached
+# value go through it: the cache short-circuits the reader FORK, never the
+# validation. A cached value that skipped these checks would honour a ceiling
+# the fresh path would have clamped or floored — an over-provisioned dispatcher
+# from an environment variable, which is the wrong direction to fail in.
+#
+# Echoes the resolved ceiling. Never fails.
+_dt_classify_ceiling() {
+  local raw="$1" default="$2" cfg="$3"
 
-  if command -v yq >/dev/null 2>&1; then
-    raw="$(yq -o=json ".${parent}.${child}" "$cfg" 2>/dev/null)"; rc=$?
-  elif command -v python3 >/dev/null 2>&1; then
-    # One fork, not two: the parse script's own ImportError drives the fallback,
-    # so a separate availability probe (whose result was discarded anyway) is
-    # pure waste — it measured ~41% of this path's cost.
-    raw="$(python3 - "$cfg" "$parent" "$child" <<'DTPY' 2>/dev/null
-import sys, json, yaml
-d = yaml.safe_load(open(sys.argv[1])) or {}
-v = (d.get(sys.argv[2]) or {})
-v = v.get(sys.argv[3]) if isinstance(v, dict) else None
-print(json.dumps(v))
-DTPY
-)"; rc=$?
-  else
-    # No JSON reader at all — an unknown, not an absence.
-    printf 'dispatch-teammate: no JSON reader (yq/python3) — using conservative ceiling %s\n' \
-      "$_DT_CEILING_FAILCLOSED" >&2
-    printf '%s' "$_DT_CEILING_FAILCLOSED"
-    return 0
-  fi
-
-  if [ "$rc" -ne 0 ]; then
-    # The reader RAN and FAILED: malformed or unreadable config. Empty output
-    # here is indistinguishable from "key absent" if the status is discarded,
-    # which is exactly how a broken config would silently take the default.
-    printf 'dispatch-teammate: cannot read %s — using conservative ceiling %s\n' \
-      "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
-    printf '%s' "$_DT_CEILING_FAILCLOSED"
-    return 0
-  fi
-
-  # A successful read reporting nothing is a genuine absence -> default.
-  case "$raw" in '' | null) printf '%s' "$default"; return 0 ;; esac
-
-  # ---- Classify the raw value, INDEPENDENTLY of how the reader rendered it --
   #
   # The same out-of-range config is rendered differently by different yq/JSON
   # stacks: 100000000000000000000 on one, 1e+20 or 1.0E+20 on another. A
@@ -260,13 +221,87 @@ DTPY
   printf '%s' "$raw"
 }
 
-# _dt_config_stamp <path> — a path+mtime identity for the config file, used to
-# key the cross-subshell ceiling cache. Falls back to the path alone when stat
-# is unavailable, which simply makes the cache more conservative.
+# _dt_config_int <parent> <child> <default> — read one integer from the
+# project config through the SAME yq->JSON normalisation the validator uses,
+# so a section written as a flow mapping, behind an anchor, with a commented
+# parent, a quoted key or a hex scalar resolves to the operator's value
+# instead of silently falling back. A line-oriented parse cannot see those
+# shapes and would over-provision a deliberately throttled machine.
+#
+# Echoes the default when the key is absent; echoes _DT_CEILING_FAILCLOSED
+# when the config exists but cannot be read.
+_dt_config_int() {
+  local parent="$1" child="$2" default="$3"
+  local cfg raw rc _dt_nl
+  _dt_nl="$(printf '\nx')"; _dt_nl="${_dt_nl%x}"
+  cfg="$(_dt_config_file)"
+  if [ -z "$cfg" ]; then printf '%s' "$default"; return 0; fi
+
+  if command -v yq >/dev/null 2>&1; then
+    raw="$(yq -o=json ".${parent}.${child}" "$cfg" 2>/dev/null)"; rc=$?
+  elif command -v python3 >/dev/null 2>&1; then
+    # One fork, not two: the parse script's own ImportError drives the fallback,
+    # so a separate availability probe (whose result was discarded anyway) is
+    # pure waste — it measured ~41% of this path's cost.
+    raw="$(python3 - "$cfg" "$parent" "$child" <<'DTPY' 2>/dev/null
+import sys, json, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+v = (d.get(sys.argv[2]) or {})
+v = v.get(sys.argv[3]) if isinstance(v, dict) else None
+print(json.dumps(v))
+DTPY
+)"; rc=$?
+  else
+    # No JSON reader at all — an unknown, not an absence.
+    printf 'dispatch-teammate: no JSON reader (yq/python3) — using conservative ceiling %s\n' \
+      "$_DT_CEILING_FAILCLOSED" >&2
+    printf '%s' "$_DT_CEILING_FAILCLOSED"
+    return 0
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    # The reader RAN and FAILED: malformed or unreadable config. Empty output
+    # here is indistinguishable from "key absent" if the status is discarded,
+    # which is exactly how a broken config would silently take the default.
+    printf 'dispatch-teammate: cannot read %s — using conservative ceiling %s\n' \
+      "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+    printf '%s' "$_DT_CEILING_FAILCLOSED"
+    return 0
+  fi
+
+  # A successful read reporting nothing is a genuine absence -> default.
+  case "$raw" in '' | null) printf '%s' "$default"; return 0 ;; esac
+
+  _dt_classify_ceiling "$raw" "$default" "$cfg"
+}
+
+# _dt_config_stamp <path> — a CONTENT identity for the config file, used to key
+# the cross-subshell ceiling cache.
+#
+# Whole-second mtime alone is not enough: a config rewritten within the same
+# second as the cached read carries an identical stamp, so the cache serves the
+# OLD ceiling with no error — the dangerous direction, since nothing surfaces
+# the staleness. The stamp therefore combines three cheap signals:
+#
+#   - sub-second mtime where the platform offers it (GNU `stat -c %.Y` probed
+#     FIRST, then BSD `stat -f %Fm`), which closes the window on its own;
+#   - size, which catches most content edits instantly;
+#   - a `cksum` content hash as the portable tie-breaker, so a same-second
+#     rewrite of identical LENGTH is still detected on a platform whose stat
+#     offers only whole seconds.
+#
+# Any component that is unavailable simply contributes an empty field; the
+# remaining ones still key the cache, and a stamp that cannot be computed at
+# all degrades to a plain per-spawn read rather than a stale value.
 _dt_config_stamp() {
-  local f="$1" m=""
-  m="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || printf '')"
-  printf '%s:%s' "$f" "$m"
+  local f="$1" m="" sz="" ck=""
+  # GNU first (the portability lesson from the worktree story): GNU stat fails
+  # fast on an unknown format, whereas BSD stat would silently misparse it.
+  m="$(stat -c %.Y "$f" 2>/dev/null || stat -f %Fm "$f" 2>/dev/null \
+      || stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || printf '')"
+  sz="$(stat -c %s "$f" 2>/dev/null || stat -f %z "$f" 2>/dev/null || printf '')"
+  ck="$(cksum < "$f" 2>/dev/null | awk '{print $1}' || printf '')"
+  printf '%s:%s:%s:%s' "$f" "$m" "$sz" "$ck"
 }
 
 # _dt_resolve_ceiling — populate _DT_MAX_TEAMMATES once per shell.
@@ -298,10 +333,26 @@ _dt_resolve_ceiling() {
         # Format: <stamp>|<value>
         if [ "${GAIA_RESOLVED_TEAMMATE_CEILING%%|*}" = "$stamp" ]; then
           local cached="${GAIA_RESOLVED_TEAMMATE_CEILING#*|}"
-          case "$cached" in
-            ''|*[!0-9]*|???????*) ;;
-            *) _DT_MAX_TEAMMATES="$cached"; return 0 ;;
-          esac
+          # The env var is writable by anything in the process tree, so a cached
+          # value gets EXACTLY the classification a fresh read gets — clamp,
+          # floor and all. Only the reader fork is skipped.
+          if [ "$cached" != "$GAIA_RESOLVED_TEAMMATE_CEILING" ]; then
+            # The env var is writable by anything in the process tree, so a
+            # cached value gets EXACTLY the classification a fresh read gets —
+            # clamp, floor and all. Only the reader fork is skipped.
+            #
+            # Note the limit of what a stamp can prove: it attests that the
+            # CONFIG is unchanged, not that the cached NUMBER came from it. A
+            # forged-but-plausible value (say 64 against a real ceiling of 2)
+            # survives classification, because classification only bounds a
+            # value, it cannot authenticate one. Trusting the cache is a
+            # deliberate performance trade against a process-local env var; the
+            # bound it cannot exceed is _DT_CEILING_MAX, which is what keeps a
+            # forged value from being unbounded.
+            local _dt_cand
+            _dt_cand="$(_dt_classify_ceiling "$cached" "$_DT_DEFAULT_CEILING" "$cfg" 2>/dev/null)"
+            if [ -n "$_dt_cand" ]; then _DT_MAX_TEAMMATES="$_dt_cand"; return 0; fi
+          fi
         fi
         ;;
     esac
