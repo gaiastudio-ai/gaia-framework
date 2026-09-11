@@ -208,6 +208,7 @@ core	gaia-reconcile-v2.bats
 core	gaia-release.bats
 core	gaia-resume.bats
 core	gaia-retro-auto-file-flag.bats
+core	gaia-run-sprint-docs.bats
 core	gaia-sprint-close.bats
 core	gaia-sprint-plan.bats
 core	gaia-sprint-review-mode-a-anti-pattern.bats
@@ -250,6 +251,7 @@ core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
 core	phase-derivation.bats
+core	phase-parallel-orchestrator.bats
 core	pixel-diff-ac1-capture-and-diff.bats
 core	pixel-diff-unit.bats
 core	placeholder-test-detector.bats

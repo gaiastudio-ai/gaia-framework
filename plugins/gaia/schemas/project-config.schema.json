@@ -883,6 +883,13 @@
           "minimum": 1,
           "maximum": 64,
           "default": 12
+        },
+        "story_timeout_minutes": {
+          "description": "Wall-clock budget for a single story in a phase-parallel run, in minutes. Defaults to 90 when absent. On expiry the story is recorded as a timeout and its slot is freed so the rest of the phase keeps working; its worktree is PRESERVED, never force-removed, because a story that ran out of wall clock is the case most likely to hold uncommitted work. The budget's existence is not optional -- a slot that can block forever deadlocks the sprint.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440,
+          "default": 90
         }
       }
     }

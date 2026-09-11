@@ -1266,3 +1266,108 @@ _cache_probe() {
 }
 
 
+
+# ---------------------------------------------------------------------------
+# story_timeout_minutes — the per-story stall budget
+#
+# A slot that can block forever deadlocks the sprint, so the budget's existence
+# is not optional. Its VALUE is configurable here, in the same section and with
+# the same additionalProperties:false discipline as the budget keys above.
+# ---------------------------------------------------------------------------
+
+@test "story_timeout_minutes is declared in the schema with a default of 90 (AC-EC5)" {
+  local schema="$SCRIPTS_DIR/../schemas/project-config.schema.json"
+  run python3 -c "
+import json,sys
+d=json.load(open('$schema'))
+pe=d['properties']['parallel_execution']
+p=pe.get('properties',{}).get('story_timeout_minutes')
+if p is None:
+    print('MISSING'); sys.exit(0)
+print('%s %s %s %s' % (p.get('type'), p.get('default'), p.get('minimum'), p.get('maximum')))
+"
+  [ "$status" -eq 0 ] || { echo "schema read failed: $output"; return 1; }
+  [ "$output" = "integer 90 1 1440" ] \
+    || { echo "expected 'integer 90 1 1440', got '$output'"; return 1; }
+}
+
+@test "a configured story_timeout_minutes validates in block and flow form (AC-EC5)" {
+  local shape cfg
+  for shape in block flow; do
+    cfg="$(_write_pe_body "$shape" \
+      "max_parallel_dev_slots: 4" \
+      "teammate_dispatch_ceiling: 12" \
+      "story_timeout_minutes: 45")"
+    run bash "$VALIDATOR" "$cfg"
+    [ "$status" -eq 0 ] \
+      || { echo "$shape form rejected a valid timeout: $output"; return 1; }
+  done
+}
+
+@test "an out-of-range story_timeout_minutes is rejected (AC-EC5)" {
+  _has_full_schema_engine || skip "no full schema engine (ajv or python3+jsonschema)"
+  local shape cfg v
+  # Guard against a vacuous pass: with the key absent from the schema, a strict
+  # section rejects EVERY spelling, so an out-of-range refusal proves nothing
+  # unless the in-range value is accepted by the same validator.
+  cfg="$(_write_pe_body block \
+    "max_parallel_dev_slots: 4" "teammate_dispatch_ceiling: 12" \
+    "story_timeout_minutes: 45")"
+  run bash "$VALIDATOR" "$cfg"
+  [ "$status" -eq 0 ] \
+    || { echo "in-range timeout rejected, so range checks prove nothing"; return 1; }
+
+  # Zero would disable the budget entirely, which is the deadlock this key
+  # exists to bound; the upper bound keeps a typo from parking a slot for days.
+  for shape in block flow; do
+    for v in 0 -5 1441; do
+      cfg="$(_write_pe_body "$shape" \
+        "max_parallel_dev_slots: 4" \
+        "teammate_dispatch_ceiling: 12" \
+        "story_timeout_minutes: ${v}")"
+      run bash "$VALIDATOR" "$cfg"
+      [ "$status" -ne 0 ] \
+        || { echo "$shape form accepted out-of-range timeout '$v'"; return 1; }
+    done
+  done
+}
+
+@test "the section still rejects unknown sub-keys after the new key lands (AC-EC5)" {
+  _has_full_schema_engine || skip "no full schema engine (ajv or python3+jsonschema)"
+  # additionalProperties:false must survive the addition: a typo'd key name
+  # would otherwise resolve to the default and silently ignore the operator.
+  local shape cfg
+  # Same vacuity guard: prove the correctly-spelled key is accepted first.
+  cfg="$(_write_pe_body block \
+    "max_parallel_dev_slots: 4" "teammate_dispatch_ceiling: 12" \
+    "story_timeout_minutes: 45")"
+  run bash "$VALIDATOR" "$cfg"
+  [ "$status" -eq 0 ] \
+    || { echo "the correct key is rejected, so the typo check proves nothing"; return 1; }
+
+  for shape in block flow; do
+    cfg="$(_write_pe_body "$shape" \
+      "max_parallel_dev_slots: 4" \
+      "teammate_dispatch_ceiling: 12" \
+      "story_timeout_mins: 45")"
+    run bash "$VALIDATOR" "$cfg"
+    [ "$status" -ne 0 ] \
+      || { echo "$shape form accepted an unknown sub-key"; return 1; }
+  done
+}
+
+@test "the concurrency section stays out of config auto-hydration (AC-EC5)" {
+  # The new sub-key inherits the section's no-auto-hydration marker. Without it
+  # every project config would grow a stub section meaning exactly what its
+  # absence already means.
+  local schema="$SCRIPTS_DIR/../schemas/project-config.schema.json"
+  run python3 -c "
+import json
+d=json.load(open('$schema'))
+print(d['properties']['parallel_execution'].get('x-no-auto-hydration'))
+"
+  [ "$output" = "True" ] \
+    || { echo "the section lost its no-auto-hydration marker"; return 1; }
+  grep -q 'parallel_execution' "$SCRIPTS_DIR/lib/config-hydration.sh" \
+    || { echo "the section is not registered as managed elsewhere"; return 1; }
+}

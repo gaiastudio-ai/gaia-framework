@@ -414,6 +414,10 @@ is the backstop invariant, not an optional re-check.)
 
 - Display the finalized sprint summary: sprint ID, duration, velocity, stories selected, total points, capacity utilization.
 - Suggest next step: `/gaia-dev-story {first_story_key}` to begin the first story.
+- When the committed sprint carries execution phases, `/gaia-run-sprint` runs the
+  whole sprint phase by phase instead, taking the stories of one phase together
+  where the concurrency budget allows and falling back to one story at a time —
+  with the reason stated — when it does not.
 
 ### Step 11 — Persist to Val Sidecar
 

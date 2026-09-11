@@ -173,7 +173,8 @@ PYPROBE_A
   if [ "$reader" = jq ]; then
     probe="$(jq -r '.parallel_execution as $p
       | (["slots",   (if ($p|has("max_parallel_dev_slots"))    then ($p.max_parallel_dev_slots|type)    else "absent" end), ($p.max_parallel_dev_slots|tostring)]    | @tsv),
-        (["ceiling", (if ($p|has("teammate_dispatch_ceiling")) then ($p.teammate_dispatch_ceiling|type) else "absent" end), ($p.teammate_dispatch_ceiling|tostring)] | @tsv)' \
+        (["ceiling", (if ($p|has("teammate_dispatch_ceiling")) then ($p.teammate_dispatch_ceiling|type) else "absent" end), ($p.teammate_dispatch_ceiling|tostring)] | @tsv),
+        (["timeout", (if ($p|has("story_timeout_minutes"))       then ($p.story_timeout_minutes|type)       else "absent" end), ($p.story_timeout_minutes|tostring)]       | @tsv)' \
       "$json_file" 2>/dev/null)" || probe=""
   else
     probe="$(python3 - "$json_file" <<'PYPROBE_B' 2>/dev/null
@@ -189,7 +190,8 @@ def tag(v):
     if isinstance(v, list):  return "array"
     return "object"
 for label, key in (("slots", "max_parallel_dev_slots"),
-                   ("ceiling", "teammate_dispatch_ceiling")):
+                   ("ceiling", "teammate_dispatch_ceiling"),
+                   ("timeout", "story_timeout_minutes")):
     if key not in p:
         print("%s\tabsent\tnull" % label)
     else:
@@ -209,17 +211,22 @@ PYPROBE_B
   fi
 
   local slots=8 ceiling=12 violations=0 seen=0 unknown=0
-  local label vtype vval key tab
+  local label vtype vval key tab vmax
   tab="$(printf '\t')"
   while IFS="$tab" read -r label vtype vval; do
     [ -z "$label" ] && continue
     case "$label" in
       slots)   key="max_parallel_dev_slots" ;;
       ceiling) key="teammate_dispatch_ceiling" ;;
+      timeout) key="story_timeout_minutes" ;;
       # An unrecognised label means the probe emitted something we did not ask
       # for. Skipping it silently would let a reader inject extra lines while
       # the two expected ones still arrive, so count it and refuse below.
       *)       unknown=$((unknown + 1)); continue ;;
+    esac
+    case "$label" in
+      timeout) vmax=1440 ;;
+      *)       vmax=64 ;;
     esac
     case "$vtype" in
       absent|number|string|null|boolean|array|object) ;;
@@ -259,20 +266,24 @@ PYPROBE_B
       # to the schema engine.
       [0-9][0-9][0-9][0-9][0-9][0-9][0-9]*)
         fail "\$.parallel_execution.${key}" \
-          "must be between 1 and 64; got ${vval}"
+          "must be between 1 and ${vmax}; got ${vval}"
         violations=$((violations + 1))
         continue
         ;;
     esac
     # Explicit range check, for the same reason: the degraded path never sees
-    # the schema's minimum/maximum.
-    if [ "$vval" -lt 1 ] || [ "$vval" -gt 64 ]; then
+    # the schema's minimum/maximum. The stall budget is measured in minutes and
+    # carries its own upper bound, so the bound is per key rather than shared.
+    if [ "$vval" -lt 1 ] || [ "$vval" -gt "$vmax" ]; then
       fail "\$.parallel_execution.${key}" \
-        "must be between 1 and 64; got ${vval}"
+        "must be between 1 and ${vmax}; got ${vval}"
       violations=$((violations + 1))
       continue
     fi
-    if [ "$label" = slots ]; then slots="$vval"; else ceiling="$vval"; fi
+    case "$label" in
+      slots)   slots="$vval" ;;
+      ceiling) ceiling="$vval" ;;
+    esac
   done <<PROBE_EOF
 $probe
 PROBE_EOF
@@ -282,7 +293,7 @@ PROBE_EOF
   # Both keys must have been reported with a recognised type tag. Anything less
   # means the probe output was not trustworthy, and defaulting past it would let
   # an under-provisioned budget through.
-  if [ "$seen" -ne 2 ] || [ "$unknown" -ne 0 ]; then
+  if [ "$seen" -ne 3 ] || [ "$unknown" -ne 0 ]; then
     fail "\$.parallel_execution" "cannot read the concurrency budget values"
     return 1
   fi

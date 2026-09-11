@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Running a Sprint - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="gaia-brain.html">GAIA Brain</a></li>
+          <li><a href="mode-b.html">Mode B -- Agent Teams</a></li>
+          <li><a href="gaia-run-sprint.html" class="active">Running a Sprint</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#comparison">Mode A vs Mode B</a></li>
+          <li><a href="#enable">How to enable</a></li>
+          <li><a href="#windowed-teammates">Windowed Teammates UX</a></li>
+          <li><a href="#limitations">Known limitations</a></li>
+          <li><a href="#fallback">Substrate fallback</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <h1>Running a Sprint</h1>
+
+      <p><code>/gaia-run-sprint</code> executes the committed sprint phase by
+      phase. Stories that share a dependency phase carry no ordering constraint
+      between them, so they can run at the same time; a story in a later phase
+      never starts until every story of the current phase has finished.</p>
+
+      <p>Each slot runs one story through the ordinary story workflow, in its
+      own worktree. Nothing about how a single story is developed changes —
+      this command only decides what runs when.</p>
+
+      <h2>Turning concurrency on</h2>
+
+      <p>Concurrency is <strong>opt-in</strong> on three independent switches.
+      All three must be set; if any one is missing the sprint runs one story at
+      a time.</p>
+
+      <table>
+        <thead><tr><th>Switch</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>GAIA_PARALLEL_EXECUTION=1</code></td><td>you are asking for concurrency</td></tr>
+          <tr><td><code>GAIA_WORKTREE_MODE=1</code></td><td>per-story worktree isolation is available</td></tr>
+          <tr><td><code>parallel_execution.max_parallel_dev_slots</code> &gt; 1</td><td>the budget allows it</td></tr>
+        </tbody>
+      </table>
+
+      <p>Worktree isolation is a precondition rather than an option: several
+      developers editing one checkout simultaneously is exactly the
+      cross-contamination the isolation prevents. The command will not switch
+      the mode on for you — it explains that it is off and runs sequentially.</p>
+
+      <p>Two further keys live in the same configuration section:
+      <code>teammate_dispatch_ceiling</code>, the total number of concurrent
+      agents of every class, which must leave headroom above the slot budget for
+      gate agents; and <code>story_timeout_minutes</code>, the per-story
+      wall-clock budget, 90 by default.</p>
+
+      <h2>When it runs sequentially</h2>
+
+      <p>Running sequentially is a normal outcome, never a failure, and it is
+      always explained. One of these reasons is printed and the sprint
+      proceeds:</p>
+
+      <table>
+        <thead><tr><th>Reason</th><th>What happened</th></tr></thead>
+        <tbody>
+          <tr><td><code>parallel-opt-in-off</code></td><td>concurrency was not requested</td></tr>
+          <tr><td><code>flock-unavailable</code></td><td>the locking primitive is missing, or forced off</td></tr>
+          <tr><td><code>worktree-mode-off</code></td><td>per-story isolation is not switched on</td></tr>
+          <tr><td><code>slots-1</code></td><td>the budget allows no concurrency</td></tr>
+          <tr><td><code>sprint-unreadable</code></td><td>the sprint file is missing, malformed or unparseable</td></tr>
+          <tr><td><code>no-phase-fields</code></td><td>the sprint parses but carries no phase assignments</td></tr>
+          <tr><td><code>ceiling-cannot-admit</code></td><td>the agent ceiling is saturated with no headroom</td></tr>
+          <tr><td><code>mode-b-fallback</code></td><td>the persistent-agent substrate is unavailable</td></tr>
+          <tr><td><code>admission-error</code></td><td>an unclassified admission failure</td></tr>
+        </tbody>
+      </table>
+
+      <p>A sprint planned before execution phases existed reports
+      <code>no-phase-fields</code>. Re-plan it, or assign phases to its rows,
+      and concurrency becomes available.</p>
+
+      <p>On a machine without the locking primitive, note one deliberate
+      difference: the sprint-state writer <em>refuses</em> when concurrency is
+      requested without it, because a single state write has nothing to fall
+      back to. This command instead reports the reason and keeps going, because
+      it does have somewhere to fall back to — a sprint that does not run is a
+      worse outcome than one that runs slowly.</p>
+
+      <h2>What happens when things go wrong</h2>
+
+      <ul>
+        <li><strong>A failing story does not stop its siblings.</strong> The
+        rest of the phase keeps running, the failure is recorded for the sprint
+        review, and the barrier waits for every story to finish — successfully
+        or not — before the next phase begins.</li>
+        <li><strong>A saturated agent ceiling is never a story failure.</strong>
+        The story is queued and retried once a slot frees.</li>
+        <li><strong>A stalled story is bounded.</strong> After
+        <code>story_timeout_minutes</code> its slot is freed so the rest of the
+        phase proceeds. The story is reported as timed out and its worktree is
+        <em>preserved</em>, because a story that ran out of wall clock is the
+        one most likely to hold work nobody has committed yet.</li>
+        <li><strong>Re-entry is safe.</strong> A story whose worktree survived
+        an earlier run is attached rather than started a second time, and
+        leftovers from a killed run are cleared before anything new is
+        created.</li>
+        <li><strong>Clean completion leaves nothing behind.</strong> Once a
+        story merges, its worktree is removed along with build output and other
+        ignored files. Memory and checkpoint state is never discarded, and a
+        worktree holding uncommitted work is always kept and reported with a
+        recovery command that works.</li>
+      </ul>
+
+    </main>
+  </div>
+</body>
+</html>

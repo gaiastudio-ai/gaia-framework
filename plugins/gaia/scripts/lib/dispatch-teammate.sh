@@ -367,6 +367,32 @@ _dt_resolve_ceiling() {
   return 0
 }
 
+# _dt_claim_reservation <handle> <story_key> — if the caller reserved a ceiling
+# slot for this story, turn that reservation INTO the teammate entry instead of
+# creating a second one.
+#
+# A caller that must not overshoot the ceiling cannot rely on this library's own
+# count-then-register: that window is inside spawn_teammate, so a concurrent
+# caller can only close it by counting and reserving BEFORE dispatch. A
+# reservation is a real registry file precisely so it counts toward the ceiling
+# while the story is being dispatched. Registering beside it would then make one
+# story occupy two slots for the length of the dispatch, so registration renames
+# the reservation rather than adding to it -- atomically, so the count never dips
+# and another admission cannot slip through the gap.
+#
+# Callers that never reserve are unaffected: with no reservation file present
+# this is a no-op and registration creates the entry exactly as before.
+# Echoes nothing; returns 0 when a reservation was consumed, 1 otherwise.
+_dt_claim_reservation() {
+  local handle="$1" story_key="${2:-}" res
+  [ -n "$story_key" ] || return 1
+  _dt_ensure_registry
+  res="$_DT_REGISTRY_DIR/.reserved-$story_key"
+  [ -f "$res" ] || return 1
+  mv -f "$res" "$_DT_REGISTRY_DIR/$handle" 2>/dev/null || return 1
+  return 0
+}
+
 # _dt_active_count — print the number of active teammates.
 _dt_active_count() {
   _dt_ensure_registry
@@ -1030,7 +1056,9 @@ spawn_teammate() {
     handle="${handle}-${suffix}"
   fi
 
-  # Register.
+  # Register. A reservation for this story, if the caller made one, becomes the
+  # teammate entry rather than a second registry file.
+  _dt_claim_reservation "$handle" "${story_key:-}" || true
   printf 'persona:%s\nstatus:active\nspawned:%s\n' "$persona" "$(_dt_iso8601)" \
     > "$_DT_REGISTRY_DIR/$handle"
 
@@ -1102,6 +1130,7 @@ _dt_spawn_story_keyed() {
   # actually passed, and the identity check above needs it to detect a
   # collision. Existing readers match their own field prefixes and are
   # unaffected by the extra line.
+  _dt_claim_reservation "$handle" "$story_key" || true
   printf 'persona:%s\nstatus:active\nspawned:%s\nstory_key:%s\n' \
     "$persona" "$(_dt_iso8601)" "$story_key" > "$_DT_REGISTRY_DIR/$handle"
 
