@@ -86,9 +86,11 @@ _DT_CEILING_MAX=64
 _DT_CEILING_EXIT_CODE=8
 
 # Bounded retry: total attempts, and the first backoff delay in seconds.
-# The delay doubles per attempt with sub-second jitter. The delay is
-# overridable so tests need not sleep; the attempt COUNT is not, so a test
-# cannot weaken the bound it asserts.
+# The delay doubles per attempt (1, 2, 4, 8 s) and each sleep carries a
+# 0.0-0.9 s jitter suffix. The jitter is strictly ADDITIVE, so the worst-case
+# wait before the queue-me code is 15.0-18.6 s, not 15 s flat.
+# The delay is overridable so tests need not sleep; the attempt COUNT is not,
+# so a test cannot weaken the bound it asserts.
 _DT_CEILING_RETRY_MAX=5
 _DT_CEILING_RETRY_BASE_DELAY="${_DT_CEILING_RETRY_BASE_DELAY:-1}"
 
@@ -156,15 +158,17 @@ _dt_config_int() {
   if command -v yq >/dev/null 2>&1; then
     raw="$(yq -o=json ".${parent}.${child}" "$cfg" 2>/dev/null)"; rc=$?
   elif command -v python3 >/dev/null 2>&1; then
-    raw="$(python3 -c 'import sys,json,yaml' 2>/dev/null && \
-      python3 - "$cfg" "$parent" "$child" <<'DTPY' 2>/dev/null
+    # One fork, not two: the parse script's own ImportError drives the fallback,
+    # so a separate availability probe (whose result was discarded anyway) is
+    # pure waste — it measured ~41% of this path's cost.
+    raw="$(python3 - "$cfg" "$parent" "$child" <<'DTPY' 2>/dev/null
 import sys, json, yaml
 d = yaml.safe_load(open(sys.argv[1])) or {}
 v = (d.get(sys.argv[2]) or {})
 v = v.get(sys.argv[3]) if isinstance(v, dict) else None
 print(json.dumps(v))
 DTPY
-    )"; rc=$?
+)"; rc=$?
   else
     # No JSON reader at all — an unknown, not an absence.
     printf 'dispatch-teammate: no JSON reader (yq/python3) — using conservative ceiling %s\n' \
@@ -186,29 +190,54 @@ DTPY
   # A successful read reporting nothing is a genuine absence -> default.
   case "$raw" in '' | null) printf '%s' "$default"; return 0 ;; esac
 
-  # A reader that exits 0 must still emit ONE well-formed JSON scalar line. A
-  # multi-line or structural payload means the reader is not trustworthy (a
-  # stub emitting garbage, a wrong query), and trusting it would silently
-  # resolve to the default while the config says otherwise — an unknown, not an
-  # absence. A well-formed scalar that simply is not an integer (a quoted
-  # numeric, a string) is a different case: the config is readable, the value
-  # is merely unusable, so the documented default applies and the validator is
-  # the layer that tells the operator.
+  # ---- Classify the raw value, INDEPENDENTLY of how the reader rendered it --
+  #
+  # The same out-of-range config is rendered differently by different yq/JSON
+  # stacks: 100000000000000000000 on one, 1e+20 or 1.0E+20 on another. A
+  # classification keyed to one spelling silently sends the others down the
+  # wrong branch — an out-of-range ceiling then resolved to the default instead
+  # of the conservative bound. Order matters here: OUT-OF-RANGE is decided
+  # first, on the shape of the text, before any `[` arithmetic can abort on it.
+
+  # (1) Scientific / exponent notation in any case. Only a huge or fractional
+  #     magnitude is ever written this way, and neither is a usable ceiling.
   case "$raw" in
-    # A bare integer is the only shape we can act on.
-    '' | *[!0-9]* )
+    *[eE]+[0-9]* | *[eE]-[0-9]* | *[eE][0-9]*)
+      printf 'dispatch-teammate: ceiling value out of range in %s — using conservative ceiling %s\n' \
+        "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+      printf '%s' "$_DT_CEILING_FAILCLOSED"
+      return 0
+      ;;
+  esac
+
+  # (2) A digit string longer than the bound. Checked as TEXT, never with `[`,
+  #     because an over-int64 literal makes the comparison abort and evaluate
+  #     false — which skipped the clamp, stored the oversized value, and then
+  #     poisoned the enforcement comparison too, refusing every spawn against
+  #     an empty registry. 6 digits is far above the schema maximum (64) and
+  #     far below the int64 limit.
+  case "$raw" in
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9]*)
+      printf 'dispatch-teammate: ceiling value out of range in %s — using conservative ceiling %s\n' \
+        "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+      printf '%s' "$_DT_CEILING_FAILCLOSED"
+      return 0
+      ;;
+  esac
+
+  # (3) Not a bare non-negative integer at all. A well-formed JSON scalar that
+  #     is merely unusable (a quoted numeric, a float, a bool) means the config
+  #     is READABLE -> documented default, and the validator is the layer that
+  #     tells the operator it was rejected. Anything else (multi-line output, a
+  #     structure, a bare token like `garbage`) means the reader is not
+  #     trustworthy -> conservative bound.
+  case "$raw" in
+    *[!0-9]*)
       case "$raw" in
-        # A well-formed JSON scalar that simply is not an integer (a quoted
-        # string, a float, a bool) means the config is READABLE and the value
-        # merely unusable -> documented default; the validator is the layer
-        # that tells the operator it was rejected.
-        \"*\" | true | false | [0-9]*.[0-9]* | -[0-9]* )
+        \"*\" | true | false | [0-9]*.[0-9]* | -[0-9]*)
           printf '%s' "$default"
           return 0
           ;;
-        # Anything else (multi-line output, a structure, a bare token like
-        # `garbage`) means the reader is not trustworthy. Trusting it would
-        # silently resolve to the default while the config says otherwise.
         *)
           printf 'dispatch-teammate: unreadable ceiling value from %s — using conservative ceiling %s\n' \
             "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
@@ -231,6 +260,15 @@ DTPY
   printf '%s' "$raw"
 }
 
+# _dt_config_stamp <path> — a path+mtime identity for the config file, used to
+# key the cross-subshell ceiling cache. Falls back to the path alone when stat
+# is unavailable, which simply makes the cache more conservative.
+_dt_config_stamp() {
+  local f="$1" m=""
+  m="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || printf '')"
+  printf '%s:%s' "$f" "$m"
+}
+
 # _dt_resolve_ceiling — populate _DT_MAX_TEAMMATES once per shell.
 #
 # Memoised, but note the honest bound: the bridges call spawn_teammate inside
@@ -239,8 +277,42 @@ DTPY
 # ONCE and does not re-read the config on every attempt.
 _dt_resolve_ceiling() {
   [ -n "$_DT_MAX_TEAMMATES" ] && return 0
+
+  # Cross-subshell cache. The in-shell memo above is dead on the real call path
+  # (the bridges invoke spawn_teammate inside a command substitution, so the
+  # assignment dies with the subshell and every spawn re-forks yq). An exported
+  # value survives into those subshells, so the resolve happens once per session
+  # instead of once per spawn.
+  #
+  # The cache is keyed to the config's PATH and MTIME, so it is honoured only
+  # when it demonstrably describes the file being read now: an edited or
+  # switched config invalidates it rather than serving a stale ceiling. A
+  # malformed cache value is ignored outright and the full read runs.
+  local cfg stamp
+  cfg="$(_dt_config_file)"
+  if [ -n "$cfg" ]; then
+    stamp="$(_dt_config_stamp "$cfg")"
+    case "${GAIA_RESOLVED_TEAMMATE_CEILING:-}" in
+      '') ;;
+      *)
+        # Format: <stamp>|<value>
+        if [ "${GAIA_RESOLVED_TEAMMATE_CEILING%%|*}" = "$stamp" ]; then
+          local cached="${GAIA_RESOLVED_TEAMMATE_CEILING#*|}"
+          case "$cached" in
+            ''|*[!0-9]*|???????*) ;;
+            *) _DT_MAX_TEAMMATES="$cached"; return 0 ;;
+          esac
+        fi
+        ;;
+    esac
+  fi
+
   _DT_MAX_TEAMMATES="$(_dt_config_int parallel_execution teammate_dispatch_ceiling "$_DT_DEFAULT_CEILING")"
   [ -n "$_DT_MAX_TEAMMATES" ] || _DT_MAX_TEAMMATES="$_DT_DEFAULT_CEILING"
+  if [ -n "$cfg" ]; then
+    GAIA_RESOLVED_TEAMMATE_CEILING="${stamp}|${_DT_MAX_TEAMMATES}"
+    export GAIA_RESOLVED_TEAMMATE_CEILING
+  fi
   return 0
 }
 
@@ -876,8 +948,8 @@ spawn_teammate() {
       # only helps when a CONCURRENT process frees a registry slot inside the
       # window — _dt_active_count reads the shared session registry, so a
       # parallel shutdown_teammate can release one. A single-threaded caller
-      # always exhausts the loop and lands here. The exit code is the
-      # contract, not the waiting.
+      # always exhausts the loop and lands here, after 15.0-18.6 s. The exit
+      # code is the contract, not the waiting.
       return "$_DT_CEILING_EXIT_CODE"
     fi
     if [ "$_dt_delay" != "0" ]; then

@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
   (default 12); omitting the section keeps the default budget. Configuration is
   validated so the ceiling always leaves headroom above the dev-slot budget for
   gate agents, and a spawn that reaches the ceiling is retried with bounded
-  backoff and reported as a capacity condition rather than a failure — it exits
+  backoff (four retries over roughly 15-19 seconds) and reported as a capacity
+  condition rather than a failure — it exits
   with status 8 and no handle, which callers should queue and retry once a slot
   frees rather than treat as a failed unit of work.
 

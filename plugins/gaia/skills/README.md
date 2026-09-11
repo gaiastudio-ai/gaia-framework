@@ -133,7 +133,7 @@ A teammate session passes through four sequential phases. Each phase has a descr
 
   Declaration and assignment must stay separate — `local handle="$(...)"` reports the status of `local`, not of the spawn.
 
-- **Ceiling saturated — exit code 8.** When the teammate ceiling is already full, `spawn_teammate` retries with bounded backoff; if every attempt still finds the registry full it returns exit code 8 and writes no handle. Exit 8 is a **capacity condition, not a failure**: it means the work could not start yet, never that it went wrong. Queue the item and retry it once a teammate shuts down and frees a slot — do not mark the work failed, and do not treat it as a refusal. A slot freed by another process during the backoff window is picked up automatically and the call then succeeds normally.
+- **Ceiling saturated — exit code 8.** When the teammate ceiling is already full, `spawn_teammate` retries with bounded backoff (four retries at 1, 2, 4 and 8 seconds plus up to 0.9 s of jitter each, so 15-19 seconds in total); if every attempt still finds the registry full it returns exit code 8 and writes no handle. Exit 8 is a **capacity condition, not a failure**: it means the work could not start yet, never that it went wrong. Queue the item and retry it once a teammate shuts down and frees a slot — do not mark the work failed, and do not treat it as a refusal. A slot freed by another process during the backoff window is picked up automatically and the call then succeeds normally.
 
   Exit 8 is returned as a normal outcome, so it needs the same guarded assignment as exit 7 — an `errexit` caller is otherwise killed at the assignment:
 
