@@ -193,7 +193,9 @@ _frontmatter() {
   local f="$SKILLS_DIR/gaia-git-workflow/SKILL.md"
   local order
   order=$(grep -n '<!-- SECTION:' "$f" | awk -F'SECTION: ' '{print $2}' | awk -F' -->' '{print $1}')
-  [ "$order" = "$(printf 'branching\ncommits\npull-requests\nconflict-resolution')" ]
+  # The four legacy markers keep their original relative order; `worktrees` is
+  # appended as a fifth loadable section, so the legacy selectors are unchanged.
+  [ "$order" = "$(printf 'branching\ncommits\npull-requests\nconflict-resolution\nworktrees')" ]
 }
 
 @test "E28-S112: gaia-api-design section markers appear in legacy order" {
