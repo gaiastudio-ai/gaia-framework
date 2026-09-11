@@ -216,6 +216,7 @@ core	gaia-sprint-wiring-boundary-writes.bats
 core	gaia-sprint-wiring-orchestration.bats
 core	gaia-test-a11y.bats
 core	gaia-test-dast.bats
+core	git-workflow-worktree-docs.bats
 core	ground-truth-lifecycle-wiring.bats
 core	ground-truth-staleness-capstone.bats
 core	infer-parent-epic.bats
