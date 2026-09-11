@@ -780,7 +780,7 @@ _bridge_ceiling_probe() {
 }
 
 # ---------------------------------------------------------------------------
-# Out-of-range ceilings must never reach shell arithmetic (security F-1/F-2)
+# Out-of-range ceilings must never reach shell arithmetic
 # ---------------------------------------------------------------------------
 
 @test "the validator rejects an exponent-rendered ceiling (AC1)" {
@@ -990,6 +990,205 @@ _resolve_with_rendering() {
 }
 
 # ---------------------------------------------------------------------------
+# Cross-subshell ceiling cache (AC2)
+#
+# The cache exists because each spawn runs inside a command substitution, so an
+# in-shell memo dies with the subshell and every spawn re-reads the config. It
+# fails in the DANGEROUS direction if it goes wrong — a wrong ceiling, silently,
+# with no error — so its staleness key is pinned here rather than trusted.
+# ---------------------------------------------------------------------------
+
+# _cache_probe <config> [env-value] — resolve the ceiling in a child shell,
+# optionally seeding GAIA_RESOLVED_TEAMMATE_CEILING first, and echo the result.
+_cache_probe() {
+  local cfg="$1" seed="${2-}"
+  GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$TEST_TMP/cp$RANDOM" \
+  GAIA_RESOLVED_TEAMMATE_CEILING="$seed" \
+  /bin/bash -c '
+    set -u
+    export GAIA_MODE_B_SUBSTRATE=unavailable
+    mkdir -p "$GAIA_SESSION_DIR"
+    # shellcheck disable=SC1090
+    . "$0"
+    _dt_resolve_ceiling 2>/dev/null
+    printf "%s\n" "$_DT_MAX_TEAMMATES"
+  ' "$LIB"
+}
+
+@test "the cached ceiling is honoured while the config is unchanged (AC2)" {
+  local cfg stamp got
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 20')"
+  # Seed the cache with a DIFFERENT value than the file carries, under the
+  # file current stamp: if the cache is consulted at all, 33 comes back.
+  stamp="$(GAIA_SHARED_CONFIG="$cfg" /bin/bash -c '
+    # shellcheck disable=SC1090
+    . "$0"; _dt_config_stamp "$1"' "$LIB" "$cfg")"
+  got="$(_cache_probe "$cfg" "${stamp}|33")"
+  [ "$got" = "33" ] || { printf 'cache not honoured: got [%s]\n' "$got" >&2; return 1; }
+}
+
+@test "a same-second rewrite invalidates the cached ceiling (AC2)" {
+  # The defect this pins: a whole-second mtime stamp is identical for a config
+  # rewritten inside the same second, so the OLD ceiling is served silently.
+  # No sleep here — the rewrite is deliberately immediate.
+  local cfg first second
+  cfg="$TEST_TMP/samesecond.yaml"
+  printf '%s\nparallel_execution:\n  teammate_dispatch_ceiling: 20\n' "$BASE_REQUIRED" > "$cfg"
+
+  first="$(GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$TEST_TMP/ss1" \
+    /bin/bash -c '
+      set -u
+      export GAIA_MODE_B_SUBSTRATE=unavailable
+      mkdir -p "$GAIA_SESSION_DIR"
+      # shellcheck disable=SC1090
+      . "$0"
+      _dt_resolve_ceiling 2>/dev/null
+      printf "%s\n" "$_DT_MAX_TEAMMATES"
+      # Rewrite immediately, then re-resolve in the SAME shell so the exported
+      # cache from the first resolve is live.
+      printf "%s\nparallel_execution:\n  teammate_dispatch_ceiling: 40\n" "$2" > "$1"
+      _DT_MAX_TEAMMATES=""
+      _dt_resolve_ceiling 2>/dev/null
+      printf "%s\n" "$_DT_MAX_TEAMMATES"
+    ' "$LIB" "$cfg" "$BASE_REQUIRED")"
+
+  second="$(printf '%s\n' "$first" | tail -1)"
+  [ "$(printf '%s\n' "$first" | head -1)" = "20" ]
+  [ "$second" = "40" ] || {
+    printf 'stale cache served [%s] after a same-second rewrite, expected 40\n' "$second" >&2
+    return 1
+  }
+}
+
+@test "the stamp reflects the file timestamp, not only its bytes (AC2)" {
+  # Each stamp component earns its place. cksum catches a changed VALUE, but a
+  # config can be replaced with byte-identical content whose timestamp moved —
+  # a restored backup, a re-render, a touch. Dropping the timestamp component
+  # leaves the stamp blind to that, and a cache keyed only on content is a
+  # cache that cannot tell "same file" from "same bytes". Pin the component
+  # directly: two files with identical content but different mtimes must not
+  # share a stamp.
+  local a b stamp_a stamp_b
+  a="$TEST_TMP/stamp-a.yaml"
+  b="$TEST_TMP/stamp-b.yaml"
+  printf '%s\nparallel_execution:\n  teammate_dispatch_ceiling: 20\n' "$BASE_REQUIRED" > "$a"
+  cp "$a" "$b"
+  # Move one file's timestamp without touching a byte.
+  touch -t 202001010000 "$b"
+
+  stamp_a="$(/bin/bash -c '
+    # shellcheck disable=SC1090
+    . "$0"; _dt_config_stamp "$1"' "$LIB" "$a")"
+  stamp_b="$(/bin/bash -c '
+    # shellcheck disable=SC1090
+    . "$0"; _dt_config_stamp "$1"' "$LIB" "$b")"
+
+  # Strip the leading path, which differs by construction, and compare the
+  # identity components only.
+  [ "${stamp_a#*:}" != "${stamp_b#*:}" ] || {
+    printf 'identical-content files with different mtimes share a stamp: [%s] vs [%s]\n' \
+      "${stamp_a#*:}" "${stamp_b#*:}" >&2
+    return 1
+  }
+}
+
+@test "a cache entry for a different config path is not reused (AC2)" {
+  local cfg_a cfg_b stamp_a got
+  cfg_a="$TEST_TMP/a.yaml"
+  cfg_b="$TEST_TMP/b.yaml"
+  printf '%s\nparallel_execution:\n  teammate_dispatch_ceiling: 20\n' "$BASE_REQUIRED" > "$cfg_a"
+  printf '%s\nparallel_execution:\n  teammate_dispatch_ceiling: 30\n' "$BASE_REQUIRED" > "$cfg_b"
+  stamp_a="$(GAIA_SHARED_CONFIG="$cfg_a" /bin/bash -c '
+    # shellcheck disable=SC1090
+    . "$0"; _dt_config_stamp "$1"' "$LIB" "$cfg_a")"
+  # Seed with A stamp+value, but read B: the path is part of the stamp, so the
+  # entry must not be reused.
+  got="$(_cache_probe "$cfg_b" "${stamp_a}|20")"
+  [ "$got" = "30" ] || { printf 'cross-config reuse: got [%s], expected 30\n' "$got" >&2; return 1; }
+}
+
+@test "a forged cache value with a mismatched stamp is ignored (AC2)" {
+  # The env var is attacker- or accident-writable; a value whose stamp does not
+  # describe the file being read must never be trusted.
+  local cfg got
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 20')"
+  got="$(_cache_probe "$cfg" "not-a-real-stamp|64")"
+  [ "$got" = "20" ] || { printf 'forged cache honoured: got [%s]\n' "$got" >&2; return 1; }
+  # A structurally broken entry is ignored too, rather than parsed into a value.
+  got="$(_cache_probe "$cfg" "garbage-with-no-separator")"
+  [ "$got" = "20" ]
+}
+
+@test "without the parent warm step the ceiling still resolves per spawn (AC2)" {
+  # Why the bridges warm the cache in _ensure_dt rather than inside the spawn:
+  # an `export` performed inside a command substitution cannot reach the parent
+  # shell, so a cache warmed there would die with the subshell. Absent the warm
+  # step the library must still be CORRECT — just not fast.
+  local cfg got
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 7')"
+  got="$(GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$TEST_TMP/nowarm" \
+    /bin/bash -c '
+      set -u
+      export GAIA_MODE_B_SUBSTRATE=unavailable
+      mkdir -p "$GAIA_SESSION_DIR"
+      unset GAIA_RESOLVED_TEAMMATE_CEILING
+      # shellcheck disable=SC1090
+      . "$0"
+      # Resolve ONLY inside a command substitution, as an unwarmed spawn would.
+      h="$(_dt_resolve_ceiling >/dev/null 2>&1; printf "%s" "$_DT_MAX_TEAMMATES")"
+      printf "%s\n" "$h"
+    ' "$LIB")"
+  [ "$got" = "7" ]
+}
+
+@test "a forged cache value is clamped and floored exactly like a fresh read (AC2)" {
+  # The env var is writable by anything in the process tree. A cached value that
+  # skipped the clamp would honour a ceiling the fresh path rejects — an
+  # over-provisioned dispatcher from an environment variable. Every forged value
+  # must land where the fresh classifier lands, never be honoured raw.
+  local cfg stamp v cached fresh
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 12')"
+  stamp="$(GAIA_SHARED_CONFIG="$cfg" /bin/bash -c '
+    # shellcheck disable=SC1090
+    . "$0"; _dt_config_stamp "$1"' "$LIB" "$cfg")"
+
+  for v in 999 0 -1 '1e+20' abc; do
+    cached="$(_cache_probe "$cfg" "${stamp}|${v}")"
+    fresh="$(/bin/bash -c '
+      # shellcheck disable=SC1090
+      . "$0"; _dt_classify_ceiling "$1" 12 "x" 2>/dev/null' "$LIB" "$v")"
+    [ "$cached" = "$fresh" ] || {
+      printf 'forged %s: cache gave [%s], fresh path gives [%s]\n' "$v" "$cached" "$fresh" >&2
+      return 1
+    }
+    # And specifically: never the raw forged value when it is out of bounds.
+    case "$v" in
+      999) [ "$cached" = "64" ] || { printf '999 not clamped: [%s]\n' "$cached" >&2; return 1; } ;;
+      0)   [ "$cached" = "12" ] || { printf '0 not floored: [%s]\n' "$cached" >&2; return 1; } ;;
+    esac
+  done
+}
+
+@test "a forged cache value cannot exceed the hard maximum (AC2)" {
+  # What the stamp CAN prove is that the config is unchanged; it cannot
+  # authenticate the cached NUMBER, so a forged-but-plausible value survives.
+  # What the classifier guarantees is that no forged value is UNBOUNDED: a
+  # runaway 999 is clamped to the hard maximum, so the blast radius of a
+  # process-local env var is bounded rather than open-ended.
+  local cfg stamp got
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 2')"
+  stamp="$(GAIA_SHARED_CONFIG="$cfg" /bin/bash -c '
+    # shellcheck disable=SC1090
+    . "$0"; _dt_config_stamp "$1"' "$LIB" "$cfg")"
+  got="$(_cache_probe "$cfg" "${stamp}|999")"
+  [ "$got" = "64" ] || { printf 'forged 999 resolved to [%s], expected the 64 clamp\n' "$got" >&2; return 1; }
+
+  # A forged value beyond any plausible range is refused outright.
+  got="$(_cache_probe "$cfg" "${stamp}|1e+20")"
+  [ "$got" = "8" ]
+}
+
+# ---------------------------------------------------------------------------
 # Sweep-regression guard (AC3)
 # ---------------------------------------------------------------------------
 
@@ -1024,27 +1223,44 @@ _resolve_with_rendering() {
   [ "$got" = "12" ]
 }
 
-@test "no published file states a hard eight-teammate ceiling (AC3)" {
+@test "no published file states a hard eight-teammate ceiling (AC3)" { # sweep-guard-self-reference
   local root hits
   root="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   # Scope covers every change site the story names, INCLUDING the plugin
   # CHANGELOG and tests/ — a guard that skipped them would let the literal come
   # back in exactly the two places the sweep also had to touch.
   #
-  # Two allowlisted exceptions, both deliberate:
+  # Two allowlisted exceptions, both deliberate — and both pinned to the EXACT
+  # lines that earn them, not to a phrase or a whole file:
   #   - the released [1.203.0] CHANGELOG entry, where the hard 8 was factually
-  #     correct at the time; rewriting shipped history would make it lie;
-  #   - this guard's own regex literal, which must contain what it searches for.
+  #     correct at the time; rewriting shipped history would make it lie. Keyed
+  #     by LINE NUMBER, because excluding by its heading phrase would also
+  #     excuse any NEW line that reused that phrase;
+  #   - the line(s) of this file carrying the guard's own regex, which must
+  #     contain what it searches for. Keyed by line number too, because
+  #     excluding the whole file would blind the guard to a hard 8 planted
+  #     anywhere else in it.
+  local released_line guard_lines
+  released_line="$( { grep -n 'under an 8-teammate ceiling, with dispatch provenance' `# sweep-guard-self-reference` \
+    "$root/plugins/gaia/CHANGELOG.md" 2>/dev/null || true; } | cut -d: -f1 | head -1)"
+  [ -n "$released_line" ] || released_line=0
+  # The guard's own machinery legitimately contains the literal it hunts: the
+  # search regex, the CHANGELOG anchor, and this test's name. Each is marked
+  # with a trailing sentinel comment so the exclusion is keyed to lines that
+  # OPT IN, rather than to the whole file.
+  guard_lines="$( { grep -n 'sweep-guard-self-reference' "$BATS_TEST_FILENAME" 2>/dev/null || true; } \
+    | cut -d: -f1 | paste -sd'|' -)"
+  [ -n "$guard_lines" ] || guard_lines=0
   # `|| true` is load-bearing: grep exits 1 on no-match, and under the helper's
   # `set -e` the substitution would abort the test at this line, so a fully
   # swept tree would fail here instead of reaching the assertion.
   # Every stage needs `|| true`: grep exits 1 both on no-match AND when the
   # allowlist filters remove every line, and either would abort the test here.
-  hits="$( { { { grep -rnE '(^|[^%d])(8|[Ee]ight)[ -]?teammate|ceiling of (8|eight)|_DT_MAX_TEAMMATES=8' \
+  hits="$( { { { grep -rnE '(^|[^%d])(8|[Ee]ight)[ -]?teammate|ceiling of (8|eight)|_DT_MAX_TEAMMATES=8' `# sweep-guard-self-reference` \
     "$root/documentation" "$root/plugins/gaia/skills" "$root/plugins/gaia/scripts" \
     "$root/plugins/gaia/CHANGELOG.md" "$root/plugins/gaia/tests" 2>/dev/null || true; } \
-    | { grep -v 'CHANGELOG.md:.*Agent Teams (Mode B) foundation' || true; }; } \
-    | { grep -v 'parallel-execution-config.bats:' || true; }; } \
+    | { grep -v "^${root}/plugins/gaia/CHANGELOG.md:${released_line}:" || true; }; } \
+    | { grep -vE "^${root}/plugins/gaia/tests/parallel-execution-config.bats:(${guard_lines}):" || true; }; } \
     | wc -l | tr -d ' ')"
   [ "$hits" -eq 0 ]
 }
