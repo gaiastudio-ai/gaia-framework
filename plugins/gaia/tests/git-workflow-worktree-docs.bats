@@ -74,6 +74,135 @@ section_slice() {
   ' "$SKILL"
 }
 
+# sentences_of <text> — one sentence per line.
+#
+# Sentence boundary is ". " / ".\n" / "! " / "? ", with markdown list items and
+# table rows treated as their own sentences. Kept deliberately simple: this is a
+# scoping device, not a natural-language parser. Over-splitting is safe (a claim
+# still lands in one of the pieces); under-splitting is what must be avoided,
+# because a too-large window is how an unrelated positive word "satisfies" a
+# claim that the surrounding text actually contradicts.
+sentences_of() {
+  # Markdown prose is hard-wrapped, so a sentence routinely spans several source
+  # lines. Reflow each paragraph onto one line FIRST -- splitting the raw text
+  # would cut sentences at the wrap point and hide half of every claim from the
+  # regex that has to judge it. Blank lines, table rows and fenced lines stay as
+  # their own units.
+  printf '%s\n' "$1" \
+    | awk '
+        /^[[:space:]]*$/ { if (buf != "") { print buf; buf = "" } ; next }
+        /^[[:space:]]*\|/ || /^[[:space:]]*```/ {
+          if (buf != "") { print buf; buf = "" }
+          print
+          next
+        }
+        {
+          line = $0
+          sub(/^[[:space:]]+/, "", line)
+          buf = (buf == "" ? line : buf " " line)
+        }
+        END { if (buf != "") print buf }
+      ' \
+    | sed 's/\([.!?]\)[[:space:]][[:space:]]*/\1\
+/g' \
+    | sed 's/^[[:space:]]*[-*][[:space:]]*//' \
+    | grep -v '^[[:space:]]*$'
+}
+
+# claim_sentence <text> <keyword-ere> — the sentence(s) of <text> that carry the
+# keyword. Empty output means the claim is not made at all.
+claim_sentence() {
+  sentences_of "$1" | grep -iE "$2" || true
+}
+
+# prose_subsection <heading-ere> — the PROSE of one "### ..." subsection of the
+# worktrees section: everything from that heading to the next heading of any
+# level, with table rows and fenced blocks removed.
+#
+# Two things make this necessary. A scenario-table row carrying a keyword keeps
+# a pin green after the entire prose subsection it describes has been deleted;
+# and a single run-on paragraph of keywords satisfies co-occurrence checks that
+# only ever look at one sentence. Requiring each claim to live in its own prose
+# subsection defeats both: the structure has to exist, not just the vocabulary.
+prose_subsection() {
+  section_slice | awk -v want="$1" '
+    /^###[[:space:]]/ {
+      inside = (tolower($0) ~ tolower(want)) ? 1 : 0
+      next
+    }
+    /^##[[:space:]]/ { inside = 0 }
+    inside && /^[[:space:]]*\|/ { next }
+    inside && /^[[:space:]]*```/ { fence = !fence; next }
+    inside && !fence { print }
+  '
+}
+
+# subsection_with_code <heading-ere> — as prose_subsection, but KEEPS fenced
+# blocks. Used by the recovery-command pin, whose subject is the command itself.
+subsection_with_code() {
+  section_slice | awk -v want="$1" '
+    /^###[[:space:]]/ {
+      inside = (tolower($0) ~ tolower(want)) ? 1 : 0
+      next
+    }
+    /^##[[:space:]]/ { inside = 0 }
+    inside && /^[[:space:]]*\|/ { next }
+    inside { print }
+  '
+}
+
+# require_prose_subsection <heading-ere> <label> — the subsection must exist and
+# carry real prose, not just a heading.
+require_prose_subsection() {
+  local text
+  text="$(prose_subsection "$1")"
+  if [ -z "$(printf '%s' "$text" | tr -d '[:space:]')" ]; then
+    printf 'missing prose subsection (%s): no "### ... %s ..." body\n' "$2" "$1" >&2
+    return 1
+  fi
+  printf '%s' "$text"
+}
+
+# assert_claim <text> <keyword-ere> <required-ere> <forbidden-ere> <label>
+#
+# THE core check of this file. A documentation pin must prove the section makes
+# the RIGHT claim, not merely that the right words appear somewhere in it.
+#
+# Two independent existence checks ("keyword somewhere in the section" AND
+# "literal somewhere in the library") are satisfied by prose asserting the exact
+# opposite of the library, and by a paragraph of keywords containing no true
+# statement at all. So the claim is located first -- the sentence carrying the
+# keyword -- and then judged in place:
+#
+#   1. the claim must be made      (a sentence carries the keyword)
+#   2. it must say the right thing (that sentence matches <required-ere>)
+#   3. it must not say the opposite (that sentence does not match <forbidden-ere>)
+#
+# Pass an empty <forbidden-ere> to skip step 3.
+assert_claim() {
+  local text="$1" keyword="$2" required="$3" forbidden="$4" label="$5"
+  local found
+
+  found="$(claim_sentence "$text" "$keyword")"
+  if [ -z "$found" ]; then
+    printf 'claim not made (%s): no sentence matches %s\n' "$label" "$keyword" >&2
+    return 1
+  fi
+
+  if ! printf '%s' "$found" | grep -qiE "$required"; then
+    printf 'claim present but wrong (%s).\n' "$label" >&2
+    printf '  expected the sentence to match: %s\n' "$required" >&2
+    printf '  actual sentence(s):\n%s\n' "$found" >&2
+    return 1
+  fi
+
+  if [ -n "$forbidden" ] && printf '%s' "$found" | grep -qiE "$forbidden"; then
+    printf 'claim contradicted (%s): sentence matches the negation %s\n' "$label" "$forbidden" >&2
+    printf '  actual sentence(s):\n%s\n' "$found" >&2
+    return 1
+  fi
+}
+
 # refute_wording <text> <basic-regex> — fail, loudly, when <text> contains the
 # forbidden wording.
 #
@@ -199,27 +328,71 @@ leak_regex() {
 
 @test "the worktrees section documents creation (AC1)" {
   local body
-  body="$(section_slice)"
-  printf '%s' "$body" | grep -qF '.gaia-worktrees'
-  printf '%s' "$body" | grep -qi 'sibling'
+  body="$(require_prose_subsection "creating" "creation")"
+  # The parent is a SIBLING of the git top level, not a child of it. Prose
+  # putting it inside the repository would be wrong about where to look, and a
+  # bare "sibling" keyword elsewhere in the section would hide that.
+  assert_claim "$body" '\.gaia-worktrees' \
+    'sibling|beside|alongside|next to' \
+    'inside the (repository|repo|code tree)|within the repository|subdirectory of the repo' \
+    'the worktree parent is a sibling of the repository'
+
+  # A new worktree starts from HEAD; the primary tree's work stays put.
+  # The negation is directional: "reported rather than moved" is the CORRECT
+  # statement, so the forbidden pattern must match only prose that actually
+  # claims the work IS moved.
+  assert_claim "$body" 'HEAD' \
+    'starts from|stays|remains' \
+    '(is|are|will be|gets?) (moved|relocated|transferred)|moves? (it|them|the work)' \
+    'a new worktree starts from HEAD'
 }
 
 @test "the worktrees section documents branch resolution (AC1)" {
   local body
-  body="$(section_slice)"
-  printf '%s' "$body" | grep -qF 'feat/'
-  printf '%s' "$body" | grep -qi 'branch'
+  body="$(require_prose_subsection "branch resolution" "branch resolution")"
+  assert_claim "$body" 'feat/' \
+    'feat/\{story_key\}|story branch|branch is' \
+    '' \
+    'the story branch carries the feat/ prefix'
+
+  # The slug is trimmed; the story key never is.
+  assert_claim "$body" 'trimmed' \
+    'story key is never (trimmed|truncated)|slug is trimmed|over-long slug' \
+    'story key is (trimmed|truncated)' \
+    'the slug is trimmed, never the story key'
 }
 
 @test "the worktrees section documents the PROJECT_PATH working-directory contract (AC1)" {
-  section_slice | grep -qF 'PROJECT_PATH'
+  local body
+  body="$(require_prose_subsection "working-directory contract" "PROJECT_PATH contract")"
+
+  assert_claim "$body" 'PROJECT_PATH' \
+    'resolve|points at|restored' \
+    '' \
+    'scripts resolve their working directory from PROJECT_PATH'
+
+  # Restoration is conditional on the removal having succeeded. Stating it
+  # unconditionally would misdescribe the one case that matters.
+  assert_claim "$body" 'restored' \
+    'only.*(succeed|success)|if.*(succeed|success)|iff' \
+    'always restored|restored regardless|unconditionally restored' \
+    'PROJECT_PATH is restored only when removal succeeded'
 }
 
 @test "the worktrees section documents the teardown and prune lifecycle (AC1)" {
   local body
-  body="$(section_slice)"
-  printf '%s' "$body" | grep -qi 'teardown'
-  printf '%s' "$body" | grep -qi 'prune'
+  body="$(require_prose_subsection "teardown and prune" "teardown and prune")"
+  assert_claim "$body" 'teardown' \
+    'removes|remove|idempotent|never forces' \
+    '' \
+    'teardown removes the worktree'
+
+  # Pruning is conservative -- it must be described as vetoed by a live owner /
+  # foreign lock / unpushed work, not as an unconditional sweep.
+  assert_claim "$body" 'prune' \
+    'conservative|only when|left alone|clears a record' \
+    'always clears|clears every|regardless' \
+    'prune is conservative'
 }
 
 @test "the worktrees section carries its own scenario table (AC1)" {
@@ -238,26 +411,63 @@ leak_regex() {
   # The gate compares against the literal 1: GAIA_WORKTREE_MODE=true leaves
   # worktree mode OFF. Prose that says "set it to true" is actively wrong, so
   # the documented form must carry the value, not just the variable name.
-  section_slice | grep -qF 'GAIA_WORKTREE_MODE=1'
-  # Couple the two halves: assert the variable and the literal 1 are compared
-  # on ONE line of the library. Two independent greps would still pass if the
-  # gate were changed to compare that variable against something else.
+  local body
+  body="$(section_slice)"
+
+  # The sentence naming the variable must require the literal 1 AND must not
+  # tell the reader that any other value works. Checking only that the string
+  # "GAIA_WORKTREE_MODE=1" appears somewhere lets a following sentence say
+  # "any truthy value enables it" with the pin still green.
+  assert_claim "$body" 'GAIA_WORKTREE_MODE' \
+    'GAIA_WORKTREE_MODE=1|= *"?1"?|literal|exactly' \
+    'truthy|any value|also turns the mode (on|off)|=true.*(enable|turns? .*on)' \
+    'opt-in variable requires the literal 1'
+
+  # The prose must not claim =true enables the mode. If it mentions =true at
+  # all, that sentence has to say it leaves the mode OFF.
+  local true_sentence
+  true_sentence="$(claim_sentence "$body" 'GAIA_WORKTREE_MODE=true')"
+  if [ -n "$true_sentence" ]; then
+    if ! printf '%s' "$true_sentence" | grep -qiE '\boff\b|does not enable|not enabled|leaves? the mode off'; then
+      printf 'the =true sentence does not say the mode stays off:\n%s\n' "$true_sentence" >&2
+      return 1
+    fi
+  fi
+
+  # Oracle half: the variable and the literal 1 are compared on ONE line of the
+  # library, so the doc claim is checked against the real gate.
   grep -qE '\$\{GAIA_WORKTREE_MODE:-\}"?[[:space:]]*=[[:space:]]*"1"' "$LIB"
 }
 
 @test "the section states worktree mode is off by default (AC1)" {
   local body
   body="$(section_slice)"
-  printf '%s' "$body" | grep -qi 'opt-in\|opt in'
-  printf '%s' "$body" | grep -qi 'off by default\|default.*off\|disabled by default'
+
+  # The default-state claim must say OFF, in the sentence that makes it. Prose
+  # saying "on by default" contains the word "default" and would satisfy a bare
+  # keyword check.
+  assert_claim "$body" 'default' \
+    'off by default|default.*\boff\b|disabled by default|opt-in' \
+    'on by default|enabled by default|default.*\bon\b' \
+    'worktree mode is off by default'
+
+  assert_claim "$body" 'opt-in|opt in' \
+    'opt-in|opt in' \
+    'opt-out|always active|cannot be disabled' \
+    'worktree mode is opt-in'
 }
 
 @test "the section documents non-git degradation as skip-not-failure (AC1)" {
   local body
-  body="$(section_slice)"
-  printf '%s' "$body" | grep -qi 'in place'
-  # Stated as a degradation, never as an error condition.
-  printf '%s' "$body" | grep -qi 'not a failure\|rather than a failure\|degrad\|skip'
+  body="$(require_prose_subsection "no git work tree" "non-git degradation")"
+
+  # The sentence about running in place must present it as a degradation, and
+  # must not simultaneously call it an error or a halt.
+  assert_claim "$body" 'in place' \
+    'degrad|not a failure|rather than a failure|skip|continues' \
+    'treated as an error|is an error|halts the run|aborts' \
+    'non-git roots degrade rather than fail'
+
   # And the library really does treat it that way.
   grep -qF 'running in place' "$LIB"
 }
@@ -267,9 +477,23 @@ leak_regex() {
   # a gitignored file left by tooling keeps the worktree on a NORMAL successful
   # run. The prose has to say so, and name ignored files specifically.
   local body
-  body="$(section_slice)"
-  printf '%s' "$body" | grep -qi 'kept\|preserved\|left in place'
-  printf '%s' "$body" | grep -qi 'ignored'
+  body="$(require_prose_subsection "teardown and prune" "teardown and prune")"
+
+  # Locate the sentence that names ignored files and judge THAT sentence. A
+  # bare "kept" anywhere in the section is satisfied even when the sentence
+  # about ignored files says such a worktree is deleted anyway.
+  assert_claim "$body" 'ignored' \
+    'kept|preserved|left in place|not removed|survives' \
+    'deleted anyway|nothing is kept|removed anyway|is deleted|are deleted' \
+    'a worktree holding ignored files is kept'
+
+  # The same claim from the other direction: wherever the section says a
+  # worktree is kept, that sentence must not also say it is deleted.
+  assert_claim "$body" 'kept|preserved' \
+    'kept|preserved' \
+    'nothing is kept|deleted anyway|removed anyway' \
+    'the kept-worktree claim is not contradicted'
+
   # The library's own refusal considers ignored state.
   grep -qF -- '--ignored' "$LIB"
 }
@@ -279,7 +503,7 @@ leak_regex() {
   # with "cannot remove a locked working tree". The published recovery must
   # unlock first or it does not work.
   local body
-  body="$(section_slice)"
+  body="$(subsection_with_code "teardown and prune")"; [ -n "$body" ]
   printf '%s' "$body" | grep -qF 'worktree unlock'
   printf '%s' "$body" | grep -qE 'worktree unlock.*&&.*worktree remove'
 }
@@ -301,7 +525,13 @@ leak_regex() {
   # Scoped to claims about ORPHANS/removal specifically. A bare "never leaves"
   # would also match legitimate prose about what the working-directory variable
   # never leaves behind, so the object of the claim is part of the pattern.
-  refute_wording "$body" 'always removed\|always remove'
+  # The absolute claim can ride ANY cleanup verb, not just "remove": "always
+  # deleted", "always pruned", "always cleaned up" are the same false promise.
+  # Adverb on either side, verb in every common form.
+  refute_wording_ere "$body" \
+    '(always|invariably|in all cases) [a-z]* ?(delete|deletes|deleted|remove|removes|removed|prune|prunes|pruned|reap|reaps|reaped|clean|cleans|cleaned|purge|purges|purged|discard|discards|discarded|wipe|wipes|wiped)'
+  refute_wording_ere "$body" \
+    '(delete|deletes|deleted|remove|removes|removed|prune|prunes|pruned|reap|reaps|reaped|clean|cleans|cleaned|purge|purges|purged|discard|discards|discarded|wipe|wipes|wiped) (it |them |the worktree )?(always|invariably|in all cases)'
   refute_wording_ere "$body" 'guarantees no orphan|never leaves (a|an|any) (orphan|worktree)|no orphans'
   # "unconditionally" can lead or trail the verb ("unconditionally removed" /
   # "removed unconditionally"), so match the adverb next to any of the verbs in
@@ -369,6 +599,41 @@ leak_regex() {
   grep -qF 'href="../styles.css"' "$DOC_SKILL_PAGE"
 }
 
+@test "the doc-site page carries the same worktree claims as the skill (AC3)" {
+  # A "sync" guard that only looks for the word `worktree` is satisfied by an
+  # HTML page reduced to that one word, or by one that contradicts the skill
+  # (publishing the known-wrong advice that any truthy value enables the mode).
+  # The shared clause list below is applied to BOTH surfaces, so the two either
+  # agree or the test fails.
+  local page_text skill_text
+  page_text="$(tr '\n' ' ' < "$DOC_SKILL_PAGE")"
+  skill_text="$(section_slice)"
+
+  # Clause 1 — opt-in / off by default, on both surfaces.
+  assert_claim "$page_text" 'worktree mode' \
+    'opt-in|opt in|off by default|disabled by default' \
+    'on by default|enabled by default|any truthy|=true.*(enable|on)' \
+    'doc-site: worktree mode is opt-in and off by default'
+  assert_claim "$skill_text" 'opt-in|opt in|default' \
+    'opt-in|opt in|off by default|disabled by default' \
+    'on by default|enabled by default' \
+    'skill: worktree mode is opt-in and off by default'
+
+  # Clause 2 — a worktree holding uncommitted/ignored files is kept, not deleted.
+  assert_claim "$page_text" 'ignored|uncommitted' \
+    'kept|preserved|not deleted|left in place' \
+    'deleted anyway|nothing is kept|removed anyway' \
+    'doc-site: a worktree holding ignored files is kept'
+  assert_claim "$skill_text" 'ignored' \
+    'kept|preserved|left in place|not removed|survives' \
+    'deleted anyway|nothing is kept|removed anyway' \
+    'skill: a worktree holding ignored files is kept'
+
+  # Clause 3 — the story-branch prefix agrees across surfaces.
+  printf '%s' "$page_text" | grep -qF 'feat/'
+  printf '%s' "$skill_text" | grep -qF 'feat/'
+}
+
 @test "the glossary promotion-chain definition mentions worktree mode (AC3)" {
   [ -f "$DOC_GLOSSARY" ]
   # Scoped to the promotion-chain definition itself: a worktree mention
@@ -413,9 +678,14 @@ leak_regex() {
   # which is precisely the leak this test exists to catch. Allowlisting the two
   # known lines verbatim means ANY new occurrence, in any of these files and in
   # any phrasing, is a failure.
+  # Matched on NORMALISED content -- trimmed, inner whitespace collapsed -- so a
+  # reindent or a rewrap of the surrounding paragraph does not turn a known
+  # pedagogical line into a spurious failure. Still content-exact: any change to
+  # the words themselves (including "like" -> "such as") drops out of the
+  # allowlist and must be re-reviewed rather than silently exempted.
   local allow1 allow2
-  allow1='          artifacts by identifiers like <code>FR-001</code>.'
-  allow2='          by keys like <code>E3-S7</code> (Epic 3, Story 7).'
+  allow1='artifacts by identifiers like <code>FR-001</code>.'
+  allow2='by keys like <code>E3-S7</code> (Epic 3, Story 7).'
 
   local page line content hits
   for page in "$DOC_SKILL_PAGE" "$DOC_GLOSSARY" "$DOC_LIFECYCLE"; do
@@ -425,8 +695,10 @@ leak_regex() {
       [ -n "$line" ] || continue
       content="${line#*:}"
       if [ "$page" = "$DOC_GLOSSARY" ]; then
-        [ "$content" = "$allow1" ] && continue
-        [ "$content" = "$allow2" ] && continue
+        local norm
+        norm="$(printf '%s' "$content" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/[[:space:]][[:space:]]*/ /g')"
+        [ "$norm" = "$allow1" ] && continue
+        [ "$norm" = "$allow2" ] && continue
       fi
       hits="$hits$line
 "
@@ -476,9 +748,19 @@ EOF
   # "sweep"/"sweeps", "vacuum"/"vacuums". Putting it only on the noun let every
   # third-person form through.
   refute_wording_ere "$body" \
-    '\b(demolish|demolishes|destroy|destroys|dispose of|disposes of|reap|reaps) (the )?worktrees?\b'
+    '\b(demolish|demolishes|destroy|destroys|dispose of|disposes of|reap|reaps) (the |a |an |any |stale )*worktrees?\b'
   refute_wording_ere "$body" \
-    '\b(garbage[- ]collects?|sweeps?|vacuums?) (the )?(stale )?worktrees?\b'
+    '\b(garbage[- ]collects?|sweeps?|vacuums?) (the |a |an |any |stale )*worktrees?\b'
+
+  # Passive voice carries the same synonym past a verb-before-noun pattern:
+  # "stale worktrees are garbage-collected", "is swept away", "are reaped by".
+  refute_wording_ere "$body" \
+    'worktrees?( [a-z]+)? (is|are|was|were|gets?|get) (being )?(demolished|destroyed|disposed of|reaped|garbage[- ]collected|swept|vacuumed|purged)'
+
+  # …and with a pronoun subject ("They are reaped by the next run"), where the
+  # noun is not adjacent to the verb at all.
+  refute_wording_ere "$body" \
+    '\b(it|they|these|those|each|both) (is|are|was|were|gets?|get) (being )?(demolished|destroyed|disposed of|reaped|garbage[- ]collected|swept|vacuumed|purged)'
 }
 
 @test "the rendered branch example sits only on a gate-carved-out line (AC2)" {
