@@ -229,6 +229,10 @@
           <a href="commands/gaia-deploy.html"><code>/gaia-deploy</code></a>
           (to determine deployment order), and CI gates (to enforce that
           changes pass checks at each stage before advancing).
+          The chain itself is unaffected by worktree mode: a story branch is
+          prefixed <code>feat/</code> and, when worktree mode is enabled, lives
+          in that story's own linked worktree, but it enters the promotion
+          chain at the same point either way.
         </dd>
 
         <dt id="red-green-refactor">Red / Green / Refactor (TDD)</dt>
