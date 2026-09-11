@@ -233,6 +233,17 @@ PYPROBE_B
       continue
     fi
     case "$vval" in
+      # Scientific / exponent notation FIRST, and independently of the reader's
+      # spelling: the same out-of-range value is rendered as a digit string by
+      # one JSON stack and as 1e+20 / 1.0E+20 by another, so a digit-only test
+      # classifies it differently per platform. Only a huge or fractional
+      # magnitude is ever written this way, and neither is a usable budget.
+      *[eE]+[0-9]*|*[eE]-[0-9]*|*[eE][0-9]*)
+        fail "\$.parallel_execution.${key}" \
+          "must be between 1 and 64; got ${vval}"
+        violations=$((violations + 1))
+        continue
+        ;;
       ''|*[!0-9]*)
         fail "\$.parallel_execution.${key}" \
           "must be a non-negative integer; got ${vval}"
@@ -246,7 +257,7 @@ PYPROBE_B
       # config that bricks dispatch at runtime. The degraded path deliberately
       # skips the schema's `maximum`, so this range check cannot be delegated
       # to the schema engine.
-      ???????*)
+      [0-9][0-9][0-9][0-9][0-9][0-9][0-9]*)
         fail "\$.parallel_execution.${key}" \
           "must be between 1 and 64; got ${vval}"
         violations=$((violations + 1))

@@ -783,6 +783,31 @@ _bridge_ceiling_probe() {
 # Out-of-range ceilings must never reach shell arithmetic (security F-1/F-2)
 # ---------------------------------------------------------------------------
 
+@test "the validator rejects an exponent-rendered ceiling (AC1)" {
+  # A JSON stack that renders the value as 1e+20 rather than a digit string
+  # must not slip past a digit-only check. Feed the exponent form through the
+  # probe directly, so the assertion does not depend on the host reader.
+  command -v jq >/dev/null 2>&1 || skip "jq unavailable"
+  local stub cfg real
+  stub="$TEST_TMP/jqexp"
+  mkdir -p "$stub"
+  real="$(command -v jq)"
+  {
+    printf '#!/bin/sh\n'
+    printf 'for a in "$@"; do\n'
+    printf '  case "$a" in\n'
+    printf '    *has\\(*) printf %s; exit 0 ;;\n' "'slots\tnumber\t8\nceiling\tnumber\t1e+20\n'"
+    printf '  esac\n'
+    printf 'done\n'
+    printf 'exec %s "$@"\n' "$real"
+  } > "$stub/jq"
+  chmod +x "$stub/jq"
+  cfg="$(_write_pe_config block 8 12)"
+  PATH="$stub:$PATH" run "$VALIDATOR" "$cfg"
+  [ "$status" -eq 1 ]
+  [[ "${output}${stderr:-}" == *"teammate_dispatch_ceiling"* ]]
+}
+
 @test "an out-of-range ceiling is rejected on the degraded path (AC1)" {
   # A value beyond the shell's integer range makes `[` abort and evaluate
   # false, so the headroom test silently passes and the degraded path prints
@@ -815,13 +840,69 @@ _bridge_ceiling_probe() {
   [ "$status" -eq 1 ]
 }
 
+# _resolve_with_rendering <literal> — force the config reader to emit one exact
+# rendering, so every spelling an environment might produce is exercised on
+# every host. The same out-of-range value is rendered 100000000000000000000 by
+# one yq/JSON stack and 1e+20 or 1.0E+20 by another; a classification keyed to
+# one spelling passes on the host that produces it and fails on the others.
+_resolve_with_rendering() {
+  local literal="$1" bin cfg
+  bin="$TEST_TMP/rshim$RANDOM"
+  mkdir -p "$bin"
+  {
+    printf '#!/bin/sh\n'
+    printf 'printf "%%s\\n" %s\n' "'$literal'"
+  } > "$bin/yq"
+  chmod +x "$bin/yq"
+  cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 5')"
+  PATH="$bin:$PATH" GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$TEST_TMP/rs$RANDOM" \
+  /bin/bash -c '
+    set -u
+    export GAIA_MODE_B_SUBSTRATE=unavailable
+    mkdir -p "$GAIA_SESSION_DIR"
+    # shellcheck disable=SC1090
+    . "$0"
+    _dt_resolve_ceiling 2>/dev/null
+    printf "%s\n" "$_DT_MAX_TEAMMATES"
+  ' "$LIB"
+}
+
+@test "every out-of-range rendering resolves conservatively (AC2)" {
+  # CI caught this: macOS yq emitted the digit string and Linux yq a float, so
+  # a digit-only classification sent the exponent forms to the wrong branch.
+  local r got
+  for r in '100000000000000000000' '1e+20' '1.0E+20' '1E20'; do
+    got="$(_resolve_with_rendering "$r")"
+    [ "$got" = "8" ] || {
+      printf 'rendering %s resolved to [%s], expected 8\n' "$r" "$got" >&2
+      return 1
+    }
+  done
+}
+
+@test "in-range and unusable renderings are unaffected by the range check (AC2)" {
+  # Guards the opposite error: a range check so broad that ordinary values, or
+  # readable-but-unusable ones, get swept into the conservative bound.
+  local got
+  got="$(_resolve_with_rendering '5')"
+  [ "$got" = "5" ] || { printf 'in-range 5 resolved to [%s]\n' "$got" >&2; return 1; }
+  got="$(_resolve_with_rendering '64')"
+  [ "$got" = "64" ] || { printf 'boundary 64 resolved to [%s]\n' "$got" >&2; return 1; }
+}
+
 @test "an out-of-range ceiling resolves conservatively and leaves dispatch working (AC2)" {
   # The bug this pins: the oversized value poisoned the enforcement comparison
   # too, so EVERY spawn was refused against an empty registry.
   local cfg got
   cfg="$(_write_pe_body block 'teammate_dispatch_ceiling: 99999999999999999999')"
   got="$(_resolve_ceiling "$cfg")"
-  [ "$got" = "8" ]
+  # Name the observed value: a bare comparison failure gave CI no way to tell
+  # WHICH rendering the host produced.
+  [ "$got" = "8" ] || {
+    printf 'host reader rendered the ceiling as [%s], resolved to [%s], expected 8\n' \
+      "$(yq -o=json '.parallel_execution.teammate_dispatch_ceiling' "$cfg" 2>/dev/null)" "$got" >&2
+    return 1
+  }
 
   local rc=0
   GAIA_SHARED_CONFIG="$cfg" GAIA_SESSION_DIR="$TEST_TMP/oor" \

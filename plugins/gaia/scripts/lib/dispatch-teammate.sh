@@ -190,29 +190,54 @@ DTPY
   # A successful read reporting nothing is a genuine absence -> default.
   case "$raw" in '' | null) printf '%s' "$default"; return 0 ;; esac
 
-  # A reader that exits 0 must still emit ONE well-formed JSON scalar line. A
-  # multi-line or structural payload means the reader is not trustworthy (a
-  # stub emitting garbage, a wrong query), and trusting it would silently
-  # resolve to the default while the config says otherwise — an unknown, not an
-  # absence. A well-formed scalar that simply is not an integer (a quoted
-  # numeric, a string) is a different case: the config is readable, the value
-  # is merely unusable, so the documented default applies and the validator is
-  # the layer that tells the operator.
+  # ---- Classify the raw value, INDEPENDENTLY of how the reader rendered it --
+  #
+  # The same out-of-range config is rendered differently by different yq/JSON
+  # stacks: 100000000000000000000 on one, 1e+20 or 1.0E+20 on another. A
+  # classification keyed to one spelling silently sends the others down the
+  # wrong branch — an out-of-range ceiling then resolved to the default instead
+  # of the conservative bound. Order matters here: OUT-OF-RANGE is decided
+  # first, on the shape of the text, before any `[` arithmetic can abort on it.
+
+  # (1) Scientific / exponent notation in any case. Only a huge or fractional
+  #     magnitude is ever written this way, and neither is a usable ceiling.
   case "$raw" in
-    # A bare integer is the only shape we can act on.
-    '' | *[!0-9]* )
+    *[eE]+[0-9]* | *[eE]-[0-9]* | *[eE][0-9]*)
+      printf 'dispatch-teammate: ceiling value out of range in %s — using conservative ceiling %s\n' \
+        "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+      printf '%s' "$_DT_CEILING_FAILCLOSED"
+      return 0
+      ;;
+  esac
+
+  # (2) A digit string longer than the bound. Checked as TEXT, never with `[`,
+  #     because an over-int64 literal makes the comparison abort and evaluate
+  #     false — which skipped the clamp, stored the oversized value, and then
+  #     poisoned the enforcement comparison too, refusing every spawn against
+  #     an empty registry. 6 digits is far above the schema maximum (64) and
+  #     far below the int64 limit.
+  case "$raw" in
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9]*)
+      printf 'dispatch-teammate: ceiling value out of range in %s — using conservative ceiling %s\n' \
+        "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+      printf '%s' "$_DT_CEILING_FAILCLOSED"
+      return 0
+      ;;
+  esac
+
+  # (3) Not a bare non-negative integer at all. A well-formed JSON scalar that
+  #     is merely unusable (a quoted numeric, a float, a bool) means the config
+  #     is READABLE -> documented default, and the validator is the layer that
+  #     tells the operator it was rejected. Anything else (multi-line output, a
+  #     structure, a bare token like `garbage`) means the reader is not
+  #     trustworthy -> conservative bound.
+  case "$raw" in
+    *[!0-9]*)
       case "$raw" in
-        # A well-formed JSON scalar that simply is not an integer (a quoted
-        # string, a float, a bool) means the config is READABLE and the value
-        # merely unusable -> documented default; the validator is the layer
-        # that tells the operator it was rejected.
-        \"*\" | true | false | [0-9]*.[0-9]* | -[0-9]* )
+        \"*\" | true | false | [0-9]*.[0-9]* | -[0-9]*)
           printf '%s' "$default"
           return 0
           ;;
-        # Anything else (multi-line output, a structure, a bare token like
-        # `garbage`) means the reader is not trustworthy. Trusting it would
-        # silently resolve to the default while the config says otherwise.
         *)
           printf 'dispatch-teammate: unreadable ceiling value from %s — using conservative ceiling %s\n' \
             "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
@@ -220,23 +245,6 @@ DTPY
           return 0
           ;;
       esac
-      ;;
-  esac
-
-  # Bound the DIGIT COUNT before any `[` arithmetic. An all-digit string longer
-  # than the shell's integer range makes `[ ... -gt ... ]` abort with "integer
-  # expected" and evaluate FALSE, which skips the clamp, stores the oversized
-  # string, and then poisons the enforcement comparison too — every spawn is
-  # refused against an empty registry. That is a bricked dispatcher, not an
-  # over-provisioned one, so an out-of-range value is treated as UNREADABLE and
-  # takes the conservative bound, consistent with every other unknown here.
-  # 6 digits is far above the schema maximum (64) and far below the int64 limit.
-  case "$raw" in
-    ???????*)
-      printf 'dispatch-teammate: ceiling value out of range in %s — using conservative ceiling %s\n' \
-        "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
-      printf '%s' "$_DT_CEILING_FAILCLOSED"
-      return 0
       ;;
   esac
 
