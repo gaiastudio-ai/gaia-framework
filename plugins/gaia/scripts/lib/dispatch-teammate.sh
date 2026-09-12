@@ -393,6 +393,27 @@ _dt_claim_reservation() {
   return 0
 }
 
+# _dt_effective_count <story_key> — the active count the ceiling gate should
+# compare against when spawning for <story_key>.
+#
+# A reservation is a real registry file so it holds a ceiling slot while the
+# story is being dispatched -- that is its purpose, and OTHER stories'
+# reservations must keep counting. But the reservation for the story being
+# spawned right now is not competition: registration is about to rename it into
+# this spawn's own entry, so counting both would make a reserving caller refuse
+# itself. At the shipped defaults that produced a cliff exactly at the designed
+# headroom: every admission reserved, every spawn then refused, and the sprint
+# degraded as if the ceiling were saturated.
+_dt_effective_count() {
+  local story_key="${1:-}" n
+  n="$(_dt_active_count)"
+  if [ -n "$story_key" ] && [ -f "$_DT_REGISTRY_DIR/.reserved-$story_key" ]; then
+    n=$(( n - 1 ))
+    [ "$n" -lt 0 ] && n=0
+  fi
+  printf '%s' "$n"
+}
+
 # _dt_active_count — print the number of active teammates.
 _dt_active_count() {
   _dt_ensure_registry
@@ -1015,7 +1036,7 @@ spawn_teammate() {
   _dt_resolve_ceiling
   local count _dt_try=1 _dt_delay="$_DT_CEILING_RETRY_BASE_DELAY"
   while :; do
-    count="$(_dt_active_count)"
+    count="$(_dt_effective_count "${story_key:-}")"
     [ "$count" -lt "$_DT_MAX_TEAMMATES" ] && break
     if [ "$_dt_try" -ge "$_DT_CEILING_RETRY_MAX" ]; then
       printf 'dispatch-teammate: cannot spawn — %d-teammate ceiling reached (active: %d)\n' \

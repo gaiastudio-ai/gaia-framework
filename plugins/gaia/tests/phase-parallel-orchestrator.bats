@@ -204,23 +204,35 @@ case "\$mode" in
     printf 'dispatch: unclassified failure\n' >&2
     exit 42
     ;;
+  park)
+    # Hold the slot open so the caller's reservation stays visible to a
+    # concurrent measurement, then exit when told to.
+    sleep 30
+    ;;
   registry-dwell)
     # Behave like a real spawn: register in the shared registry, hold it while
     # sampling how many entries exist, then deregister. The dwell is what makes
     # a check-then-act race observable at all.
     reg="\${GAIA_SESSION_DIR}/registry"
     mkdir -p "\$reg"
-    # Register the way the real library does: through its own registration
-    # path, so consuming the caller's reservation is the LIBRARY's behaviour
-    # under test and not something this stub quietly does on its behalf.
+    # Go through the REAL spawn path, ceiling gate included. Writing the
+    # registry entry by hand would bypass exactly the gate under test -- the
+    # reason an earlier version of this suite could not see that a story's own
+    # reservation was being counted against its own spawn.
     . "\$GAIA_DT_LIB"
     _dt_ensure_registry
-    _dt_claim_reservation "tm-shay-\$key" "\$key" || true
-    printf 'persona:shay\nstatus:active\n' > "\$reg/tm-shay-\$key"
+    export GAIA_MODE_B_SUBSTRATE=available
+    _rc=0
+    spawn_teammate shay --story-key "\$key" >/dev/null 2>&1 || _rc=\$?
+    if [ "\$_rc" -ne 0 ]; then
+      printf 'spawn-refused %s rc=%s\n' "\$key" "\$_rc" >> "\$counter/spawn.log"
+      exit "\$_rc"
+    fi
+    printf 'spawned %s\n' "\$key" >> "\$counter/spawn.log"
     sleep 1
     find "\$reg" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d " " >> "\$counter/registry-peak.log"
     sleep 1
-    rm -f "\$reg/tm-shay-\$key"
+    shutdown_teammate "tm-shay-\$key" >/dev/null 2>&1 || rm -f "\$reg/tm-shay-\$key"
     ;;
   ceiling:*)
     n="\${mode#ceiling:}"
@@ -657,6 +669,112 @@ _reason_of() {
     || { echo "a saturated ceiling was recorded as a story failure"; return 1; }
   [ "$(ppo_outcome_count done)" -eq 2 ] \
     || { echo "re-queued stories did not eventually complete"; return 1; }
+}
+
+@test "the admission lock keeps concurrent claims inside the ceiling (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  command -v python3 >/dev/null 2>&1 || skip "no python3 for the config fixture"
+
+  # Eight concurrent admissions against a ceiling of 12, from an EMPTY registry,
+  # with the count-then-claim window widened. All eight read the same count, so
+  # without the lock they all pass a bound that only four of them had room for
+  # once every claim lands. A fixture that pre-fills close to the ceiling cannot
+  # show this: only a couple of reservations can ever coexist, so nothing races.
+  local cfg="$TEST_TMP/cfg/project-config.yaml"
+  mkdir -p "$TEST_TMP/cfg"
+  printf 'parallel_execution:\n  max_parallel_dev_slots: 8\n  teammate_dispatch_ceiling: 12\n' > "$cfg"
+  export GAIA_SHARED_CONFIG="$cfg"
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+
+  # Occupy most of the ceiling with other agents, leaving room for four more.
+  # Eight unguarded claims then overshoot it structurally -- every one of them
+  # reads the same count and passes a bound only four had room for -- while a
+  # guarded run admits exactly the four that fit.
+  local i=0
+  while [ "$i" -lt 8 ]; do
+    : > "$GAIA_SESSION_DIR/registry/gate-agent-$i"
+    i=$(( i + 1 ))
+  done
+
+  # ppo_admit_slot claims AND dispatches, releasing its reservation on the way
+  # out. A stub that parks keeps every claim held while the peak is measured;
+  # without one the reservations are gone before anything can count them.
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" park)"
+  PATH="$stub:$PATH"
+
+  # Widen the count-then-claim window so every admission reaches its count
+  # before any of them claims. One second is wider than the spread in when
+  # eight backgrounded admissions get there, which is what makes the overshoot
+  # reproducible rather than timing-dependent.
+  export GAIA_PPO_CLAIM_DELAY=1
+  local k pids=""
+  for k in R1 R2 R3 R4 R5 R6 R7 R8; do
+    ppo_admit_slot "$k" >/dev/null 2>&1 &
+    pids="$pids $!"
+  done
+  # Sample while every admission is still parked holding its claim.
+  sleep 4
+  local peak ceiling
+  peak="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
+  for i in $pids; do kill "$i" 2>/dev/null || true; done
+  for i in $pids; do wait "$i" 2>/dev/null || true; done
+  ceiling="$(ppo_resolve_ceiling)"
+  [ "$peak" -le "$ceiling" ] \
+    || { echo "concurrent claims reached $peak against the configured ceiling ${ceiling}"; return 1; }
+}
+
+@test "a story's own reservation never counts against its own spawn (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  # shellcheck disable=SC1090
+  . "$DT_LIB"
+  command -v python3 >/dev/null 2>&1 || skip "no python3 for the config fixture"
+
+  # The SHIPPED defaults, swept across pre-existing gate agents. A reservation
+  # is a registry file, so the ceiling gate counts it -- including the one the
+  # caller just planted for the story now being spawned. Counting that against
+  # itself produces a cliff exactly at the designed headroom: every admission
+  # reserves, every spawn is then refused, and the sprint degrades as if the
+  # ceiling were saturated while it had room.
+  local cfg="$TEST_TMP/cfg/project-config.yaml"
+  mkdir -p "$TEST_TMP/cfg"
+  printf 'parallel_execution:\n  max_parallel_dev_slots: 8\n  teammate_dispatch_ceiling: 12\n' > "$cfg"
+  export GAIA_SHARED_CONFIG="$cfg" GAIA_MODE_B_SUBSTRATE=available
+  export _DT_CEILING_RETRY_BASE_DELAY=0
+
+  local prefill expect spawned i k rc
+  for prefill in 0 2 4; do
+    rm -rf "$GAIA_SESSION_DIR/registry"
+    mkdir -p "$GAIA_SESSION_DIR/registry"
+    _DT_MAX_TEAMMATES=""
+    i=0
+    while [ "$i" -lt "$prefill" ]; do
+      : > "$GAIA_SESSION_DIR/registry/gate-agent-$i"
+      i=$(( i + 1 ))
+    done
+
+    spawned=0
+    for k in S1 S2 S3 S4 S5 S6 S7 S8; do
+      printf 'reserved_by:%s\n' "$$" > "$GAIA_SESSION_DIR/registry/.reserved-$k"
+      rc=0
+      spawn_teammate shay --story-key "$k" >/dev/null 2>&1 || rc=$?
+      if [ "$rc" -eq 0 ]; then
+        spawned=$(( spawned + 1 ))
+      else
+        rm -f "$GAIA_SESSION_DIR/registry/.reserved-$k"
+      fi
+    done
+
+    # min(slots, ceiling - prefill): 8 admissions, 12-prefill room.
+    expect=$(( 12 - prefill ))
+    [ "$expect" -gt 8 ] && expect=8
+    [ "$spawned" -eq "$expect" ] \
+      || { echo "prefill $prefill: spawned $spawned, expected $expect"; return 1; }
+    # And never a standstill while the designed headroom is intact.
+    [ "$spawned" -gt 0 ] \
+      || { echo "prefill $prefill admitted nothing at all"; return 1; }
+  done
 }
 
 @test "a reservation is released on every non-registration exit path (AC2)" {
