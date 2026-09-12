@@ -208,7 +208,6 @@ core	gaia-reconcile-v2.bats
 core	gaia-release.bats
 core	gaia-resume.bats
 core	gaia-retro-auto-file-flag.bats
-core	gaia-run-sprint-docs.bats
 core	gaia-sprint-close.bats
 core	gaia-sprint-plan.bats
 core	gaia-sprint-review-mode-a-anti-pattern.bats
@@ -449,6 +448,7 @@ scripts-core	gaia-create-story.bats
 scripts-core	gaia-migrate-dispatch.bats
 scripts-core	gaia-migrate.bats
 scripts-core	gaia-resume-corruption.bats
+scripts-core	gaia-run-sprint-docs.bats
 scripts-core	gaia-security-review.bats
 scripts-core	gaia-test-e2e.bats
 scripts-core	gaia-test-perf.bats
