@@ -77,6 +77,7 @@ explained**. One of these reasons is printed, and the sprint proceeds:
 | `sprint-unreadable` | the sprint file is missing, malformed or unparseable |
 | `no-phase-fields` | the sprint parses but carries no phase assignments |
 | `ceiling-cannot-admit` | the agent ceiling is saturated with no headroom |
+| `admission-lock-timeout` | the admission lock could not be acquired, so no story was admitted without it |
 | `mode-b-fallback` | the persistent-agent substrate is unavailable |
 | `admission-error` | an unclassified admission failure |
 

@@ -458,18 +458,37 @@ ppo_admit_slot() {
   # library's registration consumes it, so a story never holds two ceiling
   # slots, and it is cleared on every exit path.
   #
-  # Acquiring and releasing around nothing would be worse than no lock at all --
-  # it would look like mutual exclusion while excluding nothing.
+  # Claiming without the lock would be worse than not running concurrently at
+  # all -- it would look like mutual exclusion while excluding nothing -- so a
+  # lock that cannot be taken refuses the admission rather than proceeding.
   local token="" reg="" ceiling=0 count=0
-  if _ppo_load_lock_lib 2>/dev/null && command -v acquire_lock >/dev/null 2>&1; then
-    if acquire_lock "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/.ppo-admit.lock" 10 8 2>/dev/null; then
-      locked=1
-    fi
-  fi
 
+  # Everything that does NOT touch the shared registry happens BEFORE the lock.
+  # The ceiling is a config read through yq/python3 costing on the order of
+  # 200ms; the registry is the shared resource, the ceiling value is not. Read
+  # inside the critical section, that cost is paid while every other admission
+  # queues on the lock, so the hold time scales with the slot budget and
+  # acquisitions begin timing out at large-but-legal budgets -- turning a
+  # latency choice into a correctness one, because a timeout is a degradation.
   reg="${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/registry"
   mkdir -p "$reg" 2>/dev/null || true
   ceiling="$(ppo_resolve_ceiling)"
+
+  # Fail CLOSED when the lock cannot be taken. Admitting unlocked would run the
+  # count-and-claim with no mutual exclusion and no warning -- precisely the
+  # overshoot the lock exists to prevent, and silent besides. A lock we cannot
+  # acquire is a sprint-wide condition rather than a property of this story, so
+  # the caller degrades the whole run to sequential: correct, ordered, and
+  # slower, which is always better than concurrent and wrong.
+  if ! _ppo_load_lock_lib 2>/dev/null || ! command -v acquire_lock >/dev/null 2>&1; then
+    return 10
+  fi
+  if ! acquire_lock "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/.ppo-admit.lock" \
+      "${GAIA_PPO_LOCK_TIMEOUT:-10}" 8 2>/dev/null; then
+    return 10
+  fi
+  locked=1
+
   count="$(find "$reg" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
   # Test-only widening of the count-then-claim window. The window is a few
   # syscalls wide in production, which is real but hard to hit deterministically;
@@ -843,6 +862,16 @@ ppo_run_sprint() {
               done
               return 0
             fi
+            ;;
+          10)
+            # The admission lock could not be taken. Admission refused rather
+            # than proceeding unlocked, so nothing was claimed and the sprint
+            # can still run -- in order, one story at a time.
+            _ppo_emit "mode=sequential reason=admission-lock-timeout — the admission lock could not be acquired; running sequentially rather than admitting unlocked"
+            ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
+              [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
+            done
+            return 0
             ;;
           1) _ppo_record "$finished" "failed" "$p" ;;
           *)

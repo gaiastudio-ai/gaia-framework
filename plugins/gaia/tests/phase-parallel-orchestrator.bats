@@ -1573,3 +1573,102 @@ _reason_of() {
   [ ! -e "$TEST_TMP/escape" ] \
     || { echo "a traversing story key escaped the worktree parent"; return 1; }
 }
+
+@test "a lock timeout degrades to sequential and never admits unlocked (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  command -v python3 >/dev/null 2>&1 || skip "no python3 for the config fixture"
+
+  # A lock that cannot be acquired is the one case where continuing is worse
+  # than not running concurrently at all: the count-and-claim would proceed
+  # with no mutual exclusion and no warning, which is exactly the overshoot the
+  # lock exists to prevent. Admission must fail CLOSED -- degrade, never admit.
+  local cfg="$TEST_TMP/cfg/project-config.yaml"
+  mkdir -p "$TEST_TMP/cfg"
+  printf 'parallel_execution:\n  max_parallel_dev_slots: 8\n  teammate_dispatch_ceiling: 12\n' > "$cfg"
+  export GAIA_SHARED_CONFIG="$cfg"
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+
+  # Hold the admission lock from ANOTHER process for longer than the acquire
+  # timeout, so the acquire genuinely times out rather than being simulated.
+  local lockfile="$GAIA_SESSION_DIR/.ppo-admit.lock"
+  : > "$lockfile"
+  python3 -c '
+import fcntl, sys, time
+fh = open(sys.argv[1], "a")
+fcntl.flock(fh, fcntl.LOCK_EX)
+time.sleep(float(sys.argv[2]))
+' "$lockfile" 30 &
+  local holder=$!
+  # Wait until the holder actually owns the lock, so the race is not with our
+  # own startup.
+  local waited=0
+  while [ "$waited" -lt 50 ]; do
+    if ! python3 -c '
+import fcntl, sys
+fh = open(sys.argv[1], "a")
+try:
+    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    sys.exit(0)
+except OSError:
+    sys.exit(1)
+' "$lockfile" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+    waited=$(( waited + 1 ))
+  done
+
+  local before after rc=0
+  before="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
+  export GAIA_PPO_LOCK_TIMEOUT=1
+  local out; out="$(ppo_admit_slot LOCKT 2>&1)" || rc=$?
+  after="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+  kill "$holder" 2>/dev/null || true
+  wait "$holder" 2>/dev/null || true
+
+  # Fail CLOSED: the capacity/degradation code, never a successful admission.
+  [ "$rc" -eq 10 ] \
+    || { echo "lock timeout returned $rc, expected the lock-timeout code 10"; return 1; }
+  # And nothing was claimed while the lock was held by somebody else.
+  [ "$after" -eq "$before" ] \
+    || { echo "a reservation was planted without the lock ($before -> $after)"; return 1; }
+  [ ! -f "$GAIA_SESSION_DIR/registry/.reserved-LOCKT" ] \
+    || { echo "an unlocked admission left a reservation behind"; return 1; }
+}
+
+@test "the lock-timeout degradation names its own reason (AC3)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+
+  # The reason vocabulary is how an operator tells a deliberate degradation
+  # from a crash. A lock timeout gets its own token rather than being folded
+  # into the unclassified bucket, which would read as a bug instead of a
+  # safety decision.
+  grep -q 'admission-lock-timeout' "$ORCH" \
+    || { echo "no admission-lock-timeout reason in the orchestrator"; return 1; }
+  # It degrades -- exit 0 with a sequential plan -- and never hard-refuses.
+  local ctx; ctx="$(grep -n 'admission-lock-timeout' "$ORCH" | head -1)"
+  printf '%s' "$ctx" | grep -q 'mode=sequential' \
+    || { echo "admission-lock-timeout is not emitted as a sequential degradation: $ctx"; return 1; }
+}
+
+@test "the ceiling read is outside the admission critical section (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+
+  # The config read goes through yq/python3 and costs ~200ms. Inside the
+  # critical section that cost is paid while every other admission queues on
+  # the lock, so at large-but-legal slot budgets acquisitions start timing out
+  # -- and a timeout is a degradation. The ceiling value is not the shared
+  # resource (the registry is), so the read belongs OUTSIDE the lock.
+  local body acq_line ceil_line rel_line
+  body="$(sed -n '/^ppo_admit_slot()/,/^}/p' "$ORCH")"
+  acq_line="$(printf '%s\n' "$body" | grep -n 'acquire_lock ' | head -1 | cut -d: -f1)"
+  ceil_line="$(printf '%s\n' "$body" | grep -n 'ceiling="\$(ppo_resolve_ceiling)"' | head -1 | cut -d: -f1)"
+  rel_line="$(printf '%s\n' "$body" | grep -n 'release_lock ' | head -1 | cut -d: -f1)"
+  [ -n "$acq_line" ] && [ -n "$ceil_line" ] && [ -n "$rel_line" ] \
+    || { echo "could not locate acquire/ceiling/release in ppo_admit_slot"; return 1; }
+  [ "$ceil_line" -lt "$acq_line" ] \
+    || { echo "the ceiling read (line $ceil_line) is inside the critical section (acquire $acq_line, release $rel_line)"; return 1; }
+}
