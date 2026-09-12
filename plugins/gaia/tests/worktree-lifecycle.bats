@@ -1083,8 +1083,12 @@ CHILD
   # assertion above passes with or without the library's own guard. Pin the
   # guard structurally too, so removing it is visible: cleanup must be
   # conditional on the ref being free rather than an unconditional delete.
+  # `producer | head -1` is a SIGPIPE trap inside a command substitution: head
+  # closes the pipe while awk is still writing, awk dies of SIGPIPE (141), and
+  # under `set -o pipefail` the substitution fails. It is timing-dependent, so
+  # it surfaces on Linux/GNU and not on macOS. Let awk stop itself instead.
   local cleanup
-  cleanup="$(awk '/cannot create worktree at .* on new branch/{found=1} found' "$LIB" | head -1)"
+  cleanup="$(awk '/cannot create worktree at .* on new branch/{print; exit}' "$LIB")"
   grep -q 'worktree_branch_state "\$repo" "\$branch"' "$LIB" \
     || { echo "the branch cleanup lost its free-ref condition"; return 1; }
   grep -qE 'if \[ "\$\(worktree_branch_state "\$repo" "\$branch"\)" = "free" \]; then' "$LIB" \

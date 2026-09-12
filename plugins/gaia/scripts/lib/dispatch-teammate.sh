@@ -899,7 +899,7 @@ _dt_parse_frontmatter() {
 
   # Parse topology.
   local topology=""
-  topology="$(printf '%s' "$frontmatter" | grep -E '^topology:' | head -1 | sed 's/^topology:[[:space:]]*//' | tr -d ' ')"
+  topology="$(printf '%s' "$frontmatter" | sed -n 's/^topology:[[:space:]]*//p;/^topology:/q' | tr -d ' ')"
 
   # Validate topology.
   local effective_topology="hub"
@@ -1015,7 +1015,8 @@ spawn_teammate() {
     local fm_output
     fm_output="$(_dt_parse_frontmatter "$skill_path")" || return 1
     # First non-topology line is the primary persona.
-    persona="$(printf '%s\n' "$fm_output" | grep -v '^topology:' | head -1)"
+    persona="$(printf '%s\n' "$fm_output" | grep -v '^topology:')"
+    persona="${persona%%$'\n'*}"
     if [ -z "$persona" ]; then
       _dt_die "spawn_teammate: no persona resolved from frontmatter — cannot spawn"
       return 1

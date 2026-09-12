@@ -526,7 +526,7 @@ ppo_release_reservations() {
   [ -d "$reg" ] || return 0
   for f in "$reg"/.reserved-*; do
     [ -f "$f" ] || continue
-    case "$(sed -n 's/^reserved_by://p' "$f" 2>/dev/null | head -1)" in
+    case "$(sed -n 's/^reserved_by://p;q' "$f" 2>/dev/null)" in
       "$$") rm -f "$f" 2>/dev/null || true ;;
     esac
   done
@@ -541,7 +541,7 @@ ppo_reap_stale_reservations() {
   [ -d "$reg" ] || return 0
   for f in "$reg"/.reserved-*; do
     [ -f "$f" ] || continue
-    owner="$(sed -n 's/^reserved_by://p' "$f" 2>/dev/null | head -1)"
+    owner="$(sed -n 's/^reserved_by://p;q' "$f" 2>/dev/null)"
     # No owner recorded, or the owner is gone: nothing will ever release it.
     if [ -z "$owner" ] || ! kill -0 "$owner" 2>/dev/null; then
       rm -f "$f" 2>/dev/null || true

@@ -1053,7 +1053,7 @@ _cache_probe() {
     ' "$LIB" "$cfg" "$BASE_REQUIRED")"
 
   second="$(printf '%s\n' "$first" | tail -1)"
-  [ "$(printf '%s\n' "$first" | head -1)" = "20" ]
+  [ "${first%%$'\n'*}" = "20" ]
   [ "$second" = "40" ] || {
     printf 'stale cache served [%s] after a same-second rewrite, expected 40\n' "$second" >&2
     return 1
@@ -1242,7 +1242,8 @@ _cache_probe() {
   #     anywhere else in it.
   local released_line guard_lines
   released_line="$( { grep -n 'under an 8-teammate ceiling, with dispatch provenance' `# sweep-guard-self-reference` \
-    "$root/plugins/gaia/CHANGELOG.md" 2>/dev/null || true; } | cut -d: -f1 | head -1)"
+    "$root/plugins/gaia/CHANGELOG.md" 2>/dev/null || true; } | cut -d: -f1)"
+  released_line="${released_line%%$'\n'*}"
   [ -n "$released_line" ] || released_line=0
   # The guard's own machinery legitimately contains the literal it hunts: the
   # search regex, the CHANGELOG anchor, and this test's name. Each is marked

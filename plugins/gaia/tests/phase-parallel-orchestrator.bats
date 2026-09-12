@@ -300,7 +300,7 @@ _reason_of() {
   local last
   last="$(printf '%s\n' "$1" | grep -E '^mode=' | tail -1)"
   [ -n "$last" ] || last="$1"
-  printf '%s' "$last" | sed -n 's/.*reason=\([a-z0-9-]*\).*/\1/p' | head -1
+  printf '%s' "$last" | sed -n 's/.*reason=\([a-z0-9-]*\).*/\1/p;q'
 }
 
 # ---------------------------------------------------------------------------
@@ -349,8 +349,8 @@ _reason_of() {
   # phase-1 story proves a freed slot was refilled from its own phase.
   local log="$TEST_TMP/stubstate/dispatched.log"
   local k4_line k3_line
-  k4_line="$(grep -n '^K4$' "$log" | head -1 | cut -d: -f1)"
-  k3_line="$(grep -n '^K3$' "$log" | head -1 | cut -d: -f1)"
+  k4_line="$(grep -n -m1 '^K4$' "$log" | cut -d: -f1)"
+  k3_line="$(grep -n -m1 '^K3$' "$log" | cut -d: -f1)"
   [ -n "$k3_line" ] && [ -n "$k4_line" ] \
     || { echo "expected both stories dispatched; log: $(cat "$log")"; return 1; }
   [ "$k3_line" -lt "$k4_line" ] \
@@ -398,9 +398,9 @@ _reason_of() {
   # both phase-1 stories. A constant accessor cannot satisfy this.
   local log="$TEST_TMP/stubstate/dispatched.log"
   local k3 k1 k2
-  k3="$(grep -n '^K3$' "$log" | head -1 | cut -d: -f1)"
-  k1="$(grep -n '^K1$' "$log" | head -1 | cut -d: -f1)"
-  k2="$(grep -n '^K2$' "$log" | head -1 | cut -d: -f1)"
+  k3="$(grep -n -m1 '^K3$' "$log" | cut -d: -f1)"
+  k1="$(grep -n -m1 '^K1$' "$log" | cut -d: -f1)"
+  k2="$(grep -n -m1 '^K2$' "$log" | cut -d: -f1)"
   [ -n "$k1" ] && [ -n "$k2" ] && [ -n "$k3" ] \
     || { echo "not every story was dispatched; log: $(cat "$log")"; return 1; }
   [ "$k3" -gt "$k1" ] && [ "$k3" -gt "$k2" ] \
@@ -440,7 +440,7 @@ _reason_of() {
   # Oracle: phase 2's dispatch timestamp must be >= the LAST phase-1 completion.
   local last_p1 k3_start
   last_p1="$(grep -E '^(K1|K2) ' "$ct" | awk '{print $2}' | sort -n | tail -1)"
-  k3_start="$(grep '^K3 ' "$dt" | awk '{print $2}' | head -1)"
+  k3_start="$(awk '/^K3 /{print $2; exit}' "$dt")"
   [ -n "$last_p1" ] && [ -n "$k3_start" ] \
     || { echo "missing timings: last phase-1 '$last_p1', phase-2 start '$k3_start'"; return 1; }
   [ "$k3_start" -ge "$last_p1" ] \
@@ -448,8 +448,8 @@ _reason_of() {
 
   # And the slow story really was slow, so the window above was real.
   local k2_done k1_done
-  k2_done="$(grep '^K2 ' "$ct" | awk '{print $2}' | head -1)"
-  k1_done="$(grep '^K1 ' "$ct" | awk '{print $2}' | head -1)"
+  k2_done="$(awk '/^K2 /{print $2; exit}' "$ct")"
+  k1_done="$(awk '/^K1 /{print $2; exit}' "$ct")"
   [ "$k2_done" -gt "$k1_done" ] \
     || { echo "the stories completed together, so the barrier was never exercised"; return 1; }
 }
@@ -493,7 +493,8 @@ _reason_of() {
     # loaded host, so fall back to the property that cannot be faked: the
     # sleeping itself overlapped.
     local span_lo span_hi
-    span_lo="$(awk '$2=="start" {print $3}' "$span" | sort -n | head -1)"
+    span_lo="$(awk '$2=="start" {print $3}' "$span" | sort -n)"
+    span_lo="${span_lo%%$'\n'*}"
     span_hi="$(awk '$2=="end" {print $3}' "$span" | sort -n | tail -1)"
     [ $(( (span_hi - span_lo) / 1000 )) -lt "$sleep_total" ] \
       || { echo "stories spanned $(( (span_hi - span_lo) / 1000 ))s, no better than the ${sleep_total}s serial sum"; return 1; }
@@ -540,8 +541,8 @@ _reason_of() {
 
   local span="$TEST_TMP/stubstate/span.log"
   local k1_end k3_start
-  k1_end="$(awk '$1=="K1" && $2=="end" {print $3}' "$span" | head -1)"
-  k3_start="$(awk '$1=="K3" && $2=="start" {print $3}' "$span" | head -1)"
+  k1_end="$(awk '$1=="K1" && $2=="end" {print $3; exit}' "$span")"
+  k3_start="$(awk '$1=="K3" && $2=="start" {print $3; exit}' "$span")"
   [ -n "$k1_end" ] && [ -n "$k3_start" ] \
     || { echo "missing timings; span: $(cat "$span")"; return 1; }
   [ "$k3_start" -lt "$k1_end" ] \
@@ -586,8 +587,8 @@ _reason_of() {
   # though a phase-1 story failed -- the barrier waits for terminal, not success.
   local log="$TEST_TMP/stubstate/dispatched.log"
   local k3 k2
-  k3="$(grep -n '^K3$' "$log" | head -1 | cut -d: -f1)"
-  k2="$(grep -n '^K2$' "$log" | head -1 | cut -d: -f1)"
+  k3="$(grep -n -m1 '^K3$' "$log" | cut -d: -f1)"
+  k2="$(grep -n -m1 '^K2$' "$log" | cut -d: -f1)"
   [ -n "$k2" ] && [ -n "$k3" ] \
     || { echo "a failure suppressed a later dispatch; log: $(cat "$log")"; return 1; }
   [ "$k3" -gt "$k2" ] \
@@ -1265,6 +1266,13 @@ _reason_of() {
   # shellcheck disable=SC1090
   . "$DT_LIB"
   mkdir -p "$GAIA_SESSION_DIR/registry"
+  # Pin the substrate. Without this the library derives availability from the
+  # ambient CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS opt-in, so the test exercises
+  # the Mode B spawn path on a developer box that has the flag set and the Mode
+  # A fallback (exit 7) on a runner that does not -- passing on one platform and
+  # failing on the other while appearing to assert the same thing. What is under
+  # test here is story-keyed handle allocation on the Mode B path, so say so.
+  export GAIA_MODE_B_SUBSTRATE=available
   # Two stories, one persona: the collision that story-keyed handles exist to
   # resolve. Driven against the REAL library, not a shim.
   local h1 h2 rc1=0 rc2=0
@@ -1418,7 +1426,8 @@ _reason_of() {
   # the teardown call it guards rather than by a nearby comment word.
   local line
   line="$(grep -n -- '--discard-ignored' "$ORCH" \
-           | grep -vE '^[0-9]+:[[:space:]]*#' | head -1)"
+           | grep -vE '^[0-9]+:[[:space:]]*#')"
+  line="${line%%$'\n'*}"
   printf '%s' "$line" | grep -q 'worktree_teardown' \
     || { echo "the discard flag is not on a worktree_teardown call: $line"; return 1; }
 
@@ -1649,7 +1658,7 @@ except OSError:
   grep -q 'admission-lock-timeout' "$ORCH" \
     || { echo "no admission-lock-timeout reason in the orchestrator"; return 1; }
   # It degrades -- exit 0 with a sequential plan -- and never hard-refuses.
-  local ctx; ctx="$(grep -n 'admission-lock-timeout' "$ORCH" | head -1)"
+  local ctx; ctx="$(grep -n -m1 'admission-lock-timeout' "$ORCH")"
   printf '%s' "$ctx" | grep -q 'mode=sequential' \
     || { echo "admission-lock-timeout is not emitted as a sequential degradation: $ctx"; return 1; }
 }
@@ -1664,9 +1673,12 @@ except OSError:
   # resource (the registry is), so the read belongs OUTSIDE the lock.
   local body acq_line ceil_line rel_line
   body="$(sed -n '/^ppo_admit_slot()/,/^}/p' "$ORCH")"
-  acq_line="$(printf '%s\n' "$body" | grep -n 'acquire_lock ' | head -1 | cut -d: -f1)"
-  ceil_line="$(printf '%s\n' "$body" | grep -n 'ceiling="\$(ppo_resolve_ceiling)"' | head -1 | cut -d: -f1)"
-  rel_line="$(printf '%s\n' "$body" | grep -n 'release_lock ' | head -1 | cut -d: -f1)"
+  acq_line="$(printf '%s
+' "$body" | grep -n -m1 'acquire_lock ' | cut -d: -f1)"
+  ceil_line="$(printf '%s
+' "$body" | grep -n -m1 'ceiling="\$(ppo_resolve_ceiling)"' | cut -d: -f1)"
+  rel_line="$(printf '%s
+' "$body" | grep -n -m1 'release_lock ' | cut -d: -f1)"
   [ -n "$acq_line" ] && [ -n "$ceil_line" ] && [ -n "$rel_line" ] \
     || { echo "could not locate acquire/ceiling/release in ppo_admit_slot"; return 1; }
   [ "$ceil_line" -lt "$acq_line" ] \
