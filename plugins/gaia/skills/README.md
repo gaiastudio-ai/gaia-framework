@@ -55,7 +55,7 @@ A multi-step orchestration skill with three or more subagent dispatches, often w
 - **Mode A (default):** subagent re-dispatch with structured checkpoint payloads (see the §"Mode A Checkpoint Payload Schema"). Each re-dispatch is a fresh persona context with prior outputs threaded via the payload — sidecar memory loads on every dispatch; in-conversation continuity is lost between dispatches.
 - **Mode B (opt-in, requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` + `orchestration.mode: team` in `.gaia/config/project-config.yaml`):** persistent teammates per the Mode B Teammate Lifecycle (see the §"Mode B Teammate Lifecycle Protocol"). One teammate per persona per skill execution; teammate session stays alive across the workflow's turns; cleaned up on skill completion. Persona has full in-conversation continuity.
 - **State mutation:** allowed.
-- **Examples:** `gaia-create-story`, `gaia-dev-story`, `gaia-add-feature`, `gaia-edit-prd`, `gaia-edit-arch`, `gaia-edit-ux`, `gaia-create-prd`, `gaia-create-arch`, `gaia-create-ux`, `gaia-create-epics`, `gaia-deploy`, `gaia-deploy-checklist`.
+- **Examples:** `gaia-create-story`, `gaia-dev-story`, `gaia-run-sprint`, `gaia-add-feature`, `gaia-edit-prd`, `gaia-edit-arch`, `gaia-edit-ux`, `gaia-create-prd`, `gaia-create-arch`, `gaia-create-ux`, `gaia-create-epics`, `gaia-deploy`, `gaia-deploy-checklist`.
 - **Lossy-mode warning:** **fires once per session** when invoked in Mode A.
 
 #### `conversational`

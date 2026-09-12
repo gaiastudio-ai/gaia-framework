@@ -425,8 +425,8 @@ _sw_prune_flush() {
   pid="$(_sw_pid_from_reason "$reason")"
   if [ -n "$pid" ] && [ "$pid" != "$$" ] && ! _sw_pid_alive "$pid" \
      && [ -e "$path" ] && ! _sw_worktree_is_clean "$repo" "$path"; then
-    _sw_log "kept a stopped story's worktree: it holds modified or untracked files: $path"
-    _sw_log "review it, then remove it with: git -C \"$repo\" worktree remove \"$path\""
+    _sw_log "kept a stopped story's worktree: it holds modified, untracked or ignored local files: $path"
+    _sw_log "review it, then remove it with: git -C \"$repo\" worktree unlock \"$path\" && git -C \"$repo\" worktree remove --force \"$path\""
   fi
   return 0
 }
@@ -574,6 +574,89 @@ worktree_create() {
   return 0
 }
 
+# worktree_ignored_only <code_tree> <worktree_path> — classify the local state a
+# worktree holds. Echoes exactly one token and returns 0:
+#
+#   no         tracked modifications or untracked files are present. Real work,
+#              never discardable.
+#   protected  ignored state only, but at least one entry is state a resumed run
+#              depends on (memory, checkpoints), an unexpanded directory that
+#              could contain such state, or a symlink.
+#   yes        ignored state only, and every entry is safe to discard.
+#
+# The listing flags are load-bearing and each closes a fail-open:
+#   --ignored  report ignored files at all; without it a checkout holding only
+#              ignored state reads clean and git deletes it anyway.
+#   -uall      expand ignored DIRECTORIES to their files. Without it git reports
+#              `!! .gaia/` and a protected path inside is never seen.
+#   -z         emit raw NUL-delimited bytes. Without it git C-quotes any path
+#              holding a space or a non-ASCII byte (`!! ".gaia/memory/side car.md"`),
+#              and the quoted form matches no protected pattern while still
+#              parsing as an ordinary relative path -- so it looks normal and
+#              reaches the discard arm.
+#
+# Every unknown is resolved toward preserving.
+worktree_ignored_only() {
+  local repo="${1:-}" path="${2:-}" entry rest state="yes"
+
+  [ -n "$repo" ] && [ -n "$path" ] || {
+    _sw_log "usage: worktree_ignored_only <code_tree> <worktree_path>"
+    return 1
+  }
+
+  # Tracked or untracked changes are real work and settle the question.
+  if [ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]; then
+    printf 'no'
+    return 0
+  fi
+
+  # The listing is read straight from the process, never through $(...):
+  # command substitution STRIPS NUL bytes, which would collapse the whole
+  # NUL-delimited listing into a single entry and defeat the -z that the
+  # C-quoting fix depends on. A temp file keeps the bytes intact and keeps the
+  # loop in THIS shell, so the verdict it computes survives.
+  local listing_file
+  listing_file="$(mktemp "${TMPDIR:-/tmp}/sw-ignored.XXXXXX")" || {
+    printf 'protected'
+    return 0
+  }
+  if ! git -C "$path" status --porcelain --ignored -uall -z >"$listing_file" 2>/dev/null; then
+    rm -f "$listing_file" 2>/dev/null || true
+    printf 'protected'
+    return 0
+  fi
+
+  while IFS= read -r -d '' entry; do
+    [ -n "$entry" ] || continue
+    case "$entry" in
+      '!! '*) rest="${entry#\!\! }" ;;
+      *) continue ;;
+    esac
+
+    # An entry still naming a directory means the expansion did not happen, so
+    # anything could be inside it.
+    case "$rest" in
+      */) state="protected"; break ;;
+    esac
+
+    # Symlinks are reported bare, with no trailing slash, so the rule above does
+    # not see them. git unlinks rather than follows, but this does not rely on it.
+    if [ -L "$path/$rest" ]; then
+      state="protected"
+      break
+    fi
+
+    case "$rest" in
+      .gaia/memory/*|*/.gaia/memory/*) state="protected"; break ;;
+      .gaia/*checkpoints/*|*/checkpoints/*) state="protected"; break ;;
+    esac
+  done < "$listing_file"
+
+  rm -f "$listing_file" 2>/dev/null || true
+  printf '%s' "$state"
+  return 0
+}
+
 # worktree_teardown <code_tree> <worktree_path> — remove the story worktree and
 # prune. Idempotent, and silent on a repeat call for the same path.
 #
@@ -582,12 +665,19 @@ worktree_create() {
 # directory is a far smaller problem than deleted work, and the next prune will
 # not reap it either, so it survives for inspection.
 worktree_teardown() {
-  local repo="${1:-}" path="${2:-}"
+  local repo="${1:-}" path="${2:-}" discard_ignored=0
 
   [ -n "$repo" ] && [ -n "$path" ] || {
-    _sw_log "usage: worktree_teardown <code_tree> <worktree_path>"
+    _sw_log "usage: worktree_teardown <code_tree> <worktree_path> [--discard-ignored]"
     return 1
   }
+
+  # Opt-in, default off: every existing caller keeps the preserving behaviour.
+  case "${3:-}" in
+    --discard-ignored) discard_ignored=1 ;;
+    '') : ;;
+    *) _sw_log "unknown option: $3"; return 1 ;;
+  esac
 
   # Refuse outright to act on anything that is not one of our story worktrees.
   if ! _sw_is_story_worktree "$repo" "$path"; then
@@ -605,9 +695,30 @@ worktree_teardown() {
   # Refuse before asking git. Git's own removal refusal does not consider
   # gitignored files, so a checkout holding only those would be deleted.
   if ! _sw_worktree_is_clean "$repo" "$path"; then
+    local kind="preserve"
+    if [ "$discard_ignored" -eq 1 ]; then
+      # Only the ignored-only, nothing-protected case may be forced, and only
+      # because the caller reached this on the post-merge path where the work is
+      # provably merged. Tracked and untracked state still refuse below.
+      [ "$(worktree_ignored_only "$repo" "$path")" = "yes" ] && kind="discard"
+    fi
+
+    if [ "$kind" = "discard" ]; then
+      git -C "$repo" worktree unlock "$path" >/dev/null 2>&1 || true
+      if git -C "$repo" worktree remove --force "$path" >/dev/null 2>&1; then
+        git -C "$repo" worktree prune >/dev/null 2>&1 || true
+        _sw_mark_torn "$path"
+        return 0
+      fi
+      _sw_mark_torn "$path"
+      _sw_log "could not remove the worktree: $path"
+      return 1
+    fi
+
     _sw_mark_torn "$path"
     _sw_log "worktree kept: it holds modified, untracked or ignored local files: $path"
-    _sw_log "review it, then remove it with: git -C \"$repo\" worktree remove --force \"$path\""
+    # A kept worktree stays LOCKED, so a bare `remove --force` fails against it.
+    _sw_log "review it, then remove it with: git -C \"$repo\" worktree unlock \"$path\" && git -C \"$repo\" worktree remove --force \"$path\""
     return 1
   fi
 

@@ -19,6 +19,7 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "lifecycle","3-solutioning","create-epics-stories","create-epics","gaia-create-epics","true","pm","Break requirements into epics and stories",".gaia/artifacts/planning-artifacts"
 "lifecycle","3-solutioning","implementation-readiness","readiness-check","gaia-readiness-check","true","architect","Validate readiness for implementation",".gaia/artifacts/planning-artifacts"
 "lifecycle","4-implementation","sprint-planning","sprint-plan","gaia-sprint-plan","true","sm","Plan sprint from epics and stories",".gaia/artifacts/implementation-artifacts"
+"lifecycle","4-implementation","run-sprint","run-sprint","gaia-run-sprint","false","sm","Execute the sprint phase by phase, concurrently where dependencies allow",".gaia/state/sprint-status.yaml"
 "lifecycle","4-implementation","sprint-status","sprint-status","gaia-sprint-status","false","sm","Show current sprint status",".gaia/artifacts/implementation-artifacts"
 "lifecycle","4-implementation","create-story","create-story","gaia-create-story","false","sm","Create detailed story file",".gaia/artifacts/implementation-artifacts"
 "lifecycle","4-implementation","validate-story","validate-story","gaia-validate-story","false","validator","Full story validation with factual verification",".gaia/artifacts/implementation-artifacts"

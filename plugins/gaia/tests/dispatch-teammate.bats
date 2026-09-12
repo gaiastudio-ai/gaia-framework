@@ -71,7 +71,7 @@ teardown() { common_teardown; }
     [[ "$output" =~ EXIT: ]]
     # Extract exit code — must not be 127 (command not found)
     local ec
-    ec="$(echo "$output" | grep -oE 'EXIT:[0-9]+' | head -1 | cut -d: -f2)"
+    ec="$(echo "$output" | grep -oE -m1 'EXIT:[0-9]+' | cut -d: -f2)"
     [ "$ec" -ne 127 ]
   done
 }

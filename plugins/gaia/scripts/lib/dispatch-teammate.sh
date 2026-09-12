@@ -367,6 +367,53 @@ _dt_resolve_ceiling() {
   return 0
 }
 
+# _dt_claim_reservation <handle> <story_key> — if the caller reserved a ceiling
+# slot for this story, turn that reservation INTO the teammate entry instead of
+# creating a second one.
+#
+# A caller that must not overshoot the ceiling cannot rely on this library's own
+# count-then-register: that window is inside spawn_teammate, so a concurrent
+# caller can only close it by counting and reserving BEFORE dispatch. A
+# reservation is a real registry file precisely so it counts toward the ceiling
+# while the story is being dispatched. Registering beside it would then make one
+# story occupy two slots for the length of the dispatch, so registration renames
+# the reservation rather than adding to it -- atomically, so the count never dips
+# and another admission cannot slip through the gap.
+#
+# Callers that never reserve are unaffected: with no reservation file present
+# this is a no-op and registration creates the entry exactly as before.
+# Echoes nothing; returns 0 when a reservation was consumed, 1 otherwise.
+_dt_claim_reservation() {
+  local handle="$1" story_key="${2:-}" res
+  [ -n "$story_key" ] || return 1
+  _dt_ensure_registry
+  res="$_DT_REGISTRY_DIR/.reserved-$story_key"
+  [ -f "$res" ] || return 1
+  mv -f "$res" "$_DT_REGISTRY_DIR/$handle" 2>/dev/null || return 1
+  return 0
+}
+
+# _dt_effective_count <story_key> — the active count the ceiling gate should
+# compare against when spawning for <story_key>.
+#
+# A reservation is a real registry file so it holds a ceiling slot while the
+# story is being dispatched -- that is its purpose, and OTHER stories'
+# reservations must keep counting. But the reservation for the story being
+# spawned right now is not competition: registration is about to rename it into
+# this spawn's own entry, so counting both would make a reserving caller refuse
+# itself. At the shipped defaults that produced a cliff exactly at the designed
+# headroom: every admission reserved, every spawn then refused, and the sprint
+# degraded as if the ceiling were saturated.
+_dt_effective_count() {
+  local story_key="${1:-}" n
+  n="$(_dt_active_count)"
+  if [ -n "$story_key" ] && [ -f "$_DT_REGISTRY_DIR/.reserved-$story_key" ]; then
+    n=$(( n - 1 ))
+    [ "$n" -lt 0 ] && n=0
+  fi
+  printf '%s' "$n"
+}
+
 # _dt_active_count — print the number of active teammates.
 _dt_active_count() {
   _dt_ensure_registry
@@ -852,7 +899,7 @@ _dt_parse_frontmatter() {
 
   # Parse topology.
   local topology=""
-  topology="$(printf '%s' "$frontmatter" | grep -E '^topology:' | head -1 | sed 's/^topology:[[:space:]]*//' | tr -d ' ')"
+  topology="$(printf '%s' "$frontmatter" | sed -n 's/^topology:[[:space:]]*//p;/^topology:/q' | tr -d ' ')"
 
   # Validate topology.
   local effective_topology="hub"
@@ -968,7 +1015,8 @@ spawn_teammate() {
     local fm_output
     fm_output="$(_dt_parse_frontmatter "$skill_path")" || return 1
     # First non-topology line is the primary persona.
-    persona="$(printf '%s\n' "$fm_output" | grep -v '^topology:' | head -1)"
+    persona="$(printf '%s\n' "$fm_output" | grep -v '^topology:')"
+    persona="${persona%%$'\n'*}"
     if [ -z "$persona" ]; then
       _dt_die "spawn_teammate: no persona resolved from frontmatter — cannot spawn"
       return 1
@@ -989,7 +1037,7 @@ spawn_teammate() {
   _dt_resolve_ceiling
   local count _dt_try=1 _dt_delay="$_DT_CEILING_RETRY_BASE_DELAY"
   while :; do
-    count="$(_dt_active_count)"
+    count="$(_dt_effective_count "${story_key:-}")"
     [ "$count" -lt "$_DT_MAX_TEAMMATES" ] && break
     if [ "$_dt_try" -ge "$_DT_CEILING_RETRY_MAX" ]; then
       printf 'dispatch-teammate: cannot spawn — %d-teammate ceiling reached (active: %d)\n' \
@@ -1030,7 +1078,9 @@ spawn_teammate() {
     handle="${handle}-${suffix}"
   fi
 
-  # Register.
+  # Register. A reservation for this story, if the caller made one, becomes the
+  # teammate entry rather than a second registry file.
+  _dt_claim_reservation "$handle" "${story_key:-}" || true
   printf 'persona:%s\nstatus:active\nspawned:%s\n' "$persona" "$(_dt_iso8601)" \
     > "$_DT_REGISTRY_DIR/$handle"
 
@@ -1102,6 +1152,7 @@ _dt_spawn_story_keyed() {
   # actually passed, and the identity check above needs it to detect a
   # collision. Existing readers match their own field prefixes and are
   # unaffected by the extra line.
+  _dt_claim_reservation "$handle" "$story_key" || true
   printf 'persona:%s\nstatus:active\nspawned:%s\nstory_key:%s\n' \
     "$persona" "$(_dt_iso8601)" "$story_key" > "$_DT_REGISTRY_DIR/$handle"
 

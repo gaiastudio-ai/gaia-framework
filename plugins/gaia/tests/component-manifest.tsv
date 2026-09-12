@@ -250,6 +250,7 @@ core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
 core	phase-derivation.bats
+core	phase-parallel-orchestrator.bats
 core	pixel-diff-ac1-capture-and-diff.bats
 core	pixel-diff-unit.bats
 core	placeholder-test-detector.bats
@@ -447,6 +448,7 @@ scripts-core	gaia-create-story.bats
 scripts-core	gaia-migrate-dispatch.bats
 scripts-core	gaia-migrate.bats
 scripts-core	gaia-resume-corruption.bats
+scripts-core	gaia-run-sprint-docs.bats
 scripts-core	gaia-security-review.bats
 scripts-core	gaia-test-e2e.bats
 scripts-core	gaia-test-perf.bats

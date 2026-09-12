@@ -20,6 +20,7 @@ name,displayName,description,module,phase,path,command,agent
 "create-epics-stories","Create Epics and Stories","Break requirements into epics and stories","lifecycle","3-solutioning","_gaia/lifecycle/workflows/3-solutioning/create-epics-stories/workflow.yaml","gaia-create-epics","pm"
 "implementation-readiness","Implementation Readiness","Validate readiness for implementation","lifecycle","3-solutioning","_gaia/lifecycle/workflows/3-solutioning/implementation-readiness/workflow.yaml","gaia-readiness-check","architect"
 "sprint-planning","Sprint Planning","Plan sprint from epics and stories","lifecycle","4-implementation","_gaia/lifecycle/workflows/4-implementation/sprint-planning/workflow.yaml","gaia-sprint-plan","sm"
+"run-sprint","Run Sprint","Execute the sprint phase by phase, concurrently where dependencies allow","lifecycle","4-implementation","_gaia/core/workflows/run-sprint/workflow.yaml","gaia-run-sprint","sm"
 "sprint-status","Sprint Status","Show current sprint status","lifecycle","4-implementation","_gaia/lifecycle/workflows/4-implementation/sprint-status/workflow.yaml","gaia-sprint-status","sm"
 "create-story","Create Story","Create detailed story file","lifecycle","4-implementation","_gaia/lifecycle/workflows/4-implementation/create-story/workflow.yaml","gaia-create-story","sm"
 "validate-story","Validate Story","Full story validation with factual verification","lifecycle","4-implementation","_gaia/lifecycle/workflows/4-implementation/validate-story/workflow.yaml","gaia-validate-story","validator"

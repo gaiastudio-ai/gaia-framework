@@ -85,6 +85,23 @@ _mk_ignoring_repo() {
   printf '%s' "$primary"
 }
 
+# _mk_build_ignoring_repo <dir> — like _mk_ignoring_repo but also ignores the
+# build-output path the discard tests use, so `coverage/` is ignored rather than
+# untracked (untracked is a different refusal and would mask the case).
+_mk_build_ignoring_repo() {
+  local dir="$1"
+  local primary; primary="$(_mk_primary_repo "$dir")"
+  # `coverage/` alone matches only a real directory; a SYMLINK named coverage
+  # would read as untracked instead of ignored, which is a different refusal.
+  printf '.gaia/\nlocal.env\ncoverage/\ncoverage\n' > "$primary/.gitignore"
+  git -C "$primary" add .gitignore
+  git -C "$primary" commit -qm "ignore local and build state"
+  local remote; remote="$(_mk_bare_remote "${dir}-remote.git")"
+  git -C "$primary" remote add origin "$remote"
+  git -C "$primary" push -q -u origin HEAD
+  printf '%s' "$primary"
+}
+
 # _seed_ignored_state <worktree> — write only gitignored local state.
 _seed_ignored_state() {
   mkdir -p "$1/.gaia/memory"
@@ -1066,8 +1083,12 @@ CHILD
   # assertion above passes with or without the library's own guard. Pin the
   # guard structurally too, so removing it is visible: cleanup must be
   # conditional on the ref being free rather than an unconditional delete.
+  # `producer | head -1` is a SIGPIPE trap inside a command substitution: head
+  # closes the pipe while awk is still writing, awk dies of SIGPIPE (141), and
+  # under `set -o pipefail` the substitution fails. It is timing-dependent, so
+  # it surfaces on Linux/GNU and not on macOS. Let awk stop itself instead.
   local cleanup
-  cleanup="$(awk '/cannot create worktree at .* on new branch/{found=1} found' "$LIB" | head -1)"
+  cleanup="$(awk '/cannot create worktree at .* on new branch/{print; exit}' "$LIB")"
   grep -q 'worktree_branch_state "\$repo" "\$branch"' "$LIB" \
     || { echo "the branch cleanup lost its free-ref condition"; return 1; }
   grep -qE 'if \[ "\$\(worktree_branch_state "\$repo" "\$branch"\)" = "free" \]; then' "$LIB" \
@@ -1103,4 +1124,222 @@ CHILD
   capped="$(worktree_slug_cap "$long")"
   [ "${#capped}" -le 60 ]
   [ "$(worktree_slug_cap "short-slug")" = "short-slug" ]
+}
+
+# ---------------------------------------------------------------------------
+# Opt-in discard of ignored-only state (third teardown argument)
+#
+# Teardown refuses any worktree holding local state, which is the right default
+# but leaves a locked directory behind on a NORMAL successful run whenever the
+# story's tooling wrote an ignored file (coverage output, dependency trees).
+# The opt-in third argument narrows that: ignored-only state may be discarded,
+# but only after the work is provably merged, and never when the ignored set
+# touches memory or checkpoint state a resumed run depends on.
+#
+# The classifier reads `git status --porcelain --ignored -uall -z`. Each flag is
+# load-bearing and each has a test: without -uall git reports whole directories
+# and a protected path is never seen; without -z git C-quotes any path holding
+# a space or a non-ASCII byte, so the quoted form misses the protected match and
+# falls to the discard arm. Both failures destroy data while looking correct.
+# ---------------------------------------------------------------------------
+
+# _seed_ignored_build_state <worktree> — ignored state that is safe to discard:
+# build output only, no memory or checkpoint paths.
+_seed_ignored_build_state() {
+  mkdir -p "$1/coverage"
+  printf 'lcov\n' > "$1/coverage/report.txt"
+}
+
+@test "ignored-only state is discarded when the caller opts in (AC-EC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_build_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-D1" "slug")"
+  _seed_ignored_build_state "$wt"
+  [ -z "$(git -C "$wt" status --porcelain)" ] \
+    || { echo "fixture is visibly dirty; it must be ignored-only"; return 1; }
+
+  run --separate-stderr worktree_teardown "$primary" "$wt" --discard-ignored
+  [ "$status" -eq 0 ] \
+    || { echo "opting in did not discard ignored-only state: $stderr"; return 1; }
+  [ ! -d "$wt" ] \
+    || { echo "the worktree survived an opted-in discard"; return 1; }
+}
+
+@test "ignored-only state is kept when the caller does NOT opt in (AC-EC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_build_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-D2" "slug")"
+  _seed_ignored_build_state "$wt"
+
+  # The default must be unchanged: discarding is something a caller asks for.
+  run --separate-stderr worktree_teardown "$primary" "$wt"
+  [ "$status" -ne 0 ] \
+    || { echo "ignored state was discarded without the caller opting in"; return 1; }
+  [ -f "$wt/coverage/report.txt" ] \
+    || { echo "ignored state was destroyed on the default path"; return 1; }
+}
+
+@test "opting in never discards tracked modifications (AC-EC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_build_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-D3" "slug")"
+  printf 'edited\n' > "$wt/seed.txt"
+
+  # Classification must say "no" (real work present), not merely refuse:
+  # today teardown refuses everything, so a refusal alone proves nothing.
+  run worktree_ignored_only "$primary" "$wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "no" ] \
+    || { echo "a worktree holding tracked work classified as '$output', not 'no'"; return 1; }
+
+  run --separate-stderr worktree_teardown "$primary" "$wt" --discard-ignored
+  [ "$status" -ne 0 ] \
+    || { echo "opting in discarded a worktree holding tracked edits"; return 1; }
+  [ -d "$wt" ]
+  [ "$(cat "$wt/seed.txt")" = "edited" ] \
+    || { echo "an uncommitted tracked edit was destroyed"; return 1; }
+}
+
+@test "opting in never discards untracked files (AC-EC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_build_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-D4" "slug")"
+  printf 'new work\n' > "$wt/untracked.txt"
+
+  # Classification must say "no" (real work present), not merely refuse:
+  # today teardown refuses everything, so a refusal alone proves nothing.
+  run worktree_ignored_only "$primary" "$wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "no" ] \
+    || { echo "a worktree holding untracked work classified as '$output', not 'no'"; return 1; }
+
+  run --separate-stderr worktree_teardown "$primary" "$wt" --discard-ignored
+  [ "$status" -ne 0 ] \
+    || { echo "opting in discarded a worktree holding untracked work"; return 1; }
+  [ -f "$wt/untracked.txt" ] \
+    || { echo "untracked work was destroyed"; return 1; }
+}
+
+@test "ignored memory state is protected from an opted-in discard (AC-EC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_build_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-D5" "slug")"
+  mkdir -p "$wt/.gaia/memory"
+  printf 'sidecar\n' > "$wt/.gaia/memory/sidecar.md"
+
+  run --separate-stderr worktree_teardown "$primary" "$wt" --discard-ignored
+  [ "$status" -ne 0 ] \
+    || { echo "memory state was discarded"; return 1; }
+  [ -f "$wt/.gaia/memory/sidecar.md" ] \
+    || { echo "sidecar memory was destroyed by an opted-in discard"; return 1; }
+
+  run worktree_ignored_only "$primary" "$wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "protected" ] \
+    || { echo "expected classification 'protected', got '$output'"; return 1; }
+}
+
+@test "a nested checkpoint directory is protected from an opted-in discard (AC-EC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_build_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-D6" "slug")"
+  # Nested one level down: a glob anchored at a fixed depth would miss this.
+  mkdir -p "$wt/.gaia/sub/checkpoints"
+  printf '{}\n' > "$wt/.gaia/sub/checkpoints/ck.json"
+
+  # Pin the CLASSIFICATION, not just survival: with no discard path implemented
+  # at all, teardown refuses everything and a survival-only assertion passes
+  # without proving the protected set is understood.
+  run worktree_ignored_only "$primary" "$wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "protected" ] \
+    || { echo "a nested checkpoint path classified as '$output', not 'protected'"; return 1; }
+
+  run --separate-stderr worktree_teardown "$primary" "$wt" --discard-ignored
+  [ "$status" -ne 0 ] \
+    || { echo "a nested checkpoint directory was discarded"; return 1; }
+  [ -f "$wt/.gaia/sub/checkpoints/ck.json" ] \
+    || { echo "checkpoint state was destroyed"; return 1; }
+}
+
+@test "a protected path holding a space and a non-ASCII byte is recognised as protected (AC-EC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_build_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-D7" "slug")"
+  mkdir -p "$wt/.gaia/memory"
+  # Porcelain C-quotes both of these unless -z is passed, and a quoted path
+  # parses as an ordinary relative name -- so it misses the protected match and
+  # reaches the discard arm looking perfectly normal. Asserting only that the
+  # directory survived would also pass if it were preserved for some unrelated
+  # reason, so the CLASSIFICATION is what this pins.
+  printf 'sidecar\n' > "$wt/.gaia/memory/side car.md"
+  printf 'sidecar\n' > "$wt/.gaia/memory/café.md"
+
+  run worktree_ignored_only "$primary" "$wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "protected" ] \
+    || { echo "a C-quoted protected path classified as '$output', not 'protected'"; return 1; }
+
+  run --separate-stderr worktree_teardown "$primary" "$wt" --discard-ignored
+  [ "$status" -ne 0 ] \
+    || { echo "a C-quoted protected path was discarded"; return 1; }
+  [ -f "$wt/.gaia/memory/side car.md" ] \
+    || { echo "a protected path containing a space was destroyed"; return 1; }
+  [ -f "$wt/.gaia/memory/café.md" ] \
+    || { echo "a protected path containing a non-ASCII byte was destroyed"; return 1; }
+}
+
+@test "an ignored symlink to a directory is preserved, not discarded (AC-EC6)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_build_ignoring_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "KG-D8" "slug")"
+  # Reported as a bare entry with no trailing slash, so the unexpanded-directory
+  # rule does not see it. Git unlinks the symlink rather than following it, but
+  # the classifier is not entitled to rely on that.
+  mkdir -p "$TEST_TMP/outside"
+  printf 'data\n' > "$TEST_TMP/outside/keep.txt"
+  ln -s "$TEST_TMP/outside" "$wt/coverage"
+
+  run worktree_ignored_only "$primary" "$wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "protected" ] \
+    || { echo "an ignored symlink classified as '$output', not 'protected'"; return 1; }
+
+  run --separate-stderr worktree_teardown "$primary" "$wt" --discard-ignored
+  [ "$status" -ne 0 ] \
+    || { echo "an ignored symlink was discarded"; return 1; }
+  [ -f "$TEST_TMP/outside/keep.txt" ] \
+    || { echo "the symlink target's contents were destroyed"; return 1; }
+}
+
+@test "a concurrent prune does not reap a sibling worktree being created (AC-EC4)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+
+  # Under slot-based execution one story's start prunes orphans while a sibling
+  # is mid-create. The live sibling holds this shell's pid in its lock reason
+  # and has no unpushed commits, so only the liveness veto stands between it and
+  # a reap -- exactly the veto a prune must honour.
+  local live; live="$(worktree_create "$primary" "KG-LIVE" "slug")"
+  [ -d "$live" ] || { echo "fixture worktree was not created"; return 1; }
+
+  # A genuine orphan from a killed run, so the prune has real work to do and a
+  # no-op prune cannot pass this test by doing nothing.
+  local orphan; orphan="$(worktree_create "$primary" "KG-ORPHAN" "slug2")"
+  rm -rf "$orphan"
+
+  worktree_prune_stale "$primary" &
+  local pruner=$!
+  local racer; racer="$(worktree_create "$primary" "KG-RACER" "slug3")" || true
+  wait "$pruner" 2>/dev/null || true
+
+  [ -d "$live" ] \
+    || { echo "a live sibling worktree was reaped by a concurrent prune"; return 1; }
+  [ -n "$racer" ] && [ -d "$racer" ] \
+    || { echo "the worktree created during the prune did not survive"; return 1; }
+  git -C "$primary" worktree list --porcelain | grep -q "$live" \
+    || { echo "the live sibling lost its worktree record"; return 1; }
+  git -C "$primary" worktree list --porcelain | grep -q 'KG-ORPHAN' \
+    && { echo "the killed run's orphan survived the prune, so it was a no-op"; return 1; }
+  return 0
 }
