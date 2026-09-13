@@ -4002,3 +4002,139 @@ _kill_probe_group() {
 
   _kill_probe_group "$probedir"
 }
+
+# ---------------------------------------------------------------------------
+# Engine-state lock: concurrent `next` must not double-dispatch (AC4)
+# ---------------------------------------------------------------------------
+
+@test "two concurrent next invocations never dispatch the same story twice (AC4)" {
+  [ -f "$ORCH" ] || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:1 K3:1 K4:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
+  PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
+  export GAIA_MODE_B_SUBSTRATE=available
+
+  # Widen the read-pending/admit/write-running window inside a single `next`
+  # call (same knob AC2's own ceiling-race test uses to widen
+  # _ppo_admit_bookkeeping's count-then-claim window) so two genuinely
+  # concurrent `next` processes are overlapping for long enough that an
+  # unlocked pair reliably races rather than merely happening to interleave.
+  export GAIA_PPO_CLAIM_DELAY=1
+
+  # Run this 3 times for confidence: a race that only shows up occasionally
+  # under scheduling luck must not read as "the lock works" on a lucky run.
+  local round
+  for round in 1 2 3; do
+    local session="$TEST_TMP/session-$round"
+    mkdir -p "$session"
+    export GAIA_SESSION_DIR="$session"
+
+    bash "$ORCH" plan --repo "$repo" --yaml "$yaml" --slots 4 >/dev/null
+
+    local out1="$TEST_TMP/next1-$round.out" out2="$TEST_TMP/next2-$round.out"
+    bash "$ORCH" next >"$out1" 2>&1 &
+    local pid1=$!
+    bash "$ORCH" next >"$out2" 2>&1 &
+    local pid2=$!
+    wait "$pid1" 2>/dev/null || true
+    wait "$pid2" 2>/dev/null || true
+
+    local combined; combined="$(cat "$out1" "$out2")"
+    local keys; keys="$(printf '%s\n' "$combined" | sed -n 's/^dispatch story=\([^ ]*\).*/\1/p')"
+    local dispatched_count; dispatched_count="$(printf '%s\n' "$keys" | grep -c . || true)"
+    local unique_count; unique_count="$(printf '%s\n' "$keys" | sort -u | grep -c . || true)"
+    [ "$dispatched_count" -eq "$unique_count" ] \
+      || { echo "round $round: a story key was dispatched more than once across the two concurrent next calls: $keys"; return 1; }
+
+    # Each dispatched key holds exactly one running/<key> entry -- a
+    # double-dispatch would have overwritten one or clobbered accounting,
+    # not merely printed two lines, so check the on-disk state too.
+    local k
+    for k in $(printf '%s\n' "$keys" | sort -u); do
+      [ -f "$session/ppo/running/$k" ] \
+        || { echo "round $round: $k was dispatched but has no running/$k entry"; return 1; }
+    done
+  done
+}
+
+# ---------------------------------------------------------------------------
+# record tears down the teammate registry on failed and timeout, not just done (AC4)
+# ---------------------------------------------------------------------------
+
+@test "record releases the teammate registry entry on both failed and timeout outcomes (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  # shellcheck disable=SC1090
+  . "$DT_LIB"
+  # Real registry entries via the real spawn_teammate path -- Mode B
+  # substrate forced available, no dispatch stub standing in for admission --
+  # so the entries `record` must clear are the same ones a live run would
+  # create, not a fixture the test wrote by hand.
+  export GAIA_MODE_B_SUBSTRATE=available
+  unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
+
+  ppo_plan --repo "$repo" --yaml "$yaml" --slots 2 >/dev/null
+  local out; out="$(ppo_next)"
+  local k1_handle k2_handle
+  k1_handle="$(printf '%s\n' "$out" | sed -n 's/^dispatch story=K1 .*handle=\([^ ]*\).*/\1/p')"
+  k2_handle="$(printf '%s\n' "$out" | sed -n 's/^dispatch story=K2 .*handle=\([^ ]*\).*/\1/p')"
+  [ -n "$k1_handle" ] && [ -n "$k2_handle" ] \
+    || { echo "expected 2 real admissions with handles for K1 and K2: $out"; return 1; }
+  [ -f "$GAIA_SESSION_DIR/registry/$k1_handle" ] \
+    || { echo "no real registry entry for K1's handle $k1_handle before record"; return 1; }
+  [ -f "$GAIA_SESSION_DIR/registry/$k2_handle" ] \
+    || { echo "no real registry entry for K2's handle $k2_handle before record"; return 1; }
+
+  # Each story's worktree, so the outcome rules (preserved on failed/timeout,
+  # never torn down like the `done` path) can be checked independently of
+  # registry cleanup -- the two are separate mechanisms in the same arms.
+  local k1_wt k2_wt
+  k1_wt="$(printf '%s\n' "$out" | sed -n 's/^dispatch story=K1 .*worktree=\([^ ]*\).*/\1/p')"
+  k2_wt="$(printf '%s\n' "$out" | sed -n 's/^dispatch story=K2 .*worktree=\([^ ]*\).*/\1/p')"
+
+  ppo_record_outcome K1 failed >/dev/null
+  ppo_record_outcome K2 timeout >/dev/null
+
+  [ ! -f "$GAIA_SESSION_DIR/registry/$k1_handle" ] \
+    || { echo "K1's registry entry survived record failed: shutdown_teammate was not called on the failed arm"; return 1; }
+  [ ! -f "$GAIA_SESSION_DIR/registry/$k2_handle" ] \
+    || { echo "K2's registry entry survived record timeout: shutdown_teammate was not called on the timeout arm"; return 1; }
+
+  # No reservation token is left behind for either key -- admission's own
+  # token is claimed-then-released inside _ppo_admit_bookkeeping, so by the
+  # time record runs there must be nothing under .reserved-* for either key.
+  [ ! -e "$GAIA_SESSION_DIR/registry/.reserved-K1" ] \
+    || { echo "K1's reservation token was not released"; return 1; }
+  [ ! -e "$GAIA_SESSION_DIR/registry/.reserved-K2" ] \
+    || { echo "K2's reservation token was not released"; return 1; }
+
+  # Neither running/<key> entry survives record, regardless of outcome.
+  [ ! -f "$GAIA_SESSION_DIR/ppo/running/K1" ] \
+    || { echo "K1's running entry survived record failed"; return 1; }
+  [ ! -f "$GAIA_SESSION_DIR/ppo/running/K2" ] \
+    || { echo "K2's running entry survived record timeout"; return 1; }
+
+  # Outcome rules: failed/timeout never tear the worktree down (that is the
+  # `done`-only path via _ppo_apply_mnd_clean) -- both worktrees remain.
+  if [ -n "$k1_wt" ]; then
+    [ -d "$k1_wt" ] \
+      || { echo "K1's worktree was torn down on a failed outcome, expected preserved"; return 1; }
+  fi
+  if [ -n "$k2_wt" ]; then
+    [ -d "$k2_wt" ] \
+      || { echo "K2's worktree was torn down on a timeout outcome, expected preserved"; return 1; }
+  fi
+
+  local ledger; ledger="$(ppo_report)"
+  printf '%s\n' "$ledger" | grep -q '^story=K1 outcome=failed$' \
+    || { echo "K1 was not recorded failed: $ledger"; return 1; }
+  printf '%s\n' "$ledger" | grep -q '^story=K2 outcome=slot-timeout$' \
+    || { echo "K2 was not recorded slot-timeout: $ledger"; return 1; }
+}
