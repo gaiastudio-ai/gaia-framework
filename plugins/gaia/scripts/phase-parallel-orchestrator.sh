@@ -733,6 +733,61 @@ ppo_report_preserved() {
   return 0
 }
 
+# _ppo_reap_split_at <found_idx> <running_keys> <running_pids> <out_dir> — the
+# newline-safe reap-ledger walk, factored out so it can be pinned directly
+# rather than only through the full dispatch loop (which quarantines a
+# malformed key before it ever reaches here, so a whitespace key driven
+# through ppo_run_sprint no longer exercises this code path at all).
+#
+# `running_keys`/`running_pids` are newline-joined lists of equal length, kept
+# index-aligned by the caller. `found_idx` is the index of the pid that
+# finished. Writes three files under <out_dir>: `finished` (the finished key),
+# `keys` (the remaining keys, newline-joined), `pids` (the remaining pids,
+# newline-joined) -- written even when empty. Output is via files, not stdout,
+# because either list can itself span multiple lines: no in-band separator on
+# a single stream could tell "end of the keys list" from "a blank list entry"
+# without also being a value a real key or pid could contain.
+#
+# `for _k in $running_keys` would split on IFS -- space and tab included --
+# while the pid list it is indexed against can only ever split on newline. A
+# key containing whitespace therefore enumerates as two or more entries and
+# every index after it refers to a different slot in each list: the reap then
+# names a fragment of one key as the finished story and drops a REAL one from
+# the ledger entirely. The damage lands on valid stories, not the malformed
+# one -- so the walk below reads line-by-line on both sides instead.
+_ppo_reap_split_at() {
+  local found="${1:-}" keys_in="${2:-}" pids_in="${3:-}" out_dir="${4:-}"
+  local idx=0 finished="" _k _p keys_arr="" pids_arr=""
+  [ -n "$out_dir" ] || return 1
+  mkdir -p "$out_dir" 2>/dev/null || return 1
+
+  while IFS= read -r _k; do
+    [ -n "$_k" ] || continue
+    if [ "$idx" -eq "$found" ]; then
+      finished="$_k"
+    else
+      keys_arr="${keys_arr}${keys_arr:+$'\n'}${_k}"
+    fi
+    idx=$((idx + 1))
+  done <<EOF
+$keys_in
+EOF
+
+  idx=0
+  while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
+    [ "$idx" -ne "$found" ] && pids_arr="${pids_arr}${pids_arr:+$'\n'}${_p}"
+    idx=$((idx + 1))
+  done <<EOF
+$pids_in
+EOF
+
+  printf '%s' "$finished" > "$out_dir/finished"
+  printf '%s' "$keys_arr" > "$out_dir/keys"
+  printf '%s' "$pids_arr" > "$out_dir/pids"
+  return 0
+}
+
 # ---------- Execution ----------
 
 _ppo_record() {
@@ -856,10 +911,18 @@ ppo_run_sprint() {
 
         # Already live from a previous run? Attach, do not dispatch twice.
         # Re-entry: a worktree already checked out for this story belongs to a
-        # PREVIOUS run, so the story is attached rather than started twice.
-        # A story this run re-queued has its own worktree checked out too, and
-        # treating that as a previous run would silently mark it done without
-        # ever dispatching it -- so only stories not yet seen take this path.
+        # PREVIOUS run, so the story is attached rather than started twice --
+        # but attaching is only about REUSING the worktree instead of recreating
+        # it. It says nothing about whether the story's own gate has closed, so
+        # it must still go through the normal slot path and take its outcome
+        # from the real dispatch result, exactly like every other story: a
+        # surviving worktree from a crashed run is direct evidence the review
+        # gate was open when the previous run died, and recording it done here
+        # from worktree presence alone would recycle the slot onto a story
+        # whose gate is still open -- the exact thing the barrier exists to
+        # forbid. A story this run re-queued has its own worktree checked out
+        # too, and treating that as a previous run would double-count it here
+        # -- so only stories not yet seen take this path.
         local bstate
         case "$_PPO_SEEN" in
           *"|${key}|"*) bstate="absent" ;;
@@ -869,9 +932,6 @@ ppo_run_sprint() {
         case "$bstate" in
           checked-out:*)
             _ppo_emit "event=attached story=${key} phase=${p}"
-            _ppo_record "$key" "done" "$p"
-            pending="$rest"
-            continue
             ;;
         esac
 
@@ -953,34 +1013,16 @@ EOF
           sleep 0.2
         done
 
-        # Walk the key list NEWLINE-safely. `for _k in $running_keys` splits on
-        # IFS -- space and tab included -- while the pid list it is indexed
-        # against can only ever split on newline. A key containing whitespace
-        # therefore enumerates as two or more entries and every index after it
-        # refers to a different slot in each list: the reap then names a
-        # fragment of one key as the finished story and drops a REAL one from
-        # the ledger entirely. The damage lands on valid stories, not the
-        # malformed one.
-        idx=0; keys_arr=""; pids_arr=""
-        while IFS= read -r _k; do
-          [ -n "$_k" ] || continue
-          if [ "$idx" -eq "$found" ]; then
-            finished="$_k"
-          else
-            keys_arr="${keys_arr}${keys_arr:+$'\n'}${_k}"
-          fi
-          idx=$((idx + 1))
-        done <<EOF
-$running_keys
-EOF
-        idx=0
-        while IFS= read -r _p; do
-          [ -n "$_p" ] || continue
-          [ "$idx" -ne "$found" ] && pids_arr="${pids_arr}${pids_arr:+$'\n'}${_p}"
-          idx=$((idx + 1))
-        done <<EOF
-$running_pids
-EOF
+        # Walk the key list NEWLINE-safely -- see _ppo_reap_split_at, factored
+        # out so this exact walk can be pinned directly by a unit-level test.
+        local _split_dir
+        _split_dir="$(_ppo_state_dir)/reap-split"
+        rm -rf "$_split_dir" 2>/dev/null || true
+        mkdir -p "$_split_dir" 2>/dev/null || true
+        _ppo_reap_split_at "$found" "$running_keys" "$running_pids" "$_split_dir"
+        finished="$(cat "$_split_dir/finished" 2>/dev/null || true)"
+        keys_arr="$(cat "$_split_dir/keys" 2>/dev/null || true)"
+        pids_arr="$(cat "$_split_dir/pids" 2>/dev/null || true)"
         running_keys="$keys_arr"; running_pids="$pids_arr"
 
         wait "$fpid" 2>/dev/null || wrc=$?

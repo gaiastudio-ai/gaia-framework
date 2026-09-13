@@ -1327,46 +1327,31 @@ _reason_of() {
     || { echo "two stories collided on one handle: $h1"; return 1; }
 }
 
-@test "a merged story that is not yet done blocks its slot from being backfilled (AC4)" {
-  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
-  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
-  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:1)"
-  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
-  PATH="$fl:$PATH"
-  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
-  PATH="$stub:$PATH"
-  # Merged-but-not-done means rework is pending: the story is NOT terminal, so
-  # the barrier holds and the slot is not recycled onto another story.
-  export GAIA_STUB_MERGED_NOT_DONE="K1"
-
-  run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 1
-  run ppo_backfill_before_done
-  [ "$output" = "0" ] \
-    || { echo "a slot was backfilled while its story's gate was still open"; return 1; }
-}
+# Note: an earlier version of this file had a test here named "a merged story
+# that is not yet done blocks its slot from being backfilled (AC4)" asserting
+# only `ppo_backfill_before_done == 0` -- which also passes against a no-op
+# orchestrator that never runs anything. "a merged-but-not-done story reaches
+# done via the resume path (AC4)" and "removing the resume re-dispatch leaves
+# a merged-not-done story unreported (AC4)" below already prove the real
+# claim from real dispatch-log/ledger evidence (K1 dispatched, exits
+# merged-not-done, is re-queued via `outcome=resume-requeued`, and only then
+# reaches `outcome=done`) -- so the vacuous test was deleted rather than kept
+# as a duplicate name.
 
 # ---------------------------------------------------------------------------
 # Worktree lifecycle, resume, orphans (AC1, AC-EC6)
 # ---------------------------------------------------------------------------
 
-@test "a clean run leaves no orphan worktree behind (AC1)" {
-  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
-  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
-  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:1)"
-  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
-  PATH="$fl:$PATH"
-  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
-  PATH="$stub:$PATH"
+# Note: an earlier version of this file had a test here named "a clean run
+# leaves no orphan worktree behind (AC1)" asserting only that one worktree
+# (the primary checkout) remained after the run -- which also passes against
+# a no-op orchestrator that never creates any worktree at all. "a clean run
+# creates worktrees and then removes all of them (AC1)" below already proves
+# the real claim, adding the positive precondition (worktrees were actually
+# created and both stories were actually dispatched) before checking they are
+# all gone -- so the vacuous test was deleted rather than kept as a duplicate.
 
-  run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
-  [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
-  local remaining
-  remaining="$(git -C "$repo" worktree list --porcelain | grep -c '^worktree ' || true)"
-  [ "$remaining" -eq 1 ] \
-    || { echo "expected only the primary checkout, found $remaining worktrees"; return 1; }
-}
-
-@test "re-entry attaches a surviving worktree instead of dispatching twice (AC1)" {
+@test "re-entry attaches a surviving worktree and still dispatches it exactly once (AC1)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   # shellcheck disable=SC1090
@@ -1381,14 +1366,59 @@ _reason_of() {
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
 
-  # The story must be ATTACHED, not dispatched: dispatch count exactly 0 and
-  # the attach event present in telemetry. The old `[ "$n" -le 1 ]` assertion
-  # could not distinguish attach from a single dispatch.
+  # Attaching REUSES the worktree instead of recreating it -- it does not mean
+  # the story's gate is closed. A surviving worktree from a crashed run is
+  # dispatched exactly once, through the same slot path as any other story,
+  # and its ledger outcome comes from the real dispatch result rather than an
+  # unconditional "done" recorded from worktree presence alone.
   [[ "$output" == *"event=attached story=K1"* ]] \
     || { echo "the story was not attached; output: $output"; return 1; }
   local n; n="$(grep -c '^K1$' "$TEST_TMP/stubstate/dispatched.log" 2>/dev/null)" || n=0
-  [ "$n" -eq 0 ] \
-    || { echo "a story with a live worktree was dispatched $n times instead of being attached"; return 1; }
+  [ "$n" -eq 1 ] \
+    || { echo "a story with a live worktree was dispatched $n times, expected exactly 1"; return 1; }
+  printf '%s\n' "$output" | grep -qE '^event=story_complete story=K1 .*outcome=done$' \
+    || { echo "K1's outcome was not taken from the real dispatch result: $output"; return 1; }
+
+  # The pre-existing worktree PATH must be the one the run actually used --
+  # attach reuses it in place rather than creating a second one under a new
+  # path. (The story then runs to done, and its worktree is torn down on the
+  # normal post-merge path like any other completed story's -- reuse is about
+  # not duplicating the checkout while it is live, not about surviving past
+  # the story's own cleanup.)
+  local used; used="$(ppo_slot_worktrees | grep -Fx "$wt" || true)"
+  [ "$used" = "$wt" ] \
+    || { echo "the pre-existing worktree path $wt was not the one the run used: $(ppo_slot_worktrees)"; return 1; }
+}
+
+@test "a re-attached story that fails is recorded failed, not done (AC1)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  # shellcheck disable=SC1090
+  . "$WT_LIB"
+  local wt; wt="$(worktree_create "$repo" "K1" "slug")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  # K1's worktree survived a crash, but its gate is still open: the real
+  # dispatch call this time reports failure. A tri-state driven from the real
+  # result must record "failed", never the unconditional "done" that worktree
+  # PRESENCE alone would imply.
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:K1)"
+  PATH="$stub:$PATH"
+
+  run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
+  [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
+
+  [[ "$output" == *"event=attached story=K1"* ]] \
+    || { echo "the story was not attached; output: $output"; return 1; }
+  local n; n="$(grep -c '^K1$' "$TEST_TMP/stubstate/dispatched.log" 2>/dev/null)" || n=0
+  [ "$n" -eq 1 ] \
+    || { echo "a re-attached story was dispatched $n times, expected exactly 1"; return 1; }
+  printf '%s\n' "$output" | grep -qE '^event=story_complete story=K1 .*outcome=failed$' \
+    || { echo "a re-attached story's real failure was not recorded: $output"; return 1; }
+  printf '%s\n' "$output" | grep -qE '^event=story_complete story=K1 .*outcome=done$' \
+    && { echo "a re-attached story that failed was still recorded done: $output"; return 1; }
+  return 0
 }
 
 @test "orphans from a killed run are pruned before dispatch (AC1)" {
@@ -1957,6 +1987,46 @@ _mk_yaml_raw() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# Reap-ledger walk, pinned directly (AC4, code closure review item 5)
+# ---------------------------------------------------------------------------
+#
+# The four tests above drive a malformed key through ppo_run_sprint, but the
+# dispatch-top quarantine (added to close the "invalid-key" finding) refuses a
+# whitespace key BEFORE it is ever appended to running_keys/running_pids --
+# so those four no longer reach the reap loop's own key-splitting walk at all,
+# and would stay green even if that walk regressed back to `for _k in
+# $running_keys`. This test calls the walk directly, bypassing the
+# quarantine, so the reap fix itself stays pinned.
+@test "_ppo_reap_split_at walks the key list newline-safely, not IFS-split (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+
+  # Two "running" slots: a whitespace-carrying key at index 0, a clean one at
+  # index 1. Index 1 (GOOD) is the one that "finished".
+  local keys pids out_dir
+  keys="$(printf 'aa bb\nGOOD')"
+  pids="$(printf '111\n222')"
+  out_dir="$TEST_TMP/reap-split"
+
+  _ppo_reap_split_at 1 "$keys" "$pids" "$out_dir"
+
+  # The IFS-split mutant (`for _k in $running_keys`) would enumerate "aa bb"
+  # as two entries ("aa", "bb") ahead of "GOOD", so index 1 would land on
+  # "bb" instead of "GOOD" -- reporting a fragment of the malformed key as the
+  # finished story and leaving the real one in the remaining list.
+  local finished; finished="$(cat "$out_dir/finished" 2>/dev/null || true)"
+  [ "$finished" = "GOOD" ] \
+    || { echo "expected GOOD to be the finished key, got: '$finished'"; return 1; }
+
+  local remaining; remaining="$(cat "$out_dir/keys" 2>/dev/null || true)"
+  [ "$remaining" = "aa bb" ] \
+    || { echo "expected 'aa bb' to remain intact as ONE entry, got: '$remaining'"; return 1; }
+
+  local remaining_pids; remaining_pids="$(cat "$out_dir/pids" 2>/dev/null || true)"
+  [ "$remaining_pids" = "111" ] \
+    || { echo "expected pid 111 to remain, got: '$remaining_pids'"; return 1; }
+}
+
 @test "a merged-but-not-done story reaches done via the resume path (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
@@ -2187,35 +2257,12 @@ _mk_yaml_raw() {
 # Re-entry attach (AC1, item E-W2)
 # ---------------------------------------------------------------------------
 
-@test "re-entry attaches a surviving worktree: attach event, zero dispatches (AC1)" {
-  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
-  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
-  # shellcheck disable=SC1090
-  . "$WT_LIB"
-  local wt; wt="$(worktree_create "$repo" "K1" "slug")"
-  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
-  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
-  PATH="$fl:$PATH"
-  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
-  PATH="$stub:$PATH"
-
-  run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
-  [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
-
-  # The story must be ATTACHED, not dispatched.
-  [[ "$output" == *"event=attached story=K1"* ]] \
-    || { echo "the story was not attached; output: $output"; return 1; }
-
-  # Dispatch count must be exactly 0 for K1.
-  local n; n="$(grep -c '^K1$' "$TEST_TMP/stubstate/dispatched.log" 2>/dev/null)" || n=0
-  [ "$n" -eq 0 ] \
-    || { echo "a story with a live worktree was dispatched $n times instead of being attached"; return 1; }
-
-  # The pre-existing worktree identity must be preserved.
-  local branches; branches="$(git -C "$repo" worktree list --porcelain 2>/dev/null | grep "^worktree $wt$" | wc -l | tr -d ' ')"
-  [ "$branches" -ge 1 ] \
-    || { echo "the pre-existing worktree was not preserved"; return 1; }
-}
+# Note: an earlier version of this file had a duplicate test here named
+# "re-entry attaches a surviving worktree: attach event, zero dispatches
+# (AC1)". It asserted the SAME shape as "re-entry attaches a surviving
+# worktree and still dispatches it exactly once (AC1)" above, plus the
+# worktree-identity check, which is now folded into that test -- so the
+# duplicate was deleted rather than fixed twice.
 
 # ---------------------------------------------------------------------------
 # Clean-run worktree cleanup (AC1, item E-W4)
@@ -2294,33 +2341,52 @@ _mk_yaml_raw() {
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" stall:K1)"
   PATH="$stub:$PATH"
 
-  # K1 stalls, and its worktree contains ignored-only files. If --discard-ignored
-  # leaked to the timeout path, these would be destroyed instead of preserved.
-  export GAIA_STORY_TIMEOUT_SECONDS=2
+  # K1 stalls, and its worktree is seeded with an ignored-only file while it is
+  # in flight. If --discard-ignored leaked to the timeout path, that file (and
+  # the worktree holding it) would be destroyed instead of preserved.
+  export GAIA_STORY_TIMEOUT_SECONDS=3
+  export GAIA_SESSION_DIR="$TEST_TMP/session"
 
-  run timeout 120 env PATH="$PATH" bash -c '
-    . "'"$ORCH"'"
-    ppo_run_sprint --repo "'"$repo"'" --yaml "'"$yaml"'" --slots 2
-  '
-  [ "$status" -ne 124 ] \
-    || { echo "the run itself timed out"; return 1; }
+  local outfile="$TEST_TMP/run.out"
+  ( timeout 120 env PATH="$PATH" GAIA_SESSION_DIR="$GAIA_SESSION_DIR" bash -c '
+      . "'"$ORCH"'"
+      ppo_run_sprint --repo "'"$repo"'" --yaml "'"$yaml"'" --slots 2
+    ' > "$outfile" 2>&1
+  ) &
+  local run_pid=$!
+
+  # Poll (bounded) for the orchestrator to have created K1's worktree, then
+  # drop an ignored-only file into it while K1 is still stalled.
+  local wt_marker="$GAIA_SESSION_DIR/slots/K1/worktree" wt="" waited=0
+  while [ "$waited" -lt 100 ]; do
+    if [ -s "$wt_marker" ]; then
+      wt="$(cat "$wt_marker" 2>/dev/null)"
+      [ -n "$wt" ] && [ -d "$wt" ] && break
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  [ -n "$wt" ] && [ -d "$wt" ] \
+    || { echo "K1's worktree never appeared for seeding"; kill "$run_pid" 2>/dev/null || true; return 1; }
+  mkdir -p "$wt/.gaia"
+  printf 'ignored-while-stalled\n' > "$wt/.gaia/timeout-marker.txt"
+
+  wait "$run_pid"
+  local output; output="$(cat "$outfile")"
+
   [[ "$output" == *"slot-timeout"* ]] \
     || { echo "K1 was not reported as timed out: $output"; return 1; }
-
-  # The worktree for the timed-out story must still exist (preserved for debug),
-  # even though it contains only gitignored files.
-  local wt_dir="$repo/../.gaia-worktrees"
-  if [ -d "$wt_dir" ]; then
-    local wt_found
-    wt_found="$(find "$wt_dir" -maxdepth 1 -type d -name '*K1*' 2>/dev/null | head -1)"
-    if [ -n "$wt_found" ]; then
-      # The preserved worktree exists -- the timeout path did NOT discard it.
-      : # pass
-    fi
-  fi
-  # Also verify that a MERGED story's worktree is removed (it has --discard-ignored).
   [[ "$output" == *"K2"* ]] \
     || { echo "K2 was not dispatched: $output"; return 1; }
+
+  # Real assertion: the timed-out worktree AND the ignored file it holds must
+  # still be on disk. A mutant that moves --discard-ignored onto the timeout
+  # path would remove the worktree (it holds only ignored content), which
+  # deletes the marker file along with it and turns this red.
+  [ -d "$wt" ] \
+    || { echo "the timed-out story's worktree was removed: $wt"; return 1; }
+  [ -f "$wt/.gaia/timeout-marker.txt" ] \
+    || { echo "the ignored file seeded during the timeout did not survive: $wt"; return 1; }
 }
 
 @test "a merged story has its ignored files discarded while timeout preserves them (AC-EC6)" {
