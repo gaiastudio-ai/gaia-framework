@@ -217,6 +217,21 @@ printf '%s\n' "\$key" >> "\$counter/dispatched.log"
 _d="\$(eval printf '%s' "\\\${GAIA_STUB_DELAY_\${key}:-0}" 2>/dev/null || printf 0)"
 case "\$_d" in ''|*[!0-9]*) _d=0 ;; esac
 [ "\$_d" -gt 0 ] && sleep "\$_d"
+# GAIA_STUB_BLOCK_UNTIL_<key>=<path>: poll for that path to appear rather
+# than sleeping a fixed duration. Order-based, not wall-clock-based -- a
+# caller creates the path only after observing whatever OTHER event must
+# happen first (e.g. a sibling's own dispatch line), so the assertion this
+# supports is about ADMISSION ORDER, immune to how fast or slow any given
+# machine happens to run the surrounding bookkeeping.
+_bf="\$(eval printf '%s' "\\\${GAIA_STUB_BLOCK_UNTIL_\${key}:-}" 2>/dev/null || true)"
+if [ -n "\$_bf" ]; then
+  _bw=0
+  while [ ! -e "\$_bf" ]; do
+    _bw=\$((_bw + 1))
+    [ "\$_bw" -lt 300 ] || break
+    sleep 0.1
+  done
+fi
 if [ "\$key" = "\${GAIA_STUB_MERGED_NOT_DONE:-}" ]; then
   printf '%s\n' "\$key" >> "\$counter/merged-not-done.log"
 fi
@@ -235,29 +250,24 @@ case "\$mode" in
     sleep 30
     ;;
   registry-dwell)
-    # Behave like a real spawn: register in the shared registry, hold it while
-    # sampling how many entries exist, then deregister. The dwell is what makes
-    # a check-then-act race observable at all.
+    # Sample the shared registry while this story's admission is in flight.
+    # The step engine admits for REAL before this hook ever runs (ppo_next's
+    # own spawn_teammate call, under the reservation lock, is what puts this
+    # story's entry in the registry) -- so the hook no longer spawns its own
+    # entry here. An earlier version of this stub called spawn_teammate
+    # itself, which was correct when the hook substituted for the ORCHESTRATOR's
+    # entire admission-and-run in one call; under the step engine that would
+    # double-register (one entry from the real ppo_next admission, a second
+    # from this stub), silently inflating the observed peak past the ceiling
+    # it is supposed to bound. The dwell (a real sleep window while the real
+    # admission's entry sits in the registry) is what still makes the
+    # check-then-act race observable.
     reg="\${GAIA_SESSION_DIR}/registry"
     mkdir -p "\$reg"
-    # Go through the REAL spawn path, ceiling gate included. Writing the
-    # registry entry by hand would bypass exactly the gate under test -- the
-    # reason an earlier version of this suite could not see that a story's own
-    # reservation was being counted against its own spawn.
-    . "\$GAIA_DT_LIB"
-    _dt_ensure_registry
-    export GAIA_MODE_B_SUBSTRATE=available
-    _rc=0
-    spawn_teammate shay --story-key "\$key" >/dev/null 2>&1 || _rc=\$?
-    if [ "\$_rc" -ne 0 ]; then
-      printf 'spawn-refused %s rc=%s\n' "\$key" "\$_rc" >> "\$counter/spawn.log"
-      exit "\$_rc"
-    fi
     printf 'spawned %s\n' "\$key" >> "\$counter/spawn.log"
     sleep 0.3
     find "\$reg" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d " " >> "\$counter/registry-peak.log"
     sleep 0.3
-    shutdown_teammate "tm-shay-\$key" >/dev/null 2>&1 || rm -f "\$reg/tm-shay-\$key"
     ;;
   ceiling:*)
     n="\${mode#ceiling:}"
@@ -580,25 +590,56 @@ _reason_of() {
   PATH="$stub:$PATH"
   export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
-  # Two slots. K1 is slow, K2 is fast. Reaping the OLDEST slot would make K3
-  # wait for K1 even though K2's slot has been free for seconds -- head-of-line
-  # blocking that honours the budget while wasting the throughput it exists for.
-  # The stub's own delay parser is integer-seconds only (a fractional value
-  # fails its `*[!0-9]*` guard and silently resets to 0), so the smallest safe
-  # cut keeps whole seconds: 2:1 still gives span.log's millisecond resolution
-  # a clean, load-tolerant margin over the 0.2s reap-poll granularity.
-  export GAIA_STUB_DELAY_K1=2 GAIA_STUB_DELAY_K2=1
-  run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
+  # Two slots. K1 blocks on a release file (GAIA_STUB_BLOCK_UNTIL_K1) instead
+  # of sleeping a fixed duration -- there is no wall-clock margin to race:
+  # the test itself only creates that file AFTER it has observed K3's
+  # dispatch line, so the assertion is about ADMISSION ORDER (K3 dispatched
+  # while K1 is still blocked), never about how fast any given machine
+  # happens to run the surrounding bookkeeping between two timestamps. K2
+  # has no delay at all, so its slot frees as soon as the run can reap it.
+  local release="$TEST_TMP/k1-release"
+  export GAIA_STUB_BLOCK_UNTIL_K1="$release"
+
+  run timeout 60 env PATH="$PATH" GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story \
+    GAIA_STUB_BLOCK_UNTIL_K1="$release" GAIA_STUB_STATE="$TEST_TMP/stubstate" \
+    bash -c '
+      . "'"$ORCH"'"
+      ppo_run_sprint --repo "'"$repo"'" --yaml "'"$yaml"'" --slots 2 &
+      runner=$!
+      # Release K1 only once K3 has genuinely been dispatched -- a bounded
+      # poll on the real evidence log, not a sleep.
+      w=0
+      while ! grep -q "^K3\$" "'"$TEST_TMP"'/stubstate/dispatched.log" 2>/dev/null; do
+        w=$((w + 1))
+        [ "$w" -lt 300 ] || break
+        sleep 0.1
+      done
+      : > "'"$release"'"
+      wait "$runner"
+    '
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
 
+  local dispatched="$TEST_TMP/stubstate/dispatched.log"
+  grep -q '^K3$' "$dispatched" \
+    || { echo "K3 was never dispatched (K1 may have finished before it could be released): $(cat "$dispatched" 2>/dev/null)"; return 1; }
+
+  # Order-based oracle: K3 must appear in the dispatch log strictly AFTER
+  # K1 and K2's own dispatch lines but the whole point is it was admitted
+  # BEFORE K1's block was lifted -- which the release-file protocol above
+  # already enforces structurally (the test could not have created the
+  # release file without first seeing K3 in this same log). The remaining
+  # check is that K1 really was still running (not yet in span.log's "end"
+  # column) at the moment the release file was created, proving the
+  # backfill did not simply wait for K1 to finish on its own.
   local span="$TEST_TMP/stubstate/span.log"
-  local k1_end k3_start
-  k1_end="$(awk '$1=="K1" && $2=="end" {print $3; exit}' "$span")"
-  k3_start="$(awk '$1=="K3" && $2=="start" {print $3; exit}' "$span")"
-  [ -n "$k1_end" ] && [ -n "$k3_start" ] \
-    || { echo "missing timings; span: $(cat "$span")"; return 1; }
-  [ "$k3_start" -lt "$k1_end" ] \
-    || { echo "the backfilled story waited for the slow sibling (started ${k3_start}, slow one ended ${k1_end})"; return 1; }
+  ! grep -q '^K1 end ' "$span" \
+    || {
+        local k1_end k3_start
+        k1_end="$(awk '$1=="K1" && $2=="end" {print $3; exit}' "$span")"
+        k3_start="$(awk '$1=="K3" && $2=="start" {print $3; exit}' "$span")"
+        [ -n "$k1_end" ] && [ -n "$k3_start" ] && [ "$k3_start" -lt "$k1_end" ] \
+          || { echo "K1 already ended before K3 started, so this run proved nothing about backfill-before-slow-sibling: $(cat "$span")"; return 1; }
+       }
 }
 
 @test "one story failing does not abort its siblings (AC5)" {
@@ -756,13 +797,13 @@ _reason_of() {
     i=$(( i + 1 ))
   done
 
-  # ppo_admit_slot claims AND dispatches, releasing its reservation on the way
-  # out. A stub that parks keeps every claim held while the peak is measured;
-  # without one the reservations are gone before anything can count them.
-  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" park)"
-  PATH="$stub:$PATH"
-  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
-
+  # _ppo_admit_bookkeeping claims AND spawns the real teammate (a real
+  # registry entry), with no running-phase to park -- unlike the old
+  # ppo_admit_slot, which needed a park-mode hook to hold its claim open
+  # while the peak was measured. Here the registry entry itself, written by
+  # the real spawn_teammate call, is what stays live until this test tears
+  # it down -- no hook needed at all.
+  #
   # Widen the count-then-claim window so every admission reaches its count
   # before any of them claims. One second is wider than the spread in when
   # eight backgrounded admissions get there, which is what makes the overshoot
@@ -770,17 +811,17 @@ _reason_of() {
   export GAIA_PPO_CLAIM_DELAY=1
   local k pids=""
   for k in R1 R2 R3 R4 R5 R6 R7 R8; do
-    ppo_admit_slot "$k" >/dev/null 2>&1 &
+    _ppo_admit_bookkeeping "$k" "" >/dev/null 2>&1 &
     pids="$pids $!"
   done
-  # Sample while every admission is still parked holding its claim. The
-  # `park` stub mode holds via its own 30s sleep, so this only needs to clear
-  # the 1s claim-delay window with margin for 8 backgrounded processes to be
-  # scheduled -- 2s leaves a full second of margin over that window.
+  # Sample once every admission has had time to clear the 1s claim-delay
+  # window with margin for 8 backgrounded processes to be scheduled -- 2s
+  # leaves a full second of margin over that window. Each admission's
+  # registry entry persists (no completion is ever reported) until this
+  # test's own cleanup below.
   sleep 2
   local peak ceiling
   peak="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
-  for i in $pids; do kill "$i" 2>/dev/null || true; done
   for i in $pids; do wait "$i" 2>/dev/null || true; done
   ceiling="$(ppo_resolve_ceiling)"
   [ "$peak" -le "$ceiling" ] \
@@ -904,36 +945,44 @@ _reason_of() {
     || { echo "the exit trap did not release this run's reservation"; return 1; }
 }
 
-@test "the guard idiom survives errexit and preserves a sourced caller's options (AC2)" {
+@test "the admission path survives errexit and preserves a sourced caller's options (AC2)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
-  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
-  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
   local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
   PATH="$fl:$PATH"
-  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ceiling:1)"
-  PATH="$stub:$PATH"
-  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
+  # A registry already AT the ceiling forces a real return-8 (capacity
+  # refusal) out of _ppo_admit_bookkeeping without needing the legacy hook --
+  # the property under test is the admission path's own guarded-capture
+  # idiom (every internal command substitution is `|| var=$?`, never a bare
+  # capture an errexit caller would die on), not the hook contract.
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+  local i=0
+  while [ "$i" -lt 12 ]; do
+    : > "$GAIA_SESSION_DIR/registry/other-teammate-$i"
+    i=$((i + 1))
+  done
 
-  # A caller with errexit ON that USES the captured status: the bare-capture
-  # form dies at the assignment before the status is ever read.
+  # A caller with errexit ON that USES the captured status: an unguarded
+  # bare-capture form dies at the assignment before the status is ever read.
   run bash -c '
     set -euo pipefail
     . "'"$ORCH"'"
+    export GAIA_SESSION_DIR="'"$GAIA_SESSION_DIR"'"
     rc=0
-    ppo_dispatch_slot "K1" || rc=$?
+    _ppo_admit_bookkeeping "K1" "" || rc=$?
     printf "survived rc=%s\n" "$rc"
   '
   [ "$status" -eq 0 ] \
-    || { echo "an errexit caller died at the spawn assignment: $output"; return 1; }
-  [[ "$output" == *"survived"* ]] \
-    || { echo "the captured status was never reached"; return 1; }
+    || { echo "an errexit caller died at the admission assignment: $output"; return 1; }
+  [[ "$output" == *"survived rc=8"* ]] \
+    || { echo "expected the captured status to be the real ceiling refusal (8): $output"; return 1; }
 
   # A sourced caller that deliberately ran `set +e` must keep it: shell options
   # belong to the caller, and flipping errexit underneath one is a real bug.
   run bash -c '
     set +e
     . "'"$ORCH"'"
-    ppo_dispatch_slot "K1" >/dev/null 2>&1
+    export GAIA_SESSION_DIR="'"$GAIA_SESSION_DIR"'"
+    _ppo_admit_bookkeeping "K1" "" >/dev/null 2>&1
     case "$-" in *e*) echo "errexit was switched on underneath the caller"; exit 1 ;; esac
     echo "options preserved"
   '
@@ -1381,7 +1430,7 @@ status: ${status}
 EOF
 }
 
-@test "ppo_dispatch_slot drives the real teammate surface by default, no gaia-dispatch-story (AC4)" {
+@test "the default admission path drives the real teammate surface, no gaia-dispatch-story (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   mkdir -p "$GAIA_SESSION_DIR/registry"
   export GAIA_MODE_B_SUBSTRATE=available
@@ -1389,74 +1438,88 @@ EOF
   _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K1" "done"
 
   # No GAIA_PPO_DISPATCH_CMD set, and no gaia-dispatch-story on PATH at all --
-  # the default path must not reference that command. If it did, this would
-  # fail command-not-found instead of classifying a real spawn.
+  # the default admission path must not reference that command. If it did,
+  # this would fail command-not-found instead of returning a real handle.
   unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
   command -v gaia-dispatch-story >/dev/null 2>&1 \
     && { echo "test fixture bug: gaia-dispatch-story is on PATH"; return 1; }
-  export GAIA_STORY_TIMEOUT_SECONDS=5
 
-  local rc=0
-  ppo_dispatch_slot "K1" >/dev/null 2>"$TEST_TMP/dispatch.err" || rc=$?
+  local out rc=0
+  out="$(_ppo_admit_bookkeeping "K1" "" 2>"$TEST_TMP/dispatch.err")" || rc=$?
 
   ! grep -q "gaia-dispatch-story" "$TEST_TMP/dispatch.err" \
-    || { echo "default path referenced gaia-dispatch-story: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+    || { echo "default admission path referenced gaia-dispatch-story: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
   [ "$rc" -eq 0 ] \
-    || { echo "expected outcome 0 (done) via the real surface, got $rc: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+    || { echo "expected a successful admission via the real surface, got $rc: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+  printf '%s\n' "$out" | grep -q '^handle:tm-bash-dev-K1$' \
+    || { echo "expected a real handle on stdout: $out"; return 1; }
 }
 
-@test "ppo_dispatch_slot's outcome comes from story status, not the spawn exit code (AC4)" {
+@test "record <key> done is authoritative regardless of the story file's own status field (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  # shellcheck disable=SC1090
+  . "$WT_LIB"
+  export GAIA_WORKTREE_MODE=1
   mkdir -p "$GAIA_SESSION_DIR/registry"
   export GAIA_MODE_B_SUBSTRATE=available
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
-  # The teammate spawns cleanly (rc 0) but the story itself never reaches a
-  # terminal status within the budget -- a mutant that reports the spawn's own
-  # rc (0) as the outcome would wrongly call this "done"; the real behaviour
-  # must time out (internal code 9) because the story status never terminates.
+  # The story file, if one even exists, says "in-progress" -- never a
+  # terminal value. Under the OLD architecture this was the completion
+  # oracle a bash poll would time out against; under the step engine there
+  # is no poll at all -- the skill's own `record done` call is what a real
+  # driven turn reports, and it is authoritative on its own, independent of
+  # whatever a story file's frontmatter happens to say (there may not even
+  # BE a resolvable story file for a brand-new key, and that must not block
+  # a real completion from being recorded).
   _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K2" "in-progress"
-  unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
-  export GAIA_STORY_TIMEOUT_SECONDS=1
 
-  local rc=0
-  ppo_dispatch_slot "K2" >/dev/null 2>/dev/null || rc=$?
+  _ppo_engine_reset
+  _ppo_engine_put repo "$repo"
+  local wt; wt="$(worktree_create "$repo" "K2" "slug")"
+  {
+    printf 'phase:1\n'
+    printf 'persona:bash-dev\n'
+    printf 'worktree:%s\n' "$wt"
+    printf 'handle:tm-bash-dev-K2\n'
+    printf 'dispatched_at:%s\n' "$(date +%s)"
+  } > "$(_ppo_engine_dir)/running/K2"
 
-  [ "$rc" -eq 9 ] \
-    || { echo "expected outcome 9 (timeout) because status never went terminal, got $rc"; return 1; }
+  ppo_record_outcome K2 done >/dev/null 2>"$TEST_TMP/record.err"
+
+  local ledger; ledger="$(ppo_report)"
+  printf '%s\n' "$ledger" | grep -q '^story=K2 outcome=done$' \
+    || { echo "the skill's own done report was not authoritative: $ledger ($(cat "$TEST_TMP/record.err"))"; return 1; }
+  [ ! -e "$wt" ] \
+    || { echo "a done outcome did not tear down the worktree despite the story file never going terminal: $wt"; return 1; }
 }
 
-@test "a spawn's own raw exit code is never misread as merged-not-done (AC4)" {
+@test "an unclassified spawn exit code is surfaced as itself, never reclassified as merged-not-done (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   mkdir -p "$GAIA_SESSION_DIR/registry"
   export GAIA_MODE_B_SUBSTRATE=available
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
-  # Story status is "in-progress" and NEVER reaches a terminal value within the
-  # budget. This makes the two possible code paths genuinely distinguishable:
-  #   - correct code: a non-{0,7,8} spawn status (here 11 -- an unrelated
-  #     internal code; gaia-migrate.sh uses 11 for "needs reconciliation", and
-  #     any other external tool could exit 11 for its own reasons) returns
-  #     immediately as an unclassified spawn failure, WITHOUT ever entering
-  #     the status-polling loop -> rc is the spawn's raw 11.
-  #   - the defect this test guards against: the spawn's raw exit code falls
-  #     through into (or is conflated with) the status-polling classification,
-  #     whose OWN vocabulary also uses 11 for merged-not-done -> because the
-  #     story never reaches a terminal status, that path can only end in a
-  #     timeout (rc 9), never 11 -- so a run that reports 11 here without ever
-  #     polling proves the two 11s are cleanly separated, and a run that
-  #     reports 9 proves the raw spawn code leaked into the polling loop.
-  _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K3" "in-progress"
-  unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
-  export GAIA_STORY_TIMEOUT_SECONDS=1
-
+  # 11 is deliberately an unrelated internal code (gaia-migrate.sh's own
+  # "needs reconciliation", and any external tool could exit 11 for its own
+  # reasons) -- the property under test is that _ppo_admit_bookkeeping passes
+  # a spawn's raw, unrecognised exit code straight through as an unclassified
+  # admission failure. Under the OLD architecture this mattered because 11
+  # ALSO meant "merged-not-done" in the status-polling vocabulary, and a
+  # story that never reached a terminal status could only otherwise time out
+  # (9) -- so a run reporting anything other than the raw 11 proved the two
+  # had been conflated. The step engine has no such second vocabulary to
+  # collide with (merged-not-done is decided by ppo_record_outcome's audit
+  # call, never by a spawn exit code), but the underlying discipline --
+  # never silently reclassify an unrecognised code -- still needs a test.
   # shellcheck disable=SC1090
   . "$DT_LIB"
   spawn_teammate() { return 11; }
 
   local rc=0
-  ppo_dispatch_slot "K3" >/dev/null 2>/dev/null || rc=$?
+  _ppo_admit_bookkeeping "K3" "" >/dev/null 2>/dev/null || rc=$?
 
   [ "$rc" -eq 11 ] \
-    || { echo "expected the spawn's own raw code (11) passed through unclassified before any polling, got $rc"; return 1; }
+    || { echo "expected the spawn's own raw code (11) passed through unclassified, got $rc"; return 1; }
 }
 
 # Note: an earlier version of this file had a test here named "a merged story
@@ -1794,7 +1857,7 @@ EOF
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   local k
   for k in "../escape" "a b" "K1/../../etc"; do
-    run ppo_admit_slot "$k"
+    run _ppo_admit_bookkeeping "$k" "$repo"
     [ "$status" -ne 0 ] \
       || { echo "hostile story key '$k' was admitted"; return 1; }
   done
@@ -1851,7 +1914,7 @@ except OSError:
   local before after rc=0
   before="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
   export GAIA_PPO_LOCK_TIMEOUT=1
-  local out; out="$(ppo_admit_slot LOCKT 2>&1)" || rc=$?
+  local out; out="$(_ppo_admit_bookkeeping LOCKT "" 2>&1)" || rc=$?
   after="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
 
   kill "$holder" 2>/dev/null || true
@@ -1892,7 +1955,7 @@ except OSError:
   # -- and a timeout is a degradation. The ceiling value is not the shared
   # resource (the registry is), so the read belongs OUTSIDE the lock.
   local body acq_line ceil_line rel_line
-  body="$(sed -n '/^ppo_admit_slot()/,/^}/p' "$ORCH")"
+  body="$(sed -n '/^_ppo_admit_bookkeeping()/,/^}/p' "$ORCH")"
   acq_line="$(printf '%s
 ' "$body" | grep -n -m1 'acquire_lock ' | cut -d: -f1)"
   ceil_line="$(printf '%s
@@ -1900,7 +1963,7 @@ except OSError:
   rel_line="$(printf '%s
 ' "$body" | grep -n -m1 'release_lock ' | cut -d: -f1)"
   [ -n "$acq_line" ] && [ -n "$ceil_line" ] && [ -n "$rel_line" ] \
-    || { echo "could not locate acquire/ceiling/release in ppo_admit_slot"; return 1; }
+    || { echo "could not locate acquire/ceiling/release in _ppo_admit_bookkeeping"; return 1; }
   [ "$ceil_line" -lt "$acq_line" ] \
     || { echo "the ceiling read (line $ceil_line) is inside the critical section (acquire $acq_line, release $rel_line)"; return 1; }
 }
@@ -2131,46 +2194,6 @@ _mk_yaml_raw() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# Reap-ledger walk, pinned directly (AC4, code closure review item 5)
-# ---------------------------------------------------------------------------
-#
-# The four tests above drive a malformed key through ppo_run_sprint, but the
-# dispatch-top quarantine (added to close the "invalid-key" finding) refuses a
-# whitespace key BEFORE it is ever appended to running_keys/running_pids --
-# so those four no longer reach the reap loop's own key-splitting walk at all,
-# and would stay green even if that walk regressed back to `for _k in
-# $running_keys`. This test calls the walk directly, bypassing the
-# quarantine, so the reap fix itself stays pinned.
-@test "_ppo_reap_split_at walks the key list newline-safely, not IFS-split (AC4)" {
-  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
-
-  # Two "running" slots: a whitespace-carrying key at index 0, a clean one at
-  # index 1. Index 1 (GOOD) is the one that "finished".
-  local keys pids out_dir
-  keys="$(printf 'aa bb\nGOOD')"
-  pids="$(printf '111\n222')"
-  out_dir="$TEST_TMP/reap-split"
-
-  _ppo_reap_split_at 1 "$keys" "$pids" "$out_dir"
-
-  # The IFS-split mutant (`for _k in $running_keys`) would enumerate "aa bb"
-  # as two entries ("aa", "bb") ahead of "GOOD", so index 1 would land on
-  # "bb" instead of "GOOD" -- reporting a fragment of the malformed key as the
-  # finished story and leaving the real one in the remaining list.
-  local finished; finished="$(cat "$out_dir/finished" 2>/dev/null || true)"
-  [ "$finished" = "GOOD" ] \
-    || { echo "expected GOOD to be the finished key, got: '$finished'"; return 1; }
-
-  local remaining; remaining="$(cat "$out_dir/keys" 2>/dev/null || true)"
-  [ "$remaining" = "aa bb" ] \
-    || { echo "expected 'aa bb' to remain intact as ONE entry, got: '$remaining'"; return 1; }
-
-  local remaining_pids; remaining_pids="$(cat "$out_dir/pids" 2>/dev/null || true)"
-  [ "$remaining_pids" = "111" ] \
-    || { echo "expected pid 111 to remain, got: '$remaining_pids'"; return 1; }
-}
-
 @test "a merged-but-not-done story reaches done via the resume path (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
@@ -2316,7 +2339,7 @@ _mk_yaml_raw() {
 # Live-occupancy pre-flight and per-story claim (AC2, item A)
 # ---------------------------------------------------------------------------
 
-@test "ppo_admit_slot returns 8 when the registry is at the ceiling (AC2)" {
+@test "_ppo_admit_bookkeeping returns 8 when the registry is at the ceiling (AC2)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
   PATH="$fl:$PATH"
@@ -2334,14 +2357,10 @@ _mk_yaml_raw() {
     i=$(( i + 1 ))
   done
 
-  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
-  PATH="$stub:$PATH"
-  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
-
   local rc=0
-  ppo_admit_slot "FULL" >/dev/null 2>&1 || rc=$?
+  _ppo_admit_bookkeeping "FULL" "" >/dev/null 2>&1 || rc=$?
   [ "$rc" -eq 8 ] \
-    || { echo "ppo_admit_slot returned $rc with a full registry, expected 8"; return 1; }
+    || { echo "_ppo_admit_bookkeeping returned $rc with a full registry, expected 8"; return 1; }
   # No reservation left behind.
   [ ! -f "$GAIA_SESSION_DIR/registry/.reserved-FULL" ] \
     || { echo "a refused admission left a reservation behind"; return 1; }
@@ -2451,7 +2470,7 @@ _mk_yaml_raw() {
 # Reservation release independent of trap (AC2, item C)
 # ---------------------------------------------------------------------------
 
-@test "ppo_admit_slot releases the reservation even when a story fails (AC2)" {
+@test "_ppo_admit_bookkeeping releases the reservation even when the spawn itself fails (AC2)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
   PATH="$fl:$PATH"
@@ -2463,20 +2482,22 @@ _mk_yaml_raw() {
   export GAIA_SHARED_CONFIG="$cfg"
   mkdir -p "$GAIA_SESSION_DIR/registry"
 
-  # A stub that ALWAYS fails for the target story.
-  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:FAILME)"
-  PATH="$stub:$PATH"
-  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
+  # Force the REAL spawn_teammate call to fail -- admission (the reservation
+  # claim) happens before the spawn attempt, so a spawn failure is the case
+  # under test: the reservation must not survive it.
+  # shellcheck disable=SC1090
+  . "$DT_LIB"
+  spawn_teammate() { return 42; }
 
-  # Drive ppo_admit_slot DIRECTLY (not through `run`, which wraps in a subshell
-  # whose EXIT trap would sweep the reservation). The per-slot cleanup must
-  # remove the reservation independently of the run-level trap.
+  # Drive _ppo_admit_bookkeeping DIRECTLY (not through `run`, which wraps in a
+  # subshell whose EXIT trap would sweep the reservation). The per-admission
+  # cleanup must remove the reservation independently of the run-level trap.
   local rc=0
-  ppo_admit_slot "FAILME" >/dev/null 2>&1 || rc=$?
-  [ "$rc" -ne 0 ] \
-    || { echo "a failing story should return non-zero, got $rc"; return 1; }
+  _ppo_admit_bookkeeping "FAILME" "" >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 42 ] \
+    || { echo "a failing spawn should return its own raw code (42), got $rc"; return 1; }
   [ ! -f "$GAIA_SESSION_DIR/registry/.reserved-FAILME" ] \
-    || { echo "a failed story left a reservation behind after ppo_admit_slot returned"; return 1; }
+    || { echo "a failed spawn left a reservation behind after _ppo_admit_bookkeeping returned"; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -2668,4 +2689,555 @@ _mk_yaml_raw() {
   local bv; bv="$(ppo_barrier_violations)"
   [ "${bv:-0}" -gt 0 ] \
     || { echo "a phase-2 dispatch with a non-terminal phase-1 story recorded 0 barrier violations: $output"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# GAIA_PPO_DISPATCH_CMD is a test-only hook gated on a test marker (E120-S8)
+# ---------------------------------------------------------------------------
+
+@test "the dispatch hook is honoured under the BATS_TEST_FILENAME marker (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
+  PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
+  # BATS_TEST_FILENAME is already set by bats for this whole process -- the
+  # marker under test, exercised exactly as every other test in this suite
+  # relies on it (no per-call-site export needed).
+  [ -n "${BATS_TEST_FILENAME:-}" ] \
+    || { echo "test fixture bug: BATS_TEST_FILENAME is not set"; return 1; }
+
+  run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
+  [ "$status" -eq 0 ] \
+    || { echo "expected the stub's own contract (0) under the test marker: $output"; return 1; }
+  grep -q "K1" "$TEST_TMP/stubstate/dispatched.log" \
+    || { echo "the stub was never invoked: $output"; return 1; }
+  printf '%s\n' "$output" | grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=honoured" \
+    || { echo "no honoured log line: $output"; return 1; }
+}
+
+@test "the dispatch hook is IGNORED (real path used) with no test marker present (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
+  _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K1" "done"
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
+
+  # Run in a CHILD process with BATS_TEST_FILENAME explicitly unset and no
+  # allow-marker -- this is the one place in the suite that must simulate
+  # "outside bats, no marker" despite running under bats itself. GAIA_PPO_
+  # DISPATCH_CMD names a real stub on PATH, so if the gate failed open the
+  # hook would fire and the stub's dispatched.log would gain an entry.
+  run env -u BATS_TEST_FILENAME -u GAIA_PPO_ALLOW_DISPATCH_CMD \
+    PATH="$stub:$PATH" \
+    GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story \
+    GAIA_MODE_B_SUBSTRATE=available \
+    IMPLEMENTATION_ARTIFACTS="$IMPLEMENTATION_ARTIFACTS" \
+    GAIA_SESSION_DIR="$GAIA_SESSION_DIR" \
+    GAIA_PARALLEL_EXECUTION=1 GAIA_WORKTREE_MODE=1 \
+    bash -c '
+      . "'"$ORCH"'"
+      ppo_run_sprint --repo "'"$repo"'" --yaml "'"$yaml"'" --slots 2
+    '
+
+  [ ! -s "$TEST_TMP/stubstate/dispatched.log" ] \
+    || { echo "the stub was invoked with no test marker present: $(cat "$TEST_TMP/stubstate/dispatched.log")"; return 1; }
+  printf '%s\n' "$output" | grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=refused" \
+    || { echo "no refused log line: $output"; return 1; }
+  printf '%s\n' "$output" | grep -q "run: no bash-drivable dispatcher in this context" \
+    || { echo "expected the no-bash-drivable-dispatcher line once the hook was refused: $output"; return 1; }
+}
+
+@test "the dispatch hook is honoured under an explicit GAIA_PPO_ALLOW_DISPATCH_CMD marker with no bats context (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
+
+  run env -u BATS_TEST_FILENAME \
+    PATH="$fl:$stub:$PATH" \
+    GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story \
+    GAIA_PPO_ALLOW_DISPATCH_CMD=1 \
+    GAIA_SESSION_DIR="$GAIA_SESSION_DIR" \
+    GAIA_PARALLEL_EXECUTION=1 GAIA_WORKTREE_MODE=1 \
+    bash -c '
+      . "'"$ORCH"'"
+      ppo_run_sprint --repo "'"$repo"'" --yaml "'"$yaml"'" --slots 2
+    '
+
+  [ "$status" -eq 0 ] \
+    || { echo "expected the stub's own contract (0) under the explicit marker: $output"; return 1; }
+  printf '%s\n' "$output" | grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=honoured" \
+    || { echo "no honoured log line: $output"; return 1; }
+  grep -q "K1" "$TEST_TMP/stubstate/dispatched.log" \
+    || { echo "the stub was never invoked despite the explicit marker: $(cat "$TEST_TMP/stubstate/dispatched.log" 2>/dev/null)"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# The run-level trap shuts down every teammate it spawned (E120-S8)
+# ---------------------------------------------------------------------------
+
+@test "SIGTERM to a running orchestrator shuts down its live teammates and clears reservations (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  # Two REAL admissions via the step engine's own `next` (real spawn_teammate,
+  # real registry entries), then both stall forever via the legacy hook's
+  # stall:<key> contract -- exercises `run`'s trap through its own real
+  # dispatch loop rather than a hand-installed trap, with genuinely TWO live
+  # teammates so the sweep's iteration (not just a single-entry special case)
+  # is under test.
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" stall:K1)"
+  PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
+  export GAIA_STUB_DELAY_K2=0
+
+  env PATH="$PATH" GAIA_SESSION_DIR="$GAIA_SESSION_DIR" \
+      GAIA_PARALLEL_EXECUTION=1 GAIA_WORKTREE_MODE=1 \
+      GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story \
+      bash -c '
+        . "'"$ORCH"'"
+        ppo_run_sprint --repo "'"$repo"'" --yaml "'"$yaml"'" --slots 2
+      ' &
+  local runner_bg=$!
+
+  # Wait for both teammates to actually register before signalling -- a
+  # signal sent before either admission has run would prove nothing about
+  # the trap's sweep. K2 (mode "stall:K1", so K2 itself completes and is
+  # backfilled by nothing else in a 2-story/2-slot sprint) may also still be
+  # in-flight; either way both admissions happen before either hook exits.
+  local waited=0
+  while [ "$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f -name 'tm-*' 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; do
+    waited=$((waited + 1))
+    [ "$waited" -lt 100 ] || { echo "teammates never registered: $(ls "$GAIA_SESSION_DIR/registry" 2>/dev/null)"; kill -TERM "$runner_bg" 2>/dev/null || true; return 1; }
+    sleep 0.1
+  done
+
+  local before_count
+  before_count="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f -name 'tm-*' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$before_count" -ge 2 ] \
+    || { echo "expected 2 live teammates before signalling, found $before_count"; return 1; }
+
+  kill -TERM "$runner_bg"
+
+  # Bounded wait for the runner to exit -- with the stalled hook's own
+  # background child now killed by _ppo_run_kill_children, this should be
+  # prompt rather than waiting on the stall's own 3600s sleep.
+  local w=0
+  while kill -0 "$runner_bg" 2>/dev/null; do
+    w=$((w + 1))
+    [ "$w" -lt 100 ] || { echo "runner did not exit after SIGTERM"; kill -KILL "$runner_bg" 2>/dev/null || true; return 1; }
+    sleep 0.1
+  done
+  wait "$runner_bg" 2>/dev/null || true
+
+  local after_count
+  after_count="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f -name 'tm-*' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$after_count" -eq 0 ] \
+    || { echo "teammate registry entries survived SIGTERM: $(ls "$GAIA_SESSION_DIR/registry" 2>/dev/null)"; return 1; }
+
+  [ ! -f "$GAIA_SESSION_DIR/registry/.reserved-K1" ] && [ ! -f "$GAIA_SESSION_DIR/registry/.reserved-K2" ] \
+    || { echo "reservations survived SIGTERM: $(ls "$GAIA_SESSION_DIR/registry"/.reserved-* 2>/dev/null)"; return 1; }
+}
+
+@test "SIGTERM to the production ppo_run_sprint trap tears down a live teammate and exits promptly (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  # Same real admission as the previous test, one story instead of two --
+  # pins that the trap actually wired into the production entry point calls
+  # ppo_shutdown_live_teammates, not only that the function works when
+  # installed by hand, AND (now that `run`'s own backgrounded hook
+  # invocations are tracked and killed from the trap -- see
+  # _ppo_run_kill_children) that the process exits PROMPTLY rather than
+  # waiting on the stalled hook's own long-lived sleep.
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" stall:K1)"
+  PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
+
+  env PATH="$PATH" GAIA_SESSION_DIR="$GAIA_SESSION_DIR" \
+      GAIA_PARALLEL_EXECUTION=1 GAIA_WORKTREE_MODE=1 \
+      GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story \
+      bash -c '
+        . "'"$ORCH"'"
+        ppo_run_sprint --repo "'"$repo"'" --yaml "'"$yaml"'" --slots 2
+      ' &
+  local runner_bg=$!
+
+  local waited=0
+  while [ "$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f -name 'tm-*' 2>/dev/null | wc -l | tr -d ' ')" -lt 1 ]; do
+    waited=$((waited + 1))
+    [ "$waited" -lt 150 ] || { echo "no teammate ever registered: $(ls "$GAIA_SESSION_DIR/registry" 2>/dev/null)"; kill -TERM "$runner_bg" 2>/dev/null || true; return 1; }
+    sleep 0.1
+  done
+
+  local t0; t0="$(date +%s)"
+  kill -TERM "$runner_bg"
+
+  # Bounded, TIGHT wait (the whole point of the prompt-exit fix): the stub's
+  # stall:K1 mode sleeps 3600s, so if the trap's own kill of that background
+  # hook invocation did not work, this loop runs out at ~2s and the test
+  # fails -- it would NOT silently pass by waiting the full 3600s.
+  local w=0
+  while kill -0 "$runner_bg" 2>/dev/null; do
+    w=$((w + 1))
+    [ "$w" -lt 20 ] || { echo "runner did not exit within ~2s of SIGTERM (prompt-exit regression)"; kill -KILL "$runner_bg" 2>/dev/null || true; wait "$runner_bg" 2>/dev/null || true; return 1; }
+    sleep 0.1
+  done
+  wait "$runner_bg" 2>/dev/null || true
+  local t1; t1="$(date +%s)"
+  local elapsed=$(( t1 - t0 ))
+  [ "$elapsed" -le 3 ] \
+    || { echo "runner took ${elapsed}s to exit after SIGTERM, expected prompt (~2s bound)"; return 1; }
+
+  local after_count
+  after_count="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f -name 'tm-*' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$after_count" -eq 0 ] \
+    || { echo "a teammate registry entry survived SIGTERM to ppo_run_sprint's own trap: $(ls "$GAIA_SESSION_DIR/registry" 2>/dev/null)"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# resolve-story-file.sh exit 2 (ambiguous) is distinct from exit 1 (E120-S8)
+# ---------------------------------------------------------------------------
+
+@test "an ambiguous story-file resolution refuses to spawn, distinct from not-found (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
+
+  # Two legacy-nested candidates for the SAME key -- resolve-story-file.sh's
+  # own documented ambiguity case (exit 2), independent of whether a file
+  # exists at all.
+  mkdir -p "$IMPLEMENTATION_ARTIFACTS/epic-1/stories"
+  cat > "$IMPLEMENTATION_ARTIFACTS/epic-1/stories/K1-first.md" <<'EOF'
+---
+template: 'story'
+key: "K1"
+status: ready-for-dev
+---
+EOF
+  cat > "$IMPLEMENTATION_ARTIFACTS/epic-1/stories/K1-second.md" <<'EOF'
+---
+template: 'story'
+key: "K1"
+status: ready-for-dev
+---
+EOF
+
+  local rc=0
+  _ppo_admit_bookkeeping "K1" "" >/dev/null 2>"$TEST_TMP/dispatch.err" || rc=$?
+
+  [ "$rc" -ne 0 ] \
+    || { echo "an ambiguous story file must not spawn (rc 0): $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+  grep -q "event=story_file_ambiguous story=K1" "$TEST_TMP/dispatch.err" \
+    || { echo "no distinct ambiguity log line: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+}
+
+@test "a genuinely absent story file (exit 1) still defaults the persona and proceeds, unlike exit 2 (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts-empty"
+  mkdir -p "$IMPLEMENTATION_ARTIFACTS"
+
+  local out="" rc=0
+  out="$(_ppo_admit_bookkeeping "NOPE" "" 2>"$TEST_TMP/dispatch.err")" || rc=$?
+
+  ! grep -q "event=story_file_ambiguous" "$TEST_TMP/dispatch.err" \
+    || { echo "a genuinely absent story file was misclassified as ambiguous: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+  # No story file at all is the exit-1/not-found path -- _ppo_resolve_persona
+  # falls back to bash-dev and the admission still succeeds (a real spawn),
+  # unlike the exit-2 ambiguous case above which refuses outright.
+  [ "$rc" -eq 0 ] \
+    || { echo "expected a successful admission (default persona) on the exit-1/not-found path, got $rc: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+  printf '%s\n' "$out" | grep -q '^persona:bash-dev$' \
+    || { echo "expected the default persona on the not-found path: $out"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# resolve-story-file.sh resolution is memoized per run (E120-S8)
+# ---------------------------------------------------------------------------
+
+@test "a second resolution of the same key does not invoke the resolver again (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
+  _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K1" "ready-for-dev"
+  _ppo_engine_reset
+
+  local first
+  first="$(_ppo_resolve_story_file K1)"
+  [ -n "$first" ] \
+    || { echo "first resolution found nothing: fixture bug"; return 1; }
+
+  # Mutant-detectable without intercepting the resolver: the story file is
+  # REMOVED between calls. A cache hit returns the SAME (now-stale, but
+  # still correct for this run) path without re-walking the tree; a real
+  # second resolver invocation would find nothing and return empty (exit 1)
+  # instead, because the file it would need to find no longer exists.
+  rm -f "$first"
+
+  local second rc=0
+  second="$(_ppo_resolve_story_file K1)" || rc=$?
+
+  [ "$rc" -eq 0 ] \
+    || { echo "the second lookup re-walked the tree (rc=$rc) instead of serving the cached answer"; return 1; }
+  [ "$second" = "$first" ] \
+    || { echo "cached and fresh resolutions disagreed: '$first' vs '$second'"; return 1; }
+}
+
+@test "resolutions for DIFFERENT keys are cached independently (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
+  _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K1" "ready-for-dev"
+  _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K2" "ready-for-dev"
+  _ppo_engine_reset
+
+  local out1 out2
+  out1="$(_ppo_resolve_story_file K1)"
+  out2="$(_ppo_resolve_story_file K2)"
+
+  [[ "$out1" == *"K1-fixture-story.md" ]] \
+    || { echo "K1 did not resolve to its own file: $out1"; return 1; }
+  [[ "$out2" == *"K2-fixture-story.md" ]] \
+    || { echo "K2 did not resolve to its own file: $out2"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Step engine: ppo_record_outcome reads every field regardless of order
+# ---------------------------------------------------------------------------
+
+@test "ppo_record_outcome reads phase, persona, worktree and handle regardless of field order (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  export GAIA_MODE_B_SUBSTRATE=available
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  # shellcheck disable=SC1090
+  . "$WT_LIB"
+  export GAIA_WORKTREE_MODE=1
+  local wt; wt="$(worktree_create "$repo" "K1" "slug")"
+  [ -n "$wt" ] || { echo "test fixture bug: worktree_create failed"; return 1; }
+  _ppo_engine_reset
+  _ppo_engine_put repo "$repo"
+
+  # A running/<key> file with `phase:` FIRST (matching ppo_next's own writer
+  # order) and every other field AFTER it: the mutant this pins is `sed -n
+  # 's/^field://p;q'` (q unconditional after the first line it reads,
+  # regardless of match) -- under that mutant `phase` (first line) reads
+  # correctly by accident while persona/worktree/handle (anything after line
+  # 1) silently come back empty, so a test that only checks the FIRST field
+  # or a value that still "works" by accident would not catch it. worktree
+  # and handle are checked here via their real EFFECTS (a real teardown, a
+  # real registry removal), not by re-reading the same file the buggy code
+  # read from -- an assertion that re-parsed the file with the same flawed
+  # idiom would pass against the mutant for the wrong reason.
+  mkdir -p "$(_ppo_engine_dir)/running"
+  {
+    printf 'phase:3\n'
+    printf 'persona:bash-dev\n'
+    printf 'worktree:%s\n' "$wt"
+    printf 'handle:tm-bash-dev-K1\n'
+    printf 'dispatched_at:%s\n' "$(date +%s)"
+  } > "$(_ppo_engine_dir)/running/K1"
+
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+  printf 'persona:bash-dev\nstatus:active\n' > "$GAIA_SESSION_DIR/registry/tm-bash-dev-K1"
+
+  ppo_record_outcome K1 done >/dev/null 2>"$TEST_TMP/record.err"
+
+  [ ! -e "$wt" ] \
+    || { echo "the worktree field was not read (field-order regression) -- teardown never acted on the real path: $(cat "$TEST_TMP/record.err")"; return 1; }
+  [ ! -f "$GAIA_SESSION_DIR/registry/tm-bash-dev-K1" ] \
+    || { echo "the handle field was not read (field-order regression) -- shutdown_teammate never acted on the real handle: $(cat "$TEST_TMP/record.err")"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Real dispatch-teammate.sh bookkeeping through plan/next/record, no hook (E120-S8)
+# ---------------------------------------------------------------------------
+
+@test "plan/next/record drive the real dispatch surface: fill, backfill, barrier, merge-not-done (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  # K1/K2/K3 same persona (bash-dev, the default), phase 1; K4 phase 2 --
+  # slots=2 forces K3 to wait for a backfill and K4 to wait for the barrier.
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:1 K3:1 K4:2)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  # shellcheck disable=SC1090
+  . "$DT_LIB"
+  export GAIA_MODE_B_SUBSTRATE=available
+  unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
+
+  ppo_plan --repo "$repo" --yaml "$yaml" --slots 2 >/dev/null
+
+  # `next` admits exactly `slots` (2) distinct handles for phase 1 only.
+  local out1
+  out1="$(ppo_next)"
+  local k1_handle k2_handle
+  k1_handle="$(printf '%s\n' "$out1" | sed -n 's/^dispatch story=K1 .*handle=\([^ ]*\).*/\1/p')"
+  k2_handle="$(printf '%s\n' "$out1" | sed -n 's/^dispatch story=K2 .*handle=\([^ ]*\).*/\1/p')"
+  [ -n "$k1_handle" ] && [ -n "$k2_handle" ] \
+    || { echo "expected 2 dispatch lines with handles for K1 and K2: $out1"; return 1; }
+  [ "$k1_handle" != "$k2_handle" ] \
+    || { echo "same-persona stories collided on one handle: $k1_handle"; return 1; }
+  printf '%s\n' "$out1" | grep -q '^dispatch story=K3' \
+    && { echo "K3 was admitted before a slot freed: $out1"; return 1; }
+  printf '%s\n' "$out1" | grep -q '^dispatch story=K4' \
+    && { echo "phase 2 (K4) was admitted while phase 1 is still open: $out1"; return 1; }
+
+  # Real registry entries exist for K1 and K2, story-keyed.
+  [ -f "$GAIA_SESSION_DIR/registry/$k1_handle" ] \
+    || { echo "no real registry entry for K1's handle $k1_handle"; return 1; }
+  [ -f "$GAIA_SESSION_DIR/registry/$k2_handle" ] \
+    || { echo "no real registry entry for K2's handle $k2_handle"; return 1; }
+  grep -q "story_key:K1" "$GAIA_SESSION_DIR/registry/$k1_handle" \
+    || { echo "K1's registry entry is not story-keyed: $(cat "$GAIA_SESSION_DIR/registry/$k1_handle")"; return 1; }
+
+  # Phase 1 is full: another `next` reports the barrier, not a new dispatch.
+  local out2
+  out2="$(ppo_next)"
+  printf '%s\n' "$out2" | grep -q '^barrier phase=1 waiting=2$' \
+    || { echo "expected barrier phase=1 waiting=2 with both slots full: $out2"; return 1; }
+
+  # `record K1 done` frees a slot; the VERY NEXT `next` backfills with K3
+  # (same phase), with its OWN new handle -- not K1's or K2's.
+  ppo_record_outcome K1 done >/dev/null
+  [ ! -f "$GAIA_SESSION_DIR/registry/$k1_handle" ] \
+    || { echo "K1's registry entry survived record done: shutdown_teammate was not called"; return 1; }
+
+  local out3 k3_handle
+  out3="$(ppo_next)"
+  k3_handle="$(printf '%s\n' "$out3" | sed -n 's/^dispatch story=K3 .*handle=\([^ ]*\).*/\1/p')"
+  [ -n "$k3_handle" ] \
+    || { echo "K3 was not backfilled after K1 completed: $out3"; return 1; }
+  [ "$k3_handle" != "$k1_handle" ] && [ "$k3_handle" != "$k2_handle" ] \
+    || { echo "K3 was admitted with a REUSED handle instead of its own: $k3_handle"; return 1; }
+  printf '%s\n' "$out3" | grep -q '^dispatch story=K4' \
+    && { echo "phase 2 (K4) was admitted before phase 1 fully drained: $out3"; return 1; }
+
+  # Finish K2 and K3; phase 2 (K4) only becomes admittable once BOTH are
+  # recorded, proving the barrier -- not merely the queue -- gates the phase.
+  ppo_record_outcome K2 done >/dev/null
+  local out4
+  out4="$(ppo_next)"
+  printf '%s\n' "$out4" | grep -q '^dispatch story=K4' \
+    && { echo "phase 2 (K4) was admitted while K3 is still running: $out4"; return 1; }
+
+  ppo_record_outcome K3 done >/dev/null
+  local out5
+  out5="$(ppo_next)"
+  printf '%s\n' "$out5" | grep -q '^dispatch story=K4' \
+    || { echo "phase 2 (K4) was never admitted once phase 1 fully drained: $out5"; return 1; }
+
+  # `record K4 merged`, audited (via the gated test hook -- see
+  # _ppo_is_merged_not_done) as NOT done: re-queues K4 at the front rather
+  # than recording it complete, and phase 2 still has open work.
+  mkdir -p "$TEST_TMP/cfg"
+  local cfg="$TEST_TMP/cfg/project-config.yaml"
+  printf 'ci_cd:\n  promotion_chain:\n    - branch: staging\n' > "$cfg"
+  export GAIA_SHARED_CONFIG="$cfg"
+  local audit_stub="$TEST_TMP/bin/fake-audit.sh"
+  mkdir -p "$TEST_TMP/bin"
+  cat > "$audit_stub" <<'AUDIT'
+#!/usr/bin/env bash
+printf 'WARNING: %s -- merged on %s but not done\n' "$1" "$3"
+exit 4
+AUDIT
+  chmod +x "$audit_stub"
+  export GAIA_PPO_AUDIT_CMD="$audit_stub"
+
+  ppo_record_outcome K4 merged >/dev/null
+  local ledger; ledger="$(ppo_report)"
+  printf '%s\n' "$ledger" | grep -q '^story=K4 outcome=done$' \
+    && { echo "K4 was recorded done despite the audit flagging it not-done: $ledger"; return 1; }
+
+  local out6
+  out6="$(ppo_next)"
+  printf '%s\n' "$out6" | grep -q '^dispatch story=K4' \
+    || { echo "the re-queued K4 was not re-admitted: $out6"; return 1; }
+}
+
+@test "the real substrate-unavailable path degrades to sequential, phase order preserved (E120-S8)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:2)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  # shellcheck disable=SC1090
+  . "$DT_LIB"
+  # The REAL spawn_teammate path, with the substrate forced unavailable --
+  # Mode A fallback, rc 7 -- never a stub standing in for the library.
+  export GAIA_MODE_B_SUBSTRATE=unavailable
+  unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
+
+  ppo_plan --repo "$repo" --yaml "$yaml" --slots 2 >/dev/null
+  local out; out="$(ppo_next)"
+
+  printf '%s\n' "$out" | grep -q '^mode=sequential reason=mode-b-fallback' \
+    || { echo "expected a mode-b-fallback degradation from the real rc-7 spawn path: $out"; return 1; }
+  # Phase order preserved: K1 (phase 1) named before K2 (phase 2).
+  local k1_line k2_line
+  k1_line="$(printf '%s\n' "$out" | grep -n '^event=sequential story=K1$' | head -1 | cut -d: -f1)"
+  k2_line="$(printf '%s\n' "$out" | grep -n '^event=sequential story=K2$' | head -1 | cut -d: -f1)"
+  [ -n "$k1_line" ] && [ -n "$k2_line" ] \
+    || { echo "expected both stories in the sequential worklist: $out"; return 1; }
+  [ "$k1_line" -lt "$k2_line" ] \
+    || { echo "phase order was not preserved in the sequential worklist: $out"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# CLI verb dispatch (executed, not sourced) (E120-S8)
+# ---------------------------------------------------------------------------
+
+@test "the CLI dispatches plan/next/record/status/report as executed verbs (E120-S8)" {
+  [ -f "$ORCH" ] || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  export GAIA_MODE_B_SUBSTRATE=available
+
+  run bash "$ORCH" plan --repo "$repo" --yaml "$yaml" --slots 2
+  [ "$status" -eq 0 ] && [[ "$output" == mode=parallel* ]] \
+    || { echo "'plan' as an executed verb did not run ppo_plan: $output"; return 1; }
+
+  run bash "$ORCH" next
+  [ "$status" -eq 0 ] && [[ "$output" == *"dispatch story=K1"* ]] \
+    || { echo "'next' as an executed verb did not run ppo_next: $output"; return 1; }
+
+  run bash "$ORCH" status
+  [ "$status" -eq 0 ] && [[ "$output" == *"running story=K1"* ]] \
+    || { echo "'status' as an executed verb did not run ppo_status: $output"; return 1; }
+
+  run bash "$ORCH" record K1 done
+  [ "$status" -eq 0 ] && [[ "$output" == *"outcome=done"* ]] \
+    || { echo "'record' as an executed verb did not run ppo_record_outcome: $output"; return 1; }
+
+  run bash "$ORCH" report
+  [ "$status" -eq 0 ] && [[ "$output" == "story=K1 outcome=done" ]] \
+    || { echo "'report' as an executed verb did not run ppo_report: $output"; return 1; }
+}
+
+@test "the CLI with no verb (or a --flag first) still runs the compat run loop (E120-S8)" {
+  [ -f "$ORCH" ] || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+
+  run bash "$ORCH" --repo "$repo" --yaml "$yaml" --slots 2
+  [ "$status" -eq 0 ] && [[ "$output" == mode=parallel* ]] \
+    || { echo "no-verb invocation did not run the compat ppo_run_sprint loop: $output"; return 1; }
 }

@@ -30,44 +30,69 @@
 # says why and proceeds sequentially, because a sprint that does not run is a
 # worse outcome than a sprint that runs slowly.
 #
-# Dispatch contract (ppo_dispatch_slot, scripts/phase-parallel-orchestrator.sh):
-#   The default path never invokes a "gaia-dispatch-story" command -- no such
-#   product component exists. It dispatches through the real teammate surface
-#   in scripts/lib/dispatch-teammate.sh: spawn_teammate <persona> --story-key
-#   <key> under the admission lock, classifying its own exit code as a SPAWN
-#   status only (0 spawned, 7 substrate fallback/Mode A, 8 ceiling saturated,
-#   anything else an unclassified spawn error) -- never as the story's
-#   outcome. Because dispatch-teammate.sh's drive_turn/await_reply are
-#   pre-send bookkeeping only (the actual SendMessage round-trip is a
-#   main-turn capability this script cannot invoke — see that file's header),
-#   a successfully spawned story is polled to a terminal state through the
-#   story-file frontmatter `status:` field the codebase already treats as
-#   authoritative (the same read sprint-state.sh's read_story_status
-#   performs), bounded by the per-story wall-clock budget. shutdown_teammate
-#   releases the registry entry on every path out.
+# Architecture: a RE-ENTRANT STEP ENGINE, not a bash loop that drives a story
+# to completion. A bash script cannot do the latter: dispatch-teammate.sh's
+# drive_turn/await_reply are documented PRE-SEND BOOKKEEPING ONLY (see that
+# file's header) -- the actual SendMessage round-trip that would tell this
+# file "the teammate finished" is a main-turn LLM tool call, unreachable from
+# here. So the engine admits and tracks; the run-sprint skill's own main-turn
+# loop drives real turns and reports back:
 #
-#   Internal outcome vocabulary derived from story status, never from an
-#   external command's raw exit code (numeric codes below are private to this
-#   file and to the GAIA_PPO_DISPATCH_CMD test hook; an operator only ever
-#   sees the named reasons above):
-#     done               story status == done
-#     merged-not-done    story status == merged-not-done (branch landed,
-#                        review gate still open; resume path re-dispatches it,
-#                        bounded by _PPO_MND_RETRY_MAX)
-#     failed             story status == failed/blocked/abandoned
-#     timeout            the wall-clock budget elapsed with no terminal status
-#   These are surfaced as the internal codes 0 / 11 / 1 / 9 respectively
-#   (7/8/10 stay reserved for spawn/admission conditions, never a story
-#   outcome). Code 11 is scoped to this file's own status-derived
-#   classification -- it is never read off a subprocess's raw exit status on
-#   the default path, so it cannot collide with an unrelated exit-11
-#   convention elsewhere in the plugin (e.g. gaia-migrate.sh's "needs
-#   reconciliation").
+#   ppo_plan   --repo R --yaml Y [--slots N]   preflight + degradation + queue
+#   ppo_next                                    admit up to the slot budget for
+#                                                the CURRENT phase; one `dispatch
+#                                                story=K phase=P persona=X
+#                                                worktree=W handle=H` line per
+#                                                admission (real spawn_teammate,
+#                                                real registry entry -- no
+#                                                polling, nothing backgrounded);
+#                                                `barrier phase=P waiting=N` when
+#                                                the phase cannot admit more;
+#                                                `sprint_complete` when done
+#   ppo_record_outcome <key> <done|failed|timeout|merged>
+#                                                the skill reports what it
+#                                                observed from a real driven
+#                                                turn; on `merged` this engine
+#                                                runs the sprint-progress-audit.sh
+#                                                composite (verify-pr-merged.sh +
+#                                                review-gate.sh) to decide
+#                                                done vs merged-not-done --
+#                                                never a story-file `status:`
+#                                                poll, because merged-not-done
+#                                                is not one of the seven
+#                                                canonical statuses in
+#                                                story-state-machine.sh and
+#                                                never was
+#   ppo_status                                  running stories with elapsed
+#                                                vs. per-story budget, so the
+#                                                skill can call `record ...
+#                                                timeout` for an overdue one
+#   ppo_report                                  the outcome ledger
 #
-#   GAIA_PPO_DISPATCH_CMD (test-only): when set, ppo_dispatch_slot invokes
-#   that command with the story key instead of the real teammate surface, and
-#   returns ITS exit code exactly as today -- this is the hook the bats stub
-#   suite drives; production code never sets it.
+# State persists under $GAIA_SESSION_DIR/ppo/ (see _ppo_engine_dir) so each
+# CLI invocation of next/record is a genuine step -- the run-sprint skill
+# calls plan once, then loops next/record/status across many separate
+# invocations as real dev-agent turns complete.
+#
+# ppo_run_sprint is the backward-compatible ONE-PROCESS loop over these same
+# verbs (this file's own name for `run`): sequential/degraded mode is
+# unchanged; parallel mode loops ppo_next, and when the test-only dispatch
+# hook (GAIA_PPO_DISPATCH_CMD, gated below) is honoured, runs it per
+# dispatched story in the background and feeds its exit into
+# ppo_record_outcome -- this is how the pre-existing stub-based bats suite
+# keeps driving the SAME engine, with no second scheduler. Without an
+# honoured hook there is no bash-drivable way to complete a story, so `run`
+# performs one ppo_next call and returns, naming the real run-sprint skill
+# loop as the production path.
+#
+# GAIA_PPO_DISPATCH_CMD (test-only, gated): when set AND a test marker is
+# present (BATS_TEST_FILENAME or GAIA_PPO_ALLOW_DISPATCH_CMD=1), `run`
+# invokes that command with the story key instead of a real driven turn, and
+# maps its exit code (0/7/8/9/11/other) onto the record verb's outcome
+# vocabulary. Set with no marker present, it is refused (logged, the real
+# admission path is used regardless) rather than honoured -- an unguarded
+# arbitrary-command hook is a remote-code lever, not something a stray
+# inherited environment variable should be able to trigger in production.
 
 # ---------- Source guard ----------
 
@@ -145,13 +170,91 @@ _ppo_state_reset() {
   mkdir -p "$d" 2>/dev/null || true
 }
 
+# ---------- Step-engine state (ppo/) ----------
+#
+# A SEPARATE directory from ppo-state/ above: ppo-state/ is run-level
+# telemetry (peak concurrency, the outcome ledger, barrier/backfill counts)
+# that predates the step engine and stays exactly as it was, read by the same
+# accessors (ppo_peak_concurrency, ppo_report, ...). ppo/ is the engine's own
+# re-entrant state -- phases, the pending queue, running admissions, retry
+# counts, the degradation mode -- so that ONE CLI invocation (plan, then
+# next, then record, ...) can pick back up a run another invocation started,
+# which ppo-state/'s in-memory-first accessors were never designed for.
+_ppo_engine_dir() {
+  printf '%s/ppo' "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}"
+}
+
+_ppo_engine_reset() {
+  local d; d="$(_ppo_engine_dir)"
+  rm -rf "$d" 2>/dev/null || true
+  mkdir -p "$d/running" "$d/retries" 2>/dev/null || true
+}
+
+_ppo_engine_put() {
+  local d; d="$(_ppo_engine_dir)"
+  mkdir -p "$d" 2>/dev/null || return 0
+  printf '%s' "$2" > "$d/$1" 2>/dev/null || true
+}
+
+_ppo_engine_get() {
+  local d; d="$(_ppo_engine_dir)"
+  [ -f "$d/$1" ] && cat "$d/$1" 2>/dev/null
+  return 0
+}
+
+# _ppo_engine_lock_run <command...> — run one command with the engine-state
+# lock held. next and record are read-modify-write over ppo/pending,
+# ppo/running/*, and ppo/current_phase: two overlapping invocations (e.g. two
+# `record` calls landing from two near-simultaneous completion notifications)
+# without this would race a read of one file against a write from the other
+# and could silently drop or duplicate a pending/running entry. Fails CLOSED
+# on a lock timeout, exactly like _ppo_admit_bookkeeping's own admission
+# lock: refusing to mutate unlocked state is always safer than a corrupted
+# queue, and the caller sees a logged reason rather than a silent no-op.
+_ppo_engine_lock_run() {
+  _ppo_load_lock_lib 2>/dev/null || { _ppo_log "event=engine_lock action=refused reason=lock-lib-unavailable"; return 10; }
+  command -v acquire_lock >/dev/null 2>&1 || { _ppo_log "event=engine_lock action=refused reason=lock-lib-unavailable"; return 10; }
+
+  local lockfile
+  lockfile="$(_ppo_engine_dir)/.lock"
+  mkdir -p "$(dirname "$lockfile")" 2>/dev/null || true
+
+  if ! acquire_lock "$lockfile" "${GAIA_PPO_LOCK_TIMEOUT:-10}" 9 2>/dev/null; then
+    _ppo_log "event=engine_lock action=refused reason=lock-timeout"
+    return 10
+  fi
+
+  local rc=0
+  "$@" || rc=$?
+  release_lock 9 2>/dev/null || true
+  return "$rc"
+}
+
 # ---------- Dependencies ----------
 
 _ppo_lib() {
   local name="$1"
   [ -f "$_PPO_DIR/lib/$name" ] || return 1
+
+  # At least one shared library (acquire-lock.sh) sets `set -euo pipefail`
+  # UNCONDITIONALLY at its own source time, with no guard distinguishing "I
+  # am the top-level script" from "I am being sourced into a caller that
+  # owns its own shell options" -- sourcing it here would otherwise flip
+  # errexit ON for the REST OF THIS FILE's calling shell, silently
+  # overriding a sourced caller that deliberately ran `set +e` to branch on
+  # THIS file's own capacity/degradation codes via `|| rc=$?`. This file is
+  # sourceable (its own header says so), so every lib load funnels through
+  # here and restores whatever errexit state the caller actually had,
+  # regardless of what the library being loaded does to it internally.
+  local _ppo_lib_errexit_was_set=0
+  case "$-" in *e*) _ppo_lib_errexit_was_set=1 ;; esac
+
+  local _ppo_lib_rc=0
   # shellcheck disable=SC1090
-  . "$_PPO_DIR/lib/$name"
+  . "$_PPO_DIR/lib/$name" || _ppo_lib_rc=$?
+
+  [ "$_ppo_lib_errexit_was_set" -eq 1 ] || set +e
+  return "$_ppo_lib_rc"
 }
 
 _ppo_load_worktree_lib()  { _ppo_lib story-worktree.sh; }
@@ -220,6 +323,42 @@ PPOPY
   esac
   [ "$raw" -ge 1 ] 2>/dev/null || { printf '%s' "$default"; return 0; }
   printf '%s' "$raw"
+}
+
+# _ppo_resolve_target_branch — ci_cd.promotion_chain[0].branch, the same
+# config value skills/gaia-dev-story/SKILL.md Step 14 derives for
+# verify-pr-merged.sh and scripts/lib/dev-story-security-invariants.sh's
+# assert_pr_target_from_chain asserts against. No new config key: this reads
+# through _ppo_config_file(), the same resolution ladder every other value in
+# this file already uses, rather than re-deriving a project-config path.
+# Prints the branch on stdout; prints nothing when no promotion chain is
+# configured (a real, supported shape -- "no promotion chain" -- not an
+# error), mirroring verify-pr-merged.sh's own --no-chain accommodation.
+_ppo_resolve_target_branch() {
+  local cfg branch=""
+  cfg="$(_ppo_config_file)"
+  [ -n "$cfg" ] || return 0
+
+  if command -v yq >/dev/null 2>&1; then
+    branch="$(yq -r '.ci_cd.promotion_chain[0].branch' "$cfg" 2>/dev/null)" || branch=""
+    [ "$branch" = "null" ] && branch=""
+  fi
+
+  if [ -z "$branch" ]; then
+    branch="$(awk '
+      /^[[:space:]]*promotion_chain:[[:space:]]*$/ { in_chain = 1; next }
+      in_chain && /^[[:space:]]*branch:[[:space:]]*/ {
+        sub(/^[[:space:]]*branch:[[:space:]]*/, "")
+        gsub(/"/, "")
+        print
+        exit
+      }
+      in_chain && /^[^[:space:]-]/ { exit }
+    ' "$cfg" 2>/dev/null)"
+  fi
+
+  [ -n "$branch" ] && printf '%s' "$branch"
+  return 0
 }
 
 # ppo_resolve_slots — the concurrent dev-agent budget.
@@ -448,45 +587,143 @@ ppo_preflight() {
   return 0
 }
 
-# ---------- Dispatch ----------
-
-# _ppo_story_status <story_key> — the story's real lifecycle status, read
-# straight from its frontmatter. Duplicates sprint-state.sh's read_story_status
-# awk block deliberately rather than sourcing that file: sprint-state.sh is a
-# CLI script that sets `set -euo pipefail` and unconditionally runs `main "$@"`
-# at end of file with no source guard, so sourcing it from a library would
-# execute its whole argument-parsing/dispatch path. resolve-story-file.sh, by
-# contrast, IS a sourceable library (function-only, no unconditional main
-# call) and is loaded directly.
+# ---------- Step engine ----------
 #
-# Prints the status token on stdout; prints nothing and returns 1 when the
-# frontmatter has no `status:` field or the file cannot be read.
-_ppo_story_status() {
-  local file="${1:-}" status=""
-  [ -n "$file" ] && [ -f "$file" ] || return 1
-  status="$(awk '
-    BEGIN { in_fm = 0; seen = 0 }
-    /^---[[:space:]]*$/ {
-      if (!in_fm && !seen) { in_fm = 1; seen = 1; next }
-      if (in_fm) { exit }
-    }
-    in_fm && /^status:[[:space:]]*/ {
-      sub(/^status:[[:space:]]*/, "", $0)
-      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", $0)
-      print $0
-      exit
-    }
-  ' "$file" 2>/dev/null)" || return 1
-  [ -n "$status" ] || return 1
-  printf '%s' "$status"
+# ppo_plan / ppo_next / ppo_record_outcome / ppo_status / ppo_report make the
+# orchestrator RE-ENTRANT: one CLI invocation per step, engine state persisted
+# under ppo/ (see _ppo_engine_dir above) so a later invocation -- from a
+# different process, dispatched by the run-sprint skill's own main-turn loop
+# after it observes a real dev-agent turn complete -- picks up exactly where
+# the previous invocation left off. This exists because a bash script cannot
+# itself drive a story to completion: dispatch-teammate.sh's drive_turn and
+# await_reply are documented PRE-SEND BOOKKEEPING ONLY (see that file's
+# header) -- the actual SendMessage round-trip, and therefore the only real
+# signal that a dispatched story has progressed, is a main-turn LLM tool
+# call. So the engine admits and tracks; the skill drives and reports.
+#
+# ppo_run_sprint (below) is the backward-compatible ONE-PROCESS loop over
+# these same verbs -- it is what the existing test suite drives, and it is
+# also literally `run`'s implementation for the case where a test-only
+# dispatch hook can stand in for a real driven turn (see ppo_dispatch_hook_*).
+
+# ppo_plan --repo R --yaml Y [--slots N] — one-time setup: preflight, prune,
+# and (on mode=parallel) load the phase worklist into ppo/. Idempotent: a
+# second call re-runs preflight and re-initialises the queue from scratch,
+# exactly like starting a fresh run -- callers that want to RESUME a run
+# in progress call next/record, not plan again.
+ppo_plan() {
+  local repo="" yaml="" slots=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo)  repo="${2:-}";  shift 2 ;;
+      --yaml)  yaml="${2:-}";  shift 2 ;;
+      --slots) slots="${2:-}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  _PPO_OUTCOMES=""; _PPO_WORKTREES=""; _PPO_PEAK=0; _PPO_SEEN="|"
+  _PPO_BARRIER_VIOLATIONS=0; _PPO_BACKFILL_BEFORE_DONE=0
+  _ppo_state_reset
+  _ppo_state_put peak 0
+  _ppo_state_put barrier_violations 0
+  _ppo_state_put backfill_before_done 0
+  _ppo_engine_reset
+
+  [ -n "$slots" ] || slots="$(ppo_resolve_slots)"
+  _ppo_engine_put repo "$repo"
+  _ppo_engine_put yaml "$yaml"
+  _ppo_engine_put slots "$slots"
+
+  local verdict
+  verdict="$(ppo_preflight --repo "$repo" --yaml "$yaml" --slots "$slots")"
+  _ppo_emit "$verdict"
+
+  case "$verdict" in
+    mode=parallel*)
+      _ppo_engine_put mode "mode=parallel reason=none"
+      ;;
+    *)
+      # Degraded: persist the reason so a LATER next/record invocation
+      # agrees with what plan already announced, instead of failing on
+      # missing engine state or silently re-deciding. The
+      # sequential worklist itself is regenerated on demand from repo/yaml
+      # rather than persisted -- ppo_plan_sequential is already cheap and
+      # deterministic, so caching it would only be one more place for state
+      # to go stale.
+      _ppo_engine_put mode "$verdict"
+      ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r k; do
+        [ -n "$k" ] && _ppo_emit "event=sequential story=${k}"
+      done
+      return 0
+      ;;
+  esac
+
+  _ppo_load_worktree_lib || { _ppo_engine_put mode "mode=sequential reason=admission-error"; return 0; }
+  # Reap whatever a previously killed run left behind, before anything is
+  # created, so a story whose branch survives can attach cleanly.
+  worktree_prune_stale "$repo" >/dev/null 2>&1 || true
+  export GAIA_WORKTREE_PRUNE_ON_CREATE=0
+
+  # A reservation orphaned by a killed run counts toward the ceiling forever,
+  # so it is cleared before this run starts claiming any of its own.
+  ppo_reap_stale_reservations
+
+  local phases
+  phases="$(ppo_read_phases "$yaml")" || { _ppo_engine_put mode "mode=sequential reason=sprint-unreadable"; return 0; }
+  _ppo_engine_put phases "$phases"
+
+  local first_phase
+  first_phase="$(printf '%s\n' "$phases" | awk -F'|' '{print $2}' | sort -n -u | head -n1)"
+  _ppo_engine_put current_phase "${first_phase:-1}"
+  _ppo_engine_put pending "$(printf '%s\n' "$phases" | awk -F'|' -v ph="${first_phase:-1}" '$2 == ph {print $1}')"
+
+  return 0
 }
+
+# ---------- Dispatch ----------
 
 # _ppo_resolve_story_file <story_key> — thin wrapper around the shared
 # resolve-story-file.sh resolver. Prints the path on stdout; returns the
-# resolver's own exit code (1 no match, 2 ambiguous) on failure.
+# resolver's own exit code (1 no match, 2 ambiguous) on failure UNCHANGED --
+# callers MUST branch on it rather than treating any non-zero return as the
+# same "no story file" case: exit 2 means the key resolved to more than one
+# on-disk candidate, a misconfiguration the operator has to fix, not an
+# absent story a default persona can safely stand in for.
+#
+# Memoized per run under ppo/resolve-cache/<key> (path on line 1, exit code
+# on line 2): the resolver walks the whole implementation-artifacts tree
+# (find over epic-*/stories/, ~10ms per directory -- seconds at a few
+# hundred), and a merged-not-done resume re-queues the SAME key through
+# _ppo_admit_bookkeeping again on every retry attempt, so without a cache a
+# large sprint pays that walk repeatedly for a key whose on-disk answer
+# cannot have changed between one retry and the next within a single run.
+# Cleared by ppo_plan (via _ppo_engine_reset) at the start of every run, so a
+# stale answer from a previous run is never served.
 _ppo_resolve_story_file() {
+  local key="${1:-}" cache_dir cache_file path="" rc=0
+  cache_dir="$(_ppo_engine_dir)/resolve-cache"
+  cache_file="${cache_dir}/${key}"
+
+  if [ -n "$key" ] && [ -f "$cache_file" ]; then
+    path="$(sed -n '1p' "$cache_file" 2>/dev/null)"
+    rc="$(sed -n '2p' "$cache_file" 2>/dev/null)"
+    case "$rc" in ''|*[!0-9]*) rc=0 ;; esac
+    [ "$rc" -eq 0 ] && [ -n "$path" ] && printf '%s' "$path"
+    return "$rc"
+  fi
+
   _ppo_load_resolve_story_lib || return 1
-  resolve_story_file "$1" 2>/dev/null
+  path="$(resolve_story_file "$key" 2>/dev/null)" || rc=$?
+
+  if [ -n "$key" ]; then
+    mkdir -p "$cache_dir" 2>/dev/null && {
+      printf '%s\n%s\n' "$path" "$rc" > "$cache_file" 2>/dev/null || true
+    }
+  fi
+
+  [ "$rc" -eq 0 ] && [ -n "$path" ] && printf '%s' "$path"
+  return "$rc"
 }
 
 # _ppo_resolve_persona <story_file> — the developer persona to dispatch for
@@ -510,223 +747,118 @@ _ppo_resolve_persona() {
   printf '%s' "$persona"
 }
 
-# ppo_dispatch_slot <story_key> — one admission attempt.
+# _ppo_live_dir — where this run records the handles it has spawned and not
+# yet shut down. One file per LIVE handle, named by the handle itself so a
+# concurrent untrack (from the natural completion path) and a trap-driven
+# shutdown racing the same handle both resolve to the same filename and the
+# second one to arrive finds nothing to remove -- no lock needed, `rm -f` on a
+# missing file is already a no-op.
 #
-# Default path dispatches through the REAL teammate surface
-# (scripts/lib/dispatch-teammate.sh), never a product-provided
-# "gaia-dispatch-story" command -- no such command exists anywhere in this
-# plugin; the old default silently invoked one, which would fail
-# command-not-found on every production run.
-#
-#   1. spawn_teammate <persona> --story-key <key> under the guarded idiom
-#      (see below) admits (or refuses) the teammate. Its exit code is a
-#      SPAWN status, not a story outcome: 0 spawned, 7 substrate fallback
-#      (Mode A), 8 ceiling saturated, anything else an unclassified spawn
-#      failure. These four are returned as-is to ppo_admit_slot, which
-#      already classifies them (case "$wrc" in 7|8|... in ppo_run_sprint).
-#   2. On a successful spawn (rc 0), the story is driven to completion
-#      through the story-file frontmatter status the codebase already
-#      treats as authoritative (the same awk block sprint-state.sh's
-#      read_story_status uses) -- NOT from any dispatch exit code, because
-#      drive_turn/await_reply in dispatch-teammate.sh are pre-send
-#      bookkeeping only (the header there documents that the actual
-#      SendMessage round-trip is a main-turn capability this script cannot
-#      invoke). Polling stops at the first terminal signal: status "done"
-#      (OUTCOME done), a status the codebase treats as merged-but-open
-#      (OUTCOME merged-not-done, via the existing resume path in
-#      ppo_run_sprint), or the per-story wall-clock budget expiring
-#      (OUTCOME timeout, internal code 9, exactly as before).
-#   3. shutdown_teammate releases the registry entry on every path out, so a
-#      polled-to-completion story does not hold a ceiling slot after this
-#      function returns.
-#
-# TEST-ONLY OVERRIDE: GAIA_PPO_DISPATCH_CMD. When set, that command is
-# invoked with the story key exactly as the old default invoked
-# gaia-dispatch-story, and ITS exit code is returned as-is -- this keeps the
-# existing stub-based suite (which fabricates the 0/1/7/8/9/11 contract via
-# _mk_dispatch_stub) green without touching the real path. It is a hook for
-# tests, never a production dispatch mechanism -- no code path in this file
-# reads it outside this function.
-#
-# Numeric vocabulary returned (internal to this file and to the test hook
-# above; never surfaced to an operator, who sees only the named reasons in
-# _ppo_emit output): 0 done, 1 failed, 7 substrate fallback, 8 ceiling
-# saturated, 9 timeout, 10 admission-lock timeout (set by ppo_admit_slot,
-# not here), 11 merged-but-not-done. Anything else is an unclassified
-# admission error. See ITEM 2 below for why 11 cannot be misread from an
-# external command's exit status on the default path.
-#
-# Exit 8 is a NORMAL outcome, so every capture in this function is guarded:
-# an unguarded assignment under errexit dies before the caller ever reads the
-# status. The bridge's idiom is used rather than a bare `|| rc=$?` because
-# this file is sourceable, and in a sourced file the shell options belong to
-# the CALLER -- flipping errexit underneath one that deliberately ran
-# `set +e` to branch on the fallback code is a real bug.
-ppo_dispatch_slot() {
-  local key="${1:-}" rc=0 out="" errexit_was_set=0
-  [ -n "$key" ] || return 1
-
-  # The budget is applied HERE, around the dispatch itself: a story that never
-  # returns must not hold its slot indefinitely. Exit 124 (the conventional
-  # timeout status) is mapped to a distinct internal code so the caller can tell
-  # "ran out of wall clock" from "failed".
-  local budget
-  budget="${GAIA_STORY_TIMEOUT_SECONDS:-}"
-  if [ -z "$budget" ]; then
-    budget="$(ppo_resolve_timeout)"
-    budget=$((budget * 60))
-  fi
-
-  case "$-" in *e*) errexit_was_set=1 ;; esac
-  set +e
-
-  if [ -n "${GAIA_PPO_DISPATCH_CMD:-}" ]; then
-    # ---- Test-only hook: exact legacy behaviour, any command, any contract.
-    if command -v timeout >/dev/null 2>&1; then
-      out="$(timeout "$budget" "$GAIA_PPO_DISPATCH_CMD" "$key" 2>/dev/null)"
-      rc=$?
-    else
-      local tmp_out pid waited
-      tmp_out="$(mktemp "${TMPDIR:-/tmp}/ppo-dispatch.XXXXXX")"
-      "$GAIA_PPO_DISPATCH_CMD" "$key" >"$tmp_out" 2>/dev/null &
-      pid=$!
-      waited=0
-      while kill -0 "$pid" 2>/dev/null; do
-        if [ "$waited" -ge "$budget" ]; then
-          kill -TERM "$pid" 2>/dev/null
-          sleep 1
-          kill -KILL "$pid" 2>/dev/null
-          rc=124
-          break
-        fi
-        sleep 1
-        waited=$((waited + 1))
-      done
-      if [ "${rc:-0}" -ne 124 ]; then
-        wait "$pid" 2>/dev/null
-        rc=$?
-      fi
-      out="$(cat "$tmp_out" 2>/dev/null)"
-      rm -f "$tmp_out" 2>/dev/null || true
-    fi
-    [ "$errexit_was_set" -eq 1 ] && set -e
-    [ "$rc" -eq 124 ] && rc=9
-    [ -n "$out" ] && printf '%s\n' "$out"
-    return "$rc"
-  fi
-
-  # ---- Default path: the real teammate surface.
-  if ! _ppo_load_dispatch_lib 2>/dev/null || ! command -v spawn_teammate >/dev/null 2>&1; then
-    [ "$errexit_was_set" -eq 1 ] && set -e
-    return 1
-  fi
-
-  local story_file="" persona=""
-  story_file="$(_ppo_resolve_story_file "$key")" || story_file=""
-  persona="$(_ppo_resolve_persona "$story_file")"
-
-  local handle="" spawn_rc=0
-  handle="$(spawn_teammate "$persona" --story-key "$key" 2>/dev/null)" || spawn_rc=$?
-
-  if [ "$spawn_rc" -ne 0 ]; then
-    # 7 (substrate fallback) and 8 (ceiling) are the library's own documented
-    # capacity/availability codes; anything else is an unclassified spawn
-    # failure. None of these are story outcomes -- no story ran.
-    [ "$errexit_was_set" -eq 1 ] && set -e
-    return "$spawn_rc"
-  fi
-
-  # Poll the story's own status to a terminal state, bounded by the same
-  # per-story wall-clock budget the legacy path applied around the whole
-  # dispatch. drive_turn/await_reply are pre-send bookkeeping only (see the
-  # dispatch-teammate.sh header) -- there is no bash-observable "the teammate
-  # is done" signal beyond the story file itself, so that is the oracle.
-  local waited=0 status=""
-  rc=9
-  while [ "$waited" -lt "$budget" ]; do
-    status="$(_ppo_story_status "$story_file")" || status=""
-    case "$status" in
-      done)
-        rc=0
-        break
-        ;;
-      merged-not-done|merged_not_done)
-        rc=11
-        break
-        ;;
-      failed|blocked|abandoned)
-        rc=1
-        break
-        ;;
-    esac
-    sleep 1
-    waited=$((waited + 1))
-  done
-
-  shutdown_teammate "$handle" >/dev/null 2>&1 || true
-
-  [ "$errexit_was_set" -eq 1 ] && set -e
-  [ -n "$handle" ] && printf '%s\n' "$handle"
-  return "$rc"
+# Deliberately a DIFFERENT directory from the teammate registry itself
+# (GAIA_SESSION_DIR/registry): the registry is the library's own state, keyed
+# by handle and consumed by shutdown_teammate; this directory is this run's
+# own bookkeeping of which of those registry entries it is responsible for
+# tearing down. Conflating the two would mean writing into a directory the
+# library owns and expects only its own record shape in.
+_ppo_live_dir() {
+  printf '%s/ppo-live-teammates' "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}"
 }
 
-# ppo_admit_slot <story_key> — dispatch one story under the admission lock.
+# _ppo_handle_track <handle> — record a just-spawned handle as live for THIS
+# run ($$, the same value _ppo_admit_bookkeeping stamps into a reservation
+# token -- see the note there on why $$ inside a backgrounded function call
+# still names the top-level run, not the background job).
+_ppo_handle_track() {
+  local handle="${1:-}" d
+  [ -n "$handle" ] || return 0
+  d="$(_ppo_live_dir)"
+  mkdir -p "$d" 2>/dev/null || return 0
+  printf 'owner:%s\n' "$$" > "${d}/${handle}" 2>/dev/null || true
+}
+
+# _ppo_handle_untrack <handle> — this run finished with the handle through the
+# normal path (shutdown_teammate already ran); stop tracking it so the trap
+# does not shut it down a second time.
+_ppo_handle_untrack() {
+  local handle="${1:-}" d
+  [ -n "$handle" ] || return 0
+  d="$(_ppo_live_dir)"
+  rm -f "${d}/${handle}" 2>/dev/null || true
+}
+
+# ppo_shutdown_live_teammates — shut down every teammate THIS run spawned and
+# has not already shut down, then stop tracking it. Installed on the run-level
+# trap alongside ppo_release_reservations: shutdown_teammate at the natural
+# end of a story's lifecycle only runs when ppo_record_outcome is actually
+# called for it -- a run killed before the skill ever reports back (or one
+# that dies with the trap firing on EXIT) never reaches that call, so each
+# live teammate's registry entry would otherwise survive the run that
+# spawned it and count against the shared ceiling forever, with no liveness
+# check anywhere else to reclaim it.
 #
-# The library's own ceiling check is an unlocked read-then-register, so two
-# concurrent admissions can both pass a nearly-full ceiling. Serialising
-# admission here closes that from the caller side; the stories still RUN
-# concurrently, only the moment of admission is ordered.
-ppo_admit_slot() {
-  local key="${1:-}"
+# Idempotent: shutdown_teammate on an already-shut-down (or never-registered)
+# handle returns non-zero, which is swallowed here exactly as the natural
+# path already swallows it -- a handle shut down twice, once naturally and
+# once from this sweep racing it, is not an error.
+ppo_shutdown_live_teammates() {
+  local d f handle owner
+  d="$(_ppo_live_dir)"
+  [ -d "$d" ] || return 0
+  # shutdown_teammate is defined by the dispatch library. _ppo_admit_bookkeeping
+  # loads it lazily, but inside `ppo_next`, the SAME top-level shell the trap
+  # runs in for plan/next/record -- however `run`'s own hook-invocation
+  # subshells fork a SEPARATE process, so a function sourced only there never
+  # becomes visible here regardless. The trap must load the library itself
+  # before it can call shutdown_teammate; a run that degraded before any
+  # admission ever happened (e.g. worktree-mode-off) has no live-handle files
+  # to begin with, so the load below is reached only when there is real work
+  # to do.
+  _ppo_load_dispatch_lib 2>/dev/null || true
+  command -v shutdown_teammate >/dev/null 2>&1 || return 0
+  for f in "$d"/*; do
+    [ -f "$f" ] || continue
+    handle="$(basename "$f")"
+    owner="$(sed -n 's/^owner://p;q' "$f" 2>/dev/null)"
+    case "$owner" in
+      "$$")
+        shutdown_teammate "$handle" >/dev/null 2>&1 || true
+        rm -f "$f" 2>/dev/null || true
+        ;;
+    esac
+  done
+  return 0
+}
+
+# _ppo_admit_bookkeeping <story_key> <repo> — claim a ceiling reservation
+# under the admission lock (count-and-claim against the shared registry,
+# same discipline as _ppo_engine_lock_run's own note on the race this
+# closes), then resolve the story file / persona and call the real
+# spawn_teammate. NO polling and NO backgrounding: the engine tracks the
+# handle in ppo/running/<key> (see ppo_next) and returns immediately,
+# because there is nothing left for a bash loop to usefully wait on for a
+# real driven turn (see the step-engine header above). Returns 0 with the
+# persona and handle printed as `persona:<p>` / `handle:<h>` lines on
+# stdout, or an admission-status code with nothing on stdout: 1 failed or
+# ambiguous story file, 7 substrate fallback, 8 ceiling saturated, 10 lock
+# timeout, or the spawn's own unclassified raw exit code.
+_ppo_admit_bookkeeping() {
+  local key="${1:-}" repo="${2:-}"
   [ -n "$key" ] || return 1
 
-  # A key that could escape the worktree parent or break a path is refused
-  # before it reaches any filesystem operation.
   case "$key" in
     *[!A-Za-z0-9._-]*|*..*|'') return 1 ;;
   esac
 
-  local rc=0 locked=0
-
-  # Claim a CEILING TOKEN under the lock, then run the story outside it.
-  #
-  # The dispatch library counts registry files and then registers, which is a
-  # check-then-act: concurrent admissions can all read the same count and all
-  # proceed past a nearly-full ceiling. Closing that needs a lock spanning the
-  # count and the claim -- but the library's own window sits inside the spawn,
-  # which this caller reaches only by running the story, and holding the lock
-  # across a whole story would serialise the sprint (every slot backgrounded,
-  # every one queued on the lock).
-  #
-  # So the count-and-claim happens HERE, under the lock, against the same
-  # registry the library counts: read the count and, if there is room, plant a
-  # token that makes this admission visible to every other admission before the
-  # lock is released. A token is a RESERVATION, not a teammate record: the
-  # library's registration consumes it, so a story never holds two ceiling
-  # slots, and it is cleared on every exit path.
-  #
-  # Claiming without the lock would be worse than not running concurrently at
-  # all -- it would look like mutual exclusion while excluding nothing -- so a
-  # lock that cannot be taken refuses the admission rather than proceeding.
-  local token="" reg="" ceiling=0 count=0
-
-  # Everything that does NOT touch the shared registry happens BEFORE the lock.
-  # The ceiling is a config read through yq/python3 costing on the order of
-  # 200ms; the registry is the shared resource, the ceiling value is not. Read
-  # inside the critical section, that cost is paid while every other admission
-  # queues on the lock, so the hold time scales with the slot budget and
-  # acquisitions begin timing out at large-but-legal budgets -- turning a
-  # latency choice into a correctness one, because a timeout is a degradation.
+  local rc=0 locked=0 token="" reg="" ceiling=0 count=0
   reg="${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/registry"
   mkdir -p "$reg" 2>/dev/null || true
   ceiling="$(ppo_resolve_ceiling)"
 
-  # Fail CLOSED when the lock cannot be taken. Admitting unlocked would run the
-  # count-and-claim with no mutual exclusion and no warning -- precisely the
-  # overshoot the lock exists to prevent, and silent besides. A lock we cannot
-  # acquire is a sprint-wide condition rather than a property of this story, so
-  # the caller degrades the whole run to sequential: correct, ordered, and
-  # slower, which is always better than concurrent and wrong.
+  # _ppo_load_lock_lib funnels through _ppo_lib, which restores whatever
+  # errexit state THIS function's caller had before the sourced library
+  # (acquire-lock.sh sets `set -euo pipefail` unconditionally) had a chance
+  # to override it -- see _ppo_lib's own comment. No local save/restore
+  # dance is needed here as a result.
   if ! _ppo_load_lock_lib 2>/dev/null || ! command -v acquire_lock >/dev/null 2>&1; then
     return 10
   fi
@@ -737,33 +869,487 @@ ppo_admit_slot() {
   locked=1
 
   count="$(find "$reg" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
-  # Test-only widening of the count-then-claim window. The window is a few
-  # syscalls wide in production, which is real but hard to hit deterministically;
-  # a test that cannot reach it cannot prove the lock is doing anything.
   [ -n "${GAIA_PPO_CLAIM_DELAY:-}" ] && sleep "$GAIA_PPO_CLAIM_DELAY"
   if [ "${count:-0}" -lt "${ceiling:-0}" ]; then
     token="${reg}/.reserved-${key}"
-    # Stamp the owning pid so a reservation orphaned by a killed run can be
-    # told from a live one and reaped at the next start.
     printf 'reserved_by:%s\n' "$$" > "$token" 2>/dev/null || token=""
     [ -n "$token" ] && _ppo_state_append reservations "$token"
   fi
 
   [ "$locked" -eq 1 ] && { release_lock 8 2>/dev/null || true; }
 
-  # No room: a capacity condition, reported with the library's own code so the
-  # caller queues the story rather than failing it.
   if [ -z "$token" ]; then
     return 8
   fi
 
-  # The reservation is released on EVERY path out of here. On a successful
-  # registration the library has already renamed it, so this removes nothing;
-  # on any other outcome -- spawn refusal, a saturated ceiling, a failed or
-  # stalled story -- it must not be left holding a ceiling slot.
-  ppo_dispatch_slot "$key" || rc=$?
+  # ---- Story file / persona resolution. ----
+  local story_file="" persona="" resolve_rc=0
+  if ! _ppo_load_dispatch_lib 2>/dev/null || ! command -v spawn_teammate >/dev/null 2>&1; then
+    rm -f "$token" 2>/dev/null || true
+    return 1
+  fi
+
+  story_file="$(_ppo_resolve_story_file "$key")" || resolve_rc=$?
+  case "$resolve_rc" in
+    0) : ;;
+    2)
+      _ppo_log "event=story_file_ambiguous story=${key} action=refused reason=multiple-candidate-files — resolve-story-file.sh returned exit 2; fix the duplicate before this story can be dispatched"
+      rm -f "$token" 2>/dev/null || true
+      return 1
+      ;;
+    *) story_file="" ;;
+  esac
+  persona="$(_ppo_resolve_persona "$story_file")"
+
+  local handle="" spawn_rc=0
+  handle="$(spawn_teammate "$persona" --story-key "$key" 2>/dev/null)" || spawn_rc=$?
   rm -f "$token" 2>/dev/null || true
-  return "$rc"
+
+  if [ "$spawn_rc" -ne 0 ]; then
+    return "$spawn_rc"
+  fi
+
+  _ppo_handle_track "$handle"
+  printf 'persona:%s\n' "$persona"
+  printf 'handle:%s\n' "$handle"
+  return 0
+}
+
+# ppo_next — admit up to the slot budget for the CURRENT phase ONLY (the
+# phase-look-ahead the old inline loop enforced via its outer `for p in
+# all_phases` structure is enforced here BY CONSTRUCTION: this function never
+# reads a later phase's pending queue). One `dispatch story=... phase=...
+# persona=... worktree=... handle=...` line per admission; `barrier
+# phase=P waiting=N` when the phase cannot admit more but is not done;
+# `event=phase_start`/`event=phase_complete` on a phase boundary; `mode=...`
+# unchanged from plan when a story's own admission reveals a run-wide
+# degradation (mode-b-fallback, ceiling-cannot-admit, admission-lock-timeout
+# -- these still end the run exactly as ppo_run_sprint's inline loop did,
+# because they are properties of the WHOLE run, not one story); `sprint_complete`
+# once no phase has pending or running work left.
+ppo_next() {
+  _ppo_engine_lock_run _ppo_next_locked
+}
+
+_ppo_next_locked() {
+  local mode; mode="$(_ppo_engine_get mode)"
+  case "$mode" in
+    mode=sequential*)
+      _ppo_emit "$mode"
+      local repo yaml
+      repo="$(_ppo_engine_get repo)"; yaml="$(_ppo_engine_get yaml)"
+      ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r k; do
+        [ -n "$k" ] && _ppo_emit "event=sequential story=${k}"
+      done
+      return 0
+      ;;
+    '')
+      _ppo_log "event=next action=refused reason=no-plan — call plan before next"
+      return 1
+      ;;
+  esac
+
+  local repo slots phases
+  repo="$(_ppo_engine_get repo)"
+  slots="$(_ppo_engine_get slots)"
+  phases="$(_ppo_engine_get phases)"
+
+  local advanced=1
+  while [ "$advanced" -eq 1 ]; do
+    advanced=0
+    local p pending running_count
+    p="$(_ppo_engine_get current_phase)"
+    pending="$(_ppo_engine_get pending)"
+    running_count="$(find "$(_ppo_engine_dir)/running" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+    if [ -z "$pending" ] && [ "${running_count:-0}" -eq 0 ]; then
+      # This phase is drained. Find the next phase with pending OR running
+      # work (running should be empty here by construction, but a phase with
+      # ONLY running entries left -- none pending -- also does not advance
+      # until record clears them, so this branch is reached only once both
+      # are empty).
+      _ppo_emit "event=phase_complete phase=${p}"
+      local next_phase
+      next_phase="$(printf '%s\n' "$phases" | awk -F'|' -v cur="$p" '$2 > cur {print $2}' | sort -n -u | head -n1)"
+      if [ -z "$next_phase" ]; then
+        _ppo_emit "sprint_complete"
+        return 0
+      fi
+      _ppo_engine_put current_phase "$next_phase"
+      _ppo_engine_put pending "$(printf '%s\n' "$phases" | awk -F'|' -v ph="$next_phase" '$2 == ph {print $1}')"
+      local _nonterm
+      _nonterm="$(ppo_outcome_count merged-not-done)"
+      if [ "${_nonterm:-0}" -gt 0 ]; then
+        _PPO_BARRIER_VIOLATIONS=$((_PPO_BARRIER_VIOLATIONS + _nonterm))
+        _ppo_state_put barrier_violations "$_PPO_BARRIER_VIOLATIONS"
+        _ppo_emit "event=barrier_violation phase=${next_phase} non_terminal=${_nonterm}"
+      fi
+      _ppo_emit "event=phase_start phase=${next_phase}"
+      advanced=1
+      continue
+    fi
+  done
+
+  local p pending running_count
+  p="$(_ppo_engine_get current_phase)"
+  pending="$(_ppo_engine_get pending)"
+  running_count="$(find "$(_ppo_engine_dir)/running" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+  local ceiling_refusals=0
+  while [ -n "$pending" ] && [ "${running_count:-0}" -lt "${slots:-1}" ]; do
+    local key rest
+    key="${pending%%$'\n'*}"
+    if [ "$key" = "$pending" ]; then rest=""; else rest="${pending#*$'\n'}"; fi
+    if [ -z "$key" ]; then pending="$rest"; _ppo_engine_put pending "$pending"; continue; fi
+
+    case "$key" in
+      *[!A-Za-z0-9._-]*|*..*)
+        _ppo_emit "event=story_refused story=${key} phase=${p} outcome=invalid-key"
+        _ppo_record "$key" "failed" "$p"
+        pending="$rest"; _ppo_engine_put pending "$pending"
+        continue
+        ;;
+    esac
+
+    local bstate seen
+    seen="$(_ppo_engine_get seen)"
+    case "|${seen}|" in
+      *"|${key}|"*) bstate="absent" ;;
+      *)
+        _ppo_load_worktree_lib 2>/dev/null || true
+        bstate="$(worktree_branch_state "$repo" "feat/${key}-slug" 2>/dev/null || printf 'absent')"
+        ;;
+    esac
+    _ppo_engine_put seen "${seen}${seen:+ }${key}"
+    case "$bstate" in
+      checked-out:*) _ppo_emit "event=attached story=${key} phase=${p}" ;;
+    esac
+
+    if [ "$(_ppo_mnd_open_count)" -gt 0 ]; then
+      case "$(_ppo_mnd_open_keys)" in
+        *"|${key}|"*) : ;;
+        *)
+          _PPO_BACKFILL_BEFORE_DONE=$((_PPO_BACKFILL_BEFORE_DONE + 1))
+          _ppo_state_put backfill_before_done "$_PPO_BACKFILL_BEFORE_DONE"
+          _ppo_emit "event=backfill_before_done story=${key} phase=${p}"
+          ;;
+      esac
+    fi
+
+    mkdir -p "$(ppo_slot_scratch_for "$key")" 2>/dev/null || true
+    local wt=""
+    wt="$(worktree_create "$repo" "$key" "slug" 2>/dev/null)" || wt=""
+    if [ -n "$wt" ]; then
+      _PPO_WORKTREES="${_PPO_WORKTREES}${_PPO_WORKTREES:+$'\n'}${wt}"
+      _ppo_state_append worktrees "$wt"
+      printf '%s' "$wt" > "$(ppo_slot_scratch_for "$key")/worktree" 2>/dev/null || true
+    fi
+
+    local out="" arc=0
+    out="$(_ppo_admit_bookkeeping "$key" "$repo")" || arc=$?
+
+    if [ "$arc" -ne 0 ]; then
+      case "$arc" in
+        7)
+          _ppo_engine_put mode "mode=sequential reason=mode-b-fallback — the agent substrate is unavailable; running sequentially in phase order"
+          _ppo_emit "mode=sequential reason=mode-b-fallback — the agent substrate is unavailable; running sequentially in phase order"
+          local yaml; yaml="$(_ppo_engine_get yaml)"
+          ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
+            [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
+          done
+          return 0
+          ;;
+        8)
+          ceiling_refusals=$((ceiling_refusals + 1))
+          if [ "$ceiling_refusals" -ge "$_PPO_CEILING_GIVEUP" ]; then
+            _ppo_engine_put mode "mode=sequential reason=ceiling-cannot-admit — the dispatch ceiling is saturated and no slot can free it; running sequentially"
+            _ppo_emit "mode=sequential reason=ceiling-cannot-admit — the dispatch ceiling is saturated and no slot can free it; running sequentially"
+            local yaml; yaml="$(_ppo_engine_get yaml)"
+            ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
+              [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
+            done
+            return 0
+          fi
+          # Capacity condition: story stays at the head of pending (not
+          # consumed), stop admitting this round -- a later next call retries.
+          break
+          ;;
+        10)
+          _ppo_engine_put mode "mode=sequential reason=admission-lock-timeout — the admission lock could not be acquired; running sequentially rather than admitting unlocked"
+          _ppo_emit "mode=sequential reason=admission-lock-timeout — the admission lock could not be acquired; running sequentially rather than admitting unlocked"
+          local yaml; yaml="$(_ppo_engine_get yaml)"
+          ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
+            [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
+          done
+          return 0
+          ;;
+        *)
+          # Story-file ambiguity or an unclassified spawn failure: the
+          # story itself is refused, siblings continue.
+          _ppo_record "$key" "failed" "$p"
+          pending="$rest"; _ppo_engine_put pending "$pending"
+          continue
+          ;;
+      esac
+    fi
+
+    ceiling_refusals=0
+    local persona handle
+    persona="$(printf '%s\n' "$out" | sed -n 's/^persona://p')"
+    handle="$(printf '%s\n' "$out" | sed -n 's/^handle://p')"
+
+    {
+      printf 'phase:%s\n' "$p"
+      printf 'persona:%s\n' "$persona"
+      printf 'worktree:%s\n' "$wt"
+      printf 'handle:%s\n' "$handle"
+      printf 'dispatched_at:%s\n' "$(date +%s)"
+    } > "$(_ppo_engine_dir)/running/${key}" 2>/dev/null || true
+
+    running_count=$((running_count + 1))
+    if [ "$running_count" -gt "$_PPO_PEAK" ]; then
+      _PPO_PEAK="$running_count"
+      _ppo_state_put peak "$_PPO_PEAK"
+    fi
+    _ppo_emit "dispatch story=${key} phase=${p} persona=${persona} worktree=${wt} handle=${handle}"
+
+    pending="$rest"
+    _ppo_engine_put pending "$pending"
+  done
+
+  running_count="$(find "$(_ppo_engine_dir)/running" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${running_count:-0}" -gt 0 ]; then
+    _ppo_emit "barrier phase=${p} waiting=${running_count}"
+  elif [ -z "$pending" ]; then
+    _ppo_emit "sprint_complete"
+  fi
+  return 0
+}
+
+# _ppo_is_merged_not_done <key> <yaml> — the REAL merged-not-done oracle:
+# sprint-progress-audit.sh, composing verify-pr-merged.sh (merge-on-target
+# detection) and review-gate.sh (gate completeness) -- never a story-file
+# `status:` field, because merged-not-done is not one of the seven canonical
+# statuses in story-state-machine.sh (backlog | validating | ready-for-dev |
+# in-progress | blocked | review | done) and never was; a bash poll of a
+# story-file field for a value the state machine never writes could only ever
+# time out. Returns 0 (merged but NOT done -- the audit flagged this key) or
+# 1 (clean: either not merged at all, which "record merged" from the skill's
+# own observation already contradicts, or merged AND done).
+#
+# GAIA_PPO_AUDIT_CMD (test-only, gated exactly like GAIA_PPO_DISPATCH_CMD --
+# see this file's header for the rationale and the marker check this
+# mirrors): when set under a test marker, that command is
+# invoked with `<key> <sprint-status-yaml> <target-branch>` instead of the
+# real sprint-progress-audit.sh, and its exit code (0 clean / 4 offending,
+# matching the real script's own contract) is honoured as-is.
+_ppo_is_merged_not_done() {
+  local key="${1:-}" yaml="${2:-}" branch="" rc=0
+  branch="$(_ppo_resolve_target_branch)"
+  [ -n "$branch" ] || return 1
+
+  if [ -n "${GAIA_PPO_AUDIT_CMD:-}" ] \
+     && { [ -n "${BATS_TEST_FILENAME:-}" ] || [ "${GAIA_PPO_ALLOW_DISPATCH_CMD:-}" = "1" ]; }; then
+    _ppo_log "event=audit_hook cmd=${GAIA_PPO_AUDIT_CMD} action=honoured"
+    "$GAIA_PPO_AUDIT_CMD" "$key" "$yaml" "$branch" >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 4 ] && return 0
+    return 1
+  fi
+  if [ -n "${GAIA_PPO_AUDIT_CMD:-}" ]; then
+    _ppo_log "event=audit_hook cmd=${GAIA_PPO_AUDIT_CMD} action=refused reason=no-test-marker"
+  fi
+
+  [ -f "$_PPO_DIR/sprint-progress-audit.sh" ] || return 1
+  local out=""
+  out="$(bash "$_PPO_DIR/sprint-progress-audit.sh" --sprint-status "$yaml" --target-branch "$branch" 2>/dev/null)" || rc=$?
+  [ "${rc:-0}" -eq 4 ] || return 1
+  printf '%s\n' "$out" | grep -q "^WARNING: ${key} " && return 0
+  return 1
+}
+
+# ppo_record_outcome <key> <done|failed|timeout|merged> — the skill reports
+# what it observed from driving the real dev-agent turn; this verb reaps the
+# admission, tears down per outcome, and updates the ledger. Locked exactly
+# like ppo_next: concurrent record calls for different keys must not race
+# the shared pending/running state.
+ppo_record_outcome() {
+  _ppo_engine_lock_run _ppo_record_outcome_locked "$@"
+}
+
+_ppo_record_outcome_locked() {
+  local key="${1:-}" outcome="${2:-}"
+  [ -n "$key" ] && [ -n "$outcome" ] || { _ppo_log "event=record action=refused reason=usage — record <key> <done|failed|timeout|merged>"; return 1; }
+
+  local running_file
+  running_file="$(_ppo_engine_dir)/running/${key}"
+  [ -f "$running_file" ] || { _ppo_log "event=record story=${key} action=refused reason=not-running"; return 1; }
+
+  local p persona wt handle repo yaml
+  # NOTE the `q` is scoped to the /pattern/ block, not appended after `p`:
+  # `s/^phase://p;q' would quit after the FIRST LINE of the file regardless
+  # of whether it matched -- correct only for whichever field happens to be
+  # written first, and silently empty for persona/worktree/handle for as
+  # long as this file's writer keeps `phase:` on line 1 (see
+  # _ppo_admit_bookkeeping / the write in ppo_next). Restricting `q` to fire
+  # only once the pattern actually matched makes each read independent of
+  # every other field's position in the file.
+  p="$(sed -n '/^phase:/{s/^phase://;p;q;}' "$running_file")"
+  persona="$(sed -n '/^persona:/{s/^persona://;p;q;}' "$running_file")"
+  wt="$(sed -n '/^worktree:/{s/^worktree://;p;q;}' "$running_file")"
+  handle="$(sed -n '/^handle:/{s/^handle://;p;q;}' "$running_file")"
+  repo="$(_ppo_engine_get repo)"
+  yaml="$(_ppo_engine_get yaml)"
+
+  _ppo_load_dispatch_lib 2>/dev/null || true
+  _ppo_load_worktree_lib 2>/dev/null || true
+
+  case "$outcome" in
+    done)
+      _ppo_apply_mnd_clean "$key" "$p" "$wt" "$repo" "$handle" "$running_file"
+      ;;
+    failed)
+      command -v shutdown_teammate >/dev/null 2>&1 && { shutdown_teammate "$handle" >/dev/null 2>&1 || true; }
+      _ppo_handle_untrack "$handle"
+      rm -f "$running_file" 2>/dev/null || true
+      _ppo_record "$key" "failed" "$p"
+      ;;
+    timeout)
+      command -v shutdown_teammate >/dev/null 2>&1 && { shutdown_teammate "$handle" >/dev/null 2>&1 || true; }
+      _ppo_handle_untrack "$handle"
+      rm -f "$running_file" 2>/dev/null || true
+      _ppo_emit "event=story_timeout story=${key} phase=${p} outcome=slot-timeout"
+      _ppo_record "$key" "slot-timeout" "$p"
+      ;;
+    merged)
+      # The audit decides: sprint-progress-audit.sh (or its gated test hook)
+      # is the oracle, never a caller's own guess -- see _ppo_is_merged_not_done.
+      if _ppo_is_merged_not_done "$key" "$yaml"; then
+        _ppo_apply_mnd_not_done "$key" "$p" "$handle" "$running_file"
+      else
+        _ppo_apply_mnd_clean "$key" "$p" "$wt" "$repo" "$handle" "$running_file"
+      fi
+      ;;
+    merged-not-done)
+      # A caller that has ALREADY determined not-done status by its own
+      # means -- specifically, `run`'s legacy test-hook path, whose exit-11
+      # contract predates and stands in for the audit within its own gated
+      # context (there is no real git/PR state in a stub-driven test for
+      # sprint-progress-audit.sh to inspect) -- skips the audit call
+      # entirely and applies the SAME state transition the real audit
+      # path's not-done branch does. This is the only caller allowed to
+      # bypass _ppo_is_merged_not_done; the real run-sprint skill loop must
+      # always call `record ... merged` and let the audit decide.
+      _ppo_apply_mnd_not_done "$key" "$p" "$handle" "$running_file"
+      ;;
+    *)
+      _ppo_log "event=record story=${key} action=refused reason=unknown-outcome — ${outcome}"
+      return 1
+      ;;
+  esac
+  return 0
+}
+
+# _ppo_apply_mnd_not_done <key> <phase> <handle> <running_file> — the
+# resume-or-give-up transition shared by ppo_record_outcome's `merged`
+# (audit-confirmed not-done) and `merged-not-done` (caller-confirmed, see
+# that outcome's own comment) branches.
+_ppo_apply_mnd_not_done() {
+  local key="$1" p="$2" handle="$3" running_file="$4"
+  local _mnd_n=0
+  _mnd_n="$(_ppo_mnd_count "$key")"
+  if [ "$_mnd_n" -lt "$_PPO_MND_RETRY_MAX" ]; then
+    _ppo_mnd_bump "$key"
+    _ppo_mnd_open_mark "$key"
+    rm -f "$running_file" 2>/dev/null || true
+    local pending; pending="$(_ppo_engine_get pending)"
+    _ppo_engine_put pending "${key}${pending:+$'\n'}${pending}"
+    _ppo_emit "event=story_merged_not_done story=${key} phase=${p} outcome=resume-requeued attempt=$((_mnd_n + 1))"
+  else
+    _ppo_mnd_open_clear "$key"
+    command -v shutdown_teammate >/dev/null 2>&1 && { shutdown_teammate "$handle" >/dev/null 2>&1 || true; }
+    _ppo_handle_untrack "$handle"
+    rm -f "$running_file" 2>/dev/null || true
+    _ppo_emit "event=story_merged_not_done story=${key} phase=${p} outcome=not-done"
+    _ppo_record "$key" "merged-not-done" "$p"
+  fi
+}
+
+# _ppo_apply_mnd_clean <key> <phase> <worktree> <repo> <handle> <running_file>
+# — the audit found nothing offending for this key: treat exactly like `done`.
+_ppo_apply_mnd_clean() {
+  local key="$1" p="$2" wt="$3" repo="$4" handle="$5" running_file="$6"
+  if [ -n "$wt" ]; then
+    worktree_teardown "$repo" "$wt" --discard-ignored >/dev/null 2>&1 || true
+  fi
+  command -v shutdown_teammate >/dev/null 2>&1 && { shutdown_teammate "$handle" >/dev/null 2>&1 || true; }
+  _ppo_handle_untrack "$handle"
+  _ppo_mnd_open_clear "$key"
+  rm -f "$running_file" 2>/dev/null || true
+  _ppo_record "$key" "done" "$p"
+}
+
+# ppo_requeue <key> — release this story's admission WITHOUT recording any
+# ledger outcome, and put it back at the FRONT of pending. This is the
+# capacity/fallback path (`run`+hook's exit 7/8, mirroring the pre-engine
+# reap's identical re-queue-on-8 and degrade-on-7 behaviour): a saturated
+# ceiling or an unavailable substrate is a property of the RUN, never of the
+# story, so it must never appear as `done`/`failed` in the ledger, and the
+# story must get another chance to be admitted rather than being dropped.
+ppo_requeue() {
+  _ppo_engine_lock_run _ppo_requeue_locked "$@"
+}
+
+_ppo_requeue_locked() {
+  local key="${1:-}"
+  [ -n "$key" ] || return 1
+
+  local running_file
+  running_file="$(_ppo_engine_dir)/running/${key}"
+  [ -f "$running_file" ] || return 0
+
+  local handle
+  handle="$(sed -n '/^handle:/{s/^handle://;p;q;}' "$running_file")"
+  _ppo_load_dispatch_lib 2>/dev/null || true
+  command -v shutdown_teammate >/dev/null 2>&1 && { shutdown_teammate "$handle" >/dev/null 2>&1 || true; }
+  _ppo_handle_untrack "$handle"
+  rm -f "$running_file" 2>/dev/null || true
+
+  local pending; pending="$(_ppo_engine_get pending)"
+  _ppo_engine_put pending "${key}${pending:+$'\n'}${pending}"
+  return 0
+}
+
+# ppo_status — running stories with elapsed-vs-budget, the ledger, and
+# preserved worktrees. The skill calls this each turn to learn which running
+# stories are overdue (elapsed > the per-story wall-clock budget) so it can
+# call `record <key> timeout` for them rather than waiting on a turn that may
+# have silently died -- there is no bash-observable liveness signal for a
+# real dev-agent turn, so a budget is the only bound available.
+ppo_status() {
+  local d f key budget now elapsed overdue
+  d="$(_ppo_engine_dir)/running"
+  budget="${GAIA_STORY_TIMEOUT_SECONDS:-}"
+  if [ -z "$budget" ]; then
+    budget="$(ppo_resolve_timeout)"
+    budget=$((budget * 60))
+  fi
+  now="$(date +%s)"
+  if [ -d "$d" ]; then
+    for f in "$d"/*; do
+      [ -f "$f" ] || continue
+      key="$(basename "$f")"
+      local dispatched_at; dispatched_at="$(sed -n 's/^dispatched_at://p;q' "$f")"
+      [ -n "$dispatched_at" ] || dispatched_at="$now"
+      elapsed=$((now - dispatched_at))
+      overdue=0
+      [ "$elapsed" -gt "$budget" ] && overdue=1
+      _ppo_emit "running story=${key} elapsed=${elapsed} budget=${budget} overdue=${overdue}"
+    done
+  fi
+  ppo_report
+  local repo; repo="$(_ppo_engine_get repo)"
+  [ -n "$repo" ] && ppo_report_preserved "$repo"
+  return 0
 }
 
 # ppo_release_reservations — drop every reservation this run still holds.
@@ -937,61 +1523,6 @@ ppo_report_preserved() {
   return 0
 }
 
-# _ppo_reap_split_at <found_idx> <running_keys> <running_pids> <out_dir> — the
-# newline-safe reap-ledger walk, factored out so it can be pinned directly
-# rather than only through the full dispatch loop (which quarantines a
-# malformed key before it ever reaches here, so a whitespace key driven
-# through ppo_run_sprint no longer exercises this code path at all).
-#
-# `running_keys`/`running_pids` are newline-joined lists of equal length, kept
-# index-aligned by the caller. `found_idx` is the index of the pid that
-# finished. Writes three files under <out_dir>: `finished` (the finished key),
-# `keys` (the remaining keys, newline-joined), `pids` (the remaining pids,
-# newline-joined) -- written even when empty. Output is via files, not stdout,
-# because either list can itself span multiple lines: no in-band separator on
-# a single stream could tell "end of the keys list" from "a blank list entry"
-# without also being a value a real key or pid could contain.
-#
-# `for _k in $running_keys` would split on IFS -- space and tab included --
-# while the pid list it is indexed against can only ever split on newline. A
-# key containing whitespace therefore enumerates as two or more entries and
-# every index after it refers to a different slot in each list: the reap then
-# names a fragment of one key as the finished story and drops a REAL one from
-# the ledger entirely. The damage lands on valid stories, not the malformed
-# one -- so the walk below reads line-by-line on both sides instead.
-_ppo_reap_split_at() {
-  local found="${1:-}" keys_in="${2:-}" pids_in="${3:-}" out_dir="${4:-}"
-  local idx=0 finished="" _k _p keys_arr="" pids_arr=""
-  [ -n "$out_dir" ] || return 1
-  mkdir -p "$out_dir" 2>/dev/null || return 1
-
-  while IFS= read -r _k; do
-    [ -n "$_k" ] || continue
-    if [ "$idx" -eq "$found" ]; then
-      finished="$_k"
-    else
-      keys_arr="${keys_arr}${keys_arr:+$'\n'}${_k}"
-    fi
-    idx=$((idx + 1))
-  done <<EOF
-$keys_in
-EOF
-
-  idx=0
-  while IFS= read -r _p; do
-    [ -n "$_p" ] || continue
-    [ "$idx" -ne "$found" ] && pids_arr="${pids_arr}${pids_arr:+$'\n'}${_p}"
-    idx=$((idx + 1))
-  done <<EOF
-$pids_in
-EOF
-
-  printf '%s' "$finished" > "$out_dir/finished"
-  printf '%s' "$keys_arr" > "$out_dir/keys"
-  printf '%s' "$pids_arr" > "$out_dir/pids"
-  return 0
-}
-
 # ---------- Execution ----------
 
 _ppo_record() {
@@ -1001,7 +1532,31 @@ _ppo_record() {
   _ppo_emit "event=story_complete story=${key} phase=${phase} outcome=${outcome}"
 }
 
-# ppo_run_sprint --repo R --yaml Y [--slots N] — the whole run.
+# ppo_run_sprint --repo R --yaml Y [--slots N] — `run`: the ONE loop over
+# plan/next/record that keeps this file's own test suite (and any other
+# single-process caller) driving a single engine, no second scheduler.
+#
+# Sequential/degraded: unchanged output -- ppo_plan already emits the
+# `mode=sequential reason=...` line and the `event=sequential story=...`
+# worklist itself, so `run` only needs to stop there, exactly as before.
+#
+# Parallel: loops ppo_next. Each `dispatch story=K phase=P persona=X
+# worktree=W handle=H` line is re-emitted here in the LEGACY shape
+# (`event=dispatched story=K phase=P slot=N`) that this suite's tests pin
+# by exact string, and is then driven to completion via the gated test-only
+# dispatch hook (GAIA_PPO_DISPATCH_CMD, see this file's header) -- this is
+# the ONLY place `run` still backgrounds anything, and its own children are
+# tracked (ppo/run-pids) and terminated from the trap so a killed `run`
+# exits promptly instead of waiting on a stalled hook invocation (see the
+# header note on ppo_shutdown_live_teammates).
+# `barrier`/`sprint_complete` from ppo_next need no translation -- they were
+# never part of the legacy vocabulary any test pins.
+#
+# Without an honoured hook (production, no test marker), there is no
+# bash-drivable way to complete a dispatched story -- see the step-engine
+# header above -- so `run` performs exactly ONE `ppo_next` call and returns:
+# real completion happens through the run-sprint skill's own main-turn loop
+# calling next/record directly, never through this compatibility shim.
 ppo_run_sprint() {
   local repo="" yaml="" slots=""
   while [ $# -gt 0 ]; do
@@ -1013,329 +1568,254 @@ ppo_run_sprint() {
     esac
   done
 
-  _PPO_OUTCOMES=""; _PPO_WORKTREES=""; _PPO_PEAK=0; _PPO_SEEN="|"
-  _PPO_BARRIER_VIOLATIONS=0; _PPO_BACKFILL_BEFORE_DONE=0
-  _ppo_state_reset
-  _ppo_state_put peak 0
-  _ppo_state_put barrier_violations 0
-  _ppo_state_put backfill_before_done 0
+  ppo_plan --repo "$repo" --yaml "$yaml" ${slots:+--slots "$slots"}
 
-  [ -n "$slots" ] || slots="$(ppo_resolve_slots)"
-
-  local verdict
-  verdict="$(ppo_preflight --repo "$repo" --yaml "$yaml" --slots "$slots")"
-  _ppo_emit "$verdict"
-
-  case "$verdict" in
+  local mode; mode="$(_ppo_engine_get mode)"
+  case "$mode" in
     mode=parallel*) : ;;
-    *)
-      ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r k; do
-        [ -n "$k" ] && _ppo_emit "event=sequential story=${k}"
-      done
-      return 0
-      ;;
+    *) return 0 ;;
   esac
 
-  _ppo_load_worktree_lib || return 0
-  # Reap whatever a previously killed run left behind, before anything is
-  # created, so a story whose branch survives can attach cleanly.
-  worktree_prune_stale "$repo" >/dev/null 2>&1 || true
+  # Teammate shutdown runs BEFORE reservation release: a killed run's live
+  # teammates hold real registry entries against the shared ceiling, the
+  # same class of leak a reservation is, but on the library's own registry
+  # -- both are swept so neither survives an interrupt. `_ppo_run_kill_children`
+  # runs FIRST: this run's OWN backgrounded hook-invocation pids
+  # (ppo/run-pids) are signalled and waited on with a short bound, so a
+  # killed `run` does not hang on a stalled hook invocation.
+  # INT/TERM must actually END the run, not just clean up and let the `while
+  # :; do ppo_next; ... done` loop below resume where it was interrupted --
+  # a bare cleanup-only trap leaves ppo/running/<key> untouched (that is
+  # ppo_record_outcome's job, never the teammate-shutdown sweep's), so the
+  # loop would keep reporting `barrier ... waiting=N` for the very story
+  # whose teammate this trap just tore down, forever. The EXIT trap (natural
+  # return, including this exit call re-triggering it) runs the SAME cleanup
+  # a second time, which is fine -- shutdown_teammate/release_reservations
+  # are idempotent on an already-cleared entry.
+  trap '_ppo_run_kill_children; ppo_shutdown_live_teammates; ppo_release_reservations; exit 0' INT TERM
+  trap '_ppo_run_kill_children; ppo_shutdown_live_teammates; ppo_release_reservations' EXIT
+  : > "$(_ppo_engine_dir)/run-pids" 2>/dev/null || true
 
-  # That prune covered this whole run, so the per-create prune inside
-  # worktree_create is redundant from here on. Left on, it would re-walk every
-  # live worktree record on every create -- work that grows with each slot
-  # filled, stretching the gap between dispatches and the ramp to a full set.
-  # Zero-orphan semantics are unchanged: the prune above cleared what a dead
-  # run left, and each story's worktree is torn down after its merge.
-  export GAIA_WORKTREE_PRUNE_ON_CREATE=0
-
-  # A reservation orphaned by a killed run counts toward the ceiling forever,
-  # so it is cleared before this run starts claiming any of its own.
-  ppo_reap_stale_reservations
-  trap 'ppo_release_reservations' INT TERM EXIT
-
-  local phases
-  phases="$(ppo_read_phases "$yaml")" || return 0
-
-  local all_phases p
-  all_phases="$(printf '%s\n' "$phases" | awk -F'|' '{print $2}' | sort -n -u)"
-
-  for p in $all_phases; do
-    local pending running_keys running_pids n_running ceiling_refusals=0
-    pending="$(printf '%s\n' "$phases" | awk -F'|' -v ph="$p" '$2 == ph {print $1}')"
-    if [ -z "$pending" ]; then
-      _ppo_emit "event=phase_skipped phase=${p} reason=no-stories"
-      continue
+  # GAIA_PPO_DISPATCH_CMD is an arbitrary-command hook: whatever it names
+  # runs with the story key as its only argument. Honoured ONLY under the
+  # same test-marker convention the rest of the plugin uses for a test-only
+  # escape hatch (BATS_TEST_FILENAME, which bats exports for every test
+  # process, or an explicit GAIA_PPO_ALLOW_DISPATCH_CMD=1) -- an unguarded
+  # arbitrary-command hook is a remote-code lever, not something a stray
+  # inherited environment variable should be able to trigger in production.
+  # One log line every time this is decided, whether honoured or refused.
+  local honoured=0
+  if [ -n "${GAIA_PPO_DISPATCH_CMD:-}" ]; then
+    if [ -n "${BATS_TEST_FILENAME:-}" ] || [ "${GAIA_PPO_ALLOW_DISPATCH_CMD:-}" = "1" ]; then
+      honoured=1
+      _ppo_log "event=dispatch_hook cmd=${GAIA_PPO_DISPATCH_CMD} action=honoured"
+    else
+      _ppo_log "event=dispatch_hook cmd=${GAIA_PPO_DISPATCH_CMD} action=refused reason=no-test-marker — set GAIA_PPO_ALLOW_DISPATCH_CMD=1 to honour this test-only hook outside bats; dispatching via the real teammate surface instead"
     fi
-    # A barrier violation is a story of THIS phase starting while a story of an
-    # EARLIER phase is still non-terminal. Counted from the ledger rather than
-    # assumed: the accessor is what the barrier tests read, so if it were a
-    # constant they would pass against an orchestrator with no barrier at all.
-    local _nonterm
-    _nonterm="$(ppo_outcome_count merged-not-done)"
-    if [ "${_nonterm:-0}" -gt 0 ]; then
-      _PPO_BARRIER_VIOLATIONS=$((_PPO_BARRIER_VIOLATIONS + _nonterm))
-      _ppo_state_put barrier_violations "$_PPO_BARRIER_VIOLATIONS"
-      _ppo_emit "event=barrier_violation phase=${p} non_terminal=${_nonterm}"
-    fi
-    _ppo_emit "event=phase_start phase=${p}"
+  fi
 
-    running_keys=""; running_pids=""; n_running=0
+  if [ "$honoured" -ne 1 ]; then
+    ppo_next
+    _ppo_emit "run: no bash-drivable dispatcher in this context — use the plan/next/record verbs from the run-sprint skill loop"
+    return 0
+  fi
 
-    # The phase ends only when the queue is empty AND no slot is still running.
-    #
-    # Both terms are load-bearing. Dropping `n_running` releases the phase the
-    # moment the queue drains, while backgrounded slots are still running --
-    # every outcome they would have reported is lost, along with the teardown
-    # and the barrier. Dropping the reap's own drain condition instead leaves a
-    # phase that never finishes.
-    while [ -n "$pending" ] || [ "$n_running" -gt 0 ]; do
-      # Fill free slots from the head of this phase's queue, in roster order.
-      while [ -n "$pending" ] && [ "$n_running" -lt "$slots" ]; do
-        local key rest rc=0
-        key="${pending%%$'\n'*}"
-        if [ "$key" = "$pending" ]; then rest=""; else rest="${pending#*$'\n'}"; fi
-        [ -n "$key" ] || { pending="$rest"; continue; }
+  local budget
+  budget="${GAIA_STORY_TIMEOUT_SECONDS:-}"
+  if [ -z "$budget" ]; then
+    budget="$(ppo_resolve_timeout)"
+    budget=$((budget * 60))
+  fi
 
-        # Quarantine a key the admission gate would refuse anyway, BEFORE it
-        # can be appended to the running lists. `ppo_admit_slot` applies the
-        # same charset rule, but it runs backgrounded, so its refusal arrives
-        # too late to keep the key out of this run's bookkeeping. A key is
-        # refused here rather than silently dropped: it is reported, so a
-        # malformed roster row is visible instead of a story that simply never
-        # appears in the ledger.
-        case "$key" in
-          *[!A-Za-z0-9._-]*|*..*)
-            _ppo_emit "event=story_refused story=${key} phase=${p} outcome=invalid-key"
-            _ppo_record "$key" "failed" "$p"
-            pending="$rest"
-            continue
-            ;;
-        esac
-
-        # Already live from a previous run? Attach, do not dispatch twice.
-        # Re-entry: a worktree already checked out for this story belongs to a
-        # PREVIOUS run, so the story is attached rather than started twice --
-        # but attaching is only about REUSING the worktree instead of recreating
-        # it. It says nothing about whether the story's own gate has closed, so
-        # it must still go through the normal slot path and take its outcome
-        # from the real dispatch result, exactly like every other story: a
-        # surviving worktree from a crashed run is direct evidence the review
-        # gate was open when the previous run died, and recording it done here
-        # from worktree presence alone would recycle the slot onto a story
-        # whose gate is still open -- the exact thing the barrier exists to
-        # forbid. A story this run re-queued has its own worktree checked out
-        # too, and treating that as a previous run would double-count it here
-        # -- so only stories not yet seen take this path.
-        local bstate
-        case "$_PPO_SEEN" in
-          *"|${key}|"*) bstate="absent" ;;
-          *) bstate="$(worktree_branch_state "$repo" "feat/${key}-slug" 2>/dev/null || printf 'absent')" ;;
-        esac
-        _PPO_SEEN="${_PPO_SEEN}${key}|"
-        case "$bstate" in
-          checked-out:*)
-            _ppo_emit "event=attached story=${key} phase=${p}"
-            ;;
-        esac
-
-        # A slot must never be recycled onto a DIFFERENT story while a story
-        # that vacated one is still merged-but-not-done. The resume re-queue
-        # puts the open story at the front precisely so this cannot happen, so
-        # a non-zero count here means the ordering guarantee has been broken --
-        # which is the whole point of having a counter rather than an assertion.
-        if [ "$(_ppo_mnd_open_count)" -gt 0 ]; then
-          case "$(_ppo_mnd_open_keys)" in
-            *"|${key}|"*) : ;;
-            *)
-              _PPO_BACKFILL_BEFORE_DONE=$((_PPO_BACKFILL_BEFORE_DONE + 1))
-              _ppo_state_put backfill_before_done "$_PPO_BACKFILL_BEFORE_DONE"
-              _ppo_emit "event=backfill_before_done story=${key} phase=${p}"
-              ;;
-          esac
-        fi
-
-        # The slot's scratch dir must exist BEFORE anything is written into it.
-        mkdir -p "$(ppo_slot_scratch_for "$key")" 2>/dev/null || true
-
-        local wt=""
-        wt="$(worktree_create "$repo" "$key" "slug" 2>/dev/null)" || wt=""
-        if [ -n "$wt" ]; then
-          _PPO_WORKTREES="${_PPO_WORKTREES}${_PPO_WORKTREES:+$'\n'}${wt}"
-          _ppo_state_append worktrees "$wt"
-          # Remember which worktree belongs to which story so the reap below
-          # can tear down exactly that one.
-          printf '%s' "$wt" > "$(ppo_slot_scratch_for "$key")/worktree" 2>/dev/null || true
-        fi
-
-        # Admission is serialised (the ceiling count is an unlocked
-        # read-then-register), but the story's RUN is backgrounded so slots
-        # genuinely overlap. Running it inline would make the slot budget a
-        # queue depth rather than concurrency.
-        #
-        # Because the work is backgrounded, its status is NOT available here --
-        # it is collected by the reap below, which is the single place every
-        # dispatch outcome (handle, fallback, ceiling, timeout, failure) is
-        # classified. Branching on a status at this point would be branching on
-        # the shell's "started successfully", which is always 0.
-        ppo_admit_slot "$key" >/dev/null 2>&1 &
-        local slot_pid=$!
-
-        running_keys="${running_keys}${running_keys:+$'\n'}${key}"
-        running_pids="${running_pids}${running_pids:+$'\n'}${slot_pid}"
-        n_running=$((n_running + 1))
-        if [ "$n_running" -gt "$_PPO_PEAK" ]; then
-          _PPO_PEAK="$n_running"
-          _ppo_state_put peak "$_PPO_PEAK"
-        fi
-        _ppo_emit "event=dispatched story=${key} phase=${p} slot=${n_running}"
-        pending="$rest"
+  local slot_seq=0
+  _ppo_engine_put ceiling-refusals 0
+  while :; do
+    # A ceiling that never frees would re-queue forever (see the hook's
+    # exit-8 handling below) -- give up once refusals have piled up with no
+    # successful admission in between, mirroring the pre-engine reap's
+    # ceiling_refusals/_PPO_CEILING_GIVEUP bound exactly. Checked BEFORE the
+    # next ppo_next call so a run stuck entirely on ceiling refusals still
+    # terminates instead of looping until the test's own timeout kills it.
+    local refusals; refusals="$(_ppo_engine_get ceiling-refusals)"
+    if [ "${refusals:-0}" -ge "$_PPO_CEILING_GIVEUP" ]; then
+      _ppo_engine_put mode "mode=sequential reason=ceiling-cannot-admit — the dispatch ceiling is saturated and no slot can free it; running sequentially"
+      _ppo_emit "mode=sequential reason=ceiling-cannot-admit — the dispatch ceiling is saturated and no slot can free it; running sequentially"
+      ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
+        [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
       done
+      return 0
+    fi
 
-      # Drain one completion. Terminal means done OR failed: the barrier waits
-      # for every story of the phase to finish either way, so one failure never
-      # aborts its siblings and never lets the next phase start early.
-      if [ "$n_running" -gt 0 ] && { [ -z "$pending" ] || [ "$n_running" -ge "$slots" ]; }; then
-        # Reap whichever slot finished FIRST. Waiting on the oldest pid is
-        # head-of-line blocking: a fast story that finished seconds ago could
-        # not free its slot until a slow sibling ahead of it completed, so the
-        # budget would be honoured while the throughput it exists for was not.
-        # `wait -n` would express this directly but needs Bash 4.3, and the
-        # floor here is 3.2, so the completed slot is found by polling.
-        local finished="" fpid="" wrc=0 idx=0 found=-1
-        local _k _p keys_arr pids_arr
-        while :; do
-          idx=0; found=-1
-          while IFS= read -r _p; do
-            [ -n "$_p" ] || continue
-            kill -0 "$_p" 2>/dev/null || { found="$idx"; fpid="$_p"; break; }
-            idx=$((idx + 1))
-          done <<EOF
-$running_pids
-EOF
-          [ "$found" -ge 0 ] && break
-          sleep 0.2
-        done
+    local out rc=0
+    out="$(ppo_next)"; rc=$?
+    printf '%s\n' "$out"
 
-        # Walk the key list NEWLINE-safely -- see _ppo_reap_split_at, factored
-        # out so this exact walk can be pinned directly by a unit-level test.
-        local _split_dir
-        _split_dir="$(_ppo_state_dir)/reap-split"
-        rm -rf "$_split_dir" 2>/dev/null || true
-        mkdir -p "$_split_dir" 2>/dev/null || true
-        _ppo_reap_split_at "$found" "$running_keys" "$running_pids" "$_split_dir"
-        finished="$(cat "$_split_dir/finished" 2>/dev/null || true)"
-        keys_arr="$(cat "$_split_dir/keys" 2>/dev/null || true)"
-        pids_arr="$(cat "$_split_dir/pids" 2>/dev/null || true)"
-        running_keys="$keys_arr"; running_pids="$pids_arr"
+    case "$out" in
+      *sprint_complete*) return 0 ;;
+    esac
+    case "$out" in
+      mode=sequential*) return 0 ;;
+    esac
+    [ "$rc" -eq 0 ] || return 0
 
-        wait "$fpid" 2>/dev/null || wrc=$?
-        n_running=$((n_running - 1))
+    # Re-emit each `dispatch` line in the legacy shape and drive it to
+    # completion via the hook, all backgrounded so multiple admissions from
+    # this SAME ppo_next call genuinely overlap (mirrors the old
+    # background-and-reap concurrency shape). A here-string, NOT a pipe: a
+    # pipe forks a subshell for the loop body, which would silently drop
+    # every update this loop makes to slot_seq the moment the pipe closes.
+    while IFS= read -r line; do
+      case "$line" in
+        dispatch\ story=*)
+          local key phase_val
+          key="$(printf '%s\n' "$line" | sed -n 's/^dispatch story=\([^ ]*\).*/\1/p')"
+          phase_val="$(printf '%s\n' "$line" | sed -n 's/.*phase=\([^ ]*\).*/\1/p')"
+          [ -n "$key" ] || continue
+          slot_seq=$((slot_seq + 1))
+          _ppo_emit "event=dispatched story=${key} phase=${phase_val} slot=${slot_seq}"
+          (
+            local hrc=0
+            timeout "$budget" "$GAIA_PPO_DISPATCH_CMD" "$key" >/dev/null 2>&1 || hrc=$?
+            [ "$hrc" -eq 124 ] && hrc=9
+            case "$hrc" in
+              0) ppo_record_outcome "$key" "done"; _ppo_engine_put ceiling-refusals 0 ;;
+              9) ppo_record_outcome "$key" "timeout"; _ppo_engine_put ceiling-refusals 0 ;;
+              11)
+                # The legacy hook's own exit-11 IS the merged-not-done
+                # signal within this gated test-only context -- there is no
+                # real git/PR state in a stub-driven test for
+                # sprint-progress-audit.sh to inspect, so `merged-not-done`
+                # (not `merged`) applies the resume-or-give-up transition
+                # directly rather than asking an audit that has nothing to
+                # audit. The real run-sprint skill loop calls `record ...
+                # merged` instead, and the audit decides.
+                ppo_record_outcome "$key" "merged-not-done"
+                _ppo_engine_put ceiling-refusals 0
+                ;;
+              8)
+                # Capacity, never a story outcome -- see the legacy hook
+                # contract's ceiling:<n> stub mode. The admission this
+                # story's own `next` already claimed is released and its key
+                # goes back to the front of pending, exactly like the
+                # pre-engine reap's exit-8 re-queue; ppo_record_outcome is
+                # NOT called, so the ledger never sees this as a completion.
+                # Counted toward the giveup bound the run loop checks above --
+                # a ceiling that DOES free resets it on the next real success.
+                ppo_requeue "$key"
+                local _cr; _cr="$(_ppo_engine_get ceiling-refusals)"
+                _ppo_engine_put ceiling-refusals $(( ${_cr:-0} + 1 ))
+                ;;
+              7)
+                # Substrate fallback -- a run-wide condition, not this
+                # story's outcome. Releases the admission and marks the
+                # whole run degraded so the next ppo_next call (and `run`'s
+                # own loop) surfaces mode=sequential exactly as the
+                # pre-engine inline reap did.
+                ppo_requeue "$key"
+                _ppo_engine_lock_run _ppo_engine_put mode "mode=sequential reason=mode-b-fallback — the agent substrate is unavailable; running sequentially in phase order"
+                ;;
+              *) ppo_record_outcome "$key" "failed"; _ppo_engine_put ceiling-refusals 0 ;;
+            esac
+          ) &
+          echo "$!" >> "$(_ppo_engine_dir)/run-pids"
+          ;;
+      esac
+    done <<<"$out"
 
-        case "$wrc" in
-          0)
-            ceiling_refusals=0
-            # The story merged, so its worktree is finished with. This is the
-            # ONE call site allowed to discard ignored-only leftovers: the work
-            # is provably merged here, which is what makes forcing safe. Every
-            # other path (failure, timeout, interrupt) preserves instead.
-            local fwt=""
-            fwt="$(cat "$(ppo_slot_scratch_for "$finished")/worktree" 2>/dev/null || true)"
-            if [ -n "$fwt" ]; then
-              worktree_teardown "$repo" "$fwt" --discard-ignored >/dev/null 2>&1 || true
-            fi
-            _ppo_mnd_open_clear "$finished"
-            _ppo_record "$finished" "done" "$p"
-            ;;
-          11)
-            # Merged but NOT done: the branch landed, the review gate is still
-            # open. The story is therefore NOT terminal -- the phase barrier
-            # must keep waiting for it, and its slot must not be treated as a
-            # completed story. Re-dispatch it on the resume path so the gate
-            # gets another chance to close, bounded so a gate that never closes
-            # cannot hold the phase open forever.
-            local _mnd_n=0
-            _mnd_n="$(_ppo_mnd_count "$finished")"
-            if [ "$_mnd_n" -lt "$_PPO_MND_RETRY_MAX" ]; then
-              _ppo_mnd_bump "$finished"
-              _ppo_mnd_open_mark "$finished"
-              _ppo_emit "event=story_merged_not_done story=${finished} phase=${p} outcome=resume-requeued attempt=$((_mnd_n + 1))"
-              # Re-queued onto the FRONT: it is the same story continuing, not
-              # a new one taking its turn. Putting it first is what keeps this
-              # from being a backfill-before-done -- the freed slot goes back
-              # to the story that is still open, so no sibling overtakes it.
-              pending="${finished}${pending:+$'\n'}${pending}"
-            else
-              # Out of retries. Reported as NOT done -- never recorded done,
-              # which is what would let the next phase start on unmet work.
-              _ppo_mnd_open_clear "$finished"
-              _ppo_emit "event=story_merged_not_done story=${finished} phase=${p} outcome=not-done"
-              _ppo_record "$finished" "merged-not-done" "$p"
-            fi
-            ;;
-          9)
-            _ppo_emit "event=story_timeout story=${finished} phase=${p} outcome=slot-timeout"
-            _ppo_record "$finished" "slot-timeout" "$p"
-            ;;
-          7)
-            _ppo_emit "mode=sequential reason=mode-b-fallback — the agent substrate is unavailable; running sequentially in phase order"
-            ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
-              [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
-            done
-            return 0
-            ;;
-          8)
-            # Re-queue: a capacity condition is never a story outcome. But a
-            # ceiling that never frees would re-queue forever, so count the
-            # consecutive refusals and degrade once no slot can possibly free
-            # one (nothing else is running to release capacity).
-            pending="${finished}${pending:+$'\n'}${pending}"
-            ceiling_refusals=$((ceiling_refusals + 1))
-            # Give up once refusals have piled up with no successful admission
-            # in between. Waiting for n_running to reach zero would never fire
-            # when the remaining slots are themselves being refused, and the
-            # phase would re-queue forever instead of degrading -- the hang this
-            # bound exists to prevent. The counter resets on any success, so a
-            # ceiling that DOES free up is retried rather than abandoned.
-            if [ "$ceiling_refusals" -ge "$_PPO_CEILING_GIVEUP" ]; then
-              _ppo_emit "mode=sequential reason=ceiling-cannot-admit — the dispatch ceiling is saturated and no slot can free it; running sequentially"
-              ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
-                [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
-              done
-              return 0
-            fi
-            ;;
-          10)
-            # The admission lock could not be taken. Admission refused rather
-            # than proceeding unlocked, so nothing was claimed and the sprint
-            # can still run -- in order, one story at a time.
-            _ppo_emit "mode=sequential reason=admission-lock-timeout — the admission lock could not be acquired; running sequentially rather than admitting unlocked"
-            ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
-              [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
-            done
-            return 0
-            ;;
-          1) _ppo_record "$finished" "failed" "$p" ;;
-          *)
-            _ppo_emit "mode=sequential reason=admission-error — an unclassified dispatch status (${wrc}); running sequentially"
-            ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
-              [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
-            done
-            return 0
-            ;;
-        esac
-      fi
-    done
-
-    _ppo_emit "event=phase_complete phase=${p}"
+    # Drain: wait for at least one background hook invocation from THIS
+    # round to finish before asking ppo_next again, so the loop does not
+    # spin faster than real work completes.
+    if [ -f "$(_ppo_engine_dir)/run-pids" ] && [ -s "$(_ppo_engine_dir)/run-pids" ]; then
+      while :; do
+        local still=0 pid
+        while IFS= read -r pid; do
+          [ -n "$pid" ] || continue
+          kill -0 "$pid" 2>/dev/null && still=$((still + 1))
+        done < "$(_ppo_engine_dir)/run-pids"
+        [ "$still" -lt "$(wc -l < "$(_ppo_engine_dir)/run-pids" 2>/dev/null | tr -d ' ')" ] && break
+        [ "$still" -eq 0 ] && break
+        sleep 0.2
+      done
+    fi
   done
+}
 
-  ppo_report_preserved "$repo"
+# _ppo_run_kill_children — terminate every background hook invocation THIS
+# `run` call spawned (ppo/run-pids), with a short bound, before the trap
+# moves on to teammate/reservation cleanup. `run`+hook is the only place in
+# the redesigned engine that still backgrounds anything (ppo_next/
+# ppo_record_outcome never do) -- so this is the only place left that can
+# leave an orphan behind a killed parent, and it is scoped to exactly the
+# pids this run itself started.
+_ppo_run_kill_children() {
+  local f pid
+  f="$(_ppo_engine_dir)/run-pids"
+  [ -f "$f" ] || return 0
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    kill -TERM "$pid" 2>/dev/null || true
+  done < "$f"
+  local waited=0
+  while :; do
+    local still=0
+    while IFS= read -r pid; do
+      [ -n "$pid" ] || continue
+      kill -0 "$pid" 2>/dev/null && still=$((still + 1))
+    done < "$f"
+    [ "$still" -eq 0 ] && break
+    waited=$((waited + 1))
+    [ "$waited" -ge 20 ] && break
+    sleep 0.1
+  done
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    kill -KILL "$pid" 2>/dev/null || true
+  done < "$f"
   return 0
 }
 
 # ---------- CLI ----------
+#
+# Verb dispatch for the step engine (see the header for the full contract):
+#   plan --repo R --yaml Y [--slots N]   preflight + queue init
+#   next                                  admit up to the slot budget
+#   record <key> <done|failed|timeout|merged>
+#                                          report a real turn's outcome
+#   status                                 running stories + ledger
+#   report                                 the outcome ledger alone
+#   (no verb, or --repo/--yaml/--slots directly)
+#                                          `run`: the one-process compat loop
+#                                          (ppo_run_sprint), unchanged for any
+#                                          existing caller that never adopted
+#                                          the verb form.
+_ppo_cli() {
+  case "${1:-}" in
+    plan)
+      shift
+      ppo_plan "$@"
+      ;;
+    next)
+      shift
+      ppo_next "$@"
+      ;;
+    record)
+      shift
+      ppo_record_outcome "$@"
+      ;;
+    status)
+      shift
+      ppo_status "$@"
+      ;;
+    report)
+      shift
+      ppo_report "$@"
+      ;;
+    *)
+      ppo_run_sprint "$@"
+      ;;
+  esac
+}
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-  ppo_run_sprint "$@"
+  _ppo_cli "$@"
 fi

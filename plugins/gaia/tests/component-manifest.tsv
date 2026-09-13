@@ -291,6 +291,7 @@ core	static-next-steps.bats
 core	step-boundary-telemetry.bats
 core	step-boundary-token-capture.bats
 core	step-token-capture-wiring.bats
+core	taxonomy-ssot-audit.bats
 core	tdd-reviewer-agent-contract.bats
 core	test-automate-adr-051-preservation.bats
 core	test-automate-phase2.bats
@@ -586,7 +587,6 @@ scripts-lib	resolve-publish-adapter.bats
 scripts-lib	safe-grep-log.bats
 scripts-lib	schema-awareness-check.bats
 scripts-lib	shell-idioms.bats
-scripts-lib	taxonomy-ssot-audit.bats
 scripts-lib	template-overrides.bats
 scripts-lib	test-environment-manifest-generator.bats
 scripts-lib	transcript-fidelity.bats
