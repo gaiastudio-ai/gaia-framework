@@ -254,9 +254,9 @@ case "\$mode" in
       exit "\$_rc"
     fi
     printf 'spawned %s\n' "\$key" >> "\$counter/spawn.log"
-    sleep 1
+    sleep 0.3
     find "\$reg" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d " " >> "\$counter/registry-peak.log"
-    sleep 1
+    sleep 0.3
     shutdown_teammate "tm-shay-\$key" >/dev/null 2>&1 || rm -f "\$reg/tm-shay-\$key"
     ;;
   ceiling:*)
@@ -355,6 +355,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
@@ -382,6 +383,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
@@ -405,6 +407,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
@@ -430,6 +433,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
@@ -463,6 +467,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # The two phase-1 stories finish at DIFFERENT times. A barrier that waits only
   # for the queue to drain would release phase 2 once K1 is dispatched, while K2
@@ -503,6 +508,7 @@ _reason_of() {
   command -v python3 >/dev/null 2>&1 || skip "no python3 to compute overlap"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Each story takes measurable time, and the budget is wide enough for all of
   # them. Slot accounting alone cannot show concurrency -- a scheduler that
@@ -550,6 +556,7 @@ _reason_of() {
   command -v python3 >/dev/null 2>&1 || skip "no python3 to compute overlap"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
   export GAIA_STUB_DELAY_K1=2 GAIA_STUB_DELAY_K2=2
 
   # The control for the test above: with no budget for concurrency there must
@@ -571,11 +578,16 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Two slots. K1 is slow, K2 is fast. Reaping the OLDEST slot would make K3
   # wait for K1 even though K2's slot has been free for seconds -- head-of-line
   # blocking that honours the budget while wasting the throughput it exists for.
-  export GAIA_STUB_DELAY_K1=6 GAIA_STUB_DELAY_K2=1
+  # The stub's own delay parser is integer-seconds only (a fractional value
+  # fails its `*[!0-9]*` guard and silently resets to 0), so the smallest safe
+  # cut keeps whole seconds: 2:1 still gives span.log's millisecond resolution
+  # a clean, load-tolerant margin over the 0.2s reap-poll granularity.
+  export GAIA_STUB_DELAY_K1=2 GAIA_STUB_DELAY_K2=1
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
 
@@ -597,6 +609,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:K2)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
 
@@ -620,6 +633,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:K1)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
 
@@ -647,6 +661,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:K2)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   run ppo_report
@@ -664,6 +679,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:K3)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 3
 
@@ -691,6 +707,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ceiling:2)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
 
@@ -744,6 +761,7 @@ _reason_of() {
   # without one the reservations are gone before anything can count them.
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" park)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Widen the count-then-claim window so every admission reaches its count
   # before any of them claims. One second is wider than the spread in when
@@ -755,8 +773,11 @@ _reason_of() {
     ppo_admit_slot "$k" >/dev/null 2>&1 &
     pids="$pids $!"
   done
-  # Sample while every admission is still parked holding its claim.
-  sleep 4
+  # Sample while every admission is still parked holding its claim. The
+  # `park` stub mode holds via its own 30s sleep, so this only needs to clear
+  # the 1s claim-delay window with margin for 8 backgrounded processes to be
+  # scheduled -- 2s leaves a full second of margin over that window.
+  sleep 2
   local peak ceiling
   peak="$(find "$GAIA_SESSION_DIR/registry" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
   for i in $pids; do kill "$i" 2>/dev/null || true; done
@@ -829,6 +850,7 @@ _reason_of() {
   # story that never registered would silently shrink the budget from then on.
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:K1)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   local leaked
@@ -845,6 +867,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # A dead owner's reservation: nothing will ever release it, so a later sprint
   # would run under a permanently reduced ceiling.
@@ -889,6 +912,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ceiling:1)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # A caller with errexit ON that USES the captured status: the bare-capture
   # form dies at the assignment before the status is ever read.
@@ -943,6 +967,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ceiling:3)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 3
   [ "$(ppo_outcome_count failed)" -eq 0 ] \
@@ -997,6 +1022,7 @@ _reason_of() {
 
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" registry-dwell)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Widen the count-then-claim window so the race is reachable deterministically
   # rather than only under lucky scheduling. Without the lock, four admissions
@@ -1045,6 +1071,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
   local r
 
   # A degradation nobody can see is indistinguishable from a broken feature.
@@ -1084,6 +1111,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ceiling-always)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] \
@@ -1102,6 +1130,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fallback)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$(_reason_of "$output")" = "mode-b-fallback" ] \
@@ -1118,6 +1147,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" error)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] \
@@ -1134,6 +1164,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fallback)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 4
   [ "$status" -eq 0 ] \
@@ -1162,6 +1193,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   GAIA_WORKTREE_MODE=0 run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 4
   [ "$status" -eq 0 ] \
@@ -1185,6 +1217,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # The PARALLEL START is refused; the RUN is not. Exiting non-zero here would
   # strand every operator whose platform lacks the primitive.
@@ -1267,6 +1300,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
 
@@ -1294,6 +1328,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run timeout 60 env PATH="$PATH" bash -c '
     . "'"$ORCH"'"
@@ -1325,6 +1360,103 @@ _reason_of() {
     || { echo "same-persona spawns failed: $rc1 $rc2"; return 1; }
   [ "$h1" != "$h2" ] \
     || { echo "two stories collided on one handle: $h1"; return 1; }
+}
+
+# _mk_story_file <impl_root> <key> <status> — a real, legacy-flat story file
+# with canonical `template: 'story'` frontmatter, resolvable by
+# resolve-story-file.sh's own tier-2 glob (${impl_root}/${key}-*.md).
+_mk_story_file() {
+  local root="$1" key="$2" status="$3"
+  mkdir -p "$root"
+  cat > "$root/${key}-fixture-story.md" <<EOF
+---
+template: 'story'
+key: "${key}"
+title: "Fixture story ${key}"
+stack: "bash"
+status: ${status}
+---
+
+# Story: Fixture story ${key}
+EOF
+}
+
+@test "ppo_dispatch_slot drives the real teammate surface by default, no gaia-dispatch-story (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
+  _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K1" "done"
+
+  # No GAIA_PPO_DISPATCH_CMD set, and no gaia-dispatch-story on PATH at all --
+  # the default path must not reference that command. If it did, this would
+  # fail command-not-found instead of classifying a real spawn.
+  unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
+  command -v gaia-dispatch-story >/dev/null 2>&1 \
+    && { echo "test fixture bug: gaia-dispatch-story is on PATH"; return 1; }
+  export GAIA_STORY_TIMEOUT_SECONDS=5
+
+  local rc=0
+  ppo_dispatch_slot "K1" >/dev/null 2>"$TEST_TMP/dispatch.err" || rc=$?
+
+  ! grep -q "gaia-dispatch-story" "$TEST_TMP/dispatch.err" \
+    || { echo "default path referenced gaia-dispatch-story: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+  [ "$rc" -eq 0 ] \
+    || { echo "expected outcome 0 (done) via the real surface, got $rc: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
+}
+
+@test "ppo_dispatch_slot's outcome comes from story status, not the spawn exit code (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
+  # The teammate spawns cleanly (rc 0) but the story itself never reaches a
+  # terminal status within the budget -- a mutant that reports the spawn's own
+  # rc (0) as the outcome would wrongly call this "done"; the real behaviour
+  # must time out (internal code 9) because the story status never terminates.
+  _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K2" "in-progress"
+  unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
+  export GAIA_STORY_TIMEOUT_SECONDS=1
+
+  local rc=0
+  ppo_dispatch_slot "K2" >/dev/null 2>/dev/null || rc=$?
+
+  [ "$rc" -eq 9 ] \
+    || { echo "expected outcome 9 (timeout) because status never went terminal, got $rc"; return 1; }
+}
+
+@test "a spawn's own raw exit code is never misread as merged-not-done (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  mkdir -p "$GAIA_SESSION_DIR/registry"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
+  # Story status is "in-progress" and NEVER reaches a terminal value within the
+  # budget. This makes the two possible code paths genuinely distinguishable:
+  #   - correct code: a non-{0,7,8} spawn status (here 11 -- an unrelated
+  #     internal code; gaia-migrate.sh uses 11 for "needs reconciliation", and
+  #     any other external tool could exit 11 for its own reasons) returns
+  #     immediately as an unclassified spawn failure, WITHOUT ever entering
+  #     the status-polling loop -> rc is the spawn's raw 11.
+  #   - the defect this test guards against: the spawn's raw exit code falls
+  #     through into (or is conflated with) the status-polling classification,
+  #     whose OWN vocabulary also uses 11 for merged-not-done -> because the
+  #     story never reaches a terminal status, that path can only end in a
+  #     timeout (rc 9), never 11 -- so a run that reports 11 here without ever
+  #     polling proves the two 11s are cleanly separated, and a run that
+  #     reports 9 proves the raw spawn code leaked into the polling loop.
+  _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K3" "in-progress"
+  unset GAIA_PPO_DISPATCH_CMD 2>/dev/null || true
+  export GAIA_STORY_TIMEOUT_SECONDS=1
+
+  # shellcheck disable=SC1090
+  . "$DT_LIB"
+  spawn_teammate() { return 11; }
+
+  local rc=0
+  ppo_dispatch_slot "K3" >/dev/null 2>/dev/null || rc=$?
+
+  [ "$rc" -eq 11 ] \
+    || { echo "expected the spawn's own raw code (11) passed through unclassified before any polling, got $rc"; return 1; }
 }
 
 # Note: an earlier version of this file had a test here named "a merged story
@@ -1362,6 +1494,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
@@ -1405,6 +1538,7 @@ _reason_of() {
   # PRESENCE alone would imply.
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:K1)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
@@ -1434,6 +1568,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   run bash -c "git -C '$repo' worktree list --porcelain | grep -c 'OLD' || true"
@@ -1465,6 +1600,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 3
   local n
@@ -1535,6 +1671,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" stall:K1)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # A tiny budget keeps the test fast; the budget's existence is not optional,
   # because a slot that can block forever deadlocks the sprint.
@@ -1614,6 +1751,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   # "Why did this run the way it did" must never require guessing.
@@ -1629,6 +1767,7 @@ _reason_of() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [[ "$output" == *"story=K1"* ]] || { echo "no story token in telemetry"; return 1; }
@@ -1773,6 +1912,7 @@ except OSError:
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # The ordinary unplanned-sprint path: the skill passes
   # "${PROJECT_ROOT}/.gaia/state/sprint-status.yaml", so an unplanned sprint --
@@ -1801,6 +1941,7 @@ except OSError:
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # With PROJECT_ROOT unset the skill's path collapses to an absolute
   # /.gaia/state/... that no ordinary user can read. Same promise, different
@@ -1915,6 +2056,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # The reap indexes a key list against a pid list. Splitting the keys on IFS
   # rather than on the newline they are joined with makes "aa bb" enumerate as
@@ -1943,6 +2085,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # The second reproduction: with a bad key first, a story that runs to
   # completion is silently absent from the report.
@@ -1967,6 +2110,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Tabs and edge padding split on IFS exactly as spaces do.
   local yaml; yaml="$(_mk_yaml_raw "$TEST_TMP/sprint.yaml" "t1	t2" " lead" "trail " "REAL")"
@@ -2035,6 +2179,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Merged but not done means the branch landed and the review gate is still
   # open, so the story is NOT terminal. The orchestrator re-dispatches it on
@@ -2063,6 +2208,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # The gate never closes. Retries must be BOUNDED -- an unbounded resume loop
   # would hold the phase open forever -- and the story must be reported as not
@@ -2094,6 +2240,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Phase 1's story is merged-but-not-done and its gate closes on the second
   # attempt. Phase 2 must not begin until that has happened: the order of the
@@ -2148,6 +2295,7 @@ _mk_yaml_raw() {
   # A stub that never refuses: any refusal must come from the claim path.
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run timeout 120 env PATH="$PATH" bash -c '
     . "'"$ORCH"'"
@@ -2188,6 +2336,7 @@ _mk_yaml_raw() {
 
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   local rc=0
   ppo_admit_slot "FULL" >/dev/null 2>&1 || rc=$?
@@ -2276,6 +2425,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
@@ -2316,6 +2466,7 @@ _mk_yaml_raw() {
   # A stub that ALWAYS fails for the target story.
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" fail:FAILME)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Drive ppo_admit_slot DIRECTLY (not through `run`, which wraps in a subshell
   # whose EXIT trap would sweep the reservation). The per-slot cleanup must
@@ -2340,6 +2491,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" stall:K1)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # K1 stalls, and its worktree is seeded with an ignored-only file while it is
   # in flight. If --discard-ignored leaked to the timeout path, that file (and
@@ -2428,6 +2580,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # K1 is merged-but-not-done and its gate closes on the 2nd attempt. With 2
   # slots and 3 stories, K1 and K2 fill the slots. When K1 returns exit 11 it
@@ -2466,6 +2619,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # Gate closes on the 2nd attempt. If the resume re-dispatch is removed,
   # K1 would be recorded as merged-not-done after the first attempt and never
@@ -2497,6 +2651,7 @@ _mk_yaml_raw() {
   PATH="$fl:$PATH"
   local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
   PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
 
   # K1 is merged-not-done and the gate NEVER closes (no GAIA_STUB_MND_ATTEMPTS).
   # After exhausting retries K1 is recorded as merged-not-done, which means phase

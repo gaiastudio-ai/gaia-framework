@@ -29,6 +29,45 @@
 # A run NEVER exits non-zero because parallel execution was unavailable: it
 # says why and proceeds sequentially, because a sprint that does not run is a
 # worse outcome than a sprint that runs slowly.
+#
+# Dispatch contract (ppo_dispatch_slot, scripts/phase-parallel-orchestrator.sh):
+#   The default path never invokes a "gaia-dispatch-story" command -- no such
+#   product component exists. It dispatches through the real teammate surface
+#   in scripts/lib/dispatch-teammate.sh: spawn_teammate <persona> --story-key
+#   <key> under the admission lock, classifying its own exit code as a SPAWN
+#   status only (0 spawned, 7 substrate fallback/Mode A, 8 ceiling saturated,
+#   anything else an unclassified spawn error) -- never as the story's
+#   outcome. Because dispatch-teammate.sh's drive_turn/await_reply are
+#   pre-send bookkeeping only (the actual SendMessage round-trip is a
+#   main-turn capability this script cannot invoke — see that file's header),
+#   a successfully spawned story is polled to a terminal state through the
+#   story-file frontmatter `status:` field the codebase already treats as
+#   authoritative (the same read sprint-state.sh's read_story_status
+#   performs), bounded by the per-story wall-clock budget. shutdown_teammate
+#   releases the registry entry on every path out.
+#
+#   Internal outcome vocabulary derived from story status, never from an
+#   external command's raw exit code (numeric codes below are private to this
+#   file and to the GAIA_PPO_DISPATCH_CMD test hook; an operator only ever
+#   sees the named reasons above):
+#     done               story status == done
+#     merged-not-done    story status == merged-not-done (branch landed,
+#                        review gate still open; resume path re-dispatches it,
+#                        bounded by _PPO_MND_RETRY_MAX)
+#     failed             story status == failed/blocked/abandoned
+#     timeout            the wall-clock budget elapsed with no terminal status
+#   These are surfaced as the internal codes 0 / 11 / 1 / 9 respectively
+#   (7/8/10 stay reserved for spawn/admission conditions, never a story
+#   outcome). Code 11 is scoped to this file's own status-derived
+#   classification -- it is never read off a subprocess's raw exit status on
+#   the default path, so it cannot collide with an unrelated exit-11
+#   convention elsewhere in the plugin (e.g. gaia-migrate.sh's "needs
+#   reconciliation").
+#
+#   GAIA_PPO_DISPATCH_CMD (test-only): when set, ppo_dispatch_slot invokes
+#   that command with the story key instead of the real teammate surface, and
+#   returns ITS exit code exactly as today -- this is the hook the bats stub
+#   suite drives; production code never sets it.
 
 # ---------- Source guard ----------
 
@@ -115,8 +154,17 @@ _ppo_lib() {
   . "$_PPO_DIR/lib/$name"
 }
 
-_ppo_load_worktree_lib() { _ppo_lib story-worktree.sh; }
-_ppo_load_lock_lib()     { _ppo_lib acquire-lock.sh; }
+_ppo_load_worktree_lib()  { _ppo_lib story-worktree.sh; }
+_ppo_load_lock_lib()      { _ppo_lib acquire-lock.sh; }
+_ppo_load_dispatch_lib()  { _ppo_lib dispatch-teammate.sh; }
+
+# resolve-story-file.sh sits one level up from lib/ (it is a shared root-level
+# script, not a lib/ helper), so it does not go through _ppo_lib.
+_ppo_load_resolve_story_lib() {
+  [ -f "$_PPO_DIR/resolve-story-file.sh" ] || return 1
+  # shellcheck disable=SC1090,SC1091
+  . "$_PPO_DIR/resolve-story-file.sh"
+}
 
 # ---------- Config ----------
 
@@ -402,15 +450,118 @@ ppo_preflight() {
 
 # ---------- Dispatch ----------
 
+# _ppo_story_status <story_key> — the story's real lifecycle status, read
+# straight from its frontmatter. Duplicates sprint-state.sh's read_story_status
+# awk block deliberately rather than sourcing that file: sprint-state.sh is a
+# CLI script that sets `set -euo pipefail` and unconditionally runs `main "$@"`
+# at end of file with no source guard, so sourcing it from a library would
+# execute its whole argument-parsing/dispatch path. resolve-story-file.sh, by
+# contrast, IS a sourceable library (function-only, no unconditional main
+# call) and is loaded directly.
+#
+# Prints the status token on stdout; prints nothing and returns 1 when the
+# frontmatter has no `status:` field or the file cannot be read.
+_ppo_story_status() {
+  local file="${1:-}" status=""
+  [ -n "$file" ] && [ -f "$file" ] || return 1
+  status="$(awk '
+    BEGIN { in_fm = 0; seen = 0 }
+    /^---[[:space:]]*$/ {
+      if (!in_fm && !seen) { in_fm = 1; seen = 1; next }
+      if (in_fm) { exit }
+    }
+    in_fm && /^status:[[:space:]]*/ {
+      sub(/^status:[[:space:]]*/, "", $0)
+      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", $0)
+      print $0
+      exit
+    }
+  ' "$file" 2>/dev/null)" || return 1
+  [ -n "$status" ] || return 1
+  printf '%s' "$status"
+}
+
+# _ppo_resolve_story_file <story_key> — thin wrapper around the shared
+# resolve-story-file.sh resolver. Prints the path on stdout; returns the
+# resolver's own exit code (1 no match, 2 ambiguous) on failure.
+_ppo_resolve_story_file() {
+  _ppo_load_resolve_story_lib || return 1
+  resolve_story_file "$1" 2>/dev/null
+}
+
+# _ppo_resolve_persona <story_file> — the developer persona to dispatch for
+# this story, via the same resolver Step 3b of gaia-dev-story uses (the
+# story's own `stack:` frontmatter, then project config, then filesystem
+# markers). `bash-dev` is the documented fallback when nothing resolves,
+# logged rather than silently substituted so an operator can see why a
+# story landed on an unexpected persona.
+_ppo_resolve_persona() {
+  local story_file="${1:-}" out="" persona=""
+  if [ -n "$story_file" ] && [ -f "$_PPO_DIR/load-stack-persona.sh" ]; then
+    out="$(bash "$_PPO_DIR/load-stack-persona.sh" --story-file "$story_file" 2>/dev/null)" || out=""
+    if [ -n "$out" ]; then
+      persona="$(printf '%s\n' "$out" | sed -n "s/^stack='\\(.*\\)'\$/\\1/p" | head -n 1)"
+    fi
+  fi
+  if [ -z "$persona" ]; then
+    _ppo_log "no persona resolved for ${story_file:-<unknown story file>} — defaulting to bash-dev"
+    persona="bash-dev"
+  fi
+  printf '%s' "$persona"
+}
+
 # ppo_dispatch_slot <story_key> — one admission attempt.
 #
-# Returns the dispatcher's own status: 0 handle, 7 substrate fallback, 8
-# ceiling saturated, anything else unclassified. Exit 8 is a NORMAL outcome,
-# so the capture is guarded: an unguarded assignment under errexit dies before
-# the caller ever reads the status. The bridge's idiom is used rather than a
-# bare `|| rc=$?` because this file is sourceable, and in a sourced file the
-# shell options belong to the CALLER -- flipping errexit underneath one that
-# deliberately ran `set +e` to branch on the fallback code is a real bug.
+# Default path dispatches through the REAL teammate surface
+# (scripts/lib/dispatch-teammate.sh), never a product-provided
+# "gaia-dispatch-story" command -- no such command exists anywhere in this
+# plugin; the old default silently invoked one, which would fail
+# command-not-found on every production run.
+#
+#   1. spawn_teammate <persona> --story-key <key> under the guarded idiom
+#      (see below) admits (or refuses) the teammate. Its exit code is a
+#      SPAWN status, not a story outcome: 0 spawned, 7 substrate fallback
+#      (Mode A), 8 ceiling saturated, anything else an unclassified spawn
+#      failure. These four are returned as-is to ppo_admit_slot, which
+#      already classifies them (case "$wrc" in 7|8|... in ppo_run_sprint).
+#   2. On a successful spawn (rc 0), the story is driven to completion
+#      through the story-file frontmatter status the codebase already
+#      treats as authoritative (the same awk block sprint-state.sh's
+#      read_story_status uses) -- NOT from any dispatch exit code, because
+#      drive_turn/await_reply in dispatch-teammate.sh are pre-send
+#      bookkeeping only (the header there documents that the actual
+#      SendMessage round-trip is a main-turn capability this script cannot
+#      invoke). Polling stops at the first terminal signal: status "done"
+#      (OUTCOME done), a status the codebase treats as merged-but-open
+#      (OUTCOME merged-not-done, via the existing resume path in
+#      ppo_run_sprint), or the per-story wall-clock budget expiring
+#      (OUTCOME timeout, internal code 9, exactly as before).
+#   3. shutdown_teammate releases the registry entry on every path out, so a
+#      polled-to-completion story does not hold a ceiling slot after this
+#      function returns.
+#
+# TEST-ONLY OVERRIDE: GAIA_PPO_DISPATCH_CMD. When set, that command is
+# invoked with the story key exactly as the old default invoked
+# gaia-dispatch-story, and ITS exit code is returned as-is -- this keeps the
+# existing stub-based suite (which fabricates the 0/1/7/8/9/11 contract via
+# _mk_dispatch_stub) green without touching the real path. It is a hook for
+# tests, never a production dispatch mechanism -- no code path in this file
+# reads it outside this function.
+#
+# Numeric vocabulary returned (internal to this file and to the test hook
+# above; never surfaced to an operator, who sees only the named reasons in
+# _ppo_emit output): 0 done, 1 failed, 7 substrate fallback, 8 ceiling
+# saturated, 9 timeout, 10 admission-lock timeout (set by ppo_admit_slot,
+# not here), 11 merged-but-not-done. Anything else is an unclassified
+# admission error. See ITEM 2 below for why 11 cannot be misread from an
+# external command's exit status on the default path.
+#
+# Exit 8 is a NORMAL outcome, so every capture in this function is guarded:
+# an unguarded assignment under errexit dies before the caller ever reads the
+# status. The bridge's idiom is used rather than a bare `|| rc=$?` because
+# this file is sourceable, and in a sourced file the shell options belong to
+# the CALLER -- flipping errexit underneath one that deliberately ran
+# `set +e` to branch on the fallback code is a real bug.
 ppo_dispatch_slot() {
   local key="${1:-}" rc=0 out="" errexit_was_set=0
   [ -n "$key" ] || return 1
@@ -428,41 +579,94 @@ ppo_dispatch_slot() {
 
   case "$-" in *e*) errexit_was_set=1 ;; esac
   set +e
-  if command -v timeout >/dev/null 2>&1; then
-    out="$(timeout "$budget" gaia-dispatch-story "$key" 2>/dev/null)"
-    rc=$?
-  else
-    # No timeout(1): run it in the background and reap it ourselves, so the
-    # budget holds on a host without GNU coreutils too.
-    local tmp_out pid waited
-    tmp_out="$(mktemp "${TMPDIR:-/tmp}/ppo-dispatch.XXXXXX")"
-    gaia-dispatch-story "$key" >"$tmp_out" 2>/dev/null &
-    pid=$!
-    waited=0
-    while kill -0 "$pid" 2>/dev/null; do
-      if [ "$waited" -ge "$budget" ]; then
-        kill -TERM "$pid" 2>/dev/null
-        sleep 1
-        kill -KILL "$pid" 2>/dev/null
-        rc=124
-        break
-      fi
-      sleep 1
-      waited=$((waited + 1))
-    done
-    if [ "${rc:-0}" -ne 124 ]; then
-      wait "$pid" 2>/dev/null
+
+  if [ -n "${GAIA_PPO_DISPATCH_CMD:-}" ]; then
+    # ---- Test-only hook: exact legacy behaviour, any command, any contract.
+    if command -v timeout >/dev/null 2>&1; then
+      out="$(timeout "$budget" "$GAIA_PPO_DISPATCH_CMD" "$key" 2>/dev/null)"
       rc=$?
+    else
+      local tmp_out pid waited
+      tmp_out="$(mktemp "${TMPDIR:-/tmp}/ppo-dispatch.XXXXXX")"
+      "$GAIA_PPO_DISPATCH_CMD" "$key" >"$tmp_out" 2>/dev/null &
+      pid=$!
+      waited=0
+      while kill -0 "$pid" 2>/dev/null; do
+        if [ "$waited" -ge "$budget" ]; then
+          kill -TERM "$pid" 2>/dev/null
+          sleep 1
+          kill -KILL "$pid" 2>/dev/null
+          rc=124
+          break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+      done
+      if [ "${rc:-0}" -ne 124 ]; then
+        wait "$pid" 2>/dev/null
+        rc=$?
+      fi
+      out="$(cat "$tmp_out" 2>/dev/null)"
+      rm -f "$tmp_out" 2>/dev/null || true
     fi
-    out="$(cat "$tmp_out" 2>/dev/null)"
-    rm -f "$tmp_out" 2>/dev/null || true
+    [ "$errexit_was_set" -eq 1 ] && set -e
+    [ "$rc" -eq 124 ] && rc=9
+    [ -n "$out" ] && printf '%s\n' "$out"
+    return "$rc"
   fi
+
+  # ---- Default path: the real teammate surface.
+  if ! _ppo_load_dispatch_lib 2>/dev/null || ! command -v spawn_teammate >/dev/null 2>&1; then
+    [ "$errexit_was_set" -eq 1 ] && set -e
+    return 1
+  fi
+
+  local story_file="" persona=""
+  story_file="$(_ppo_resolve_story_file "$key")" || story_file=""
+  persona="$(_ppo_resolve_persona "$story_file")"
+
+  local handle="" spawn_rc=0
+  handle="$(spawn_teammate "$persona" --story-key "$key" 2>/dev/null)" || spawn_rc=$?
+
+  if [ "$spawn_rc" -ne 0 ]; then
+    # 7 (substrate fallback) and 8 (ceiling) are the library's own documented
+    # capacity/availability codes; anything else is an unclassified spawn
+    # failure. None of these are story outcomes -- no story ran.
+    [ "$errexit_was_set" -eq 1 ] && set -e
+    return "$spawn_rc"
+  fi
+
+  # Poll the story's own status to a terminal state, bounded by the same
+  # per-story wall-clock budget the legacy path applied around the whole
+  # dispatch. drive_turn/await_reply are pre-send bookkeeping only (see the
+  # dispatch-teammate.sh header) -- there is no bash-observable "the teammate
+  # is done" signal beyond the story file itself, so that is the oracle.
+  local waited=0 status=""
+  rc=9
+  while [ "$waited" -lt "$budget" ]; do
+    status="$(_ppo_story_status "$story_file")" || status=""
+    case "$status" in
+      done)
+        rc=0
+        break
+        ;;
+      merged-not-done|merged_not_done)
+        rc=11
+        break
+        ;;
+      failed|blocked|abandoned)
+        rc=1
+        break
+        ;;
+    esac
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  shutdown_teammate "$handle" >/dev/null 2>&1 || true
+
   [ "$errexit_was_set" -eq 1 ] && set -e
-
-  # 124 is timeout(1)'s own status; normalise it to the internal timeout code.
-  [ "$rc" -eq 124 ] && rc=9
-
-  [ -n "$out" ] && printf '%s\n' "$out"
+  [ -n "$handle" ] && printf '%s\n' "$handle"
   return "$rc"
 }
 
