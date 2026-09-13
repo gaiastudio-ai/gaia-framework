@@ -21,9 +21,10 @@
 #   slots-1               the budget allows no concurrency
 #   sprint-unreadable     the sprint file is missing, malformed or unparseable
 #   no-phase-fields       the sprint parses but carries no phase assignments
-#   ceiling-cannot-admit  the dispatch ceiling is saturated and cannot free
-#   mode-b-fallback       the agent substrate is unavailable
-#   admission-error       an unclassified admission failure
+#   ceiling-cannot-admit      the dispatch ceiling is saturated and cannot free
+#   admission-lock-timeout    the admission lock could not be acquired in time
+#   mode-b-fallback           the agent substrate is unavailable
+#   admission-error           an unclassified admission failure
 #
 # A run NEVER exits non-zero because parallel execution was unavailable: it
 # says why and proceeds sequentially, because a sprint that does not run is a
@@ -57,6 +58,13 @@ _PPO_SLOTS_MAX=64
 # How many consecutive ceiling refusals, with nothing running to free a slot,
 # before the run stops re-queueing and degrades instead.
 _PPO_CEILING_GIVEUP=3
+# How many times a merged-but-not-done story is re-dispatched on the resume
+# path before the run reports it as not done. A story whose gate never closes
+# must not be retried forever -- that would hold its phase open and stall the
+# barrier -- so the retries are bounded and the story is reported honestly.
+# Each attempt is itself bounded by the per-story wall-clock budget, so this
+# adds no new configuration surface.
+_PPO_MND_RETRY_MAX=2
 
 # Run state. Bash 3.2: parallel indexed arrays and newline-delimited strings,
 # never associative arrays.
@@ -280,14 +288,35 @@ ppo_plan_sequential() {
   phases="$(ppo_read_phases "$yaml")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     # Degraded ordering is still an ordering: fall back to roster order.
-    awk '/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
-      k=$0; sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/,"",k)
-      gsub(/^["'"'"']|["'"'"']$/,"",k); print k }' "$yaml" 2>/dev/null
+    #
+    # The file may be missing or unreadable -- an unplanned sprint, or an unset
+    # PROJECT_ROOT resolving to /.gaia/state/sprint-status.yaml. awk exits 2 on
+    # a file it cannot open, and as the LAST command of this branch that status
+    # becomes the function's, firing errexit before `return 0` and escaping
+    # every `ppo_plan_sequential | while` call site through pipefail. The run
+    # would then announce a sequential degradation, emit no stories and exit 2 --
+    # breaking this file's promise that a run NEVER exits non-zero because
+    # parallel execution was unavailable. Refuse to read what cannot be read,
+    # and return the empty worklist as a SUCCESS: the caller has already named
+    # the reason, and an empty ordering is the honest answer for a file with no
+    # readable rows.
+    if [ -r "$yaml" ]; then
+      awk '/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
+        k=$0; sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/,"",k)
+        gsub(/^["'"'"']|["'"'"']$/,"",k); print k }' "$yaml" 2>/dev/null || true
+    fi
     return 0
   fi
+  # Same errexit hazard on the SUCCESS path: `[ -n "$k" ] && printf` is false
+  # for a blank row, so a phases list with no usable rows leaves the `while`
+  # -- and therefore this function -- at status 1, which the bare
+  # `ppo_plan_sequential | while` call sites would turn into a killed run.
+  # An empty worklist is a legitimate answer, not a failure.
   printf '%s\n' "$phases" | while IFS='|' read -r k _; do
-    [ -n "$k" ] && printf '%s\n' "$k"
+    [ -n "$k" ] || continue
+    printf '%s\n' "$k"
   done
+  return 0
 }
 
 # ---------- Admission ----------
@@ -351,6 +380,20 @@ ppo_preflight() {
   if [ "$ceiling" -lt $((slots + 4)) ]; then
     _ppo_emit "mode=sequential reason=ceiling-cannot-admit — the dispatch ceiling leaves no headroom above the slot budget; running sequentially"
     return 0
+  fi
+
+  # Live-occupancy check: even when the configured headroom passes, a registry
+  # already at or above the ceiling means no story can be admitted right now.
+  # This uses the same read path the per-story claim uses, so the two never
+  # disagree about capacity.
+  local reg count
+  reg="${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/registry"
+  if [ -d "$reg" ]; then
+    count="$(find "$reg" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${count:-0}" -ge "$ceiling" ]; then
+      _ppo_emit "mode=sequential reason=ceiling-cannot-admit — the dispatch ceiling is saturated (${count} active, ceiling ${ceiling}); running sequentially"
+      return 0
+    fi
   fi
 
   _ppo_emit "mode=parallel reason=none"
@@ -558,12 +601,70 @@ ppo_peak_concurrency() {
   printf '%s' "${v:-0}"
 }
 
+# _ppo_mnd_count <story_key> / _ppo_mnd_bump <story_key> — how many times a
+# merged-but-not-done story has been re-dispatched on the resume path. Kept in
+# the run's state dir so it survives the subshells the reap runs in.
+_ppo_mnd_count() {
+  local d f
+  d="$(_ppo_state_dir)" || return 0
+  f="$d/mnd-$1"
+  [ -f "$f" ] || { printf '0'; return 0; }
+  local n; n="$(wc -l < "$f" 2>/dev/null | tr -d ' ')" || n=0
+  printf '%s' "${n:-0}"
+}
+
+_ppo_mnd_bump() {
+  local d
+  d="$(_ppo_state_dir)" || return 0
+  mkdir -p "$d" 2>/dev/null || return 0
+  printf 'x\n' >> "$d/mnd-$1" 2>/dev/null || true
+}
+
+# _ppo_mnd_open_mark <key> / _ppo_mnd_open_clear <key> — the set of stories
+# that are merged-but-not-done RIGHT NOW, i.e. re-queued and not yet terminal.
+# A story leaves the set when it reaches done or runs out of retries.
+_ppo_mnd_open_mark() {
+  local d; d="$(_ppo_state_dir)" || return 0
+  mkdir -p "$d" 2>/dev/null || return 0
+  : > "$d/mndopen-$1" 2>/dev/null || true
+}
+
+_ppo_mnd_open_clear() {
+  local d; d="$(_ppo_state_dir)" || return 0
+  rm -f "$d/mndopen-$1" 2>/dev/null || true
+}
+
+_ppo_mnd_open_count() {
+  local d n; d="$(_ppo_state_dir)" || { printf '0'; return 0; }
+  n="$(find "$d" -maxdepth 1 -name 'mndopen-*' -type f 2>/dev/null | wc -l | tr -d ' ')"
+  printf '%s' "${n:-0}"
+}
+
+# The open set as a |-delimited string, so a caller can ask whether a specific
+# key is in it without a subshell per entry.
+_ppo_mnd_open_keys() {
+  local d f out="|"; d="$(_ppo_state_dir)" || { printf '|'; return 0; }
+  for f in "$d"/mndopen-*; do
+    [ -f "$f" ] || continue
+    out="${out}${f##*/mndopen-}|"
+  done
+  printf '%s' "$out"
+}
+
+# ppo_barrier_violations — how many times a story of phase N+1 was dispatched
+# while a story of phase N was still non-terminal. Counted from real dispatch
+# events, not asserted: a hardcoded zero would make every barrier test pass
+# against an orchestrator that has no barrier at all.
 ppo_barrier_violations() {
   local v; v="$(_ppo_state_get barrier_violations)"
   [ -n "$v" ] || v="$_PPO_BARRIER_VIOLATIONS"
   printf '%s' "${v:-0}"
 }
 
+# ppo_backfill_before_done — how many times a slot was recycled onto a new
+# story while the story that vacated it was still non-terminal (merged but not
+# done). Incremented by the reap, so a run that backfills an open gate is
+# visible instead of being asserted away.
 ppo_backfill_before_done() {
   local v; v="$(_ppo_state_get backfill_before_done)"
   [ -n "$v" ] || v="$_PPO_BACKFILL_BEFORE_DONE"
@@ -681,6 +782,14 @@ ppo_run_sprint() {
   # created, so a story whose branch survives can attach cleanly.
   worktree_prune_stale "$repo" >/dev/null 2>&1 || true
 
+  # That prune covered this whole run, so the per-create prune inside
+  # worktree_create is redundant from here on. Left on, it would re-walk every
+  # live worktree record on every create -- work that grows with each slot
+  # filled, stretching the gap between dispatches and the ramp to a full set.
+  # Zero-orphan semantics are unchanged: the prune above cleared what a dead
+  # run left, and each story's worktree is torn down after its merge.
+  export GAIA_WORKTREE_PRUNE_ON_CREATE=0
+
   # A reservation orphaned by a killed run counts toward the ceiling forever,
   # so it is cleared before this run starts claiming any of its own.
   ppo_reap_stale_reservations
@@ -698,6 +807,17 @@ ppo_run_sprint() {
     if [ -z "$pending" ]; then
       _ppo_emit "event=phase_skipped phase=${p} reason=no-stories"
       continue
+    fi
+    # A barrier violation is a story of THIS phase starting while a story of an
+    # EARLIER phase is still non-terminal. Counted from the ledger rather than
+    # assumed: the accessor is what the barrier tests read, so if it were a
+    # constant they would pass against an orchestrator with no barrier at all.
+    local _nonterm
+    _nonterm="$(ppo_outcome_count merged-not-done)"
+    if [ "${_nonterm:-0}" -gt 0 ]; then
+      _PPO_BARRIER_VIOLATIONS=$((_PPO_BARRIER_VIOLATIONS + _nonterm))
+      _ppo_state_put barrier_violations "$_PPO_BARRIER_VIOLATIONS"
+      _ppo_emit "event=barrier_violation phase=${p} non_terminal=${_nonterm}"
     fi
     _ppo_emit "event=phase_start phase=${p}"
 
@@ -717,6 +837,22 @@ ppo_run_sprint() {
         key="${pending%%$'\n'*}"
         if [ "$key" = "$pending" ]; then rest=""; else rest="${pending#*$'\n'}"; fi
         [ -n "$key" ] || { pending="$rest"; continue; }
+
+        # Quarantine a key the admission gate would refuse anyway, BEFORE it
+        # can be appended to the running lists. `ppo_admit_slot` applies the
+        # same charset rule, but it runs backgrounded, so its refusal arrives
+        # too late to keep the key out of this run's bookkeeping. A key is
+        # refused here rather than silently dropped: it is reported, so a
+        # malformed roster row is visible instead of a story that simply never
+        # appears in the ledger.
+        case "$key" in
+          *[!A-Za-z0-9._-]*|*..*)
+            _ppo_emit "event=story_refused story=${key} phase=${p} outcome=invalid-key"
+            _ppo_record "$key" "failed" "$p"
+            pending="$rest"
+            continue
+            ;;
+        esac
 
         # Already live from a previous run? Attach, do not dispatch twice.
         # Re-entry: a worktree already checked out for this story belongs to a
@@ -738,6 +874,22 @@ ppo_run_sprint() {
             continue
             ;;
         esac
+
+        # A slot must never be recycled onto a DIFFERENT story while a story
+        # that vacated one is still merged-but-not-done. The resume re-queue
+        # puts the open story at the front precisely so this cannot happen, so
+        # a non-zero count here means the ordering guarantee has been broken --
+        # which is the whole point of having a counter rather than an assertion.
+        if [ "$(_ppo_mnd_open_count)" -gt 0 ]; then
+          case "$(_ppo_mnd_open_keys)" in
+            *"|${key}|"*) : ;;
+            *)
+              _PPO_BACKFILL_BEFORE_DONE=$((_PPO_BACKFILL_BEFORE_DONE + 1))
+              _ppo_state_put backfill_before_done "$_PPO_BACKFILL_BEFORE_DONE"
+              _ppo_emit "event=backfill_before_done story=${key} phase=${p}"
+              ;;
+          esac
+        fi
 
         # The slot's scratch dir must exist BEFORE anything is written into it.
         mkdir -p "$(ppo_slot_scratch_for "$key")" 2>/dev/null || true
@@ -790,28 +942,45 @@ ppo_run_sprint() {
         local _k _p keys_arr pids_arr
         while :; do
           idx=0; found=-1
-          for _p in $running_pids; do
+          while IFS= read -r _p; do
+            [ -n "$_p" ] || continue
             kill -0 "$_p" 2>/dev/null || { found="$idx"; fpid="$_p"; break; }
             idx=$((idx + 1))
-          done
+          done <<EOF
+$running_pids
+EOF
           [ "$found" -ge 0 ] && break
           sleep 0.2
         done
 
+        # Walk the key list NEWLINE-safely. `for _k in $running_keys` splits on
+        # IFS -- space and tab included -- while the pid list it is indexed
+        # against can only ever split on newline. A key containing whitespace
+        # therefore enumerates as two or more entries and every index after it
+        # refers to a different slot in each list: the reap then names a
+        # fragment of one key as the finished story and drops a REAL one from
+        # the ledger entirely. The damage lands on valid stories, not the
+        # malformed one.
         idx=0; keys_arr=""; pids_arr=""
-        for _k in $running_keys; do
+        while IFS= read -r _k; do
+          [ -n "$_k" ] || continue
           if [ "$idx" -eq "$found" ]; then
             finished="$_k"
           else
             keys_arr="${keys_arr}${keys_arr:+$'\n'}${_k}"
           fi
           idx=$((idx + 1))
-        done
+        done <<EOF
+$running_keys
+EOF
         idx=0
-        for _p in $running_pids; do
+        while IFS= read -r _p; do
+          [ -n "$_p" ] || continue
           [ "$idx" -ne "$found" ] && pids_arr="${pids_arr}${pids_arr:+$'\n'}${_p}"
           idx=$((idx + 1))
-        done
+        done <<EOF
+$running_pids
+EOF
         running_keys="$keys_arr"; running_pids="$pids_arr"
 
         wait "$fpid" 2>/dev/null || wrc=$?
@@ -829,7 +998,34 @@ ppo_run_sprint() {
             if [ -n "$fwt" ]; then
               worktree_teardown "$repo" "$fwt" --discard-ignored >/dev/null 2>&1 || true
             fi
+            _ppo_mnd_open_clear "$finished"
             _ppo_record "$finished" "done" "$p"
+            ;;
+          11)
+            # Merged but NOT done: the branch landed, the review gate is still
+            # open. The story is therefore NOT terminal -- the phase barrier
+            # must keep waiting for it, and its slot must not be treated as a
+            # completed story. Re-dispatch it on the resume path so the gate
+            # gets another chance to close, bounded so a gate that never closes
+            # cannot hold the phase open forever.
+            local _mnd_n=0
+            _mnd_n="$(_ppo_mnd_count "$finished")"
+            if [ "$_mnd_n" -lt "$_PPO_MND_RETRY_MAX" ]; then
+              _ppo_mnd_bump "$finished"
+              _ppo_mnd_open_mark "$finished"
+              _ppo_emit "event=story_merged_not_done story=${finished} phase=${p} outcome=resume-requeued attempt=$((_mnd_n + 1))"
+              # Re-queued onto the FRONT: it is the same story continuing, not
+              # a new one taking its turn. Putting it first is what keeps this
+              # from being a backfill-before-done -- the freed slot goes back
+              # to the story that is still open, so no sibling overtakes it.
+              pending="${finished}${pending:+$'\n'}${pending}"
+            else
+              # Out of retries. Reported as NOT done -- never recorded done,
+              # which is what would let the next phase start on unmet work.
+              _ppo_mnd_open_clear "$finished"
+              _ppo_emit "event=story_merged_not_done story=${finished} phase=${p} outcome=not-done"
+              _ppo_record "$finished" "merged-not-done" "$p"
+            fi
             ;;
           9)
             _ppo_emit "event=story_timeout story=${finished} phase=${p} outcome=slot-timeout"

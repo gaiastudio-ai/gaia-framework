@@ -74,7 +74,7 @@ explained**. One of these reasons is printed, and the sprint proceeds:
 | `flock-unavailable` | the locking primitive is missing, or forced off |
 | `worktree-mode-off` | per-story isolation is not switched on |
 | `slots-1` | the budget allows no concurrency |
-| `sprint-unreadable` | the sprint file is missing, malformed or unparseable |
+| `sprint-unreadable` | the sprint file is missing, malformed or unparseable — the run still ends cleanly, but with no stories to list |
 | `no-phase-fields` | the sprint parses but carries no phase assignments |
 | `ceiling-cannot-admit` | the agent ceiling is saturated with no headroom |
 | `admission-lock-timeout` | the admission lock could not be acquired, so no story was admitted without it |

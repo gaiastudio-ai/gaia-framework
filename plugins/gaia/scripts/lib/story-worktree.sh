@@ -501,7 +501,22 @@ worktree_create() {
   branch="feat/${story_key}-${slug}"
 
   # Clear anything a previous crashed run left behind before adding to the set.
-  worktree_prune_stale "$repo"
+  #
+  # A caller that has ALREADY pruned can opt out with
+  # GAIA_WORKTREE_PRUNE_ON_CREATE=0. Pruning walks every live worktree record
+  # and spawns `git rev-parse --show-toplevel` per record, so a serial fill loop
+  # pays O(live worktrees) on every create: the inter-dispatch gap grows with
+  # each slot and the ramp to a full set stretches accordingly. The orchestrator
+  # prunes once at run start, before its phase loop, which makes the per-create
+  # prune redundant INSIDE a run -- not a safety net.
+  #
+  # The default is unchanged, so a standalone create still prunes and the
+  # zero-orphan promise holds for callers that never pruned. Opting out only
+  # moves the guarantee to the caller that already kept it; orphans are still
+  # cleared by that run-start prune and by the post-merge teardown.
+  if [ "${GAIA_WORKTREE_PRUNE_ON_CREATE:-1}" != "0" ]; then
+    worktree_prune_stale "$repo"
+  fi
 
   top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || {
     # Not a git work tree: nothing to isolate. Report this distinctly (3) so the
