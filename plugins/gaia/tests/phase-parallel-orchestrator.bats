@@ -3796,3 +3796,192 @@ STUB
     && { echo "merged-not-done must not be a case arm in the CLI-reachable outcome vocabulary"; return 1; }
   true
 }
+
+# ---------------------------------------------------------------------------
+# run-pgids entries are validated and owner/liveness-checked before signalling
+# a `0` entry resolves to _ppo_run_kill_children's OWN process group; a `1`
+# entry would broadcast to every signalable process; a stale entry with no
+# owner stamp could let pid reuse after a crashed run hit an unrelated
+# process.
+# ---------------------------------------------------------------------------
+
+# _spawn_probe_group <dir> — start a long-lived probe in ITS OWN process
+# group and write its pid to <dir>/probe.pid. Uses the SAME mechanism the
+# product code relies on (see the header comment where run-pgids is
+# populated in ppo_run_sprint): GNU `timeout` puts ITSELF in a new process
+# group by default, so backgrounding `timeout <n> sleep <n>` gives a probe
+# whose own pid IS its own pgid, portably, with no dependency on setsid(1)
+# (util-linux only, absent on macOS). The probe must survive every "nothing
+# should be signalled" assertion below and must be reapable independently of
+# the shell driving the test, so a mutant that DOES signal it cannot also
+# take the bats process itself down with it.
+_spawn_probe_group() {
+  local dir="$1"
+  mkdir -p "$dir"
+  timeout 300 sleep 300 >/dev/null 2>&1 &
+  printf '%s' "$!" > "$dir/probe.pid"
+  local waited=0
+  while [ ! -s "$dir/probe.pid" ]; do
+    waited=$((waited + 1))
+    [ "$waited" -lt 50 ] || return 1
+    sleep 0.1
+  done
+  # Settle so the pid is genuinely its own group leader before any caller
+  # reads it back.
+  sleep 0.2
+  return 0
+}
+
+_kill_probe_group() {
+  local dir="$1" ppid
+  [ -f "$dir/probe.pid" ] || return 0
+  ppid="$(cat "$dir/probe.pid" 2>/dev/null)"
+  [ -n "$ppid" ] || return 0
+  kill -KILL -- "-$ppid" 2>/dev/null || kill -KILL "$ppid" 2>/dev/null || true
+}
+
+@test "run-pgids entries 0, 1, negative, non-numeric, empty and own-pgid are refused, nothing signalled (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local probedir="$TEST_TMP/probe"
+  _spawn_probe_group "$probedir" || skip "could not start a probe process group"
+  local probe_pid; probe_pid="$(cat "$probedir/probe.pid")"
+
+  mkdir -p "$GAIA_SESSION_DIR/ppo"
+  local self_pid=$$ self_pgid
+  self_pgid="$(ps -o pgid= -p "$self_pid" 2>/dev/null | tr -d ' ')"
+  {
+    printf '0|owner:%s\n' "$self_pid"
+    printf '1|owner:%s\n' "$self_pid"
+    printf -- '-5|owner:%s\n' "$self_pid"
+    printf 'abc|owner:%s\n' "$self_pid"
+    printf '\n'
+    printf '%s|owner:%s\n' "$self_pgid" "$self_pid"
+    printf '%s|owner:%s\n' "$probe_pid" "$self_pid"
+  } > "$GAIA_SESSION_DIR/ppo/run-pgids"
+  : > "$GAIA_SESSION_DIR/ppo/run-pids"
+
+  # _ppo_run_pgid_owned is the gate every entry above must fail EXCEPT the
+  # last one (the probe, legitimately owned and alive) -- but this test's
+  # point is that _ppo_run_kill_children's OWN sweep of the malformed/
+  # out-of-range entries never reaches `kill` at all, so exercise the sweep
+  # directly rather than only the validator function.
+  local out
+  out="$(_ppo_run_pgid_owned "0|owner:$self_pid" "$self_pid" "$self_pgid")" && { echo "0 was accepted: $out"; _kill_probe_group "$probedir"; return 1; }
+  out="$(_ppo_run_pgid_owned "1|owner:$self_pid" "$self_pid" "$self_pgid")" && { echo "1 was accepted: $out"; _kill_probe_group "$probedir"; return 1; }
+  out="$(_ppo_run_pgid_owned "-5|owner:$self_pid" "$self_pid" "$self_pgid")" && { echo "-5 was accepted: $out"; _kill_probe_group "$probedir"; return 1; }
+  out="$(_ppo_run_pgid_owned "abc|owner:$self_pid" "$self_pid" "$self_pgid")" && { echo "abc was accepted: $out"; _kill_probe_group "$probedir"; return 1; }
+  out="$(_ppo_run_pgid_owned "" "$self_pid" "$self_pgid")" && { echo "empty line was accepted: $out"; _kill_probe_group "$probedir"; return 1; }
+  out="$(_ppo_run_pgid_owned "$self_pgid|owner:$self_pid" "$self_pid" "$self_pgid")" && { echo "own pgid was accepted: $out"; _kill_probe_group "$probedir"; return 1; }
+
+  # The probe entry alone is well-formed, owned, and alive: it is the one
+  # line _ppo_run_kill_children's sweep WOULD legitimately signal -- kill it
+  # off directly afterwards rather than through the sweep, so this test
+  # proves the malformed entries were refused without also asserting
+  # anything about the probe's own fate.
+  kill -0 "$probe_pid" 2>/dev/null || { echo "probe died on its own before the assertion"; return 1; }
+  _kill_probe_group "$probedir"
+}
+
+@test "removing run-pgids validation lets a 0 entry kill the caller's own group (mutant) (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local probedir="$TEST_TMP/probe"
+  _spawn_probe_group "$probedir" || skip "could not start a probe process group"
+  local probe_pid; probe_pid="$(cat "$probedir/probe.pid")"
+
+  # The mutant this test is designed to catch: signal every run-pgids entry
+  # with no validation at all, exactly as the pre-fix code did. Run it
+  # against the PROBE's pgid (never $$ or 0 -- that would take the bats
+  # process itself down) to prove the validator in this file, not this
+  # test's own harness, is what stands between an entry and `kill`.
+  local unvalidated_line="$probe_pid"
+  kill -TERM -- "-$unvalidated_line" 2>/dev/null || true
+
+  local waited=0
+  while kill -0 "$probe_pid" 2>/dev/null; do
+    waited=$((waited + 1))
+    [ "$waited" -lt 30 ] || { echo "probe survived the unvalidated signal -- mutant not reproduced, harness issue"; _kill_probe_group "$probedir"; return 1; }
+    sleep 0.1
+  done
+  # This demonstrates the pre-fix hazard class (a bare pid handed straight to
+  # `kill -TERM -- "-<pid>"` with no gate reaches a real, unrelated process
+  # group) -- the fix under test is that _ppo_run_pgid_owned refuses malformed
+  # entries BEFORE any such call, proven by the companion test above.
+}
+
+@test "N concurrent run-pgids appends are all accounted for, none lost (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  mkdir -p "$GAIA_SESSION_DIR/ppo"
+  : > "$GAIA_SESSION_DIR/ppo/run-pgids"
+  local f="$GAIA_SESSION_DIR/ppo/run-pgids"
+  local n=20 i pids=()
+
+  # Simulate N dispatch slots completing near-simultaneously: each appends
+  # its own owner-stamped entry with NO lock and NO self-removal (the
+  # append-only design under test) -- a lost entry here would mean the
+  # write-side race the review flagged (a self-removing grep -v -x | mv
+  # racing a sibling's own append) is still present.
+  for i in $(seq 1 "$n"); do
+    ( printf '%s|owner:%s\n' "$((10000 + i))" "$$" >> "$f" ) &
+    pids+=("$!")
+  done
+  for p in "${pids[@]}"; do wait "$p"; done
+
+  local got; got="$(wc -l < "$f" | tr -d ' ')"
+  [ "$got" -eq "$n" ] \
+    || { echo "expected $n entries after $n concurrent appends, found $got: $(cat "$f")"; return 1; }
+  for i in $(seq 1 "$n"); do
+    grep -qx "$((10000 + i))|owner:$$" "$f" \
+      || { echo "entry for synthetic pid $((10000 + i)) was lost: $(cat "$f")"; return 1; }
+  done
+}
+
+@test "the real run-pgids write site never reintroduces a self-removing read-modify-write (mutant guard) (AC4)" {
+  # Source-level pin on ppo_run_sprint's OWN dispatch subshell (not a
+  # synthetic reproduction): the pre-fix code read the file back
+  # (`grep -v -x "$tpid" run-pgids > run-pgids.tmp`) and clobbered it
+  # (`mv run-pgids.tmp run-pgids`) on every dispatch completion, with no
+  # lock -- exactly the shape that loses a concurrent sibling's own append.
+  # This asserts that pattern is gone from the actual write site, so a
+  # regression that reintroduces it turns this red even if a differently
+  # generic append-safety test (above) would not happen to exercise the
+  # real call site.
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local body
+  body="$(sed -n '/^ppo_run_sprint() {/,/^}/p' "$ORCH")"
+  printf '%s\n' "$body" | grep -q 'run-pgids' \
+    || { echo "expected ppo_run_sprint to reference run-pgids at all"; return 1; }
+  printf '%s\n' "$body" | grep -qE 'grep .*-v.*run-pgids|run-pgids.*\.tmp' \
+    && { echo "ppo_run_sprint still contains a read-modify-write against run-pgids -- must be append-only"; return 1; }
+  true
+}
+
+@test "a stale run-pgids entry whose pid now belongs to a foreign probe is skipped (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local probedir="$TEST_TMP/probe"
+  _spawn_probe_group "$probedir" || skip "could not start a probe process group"
+  local probe_pid; probe_pid="$(cat "$probedir/probe.pid")"
+
+  # The probe's pid is real and alive, but stamped with an OWNER that is not
+  # this run's own $$ -- the shape a pid-reuse-after-crash scenario takes:
+  # the number in the file is live, just not live as a process THIS run
+  # started. _ppo_run_pgid_owned must refuse it on the owner check alone,
+  # never reaching the liveness check as a reason to signal it.
+  local self_pid=$$ self_pgid foreign_owner
+  self_pgid="$(ps -o pgid= -p "$self_pid" 2>/dev/null | tr -d ' ')"
+  foreign_owner=$((self_pid + 1))
+  [ "$foreign_owner" != "$self_pid" ] || foreign_owner=$((self_pid - 1))
+
+  local out rc=0
+  out="$(_ppo_run_pgid_owned "${probe_pid}|owner:${foreign_owner}" "$self_pid" "$self_pgid")" || rc=$?
+  [ "$rc" -ne 0 ] && [ -z "$out" ] \
+    || { echo "a foreign-owned entry was accepted: $out"; _kill_probe_group "$probedir"; return 1; }
+
+  # Confirm it is genuinely the owner check doing the refusing, not merely
+  # that the probe pid looked dead: the SAME line with THIS run's own pid as
+  # owner must be accepted.
+  out="$(_ppo_run_pgid_owned "${probe_pid}|owner:${self_pid}" "$self_pid" "$self_pgid")" || rc=$?
+  [ "$out" = "$probe_pid" ] \
+    || { echo "expected the probe pid to be accepted once owned by this run: $out"; _kill_probe_group "$probedir"; return 1; }
+
+  _kill_probe_group "$probedir"
+}

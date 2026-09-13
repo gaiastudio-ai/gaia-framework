@@ -1820,17 +1820,24 @@ ppo_run_sprint() {
             # deliberately does not share a group with).
             timeout "$budget" "$GAIA_PPO_DISPATCH_CMD" "$key" >/dev/null 2>&1 &
             tpid=$!
-            echo "$tpid" >> "$(_ppo_engine_dir)/run-pgids"
+            # Append-only, `owner:$$` stamped -- deliberately NEVER
+            # self-removed. This entry and the drain loop's own read of
+            # run-pids race across concurrent dispatch slots with no lock
+            # around either: a self-removing read-modify-write
+            # (`grep -v -x | mv`) here would lose a sibling slot's own
+            # in-flight append whenever two dispatches complete close
+            # together, silently dropping that sibling's entry and leaving
+            # it unsignalled by a later kill sweep. Append is a single
+            # O_APPEND write with no read half, so it cannot race away
+            # another slot's line no matter how the writes interleave.
+            # Staleness is handled at the READING end instead --
+            # _ppo_run_kill_children only signals an entry whose owner is
+            # THIS run and whose leader is still alive (kill -0), which
+            # makes a completed dispatch's own now-dead entry inert without
+            # ever needing to erase it. See _ppo_run_kill_children's header
+            # comment for the owner/liveness contract this stamp exists for.
+            printf '%s|owner:%s\n' "$tpid" "$$" >> "$(_ppo_engine_dir)/run-pgids"
             wait "$tpid" || hrc=$?
-            # Reaped on its own (the common case): drop it from run-pgids so
-            # a long run does not accumulate one stale, already-dead entry
-            # per dispatch, and so _ppo_run_kill_children's cleanup sweep
-            # never sends a signal to a pgid number the kernel may since
-            # have reused for an unrelated process.
-            if [ -f "$(_ppo_engine_dir)/run-pgids" ]; then
-              grep -v -x "$tpid" "$(_ppo_engine_dir)/run-pgids" > "$(_ppo_engine_dir)/run-pgids.tmp" 2>/dev/null || :
-              mv "$(_ppo_engine_dir)/run-pgids.tmp" "$(_ppo_engine_dir)/run-pgids" 2>/dev/null || true
-            fi
             [ "$hrc" -eq 124 ] && hrc=9
             case "$hrc" in
               0) ppo_record_outcome "$key" "done"; _ppo_engine_put ceiling-refusals 0 ;;
@@ -1900,6 +1907,80 @@ ppo_run_sprint() {
   done
 }
 
+# _ppo_run_pgid_owned <line> <this-run-pid> <this-run-pgid> — validate ONE
+# raw `run-pgids` line before it is ever handed to `kill`, and print the
+# bare pid on stdout iff every check passes (nothing printed, non-zero
+# return, otherwise). This is the ONE gate every reader of run-pgids goes
+# through -- signalling an unvalidated line from that file is a real
+# incident, not a hypothetical: a `0` entry resolves to `kill -TERM -- "-0"`,
+# which is the CALLER'S OWN process group (reproduced against this run's own
+# driving shell), and a `1` entry would broadcast to every process this user
+# can signal. Checks, in order:
+#   1. Shape: `^[1-9][0-9]*\|owner:[0-9]+$` -- rejects `0`, `1` alone (no
+#      owner field, from a pre-owner-stamp file or a corrupted line),
+#      negative numbers, non-numeric garbage, and empty lines outright.
+#   2. Numeric bounds: the pid field must be strictly greater than 1 --
+#      1 is init/launchd, never a legitimate `timeout` pid this run started.
+#   3. Not this run's OWN process group -- a pid that happens to equal the
+#      run's own pgid (the `0`-resolves-to-self case, and any accidental
+#      collision) is refused rather than trusted, even though shape+bounds
+#      alone would have let it through.
+#   4. Owner match -- the stamped `owner:` must equal the CURRENT run's own
+#      pid ($$ at trap time). Without this, a pid the kernel has since
+#      reused after an earlier crashed run's entry went stale would be
+#      signalled as if this run had started it.
+#   5. Liveness -- `kill -0` on the bare pid must succeed. A dead entry is
+#      not an error (see the append-only design note where run-pgids is
+#      populated): it is simply skipped, silently, since a Reaped-on-its-own
+#      dispatch is the common case and would otherwise log noise on every
+#      normal completion.
+# Every refusal at steps 1-3 is logged (`event=run_pgid_refused`) since
+# those shapes should never occur from this file's own writer and indicate
+# either a corrupted state directory or a hostile write; step 4 is not
+# logged as a refusal because it is the EXPECTED shape of every foreign
+# run's leftover entry in a shared session dir, not an anomaly.
+_ppo_run_pgid_owned() {
+  local line="$1" self_pid="$2" self_pgid="$3" pid owner
+  case "$line" in
+    [1-9]*'|owner:'[0-9]*)
+      pid="${line%%|*}"
+      owner="${line#*|owner:}"
+      ;;
+    *)
+      _ppo_log "event=run_pgid_refused reason=malformed-entry value=${line}"
+      return 1
+      ;;
+  esac
+  case "$pid" in
+    ''|*[!0-9]*)
+      _ppo_log "event=run_pgid_refused reason=non-numeric-pid value=${line}"
+      return 1
+      ;;
+  esac
+  case "$owner" in
+    ''|*[!0-9]*)
+      _ppo_log "event=run_pgid_refused reason=non-numeric-owner value=${line}"
+      return 1
+      ;;
+  esac
+  if [ "$pid" -le 1 ]; then
+    _ppo_log "event=run_pgid_refused reason=pid-out-of-range value=${line}"
+    return 1
+  fi
+  if [ "$pid" -eq "$self_pgid" ]; then
+    _ppo_log "event=run_pgid_refused reason=self-pgid value=${line}"
+    return 1
+  fi
+  if [ "$owner" != "$self_pid" ]; then
+    # Expected for a foreign/stale entry in a shared session dir -- not
+    # logged as a refusal, see the header comment above.
+    return 1
+  fi
+  kill -0 "$pid" 2>/dev/null || return 1
+  printf '%s\n' "$pid"
+  return 0
+}
+
 # _ppo_run_kill_children — terminate every background hook invocation THIS
 # `run` call spawned (ppo/run-pids), with a short bound, before the trap
 # moves on to teammate/reservation cleanup. `run`+hook is the only place in
@@ -1920,30 +2001,50 @@ ppo_run_sprint() {
 # stub controlling its own signal handling. This is swept BEFORE run-pids so
 # a stalled hook's grandchild dies before this function starts waiting on the
 # wrapper subshell it is nested under.
+#
+# run-pgids is append-only (see where it is populated, above) and never
+# filtered down to "just the live ones" before this function reads it --
+# every line, including long-reaped entries from earlier dispatches in the
+# SAME run, is re-validated through _ppo_run_pgid_owned on every pass here.
+# That revalidation (owner match + kill -0) is what makes the missing
+# self-removal harmless rather than a leak: a reaped entry simply fails the
+# liveness check and is skipped, exactly like one this run never started.
 _ppo_run_kill_children() {
-  local f pid
+  local f pid self_pid self_pgid line valid_pgids
+  self_pid=$$
+  self_pgid="$(ps -o pgid= -p "$self_pid" 2>/dev/null | tr -d ' ')"
   f="$(_ppo_engine_dir)/run-pgids"
   if [ -f "$f" ]; then
-    while IFS= read -r pid; do
+    # Validated ONCE per sweep (not re-parsed per phase below): every raw
+    # line goes through _ppo_run_pgid_owned exactly one time here, so a
+    # malformed/refused line is logged once, not three times.
+    valid_pgids=""
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      pid="$(_ppo_run_pgid_owned "$line" "$self_pid" "$self_pgid")" || continue
+      valid_pgids="${valid_pgids}${pid}
+"
+    done < "$f"
+    printf '%s' "$valid_pgids" | while IFS= read -r pid; do
       [ -n "$pid" ] || continue
       kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
-    done < "$f"
+    done
     local pg_waited=0
     while :; do
       local pg_still=0
-      while IFS= read -r pid; do
+      pg_still="$(printf '%s' "$valid_pgids" | while IFS= read -r pid; do
         [ -n "$pid" ] || continue
-        kill -0 "$pid" 2>/dev/null && pg_still=$((pg_still + 1))
-      done < "$f"
-      [ "$pg_still" -eq 0 ] && break
+        kill -0 "$pid" 2>/dev/null && printf '.'
+      done | wc -c | tr -d ' ')"
+      [ "${pg_still:-0}" -eq 0 ] && break
       pg_waited=$((pg_waited + 1))
       [ "$pg_waited" -ge 20 ] && break
       sleep 0.1
     done
-    while IFS= read -r pid; do
+    printf '%s' "$valid_pgids" | while IFS= read -r pid; do
       [ -n "$pid" ] || continue
       kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-    done < "$f"
+    done
   fi
 
   f="$(_ppo_engine_dir)/run-pids"
