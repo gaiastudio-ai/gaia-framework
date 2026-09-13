@@ -54,7 +54,48 @@ setup() {
   export GAIA_MODE_B_SUBSTRATE=available
 }
 
-teardown() { common_teardown; }
+teardown() {
+  _assert_no_stub_processes_leaked
+  common_teardown
+}
+
+# _assert_no_stub_processes_leaked — fail THIS test (not just clean up
+# quietly) if any process this test started under its own $TEST_TMP is still
+# alive when it ends. $TEST_TMP is unique per test (test_helper.bash names it
+# gaia-<test-slug>-$$ under bats' own per-test tmpdir), and every dispatch
+# stub this file's tests install lives under "$TEST_TMP/bin" -- so any
+# stub/timeout/hook-grandchild process still around at teardown carries
+# $TEST_TMP somewhere in its own argv or an ancestor's, making `pgrep -f
+# "$TEST_TMP"` a marker unique to exactly this test, never a sibling running
+# concurrently in a different $TEST_TMP. A leak here means
+# _ppo_run_kill_children (or a test driving `run` outside its trap, e.g. via
+# a hand-rolled background process) failed to reap something -- that must
+# turn this test red, not be silently swept away, or a regression in the
+# product's own cleanup would go unnoticed forever.
+_assert_no_stub_processes_leaked() {
+  [ -n "${TEST_TMP:-}" ] || return 0
+  command -v pgrep >/dev/null 2>&1 || return 0
+
+  local survivors
+  survivors="$(pgrep -f "$TEST_TMP" 2>/dev/null || true)"
+  [ -z "$survivors" ] && return 0
+
+  # Force-kill so a leak from THIS test cannot also poison the next one, but
+  # the leak itself still fails the test -- cleanup and the assertion are
+  # separate concerns; a killed-but-unreported leak would just mask a real
+  # product regression under a green suite.
+  local pid
+  for pid in $survivors; do
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+
+  {
+    printf 'process leak: %s survived teardown under $TEST_TMP=%s\n' \
+      "$(printf '%s' "$survivors" | tr '\n' ' ')" "$TEST_TMP"
+    ps -o pid,ppid,pgid,command -p $survivors 2>/dev/null || true
+  } >&2
+  return 1
+}
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -2927,6 +2968,106 @@ _mk_yaml_raw() {
 }
 
 # ---------------------------------------------------------------------------
+# Hermeticity: a stalled hook's own grandchild dies with the RUN it belongs
+# to, not just the hook process `run` itself tracks (AC-EC5, AC4)
+# ---------------------------------------------------------------------------
+#
+# `timeout` (see the header comment where run-pgids is populated in
+# ppo_run_sprint) puts ITSELF in a new process group by default, so its OWN
+# internal expiry already reaches its whole group -- that path was never
+# broken. What WAS broken: `run`'s INT/TERM trap killing only the wrapper
+# subshell's pid (ppo/run-pids) while a hook invocation is still in flight.
+# `timeout` forks as a genuinely separate process (the `local hrc=0`
+# statement ahead of it in the subshell defeats bash's single-command
+# exec-replacement optimisation), so it is NOT in the wrapper subshell's own
+# process group -- a signal to the subshell alone never reaches `timeout` or
+# anything IT goes on to fork (e.g. this stub's own `sleep 3600` in its
+# stall:<key> branch). This is exactly the shape the CI orphan report named:
+# a `timeout` -> `bash` -> `sleep` chain outliving the SIGTERM'd `run`.
+#
+# Waits on the stub's OWN dispatch.log line (not the teammate registry count)
+# before signalling: `ppo_next`'s real admission can register a teammate
+# BEFORE the hook subshell's `timeout` has forked, so signalling on registry
+# count alone risks killing `run` while it is still inside that first
+# `ppo_next` call -- before there is any hook-owned process tree to leak in
+# the first place, proving nothing about this fix.
+
+@test "a stalled hook's own grandchild sleep does not survive a SIGTERM to run (AC-EC5)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" stall:K1)"
+  PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
+  export GAIA_STUB_STATE="$TEST_TMP/stubstate"
+
+  env PATH="$PATH" GAIA_SESSION_DIR="$GAIA_SESSION_DIR" \
+      GAIA_PARALLEL_EXECUTION=1 GAIA_WORKTREE_MODE=1 \
+      GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story GAIA_STUB_STATE="$GAIA_STUB_STATE" \
+      bash -c '
+        . "'"$ORCH"'"
+        ppo_run_sprint --repo "'"$repo"'" --yaml "'"$yaml"'" --slots 2
+      ' &
+  local runner_bg=$!
+
+  # Wait for the STUB itself to have started (its own dispatch-times.log line
+  # for K1), not merely a registry entry -- this is the moment the hook
+  # subshell's `timeout K1-stub` has actually forked and the stub has reached
+  # its stall:K1 branch's `sleep 3600`, i.e. the process tree this fix must
+  # reap actually exists to leak.
+  local waited=0
+  while ! grep -q '^K1 ' "$GAIA_STUB_STATE/dispatch-times.log" 2>/dev/null; do
+    waited=$((waited + 1))
+    [ "$waited" -lt 150 ] || { echo "the stub never recorded a K1 dispatch: $(cat "$GAIA_STUB_STATE/dispatch-times.log" 2>/dev/null)"; kill -TERM "$runner_bg" 2>/dev/null || true; return 1; }
+    sleep 0.1
+  done
+  # A short settle so the stub's OWN `sleep 3600` (forked from inside its
+  # stall:K1 branch, after the dispatch-times.log line is written) has time
+  # to actually exist as a process before this test signals `run` -- the
+  # write above happens a few lines before the stub reaches `sleep 3600`.
+  sleep 0.2
+
+  command -v pgrep >/dev/null 2>&1 || skip "no pgrep to enumerate the timeout process"
+  # The `timeout` invocation wrapping this stub is identifiable by its own
+  # argv (it names the stub command and the story key directly) -- capture
+  # its pid BEFORE signalling `run`, because `timeout`'s pid IS the pgid of
+  # the whole group it and its descendants (the stub, and the stub's own
+  # `sleep 3600`) belong to (see the header comment above and where
+  # run-pgids is populated in ppo_run_sprint): a survivor anywhere in that
+  # group after cleanup -- not just `timeout` itself -- is the leak this test
+  # exists to catch, and grep on `sleep 3600`'s own argv alone would miss it
+  # (an orphaned `sleep 3600` re-parented to init carries no reference back
+  # to this test's stub path in its own command line).
+  local timeout_pid
+  timeout_pid="$(pgrep -f "gaia-dispatch-story K1" 2>/dev/null | head -1)"
+  [ -n "$timeout_pid" ] \
+    || { echo "could not find the timeout process wrapping the K1 stub"; kill -TERM "$runner_bg" 2>/dev/null || true; return 1; }
+
+  kill -TERM "$runner_bg"
+
+  local w=0
+  while kill -0 "$runner_bg" 2>/dev/null; do
+    w=$((w + 1))
+    [ "$w" -lt 100 ] || { echo "runner did not exit after SIGTERM"; kill -KILL "$runner_bg" 2>/dev/null || true; return 1; }
+    sleep 0.1
+  done
+  wait "$runner_bg" 2>/dev/null || true
+
+  local leaked
+  leaked="$(pgrep -g "$timeout_pid" 2>/dev/null || true)"
+  if [ -n "$leaked" ]; then
+    {
+      echo "process(es) survived SIGTERM to run, still in timeout's own group ($timeout_pid):"
+      ps -o pid,ppid,pgid,command -p $leaked 2>/dev/null
+    } >&2
+    kill -KILL -- "-$timeout_pid" 2>/dev/null || true
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # resolve-story-file.sh exit 2 (ambiguous) is distinct from exit 1
 # ---------------------------------------------------------------------------
 
@@ -3500,6 +3641,81 @@ AUDIT
   body="$(sed -n '/^_ppo_record_outcome_locked() {/,/^}/p' "$ORCH")"
   printf '%s\n' "$body" | grep -q '_ppo_validate_key "\$key"' \
     || { echo "_ppo_record_outcome_locked no longer validates its key argument before building a path"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Defense-in-depth: every direct key->path builder re-validates its own key
+# (AC2)
+# ---------------------------------------------------------------------------
+#
+# _ppo_mnd_count, _ppo_mnd_bump, _ppo_mnd_open_mark, _ppo_mnd_open_clear, and
+# ppo_slot_scratch_for each turn a raw key argument into a path fragment
+# under $GAIA_SESSION_DIR. Every caller today already validates the key
+# before reaching these (ppo_next's admission loop, ppo_record_outcome), so
+# this is defense in depth, not the primary gate the tests above already
+# cover for `record`. Called directly (not through record/next) so a future
+# caller added without that upstream discipline is still caught here rather
+# than assumed safe by inheritance.
+
+@test "every direct key builder refuses a traversal key and touches nothing outside the session dir (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  _ppo_state_reset
+
+  local victim_dir="$TEST_TMP/outside-session-builders"
+  mkdir -p "$victim_dir"
+  printf 'do not touch\n' > "$victim_dir/victim"
+
+  local state_dir depth dots key
+  state_dir="$(_ppo_state_dir)"
+  depth="$(printf '%s' "$state_dir" | awk -F'/' '{print NF-1}')"
+  dots="$(python3 -c "print('/'.join(['..']*$depth))" 2>/dev/null)" \
+    || skip "no python3 to compute the traversal depth"
+  key="${dots}${victim_dir}/victim"
+
+  run _ppo_mnd_count "$key"
+  [ "$status" -ne 0 ] \
+    || { echo "_ppo_mnd_count accepted a traversal key (exit 0)"; return 1; }
+
+  run _ppo_mnd_bump "$key"
+  [ "$status" -ne 0 ] \
+    || { echo "_ppo_mnd_bump accepted a traversal key (exit 0)"; return 1; }
+
+  run _ppo_mnd_open_mark "$key"
+  [ "$status" -ne 0 ] \
+    || { echo "_ppo_mnd_open_mark accepted a traversal key (exit 0)"; return 1; }
+
+  run _ppo_mnd_open_clear "$key"
+  [ "$status" -ne 0 ] \
+    || { echo "_ppo_mnd_open_clear accepted a traversal key (exit 0)"; return 1; }
+
+  GAIA_SESSION_DIR="$TEST_TMP/session-for-scratch" run ppo_slot_scratch_for "$key"
+  [ "$status" -ne 0 ] \
+    || { echo "ppo_slot_scratch_for accepted a traversal key (exit 0)"; return 1; }
+
+  [ -f "$victim_dir/victim" ] \
+    || { echo "CRITICAL: a traversal key touched a file outside the session dir"; return 1; }
+  [ "$(cat "$victim_dir/victim")" = "do not touch" ] \
+    || { echo "CRITICAL: the victim file survived but was modified"; return 1; }
+}
+
+@test "removing key validation from a direct builder re-opens the traversal (mutant) (AC2)" {
+  # Source-level mutant proof mirroring the record-verb pattern above: assert
+  # each builder's guard clause is present in its shipped body, so deleting
+  # the _ppo_validate_key call from any ONE of these five functions (reverting
+  # to building the path straight from the raw argument) turns this red. The
+  # behavioural test above already proves the outcome; this proves it is not
+  # achievable by some other code path that could regress back to the gap
+  # this fix closes without that test noticing.
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+
+  local fn body
+  for fn in _ppo_mnd_count _ppo_mnd_bump _ppo_mnd_open_mark _ppo_mnd_open_clear ppo_slot_scratch_for; do
+    body="$(sed -n "/^${fn}() {/,/^}/p" "$ORCH")"
+    [ -n "$body" ] \
+      || { echo "could not locate the ${fn} function body in $ORCH"; return 1; }
+    printf '%s\n' "$body" | grep -q '_ppo_validate_key "\${1:-}"' \
+      || { echo "${fn} no longer validates its key argument before building a path"; return 1; }
+  done
 }
 
 # ---------------------------------------------------------------------------

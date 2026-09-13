@@ -113,24 +113,36 @@ _ppo_log() { printf '%s: %s\n' "$_PPO_NAME" "$*" >&2; }
 _ppo_emit() { printf '%s\n' "$*"; }
 
 # _ppo_validate_key <key> — the ONE charset quarantine for every story key
-# this file ever turns into a path fragment (ppo/running/<key>,
-# ppo/retries/<key>, ppo/resolve-cache/<key>, ppo-state/mnd(open)-<key>, the
-# registry's .reserved-<key> token). A key is data from the sprint yaml or
-# from a CLI caller (record/status are invoked with a key argument by a
-# process outside this file's control), never a value this file itself
-# constructs -- so it is validated BEFORE it touches any path expression,
-# not after. Bounded charset (`[A-Za-z0-9._-]`), no `..` traversal segment
-# anywhere in the string (catches `..` embedded via `.` characters even when
-# every individual character is otherwise allowed, e.g. `a/../../etc`),
-# non-empty, and length-bounded (200 is generously above any real story key
-# -- E<epic>-S<story> plus slug -- and exists only to refuse a pathological
-# argument outright rather than debate a "reasonable" limit).
+# this file ever turns into a path fragment. Every key->path builder in this
+# file:
+#   ppo/running/<key>, ppo/retries/<key>, ppo/resolve-cache/<key>  (engine dir)
+#   the registry's .reserved-<key> token       (_ppo_admit_bookkeeping here,
+#                                                and dispatch-teammate.sh)
+#   ppo-state/mnd-<key>, ppo-state/mndopen-<key>       (_ppo_mnd_count,
+#                                                        _ppo_mnd_bump,
+#                                                        _ppo_mnd_open_mark,
+#                                                        _ppo_mnd_open_clear)
+#   session-dir/slots/<key>                             (ppo_slot_scratch_for)
+# A key is data from the sprint yaml or from a CLI caller (record/status are
+# invoked with a key argument by a process outside this file's control),
+# never a value this file itself constructs -- so it is validated BEFORE it
+# touches any path expression, not after. Bounded charset
+# (`[A-Za-z0-9._-]`), no `..` traversal segment anywhere in the string
+# (catches `..` embedded via `.` characters even when every individual
+# character is otherwise allowed, e.g. `a/../../etc`), non-empty, and
+# length-bounded (200 is generously above any real story key -- E<epic>-S<story>
+# plus slug -- and exists only to refuse a pathological argument outright
+# rather than debate a "reasonable" limit).
 #
 # Every verb or internal function that derives ANY path from a key MUST call
 # this, and refuse (non-zero, nothing built) before constructing that path,
 # rather than build first and check the result: an already-built path string
 # has already done the traversal arithmetic a later check could only
-# re-detect, never undo.
+# re-detect, never undo. The five builders listed above call it directly as
+# defense in depth even though every caller today already validates the key
+# upstream (ppo_next's admission loop, ppo_record_outcome, and friends) --
+# a future caller added without that discipline must not silently regain the
+# gap this function exists to close.
 _ppo_validate_key() {
   local key="${1:-}"
   [ -n "$key" ] || return 1
@@ -421,8 +433,13 @@ ppo_session_dir_for() {
 
 # ppo_slot_scratch_for <story_key> — per-slot scratch under the shared session
 # dir. Retained after the run: deleting the evidence of a failed parallel run
-# is worse than leaving one small directory per story.
+# is worse than leaving one small directory per story. Defense in depth:
+# every caller today already validates the key before reaching here, but this
+# builder turns a key into a path fragment same as the others in
+# _ppo_validate_key's header inventory, so it re-checks rather than trusting
+# caller discipline alone.
 ppo_slot_scratch_for() {
+  _ppo_validate_key "${1:-}" || return 1
   printf '%s/slots/%s' "${GAIA_SESSION_DIR:-}" "$1"
 }
 
@@ -1353,14 +1370,15 @@ _ppo_apply_mnd_clean() {
   _ppo_record "$key" "done" "$p"
 }
 
-# ppo_requeue <key> — release this story's admission WITHOUT recording any
+# _ppo_requeue <key> — release this story's admission WITHOUT recording any
 # ledger outcome, and put it back at the FRONT of pending. This is the
 # capacity/fallback path (`run`+hook's exit 7/8, mirroring the pre-engine
 # reap's identical re-queue-on-8 and degrade-on-7 behaviour): a saturated
 # ceiling or an unavailable substrate is a property of the RUN, never of the
 # story, so it must never appear as `done`/`failed` in the ledger, and the
 # story must get another chance to be admitted rather than being dropped.
-ppo_requeue() {
+# Private: not a CLI verb, called only from the `run` hook's exit-7/8 path.
+_ppo_requeue() {
   _ppo_engine_lock_run _ppo_requeue_locked "$@"
 }
 
@@ -1486,8 +1504,13 @@ ppo_peak_concurrency() {
 
 # _ppo_mnd_count <story_key> / _ppo_mnd_bump <story_key> — how many times a
 # merged-but-not-done story has been re-dispatched on the resume path. Kept in
-# the run's state dir so it survives the subshells the reap runs in.
+# the run's state dir so it survives the subshells the reap runs in. Defense
+# in depth: every caller today already validates the key upstream (see
+# _ppo_validate_key's header inventory), but this builder turns a key into a
+# path fragment same as the others, so it re-checks rather than trusting
+# caller discipline alone.
 _ppo_mnd_count() {
+  _ppo_validate_key "${1:-}" || { printf '0'; return 1; }
   local d f
   d="$(_ppo_state_dir)" || return 0
   f="$d/mnd-$1"
@@ -1497,6 +1520,7 @@ _ppo_mnd_count() {
 }
 
 _ppo_mnd_bump() {
+  _ppo_validate_key "${1:-}" || return 1
   local d
   d="$(_ppo_state_dir)" || return 0
   mkdir -p "$d" 2>/dev/null || return 0
@@ -1505,14 +1529,20 @@ _ppo_mnd_bump() {
 
 # _ppo_mnd_open_mark <key> / _ppo_mnd_open_clear <key> — the set of stories
 # that are merged-but-not-done RIGHT NOW, i.e. re-queued and not yet terminal.
-# A story leaves the set when it reaches done or runs out of retries.
+# A story leaves the set when it reaches done or runs out of retries. Defense
+# in depth: every caller today already validates the key upstream (see
+# _ppo_validate_key's header inventory), but these builders turn a key into a
+# path fragment same as the others, so they re-check rather than trusting
+# caller discipline alone.
 _ppo_mnd_open_mark() {
+  _ppo_validate_key "${1:-}" || return 1
   local d; d="$(_ppo_state_dir)" || return 0
   mkdir -p "$d" 2>/dev/null || return 0
   : > "$d/mndopen-$1" 2>/dev/null || true
 }
 
 _ppo_mnd_open_clear() {
+  _ppo_validate_key "${1:-}" || return 1
   local d; d="$(_ppo_state_dir)" || return 0
   rm -f "$d/mndopen-$1" 2>/dev/null || true
 }
@@ -1639,9 +1669,12 @@ _ppo_record() {
 # by exact string, and is then driven to completion via the gated test-only
 # dispatch hook (GAIA_PPO_DISPATCH_CMD, see this file's header) -- this is
 # the ONLY place `run` still backgrounds anything, and its own children are
-# tracked (ppo/run-pids) and terminated from the trap so a killed `run`
-# exits promptly instead of waiting on a stalled hook invocation (see the
-# header note on ppo_shutdown_live_teammates).
+# tracked (ppo/run-pids, and ppo/run-pgids for the process GROUP each
+# in-flight `timeout` invocation owns) and terminated from the trap so a
+# killed `run` exits promptly instead of waiting on a stalled hook
+# invocation, and so that hook's own descendants (e.g. a stub's grandchild
+# sleep) do not survive as orphans either (see the header note on
+# ppo_shutdown_live_teammates and _ppo_run_kill_children's own comment).
 # `barrier`/`sprint_complete` from ppo_next need no translation -- they were
 # never part of the legacy vocabulary any test pins.
 #
@@ -1688,6 +1721,7 @@ ppo_run_sprint() {
   trap '_ppo_run_kill_children; ppo_shutdown_live_teammates; ppo_release_reservations; exit 0' INT TERM
   trap '_ppo_run_kill_children; ppo_shutdown_live_teammates; ppo_release_reservations' EXIT
   : > "$(_ppo_engine_dir)/run-pids" 2>/dev/null || true
+  : > "$(_ppo_engine_dir)/run-pgids" 2>/dev/null || true
 
   # GAIA_PPO_DISPATCH_CMD is an arbitrary-command hook: whatever it names
   # runs with the story key as its only argument. Honoured ONLY under the
@@ -1767,8 +1801,36 @@ ppo_run_sprint() {
           slot_seq=$((slot_seq + 1))
           _ppo_emit "event=dispatched story=${key} phase=${phase_val} slot=${slot_seq}"
           (
-            local hrc=0
-            timeout "$budget" "$GAIA_PPO_DISPATCH_CMD" "$key" >/dev/null 2>&1 || hrc=$?
+            local hrc=0 tpid=""
+            # `timeout` (GNU coreutils, the only implementation this file
+            # assumes -- see the header) puts ITSELF in a new process group
+            # by default (its own --foreground flag documents the opposite:
+            # "children of COMMAND will not be timed out" when foreground
+            # mode is requested) precisely so it can deliver its own timeout
+            # signal to everything it started, including grandchildren a
+            # dispatch hook or stub forks (e.g. this suite's stall:<key>
+            # fixture, which sleeps under a `bash -c` the hook itself
+            # spawns). That means `timeout`'s own pid IS the pgid of that
+            # group -- backgrounding `timeout` here (instead of running it
+            # in the foreground of this already-backgrounded subshell) is
+            # what makes that pid observable to record into run-pgids,
+            # below, so a killed `run` can reach the whole group the SAME
+            # way `timeout`'s own internal expiry already does, rather than
+            # only the wrapper subshell one level up (which `timeout`
+            # deliberately does not share a group with).
+            timeout "$budget" "$GAIA_PPO_DISPATCH_CMD" "$key" >/dev/null 2>&1 &
+            tpid=$!
+            echo "$tpid" >> "$(_ppo_engine_dir)/run-pgids"
+            wait "$tpid" || hrc=$?
+            # Reaped on its own (the common case): drop it from run-pgids so
+            # a long run does not accumulate one stale, already-dead entry
+            # per dispatch, and so _ppo_run_kill_children's cleanup sweep
+            # never sends a signal to a pgid number the kernel may since
+            # have reused for an unrelated process.
+            if [ -f "$(_ppo_engine_dir)/run-pgids" ]; then
+              grep -v -x "$tpid" "$(_ppo_engine_dir)/run-pgids" > "$(_ppo_engine_dir)/run-pgids.tmp" 2>/dev/null || :
+              mv "$(_ppo_engine_dir)/run-pgids.tmp" "$(_ppo_engine_dir)/run-pgids" 2>/dev/null || true
+            fi
             [ "$hrc" -eq 124 ] && hrc=9
             case "$hrc" in
               0) ppo_record_outcome "$key" "done"; _ppo_engine_put ceiling-refusals 0 ;;
@@ -1799,7 +1861,7 @@ ppo_run_sprint() {
                 # NOT called, so the ledger never sees this as a completion.
                 # Counted toward the giveup bound the run loop checks above --
                 # a ceiling that DOES free resets it on the next real success.
-                ppo_requeue "$key"
+                _ppo_requeue "$key"
                 local _cr; _cr="$(_ppo_engine_get ceiling-refusals)"
                 _ppo_engine_put ceiling-refusals $(( ${_cr:-0} + 1 ))
                 ;;
@@ -1809,7 +1871,7 @@ ppo_run_sprint() {
                 # whole run degraded so the next ppo_next call (and `run`'s
                 # own loop) surfaces mode=sequential exactly as the
                 # pre-engine inline reap did.
-                ppo_requeue "$key"
+                _ppo_requeue "$key"
                 _ppo_engine_lock_run _ppo_engine_put mode "mode=sequential reason=mode-b-fallback — the agent substrate is unavailable; running sequentially in phase order"
                 ;;
               *) ppo_record_outcome "$key" "failed"; _ppo_engine_put ceiling-refusals 0 ;;
@@ -1845,8 +1907,45 @@ ppo_run_sprint() {
 # ppo_record_outcome never do) -- so this is the only place left that can
 # leave an orphan behind a killed parent, and it is scoped to exactly the
 # pids this run itself started.
+#
+# run-pids holds the wrapper subshell's own pid per dispatch -- killing that
+# alone is NOT enough: `timeout` (see the comment where run-pgids is
+# populated, above) puts itself in its own new process group, so a signal to
+# the subshell never reaches `timeout` or anything `timeout`'s command goes
+# on to fork (e.g. a stub's own `bash -c 'sleep 3600'`). run-pgids holds
+# `timeout`'s own pid for each in-flight dispatch, which IS the pgid of that
+# group -- `kill -TERM -- "-<pid>"` (the negative form) signals the whole
+# group in one call, on both macOS and Linux, with no dependency on a
+# setsid(1) command-line tool (util-linux only, absent on macOS) or on the
+# stub controlling its own signal handling. This is swept BEFORE run-pids so
+# a stalled hook's grandchild dies before this function starts waiting on the
+# wrapper subshell it is nested under.
 _ppo_run_kill_children() {
   local f pid
+  f="$(_ppo_engine_dir)/run-pgids"
+  if [ -f "$f" ]; then
+    while IFS= read -r pid; do
+      [ -n "$pid" ] || continue
+      kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+    done < "$f"
+    local pg_waited=0
+    while :; do
+      local pg_still=0
+      while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        kill -0 "$pid" 2>/dev/null && pg_still=$((pg_still + 1))
+      done < "$f"
+      [ "$pg_still" -eq 0 ] && break
+      pg_waited=$((pg_waited + 1))
+      [ "$pg_waited" -ge 20 ] && break
+      sleep 0.1
+    done
+    while IFS= read -r pid; do
+      [ -n "$pid" ] || continue
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+    done < "$f"
+  fi
+
   f="$(_ppo_engine_dir)/run-pids"
   [ -f "$f" ] || return 0
   while IFS= read -r pid; do
