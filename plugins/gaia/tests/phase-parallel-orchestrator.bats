@@ -3840,6 +3840,23 @@ _kill_probe_group() {
   kill -KILL -- "-$ppid" 2>/dev/null || kill -KILL "$ppid" 2>/dev/null || true
 }
 
+@test "an unknown own process group refuses every run-pgids entry instead of failing open (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local probedir="$TEST_TMP/probe"
+  _spawn_probe_group "$probedir" || skip "could not start a probe process group"
+  local probe_pid; probe_pid="$(cat "$probedir/probe.pid")"
+  local self_pid=$$ out
+  # ps(1) unavailable / odd output => self_pgid empty or non-numeric. A
+  # legitimately owned, alive probe entry must STILL be refused, because the
+  # gate can no longer prove the entry is not the caller's own group.
+  out="$(_ppo_run_pgid_owned "${probe_pid}|owner:${self_pid}" "$self_pid" "" 2>&1)" && { echo "entry accepted with an empty self pgid: $out"; _kill_probe_group "$probedir"; return 1; }
+  [[ "$out" == *"reason=self-pgid-unknown"* ]] || { echo "empty self pgid was not refused with its own reason: $out"; _kill_probe_group "$probedir"; return 1; }
+  out="$(_ppo_run_pgid_owned "${probe_pid}|owner:${self_pid}" "$self_pid" "not-a-pgid" 2>&1)" && { echo "entry accepted with a garbage self pgid: $out"; _kill_probe_group "$probedir"; return 1; }
+  [[ "$out" == *"reason=self-pgid-unknown"* ]] || { echo "garbage self pgid was not refused with its own reason: $out"; _kill_probe_group "$probedir"; return 1; }
+  kill -0 "$probe_pid" 2>/dev/null || { echo "the probe process died: the gate signalled despite refusing"; return 1; }
+  _kill_probe_group "$probedir"
+}
+
 @test "run-pgids entries 0, 1, negative, non-numeric, empty and own-pgid are refused, nothing signalled (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local probedir="$TEST_TMP/probe"

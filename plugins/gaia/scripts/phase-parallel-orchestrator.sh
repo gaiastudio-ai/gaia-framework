@@ -1967,6 +1967,15 @@ _ppo_run_pgid_owned() {
     _ppo_log "event=run_pgid_refused reason=pid-out-of-range value=${line}"
     return 1
   fi
+  # The self-pgid guard is only as good as the pgid it compares against: if
+  # ps(1) was unavailable or printed something odd, an empty or non-numeric
+  # self_pgid must REFUSE every entry (fail closed), never let one through.
+  case "$self_pgid" in
+    ''|*[!0-9]*)
+      _ppo_log "event=run_pgid_refused reason=self-pgid-unknown value=${line}"
+      return 1
+      ;;
+  esac
   if [ "$pid" -eq "$self_pgid" ]; then
     _ppo_log "event=run_pgid_refused reason=self-pgid value=${line}"
     return 1
