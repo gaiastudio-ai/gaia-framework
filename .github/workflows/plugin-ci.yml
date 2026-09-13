@@ -35,11 +35,14 @@ jobs:
     runs-on: ubuntu-latest
     # Timeout has been bumped progressively as the suite grew. The suite now
     # exceeds 7600 tests; raw bats runs 4-5 minutes on CI and setup + coverage
-    # upload push past the previous cap on large cascade additions. The 240s
-    # soft budget enforced by bats-budget-watch.sh remains the actionable
-    # signal for fixture authors. Revisit if raw bats consistently exceeds
-    # ~12 minutes.
-    timeout-minutes: 15
+    # upload push past the previous cap on large cascade additions. Bumped
+    # 15->25 for the slot-based phase-parallel orchestrator suite, which
+    # drives real worktrees, real locks, and real backgrounded processes
+    # under SIGTERM and pushed the monolithic job's wall clock past 15
+    # minutes on the runner. The 240s soft budget enforced by
+    # bats-budget-watch.sh remains the actionable signal for fixture authors.
+    # Revisit if raw bats consistently exceeds ~20 minutes.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0

@@ -32,15 +32,57 @@ finished. This skill is a thin driver — all scheduling lives in
 `scripts/phase-parallel-orchestrator.sh`, so the rules below describe tested
 behaviour rather than instructions an agent must remember.
 
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" \
-  --repo "${PROJECT_PATH:-.}" \
-  --yaml "${PROJECT_ROOT}/.gaia/state/sprint-status.yaml"
-```
+The orchestrator is a re-entrant step engine, not a script that blocks until
+the sprint finishes: it admits and tracks stories, but only this skill's own
+turn can actually drive a dev-agent through a story (spawning and messaging a
+teammate is a live tool call, not something a background script can do on
+its own). So this skill loops, one real turn at a time:
 
-Each slot dispatches one stack developer to run `/gaia-dev-story` for its
-story. The story workflow is unchanged: this skill schedules it, it does not
-reimplement it.
+1. **Plan once**, at the start of the run:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" plan \
+     --repo "${PROJECT_PATH:-.}" \
+     --yaml "${PROJECT_ROOT}/.gaia/state/sprint-status.yaml"
+   ```
+   This runs every degradation check up front and prints `mode=parallel
+   reason=none` or `mode=sequential reason=<token>` (see the table below).
+   On `mode=sequential`, run the printed worklist one story at a time and
+   skip the loop below entirely.
+
+2. **Loop `next`, one call per turn**, on `mode=parallel`:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" next
+   ```
+   Each `dispatch story=<key> phase=<n> persona=<stack> worktree=<path>
+   handle=<id>` line names a story this call admitted (a real worktree, a
+   real teammate registry entry) — for each one, spawn that persona's dev
+   agent with the Agent tool in the background on `/gaia-dev-story <key>`
+   inside `worktree`. A `barrier phase=<n> waiting=<count>` line means the
+   phase is full or draining; wait for a dispatched agent to finish before
+   calling `next` again. `sprint_complete` ends the loop.
+
+3. **Report what you observed, per completion**:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" \
+     record <key> <done|failed|timeout|merged>
+   ```
+   `done`/`failed`/`timeout` are exactly what they say. `merged` means the
+   dev agent's branch landed but you have not independently confirmed the
+   review gate closed — the engine runs the real merge/gate audit and
+   decides `done` or a bounded resume re-queue on your behalf; never guess
+   this one yourself.
+
+4. **Check `status` every turn**, and record `timeout` for anything overdue:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" status
+   ```
+   This lists running stories with elapsed time against the per-story
+   budget — there is no other signal for "this dev agent's turn silently
+   died," so an overdue entry is your cue to call `record <key> timeout`
+   rather than waiting indefinitely.
+
+The story workflow itself is unchanged: this skill schedules `/gaia-dev-story`
+runs, it does not reimplement them.
 
 ## Turning concurrency on
 
@@ -74,7 +116,7 @@ explained**. One of these reasons is printed, and the sprint proceeds:
 | `flock-unavailable` | the locking primitive is missing, or forced off |
 | `worktree-mode-off` | per-story isolation is not switched on |
 | `slots-1` | the budget allows no concurrency |
-| `sprint-unreadable` | the sprint file is missing, malformed or unparseable |
+| `sprint-unreadable` | the sprint file is missing, malformed or unparseable — the run still ends cleanly, but with no stories to list |
 | `no-phase-fields` | the sprint parses but carries no phase assignments |
 | `ceiling-cannot-admit` | the agent ceiling is saturated with no headroom |
 | `admission-lock-timeout` | the admission lock could not be acquired, so no story was admitted without it |

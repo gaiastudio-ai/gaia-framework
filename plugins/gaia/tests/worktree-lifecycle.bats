@@ -1343,3 +1343,71 @@ _seed_ignored_build_state() {
     && { echo "the killed run's orphan survived the prune, so it was a no-op"; return 1; }
   return 0
 }
+
+@test "an opted-out create does not re-prune, and the cost stays flat (AC7)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local repo; repo="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+
+  # Pruning walks every live worktree record and spawns a git probe per record,
+  # so an unconditional per-create prune makes each create cost more than the
+  # last. A serial fill loop pays that growth as slot-ramp latency. Count git
+  # invocations rather than timing: a count that grows with the live set is the
+  # defect, and a count is stable on a loaded host where a stopwatch is not.
+  local bin="$TEST_TMP/gitcount"
+  mkdir -p "$bin"
+  cat > "$bin/git" <<SH
+#!/usr/bin/env bash
+printf 'x\n' >> "\${GIT_CALL_LOG:-/dev/null}"
+exec $(command -v git) "\$@"
+SH
+  chmod +x "$bin/git"
+
+  local n first="" last="" calls
+  for n in 1 2 3 4; do
+    GIT_CALL_LOG="$TEST_TMP/calls-$n"; export GIT_CALL_LOG
+    : > "$GIT_CALL_LOG"
+    PATH="$bin:$PATH" GAIA_WORKTREE_PRUNE_ON_CREATE=0 \
+      worktree_create "$repo" "FLAT$n" "slug$n" >/dev/null 2>&1 \
+      || { echo "create FLAT$n failed"; return 1; }
+    calls="$(grep -c . "$GIT_CALL_LOG" 2>/dev/null || printf '0')"
+    [ "$n" -ne 1 ] || first="$calls"
+    last="$calls"
+  done
+  unset GIT_CALL_LOG
+
+  [ "$first" = "$last" ] \
+    || { echo "opted-out create is not flat: first=$first last=$last git calls"; return 1; }
+}
+
+@test "a standalone create still prunes by default (AC7)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local repo; repo="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+
+  # The opt-out moves the zero-orphan guarantee to a caller that already
+  # pruned; it must never silently become the default for callers that did not.
+  local bin="$TEST_TMP/gitcount2"
+  mkdir -p "$bin"
+  cat > "$bin/git" <<SH
+#!/usr/bin/env bash
+printf 'x\n' >> "\${GIT_CALL_LOG:-/dev/null}"
+exec $(command -v git) "\$@"
+SH
+  chmod +x "$bin/git"
+
+  worktree_create "$repo" "PRE" "pre" >/dev/null 2>&1 \
+    || { echo "setup create failed"; return 1; }
+
+  local with_prune without_prune
+  GIT_CALL_LOG="$TEST_TMP/calls-default"; export GIT_CALL_LOG; : > "$GIT_CALL_LOG"
+  PATH="$bin:$PATH" worktree_create "$repo" "DEF" "def" >/dev/null 2>&1
+  with_prune="$(grep -c . "$GIT_CALL_LOG" 2>/dev/null || printf '0')"
+
+  GIT_CALL_LOG="$TEST_TMP/calls-optout"; export GIT_CALL_LOG; : > "$GIT_CALL_LOG"
+  PATH="$bin:$PATH" GAIA_WORKTREE_PRUNE_ON_CREATE=0 \
+    worktree_create "$repo" "OPT" "opt" >/dev/null 2>&1
+  without_prune="$(grep -c . "$GIT_CALL_LOG" 2>/dev/null || printf '0')"
+  unset GIT_CALL_LOG
+
+  [ "$with_prune" -gt "$without_prune" ] \
+    || { echo "the default create no longer prunes: default=$with_prune opted-out=$without_prune"; return 1; }
+}

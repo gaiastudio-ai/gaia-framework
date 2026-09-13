@@ -39,6 +39,7 @@
         <p class="sidebar-section-title">On this page</p>
         <ul>
           <li><a href="#overview">Overview</a></li>
+          <li><a href="#how-it-runs">How it runs</a></li>
           <li><a href="#comparison">Mode A vs Mode B</a></li>
           <li><a href="#enable">How to enable</a></li>
           <li><a href="#windowed-teammates">Windowed Teammates UX</a></li>
@@ -59,6 +60,34 @@
       <p>Each slot runs one story through the ordinary story workflow, in its
       own worktree. Nothing about how a single story is developed changes —
       this command only decides what runs when.</p>
+
+      <h2 id="how-it-runs">How it runs</h2>
+
+      <p>The scheduler admits and tracks stories, but only a live turn can
+      actually drive a story's dev agent — no background process can send it
+      a message on its own. So the command works as a loop: it plans once,
+      then repeatedly asks the scheduler which stories are ready, spawns a
+      dev agent for each one, and reports back what happened once that agent
+      finishes.</p>
+
+      <ol>
+        <li><strong>Plan</strong> runs every degradation check up front and
+        prints <code>mode=parallel</code> or a <code>mode=sequential
+        reason=&lt;token&gt;</code> line (see the table below).</li>
+        <li><strong>Admit</strong> asks the scheduler which stories are ready
+        to start. Each one gets a real worktree and a real dev-agent slot;
+        a <em>barrier</em> line means the current phase is full or still
+        finishing, and a <em>complete</em> line means the sprint is done.</li>
+        <li><strong>Dispatch</strong> spawns the story's stack developer
+        against its own worktree, in the background.</li>
+        <li><strong>Report</strong> tells the scheduler what happened once a
+        dispatched agent finishes — done, failed, timed out, or merged (in
+        which case the scheduler independently confirms the review gate
+        closed before it counts the story as finished).</li>
+      </ol>
+
+      <p>Steps 2-4 repeat until every story in every phase has reported a
+      final outcome.</p>
 
       <h2>Turning concurrency on</h2>
 

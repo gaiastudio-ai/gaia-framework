@@ -43,6 +43,28 @@
 #   - tests/fixtures/completion-notes-deferral/   — E88-S4 fixtures; contain
 #                                                    deferral phrases by design.
 #   - knowledge/adrs/ADR-107*.md              — ADR-107 prose if/when stored here.
+#   - tests/phase-parallel-orchestrator.bats  — the slot-based phase-parallel
+#                                                orchestrator suite; "spawns"/"dispatches"/
+#                                                "calls" appear only in ordinary
+#                                                prose describing the dispatch
+#                                                orchestrator under test (error
+#                                                messages, test names, code
+#                                                comments) -- never reproduced
+#                                                together as a taxonomy list.
+#                                                A test suite for the dispatch
+#                                                surface itself is exactly the
+#                                                natural-prose case this
+#                                                audit's own header carves out.
+#   - scripts/phase-parallel-orchestrator.sh  — the slot-based phase-parallel
+#                                                orchestrator itself; same rationale as its
+#                                                test suite above -- the file's
+#                                                whole subject is dispatch, so
+#                                                its own header/inline comments
+#                                                naturally use "invokes",
+#                                                "dispatches" and "calls" in
+#                                                ordinary prose describing what
+#                                                the code does, never as a
+#                                                reproduced taxonomy list.
 
 load 'test_helper.bash'
 
@@ -85,6 +107,8 @@ _allowed_paths_regex() {
 ^tests/dpd-traceability-class\.bats$
 ^tests/meeting-dispatch-integration\.bats$
 ^knowledge/adrs/ADR-107.*\.md$
+^tests/phase-parallel-orchestrator\.bats$
+^scripts/phase-parallel-orchestrator\.sh$
 EOF
 }
 
