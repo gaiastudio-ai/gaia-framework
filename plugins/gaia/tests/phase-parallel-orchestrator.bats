@@ -35,6 +35,23 @@ setup() {
   export GAIA_WORKTREE_MODE=1
   export GAIA_SESSION_DIR="$TEST_TMP/session"
   mkdir -p "$GAIA_SESSION_DIR"
+
+  # Pin the Mode B substrate to a known state for every test in this suite.
+  # _dt_substrate_available (dispatch-teammate.sh) falls back to reading
+  # CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS from the ambient environment when
+  # GAIA_MODE_B_SUBSTRATE is unset -- a real, user-facing opt-in flag, not a
+  # test knob. A developer's own interactive Claude Code session commonly
+  # has that flag set to 1, so a suite that never pins GAIA_MODE_B_SUBSTRATE
+  # silently inherits "available" locally and "unavailable" on a clean CI
+  # runner (or any shell without that flag) -- every dispatch-hook-driven
+  # test then admits for real locally but degrades the WHOLE run to
+  # mode=sequential on CI, so `dispatch story=...` never appears and the
+  # hook is never invoked: "0 stories dispatched" on every one of them,
+  # nothing to do with locking. Default to `available` here so the suite's
+  # result never depends on which flag happens to be set in the invoking
+  # shell; the one test that exercises the real substrate-unavailable path
+  # (AC4) overrides this locally, exactly as it already did.
+  export GAIA_MODE_B_SUBSTRATE=available
 }
 
 teardown() { common_teardown; }
@@ -2692,10 +2709,10 @@ _mk_yaml_raw() {
 }
 
 # ---------------------------------------------------------------------------
-# GAIA_PPO_DISPATCH_CMD is a test-only hook gated on a test marker (E120-S8)
+# GAIA_PPO_DISPATCH_CMD is a test-only hook gated on a test marker
 # ---------------------------------------------------------------------------
 
-@test "the dispatch hook is honoured under the BATS_TEST_FILENAME marker (E120-S8)" {
+@test "the dispatch hook is honoured under the BATS_TEST_FILENAME marker (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
@@ -2719,7 +2736,7 @@ _mk_yaml_raw() {
     || { echo "no honoured log line: $output"; return 1; }
 }
 
-@test "the dispatch hook is IGNORED (real path used) with no test marker present (E120-S8)" {
+@test "the dispatch hook is IGNORED (real path used) with no test marker present (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
@@ -2756,7 +2773,7 @@ _mk_yaml_raw() {
     || { echo "expected the no-bash-drivable-dispatcher line once the hook was refused: $output"; return 1; }
 }
 
-@test "the dispatch hook is honoured under an explicit GAIA_PPO_ALLOW_DISPATCH_CMD marker with no bats context (E120-S8)" {
+@test "the dispatch hook is honoured under an explicit GAIA_PPO_ALLOW_DISPATCH_CMD marker with no bats context (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
@@ -2783,10 +2800,10 @@ _mk_yaml_raw() {
 }
 
 # ---------------------------------------------------------------------------
-# The run-level trap shuts down every teammate it spawned (E120-S8)
+# The run-level trap shuts down every teammate it spawned
 # ---------------------------------------------------------------------------
 
-@test "SIGTERM to a running orchestrator shuts down its live teammates and clears reservations (E120-S8)" {
+@test "SIGTERM to a running orchestrator shuts down its live teammates and clears reservations (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:1)"
@@ -2851,7 +2868,7 @@ _mk_yaml_raw() {
     || { echo "reservations survived SIGTERM: $(ls "$GAIA_SESSION_DIR/registry"/.reserved-* 2>/dev/null)"; return 1; }
 }
 
-@test "SIGTERM to the production ppo_run_sprint trap tears down a live teammate and exits promptly (E120-S8)" {
+@test "SIGTERM to the production ppo_run_sprint trap tears down a live teammate and exits promptly (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   # Same real admission as the previous test, one story instead of two --
   # pins that the trap actually wired into the production entry point calls
@@ -2910,10 +2927,10 @@ _mk_yaml_raw() {
 }
 
 # ---------------------------------------------------------------------------
-# resolve-story-file.sh exit 2 (ambiguous) is distinct from exit 1 (E120-S8)
+# resolve-story-file.sh exit 2 (ambiguous) is distinct from exit 1
 # ---------------------------------------------------------------------------
 
-@test "an ambiguous story-file resolution refuses to spawn, distinct from not-found (E120-S8)" {
+@test "an ambiguous story-file resolution refuses to spawn, distinct from not-found (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   mkdir -p "$GAIA_SESSION_DIR/registry"
   export GAIA_MODE_B_SUBSTRATE=available
@@ -2947,7 +2964,7 @@ EOF
     || { echo "no distinct ambiguity log line: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
 }
 
-@test "a genuinely absent story file (exit 1) still defaults the persona and proceeds, unlike exit 2 (E120-S8)" {
+@test "a genuinely absent story file (exit 1) still defaults the persona and proceeds, unlike exit 2 (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   mkdir -p "$GAIA_SESSION_DIR/registry"
   export GAIA_MODE_B_SUBSTRATE=available
@@ -2969,10 +2986,10 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# resolve-story-file.sh resolution is memoized per run (E120-S8)
+# resolve-story-file.sh resolution is memoized per run
 # ---------------------------------------------------------------------------
 
-@test "a second resolution of the same key does not invoke the resolver again (E120-S8)" {
+@test "a second resolution of the same key does not invoke the resolver again (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
   _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K1" "ready-for-dev"
@@ -2999,7 +3016,7 @@ EOF
     || { echo "cached and fresh resolutions disagreed: '$first' vs '$second'"; return 1; }
 }
 
-@test "resolutions for DIFFERENT keys are cached independently (E120-S8)" {
+@test "resolutions for DIFFERENT keys are cached independently (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl-artifacts"
   _mk_story_file "$IMPLEMENTATION_ARTIFACTS" "K1" "ready-for-dev"
@@ -3020,7 +3037,7 @@ EOF
 # Step engine: ppo_record_outcome reads every field regardless of order
 # ---------------------------------------------------------------------------
 
-@test "ppo_record_outcome reads phase, persona, worktree and handle regardless of field order (E120-S8)" {
+@test "ppo_record_outcome reads phase, persona, worktree and handle regardless of field order (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   export GAIA_MODE_B_SUBSTRATE=available
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
@@ -3064,10 +3081,10 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Real dispatch-teammate.sh bookkeeping through plan/next/record, no hook (E120-S8)
+# Real dispatch-teammate.sh bookkeeping through plan/next/record, no hook
 # ---------------------------------------------------------------------------
 
-@test "plan/next/record drive the real dispatch surface: fill, backfill, barrier, merge-not-done (E120-S8)" {
+@test "plan/next/record drive the real dispatch surface: fill, backfill, barrier, merge-not-done (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   # K1/K2/K3 same persona (bash-dev, the default), phase 1; K4 phase 2 --
@@ -3169,7 +3186,7 @@ AUDIT
     || { echo "the re-queued K4 was not re-admitted: $out6"; return 1; }
 }
 
-@test "the real substrate-unavailable path degrades to sequential, phase order preserved (E120-S8)" {
+@test "the real substrate-unavailable path degrades to sequential, phase order preserved (AC4)" {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1 K2:2)"
@@ -3198,10 +3215,10 @@ AUDIT
 }
 
 # ---------------------------------------------------------------------------
-# CLI verb dispatch (executed, not sourced) (E120-S8)
+# CLI verb dispatch (executed, not sourced)
 # ---------------------------------------------------------------------------
 
-@test "the CLI dispatches plan/next/record/status/report as executed verbs (E120-S8)" {
+@test "the CLI dispatches plan/next/record/status/report as executed verbs (AC4)" {
   [ -f "$ORCH" ] || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
@@ -3230,7 +3247,7 @@ AUDIT
     || { echo "'report' as an executed verb did not run ppo_report: $output"; return 1; }
 }
 
-@test "the CLI with no verb (or a --flag first) still runs the compat run loop (E120-S8)" {
+@test "the CLI with no verb (or a --flag first) still runs the compat run loop (AC4)" {
   [ -f "$ORCH" ] || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
@@ -3240,4 +3257,326 @@ AUDIT
   run bash "$ORCH" --repo "$repo" --yaml "$yaml" --slots 2
   [ "$status" -eq 0 ] && [[ "$output" == mode=parallel* ]] \
     || { echo "no-verb invocation did not run the compat ppo_run_sprint loop: $output"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# ppo_status overdue boundary (AC-EC5)
+# ---------------------------------------------------------------------------
+
+@test "ppo_status reports elapsed == budget as not overdue (AC-EC5)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  export GAIA_STORY_TIMEOUT_SECONDS=100
+  _ppo_engine_reset
+  mkdir -p "$(_ppo_engine_dir)/running"
+  local now dispatched_at
+  now="$(date +%s)"
+  dispatched_at=$((now - 100))
+  {
+    printf 'phase:1\n'
+    printf 'persona:bash-dev\n'
+    printf 'worktree:\n'
+    printf 'handle:tm-bash-dev-K1\n'
+    printf 'dispatched_at:%s\n' "$dispatched_at"
+  } > "$(_ppo_engine_dir)/running/K1"
+
+  run ppo_status
+  [ "$status" -eq 0 ] || { echo "ppo_status exited non-zero: $output"; return 1; }
+  # elapsed is computed against a FRESH `date +%s` inside ppo_status, so
+  # assert on the boundary condition (overdue=0) rather than an exact
+  # elapsed value that could drift by a second under real clock skew.
+  printf '%s\n' "$output" | grep -qE '^running story=K1 elapsed=(99|100) budget=100 overdue=0$' \
+    || { echo "expected overdue=0 at the elapsed==budget boundary: $output"; return 1; }
+}
+
+@test "ppo_status reports elapsed == budget+1 as overdue (AC-EC5)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  export GAIA_STORY_TIMEOUT_SECONDS=100
+  _ppo_engine_reset
+  mkdir -p "$(_ppo_engine_dir)/running"
+  local now dispatched_at
+  now="$(date +%s)"
+  dispatched_at=$((now - 101))
+  {
+    printf 'phase:1\n'
+    printf 'persona:bash-dev\n'
+    printf 'worktree:\n'
+    printf 'handle:tm-bash-dev-K1\n'
+    printf 'dispatched_at:%s\n' "$dispatched_at"
+  } > "$(_ppo_engine_dir)/running/K1"
+
+  run ppo_status
+  [ "$status" -eq 0 ] || { echo "ppo_status exited non-zero: $output"; return 1; }
+  printf '%s\n' "$output" | grep -qE '^running story=K1 elapsed=(101|102) budget=100 overdue=1$' \
+    || { echo "expected overdue=1 one second past the budget: $output"; return 1; }
+}
+
+@test "ppo_status refuses a missing dispatched_at and reports the story overdue, not silently fine (AC-EC5)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  export GAIA_STORY_TIMEOUT_SECONDS=100
+  _ppo_engine_reset
+  mkdir -p "$(_ppo_engine_dir)/running"
+  # No dispatched_at line at all -- a real running/<key> file this file's own
+  # writer would never omit, but a defensive read must not assume otherwise:
+  # defaulting to `now` (the old behaviour) reports an unobservable start
+  # time as fresh and never overdue, which is exactly the silent "fine" this
+  # test forbids.
+  {
+    printf 'phase:1\n'
+    printf 'persona:bash-dev\n'
+    printf 'worktree:\n'
+    printf 'handle:tm-bash-dev-K1\n'
+  } > "$(_ppo_engine_dir)/running/K1"
+
+  run ppo_status
+  [ "$status" -eq 0 ] || { echo "ppo_status exited non-zero on a missing dispatched_at: $output"; return 1; }
+  printf '%s\n' "$output" | grep -q '^running story=K1 elapsed=0 budget=100 overdue=1$' \
+    || { echo "expected overdue=1 (unknown start time), got: $output"; return 1; }
+}
+
+@test "ppo_status refuses a garbage dispatched_at without crashing the whole status call (AC-EC5)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  export GAIA_STORY_TIMEOUT_SECONDS=100
+  _ppo_engine_reset
+  mkdir -p "$(_ppo_engine_dir)/running"
+  # A non-numeric dispatched_at: under this file's own `set -euo pipefail`,
+  # `$((now - dispatched_at))` on a bareword is a bash arithmetic error that
+  # aborts the whole function -- so this pins BOTH that ppo_status survives
+  # it AND that a second, healthy running story is still reported, proving
+  # one corrupted file cannot take down status reporting for every other
+  # story in flight.
+  {
+    printf 'phase:1\n'
+    printf 'persona:bash-dev\n'
+    printf 'worktree:\n'
+    printf 'handle:tm-bash-dev-K1\n'
+    printf 'dispatched_at:not-a-number\n'
+  } > "$(_ppo_engine_dir)/running/K1"
+  local now
+  now="$(date +%s)"
+  {
+    printf 'phase:1\n'
+    printf 'persona:bash-dev\n'
+    printf 'worktree:\n'
+    printf 'handle:tm-bash-dev-K2\n'
+    printf 'dispatched_at:%s\n' "$now"
+  } > "$(_ppo_engine_dir)/running/K2"
+
+  run ppo_status
+  [ "$status" -eq 0 ] \
+    || { echo "ppo_status crashed on a garbage dispatched_at instead of refusing the one field: $output"; return 1; }
+  printf '%s\n' "$output" | grep -q '^running story=K1 elapsed=0 budget=100 overdue=1$' \
+    || { echo "expected K1 (garbage dispatched_at) reported overdue=1, got: $output"; return 1; }
+  printf '%s\n' "$output" | grep -qE '^running story=K2 elapsed=[01] budget=100 overdue=0$' \
+    || { echo "expected K2 (healthy dispatched_at) still reported correctly: $output"; return 1; }
+}
+
+@test "removing the dispatched_at validation reports a missing start time as fresh and never overdue (mutant) (AC-EC5)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  # Source-level mutant proof: the fix this pins is the case/esac guard in
+  # ppo_status that refuses a missing-or-invalid dispatched_at BEFORE the
+  # arithmetic. Assert the guard is actually present in the shipped
+  # function body, so removing it (reverting to the old
+  # `[ -n "$dispatched_at" ] || dispatched_at="$now"` default) turns this
+  # red -- the two tests above already prove the BEHAVIOUR; this proves the
+  # behaviour is not achieved by some other code path that could regress
+  # back to the silent default without any of them noticing.
+  local body
+  body="$(sed -n '/^ppo_status() {/,/^}/p' "$ORCH")"
+  printf '%s\n' "$body" | grep -q 'event=status_field_refused' \
+    || { echo "ppo_status no longer refuses an invalid dispatched_at with a logged reason"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Path-traversal quarantine on every key-derived path (AC2)
+# ---------------------------------------------------------------------------
+#
+# _ppo_validate_key is the ONE charset gate every verb or internal function
+# that turns a story key into a path MUST call before building that path.
+# `record` is the sharpest edge here: it is a CLI verb (see _ppo_cli), so its
+# key argument is caller-controlled with no upstream sanitisation the way a
+# key drawn from the sprint yaml already gets in _ppo_next_locked.
+
+@test "record with a traversal key is refused and touches nothing outside the session dir (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  _ppo_engine_reset
+
+  # A file OUTSIDE $GAIA_SESSION_DIR/ppo/running that a traversal from
+  # running/<key> can reach by walking back up to the filesystem root and
+  # down again. Depth is computed from the real running/ path so the PoC is
+  # not tied to a guessed nesting depth.
+  local victim_dir="$TEST_TMP/outside-session"
+  mkdir -p "$victim_dir"
+  printf 'do not touch\n' > "$victim_dir/victim"
+
+  local running_dir depth dots key
+  running_dir="$(_ppo_engine_dir)/running"
+  depth="$(printf '%s' "$running_dir" | awk -F'/' '{print NF-1}')"
+  dots="$(python3 -c "print('/'.join(['..']*$depth))" 2>/dev/null)" \
+    || skip "no python3 to compute the traversal depth"
+  key="${dots}${victim_dir}/victim"
+
+  run ppo_record_outcome "$key" done
+  [ "$status" -ne 0 ] \
+    || { echo "a traversal key was accepted by record (exit 0): $output"; return 1; }
+  [[ "$output" == *"event=key_refused"* ]] \
+    || { echo "no key_refused log line for a traversal key: $output"; return 1; }
+  [[ "$output" == *"verb=record"* ]] \
+    || { echo "key_refused line did not name the record verb: $output"; return 1; }
+
+  [ -f "$victim_dir/victim" ] \
+    || { echo "CRITICAL: the traversal key deleted a file outside the session dir"; return 1; }
+  [ "$(cat "$victim_dir/victim")" = "do not touch" ] \
+    || { echo "CRITICAL: the victim file survived but was modified"; return 1; }
+}
+
+@test "status builds no path from any caller-supplied argument (AC2)" {
+  # ppo_status takes no story-key argument at all -- it enumerates its own
+  # ppo/running directory -- so there is no key-shaped input for a traversal
+  # to ride in on. This pins that fact so a future change that DOES thread
+  # an argument into ppo_status is caught here rather than assumed safe by
+  # inheritance from this test file's other key-validation coverage.
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  _ppo_engine_reset
+
+  run ppo_status "../../../../etc/passwd" "ignored" "arguments"
+  [ "$status" -eq 0 ] \
+    || { echo "ppo_status must never refuse on extra arguments -- it ignores them: $output"; return 1; }
+}
+
+@test "record with an empty key is refused (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  _ppo_engine_reset
+
+  run ppo_record_outcome "" done
+  [ "$status" -ne 0 ] \
+    || { echo "an empty key was accepted by record"; return 1; }
+}
+
+@test "record with a whitespace-only key is refused (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  _ppo_engine_reset
+
+  run ppo_record_outcome "   " done
+  [ "$status" -ne 0 ] \
+    || { echo "a whitespace-only key was accepted by record"; return 1; }
+  [[ "$output" == *"event=key_refused"* ]] \
+    || { echo "no key_refused log line for a whitespace key: $output"; return 1; }
+}
+
+@test "record with a NUL-adjacent key (embedded control byte) is refused (AC2)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  _ppo_engine_reset
+
+  # A real NUL byte cannot survive a shell argument (the kernel truncates
+  # argv at the first NUL before this script ever sees it), so the
+  # NUL-ADJACENT case a bash script can actually be handed is a control
+  # character immediately next to the traversal shape -- still outside
+  # _ppo_validate_key's [A-Za-z0-9._-] charset and so still refused by the
+  # same gate, without this test overclaiming a NUL byte itself was passed.
+  local key
+  key="$(printf 'K1\x01../../etc')"
+
+  run ppo_record_outcome "$key" done
+  [ "$status" -ne 0 ] \
+    || { echo "a control-byte-adjacent traversal key was accepted by record"; return 1; }
+  [[ "$output" == *"event=key_refused"* ]] \
+    || { echo "no key_refused log line for a control-byte key: $output"; return 1; }
+}
+
+@test "removing key validation from record re-opens the traversal (mutant) (AC2)" {
+  # Source-level mutant proof, mirroring the same pattern used elsewhere in
+  # this file for a fix that is a guard clause rather than an independently
+  # observable state change: assert the guard is actually present in the
+  # shipped function body, so deleting the _ppo_validate_key call from
+  # _ppo_record_outcome_locked (reverting to the pre-fix code that built
+  # running_file="$(_ppo_engine_dir)/running/${key}" straight from the raw
+  # argument) turns this red. The traversal test above already proves the
+  # BEHAVIOUR; this proves it is not achievable by some other code path that
+  # could regress back to the vulnerability without that test noticing --
+  # e.g. a refactor that keeps the same happy-path outcome but drops the
+  # call this line names.
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local body
+  body="$(sed -n '/^_ppo_record_outcome_locked() {/,/^}/p' "$ORCH")"
+  printf '%s\n' "$body" | grep -q '_ppo_validate_key "\$key"' \
+    || { echo "_ppo_record_outcome_locked no longer validates its key argument before building a path"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# `merged-not-done` is not a CLI-reachable outcome (AC4)
+# ---------------------------------------------------------------------------
+#
+# merged-not-done is the audited resume/give-up transition
+# _ppo_is_merged_not_done's own oracle decides for `merged` -- a caller that
+# could simply pass the literal on the command line would skip that audit
+# entirely and assert the transition on its own say-so.
+
+@test "CLI record refuses the merged-not-done literal outright (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  _ppo_engine_reset
+  mkdir -p "$(_ppo_engine_dir)/running"
+  {
+    printf 'phase:1\n'
+    printf 'persona:bash-dev\n'
+    printf 'worktree:\n'
+    printf 'handle:tm-bash-dev-K1\n'
+    printf 'dispatched_at:%s\n' "$(date +%s)"
+  } > "$(_ppo_engine_dir)/running/K1"
+
+  run ppo_record_outcome K1 merged-not-done
+  [ "$status" -ne 0 ] \
+    || { echo "the CLI-reachable record verb accepted merged-not-done directly: $output"; return 1; }
+  [[ "$output" == *"event=outcome_refused"* ]] \
+    || { echo "no outcome_refused log line for the merged-not-done literal: $output"; return 1; }
+  [[ "$output" == *"unknown-outcome"* ]] \
+    || { echo "expected an unknown-outcome reason: $output"; return 1; }
+
+  # Refused, not silently accepted-but-inert: the running entry (and any
+  # slot it holds) must still be there afterwards -- a caller cannot use
+  # this literal to make the story vanish from `running` either.
+  [ -f "$(_ppo_engine_dir)/running/K1" ] \
+    || { echo "the refused merged-not-done call still tore down the running entry"; return 1; }
+}
+
+@test "the legacy hook's exit-11 resume path still works through run (AC4)" {
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
+  local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
+  local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
+  PATH="$fl:$PATH"
+  # A stub that always reports the legacy exit-11 (merged-not-done) contract,
+  # so the run loop's internal-only resume call is exercised for real, not
+  # through the now-refused CLI outcome literal.
+  local stub; stub="$(_mk_dispatch_stub "$TEST_TMP/bin" ok)"
+  cat > "$stub/gaia-dispatch-story" <<'STUB'
+#!/usr/bin/env bash
+exit 11
+STUB
+  chmod +x "$stub/gaia-dispatch-story"
+  PATH="$stub:$PATH"
+  export GAIA_PPO_DISPATCH_CMD=gaia-dispatch-story
+
+  run ppo_run_sprint --repo "$repo" --yaml "$yaml" --slots 2
+  [ "$status" -eq 0 ] \
+    || { echo "the legacy exit-11 resume path did not complete the run: $output"; return 1; }
+  [[ "$output" == *"event=story_merged_not_done story=K1"*"outcome=resume-requeued"* ]] \
+    || { echo "expected the resume-requeued transition from the internal exit-11 path: $output"; return 1; }
+}
+
+@test "the CLI vocabulary accepts exactly done, failed, timeout and merged (AC4)" {
+  # Source-level pin on the vocabulary itself: the case arms
+  # _ppo_record_outcome_locked switches on must be exactly these four
+  # literals, with everything else (including merged-not-done) falling to
+  # the refusal arm. Guards against a future literal being added to this
+  # function without also being added to the documented CLI contract.
+  _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
+  local body
+  body="$(sed -n '/^_ppo_record_outcome_locked() {/,/^}/p' "$ORCH")"
+  for lit in done failed timeout merged; do
+    printf '%s\n' "$body" | grep -qE "^\s*${lit}\)" \
+      || { echo "expected a case arm for '${lit}' in _ppo_record_outcome_locked"; return 1; }
+  done
+  printf '%s\n' "$body" | grep -qE '^\s*merged-not-done\)' \
+    && { echo "merged-not-done must not be a case arm in the CLI-reachable outcome vocabulary"; return 1; }
+  true
 }

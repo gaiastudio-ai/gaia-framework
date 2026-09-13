@@ -112,6 +112,36 @@ _ppo_log() { printf '%s: %s\n' "$_PPO_NAME" "$*" >&2; }
 # did" never requires guessing.
 _ppo_emit() { printf '%s\n' "$*"; }
 
+# _ppo_validate_key <key> — the ONE charset quarantine for every story key
+# this file ever turns into a path fragment (ppo/running/<key>,
+# ppo/retries/<key>, ppo/resolve-cache/<key>, ppo-state/mnd(open)-<key>, the
+# registry's .reserved-<key> token). A key is data from the sprint yaml or
+# from a CLI caller (record/status are invoked with a key argument by a
+# process outside this file's control), never a value this file itself
+# constructs -- so it is validated BEFORE it touches any path expression,
+# not after. Bounded charset (`[A-Za-z0-9._-]`), no `..` traversal segment
+# anywhere in the string (catches `..` embedded via `.` characters even when
+# every individual character is otherwise allowed, e.g. `a/../../etc`),
+# non-empty, and length-bounded (200 is generously above any real story key
+# -- E<epic>-S<story> plus slug -- and exists only to refuse a pathological
+# argument outright rather than debate a "reasonable" limit).
+#
+# Every verb or internal function that derives ANY path from a key MUST call
+# this, and refuse (non-zero, nothing built) before constructing that path,
+# rather than build first and check the result: an already-built path string
+# has already done the traversal arithmetic a later check could only
+# re-detect, never undo.
+_ppo_validate_key() {
+  local key="${1:-}"
+  [ -n "$key" ] || return 1
+  [ "${#key}" -le 200 ] || return 1
+  case "$key" in
+    *[!A-Za-z0-9._-]*) return 1 ;;
+    *..*) return 1 ;;
+  esac
+  return 0
+}
+
 # ---------- Defaults ----------
 
 _PPO_DEFAULT_SLOTS=8
@@ -702,6 +732,7 @@ ppo_plan() {
 # stale answer from a previous run is never served.
 _ppo_resolve_story_file() {
   local key="${1:-}" cache_dir cache_file path="" rc=0
+  _ppo_validate_key "$key" || { _ppo_log "event=key_refused verb=resolve-story-file reason=invalid-key story=${key}"; return 1; }
   cache_dir="$(_ppo_engine_dir)/resolve-cache"
   cache_file="${cache_dir}/${key}"
 
@@ -843,11 +874,7 @@ ppo_shutdown_live_teammates() {
 # timeout, or the spawn's own unclassified raw exit code.
 _ppo_admit_bookkeeping() {
   local key="${1:-}" repo="${2:-}"
-  [ -n "$key" ] || return 1
-
-  case "$key" in
-    *[!A-Za-z0-9._-]*|*..*|'') return 1 ;;
-  esac
+  _ppo_validate_key "$key" || { _ppo_log "event=key_refused verb=admit reason=invalid-key story=${key}"; return 1; }
 
   local rc=0 locked=0 token="" reg="" ceiling=0 count=0
   reg="${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/registry"
@@ -1002,14 +1029,12 @@ _ppo_next_locked() {
     if [ "$key" = "$pending" ]; then rest=""; else rest="${pending#*$'\n'}"; fi
     if [ -z "$key" ]; then pending="$rest"; _ppo_engine_put pending "$pending"; continue; fi
 
-    case "$key" in
-      *[!A-Za-z0-9._-]*|*..*)
-        _ppo_emit "event=story_refused story=${key} phase=${p} outcome=invalid-key"
-        _ppo_record "$key" "failed" "$p"
-        pending="$rest"; _ppo_engine_put pending "$pending"
-        continue
-        ;;
-    esac
+    if ! _ppo_validate_key "$key"; then
+      _ppo_emit "event=story_refused story=${key} phase=${p} outcome=invalid-key"
+      _ppo_record "$key" "failed" "$p"
+      pending="$rest"; _ppo_engine_put pending "$pending"
+      continue
+    fi
 
     local bstate seen
     seen="$(_ppo_engine_get seen)"
@@ -1172,13 +1197,56 @@ _ppo_is_merged_not_done() {
 # admission, tears down per outcome, and updates the ledger. Locked exactly
 # like ppo_next: concurrent record calls for different keys must not race
 # the shared pending/running state.
+#
+# This is also the CLI `record` verb's implementation (see _ppo_cli), so the
+# outcome vocabulary it accepts here is EXACTLY the CLI-reachable one: done,
+# failed, timeout, merged. `merged-not-done` is deliberately absent from
+# this vocabulary -- it is the internal resume/give-up transition
+# `_ppo_is_merged_not_done`'s own audit decides for `merged`, and it must
+# stay reachable only from that audited path or from the legacy in-process
+# test hook's own internal call (_ppo_record_outcome_locked_internal_mnd
+# below), never as a string a caller of this public entry point -- CLI or
+# library -- can pass to skip the audit. A caller that could simply say
+# `record K merged-not-done` on the command line would bypass the merge/gate
+# audit entirely, reporting a story as "resolved" (or exhausting its retries
+# into a false "not done") without sprint-progress-audit.sh ever having run.
 ppo_record_outcome() {
   _ppo_engine_lock_run _ppo_record_outcome_locked "$@"
+}
+
+# _ppo_record_outcome_internal_mnd <key> — the ONLY other entry point allowed
+# to apply the merged-not-done resume/give-up transition without going
+# through _ppo_is_merged_not_done's audit call. Reachable only from `run`'s
+# own legacy in-process test-hook loop (see the exit-11 branch below), never
+# from the CLI or from ppo_record_outcome's own outcome-string vocabulary:
+# there is no outcome literal that reaches this function, so no CLI
+# argument -- however constructed -- can trigger it. Locked exactly like
+# ppo_record_outcome, since it mutates the same pending/running state.
+_ppo_record_outcome_internal_mnd() {
+  _ppo_engine_lock_run _ppo_record_outcome_locked_internal_mnd "$@"
+}
+
+_ppo_record_outcome_locked_internal_mnd() {
+  local key="${1:-}"
+  _ppo_validate_key "$key" || { _ppo_log "event=key_refused verb=record-internal-mnd reason=invalid-key story=${key}"; return 1; }
+
+  local running_file
+  running_file="$(_ppo_engine_dir)/running/${key}"
+  [ -f "$running_file" ] || { _ppo_log "event=record story=${key} action=refused reason=not-running"; return 1; }
+
+  local p handle
+  p="$(sed -n '/^phase:/{s/^phase://;p;q;}' "$running_file")"
+  handle="$(sed -n '/^handle:/{s/^handle://;p;q;}' "$running_file")"
+  _ppo_load_dispatch_lib 2>/dev/null || true
+  _ppo_apply_mnd_not_done "$key" "$p" "$handle" "$running_file"
+  return 0
 }
 
 _ppo_record_outcome_locked() {
   local key="${1:-}" outcome="${2:-}"
   [ -n "$key" ] && [ -n "$outcome" ] || { _ppo_log "event=record action=refused reason=usage — record <key> <done|failed|timeout|merged>"; return 1; }
+
+  _ppo_validate_key "$key" || { _ppo_log "event=key_refused verb=record reason=invalid-key story=${key}"; return 1; }
 
   local running_file
   running_file="$(_ppo_engine_dir)/running/${key}"
@@ -1229,20 +1297,17 @@ _ppo_record_outcome_locked() {
         _ppo_apply_mnd_clean "$key" "$p" "$wt" "$repo" "$handle" "$running_file"
       fi
       ;;
-    merged-not-done)
-      # A caller that has ALREADY determined not-done status by its own
-      # means -- specifically, `run`'s legacy test-hook path, whose exit-11
-      # contract predates and stands in for the audit within its own gated
-      # context (there is no real git/PR state in a stub-driven test for
-      # sprint-progress-audit.sh to inspect) -- skips the audit call
-      # entirely and applies the SAME state transition the real audit
-      # path's not-done branch does. This is the only caller allowed to
-      # bypass _ppo_is_merged_not_done; the real run-sprint skill loop must
-      # always call `record ... merged` and let the audit decide.
-      _ppo_apply_mnd_not_done "$key" "$p" "$handle" "$running_file"
-      ;;
     *)
-      _ppo_log "event=record story=${key} action=refused reason=unknown-outcome — ${outcome}"
+      # `merged-not-done` is deliberately refused here, same as any other
+      # unrecognised literal: it is not part of this entry point's
+      # CLI-reachable vocabulary (done|failed|timeout|merged) precisely
+      # because it would let a caller skip _ppo_is_merged_not_done's audit
+      # and assert the resume/give-up transition on its own say-so. The
+      # legacy in-process test hook that used to pass this literal now calls
+      # _ppo_record_outcome_internal_mnd directly instead (see `run`'s
+      # exit-11 branch) -- a function with no outcome-string parameter at
+      # all, so no CLI argument can reach it.
+      _ppo_log "event=outcome_refused verb=record story=${key} reason=unknown-outcome — ${outcome}"
       return 1
       ;;
   esac
@@ -1301,7 +1366,7 @@ ppo_requeue() {
 
 _ppo_requeue_locked() {
   local key="${1:-}"
-  [ -n "$key" ] || return 1
+  _ppo_validate_key "$key" || { _ppo_log "event=key_refused verb=requeue reason=invalid-key story=${key}"; return 1; }
 
   local running_file
   running_file="$(_ppo_engine_dir)/running/${key}"
@@ -1338,8 +1403,36 @@ ppo_status() {
     for f in "$d"/*; do
       [ -f "$f" ] || continue
       key="$(basename "$f")"
-      local dispatched_at; dispatched_at="$(sed -n 's/^dispatched_at://p;q' "$f")"
-      [ -n "$dispatched_at" ] || dispatched_at="$now"
+      # NOTE: `/^dispatched_at:/{s/^dispatched_at://;p;q;}`, not a bare
+      # `s/^dispatched_at://p;q` -- the `q` there fires after the FIRST LINE
+      # of the file regardless of whether it matched, so on a real
+      # running/<key> file (ppo_next writes `phase:` first, `dispatched_at:`
+      # last) the substitution never even reaches the line it targets and
+      # this always read empty. See the identical fix and rationale on
+      # _ppo_record_outcome_locked's own field reads a few hundred lines up.
+      local dispatched_at; dispatched_at="$(sed -n '/^dispatched_at:/{s/^dispatched_at://;p;q;}' "$f")"
+      # A missing or non-numeric dispatched_at is unobservable liveness, not
+      # a fresh dispatch: defaulting it to `now` (elapsed=0) would silently
+      # report a story that has been running for an unknown, possibly very
+      # long, time as freshly started and never overdue -- the skill would
+      # then never call `record ... timeout` for it, exactly the silent
+      # non-overdue this field exists to prevent. It would also crash this
+      # loop for every OTHER running story: `$((now - dispatched_at))` on a
+      # non-numeric value is a bash arithmetic error and, under this file's
+      # own `set -euo pipefail`, aborts the whole function. Refuse to trust
+      # it instead: log the reason and report the story overdue with an
+      # elapsed of 0 (the only honest value when the start time is unknown)
+      # so the skill sees `overdue=1` and acts, rather than the loop dying
+      # or the story going unreported.
+      case "$dispatched_at" in
+        ''|*[!0-9]*)
+          _ppo_log "event=status_field_refused story=${key} field=dispatched_at reason=missing-or-invalid"
+          elapsed=0
+          overdue=1
+          _ppo_emit "running story=${key} elapsed=${elapsed} budget=${budget} overdue=${overdue}"
+          continue
+          ;;
+      esac
       elapsed=$((now - dispatched_at))
       overdue=0
       [ "$elapsed" -gt "$budget" ] && overdue=1
@@ -1684,12 +1777,17 @@ ppo_run_sprint() {
                 # The legacy hook's own exit-11 IS the merged-not-done
                 # signal within this gated test-only context -- there is no
                 # real git/PR state in a stub-driven test for
-                # sprint-progress-audit.sh to inspect, so `merged-not-done`
-                # (not `merged`) applies the resume-or-give-up transition
-                # directly rather than asking an audit that has nothing to
-                # audit. The real run-sprint skill loop calls `record ...
-                # merged` instead, and the audit decides.
-                ppo_record_outcome "$key" "merged-not-done"
+                # sprint-progress-audit.sh to inspect, so this calls the
+                # internal-only resume/give-up transition DIRECTLY rather
+                # than asking an audit that has nothing to audit, and
+                # rather than routing through ppo_record_outcome's
+                # CLI-reachable outcome vocabulary -- `merged-not-done` is
+                # not a value that vocabulary accepts (see
+                # _ppo_record_outcome_locked), precisely so a CLI caller can
+                # never bypass the audit the same way this gated hook does.
+                # The real run-sprint skill loop calls `record ... merged`
+                # instead, and the audit decides.
+                _ppo_record_outcome_internal_mnd "$key"
                 _ppo_engine_put ceiling-refusals 0
                 ;;
               8)
