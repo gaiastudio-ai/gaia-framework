@@ -3,6 +3,44 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.217.0] — 2026-09-14
+
+### Added
+
+- (E120-S8) slot-based phase-parallel orchestrator with sequential degradation (#1809)
+- (E120-S9) git-workflow worktree section, feat/ branch-prefix docs, doc-site sync (#1805)
+- (E120-S7) parallel_execution config, configurable teammate ceiling, ceiling sweep (#1803)
+- (E120-S4) per-story linked git worktree for the dev-story chain scripts (#1800)
+- (E120-S5) phase-derivation helper + phase-sorted sprint plan output (#1798)
+- (E120-S6) phase persistence in sprint-state.sh (both copies) (#1795)
+- (E120-S3) wire Parallel-safe teammate dispatch — story-keyed hand (#1793)
+- (E120-S2) wire Shared lock-acquisition helper + fail-closed paralle (#1790)
+
+### Changed
+
+- (E120-S8) pin the engine lock under concurrent next and teammate shutdown on failure paths (#1811)
+- (perf) tag two timing-budget tests as hardware-dependent (#1808)
+- (E120-S9) pin documentation claims, not vocabulary (#1806)
+- (E120-S5) pin phase output ordering, soft-dep parsing, and plan rendering contract (#1799)
+- (perf) tag the sidecar latency threshold test as hardware-dependent (#1797)
+- (sprint-state) pin phase reader row scoping and the set-phase lock (#1796)
+- (E120-S1) behavioural collapse coverage and real-script resolver tests (#1789)
+
+### Fixed
+
+- (E120-S8) close review-gate findings - live-occupancy pre-flight, resume path, reap desync, fail-open guards (#1810)
+- (E120-S7) content-stamped ceiling cache with tests (#1807)
+- (E120-S7) bound ceiling digits, guard exit 8 in bridges, hoist the ceiling resolve (#1804)
+- (E120-S4) never reap or remove a worktree holding gitignored files (#1802)
+- (E120-S4) reap killed-run orphans, EPERM liveness, and review-gate test pins (#1801)
+- (dispatch) validate story keys at the boundary and harden metadata parsers (#1794)
+- (lock-helper) refuse non-regular lock paths and close the flock symlink race (#1792)
+- (lock-helper) close review findings on trap windows, exit status and temp names (#1791)
+- (E120-S1) resolver tests drive the real resolvers; gate rejects inverted chains (#1788)
+- (E120-S1) upward walks test their cursor, not the canonical root (#1787)
+- (E120-S1) falsifiable path gates and behavioural reader coverage (#1786)
+- (E120-S1) resolvers seed from an explicit root only; address review findings (#1785)
+
 ## [Unreleased]
 
 ### Added
