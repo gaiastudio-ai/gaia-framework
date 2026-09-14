@@ -3,6 +3,35 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.217.0] — 2026-09-14
+
+### Added
+
+- Slot-based phase-parallel sprint execution: a re-entrant step engine (`plan` / `next` / `record` / `status` / `report`) that the run-sprint skill drives one turn at a time, with a configurable slot budget, same-phase backfill, a phase barrier that waits out failures, merge-not-done handling through the sprint-progress audit, and sequential degradation that always names its reason (#1809, #1810)
+- Per-story linked git worktrees for the dev-story chain scripts, with a working-directory contract and full lifecycle (create, attach, preserve, teardown; ignored files are never destroyed except after a successful merge) (#1800)
+- `parallel_execution` config section: `max_parallel_dev_slots`, a configurable teammate dispatch ceiling and a per-story timeout, with a change-site sweep (#1803)
+- Phase-derivation helper and phase-sorted sprint-plan output; phases persisted by the sprint-state writer (#1798, #1795)
+- Parallel-safe teammate dispatch: story-keyed handles, relay attribution and a programmatic fallback signal (#1793)
+- Shared lock-acquisition helper with a fail-closed parallel locking policy (#1790)
+- git-workflow skill: worktree section, `feat/` branch prefix, doc-site sync (#1805)
+
+### Changed
+
+- Orchestrator tests pin the engine lock under concurrent admission and teammate shutdown on the failure paths (#1811)
+- Two timing-budget tests and the sidecar latency threshold test are tagged hardware-dependent (#1808, #1797)
+- Documentation tests pin claims rather than vocabulary; phase output ordering, soft-dependency parsing and plan rendering are pinned by contract (#1806, #1799)
+- Sprint-state phase reader row scoping and the set-phase lock are pinned (#1796)
+- Canonical-root resolvers gain behavioural collapse coverage and real-script tests (#1789)
+- The monolithic CI test job's wall-clock cap is raised to 25 minutes
+
+### Fixed
+
+- Ceiling cache is content-stamped; ceiling digits are bounded; the bridges guard the saturated-ceiling status; the ceiling resolve is hoisted (#1807, #1804)
+- Worktree teardown never reaps or removes a worktree holding gitignored files; killed-run orphans are reaped with an EPERM-aware liveness check (#1802, #1801)
+- Dispatch validates story keys at the boundary and hardens its metadata parsers (#1794)
+- Lock helper refuses non-regular lock paths, closes the symlink race, and fixes trap-window, exit-status and temp-name findings (#1792, #1791)
+- Canonical-root resolvers seed from an explicit root only, walk upward from their own cursor, and reject inverted chains; path gates are falsifiable (#1788, #1787, #1786, #1785)
+
 ## [Unreleased]
 
 ### Added
