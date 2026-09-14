@@ -21,6 +21,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-ci-edit/setup.sh"
 WORKFLOW_NAME="ci-edit"
 
@@ -80,8 +83,8 @@ done <<<"$config_output"
 
 # Smart-fallback for TEST_ARTIFACTS resolution:
 if [ -z "${TEST_ARTIFACTS:-}" ]; then
-  if [ -d ".gaia/artifacts/test-artifacts" ]; then
-    TEST_ARTIFACTS=".gaia/artifacts/test-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts" ]; then
+    TEST_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
   else
     TEST_ARTIFACTS="docs/test-artifacts"
   fi

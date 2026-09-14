@@ -89,8 +89,8 @@ case "$TYPE" in
 esac
 
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}}"
-TEST_ARTIFACTS_DIR="${TEST_ARTIFACTS:-${PROJECT_ROOT}/.gaia/artifacts/test-artifacts}"
-IMPL_ARTIFACTS_DIR="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts}"
+TEST_ARTIFACTS_DIR="${TEST_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts}"
+IMPL_ARTIFACTS_DIR="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"
 
 # Resolve the story's epic + story slug by inspecting the implementation
 # tree (same naming the per-story story.md uses). When the story has no

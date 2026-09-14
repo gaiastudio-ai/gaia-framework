@@ -52,7 +52,7 @@ fi
 
 EPIC_KEY="${STORY_KEY%-S*}"
 
-PROJECT_ROOT="${PROJECT_PATH:-$(pwd)}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$(pwd)}}}"
 
 # Route through the shared resolver helper so the script honors the canonical
 # .gaia/artifacts/ first and legacy docs/ as fallback. Previous hardcoded

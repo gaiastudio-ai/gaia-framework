@@ -29,7 +29,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 MODE=""
-PROJECT_ROOT=""
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
 DRY_RUN=false
 ASSUME_YES=false      # --yes / --force bypasses the destructive confirmation prompt
 BACKUP_DIR=""         # populated by _run_backup; printed by _on_interrupt
@@ -88,7 +88,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --project-root)
-      PROJECT_ROOT="${2:-}"
+      PROJECT_ROOT="$2"
       shift 2
       ;;
     --yes|--force)

@@ -49,6 +49,9 @@ set -euo pipefail
 # comparisons and `date` output stay portable across BSD and GNU.
 export LC_ALL=C
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 PHASE=""
 SESSION_ID=""
 # `--side-effect-only` is accepted but currently a no-op vs. the default —
@@ -137,7 +140,7 @@ SESSION_STATE_BIN="${GAIA_MEETING_SESSION_STATE_BIN:-${SCRIPT_DIR}/session-state
 if [ -n "${GAIA_MEETING_SESSION_FILE:-}" ]; then
   SESSION_FILE="$GAIA_MEETING_SESSION_FILE"
 else
-  SESSION_FILE=".gaia/memory/meeting-sessions/${SESSION_ID}.yaml"
+  SESSION_FILE="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/meeting-sessions/${SESSION_ID}.yaml"
 fi
 
 # ISO-8601 UTC timestamp — BSD- and GNU-portable.

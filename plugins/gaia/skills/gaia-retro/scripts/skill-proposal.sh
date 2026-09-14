@@ -46,6 +46,9 @@
 
 set -uo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # ---------------------------------------------------------------------------
 # usage — print helper function reference; invoked via --help or when the
 # script is executed directly instead of sourced.
@@ -132,8 +135,8 @@ _DEBT_CATEGORIES="architecture|code|test|documentation|process"
 extract_tech_debt_reflection() {
   local root="$1" sprint_id="$2"
   local dashboard
-  if [ -f "$root/.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md" ]; then
-    dashboard="$root/.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md" ]; then
+    dashboard="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md"
   else
     dashboard="$root/docs/implementation-artifacts/tech-debt-dashboard.md"
   fi

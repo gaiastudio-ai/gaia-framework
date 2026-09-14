@@ -32,6 +32,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="install-test-environment-manifest.sh"
 
 EXAMPLE_REL=""
@@ -76,12 +79,12 @@ done
 
 # Canonical .gaia/config/ default; legacy config/ fallback
 # only on positive pre-canonical evidence.
-if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
+if [ -d "${target}/config" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config" ]; then
   EXAMPLE_REL="config/test-environment.yaml.example"
   MANIFEST_REL="config/test-environment.yaml"
 else
-  EXAMPLE_REL=".gaia/config/test-environment.yaml.example"
-  MANIFEST_REL=".gaia/config/test-environment.yaml"
+  EXAMPLE_REL="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/test-environment.yaml.example"
+  MANIFEST_REL="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/test-environment.yaml"
 fi
 
 example_file="${target}/${EXAMPLE_REL}"

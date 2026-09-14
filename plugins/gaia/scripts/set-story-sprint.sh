@@ -28,8 +28,14 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="set-story-sprint.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+# shellcheck source=lib/acquire-lock.sh
+. "${SCRIPT_DIR}/lib/acquire-lock.sh"
 
 err() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { err "$*"; exit "${2:-1}"; }
@@ -79,18 +85,31 @@ else
 fi
 
 # Shared lock: serialise against transition-story-status.sh (same lock path).
-MEMORY_PATH="${MEMORY_PATH:-${PROJECT_PATH:-.}/.gaia/memory}"
+MEMORY_PATH="${MEMORY_PATH:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory}"
 STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
+# Merged cleanup: lock release + tempfile removal. Idempotent.
+# tmp may be unset if the EXIT trap fires before mktemp — use ${tmp:-}.
+_sss_cleanup() {
+  release_lock 200 2>/dev/null || true
+  touch "$STORY_STATUS_LOCK" 2>/dev/null || true
+  rm -f "${tmp:-}" 2>/dev/null || true
+}
+
 mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
-exec 200>"$STORY_STATUS_LOCK"
-if command -v flock >/dev/null 2>&1; then
-  flock -w 5 200 || die "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly" 6
+if ! acquire_lock "$STORY_STATUS_LOCK" 5 200; then
+  die "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly" 6
 fi
+
+# Install the releasing trap on the very next line after a successful
+# acquire. Any exit in between — the mktemp below fails on an unwritable
+# story directory or a full filesystem, and `set -e` exits — would otherwise
+# leave a PID-bearing lock file behind that the reaper declines to clear
+# until it ages past the 60s floor. The window must be zero statements wide.
+trap '_sss_cleanup' EXIT
 
 # Rewrite (or insert) the sprint_id line inside the frontmatter block only.
 # awk state machine: fm=0 before first ---, fm=1 inside, fm=2 after close.
 tmp="$(mktemp "${STORY_FILE}.XXXXXX")"
-trap 'rm -f "$tmp" 2>/dev/null || true' EXIT
 awk -v newline="$NEW_LINE" '
   BEGIN { fm = 0; done = 0 }
   /^---[[:space:]]*$/ {
@@ -112,5 +131,6 @@ awk -v newline="$NEW_LINE" '
 grep -q "^${NEW_LINE}$" "$tmp" || die "rewrite produced no sprint_id line — aborting (story file unchanged)"
 
 mv "$tmp" "$STORY_FILE"
+_sss_cleanup
 trap - EXIT
 printf '%s: %s sprint_id set to %s\n' "$SCRIPT_NAME" "$STORY_KEY" "$SPRINT_ID"

@@ -69,9 +69,10 @@ done
 
 # ---------- Resolve paths ----------
 PROJECT_PATH="${PROJECT_PATH:-.}"
-EPICS_FILE="${EPICS_FILE:-$PROJECT_PATH/.gaia/artifacts/planning-artifacts/epics-and-stories.md}"
-SPRINT_STATUS_YAML="${SPRINT_STATUS_YAML:-$PROJECT_PATH/.gaia/state/sprint-status.yaml}"
-IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-$PROJECT_PATH/.gaia/artifacts/implementation-artifacts}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+EPICS_FILE="${EPICS_FILE:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/epics-and-stories.md}"
+SPRINT_STATUS_YAML="${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}"
+IMPLEMENTATION_ARTIFACTS="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"
 
 _log()  { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 _die()  { _log "ERROR: $*"; exit 1; }

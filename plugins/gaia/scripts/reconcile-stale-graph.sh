@@ -57,6 +57,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="reconcile-stale-graph.sh"
 _log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 _log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -169,7 +172,7 @@ build_depgraph_for_detector() {
     if [ -n "${GAIA_MEMORY_DIR:-}" ]; then
       DEPGRAPH_PATH="${GAIA_MEMORY_DIR}/brownfield-audit/depgraph.json"
     else
-      DEPGRAPH_PATH="./.gaia/memory/brownfield-audit/depgraph.json"
+      DEPGRAPH_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit/depgraph.json"
     fi
   fi
 

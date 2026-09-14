@@ -35,6 +35,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="emit-step-boundary.sh"
 
 if [ $# -lt 3 ]; then
@@ -79,7 +82,7 @@ done
 # Best-effort: an absent or unreadable file leaves TOKENS_JSON empty and the
 # event lands with timing data only.
 if [ -z "$TOKENS_JSON" ]; then
-  SNAPSHOT_FILE="${MEMORY_PATH:-.gaia/memory}/.context-window-snapshot.json"
+  SNAPSHOT_FILE="${MEMORY_PATH:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory}/.context-window-snapshot.json"
   if [ -r "$SNAPSHOT_FILE" ]; then
     TOKENS_JSON="$(cat "$SNAPSHOT_FILE" 2>/dev/null || printf '')"
   fi

@@ -177,6 +177,13 @@ is_allowlisted() {
   # that gaia-help.csv + workflow-manifest.csv contain the registration row.
   # Same precedent as test-manual-skill.bats above.
   [[ "$path" == */plugins/gaia/tests/manual-test-docs.bats ]] && return 0
+  # gaia-run-sprint-docs.bats asserts that the sprint-execution doc page exists
+  # and that gaia-help.csv + workflow-manifest.csv both carry the registration
+  # row -- the help skill validates every suggestion against the manifest, so a
+  # help row without a manifest row would name a command the check rejects.
+  # Same precedent as manual-test-docs.bats above: the CSVs are themselves
+  # allowlisted, so the filename mention IS the contractual assertion target.
+  [[ "$path" == */plugins/gaia/tests/gaia-run-sprint-docs.bats ]] && return 0
   # deploy-skill-rename.bats asserts the category-first skill rename is
   # registered in workflow-manifest.csv, gaia-help.csv, and
   # lifecycle-sequence.yaml. Same precedent as test-manual-skill.bats above.

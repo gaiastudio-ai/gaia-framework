@@ -55,7 +55,7 @@ A multi-step orchestration skill with three or more subagent dispatches, often w
 - **Mode A (default):** subagent re-dispatch with structured checkpoint payloads (see the §"Mode A Checkpoint Payload Schema"). Each re-dispatch is a fresh persona context with prior outputs threaded via the payload — sidecar memory loads on every dispatch; in-conversation continuity is lost between dispatches.
 - **Mode B (opt-in, requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` + `orchestration.mode: team` in `.gaia/config/project-config.yaml`):** persistent teammates per the Mode B Teammate Lifecycle (see the §"Mode B Teammate Lifecycle Protocol"). One teammate per persona per skill execution; teammate session stays alive across the workflow's turns; cleaned up on skill completion. Persona has full in-conversation continuity.
 - **State mutation:** allowed.
-- **Examples:** `gaia-create-story`, `gaia-dev-story`, `gaia-add-feature`, `gaia-edit-prd`, `gaia-edit-arch`, `gaia-edit-ux`, `gaia-create-prd`, `gaia-create-arch`, `gaia-create-ux`, `gaia-create-epics`, `gaia-deploy`, `gaia-deploy-checklist`.
+- **Examples:** `gaia-create-story`, `gaia-dev-story`, `gaia-run-sprint`, `gaia-add-feature`, `gaia-edit-prd`, `gaia-edit-arch`, `gaia-edit-ux`, `gaia-create-prd`, `gaia-create-arch`, `gaia-create-ux`, `gaia-create-epics`, `gaia-deploy`, `gaia-deploy-checklist`.
 - **Lossy-mode warning:** **fires once per session** when invoked in Mode A.
 
 #### `conversational`
@@ -109,7 +109,7 @@ This section is the canonical reference for skill authors who write `heavy-proce
 
 > **Bookkeeping vs. the round-trip.** The phase contracts below describe the bash-library *bookkeeping* (`drive_turn` raises relay-pending, `await_reply` is a relay-pending state query, the relay functions append to the transcript). They do NOT themselves move a message to a teammate. The actual per-turn message exchange — the orchestrator emitting a real `SendMessage` with the reply-routing reminder, the teammate replying via `SendMessage(to: team-lead)`, and the relay back — is the orchestrator-driven loop specified in the companion **Mode B teammate round-trip contract** at `knowledge/mode-b-round-trip-contract.md`. Read that contract for how a turn is actually driven; read this section for what the library functions record.
 
-> **Substrate honesty.** The live Mode B primitives (`Agent` with `run_in_background:true` + `SendMessage`) may be unavailable in some Claude Code contexts. When the substrate is unavailable, `dispatch-teammate.sh` degrades silently to foreground Mode A and emits a single machine-parseable token `MODE_B_FALLBACK` to stderr. Skill authors must handle this gracefully; documentation in this section reflects both the live path and the fallback.
+> **Substrate honesty.** The live Mode B primitives (`Agent` with `run_in_background:true` + `SendMessage`) may be unavailable in some Claude Code contexts. When the substrate is unavailable, `dispatch-teammate.sh` degrades to foreground Mode A and emits a single machine-parseable token `MODE_B_FALLBACK` to stderr. A caller that passed a story key also receives the degradation programmatically — exit code 7 plus a machine-readable record in place of the handle — so it can branch on a return value instead of parsing stderr, and can ask the execution bridge why its own story degraded. Skill authors must handle this gracefully; documentation in this section reflects both the live path and the fallback.
 
 ### Lifecycle phases
 
@@ -122,8 +122,30 @@ A teammate session passes through four sequential phases. Each phase has a descr
 **Contract.**
 - Call `spawn_teammate PERSONA [--context CTX]` to create a teammate. The function returns the handle on stdout.
 - The handle is opaque; pass it as-is to subsequent `drive_turn`, `await_reply`, `relay_to_team_lead`, and `shutdown_teammate` calls.
-- At most eight teammates may be active concurrently (enforced by the 8-teammate ceiling in the registry).
-- If the live substrate is unavailable, `spawn_teammate` emits `MODE_B_FALLBACK` to stderr and degrades to a foreground Mode A dispatch. The returned handle is still valid for subsequent library calls.
+- At most the configured number of teammates may be active concurrently (enforced by the configurable teammate ceiling in the registry, 12 by default).
+- **Keyless callers (the long-standing form).** If the live substrate is unavailable, `spawn_teammate` emits `MODE_B_FALLBACK` to stderr and degrades to a foreground Mode A dispatch. The returned handle is still valid for subsequent library calls.
+- **Story-keyed callers.** Add `--story-key KEY` to dispatch several same-persona teammates at once — one per story. The handle is then derived from the persona and the key rather than from the process id, so two stories never collide and retrying the same persona and key idempotently reuses the one handle. The key must be 1–64 characters of letters, digits, dot, underscore or hyphen; anything else is refused with status 1 before any state is written.
+- Passing a key opts into a **stricter fallback contract**: when the substrate is unavailable the call returns exit code 7 and writes a machine-readable record to stdout **instead of a handle** — never a handle. Treat exit 7 as an instruction to degrade to sequential work with phase order preserved, never as a refusal. Because the call returns non-zero as a normal outcome, capture it in a guarded form so an `errexit` caller is not killed at the assignment:
+
+  ```bash
+  handle="$(spawn_teammate "$persona" --story-key "$key")" || rc=$?
+  ```
+
+  Declaration and assignment must stay separate — `local handle="$(...)"` reports the status of `local`, not of the spawn.
+
+- **Ceiling saturated — exit code 8.** When the teammate ceiling is already full, `spawn_teammate` retries with bounded backoff (four retries at 1, 2, 4 and 8 seconds plus up to 0.9 s of jitter each, so 15-19 seconds in total); if every attempt still finds the registry full it returns exit code 8 and writes no handle. Exit 8 is a **capacity condition, not a failure**: it means the work could not start yet, never that it went wrong. Queue the item and retry it once a teammate shuts down and frees a slot — do not mark the work failed, and do not treat it as a refusal. A slot freed by another process during the backoff window is picked up automatically and the call then succeeds normally.
+
+  Exit 8 is returned as a normal outcome, so it needs the same guarded assignment as exit 7 — an `errexit` caller is otherwise killed at the assignment:
+
+  ```bash
+  handle="$(spawn_teammate "$persona" --story-key "$key")" || rc=$?
+  case "${rc:-0}" in
+    0) ;;   # got a handle
+    7) ;;   # substrate absent — degrade to sequential, phase order preserved
+    8) ;;   # ceiling saturated — queue and retry when a slot frees
+    *) ;;   # a real failure
+  esac
+  ```
 
 #### DRIVE
 

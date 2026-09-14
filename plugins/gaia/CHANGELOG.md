@@ -3,6 +3,40 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [Unreleased]
+
+### Added
+
+- **`/gaia-run-sprint` — run a sprint phase by phase.** Stories that share a
+  dependency phase have no ordering constraint between them, so the new command
+  runs them together up to the configured dev-slot budget, each in its own
+  worktree, and holds a barrier until every story of a phase has finished before
+  the next one starts. A failing story never stops its siblings, a saturated
+  agent ceiling queues the story instead of failing it, and a stalled story is
+  bounded by a per-story budget (`parallel_execution.story_timeout_minutes`,
+  90 by default) that frees the slot while preserving the worktree.
+  Concurrency is opt-in and, when unavailable, the sprint still runs one story
+  at a time with the reason stated rather than refusing.
+- **Opt-in discard of ignored-only worktree state.** After a story merges, its
+  worktree can now be removed along with build output and other ignored files
+  that previously left a locked directory behind on an otherwise clean run.
+  Memory and checkpoint state is never discarded, and a worktree holding
+  uncommitted or untracked work is still kept and reported — now with a
+  recovery command that works against a locked worktree.
+
+### Changed
+
+- **Configurable teammate dispatch ceiling.** The Agent Teams ceiling is no longer
+  a hard 8. A new `parallel_execution` section in project config carries
+  `max_parallel_dev_slots` (default 8) and `teammate_dispatch_ceiling`
+  (default 12); omitting the section keeps the default budget. Configuration is
+  validated so the ceiling always leaves headroom above the dev-slot budget for
+  gate agents, and a spawn that reaches the ceiling is retried with bounded
+  backoff (four retries over roughly 15-19 seconds) and reported as a capacity
+  condition rather than a failure — it exits
+  with status 8 and no handle, which callers should queue and retry once a slot
+  frees rather than treat as a failed unit of work.
+
 ## [1.216.2] — 2026-07-13
 
 ### Changed

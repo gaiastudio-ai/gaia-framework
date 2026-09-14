@@ -42,6 +42,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-threat-model/finalize.sh"
 # WORKFLOW_NAME matches the V1 workflow id (security-threat-model)
 # — do NOT rename to "threat-model".
@@ -66,10 +69,10 @@ ARTIFACT_REQUESTED=0
 if [ -n "${THREAT_MODEL_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$THREAT_MODEL_ARTIFACT"
-elif [ -f "docs/planning-artifacts/threat-model.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+elif [ -f "docs/planning-artifacts/threat-model.md" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
   ARTIFACT="docs/planning-artifacts/threat-model.md"
-elif [ -f ".gaia/artifacts/planning-artifacts/threat-model.md" ]; then
-  ARTIFACT=".gaia/artifacts/planning-artifacts/threat-model.md"
+elif [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/threat-model.md" ]; then
+  ARTIFACT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/threat-model.md"
 fi
 
 # ---------- 1. Run the 25-item checklist ----------
@@ -573,7 +576,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no threat-model artifact found (THREAT_MODEL_ARTIFACT unset and no threat-model.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
+  log "no threat-model artifact found (THREAT_MODEL_ARTIFACT unset and no threat-model.md at ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

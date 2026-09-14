@@ -79,7 +79,7 @@
 
       <section id="technical-notes">
         <h2>Technical notes</h2>
-        <ul><li>Never commit directly to main. Delete branches after merge.</li><li>Branch naming: {type}/{ticket-key}-{short-description}.</li><li>Conventional commit types: feat, fix, refactor, chore, perf, docs, style, test.</li></ul>
+        <ul><li>Never commit directly to main. Delete branches after merge.</li><li>Branch naming: {type}/{ticket-key}-{short-description}. Story branches use the <code>feat/</code> prefix, named after the story they implement.</li><li>Conventional commit types: feat, fix, refactor, chore, perf, docs, style, test.</li><li>Worktree mode (opt-in, off by default) gives each story its own linked git worktree beside the repository, so two stories in progress cannot edit the same checkout. A worktree holding uncommitted or ignored files is kept rather than deleted.</li></ul>
       </section>
       <footer class="page-footer">
         <p><a href="../categories/internal.html">Back to Internal Skills</a></p>

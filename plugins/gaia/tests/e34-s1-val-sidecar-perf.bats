@@ -51,6 +51,12 @@ teardown() { common_teardown; }
 
 SCRIPT="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/val-sidecar-write.sh"
 
+# Wall-clock threshold assertion — excluded from the default local and CI
+# tier by the hardware-dependent tag. The measured median tracks host
+# fork/exec cost, so a loaded or slower machine reports a higher median
+# without any product-side change. Run it explicitly with:
+#   bats --filter-tags hardware-dependent <test-file>
+# bats test_tags=hardware-dependent
 @test "100 invocations with distinct payloads — median latency <= 75ms, no single call > 1s" {
   # Five warm-up invocations to amortize OS page-cache, fork/exec, and
   # interpreter startup costs before any sample is recorded. NFR-VSP-1

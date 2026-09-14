@@ -274,17 +274,17 @@ else
     if [ -n "$_checkpoint_path" ]; then
       case "$_checkpoint_path" in
         /*) CHECKPOINT_DIR="$_checkpoint_path" ;;
-        *)  CHECKPOINT_DIR="${_project_root:-.}/$_checkpoint_path" ;;
+        *)  CHECKPOINT_DIR="${PROJECT_ROOT:-${_project_root:-.}}/$_checkpoint_path" ;;
       esac
     else
       # .gaia/memory/checkpoints is the only location — the legacy
       # _memory/checkpoints fallback was removed with the consolidation migration.
-      CHECKPOINT_DIR="${_project_root:-.}/.gaia/memory/checkpoints"
+      CHECKPOINT_DIR="${PROJECT_ROOT:-${_project_root:-.}}/.gaia/memory/checkpoints"
     fi
     unset _own_dir _resolver _resolver_out _project_root _checkpoint_path _line
   else
     # CWD-relative branch when resolve-config.sh is missing.
-    CHECKPOINT_DIR=".gaia/memory/checkpoints"
+    CHECKPOINT_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
   fi
 fi
 

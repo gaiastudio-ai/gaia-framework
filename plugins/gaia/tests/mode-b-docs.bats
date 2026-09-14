@@ -49,8 +49,12 @@ setup() {
   grep -qi 'Known Limitations' "$PAGE"
 }
 
-@test "mode-b page states the eight-teammate ceiling (AC5)" {
-  grep -qi 'eight' "$PAGE"
+@test "mode-b page states the configurable teammate ceiling (AC5)" {
+  # The page must describe a CONFIGURABLE ceiling and name the default, not
+  # assert a hard eight.
+  grep -i 'configurable' "$PAGE" > /dev/null
+  grep -i 'ceiling' "$PAGE" > /dev/null
+  grep -E '12|twelve' "$PAGE" > /dev/null
 }
 
 @test "mode-b page states the clean-room reviewer exclusion (AC5)" {

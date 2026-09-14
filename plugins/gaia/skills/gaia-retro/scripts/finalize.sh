@@ -33,7 +33,7 @@ die() { log "$*"; exit 1; }
 # Legacy fixtures that do NOT export the env var get the prior unconditional
 # behavior (backward-compat).
 if [ -n "${GAIA_FINALIZE_SENTINEL_REQUIRED:-}" ]; then
-  PROJECT_ROOT="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
+  PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
   # Canonical .gaia/ paths only; legacy _memory fallbacks removed with the consolidation migration.
   SIDECAR_LOG="$PROJECT_ROOT/.gaia/memory/validator-sidecar/decision-log.md"
   # write-checkpoint.sh emits `${CHECKPOINT_ROOT}/{skill_name}/{ts}-step-{N}.json`

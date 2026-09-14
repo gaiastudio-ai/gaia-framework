@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # config-hydration.sh — shared library for hydrating sections of project-config.yaml.
 #
 # Usage (sourced library):
@@ -167,6 +170,15 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # test_policy (1): operator-managed per-trigger scope rules;
   # x-no-auto-hydration. Never auto-hydrated by the reconciler.
   test_policy
+  # parallel_execution (1): operator-managed concurrency budget. Never
+  # auto-hydrated, because an empty stub would mean exactly what the section's
+  # ABSENCE already means (the default budget) while adding a key to every
+  # project config. The effective values are applied at the read site, not
+  # materialised from the schema `default` annotations, so a stub would carry
+  # no behaviour. The schema property also carries `x-no-auto-hydration: true`
+  # as defense-in-depth documentation; this entry registers it for the
+  # reconciler's managed-elsewhere check.
+  parallel_execution
 )
 
 # ---- Logging helpers ------------------------------------------------------
@@ -405,8 +417,8 @@ config_hydration_resolve_target() {
     if [ -z "$target" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
       local pr
       pr="$(cd "${CLAUDE_PLUGIN_ROOT}/../../.." 2>/dev/null && pwd || true)"
-      if [ -n "$pr" ] && [ -f "${pr}/.gaia/config/project-config.yaml" ]; then
-        target="${pr}/.gaia/config/project-config.yaml"
+      if [ -n "$pr" ] && [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+        target="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
       elif [ -n "$pr" ]; then
         target="${pr}/config/project-config.yaml"
       fi
@@ -416,8 +428,8 @@ config_hydration_resolve_target() {
       target="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
     fi
     # Tier 5: relative-canonical (default for CWD-rooted runs).
-    if [ -z "$target" ] && [ -f ".gaia/config/project-config.yaml" ]; then
-      target=".gaia/config/project-config.yaml"
+    if [ -z "$target" ] && [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+      target="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
     fi
     # Tier 6: relative-legacy fallback (pre-migration).
     [ -z "$target" ] && target="config/project-config.yaml"

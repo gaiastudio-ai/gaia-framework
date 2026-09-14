@@ -16,6 +16,9 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 MAX_BYTES=65536
 
 # Extract sprint_id from frontmatter; returns empty string on miss.
@@ -181,7 +184,7 @@ declare -a matched=()
 # and validates each token as E<N>-S<N>, normalising to the same space-delimited
 # shape the yq path produced.
 SPRINT_STORY_KEYS=""
-SPRINT_STATUS_YAML="${GAIA_STATE_DIR:-.gaia/state}/sprint-status.yaml"
+SPRINT_STATUS_YAML="${GAIA_STATE_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state}/sprint-status.yaml"
 if [ -f "$SPRINT_STATUS_YAML" ]; then
   if command -v yq >/dev/null 2>&1; then
     SPRINT_STORY_KEYS="$(yq eval '.stories[].key' "$SPRINT_STATUS_YAML" 2>/dev/null | tr '\n' ' ')"

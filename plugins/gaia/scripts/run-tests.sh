@@ -68,6 +68,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="run-tests.sh"
 
 err()  { printf '%s: error: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -191,8 +194,8 @@ esac
 if [ -z "$CONFIG" ]; then
   if [ -n "${GAIA_TESTS_CONFIG:-}" ]; then
     CONFIG="$GAIA_TESTS_CONFIG"
-  elif [ -f ".gaia/config/project-config.yaml" ]; then
-    CONFIG=".gaia/config/project-config.yaml"
+  elif [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    CONFIG="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   else
     CONFIG="config/project-config.yaml"
   fi

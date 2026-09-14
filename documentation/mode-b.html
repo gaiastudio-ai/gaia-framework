@@ -235,10 +235,11 @@
         </p>
         <ul>
           <li>
-            <strong>Eight-teammate ceiling.</strong> A team is capped at a
-            maximum of eight concurrent persistent teammates. Workflows that
-            would exceed that are kept within the ceiling -- Mode B does not
-            stand up an unbounded swarm.
+            <strong>Configurable teammate ceiling.</strong> A team is capped at
+            a configurable maximum of concurrent persistent teammates, 12 by
+            default, set with <code>parallel_execution.teammate_dispatch_ceiling</code>
+            in your project config. Workflows that would exceed that are kept
+            within the ceiling -- Mode B does not stand up an unbounded swarm.
           </li>
           <li>
             <strong>Clean-room reviewer exclusion.</strong> Review agents are

@@ -18,6 +18,9 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 lifecycle_strict_mode_enabled() {
   # Tier 1: env var override.
   if [ "${GAIA_STRICT_LIFECYCLE:-}" = "1" ]; then
@@ -28,7 +31,7 @@ lifecycle_strict_mode_enabled() {
   fi
 
   # Tier 2: project-config.yaml.
-  local config="${PROJECT_CONFIG:-.gaia/config/project-config.yaml}"
+  local config="${PROJECT_CONFIG:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml}"
   if [ -f "$config" ] && command -v yq >/dev/null 2>&1; then
     local val
     val="$(yq eval '.lifecycle.strict_mode // "null"' "$config" 2>/dev/null || echo "null")"

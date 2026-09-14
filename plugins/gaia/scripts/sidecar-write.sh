@@ -32,6 +32,9 @@
 #
 
 set -euo pipefail
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 LC_ALL=C; export LC_ALL
 
 # ---------------------------------------------------------------------------
@@ -88,7 +91,7 @@ sidecar_write() {
       return 1 ;;
   esac
 
-  local sidecar_dir="${root}/.gaia/memory/${agent}-sidecar"
+  local sidecar_dir="$root/.gaia/memory/${agent}-sidecar"
   local decision_log="${sidecar_dir}/decision-log.md"
 
   # Prefix check: resolved sidecar_dir must live under ${root}/.gaia/memory/.

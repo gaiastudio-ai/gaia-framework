@@ -17,6 +17,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-trace/finalize.sh"
 WORKFLOW_NAME="traceability"
 
@@ -86,7 +89,7 @@ fi
 # (docs-about-testing moved out of test-artifacts/). The
 # planning-artifacts/ home is highest precedence; the legacy test-artifacts/
 # (strategy/) paths remain for the migration read-compat window.
-TM_PATHS="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/test-artifacts/traceability-matrix.md"
+TM_PATHS="${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/planning-artifacts/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/test-artifacts/strategy/traceability-matrix.md ${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/test-artifacts/traceability-matrix.md"
 matrix_blocked=0
 for tm in $TM_PATHS; do
   if [ -f "$tm" ] && [ -s "$tm" ]; then

@@ -49,6 +49,9 @@ set -eu
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="orchestration-warning.sh"
 
 usage() {
@@ -173,7 +176,7 @@ if [ -z "$checkpoint_path" ]; then
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     checkpoint_path="$CHECKPOINT_PATH"
   else
-    checkpoint_path="./.gaia/memory/checkpoints"
+    checkpoint_path="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
   fi
 fi
 mkdir -p "$checkpoint_path" 2>/dev/null || {

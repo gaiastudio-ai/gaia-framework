@@ -160,6 +160,7 @@ _make_skill() {
   [[ "$output" =~ verdict=(pass|fail) ]]
 }
 
+# bats test_tags=hardware-dependent
 @test "roster-cost P95 is at or under the documented threshold (AC3)" {
   run bash "$ROSTER" --iterations 20
   [ "$status" -eq 0 ]

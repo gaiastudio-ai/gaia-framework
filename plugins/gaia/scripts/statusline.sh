@@ -17,7 +17,7 @@
 #   - ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json                     (version, active plugin)
 #     Falls back to $PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json (in-tree dev)
 #   - $HOME/.claude/gaia-statusline/cache/latest-release.json             (silent on miss)
-#   - $PROJECT_PATH/.gaia/state/sprint-status.yaml                         (rich theme only — canonical location)
+#   - $PROJECT_ROOT/.gaia/state/sprint-status.yaml                         (rich theme only — canonical location)
 #     Falls back to $PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml  (legacy read-compat)
 #
 # POSIX discipline: bash 3.2 compatible (macOS default).
@@ -36,6 +36,9 @@ fi
 if [ -z "$PROJECT_PATH" ]; then
   PROJECT_PATH="$PWD"
 fi
+
+# Canonical state-tree root for .gaia/ access.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH}}}"
 
 # ---- Persist the context-window snapshot for dev-step token telemetry -------
 # statusline.sh is the ONLY component the Claude Code substrate hands the
@@ -61,7 +64,7 @@ if command -v jq >/dev/null 2>&1; then
       else empty end
   ' 2>/dev/null || printf '')"
   if [ -n "$_CW_SNAPSHOT" ]; then
-    _CW_DIR="$PROJECT_PATH/.gaia/memory"
+    _CW_DIR="$PROJECT_ROOT/.gaia/memory"
     if mkdir -p "$_CW_DIR" 2>/dev/null; then
       # Atomic-ish write: tmpfile + mv so a concurrent reader never sees a
       # half-written file.
@@ -370,7 +373,7 @@ fi
 SPRINT_ID=""
 if [ "$GAIA_RICH" = "1" ]; then
   SPRINT_FILE=""
-  _SEARCH_DIR="$PROJECT_PATH"
+  _SEARCH_DIR="$PROJECT_ROOT"
   _DEPTH=0
   while [ "$_DEPTH" -lt 5 ]; do
     # Prefer .gaia/state/sprint-status.yaml (canonical location) over legacy docs/.

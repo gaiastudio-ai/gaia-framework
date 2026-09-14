@@ -28,6 +28,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="adapters/grype/adapter.sh"
 log_info()  { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn()  { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
@@ -65,7 +68,7 @@ if [ "$_GRYPE_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>
   # The docker runner exposes the host workspace at /workspace. Adapter
   # output dir is the canonical brownfield audit dir for downstream
   # SARIF aggregation; ADAPTER_OUT_DIR is the contract with the runner.
-  export ADAPTER_OUT_DIR="${ADAPTER_OUT_DIR:-${AUDIT_DIR:-./.gaia/memory/brownfield-audit}/sarif}"
+  export ADAPTER_OUT_DIR="${ADAPTER_OUT_DIR:-${AUDIT_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit}/sarif}"
   mkdir -p "$ADAPTER_OUT_DIR"
   # Capture the docker-dispatched scan output. The trust-boundary checks
   # (DB age, drift) are downstream of this branch: the docker image
@@ -93,7 +96,7 @@ if [ "$_GRYPE_RUNNER_MODE" = "docker" ] && docker_runner_available >/dev/null 2>
     # because the host had no view of the container's DB file. We resolve
     # the DB path from `grype db status` inside the image, then sha256sum
     # it inline.
-    _docker_audit="${ADAPTER_OUT_DIR:-${AUDIT_DIR:-./.gaia/memory/brownfield-audit}}"
+    _docker_audit="${ADAPTER_OUT_DIR:-${AUDIT_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit}}"
     mkdir -p "$_docker_audit" 2>/dev/null || true
     _docker_chkpath="$_docker_audit/grype-db-checksum.log"
     # The runner's `--network=none` mount layout means we can re-dispatch
@@ -178,7 +181,7 @@ fi
 SESSION_ID="${GAIA_SESSION_ID:-$PPID}"
 default_audit_dir() {
   if [ -n "${GAIA_MEMORY_DIR:-}" ]; then printf '%s/brownfield-audit' "$GAIA_MEMORY_DIR"
-  else printf '%s' "./.gaia/memory/brownfield-audit"; fi
+  else printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit"; fi
 }
 AUDIT_DIR="${GAIA_BROWNFIELD_AUDIT_DIR:-$(default_audit_dir)}"
 CHECKSUM_LOG="$AUDIT_DIR/grype-db-checksum.log"
@@ -207,7 +210,7 @@ grype_seconds=$(( $(date +%s) - grype_start ))
 # gap_count_* are NOT written here). Populate via the shared writer
 # when a report exists; always echo for the operator + bats assertions.
 log_info "grype_db_checksum=$CURRENT_SHA grype_db_built_age=${built_age_seconds:-unknown} phase_runtime_seconds.grype=$grype_seconds"
-REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+REPORT="${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
 TELEM="$(cd "$(dirname "$0")/../brownfield" 2>/dev/null && pwd)/brownfield-telemetry.sh"
 if [ -f "$REPORT" ] && [ -x "$TELEM" ]; then
   bash "$TELEM" --report "$REPORT" --field grype_db_checksum --value "$CURRENT_SHA" || true

@@ -32,7 +32,7 @@
 #   3  multiple story files match the glob
 #   4  malformed frontmatter (missing or unparseable status)
 #   5  epics-and-stories.md missing
-#   6  lock contention (5s flock timeout)
+#   6  lock contention (5s lock-acquisition timeout)
 #   7  invalid state transition
 #   8  rollback after partial failure
 #
@@ -76,6 +76,9 @@ RESOLVE_EPIC_SLUG_LIB="$LIB_DIR/resolve-epic-slug.sh"
 
 # shellcheck source=lib/story-state-machine.sh
 . "$STATE_MACHINE_LIB"
+
+# shellcheck source=lib/acquire-lock.sh
+. "${LIB_DIR}/acquire-lock.sh"
 
 # Sourced for resolve_epic_slug() used to derive the per-epic
 # story-index.yaml location. The library is sourceable with zero side
@@ -255,26 +258,27 @@ fi
 #   Stage 3: '.' fallback — preserves the legacy CWD-relative behavior.
 
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
 # Smart-fallback — env-var > .gaia/<subdir>/ > legacy <subdir>/. Env-var overrides win.
 if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
-  if [ -d "${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts" ]; then
-    IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/.gaia/artifacts/implementation-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+    IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
   else
-    IMPLEMENTATION_ARTIFACTS="${PROJECT_PATH}/docs/implementation-artifacts"
+    IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}docs/implementation-artifacts"
   fi
 fi
 if [ -z "${PLANNING_ARTIFACTS:-}" ]; then
-  if [ -d "${PROJECT_PATH}/.gaia/artifacts/planning-artifacts" ]; then
-    PLANNING_ARTIFACTS="${PROJECT_PATH}/.gaia/artifacts/planning-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
+    PLANNING_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
   else
-    PLANNING_ARTIFACTS="${PROJECT_PATH}/docs/planning-artifacts"
+    PLANNING_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}docs/planning-artifacts"
   fi
 fi
 if [ -z "${MEMORY_PATH:-}" ]; then
   # .gaia/memory is the only memory tree; legacy _memory fallback removed
   # with the consolidation migration.
-  MEMORY_PATH="${PROJECT_PATH}/.gaia/memory"
+  MEMORY_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
 fi
 
 # Resolve EPICS_AND_STORIES across the dual-layout invariant.
@@ -763,14 +767,14 @@ update_sprint_status_yaml() {
   if [ -z "$yaml" ]; then
     local _resolver="$LIB_DIR/resolve-artifact-path.sh"
     if [ -x "$_resolver" ]; then
-      yaml="$("$_resolver" sprint_status --project-root "${PROJECT_PATH:-.}" --existing-only 2>/dev/null || true)"
+      yaml="$("$_resolver" sprint_status --project-root "${PROJECT_ROOT}" --existing-only 2>/dev/null || true)"
       # No existing rung — fall back to the canonical default (the resolver's
       # rung-1 path) so the not-found / backlog-skip diagnostics below name the
       # canonical location, not a legacy one.
-      [ -z "$yaml" ] && yaml="$("$_resolver" sprint_status --project-root "${PROJECT_PATH:-.}" 2>/dev/null)"
+      [ -z "$yaml" ] && yaml="$("$_resolver" sprint_status --project-root "${PROJECT_ROOT}" 2>/dev/null)"
     fi
     # Last-resort defaults if the resolver is unavailable.
-    [ -z "$yaml" ] && yaml="${PROJECT_PATH:-.}/.gaia/state/sprint-status.yaml"
+    [ -z "$yaml" ] && yaml="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
     if [ ! -e "$yaml" ] && [ -e "${PROJECT_PATH}/sprint-status.yaml" ]; then
       yaml="${PROJECT_PATH}/sprint-status.yaml"
     fi
@@ -1484,15 +1488,34 @@ fi
 # override STORY_INDEX_YAML wins unconditionally for tests / brownfield.
 STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$EPIC_KEY_FOR_SLUG")"
 
-# Acquire the cross-file lock.
+# Single exit handler — every trap installation calls this. Idempotent
+# (per-fd registry cleared on first release), so chaining it into a later
+# trap that also releases is safe.
+_tss_release_lock() {
+  release_lock 200 2>/dev/null || true
+  # Re-touch the sentinel so the lock file exists post-run.
+  # Under flock mode, the file persists (kernel-level lock released on fd
+  # close). Under fallback mode, release_lock removes the PID-carrying file
+  # and this touch restores a zero-byte sentinel.
+  touch "$STORY_STATUS_LOCK" 2>/dev/null || true
+}
+
+# Acquire the cross-file lock via the shared helper (flock fast path, or the
+# ln(2) hard-link fallback when flock is absent — the macOS default).
 mkdir -p "$(dirname "$STORY_STATUS_LOCK")"
-exec 200>"$STORY_STATUS_LOCK"
-if command -v flock >/dev/null 2>&1; then
-  if ! flock -w 5 200; then
-    err "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly"
-    exit 6
-  fi
+if ! acquire_lock "$STORY_STATUS_LOCK" 5 200; then
+  err "lock contention on '$STORY_STATUS_LOCK' (5s timeout) — retry shortly"
+  exit 6
 fi
+
+# Install the releasing trap on the very next line after a successful
+# acquire. Every exit between here and the rollback trap installed further
+# down — the idempotent no-op, the --from mismatch, an invalid transition,
+# a refused review-gate — would otherwise leave a PID-bearing lock file
+# behind, and the reaper declines to clear it until it ages past the
+# 60s floor, so the next run blocks for the full timeout. The window must
+# be zero statements wide.
+trap '_tss_release_lock; _cleanup_tmps' EXIT INT TERM
 
 CURRENT_STATUS="$(read_frontmatter_status "$STORY_FILE")"
 
@@ -1570,10 +1593,10 @@ if [ "$RECONCILE_ONLY" != "1" ] \
   if [ "$_mt_flag" = "true" ]; then
     _mt_ledger="${REVIEW_GATE_LEDGER:-}"
     if [ -z "$_mt_ledger" ]; then
-      if [ -d "${PROJECT_PATH:-.}/.gaia/state" ]; then
-        _mt_ledger="${PROJECT_PATH:-.}/.gaia/state/.review-gate-ledger"
+      if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state" ]; then
+        _mt_ledger="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/.review-gate-ledger"
       else
-        _mt_ledger="${PROJECT_PATH:-.}/.review-gate-ledger"
+        _mt_ledger="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.review-gate-ledger"
       fi
     fi
     # Read the latest manual-test verdict for this story (last match wins).
@@ -1602,7 +1625,7 @@ if [ "$RECONCILE_ONLY" != "1" ] \
         _mt_cfg="${GAIA_SHARED_CONFIG:-}"
         if [ -z "$_mt_cfg" ]; then
           for _mt_cfg_candidate in \
-            "${PROJECT_PATH:-.}/.gaia/config/project-config.yaml" \
+            "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" \
             "${PROJECT_PATH:-.}/config/project-config.yaml"; do
             if [ -f "$_mt_cfg_candidate" ]; then
               _mt_cfg="$_mt_cfg_candidate"
@@ -1661,10 +1684,10 @@ YAML_PATH_FOR_SNAP="${SPRINT_STATUS_YAML:-}"
 if [ -z "$YAML_PATH_FOR_SNAP" ]; then
   _resolver_snap="$LIB_DIR/resolve-artifact-path.sh"
   if [ -x "$_resolver_snap" ]; then
-    YAML_PATH_FOR_SNAP="$("$_resolver_snap" sprint_status --project-root "${PROJECT_PATH:-.}" --existing-only 2>/dev/null || true)"
-    [ -z "$YAML_PATH_FOR_SNAP" ] && YAML_PATH_FOR_SNAP="$("$_resolver_snap" sprint_status --project-root "${PROJECT_PATH:-.}" 2>/dev/null)"
+    YAML_PATH_FOR_SNAP="$("$_resolver_snap" sprint_status --project-root "${PROJECT_ROOT}" --existing-only 2>/dev/null || true)"
+    [ -z "$YAML_PATH_FOR_SNAP" ] && YAML_PATH_FOR_SNAP="$("$_resolver_snap" sprint_status --project-root "${PROJECT_ROOT}" 2>/dev/null)"
   fi
-  [ -z "$YAML_PATH_FOR_SNAP" ] && YAML_PATH_FOR_SNAP="${PROJECT_PATH:-.}/.gaia/state/sprint-status.yaml"
+  [ -z "$YAML_PATH_FOR_SNAP" ] && YAML_PATH_FOR_SNAP="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
 fi
 if [ -e "$YAML_PATH_FOR_SNAP" ]; then
   SNAP_YAML="$(snapshot_for_rollback "$YAML_PATH_FOR_SNAP")"
@@ -1689,6 +1712,7 @@ rollback() {
 TSS_ROLLBACK_PENDING=1
 trap '
   rc=$?
+  _tss_release_lock
   if [ "${TSS_ROLLBACK_PENDING:-0}" = "1" ] && [ $rc -ne 0 ]; then
     rollback
     _cleanup_tmps
@@ -1716,7 +1740,7 @@ TSS_ROLLBACK_PENDING=0
 # Restore the plain _cleanup_tmps EXIT trap so any later failure
 # (e.g., during marker write) still cleans orphan tmps. Slots cleared above
 # make this a no-op on the happy path.
-trap '_cleanup_tmps' EXIT
+trap '_tss_release_lock; _cleanup_tmps' EXIT
 
 # Emit the state_transition lifecycle event AFTER the commit so a logged event
 # always corresponds to a durably-written transition. This is the sixth
@@ -1804,7 +1828,7 @@ if [ "$NEW_STATUS" = "done" ]; then
   _brain_update_sh="$SCRIPT_DIR/brain/update-brain-index.sh"
   if [ -x "$_brain_update_sh" ]; then
     _emit_brain_freshness() {
-      local _manifest="${CLAUDE_PROJECT_ROOT:-$PROJECT_PATH}/.gaia/knowledge/brain-index.yaml"
+      local _manifest="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/knowledge/brain-index.yaml"
       [ -f "$_manifest" ] || return 0
 
       # Check the story node exists in the manifest before attempting edges.

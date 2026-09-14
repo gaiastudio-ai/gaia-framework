@@ -55,6 +55,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="review-summary-gen.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -126,15 +129,15 @@ _resolve_artifact_dirs() {
   local project_path="${PROJECT_PATH:-.}"
   if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
     __impl_artifacts="$IMPLEMENTATION_ARTIFACTS"
-  elif [ -d "${project_path}/.gaia/artifacts/implementation-artifacts" ]; then
-    __impl_artifacts="${project_path}/.gaia/artifacts/implementation-artifacts"
+  elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+    __impl_artifacts="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
   else
     __impl_artifacts="${project_path}/docs/implementation-artifacts"
   fi
   if [ -n "${TEST_ARTIFACTS:-}" ]; then
     __test_artifacts="$TEST_ARTIFACTS"
-  elif [ -d "${project_path}/.gaia/artifacts/test-artifacts" ]; then
-    __test_artifacts="${project_path}/.gaia/artifacts/test-artifacts"
+  elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts" ]; then
+    __test_artifacts="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
   else
     __test_artifacts="${project_path}/docs/test-artifacts"
   fi
@@ -605,7 +608,7 @@ STORY_FILE=""
 _locate_story_file() {
   local key="$1"
   local project_path="${PROJECT_PATH:-.}"
-  local impl_artifacts; if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then impl_artifacts="$IMPLEMENTATION_ARTIFACTS"; elif [ -d "${project_path}/.gaia/artifacts/implementation-artifacts" ]; then impl_artifacts="${project_path}/.gaia/artifacts/implementation-artifacts"; else impl_artifacts="${project_path}/docs/implementation-artifacts"; fi
+  local impl_artifacts; if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then impl_artifacts="$IMPLEMENTATION_ARTIFACTS"; elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then impl_artifacts="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"; else impl_artifacts="${project_path}/docs/implementation-artifacts"; fi
   # Per-story layout (tier 0) is rung 1; legacy nested + flat follow.
   # The `/stories/` exclusion in the tier-0 filter below prevents a bare glob
   # `epic-*/${key}-*/story.md` from also matching the tier-1 `epic-*/stories/…`
@@ -696,7 +699,7 @@ main() {
     out_path="$OUTPUT_PATH"
   else
     local project_path="${PROJECT_PATH:-.}"
-    local impl_artifacts; if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then impl_artifacts="$IMPLEMENTATION_ARTIFACTS"; elif [ -d "${project_path}/.gaia/artifacts/implementation-artifacts" ]; then impl_artifacts="${project_path}/.gaia/artifacts/implementation-artifacts"; else impl_artifacts="${project_path}/docs/implementation-artifacts"; fi
+    local impl_artifacts; if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then impl_artifacts="$IMPLEMENTATION_ARTIFACTS"; elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then impl_artifacts="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"; else impl_artifacts="${project_path}/docs/implementation-artifacts"; fi
     out_path="${impl_artifacts}/${STORY_KEY}-review-summary.md"
   fi
   out_path="$(_abspath "$out_path")"

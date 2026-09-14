@@ -33,6 +33,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-bridge-enable/bridge-stub-scaffold.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
@@ -42,8 +45,8 @@ if [ "$#" -ge 1 ]; then
 fi
 
 if [ -z "$target" ]; then
-  if [ -f ".gaia/config/project-config.yaml" ]; then
-    target=".gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    target="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   elif [ -f "config/project-config.yaml" ]; then
     target="config/project-config.yaml"
   else

@@ -23,6 +23,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-create-arch/setup.sh"
 WORKFLOW_NAME="create-architecture"
 
@@ -72,8 +75,8 @@ if [ -n "$BYPASS_SKILL" ]; then
     # The lib is sourced-style (defines functions) AND has a `bash $lib append --skill --reason --sprint-id` CLI mode.
     # SPRINT_ID may not yet be resolved (resolve-config runs in §1 below), so try yq for it from the canonical state file.
     BP_SPRINT_ID="${SPRINT_ID:-}"
-    if [ -z "$BP_SPRINT_ID" ] && [ -f ".gaia/state/sprint-status.yaml" ] && command -v yq >/dev/null 2>&1; then
-      BP_SPRINT_ID="$(yq eval '.sprint_id // ""' .gaia/state/sprint-status.yaml 2>/dev/null || echo "")"
+    if [ -z "$BP_SPRINT_ID" ] && [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml" ] && command -v yq >/dev/null 2>&1; then
+      BP_SPRINT_ID="$(yq eval '.sprint_id // ""' ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml 2>/dev/null || echo "")"
     fi
     if [ -n "$BP_SPRINT_ID" ]; then
       bash "$LIFECYCLE_LIB_BP" append --skill "$BYPASS_SKILL" --reason "$BYPASS_REASON" --sprint-id "$BP_SPRINT_ID" 2>&1 || {
@@ -176,7 +179,7 @@ LIFECYCLE_LIB_S6="$(cd "$SCRIPT_DIR_S6/../../.." && pwd)/scripts/lib/lifecycle-o
 STRICT_HELPER_S6="$(cd "$SCRIPT_DIR_S6/../../.." && pwd)/scripts/lib/lifecycle-strict-mode.sh"
 
 # Read compliance.ui_present from project-config.yaml.
-PROJECT_CONFIG_S6="${PROJECT_CONFIG:-.gaia/config/project-config.yaml}"
+PROJECT_CONFIG_S6="${PROJECT_CONFIG:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml}"
 ui_present="false"
 if [ -f "$PROJECT_CONFIG_S6" ] && command -v yq >/dev/null 2>&1; then
   ui_present="$(yq eval '.compliance.ui_present // false' "$PROJECT_CONFIG_S6" 2>/dev/null || echo "false")"
@@ -195,7 +198,7 @@ else
     fi
   fi
 
-  TM_ART="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/threat-model.md"
+  TM_ART="${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/planning-artifacts/threat-model.md"
   if [ -f "$TM_ART" ] && [ -s "$TM_ART" ]; then
     log "threat-model artifact present: $TM_ART"
   else
@@ -221,7 +224,7 @@ else
     # active (sprint-status.yaml present), the hard gate is restored — at that
     # point a missing threat-model IS a real omission and --bypass IS recordable.
     pre_sprint=0
-    if [ ! -f ".gaia/state/sprint-status.yaml" ] && [ -z "${SPRINT_ID:-}" ]; then
+    if [ ! -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml" ] && [ -z "${SPRINT_ID:-}" ]; then
       pre_sprint=1
     fi
     if [ "$has_tm_bypass" -eq 1 ]; then

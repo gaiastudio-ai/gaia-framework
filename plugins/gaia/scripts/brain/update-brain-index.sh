@@ -38,6 +38,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # ---------------------------------------------------------------------------
 # YAML-string escape for a single-line double-quoted scalar.
 # ---------------------------------------------------------------------------
@@ -593,7 +596,7 @@ main() {
       # Sourced mode: callers always set CLAUDE_PROJECT_ROOT or pass --manifest.
       # Fall back to $PWD for backward compatibility with direct-source callers.
       local _root="${CLAUDE_PROJECT_ROOT:-$PWD}"
-      manifest="$_root/.gaia/knowledge/brain-index.yaml"
+      manifest="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/knowledge/brain-index.yaml"
     fi
   fi
 

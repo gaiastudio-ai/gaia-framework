@@ -41,6 +41,9 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 ROOT=""
 PAYLOAD=""
 DATE=""
@@ -339,7 +342,7 @@ tmp="$(mktemp)"
   echo ""
   while IFS= read -r ag; do
     [[ -z "$ag" ]] && continue
-    echo "- .gaia/memory/${ag}-sidecar/decisions/${DATE}-${SLUG}.md"
+    echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/${ag}-sidecar/decisions/${DATE}-${SLUG}.md"
   done <<< "$MEM_WT_LIST"
   echo ""
 } > "$tmp"

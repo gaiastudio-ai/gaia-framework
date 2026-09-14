@@ -22,9 +22,12 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 MODE="${1:-}"; shift || true
 SPRINT_ID=""
-CKDIR=".gaia/memory/checkpoints"
+CKDIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 
 while [ $# -gt 0 ]; do
   case "$1" in

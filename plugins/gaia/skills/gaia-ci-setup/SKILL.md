@@ -168,7 +168,7 @@ The CI config-resolution precedence is: `GAIA_CONFIG` → `.gaia/ci-config.yaml`
   # Detect the stack from test-environment.yaml (Phase-5 / bridge-enable
   # already wrote one; otherwise fall back to the project-config detect).
   _stack="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field stacks.0.language 2>/dev/null || true)"
-  [ -n "$_stack" ] || _stack="$(awk '/^detected-stack:/{print $2; exit}' .gaia/config/test-environment.yaml 2>/dev/null || true)"
+  [ -n "$_stack" ] || _stack="$(awk '/^detected-stack:/{print $2; exit}' "${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}/.gaia/config/test-environment.yaml" 2>/dev/null || true)"
   _provider="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --field ci_platform.provider 2>/dev/null || echo github-actions)"
   _config="$(${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config.sh --path 2>/dev/null || true)"
 

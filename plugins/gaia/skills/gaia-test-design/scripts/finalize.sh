@@ -43,6 +43,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-test-design/finalize.sh"
 WORKFLOW_NAME="test-design"
 
@@ -139,7 +142,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   # --- Script-verifiable items (6) ---
 
   # SV-01 — Output file saved to {test_artifacts}/test-plan.md
-  item_check "SV-01" "Output file saved to .gaia/artifacts/test-artifacts/test-plan.md" \
+  item_check "SV-01" "Output file saved to ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/test-plan.md" \
     "$(file_exists "$ARTIFACT")"
   # SV-02 — output file non-empty
   item_check "SV-02" "Output artifact is non-empty" \

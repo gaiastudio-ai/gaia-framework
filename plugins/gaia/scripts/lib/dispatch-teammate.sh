@@ -21,7 +21,33 @@
 #   library degrades to Mode A foreground fallback and emits a single
 #   machine-parseable warning token MODE_B_FALLBACK to stderr.
 #
-# The 8-teammate ceiling is enforced at the registry level.
+#   A caller that passes --story-key additionally receives a programmatic
+#   signal, so it can branch on a return value instead of parsing stderr:
+#   exit 7 and, on stdout, one machine-readable record in place of the handle
+#     mode_b_fallback story_key:<key> persona:<persona> reason:<reason>
+#   The exit code is the control-flow contract — treat it as an instruction to
+#   degrade to sequential work with phase order preserved, never as a refusal.
+#   Keyless callers are unaffected: they still receive a handle and exit 0.
+#
+# Ceiling saturation:
+#   When the ceiling is full, spawn_teammate retries with bounded backoff and,
+#   if the registry is still full at the end, returns exit 8 with no handle.
+#   Exit 8 is a capacity condition, never a story failure: the caller queues the
+#   work and retries once a slot frees. Because it is a normal outcome, capture
+#   it in a guarded form so an errexit caller is not killed at the assignment:
+#     handle="$(spawn_teammate "$persona" --story-key "$key")" || rc=$?
+#
+# Story-keyed handles:
+#   spawn_teammate --story-key builds the handle from the persona and the key
+#   rather than the process id. Because the process id is constant within one
+#   session, a process-derived handle collides whenever the same persona is
+#   dispatched twice; keying by story removes that collision, makes a retry
+#   land on the same handle, and lets each relayed message be attributed to
+#   the story it belongs to.
+#
+# The teammate ceiling is configurable via
+# parallel_execution.teammate_dispatch_ceiling in project-config.yaml
+# (default 12) and is enforced at the registry level.
 
 # ---------- Source guard ----------
 
@@ -32,8 +58,48 @@ fi
 
 # ---------- Internal state ----------
 
-# Maximum concurrent teammates.
-_DT_MAX_TEAMMATES=8
+# Maximum concurrent teammates. Resolved lazily from project config at the
+# first ceiling check, never at source time, so sourcing stays free of side
+# effects and a test can set GAIA_SHARED_CONFIG after sourcing.
+_DT_MAX_TEAMMATES=""
+
+# Ceiling applied when the config says nothing. An ABSENT section is a fact:
+# the operator did not configure a budget, so the documented default applies.
+_DT_DEFAULT_CEILING=12
+
+# Ceiling applied when the config cannot be READ (no JSON reader on PATH, or
+# a malformed/unreadable file). That is an unknown, not a fact — so it falls
+# back to the previously shipped bound rather than the higher default, which
+# cannot over-provision relative to any machine that ran this framework
+# before. Absent -> 12; unreadable -> 8.
+_DT_CEILING_FAILCLOSED=8
+
+# Upper clamp, mirroring the schema's maximum. Only reachable when config
+# validation was skipped; without it a runaway value would stand up an
+# unbounded swarm. Symmetric with the zero-floor below.
+_DT_CEILING_MAX=64
+
+# Exit code returned to a caller whose spawn hit the ceiling and stayed
+# blocked through the whole bounded retry. Distinct from 1 (a real failure)
+# and from the fallback code below, so a saturated ceiling is never mistaken
+# for a failed story: the caller queues the work and retries later.
+_DT_CEILING_EXIT_CODE=8
+
+# Bounded retry: total attempts, and the first backoff delay in seconds.
+# The delay doubles per attempt (1, 2, 4, 8 s) and each sleep carries a
+# 0.0-0.9 s jitter suffix. The jitter is strictly ADDITIVE, so the worst-case
+# wait before the queue-me code is 15.0-18.6 s, not 15 s flat.
+# The delay is overridable so tests need not sleep; the attempt COUNT is not,
+# so a test cannot weaken the bound it asserts.
+_DT_CEILING_RETRY_MAX=5
+_DT_CEILING_RETRY_BASE_DELAY="${_DT_CEILING_RETRY_BASE_DELAY:-1}"
+
+# Exit code returned to a story-keyed caller when the substrate is absent.
+# Story-keyed callers opt into the programmatic fallback contract, so they get
+# a distinct code they can branch on instead of parsing stderr. The code is
+# named once here; every return site references the constant so the documented
+# value and the returned value cannot drift apart.
+_DT_FALLBACK_EXIT_CODE=7
 
 # Registry directory — one file per active teammate.
 # Initialised lazily on first spawn, not at source time.
@@ -59,6 +125,295 @@ _dt_ensure_registry() {
   mkdir -p "$_DT_REGISTRY_DIR"
 }
 
+# _dt_config_file — echo the project-config path, using the same precedence
+# prefix resolve-config.sh uses. Echoes nothing when none is found.
+_dt_config_file() {
+  local c
+  for c in "${GAIA_SHARED_CONFIG:-}" \
+           "${PROJECT_ROOT:-}/.gaia/config/project-config.yaml" \
+           "${CLAUDE_PROJECT_ROOT:-}/.gaia/config/project-config.yaml" \
+           "$PWD/.gaia/config/project-config.yaml"; do
+    case "$c" in ''|/.gaia/config/project-config.yaml) continue ;; esac
+    if [ -f "$c" ]; then printf '%s' "$c"; return 0; fi
+  done
+  return 0
+}
+
+# _dt_classify_ceiling <raw> <default> <source-label> — turn a raw ceiling value
+# into a usable one, or into a documented fallback.
+#
+# This is the SINGLE place the rules live. Both the fresh read and the cached
+# value go through it: the cache short-circuits the reader FORK, never the
+# validation. A cached value that skipped these checks would honour a ceiling
+# the fresh path would have clamped or floored — an over-provisioned dispatcher
+# from an environment variable, which is the wrong direction to fail in.
+#
+# Echoes the resolved ceiling. Never fails.
+_dt_classify_ceiling() {
+  local raw="$1" default="$2" cfg="$3"
+
+  #
+  # The same out-of-range config is rendered differently by different yq/JSON
+  # stacks: 100000000000000000000 on one, 1e+20 or 1.0E+20 on another. A
+  # classification keyed to one spelling silently sends the others down the
+  # wrong branch — an out-of-range ceiling then resolved to the default instead
+  # of the conservative bound. Order matters here: OUT-OF-RANGE is decided
+  # first, on the shape of the text, before any `[` arithmetic can abort on it.
+
+  # (1) Scientific / exponent notation in any case. Only a huge or fractional
+  #     magnitude is ever written this way, and neither is a usable ceiling.
+  case "$raw" in
+    *[eE]+[0-9]* | *[eE]-[0-9]* | *[eE][0-9]*)
+      printf 'dispatch-teammate: ceiling value out of range in %s — using conservative ceiling %s\n' \
+        "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+      printf '%s' "$_DT_CEILING_FAILCLOSED"
+      return 0
+      ;;
+  esac
+
+  # (2) A digit string longer than the bound. Checked as TEXT, never with `[`,
+  #     because an over-int64 literal makes the comparison abort and evaluate
+  #     false — which skipped the clamp, stored the oversized value, and then
+  #     poisoned the enforcement comparison too, refusing every spawn against
+  #     an empty registry. 6 digits is far above the schema maximum (64) and
+  #     far below the int64 limit.
+  case "$raw" in
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9]*)
+      printf 'dispatch-teammate: ceiling value out of range in %s — using conservative ceiling %s\n' \
+        "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+      printf '%s' "$_DT_CEILING_FAILCLOSED"
+      return 0
+      ;;
+  esac
+
+  # (3) Not a bare non-negative integer at all. A well-formed JSON scalar that
+  #     is merely unusable (a quoted numeric, a float, a bool) means the config
+  #     is READABLE -> documented default, and the validator is the layer that
+  #     tells the operator it was rejected. Anything else (multi-line output, a
+  #     structure, a bare token like `garbage`) means the reader is not
+  #     trustworthy -> conservative bound.
+  case "$raw" in
+    *[!0-9]*)
+      case "$raw" in
+        \"*\" | true | false | [0-9]*.[0-9]* | -[0-9]*)
+          printf '%s' "$default"
+          return 0
+          ;;
+        *)
+          printf 'dispatch-teammate: unreadable ceiling value from %s — using conservative ceiling %s\n' \
+            "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+          printf '%s' "$_DT_CEILING_FAILCLOSED"
+          return 0
+          ;;
+      esac
+      ;;
+  esac
+
+  # Clamp both ends: 0 would refuse every spawn, and an unvalidated runaway
+  # value would ignore the schema's maximum.
+  if [ "$raw" -eq 0 ]; then printf '%s' "$default"; return 0; fi
+  if [ "$raw" -gt "$_DT_CEILING_MAX" ]; then
+    printf 'dispatch-teammate: ceiling %s exceeds the maximum %s — clamping\n' \
+      "$raw" "$_DT_CEILING_MAX" >&2
+    printf '%s' "$_DT_CEILING_MAX"
+    return 0
+  fi
+  printf '%s' "$raw"
+}
+
+# _dt_config_int <parent> <child> <default> — read one integer from the
+# project config through the SAME yq->JSON normalisation the validator uses,
+# so a section written as a flow mapping, behind an anchor, with a commented
+# parent, a quoted key or a hex scalar resolves to the operator's value
+# instead of silently falling back. A line-oriented parse cannot see those
+# shapes and would over-provision a deliberately throttled machine.
+#
+# Echoes the default when the key is absent; echoes _DT_CEILING_FAILCLOSED
+# when the config exists but cannot be read.
+_dt_config_int() {
+  local parent="$1" child="$2" default="$3"
+  local cfg raw rc _dt_nl
+  _dt_nl="$(printf '\nx')"; _dt_nl="${_dt_nl%x}"
+  cfg="$(_dt_config_file)"
+  if [ -z "$cfg" ]; then printf '%s' "$default"; return 0; fi
+
+  if command -v yq >/dev/null 2>&1; then
+    raw="$(yq -o=json ".${parent}.${child}" "$cfg" 2>/dev/null)"; rc=$?
+  elif command -v python3 >/dev/null 2>&1; then
+    # One fork, not two: the parse script's own ImportError drives the fallback,
+    # so a separate availability probe (whose result was discarded anyway) is
+    # pure waste — it measured ~41% of this path's cost.
+    raw="$(python3 - "$cfg" "$parent" "$child" <<'DTPY' 2>/dev/null
+import sys, json, yaml
+d = yaml.safe_load(open(sys.argv[1])) or {}
+v = (d.get(sys.argv[2]) or {})
+v = v.get(sys.argv[3]) if isinstance(v, dict) else None
+print(json.dumps(v))
+DTPY
+)"; rc=$?
+  else
+    # No JSON reader at all — an unknown, not an absence.
+    printf 'dispatch-teammate: no JSON reader (yq/python3) — using conservative ceiling %s\n' \
+      "$_DT_CEILING_FAILCLOSED" >&2
+    printf '%s' "$_DT_CEILING_FAILCLOSED"
+    return 0
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    # The reader RAN and FAILED: malformed or unreadable config. Empty output
+    # here is indistinguishable from "key absent" if the status is discarded,
+    # which is exactly how a broken config would silently take the default.
+    printf 'dispatch-teammate: cannot read %s — using conservative ceiling %s\n' \
+      "$cfg" "$_DT_CEILING_FAILCLOSED" >&2
+    printf '%s' "$_DT_CEILING_FAILCLOSED"
+    return 0
+  fi
+
+  # A successful read reporting nothing is a genuine absence -> default.
+  case "$raw" in '' | null) printf '%s' "$default"; return 0 ;; esac
+
+  _dt_classify_ceiling "$raw" "$default" "$cfg"
+}
+
+# _dt_config_stamp <path> — a CONTENT identity for the config file, used to key
+# the cross-subshell ceiling cache.
+#
+# Whole-second mtime alone is not enough: a config rewritten within the same
+# second as the cached read carries an identical stamp, so the cache serves the
+# OLD ceiling with no error — the dangerous direction, since nothing surfaces
+# the staleness. The stamp therefore combines three cheap signals:
+#
+#   - sub-second mtime where the platform offers it (GNU `stat -c %.Y` probed
+#     FIRST, then BSD `stat -f %Fm`), which closes the window on its own;
+#   - size, which catches most content edits instantly;
+#   - a `cksum` content hash as the portable tie-breaker, so a same-second
+#     rewrite of identical LENGTH is still detected on a platform whose stat
+#     offers only whole seconds.
+#
+# Any component that is unavailable simply contributes an empty field; the
+# remaining ones still key the cache, and a stamp that cannot be computed at
+# all degrades to a plain per-spawn read rather than a stale value.
+_dt_config_stamp() {
+  local f="$1" m="" sz="" ck=""
+  # GNU first (the portability lesson from the worktree story): GNU stat fails
+  # fast on an unknown format, whereas BSD stat would silently misparse it.
+  m="$(stat -c %.Y "$f" 2>/dev/null || stat -f %Fm "$f" 2>/dev/null \
+      || stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || printf '')"
+  sz="$(stat -c %s "$f" 2>/dev/null || stat -f %z "$f" 2>/dev/null || printf '')"
+  ck="$(cksum < "$f" 2>/dev/null | awk '{print $1}' || printf '')"
+  printf '%s:%s:%s:%s' "$f" "$m" "$sz" "$ck"
+}
+
+# _dt_resolve_ceiling — populate _DT_MAX_TEAMMATES once per shell.
+#
+# Memoised, but note the honest bound: the bridges call spawn_teammate inside
+# a command substitution, which is a subshell, so the memo does not outlive
+# one spawn attempt. The guarantee that matters is that a retry loop resolves
+# ONCE and does not re-read the config on every attempt.
+_dt_resolve_ceiling() {
+  [ -n "$_DT_MAX_TEAMMATES" ] && return 0
+
+  # Cross-subshell cache. The in-shell memo above is dead on the real call path
+  # (the bridges invoke spawn_teammate inside a command substitution, so the
+  # assignment dies with the subshell and every spawn re-forks yq). An exported
+  # value survives into those subshells, so the resolve happens once per session
+  # instead of once per spawn.
+  #
+  # The cache is keyed to the config's PATH and MTIME, so it is honoured only
+  # when it demonstrably describes the file being read now: an edited or
+  # switched config invalidates it rather than serving a stale ceiling. A
+  # malformed cache value is ignored outright and the full read runs.
+  local cfg stamp
+  cfg="$(_dt_config_file)"
+  if [ -n "$cfg" ]; then
+    stamp="$(_dt_config_stamp "$cfg")"
+    case "${GAIA_RESOLVED_TEAMMATE_CEILING:-}" in
+      '') ;;
+      *)
+        # Format: <stamp>|<value>
+        if [ "${GAIA_RESOLVED_TEAMMATE_CEILING%%|*}" = "$stamp" ]; then
+          local cached="${GAIA_RESOLVED_TEAMMATE_CEILING#*|}"
+          # The env var is writable by anything in the process tree, so a cached
+          # value gets EXACTLY the classification a fresh read gets — clamp,
+          # floor and all. Only the reader fork is skipped.
+          if [ "$cached" != "$GAIA_RESOLVED_TEAMMATE_CEILING" ]; then
+            # The env var is writable by anything in the process tree, so a
+            # cached value gets EXACTLY the classification a fresh read gets —
+            # clamp, floor and all. Only the reader fork is skipped.
+            #
+            # Note the limit of what a stamp can prove: it attests that the
+            # CONFIG is unchanged, not that the cached NUMBER came from it. A
+            # forged-but-plausible value (say 64 against a real ceiling of 2)
+            # survives classification, because classification only bounds a
+            # value, it cannot authenticate one. Trusting the cache is a
+            # deliberate performance trade against a process-local env var; the
+            # bound it cannot exceed is _DT_CEILING_MAX, which is what keeps a
+            # forged value from being unbounded.
+            local _dt_cand
+            _dt_cand="$(_dt_classify_ceiling "$cached" "$_DT_DEFAULT_CEILING" "$cfg" 2>/dev/null)"
+            if [ -n "$_dt_cand" ]; then _DT_MAX_TEAMMATES="$_dt_cand"; return 0; fi
+          fi
+        fi
+        ;;
+    esac
+  fi
+
+  _DT_MAX_TEAMMATES="$(_dt_config_int parallel_execution teammate_dispatch_ceiling "$_DT_DEFAULT_CEILING")"
+  [ -n "$_DT_MAX_TEAMMATES" ] || _DT_MAX_TEAMMATES="$_DT_DEFAULT_CEILING"
+  if [ -n "$cfg" ]; then
+    GAIA_RESOLVED_TEAMMATE_CEILING="${stamp}|${_DT_MAX_TEAMMATES}"
+    export GAIA_RESOLVED_TEAMMATE_CEILING
+  fi
+  return 0
+}
+
+# _dt_claim_reservation <handle> <story_key> — if the caller reserved a ceiling
+# slot for this story, turn that reservation INTO the teammate entry instead of
+# creating a second one.
+#
+# A caller that must not overshoot the ceiling cannot rely on this library's own
+# count-then-register: that window is inside spawn_teammate, so a concurrent
+# caller can only close it by counting and reserving BEFORE dispatch. A
+# reservation is a real registry file precisely so it counts toward the ceiling
+# while the story is being dispatched. Registering beside it would then make one
+# story occupy two slots for the length of the dispatch, so registration renames
+# the reservation rather than adding to it -- atomically, so the count never dips
+# and another admission cannot slip through the gap.
+#
+# Callers that never reserve are unaffected: with no reservation file present
+# this is a no-op and registration creates the entry exactly as before.
+# Echoes nothing; returns 0 when a reservation was consumed, 1 otherwise.
+_dt_claim_reservation() {
+  local handle="$1" story_key="${2:-}" res
+  [ -n "$story_key" ] || return 1
+  _dt_ensure_registry
+  res="$_DT_REGISTRY_DIR/.reserved-$story_key"
+  [ -f "$res" ] || return 1
+  mv -f "$res" "$_DT_REGISTRY_DIR/$handle" 2>/dev/null || return 1
+  return 0
+}
+
+# _dt_effective_count <story_key> — the active count the ceiling gate should
+# compare against when spawning for <story_key>.
+#
+# A reservation is a real registry file so it holds a ceiling slot while the
+# story is being dispatched -- that is its purpose, and OTHER stories'
+# reservations must keep counting. But the reservation for the story being
+# spawned right now is not competition: registration is about to rename it into
+# this spawn's own entry, so counting both would make a reserving caller refuse
+# itself. At the shipped defaults that produced a cliff exactly at the designed
+# headroom: every admission reserved, every spawn then refused, and the sprint
+# degraded as if the ceiling were saturated.
+_dt_effective_count() {
+  local story_key="${1:-}" n
+  n="$(_dt_active_count)"
+  if [ -n "$story_key" ] && [ -f "$_DT_REGISTRY_DIR/.reserved-$story_key" ]; then
+    n=$(( n - 1 ))
+    [ "$n" -lt 0 ] && n=0
+  fi
+  printf '%s' "$n"
+}
+
 # _dt_active_count — print the number of active teammates.
 _dt_active_count() {
   _dt_ensure_registry
@@ -70,11 +425,114 @@ _dt_iso8601() {
   date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
 
-# _dt_generate_handle PERSONA — produce a session-scoped handle.
+# Maximum length of a sanitised story key inside a handle. Bounds the handle so
+# a pathological key cannot produce a name the registry directory cannot hold.
+_DT_STORY_KEY_MAX=64
+
+# _dt_validate_story_key KEY — accept or refuse a RAW story key at the trust
+# boundary, BEFORE it reaches any persistent sink.
+#
+# Why a boundary check rather than per-sink escaping. The sanitiser below
+# protects the HANDLE (a filename) and nothing else: the raw key is what gets
+# stored in the registry and rendered into the transcript metadata comment, and
+# both of those are structured, single-line-delimited formats. A key carrying a
+# newline therefore appends forged `field:value` records to the registry (a
+# forged `persona:` line is read straight back by _dt_read_persona), and a key
+# carrying `-->` closes the metadata comment early and lands caller-controlled
+# markup in the append-only transcript body, where nothing can retract it.
+# Escaping at each sink would mean keeping several escapers in step forever and
+# would silently mangle the stored key; refusing the input once, here, keeps a
+# single rule and stores exactly what the caller passed.
+#
+# The accepted class is deliberately conservative — ASCII letters, digits, dot,
+# underscore and hyphen, 1 to 64 characters:
+#
+#   - it admits every story-key shape the framework issues or has planned
+#     (epic/story keys, dotted and underscored variants, slugs);
+#   - it excludes, by construction and not by enumeration, every character that
+#     could punctuate a record or a comment: whitespace and control characters
+#     (so no key can span lines), `:` (the registry/record field separator),
+#     `<` and `>` (so neither `-->` nor `<!--` can be formed), `/` and the
+#     path-ish forms built from it;
+#   - the 64-character cap matches the sanitised-token bound, so a key that
+#     passes here can never outgrow the handle it produces.
+#
+# Refusal is fail-closed: status 1 with a diagnostic, and the caller returns
+# before anything is written to the registry, the transcript, the fallback
+# record or the attribution store.
+_dt_validate_story_key() {
+  local raw="$1"
+
+  if [ -z "$raw" ]; then
+    _dt_die "spawn_teammate: --story-key requires a non-empty key"
+    return 1
+  fi
+
+  # The bracket expression lists its characters explicitly rather than using a
+  # named class such as [:alnum:], so it is byte-wise and locale-independent:
+  # this is a SOURCED library and must not depend on — or mutate — the calling
+  # shell's locale to decide what it accepts.
+  case "$raw" in
+    *[!A-Za-z0-9._-]*)
+      _dt_die "spawn_teammate: story key '$raw' contains characters outside [A-Za-z0-9._-] — refusing"
+      return 1
+      ;;
+  esac
+
+  if [ "${#raw}" -gt "$_DT_STORY_KEY_MAX" ]; then
+    _dt_die "spawn_teammate: story key '$raw' exceeds $_DT_STORY_KEY_MAX characters — refusing"
+    return 1
+  fi
+
+  return 0
+}
+
+# _dt_sanitize_story_key KEY — reduce a story key to a handle-safe token.
+#
+# Reuses the persona slug transform (every character outside [:alnum:] becomes
+# a dash), then collapses dash runs and trims the ends, so a key written with
+# dots, underscores or mixed separators yields one clean token. Truncation is
+# applied last, so the result is always a valid single filename component.
+# The transform is deliberately lossy: two differently-written keys can reduce
+# to the same token. Uniqueness is therefore enforced on the RAW key stored in
+# the registry, not on this token — see spawn_teammate's identity check.
+#
+# LC_ALL=C is pinned on the `tr` invocations themselves, not exported. `[:alnum:]`
+# resolves against the ambient locale, so without this the SAME key sanitises to
+# two different tokens — and therefore two different handles, registry files and
+# attribution records — depending on the caller's locale. Scoping the setting to
+# these commands keeps the transform byte-wise without a sourced library reaching
+# out and changing the calling shell's locale.
+_dt_sanitize_story_key() {
+  local raw="$1" token
+  token="$(printf '%s' "$raw" | LC_ALL=C tr -c '[:alnum:]' '-' | LC_ALL=C tr -s '-')"
+  token="${token#-}"
+  token="${token%-}"
+  printf '%s' "$token" | cut -c "1-$_DT_STORY_KEY_MAX"
+}
+
+# _dt_generate_handle PERSONA [STORY_KEY] — produce a session-scoped handle.
+#
+# With a story key (the parallel-aware interface) the handle is a pure function
+# of persona and sanitised key: tm-<persona-slug>-<story-key>. No process id
+# takes part, which is what lets two same-persona teammates for two different
+# stories coexist, and what makes a retry of the same story reuse one handle.
+#
+# Without a story key the legacy process-id form is kept, and ONLY there: it
+# still serves callers of the documented keyless interface. It is never a
+# fallback for the keyed path — a keyed spawn that cannot build a keyed handle
+# is refused rather than quietly downgraded to a colliding one.
 _dt_generate_handle() {
   local persona="$1"
+  local story_key="${2:-}"
   local slug
-  slug="$(printf '%s' "$persona" | tr -c '[:alnum:]' '-')"
+  # LC_ALL=C for the same reason as the story-key sanitiser: the handle must be
+  # a pure function of its inputs, not of the caller's locale.
+  slug="$(printf '%s' "$persona" | LC_ALL=C tr -c '[:alnum:]' '-')"
+  if [ -n "$story_key" ]; then
+    printf 'tm-%s-%s' "$slug" "$story_key"
+    return 0
+  fi
   printf 'tm-%s-%05d' "$slug" "$$"
 }
 
@@ -136,9 +594,24 @@ _dt_substrate_available() {
   return 1
 }
 
-# _dt_emit_fallback — emit the machine-parseable fallback token once.
+# _dt_emit_fallback CALLER — emit the human-readable fallback token on stderr.
+# Byte-identical to what it has always emitted, so every consumer that greps
+# this token keeps working.
 _dt_emit_fallback() {
   printf 'MODE_B_FALLBACK: %s degraded to Mode A foreground dispatch\n' "$1" >&2
+}
+
+# _dt_emit_fallback_record STORY_KEY PERSONA REASON — emit the machine-readable
+# fallback record on stdout, for story-keyed callers only.
+#
+# The record is emitted INSTEAD OF a handle, so a caller capturing stdout
+# cannot mistake it for one: it does not begin with the handle prefix, and the
+# call returns the fallback exit code rather than success. The exit code is the
+# control-flow contract (branch on it and degrade to sequential work); this
+# record is the diagnostic detail behind it, which the cohort bridge parses and
+# republishes to the caller.
+_dt_emit_fallback_record() {
+  printf 'mode_b_fallback story_key:%s persona:%s reason:%s\n' "$1" "$2" "$3"
 }
 
 # _dt_relay_dir — return (and create) the per-session relay-pending directory.
@@ -205,12 +678,24 @@ _dt_current_turn() {
   fi
 }
 
+# Registry-record readers.
+#
+# Records are line-oriented `field:value` pairs, one line per field, so each of
+# these readers takes the FIRST matching line and stops there. Bounding them is
+# what keeps a record that is malformed — a legacy file, a partial write, or a
+# corrupted one — from returning several lines where a caller expects a scalar:
+# an unbounded read would make the same-key retry comparison fail against an
+# identical key (refusing a legitimate retry), and would let a second field line
+# reach the transcript metadata. Keys are validated at the dispatch boundary so
+# a new record cannot contain such a line, but these readers must not depend on
+# that to behave deterministically.
+
 # _dt_read_persona HANDLE — read the persona name from the registry file.
 _dt_read_persona() {
   local handle="$1"
   _dt_ensure_registry
   if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
-    sed -n 's/^persona://p' "$_DT_REGISTRY_DIR/$handle"
+    sed -n '/^persona:/{s/^persona://p;q;}' "$_DT_REGISTRY_DIR/$handle"
   fi
 }
 
@@ -219,7 +704,17 @@ _dt_read_spawn_ts() {
   local handle="$1"
   _dt_ensure_registry
   if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
-    sed -n 's/^spawned://p' "$_DT_REGISTRY_DIR/$handle"
+    sed -n '/^spawned:/{s/^spawned://p;q;}' "$_DT_REGISTRY_DIR/$handle"
+  fi
+}
+
+# _dt_read_story_key HANDLE — read the story key from the registry file.
+# Prints nothing for a keyless teammate, which callers render as "none".
+_dt_read_story_key() {
+  local handle="$1"
+  _dt_ensure_registry
+  if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
+    sed -n '/^story_key:/{s/^story_key://p;q;}' "$_DT_REGISTRY_DIR/$handle"
   fi
 }
 
@@ -230,16 +725,18 @@ _dt_check_unrelayed_turn() {
   if _dt_is_relay_pending "$handle"; then
     printf 'dispatch-teammate: warning: unrelayed turn detected for %s — output may have been lost (fail-safe capture)\n' "$handle" >&2
 
-    local persona spawn_ts turn
+    local persona spawn_ts turn story_key
     persona="$(_dt_read_persona "$handle")"
     spawn_ts="$(_dt_read_spawn_ts "$handle")"
     turn="$(_dt_current_turn "$handle")"
+    story_key="$(_dt_read_story_key "$handle")"
 
     local transcript="${GAIA_SESSION_TRANSCRIPT:-${GAIA_SESSION_DIR:?}/transcript.md}"
     mkdir -p "$(dirname "$transcript")"
     {
-      printf '\n<!-- persona:%s spawn_ts:%s turn:%s -->\n' \
-        "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}"
+      printf '\n<!-- persona:%s spawn_ts:%s turn:%s story_key:%s -->\n' \
+        "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}" \
+        "${story_key:-none}"
       printf '## Unrelayed turn from %s [%s]\n\n' "$handle" "$(_dt_iso8601)"
       printf '[fail-safe capture: teammate turn ended without relay_to_team_lead]\n'
     } >> "$transcript"
@@ -402,7 +899,7 @@ _dt_parse_frontmatter() {
 
   # Parse topology.
   local topology=""
-  topology="$(printf '%s' "$frontmatter" | grep -E '^topology:' | head -1 | sed 's/^topology:[[:space:]]*//' | tr -d ' ')"
+  topology="$(printf '%s' "$frontmatter" | sed -n 's/^topology:[[:space:]]*//p;/^topology:/q' | tr -d ' ')"
 
   # Validate topology.
   local effective_topology="hub"
@@ -430,23 +927,69 @@ _dt_parse_frontmatter() {
 # ---------- Public API ----------
 
 # spawn_teammate PERSONA [--context CTX] [--from-frontmatter SKILL_PATH]
+#                        [--story-key KEY]
+#
 # Spawns a persistent teammate. Returns the session-scoped handle on stdout.
+#
+# Two interfaces, deliberately:
+#   - Keyless (the long-standing form): behaviour is unchanged in every
+#     respect. An absent substrate still returns a handle with exit 0 after
+#     emitting the stderr token, because callers of this form treat the
+#     fallback as advisory.
+#   - Story-keyed (--story-key): the parallel-aware form. The handle is built
+#     from persona and story key rather than the process id, and an absent
+#     substrate is signalled programmatically — the fallback exit code plus a
+#     machine-readable record on stdout, and NO handle. Opting into the key is
+#     what opts a caller into the stricter contract.
 spawn_teammate() {
-  local persona="" context="" skill_path=""
+  local persona="" context="" skill_path="" story_key="" story_keyed=0
 
   # Parse arguments.
   while [ $# -gt 0 ]; do
     case "$1" in
+      # Every value-taking arm checks its arity BEFORE `shift 2`. Under a
+      # trailing flag with no value, `shift 2` fails WITHOUT shifting, so the
+      # `while [ $# -gt 0 ]` loop below would spin forever on the same argument
+      # — a hang rather than an error. Refusing up front turns each of those
+      # into an immediate, diagnosable exit.
       --context)
-        context="${2:-}"
+        [ $# -ge 2 ] || { _dt_die "spawn_teammate: --context requires a value"; return 1; }
+        context="$2"
         shift 2
         ;;
       --from-frontmatter)
-        skill_path="${2:-}"
+        [ $# -ge 2 ] || { _dt_die "spawn_teammate: --from-frontmatter requires a value"; return 1; }
+        skill_path="$2"
+        shift 2
+        ;;
+      # This arm MUST stay ahead of the unknown-flag catch-all below, and MUST
+      # consume both the flag and its value. The catch-all shifts only once, so
+      # reaching it would leave the key as a positional argument and adopt it
+      # as the persona — a silent misdispatch rather than an error.
+      --story-key)
+        [ $# -ge 2 ] || { _dt_die "spawn_teammate: --story-key requires a value"; return 1; }
+        story_key="$2"
+        story_keyed=1
+        # Validate the RAW key here, at the boundary where it enters the
+        # library, and refuse before any sink is touched. Every persistent
+        # writer downstream — registry record, transcript metadata comment,
+        # fallback record, bridge attribution file — interpolates this value
+        # into a structured single-line or comment-delimited format, so this
+        # one check is what keeps all of them well-formed.
+        _dt_validate_story_key "$story_key" || return 1
         shift 2
         ;;
       --help)
         printf 'Usage: spawn_teammate PERSONA [--context CTX] [--from-frontmatter SKILL_PATH]\n'
+        printf '                             [--story-key KEY]\n'
+        printf '\n'
+        printf '  --story-key KEY  Build the handle from the persona and KEY instead of\n'
+        printf '                   the process id, so several same-persona teammates can\n'
+        printf '                   run at once. Retrying the same persona and key reuses\n'
+        printf '                   the one handle. With this option, an unavailable\n'
+        printf '                   substrate returns exit %d and a machine-readable\n' \
+          "$_DT_FALLBACK_EXIT_CODE"
+        printf '                   record on stdout instead of a handle.\n'
         return 0
         ;;
       -*)
@@ -472,7 +1015,8 @@ spawn_teammate() {
     local fm_output
     fm_output="$(_dt_parse_frontmatter "$skill_path")" || return 1
     # First non-topology line is the primary persona.
-    persona="$(printf '%s\n' "$fm_output" | grep -v '^topology:' | head -1)"
+    persona="$(printf '%s\n' "$fm_output" | grep -v '^topology:')"
+    persona="${persona%%$'\n'*}"
     if [ -z "$persona" ]; then
       _dt_die "spawn_teammate: no persona resolved from frontmatter — cannot spawn"
       return 1
@@ -490,13 +1034,36 @@ spawn_teammate() {
   _dt_ensure_registry
 
   # Enforce ceiling.
-  local count
-  count="$(_dt_active_count)"
-  if [ "$count" -ge "$_DT_MAX_TEAMMATES" ]; then
-    printf 'dispatch-teammate: cannot spawn — %d-teammate ceiling reached (active: %d)\n' \
-      "$_DT_MAX_TEAMMATES" "$count" >&2
-    return 1
+  _dt_resolve_ceiling
+  local count _dt_try=1 _dt_delay="$_DT_CEILING_RETRY_BASE_DELAY"
+  while :; do
+    count="$(_dt_effective_count "${story_key:-}")"
+    [ "$count" -lt "$_DT_MAX_TEAMMATES" ] && break
+    if [ "$_dt_try" -ge "$_DT_CEILING_RETRY_MAX" ]; then
+      printf 'dispatch-teammate: cannot spawn — %d-teammate ceiling reached (active: %d)\n' \
+        "$_DT_MAX_TEAMMATES" "$count" >&2
+      # A saturated ceiling is a capacity condition, never a story failure:
+      # the caller queues the work and retries once a slot frees. The retry
+      # only helps when a CONCURRENT process frees a registry slot inside the
+      # window — _dt_active_count reads the shared session registry, so a
+      # parallel shutdown_teammate can release one. A single-threaded caller
+      # always exhausts the loop and lands here, after 15.0-18.6 s. The exit
+      # code is the contract, not the waiting.
+      return "$_DT_CEILING_EXIT_CODE"
+    fi
+    if [ "$_dt_delay" != "0" ]; then
+      sleep "${_dt_delay}.$(( RANDOM % 10 ))"
+      _dt_delay=$(( _dt_delay * 2 ))
+    fi
+    _dt_try=$(( _dt_try + 1 ))
+  done
+
+  if [ "$story_keyed" -eq 1 ]; then
+    _dt_spawn_story_keyed "$persona" "$context" "$story_key"
+    return $?
   fi
+
+  # Keyless path — unchanged in every respect for existing callers.
 
   # Generate handle.
   local handle
@@ -511,7 +1078,9 @@ spawn_teammate() {
     handle="${handle}-${suffix}"
   fi
 
-  # Register.
+  # Register. A reservation for this story, if the caller made one, becomes the
+  # teammate entry rather than a second registry file.
+  _dt_claim_reservation "$handle" "${story_key:-}" || true
   printf 'persona:%s\nstatus:active\nspawned:%s\n' "$persona" "$(_dt_iso8601)" \
     > "$_DT_REGISTRY_DIR/$handle"
 
@@ -524,6 +1093,71 @@ spawn_teammate() {
   fi
 
   # Emit handle on stdout.
+  printf '%s\n' "$handle"
+}
+
+# _dt_spawn_story_keyed PERSONA CONTEXT STORY_KEY — the story-keyed half of
+# spawn_teammate. Kept as its own function so the keyless path above stays
+# exactly as it was and the two contracts do not interleave.
+#
+# Assumes the caller has already run the clean-room gate, the ceiling check and
+# _dt_ensure_registry, so a reviewer persona or a ceiling breach is still
+# refused with exit 1 and never masked as a fallback.
+_dt_spawn_story_keyed() {
+  local persona="$1"
+  local context="$2"
+  local story_key="$3"
+
+  local sanitized
+  sanitized="$(_dt_sanitize_story_key "$story_key")"
+  if [ -z "$sanitized" ]; then
+    # A key of only separators would produce an empty token, and an empty
+    # token collapses every story onto one handle — the exact collision this
+    # interface exists to remove. Refuse rather than build it.
+    _dt_die "spawn_teammate: story key '$story_key' sanitises to nothing — refusing"
+    return 1
+  fi
+
+  local handle
+  handle="$(_dt_generate_handle "$persona" "$sanitized")"
+
+  # Retry contract. The handle is a pure function of persona and key, so a
+  # second call for the same story lands on the same handle by construction.
+  if [ -f "$_DT_REGISTRY_DIR/$handle" ]; then
+    local stored
+    stored="$(_dt_read_story_key "$handle")"
+    if [ "$stored" != "$story_key" ]; then
+      # Two different raw keys reduced to the same token. Suffixing here would
+      # hand two stories one attribution lineage, so refuse instead. Comparing
+      # the RAW key is what makes this detectable at all.
+      _dt_die "spawn_teammate: handle $handle already serves story key '$stored' — refusing '$story_key'"
+      return 1
+    fi
+    # Same story retried: reuse the one handle idempotently. The record is
+    # refreshed rather than recreated, so the turn counter and relay-pending
+    # state keyed on this handle survive the retry and no orphan is left.
+  fi
+
+  # Substrate detection runs BEFORE registration on this path, so a fallback
+  # leaves no half-live handle behind for a teammate that was never spawned.
+  if ! _dt_substrate_available; then
+    _dt_emit_fallback "spawn_teammate"
+    _dt_emit_fallback_record "$story_key" "$persona" "substrate-unavailable"
+    # Provenance still records the attempt, so the audit trail is complete.
+    _dt_log_provenance "$persona" "$context" "(fallback: substrate-unavailable)"
+    return "$_DT_FALLBACK_EXIT_CODE"
+  fi
+
+  # Register, storing the RAW key: attribution must report what the caller
+  # actually passed, and the identity check above needs it to detect a
+  # collision. Existing readers match their own field prefixes and are
+  # unaffected by the extra line.
+  _dt_claim_reservation "$handle" "$story_key" || true
+  printf 'persona:%s\nstatus:active\nspawned:%s\nstory_key:%s\n' \
+    "$persona" "$(_dt_iso8601)" "$story_key" > "$_DT_REGISTRY_DIR/$handle"
+
+  _dt_log_provenance "$persona" "$context" "$handle"
+
   printf '%s\n' "$handle"
 }
 
@@ -641,11 +1275,14 @@ relay_to_team_lead() {
     return 0
   fi
 
-  # Read identity metadata for Mode B transcript entries.
-  local persona spawn_ts turn
+  # Read identity metadata for Mode B transcript entries. The story key is
+  # appended LAST to the metadata comment, so every pre-existing field keeps
+  # its position and readers that match on a named field are unaffected.
+  local persona spawn_ts turn story_key
   persona="$(_dt_read_persona "$handle")"
   spawn_ts="$(_dt_read_spawn_ts "$handle")"
   turn="$(_dt_current_turn "$handle")"
+  story_key="$(_dt_read_story_key "$handle")"
 
   # Clear relay-pending flag — this turn has been relayed.
   _dt_clear_relay_pending "$handle"
@@ -655,8 +1292,9 @@ relay_to_team_lead() {
   mkdir -p "$(dirname "$transcript")"
 
   {
-    printf '\n<!-- persona:%s spawn_ts:%s turn:%s -->\n' \
-      "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}"
+    printf '\n<!-- persona:%s spawn_ts:%s turn:%s story_key:%s -->\n' \
+      "${persona:-unknown}" "${spawn_ts:-unknown}" "${turn:-0}" \
+      "${story_key:-none}"
     printf '## Relay from %s [%s]\n\n' "$handle" "$(_dt_iso8601)"
     printf '%s\n' "$payload"
   } >> "$transcript"

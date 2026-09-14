@@ -3,6 +3,9 @@
 # Resolves SKILL_DIR + PROJECT_ROOT, exports for downstream helpers.
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # The pre-fix walk-up `cd "$SKILL_DIR/../../../../.."` walks 5 levels above

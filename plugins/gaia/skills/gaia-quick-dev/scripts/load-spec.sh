@@ -17,6 +17,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-quick-dev/load-spec.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -32,8 +35,8 @@ SPEC_NAME="$1"
 # the legacy resolve-config.sh contract and the brownfield/native split).
 WORK_DIR="${PROJECT_PATH:-$PWD}"
 # Canonical-first spec lookup, legacy fallback.
-if [ -f "$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md" ]; then
-  SPEC_PATH="$WORK_DIR/.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
+if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md" ]; then
+  SPEC_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
 else
   SPEC_PATH="$WORK_DIR/docs/implementation-artifacts/quick-spec-${SPEC_NAME}.md"
 fi

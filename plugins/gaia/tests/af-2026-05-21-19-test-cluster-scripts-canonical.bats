@@ -23,12 +23,12 @@ teardown() { common_teardown; }
 # --- Display string canonicalization ---
 
 @test "gaia-test-design/finalize.sh display string uses canonical path" {
-  grep -qF 'Output file saved to .gaia/artifacts/test-artifacts/test-plan.md' "$TEST_DESIGN_FINALIZE"
+  grep -qE 'Output file saved to .*\.gaia/artifacts/test-artifacts/test-plan\.md' "$TEST_DESIGN_FINALIZE"
   ! grep -qF 'Output file saved to docs/test-artifacts/test-plan.md' "$TEST_DESIGN_FINALIZE"
 }
 
 @test "gaia-edit-test-plan/finalize.sh display string uses canonical path" {
-  grep -qF 'Output file saved to .gaia/artifacts/test-artifacts/test-plan.md' "$EDIT_TEST_PLAN_FINALIZE"
+  grep -qE 'Output file saved to .*\.gaia/artifacts/test-artifacts/test-plan\.md' "$EDIT_TEST_PLAN_FINALIZE"
   ! grep -qF 'Output file saved to docs/test-artifacts/test-plan.md' "$EDIT_TEST_PLAN_FINALIZE"
 }
 
@@ -46,7 +46,7 @@ teardown() { common_teardown; }
 
 @test "gaia-atdd/finalize.sh implements canonical-first with positive-evidence legacy" {
   grep -qF '.gaia/artifacts/test-artifacts/atdd-' "$ATDD_FINALIZE"
-  grep -qE '\[ ! -d "\$derive_root/\.gaia/artifacts/test-artifacts" \]' "$ATDD_FINALIZE"
+  grep -qE '\[ ! -d ".*\.gaia/artifacts/test-artifacts" \]' "$ATDD_FINALIZE"
 }
 
 @test "gaia-atdd/run-red-phase.sh _BRIDGE_FILE uses canonical-first" {

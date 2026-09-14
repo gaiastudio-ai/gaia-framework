@@ -81,7 +81,7 @@ teardown() { common_teardown; }
   # does not modify scripts. Drift would be caught here. Match on the
   # executable `if [ -f ... ]` line, not docstrings, to assert canonical
   # appears in the IF branch and legacy in the ELIF branch.
-  grep -qE 'if \[ -f "\.gaia/artifacts/planning-artifacts/epics-and-stories\.md" \]' "$CREATE_EPICS_FINALIZE"
+  grep -qE 'if \[ -f ".*\.gaia/artifacts/planning-artifacts/epics-and-stories\.md" \]' "$CREATE_EPICS_FINALIZE"
   grep -qE 'elif \[ -f "docs/planning-artifacts/epics-and-stories\.md" \]' "$CREATE_EPICS_FINALIZE"
 }
 

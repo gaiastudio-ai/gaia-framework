@@ -43,6 +43,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-ci-setup/finalize.sh"
 WORKFLOW_NAME="ci-setup"
 
@@ -265,8 +268,8 @@ fi
 # the correct remediation.
 if [ -n "${ARTIFACT:-}" ] && [ -f "${ARTIFACT:-}" ]; then
   CONFIG_PATH=""
-  if [ -f ".gaia/config/project-config.yaml" ]; then
-    CONFIG_PATH=".gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    CONFIG_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   elif [ -f "config/project-config.yaml" ]; then
     CONFIG_PATH="config/project-config.yaml"
   fi

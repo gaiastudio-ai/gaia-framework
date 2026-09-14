@@ -42,6 +42,9 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 ROOT=""
 DRAFTS=""
 SOURCE_MEETING=""
@@ -102,7 +105,7 @@ for draft in "${drafts[@]}"; do
 
   # .gaia/memory is the only sidecar tree; legacy _memory fallback removed
   # with the consolidation migration.
-  out_dir="$ROOT/.gaia/memory/${agent}-sidecar/decisions"
+  out_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/${agent}-sidecar/decisions"
   out="$out_dir/${DATE}-${SLUG}.md"
   mkdir -p "$out_dir"
 

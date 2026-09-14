@@ -863,6 +863,35 @@
           "default": "manual"
         }
       }
+    },
+    "parallel_execution": {
+      "x-no-auto-hydration": true,
+      "description": "Concurrency budget for phase-parallel story execution. Omitting this section preserves the default budget; a bare `parallel_execution:` with no sub-keys parses as null and is treated the same as omitting it. Carries `x-no-auto-hydration` because an auto-hydrated empty stub would put a section into every project config that means exactly what its absence means, and the effective values are applied at the read site (never materialised from the schema `default` annotations), so a stub would add churn without adding behaviour. max_parallel_dev_slots caps concurrent dev agents; teammate_dispatch_ceiling caps total concurrent teammates (dev agents plus gate agents). The ceiling must leave at least 4 of headroom above the slot budget for gate agents — an arithmetic cross-field rule enforced by validate-project-config.sh, not by this schema.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel_dev_slots": {
+          "description": "Maximum concurrent dev agents. Defaults to 8 when absent.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "default": 8
+        },
+        "teammate_dispatch_ceiling": {
+          "description": "Maximum concurrent teammates of every class (dev plus gate agents). Defaults to 12 when absent. Must be at least max_parallel_dev_slots + 4.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "default": 12
+        },
+        "story_timeout_minutes": {
+          "description": "Wall-clock budget for a single story in a phase-parallel run, in minutes. Defaults to 90 when absent. On expiry the story is recorded as a timeout and its slot is freed so the rest of the phase keeps working; its worktree is PRESERVED, never force-removed, because a story that ran out of wall clock is the case most likely to hold uncommitted work. The budget's existence is not optional -- a slot that can block forever deadlocks the sprint.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440,
+          "default": 90
+        }
+      }
     }
   },
   "allOf": [

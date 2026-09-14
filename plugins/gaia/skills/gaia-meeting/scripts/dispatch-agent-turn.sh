@@ -47,6 +47,9 @@
 set -euo pipefail
 export LC_ALL=C
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TURN_HEADER="$SCRIPT_DIR/turn-header.sh"
 RESEARCH_DISPATCH="$SCRIPT_DIR/research-phase-dispatch.sh"
@@ -190,7 +193,7 @@ fi
 # JSON payload on stdout.
 if [[ -z "${GAIA_DISPATCH_AGENT_STUB:-}" ]]; then
   echo "dispatch-agent-turn.sh: no GAIA_DISPATCH_AGENT_STUB set — production Agent-tool dispatch not yet wired" >&2
-  echo "dispatch-agent-turn.sh: see .gaia/artifacts/planning-artifacts/architecture for the harness contract" >&2
+  echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/architecture for the harness contract" >&2
   exit 3
 fi
 
@@ -241,7 +244,7 @@ if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     CHECKPOINT_DIR_FOR_ENV="$CHECKPOINT_PATH"
   else
-    CHECKPOINT_DIR_FOR_ENV=".gaia/memory/checkpoints"
+    CHECKPOINT_DIR_FOR_ENV="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
   fi
   sentinel_path="${CHECKPOINT_DIR_FOR_ENV}/val-envelope-${sentinel_hash}.json"
   mkdir -p "$(dirname "$sentinel_path")" 2>/dev/null || true

@@ -55,7 +55,7 @@ export LC_ALL
 prog="detect-signals.sh"
 err() { printf '%s: %s\n' "$prog" "$*" >&2; }
 
-PROJECT_ROOT=""
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
 FORMAT="json"
 MERGE_INTO=""
 OUTPUT=""

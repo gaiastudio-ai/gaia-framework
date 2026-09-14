@@ -128,12 +128,12 @@ case "$CHECK"    in scope|existence|all) : ;; *) die 2 "--check must be 'scope',
 
 # ----- Defaults: resolve epics-file + matrix-file from PROJECT_ROOT -----
 
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
 resolve_default_epics_file() {
   local p
   for p in \
-    "${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/epics-and-stories.md" \
+    "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/epics-and-stories.md" \
     "${PROJECT_ROOT}/docs/planning-artifacts/epics-and-stories.md"; do
     [ -f "$p" ] && { printf '%s' "$p"; return 0; }
   done
@@ -143,8 +143,8 @@ resolve_default_epics_file() {
 resolve_default_matrix_file() {
   local p
   for p in \
-    "${PROJECT_ROOT}/.gaia/artifacts/test-artifacts/traceability-matrix.md" \
-    "${PROJECT_ROOT}/.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md" \
+    "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/traceability-matrix.md" \
+    "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/strategy/traceability-matrix.md" \
     "${PROJECT_ROOT}/docs/test-artifacts/traceability-matrix.md" \
     "${PROJECT_ROOT}/docs/test-artifacts/strategy/traceability-matrix.md"; do
     [ -f "$p" ] && { printf '%s' "$p"; return 0; }
@@ -167,7 +167,7 @@ fi
 resolve_default_artifacts_dir() {
   local d
   for d in \
-    "${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts" \
+    "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" \
     "${PROJECT_ROOT}/docs/implementation-artifacts"; do
     [ -d "$d" ] && { printf '%s' "$d"; return 0; }
   done

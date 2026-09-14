@@ -44,6 +44,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="append-val-iteration.sh"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 WRITE_CHECKPOINT="$SCRIPT_DIR/write-checkpoint.sh"
@@ -233,7 +236,7 @@ command -v python3 >/dev/null 2>&1 || die 2 "python3 not found on PATH (required
 if [ -n "${CHECKPOINT_ROOT:-}" ]; then
   CHECKPOINT_ROOT_RESOLVED="$CHECKPOINT_ROOT"
 else
-  CHECKPOINT_ROOT_RESOLVED=".gaia/memory/checkpoints"
+  CHECKPOINT_ROOT_RESOLVED="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 fi
 SKILL_DIR="$CHECKPOINT_ROOT_RESOLVED/$SKILL"
 

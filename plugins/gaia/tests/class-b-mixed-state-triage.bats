@@ -26,7 +26,7 @@ teardown() {
   [[ "$output" == *"docs/implementation-artifacts/sprint-status.yaml"* ]]
   # Canonical line must come BEFORE legacy line in resolution order.
   gaia_line=$(grep -n 'GAIA_STATE_YAML=' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh" | head -1 | cut -d: -f1)
-  legacy_line=$(grep -n 'CANONICAL_YAML="$PROJECT_PATH/docs' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh" | head -1 | cut -d: -f1)
+  legacy_line=$(grep -n 'CANONICAL_YAML="$PROJECT_ROOT/docs' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh" | head -1 | cut -d: -f1)
   [ -n "$gaia_line" ]
   [ -n "$legacy_line" ]
   [ "$gaia_line" -lt "$legacy_line" ]
@@ -36,8 +36,8 @@ teardown() {
   run grep -nE '\.gaia/artifacts/implementation-artifacts' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh"
   [ "$status" -eq 0 ]
   # The .gaia branch must appear in the `if -d` test BEFORE the legacy `docs/` else branch.
-  gaia_line=$(grep -nE 'if \[ -d "\$PROJECT_PATH/\.gaia/artifacts/implementation-artifacts"' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh" | head -1 | cut -d: -f1)
-  legacy_line=$(grep -nE 'IMPLEMENTATION_ARTIFACTS="\$PROJECT_PATH/docs/implementation-artifacts"' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh" | head -1 | cut -d: -f1)
+  gaia_line=$(grep -nE 'if \[ -d "\$PROJECT_ROOT/\.gaia/artifacts/implementation-artifacts"' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh" | head -1 | cut -d: -f1)
+  legacy_line=$(grep -nE 'IMPLEMENTATION_ARTIFACTS="\$PROJECT_ROOT/docs/implementation-artifacts"' "$PLUGIN_SCRIPTS/sprint-status-dashboard.sh" | head -1 | cut -d: -f1)
   [ "$gaia_line" -lt "$legacy_line" ]
 }
 

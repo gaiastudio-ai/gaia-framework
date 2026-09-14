@@ -36,6 +36,9 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # ---------------------------------------------------------------------------
 # Args.
 # ---------------------------------------------------------------------------
@@ -400,8 +403,8 @@ _compare_monolith() {
 # ---------------------------------------------------------------------------
 
 # Resolve artifacts dir canonical-first (.gaia/) with legacy (docs/) fallback.
-if [ -d "$ROOT/.gaia/artifacts/planning-artifacts" ]; then
-  _ARTIFACTS_DIR="$ROOT/.gaia/artifacts/planning-artifacts"
+if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
+  _ARTIFACTS_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
 else
   _ARTIFACTS_DIR="$ROOT/docs/planning-artifacts"
 fi
@@ -443,7 +446,7 @@ _check_per_story_status_drift() {
   # Probe canonical .gaia/artifacts/ first, then legacy docs/.
   # Mirror the resolver order in transition-story-status.sh to stay in sync.
   local monolith=""
-  local artifacts_dirs=("$ROOT/.gaia/artifacts/planning-artifacts" "$ROOT/docs/planning-artifacts")
+  local artifacts_dirs=("${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" "$ROOT/docs/planning-artifacts")
   for d in "${artifacts_dirs[@]}"; do
     if [[ -f "$d/epics-and-stories.md" ]]; then
       monolith="$d/epics-and-stories.md"; break
@@ -559,7 +562,7 @@ _check_per_story_status_drift
 # (legacy layout) with no shard directory. Honor the missing-shard-dir
 # graceful skip path.
 if [[ -f "$ROOT/docs/planning-artifacts/prd.md" ]] && [[ ! -d "$ROOT/docs/planning-artifacts/prd" ]]; then
-  printf 'INFO: prd — monolith %s/.gaia/artifacts/planning-artifacts/prd.md exists but no shard dir\n' "$ROOT"
+  printf 'INFO: prd — monolith %s exists but no shard dir\n' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/prd.md"
 fi
 
 exit 0

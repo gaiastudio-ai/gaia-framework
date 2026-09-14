@@ -53,6 +53,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-deploy/deploy-dispatch.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
@@ -149,8 +152,8 @@ resolve_config_path() {
     return 0
   fi
   # Prefer .gaia/config/, fall back to legacy config/
-  if [ -f ".gaia/config/project-config.yaml" ]; then
-    printf '%s' ".gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
     return 0
   fi
   if [ -f "config/project-config.yaml" ]; then

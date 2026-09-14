@@ -26,6 +26,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="adapters/brownfield/dedup.sh"
 log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
@@ -38,11 +41,11 @@ PER_TOOL="${GAIA_BROWNFIELD_DEDUP_ENABLED:-true}"
 # --- Resolve paths --------------------------------------------------------
 default_input() {
   if [ -n "${GAIA_ARTIFACTS_DIR:-}" ]; then printf '%s/planning-artifacts/brownfield-sarif-merged.json' "$GAIA_ARTIFACTS_DIR"
-  else printf '%s' "./.gaia/artifacts/planning-artifacts/brownfield-sarif-merged.json"; fi
+  else printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/brownfield-sarif-merged.json"; fi
 }
 default_output() {
   if [ -n "${GAIA_MEMORY_DIR:-}" ]; then printf '%s/brownfield-audit/deduped-findings.json' "$GAIA_MEMORY_DIR"
-  else printf '%s' "./.gaia/memory/brownfield-audit/deduped-findings.json"; fi
+  else printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit/deduped-findings.json"; fi
 }
 INPUT="${DEDUP_INPUT:-$(default_input)}"
 OUTPUT="${DEDUP_OUTPUT:-$(default_output)}"

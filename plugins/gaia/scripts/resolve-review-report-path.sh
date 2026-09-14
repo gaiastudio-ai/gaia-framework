@@ -29,6 +29,9 @@
 # Exit codes: 0 ok; 1 usage/arg error.
 
 set -euo pipefail
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 SCRIPT_NAME="resolve-review-report-path.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 err() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -62,8 +65,8 @@ done
 # Resolve the implementation-artifacts root (mirrors resolve-story-file.sh).
 if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
   IMPL="$IMPLEMENTATION_ARTIFACTS"
-elif [ -d ".gaia/artifacts/implementation-artifacts" ]; then
-  IMPL=".gaia/artifacts/implementation-artifacts"
+elif [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+  IMPL="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
 else
   IMPL="docs/implementation-artifacts"
 fi

@@ -231,13 +231,59 @@ prepare_enriched_fixture() {
   # passes in enriched mode. The audit only cares that the file exists. The
   # gate also checks the canonical .gaia/artifacts/creative-artifacts/ path,
   # so seed there too.
+  _brainstorm_body() {
+    cat <<'BFIX'
+# Brainstorm: Audit Fixture Project
+
+## Vision Summary
+
+A platform for automated workflow management.
+
+## Target Users
+
+- Engineering managers coordinating delivery
+- DevOps engineers automating pipelines
+
+## Pain Points
+
+- Manual sprint coordination across teams
+- Inconsistent release processes
+- Poor cross-team dependency visibility
+
+## Differentiators
+
+- Native CI/CD integration
+- Real-time dependency visualization
+
+## Competitive Landscape
+
+- Jira: strong tracking but limited automation
+- Linear: fast UI but no CI/CD integration
+- Shortcut: balanced but no dependency view
+
+## Opportunity Areas
+
+- Automated sprint health monitoring
+- Cross-service dependency resolution
+- One-click release orchestration
+- Self-healing CI pipeline recovery
+
+## Parking Lot
+
+- Mobile companion app (deferred)
+
+## Next Steps
+
+1. Validate opportunities with user interviews
+2. Draft product brief from top-ranked items
+3. Competitive deep-dive on dependency features
+BFIX
+  }
   if [ ! -s "$creative_dir/brainstorm-fixture.md" ]; then
-    printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched (brainstorm prereq)\n' \
-      > "$creative_dir/brainstorm-fixture.md"
+    _brainstorm_body > "$creative_dir/brainstorm-fixture.md"
   fi
   if [ ! -s "$canonical_creative_dir/brainstorm-fixture.md" ]; then
-    printf '# placeholder — audit-v2-migration.sh --fixture-mode enriched (canonical brainstorm prereq)\n' \
-      > "$canonical_creative_dir/brainstorm-fixture.md"
+    _brainstorm_body > "$canonical_creative_dir/brainstorm-fixture.md"
   fi
 
   # Write only if absent so re-running the harness is idempotent. The file

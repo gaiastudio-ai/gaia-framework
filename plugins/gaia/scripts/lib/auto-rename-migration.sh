@@ -9,7 +9,7 @@
 #     three branches:
 #       (y) rename to gaia-{base}.yml + scaffold overlay stubs
 #       (n) rename to user-{base}.yml (no overlays, byte-identical content)
-#       (s) skip-all — write ${PROJECT_ROOT}/.gaia/memory/.config-stale
+#       (s) skip-all — write ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/.config-stale
 #
 # Non-interactive (GAIA_NONINTERACTIVE=1) flow:
 #   BOTH --force CLI arg AND GAIA_MIGRATE_ALLOW_FORCE=1 env-var required;
@@ -33,6 +33,9 @@ _GAIA_AUTO_RENAME_MIGRATION_LOADED=1
 
 LC_ALL=C
 export LC_ALL
+
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
 # Internal: source the prefix-detection helper.
 _gaia_arm_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -167,7 +170,7 @@ gaia_auto_rename_migration() {
   local workflows_dir="$project_root/.github/workflows"
   # The .config-stale marker lives under the canonical .gaia/memory tree
   # (legacy _memory removed with the consolidation migration).
-  local memory_dir="$project_root/.gaia/memory"
+  local memory_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory"
 
   if [ ! -d "$workflows_dir" ]; then
     return 0

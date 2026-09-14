@@ -31,6 +31,9 @@
 
 set -uo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="manual-test-review-dispatch.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -123,7 +126,7 @@ log "story '$STORY_KEY' declares manual_verification: true — resolving the '$S
 
 # ---------- Resolve the config path (for surface adapter + api command) ----------
 if [ -z "$CONFIG_PATH" ]; then
-  for c in ".gaia/config/project-config.yaml" "config/project-config.yaml"; do
+  for c in "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" "config/project-config.yaml"; do
     if [ -f "$c" ]; then CONFIG_PATH="$c"; break; fi
   done
 fi
@@ -169,7 +172,7 @@ elif [ ! -f "$DISPATCH_SURFACE" ]; then
   log "WARNING: dispatch-surface.sh not found at $DISPATCH_SURFACE — verification could not run"
   surface_verdict="UNVERIFIED"
 else
-  evidence_dir=".gaia/memory/checkpoints/manual-test-review/${STORY_KEY}/${SURFACE}"
+  evidence_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints/manual-test-review/${STORY_KEY}/${SURFACE}"
   mkdir -p "$evidence_dir"
   config_flags=()
   [ -n "$CONFIG_PATH" ] && config_flags=(--config "$CONFIG_PATH")

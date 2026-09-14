@@ -16,6 +16,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-quick-dev/checkpoint-archive.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -26,13 +29,12 @@ if [ $# -lt 1 ]; then
 fi
 
 SPEC_NAME="$1"
-WORK_DIR="${PROJECT_PATH:-$PWD}"
 # Canonical .gaia/memory/checkpoints only; legacy _memory fallback removed.
 # Env CHECKPOINT_PATH override wins.
 if [ -n "${CHECKPOINT_PATH:-}" ]; then
   CHECKPOINT_DIR="$CHECKPOINT_PATH"
 else
-  CHECKPOINT_DIR="$WORK_DIR/.gaia/memory/checkpoints"
+  CHECKPOINT_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 fi
 ACTIVE="$CHECKPOINT_DIR/quick-dev-${SPEC_NAME}.yaml"
 ARCHIVE_DIR="$CHECKPOINT_DIR/completed"

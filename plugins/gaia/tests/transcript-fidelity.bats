@@ -126,7 +126,7 @@ _write_mode_a_transcript() {
 
   # Mode B has the same lines plus metadata.
   {
-    printf '<!-- persona:analyst spawn_ts:2026-06-20T00:00:00Z turn:1 -->\n'
+    printf '<!-- persona:analyst spawn_ts:2026-06-20T00:00:00Z turn:1 story_key:none -->\n'
     printf 'Analysis result line 1\n'
     printf 'Analysis result line 2\n'
     printf 'Conclusion: all clear\n'
@@ -303,7 +303,7 @@ _write_mode_a_transcript() {
 
   # Mode B intentionally missing "content beta".
   {
-    printf '<!-- persona:analyst spawn_ts:2026-06-20T00:00:00Z turn:1 -->\n'
+    printf '<!-- persona:analyst spawn_ts:2026-06-20T00:00:00Z turn:1 story_key:none -->\n'
     printf '## Relay from tm-analyst [2026-06-20T00:00:00Z]\n\n'
     printf 'content alpha\n'
     printf 'content gamma\n'

@@ -33,7 +33,7 @@ export LC_ALL
 prog="plugin-detection.sh"
 err() { printf '%s: %s\n' "$prog" "$*" >&2; }
 
-PROJECT_ROOT=""
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
 FORMAT="json"
 
 while [ $# -gt 0 ]; do

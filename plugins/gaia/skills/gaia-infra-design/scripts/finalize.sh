@@ -44,6 +44,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-infra-design/finalize.sh"
 WORKFLOW_NAME="infrastructure-design"
 
@@ -68,10 +71,10 @@ ARTIFACT_REQUESTED=0
 if [ -n "${INFRA_DESIGN_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$INFRA_DESIGN_ARTIFACT"
-elif [ -f "docs/planning-artifacts/infrastructure-design.md" ] && [ ! -d ".gaia/artifacts/planning-artifacts" ]; then
+elif [ -f "docs/planning-artifacts/infrastructure-design.md" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts" ]; then
   ARTIFACT="docs/planning-artifacts/infrastructure-design.md"
-elif [ -f ".gaia/artifacts/planning-artifacts/infrastructure-design.md" ]; then
-  ARTIFACT=".gaia/artifacts/planning-artifacts/infrastructure-design.md"
+elif [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/infrastructure-design.md" ]; then
+  ARTIFACT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/infrastructure-design.md"
 fi
 
 # ---------- 1. Run the 25-item checklist ----------
@@ -253,7 +256,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no infrastructure-design artifact found (INFRA_DESIGN_ARTIFACT unset and no infrastructure-design.md at .gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
+  log "no infrastructure-design artifact found (INFRA_DESIGN_ARTIFACT unset and no infrastructure-design.md at ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/ or docs/planning-artifacts/) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

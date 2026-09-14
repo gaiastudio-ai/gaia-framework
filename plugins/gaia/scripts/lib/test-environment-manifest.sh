@@ -28,6 +28,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="test-environment-manifest.sh"
 SENTINEL_LINE='# GAIA-MANIFEST-TEMPLATE: edit this file before enabling the bridge -- bridge will fail Layer 0 readiness check until this line is removed'
 
@@ -75,10 +78,10 @@ done
 # BEFORE the copy-if-absent short-circuit below — a legacy user with an
 # existing config/test-environment.yaml would otherwise be silently shadowed
 # by a fresh .gaia/config/ write.
-if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
+if [ -d "${target}/config" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config" ]; then
   MANIFEST_REL="config/test-environment.yaml"
 else
-  MANIFEST_REL=".gaia/config/test-environment.yaml"
+  MANIFEST_REL="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/test-environment.yaml"
 fi
 
 # --write copy-if-absent: short-circuit if the manifest already exists
@@ -125,8 +128,8 @@ detect_stack() {
   # project-config and return the first supported language. Honors both
   # .gaia/config/ (canonical) and legacy config/ for in-migration projects.
   local _cfg=""
-  if [ -f "${target}/.gaia/config/project-config.yaml" ]; then
-    _cfg="${target}/.gaia/config/project-config.yaml"
+  if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml" ]; then
+    _cfg="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   elif [ -f "${target}/config/project-config.yaml" ]; then
     _cfg="${target}/config/project-config.yaml"
   fi
@@ -354,7 +357,7 @@ if [ "${write_mode}" -eq 1 ]; then
   # The canonical write home is .gaia/config/; mirror to
   # .gaia/artifacts/test-artifacts/ so the target layout has it too.
   # Best-effort — copy failure is non-fatal.
-  _mirror_path="${target}/.gaia/artifacts/test-artifacts/test-environment.yaml"
+  _mirror_path="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/test-environment.yaml"
   if [ "${manifest_path}" != "${_mirror_path}" ]; then
     if mkdir -p "$(dirname "${_mirror_path}")" 2>/dev/null; then
       cp "${manifest_path}" "${_mirror_path}" 2>/dev/null \

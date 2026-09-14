@@ -30,6 +30,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="migrate-test-environment-path.sh"
 
 # CANONICAL_REL + SENTINEL_REL resolved after $target
@@ -70,14 +73,14 @@ done
 [ -d "${target}" ] || { printf '%s: target directory does not exist: %s\n' "$SCRIPT_NAME" "${target}" >&2; exit 2; }
 
 # Resolve CANONICAL_REL with positive-evidence guard.
-if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
+if [ -d "${target}/config" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config" ]; then
   CANONICAL_REL="config/test-environment.yaml"
 else
-  CANONICAL_REL=".gaia/config/test-environment.yaml"
+  CANONICAL_REL="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/test-environment.yaml"
 fi
 # The migration sentinel lives under .gaia/memory;
 # legacy _memory fallback removed with the consolidation migration.
-SENTINEL_REL=".gaia/memory/.test-environment-path-migrated"
+SENTINEL_REL="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/.test-environment-path-migrated"
 
 legacy="${target}/${LEGACY_REL}"
 canonical="${target}/${CANONICAL_REL}"

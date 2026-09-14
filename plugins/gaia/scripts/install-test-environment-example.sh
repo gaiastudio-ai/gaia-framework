@@ -26,6 +26,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="install-test-environment-example.sh"
 
 # Resolve plugin root from this script's location:
@@ -83,10 +86,10 @@ fi
 # Resolve TARGET_REL with canonical-default + positive-evidence-legacy guard.
 # Canonical wins on greenfield; legacy fires only when legacy-layout evidence
 # is present.
-if [ -d "${target}/config" ] && [ ! -d "${target}/.gaia/config" ]; then
+if [ -d "${target}/config" ] && [ ! -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config" ]; then
   TARGET_REL="config/test-environment.yaml.example"
 else
-  TARGET_REL=".gaia/config/test-environment.yaml.example"
+  TARGET_REL="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/test-environment.yaml.example"
 fi
 
 target_file="${target}/${TARGET_REL}"
@@ -107,7 +110,7 @@ printf '%s: installed test-environment.yaml.example -> %s\n' "$SCRIPT_NAME" "${t
 # The mirror is non-conditional — create the test-artifacts/ dir if absent
 # (documented canonical layout; creating it on the install-example path is
 # in scope).
-_mirror_test_artifacts="${target}/.gaia/artifacts/test-artifacts"
+_mirror_test_artifacts="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
 _mirror_path="$_mirror_test_artifacts/test-environment.yaml.example"
 mkdir -p "$_mirror_test_artifacts" 2>/dev/null || true
 if [ "${target_file}" != "$_mirror_path" ]; then

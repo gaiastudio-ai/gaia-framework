@@ -27,6 +27,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-readiness-check/setup.sh"
 WORKFLOW_NAME="implementation-readiness"
 
@@ -73,7 +76,7 @@ fi
 # at all. Fix: make the ci_setup_exists gate conditional on
 # `ci_platform.provider != none`. When `none`, only the traceability gate fires.
 NEEDS_CI_GATE=1
-PROJECT_CONFIG_PATH="${PROJECT_CONFIG:-.gaia/config/project-config.yaml}"
+PROJECT_CONFIG_PATH="${PROJECT_CONFIG:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml}"
 if [ -f "$PROJECT_CONFIG_PATH" ] && command -v yq >/dev/null 2>&1; then
   ci_provider="$(yq eval '.ci_platform.provider // .ci_cd.provider // ""' "$PROJECT_CONFIG_PATH" 2>/dev/null || echo "")"
   if [ "$ci_provider" = "none" ]; then
@@ -106,7 +109,7 @@ fi
 # --plan output). Default it to the canonical .gaia/artifacts/test-artifacts/
 # path so the bash `set -u` regression doesn't leak through.
 # resolve-config.sh's value wins when set.
-TEST_ARTIFACTS="${TEST_ARTIFACTS:-.gaia/artifacts/test-artifacts}"
+TEST_ARTIFACTS="${TEST_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts}"
 # The earlier validate-gate.sh traceability_exists check (which accepts
 # flat | strategy/ | sharded) may already have PASSED — but the zero-byte
 # guard re-probes ONLY the flat path, so it would falsely die "exists but

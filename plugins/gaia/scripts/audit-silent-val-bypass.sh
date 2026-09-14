@@ -31,6 +31,9 @@ set -eu
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="audit-silent-val-bypass.sh"
 
 usage() {
@@ -48,7 +51,7 @@ USAGE
 
 # .gaia/memory/checkpoints is the only location;
 # the legacy _memory/checkpoints fallback was removed with the migration.
-checkpoint_path="./.gaia/memory/checkpoints"
+checkpoint_path="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
 days="90"
 
 while [ $# -gt 0 ]; do

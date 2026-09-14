@@ -80,10 +80,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-PA="${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts"
-TA="${PROJECT_ROOT}/.gaia/artifacts/test-artifacts"
-IA="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
-ST="${PROJECT_ROOT}/.gaia/state"
+PA="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
+TA="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts"
+IA="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
+ST="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
 LEGACY_PA="${PROJECT_ROOT}/docs/planning-artifacts"
 LEGACY_TA="${PROJECT_ROOT}/docs/test-artifacts"
 LEGACY_IA="${PROJECT_ROOT}/docs/implementation-artifacts"

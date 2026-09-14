@@ -43,6 +43,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-tech-research/finalize.sh"
 WORKFLOW_NAME="technical-research"
 
@@ -67,9 +70,9 @@ ARTIFACT_REQUESTED=0
 if [ -n "${TECH_RESEARCH_ARTIFACT:-}" ]; then
   ARTIFACT_REQUESTED=1
   ARTIFACT="$TECH_RESEARCH_ARTIFACT"
-elif [ -f ".gaia/artifacts/planning-artifacts/technical-research.md" ]; then
+elif [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/technical-research.md" ]; then
   # Smart-fallback: .gaia/artifacts/ first, legacy docs/ second.
-  ARTIFACT=".gaia/artifacts/planning-artifacts/technical-research.md"
+  ARTIFACT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/technical-research.md"
 elif [ -f "docs/planning-artifacts/technical-research.md" ]; then
   ARTIFACT="docs/planning-artifacts/technical-research.md"
 fi
@@ -275,7 +278,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no technical-research artifact found (TECH_RESEARCH_ARTIFACT unset and no .gaia/artifacts/planning-artifacts/technical-research.md) — skipping checklist run"
+  log "no technical-research artifact found (TECH_RESEARCH_ARTIFACT unset and no ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/technical-research.md) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

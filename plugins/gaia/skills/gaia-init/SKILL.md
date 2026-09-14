@@ -68,7 +68,8 @@ existing config exits non-zero with the same canonical refusal.
 **Step 1b — Re-init guard.** Run:
 
 ```bash
-phase=$(yq '.config_phase // "full"' .gaia/config/project-config.yaml 2>/dev/null || echo "none")
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+phase=$(yq '.config_phase // "full"' "${PROJECT_ROOT}/.gaia/config/project-config.yaml" 2>/dev/null || echo "none")
 ```
 
 - When `yq` succeeds (config exists), `phase` will be `minimal`,
@@ -275,7 +276,7 @@ Then validate the freshly-written file against the schema:
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/skills/gaia-init/scripts/validate-against-schema.sh \
-  "$PROJECT_PATH/.gaia/config/project-config.yaml"
+  "${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}/.gaia/config/project-config.yaml"
 ```
 
 If validation fails, surface the validator output, delete the just-written file (revert to greenfield state), and re-prompt the user for the offending field.

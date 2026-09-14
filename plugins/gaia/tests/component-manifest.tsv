@@ -216,6 +216,7 @@ core	gaia-sprint-wiring-boundary-writes.bats
 core	gaia-sprint-wiring-orchestration.bats
 core	gaia-test-a11y.bats
 core	gaia-test-dast.bats
+core	git-workflow-worktree-docs.bats
 core	ground-truth-lifecycle-wiring.bats
 core	ground-truth-staleness-capstone.bats
 core	infer-parent-epic.bats
@@ -226,6 +227,10 @@ core	issue-1395-brownfield-walkthrough-tier2.bats
 core	issue-1396-test-strategy-artifact-home.bats
 core	issue-1405-epic-key-normalization.bats
 core	lint-bats-script-refs.bats
+core	lock-helper.bats
+core	lock-review-gate-ledger.bats
+core	lock-sprint-state.bats
+core	lock-story-status.bats
 core	manual-test-docs.bats
 core	meeting-dispatch-envelope-assertion.bats
 core	meeting-dispatch-provenance-integration.bats
@@ -234,13 +239,18 @@ core	migrate-stories-to-canonical-layout.bats
 core	mode-b-docs.bats
 core	mode-b-parity.bats
 core	never-run-subdir-guard.bats
+core	no-bare-gaia-path-antipattern.bats
 core	no-bsd-awk-incompatible-anchors.bats
 core	no-leaked-ids-in-prose.bats
 core	no-leaked-ids-in-test-names.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
+core	parallel-execution-config.bats
+core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
+core	phase-derivation.bats
+core	phase-parallel-orchestrator.bats
 core	pixel-diff-ac1-capture-and-diff.bats
 core	pixel-diff-unit.bats
 core	placeholder-test-detector.bats
@@ -268,6 +278,7 @@ core	skill-plugin-root-paths-guard.bats
 core	skill-rename-preflight.bats
 core	sprint-close-sentinel-unconditional.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
+core	sprint-plan-phase-rendering.bats
 core	sprint-review-yolo-fallback.bats
 core	sprint-state-inject.bats
 core	sprint-state-split-repo-resolution.bats
@@ -280,6 +291,7 @@ core	static-next-steps.bats
 core	step-boundary-telemetry.bats
 core	step-boundary-token-capture.bats
 core	step-token-capture-wiring.bats
+core	taxonomy-ssot-audit.bats
 core	tdd-reviewer-agent-contract.bats
 core	test-automate-adr-051-preservation.bats
 core	test-automate-phase2.bats
@@ -334,6 +346,8 @@ core	vcp-ux-06.bats
 core	vcp-ux-generate.bats
 core	vcp-ux-import.bats
 core	verdict-resolver-parameterized.bats
+core	worktree-chain-scripts.bats
+core	worktree-generator-parity.bats
 scripts-brain	brain-c2-unlinked-predicate.bats
 scripts-brain	brain-feed-smoke.bats
 scripts-brain	brain-harvest-edges.bats
@@ -435,6 +449,7 @@ scripts-core	gaia-create-story.bats
 scripts-core	gaia-migrate-dispatch.bats
 scripts-core	gaia-migrate.bats
 scripts-core	gaia-resume-corruption.bats
+scripts-core	gaia-run-sprint-docs.bats
 scripts-core	gaia-security-review.bats
 scripts-core	gaia-test-e2e.bats
 scripts-core	gaia-test-perf.bats
@@ -485,6 +500,7 @@ scripts-core	sarif-multitool-merge.bats
 scripts-core	selective-test-driver.bats
 scripts-core	skill-dispatch-memory-load.bats
 scripts-core	skill-md-claude-skill-dir-anti-pattern.bats
+scripts-core	sm-capacity-check-unchanged.bats
 scripts-core	stale-flag-registry.bats
 scripts-core	step-report.bats
 scripts-core	template-header.bats
@@ -507,6 +523,7 @@ scripts-core	vcp-cpt-09.bats
 scripts-core	verdict-resolver-coverage-delta.bats
 scripts-core	verdict-resolver.bats
 scripts-core	version-bump.bats
+scripts-core	worktree-git-push.bats
 scripts-core	write-checkpoint.bats
 scripts-core	yolo-mode-sentinel.bats
 scripts-core	yolo-mode-session-binding.bats
@@ -570,10 +587,10 @@ scripts-lib	resolve-publish-adapter.bats
 scripts-lib	safe-grep-log.bats
 scripts-lib	schema-awareness-check.bats
 scripts-lib	shell-idioms.bats
-scripts-lib	taxonomy-ssot-audit.bats
 scripts-lib	template-overrides.bats
 scripts-lib	test-environment-manifest-generator.bats
 scripts-lib	transcript-fidelity.bats
+scripts-lib	worktree-lifecycle.bats
 scripts-lib	write-val-envelope.bats
 scripts-review-common	agent-overlay.bats
 scripts-review-common	composite-verdict-aggregator.bats
@@ -599,6 +616,7 @@ scripts-sprint	e106-s5-retire-capacity-points.bats
 scripts-sprint	e107-chain-integration.bats
 scripts-sprint	e107-s5-sprint-plan-val-gated-activation.bats
 scripts-sprint	issue-1403-title-quote-escaping.bats
+scripts-sprint	phase-persistence.bats
 scripts-sprint	resolve-story-file-coverage-stub.bats
 scripts-sprint	resolve-story-file.bats
 scripts-sprint	sprint-progress-audit.bats

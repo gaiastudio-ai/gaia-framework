@@ -14,7 +14,7 @@
 #
 # Environment:
 #   PROJECT_PATH             — project root (default ".")
-#   IMPLEMENTATION_ARTIFACTS — story root (default "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts")
+#   IMPLEMENTATION_ARTIFACTS — story root (default "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts")
 #   VALIDATOR_DECISION_LOG   — decision log path (default "$PROJECT_PATH/_memory/validator-sidecar/decision-log.md")
 #
 # Exit codes:
@@ -27,16 +27,17 @@ LC_ALL=C
 export LC_ALL
 
 PROJECT_PATH="${PROJECT_PATH:-.}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 # Smart-fallback for IMPLEMENTATION_ARTIFACTS
 if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
-  if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
-    IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts" ]; then
+    IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
   else
-    IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/docs/implementation-artifacts"
+    IMPLEMENTATION_ARTIFACTS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}docs/implementation-artifacts"
   fi
 fi
 if [ -z "${VALIDATOR_DECISION_LOG:-}" ]; then
-  VALIDATOR_DECISION_LOG="$PROJECT_PATH/.gaia/memory/validator-sidecar/decision-log.md"
+  VALIDATOR_DECISION_LOG="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/validator-sidecar/decision-log.md"
 fi
 
 # Silently degrade when the implementation-artifacts directory or the decision

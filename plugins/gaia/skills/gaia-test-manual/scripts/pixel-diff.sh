@@ -16,6 +16,9 @@
 
 set -euo pipefail
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # ---------- Public functions ----------
@@ -113,7 +116,7 @@ run_pixel_diff() {
   done
 
   if [ -z "$config_path" ]; then
-    config_path="${project_root}/.gaia/config/project-config.yaml"
+    config_path="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   fi
 
   # Source the config reader

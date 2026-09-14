@@ -44,6 +44,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-product-brief/finalize.sh"
 WORKFLOW_NAME="create-product-brief"
 
@@ -75,8 +78,8 @@ else
   # Pick the newest product-brief-*.md under whichever directory exists,
   # without relying on GNU-only ls flags — portable across BSD/macOS and
   # GNU coreutils.
-  if [ -d ".gaia/artifacts/creative-artifacts" ]; then
-    BRIEF_DIR=".gaia/artifacts/creative-artifacts"
+  if [ -d "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts" ]; then
+    BRIEF_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts"
   elif [ -d "docs/creative-artifacts" ]; then
     BRIEF_DIR="docs/creative-artifacts"
   else
@@ -435,7 +438,7 @@ EOF
     CHECKLIST_STATUS=0
   fi
 else
-  log "no product-brief artifact found (PRODUCT_BRIEF_ARTIFACT unset and no .gaia/artifacts/creative-artifacts/product-brief-*.md) — skipping checklist run"
+  log "no product-brief artifact found (PRODUCT_BRIEF_ARTIFACT unset and no ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/creative-artifacts/product-brief-*.md) — skipping checklist run"
   CHECKLIST_STATUS=0
 fi
 

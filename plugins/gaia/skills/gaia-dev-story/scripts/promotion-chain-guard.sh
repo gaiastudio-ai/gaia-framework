@@ -30,6 +30,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-dev-story/promotion-chain-guard.sh"
 
 # Non-git CWD guard: skip-with-warning when CWD is outside any git

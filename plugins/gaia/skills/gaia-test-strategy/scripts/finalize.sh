@@ -42,6 +42,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-test-strategy/finalize.sh"
 WORKFLOW_NAME="test-strategy"
 
@@ -241,7 +244,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ] && [ -s "$ARTIFACT" ]; then
   LLM-03 — No actual test implementations created beyond smoke wiring (scaffold mode only).
 EOF
 else
-  log "no test-strategy artifact found (TEST_STRATEGY_ARTIFACT unset and no test-strategy.md at .gaia/artifacts/test-artifacts/strategy/ or docs/test-artifacts/strategy/) — skipping checklist run"
+  log "no test-strategy artifact found (TEST_STRATEGY_ARTIFACT unset and no test-strategy.md at ${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts/strategy/ or docs/test-artifacts/strategy/) — skipping checklist run"
 fi
 
 # ---------- 2. Write checkpoint ----------

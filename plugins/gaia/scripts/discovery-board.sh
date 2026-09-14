@@ -265,7 +265,7 @@ _validate_research_artifacts() {
 _validate_ai_id() {
   local item_id="$1" ai_id="$2"
 
-  local ai_file="${PROJECT_ROOT}/.gaia/state/action-items.yaml"
+  local ai_file="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/action-items.yaml"
 
   # Fail closed: missing file.
   if [ ! -f "$ai_file" ]; then
@@ -466,8 +466,8 @@ validate_board_transition() {
 # ---------- Path resolution ----------
 
 resolve_board_paths() {
-  PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
-  BOARD_STATE_DIR="${PROJECT_ROOT}/.gaia/state"
+  PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+  BOARD_STATE_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
   BOARD_FILE="${BOARD_STATE_DIR}/discovery-board.yaml"
   BOARD_LOCK="${BOARD_FILE}.lock"
   mkdir -p "$BOARD_STATE_DIR"

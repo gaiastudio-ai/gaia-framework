@@ -94,6 +94,7 @@ _time_reindex() {
 
 # Proportional early-warning: ~50 files must sweep well within a small budget on
 # every CI pass. Scaled from the 120s/500 budget (12s) with generous headroom.
+# bats test_tags=hardware-dependent
 @test "a small proportional corpus sweeps within the scaled budget" {
   _gen_corpus 50
   _time_reindex

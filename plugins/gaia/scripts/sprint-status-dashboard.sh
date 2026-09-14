@@ -45,6 +45,7 @@ fi
 
 # ---------- Resolve paths ----------
 PROJECT_PATH="${PROJECT_PATH:-.}"
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH}}}"
 # Canonical yaml location. Honor pre-exported SPRINT_STATUS_YAML so
 # bats fixtures that place the yaml at the project-path root can be used
 # without restructuring the fixture tree.
@@ -59,15 +60,15 @@ if [[ -z "$YAML_PATH" ]]; then
   _DASH_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   _RESOLVE_ARTIFACT_PATH="$_DASH_SCRIPT_DIR/lib/resolve-artifact-path.sh"
   if [[ -x "$_RESOLVE_ARTIFACT_PATH" ]]; then
-    YAML_PATH="$("$_RESOLVE_ARTIFACT_PATH" sprint_status --project-root "$PROJECT_PATH" --existing-only 2>/dev/null || true)"
+    YAML_PATH="$("$_RESOLVE_ARTIFACT_PATH" sprint_status --project-root "$PROJECT_ROOT" --existing-only 2>/dev/null || true)"
     # No existing rung → report the canonical .gaia/state/ path so the
     # not-found error below names the canonical location.
-    [[ -z "$YAML_PATH" ]] && YAML_PATH="$("$_RESOLVE_ARTIFACT_PATH" sprint_status --project-root "$PROJECT_PATH" 2>/dev/null || echo "$PROJECT_PATH/.gaia/state/sprint-status.yaml")"
+    [[ -z "$YAML_PATH" ]] && YAML_PATH="$("$_RESOLVE_ARTIFACT_PATH" sprint_status --project-root "$PROJECT_ROOT" 2>/dev/null || echo "$PROJECT_ROOT/.gaia/state/sprint-status.yaml")"
   else
     # Resolver unavailable — local precedence without the retired mirror.
-    GAIA_STATE_YAML="$PROJECT_PATH/.gaia/state/sprint-status.yaml"
-    CANONICAL_YAML="$PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml"
-    FALLBACK_YAML="$PROJECT_PATH/sprint-status.yaml"
+    GAIA_STATE_YAML="$PROJECT_ROOT/.gaia/state/sprint-status.yaml"
+    CANONICAL_YAML="$PROJECT_ROOT/docs/implementation-artifacts/sprint-status.yaml"
+    FALLBACK_YAML="$PROJECT_ROOT/sprint-status.yaml"
     if [[ -f "$GAIA_STATE_YAML" ]]; then
       YAML_PATH="$GAIA_STATE_YAML"
     elif [[ -f "$CANONICAL_YAML" ]]; then
@@ -84,10 +85,10 @@ fi
 # risk-surfacing frontmatter lookup.
 # Smart-fallback:
 if [ -z "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
-  if [ -d "$PROJECT_PATH/.gaia/artifacts/implementation-artifacts" ]; then
-    IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
+  if [ -d "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" ]; then
+    IMPLEMENTATION_ARTIFACTS="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts"
   else
-    IMPLEMENTATION_ARTIFACTS="$PROJECT_PATH/docs/implementation-artifacts"
+    IMPLEMENTATION_ARTIFACTS="$PROJECT_ROOT/docs/implementation-artifacts"
   fi
 fi
 

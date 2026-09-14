@@ -30,6 +30,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="adapters/dead-code/jvm-spotbugs/adapter.sh"
 log_info() { printf 'INFO: %s: %s\n' "$SCRIPT_NAME" "$*"; }
 log_warn() { printf 'WARNING: %s: %s\n' "$SCRIPT_NAME" "$*"; }
@@ -44,7 +47,7 @@ fi
 ROOT="${JVM_PROJECT_ROOT:-.}"
 default_out() {
   if [ -n "${GAIA_MEMORY_DIR:-}" ]; then printf '%s/brownfield-audit' "$GAIA_MEMORY_DIR"
-  else printf '%s' "./.gaia/memory/brownfield-audit"; fi
+  else printf '%s' "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/brownfield-audit"; fi
 }
 OUT="${JVM_OUT_DIR:-$(default_out)}"
 
@@ -175,7 +178,7 @@ seconds=$(( $(date +%s) - start ))
 count="$(printf '%s' "$findings" | jq 'length')"
 log_info "jvm-spotbugs: $count finding(s) (priority=1 rank<=4); file_path JOIN key emitted; runtime=${seconds}s"
 
-REPORT="${GAIA_ARTIFACTS_DIR:-.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
+REPORT="${GAIA_ARTIFACTS_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts}/planning-artifacts/consolidated-gaps.md"
 TELEM="$(cd "$(dirname "$0")/../../brownfield" 2>/dev/null && pwd)/brownfield-telemetry.sh"
 if [ -f "$REPORT" ] && [ -x "$TELEM" ]; then
   bash "$TELEM" --report "$REPORT" --field phase_runtime_seconds.deadcode_jvm --value "$seconds" || true

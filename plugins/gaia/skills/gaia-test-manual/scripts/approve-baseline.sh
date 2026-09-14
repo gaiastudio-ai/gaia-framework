@@ -109,7 +109,7 @@ if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
   [ -n "$STORY" ] || die "usage: --story is required"
 
   if [ -z "$CONFIG_PATH" ]; then
-    CONFIG_PATH="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+    CONFIG_PATH="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
   fi
 
   # Resolve baseline directory

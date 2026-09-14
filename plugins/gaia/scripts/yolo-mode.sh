@@ -74,7 +74,8 @@ _yolo_resolve_sentinel() {
     elif [ -n "${GAIA_STATE_DIR:-}" ]; then
         printf '%s' "${GAIA_STATE_DIR}/.yolo-active"
     else
-        printf '%s' ".gaia/state/.yolo-active"
+        local _yolo_root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+        printf '%s' "${_yolo_root:+${_yolo_root%/}/}.gaia/state/.yolo-active"
     fi
 }
 

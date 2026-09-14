@@ -33,7 +33,7 @@ usage() {
 
 FAMILY=""
 ARTIFACT_ID=""
-PROJECT_ROOT="${PWD}"
+PROJECT_ROOT="${PROJECT_ROOT:-${PWD}}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --family) FAMILY="$2"; shift 2 ;;
@@ -49,26 +49,26 @@ done
 case "$FAMILY" in
   retro)
     ENV_VAR="RETRO_DIR"
-    NESTED_DIR="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retrospective"
-    LEGACY_DIR="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+    NESTED_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts/retrospective"
+    LEGACY_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
     NAME_PREFIX="retrospective-${ARTIFACT_ID}-"
     ;;
   sprint-plan)
     ENV_VAR="SPRINT_PLAN_DIR"
-    NESTED_DIR="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-plan"
-    LEGACY_DIR="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+    NESTED_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts/sprint-plan"
+    LEGACY_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
     NAME_PREFIX="${ARTIFACT_ID}-plan"
     ;;
   sprint-review)
     ENV_VAR="SPRINT_REVIEW_DIR"
-    NESTED_DIR="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-review"
-    LEGACY_DIR="${PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts"
+    NESTED_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts/sprint-review"
+    LEGACY_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts"
     NAME_PREFIX="sprint-review-${ARTIFACT_ID}-"
     ;;
   adversarial)
     ENV_VAR="ADVERSARIAL_DIR"
-    NESTED_DIR="${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/adversarial"
-    LEGACY_DIR="${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts"
+    NESTED_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/adversarial"
+    LEGACY_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
     NAME_PREFIX="adversarial-review-${ARTIFACT_ID}-"
     ;;
   *)

@@ -30,6 +30,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 SCRIPT_NAME="gaia-sprint-review/finalize.sh"
 WORKFLOW_NAME="gaia-sprint-review"
 
@@ -50,16 +53,24 @@ die() { log "$*"; exit 1; }
 # extracted to lib/ because the duplication is bounded to 2 callers
 # and the walk-up is a 9-line idiom.
 if [ -z "${CHECKPOINT_PATH:-}" ]; then
-  cwd="$(pwd)"
-  while [ "$cwd" != "/" ]; do
-    # Canonical .gaia/memory/checkpoints only; the legacy _memory probe was
-    # removed with the consolidation migration.
-    if [ -d "$cwd/.gaia/memory/checkpoints" ] || [ -d "$cwd/.gaia/memory" ]; then
-      CHECKPOINT_PATH="$cwd/.gaia/memory/checkpoints"
-      break
-    fi
-    cwd="$(dirname "$cwd")"
-  done
+  if [ -n "${PROJECT_ROOT:-}" ] && { [ -d "${PROJECT_ROOT%/}/.gaia/memory/checkpoints" ] || [ -d "${PROJECT_ROOT%/}/.gaia/memory" ]; }; then
+    # Canonical root is set and its state tree exists — resolve directly.
+    CHECKPOINT_PATH="${PROJECT_ROOT%/}/.gaia/memory/checkpoints"
+  else
+    # Walk up from CWD looking for the .gaia/memory anchor.
+    # Falls through here when PROJECT_ROOT is unset OR when it points
+    # at a tree whose state directory does not exist yet.
+    cwd="$(pwd)"
+    while [ "$cwd" != "/" ]; do
+      # Canonical .gaia/memory/checkpoints only; the legacy _memory probe was
+      # removed with the consolidation migration.
+      if [ -d "${cwd}/.gaia/memory/checkpoints" ] || [ -d "${cwd}/.gaia/memory" ]; then
+        CHECKPOINT_PATH="${cwd}/.gaia/memory/checkpoints"
+        break
+      fi
+      cwd="$(dirname "$cwd")"
+    done
+  fi
 fi
 
 if [ -n "${SPRINT_ID:-}" ]; then

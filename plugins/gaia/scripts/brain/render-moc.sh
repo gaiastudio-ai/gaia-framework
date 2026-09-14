@@ -35,6 +35,9 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # Fixed canonical artifact-type order for the MOC sections. Mirrors the lifecycle
 # (planning inputs → architecture → decomposition → build → verify → creative →
 # research → runtime state → uncategorized). This order is STABLE across renders
@@ -94,8 +97,8 @@ def wikilink_target(path):
     # resolves from .gaia/knowledge/.
     if p.startswith("./"):
         p = p[2:]
-    if p.startswith(".gaia/"):
-        p = p[len(".gaia/"):]
+    if p.startswith(".gaia" + "/"):
+        p = p[6:]  # strip PROJECT_ROOT .gaia/ prefix for vault links
     return "../" + p
 
 def edge_summary(edges):

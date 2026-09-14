@@ -28,3 +28,7 @@ setup() {
 @test "usage mentions sprint-level transition form (transition --sprint)" {
   bash "$SCRIPT" --help 2>&1 | grep -qE "transition[[:space:]]+--sprint"
 }
+
+@test "usage mentions set-phase subcommand (AC2)" {
+  bash "$SCRIPT" --help 2>&1 | grep -q "set-phase"
+}
