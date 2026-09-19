@@ -71,10 +71,28 @@ EOF
 }
 
 # _init_git_repos  -- turn fixture roots into tiny git repos so commit ids
-# are available for provenance tests.
+# are available for provenance tests.  Identity is passed per-invocation
+# via -c so this is hermetic on runners with no git identity configured
+# (e.g. CI) and does not read or write the host's global/system config.
 _init_git_repos() {
-  (cd "$PUB_ROOT" && git init -q && git add -A && git commit -q -m "init" --allow-empty)
-  (cd "$ENT_ROOT" && git init -q && git add -A && git commit -q -m "init" --allow-empty)
+  local dir
+  for dir in "$PUB_ROOT" "$ENT_ROOT"; do
+    (
+      cd "$dir" \
+        && HOME="$BATS_TEST_TMPDIR" GIT_CONFIG_GLOBAL=/dev/null \
+           git -c user.email=fixture@example.invalid -c user.name=fixture \
+               -c commit.gpgsign=false \
+               init -q \
+        && HOME="$BATS_TEST_TMPDIR" GIT_CONFIG_GLOBAL=/dev/null \
+           git -c user.email=fixture@example.invalid -c user.name=fixture \
+               -c commit.gpgsign=false \
+               add -A \
+        && HOME="$BATS_TEST_TMPDIR" GIT_CONFIG_GLOBAL=/dev/null \
+           git -c user.email=fixture@example.invalid -c user.name=fixture \
+               -c commit.gpgsign=false \
+               commit -q -m "init" --allow-empty
+    )
+  done
 }
 
 # ---------- Setup / teardown ---------------------------------------------
