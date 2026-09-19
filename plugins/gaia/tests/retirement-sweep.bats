@@ -70,28 +70,40 @@ src/tool.sh | comparison prose in tool fixture
 EOF
 }
 
+# _fixture_git  -- run a single git subcommand against <dir> with a
+# synthetic, per-invocation identity.  Hermetic on runners with no git
+# identity configured (e.g. CI): does not read or write the host's
+# global/system config.
+_fixture_git() {
+  local dir="$1"
+  shift
+  (
+    cd "$dir" \
+      && HOME="$BATS_TEST_TMPDIR" GIT_CONFIG_GLOBAL=/dev/null \
+         git -c user.email=fixture@example.invalid -c user.name=fixture \
+             -c commit.gpgsign=false \
+             "$@"
+  )
+}
+
+# _fixture_commit <dir> <msg>  -- stage everything in <dir> and commit with
+# the synthetic fixture identity.  Shared by _init_git_repos and any test
+# that needs a follow-up commit (e.g. to produce a second, distinct commit
+# id for provenance tests).
+_fixture_commit() {
+  local dir="$1"
+  local msg="$2"
+  _fixture_git "$dir" add -A
+  _fixture_git "$dir" commit -q -m "$msg" --allow-empty
+}
+
 # _init_git_repos  -- turn fixture roots into tiny git repos so commit ids
-# are available for provenance tests.  Identity is passed per-invocation
-# via -c so this is hermetic on runners with no git identity configured
-# (e.g. CI) and does not read or write the host's global/system config.
+# are available for provenance tests.
 _init_git_repos() {
   local dir
   for dir in "$PUB_ROOT" "$ENT_ROOT"; do
-    (
-      cd "$dir" \
-        && HOME="$BATS_TEST_TMPDIR" GIT_CONFIG_GLOBAL=/dev/null \
-           git -c user.email=fixture@example.invalid -c user.name=fixture \
-               -c commit.gpgsign=false \
-               init -q \
-        && HOME="$BATS_TEST_TMPDIR" GIT_CONFIG_GLOBAL=/dev/null \
-           git -c user.email=fixture@example.invalid -c user.name=fixture \
-               -c commit.gpgsign=false \
-               add -A \
-        && HOME="$BATS_TEST_TMPDIR" GIT_CONFIG_GLOBAL=/dev/null \
-           git -c user.email=fixture@example.invalid -c user.name=fixture \
-               -c commit.gpgsign=false \
-               commit -q -m "init" --allow-empty
-    )
+    _fixture_git "$dir" init -q
+    _fixture_commit "$dir" "init"
   done
 }
 
@@ -306,7 +318,7 @@ teardown() { common_teardown; }
 
   # Make a tiny change + recommit so the commit id differs.
   printf 'extra\n' >> "$PUB_ROOT/src/design.sh"
-  (cd "$PUB_ROOT" && git add -A && git commit -q -m "tweak")
+  _fixture_commit "$PUB_ROOT" "tweak"
 
   "$SWEEP_SCRIPT" \
     --provider "$PROVIDER" \
