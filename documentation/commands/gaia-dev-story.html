@@ -234,10 +234,19 @@ This warning is shown once per session.
             and directs you to <code>/gaia-atdd</code>.
           </li>
           <li>
-            <span class="step-title">Create feature branch</span>
-            Creates a git feature branch named after the story key. If the
-            branch already exists (from a prior attempt), offers to resume
-            on it.
+            <span class="step-title">Create the story worktree and feature branch</span>
+            Creates a git feature branch named after the story key. When
+            worktree mode is on (<code>GAIA_WORKTREE_MODE=1</code> in the
+            environment), the branch is checked out in its own linked
+            worktree at <code>.gaia-worktrees/{story_key}</code>, a sibling
+            of your repository's top-level directory, and every later step
+            (edits, tests, commits, push, pull request) runs inside that
+            worktree while your primary checkout is left untouched.
+            Re-running the command for a story whose worktree still exists
+            re-enters that worktree instead of creating a second one. With
+            the mode off, the branch is created in place; if it already
+            exists (from a prior attempt), the command offers to resume on
+            it.
           </li>
           <li>
             <span class="step-title">Plan implementation</span>
@@ -470,6 +479,11 @@ This warning is shown once per session.
               <td>A branch named after the story key containing all commits.</td>
             </tr>
             <tr>
+              <td>Story worktree (worktree mode only)</td>
+              <td><code>.gaia-worktrees/{story_key}</code>, beside your repository</td>
+              <td>The linked checkout the story was developed in. Removed after a successful merge (build output and other ignored files included); kept, and reported with a recovery command, when it still holds uncommitted work or the story timed out.</td>
+            </tr>
+            <tr>
               <td>Pull request</td>
               <td>GitHub (or your Git host)</td>
               <td>A PR targeting your first promotion-chain environment.</td>
@@ -650,6 +664,19 @@ or run individual reviews.</code></pre>
           completes locally. Configure a promotion chain with
           <a href="gaia-ci-edit.html"><code>/gaia-ci-edit</code></a> if you
           want automated CI integration.
+        </p>
+
+        <h3>A story worktree was left behind</h3>
+        <p>
+          In worktree mode the command keeps a worktree rather than destroy
+          work: it stays when the story timed out, when it still holds
+          uncommitted changes, or when its branch is checked out elsewhere.
+          The completion report prints the worktree path and the exact
+          recovery command; inspect it with
+          <code>git -C .gaia-worktrees/{story_key} status</code> and remove
+          it only once nothing in it is needed. Worktrees orphaned by a run
+          that was killed are cleared automatically the next time a story
+          starts.
         </p>
 
         <h3>Session interrupted mid-implementation</h3>

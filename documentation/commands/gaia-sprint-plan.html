@@ -249,6 +249,18 @@ This warning is shown once per session.
             stories, checks that ATDD scenarios exist.
           </li>
           <li>
+            <span class="step-title">Derive dependency phases</span>
+            Groups the selected stories into dependency phases: a story with
+            no in-sprint dependencies is phase 1, a story whose dependencies
+            are all in phase 1 is phase 2, and so on. A dependency cycle
+            among the selected stories stops planning and names every
+            member of the cycle. The phase is recorded on each story in the sprint
+            tracking file and sets the execution order in the sprint plan;
+            it is what lets
+            <a href="../gaia-run-sprint.html"><code>/gaia-run-sprint</code></a>
+            run the stories of one phase at the same time.
+          </li>
+          <li>
             <span class="step-title">Commit sprint</span>
             Registers each selected story in the sprint tracking file. Runs
             a dependency-inversion lint to detect ordering issues, and clears
@@ -328,12 +340,12 @@ This warning is shown once per session.
             <tr>
               <td>Sprint plan document</td>
               <td><code>.gaia/artifacts/implementation-artifacts/{sprint_id}-plan.md</code></td>
-              <td>Sprint goals, selected stories, velocity target, burndown estimate.</td>
+              <td>Sprint goals, selected stories grouped by dependency phase in execution order, velocity target, burndown estimate.</td>
             </tr>
             <tr>
               <td>Updated sprint tracking</td>
               <td><code>.gaia/state/sprint-status.yaml</code></td>
-              <td>Each selected story registered with status, points, and risk level.</td>
+              <td>Each selected story registered with status, points, risk level, and dependency phase.</td>
             </tr>
             <tr>
               <td>Updated story files</td>
