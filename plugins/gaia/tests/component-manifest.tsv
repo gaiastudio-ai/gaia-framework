@@ -96,6 +96,7 @@ core	config-yaml-editor-e71-s3-coverage-stub.bats
 core	dead-code-join.bats
 core	dead-reference-scan.bats
 core	detect-signals-proposal.bats
+core	detect-ux-scope.bats
 core	dev-story-promotion-chain-detect.bats
 core	dev-story-script-wiring.bats
 core	dev-story-stack-dev-delegation.bats
@@ -687,6 +688,7 @@ skills	e76-s24-meeting-notes-subdir.bats
 skills	frontmatter-lib.bats
 skills	gaia-sprint-review-track-b-foreground.bats
 skills	gaia-sprint-review-track-b-orchestration.bats
+skills	generate-frontmatter-golden.bats
 skills	init-review-gate.bats
 skills	issue-1129-1304-portability-version.bats
 skills	issue-1151-trace-finalize-blocked-exit.bats

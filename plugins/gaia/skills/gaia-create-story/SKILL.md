@@ -47,7 +47,7 @@ Story ELABORATION — filling the `{CONTENT_PLACEHOLDER}` bodies (real ACs/tasks
 ## Critical Rules
 
 - An epics-and-stories document MUST exist at `{planning_artifacts}/epics-and-stories.md` before starting (path resolved via `!scripts/resolve-config.sh planning_artifacts`). If missing, fail fast with "epics-and-stories.md not found at {planning_artifacts}/epics-and-stories.md -- run /gaia-create-epics first."
-- Story files MUST include complete YAML frontmatter with ALL 15 required fields: key, title, epic, status, priority, size, points, risk, sprint_id, depends_on, blocks, traces_to, date, author, priority_flag. Optional fields: origin, origin_ref, figma.
+- Story files MUST include complete YAML frontmatter with ALL 15 required fields: key, title, epic, status, priority, size, points, risk, sprint_id, depends_on, blocks, traces_to, date, author, priority_flag. Optional fields: origin, origin_ref, design_ref.
 - All acceptance criteria MUST use Given/When/Then format: "Given {context}, when {action}, then {expected result}".
 - **AC checkbox format.** Each AC line MUST begin with a `- [ ]` markdown checkbox. The full line shape is `- [ ] **AC{N}:** Given {context}, when {action}, then {expected result}.` — checkbox first, then bold AC tag, then the Given/When/Then sentence. `validate-ac-format.sh` enforces this strictly: bold `**Given:** / **When:** / **Then:**` bullet lists (without the leading `- [ ]` checkbox) fail with CRITICAL and block story creation, even though the prose reads as valid Given/When/Then. The checkbox enables operators to tick ACs as they ship and feeds the `/gaia-check-dod` evidence signal.
 - The story file MUST be written to the canonical per-story path `{implementation_artifacts}/{EPIC_DIR}/{story_key}-{slug}/story.md`, where `{EPIC_DIR}` is the full `resolve-epic-slug.sh` output and the basename is the literal `story.md` (enforced by `validate-canonical-filename.sh`; `{implementation_artifacts}` is resolved via `!scripts/resolve-config.sh implementation_artifacts`). The legacy flat `{story_key}-{slug}.md` and legacy nested `{EPIC_DIR}/stories/{story_key}-{slug}.md` forms are read-only fallbacks; NEW writes always use the per-story form.
@@ -137,7 +137,7 @@ Concrete examples:
 
 Run all four rules. Any rule matching → spawn UX Designer. No rule matching → omit UX Designer (backend-only path).
 
-**Rule #1** — `figma:` frontmatter block present (definitive signal).
+**Rule #1** — `design_ref:` frontmatter key present (definitive signal).
 **Rule #2** — UI_TERMS substring match (case-insensitive) in description or AC text: `screen | page | modal | form | button | navigation | wizard | flow | interaction | accessibility | responsive | mobile view | design`. Word-boundary `flow` excludes `data flow` / `control flow`.
 **Rule #3** — Epic has a UX-tagged `tags:` or `classification:` line in `epics-and-stories.md`.
 **Rule #4** — `{planning_artifacts}/ux-design.md` exists AND the story's epic key appears inside. Missing file → skip cleanly (rules 1-3 still evaluate); use `[ -f ]` guard.
@@ -169,7 +169,7 @@ When the user picks `[a]`, dispatch the selected subagents with the contracts be
 - Answers 2 questions: (Q1) implementation constraints (ADRs, patterns, tech choices); (Q2) technical dependencies (other modules, services, libraries).
 
 **UX Designer (Christy) — `gaia:ux-designer`.** Spawned on `[a]` ONLY when the four-rule UX detection matches. NOT spawned for backend-only stories.
-- Loads: `{planning_artifacts}/ux-design.md` (when present), `{planning_artifacts}/epics-and-stories.md`, the story frontmatter (including any `figma:` block).
+- Loads: `{planning_artifacts}/ux-design.md` (when present), `{planning_artifacts}/epics-and-stories.md`, the story frontmatter (including any design-record reference).
 - Answers exactly 3 questions: (Q1) UX edge cases — empty, loading, error, no-data, offline states; (Q2) accessibility — keyboard navigation, screen-reader support, color contrast, ARIA semantics; (Q3) interaction patterns — which design-system components/patterns to reuse vs build custom.
 
 PM still loads `ux-design.md` even when UX Designer is also spawned — this is intentional. PM brings stakeholder context; UX Designer brings design-system expertise. The question scopes do not overlap.

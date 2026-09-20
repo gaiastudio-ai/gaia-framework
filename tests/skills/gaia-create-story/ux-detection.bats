@@ -3,7 +3,7 @@
 #
 # Validates Step 3 expansion of gaia-create-story SKILL.md per E54-S2:
 #   AC1 (TC-CSE-05): no UX scope -> only PM + Architect; [a] line omits "and UX Designer"
-#   AC2 (TC-CSE-06): figma: block present -> PM + Architect + UX Designer in parallel single message
+#   AC2 (TC-CSE-06): legacy block present -> PM + Architect + UX Designer in parallel single message
 #   AC3 (TC-CSE-07): UI terms in description match rule #2 -> UX Designer spawned
 #   AC4 (TC-CSE-08): missing ux-design.md -> rule #4 fails safely (no error), rules 1-3 still evaluate
 #   AC5: UX Designer answers exactly 3 question scopes (edge cases, accessibility, interaction patterns)
@@ -55,16 +55,16 @@ step3_body() {
   echo "$body" | grep -qiE "omits.*UX Designer|without.*UX Designer|no UX.*Designer.*not spawn"
 }
 
-# ---------- AC2 / TC-CSE-06: figma: block present -> PM + Architect + UX Designer parallel ----------
+# ---------- AC2 / TC-CSE-06: legacy block present -> PM + Architect + UX Designer parallel ----------
 
 @test "AC2/TC-CSE-06: Step 3 documents the [a] line WITH UX Designer when detection matches" {
   body="$(step3_body)"
   echo "$body" | grep -qE "Auto-delegate to PM \(Derek\), Architect \(Theo\), and UX Designer \(Christy\)"
 }
 
-@test "AC2/TC-CSE-06: Step 3 references figma: frontmatter block as definitive UX signal" {
+@test "AC2/TC-CSE-06: Step 3 references design_ref: frontmatter key as definitive UX signal" {
   body="$(step3_body)"
-  echo "$body" | grep -qE "figma:"
+  echo "$body" | grep -qE "design_ref:"
 }
 
 # ---------- AC3 / TC-CSE-07: UI terms in description ----------
@@ -104,10 +104,10 @@ step3_body() {
   echo "$body" | grep -qiE "interaction pattern|design.system"
 }
 
-@test "AC5: Step 3 lists UX Designer load set including ux-design.md and figma frontmatter" {
+@test "AC5: Step 3 lists UX Designer load set including ux-design.md and design-record reference" {
   body="$(step3_body)"
   echo "$body" | grep -qE "ux-design\.md"
-  echo "$body" | grep -qiE "figma"
+  echo "$body" | grep -qiE "design-record reference"
 }
 
 # ---------- AC6: parallel spawn enforcement ----------
