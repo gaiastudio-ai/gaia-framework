@@ -27,7 +27,7 @@
 #   2  malformed frontmatter (no closing `---`)
 #
 # Rule priority order (always emitted in this order when fired):
-#   rule1  figma: frontmatter block present
+#   rule1  design_ref: frontmatter key present
 #   rule2  UI_TERMS word-boundary match in body, with exclusion suppression
 #   rule3  Epic has UX classification in epics-and-stories.md
 #   rule4  ux-design.md exists AND mentions the story's epic key
@@ -124,10 +124,13 @@ ux_match=false
 rules_fired=()
 excluded_by=()
 
-# ---------- Rule #1: figma: frontmatter block ----------
-# Definitive UX signal. Match a top-level `figma:` key in the frontmatter (not
-# in the body, which would let prose mentions of the word trigger a false fire).
-if printf '%s\n' "$frontmatter" | grep -qE '^figma:'; then
+# ---------- Rule #1: design_ref: frontmatter key ----------
+# Definitive UX signal. Match a top-level `design_ref:` key in the frontmatter
+# (not in the body, which would let prose mentions trigger a false fire).
+# The `^` anchor is load-bearing: without it, a `design_ref:` token inside a
+# frontmatter value (e.g. `notes: "see design_ref: for details"`) would fire
+# rule1 as a false positive.  AC-EC4 pins this anchor via a mutant test.
+if printf '%s\n' "$frontmatter" | grep -qE '^design_ref:'; then
   ux_match=true
   rules_fired+=("rule1")
 fi

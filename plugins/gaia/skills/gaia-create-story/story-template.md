@@ -20,18 +20,12 @@ deferred_implementation: false
 manual_verification: false
 origin: {origin}
 origin_ref: {origin_ref}
+# design_ref: optional — path to the design record (e.g. ".gaia/state/design-record.yaml"). When present, the UX-scope detector classifies this story as design-scoped and spawns the UX Designer subagent during elaboration. Omit for backend-only stories.
 depends_on: {depends_on}
 blocks: {blocks}
 traces_to: {traces_to}
 date: "{creation_date}"
 author: "{agent_name}"
-# Optional: Figma design metadata — enables dev agents to extract design tokens and component specs via MCP.
-# Omit this block entirely if the story does not reference Figma designs.
-# figma:
-#   file_key: "{figma_file_key}"       # Figma file identifier (from URL)
-#   pages: ["{page_name}"]             # List of page names to extract from
-#   node_ids: ["{node_id}"]            # List of specific Figma node IDs
-#   design_version: null               # Populated by dev agent after first consumption (lastModified hash)
 ---
 
 # Story: {story_title}

@@ -153,7 +153,7 @@ Confirm the file was written and report the path back to the user. Suggest the n
 - **Escape hatch declined — continue as quick spec:** continue silently after logging the decline in the "Risks" section of the output. Do not block the write.
 - **`{spec_name}` contains spaces or uppercase:** normalize to lowercase-with-hyphens before resolving the output path.
 - **Output file already exists:** warn the user and ask whether to overwrite, rename, or abort. Do NOT silently overwrite — the legacy flow had no overwrite protection because it relied on the workflow engine's template-output checkpoint; the native flow must be explicit.
-- **MCP / Figma / design tokens:** out of scope for quick-spec. If the user asks about design tokens, route them to `/gaia-create-ux`.
+- **MCP / design tokens:** out of scope for quick-spec. If the user asks about design tokens, route them to `/gaia-create-ux`.
 - **Agent memory:** do not load any sidecar. Do not write any sidecar on completion. This is intentional per the legacy behavior.
 
 ## References
