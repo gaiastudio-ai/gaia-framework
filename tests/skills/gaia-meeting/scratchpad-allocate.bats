@@ -27,7 +27,7 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC1 (TC-MTG-SP-1): three pins receive monotonic SP-1, SP-2, SP-3" {
+@test "three pins receive monotonically numbered slots SP-1, SP-2 and SP-3" {
   run "$HELPER" pin --state "$STATE" --content "first" --intent "first intent" --agent "alpha"
   [ "$status" -eq 0 ]
   [ "$output" = "SP-1" ]
@@ -39,7 +39,7 @@ teardown() {
   [ "$output" = "SP-3" ]
 }
 
-@test "AC1: pin order is preserved across list output" {
+@test "pin order is preserved in the list output" {
   "$HELPER" pin --state "$STATE" --content "a" --intent "ai" --agent "alpha" >/dev/null
   "$HELPER" pin --state "$STATE" --content "b" --intent "bi" --agent "beta" >/dev/null
   "$HELPER" pin --state "$STATE" --content "c" --intent "ci" --agent "gamma" >/dev/null
@@ -51,7 +51,7 @@ SP-3"
   [ "$output" = "$expected" ]
 }
 
-@test "AC2 (TC-MTG-SP-1): re-pin SP-2 with new content uses latest-wins" {
+@test "re-pinning a slot with new content applies latest-wins" {
   "$HELPER" pin --state "$STATE" --content "first"  --intent "i1" --agent "alpha" >/dev/null
   "$HELPER" pin --state "$STATE" --content "second" --intent "i2" --agent "beta"  >/dev/null
   "$HELPER" pin --state "$STATE" --content "third"  --intent "i3" --agent "gamma" >/dev/null
@@ -68,14 +68,14 @@ third"
   [ "$output" = "$expected" ]
 }
 
-@test "AC2: replacing a non-existent SP-N exits non-zero" {
+@test "replacing a slot that does not exist exits non-zero" {
   "$HELPER" pin --state "$STATE" --content "only" --intent "i" --agent "alpha" >/dev/null
   run "$HELPER" pin --state "$STATE" --target SP-7 --content "ghost" --intent "i" --agent "beta"
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]
 }
 
-@test "AC2: history_count increments when SP-N is replaced" {
+@test "the history count increments each time a slot is replaced" {
   "$HELPER" pin --state "$STATE" --content "v1" --intent "i" --agent "alpha" >/dev/null
   "$HELPER" pin --state "$STATE" --target SP-1 --content "v2" --intent "i" --agent "beta" >/dev/null
   "$HELPER" pin --state "$STATE" --target SP-1 --content "v3" --intent "i" --agent "gamma" >/dev/null
@@ -84,7 +84,7 @@ third"
   [ "$output" = "2" ]
 }
 
-@test "AC3: render emits one line per SP-N (latest content)" {
+@test "render emits one line per slot carrying its latest content" {
   "$HELPER" pin --state "$STATE" --content "alpha-content" --intent "ai" --agent "alpha" >/dev/null
   "$HELPER" pin --state "$STATE" --content "beta-content"  --intent "bi" --agent "beta"  >/dev/null
   run "$HELPER" render --state "$STATE"
@@ -93,7 +93,7 @@ third"
   echo "$output" | grep -q '^SP-2: beta-content'
 }
 
-@test "AC3: render on an empty state file emits nothing and exits 0" {
+@test "render on an empty state file emits nothing and succeeds" {
   run "$HELPER" render --state "$STATE"
   [ "$status" -eq 0 ]
   [ -z "$output" ]

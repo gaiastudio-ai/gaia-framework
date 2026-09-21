@@ -15,7 +15,7 @@ teardown() {
   rm -rf "$TMP"
 }
 
-@test "TC-MTG-CHKPT-3: --resume --continue preserves cadence_counter, raise_hand_ledger, scratchpad_state" {
+@test "--resume --continue preserves cadence counter, raise-hand ledger and scratchpad state" {
   # Seed a paused-at-post-RESEARCH session.
   "$STATE_HELPER" create --file "$SESSION" --session-id "2026-05-08-test"
   "$STATE_HELPER" update --file "$SESSION" --field phase --value "RESEARCH"
@@ -38,7 +38,7 @@ teardown() {
   [ "$("$STATE_HELPER" read --file "$SESSION" --field cumulative_cost)" = "12345" ]
 }
 
-@test "TC-MTG-CHKPT-4: --resume --interject carries the interjection payload through the parser" {
+@test "--resume --interject carries the interjection payload through the parser" {
   "$STATE_HELPER" create --file "$SESSION" --session-id "2026-05-08-test"
   "$STATE_HELPER" update --file "$SESSION" --field phase --value "DISCUSS"
   "$STATE_HELPER" update --file "$SESSION" --field last_checkpoint_phase --value "DISCUSS"
@@ -54,7 +54,7 @@ teardown() {
   [ "$("$STATE_HELPER" read --file "$SESSION" --field last_checkpoint_phase)" = "DISCUSS" ]
 }
 
-@test "TC-MTG-CHKPT-5: --resume --wrap-up preserves research and discuss state" {
+@test "--resume --wrap-up preserves research and discuss state" {
   "$STATE_HELPER" create --file "$SESSION" --session-id "2026-05-08-test"
   "$STATE_HELPER" update --file "$SESSION" --field phase --value "DISCUSS"
   "$STATE_HELPER" update --file "$SESSION" --field round --value "2"

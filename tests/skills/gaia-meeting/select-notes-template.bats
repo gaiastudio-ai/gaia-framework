@@ -16,7 +16,7 @@ setup() {
   [ -x "$SELECTOR" ]
 }
 
-@test "AC15: bias=architecture-decisions selects architecture-decisions template (NOT decision-record)" {
+@test "the architecture-decisions bias selects the architecture-decisions template, not the decision-record one" {
   run "$SELECTOR" --bias architecture-decisions
   [ "$status" -eq 0 ]
   [[ "$output" == *"notes-template-architecture-decisions.md" ]]
@@ -33,7 +33,7 @@ setup() {
   done
 }
 
-@test "AC15: each bias→template is one-to-one — distinct templates per bias" {
+@test "each bias maps to its own distinct template" {
   outputs=()
   for bias in opportunity-map alignment-summary risk-register machine-readable-ac-list \
               brainstorming-document ux-design-notes architecture-decisions sprint-adjustments; do
@@ -45,7 +45,7 @@ setup() {
   [ "$unique" = "8" ]
 }
 
-@test "AC15: each template body contains the matching section header" {
+@test "each template body contains the section header matching its bias" {
   # bash 3 on macOS lacks associative arrays — use parallel arrays.
   biases=(opportunity-map alignment-summary risk-register machine-readable-ac-list brainstorming-document ux-design-notes architecture-decisions sprint-adjustments)
   headings=("Opportunity Map" "Alignment Summary" "Risk Register" "Acceptance Criteria" "Idea Clusters" "UX Design Notes" "Architecture Decisions" "Sprint Adjustments")

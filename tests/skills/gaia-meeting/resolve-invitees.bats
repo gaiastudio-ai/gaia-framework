@@ -32,7 +32,7 @@ write_index() {
   [ -x "$RESOLVER" ]
 }
 
-@test "AC1: explore mode contributes no defaults — resolved == user set" {
+@test "explore mode contributes no defaults so the resolved set is the user set" {
   write_index alice
   run "$RESOLVER" --mode explore --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -42,7 +42,7 @@ write_index() {
   echo "$output" | grep -qE "^invitees_override=false\$"
 }
 
-@test "AC2: align mode adds Derek + Nate to user set" {
+@test "align mode adds Derek and Nate to the user set" {
   write_index alice Derek Nate
   run "$RESOLVER" --mode align --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -52,7 +52,7 @@ write_index() {
   echo "$output" | grep -qE "^bias=alignment-summary\$"
 }
 
-@test "AC3: red-team adds Zara + Sable + Nova" {
+@test "red-team mode adds Zara, Sable and Nova" {
   write_index alice Zara Sable Nova
   run "$RESOLVER" --mode red-team --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -60,7 +60,7 @@ write_index() {
   echo "$output" | grep -qE "^bias=risk-register\$"
 }
 
-@test "AC4: ac mode resolves Vera, Sable, alex, jamie (mode defaults first)" {
+@test "acceptance-criteria mode resolves Vera and Sable alongside the user set" {
   write_index alex jamie Vera Sable
   run "$RESOLVER" --mode ac --invitees "alex,jamie" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -71,7 +71,7 @@ write_index() {
   echo "$output" | grep -qE "^bias=machine-readable-ac-list\$"
 }
 
-@test "AC5: brainstorm adds Rex/Orion/Lyra/Elara/Vermeer" {
+@test "brainstorm mode adds Rex, Orion, Lyra, Elara and Vermeer" {
   write_index alice Rex Orion Lyra Elara Vermeer
   run "$RESOLVER" --mode brainstorm --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -79,7 +79,7 @@ write_index() {
   echo "$output" | grep -qE "^bias=brainstorming-document\$"
 }
 
-@test "AC6: design mode adds all eight design agents" {
+@test "design mode adds all eight design agents" {
   write_index alice Christy Suki Layla Talia Tariq Lena Cleo Freya
   run "$RESOLVER" --mode design --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -87,7 +87,7 @@ write_index() {
   echo "$output" | grep -qE "^bias=ux-design-notes\$"
 }
 
-@test "AC7: architecture mode adds all six architecture agents" {
+@test "architecture mode adds all six architecture agents" {
   write_index alice Theo Soren Milo Juno Omar Priya
   run "$RESOLVER" --mode architecture --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -95,7 +95,7 @@ write_index() {
   echo "$output" | grep -qE "^bias=architecture-decisions\$"
 }
 
-@test "AC8: sprint mode adds Nate + Derek + Rafael" {
+@test "sprint mode adds Nate, Derek and Rafael" {
   write_index alice Nate Derek Rafael
   run "$RESOLVER" --mode sprint --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -103,7 +103,7 @@ write_index() {
   echo "$output" | grep -qE "^bias=sprint-adjustments\$"
 }
 
-@test "AC11: missing one default invitee emits WARNING and proceeds (exit 0)" {
+@test "one missing default invitee emits a warning and still succeeds" {
   write_index alice Theo Soren Milo Juno Priya  # Omar missing
   run "$RESOLVER" --mode architecture --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -115,7 +115,7 @@ write_index() {
     || (>&2 echo "expected WARNING in combined output"; return 1)
 }
 
-@test "AC12: all default invitees missing emits WARNING listing all five and proceeds" {
+@test "all default invitees missing emits a warning listing every one and still succeeds" {
   write_index alice
   run "$RESOLVER" --mode brainstorm --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
@@ -124,14 +124,14 @@ write_index() {
   echo "$output" | grep -qE "WARNING.*missing default invitee.*brainstorm"
 }
 
-@test "AC13: missing-invitee WARNING never blocks the meeting (exit 0)" {
+@test "a missing-invitee warning never blocks the meeting" {
   write_index alice
   run "$RESOLVER" --mode red-team --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]
   echo "$output" | grep -qE "^resolved=alice\$"
 }
 
-@test "AC14: --invitees override bypasses default-invitee resolution; no WARNING" {
+@test "--invitees-override bypasses default-invitee resolution and emits no warning" {
   write_index Zara Sable Nova
   run "$RESOLVER" --mode red-team --invitees "alice,bob" --installed "$INDEX" --invitees-override
   [ "$status" -eq 0 ]
@@ -142,7 +142,7 @@ write_index() {
   ! echo "$output" | grep -qE "WARNING"
 }
 
-@test "AC6: --mode=ux resolves to the same set as --mode=design and reports canonical mode=design" {
+@test "ux mode resolves to the same set as design mode and reports design as the canonical mode" {
   write_index alice Christy Suki Layla Talia Tariq Lena Cleo Freya
   run "$RESOLVER" --mode ux --invitees "alice" --installed "$INDEX"
   [ "$status" -eq 0 ]

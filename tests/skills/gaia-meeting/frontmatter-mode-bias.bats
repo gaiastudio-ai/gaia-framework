@@ -24,7 +24,7 @@ write_payload() {
   cat > "$PAYLOAD"
 }
 
-@test "AC16: writer emits closing_artifact_bias and resolved/missing invitees frontmatter" {
+@test "writer emits closing_artifact_bias and resolved/missing invitees frontmatter" {
   write_payload <<'YAML'
 charter: "Choose the architecture pattern"
 mode: architecture
@@ -74,7 +74,7 @@ YAML
   grep -qE "^  - Omar\$" "$out"
 }
 
-@test "AC16: missing_invitees emits empty list when no defaults missing" {
+@test "missing_invitees emits an empty list when no defaults are missing" {
   write_payload <<'YAML'
 charter: "Decide on auth refactor"
 mode: decide
@@ -110,7 +110,7 @@ YAML
   grep -qE "^default_invitees_resolved: \[\]\$" "$out"
 }
 
-@test "AC14: invitees_override frontmatter recorded when override path used" {
+@test "invitees_override frontmatter is recorded when the override path is used" {
   write_payload <<'YAML'
 charter: "Red-team the auth spec"
 mode: red-team
@@ -149,7 +149,7 @@ YAML
   grep -qE "^invitees_override: true\$" "$out"
 }
 
-@test "Backward compat: payload without new fields still writes (legacy E76-S3 path)" {
+@test "backward compat: a payload without the new fields still writes (legacy caller path)" {
   # A payload that omits closing_artifact_bias / default_invitees_resolved /
   # missing_invitees / invitees_override MUST still produce a valid notes file.
   # This guarantees E76-S5 does not break existing E76-S3 callers.

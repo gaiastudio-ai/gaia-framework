@@ -30,42 +30,42 @@ teardown() {
 
 phases=("post-charter" "post-research" "discuss-cadence" "pre-close" "pre-save")
 
-@test "AC7: round-trip — yield-gate writes last_checkpoint_phase, session-state reads it back (post-charter)" {
+@test "the post-charter yield writes a checkpoint phase that session state reads back" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r1" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase post-charter --session-id sess-r1 >/dev/null
   read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
   [ "$read_back" = "post-charter" ]
 }
 
-@test "AC7: round-trip — post-research" {
+@test "the post-research yield writes a checkpoint phase that session state reads back" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r2" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase post-research --session-id sess-r2 >/dev/null
   read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
   [ "$read_back" = "post-research" ]
 }
 
-@test "AC7: round-trip — discuss-cadence" {
+@test "the discuss-cadence yield writes a checkpoint phase that session state reads back" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r3" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase discuss-cadence --session-id sess-r3 >/dev/null
   read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
   [ "$read_back" = "discuss-cadence" ]
 }
 
-@test "AC7: round-trip — pre-close" {
+@test "the pre-close yield writes a checkpoint phase that session state reads back" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r4" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase pre-close --session-id sess-r4 >/dev/null
   read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
   [ "$read_back" = "pre-close" ]
 }
 
-@test "AC7: round-trip — pre-save" {
+@test "the pre-save yield writes a checkpoint phase that session state reads back" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r5" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase pre-save --session-id sess-r5 >/dev/null
   read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
   [ "$read_back" = "pre-save" ]
 }
 
-@test "AC7: parse-resume-flags accepts --continue against any session" {
+@test "resume-flag parsing accepts --continue against any session" {
   if [ ! -x "$PARSE_RESUME" ]; then
     skip "parse-resume-flags.sh not present in this checkout"
   fi
@@ -73,7 +73,7 @@ phases=("post-charter" "post-research" "discuss-cadence" "pre-close" "pre-save")
   [ "$status" -eq 0 ]
 }
 
-@test "AC7: parse-resume-flags accepts --wrap-up against any session" {
+@test "resume-flag parsing accepts --wrap-up against any session" {
   if [ ! -x "$PARSE_RESUME" ]; then
     skip "parse-resume-flags.sh not present in this checkout"
   fi
@@ -81,7 +81,7 @@ phases=("post-charter" "post-research" "discuss-cadence" "pre-close" "pre-save")
   [ "$status" -eq 0 ]
 }
 
-@test "AC7: parse-resume-flags accepts --interject against any session" {
+@test "resume-flag parsing accepts --interject against any session" {
   if [ ! -x "$PARSE_RESUME" ]; then
     skip "parse-resume-flags.sh not present in this checkout"
   fi
@@ -89,7 +89,7 @@ phases=("post-charter" "post-research" "discuss-cadence" "pre-close" "pre-save")
   [ "$status" -eq 0 ]
 }
 
-@test "AC7: last_yield_emitted_at is also persisted (consistency for --resume)" {
+@test "the last-yield timestamp is persisted too, so resume stays consistent" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r6" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase post-charter --session-id sess-r6 >/dev/null
   iso="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_emitted_at)"

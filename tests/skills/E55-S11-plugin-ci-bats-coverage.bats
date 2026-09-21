@@ -23,6 +23,11 @@
 #     EXEMPT and tracked as Findings. Each EXEMPT file has a companion
 #     follow-up story to repair the assertions and re-wire it.
 #
+# Assertion drift is the only admissible reason for an exemption. A file was
+# once allowed to sit out because its test names cited internal bookkeeping
+# identifiers; that debt has been cleared across this whole tree, so every
+# exempt entry below must now name the failing cases it is waiting on.
+#
 # Maintenance: when a file moves from EXEMPT to PASSING, append it to the
 # PASSING list AND remove it from the EXEMPT list. The two lists must stay
 # disjoint and together cover every `*.bats` file under `tests/skills/` on
@@ -105,9 +110,49 @@ REQUIRED_FILES=(
 
   # Skill-scoped suites (one directory down). These run clean — verified with
   # the four inherited path variables cleared, which is how CI invokes them.
+  #
+  # The 34 entries after the first three were promoted once their test names
+  # were rewritten in plain product language. Every one of them was re-measured
+  # at promotion time with the same cleared-variable invocation CI uses and
+  # reported zero failures; the naming blocker that previously held them out of
+  # the gate no longer applies anywhere in this tree.
   "tests/skills/gaia-atdd/setup-finalize-quirks.bats"
   "tests/skills/gaia-dev-story/e41-s4-yolo-auto-run-reviews.bats"
   "tests/skills/gaia-meeting/mode-registry.bats"
+  "tests/skills/gaia-create-story/e41-s2-yolo-wire-up.bats"
+  "tests/skills/gaia-create-story/scaffold-frontmatter-tokens.bats"
+  "tests/skills/gaia-create-story/ux-detection.bats"
+  "tests/skills/gaia-meeting/action-items-writer.bats"
+  "tests/skills/gaia-meeting/charter-required.bats"
+  "tests/skills/gaia-meeting/checkpoint-cadence.bats"
+  "tests/skills/gaia-meeting/cost-cadence.bats"
+  "tests/skills/gaia-meeting/default-mode.bats"
+  "tests/skills/gaia-meeting/dual-schema-routing.bats"
+  "tests/skills/gaia-meeting/halt-event.bats"
+  "tests/skills/gaia-meeting/lifecycle-markers.bats"
+  "tests/skills/gaia-meeting/loop-detector.bats"
+  "tests/skills/gaia-meeting/no-fabricated-user-invitee.bats"
+  "tests/skills/gaia-meeting/parse-resume-flags.bats"
+  "tests/skills/gaia-meeting/per-agent-cap.bats"
+  "tests/skills/gaia-meeting/prelude-format.bats"
+  "tests/skills/gaia-meeting/raise-hand-arbiter.bats"
+  "tests/skills/gaia-meeting/research-gate.bats"
+  "tests/skills/gaia-meeting/resolve-invitees.bats"
+  "tests/skills/gaia-meeting/resume-integration.bats"
+  "tests/skills/gaia-meeting/review-gate.bats"
+  "tests/skills/gaia-meeting/scratchpad-allocate.bats"
+  "tests/skills/gaia-meeting/scratchpad-detect-type.bats"
+  "tests/skills/gaia-meeting/scratchpad-disposition.bats"
+  "tests/skills/gaia-meeting/secret-scrubber.bats"
+  "tests/skills/gaia-meeting/select-notes-template.bats"
+  "tests/skills/gaia-meeting/session-state.bats"
+  "tests/skills/gaia-meeting/stream-header.bats"
+  "tests/skills/gaia-meeting/substrate-invariance.bats"
+  "tests/skills/gaia-meeting/turn-order.bats"
+  "tests/skills/gaia-meeting/type-target-resolver.bats"
+  "tests/skills/gaia-meeting/yield-gate-cadence.bats"
+  "tests/skills/gaia-meeting/yield-gate-regression-2026-05-08.bats"
+  "tests/skills/gaia-meeting/yield-gate-skill-md.bats"
 )
 
 # ---------- Exempt (pre-existing fixture drift; tracked as Findings) ----------
@@ -131,12 +176,14 @@ EXEMPT_FILES=(
   # earlier shape of the meeting skill and were never run by CI, so the skill
   # moved and the fixtures did not. Repair is tracked follow-on work, one
   # cluster at a time; each file re-joins REQUIRED_FILES as it is repaired.
-  # The per-file counts below are measured, not estimated.
+  # The per-file counts below are measured, not estimated — re-measured at the
+  # time these entries were last touched, with the four inherited path
+  # variables cleared, which is how CI invokes them.
   #
-  # A second, independent blocker applies to this whole directory: 365 of its
-  # 439 test names carry internal traceability identifiers, so the files
-  # cannot be published-tree clean until they are renamed. Repair and rename
-  # must land together.
+  # Assertion drift is now the ONLY thing holding these files out of the gate.
+  # The naming blocker that previously applied to this whole directory is gone:
+  # every test name here is plain product language, and the other 32 files in
+  # this directory have been promoted to REQUIRED_FILES.
   "tests/skills/gaia-meeting/anti-amnesia-contract.bats"             # 2 failures — context-retention assertions predate the current prompt contract
   "tests/skills/gaia-meeting/cadence-roundtrip.bats"                 # 1 failure — cadence round-trip fixture expects a retired field ordering
   "tests/skills/gaia-meeting/checkpoint-cadence-byte-identity.bats"  # 1 failure — byte-identity baseline captured before the checkpoint writer changed
@@ -159,53 +206,13 @@ EXEMPT_FILES=(
   "tests/skills/gaia-meeting/yield-gate-resume.bats"                 # 5 failures — resume path through the yield gate changed
   "tests/skills/gaia-meeting/yield-gate.bats"                        # 7 failures — core yield-gate assertions predate the current gate contract
 
-  # The remaining 32 meeting files pass today but stay exempt for the naming
-  # blocker above: their test names carry internal identifiers, and gating
-  # them would publish those names through CI output. They move to REQUIRED
-  # as part of the same rename work.
-  "tests/skills/gaia-meeting/action-items-writer.bats"               # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/charter-required.bats"                  # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/checkpoint-cadence.bats"                # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/cost-cadence.bats"                      # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/default-mode.bats"                      # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/dual-schema-routing.bats"               # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/halt-event.bats"                        # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/lifecycle-markers.bats"                 # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/loop-detector.bats"                     # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/no-fabricated-user-invitee.bats"        # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/parse-resume-flags.bats"                # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/per-agent-cap.bats"                     # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/prelude-format.bats"                    # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/raise-hand-arbiter.bats"                # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/research-gate.bats"                     # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/resolve-invitees.bats"                  # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/resume-integration.bats"                # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/review-gate.bats"                       # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/scratchpad-allocate.bats"               # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/scratchpad-detect-type.bats"            # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/scratchpad-disposition.bats"            # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/secret-scrubber.bats"                   # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/select-notes-template.bats"             # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/session-state.bats"                     # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/stream-header.bats"                     # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/substrate-invariance.bats"              # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/turn-order.bats"                        # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/type-target-resolver.bats"              # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/yield-gate-cadence.bats"                # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/yield-gate-regression-2026-05-08.bats"  # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-meeting/yield-gate-skill-md.bats"               # passes; blocked on internal identifiers in its test names
-
   # ---- Skill-scoped suites: the story-creation skill ----
   #
   # 5 files / 91 cases, of which 10 cases across the 2 files listed here fail.
   # Same cause as the meeting suites: authored against an earlier shape of the
-  # skill and never exercised by CI. 63 of the 91 names also carry internal
-  # identifiers, so the same rename blocker applies to the directory.
+  # skill and never exercised by CI. The directory's other 3 files are gated.
   "tests/skills/gaia-create-story/edge-case-pipeline.bats"           # 8 failures — edge-case pipeline output shape changed since the fixture was authored
   "tests/skills/gaia-create-story/yolo-mode.bats"                    # 2 failures — unattended-mode step list diverged from the fixture's expected steps
-  "tests/skills/gaia-create-story/e41-s2-yolo-wire-up.bats"          # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-create-story/scaffold-frontmatter-tokens.bats"  # passes; blocked on internal identifiers in its test names
-  "tests/skills/gaia-create-story/ux-detection.bats"                 # passes; blocked on internal identifiers in its test names
 )
 
 # ---------- Tests ----------

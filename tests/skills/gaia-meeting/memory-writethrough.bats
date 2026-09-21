@@ -44,7 +44,7 @@ MD
   echo "$dir"
 }
 
-@test "AC6: writes exactly one file per accepted agent at canonical path" {
+@test "writes exactly one file per accepted agent at the canonical path" {
   drafts=$(_seed_drafts layla derek sable)
   run "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
   [ "$status" -eq 0 ]
@@ -53,7 +53,7 @@ MD
   [ -f "$ROOT_T/_memory/sable-sidecar/decisions/2026-05-07-fixture-slug.md" ]
 }
 
-@test "AC6: zero files written for dropped agents (K of N)" {
+@test "zero files are written for dropped agents" {
   # Simulate K=3 of N=4 — Theo dropped (no draft file)
   drafts=$(_seed_drafts layla derek sable)
   run "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
@@ -61,7 +61,7 @@ MD
   [ ! -d "$ROOT_T/_memory/theo-sidecar" ]
 }
 
-@test "AC6: each file frontmatter contains agent, date, source_meeting, type: decision, tags" {
+@test "each file frontmatter contains agent, date, source_meeting, type: decision, tags" {
   drafts=$(_seed_drafts layla)
   "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md"
@@ -72,7 +72,7 @@ MD
   grep -qE '^tags:' "$out"
 }
 
-@test "AC7: body has four mandatory H2 sections in fixed order" {
+@test "body has the four mandatory H2 sections in fixed order" {
   drafts=$(_seed_drafts layla)
   "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md"
@@ -88,7 +88,7 @@ MD
   [ "$h3" -lt "$h4" ]
 }
 
-@test "AC7: Open items section lists action item IDs from draft" {
+@test "the Open items section lists the action-item ids from the draft" {
   drafts=$(_seed_drafts layla)
   "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md"
@@ -96,7 +96,7 @@ MD
   awk '/^## Open items I'\''m tracking/{flag=1; next} /^## /{flag=0} flag' "$out" | grep -q 'AI-2026-05-07-2'
 }
 
-@test "AC7: only the four mandatory H2 sections appear" {
+@test "only the four mandatory H2 sections appear" {
   drafts=$(_seed_drafts layla)
   "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md"

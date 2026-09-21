@@ -119,11 +119,15 @@ jobs:
     # companion sentinel rather than left silently unrun.
     name: skills-bats-tests
     runs-on: ubuntu-latest
-    # Raised from 5. The suite measured 253s locally once the skill-scoped
-    # files were added — 84% of a 5-minute budget, which is too thin to
-    # absorb normal runner variance. Most of that is the pre-existing top-level
-    # files (~238s); the added files account for ~15s. 10 minutes restores
-    # headroom without hiding a genuine hang.
+    # Raised from 5 when the first skill-scoped files were gated: the suite
+    # measured 253s locally then — 84% of a 5-minute budget, too thin to
+    # absorb normal runner variance.
+    #
+    # Re-measured at 305s (88 files, 1308 cases, zero failures) after the
+    # remaining clean-and-passing skill-scoped suites joined the invocation.
+    # That is 51% of the 10-minute budget, so the budget is left as it is:
+    # roughly double the observed run, which absorbs runner variance while
+    # still catching a genuine hang.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
@@ -140,9 +144,8 @@ jobs:
         # Covers every bats file under tests/skills/ — at any depth — that
         # passes today and whose test names are free of internal identifiers.
         # Files not listed below are classified EXEMPT in the sentinel, each
-        # with a stated reason: legacy fixtures carrying assertion drift, and
-        # the skill-scoped meeting and story-creation suites, whose repair and
-        # renaming are tracked follow-on work.
+        # with a stated reason. Every remaining exemption is assertion drift
+        # in a legacy fixture, and repairing it is tracked follow-on work.
         #
         # Paths are enumerated rather than globbed deliberately: bats is not
         # invoked recursively here, because a recursive invocation would pull
@@ -210,7 +213,41 @@ jobs:
             tests/skills/validate-plan-structure.bats \
             tests/skills/gaia-atdd/setup-finalize-quirks.bats \
             tests/skills/gaia-dev-story/e41-s4-yolo-auto-run-reviews.bats \
-            tests/skills/gaia-meeting/mode-registry.bats
+            tests/skills/gaia-meeting/mode-registry.bats \
+            tests/skills/gaia-create-story/e41-s2-yolo-wire-up.bats \
+            tests/skills/gaia-create-story/scaffold-frontmatter-tokens.bats \
+            tests/skills/gaia-create-story/ux-detection.bats \
+            tests/skills/gaia-meeting/action-items-writer.bats \
+            tests/skills/gaia-meeting/charter-required.bats \
+            tests/skills/gaia-meeting/checkpoint-cadence.bats \
+            tests/skills/gaia-meeting/cost-cadence.bats \
+            tests/skills/gaia-meeting/default-mode.bats \
+            tests/skills/gaia-meeting/dual-schema-routing.bats \
+            tests/skills/gaia-meeting/halt-event.bats \
+            tests/skills/gaia-meeting/lifecycle-markers.bats \
+            tests/skills/gaia-meeting/loop-detector.bats \
+            tests/skills/gaia-meeting/no-fabricated-user-invitee.bats \
+            tests/skills/gaia-meeting/parse-resume-flags.bats \
+            tests/skills/gaia-meeting/per-agent-cap.bats \
+            tests/skills/gaia-meeting/prelude-format.bats \
+            tests/skills/gaia-meeting/raise-hand-arbiter.bats \
+            tests/skills/gaia-meeting/research-gate.bats \
+            tests/skills/gaia-meeting/resolve-invitees.bats \
+            tests/skills/gaia-meeting/resume-integration.bats \
+            tests/skills/gaia-meeting/review-gate.bats \
+            tests/skills/gaia-meeting/scratchpad-allocate.bats \
+            tests/skills/gaia-meeting/scratchpad-detect-type.bats \
+            tests/skills/gaia-meeting/scratchpad-disposition.bats \
+            tests/skills/gaia-meeting/secret-scrubber.bats \
+            tests/skills/gaia-meeting/select-notes-template.bats \
+            tests/skills/gaia-meeting/session-state.bats \
+            tests/skills/gaia-meeting/stream-header.bats \
+            tests/skills/gaia-meeting/substrate-invariance.bats \
+            tests/skills/gaia-meeting/turn-order.bats \
+            tests/skills/gaia-meeting/type-target-resolver.bats \
+            tests/skills/gaia-meeting/yield-gate-cadence.bats \
+            tests/skills/gaia-meeting/yield-gate-regression-2026-05-08.bats \
+            tests/skills/gaia-meeting/yield-gate-skill-md.bats
       - name: Run /gaia-add-feature assessment-doc-bypass-check bats suite
         # Anti-pattern check that scans every /gaia-add-feature assessment-doc
         # emission for three Val-gate bypass smoking-gun strings (with

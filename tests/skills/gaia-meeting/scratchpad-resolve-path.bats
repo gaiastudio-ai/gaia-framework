@@ -17,7 +17,7 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC5 (TC-MTG-SP-3): path uses YYYY-MM/slug/SP-N format" {
+@test "the resolved path uses the year-month, slug and slot-id layout" {
   run "$HELPER" \
     --date 2026-05-05 \
     --slug my-meeting \
@@ -29,7 +29,7 @@ setup() {
   [ "$output" = "docs/creative-artifacts/meeting-scratchpad/2026-05/my-meeting/SP-1-adopt-jwt-refresh-tokens.md" ]
 }
 
-@test "AC6: auto-slug from textual first line, lowercased + dashed + truncated to 40 chars" {
+@test "the auto-slug comes from the first text line, lowercased, dashed and truncated to 40 characters" {
   run "$HELPER" \
     --date 2026-05-05 \
     --slug fixture \
@@ -45,7 +45,7 @@ setup() {
   [ "${#slug_part}" -le 40 ]
 }
 
-@test "AC6: non-textual content falls back to intent-derived slug" {
+@test "non-textual content falls back to a slug derived from the intent" {
   # Content is a JSON snippet (non-textual first line), so auto-slug derives from intent.
   run "$HELPER" \
     --date 2026-05-05 \
@@ -58,7 +58,7 @@ setup() {
   [[ "$output" == *"SP-1-pin-auth-token-shape-for-downstream.json" ]]
 }
 
-@test "AC6: empty content + empty intent -> auto-slug 'untitled'" {
+@test "empty content and empty intent produce the slug untitled" {
   run "$HELPER" \
     --date 2026-05-05 \
     --slug fixture \
@@ -70,21 +70,21 @@ setup() {
   [[ "$output" == *"SP-3-untitled.md" ]]
 }
 
-@test "AC7: content-type drives extension (json)" {
+@test "the json content type drives the file extension" {
   run "$HELPER" \
     --date 2026-05-05 --slug s --sp-n SP-1 \
     --content '{"k":1}' --intent "shape" --content-type json
   [[ "$output" == *.json ]]
 }
 
-@test "AC7: content-type drives extension (ts)" {
+@test "the ts content type drives the file extension" {
   run "$HELPER" \
     --date 2026-05-05 --slug s --sp-n SP-1 \
     --content "interface X {}" --intent "iface" --content-type ts
   [[ "$output" == *.ts ]]
 }
 
-@test "AC11 (TC-MTG-SP-6): different slugs produce distinct paths for same SP-N" {
+@test "different slugs produce distinct paths for the same slot" {
   out_a="$("$HELPER" --date 2026-05-05 --slug meeting-a --sp-n SP-1 --content "x" --intent "i" --content-type md)"
   out_b="$("$HELPER" --date 2026-05-05 --slug meeting-b --sp-n SP-1 --content "x" --intent "i" --content-type md)"
   [ "$out_a" != "$out_b" ]
@@ -92,7 +92,7 @@ setup() {
   [[ "$out_b" == *"/meeting-b/"* ]]
 }
 
-@test "AC11: different YYYY-MM produces distinct paths for same slug + SP-N" {
+@test "a different year-month produces a distinct path for the same slug and slot" {
   out_a="$("$HELPER" --date 2026-05-05 --slug s --sp-n SP-1 --content "x" --intent "i" --content-type md)"
   out_b="$("$HELPER" --date 2026-06-01 --slug s --sp-n SP-1 --content "x" --intent "i" --content-type md)"
   [ "$out_a" != "$out_b" ]
@@ -100,13 +100,13 @@ setup() {
   [[ "$out_b" == *"/2026-06/"* ]]
 }
 
-@test "AC5: rejects non-canonical SP-N format" {
+@test "a non-canonical slot id is rejected" {
   run "$HELPER" --date 2026-05-05 --slug s --sp-n "X-1" --content "c" --intent "i" --content-type md
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]
 }
 
-@test "AC5: rejects malformed date" {
+@test "a malformed date is rejected" {
   run "$HELPER" --date "2026/05/05" --slug s --sp-n SP-1 --content "c" --intent "i" --content-type md
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]

@@ -122,7 +122,7 @@ EOF
 
 # ---------- TC-ATDD-1: no validate-gate noise ----------
 
-@test "TC-ATDD-1: setup.sh emits no validate-gate.sh story_file_exists warning" {
+@test "setup emits no story-file-exists warning from the validate gate" {
   write_story_file "E99-S1"
   export STORY_KEY="E99-S1"
 
@@ -135,7 +135,7 @@ EOF
 
 # ---------- TC-ATDD-2: finalize derives ATDD_ARTIFACT from STORY_KEY ----------
 
-@test "TC-ATDD-2: finalize.sh runs SV-01 checklist without external ATDD_ARTIFACT export" {
+@test "finalize derives the artifact path from the story key and runs the self-validation checklist" {
   write_story_file "E99-S2"
   artifact_path="$(write_atdd_artifact "E99-S2" 5 medium)"
   [ -f "$artifact_path" ]
@@ -151,7 +151,7 @@ EOF
 
 # ---------- TC-ATDD-3: 10KB advisory respects risk ----------
 
-@test "TC-ATDD-3: 12-AC high-risk artifact >=10KB does not emit WARNING" {
+@test "a large high-risk acceptance-test artifact reports its size as advisory, not a warning" {
   write_story_file "E99-S3"
   artifact_path="$(write_atdd_artifact "E99-S3" 12 high)"
   [ -f "$artifact_path" ]

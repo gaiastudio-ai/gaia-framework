@@ -21,20 +21,20 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC7: counter starts at zero" {
+@test "counter starts at zero" {
   run "$HELPER" --state "$STATE" --get
   [ "$status" -eq 0 ]
   [ "$output" = "0" ]
 }
 
-@test "AC7: tick increments counter by one" {
+@test "tick increments the counter by one" {
   run "$HELPER" --state "$STATE" --tick
   [ "$status" -eq 0 ]
   run "$HELPER" --state "$STATE" --get
   [ "$output" = "1" ]
 }
 
-@test "AC7: should-fire returns true at counter 10" {
+@test "should-fire returns true at counter 10" {
   for i in $(seq 1 10); do
     "$HELPER" --state "$STATE" --tick > /dev/null
   done
@@ -42,7 +42,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC7: should-fire returns false at counter 9" {
+@test "should-fire returns false at counter 9" {
   for i in $(seq 1 9); do
     "$HELPER" --state "$STATE" --tick > /dev/null
   done
@@ -50,7 +50,7 @@ teardown() {
   [ "$status" -eq 1 ]
 }
 
-@test "AC7: cost checks fire at 10, 20, 30 in 30-turn run" {
+@test "cost checks fire at 10, 20 and 30 in a 30-turn run" {
   fires=""
   for i in $(seq 1 30); do
     "$HELPER" --state "$STATE" --tick > /dev/null
@@ -61,7 +61,7 @@ teardown() {
   [ "$(echo "$fires" | tr -s ' ' | sed 's/ $//')" = "10 20 30" ]
 }
 
-@test "AC7 / TC-MTG-STREAM-2: cadence determinism — K=0 vs K=4 insertions fire at identical indices" {
+@test "cadence determinism — no insertions vs four fire at identical indices" {
   STATE_A="$TMP/a.state"
   STATE_B="$TMP/b.state"
 

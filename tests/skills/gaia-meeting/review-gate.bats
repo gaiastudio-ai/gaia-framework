@@ -17,7 +17,7 @@ teardown() {
   [ -x "$GATE" ]
 }
 
-@test "AC1: classify a draft with disposition accept" {
+@test "classify reports ACCEPT for a draft dispositioned accept" {
   draft="$TMPDIR_T/d.md"
   echo "draft body" > "$draft"
   run "$GATE" --classify --draft "$draft" --disposition accept
@@ -25,7 +25,7 @@ teardown() {
   [ "$output" = "ACCEPT" ]
 }
 
-@test "AC1: classify a draft with disposition drop" {
+@test "classify reports DROP for a draft dispositioned drop" {
   draft="$TMPDIR_T/d.md"
   echo "draft body" > "$draft"
   run "$GATE" --classify --draft "$draft" --disposition drop
@@ -33,7 +33,7 @@ teardown() {
   [ "$output" = "DROP" ]
 }
 
-@test "AC1: classify a draft with disposition edit" {
+@test "classify reports EDIT for a draft dispositioned edit" {
   draft="$TMPDIR_T/d.md"
   echo "draft body" > "$draft"
   run "$GATE" --classify --draft "$draft" --disposition edit
@@ -41,22 +41,22 @@ teardown() {
   [ "$output" = "EDIT" ]
 }
 
-@test "AC1: should-write returns 0 when disposition is accept (write proceeds)" {
+@test "should-write succeeds on accept so the write proceeds" {
   run "$GATE" --should-write --disposition accept
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: should-write returns 1 when disposition is drop (write suppressed)" {
+@test "should-write returns 1 on drop so the write is suppressed" {
   run "$GATE" --should-write --disposition drop
   [ "$status" -eq 1 ]
 }
 
-@test "AC1: should-write returns 0 when disposition is edit (re-render then write)" {
+@test "should-write succeeds on edit so the draft is re-rendered then written" {
   run "$GATE" --should-write --disposition edit
   [ "$status" -eq 0 ]
 }
 
-@test "AC1: invalid disposition is rejected" {
+@test "an invalid disposition is rejected" {
   run "$GATE" --should-write --disposition foo
   [ "$status" -ne 0 ]
   [ "$status" -ne 1 ]

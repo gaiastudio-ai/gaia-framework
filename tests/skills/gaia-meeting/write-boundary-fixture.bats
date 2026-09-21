@@ -18,7 +18,7 @@ teardown() {
   rm -rf "$TMPDIR_T"
 }
 
-@test "AC10: fixture meeting writes only inside the three permitted roots" {
+@test "a fixture meeting writes only inside the three permitted roots" {
   # 1) Action-items write
   drafts_dir="$TMPDIR_T/ai-drafts"
   mkdir -p "$drafts_dir"
@@ -109,22 +109,22 @@ YAML
   done < <(find "$ROOT_T" -type f)
 }
 
-@test "AC10: write-boundary guard rejects sprint-status.yaml" {
+@test "the write-boundary guard rejects the sprint-status file" {
   run "$SCRIPTS/write-boundary.sh" "docs/planning-artifacts/sprint-status.yaml"
   [ "$status" -eq 2 ]
 }
 
-@test "AC10: write-boundary guard rejects PRD path" {
+@test "the write-boundary guard rejects a requirements-document path" {
   run "$SCRIPTS/write-boundary.sh" "docs/planning-artifacts/prd/01.md"
   [ "$status" -eq 2 ]
 }
 
-@test "AC10: write-boundary guard rejects story files" {
+@test "the write-boundary guard rejects story files" {
   run "$SCRIPTS/write-boundary.sh" "docs/implementation-artifacts/E1-S1.md"
   [ "$status" -eq 2 ]
 }
 
-@test "AC10: write-boundary guard rejects traceability" {
+@test "the write-boundary guard rejects the traceability matrix" {
   run "$SCRIPTS/write-boundary.sh" "docs/test-artifacts/strategy/traceability-matrix.md"
   [ "$status" -eq 2 ]
 }

@@ -17,28 +17,28 @@ setup() {
   [ -f "$SKILL" ]
 }
 
-@test "AC4: SKILL.md documents the schema_version detection contract" {
+@test "SKILL.md documents the schema_version detection contract" {
   grep -q 'schema_version' "$SKILL"
   grep -q 'v1\|v2' "$SKILL"
 }
 
-@test "AC4: SKILL.md documents the v2 type -> target_command resolver branch" {
+@test "SKILL.md documents the v2 type -> target_command resolver branch" {
   grep -q 'type.*target_command\|type → target_command' "$SKILL"
 }
 
-@test "AC4: SKILL.md documents the legacy v1 classification -> assignee branch" {
+@test "SKILL.md documents the legacy v1 classification -> assignee branch" {
   grep -qE 'classification.*assignee|classification → assignee' "$SKILL"
 }
 
-@test "AC4: SKILL.md documents that v1 entries MUST NOT be auto-converted to v2" {
+@test "SKILL.md documents that v1 entries MUST NOT be auto-converted to v2" {
   grep -qiE 'no auto-conversion|MUST NOT.+auto.+convert|never.+auto.*convert' "$SKILL"
 }
 
-@test "AC4: SKILL.md preserves the classification-confirmation gate (ADR-052 / AC-EC7)" {
+@test "SKILL.md preserves the classification-confirmation gate" {
   grep -q 'AC-EC7\|classification.confirmation' "$SKILL"
 }
 
-@test "AC4: SKILL.md enumerates the eleven canonical action-item types" {
+@test "SKILL.md enumerates the eleven canonical action-item types" {
   for t in feature prd-edit ux-edit arch-edit test-edit new-story sprint-correction sprint-plan brainstorm-followup adr-draft discussion-only; do
     grep -q "$t" "$SKILL" || { echo "missing type: $t"; return 1; }
   done
