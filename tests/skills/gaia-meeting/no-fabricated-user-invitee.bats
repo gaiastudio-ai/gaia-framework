@@ -57,7 +57,11 @@ warn_for() {
 }
 
 @test "a user-name token produces the canonical WARNING and is dropped" {
-  [ -n "$USER_NAME" ]
+  # The resolver reads a configured user name and falls back to the git
+  # identity. A CI runner has neither, so there is no name to feed the
+  # case and nothing to assert — skip rather than fail on the absence of
+  # ambient configuration the case does not control.
+  [ -n "$USER_NAME" ] || skip "no user name resolvable in this environment"
   write_index alice bob
   run "$RESOLVER" --mode explore --invitees "alice,${USER_NAME},bob" --installed "$INDEX"
   [ "$status" -eq 0 ]
