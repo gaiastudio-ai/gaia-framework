@@ -125,9 +125,15 @@ jobs:
     #
     # Re-measured at 305s (88 files, 1308 cases, zero failures) after the
     # remaining clean-and-passing skill-scoped suites joined the invocation.
-    # That is 51% of the 10-minute budget, so the budget is left as it is:
-    # roughly double the observed run, which absorbs runner variance while
-    # still catching a genuine hang.
+    #
+    # Re-measured again when the last 23 skill-scoped suites were gated, taking
+    # the invocation to 111 files / 1531 cases, zero failures. Measured
+    # like-for-like on one machine: the 88-file set ran in 207s and the
+    # 111-file set in 260s, a 26% increase. Applied to the 305s figure above
+    # that projects to roughly 385s, about 64% of the 10-minute budget. The
+    # budget is left at 10 minutes — still well clear of the projected run,
+    # with enough margin for runner variance and still tight enough to catch a
+    # genuine hang. Revisit if another batch of suites is added.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
@@ -145,7 +151,9 @@ jobs:
         # passes today and whose test names are free of internal identifiers.
         # Files not listed below are classified EXEMPT in the sentinel, each
         # with a stated reason. Every remaining exemption is assertion drift
-        # in a legacy fixture, and repairing it is tracked follow-on work.
+        # in a legacy fixture at the top level of the tree, and repairing it is
+        # tracked follow-on work; every skill-scoped suite one directory down
+        # is now gated here.
         #
         # Paths are enumerated rather than globbed deliberately: bats is not
         # invoked recursively here, because a recursive invocation would pull
@@ -247,7 +255,30 @@ jobs:
             tests/skills/gaia-meeting/type-target-resolver.bats \
             tests/skills/gaia-meeting/yield-gate-cadence.bats \
             tests/skills/gaia-meeting/yield-gate-regression-2026-05-08.bats \
-            tests/skills/gaia-meeting/yield-gate-skill-md.bats
+            tests/skills/gaia-meeting/yield-gate-skill-md.bats \
+            tests/skills/gaia-create-story/edge-case-pipeline.bats \
+            tests/skills/gaia-create-story/yolo-mode.bats \
+            tests/skills/gaia-meeting/anti-amnesia-contract.bats \
+            tests/skills/gaia-meeting/cadence-roundtrip.bats \
+            tests/skills/gaia-meeting/checkpoint-cadence-byte-identity.bats \
+            tests/skills/gaia-meeting/checkpoint-reaper.bats \
+            tests/skills/gaia-meeting/checkpoint-write-boundary.bats \
+            tests/skills/gaia-meeting/checkpoint-yields-skill-md.bats \
+            tests/skills/gaia-meeting/cite-or-flag-check.bats \
+            tests/skills/gaia-meeting/frontmatter-mode-bias.bats \
+            tests/skills/gaia-meeting/max-turns-cap.bats \
+            tests/skills/gaia-meeting/meeting-notes-writer.bats \
+            tests/skills/gaia-meeting/memory-writethrough.bats \
+            tests/skills/gaia-meeting/research-phase-dispatch.bats \
+            tests/skills/gaia-meeting/scratchpad-extractor.bats \
+            tests/skills/gaia-meeting/scratchpad-resolve-path.bats \
+            tests/skills/gaia-meeting/single-mode-invariant.bats \
+            tests/skills/gaia-meeting/write-boundary-fixture.bats \
+            tests/skills/gaia-meeting/write-boundary-halt-event.bats \
+            tests/skills/gaia-meeting/write-boundary.bats \
+            tests/skills/gaia-meeting/yield-gate-auq.bats \
+            tests/skills/gaia-meeting/yield-gate-resume.bats \
+            tests/skills/gaia-meeting/yield-gate.bats
       - name: Run /gaia-add-feature assessment-doc-bypass-check bats suite
         # Anti-pattern check that scans every /gaia-add-feature assessment-doc
         # emission for three Val-gate bypass smoking-gun strings (with

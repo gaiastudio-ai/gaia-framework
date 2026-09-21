@@ -97,7 +97,6 @@ step_body() {
 
 @test "the validation step documents that yolo still honours the three-attempt cap" {
   body="$(step_body 'Step 6')"
-  echo "$body" | grep -qE 'FR-340'
   echo "$body" | grep -qiE '3.attempt|three.attempt|attempt.*cap'
   echo "$body" | grep -qiE 'YOLO.*not.*bypass|YOLO.*cap|YOLO.*MUST NOT'
 }
@@ -187,6 +186,9 @@ step_body() {
   [ "$step1_line" -lt "$step3_line" ]
 }
 
-@test "the skill cites the requirement governing the three-attempt cap" {
-  grep -qE 'FR-340' "$SKILL_FILE"
-}
+# A case here asserted that the skill cites the requirement identifier
+# governing the three-attempt cap. Published source must no longer carry
+# internal traceability identifiers, so that citation was removed
+# deliberately — the behaviour is gone, not drifted, and the case is
+# deleted rather than re-pinned. The cap itself stays covered by the
+# validation-step case above.

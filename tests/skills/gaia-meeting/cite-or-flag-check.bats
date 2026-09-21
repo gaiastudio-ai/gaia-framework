@@ -30,8 +30,10 @@ teardown() {
   [ "$output" = "cited" ]
 }
 
-@test "a line with a _memory/ reference classifies as 'cited'" {
-  run "$HELPER" --classify-line "From _memory/Theo-sidecar/decisions/d.md we know X."
+@test "a line referencing the canonical memory tree classifies as 'cited'" {
+  # The legacy memory prefix was retired; a sidecar citation is written
+  # against the .gaia/ runtime tree, and must still count as a citation.
+  run "$HELPER" --classify-line "From .gaia/memory/theo-sidecar/decisions/d.md we know X."
   [ "$status" -eq 0 ]
   [ "$output" = "cited" ]
 }

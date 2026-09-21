@@ -48,11 +48,17 @@ teardown() {
   [[ "$output" != *"NotebookEdit"* ]]
 }
 
-# AC1 / TC-MTG-RESEARCH-1: per-agent sidecar canonical path
+# Per-agent sidecar canonical path. The expected root is resolved through the
+# same path helper the shipped script uses rather than restated as a literal,
+# so a future tree move is picked up here automatically.
 @test "--sidecar-path resolves the canonical per-agent sidecar directory for an agent name" {
+  load helpers/runtime-paths
+  gaia_load_runtime_paths "$REPO_ROOT" || {
+    skip "runtime path helper unavailable; cannot resolve the tree the way production does"
+  }
   run "$HELPER" --sidecar-path Theo
   [ "$status" -eq 0 ]
-  [ "$output" = "_memory/Theo-sidecar" ]
+  [ "$output" = "$GAIA_REL_MEMORY/Theo-sidecar" ]
 }
 
 @test "--sidecar-path rejects the intake-shorthand agent-decisions path" {

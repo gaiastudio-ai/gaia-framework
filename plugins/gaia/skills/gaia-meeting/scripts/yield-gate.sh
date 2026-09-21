@@ -30,8 +30,17 @@
 #   post-charter, post-research, discuss-cadence, pre-close, pre-save
 #
 # Side effects (the only effects this helper produces):
-#   session-state.sh update --field last_checkpoint_phase --value <phase>
+#   session-state.sh update --field last_yield_boundary   --value <boundary>
+#   session-state.sh update --field last_checkpoint_phase --value <lifecycle-phase>
 #   session-state.sh update --field last_yield_emitted_at --value <iso8601-utc>
+#
+# The boundary name and the lifecycle phase are two different vocabularies and
+# live in two different fields. `last_yield_boundary` answers "which of the
+# five yield points fired"; `last_checkpoint_phase` answers "which lifecycle
+# phase does `--resume` re-enter at" and is constrained to the seven canonical
+# phases. Writing the boundary name into the phase field is rejected by
+# session-state.sh, so each yield writes both, derived from one another via
+# `lifecycle_phase_for_boundary` below.
 #
 # Output:
 #   none — the helper writes ZERO bytes to stdout. The stdout-sentinel
@@ -70,6 +79,27 @@ VALID_PHASES=(
   "pre-close"
   "pre-save"
 )
+
+# Map a yield boundary to the lifecycle phase `--resume` re-enters at.
+#
+# Each boundary sits at a known point in the lifecycle, and re-entry resumes
+# the phase the meeting was about to perform — not the one it just finished,
+# which would replay work already done:
+#   post-charter    -> RESEARCH  (charter accepted; preludes come next)
+#   post-research   -> DISCUSS   (preludes landed; discussion comes next)
+#   discuss-cadence -> DISCUSS   (mid-discussion; resume continues the rounds)
+#   pre-close       -> CLOSE     (about to draft close-time triage/artifacts)
+#   pre-save        -> SAVE      (about to write artifacts to disk)
+lifecycle_phase_for_boundary() {
+  case "$1" in
+    post-charter)    printf 'RESEARCH' ;;
+    post-research)   printf 'DISCUSS' ;;
+    discuss-cadence) printf 'DISCUSS' ;;
+    pre-close)       printf 'CLOSE' ;;
+    pre-save)        printf 'SAVE' ;;
+    *)               return 1 ;;
+  esac
+}
 
 usage() {
   cat >&2 <<'EOF'
@@ -158,17 +188,37 @@ ISO8601_NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # `update`. We tolerate that exit so yield-gate remains useful in
 # helper-stubbed test contexts — the caller (orchestrator) is expected to
 # have called `session-state.sh create` earlier in the lifecycle.
-"$SESSION_STATE_BIN" update \
-  --file "$SESSION_FILE" \
-  --field last_checkpoint_phase \
-  --value "$PHASE" \
-  >/dev/null 2>&1 || true
+#
+# Tolerated is NOT the same as silent. A rejected write means `--resume` will
+# re-enter at a stale point, which is exactly the class of defect that hides
+# when stderr is discarded. Every failed write therefore names its field and
+# relays the helper's own diagnostic on stderr. stdout stays empty — the
+# zero-stdout contract is what the substrate depends on, stderr is not part
+# of it.
+write_session_field() {
+  local field="$1"
+  local value="$2"
+  local err
+  if ! err="$("$SESSION_STATE_BIN" update \
+      --file "$SESSION_FILE" \
+      --field "$field" \
+      --value "$value" 2>&1 >/dev/null)"; then
+    echo "yield-gate.sh: warning: failed to write ${field} to ${SESSION_FILE}" >&2
+    [ -n "$err" ] && echo "yield-gate.sh: ${SESSION_STATE_BIN}: ${err}" >&2
+    return 1
+  fi
+  return 0
+}
 
-"$SESSION_STATE_BIN" update \
-  --file "$SESSION_FILE" \
-  --field last_yield_emitted_at \
-  --value "$ISO8601_NOW" \
-  >/dev/null 2>&1 || true
+# Record which boundary fired, the lifecycle phase `--resume` re-enters at,
+# and when. `|| true` keeps a stubbed-helper context non-fatal; the warning
+# above is what makes a rejected write visible.
+write_session_field last_yield_boundary "$PHASE" || true
+
+RESUME_PHASE="$(lifecycle_phase_for_boundary "$PHASE")"
+write_session_field last_checkpoint_phase "$RESUME_PHASE" || true
+
+write_session_field last_yield_emitted_at "$ISO8601_NOW" || true
 
 # NO stdout output. The substrate `AskUserQuestion` tool call is the
 # user-facing prompt mechanism — it is emitted by the LLM in the enclosing

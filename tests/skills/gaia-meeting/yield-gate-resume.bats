@@ -1,17 +1,19 @@
 #!/usr/bin/env bats
-# yield-gate-resume.bats — verify --resume semantics across all five
-# YIELD-STOP sentinel phases (E76-S9, AC7, T6.1).
+# yield-gate-resume.bats — verify --resume semantics across all five yield
+# boundaries.
 #
-# Each phase emits a YIELD-STOP via yield-gate.sh; the session-state file
-# records last_checkpoint_phase. A subsequent --resume invocation reads
-# last_checkpoint_phase and re-enters at the matching phase. The four
-# user-prompt branches (--continue / --interject / --wrap-up / --abort)
-# behave identically across all five sentinel phases — handled by
-# parse-resume-flags.sh (E76-S7), which is consumed unchanged here.
+# Each yield runs yield-gate.sh, which records two things in the session file:
+# `last_yield_boundary` (which of the five boundaries fired) and
+# `last_checkpoint_phase` (the lifecycle phase --resume re-enters at). The two
+# are separate vocabularies; a boundary name is not a lifecycle phase, and
+# --resume needs the phase to know where to pick up. The four user-prompt
+# branches (--continue / --interject / --wrap-up / --abort) behave identically
+# across all five boundaries — handled by parse-resume-flags.sh, which is
+# consumed unchanged here.
 #
-# This test asserts the round-trip: yield-gate writes the session field;
-# session-state.sh read returns it; parse-resume-flags accepts each of the
-# four action flags against each of the five phases.
+# This test asserts the round-trip: yield-gate writes both session fields;
+# session-state.sh read returns them; parse-resume-flags accepts each of the
+# action flags.
 
 bats_require_minimum_version 1.5.0
 
@@ -30,39 +32,49 @@ teardown() {
 
 phases=("post-charter" "post-research" "discuss-cadence" "pre-close" "pre-save")
 
-@test "the post-charter yield writes a checkpoint phase that session state reads back" {
+@test "the post-charter yield records its boundary and the phase resume re-enters at" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r1" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase post-charter --session-id sess-r1 >/dev/null
-  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$read_back" = "post-charter" ]
+  reentry="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$reentry" = "RESEARCH" ]
 }
 
-@test "the post-research yield writes a checkpoint phase that session state reads back" {
+@test "the post-research yield records its boundary and the phase resume re-enters at" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r2" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase post-research --session-id sess-r2 >/dev/null
-  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$read_back" = "post-research" ]
+  reentry="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$reentry" = "DISCUSS" ]
 }
 
-@test "the discuss-cadence yield writes a checkpoint phase that session state reads back" {
+@test "the discuss-cadence yield records its boundary and the phase resume re-enters at" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r3" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase discuss-cadence --session-id sess-r3 >/dev/null
-  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$read_back" = "discuss-cadence" ]
+  reentry="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$reentry" = "DISCUSS" ]
 }
 
-@test "the pre-close yield writes a checkpoint phase that session state reads back" {
+@test "the pre-close yield records its boundary and the phase resume re-enters at" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r4" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase pre-close --session-id sess-r4 >/dev/null
-  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$read_back" = "pre-close" ]
+  reentry="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$reentry" = "CLOSE" ]
 }
 
-@test "the pre-save yield writes a checkpoint phase that session state reads back" {
+@test "the pre-save yield records its boundary and the phase resume re-enters at" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-r5" >/dev/null
   GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$YIELD" --phase pre-save --session-id sess-r5 >/dev/null
-  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  read_back="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$read_back" = "pre-save" ]
+  reentry="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  [ "$reentry" = "SAVE" ]
 }
 
 @test "resume-flag parsing accepts --continue against any session" {

@@ -44,8 +44,10 @@ setup() {
 #!/usr/bin/env bash
 # session-state stub for cadence test — records each --field <name> update
 # call into PHASE_LOG. Echos the stub's call to PHASE_LOG when called for
-# field=last_checkpoint_phase, embedding the phase value so the test can
-# count yield-gate.sh invocations by phase.
+# field=last_yield_boundary, embedding the boundary value so the test can
+# count yield-gate.sh invocations by boundary. The boundary field is the one
+# carrying the five yield-point names; last_checkpoint_phase carries the
+# lifecycle phase --resume re-enters at, which is a different vocabulary.
 sub="\$1"; shift
 if [[ "\$sub" == "update" ]]; then
   field=""
@@ -57,7 +59,7 @@ if [[ "\$sub" == "update" ]]; then
       *) shift ;;
     esac
   done
-  if [[ "\$field" == "last_checkpoint_phase" ]]; then
+  if [[ "\$field" == "last_yield_boundary" ]]; then
     printf 'phase=%s\n' "\$value" >> "$PHASE_LOG"
   fi
 fi

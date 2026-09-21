@@ -1,7 +1,5 @@
 #!/usr/bin/env bats
-# frontmatter-mode-bias.bats — meeting-notes-writer mode + bias frontmatter (E76-S5)
-#
-# T7 / AC16 / FR-MTG-17 / FR-MTG-18
+# frontmatter-mode-bias.bats — meeting-notes-writer mode + bias frontmatter
 #
 # Verifies meeting-notes-writer.sh emits closing_artifact_bias,
 # default_invitees_resolved, missing_invitees, and invitees_override (when
@@ -22,6 +20,13 @@ teardown() {
 
 write_payload() {
   cat > "$PAYLOAD"
+}
+
+# Meeting notes live under a meeting-notes/ subdirectory of creative-artifacts
+# in the .gaia/ runtime tree — derived here the same way the writer derives it
+# so a future tree move fails one helper rather than every case.
+notes_file() {
+  printf '%s' "$ROOT_T/.gaia/artifacts/creative-artifacts/meeting-notes/meeting-2026-05-07-$1.md"
 }
 
 @test "writer emits closing_artifact_bias and resolved/missing invitees frontmatter" {
@@ -63,7 +68,7 @@ YAML
   run "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug arch-decision
   [ "$status" -eq 0 ]
 
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-arch-decision.md"
+  out="$(notes_file arch-decision)"
   [ -f "$out" ]
 
   grep -qE "^mode: architecture\$" "$out"
@@ -105,7 +110,7 @@ memory_writethrough:
 YAML
   run "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug d
   [ "$status" -eq 0 ]
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-d.md"
+  out="$(notes_file d)"
   grep -qE "^missing_invitees: \[\]\$" "$out"
   grep -qE "^default_invitees_resolved: \[\]\$" "$out"
 }
@@ -145,14 +150,14 @@ memory_writethrough:
 YAML
   run "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug r
   [ "$status" -eq 0 ]
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-r.md"
+  out="$(notes_file r)"
   grep -qE "^invitees_override: true\$" "$out"
 }
 
 @test "backward compat: a payload without the new fields still writes (legacy caller path)" {
   # A payload that omits closing_artifact_bias / default_invitees_resolved /
-  # missing_invitees / invitees_override MUST still produce a valid notes file.
-  # This guarantees E76-S5 does not break existing E76-S3 callers.
+  # missing_invitees / invitees_override MUST still produce a valid notes file,
+  # so the added fields do not break callers written before they existed.
   write_payload <<'YAML'
 charter: "Decide on auth refactor"
 mode: decide
@@ -180,7 +185,7 @@ memory_writethrough:
 YAML
   run "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug legacy
   [ "$status" -eq 0 ]
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-legacy.md"
+  out="$(notes_file legacy)"
   [ -f "$out" ]
   grep -qE "^mode: decide\$" "$out"
 }
