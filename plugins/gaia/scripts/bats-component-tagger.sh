@@ -38,8 +38,14 @@
 #   bats-component-tagger.sh [--tests-dir <dir>] [--format tsv|summary]
 #                            [--manifest <path>]
 #
-#   --tests-dir   Directory of .bats files (default: this script's ../tests).
-#   --format      tsv (default): `component<TAB>bats-basename` rows, sorted.
+#   --tests-dir   Root of the .bats tree (default: this script's ../tests).
+#                 The WHOLE tree is walked, not just its top level.
+#   --format      tsv (default): `component<TAB>path-relative-to-tests-dir`
+#                 rows, sorted. The second field is a tree-relative path
+#                 (`statusline/statusline-runtime.bats`), not a bare basename:
+#                 several basenames occur at more than one depth, so a
+#                 basename alone cannot name one file, and the consuming
+#                 runner resolves each entry as `<tests-dir>/<entry>`.
 #                 summary: per-component counts + the core (unresolved) count.
 #   --manifest    Also write the tsv manifest to this path (atomic).
 #
@@ -60,7 +66,7 @@ while [ "$#" -gt 0 ]; do
     --format)    FORMAT="${2:?--format needs a value}"; shift 2 ;;
     --manifest)  MANIFEST="${2:?--manifest needs a value}"; shift 2 ;;
     -h|--help)
-      sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) printf 'bats-component-tagger.sh: unknown argument: %s\n' "$1" >&2; exit 1 ;;
   esac
@@ -227,26 +233,46 @@ CORE_CROSSCUT=0
 TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/bats-tagger.XXXXXX")"
 trap 'rm -f "$TMP_OUT"' EXIT
 
-shopt -s nullglob
-files=("$TESTS_DIR"/*.bats)
-shopt -u nullglob
-[ "${#files[@]}" -gt 0 ] || { printf 'bats-component-tagger.sh: no .bats in %s\n' "$TESTS_DIR" >&2; exit 1; }
+# Enumerate the WHOLE test tree, not just its top level. A single-level glob
+# left every bats in a subdirectory assigned to no component at all, so the
+# selective-test matrix could not route them — the manifest looked complete
+# while being blind below the first level. `find` does the full-depth walk:
+# `shopt -s globstar` needs bash 4 and the bash that ships with macOS is 3.2.
+#
+# Each file is recorded by its path RELATIVE to the tests dir, so an entry
+# names exactly one file. A bare basename cannot: several basenames occur at
+# both the top level and inside a subdirectory, and an entry keyed on one of
+# those would be ambiguous — the consuming runner would resolve it to whichever
+# file it happened to find first.
+FILE_LIST="$(mktemp "${TMPDIR:-/tmp}/bats-tagger-files.XXXXXX")"
+trap 'rm -f "$TMP_OUT" "$FILE_LIST"' EXIT
 
-for f in "${files[@]}"; do
-  base="$(basename "$f")"
+# `cd` into the tree so find yields tree-relative paths directly; strip the
+# leading `./` that `find .` prefixes. Sorted here so the walk order (which is
+# filesystem-dependent) never reaches the output.
+( cd "$TESTS_DIR" && find . -name '*.bats' -type f ) \
+  | sed 's|^\./||' \
+  | sort > "$FILE_LIST"
+
+TOTAL_FILES="$(grep -c . "$FILE_LIST" || true)"
+[ "$TOTAL_FILES" -gt 0 ] || { printf 'bats-component-tagger.sh: no .bats in %s\n' "$TESTS_DIR" >&2; exit 1; }
+
+while IFS= read -r rel_path <&3; do
+  [ -n "$rel_path" ] || continue
+  f="$TESTS_DIR/$rel_path"
   comps="$(_refs_to_components "$f" || true)"
   n="$(printf '%s' "$comps" | grep -c . || true)"
   if [ "$n" -eq 0 ]; then
-    printf 'core\t%s\n' "$base" >> "$TMP_OUT"
+    printf 'core\t%s\n' "$rel_path" >> "$TMP_OUT"
     CORE_UNRESOLVED=$((CORE_UNRESOLVED + 1))
   elif [ "$n" -eq 1 ]; then
-    printf '%s\t%s\n' "$comps" "$base" >> "$TMP_OUT"
+    printf '%s\t%s\n' "$comps" "$rel_path" >> "$TMP_OUT"
   else
     # Cross-cutting: references >1 component. Conservatively -> core.
-    printf 'core\t%s\n' "$base" >> "$TMP_OUT"
+    printf 'core\t%s\n' "$rel_path" >> "$TMP_OUT"
     CORE_CROSSCUT=$((CORE_CROSSCUT + 1))
   fi
-done
+done 3< "$FILE_LIST"
 
 sort -o "$TMP_OUT" "$TMP_OUT"
 
@@ -262,7 +288,7 @@ case "$FORMAT" in
     cut -f1 "$TMP_OUT" | sort | uniq -c | awk '{printf "%s\t%s\n", $2, $1}'
     printf '\n# core breakdown: %s unresolved (no code ref), %s cross-cutting (>1 component)\n' \
       "$CORE_UNRESOLVED" "$CORE_CROSSCUT"
-    printf '# total bats: %s\n' "${#files[@]}" ;;
+    printf '# total bats: %s\n' "$TOTAL_FILES" ;;
   *)
     printf 'bats-component-tagger.sh: unknown --format: %s\n' "$FORMAT" >&2; exit 1 ;;
 esac
