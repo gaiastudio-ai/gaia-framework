@@ -111,15 +111,20 @@ jobs:
           if-no-files-found: ignore
 
   skills-bats-tests:
-    # Wires the dev-story skill bats files into CI. Until this job landed,
-    # skill-level bats files (e.g., gaia-dev-story planning-gate regression
-    # suite) lived only on disk and never gated PRs. Other skill bats under
-    # tests/skills/ predate this gate and have known unrelated failures
-    # (legacy lifecycle conversion fixtures); those will be wired in by a
-    # separate sweep once their failures are resolved.
+    # Wires the skill bats files into CI. Until this job landed, skill-level
+    # bats files (e.g., the dev-story planning-gate regression suite) lived
+    # only on disk and never gated PRs. The job covers the whole tests/skills
+    # tree, top level and skill-scoped subdirectories alike; files that are
+    # not yet gateable are classified EXEMPT with a stated reason in the
+    # companion sentinel rather than left silently unrun.
     name: skills-bats-tests
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Raised from 5. The suite measured 253s locally once the skill-scoped
+    # files were added — 84% of a 5-minute budget, which is too thin to
+    # absorb normal runner variance. Most of that is the pre-existing top-level
+    # files (~238s); the added files account for ~15s. 10 minutes restores
+    # headroom without hiding a genuine hang.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
@@ -131,11 +136,17 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y jq python3 python3-pip
           python3 -m pip install --break-system-packages PyYAML jsonschema
-      - name: Run tests/skills/*.bats coverage suite
-        # Covers every tests/skills/*.bats file on staging that passes today.
-        # Five legacy fixtures carry pre-existing assertion drift and are NOT
-        # listed below — they will be wired in by their fixture-repair
-        # follow-ups.
+      - name: Run tests/skills bats coverage suite
+        # Covers every bats file under tests/skills/ — at any depth — that
+        # passes today and whose test names are free of internal identifiers.
+        # Files not listed below are classified EXEMPT in the sentinel, each
+        # with a stated reason: legacy fixtures carrying assertion drift, and
+        # the skill-scoped meeting and story-creation suites, whose repair and
+        # renaming are tracked follow-on work.
+        #
+        # Paths are enumerated rather than globbed deliberately: bats is not
+        # invoked recursively here, because a recursive invocation would pull
+        # in the exempt suites and turn the job red.
         #
         # The companion regression sentinel
         # `tests/skills/E55-S11-plugin-ci-bats-coverage.bats` enumerates the
@@ -196,7 +207,10 @@ jobs:
             tests/skills/gaia-triage-findings-e41-s5-yolo-auto-apply.bats \
             tests/skills/gaia-triage-findings-reproduction-policy.bats \
             tests/skills/lint-skill-frontmatter.bats \
-            tests/skills/validate-plan-structure.bats
+            tests/skills/validate-plan-structure.bats \
+            tests/skills/gaia-atdd/setup-finalize-quirks.bats \
+            tests/skills/gaia-dev-story/e41-s4-yolo-auto-run-reviews.bats \
+            tests/skills/gaia-meeting/mode-registry.bats
       - name: Run /gaia-add-feature assessment-doc-bypass-check bats suite
         # Anti-pattern check that scans every /gaia-add-feature assessment-doc
         # emission for three Val-gate bypass smoking-gun strings (with

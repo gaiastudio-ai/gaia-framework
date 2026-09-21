@@ -347,6 +347,36 @@ EOF
   printf '%s' "$found"
 }
 
+# Decide whether a configured tier command runs the SAME test runner the
+# story-scoped command uses (bats), and may therefore be narrowed to the
+# story's own test files.
+#
+# Returns 0 (same runner → narrow) when the command invokes bats directly or
+# through a project wrapper script whose name marks it as a bats runner —
+# anywhere in the command, so a compound `cd … && ENV=… bash <wrapper>`
+# invocation is recognized. Returns 1 (different runner → keep the tier's own
+# command) otherwise, which is what preserves honest per-tier evidence for a
+# tier configured with pytest / jest / eslint or any other runner.
+_runs_same_runner() {
+  local candidate="$1"
+  # Normalize separators that can precede a command word so the token scan
+  # below sees the runner as its own word: shell operators and path segments.
+  local normalized
+  normalized="$(printf '%s' "$candidate" | tr '&|;()/' '       ')"
+  local word
+  for word in $normalized; do
+    case "$word" in
+      # Direct invocation of the runner binary.
+      bats) return 0 ;;
+      # A project wrapper script that runs the bats suite. Matched on the
+      # script's own basename so an env prefix or a `bash <path>` form is
+      # recognized without widening the match to unrelated commands.
+      *bats*.sh|run-tests.sh|run-with-coverage.sh|run-stack-tests.sh) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # ---------- timeout helper (POSIX-portable) ----------
 
 # Sanitize the environment for child processes so a nested bats invocation
@@ -381,6 +411,28 @@ _restore_bats_env() {
   fi
 }
 
+# Project-root variables that must NOT reach the spawned suite. A caller
+# session (an editor, an agent runtime, a wrapper script) commonly exports a
+# project root; a suite that asserts canonical-path resolution then sees that
+# ambient root instead of its own fixture root and reports failures that a
+# clean CI checkout would never produce. The runner has already resolved
+# everything it needs from the config by the time a tier command is spawned,
+# so the child is given the environment CI would give it.
+#
+# `env -u NAME` is a no-op when NAME is unset, and is portable across BSD and
+# GNU userland — no guard needed for variables the caller never set.
+_RT_CLEAN_ENV_VARS="PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH CLAUDE_PLUGIN_ROOT"
+
+# Print the `env -u ...` prefix (argv words, space separated) used to spawn a
+# tier command with the project-root variables cleared.
+_clean_env_prefix_args() {
+  local v
+  printf 'env'
+  for v in $_RT_CLEAN_ENV_VARS; do
+    printf ' -u %s' "$v"
+  done
+}
+
 # Run "$1" (full command string) with a wall-clock cap of "$2" seconds.
 # Records into globals: RT_EXIT, RT_DURATION, RT_TIMEOUT, RT_OUTPUT.
 run_with_timeout() {
@@ -395,12 +447,23 @@ run_with_timeout() {
   # Sanitize PATH so nested bats invocations resolve the wrapper binary, not
   # the internal libexec script (see _sanitize_bats_env header).
   _sanitize_bats_env
+  # Clear the caller's project-root variables from the child environment on
+  # BOTH spawn paths — a machine without `timeout` must not keep the leaky
+  # behavior (see _RT_CLEAN_ENV_VARS header).
+  local _clean_env
+  _clean_env="$(_clean_env_prefix_args)"
   set +e
   if command -v timeout >/dev/null 2>&1; then
-    timeout --preserve-status "${timeout_seconds}" sh -c "$cmd" >"$out_file" 2>&1
+    # SC2086: _clean_env is a fixed, space-separated `env -u NAME` argv prefix
+    # built by _clean_env_prefix_args — word splitting is intended here.
+    # shellcheck disable=SC2086
+    $_clean_env timeout --preserve-status "${timeout_seconds}" sh -c "$cmd" >"$out_file" 2>&1
     RT_EXIT=$?
   else
-    perl -e '
+    # SC2086 as above. SC2016: the single-quoted block is perl source, not a
+    # shell string — its `$SIG` / `$ARGV` sigils must reach perl unexpanded.
+    # shellcheck disable=SC2086,SC2016
+    $_clean_env perl -e '
       $SIG{ALRM}=sub{ kill(9, -$$); exit 124 };
       alarm($ARGV[0]);
       exec("/bin/sh","-c",$ARGV[1]);
@@ -618,7 +681,9 @@ EOF
 $_test_paths
 EOF
           SCOPED_TEST_CMD="bats ${_scoped_args}"
-          info "story-scoped test execution: ${SCOPED_TEST_CMD}"
+          # No announcement here — whether a scoped command is actually used
+          # is a per-tier decision made below. Announcing it at discovery time
+          # stated an intent that a fallback tier never honored.
         else
           info "no story-scoped tests discovered from File List; falling back to full-suite tier command"
         fi
@@ -648,16 +713,31 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
     continue
   fi
   # Story-scoped substitution: narrow a full-suite bats tier to story-
-  # relevant tests only. The scoped command is always "bats <files>", so we
-  # only replace tiers whose command ALSO starts with "bats" (same runner).
-  # Tiers that run a different runner (pytest, jest, eslint ...) or an
-  # already-narrow non-bats command keep their own command unchanged —
-  # attributing a bats invocation to a tier that configured "pytest ..." would
-  # produce misleading per-tier evidence.
+  # relevant tests only. The scoped command is always "bats <files>", so a
+  # tier is narrowed ONLY when its configured command genuinely runs the same
+  # runner. Tiers that run a different runner (pytest, jest, eslint ...) keep
+  # their own command unchanged — attributing a bats invocation to a tier that
+  # configured "pytest ..." would produce misleading per-tier evidence.
+  #
+  # Same-runner detection is not limited to a command that STARTS with the
+  # runner: a real tier command is frequently compound — a directory change,
+  # an environment prefix, and a project wrapper script that ultimately calls
+  # the same runner. Matching only the leading token left such a tier running
+  # its full suite while the log announced a scoped run. The detection below
+  # recognizes the runner anywhere in the command while still excluding a
+  # genuinely different runner.
+  _tier_narrowed=false
+  if [ -n "$SCOPED_TEST_CMD" ] && _runs_same_runner "$cmd"; then
+    cmd="$SCOPED_TEST_CMD"
+    _tier_narrowed=true
+  fi
+  # Announce per tier, after the decision, so the log states what ran.
   if [ -n "$SCOPED_TEST_CMD" ]; then
-    case "$cmd" in
-      bats|bats\ *) cmd="$SCOPED_TEST_CMD" ;;
-    esac
+    if [ "$_tier_narrowed" = "true" ]; then
+      info "story-scoped test execution: ${cmd}"
+    else
+      info "$tier runs a different test runner; it keeps its own command: ${cmd}"
+    fi
   fi
   run_with_timeout "$cmd" "$to"
   # Best-effort case-count parse from runner stdout/stderr before deleting
@@ -673,18 +753,31 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
   fail_count=0
   _case_parse_out=""
   if [ -f "$RT_OUTPUT_FILE" ]; then
+    # Summary-line parse only — a summary runner prints its totals once, at
+    # the end, so reading a bounded tail is both correct and cheap here. The
+    # per-result tally below deliberately does NOT use this slice.
     _case_parse_out=$(tail -200 "$RT_OUTPUT_FILE" 2>/dev/null || true)
   fi
-  # pytest: "<N> passed" / "<N> failed"
-  _pytest_pass=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*[^[:digit:]]([[:digit:]]+) passed.*/\1/p' | tail -1)
-  _pytest_fail=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*[^[:digit:]]([[:digit:]]+) failed.*/\1/p' | tail -1)
+  # Summary-line runners: "<N> passed" / "<N> failed" — last match wins.
+  _pytest_pass=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*(^|[^[:digit:]])([[:digit:]]+) passed.*/\2/p' | tail -1)
+  _pytest_fail=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*(^|[^[:digit:]])([[:digit:]]+) failed.*/\2/p' | tail -1)
   if [ -n "$_pytest_pass" ] || [ -n "$_pytest_fail" ]; then
     pass_count=${_pytest_pass:-0}
     fail_count=${_pytest_fail:-0}
   else
-    # bats per-line tally
-    _bats_pass=$(printf '%s' "$_case_parse_out" | grep -cE '^ok [0-9]+' || true)
-    _bats_fail=$(printf '%s' "$_case_parse_out" | grep -cE '^not ok [0-9]+' || true)
+    # Per-result tally — counted over the WHOLE captured stream, never a tail
+    # slice. A large suite prints thousands of result lines and then a
+    # trailing report; a fixed tail window would count the report instead of
+    # the results and record counts that contradict the recorded exit code.
+    # `grep -c` reads the file directly so a very large output never has to be
+    # materialized into a shell variable, and exits 1 on zero matches (hence
+    # the `|| true` guard under `set -e`).
+    _bats_pass=0
+    _bats_fail=0
+    if [ -f "$RT_OUTPUT_FILE" ]; then
+      _bats_pass=$(grep -cE '^ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null || true)
+      _bats_fail=$(grep -cE '^not ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null || true)
+    fi
     if [ "${_bats_pass:-0}" -gt 0 ] || [ "${_bats_fail:-0}" -gt 0 ]; then
       pass_count=${_bats_pass:-0}
       fail_count=${_bats_fail:-0}
