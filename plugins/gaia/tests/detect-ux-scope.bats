@@ -326,3 +326,264 @@ EOF
   # unrelated routing text elsewhere in the file)
   grep -qE '\*\*MCP / design tokens:\*\*' "$qs_skill"
 }
+
+# ==========================================================================
+# Literal epic-key matching
+#
+# The epic key is story-supplied data, not a pattern.  These cases pin that
+# both epic-key consumers -- the epic-mention rule (against the UX design
+# document) and the epic-classification rule (against the epics document) --
+# compare the key as a literal string under a word-boundary contract, so a
+# key carrying regular-expression metacharacters can neither force a false
+# match, nor suppress a legitimate one, nor break the matcher.
+# ==========================================================================
+
+# Build a temporary project tree with a planning-artifacts directory and
+# return its path on stdout.  Usage: _make_project_tree
+_make_project_tree() {
+  local root
+  root="$(mktemp -d "$BATS_TEST_TMPDIR/proj.XXXXXX")"
+  mkdir -p "$root/.gaia/artifacts/planning-artifacts"
+  printf '%s\n' "$root"
+}
+
+# Write a story fixture carrying the given epic value, with a body that
+# contains no UI terms so only the epic-key rules can fire.
+# Usage: _make_epic_story <path> <epic_value>
+_make_epic_story() {
+  local path="$1" epic="$2"
+  cat > "$path" <<EOF
+---
+key: "X1-S1"
+title: "Test fixture"
+epic: "${epic}"
+status: "ready-for-dev"
+---
+# Story
+Implements the backend service.
+EOF
+}
+
+# Run the detector against a story inside a project tree.
+# Usage: _run_detector <project_root> <story_path>
+_run_detector() {
+  local root="$1" story="$2"
+  run env -u PLANNING_ARTIFACTS -u EPICS_FILE \
+    PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root" \
+    "$HELPER" "$story"
+}
+
+# ---------- epic-mention rule (UX design document) ----------
+
+@test "epic mention: a metacharacter key does not match a document lacking it" {
+  root="$(_make_project_tree)"
+  printf 'Some UX doc mentioning E77 only.\n' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E.*'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  match=$(echo "$output" | jq -r '.ux_match')
+  [ "$match" = "false" ] || { echo "metacharacter key forced a match: $output"; false; }
+  has_rule4=$(echo "$output" | jq -r '.rules_fired | index("rule4")')
+  [ "$has_rule4" = "null" ] || { echo "epic-mention rule fired on a metacharacter key: $output"; false; }
+}
+
+@test "epic mention: a bracket-bearing key neither errors nor matches" {
+  root="$(_make_project_tree)"
+  printf 'Some UX doc mentioning E77 only.\n' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E[1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  echo "$output" | jq -e 'has("ux_match") and has("rules_fired") and has("excluded_by")' >/dev/null \
+    || { echo "malformed JSON for bracket key: $output"; false; }
+  match=$(echo "$output" | jq -r '.ux_match')
+  [ "$match" = "false" ] || { echo "bracket key forced a match: $output"; false; }
+}
+
+@test "epic mention: a bracket-bearing key present verbatim does match" {
+  root="$(_make_project_tree)"
+  printf 'The design covers E[1 in full.\n' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E[1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule4=$(echo "$output" | jq -r '.rules_fired | index("rule4")')
+  [ "$has_rule4" != "null" ] || { echo "literal bracket key was not found: $output"; false; }
+}
+
+@test "epic mention: a short key does not match a longer key sharing its prefix" {
+  root="$(_make_project_tree)"
+  printf 'Some UX doc mentioning E77 only.\n' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E7'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule4=$(echo "$output" | jq -r '.rules_fired | index("rule4")')
+  [ "$has_rule4" = "null" ] || { echo "word boundary lost: short key matched a longer one: $output"; false; }
+}
+
+@test "epic mention: an exact key surrounded by punctuation still matches" {
+  root="$(_make_project_tree)"
+  printf 'Wireframes cover (E77), plus follow-up work.\n' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E77'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  match=$(echo "$output" | jq -r '.ux_match')
+  [ "$match" = "true" ] || { echo "punctuation-delimited key did not match: $output"; false; }
+  has_rule4=$(echo "$output" | jq -r '.rules_fired | index("rule4")')
+  [ "$has_rule4" != "null" ] || { echo "epic-mention rule did not fire: $output"; false; }
+}
+
+@test "epic mention: an exact key alone on its line still matches" {
+  root="$(_make_project_tree)"
+  printf 'E77\n' > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E77'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule4=$(echo "$output" | jq -r '.rules_fired | index("rule4")')
+  [ "$has_rule4" != "null" ] || { echo "line-edge key did not match: $output"; false; }
+}
+
+@test "epic mention: a conventional absent key does not match" {
+  root="$(_make_project_tree)"
+  printf 'Some UX doc mentioning E77 only.\n' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E99'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  match=$(echo "$output" | jq -r '.ux_match')
+  [ "$match" = "false" ] || { echo "absent conventional key matched: $output"; false; }
+}
+
+# ---------- epic-classification rule (epics document) ----------
+
+@test "epic classification: a metacharacter key does not open an unrelated epic block" {
+  root="$(_make_project_tree)"
+  cat > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md" <<'EOF'
+# Epics
+
+## Epic E77 — Unrelated design work
+tags: ux, design
+EOF
+  _make_epic_story "$root/story.md" 'E.*'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule3=$(echo "$output" | jq -r '.rules_fired | index("rule3")')
+  [ "$has_rule3" = "null" ] || { echo "classification rule fired on a metacharacter key: $output"; false; }
+  match=$(echo "$output" | jq -r '.ux_match')
+  [ "$match" = "false" ] || { echo "metacharacter key forced a match: $output"; false; }
+}
+
+@test "epic classification: a bracket-bearing key neither errors nor matches" {
+  root="$(_make_project_tree)"
+  cat > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md" <<'EOF'
+# Epics
+
+## Epic E77 — Unrelated design work
+tags: ux, design
+EOF
+  _make_epic_story "$root/story.md" 'E[1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  echo "$output" | jq -e 'has("ux_match") and has("rules_fired") and has("excluded_by")' >/dev/null \
+    || { echo "malformed JSON for bracket key: $output"; false; }
+  has_rule3=$(echo "$output" | jq -r '.rules_fired | index("rule3")')
+  [ "$has_rule3" = "null" ] || { echo "classification rule fired on a bracket key: $output"; false; }
+}
+
+@test "epic classification: a short key does not open a longer epic block sharing its prefix" {
+  root="$(_make_project_tree)"
+  cat > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md" <<'EOF'
+# Epics
+
+## Epic E77 — Unrelated design work
+tags: ux, design
+EOF
+  _make_epic_story "$root/story.md" 'E7'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule3=$(echo "$output" | jq -r '.rules_fired | index("rule3")')
+  [ "$has_rule3" = "null" ] || { echo "word boundary lost in classification rule: $output"; false; }
+}
+
+@test "epic classification: the matching epic block still fires the rule" {
+  root="$(_make_project_tree)"
+  cat > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md" <<'EOF'
+# Epics
+
+## Epic E77 — Checkout redesign
+tags: ux, design
+EOF
+  _make_epic_story "$root/story.md" 'E77'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  match=$(echo "$output" | jq -r '.ux_match')
+  [ "$match" = "true" ] || { echo "classification rule did not fire for a real epic: $output"; false; }
+  has_rule3=$(echo "$output" | jq -r '.rules_fired | index("rule3")')
+  [ "$has_rule3" != "null" ] || { echo "classification rule missing from rules_fired: $output"; false; }
+}
+
+@test "epic classification: a bracket-bearing key present verbatim does fire the rule" {
+  root="$(_make_project_tree)"
+  cat > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md" <<'EOF'
+# Epics
+
+## Epic E[1 — Checkout redesign
+tags: ux, design
+EOF
+  _make_epic_story "$root/story.md" 'E[1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule3=$(echo "$output" | jq -r '.rules_fired | index("rule3")')
+  [ "$has_rule3" != "null" ] || { echo "literal bracket key did not open its epic block: $output"; false; }
+}
+
+# ---------------------------------------------------------------------------
+# Direct unit coverage for the literal word-match helper.
+#
+# The rule-level tests above exercise this helper through the detector's JSON
+# output. These call it directly so its contract is pinned independently of
+# the rules that consume it: a byte-for-byte search, with the word-boundary
+# requirement applied on both sides of every occurrence.
+#
+# The detector validates its arguments and exits at load time, so it cannot be
+# sourced. _load_literal_helper extracts the function definition verbatim from
+# the shipped script and evaluates that, so these tests run the real code.
+# ---------------------------------------------------------------------------
+
+_load_literal_helper() {
+  eval "$(sed -n '/^literal_word_in_file() {$/,/^}$/p' "$HELPER")"
+}
+
+@test "literal_word_in_file: finds a key that stands alone on the line" {
+  _load_literal_helper
+  doc="$BATS_TEST_TMPDIR/doc.md"
+  printf 'This document mentions E77 once.\n' > "$doc"
+  literal_word_in_file 'E77' "$doc" || { echo "expected a match for a standalone key"; false; }
+}
+
+@test "literal_word_in_file: a key sharing a prefix with a longer word does not match" {
+  _load_literal_helper
+  doc="$BATS_TEST_TMPDIR/doc.md"
+  printf 'This document mentions E77 only.\n' > "$doc"
+  ! literal_word_in_file 'E7' "$doc" || { echo "E7 must not match inside E77"; false; }
+}
+
+@test "literal_word_in_file: metacharacters are searched literally, not as a pattern" {
+  _load_literal_helper
+  doc="$BATS_TEST_TMPDIR/doc.md"
+  printf 'This document mentions E77 only.\n' > "$doc"
+  ! literal_word_in_file 'E.*' "$doc" || { echo "E.* must not match as a regex"; false; }
+
+  printf 'The key E.* appears verbatim here.\n' > "$doc"
+  literal_word_in_file 'E.*' "$doc" || { echo "E.* must match where it appears verbatim"; false; }
+}
+
+@test "literal_word_in_file: an empty key never matches" {
+  _load_literal_helper
+  doc="$BATS_TEST_TMPDIR/doc.md"
+  printf 'any content\n' > "$doc"
+  ! literal_word_in_file '' "$doc" || { echo "an empty key must not match"; false; }
+}

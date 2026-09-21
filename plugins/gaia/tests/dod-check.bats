@@ -383,3 +383,63 @@ EOF
   STORY_FILE="$TEST_TMP/story.md" run "$DOD_CHECK"
   [[ "$output" == *"item: subtasks, status: PASSED"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# Clean child environment — a caller's project-root variables must not reach
+# the project's own test / build / lint commands. A suite that resolves
+# canonical paths otherwise sees the caller's ambient root instead of its own
+# fixture root and reports failures a clean checkout would never produce.
+# ---------------------------------------------------------------------------
+
+@test "dod-check : resolved test command does not see the caller's project-root variables" {
+  _stub "build" 0 "build ok"
+  _stub "lint"  0 "lint ok"
+  rm -f "$STUB_BIN/test"
+  # A runner that reports exactly what project-root variables it can see.
+  cat > "$STUB_BIN/env-probe-runner" <<'STUB'
+#!/usr/bin/env bash
+printf 'PROJECT_ROOT=[%s] CLAUDE_PROJECT_ROOT=[%s] PROJECT_PATH=[%s] CLAUDE_PLUGIN_ROOT=[%s]\n' \
+  "${PROJECT_ROOT:-}" "${CLAUDE_PROJECT_ROOT:-}" "${PROJECT_PATH:-}" "${CLAUDE_PLUGIN_ROOT:-}"
+exit 0
+STUB
+  chmod +x "$STUB_BIN/env-probe-runner"
+  mkdir -p config
+  cat > config/project-config.yaml <<EOF
+test_cmd: env-probe-runner
+EOF
+
+  PROJECT_PATH=/ambient/leaked-path \
+  PROJECT_ROOT=/ambient/leaked-root \
+  CLAUDE_PROJECT_ROOT=/ambient/leaked-claude-root \
+  CLAUDE_PLUGIN_ROOT=/ambient/leaked-plugin-root \
+    run "$DOD_CHECK"
+
+  [[ "$output" == *"item: tests, status: PASSED"* ]]
+  [[ "$output" != *"ambient"* ]]
+  [[ "$output" == *"PROJECT_ROOT=[]"* ]]
+  [[ "$output" == *"CLAUDE_PROJECT_ROOT=[]"* ]]
+  [[ "$output" == *"PROJECT_PATH=[]"* ]]
+  [[ "$output" == *"CLAUDE_PLUGIN_ROOT=[]"* ]]
+}
+
+@test "dod-check : resolved build and lint commands also run with a cleared project root" {
+  rm -f "$STUB_BIN/test"
+  cat > "$STUB_BIN/script-env-probe" <<'STUB'
+#!/usr/bin/env bash
+printf 'observed PROJECT_PATH=[%s]\n' "${PROJECT_PATH:-}"
+exit 0
+STUB
+  chmod +x "$STUB_BIN/script-env-probe"
+  mkdir -p config
+  cat > config/project-config.yaml <<EOF
+build_cmd: script-env-probe
+lint_cmd: script-env-probe
+EOF
+
+  PROJECT_PATH=/ambient/leaked-path run "$DOD_CHECK"
+
+  [[ "$output" == *"item: build, status: PASSED"* ]]
+  [[ "$output" == *"item: lint, status: PASSED"* ]]
+  [[ "$output" != *"ambient"* ]]
+  [[ "$output" == *"observed PROJECT_PATH=[]"* ]]
+}
