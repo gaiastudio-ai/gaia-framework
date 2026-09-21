@@ -47,12 +47,21 @@ setup() {
   grep -F -- '--wrap-up' "$SKILL_MD"
 }
 
-@test "the governing decision-record amendment is referenced" {
-  grep -E 'ADR-083.*amend|amend.*ADR-083' "$SKILL_MD"
+# A case here asserted that the skill names the decision record amending the
+# write boundary. Published source must no longer carry internal traceability
+# identifiers, so that reference was removed deliberately — the behaviour is
+# gone rather than drifted, and the case is deleted rather than re-pinned.
+# The amended invariant itself is asserted below.
+
+@test "session state persists under the canonical meeting-sessions location" {
+  # The tree moved from the legacy memory directory to the .gaia/ runtime
+  # tree; assert the location the shipped helper actually writes.
+  grep -F '.gaia/memory/meeting-sessions/' "$SKILL_MD"
 }
 
-@test "the amended write-boundary cites _memory/meeting-sessions/" {
-  grep -F '_memory/meeting-sessions/' "$SKILL_MD"
+@test "every session-state persist routes through the write boundary" {
+  grep -E -i 'persist call MUST first pass' "$SKILL_MD"
+  grep -F 'scripts/write-boundary.sh' "$SKILL_MD"
 }
 
 @test "the --no-web note for sensitive contexts appears alongside the post-CHARTER yield" {

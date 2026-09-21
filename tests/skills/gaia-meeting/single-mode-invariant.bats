@@ -84,7 +84,12 @@ setup() {
 @test "the rejection message cites the single-mode constraint" {
   run "$HELPER" --mode architecture --mode red-team
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE "FR-MTG-16"
+  # The message must name the violated constraint, not merely fail. It must
+  # also report which modes were supplied, so the operator can see what
+  # collided rather than having to re-derive it.
+  echo "$output" | grep -qE "single-mode-only invariant violated"
+  echo "$output" | grep -qE "architecture"
+  echo "$output" | grep -qE "red-team"
 }
 
 @test "Unknown mode still rejected" {

@@ -1,16 +1,34 @@
 #!/usr/bin/env bats
-# scratchpad-resolve-path.bats — gaia-meeting deterministic path resolver (E76-S4)
-#
-# AC5 / AC6 / AC11 / AC12. Exercises TC-MTG-SP-3 + path component of TC-MTG-SP-6.
+# scratchpad-resolve-path.bats — gaia-meeting deterministic path resolver
 #
 # Resolves the deterministic extraction path from
 #   (date, slug, sp_n, content, intent, content_type)
 # Path formula:
-#   docs/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
+#   <artifacts>/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
+#
+# This resolver IS the production path authority — every other meeting script
+# asks it for the extraction path rather than composing one. So the layout
+# expectation here is the one place a literal is unavoidable: asserting it
+# through the resolver would be circular. The segments below are pinned
+# against the canonical runtime tree exported by the shared paths helper.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HELPER="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/scripts/scratchpad-resolve-path.sh"
+
+  # Ask the shared paths helper where the artifacts tree lives, then express
+  # that as a project-relative prefix: the resolver emits a project-relative
+  # path when PROJECT_ROOT is unset, which is how these cases invoke it.
+  # The helper canonicalizes the root it was handed (symlinked temp dirs become
+  # their /private real path on macOS), so strip the root it actually resolved
+  # rather than the one we passed in.
+  PROBE_ROOT="$(mktemp -d)"
+  ARTIFACTS_REL="$(
+    PROJECT_ROOT="$PROBE_ROOT" _GAIA_PATHS_LOADED="" \
+    bash -c '. "$1/plugins/gaia/scripts/lib/gaia-paths.sh" >/dev/null 2>&1;
+             printf "%s" "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}"' _ "$REPO_ROOT"
+  )"
+  rmdir "$PROBE_ROOT" 2>/dev/null || true
 }
 
 @test "Pre-flight: scratchpad-resolve-path.sh exists and is executable" {
@@ -26,7 +44,7 @@ setup() {
     --intent "decision" \
     --content-type md
   [ "$status" -eq 0 ]
-  [ "$output" = "docs/creative-artifacts/meeting-scratchpad/2026-05/my-meeting/SP-1-adopt-jwt-refresh-tokens.md" ]
+  [ "$output" = "$ARTIFACTS_REL/creative-artifacts/meeting-scratchpad/2026-05/my-meeting/SP-1-adopt-jwt-refresh-tokens.md" ]
 }
 
 @test "the auto-slug comes from the first text line, lowercased, dashed and truncated to 40 characters" {

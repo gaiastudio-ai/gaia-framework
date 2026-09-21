@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# meeting-notes-writer.bats — gaia-meeting saved-notes writer (E76-S3)
+# meeting-notes-writer.bats — gaia-meeting saved-notes writer
 #
-# AC9 / FR-MTG-27
+# Covers the saved-notes frontmatter contract and the required body sections.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -9,6 +9,18 @@ setup() {
   TMPDIR_T="$(mktemp -d)"
   ROOT_T="$TMPDIR_T/root"
   mkdir -p "$ROOT_T"
+
+  # Where the writer lands its output. The writer composes the path from
+  # --root plus the canonical artifacts tree, so derive the artifacts segment
+  # from the shared paths helper rather than writing a second literal that a
+  # future tree move would silently invalidate.
+  ARTIFACTS_REL="$(
+    PROJECT_ROOT="$ROOT_T" _GAIA_PATHS_LOADED="" \
+    bash -c '. "$1/plugins/gaia/scripts/lib/gaia-paths.sh" >/dev/null 2>&1;
+             printf "%s" "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}"' _ "$REPO_ROOT"
+  )"
+  NOTES_DIR="$ROOT_T/$ARTIFACTS_REL/creative-artifacts/meeting-notes"
+  NOTES_OUT="$NOTES_DIR/meeting-2026-05-07-fixture-slug.md"
   PAYLOAD="$TMPDIR_T/payload.yaml"
   cat > "$PAYLOAD" <<'YAML'
 charter: "Decide on auth refactor"
@@ -51,15 +63,15 @@ teardown() {
   [ -x "$WRITER" ]
 }
 
-@test "writes to docs/creative-artifacts/meeting-{date}-{slug}.md" {
+@test "the saved notes land in the meeting-notes artifacts directory under a date-and-slug filename" {
   run "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
   [ "$status" -eq 0 ]
-  [ -f "$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md" ]
+  [ -f "$NOTES_OUT" ]
 }
 
 @test "frontmatter contains the per-attendee and total token-cost breakdown" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
+  out="$NOTES_OUT"
   grep -qE '^cost_breakdown:' "$out"
   grep -qE '^[[:space:]]+- name: layla' "$out"
   grep -qE 'tokens: 1200' "$out"
@@ -68,31 +80,31 @@ teardown() {
 
 @test "frontmatter contains scratchpad_extractions (an empty list when absent)" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
+  out="$NOTES_OUT"
   grep -qE '^scratchpad_extractions: \[\]' "$out"
 }
 
 @test "frontmatter contains action_items with their ids" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
+  out="$NOTES_OUT"
   grep -qE 'AI-2026-05-07-1' "$out"
   grep -qE 'AI-2026-05-07-2' "$out"
 }
 
 @test "body contains all required sections in order" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
+  out="$NOTES_OUT"
 
   for section in "## Charter" "## Summary" "## Research preludes" "## Transcript" "## Decisions" "## Risks identified" "## Open questions" "## Scratchpad final state" "## Action items" "## Memory write-through"; do
     grep -qF "$section" "$out" || { echo "missing section: $section"; cat "$out"; return 1; }
   done
 }
 
-# --- E76-S4: scratchpad_extractions: payload propagation ---
+# --- scratchpad_extractions: payload propagation ---
 
 @test "scratchpad_extractions defaults to [] when the payload field is absent" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
+  out="$NOTES_OUT"
   grep -qE '^scratchpad_extractions: \[\]' "$out"
 }
 
@@ -119,11 +131,11 @@ action_items: []
 memory_writethrough:
   - alpha
 scratchpad_extractions:
-  - "docs/creative-artifacts/meeting-scratchpad/2026-05/fixture-slug/SP-1-first.md"
-  - "docs/creative-artifacts/meeting-scratchpad/2026-05/fixture-slug/SP-3-third.json"
+  - ".gaia/artifacts/creative-artifacts/meeting-scratchpad/2026-05/fixture-slug/SP-1-first.md"
+  - ".gaia/artifacts/creative-artifacts/meeting-scratchpad/2026-05/fixture-slug/SP-3-third.json"
 YAML
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD2" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
+  out="$NOTES_OUT"
   grep -qE 'SP-1-first\.md' "$out"
   grep -qE 'SP-3-third\.json' "$out"
   # The literal `scratchpad_extractions: []` line MUST NOT be present when entries exist
@@ -159,7 +171,7 @@ memory_writethrough: []
 scratchpad_extractions: []
 YAML
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD3" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
+  out="$NOTES_OUT"
   grep -q "SP-1 (extract)" "$out"
   grep -q "SP-3 (keep)" "$out"
   ! grep -qE 'SP-2 \(drop\)' "$out"

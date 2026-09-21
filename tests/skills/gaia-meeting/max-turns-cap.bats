@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
-# max-turns-cap.bats — gaia-meeting max-turns guardrail (E76-S6)
+# max-turns-cap.bats — gaia-meeting max-turns guardrail
 #
-# AC4 / FR-MTG-29 / TC-MTG-GUARD-2: default cap = 40, override via --max-turns N.
-# (cap+1)th turn rejected before emission with explanation referencing FR-MTG-29.
+# Default cap = 40, override via --max-turns N. The (cap+1)th turn is rejected
+# before emission, and the rejection explains which cap it enforced.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -21,8 +21,10 @@ setup() {
 @test "default cap is 40 — turn 41 is rejected" {
   run "$HELPER" --check --emitted-turns 41
   [ "$status" -eq 2 ]
-  [[ "$output" == *"FR-MTG-29"* ]]
+  # The rejection must name the cap it enforced and the turn that crossed it.
   [[ "$output" == *"40"* ]]
+  [[ "$output" == *"41"* ]]
+  [[ "$output" == *"REJECTED"* ]]
 }
 
 @test "--max-turns 5 override caps at 5 — turn 5 allowed" {
@@ -33,7 +35,9 @@ setup() {
 @test "--max-turns 5 override caps at 5 — turn 6 rejected" {
   run "$HELPER" --check --emitted-turns 6 --max-turns 5
   [ "$status" -eq 2 ]
-  [[ "$output" == *"FR-MTG-29"* ]]
+  # The overridden cap, not the default, is the one reported.
+  [[ "$output" == *"cap=5"* ]]
+  [[ "$output" == *"REJECTED"* ]]
 }
 
 @test "a termination event is logged on cap hit" {

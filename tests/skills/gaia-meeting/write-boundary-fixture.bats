@@ -1,17 +1,24 @@
 #!/usr/bin/env bats
-# write-boundary-fixture.bats — fixture-meeting end-to-end write-set guard (E76-S3)
-#
-# AC10 / FR-MTG-31
+# write-boundary-fixture.bats — fixture-meeting end-to-end write-set guard.
 #
 # Run a fixture meeting close+save pipeline and assert that every disk write
-# falls under one of the three allowed roots — and nothing else.
+# lands under one of the permitted roots — and nothing else. This is the
+# end-to-end counterpart to the unit-level boundary checks: it catches a writer
+# that starts emitting somewhere the guard would have refused.
+#
+# Roots are resolved through the same path helper the shipped scripts use
+# rather than restated as literals here.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPTS="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/scripts"
   TMPDIR_T="$(mktemp -d)"
   ROOT_T="$TMPDIR_T/root"
-  mkdir -p "$ROOT_T"
+  mkdir -p "$ROOT_T/.gaia"
+  load helpers/runtime-paths
+  gaia_load_runtime_paths "$REPO_ROOT" || {
+    skip "runtime path helper unavailable; cannot resolve the tree the way production does"
+  }
 }
 
 teardown() {
@@ -34,7 +41,7 @@ teardown() {
   context_for_target: "Discussion only"
   acceptance: "—"
 YAML
-  registry="$ROOT_T/docs/planning-artifacts/action-items.yaml"
+  registry="$ROOT_T/$GAIA_REL_STATE/action-items.yaml"
   mkdir -p "$(dirname "$registry")"
   "$SCRIPTS/action-items-writer.sh" --registry "$registry" --drafts "$drafts_dir/items.yaml" --source-meeting "fixture-slug" --date 2026-05-07
 
@@ -52,13 +59,13 @@ constraints:
 open_items:
   - "AI-2026-05-07-1"
 sources:
-  - "docs/planning-artifacts/architecture/01.md"
+  - "planning-artifacts/architecture/01.md"
 tags:
   - "fixture-tag"
 ---
 MD
   done
-  "$SCRIPTS/memory-writethrough.sh" --root "$ROOT_T" --drafts "$mem_drafts" --source-meeting "fixture-slug" --date 2026-05-07 --slug fixture-slug
+  PROJECT_ROOT="$ROOT_T" "$SCRIPTS/memory-writethrough.sh" --root "$ROOT_T" --drafts "$mem_drafts" --source-meeting "fixture-slug" --date 2026-05-07 --slug fixture-slug
 
   # 3) Meeting notes
   payload="$TMPDIR_T/payload.yaml"
@@ -98,9 +105,10 @@ YAML
   while IFS= read -r f; do
     rel="${f#"$ROOT_T/"}"
     case "$rel" in
-      docs/creative-artifacts/meeting-*.md) ;;
-      docs/planning-artifacts/action-items.yaml) ;;
-      _memory/*-sidecar/decisions/*.md) ;;
+      "$GAIA_REL_ARTIFACTS"/creative-artifacts/meeting-notes/meeting-*.md) ;;
+      "$GAIA_REL_ARTIFACTS"/creative-artifacts/meeting-*.md) ;;
+      "$GAIA_REL_STATE"/action-items.yaml) ;;
+      "$GAIA_REL_MEMORY"/*-sidecar/decisions/*.md) ;;
       *)
         echo "REJECTED write outside allowlist: $rel"
         return 1
@@ -110,21 +118,21 @@ YAML
 }
 
 @test "the write-boundary guard rejects the sprint-status file" {
-  run "$SCRIPTS/write-boundary.sh" "docs/planning-artifacts/sprint-status.yaml"
+  run "$SCRIPTS/write-boundary.sh" "$GAIA_REL_STATE/sprint-status.yaml"
   [ "$status" -eq 2 ]
 }
 
 @test "the write-boundary guard rejects a requirements-document path" {
-  run "$SCRIPTS/write-boundary.sh" "docs/planning-artifacts/prd/01.md"
+  run "$SCRIPTS/write-boundary.sh" "$GAIA_REL_ARTIFACTS/planning-artifacts/prd/01.md"
   [ "$status" -eq 2 ]
 }
 
 @test "the write-boundary guard rejects story files" {
-  run "$SCRIPTS/write-boundary.sh" "docs/implementation-artifacts/E1-S1.md"
+  run "$SCRIPTS/write-boundary.sh" "$GAIA_REL_ARTIFACTS/implementation-artifacts/some-story.md"
   [ "$status" -eq 2 ]
 }
 
 @test "the write-boundary guard rejects the traceability matrix" {
-  run "$SCRIPTS/write-boundary.sh" "docs/test-artifacts/strategy/traceability-matrix.md"
+  run "$SCRIPTS/write-boundary.sh" "$GAIA_REL_ARTIFACTS/test-artifacts/strategy/traceability-matrix.md"
   [ "$status" -eq 2 ]
 }

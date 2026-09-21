@@ -22,6 +22,11 @@ setup() {
   SKILL_DIR="$SKILLS_DIR/gaia-create-story"
   SKILL_FILE="$SKILL_DIR/SKILL.md"
   EDGE_CASES_SKILL="$SKILLS_DIR/edge-cases/SKILL.md"
+  # Steps 3c and 3d delegate their behaviour to these two scripts; the step
+  # bodies now point at them instead of restating the rules in prose. The
+  # scripts are where the contract actually lives, so that is what we assert.
+  APPEND_ACS="$SKILL_DIR/scripts/append-edge-case-acs.sh"
+  APPEND_TESTS="$SKILL_DIR/scripts/append-edge-case-tests.sh"
 }
 
 # Extract the body of a numbered step section by header text.
@@ -131,31 +136,68 @@ step_body() {
 
 # ---------- AC2 / TC-CSE-14: primary AC drift safety ----------
 
-@test "the criterion-append step documents the generated edge-case criterion numbering format" {
-  body="$(step_body 'Step 3c')"
-  echo "$body" | grep -qE 'AC-EC'
-  echo "$body" | grep -qiE 'Given.*when.*then'
+# Step 3c delegates the append to append-edge-case-acs.sh, so these exercise
+# the script rather than the step prose that now just points at it.
+
+# Writes a two-primary-criterion story fixture and echoes its path.
+_ac_fixture() {
+  local f="$BATS_TEST_TMPDIR/story.md"
+  cat > "$f" <<'MD'
+# Story
+
+## Acceptance Criteria
+
+- [ ] AC1: primary one
+- [ ] AC2: primary two
+
+## Tasks
+MD
+  printf '%s' "$f"
+}
+
+@test "the criterion-append step generates the edge-case criterion numbering format" {
+  f="$(_ac_fixture)"
+  run "$APPEND_ACS" --file "$f" \
+    --edge-cases '[{"id":"EC-1","scenario":"empty input","input":"nothing","expected":"warns","category":"boundary","severity":"medium"}]'
+  [ "$status" -eq 0 ]
+  grep -qE '^- \[ \] AC-EC1: Given nothing, when empty input, then warns$' "$f"
 }
 
 @test "the criterion-append step appends after the primary criteria and leaves them immutable" {
-  body="$(step_body 'Step 3c')"
-  echo "$body" | grep -qiE 'after.*last.*primary|after.*primary.*AC|append.*after'
-  echo "$body" | grep -qiE 'immutable|do not.*modify|unchanged'
+  f="$(_ac_fixture)"
+  run "$APPEND_ACS" --file "$f" \
+    --edge-cases '[{"id":"EC-1","scenario":"empty input","input":"nothing","expected":"warns","category":"boundary","severity":"medium"}]'
+  [ "$status" -eq 0 ]
+  # Primary criteria survive byte-identically.
+  grep -qE '^- \[ \] AC1: primary one$' "$f"
+  grep -qE '^- \[ \] AC2: primary two$' "$f"
+  # The generated entry lands after the last primary criterion.
+  ac2_line=$(grep -n '^- \[ \] AC2:' "$f" | head -1 | cut -d: -f1)
+  ec_line=$(grep -n '^- \[ \] AC-EC1:' "$f" | head -1 | cut -d: -f1)
+  [ -n "$ac2_line" ] && [ -n "$ec_line" ]
+  [ "$ac2_line" -lt "$ec_line" ]
 }
 
-@test "the criterion-append step aborts and warns when the primary criterion count drifts" {
-  body="$(step_body 'Step 3c')"
-  echo "$body" | grep -qiE 'count.*before.*after|primary_count|AC count'
-  echo "$body" | grep -qiE 'abort|rollback|primary_ac_count_drift'
-  echo "$body" | grep -qiE 'warning|warn|log'
+@test "the criterion-append step aborts and reverts when a primary criterion drifts" {
+  f="$(_ac_fixture)"
+  before="$(cat "$f")"
+  # The script's fault-injection hook mutates a primary criterion between the
+  # pre- and post-append hash, which is exactly the drift it must catch.
+  run env GAIA_APPEND_EC_FAULT_INJECT_MUTATE_PRIMARY=1 "$APPEND_ACS" --file "$f" \
+    --edge-cases '[{"id":"EC-1","scenario":"x","input":"i","expected":"e","category":"boundary","severity":"low"}]'
+  [[ "$output" == *"drift detected"* ]]
+  # Reverted atomically — the file is byte-identical to its pre-run state.
+  [ "$(cat "$f")" = "$before" ]
 }
 
 # ---------- AC3 / TC-CSE-15: dedup ----------
 
-@test "the test-plan append step documents the test-plan target path" {
+@test "the test-plan append step resolves its target through the planning-artifacts config key" {
   body="$(step_body 'Step 3d')"
   echo "$body" | grep -qE 'test-plan\.md'
-  echo "$body" | grep -qE 'docs/planning-artifacts'
+  # The target is resolved via the config key the rest of the framework uses,
+  # rather than a hard-coded tree literal that a future move would strand.
+  echo "$body" | grep -qE 'planning_artifacts'
 }
 
 @test "the test-plan append step warns without blocking when the test plan is missing" {
@@ -164,8 +206,31 @@ step_body() {
 }
 
 @test "the test-plan append step locates the story's section by heading match" {
-  body="$(step_body 'Step 3d')"
-  echo "$body" | grep -qiE 'heading.*match|##.*story_key|### .*story_key|locate.*section'
+  plan="$BATS_TEST_TMPDIR/test-plan.md"
+  cat > "$plan" <<'MD'
+# Test Plan
+
+## E1-S1
+
+| # | Scenario | Type | Severity | Story |
+|---|---|---|---|---|
+| TC-7 | existing row | functional | high | E1-S1 |
+
+## E1-S2
+
+| # | Scenario | Type | Severity | Story |
+|---|---|---|---|---|
+| TC-1 | other story | functional | low | E1-S2 |
+MD
+  run "$APPEND_TESTS" --test-plan "$plan" --story-key "E1-S1" \
+    --edge-cases '[{"id":"EC-1","scenario":"empty input","category":"boundary","severity":"medium"}]'
+  [ "$status" -eq 0 ]
+  # The row lands inside the matched section, not the sibling one, and its
+  # number continues that section's highest existing case.
+  new_line=$(grep -n '| TC-8 | empty input |' "$plan" | head -1 | cut -d: -f1)
+  s2_line=$(grep -n '^## E1-S2' "$plan" | head -1 | cut -d: -f1)
+  [ -n "$new_line" ] && [ -n "$s2_line" ]
+  [ "$new_line" -lt "$s2_line" ]
 }
 
 @test "the test-plan append step computes the next test-case number from the highest existing one" {
@@ -199,18 +264,10 @@ step_body() {
 }
 
 # ---------- Reference / traceability ----------
-
-@test "the edge-case analysis step cites its governing requirements" {
-  body="$(step_body 'Step 3b')"
-  echo "$body" | grep -qE 'FR-227|FR-229|NFR-042'
-}
-
-@test "the criterion-append step cites the requirement governing generated criteria" {
-  body="$(step_body 'Step 3c')"
-  echo "$body" | grep -qE 'FR-229'
-}
-
-@test "the test-plan append step cites the requirement governing test-plan rows" {
-  body="$(step_body 'Step 3d')"
-  echo "$body" | grep -qE 'FR-230'
-}
+#
+# Three cases here asserted that the Step 3b / 3c / 3d bodies cite their
+# governing requirement identifiers in the shipped prose. Published source
+# must no longer carry internal traceability identifiers, so that citation
+# practice was removed on purpose and the behaviour those cases guarded is
+# gone rather than drifted. They are deleted rather than re-pinned; the
+# behaviour each step actually performs is covered by the cases above.

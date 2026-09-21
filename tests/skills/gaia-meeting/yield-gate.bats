@@ -1,34 +1,25 @@
 #!/usr/bin/env bats
-# yield-gate.bats — gaia-meeting yield-gate helper post-AF-2026-05-10-1
+# yield-gate.bats — gaia-meeting yield-gate helper contract.
 #
-# History:
-#   E76-S9 / AF-2026-05-08-4 — yield-gate.sh emitted a canonical 3-line stdout
-#     block (phase marker + prompt + turn-terminal stdout sentinel). This file
-#     used to assert that emission contract (TC-MTG-YGATE-1, TC-MTG-YGATE-2).
-#   E76-S18 / AF-2026-05-10-1 — the stdout-sentinel emission was empirically
-#     defeated by harness Auto Mode on 2026-05-09 (memory rule
-#     `feedback_askuserquestion_under_automode.md`). The substrate-correct
-#     primitive is `AskUserQuestion` which halts the LLM turn at the harness
-#     layer. yield-gate.sh now produces ZERO stdout output and only writes
-#     the session-state side effects (`last_checkpoint_phase` and
-#     `last_yield_emitted_at`). The substrate `AskUserQuestion` tool call is
-#     emitted by the LLM in the enclosing /gaia-meeting orchestration AFTER
-#     yield-gate.sh returns (see SKILL.md §Procedure §Substrate-enforced
-#     turn-terminal yield contract).
+# yield-gate.sh is side-effect-only: it writes session state and produces ZERO
+# stdout. An earlier design had it print a turn-terminal stdout sentinel, but
+# the harness does not stop on stdout content under Auto Mode, so the
+# user-facing halt moved to the substrate AskUserQuestion primitive, which the
+# orchestrator emits AFTER this helper returns. The session-state writes stay
+# here — they are what --resume reads.
 #
-# This test file holds the post-AF-2026-05-10-1 contract for yield-gate.sh:
-#   - exits 0 on every valid phase
+# The contract asserted below:
+#   - exits 0 on every valid boundary
 #   - writes ZERO bytes to stdout
-#   - writes BOTH session-state fields (`last_checkpoint_phase`,
-#     `last_yield_emitted_at`)
-#   - rejects unknown phases / missing flags with non-zero exit
+#   - records the yield boundary in `last_yield_boundary`
+#   - records the lifecycle phase --resume re-enters at in
+#     `last_checkpoint_phase` (a separate vocabulary — see the mapping test)
+#   - records the emission time in `last_yield_emitted_at`
+#   - reports a rejected session-state write on stderr rather than swallowing it
+#   - rejects unknown boundaries / missing flags with non-zero exit
 #
-# The cross-cuts:
-#   - tests/skills/gaia-meeting/yield-gate-auq.bats — E76-S18 AC7/AC8 contract
-#   - tests/skills/gaia-meeting/gaia-meeting-stdout-sentinel-forbid.bats —
-#     E76-S15 anti-pattern check on SKILL.md
-#
-# Phase enum: post-charter, post-research, discuss-cadence, pre-close, pre-save.
+# Yield boundaries: post-charter, post-research, discuss-cadence, pre-close,
+# pre-save.
 
 bats_require_minimum_version 1.5.0
 
@@ -48,14 +39,14 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-# --- post-AF-2026-05-10-1 emission contract: ZERO stdout, side-effects-only
+# --- emission contract: ZERO stdout, side-effects-only
 
 @test "post-charter phase: zero stdout, exit 0, side-effects written" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-001" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-charter --session-id sess-test-001
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "post-charter" ]
 }
 
@@ -64,7 +55,7 @@ teardown() {
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-research --session-id sess-test-002
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "post-research" ]
 }
 
@@ -73,7 +64,7 @@ teardown() {
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase discuss-cadence --session-id sess-test-003
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "discuss-cadence" ]
 }
 
@@ -82,7 +73,7 @@ teardown() {
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-close --session-id sess-test-004
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "pre-close" ]
 }
 
@@ -91,11 +82,11 @@ teardown() {
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-save --session-id sess-test-005
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "pre-save" ]
 }
 
-# --- argument-validation contract (unchanged from E76-S9)
+# --- argument-validation contract
 
 @test "invalid phase rejects with non-zero exit and usage line" {
   run "$HELPER" --phase bogus-phase --session-id sess-x
@@ -118,17 +109,55 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-# --- side-effect ordering contract (preserved from AF-2026-05-08-4)
+# --- side-effect ordering contract
 
-@test "the checkpoint phase and last-yield timestamp are written on every invocation" {
+@test "the yield boundary and last-yield timestamp are written on every invocation" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-006" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-save --session-id sess-test-006
   [ "$status" -eq 0 ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "pre-save" ]
   iso_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_emitted_at)"
   # ISO-8601 UTC: YYYY-MM-DDTHH:MM:SSZ
   [[ "$iso_val" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
+# --- resume re-entry contract: every yield leaves a lifecycle phase behind
+
+@test "every yield boundary records the lifecycle phase resume re-enters at" {
+  # The boundary vocabulary and the lifecycle vocabulary are separate fields.
+  # A yield that records only the boundary leaves --resume with no re-entry
+  # point, which is the defect this pairing defends.
+  while read -r boundary expected_phase; do
+    session_file="$TMP/reentry-${boundary}.yaml"
+    "$SESSION_HELPER" create --file "$session_file" --session-id "sess-${boundary}" >/dev/null
+    env GAIA_MEETING_SESSION_FILE="$session_file" \
+      "$HELPER" --phase "$boundary" --session-id "sess-${boundary}"
+    got_boundary="$("$SESSION_HELPER" read --file "$session_file" --field last_yield_boundary)"
+    got_phase="$("$SESSION_HELPER" read --file "$session_file" --field last_checkpoint_phase)"
+    [ "$got_boundary" = "$boundary" ]
+    [ "$got_phase" = "$expected_phase" ]
+  done <<'EOF'
+post-charter RESEARCH
+post-research DISCUSS
+discuss-cadence DISCUSS
+pre-close CLOSE
+pre-save SAVE
+EOF
+}
+
+@test "a rejected session-state write is reported on stderr instead of passing silently" {
+  # No `create` first — the session file does not exist, so every update is
+  # rejected. The helper still exits 0 (stubbed-helper tolerance) but MUST NOT
+  # do so silently: each failure names its field on stderr.
+  run --separate-stderr env GAIA_MEETING_SESSION_FILE="$TMP/never-created.yaml" \
+    "$HELPER" --phase pre-close --session-id sess-test-008
+  [ "$status" -eq 0 ]
+  # stdout stays empty — the zero-stdout contract is unaffected by warnings.
+  [ -z "$output" ]
+  [[ "$stderr" == *"last_yield_boundary"* ]]
+  [[ "$stderr" == *"last_checkpoint_phase"* ]]
+  [[ "$stderr" == *"last_yield_emitted_at"* ]]
 }
 
 @test "the --side-effect-only flag is accepted and is a no-op against the default" {
@@ -136,7 +165,7 @@ teardown() {
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-charter --session-id sess-test-007 --side-effect-only
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "post-charter" ]
 }
 
