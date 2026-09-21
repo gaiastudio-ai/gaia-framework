@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.218.0] — 2026-09-21
+
+### Added
+
+- UX-scope detection now keys on the story's design reference rather than the legacy design-tool frontmatter block (#1817)
+- Sweep-authoritative retirement contract for design-provider surfaces, applied to the paid tree first (#1816)
+
+### Fixed
+
+- Review execution evidence now describes the run it reports on: the tier command no longer inherits the caller's project-root variables, the pass/fail tally reads the whole result stream instead of a fixed tail window, story-scoped narrowing applies to a compound command that runs the same test runner, and a summary line beginning at column zero is counted rather than silently recorded as zero (#1822)
+- Skill test files in subdirectories are no longer invisible to CI: the workflow, the coverage sentinel and the identifier gate all reach the whole tree, and a file added at any depth must be classified before it can land (#1822)
+- An epic key carrying regex metacharacters is matched literally in UX-scope detection, so a story is no longer pulled into design scope by a document that never mentions its epic (#1822)
+- A pull request that merges but fails the local checkout afterwards — the default arrangement when the base branch is checked out in another worktree — is reported as merged rather than failed, and the branch deletion the aborted run skipped is completed (#1822)
+- The selective-test matrix reaches test subdirectories: manifest entries carry a path rather than a bare name, so files sharing a name at different depths route to their own component, and an entry that does not resolve on disk fails the run instead of silently shrinking the set (#1822)
+
 ## [1.217.0] — 2026-09-14
 
 ### Added
