@@ -571,24 +571,38 @@ PROBE
   write_env_probe_script
   write_env_probe_file_config "$TEST_TMP/project-config.yaml"
 
-  # Build a PATH with no `timeout` binary on it, so the runner takes its
-  # alarm-based fallback spawn path instead of the `timeout` path.
-  local filtered_path=""
-  local dir
-  local IFS=:
-  for dir in $PATH; do
-    [ -n "$dir" ] || continue
-    [ -x "$dir/timeout" ] && continue
-    [ -x "$dir/gtimeout" ] && continue
-    if [ -n "$filtered_path" ]; then
-      filtered_path="${filtered_path}:${dir}"
-    else
-      filtered_path="$dir"
-    fi
+  # Force the alarm-based fallback spawn path by handing the runner a PATH
+  # that has every tool it needs EXCEPT a timeout binary.
+  #
+  # Deliberately a shim directory rather than filtering the real PATH: on
+  # Linux `timeout` lives in /usr/bin alongside perl, sh and the coreutils
+  # the runner and the probe both need, so dropping every directory that
+  # contains `timeout` also strips the interpreter the fallback runs on.
+  # That narrowing passes on a host where timeout sits in its own directory
+  # and fails everywhere else.
+  local shim_bin="$TEST_TMP/no-timeout-bin"
+  mkdir -p "$shim_bin"
+  local tool tool_path
+  for tool in sh bash env perl python3 jq seq awk sed grep cat printf mktemp rm mkdir \
+             dirname basename find tail head sort uniq wc date tr cut tee stat readlink sleep; do
+    tool_path="$(command -v "$tool" 2>/dev/null)" || continue
+    ln -sf "$tool_path" "$shim_bin/$tool"
   done
-  unset IFS
+  # Guard the premise: the fallback needs perl, and the path must have no
+  # timeout binary for this test to exercise what it claims to.
+  [ -x "$shim_bin/perl" ] || skip "perl not available to exercise the fallback spawn path"
+  local filtered_path="$shim_bin"
+  PATH="$filtered_path" command -v timeout >/dev/null 2>&1 && \
+    { echo "shim PATH still resolves a timeout binary"; false; }
 
+  # The runner restores PATH from BATS_SAVED_PATH (and strips BATS_LIBEXEC
+  # from it) before spawning, so under bats the shim would be replaced by the
+  # full path -- which has a timeout binary on it, and the fallback branch
+  # would never run. Clearing both makes the shim the PATH the spawn actually
+  # sees; without this the test passes whatever the fallback does.
   run --separate-stderr env \
+    -u BATS_SAVED_PATH \
+    -u BATS_LIBEXEC \
     PATH="$filtered_path" \
     GAIA_EXECUTION_CONTEXT=local \
     PROBE_OUT="${TEST_TMP}/child-env.txt" \
