@@ -15,41 +15,41 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC4 (TC-MTG-SP-2): Extract is accepted" {
+@test "extract is accepted as a disposition" {
   run "$HELPER" --check Extract
   [ "$status" -eq 0 ]
   [ "$output" = "extract" ]
 }
 
-@test "AC4: Keep is accepted" {
+@test "keep is accepted as a disposition" {
   run "$HELPER" --check Keep
   [ "$status" -eq 0 ]
   [ "$output" = "keep" ]
 }
 
-@test "AC4: Drop is accepted" {
+@test "drop is accepted as a disposition" {
   run "$HELPER" --check Drop
   [ "$status" -eq 0 ]
   [ "$output" = "drop" ]
 }
 
-@test "AC4: case-insensitive — extract / EXTRACT / Extract all map to extract" {
+@test "disposition matching is case-insensitive" {
   run "$HELPER" --check extract; [ "$output" = "extract" ]
   run "$HELPER" --check EXTRACT; [ "$output" = "extract" ]
   run "$HELPER" --check Extract; [ "$output" = "extract" ]
 }
 
-@test "AC4: an unknown disposition is REJECTED with exit 2" {
+@test "an unknown disposition is rejected with exit 2" {
   run "$HELPER" --check Maybe
   [ "$status" -eq 2 ]
 }
 
-@test "AC4: an empty disposition is REJECTED" {
+@test "an empty disposition is rejected" {
   run "$HELPER" --check ""
   [ "$status" -eq 2 ]
 }
 
-@test "AC4: --prompt prints the canonical three-option prompt" {
+@test "--prompt prints the canonical three-option prompt" {
   run "$HELPER" --prompt
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "Extract"

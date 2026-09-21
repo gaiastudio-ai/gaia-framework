@@ -18,7 +18,7 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC1: create writes a fresh session file with FR-MTG-33 defaults" {
+@test "create writes a fresh session file with the default phase and counters" {
   run "$HELPER" create --file "$SESSION" --session-id "2026-05-08-test"
   [ "$status" -eq 0 ]
   [ -f "$SESSION" ]
@@ -30,14 +30,14 @@ teardown() {
   grep -q '^cumulative_cost: 0$' "$SESSION"
 }
 
-@test "AC1: read emits each field from the session file" {
+@test "read emits a field from the session file" {
   "$HELPER" create --file "$SESSION" --session-id "2026-05-08-test" >/dev/null
   run "$HELPER" read --file "$SESSION" --field phase
   [ "$status" -eq 0 ]
   [ "$output" = "INVITE" ]
 }
 
-@test "AC1: update mutates a single field and persists the change" {
+@test "update mutates a single field and persists the change" {
   "$HELPER" create --file "$SESSION" --session-id "2026-05-08-test" >/dev/null
   run "$HELPER" update --file "$SESSION" --field phase --value "DISCUSS"
   [ "$status" -eq 0 ]
@@ -45,7 +45,7 @@ teardown() {
   [ "$output" = "DISCUSS" ]
 }
 
-@test "AC1: full-field round-trip — every FR-MTG-33 field updates and reads back" {
+@test "every session field updates and reads back in a full round-trip" {
   "$HELPER" create --file "$SESSION" --session-id "2026-05-08-test" >/dev/null
   "$HELPER" update --file "$SESSION" --field phase --value "DISCUSS"
   "$HELPER" update --file "$SESSION" --field round --value "3"
@@ -64,12 +64,12 @@ teardown() {
   [ "$("$HELPER" read --file "$SESSION" --field last_checkpoint_phase)" = "DISCUSS" ]
 }
 
-@test "AC1: read on missing file exits non-zero" {
+@test "read on a missing file exits non-zero" {
   run "$HELPER" read --file "$TMP/does-not-exist.yaml" --field phase
   [ "$status" -ne 0 ]
 }
 
-@test "AC1: create is atomic — failed write does not leave a partial file" {
+@test "create is atomic so a failed write leaves no partial file" {
   # Send create to a path whose parent directory does not exist; the helper
   # MUST exit non-zero and MUST NOT create the partial file.
   run "$HELPER" create --file "$TMP/nope/2026-05-08-test.yaml" --session-id "x"
@@ -77,7 +77,7 @@ teardown() {
   [ ! -e "$TMP/nope/2026-05-08-test.yaml" ]
 }
 
-@test "AC1: scratchpad_state and raise_hand_ledger round-trip as opaque blobs" {
+@test "scratchpad state and the raise-hand ledger round-trip as opaque blobs" {
   "$HELPER" create --file "$SESSION" --session-id "2026-05-08-test" >/dev/null
   "$HELPER" update --file "$SESSION" --field scratchpad_state --value 'SP-1=hello;SP-2=world'
   "$HELPER" update --file "$SESSION" --field raise_hand_ledger --value 'cycle1=A->C:honored'

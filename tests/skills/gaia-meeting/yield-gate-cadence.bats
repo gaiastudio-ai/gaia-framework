@@ -113,7 +113,7 @@ count_invocations() {
   grep -c '^phase=' "$PHASE_LOG" || true
 }
 
-@test "AC4: (max_turns=4, cadence=4) -> 4 invocations (zero discuss-cadence)" {
+@test "four turns at a cadence of four yield four invocations and no discuss-cadence yield" {
   run_lifecycle 4 4
   [ "$(count_invocations)" = "4" ]
   # Verify canonical ordering: post-charter -> post-research -> pre-close -> pre-save.
@@ -125,7 +125,7 @@ pre-save"
   [ "$ordered_phases" = "$expected" ]
 }
 
-@test "AC4: (max_turns=9, cadence=4) -> 6 invocations (two discuss-cadence)" {
+@test "nine turns at a cadence of four yield six invocations including two discuss-cadence yields" {
   run_lifecycle 9 4
   [ "$(count_invocations)" = "6" ]
   ordered_phases="$(sed 's/^phase=//' "$PHASE_LOG")"
@@ -138,7 +138,7 @@ pre-save"
   [ "$ordered_phases" = "$expected" ]
 }
 
-@test "AC4: (max_turns=12, cadence=3) -> 7 invocations (three discuss-cadence)" {
+@test "twelve turns at a cadence of three yield seven invocations including three discuss-cadence yields" {
   run_lifecycle 12 3
   [ "$(count_invocations)" = "7" ]
   ordered_phases="$(sed 's/^phase=//' "$PHASE_LOG")"
@@ -152,7 +152,7 @@ pre-save"
   [ "$ordered_phases" = "$expected" ]
 }
 
-@test "AC4: canonical ordering — post-charter is first, pre-save is last" {
+@test "the canonical ordering puts post-charter first and pre-save last" {
   run_lifecycle 9 4
   first_phase="$(sed 's/^phase=//' "$PHASE_LOG" | head -1)"
   last_phase="$(sed 's/^phase=//' "$PHASE_LOG" | tail -1)"
@@ -160,7 +160,7 @@ pre-save"
   [ "$last_phase" = "pre-save" ]
 }
 
-@test "AC4: cadence formula 4 + floor((N-1)/K) — verified across configurations" {
+@test "the invocation count follows the cadence formula across configurations" {
   # Re-run the three configs and assert the formula explicitly.
   for cfg in "4 4 4" "9 4 6" "12 3 7"; do
     set -- $cfg

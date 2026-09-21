@@ -13,25 +13,25 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC4: no --mode flag resolves to decide" {
+@test "no --mode flag resolves to decide" {
   run "$HELPER"
   [ "$status" -eq 0 ]
   [ "$output" = "decide" ]
 }
 
-@test "AC4: --mode decide explicit pass-through" {
+@test "--mode decide passes through explicitly" {
   run "$HELPER" --mode decide
   [ "$status" -eq 0 ]
   [ "$output" = "decide" ]
 }
 
-@test "AC4: --mode brainstorm returns brainstorm" {
+@test "--mode brainstorm returns brainstorm" {
   run "$HELPER" --mode brainstorm
   [ "$status" -eq 0 ]
   [ "$output" = "brainstorm" ]
 }
 
-@test "FR-MTG-16: mode stacking rejected (--mode decide --mode brainstorm)" {
+@test "mode stacking is rejected (--mode decide --mode brainstorm)" {
   [ -x "$HELPER" ]
   run "$HELPER" --mode decide --mode brainstorm
   [ "$status" -ne 0 ]
@@ -39,14 +39,14 @@ setup() {
   [[ "$output" == *"single"* ]] || [[ "$output" == *"stack"* ]] || [[ "$output" == *"one"* ]]
 }
 
-@test "FR-MTG-16: unknown mode rejected" {
+@test "an unknown mode is rejected" {
   [ -x "$HELPER" ]
   run "$HELPER" --mode notamode
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]
 }
 
-@test "AC4: decide mode is documented as injecting no default invitees" {
+@test "decide mode is documented as injecting no default invitees" {
   # Substrate check — SKILL.md must declare the bias
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SKILL_FILE="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/SKILL.md"

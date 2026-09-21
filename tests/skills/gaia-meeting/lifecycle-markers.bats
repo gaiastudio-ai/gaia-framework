@@ -12,7 +12,7 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC3: lifecycle-marker emits the marker for each phase" {
+@test "lifecycle-marker emits the marker for each phase" {
   for phase in INVITE CHARTER RESEARCH DISCUSS CLOSE REVIEW SAVE; do
     run "$HELPER" --phase "$phase"
     [ "$status" -eq 0 ]
@@ -20,14 +20,14 @@ setup() {
   done
 }
 
-@test "AC3: lifecycle-marker rejects unknown phases" {
+@test "lifecycle-marker rejects unknown phases" {
   [ -x "$HELPER" ]
   run "$HELPER" --phase BOGUS
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]
 }
 
-@test "AC3: SKILL.md documents all seven phases in order" {
+@test "SKILL.md documents all seven phases in order" {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SKILL_FILE="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/SKILL.md"
   [ -f "$SKILL_FILE" ]
@@ -56,7 +56,7 @@ setup() {
   [ "$review_line" -lt "$save_line" ]
 }
 
-@test "AC3: SKILL.md notes RESEARCH is a skip placeholder in S1" {
+@test "SKILL.md notes RESEARCH is a skip placeholder in the first increment" {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SKILL_FILE="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/SKILL.md"
   grep -qiE "research.*(skip|placeholder|no-op|S2)" "$SKILL_FILE"

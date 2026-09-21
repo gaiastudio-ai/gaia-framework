@@ -15,7 +15,7 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC9: emits canonical HALT line with all four required fields" {
+@test "emits a canonical HALT line with all four required fields" {
   run "$HELPER" \
     --condition CHARTER-MISSING \
     --fr FR-MTG-28 \
@@ -27,7 +27,7 @@ setup() {
   [[ "$output" == *"detail=charter not provided"* ]]
 }
 
-@test "AC9: agent field defaults to em-dash when not provided" {
+@test "agent field defaults to an em-dash when not provided" {
   run "$HELPER" \
     --condition RESEARCH-MISSING \
     --fr FR-MTG-28 \
@@ -37,7 +37,7 @@ setup() {
   [[ "$output" == *"agent=—"* ]]
 }
 
-@test "AC9: agent field carries agent-id when provided" {
+@test "agent field carries the agent-id when provided" {
   run "$HELPER" \
     --condition CITE-OR-FLAG \
     --agent theo \
@@ -47,7 +47,7 @@ setup() {
   [[ "$output" == *"agent=theo"* ]]
 }
 
-@test "AC9: WRITE-BOUNDARY-VIOLATION condition is recognized" {
+@test "the WRITE-BOUNDARY-VIOLATION condition is recognized" {
   run "$HELPER" \
     --condition WRITE-BOUNDARY-VIOLATION \
     --fr FR-MTG-31 \
@@ -57,24 +57,24 @@ setup() {
   [[ "$output" == *"fr=FR-MTG-31"* ]]
 }
 
-@test "AC9: emits a single line with no trailing turn header" {
+@test "emits a single line with no trailing turn header" {
   run "$HELPER" --condition CHARTER-MISSING --fr FR-MTG-28 --detail "x"
   [ "$status" -eq 0 ]
   line_count=$(printf '%s\n' "$output" | wc -l | tr -d ' ')
   [ "$line_count" = "1" ]
 }
 
-@test "AC9: missing --condition fails with exit 3" {
+@test "a missing --condition fails with exit 3" {
   run "$HELPER" --fr FR-MTG-28 --detail "x"
   [ "$status" -eq 3 ]
 }
 
-@test "AC9: missing --fr fails with exit 3" {
+@test "a missing --fr fails with exit 3" {
   run "$HELPER" --condition CHARTER-MISSING --detail "x"
   [ "$status" -eq 3 ]
 }
 
-@test "AC9: missing --detail fails with exit 3" {
+@test "a missing --detail fails with exit 3" {
   run "$HELPER" --condition CHARTER-MISSING --fr FR-MTG-28
   [ "$status" -eq 3 ]
 }

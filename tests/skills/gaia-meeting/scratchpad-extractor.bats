@@ -21,7 +21,7 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC5 + AC8 (TC-MTG-SP-3 + TC-MTG-SP-5): writes to deterministic path with full frontmatter" {
+@test "extraction writes to a deterministic path with full frontmatter" {
   run "$HELPER" \
     --root "$ROOT_T" \
     --date 2026-05-05 \
@@ -42,7 +42,7 @@ teardown() {
   grep -qE '^content_type: md' "$out"
 }
 
-@test "AC8: empty action_items renders as []" {
+@test "an empty action-items list renders as an empty array" {
   "$HELPER" \
     --root "$ROOT_T" \
     --date 2026-05-05 \
@@ -56,7 +56,7 @@ teardown() {
   grep -qE '^source_action_items: \[\]' "$out"
 }
 
-@test "AC7: JSON content gets .json extension and content_type: json" {
+@test "JSON content gets a .json extension and a json content type" {
   "$HELPER" \
     --root "$ROOT_T" \
     --date 2026-05-05 \
@@ -71,7 +71,7 @@ teardown() {
   grep -qE '^content_type: json' "$out"
 }
 
-@test "AC10 (TC-MTG-SP-6): replace-at-same-path — re-extract overwrites in place + advances extracted_at" {
+@test "re-extracting overwrites the same path in place and advances the extraction timestamp" {
   "$HELPER" \
     --root "$ROOT_T" \
     --date 2026-05-05 \
@@ -105,21 +105,21 @@ teardown() {
   [ "$count" = "1" ]
 }
 
-@test "AC11 (TC-MTG-SP-6): independent meetings produce distinct paths" {
+@test "independent meetings produce distinct extraction paths" {
   "$HELPER" --root "$ROOT_T" --date 2026-05-05 --slug meeting-a --sp-n SP-1 --content "x" --intent "i" --pinning-agent "a" --action-items ""
   "$HELPER" --root "$ROOT_T" --date 2026-05-05 --slug meeting-b --sp-n SP-1 --content "x" --intent "i" --pinning-agent "a" --action-items ""
   [ -f "$ROOT_T/docs/creative-artifacts/meeting-scratchpad/2026-05/meeting-a/SP-1-x.md" ]
   [ -f "$ROOT_T/docs/creative-artifacts/meeting-scratchpad/2026-05/meeting-b/SP-1-x.md" ]
 }
 
-@test "AC12: directories are created lazily (no .gitkeep placeholders)" {
+@test "directories are created lazily with no placeholder files" {
   "$HELPER" --root "$ROOT_T" --date 2026-05-05 --slug fixture --sp-n SP-1 --content "x" --intent "i" --pinning-agent "a" --action-items ""
   [ ! -f "$ROOT_T/docs/creative-artifacts/meeting-scratchpad/.gitkeep" ]
   [ ! -f "$ROOT_T/docs/creative-artifacts/meeting-scratchpad/2026-05/.gitkeep" ]
   [ ! -f "$ROOT_T/docs/creative-artifacts/meeting-scratchpad/2026-05/fixture/.gitkeep" ]
 }
 
-@test "AC12: empty-bucket pruning compatibility — find -type d -empty -delete + re-extract works" {
+@test "re-extraction works after empty directories have been pruned" {
   "$HELPER" --root "$ROOT_T" --date 2026-05-05 --slug fixture --sp-n SP-1 --content "x" --intent "i" --pinning-agent "a" --action-items ""
   rm -rf "$ROOT_T/docs/creative-artifacts/meeting-scratchpad/2026-05/fixture"
   # Now prune any empty parent
@@ -129,13 +129,13 @@ teardown() {
   [ -f "$ROOT_T/docs/creative-artifacts/meeting-scratchpad/2026-05/fixture/SP-1-x.md" ]
 }
 
-@test "AC14: emits content body after frontmatter so the file is human-readable" {
+@test "the content body is emitted after the frontmatter so the file stays human-readable" {
   "$HELPER" --root "$ROOT_T" --date 2026-05-05 --slug fixture --sp-n SP-1 --content "interesting body content" --intent "i" --pinning-agent "a" --action-items ""
   out="$ROOT_T/docs/creative-artifacts/meeting-scratchpad/2026-05/fixture/SP-1-interesting-body-content.md"
   grep -q "interesting body content" "$out"
 }
 
-@test "AC14: rejects an attempt to write outside docs/creative-artifacts/meeting-scratchpad/" {
+@test "an attempt to write outside the meeting-scratchpad directory is rejected" {
   # The extractor MUST refuse to honor a forged --root that escapes (defense-in-depth)
   run "$HELPER" --root "$ROOT_T" --date 2026-05-05 --slug "../escape" --sp-n SP-1 --content "x" --intent "i" --pinning-agent "a" --action-items ""
   [ "$status" -ne 0 ]

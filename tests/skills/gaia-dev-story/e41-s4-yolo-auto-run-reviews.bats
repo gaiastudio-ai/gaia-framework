@@ -42,38 +42,38 @@ step_body() {
   [ -f "$SKILL_FILE" ]
 }
 
-@test "Pre-flight: yolo-mode.sh helper exists (E41-S1)" {
+@test "Pre-flight: the yolo-mode helper exists and defines the yolo predicate" {
   [ -f "$HELPER_FILE" ]
   grep -q '^is_yolo()' "$HELPER_FILE"
 }
 
 # ---------- AC5: declarative yolo_steps frontmatter ----------
 
-@test "AC5: frontmatter declares yolo_steps with 15 included" {
+@test "frontmatter declares the review-recording step as yolo-automatable" {
   frontmatter | grep -qE '^yolo_steps:[[:space:]]*\[[^]]*\b15\b[^]]*\]'
 }
 
-@test "AC5: yolo_steps does NOT include 14 (FR-YOLO-2(b) hard gate)" {
+@test "frontmatter leaves the post-completion gate step out of the yolo-automatable set" {
   ! frontmatter | grep -qE '^yolo_steps:[[:space:]]*\[[^]]*\b14\b[^]]*\]'
 }
 
 # ---------- AC1: Step 16 dispatches /gaia-run-all-reviews under YOLO ----------
 
-@test "AC1: Step 16 invokes yolo-mode.sh is_yolo as the single source of truth" {
+@test "the review-dispatch step consults the yolo-mode helper as the single source of truth" {
   step_body "Step 16" | grep -qE 'yolo-mode\.sh.*is_yolo'
 }
 
-@test "AC1: Step 16 dispatches gaia-run-all-reviews on the YOLO branch" {
+@test "the review-dispatch step fires the all-reviews aggregator on the yolo branch" {
   step_body "Step 16" | grep -qiE 'gaia-run-all-reviews'
 }
 
 # ---------- AC2: non-YOLO regression preserved ----------
 
-@test "AC2: Step 16 SKIPs entirely on non-YOLO (is_yolo non-zero branch)" {
+@test "the review-dispatch step is skipped entirely outside yolo mode" {
   step_body "Step 16" | grep -qiE 'SKIP Step 16|skip.*step.*16|non-yolo branch.*skip'
 }
 
-@test "AC2: Step 15 body does NOT contain an unconditional aggregator dispatch" {
+@test "the review-recording step carries no unconditional aggregator dispatch" {
   # Step 15 body must NOT invoke /gaia-run-all-reviews unconditionally —
   # the dispatch lives behind Step 16's YOLO gate.
   ! step_body "Step 15" | grep -qE '^[[:space:]]*-[[:space:]]*Run.*gaia-run-all-reviews'
@@ -81,21 +81,21 @@ step_body() {
 
 # ---------- AC3: FAILED-verdict surfacing (ECI-503) ----------
 
-@test "AC3: Step 16 documents the ## Review Summary block" {
+@test "the review-dispatch step documents the review summary block in the final output" {
   step_body "Step 16" | grep -qE 'Review Summary'
 }
 
-@test "AC3: Step 16 documents FAILED-token surfacing (uppercase grep-friendly)" {
+@test "the review-dispatch step surfaces failed verdicts as an uppercase token" {
   step_body "Step 16" | grep -qE 'FAILED'
 }
 
-@test "AC3: Step 16 references the composite BLOCKED verdict" {
+@test "the review-dispatch step references the composite blocked verdict" {
   step_body "Step 16" | grep -qiE 'BLOCKED|composite.*verdict|review-gate-check'
 }
 
 # ---------- AC4: dispatch-failure error path ----------
 
-@test "AC4: Step 16 documents the dispatch-failure error path" {
+@test "the review-dispatch step documents the dispatch-failure fallback path" {
   # AC4 contract requires an explicit failure / error phrase that surfaces a
   # manual-fallback instruction. The existing 'Non-YOLO runs MUST NOT auto-fire
   # reviews — the user manually invokes' wording is the SKIP path, not the
@@ -105,13 +105,13 @@ step_body() {
 
 # ---------- Step 14 hard-gate preservation (FR-YOLO-2(b)) ----------
 
-@test "AC5: Step 14 Post-Completion Gate remains in the SKILL.md (hard gate)" {
+@test "the post-completion gate step remains documented as a hard gate" {
   step_body "Step 14" | grep -qE 'verify-pr-merged|Post-Completion Gate|merge commit'
 }
 
 # ---------- > [!yolo] body marker (§10.30.2 declarative convention) ----------
 
-@test "AC1/§10.30.2: Step 15 or Step 16 declares a > [!yolo] body marker" {
+@test "either review step declares the yolo body marker by convention" {
   # Either step may carry the marker; the convention says it lives in the body
   # where YOLO behavior is documented.
   {

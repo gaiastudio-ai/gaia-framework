@@ -20,7 +20,7 @@ teardown() {
   rm -rf "$TMP"
 }
 
-@test "AC4: cost-cadence.sh hash matches the E76-S7 baseline (byte-identity)" {
+@test "cost-cadence.sh hash matches the recorded baseline (byte-identity)" {
   baseline="$REPO_ROOT/_memory/checkpoints/E76-S7-baseline.sha256"
   [ -f "$baseline" ]
   cd "$REPO_ROOT"
@@ -28,7 +28,7 @@ teardown() {
   grep -v '<absent>' "$baseline" | grep -v '^#' | grep -v '^$' | shasum -a 256 -c -
 }
 
-@test "AC4: turn_counter persists across a simulated yield" {
+@test "turn_counter persists across a simulated yield" {
   "$STATE_HELPER" create --file "$SESSION" --session-id "yield-test"
   "$STATE_HELPER" update --file "$SESSION" --field turn_counter --value "12"
   "$STATE_HELPER" update --file "$SESSION" --field cadence_counter --value "12"
@@ -40,7 +40,7 @@ teardown() {
   [ "$resumed_cad" = "12" ]
 }
 
-@test "AC4 / TC-MTG-CHKPT-6: K=0 vs K=4 raise-hand inserts fire cost-checks at identical indices" {
+@test "raise-hand inserts do not shift cost-checks — none vs four fire at identical indices" {
   # Run two 30-emitted-turn sequences against cost-cadence.sh: one without
   # raise-hand inserts (K=0), one with K=4 inserts mixed in. Cost checks MUST
   # fire at emitted-turn indices 10, 20, 30 in BOTH runs.

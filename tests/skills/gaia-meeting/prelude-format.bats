@@ -12,7 +12,7 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC4: emits header line '[Prelude] {Name} ({Role}) — {tokens} tokens'" {
+@test "emits the header line '[Prelude] {Name} ({Role}) — {tokens} tokens'" {
   run "$HELPER" --name Theo --role architect --tokens 1234 \
                 --sources "docs/foo.md" \
                 --bullets "I know X about Y"
@@ -21,7 +21,7 @@ setup() {
   [ "$first_line" = "[Prelude] Theo (architect) — 1234 tokens" ]
 }
 
-@test "AC4: emits 'Sources consulted:' block, one per line" {
+@test "emits a 'Sources consulted:' block, one entry per line" {
   run "$HELPER" --name Theo --role architect --tokens 100 \
                 --sources "docs/a.md
 docs/b.md
@@ -34,7 +34,7 @@ https://example.com/x" \
   [[ "$output" == *"https://example.com/x"* ]]
 }
 
-@test "AC4: emits 'What I know:' block, one bullet per line" {
+@test "emits a 'What I know:' block, one bullet per line" {
   run "$HELPER" --name Derek --role pm --tokens 50 \
                 --sources "_memory/Derek-sidecar/decisions/d.md" \
                 --bullets "claim one
@@ -45,22 +45,22 @@ claim two"
   [[ "$output" == *"- claim two"* ]]
 }
 
-@test "AC4: rejects missing --name" {
+@test "rejects a missing --name" {
   run "$HELPER" --role architect --tokens 100 --sources "x" --bullets "y"
   [ "$status" -ne 0 ]
 }
 
-@test "AC4: rejects missing --tokens" {
+@test "rejects a missing --tokens" {
   run "$HELPER" --name Theo --role architect --sources "x" --bullets "y"
   [ "$status" -ne 0 ]
 }
 
-@test "AC4: tokens MUST be non-negative integer" {
+@test "tokens MUST be a non-negative integer" {
   run "$HELPER" --name Theo --role architect --tokens -5 --sources "x" --bullets "y"
   [ "$status" -ne 0 ]
 }
 
-@test "AC4: header order — Header, Sources, What I know" {
+@test "block order is Header, Sources, What I know" {
   run "$HELPER" --name N --role R --tokens 10 \
                 --sources "src1" --bullets "b1"
   [ "$status" -eq 0 ]

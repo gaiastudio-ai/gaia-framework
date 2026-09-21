@@ -20,7 +20,7 @@ teardown() {
   rm -rf "$TMP"
 }
 
-@test "AC6 / TC-MTG-CHKPT-7: parse-resume-flags output is identical regardless of substrate (no substrate-specific branches)" {
+@test "resume-flag parsing produces identical output on every substrate" {
   # The parser MUST NOT consult any substrate-environment variable. We verify
   # by running it under two different SUBSTRATE env values and diffing
   # output.
@@ -29,7 +29,7 @@ teardown() {
   [ "$out_a" = "$out_b" ]
 }
 
-@test "AC6 / TC-MTG-CHKPT-7: session-state round-trip is byte-identical regardless of substrate" {
+@test "a session-state round-trip is byte-identical on every substrate" {
   SESSION_A="$TMP/a.yaml"
   SESSION_B="$TMP/b.yaml"
   SUBSTRATE=agent-teams "$STATE_HELPER" create --file "$SESSION_A" --session-id "2026-05-08-test"
@@ -37,7 +37,7 @@ teardown() {
   diff "$SESSION_A" "$SESSION_B"
 }
 
-@test "AC6 / TC-MTG-CHKPT-7: cost-cadence fire indices are identical across substrates for a 30-emitted-turn run" {
+@test "cost-cadence fire indices are identical across substrates over a thirty-turn run" {
   STATE_A="$TMP/a.state"
   STATE_B="$TMP/b.state"
   fires_a=""

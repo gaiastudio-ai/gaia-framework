@@ -120,7 +120,7 @@ teardown() {
 
 # --- side-effect ordering contract (preserved from AF-2026-05-08-4)
 
-@test "AC2: session-state writes (last_checkpoint_phase + last_yield_emitted_at) fire on every invocation" {
+@test "the checkpoint phase and last-yield timestamp are written on every invocation" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-006" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-save --session-id sess-test-006
   [ "$status" -eq 0 ]
@@ -131,7 +131,7 @@ teardown() {
   [[ "$iso_val" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
-@test "AF-2026-05-10-1: --side-effect-only flag is accepted (no-op vs default)" {
+@test "the --side-effect-only flag is accepted and is a no-op against the default" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-test-007" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-charter --session-id sess-test-007 --side-effect-only
   [ "$status" -eq 0 ]
@@ -140,7 +140,7 @@ teardown() {
   [ "$phase_val" = "post-charter" ]
 }
 
-@test "AF-2026-05-10-1: yield-gate.sh source contains ZERO YIELD-STOP literal strings" {
+@test "the yield gate source contains no yield-stop literal strings" {
   count="$(grep -c 'YIELD-STOP' "$HELPER" || true)"
   [ "$count" -eq 0 ]
 }

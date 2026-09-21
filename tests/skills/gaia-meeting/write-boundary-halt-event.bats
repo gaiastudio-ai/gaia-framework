@@ -13,7 +13,7 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC8 + AC9: rejected write target emits a WRITE-BOUNDARY-VIOLATION halt event" {
+@test "a rejected write target emits a write-boundary-violation halt event" {
   run "$HELPER" "sprint-status.yaml"
   [ "$status" -ne 0 ]
   # Halt event present somewhere in stdout/stderr (combined under bats run)
@@ -21,13 +21,13 @@ setup() {
   [[ "$output" == *"FR-MTG-31"* ]]
 }
 
-@test "AC8 + AC9: rejected story-file target emits halt event with sprint detail" {
+@test "a rejected story-file target emits a halt event carrying sprint detail" {
   run "$HELPER" "docs/implementation-artifacts/E1-S1-foo.md"
   [ "$status" -ne 0 ]
   [[ "$output" == *"WRITE-BOUNDARY-VIOLATION"* ]]
 }
 
-@test "AC8 + AC9: allowed targets do NOT emit halt events" {
+@test "an allowed target emits no halt event" {
   run "$HELPER" "docs/creative-artifacts/meeting-2026-05-07.md"
   [ "$status" -eq 0 ]
   [[ "$output" != *"HALT"* ]]

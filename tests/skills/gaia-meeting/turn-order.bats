@@ -12,7 +12,7 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC5 / TC-MTG-TURN-1: round-robin matches invite order for 6 turns" {
+@test "round-robin turn order matches the invite order over six turns" {
   run "$HELPER" --invitees "P1,P2,P3" --turns 6
   [ "$status" -eq 0 ]
   expected="P1
@@ -24,7 +24,7 @@ P3"
   [ "$output" = "$expected" ]
 }
 
-@test "AC5: single invitee -> all turns same speaker" {
+@test "a single invitee speaks on every turn" {
   run "$HELPER" --invitees "P1" --turns 3
   [ "$status" -eq 0 ]
   expected="P1
@@ -33,7 +33,7 @@ P1"
   [ "$output" = "$expected" ]
 }
 
-@test "AC5: 4-invitee round of 8 turns wraps cleanly" {
+@test "a four-invitee round of eight turns wraps cleanly" {
   run "$HELPER" --invitees "A,B,C,D" --turns 8
   [ "$status" -eq 0 ]
   expected="A
@@ -47,7 +47,7 @@ D"
   [ "$output" = "$expected" ]
 }
 
-@test "AC5: empty invitee list rejected" {
+@test "an empty invitee list is rejected" {
   [ -x "$HELPER" ]
   run "$HELPER" --invitees "" --turns 3
   [ "$status" -ne 0 ]

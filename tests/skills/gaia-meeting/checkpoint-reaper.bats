@@ -19,7 +19,7 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC5: 31-day-old session file is reaped" {
+@test "a 31-day-old session file is reaped" {
   OLD="$SESSION_DIR/2026-04-01-stale.yaml"
   echo "session_id: stale" > "$OLD"
   # Backdate 31 days
@@ -29,7 +29,7 @@ teardown() {
   [ ! -e "$OLD" ]
 }
 
-@test "AC5: 29-day-old session file is retained" {
+@test "a 29-day-old session file is retained" {
   YOUNG="$SESSION_DIR/2026-04-09-fresh.yaml"
   echo "session_id: fresh" > "$YOUNG"
   touch -t "$(date -u -v-29d +%Y%m%d0000 2>/dev/null || date -u -d '29 days ago' +%Y%m%d0000)" "$YOUNG"
@@ -38,7 +38,7 @@ teardown() {
   [ -e "$YOUNG" ]
 }
 
-@test "AC5: reaper walks BOTH _memory/checkpoints/ AND _memory/meeting-sessions/" {
+@test "reaper walks BOTH _memory/checkpoints/ AND _memory/meeting-sessions/" {
   # Two old files: one under each directory. Both must be reaped by ONE reaper.
   CK="$CHECKPOINT_DIR/old-ck.json"
   SS="$SESSION_DIR/old-ss.yaml"
@@ -51,7 +51,7 @@ teardown() {
   [ ! -e "$SS" ]
 }
 
-@test "AC5: --dry-run does not delete" {
+@test "--dry-run does not delete" {
   OLD="$SESSION_DIR/2026-04-01-stale.yaml"
   echo "session_id: stale" > "$OLD"
   touch -t "$(date -u -v-31d +%Y%m%d0000 2>/dev/null || date -u -d '31 days ago' +%Y%m%d0000)" "$OLD"
@@ -61,7 +61,7 @@ teardown() {
   [[ "$output" == *"$OLD"* ]]
 }
 
-@test "AC5: 30-day-old file is at the boundary — kept (strictly > 30 days reaps)" {
+@test "a 30-day-old file is at the boundary — kept (strictly > 30 days reaps)" {
   EDGE="$SESSION_DIR/edge.yaml"
   echo "session_id: edge" > "$EDGE"
   touch -t "$(date -u -v-30d +%Y%m%d0000 2>/dev/null || date -u -d '30 days ago' +%Y%m%d0000)" "$EDGE"

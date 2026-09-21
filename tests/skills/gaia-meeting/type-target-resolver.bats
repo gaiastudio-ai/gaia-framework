@@ -12,79 +12,79 @@ setup() {
   [ -x "$HELPER" ]
 }
 
-@test "AC3: feature -> /gaia-add-feature" {
+@test "a feature item resolves to the add-feature command" {
   run "$HELPER" feature
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-add-feature" ]
 }
 
-@test "AC3: prd-edit -> /gaia-edit-prd" {
+@test "a prd-edit item resolves to the edit-prd command" {
   run "$HELPER" prd-edit
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-edit-prd" ]
 }
 
-@test "AC3: ux-edit -> /gaia-edit-ux" {
+@test "a ux-edit item resolves to the edit-ux command" {
   run "$HELPER" ux-edit
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-edit-ux" ]
 }
 
-@test "AC3: arch-edit -> /gaia-edit-arch" {
+@test "an arch-edit item resolves to the edit-arch command" {
   run "$HELPER" arch-edit
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-edit-arch" ]
 }
 
-@test "AC3: test-edit -> /gaia-edit-test-plan" {
+@test "a test-edit item resolves to the edit-test-plan command" {
   run "$HELPER" test-edit
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-edit-test-plan" ]
 }
 
-@test "AC3: new-story -> /gaia-create-story" {
+@test "a new-story item resolves to the create-story command" {
   run "$HELPER" new-story
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-create-story" ]
 }
 
-@test "AC3: sprint-correction -> /gaia-correct-course" {
+@test "a sprint-correction item resolves to the correct-course command" {
   run "$HELPER" sprint-correction
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-correct-course" ]
 }
 
-@test "AC3: sprint-plan -> /gaia-sprint-plan" {
+@test "a sprint-plan item resolves to the sprint-plan command" {
   run "$HELPER" sprint-plan
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-sprint-plan" ]
 }
 
-@test "AC3: brainstorm-followup -> /gaia-brainstorm" {
+@test "a brainstorm-followup item resolves to the brainstorm command" {
   run "$HELPER" brainstorm-followup
   [ "$status" -eq 0 ]
   [ "$output" = "/gaia-brainstorm" ]
 }
 
-@test "AC3: adr-draft -> 'no target — manual'" {
+@test "a decision-record draft resolves to no target and is handled manually" {
   run "$HELPER" adr-draft
   [ "$status" -eq 0 ]
   [ "$output" = "no target — manual" ]
 }
 
-@test "AC3: discussion-only -> 'no target — discussion-only'" {
+@test "a discussion-only item resolves to no target" {
   run "$HELPER" discussion-only
   [ "$status" -eq 0 ]
   [ "$output" = "no target — discussion-only" ]
 }
 
-@test "AC3: unknown type rejected with non-zero exit (no silent default)" {
+@test "an unknown type is rejected with a non-zero exit rather than defaulting silently" {
   run "$HELPER" some-unknown-type
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]
 }
 
-@test "AC3: empty type rejected" {
+@test "an empty type is rejected" {
   run "$HELPER" ""
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]

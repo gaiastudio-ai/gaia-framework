@@ -76,7 +76,7 @@ step_body() {
 
 # ---------- AC4 / TC-CSE-16: size:S skip ----------
 
-@test "AC4/TC-CSE-16: Step 3b documents size=S skip with skip-log line" {
+@test "the edge-case analysis step documents skipping small stories and logging the skip" {
   body="$(step_body 'Step 3b')"
   echo "$body" | grep -qiE 'size.*=.*"?S"?|SIZE.*=.*"?S"?'
   echo "$body" | grep -qE 'edge_case_skip'
@@ -84,13 +84,13 @@ step_body() {
 
 # ---------- AC1 / TC-CSE-13: edge-cases skill failure ----------
 
-@test "AC1/TC-CSE-13: Step 3b documents JIT skill invocation of gaia:edge-cases / edge-cases" {
+@test "the edge-case analysis step documents invoking the edge-cases skill just in time" {
   body="$(step_body 'Step 3b')"
   echo "$body" | grep -qiE 'edge-cases|gaia:edge-cases'
   echo "$body" | grep -qiE 'JIT|skill tool|invoke'
 }
 
-@test "AC1/TC-CSE-13: Step 3b documents failure handling -> edge_case_results=[], warning, continue" {
+@test "the edge-case analysis step degrades to an empty result set with a warning and continues" {
   body="$(step_body 'Step 3b')"
   echo "$body" | grep -qE 'edge_case_results.*=.*\[\]|edge_case_results.*=.*empty'
   echo "$body" | grep -qiE 'warning|warn|failed|reason='
@@ -99,13 +99,13 @@ step_body() {
 
 # ---------- AC5 / TC-CSE-17: token cap + truncation order ----------
 
-@test "AC5/TC-CSE-17: Step 3b documents 8K token budget cap (NFR-042)" {
+@test "the edge-case analysis step documents its token budget cap" {
   body="$(step_body 'Step 3b')"
   echo "$body" | grep -qE '8K|8000|8 ?K'
   echo "$body" | grep -qiE 'NFR-042|token budget|token.*cap'
 }
 
-@test "AC5/TC-CSE-17: Step 3b documents truncation order boundary/error/security first" {
+@test "the edge-case analysis step documents the truncation order across categories" {
   body="$(step_body 'Step 3b')"
   # Must mention all three priority groups in the documented order
   echo "$body" | grep -qiE 'boundary.*error.*security'
@@ -113,7 +113,7 @@ step_body() {
   echo "$body" | grep -qiE 'data.*integration.*environment|integration.*environment'
 }
 
-@test "AC5/TC-CSE-17: Step 3b documents edge_case_token_usage telemetry log" {
+@test "the edge-case analysis step documents its token-usage telemetry log" {
   body="$(step_body 'Step 3b')"
   echo "$body" | grep -qE 'edge_case_token_usage'
 }
@@ -131,19 +131,19 @@ step_body() {
 
 # ---------- AC2 / TC-CSE-14: primary AC drift safety ----------
 
-@test "AC2/TC-CSE-14: Step 3c documents AC-EC{N} format (FR-229)" {
+@test "the criterion-append step documents the generated edge-case criterion numbering format" {
   body="$(step_body 'Step 3c')"
   echo "$body" | grep -qE 'AC-EC'
   echo "$body" | grep -qiE 'Given.*when.*then'
 }
 
-@test "AC2/TC-CSE-14: Step 3c documents append AFTER primary ACs (immutable)" {
+@test "the criterion-append step appends after the primary criteria and leaves them immutable" {
   body="$(step_body 'Step 3c')"
   echo "$body" | grep -qiE 'after.*last.*primary|after.*primary.*AC|append.*after'
   echo "$body" | grep -qiE 'immutable|do not.*modify|unchanged'
 }
 
-@test "AC2/TC-CSE-14: Step 3c documents primary AC count drift safety check (abort + warn)" {
+@test "the criterion-append step aborts and warns when the primary criterion count drifts" {
   body="$(step_body 'Step 3c')"
   echo "$body" | grep -qiE 'count.*before.*after|primary_count|AC count'
   echo "$body" | grep -qiE 'abort|rollback|primary_ac_count_drift'
@@ -152,35 +152,35 @@ step_body() {
 
 # ---------- AC3 / TC-CSE-15: dedup ----------
 
-@test "AC3/TC-CSE-15: Step 3d documents test-plan.md target path" {
+@test "the test-plan append step documents the test-plan target path" {
   body="$(step_body 'Step 3d')"
   echo "$body" | grep -qE 'test-plan\.md'
   echo "$body" | grep -qE 'docs/planning-artifacts'
 }
 
-@test "AC3/TC-CSE-15: Step 3d documents non-blocking warn when test-plan.md missing" {
+@test "the test-plan append step warns without blocking when the test plan is missing" {
   body="$(step_body 'Step 3d')"
   echo "$body" | grep -qiE 'non.blocking|missing|not.*exist|warn'
 }
 
-@test "AC3/TC-CSE-15: Step 3d documents heading match for story_key section" {
+@test "the test-plan append step locates the story's section by heading match" {
   body="$(step_body 'Step 3d')"
   echo "$body" | grep -qiE 'heading.*match|##.*story_key|### .*story_key|locate.*section'
 }
 
-@test "AC3/TC-CSE-15: Step 3d documents next TC ID computation max+1" {
+@test "the test-plan append step computes the next test-case number from the highest existing one" {
   body="$(step_body 'Step 3d')"
   echo "$body" | grep -qiE 'TC-\{N\}|TC-\\{N\\}|TC ID|max.*\+ ?1|next.*TC'
 }
 
-@test "AC3/TC-CSE-15: Step 3d documents dedup by (story_key, scenario) pair (idempotent)" {
+@test "the test-plan append step dedups by story and scenario so a re-run is idempotent" {
   body="$(step_body 'Step 3d')"
   echo "$body" | grep -qiE 'dedup|deduplicate|skip.*exist|already.*exist'
   echo "$body" | grep -qiE 'story_key.*scenario|\(story_key, scenario\)|scenario.*pair'
   echo "$body" | grep -qiE 'idempotent|re.run'
 }
 
-@test "AC3/TC-CSE-15: Step 3d documents row format (FR-230)" {
+@test "the test-plan append step documents the appended row format" {
   body="$(step_body 'Step 3d')"
   echo "$body" | grep -qE 'TC-\{N\}'
   echo "$body" | grep -qiE 'edge.case'
@@ -189,7 +189,7 @@ step_body() {
 
 # ---------- AC6: YOLO compatibility ----------
 
-@test "AC6: Step 3b/3c/3d are non-interactive (no user prompts)" {
+@test "the three edge-case steps are non-interactive and prompt the user for nothing" {
   body3b="$(step_body 'Step 3b')"
   body3c="$(step_body 'Step 3c')"
   body3d="$(step_body 'Step 3d')"
@@ -200,17 +200,17 @@ step_body() {
 
 # ---------- Reference / traceability ----------
 
-@test "Step 3b references FR-227 or FR-229 or NFR-042" {
+@test "the edge-case analysis step cites its governing requirements" {
   body="$(step_body 'Step 3b')"
   echo "$body" | grep -qE 'FR-227|FR-229|NFR-042'
 }
 
-@test "Step 3c references FR-229 (V1 ACs append)" {
+@test "the criterion-append step cites the requirement governing generated criteria" {
   body="$(step_body 'Step 3c')"
   echo "$body" | grep -qE 'FR-229'
 }
 
-@test "Step 3d references FR-230 (V1 test-plan append)" {
+@test "the test-plan append step cites the requirement governing test-plan rows" {
   body="$(step_body 'Step 3d')"
   echo "$body" | grep -qE 'FR-230'
 }

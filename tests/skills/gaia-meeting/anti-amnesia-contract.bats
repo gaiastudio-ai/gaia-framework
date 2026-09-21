@@ -27,7 +27,7 @@ teardown() {
   rm -rf "$TMPDIR_T"
 }
 
-@test "AC8: write-through entry carries `tags` so a later load can match by tag" {
+@test "write-through entry carries `tags` so a later load can match on them" {
   drafts="$TMPDIR_T/drafts"
   mkdir -p "$drafts"
   cat > "$drafts/theo.md" <<'MD'
@@ -51,7 +51,7 @@ MD
   awk '/^tags:/{flag=1; next} /^[A-Za-z_][A-Za-z0-9_]*:/{flag=0} flag' "$out" | grep -q 'auth-refactor'
 }
 
-@test "AC8: write-through entry carries `source_meeting` for cross-meeting matching" {
+@test "write-through entry carries `source_meeting` for cross-meeting matching" {
   drafts="$TMPDIR_T/drafts"
   mkdir -p "$drafts"
   cat > "$drafts/theo.md" <<'MD'
@@ -74,6 +74,6 @@ MD
   grep -qE '^source_meeting: meeting-2026-05-07-fixture' "$out"
 }
 
-@test "AC8: gaia-meeting/SKILL.md anchors anti-amnesia to the §4.10 sidecar load contract" {
+@test "meeting SKILL.md anchors anti-amnesia to the sidecar load contract" {
   grep -qE 'FR-MTG-26|anti-amnesia' "$MEETING_SKILL"
 }

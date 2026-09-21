@@ -76,7 +76,7 @@ EOF
 
 # ---------- TC-CSF-1: depends_on / blocks survive scaffold ----------
 
-@test "TC-CSF-1: --depends-on / --blocks survive scaffold (arrays land non-empty)" {
+@test "dependency and blocking arrays survive scaffolding as non-empty lists" {
   fm="$(build_frontmatter "E99-S1" "Test story" "null" "null" \
         '["E79-S1"]' '["E79-S6", "E79-S7"]' '[]')"
   out="$TEST_TMP/out/E99-S1.md"
@@ -95,7 +95,7 @@ EOF
 
 # ---------- TC-CSF-2: origin / origin_ref survive scaffold ----------
 
-@test "TC-CSF-2: --origin / --origin-ref survive scaffold (strings land non-null)" {
+@test "origin and origin-reference strings survive scaffolding as non-null values" {
   fm="$(build_frontmatter "E99-S2" "Test story" \
         "AF-2026-05-07-3" "Work Item 4.2" '[]' '[]' '[]')"
   out="$TEST_TMP/out/E99-S2.md"
@@ -111,7 +111,7 @@ EOF
 
 # ---------- TC-CSF-3: origin: null default preserved ----------
 
-@test "TC-CSF-3: omitted --origin preserves origin: null default" {
+@test "an omitted origin leaves the null default in place" {
   fm="$(build_frontmatter "E99-S3" "Test story" "null" "null" '[]' '[]' '[]')"
   out="$TEST_TMP/out/E99-S3.md"
   run "$SCAFFOLD" --template "$TEMPLATE" --output "$out" --frontmatter "$fm"
@@ -126,7 +126,7 @@ EOF
 
 # ---------- TC-CSF-4: points integer scalar ----------
 
-@test "TC-CSF-4: points lands as integer YAML scalar (no quotes)" {
+@test "the points field lands as an unquoted integer scalar" {
   fm="$(build_frontmatter "E99-S4" "Test story" "null" "null" '[]' '[]' '[]')"
   out="$TEST_TMP/out/E99-S4.md"
   run "$SCAFFOLD" --template "$TEMPLATE" --output "$out" --frontmatter "$fm"
@@ -143,7 +143,7 @@ EOF
 
 # ---------- TC-CSF-5: idempotency (ADR-074 C3) ----------
 
-@test "TC-CSF-5: re-run scaffold on existing story is byte-identical" {
+@test "re-scaffolding an existing story produces a byte-identical file" {
   fm="$(build_frontmatter "E99-S5" "Test story" \
         "AF-2026-05-07-5" "Work Item 5" \
         '["E99-S1"]' '["E99-S2"]' '["TC-1", "TC-2"]')"
@@ -162,7 +162,7 @@ EOF
 
 # ---------- TC-CSF-6: 5-parallel-fan-out preserves all fields ----------
 
-@test "TC-CSF-6: 5-parallel-fan-out: every sibling preserves all five fields" {
+@test "five concurrent scaffolds each keep their own field values with no cross-contamination" {
   # Spawn 5 parallel scaffold invocations, each with distinct depends_on,
   # blocks, traces_to, origin, origin_ref. After all complete, every output
   # MUST contain its own slot's values (no cross-contamination, no field loss).

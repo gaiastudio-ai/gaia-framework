@@ -81,13 +81,13 @@ step_body() {
 
 # ---------- AC1 / TC-CSE-01: YOLO bypasses routing prompt ----------
 
-@test "AC1/TC-CSE-01: Step 3 documents YOLO branch that bypasses routing prompt" {
+@test "the elaboration step documents a yolo branch that bypasses the routing prompt" {
   body="$(step_body 'Step 3 -- Elaborate Story')"
   echo "$body" | grep -qiE 'YOLO_MODE|YOLO mode|yolo'
   echo "$body" | grep -qiE 'skip.*prompt|bypass.*prompt|no.*prompt|auto-select|auto.*\[a\]'
 }
 
-@test "AC1/TC-CSE-01: Step 3 YOLO branch auto-selects [a] path (subagent spawn)" {
+@test "the yolo branch auto-selects the delegate path and spawns subagents" {
   body="$(step_body 'Step 3 -- Elaborate Story')"
   # YOLO must route into the [a] subagent-spawn path
   echo "$body" | grep -qiE 'YOLO.*\[a\]|\[a\].*YOLO|YOLO.*auto.*delegate|YOLO.*subagent|YOLO.*spawn'
@@ -95,14 +95,14 @@ step_body() {
 
 # ---------- AC2 / TC-CSE-02: YOLO honors 3-attempt cap ----------
 
-@test "AC2/TC-CSE-02: Step 6 documents YOLO honors 3-attempt cap (FR-340)" {
+@test "the validation step documents that yolo still honours the three-attempt cap" {
   body="$(step_body 'Step 6')"
   echo "$body" | grep -qE 'FR-340'
   echo "$body" | grep -qiE '3.attempt|three.attempt|attempt.*cap'
   echo "$body" | grep -qiE 'YOLO.*not.*bypass|YOLO.*cap|YOLO.*MUST NOT'
 }
 
-@test "AC2/TC-CSE-02: Step 6 documents FAILED HALT with /gaia-fix-story pointer in YOLO" {
+@test "the validation step halts on a failed verdict under yolo and points at the fix-story command" {
   body="$(step_body 'Step 6')"
   echo "$body" | grep -qE '/gaia-fix-story'
   echo "$body" | grep -qiE 'YOLO.*FAILED|FAILED.*YOLO|FAILED.*HALT|HALT.*FAILED'
@@ -110,14 +110,14 @@ step_body() {
 
 # ---------- AC3 / TC-CSE-03: YOLO honors existing-status HALT gate ----------
 
-@test "AC3/TC-CSE-03: Step 1 documents existing-story-status HALT before YOLO branch" {
+@test "the story-selection step documents the existing-status halt" {
   body="$(step_body 'Step 1')"
   # The existing-status HALT must be documented in Step 1
   echo "$body" | grep -qiE 'HALT|status'
   echo "$body" | grep -qE 'in-progress|backlog|status'
 }
 
-@test "AC3/TC-CSE-03: SKILL.md documents YOLO does not bypass existing-status HALT" {
+@test "the skill states that yolo does not bypass the existing-status halt" {
   # Either Step 1 or Critical Rules section explicitly states YOLO doesn't bypass the gate
   run grep -iE 'YOLO.*not.*bypass.*HALT|YOLO.*HALT.*gate|YOLO.*existing.*status|HALT.*before.*YOLO|existing-story-status.*before.*YOLO' "$SKILL_FILE"
   [ "$status" -eq 0 ]
@@ -125,28 +125,28 @@ step_body() {
 
 # ---------- AC4 / TC-CSE-04: non-YOLO [u]/[a] prompt exact text ----------
 
-@test "AC4/TC-CSE-04: Step 3 contains exact prompt text 'How would you like to elaborate this story?'" {
+@test "the elaboration step keeps the canonical routing-prompt question verbatim" {
   grep -qE 'How would you like to elaborate this story\?' "$SKILL_FILE"
 }
 
-@test "AC4/TC-CSE-04: Step 3 [a] line includes 'Auto-delegate to PM (Derek), Architect (Theo)'" {
+@test "the delegate option names the product manager and architect verbatim" {
   body="$(step_body 'Step 3 -- Elaborate Story')"
   echo "$body" | grep -qE '\[a\].*Auto-delegate to PM \(Derek\), Architect \(Theo\)'
 }
 
-@test "AC4/TC-CSE-04: Step 3 [a] line includes 'and UX Designer (Christy)' clause for UX-scoped stories" {
+@test "the delegate option adds the ux designer clause for ux-scoped stories" {
   body="$(step_body 'Step 3 -- Elaborate Story')"
   echo "$body" | grep -qE 'and UX Designer \(Christy\)'
 }
 
-@test "AC4/TC-CSE-04: Step 3 [u] option uses 'I.ll answer' or 'answer.*questions' phrasing" {
+@test "the answer-myself option keeps its canonical phrasing" {
   body="$(step_body 'Step 3 -- Elaborate Story')"
   echo "$body" | grep -qiE "\[u\].*answer.*questions|\[u\].*I.ll.*answer"
 }
 
 # ---------- AC5: [u] path = exactly 4 questions in order ----------
 
-@test "AC5: Step 3 [u] path documents 4 questions in canonical order" {
+@test "the answer-myself path documents its four questions in canonical order" {
   body="$(step_body 'Step 3 -- Elaborate Story')"
   # Edge cases is question 1
   echo "$body" | grep -qiE 'edge case'
@@ -158,7 +158,7 @@ step_body() {
   echo "$body" | grep -qiE 'additional context'
 }
 
-@test "AC5: Step 3 [u] path explicitly numbers or lists 4 questions" {
+@test "the answer-myself path states explicitly that there are four questions" {
   body="$(step_body 'Step 3 -- Elaborate Story')"
   # Documented as a 4-question flow
   echo "$body" | grep -qiE '4.question|four.question|exactly 4|four questions|4 questions'
@@ -166,20 +166,20 @@ step_body() {
 
 # ---------- AC6: YOLO no inter-step prompt between Step 4 and Step 6 ----------
 
-@test "AC6: SKILL.md documents YOLO auto-continues post-subagent and template-output prompts" {
+@test "the skill documents that yolo auto-continues the interactive review prompts" {
   # YOLO must auto-continue any [c]/[e]/[a] or [c]/[e]/[v] interactive review prompts
   run grep -iE 'YOLO.*auto.continue|YOLO.*no.*prompt|YOLO.*skip.*prompt|YOLO.*auto-continue' "$SKILL_FILE"
   [ "$status" -eq 0 ]
 }
 
-@test "AC6: Step 6 YOLO auto-triggers Val without user prompt" {
+@test "the validation step dispatches the validator under yolo without prompting the user" {
   body="$(step_body 'Step 6')"
   echo "$body" | grep -qiE 'YOLO.*Val.*auto|YOLO.*auto.*Val|YOLO.*dispatch.*Val|YOLO.*no.*prompt|YOLO.*without.*prompt'
 }
 
 # ---------- Hard guards (Task 5) ----------
 
-@test "Hard guard: Step 1 existing-status HALT runs BEFORE YOLO branch (order)" {
+@test "the existing-status halt is documented ahead of the yolo branch" {
   step1_line=$(grep -n '^### Step 1' "$SKILL_FILE" | head -1 | cut -d: -f1)
   step3_line=$(grep -n '^### Step 3 -- Elaborate Story' "$SKILL_FILE" | head -1 | cut -d: -f1)
   [ -n "$step1_line" ] && [ -n "$step3_line" ]
@@ -187,6 +187,6 @@ step_body() {
   [ "$step1_line" -lt "$step3_line" ]
 }
 
-@test "Hard guard: FR-340 referenced in SKILL.md (3-attempt cap traceability)" {
+@test "the skill cites the requirement governing the three-attempt cap" {
   grep -qE 'FR-340' "$SKILL_FILE"
 }

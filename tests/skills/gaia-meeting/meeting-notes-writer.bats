@@ -51,13 +51,13 @@ teardown() {
   [ -x "$WRITER" ]
 }
 
-@test "AC9: writes to docs/creative-artifacts/meeting-{date}-{slug}.md" {
+@test "writes to docs/creative-artifacts/meeting-{date}-{slug}.md" {
   run "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
   [ "$status" -eq 0 ]
   [ -f "$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md" ]
 }
 
-@test "AC9: frontmatter contains per-attendee + total token-cost breakdown" {
+@test "frontmatter contains the per-attendee and total token-cost breakdown" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
   grep -qE '^cost_breakdown:' "$out"
@@ -66,20 +66,20 @@ teardown() {
   grep -qE '^total_tokens: 2000' "$out"
 }
 
-@test "AC9: frontmatter contains scratchpad_extractions: (empty list when absent)" {
+@test "frontmatter contains scratchpad_extractions (an empty list when absent)" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
   grep -qE '^scratchpad_extractions: \[\]' "$out"
 }
 
-@test "AC9: frontmatter contains action_items with IDs" {
+@test "frontmatter contains action_items with their ids" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
   grep -qE 'AI-2026-05-07-1' "$out"
   grep -qE 'AI-2026-05-07-2' "$out"
 }
 
-@test "AC9: body contains all required sections in order" {
+@test "body contains all required sections in order" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
 
@@ -90,13 +90,13 @@ teardown() {
 
 # --- E76-S4: scratchpad_extractions: payload propagation ---
 
-@test "E76-S4 AC9: scratchpad_extractions defaults to [] when payload field is absent" {
+@test "scratchpad_extractions defaults to [] when the payload field is absent" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
   out="$ROOT_T/docs/creative-artifacts/meeting-2026-05-07-fixture-slug.md"
   grep -qE '^scratchpad_extractions: \[\]' "$out"
 }
 
-@test "E76-S4 AC9: scratchpad_extractions populated from payload list, ascending SP-N order" {
+@test "scratchpad_extractions is populated from the payload list in ascending pin order" {
   PAYLOAD2="$TMPDIR_T/payload-with-extractions.yaml"
   cat > "$PAYLOAD2" <<'YAML'
 charter: "Decide on auth refactor"
@@ -130,7 +130,7 @@ YAML
   ! grep -qE '^scratchpad_extractions: \[\]' "$out"
 }
 
-@test "E76-S4 AC13: Drop disposition items are excluded from Scratchpad final state" {
+@test "Drop disposition items are excluded from the Scratchpad final state" {
   # The writer renders scratchpad_final from the payload; the orchestrator
   # is responsible for filtering Drop items out of that block before invoking
   # the writer. This test confirms the writer faithfully renders what was
