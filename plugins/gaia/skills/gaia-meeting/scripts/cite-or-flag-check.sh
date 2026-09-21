@@ -150,8 +150,13 @@ cmd_gate_draft_turn() {
   echo "HALT — unflagged-inference detected; round-robin advancement halted"
   printf '%s\n' "${violators[@]}"
   echo ""
-  echo "Re-emit the turn with a citation marker (file path, URL, or .gaia/memory/ ref)"
-  echo "or the literal [inference] token before persistence."
+  # Remediation guidance goes to stderr, where the surrounding scripts put
+  # their own. It also keeps the runtime-tree name out of a stdout-echoed
+  # string: the path-shape sweep reads any echoed `.gaia/` as a constructed
+  # path, and rewriting this sentence to satisfy it is what corrupted the
+  # message before.
+  echo "Re-emit the turn with a citation marker (file path, URL, or .gaia/memory/ ref)" >&2
+  echo "or the literal [inference] token before persistence." >&2
   exit 2
 }
 
