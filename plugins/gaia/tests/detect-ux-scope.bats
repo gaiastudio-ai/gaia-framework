@@ -539,3 +539,51 @@ EOF
   has_rule3=$(echo "$output" | jq -r '.rules_fired | index("rule3")')
   [ "$has_rule3" != "null" ] || { echo "literal bracket key did not open its epic block: $output"; false; }
 }
+
+# ---------------------------------------------------------------------------
+# Direct unit coverage for the literal word-match helper.
+#
+# The rule-level tests above exercise this helper through the detector's JSON
+# output. These call it directly so its contract is pinned independently of
+# the rules that consume it: a byte-for-byte search, with the word-boundary
+# requirement applied on both sides of every occurrence.
+#
+# The detector validates its arguments and exits at load time, so it cannot be
+# sourced. _load_literal_helper extracts the function definition verbatim from
+# the shipped script and evaluates that, so these tests run the real code.
+# ---------------------------------------------------------------------------
+
+_load_literal_helper() {
+  eval "$(sed -n '/^literal_word_in_file() {$/,/^}$/p' "$HELPER")"
+}
+
+@test "literal_word_in_file: finds a key that stands alone on the line" {
+  _load_literal_helper
+  doc="$BATS_TEST_TMPDIR/doc.md"
+  printf 'This document mentions E77 once.\n' > "$doc"
+  literal_word_in_file 'E77' "$doc" || { echo "expected a match for a standalone key"; false; }
+}
+
+@test "literal_word_in_file: a key sharing a prefix with a longer word does not match" {
+  _load_literal_helper
+  doc="$BATS_TEST_TMPDIR/doc.md"
+  printf 'This document mentions E77 only.\n' > "$doc"
+  ! literal_word_in_file 'E7' "$doc" || { echo "E7 must not match inside E77"; false; }
+}
+
+@test "literal_word_in_file: metacharacters are searched literally, not as a pattern" {
+  _load_literal_helper
+  doc="$BATS_TEST_TMPDIR/doc.md"
+  printf 'This document mentions E77 only.\n' > "$doc"
+  ! literal_word_in_file 'E.*' "$doc" || { echo "E.* must not match as a regex"; false; }
+
+  printf 'The key E.* appears verbatim here.\n' > "$doc"
+  literal_word_in_file 'E.*' "$doc" || { echo "E.* must match where it appears verbatim"; false; }
+}
+
+@test "literal_word_in_file: an empty key never matches" {
+  _load_literal_helper
+  doc="$BATS_TEST_TMPDIR/doc.md"
+  printf 'any content\n' > "$doc"
+  ! literal_word_in_file '' "$doc" || { echo "an empty key must not match"; false; }
+}
