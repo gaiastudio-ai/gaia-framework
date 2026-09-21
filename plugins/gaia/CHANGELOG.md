@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.218.0] — 2026-09-21
+
+### Added
+
+- (E121-S2) re-key UX-scope detection to the design reference (#1817)
+- (E121-S1) sweep-authoritative retirement contract, enterprise-first (#1816)
+
+### Fixed
+
+- trustworthy test evidence, CI-visible skill tests, literal epic match, merge confirmation (#1822)
+
 ## [1.217.0] — 2026-09-14
 
 ### Added
