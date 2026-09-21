@@ -1,14 +1,12 @@
 ---
 key: "E99-S3"
-title: "Implement onboarding screen"
+title: "Implement onboarding experience"
 epic: "E99"
 status: "ready-for-dev"
-figma:
-  file_key: "abc123"
-  node_id: "10:42"
+design_ref: ".gaia/state/design-record.yaml"
 ---
 
-# Story: Implement onboarding screen
+# Story: Implement onboarding experience
 
 ## User Story
 

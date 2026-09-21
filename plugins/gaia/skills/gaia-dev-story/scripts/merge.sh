@@ -92,8 +92,18 @@ if ! command -v gh >/dev/null 2>&1; then
   die "Required tool gh not found. Install it or complete merge manually."
 fi
 
+# remote_pr_state <pr_number> [extra-json-field] — ask the remote for the
+# pull request's authoritative state. Echoes the state verbatim, or UNKNOWN
+# when the query itself is unavailable (network, auth, rate limit). Used at
+# both ends of the merge call: once before it as an idempotency check, and
+# once after a failure to find out whether the merge actually happened.
+remote_pr_state() {
+  local pr="$1" extra="${2:-mergedAt}"
+  gh pr view "$pr" --json "state,${extra}" --jq '.state' 2>/dev/null || echo "UNKNOWN"
+}
+
 # Idempotency check: is PR already merged?
-pr_state=$(gh pr view "$PR_NUMBER" --json state,mergedAt --jq '.state' 2>/dev/null || echo "UNKNOWN")
+pr_state=$(remote_pr_state "$PR_NUMBER")
 if [ "$pr_state" = "MERGED" ]; then
   log "PR #${PR_NUMBER} already merged — skipping"
   echo "already_merged"
@@ -133,6 +143,51 @@ merge_output=$(eval "$MERGE_CMD" 2>&1) || {
     log "Branch protection blocked the merge. Unmet requirements:"
     printf '%s\n' "$merge_output" >&2
     log "Resolve protection requirements and retry."
+    exit 1
+  fi
+
+  # The merge command performs the remote merge FIRST and only then attempts
+  # a local branch switch. A purely local failure — most commonly the base
+  # branch being checked out in another worktree — therefore exits non-zero
+  # with the merge already done. Ask the remote which it was before calling
+  # this a failure. Runs after the conflict and protection arms: both of
+  # those describe a genuinely unmerged pull request and are more specific.
+  post_state="$(remote_pr_state "$PR_NUMBER" mergeCommit)"
+  if [ "$post_state" = "MERGED" ]; then
+    log "WARNING: the merge command failed locally but the remote reports the pull request as merged."
+    log "WARNING: local failure was: $merge_output"
+    if [ "$DELETE_BRANCH" = true ]; then
+      # The merge command aborted before its own branch-deletion step, so
+      # finish the cleanup it skipped. An already-absent branch is success.
+      head_branch="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "")"
+      if [ -n "$head_branch" ]; then
+        repo_slug="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")"
+        if [ -n "$repo_slug" ]; then
+          delete_path="repos/${repo_slug}/git/refs/heads/${head_branch}"
+        else
+          delete_path="repos/{owner}/{repo}/git/refs/heads/${head_branch}"
+        fi
+        if gh api -X DELETE "$delete_path" >/dev/null 2>&1; then
+          log "Deleted merged head branch '${head_branch}' (cleanup skipped by the merge command)."
+        else
+          log "WARNING: could not delete head branch '${head_branch}' — it may already be gone."
+        fi
+      else
+        log "WARNING: could not resolve the head branch; skipping branch cleanup."
+      fi
+    fi
+    log "PR #${PR_NUMBER} merged via ${STRATEGY}"
+    echo "merged:${STRATEGY}"
+    exit 0
+  fi
+
+  # Remote confirmation was unavailable or says the pull request is not
+  # merged. If the wording points at a worktree branch-checkout conflict,
+  # name that cause instead of the generic line.
+  if echo "$merge_output" | grep -qi 'already used by worktree'; then
+    log "The merge command could not switch the local checkout: the base branch is already checked out in another worktree."
+    log "The remote merge may well have succeeded — confirm the pull request state manually before retrying."
+    printf '%s\n' "$merge_output" >&2
     exit 1
   fi
 

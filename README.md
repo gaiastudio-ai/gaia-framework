@@ -113,8 +113,9 @@ GAIA mirrors how a high-functioning team actually ships software. Each step is a
                                               (Nate · Scrum Master)   (detailed spec)
                                                           │
                                                           ▼
-                                              /gaia-dev-story
-                                              Red ► Green ► Refactor ► validate ► PR ► merge
+                                              /gaia-run-sprint ─► /gaia-dev-story (per story)
+                                              (phase by phase,     Red ► Green ► Refactor ► validate ► PR ► merge
+                                               one worktree each)
                                                           │
                                                           ▼
                                               /gaia-review-all

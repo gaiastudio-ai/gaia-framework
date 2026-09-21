@@ -411,9 +411,8 @@ fi
 
 # ---------- Buffer + emit YAML frontmatter ----------
 #
-# Field order matches story-template.md lines 1-22 (template/version/used_by
-# header, then 15 fields). We emit `figma:` only when invoked with future
-# Figma flags; this story does not introduce them.
+# Field order matches story-template.md (template/version/used_by header,
+# then 15 fields).
 
 output="$(cat <<EOF
 ---

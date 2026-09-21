@@ -27,10 +27,13 @@
 #   2  malformed frontmatter (no closing `---`)
 #
 # Rule priority order (always emitted in this order when fired):
-#   rule1  figma: frontmatter block present
+#   rule1  design_ref: frontmatter key present
 #   rule2  UI_TERMS word-boundary match in body, with exclusion suppression
 #   rule3  Epic has UX classification in epics-and-stories.md
 #   rule4  ux-design.md exists AND mentions the story's epic key
+#
+# The epic key consumed by rules #3 and #4 is story-supplied data and is always
+# compared as a literal whole word, never interpolated into a pattern.
 
 set -euo pipefail
 
@@ -96,6 +99,41 @@ _extract_body() {
   ' "$1"
 }
 
+# Report whether a file contains the given key as a whole word.
+#
+# The key comes from story frontmatter, so it is DATA and must never reach a
+# pattern context: a key carrying `.`, `*`, `+`, `?` would widen the match, one
+# carrying an anchor or a quantifier would narrow it, and an unbalanced `[`
+# would make the matcher fail outright instead of returning a verdict. awk's
+# index() is a fixed-string search, so the key is compared byte for byte.
+#
+# The word-boundary contract is then applied explicitly: the character before
+# and after each occurrence must be a non-word character or a string edge, so a
+# short key never matches a longer one sharing its prefix.
+#
+# Usage: literal_word_in_file <key> <file>   ->  exit 0 if found, 1 otherwise
+literal_word_in_file() {
+  # `found` rather than a bare `exit 0`: in awk, exit branches to END, whose
+  # own exit status would otherwise overwrite the success code.
+  awk -v key="$1" '
+    BEGIN { n = length(key); found = 0; if (n == 0) exit 1 }
+    {
+      line = $0
+      pos = 0
+      while (1) {
+        i = index(substr(line, pos + 1), key)
+        if (i == 0) break
+        start = pos + i
+        before = (start == 1) ? "" : substr(line, start - 1, 1)
+        after = substr(line, start + n, 1)
+        if (before !~ /[A-Za-z0-9_]/ && after !~ /[A-Za-z0-9_]/) { found = 1; exit }
+        pos = start
+      }
+    }
+    END { exit (found ? 0 : 1) }
+  ' "$2"
+}
+
 # JSON-encode an array of strings via jq. Empty input -> [].
 json_array() {
   if [ "$#" -eq 0 ]; then
@@ -124,10 +162,13 @@ ux_match=false
 rules_fired=()
 excluded_by=()
 
-# ---------- Rule #1: figma: frontmatter block ----------
-# Definitive UX signal. Match a top-level `figma:` key in the frontmatter (not
-# in the body, which would let prose mentions of the word trigger a false fire).
-if printf '%s\n' "$frontmatter" | grep -qE '^figma:'; then
+# ---------- Rule #1: design_ref: frontmatter key ----------
+# Definitive UX signal. Match a top-level `design_ref:` key in the frontmatter
+# (not in the body, which would let prose mentions trigger a false fire).
+# The `^` anchor is load-bearing: without it, a `design_ref:` token inside a
+# frontmatter value (e.g. `notes: "see design_ref: for details"`) would fire
+# rule1 as a false positive.  AC-EC4 pins this anchor via a mutant test.
+if printf '%s\n' "$frontmatter" | grep -qE '^design_ref:'; then
   ux_match=true
   rules_fired+=("rule1")
 fi
@@ -185,9 +226,26 @@ EPICS_FILE="${EPICS_FILE:-${PLANNING_ARTIFACTS}/epics-and-stories.md}"
 if [ -n "$EPIC_KEY" ] && [ -r "$EPICS_FILE" ]; then
   # Look for the epic block, then check whether a `tags:` or `classification:`
   # line within ~30 lines of the epic key carries a UX-related token.
+  # The epic key is matched as a literal whole word, never as a pattern — see
+  # literal_word_in_file() above for why. has_literal_word() below is the
+  # in-awk twin of that helper and must keep the same boundary semantics.
   if awk -v key="$EPIC_KEY" '
+    function has_literal_word(line,   n, pos, i, start, before, after) {
+      n = length(key)
+      if (n == 0) return 0
+      pos = 0
+      while (1) {
+        i = index(substr(line, pos + 1), key)
+        if (i == 0) return 0
+        start = pos + i
+        before = (start == 1) ? "" : substr(line, start - 1, 1)
+        after = substr(line, start + n, 1)
+        if (before !~ /[A-Za-z0-9_]/ && after !~ /[A-Za-z0-9_]/) return 1
+        pos = start
+      }
+    }
     BEGIN { in_block = 0; lines = 0 }
-    $0 ~ "(^|[^A-Za-z0-9_])" key "([^A-Za-z0-9_]|$)" { in_block = 1; lines = 0; next }
+    has_literal_word($0) { in_block = 1; lines = 0; next }
     in_block {
       lines++
       if (tolower($0) ~ /(tags|classification):.*(^|[^A-Za-z0-9])(ux|ui|design)([^A-Za-z0-9]|$)/) { print "HIT"; exit }
@@ -202,7 +260,8 @@ fi
 # ---------- Rule #4: ux-design.md exists AND mentions epic key ----------
 UX_DESIGN_FILE="${PLANNING_ARTIFACTS}/ux-design.md"
 if [ -n "$EPIC_KEY" ] && [ -r "$UX_DESIGN_FILE" ]; then
-  if grep -qE "(^|[^A-Za-z0-9_])${EPIC_KEY}([^A-Za-z0-9_]|$)" "$UX_DESIGN_FILE"; then
+  # Literal whole-word comparison — the epic key is data, not a pattern.
+  if literal_word_in_file "$EPIC_KEY" "$UX_DESIGN_FILE"; then
     ux_match=true
     rules_fired+=("rule4")
   fi

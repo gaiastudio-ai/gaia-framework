@@ -52,6 +52,32 @@ SCRIPT_NAME="gaia-dev-story/dod-check.sh"
 
 log()  { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
+# Project-root variables that must NOT reach a spawned build / test / lint
+# command. This script needs the resolved root for its own config and
+# manifest lookups, but the commands it runs are the project's own and must
+# see the environment a clean checkout would give them. A caller that exports
+# a project root otherwise makes every suite asserting canonical-path
+# resolution read that ambient root instead of its own fixture root, turning
+# an otherwise clean tree red.
+#
+# `env -u NAME` is a no-op for an unset NAME and is portable across BSD and
+# GNU userland, so no per-variable guard is needed.
+_DOD_CLEAN_ENV_VARS="PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH CLAUDE_PLUGIN_ROOT"
+
+# Run a command string with the project-root variables cleared from the
+# child environment. Mirrors `bash -c "$cmd"` in every other respect.
+_run_clean() {
+  local cmd="$1" v
+  local prefix="env"
+  for v in $_DOD_CLEAN_ENV_VARS; do
+    prefix="$prefix -u $v"
+  done
+  # SC2086: $prefix is a fixed, locally built argv prefix of `env -u NAME`
+  # words — word splitting is intended here.
+  # shellcheck disable=SC2086
+  $prefix bash -c "$cmd"
+}
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_LIB_DIR="$(cd "$SCRIPT_DIR/../../../scripts/lib" 2>/dev/null && pwd || echo "")"
 INVARIANTS_LIB="$PLUGIN_LIB_DIR/dev-story-security-invariants.sh"
@@ -255,7 +281,8 @@ _check_tests() {
     return 0
   fi
   set +e
-  out="$(bash -c "$cmd" 2>&1)"
+  # Spawn with the project-root variables cleared (see _run_clean header).
+  out="$(_run_clean "$cmd" 2>&1)"
   rc=$?
   set -e
   if [ "$rc" -eq 0 ]; then
@@ -332,7 +359,8 @@ _check_script() {
     return 0
   fi
   set +e
-  out="$(bash -c "$cmd" 2>&1)"
+  # Spawn with the project-root variables cleared (see _run_clean header).
+  out="$(_run_clean "$cmd" 2>&1)"
   rc=$?
   set -e
   if [ "$rc" -eq 0 ]; then

@@ -1,0 +1,20 @@
+key: "E99-S1"
+title: "Happy path frontmatter generation"
+epic: "E99"
+status: backlog
+priority: "P1"
+size: "M"
+points: 5
+risk: "medium"
+sprint_id: null
+priority_flag: null
+delivered: false
+deferred_implementation: false
+manual_verification: false
+origin: null
+origin_ref: null
+depends_on: ["E99-S0", "E10-S2"]
+blocks: ["E99-S2"]
+traces_to: ["AF-2026-04-28-X", "Work Item 6.1"]
+date: "2026-09-20"
+author: "Julien Louage"

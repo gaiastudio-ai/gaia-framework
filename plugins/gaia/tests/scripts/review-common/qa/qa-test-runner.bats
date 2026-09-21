@@ -500,3 +500,394 @@ BATS
   cmd_t2="$(jq -r '.suites[1].command' "$WORKDIR/execution-evidence.json")"
   [ "$cmd_t2" = "echo narrow-lint-check" ]
 }
+
+# --- clean child environment ---------------------------------------------
+#
+# A caller session that exports project-root variables must not leak them
+# into the spawned suite: a suite asserting canonical-path resolution would
+# otherwise see the caller's ambient root instead of its own fixture root.
+
+# Helper: config whose tier_1 command writes the observed root variables to a
+# file the test can read after the run.
+write_env_probe_file_config() {
+  cat > "$1" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+memory_path: ${TEST_TMP}/_memory
+checkpoint_path: ${TEST_TMP}/_memory/checkpoints
+installed_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "${TEST_TMP}/probe-env.sh"
+    timeout_seconds: 30
+EOF
+}
+
+write_env_probe_script() {
+  cat > "${TEST_TMP}/probe-env.sh" <<'PROBE'
+#!/usr/bin/env bash
+{
+  printf 'PROJECT_ROOT=[%s]\n' "${PROJECT_ROOT:-}"
+  printf 'CLAUDE_PROJECT_ROOT=[%s]\n' "${CLAUDE_PROJECT_ROOT:-}"
+  printf 'PROJECT_PATH=[%s]\n' "${PROJECT_PATH:-}"
+  printf 'CLAUDE_PLUGIN_ROOT=[%s]\n' "${CLAUDE_PLUGIN_ROOT:-}"
+} > "$PROBE_OUT"
+exit 0
+PROBE
+  chmod +x "${TEST_TMP}/probe-env.sh"
+}
+
+@test "child environment: tier command sees empty project-root variables when the caller exports them" {
+  write_env_probe_script
+  write_env_probe_file_config "$TEST_TMP/project-config.yaml"
+
+  run --separate-stderr env \
+    GAIA_EXECUTION_CONTEXT=local \
+    PROBE_OUT="${TEST_TMP}/child-env.txt" \
+    PROJECT_ROOT=/ambient/leaked-root \
+    CLAUDE_PROJECT_ROOT=/ambient/leaked-claude-root \
+    PROJECT_PATH=/ambient/leaked-path \
+    CLAUDE_PLUGIN_ROOT=/ambient/leaked-plugin-root \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMP}/child-env.txt" ]
+
+  local observed
+  observed="$(cat "${TEST_TMP}/child-env.txt")"
+  [ "$(printf '%s\n' "$observed" | grep -c 'ambient')" -eq 0 ]
+  [[ "$observed" == *"PROJECT_ROOT=[]"* ]]
+  [[ "$observed" == *"CLAUDE_PROJECT_ROOT=[]"* ]]
+  [[ "$observed" == *"PROJECT_PATH=[]"* ]]
+  [[ "$observed" == *"CLAUDE_PLUGIN_ROOT=[]"* ]]
+}
+
+@test "child environment: the no-timeout-binary fallback also clears project-root variables" {
+  write_env_probe_script
+  write_env_probe_file_config "$TEST_TMP/project-config.yaml"
+
+  # Force the alarm-based fallback spawn path by handing the runner a PATH
+  # that has every tool it needs EXCEPT a timeout binary.
+  #
+  # Deliberately a shim directory rather than filtering the real PATH: on
+  # Linux `timeout` lives in /usr/bin alongside perl, sh and the coreutils
+  # the runner and the probe both need, so dropping every directory that
+  # contains `timeout` also strips the interpreter the fallback runs on.
+  # That narrowing passes on a host where timeout sits in its own directory
+  # and fails everywhere else.
+  local shim_bin="$TEST_TMP/no-timeout-bin"
+  mkdir -p "$shim_bin"
+  local tool tool_path
+  for tool in sh bash env perl python3 jq seq awk sed grep cat printf mktemp rm mkdir \
+             dirname basename find tail head sort uniq wc date tr cut tee stat readlink sleep; do
+    tool_path="$(command -v "$tool" 2>/dev/null)" || continue
+    ln -sf "$tool_path" "$shim_bin/$tool"
+  done
+  # Guard the premise: the fallback needs perl, and the path must have no
+  # timeout binary for this test to exercise what it claims to.
+  [ -x "$shim_bin/perl" ] || skip "perl not available to exercise the fallback spawn path"
+  local filtered_path="$shim_bin"
+  PATH="$filtered_path" command -v timeout >/dev/null 2>&1 && \
+    { echo "shim PATH still resolves a timeout binary"; false; }
+
+  # The runner restores PATH from BATS_SAVED_PATH (and strips BATS_LIBEXEC
+  # from it) before spawning, so under bats the shim would be replaced by the
+  # full path -- which has a timeout binary on it, and the fallback branch
+  # would never run. Clearing both makes the shim the PATH the spawn actually
+  # sees; without this the test passes whatever the fallback does.
+  run --separate-stderr env \
+    -u BATS_SAVED_PATH \
+    -u BATS_LIBEXEC \
+    PATH="$filtered_path" \
+    GAIA_EXECUTION_CONTEXT=local \
+    PROBE_OUT="${TEST_TMP}/child-env.txt" \
+    PROJECT_ROOT=/ambient/leaked-root \
+    CLAUDE_PROJECT_ROOT=/ambient/leaked-claude-root \
+    PROJECT_PATH=/ambient/leaked-path \
+    CLAUDE_PLUGIN_ROOT=/ambient/leaked-plugin-root \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMP}/child-env.txt" ]
+
+  local observed
+  observed="$(cat "${TEST_TMP}/child-env.txt")"
+  [ "$(printf '%s\n' "$observed" | grep -c 'ambient')" -eq 0 ]
+}
+
+# --- whole-stream case tally ----------------------------------------------
+#
+# A large suite prints thousands of result lines and then a trailing report.
+# Tallying a fixed tail window counts the report, not the results.
+
+write_long_tap_config() {
+  cat > "$1" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+memory_path: ${TEST_TMP}/_memory
+checkpoint_path: ${TEST_TMP}/_memory/checkpoints
+installed_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "${TEST_TMP}/long-tap.sh"
+    timeout_seconds: 60
+EOF
+}
+
+@test "case tally: result lines beyond a fixed tail window are still counted" {
+  # 500 passing result lines, 3 failing, then a 400-line trailing report that
+  # entirely fills any 200-line tail window.
+  cat > "${TEST_TMP}/long-tap.sh" <<'GEN'
+#!/usr/bin/env bash
+i=1
+while [ "$i" -le 500 ]; do
+  printf 'ok %d passing case\n' "$i"
+  i=$((i + 1))
+done
+j=501
+while [ "$j" -le 503 ]; do
+  printf 'not ok %d failing case\n' "$j"
+  j=$((j + 1))
+done
+k=1
+while [ "$k" -le 400 ]; do
+  printf 'coverage report line %d ................ covered\n' "$k"
+  k=$((k + 1))
+done
+exit 1
+GEN
+  chmod +x "${TEST_TMP}/long-tap.sh"
+  write_long_tap_config "$TEST_TMP/project-config.yaml"
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+
+  jq -e '.suites[0].pass_count == 500' "$WORKDIR/execution-evidence.json" >/dev/null
+  jq -e '.suites[0].fail_count == 3' "$WORKDIR/execution-evidence.json" >/dev/null
+  # Counts and exit code must tell the same story.
+  jq -e '.suites[0].exit_code != 0' "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+@test "case tally: a summary-line runner keeps reporting its own summary numbers" {
+  cat > "${TEST_TMP}/summary-runner.sh" <<'GEN'
+#!/usr/bin/env bash
+printf 'collecting ...\n'
+printf 'tests/sample.py ..........\n'
+printf '83 passed, 0 failed in 1.20s\n'
+exit 0
+GEN
+  chmod +x "${TEST_TMP}/summary-runner.sh"
+  cat > "$TEST_TMP/project-config.yaml" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "${TEST_TMP}/summary-runner.sh"
+    timeout_seconds: 30
+EOF
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+  jq -e '.suites[0].pass_count == 83' "$WORKDIR/execution-evidence.json" >/dev/null
+  jq -e '.suites[0].fail_count == 0' "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+@test "case tally: a runner emitting neither shape keeps the one-per-suite fallback" {
+  cat > "$TEST_TMP/project-config.yaml" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "printf 'PASS\\\\n'"
+    timeout_seconds: 30
+EOF
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+  jq -e '.suites[0].pass_count == 1' "$WORKDIR/execution-evidence.json" >/dev/null
+  jq -e '.suites[0].fail_count == 0' "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+# --- scoped narrowing of a compound same-runner command --------------------
+
+@test "story-scoped: a compound command that ultimately runs the same runner is narrowed" {
+  mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests" "$TEST_TMP/all-tests"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/compound.sh"
+  cat > "$TEST_TMP/tests/compound.bats" <<'BATS'
+#!/usr/bin/env bats
+BATS
+  printf '%s\n' '@test "compound works" { true; }' >> "$TEST_TMP/tests/compound.bats"
+
+  local story_file="$TEST_TMP/story-compound.md"
+  write_story_with_file_list "$story_file" "src/compound.sh"
+
+  # A cd-prefixed, env-prefixed invocation of a project runner script whose
+  # name marks it as the same runner. It would run the whole tree if executed.
+  cat > "$TEST_TMP/run-with-coverage.sh" <<'RUNNER'
+#!/usr/bin/env bash
+printf 'FULL SUITE RAN\n' > "$SENTINEL_FILE"
+bats "$@"
+RUNNER
+  chmod +x "$TEST_TMP/run-with-coverage.sh"
+
+  cat > "$TEST_TMP/project-config.yaml" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "cd ${TEST_TMP} && BATS_JOBS=2 bash ${TEST_TMP}/run-with-coverage.sh ${TEST_TMP}/all-tests"
+    timeout_seconds: 60
+EOF
+
+  run --separate-stderr env \
+    GAIA_EXECUTION_CONTEXT=local \
+    SENTINEL_FILE="${TEST_TMP}/full-suite-ran.txt" \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml" \
+      --story-file "$story_file"
+  [ "$status" -eq 0 ]
+
+  # The recorded command must name the scoped test file, not the full tree.
+  local cmd
+  cmd="$(jq -r '.suites[0].command' "$WORKDIR/execution-evidence.json")"
+  [[ "$cmd" == *"compound.bats"* ]]
+  [[ "$cmd" != *"all-tests"* ]]
+  jq -e '.suites[0].exit_code == 0' "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+@test "story-scoped: a genuinely different runner keeps its own command and is not narrowed" {
+  mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/other.sh"
+  cat > "$TEST_TMP/tests/other.bats" <<'BATS'
+#!/usr/bin/env bats
+BATS
+  printf '%s\n' '@test "other works" { true; }' >> "$TEST_TMP/tests/other.bats"
+
+  local story_file="$TEST_TMP/story-other.md"
+  write_story_with_file_list "$story_file" "src/other.sh"
+
+  cat > "$TEST_TMP/project-config.yaml" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "echo pytest tests/"
+    timeout_seconds: 30
+EOF
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml" \
+      --story-file "$story_file"
+  [ "$status" -eq 0 ]
+
+  local cmd
+  cmd="$(jq -r '.suites[0].command' "$WORKDIR/execution-evidence.json")"
+  [ "$cmd" = "echo pytest tests/" ]
+  [[ "$cmd" != *"other.bats"* ]]
+}
+
+# --- announcement matches what ran ----------------------------------------
+
+@test "story-scoped: a tier that falls back to its own command is not announced as scoped" {
+  mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/announce.sh"
+  cat > "$TEST_TMP/tests/announce.bats" <<'BATS'
+#!/usr/bin/env bats
+BATS
+  printf '%s\n' '@test "announce works" { true; }' >> "$TEST_TMP/tests/announce.bats"
+
+  local story_file="$TEST_TMP/story-announce.md"
+  write_story_with_file_list "$story_file" "src/announce.sh"
+
+  cat > "$TEST_TMP/project-config.yaml" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "echo pytest tests/"
+    timeout_seconds: 30
+EOF
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml" \
+      --story-file "$story_file"
+  [ "$status" -eq 0 ]
+
+  # No tier ran the scoped command, so no scoped announcement may appear.
+  [[ "$stderr" != *"story-scoped test execution:"* ]]
+  # The fallback must be stated instead.
+  [[ "$stderr" == *"keeps its own command"* ]] || [[ "$stderr" == *"falling back"* ]]
+}
+
+@test "story-scoped: the announced scoped command matches the command recorded as executed" {
+  mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests" "$TEST_TMP/all-tests"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/agree.sh"
+  cat > "$TEST_TMP/tests/agree.bats" <<'BATS'
+#!/usr/bin/env bats
+BATS
+  printf '%s\n' '@test "agree works" { true; }' >> "$TEST_TMP/tests/agree.bats"
+
+  local story_file="$TEST_TMP/story-agree.md"
+  write_story_with_file_list "$story_file" "src/agree.sh"
+  write_slow_full_suite_config "$TEST_TMP/project-config.yaml"
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml" \
+      --story-file "$story_file"
+  [ "$status" -eq 0 ]
+
+  local cmd announced
+  cmd="$(jq -r '.suites[0].command' "$WORKDIR/execution-evidence.json")"
+  announced="$(printf '%s\n' "$stderr" \
+    | sed -n 's/.*story-scoped test execution: //p' | tail -1)"
+  [ -n "$announced" ]
+  [ "$announced" = "$cmd" ]
+}
