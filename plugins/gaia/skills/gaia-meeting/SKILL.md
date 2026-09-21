@@ -414,8 +414,9 @@ session state to `.gaia/memory/meeting-sessions/{YYYY-MM-DD}-{slug}.yaml`. Schem
 | `scratchpad_state` | string | Latest-wins SP-N → content digest map |
 | `cumulative_cost` | integer | Running token total |
 | `last_checkpoint_at` | ISO-8601 | UTC timestamp of the most recent yield |
-| `last_checkpoint_phase` | enum | The phase the next `--resume` enters at |
-| `last_yield_emitted_at` | ISO-8601 | UTC timestamp written by `scripts/yield-gate.sh` immediately before the turn-terminal sentinel — read by `--resume` for consistency regardless of whether the LLM honoured the STOP |
+| `last_checkpoint_phase` | enum | The lifecycle phase the next `--resume` enters at — one of the seven phases above |
+| `last_yield_boundary` | enum | Which of the five yield boundaries produced the most recent checkpoint: `post-charter`, `post-research`, `discuss-cadence`, `pre-close`, `pre-save`. A separate vocabulary from `last_checkpoint_phase` — the boundary says why the meeting yielded, the phase says where it resumes |
+| `last_yield_emitted_at` | ISO-8601 | UTC timestamp written by `scripts/yield-gate.sh` at the moment of the yield — read by `--resume` for consistency regardless of how the user responded |
 
 CLI shape:
 
@@ -434,7 +435,9 @@ Parsed by `scripts/parse-resume-flags.sh` (single source of truth — no inline
 flag handling in SKILL.md):
 
 - `--resume <session-id>` — REQUIRED for the next three flags. Re-enters at
-  `last_checkpoint_phase` with all session-state fields preserved.
+  the lifecycle phase in `last_checkpoint_phase` with all session-state fields
+  preserved. `last_yield_boundary` says which yield produced that checkpoint,
+  so the re-issued prompt can name the boundary the meeting stopped at.
 - `--continue` — proceed without user input from the resume point.
 - `--interject "<text>"` — inject a user turn at the resume point, labelled
   with the resolved user name (`scripts/resolve-user-name.sh`).
@@ -479,8 +482,10 @@ DISCUSS, pre-CLOSE, pre-SAVE) are each implemented as a two-step procedure:
 
 1. **Side-effect step (script).** Exec
    `scripts/yield-gate.sh --phase <phase> --session-id <id> --side-effect-only`.
-   The helper writes `last_checkpoint_phase` and `last_yield_emitted_at`
-   via `session-state.sh update` and produces ZERO stdout output. The
+   The helper writes `last_yield_boundary`, `last_checkpoint_phase` and
+   `last_yield_emitted_at` via `session-state.sh update` and produces ZERO
+   stdout output. A session-state write the helper cannot land is reported on
+   stderr naming the field; stdout stays empty either way. The
    side-effect-only behaviour is the default; the
    explicit flag is retained so the procedure prose at every boundary
    documents the intent.
@@ -491,6 +496,22 @@ DISCUSS, pre-CLOSE, pre-SAVE) are each implemented as a two-step procedure:
    yield boundary (e.g., `Yield: post-CHARTER`); the canonical 4 explicit
    options + auto-Other [i]nterject composition is documented under
    §Interactive Checkpoint Mode → §Canonical user-prompt block.
+
+The boundary a yield fires at and the phase `--resume` re-enters at are two
+different things, recorded in two different fields. Re-entry resumes the phase
+the meeting was ABOUT to perform, not the one it just finished — resuming the
+finished phase would replay work already done:
+
+| Yield boundary | `last_yield_boundary` | `last_checkpoint_phase` (re-entry) |
+|----------------|-----------------------|------------------------------------|
+| post-CHARTER | `post-charter` | `RESEARCH` |
+| post-RESEARCH | `post-research` | `DISCUSS` |
+| every-N DISCUSS | `discuss-cadence` | `DISCUSS` |
+| pre-CLOSE | `pre-close` | `CLOSE` |
+| pre-SAVE | `pre-save` | `SAVE` |
+
+`yield-gate.sh` derives the right-hand column from the boundary it is given —
+callers pass only `--phase <boundary>`.
 
 > The substrate `AskUserQuestion` tool call ENDS the current LLM turn at
 > the harness layer. The skill MUST NOT emit any further output after the
@@ -506,9 +527,8 @@ LLM turn with zero prompt blocks emitted). A follow-up moved enforcement to a
 script-side turn-terminal stdout sentinel which also empirically failed — the harness Auto Mode does not stop on stdout content (memory
 rule `feedback_askuserquestion_under_automode.md`). The final iteration moved enforcement to the
 substrate `AskUserQuestion` primitive which halts the LLM turn at the harness
-layer regardless of Auto Mode. The `last_checkpoint_phase` and
-`last_yield_emitted_at` session-state writes from yield-gate.sh are preserved
-verbatim — the side-effect-ordering invariant still
+layer regardless of Auto Mode. The session-state writes from yield-gate.sh are
+preserved — the side-effect-ordering invariant still
 holds: the script's side-effect writes complete BEFORE the LLM emits the
 AskUserQuestion call, so `--resume` reads a consistent state regardless of
 how the user responds.
@@ -587,8 +607,8 @@ This work does not introduce a parallel cadence counter.
    (or `update` on resume), surface the one-line `--no-web` note for
    sensitive contexts, then exec
    `scripts/yield-gate.sh --phase post-charter --session-id <id> --side-effect-only`.
-   The helper writes `last_checkpoint_phase` and `last_yield_emitted_at` via
-   `session-state.sh update` and produces no stdout output.
+   The helper writes `last_yield_boundary`, `last_checkpoint_phase` and
+   `last_yield_emitted_at` and produces no stdout output.
    AFTER the helper returns, emit a substrate `AskUserQuestion` tool call
    as the final action of the current LLM turn:
 
@@ -733,8 +753,8 @@ web_search:    enabled|disabled
 After every invitee's prelude has landed AND BEFORE DISCUSS begins, persist
 session state via `scripts/session-state.sh update`, then exec
 `scripts/yield-gate.sh --phase post-research --session-id <id> --side-effect-only`.
-The helper writes `last_checkpoint_phase` and `last_yield_emitted_at` and
-produces no stdout output. AFTER the helper returns, emit a substrate
+The helper writes `last_yield_boundary`, `last_checkpoint_phase` and
+`last_yield_emitted_at` and produces no stdout output. AFTER the helper returns, emit a substrate
 `AskUserQuestion` tool call as the final action of the current LLM turn:
 
 - **header:** `Yield: post-RESEARCH`
@@ -796,8 +816,8 @@ preference, never because a reply was slow.
    (default 4, loaded by `scripts/checkpoint-cadence.sh`), persist
    `cadence_counter` via `scripts/session-state.sh update --field cadence_counter`,
    then exec `scripts/yield-gate.sh --phase discuss-cadence --session-id <id> --side-effect-only`.
-   The helper writes `last_checkpoint_phase` and `last_yield_emitted_at`
-   and produces no stdout output. AFTER the helper returns, emit a substrate
+   The helper writes `last_yield_boundary`, `last_checkpoint_phase` and
+   `last_yield_emitted_at` and produces no stdout output. AFTER the helper returns, emit a substrate
    `AskUserQuestion` tool call as the final action of the current LLM turn:
 
    - **header:** `Yield: discuss-cadence`
@@ -844,8 +864,8 @@ form.
 
 After scrubbing, exec
 `scripts/yield-gate.sh --phase pre-close --session-id <id> --side-effect-only`.
-The helper writes `last_checkpoint_phase` and `last_yield_emitted_at` and
-produces no stdout output. AFTER the helper returns, emit a substrate
+The helper writes `last_yield_boundary`, `last_checkpoint_phase` and
+`last_yield_emitted_at` and produces no stdout output. AFTER the helper returns, emit a substrate
 `AskUserQuestion` tool call as the final action of the current LLM turn:
 
 - **header:** `Yield: pre-CLOSE`
@@ -902,8 +922,8 @@ participating agents may produce K accepted entries with K ≤ N.
 state via `scripts/session-state.sh update --field phase --value SAVE`,
 then exec
 `scripts/yield-gate.sh --phase pre-save --session-id <id> --side-effect-only`.
-The helper writes `last_checkpoint_phase` and `last_yield_emitted_at` and
-produces no stdout output. AFTER the helper returns, emit a substrate
+The helper writes `last_yield_boundary`, `last_checkpoint_phase` and
+`last_yield_emitted_at` and produces no stdout output. AFTER the helper returns, emit a substrate
 `AskUserQuestion` tool call as the final action of the current LLM turn:
 
 - **header:** `Yield: pre-SAVE`

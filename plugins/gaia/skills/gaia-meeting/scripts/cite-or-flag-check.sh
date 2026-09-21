@@ -62,7 +62,11 @@ classify_line() {
   fi
   # .gaia/memory/ reference (path component, not bare word).
   # Legacy _memory/ recognition dropped — .gaia/ is the canonical tree.
-  if printf '%s' "$trimmed" | grep -Eq '(^|[[:space:]/(])\${PROJECT_ROOT/.gaia/memory/[A-Za-z0-9._/-]+'; then
+  # The pattern is a single-quoted regex literal, not a path to be rewritten:
+  # `\.gaia` is an escaped dot matching the runtime tree's own name. A bulk
+  # path substitution once rewrote it into a shell-expansion string, which
+  # made the expression invalid and silently reclassified every cited line.
+  if printf '%s' "$trimmed" | grep -Eq '(^|[[:space:]/(])\.gaia/memory/[A-Za-z0-9._/-]+'; then
     has_citation=1
   fi
   # Project-relative file path matching docs/ or gaia-framework/ or _gaia/ prefix
@@ -146,7 +150,7 @@ cmd_gate_draft_turn() {
   echo "HALT — unflagged-inference detected; round-robin advancement halted"
   printf '%s\n' "${violators[@]}"
   echo ""
-  echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/ ref)"
+  echo "Re-emit the turn with a citation marker (file path, URL, or .gaia/memory/ ref)"
   echo "or the literal [inference] token before persistence."
   exit 2
 }
