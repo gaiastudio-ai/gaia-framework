@@ -34,29 +34,14 @@ set -euo pipefail
 # level: the directories reaped below are composed from the caller's --root,
 # and with PROJECT_ROOT unset the helper walks up from CWD and resolves some
 # unrelated ancestor as the root — the reaper would then walk a tree the
-# caller never named. Sourcing it in a subshell pinned to a sentinel root
-# suppresses the walk-up; stripping that root back off leaves just the
-# segment, which is composed onto --root below.
-_gaia_memory_segment() {
-  local lib _sentinel
-  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gaia-paths.sh"
-  [ -r "$lib" ] || return 1
-  _sentinel="/gaia-path-segment-probe"
-  (
-    # shellcheck disable=SC2030,SC2034  # the subshell is the point: the probe
-    # root must not escape into the caller's environment, and the assignment is
-    # read by the helper sourced on the next line, not by this script.
-    PROJECT_ROOT="$_sentinel"
-    _GAIA_PATHS_LOADED=""
-    # shellcheck source=./gaia-paths.sh
-    # shellcheck disable=SC1091  # resolved at runtime from this directory.
-    . "$lib" >/dev/null 2>&1 || exit 1
-    [ -n "${GAIA_MEMORY_DIR:-}" ] || exit 1
-    printf '%s' "${GAIA_MEMORY_DIR#"$_GAIA_ROOT_CANON"/}"
-  )
-}
+# caller never named. The segment library yields the segment alone, which is
+# composed onto --root below, leaving this script's root resolution untouched.
+# shellcheck source=./gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from this directory.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gaia-tree-segments.sh"
 
-MEMORY_SEGMENT="$(_gaia_memory_segment || true)"
+MEMORY_SEGMENT=""
+{ IFS= read -r _; IFS= read -r MEMORY_SEGMENT; } < <(gaia_tree_segments || true)
 if [[ -z "$MEMORY_SEGMENT" ]]; then
   echo "checkpoint-reaper.sh: could not resolve the memory tree via the shared paths helper" >&2
   exit 3

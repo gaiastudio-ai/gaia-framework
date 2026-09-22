@@ -50,37 +50,18 @@ export LC_ALL=C
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
-# Runtime-tree segments, resolved through the shared paths helper rather than
-# spelled out here, so a move of the tree is picked up automatically.
-#
-# The helper is sourced in a subshell pinned to a sentinel root: both paths
-# built below are project-relative when PROJECT_ROOT is unset, and the
-# helper's walk-up from CWD would otherwise resolve some unrelated ancestor as
-# the root and point them at the wrong tree. Pinning the root suppresses the
-# walk-up; stripping it back off leaves just the tree segments.
-_gaia_tree_segments() {
-  local lib _sentinel
-  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-paths.sh"
-  [ -r "$lib" ] || return 1
-  _sentinel="/gaia-path-segment-probe"
-  (
-    # shellcheck disable=SC2030  # the subshell is the point: the probe root must
-    # not escape into the caller's environment.
-    PROJECT_ROOT="$_sentinel"
-    _GAIA_PATHS_LOADED=""
-    # shellcheck source=../../../scripts/lib/gaia-paths.sh
-    # shellcheck disable=SC1091  # resolved at runtime from the plugin root.
-    . "$lib" >/dev/null 2>&1 || exit 1
-    [ -n "${GAIA_ARTIFACTS_DIR:-}" ] && [ -n "${GAIA_MEMORY_DIR:-}" ] || exit 1
-    printf '%s\n%s\n' \
-      "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}" \
-      "${GAIA_MEMORY_DIR#"$_GAIA_ROOT_CANON"/}"
-  )
-}
+# Runtime-tree segments, resolved through the shared segment library rather
+# than spelled out here, so a move of the tree is picked up automatically.
+# Both paths built below are project-relative when PROJECT_ROOT is unset, so
+# the segment alone is what this script needs; the library keeps its own root
+# resolution out of the way.
+# shellcheck source=../../../scripts/lib/gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-tree-segments.sh"
 
 ARTIFACTS_SEGMENT=""
 MEMORY_SEGMENT=""
-{ IFS= read -r ARTIFACTS_SEGMENT; IFS= read -r MEMORY_SEGMENT; } < <(_gaia_tree_segments || true)
+{ IFS= read -r ARTIFACTS_SEGMENT; IFS= read -r MEMORY_SEGMENT; } < <(gaia_tree_segments || true)
 if [[ -z "$ARTIFACTS_SEGMENT" || -z "$MEMORY_SEGMENT" ]]; then
   echo "dispatch-agent-turn.sh: could not resolve the runtime tree via the shared paths helper" >&2
   exit 3

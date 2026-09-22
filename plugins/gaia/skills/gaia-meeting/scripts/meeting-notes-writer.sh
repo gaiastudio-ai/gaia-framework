@@ -44,38 +44,18 @@ set -euo pipefail
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
-# Runtime-tree segments, resolved through the shared paths helper rather than
-# spelled out here, so a move of the tree is picked up automatically.
-#
-# The helper is sourced in a subshell pinned to a sentinel root. Two reasons:
-# the notes path is composed from the caller's --root (not from PROJECT_ROOT),
-# and the write-through listing is project-relative when PROJECT_ROOT is unset.
-# Letting the helper walk up from CWD would resolve some unrelated ancestor as
-# the root in both cases. Pinning the root suppresses the walk-up; stripping it
-# back off leaves just the tree segments.
-_gaia_tree_segments() {
-  local lib _sentinel
-  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-paths.sh"
-  [ -r "$lib" ] || return 1
-  _sentinel="/gaia-path-segment-probe"
-  (
-    # shellcheck disable=SC2030  # the subshell is the point: the probe root must
-    # not escape into the caller's environment.
-    PROJECT_ROOT="$_sentinel"
-    _GAIA_PATHS_LOADED=""
-    # shellcheck source=../../../scripts/lib/gaia-paths.sh
-    # shellcheck disable=SC1091  # resolved at runtime from the plugin root.
-    . "$lib" >/dev/null 2>&1 || exit 1
-    [ -n "${GAIA_ARTIFACTS_DIR:-}" ] && [ -n "${GAIA_MEMORY_DIR:-}" ] || exit 1
-    printf '%s\n%s\n' \
-      "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}" \
-      "${GAIA_MEMORY_DIR#"$_GAIA_ROOT_CANON"/}"
-  )
-}
+# Runtime-tree segments, resolved through the shared segment library rather
+# than spelled out here, so a move of the tree is picked up automatically.
+# Two reasons the segment alone is what this script wants: the notes path is
+# composed from the caller's --root (not from PROJECT_ROOT), and the
+# write-through listing is project-relative when PROJECT_ROOT is unset.
+# shellcheck source=../../../scripts/lib/gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-tree-segments.sh"
 
 ARTIFACTS_SEGMENT=""
 MEMORY_SEGMENT=""
-{ IFS= read -r ARTIFACTS_SEGMENT; IFS= read -r MEMORY_SEGMENT; } < <(_gaia_tree_segments || true)
+{ IFS= read -r ARTIFACTS_SEGMENT; IFS= read -r MEMORY_SEGMENT; } < <(gaia_tree_segments || true)
 if [[ -z "$ARTIFACTS_SEGMENT" || -z "$MEMORY_SEGMENT" ]]; then
   echo "meeting-notes-writer.sh: could not resolve the runtime tree via the shared paths helper" >&2
   exit 3

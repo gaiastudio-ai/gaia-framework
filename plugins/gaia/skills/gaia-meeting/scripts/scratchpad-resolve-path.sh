@@ -35,33 +35,17 @@ export LC_ALL
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
-# Artifacts-tree segment, resolved through the shared paths helper rather than
-# spelled out here, so a move of the runtime tree is picked up automatically.
-#
-# The helper is sourced in a subshell pinned to a sentinel root: this resolver
-# emits a PROJECT-RELATIVE path when PROJECT_ROOT is unset (callers prefix
-# their own root), and the helper's walk-up would otherwise resolve some
-# unrelated ancestor as the root and turn the output absolute. Pinning the root
-# suppresses the walk-up; stripping it back off leaves just the tree segment.
-_gaia_artifacts_segment() {
-  local lib _sentinel
-  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-paths.sh"
-  [ -r "$lib" ] || return 1
-  _sentinel="/gaia-path-segment-probe"
-  (
-    # shellcheck disable=SC2030  # the subshell is the point: the probe root must
-    # not escape into the caller's environment.
-    PROJECT_ROOT="$_sentinel"
-    _GAIA_PATHS_LOADED=""
-    # shellcheck source=../../../scripts/lib/gaia-paths.sh
-    # shellcheck disable=SC1091  # resolved at runtime from the plugin root.
-    . "$lib" >/dev/null 2>&1 || exit 1
-    [ -n "${GAIA_ARTIFACTS_DIR:-}" ] || exit 1
-    printf '%s' "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}"
-  )
-}
+# Artifacts-tree segment, resolved through the shared segment library rather
+# than spelled out here, so a move of the runtime tree is picked up
+# automatically. This resolver emits a PROJECT-RELATIVE path when PROJECT_ROOT
+# is unset (callers prefix their own root), so the segment alone is what it
+# needs.
+# shellcheck source=../../../scripts/lib/gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-tree-segments.sh"
 
-ARTIFACTS_SEGMENT="$(_gaia_artifacts_segment || true)"
+ARTIFACTS_SEGMENT=""
+{ IFS= read -r ARTIFACTS_SEGMENT; } < <(gaia_tree_segments || true)
 if [ -z "$ARTIFACTS_SEGMENT" ]; then
   echo "scratchpad-resolve-path.sh: could not resolve the artifacts tree via the shared paths helper" >&2
   exit 3
