@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
-# memory-writethrough.bats — gaia-meeting per-agent memory write-through (E76-S3)
+# memory-writethrough.bats — gaia-meeting per-agent memory write-through
 #
-# AC6 / AC7 / FR-MTG-24 / FR-MTG-25 / TC-MTG-MEM-1 / TC-MTG-MEM-2 / TC-MTG-MEM-3
+# Covers one sidecar decision file per accepted agent, its frontmatter, and the
+# four mandatory body sections.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -9,6 +10,23 @@ setup() {
   TMPDIR_T="$(mktemp -d)"
   ROOT_T="$TMPDIR_T/root"
   mkdir -p "$ROOT_T"
+
+  # The writer resolves its sidecar tree from PROJECT_ROOT (it takes --root for
+  # argument-shape compatibility but does not use it for the output location),
+  # so the fixture must set PROJECT_ROOT or the writer lands files relative to
+  # the current working directory. Export it, then ask the shared paths helper
+  # for the memory tree rather than writing a second path literal here.
+  export PROJECT_ROOT="$ROOT_T"
+  MEMORY_DIR="$(
+    _GAIA_PATHS_LOADED="" \
+    bash -c '. "$1/plugins/gaia/scripts/lib/gaia-paths.sh" >/dev/null 2>&1;
+             printf "%s" "$GAIA_MEMORY_DIR"' _ "$REPO_ROOT"
+  )"
+}
+
+# _sidecar_decision — the decision file the writer produces for one agent.
+_sidecar_decision() {
+  printf '%s/%s-sidecar/decisions/2026-05-07-fixture-slug.md\n' "$MEMORY_DIR" "$1"
 }
 
 teardown() {
@@ -44,27 +62,27 @@ MD
   echo "$dir"
 }
 
-@test "AC6: writes exactly one file per accepted agent at canonical path" {
+@test "writes exactly one file per accepted agent at the canonical path" {
   drafts=$(_seed_drafts layla derek sable)
   run "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
   [ "$status" -eq 0 ]
-  [ -f "$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md" ]
-  [ -f "$ROOT_T/_memory/derek-sidecar/decisions/2026-05-07-fixture-slug.md" ]
-  [ -f "$ROOT_T/_memory/sable-sidecar/decisions/2026-05-07-fixture-slug.md" ]
+  [ -f "$(_sidecar_decision layla)" ]
+  [ -f "$(_sidecar_decision derek)" ]
+  [ -f "$(_sidecar_decision sable)" ]
 }
 
-@test "AC6: zero files written for dropped agents (K of N)" {
+@test "zero files are written for dropped agents" {
   # Simulate K=3 of N=4 — Theo dropped (no draft file)
   drafts=$(_seed_drafts layla derek sable)
   run "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
   [ "$status" -eq 0 ]
-  [ ! -d "$ROOT_T/_memory/theo-sidecar" ]
+  [ ! -d "$MEMORY_DIR/theo-sidecar" ]
 }
 
-@test "AC6: each file frontmatter contains agent, date, source_meeting, type: decision, tags" {
+@test "each file frontmatter contains agent, date, source_meeting, type: decision, tags" {
   drafts=$(_seed_drafts layla)
   "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md"
+  out="$(_sidecar_decision layla)"
   grep -qE '^agent: layla' "$out"
   grep -qE '^date: 2026-05-07' "$out"
   grep -qE '^source_meeting: meeting-2026-05-07-fixture-slug' "$out"
@@ -72,10 +90,10 @@ MD
   grep -qE '^tags:' "$out"
 }
 
-@test "AC7: body has four mandatory H2 sections in fixed order" {
+@test "body has the four mandatory H2 sections in fixed order" {
   drafts=$(_seed_drafts layla)
   "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md"
+  out="$(_sidecar_decision layla)"
 
   h1=$(grep -n "^## What I decided / agreed to in this meeting" "$out" | head -1 | cut -d: -f1)
   h2=$(grep -n "^## Constraints I committed to" "$out" | head -1 | cut -d: -f1)
@@ -88,18 +106,18 @@ MD
   [ "$h3" -lt "$h4" ]
 }
 
-@test "AC7: Open items section lists action item IDs from draft" {
+@test "the Open items section lists the action-item ids from the draft" {
   drafts=$(_seed_drafts layla)
   "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md"
+  out="$(_sidecar_decision layla)"
   # Body Open items section must list AI-2026-05-07-2
   awk '/^## Open items I'\''m tracking/{flag=1; next} /^## /{flag=0} flag' "$out" | grep -q 'AI-2026-05-07-2'
 }
 
-@test "AC7: only the four mandatory H2 sections appear" {
+@test "only the four mandatory H2 sections appear" {
   drafts=$(_seed_drafts layla)
   "$WRITER" --root "$ROOT_T" --drafts "$drafts" --source-meeting "meeting-2026-05-07-fixture-slug" --date 2026-05-07 --slug fixture-slug
-  out="$ROOT_T/_memory/layla-sidecar/decisions/2026-05-07-fixture-slug.md"
+  out="$(_sidecar_decision layla)"
   count=$(grep -c '^## ' "$out")
   [ "$count" -eq 4 ]
 }

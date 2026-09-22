@@ -30,27 +30,27 @@ setup() {
   [ -f "$SKILL_MD" ]
 }
 
-@test "AC3: post-charter boundary execs yield-gate.sh" {
+@test "the post-charter boundary runs the yield gate" {
   grep -q 'yield-gate.sh --phase post-charter' "$SKILL_MD"
 }
 
-@test "AC3: post-research boundary execs yield-gate.sh" {
+@test "the post-research boundary runs the yield gate" {
   grep -q 'yield-gate.sh --phase post-research' "$SKILL_MD"
 }
 
-@test "AC3: discuss-cadence boundary execs yield-gate.sh" {
+@test "the discuss-cadence boundary runs the yield gate" {
   grep -q 'yield-gate.sh --phase discuss-cadence' "$SKILL_MD"
 }
 
-@test "AC3: pre-close boundary execs yield-gate.sh" {
+@test "the pre-close boundary runs the yield gate" {
   grep -q 'yield-gate.sh --phase pre-close' "$SKILL_MD"
 }
 
-@test "AC3: pre-save boundary execs yield-gate.sh" {
+@test "the pre-save boundary runs the yield gate" {
   grep -q 'yield-gate.sh --phase pre-save' "$SKILL_MD"
 }
 
-@test "AF-2026-05-10-1: every yield boundary execs --side-effect-only" {
+@test "every yield boundary runs the gate with --side-effect-only" {
   # The post-AF-2026-05-10-1 contract requires `--side-effect-only` at each
   # boundary so the procedure prose explicitly documents the no-stdout intent.
   count="$(grep -c -- '--side-effect-only' "$SKILL_MD" || true)"
@@ -58,7 +58,7 @@ setup() {
   [ "$count" -ge 5 ]
 }
 
-@test "AC8: post-AF-2026-05-10-1 turn-terminal contract paragraph is present" {
+@test "the turn-terminal contract paragraph is present" {
   # The SKILL.md MUST contain the canonical substrate-enforced turn-terminal
   # contract sentence. Match key phrases from the prescribed text. Markdown
   # blockquote line wrapping may split phrases across consecutive `> ` lines —
@@ -70,7 +70,7 @@ setup() {
   [[ "$flat" == *"substrate-enforced boundary"* ]]
 }
 
-@test "AC8: §Procedure header precedes the turn-terminal contract paragraph" {
+@test "the procedure header precedes the turn-terminal contract paragraph" {
   procedure_line="$(grep -n '^## Procedure' "$SKILL_MD" | head -1 | cut -d: -f1)"
   contract_line="$(grep -nE 'AskUserQuestion[^.]*ENDS the current LLM turn' "$SKILL_MD" | head -1 | cut -d: -f1)"
   [ -n "$procedure_line" ]

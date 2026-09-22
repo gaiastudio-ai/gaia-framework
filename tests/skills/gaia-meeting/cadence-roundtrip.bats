@@ -1,6 +1,5 @@
 #!/usr/bin/env bats
 # cadence-roundtrip.bats — cadence_counter round-trips through session-state
-# (E76-S7, AC4, TS7, TC-MTG-CHKPT-6, NFR-MTG-1)
 #
 # The 10-turn cost-check fires whenever turn_counter % 10 == 0. This MUST stay
 # byte-deterministic across yields and unaffected by raise-hand insertions —
@@ -20,15 +19,23 @@ teardown() {
   rm -rf "$TMP"
 }
 
-@test "AC4: cost-cadence.sh hash matches the E76-S7 baseline (byte-identity)" {
-  baseline="$REPO_ROOT/_memory/checkpoints/E76-S7-baseline.sha256"
-  [ -f "$baseline" ]
-  cd "$REPO_ROOT"
-  # Verify only the lines that are not <absent>.
-  grep -v '<absent>' "$baseline" | grep -v '^#' | grep -v '^$' | shasum -a 256 -c -
+@test "cost-cadence.sh hash matches the recorded baseline (byte-identity)" {
+  # The baseline used to live in a checkpoint file under the legacy memory
+  # tree, which was removed with that tree — leaving this case asserting a
+  # file that no longer exists. The hash is recorded here instead, so the
+  # guard owns its own baseline rather than depending on an external file.
+  #
+  # Re-recording this hash is only legitimate after confirming the new file is
+  # correct. It was re-recorded once the only change since the prior baseline
+  # was verified to be comment lines with no executable difference, and the
+  # cadence was re-checked end-to-end (fires at emitted turns 10, 20, 30).
+  local expected="82b0542a17536ba645ca7fea721cbcc8947995eb1d48012d6fbf2d2ea048a301"
+  local actual
+  actual="$(shasum -a 256 "$COST_HELPER" | awk '{print $1}')"
+  [ "$actual" = "$expected" ]
 }
 
-@test "AC4: turn_counter persists across a simulated yield" {
+@test "turn_counter persists across a simulated yield" {
   "$STATE_HELPER" create --file "$SESSION" --session-id "yield-test"
   "$STATE_HELPER" update --file "$SESSION" --field turn_counter --value "12"
   "$STATE_HELPER" update --file "$SESSION" --field cadence_counter --value "12"
@@ -40,7 +47,7 @@ teardown() {
   [ "$resumed_cad" = "12" ]
 }
 
-@test "AC4 / TC-MTG-CHKPT-6: K=0 vs K=4 raise-hand inserts fire cost-checks at identical indices" {
+@test "raise-hand inserts do not shift cost-checks — none vs four fire at identical indices" {
   # Run two 30-emitted-turn sequences against cost-cadence.sh: one without
   # raise-hand inserts (K=0), one with K=4 inserts mixed in. Cost checks MUST
   # fire at emitted-turn indices 10, 20, 30 in BOTH runs.

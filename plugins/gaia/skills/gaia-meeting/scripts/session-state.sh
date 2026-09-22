@@ -52,6 +52,16 @@ fi
 # opaque to existing consumers and does NOT change the call signature of the
 # create / read / update API.
 #
+# `last_yield_boundary` records WHICH of the five yield boundaries produced
+# the most recent checkpoint. It is a separate vocabulary from
+# `last_checkpoint_phase`: the latter holds a lifecycle phase (the phase
+# `--resume` re-enters at), while this field holds a boundary name
+# (post-charter / post-research / discuss-cadence / pre-close / pre-save).
+# Keeping them apart lets `--resume` distinguish "re-enter at DISCUSS" from
+# "re-enter at DISCUSS because the every-N cadence fired" — the two carry
+# different re-entry prompts. Forward-additive: legacy session files without
+# the field read as the empty string.
+#
 # `user_attendance` records whether the user was explicitly invited as a
 # first-class attendee (`true` when `--invitees` contains `me` / `user` /
 # resolved-user-name token, `false` otherwise). Set ONCE at meeting start by
@@ -70,6 +80,7 @@ FIELDS=(
   cumulative_cost
   last_checkpoint_at
   last_checkpoint_phase
+  last_yield_boundary
   last_yield_emitted_at
   agent_dispatch_findings
   user_attendance
@@ -88,6 +99,12 @@ is_valid_field() {
 # `phase` once set; create_default seeds phase=INVITE so update-to-empty
 # would be a regression.
 PHASE_ENUM_RE='^(INVITE|CHARTER|RESEARCH|DISCUSS|CLOSE|REVIEW|SAVE)$'
+
+# Yield-boundary enum — applies to `last_yield_boundary` only. These are the
+# five points at which the meeting hands the turn back to the user; they are
+# deliberately NOT lifecycle phases, so they get their own vocabulary. Empty
+# is the initial state (no yield has happened yet).
+YIELD_BOUNDARY_ENUM_RE='^(post-charter|post-research|discuss-cadence|pre-close|pre-save)$'
 
 # Quote the value for YAML — strings get double-quotes, integers stay bare.
 # Per-field value validation enforces the session-state schema types so a
@@ -114,6 +131,16 @@ yaml_emit_value() {
       # the value must be one of the seven canonical phases.
       if [[ -n "$v" ]] && ! [[ "$v" =~ $PHASE_ENUM_RE ]]; then
         echo "session-state.sh: last_checkpoint_phase must be empty or one of INVITE|CHARTER|RESEARCH|DISCUSS|CLOSE|REVIEW|SAVE, got: $v" >&2
+        exit 2
+      fi
+      local escaped="${v//\"/\\\"}"
+      printf '"%s"' "$escaped"
+      ;;
+    last_yield_boundary)
+      # Empty string is valid (no yield has happened yet); otherwise the value
+      # must be one of the five canonical yield boundaries.
+      if [[ -n "$v" ]] && ! [[ "$v" =~ $YIELD_BOUNDARY_ENUM_RE ]]; then
+        echo "session-state.sh: last_yield_boundary must be empty or one of post-charter|post-research|discuss-cadence|pre-close|pre-save, got: $v" >&2
         exit 2
       fi
       local escaped="${v//\"/\\\"}"
@@ -153,6 +180,7 @@ scratchpad_state: $(yaml_emit_value scratchpad_state "")
 cumulative_cost: 0
 last_checkpoint_at: $(yaml_emit_value last_checkpoint_at "")
 last_checkpoint_phase: $(yaml_emit_value last_checkpoint_phase "")
+last_yield_boundary: $(yaml_emit_value last_yield_boundary "")
 last_yield_emitted_at: $(yaml_emit_value last_yield_emitted_at "")
 agent_dispatch_findings: $(yaml_emit_value agent_dispatch_findings "")
 user_attendance: $(yaml_emit_value user_attendance "")

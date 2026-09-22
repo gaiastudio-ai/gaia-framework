@@ -24,27 +24,27 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC9: unset setting -> default 4" {
+@test "an unset setting falls back to the default of 4" {
   echo '{}' > "$SETTINGS"
   run "$HELPER" --settings "$SETTINGS"
   [ "$status" -eq 0 ]
   [ "$output" = "4" ]
 }
 
-@test "AC9: missing settings file -> default 4" {
+@test "a missing settings file falls back to the default of 4" {
   run "$HELPER" --settings "$TMP/no-such-file.json"
   [ "$status" -eq 0 ]
   [ "$output" = "4" ]
 }
 
-@test "AC9: in-range value 7 honored verbatim" {
+@test "an in-range value of 7 is honored verbatim" {
   printf '{"meeting":{"checkpoint_every_n_turns":7}}\n' > "$SETTINGS"
   run "$HELPER" --settings "$SETTINGS"
   [ "$status" -eq 0 ]
   [ "$output" = "7" ]
 }
 
-@test "AC9: zero clamps to 1 with WARNING" {
+@test "zero clamps to 1 with a WARNING" {
   printf '{"meeting":{"checkpoint_every_n_turns":0}}\n' > "$SETTINGS"
   run --separate-stderr "$HELPER" --settings "$SETTINGS"
   [ "$status" -eq 0 ]
@@ -52,21 +52,21 @@ teardown() {
   [[ "$stderr" == *"WARNING"* ]]
 }
 
-@test "AC9: negative clamps to 1 with WARNING" {
+@test "a negative value clamps to 1 with a WARNING" {
   printf '{"meeting":{"checkpoint_every_n_turns":-1}}\n' > "$SETTINGS"
   run --separate-stderr "$HELPER" --settings "$SETTINGS"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
 }
 
-@test "AC9: above-range 11 clamps to 10 with WARNING" {
+@test "an above-range 11 clamps to 10 with a WARNING" {
   printf '{"meeting":{"checkpoint_every_n_turns":11}}\n' > "$SETTINGS"
   run --separate-stderr "$HELPER" --settings "$SETTINGS"
   [ "$status" -eq 0 ]
   [ "$output" = "10" ]
 }
 
-@test "AC9: WARNING goes to stderr, value goes to stdout" {
+@test "the WARNING goes to stderr and the value goes to stdout" {
   printf '{"meeting":{"checkpoint_every_n_turns":99}}\n' > "$SETTINGS"
   run --separate-stderr "$HELPER" --settings "$SETTINGS"
   [ "$status" -eq 0 ]

@@ -19,14 +19,14 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC2: passes when one prelude exists per invitee" {
+@test "passes when one prelude exists per invitee" {
   : > "$TMP/preludes.txt"
   printf 'theo\nderek\n' > "$TMP/preludes.txt"
   run "$HELPER" --invitees "theo,derek" --preludes-file "$TMP/preludes.txt"
   [ "$status" -eq 0 ]
 }
 
-@test "AC2: HALTs when one or more preludes are missing" {
+@test "HALTs when one or more preludes are missing" {
   printf 'theo\n' > "$TMP/preludes.txt"
   run "$HELPER" --invitees "theo,derek" --preludes-file "$TMP/preludes.txt"
   [ "$status" -eq 2 ]
@@ -35,18 +35,18 @@ teardown() {
   [[ "$output" == *"fr=FR-MTG-28"* ]]
 }
 
-@test "AC2: HALTs when preludes file is missing entirely" {
+@test "HALTs when the preludes file is missing entirely" {
   run "$HELPER" --invitees "theo" --preludes-file "$TMP/nonexistent.txt"
   [ "$status" -eq 2 ]
   [[ "$output" == *"HALT"* ]]
 }
 
-@test "AC2: --skip-research bypasses the gate" {
+@test "--skip-research bypasses the gate" {
   run "$HELPER" --invitees "theo,derek" --preludes-file "$TMP/nonexistent.txt" --skip-research
   [ "$status" -eq 0 ]
 }
 
-@test "AC2: empty invitees list is malformed args (exit 3)" {
+@test "an empty invitees list is malformed args (exit 3)" {
   run "$HELPER" --invitees "" --preludes-file "$TMP/preludes.txt"
   [ "$status" -eq 3 ]
 }

@@ -21,7 +21,7 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC5: accumulate increments per-agent cumulative tokens" {
+@test "accumulate increments the per-agent cumulative tokens" {
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens 1000
   [ "$status" -eq 0 ]
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens 500
@@ -31,14 +31,14 @@ teardown() {
   [ "$output" = "1500" ]
 }
 
-@test "AC5: agent is not muted under cap" {
+@test "an agent is not muted while under the cap" {
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens 24999
   [ "$status" -eq 0 ]
   run "$HELPER" --state "$STATE" --is-muted --agent theo
   [ "$status" -eq 1 ]
 }
 
-@test "AC5: agent muted on cap cross (default 25000)" {
+@test "an agent is muted on crossing the cap (default 25000)" {
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens 25000
   [ "$status" -eq 0 ]
   [[ "$output" == *"MUTED"* ]]
@@ -47,7 +47,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC5: agent muted only once — second cap cross does not emit duplicate MUTED" {
+@test "an agent is muted only once — a second cap cross emits no duplicate MUTED" {
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens 25000
   [ "$status" -eq 0 ]
   [[ "$output" == *"MUTED"* ]]
@@ -56,20 +56,20 @@ teardown() {
   [[ "$output" != *"MUTED"* ]]
 }
 
-@test "AC5: --per-agent-cap override changes the threshold" {
+@test "--per-agent-cap override changes the threshold" {
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens 100 --per-agent-cap 50
   [ "$status" -eq 0 ]
   [[ "$output" == *"MUTED"* ]]
 }
 
-@test "AC5: muting is one-way — no unmute path" {
+@test "muting is one-way — there is no unmute path" {
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens 25000
   [ "$status" -eq 0 ]
   run "$HELPER" --state "$STATE" --unmute --agent theo
   [ "$status" -eq 3 ]
 }
 
-@test "AC5: remaining agents continue when one is muted" {
+@test "remaining agents continue when one is muted" {
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens 25000
   [ "$status" -eq 0 ]
   run "$HELPER" --state "$STATE" --is-muted --agent derek
@@ -78,7 +78,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC5: --tokens must be non-negative integer" {
+@test "--tokens must be a non-negative integer" {
   run "$HELPER" --state "$STATE" --accumulate --agent theo --tokens abc
   [ "$status" -eq 3 ]
 }

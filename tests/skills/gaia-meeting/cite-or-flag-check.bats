@@ -18,38 +18,40 @@ teardown() {
 }
 
 # AC6 / TC-MTG-RESEARCH-3: classification per-line
-@test "AC6: line with file-path citation classifies as 'cited'" {
+@test "a line with a file-path citation classifies as 'cited'" {
   run "$HELPER" --classify-line "We rely on docs/planning-artifacts/foo.md for context."
   [ "$status" -eq 0 ]
   [ "$output" = "cited" ]
 }
 
-@test "AC6: line with URL classifies as 'cited'" {
+@test "a line with a URL classifies as 'cited'" {
   run "$HELPER" --classify-line "Per https://anthropic.com/agents the limit is 10."
   [ "$status" -eq 0 ]
   [ "$output" = "cited" ]
 }
 
-@test "AC6: line with _memory/ reference classifies as 'cited'" {
-  run "$HELPER" --classify-line "From _memory/Theo-sidecar/decisions/d.md we know X."
+@test "a line referencing the canonical memory tree classifies as 'cited'" {
+  # The legacy memory prefix was retired; a sidecar citation is written
+  # against the .gaia/ runtime tree, and must still count as a citation.
+  run "$HELPER" --classify-line "From .gaia/memory/theo-sidecar/decisions/d.md we know X."
   [ "$status" -eq 0 ]
   [ "$output" = "cited" ]
 }
 
-@test "AC6: line with [inference] token classifies as 'inference'" {
+@test "a line with an [inference] token classifies as 'inference'" {
   run "$HELPER" --classify-line "I think X is faster than Y [inference]."
   [ "$status" -eq 0 ]
   [ "$output" = "inference" ]
 }
 
-@test "AC6: factual claim with neither marker classifies as 'unflagged-inference'" {
+@test "a factual claim with neither marker classifies as 'unflagged-inference'" {
   run "$HELPER" --classify-line "The function foo() returns false on empty input."
   [ "$status" -eq 0 ]
   [ "$output" = "unflagged-inference" ]
 }
 
 # AC7 / TC-MTG-GUARD-1: HALT on unflagged-inference draft turn
-@test "AC7: --gate-draft-turn passes when every claim line is cited or [inference]" {
+@test "--gate-draft-turn passes when every claim line is cited or [inference]" {
   draft="$TMP_DIR/draft.txt"
   cat > "$draft" <<'EOF'
 Per docs/planning-artifacts/architecture/12-12-adr-detail-records.md, ADR-084 mandates this.
@@ -60,7 +62,7 @@ EOF
   [[ "$output" == *"PASS"* ]]
 }
 
-@test "AC7 / TC-MTG-GUARD-1: --gate-draft-turn HALTs on unflagged-inference line" {
+@test "--gate-draft-turn HALTs on an unflagged-inference line" {
   draft="$TMP_DIR/draft.txt"
   cat > "$draft" <<'EOF'
 The function bar() returns 42 unconditionally.
@@ -71,7 +73,7 @@ EOF
   [[ "$output" == *"HALT"* ]] || [[ "$output" == *"unflagged-inference"* ]] || [[ "$output" == *"halt"* ]]
 }
 
-@test "AC7: HALT output identifies the offending line text" {
+@test "HALT output identifies the offending line text" {
   draft="$TMP_DIR/draft.txt"
   printf 'The OFFENDING_TOKEN_X is set to true.\n' > "$draft"
   run "$HELPER" --gate-draft-turn "$draft"
@@ -79,14 +81,14 @@ EOF
   [[ "$output" == *"OFFENDING_TOKEN_X"* ]]
 }
 
-@test "AC7: questions and meta-conversation are NOT classified as factual claims" {
+@test "questions and meta-conversation are NOT classified as factual claims" {
   run "$HELPER" --classify-line "Should we adopt approach X?"
   [ "$status" -eq 0 ]
   [ "$output" = "non-claim" ]
 }
 
 # AC10 / TC-MTG-RESEARCH-6: deterministic static check from saved file alone
-@test "AC10: --verify-transcript on a clean saved meeting passes" {
+@test "--verify-transcript on a clean saved meeting passes" {
   transcript="$TMP_DIR/meeting.md"
   cat > "$transcript" <<'EOF'
 ---
@@ -105,7 +107,7 @@ EOF
   [[ "$output" == *"PASS"* ]]
 }
 
-@test "AC10 / TC-MTG-RESEARCH-6: --verify-transcript fails on unflagged claim" {
+@test "--verify-transcript fails on an unflagged claim" {
   transcript="$TMP_DIR/meeting.md"
   cat > "$transcript" <<'EOF'
 ---
@@ -120,7 +122,7 @@ EOF
   [ "$status" -ne 0 ]
 }
 
-@test "AC10: --verify-transcript is deterministic — same input -> same output" {
+@test "--verify-transcript is deterministic — same input -> same output" {
   transcript="$TMP_DIR/m.md"
   cat > "$transcript" <<'EOF'
 ---

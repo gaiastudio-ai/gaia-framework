@@ -20,88 +20,88 @@ _detect() {
   printf '%s' "$1" | "$HELPER"
 }
 
-@test "AC7: JSON object literal -> json" {
+@test "a JSON object literal is detected as json" {
   run bash -c 'printf "%s" "{ \"k\": 1 }" | "$0"' "$HELPER"
   [ "$status" -eq 0 ]
   [ "$output" = "json" ]
 }
 
-@test "AC7: JSON array literal -> json" {
+@test "a JSON array literal is detected as json" {
   run bash -c 'printf "%s" "[1, 2, 3]" | "$0"' "$HELPER"
   [ "$output" = "json" ]
 }
 
-@test "AC7: TypeScript interface -> ts" {
+@test "a TypeScript interface is detected as ts" {
   run bash -c 'printf "%s" "interface User { id: string }" | "$0"' "$HELPER"
   [ "$output" = "ts" ]
 }
 
-@test "AC7: TypeScript type alias -> ts" {
+@test "a TypeScript type alias is detected as ts" {
   run bash -c 'printf "%s" "type ID = string;" | "$0"' "$HELPER"
   [ "$output" = "ts" ]
 }
 
-@test "AC7: TypeScript export function -> ts" {
+@test "a TypeScript exported function is detected as ts" {
   run bash -c 'printf "%s" "export function foo() { return 1; }" | "$0"' "$HELPER"
   [ "$output" = "ts" ]
 }
 
-@test "AC7: Python def -> py" {
+@test "a Python function definition is detected as py" {
   run bash -c 'printf "%s" "def foo(x):\n    return x + 1" | "$0"' "$HELPER"
   [ "$output" = "py" ]
 }
 
-@test "AC7: Python import -> py" {
+@test "a Python import is detected as py" {
   run bash -c 'printf "%s" "import os\nimport sys" | "$0"' "$HELPER"
   [ "$output" = "py" ]
 }
 
-@test "AC7: bash shebang -> sh" {
+@test "a bash shebang is detected as sh" {
   run bash -c 'printf "%s" "#!/usr/bin/env bash\nset -euo pipefail" | "$0"' "$HELPER"
   [ "$output" = "sh" ]
 }
 
-@test "AC7: sh shebang -> sh" {
+@test "a POSIX sh shebang is detected as sh" {
   run bash -c 'printf "%s" "#!/bin/sh\necho hi" | "$0"' "$HELPER"
   [ "$output" = "sh" ]
 }
 
-@test "AC7: Markdown heading -> md" {
+@test "a Markdown heading is detected as md" {
   run bash -c 'printf "%s" "# Title\n\nA paragraph." | "$0"' "$HELPER"
   [ "$output" = "md" ]
 }
 
-@test "AC7: Go package -> go" {
+@test "a Go package clause is detected as go" {
   run bash -c 'printf "%s" "package main\n\nfunc main() {}" | "$0"' "$HELPER"
   [ "$output" = "go" ]
 }
 
-@test "AC7: Swift import -> swift" {
+@test "a Swift import is detected as swift" {
   run bash -c 'printf "%s" "import Foundation\n\nstruct User {}" | "$0"' "$HELPER"
   [ "$output" = "swift" ]
 }
 
-@test "AC7: Kotlin fun -> kt" {
+@test "a Kotlin function is detected as kt" {
   run bash -c 'printf "%s" "fun main() { println(\"hi\") }" | "$0"' "$HELPER"
   [ "$output" = "kt" ]
 }
 
-@test "AC7: Rust fn main -> rs" {
+@test "a Rust main function is detected as rs" {
   run bash -c 'printf "%s" "fn main() { println!(\"hi\"); }" | "$0"' "$HELPER"
   [ "$output" = "rs" ]
 }
 
-@test "AC7: Java public class -> java" {
+@test "a Java public class is detected as java" {
   run bash -c 'printf "%s" "public class Foo { public static void main(String[] args) {} }" | "$0"' "$HELPER"
   [ "$output" = "java" ]
 }
 
-@test "AC7: ambiguous freeform prose defaults to md" {
+@test "ambiguous freeform prose defaults to md" {
   run bash -c 'printf "%s" "we should probably revisit auth tokens." | "$0"' "$HELPER"
   [ "$output" = "md" ]
 }
 
-@test "AC7: empty content defaults to md" {
+@test "empty content defaults to md" {
   run bash -c 'printf "" | "$0"' "$HELPER"
   [ "$output" = "md" ]
 }

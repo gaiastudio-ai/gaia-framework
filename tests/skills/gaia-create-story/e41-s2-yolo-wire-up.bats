@@ -49,63 +49,63 @@ step1_body() {
   [ -f "$SKILL_FILE" ]
 }
 
-@test "Pre-flight: yolo-mode.sh helper exists (E41-S1)" {
+@test "Pre-flight: the yolo-mode helper exists and defines the yolo predicate" {
   [ -f "$HELPER_FILE" ]
   grep -q '^is_yolo()' "$HELPER_FILE"
 }
 
 # ---------- AC1: declarative yolo_steps + helper-call contract ----------
 
-@test "AC1: frontmatter declares yolo_steps: [3]" {
+@test "frontmatter declares the elaboration step as the only yolo-automatable step" {
   frontmatter | grep -qE '^yolo_steps:[[:space:]]*\[[[:space:]]*3[[:space:]]*\]'
 }
 
-@test "AC1: Step 3 body consults yolo-mode.sh is_yolo helper" {
+@test "the elaboration step consults the yolo-mode helper" {
   step3_body | grep -qE 'yolo-mode\.sh.*is_yolo'
 }
 
-@test "AC1: Step 3 body documents auto-select [a] under YOLO" {
+@test "the elaboration step documents auto-selecting the delegate option under yolo" {
   step3_body | grep -qiE 'auto[- ]select.*\[a\]'
 }
 
-@test "AC1: Step 3 body declares the > [!yolo] body marker per §10.30.2" {
+@test "the elaboration step declares the yolo body marker by convention" {
   step3_body | grep -qE '^>[[:space:]]*\[!yolo\]'
 }
 
 # ---------- AC2: Step 1 hard-gate preservation (FR-YOLO-2(b)) ----------
 
-@test "AC2: Step 1 still contains the non-backlog HALT clause" {
+@test "the story-selection step still halts on a story that is not in backlog" {
   step1_body | grep -qiE 'HALT.*--.*"Story \{?key\}? is in'
 }
 
-@test "AC2: YOLO hard guard note remains in Step 1 (E54-S1, AC3)" {
+@test "the story-selection step keeps its note that yolo must not bypass the hard guard" {
   step1_body | grep -qE 'YOLO MUST NOT bypass|YOLO hard guard'
 }
 
-@test "AC2: yolo_steps does NOT include Step 1 (FR-YOLO-2(b) compliance)" {
+@test "frontmatter leaves the story-selection step out of the yolo-automatable set" {
   ! frontmatter | grep -qE '^yolo_steps:[[:space:]]*\[[^]]*\b1\b[^]]*\]'
 }
 
 # ---------- AC3: non-YOLO regression guard (TC-YOLO-14) ----------
 
-@test "AC3: non-YOLO [u]/[a] menu wording is preserved (canonical text)" {
+@test "the interactive routing menu keeps its canonical answer-myself and delegate wording" {
   step3_body | grep -qE "^\[u\] I'll answer the elaboration questions myself"
   step3_body | grep -qE "^\[a\] Auto-delegate to PM \(Derek\), Architect \(Theo\)"
 }
 
-@test "AC3: non-YOLO four-question [u] flow still present" {
+@test "the interactive answer-myself path still documents its four-question flow" {
   step3_body | grep -qE '4-question flow|4 questions'
 }
 
 # ---------- AC4: CRITICAL-finding HALT (ECI-506) ----------
 
-@test "AC4: Step 3 YOLO branch documents CRITICAL-finding HALT" {
+@test "the elaboration step halts on a critical finding even under yolo" {
   step3_body | grep -qiE 'CRITICAL.*HALT|HALT.*CRITICAL'
 }
 
 # ---------- Anti-pattern guard (§10.30.8) ----------
 
-@test "Anti-pattern: Step 3 does NOT contain inline YOLO env parsing" {
+@test "the elaboration step routes yolo detection through the helper rather than parsing the environment inline" {
   # The §10.30.8 antipattern is `if [[ -n "$YOLO" ]]; then …` without yolo_steps.
   # Since we now have yolo_steps declared, even if the body references YOLO_MODE,
   # we ensure the helper-call surface is the primary contract.

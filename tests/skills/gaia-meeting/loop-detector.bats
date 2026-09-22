@@ -22,7 +22,7 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC6: A-B-A with no progress fires the detector" {
+@test "A-B-A with no progress fires the detector" {
   cat > "$TMP/turns.txt" <<'EOF'
 theo|no-progress|just opinions
 derek|no-progress|just opinions
@@ -34,7 +34,7 @@ EOF
   [[ "$output" == *"FACILITATOR"* ]]
 }
 
-@test "AC6: A-B-A with new citation does NOT fire" {
+@test "A-B-A with a new citation does NOT fire" {
   cat > "$TMP/turns.txt" <<'EOF'
 theo|no-progress|just opinions
 derek|no-progress|just opinions
@@ -44,7 +44,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "AC6: A-B-A with new decision does NOT fire" {
+@test "A-B-A with a new decision does NOT fire" {
   cat > "$TMP/turns.txt" <<'EOF'
 theo|no-progress|opinion
 derek|no-progress|opinion
@@ -54,7 +54,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "AC6: A-B-A with new scratchpad pin does NOT fire" {
+@test "A-B-A with a new scratchpad pin does NOT fire" {
   cat > "$TMP/turns.txt" <<'EOF'
 theo|no-progress|opinion
 derek|no-progress|opinion
@@ -64,7 +64,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "AC6: three-way alternation A-B-C does NOT fire (exact two-agent rule)" {
+@test "three-way alternation A-B-C does NOT fire (exact two-agent rule)" {
   cat > "$TMP/turns.txt" <<'EOF'
 theo|no-progress|opinion
 derek|no-progress|opinion
@@ -74,7 +74,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "AC6: only two consecutive turns does NOT fire (need three)" {
+@test "only two consecutive turns does NOT fire (need three)" {
   cat > "$TMP/turns.txt" <<'EOF'
 theo|no-progress|opinion
 derek|no-progress|opinion
@@ -83,7 +83,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "AC6: B-A-B (alternation starting with B) also fires" {
+@test "B-A-B (alternation starting with B) also fires" {
   cat > "$TMP/turns.txt" <<'EOF'
 derek|no-progress|opinion
 theo|no-progress|opinion
@@ -94,7 +94,7 @@ EOF
   [[ "$output" == *"LOOP-BREAK"* ]]
 }
 
-@test "AC6: A-A-A (same agent three times) does NOT fire (need exactly two distinct)" {
+@test "A-A-A (same agent three times) does NOT fire (need exactly two distinct)" {
   cat > "$TMP/turns.txt" <<'EOF'
 theo|no-progress|opinion
 theo|no-progress|opinion

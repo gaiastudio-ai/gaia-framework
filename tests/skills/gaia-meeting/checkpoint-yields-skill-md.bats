@@ -12,50 +12,59 @@ setup() {
   SKILL_MD="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/SKILL.md"
 }
 
-@test "AC2: SKILL.md exists" {
+@test "SKILL.md exists" {
   [ -f "$SKILL_MD" ]
 }
 
-@test "AC2: canonical user-prompt block is documented" {
+@test "the canonical user-prompt block is documented" {
   grep -F '[c]ontinue / [p]ause / [i]nterject "..." / [w]rap-up / [a]bort' "$SKILL_MD"
 }
 
-@test "AC2: post-CHARTER yield is documented" {
+@test "the post-CHARTER yield is documented" {
   grep -E -i 'post-CHARTER (checkpoint )?yield' "$SKILL_MD"
 }
 
-@test "AC2: post-RESEARCH yield is documented" {
+@test "the post-RESEARCH yield is documented" {
   grep -E -i 'post-RESEARCH (checkpoint )?yield' "$SKILL_MD"
 }
 
-@test "AC2: every-N DISCUSS-turn yield is documented" {
+@test "the every-N DISCUSS-turn yield is documented" {
   grep -F 'meeting.checkpoint_every_n_turns' "$SKILL_MD"
 }
 
-@test "AC2: pre-CLOSE yield is documented" {
+@test "the pre-CLOSE yield is documented" {
   grep -E -i 'pre-CLOSE (checkpoint )?yield' "$SKILL_MD"
 }
 
-@test "AC2: pre-SAVE yield is documented" {
+@test "the pre-SAVE yield is documented" {
   grep -E -i 'pre-SAVE (checkpoint )?yield' "$SKILL_MD"
 }
 
-@test "AC2: --resume / --continue / --interject / --wrap-up flags are documented" {
+@test "the --resume / --continue / --interject / --wrap-up flags are documented" {
   grep -F -- '--resume' "$SKILL_MD"
   grep -F -- '--continue' "$SKILL_MD"
   grep -F -- '--interject' "$SKILL_MD"
   grep -F -- '--wrap-up' "$SKILL_MD"
 }
 
-@test "AC2: ADR-083 amendment is referenced" {
-  grep -E 'ADR-083.*amend|amend.*ADR-083' "$SKILL_MD"
+# A case here asserted that the skill names the decision record amending the
+# write boundary. Published source must no longer carry internal traceability
+# identifiers, so that reference was removed deliberately — the behaviour is
+# gone rather than drifted, and the case is deleted rather than re-pinned.
+# The amended invariant itself is asserted below.
+
+@test "session state persists under the canonical meeting-sessions location" {
+  # The tree moved from the legacy memory directory to the .gaia/ runtime
+  # tree; assert the location the shipped helper actually writes.
+  grep -F '.gaia/memory/meeting-sessions/' "$SKILL_MD"
 }
 
-@test "AC2: FR-MTG-31 amended write-boundary cites _memory/meeting-sessions/" {
-  grep -F '_memory/meeting-sessions/' "$SKILL_MD"
+@test "every session-state persist routes through the write boundary" {
+  grep -E -i 'persist call MUST first pass' "$SKILL_MD"
+  grep -F 'scripts/write-boundary.sh' "$SKILL_MD"
 }
 
-@test "AC2: --no-web note appears alongside post-CHARTER yield (T-MTG-4 mitigation c)" {
+@test "the --no-web note for sensitive contexts appears alongside the post-CHARTER yield" {
   # The post-CHARTER section MUST surface a one-line note about --no-web for
   # sensitive contexts (T-MTG-4 mitigation c).
   grep -F -- '--no-web' "$SKILL_MD"

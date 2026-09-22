@@ -1,22 +1,17 @@
 #!/usr/bin/env bats
-# yield-gate-auq.bats — E76-S18 / AF-2026-05-10-1 substrate-replacement contract
+# yield-gate-auq.bats — the substrate user-question yield contract.
 #
-# Story: E76-S18 — AskUserQuestion 5-boundary yield primitive — substrate
-# replacement for stdout-sentinel mechanism.
+# The five yield boundaries halt the LLM turn via the substrate
+# AskUserQuestion primitive rather than a stdout sentinel. The
+# substrate-halt behaviour itself is only observable in a live
+# `/gaia-meeting` run and is verified manually; what is checkable here is the
+# static surface that makes it work:
 #
-# This file holds the bats-runnable subset of the TC-MTG-AUQ-* test suite
-# documented in ATDD `docs/test-artifacts/atdd-E76-S18.md`. The manual
-# transcript-inspection tests (TC-MTG-AUQ-2/5/8/11/14 substrate-halt under
-# Auto Mode) are documented in the ATDD file but are NOT bats-runnable —
-# they require a live `/gaia-meeting` invocation.
-#
-# Bats-runnable test surface (4 static checks):
-#
-#   AC7  yield-gate.sh emits ZERO `<<YIELD-STOP` sentinel lines
-#   AC7  yield-gate.sh preserves last_checkpoint_phase + last_yield_emitted_at
-#   AC7  yield-gate.sh accepts --side-effect-only flag (default behavior under AF-2026-05-10-1)
-#   AC8  SKILL.md §Procedure yield-boundary subsections each contain an AskUserQuestion call (5 boundaries)
-#   cross-cut E76-S15 — gaia-meeting-stdout-sentinel-forbid.bats live-SKILL.md scan exits clean
+#   - yield-gate.sh emits no yield-stop sentinel lines and no stdout at all
+#   - yield-gate.sh still writes its session-state side effects
+#   - yield-gate.sh accepts --side-effect-only (the default behaviour)
+#   - the SKILL.md procedure documents an AskUserQuestion call at each of the
+#     five yield boundaries, with no yield-stop tokens left behind
 
 bats_require_minimum_version 1.5.0
 
@@ -38,42 +33,45 @@ teardown() {
 
 # --- AC7 — yield-gate.sh sentinel-emission removed ---------------------------
 
-@test "AC7: yield-gate.sh contains ZERO '<<YIELD-STOP' literal strings" {
+@test "the yield gate source contains no yield-stop sentinel literals" {
   count="$(grep -c '<<YIELD-STOP' "$HELPER" || true)"
   [ "$count" -eq 0 ]
 }
 
-@test "AC7: yield-gate.sh produces ZERO stdout output (default invocation)" {
+@test "the yield gate produces no stdout on a default invocation" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-auq-001" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-charter --session-id sess-auq-001
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
-@test "AC7: yield-gate.sh preserves session-state writes (last_checkpoint_phase + last_yield_emitted_at)" {
+@test "the yield gate still writes the checkpoint phase and last-yield timestamp to session state" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-auq-002" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-save --session-id sess-auq-002
   [ "$status" -eq 0 ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "pre-save" ]
   iso_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_emitted_at)"
   [[ "$iso_val" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
-@test "AC7: yield-gate.sh accepts --side-effect-only flag (idempotent with default)" {
+@test "the yield gate accepts --side-effect-only and behaves identically to the default" {
   "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-auq-003" >/dev/null
   run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase post-research --session-id sess-auq-003 --side-effect-only
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)"
+  phase_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)"
   [ "$phase_val" = "post-research" ]
 }
 
-@test "AC7: yield-gate.sh has at least 2 session-state write call sites (last_checkpoint_phase + last_yield_emitted_at)" {
-  count_phase="$(grep -c 'last_checkpoint_phase' "$HELPER" || true)"
-  count_iso="$(grep -c 'last_yield_emitted_at' "$HELPER" || true)"
-  [ "$count_phase" -ge 1 ]
-  [ "$count_iso" -ge 1 ]
+@test "the yield gate writes the boundary, the re-entry phase and the timestamp" {
+  "$SESSION_HELPER" create --file "$SESSION_FILE" --session-id "sess-auq-004" >/dev/null
+  run env GAIA_MEETING_SESSION_FILE="$SESSION_FILE" "$HELPER" --phase pre-close --session-id sess-auq-004
+  [ "$status" -eq 0 ]
+  [ "$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_boundary)" = "pre-close" ]
+  [ "$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_checkpoint_phase)" = "CLOSE" ]
+  iso_val="$("$SESSION_HELPER" read --file "$SESSION_FILE" --field last_yield_emitted_at)"
+  [[ "$iso_val" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
 # --- AC8 — SKILL.md procedure prose contains AskUserQuestion at 5 boundaries
@@ -83,7 +81,7 @@ teardown() {
 # number of yield-boundary subsection headers that have an AskUserQuestion
 # reference within their body.
 
-@test "AC8: SKILL.md post-CHARTER yield procedure references AskUserQuestion" {
+@test "the post-charter yield procedure references the user-question prompt" {
   # Match anywhere from "Post-CHARTER checkpoint yield" until the next ##/###
   # heading. Use awk for the subsection extraction.
   body="$(awk '
@@ -94,7 +92,7 @@ teardown() {
   echo "$body" | grep -F "AskUserQuestion"
 }
 
-@test "AC8: SKILL.md post-RESEARCH yield procedure references AskUserQuestion" {
+@test "the post-research yield procedure references the user-question prompt" {
   body="$(awk '
     /[Pp]ost-RESEARCH (checkpoint )?yield/ { in_sect=1 }
     in_sect && /^### / { c++; if (c>1) in_sect=0 }
@@ -103,7 +101,7 @@ teardown() {
   echo "$body" | grep -F "AskUserQuestion"
 }
 
-@test "AC8: SKILL.md discuss-cadence yield procedure references AskUserQuestion" {
+@test "the discuss-cadence yield procedure references the user-question prompt" {
   body="$(awk '
     /[Dd]iscuss-cadence|[Ee]very-N DISCUSS/ { in_sect=1 }
     in_sect && /^### / { c++; if (c>1) in_sect=0 }
@@ -112,7 +110,7 @@ teardown() {
   echo "$body" | grep -F "AskUserQuestion"
 }
 
-@test "AC8: SKILL.md pre-CLOSE yield procedure references AskUserQuestion" {
+@test "the pre-close yield procedure references the user-question prompt" {
   body="$(awk '
     /[Pp]re-CLOSE (checkpoint )?yield/ { in_sect=1 }
     in_sect && /^### / { c++; if (c>1) in_sect=0 }
@@ -121,7 +119,7 @@ teardown() {
   echo "$body" | grep -F "AskUserQuestion"
 }
 
-@test "AC8: SKILL.md pre-SAVE yield procedure references AskUserQuestion" {
+@test "the pre-save yield procedure references the user-question prompt" {
   body="$(awk '
     /[Pp]re-SAVE (checkpoint )?yield/ { in_sect=1 }
     in_sect && /^### / { c++; if (c>1) in_sect=0 }
@@ -130,7 +128,7 @@ teardown() {
   echo "$body" | grep -F "AskUserQuestion"
 }
 
-@test "AC8: SKILL.md §Procedure subsections contain ZERO '<<YIELD-STOP' tokens (cross-cut E76-S15)" {
+@test "the procedure subsections contain no yield-stop tokens" {
   run "$SCANNER" "$SKILL_MD"
   [ "$status" -eq 0 ]
   [ -z "$output" ]

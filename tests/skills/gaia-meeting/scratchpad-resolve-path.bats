@@ -1,23 +1,41 @@
 #!/usr/bin/env bats
-# scratchpad-resolve-path.bats — gaia-meeting deterministic path resolver (E76-S4)
-#
-# AC5 / AC6 / AC11 / AC12. Exercises TC-MTG-SP-3 + path component of TC-MTG-SP-6.
+# scratchpad-resolve-path.bats — gaia-meeting deterministic path resolver
 #
 # Resolves the deterministic extraction path from
 #   (date, slug, sp_n, content, intent, content_type)
 # Path formula:
-#   docs/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
+#   <artifacts>/creative-artifacts/meeting-scratchpad/{YYYY-MM}/{slug}/SP-{N}-{auto-slug}.{ext}
+#
+# This resolver IS the production path authority — every other meeting script
+# asks it for the extraction path rather than composing one. So the layout
+# expectation here is the one place a literal is unavoidable: asserting it
+# through the resolver would be circular. The segments below are pinned
+# against the canonical runtime tree exported by the shared paths helper.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HELPER="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/scripts/scratchpad-resolve-path.sh"
+
+  # Ask the shared paths helper where the artifacts tree lives, then express
+  # that as a project-relative prefix: the resolver emits a project-relative
+  # path when PROJECT_ROOT is unset, which is how these cases invoke it.
+  # The helper canonicalizes the root it was handed (symlinked temp dirs become
+  # their /private real path on macOS), so strip the root it actually resolved
+  # rather than the one we passed in.
+  PROBE_ROOT="$(mktemp -d)"
+  ARTIFACTS_REL="$(
+    PROJECT_ROOT="$PROBE_ROOT" _GAIA_PATHS_LOADED="" \
+    bash -c '. "$1/plugins/gaia/scripts/lib/gaia-paths.sh" >/dev/null 2>&1;
+             printf "%s" "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}"' _ "$REPO_ROOT"
+  )"
+  rmdir "$PROBE_ROOT" 2>/dev/null || true
 }
 
 @test "Pre-flight: scratchpad-resolve-path.sh exists and is executable" {
   [ -x "$HELPER" ]
 }
 
-@test "AC5 (TC-MTG-SP-3): path uses YYYY-MM/slug/SP-N format" {
+@test "the resolved path uses the year-month, slug and slot-id layout" {
   run "$HELPER" \
     --date 2026-05-05 \
     --slug my-meeting \
@@ -26,10 +44,10 @@ setup() {
     --intent "decision" \
     --content-type md
   [ "$status" -eq 0 ]
-  [ "$output" = "docs/creative-artifacts/meeting-scratchpad/2026-05/my-meeting/SP-1-adopt-jwt-refresh-tokens.md" ]
+  [ "$output" = "$ARTIFACTS_REL/creative-artifacts/meeting-scratchpad/2026-05/my-meeting/SP-1-adopt-jwt-refresh-tokens.md" ]
 }
 
-@test "AC6: auto-slug from textual first line, lowercased + dashed + truncated to 40 chars" {
+@test "the auto-slug comes from the first text line, lowercased, dashed and truncated to 40 characters" {
   run "$HELPER" \
     --date 2026-05-05 \
     --slug fixture \
@@ -45,7 +63,7 @@ setup() {
   [ "${#slug_part}" -le 40 ]
 }
 
-@test "AC6: non-textual content falls back to intent-derived slug" {
+@test "non-textual content falls back to a slug derived from the intent" {
   # Content is a JSON snippet (non-textual first line), so auto-slug derives from intent.
   run "$HELPER" \
     --date 2026-05-05 \
@@ -58,7 +76,7 @@ setup() {
   [[ "$output" == *"SP-1-pin-auth-token-shape-for-downstream.json" ]]
 }
 
-@test "AC6: empty content + empty intent -> auto-slug 'untitled'" {
+@test "empty content and empty intent produce the slug untitled" {
   run "$HELPER" \
     --date 2026-05-05 \
     --slug fixture \
@@ -70,21 +88,21 @@ setup() {
   [[ "$output" == *"SP-3-untitled.md" ]]
 }
 
-@test "AC7: content-type drives extension (json)" {
+@test "the json content type drives the file extension" {
   run "$HELPER" \
     --date 2026-05-05 --slug s --sp-n SP-1 \
     --content '{"k":1}' --intent "shape" --content-type json
   [[ "$output" == *.json ]]
 }
 
-@test "AC7: content-type drives extension (ts)" {
+@test "the ts content type drives the file extension" {
   run "$HELPER" \
     --date 2026-05-05 --slug s --sp-n SP-1 \
     --content "interface X {}" --intent "iface" --content-type ts
   [[ "$output" == *.ts ]]
 }
 
-@test "AC11 (TC-MTG-SP-6): different slugs produce distinct paths for same SP-N" {
+@test "different slugs produce distinct paths for the same slot" {
   out_a="$("$HELPER" --date 2026-05-05 --slug meeting-a --sp-n SP-1 --content "x" --intent "i" --content-type md)"
   out_b="$("$HELPER" --date 2026-05-05 --slug meeting-b --sp-n SP-1 --content "x" --intent "i" --content-type md)"
   [ "$out_a" != "$out_b" ]
@@ -92,7 +110,7 @@ setup() {
   [[ "$out_b" == *"/meeting-b/"* ]]
 }
 
-@test "AC11: different YYYY-MM produces distinct paths for same slug + SP-N" {
+@test "a different year-month produces a distinct path for the same slug and slot" {
   out_a="$("$HELPER" --date 2026-05-05 --slug s --sp-n SP-1 --content "x" --intent "i" --content-type md)"
   out_b="$("$HELPER" --date 2026-06-01 --slug s --sp-n SP-1 --content "x" --intent "i" --content-type md)"
   [ "$out_a" != "$out_b" ]
@@ -100,13 +118,13 @@ setup() {
   [[ "$out_b" == *"/2026-06/"* ]]
 }
 
-@test "AC5: rejects non-canonical SP-N format" {
+@test "a non-canonical slot id is rejected" {
   run "$HELPER" --date 2026-05-05 --slug s --sp-n "X-1" --content "c" --intent "i" --content-type md
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]
 }
 
-@test "AC5: rejects malformed date" {
+@test "a malformed date is rejected" {
   run "$HELPER" --date "2026/05/05" --slug s --sp-n SP-1 --content "c" --intent "i" --content-type md
   [ "$status" -ne 0 ]
   [ "$status" -ne 127 ]

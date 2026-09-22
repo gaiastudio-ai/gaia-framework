@@ -24,7 +24,7 @@ teardown() {
   [ -x "$RESOLVE_USER" ]
 }
 
-@test "AC6 / TC-MTG-STREAM-1: header carries all six required fields" {
+@test "the turn header carries all six required fields" {
   run "$HELPER" --round 1 --turn 1 --speaker "Theo" --role "Architect" --turn-cost 100 --running-total 100
   [ "$status" -eq 0 ]
   [[ "$output" == *"round 1"* ]]
@@ -34,7 +34,7 @@ teardown() {
   [[ "$output" == *"100"* ]]
 }
 
-@test "AC6: header begins with [ and ends with ] on a single line" {
+@test "the turn header begins with an opening bracket and ends with a closing bracket on one line" {
   run "$HELPER" --round 2 --turn 7 --speaker "Derek" --role "PM" --turn-cost 250 --running-total 1750
   [ "$status" -eq 0 ]
   # Single line, bracketed
@@ -43,14 +43,14 @@ teardown() {
   [ "$line_count" = "1" ]
 }
 
-@test "AC6: header contains 'per-turn' and 'running-total' tokens for parser stability" {
+@test "the turn header carries per-turn and running-total tokens for parser stability" {
   run "$HELPER" --round 1 --turn 3 --speaker "Nate" --role "ScrumMaster" --turn-cost 50 --running-total 300
   [ "$status" -eq 0 ]
   [[ "$output" == *"per-turn"* ]]
   [[ "$output" == *"running-total"* ]]
 }
 
-@test "AC7 / TC-MTG-STREAM-3: meeting.user_name override beats git config user.name" {
+@test "a configured meeting user name overrides the git-configured user name" {
   cat > "$TMP/settings.json" <<'JSON'
 {
   "meeting": {
@@ -63,7 +63,7 @@ JSON
   [ "$output" = "OverrideName" ]
 }
 
-@test "AC7: missing settings.json falls through to git config user.name" {
+@test "a missing settings file falls through to the git-configured user name" {
   # Set up an isolated git config
   cd "$TMP"
   git init -q
@@ -73,7 +73,7 @@ JSON
   [ "$output" = "FallbackUser" ]
 }
 
-@test "AC7: settings.json without meeting.user_name falls through to git" {
+@test "a settings file without a meeting user name falls through to git" {
   cat > "$TMP/settings.json" <<'JSON'
 {
   "other": "value"
@@ -87,7 +87,7 @@ JSON
   [ "$output" = "GitUserOnly" ]
 }
 
-@test "NFR-MTG-1: cadence counter is documented as per-emitted-turn (not per-slot)" {
+@test "the cadence counter is documented as counting emitted turns rather than slots" {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SKILL_FILE="$REPO_ROOT/plugins/gaia/skills/gaia-meeting/SKILL.md"
   [ -f "$SKILL_FILE" ]

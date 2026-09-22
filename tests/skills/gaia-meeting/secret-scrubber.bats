@@ -17,7 +17,7 @@ teardown() {
   [ -x "$HELPER" ]
 }
 
-@test "AC8: redacts AWS access key id" {
+@test "an AWS access key id is redacted" {
   echo "use AKIAIOSFODNN7EXAMPLE for staging" > "$IN"
   run "$HELPER" --in "$IN" --out "$OUT"
   [ "$status" -eq 0 ]
@@ -25,7 +25,7 @@ teardown() {
   grep -q "REDACTED" "$OUT"
 }
 
-@test "AC8: redacts GitHub personal access token (ghp_*)" {
+@test "a GitHub personal access token is redacted" {
   echo "token: ghp_abcdef1234567890ABCDEF1234567890abcd" > "$IN"
   run "$HELPER" --in "$IN" --out "$OUT"
   [ "$status" -eq 0 ]
@@ -33,7 +33,7 @@ teardown() {
   grep -q "REDACTED" "$OUT"
 }
 
-@test "AC8: redacts BEGIN PRIVATE KEY headers" {
+@test "a private key header is redacted" {
   cat > "$IN" <<EOF
 -----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA...
@@ -44,21 +44,21 @@ EOF
   ! grep -q "BEGIN RSA PRIVATE KEY" "$OUT"
 }
 
-@test "AC8: redacts generic api_key=... assignments" {
+@test "a generic api_key assignment is redacted" {
   echo 'api_key="sk-1234567890abcdefABCDEF1234567890abcdEF12"' > "$IN"
   run "$HELPER" --in "$IN" --out "$OUT"
   [ "$status" -eq 0 ]
   ! grep -q "sk-1234567890abcdefABCDEF1234567890abcdEF12" "$OUT"
 }
 
-@test "AC8: leaves benign content untouched" {
+@test "benign content is left untouched" {
   echo "the meeting decided to ship feature X" > "$IN"
   run "$HELPER" --in "$IN" --out "$OUT"
   [ "$status" -eq 0 ]
   diff "$IN" "$OUT"
 }
 
-@test "AC8 TC-MTG-CHKPT-8: pre-CLOSE — fake secret in charter never lands in session file" {
+@test "a secret in the charter never lands in the session file when scrubbed before close" {
   # Stage a charter line that contains a fake secret, run the scrubber on it,
   # and feed the output to a session-state update via a fixture path.
   echo "charter content: AKIA1234567890ABCDEF" > "$IN"

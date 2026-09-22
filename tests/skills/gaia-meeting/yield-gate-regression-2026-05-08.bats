@@ -27,12 +27,12 @@ setup() {
   [ -f "$POSTFIX_FIXTURE" ]
 }
 
-@test "AC5: control fixture has ZERO YIELD-STOP sentinels (regression signal)" {
+@test "the control fixture carries no yield-stop sentinels, which is the regression signal" {
   count="$(grep -c '^<<YIELD-STOP ' "$CONTROL_FIXTURE" || true)"
   [ "$count" = "0" ]
 }
 
-@test "AC5: post-fix fixture has SIX YIELD-STOP sentinels in canonical order" {
+@test "the post-fix fixture carries six yield-stop sentinels in canonical order" {
   count="$(grep -c '^<<YIELD-STOP ' "$POSTFIX_FIXTURE" || true)"
   [ "$count" = "6" ]
   ordered_phases="$(grep -oE '<<YIELD-STOP phase=[a-z-]+' "$POSTFIX_FIXTURE" | sed 's/<<YIELD-STOP phase=//')"
@@ -45,7 +45,7 @@ pre-save"
   [ "$ordered_phases" = "$expected" ]
 }
 
-@test "AC5: control fixture would FAIL the sentinel-presence assertion (regression detected)" {
+@test "the control fixture fails the sentinel-presence assertion so the regression is detected" {
   # This test models what AC5 calls out: the control fixture, when fed through
   # the same sentinel-presence assertion as the post-fix fixture, MUST fail.
   count="$(grep -c '^<<YIELD-STOP ' "$CONTROL_FIXTURE" || true)"
@@ -55,7 +55,7 @@ pre-save"
   [ "$count" -lt 1 ]
 }
 
-@test "AC5: post-fix fixture passes the sentinel-presence assertion" {
+@test "the post-fix fixture passes the sentinel-presence assertion" {
   count="$(grep -c '^<<YIELD-STOP ' "$POSTFIX_FIXTURE" || true)"
   [ "$count" -ge 1 ]
 }
