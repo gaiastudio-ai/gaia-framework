@@ -451,6 +451,7 @@ scripts-core	config-phase-gate.bats
 scripts-core	coppa-regime.bats
 scripts-core	cross-refs-walk.bats
 scripts-core	dedup-contract.bats
+scripts-core	design-probe.bats
 scripts-core	detect-affected.bats
 scripts-core	detect-open-questions.bats
 scripts-core	detect-orchestration-mode.bats
