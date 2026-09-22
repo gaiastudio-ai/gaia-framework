@@ -172,7 +172,13 @@ extract_template_phase4_block() {
 @test "(AC3) review-skill-template contains design-record reference formulation" {
   local f="$REPO_ROOT/knowledge/review-skill-template.md"
   [ -f "$f" ] || { echo "file missing: $f" >&2; return 1; }
-  grep -qi "design-record" "$f" || { echo "design-record missing from template" >&2; return 1; }
+  # Block-extracted: design-record must live inside the Phase 4 section, not
+  # merely anywhere in the file.  Mirrors the AC2 rubric pattern.
+  local block
+  block="$(extract_template_phase4_block "$f")"
+  [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
+  printf '%s' "$block" | grep -qi "design-record" || \
+    { echo "design-record missing from Phase 4 in template" >&2; return 1; }
 }
 
 @test "(AC3) review-skill-template has zero word-bounded provider hits" {
@@ -200,15 +206,18 @@ extract_template_phase4_block() {
   # Zero word-bounded provider hits
   run grep -ciw "$PROVIDER" "$f"
   [ "$output" = "0" ] || { echo "expected 0 provider hits, got $output in base-dev" >&2; return 1; }
-  # Extract the design consumption section and verify no cache guidance
+  # Extract the design consumption section and verify no cache guidance.
+  # The section MUST exist -- an empty extraction means the heading was
+  # renamed and the guard silently no-ops, hiding any cache/spec-extraction
+  # text that may have been added under the new heading.
   local design_section
   design_section="$(sed -n '/^## Design Consumption/,/^## /{ /^## /!p; }' "$f")"
-  if [ -n "$design_section" ]; then
-    run bash -c 'printf "%s" "$1" | grep -ci "cache"' _ "$design_section"
-    [ "$output" = "0" ] || { echo "cache guidance found in Design Consumption section" >&2; return 1; }
-    run bash -c 'printf "%s" "$1" | grep -ciE "spec-extraction|extract.*spec"' _ "$design_section"
-    [ "$output" = "0" ] || { echo "spec-extraction guidance found in Design Consumption section" >&2; return 1; }
-  fi
+  [ -n "$design_section" ] || \
+    { echo "Design Consumption section missing or empty in $f -- heading renamed?" >&2; return 1; }
+  run bash -c 'printf "%s" "$1" | grep -ci "cache"' _ "$design_section"
+  [ "$output" = "0" ] || { echo "cache guidance found in Design Consumption section" >&2; return 1; }
+  run bash -c 'printf "%s" "$1" | grep -ciE "spec-extraction|extract.*spec"' _ "$design_section"
+  [ "$output" = "0" ] || { echo "spec-extraction guidance found in Design Consumption section" >&2; return 1; }
 }
 
 @test "(AC4) base-dev persona JIT list does not include retired integration skill" {
@@ -245,6 +254,16 @@ extract_template_phase4_block() {
     run bash -c 'printf "%s" "$1" | grep -ci "skip silently"' _ "$fidelity_block"
     [ "$output" = "0" ] || { echo "skip silently still present in $f" >&2; return 1; }
   done
+  # review-security uses Step 4b instead of Phase 4 -- same obligation applies
+  local sec_f="$REPO_ROOT/skills/gaia-review-security/SKILL.md"
+  [ -f "$sec_f" ] || { echo "file missing: $sec_f" >&2; return 1; }
+  local step4b_block
+  step4b_block="$(extract_step4b_block "$sec_f")"
+  [ -n "$step4b_block" ] || { echo "Step 4b block empty in $sec_f" >&2; return 1; }
+  printf '%s' "$step4b_block" | grep -qi "unavailable" || \
+    { echo "unavailable missing from Step 4b fidelity in $sec_f" >&2; return 1; }
+  run bash -c 'printf "%s" "$1" | grep -ci "skip silently"' _ "$step4b_block"
+  [ "$output" = "0" ] || { echo "skip silently still present in Step 4b of $sec_f" >&2; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -267,6 +286,65 @@ extract_template_phase4_block() {
     printf '%s' "$fidelity_block" | grep -qiE "not-applicable|not applicable" || \
       { echo "not-applicable missing from Phase 4 fidelity in $f" >&2; return 1; }
   done
+  # review-security uses Step 4b instead of Phase 4 -- same obligation applies
+  local sec_f="$REPO_ROOT/skills/gaia-review-security/SKILL.md"
+  [ -f "$sec_f" ] || { echo "file missing: $sec_f" >&2; return 1; }
+  local step4b_block
+  step4b_block="$(extract_step4b_block "$sec_f")"
+  [ -n "$step4b_block" ] || { echo "Step 4b block empty in $sec_f" >&2; return 1; }
+  printf '%s' "$step4b_block" | grep -qiE "not-applicable|not applicable" || \
+    { echo "not-applicable missing from Step 4b fidelity in $sec_f" >&2; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# AC2/AC3 extended — unreachability branch present in all seven surfaces
+#
+# The unreachability rule ("surface unreachability as a finding, never fall
+# back to a local copy") is a security control added to every surface.
+# Placement-sensitive: asserted inside the extracted block, not whole-file.
+# ---------------------------------------------------------------------------
+
+@test "(AC2) unreachability branch present in all five Phase 4 rubrics" {
+  local rubrics=(
+    "$REPO_ROOT/skills/gaia-code-review/SKILL.md"
+    "$REPO_ROOT/skills/gaia-performance-review/SKILL.md"
+    "$REPO_ROOT/skills/gaia-qa-tests/SKILL.md"
+    "$REPO_ROOT/skills/gaia-test-automate/SKILL.md"
+    "$REPO_ROOT/skills/gaia-test-review/SKILL.md"
+  )
+  for f in "${rubrics[@]}"; do
+    local block
+    block="$(extract_phase4_block "$f")"
+    [ -n "$block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
+    printf '%s' "$block" | grep -qiE "unreachab.*finding|finding.*unreachab" || \
+      { echo "unreachability not paired with finding in Phase 4 of $f" >&2; return 1; }
+    printf '%s' "$block" | grep -qiE "never.*fall back|never.*fallback" || \
+      { echo "never-fall-back mandate missing from Phase 4 of $f" >&2; return 1; }
+  done
+}
+
+@test "(AC2) unreachability branch present in review-security Step 4b" {
+  local f="$REPO_ROOT/skills/gaia-review-security/SKILL.md"
+  [ -f "$f" ] || { echo "file missing: $f" >&2; return 1; }
+  local block
+  block="$(extract_step4b_block "$f")"
+  [ -n "$block" ] || { echo "Step 4b block empty in $f" >&2; return 1; }
+  printf '%s' "$block" | grep -qiE "unreachab.*finding|finding.*unreachab" || \
+    { echo "unreachability not paired with finding in Step 4b of $f" >&2; return 1; }
+  printf '%s' "$block" | grep -qiE "never.*fall back|never.*fallback" || \
+    { echo "never-fall-back mandate missing from Step 4b of $f" >&2; return 1; }
+}
+
+@test "(AC3) unreachability branch present in review-skill template" {
+  local f="$REPO_ROOT/knowledge/review-skill-template.md"
+  [ -f "$f" ] || { echo "file missing: $f" >&2; return 1; }
+  local block
+  block="$(extract_template_phase4_block "$f")"
+  [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
+  printf '%s' "$block" | grep -qiE "unreachab.*finding|finding.*unreachab" || \
+    { echo "unreachability not paired with finding in Phase 4 of template" >&2; return 1; }
+  printf '%s' "$block" | grep -qiE "never.*fall back|never.*fallback" || \
+    { echo "never-fall-back mandate missing from Phase 4 of template" >&2; return 1; }
 }
 
 # ---------------------------------------------------------------------------
