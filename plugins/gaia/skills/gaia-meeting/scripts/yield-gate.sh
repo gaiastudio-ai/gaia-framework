@@ -61,6 +61,38 @@ export LC_ALL=C
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
+# Memory-tree segment, resolved through the shared paths helper rather than
+# spelled out here, so a move of the tree is picked up automatically.
+#
+# The helper is sourced in a subshell pinned to a sentinel root: the session
+# path below is project-relative when PROJECT_ROOT is unset, and the helper's
+# walk-up from CWD would otherwise resolve some unrelated ancestor as the root
+# and turn the path absolute against the wrong tree. Pinning the root
+# suppresses the walk-up; stripping it back off leaves just the segment.
+_gaia_memory_segment() {
+  local lib _sentinel
+  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-paths.sh"
+  [ -r "$lib" ] || return 1
+  _sentinel="/gaia-path-segment-probe"
+  (
+    # shellcheck disable=SC2030  # the subshell is the point: the probe root must
+    # not escape into the caller's environment.
+    PROJECT_ROOT="$_sentinel"
+    _GAIA_PATHS_LOADED=""
+    # shellcheck source=../../../scripts/lib/gaia-paths.sh
+    # shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+    . "$lib" >/dev/null 2>&1 || exit 1
+    [ -n "${GAIA_MEMORY_DIR:-}" ] || exit 1
+    printf '%s' "${GAIA_MEMORY_DIR#"$_GAIA_ROOT_CANON"/}"
+  )
+}
+
+MEMORY_SEGMENT="$(_gaia_memory_segment || true)"
+if [[ -z "$MEMORY_SEGMENT" ]]; then
+  echo "yield-gate.sh: could not resolve the memory tree via the shared paths helper" >&2
+  exit 3
+fi
+
 PHASE=""
 SESSION_ID=""
 # `--side-effect-only` is accepted but currently a no-op vs. the default —
@@ -165,12 +197,18 @@ SESSION_STATE_BIN="${GAIA_MEETING_SESSION_STATE_BIN:-${SCRIPT_DIR}/session-state
 # (GAIA_MEETING_SESSION_FILE) — the orchestrator typically constructs the
 # `_memory/meeting-sessions/{YYYY-MM-DD}-{slug}.yaml` path and exports it.
 # When unset, fall back to a conventional path derived from the session id.
-# Canonical path is .gaia/memory/meeting-sessions only; legacy _memory
-# fallback removed. Env override wins.
+# The meeting-sessions directory of the memory tree is the only canonical
+# location; the legacy fallback was removed with the consolidation migration.
+# With the default tree this resolves to
+# `<root>/.gaia/memory/meeting-sessions/<id>.yaml` — the segment comes from
+# the shared paths helper so a tree move is picked up without editing this
+# line. Env override wins.
 if [ -n "${GAIA_MEETING_SESSION_FILE:-}" ]; then
   SESSION_FILE="$GAIA_MEETING_SESSION_FILE"
 else
-  SESSION_FILE="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/meeting-sessions/${SESSION_ID}.yaml"
+  # shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+  # its own subshell; this reads the caller's value, which is unchanged.
+  SESSION_FILE="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}${MEMORY_SEGMENT}/meeting-sessions/${SESSION_ID}.yaml"
 fi
 
 # ISO-8601 UTC timestamp — BSD- and GNU-portable.

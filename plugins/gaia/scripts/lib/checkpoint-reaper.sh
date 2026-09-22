@@ -27,6 +27,41 @@
 
 set -euo pipefail
 
+# Memory-tree segment, resolved through the shared paths helper rather than
+# spelled out here, so a move of the tree is picked up automatically.
+#
+# gaia-paths.sh is a sibling in this directory, but it is NOT sourced at top
+# level: the directories reaped below are composed from the caller's --root,
+# and with PROJECT_ROOT unset the helper walks up from CWD and resolves some
+# unrelated ancestor as the root — the reaper would then walk a tree the
+# caller never named. Sourcing it in a subshell pinned to a sentinel root
+# suppresses the walk-up; stripping that root back off leaves just the
+# segment, which is composed onto --root below.
+_gaia_memory_segment() {
+  local lib _sentinel
+  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gaia-paths.sh"
+  [ -r "$lib" ] || return 1
+  _sentinel="/gaia-path-segment-probe"
+  (
+    # shellcheck disable=SC2030,SC2034  # the subshell is the point: the probe
+    # root must not escape into the caller's environment, and the assignment is
+    # read by the helper sourced on the next line, not by this script.
+    PROJECT_ROOT="$_sentinel"
+    _GAIA_PATHS_LOADED=""
+    # shellcheck source=./gaia-paths.sh
+    # shellcheck disable=SC1091  # resolved at runtime from this directory.
+    . "$lib" >/dev/null 2>&1 || exit 1
+    [ -n "${GAIA_MEMORY_DIR:-}" ] || exit 1
+    printf '%s' "${GAIA_MEMORY_DIR#"$_GAIA_ROOT_CANON"/}"
+  )
+}
+
+MEMORY_SEGMENT="$(_gaia_memory_segment || true)"
+if [[ -z "$MEMORY_SEGMENT" ]]; then
+  echo "checkpoint-reaper.sh: could not resolve the memory tree via the shared paths helper" >&2
+  exit 3
+fi
+
 ROOT=""
 AGE_DAYS=30
 APPLY=0
@@ -78,8 +113,12 @@ reap_dir() {
   done < <(find "$dir" -type f -mtime "$MTIME_ARG" -print0 2>/dev/null)
 }
 
-# Reap the canonical .gaia/memory tree. The prior code reaped only the legacy _memory/ paths.
-reap_dir "$ROOT/.gaia/memory/checkpoints"
-reap_dir "$ROOT/.gaia/memory/meeting-sessions"
+# Reap the canonical memory tree beneath the caller's --root. The prior code
+# reaped only the legacy pre-consolidation paths. With the default tree these
+# resolve to `<root>/.gaia/memory/checkpoints` and
+# `<root>/.gaia/memory/meeting-sessions` — the segment comes from the shared
+# paths helper so a tree move is picked up without editing these lines.
+reap_dir "$ROOT/$MEMORY_SEGMENT/checkpoints"
+reap_dir "$ROOT/$MEMORY_SEGMENT/meeting-sessions"
 
 exit 0
