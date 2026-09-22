@@ -44,6 +44,23 @@ set -euo pipefail
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
+# Runtime-tree segments, resolved through the shared segment library rather
+# than spelled out here, so a move of the tree is picked up automatically.
+# Two reasons the segment alone is what this script wants: the notes path is
+# composed from the caller's --root (not from PROJECT_ROOT), and the
+# write-through listing is project-relative when PROJECT_ROOT is unset.
+# shellcheck source=../../../scripts/lib/gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-tree-segments.sh"
+
+ARTIFACTS_SEGMENT=""
+MEMORY_SEGMENT=""
+{ IFS= read -r ARTIFACTS_SEGMENT; IFS= read -r MEMORY_SEGMENT; } < <(gaia_tree_segments || true)
+if [[ -z "$ARTIFACTS_SEGMENT" || -z "$MEMORY_SEGMENT" ]]; then
+  echo "meeting-notes-writer.sh: could not resolve the runtime tree via the shared paths helper" >&2
+  exit 3
+fi
+
 ROOT=""
 PAYLOAD=""
 DATE=""
@@ -190,7 +207,12 @@ action_items_inline+="]"
 # Canonical write path: meeting notes live under a meeting-notes/ subdirectory
 # of creative-artifacts/ (keeps the creative-artifacts root from filling with
 # flat meeting-*.md files alongside scratchpad extractions and other outputs).
-out_dir="$ROOT/.gaia/artifacts/creative-artifacts/meeting-notes"
+#
+# With the default artifacts tree this resolves to
+# out_dir="$ROOT/.gaia/artifacts/creative-artifacts/meeting-notes" — the
+# segment is supplied by the shared paths helper so an artifacts-tree move is
+# picked up here without editing this line.
+out_dir="$ROOT/$ARTIFACTS_SEGMENT/creative-artifacts/meeting-notes"
 out="$out_dir/meeting-${DATE}-${SLUG}.md"
 mkdir -p "$out_dir"
 
@@ -198,7 +220,7 @@ mkdir -p "$out_dir"
 # location (creative-artifacts/meeting-{date}-{slug}.md, pre-subdir layout),
 # migrate it into the meeting-notes/ subdir so discovery / re-save stays
 # idempotent and pre-move files are not orphaned.
-_legacy_out="$ROOT/.gaia/artifacts/creative-artifacts/meeting-${DATE}-${SLUG}.md"
+_legacy_out="$ROOT/$ARTIFACTS_SEGMENT/creative-artifacts/meeting-${DATE}-${SLUG}.md"
 if [ -f "$_legacy_out" ] && [ ! -f "$out" ]; then
   mv "$_legacy_out" "$out"
 fi
@@ -342,7 +364,9 @@ tmp="$(mktemp)"
   echo ""
   while IFS= read -r ag; do
     [[ -z "$ag" ]] && continue
-    echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/${ag}-sidecar/decisions/${DATE}-${SLUG}.md"
+    # shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+    # its own subshell; this reads the caller's value, which is unchanged.
+    echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}${MEMORY_SEGMENT}/${ag}-sidecar/decisions/${DATE}-${SLUG}.md"
   done <<< "$MEM_WT_LIST"
   echo ""
 } > "$tmp"

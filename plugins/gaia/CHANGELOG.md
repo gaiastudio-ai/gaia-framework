@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.218.1] — 2026-09-22
+
+### Fixed
+
+- A meeting yield now records where to resume from. The session field that `--resume` reads was validated against one vocabulary and written with another, so every write was rejected and the rejection discarded — leaving no re-entry point after any yield. Yield boundaries now have their own field, the resume field receives the phase the meeting is about to enter, and a rejected write says so on stderr instead of passing silently (#1827)
+- The citation check no longer halts a correctly cited turn. Its matcher had been rewritten into an invalid expression, so a cited line matched nothing and was treated as uncited, and the message explaining how to recover had been overwritten mid-sentence (#1827)
+
+### Changed
+
+- The skill test suites now run in continuous integration. 60 files covering the meeting workflow and story creation were previously executed by no job: 71 cases were failing against locations the runtime had moved away from, and the case names described internal bookkeeping rather than behaviour. The failures are repaired, the names describe what each case asserts, and every file is gated — so a change that breaks one of them is caught (#1826, #1827)
+
 ## [1.218.0] — 2026-09-21
 
 ### Added

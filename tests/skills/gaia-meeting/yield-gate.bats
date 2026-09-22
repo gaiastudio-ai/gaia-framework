@@ -173,3 +173,38 @@ EOF
   count="$(grep -c 'YIELD-STOP' "$HELPER" || true)"
   [ "$count" -eq 0 ]
 }
+
+# --- default session-file resolution (no override)
+#
+# Every case above pins the session file with GAIA_MEETING_SESSION_FILE, so
+# none of them reaches the branch that composes the path from the root and the
+# canonical memory tree. That branch is what the orchestrator actually uses.
+# Without this case a re-point of the memory segment goes undetected.
+
+@test "with no session-file override the helper writes under the canonical memory tree" {
+  local memory_rel
+  memory_rel="$(
+    PROJECT_ROOT="$TMP" _GAIA_PATHS_LOADED="" \
+    bash -c '. "$1/plugins/gaia/scripts/lib/gaia-paths.sh" >/dev/null 2>&1;
+             printf "%s" "${GAIA_MEMORY_DIR#"$_GAIA_ROOT_CANON"/}"' _ "$REPO_ROOT"
+  )"
+  [ -n "$memory_rel" ] || { echo "could not resolve the memory segment"; return 1; }
+
+  local default_file="$TMP/$memory_rel/meeting-sessions/sess-default-001.yaml"
+  mkdir -p "$(dirname "$default_file")"
+  "$SESSION_HELPER" create --file "$default_file" --session-id "sess-default-001" >/dev/null
+
+  run env -u GAIA_MEETING_SESSION_FILE PROJECT_ROOT="$TMP" \
+    "$HELPER" --phase pre-close --session-id sess-default-001
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  # The boundary landed in the file the helper resolved on its own — proving
+  # it composed the canonical path rather than one that merely looks right.
+  local boundary
+  boundary="$("$SESSION_HELPER" read --file "$default_file" --field last_yield_boundary)"
+  [ "$boundary" = "pre-close" ] || {
+    echo "helper did not write to the canonical default path: $default_file"
+    return 1
+  }
+}

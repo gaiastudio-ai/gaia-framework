@@ -244,7 +244,6 @@ core	lock-review-gate-ledger.bats
 core	lock-sprint-state.bats
 core	lock-story-status.bats
 core	manual-test-docs.bats
-core	meeting-dispatch-envelope-assertion.bats
 core	meeting-dispatch-provenance-integration.bats
 core	meeting-val-bridge-anti-pattern.bats
 core	migrate-stories-to-canonical-layout.bats
@@ -629,6 +628,7 @@ scripts-lib	e76-s23-clarify-mode.bats
 scripts-lib	execution-mode-b.bats
 scripts-lib	forbidden-sentinel-scan.bats
 scripts-lib	gaia-paths.bats
+scripts-lib	gaia-tree-segments.bats
 scripts-lib	ground-truth-stale-check.bats
 scripts-lib	intake-dispatch-verb-check.bats
 scripts-lib	issue-1293-brownfield-manifest-caller.bats
@@ -639,6 +639,7 @@ scripts-lib	lib-exec-with-timeout.bats
 scripts-lib	lib-transcript-writer.bats
 scripts-lib	lib/resolve-epic-slug.bats
 scripts-lib	load-taxonomy.bats
+scripts-lib	meeting-dispatch-envelope-assertion.bats
 scripts-lib	meeting-mode-b-dispatch-wiring.bats
 scripts-lib	meeting-mode-b-pilot.bats
 scripts-lib	migration-safety-net.bats

@@ -60,3 +60,35 @@ teardown() {
   grep -qF 'assert_agent_envelope' "$DISPATCH_SCRIPT"
   grep -qF -- '--expected-agent' "$DISPATCH_SCRIPT"
 }
+
+# ---------------- default artifacts tree in the unwired-dispatch diagnostic ----------------
+#
+# The diagnostic emitted when no dispatch stub is set names a path composed
+# from the shared paths helper. Nothing else in the suite executes the script,
+# so without this case that composition is unverified and a re-point of the
+# artifacts segment would go unnoticed.
+
+@test "the unwired-dispatch diagnostic names the canonical artifacts tree" {
+  local root artifacts_rel
+  root="$(mktemp -d)"
+  artifacts_rel="$(
+    PROJECT_ROOT="$root" _GAIA_PATHS_LOADED="" \
+    bash -c '. "$1/plugins/gaia/scripts/lib/gaia-paths.sh" >/dev/null 2>&1;
+             printf "%s" "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}"' _ "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
+  )"
+  [ -n "$artifacts_rel" ] || { rm -rf "$root"; echo "could not resolve the artifacts segment"; return 1; }
+
+  local charter="$root/charter.md"
+  printf 'decide on the probe\n' > "$charter"
+
+  # No stub set: the script takes the unwired branch, reports on stderr and
+  # exits 3.
+  run env -u GAIA_DISPATCH_AGENT_STUB PROJECT_ROOT="$root" \
+    bash "$DISPATCH_SCRIPT" --agent layla --phase discuss --charter-ref "$charter" \
+    --session-id sess-probe --round 1 --turn 1
+  rm -rf "$root"
+
+  [ "$status" -eq 3 ] || { echo "expected the unwired-dispatch exit, got $status: $output"; return 1; }
+  printf '%s' "$output" | grep -qF "${artifacts_rel}/planning-artifacts/architecture" \
+    || { echo "diagnostic does not name the canonical artifacts tree (${artifacts_rel}):"; printf '%s\n' "$output"; return 1; }
+}

@@ -30,6 +30,22 @@ export LC_ALL=C
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
+# Memory-tree segment, resolved through the shared segment library rather than
+# spelled out here, so a move of the tree is picked up automatically.
+# `--sidecar-path` emits a PROJECT-RELATIVE path when PROJECT_ROOT is unset
+# (callers prefix their own root), so the segment alone is what this script
+# needs.
+# shellcheck source=../../../scripts/lib/gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-tree-segments.sh"
+
+MEMORY_SEGMENT=""
+{ IFS= read -r _; IFS= read -r MEMORY_SEGMENT; } < <(gaia_tree_segments || true)
+if [[ -z "$MEMORY_SEGMENT" ]]; then
+  echo "research-phase-dispatch.sh: could not resolve the memory tree via the shared paths helper" >&2
+  exit 3
+fi
+
 NO_WEB=0
 SKIP_RESEARCH=0
 MODE=""
@@ -154,8 +170,14 @@ case "$MODE" in
       echo "research-phase-dispatch.sh: agent name is empty." >&2
       exit 2
     fi
-    # .gaia/memory is the canonical sidecar tree; legacy _memory fallback removed.
-    echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/${SIDECAR_AGENT}-sidecar"
+    # The memory tree is the canonical sidecar tree; the legacy fallback was
+    # removed with the consolidation migration. With the default tree this
+    # resolves to `<root>/.gaia/memory/<agent>-sidecar` — the segment comes
+    # from the shared paths helper so a tree move is picked up without
+    # editing this line.
+    # shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+    # its own subshell; this reads the caller's value, which is unchanged.
+    echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}${MEMORY_SEGMENT}/${SIDECAR_AGENT}-sidecar"
     ;;
   emit-frontmatter)
     if [[ "$SKIP_RESEARCH" -eq 1 ]]; then
