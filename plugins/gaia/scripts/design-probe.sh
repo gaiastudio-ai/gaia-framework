@@ -80,7 +80,12 @@ _design_probe_classify() {
   stderr_file="$(mktemp -t design-probe-stderr.XXXXXX)"
 
   local rc=0
-  exec_with_timeout "$timeout_s" sh -c "$bridge_cmd" 2>"$stderr_file" || rc=$?
+  # Bridge stdout is discarded (>/dev/null): the probe never reads it, and
+  # letting it through would bleed the bridge's own output onto the
+  # probe's stdout ahead of the classification word this function decides
+  # below — a hostile or merely chatty bridge could otherwise make a
+  # caller who reads the first line of stdout see the WRONG verdict.
+  exec_with_timeout "$timeout_s" sh -c "$bridge_cmd" >/dev/null 2>"$stderr_file" || rc=$?
 
   local bridge_stderr=""
   if [ -f "$stderr_file" ]; then
@@ -119,6 +124,19 @@ _design_probe_classify() {
   esac
 }
 
+# _sanitize_for_log <value>
+# Prints <value> with every non-printable byte (C0 controls 0x00-0x1f, DEL
+# 0x7f, and any embedded newline) replaced by '?', on a single line with no
+# trailing newline. Used before interpolating an attacker-controlled value
+# (e.g. DESIGN_PROBE_BRIDGE_CMD) into a log line: without this, escape
+# sequences (color/title-bar rewrites) and embedded newlines pass through
+# verbatim and can forge additional log lines. LC_ALL=C (set at top of this
+# script) makes `tr`'s [:print:] class byte-for-byte deterministic across
+# platforms rather than locale-dependent.
+_sanitize_for_log() {
+  printf '%s' "$1" | tr -c '[:print:]' '?'
+}
+
 # ---- public entry point (coverage gate requires this name in a bats file) ---
 
 design_probe() {
@@ -137,7 +155,10 @@ design_probe() {
   #    phase-parallel-orchestrator.sh's dispatch_hook line, naming the
   #    refused command so the log is useful without re-running anything.
   if [ -z "${BATS_TEST_FILENAME:-}" ] && [ "${DESIGN_PROBE_ALLOW_BRIDGE_CMD:-}" != "1" ]; then
-    printf 'event=bridge_hook cmd=%s action=refused reason=no-marker — set DESIGN_PROBE_ALLOW_BRIDGE_CMD=1 to honour this bridge outside bats\n' "$bridge_cmd" >&2
+    # cmd= carries an attacker-controlled value (the caller's ambient
+    # DESIGN_PROBE_BRIDGE_CMD) — sanitized so control bytes and embedded
+    # newlines cannot forge terminal escapes or extra log lines.
+    printf 'event=bridge_hook cmd=%s action=refused reason=no-marker — set DESIGN_PROBE_ALLOW_BRIDGE_CMD=1 to honour this bridge outside bats\n' "$(_sanitize_for_log "$bridge_cmd")" >&2
     printf '%s\n' "missing"
     printf '%s\n' "$_MSG_MISSING" >&2
     return 1
