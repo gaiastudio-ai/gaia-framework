@@ -1,7 +1,7 @@
 ---
 name: gaia-validate-design-a11y
-description: Planning-phase accessibility validation against design artifacts (Figma, wireframes, UX docs). Verifies WCAG 2.1 design-time concerns — color contrast, semantic structure, keyboard navigation design, ARIA landmark planning — before implementation begins. Produces a verdict via verdict-resolver.sh per the seven-phase structure. Use when "design accessibility review" or /gaia-validate-design-a11y.
-argument-hint: "[design-target — Figma URL, design doc path, or component name]"
+description: Planning-phase accessibility validation against design artifacts (design-record reference, wireframes, UX docs). Verifies WCAG 2.1 design-time concerns — color contrast, semantic structure, keyboard navigation design, ARIA landmark planning — before implementation begins. Produces a verdict via verdict-resolver.sh per the seven-phase structure. Use when "design accessibility review" or /gaia-validate-design-a11y.
+argument-hint: "[design-target — design-record reference, design doc path, or component name]"
 command: /gaia-validate-design-a11y
 phase: planning
 verdict_producing: true
@@ -12,7 +12,7 @@ orchestration_class: reviewer
 
 ## Mission
 
-You are performing a **planning-phase accessibility validation** on the supplied design target (Figma frame, wireframe, design doc, or named component). The review evaluates design-time WCAG 2.1 concerns — color contrast, semantic structure, keyboard navigation design, ARIA landmark planning — and produces a verdict (`APPROVE | REQUEST_CHANGES | BLOCKED`) via the deterministic resolver.
+You are performing a **planning-phase accessibility validation** on the supplied design target (design-record reference, wireframe, design doc, or named component). The review evaluates design-time WCAG 2.1 concerns — color contrast, semantic structure, keyboard navigation design, ARIA landmark planning — and produces a verdict (`APPROVE | REQUEST_CHANGES | BLOCKED`) via the deterministic resolver.
 
 This is the **planning** sibling of the three-phase a11y skill family:
 
@@ -31,7 +31,7 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ## Inputs
 
-- `$ARGUMENTS`: optional design target (Figma URL, design doc path, or component name). If omitted, ask the user inline: "Which design artifact should I validate for accessibility?"
+- `$ARGUMENTS`: optional design target (design-record reference, design doc path, or component name). If omitted, ask the user inline: "Which design artifact should I validate for accessibility?"
 
 ## Steps (seven-phase structure)
 
@@ -41,12 +41,12 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 - Resolve `compliance.ui_present` via `resolve-config.sh`.
   - If the value is `true`: proceed — but ALSO run the headless-surface sanity
     check. Probe for UI signal in the project tree: any of
-    (a) `.figma` blob / Figma frame URL in `ux-design.md`, (b) design-token
+    (a) design-record reference in `ux-design.md`, (b) design-token
     file (`tokens.json`, `design-tokens.yaml`), or (c) any `*.css`, `*.scss`,
     `*.jsx`, `*.tsx`, `*.vue`, `*.svelte` source under the configured stack
     paths. If ZERO UI signal is detected despite `ui_present: true`, emit a
     NOTICE-tier finding (do NOT block — still proceed with the review):
-    `NOTICE: compliance.ui_present is true but no UI artifacts found (no figma block, no design tokens, no UI source files) — verify project-config or remove ui_present:true.`
+    `NOTICE: compliance.ui_present is true but no UI artifacts found (no design-record reference, no design tokens, no UI source files) — verify project-config or remove ui_present:true.`
     Surface the NOTICE alongside the verdict in Phase 5 — this prevents a
     vacuous APPROVE on a headless project misconfigured with `ui_present: true`.
   - **If the value is unset/missing (auto-detect):** the project may still
@@ -76,8 +76,8 @@ All three skills load the same rubric layer (`rubrics/base/a11y.json`) via the l
 
 ### Phase 2 — Discovery
 
-- Read the design artifact (Figma export, design doc, or component spec).
-- If the target is a Figma URL, retrieve the design context via the Figma MCP server when available; degrade gracefully to text-only when unavailable.
+- Read the design artifact (design-record reference, design doc, or component spec).
+- If the target resolves through a design-record reference, retrieve the design context through the project reference; surface unreachability as a finding (never fall back to a local copy).
 - Identify all interactive components, color palettes, text sizes, and navigation flows in the design.
 
 ### Phase 3A — Analysis (design-time WCAG checks)

@@ -77,7 +77,9 @@ Cache: cache key = `hash(File List contents + tool config + tool versions + reso
 ### Phase 4 — Architecture Conformance + Design Fidelity
 
 - Cross-check the diff against the architecture document and ADRs referenced by the story.
-- For UI changes, compare against the ux-design.md and any Figma context.
+- For UI changes, resolve design truth through the project's design-record reference and compare against it.
+- If the design-record reference resolves but the design surface is unreachable, surface unreachability as a finding (never fall back to a local copy).
+- If no design-record reference exists: on a UI project (`compliance.ui_present` is true), report design truth unavailable as a finding. On a non-UI project, record not-applicable (no finding). A project that has never configured a design source will see this check report findings for the first time when a design-record reference is added; those findings are correct behaviour, not a regression.
 - Findings produced here flow into Phase 3B's category buckets (architecture, fidelity).
 
 ### Phase 5 — Verdict

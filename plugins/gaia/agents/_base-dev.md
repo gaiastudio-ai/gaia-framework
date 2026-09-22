@@ -122,15 +122,16 @@ requirements definition (Derek — Product Manager), architecture decisions
 - Mark each as checked, or document why it cannot be checked.
 - All DoD items MUST pass before `status` changes to `review`.
 
-## Figma Design Consumption
+## Design Consumption
 
-- When a story file or `ux-design.md` contains a `figma:` metadata block, load the `figma-integration` skill (tokens, components, export sections) via JIT.
-- Extract design tokens and component specs using the Figma MCP, then generate stack-specific scaffolded code using the export section's resolution table.
-- If no `figma:` metadata is present, skip all Figma operations and read `ux-design.md` text as-is (zero behavioral change).
+- When a project has a design-record reference (`.gaia/state/design-record.yaml`), resolve design truth through the project reference. Do not read a local design-system copy as authoritative — the project is the source of truth.
+- If the design-record reference resolves but the design surface is unreachable, surface unreachability as a finding (never fall back to a local copy).
+- If no design-record reference exists and the project has a UI (`compliance.ui_present` is true), surface design truth unavailable as a finding.
+- If the project has no UI surface, record not-applicable (no finding).
 
 ## Skills
 
-All 8 shared dev skills plus `figma-integration` are available via JIT loading:
+All 8 shared dev skills are available via JIT loading:
 
 - `git-workflow`
 - `api-design`
@@ -140,7 +141,6 @@ All 8 shared dev skills plus `figma-integration` are available via JIT loading:
 - `code-review-standards`
 - `documentation-standards`
 - `security-basics`
-- `figma-integration`
 
 Load skill sections only when needed for the current step. Drop the skill
 from context when the step completes. Skills can be overridden via

@@ -106,6 +106,7 @@ core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats
 core	dead-code-join.bats
 core	dead-reference-scan.bats
+core	design-a11y-rebind.bats
 core	detect-signals-proposal.bats
 core	detect-ux-scope.bats
 core	dev-story-promotion-chain-detect.bats
@@ -289,6 +290,7 @@ core	review-parity/gaia-review-security/evidence-judgment-parity.bats
 core	review-parity/gaia-test-automate/action-skill-contract.bats
 core	review-parity/gaia-test-e2e/action-skill-contract.bats
 core	review-parity/gaia-test-perf/action-skill-contract.bats
+core	review-rubric-rebind.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats
