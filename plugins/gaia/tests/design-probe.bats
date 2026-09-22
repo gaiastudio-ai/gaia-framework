@@ -420,3 +420,177 @@ STUB
   [[ "$(_probe_state_line)" == *"missing"* ]] \
     || { echo "exit 1 without exit-3 or the literal unauthorized marker must fail closed to missing: $output"; return 1; }
 }
+
+# ---------------------------------------------------------------------------
+# Security rework — bridge stdout isolation
+# ---------------------------------------------------------------------------
+
+@test "(SEC1) bridge stdout never bleeds onto the probe's own stdout" {
+  # LOAD-BEARING: a hostile or merely chatty bridge writes a FALSE state
+  # word ("available") to its own stdout, then exits 1 (a plain,
+  # non-unauthorized failure that the real classifier maps to "missing").
+  # If the bridge's stdout is not discarded, that false word lands on the
+  # probe's stdout ahead of (or instead of) the probe's own classification
+  # word, and a caller reading stdout would read the WRONG verdict. The
+  # probe never consumes bridge stdout, so it must be redirected to
+  # /dev/null before the real "missing" word is ever printed.
+  #
+  # Capture the probe's own stderr separately (into a file), the same
+  # idiom used by "(AC3) available case does not emit a remediation
+  # message" above — `run`'s $output otherwise merges stdout+stderr, which
+  # would hide a bleed behind the probe's own remediation text.
+  #
+  # Mutant proof (see design-probe.sh:83 exec_with_timeout invocation): if
+  # the >/dev/null redirect on the bridge's own stdout is removed, this
+  # test reds because $output (stdout only) becomes "available\nmissing"
+  # instead of exactly "missing".
+  local stderr_file="$TEST_TMP/sec1-stderr"
+  run bash -c "env DESIGN_PROBE_ALLOW_BRIDGE_CMD=1 DESIGN_PROBE_BRIDGE_CMD=\"sh -c 'printf available; exit 1'\" bash '$PROBE' 2>'$stderr_file'"
+  [ "$status" -eq 1 ] \
+    || { echo "expected exit 1 (plain failure, no unauthorized marker), got $status: $output"; return 1; }
+  [ "$output" = "missing" ] \
+    || { echo "bridge stdout bled through: probe stdout must be exactly 'missing' and nothing else, got: $output"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Security rework — refusal log sanitization
+# ---------------------------------------------------------------------------
+
+@test "(SEC2) refusal log line strips control bytes and stays a single line" {
+  # LOAD-BEARING: DESIGN_PROBE_BRIDGE_CMD is attacker-controlled when the
+  # caller's environment is hostile. The refusal path (no marker present)
+  # interpolates this value into a log line via cmd=%s. An unsanitized
+  # value carrying ESC/BEL (terminal escape injection) or an embedded
+  # newline (log-line forging) must not reach the log verbatim.
+  local evil_cmd
+  evil_cmd=$'evil\x1b[31minjected-line=hacked\x07\nsecond-line-should-not-exist'
+
+  run env \
+    -u BATS_TEST_FILENAME \
+    -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    DESIGN_PROBE_BRIDGE_CMD="$evil_cmd" \
+    bash "$PROBE"
+
+  [ "$status" -eq 1 ] || { echo "expected exit 1 (refused, fail-closed), got $status: $output"; return 1; }
+
+  # The refusal line must exist and must be a SINGLE line in $output —
+  # i.e. splitting the raw evil_cmd's embedded newline must not have
+  # produced a second attacker-controlled log line.
+  local refused_line_count
+  refused_line_count="$(printf '%s\n' "$output" | grep -c 'action=refused')"
+  [ "$refused_line_count" -eq 1 ] \
+    || { echo "expected exactly 1 refusal log line, got $refused_line_count (newline was not sanitized): $output"; return 1; }
+
+  # The forged second line's marker must never appear as its own line.
+  ! printf '%s\n' "$output" | grep -qx 'second-line-should-not-exist' \
+    || { echo "embedded newline forged a second log line: $output"; return 1; }
+
+  # Raw control bytes (ESC 0x1b, BEL 0x07) must not appear in the
+  # sanitized cmd= field specifically. Scoped to just that field's value
+  # (not the whole refused-line or $output) because the probe's own
+  # fixed-string log/remediation text legitimately contains non-ASCII
+  # punctuation (an em dash), which is not part of what this test proves
+  # and must not false-positive it.
+  # Portable check (no grep -P / PCRE dependency, works with BSD grep
+  # too): strip every printable ASCII byte plus tab with LC_ALL=C tr;
+  # whatever remains is exactly the raw control-byte leakage, if any —
+  # the sanitizer's own '?' substitute is itself printable and vanishes
+  # here, so a genuinely sanitized field always ends empty.
+  local refused_line cmd_field
+  refused_line="$(printf '%s\n' "$output" | grep 'action=refused')"
+  cmd_field="$(printf '%s\n' "$refused_line" | sed -E 's/^event=bridge_hook cmd=(.*) action=refused.*/\1/')"
+  local leaked_bytes
+  leaked_bytes="$(printf '%s' "$cmd_field" | LC_ALL=C tr -d '[:print:]\t')"
+  [ -z "$leaked_bytes" ] \
+    || { echo "raw control bytes (ESC/BEL) leaked into the sanitized cmd= field: $(printf '%s' "$cmd_field" | od -An -tx1 | head -5)"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Test-quality rework — marker-gate value must be the EXACT string "1"
+# ---------------------------------------------------------------------------
+
+@test "(SEC3) DESIGN_PROBE_ALLOW_BRIDGE_CMD must be exactly \"1\", not merely non-empty" {
+  # LOAD-BEARING CONSTRUCTION — mirrors "(AC6) ambient bridge variable
+  # refused when no marker present" above: a REAL executable stub on
+  # PATH, named by DESIGN_PROBE_BRIDGE_CMD, with BATS_TEST_FILENAME
+  # stripped via `env -u` in a genuine child process. Do not replace the
+  # stub with a mock or a source-grep — see the sibling test's comment for
+  # why that proves nothing about the real seam.
+  #
+  # The gate at design-probe.sh is `[ "${DESIGN_PROBE_ALLOW_BRIDGE_CMD:-}"
+  # != "1" ]` — an exact-string comparison. Today no test sends a
+  # non-empty, non-"1" value, so a future loosening to a plain non-empty
+  # check (`[ -z "${DESIGN_PROBE_ALLOW_BRIDGE_CMD:-}" ]`) would pass the
+  # whole suite while silently accepting "0", "false", "yes", etc. as
+  # opt-in. Two values are tried: "0" (the classic falsy-string trap) and
+  # "yes" (an arbitrary non-"1" truthy-looking string).
+  #
+  # Mutant proof: loosen the gate's `!= "1"` to `-z ... ` (i.e. any
+  # non-empty value is accepted) → the stub fires for "0" and/or "yes"
+  # and this test reds.
+  local stub_dir="$TEST_TMP/bin"
+  local stub_log="$TEST_TMP/stubstate/invoked.log"
+  mkdir -p "$stub_dir" "$TEST_TMP/stubstate"
+  : > "$stub_log"
+
+  cat > "$stub_dir/design-probe-bridge-stub" <<'STUB'
+#!/usr/bin/env bash
+echo "invoked at $(date +%s) with ALLOW=${DESIGN_PROBE_ALLOW_BRIDGE_CMD:-}" >> "${DESIGN_PROBE_STUB_LOG}"
+exit 0
+STUB
+  chmod +x "$stub_dir/design-probe-bridge-stub"
+
+  for bogus_value in "0" "yes"; do
+    : > "$stub_log"
+    run env \
+      -u BATS_TEST_FILENAME \
+      PATH="$stub_dir:$PATH" \
+      DESIGN_PROBE_BRIDGE_CMD="design-probe-bridge-stub" \
+      DESIGN_PROBE_ALLOW_BRIDGE_CMD="$bogus_value" \
+      DESIGN_PROBE_STUB_LOG="$stub_log" \
+      bash "$PROBE"
+
+    [ ! -s "$stub_log" ] \
+      || { echo "DESIGN_PROBE_ALLOW_BRIDGE_CMD=$bogus_value must NOT open the gate, but the stub was invoked: $(cat "$stub_log")"; return 1; }
+
+    [[ "$output" == *"action=refused"* ]] \
+      || { echo "DESIGN_PROBE_ALLOW_BRIDGE_CMD=$bogus_value: expected a refusal log line, got: $output"; return 1; }
+
+    [[ "$output" == *"missing"* ]] \
+      || { echo "DESIGN_PROBE_ALLOW_BRIDGE_CMD=$bogus_value: expected fail-closed 'missing' classification, got: $output"; return 1; }
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Test-quality rework — pin the state word to stdout for the failure states
+# too (the AC3 "available" test above already isolates stdout/stderr; the
+# failure-state tests elsewhere in this file assert against $output, bats'
+# MERGED stdout+stderr capture, which would still pass if the classification
+# word were emitted on stderr instead of stdout — same idiom as "(AC3)
+# available case does not emit a remediation message", applied to
+# "missing" and "unauthorized").
+# ---------------------------------------------------------------------------
+
+@test "(AC1-SEC) missing state word is on stdout only, message is on stderr only" {
+  local stderr_file="$TEST_TMP/ac1-stderr"
+  run bash -c "env DESIGN_PROBE_BRIDGE_CMD='sh -c \"exit 2\"' DESIGN_PROBE_ALLOW_BRIDGE_CMD=1 bash '$PROBE' 2>'$stderr_file'"
+  [ "$status" -eq 1 ] || { echo "expected exit 1, got $status: $output"; return 1; }
+  [ "$output" = "missing" ] \
+    || { echo "the classification word must be the ONLY thing on stdout, got: $output"; return 1; }
+  [ -s "$stderr_file" ] \
+    || { echo "the remediation message must be on stderr"; return 1; }
+  ! grep -q '^missing$' "$stderr_file" \
+    || { echo "the classification word must not ALSO appear on stderr as its own line: $(cat "$stderr_file")"; return 1; }
+}
+
+@test "(AC2-SEC) unauthorized state word is on stdout only, message is on stderr only" {
+  local stderr_file="$TEST_TMP/ac2-stderr"
+  run bash -c "env DESIGN_PROBE_BRIDGE_CMD=\"sh -c 'echo unauthorized >&2; exit 3'\" DESIGN_PROBE_ALLOW_BRIDGE_CMD=1 bash '$PROBE' 2>'$stderr_file'"
+  [ "$status" -eq 1 ] || { echo "expected exit 1, got $status: $output"; return 1; }
+  [ "$output" = "unauthorized" ] \
+    || { echo "the classification word must be the ONLY thing on stdout, got: $output"; return 1; }
+  [ -s "$stderr_file" ] \
+    || { echo "the remediation message must be on stderr"; return 1; }
+  ! grep -q '^unauthorized$' "$stderr_file" \
+    || { echo "the classification word must not ALSO appear on stderr as its own line: $(cat "$stderr_file")"; return 1; }
+}
