@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.218.2] — 2026-09-22
+
+### Fixed
+
+- Meeting artifacts survive a change to the runtime tree's layout. The meeting scripts composed their output paths from a hard-coded tree name rather than resolving through the shared path helper, which is why the previous layout change broke every fixture asserting the old locations. They now resolve the tree and contribute only their own leaf (#1833)
+- The meeting write-through helper honours the root it is given. It accepted a root argument and ignored it, taking the location from the environment instead — so with nothing set it wrote relative to the working directory and left a sidecar tree wherever it happened to run (#1833)
+- The release job no longer points at a repository setting that cannot be changed here. When it cannot open its own pull request it already pushes the branch and hands over a one-click link; its guidance offered a permissions toggle the enterprise disables, so following it only revealed that it could not be followed (#1833)
+
 ## [1.218.1] — 2026-09-22
 
 ### Fixed
