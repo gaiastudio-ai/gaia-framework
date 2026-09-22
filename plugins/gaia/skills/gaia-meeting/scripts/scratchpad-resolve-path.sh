@@ -35,6 +35,38 @@ export LC_ALL
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
+# Artifacts-tree segment, resolved through the shared paths helper rather than
+# spelled out here, so a move of the runtime tree is picked up automatically.
+#
+# The helper is sourced in a subshell pinned to a sentinel root: this resolver
+# emits a PROJECT-RELATIVE path when PROJECT_ROOT is unset (callers prefix
+# their own root), and the helper's walk-up would otherwise resolve some
+# unrelated ancestor as the root and turn the output absolute. Pinning the root
+# suppresses the walk-up; stripping it back off leaves just the tree segment.
+_gaia_artifacts_segment() {
+  local lib _sentinel
+  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-paths.sh"
+  [ -r "$lib" ] || return 1
+  _sentinel="/gaia-path-segment-probe"
+  (
+    # shellcheck disable=SC2030  # the subshell is the point: the probe root must
+    # not escape into the caller's environment.
+    PROJECT_ROOT="$_sentinel"
+    _GAIA_PATHS_LOADED=""
+    # shellcheck source=../../../scripts/lib/gaia-paths.sh
+    # shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+    . "$lib" >/dev/null 2>&1 || exit 1
+    [ -n "${GAIA_ARTIFACTS_DIR:-}" ] || exit 1
+    printf '%s' "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}"
+  )
+}
+
+ARTIFACTS_SEGMENT="$(_gaia_artifacts_segment || true)"
+if [ -z "$ARTIFACTS_SEGMENT" ]; then
+  echo "scratchpad-resolve-path.sh: could not resolve the artifacts tree via the shared paths helper" >&2
+  exit 3
+fi
+
 DATE=""
 SLUG=""
 SP_N=""
@@ -149,6 +181,10 @@ if [[ -z "$auto_slug" ]]; then
   auto_slug="untitled"
 fi
 
-# Canonical-unconditional path (no legacy fallback supported).
+# Canonical-unconditional path (no legacy fallback supported). The artifacts
+# segment comes from the shared paths helper; this resolver contributes only
+# the leaf layout below it.
+# shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+# its own subshell; this reads the caller's value, which is unchanged.
 _scratchpad_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}"
-printf '%s\n' "${_scratchpad_root}.gaia/artifacts/creative-artifacts/meeting-scratchpad/${YYYY_MM}/${SLUG}/${SP_N}-${auto_slug}.${CTYPE}"
+printf '%s\n' "${_scratchpad_root}${ARTIFACTS_SEGMENT}/creative-artifacts/meeting-scratchpad/${YYYY_MM}/${SLUG}/${SP_N}-${auto_slug}.${CTYPE}"

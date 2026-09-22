@@ -102,6 +102,27 @@ teardown() {
 
 # --- scratchpad_extractions: payload propagation ---
 
+@test "the memory write-through listing names the canonical memory tree" {
+  # The listing renders sidecar paths into the notes body as text, so no
+  # file-existence check covers it — the write-boundary fixture asserts which
+  # files are written, not what this section says. Without this case the
+  # segment the writer composes from is unverified and a re-point to the wrong
+  # tree goes unnoticed.
+  local memory_rel
+  memory_rel="$(
+    PROJECT_ROOT="$ROOT_T" _GAIA_PATHS_LOADED="" \
+    bash -c '. "$1/plugins/gaia/scripts/lib/gaia-paths.sh" >/dev/null 2>&1;
+             printf "%s" "${GAIA_MEMORY_DIR#"$_GAIA_ROOT_CANON"/}"' _ "$REPO_ROOT"
+  )"
+  [ -n "$memory_rel" ] || { echo "could not resolve the memory segment"; return 1; }
+
+  "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
+  out="$NOTES_OUT"
+
+  grep -qF "${memory_rel}/layla-sidecar/decisions/2026-05-07-fixture-slug.md" "$out" \
+    || { echo "listing does not name the canonical memory tree (${memory_rel}):"; cat "$out"; return 1; }
+}
+
 @test "scratchpad_extractions defaults to [] when the payload field is absent" {
   "$WRITER" --root "$ROOT_T" --payload "$PAYLOAD" --date 2026-05-07 --slug fixture-slug
   out="$NOTES_OUT"

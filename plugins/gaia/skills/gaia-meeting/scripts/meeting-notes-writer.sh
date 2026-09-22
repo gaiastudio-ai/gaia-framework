@@ -44,6 +44,43 @@ set -euo pipefail
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
+# Runtime-tree segments, resolved through the shared paths helper rather than
+# spelled out here, so a move of the tree is picked up automatically.
+#
+# The helper is sourced in a subshell pinned to a sentinel root. Two reasons:
+# the notes path is composed from the caller's --root (not from PROJECT_ROOT),
+# and the write-through listing is project-relative when PROJECT_ROOT is unset.
+# Letting the helper walk up from CWD would resolve some unrelated ancestor as
+# the root in both cases. Pinning the root suppresses the walk-up; stripping it
+# back off leaves just the tree segments.
+_gaia_tree_segments() {
+  local lib _sentinel
+  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-paths.sh"
+  [ -r "$lib" ] || return 1
+  _sentinel="/gaia-path-segment-probe"
+  (
+    # shellcheck disable=SC2030  # the subshell is the point: the probe root must
+    # not escape into the caller's environment.
+    PROJECT_ROOT="$_sentinel"
+    _GAIA_PATHS_LOADED=""
+    # shellcheck source=../../../scripts/lib/gaia-paths.sh
+    # shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+    . "$lib" >/dev/null 2>&1 || exit 1
+    [ -n "${GAIA_ARTIFACTS_DIR:-}" ] && [ -n "${GAIA_MEMORY_DIR:-}" ] || exit 1
+    printf '%s\n%s\n' \
+      "${GAIA_ARTIFACTS_DIR#"$_GAIA_ROOT_CANON"/}" \
+      "${GAIA_MEMORY_DIR#"$_GAIA_ROOT_CANON"/}"
+  )
+}
+
+ARTIFACTS_SEGMENT=""
+MEMORY_SEGMENT=""
+{ IFS= read -r ARTIFACTS_SEGMENT; IFS= read -r MEMORY_SEGMENT; } < <(_gaia_tree_segments || true)
+if [[ -z "$ARTIFACTS_SEGMENT" || -z "$MEMORY_SEGMENT" ]]; then
+  echo "meeting-notes-writer.sh: could not resolve the runtime tree via the shared paths helper" >&2
+  exit 3
+fi
+
 ROOT=""
 PAYLOAD=""
 DATE=""
@@ -190,7 +227,12 @@ action_items_inline+="]"
 # Canonical write path: meeting notes live under a meeting-notes/ subdirectory
 # of creative-artifacts/ (keeps the creative-artifacts root from filling with
 # flat meeting-*.md files alongside scratchpad extractions and other outputs).
-out_dir="$ROOT/.gaia/artifacts/creative-artifacts/meeting-notes"
+#
+# With the default artifacts tree this resolves to
+# out_dir="$ROOT/.gaia/artifacts/creative-artifacts/meeting-notes" — the
+# segment is supplied by the shared paths helper so an artifacts-tree move is
+# picked up here without editing this line.
+out_dir="$ROOT/$ARTIFACTS_SEGMENT/creative-artifacts/meeting-notes"
 out="$out_dir/meeting-${DATE}-${SLUG}.md"
 mkdir -p "$out_dir"
 
@@ -198,7 +240,7 @@ mkdir -p "$out_dir"
 # location (creative-artifacts/meeting-{date}-{slug}.md, pre-subdir layout),
 # migrate it into the meeting-notes/ subdir so discovery / re-save stays
 # idempotent and pre-move files are not orphaned.
-_legacy_out="$ROOT/.gaia/artifacts/creative-artifacts/meeting-${DATE}-${SLUG}.md"
+_legacy_out="$ROOT/$ARTIFACTS_SEGMENT/creative-artifacts/meeting-${DATE}-${SLUG}.md"
 if [ -f "$_legacy_out" ] && [ ! -f "$out" ]; then
   mv "$_legacy_out" "$out"
 fi
@@ -342,7 +384,9 @@ tmp="$(mktemp)"
   echo ""
   while IFS= read -r ag; do
     [[ -z "$ag" ]] && continue
-    echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/${ag}-sidecar/decisions/${DATE}-${SLUG}.md"
+    # shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+    # its own subshell; this reads the caller's value, which is unchanged.
+    echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}${MEMORY_SEGMENT}/${ag}-sidecar/decisions/${DATE}-${SLUG}.md"
   done <<< "$MEM_WT_LIST"
   echo ""
 } > "$tmp"
