@@ -3,8 +3,13 @@
 #
 # Reads a per-agent draft directory (`<agent>.md` files, one per accepted
 # entry) and renders one decision file per agent at the canonical sidecar
-# location:
-#   <root>/_memory/<agent>-sidecar/decisions/<YYYY-MM-DD>-<slug>.md
+# location under the memory tree:
+#   <root>/<memory-tree>/<agent>-sidecar/decisions/<YYYY-MM-DD>-<slug>.md
+#
+# <root> is the required --root argument. The memory-tree segment is resolved
+# through the shared paths helper, never spelled out here; with the default
+# tree it is `.gaia/memory`, so a sidecar lands at
+# <root>/.gaia/memory/<agent>-sidecar/decisions/<YYYY-MM-DD>-<slug>.md.
 #
 # The output frontmatter contains: agent, date, source_meeting, type: decision,
 # tags. The body contains the four mandatory H2 sections in fixed order:
@@ -29,7 +34,8 @@
 #
 # Usage:
 #   memory-writethrough.sh \
-#     --root <project-root> \
+#     --root <project-root>   # the sidecar tree is written under this root; \
+#                             # `.` means the root PROJECT_ROOT names \
 #     --drafts <dir-with-agent-files> \
 #     --source-meeting <slug> \
 #     --date <YYYY-MM-DD> \
@@ -44,6 +50,21 @@ set -euo pipefail
 
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
+# Memory-tree segment, resolved through the shared segment library rather than
+# spelled out here, so a move of the tree is picked up automatically. The
+# sidecar path is composed from the caller's --root, so the segment alone is
+# what this script needs.
+# shellcheck source=../../../scripts/lib/gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-tree-segments.sh"
+
+MEMORY_SEGMENT=""
+{ IFS= read -r _; IFS= read -r MEMORY_SEGMENT; } < <(gaia_tree_segments || true)
+if [[ -z "$MEMORY_SEGMENT" ]]; then
+  echo "memory-writethrough.sh: could not resolve the memory tree via the shared paths helper" >&2
+  exit 3
+fi
 
 ROOT=""
 DRAFTS=""
@@ -70,6 +91,18 @@ fi
 if [[ ! -d "$DRAFTS" ]]; then
   echo "memory-writethrough.sh: drafts dir not found: $DRAFTS" >&2
   exit 3
+fi
+
+# Sidecar root prefix. --root is authoritative and required; PROJECT_ROOT is
+# kept only as a fallback for the `--root .` form, where the caller means
+# "the project root I am already standing in". `--root .` with PROJECT_ROOT
+# set therefore resolves against PROJECT_ROOT rather than the bare CWD.
+if [[ "$ROOT" == "." || "$ROOT" == "./" ]]; then
+  # shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+  # its own subshell; this reads the caller's value, which is unchanged.
+  SIDECAR_ROOT="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}"
+else
+  SIDECAR_ROOT="${ROOT%/}/"
 fi
 
 # Helper: extract a YAML list block (lines like `  - "x"`) under a top-level
@@ -103,9 +136,12 @@ fi
 for draft in "${drafts[@]}"; do
   agent="$(basename "$draft" .md)"
 
-  # .gaia/memory is the only sidecar tree; legacy _memory fallback removed
-  # with the consolidation migration.
-  out_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/${agent}-sidecar/decisions"
+  # The memory tree is the only sidecar tree; the legacy fallback was removed
+  # with the consolidation migration. The root comes from --root (required, so
+  # always present) — previously --root was accepted and then ignored here, and
+  # with PROJECT_ROOT unset the sidecar tree landed relative to the current
+  # working directory, leaking files into whatever directory the caller ran in.
+  out_dir="${SIDECAR_ROOT}${MEMORY_SEGMENT}/${agent}-sidecar/decisions"
   out="$out_dir/${DATE}-${SLUG}.md"
   mkdir -p "$out_dir"
 

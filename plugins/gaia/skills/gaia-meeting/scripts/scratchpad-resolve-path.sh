@@ -35,6 +35,22 @@ export LC_ALL
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
+# Artifacts-tree segment, resolved through the shared segment library rather
+# than spelled out here, so a move of the runtime tree is picked up
+# automatically. This resolver emits a PROJECT-RELATIVE path when PROJECT_ROOT
+# is unset (callers prefix their own root), so the segment alone is what it
+# needs.
+# shellcheck source=../../../scripts/lib/gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-tree-segments.sh"
+
+ARTIFACTS_SEGMENT=""
+{ IFS= read -r ARTIFACTS_SEGMENT; } < <(gaia_tree_segments || true)
+if [ -z "$ARTIFACTS_SEGMENT" ]; then
+  echo "scratchpad-resolve-path.sh: could not resolve the artifacts tree via the shared paths helper" >&2
+  exit 3
+fi
+
 DATE=""
 SLUG=""
 SP_N=""
@@ -149,6 +165,10 @@ if [[ -z "$auto_slug" ]]; then
   auto_slug="untitled"
 fi
 
-# Canonical-unconditional path (no legacy fallback supported).
+# Canonical-unconditional path (no legacy fallback supported). The artifacts
+# segment comes from the shared paths helper; this resolver contributes only
+# the leaf layout below it.
+# shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+# its own subshell; this reads the caller's value, which is unchanged.
 _scratchpad_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}"
-printf '%s\n' "${_scratchpad_root}.gaia/artifacts/creative-artifacts/meeting-scratchpad/${YYYY_MM}/${SLUG}/${SP_N}-${auto_slug}.${CTYPE}"
+printf '%s\n' "${_scratchpad_root}${ARTIFACTS_SEGMENT}/creative-artifacts/meeting-scratchpad/${YYYY_MM}/${SLUG}/${SP_N}-${auto_slug}.${CTYPE}"

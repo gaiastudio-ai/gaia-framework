@@ -21,6 +21,15 @@
 # After the legacy directory shells were removed, the legacy entries are no longer
 # reachable and are stripped from this allowlist to make the boundary contract explicit.
 #
+# Why the tree name is written literally here, against the usual rule that
+# runtime paths resolve through the shared path helper: the patterns below are
+# not constructed paths. They are match patterns for a caller-supplied,
+# repository-relative path, and this asserter rejects absolute paths outright a
+# few lines down. The helper yields absolute paths, so resolving through it
+# would defeat the check rather than harden it. An allowlist that is read
+# literally is also the point — a reviewer can see exactly what is permitted
+# without resolving anything.
+#
 # Usage:
 #   write-boundary.sh <relative-path-from-project-root>
 #

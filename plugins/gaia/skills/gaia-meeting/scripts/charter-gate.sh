@@ -50,6 +50,12 @@ CHARTER_TRIMMED="${CHARTER#"${CHARTER%%[![:space:]]*}"}"
 CHARTER_TRIMMED="${CHARTER_TRIMMED%"${CHARTER_TRIMMED##*[![:space:]]}"}"
 
 if [[ "$CHARTER_PROVIDED" -eq 0 ]] || [[ -z "$CHARTER_TRIMMED" ]]; then
+  # The tree names in this message are PROSE, not constructed paths: the
+  # heredoc is single-quoted, so nothing in it expands, and the block goes to
+  # stderr as user-facing guidance about what the gate has NOT written. They
+  # are deliberately left as literals and NOT routed through the shared paths
+  # helper — a canonical-path test greps this file for these exact strings, so
+  # interpolating them would break that pin while changing no behaviour.
   cat <<'EOF' >&2
 charter-gate.sh: BLOCKED — meeting charter is required before INVITE.
 

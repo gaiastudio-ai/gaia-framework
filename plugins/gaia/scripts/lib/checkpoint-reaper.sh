@@ -27,6 +27,26 @@
 
 set -euo pipefail
 
+# Memory-tree segment, resolved through the shared paths helper rather than
+# spelled out here, so a move of the tree is picked up automatically.
+#
+# gaia-paths.sh is a sibling in this directory, but it is NOT sourced at top
+# level: the directories reaped below are composed from the caller's --root,
+# and with PROJECT_ROOT unset the helper walks up from CWD and resolves some
+# unrelated ancestor as the root — the reaper would then walk a tree the
+# caller never named. The segment library yields the segment alone, which is
+# composed onto --root below, leaving this script's root resolution untouched.
+# shellcheck source=./gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from this directory.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gaia-tree-segments.sh"
+
+MEMORY_SEGMENT=""
+{ IFS= read -r _; IFS= read -r MEMORY_SEGMENT; } < <(gaia_tree_segments || true)
+if [[ -z "$MEMORY_SEGMENT" ]]; then
+  echo "checkpoint-reaper.sh: could not resolve the memory tree via the shared paths helper" >&2
+  exit 3
+fi
+
 ROOT=""
 AGE_DAYS=30
 APPLY=0
@@ -78,8 +98,12 @@ reap_dir() {
   done < <(find "$dir" -type f -mtime "$MTIME_ARG" -print0 2>/dev/null)
 }
 
-# Reap the canonical .gaia/memory tree. The prior code reaped only the legacy _memory/ paths.
-reap_dir "$ROOT/.gaia/memory/checkpoints"
-reap_dir "$ROOT/.gaia/memory/meeting-sessions"
+# Reap the canonical memory tree beneath the caller's --root. The prior code
+# reaped only the legacy pre-consolidation paths. With the default tree these
+# resolve to `<root>/.gaia/memory/checkpoints` and
+# `<root>/.gaia/memory/meeting-sessions` — the segment comes from the shared
+# paths helper so a tree move is picked up without editing these lines.
+reap_dir "$ROOT/$MEMORY_SEGMENT/checkpoints"
+reap_dir "$ROOT/$MEMORY_SEGMENT/meeting-sessions"
 
 exit 0

@@ -50,6 +50,23 @@ export LC_ALL=C
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
+# Runtime-tree segments, resolved through the shared segment library rather
+# than spelled out here, so a move of the tree is picked up automatically.
+# Both paths built below are project-relative when PROJECT_ROOT is unset, so
+# the segment alone is what this script needs; the library keeps its own root
+# resolution out of the way.
+# shellcheck source=../../../scripts/lib/gaia-tree-segments.sh
+# shellcheck disable=SC1091  # resolved at runtime from the plugin root.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/lib/gaia-tree-segments.sh"
+
+ARTIFACTS_SEGMENT=""
+MEMORY_SEGMENT=""
+{ IFS= read -r ARTIFACTS_SEGMENT; IFS= read -r MEMORY_SEGMENT; } < <(gaia_tree_segments || true)
+if [[ -z "$ARTIFACTS_SEGMENT" || -z "$MEMORY_SEGMENT" ]]; then
+  echo "dispatch-agent-turn.sh: could not resolve the runtime tree via the shared paths helper" >&2
+  exit 3
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TURN_HEADER="$SCRIPT_DIR/turn-header.sh"
 RESEARCH_DISPATCH="$SCRIPT_DIR/research-phase-dispatch.sh"
@@ -193,7 +210,12 @@ fi
 # JSON payload on stdout.
 if [[ -z "${GAIA_DISPATCH_AGENT_STUB:-}" ]]; then
   echo "dispatch-agent-turn.sh: no GAIA_DISPATCH_AGENT_STUB set — production Agent-tool dispatch not yet wired" >&2
-  echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts/architecture for the harness contract" >&2
+  # With the default artifacts tree this names
+  # `<root>/.gaia/artifacts/planning-artifacts/architecture` — the segment
+  # comes from the shared paths helper so a tree move is picked up here.
+  # shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+  # its own subshell; this reads the caller's value, which is unchanged.
+  echo "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}${ARTIFACTS_SEGMENT}/planning-artifacts/architecture for the harness contract" >&2
   exit 3
 fi
 
@@ -239,12 +261,17 @@ if [[ -n "${GAIA_DISPATCH_ENVELOPE_ASSERT_OPT_IN:-}" ]]; then
   # Sentinel path derived from artifact_path (per-turn header value).
   artifact_path_for_sentinel="${ARTIFACT_PATH:-${TURN_ID:-${SESSION_ID:-default}}}"
   sentinel_hash="$(printf '%s' "$artifact_path_for_sentinel" | shasum -a 256 | cut -c1-16)"
-  # .gaia/memory/checkpoints only; legacy fallback removed.
+  # The checkpoints directory of the memory tree only; the legacy fallback was
+  # removed with the consolidation migration. With the default tree this
+  # resolves to `<root>/.gaia/memory/checkpoints` — the segment comes from the
+  # shared paths helper so a tree move is picked up without editing this line.
   # Env CHECKPOINT_PATH override wins.
   if [ -n "${CHECKPOINT_PATH:-}" ]; then
     CHECKPOINT_DIR_FOR_ENV="$CHECKPOINT_PATH"
   else
-    CHECKPOINT_DIR_FOR_ENV="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
+    # shellcheck disable=SC2031  # the segment probe's PROJECT_ROOT is scoped to
+    # its own subshell; this reads the caller's value, which is unchanged.
+    CHECKPOINT_DIR_FOR_ENV="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}${MEMORY_SEGMENT}/checkpoints"
   fi
   sentinel_path="${CHECKPOINT_DIR_FOR_ENV}/val-envelope-${sentinel_hash}.json"
   mkdir -p "$(dirname "$sentinel_path")" 2>/dev/null || true

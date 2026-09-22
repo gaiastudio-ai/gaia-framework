@@ -11,11 +11,12 @@ setup() {
   ROOT_T="$TMPDIR_T/root"
   mkdir -p "$ROOT_T"
 
-  # The writer resolves its sidecar tree from PROJECT_ROOT (it takes --root for
-  # argument-shape compatibility but does not use it for the output location),
-  # so the fixture must set PROJECT_ROOT or the writer lands files relative to
-  # the current working directory. Export it, then ask the shared paths helper
-  # for the memory tree rather than writing a second path literal here.
+  # The writer honours --root for the output location, and falls back to
+  # PROJECT_ROOT when the caller passes `--root .` to mean "the root I am
+  # standing in". The fixture exports PROJECT_ROOT to the same directory it
+  # passes as --root so both paths through that resolution are exercised.
+  # The memory tree itself comes from the shared paths helper rather than a
+  # second path literal written here.
   export PROJECT_ROOT="$ROOT_T"
   MEMORY_DIR="$(
     _GAIA_PATHS_LOADED="" \
