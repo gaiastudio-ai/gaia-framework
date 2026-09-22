@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.218.1] — 2026-09-22
+
+### Changed
+
+- name skill test cases by behaviour, and gate the ones that no longer block (#1826)
+
+### Fixed
+
+- repair the drifted skill fixtures, and the two shipped bugs they were failing to catch (#1827)
+
 ## [1.218.0] — 2026-09-21
 
 ### Added
