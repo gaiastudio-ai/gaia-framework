@@ -86,6 +86,7 @@ core	brain-static-guards.bats
 core	brain-update-index.bats
 core	bridge-toggle-inline-generator.bats
 core	bridge-toggle-step-5-summary.bats
+core	changelog-retirement.bats
 core	check-status-discipline.bats
 core	ci-regen-helpers-coverage.bats
 core	ci-skip-shim-parity.bats
@@ -119,6 +120,7 @@ core	discovery-firewall.bats
 core	discovery-leak-gate.bats
 core	dispatch-provenance-teammate.bats
 core	distribution-schema.bats
+core	doc-site-retirement.bats
 core	e101-s1-adr-118-architecture-artifacts-decision.bats
 core	e101-s3-document-architecture-location.bats
 core	e102-s1-adr-119-artifact-subdirectory-grouping.bats
@@ -203,6 +205,7 @@ core	e77-s9-init-plugin-option.bats
 core	e85-s13-reconciler-writes-framework-version.bats
 core	embedded-dev-wiring.bats
 core	evidence-judgment-parity.bats
+core	expected-report-vocabulary.bats
 core	framework-version.bats
 core	gaia-add-feature-setup.bats
 core	gaia-config-distribution.bats
@@ -250,6 +253,7 @@ core	meeting-val-bridge-anti-pattern.bats
 core	migrate-stories-to-canonical-layout.bats
 core	mode-b-docs.bats
 core	mode-b-parity.bats
+core	never-built-commands.bats
 core	never-run-subdir-guard.bats
 core	no-bare-gaia-path-antipattern.bats
 core	no-bsd-awk-incompatible-anchors.bats
@@ -277,6 +281,7 @@ core	reconcile-cross-stack.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
 core	retired-migrate-stories.bats
+core	retirement-fixture-traceability.bats
 core	retro-finalize-sentinel.bats
 core	review-parity/gaia-atdd/action-skill-contract.bats
 core	review-parity/gaia-code-review/evidence-judgment-parity.bats
@@ -382,9 +387,6 @@ core	vcp-chk-35-36-ci-setup.bats
 core	vcp-ci-01-03-ci-setup-retry-loop.bats
 core	vcp-mem-04-scope-boundary.bats
 core	vcp-rc-02-06-readiness-conflicts.bats
-core	vcp-ux-06.bats
-core	vcp-ux-generate.bats
-core	vcp-ux-import.bats
 core	verdict-resolver-parameterized.bats
 core	worktree-chain-scripts.bats
 core	worktree-generator-parity.bats

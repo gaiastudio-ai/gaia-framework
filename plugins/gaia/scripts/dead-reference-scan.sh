@@ -197,6 +197,12 @@ is_allowlisted() {
   # deploy-skill-rename.bats above.
   [[ "$path" == */plugins/gaia/skills/gaia-dev-story/scripts/skill-rename-preflight.sh ]] && return 0
   [[ "$path" == */plugins/gaia/tests/skill-rename-preflight.bats ]] && return 0
+  # never-built-commands.bats asserts that eight never-built design commands
+  # have no entry in workflow-manifest.csv or gaia-help.csv. The CSVs are
+  # themselves allowlisted under plugins/gaia/knowledge/, so the filename
+  # mentions in the test body are the contractual assertion target — same
+  # precedent as deploy-skill-rename.bats above.
+  [[ "$path" == */plugins/gaia/tests/never-built-commands.bats ]] && return 0
   # static-next-steps.bats is the parity guard for next-step routing.
   # It asserts zero `lifecycle-sequence.yaml` references across the target
   # SKILL.md files; the literal token appears in assertions and prose

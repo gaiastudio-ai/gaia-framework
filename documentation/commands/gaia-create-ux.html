@@ -8,7 +8,7 @@
     <main class="main-content">
       <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/planning.html">Planning</a><span class="separator">/</span>/gaia-create-ux</nav>
       <header class="command-header"><div class="command-title"><h1>/gaia-create-ux</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/planning.html">Planning</a></dd><dt>Lifecycle phase:</dt><dd>2 -- Planning</dd><dt>Arguments:</dt><dd>None</dd></dl></header>
-      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-create-ux</code> creates UX design specifications from your PRD. It covers persona refinement, information architecture (sitemap and navigation), wireframes, interaction patterns, and accessibility standards. If a Figma MCP server is available, it can generate Figma frames or import existing designs.</p></section>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-create-ux</code> creates UX design specifications from your PRD. It covers persona refinement, information architecture (sitemap and navigation), wireframes, interaction patterns, and accessibility standards. When a design system is available, it discovers existing components and publishes a design record to Claude Design.</p></section>
       <section id="when-to-use"><h2>When to use it</h2><ul><li>Your PRD is complete and your product has a user interface.</li><li>You want to define UX patterns and accessibility standards before architecture or implementation.</li></ul></section>
       <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code>.</li></ul></section>
       <section id="orchestration-mode">
@@ -58,7 +58,7 @@ This warning is shown once per session.
           <li><span class="step-title">Wireframes</span> Creates text-based wireframe descriptions for key screens with layout, component placement, and interaction patterns.</li>
           <li><span class="step-title">Interaction patterns</span> Defines common UI patterns, component library choices, form behaviors, validation, and error states.</li>
           <li><span class="step-title">Accessibility</span> Defines WCAG compliance targets, keyboard navigation plan, screen reader support, and color contrast standards.</li>
-          <li><span class="step-title">Figma integration (optional)</span> If a Figma MCP server is detected, offers: Generate Figma frames, Import existing designs, or Skip (text-only).</li>
+          <li><span class="step-title">Design publication (optional)</span> If a Claude Design project exists, publishes the design record and links it to the UX specification. Otherwise generates a text-only output.</li>
           <li><span class="step-title">Generate output</span> Writes the UX design document.</li>
         </ol>
       </section>
@@ -74,7 +74,7 @@ Wireframes: 8 key screens described.
 Interaction patterns: 6 patterns defined.
 Accessibility: WCAG 2.1 AA target set.
 
-No Figma MCP server detected. Generating markdown-only ux-design.md.
+No Claude Design project detected. Generating markdown-only ux-design.md.
 
 UX design written to: .gaia/artifacts/planning-artifacts/ux-design.md</code></pre></section>
       <section id="what-next"><h2>What to run next</h2><ul>
