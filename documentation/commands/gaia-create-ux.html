@@ -8,9 +8,9 @@
     <main class="main-content">
       <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/planning.html">Planning</a><span class="separator">/</span>/gaia-create-ux</nav>
       <header class="command-header"><div class="command-title"><h1>/gaia-create-ux</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/planning.html">Planning</a></dd><dt>Lifecycle phase:</dt><dd>2 -- Planning</dd><dt>Arguments:</dt><dd>None</dd></dl></header>
-      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-create-ux</code> creates UX design specifications from your PRD. It covers persona refinement, information architecture (sitemap and navigation), wireframes, interaction patterns, and accessibility standards. When a design system is available, it discovers existing components and publishes a design record to Claude Design.</p></section>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-create-ux</code> creates UX design specifications from your PRD. It begins with design-system discovery (searching project artifacts and existing Claude Design projects), runs a stakeholder questionnaire when no design system is found, creates a design-system project from the answers, then covers persona refinement, information architecture (sitemap and navigation), wireframes, interaction patterns, accessibility standards, and publishes screen specifications to Claude Design.</p></section>
       <section id="when-to-use"><h2>When to use it</h2><ul><li>Your PRD is complete and your product has a user interface.</li><li>You want to define UX patterns and accessibility standards before architecture or implementation.</li></ul></section>
-      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code>.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code>.</li><li><strong>Claude Design integration available</strong> for design-system discovery and publication.</li></ul></section>
       <section id="orchestration-mode">
         <h2>Orchestration mode</h2>
         <p>When <code>/gaia-create-ux</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
@@ -53,29 +53,42 @@ This warning is shown once per session.
       <section id="step-by-step"><h2>What it does step by step</h2>
         <ol class="step-list">
           <li><span class="step-title">Load PRD</span> Reads the PRD and extracts user personas, user journeys, and functional requirements.</li>
+          <li><span class="step-title">Design-system discovery</span> Searches project artifacts and existing Claude Design projects for a design system. Presents candidates for explicit user selection.</li>
+          <li><span class="step-title">Stakeholder questionnaire</span> When no design system is found, interviews the stakeholder on colors, logo, typography, spacing, style, components, and platforms. Skipped when a design system is already bound.</li>
+          <li><span class="step-title">Project creation</span> Creates a Claude Design project from the questionnaire answers and records its identity in the design record.</li>
           <li><span class="step-title">User personas</span> Refines persona definitions from the PRD. Adds scenarios, goals, tech proficiency, and accessibility needs.</li>
-          <li><span class="step-title">Information architecture</span> Designs the sitemap and navigation structure. Maps each page to the FRs it serves.</li>
+          <li><span class="step-title">Information architecture</span> Designs the sitemap and navigation structure. Maps each page to the functional requirements it serves.</li>
           <li><span class="step-title">Wireframes</span> Creates text-based wireframe descriptions for key screens with layout, component placement, and interaction patterns.</li>
           <li><span class="step-title">Interaction patterns</span> Defines common UI patterns, component library choices, form behaviors, validation, and error states.</li>
           <li><span class="step-title">Accessibility</span> Defines WCAG compliance targets, keyboard navigation plan, screen reader support, and color contrast standards.</li>
-          <li><span class="step-title">Design publication (optional)</span> If a Claude Design project exists, publishes the design record and links it to the UX specification. Otherwise generates a text-only output.</li>
-          <li><span class="step-title">Generate output</span> Writes the UX design document.</li>
+          <li><span class="step-title">Screen specification publication</span> Publishes screen specifications and components to the Claude Design project with read-before-write conflict detection.</li>
+          <li><span class="step-title">Generate output</span> Writes the UX design document with the design record reference.</li>
+          <li><span class="step-title">Val auto-fix loop</span> Validates the artifact and applies fixes if needed.</li>
+          <li><span class="step-title">Accessibility review (optional)</span> Optionally reviews the design for WCAG 2.1 compliance.</li>
         </ol>
       </section>
       <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>PRD</td><td><code>.gaia/artifacts/planning-artifacts/prd.md</code></td><td>Requirements that drive UX decisions (required).</td></tr></tbody></table></section>
-      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>UX design</td><td><code>.gaia/artifacts/planning-artifacts/ux-design.md</code></td><td>Personas, sitemap, wireframes, interaction patterns, and accessibility plan.</td></tr></tbody></table></section>
+      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>UX design</td><td><code>.gaia/artifacts/planning-artifacts/ux-design.md</code></td><td>Personas, sitemap, wireframes, interaction patterns, accessibility plan, and design record reference.</td></tr><tr><td>Questionnaire record</td><td><code>.gaia/artifacts/planning-artifacts/ux-design/design-questionnaire.md</code></td><td>Verbatim stakeholder answers (created only when the questionnaire runs).</td></tr><tr><td>Design record</td><td><code>.gaia/state/design-record.yaml</code></td><td>Links the project reference, discovery provenance, and questionnaire record.</td></tr></tbody></table></section>
       <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-create-ux
 
 Loading PRD... 3 personas, 5 user journeys, 22 FRs.
 
+Design-system discovery: no existing design record found.
+Pass 2: 1 Claude Design project found.
+  id:            proj-abc123
+  name:          Acme Design System
+  last_modified:  2026-09-20
+Confirm selection? [y/n] y
+
+Questionnaire skipped (design system already bound).
+
 Personas refined: added accessibility needs and tech proficiency.
-Information architecture: 12-page sitemap, all FRs mapped.
+Information architecture: 12-page sitemap mapped.
 Wireframes: 8 key screens described.
 Interaction patterns: 6 patterns defined.
 Accessibility: WCAG 2.1 AA target set.
 
-No Claude Design project detected. Generating markdown-only ux-design.md.
-
+Screen specifications published to Claude Design project.
 UX design written to: .gaia/artifacts/planning-artifacts/ux-design.md</code></pre></section>
       <section id="what-next"><h2>What to run next</h2><ul>
         <li><a href="gaia-validate-design-a11y.html"><code>/gaia-validate-design-a11y</code></a> -- validate the design for accessibility.</li>

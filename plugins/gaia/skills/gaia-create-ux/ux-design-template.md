@@ -79,12 +79,15 @@ and progress indicators.}
 {Which existing design-system components/patterns to reuse vs build custom, and
 why. Note any new components this design introduces.}
 
-## 9. Figma Integration
+## 9. Design Record Reference
 
-{If a Figma MCP server is connected, link the relevant frames/components here
-and note the file key. If Figma is NOT available, state "No Figma source —
-text-only UX design" and keep this section as the single source of truth for the
-visual intent so downstream stories are not blocked.}
+{The design-system project reference from the design record. This section links
+the UX specification to the canonical design source of truth. If no design
+system exists, state the absence and the reason.}
+
+- **Project reference:** {reference from design-record.yaml}
+- **Discovered via:** {project-artifacts | integration-list | created}
+- **Questionnaire record:** {path to the verbatim questionnaire record}
 
 ## 10. Open Questions
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env bats
 # vcp-chk-13-create-ux-positive.bats — E42-S7 positive test for the
-# V1 26-item /gaia-create-ux checklist ported to V2.
+# /gaia-create-ux checklist ported to V2 (27 items after the design
+# record reference addition).
 #
 # Covers VCP-CHK-13 (positive) per docs/test-artifacts/test-plan.md
-# and story AC1: given a UX design artifact satisfying all 26 items,
+# and story AC1: given a UX design artifact satisfying all 27 items,
 # finalize.sh exits 0 and every script-verifiable item reports PASS.
 #
 # The finalize.sh under test reads an optional UX_DESIGN_ARTIFACT env var
@@ -30,7 +31,7 @@ setup() {
 teardown() { common_teardown; }
 
 # -------------------------------------------------------------------------
-# VCP-CHK-13 — Positive: all 26 items satisfied.
+# VCP-CHK-13 — Positive: all 27 items satisfied.
 # -------------------------------------------------------------------------
 
 @test "finalize.sh exits 0 when all script-verifiable items satisfied" {
@@ -62,10 +63,10 @@ teardown() { common_teardown; }
 # -------------------------------------------------------------------------
 # AC3 — Classification audit. Every item in the SKILL.md ## Validation
 # section must carry a [script-verifiable] or [LLM-checkable] tag, and
-# the count must be exactly 26.
+# the count must be exactly 27.
 # -------------------------------------------------------------------------
 
-@test "SKILL.md ## Validation section contains exactly 26 classified items" {
+@test "SKILL.md ## Validation section contains exactly 27 classified items" {
   run awk '
     /^## Validation/ { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
@@ -73,7 +74,7 @@ teardown() { common_teardown; }
     END { print count + 0 }
   ' "$SKILL_MD"
   [ "$status" -eq 0 ]
-  [ "$output" = "26" ]
+  [ "$output" = "27" ]
 }
 
 @test "every Validation item is classified script-verifiable or LLM-checkable" {

@@ -28,3 +28,6 @@ tests/component-manifest.tsv       test     component tagger output
 tests/fixtures/design-record-mention-allowlist.txt test this allowlist references itself
 tests/fixtures/code-review/end-to-end-real-story/expected-report.md prose code-review exemplar design-fidelity section
 tests/doc-site-retirement.bats     test     asserts rewritten design pages use design-record language
+tests/create-ux-claude-design.bats test     tests the rebuilt create-ux skill's record interactions
+skills/gaia-create-ux/SKILL.md     reader   invokes design-record.sh verbs (init, status) — never writes directly
+skills/gaia-create-ux/ux-design-template.md prose   template section 9 names the design record reference

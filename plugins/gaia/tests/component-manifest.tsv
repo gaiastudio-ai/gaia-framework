@@ -452,6 +452,7 @@ scripts-core	cluster-9/review-summary-gen.bats
 scripts-core	cluster-9/run-all-reviews.bats
 scripts-core	config-phase-gate.bats
 scripts-core	coppa-regime.bats
+scripts-core	create-ux-claude-design.bats
 scripts-core	cross-refs-walk.bats
 scripts-core	dedup-contract.bats
 scripts-core	design-probe.bats

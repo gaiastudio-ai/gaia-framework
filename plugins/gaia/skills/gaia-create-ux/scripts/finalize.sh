@@ -218,7 +218,7 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   log "running 26-item checklist against $ARTIFACT"
-  printf '\nChecklist: /gaia-create-ux (26 items — 18 script-verifiable, 8 LLM-checkable)\n' >&2
+  printf '\nChecklist: /gaia-create-ux (27 items — 19 script-verifiable, 8 LLM-checkable)\n' >&2
 
   # --- Script-verifiable items (18) ---
 
@@ -272,6 +272,10 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   item_check "SV-18" "At least one FR-### identifier referenced (traceability)" \
     "$(fr_id_present "$ARTIFACT")"
 
+  # Design-record reference (SV-19)
+  item_check "SV-19" "Design Record Reference section present" \
+    "$(heading_present "$ARTIFACT" "Design Record Reference")"
+
   # --- LLM-checkable items (8) ---
   printf '\n[LLM-CHECK] The following 8 items require semantic review by the host LLM:\n' >&2
   cat >&2 <<'EOF'
@@ -285,7 +289,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   LLM-08 — Component descriptions specific enough for implementation (not vague)
 EOF
 
-  TOTAL_ITEMS=26
+  TOTAL_ITEMS=27
   LLM_ITEMS=8
   printf '\nChecklist summary: %d/%d script-verifiable items PASS; %d LLM-checkable items deferred to host review. Total items: %d.\n' \
     "$PASSED" "$CHECKED" "$LLM_ITEMS" "$TOTAL_ITEMS" >&2
