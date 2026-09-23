@@ -526,11 +526,13 @@ ROGUE
   local N=10
   make_barrier
 
+  # Generous lock timeout to prevent false failures under host load:
+  # 10 serialized writers at ~1-3s each can take 10-30s; 120s gives ample margin
   local i
   for i in $(seq 1 "$N"); do
     (
       read < "$BARRIER"
-      GAIA_DREC_WRITE_DELAY=0.1 "$SCRIPT" approve \
+      GAIA_LOCK_TIMEOUT=120 GAIA_DREC_WRITE_DELAY=0.1 "$SCRIPT" approve \
         --stakeholder "stakeholder-A" \
         --recorded-by "approver-$i"
     ) &
@@ -976,13 +978,13 @@ ROGUE
 
   (
     read < "$BARRIER"
-    GAIA_DREC_WRITE_DELAY=0.1 "$SCRIPT" add-review \
+    GAIA_LOCK_TIMEOUT=120 GAIA_DREC_WRITE_DELAY=0.1 "$SCRIPT" add-review \
       --verdict "changes-requested" --reviewer "reviewer-A" --actor "reviewer-A"
   ) &
 
   (
     read < "$BARRIER"
-    GAIA_DREC_WRITE_DELAY=0.1 "$SCRIPT" add-override \
+    GAIA_LOCK_TIMEOUT=120 GAIA_DREC_WRITE_DELAY=0.1 "$SCRIPT" add-override \
       --actor "admin-B" --reason "unblocking deployment" --entry-point "/gaia-create-arch"
   ) &
 
@@ -1016,7 +1018,7 @@ ROGUE
   for i in $(seq 1 "$N"); do
     (
       read < "$BARRIER"
-      GAIA_LOCK_FORCE_FALLBACK=1 GAIA_DREC_WRITE_DELAY=0.1 \
+      GAIA_LOCK_TIMEOUT=120 GAIA_LOCK_FORCE_FALLBACK=1 GAIA_DREC_WRITE_DELAY=0.1 \
         ACQUIRE_LOCK_DEBUG=1 ACQUIRE_LOCK_DEBUG_LOG="$lock_log" \
         "$SCRIPT" approve \
           --stakeholder "stakeholder-A" \
@@ -1385,3 +1387,188 @@ WRAPPER
   [ "$status" -eq 0 ] || fail "should resolve via CLAUDE_PROJECT_ROOT"
   [[ "$output" == *"draft"* ]] || fail "should read the record from alt-root"
 }
+
+
+# =========================================================================
+# (AC5) init refuses when a record already exists (review-rework item 1)
+# =========================================================================
+
+@test "(AC5) init refuses when a record already exists and leaves it byte-identical" {
+  assert_script_exists
+
+  # Create an initial record via the writer
+  run "$SCRIPT" init \
+    --reference "original-ref" \
+    --discovered-via "created" \
+    --questionnaire-record "original-qr.md"
+  [ "$status" -eq 0 ] || fail "first init failed: $output"
+
+  # Build up state: transition + approval + override so the record is populated
+  seed_roster_gaia
+  run "$SCRIPT" transition --to "review" --actor "test-actor"
+  [ "$status" -eq 0 ] || fail "transition failed: $output"
+  run "$SCRIPT" approve --stakeholder "stakeholder-A" --recorded-by "test"
+  [ "$status" -eq 0 ] || fail "approve failed: $output"
+  run "$SCRIPT" add-override --actor "admin" --reason "unblocking" --entry-point "/test"
+  [ "$status" -eq 0 ] || fail "add-override failed: $output"
+
+  # Snapshot: sha256 + inode + mtime
+  capture_record_state "$RECORD"
+
+  # Second init must refuse
+  run "$SCRIPT" init \
+    --reference "new-ref" \
+    --discovered-via "created" \
+    --questionnaire-record "new-qr.md" \
+    --actor "evil"
+  [ "$status" -ne 0 ] || fail "second init should be refused but exited 0"
+
+  # Record must be byte-identical
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+
+  # Diagnostic must name the record path and tell the user to use mutation verbs
+  [[ "$output" == *"$RECORD"* ]] || [[ "$output" == *"design-record"* ]] || \
+    fail "diagnostic does not name the record path"
+  [[ "$output" == *"transition"* ]] || [[ "$output" == *"mutation"* ]] || [[ "$output" == *"already exists"* ]] || \
+    fail "diagnostic does not guide the user to use mutation verbs"
+}
+
+
+# =========================================================================
+# (AC5) init refuses when record path is a symlink (review-rework item 2)
+# =========================================================================
+
+@test "(AC5) init refuses when record path is a symlink and target is untouched" {
+  assert_script_exists
+  mkdir -p "$STATE_DIR"
+
+  # Plant a symlink at the record path pointing to a target file
+  local target="$TEST_TMP/symlink-target.yaml"
+  printf 'original-content: true\n' > "$target"
+  local pre_target_sha
+  pre_target_sha="$(_sha256_file "$target")"
+
+  ln -sf "$target" "$RECORD"
+  [ -L "$RECORD" ] || fail "symlink not created"
+
+  run "$SCRIPT" init \
+    --reference "sym-ref" \
+    --discovered-via "created" \
+    --questionnaire-record "sym-qr.md"
+  [ "$status" -ne 0 ] || fail "init should refuse when record path is a symlink"
+  [[ "$output" == *"symlink"* ]] || fail "diagnostic does not mention symlink"
+
+  # Symlink target must be untouched
+  local post_target_sha
+  post_target_sha="$(_sha256_file "$target")"
+  [ "$pre_target_sha" = "$post_target_sha" ] || \
+    fail "symlink target was modified: $pre_target_sha -> $post_target_sha"
+}
+
+
+# =========================================================================
+# (AC-EC3) field-level audit tampering detected by digest chain (review-rework item 3)
+# =========================================================================
+
+@test "(AC-EC3) field-level audit entry tampering detected by digest chain" {
+  assert_script_exists
+  seed_minimal_record "draft" 1
+
+  # Build a 3-entry trail via legitimate transitions
+  run "$SCRIPT" transition --to "review" --actor "actor-a"
+  [ "$status" -eq 0 ] || fail "transition 1 failed: $output"
+  run "$SCRIPT" transition --to "review" --actor "actor-b"
+  [ "$status" -eq 0 ] || fail "transition 2 failed: $output"
+  run "$SCRIPT" transition --to "review" --actor "actor-c"
+  [ "$status" -eq 0 ] || fail "transition 3 failed: $output"
+
+  # Baseline: integrity holds
+  run "$SCRIPT" verify-integrity
+  [ "$status" -eq 0 ] || fail "integrity check failed on legitimate record: $output"
+
+  # Tamper: change a FIELD of audit[1] without touching the digest
+  yq -i '.audit[1].actor = "TAMPERED"' "$RECORD"
+
+  # verify-integrity must detect the tamper via the digest chain
+  run "$SCRIPT" verify-integrity
+  [ "$status" -ne 0 ] || fail "field-level tampering in audit[1].actor was not detected"
+  [[ "$output" == *"digest"* ]] || [[ "$output" == *"integrity"* ]] || \
+    fail "expected digest-chain diagnostic, got: $output"
+
+  # Also: the NEXT mutation verb must refuse (the in-lock chain check)
+  run "$SCRIPT" transition --to "stale" --actor "attacker"
+  [ "$status" -ne 0 ] || fail "mutation verb should refuse on tampered record"
+}
+
+
+# =========================================================================
+# (AC4) convergence gate rejects review->approved without convergence (review-rework item 4)
+# =========================================================================
+
+@test "(AC4) review->approved refused without convergence and record unchanged" {
+  assert_script_exists
+  seed_review_with_roster  # review state, roster with stakeholder-A and stakeholder-B
+
+  # Do NOT approve any stakeholders — convergence is not satisfied
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" transition --to "approved" --actor "test-actor"
+  [ "$status" -ne 0 ] || fail "review->approved should be refused without convergence"
+
+  # Record must be unchanged (no side effects from the failed transition)
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+
+  # Diagnostic must mention convergence or missing stakeholders
+  [[ "$output" == *"converge"* ]] || [[ "$output" == *"not-converged"* ]] || \
+    [[ "$output" == *"blocked"* ]] || [[ "$output" == *"missing"* ]] || \
+    fail "expected convergence-refusal diagnostic, got: $output"
+}
+
+@test "(AC4) review->approved refused with partial convergence" {
+  assert_script_exists
+  seed_review_with_roster
+
+  # Approve only ONE of the two required stakeholders
+  run "$SCRIPT" approve --stakeholder "stakeholder-A" --recorded-by "test"
+  [ "$status" -eq 0 ] || fail "approve A failed: $output"
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" transition --to "approved" --actor "test-actor"
+  [ "$status" -ne 0 ] || fail "review->approved should be refused with partial convergence"
+  [[ "$output" == *"stakeholder-B"* ]] || [[ "$output" == *"not-converged"* ]] || \
+    [[ "$output" == *"blocked"* ]] || [[ "$output" == *"missing"* ]] || \
+    fail "diagnostic should identify the missing stakeholder"
+}
+
+
+# =========================================================================
+# (AC4) illegal enum: distinct enum-validator diagnostic (review-rework item 5)
+# =========================================================================
+
+@test "(AC4) illegal enum values produce the enum-validator diagnostic distinct from transition" {
+  assert_script_exists
+  seed_minimal_record "draft" 1
+
+  # Try an illegal enum value — should hit _assert_valid_state with "legal values:"
+  run "$SCRIPT" transition --to "BOGUS"
+  [ "$status" -ne 0 ] || fail "BOGUS should be rejected"
+  [[ "$output" == *"legal values:"* ]] || \
+    fail "expected enum-validator diagnostic 'legal values:', got: $output"
+
+  # Now try a legal enum value on an illegal EDGE — should hit _assert_legal_transition
+  # with "legal edges:" (NOT "legal values:")
+  run "$SCRIPT" transition --to "approved"
+  [ "$status" -ne 0 ] || fail "draft->approved should be rejected"
+  [[ "$output" == *"legal edges:"* ]] || \
+    fail "expected transition-validator diagnostic 'legal edges:', got: $output"
+  # This diagnostic must NOT contain "legal values:" — it comes from a different guard
+  [[ "$output" != *"legal values:"* ]] || \
+    fail "illegal-transition diagnostic should not contain 'legal values:' — guards are indistinct"
+}
+
+
+# =========================================================================
+# (AC3) concurrent test with generous lock timeout (review-rework item 6)
+# =========================================================================
+
