@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gaiastudio.ai/gaia/design-record.schema.json",
+  "title": "design-record.yaml",
+  "description": "Design approval record with five-state machine, iteration-keyed convergence, and chained-digest audit trail.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "applicability",
+    "design_state",
+    "iteration",
+    "project",
+    "reviews",
+    "approvals",
+    "overrides",
+    "audit",
+    "audit_head"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Schema version for forward compatibility gating."
+    },
+    "applicability": {
+      "type": "string",
+      "enum": ["applicable", "not-applicable"],
+      "description": "Whether this project requires design approval."
+    },
+    "design_state": {
+      "type": "string",
+      "enum": ["draft", "review", "approved", "in-dev", "stale"],
+      "description": "Current state in the five-state design approval machine."
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Review iteration counter; bumped on review-to-review transitions."
+    },
+    "project": {
+      "type": "object",
+      "required": ["reference", "discovered_via", "questionnaire_record"],
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project or feature reference identifier."
+        },
+        "discovered_via": {
+          "type": "string",
+          "enum": ["project-artifacts", "integration-list", "created"],
+          "description": "How the design scope was discovered."
+        },
+        "questionnaire_record": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the design questionnaire record."
+        }
+      }
+    },
+    "reviews": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["iteration", "kind", "verdict", "actor", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "iteration": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Review iteration this verdict belongs to."
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Review type (e.g. design-review, a11y-review)."
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["approved", "changes-requested", "blocked"],
+            "description": "Review outcome."
+          },
+          "actor": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who performed the review."
+          },
+          "at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}",
+            "description": "ISO-8601 timestamp of the review."
+          },
+          "notes_ref": {
+            "type": "string",
+            "description": "Path to detailed review notes, if any."
+          }
+        }
+      }
+    },
+    "approvals": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["stakeholder", "recorded_by", "iteration", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "stakeholder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stakeholder roster identifier (slug)."
+          },
+          "recorded_by": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Acting identity who recorded the approval."
+          },
+          "iteration": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Review iteration this approval belongs to."
+          },
+          "at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}",
+            "description": "ISO-8601 timestamp of the approval."
+          }
+        }
+      }
+    },
+    "overrides": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["user", "at", "reason", "entry_point", "design_state_at_override"],
+        "additionalProperties": false,
+        "properties": {
+          "user": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who performed the override."
+          },
+          "at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}",
+            "description": "ISO-8601 timestamp of the override."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why the override was performed."
+          },
+          "entry_point": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Which command or skill invoked the override."
+          },
+          "design_state_at_override": {
+            "type": "string",
+            "enum": ["draft", "review", "approved", "in-dev", "stale"],
+            "description": "Design state at the time of override."
+          }
+        }
+      }
+    },
+    "audit": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["at", "actor", "event", "design_state", "iteration", "_digest"],
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}",
+            "description": "ISO-8601 timestamp."
+          },
+          "actor": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who triggered the audited action."
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "state-transition",
+              "approval",
+              "approval-refused",
+              "override",
+              "not-applicable-pass",
+              "review-verdict"
+            ],
+            "description": "Audit event type."
+          },
+          "from": {
+            "type": "string",
+            "description": "Previous design state (for transitions)."
+          },
+          "to": {
+            "type": "string",
+            "description": "New design state (for transitions)."
+          },
+          "design_state": {
+            "type": "string",
+            "enum": ["draft", "review", "approved", "in-dev", "stale"],
+            "description": "Design state after the event."
+          },
+          "iteration": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Iteration at the time of the event."
+          },
+          "_digest": {
+            "type": "string",
+            "description": "Chained SHA-256 digest for tamper evidence."
+          },
+          "stakeholder_id": {
+            "type": "string",
+            "description": "Stakeholder involved (for approval/refusal events)."
+          },
+          "recorded_by": {
+            "type": "string",
+            "description": "Acting identity (for approval events)."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason text (for overrides and refusals)."
+          },
+          "entry_point": {
+            "type": "string",
+            "description": "Entry point (for overrides)."
+          },
+          "verdict": {
+            "type": "string",
+            "description": "Review verdict (for review-verdict events)."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Review kind (for review-verdict events)."
+          }
+        }
+      }
+    },
+    "audit_head": {
+      "type": "object",
+      "required": ["count", "last_digest"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of audit entries; must equal length of audit array."
+        },
+        "last_digest": {
+          "type": "string",
+          "description": "Digest of the last audit entry, or empty string for count 0."
+        }
+      }
+    }
+  }
+}

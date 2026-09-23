@@ -1,0 +1,30 @@
+# design-record-mention-allowlist.txt
+# Every file in plugins/gaia/ that references "design-record" must appear here.
+# Classification: writer | reader | prose | test | schema
+# Format: <relative-path-from-plugins/gaia/>  <classification>  <reason>
+#
+# Adding a new file that references design-record without listing it here
+# will fail the sole-writer mention-registry test. To fix:
+#   1. Add a line below classifying the reference
+#   2. Only "writer" classification may contain write constructs
+scripts/design-record.sh          writer   sole-writer script
+tests/design-record.bats          test     test suite
+schemas/design-record.schema.json schema   JSON Schema definition
+agents/_base-dev.md                prose    dev-agent guidance to read the record
+knowledge/review-skill-template.md prose    review-skill boilerplate
+skills/gaia-code-review/SKILL.md   reader   reads design state for review context
+skills/gaia-create-story/SKILL.md  prose    story template cross-reference
+skills/gaia-create-story/story-template.md prose story template field
+skills/gaia-performance-review/SKILL.md reader reads design state
+skills/gaia-qa-tests/SKILL.md      reader   reads design state
+skills/gaia-review-security/SKILL.md reader  reads design state
+skills/gaia-test-automate/SKILL.md  reader   reads design state
+skills/gaia-test-review/SKILL.md    reader   reads design state
+skills/gaia-validate-design-a11y/SKILL.md reader reads design state
+tests/design-a11y-rebind.bats      test     rebind test
+tests/detect-ux-scope.bats         test     scope detector test
+tests/review-rubric-rebind.bats    test     rebind test
+tests/component-manifest.tsv       test     component tagger output
+tests/fixtures/design-record-mention-allowlist.txt test this allowlist references itself
+tests/fixtures/code-review/end-to-end-real-story/expected-report.md prose code-review exemplar design-fidelity section
+tests/doc-site-retirement.bats     test     asserts rewritten design pages use design-record language
