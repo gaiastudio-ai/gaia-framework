@@ -1456,7 +1456,10 @@ WRAPPER
     --discovered-via "created" \
     --questionnaire-record "sym-qr.md"
   [ "$status" -ne 0 ] || fail "init should refuse when record path is a symlink"
-  [[ "$output" == *"symlink"* ]] || fail "diagnostic does not mention symlink"
+  [[ "$output" == *"refusing to follow"* ]] || \
+    fail "diagnostic does not contain the symlink-guard phrase 'refusing to follow'"
+  [[ "$output" != *"already exists"* ]] || \
+    fail "existing-record guard fired instead of the symlink guard"
 
   # Symlink target must be untouched
   local post_target_sha
