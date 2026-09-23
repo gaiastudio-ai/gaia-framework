@@ -427,6 +427,8 @@ validate_record() {
 }
 
 # cmd_init — create a new record from arguments.
+# Refuses when a record already exists (protecting the audit trail) and when
+# the record path is a symlink (preventing writes through symlinks).
 cmd_init() {
   local reference="" discovered_via="" questionnaire_record="" actor=""
   _parse_opts \
@@ -443,7 +445,24 @@ cmd_init() {
 
   mkdir -p "$(dirname "$RECORD_PATH")"
 
-  cat > "$RECORD_PATH" <<'EOF'
+  # Refuse if the record path is a symlink — prevents writes through symlinks
+  if [ -L "$RECORD_PATH" ]; then
+    _die "init: record path is a symlink at $RECORD_PATH — refusing to follow; remove the symlink first"
+  fi
+
+  # Refuse when a record already exists — protects the audit trail, approvals,
+  # overrides, and state from accidental destruction
+  if [ -f "$RECORD_PATH" ]; then
+    _die "init: record already exists at $RECORD_PATH — use transition, approve, add-review, add-override, or other mutation verbs to modify it"
+  fi
+
+  # Write to a temp file first, then atomically move into place —
+  # same pattern as mutation verbs, preventing partial writes
+  local tmp
+  tmp=$(mktemp "$(dirname "$RECORD_PATH")/design-record.yaml.tmp.XXXXXX")
+  trap 'rm -f "$tmp" 2>/dev/null || true' EXIT
+
+  cat > "$tmp" <<'EOF'
 schema_version: "1.0"
 applicability: applicable
 design_state: draft
@@ -462,12 +481,16 @@ audit_head:
 EOF
 
   # Set project fields via strenv() to handle special characters safely
-  _CI_REF="$reference" yq -i '.project.reference = strenv(_CI_REF)' "$RECORD_PATH"
-  _CI_DV="$discovered_via" yq -i '.project.discovered_via = strenv(_CI_DV)' "$RECORD_PATH"
-  _CI_QR="$questionnaire_record" yq -i '.project.questionnaire_record = strenv(_CI_QR)' "$RECORD_PATH"
+  _CI_REF="$reference" yq -i '.project.reference = strenv(_CI_REF)' "$tmp"
+  _CI_DV="$discovered_via" yq -i '.project.discovered_via = strenv(_CI_DV)' "$tmp"
+  _CI_QR="$questionnaire_record" yq -i '.project.questionnaire_record = strenv(_CI_QR)' "$tmp"
 
   # No lock needed — new file, no contention possible
-  _append_audit "$RECORD_PATH" "state-transition" "$actor" "from=draft" "to=draft"
+  _append_audit "$tmp" "state-transition" "$actor" "from=draft" "to=draft"
+
+  # Atomic publish
+  mv -f "$tmp" "$RECORD_PATH" || _die "init: atomic publish failed"
+  trap - EXIT
 }
 
 # cmd_show — read and display the record (human-readable).
