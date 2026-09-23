@@ -1,6 +1,6 @@
-# Code Review — E99-S4
+# Code Review — Sample Story
 
-> **Story:** E99-S4 — End-to-end real-story fixture
+> **Story:** Sample Story — End-to-end real-story fixture
 > **Model:** claude-opus-4-7
 > **Temperature:** 0
 > **prompt_hash:** sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -34,10 +34,10 @@ No deterministic findings.
 
 - Component placement matches `architecture.md` §Layered Architecture: handlers under `src/handlers/`, utils under `src/utils/`. PASS.
 - Dependency direction: handler → utils → core; no inversions. PASS.
-- ADR references: ADR-074 (model pin) cited; status Accepted. PASS.
+- ADR references cited; status Accepted. PASS.
 
 ## Design Fidelity
 
-(no `figma:` block on this story; skipped)
+(no design-record reference; not applicable)
 
 **Verdict: APPROVE**

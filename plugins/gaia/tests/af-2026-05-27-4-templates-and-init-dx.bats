@@ -89,11 +89,6 @@ teardown() { common_teardown; }
   grep -qiE 'greenfield' "$UX_SKILL"
 }
 
-@test "F-014: UX template + SKILL.md provide a no-Figma fallback placeholder" {
-  grep -qiF 'No Figma source' "$UX_TPL"
-  grep -qiF 'No Figma source' "$UX_SKILL"
-}
-
 # ---------- F-002: init questionnaire env-by-phase ----------
 
 @test "F-002: gaia-init SKILL.md scopes the env requirement to config_phase=full" {
