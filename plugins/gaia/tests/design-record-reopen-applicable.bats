@@ -239,22 +239,27 @@ STAKE
 # =========================================================================
 
 @test "reopen-applicable refuses when record path is a symlink" {
-  _create_na_record
+  # Build the real record in a second project root through the writer itself,
+  # then point this project's record path at it — no direct file moves.
+  local other_root="$TEST_TMP/other-root"
+  env PROJECT_ROOT="$other_root" "$DREC_SCRIPT" init-not-applicable --actor "setup"
+  local target="$other_root/.gaia/state/design-record.yaml"
+  [ -f "$target" ] || fail "fixture record was not created at $target"
+  mkdir -p "$TEST_TMP/.gaia/state"
+  ln -s "$target" "$TEST_TMP/.gaia/state/design-record.yaml"
 
-  local real_dir="$TEST_TMP/real-records"
-  mkdir -p "$real_dir"
-  mv "$TEST_TMP/.gaia/state/design-record.yaml" "$real_dir/design-record.yaml"
-  ln -s "$real_dir/design-record.yaml" "$TEST_TMP/.gaia/state/design-record.yaml"
+  local pre_hash
+  pre_hash="$(_sha256_file "$target")"
 
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "ref" \
     --discovered-via "created" \
     --questionnaire-record "q.md"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "symlink"
+  # Match the refusal text only — the temp path itself contains the word.
+  printf '%s\n' "${output//$TEST_TMP/}" | grep -qi "symlink" \
+    || fail "expected a symlink refusal; got: $output"
 
   # Real record untouched
-  local app
-  app="$(yq '.applicability' "$real_dir/design-record.yaml")"
-  [ "$app" = "not-applicable" ]
+  [ "$pre_hash" = "$(_sha256_file "$target")" ]
 }
