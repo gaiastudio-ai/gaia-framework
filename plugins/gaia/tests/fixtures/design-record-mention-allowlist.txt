@@ -48,3 +48,4 @@ skills/gaia-dev-story/scripts/setup.sh reader sources gate-predicates.sh which d
 tests/stale-propagation.bats       test     stale-on-change propagation test suite
 tests/design-stale-transition.bats test     driver script test suite
 tests/retirement-sweep-clean.bats  test     asserts the replacement design path resolves
+knowledge/gaia-help.csv            prose    help row names the design record as the review output
