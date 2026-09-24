@@ -284,10 +284,17 @@ design_gate_check() {
   }
 
   # ---- Not-applicable path ----
-  # YAML boolean true renders as "true" in yq. Anything else (false, "yes",
-  # "1", "True", empty) is not-applicable — record via the sole writer.
+  # YAML boolean true renders as "true" in yq v4 (case-preserving), but the
+  # spec allows True and TRUE as well. A case statement lists the three
+  # canonical YAML boolean-true spellings; everything else (false, "yes",
+  # "1", "on", empty, absent) is not-applicable — record via the sole writer.
 
-  if [ "$ui_present" != "true" ]; then
+  local _dg_is_ui=false
+  case "$ui_present" in
+    true|True|TRUE) _dg_is_ui=true ;;
+  esac
+
+  if [ "$_dg_is_ui" = false ]; then
     "$drec_script" init-not-applicable --actor "design-gate" >/dev/null 2>&1 || true
     return 0
   fi

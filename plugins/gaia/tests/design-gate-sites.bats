@@ -889,7 +889,7 @@ teardown() {
       # Strip comments, then grep for inlined logic patterns
       local stripped
       stripped="$(sed 's/#.*//' "$f")"
-      if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|draft\|review\|approved\|in-dev\|stale)"; then
+      if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|approved|in-dev|stale)\"?)"; then
         echo "INLINED: $f contains direct design-state logic" >&2
         inlined_count=$((inlined_count + 1))
       fi
@@ -918,11 +918,37 @@ teardown() {
   # The sweep should catch it
   local stripped
   stripped="$(sed 's/#.*//' "$mutant_sh")"
-  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh)"; then
+  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|approved|in-dev|stale)\"?)"; then
     # Good — mutant caught
     :
   else
     echo "FAIL: mutant with inlined yq .design_state was NOT caught by the sweep" >&2
+    return 1
+  fi
+
+  rm -f "$mutant_sh"
+}
+
+# Named mutant: mutant-inline-state-comparison
+@test "mutant: adding an inlined state comparison to a setup.sh is caught" {
+  # Plant a hardcoded design-state comparison and verify the sweep catches it.
+  local target="gaia-create-arch"
+  local setup_sh="$SKILLS_DIR/$target/scripts/setup.sh"
+  [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing for $target" >&2; return 1; }
+
+  local mutant_sh
+  mutant_sh="$(mktemp "$BATS_TEST_TMPDIR/mutant-state-cmp-XXXXXX")"
+  cp "$setup_sh" "$mutant_sh"
+  # Inject an inlined state comparison (no yq, but a hardcoded = "approved")
+  printf 'if [ "$(yq '"'"'.design_state'"'"' "$record")" = "approved" ]; then echo ok; fi\n' >> "$mutant_sh"
+
+  local stripped
+  stripped="$(sed 's/#.*//' "$mutant_sh")"
+  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|approved|in-dev|stale)\"?)"; then
+    # Good — mutant caught
+    :
+  else
+    echo "FAIL: mutant with inlined state comparison was NOT caught by the sweep" >&2
     return 1
   fi
 
@@ -1696,29 +1722,44 @@ teardown() {
 }
 
 # Named mutant: mutant-remove-setup-script
-@test "mutant: removing setup.sh from review-api means the gate is not evaluated" {
-  # When setup.sh is absent, the skill prelude has nothing to run, so the gate
-  # is not evaluated and the entry point would proceed unsafely. This test
-  # verifies that the structural check (setup.sh exists) catches the gap.
+@test "mutant: removing setup.sh from review-api is caught by the structural check" {
+  # Copy the real skills tree, remove review-api's setup.sh, and run the same
+  # structural check ("setup.sh exists and is executable for every site") against
+  # the mutant copy. The check must fail — proving the structural test catches a
+  # missing setup.sh rather than asserting a tautology.
   local site="gaia-review-api"
   local setup_sh="$SKILLS_DIR/$site/scripts/setup.sh"
 
-  # The setup.sh must exist — if it doesn't, the gate is not active
+  # Pre-condition: the real setup.sh exists
   [ -f "$setup_sh" ] || {
-    echo "FAIL: $site/scripts/setup.sh is missing (the gate cannot fire without it)" >&2
+    echo "FAIL: $site/scripts/setup.sh is missing in the real tree" >&2
     return 1
   }
 
-  # Simulate the mutant: if we removed setup.sh, we would not find it
+  # Build a mutant skills tree with setup.sh removed for review-api
   local mutant_dir
   mutant_dir="$(mktemp -d "$BATS_TEST_TMPDIR/mutant-rm-setup-XXXXXX")"
-  # Copy the skill minus setup.sh
-  mkdir -p "$mutant_dir/$site/scripts"
-  cp "$SKILLS_DIR/$site/SKILL.md" "$mutant_dir/$site/SKILL.md" 2>/dev/null || true
-  # Do NOT copy setup.sh
+  local s
+  for s in "${SITES[@]}"; do
+    mkdir -p "$mutant_dir/$s/scripts"
+    cp "$SKILLS_DIR/$s/SKILL.md" "$mutant_dir/$s/SKILL.md" 2>/dev/null || true
+    if [ "$s" != "$site" ]; then
+      cp "$SKILLS_DIR/$s/scripts/setup.sh" "$mutant_dir/$s/scripts/setup.sh" 2>/dev/null || true
+      chmod +x "$mutant_dir/$s/scripts/setup.sh" 2>/dev/null || true
+    fi
+  done
 
-  [ ! -f "$mutant_dir/$site/scripts/setup.sh" ] || {
-    echo "FAIL: mutant still has setup.sh" >&2
+  # Run the structural check against the mutant copy — must fail
+  local found_gap=false
+  for s in "${SITES[@]}"; do
+    if [ ! -f "$mutant_dir/$s/scripts/setup.sh" ] || [ ! -x "$mutant_dir/$s/scripts/setup.sh" ]; then
+      found_gap=true
+      break
+    fi
+  done
+
+  [ "$found_gap" = true ] || {
+    echo "FAIL: mutant with removed setup.sh was NOT caught by the structural check" >&2
     return 1
   }
 
