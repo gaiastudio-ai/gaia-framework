@@ -39,3 +39,4 @@ tests/design-record-reopen-applicable.bats test reopen-applicable verb tests
 skills/gaia-design-review/SKILL.md     reader   invokes design-record.sh verbs (add-review, check-convergence, transition) — never writes directly
 tests/design-review.bats               test     test suite for design-review skill
 skills/gaia-design-review/scripts/verdict-provenance-check.sh    reader    verdict-provenance guard invoked by the design-review skill before every add-review write
+tests/design-gate-sites.bats       test     design-gate wiring at solutioning entry points
