@@ -1394,3 +1394,155 @@ STAKE
   [ "$override_count" -eq 2 ]
   [ "$bypass_count" -eq 2 ]
 }
+
+# =========================================================================
+# Hardening: malformed explicit sprint-id is refused before any write
+# =========================================================================
+
+@test "override refused when explicit sprint-id is malformed" {
+  seed_override_fixture
+
+  local drec_hash lo_hash
+  drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  # Malformed value with quotes and a semicolon
+  run run_gate --force-design \
+    --reason "Unblocking deployment for hotfix while design review is pending" \
+    --entry-point test \
+    --sprint-id "not-valid';rm -rf /"
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+
+  # Both ledgers must be byte-identical (no write occurred)
+  [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ]
+  [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ]
+  # No backup file left behind
+  [ ! -f "$TEST_TMP/.gaia/state/design-record.yaml.gate-backup" ]
+
+  # Must be an early refusal, not a write-then-rollback
+  if echo "$output" | grep -qi "rolled back"; then
+    fail "malformed sprint-id triggered write+rollback instead of early refusal; got: $output"
+  fi
+  # Message must name the expected shape
+  echo "$output" | grep -q 'sprint-' || echo "$output" | grep -qi 'sprint.id'
+}
+
+@test "override refused when explicit sprint-id has trailing junk" {
+  seed_override_fixture
+
+  run run_gate --force-design \
+    --reason "Unblocking deployment for hotfix while design review is pending" \
+    --entry-point test \
+    --sprint-id "sprint-99-extra"
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+  # Must be an early refusal, not a write-then-rollback
+  if echo "$output" | grep -qi "rolled back"; then
+    fail "trailing-junk sprint-id triggered write+rollback instead of early refusal; got: $output"
+  fi
+}
+
+@test "override accepted with well-formed explicit sprint-id" {
+  seed_override_fixture
+
+  run run_gate --force-design \
+    --reason "Unblocking deployment for hotfix while design review is pending" \
+    --entry-point test \
+    --sprint-id "sprint-42"
+  [ "$status" -eq 0 ]
+}
+
+# =========================================================================
+# Hardening: symlinked design record refused fail-closed
+# =========================================================================
+
+@test "symlinked design record is refused even when target is valid not-applicable" {
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+
+  # Build a not-applicable record at a separate location
+  local real_dir="$TEST_TMP/real-records"
+  mkdir -p "$real_dir"
+
+  # First create a real NA record
+  seed_config false
+  run run_gate
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/.gaia/state/design-record.yaml" ]
+
+  # Move the real record aside, symlink to it
+  mv "$TEST_TMP/.gaia/state/design-record.yaml" "$real_dir/design-record.yaml"
+  ln -s "$real_dir/design-record.yaml" "$TEST_TMP/.gaia/state/design-record.yaml"
+
+  # Verify the symlink is in place and target is valid
+  [ -L "$TEST_TMP/.gaia/state/design-record.yaml" ]
+  local app
+  app="$(yq '.applicability' "$real_dir/design-record.yaml")"
+  [ "$app" = "not-applicable" ]
+
+  # Now set config back to ui_present: true so the gate reads the record
+  seed_config true
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+  echo "$output" | grep -qi "symlink"
+}
+
+# =========================================================================
+# Hardening: backup file created with restricted permissions
+# =========================================================================
+
+@test "gate-backup file has owner-only permissions at creation" {
+  seed_override_fixture
+
+  # Make the source record world-readable so we can verify the gate does NOT
+  # just inherit permissions from the source via cp.
+  chmod 644 "$TEST_TMP/.gaia/state/design-record.yaml"
+
+  # Patch the gate to emit backup file permissions and exit early after
+  # creating the backup, so we can inspect the mode before it is cleaned up.
+  local patched
+  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-backup-$$.sh"
+  awk '
+    /backup_path="\$\{record_path\}\.gate-backup"/ {
+      print
+      # After the assignment, inject a permissions-check shim that runs after
+      # the cp line (next line) and prints the mode then bails.
+      getline  # consume the cp line
+      print $0  # emit the original cp line
+      print "  { stat -f \"%Lp\" \"$backup_path\" 2>/dev/null || stat -c \"%a\" \"$backup_path\" 2>/dev/null; } >&2"
+      print "  return 1"
+      next
+    }
+    { print }
+  ' "$GATE_SCRIPT" > "$patched"
+
+  run _run_patched_gate "$patched" --force-design \
+    --reason "Checking backup permissions at creation time" \
+    --entry-point test --sprint-id sprint-99
+  rm -f "$patched"
+
+  # The patched gate returns 1 (we forced it to exit early)
+  # but the output should contain the file permissions (600)
+  echo "$output" | grep -q '600' || fail "backup permissions are not 600; got output: $output"
+}
+
+# =========================================================================
+# Hardening: internal sha helper uses _dg_ prefix
+# =========================================================================
+
+@test "design-gate.sh uses _dg_sha256_file not bare _sha256_file" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found at $GATE_SCRIPT"
+  # The gate must define _dg_sha256_file
+  grep -q '_dg_sha256_file()' "$GATE_SCRIPT" || \
+    fail "expected _dg_sha256_file() definition in design-gate.sh"
+  # The gate must NOT define or call bare _sha256_file without the _dg_ prefix.
+  # Exclude lines containing _dg_sha256_file (the correctly namespaced form).
+  local bare_count
+  bare_count="$(grep '_sha256_file' "$GATE_SCRIPT" | grep -cvF '_dg_sha256_file' || true)"
+  [ "$bare_count" -eq 0 ] || \
+    fail "design-gate.sh still references bare _sha256_file ($bare_count occurrences)"
+}
