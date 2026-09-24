@@ -47,3 +47,4 @@ skills/gaia-dev-story/SKILL.md     reader   declares quality_gates.pre_start: de
 skills/gaia-dev-story/scripts/setup.sh reader sources gate-predicates.sh which delegates to design-gate.sh — never writes to the record directly
 tests/stale-propagation.bats       test     stale-on-change propagation test suite
 tests/design-stale-transition.bats test     driver script test suite
+tests/retirement-sweep-clean.bats  test     asserts the replacement design path resolves
