@@ -156,6 +156,11 @@ is_allowlisted() {
   # the test body are the contractual assertion target — same precedent as
   # knowledge-paths-guard.bats above.
   [[ "$path" == */plugins/gaia/tests/e70-s5-skill-registration.bats ]] && return 0
+  # design-review.bats asserts the design-review skill is registered in
+  # workflow-manifest.csv. The CSV is itself allowlisted under
+  # plugins/gaia/knowledge/, so the filename mention is the contractual
+  # assertion target — same precedent as the registration suites above.
+  [[ "$path" == */plugins/gaia/tests/design-review.bats ]] && return 0
   # gaia-init.bats asserts that the gaia-init skill is registered in
   # workflow-manifest.csv and gaia-help.csv. The CSVs are themselves
   # allowlisted under plugins/gaia/knowledge/, so the filename mentions in the
