@@ -57,18 +57,61 @@ _sha256_tree() {
 # Fixture helpers
 # ---------------------------------------------------------------------------
 
-seed_config() {
+# seed_full_config UI_PRESENT — create .gaia/config/project-config.yaml with
+# all 11 required fields so resolve-config.sh passes. The UI_PRESENT value
+# is written literally (pass `true` for YAML boolean true).
+seed_full_config() {
   local ui_present="${1:-true}"
   mkdir -p "$TEST_TMP/.gaia/config"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/test-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/creative-artifacts"
+  mkdir -p "$TEST_TMP/_memory/checkpoints"
+  mkdir -p "$TEST_TMP/_gaia"
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<EOF
+project_root: $TEST_TMP
+project_path: $TEST_TMP
+memory_path: $TEST_TMP/_memory
+checkpoint_path: $TEST_TMP/_memory/checkpoints
+installed_path: $TEST_TMP/_gaia
+framework_version: 1.218.2
+date: 2026-09-24
+test_artifacts: $TEST_TMP/.gaia/artifacts/test-artifacts
+planning_artifacts: $TEST_TMP/.gaia/artifacts/planning-artifacts
+implementation_artifacts: $TEST_TMP/.gaia/artifacts/implementation-artifacts
+creative_artifacts: $TEST_TMP/.gaia/artifacts/creative-artifacts
 compliance:
   ui_present: $ui_present
+ci_platform:
+  provider: none
 EOF
 }
 
-seed_config_no_compliance() {
+# seed_full_config_no_compliance — all 11 required fields but NO compliance
+# section (ui_present absent).
+seed_full_config_no_compliance() {
   mkdir -p "$TEST_TMP/.gaia/config"
-  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'EOF'
+  mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/test-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/creative-artifacts"
+  mkdir -p "$TEST_TMP/_memory/checkpoints"
+  mkdir -p "$TEST_TMP/_gaia"
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<EOF
+project_root: $TEST_TMP
+project_path: $TEST_TMP
+memory_path: $TEST_TMP/_memory
+checkpoint_path: $TEST_TMP/_memory/checkpoints
+installed_path: $TEST_TMP/_gaia
+framework_version: 1.218.2
+date: 2026-09-24
+test_artifacts: $TEST_TMP/.gaia/artifacts/test-artifacts
+planning_artifacts: $TEST_TMP/.gaia/artifacts/planning-artifacts
+implementation_artifacts: $TEST_TMP/.gaia/artifacts/implementation-artifacts
+creative_artifacts: $TEST_TMP/.gaia/artifacts/creative-artifacts
+ci_platform:
+  provider: none
 stacks:
   - name: bash
 EOF
@@ -77,6 +120,39 @@ EOF
 seed_config_malformed() {
   mkdir -p "$TEST_TMP/.gaia/config"
   printf 'compliance:\n  ui_present: [broken\n' > "$TEST_TMP/.gaia/config/project-config.yaml"
+}
+
+# seed_site_prereqs SITE — seed the per-site prerequisite artifacts that the
+# site's own gates check before reaching the design gate. Without these, the
+# setup.sh exits at a validate-gate or guard check, never reaching our gate.
+seed_site_prereqs() {
+  local site="$1"
+  case "$site" in
+    gaia-create-arch)
+      # architecture-template.md must exist (Section 2b guard)
+      mkdir -p "$SKILLS_DIR/gaia-create-arch"
+      # Template is already in the skill dir; only need to handle the
+      # threat-model gate (Section 5): set pre_sprint (no sprint-status)
+      # which degrades to WARNING, not HALT.
+      ;;
+    gaia-edit-arch)
+      # architecture.md should exist (Section 2b guard) — non-fatal in setup
+      ;;
+    gaia-create-epics)
+      # test-plan must exist (validate-gate test_plan_exists + non-empty guard)
+      mkdir -p "$TEST_TMP/.gaia/artifacts/test-artifacts/strategy"
+      printf '# test plan\nscenarios:\n  - name: test\n' > "$TEST_TMP/.gaia/artifacts/test-artifacts/strategy/test-plan.md"
+      ;;
+    gaia-readiness-check)
+      # traceability-matrix.md + ci-setup.md must exist and be non-empty
+      # (ci-setup gate is conditional on ci_platform.provider != none; we set
+      # provider: none in config so only traceability gate fires)
+      mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
+      printf '# traceability\n|req|test|\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/traceability-matrix.md"
+      ;;
+    # gaia-threat-model, gaia-infra-design, gaia-review-api, gaia-adversarial:
+    # no site-specific prerequisite artifacts needed beyond the config
+  esac
 }
 
 seed_roster() {
@@ -118,7 +194,7 @@ STUBEOF
 }
 
 seed_ui_project() {
-  seed_config true
+  seed_full_config true
   seed_roster
   seed_probe_stub "${1:-available}"
 }
@@ -258,6 +334,7 @@ teardown() {
     local old_tmp="$TEST_TMP"
     TEST_TMP="$site_tmp"
     seed_ui_project available
+    seed_site_prereqs "$site"
     _build_review_record
     TEST_TMP="$old_tmp"
 
@@ -269,13 +346,27 @@ teardown() {
     local setup_sh="$SKILLS_DIR/$site/scripts/setup.sh"
     [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing for $site" >&2; return 1; }
 
+    local stderr_file="$site_tmp/stderr.txt"
     local rc=0
     env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
       PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-      bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+      bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
 
     # Gate must halt (non-zero exit)
     [ "$rc" -ne 0 ] || { echo "FAIL: $site setup.sh exited 0 with unapproved record" >&2; return 1; }
+
+    # The halt must come from the design gate, not from resolve-config
+    local captured
+    captured="$(cat "$stderr_file")"
+    captured="${captured//$site_tmp/}"
+    echo "$captured" | grep -qiE "(design.gate|quality.gate)" || {
+      echo "FAIL: $site halt did not come from the design gate (stderr: $captured)" >&2
+      return 1
+    }
+    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+      echo "FAIL: $site failed in resolve-config, not at the design gate (stderr: $captured)" >&2
+      return 1
+    fi
 
     # Whole tree must be byte-identical
     local after_hash
@@ -298,13 +389,19 @@ teardown() {
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
   seed_ui_project available
+  seed_site_prereqs "$target_site"
   _build_review_record
   TEST_TMP="$old_tmp"
 
-  # Create a mutant copy of the setup.sh with _gate_run_pre_start removed
+  # The setup.sh must contain the gate call for the mutant to be meaningful
   local setup_sh="$SKILLS_DIR/$target_site/scripts/setup.sh"
   [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing for $target_site" >&2; return 1; }
+  grep -q "_gate_run_pre_start" "$setup_sh" || {
+    echo "FAIL: setup.sh does not contain _gate_run_pre_start (design gate not wired yet)" >&2
+    return 1
+  }
 
+  # Create a mutant copy with the gate call removed
   local mutant_sh="$site_tmp/mutant-setup.sh"
   sed '/_gate_run_pre_start/d' "$setup_sh" > "$mutant_sh"
   chmod +x "$mutant_sh"
@@ -323,6 +420,61 @@ teardown() {
   rm -rf "$site_tmp"
 }
 
+# Named mutant: mutant-gate-writes-on-fail
+@test "mutant: a spurious write on the fail path is caught by the tree-integrity check" {
+  local site_tmp
+  site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/mutant-writes-XXXXXX")"
+
+  local old_tmp="$TEST_TMP"
+  TEST_TMP="$site_tmp"
+  seed_ui_project available
+  seed_site_prereqs gaia-create-arch
+  _build_review_record
+  TEST_TMP="$old_tmp"
+
+  # The gate library must exist to create a mutant of it
+  local gate_lib="$SCRIPTS_DIR/lib/design-gate.sh"
+  [ -f "$gate_lib" ] || { echo "FAIL: design-gate.sh missing" >&2; return 1; }
+
+  # Create a mutant copy with a spurious write on the fail path
+  local mutant_gate="$site_tmp/mutant-design-gate.sh"
+  # Insert a write just before the final _dg_halt_with_probe call
+  awk '/MUTANT-ANCHOR: probe-fail-branch/ {
+    print "  touch \"${PROJECT_ROOT}/.gaia/state/spurious-marker\""
+  } {print}' "$gate_lib" > "$mutant_gate"
+
+  # Snapshot before
+  local before_hash
+  before_hash="$(_sha256_tree "$site_tmp/.gaia")"
+
+  # Source the mutant and invoke the gate directly
+  local rc=0
+  (
+    export PROJECT_ROOT="$site_tmp"
+    export PATH="$site_tmp/bin:$PATH"
+    source "$mutant_gate"
+    design_gate_check
+  ) >/dev/null 2>&1 || rc=$?
+
+  # The gate must still halt
+  [ "$rc" -ne 0 ] || {
+    echo "FAIL: mutant gate exited 0 (expected halt)" >&2
+    return 1
+  }
+
+  # The tree must have CHANGED (spurious write landed)
+  local after_hash
+  after_hash="$(_sha256_tree "$site_tmp/.gaia")"
+  [ "$before_hash" != "$after_hash" ] || {
+    echo "FAIL: mutant did not produce a spurious write (tree unchanged)" >&2
+    return 1
+  }
+
+  # The integrity check (before_hash == after_hash) would catch this —
+  # the above assertion proves the check would turn red.
+  rm -rf "$site_tmp"
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Test 3: approved record lets all eight proceed
 # ═══════════════════════════════════════════════════════════════════════════
@@ -336,16 +488,27 @@ teardown() {
     local old_tmp="$TEST_TMP"
     TEST_TMP="$site_tmp"
     seed_ui_project available
+    seed_site_prereqs "$site"
     _build_approved_record
     TEST_TMP="$old_tmp"
 
     local setup_sh="$SKILLS_DIR/$site/scripts/setup.sh"
     [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing for $site" >&2; return 1; }
 
+    local stderr_file="$site_tmp/stderr.txt"
     local rc=0
     env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
       PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-      bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+      bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+    # Must not fail in resolve-config
+    local captured
+    captured="$(cat "$stderr_file")"
+    captured="${captured//$site_tmp/}"
+    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+      echo "FAIL: $site failed in resolve-config, not at the design gate (stderr: $captured)" >&2
+      return 1
+    fi
 
     [ "$rc" -eq 0 ] || {
       echo "FAIL: $site setup.sh exited $rc with approved record (expected 0)" >&2
@@ -368,18 +531,29 @@ teardown() {
 
     local old_tmp="$TEST_TMP"
     TEST_TMP="$site_tmp"
-    seed_config false
+    seed_full_config false
     seed_roster
     seed_probe_stub available
+    seed_site_prereqs "$site"
     TEST_TMP="$old_tmp"
 
     local setup_sh="$SKILLS_DIR/$site/scripts/setup.sh"
     [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing for $site" >&2; return 1; }
 
+    local stderr_file="$site_tmp/stderr.txt"
     local rc=0
     env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
       PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-      bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+      bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+    # Must not fail in resolve-config
+    local captured
+    captured="$(cat "$stderr_file")"
+    captured="${captured//$site_tmp/}"
+    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+      echo "FAIL: $site failed in resolve-config (stderr: $captured)" >&2
+      return 1
+    fi
 
     [ "$rc" -eq 0 ] || {
       echo "FAIL: $site setup.sh exited $rc with ui_present false (expected 0)" >&2
@@ -409,21 +583,38 @@ teardown() {
 
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
-  seed_config_no_compliance
+  seed_full_config_no_compliance
   seed_roster
   seed_probe_stub available
+  seed_site_prereqs gaia-create-arch
   TEST_TMP="$old_tmp"
 
   local setup_sh="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
   [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing" >&2; return 1; }
 
+  local stderr_file="$site_tmp/stderr.txt"
   local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
     PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-    bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+    bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+  local captured
+  captured="$(cat "$stderr_file")"
+  captured="${captured//$site_tmp/}"
+  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    echo "FAIL: failed in resolve-config (stderr: $captured)" >&2
+    return 1
+  fi
 
   [ "$rc" -eq 0 ] || {
     echo "FAIL: setup.sh exited $rc with ui_present absent (expected 0)" >&2
+    return 1
+  }
+
+  # The gate must have created a not-applicable design record
+  local drec="$site_tmp/.gaia/state/design-record.yaml"
+  [ -f "$drec" ] || {
+    echo "FAIL: no design record created (gate did not run)" >&2
     return 1
   }
 
@@ -434,28 +625,43 @@ teardown() {
   local site_tmp
   site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/na-empty-XXXXXX")"
 
-  mkdir -p "$site_tmp/.gaia/config"
-  cat > "$site_tmp/.gaia/config/project-config.yaml" <<'EOF'
-compliance:
-  ui_present:
-EOF
-
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
+  # Use seed_full_config then overwrite compliance to have empty ui_present
+  seed_full_config false
   seed_roster
   seed_probe_stub available
+  seed_site_prereqs gaia-create-arch
+  # Overwrite ui_present to empty (null in YAML)
+  yq -i '.compliance.ui_present = null' "$site_tmp/.gaia/config/project-config.yaml"
   TEST_TMP="$old_tmp"
 
   local setup_sh="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
   [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing" >&2; return 1; }
 
+  local stderr_file="$site_tmp/stderr.txt"
   local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
     PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-    bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+    bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+  local captured
+  captured="$(cat "$stderr_file")"
+  captured="${captured//$site_tmp/}"
+  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    echo "FAIL: failed in resolve-config (stderr: $captured)" >&2
+    return 1
+  fi
 
   [ "$rc" -eq 0 ] || {
     echo "FAIL: setup.sh exited $rc with ui_present empty (expected 0)" >&2
+    return 1
+  }
+
+  # The gate must have created a not-applicable design record
+  local drec="$site_tmp/.gaia/state/design-record.yaml"
+  [ -f "$drec" ] || {
+    echo "FAIL: no design record created (gate did not run)" >&2
     return 1
   }
 
@@ -466,36 +672,60 @@ EOF
   local site_tmp
   site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/na-truthy-XXXXXX")"
 
-  mkdir -p "$site_tmp/.gaia/config"
-  # YAML string "false" (quoted) — yq renders as "false" string, not boolean
-  cat > "$site_tmp/.gaia/config/project-config.yaml" <<'EOF'
-compliance:
-  ui_present: "false"
-EOF
-
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
+  # Seed full config then overwrite ui_present with quoted "false" string
+  seed_full_config false
   seed_roster
   seed_probe_stub available
+  seed_site_prereqs gaia-create-arch
+  yq -i '.compliance.ui_present = "false"' "$site_tmp/.gaia/config/project-config.yaml"
   TEST_TMP="$old_tmp"
 
   local setup_sh="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
   [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing" >&2; return 1; }
 
+  local stderr_file="$site_tmp/stderr.txt"
   local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
     PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-    bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+    bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+  local captured
+  captured="$(cat "$stderr_file")"
+  captured="${captured//$site_tmp/}"
+  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    echo "FAIL: failed in resolve-config (stderr: $captured)" >&2
+    return 1
+  fi
 
   [ "$rc" -eq 0 ] || {
     echo "FAIL: setup.sh exited $rc with ui_present 'false' (expected 0)" >&2
     return 1
   }
 
+  # The gate must have created a not-applicable design record
+  local drec="$site_tmp/.gaia/state/design-record.yaml"
+  [ -f "$drec" ] || {
+    echo "FAIL: no design record created (gate did not run)" >&2
+    return 1
+  }
+
   rm -rf "$site_tmp"
 }
 
-@test "unparseable config makes the gate fail closed (not not-applicable)" {
+@test "unparseable config makes the entry point fail closed (not not-applicable)" {
+  # F4 decision: the plan inserts the design gate AFTER resolve-config
+  # (Section 2a, after Section 2 validate-gate). For malformed YAML,
+  # resolve-config fails FIRST — the gate never runs. The fail-closed
+  # property of AC4 is satisfied by resolve-config's own failure: the
+  # entry point exits non-zero and no artifact is produced. The design
+  # gate's own fail-closed behaviour on malformed config is tested
+  # directly in design-gate.bats, not here.
+  #
+  # This test asserts that the entry point DOES fail closed (exit non-zero)
+  # on malformed config. It does NOT assert the failure comes from the
+  # design gate specifically, because it comes from resolve-config.
   local site_tmp
   site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/na-malformed-XXXXXX")"
 
@@ -509,29 +739,13 @@ EOF
   local setup_sh="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
   [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing" >&2; return 1; }
 
-  # The halt must come from the design gate, not just from resolve-config.
-  # Verify setup.sh sources gate-predicates.sh and calls _gate_run_pre_start.
-  grep -q "_gate_run_pre_start" "$setup_sh" || {
-    echo "FAIL: setup.sh does not call _gate_run_pre_start (design gate not wired)" >&2
-    return 1
-  }
-
-  local stderr_file="$site_tmp/stderr.txt"
   local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
     PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-    bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+    bash "$setup_sh" >/dev/null 2>&1 || rc=$?
 
   [ "$rc" -ne 0 ] || {
     echo "FAIL: setup.sh exited 0 with malformed config (expected non-zero — fail closed)" >&2
-    return 1
-  }
-
-  # The halt must mention the design gate (not just resolve-config failure)
-  local captured
-  captured="$(cat "$stderr_file" 2>/dev/null || true)"
-  echo "$captured" | grep -qiE "(design.gate|quality.gate|unreadable.config)" || {
-    echo "FAIL: halt did not come from the design gate (stderr: $captured)" >&2
     return 1
   }
 
@@ -545,17 +759,34 @@ EOF
 
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
-  seed_config false
+  seed_full_config false
   seed_roster
   seed_probe_stub available
+  seed_site_prereqs gaia-create-arch
   TEST_TMP="$old_tmp"
 
   local setup_sh="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
   [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing" >&2; return 1; }
 
+  local stderr_file="$site_tmp/stderr.txt"
+  local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
     PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-    bash "$setup_sh" >/dev/null 2>&1
+    bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+  # Must not fail in resolve-config
+  local captured
+  captured="$(cat "$stderr_file")"
+  captured="${captured//$site_tmp/}"
+  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    echo "FAIL: failed in resolve-config (stderr: $captured)" >&2
+    return 1
+  fi
+
+  [ "$rc" -eq 0 ] || {
+    echo "FAIL: setup.sh exited $rc (expected 0 for headless project)" >&2
+    return 1
+  }
 
   local drec="$site_tmp/.gaia/state/design-record.yaml"
   [ -f "$drec" ] || { echo "FAIL: no design record created" >&2; return 1; }
@@ -694,6 +925,7 @@ EOF
     local old_tmp="$TEST_TMP"
     TEST_TMP="$site_tmp"
     seed_ui_project available
+    seed_site_prereqs "$site"
     _build_review_record
     seed_sprint_status sprint-82
     seed_lifecycle_overrides
@@ -702,12 +934,22 @@ EOF
     local setup_sh="$SKILLS_DIR/$site/scripts/setup.sh"
     [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing for $site" >&2; return 1; }
 
+    local stderr_file="$site_tmp/stderr.txt"
     local rc=0
     env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
       PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
       bash "$setup_sh" --force-design --reason "unblocking solutioning for sprint deadline" \
         --entry-point "$site" --sprint-id sprint-82 \
-      >/dev/null 2>&1 || rc=$?
+      >/dev/null 2>"$stderr_file" || rc=$?
+
+    # Must not fail in resolve-config
+    local captured
+    captured="$(cat "$stderr_file")"
+    captured="${captured//$site_tmp/}"
+    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+      echo "FAIL: $site failed in resolve-config (stderr: $captured)" >&2
+      return 1
+    fi
 
     [ "$rc" -eq 0 ] || {
       echo "FAIL: $site setup.sh exited $rc with --force-design (expected 0)" >&2
@@ -765,33 +1007,47 @@ EOF
 # Named mutant: mutant-ignore-force-flag
 @test "mutant: removing the force-design parser from one setup.sh makes the override halt" {
   local target="gaia-create-arch"
+  local setup_sh="$SKILLS_DIR/$target/scripts/setup.sh"
+  [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing" >&2; return 1; }
+
+  # Guard: the sed must actually remove something. If there is no
+  # --force-design parser yet (Red phase), fail loudly rather than silently
+  # producing a no-op mutant.
+  local orig_lines mutant_lines
+  orig_lines="$(wc -l < "$setup_sh" | tr -d ' ')"
+
   local site_tmp
   site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/mutant-force-XXXXXX")"
+
+  local mutant_sh="$site_tmp/mutant-setup.sh"
+  sed '/--force-design/d' "$setup_sh" > "$mutant_sh"
+  chmod +x "$mutant_sh"
+
+  mutant_lines="$(wc -l < "$mutant_sh" | tr -d ' ')"
+  if [ "$orig_lines" -eq "$mutant_lines" ]; then
+    echo "FAIL: sed removed nothing — setup.sh has no --force-design parser to mutate" >&2
+    rm -rf "$site_tmp"
+    return 1
+  fi
 
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
   seed_ui_project available
+  seed_site_prereqs "$target"
   _build_review_record
   seed_sprint_status sprint-82
   seed_lifecycle_overrides
   TEST_TMP="$old_tmp"
 
-  local setup_sh="$SKILLS_DIR/$target/scripts/setup.sh"
-  [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing" >&2; return 1; }
-
-  # Create mutant: remove --force-design handling
-  local mutant_sh="$site_tmp/mutant-setup.sh"
-  sed '/--force-design/d' "$setup_sh" > "$mutant_sh"
-  chmod +x "$mutant_sh"
-
   local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
     PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-    bash "$mutant_sh" --force-design --reason "test" --entry-point "$target" --sprint-id sprint-82 \
+    bash "$mutant_sh" --force-design --reason "test override reason" --entry-point "$target" --sprint-id sprint-82 \
     >/dev/null 2>&1 || rc=$?
 
   [ "$rc" -ne 0 ] || {
     echo "FAIL: mutant (--force-design removed) still exit 0 — parser is NOT the mechanism" >&2
+    rm -rf "$site_tmp"
     return 1
   }
 
@@ -1018,16 +1274,12 @@ EOF
     local site_tmp
     site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/headless-${site}-XXXXXX")"
 
-    mkdir -p "$site_tmp/.gaia/config"
-    cat > "$site_tmp/.gaia/config/project-config.yaml" <<'EOF'
-compliance:
-  ui_present: false
-EOF
-
     local old_tmp="$TEST_TMP"
     TEST_TMP="$site_tmp"
+    seed_full_config false
     seed_roster
     seed_probe_stub available
+    seed_site_prereqs "$site"
     TEST_TMP="$old_tmp"
 
     local setup_sh="$SKILLS_DIR/$site/scripts/setup.sh"
@@ -1039,13 +1291,23 @@ EOF
       PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
       bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
 
+    # Must not fail in resolve-config
+    local captured
+    captured="$(cat "$stderr_file")"
+    captured="${captured//$site_tmp/}"
+    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+      echo "FAIL: headless $site failed in resolve-config (stderr: $captured)" >&2
+      all_passed=false
+      continue
+    fi
+
     [ "$rc" -eq 0 ] || {
       echo "FAIL: headless $site setup.sh exited $rc (expected 0)" >&2
       all_passed=false
     }
 
-    # stderr must not contain halt/error/fail/block/refused
-    if grep -qiE "(halt|error|fail|block|refused)" "$stderr_file" 2>/dev/null; then
+    # stderr must not contain halt/error/fail/block/refused (stripped of temp path)
+    if echo "$captured" | grep -qiE "(halt|error|fail|block|refused)"; then
       echo "FAIL: headless $site emitted halt/error-like text on stderr" >&2
       all_passed=false
     fi
@@ -1078,34 +1340,57 @@ EOF
   # Start headless
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
-  seed_config false
+  seed_full_config false
   seed_roster
   seed_probe_stub available
+  seed_site_prereqs gaia-create-arch
   TEST_TMP="$old_tmp"
 
   local setup_sh="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
   [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing" >&2; return 1; }
 
   # Run gate to record not-applicable
+  local stderr_file="$site_tmp/stderr-phase1.txt"
+  local rc_phase1=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
     PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-    bash "$setup_sh" >/dev/null 2>&1
+    bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc_phase1=$?
+
+  # Must not fail in resolve-config
+  local captured
+  captured="$(cat "$stderr_file")"
+  captured="${captured//$site_tmp/}"
+  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    echo "FAIL: headless run failed in resolve-config (stderr: $captured)" >&2
+    return 1
+  fi
+  [ "$rc_phase1" -eq 0 ] || {
+    echo "FAIL: headless run exited $rc_phase1 (expected 0)" >&2
+    return 1
+  }
 
   # Verify not-applicable was recorded
   local drec="$site_tmp/.gaia/state/design-record.yaml"
   [ -f "$drec" ] || { echo "FAIL: no design record after headless run" >&2; return 1; }
 
-  # Flip to UI-bearing
-  cat > "$site_tmp/.gaia/config/project-config.yaml" <<'EOF'
-compliance:
-  ui_present: true
-EOF
+  # Flip to UI-bearing (preserve all required fields)
+  yq -i '.compliance.ui_present = true' "$site_tmp/.gaia/config/project-config.yaml"
 
   # Run again — should FAIL (not-applicable record on UI-bearing project)
+  local stderr_file2="$site_tmp/stderr-phase2.txt"
   local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
     PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-    bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+    bash "$setup_sh" >/dev/null 2>"$stderr_file2" || rc=$?
+
+  # The halt must come from the design gate
+  local captured2
+  captured2="$(cat "$stderr_file2")"
+  captured2="${captured2//$site_tmp/}"
+  echo "$captured2" | grep -qiE "(design.gate|quality.gate|not-applicable.*ui)" || {
+    echo "FAIL: halt did not come from the design gate (stderr: $captured2)" >&2
+    return 1
+  }
 
   [ "$rc" -ne 0 ] || {
     echo "FAIL: gate passed after headless-to-UI flip (should fail closed)" >&2
@@ -1125,9 +1410,11 @@ EOF
 
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
-  seed_config false
+  seed_full_config false
   seed_roster
   seed_probe_stub available
+  seed_site_prereqs gaia-create-arch
+  seed_site_prereqs gaia-edit-arch
   TEST_TMP="$old_tmp"
 
   local setup1="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
@@ -1177,6 +1464,7 @@ EOF
   local old_tmp="$TEST_TMP"
   TEST_TMP="$site_tmp"
   seed_ui_project available
+  seed_site_prereqs gaia-create-arch
   _build_review_record
   TEST_TMP="$old_tmp"
 
@@ -1196,6 +1484,13 @@ EOF
   # Sanitize stderr (strip temp dir to avoid path matching in grep)
   local captured
   captured="$(cat "$stderr_file" 2>/dev/null || true)"
+  captured="${captured//$site_tmp/}"
+
+  # Must not have failed in resolve-config
+  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    echo "FAIL: failed in resolve-config, not at the design gate (stderr: $captured)" >&2
+    return 1
+  fi
 
   # Three required elements (emitted by the design gate's halt message):
   # 1. Record path reference
@@ -1259,16 +1554,27 @@ EOF
     local old_tmp="$TEST_TMP"
     TEST_TMP="$site_tmp"
     seed_ui_project available
+    seed_site_prereqs "$site"
     _build_review_record
     TEST_TMP="$old_tmp"
 
     local setup_sh="$SKILLS_DIR/$site/scripts/setup.sh"
     [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing for $site" >&2; return 1; }
 
+    local stderr_file="$site_tmp/stderr.txt"
     local rc=0
     env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
       PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
-      bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+      bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+    # Must not fail in resolve-config
+    local captured
+    captured="$(cat "$stderr_file")"
+    captured="${captured//$site_tmp/}"
+    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+      echo "FAIL: $site failed in resolve-config (stderr: $captured)" >&2
+      return 1
+    fi
 
     [ "$rc" -ne 0 ] || {
       echo "FAIL: $site setup.sh exited 0 with unapproved record (gate not active)" >&2
