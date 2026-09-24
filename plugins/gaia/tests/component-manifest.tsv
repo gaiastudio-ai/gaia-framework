@@ -331,6 +331,7 @@ core	sprint-state-wrapper-sync.bats
 core	sprint-state.bats
 core	stacks-schema.bats
 core	stale-comment-sweep.bats
+core	stale-propagation.bats
 core	static-next-steps.bats
 core	statusline/statusline-install.bats
 core	statusline/statusline-refresh.bats
@@ -462,6 +463,7 @@ scripts-core	dedup-contract.bats
 scripts-core	design-probe.bats
 scripts-core	design-record-reopen-applicable.bats
 scripts-core	design-review.bats
+scripts-core	design-stale-transition.bats
 scripts-core	detect-affected.bats
 scripts-core	detect-open-questions.bats
 scripts-core	detect-orchestration-mode.bats

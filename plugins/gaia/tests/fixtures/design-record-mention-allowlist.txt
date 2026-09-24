@@ -40,3 +40,10 @@ skills/gaia-design-review/SKILL.md     reader   invokes design-record.sh verbs (
 tests/design-review.bats               test     test suite for design-review skill
 skills/gaia-design-review/scripts/verdict-provenance-check.sh    reader    verdict-provenance guard invoked by the design-review skill before every add-review write
 tests/design-gate-sites.bats       test     design-gate wiring at solutioning entry points
+skills/gaia-add-feature/SKILL.md   reader   invokes design-stale-transition.sh via prose instruction — never writes directly
+scripts/design-stale-transition.sh reader   calls design-record.sh transition as a subprocess — never writes directly
+skills/gaia-edit-ux/SKILL.md       reader   invokes design-stale-transition.sh via prose instruction — never writes directly
+skills/gaia-dev-story/SKILL.md     reader   declares quality_gates.pre_start: design_approved — design-gate.sh reads the record as a subprocess
+skills/gaia-dev-story/scripts/setup.sh reader sources gate-predicates.sh which delegates to design-gate.sh — never writes to the record directly
+tests/stale-propagation.bats       test     stale-on-change propagation test suite
+tests/design-stale-transition.bats test     driver script test suite
