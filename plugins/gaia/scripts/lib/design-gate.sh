@@ -338,7 +338,7 @@ design_gate_check() {
     # Fail closed so the user re-initializes the design record.
     if [ "$ui_present" = "true" ]; then
       _dg_halt "$record_path" "not-applicable record on UI-bearing project" \
-        "The design record says not-applicable but the project has ui_present: true. Re-initialize the design record."
+        "The design record says not-applicable but the project has ui_present: true. Run: design-record.sh reopen-applicable --reference <ref> --discovered-via <how> --questionnaire-record <path>, then drive the review with /gaia-design-review."
       return 1
     fi
     return 0

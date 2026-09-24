@@ -19,6 +19,7 @@ LC_ALL=C; export LC_ALL
 #   add-review         Record a review verdict
 #   add-override       Record an audited override
 #   not-applicable     Mark the project as not requiring design approval
+#   reopen-applicable  Transition a not-applicable record back to applicable/draft
 #   check-convergence  Compute convergence from summary fields
 #   verify-integrity   Validate the chained digest
 
@@ -758,6 +759,65 @@ EOF
   trap - EXIT
 }
 
+# cmd_reopen_applicable — transition a not-applicable record back to
+# applicable/draft so the project can go through the design approval process.
+# Refuses unless the current applicability is not-applicable. Validates inputs
+# the same way cmd_init does. Resets design_state to draft and iteration to 1.
+cmd_reopen_applicable() {
+  local reference="" discovered_via="" questionnaire_record="" actor=""
+  _parse_opts \
+    --reference reference \
+    --discovered-via discovered_via \
+    --questionnaire-record questionnaire_record \
+    --actor actor \
+    -- "$@"
+
+  [ -n "$reference" ] || _die "reopen-applicable: --reference required"
+  [ -n "$discovered_via" ] || _die "reopen-applicable: --discovered-via required"
+  [ -n "$questionnaire_record" ] || _die "reopen-applicable: --questionnaire-record required"
+  actor="${actor:-${USER:-unknown}}"
+
+  # Refuse symlinks (same discipline as init)
+  if [ -L "$RECORD_PATH" ]; then
+    _die "reopen-applicable: record path is a symlink at $RECORD_PATH — refusing to follow; remove the symlink first"
+  fi
+
+  _preflight_mutate
+
+  # Pre-lock check: must be not-applicable
+  local current_app
+  current_app="$(yq '.applicability' "$RECORD_PATH")"
+  if [ "$current_app" != "not-applicable" ]; then
+    _die "reopen-applicable: record applicability is '$current_app', not 'not-applicable' — this verb only transitions from not-applicable"
+  fi
+
+  _locked_mutate _do_reopen_applicable "$reference" "$discovered_via" "$questionnaire_record" "$actor"
+}
+
+_do_reopen_applicable() {
+  local tmp="$1" reference="$2" discovered_via="$3" questionnaire_record="$4" actor="$5"
+
+  # Double-check applicability inside the lock
+  local current_app
+  current_app="$(yq '.applicability' "$tmp")"
+  if [ "$current_app" != "not-applicable" ]; then
+    _die "reopen-applicable: concurrent race — applicability changed to '$current_app'"
+  fi
+
+  # Set applicability, state, and iteration
+  yq -i '.applicability = "applicable"' "$tmp"
+  yq -i '.design_state = "draft"' "$tmp"
+  yq -i '.iteration = 1' "$tmp"
+
+  # Overwrite project fields via strenv() (safe for special characters)
+  _RA_REF="$reference" yq -i '.project.reference = strenv(_RA_REF)' "$tmp"
+  _RA_DV="$discovered_via" yq -i '.project.discovered_via = strenv(_RA_DV)' "$tmp"
+  _RA_QR="$questionnaire_record" yq -i '.project.questionnaire_record = strenv(_RA_QR)' "$tmp"
+
+  # Append applicability-change audit entry with from/to
+  _append_audit "$tmp" "applicability-change" "$actor" "from=not-applicable" "to=applicable"
+}
+
 # cmd_check_convergence — compute convergence from summary fields only.
 # This is the READ path: validates schema version but SKIPS chain
 # verification.  Convergence depends only on .design_state, .iteration,
@@ -794,10 +854,11 @@ main() {
     add-override)      cmd_add_override "$@" ;;
     not-applicable)       cmd_not_applicable "$@" ;;
     init-not-applicable)  cmd_init_not_applicable "$@" ;;
+    reopen-applicable)    cmd_reopen_applicable "$@" ;;
     check-convergence)    cmd_check_convergence "$@" ;;
     verify-integrity)     cmd_verify_integrity "$@" ;;
     *)
-      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, check-convergence, verify-integrity"
+      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, reopen-applicable, check-convergence, verify-integrity"
       ;;
   esac
 }
