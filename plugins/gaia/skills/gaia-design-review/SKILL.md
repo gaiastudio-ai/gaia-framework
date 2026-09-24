@@ -95,6 +95,11 @@ Record an internal review verdict BEFORE any stakeholder delivery.
 4. If the internal verdict is `changes-requested` or `blocked` with **high-severity** internal findings, block stakeholder delivery. Surface the findings to the user and ask whether to proceed or address them first.
    - If the user chooses to accept the findings and proceed, record the decision via `scripts/design-record.sh add-override --actor <user> --reason "accepted high-severity internal findings" --entry-point "design-review"`.
    - If the user chooses to address the findings, halt and report what needs to change.
+5. **Draft-to-review transition.** If the design record is still in `draft` state (first review round), transition it into `review` before proceeding to stakeholder delivery:
+   ```bash
+   scripts/design-record.sh transition --to review --actor <actor>
+   ```
+   This first-round transition does NOT bump the iteration counter.
 
 ### Step 4 — Stakeholder delivery (re-read for current state)
 

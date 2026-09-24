@@ -325,6 +325,44 @@ UX
   rm -rf "$root"
 }
 
+@test "(AC4) structural: SKILL.md transitions draft to review before stakeholder delivery" {
+  # Guards that the SKILL.md explicitly instructs the draft-to-review
+  # transition before the first stakeholder delivery.  Without this the
+  # record stays in draft during stakeholder rounds, which is a state-machine
+  # violation.
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — draft-to-review instruction cannot be verified"
+
+  # Extract the internal-review step (Step 3) where the instruction belongs
+  local step3
+  step3="$(awk '
+    /^### Step 3/ { found=1 }
+    found && /^### Step [^3]/ { exit }
+    found { print }
+  ' "$SKILL_MD" 2>/dev/null)"
+  [ -n "$step3" ] || fail "SKILL.md has no Step 3 block"
+
+  # The step must contain the writer invocation for transition --to review.
+  # Match the writer call form (design-record.sh ... transition) to avoid
+  # matching prose mentions of the word "transition".
+  local invocation_pattern='design-record\.sh[[:space:]].*transition --to review\|design-record\.sh transition --to review'
+  printf '%s\n' "$step3" | grep -qE 'design-record\.sh[^`]*transition --to review|design-record\.sh transition --to review' || \
+    fail "Step 3 does not contain a writer invocation for transition --to review"
+
+  # The transition must appear BEFORE any stakeholder delivery instruction.
+  # Step 4 is the stakeholder step, so the transition must be in Step 3 (which
+  # is entirely before Step 4).  Within Step 3, verify the transition appears
+  # after the internal review verdict (add-review) so the ordering is:
+  # internal verdict -> draft-to-review transition -> stakeholder delivery.
+  local review_line trans_line
+  review_line="$(printf '%s\n' "$step3" | grep -nE 'design-record\.sh[^`]*add-review|design-record\.sh add-review' | head -1 | cut -d: -f1)"
+  trans_line="$(printf '%s\n' "$step3" | grep -nE 'design-record\.sh[^`]*transition --to review|design-record\.sh transition --to review' | head -1 | cut -d: -f1)"
+
+  [ -n "$review_line" ] || fail "add-review writer invocation not found in Step 3"
+  [ -n "$trans_line" ] || fail "transition --to review writer invocation not found in Step 3"
+  [ "$review_line" -lt "$trans_line" ] || \
+    fail "transition --to review (line $trans_line) does not follow add-review (line $review_line) in Step 3"
+}
+
 @test "(AC4) review to approved on convergence with stakeholder approvals" {
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — convergence flow cannot be verified"
   [ -x "$DESIGN_RECORD_SH" ] || fail "design-record.sh does not exist or is not executable"
@@ -908,15 +946,14 @@ BOUNDARY
   ')"
   [ -n "$approved_block" ] || fail "Step 5 has no 'all approved' sub-block"
 
-  # check-convergence must appear on an earlier line than the transition
-  # invocation.  Match the actual verb call (transition --to) so that
-  # incidental mentions like "(before transition)" do not confuse the test.
+  # Match the writer INVOCATION forms only (design-record.sh ... verb), not
+  # prose mentions like "check-convergence reports" or "(before transition)".
   local conv_line trans_line
-  conv_line="$(printf '%s\n' "$approved_block" | grep -n 'check-convergence' | head -1 | cut -d: -f1)"
-  trans_line="$(printf '%s\n' "$approved_block" | grep -n 'transition --to\|transition .*review.*approved' | head -1 | cut -d: -f1)"
+  conv_line="$(printf '%s\n' "$approved_block" | grep -nE 'design-record\.sh[^`]*check-convergence|design-record\.sh check-convergence' | head -1 | cut -d: -f1)"
+  trans_line="$(printf '%s\n' "$approved_block" | grep -nE 'design-record\.sh[^`]*transition --to|design-record\.sh transition --to' | head -1 | cut -d: -f1)"
 
-  [ -n "$conv_line" ] || fail "check-convergence not found in the approval path"
-  [ -n "$trans_line" ] || fail "transition invocation not found in the approval path"
+  [ -n "$conv_line" ] || fail "check-convergence writer invocation not found in the approval path"
+  [ -n "$trans_line" ] || fail "transition writer invocation not found in the approval path"
   [ "$conv_line" -lt "$trans_line" ] || \
     fail "check-convergence (line $conv_line) does not precede transition (line $trans_line) in the approval path"
 }
