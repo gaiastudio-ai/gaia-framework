@@ -819,7 +819,7 @@ STAKE
 
   # Sort and pick p95
   local p95_idx p95_ms
-  p95_idx="$(echo "$iterations * 95 / 100" | bc)"
+  p95_idx="$(( iterations * 95 / 100 ))"
   [ "$p95_idx" -lt 1 ] && p95_idx=1
   p95_ms="$(sort -n "$times_file" | sed -n "${p95_idx}p")"
 
@@ -1194,31 +1194,34 @@ STAKE
 # =========================================================================
 
 @test "(AC-EC6) partial dual write: rollback succeeds" {
-  seed_config true
-  seed_roster
-  seed_probe_stub available
-  seed_sprint_status sprint-99
-  seed_lifecycle_overrides
-  _build_review_record
+  seed_override_fixture
 
   local drec_hash
   drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  local lo_hash
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
 
-  # Make lifecycle-overrides directory read-only to force failure
-  chmod 000 "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml"
+  # Patch: make the lifecycle write fail (portable — chmod 000 is
+  # ineffective as root in CI Docker containers)
+  local patched
+  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
+  sed 's|( lifecycle_append_bypass.*)|( false )|' "$GATE_SCRIPT" > "$patched"
 
-  run run_gate --force-design \
+  run _run_patched_gate "$patched" --force-design \
     --reason "This override should be rolled back" \
     --entry-point test --sprint-id sprint-99
-  [ "$status" -eq 1 ]
-  _assert_gate_output
-
-  chmod 644 "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml" 2>/dev/null || true
+  rm -f "$patched"
+  [ "$status" -eq 1 ] || fail "expected exit 1 (lifecycle write failed); got exit $status: $output"
 
   # Design record must be rolled back to pre-override state
-  local post_hash
-  post_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
-  [ "$drec_hash" = "$post_hash" ]
+  local post_drec_hash
+  post_drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$drec_hash" = "$post_drec_hash" ] || fail "design record not rolled back"
+
+  # Lifecycle ledger must be unchanged
+  local post_lo_hash
+  post_lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+  [ "$lo_hash" = "$post_lo_hash" ] || fail "lifecycle ledger changed despite failed write"
 }
 
 @test "(AC-EC6) partial dual write: rollback fails" {
@@ -1230,10 +1233,11 @@ STAKE
   seed_lifecycle_overrides
   _build_review_record
 
-  # Create a patched gate where lifecycle_append_bypass fails AND the backup
+  # Create a patched gate where the lifecycle subshell fails AND the backup
   # is removed before the rollback can use it. This triggers the CRITICAL path.
   local patched
-  patched="$(_make_patched 's|lifecycle_append_bypass .*|rm -f "${record_path}.gate-backup" 2>/dev/null; lo_rc=1  # injected: fail + destroy backup|')"
+  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
+  sed 's|( lifecycle_append_bypass.*)|( rm -f "${backup_path}" 2>/dev/null; false )|' "$GATE_SCRIPT" > "$patched"
 
   run _run_patched_gate "$patched" --force-design --reason "Trigger CRITICAL path" --entry-point test --sprint-id sprint-99
   rm -f "$patched"

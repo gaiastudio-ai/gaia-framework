@@ -424,9 +424,12 @@ _dg_handle_override() {
   fi
 
   # ---- Write to lifecycle-overrides ledger (sourced function) ----
+  # Run in a subshell: lifecycle_append_bypass sets a RETURN trap on $tmp
+  # that leaks into the caller's scope on bash 5.x (Linux). A subshell
+  # contains the trap. The function handles its own locking internally.
 
   local lo_rc=0
-  lifecycle_append_bypass --skill "design-gate" --reason "$reason" --sprint-id "$sprint_id" || lo_rc=$?
+  ( lifecycle_append_bypass --skill "design-gate" --reason "$reason" --sprint-id "$sprint_id" ) || lo_rc=$?
 
   if [ "$lo_rc" -ne 0 ]; then
     _dg_rollback_override "$record_path" "$backup_path" "$backup_hash" \
