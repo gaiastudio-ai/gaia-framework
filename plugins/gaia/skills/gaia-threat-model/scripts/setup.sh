@@ -34,6 +34,15 @@ PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
 VALIDATE_GATE="$PLUGIN_SCRIPTS_DIR/validate-gate.sh"
 CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
+GATE_PREDICATES="$PLUGIN_SCRIPTS_DIR/lib/gate-predicates.sh"
+SKILL_MD_PATH="$(cd "$SCRIPT_DIR/.." && pwd)/SKILL.md"
+
+# ---------- 0. Parse --force-design flags ----------
+PARSE_FORCE_DESIGN="$PLUGIN_SCRIPTS_DIR/lib/parse-force-design.sh"
+# shellcheck disable=SC1090
+. "$PARSE_FORCE_DESIGN"
+_parse_force_design "$@"; set -- "${_PFD_REMAINING[@]+"${_PFD_REMAINING[@]}"}"
+
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
@@ -63,6 +72,15 @@ if [ -x "$VALIDATE_GATE" ]; then
   fi
 else
   log "validate-gate.sh not found at $VALIDATE_GATE — skipping gate (non-fatal)"
+fi
+
+# ---------- 2a. Quality gates: pre_start ----------
+if [ -f "$GATE_PREDICATES" ]; then
+  # shellcheck disable=SC1090
+  . "$GATE_PREDICATES"
+  _gate_run_pre_start "$SKILL_MD_PATH" "$SCRIPT_NAME: quality-gate" || exit 1
+else
+  die "gate-predicates.sh not found at $GATE_PREDICATES — cannot evaluate required quality gates"
 fi
 
 # ---------- 3. Load checkpoint state ----------

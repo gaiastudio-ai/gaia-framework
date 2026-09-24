@@ -222,6 +222,12 @@ _gate_check_env_var_set() {
 # _gate_check_design_approved <arg>
 # Evaluate the design-approval gate by sourcing design-gate.sh and calling
 # design_gate_check. The arg is unused (the predicate is parameterless).
+#
+# Override env vars (set by setup.sh --force-design parser):
+#   FORCE_DESIGN            — non-empty to request override
+#   FORCE_DESIGN_REASON     — reason text (>=10 chars)
+#   FORCE_DESIGN_ENTRY_POINT — skill name for the audit record
+#   FORCE_DESIGN_SPRINT_ID  — sprint id for the lifecycle ledger
 _gate_check_design_approved() {
   local _gp_gate_lib
   _gp_gate_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/design-gate.sh"
@@ -231,7 +237,17 @@ _gate_check_design_approved() {
   fi
   # shellcheck source=design-gate.sh
   source "$_gp_gate_lib"
-  design_gate_check
+  local -a _gp_args=()
+  [ -n "${FORCE_DESIGN:-}" ]             && _gp_args+=(--force-design)
+  [ -n "${FORCE_DESIGN_REASON:-}" ]      && _gp_args+=(--reason "$FORCE_DESIGN_REASON")
+  [ -n "${FORCE_DESIGN_ENTRY_POINT:-}" ] && _gp_args+=(--entry-point "$FORCE_DESIGN_ENTRY_POINT")
+  [ -n "${FORCE_DESIGN_SPRINT_ID:-}" ]   && _gp_args+=(--sprint-id "$FORCE_DESIGN_SPRINT_ID")
+  # Always pass --entry-point when available via the gate prefix so the
+  # design record identifies which skill was overridden.
+  if [ ${#_gp_args[@]} -eq 0 ] || ! printf '%s\n' "${_gp_args[@]}" | grep -qxF -- '--entry-point'; then
+    [ -n "${_GATE_PREFIX:-}" ] && _gp_args+=(--entry-point "$_GATE_PREFIX")
+  fi
+  design_gate_check "${_gp_args[@]+"${_gp_args[@]}"}"
 }
 
 # _gate_evaluate_entry <condition> <error_message>

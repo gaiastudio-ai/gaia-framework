@@ -73,6 +73,38 @@ while [ $# -gt 0 ]; do
 done
 MOCK
   chmod +x "$MOCK_SCRIPTS/validate-gate.sh"
+
+  # Create a stub gate-predicates.sh with a no-op _gate_run_pre_start.
+  # The design gate is fail-closed on a missing library, so the mock
+  # PLUGIN_SCRIPTS_DIR must include one. The stub returns 0 unconditionally
+  # because these tests exercise the readiness-check's own gates, not the
+  # design gate.
+  mkdir -p "$MOCK_SCRIPTS/lib"
+  cat > "$MOCK_SCRIPTS/lib/gate-predicates.sh" <<'MOCK'
+#!/usr/bin/env bash
+_GATE_PREDICATES_SH_LOADED=1
+_gate_extract_block() { :; }
+_gate_run_pre_start() { return 0; }
+MOCK
+
+  # Stub parse-force-design.sh so the sourced parser does not error out.
+  cat > "$MOCK_SCRIPTS/lib/parse-force-design.sh" <<'MOCK'
+#!/usr/bin/env bash
+_PARSE_FORCE_DESIGN_LOADED=1
+_parse_force_design() { _PFD_REMAINING=(); }
+MOCK
+
+  # Seed a minimal project-config.yaml with compliance.ui_present: false
+  # so the design gate takes the not-applicable path if it ever runs with
+  # the real library instead of the stub. Do NOT set ci_platform.provider
+  # to "none" — the readiness-check's CI gate would then be skipped,
+  # breaking the ci-setup zero-byte test.
+  mkdir -p "$TEST_TMP/.gaia/config"
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<CFGEOF
+project_root: $TEST_TMP
+compliance:
+  ui_present: false
+CFGEOF
 }
 
 teardown() { common_teardown; }

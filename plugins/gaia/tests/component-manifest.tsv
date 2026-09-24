@@ -108,6 +108,7 @@ core	config-yaml-editor-e71-s3-coverage-stub.bats
 core	dead-code-join.bats
 core	dead-reference-scan.bats
 core	design-a11y-rebind.bats
+core	design-gate-sites.bats
 core	design-gate.bats
 core	design-record-init-not-applicable.bats
 core	design-record.bats
@@ -265,6 +266,7 @@ core	no-leaked-ids-in-test-names.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
 core	parallel-execution-config.bats
+core	parse-force-design.bats
 core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats

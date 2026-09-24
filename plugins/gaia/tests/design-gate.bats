@@ -1057,12 +1057,49 @@ STAKE
   _assert_gate_output
 }
 
-@test "(AC-EC2) config with missing compliance section fails closed" {
+@test "(AC-EC2) valid config with missing compliance section takes not-applicable pass" {
   seed_config_no_compliance
 
   run run_gate
+  [ "$status" -eq 0 ]
+
+  # A design record must have been created with not-applicable applicability
+  local drec="$TEST_TMP/.gaia/state/design-record.yaml"
+  [ -f "$drec" ]
+  local app
+  app="$(yq '.applicability' "$drec")"
+  [ "$app" = "not-applicable" ]
+}
+
+# Mutant: reader returns failure on absent field — must turn the above red
+@test "(AC-EC2) mutant: reader failure on absent field causes fail-closed (proves reader fix)" {
+  seed_config_no_compliance
+
+  # Patch: change "return 0" to "return 1" inside the absent/null branch
+  # of _dg_read_config_ui_present. The two lines are:
+  #   printf '%s\n' ""
+  #   return 0
+  # Replace the "return 0" that immediately follows the printf ''.
+  local patched
+  patched="$(_make_patched '/printf.*%s.*""/{n; s/return 0/return 1/;}')"
+
+  run _run_patched_gate "$patched"
+  rm -f "$patched"
   [ "$status" -eq 1 ]
-  _assert_gate_output
+}
+
+# Mutant: reader returns success on missing file — must turn the missing-config test red
+@test "(AC-EC2) mutant: reader success on missing file causes false pass (proves fail-closed)" {
+  # No config file at all — the existing "missing config fails closed" test
+  # above asserts exit 1. Patch the reader to return success on missing file.
+  local patched
+  patched="$(_make_patched '/\[ -f "\$config_path" \] || return 1/{
+    s/.*/  [ -f "$config_path" ] || { printf "\\n"; return 0; }/
+  }')"
+
+  run _run_patched_gate "$patched"
+  rm -f "$patched"
+  [ "$status" -eq 0 ]
 }
 
 # =========================================================================

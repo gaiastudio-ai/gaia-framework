@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-# setup.sh — infrastructure-design skill setup
-#
-# Mechanical extension of the brainstorm reference implementation
-# (gaia-brainstorm/scripts/setup.sh). Adds infra-design-specific
-# prereq gates:
-#   - architecture.md must exist (validate-gate file_exists)
+# setup.sh — adversarial review skill setup
 #
 # Responsibilities:
 #   1. Resolve config via the shared resolve-config.sh foundation script
-#   2. Run validate-gate.sh for prereqs (architecture doc)
+#   2. Run validate-gate.sh for prereqs (no-op, parity with siblings)
+#   2a. Quality gates: pre_start (design_approved gate)
 #   3. Load the checkpoint state for this workflow
 #
 # Exit codes:
@@ -22,13 +18,12 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
-SCRIPT_NAME="gaia-infra-design/setup.sh"
-WORKFLOW_NAME="infrastructure-design"
+SCRIPT_NAME="gaia-adversarial/setup.sh"
+WORKFLOW_NAME="adversarial-review"
 
 # Resolve the GAIA plugin scripts directory from this script's location:
-#   skills/gaia-infra-design/scripts/setup.sh → ../../../scripts
+#   skills/gaia-adversarial/scripts/setup.sh → ../../../scripts
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 
 RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
@@ -63,9 +58,6 @@ while IFS= read -r line; do
 done <<<"$config_output"
 
 # ---------- 2. Validate gate (prereqs) ----------
-# infrastructure-design requires architecture.md to exist. The skill body
-# validates the exact path; here we validate that the planning-artifacts
-# directory exists at minimum.
 if [ -x "$VALIDATE_GATE" ]; then
   if ! "$VALIDATE_GATE" file_exists >/dev/null 2>&1; then
     die "validate-gate.sh pre-start gate failed for $WORKFLOW_NAME"
@@ -85,9 +77,6 @@ fi
 
 # ---------- 3. Load checkpoint state ----------
 if [ -x "$CHECKPOINT" ]; then
-  # `checkpoint.sh read` exits 2 when no checkpoint exists (fresh run) —
-  # that is a valid state for the first invocation of a skill. Any other
-  # non-zero exit indicates a real error.
   if "$CHECKPOINT" read --workflow "$WORKFLOW_NAME" >/dev/null 2>&1; then
     log "checkpoint loaded for $WORKFLOW_NAME"
   else

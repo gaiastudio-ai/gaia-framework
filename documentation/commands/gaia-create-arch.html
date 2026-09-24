@@ -14,6 +14,7 @@
       <section id="when-to-use"><h2>When to use it</h2><ul><li>Your PRD is complete (including adversarial review) and you are ready to design the technical architecture.</li></ul></section>
 
       <section id="prerequisites"><h2>Prerequisites</h2><ul>
+        <li><strong>Design approval required.</strong> The design must be approved before solutioning can begin. Run <code>/gaia-design-review</code> to complete the review, or pass <code>--force-design --reason "&lt;text&gt;"</code> to override with an audited reason. Projects without a UI (<code>compliance.ui_present: false</code> or absent) skip this gate automatically.</li>
         <li><strong>PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code> with a "Review Findings Incorporated" section.</li>
         <li>UX design, brownfield assessment, and threat model are optional but improve quality when present.</li>
       </ul></section>

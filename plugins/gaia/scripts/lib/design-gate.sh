@@ -80,7 +80,9 @@ _dg_sha256_file() {
 }
 
 # _dg_read_config_ui_present PROJECT_ROOT — read compliance.ui_present.
-# Stdout: the raw yq value. Returns 1 on unreadable/missing/malformed config.
+# Returns 0 with the value on stdout (may be empty when the field is absent).
+# Returns 1 only when the config file is missing or YAML is malformed —
+# those are the fail-closed cases.
 _dg_read_config_ui_present() {
   local project_root="$1"
   local config_path="${project_root}/.gaia/config/project-config.yaml"
@@ -90,8 +92,11 @@ _dg_read_config_ui_present() {
 
   local val
   val="$(yq '.compliance.ui_present' "$config_path" 2>/dev/null)" || return 1
+  # Absent or null field in a valid config — return success with empty value
+  # so design_gate_check treats it as not-applicable (anything != "true").
   if [ -z "$val" ] || [ "$val" = "null" ]; then
-    return 1
+    printf '%s\n' ""
+    return 0
   fi
   printf '%s\n' "$val"
 }

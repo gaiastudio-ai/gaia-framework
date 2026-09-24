@@ -29,6 +29,12 @@ PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 SCRIPT_NAME="gaia-create-arch/setup.sh"
 WORKFLOW_NAME="create-architecture"
 
+# Resolve the GAIA plugin scripts directory from this script's location:
+#   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
+
 # ---------- 0. Parse --bypass / --reason flags ----------
 # The threat-model gate error message advertised
 # `--bypass gaia-threat-model --reason "<text>"` but setup.sh never parsed
@@ -37,6 +43,14 @@ WORKFLOW_NAME="create-architecture"
 # --skill --reason --sprint-id` which records the bypass to
 # .gaia/state/lifecycle-overrides.yaml. This block parses the advertised
 # flags and writes the bypass record before the gate check below runs.
+# Parse --force-design / --reason / --entry-point / --sprint-id via the shared
+# helper. Unrecognized args (including --bypass) land in _PFD_REMAINING.
+PARSE_FORCE_DESIGN="$PLUGIN_SCRIPTS_DIR/lib/parse-force-design.sh"
+# shellcheck disable=SC1090
+. "$PARSE_FORCE_DESIGN"
+_parse_force_design "$@"; set -- "${_PFD_REMAINING[@]+"${_PFD_REMAINING[@]}"}"
+
+# Parse the remaining --bypass / --reason flags (threat-model gate bypass).
 BYPASS_SKILL=""
 BYPASS_REASON=""
 while [ $# -gt 0 ]; do
@@ -48,7 +62,7 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || { printf '%s: --reason requires a quoted text argument\n' "$SCRIPT_NAME" >&2; exit 2; }
       BYPASS_REASON="$2"; shift 2 ;;
     --help|-h)
-      printf 'Usage: %s [--bypass <skill> --reason "<text>"]\n' "$SCRIPT_NAME"
+      printf 'Usage: %s [--bypass <skill> --reason "<text>"] [--force-design --reason "<text>" --entry-point <name> [--sprint-id <id>]]\n' "$SCRIPT_NAME"
       exit 0 ;;
     -*)
       printf '%s: unknown flag: %s\n' "$SCRIPT_NAME" "$1" >&2
@@ -90,15 +104,11 @@ if [ -n "$BYPASS_SKILL" ]; then
   fi
 fi
 
-# Resolve the GAIA plugin scripts directory from this script's location:
-#   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
-
 RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
 VALIDATE_GATE="$PLUGIN_SCRIPTS_DIR/validate-gate.sh"
 CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
+GATE_PREDICATES="$PLUGIN_SCRIPTS_DIR/lib/gate-predicates.sh"
+SKILL_MD_PATH="$(cd "$SCRIPT_DIR/.." && pwd)/SKILL.md"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
@@ -128,6 +138,15 @@ if [ -x "$VALIDATE_GATE" ]; then
   fi
 else
   log "validate-gate.sh not found at $VALIDATE_GATE — skipping gate (non-fatal)"
+fi
+
+# ---------- 2a. Quality gates: pre_start ----------
+if [ -f "$GATE_PREDICATES" ]; then
+  # shellcheck disable=SC1090
+  . "$GATE_PREDICATES"
+  _gate_run_pre_start "$SKILL_MD_PATH" "$SCRIPT_NAME: quality-gate" || exit 1
+else
+  die "gate-predicates.sh not found at $GATE_PREDICATES — cannot evaluate required quality gates"
 fi
 
 # ---------- 2b. Guard: architecture-template.md must be present ----------
