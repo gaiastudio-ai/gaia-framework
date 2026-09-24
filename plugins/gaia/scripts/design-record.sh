@@ -106,6 +106,28 @@ _assert_valid_state() {
   exit 1
 }
 
+# _assert_valid_verdict VALUE — reject non-enum review verdicts before any I/O.
+_assert_valid_verdict() {
+  local value="$1"
+  case "$value" in
+    approved|changes-requested|blocked|escalated) return 0 ;;
+  esac
+  printf 'design-record.sh: illegal verdict "%s" in add-review\n' "$value" >&2
+  printf 'design-record.sh: legal verdicts: approved, changes-requested, blocked, escalated\n' >&2
+  exit 1
+}
+
+# _assert_valid_kind VALUE — reject non-enum review kinds before any I/O.
+_assert_valid_kind() {
+  local value="$1"
+  case "$value" in
+    internal|stakeholder|design-review) return 0 ;;
+  esac
+  printf 'design-record.sh: illegal kind "%s" in add-review\n' "$value" >&2
+  printf 'design-record.sh: legal kinds: internal, stakeholder, design-review\n' >&2
+  exit 1
+}
+
 # _assert_legal_transition FROM TO — reject illegal edges before any I/O.
 _assert_legal_transition() {
   local from="$1" to="$2"
@@ -623,24 +645,29 @@ _do_refuse_approval() {
 
 # cmd_add_review — record a review verdict.
 cmd_add_review() {
-  local verdict="" reviewer="" actor="" kind="design-review"
+  local verdict="" reviewer="" actor="" kind="design-review" notes_ref=""
   _parse_opts \
     --verdict verdict \
     --reviewer reviewer \
     --actor actor \
     --kind kind \
+    --notes-ref notes_ref \
     -- "$@"
 
   [ -n "$verdict" ] || _die "add-review: --verdict required"
   [ -n "$reviewer" ] || _die "add-review: --reviewer required"
   actor="${actor:-$reviewer}"
 
+  # Enum guards — reject invalid values before any record I/O.
+  _assert_valid_verdict "$verdict"
+  _assert_valid_kind "$kind"
+
   _preflight_mutate
-  _locked_mutate _do_add_review "$verdict" "$reviewer" "$actor" "$kind"
+  _locked_mutate _do_add_review "$verdict" "$reviewer" "$actor" "$kind" "$notes_ref"
 }
 
 _do_add_review() {
-  local tmp="$1" verdict="$2" reviewer="$3" actor="$4" kind="$5"
+  local tmp="$1" verdict="$2" reviewer="$3" actor="$4" kind="$5" notes_ref="${6:-}"
   local now iteration
   now="$(_now_iso)"
   iteration="$(yq '.iteration' "$tmp")"
@@ -652,6 +679,10 @@ _do_add_review() {
     yq -n -o=json -I=0 \
       '{"iteration":env(_DR_ITER),"kind":strenv(_DR_KIND),"verdict":strenv(_DR_VERD),"actor":strenv(_DR_ACTOR),"at":strenv(_DR_AT)}'
   )"
+  # Conditionally add notes_ref only when a value was provided
+  if [ -n "$notes_ref" ]; then
+    entry="$(printf '%s' "$entry" | _DR_NR="$notes_ref" yq -o=json -I=0 '.notes_ref = strenv(_DR_NR)')"
+  fi
   _DR_ENTRY="$entry" yq -i '.reviews += [env(_DR_ENTRY)]' "$tmp"
   _append_audit "$tmp" "review-verdict" "$actor" "verdict=${verdict}" "kind=${kind}"
 }

@@ -36,3 +36,6 @@ scripts/lib/gate-predicates.sh      reader   design_approved predicate delegates
 tests/design-gate.bats              test     design-gate test suite
 tests/design-record-init-not-applicable.bats test init-not-applicable verb tests
 tests/design-record-reopen-applicable.bats test reopen-applicable verb tests
+skills/gaia-design-review/SKILL.md     reader   invokes design-record.sh verbs (add-review, check-convergence, transition) — never writes directly
+tests/design-review.bats               test     test suite for design-review skill
+skills/gaia-design-review/scripts/verdict-provenance-check.sh    reader    verdict-provenance guard invoked by the design-review skill before every add-review write

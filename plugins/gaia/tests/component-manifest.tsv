@@ -459,6 +459,7 @@ scripts-core	cross-refs-walk.bats
 scripts-core	dedup-contract.bats
 scripts-core	design-probe.bats
 scripts-core	design-record-reopen-applicable.bats
+scripts-core	design-review.bats
 scripts-core	detect-affected.bats
 scripts-core	detect-open-questions.bats
 scripts-core	detect-orchestration-mode.bats
@@ -804,6 +805,7 @@ skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats
 skills	story-parse.bats
+skills	sync-derived-artifacts.bats
 skills	tdd-review-gate.bats
 skills	test-manual-skill.bats
 skills	test-manual-surface-adapter.bats
@@ -814,4 +816,5 @@ skills	test-run-invocation-mapping.bats
 skills	test-strategy-docs-only-default.bats
 skills	test-test-automate-phase-1.bats
 skills	validate-against-schema-date-fix.bats
+skills	verdict-provenance-check.bats
 skills	write-val-sentinel-sprint-id-format.bats

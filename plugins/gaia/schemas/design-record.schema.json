@@ -80,7 +80,7 @@
           },
           "verdict": {
             "type": "string",
-            "enum": ["approved", "changes-requested", "blocked"],
+            "enum": ["approved", "changes-requested", "blocked", "escalated"],
             "description": "Review outcome."
           },
           "actor": {
