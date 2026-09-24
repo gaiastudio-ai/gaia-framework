@@ -171,7 +171,7 @@ UX
   # The SKILL.md must reference get_project / list_files / get_file as the
   # authoritative source, not local file reads of ux-design.md.
   local readback_step
-  readback_step="$(awk '/^### Step.*[Rr]ead.?back/,/^### Step/' "$SKILL_MD" 2>/dev/null | head -50)"
+  readback_step="$(awk '/^### Step.*[Rr]ead.?back/{found=1} found && /^### Step/ && !/[Rr]ead.?back/{exit} found{print}' "$SKILL_MD" 2>/dev/null | head -50)"
   [ -n "$readback_step" ] || fail "SKILL.md has no read-back step"
 
   # The step must mention get_project or list_files as the source
@@ -203,7 +203,7 @@ UX
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — cannot verify findings step"
 
   local findings_step
-  findings_step="$(awk '/^### Step.*[Ff]inding/,/^### Step/' "$SKILL_MD" 2>/dev/null | head -80)"
+  findings_step="$(awk '/^### Step.*[Ff]inding/{found=1} found && /^### Step/ && !/[Ff]inding/{exit} found{print}' "$SKILL_MD" 2>/dev/null | head -80)"
   [ -n "$findings_step" ] || fail "SKILL.md has no findings step"
 
   # The findings step must mention severity tags
@@ -559,7 +559,7 @@ UX
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — cannot verify escalation firewall"
 
   # The SKILL.md must contain the escalation halt / route logic
-  grep -qiE 'halt.*loop\|loop.*halt\|escalat.*halt' "$SKILL_MD" || \
+  grep -qiE 'halt.*loop|loop.*halt|escalat.*halt' "$SKILL_MD" || \
     fail "SKILL.md does not halt the loop on requirement-change comments"
 
   # It must route to /gaia-add-feature
@@ -567,11 +567,11 @@ UX
     fail "SKILL.md does not route escalated comments to feature intake"
 
   # It must invoke design-record.sh add-review --verdict escalated
-  grep -qE 'add-review.*--verdict.*escalated\|verdict.*escalated' "$SKILL_MD" || \
+  grep -qE 'add-review.*--verdict.*escalated|verdict.*escalated' "$SKILL_MD" || \
     fail "SKILL.md does not record an escalated verdict"
 
   # NO state transition on escalation
-  grep -qiE 'no.*state.*transition.*escalat\|escalat.*no.*transition\|no.*iteration.*bump.*escalat' "$SKILL_MD" || \
+  grep -qiE 'no.*state.*transition.*escalat|escalat.*no.*transition|no.*iteration.*bump.*escalat' "$SKILL_MD" || \
     fail "SKILL.md does not prevent state transition on escalation"
 }
 
@@ -590,7 +590,7 @@ UX
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
 
   # The SKILL.md must include user-facing explanation of the escalation
-  grep -qiE 'explain.*stakeholder\|tell.*stakeholder\|inform.*stakeholder\|user.facing.*escalat' "$SKILL_MD" || \
+  grep -qiE 'explain.*stakeholder|tell.*stakeholder|inform.*stakeholder|user.facing.*escalat' "$SKILL_MD" || \
     fail "SKILL.md does not explain the escalation to the stakeholder"
 }
 
@@ -603,7 +603,7 @@ UX
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
 
   # The SKILL.md must gate stakeholder delivery on internal findings severity
-  grep -qiE 'high.*severity.*block\|block.*stakeholder.*high\|internal.*finding.*block' "$SKILL_MD" || \
+  grep -qiE 'high.*severity.*block|block.*stakeholder.*high|internal.*finding.*block' "$SKILL_MD" || \
     fail "SKILL.md does not block stakeholder delivery on high-severity internal findings"
 }
 
@@ -611,7 +611,7 @@ UX
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
 
   # The SKILL.md must allow user override of the internal-findings gate
-  grep -qiE 'accept.*finding.*proceed\|override.*internal\|user.*accept.*proceed\|add-override' "$SKILL_MD" || \
+  grep -qiE 'accept.*finding.*proceed|override.*internal|user.*accept.*proceed|add-override' "$SKILL_MD" || \
     fail "SKILL.md does not allow user to accept internal findings and proceed"
 }
 
@@ -619,7 +619,7 @@ UX
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
 
   # The SKILL.md must handle the no-response scenario
-  grep -qiE 'no.*response.*review\|no.*stakeholder.*response\|remain.*review\|stay.*review' "$SKILL_MD" || \
+  grep -qiE 'no.*response.*review|no.*stakeholder.*response|remain.*review|stay.*review' "$SKILL_MD" || \
     fail "SKILL.md does not handle absent stakeholder responses"
 }
 
@@ -691,7 +691,7 @@ UX
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
 
   # The SKILL.md must handle mixed comments by halting on the requirement part
-  grep -qiE 'mixed.*comment\|requirement.*part.*halt\|design.*part.*not.*appl' "$SKILL_MD" || \
+  grep -qiE 'mixed.*comment|requirement.*part.*halt|design.*part.*not.*appl' "$SKILL_MD" || \
     fail "SKILL.md does not handle mixed comments (part requirement, part design)"
 }
 
@@ -700,10 +700,10 @@ UX
 
   # The SKILL.md must re-read the project before stakeholder delivery
   local delivery_step
-  delivery_step="$(awk '/^### Step.*[Ss]takeholder.*[Dd]eliver\|^### Step.*[Dd]eliver/,/^### Step/' "$SKILL_MD" 2>/dev/null | head -80)"
+  delivery_step="$(awk '/^### Step.*[Dd]eliver/{found=1} found && /^### Step/ && !/[Dd]eliver/{exit} found{print}' "$SKILL_MD" 2>/dev/null | head -80)"
   [ -n "$delivery_step" ] || fail "SKILL.md has no stakeholder delivery step"
 
-  printf '%s' "$delivery_step" | grep -qE 're-read\|get_project\|list_files\|current.state\|fresh.*read' || \
+  printf '%s' "$delivery_step" | grep -qE 're-read|get_project|list_files|current.state|fresh.*read' || \
     fail "stakeholder delivery step does not re-read project for current state"
 }
 
@@ -834,7 +834,6 @@ BOUNDARY
   # Proves the approve verb is load-bearing for convergence.
   # If the skill only calls add-review but skips the approve verb,
   # approvals[] does not grow and convergence stays false.
-  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — approve-verb integration cannot be verified"
   [ -x "$DESIGN_RECORD_SH" ] || fail "design-record.sh does not exist or is not executable"
 
   local root
@@ -881,16 +880,17 @@ BOUNDARY
   [[ "$output" == *"vacuous"* ]] || \
     fail "precondition: check-convergence should emit vacuous warning"
 
-  # transition silences convergence stderr — the warning is lost
+  # transition silences convergence stderr — the warning is lost.
+  # Vacuous convergence allows the transition, so it must succeed.
   run "$DESIGN_RECORD_SH" transition --to approved --actor "test-actor"
-  # transition may succeed (vacuous convergence allows it) or fail — either way,
-  # if it succeeds, the vacuous warning is NOT in the transition output
-  if [ "$status" -eq 0 ]; then
-    [[ "$output" != *"vacuous"* ]] || \
-      fail "mutant is vacuous: transition surfaces the vacuous warning (should be silent)"
-  fi
-  # The point: if the SKILL.md calls transition instead of check-convergence,
+  [ "$status" -eq 0 ] || \
+    fail "transition should succeed with vacuous convergence, but exit=$status: $output"
+
+  # The vacuous-convergence warning must NOT appear in the transition output.
+  # This proves: if the SKILL.md calls transition instead of check-convergence,
   # the user never sees the vacuous-convergence warning.
+  [[ "$output" != *"vacuous"* ]] || \
+    fail "mutant is vacuous: transition surfaces the vacuous warning (should be silent)"
 
   rm -rf "$root"
 }
@@ -900,9 +900,13 @@ BOUNDARY
   # verdict-provenance-check.sh BEFORE design-record.sh add-review.
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — cannot verify provenance wiring"
 
-  # Find the step block that contains add-review
+  # Find the step block that contains add-review (capture the full block)
   local step_block
-  step_block="$(awk '/^### Step/{found=0} /add-review/{found=1} found{print}' "$SKILL_MD" 2>/dev/null)"
+  step_block="$(awk '
+    /^### Step/ { if (buf ~ /add-review/) print buf; buf="" }
+    { buf = buf $0 "\n" }
+    END { if (buf ~ /add-review/) print buf }
+  ' "$SKILL_MD" 2>/dev/null)"
   [ -n "$step_block" ] || fail "SKILL.md has no step block containing add-review"
 
   # Within that block, verdict-provenance-check must appear

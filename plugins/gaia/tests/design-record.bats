@@ -340,17 +340,24 @@ teardown() { common_teardown; }
   local payload='He said "ship it" & she said '\''yes'\'' — cost \$100 `rm -rf /` foo
 bar ñ日本語 .design_state = "approved"'
 
-  # 1. add-review: verdict field carries the payload
+  # 1. add-review: reviewer and notes-ref fields carry the payload
+  #    (verdict is now enum-guarded, so we use a valid verdict and test
+  #    special-char round-tripping via free-text fields instead)
   run "$SCRIPT" add-review \
-    --verdict "$payload" \
-    --reviewer "reviewer-A" \
-    --actor "reviewer-A"
+    --verdict "approved" \
+    --reviewer "$payload" \
+    --actor "$payload" \
+    --kind "internal" \
+    --notes-ref "$payload"
   [ "$status" -eq 0 ] || fail "add-review with special chars failed: $output"
 
-  local stored_verdict
-  stored_verdict="$(yq '.reviews[-1].verdict' "$RECORD")"
-  [ "$stored_verdict" = "$payload" ] || \
-    fail "review verdict not round-tripped: expected <<<$payload>>> got <<<$stored_verdict>>>"
+  local stored_actor stored_notes_ref
+  stored_actor="$(yq '.reviews[-1].actor' "$RECORD")"
+  [ "$stored_actor" = "$payload" ] || \
+    fail "review actor not round-tripped: expected <<<$payload>>> got <<<$stored_actor>>>"
+  stored_notes_ref="$(yq '.reviews[-1].notes_ref' "$RECORD")"
+  [ "$stored_notes_ref" = "$payload" ] || \
+    fail "review notes_ref not round-tripped: expected <<<$payload>>> got <<<$stored_notes_ref>>>"
 
   # 2. add-override: reason field carries the payload
   run "$SCRIPT" add-override \
@@ -1764,6 +1771,8 @@ WRAPPER
   seed_review_with_roster
   local mutant_script="$TEST_TMP/design-record-mutant.sh"
   cp "$SCRIPT" "$mutant_script"
+  # The copy needs the lib/ directory for acquire-lock.sh sourcing
+  ln -sfn "$SCRIPTS_DIR/lib" "$TEST_TMP/lib"
   # Replace the function body with a no-op, preserving the function header
   # so _parse_opts and callers still resolve, but the guard does nothing.
   sed -i.bak '/^_assert_valid_verdict()/,/^}$/c\

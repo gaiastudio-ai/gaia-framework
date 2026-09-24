@@ -69,23 +69,25 @@ Project reference: test-project-ref
 UX
 }
 
-# _seed_snapshot DIR COMPONENTS... — create a project snapshot JSON
+# _seed_snapshot DIR COMPONENTS... — create a project snapshot JSON.
+# Uses jq --arg to safely encode component names containing quotes,
+# dollar signs, backticks, newlines, and unicode.
 _seed_snapshot() {
   local dir="$1"; shift
-  local components=("$@")
   mkdir -p "$dir"
-  local json='{"components":['
-  local first=true
-  for c in "${components[@]}"; do
-    if [ "$first" = true ]; then
-      first=false
-    else
-      json="${json},"
-    fi
-    json="${json}\"${c}\""
+  local out="$dir/snapshot.json"
+  # Build the array element by element via jq --arg
+  local arr='[]'
+  local c
+  for c in "$@"; do
+    arr="$(printf '%s' "$arr" | jq --arg v "$c" '. + [$v]')"
   done
-  json="${json}]}"
-  printf '%s\n' "$json" > "$dir/snapshot.json"
+  printf '%s' "$arr" | jq '{components: .}' > "$out"
+  # Validate: the fixture must parse as valid JSON
+  jq empty "$out" 2>/dev/null || {
+    printf 'FAIL: _seed_snapshot produced invalid JSON\n' >&2
+    return 1
+  }
 }
 
 
@@ -214,9 +216,12 @@ _seed_snapshot() {
 
   # Component name with quotes, $, backticks, and unicode
   local special_name='nav-"panel" $cost `exec` ñ日本🎨'
-  # Write snapshot manually to avoid shell expansion issues
-  printf '{"components":["header","footer","main-content","%s"]}\n' "$special_name" \
+  # Build fixture via jq --arg so special chars produce valid JSON
+  jq -n --arg c "$special_name" \
+    '{"components":["header","footer","main-content",$c]}' \
     > "$root/snapshot.json"
+  # Validate: the fixture must parse as valid JSON before we test
+  jq empty "$root/snapshot.json" || fail "fixture produced invalid JSON"
 
   run "$SYNC_SCRIPT" "$root/snapshot.json" "$ux_doc"
   [ "$status" -eq 0 ] || fail "sync with special chars failed: $output"
