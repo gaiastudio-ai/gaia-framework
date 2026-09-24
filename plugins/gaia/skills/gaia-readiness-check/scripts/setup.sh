@@ -51,26 +51,11 @@ GATE_PREDICATES="$PLUGIN_SCRIPTS_DIR/lib/gate-predicates.sh"
 SKILL_MD_PATH="$(cd "$SCRIPT_DIR/.." && pwd)/SKILL.md"
 
 # ---------- 0. Parse --force-design flags ----------
-FORCE_DESIGN=""
-FORCE_DESIGN_REASON=""
-FORCE_DESIGN_ENTRY_POINT=""
-FORCE_DESIGN_SPRINT_ID=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --force-design) FORCE_DESIGN=1; shift ;;
-    --reason)
-      [ $# -ge 2 ] || { printf '%s: --reason requires a quoted text argument\n' "$SCRIPT_NAME" >&2; exit 2; }
-      FORCE_DESIGN_REASON="$2"; shift 2 ;;
-    --entry-point)
-      [ $# -ge 2 ] || { printf '%s: --entry-point requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
-      FORCE_DESIGN_ENTRY_POINT="$2"; shift 2 ;;
-    --sprint-id)
-      [ $# -ge 2 ] || { printf '%s: --sprint-id requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
-      FORCE_DESIGN_SPRINT_ID="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-export FORCE_DESIGN FORCE_DESIGN_REASON FORCE_DESIGN_ENTRY_POINT FORCE_DESIGN_SPRINT_ID
+PARSE_FORCE_DESIGN="$PLUGIN_SCRIPTS_DIR/lib/parse-force-design.sh"
+# shellcheck disable=SC1090
+. "$PARSE_FORCE_DESIGN"
+_parse_force_design "$@"; set -- "${_PFD_REMAINING[@]+"${_PFD_REMAINING[@]}"}"
+
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }

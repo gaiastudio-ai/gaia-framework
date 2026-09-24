@@ -29,6 +29,12 @@ PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 SCRIPT_NAME="gaia-create-arch/setup.sh"
 WORKFLOW_NAME="create-architecture"
 
+# Resolve the GAIA plugin scripts directory from this script's location:
+#   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
+
 # ---------- 0. Parse --bypass / --reason flags ----------
 # The threat-model gate error message advertised
 # `--bypass gaia-threat-model --reason "<text>"` but setup.sh never parsed
@@ -37,29 +43,24 @@ WORKFLOW_NAME="create-architecture"
 # --skill --reason --sprint-id` which records the bypass to
 # .gaia/state/lifecycle-overrides.yaml. This block parses the advertised
 # flags and writes the bypass record before the gate check below runs.
+# Parse --force-design / --reason / --entry-point / --sprint-id via the shared
+# helper. Unrecognized args (including --bypass) land in _PFD_REMAINING.
+PARSE_FORCE_DESIGN="$PLUGIN_SCRIPTS_DIR/lib/parse-force-design.sh"
+# shellcheck disable=SC1090
+. "$PARSE_FORCE_DESIGN"
+_parse_force_design "$@"; set -- "${_PFD_REMAINING[@]+"${_PFD_REMAINING[@]}"}"
+
+# Parse the remaining --bypass / --reason flags (threat-model gate bypass).
 BYPASS_SKILL=""
 BYPASS_REASON=""
-FORCE_DESIGN=""
-FORCE_DESIGN_REASON=""
-FORCE_DESIGN_ENTRY_POINT=""
-FORCE_DESIGN_SPRINT_ID=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --bypass)
       [ $# -ge 2 ] || { printf '%s: --bypass requires a skill name (e.g. gaia-threat-model)\n' "$SCRIPT_NAME" >&2; exit 2; }
       BYPASS_SKILL="$2"; shift 2 ;;
-    --force-design)
-      FORCE_DESIGN=1; shift ;;
     --reason)
       [ $# -ge 2 ] || { printf '%s: --reason requires a quoted text argument\n' "$SCRIPT_NAME" >&2; exit 2; }
-      if [ -n "$FORCE_DESIGN" ]; then FORCE_DESIGN_REASON="$2"; else BYPASS_REASON="$2"; fi
-      shift 2 ;;
-    --entry-point)
-      [ $# -ge 2 ] || { printf '%s: --entry-point requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
-      FORCE_DESIGN_ENTRY_POINT="$2"; shift 2 ;;
-    --sprint-id)
-      [ $# -ge 2 ] || { printf '%s: --sprint-id requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
-      FORCE_DESIGN_SPRINT_ID="$2"; shift 2 ;;
+      BYPASS_REASON="$2"; shift 2 ;;
     --help|-h)
       printf 'Usage: %s [--bypass <skill> --reason "<text>"] [--force-design --reason "<text>" --entry-point <name> [--sprint-id <id>]]\n' "$SCRIPT_NAME"
       exit 0 ;;
@@ -70,7 +71,6 @@ while [ $# -gt 0 ]; do
       shift ;;
   esac
 done
-export FORCE_DESIGN FORCE_DESIGN_REASON FORCE_DESIGN_ENTRY_POINT FORCE_DESIGN_SPRINT_ID
 
 # If --bypass was specified, --reason MUST also be specified
 if [ -n "$BYPASS_SKILL" ] && [ -z "$BYPASS_REASON" ]; then
@@ -103,12 +103,6 @@ if [ -n "$BYPASS_SKILL" ]; then
     printf '%s: WARNING: lifecycle-overrides.sh not found at %s; --bypass flag is a no-op\n' "$SCRIPT_NAME" "$LIFECYCLE_LIB_BP" >&2
   fi
 fi
-
-# Resolve the GAIA plugin scripts directory from this script's location:
-#   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 
 RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
 VALIDATE_GATE="$PLUGIN_SCRIPTS_DIR/validate-gate.sh"

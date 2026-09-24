@@ -87,6 +87,13 @@ _gate_extract_block() { :; }
 _gate_run_pre_start() { return 0; }
 MOCK
 
+  # Stub parse-force-design.sh so the sourced parser does not error out.
+  cat > "$MOCK_SCRIPTS/lib/parse-force-design.sh" <<'MOCK'
+#!/usr/bin/env bash
+_PARSE_FORCE_DESIGN_LOADED=1
+_parse_force_design() { _PFD_REMAINING=(); }
+MOCK
+
   # Seed a minimal project-config.yaml with compliance.ui_present: false
   # so the design gate takes the not-applicable path if it ever runs with
   # the real library instead of the stub. Do NOT set ci_platform.provider
