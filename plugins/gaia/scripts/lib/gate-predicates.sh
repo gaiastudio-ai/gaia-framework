@@ -237,23 +237,6 @@ _gate_check_design_approved() {
   fi
   # shellcheck source=design-gate.sh
   source "$_gp_gate_lib"
-  # When the config exists and is valid YAML but compliance.ui_present is
-  # absent (headless projects that never declared the field), export a
-  # default so design_gate_check takes the not-applicable path instead of
-  # halting with "unreadable config". Direct callers without a setup.sh
-  # preamble rely on the fail-closed fallback when this env var is unset.
-  if [ -z "${_DESIGN_GATE_UI_DEFAULT:-}" ]; then
-    local _gp_cfg="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml"
-    if [ -f "$_gp_cfg" ] && command -v yq >/dev/null 2>&1; then
-      if yq '.' "$_gp_cfg" >/dev/null 2>&1; then
-        local _gp_val
-        _gp_val="$(yq '.compliance.ui_present' "$_gp_cfg" 2>/dev/null || true)"
-        if [ -z "$_gp_val" ] || [ "$_gp_val" = "null" ]; then
-          export _DESIGN_GATE_UI_DEFAULT="false"
-        fi
-      fi
-    fi
-  fi
   local -a _gp_args=()
   [ -n "${FORCE_DESIGN:-}" ]             && _gp_args+=(--force-design)
   [ -n "${FORCE_DESIGN_REASON:-}" ]      && _gp_args+=(--reason "$FORCE_DESIGN_REASON")

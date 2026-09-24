@@ -93,7 +93,7 @@ if [ -f "$GATE_PREDICATES" ]; then
   . "$GATE_PREDICATES"
   _gate_run_pre_start "$SKILL_MD_PATH" "$SCRIPT_NAME: quality-gate" || exit 1
 else
-  log "gate-predicates.sh not found at $GATE_PREDICATES — skipping quality gates (non-fatal)"
+  die "gate-predicates.sh not found at $GATE_PREDICATES — cannot evaluate required quality gates"
 fi
 
 # ---------- 2b. Guard: architecture.md must already exist ----------

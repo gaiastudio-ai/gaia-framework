@@ -107,41 +107,32 @@ fi
 # Resolve the GAIA plugin scripts directory from this script's location:
 #   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || echo "$SCRIPT_DIR")"
-if [ -n "${PLUGIN_SCRIPTS_DIR:-}" ]; then
-  : # use the override
-elif [ -d "$SCRIPT_DIR/../../../scripts" ]; then
-  PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
-else
-  PLUGIN_SCRIPTS_DIR=""
-fi
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 
 RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
 VALIDATE_GATE="$PLUGIN_SCRIPTS_DIR/validate-gate.sh"
 CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
 GATE_PREDICATES="$PLUGIN_SCRIPTS_DIR/lib/gate-predicates.sh"
-SKILL_MD_PATH="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || echo "$SCRIPT_DIR")/SKILL.md"
+SKILL_MD_PATH="$(cd "$SCRIPT_DIR/.." && pwd)/SKILL.md"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
 # ---------- 1. Resolve config ----------
-if [ -x "$RESOLVE_CONFIG" ]; then
-  if ! config_output=$("$RESOLVE_CONFIG" 2>&1); then
-    log "resolve-config.sh failed:"
-    printf '%s\n' "$config_output" >&2
-    exit 1
-  fi
-  # Export every KEY='VALUE' line the resolver emits so downstream tools
-  # (validate-gate.sh, checkpoint.sh) pick them up from the environment.
-  while IFS= read -r line; do
-    case "$line" in
-      [A-Z_]*=*) eval "export $line" ;;
-    esac
-  done <<<"$config_output"
-else
-  log "resolve-config.sh not found at $RESOLVE_CONFIG — using environment defaults"
+[ -x "$RESOLVE_CONFIG" ] || die "resolve-config.sh not found or not executable at $RESOLVE_CONFIG"
+if ! config_output=$("$RESOLVE_CONFIG" 2>&1); then
+  log "resolve-config.sh failed:"
+  printf '%s\n' "$config_output" >&2
+  exit 1
 fi
+# Export every KEY='VALUE' line the resolver emits so downstream tools
+# (validate-gate.sh, checkpoint.sh) pick them up from the environment.
+while IFS= read -r line; do
+  case "$line" in
+    [A-Z_]*=*) eval "export $line" ;;
+  esac
+done <<<"$config_output"
 
 # ---------- 2. Validate gate (prereqs) ----------
 # create-architecture requires a PRD to exist. The skill body validates
@@ -161,7 +152,7 @@ if [ -f "$GATE_PREDICATES" ]; then
   . "$GATE_PREDICATES"
   _gate_run_pre_start "$SKILL_MD_PATH" "$SCRIPT_NAME: quality-gate" || exit 1
 else
-  log "gate-predicates.sh not found at $GATE_PREDICATES — skipping quality gates (non-fatal)"
+  die "gate-predicates.sh not found at $GATE_PREDICATES — cannot evaluate required quality gates"
 fi
 
 # ---------- 2b. Guard: architecture-template.md must be present ----------
@@ -209,9 +200,8 @@ fi
 # `compliance.ui_present` is false / absent, the gate is a no-op.
 
 SCRIPT_DIR_S6="$(cd "$(dirname "$0")" && pwd)"
-_S6_PLUGIN_ROOT="$(cd "$SCRIPT_DIR_S6/../../.." 2>/dev/null && pwd || echo "$SCRIPT_DIR_S6")"
-LIFECYCLE_LIB_S6="$_S6_PLUGIN_ROOT/scripts/lib/lifecycle-overrides.sh"
-STRICT_HELPER_S6="$_S6_PLUGIN_ROOT/scripts/lib/lifecycle-strict-mode.sh"
+LIFECYCLE_LIB_S6="$(cd "$SCRIPT_DIR_S6/../../.." && pwd)/scripts/lib/lifecycle-overrides.sh"
+STRICT_HELPER_S6="$(cd "$SCRIPT_DIR_S6/../../.." && pwd)/scripts/lib/lifecycle-strict-mode.sh"
 
 # Read compliance.ui_present from project-config.yaml.
 PROJECT_CONFIG_S6="${PROJECT_CONFIG:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml}"
@@ -264,8 +254,6 @@ else
     fi
     if [ "$has_tm_bypass" -eq 1 ]; then
       log "threat-model gate bypassed: ${bp_reason}"
-    elif [ -n "${FORCE_DESIGN:-}" ]; then
-      log "WARNING: threat-model gate degraded — design override (--force-design) is active; run /gaia-threat-model before proceeding further"
     elif [ "$pre_sprint" -eq 1 ]; then
       log "WARNING: compliance.ui_present=true but no threat-model.md found — proceeding because no active sprint exists yet (Phase 3 / pre-sprint-plan). The lifecycle runs /gaia-threat-model after /gaia-create-arch; the threat-model gate is re-enforced once a sprint is active. Run /gaia-threat-model before your first /gaia-sprint-plan to satisfy it."
     elif [ "$strict_on" -eq 0 ]; then

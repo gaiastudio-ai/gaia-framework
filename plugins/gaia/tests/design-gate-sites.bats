@@ -131,9 +131,12 @@ seed_site_prereqs() {
     gaia-create-arch)
       # architecture-template.md must exist (Section 2b guard)
       mkdir -p "$SKILLS_DIR/gaia-create-arch"
-      # Template is already in the skill dir; only need to handle the
-      # threat-model gate (Section 5): set pre_sprint (no sprint-status)
-      # which degrades to WARNING, not HALT.
+      # Template is already in the skill dir.
+      # threat-model gate (Section 5): when a sprint is active, create-arch
+      # requires threat-model.md; seed it so the override test passes through.
+      # When no sprint-status exists, Section 5 degrades to WARNING.
+      mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
+      printf '# threat model\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/threat-model.md"
       ;;
     gaia-edit-arch)
       # architecture.md should exist (Section 2b guard) — non-fatal in setup
@@ -401,10 +404,23 @@ teardown() {
     return 1
   }
 
-  # Create a mutant copy with the gate call removed
-  local mutant_sh="$site_tmp/mutant-setup.sh"
-  sed '/_gate_run_pre_start/d' "$setup_sh" > "$mutant_sh"
-  chmod +x "$mutant_sh"
+  # Copy the plugin tree into the test tmpdir so every relative path resolves,
+  # then apply the sed to the copy's setup.sh.
+  local plugin_root
+  plugin_root="$(cd "$SKILLS_DIR/.." && pwd)"
+  local plugin_copy="$site_tmp/plugin"
+  cp -R "$plugin_root" "$plugin_copy"
+  local mutant_sh="$plugin_copy/skills/$target_site/scripts/setup.sh"
+  local orig_lines
+  orig_lines="$(wc -l < "$mutant_sh" | tr -d ' ')"
+  sed -i '' '/_gate_run_pre_start/d' "$mutant_sh"
+  local mutant_lines
+  mutant_lines="$(wc -l < "$mutant_sh" | tr -d ' ')"
+  # Guard: the sed must have actually removed something
+  [ "$orig_lines" -ne "$mutant_lines" ] || {
+    echo "FAIL: sed removed nothing from the mutant — gate line not found" >&2
+    return 1
+  }
 
   local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
@@ -1613,4 +1629,109 @@ teardown() {
   }
 
   rm -rf "$mutant_dir"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Missing gate-predicates library halts every entry point (fail closed)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@test "missing gate-predicates.sh halts every entry point and writes nothing" {
+  local plugin_root
+  plugin_root="$(cd "$SKILLS_DIR/.." && pwd)"
+
+  local site
+  for site in "${SITES[@]}"; do
+    local site_tmp
+    site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/nolib-${site}-XXXXXX")"
+
+    local old_tmp="$TEST_TMP"
+    TEST_TMP="$site_tmp"
+    seed_ui_project available
+    seed_site_prereqs "$site"
+    _build_approved_record
+    TEST_TMP="$old_tmp"
+
+    # Copy the plugin tree, then remove gate-predicates.sh
+    local plugin_copy="$site_tmp/plugin"
+    cp -R "$plugin_root" "$plugin_copy"
+    rm -f "$plugin_copy/scripts/lib/gate-predicates.sh"
+
+    local setup_sh="$plugin_copy/skills/$site/scripts/setup.sh"
+    [ -f "$setup_sh" ] || { echo "FAIL: setup.sh missing for $site in copy" >&2; return 1; }
+
+    # Snapshot the .gaia tree before
+    local before_hash
+    before_hash="$(_sha256_tree "$site_tmp/.gaia")"
+
+    local stderr_file="$site_tmp/stderr.txt"
+    local rc=0
+    env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
+      PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
+      bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+    # Must exit non-zero
+    [ "$rc" -ne 0 ] || {
+      echo "FAIL: $site setup.sh exited 0 with gate-predicates.sh absent" >&2
+      return 1
+    }
+
+    # Stderr must name the missing library
+    local captured
+    captured="$(cat "$stderr_file")"
+    captured="${captured//$site_tmp/}"
+    echo "$captured" | grep -qi "gate-predicates" || {
+      echo "FAIL: $site stderr does not name the missing library" >&2
+      echo "Captured: $captured" >&2
+      return 1
+    }
+
+    # No writes to the .gaia tree
+    local after_hash
+    after_hash="$(_sha256_tree "$site_tmp/.gaia")"
+    [ "$before_hash" = "$after_hash" ] || {
+      echo "FAIL: $site wrote to the tree despite missing library" >&2
+      return 1
+    }
+
+    rm -rf "$site_tmp"
+  done
+}
+
+# Mutant: restore the non-fatal skip for the missing library — must go red
+@test "mutant: non-fatal skip for missing gate-predicates lets the entry point proceed" {
+  local target_site="gaia-create-arch"
+  local plugin_root
+  plugin_root="$(cd "$SKILLS_DIR/.." && pwd)"
+
+  local site_tmp
+  site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/nolib-mutant-XXXXXX")"
+
+  local old_tmp="$TEST_TMP"
+  TEST_TMP="$site_tmp"
+  seed_full_config false
+  seed_roster
+  seed_probe_stub available
+  seed_site_prereqs "$target_site"
+  TEST_TMP="$old_tmp"
+
+  # Copy plugin tree, remove gate-predicates.sh, then patch setup.sh
+  # to use a non-fatal skip instead of die
+  local plugin_copy="$site_tmp/plugin"
+  cp -R "$plugin_root" "$plugin_copy"
+  rm -f "$plugin_copy/scripts/lib/gate-predicates.sh"
+  local mutant_sh="$plugin_copy/skills/$target_site/scripts/setup.sh"
+  sed -i '' 's/die "gate-predicates.sh not found/log "gate-predicates.sh not found/' "$mutant_sh"
+
+  local rc=0
+  env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
+    PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
+    bash "$mutant_sh" >/dev/null 2>&1 || rc=$?
+
+  # The non-fatal mutant should let the script proceed (exit 0)
+  [ "$rc" -eq 0 ] || {
+    echo "FAIL: mutant (non-fatal skip) still exited non-zero ($rc)" >&2
+    return 1
+  }
+
+  rm -rf "$site_tmp"
 }
