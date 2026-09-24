@@ -15,6 +15,7 @@ module,phase,name,code,command,required,agent-name,description,output-location
 "lifecycle","2-planning","edit-prd","edit-prd","gaia-edit-prd","false","pm","Edit an existing PRD",".gaia/artifacts/planning-artifacts"
 "lifecycle","2-planning","create-ux-design","create-ux","gaia-create-ux","false","ux-designer","Create UX design specifications",".gaia/artifacts/planning-artifacts"
 "lifecycle","2-planning","edit-ux-design","edit-ux","gaia-edit-ux","false","ux-designer","Edit an existing UX design",".gaia/artifacts/planning-artifacts"
+"lifecycle","2-planning","design-review","design-review","gaia-design-review","false","ux-designer","Review and approve the design project; resolves design not approved, architecture will not start, and solutioning blocked",".gaia/state/design-record.yaml"
 "lifecycle","3-solutioning","create-architecture","create-arch","gaia-create-arch","true","architect","Design system architecture",".gaia/artifacts/planning-artifacts"
 "lifecycle","3-solutioning","create-epics-stories","create-epics","gaia-create-epics","true","pm","Break requirements into epics and stories",".gaia/artifacts/planning-artifacts"
 "lifecycle","3-solutioning","implementation-readiness","readiness-check","gaia-readiness-check","true","architect","Validate readiness for implementation",".gaia/artifacts/planning-artifacts"
