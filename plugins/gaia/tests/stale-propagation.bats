@@ -21,6 +21,25 @@ _sha256_file() {
   fi
 }
 
+_sha256_tree() {
+  local dir="$1"
+  find "$dir" -type f | LC_ALL=C sort | while IFS= read -r f; do
+    _sha256_file "$f"
+  done | _sha256_file /dev/stdin
+}
+
+# The eight solutioning entry points (from the merged design-gate-sites harness).
+SITES=(
+  gaia-create-arch
+  gaia-edit-arch
+  gaia-create-epics
+  gaia-threat-model
+  gaia-infra-design
+  gaia-readiness-check
+  gaia-review-api
+  gaia-adversarial
+)
+
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
@@ -123,6 +142,30 @@ STUBEOF
   chmod +x "$TEST_TMP/bin/design-probe.sh"
 }
 
+# seed_site_prereqs SITE — seed the per-site prerequisite artifacts that the
+# site's own gates check before reaching the design gate. Without these, the
+# setup.sh exits at a validate-gate or guard check, never reaching the design
+# gate. Mirrors design-gate-sites.bats.
+seed_site_prereqs() {
+  local site="$1"
+  case "$site" in
+    gaia-create-arch)
+      mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
+      printf '# threat model\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/threat-model.md"
+      ;;
+    gaia-create-epics)
+      mkdir -p "$TEST_TMP/.gaia/artifacts/test-artifacts/strategy"
+      printf '# test plan\nscenarios:\n  - name: test\n' > "$TEST_TMP/.gaia/artifacts/test-artifacts/strategy/test-plan.md"
+      ;;
+    gaia-readiness-check)
+      mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
+      printf '# traceability\n|req|test|\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/traceability-matrix.md"
+      ;;
+    # gaia-edit-arch, gaia-threat-model, gaia-infra-design, gaia-review-api,
+    # gaia-adversarial: no site-specific prerequisite artifacts needed
+  esac
+}
+
 # ---------------------------------------------------------------------------
 # Setup / teardown
 # ---------------------------------------------------------------------------
@@ -131,6 +174,7 @@ setup() {
   common_setup
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SCRIPTS_DIR="$PLUGIN_ROOT/scripts"
+  SKILLS_DIR="$PLUGIN_ROOT/skills"
   DREC_SCRIPT="$SCRIPTS_DIR/design-record.sh"
   GATE_SCRIPT="$SCRIPTS_DIR/lib/design-gate.sh"
   PREDICATES_SCRIPT="$SCRIPTS_DIR/lib/gate-predicates.sh"
@@ -278,6 +322,132 @@ teardown() { common_teardown; }
     file_count=$((file_count + 1))
   done
   [ "$file_count" -eq 8 ] || fail "expected 8 entry points, found $file_count"
+}
+
+@test "(AC2) a stale record halts all eight solutioning entry points" {
+  local visited=0
+  local site
+  for site in "${SITES[@]}"; do
+    # Fresh temp dir per site so fixtures do not leak between iterations
+    local site_tmp
+    site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/stale-site-${site}-XXXXXX")"
+
+    local old_tmp="$TEST_TMP"
+    TEST_TMP="$site_tmp"
+    seed_full_config true
+    seed_roster
+    seed_probe_stub available
+    seed_site_prereqs "$site"
+
+    # Build an approved record, then transition to stale
+    _init_record
+    env PROJECT_ROOT="$site_tmp" "$DREC_SCRIPT" transition --to review --actor ci
+    env PROJECT_ROOT="$site_tmp" "$DREC_SCRIPT" add-review --verdict approved --reviewer stakeholder-A --actor ci
+    env PROJECT_ROOT="$site_tmp" "$DREC_SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
+    env PROJECT_ROOT="$site_tmp" "$DREC_SCRIPT" transition --to approved --actor ci
+    env PROJECT_ROOT="$site_tmp" "$DREC_SCRIPT" transition --to stale --actor test
+
+    TEST_TMP="$old_tmp"
+
+    # Snapshot the artifact tree before
+    local before_hash
+    before_hash="$(_sha256_tree "$site_tmp/.gaia")"
+
+    local setup_sh="$SKILLS_DIR/$site/scripts/setup.sh"
+    [ -f "$setup_sh" ] || fail "setup.sh missing for $site at $setup_sh"
+
+    local stderr_file="$site_tmp/stderr.txt"
+    local rc=0
+    env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
+      PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
+      bash "$setup_sh" >/dev/null 2>"$stderr_file" || rc=$?
+
+    # Must halt (non-zero exit)
+    [ "$rc" -ne 0 ] || fail "$site setup.sh exited 0 with stale record"
+
+    # Halt must come from the design gate, not from resolve-config
+    local stripped
+    stripped="$(sed "s|${site_tmp}||g" "$stderr_file")"
+    if printf '%s' "$stripped" | grep -qi 'missing required field'; then
+      fail "$site failed in resolve-config, not at the design gate"
+    fi
+    printf '%s' "$stripped" | grep -qi 'State:.*stale' \
+      || fail "$site halt stderr does not carry State: stale diagnostic"
+
+    # Artifact tree must be unchanged
+    local after_hash
+    after_hash="$(_sha256_tree "$site_tmp/.gaia")"
+    [ "$before_hash" = "$after_hash" ] \
+      || fail "$site tree changed after stale halt"
+
+    visited=$((visited + 1))
+    rm -rf "$site_tmp"
+  done
+
+  [ "$visited" -eq 8 ] || fail "expected 8 sites visited, got $visited"
+}
+
+@test "(AC2) mutant: treating stale as approved lets all eight entry points proceed" {
+  # In a copied plugin tree, make the gate treat stale like approved.
+  # Then drive all eight sites with a stale record — all must exit 0.
+  local plugin_copy="$TEST_TMP/mutant-plugin"
+  cp -R "$PLUGIN_ROOT" "$plugin_copy"
+
+  # Portable sed: write to .tmp then mv (never sed -i '')
+  local gate_lib="$plugin_copy/scripts/lib/design-gate.sh"
+  [ -f "$gate_lib" ] || fail "design-gate.sh not found in plugin copy"
+
+  # Replace the stale branch: change 'return 1' after the stale-fail-branch
+  # anchor to 'return 0', making the gate pass on stale.
+  awk '
+    /MUTANT-ANCHOR: stale-fail-branch/ { anchor=1 }
+    anchor && /return 1/ { sub(/return 1/, "return 0"); anchor=0 }
+    { print }
+  ' "$gate_lib" > "$gate_lib.tmp" && mv "$gate_lib.tmp" "$gate_lib"
+
+  local mutant_skills="$plugin_copy/skills"
+  local mutant_scripts="$plugin_copy/scripts"
+  local mutant_drec="$mutant_scripts/design-record.sh"
+
+  local visited=0
+  local site
+  for site in "${SITES[@]}"; do
+    local site_tmp
+    site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/mutant-stale-${site}-XXXXXX")"
+
+    local old_tmp="$TEST_TMP"
+    TEST_TMP="$site_tmp"
+    seed_full_config true
+    seed_roster
+    seed_probe_stub available
+    seed_site_prereqs "$site"
+    TEST_TMP="$old_tmp"
+
+    # Build stale record using the mutant's design-record.sh
+    env PROJECT_ROOT="$site_tmp" "$mutant_drec" init \
+      --reference "test-ref" --discovered-via "created" --questionnaire-record "na" >/dev/null
+    env PROJECT_ROOT="$site_tmp" "$mutant_drec" transition --to review --actor ci >/dev/null
+    env PROJECT_ROOT="$site_tmp" "$mutant_drec" add-review --verdict approved --reviewer stakeholder-A --actor ci >/dev/null
+    env PROJECT_ROOT="$site_tmp" "$mutant_drec" approve --stakeholder stakeholder-A --recorded-by ci >/dev/null
+    env PROJECT_ROOT="$site_tmp" "$mutant_drec" transition --to approved --actor ci >/dev/null
+    env PROJECT_ROOT="$site_tmp" "$mutant_drec" transition --to stale --actor test >/dev/null
+
+    local setup_sh="$mutant_skills/$site/scripts/setup.sh"
+    [ -f "$setup_sh" ] || fail "mutant setup.sh missing for $site"
+
+    local rc=0
+    env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
+      PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
+      bash "$setup_sh" >/dev/null 2>&1 || rc=$?
+
+    [ "$rc" -eq 0 ] \
+      || fail "$site mutant setup.sh exited $rc — stale-as-approved mutation did not let it through"
+
+    visited=$((visited + 1))
+    rm -rf "$site_tmp"
+  done
+
+  [ "$visited" -eq 8 ] || fail "expected 8 mutant sites visited, got $visited"
 }
 
 # ===========================================================================
