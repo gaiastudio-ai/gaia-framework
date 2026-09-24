@@ -39,16 +39,29 @@ WORKFLOW_NAME="create-architecture"
 # flags and writes the bypass record before the gate check below runs.
 BYPASS_SKILL=""
 BYPASS_REASON=""
+FORCE_DESIGN=""
+FORCE_DESIGN_REASON=""
+FORCE_DESIGN_ENTRY_POINT=""
+FORCE_DESIGN_SPRINT_ID=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --bypass)
       [ $# -ge 2 ] || { printf '%s: --bypass requires a skill name (e.g. gaia-threat-model)\n' "$SCRIPT_NAME" >&2; exit 2; }
       BYPASS_SKILL="$2"; shift 2 ;;
+    --force-design)
+      FORCE_DESIGN=1; shift ;;
     --reason)
       [ $# -ge 2 ] || { printf '%s: --reason requires a quoted text argument\n' "$SCRIPT_NAME" >&2; exit 2; }
-      BYPASS_REASON="$2"; shift 2 ;;
+      if [ -n "$FORCE_DESIGN" ]; then FORCE_DESIGN_REASON="$2"; else BYPASS_REASON="$2"; fi
+      shift 2 ;;
+    --entry-point)
+      [ $# -ge 2 ] || { printf '%s: --entry-point requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
+      FORCE_DESIGN_ENTRY_POINT="$2"; shift 2 ;;
+    --sprint-id)
+      [ $# -ge 2 ] || { printf '%s: --sprint-id requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
+      FORCE_DESIGN_SPRINT_ID="$2"; shift 2 ;;
     --help|-h)
-      printf 'Usage: %s [--bypass <skill> --reason "<text>"]\n' "$SCRIPT_NAME"
+      printf 'Usage: %s [--bypass <skill> --reason "<text>"] [--force-design --reason "<text>" --entry-point <name> [--sprint-id <id>]]\n' "$SCRIPT_NAME"
       exit 0 ;;
     -*)
       printf '%s: unknown flag: %s\n' "$SCRIPT_NAME" "$1" >&2
@@ -57,6 +70,7 @@ while [ $# -gt 0 ]; do
       shift ;;
   esac
 done
+export FORCE_DESIGN FORCE_DESIGN_REASON FORCE_DESIGN_ENTRY_POINT FORCE_DESIGN_SPRINT_ID
 
 # If --bypass was specified, --reason MUST also be specified
 if [ -n "$BYPASS_SKILL" ] && [ -z "$BYPASS_REASON" ]; then
@@ -93,30 +107,41 @@ fi
 # Resolve the GAIA plugin scripts directory from this script's location:
 #   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || echo "$SCRIPT_DIR")"
+if [ -n "${PLUGIN_SCRIPTS_DIR:-}" ]; then
+  : # use the override
+elif [ -d "$SCRIPT_DIR/../../../scripts" ]; then
+  PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
+else
+  PLUGIN_SCRIPTS_DIR=""
+fi
 
 RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
 VALIDATE_GATE="$PLUGIN_SCRIPTS_DIR/validate-gate.sh"
 CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
+GATE_PREDICATES="$PLUGIN_SCRIPTS_DIR/lib/gate-predicates.sh"
+SKILL_MD_PATH="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || echo "$SCRIPT_DIR")/SKILL.md"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
 
 # ---------- 1. Resolve config ----------
-[ -x "$RESOLVE_CONFIG" ] || die "resolve-config.sh not found or not executable at $RESOLVE_CONFIG"
-if ! config_output=$("$RESOLVE_CONFIG" 2>&1); then
-  log "resolve-config.sh failed:"
-  printf '%s\n' "$config_output" >&2
-  exit 1
+if [ -x "$RESOLVE_CONFIG" ]; then
+  if ! config_output=$("$RESOLVE_CONFIG" 2>&1); then
+    log "resolve-config.sh failed:"
+    printf '%s\n' "$config_output" >&2
+    exit 1
+  fi
+  # Export every KEY='VALUE' line the resolver emits so downstream tools
+  # (validate-gate.sh, checkpoint.sh) pick them up from the environment.
+  while IFS= read -r line; do
+    case "$line" in
+      [A-Z_]*=*) eval "export $line" ;;
+    esac
+  done <<<"$config_output"
+else
+  log "resolve-config.sh not found at $RESOLVE_CONFIG — using environment defaults"
 fi
-# Export every KEY='VALUE' line the resolver emits so downstream tools
-# (validate-gate.sh, checkpoint.sh) pick them up from the environment.
-while IFS= read -r line; do
-  case "$line" in
-    [A-Z_]*=*) eval "export $line" ;;
-  esac
-done <<<"$config_output"
 
 # ---------- 2. Validate gate (prereqs) ----------
 # create-architecture requires a PRD to exist. The skill body validates
@@ -128,6 +153,15 @@ if [ -x "$VALIDATE_GATE" ]; then
   fi
 else
   log "validate-gate.sh not found at $VALIDATE_GATE — skipping gate (non-fatal)"
+fi
+
+# ---------- 2a. Quality gates: pre_start ----------
+if [ -f "$GATE_PREDICATES" ]; then
+  # shellcheck disable=SC1090
+  . "$GATE_PREDICATES"
+  _gate_run_pre_start "$SKILL_MD_PATH" "$SCRIPT_NAME: quality-gate" || exit 1
+else
+  log "gate-predicates.sh not found at $GATE_PREDICATES — skipping quality gates (non-fatal)"
 fi
 
 # ---------- 2b. Guard: architecture-template.md must be present ----------
@@ -175,8 +209,9 @@ fi
 # `compliance.ui_present` is false / absent, the gate is a no-op.
 
 SCRIPT_DIR_S6="$(cd "$(dirname "$0")" && pwd)"
-LIFECYCLE_LIB_S6="$(cd "$SCRIPT_DIR_S6/../../.." && pwd)/scripts/lib/lifecycle-overrides.sh"
-STRICT_HELPER_S6="$(cd "$SCRIPT_DIR_S6/../../.." && pwd)/scripts/lib/lifecycle-strict-mode.sh"
+_S6_PLUGIN_ROOT="$(cd "$SCRIPT_DIR_S6/../../.." 2>/dev/null && pwd || echo "$SCRIPT_DIR_S6")"
+LIFECYCLE_LIB_S6="$_S6_PLUGIN_ROOT/scripts/lib/lifecycle-overrides.sh"
+STRICT_HELPER_S6="$_S6_PLUGIN_ROOT/scripts/lib/lifecycle-strict-mode.sh"
 
 # Read compliance.ui_present from project-config.yaml.
 PROJECT_CONFIG_S6="${PROJECT_CONFIG:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml}"
@@ -229,6 +264,8 @@ else
     fi
     if [ "$has_tm_bypass" -eq 1 ]; then
       log "threat-model gate bypassed: ${bp_reason}"
+    elif [ -n "${FORCE_DESIGN:-}" ]; then
+      log "WARNING: threat-model gate degraded — design override (--force-design) is active; run /gaia-threat-model before proceeding further"
     elif [ "$pre_sprint" -eq 1 ]; then
       log "WARNING: compliance.ui_present=true but no threat-model.md found — proceeding because no active sprint exists yet (Phase 3 / pre-sprint-plan). The lifecycle runs /gaia-threat-model after /gaia-create-arch; the threat-model gate is re-enforced once a sprint is active. Run /gaia-threat-model before your first /gaia-sprint-plan to satisfy it."
     elif [ "$strict_on" -eq 0 ]; then

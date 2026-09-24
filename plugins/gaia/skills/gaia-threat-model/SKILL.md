@@ -4,11 +4,29 @@ description: Create security threat model using STRIDE/DREAD methodology through
 context: fork
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 orchestration_class: reviewer
+quality_gates:
+  pre_start:
+    - condition: "design_approved:"
+      error_message: "Design is not approved. Approve the design via /gaia-design-review, or pass --force-design with a reason to override."
 ---
 
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-threat-model/scripts/setup.sh
+
+### Override gate (if applicable)
+
+If the user supplied `--force-design` with a `--reason` (and optionally `--sprint-id`) in `$ARGUMENTS`:
+
+```bash
+export FORCE_DESIGN=1
+export FORCE_DESIGN_REASON="<reason from $ARGUMENTS>"
+export FORCE_DESIGN_ENTRY_POINT="gaia-threat-model"
+export FORCE_DESIGN_SPRINT_ID="<sprint-id from $ARGUMENTS, or empty>"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-threat-model/scripts/setup.sh" --force-design --reason "$FORCE_DESIGN_REASON" --entry-point "$FORCE_DESIGN_ENTRY_POINT" ${FORCE_DESIGN_SPRINT_ID:+--sprint-id "$FORCE_DESIGN_SPRINT_ID"}
+```
+
+The halt from the prelude's `## Setup` invocation is otherwise binding — the agent must not proceed past a design-gate halt.
 
 ## Memory
 

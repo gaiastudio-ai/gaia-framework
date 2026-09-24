@@ -318,6 +318,10 @@ is_allowlisted() {
   # exempted by this rule (the path glob requires the /skills/<skill>/scripts/ segment).
   [[ "$path" == */plugins/gaia/skills/*/scripts/finalize.sh ]] && return 0
   [[ "$path" == */plugins/gaia/skills/*/scripts/setup.sh ]] && return 0
+  # design-gate-sites.bats derives the solutioning entry-point list from
+  # lifecycle-sequence.yaml as its contractual assertion target — same
+  # precedent as e70-s5-skill-registration.bats above.
+  [[ "$path" == */plugins/gaia/tests/design-gate-sites.bats ]] && return 0
   # dead-reference-scan.bats asserts both positive (allowed) and negative
   # (still-failing) cases against the same retired tokens, so the literal v1
   # filenames appear in test bodies.

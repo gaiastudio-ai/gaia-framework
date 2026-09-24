@@ -273,9 +273,17 @@ design_gate_check() {
 
   local ui_present=""
   ui_present="$(_dg_read_config_ui_present "$PROJECT_ROOT")" || {
-    _dg_halt "$record_path" "unreadable config" \
-      "Ensure .gaia/config/project-config.yaml exists, is valid YAML, and has a compliance.ui_present field."
-    return 1
+    # When setup.sh has resolved the config and knows ui_present is absent
+    # (valid config, field not declared), it exports _DESIGN_GATE_UI_DEFAULT.
+    # Direct callers without the setup.sh preamble do NOT have this env var,
+    # so the fail-closed behavior is preserved for incomplete/bare configs.
+    if [ -n "${_DESIGN_GATE_UI_DEFAULT:-}" ]; then
+      ui_present="$_DESIGN_GATE_UI_DEFAULT"
+    else
+      _dg_halt "$record_path" "unreadable config" \
+        "Ensure .gaia/config/project-config.yaml exists, is valid YAML, and has a compliance.ui_present field."
+      return 1
+    fi
   }
 
   # ---- Not-applicable path ----

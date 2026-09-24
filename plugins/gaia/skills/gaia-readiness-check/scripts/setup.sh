@@ -47,6 +47,30 @@ fi
 RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
 VALIDATE_GATE="$PLUGIN_SCRIPTS_DIR/validate-gate.sh"
 CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
+GATE_PREDICATES="$PLUGIN_SCRIPTS_DIR/lib/gate-predicates.sh"
+SKILL_MD_PATH="$(cd "$SCRIPT_DIR/.." && pwd)/SKILL.md"
+
+# ---------- 0. Parse --force-design flags ----------
+FORCE_DESIGN=""
+FORCE_DESIGN_REASON=""
+FORCE_DESIGN_ENTRY_POINT=""
+FORCE_DESIGN_SPRINT_ID=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force-design) FORCE_DESIGN=1; shift ;;
+    --reason)
+      [ $# -ge 2 ] || { printf '%s: --reason requires a quoted text argument\n' "$SCRIPT_NAME" >&2; exit 2; }
+      FORCE_DESIGN_REASON="$2"; shift 2 ;;
+    --entry-point)
+      [ $# -ge 2 ] || { printf '%s: --entry-point requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
+      FORCE_DESIGN_ENTRY_POINT="$2"; shift 2 ;;
+    --sprint-id)
+      [ $# -ge 2 ] || { printf '%s: --sprint-id requires a value\n' "$SCRIPT_NAME" >&2; exit 2; }
+      FORCE_DESIGN_SPRINT_ID="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+export FORCE_DESIGN FORCE_DESIGN_REASON FORCE_DESIGN_ENTRY_POINT FORCE_DESIGN_SPRINT_ID
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
@@ -98,6 +122,15 @@ if [ -x "$VALIDATE_GATE" ]; then
   fi
 else
   die "validate-gate.sh not found at $VALIDATE_GATE — cannot enforce mandatory gates"
+fi
+
+# ---------- 2a. Quality gates: pre_start ----------
+if [ -f "$GATE_PREDICATES" ]; then
+  # shellcheck disable=SC1090
+  . "$GATE_PREDICATES"
+  _gate_run_pre_start "$SKILL_MD_PATH" "$SCRIPT_NAME: quality-gate" || exit 1
+else
+  log "gate-predicates.sh not found at $GATE_PREDICATES — skipping quality gates (non-fatal)"
 fi
 
 # ---------- 2b. Guard: traceability-matrix.md must be non-empty ----------
