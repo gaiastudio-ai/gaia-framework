@@ -487,6 +487,9 @@ EOF
     # test; one yq -i injects an unknown state for the default-fail mutant.
     # Both write to temp-dir fixtures, not production records.
     [ "$rel_path" = "tests/design-gate.bats" ] && continue
+    # design-review.bats: fixture seeding writes to temp-dir design records
+    # (never production records).
+    [ "$rel_path" = "tests/design-review.bats" ] && continue
 
     local matches
     matches="$(grep -nE "$write_patterns" "$filepath" 2>/dev/null \
@@ -1644,4 +1647,219 @@ WRAPPER
 # =========================================================================
 # (AC3) concurrent test with generous lock timeout (review-rework item 6)
 # =========================================================================
+
+
+# =========================================================================
+# (AC4) add-review --notes-ref field round-trip
+# =========================================================================
+
+@test "(AC4) add-review writes notes-ref field when provided" {
+  assert_script_exists
+  seed_review_with_roster
+
+  run "$SCRIPT" add-review \
+    --verdict "approved" \
+    --reviewer "reviewer-A" \
+    --kind "internal" \
+    --notes-ref ".gaia/artifacts/review-notes.md"
+  [ "$status" -eq 0 ] || fail "add-review with --notes-ref failed: $output"
+
+  local stored_ref
+  stored_ref="$(yq '.reviews[-1].notes_ref' "$RECORD")"
+  [ "$stored_ref" = ".gaia/artifacts/review-notes.md" ] || \
+    fail "notes_ref not stored: expected '.gaia/artifacts/review-notes.md', got '$stored_ref'"
+}
+
+@test "(AC4) add-review omits notes-ref when not provided" {
+  assert_script_exists
+  seed_review_with_roster
+
+  # First verify that --notes-ref IS a recognized option (added by this story)
+  local help_output
+  help_output="$(grep -c 'notes.ref\|notes_ref' "$SCRIPT" 2>/dev/null || true)"
+  [ "$help_output" -gt 0 ] || fail "design-record.sh does not recognize --notes-ref yet"
+
+  run "$SCRIPT" add-review \
+    --verdict "approved" \
+    --reviewer "reviewer-A" \
+    --kind "internal"
+  [ "$status" -eq 0 ] || fail "add-review without --notes-ref failed: $output"
+
+  local stored_ref
+  stored_ref="$(yq '.reviews[-1].notes_ref' "$RECORD" 2>/dev/null)"
+  # notes_ref should be absent (null) when not provided — backward compat
+  [ "$stored_ref" = "null" ] || [ -z "$stored_ref" ] || \
+    fail "notes_ref should be absent when not provided, got '$stored_ref'"
+}
+
+@test "(AC4) notes-ref round-trip with special characters" {
+  assert_script_exists
+  seed_review_with_roster
+
+  # Payload containing quotes, $, backticks, newlines, and unicode
+  local payload
+  payload="$(printf 'path/with "quotes" and $dollar and \x60backtick\x60\nand newline and \xc3\xb1 and \xf0\x9f\x8e\xa8')"
+
+  run "$SCRIPT" add-review \
+    --verdict "approved" \
+    --reviewer "reviewer-A" \
+    --kind "internal" \
+    --notes-ref "$payload"
+  [ "$status" -eq 0 ] || fail "add-review with special-char notes-ref failed: $output"
+
+  local stored_ref
+  stored_ref="$(yq '.reviews[-1].notes_ref' "$RECORD")"
+  [ "$stored_ref" = "$payload" ] || \
+    fail "notes_ref not round-tripped: expected <<<$payload>>> got <<<$stored_ref>>>"
+}
+
+
+# =========================================================================
+# (AC4) writer enum guards — verdict and kind validation
+# =========================================================================
+
+@test "(AC4) add-review refuses an unknown verdict and leaves the record byte-identical" {
+  assert_script_exists
+  seed_review_with_roster
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" add-review \
+    --verdict "bogus" \
+    --reviewer "tester" \
+    --kind "internal"
+  [ "$status" -ne 0 ] || fail "add-review should refuse unknown verdict 'bogus'"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+  assert_no_lock_or_tmp "$(dirname "$RECORD")" "$(basename "$RECORD")"
+}
+
+@test "(AC4) add-review refuses an unknown kind and leaves the record byte-identical" {
+  assert_script_exists
+  seed_review_with_roster
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" add-review \
+    --verdict "approved" \
+    --reviewer "tester" \
+    --kind "fantasy"
+  [ "$status" -ne 0 ] || fail "add-review should refuse unknown kind 'fantasy'"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+  assert_no_lock_or_tmp "$(dirname "$RECORD")" "$(basename "$RECORD")"
+}
+
+@test "(AC4) mutant: removing the enum guard admits a schema-invalid review" {
+  # This test proves the enum guard is load-bearing.  It first asserts the
+  # guard exists in the source, then checks that removing it would let bogus
+  # verdicts through (demonstrating load-bearing-ness).
+  assert_script_exists
+
+  # Step 1: the guard must exist in the source — fail if absent
+  local guard_lines
+  guard_lines="$(grep -cE 'approved.*changes-requested.*blocked.*escalated|verdict.*enum|_VALID_VERDICTS|legal.*verdict' "$SCRIPT" 2>/dev/null || true)"
+  [ "$guard_lines" -gt 0 ] || \
+    fail "enum guard not found in design-record.sh — the guard has not been added yet"
+
+  # Step 2: with the guard removed, bogus verdicts would be accepted
+  seed_review_with_roster
+  # (This step only runs once the guard is in place — the test above
+  # short-circuits in RED because the guard doesn't exist yet.)
+  local mutant_script="$TEST_TMP/design-record-mutant.sh"
+  sed '/^[[:space:]]*#.*enum/d; /_VALID_VERDICTS/d' "$SCRIPT" > "$mutant_script"
+  chmod +x "$mutant_script"
+  run "$mutant_script" add-review \
+    --verdict "bogus" \
+    --reviewer "tester" \
+    --kind "internal"
+  [ "$status" -eq 0 ] || \
+    fail "mutant: removing the enum guard should admit schema-invalid reviews"
+}
+
+
+# =========================================================================
+# (AC4) schema conformance — escalated verdict
+# =========================================================================
+
+@test "(AC4) schema accepts escalated as a review verdict" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  # Create a fixture record with verdict: escalated
+  local fixture="$TEST_TMP/escalated-fixture.yaml"
+  cat > "$fixture" <<'FIXTURE'
+schema_version: "1.0"
+applicability: applicable
+design_state: review
+iteration: 1
+project:
+  reference: "test-ref"
+  discovered_via: "created"
+  questionnaire_record: "q.md"
+reviews:
+  - iteration: 1
+    kind: stakeholder
+    verdict: escalated
+    actor: reviewer-A
+    at: "2026-01-01T00:00:00Z"
+approvals: []
+overrides: []
+audit: []
+audit_head:
+  count: 0
+  last_digest: ""
+FIXTURE
+
+  # Convert to JSON for schema validation
+  local json_fixture="$TEST_TMP/escalated-fixture.json"
+  yq -o=json "$fixture" > "$json_fixture"
+
+  # Validate via shared helper
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$SCHEMA" "$json_fixture"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent — cannot proceed"
+  [ "$status" -eq 0 ] || fail "schema should accept verdict: escalated, but validation failed: $output"
+}
+
+@test "(AC4) schema rejects an unknown review verdict" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  # Pre-check: the schema must include escalated as a valid verdict
+  # (this story adds it).  If it's missing, the test is premature.
+  grep -q '"escalated"' "$SCHEMA" || \
+    fail "schema does not include 'escalated' as a valid verdict — schema update not applied yet"
+
+  # Create a fixture record with verdict: bogus
+  local fixture="$TEST_TMP/bogus-fixture.yaml"
+  cat > "$fixture" <<'FIXTURE'
+schema_version: "1.0"
+applicability: applicable
+design_state: review
+iteration: 1
+project:
+  reference: "test-ref"
+  discovered_via: "created"
+  questionnaire_record: "q.md"
+reviews:
+  - iteration: 1
+    kind: stakeholder
+    verdict: bogus
+    actor: reviewer-A
+    at: "2026-01-01T00:00:00Z"
+approvals: []
+overrides: []
+audit: []
+audit_head:
+  count: 0
+  last_digest: ""
+FIXTURE
+
+  local json_fixture="$TEST_TMP/bogus-fixture.json"
+  yq -o=json "$fixture" > "$json_fixture"
+
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$SCHEMA" "$json_fixture"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent — cannot proceed"
+  [ "$status" -ne 0 ] || fail "schema should reject verdict: bogus, but validation passed"
+}
 
