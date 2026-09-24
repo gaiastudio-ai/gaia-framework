@@ -478,6 +478,18 @@ adhere to the hygiene rules at dispatch time.
 - Only when no CRITICAL findings remain AND the sentinel write succeeded
   does the skill proceed to the cascade steps below.
 
+<!-- design-stale-transition begin -->
+**Design impact assessment:** Before proceeding to story creation, assess whether this feature affects the project's design. If the feature changes user-facing layout, interaction patterns, navigation, component structure, or visual language, it is design-affecting. If the impact is ambiguous or uncertain, default to treating it as design-affecting (stale is safer than stale-undetected).
+
+When the feature is design-affecting (or the assessment is ambiguous):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision <yes|no|ambiguous> --actor gaia-add-feature
+```
+
+Pass `yes` when the feature clearly affects the design, `no` when it clearly does not, and `ambiguous` when the impact is uncertain. The driver transitions the record to stale and verifies the integration is reachable. If the integration is unavailable, the driver halts and no stories are created.
+<!-- design-stale-transition end -->
+
 ### Step 3 -- Execute Cascade (patch)
 
 - If classification is `patch`:

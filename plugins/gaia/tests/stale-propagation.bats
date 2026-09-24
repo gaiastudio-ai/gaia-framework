@@ -552,13 +552,15 @@ teardown() { common_teardown; }
 @test "(AC4) dev-story SKILL.md contains the override re-invocation block" {
   [ -f "$SKILL_MD_DS" ] || fail "dev-story SKILL.md not found at $SKILL_MD_DS"
 
-  # Strip HTML comments so we match the content, not just markers
-  local clean
-  clean="$(sed 's/<!--.*-->//g' "$SKILL_MD_DS")"
+  # Strip HTML comments so we match the content, not just markers.
+  # Write to a temp file to avoid SIGPIPE (141) when grep -q closes the pipe
+  # early under set -o pipefail.
+  local clean_file="$TEST_TMP/skill-md-clean.txt"
+  sed 's/<!--.*-->//g' "$SKILL_MD_DS" > "$clean_file"
 
-  printf '%s' "$clean" | grep -qE '(FORCE_DESIGN|--force-design)' \
+  grep -qE 'FORCE_DESIGN|--force-design' "$clean_file" \
     || fail "dev-story SKILL.md missing FORCE_DESIGN or --force-design reference in override block"
-  printf '%s' "$clean" | grep -qF 'gaia-dev-story' \
+  grep -qF 'gaia-dev-story' "$clean_file" \
     || fail "dev-story SKILL.md override block missing gaia-dev-story entry-point value"
 }
 

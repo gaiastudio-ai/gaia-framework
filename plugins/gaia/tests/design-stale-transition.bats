@@ -256,25 +256,34 @@ teardown() { common_teardown; }
   seed_roster
   _build_approved_record
 
-  # Bridge that exits 0 but prints garbage (not "available"/"missing"/"unauthorized")
-  cat > "$TEST_TMP/garbage-bridge.sh" <<'GARBOF'
+  # The real probe normalizes all bridge outcomes to available/missing/unauthorized,
+  # so unknown stdout can only arise from a corrupted probe. Test the driver's
+  # defense-in-depth by placing a fake probe next to a copy of the driver.
+  local fake_dir="$TEST_TMP/fake-scripts"
+  mkdir -p "$fake_dir"
+  cp "$DRIVER_SCRIPT" "$fake_dir/design-stale-transition.sh"
+  # Copy design-record.sh and its dependencies so the driver can find them
+  cp -R "$SCRIPTS_DIR"/* "$fake_dir/" 2>/dev/null || true
+  # Replace design-probe.sh with one that outputs garbage
+  cat > "$fake_dir/design-probe.sh" <<'GARBOF'
 #!/usr/bin/env bash
 printf 'something-unknown\n'
 exit 0
 GARBOF
-  chmod +x "$TEST_TMP/garbage-bridge.sh"
+  chmod +x "$fake_dir/design-probe.sh"
 
   local stderr_file="$TEST_TMP/driver-stderr.txt"
   local rc=0
   env PROJECT_ROOT="$TEST_TMP" \
-    DESIGN_PROBE_BRIDGE_CMD="bash $TEST_TMP/garbage-bridge.sh" \
-    bash "$DRIVER_SCRIPT" \
+    bash "$fake_dir/design-stale-transition.sh" \
       --decision yes \
       --actor test \
     2>"$stderr_file" || rc=$?
 
   # Unknown stdout from probe should be treated as missing (fail closed)
   [ "$rc" -ne 0 ] || fail "driver should fail closed on unknown probe stdout but exited 0"
+  grep -q 'design-first ordering cannot be kept' "$stderr_file" \
+    || fail "stderr should contain the halt message"
 }
 
 # Tests 8 and 9 removed — they duplicated test 6 (ambiguous defaults to stale)

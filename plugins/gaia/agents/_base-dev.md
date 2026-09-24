@@ -128,6 +128,7 @@ requirements definition (Derek — Product Manager), architecture decisions
 - If the design-record reference resolves but the design surface is unreachable, surface unreachability as a finding (never fall back to a local copy).
 - If no design-record reference exists and the project has a UI (`compliance.ui_present` is true), surface design truth unavailable as a finding.
 - If the project has no UI surface, record not-applicable (no finding).
+- When the design state is stale, surface it prominently before any implementation work begins. Name the cause (a design-affecting change was made after the last approval) and the remediation (a new design review round must converge before the design is considered approved again).
 
 ## Skills
 

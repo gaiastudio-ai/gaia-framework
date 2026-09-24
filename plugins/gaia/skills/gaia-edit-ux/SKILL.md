@@ -99,6 +99,16 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to a
 - Generate a diff summary showing exactly what changed.
 - Write updated UX design to `.gaia/artifacts/planning-artifacts/ux-design.md` with all edits applied, unchanged sections preserved, and version note added.
 
+<!-- design-stale-transition begin -->
+**Design stale transition:** A direct UX edit is always design-affecting. Transition the design record to stale so downstream gates know the design has changed since its last approval.
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision yes --actor gaia-edit-ux
+```
+
+If the integration is unavailable, the driver halts with a message. When the impact is ambiguous or uncertain, still default to stale — it is safer than leaving the record in an outdated approved state.
+<!-- design-stale-transition end -->
+
 ### Step 6 — Adversarial Review
 
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under the `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available, infer from the change scope: minor edits map to "low-risk-enhancement", significant feature additions map to "feature".
