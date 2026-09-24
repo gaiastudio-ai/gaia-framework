@@ -35,3 +35,4 @@ scripts/lib/design-gate.sh          reader   reads the design record; runs desig
 scripts/lib/gate-predicates.sh      reader   design_approved predicate delegates to design-gate
 tests/design-gate.bats              test     design-gate test suite
 tests/design-record-init-not-applicable.bats test init-not-applicable verb tests
+tests/design-record-reopen-applicable.bats test reopen-applicable verb tests

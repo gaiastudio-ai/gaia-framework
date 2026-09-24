@@ -193,7 +193,8 @@
               "approval-refused",
               "override",
               "not-applicable-pass",
-              "review-verdict"
+              "review-verdict",
+              "applicability-change"
             ],
             "description": "Audit event type."
           },

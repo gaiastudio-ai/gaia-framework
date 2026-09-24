@@ -71,7 +71,7 @@ _dg_halt_inconsistency() {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-_sha256_file() {
+_dg_sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
   else
@@ -150,6 +150,12 @@ _dg_halt_with_probe() {
 _dg_resolve_sprint_id() {
   local explicit="$1" project_root="$2"
   if [ -n "$explicit" ]; then
+    if ! printf '%s' "$explicit" | grep -Eq '^sprint-[0-9]+$'; then
+      printf 'Design gate: override refused — malformed --sprint-id value.\n' >&2
+      printf '  Got:      %s\n' "$explicit" >&2
+      printf '  Expected: sprint-N (matching ^sprint-[0-9]+$)\n' >&2
+      return 1
+    fi
     printf '%s\n' "$explicit"
     return 0
   fi
@@ -281,6 +287,16 @@ design_gate_check() {
     return 0
   fi
 
+  # ---- Symlink check ----
+  # Refuse to read through a symlink. This matches the write-path discipline
+  # in design-record.sh and prevents symlink-based bypass attacks.
+
+  if [ -L "$record_path" ]; then
+    _dg_halt "$record_path" "symlink detected" \
+      "The design record is a symlink — refusing to follow. Remove the symlink and use a real file."
+    return 1
+  fi
+
   # ---- Record existence ----
 
   if [ ! -f "$record_path" ]; then
@@ -317,6 +333,14 @@ design_gate_check() {
   local applicability
   applicability="$(yq '.applicability' "$record_path" 2>/dev/null || true)"
   if [ "$applicability" = "not-applicable" ]; then
+    # A not-applicable record on a UI-bearing project is stale — the project
+    # now requires design approval but the record was created when it did not.
+    # Fail closed so the user re-initializes the design record.
+    if [ "$ui_present" = "true" ]; then
+      _dg_halt "$record_path" "not-applicable record on UI-bearing project" \
+        "The design record says not-applicable but the project has ui_present: true. Run: design-record.sh reopen-applicable --reference <ref> --discovered-via <how> --questionnaire-record <path>, then drive the review with /gaia-design-review."
+      return 1
+    fi
     return 0
   fi
 
@@ -403,10 +427,10 @@ _dg_handle_override() {
   # string-valued design_state for the state-unchanged assertion.
 
   local backup_hash pre_state backup_path
-  backup_hash="$(_sha256_file "$record_path")"
+  backup_hash="$(_dg_sha256_file "$record_path")"
   pre_state="$(yq '.design_state' "$record_path")"
   backup_path="${record_path}.gate-backup"
-  cp "$record_path" "$backup_path"
+  ( umask 077; cp "$record_path" "$backup_path"; chmod 600 "$backup_path" )
 
   # ---- Write to design record (subprocess) ----
 
@@ -470,7 +494,7 @@ _dg_rollback_override() {
   local rollback_ok=0
   if mv -f "$backup_path" "$record_path" 2>/dev/null; then
     local post_rollback_hash
-    post_rollback_hash="$(_sha256_file "$record_path")"
+    post_rollback_hash="$(_dg_sha256_file "$record_path")"
     [ "$post_rollback_hash" = "$backup_hash" ] && rollback_ok=1
   fi
 
