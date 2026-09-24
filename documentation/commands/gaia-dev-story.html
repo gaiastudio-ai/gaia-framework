@@ -157,6 +157,15 @@
             <code>ux-design.md</code> for implementation context. They are
             not strictly required, but their absence reduces plan quality.
           </li>
+          <li>
+            <strong>Design approval required.</strong> The design must be
+            approved before implementation can begin. Run
+            <code>/gaia-design-review</code> to complete the review, or pass
+            <code>--force-design --reason "&lt;text&gt;"</code> to override
+            with an audited reason. Projects without a UI
+            (<code>compliance.ui_present: false</code> or absent) skip this
+            gate automatically.
+          </li>
         </ul>
       </section>
       <section id="orchestration-mode">

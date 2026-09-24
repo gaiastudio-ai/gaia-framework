@@ -11,6 +11,10 @@ hooks:
           command: ${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/checkpoint.sh write gaia-dev-story
 orchestration_class: heavy-procedural
 yolo_steps: [5, 6, 7, 15]
+quality_gates:
+  pre_start:
+    - condition: "design_approved:"
+      error_message: "Design is not approved. Approve the design via /gaia-design-review, or pass --force-design with a reason to override."
 ---
 
 ## Orchestration Mode
@@ -29,6 +33,20 @@ fi
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/setup.sh
+
+### Override gate (if applicable)
+
+If the user supplied `--force-design` with a `--reason` (and optionally `--sprint-id`) in `$ARGUMENTS`:
+
+```bash
+export FORCE_DESIGN=1
+export FORCE_DESIGN_REASON="<reason from $ARGUMENTS>"
+export FORCE_DESIGN_ENTRY_POINT="gaia-dev-story"
+export FORCE_DESIGN_SPRINT_ID="<sprint-id from $ARGUMENTS, or empty>"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/setup.sh" --force-design --reason "$FORCE_DESIGN_REASON" --entry-point "$FORCE_DESIGN_ENTRY_POINT" ${FORCE_DESIGN_SPRINT_ID:+--sprint-id "$FORCE_DESIGN_SPRINT_ID"}
+```
+
+The halt from the prelude's `## Setup` invocation is otherwise binding — the agent must not proceed past a design-gate halt.
 
 **YOLO activation.** `setup.sh` detects `yolo` / `--yolo` in the invocation
 arguments (via `$ARGUMENTS`, since the `!`-Setup directive does not forward
@@ -335,6 +353,10 @@ Resolve the developer persona via the shared resolver (it runs in the parent con
 
 ### Step 4 -- Plan Implementation
 
+<!-- design-gate begin -->
+**Design gate effect.** The `setup.sh` pre-start gate has already run before reaching this step. If the design record is stale or not approved, setup.sh halted the skill — the orchestrator never reaches Step 4. A story whose design is approved proceeds normally. The override path (`--force-design`) is documented in the Override gate section above.
+<!-- design-gate end -->
+
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 4 plan {story_key}` to record the step-boundary event.
 
 > **Developer-authored (Step 3b).** The implementation plan is authored by the resolved `{stack}-dev` developer subagent, dispatched per the Step 3b contract — NOT by the main-turn orchestrator. The orchestrator dispatches the developer to produce the plan, then receives the rendered plan back and runs the planning gate (validation / approval) below. Do NOT have the orchestrator author the plan inline.
@@ -344,15 +366,6 @@ Resolve the developer persona via the shared resolver (it runs in the parent con
   - For REWORK mode: the developer reads the failed review reports and focuses the plan on fixing review issues.
   - For RESUME mode: the developer continues from checkpoint state.
 - The developer returns the rendered plan to the orchestrator, which renders it to the user and runs the planning gate below. The orchestrator does NOT author or substitute its own plan.
-
-<!-- figma graceful-degrade begin -->
-**Figma graceful-degrade:** Before rendering the plan, if the story frontmatter has a `figma:` block, probe the Figma MCP server (e.g., `mcp__claude_ai_Figma__whoami`). If the probe fails (server unavailable, auth error, timeout, or the server is not listed):
-
-- Log a single-line warning to stderr: `figma_mcp_unavailable: server={name} fallback=text-only` (single-line gate-log convention).
-- Proceed with text-only context — DO NOT halt, no exception. Plan rendering continues with whatever non-Figma context is available.
-
-Stories without a `figma:` frontmatter block proceed unchanged — this region only fires when Figma context was requested.
-<!-- figma graceful-degrade end -->
 
 <!-- planning gate begin -->
 <!-- plan-structure validator hook -->
