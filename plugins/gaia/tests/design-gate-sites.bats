@@ -1833,7 +1833,7 @@ teardown() {
 # Doc-page structural check: design-approval prerequisite is inside <ul>
 # ═══════════════════════════════════════════════════════════════════════════
 
-@test "doc pages: design-approval prerequisite sits inside the prerequisites list on all eight pages" {
+@test "doc pages: design-approval prerequisite is well-formed on all eight pages" {
   local doc_dir
   doc_dir="$(cd "$BATS_TEST_DIRNAME/../../../documentation/commands" && pwd)"
   local site
@@ -1841,13 +1841,44 @@ teardown() {
     local page="$doc_dir/$site.html"
     [ -f "$page" ] || { echo "FAIL: $page not found" >&2; return 1; }
 
-    # Extract the prerequisites section
+    # Extract the prerequisites section (first <section id="prerequisites"> to its </section>).
+    # Use awk, not sed, because BSD sed continues the range when start and
+    # end match the same line.
     local prereq
-    prereq="$(sed -n '/<section id="prerequisites">/,/<\/section>/p' "$page")"
+    prereq="$(awk '/<section id="prerequisites">/{p=1} p{print} p && /<\/section>/{exit}' "$page")"
     [ -n "$prereq" ] || { echo "FAIL: $site.html has no prerequisites section" >&2; return 1; }
 
+    # Item must be inside the section
     echo "$prereq" | grep -q "Design approval required" || {
       echo "FAIL: $site.html design-approval item is not inside the prerequisites section" >&2
+      return 1
+    }
+
+    # Item must contain the literal &lt;text&gt; placeholder
+    echo "$prereq" | grep -q '&lt;text&gt;' || {
+      echo "FAIL: $site.html missing literal &lt;text&gt; in design-approval item" >&2
+      return 1
+    }
+
+    # No sed-corruption artifacts anywhere on the page
+    local full
+    full="$(cat "$page")"
+    if echo "$full" | grep -qE '</ul></section>lt;|</ul></section>gt;|</ul></section>amp;'; then
+      echo "FAIL: $site.html contains sed-corruption artifact (</ul></section> followed by lt;/gt;/amp;)" >&2
+      return 1
+    fi
+
+    # Balanced <ul>/<ul> and single </section> inside the prerequisites section
+    local ul_open ul_close section_close
+    ul_open="$(echo "$prereq" | grep -o '<ul>' | wc -l | tr -d ' ')"
+    ul_close="$(echo "$prereq" | grep -o '</ul>' | wc -l | tr -d ' ')"
+    section_close="$(echo "$prereq" | grep -o '</section>' | wc -l | tr -d ' ')"
+    [ "$ul_open" -eq "$ul_close" ] || {
+      echo "FAIL: $site.html prerequisites has unbalanced <ul> ($ul_open open, $ul_close close)" >&2
+      return 1
+    }
+    [ "$section_close" -eq 1 ] || {
+      echo "FAIL: $site.html prerequisites has $section_close </section> tags (expected 1)" >&2
       return 1
     }
   done
