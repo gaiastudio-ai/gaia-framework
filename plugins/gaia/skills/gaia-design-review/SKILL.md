@@ -69,7 +69,7 @@ Read the design project content through the integration as the authoritative sou
 Compare the project content against the UX design document and the accessibility rules.
 
 1. Read the UX design document from `${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/ux-design.md`.
-2. Read the accessibility rules from the accessibility validation skill's rubric.
+2. Read the accessibility rules from the shared accessibility rubric at `${CLAUDE_PLUGIN_ROOT}/rubrics/base/a11y.json` — the same rubric `/gaia-validate-design-a11y` applies at planning time — and evaluate the design-time criteria (colour contrast, semantic structure, keyboard navigation design, landmark planning).
 3. Compare the project content (from Step 1) against both references.
 4. Emit severity-tagged findings for every discrepancy:
    - **high** — critical usability or accessibility failures, missing required components
