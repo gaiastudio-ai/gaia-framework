@@ -413,7 +413,8 @@ teardown() {
   local mutant_sh="$plugin_copy/skills/$target_site/scripts/setup.sh"
   local orig_lines
   orig_lines="$(wc -l < "$mutant_sh" | tr -d ' ')"
-  sed -i '' '/_gate_run_pre_start/d' "$mutant_sh"
+  sed '/_gate_run_pre_start/d' "$mutant_sh" > "$mutant_sh.tmp" && mv "$mutant_sh.tmp" "$mutant_sh"
+  chmod +x "$mutant_sh"
   local mutant_lines
   mutant_lines="$(wc -l < "$mutant_sh" | tr -d ' ')"
   # Guard: the sed must have actually removed something
@@ -1813,7 +1814,8 @@ teardown() {
   cp -R "$plugin_root" "$plugin_copy"
   rm -f "$plugin_copy/scripts/lib/gate-predicates.sh"
   local mutant_sh="$plugin_copy/skills/$target_site/scripts/setup.sh"
-  sed -i '' 's/die "gate-predicates.sh not found/log "gate-predicates.sh not found/' "$mutant_sh"
+  sed 's/die "gate-predicates.sh not found/log "gate-predicates.sh not found/' "$mutant_sh" > "$mutant_sh.tmp" && mv "$mutant_sh.tmp" "$mutant_sh"
+  chmod +x "$mutant_sh"
 
   local rc=0
   env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
