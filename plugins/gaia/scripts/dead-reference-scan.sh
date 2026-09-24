@@ -327,6 +327,15 @@ is_allowlisted() {
   # mentions are the contractual assertion target — same precedent as
   # e70-s5-skill-registration.bats above.
   [[ "$path" == */plugins/gaia/tests/retirement-sweep-clean.bats ]] && return 0
+  # lifecycle-immutability.bats pins lifecycle-sequence.yaml node baselines
+  # as its contractual assertion target — same precedent as design-gate-sites.bats.
+  [[ "$path" == */plugins/gaia/tests/lifecycle-immutability.bats ]] && return 0
+  # design-registration-completeness.bats asserts registration in
+  # lifecycle-sequence.yaml, workflow-manifest.csv, and gaia-help.csv.
+  [[ "$path" == */plugins/gaia/tests/design-registration-completeness.bats ]] && return 0
+  # design-lifecycle-docs.bats asserts doc-site pages reference the design
+  # lifecycle — same precedent as brain-user-docs.bats.
+  [[ "$path" == */plugins/gaia/tests/design-lifecycle-docs.bats ]] && return 0
   # dead-reference-scan.bats asserts both positive (allowed) and negative
   # (still-failing) cases against the same retired tokens, so the literal v1
   # filenames appear in test bodies.

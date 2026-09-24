@@ -110,8 +110,10 @@ core	dead-reference-scan.bats
 core	design-a11y-rebind.bats
 core	design-gate-sites.bats
 core	design-gate.bats
+core	design-lifecycle-docs.bats
 core	design-record-init-not-applicable.bats
 core	design-record.bats
+core	design-registration-completeness.bats
 core	detect-signals-proposal.bats
 core	detect-ux-scope.bats
 core	dev-story-promotion-chain-detect.bats
@@ -246,6 +248,7 @@ core	issue-1391-no-bash4-case-expansion.bats
 core	issue-1395-brownfield-walkthrough-tier2.bats
 core	issue-1396-test-strategy-artifact-home.bats
 core	issue-1405-epic-key-normalization.bats
+core	lifecycle-immutability.bats
 core	lint-bats-script-refs.bats
 core	lock-helper.bats
 core	lock-review-gate-ledger.bats
