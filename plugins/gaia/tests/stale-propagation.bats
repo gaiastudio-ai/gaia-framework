@@ -34,6 +34,38 @@ compliance:
 EOF
 }
 
+# seed_full_config UI_PRESENT — create .gaia/config/project-config.yaml with
+# all 11 required fields so resolve-config.sh passes. Used by setup.sh tests
+# that need setup.sh to reach the quality-gate code path, not exit early in
+# resolve-config. Modelled on design-gate-sites.bats.
+seed_full_config() {
+  local ui_present="${1:-true}"
+  mkdir -p "$TEST_TMP/.gaia/config"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/test-artifacts"
+  mkdir -p "$TEST_TMP/.gaia/artifacts/creative-artifacts"
+  mkdir -p "$TEST_TMP/_memory/checkpoints"
+  mkdir -p "$TEST_TMP/_gaia"
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<EOF
+project_root: $TEST_TMP
+project_path: $TEST_TMP
+memory_path: $TEST_TMP/_memory
+checkpoint_path: $TEST_TMP/_memory/checkpoints
+installed_path: $TEST_TMP/_gaia
+framework_version: 1.218.2
+date: 2026-09-24
+test_artifacts: $TEST_TMP/.gaia/artifacts/test-artifacts
+planning_artifacts: $TEST_TMP/.gaia/artifacts/planning-artifacts
+implementation_artifacts: $TEST_TMP/.gaia/artifacts/implementation-artifacts
+creative_artifacts: $TEST_TMP/.gaia/artifacts/creative-artifacts
+compliance:
+  ui_present: $ui_present
+ci_platform:
+  provider: none
+EOF
+}
+
 seed_roster() {
   local roster_dir="$TEST_TMP/.gaia/custom/stakeholders"
   mkdir -p "$roster_dir"
@@ -222,6 +254,9 @@ teardown() { common_teardown; }
   grep -qi 'state:.*stale' "$stderr_file" || fail "gate stderr should contain the stale state diagnostic"
 }
 
+# This test is gated on the concurrent S8 branch merging. Until that branch
+# lands, the eight SKILL.md files lack the design_approved declaration and
+# this test correctly fails. Leave as-is.
 @test "(AC2) all eight solutioning entry points declare design_approved predicate" {
   local -a sites=(
     gaia-adversarial
@@ -345,14 +380,13 @@ teardown() { common_teardown; }
   [ -f "$SETUP_SH_DS" ] || fail "dev-story setup.sh not found at $SETUP_SH_DS"
   [ -f "$PREDICATES_SCRIPT" ] || fail "gate-predicates.sh not found at $PREDICATES_SCRIPT"
 
-  seed_config true
+  seed_full_config true
   seed_roster
   seed_probe_stub available
   _init_record
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor test
 
   # Seed traceability to pass the existing traceability gate
-  mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
   printf '# Traceability Matrix\n| Req | Test |\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/traceability-matrix.md"
   seed_sprint_status sprint-99
   seed_lifecycle_overrides
@@ -367,6 +401,13 @@ teardown() { common_teardown; }
 
   [ "$rc" -ne 0 ] || fail "dev-story setup.sh should exit non-zero on stale record but exited 0"
 
+  # Verify resolve-config did NOT fail — the halt must come from the design gate
+  local stripped_stderr
+  stripped_stderr="$(sed "s|${TEST_TMP}|TMPDIR|g" "$stderr_file")"
+  if printf '%s' "$stripped_stderr" | grep -q 'missing required field'; then
+    fail "setup.sh failed in resolve-config, not at the design gate: $(head -3 "$stderr_file")"
+  fi
+
   # Verify the gate's structured diagnostic fields appear
   grep -q 'Record:' "$stderr_file" || fail "gate stderr should contain 'Record:' diagnostic"
   grep -qi 'state:.*stale' "$stderr_file" || fail "gate stderr should contain 'State:.*stale'"
@@ -375,13 +416,12 @@ teardown() { common_teardown; }
 @test "(AC4) dev-story setup.sh fails closed when gate-predicates.sh is absent" {
   [ -f "$SETUP_SH_DS" ] || fail "dev-story setup.sh not found at $SETUP_SH_DS"
 
-  seed_config true
+  seed_full_config true
   seed_roster
   _init_record
 
   seed_sprint_status sprint-99
   seed_lifecycle_overrides
-  mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
   printf '# Traceability Matrix\n| Req | Test |\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/traceability-matrix.md"
 
   # Point PLUGIN_SCRIPTS_DIR to a dir without gate-predicates.sh
@@ -404,32 +444,46 @@ teardown() { common_teardown; }
     bash "$fake_plugin_root/skills/gaia-dev-story/scripts/setup.sh" 2>"$stderr_file" || rc=$?
 
   [ "$rc" -ne 0 ] || fail "setup.sh should exit non-zero when gate-predicates.sh is absent but exited 0"
+
+  # Verify resolve-config did NOT fail
+  if grep -q 'missing required field' "$stderr_file"; then
+    fail "setup.sh failed in resolve-config, not at the gate-predicates check: $(head -3 "$stderr_file")"
+  fi
+
   grep -q 'gate-predicates.sh not found' "$stderr_file" \
     || fail "stderr should contain 'gate-predicates.sh not found'"
   grep -q 'cannot evaluate required quality gates' "$stderr_file" \
     || fail "stderr should contain 'cannot evaluate required quality gates'"
 }
 
-@test "(AC4) dev-story passes on approved design" {
+# Positive control: once gate wiring is added, this test PASSES in Red (the
+# gate sees an approved record and proceeds). The other AC4 tests carry the
+# failing-Red load; this one confirms the happy path does not regress.
+@test "(AC4) dev-story setup.sh passes on approved design (positive control)" {
   [ -f "$SETUP_SH_DS" ] || fail "dev-story setup.sh not found at $SETUP_SH_DS"
   [ -f "$PREDICATES_SCRIPT" ] || fail "gate-predicates.sh not found at $PREDICATES_SCRIPT"
 
-  seed_config true
+  seed_full_config true
   seed_roster
   seed_probe_stub available
   _build_approved_record
 
   seed_sprint_status sprint-99
   seed_lifecycle_overrides
-  mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
   printf '# Traceability Matrix\n| Req | Test |\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/traceability-matrix.md"
 
+  local stderr_file="$TEST_TMP/ac4-approved-stderr.txt"
   local rc=0
   env PROJECT_ROOT="$TEST_TMP" \
     PROJECT_PATH="$TEST_TMP" \
     CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
     PATH="$TEST_TMP/bin:$PATH" \
-    bash "$SETUP_SH_DS" 2>/dev/null || rc=$?
+    bash "$SETUP_SH_DS" 2>"$stderr_file" || rc=$?
+
+  # Verify resolve-config did NOT fail
+  if grep -q 'missing required field' "$stderr_file"; then
+    fail "setup.sh failed in resolve-config, not at the gate: $(head -3 "$stderr_file")"
+  fi
 
   [ "$rc" -eq 0 ] || fail "dev-story setup.sh should pass on approved record but exited $rc"
 }
@@ -438,7 +492,7 @@ teardown() { common_teardown; }
   [ -f "$SETUP_SH_DS" ] || fail "dev-story setup.sh not found at $SETUP_SH_DS"
   [ -f "$PREDICATES_SCRIPT" ] || fail "gate-predicates.sh not found at $PREDICATES_SCRIPT"
 
-  seed_config true
+  seed_full_config true
   seed_roster
   seed_probe_stub available
   _init_record
@@ -446,9 +500,9 @@ teardown() { common_teardown; }
 
   seed_sprint_status sprint-99
   seed_lifecycle_overrides
-  mkdir -p "$TEST_TMP/.gaia/artifacts/planning-artifacts"
   printf '# Traceability Matrix\n| Req | Test |\n' > "$TEST_TMP/.gaia/artifacts/planning-artifacts/traceability-matrix.md"
 
+  local stderr_file="$TEST_TMP/ac4-override-stderr.txt"
   local rc=0
   env PROJECT_ROOT="$TEST_TMP" \
     PROJECT_PATH="$TEST_TMP" \
@@ -459,7 +513,12 @@ teardown() { common_teardown; }
       --reason "testing override for dev-story" \
       --entry-point gaia-dev-story \
       --sprint-id sprint-99 \
-    2>/dev/null || rc=$?
+    2>"$stderr_file" || rc=$?
+
+  # Verify resolve-config did NOT fail
+  if grep -q 'missing required field' "$stderr_file"; then
+    fail "setup.sh failed in resolve-config, not at the gate: $(head -3 "$stderr_file")"
+  fi
 
   [ "$rc" -eq 0 ] || fail "dev-story setup.sh with --force-design should succeed but exited $rc"
 
@@ -633,17 +692,27 @@ teardown() { common_teardown; }
 }
 
 @test "(AC5) no path in this story sets approved" {
-  # Sweep the three SKILL.md files and this test file for write patterns
-  # that set approved, excluding:
-  # - Comments (lines starting with #)
-  # - Test assertion contexts (lines with "fail" or "[" or "assert")
-  # - The stale-to-approved refused test which asserts the writer refuses it
+  # Sweep the three SKILL.md files for write patterns that set approved,
+  # excluding comments and test assertion contexts. Also assert that the
+  # stale-transition regions exist in add-feature and edit-ux, so this test
+  # does not pass vacuously when regions are absent.
 
   local -a targets=(
     "$SKILL_MD_AF"
     "$SKILL_MD_UX"
     "$SKILL_MD_DS"
   )
+
+  # Precondition: the stale-transition regions must be present so we sweep
+  # real content, not absent markers. This makes the test fail in Red for
+  # the right reason (regions missing) rather than pass vacuously.
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found at $SKILL_MD_AF"
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found at $SKILL_MD_UX"
+  [ -f "$SKILL_MD_DS" ] || fail "dev-story SKILL.md not found at $SKILL_MD_DS"
+  grep -qF '<!-- design-stale-transition begin -->' "$SKILL_MD_AF" \
+    || fail "add-feature SKILL.md missing stale-transition region — cannot sweep absent content"
+  grep -qF '<!-- design-stale-transition begin -->' "$SKILL_MD_UX" \
+    || fail "edit-ux SKILL.md missing stale-transition region — cannot sweep absent content"
 
   local file hits=0
   for file in "${targets[@]}"; do

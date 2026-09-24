@@ -277,53 +277,5 @@ GARBOF
   [ "$rc" -ne 0 ] || fail "driver should fail closed on unknown probe stdout but exited 0"
 }
 
-@test "(AC-EC4) probe available with decision ambiguous transitions to stale" {
-  [ -f "$DRIVER_SCRIPT" ] || fail "design-stale-transition.sh not found at $DRIVER_SCRIPT"
-
-  seed_config true
-  seed_roster
-  _build_approved_record
-
-  local bridge_cmd
-  bridge_cmd="$(_make_bridge_stub available 0)"
-
-  local rc=0
-  env PROJECT_ROOT="$TEST_TMP" \
-    DESIGN_PROBE_BRIDGE_CMD="$bridge_cmd" \
-    bash "$DRIVER_SCRIPT" \
-      --decision ambiguous \
-      --actor test \
-    2>/dev/null || rc=$?
-
-  [ "$rc" -eq 0 ] || fail "ambiguous+available should exit 0 but exited $rc"
-
-  local state
-  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
-  [ "$state" = "stale" ]
-}
-
-@test "(AC-EC4) probe available with decision no leaves record unchanged" {
-  [ -f "$DRIVER_SCRIPT" ] || fail "design-stale-transition.sh not found at $DRIVER_SCRIPT"
-
-  seed_config true
-  seed_roster
-  _build_approved_record
-
-  local hash_before state_before
-  hash_before="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
-  state_before="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
-
-  local bridge_cmd
-  bridge_cmd="$(_make_bridge_stub available 0)"
-
-  env PROJECT_ROOT="$TEST_TMP" \
-    DESIGN_PROBE_BRIDGE_CMD="$bridge_cmd" \
-    bash "$DRIVER_SCRIPT" \
-      --decision no \
-      --actor test \
-    2>/dev/null
-
-  local hash_after
-  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
-  [ "$hash_before" = "$hash_after" ]
-}
+# Tests 8 and 9 removed — they duplicated test 6 (ambiguous defaults to stale)
+# and test 5 (decision no skips transition) respectively.
