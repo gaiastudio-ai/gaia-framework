@@ -18,15 +18,6 @@ load 'test_helper.bash'
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; return 1; }
 
-# Portable sha256
-_sha256_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
-}
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -71,26 +62,23 @@ _seed_temp_project() {
   echo "$root"
 }
 
-# _seed_record ROOT STATE ITERATION — write a minimal valid design record.
+# _seed_record ROOT STATE — create a valid design record through the writer's
+# own verbs (init + optional transition), never via direct YAML writes.
 _seed_record() {
-  local root="$1" state="${2:-draft}" iteration="${3:-1}"
-  cat > "$root/.gaia/state/design-record.yaml" <<EOF
-schema_version: "1.0"
-applicability: applicable
-design_state: "$state"
-iteration: $iteration
-project:
-  reference: "test-project-ref"
-  discovered_via: "created"
-  questionnaire_record: ".gaia/artifacts/planning-artifacts/ux-design/design-questionnaire.md"
-reviews: []
-approvals: []
-overrides: []
-audit: []
-audit_head:
-  count: 0
-  last_digest: ""
-EOF
+  local root="$1" state="${2:-draft}"
+  export PROJECT_ROOT="$root"
+
+  "$DESIGN_RECORD_SH" init \
+    --reference "test-project-ref" \
+    --discovered-via "created" \
+    --questionnaire-record ".gaia/artifacts/planning-artifacts/ux-design/design-questionnaire.md" \
+    --actor "test-seed" >/dev/null 2>&1 \
+    || fail "_seed_record: init failed"
+
+  if [ "$state" != "draft" ]; then
+    "$DESIGN_RECORD_SH" transition --to "$state" --actor "test-seed" >/dev/null 2>&1 \
+      || fail "_seed_record: transition to $state failed"
+  fi
 }
 
 # _seed_stakeholder_roster ROOT — add two design/UX-tagged stakeholders.
@@ -235,7 +223,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -281,7 +269,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -320,7 +308,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "draft" 1
+  _seed_record "$root" "draft"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -343,7 +331,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -388,7 +376,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -423,7 +411,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -457,7 +445,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -534,7 +522,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   # Do NOT seed a stakeholder roster — empty roster triggers vacuous convergence
   export PROJECT_ROOT="$root"
 
@@ -629,7 +617,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -713,7 +701,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -752,7 +740,7 @@ UX
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -838,7 +826,7 @@ BOUNDARY
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   _seed_stakeholder_roster "$root"
   export PROJECT_ROOT="$root"
 
@@ -871,7 +859,7 @@ BOUNDARY
 
   local root
   root="$(_seed_temp_project)"
-  _seed_record "$root" "review" 1
+  _seed_record "$root" "review"
   # No stakeholders — vacuous convergence
   export PROJECT_ROOT="$root"
 
@@ -893,6 +881,44 @@ BOUNDARY
     fail "mutant is vacuous: transition surfaces the vacuous warning (should be silent)"
 
   rm -rf "$root"
+}
+
+@test "(AC4) structural: SKILL.md orders check-convergence before transition in the approval path" {
+  # Guards the SKILL.md ordering rule: check-convergence MUST appear on an
+  # earlier line than transition in the "all approved" block of Step 5.
+  # Without this, transition silences convergence stderr and the user never
+  # sees the vacuous-convergence warning.
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — ordering rule cannot be verified"
+
+  # Extract Step 5 (the convergence and transition step)
+  local step5
+  step5="$(awk '
+    /^### Step 5/ { found=1 }
+    found && /^### Step [^5]/ { exit }
+    found { print }
+  ' "$SKILL_MD" 2>/dev/null)"
+  [ -n "$step5" ] || fail "SKILL.md has no Step 5 block"
+
+  # Within Step 5, find the "all approved" sub-block (bullet 3)
+  local approved_block
+  approved_block="$(printf '%s\n' "$step5" | awk '
+    /all.*approved|If all.*approved/ { found=1 }
+    found && /^[0-9]+\.\s/ && !/all.*approved|If all.*approved/ { exit }
+    found { print }
+  ')"
+  [ -n "$approved_block" ] || fail "Step 5 has no 'all approved' sub-block"
+
+  # check-convergence must appear on an earlier line than the transition
+  # invocation.  Match the actual verb call (transition --to) so that
+  # incidental mentions like "(before transition)" do not confuse the test.
+  local conv_line trans_line
+  conv_line="$(printf '%s\n' "$approved_block" | grep -n 'check-convergence' | head -1 | cut -d: -f1)"
+  trans_line="$(printf '%s\n' "$approved_block" | grep -n 'transition --to\|transition .*review.*approved' | head -1 | cut -d: -f1)"
+
+  [ -n "$conv_line" ] || fail "check-convergence not found in the approval path"
+  [ -n "$trans_line" ] || fail "transition invocation not found in the approval path"
+  [ "$conv_line" -lt "$trans_line" ] || \
+    fail "check-convergence (line $conv_line) does not precede transition (line $trans_line) in the approval path"
 }
 
 @test "(AC-EC7 backstop) structural: SKILL.md calls verdict-provenance-check before add-review" {

@@ -494,9 +494,6 @@ EOF
     # test; one yq -i injects an unknown state for the default-fail mutant.
     # Both write to temp-dir fixtures, not production records.
     [ "$rel_path" = "tests/design-gate.bats" ] && continue
-    # design-review.bats: fixture seeding writes to temp-dir design records
-    # (never production records).
-    [ "$rel_path" = "tests/design-review.bats" ] && continue
 
     local matches
     matches="$(grep -nE "$write_patterns" "$filepath" 2>/dev/null \
