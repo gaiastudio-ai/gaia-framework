@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Design Lifecycle - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="design-lifecycle.html" class="active">Design Lifecycle</a></li>
+          <li><a href="gaia-brain.html">GAIA Brain</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#discovery">Discovery</a></li>
+          <li><a href="#questionnaire">Questionnaire</a></li>
+          <li><a href="#publication">Publication</a></li>
+          <li><a href="#review">Review</a></li>
+          <li><a href="#approval">Approval</a></li>
+          <li><a href="#gate-and-override">Gate and Override</a></li>
+          <li><a href="#stale-on-change">Stale on Change</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        Design Lifecycle
+      </nav>
+
+      <h1>Design Lifecycle</h1>
+
+      <p>
+        The design lifecycle governs how a project's user experience moves from
+        initial discovery through stakeholder approval and into the solutioning
+        phase. Every project that declares <code>ui_present: true</code> in its
+        configuration passes through these stages before architecture work can
+        begin.
+      </p>
+
+      <section id="discovery">
+        <h2>1. Discovery</h2>
+        <p>
+          Discovery is the initial exploration of user needs, existing patterns,
+          and design constraints. During this stage the UX designer gathers
+          research inputs -- personas, user journeys, competitive benchmarks --
+          and identifies the key interaction surfaces the project will need.
+          Discovery feeds directly into the questionnaire that captures concrete
+          design parameters.
+        </p>
+        <p>
+          Run <a href="commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>
+          to begin the discovery process. The command walks through a structured
+          conversation that covers user research, information architecture, and
+          interaction patterns.
+        </p>
+      </section>
+
+      <section id="questionnaire">
+        <h2>2. Questionnaire</h2>
+        <p>
+          The questionnaire stage collects the structured inputs that drive the
+          design specification: target devices, accessibility requirements,
+          brand constraints, component library preferences, and interaction
+          patterns. The questionnaire output becomes the authoritative design
+          brief that the rest of the lifecycle works against.
+        </p>
+        <p>
+          The questionnaire runs as part of <code>/gaia-create-ux</code>. Its
+          answers are recorded in the design specification artifact and
+          referenced by downstream stages.
+        </p>
+      </section>
+
+      <section id="publication">
+        <h2>3. Publication</h2>
+        <p>
+          Publication is the act of writing the design specification and making
+          it available for review. The specification covers wireframes,
+          interaction flows, component inventories, accessibility annotations,
+          and responsive breakpoints. Once published, the design record tracks
+          the specification's provenance and version.
+        </p>
+        <p>
+          The design record at <code>.gaia/state/design-record.yaml</code>
+          captures who created the specification, when it was published, and
+          which version of the source it was built from.
+        </p>
+      </section>
+
+      <section id="review">
+        <h2>4. Review</h2>
+        <p>
+          Review is a structured walkthrough of the published design with
+          stakeholders. The
+          <a href="commands/gaia-design-review.html"><code>/gaia-design-review</code></a>
+          command drives this stage: it loads the design specification, runs a
+          rubric-guided review, and records the reviewer's findings. Review can
+          iterate -- each round produces a new set of findings that the
+          designer addresses before requesting another review.
+        </p>
+      </section>
+
+      <section id="approval">
+        <h2>5. Approval</h2>
+        <p>
+          Approval marks the point where stakeholders agree the design is ready
+          for implementation. The approval verdict is recorded in the design
+          record as <code>approved: true</code> with a timestamp and the
+          approver's identity. Once approved, the design becomes the binding
+          contract that solutioning works against.
+        </p>
+        <p>
+          An approved design unlocks the solutioning phase: architecture,
+          threat modelling, infrastructure design, and epic decomposition can
+          proceed. Without approval, every solutioning entry point refuses to
+          start.
+        </p>
+      </section>
+
+      <section id="gate-and-override">
+        <h2>6. Gate and Override</h2>
+        <p>
+          The design approval gate is enforced at every solutioning entry
+          point. When the gate fires, it checks the design record for an
+          <code>approved: true</code> verdict. If the design is not approved,
+          the entry point halts with a diagnostic naming the review command.
+        </p>
+        <p>
+          In exceptional cases the gate can be overridden using the
+          <code>force-design</code> flag. An override is an audited event: the
+          design record logs the override reason, the person who authorised it,
+          and the timestamp. Overrides are visible in the sprint review and in
+          the design record history.
+        </p>
+        <p>
+          <strong>Note:</strong> the two-record consistency check that compares
+          the gate classification against the implementation-status ledger is a
+          drift detector. It catches cases where one record was updated without
+          the other, but it does not prove either record is correct. Both
+          records can agree and still be wrong. Treat its output as a quality
+          signal, not a proof of correctness.
+        </p>
+      </section>
+
+      <section id="stale-on-change">
+        <h2>7. Stale on Change</h2>
+        <p>
+          A design that was approved can become stale if the project changes in
+          ways that affect the design assumptions. When a design-affecting
+          change lands -- a new user journey, a modified data model, a revised
+          set of target devices -- the framework marks the design record as
+          stale. A stale design blocks solutioning just as an unapproved design
+          does: the gate fires, and the diagnostic names the change that
+          triggered the stale state.
+        </p>
+        <p>
+          To clear the stale state, run
+          <a href="commands/gaia-design-review.html"><code>/gaia-design-review</code></a>
+          again. The review stage examines whether the change invalidates the
+          existing design or whether the design still holds. If it still holds,
+          the reviewer re-approves it and the gate clears.
+        </p>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="index.html">Back to home</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
