@@ -984,7 +984,7 @@ STAKE
 # =========================================================================
 
 @test "(AC-EC1) non-boolean-true UI flag treated as not-applicable" {
-  for val in '"yes"' '"1"' '"True"' '"on"'; do
+  for val in '"yes"' '"1"' '"on"'; do
     seed_config "$val"
     rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
     run run_gate
@@ -994,6 +994,34 @@ STAKE
     app="$(yq '.applicability' "$TEST_TMP/.gaia/state/design-record.yaml")"
     [ "$app" = "not-applicable" ] || fail "ui_present=$val: applicability=$app, expected not-applicable"
   done
+}
+
+@test "(AC-EC1) unquoted True activates the gate" {
+  seed_config True
+  seed_probe_stub missing
+  # No record on disk — gate must fail (unapproved)
+  run run_gate
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+}
+
+@test "(AC-EC1) unquoted TRUE activates the gate" {
+  seed_config TRUE
+  seed_probe_stub missing
+  # No record on disk — gate must fail (unapproved)
+  run run_gate
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+}
+
+@test "(AC-EC1) quoted True string activates the gate" {
+  seed_config '"True"'
+  seed_probe_stub missing
+  # yq v4 prints True for a quoted "True" string identically to the boolean —
+  # the gate treats it as a UI project (fail-safe direction).
+  run run_gate
+  [ "$status" -eq 1 ]
+  _assert_gate_output
 }
 
 @test "(AC-EC1) boolean true requires design approval" {
