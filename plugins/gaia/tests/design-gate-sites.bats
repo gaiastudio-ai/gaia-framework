@@ -889,7 +889,7 @@ teardown() {
       # Strip comments, then grep for inlined logic patterns
       local stripped
       stripped="$(sed 's/#.*//' "$f")"
-      if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|approved|in-dev|stale)\"?)"; then
+      if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))"; then
         echo "INLINED: $f contains direct design-state logic" >&2
         inlined_count=$((inlined_count + 1))
       fi
@@ -918,7 +918,7 @@ teardown() {
   # The sweep should catch it
   local stripped
   stripped="$(sed 's/#.*//' "$mutant_sh")"
-  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|approved|in-dev|stale)\"?)"; then
+  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))"; then
     # Good — mutant caught
     :
   else
@@ -944,7 +944,7 @@ teardown() {
 
   local stripped
   stripped="$(sed 's/#.*//' "$mutant_sh")"
-  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|approved|in-dev|stale)\"?)"; then
+  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))"; then
     # Good — mutant caught
     :
   else
