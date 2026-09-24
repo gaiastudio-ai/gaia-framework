@@ -291,3 +291,128 @@ _seed_snapshot() {
 
   rm -rf "$root"
 }
+
+
+# =========================================================================
+# Newline injection — control characters in component names
+# =========================================================================
+
+@test "sync rejects component names containing newline characters" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  _seed_stale_ux_doc "$doc_dir"
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  # Build a snapshot with a component containing a literal newline via jq
+  printf '{"components":["header","footer","main-content","evil\\ninjection"]}\n' \
+    > "$root/snapshot.json"
+
+  run "$SYNC_SCRIPT" "$root/snapshot.json" "$ux_doc"
+  # Must exit non-zero
+  [ "$status" -ne 0 ] || \
+    fail "should reject component name containing newline"
+
+  # Doc must be byte-identical (no partial write)
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected component — partial write occurred"
+
+  # stderr should name the offending component
+  local cleaned_output
+  cleaned_output="$(printf '%s' "$output" | sed "s|${root}||g")"
+  [[ "$cleaned_output" == *"control"* ]] || [[ "$cleaned_output" == *"newline"* ]] || [[ "$cleaned_output" == *"invalid"* ]] || \
+    fail "should report the control-character rejection on stderr: $cleaned_output"
+
+  rm -rf "$root"
+}
+
+@test "sync rejects component names containing carriage return" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  _seed_stale_ux_doc "$doc_dir"
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  # Build a snapshot with a component containing a literal CR via jq
+  printf '{"components":["header","footer","main-content","evil\\rreturn"]}\n' \
+    > "$root/snapshot.json"
+
+  run "$SYNC_SCRIPT" "$root/snapshot.json" "$ux_doc"
+  [ "$status" -ne 0 ] || \
+    fail "should reject component name containing carriage return"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected component — partial write occurred"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Batch performance — 200 new components under 3 seconds
+# =========================================================================
+
+@test "sync 200 new components completes in under 3 s and is idempotent" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  _seed_stale_ux_doc "$doc_dir"
+  local ux_doc="$doc_dir/ux-design.md"
+
+  # Build a snapshot with 200 new components plus the 3 existing.
+  # Use python3 for fast JSON generation (jq-per-element is too slow).
+  python3 -c '
+import json, sys
+components = ["header", "footer", "main-content"]
+components += [f"new-component-{i}" for i in range(1, 201)]
+json.dump({"components": components}, sys.stdout)
+' > "$root/snapshot.json"
+
+  # Measure wall-clock time via python3
+  local start_ms end_ms elapsed_ms
+  start_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
+
+  run "$SYNC_SCRIPT" "$root/snapshot.json" "$ux_doc"
+
+  end_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
+  elapsed_ms=$((end_ms - start_ms))
+
+  [ "$status" -eq 0 ] || fail "sync of 200 components failed — exit $status: $output"
+  [ "$elapsed_ms" -lt 3000 ] || \
+    fail "performance: ${elapsed_ms} ms exceeds 3000 ms budget for 200 new components"
+
+  # All 200 components present
+  local count
+  count="$(grep -c '^- new-component-' "$ux_doc")"
+  [ "$count" -eq 200 ] || fail "expected 200 new components, found $count"
+
+  # Second run — byte-identical (idempotence)
+  local sha_first
+  sha_first="$(_sha256_file "$ux_doc")"
+
+  run "$SYNC_SCRIPT" "$root/snapshot.json" "$ux_doc"
+  [ "$status" -eq 0 ] || fail "second sync failed: $output"
+
+  local sha_second
+  sha_second="$(_sha256_file "$ux_doc")"
+  [ "$sha_first" = "$sha_second" ] || \
+    fail "second sync changed the doc: sha $sha_first -> $sha_second"
+
+  rm -rf "$root"
+}

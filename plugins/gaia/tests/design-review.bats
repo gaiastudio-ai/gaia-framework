@@ -688,8 +688,9 @@ UX
 
   # (c) check-convergence reports not-converged with B missing
   run "$DESIGN_RECORD_SH" check-convergence
-  [[ "$output" == *"not-converged"* ]] || [ "$status" -ne 0 ] || \
-    fail "convergence should report not-converged with B missing"
+  [ "$status" -eq 1 ] || fail "check-convergence should exit 1 when not converged — got $status"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "convergence should report not-converged with B missing — got: $output"
 
   # (d) transition review->review (iteration bumps)
   run "$DESIGN_RECORD_SH" transition --to review --actor "test-actor"
@@ -707,8 +708,9 @@ UX
     fail "A's approval iteration is $a_approval_iter, expected $pre_iter"
 
   run "$DESIGN_RECORD_SH" check-convergence
-  [[ "$output" == *"not-converged"* ]] || [ "$status" -ne 0 ] || \
-    fail "convergence at new iteration should report both A and B as missing"
+  [ "$status" -eq 1 ] || fail "check-convergence should exit 1 at new iteration — got $status"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "convergence at new iteration should report both A and B as missing — got: $output"
 
   rm -rf "$root"
 }
@@ -784,25 +786,23 @@ UX
 
   local record="$root/.gaia/state/design-record.yaml"
 
-  # Create boundary-marker-wrapped project content containing a sentinel
-  local boundary_content
-  boundary_content="$(cat <<'BOUNDARY'
+  # Write boundary-marker-wrapped project content containing a sentinel
+  cat > "$root/boundary.txt" <<'BOUNDARY'
 <<<DESIGN_PROJECT_BOUNDARY>>>
 This is the project read-back content.
-It contains the distinctive literal MARKER_SENTINEL_e9f2a7 which should never
-appear in a verdict's notes text.
+It contains the distinctive literal MARKER_SENTINEL_e9f2a7 which should never appear in a verdict notes text under any circumstances.
 <<<END_DESIGN_PROJECT_BOUNDARY>>>
 BOUNDARY
-)"
 
-  # Candidate notes containing the sentinel — should be rejected
-  local candidate_notes="The review found MARKER_SENTINEL_e9f2a7 in the design"
+  # Candidate notes echoing a 40+ char substring from the boundary — should be rejected
+  printf '%s' "The review found distinctive literal MARKER_SENTINEL_e9f2a7 which should never appear" \
+    > "$root/notes.txt"
 
   # Enable tracing
   export DESIGN_REVIEW_VERDICT_TRACE=1
 
   # Run the provenance check — should fail (non-zero exit)
-  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+  run "$PROVENANCE_SCRIPT" --notes-file "$root/notes.txt" --boundary-file "$root/boundary.txt"
   [ "$status" -ne 0 ] || \
     fail "provenance check should reject verdict matching boundary-marker content"
 
@@ -822,20 +822,23 @@ BOUNDARY
   [ -x "$PROVENANCE_SCRIPT" ] || \
     fail "verdict-provenance-check.sh does not exist or is not executable: $PROVENANCE_SCRIPT"
 
-  local boundary_content
-  boundary_content="$(cat <<'BOUNDARY'
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+
+  cat > "$tmpdir/boundary.txt" <<'BOUNDARY'
 <<<DESIGN_PROJECT_BOUNDARY>>>
 This is the project read-back content with specific project terms.
 <<<END_DESIGN_PROJECT_BOUNDARY>>>
 BOUNDARY
-)"
 
-  # Candidate notes with no verbatim overlap — should pass
-  local candidate_notes="The overall design quality is excellent with minor spacing issues"
+  printf '%s' "The overall design quality is excellent with minor spacing issues" \
+    > "$tmpdir/notes.txt"
 
-  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+  run "$PROVENANCE_SCRIPT" --notes-file "$tmpdir/notes.txt" --boundary-file "$tmpdir/boundary.txt"
   [ "$status" -eq 0 ] || \
     fail "provenance check should accept verdict with no boundary-marker match: $output"
+
+  rm -rf "$tmpdir"
 }
 
 @test "(AC-EC7 backstop) provenance check rejects with argument errors" {
@@ -846,9 +849,10 @@ BOUNDARY
   run "$PROVENANCE_SCRIPT"
   [ "$status" -ne 0 ] || fail "provenance check should fail on missing arguments"
 
-  # Only one argument
-  run "$PROVENANCE_SCRIPT" "some notes"
-  [ "$status" -ne 0 ] || fail "provenance check should fail on single argument"
+  # Only --notes-file, no --boundary-file
+  printf 'some notes' > "$TEST_TMP/notes.txt"
+  run "$PROVENANCE_SCRIPT" --notes-file "$TEST_TMP/notes.txt"
+  [ "$status" -ne 0 ] || fail "provenance check should fail with only --notes-file"
 }
 
 
@@ -883,8 +887,9 @@ BOUNDARY
 
   # Convergence must report not-converged
   run "$DESIGN_RECORD_SH" check-convergence
-  [[ "$output" == *"not-converged"* ]] || [ "$status" -ne 0 ] || \
-    fail "mutant: convergence reports converged without any approve calls"
+  [ "$status" -eq 1 ] || fail "mutant: check-convergence should exit 1 — got $status"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "mutant: convergence reports converged without any approve calls — got: $output"
 
   rm -rf "$root"
 }
