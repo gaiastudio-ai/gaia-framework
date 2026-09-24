@@ -322,6 +322,11 @@ is_allowlisted() {
   # lifecycle-sequence.yaml as its contractual assertion target — same
   # precedent as e70-s5-skill-registration.bats above.
   [[ "$path" == */plugins/gaia/tests/design-gate-sites.bats ]] && return 0
+  # retirement-sweep-clean.bats asserts that no workflow-manifest.csv or
+  # gaia-help.csv row resolves to the retired stub path. The CSV filename
+  # mentions are the contractual assertion target — same precedent as
+  # e70-s5-skill-registration.bats above.
+  [[ "$path" == */plugins/gaia/tests/retirement-sweep-clean.bats ]] && return 0
   # dead-reference-scan.bats asserts both positive (allowed) and negative
   # (still-failing) cases against the same retired tokens, so the literal v1
   # filenames appear in test bodies.

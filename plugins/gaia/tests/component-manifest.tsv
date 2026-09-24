@@ -287,6 +287,7 @@ core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
 core	retired-migrate-stories.bats
 core	retirement-fixture-traceability.bats
+core	retirement-sweep-clean.bats
 core	retro-finalize-sentinel.bats
 core	review-parity/gaia-atdd/action-skill-contract.bats
 core	review-parity/gaia-code-review/evidence-judgment-parity.bats
