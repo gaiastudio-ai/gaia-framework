@@ -200,6 +200,8 @@ setup() {
 teardown() {
   # Clean up any stale lock files
   rm -f "$TEST_TMP"/.gaia/state/*.lock "$TEST_TMP"/.gaia/state/*.gate.lock 2>/dev/null || true
+  # Clean up patched gate copies left by _make_patched or manual awk patches
+  rm -f "$(cd "$BATS_TEST_DIRNAME/../scripts/lib" && pwd)"/design-gate-patched-*.sh 2>/dev/null || true
   common_teardown
 }
 
@@ -1537,14 +1539,22 @@ STAKE
     { print }
   ' "$GATE_SCRIPT" > "$patched"
 
+  # (3a) Assert the awk patch actually injected the stat line, so a refactor
+  # of the anchor cannot silently turn this into a no-op.
+  grep -q 'stat -f "%Lp"' "$patched" || {
+    rm -f "$patched"
+    fail "awk patch did not inject the stat line — anchor may have been refactored"
+  }
+
   run _run_patched_gate "$patched" --force-design \
     --reason "Checking backup permissions at creation time" \
     --entry-point test --sprint-id sprint-99
-  rm -f "$patched"
+  # patched file is cleaned up by teardown (registered glob)
 
-  # The patched gate returns 1 (we forced it to exit early)
-  # but the output should contain the file permissions (600)
-  _stripped_output | grep -q '600' || fail "backup permissions are not 600; got output: $output"
+  # (3b) Match the mode exactly (a whole line equal to "600"), not a substring.
+  local mode_line
+  mode_line="$(_stripped_output | grep -xE '[0-9]+')" || true
+  [ "$mode_line" = "600" ] || fail "backup permissions are not exactly 600; got mode line: '$mode_line'; full output: $output"
 }
 
 # =========================================================================
@@ -1626,8 +1636,19 @@ STAKE
   [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ]
   # No backup file created (gate exited before the backup cp)
   [ ! -f "$TEST_TMP/.gaia/state/design-record.yaml.gate-backup" ]
-  # Diagnostic must mention the reason length constraint
-  _stripped_output | grep -qi "reason"
+
+  # The gate's OWN validation must produce its diagnostic — not a downstream
+  # writer rejection followed by rollback. Assert:
+  # (a) the gate-specific message about character count
+  _stripped_output | grep -q "at least 10 characters" || \
+    fail "expected gate-specific 'at least 10 characters' message; got: $output"
+  # (b) no rollback or lifecycle-writer failure text
+  if _stripped_output | grep -qi "rolled back"; then
+    fail "reason rejection came from downstream writer + rollback, not the gate guard; got: $output"
+  fi
+  if _stripped_output | grep -qi "lifecycle-overrides"; then
+    fail "lifecycle writer was reached despite bad reason; got: $output"
+  fi
 }
 
 # =========================================================================
@@ -1655,4 +1676,46 @@ STAKE
   [ "$status" -eq 1 ]
   _assert_gate_output
   _stripped_output | grep -qi "not-applicable"
+  # Remediation must name the reopen-applicable command
+  _stripped_output | grep -q "reopen-applicable" || \
+    fail "halt remediation must name design-record.sh reopen-applicable; got: $output"
+}
+
+# =========================================================================
+# End-to-end: stale NA record -> reopen-applicable -> gate halts as draft
+# =========================================================================
+
+@test "stale NA record reopened via reopen-applicable then gate halts as draft" {
+  # Phase 1: NA record on a UI project -> gate halts
+  seed_config false
+  run run_gate
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/.gaia/state/design-record.yaml" ]
+
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  _stripped_output | grep -qi "not-applicable"
+
+  # Phase 2: reopen the record
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
+    --reference "design-ref" \
+    --discovered-via "created" \
+    --questionnaire-record "path/to/questionnaire.md"
+
+  local app ds
+  app="$(yq '.applicability' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  ds="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$app" = "applicable" ]
+  [ "$ds" = "draft" ]
+
+  # Phase 3: gate now halts as draft (not approved), with the draft remediation
+  run run_gate
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+  _stripped_output | grep -qi "draft"
+  _stripped_output | grep -qi "review"
 }
