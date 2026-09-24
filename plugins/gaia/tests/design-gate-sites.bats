@@ -1070,6 +1070,99 @@ teardown() {
   rm -rf "$site_tmp"
 }
 
+# End-to-end: --bypass and --force-design each get their own --reason
+@test "create-arch: bypass-then-force ordering routes each reason to its own ledger" {
+  local site_tmp
+  site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/e2e-order1-XXXXXX")"
+
+  local old_tmp="$TEST_TMP"
+  TEST_TMP="$site_tmp"
+  seed_ui_project available
+  seed_site_prereqs gaia-create-arch
+  _build_review_record
+  seed_sprint_status sprint-82
+  seed_lifecycle_overrides
+  TEST_TMP="$old_tmp"
+
+  local setup_sh="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
+
+  local rc=0
+  env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
+    PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
+    bash "$setup_sh" --bypass gaia-threat-model --reason "bypass reason A" \
+      --force-design --reason "design reason B" \
+      --entry-point gaia-create-arch --sprint-id sprint-82 \
+    >/dev/null 2>&1 || rc=$?
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: exited $rc (expected 0)" >&2; return 1; }
+
+  # Design override ledger must have "design reason B"
+  local drec="$site_tmp/.gaia/state/design-record.yaml"
+  local override_reason
+  override_reason="$(yq '.overrides[-1].reason' "$drec")"
+  [[ "$override_reason" == *"design reason B"* ]] || {
+    echo "FAIL: design override reason is '$override_reason', expected 'design reason B'" >&2
+    return 1
+  }
+
+  # Lifecycle bypass ledger: the gaia-threat-model entry must carry "bypass reason A"
+  local lo="$site_tmp/.gaia/state/lifecycle-overrides.yaml"
+  local bypass_reason
+  bypass_reason="$(yq '[.bypasses[] | select(.skill == "gaia-threat-model")][0].reason' "$lo")"
+  [[ "$bypass_reason" == *"bypass reason A"* ]] || {
+    echo "FAIL: threat-model bypass reason is '$bypass_reason', expected 'bypass reason A'" >&2
+    return 1
+  }
+
+  rm -rf "$site_tmp"
+}
+
+@test "create-arch: force-then-bypass ordering routes each reason to its own ledger" {
+  local site_tmp
+  site_tmp="$(mktemp -d "$BATS_TEST_TMPDIR/e2e-order2-XXXXXX")"
+
+  local old_tmp="$TEST_TMP"
+  TEST_TMP="$site_tmp"
+  seed_ui_project available
+  seed_site_prereqs gaia-create-arch
+  _build_review_record
+  seed_sprint_status sprint-82
+  seed_lifecycle_overrides
+  TEST_TMP="$old_tmp"
+
+  local setup_sh="$SKILLS_DIR/gaia-create-arch/scripts/setup.sh"
+
+  local rc=0
+  env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
+    PROJECT_ROOT="$site_tmp" PATH="$site_tmp/bin:$PATH" \
+    bash "$setup_sh" --force-design --reason "design reason B" \
+      --bypass gaia-threat-model --reason "bypass reason A" \
+      --entry-point gaia-create-arch --sprint-id sprint-82 \
+    >/dev/null 2>&1 || rc=$?
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: exited $rc (expected 0)" >&2; return 1; }
+
+  # Design override ledger must have "design reason B"
+  local drec="$site_tmp/.gaia/state/design-record.yaml"
+  local override_reason
+  override_reason="$(yq '.overrides[-1].reason' "$drec")"
+  [[ "$override_reason" == *"design reason B"* ]] || {
+    echo "FAIL: design override reason is '$override_reason', expected 'design reason B'" >&2
+    return 1
+  }
+
+  # Lifecycle bypass ledger: the gaia-threat-model entry must carry "bypass reason A"
+  local lo="$site_tmp/.gaia/state/lifecycle-overrides.yaml"
+  local bypass_reason
+  bypass_reason="$(yq '[.bypasses[] | select(.skill == "gaia-threat-model")][0].reason' "$lo")"
+  [[ "$bypass_reason" == *"bypass reason A"* ]] || {
+    echo "FAIL: threat-model bypass reason is '$bypass_reason', expected 'bypass reason A'" >&2
+    return 1
+  }
+
+  rm -rf "$site_tmp"
+}
+
 @test "structural: each SKILL.md contains the override step (FORCE_DESIGN or --force-design)" {
   local site
   for site in "${SITES[@]}"; do
@@ -1734,4 +1827,28 @@ teardown() {
   }
 
   rm -rf "$site_tmp"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Doc-page structural check: design-approval prerequisite is inside <ul>
+# ═══════════════════════════════════════════════════════════════════════════
+
+@test "doc pages: design-approval prerequisite sits inside the prerequisites list on all eight pages" {
+  local doc_dir
+  doc_dir="$(cd "$BATS_TEST_DIRNAME/../../../documentation/commands" && pwd)"
+  local site
+  for site in "${SITES[@]}"; do
+    local page="$doc_dir/$site.html"
+    [ -f "$page" ] || { echo "FAIL: $page not found" >&2; return 1; }
+
+    # Extract the prerequisites section
+    local prereq
+    prereq="$(sed -n '/<section id="prerequisites">/,/<\/section>/p' "$page")"
+    [ -n "$prereq" ] || { echo "FAIL: $site.html has no prerequisites section" >&2; return 1; }
+
+    echo "$prereq" | grep -q "Design approval required" || {
+      echo "FAIL: $site.html design-approval item is not inside the prerequisites section" >&2
+      return 1
+    }
+  done
 }
