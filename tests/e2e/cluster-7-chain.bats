@@ -33,7 +33,9 @@ setup() {
            "$TEST_TMP/docs/implementation-artifacts/stories" \
            "$TEST_TMP/docs/planning-artifacts" \
            "$TEST_TMP/docs/test-artifacts" \
-           "$TEST_TMP/config"
+           "$TEST_TMP/config" \
+           "$TEST_TMP/.gaia/config" \
+           "$TEST_TMP/.gaia/state"
 
   # Set env overrides so resolve-config.sh resolves to our fixture workspace.
   export GAIA_PROJECT_ROOT="$TEST_TMP"
@@ -51,6 +53,11 @@ setup() {
   # Copy fixture config and schema
   cp "$FIXTURE_DIR/config/project-config.yaml" "$TEST_TMP/config/project-config.yaml"
   cp "$REPO_ROOT/plugins/gaia/config/project-config.schema.yaml" "$TEST_TMP/config/project-config.schema.yaml" 2>/dev/null || true
+
+  # Seed a gate-readable config at the canonical .gaia/config/ path so the
+  # design-approval quality gate passes (not-applicable for headless projects).
+  cp "$TEST_TMP/config/project-config.yaml" "$TEST_TMP/.gaia/config/project-config.yaml"
+  printf 'compliance:\n  ui_present: false\n' >> "$TEST_TMP/.gaia/config/project-config.yaml"
 
   # Copy fixture planning artifacts
   cp "$FIXTURE_DIR/epics-and-stories.md" "$TEST_TMP/docs/planning-artifacts/"
