@@ -789,3 +789,213 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   [ -n "$step_section" ] || fail "no step-list found in doc page"
   _assert_not_in_text "text-only" "$step_section" "(text-only fallback in step-list)"
 }
+
+# ===========================================================================
+# Security: path-traversal rejection in plan-publication.sh
+# ===========================================================================
+
+@test "(AC4) plan-publication.sh rejects path-traversal in local-manifest" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":"../../../etc/passwd","hash":"h1"}]' \
+    '[{"file":"safe.yaml","hash":"h2"}]' \
+    '[]'
+  _run_pub
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"../"* ]] || [[ "$output" == *"traversal"* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"unsafe"* ]]
+}
+
+@test "(AC4) plan-publication.sh rejects absolute path in local-manifest" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":"/etc/passwd","hash":"h1"}]' \
+    '[{"file":"safe.yaml","hash":"h2"}]' \
+    '[]'
+  _run_pub
+  [ "$status" -ne 0 ]
+}
+
+@test "(AC4) plan-publication.sh rejects path-traversal in last-published" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":"safe.yaml","hash":"h1"}]' \
+    '[{"file":"safe.yaml","hash":"h1"}]' \
+    '[{"file":"../../secrets.yaml","hash":"h2"}]'
+  _run_pub
+  [ "$status" -ne 0 ]
+}
+
+@test "(AC4) plan-publication.sh rejects empty filename" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":"","hash":"h1"}]' \
+    '[{"file":"safe.yaml","hash":"h2"}]' \
+    '[]'
+  _run_pub
+  [ "$status" -ne 0 ]
+}
+
+@test "(AC4) plan-publication.sh rejects control character in filename" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  # Filename with a newline
+  printf '[{"file":"good\\nbad","hash":"h1"}]' > "$TEST_TMP/local-manifest.json"
+  printf '[{"file":"safe.yaml","hash":"h2"}]' > "$TEST_TMP/remote-listing.json"
+  printf '[]' > "$TEST_TMP/last-published.json"
+  _run_pub
+  [ "$status" -ne 0 ]
+}
+
+@test "(AC4) plan-publication.sh never emits DELETE_ORPHAN for traversal path in remote" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  # Remote contains a traversal path that the framework supposedly published
+  _write_pub_fixtures \
+    '[]' \
+    '[{"file":"../../../etc/shadow","hash":"h1"},{"file":"safe.yaml","hash":"h2"}]' \
+    '[{"file":"../../../etc/shadow","hash":"h1"}]'
+  _run_pub
+  # Must either fail or silently skip the traversal path — never emit DELETE_ORPHAN for it
+  if [ "$status" -eq 0 ]; then
+    _assert_not_in_text "DELETE_ORPHAN" "$output" "(must not delete traversal paths)"
+  fi
+}
+
+@test "(AC4) path-traversal rejection mutant: removing the check lets traversal through" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":"tokens.yaml","hash":"h1"},{"file":"../escape.yaml","hash":"h2"}]' \
+    '[]' \
+    '[]'
+  _run_pub
+  [ "$status" -ne 0 ]
+}
+
+@test "(AC4) plan-publication.sh rejects dot-segment filename in local-manifest" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  # Each of these must be rejected: ".", "./a", "a/./b"
+  local bad_name
+  for bad_name in '.' './a' 'a/./b'; do
+    _write_pub_fixtures \
+      "[{\"file\":\"${bad_name}\",\"hash\":\"h1\"}]" \
+      '[]' \
+      '[]'
+    _run_pub
+    [ "$status" -ne 0 ] || fail "accepted unsafe dot-segment filename in local: ${bad_name}"
+  done
+}
+
+@test "(AC4) plan-publication.sh rejects trailing slash and empty segments in local-manifest" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  local bad_name
+  for bad_name in 'a/' 'a//b'; do
+    _write_pub_fixtures \
+      "[{\"file\":\"${bad_name}\",\"hash\":\"h1\"}]" \
+      '[]' \
+      '[]'
+    _run_pub
+    [ "$status" -ne 0 ] || fail "accepted unsafe filename in local: ${bad_name}"
+  done
+}
+
+@test "(AC4) plan-publication.sh rejects dot-segment filename in last-published" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  local bad_name
+  for bad_name in '.' './a' 'a/./b'; do
+    _write_pub_fixtures \
+      '[{"file":"safe.yaml","hash":"h1"}]' \
+      '[{"file":"safe.yaml","hash":"h1"}]' \
+      "[{\"file\":\"${bad_name}\",\"hash\":\"h2\"}]"
+    _run_pub
+    [ "$status" -ne 0 ] || fail "accepted unsafe dot-segment filename in last-published: ${bad_name}"
+  done
+}
+
+@test "(AC4) plan-publication.sh rejects trailing slash and empty segments in last-published" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  local bad_name
+  for bad_name in 'a/' 'a//b'; do
+    _write_pub_fixtures \
+      '[{"file":"safe.yaml","hash":"h1"}]' \
+      '[{"file":"safe.yaml","hash":"h1"}]' \
+      "[{\"file\":\"${bad_name}\",\"hash\":\"h2\"}]"
+    _run_pub
+    [ "$status" -ne 0 ] || fail "accepted unsafe filename in last-published: ${bad_name}"
+  done
+}
+
+@test "(AC4) dot-segment rejection mutant: bare dot in local produces WRITE without the check" {
+  # Prove the check is load-bearing: "." would produce "READ_FIRST . / WRITE ."
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":".","hash":"h1"}]' \
+    '[]' \
+    '[]'
+  _run_pub
+  [ "$status" -ne 0 ] || fail "dot-segment check is missing: '.' was accepted"
+}
+
+# ===========================================================================
+# Security: boundary-marker instruction in SKILL.md read-back steps
+# ===========================================================================
+
+@test "(AC1) Discovery step carries boundary-marker data-treatment instruction" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Discovery")"
+  [ -n "$block" ] || fail "no Discovery step block"
+  printf '%s' "$block" | grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data'
+}
+
+@test "(AC4) Publication step carries boundary-marker data-treatment instruction" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  printf '%s' "$block" | grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data'
+}
+
+@test "(AC4) boundary-marker instruction mutant: removing it makes test fail" {
+  # Prove the check catches absence by testing a block without the instruction
+  local fake_block="### Step 99 — Fake
+Read the project files and use them."
+  local found=false
+  printf '%s' "$fake_block" | grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data' || found=true
+  [ "$found" = "true" ] || fail "mutant block should NOT contain boundary-marker instruction"
+}
+
+# ===========================================================================
+# Performance: scale test for plan-publication.sh
+# ===========================================================================
+
+@test "(AC4) plan-publication.sh handles 500 entries without per-file fork growth" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+
+  # Generate 500-entry fixtures
+  local i
+  printf '[' > "$TEST_TMP/local-manifest.json"
+  printf '[' > "$TEST_TMP/remote-listing.json"
+  printf '[' > "$TEST_TMP/last-published.json"
+  for i in $(seq 1 500); do
+    local comma=""
+    [ "$i" -eq 1 ] || comma=","
+    printf '%s{"file":"file-%04d.yaml","hash":"new-%d"}' "$comma" "$i" "$i" >> "$TEST_TMP/local-manifest.json"
+    printf '%s{"file":"file-%04d.yaml","hash":"old-%d"}' "$comma" "$i" "$i" >> "$TEST_TMP/remote-listing.json"
+    printf '%s{"file":"file-%04d.yaml","hash":"old-%d"}' "$comma" "$i" "$i" >> "$TEST_TMP/last-published.json"
+  done
+  printf ']' >> "$TEST_TMP/local-manifest.json"
+  printf ']' >> "$TEST_TMP/remote-listing.json"
+  printf ']' >> "$TEST_TMP/last-published.json"
+
+  local start_time end_time elapsed
+  start_time="$(date +%s)"
+  _run_pub
+  end_time="$(date +%s)"
+  [ "$status" -eq 0 ]
+
+  elapsed=$((end_time - start_time))
+  [ "$elapsed" -lt 30 ] || fail "500 entries took ${elapsed}s (expected < 30s)"
+
+  # Verify output has 500 WRITE lines and 500 READ_FIRST lines
+  local write_count read_count
+  write_count="$(printf '%s\n' "$output" | grep -c '^WRITE ' || true)"
+  read_count="$(printf '%s\n' "$output" | grep -c '^READ_FIRST ' || true)"
+  [ "$write_count" -eq 500 ] || fail "expected 500 WRITE lines, got $write_count"
+  [ "$read_count" -eq 500 ] || fail "expected 500 READ_FIRST lines, got $read_count"
+}

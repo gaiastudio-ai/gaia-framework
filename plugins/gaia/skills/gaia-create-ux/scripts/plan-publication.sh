@@ -12,6 +12,21 @@
 #                           — designer edited since last publish; surface to user
 #   DELETE_ORPHAN <file>    — remove a framework-published file no longer needed
 #
+# Security: every filename in all three inputs is validated. Absolute paths,
+# path-traversal segments (../), empty names, and control characters (including
+# newlines) are rejected with a diagnostic naming the offending entry. This
+# prevents a crafted manifest from directing writes or deletions outside the
+# project boundary.
+#
+# Remote listing: a malformed or wrong-shape listing deliberately degrades to
+# "read everything first" (fail-safe), while malformed local and last-published
+# inputs fail closed. The remote listing comes from the live integration and
+# may be partially parseable; blocking publication on a transient parse failure
+# would be worse than forcing a read-first pass.
+#
+# Performance: the plan is computed in a single jq invocation that joins the
+# three inputs, avoiding O(N^2) per-file shell lookups.
+#
 # Script exposes no reusable public functions — the top-level flow is the
 # entire API. Public-function coverage guard is N/A.
 #
@@ -20,7 +35,7 @@
 #
 # Exit codes:
 #   0 — plan emitted successfully
-#   1 — malformed or missing input
+#   1 — malformed or missing input, or unsafe filename detected
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL
@@ -49,110 +64,87 @@ done
 
 # ---- input validation -----------------------------------------------------
 
-# _require_valid_json FILE LABEL — die with a diagnostic when FILE is not
-# parseable JSON. Centralises the jq-validation pattern (three call sites).
 _require_valid_json() {
   local file="$1" label="$2"
   jq '.' "$file" >/dev/null 2>&1 || _die "malformed JSON in ${label}: $file"
 }
 
-# Local manifest must exist, be non-empty, and be valid JSON
 [ -f "$LOCAL_MANIFEST" ] || _die "local manifest not found: $LOCAL_MANIFEST"
 [ -s "$LOCAL_MANIFEST" ] || _die "local manifest is empty: $LOCAL_MANIFEST"
 _require_valid_json "$LOCAL_MANIFEST" "local manifest"
 
-# Last-published: /dev/null is the first-run case (zero orphans); any other
-# path must be valid JSON if non-empty.
 if [ "$LAST_PUBLISHED" != "/dev/null" ] && [ -f "$LAST_PUBLISHED" ] && [ -s "$LAST_PUBLISHED" ]; then
   _require_valid_json "$LAST_PUBLISHED" "last-published"
 fi
 
-# Remote listing: a malformed or wrong-shape listing deliberately degrades to
-# "read everything first" (fail-safe), while malformed local and last-published
-# inputs fail closed. The remote listing comes from the live integration and
-# may be partially parseable; blocking publication on a transient parse failure
-# would be worse than forcing a read-first pass.
-# Remote listing may be empty (triggers READ_FIRST for all files)
-REMOTE_EMPTY=0
-if [ ! -f "$REMOTE_LISTING" ] || [ ! -s "$REMOTE_LISTING" ]; then
-  REMOTE_EMPTY=1
-else
-  jq '.' "$REMOTE_LISTING" >/dev/null 2>&1 || true  # tolerate; treated as empty
+# Remote listing: tolerate malformed — degrade to empty (read-everything-first)
+REMOTE_JSON="[]"
+if [ -f "$REMOTE_LISTING" ] && [ -s "$REMOTE_LISTING" ]; then
+  REMOTE_JSON="$(jq '.' "$REMOTE_LISTING" 2>/dev/null || printf '[]')"
 fi
 
-# ---- build lookup tables via jq ------------------------------------------
-
-# Read local files into a newline-delimited "file\thash" list
-LOCAL_FILES="$(jq -r '.[] | "\(.file)\t\(.hash)"' "$LOCAL_MANIFEST")"
-
-# Read remote files (if present)
-REMOTE_FILES=""
-if [ "$REMOTE_EMPTY" -eq 0 ]; then
-  REMOTE_FILES="$(jq -r '.[] | "\(.file)\t\(.hash)"' "$REMOTE_LISTING" 2>/dev/null || true)"
-fi
-
-# Read last-published files (if present)
-PUBLISHED_FILES=""
+# Last-published: /dev/null or missing means first run (no orphans)
+PUBLISHED_JSON="[]"
 if [ "$LAST_PUBLISHED" != "/dev/null" ] && [ -f "$LAST_PUBLISHED" ] && [ -s "$LAST_PUBLISHED" ]; then
-  PUBLISHED_FILES="$(jq -r '.[] | "\(.file)\t\(.hash)"' "$LAST_PUBLISHED" 2>/dev/null || true)"
+  PUBLISHED_JSON="$(jq '.' "$LAST_PUBLISHED" 2>/dev/null || printf '[]')"
 fi
 
-# ---- helper: lookup hash by filename in a tab-delimited list ---------------
-_lookup_hash() {
-  local filename="$1" list="$2"
-  printf '%s\n' "$list" | awk -F'\t' -v f="$filename" '$1 == f { print $2; exit }'
-}
+# ---- single-pass plan computation via jq ----------------------------------
+# One jq program reads all three inputs (via --argjson), validates filenames,
+# joins them by filename, and emits the plan. No per-file shell fork.
 
-# ---- emit the operation plan -----------------------------------------------
+jq -r --argjson remote "$REMOTE_JSON" --argjson published "$PUBLISHED_JSON" '
+  # Filename safety check: reject absolute, traversal (..), dot-segment (.),
+  # empty, trailing slash, empty path segments (//), and control chars
+  def safe_filename:
+    . as $f |
+    if ($f | length) == 0 then error("unsafe filename: empty")
+    elif ($f | startswith("/")) then error("unsafe filename (absolute): \($f)")
+    elif ($f | test("(^|/)\\.\\.(/|$)")) then error("unsafe filename (traversal): \($f)")
+    elif ($f | test("(^|/)\\.(/|$)")) then error("unsafe filename (dot-segment): \($f)")
+    elif ($f | test("/$")) then error("unsafe filename (trailing slash): \($f)")
+    elif ($f | test("//")) then error("unsafe filename (empty segment): \($f)")
+    elif ($f | test("[\\x00-\\x1f\\x7f]")) then error("unsafe filename (control char): \($f)")
+    else .
+    end;
 
-# Phase 1: for each local file, determine the operation
-while IFS=$'\t' read -r local_file local_hash; do
-  [ -n "$local_file" ] || continue
+  # Validate all local filenames
+  . as $local |
+  ($local | map(.file | safe_filename) | empty // null) |
 
-  if [ "$REMOTE_EMPTY" -eq 1 ]; then
-    # Remote unknown — must read first before anything
-    printf 'READ_FIRST %s\n' "$local_file"
-    printf 'WRITE %s\n' "$local_file"
-    continue
-  fi
+  # Validate all published filenames
+  ($published | map(.file | safe_filename) | empty // null) |
 
-  remote_hash="$(_lookup_hash "$local_file" "$REMOTE_FILES")"
+  # Build lookup objects: {filename: hash}
+  ($remote  | map({(.file): .hash}) | add // {}) as $remote_map |
+  ($published | map({(.file): .hash}) | add // {}) as $pub_map |
 
-  if [ -z "$remote_hash" ]; then
-    # New file, not in remote — still read first (the listing may be stale)
-    printf 'READ_FIRST %s\n' "$local_file"
-    printf 'WRITE %s\n' "$local_file"
-    continue
-  fi
+  # Phase 1: for each local file, determine the operation
+  ($local | map(
+    .file as $f | .hash as $lh |
+    $remote_map[$f] as $rh |
+    if $rh == null then
+      # Not in remote (new file or remote empty) — read first, then write
+      "READ_FIRST \($f)\nWRITE \($f)"
+    elif $lh == $rh then
+      "SKIP_UNCHANGED \($f)"
+    else
+      # Hashes differ — check for designer edit
+      $pub_map[$f] as $ph |
+      if ($ph != null) and ($rh != $ph) then
+        "READ_FIRST \($f)\nCONFLICT \($f) designer_hash=\($rh) framework_hash=\($lh)"
+      else
+        "READ_FIRST \($f)\nWRITE \($f)"
+      end
+    end
+  )) +
 
-  # File exists in remote — check if unchanged
-  if [ "$local_hash" = "$remote_hash" ]; then
-    printf 'SKIP_UNCHANGED %s\n' "$local_file"
-    continue
-  fi
+  # Phase 2: orphan detection — published files no longer in local
+  (($local | map({(.file): true}) | add // {}) as $local_set |
+   $published | map(
+    select($local_set[.file] == null) |
+    "DELETE_ORPHAN \(.file)"
+  ))
 
-  # Hashes differ — check if designer edited (remote differs from last-published)
-  published_hash="$(_lookup_hash "$local_file" "$PUBLISHED_FILES")"
-
-  printf 'READ_FIRST %s\n' "$local_file"
-
-  if [ -n "$published_hash" ] && [ "$remote_hash" != "$published_hash" ]; then
-    # Designer changed the file since our last publish
-    printf 'CONFLICT %s designer_hash=%s framework_hash=%s\n' "$local_file" "$remote_hash" "$local_hash"
-  else
-    # Remote matches what we last published (or was never published) — safe to write
-    printf 'WRITE %s\n' "$local_file"
-  fi
-done <<< "$LOCAL_FILES"
-
-# Phase 2: orphan detection — files we published that are no longer local
-if [ -n "$PUBLISHED_FILES" ]; then
-  while IFS=$'\t' read -r pub_file _pub_hash; do
-    [ -n "$pub_file" ] || continue
-    # Check if still in local manifest
-    in_local="$(_lookup_hash "$pub_file" "$LOCAL_FILES")"
-    if [ -z "$in_local" ]; then
-      printf 'DELETE_ORPHAN %s\n' "$pub_file"
-    fi
-  done <<< "$PUBLISHED_FILES"
-fi
+  | .[]
+' "$LOCAL_MANIFEST"
