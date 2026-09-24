@@ -70,6 +70,7 @@ fi
 # Branch on the stdout classification, never on exit code — the probe exits 1
 # for both missing and unauthorized.
 _probe_stderr="$(mktemp -t dst-probe-stderr.XXXXXX)"
+trap 'rm -f "$_probe_stderr" 2>/dev/null || true' EXIT
 _probe_state="$("$PROBE_SCRIPT" 2>"$_probe_stderr")" || true
 _probe_state="$(printf '%s' "$_probe_state" | head -1)"
 

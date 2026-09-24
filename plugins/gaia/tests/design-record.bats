@@ -1834,6 +1834,93 @@ FIXTURE
   [ "$status" -eq 0 ] || fail "schema should accept verdict: escalated, but validation failed: $output"
 }
 
+# =========================================================================
+# Symlink refusal on mutating verbs (shared mutate path)
+# =========================================================================
+
+@test "transition refuses a symlinked record and target stays byte-identical" {
+  assert_script_exists
+  seed_minimal_record "draft" 1
+
+  # Move the real record aside and plant a symlink at RECORD_PATH
+  local real_file="$TEST_TMP/real-record.yaml"
+  mv "$RECORD" "$real_file"
+  ln -s "$real_file" "$RECORD"
+  [ -L "$RECORD" ] || fail "symlink not created"
+
+  local pre_sha
+  pre_sha="$(_sha256_file "$real_file")"
+
+  run "$SCRIPT" transition --to review --actor test
+  [ "$status" -ne 0 ] || fail "transition should refuse a symlinked record but exited 0"
+  [[ "$output" == *"symlink"* ]] || fail "diagnostic should mention symlink"
+
+  # Target must be untouched
+  local post_sha
+  post_sha="$(_sha256_file "$real_file")"
+  [ "$pre_sha" = "$post_sha" ] || fail "symlink target was modified"
+}
+
+@test "add-review refuses a symlinked record and target stays byte-identical" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  local real_file="$TEST_TMP/real-record.yaml"
+  mv "$RECORD" "$real_file"
+  ln -s "$real_file" "$RECORD"
+  [ -L "$RECORD" ] || fail "symlink not created"
+
+  local pre_sha
+  pre_sha="$(_sha256_file "$real_file")"
+
+  run "$SCRIPT" add-review --verdict approved --reviewer tester --kind internal
+  [ "$status" -ne 0 ] || fail "add-review should refuse a symlinked record but exited 0"
+  [[ "$output" == *"symlink"* ]] || fail "diagnostic should mention symlink"
+
+  local post_sha
+  post_sha="$(_sha256_file "$real_file")"
+  [ "$pre_sha" = "$post_sha" ] || fail "symlink target was modified"
+}
+
+@test "mutant: removing the mutate-path symlink check lets transition proceed" {
+  assert_script_exists
+  seed_review_with_roster
+
+  # Move the real record aside and plant a symlink
+  local real_file="$TEST_TMP/real-record-mutant.yaml"
+  mv "$RECORD" "$real_file"
+  ln -s "$real_file" "$RECORD"
+
+  # Create a mutant copy with the _preflight_mutate symlink guard replaced
+  # by a no-op function that only calls _preflight_read (the original body
+  # before the hardening added the -L check).
+  local mutant_script="$TEST_TMP/design-record-mutant-sym.sh"
+  cp "$SCRIPT" "$mutant_script"
+  ln -sfn "$SCRIPTS_DIR/lib" "$TEST_TMP/lib"
+
+  # Replace _preflight_mutate() body: strip the entire function and replace
+  # with one that just calls _preflight_read (no symlink check)
+  awk '
+    /^_preflight_mutate\(\)/ {
+      print "_preflight_mutate() {"
+      print "  _preflight_read"
+      print "}"
+      # Skip until the closing brace of the original function
+      while ((getline line) > 0) {
+        if (line ~ /^\}$/) break
+      }
+      next
+    }
+    { print }
+  ' "$mutant_script" > "$mutant_script.tmp"
+  mv "$mutant_script.tmp" "$mutant_script"
+  chmod +x "$mutant_script"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$mutant_script" transition --to review --actor test
+  [ "$status" -eq 0 ] || \
+    fail "mutant: removing the symlink check should let transition proceed, but exit=$status: $output"
+}
+
 @test "(AC4) schema rejects an unknown review verdict" {
   [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
 

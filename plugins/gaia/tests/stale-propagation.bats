@@ -261,9 +261,9 @@ teardown() { common_teardown; }
   [ -n "$region" ] || fail "design-stale-transition region is empty or markers missing"
 
   # Must mention both ambiguity/uncertainty AND stale
-  printf '%s' "$region" | grep -qiE 'ambigu|uncertain' \
+  grep -qiE 'ambigu|uncertain' <<< "$region" \
     || fail "stale-transition region does not mention ambiguity or uncertainty"
-  printf '%s' "$region" | grep -qi 'stale' \
+  grep -qi 'stale' <<< "$region" \
     || fail "stale-transition region does not mention stale"
 }
 
@@ -365,13 +365,14 @@ teardown() { common_teardown; }
     # Must halt (non-zero exit)
     [ "$rc" -ne 0 ] || fail "$site setup.sh exited 0 with stale record"
 
-    # Halt must come from the design gate, not from resolve-config
+    # Halt must come from the design gate, not from resolve-config or
+    # any other non-gate pre-flight failure
     local stripped
     stripped="$(sed "s|${site_tmp}||g" "$stderr_file")"
-    if printf '%s' "$stripped" | grep -qi 'missing required field'; then
+    if grep -qiE 'missing required field|^resolve-config:' <<< "$stripped"; then
       fail "$site failed in resolve-config, not at the design gate"
     fi
-    printf '%s' "$stripped" | grep -qi 'State:.*stale' \
+    grep -qi 'State:.*stale' <<< "$stripped" \
       || fail "$site halt stderr does not carry State: stale diagnostic"
 
     # Artifact tree must be unchanged
@@ -510,9 +511,9 @@ teardown() { common_teardown; }
   # Both actors must appear in the audit trail
   local audit_actors
   audit_actors="$(yq '[.audit[].actor] | join(",")' "$TEST_TMP/.gaia/state/design-record.yaml")"
-  printf '%s' "$audit_actors" | grep -q 'actor-one' \
+  grep -q 'actor-one' <<< "$audit_actors" \
     || fail "actor-one missing from audit trail"
-  printf '%s' "$audit_actors" | grep -q 'actor-two' \
+  grep -q 'actor-two' <<< "$audit_actors" \
     || fail "actor-two missing from audit trail"
 }
 
@@ -574,7 +575,7 @@ teardown() { common_teardown; }
   # Verify resolve-config did NOT fail — the halt must come from the design gate
   local stripped_stderr
   stripped_stderr="$(sed "s|${TEST_TMP}|TMPDIR|g" "$stderr_file")"
-  if printf '%s' "$stripped_stderr" | grep -q 'missing required field'; then
+  if grep -qE 'missing required field|^resolve-config:' <<< "$stripped_stderr"; then
     fail "setup.sh failed in resolve-config, not at the design gate: $(head -3 "$stderr_file")"
   fi
 
@@ -616,7 +617,7 @@ teardown() { common_teardown; }
   [ "$rc" -ne 0 ] || fail "setup.sh should exit non-zero when gate-predicates.sh is absent but exited 0"
 
   # Verify resolve-config did NOT fail
-  if grep -q 'missing required field' "$stderr_file"; then
+  if grep -qE 'missing required field|^resolve-config:' "$stderr_file"; then
     fail "setup.sh failed in resolve-config, not at the gate-predicates check: $(head -3 "$stderr_file")"
   fi
 
@@ -651,7 +652,7 @@ teardown() { common_teardown; }
     bash "$SETUP_SH_DS" 2>"$stderr_file" || rc=$?
 
   # Verify resolve-config did NOT fail
-  if grep -q 'missing required field' "$stderr_file"; then
+  if grep -qE 'missing required field|^resolve-config:' "$stderr_file"; then
     fail "setup.sh failed in resolve-config, not at the gate: $(head -3 "$stderr_file")"
   fi
 
@@ -686,7 +687,7 @@ teardown() { common_teardown; }
     2>"$stderr_file" || rc=$?
 
   # Verify resolve-config did NOT fail
-  if grep -q 'missing required field' "$stderr_file"; then
+  if grep -qE 'missing required field|^resolve-config:' "$stderr_file"; then
     fail "setup.sh failed in resolve-config, not at the gate: $(head -3 "$stderr_file")"
   fi
 
