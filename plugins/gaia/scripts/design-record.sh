@@ -701,6 +701,63 @@ _do_not_applicable() {
   _append_audit "$tmp" "not-applicable-pass" "$actor"
 }
 
+# cmd_init_not_applicable — create a minimal not-applicable record on a fresh
+# project, or delegate to cmd_not_applicable on an existing record.
+#
+# On a fresh project (no record on disk): creates a schema-valid record with
+# applicability not-applicable, documented sentinel project values, and a single
+# not-applicable-pass audit entry. Published via tempfile-then-mv (same as init).
+#
+# On an existing record: delegates to cmd_not_applicable (idempotent).
+cmd_init_not_applicable() {
+  local actor=""
+  _parse_opts --actor actor -- "$@"
+  actor="${actor:-${USER:-unknown}}"
+
+  # Refuse symlinks BEFORE checking existence (same discipline as init)
+  if [ -L "$RECORD_PATH" ]; then
+    _die "init-not-applicable: record path is a symlink at $RECORD_PATH — refusing to follow; remove the symlink first"
+  fi
+
+  if [ -f "$RECORD_PATH" ]; then
+    # Record exists — delegate to the existing not-applicable verb
+    cmd_not_applicable --actor "$actor"
+    return $?
+  fi
+
+  mkdir -p "$(dirname "$RECORD_PATH")"
+
+  # Write to a temp file first, then atomically move into place
+  local tmp
+  tmp=$(mktemp "$(dirname "$RECORD_PATH")/design-record.yaml.tmp.XXXXXX")
+  trap 'rm -f "$tmp" 2>/dev/null || true' EXIT
+
+  cat > "$tmp" <<'EOF'
+schema_version: "1.0"
+applicability: not-applicable
+design_state: draft
+iteration: 1
+project:
+  reference: "not-applicable"
+  discovered_via: "project-artifacts"
+  questionnaire_record: "not-applicable"
+reviews: []
+approvals: []
+overrides: []
+audit: []
+audit_head:
+  count: 0
+  last_digest: ""
+EOF
+
+  # Append the not-applicable-pass audit entry with a chained digest
+  _append_audit "$tmp" "not-applicable-pass" "$actor"
+
+  # Atomic publish
+  mv -f "$tmp" "$RECORD_PATH" || _die "init-not-applicable: atomic publish failed"
+  trap - EXIT
+}
+
 # cmd_check_convergence — compute convergence from summary fields only.
 # This is the READ path: validates schema version but SKIPS chain
 # verification.  Convergence depends only on .design_state, .iteration,
@@ -735,11 +792,12 @@ main() {
     approve)           cmd_approve "$@" ;;
     add-review)        cmd_add_review "$@" ;;
     add-override)      cmd_add_override "$@" ;;
-    not-applicable)    cmd_not_applicable "$@" ;;
-    check-convergence) cmd_check_convergence "$@" ;;
-    verify-integrity)  cmd_verify_integrity "$@" ;;
+    not-applicable)       cmd_not_applicable "$@" ;;
+    init-not-applicable)  cmd_init_not_applicable "$@" ;;
+    check-convergence)    cmd_check_convergence "$@" ;;
+    verify-integrity)     cmd_verify_integrity "$@" ;;
     *)
-      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, check-convergence, verify-integrity"
+      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, check-convergence, verify-integrity"
       ;;
   esac
 }

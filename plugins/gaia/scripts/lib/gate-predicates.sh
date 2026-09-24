@@ -219,6 +219,21 @@ _gate_check_env_var_set() {
   [ -n "$val" ]
 }
 
+# _gate_check_design_approved <arg>
+# Evaluate the design-approval gate by sourcing design-gate.sh and calling
+# design_gate_check. The arg is unused (the predicate is parameterless).
+_gate_check_design_approved() {
+  local _gp_gate_lib
+  _gp_gate_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/design-gate.sh"
+  if [ ! -f "$_gp_gate_lib" ]; then
+    _gate_log "${_GATE_PREFIX:-quality-gate}" "design-gate.sh not found at $_gp_gate_lib"
+    return 1
+  fi
+  # shellcheck source=design-gate.sh
+  source "$_gp_gate_lib"
+  design_gate_check
+}
+
 # _gate_evaluate_entry <condition> <error_message>
 # Dispatch on the predicate prefix, evaluate, and on failure print the
 # error_message verbatim to stderr. Returns 0 on pass, 1 on fail.
@@ -246,6 +261,7 @@ _gate_evaluate_entry() {
       _gate_check_story_status "$key" "$state" || rc=1
       ;;
     env_var_set)      _gate_check_env_var_set "$arg" || rc=1 ;;
+    design_approved)  _gate_check_design_approved "$arg" || rc=1 ;;
     *)
       _gate_log "${_GATE_PREFIX:-quality-gate}" "unknown predicate: $prefix"
       rc=1

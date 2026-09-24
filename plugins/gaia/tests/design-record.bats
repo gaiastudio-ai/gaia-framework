@@ -483,6 +483,10 @@ EOF
     # Skip the sole writer and this test file
     [ "$rel_path" = "scripts/design-record.sh" ] && continue
     [ "$rel_path" = "tests/design-record.bats" ] && continue
+    # design-gate.bats: one printf writes corrupt YAML for the schema-invalid
+    # test; one yq -i injects an unknown state for the default-fail mutant.
+    # Both write to temp-dir fixtures, not production records.
+    [ "$rel_path" = "tests/design-gate.bats" ] && continue
 
     local matches
     matches="$(grep -nE "$write_patterns" "$filepath" 2>/dev/null \

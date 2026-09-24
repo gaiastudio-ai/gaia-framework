@@ -31,3 +31,7 @@ tests/doc-site-retirement.bats     test     asserts rewritten design pages use d
 tests/create-ux-claude-design.bats test     tests the rebuilt create-ux skill's record interactions
 skills/gaia-create-ux/SKILL.md     reader   invokes design-record.sh verbs (init, status) — never writes directly
 skills/gaia-create-ux/ux-design-template.md prose   template section 9 names the design record reference
+scripts/lib/design-gate.sh          reader   reads the design record; runs design-record.sh as a subprocess
+scripts/lib/gate-predicates.sh      reader   design_approved predicate delegates to design-gate
+tests/design-gate.bats              test     design-gate test suite
+tests/design-record-init-not-applicable.bats test init-not-applicable verb tests
