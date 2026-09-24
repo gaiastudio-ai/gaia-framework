@@ -109,7 +109,7 @@ fi
 # ---------------------------------------------------------------------------
 #
 # Strategy: a python3 invocation that
-#   1. Reads both texts from files, normalises each (lowercase,
+#   1. Reads both texts from files, normalises each (NFKC + casefold,
 #      collapse whitespace).
 #   2. Slides a window of MIN_MATCH_LENGTH across the candidate and
 #      checks each window against the normalised boundary via Python's
@@ -119,6 +119,7 @@ fi
 # with each `in` check amortised to near-linear — well under 1 s for
 # the 10 KB-vs-200 KB workload.
 
+_py_rc=0
 result="$(python3 -c '
 import re, sys
 
@@ -132,9 +133,12 @@ with open(boundary_file) as f:
 with open(candidate_file) as f:
     candidate = f.read()
 
-# Normalise: lowercase, collapse whitespace to single space, strip edges
-boundary = re.sub(r"\s+", " ", boundary.lower()).strip()
-candidate = re.sub(r"\s+", " ", candidate.lower()).strip()
+# Normalise: NFKC + casefold, collapse whitespace to single space, strip edges
+import unicodedata
+def _norm(s):
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", s).casefold()).strip()
+boundary = _norm(boundary)
+candidate = _norm(candidate)
 
 blen = len(boundary)
 clen = len(candidate)
@@ -154,7 +158,12 @@ for j in range(clen - min_len + 1):
         sys.exit(0)
 
 print("PASS")
-' "$MIN_MATCH_LENGTH" "${DESIGN_REVIEW_VERDICT_TRACE:-0}" "$_tmp_inner" "$notes_file")"
+' "$MIN_MATCH_LENGTH" "${DESIGN_REVIEW_VERDICT_TRACE:-0}" "$_tmp_inner" "$notes_file" 2>&1)" || _py_rc=$?
+
+if [ "$_py_rc" -ne 0 ]; then
+  printf 'verdict-provenance-check.sh: python3 comparison exited %d — failing closed\n' "$_py_rc" >&2
+  exit 2
+fi
 
 case "$result" in
   PASS)
@@ -173,6 +182,7 @@ case "$result" in
     exit 1
     ;;
   *)
-    exit 0
+    printf 'verdict-provenance-check.sh: unexpected comparison output — failing closed: %s\n' "$result" >&2
+    exit 2
     ;;
 esac

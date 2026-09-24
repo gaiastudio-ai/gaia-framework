@@ -385,3 +385,159 @@ with open("'"$TEST_TMP"'/notes.txt", "w") as f:
   [ "$status" -ne 0 ] || \
     fail "should reject a whitespace-padded copy of boundary content"
 }
+
+
+# =========================================================================
+# Fail-closed — unexpected comparison output exits non-zero
+# =========================================================================
+
+# _make_stubbed_script OUTPUT — copy the real script to TEST_TMP and replace
+# the python3 comparison invocation with a hardcoded result.  Sets
+# PATCHED_SCRIPT.
+_make_stubbed_script() {
+  local stub_output="$1"
+  PATCHED_SCRIPT="$TEST_TMP/verdict-provenance-check-stubbed.sh"
+  cp "$PROVENANCE_SCRIPT" "$PATCHED_SCRIPT"
+  chmod +x "$PATCHED_SCRIPT"
+  # Replace from _py_rc=0 through the closing 2>&1)" || _py_rc=$? line
+  # with a simple assignment
+  python3 -c '
+import sys, re
+with open(sys.argv[1]) as f:
+    content = f.read()
+stub_output = sys.argv[2]
+# Replace the _py_rc=0 block through the _py_rc=$? line
+pattern = r"_py_rc=0\nresult=.*?\|\| _py_rc=\$\?"
+replacement = "_py_rc=0\nresult=\"" + stub_output + "\""
+content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+with open(sys.argv[1], "w") as f:
+    f.write(content)
+' "$PATCHED_SCRIPT" "$stub_output"
+}
+
+@test "fails closed on unexpected comparison output" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  _make_stubbed_script "GARBAGE_UNEXPECTED"
+
+  _write_files \
+    "Some legitimate review notes that are completely original text for checking" \
+    "$(cat <<'BOUNDARY'
+<<<DESIGN_PROJECT_BOUNDARY>>>
+The project has a sidebar component with navigation links and a footer section and header.
+<<<END_DESIGN_PROJECT_BOUNDARY>>>
+BOUNDARY
+)"
+
+  run "$PATCHED_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "should exit 2 on unexpected comparison output — got $status"
+  local clean_output="${output//$TEST_TMP/TMPDIR}"
+  [[ "$clean_output" == *"unexpected"* ]] || [[ "$clean_output" == *"failing closed"* ]] || \
+    fail "should emit a fail-closed diagnostic: $clean_output"
+}
+
+@test "fails closed on empty comparison output" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  _make_stubbed_script ""
+
+  _write_files \
+    "Some legitimate review notes that are completely original text for checking" \
+    "$(cat <<'BOUNDARY'
+<<<DESIGN_PROJECT_BOUNDARY>>>
+The project has a sidebar component with navigation links and a footer section and header.
+<<<END_DESIGN_PROJECT_BOUNDARY>>>
+BOUNDARY
+)"
+
+  run "$PATCHED_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "should exit 2 on empty comparison output — got $status"
+  local clean_output="${output//$TEST_TMP/TMPDIR}"
+  [[ "$clean_output" == *"unexpected"* ]] || [[ "$clean_output" == *"failing closed"* ]] || \
+    fail "should emit a fail-closed diagnostic: $clean_output"
+}
+
+@test "fails closed when python3 comparison crashes" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # Create a patched copy where the python3 comparison is replaced with a
+  # script that exits non-zero (simulating a python crash)
+  PATCHED_SCRIPT="$TEST_TMP/verdict-provenance-check-crash.sh"
+  cp "$PROVENANCE_SCRIPT" "$PATCHED_SCRIPT"
+  chmod +x "$PATCHED_SCRIPT"
+
+  # Replace the python3 comparison call with a false command that exits 1
+  python3 -c '
+import sys, re
+with open(sys.argv[1]) as f:
+    content = f.read()
+pattern = r"_py_rc=0\nresult=.*?\|\| _py_rc=\$\?"
+replacement = "_py_rc=0\nresult=\"$(false)\" || _py_rc=$?"
+content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+with open(sys.argv[1], "w") as f:
+    f.write(content)
+' "$PATCHED_SCRIPT"
+
+  _write_files \
+    "Some legitimate review notes that are completely original text for checking" \
+    "$(cat <<'BOUNDARY'
+<<<DESIGN_PROJECT_BOUNDARY>>>
+The project has a sidebar component with navigation links and a footer section and header.
+<<<END_DESIGN_PROJECT_BOUNDARY>>>
+BOUNDARY
+)"
+
+  run "$PATCHED_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "should exit 2 when python3 comparison crashes — got $status"
+  local clean_output="${output//$TEST_TMP/TMPDIR}"
+  [[ "$clean_output" == *"failing closed"* ]] || \
+    fail "should emit a fail-closed diagnostic: $clean_output"
+}
+
+
+# =========================================================================
+# Unicode normalisation — NFKC + casefold
+# =========================================================================
+
+@test "rejects full-width copy of boundary passage" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # Generate a 45-char phrase in full-width Unicode (each ASCII char -> U+FFxx)
+  local phrase="the sidebar component has navigation drawers"
+  local fullwidth_phrase
+  fullwidth_phrase="$(python3 -c '
+import sys
+s = sys.argv[1]
+print("".join(chr(0xFEE0 + ord(c)) if " " < c < "~" else c for c in s))
+' "$phrase")"
+
+  _write_files \
+    "Finding: ${fullwidth_phrase} needs improvement" \
+    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s plus extra filler text to pad the boundary.\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$phrase")"
+
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -ne 0 ] || \
+    fail "should reject a full-width copy of boundary content"
+}
+
+@test "rejects casefold-variant copy of boundary passage" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # German sharp-s: casefold turns ss -> ss, but the boundary has the
+  # Eszett. Use a phrase containing it.  casefold() maps ß -> ss.
+  # Build boundary with "ss" and candidate with "ß" — after casefold both
+  # become "ss".
+  local boundary_phrase="the strassenbahn component has navigation panels and footers"
+  local candidate_phrase="the straßenbahn component has navigation panels and footers"
+
+  _write_files \
+    "Observation: ${candidate_phrase} needs review" \
+    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$boundary_phrase")"
+
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -ne 0 ] || \
+    fail "should reject a casefold-variant copy of boundary content"
+}
