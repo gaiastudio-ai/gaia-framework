@@ -333,6 +333,14 @@ design_gate_check() {
   local applicability
   applicability="$(yq '.applicability' "$record_path" 2>/dev/null || true)"
   if [ "$applicability" = "not-applicable" ]; then
+    # A not-applicable record on a UI-bearing project is stale — the project
+    # now requires design approval but the record was created when it did not.
+    # Fail closed so the user re-initializes the design record.
+    if [ "$ui_present" = "true" ]; then
+      _dg_halt "$record_path" "not-applicable record on UI-bearing project" \
+        "The design record says not-applicable but the project has ui_present: true. Re-initialize the design record."
+      return 1
+    fi
     return 0
   fi
 

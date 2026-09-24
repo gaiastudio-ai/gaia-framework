@@ -252,6 +252,13 @@ _assert_gate_output() {
     fail "gate did not produce recognisable output (expected 'Design gate:' prefix); got: $output"
 }
 
+# _stripped_output — return $output with TEST_TMP paths removed so grep
+# assertions match diagnostic text, not temp-dir path fragments that happen
+# to contain words like "absent", "review", or "stale".
+_stripped_output() {
+  printf '%s\n' "${output//$TEST_TMP/}"
+}
+
 # =========================================================================
 # (AC1) Condition matrix — pass and fail verdicts
 # =========================================================================
@@ -295,7 +302,7 @@ _assert_gate_output() {
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -qi "absent"
+  _stripped_output | grep -qi "absent"
 }
 
 @test "(AC1) record unreadable fails" {
@@ -343,8 +350,8 @@ _assert_gate_output() {
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -qi "review"
-  echo "$output" | grep -q "design-record.yaml" || echo "$output" | grep -q ".gaia/state"
+  _stripped_output | grep -qi "review"
+  _stripped_output | grep -q "design-record.yaml" || _stripped_output | grep -q ".gaia/state"
 }
 
 @test "(AC1) in-dev state fails" {
@@ -357,8 +364,8 @@ _assert_gate_output() {
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -qi "in-dev"
-  echo "$output" | grep -q "design-record.yaml" || echo "$output" | grep -q ".gaia/state"
+  _stripped_output | grep -qi "in-dev"
+  _stripped_output | grep -q "design-record.yaml" || _stripped_output | grep -q ".gaia/state"
 }
 
 @test "(AC1) stale state fails" {
@@ -408,10 +415,8 @@ STAKE
   run run_gate
   # Gate should pass (exit 0) but warn about vacuous convergence
   [ "$status" -eq 0 ]
-  # stderr must mention vacuous
-  [[ "$output" == *"vacuous"* ]] || [[ "${stderr:-}" == *"vacuous"* ]] || {
-    echo "$output" | grep -qi "vacuous"
-  }
+  # stderr must mention vacuous (strip TEST_TMP to avoid path-fragment matches)
+  _stripped_output | grep -qi "vacuous"
 }
 
 @test "(AC1) prior-iteration approval does not satisfy convergence" {
@@ -493,7 +498,7 @@ STAKE
   [ "$status" -eq 1 ]
   _assert_gate_output
   # Must NOT mention /design-login (that's the unauthorized message)
-  ! echo "$output" | grep -q '/design-login'
+  ! _stripped_output | grep -q '/design-login'
 }
 
 @test "(AC1) integration unauthorized on non-approved path fails with unauthorized message" {
@@ -505,7 +510,7 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   # Must mention /design-login
-  echo "$output" | grep -q '/design-login' || echo "$output" | grep -q 'design-login'
+  _stripped_output | grep -q '/design-login' || _stripped_output | grep -q 'design-login'
 }
 
 # =========================================================================
@@ -664,8 +669,8 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -q "design-record.yaml" || echo "$output" | grep -q ".gaia/state"
-  echo "$output" | grep -qi "absent"
+  _stripped_output | grep -q "design-record.yaml" || _stripped_output | grep -q ".gaia/state"
+  _stripped_output | grep -qi "absent"
 }
 
 @test "(AC3) halt message names record path, state, and remediation for draft" {
@@ -677,8 +682,8 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -qi "draft"
-  echo "$output" | grep -qi "review"
+  _stripped_output | grep -qi "draft"
+  _stripped_output | grep -qi "review"
 }
 
 @test "(AC3) halt message names record path, state, and remediation for stale" {
@@ -691,7 +696,7 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -qi "stale"
+  _stripped_output | grep -qi "stale"
 }
 
 @test "(AC3) halt message for unauthorized names design-login" {
@@ -702,7 +707,7 @@ STAKE
 
   run run_gate
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q "design-login"
+  _stripped_output | grep -q "design-login"
 }
 
 @test "(AC3) halt message for missing does not name design-login" {
@@ -714,7 +719,7 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  ! echo "$output" | grep -q "design-login"
+  ! _stripped_output | grep -q "design-login"
 }
 
 @test "(AC3) halt message mutant: drop state from message" {
@@ -727,7 +732,7 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   # The original must contain the state "draft"
-  echo "$output" | grep -qi "draft"
+  _stripped_output | grep -qi "draft"
 }
 
 # =========================================================================
@@ -805,14 +810,26 @@ STAKE
     iterations=100
   fi
 
+  # Portable nanosecond timestamp: date +%s%N works on GNU/Linux but macOS
+  # date prints a literal "N". Detect and fall back to python3.
+  _ns_now() {
+    local ts
+    ts="$(date +%s%N 2>/dev/null)" || true
+    if printf '%s' "$ts" | grep -Eq '^[0-9]+$'; then
+      printf '%s' "$ts"
+    else
+      python3 -c 'import time; print(int(time.time()*1e9))'
+    fi
+  }
+
   local times_file="$TEST_TMP/times.txt"
   local i
   for i in $(seq 1 "$iterations"); do
     local start end elapsed
-    start="$(date +%s%N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1e9))')"
+    start="$(_ns_now)"
     run run_gate
     [ "$status" -eq 0 ]
-    end="$(date +%s%N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1e9))')"
+    end="$(_ns_now)"
     elapsed="$(( (end - start) / 1000000 ))"  # ms
     printf '%d\n' "$elapsed" >> "$times_file"
   done
@@ -957,7 +974,7 @@ STAKE
   [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ]
   [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ]
   # Diagnostic mentions remediation
-  echo "$output" | grep -q "design-review" || echo "$output" | grep -q "sprint-plan" || echo "$output" | grep -q "sprint-id"
+  _stripped_output | grep -q "design-review" || _stripped_output | grep -q "sprint-plan" || _stripped_output | grep -q "sprint-id"
 }
 
 # =========================================================================
@@ -1244,7 +1261,7 @@ STAKE
   [ "$status" -eq 1 ]
 
   # The gate must emit the CRITICAL dual-ledger inconsistency message
-  echo "$output" | grep -qi "CRITICAL" || echo "$output" | grep -qi "inconsistency" || \
+  _stripped_output | grep -qi "CRITICAL" || _stripped_output | grep -qi "inconsistency" || \
     fail "expected CRITICAL/inconsistency message; got: $output"
 }
 
@@ -1310,10 +1327,10 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  ! echo "$output" | grep -qi "internal error"
-  ! echo "$output" | grep -qi "framework broken"
-  ! echo "$output" | grep -qi "contact support"
-  ! echo "$output" | grep -qi "unexpected state"
+  ! _stripped_output | grep -qi "internal error"
+  ! _stripped_output | grep -qi "framework broken"
+  ! _stripped_output | grep -qi "contact support"
+  ! _stripped_output | grep -qi "unexpected state"
 }
 
 @test "(AC-EC7) state-appropriate remediation for each state" {
@@ -1326,7 +1343,7 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -qi "review"
+  _stripped_output | grep -qi "review"
 
   # Stale: remediation should mention review (transition back)
   rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
@@ -1335,7 +1352,7 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -qi "review"
+  _stripped_output | grep -qi "review"
 }
 
 # =========================================================================
@@ -1421,11 +1438,11 @@ STAKE
   [ ! -f "$TEST_TMP/.gaia/state/design-record.yaml.gate-backup" ]
 
   # Must be an early refusal, not a write-then-rollback
-  if echo "$output" | grep -qi "rolled back"; then
+  if _stripped_output | grep -qi "rolled back"; then
     fail "malformed sprint-id triggered write+rollback instead of early refusal; got: $output"
   fi
   # Message must name the expected shape
-  echo "$output" | grep -q 'sprint-' || echo "$output" | grep -qi 'sprint.id'
+  _stripped_output | grep -q 'sprint-' || _stripped_output | grep -qi 'sprint.id'
 }
 
 @test "override refused when explicit sprint-id has trailing junk" {
@@ -1438,7 +1455,7 @@ STAKE
   [ "$status" -eq 1 ]
   _assert_gate_output
   # Must be an early refusal, not a write-then-rollback
-  if echo "$output" | grep -qi "rolled back"; then
+  if _stripped_output | grep -qi "rolled back"; then
     fail "trailing-junk sprint-id triggered write+rollback instead of early refusal; got: $output"
   fi
 }
@@ -1488,7 +1505,7 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  echo "$output" | grep -qi "symlink"
+  _stripped_output | grep -qi "symlink"
 }
 
 # =========================================================================
@@ -1527,7 +1544,7 @@ STAKE
 
   # The patched gate returns 1 (we forced it to exit early)
   # but the output should contain the file permissions (600)
-  echo "$output" | grep -q '600' || fail "backup permissions are not 600; got output: $output"
+  _stripped_output | grep -q '600' || fail "backup permissions are not 600; got output: $output"
 }
 
 # =========================================================================
@@ -1545,4 +1562,97 @@ STAKE
   bare_count="$(grep '_sha256_file' "$GATE_SCRIPT" | grep -cvF '_dg_sha256_file' || true)"
   [ "$bare_count" -eq 0 ] || \
     fail "design-gate.sh still references bare _sha256_file ($bare_count occurrences)"
+}
+
+# =========================================================================
+# Hardening: unsupported schema version fails closed
+# =========================================================================
+
+@test "record with schema_version 2.0 fails closed" {
+  seed_ui_project available
+  _init_record
+  yq -i '.schema_version = "2.0"' "$TEST_TMP/.gaia/state/design-record.yaml"
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+  _stripped_output | grep -qi "schema"
+}
+
+# =========================================================================
+# Hardening: gate-predicates design_approved arm blocks non-approved
+# =========================================================================
+
+@test "gate-predicates design_approved arm blocks non-approved record" {
+  [ -f "$PREDICATES_SCRIPT" ] || fail "gate-predicates.sh not found at $PREDICATES_SCRIPT"
+  seed_ui_project available
+  _init_record
+  # Record is in draft (non-approved)
+
+  run env -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH -u CLAUDE_PLUGIN_ROOT \
+    bash -c '
+      set -euo pipefail
+      export PROJECT_ROOT="'"$TEST_TMP"'"
+      export PATH="'"$TEST_TMP/bin"':$PATH"
+      source "'"$PREDICATES_SCRIPT"'"
+      _gate_evaluate_entry "design_approved" "Design approval required"
+    '
+  [ "$status" -eq 1 ] || fail "design_approved predicate should block on non-approved record (got exit $status)"
+}
+
+# =========================================================================
+# Hardening: ui_present true with existing not-applicable record fails closed
+# =========================================================================
+
+# =========================================================================
+# Hardening: gate-layer reason guard rejects before downstream writes
+# =========================================================================
+
+@test "gate-layer reason guard rejects short reason without reaching lifecycle writer" {
+  seed_override_fixture
+
+  local drec_hash lo_hash
+  drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  # Use a reason that is too short (under 10 chars after trimming)
+  run run_gate --force-design --reason "short" --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+
+  # Both ledgers must be byte-identical — the gate refused before any write,
+  # so the downstream lifecycle writer was never reached.
+  [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ]
+  [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ]
+  # No backup file created (gate exited before the backup cp)
+  [ ! -f "$TEST_TMP/.gaia/state/design-record.yaml.gate-backup" ]
+  # Diagnostic must mention the reason length constraint
+  _stripped_output | grep -qi "reason"
+}
+
+# =========================================================================
+# Hardening: ui_present true with existing not-applicable record fails closed
+# =========================================================================
+
+@test "ui_present true with existing not-applicable record fails closed" {
+  # Create a not-applicable record (as if the project was previously non-UI)
+  seed_config false
+  run run_gate
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/.gaia/state/design-record.yaml" ]
+
+  local app
+  app="$(yq '.applicability' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$app" = "not-applicable" ]
+
+  # Flip config to ui_present: true — now the project requires design approval
+  # but the record still says not-applicable (stale).
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+  _stripped_output | grep -qi "not-applicable"
 }
