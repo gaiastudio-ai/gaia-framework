@@ -584,6 +584,33 @@ ROGUE
 }
 
 # =========================================================================
+# cmd_reopen_applicable — a not-applicable record reopens for design review
+# =========================================================================
+
+@test "cmd_reopen_applicable turns a not-applicable record into a draft awaiting design" {
+  assert_script_exists
+  run "$SCRIPT" init-not-applicable --actor "design-gate"
+  [ "$status" -eq 0 ] || fail "init-not-applicable failed: $output"
+  local trail_before
+  trail_before="$(yq '.audit | length' "$RECORD")"
+
+  run "$SCRIPT" reopen-applicable --reference "design-ref-1" \
+    --discovered-via created --questionnaire-record "ux/questionnaire.md" --actor "owner"
+  [ "$status" -eq 0 ] || fail "reopen-applicable failed: $output"
+
+  [ "$(yq '.applicability' "$RECORD")" = "applicable" ] || fail "applicability not reopened"
+  [ "$(yq '.design_state' "$RECORD")" = "draft" ] || fail "design_state is not draft"
+  [ "$(yq '.project.reference' "$RECORD")" = "design-ref-1" ] || fail "reference not recorded"
+  [ "$(yq '.audit | length' "$RECORD")" -eq $(( trail_before + 1 )) ] \
+    || fail "expected exactly one new audit entry"
+  [ "$(yq '.audit[-1].event' "$RECORD")" = "applicability-change" ] \
+    || fail "last audit entry is not an applicability change"
+
+  run "$SCRIPT" verify-integrity
+  [ "$status" -eq 0 ] || fail "audit chain broken after reopen: $output"
+}
+
+# =========================================================================
 # (AC-EC1) cmd_init_not_applicable — fresh record, idempotent, integrity
 # =========================================================================
 
