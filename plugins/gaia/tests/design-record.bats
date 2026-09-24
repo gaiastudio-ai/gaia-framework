@@ -583,6 +583,45 @@ ROGUE
   wait "$holder_pid" 2>/dev/null || true
 }
 
+# =========================================================================
+# (AC-EC1) cmd_init_not_applicable — fresh record, idempotent, integrity
+# =========================================================================
+
+@test "(AC-EC1) cmd_init_not_applicable creates a schema-valid not-applicable record" {
+  assert_script_exists
+  # No record on disk yet
+  [ ! -f "$RECORD" ]
+
+  run "$SCRIPT" init-not-applicable --actor "design-gate"
+  [ "$status" -eq 0 ] || fail "init-not-applicable failed: $output"
+  [ -f "$RECORD" ] || fail "init-not-applicable did not create $RECORD"
+
+  # Verify required fields
+  local app ds sv ref dv qr
+  app="$(yq '.applicability' "$RECORD")"
+  ds="$(yq '.design_state' "$RECORD")"
+  sv="$(yq '.schema_version' "$RECORD")"
+  ref="$(yq '.project.reference' "$RECORD")"
+  dv="$(yq '.project.discovered_via' "$RECORD")"
+  qr="$(yq '.project.questionnaire_record' "$RECORD")"
+
+  [ "$app" = "not-applicable" ] || fail "applicability=$app, expected not-applicable"
+  [ "$ds" = "draft" ] || fail "design_state=$ds, expected draft"
+  [ "$sv" = "1.0" ] || fail "schema_version=$sv, expected 1.0"
+  [ "$ref" = "not-applicable" ] || fail "project.reference=$ref"
+  [ "$dv" = "project-artifacts" ] || fail "project.discovered_via=$dv"
+  [ "$qr" = "not-applicable" ] || fail "project.questionnaire_record=$qr"
+
+  # Audit entry
+  local event
+  event="$(yq '.audit[0].event' "$RECORD")"
+  [ "$event" = "not-applicable-pass" ] || fail "audit[0].event=$event, expected not-applicable-pass"
+
+  # Integrity chain must verify
+  run "$SCRIPT" verify-integrity
+  [ "$status" -eq 0 ] || fail "integrity check failed after init-not-applicable: $output"
+}
+
 @test "(AC3) torn-read immunity: reader never observes partial record" {
   assert_script_exists
   seed_review_with_roster
