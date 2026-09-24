@@ -382,8 +382,11 @@ _preflight_read() {
 }
 
 # _preflight_mutate — validate for mutation paths (transition, approve, etc).
-# Same as _preflight_read; the in-lock chain verification happens inside _locked_mutate.
+# Checks existence, schema, and refuses symlinks before any lock or I/O.
 _preflight_mutate() {
+  if [ -L "$RECORD_PATH" ]; then
+    _die "record path is a symlink at $RECORD_PATH — refusing to follow; remove the symlink first"
+  fi
   _preflight_read
 }
 

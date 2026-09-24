@@ -286,5 +286,62 @@ GARBOF
     || fail "stderr should contain the halt message"
 }
 
+# ===========================================================================
+# Temp-file cleanup on signal
+# ===========================================================================
+
+@test "SIGTERM during probe leaves no temp files behind" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "design-stale-transition.sh not found at $DRIVER_SCRIPT"
+
+  seed_config true
+  seed_roster
+  _build_approved_record
+
+  # Create a copy of the driver with a known temp-file path so we can verify
+  # cleanup. The copy replaces the mktemp call with a fixed-path file.
+  local fake_dir="$TEST_TMP/fake-scripts"
+  mkdir -p "$fake_dir"
+  cp -R "$SCRIPTS_DIR"/* "$fake_dir/" 2>/dev/null || true
+  local known_tmpfile="$TEST_TMP/probe-stderr-fixed.tmp"
+  # Patch the driver: replace the mktemp line with our known path
+  sed "s|mktemp -t dst-probe-stderr.XXXXXX|echo '$known_tmpfile'|" \
+    "$DRIVER_SCRIPT" > "$fake_dir/design-stale-transition.sh"
+  chmod +x "$fake_dir/design-stale-transition.sh"
+
+  # Plant a slow probe that signals readiness via a sentinel file, then sleeps
+  local sentinel="$TEST_TMP/probe-reached"
+  cat > "$fake_dir/design-probe.sh" <<PROBEOF
+#!/usr/bin/env bash
+touch "$sentinel"
+sleep 60
+PROBEOF
+  chmod +x "$fake_dir/design-probe.sh"
+
+  # Launch the driver in background
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$fake_dir/design-stale-transition.sh" \
+      --decision yes --actor test \
+    2>/dev/null &
+  local driver_pid=$!
+
+  # Wait until the probe is reached (sentinel file appears)
+  local waited=0
+  while [ ! -f "$sentinel" ] && [ "$waited" -lt 50 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  [ -f "$sentinel" ] || fail "probe was never reached (sentinel missing after 5s)"
+
+  # The temp file must exist now (created before the probe ran)
+  [ -f "$known_tmpfile" ] || fail "temp file was never created — test is vacuous"
+
+  # Send SIGTERM to the driver
+  kill -TERM "$driver_pid" 2>/dev/null || true
+  wait "$driver_pid" 2>/dev/null || true
+
+  # Assert the temp file was cleaned up
+  [ ! -f "$known_tmpfile" ] || fail "temp file leaked after SIGTERM: $known_tmpfile"
+}
+
 # Tests 8 and 9 removed — they duplicated test 6 (ambiguous defaults to stale)
 # and test 5 (decision no skips transition) respectively.
