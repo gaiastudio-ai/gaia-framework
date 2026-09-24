@@ -34,6 +34,7 @@ _sha256_file() {
 SKILL_DIR=""
 SKILL_MD=""
 PROVENANCE_SCRIPT=""
+SYNC_SCRIPT=""
 DESIGN_RECORD_SH=""
 WORKFLOW_MANIFEST=""
 
@@ -43,6 +44,7 @@ setup() {
   SKILL_DIR="$PLUGIN_ROOT/skills/gaia-design-review"
   SKILL_MD="$SKILL_DIR/SKILL.md"
   PROVENANCE_SCRIPT="$SKILL_DIR/scripts/verdict-provenance-check.sh"
+  SYNC_SCRIPT="$SKILL_DIR/scripts/sync-derived-artifacts.sh"
   DESIGN_RECORD_SH="$PLUGIN_ROOT/scripts/design-record.sh"
   WORKFLOW_MANIFEST="$PLUGIN_ROOT/knowledge/workflow-manifest.csv"
   SCHEMA="$PLUGIN_ROOT/schemas/design-record.schema.json"
@@ -181,13 +183,11 @@ UX
     fail "read-back step does not mark project content as authoritative"
 }
 
-@test "(AC1) mutant: using local derivation instead of project produces wrong findings" {
-  # When the skill is implemented, reading from local derivation instead of the
-  # project should produce different (wrong) findings.  This mutant verifies that
-  # the test above is load-bearing by checking the SKILL.md structure.
-  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — mutant cannot verify"
+@test "(AC1) structural: SKILL.md wraps project content in boundary markers" {
+  # The SKILL.md must contain boundary markers around project content so that
+  # local derivation cannot silently substitute for the authoritative source.
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — cannot verify boundary markers"
 
-  # The SKILL.md must contain boundary markers around project content
   grep -q 'boundary.marker\|BOUNDARY\|data.boundary' "$SKILL_MD" || \
     fail "SKILL.md does not wrap project content in boundary markers — local derivation could silently substitute"
 }
@@ -262,15 +262,13 @@ UX
   rm -rf "$root"
 }
 
-@test "(AC3) mutant: removing internal round allows delivery" {
-  # If the skill does not enforce internal-first ordering, stakeholder delivery
-  # can proceed without an internal verdict.  This mutant checks that the
-  # SKILL.md has an explicit gate.
+@test "(AC3) structural: SKILL.md enforces internal review before stakeholder delivery" {
+  # The SKILL.md must have an explicit gate that blocks stakeholder delivery
+  # until an internal review has been recorded.
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
 
-  # The SKILL.md must have an internal review step that blocks stakeholder delivery
   grep -qiE 'internal.*review.*before.*stakeholder|block.*stakeholder.*until.*internal|internal.*gate' "$SKILL_MD" || \
-    fail "SKILL.md does not enforce internal review before stakeholder delivery — mutant proves the gate is missing"
+    fail "SKILL.md does not enforce internal review before stakeholder delivery"
 }
 
 
@@ -486,9 +484,10 @@ UX
 # =========================================================================
 
 @test "(AC4) designer changes reconciled into UX design document after sync" {
-  # The SKILL.md must have a delta-sync step that reconciles project changes
-  # into the derived ux-design.md.
-  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — cannot verify delta sync"
+  # Behavioral test: run the sync script against a stale ux-design.md
+  # and assert the designer-added component appears.
+  [ -x "$SYNC_SCRIPT" ] || \
+    fail "sync-derived-artifacts.sh does not exist or is not executable: $SYNC_SCRIPT"
 
   local root
   root="$(_seed_temp_project)"
@@ -502,16 +501,27 @@ UX
   ! grep -q 'new-sidebar' "$ux_doc" || \
     fail "fixture already contains new-sidebar — test is vacuous"
 
-  # The sync step in SKILL.md must describe the mechanism for reconciliation
-  local sync_step
-  sync_step="$(awk '/^### Step.*[Ss]ync\|^### Step.*[Rr]econcil/,/^### Step/' "$SKILL_MD" 2>/dev/null | head -80)"
-  [ -n "$sync_step" ] || fail "SKILL.md has no sync/reconciliation step — delta sync not implemented"
+  # Create a snapshot with the designer-added component
+  local snapshot="$root/snapshot.json"
+  printf '{"components":["header","footer","main-content","new-sidebar"]}\n' > "$snapshot"
 
-  # The sync step must mention component inventory or screen specs
-  printf '%s' "$sync_step" | grep -qiE 'component.inventory|screen.spec|ux-design' || \
-    fail "sync step does not target the component inventory or screen spec sections"
+  # Run the sync script
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+
+  # Assert the component now appears in the doc
+  grep -q 'new-sidebar' "$ux_doc" || \
+    fail "ux-design.md does not contain new-sidebar after sync"
 
   rm -rf "$root"
+}
+
+@test "(AC4) structural: SKILL.md calls sync-derived-artifacts.sh in its sync step" {
+  # The SKILL.md must reference the sync script in its delta-sync step
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — cannot verify sync wiring"
+
+  grep -q 'sync-derived-artifacts' "$SKILL_MD" || \
+    fail "SKILL.md does not reference sync-derived-artifacts.sh"
 }
 
 
@@ -565,13 +575,11 @@ UX
     fail "SKILL.md does not prevent state transition on escalation"
 }
 
-@test "(AC5) mutant: absorbing requirement comment as design change" {
-  # If the SKILL.md absorbs the comment as a design change instead of halting,
-  # the escalation firewall is broken.
+@test "(AC5) structural: SKILL.md does not absorb requirement comments as design changes" {
+  # The SKILL.md must NOT contain language that applies requirement-change
+  # comments as design changes — the escalation firewall must halt instead.
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
 
-  # The SKILL.md must NOT contain language that applies requirement-change
-  # comments as design changes
   local absorb_patterns
   absorb_patterns="$(grep -inE 'apply.*requirement.*change.*design|absorb.*requirement.*comment' "$SKILL_MD" || true)"
   [ -z "$absorb_patterns" ] || \
@@ -815,6 +823,100 @@ BOUNDARY
   # Only one argument
   run "$PROVENANCE_SCRIPT" "some notes"
   [ "$status" -ne 0 ] || fail "provenance check should fail on single argument"
+}
+
+
+# =========================================================================
+# Missing mutant tests
+# =========================================================================
+
+@test "(AC-EC3) mutant: skipping approve call leaves approvals unchanged" {
+  # Proves the approve verb is load-bearing for convergence.
+  # If the skill only calls add-review but skips the approve verb,
+  # approvals[] does not grow and convergence stays false.
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — approve-verb integration cannot be verified"
+  [ -x "$DESIGN_RECORD_SH" ] || fail "design-record.sh does not exist or is not executable"
+
+  local root
+  root="$(_seed_temp_project)"
+  _seed_record "$root" "review" 1
+  _seed_stakeholder_roster "$root"
+  export PROJECT_ROOT="$root"
+
+  local record="$root/.gaia/state/design-record.yaml"
+
+  # Stakeholder A: add-review only, skip the approve call (mutant behaviour)
+  run "$DESIGN_RECORD_SH" add-review \
+    --verdict approved --reviewer "stakeholder-A" --kind stakeholder
+  [ "$status" -eq 0 ] || fail "add-review for A failed: $output"
+
+  # Approvals[] must be empty — the approve verb was never called
+  local approvals_len
+  approvals_len="$(yq '.approvals | length' "$record")"
+  [ "$approvals_len" -eq 0 ] || \
+    fail "mutant: approvals[] grew to $approvals_len without calling the approve verb"
+
+  # Convergence must report not-converged
+  run "$DESIGN_RECORD_SH" check-convergence
+  [[ "$output" == *"not-converged"* ]] || [ "$status" -ne 0 ] || \
+    fail "mutant: convergence reports converged without any approve calls"
+
+  rm -rf "$root"
+}
+
+@test "(AC4) mutant: vacuous-convergence warning absent when stderr is swallowed" {
+  # Proves the SKILL.md must call check-convergence BEFORE transition,
+  # because transition silences the vacuous-convergence stderr.
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — convergence ordering cannot be verified"
+  [ -x "$DESIGN_RECORD_SH" ] || fail "design-record.sh does not exist or is not executable"
+
+  local root
+  root="$(_seed_temp_project)"
+  _seed_record "$root" "review" 1
+  # No stakeholders — vacuous convergence
+  export PROJECT_ROOT="$root"
+
+  # check-convergence emits the vacuous warning on stderr
+  run "$DESIGN_RECORD_SH" check-convergence
+  [[ "$output" == *"vacuous"* ]] || \
+    fail "precondition: check-convergence should emit vacuous warning"
+
+  # transition silences convergence stderr — the warning is lost
+  run "$DESIGN_RECORD_SH" transition --to approved --actor "test-actor"
+  # transition may succeed (vacuous convergence allows it) or fail — either way,
+  # if it succeeds, the vacuous warning is NOT in the transition output
+  if [ "$status" -eq 0 ]; then
+    [[ "$output" != *"vacuous"* ]] || \
+      fail "mutant is vacuous: transition surfaces the vacuous warning (should be silent)"
+  fi
+  # The point: if the SKILL.md calls transition instead of check-convergence,
+  # the user never sees the vacuous-convergence warning.
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC7 backstop) structural: SKILL.md calls verdict-provenance-check before add-review" {
+  # The verdict-write step in the SKILL.md must invoke
+  # verdict-provenance-check.sh BEFORE design-record.sh add-review.
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — cannot verify provenance wiring"
+
+  # Find the step block that contains add-review
+  local step_block
+  step_block="$(awk '/^### Step/{found=0} /add-review/{found=1} found{print}' "$SKILL_MD" 2>/dev/null)"
+  [ -n "$step_block" ] || fail "SKILL.md has no step block containing add-review"
+
+  # Within that block, verdict-provenance-check must appear
+  printf '%s' "$step_block" | grep -q 'verdict-provenance-check' || \
+    fail "SKILL.md does not call verdict-provenance-check.sh in the add-review step"
+
+  # Provenance check must appear BEFORE add-review in the step block
+  local prov_line add_line
+  prov_line="$(printf '%s' "$step_block" | grep -n 'verdict-provenance-check' | head -1 | cut -d: -f1)"
+  add_line="$(printf '%s' "$step_block" | grep -n 'add-review' | head -1 | cut -d: -f1)"
+  [ -n "$prov_line" ] && [ -n "$add_line" ] || \
+    fail "could not locate both provenance-check and add-review in the step block"
+  [ "$prov_line" -lt "$add_line" ] || \
+    fail "verdict-provenance-check appears AFTER add-review (line $prov_line vs $add_line) — must come before"
 }
 
 

@@ -1751,30 +1751,37 @@ WRAPPER
 }
 
 @test "(AC4) mutant: removing the enum guard admits a schema-invalid review" {
-  # This test proves the enum guard is load-bearing.  It first asserts the
-  # guard exists in the source, then checks that removing it would let bogus
-  # verdicts through (demonstrating load-bearing-ness).
+  # This test proves the enum guard (_assert_valid_verdict) is load-bearing.
+  # It first asserts the function exists in the source, then neutralises it
+  # in a copy and verifies that bogus verdicts slip through.
   assert_script_exists
 
-  # Step 1: the guard must exist in the source — fail if absent
-  local guard_lines
-  guard_lines="$(grep -cE 'approved.*changes-requested.*blocked.*escalated|verdict.*enum|_VALID_VERDICTS|legal.*verdict' "$SCRIPT" 2>/dev/null || true)"
-  [ "$guard_lines" -gt 0 ] || \
-    fail "enum guard not found in design-record.sh — the guard has not been added yet"
+  # Step 1: the _assert_valid_verdict function must exist — fail if absent
+  grep -q '^_assert_valid_verdict()' "$SCRIPT" || \
+    fail "_assert_valid_verdict function not found in design-record.sh — the enum guard has not been added yet"
 
-  # Step 2: with the guard removed, bogus verdicts would be accepted
+  # Step 2: neutralise the function in a copy and prove bogus verdicts pass
   seed_review_with_roster
-  # (This step only runs once the guard is in place — the test above
-  # short-circuits in RED because the guard doesn't exist yet.)
   local mutant_script="$TEST_TMP/design-record-mutant.sh"
-  sed '/^[[:space:]]*#.*enum/d; /_VALID_VERDICTS/d' "$SCRIPT" > "$mutant_script"
+  cp "$SCRIPT" "$mutant_script"
+  # Replace the function body with a no-op, preserving the function header
+  # so _parse_opts and callers still resolve, but the guard does nothing.
+  sed -i.bak '/^_assert_valid_verdict()/,/^}$/c\
+_assert_valid_verdict() {\
+  : # neutralised by mutant test\
+}' "$mutant_script"
   chmod +x "$mutant_script"
-  run "$mutant_script" add-review \
+
+  # The neutralised copy must still contain the function header
+  grep -q '^_assert_valid_verdict()' "$mutant_script" || \
+    fail "sed neutralisation failed — function header not found in mutant copy"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$mutant_script" add-review \
     --verdict "bogus" \
     --reviewer "tester" \
     --kind "internal"
   [ "$status" -eq 0 ] || \
-    fail "mutant: removing the enum guard should admit schema-invalid reviews"
+    fail "mutant: neutralising _assert_valid_verdict should admit schema-invalid reviews, but exit=$status: $output"
 }
 
 

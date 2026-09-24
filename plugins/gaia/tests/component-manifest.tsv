@@ -805,6 +805,7 @@ skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats
 skills	story-parse.bats
+skills	sync-derived-artifacts.bats
 skills	tdd-review-gate.bats
 skills	test-manual-skill.bats
 skills	test-manual-surface-adapter.bats
