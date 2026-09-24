@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # finalize.sh — /gaia-create-ux skill finalize
 #
-# Extends the finalize scaffolding with a 26-item post-completion checklist
-# (18 script-verifiable + 8 LLM-checkable) derived from the V1
+# Extends the finalize scaffolding with a 27-item post-completion checklist
+# (19 script-verifiable + 8 LLM-checkable) derived from the V1
 # /gaia-create-ux (create-ux-design) checklist.
 #
 # Responsibilities:
-#   1. Run the script-verifiable subset of the 26 V1 checklist items
+#   1. Run the script-verifiable subset of the 27 checklist items
 #      against the UX design artifact. Validation runs FIRST.
 #   2. Emit an LLM-checkable payload listing the semantic-judgment items.
 #   3. Write a checkpoint via the shared checkpoint.sh helper.
