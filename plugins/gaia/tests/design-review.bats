@@ -688,8 +688,9 @@ UX
 
   # (c) check-convergence reports not-converged with B missing
   run "$DESIGN_RECORD_SH" check-convergence
-  [[ "$output" == *"not-converged"* ]] || [ "$status" -ne 0 ] || \
-    fail "convergence should report not-converged with B missing"
+  [ "$status" -eq 1 ] || fail "check-convergence should exit 1 when not converged — got $status"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "convergence should report not-converged with B missing — got: $output"
 
   # (d) transition review->review (iteration bumps)
   run "$DESIGN_RECORD_SH" transition --to review --actor "test-actor"
@@ -707,8 +708,9 @@ UX
     fail "A's approval iteration is $a_approval_iter, expected $pre_iter"
 
   run "$DESIGN_RECORD_SH" check-convergence
-  [[ "$output" == *"not-converged"* ]] || [ "$status" -ne 0 ] || \
-    fail "convergence at new iteration should report both A and B as missing"
+  [ "$status" -eq 1 ] || fail "check-convergence should exit 1 at new iteration — got $status"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "convergence at new iteration should report both A and B as missing — got: $output"
 
   rm -rf "$root"
 }
@@ -789,14 +791,13 @@ UX
   boundary_content="$(cat <<'BOUNDARY'
 <<<DESIGN_PROJECT_BOUNDARY>>>
 This is the project read-back content.
-It contains the distinctive literal MARKER_SENTINEL_e9f2a7 which should never
-appear in a verdict's notes text.
+It contains the distinctive literal MARKER_SENTINEL_e9f2a7 which should never appear in a verdict notes text under any circumstances.
 <<<END_DESIGN_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
-  # Candidate notes containing the sentinel — should be rejected
-  local candidate_notes="The review found MARKER_SENTINEL_e9f2a7 in the design"
+  # Candidate notes echoing a 40+ char substring from the boundary — should be rejected
+  local candidate_notes="The review found distinctive literal MARKER_SENTINEL_e9f2a7 which should never appear"
 
   # Enable tracing
   export DESIGN_REVIEW_VERDICT_TRACE=1
@@ -883,8 +884,9 @@ BOUNDARY
 
   # Convergence must report not-converged
   run "$DESIGN_RECORD_SH" check-convergence
-  [[ "$output" == *"not-converged"* ]] || [ "$status" -ne 0 ] || \
-    fail "mutant: convergence reports converged without any approve calls"
+  [ "$status" -eq 1 ] || fail "mutant: check-convergence should exit 1 — got $status"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "mutant: convergence reports converged without any approve calls — got: $output"
 
   rm -rf "$root"
 }

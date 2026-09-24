@@ -82,12 +82,13 @@ BOUNDARY
   local boundary_content
   boundary_content="$(cat <<'BOUNDARY'
 <<<DESIGN_PROJECT_BOUNDARY>>>
-The distinctive sentinel MARKER_SENTINEL_e9f2a7 appears in this project content.
+The distinctive sentinel MARKER_SENTINEL_e9f2a7 appears prominently in this project content section.
 <<<END_DESIGN_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
-  local candidate_notes="I found that MARKER_SENTINEL_e9f2a7 is a quality issue"
+  # Echoes a 40+ char substring from the boundary content
+  local candidate_notes="I found that distinctive sentinel MARKER_SENTINEL_e9f2a7 appears prominently in the design"
 
   run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
   [ "$status" -ne 0 ] || \
@@ -119,12 +120,13 @@ BOUNDARY
   local boundary_content
   boundary_content="$(cat <<'BOUNDARY'
 <<<DESIGN_PROJECT_BOUNDARY>>>
-MARKER_SENTINEL_e9f2a7 is present in the read-back.
+MARKER_SENTINEL_e9f2a7 is present and visible in the full design read-back content section.
 <<<END_DESIGN_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
-  local candidate_notes="The MARKER_SENTINEL_e9f2a7 indicates a problem"
+  # A 40+ char overlap with the boundary content
+  local candidate_notes="The MARKER_SENTINEL_e9f2a7 is present and visible in the full design read-back"
 
   run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
   [ "$status" -ne 0 ] || fail "should reject"
@@ -158,4 +160,178 @@ BOUNDARY
 
   run "$PROVENANCE_SCRIPT" "" "<<<BOUNDARY>>>content<<<END_BOUNDARY>>>"
   [ "$status" -ne 0 ] || fail "should fail with empty candidate notes"
+}
+
+
+# =========================================================================
+# Performance — linear-time algorithm
+# =========================================================================
+
+@test "10 KB notes against 200 KB boundary content completes in under 3 s" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # Generate test data via python3 for speed (bash loops are too slow
+  # for 200 KB string assembly).
+  local boundary_content
+  boundary_content="$(python3 -c '
+lines = []
+lines.append("<<<DESIGN_PROJECT_BOUNDARY>>>")
+i = 0
+total = 0
+while total < 204800:
+    line = f"boundary line {i} with unique filler text alpha-bravo-charlie-delta-echo-foxtrot-golf-hotel-india-juliet"
+    lines.append(line)
+    total += len(line) + 1
+    i += 1
+lines.append("<<<END_DESIGN_PROJECT_BOUNDARY>>>")
+print("\n".join(lines))
+')"
+
+  local candidate_notes
+  candidate_notes="$(python3 -c '
+lines = []
+i = 0
+total = 0
+while total < 10240:
+    line = f"review observation {i} colour contrast spacing typography hierarchy layout grid responsive mobile desktop"
+    lines.append(line)
+    total += len(line) + 1
+    i += 1
+print("\n".join(lines))
+')"
+
+  # Measure wall-clock time portably via python3 (macOS date lacks %s%N)
+  local start_ms end_ms elapsed_ms
+  start_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
+
+  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+
+  end_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
+  elapsed_ms=$((end_ms - start_ms))
+
+  [ "$status" -eq 0 ] || fail "script failed on large input — exit $status"
+  [ "$elapsed_ms" -lt 3000 ] || \
+    fail "performance: ${elapsed_ms} ms exceeds 3000 ms budget for 10 KB vs 200 KB"
+}
+
+
+# =========================================================================
+# False-positive denial of service — min match length raised to 40
+# =========================================================================
+
+@test "accepts a short reviewer phrase (under 40 chars) that also appears in boundary" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # A 30-character phrase that could naturally appear in both reviewer
+  # notes and project content.  Must NOT trigger a match.
+  local shared_phrase="the layout is well structured"  # 29 chars
+
+  local boundary_content
+  boundary_content="$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s with some extra filler text for the boundary.\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$shared_phrase")"
+
+  local candidate_notes="I observed that ${shared_phrase} overall."
+
+  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+  [ "$status" -eq 0 ] || \
+    fail "should accept a short (<40 char) shared phrase — exit $status: $output"
+}
+
+@test "rejects a verbatim copied passage of 40 or more characters" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # A 45-character verbatim passage.
+  local verbatim_passage="the sidebar component navigation drawer panel"  # 47 chars
+
+  local boundary_content
+  boundary_content="$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\nSome prefix text. %s and more suffix text.\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$verbatim_passage")"
+
+  local candidate_notes="The review found that ${verbatim_passage} needs improvement."
+
+  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+  [ "$status" -ne 0 ] || \
+    fail "should reject a verbatim passage of 40+ characters"
+}
+
+
+# =========================================================================
+# Case and whitespace evasion — normalised comparison
+# =========================================================================
+
+@test "rejects an upper-cased copy of boundary content" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  local phrase="the sidebar component has navigation drawer items and breadcrumbs"
+
+  local boundary_content
+  boundary_content="$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$phrase")"
+
+  # Upper-case version of the same phrase
+  local upper_phrase
+  upper_phrase="$(printf '%s' "$phrase" | tr '[:lower:]' '[:upper:]')"
+  local candidate_notes="Finding: ${upper_phrase} needs work"
+
+  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+  [ "$status" -ne 0 ] || \
+    fail "should reject an upper-cased copy of boundary content"
+}
+
+@test "boundary markers are stripped — verdict echoing marker-adjacent text is accepted" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # The boundary wraps inner text with a newline after the opening
+  # marker.  After normalisation, the unstripped boundary is:
+  #   "<<<design_project_boundary>>> zephyr widget renders ..."
+  # The candidate echoes a 40-char window spanning the marker/inner
+  # seam.  With stripping, the marker text is gone and only the inner
+  # content is searched — the candidate's cross-seam window has no
+  # match, so the check passes.
+  local inner="zephyr widget renders unique navigation items within the special layout grid design and more filler"
+  local boundary_content
+  boundary_content="$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$inner")"
+
+  # After normalisation, the unstripped boundary is:
+  #   "<<<design_project_boundary>>> zephyr widget renders ..."
+  # 40-char cross-seam window:
+  #   "ject_boundary>>> zephyr widget renders u" (40 chars)
+  # That window is absent from the stripped inner (starts "zephyr ...")
+  local candidate_notes="review data: ject_boundary>>> zephyr widget renders u found in the log."
+
+  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+  [ "$status" -eq 0 ] || \
+    fail "should accept verdict echoing marker-adjacent text — exit $status: $output"
+}
+
+@test "boundary markers are stripped — inner content still matches" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # A longer inner phrase that exceeds the 40-char threshold
+  local inner_phrase="the project has a sidebar with navigation links and footer sections and header elements"
+
+  local boundary_content
+  boundary_content="$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$inner_phrase")"
+
+  # Candidate echoes a 40+ char substring of the INNER content — must reject
+  local candidate_notes="Found that ${inner_phrase} needs improvement"
+
+  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+  [ "$status" -ne 0 ] || \
+    fail "should reject verdict echoing inner boundary content"
+}
+
+@test "rejects a whitespace-padded copy of boundary content" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  local phrase="the sidebar component has navigation drawer items and breadcrumbs"
+
+  local boundary_content
+  boundary_content="$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$phrase")"
+
+  # Insert extra spaces and a newline in the middle
+  local padded_phrase
+  padded_phrase="$(printf '%s' "$phrase" | sed 's/ /  /g; s/drawer/drawer\n/')"
+  local candidate_notes="Finding: ${padded_phrase} needs work"
+
+  run "$PROVENANCE_SCRIPT" "$candidate_notes" "$boundary_content"
+  [ "$status" -ne 0 ] || \
+    fail "should reject a whitespace-padded copy of boundary content"
 }

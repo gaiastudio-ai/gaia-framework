@@ -9,6 +9,9 @@ LC_ALL=C; export LC_ALL
 # project content.  Called by the design-review skill before every
 # add-review invocation.
 #
+# Comparison is case-insensitive and whitespace-normalised (runs of
+# whitespace, including newlines, collapsed to a single space).
+#
 # Usage: verdict-provenance-check.sh <candidate-notes> <boundary-content>
 #   - candidate-notes:  the text of the proposed verdict/notes
 #   - boundary-content: the full boundary-marker-wrapped project content
@@ -20,10 +23,13 @@ LC_ALL=C; export LC_ALL
 
 _die() { printf 'verdict-provenance-check.sh: %s\n' "$1" >&2; exit 2; }
 
-# Minimum substring length to trigger a match.  Short common words
-# ("the", "and", "with") always appear in both texts; only matches
-# at or above this threshold count as verbatim transcription.
-MIN_MATCH_LENGTH=20
+# Minimum substring length to trigger a match.  Raised from 20 to 40 to
+# prevent false-positive denial of service: an attacker who controls
+# design content could plant common reviewer phrases so that legitimate
+# verdicts get rejected.  At 40 characters, common short sentences
+# ("the layout is well structured") pass through, while verbatim
+# paragraph-level copying is still caught.
+MIN_MATCH_LENGTH=40
 
 # ---------------------------------------------------------------------------
 # Argument validation
@@ -62,35 +68,85 @@ if [ ${#inner_content} -lt "$MIN_MATCH_LENGTH" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Sliding-window verbatim match
+# Linear-time verbatim match with normalisation
 # ---------------------------------------------------------------------------
-
-# Check whether any substring of the candidate notes of length >= threshold
-# appears verbatim in the inner boundary content.
 #
-# Strategy: slide a window of MIN_MATCH_LENGTH across the candidate text
-# and check each window against the inner content.
+# Strategy: a python3 invocation that
+#   1. Reads both texts from temp files, normalises each (lowercase,
+#      collapse whitespace).
+#   2. Slides a window of MIN_MATCH_LENGTH across the candidate and
+#      checks each window against the normalised boundary via Python's
+#      O(N) `in` operator (CPython uses a fast Boyer-Moore variant).
+#
+# Complexity: O(N * L) where N = candidate length, L = window length,
+# with each `in` check amortised to near-linear — well under 1 s for
+# the 10 KB-vs-200 KB workload that times out in the old bash loop.
+#
+# Data flows through temp files to avoid large shell argument passing.
 
-candidate_len=${#candidate}
+command -v python3 >/dev/null 2>&1 || _die "python3 is required but not found on PATH"
 
-if [ "$candidate_len" -lt "$MIN_MATCH_LENGTH" ]; then
-  # Candidate is shorter than the threshold — cannot match
-  exit 0
-fi
+_tmp_boundary="$(mktemp)"
+_tmp_candidate="$(mktemp)"
+trap 'rm -f "$_tmp_boundary" "$_tmp_candidate"' EXIT
 
-i=0
-while [ $((i + MIN_MATCH_LENGTH)) -le "$candidate_len" ]; do
-  window="${candidate:$i:$MIN_MATCH_LENGTH}"
-  case "$inner_content" in
-    *"$window"*)
-      printf 'verdict-provenance-check.sh: verbatim match found — candidate notes contain a %d-char substring from the project boundary content\n' "$MIN_MATCH_LENGTH" >&2
-      if [ "${DESIGN_REVIEW_VERDICT_TRACE:-}" = "1" ]; then
-        printf 'verdict-provenance-check.sh: matched provenance window at offset %d: "%s"\n' "$i" "$window" >&2
+printf '%s' "$inner_content" > "$_tmp_boundary"
+printf '%s' "$candidate" > "$_tmp_candidate"
+
+result="$(python3 -c '
+import re, sys
+
+min_len = int(sys.argv[1])
+trace = sys.argv[2] == "1"
+boundary_file = sys.argv[3]
+candidate_file = sys.argv[4]
+
+with open(boundary_file) as f:
+    boundary = f.read()
+with open(candidate_file) as f:
+    candidate = f.read()
+
+# Normalise: lowercase, collapse whitespace to single space, strip edges
+boundary = re.sub(r"\s+", " ", boundary.lower()).strip()
+candidate = re.sub(r"\s+", " ", candidate.lower()).strip()
+
+blen = len(boundary)
+clen = len(candidate)
+
+if blen < min_len or clen < min_len:
+    print("PASS")
+    sys.exit(0)
+
+# Slide window across candidate and check against boundary
+for j in range(clen - min_len + 1):
+    w = candidate[j:j + min_len]
+    if w in boundary:
+        if trace:
+            print(f"MATCH:{j}:{w}")
+        else:
+            print(f"MATCH:{j}")
+        sys.exit(0)
+
+print("PASS")
+' "$MIN_MATCH_LENGTH" "${DESIGN_REVIEW_VERDICT_TRACE:-0}" "$_tmp_boundary" "$_tmp_candidate")"
+
+case "$result" in
+  PASS)
+    exit 0
+    ;;
+  MATCH:*)
+    offset="${result#MATCH:}"
+    offset="${offset%%:*}"
+    printf 'verdict-provenance-check.sh: verbatim match found — candidate notes contain a %d-char substring from the project boundary content\n' "$MIN_MATCH_LENGTH" >&2
+    if [ "${DESIGN_REVIEW_VERDICT_TRACE:-}" = "1" ]; then
+      matched_window="${result#*MATCH:*:}"
+      if [ "$matched_window" != "$result" ] && [ -n "$matched_window" ]; then
+        printf 'verdict-provenance-check.sh: matched provenance window at offset %s: "%s"\n' "$offset" "$matched_window" >&2
       fi
-      exit 1
-      ;;
-  esac
-  i=$((i + 1))
-done
-
-exit 0
+    fi
+    exit 1
+    ;;
+  *)
+    exit 0
+    ;;
+esac
