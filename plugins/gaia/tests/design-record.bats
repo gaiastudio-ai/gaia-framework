@@ -2209,12 +2209,12 @@ FIXTURE
   run "$SCRIPT" transition --to stale --actor ci
   [ "$status" -eq 0 ]
 
-  # Patch: remove the stale-to-review bump
+  # Patch: remove stale from the iteration-bump condition so only
+  # review-to-review bumps (the stale-to-review edge no longer bumps)
   local mutant_script="$TEST_TMP/design-record-mutant.sh"
   cp "$SCRIPT" "$mutant_script"
   ln -sfn "$SCRIPTS_DIR/lib" "$TEST_TMP/lib"
-  # Neutralise the stale-to-review bump block
-  sed '/current_state.*=.*"stale".*&&.*to.*=.*"review"/,/fi/{ s/new_iter=\$((current_iter + 1))/: # neutralised/; }' \
+  sed 's/\[ "$current_state" = "review" \] || \[ "$current_state" = "stale" \]/[ "$current_state" = "review" ]/' \
     "$mutant_script" > "$TEST_TMP/mutant-patched.sh"
   mv "$TEST_TMP/mutant-patched.sh" "$mutant_script"
   chmod +x "$mutant_script"

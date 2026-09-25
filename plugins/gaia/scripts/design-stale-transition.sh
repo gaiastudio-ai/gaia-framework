@@ -140,25 +140,26 @@ fi
 # Phase 3: halt if not available
 # ---------------------------------------------------------------------------
 
+_relay_and_clean_probe_stderr() {
+  if [ -n "$_probe_stderr" ] && [ -f "$_probe_stderr" ]; then
+    cat "$_probe_stderr" >&2 2>/dev/null || true
+  fi
+  rm -f "$_probe_stderr" 2>/dev/null || true
+}
+
 case "$_resolved_state" in
   available)
-    rm -f "$_probe_stderr" 2>/dev/null || true
+    _relay_and_clean_probe_stderr
     exit 0
     ;;
   unauthorized)
     printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is unauthorized in this session. Run /design-login to authorize the integration.\n' >&2
-    if [ -n "$_probe_stderr" ] && [ -f "$_probe_stderr" ]; then
-      cat "$_probe_stderr" >&2 2>/dev/null || true
-    fi
-    rm -f "$_probe_stderr" 2>/dev/null || true
+    _relay_and_clean_probe_stderr
     exit 1
     ;;
   *)
     printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is not available in this session. Enable the Claude Design integration, or use a Claude Code session that exposes the design tool surface.\n' >&2
-    if [ -n "$_probe_stderr" ] && [ -f "$_probe_stderr" ]; then
-      cat "$_probe_stderr" >&2 2>/dev/null || true
-    fi
-    rm -f "$_probe_stderr" 2>/dev/null || true
+    _relay_and_clean_probe_stderr
     exit 1
     ;;
 esac

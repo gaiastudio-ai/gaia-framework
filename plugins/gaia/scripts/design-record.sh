@@ -567,10 +567,8 @@ cmd_transition() {
   actor="${actor:-${USER:-unknown}}"
 
   # Both-or-neither: the two integration options travel as a pair
-  if [ -n "$int_state" ] && [ -z "$int_source" ]; then
-    _die "transition: --integration-state and --integration-source must be provided together"
-  fi
-  if [ -z "$int_state" ] && [ -n "$int_source" ]; then
+  if { [ -n "$int_state" ] && [ -z "$int_source" ]; } || \
+     { [ -z "$int_state" ] && [ -n "$int_source" ]; }; then
     _die "transition: --integration-state and --integration-source must be provided together"
   fi
 
@@ -617,17 +615,10 @@ _do_transition() {
       _die "transition review->approved blocked: ${conv_result}"
   fi
 
-  # review -> review bumps iteration; prior approvals remain but are
-  # keyed to the old iteration, so they no longer satisfy convergence.
+  # Bump iteration on review-to-review and stale-to-review: prior approvals
+  # remain keyed to the old iteration, so they no longer satisfy convergence.
   local new_iter="$current_iter"
-  if [ "$current_state" = "review" ] && [ "$to" = "review" ]; then
-    new_iter=$((current_iter + 1))
-    yq -i ".iteration = $new_iter" "$tmp"
-  fi
-
-  # stale to review: start a fresh review round; prior approvals
-  # are keyed to the old iteration, so they no longer satisfy convergence.
-  if [ "$current_state" = "stale" ] && [ "$to" = "review" ]; then
+  if [ "$to" = "review" ] && { [ "$current_state" = "review" ] || [ "$current_state" = "stale" ]; }; then
     new_iter=$((current_iter + 1))
     yq -i ".iteration = $new_iter" "$tmp"
   fi
