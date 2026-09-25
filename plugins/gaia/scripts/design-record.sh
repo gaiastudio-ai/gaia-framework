@@ -625,12 +625,13 @@ _do_transition() {
 
   _DT_TO="$to" yq -i '.design_state = strenv(_DT_TO)' "$tmp"
 
-  # Build extra audit key=value pairs for integration state recording
-  local -a _extra_audit=()
+  # Append the audit entry; include integration state when present
   if [ -n "$int_state" ]; then
-    _extra_audit+=("integration_state=${int_state}" "integration_source=${int_source}")
+    _append_audit "$tmp" "state-transition" "$actor" "from=${current_state}" "to=${to}" \
+      "integration_state=${int_state}" "integration_source=${int_source}"
+  else
+    _append_audit "$tmp" "state-transition" "$actor" "from=${current_state}" "to=${to}"
   fi
-  _append_audit "$tmp" "state-transition" "$actor" "from=${current_state}" "to=${to}" "${_extra_audit[@]}"
 }
 
 # cmd_approve — record a stakeholder approval.

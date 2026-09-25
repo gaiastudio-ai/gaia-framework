@@ -149,7 +149,7 @@ _relay_and_clean_probe_stderr() {
 
 case "$_resolved_state" in
   available)
-    _relay_and_clean_probe_stderr
+    rm -f "$_probe_stderr" 2>/dev/null || true
     exit 0
     ;;
   unauthorized)

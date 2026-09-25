@@ -765,6 +765,14 @@ _spy_probe_count() {
     || fail "driver header should document the authorization-expiry trade-off"
   grep -qiE 'update step|later' "$DRIVER_SCRIPT" \
     || fail "driver header should mention the later update step"
+
+  # The shared attestation block also documents the trade-off
+  local skill_af="$PLUGIN_ROOT/skills/gaia-add-feature/SKILL.md"
+  local att_block
+  att_block="$(awk '/<!-- design-attestation begin -->/{p=1;next} /<!-- design-attestation end -->/{p=0} p' "$skill_af")"
+  [ -n "$att_block" ] || fail "attestation block not found in add-feature SKILL.md"
+  echo "$att_block" | grep -qiE 'revok|token' \
+    || fail "attestation block should document the authorization-expiry trade-off"
 }
 
 # ===========================================================================

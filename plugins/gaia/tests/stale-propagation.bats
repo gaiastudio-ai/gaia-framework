@@ -934,11 +934,11 @@ teardown() { common_teardown; }
   echo "$block_af" | grep -q 'unauthorized' \
     || fail "attestation block should mention 'unauthorized'"
 
-  # Absent from all nine gate sites
+  # Absent from all nine gate sites (8 solutioning entry points + dev-story)
   local gate_sites=(
-    gaia-create-arch gaia-create-epics gaia-create-prd
-    gaia-create-story gaia-create-ux gaia-nfr
-    gaia-readiness-check gaia-test-strategy gaia-dev-story
+    gaia-create-arch gaia-edit-arch gaia-create-epics
+    gaia-threat-model gaia-infra-design gaia-readiness-check
+    gaia-review-api gaia-adversarial gaia-dev-story
   )
   local site checked=0
   for site in "${gate_sites[@]}"; do
@@ -949,6 +949,6 @@ teardown() { common_teardown; }
       fail "attestation block marker found in gate site $site"
     fi
   done
-  [ "$checked" -gt 0 ] || fail "no gate-site SKILL.md files found — scan is vacuous"
+  [ "$checked" -eq 9 ] || fail "expected 9 gate-site SKILL.md files but found $checked"
 }
 

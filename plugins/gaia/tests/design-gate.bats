@@ -514,9 +514,16 @@ STAKE
   if ! _stripped_output | grep -qi 'if claude design is not connected'; then
     fail "conditional integration clause should be present"
   fi
-  # Remediation leads with /gaia-design-review
+  # Remediation leads with /gaia-design-review (before the conditional clause)
   _stripped_output | grep -q '/gaia-design-review' \
     || fail "remediation should lead with /gaia-design-review"
+  local remediation_line
+  remediation_line="$(_stripped_output | grep -i 'Remediation:')"
+  local dr_pos cl_pos
+  dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
+    || fail "/gaia-design-review should appear before the conditional clause"
 }
 
 @test "(AC3) conditional integration clause present on state-based halt" {
@@ -730,6 +737,14 @@ STAKE
   if ! _stripped_output | grep -qi 'if claude design is not connected'; then
     fail "conditional clause should be present"
   fi
+  # /gaia-design-review must appear before the conditional clause on the Remediation line
+  local remediation_line
+  remediation_line="$(_stripped_output | grep -i 'Remediation:')"
+  local dr_pos cl_pos
+  dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
+    || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
 
 @test "(AC3) halt remediation leads with /gaia-design-review for stale" {
@@ -749,6 +764,14 @@ STAKE
   fi
   _stripped_output | grep -qi 'design-login' \
     || fail "conditional clause should mention design-login"
+  # /gaia-design-review must appear before the conditional clause on the Remediation line
+  local remediation_line
+  remediation_line="$(_stripped_output | grep -i 'Remediation:')"
+  local dr_pos cl_pos
+  dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
+    || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
 
 @test "(AC3) halt message mutant: drop state from message" {

@@ -2229,3 +2229,48 @@ FIXTURE
 }
 
 
+
+# =========================================================================
+# Bash 3.2 portability — empty-array expansion under set -u
+# =========================================================================
+
+@test "static: no bare empty-array expansion in design-record.sh or design-stale-transition.sh" {
+  # Under bash 3.2 with set -u, "${arr[@]}" on an empty array is an
+  # unbound-variable error. The safe form is ${arr[@]+"${arr[@]}"} or
+  # branching into separate calls. Grep for the bare pattern and reject it.
+  local violations=""
+  local f
+  for f in "$SCRIPTS_DIR/design-record.sh" "$SCRIPTS_DIR/design-stale-transition.sh"; do
+    [ -f "$f" ] || continue
+    # Match "${name[@]}" but NOT ${name[@]+"${name[@]}"}
+    # The grep finds lines with "${...[@]}" and filters out the safe +"-guarded form
+    local bare
+    bare="$(grep -nE '"\$\{[a-z_]+\[@\]\}"' "$f" | grep -vE '\[@\]\+' || true)"
+    if [ -n "$bare" ]; then
+      violations="${violations}${f}:\n${bare}\n"
+    fi
+  done
+  [ -z "$violations" ] || {
+    printf 'Bare empty-array expansion (breaks bash 3.2 under set -u):\n%b\n' "$violations"
+    fail "use branching or the \${arr[@]+...} form instead"
+  }
+}
+
+@test "runtime: transition --to review under /bin/bash produces the correct state" {
+  assert_script_exists
+
+  # Run init then transition --to review under /bin/bash explicitly
+  # (catches the bash 3.2 empty-array regression on macOS;
+  # meaningful on Linux CI too as it proves the code path)
+  /bin/bash "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  /bin/bash "$SCRIPT" transition --to review --actor ci
+
+  local state iter audit_count
+  state="$(yq '.design_state' "$RECORD")"
+  iter="$(yq '.iteration' "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
+  [ "$state" = "review" ] || fail "design_state should be review but is $state"
+  [ "$iter" -eq 1 ] || fail "iteration should be 1 but is $iter"
+  [ "$audit_count" -ge 2 ] || fail "audit should have at least 2 entries (init + transition) but has $audit_count"
+}

@@ -1051,7 +1051,6 @@ BOUNDARY
   [ -s "$doc_page" ] || fail "documentation page not found: documentation/commands/gaia-design-review.html"
 
   # The first step-list item must mention stale-resume behaviour
-  # (per amendment W2: prepend to the first step-list item)
   # Split <li> tags onto separate lines, then grab the first one
   local first_step
   first_step="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$doc_page" \
