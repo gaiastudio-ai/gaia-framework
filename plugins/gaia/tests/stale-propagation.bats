@@ -940,13 +940,15 @@ teardown() { common_teardown; }
     gaia-create-story gaia-create-ux gaia-nfr
     gaia-readiness-check gaia-test-strategy gaia-dev-story
   )
-  local site
+  local site checked=0
   for site in "${gate_sites[@]}"; do
     local skill_md="$SKILLS_DIR/$site/SKILL.md"
     [ -f "$skill_md" ] || continue
+    checked=$((checked + 1))
     if grep -q '<!-- design-attestation begin -->' "$skill_md"; then
       fail "attestation block marker found in gate site $site"
     fi
   done
+  [ "$checked" -gt 0 ] || fail "no gate-site SKILL.md files found — scan is vacuous"
 }
 

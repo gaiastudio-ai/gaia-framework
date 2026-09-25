@@ -166,7 +166,7 @@ teardown() { common_teardown; }
   # Record should be stale (transition happens before halt)
   local state
   state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
-  [ "$state" = "stale" ] || fail "record should be stale (transition precedes probe) but is $state"
+  [ "$state" = "stale" ] || fail "record should be stale (transition precedes halt) but is $state"
 }
 
 @test "(AC-EC4) probe unauthorized halts with distinct message" {
@@ -894,12 +894,12 @@ _spy_probe_count() {
   grep -q 'garbage' "$stderr_file" || fail "original stderr should name the invalid value"
 
   # Patch: neutralise the enum validation anchor
+  local orig="$DRIVER_SCRIPT"
   local patched="$TEST_TMP/mutant-enum-removed.sh"
   sed 's/# MUTANT-ANCHOR: enum-validation/: # MUTANT-ANCHOR: enum-validation (neutralised)/' \
-    "$DRIVER_SCRIPT" > "$patched"
+    "$orig" > "$patched"
   chmod +x "$patched"
-  # Note: if the anchor does not exist yet, the patch does not change anything
-  # and this test correctly fails in the red phase
+  if cmp -s "$orig" "$patched"; then fail "patch did not apply"; fi
 
   rc=0
   env PROJECT_ROOT="$TEST_TMP" \

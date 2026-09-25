@@ -442,3 +442,26 @@ CMDS_END
     return 1
   }
 }
+
+# =========================================================================
+# Stale-on-change wording (design-lifecycle.html)
+# =========================================================================
+
+@test "design-lifecycle.html does not claim the diagnostic names the triggering change" {
+  local page="$DOC_DIR/design-lifecycle.html"
+  [ -s "$page" ] || {
+    echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
+  }
+
+  # The old wording claimed the diagnostic "names the change" — must be gone
+  if grep -qi 'names the change' "$page"; then
+    echo "FAIL: design-lifecycle.html still claims the diagnostic names the change that triggered stale" >&2
+    return 1
+  fi
+
+  # The replacement wording must be present
+  grep -qi 're-approved.*review round\|same halt.*non-approved' "$page" || {
+    echo "FAIL: design-lifecycle.html should carry the replacement wording about re-approval through a review round" >&2
+    return 1
+  }
+}

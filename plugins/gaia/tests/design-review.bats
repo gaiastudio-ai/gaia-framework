@@ -1045,3 +1045,26 @@ BOUNDARY
     || fail "Step 7 should mention the stale-to-review iteration bump"
 }
 
+
+@test "(AC8) doc page carries stale-resume in first step-list item" {
+  local doc_page="$PLUGIN_ROOT/../../documentation/commands/gaia-design-review.html"
+  [ -s "$doc_page" ] || fail "documentation page not found: documentation/commands/gaia-design-review.html"
+
+  # The first step-list item must mention stale-resume behaviour
+  # (per amendment W2: prepend to the first step-list item)
+  local first_step
+  first_step="$(sed -n '/<ol class="step-list">/,/<\/ol>/{ s/.*<li>\(.*\)<\/li>.*/\1/p; }' "$doc_page" | head -1)"
+  [ -n "$first_step" ] || fail "could not extract first step-list item"
+
+  echo "$first_step" | grep -qi 'stale' \
+    || fail "first step-list item should mention stale-resume"
+  echo "$first_step" | grep -qi 'iteration.*bump\|earlier approvals.*no longer' \
+    || fail "first step-list item should mention the iteration bump"
+
+  # Must NOT add a new Prerequisites item for stale-resume
+  local prereqs
+  prereqs="$(sed -n '/<section id="prerequisites">/,/<\/section>/p' "$doc_page")"
+  if echo "$prereqs" | grep -qi 'stale.*resume\|stale.*review'; then
+    fail "stale-resume should be in the step-list, not in Prerequisites"
+  fi
+}
