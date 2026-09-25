@@ -1967,7 +1967,7 @@ FIXTURE
 # Stale-to-review iteration bump (AC8)
 # =========================================================================
 
-@test "(AC8) stale-to-review bumps iteration and prior approvals no longer satisfy convergence" {
+@test "(AC8) stale-to-review bumps iteration and invalidates pre-stale approvals" {
   assert_script_exists
 
   seed_roster_gaia
