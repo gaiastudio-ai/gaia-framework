@@ -481,13 +481,26 @@ adhere to the hygiene rules at dispatch time.
 <!-- design-stale-transition begin -->
 **Design impact assessment:** Before proceeding to story creation, assess whether this feature affects the project's design. If the feature changes user-facing layout, interaction patterns, navigation, component structure, or visual language, it is design-affecting. If the impact is ambiguous or uncertain, default to treating it as design-affecting (stale is safer than stale-undetected).
 
+<!-- design-attestation begin -->
+**Integration availability check:** When the decision is `yes` or `ambiguous`, make a single cheap Claude Design call (`list_projects`) to determine whether the integration is available. Classify the outcome:
+- `available` — the call succeeded.
+- `unauthorized` — the call failed with an authorization or permission error.
+- `missing` — the call failed for any other reason (timeout, tool not found, etc.).
+
+Pass the result as `--integration <available|missing|unauthorized>`. When the decision is `no`, skip the check and omit `--integration`. When availability cannot be determined, omit `--integration` and the driver will fall back to its own probe.
+
+The driver trusts this classification without a second probe. If the token is revoked between this check and the driver run, the later Claude Design update step surfaces the failure — it is not silently absorbed.
+<!-- design-attestation end -->
+
 When the feature is design-affecting (or the assessment is ambiguous):
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision <yes|no|ambiguous> --actor gaia-add-feature
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision <yes|no|ambiguous> [--integration <available|missing|unauthorized>] --actor gaia-add-feature
 ```
 
-Pass `yes` when the feature clearly affects the design, `no` when it clearly does not, and `ambiguous` when the impact is uncertain. The driver transitions the record to stale and verifies the integration is reachable. If the integration is unavailable, the driver halts and no stories are created.
+Omit `--integration` when the Claude Design availability check could not run (e.g. the decision is `no` and the check was skipped).
+
+Pass `yes` when the feature clearly affects the design, `no` when it clearly does not, and `ambiguous` when the impact is uncertain. The driver transitions the record to stale and records the integration state in the audit trail. If the integration is not available, the driver halts and no stories are created.
 <!-- design-stale-transition end -->
 
 ### Step 3 -- Execute Cascade (patch)

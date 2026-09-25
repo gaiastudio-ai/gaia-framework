@@ -556,8 +556,8 @@ cmd_status() {
 
 # cmd_transition — state-machine transition.
 cmd_transition() {
-  local to="" actor=""
-  _parse_opts --to to --actor actor -- "$@"
+  local to="" actor="" int_state="" int_source=""
+  _parse_opts --to to --actor actor --integration-state int_state --integration-source int_source -- "$@"
 
   if [ -z "$to" ]; then
     printf 'design-record.sh: transition: --to required\n' >&2
@@ -565,6 +565,29 @@ cmd_transition() {
     exit 1
   fi
   actor="${actor:-${USER:-unknown}}"
+
+  # Both-or-neither: the two integration options travel as a pair
+  if { [ -n "$int_state" ] && [ -z "$int_source" ]; } || \
+     { [ -z "$int_state" ] && [ -n "$int_source" ]; }; then
+    _die "transition: --integration-state and --integration-source must be provided together"
+  fi
+
+  # Stale-only: integration options are meaningful only on the stale edge
+  if [ -n "$int_state" ] && [ "$to" != "stale" ]; then
+    _die "transition: --integration-state and --integration-source are only allowed with --to stale"
+  fi
+
+  # Enum validation for integration options (before any lock or I/O)
+  if [ -n "$int_state" ]; then
+    case "$int_state" in
+      available|missing|unauthorized) ;;
+      *) _die "transition: illegal --integration-state value \"$int_state\"; legal values: available, missing, unauthorized" ;;
+    esac
+    case "$int_source" in
+      attested|probed) ;;
+      *) _die "transition: illegal --integration-source value \"$int_source\"; legal values: attested, probed" ;;
+    esac
+  fi
 
   # Pre-lock validation: enum and transition legality checked BEFORE
   # acquiring the lock so illegal requests never block other writers.
@@ -575,11 +598,11 @@ cmd_transition() {
   current_state="$(yq '.design_state' "$RECORD_PATH")"
   _assert_legal_transition "$current_state" "$to"
 
-  _locked_mutate _do_transition "$to" "$actor"
+  _locked_mutate _do_transition "$to" "$actor" "$int_state" "$int_source"
 }
 
 _do_transition() {
-  local tmp="$1" to="$2" actor="$3"
+  local tmp="$1" to="$2" actor="$3" int_state="${4:-}" int_source="${5:-}"
 
   local current_state current_iter
   current_state="$(yq '.design_state' "$tmp")"
@@ -592,16 +615,23 @@ _do_transition() {
       _die "transition review->approved blocked: ${conv_result}"
   fi
 
-  # review -> review bumps iteration; prior approvals remain but are
-  # keyed to the old iteration, so they no longer satisfy convergence.
+  # Bump iteration on review-to-review and stale-to-review: prior approvals
+  # remain keyed to the old iteration, so they no longer satisfy convergence.
   local new_iter="$current_iter"
-  if [ "$current_state" = "review" ] && [ "$to" = "review" ]; then
+  if [ "$to" = "review" ] && { [ "$current_state" = "review" ] || [ "$current_state" = "stale" ]; }; then
     new_iter=$((current_iter + 1))
     yq -i ".iteration = $new_iter" "$tmp"
   fi
 
   _DT_TO="$to" yq -i '.design_state = strenv(_DT_TO)' "$tmp"
-  _append_audit "$tmp" "state-transition" "$actor" "from=${current_state}" "to=${to}"
+
+  # Append the audit entry; include integration state when present
+  if [ -n "$int_state" ]; then
+    _append_audit "$tmp" "state-transition" "$actor" "from=${current_state}" "to=${to}" \
+      "integration_state=${int_state}" "integration_source=${int_source}"
+  else
+    _append_audit "$tmp" "state-transition" "$actor" "from=${current_state}" "to=${to}"
+  fi
 }
 
 # cmd_approve — record a stakeholder approval.

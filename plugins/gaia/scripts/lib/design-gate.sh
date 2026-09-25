@@ -101,54 +101,6 @@ _dg_read_config_ui_present() {
   printf '%s\n' "$val"
 }
 
-# _dg_probe_integration — invoke design-probe.sh once, capture classification.
-# Sets _DG_PROBE_STATE (available|missing|unauthorized) in the caller.
-#
-# Why the probe exists: the halt must distinguish "integration missing" from
-# "integration unauthorized" so the user gets the correct remediation.
-# Unauthorized says "/design-login"; missing does not.
-_dg_probe_integration() {
-  local probe_script
-  probe_script="$(command -v design-probe.sh 2>/dev/null || true)"
-  if [ -z "$probe_script" ]; then
-    probe_script="${_DESIGN_GATE_SCRIPT_DIR}/../design-probe.sh"
-  fi
-
-  _DG_PROBE_STATE="missing"
-
-  [ -f "$probe_script" ] || return 0
-
-  local stderr_file
-  stderr_file="$(mktemp -t dg-probe-stderr.XXXXXX)"
-
-  _DG_PROBE_STATE="$("$probe_script" 2>"$stderr_file")" || true
-  rm -f "$stderr_file" 2>/dev/null || true
-
-  _DG_PROBE_STATE="$(printf '%s' "$_DG_PROBE_STATE" | head -1)"
-  [ -n "$_DG_PROBE_STATE" ] || _DG_PROBE_STATE="missing"
-}
-
-# _dg_halt_with_probe RECORD_PATH STATE STATE_REMEDIATION — probe the
-# integration once, then emit the halt with the appropriate remediation.
-# Used on every non-approved applicable fail path (not the approved path,
-# where zero probe calls are made by design — see AC-EC3).
-_dg_halt_with_probe() {
-  local record_path="$1" design_state="$2" state_remediation="$3"
-
-  _dg_probe_integration
-
-  if [ "$_DG_PROBE_STATE" = "unauthorized" ]; then
-    _dg_halt "$record_path" "$design_state (integration: unauthorized)" \
-      "Run /design-login to authorize — this is an interactive step that you must run yourself; the framework cannot run it on your behalf."
-  elif [ "$_DG_PROBE_STATE" = "missing" ]; then
-    _dg_halt "$record_path" "$design_state (integration: missing)" \
-      "Enable the Claude Design integration in this environment. Use a Claude Code session that exposes the DesignSync tool surface."
-  else
-    _dg_halt "$record_path" "$design_state" "$state_remediation"
-  fi
-  return 1
-}
-
 # _dg_resolve_sprint_id EXPLICIT PROJECT_ROOT — resolve sprint scope.
 # Tries the explicit --sprint-id first, then reads sprint-status.yaml.
 # Stdout: sprint id (e.g. sprint-99). Returns 1 if unresolvable.
@@ -201,11 +153,11 @@ _dg_evaluate_state() {
 
   case "$design_state" in
     draft)
-      printf '%s' "The design is in draft. Transition to review to begin the approval process."
+      printf '%s' "The design is in draft. Run /gaia-design-review to begin the approval process."
       return 1
       ;; # MUTANT-ANCHOR: draft-fail (documents the branch for static analysis)
     review)
-      printf '%s' "The design is under review, awaiting stakeholder approval. Complete the review via the design review skill, or use --force-design with a reason to override."
+      printf '%s' "The design is under review. Run /gaia-design-review to complete the approval round, or use --force-design with a reason to override."
       return 1
       ;;
     in-dev)
@@ -214,7 +166,7 @@ _dg_evaluate_state() {
       ;;
     stale)
       # MUTANT-ANCHOR: stale-fail-branch
-      printf '%s' "The design has gone stale. Transition back to review to start a new approval round."
+      printf '%s' "The design has gone stale. Run /gaia-design-review to start a new approval round."
       return 1
       ;;
     approved)
@@ -233,9 +185,8 @@ _dg_evaluate_state() {
         printf '%s\n' "$conv_output" >&2
         return 0
       fi
-      # Approved and converged — pass. The probe is skipped entirely on this
-      # path: the common approved case is a pure local read. A transient
-      # probe failure must not halt workflows that have a valid local approval.
+      # Approved and converged — pass. The common approved case is a pure
+      # local read with no external dependency.
       return 0
       ;;
     *)
@@ -267,8 +218,8 @@ design_gate_check() {
   done
 
   # Honour an existing PROJECT_ROOT from the caller; fall back through the
-  # framework's standard chain. Export so subprocesses (design-record.sh,
-  # design-probe.sh) inherit it without per-call env overrides.
+  # framework's standard chain. Export so the record writer subprocess
+  # inherits it without per-call env overrides.
   PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
   export PROJECT_ROOT
   local record_path="${PROJECT_ROOT}/.gaia/state/design-record.yaml"
@@ -313,8 +264,8 @@ design_gate_check() {
 
   if [ ! -f "$record_path" ]; then
     # MUTANT-ANCHOR: absent-fail-branch
-    _dg_halt_with_probe "$record_path" "absent" \
-      "Create the design record with the UX design skill, or run: design-record.sh init --reference ... --discovered-via ... --questionnaire-record ..."
+    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If Claude Design is not connected in this session, you will also need to enable it, or run /design-login to authorize it."
+    _dg_halt "$record_path" "absent" "$_dg_absent_remediation"
     return 1
   fi
 
@@ -382,10 +333,10 @@ design_gate_check() {
     return $?
   fi
 
-  # ---- Probe + halt on non-approved applicable paths ----
-  # Exactly one probe call per evaluation (zero on approved — handled above).
+  # ---- Halt on non-approved applicable paths ----
 
-  _dg_halt_with_probe "$record_path" "$design_state" "$state_remediation"  # MUTANT-ANCHOR: probe-fail-branch
+  local _dg_halt_remediation="${state_remediation} If Claude Design is not connected in this session, you will also need to enable it, or run /design-login to authorize it."
+  _dg_halt "$record_path" "$design_state" "$_dg_halt_remediation"  # MUTANT-ANCHOR: probe-fail-branch
   return 1
 }
 

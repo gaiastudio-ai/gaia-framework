@@ -102,11 +102,22 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to a
 <!-- design-stale-transition begin -->
 **Design stale transition:** A direct UX edit is always design-affecting. Transition the design record to stale so downstream gates know the design has changed since its last approval.
 
+<!-- design-attestation begin -->
+**Integration availability check:** When the decision is `yes` or `ambiguous`, make a single cheap Claude Design call (`list_projects`) to determine whether the integration is available. Classify the outcome:
+- `available` — the call succeeded.
+- `unauthorized` — the call failed with an authorization or permission error.
+- `missing` — the call failed for any other reason (timeout, tool not found, etc.).
+
+Pass the result as `--integration <available|missing|unauthorized>`. When the decision is `no`, skip the check and omit `--integration`. When availability cannot be determined, omit `--integration` and the driver will fall back to its own probe.
+
+The driver trusts this classification without a second probe. If the token is revoked between this check and the driver run, the later Claude Design update step surfaces the failure — it is not silently absorbed.
+<!-- design-attestation end -->
+
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision yes --actor gaia-edit-ux
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision yes [--integration <available|missing|unauthorized>] --actor gaia-edit-ux
 ```
 
-If the integration is unavailable, the driver halts with a message. When the impact is ambiguous or uncertain, still default to stale — it is safer than leaving the record in an outdated approved state.
+The driver transitions the record to stale and records the integration state in the audit trail. If the integration is not available, the driver halts with a message. When the impact is ambiguous or uncertain, still default to stale — it is safer than leaving the record in an outdated approved state.
 <!-- design-stale-transition end -->
 
 ### Step 6 — Adversarial Review

@@ -163,10 +163,10 @@ teardown() { common_teardown; }
   grep -q 'design-first ordering cannot be kept' "$stderr_file" \
     || fail "stderr should contain 'design-first ordering cannot be kept'"
 
-  # Record should be stale (transition happens before probe)
+  # Record should be stale (transition happens before halt)
   local state
   state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
-  [ "$state" = "stale" ] || fail "record should be stale (transition precedes probe) but is $state"
+  [ "$state" = "stale" ] || fail "record should be stale (transition precedes halt) but is $state"
 }
 
 @test "(AC-EC4) probe unauthorized halts with distinct message" {
@@ -313,7 +313,8 @@ GARBOF
   cat > "$fake_dir/design-probe.sh" <<PROBEOF
 #!/usr/bin/env bash
 touch "$sentinel"
-sleep 60
+printf '%s' "\$\$" > "$TEST_TMP/probe.pid"
+exec sleep 60
 PROBEOF
   chmod +x "$fake_dir/design-probe.sh"
 
@@ -332,11 +333,19 @@ PROBEOF
   done
   [ -f "$sentinel" ] || fail "probe was never reached (sentinel missing after 5s)"
 
+  # Assert the sed substitution actually took effect
+  grep -q "$known_tmpfile" "$fake_dir/design-stale-transition.sh" \
+    || fail "sed substitution did not take effect — test is vacuous"
+
   # The temp file must exist now (created before the probe ran)
   [ -f "$known_tmpfile" ] || fail "temp file was never created — test is vacuous"
 
   # Send SIGTERM to the driver
   kill -TERM "$driver_pid" 2>/dev/null || true
+  # Kill the probe's sleep if still running
+  if [ -f "$TEST_TMP/probe.pid" ]; then
+    kill "$(cat "$TEST_TMP/probe.pid")" 2>/dev/null || true
+  fi
   wait "$driver_pid" 2>/dev/null || true
 
   # Assert the temp file was cleaned up
@@ -345,3 +354,647 @@ PROBEOF
 
 # Tests 8 and 9 removed — they duplicated test 6 (ambiguous defaults to stale)
 # and test 5 (decision no skips transition) respectively.
+
+# ===========================================================================
+# ATDD Tests — attested integration state
+# ===========================================================================
+
+# _build_indev_record — helper: drive the record from draft through to in-dev.
+_build_indev_record() {
+  _build_approved_record
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to in-dev --actor ci
+}
+
+# _make_spy_scripts — copy the scripts dir and replace design-probe.sh with a
+# counting spy. Sets SPY_SCRIPTS_DIR to the copy root. The spy logs each run
+# to a counter file and then exec's the real probe.
+_make_spy_scripts() {
+  SPY_SCRIPTS_DIR="$TEST_TMP/spy-scripts"
+  cp -R "$SCRIPTS_DIR" "$SPY_SCRIPTS_DIR"
+  local real_probe="$SCRIPTS_DIR/design-probe.sh"
+  cat > "$SPY_SCRIPTS_DIR/design-probe.sh" <<SPYEOF
+#!/usr/bin/env bash
+echo 1 >> "$TEST_TMP/.probe-spy-counter"
+exec "$real_probe" "\$@"
+SPYEOF
+  chmod +x "$SPY_SCRIPTS_DIR/design-probe.sh"
+}
+
+_spy_probe_count() {
+  if [ -f "$TEST_TMP/.probe-spy-counter" ]; then
+    wc -l < "$TEST_TMP/.probe-spy-counter" | tr -d ' '
+  else
+    echo 0
+  fi
+}
+
+@test "(AC1) attested integration state drives stale-then-halt without spawning the probe" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found at $DRIVER_SCRIPT"
+
+  # --- Sub-scenario: attested available ---
+  seed_config true
+  seed_roster
+  _build_indev_record
+  _make_spy_scripts
+
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$SPY_SCRIPTS_DIR/design-stale-transition.sh" \
+      --decision yes --actor test-agent --integration available \
+    2>/dev/null || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "attested available should exit 0 but got $rc"
+  local state
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale but is $state"
+  local spy_count
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -eq 0 ] || fail "probe should not have been run but spy counted $spy_count"
+  # Audit must record integration_state and integration_source
+  local audit_int_state audit_int_source
+  audit_int_state="$(yq '.audit[-1].integration_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  audit_int_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_int_state" = "available" ] || fail "audit integration_state should be available but is $audit_int_state"
+  [ "$audit_int_source" = "attested" ] || fail "audit integration_source should be attested but is $audit_int_source"
+
+  # --- Sub-scenario: attested missing ---
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml" "$TEST_TMP/.probe-spy-counter"
+  _build_indev_record
+
+  local stderr_file="$TEST_TMP/stderr-missing.txt"
+  rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$SPY_SCRIPTS_DIR/design-stale-transition.sh" \
+      --decision yes --actor test-agent --integration missing \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "attested missing should halt (non-zero) but got 0"
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale but is $state"
+  grep -qi 'not available in this session' "$stderr_file" \
+    || fail "stderr should contain the missing-state remediation"
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -eq 0 ] || fail "probe should not have been run for attested missing"
+
+  # --- Sub-scenario: attested unauthorized ---
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml" "$TEST_TMP/.probe-spy-counter"
+  _build_indev_record
+
+  local stderr_file_unauth="$TEST_TMP/stderr-unauth.txt"
+  rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$SPY_SCRIPTS_DIR/design-stale-transition.sh" \
+      --decision yes --actor test-agent --integration unauthorized \
+    2>"$stderr_file_unauth" || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "attested unauthorized should halt (non-zero) but got 0"
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale but is $state"
+  grep -qi 'unauthorized' "$stderr_file_unauth" \
+    || fail "stderr should contain 'unauthorized'"
+  grep -qi 'design-login' "$stderr_file_unauth" \
+    || fail "unauthorized remediation should mention /design-login"
+  # The unauthorized message must differ from the missing message
+  if diff -q "$stderr_file" "$stderr_file_unauth" >/dev/null 2>&1; then
+    fail "unauthorized and missing remediations must differ in substance"
+  fi
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -eq 0 ] || fail "probe should not have been run for attested unauthorized"
+}
+
+@test "(AC2) invalid --integration value halts exit 2 before record mutation" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local hash_before
+  hash_before="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+
+  # Sub-scenario: --decision yes --integration garbage
+  local stderr_file="$TEST_TMP/stderr-invalid.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration garbage \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "invalid --integration should exit 2 but got $rc"
+  grep -q 'garbage' "$stderr_file" || fail "stderr should name the invalid value 'garbage'"
+
+  local hash_after
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated despite invalid --integration"
+
+  # Sub-scenario: --decision no --integration garbage (validation before decision)
+  rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision no --actor test-agent --integration garbage \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "--decision no with invalid --integration should still exit 2 but got $rc"
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated on --decision no with invalid value"
+}
+
+@test "(AC6) stale transition precedes halt with audit recording state and source" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  # Sub-scenario: attested path
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local stderr_file="$TEST_TMP/stderr-ac6.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration unauthorized \
+    2>"$stderr_file" || rc=$?
+
+  local state
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale (transition happened) but is $state"
+
+  local audit_int_state audit_int_source audit_timestamp
+  audit_int_state="$(yq '.audit[-1].integration_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  audit_int_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  audit_timestamp="$(yq '.audit[-1].at' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_int_state" = "unauthorized" ] || fail "audit integration_state should be unauthorized"
+  [ "$audit_int_source" = "attested" ] || fail "audit integration_source should be attested"
+  [ -n "$audit_timestamp" ] && [ "$audit_timestamp" != "null" ] \
+    || fail "audit timestamp should be non-empty"
+  [ "$rc" -ne 0 ] || fail "should halt after stale write"
+
+  # Sub-scenario: probed path
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
+  _build_indev_record
+
+  rc=0
+  env -u BATS_TEST_FILENAME -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent \
+    2>"$stderr_file" || rc=$?
+
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale on probed path but is $state"
+  audit_int_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_int_source" = "probed" ] || fail "audit integration_source should be probed but is $audit_int_source"
+  [ "$rc" -ne 0 ] || fail "probed path should halt"
+}
+
+@test "(AC-EC1) duplicate --integration flags halt exit 2 before record mutation" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local hash_before
+  hash_before="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+
+  local stderr_file="$TEST_TMP/stderr-dup.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration available --integration missing \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "duplicate --integration should exit 2 but got $rc"
+  grep -qi 'more than once\|duplicate\|--integration' "$stderr_file" \
+    || fail "stderr should mention the duplicate flag"
+
+  local hash_after
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated despite duplicate flag"
+}
+
+@test "(AC-EC2) missing --integration value halts exit 2 with usage diagnostic" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local hash_before
+  hash_before="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+
+  local stderr_file="$TEST_TMP/stderr-missing-val.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "missing --integration value should exit 2 but got $rc"
+  grep -qi '\-\-integration' "$stderr_file" \
+    || fail "stderr should name --integration"
+  grep -qi 'available.*missing.*unauthorized\|legal values' "$stderr_file" \
+    || fail "stderr should list the legal values"
+
+  local hash_after
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated despite missing value"
+}
+
+@test "(AC-EC3) non-canonical casing or whitespace rejected as invalid exit 2" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local hash_before
+  hash_before="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+
+  # Sub-scenario: wrong case
+  local stderr_file="$TEST_TMP/stderr-case.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration Available \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "wrong-case 'Available' should exit 2 but got $rc"
+  grep -q 'Available' "$stderr_file" || fail "stderr should name 'Available'"
+
+  local hash_after
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated on wrong case"
+
+  # Sub-scenario: whitespace-padded
+  rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration " available " \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "whitespace-padded value should exit 2 but got $rc"
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated on whitespace-padded value"
+}
+
+@test "(AC-EC4) attestation wins over configured bridge and audit records source attested" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  _make_spy_scripts
+
+  # Configure a bridge that would classify "missing"
+  local bridge_cmd
+  bridge_cmd="$(_make_bridge_stub missing 1)"
+
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    DESIGN_PROBE_BRIDGE_CMD="$bridge_cmd" \
+    DESIGN_PROBE_ALLOW_BRIDGE_CMD=1 \
+    bash "$SPY_SCRIPTS_DIR/design-stale-transition.sh" \
+      --decision yes --actor test-agent --integration available \
+    2>/dev/null || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "attested available should exit 0 despite bridge"
+  local state
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale but is $state"
+
+  local spy_count
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -eq 0 ] || fail "attestation should take precedence over bridge, probe ran $spy_count times"
+
+  local audit_source
+  audit_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_source" = "attested" ] || fail "audit integration_source should be attested but is $audit_source"
+}
+
+@test "(AC-EC5) non-design-affecting decision ignores integration state entirely" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local hash_before
+  hash_before="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+
+  local stderr_file="$TEST_TMP/stderr-ec5.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision no --actor test-agent --integration missing \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "decision no should exit 0 regardless of integration state"
+  local hash_after
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated despite --decision no"
+}
+
+@test "(AC-EC6) shell metacharacters and newlines in attested value rejected exit 2" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local hash_before
+  hash_before="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+
+  # Sub-scenario: shell metacharacters
+  local stderr_file="$TEST_TMP/stderr-meta.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration 'available; rm -rf x' \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "metacharacter value should exit 2 but got $rc"
+  local hash_after
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated with metacharacter value"
+  if [ -e "$TEST_TMP/x" ]; then
+    fail "a file named 'x' was created — the semicolon was interpreted"
+  fi
+
+  # Sub-scenario: embedded newline
+  rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration $'available\nmissing' \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "newline value should exit 2 but got $rc"
+  hash_after="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$hash_before" = "$hash_after" ] || fail "record was mutated with newline value"
+}
+
+@test "(AC-EC9) driver trusts stale attestation and auth failure surfaces at the update step" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  # Functional sub-scenario: the driver trusts the attestation
+  seed_config true
+  seed_roster
+  _build_indev_record
+  _make_spy_scripts
+
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$SPY_SCRIPTS_DIR/design-stale-transition.sh" \
+      --decision yes --actor test-agent --integration available \
+    2>/dev/null || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "driver should trust attestation and exit 0"
+  local state
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale"
+  local spy_count
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -eq 0 ] || fail "no probe should have run"
+  local audit_state audit_source
+  audit_state="$(yq '.audit[-1].integration_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  audit_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_state" = "available" ] || fail "audit should record available"
+  [ "$audit_source" = "attested" ] || fail "audit should record attested"
+
+  # Documentation sub-scenario: the header documents the trade-off
+  grep -qE 'revok|token' "$DRIVER_SCRIPT" \
+    || fail "driver header should document the authorization-expiry trade-off"
+  grep -qiE 'update step|later' "$DRIVER_SCRIPT" \
+    || fail "driver header should mention the later update step"
+
+  # The shared attestation block also documents the trade-off
+  local skill_af="$PLUGIN_ROOT/skills/gaia-add-feature/SKILL.md"
+  local att_block
+  att_block="$(awk '/<!-- design-attestation begin -->/{p=1;next} /<!-- design-attestation end -->/{p=0} p' "$skill_af")"
+  [ -n "$att_block" ] || fail "attestation block not found in add-feature SKILL.md"
+  echo "$att_block" | grep -qiE 'revok|token' \
+    || fail "attestation block should document the authorization-expiry trade-off"
+}
+
+# ===========================================================================
+# Unconfigured-path tests
+# ===========================================================================
+
+@test "(AC4) unconfigured real-install path classifies missing via probe fallback" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local stderr_file="$TEST_TMP/stderr-unconfigured.txt"
+  local rc=0
+  env -u BATS_TEST_FILENAME -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent \
+    2>"$stderr_file" || rc=$?
+
+  local state
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale on unconfigured path but is $state"
+  [ "$rc" -ne 0 ] || fail "unconfigured path should halt (non-zero exit)"
+
+  local audit_source audit_state
+  audit_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  audit_state="$(yq '.audit[-1].integration_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_source" = "probed" ] || fail "audit should record source=probed but got $audit_source"
+  [ "$audit_state" = "missing" ] || fail "audit should record state=missing but got $audit_state"
+
+  grep -qi 'not available in this session' "$stderr_file" \
+    || fail "stderr should contain the missing-state remediation text"
+}
+
+@test "(AC-EC8) omitted attestation triggers probe fallback with stale-first then fail-closed halt" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local stderr_file="$TEST_TMP/stderr-ec8.txt"
+  local rc=0
+  env -u BATS_TEST_FILENAME -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent \
+    2>"$stderr_file" || rc=$?
+
+  local state
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "record should be stale (stale-first) but is $state"
+  [ "$rc" -ne 0 ] || fail "fail-closed halt expected but got exit 0"
+
+  local audit_source audit_state
+  audit_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  audit_state="$(yq '.audit[-1].integration_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_source" = "probed" ] || fail "audit should record source=probed but got $audit_source"
+  [ "$audit_state" = "missing" ] || fail "audit should record state=missing but got $audit_state"
+
+  grep -qi 'not available in this session' "$stderr_file" \
+    || fail "stderr should contain the missing-state remediation"
+}
+
+# ===========================================================================
+# Driver mutants (AC7)
+# ===========================================================================
+
+@test "(AC7) mutant: attestation ignored" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  _make_spy_scripts
+
+  # The original should exit 0 with no probe when attested available
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$SPY_SCRIPTS_DIR/design-stale-transition.sh" \
+      --decision yes --actor test-agent --integration available \
+    2>/dev/null || rc=$?
+  [ "$rc" -eq 0 ] || fail "original should exit 0 with attested available"
+  local spy_count
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -eq 0 ] || fail "original should not run probe"
+
+  # Reset
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml" "$TEST_TMP/.probe-spy-counter"
+  _build_indev_record
+
+  # Patch: make attestation guard always false
+  local orig="$SPY_SCRIPTS_DIR/design-stale-transition.sh"
+  local patched="$SPY_SCRIPTS_DIR/design-stale-transition-mutant.sh"
+  sed 's/if \[ "$_integration_seen" -eq 1 \]; then  # MUTANT-ANCHOR: attestation-guard/if false; then  # MUTANT-ANCHOR: attestation-guard/' \
+    "$orig" > "$patched"
+  chmod +x "$patched"
+  if cmp -s "$orig" "$patched"; then fail "patch did not apply"; fi
+
+  rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$patched" \
+      --decision yes --actor test-agent --integration available \
+    2>/dev/null || rc=$?
+
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -gt 0 ] || fail "mutant should run the probe despite attestation"
+}
+
+@test "(AC7) mutant: enum validation removed" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # Original: exit 2 on garbage
+  local stderr_file="$TEST_TMP/stderr-enum.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration garbage \
+    2>"$stderr_file" || rc=$?
+  [ "$rc" -eq 2 ] || fail "original should exit 2 on invalid value but got $rc"
+  grep -q 'garbage' "$stderr_file" || fail "original stderr should name the invalid value"
+
+  # Patch: neutralise the enum validation by removing the exit 2 from the default case
+  _make_spy_scripts
+  local orig="$SPY_SCRIPTS_DIR/design-stale-transition.sh"
+  local patched="$SPY_SCRIPTS_DIR/design-stale-transition-mutant.sh"
+  sed '/# MUTANT-ANCHOR: enum-validation/,/esac/{
+    s/exit 2/: # exit 2 neutralised/
+  }' "$orig" > "$patched"
+  chmod +x "$patched"
+  if cmp -s "$orig" "$patched"; then fail "patch did not apply"; fi
+
+  rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$patched" \
+      --decision yes --actor test-agent --integration garbage \
+    2>/dev/null || rc=$?
+
+  [ "$rc" -ne 2 ] || fail "mutant should NOT exit 2 when validation is removed"
+}
+
+@test "(AC7) mutant: absent attestation defaults to available" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # Original: no --integration, no bridge, probe fallback, halt
+  local rc=0
+  env -u BATS_TEST_FILENAME -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent \
+    2>/dev/null || rc=$?
+  [ "$rc" -ne 0 ] || fail "original should halt on unconfigured path"
+
+  # Reset
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
+  _build_indev_record
+
+  # Patch: default to available instead of missing on the fail-closed line
+  _make_spy_scripts
+  local orig="$SPY_SCRIPTS_DIR/design-stale-transition.sh"
+  local patched="$SPY_SCRIPTS_DIR/design-stale-transition-mutant.sh"
+  sed 's/_resolved_state="missing"  # MUTANT-ANCHOR: probe-fallback-default/_resolved_state="available"  # MUTANT-ANCHOR: probe-fallback-default/' \
+    "$orig" > "$patched"
+  chmod +x "$patched"
+  if cmp -s "$orig" "$patched"; then fail "patch did not apply"; fi
+
+  rc=0
+  env -u BATS_TEST_FILENAME -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$patched" \
+      --decision yes --actor test-agent \
+    2>/dev/null || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "mutant should exit 0 when defaulting to available"
+}
+
+@test "(AC7) mutant: probe run despite attestation" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  _make_spy_scripts
+
+  # Original: attested available, spy log empty
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$SPY_SCRIPTS_DIR/design-stale-transition.sh" \
+      --decision yes --actor test-agent --integration available \
+    2>/dev/null || rc=$?
+  local spy_count
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -eq 0 ] || fail "original should not run probe"
+
+  # Reset
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml" "$TEST_TMP/.probe-spy-counter"
+  _build_indev_record
+
+  # Patch: insert probe run after attestation-guard anchor
+  local orig="$SPY_SCRIPTS_DIR/design-stale-transition.sh"
+  local patched="$SPY_SCRIPTS_DIR/design-stale-transition-mutant.sh"
+  awk '/# MUTANT-ANCHOR: attestation-guard/{print; print "    \"$PROBE_SCRIPT\" >/dev/null 2>&1 || true"; next} {print}' \
+    "$orig" > "$patched"
+  chmod +x "$patched"
+  if cmp -s "$orig" "$patched"; then fail "patch did not apply"; fi
+
+  rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$patched" \
+      --decision yes --actor test-agent --integration available \
+    2>/dev/null || rc=$?
+
+  spy_count="$(_spy_probe_count)"
+  [ "$spy_count" -gt 0 ] || fail "mutant should run the probe despite attestation"
+}
