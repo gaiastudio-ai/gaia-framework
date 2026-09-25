@@ -50,6 +50,14 @@ This skill is the review-iteration workflow. It reads the design project back th
 
 ## Steps
 
+### Precondition — Stale-resume
+
+If the design record's `design_state` is `stale`, transition it to `review` via:
+
+    scripts/design-record.sh transition --to review --actor <actor>
+
+This starts a new review round — the iteration counter bumps (stale-to-review increments iteration), so pre-stale approvals do not satisfy convergence for the new round. Proceed to Step 1 with the record now in `review` state.
+
 ### Step 1 — Read-back (authoritative source)
 
 Read the design project content through the integration as the authoritative source of truth.
@@ -169,3 +177,4 @@ If the design is not yet approved after Step 5:
 4. An approving round (all stakeholders approve) does NOT bump the iteration.
 5. An internal-only round (no stakeholder delivery, no transition) does NOT bump the iteration.
 6. An abandoned round (review recorded but no transition) does NOT bump the iteration.
+7. A stale-to-review resumption (precondition) bumps the iteration counter exactly once.

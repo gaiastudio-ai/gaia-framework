@@ -1052,8 +1052,12 @@ BOUNDARY
 
   # The first step-list item must mention stale-resume behaviour
   # (per amendment W2: prepend to the first step-list item)
+  # Split <li> tags onto separate lines, then grab the first one
   local first_step
-  first_step="$(sed -n '/<ol class="step-list">/,/<\/ol>/{ s/.*<li>\(.*\)<\/li>.*/\1/p; }' "$doc_page" | head -1)"
+  first_step="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$doc_page" \
+    | sed 's/<li>/\n<li>/g' \
+    | grep '<li>' \
+    | head -1)"
   [ -n "$first_step" ] || fail "could not extract first step-list item"
 
   echo "$first_step" | grep -qi 'stale' \

@@ -36,7 +36,7 @@
     "iteration": {
       "type": "integer",
       "minimum": 1,
-      "description": "Review iteration counter; bumped on review-to-review transitions."
+      "description": "Review iteration counter; bumped on review-to-review and stale-to-review transitions."
     },
     "project": {
       "type": "object",
@@ -243,6 +243,16 @@
           "kind": {
             "type": "string",
             "description": "Review kind (for review-verdict events)."
+          },
+          "integration_state": {
+            "type": "string",
+            "enum": ["available", "missing", "unauthorized"],
+            "description": "Integration state at the time of the stale transition."
+          },
+          "integration_source": {
+            "type": "string",
+            "enum": ["attested", "probed"],
+            "description": "How the integration state was determined."
           }
         }
       }

@@ -860,7 +860,7 @@ _spy_probe_count() {
 
   # Patch: make attestation guard always false
   local orig="$SPY_SCRIPTS_DIR/design-stale-transition.sh"
-  local patched="$TEST_TMP/mutant-attestation-ignored.sh"
+  local patched="$SPY_SCRIPTS_DIR/design-stale-transition-mutant.sh"
   sed 's/if \[ "$_integration_seen" -eq 1 \]; then  # MUTANT-ANCHOR: attestation-guard/if false; then  # MUTANT-ANCHOR: attestation-guard/' \
     "$orig" > "$patched"
   chmod +x "$patched"
@@ -893,11 +893,13 @@ _spy_probe_count() {
   [ "$rc" -eq 2 ] || fail "original should exit 2 on invalid value but got $rc"
   grep -q 'garbage' "$stderr_file" || fail "original stderr should name the invalid value"
 
-  # Patch: neutralise the enum validation anchor
-  local orig="$DRIVER_SCRIPT"
-  local patched="$TEST_TMP/mutant-enum-removed.sh"
-  sed 's/# MUTANT-ANCHOR: enum-validation/: # MUTANT-ANCHOR: enum-validation (neutralised)/' \
-    "$orig" > "$patched"
+  # Patch: neutralise the enum validation by removing the exit 2 from the default case
+  _make_spy_scripts
+  local orig="$SPY_SCRIPTS_DIR/design-stale-transition.sh"
+  local patched="$SPY_SCRIPTS_DIR/design-stale-transition-mutant.sh"
+  sed '/# MUTANT-ANCHOR: enum-validation/,/esac/{
+    s/exit 2/: # exit 2 neutralised/
+  }' "$orig" > "$patched"
   chmod +x "$patched"
   if cmp -s "$orig" "$patched"; then fail "patch did not apply"; fi
 
@@ -931,11 +933,13 @@ _spy_probe_count() {
   _build_indev_record
 
   # Patch: default to available instead of missing on the fail-closed line
-  local patched="$TEST_TMP/mutant-default-available.sh"
+  _make_spy_scripts
+  local orig="$SPY_SCRIPTS_DIR/design-stale-transition.sh"
+  local patched="$SPY_SCRIPTS_DIR/design-stale-transition-mutant.sh"
   sed 's/_resolved_state="missing"  # MUTANT-ANCHOR: probe-fallback-default/_resolved_state="available"  # MUTANT-ANCHOR: probe-fallback-default/' \
-    "$DRIVER_SCRIPT" > "$patched"
+    "$orig" > "$patched"
   chmod +x "$patched"
-  if cmp -s "$DRIVER_SCRIPT" "$patched"; then fail "patch did not apply"; fi
+  if cmp -s "$orig" "$patched"; then fail "patch did not apply"; fi
 
   rc=0
   env -u BATS_TEST_FILENAME -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
@@ -971,7 +975,7 @@ _spy_probe_count() {
 
   # Patch: insert probe run after attestation-guard anchor
   local orig="$SPY_SCRIPTS_DIR/design-stale-transition.sh"
-  local patched="$TEST_TMP/mutant-probe-despite.sh"
+  local patched="$SPY_SCRIPTS_DIR/design-stale-transition-mutant.sh"
   awk '/# MUTANT-ANCHOR: attestation-guard/{print; print "    \"$PROBE_SCRIPT\" >/dev/null 2>&1 || true"; next} {print}' \
     "$orig" > "$patched"
   chmod +x "$patched"
