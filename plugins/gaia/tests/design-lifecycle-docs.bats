@@ -465,3 +465,57 @@ CMDS_END
     return 1
   }
 }
+
+# =========================================================================
+# (AC1) gaia-dev-story.html documents the override notice
+# =========================================================================
+
+@test "(AC1) gaia-dev-story.html documents the override notice" {
+  local page="$DOC_DIR/commands/gaia-dev-story.html"
+  [ -s "$page" ] || {
+    echo "FAIL: gaia-dev-story.html missing or empty" >&2; return 1
+  }
+
+  grep -qi 'override' "$page" || {
+    echo "FAIL: gaia-dev-story.html should mention 'override'" >&2; return 1
+  }
+  grep -qiE 'notice|design.state' "$page" || {
+    echo "FAIL: gaia-dev-story.html should mention override notice or design state" >&2; return 1
+  }
+}
+
+# =========================================================================
+# (AC2) design-lifecycle.html documents the sprint scope in overrides
+# =========================================================================
+
+@test "(AC2) design-lifecycle.html documents the sprint scope in overrides" {
+  local page="$DOC_DIR/design-lifecycle.html"
+  [ -s "$page" ] || {
+    echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
+  }
+
+  grep -qi 'override' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention 'override'" >&2; return 1
+  }
+  grep -qiE 'sprint.scope|sprint_id' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention sprint scope or sprint_id in overrides" >&2; return 1
+  }
+}
+
+# =========================================================================
+# (AC1) design-lifecycle.html documents the override notice
+# =========================================================================
+
+@test "(AC1) design-lifecycle.html documents the override notice" {
+  local page="$DOC_DIR/design-lifecycle.html"
+  [ -s "$page" ] || {
+    echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
+  }
+
+  grep -qi 'override' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention 'override'" >&2; return 1
+  }
+  grep -qiE 'notice|surfaced' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention override notice being surfaced" >&2; return 1
+  }
+}

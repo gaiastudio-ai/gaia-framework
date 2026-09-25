@@ -1002,6 +1002,19 @@ STAKE
   lo_reason="$(yq -r '.bypasses[0].reason' "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
   [ "$drec_reason" = "$hostile_reason" ]
   [ "$lo_reason" = "$hostile_reason" ]
+
+  # Second round: backtick variant (W7 extension)
+  local backtick_reason='reason $(whoami); `id`; rm'
+  run run_gate --force-design \
+    --reason "$backtick_reason" \
+    --entry-point "gaia-edit-arch" \
+    --sprint-id sprint-99
+  [ "$status" -eq 0 ]
+  local drec_reason2 lo_reason2
+  drec_reason2="$(yq -r '.overrides[1].reason' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_reason2="$(yq -r '.bypasses[1].reason' "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+  [ "$drec_reason2" = "$backtick_reason" ] || fail "backtick reason not round-tripped in design record: got <<<$drec_reason2>>>"
+  [ "$lo_reason2" = "$backtick_reason" ] || fail "backtick reason not round-tripped in lifecycle ledger: got <<<$lo_reason2>>>"
 }
 
 @test "(AC5) override refused when no sprint scope resolvable" {
@@ -1524,6 +1537,21 @@ STAKE
   bypass_count="$(yq '.bypasses | length' "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
   [ "$override_count" -eq 2 ]
   [ "$bypass_count" -eq 2 ]
+
+  # W7 extensions: distinct reasons, actor == $USER, integrity check
+  local reason_0 reason_1
+  reason_0="$(yq -r '.overrides[0].reason' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  reason_1="$(yq -r '.overrides[1].reason' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$reason_0" != "$reason_1" ] || fail "concurrent override reasons should be distinct: both are <<<$reason_0>>>"
+
+  local user_0 user_1
+  user_0="$(yq -r '.overrides[0].user' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  user_1="$(yq -r '.overrides[1].user' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$user_0" = "$USER" ] || fail "override[0].user should be \$USER ($USER) but is $user_0"
+  [ "$user_1" = "$USER" ] || fail "override[1].user should be \$USER ($USER) but is $user_1"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" verify-integrity
+  [ "$status" -eq 0 ] || fail "audit chain integrity check failed after concurrent overrides: $output"
 }
 
 # =========================================================================
@@ -2037,5 +2065,167 @@ EOF
   if ! _stripped_output | grep -q '(integration:'; then
     fail "mutant should re-assert integration diagnosis but did not"
   fi
+}
+
+# =========================================================================
+# (AC1) Override emits notice with design state, reason, and staleness warning
+# =========================================================================
+
+@test "(AC1) override emits notice with design state, reason, and staleness warning" {
+  seed_override_fixture
+
+  run run_gate --force-design \
+    --reason "stale design accepted for hotfix" \
+    --entry-point "gaia-dev-story" \
+    --sprint-id sprint-99
+  [ "$status" -eq 0 ]
+
+  # The notice must contain the three items
+  [[ "$output" == *"Design state:"* ]] || fail "notice missing 'Design state:'; got: $output"
+  [[ "$output" == *"review"* ]] || fail "notice should name the state 'review'; got: $output"
+  [[ "$output" == *"stale design accepted for hotfix"* ]] || fail "notice missing the reason text; got: $output"
+  [[ "$output" == *"ux-design.md"* ]] || fail "notice missing ux-design.md reference; got: $output"
+  [[ "$output" == *"outdated"* ]] || fail "notice missing staleness warning (outdated); got: $output"
+}
+
+# =========================================================================
+# (AC1) Design-gate block between markers contains override plan-brief items
+# =========================================================================
+
+@test "(AC1) design-gate block between markers contains override plan-brief items" {
+  local skill_md="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
+  [ -f "$skill_md" ] || fail "gaia-dev-story/SKILL.md not found at $skill_md"
+
+  # Extract text between the markers
+  local block
+  block="$(sed -n '/<!-- design-gate begin -->/,/<!-- design-gate end -->/p' "$skill_md")"
+  [ -n "$block" ] || fail "could not extract text between design-gate begin/end markers"
+
+  # Must contain the four required items
+  echo "$block" | grep -q 'design-record.sh status' \
+    || fail "block should reference 'design-record.sh status'; got: $block"
+  echo "$block" | grep -qi 'plan brief' \
+    || fail "block should mention 'plan brief'; got: $block"
+  echo "$block" | grep -q 'reason' \
+    || fail "block should mention 'reason'; got: $block"
+  echo "$block" | grep -q 'ux-design.md' \
+    || fail "block should reference 'ux-design.md'; got: $block"
+  echo "$block" | grep -qi 'outdated' \
+    || fail "block should mention 'outdated'; got: $block"
+}
+
+# =========================================================================
+# (AC2) Override at gate level records sprint_id in override entry and audit
+# =========================================================================
+
+@test "(AC2) override at gate level records sprint_id in override entry and audit" {
+  seed_override_fixture
+
+  run run_gate --force-design \
+    --reason "Unblocking deployment for hotfix while design review is pending" \
+    --entry-point "gaia-dev-story" \
+    --sprint-id sprint-42
+  [ "$status" -eq 0 ]
+
+  local ov_sprint
+  ov_sprint="$(yq -r '.overrides[-1].sprint_id' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$ov_sprint" = "sprint-42" ] || fail "override entry sprint_id should be sprint-42 but is $ov_sprint"
+
+  # Last audit entry with event=override should carry sprint_id
+  local audit_sprint
+  audit_sprint="$(yq -r '[.audit[] | select(.event == "override")][-1].sprint_id' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_sprint" = "sprint-42" ] || fail "audit override entry sprint_id should be sprint-42 but is $audit_sprint"
+}
+
+# =========================================================================
+# (AC2) Override at gate level with active sprint resolves sprint_id
+# =========================================================================
+
+@test "(AC2) override at gate level with active sprint resolves sprint_id" {
+  seed_ui_project available
+  seed_sprint_status sprint-99
+  seed_lifecycle_overrides
+  _build_review_record
+
+  # No explicit --sprint-id; should resolve from sprint-status.yaml
+  run run_gate --force-design \
+    --reason "Unblocking deployment for hotfix while design review is pending" \
+    --entry-point "gaia-dev-story"
+  [ "$status" -eq 0 ]
+
+  local ov_sprint
+  ov_sprint="$(yq -r '.overrides[-1].sprint_id' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$ov_sprint" = "sprint-99" ] || fail "override entry sprint_id should be sprint-99 (resolved from active sprint) but is $ov_sprint"
+}
+
+# =========================================================================
+# (AC4) Override actor is USER not git config user.name
+# =========================================================================
+
+@test "(AC4) override actor is USER not git config user.name" {
+  seed_override_fixture
+
+  # Force a divergence between $USER and git config user.name
+  run env USER=gaia-login-user \
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0=user.name \
+    GIT_CONFIG_VALUE_0="Display Name Not Login" \
+    PROJECT_ROOT="$TEST_TMP" \
+    PATH="$TEST_TMP/bin:$PATH" \
+    bash -c '
+      set -euo pipefail
+      source "'"$GATE_SCRIPT"'"
+      design_gate_check --force-design \
+        --reason "Unblocking deployment for hotfix while design review is pending" \
+        --entry-point "gaia-dev-story" \
+        --sprint-id sprint-99
+    ' 2>&1
+  [ "$status" -eq 0 ]
+
+  local actor
+  actor="$(yq -r '.overrides[-1].user' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$actor" = "gaia-login-user" ] || fail "override actor should be gaia-login-user but is $actor"
+
+  local recorded_by
+  recorded_by="$(yq -r '.bypasses[-1].recorded_by' "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+  [ "$recorded_by" = "gaia-login-user" ] || fail "lifecycle recorded_by should be gaia-login-user but is $recorded_by"
+}
+
+# =========================================================================
+# (AC-EC4) Override then approval both carry USER as actor
+# =========================================================================
+
+@test "(AC-EC4) override then approval both carry USER as actor" {
+  seed_override_fixture
+
+  # Override with forced USER
+  env USER=gaia-test-actor \
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0=user.name \
+    GIT_CONFIG_VALUE_0="Display Name Not Login" \
+    PROJECT_ROOT="$TEST_TMP" \
+    PATH="$TEST_TMP/bin:$PATH" \
+    bash -c '
+      set -euo pipefail
+      source "'"$GATE_SCRIPT"'"
+      design_gate_check --force-design \
+        --reason "Unblocking deployment for hotfix while design review is pending" \
+        --entry-point "gaia-dev-story" \
+        --sprint-id sprint-99
+    ' >/dev/null 2>&1
+
+  # Now approve with the same USER
+  env USER=gaia-test-actor \
+    PROJECT_ROOT="$TEST_TMP" \
+    "$DREC_SCRIPT" approve --stakeholder stakeholder-A --recorded-by gaia-test-actor
+
+  # Check audit trail
+  local override_actor
+  override_actor="$(yq -r '[.audit[] | select(.event == "override")][-1].actor' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$override_actor" = "gaia-test-actor" ] || fail "override audit actor should be gaia-test-actor but is $override_actor"
+
+  local recorded_by
+  recorded_by="$(yq -r '.bypasses[-1].recorded_by' "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+  [ "$recorded_by" = "gaia-test-actor" ] || fail "lifecycle recorded_by should be gaia-test-actor but is $recorded_by"
 }
 

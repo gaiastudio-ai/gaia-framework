@@ -49,3 +49,4 @@ tests/stale-propagation.bats       test     stale-on-change propagation test sui
 tests/design-stale-transition.bats test     driver script test suite
 tests/retirement-sweep-clean.bats  test     asserts the replacement design path resolves
 knowledge/gaia-help.csv            prose    help row names the design record as the review output
+tests/quality-gates.bats           test     quality-gate predicate suppression tests
