@@ -490,7 +490,7 @@ STAKE
   _assert_gate_output
 }
 
-@test "(AC1) integration missing on non-approved path fails with missing message" {
+@test "(AC3) gate halt names design state with conditional integration clause and no probe" {
   seed_config true
   seed_roster
   seed_probe_stub missing
@@ -499,20 +499,44 @@ STAKE
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  # Must NOT mention /design-login (that's the unauthorized message)
-  ! _stripped_output | grep -q '/design-login'
+  # Zero probe — gate should not probe at all
+  local count
+  count="$(probe_call_count)"
+  [ "$count" -eq 0 ] || fail "gate should not run the probe but counted $count"
+  # No direct integration diagnosis
+  if _stripped_output | grep -q '(integration: missing)'; then
+    fail "gate should not assert integration is missing"
+  fi
+  if _stripped_output | grep -q '(integration: unauthorized)'; then
+    fail "gate should not assert integration is unauthorized"
+  fi
+  # Conditional clause present
+  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional integration clause should be present"
+  fi
+  # Remediation leads with /gaia-design-review
+  _stripped_output | grep -q '/gaia-design-review' \
+    || fail "remediation should lead with /gaia-design-review"
 }
 
-@test "(AC1) integration unauthorized on non-approved path fails with unauthorized message" {
+@test "(AC3) conditional integration clause present on state-based halt" {
   seed_config true
   seed_roster
-  seed_probe_stub unauthorized
-  _build_review_record
+  seed_probe_stub available
+  _init_record
 
   run run_gate
   [ "$status" -eq 1 ]
-  # Must mention /design-login
-  _stripped_output | grep -q '/design-login' || _stripped_output | grep -q 'design-login'
+  _assert_gate_output
+  local count
+  count="$(probe_call_count)"
+  [ "$count" -eq 0 ] || fail "gate should not probe"
+  # Conditional clause present and names design-login
+  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should be present on state-based halt"
+  fi
+  _stripped_output | grep -qi 'design-login' \
+    || fail "conditional clause should mention design-login"
 }
 
 # =========================================================================
@@ -593,20 +617,11 @@ STAKE
   [ "$status" -eq 0 ] || fail "mutant should survive (stale treated as pass)"
 }
 
-@test "(AC2) mutant: probe timeout treated as pass" {
+@test "(AC2) mutant: halt removed from fail path" {
   [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh missing: $GATE_SCRIPT"
   seed_config true
   seed_roster
-  # Probe that simulates timeout (exit 124, classified as missing)
-  mkdir -p "$TEST_TMP/bin"
-  cat > "$TEST_TMP/bin/design-probe.sh" <<'STUBEOF'
-#!/usr/bin/env bash
-echo 1 >> "${DESIGN_PROBE_COUNTER_FILE:-/tmp/.probe-counter}"
-printf 'missing\n'
-printf 'Probe timed out.\n' >&2
-exit 124
-STUBEOF
-  chmod +x "$TEST_TMP/bin/design-probe.sh"
+  seed_probe_stub available
   _build_review_record
 
   # Original must fail
@@ -614,17 +629,17 @@ STUBEOF
   [ "$status" -eq 1 ]
   _assert_gate_output
 
-  # Mutant: delete the probe+halt call and the return 1 after it — the gate
-  # falls through to the end of the function and returns 0 (pass).
+  # Mutant: delete the halt line and the return 1 after it
   grep -q '# MUTANT-ANCHOR: probe-fail-branch' "$GATE_SCRIPT" || \
     fail "anchor '# MUTANT-ANCHOR: probe-fail-branch' not found in $GATE_SCRIPT"
   local patched
   patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
   sed '/# MUTANT-ANCHOR: probe-fail-branch/,+1d' "$GATE_SCRIPT" > "$patched"
+  if cmp -s "$GATE_SCRIPT" "$patched"; then fail "patch did not apply"; fi
 
   run _run_patched_gate "$patched"
   rm -f "$patched"
-  [ "$status" -eq 0 ] || fail "mutant should survive (probe timeout treated as pass)"
+  [ "$status" -eq 0 ] || fail "mutant should survive (halt removed from fail path)"
 }
 
 @test "(AC2) mutant: prior-iteration approval accepted" {
@@ -701,27 +716,39 @@ STAKE
   _stripped_output | grep -qi "stale"
 }
 
-@test "(AC3) halt message for unauthorized names design-login" {
+@test "(AC3) halt remediation leads with /gaia-design-review for draft" {
   seed_config true
   seed_roster
-  seed_probe_stub unauthorized
-  _build_review_record
-
-  run run_gate
-  [ "$status" -eq 1 ]
-  _stripped_output | grep -q "design-login"
-}
-
-@test "(AC3) halt message for missing does not name design-login" {
-  seed_config true
-  seed_roster
-  seed_probe_stub missing
-  _build_review_record
+  seed_probe_stub available
+  _init_record
 
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
-  ! _stripped_output | grep -q "design-login"
+  _stripped_output | grep -qi '/gaia-design-review' \
+    || fail "draft remediation should lead with /gaia-design-review"
+  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should be present"
+  fi
+}
+
+@test "(AC3) halt remediation leads with /gaia-design-review for stale" {
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+  _build_review_record
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor ci
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  _assert_gate_output
+  _stripped_output | grep -qi '/gaia-design-review' \
+    || fail "stale remediation should lead with /gaia-design-review"
+  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should be present"
+  fi
+  _stripped_output | grep -qi 'design-login' \
+    || fail "conditional clause should mention design-login"
 }
 
 @test "(AC3) halt message mutant: drop state from message" {
@@ -754,7 +781,7 @@ STAKE
   [ "$count" -eq 0 ]
 }
 
-@test "(AC4) exactly one integration call on non-approved applicable path" {
+@test "(AC4) zero integration probes on non-approved applicable path" {
   seed_config true
   seed_roster
   seed_probe_stub available
@@ -764,7 +791,7 @@ STAKE
   [ "$status" -eq 1 ]
   local count
   count="$(probe_call_count)"
-  [ "$count" -eq 1 ]
+  [ "$count" -eq 0 ] || fail "gate should make zero probe on non-approved path but counted $count"
 }
 
 @test "(AC4) no subagent spawned" {
@@ -773,30 +800,27 @@ STAKE
   ! grep -qE 'Agent\(|subagent|fork\b.*agent|&$' "$GATE_SCRIPT"
 }
 
-@test "(AC4) cost independent of project size" {
+@test "(AC4) cost independent of project size with zero probe" {
   seed_config true
   seed_roster
   seed_probe_stub available
 
-  # Small fixture: record in draft (non-approved, so probe IS called)
   _init_record
   run run_gate
   [ "$status" -eq 1 ]
   _assert_gate_output
   local small_probe
   small_probe="$(probe_call_count)"
-  # Must have made at least one probe call (non-vacuous)
-  [ "$small_probe" -ge 1 ] || fail "small fixture made zero probe calls — vacuous"
+  [ "$small_probe" -eq 0 ] || fail "small fixture should have zero probe but counted $small_probe"
 
-  # Reset counter and record
   rm -f "$TEST_TMP/.probe-counter"
   rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
-  # Large fixture: same state, cost must be identical
   _init_record
   run run_gate
   [ "$status" -eq 1 ]
   local large_probe
   large_probe="$(probe_call_count)"
+  [ "$large_probe" -eq 0 ] || fail "large fixture should have zero probe but counted $large_probe"
 
   [ "$small_probe" -eq "$large_probe" ]
 }
@@ -1147,7 +1171,7 @@ STAKE
   [ "$count" -eq 0 ]
 }
 
-@test "(AC-EC3) non-approved record with broken probe fails" {
+@test "(AC3) non-approved record halts without probing on review fixture" {
   seed_config true
   seed_roster
   seed_probe_stub missing
@@ -1158,7 +1182,7 @@ STAKE
   _assert_gate_output
   local count
   count="$(probe_call_count)"
-  [ "$count" -eq 1 ]
+  [ "$count" -eq 0 ] || fail "gate should not probe but counted $count"
 }
 
 # =========================================================================
@@ -1780,3 +1804,215 @@ STAKE
   _stripped_output | grep -qi "draft"
   _stripped_output | grep -qi "review"
 }
+
+# =========================================================================
+# Probe-removal static test
+# =========================================================================
+
+@test "(AC3) design-gate.sh contains no probe infrastructure" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+  if grep -qE 'design-probe\.sh|_dg_probe_integration|_dg_halt_with_probe' "$GATE_SCRIPT"; then
+    fail "design-gate.sh still references probe infrastructure"
+  fi
+}
+
+# =========================================================================
+# Negative tests: conditional clause ABSENT on non-probe halts
+# =========================================================================
+
+@test "(AC3) conditional clause absent on config halt" {
+  seed_config_malformed
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  if _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should not appear on config halt"
+  fi
+}
+
+@test "(AC3) conditional clause absent on symlink halt" {
+  seed_config true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  ln -sf /dev/null "$TEST_TMP/.gaia/state/design-record.yaml"
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  if _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should not appear on symlink halt"
+  fi
+}
+
+@test "(AC3) conditional clause absent on corrupt YAML halt" {
+  seed_config true
+  seed_roster
+  mkdir -p "$TEST_TMP/.gaia/state"
+  printf 'schema_version: "1.0"\ndesign_state: [broken\n' > "$TEST_TMP/.gaia/state/design-record.yaml"
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  if _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should not appear on corrupt YAML halt"
+  fi
+}
+
+@test "(AC3) conditional clause absent on schema-invalid halt" {
+  seed_config true
+  seed_roster
+  mkdir -p "$TEST_TMP/.gaia/state"
+  cat > "$TEST_TMP/.gaia/state/design-record.yaml" <<'EOF'
+schema_version: "2.0"
+design_state: draft
+EOF
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  if _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should not appear on schema-invalid halt"
+  fi
+}
+
+@test "(AC3) conditional clause absent on not-applicable-on-UI halt" {
+  seed_config true
+  seed_roster
+  mkdir -p "$TEST_TMP/.gaia/state"
+  cat > "$TEST_TMP/.gaia/state/design-record.yaml" <<'EOF'
+schema_version: "1.0"
+applicability: not-applicable
+design_state: draft
+iteration: 1
+project:
+  reference: test
+  discovered_via: created
+  questionnaire_record: na
+reviews: []
+approvals: []
+overrides: []
+audit: []
+audit_head:
+  count: 0
+  last_digest: ""
+EOF
+
+  run run_gate
+  [ "$status" -eq 1 ]
+  if _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should not appear on not-applicable-on-UI halt"
+  fi
+}
+
+@test "(AC3) conditional clause absent on override failure halt" {
+  seed_config true
+  seed_roster
+  seed_sprint_status sprint-99
+  seed_lifecycle_overrides
+  seed_probe_stub available
+  _build_review_record
+
+  run run_gate --force-design --reason "short" --entry-point "test"
+  [ "$status" -eq 1 ]
+  if _stripped_output | grep -qi 'if claude design is not connected'; then
+    fail "conditional clause should not appear on override failure halt"
+  fi
+}
+
+# =========================================================================
+# Gate unconfigured-path and absent-record tests
+# =========================================================================
+
+@test "(AC4) unconfigured real-install path (gate) halts with no integration diagnosis" {
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+  _build_review_record
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor ci
+
+  run env -u BATS_TEST_FILENAME -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    bash -c '
+      set -euo pipefail
+      export PROJECT_ROOT="'"$TEST_TMP"'"
+      export PATH="'"$TEST_TMP/bin"':$PATH"
+      source "'"$GATE_SCRIPT"'"
+      design_gate_check
+    ' 2>&1
+
+  [ "$status" -eq 1 ] || fail "gate should halt on stale record"
+  local out="${output//$TEST_TMP/}"
+  echo "$out" | grep -qi 'stale' || fail "halt should name stale state"
+  echo "$out" | grep -qi '/gaia-design-review' || fail "halt should mention /gaia-design-review"
+  if echo "$out" | grep -q '(integration:'; then
+    fail "gate should not include integration diagnosis"
+  fi
+  if ! echo "$out" | grep -qi 'if claude design is not connected'; then
+    fail "conditional integration clause should be present"
+  fi
+  local count
+  count="$(probe_call_count)"
+  [ "$count" -eq 0 ] || fail "gate should not probe"
+}
+
+@test "(AC-EC7) absent-record gate halt on unconfigured path names absent state without integration diagnosis" {
+  seed_config true
+  seed_probe_stub available
+  # No design-record.yaml on disk
+
+  run env -u BATS_TEST_FILENAME -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    bash -c '
+      set -euo pipefail
+      export PROJECT_ROOT="'"$TEST_TMP"'"
+      export PATH="'"$TEST_TMP/bin"':$PATH"
+      source "'"$GATE_SCRIPT"'"
+      design_gate_check
+    ' 2>&1
+
+  [ "$status" -eq 1 ] || fail "gate should halt on absent record"
+  local out="${output//$TEST_TMP/}"
+  echo "$out" | grep -qi 'absent' || fail "halt should name absent state"
+  echo "$out" | grep -qi 'gaia-create-ux' || fail "halt should mention /gaia-create-ux"
+  if echo "$out" | grep -q '(integration: missing)'; then
+    fail "gate should not include direct integration diagnosis"
+  fi
+  if echo "$out" | grep -q '(integration: unauthorized)'; then
+    fail "gate should not include direct integration diagnosis"
+  fi
+  if ! echo "$out" | grep -qi 'if claude design is not connected'; then
+    fail "conditional integration clause should be present"
+  fi
+  local count
+  count="$(probe_call_count)"
+  [ "$count" -eq 0 ] || fail "gate should not probe on absent path"
+}
+
+# =========================================================================
+# Mutant 5: gate halt re-asserts integration diagnosis
+# =========================================================================
+
+@test "(AC7) mutant: gate re-asserts integration diagnosis" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+  _init_record
+
+  # Original: no (integration:) in output
+  run run_gate
+  [ "$status" -eq 1 ]
+  if _stripped_output | grep -q '(integration:'; then
+    fail "original gate should not contain integration diagnosis"
+  fi
+
+  # Mutant: insert integration diagnosis before the halt anchor
+  local patched
+  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
+  awk '/# MUTANT-ANCHOR: probe-fail-branch/{print "  printf \"(integration: missing)\\n\" >&2"} {print}' \
+    "$GATE_SCRIPT" > "$patched"
+  if cmp -s "$GATE_SCRIPT" "$patched"; then fail "patch did not apply"; fi
+
+  run _run_patched_gate "$patched"
+  rm -f "$patched"
+
+  # The mutant output should now contain the diagnosis
+  if ! _stripped_output | grep -q '(integration:'; then
+    fail "mutant should re-assert integration diagnosis but did not"
+  fi
+}
+

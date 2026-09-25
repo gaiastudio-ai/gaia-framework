@@ -1963,3 +1963,269 @@ FIXTURE
   [ "$status" -ne 0 ] || fail "schema should reject verdict: bogus, but validation passed"
 }
 
+# =========================================================================
+# Stale-to-review iteration bump (AC8)
+# =========================================================================
+
+@test "(AC8) stale-to-review bumps iteration and prior approvals no longer satisfy convergence" {
+  assert_script_exists
+
+  seed_roster_gaia
+  # Init and drive to approved at iteration 1
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" approve --stakeholder stakeholder-B --recorded-by ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to approved --actor ci
+  [ "$status" -eq 0 ]
+
+  # Transition to stale
+  run "$SCRIPT" transition --to stale --actor ci
+  [ "$status" -eq 0 ]
+
+  # Transition stale -> review: should bump iteration to 2
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  local iter
+  iter="$(yq '.iteration' "$RECORD")"
+  [ "$iter" -eq 2 ] || fail "iteration should be 2 after stale-to-review but is $iter"
+
+  # Check-convergence should report not-converged
+  run "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || [[ "$output" == *"not-converged"* ]] \
+    || fail "should report not-converged after iteration bump"
+
+  # Transition to approved should fail (no fresh approval at iter 2)
+  run "$SCRIPT" transition --to approved --actor ci
+  [ "$status" -ne 0 ] || fail "transition to approved should fail without fresh approvals"
+
+  # Approve at iteration 2 and transition
+  run "$SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" approve --stakeholder stakeholder-B --recorded-by ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to approved --actor ci
+  [ "$status" -eq 0 ]
+
+  iter="$(yq '.iteration' "$RECORD")"
+  [ "$iter" -eq 2 ] || fail "iteration should still be 2 after approval but is $iter"
+}
+
+# =========================================================================
+# Schema conformance for audit integration fields
+# =========================================================================
+
+@test "schema conformance: audit entry with integration_state and integration_source" {
+  assert_script_exists
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+
+  # Init a record and transition to stale with integration options
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state available --integration-source attested
+  [ "$status" -eq 0 ] || fail "transition with integration options should succeed but got: $output"
+
+  # Validate against schema
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent — cannot proceed"
+  [ "$status" -eq 0 ] || fail "schema validation failed after transition with integration fields: $output"
+
+  # Assert the audit entry has the fields
+  local audit_int_state audit_int_source
+  audit_int_state="$(yq '.audit[-1].integration_state' "$RECORD")"
+  audit_int_source="$(yq '.audit[-1].integration_source' "$RECORD")"
+  [ "$audit_int_state" = "available" ] || fail "audit integration_state should be available but is $audit_int_state"
+  [ "$audit_int_source" = "attested" ] || fail "audit integration_source should be attested but is $audit_int_source"
+}
+
+# =========================================================================
+# Writer option validation (both-or-neither, stale-only, enum)
+# =========================================================================
+
+@test "transition --integration-state without --integration-source is refused with both-required diagnostic" {
+  assert_script_exists
+
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" transition --to stale --actor ci --integration-state available
+  [ "$status" -ne 0 ] || fail "should refuse --integration-state without --integration-source"
+
+  # The diagnostic must name both options (not just "unknown option")
+  [[ "$output" == *"integration-source"* ]] \
+    || fail "diagnostic should name the missing --integration-source option but got: $output"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+@test "transition --integration-source without --integration-state is refused with both-required diagnostic" {
+  assert_script_exists
+
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" transition --to stale --actor ci --integration-source probed
+  [ "$status" -ne 0 ] || fail "should refuse --integration-source without --integration-state"
+
+  # The diagnostic must name both options (not just "unknown option")
+  [[ "$output" == *"integration-state"* ]] \
+    || fail "diagnostic should name the missing --integration-state option but got: $output"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+@test "transition --integration-state with invalid enum is refused with enum diagnostic" {
+  assert_script_exists
+
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state garbage --integration-source attested
+  [ "$status" -ne 0 ] || fail "should refuse invalid --integration-state enum"
+
+  # Must mention the invalid value (not just "unknown option")
+  [[ "$output" == *"garbage"* ]] \
+    || fail "diagnostic should name the invalid value 'garbage' but got: $output"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+@test "transition --integration-source with invalid enum is refused with enum diagnostic" {
+  assert_script_exists
+
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state available --integration-source fabricated
+  [ "$status" -ne 0 ] || fail "should refuse invalid --integration-source enum"
+
+  # Must mention the invalid value (not just "unknown option")
+  [[ "$output" == *"fabricated"* ]] \
+    || fail "diagnostic should name the invalid value 'fabricated' but got: $output"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+@test "transition --integration-state on non-stale transition is refused with stale-only diagnostic" {
+  assert_script_exists
+
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" transition --to review --actor ci \
+    --integration-state available --integration-source attested
+  [ "$status" -ne 0 ] || fail "should refuse integration options on draft-to-review"
+
+  # Must mention stale (not just "unknown option")
+  [[ "$output" == *"stale"* ]] || [[ "$output" == *"--to stale"* ]] \
+    || fail "diagnostic should mention stale-only restriction but got: $output"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+@test "transition --integration-state available --integration-source attested on stale succeeds" {
+  assert_script_exists
+
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state available --integration-source attested
+  [ "$status" -eq 0 ] || fail "valid integration options on stale should succeed: $output"
+}
+
+# =========================================================================
+# Mutant 6: stale-to-review without iteration bump
+# =========================================================================
+
+@test "(AC7) mutant: stale-to-review without iteration bump" {
+  assert_script_exists
+
+  seed_roster_gaia
+  # Drive to approved at iteration 1
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" approve --stakeholder stakeholder-B --recorded-by ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to approved --actor ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to stale --actor ci
+  [ "$status" -eq 0 ]
+
+  # Original: stale -> review should bump iteration
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+  local orig_iter
+  orig_iter="$(yq '.iteration' "$RECORD")"
+  [ "$orig_iter" -eq 2 ] || fail "original should bump iteration to 2 but got $orig_iter"
+
+  # Reset for mutant
+  rm -f "$RECORD"
+  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" approve --stakeholder stakeholder-B --recorded-by ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to approved --actor ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to stale --actor ci
+  [ "$status" -eq 0 ]
+
+  # Patch: remove the stale-to-review bump
+  local mutant_script="$TEST_TMP/design-record-mutant.sh"
+  cp "$SCRIPT" "$mutant_script"
+  ln -sfn "$SCRIPTS_DIR/lib" "$TEST_TMP/lib"
+  # Neutralise the stale-to-review bump block
+  sed '/current_state.*=.*"stale".*&&.*to.*=.*"review"/,/fi/{ s/new_iter=\$((current_iter + 1))/: # neutralised/; }' \
+    "$mutant_script" > "$TEST_TMP/mutant-patched.sh"
+  mv "$TEST_TMP/mutant-patched.sh" "$mutant_script"
+  chmod +x "$mutant_script"
+  if cmp -s "$SCRIPT" "$mutant_script"; then fail "patch did not apply"; fi
+
+  run env PROJECT_ROOT="$TEST_TMP" "$mutant_script" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  local mutant_iter
+  mutant_iter="$(yq '.iteration' "$RECORD")"
+  [ "$mutant_iter" -eq 1 ] || fail "mutant should keep iteration at 1 but got $mutant_iter"
+}
+
+

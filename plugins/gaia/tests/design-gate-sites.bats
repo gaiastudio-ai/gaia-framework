@@ -455,7 +455,7 @@ teardown() {
 
   # Create a mutant copy with a spurious write on the fail path
   local mutant_gate="$site_tmp/mutant-design-gate.sh"
-  # Insert a write just before the final _dg_halt_with_probe call
+  # Insert a write just before the final _dg_halt call (probe-fail-branch anchor)
   awk '/MUTANT-ANCHOR: probe-fail-branch/ {
     print "  touch \"${PROJECT_ROOT}/.gaia/state/spurious-marker\""
   } {print}' "$gate_lib" > "$mutant_gate"

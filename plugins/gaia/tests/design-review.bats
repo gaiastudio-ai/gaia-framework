@@ -1009,3 +1009,39 @@ BOUNDARY
   grep -q 'gaia-design-review' "$category_page" || \
     fail "reviews.html does not link to the gaia-design-review command page"
 }
+
+# =========================================================================
+# Stale-resume structural pin
+# =========================================================================
+
+@test "(AC8) structural: SKILL.md has stale-resume precondition before Step 1" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — stale-resume check cannot run"
+
+  # The precondition must appear before Step 1
+  local precondition_line step1_line
+  precondition_line="$(grep -niE 'precondition.*stale|stale.*resume|stale.*precondition' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  step1_line="$(grep -n '### Step 1' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+
+  [ -n "$precondition_line" ] || fail "stale-resume precondition not found in SKILL.md"
+  [ -n "$step1_line" ] || fail "Step 1 heading not found in SKILL.md"
+  [ "$precondition_line" -lt "$step1_line" ] \
+    || fail "stale-resume precondition (line $precondition_line) should appear before Step 1 (line $step1_line)"
+
+  # The precondition should mention the writer transition
+  local precondition_block
+  precondition_block="$(awk "NR>=$precondition_line && NR<$step1_line" "$SKILL_MD")"
+  echo "$precondition_block" | grep -qi 'transition --to review' \
+    || fail "precondition should mention 'transition --to review'"
+}
+
+@test "(AC8) structural: Step 7 mentions stale-to-review iteration bump" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
+
+  local step7
+  step7="$(awk '/^### Step 7/{found=1} found && /^### Step [^7]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step7" ] || fail "Step 7 not found in SKILL.md"
+
+  echo "$step7" | grep -qi 'stale.*review.*bump\|stale.*review.*iteration\|stale-to-review.*bump\|stale-to-review.*iteration' \
+    || fail "Step 7 should mention the stale-to-review iteration bump"
+}
+

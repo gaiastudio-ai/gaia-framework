@@ -900,3 +900,53 @@ teardown() { common_teardown; }
 
   [ "$hits" -eq 0 ] || fail "found $hits SKILL.md files containing a transition-to-approved write path"
 }
+
+# =========================================================================
+# Shared attestation block identity (AC5)
+# =========================================================================
+
+@test "(AC5) shared attestation block present and byte-identical at both skill sites" {
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found at $SKILL_MD_AF"
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found at $SKILL_MD_UX"
+
+  # Extract attestation block from add-feature
+  local block_af
+  block_af="$(awk '/<!-- design-attestation begin -->/{p=1;next} /<!-- design-attestation end -->/{p=0} p' "$SKILL_MD_AF")"
+  [ -n "$block_af" ] || fail "attestation block missing from add-feature SKILL.md"
+
+  # Extract attestation block from edit-ux
+  local block_ux
+  block_ux="$(awk '/<!-- design-attestation begin -->/{p=1;next} /<!-- design-attestation end -->/{p=0} p' "$SKILL_MD_UX")"
+  [ -n "$block_ux" ] || fail "attestation block missing from edit-ux SKILL.md"
+
+  # Byte-identical
+  if ! diff <(printf '%s' "$block_af") <(printf '%s' "$block_ux") >/dev/null 2>&1; then
+    fail "attestation blocks differ between add-feature and edit-ux"
+  fi
+
+  # Block mentions --integration and all three values
+  echo "$block_af" | grep -q '\-\-integration' \
+    || fail "attestation block should mention --integration"
+  echo "$block_af" | grep -q 'available' \
+    || fail "attestation block should mention 'available'"
+  echo "$block_af" | grep -q 'missing' \
+    || fail "attestation block should mention 'missing'"
+  echo "$block_af" | grep -q 'unauthorized' \
+    || fail "attestation block should mention 'unauthorized'"
+
+  # Absent from all nine gate sites
+  local gate_sites=(
+    gaia-create-arch gaia-create-epics gaia-create-prd
+    gaia-create-story gaia-create-ux gaia-nfr
+    gaia-readiness-check gaia-test-strategy gaia-dev-story
+  )
+  local site
+  for site in "${gate_sites[@]}"; do
+    local skill_md="$SKILLS_DIR/$site/SKILL.md"
+    [ -f "$skill_md" ] || continue
+    if grep -q '<!-- design-attestation begin -->' "$skill_md"; then
+      fail "attestation block marker found in gate site $site"
+    fi
+  done
+}
+
