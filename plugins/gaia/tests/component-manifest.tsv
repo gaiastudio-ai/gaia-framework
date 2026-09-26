@@ -86,6 +86,7 @@ core	brain-static-guards.bats
 core	brain-update-index.bats
 core	bridge-toggle-inline-generator.bats
 core	bridge-toggle-step-5-summary.bats
+core	build-manifest-cards.bats
 core	changelog-retirement.bats
 core	check-status-discipline.bats
 core	ci-regen-helpers-coverage.bats
@@ -440,7 +441,6 @@ scripts-core	audit-silent-val-bypass.bats
 scripts-core	backlog-select-lint-detail-block-deps.bats
 scripts-core	bridge-enable-absent-key-handling.bats
 scripts-core	bridge-toggle-manifest-install.bats
-scripts-core	build-manifest-cards.bats
 scripts-core	check-fork-stripped.bats
 scripts-core	check-monolith-shard-sync.bats
 scripts-core	check-orchestration-class.bats

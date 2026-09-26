@@ -55,17 +55,6 @@ _seed_existing_manifest() {
   printf '{"cards":%s}\n' "$cards" > "$file"
 }
 
-# _seed_outcomes FILE ENTRIES — write an executed-outcomes JSON.
-# ENTRIES is a JSON array string.
-_seed_outcomes() {
-  printf '%s\n' "$1" > "$2"
-}
-
-# _seed_local_hash_map FILE MAP — write a local hash map JSON object.
-_seed_local_hash_map() {
-  printf '%s\n' "$1" > "$2"
-}
-
 # ===========================================================================
 # Public function coverage gate
 # ===========================================================================
@@ -560,4 +549,56 @@ _seed_local_hash_map() {
   local tmp_files
   tmp_files="$(find "$TEST_TMP/subdir" -name '*.tmp' 2>/dev/null | wc -l | tr -d ' ')"
   [ "$tmp_files" -eq 0 ] || fail "leftover .tmp files found"
+}
+
+# ===========================================================================
+# Round-trip: persist then re-plan
+# ===========================================================================
+
+@test "(AC3) kept-designer persisted hash triggers CONFLICT on re-plan" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  # Step 1: persist outcomes — one written, one kept-designer
+  local outcomes_json='[
+    {"file":"screens/login.spec.html","outcome":"written","hash":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"},
+    {"file":"screens/dashboard.spec.html","outcome":"kept-designer","hash":"designer_version_hash_designer_version_hash_designer_version_hash"}
+  ]'
+  printf '%s\n' "$outcomes_json" > "$TEST_TMP/outcomes.json"
+
+  local hash_map='{"screens/login.spec.html":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111","screens/dashboard.spec.html":"fw_local_dashboard_fw_local_dashboard_fw_local_dashboard_fw_loc"}'
+  printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
+
+  bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior /dev/null \
+      --output '$TEST_TMP/last-published.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json'
+  " || fail "persist_last_published failed"
+
+  [ -f "$TEST_TMP/last-published.json" ] || fail "last-published.json not created"
+
+  # Step 2: re-plan with remote holding the designer hash for dashboard
+  # and the written hash for login (unchanged)
+  printf '[{"file":"screens/login.spec.html","hash":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"},{"file":"screens/dashboard.spec.html","hash":"fw_local_dashboard_fw_local_dashboard_fw_local_dashboard_fw_loc"}]\n' \
+    > "$TEST_TMP/local-manifest.json"
+  printf '[{"file":"screens/login.spec.html","hash":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"},{"file":"screens/dashboard.spec.html","hash":"designer_version_hash_designer_version_hash_designer_version_hash"}]\n' \
+    > "$TEST_TMP/remote-listing.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --remote-listing "$TEST_TMP/remote-listing.json" \
+    --last-published "$TEST_TMP/last-published.json"
+  [ "$status" -eq 0 ]
+
+  # The kept-designer file must show CONFLICT (remote != last-published)
+  [[ "$output" == *"CONFLICT screens/dashboard.spec.html"* ]] \
+    || fail "expected CONFLICT for kept-designer file, got: $output"
+
+  # The written file must show SKIP_UNCHANGED (hashes all match)
+  [[ "$output" == *"SKIP_UNCHANGED screens/login.spec.html"* ]] \
+    || fail "expected SKIP_UNCHANGED for written file, got: $output"
 }
