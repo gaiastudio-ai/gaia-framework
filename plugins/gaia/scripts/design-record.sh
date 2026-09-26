@@ -381,17 +381,22 @@ _get_required_stakeholders() {
 }
 
 # _assert_known_stakeholder STAKEHOLDER — reject stakeholders not on the roster.
-# Searches the merged roster for the given slug. Returns 1 when the roster
-# is empty (fail closed) or the slug is not found.
+# Searches the merged roster for the given slug (literal match, not regex).
+# Returns 1 when the roster is empty (fail closed) or the slug is not found.
 _assert_known_stakeholder() {
   local stakeholder="$1"
   local roster
   roster="$(_resolve_merged_roster)"
   if [ -z "$roster" ]; then
-    printf 'design-record.sh: warning: vacuous roster — no stakeholder directory found\n' >&2
+    if _roster_dir_exists; then
+      printf 'design-record.sh: warning: vacuous roster — no design/ux-tagged stakeholders\n' >&2
+    else
+      printf 'design-record.sh: warning: vacuous roster — no stakeholder directory found\n' >&2
+    fi
     return 1
   fi
-  printf '%s\n' "$roster" | grep -q "^${stakeholder}	"
+  # Literal slug match via awk -v (not grep regex) to prevent injection
+  printf '%s\n' "$roster" | awk -F'	' -v slug="$stakeholder" '$1 == slug { found=1; exit } END { exit !found }'
 }
 
 # ---------------------------------------------------------------------------
