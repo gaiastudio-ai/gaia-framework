@@ -411,10 +411,20 @@ _main() {
     local idx=0
     local content_tmp
     content_tmp="$(mktemp)"
+    trap 'rm -f "${content_tmp:-}"' EXIT INT TERM
     while [ "$idx" -lt "$screen_count" ]; do
       local screen_name screen_file
       screen_name="$(jq -r --argjson i "$idx" '.screens[$i].name' "$snapshot_file")"
       screen_file="$(jq -r --argjson i "$idx" '.screens[$i].file' "$snapshot_file")"
+
+      # Reject screens with a null or missing .content key
+      local content_type
+      content_type="$(jq --argjson i "$idx" '.screens[$i].content | type' "$snapshot_file")"
+      if [ "$content_type" = '"null"' ]; then
+        printf 'sync-derived-artifacts.sh: screen "%s" has no content (file: %s)\n' "$screen_name" "$screen_file" >&2
+        rm -f "$content_tmp"
+        exit 1
+      fi
 
       # Write content to a temp file preserving exact bytes
       jq -j --argjson i "$idx" '.screens[$i].content' "$snapshot_file" > "$content_tmp"
