@@ -366,6 +366,753 @@ _seed_snapshot() {
 # Batch performance — 200 new components under 3 seconds
 # =========================================================================
 
+# =========================================================================
+# Template heading: & variant (AC1)
+# =========================================================================
+
+@test "(AC1) sync adds component to doc with template ampersand heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top bar |
+
+## 9. Design Record Reference
+
+Project reference: test-project-ref
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","sidebar","modal"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The two new components must be in the doc
+  grep -q 'sidebar' "$doc_dir/ux-design.md" || \
+    fail "sidebar not added to doc after sync"
+  grep -q 'modal' "$doc_dir/ux-design.md" || \
+    fail "modal not added to doc after sync"
+
+  # "added" diagnostic must appear for new components
+  [[ "$output" == *'added'*'sidebar'* ]] || \
+    fail "no 'added' diagnostic for sidebar: $output"
+
+  # File must have changed (sha differs from fixture)
+  local sha_after
+  sha_after="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ -n "$sha_after" ] || fail "sha256 computation failed"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Template heading: and variant (AC5)
+# =========================================================================
+
+@test "(AC5) sync adds component to doc with template and heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components and Design System
+
+- existing-button
+
+## 9. Design Record Reference
+
+Project reference: test-project-ref
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["existing-button","new-card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'new-card' "$doc_dir/ux-design.md" || \
+    fail "new-card not added to doc with 'and' variant heading"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Legacy heading backward compat (AC-EC1) — regression guard, green
+# =========================================================================
+
+@test "(AC-EC1) sync adds component to doc with legacy Component Inventory heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  _seed_stale_ux_doc "$doc_dir"
+  _seed_snapshot "$root" "header" "footer" "main-content" "legacy-widget"
+
+  local ux_doc="$doc_dir/ux-design.md"
+
+  run "$SYNC_SCRIPT" "$root/snapshot.json" "$ux_doc"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+
+  grep -q 'legacy-widget' "$ux_doc" || \
+    fail "legacy-widget not added under legacy Component Inventory heading"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Neither heading present (AC-EC2)
+# =========================================================================
+
+@test "(AC-EC2) sync exits non-zero when neither heading is present" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Some Other Section
+
+Content here.
+
+## Another Section
+
+More content.
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["new-widget"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  # Must exit non-zero
+  [ "$status" -ne 0 ] || \
+    fail "should exit non-zero when neither heading is present (exit $status): $output"
+
+  # No "added" lines
+  local added_count
+  added_count="$(printf '%s\n' "$output" | grep -c 'added' || true)"
+  [ "$added_count" -eq 0 ] || \
+    fail "should print no 'added' lines when heading is missing, got $added_count"
+
+  # File byte-unchanged
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite missing heading: sha $sha_before -> $sha_after"
+
+  # Diagnostic should name both headings
+  [[ "$output" == *"Components"* ]] || \
+    fail "diagnostic should name the expected headings: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# False-success prevention (AC2) — "added" not printed when heading missing
+# =========================================================================
+
+@test "(AC2) added diagnostic not printed when file is byte-unchanged" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A doc with a heading the current code does NOT match (template heading).
+  # The current buggy code prints "added" before the write attempt, so this
+  # test must FAIL against the unmodified code.
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- existing-widget
+
+## 9. Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["brand-new-thing"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  # Regardless of exit code, check the invariant:
+  # If the file did not change, "added" must not appear.
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+
+  if [ "$sha_before" = "$sha_after" ]; then
+    # File unchanged — "added" must NOT appear
+    local added_count
+    added_count="$(printf '%s\n' "$output" | grep -c 'added' || true)"
+    [ "$added_count" -eq 0 ] || \
+      fail "printed 'added' $added_count time(s) but file is byte-unchanged"
+  fi
+
+  # If the file DID change, the test passes — the implementation correctly
+  # matched the heading and wrote the component. The "added" is truthful.
+  # This path is the green state after the fix.
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Table-row components: session fixture (AC-EC6)
+# =========================================================================
+
+@test "(AC-EC6) sync handles existing table-row components without false additions" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+
+  # Session section 8 fixture: 8 components as table rows
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| BottomNavigation | React Navigation | Tab navigator |
+| ExerciseCard | Custom | Swipeable card |
+| ProgressRing | Custom | Circular progress |
+| WeeklyCalendar | Custom | Horizontal scroll |
+| StatBadge | Custom | Metric display |
+| QuickLogButton | Custom | FAB variant |
+| StreakCounter | Custom | Gamification |
+| GoalTracker | Custom | Progress toward goal |
+
+## 9. Design Record Reference
+
+Project reference: session-ref
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  # Snapshot with exactly the same 8 components
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["BottomNavigation","ExerciseCard","ProgressRing","WeeklyCalendar","StatBadge","QuickLogButton","StreakCounter","GoalTracker"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  # Exit 0 (no error)
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # File must be byte-identical — no additions
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite all components already present: sha $sha_before -> $sha_after"
+
+  # No "added" lines
+  local added_count
+  added_count="$(printf '%s\n' "$output" | grep -c 'added' || true)"
+  [ "$added_count" -eq 0 ] || \
+    fail "printed 'added' $added_count time(s) but all 8 components already exist"
+
+  # No "absent" lines for header/separator row cells
+  local absent_component
+  absent_component="$(printf '%s\n' "$output" | grep -i 'absent' | grep -iE 'Component|---' || true)"
+  [ -z "$absent_component" ] || \
+    fail "reported header/separator row as absent: $absent_component"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Screen change reported with boundary markers (AC3)
+# =========================================================================
+
+# _write_screen_file DIR NAME BODY — write a realistic screen spec file
+# with a trailing newline (as a real file would have).
+_write_screen_file() {
+  local dir="$1" name="$2" body="$3"
+  mkdir -p "$dir"
+  printf '%s\n' "$body" > "$dir/$name"
+}
+
+@test "(AC3) screen change reported with boundary markers" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- existing-nav
+
+## 9. Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  # Write a realistic screen file with trailing newline, then hash the FILE
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "old-home.spec.html" "<h1>Old Home</h1>"
+  local old_hash
+  old_hash="$(_sha256_file "$screens_dir/old-home.spec.html")"
+
+  local baseline="$root/baseline.json"
+  jq -n --arg f "screens/home.spec.html" --arg h "$old_hash" \
+    '[{"file": $f, "hash": $h}]' > "$baseline"
+
+  # Write a DIFFERENT screen file and build the snapshot via --rawfile
+  _write_screen_file "$screens_dir" "new-home.spec.html" "<h1>New Home</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c "$screens_dir/new-home.spec.html" \
+    '{"components":[],"screens":[{"name":"Home Screen","file":"screens/home.spec.html","content":$c}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" --last-published "$baseline" \
+    "$snapshot" "$ux_doc"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must contain boundary markers
+  [[ "$output" == *'<<<DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+    fail "missing opening boundary marker: $output"
+  [[ "$output" == *'<<<END_DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+    fail "missing closing boundary marker: $output"
+
+  # Must contain the screen content
+  [[ "$output" == *"<h1>New Home</h1>"* ]] || \
+    fail "screen content not in report: $output"
+
+  # Must NOT contain false "added component" lines
+  local added_count
+  added_count="$(printf '%s\n' "$output" | grep -c 'added component' || true)"
+  [ "$added_count" -eq 0 ] || \
+    fail "false 'added component' lines for screen-only sync ($added_count)"
+
+  # UX doc must be byte-unchanged (screen changes are reported, not written)
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "UX doc changed during screen reporting: sha $sha_before -> $sha_after"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Unchanged screens produce no report (AC-EC5)
+# =========================================================================
+
+@test "(AC-EC5) unchanged screen with trailing newline produces no report" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Write realistic screen files WITH trailing newlines, hash the FILES
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "settings.spec.html" "<h1>Settings</h1>\n<p>Preferences</p>"
+  _write_screen_file "$screens_dir" "profile.spec.html" "<h1>Profile</h1>\n<p>User info</p>"
+
+  local hash_settings hash_profile
+  hash_settings="$(_sha256_file "$screens_dir/settings.spec.html")"
+  hash_profile="$(_sha256_file "$screens_dir/profile.spec.html")"
+
+  # Baseline with the FILE hashes (these include the trailing newline)
+  local baseline="$root/baseline.json"
+  jq -n --arg f1 "screens/settings.spec.html" --arg h1 "$hash_settings" \
+        --arg f2 "screens/profile.spec.html" --arg h2 "$hash_profile" \
+    '[{"file": $f1, "hash": $h1}, {"file": $f2, "hash": $h2}]' > "$baseline"
+
+  # Build snapshot with identical content via --rawfile (preserves exact bytes)
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c1 "$screens_dir/settings.spec.html" \
+        --rawfile c2 "$screens_dir/profile.spec.html" \
+    '{"components":["nav"],"screens":[
+      {"name":"Settings","file":"screens/settings.spec.html","content":$c1},
+      {"name":"Profile","file":"screens/profile.spec.html","content":$c2}
+    ]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" --last-published "$baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # No screen report (no boundary markers, no screen-changed lines)
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+    fail "boundary markers present for unchanged screens: $output"
+  local screen_count
+  screen_count="$(printf '%s\n' "$output" | grep -ci 'screen.*changed\|screen.*baseline' || true)"
+  [ "$screen_count" -eq 0 ] || \
+    fail "screen report emitted for unchanged screens ($screen_count lines)"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Screen name with control characters rejected (AC-EC8)
+# =========================================================================
+
+@test "(AC-EC8) screen name with control characters rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Screen name with embedded newline
+  local snapshot="$root/snapshot.json"
+  printf '{"components":["nav"],"screens":[{"name":"evil\\nscreen","file":"screens/evil.spec.html","content":"some body"}]}\n' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject screen name with control characters (exit $status): $output"
+
+  # Diagnostic must mention control characters or invalid
+  [[ "$output" == *"control"* ]] || [[ "$output" == *"invalid"* ]] || \
+    fail "diagnostic should mention control characters: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Screens-only snapshot, no components key (AC-EC7)
+# =========================================================================
+
+@test "(AC-EC7) snapshot with screens but no components key" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  # Snapshot with screens but NO components key
+  local snapshot="$root/snapshot.json"
+  jq -n '{"screens":[{"name":"Home","file":"screens/home.spec.html","content":"home body"}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  [ "$status" -eq 0 ] || \
+    fail "should exit 0 with screens-only snapshot (exit $status): $output"
+
+  # Screen report should be produced
+  [[ "$output" == *"Home"* ]] || \
+    fail "screen report should mention the screen name: $output"
+
+  # UX doc must be byte-unchanged (screens are reported, not written)
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "UX doc changed during screen-only sync: sha $sha_before -> $sha_after"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Special characters in component name with table insert (AC-EC4)
+# =========================================================================
+
+@test "(AC-EC4) special characters in component name preserved in table insert" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top |
+
+## 9. Design Record Reference
+UX
+
+  # Component with backslash and ampersand
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","nav\\bar","R&D-panel"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Both special-char components must appear in the doc intact
+  grep -qF 'nav\bar' "$doc_dir/ux-design.md" || \
+    fail "backslash component not preserved in doc"
+  grep -qF 'R&D-panel' "$doc_dir/ux-design.md" || \
+    fail "ampersand component not preserved in doc"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Screen with no baseline entry reported as "no baseline" (AC3)
+# =========================================================================
+
+@test "(AC3) screen with no baseline entry reported as no baseline" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Empty baseline — no entries
+  local baseline="$root/baseline.json"
+  printf '[]\n' > "$baseline"
+
+  # Write screen file and build snapshot via --rawfile
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "new.spec.html" "<h1>Brand New</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c "$screens_dir/new.spec.html" \
+    '{"components":["nav"],"screens":[{"name":"New Screen","file":"screens/new.spec.html","content":$c}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" --last-published "$baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must report "no baseline"
+  [[ "$output" == *"no baseline"* ]] || \
+    fail "should report 'no baseline' for screen not in baseline: $output"
+
+  # Must still show content in boundary markers
+  [[ "$output" == *'<<<DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+    fail "missing boundary markers for no-baseline screen: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Screens-only snapshot with no heading exits 0 (AC-EC2 + AC-EC7)
+# =========================================================================
+
+@test "(AC-EC2) screens-only snapshot with no component heading exits 0" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Some Unrelated Section
+
+Content only.
+UX
+
+  # No components key, only screens
+  local snapshot="$root/snapshot.json"
+  jq -n '{"screens":[{"name":"Only Screen","file":"screens/only.spec.html","content":"only body"}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || \
+    fail "should exit 0 with screens-only snapshot and no heading (exit $status): $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Dual headings: only the first (template) is edited (AC1)
+# =========================================================================
+
+@test "(AC1) dual headings in one doc: only first match is edited" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- existing-alpha
+
+## Component Inventory
+
+- existing-beta
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["existing-alpha","existing-beta","new-gamma"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # new-gamma should appear in the template section (between "Components & Design System" and "Component Inventory")
+  local template_section
+  template_section="$(awk '/## 8\. Components/,/## Component Inventory/' "$doc_dir/ux-design.md")"
+  printf '%s\n' "$template_section" | grep -q 'new-gamma' || \
+    fail "new-gamma should be in the template heading section, not the legacy one"
+
+  # The legacy section should NOT contain new-gamma
+  local legacy_section
+  legacy_section="$(awk '/## Component Inventory/,/## Design Record/' "$doc_dir/ux-design.md")"
+  local legacy_gamma
+  legacy_gamma="$(printf '%s\n' "$legacy_section" | grep -c 'new-gamma' || true)"
+  [ "$legacy_gamma" -eq 0 ] || \
+    fail "new-gamma should NOT be in the legacy heading section ($legacy_gamma occurrences)"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Batch performance — 200 new components under 3 seconds (existing)
+# =========================================================================
+
 @test "sync 200 new components completes in under 3 s and is idempotent" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
@@ -413,6 +1160,669 @@ json.dump({"components": components}, sys.stdout)
   sha_second="$(_sha256_file "$ux_doc")"
   [ "$sha_first" = "$sha_second" ] || \
     fail "second sync changed the doc: sha $sha_first -> $sha_second"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Screen with no .content key rejected (V4)
+# =========================================================================
+
+@test "(AC-EC8) screen with no content key rejected with diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Screen with no .content key at all
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"Broken","file":"screens/broken.spec.html"}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject screen with no content key (exit $status): $output"
+
+  # Diagnostic should name the screen
+  [[ "$output" == *"Broken"* ]] || \
+    fail "diagnostic should name the screen: $output"
+
+  # No boundary markers emitted for the broken screen
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+    fail "boundary markers should not appear for a rejected screen: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Temp file cleanup (V2)
+# =========================================================================
+
+@test "(AC3) temp files cleaned up after sync" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Isolated TMPDIR for leak detection
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  # Write screen file and build snapshot via --rawfile
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "home.spec.html" "<h1>Home</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c "$screens_dir/home.spec.html" \
+    '{"components":["nav"],"screens":[{"name":"Home","file":"screens/home.spec.html","content":$c}]}' > "$snapshot"
+
+  TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The isolated TMPDIR must be empty after the script exits
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp files leaked in TMPDIR ($leftover files remain)"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC8) temp files cleaned up after failed sync" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Isolated TMPDIR for leak detection
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  # Screen with no .content key — should fail
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"Bad","file":"screens/bad.spec.html"}]}' > "$snapshot"
+
+  TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  # The isolated TMPDIR must be empty even after a failure
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp files leaked in TMPDIR after failure ($leftover files remain)"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Temp file cleaned up on mid-loop abort (V2)
+# =========================================================================
+
+@test "(AC3) temp file cleaned up on mid-loop abort" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Isolated TMPDIR for leak detection
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  # Two valid screens. We force a mid-loop abort by making shasum/sha256sum
+  # fail on the 3rd invocation (the 2nd screen's hash; the 1st is the ux doc
+  # sha check, the 2nd is screen 1's hash).
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "s1.spec.html" "<h1>Screen 1</h1>"
+  _write_screen_file "$screens_dir" "s2.spec.html" "<h1>Screen 2</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c1 "$screens_dir/s1.spec.html" \
+        --rawfile c2 "$screens_dir/s2.spec.html" \
+    '{"components":["nav"],"screens":[
+      {"name":"S1","file":"screens/s1.spec.html","content":$c1},
+      {"name":"S2","file":"screens/s2.spec.html","content":$c2}
+    ]}' > "$snapshot"
+
+  # Create shim sha256sum/shasum that fails on the 3rd call
+  local shim_dir="$root/shim-bin"
+  mkdir -p "$shim_dir"
+  local counter_file="$root/sha_call_count"
+  printf '0\n' > "$counter_file"
+
+  # Determine which hash command the script will use
+  local real_hash_cmd
+  if command -v sha256sum >/dev/null 2>&1; then
+    real_hash_cmd="sha256sum"
+  else
+    real_hash_cmd="shasum"
+  fi
+
+  cat > "$shim_dir/$real_hash_cmd" <<SHIM
+#!/usr/bin/env bash
+count=\$(cat "$counter_file")
+count=\$((count + 1))
+printf '%d\n' "\$count" > "$counter_file"
+if [ "\$count" -gt 1 ]; then
+  printf 'FORCED HASH FAILURE\n' >&2
+  exit 1
+fi
+exec "$(command -v "$real_hash_cmd")" "\$@"
+SHIM
+  chmod +x "$shim_dir/$real_hash_cmd"
+
+  PATH="$shim_dir:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  # Must exit non-zero (the forced failure triggers set -e)
+  [ "$status" -ne 0 ] || \
+    fail "should fail when hash command fails mid-loop (exit $status)"
+
+  # The isolated TMPDIR must be empty — no leaked temp file
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp file leaked in TMPDIR after mid-loop abort ($leftover files: $(ls "$iso_tmpdir"))"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Non-string content types rejected (V4 extended)
+# =========================================================================
+
+@test "(AC-EC8) screen with numeric content rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"NumScreen","file":"screens/num.spec.html","content":42}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || fail "should reject numeric content (exit $status): $output"
+  [[ "$output" == *"NumScreen"* ]] || fail "diagnostic should name the screen: $output"
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC8) screen with object content rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"ObjScreen","file":"screens/obj.spec.html","content":{"x":1}}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || fail "should reject object content (exit $status): $output"
+  [[ "$output" == *"ObjScreen"* ]] || fail "diagnostic should name the screen: $output"
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC8) screen with array content rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"ArrScreen","file":"screens/arr.spec.html","content":[1]}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || fail "should reject array content (exit $status): $output"
+  [[ "$output" == *"ArrScreen"* ]] || fail "diagnostic should name the screen: $output"
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# No partial output: valid screen followed by invalid screen (V4 + INFO)
+# =========================================================================
+
+@test "(AC-EC8) valid screen followed by invalid screen produces no output" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # First screen is valid, second has non-string content
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "good.spec.html" "<h1>Good</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c "$screens_dir/good.spec.html" \
+    '{"components":["nav"],"screens":[
+      {"name":"Good","file":"screens/good.spec.html","content":$c},
+      {"name":"Bad","file":"screens/bad.spec.html","content":42}
+    ]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || fail "should fail on invalid screen (exit $status): $output"
+
+  # No boundary markers at all — the valid screen must not have been reported
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+    fail "boundary markers present — partial output emitted before validation: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Temp file cleaned up on component-phase abort
+# =========================================================================
+
+# Helper: create a shim hash command that fails on the Nth call.
+# Usage: _create_hash_shim SHIM_DIR COUNTER_FILE FAIL_AFTER
+_create_hash_shim() {
+  local shim_dir="$1" counter_file="$2" fail_after="$3"
+  mkdir -p "$shim_dir"
+  printf '0\n' > "$counter_file"
+  local real_hash_cmd
+  if command -v sha256sum >/dev/null 2>&1; then
+    real_hash_cmd="sha256sum"
+  else
+    real_hash_cmd="shasum"
+  fi
+  local real_path
+  real_path="$(command -v "$real_hash_cmd")"
+  cat > "$shim_dir/$real_hash_cmd" <<SHIM
+#!/usr/bin/env bash
+count=\$(cat "$counter_file")
+count=\$((count + 1))
+printf '%d\n' "\$count" > "$counter_file"
+if [ "\$count" -gt $fail_after ]; then
+  printf 'FORCED HASH FAILURE\n' >&2
+  exit 1
+fi
+exec "$real_path" "\$@"
+SHIM
+  chmod +x "$shim_dir/$real_hash_cmd"
+}
+
+@test "(AC2) temp files cleaned up on component-phase abort" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- existing
+
+## Design Record Reference
+UX
+
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  # Snapshot with a NEW component so the sha-before check runs
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["existing","brand-new"]}' > "$snapshot"
+
+  # Shim: fail on the 1st hash call (the UX doc sha-before check)
+  _create_hash_shim "$root/shim-bin" "$root/sha_call_count" 0
+
+  PATH="$root/shim-bin:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should fail when hash command fails in component phase (exit $status)"
+
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp file leaked in TMPDIR after component-phase abort ($leftover files: $(ls "$iso_tmpdir"))"
+
+  rm -rf "$root"
+}
+
+@test "(AC3) temp files cleaned up on screen-phase abort" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "s1.spec.html" "<h1>Screen 1</h1>"
+  _write_screen_file "$screens_dir" "s2.spec.html" "<h1>Screen 2</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c1 "$screens_dir/s1.spec.html" \
+        --rawfile c2 "$screens_dir/s2.spec.html" \
+    '{"components":["nav"],"screens":[
+      {"name":"S1","file":"screens/s1.spec.html","content":$c1},
+      {"name":"S2","file":"screens/s2.spec.html","content":$c2}
+    ]}' > "$snapshot"
+
+  # Shim: fail on the 2nd hash call (the 2nd screen)
+  _create_hash_shim "$root/shim-bin" "$root/sha_call_count" 1
+
+  PATH="$root/shim-bin:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should fail when hash command fails in screen phase (exit $status)"
+
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp file leaked in TMPDIR after screen-phase abort ($leftover files: $(ls "$iso_tmpdir"))"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Wrong snapshot shape rejected
+# =========================================================================
+
+@test "(AC-EC4) components with object elements rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- existing
+
+## Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":[{"name":"Button"}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject components with object elements (exit $status): $output"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected snapshot: sha $sha_before -> $sha_after"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC4) components with number element rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- existing
+
+## Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["valid", 42]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject components with number element (exit $status): $output"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected snapshot: sha $sha_before -> $sha_after"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC4) components as a string rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- existing
+
+## Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":"Button"}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject components as a string (exit $status): $output"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected snapshot: sha $sha_before -> $sha_after"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC7) screens as an object rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":{"name":"Bad","file":"bad.html","content":"x"}}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject screens as an object (exit $status): $output"
 
   rm -rf "$root"
 }

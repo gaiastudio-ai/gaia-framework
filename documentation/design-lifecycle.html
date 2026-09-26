@@ -134,6 +134,13 @@
           iterate -- each round produces a new set of findings that the
           designer addresses before requesting another review.
         </p>
+        <p>
+          During review, designer-side component changes are reconciled into the
+          derived UX design document via delta sync. Screen-level changes are
+          detected by comparing content hashes against the persisted publication
+          manifest and reported to the user with full content — screen prose is
+          not auto-edited.
+        </p>
       </section>
 
       <section id="approval">
