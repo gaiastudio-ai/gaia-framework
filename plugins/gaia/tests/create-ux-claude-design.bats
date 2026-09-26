@@ -32,13 +32,26 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; return 1; }
 
 # _extract_step_block FILE KEYWORD — extract a ### Step block, stripping
 # HTML comments (single-line and multi-line) so comment-spoofed keywords
-# cannot satisfy structural assertions.
+# cannot satisfy structural assertions.  Comments inside backtick code
+# spans (e.g. `<!-- @dsCard ... -->`) are preserved so that assertions
+# on documented syntax examples are not defeated by the stripping.
 _extract_step_block() {
   local file="$1" keyword="$2"
   awk -v kw="$keyword" '
     /^### Step/ { if (found) exit; if (index($0, kw)) found=1 }
     found { print }
-  ' "$file" | sed 's/<!--.*-->//g; /<!--/,/-->/d'
+  ' "$file" | sed '
+    # Protect backtick-enclosed HTML comments: replace <!-- inside `...`
+    # with a placeholder so the next rule does not strip them.
+    s/`\([^`]*\)<!--\([^`]*\)-->\([^`]*\)`/`\1\x01COMMENT_OPEN\x01\2\x01COMMENT_CLOSE\x01\3`/g
+    # Strip bare (non-backtick) single-line HTML comments
+    s/<!--.*-->//g
+    # Strip multi-line HTML comments
+    /<!--/,/-->/d
+    # Restore protected comments
+    s/\x01COMMENT_OPEN\x01/<!--/g
+    s/\x01COMMENT_CLOSE\x01/-->/g
+  '
 }
 
 # _assert_not_in_file PATTERN FILE [CONTEXT] — fail when PATTERN is found.
@@ -1001,7 +1014,7 @@ Read the project files and use them."
 }
 
 # ===========================================================================
-# Manifest refresh and persisted publication manifest (S16 red tests)
+# Manifest refresh and persisted publication manifest
 # ===========================================================================
 
 @test "(AC1) publication plan includes bare REFRESH_MANIFEST as final line" {

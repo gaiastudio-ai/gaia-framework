@@ -2,9 +2,7 @@
 # build-manifest-cards.bats — tests for the manifest card builder and
 # last-published persistence helper in gaia-create-ux.
 #
-# The target script does not exist yet (red phase). Every test must FAIL
-# on the missing script, never skip, and never pass vacuously.
-#
+# Every test must FAIL on a missing or broken script, never skip.
 # No project-root .gaia/ access; all fixtures use mktemp.
 # No internal identifiers in @test names.
 
@@ -53,6 +51,23 @@ _seed_existing_manifest() {
   fi
   cards="${cards}]"
   printf '{"cards":%s}\n' "$cards" > "$file"
+}
+
+# _run_persist — run persist_last_published with standard fixture paths.
+# Expects outcomes at $TEST_TMP/outcomes.json, hash map at
+# $TEST_TMP/hash-map.json, and writes to $TEST_TMP/last-published.json.
+# Prior defaults to /dev/null; pass an arg to override.
+_run_persist() {
+  local prior="${1:-/dev/null}"
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior '$prior' \
+      --output '$TEST_TMP/last-published.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json'
+  "
 }
 
 # ===========================================================================
@@ -230,7 +245,6 @@ _seed_existing_manifest() {
 # ===========================================================================
 
 @test "(AC2) persist_last_published writes 6-entry manifest after publication" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[
     {"file":"screens/login.spec.html","outcome":"written","hash":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"},
     {"file":"screens/dashboard.spec.html","outcome":"written","hash":"bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222"},
@@ -244,14 +258,7 @@ _seed_existing_manifest() {
   local hash_map='{"screens/login.spec.html":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111","screens/dashboard.spec.html":"bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222","screens/settings.spec.html":"cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333","components/button.spec.html":"dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444","components/card.spec.html":"eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555","tokens.json":"ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666"}'
   printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
 
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior /dev/null \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
+  _run_persist || fail "persist_last_published failed"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
   local entry_count
@@ -265,7 +272,6 @@ _seed_existing_manifest() {
 }
 
 @test "(AC-EC5) first publication with /dev/null prior writes full set" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[
     {"file":"screens/login.spec.html","outcome":"written","hash":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"},
     {"file":"screens/dashboard.spec.html","outcome":"written","hash":"bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222"},
@@ -279,14 +285,7 @@ _seed_existing_manifest() {
   local hash_map='{"screens/login.spec.html":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111","screens/dashboard.spec.html":"bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222","screens/settings.spec.html":"cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333","components/button.spec.html":"dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444","components/card.spec.html":"eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555","tokens.json":"ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666ffff6666"}'
   printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
 
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior /dev/null \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed on first publish"
+  _run_persist || fail "persist_last_published failed on first publish"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
   local entry_count
@@ -295,21 +294,13 @@ _seed_existing_manifest() {
 }
 
 @test "(AC-EC7) kept-designer stores framework local hash, not designer hash" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[{"file":"screens/login.spec.html","outcome":"kept-designer","hash":"designer_aabbccdd_designer_aabbccdd_designer_aabbccdd_aabbccdd"}]'
   printf '%s\n' "$outcomes_json" > "$TEST_TMP/outcomes.json"
 
   local hash_map='{"screens/login.spec.html":"framework_11223344_framework_11223344_framework_11223344_11223344"}'
   printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
 
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior /dev/null \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
+  _run_persist || fail "persist_last_published failed"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
 
@@ -320,21 +311,13 @@ _seed_existing_manifest() {
 }
 
 @test "(AC-EC7) merged stores framework local hash" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[{"file":"screens/login.spec.html","outcome":"merged","hash":"merged_result_hash_merged_result_hash_merged_result_hash_merged_r"}]'
   printf '%s\n' "$outcomes_json" > "$TEST_TMP/outcomes.json"
 
   local hash_map='{"screens/login.spec.html":"framework_local_hash_framework_local_hash_framework_local_hash_f"}'
   printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
 
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior /dev/null \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
+  _run_persist || fail "persist_last_published failed"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
 
@@ -345,24 +328,15 @@ _seed_existing_manifest() {
 }
 
 @test "(AC-EC7) failed with prior carries prior hash forward" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[{"file":"screens/broken.spec.html","outcome":"failed","hash":"irrelevant_hash_irrelevant_hash_irrelevant_hash_irrelevant_hash"}]'
   printf '%s\n' "$outcomes_json" > "$TEST_TMP/outcomes.json"
 
   printf '[{"file":"screens/broken.spec.html","hash":"prior_hash_1234_prior_hash_1234_prior_hash_1234_prior_hash_1234"}]\n' \
     > "$TEST_TMP/prior.json"
 
-  local hash_map='{}'
-  printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
+  printf '{}\n' > "$TEST_TMP/hash-map.json"
 
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior '$TEST_TMP/prior.json' \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
+  _run_persist "$TEST_TMP/prior.json" || fail "persist_last_published failed"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
 
@@ -373,21 +347,12 @@ _seed_existing_manifest() {
 }
 
 @test "(AC-EC7) failed with no prior is omitted" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[{"file":"screens/broken.spec.html","outcome":"failed","hash":"irrelevant"}]'
   printf '%s\n' "$outcomes_json" > "$TEST_TMP/outcomes.json"
 
-  local hash_map='{}'
-  printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
+  printf '{}\n' > "$TEST_TMP/hash-map.json"
 
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior /dev/null \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
+  _run_persist || fail "persist_last_published failed"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
 
@@ -397,23 +362,13 @@ _seed_existing_manifest() {
 }
 
 @test "(AC-EC7) deleted entry removed from output" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[{"file":"screens/old.spec.html","outcome":"deleted","hash":"irrelevant"}]'
   printf '%s\n' "$outcomes_json" > "$TEST_TMP/outcomes.json"
 
   printf '[{"file":"screens/old.spec.html","hash":"prior_hash"}]\n' > "$TEST_TMP/prior.json"
+  printf '{}\n' > "$TEST_TMP/hash-map.json"
 
-  local hash_map='{}'
-  printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
-
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior '$TEST_TMP/prior.json' \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
+  _run_persist "$TEST_TMP/prior.json" || fail "persist_last_published failed"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
 
@@ -423,24 +378,14 @@ _seed_existing_manifest() {
 }
 
 @test "(AC-EC7) delete-failed keeps prior entry" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[{"file":"screens/orphan.spec.html","outcome":"delete-failed","hash":"irrelevant"}]'
   printf '%s\n' "$outcomes_json" > "$TEST_TMP/outcomes.json"
 
   printf '[{"file":"screens/orphan.spec.html","hash":"prior_orphan_hash_prior_orphan_hash_prior_orphan_hash_prior_or"}]\n' \
     > "$TEST_TMP/prior.json"
+  printf '{}\n' > "$TEST_TMP/hash-map.json"
 
-  local hash_map='{}'
-  printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
-
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior '$TEST_TMP/prior.json' \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
+  _run_persist "$TEST_TMP/prior.json" || fail "persist_last_published failed"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
 
@@ -451,7 +396,6 @@ _seed_existing_manifest() {
 }
 
 @test "(AC-EC7) mixed outcomes persisted correctly" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[
     {"file":"screens/login.spec.html","outcome":"written","hash":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"},
     {"file":"screens/dashboard.spec.html","outcome":"written","hash":"bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222"},
@@ -467,14 +411,7 @@ _seed_existing_manifest() {
   local hash_map='{"components/button.spec.html":"fw_local_button_fw_local_button_fw_local_button_fw_local_button_","components/card.spec.html":"fw_local_card_1_fw_local_card_1_fw_local_card_1_fw_local_card_1_"}'
   printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
 
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior '$TEST_TMP/prior.json' \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
+  _run_persist "$TEST_TMP/prior.json" || fail "persist_last_published failed"
 
   [ -f "$TEST_TMP/last-published.json" ] || fail "output file not created"
 
@@ -528,10 +465,10 @@ _seed_existing_manifest() {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   local outcomes_json='[{"file":"tokens.json","outcome":"written","hash":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"}]'
   printf '%s\n' "$outcomes_json" > "$TEST_TMP/outcomes.json"
+  printf '{"tokens.json":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"}\n' \
+    > "$TEST_TMP/hash-map.json"
 
-  local hash_map='{"tokens.json":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"}'
-  printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
-
+  # Uses a non-default output path to verify mkdir -p + tmp+mv
   bash -c "
     source '$TARGET_SCRIPT'
     persist_last_published \
@@ -556,7 +493,6 @@ _seed_existing_manifest() {
 # ===========================================================================
 
 @test "(AC3) kept-designer persisted hash triggers CONFLICT on re-plan" {
-  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
 
   # Step 1: persist outcomes — one written, one kept-designer
@@ -569,15 +505,7 @@ _seed_existing_manifest() {
   local hash_map='{"screens/login.spec.html":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111","screens/dashboard.spec.html":"fw_local_dashboard_fw_local_dashboard_fw_local_dashboard_fw_loc"}'
   printf '%s\n' "$hash_map" > "$TEST_TMP/hash-map.json"
 
-  bash -c "
-    source '$TARGET_SCRIPT'
-    persist_last_published \
-      --outcomes '$TEST_TMP/outcomes.json' \
-      --prior /dev/null \
-      --output '$TEST_TMP/last-published.json' \
-      --local-hash-map '$TEST_TMP/hash-map.json'
-  " || fail "persist_last_published failed"
-
+  _run_persist || fail "persist_last_published failed"
   [ -f "$TEST_TMP/last-published.json" ] || fail "last-published.json not created"
 
   # Step 2: re-plan with remote holding the designer hash for dashboard

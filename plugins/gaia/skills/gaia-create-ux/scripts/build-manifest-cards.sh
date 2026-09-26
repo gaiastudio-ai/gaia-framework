@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # build-manifest-cards.sh — deterministic manifest card builder and
-# last-published persistence helper for /gaia-create-ux Step 10.
+# last-published persistence helper for screen-specification publication.
 #
 # Two public functions:
 #   build_manifest_cards   — merge spec-file cards into the design-system manifest
@@ -161,20 +161,13 @@ persist_last_published() {
     # Build prior lookup {file: hash}
     ($prior | map({(.file): .hash}) | add // {}) as $prior_map |
 
-    # Process each outcome
-    [.[] | {
-      file: .file,
-      outcome: .outcome,
-      hash: .hash
-    }] |
-
-    # Apply persistence rules
+    # Apply persistence rules per outcome
     [.[] |
       if .outcome == "written" or .outcome == "skipped" then
         {file: .file, hash: .hash}
       elif .outcome == "kept-designer" or .outcome == "merged" then
         {file: .file, hash: ($hash_map[.file] // .hash)}
-      elif .outcome == "failed" then
+      elif .outcome == "failed" or .outcome == "delete-failed" then
         if $prior_map[.file] then
           {file: .file, hash: $prior_map[.file]}
         else
@@ -182,12 +175,6 @@ persist_last_published() {
         end
       elif .outcome == "deleted" then
         empty
-      elif .outcome == "delete-failed" then
-        if $prior_map[.file] then
-          {file: .file, hash: $prior_map[.file]}
-        else
-          empty
-        end
       else
         empty
       end
