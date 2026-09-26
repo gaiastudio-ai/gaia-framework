@@ -679,3 +679,62 @@ _run_persist() {
   card_count="$(printf '%s' "$result" | jq '.cards | length')"
   [ "$card_count" -eq 502 ] || fail "expected 502 cards, got $card_count"
 }
+
+# ===========================================================================
+# Mutant: restoring inside() makes the substring test red
+# ===========================================================================
+
+@test "(AC-EC6) mutant restoring substring membership in the card builder is caught" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+
+  # Copy the script into $TEST_TMP and patch the exact-match back to inside()
+  local mutant="$TEST_TMP/build-manifest-cards-mutant.sh"
+  sed 's/\.path as \$p | any(\$fw_owned\[\]; \. == \$p)/([.path] | inside($fw_owned))/' \
+    "$TARGET_SCRIPT" > "$mutant"
+  chmod +x "$mutant"
+
+  # Assert the patch applied: the inside() line is present, the any() line is gone
+  grep -qF 'inside($fw_owned)' "$mutant" \
+    || fail "patch did not apply: inside(\$fw_owned) not found in mutant"
+  if grep -qF 'any($fw_owned[]' "$mutant"; then
+    fail "patch incomplete: any(\$fw_owned[]) still present in mutant"
+  fi
+
+  # Seed fixture: one framework spec, one designer card whose path is a substring
+  mkdir -p "$TEST_TMP/specs/screens"
+  printf '<!-- @dsCard group="Screen specs" -->\n<html>Login</html>\n' \
+    > "$TEST_TMP/specs/screens/login.spec.html"
+  printf '{"cards":[{"path":"colors.json","group":"Colors"},{"path":"login","group":"Designer Login"}]}\n' \
+    > "$TEST_TMP/existing-manifest.json"
+
+  # Run against the MUTANT — the designer card "login" SHOULD be dropped
+  # (because inside() treats "login" as a substring of "screens/login.spec.html")
+  local mutant_result
+  mutant_result="$(bash -c "
+    source '$mutant'
+    build_manifest_cards \
+      --local-specs '$TEST_TMP/specs' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published /dev/null
+  " 2>/dev/null)" || fail "mutant build_manifest_cards failed"
+
+  local mutant_login_hit
+  mutant_login_hit="$(printf '%s' "$mutant_result" | jq '[.cards[] | select(.path == "login")] | length')"
+  [ "$mutant_login_hit" -eq 0 ] \
+    || fail "mutant should drop 'login' card via substring match, but it was preserved"
+
+  # Run against the REAL script — the designer card "login" MUST be preserved
+  local real_result
+  real_result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$TEST_TMP/specs' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published /dev/null
+  " 2>/dev/null)" || fail "real build_manifest_cards failed"
+
+  local real_login_hit
+  real_login_hit="$(printf '%s' "$real_result" | jq '[.cards[] | select(.path == "login")] | length')"
+  [ "$real_login_hit" -eq 1 ] \
+    || fail "real script should preserve 'login' card, but it was dropped"
+}
