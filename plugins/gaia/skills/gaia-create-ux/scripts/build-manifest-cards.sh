@@ -92,11 +92,12 @@ build_manifest_cards() {
     --argjson fw_owned "$fw_owned_json" \
     --argjson spec_paths "$spec_paths_json" \
     '
-    # Separate existing cards into framework-owned and non-framework
+    # Separate existing cards into framework-owned and non-framework.
+    # Uses exact equality via any/2, not inside() which does substring matching.
     (.cards // []) as $existing_cards |
-    [$existing_cards[] | select(([.path] | inside($fw_owned) | not))] as $non_fw |
+    [$existing_cards[] | select(.path as $p | any($fw_owned[]; . == $p) | not)] as $non_fw |
     # From spec cards, only include those in the current local set
-    [$spec_cards[] | select([.path] | inside($spec_paths))] as $current_specs |
+    [$spec_cards[] | select(.path as $p | any($spec_paths[]; . == $p))] as $current_specs |
     # Merge: non-framework + current specs
     .cards = ($non_fw + $current_specs)
     '
@@ -181,10 +182,13 @@ persist_last_published() {
     ]
     ' "$outcomes")"
 
-  # Atomic write: tmp + mv
-  local out_dir
+  # Atomic write: mktemp + mv (unpredictable temp name, cleaned on failure)
+  local out_dir tmp_file
   out_dir="$(dirname "$output_file")"
   mkdir -p "$out_dir"
-  printf '%s\n' "$result" > "${output_file}.tmp"
-  mv "${output_file}.tmp" "$output_file"
+  tmp_file="$(mktemp "${output_file}.XXXXXX")"
+  if ! printf '%s\n' "$result" > "$tmp_file" || ! mv "$tmp_file" "$output_file"; then
+    rm -f "$tmp_file"
+    _bmc_die "persist_last_published: failed to write $output_file"
+  fi
 }
