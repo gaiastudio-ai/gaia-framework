@@ -49,9 +49,15 @@ _extract_availability_subblock() {
 # _extract_availability_section <file>
 # Extracts the full availability section from the heading
 # ("Availability check" or "Integration availability") to the next
-# heading (### or ## Steps). Returns empty if absent.
+# heading (### or ##). Stops at the FIRST boundary heading after
+# the start, so negative assertions check only the availability block.
+# Returns empty if absent.
 _extract_availability_section() {
-  awk '/^\*\*Availability check\.\*\*|^### Precondition — Integration availability/{p=1} p && /^###[^#]|^## Steps/{if(p>1)exit; p++} p' "$1"
+  awk '
+    /^\*\*Availability check\.\*\*|^### Precondition — Integration availability/ { found=1; p=1 }
+    p && found && /^###[^#]|^## / { if (seen_start) exit; seen_start=1 }
+    p { print }
+  ' "$1"
 }
 
 # =========================================================================
@@ -98,24 +104,48 @@ _extract_availability_section() {
   [ -n "$block_cux" ] || fail "availability sub-block missing from create-ux — cannot check halt"
   [ -n "$block_dr" ] || fail "availability sub-block missing from design-review — cannot check halt"
 
-  # Extract the section around the availability markers (up to 30 lines after end marker)
   local section_cux section_dr
   section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
   section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
   [ -n "$section_cux" ] || fail "availability section not found in create-ux"
   [ -n "$section_dr" ] || fail "availability section not found in design-review"
 
-  # Halt on missing
-  echo "$section_cux" | grep -qi 'missing.*halt\|On.*missing.*halt\|missing.*remediation' \
-    || fail "create-ux availability section should halt on missing"
-  echo "$section_dr" | grep -qi 'missing.*halt\|On.*missing.*halt\|missing.*remediation' \
-    || fail "design-review availability section should halt on missing"
+  # Extract the missing and unauthorized remediation text separately
+  # The expected pattern is: On `missing`, halt with: "..." / On `unauthorized`, halt with: "..."
+  local missing_cux missing_dr unauth_cux unauth_dr
 
-  # Halt on unauthorized
-  echo "$section_cux" | grep -qi 'unauthorized.*halt\|On.*unauthorized.*halt\|unauthorized.*remediation' \
-    || fail "create-ux availability section should halt on unauthorized"
-  echo "$section_dr" | grep -qi 'unauthorized.*halt\|On.*unauthorized.*halt\|unauthorized.*remediation' \
-    || fail "design-review availability section should halt on unauthorized"
+  missing_cux="$(echo "$section_cux" | sed -n '/On.*missing.*halt/,/^$/p')" || true
+  missing_dr="$(echo "$section_dr" | sed -n '/On.*missing.*halt/,/^$/p')" || true
+  unauth_cux="$(echo "$section_cux" | sed -n '/On.*unauthorized.*halt/,/^$/p')" || true
+  unauth_dr="$(echo "$section_dr" | sed -n '/On.*unauthorized.*halt/,/^$/p')" || true
+
+  [ -n "$missing_cux" ] || fail "create-ux availability section should halt on missing"
+  [ -n "$missing_dr" ] || fail "design-review availability section should halt on missing"
+  [ -n "$unauth_cux" ] || fail "create-ux availability section should halt on unauthorized"
+  [ -n "$unauth_dr" ] || fail "design-review availability section should halt on unauthorized"
+
+  # The missing and unauthorized remediations must differ (M5 killer)
+  if [ "$missing_cux" = "$unauth_cux" ]; then
+    fail "create-ux missing and unauthorized remediations must differ"
+  fi
+  if [ "$missing_dr" = "$unauth_dr" ]; then
+    fail "design-review missing and unauthorized remediations must differ"
+  fi
+
+  # The unauthorized remediation must contain the exact dual-path wording
+  local _expected_dual="Run \`/design-login\` (API-token sessions), or grant design access when prompted (claude.ai sessions)"
+  echo "$unauth_cux" | grep -qF '/design-login' \
+    || fail "create-ux unauthorized remediation should mention /design-login"
+  echo "$unauth_cux" | grep -q 'API-token sessions' \
+    || fail "create-ux unauthorized remediation should say API-token sessions"
+  echo "$unauth_cux" | grep -q 'grant design access when prompted' \
+    || fail "create-ux unauthorized remediation should say grant design access when prompted"
+  echo "$unauth_dr" | grep -qF '/design-login' \
+    || fail "design-review unauthorized remediation should mention /design-login"
+  echo "$unauth_dr" | grep -q 'API-token sessions' \
+    || fail "design-review unauthorized remediation should say API-token sessions"
+  echo "$unauth_dr" | grep -q 'grant design access when prompted' \
+    || fail "design-review unauthorized remediation should say grant design access when prompted"
 }
 
 # =========================================================================
@@ -174,49 +204,36 @@ _extract_availability_section() {
   [ -f "$STALE_DRIVER" ] || fail "design-stale-transition.sh not found"
   [ -f "$GATE_LIB" ] || fail "lib/design-gate.sh not found"
 
+  # The exact dual-path fragment that every site must contain
+  local _dual_path='Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)'
+
   # Site 1: design-probe.sh _MSG_UNAUTHORIZED
   local probe_line
   probe_line="$(grep '_MSG_UNAUTHORIZED=' "$PROBE_SCRIPT")"
   [ -n "$probe_line" ] || fail "design-probe.sh has no _MSG_UNAUTHORIZED"
-  echo "$probe_line" | grep -q 'design-login' \
-    || fail "design-probe.sh unauthorized should mention design-login"
-  echo "$probe_line" | grep -q 'grant design access when prompted' \
-    || fail "design-probe.sh unauthorized should mention grant design access"
-  echo "$probe_line" | grep -q 'API-token sessions' \
-    || fail "design-probe.sh unauthorized should say API-token sessions"
+  echo "$probe_line" | grep -qF "$_dual_path" \
+    || fail "design-probe.sh unauthorized should contain the full dual-path wording"
 
   # Site 2: design-stale-transition.sh unauthorized printf
   local dst_line
   dst_line="$(grep 'unauthorized.*Run' "$STALE_DRIVER")"
   [ -n "$dst_line" ] || fail "design-stale-transition.sh has no unauthorized remediation line"
-  echo "$dst_line" | grep -q 'design-login' \
-    || fail "design-stale-transition.sh unauthorized should mention design-login"
-  echo "$dst_line" | grep -q 'grant design access when prompted' \
-    || fail "design-stale-transition.sh unauthorized should mention grant design access"
-  echo "$dst_line" | grep -q 'API-token sessions' \
-    || fail "design-stale-transition.sh unauthorized should say API-token sessions"
+  echo "$dst_line" | grep -qF "$_dual_path" \
+    || fail "design-stale-transition.sh unauthorized should contain the full dual-path wording"
 
   # Site 3: lib/design-gate.sh _dg_absent_remediation
   local absent_line
   absent_line="$(grep '_dg_absent_remediation=' "$GATE_LIB")"
   [ -n "$absent_line" ] || fail "design-gate.sh has no _dg_absent_remediation"
-  echo "$absent_line" | grep -q 'design-login' \
-    || fail "design-gate.sh absent remediation should mention design-login"
-  echo "$absent_line" | grep -q 'grant design access when prompted' \
-    || fail "design-gate.sh absent remediation should mention grant design access"
-  echo "$absent_line" | grep -q 'API-token sessions' \
-    || fail "design-gate.sh absent remediation should say API-token sessions"
+  echo "$absent_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+    || fail "design-gate.sh absent remediation should contain the dual-path wording"
 
   # Site 4: lib/design-gate.sh _dg_halt_remediation
   local halt_line
   halt_line="$(grep '_dg_halt_remediation=' "$GATE_LIB")"
   [ -n "$halt_line" ] || fail "design-gate.sh has no _dg_halt_remediation"
-  echo "$halt_line" | grep -q 'design-login' \
-    || fail "design-gate.sh halt remediation should mention design-login"
-  echo "$halt_line" | grep -q 'grant design access when prompted' \
-    || fail "design-gate.sh halt remediation should mention grant design access"
-  echo "$halt_line" | grep -q 'API-token sessions' \
-    || fail "design-gate.sh halt remediation should say API-token sessions"
+  echo "$halt_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+    || fail "design-gate.sh halt remediation should contain the dual-path wording"
 
   # Order check: design-login must appear before "grant design access" at each site
   local dl_pos gda_pos
@@ -414,10 +431,8 @@ _extract_availability_section() {
   msg_line="$(grep '_MSG_UNAUTHORIZED=' "$PROBE_SCRIPT")"
   [ -n "$msg_line" ] || fail "design-probe.sh has no _MSG_UNAUTHORIZED"
 
-  echo "$msg_line" | grep -q 'design-login' \
-    || fail "design-probe.sh unauthorized should mention design-login"
-  echo "$msg_line" | grep -q 'grant design access when prompted' \
-    || fail "design-probe.sh unauthorized should mention grant design access when prompted"
+  echo "$msg_line" | grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+    || fail "design-probe.sh unauthorized should contain the full dual-path wording"
 }
 
 # =========================================================================
@@ -431,10 +446,8 @@ _extract_availability_section() {
   unauth_line="$(grep 'unauthorized.*Run\|unauthorized.*design-login' "$STALE_DRIVER")"
   [ -n "$unauth_line" ] || fail "design-stale-transition.sh has no unauthorized remediation line"
 
-  echo "$unauth_line" | grep -q 'design-login' \
-    || fail "stale-transition unauthorized should mention design-login"
-  echo "$unauth_line" | grep -q 'grant design access when prompted' \
-    || fail "stale-transition unauthorized should mention grant design access when prompted"
+  echo "$unauth_line" | grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+    || fail "stale-transition unauthorized should contain the full dual-path wording"
 }
 
 # =========================================================================
@@ -448,10 +461,8 @@ _extract_availability_section() {
   absent_line="$(grep '_dg_absent_remediation=' "$GATE_LIB")"
   [ -n "$absent_line" ] || fail "design-gate.sh has no _dg_absent_remediation"
 
-  echo "$absent_line" | grep -q 'design-login' \
-    || fail "design-gate.sh absent remediation should mention design-login"
-  echo "$absent_line" | grep -q 'grant design access when prompted' \
-    || fail "design-gate.sh absent remediation should mention grant design access when prompted"
+  echo "$absent_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+    || fail "design-gate.sh absent remediation should contain the dual-path wording"
 }
 
 # =========================================================================
@@ -465,10 +476,8 @@ _extract_availability_section() {
   halt_line="$(grep '_dg_halt_remediation=' "$GATE_LIB")"
   [ -n "$halt_line" ] || fail "design-gate.sh has no _dg_halt_remediation"
 
-  echo "$halt_line" | grep -q 'design-login' \
-    || fail "design-gate.sh halt remediation should mention design-login"
-  echo "$halt_line" | grep -q 'grant design access when prompted' \
-    || fail "design-gate.sh halt remediation should mention grant design access when prompted"
+  echo "$halt_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+    || fail "design-gate.sh halt remediation should contain the dual-path wording"
 }
 
 # =========================================================================
