@@ -1536,3 +1536,293 @@ UX
 
   rm -rf "$root"
 }
+
+
+# =========================================================================
+# Temp file cleaned up on component-phase abort
+# =========================================================================
+
+# Helper: create a shim hash command that fails on the Nth call.
+# Usage: _create_hash_shim SHIM_DIR COUNTER_FILE FAIL_AFTER
+_create_hash_shim() {
+  local shim_dir="$1" counter_file="$2" fail_after="$3"
+  mkdir -p "$shim_dir"
+  printf '0\n' > "$counter_file"
+  local real_hash_cmd
+  if command -v sha256sum >/dev/null 2>&1; then
+    real_hash_cmd="sha256sum"
+  else
+    real_hash_cmd="shasum"
+  fi
+  local real_path
+  real_path="$(command -v "$real_hash_cmd")"
+  cat > "$shim_dir/$real_hash_cmd" <<SHIM
+#!/usr/bin/env bash
+count=\$(cat "$counter_file")
+count=\$((count + 1))
+printf '%d\n' "\$count" > "$counter_file"
+if [ "\$count" -gt $fail_after ]; then
+  printf 'FORCED HASH FAILURE\n' >&2
+  exit 1
+fi
+exec "$real_path" "\$@"
+SHIM
+  chmod +x "$shim_dir/$real_hash_cmd"
+}
+
+@test "(AC2) temp files cleaned up on component-phase abort" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- existing
+
+## Design Record Reference
+UX
+
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  # Snapshot with a NEW component so the sha-before check runs
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["existing","brand-new"]}' > "$snapshot"
+
+  # Shim: fail on the 1st hash call (the UX doc sha-before check)
+  _create_hash_shim "$root/shim-bin" "$root/sha_call_count" 0
+
+  PATH="$root/shim-bin:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should fail when hash command fails in component phase (exit $status)"
+
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp file leaked in TMPDIR after component-phase abort ($leftover files: $(ls "$iso_tmpdir"))"
+
+  rm -rf "$root"
+}
+
+@test "(AC3) temp files cleaned up on screen-phase abort" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "s1.spec.html" "<h1>Screen 1</h1>"
+  _write_screen_file "$screens_dir" "s2.spec.html" "<h1>Screen 2</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c1 "$screens_dir/s1.spec.html" \
+        --rawfile c2 "$screens_dir/s2.spec.html" \
+    '{"components":["nav"],"screens":[
+      {"name":"S1","file":"screens/s1.spec.html","content":$c1},
+      {"name":"S2","file":"screens/s2.spec.html","content":$c2}
+    ]}' > "$snapshot"
+
+  # Shim: fail on the 2nd hash call (the 2nd screen)
+  _create_hash_shim "$root/shim-bin" "$root/sha_call_count" 1
+
+  PATH="$root/shim-bin:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should fail when hash command fails in screen phase (exit $status)"
+
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp file leaked in TMPDIR after screen-phase abort ($leftover files: $(ls "$iso_tmpdir"))"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Wrong snapshot shape rejected
+# =========================================================================
+
+@test "(AC-EC4) components with object elements rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- existing
+
+## Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":[{"name":"Button"}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject components with object elements (exit $status): $output"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected snapshot: sha $sha_before -> $sha_after"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC4) components with number element rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- existing
+
+## Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["valid", 42]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject components with number element (exit $status): $output"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected snapshot: sha $sha_before -> $sha_after"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC4) components as a string rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- existing
+
+## Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":"Button"}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject components as a string (exit $status): $output"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected snapshot: sha $sha_before -> $sha_after"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC7) screens as an object rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":{"name":"Bad","file":"bad.html","content":"x"}}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject screens as an object (exit $status): $output"
+
+  rm -rf "$root"
+}
