@@ -23,12 +23,15 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Canonical state-tree root.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
+
 # Project root resolution: env vars (PROJECT_ROOT, CLAUDE_PROJECT_ROOT,
-# PROJECT_PATH, GAIA_PROJECT_ROOT), then walk up from $PWD to the
-# .gaia/config/project-config.yaml anchor (stopping at $HOME), then $PWD
-# as last resort. Resolved before the --bypass block and the design gate
-# so both see the correct project tree.
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-${GAIA_PROJECT_ROOT:-}}}}"
+# GAIA_PROJECT_ROOT), then walk up from $PWD to the .gaia/config/
+# project-config.yaml anchor (stopping at $HOME), then $PWD as last resort.
+# Resolved before the --bypass block and the design gate so both see the
+# correct project tree.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-}}}"
 if [ -z "$PROJECT_ROOT" ]; then
   _walk="$PWD"
   while [ -n "$_walk" ] && [ "$_walk" != "/" ] && [ "$_walk" != "${HOME:-}" ]; do
