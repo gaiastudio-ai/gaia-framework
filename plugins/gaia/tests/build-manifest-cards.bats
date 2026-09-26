@@ -482,10 +482,10 @@ _run_persist() {
   [ -f "$TEST_TMP/subdir/last-published.json" ] || fail "output file not created"
   jq '.' "$TEST_TMP/subdir/last-published.json" >/dev/null || fail "output is not valid JSON"
 
-  # No leftover .tmp file
-  local tmp_files
-  tmp_files="$(find "$TEST_TMP/subdir" -name '*.tmp' 2>/dev/null | wc -l | tr -d ' ')"
-  [ "$tmp_files" -eq 0 ] || fail "leftover .tmp files found"
+  # No leftover temp files (mktemp creates random-suffix files, not just *.tmp)
+  local extra_files
+  extra_files="$(find "$TEST_TMP/subdir" -type f -not -name 'last-published.json' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$extra_files" -eq 0 ] || fail "leftover temp files found in output directory"
 }
 
 # ===========================================================================
@@ -529,4 +529,153 @@ _run_persist() {
   # The written file must show SKIP_UNCHANGED (hashes all match)
   [[ "$output" == *"SKIP_UNCHANGED screens/login.spec.html"* ]] \
     || fail "expected SKIP_UNCHANGED for written file, got: $output"
+}
+
+# ===========================================================================
+# Exact-match membership (substring matching via inside() is a defect)
+# ===========================================================================
+
+@test "(AC-EC6) designer card whose path is a substring of a framework spec path is preserved" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  mkdir -p "$TEST_TMP/specs/screens"
+  printf '<!-- @dsCard group="Screen specs" -->\n<html>Login</html>\n' > "$TEST_TMP/specs/screens/login.spec.html"
+
+  # Existing manifest: Colors + designer cards with substring-matching paths
+  printf '{"cards":[{"path":"colors.json","group":"Colors"},{"path":"login","group":"Designer Login"},{"path":"screens/login","group":"Designer Partial"},{"path":"spec.html","group":"Designer Suffix"}]}\n' \
+    > "$TEST_TMP/existing-manifest.json"
+
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$TEST_TMP/specs' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published /dev/null
+  " 2>/dev/null)" || fail "build_manifest_cards failed"
+
+  # All three designer cards must be preserved (they are NOT framework-owned)
+  local login_hit partial_hit suffix_hit
+  login_hit="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "login")] | length')"
+  partial_hit="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "screens/login")] | length')"
+  suffix_hit="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "spec.html")] | length')"
+  [ "$login_hit" -eq 1 ] || fail "designer card 'login' was dropped (substring match bug)"
+  [ "$partial_hit" -eq 1 ] || fail "designer card 'screens/login' was dropped (substring match bug)"
+  [ "$suffix_hit" -eq 1 ] || fail "designer card 'spec.html' was dropped (substring match bug)"
+}
+
+@test "(AC-EC6) designer card with empty path is preserved" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  mkdir -p "$TEST_TMP/specs/screens"
+  printf '<!-- @dsCard group="Screen specs" -->\n<html>Login</html>\n' > "$TEST_TMP/specs/screens/login.spec.html"
+
+  # Existing manifest includes a card with an empty path
+  printf '{"cards":[{"path":"","group":"Empty Path Card"},{"path":"colors.json","group":"Colors"}]}\n' \
+    > "$TEST_TMP/existing-manifest.json"
+
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$TEST_TMP/specs' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published /dev/null
+  " 2>/dev/null)" || fail "build_manifest_cards failed"
+
+  local empty_hit
+  empty_hit="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "")] | length')"
+  [ "$empty_hit" -eq 1 ] || fail "card with empty path was dropped"
+}
+
+@test "(AC-EC6) prior-published entry with short path does not cause designer card to be dropped" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  mkdir -p "$TEST_TMP/specs/screens"
+  printf '<!-- @dsCard group="Screen specs" -->\n<html>Login</html>\n' > "$TEST_TMP/specs/screens/login.spec.html"
+
+  # Prior published has a short path that is a substring of the framework spec
+  printf '[{"file":"login","hash":"aaa"}]\n' > "$TEST_TMP/prior.json"
+
+  # Existing manifest: a designer card with path "login-notes.json"
+  printf '{"cards":[{"path":"login-notes.json","group":"Designer Notes"},{"path":"colors.json","group":"Colors"}]}\n' \
+    > "$TEST_TMP/existing-manifest.json"
+
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$TEST_TMP/specs' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published '$TEST_TMP/prior.json'
+  " 2>/dev/null)" || fail "build_manifest_cards failed"
+
+  local notes_hit
+  notes_hit="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "login-notes.json")] | length')"
+  [ "$notes_hit" -eq 1 ] || fail "designer card 'login-notes.json' was dropped by substring match on prior path 'login'"
+}
+
+@test "(AC-EC6) spec_paths filter includes only exact matches" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  # Two specs: one with a path that is a substring of the other
+  mkdir -p "$TEST_TMP/specs/screens"
+  printf '<!-- @dsCard group="Screen specs" -->\n<html>A</html>\n' > "$TEST_TMP/specs/screens/a.spec.html"
+  printf '<!-- @dsCard group="Screen specs" -->\n<html>AB</html>\n' > "$TEST_TMP/specs/screens/ab.spec.html"
+
+  _seed_existing_manifest "$TEST_TMP/existing-manifest.json"
+
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$TEST_TMP/specs' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published /dev/null
+  " 2>/dev/null)" || fail "build_manifest_cards failed"
+
+  # Both must be present (exact match, not substring)
+  local a_count ab_count
+  a_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "screens/a.spec.html")] | length')"
+  ab_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "screens/ab.spec.html")] | length')"
+  [ "$a_count" -eq 1 ] || fail "screens/a.spec.html missing"
+  [ "$ab_count" -eq 1 ] || fail "screens/ab.spec.html missing"
+}
+
+# ===========================================================================
+# Scale test for build_manifest_cards
+# ===========================================================================
+
+@test "(AC1) build_manifest_cards handles 500 spec files under 10 seconds" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+
+  # Generate 500 annotated spec files (250 screens + 250 components)
+  mkdir -p "$TEST_TMP/specs/screens" "$TEST_TMP/specs/components"
+  local i
+  for i in $(seq 1 250); do
+    printf '<!-- @dsCard group="Screen specs" -->\n<html>Screen %d</html>\n' "$i" \
+      > "$TEST_TMP/specs/screens/screen-$(printf '%04d' "$i").spec.html"
+  done
+  for i in $(seq 1 250); do
+    printf '<!-- @dsCard group="Component specs" -->\n<html>Component %d</html>\n' "$i" \
+      > "$TEST_TMP/specs/components/component-$(printf '%04d' "$i").spec.html"
+  done
+
+  _seed_existing_manifest "$TEST_TMP/existing-manifest.json"
+
+  local start_time end_time elapsed
+  start_time="$(date +%s)"
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$TEST_TMP/specs' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published /dev/null
+  " 2>/dev/null)" || fail "build_manifest_cards failed on 500 specs"
+  end_time="$(date +%s)"
+
+  elapsed=$((end_time - start_time))
+  [ "$elapsed" -lt 10 ] || fail "500 specs took ${elapsed}s (expected < 10s)"
+
+  # Verify output has 502 cards (500 spec + Colors + Type)
+  local card_count
+  card_count="$(printf '%s' "$result" | jq '.cards | length')"
+  [ "$card_count" -eq 502 ] || fail "expected 502 cards, got $card_count"
 }
