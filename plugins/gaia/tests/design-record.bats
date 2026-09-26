@@ -2319,6 +2319,14 @@ FIXTURE
     --sprint-id "bad-value"
   [ "$status" -ne 0 ] || fail "add-override should reject malformed sprint-id"
 
+  # Must be a specific format-rejection diagnostic, not "unknown option"
+  [[ "$output" != *"unknown option"* ]] \
+    || fail "rejection should be a format diagnostic, not 'unknown option'; got: $output"
+  [[ "$output" == *"bad-value"* ]] \
+    || fail "rejection should name the bad value; got: $output"
+  [[ "$output" == *"sprint-"* ]] \
+    || fail "rejection should name the expected sprint-N pattern; got: $output"
+
   local post_hash
   post_hash="$(shasum -a 256 "$RECORD" | awk '{print $1}')"
   [ "$pre_hash" = "$post_hash" ] || fail "record should be unchanged after malformed sprint-id rejection"
