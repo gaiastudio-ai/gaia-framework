@@ -7,6 +7,10 @@
 #
 # Returns 0 (pass) or 1 (hard halt with a three-part diagnostic on stderr).
 #
+# Side-effect on override refusal: sets _DG_OVERRIDE_REFUSED=1 in the
+# sourced shell. gate-predicates.sh reads this to suppress the quality_gates
+# error_message on override-specific refusals. Reset to 0 at gate entry.
+#
 # Why subprocess, not source:
 #   design-record.sh runs `main "$@"` unconditionally at bottom-of-file with
 #   no source guard. Sourcing it would execute main against this script's $@.

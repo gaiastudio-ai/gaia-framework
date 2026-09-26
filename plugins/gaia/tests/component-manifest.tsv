@@ -285,6 +285,7 @@ core	plugin-version-resolution.bats
 core	product-brief-post-complete-gate.bats
 core	product-brief-pre-start-gate.bats
 core	promotion-trigger.bats
+core	quality-gates.bats
 core	reconcile-cross-stack.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
@@ -668,7 +669,6 @@ scripts-lib	path-migration-guard.bats
 scripts-lib	phase-exit-gate.bats
 scripts-lib	planning-mode-b.bats
 scripts-lib	publish-adapters.bats
-scripts-lib	quality-gates.bats
 scripts-lib	release-commit-range.bats
 scripts-lib	research-mode-b.bats
 scripts-lib	resolve-env-kind.bats
