@@ -313,50 +313,85 @@ _locked_mutate() {
 # Roster resolution
 # ---------------------------------------------------------------------------
 
-# _resolve_roster_dir — set ROSTER_DIR to the stakeholder directory.
-# Prefers .gaia/custom/stakeholders/ over the legacy custom/stakeholders/ path.
-_resolve_roster_dir() {
-  if [ -d "${_PROJECT_ROOT}/.gaia/custom/stakeholders" ]; then
-    ROSTER_DIR="${_PROJECT_ROOT}/.gaia/custom/stakeholders"
-  elif [ -d "${_PROJECT_ROOT}/custom/stakeholders" ]; then
-    ROSTER_DIR="${_PROJECT_ROOT}/custom/stakeholders"
-  else
-    ROSTER_DIR=""
-  fi
+# _roster_dir_exists — true when at least one roster directory is present.
+_roster_dir_exists() {
+  [ -d "${_PROJECT_ROOT}/.gaia/custom/stakeholders" ] || \
+    [ -d "${_PROJECT_ROOT}/custom/stakeholders" ]
 }
 
-# _get_required_stakeholders — output one slug per line for design/ux-tagged stakeholders.
-_get_required_stakeholders() {
-  _resolve_roster_dir
-  if [ -z "$ROSTER_DIR" ] || [ ! -d "$ROSTER_DIR" ]; then
-    return 0
-  fi
+# _resolve_merged_roster — output one line per resolved stakeholder file:
+#   slug\tpath
+# Scans .gaia/custom/stakeholders first (higher precedence), then root
+# custom/stakeholders. Deduplicates by slug: a slug already seen from the
+# higher-precedence directory is skipped when encountered in the root.
+# Before yq: checks that a closing --- delimiter exists after line 1.
+# If slug: is present and disagrees with the filename stem, warns and skips.
+# Bash 3.2 safe — no associative arrays.
+_resolve_merged_roster() {
+  local _seen_slugs=" "
+  local dir f stem slug_field
 
-  local f slug tags
-  for f in "$ROSTER_DIR"/*.md; do
-    [ -f "$f" ] || continue
-    # select(di == 0): read only the first YAML document (frontmatter).
-    # Without this, yq treats prose after the closing --- as a second
-    # document and emits "--- null ---" for missing keys.
-    tags="$(yq 'select(di == 0) | .tags[]' "$f" 2>/dev/null || true)"
-    if printf '%s\n' "$tags" | grep -qE '^(design|ux)$'; then
-      slug="$(yq 'select(di == 0) | .slug' "$f" 2>/dev/null || true)"
-      if [ -n "$slug" ] && [ "$slug" != "null" ]; then
-        printf '%s\n' "$slug"
+  for dir in "${_PROJECT_ROOT}/.gaia/custom/stakeholders" "${_PROJECT_ROOT}/custom/stakeholders"; do
+    [ -d "$dir" ] || continue
+    for f in "$dir"/*.md; do
+      [ -f "$f" ] || continue
+      stem="$(basename "$f" .md)"
+
+      # Frontmatter delimiter check: require a closing --- after line 1.
+      # The opening --- is line 1; a closing --- must appear on a later line.
+      if ! sed -n '2,$p' "$f" | grep -q '^---$'; then
+        printf 'design-record.sh: warning: %s has no closing --- delimiter — skipped\n' "$(basename "$f")" >&2
+        continue
       fi
-    fi
+
+      # Read slug: field from frontmatter
+      slug_field="$(yq 'select(di == 0) | .slug' "$f" 2>/dev/null || true)"
+      if [ -n "$slug_field" ] && [ "$slug_field" != "null" ]; then
+        # slug: field present — must agree with filename stem
+        if [ "$slug_field" != "$stem" ]; then
+          printf 'design-record.sh: warning: %s: slug '\''%s'\'' disagrees with filename '\''%s'\'' — skipped\n' \
+            "$(basename "$f")" "$slug_field" "$stem" >&2
+          continue
+        fi
+      fi
+
+      # Dedup by slug: skip if already seen from a higher-precedence directory
+      case "$_seen_slugs" in
+        *" ${stem} "*) continue ;;
+      esac
+      _seen_slugs="${_seen_slugs}${stem} "
+
+      printf '%s\t%s\n' "$stem" "$f"
+    done
   done
 }
 
+# _get_required_stakeholders — output one slug per line for design/ux-tagged stakeholders.
+# Reads the merged roster and filters by tag (case-insensitive).
+_get_required_stakeholders() {
+  local slug path tags
+  while IFS='	' read -r slug path; do
+    [ -n "$slug" ] || continue
+    # select(di == 0): read only the first YAML document (frontmatter).
+    tags="$(yq 'select(di == 0) | .tags[]' "$path" 2>/dev/null || true)"
+    if printf '%s\n' "$tags" | grep -qiE '^(design|ux)$'; then
+      printf '%s\n' "$slug"
+    fi
+  done <<< "$(_resolve_merged_roster)"
+}
+
 # _assert_known_stakeholder STAKEHOLDER — reject stakeholders not on the roster.
+# Searches the merged roster for the given slug. Returns 1 when the roster
+# is empty (fail closed) or the slug is not found.
 _assert_known_stakeholder() {
   local stakeholder="$1"
-  _resolve_roster_dir
-  if [ -z "$ROSTER_DIR" ]; then
+  local roster
+  roster="$(_resolve_merged_roster)"
+  if [ -z "$roster" ]; then
     printf 'design-record.sh: warning: vacuous roster — no stakeholder directory found\n' >&2
-    return 0
+    return 1
   fi
-  [ -f "$ROSTER_DIR/${stakeholder}.md" ]
+  printf '%s\n' "$roster" | grep -q "^${stakeholder}	"
 }
 
 # ---------------------------------------------------------------------------
@@ -401,26 +436,28 @@ _preflight_mutate() {
 # so the read path avoids the O(n) chain walk, keeping it fast for CI gates.
 #
 # Outputs: "converged", "not-converged (missing: ...)", or "vacuous-convergence"
-# Returns: 0 on converged/vacuous, 1 on not-converged
+# Returns: 0 on converged, 1 on not-converged or vacuous
 _check_convergence_at() {
   local file="$1"
   local iteration
   iteration="$(yq '.iteration' "$file")"
 
-  local required_stakeholders
-  required_stakeholders="$(_get_required_stakeholders)"
-
-  _resolve_roster_dir
-  if [ -z "$ROSTER_DIR" ]; then
+  # Detect whether any roster directory exists before running the resolver.
+  # This keeps the two vacuous diagnostics distinguishable: "no stakeholder
+  # directory found" vs "no design/ux-tagged stakeholders".
+  if ! _roster_dir_exists; then
     printf 'design-record.sh: warning: vacuous roster — no stakeholder directory found\n' >&2
     printf 'vacuous-convergence\n'
-    return 0
+    return 1
   fi
+
+  local required_stakeholders
+  required_stakeholders="$(_get_required_stakeholders)"
 
   if [ -z "$required_stakeholders" ]; then
     printf 'design-record.sh: warning: vacuous roster — no design/ux-tagged stakeholders\n' >&2
     printf 'vacuous-convergence\n'
-    return 0
+    return 1
   fi
 
   local stakeholder missing=""

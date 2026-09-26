@@ -403,22 +403,29 @@ STAKE
   _assert_gate_output
 }
 
-@test "(AC1) vacuous convergence is surfaced" {
+@test "(AC3) design gate halts on vacuous approval with remediation naming /gaia-create-stakeholder" {
+  # No-migration fixture: reach approved WITH a tagged roster, then remove it.
+  # Once fail-closed lands, transition --to approved cannot be reached from
+  # a vacuous roster directly — so we seed the roster to reach approved, then
+  # remove the roster to simulate the no-migration scenario.
   seed_config true
-  seed_roster_no_design
+  seed_roster
   seed_probe_stub available
   _init_record
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci
-  # No design-tagged stakeholders, so convergence is vacuous.
-  # We can't transition to approved without convergence — but vacuous convergence
-  # returns 0 in check-convergence, so let's try:
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to approved --actor ci
 
+  # Remove the roster — no-migration scenario
+  rm -rf "$TEST_TMP/.gaia/custom/stakeholders" "$TEST_TMP/custom/stakeholders"
+
   run run_gate
-  # Gate should pass (exit 0) but warn about vacuous convergence
-  [ "$status" -eq 0 ]
-  # stderr must mention vacuous (strip TEST_TMP to avoid path-fragment matches)
-  _stripped_output | grep -qi "vacuous"
+  # Gate must halt (exit 1) on vacuous approval
+  [ "$status" -eq 1 ] || fail "gate should halt on vacuous approval, got status=$status"
+  _assert_gate_output
+  # Remediation must name /gaia-create-stakeholder
+  [[ "$output" == *"/gaia-create-stakeholder"* ]] || \
+    fail "remediation should name /gaia-create-stakeholder, got: $output"
 }
 
 @test "(AC1) prior-iteration approval does not satisfy convergence" {
@@ -2227,5 +2234,20 @@ EOF
   local recorded_by
   recorded_by="$(yq -r '.bypasses[-1].recorded_by' "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
   [ "$recorded_by" = "gaia-test-actor" ] || fail "lifecycle recorded_by should be gaia-test-actor but is $recorded_by"
+}
+
+
+# =========================================================================
+# Fail-closed approval gate — regression guard
+# =========================================================================
+
+@test "(AC4) tagged approver with current-iteration approval yields converged gate pass" {
+  # Regression guard: green before AND after the fail-closed change.
+  # Proves the approved+converged path still passes.
+  seed_ui_project available
+  _build_approved_record
+
+  run run_gate
+  [ "$status" -eq 0 ] || fail "gate should pass on approved+converged record, got status=$status"
 }
 

@@ -555,9 +555,10 @@ UX
 # (AC4) vacuous convergence
 # =========================================================================
 
-@test "(AC4) vacuous-convergence roster surfaces a warning to the user" {
+@test "(AC2) vacuous-convergence roster halts with remediation" {
   [ -x "$DESIGN_RECORD_SH" ] || fail "design-record.sh does not exist or is not executable"
 
+  # Part 1 (behavioural): check-convergence must return non-zero on vacuous roster
   local root
   root="$(_seed_temp_project)"
   _seed_record "$root" "review"
@@ -565,13 +566,17 @@ UX
   export PROJECT_ROOT="$root"
 
   run "$DESIGN_RECORD_SH" check-convergence
+  [ "$status" -ne 0 ] || \
+    fail "check-convergence should return non-zero on vacuous roster, got rc=0"
   [[ "$output" == *"vacuous"* ]] || \
-    fail "expected vacuous-convergence warning when roster is empty, got: $output"
+    fail "expected vacuous-convergence in output, got: $output"
 
-  # The SKILL.md must relay the vacuous-convergence warning to the user
+  # Part 2 (structural): SKILL.md must have a precondition that halts on vacuous
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
-  grep -qiE 'vacuous.convergence|relay.*warning|surface.*warning' "$SKILL_MD" || \
-    fail "SKILL.md does not relay the vacuous-convergence warning to the user"
+  grep -qiE 'halt|precondition.*approver|design approver exists' "$SKILL_MD" || \
+    fail "SKILL.md does not halt on vacuous convergence — missing precondition"
+  grep -qF '/gaia-create-stakeholder' "$SKILL_MD" || \
+    fail "SKILL.md does not name /gaia-create-stakeholder in the halt remediation"
 
   rm -rf "$root"
 }
@@ -894,10 +899,9 @@ BOUNDARY
   rm -rf "$root"
 }
 
-@test "(AC4) mutant: vacuous-convergence warning absent when stderr is swallowed" {
-  # Proves the SKILL.md must call check-convergence BEFORE transition,
-  # because transition silences the vacuous-convergence stderr.
-  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist — convergence ordering cannot be verified"
+@test "(AC1) transition --to approved refused when roster is vacuous" {
+  # Regression guard for the fail-closed fix: transition --to approved must
+  # be refused when the roster is vacuous (no stakeholders).
   [ -x "$DESIGN_RECORD_SH" ] || fail "design-record.sh does not exist or is not executable"
 
   local root
@@ -906,22 +910,10 @@ BOUNDARY
   # No stakeholders — vacuous convergence
   export PROJECT_ROOT="$root"
 
-  # check-convergence emits the vacuous warning on stderr
-  run "$DESIGN_RECORD_SH" check-convergence
-  [[ "$output" == *"vacuous"* ]] || \
-    fail "precondition: check-convergence should emit vacuous warning"
-
-  # transition silences convergence stderr — the warning is lost.
-  # Vacuous convergence allows the transition, so it must succeed.
+  # transition --to approved must be refused
   run "$DESIGN_RECORD_SH" transition --to approved --actor "test-actor"
-  [ "$status" -eq 0 ] || \
-    fail "transition should succeed with vacuous convergence, but exit=$status: $output"
-
-  # The vacuous-convergence warning must NOT appear in the transition output.
-  # This proves: if the SKILL.md calls transition instead of check-convergence,
-  # the user never sees the vacuous-convergence warning.
-  [[ "$output" != *"vacuous"* ]] || \
-    fail "mutant is vacuous: transition surfaces the vacuous warning (should be silent)"
+  [ "$status" -ne 0 ] || \
+    fail "transition --to approved should be refused with vacuous roster, got rc=0"
 
   rm -rf "$root"
 }
@@ -1094,4 +1086,32 @@ BOUNDARY
   local recorded_by_count
   recorded_by_count="$(grep -cF -e '--recorded-by "$USER"' "$dr_skill" || true)"
   [ "$recorded_by_count" -ge 1 ] || fail "SKILL.md should have at least 1 '--recorded-by \"\$USER\"' occurrence but has $recorded_by_count"
+}
+
+
+# =========================================================================
+# Fail-closed approval gate — scope boundary
+# =========================================================================
+
+@test "(AC7) create-ux does not gate on a design approver" {
+  # Regression guard: green before AND after the fail-closed change.
+  # /gaia-create-ux is a design authoring skill, not a review skill.
+  # It must NOT require a design/ux-tagged stakeholder.
+  local create_ux_skill="$PLUGIN_ROOT/skills/gaia-create-ux/SKILL.md"
+  [ -f "$create_ux_skill" ] || fail "gaia-create-ux/SKILL.md does not exist"
+
+  # Must NOT contain convergence or roster checks
+  local convergence_refs
+  convergence_refs="$(grep -ciE 'check-convergence|vacuous-convergence|design approver|stakeholder roster' "$create_ux_skill" || true)"
+  [ "$convergence_refs" -eq 0 ] || \
+    fail "gaia-create-ux SKILL.md references convergence or roster ($convergence_refs occurrences)"
+
+  # setup.sh must NOT reference the design_approved gate
+  local setup_sh="$PLUGIN_ROOT/skills/gaia-create-ux/scripts/setup.sh"
+  if [ -f "$setup_sh" ]; then
+    local gate_refs
+    gate_refs="$(grep -ciE 'design_approved|check-convergence' "$setup_sh" || true)"
+    [ "$gate_refs" -eq 0 ] || \
+      fail "gaia-create-ux setup.sh references design_approved gate ($gate_refs occurrences)"
+  fi
 }

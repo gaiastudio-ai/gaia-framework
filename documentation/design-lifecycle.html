@@ -143,6 +143,16 @@
           proceed. Without approval, every solutioning entry point refuses to
           start.
         </p>
+        <p>
+          Approval requires at least one design/ux-tagged stakeholder in the
+          roster. The convergence check reads the stakeholder roster from both
+          <code>.gaia/custom/stakeholders/</code> and
+          <code>custom/stakeholders/</code> (merged, with <code>.gaia/</code>
+          taking precedence per slug). Without a tagged approver, the gate
+          halts with a remediation naming
+          <code>/gaia-create-stakeholder</code>. An empty or missing roster
+          never satisfies convergence.
+        </p>
       </section>
 
       <section id="gate-and-override">
