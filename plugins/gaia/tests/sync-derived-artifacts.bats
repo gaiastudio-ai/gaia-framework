@@ -1298,3 +1298,241 @@ UX
 
   rm -rf "$root"
 }
+
+
+# =========================================================================
+# Temp file cleaned up on mid-loop abort (V2)
+# =========================================================================
+
+@test "(AC3) temp file cleaned up on mid-loop abort" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Isolated TMPDIR for leak detection
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  # Two valid screens. We force a mid-loop abort by making shasum/sha256sum
+  # fail on the 3rd invocation (the 2nd screen's hash; the 1st is the ux doc
+  # sha check, the 2nd is screen 1's hash).
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "s1.spec.html" "<h1>Screen 1</h1>"
+  _write_screen_file "$screens_dir" "s2.spec.html" "<h1>Screen 2</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c1 "$screens_dir/s1.spec.html" \
+        --rawfile c2 "$screens_dir/s2.spec.html" \
+    '{"components":["nav"],"screens":[
+      {"name":"S1","file":"screens/s1.spec.html","content":$c1},
+      {"name":"S2","file":"screens/s2.spec.html","content":$c2}
+    ]}' > "$snapshot"
+
+  # Create shim sha256sum/shasum that fails on the 3rd call
+  local shim_dir="$root/shim-bin"
+  mkdir -p "$shim_dir"
+  local counter_file="$root/sha_call_count"
+  printf '0\n' > "$counter_file"
+
+  # Determine which hash command the script will use
+  local real_hash_cmd
+  if command -v sha256sum >/dev/null 2>&1; then
+    real_hash_cmd="sha256sum"
+  else
+    real_hash_cmd="shasum"
+  fi
+
+  cat > "$shim_dir/$real_hash_cmd" <<SHIM
+#!/usr/bin/env bash
+count=\$(cat "$counter_file")
+count=\$((count + 1))
+printf '%d\n' "\$count" > "$counter_file"
+if [ "\$count" -gt 1 ]; then
+  printf 'FORCED HASH FAILURE\n' >&2
+  exit 1
+fi
+exec "$(command -v "$real_hash_cmd")" "\$@"
+SHIM
+  chmod +x "$shim_dir/$real_hash_cmd"
+
+  PATH="$shim_dir:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  # Must exit non-zero (the forced failure triggers set -e)
+  [ "$status" -ne 0 ] || \
+    fail "should fail when hash command fails mid-loop (exit $status)"
+
+  # The isolated TMPDIR must be empty — no leaked temp file
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp file leaked in TMPDIR after mid-loop abort ($leftover files: $(ls "$iso_tmpdir"))"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Non-string content types rejected (V4 extended)
+# =========================================================================
+
+@test "(AC-EC8) screen with numeric content rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"NumScreen","file":"screens/num.spec.html","content":42}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || fail "should reject numeric content (exit $status): $output"
+  [[ "$output" == *"NumScreen"* ]] || fail "diagnostic should name the screen: $output"
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC8) screen with object content rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"ObjScreen","file":"screens/obj.spec.html","content":{"x":1}}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || fail "should reject object content (exit $status): $output"
+  [[ "$output" == *"ObjScreen"* ]] || fail "diagnostic should name the screen: $output"
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC8) screen with array content rejected" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"ArrScreen","file":"screens/arr.spec.html","content":[1]}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || fail "should reject array content (exit $status): $output"
+  [[ "$output" == *"ArrScreen"* ]] || fail "diagnostic should name the screen: $output"
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# No partial output: valid screen followed by invalid screen (V4 + INFO)
+# =========================================================================
+
+@test "(AC-EC8) valid screen followed by invalid screen produces no output" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # First screen is valid, second has non-string content
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "good.spec.html" "<h1>Good</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c "$screens_dir/good.spec.html" \
+    '{"components":["nav"],"screens":[
+      {"name":"Good","file":"screens/good.spec.html","content":$c},
+      {"name":"Bad","file":"screens/bad.spec.html","content":42}
+    ]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || fail "should fail on invalid screen (exit $status): $output"
+
+  # No boundary markers at all — the valid screen must not have been reported
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+    fail "boundary markers present — partial output emitted before validation: $output"
+
+  rm -rf "$root"
+}
