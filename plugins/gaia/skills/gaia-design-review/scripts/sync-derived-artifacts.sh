@@ -28,6 +28,11 @@ LC_ALL=C; export LC_ALL
 
 _die() { printf 'sync-derived-artifacts.sh: %s\n' "$1" >&2; exit 1; }
 
+# File-scope temp file for screen content — cleaned up on any exit.
+content_tmp=""
+_cleanup_content_tmp() { [ -n "${content_tmp:-}" ] && rm -f "$content_tmp"; true; }
+trap _cleanup_content_tmp EXIT INT TERM
+
 # _sha256_file FILE — portable sha256 of a file
 _sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -144,7 +149,7 @@ _count_table_cols() {
 _batch_add_components() {
   local doc="$1" components_file="$2"
   local tmpfile
-  tmpfile="$(mktemp)"
+  tmpfile="$(mktemp "${TMPDIR:-/tmp}/sync-derived-artifacts.XXXXXX")"
 
   # Determine the insert format: table or bullet
   local col_count
@@ -333,7 +338,7 @@ _main() {
 
     # Collect all components to add in a temp file for a single-pass batch
     local additions_file
-    additions_file="$(mktemp)"
+    additions_file="$(mktemp "${TMPDIR:-/tmp}/sync-derived-artifacts.XXXXXX")"
 
     while IFS= read -r component; do
       [ -n "$component" ] || continue
@@ -402,29 +407,42 @@ _main() {
       baseline_json="$(cat "$baseline_path")"
     fi
 
-    # Iterate over each screen.
-    # Content is never captured in a shell variable — bash $() strips
-    # trailing newlines, which corrupts hashes. Instead, content is
-    # written to a temp file and streamed from there.
+    # Validate ALL screens before emitting any output.
+    # A later invalid screen must not cause partial output for earlier
+    # valid ones.
     local screen_count
     screen_count="$(jq -r '.screens | length' "$snapshot_file")"
     local idx=0
-    local content_tmp
-    content_tmp="$(mktemp)"
-    trap 'rm -f "${content_tmp:-}"' EXIT INT TERM
+
+    # Pass 1: validate every screen (name control chars, content type)
     while [ "$idx" -lt "$screen_count" ]; do
       local screen_name screen_file
       screen_name="$(jq -r --argjson i "$idx" '.screens[$i].name' "$snapshot_file")"
       screen_file="$(jq -r --argjson i "$idx" '.screens[$i].file' "$snapshot_file")"
 
-      # Reject screens with a null or missing .content key
+      # Reject screens whose .content key is not a string
       local content_type
-      content_type="$(jq --argjson i "$idx" '.screens[$i].content | type' "$snapshot_file")"
-      if [ "$content_type" = '"null"' ]; then
-        printf 'sync-derived-artifacts.sh: screen "%s" has no content (file: %s)\n' "$screen_name" "$screen_file" >&2
-        rm -f "$content_tmp"
+      content_type="$(jq -r --argjson i "$idx" '.screens[$i].content | type' "$snapshot_file")"
+      if [ "$content_type" != "string" ]; then
+        printf 'sync-derived-artifacts.sh: screen "%s" has invalid content (type: %s, expected string; file: %s)\n' \
+          "$screen_name" "$content_type" "$screen_file" >&2
         exit 1
       fi
+
+      idx=$((idx + 1))
+    done
+
+    # Pass 2: hash and report.
+    # Content is never captured in a shell variable — bash $() strips
+    # trailing newlines, which corrupts hashes. Instead, content is
+    # written to a temp file and streamed from there.
+    # content_tmp is file-scope so the EXIT trap can clean it up.
+    content_tmp="$(mktemp "${TMPDIR:-/tmp}/sync-derived-artifacts.XXXXXX")"
+    idx=0
+    while [ "$idx" -lt "$screen_count" ]; do
+      local screen_name screen_file
+      screen_name="$(jq -r --argjson i "$idx" '.screens[$i].name' "$snapshot_file")"
+      screen_file="$(jq -r --argjson i "$idx" '.screens[$i].file' "$snapshot_file")"
 
       # Write content to a temp file preserving exact bytes
       jq -j --argjson i "$idx" '.screens[$i].content' "$snapshot_file" > "$content_tmp"
@@ -463,6 +481,7 @@ _main() {
       idx=$((idx + 1))
     done
     rm -f "$content_tmp"
+    content_tmp=""
   fi
 
   # If no components and no screens, just report up to date
