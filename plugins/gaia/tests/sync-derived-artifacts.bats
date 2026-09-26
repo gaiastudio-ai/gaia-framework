@@ -1826,3 +1826,148 @@ UX
 
   rm -rf "$root"
 }
+
+
+# =========================================================================
+# Scale test: 500 screens under 15 s
+# =========================================================================
+
+# Helper: generate a snapshot with N screens (no baseline — all "no baseline")
+_gen_scale_snapshot() {
+  local n="$1" dir="$2"
+  mkdir -p "$dir/screens"
+  python3 -c "
+import json, sys
+n = int(sys.argv[1])
+d = sys.argv[2]
+screens = []
+for i in range(n):
+    body = '<html><head><title>Screen %d</title></head><body>' % i
+    body += '<div class=\"container\"><h1>Screen %d Title</h1>' % i
+    body += '<p>This is the content of screen %d with some realistic text to simulate a real screen specification.</p>' % i
+    body += '<ul><li>Item A</li><li>Item B</li><li>Item C</li></ul></div></body></html>\n'
+    screens.append({'name': 'Screen %d' % i, 'file': 'screens/screen-%d.spec.html' % i, 'content': body})
+json.dump({'components': ['nav'], 'screens': screens}, sys.stdout)
+" "$n" "$dir" > "$dir/snapshot.json"
+}
+
+@test "(AC3) sync 500 screens completes in under 15 s" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  _gen_scale_snapshot 500 "$root"
+
+  local start_ms end_ms elapsed_ms
+  start_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
+
+  run "$SYNC_SCRIPT" "$root/snapshot.json" "$doc_dir/ux-design.md"
+
+  end_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
+  elapsed_ms=$((end_ms - start_ms))
+
+  [ "$status" -eq 0 ] || fail "sync of 500 screens failed — exit $status"
+  [ "$elapsed_ms" -lt 15000 ] || \
+    fail "performance: ${elapsed_ms} ms exceeds 15000 ms budget for 500 screens"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Golden output byte-identity test
+# =========================================================================
+
+@test "(AC3) screen output is byte-identical to the golden reference" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Screen 0: unchanged (hash matches baseline)
+  printf '<h1>Home</h1>\n<p>Welcome</p>\n' > "$root/s0.html"
+  local s0_hash
+  s0_hash="$(_sha256_file "$root/s0.html")"
+
+  # Screen 1: changed (baseline has a different hash)
+  printf '<h1>Settings</h1>\n<p>Updated settings page</p>\n' > "$root/s1.html"
+
+  # Screen 2: no baseline entry
+  printf '<h1>Profile</h1>\n<p>User profile</p>\n' > "$root/s2.html"
+
+  # Baseline: s0 matches, s1 has a stale hash, s2 absent
+  jq -n --arg f0 "screens/s0.html" --arg h0 "$s0_hash" \
+        --arg f1 "screens/s1.html" --arg h1 "0000000000000000000000000000000000000000000000000000000000000000" \
+    '[{"file":$f0,"hash":$h0},{"file":$f1,"hash":$h1}]' > "$root/baseline.json"
+
+  # Snapshot via --rawfile
+  jq -n --rawfile c0 "$root/s0.html" \
+        --rawfile c1 "$root/s1.html" \
+        --rawfile c2 "$root/s2.html" \
+    '{"components":["nav"],"screens":[
+      {"name":"Home","file":"screens/s0.html","content":$c0},
+      {"name":"Settings","file":"screens/s1.html","content":$c1},
+      {"name":"Profile","file":"screens/s2.html","content":$c2}
+    ]}' > "$root/snapshot.json"
+
+  # Golden expected output — generated from the current script
+  local expected="$root/expected.txt"
+  cat > "$expected" <<'GOLDEN'
+sync: ux-design.md is up to date — no components to add
+sync: screen "Settings" changed (file: screens/s1.html)
+<<<DESIGN_PROJECT_BOUNDARY>>>
+<h1>Settings</h1>
+<p>Updated settings page</p>
+<<<END_DESIGN_PROJECT_BOUNDARY>>>
+sync: screen "Profile" has no baseline (file: screens/s2.html)
+<<<DESIGN_PROJECT_BOUNDARY>>>
+<h1>Profile</h1>
+<p>User profile</p>
+<<<END_DESIGN_PROJECT_BOUNDARY>>>
+GOLDEN
+
+  run "$SYNC_SCRIPT" --last-published "$root/baseline.json" \
+    "$root/snapshot.json" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Compare byte-for-byte
+  local actual="$root/actual.txt"
+  printf '%s\n' "$output" > "$actual"
+
+  diff -u "$expected" "$actual" || \
+    fail "output differs from golden reference"
+
+  rm -rf "$root"
+}

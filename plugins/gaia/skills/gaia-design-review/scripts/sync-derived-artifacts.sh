@@ -417,91 +417,120 @@ _main() {
 
   # === Screen reporting ===
   if [ "$has_screens" = true ]; then
-    # Validate screen names
-    local bad_screen
-    bad_screen="$(jq -r '.screens[].name | select(test("[[:cntrl:]]"))' "$snapshot_file" 2>/dev/null | head -1)" || true
-    if [ -n "$bad_screen" ]; then
-      printf 'sync-derived-artifacts.sh: invalid screen name (contains control characters): %q\n' "$bad_screen" >&2
-      exit 1
+    # --- Single-jq validation pass ---
+    # One jq call validates all screens: field types, name control chars,
+    # and content type. Emits "OK" or a single error line.
+    local validation_result
+    validation_result="$(jq -r '
+      .screens | to_entries[] |
+      if (.value.name | type) != "string" then
+        "ERR\t.screens[\(.key)].name must be a string, got \(.value.name | type)"
+      elif (.value.file | type) != "string" then
+        "ERR\t.screens[\(.key)].file must be a string, got \(.value.file | type)"
+      elif (.value.name | test("[[:cntrl:]]")) then
+        "ERR_CTRL\t\(.value.name)"
+      elif (.value.content | type) != "string" then
+        "ERR_CONTENT\t\(.value.name)\t\(.value.content | type)\t\(.value.file)"
+      else empty end
+    ' "$snapshot_file" | head -1)" || true
+
+    if [ -n "$validation_result" ]; then
+      local err_kind
+      err_kind="${validation_result%%	*}"
+      case "$err_kind" in
+        ERR)
+          local err_msg="${validation_result#*	}"
+          printf 'sync-derived-artifacts.sh: %s\n' "$err_msg" >&2
+          exit 1
+          ;;
+        ERR_CTRL)
+          local bad_name="${validation_result#*	}"
+          printf 'sync-derived-artifacts.sh: invalid screen name (contains control characters): %q\n' "$bad_name" >&2
+          exit 1
+          ;;
+        ERR_CONTENT)
+          # Parse: ERR_CONTENT<tab>name<tab>type<tab>file
+          local rest="${validation_result#*	}"
+          local scr_name="${rest%%	*}"
+          rest="${rest#*	}"
+          local scr_type="${rest%%	*}"
+          local scr_file="${rest#*	}"
+          printf 'sync-derived-artifacts.sh: screen "%s" has invalid content (type: %s, expected string; file: %s)\n' \
+            "$scr_name" "$scr_type" "$scr_file" >&2
+          exit 1
+          ;;
+      esac
     fi
 
-    # Resolve the baseline
+    # --- Resolve baseline and build index ---
     local baseline_path
     baseline_path="$(_resolve_baseline "$last_published_arg")"
 
-    # Read the baseline into a temp file for jq lookups
-    local baseline_json="[]"
+    local baseline_index="$_sync_tmpdir/baseline-index"
+    : > "$baseline_index"
     if [ -n "$baseline_path" ] && [ -f "$baseline_path" ]; then
-      baseline_json="$(cat "$baseline_path")"
+      # Build tab-delimited index: file<TAB>hash — one jq call
+      jq -r '.[] | "\(.file)\t\(.hash)"' "$baseline_path" > "$baseline_index"
     fi
 
-    # Validate ALL screens before emitting any output.
-    # A later invalid screen must not cause partial output for earlier
-    # valid ones.
-    local screen_count
-    screen_count="$(jq -r '.screens | length' "$snapshot_file")"
+    # --- Extract screen metadata in one jq call ---
+    local screen_meta="$_sync_tmpdir/screen-meta"
+    jq -r '.screens | to_entries[] | "\(.key)\t\(.value.name)\t\(.value.file)"' \
+      "$snapshot_file" > "$screen_meta"
+
+    # --- Extract all content files in two jq calls ---
+    # 1. One jq call to get the byte-length of each screen's content.
+    # 2. One jq call to concatenate all content (exact bytes via -j).
+    # Then split the concatenated output by byte lengths.
+    local content_dir="$_sync_tmpdir/contents"
+    mkdir -p "$content_dir"
+
+    # Get byte-lengths of each screen's content (one per line)
+    local lengths_file="$_sync_tmpdir/content-lengths"
+    jq -r '[.screens[].content | utf8bytelength] | .[]' "$snapshot_file" > "$lengths_file"
+
+    # Concatenate all content into one stream and split by length.
+    # jq -j outputs exact bytes without trailing newline.
+    local concat_file="$_sync_tmpdir/content-all"
+    jq -j '[.screens[].content] | join("")' "$snapshot_file" > "$concat_file"
+
+    # Split the concatenated content into individual files by byte length.
+    # Read from a file descriptor so each dd picks up where the last left off.
     local idx=0
-
-    # Pass 1: validate every screen (field types, name control chars, content type)
-    while [ "$idx" -lt "$screen_count" ]; do
-      # Validate name and file are strings
-      local name_type file_type
-      name_type="$(jq -r --argjson i "$idx" '.screens[$i].name | type' "$snapshot_file")"
-      file_type="$(jq -r --argjson i "$idx" '.screens[$i].file | type' "$snapshot_file")"
-      if [ "$name_type" != "string" ]; then
-        printf 'sync-derived-artifacts.sh: .screens[%d].name must be a string, got %s\n' "$idx" "$name_type" >&2
-        exit 1
+    exec 3< "$concat_file"
+    while IFS= read -r len; do
+      if [ "$len" -gt 0 ]; then
+        dd bs="$len" count=1 of="$content_dir/$idx" 2>/dev/null <&3
+      else
+        : > "$content_dir/$idx"
       fi
-      if [ "$file_type" != "string" ]; then
-        printf 'sync-derived-artifacts.sh: .screens[%d].file must be a string, got %s\n' "$idx" "$file_type" >&2
-        exit 1
-      fi
-
-      local screen_name screen_file
-      screen_name="$(jq -r --argjson i "$idx" '.screens[$i].name' "$snapshot_file")"
-      screen_file="$(jq -r --argjson i "$idx" '.screens[$i].file' "$snapshot_file")"
-
-      # Reject screens whose .content key is not a string
-      local content_type
-      content_type="$(jq -r --argjson i "$idx" '.screens[$i].content | type' "$snapshot_file")"
-      if [ "$content_type" != "string" ]; then
-        printf 'sync-derived-artifacts.sh: screen "%s" has invalid content (type: %s, expected string; file: %s)\n' \
-          "$screen_name" "$content_type" "$screen_file" >&2
-        exit 1
-      fi
-
       idx=$((idx + 1))
-    done
+    done < "$lengths_file"
+    exec 3<&-
 
-    # Pass 2: hash and report.
-    # Content is never captured in a shell variable — bash $() strips
-    # trailing newlines, which corrupts hashes. Instead, content is
-    # written to a temp file and streamed from there.
-    local content_tmp="$_sync_tmpdir/screen-content"
-    idx=0
-    while [ "$idx" -lt "$screen_count" ]; do
-      local screen_name screen_file
-      screen_name="$(jq -r --argjson i "$idx" '.screens[$i].name' "$snapshot_file")"
-      screen_file="$(jq -r --argjson i "$idx" '.screens[$i].file' "$snapshot_file")"
-
-      # Write content to a temp file preserving exact bytes
-      jq -j --argjson i "$idx" '.screens[$i].content' "$snapshot_file" > "$content_tmp"
+    # --- Hash and report pass ---
+    # Content files are pre-extracted. Name and file are read from the
+    # pre-extracted metadata. Baseline lookup uses the pre-built index.
+    while IFS=$'\t' read -r idx screen_name screen_file; do
+      local content_file="$content_dir/$idx"
 
       # Hash the exact file bytes (preserves trailing newlines)
       local content_hash
-      content_hash="$(_sha256_file "$content_tmp")"
+      content_hash="$(_sha256_file "$content_file")"
 
-      # Look up the baseline hash
-      local baseline_hash
-      baseline_hash="$(printf '%s' "$baseline_json" | jq -r --arg f "$screen_file" '.[] | select(.file == $f) | .hash // empty')" || true
+      # Look up the baseline hash from the pre-built index
+      local baseline_hash=""
+      if [ -s "$baseline_index" ]; then
+        baseline_hash="$(awk -F'\t' -v f="$screen_file" '$1 == f {print $2; exit}' "$baseline_index")" || true
+      fi
 
       if [ -z "$baseline_hash" ]; then
         # No baseline entry — report as "no baseline"
         printf 'sync: screen "%s" has no baseline (file: %s)\n' "$screen_name" "$screen_file"
         printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n'
-        cat "$content_tmp"
+        cat "$content_file"
         # Ensure the closing marker is on its own line
-        if [ -s "$content_tmp" ] && [ "$(tail -c 1 "$content_tmp" | wc -l)" -eq 0 ]; then
+        if [ -s "$content_file" ] && [ "$(tail -c 1 "$content_file" | wc -l)" -eq 0 ]; then
           printf '\n'
         fi
         printf '<<<END_DESIGN_PROJECT_BOUNDARY>>>\n'
@@ -509,18 +538,15 @@ _main() {
         # Content changed
         printf 'sync: screen "%s" changed (file: %s)\n' "$screen_name" "$screen_file"
         printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n'
-        cat "$content_tmp"
+        cat "$content_file"
         # Ensure the closing marker is on its own line
-        if [ -s "$content_tmp" ] && [ "$(tail -c 1 "$content_tmp" | wc -l)" -eq 0 ]; then
+        if [ -s "$content_file" ] && [ "$(tail -c 1 "$content_file" | wc -l)" -eq 0 ]; then
           printf '\n'
         fi
         printf '<<<END_DESIGN_PROJECT_BOUNDARY>>>\n'
       fi
       # Unchanged screens: no report
-
-      idx=$((idx + 1))
-    done
-    rm -f "$content_tmp"
+    done < "$screen_meta"
   fi
 
   # If no components and no screens, just report up to date
