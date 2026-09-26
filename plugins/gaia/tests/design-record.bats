@@ -1154,13 +1154,15 @@ ROGUE
     fail "refusal entry does not name stakeholder-X"
 }
 
-@test "(AC-EC6) vacuous roster: warning emitted, approval accepted" {
+@test "(AC1) vacuous roster rejects approval" {
   assert_script_exists
   seed_minimal_record "review" 1
 
+  # No roster directory — approve must be refused
   run "$SCRIPT" approve --stakeholder "anyone" --recorded-by "test"
-  [[ "$output" == *"vacuous"* ]] || [[ "$output" == *"roster"* ]] || [[ "$output" == *"empty"* ]] || \
-    fail "expected vacuous-roster warning"
+  [ "$status" -ne 0 ] || fail "expected non-zero exit when approving on a vacuous roster"
+  [[ "$output" == *"vacuous"* ]] || [[ "$output" == *"roster"* ]] || \
+    fail "expected vacuous-roster diagnostic in output"
 }
 
 
@@ -1243,7 +1245,7 @@ WRAPPER
 # Roster resolution: preference cascade tests
 # =========================================================================
 
-@test "roster resolver prefers .gaia/custom/stakeholders/ over legacy custom/stakeholders/" {
+@test "merged roster accepts stakeholders from both .gaia/ and legacy paths" {
   assert_script_exists
   seed_minimal_record "review" 1
 
@@ -1253,12 +1255,12 @@ WRAPPER
   run "$SCRIPT" approve --stakeholder "stakeholder-A" --recorded-by "test"
   [ "$status" -eq 0 ] || fail "stakeholder-A from .gaia/custom/ path not resolved"
 
-  # Legacy stakeholder rejected when .gaia/custom/ exists
+  # Legacy stakeholder accepted via merged roster even when .gaia/custom/ exists
   seed_minimal_record "review" 1
   seed_roster_gaia
   seed_roster_legacy
   run "$SCRIPT" approve --stakeholder "stakeholder-L1" --recorded-by "test"
-  [ "$status" -ne 0 ] || fail "stakeholder-L1 from legacy path should be ignored when .gaia/custom/ exists"
+  [ "$status" -eq 0 ] || fail "stakeholder-L1 from legacy path should be accepted via merged roster"
 }
 
 @test "roster resolver falls back to legacy custom/stakeholders/ when .gaia/custom/ absent" {
@@ -2405,4 +2407,283 @@ FIXTURE
   run validate_artifact_schema "$mutant_schema" "$RECORD"
   [ "$status" -ne 3 ] || fail "no JSON-schema validator available — cannot validate"
   [ "$status" -eq 1 ] || fail "mutant schema should reject record with sprint_id (status=$status): $output"
+}
+
+
+# =========================================================================
+# Fail-closed approval gate — vacuous convergence and merged roster
+# =========================================================================
+
+# --- Stakeholder fixture helper: seeds a file shaped like /gaia-create-stakeholder output ---
+_seed_stakeholder() {
+  local dir="$1" slug="$2" name="$3"
+  shift 3
+  local tags_yaml="["
+  local first=1
+  for t in "$@"; do
+    if [ "$first" -eq 1 ]; then first=0; else tags_yaml="${tags_yaml}, "; fi
+    tags_yaml="${tags_yaml}${t}"
+  done
+  tags_yaml="${tags_yaml}]"
+  mkdir -p "$dir"
+  cat > "$dir/${slug}.md" <<EOF
+---
+name: ${name}
+tags: ${tags_yaml}
+---
+EOF
+}
+
+# _seed_stakeholder_with_slug DIR SLUG NAME SLUG_FIELD TAG...
+_seed_stakeholder_with_slug() {
+  local dir="$1" slug="$2" name="$3" slug_field="$4"
+  shift 4
+  local tags_yaml="["
+  local first=1
+  for t in "$@"; do
+    if [ "$first" -eq 1 ]; then first=0; else tags_yaml="${tags_yaml}, "; fi
+    tags_yaml="${tags_yaml}${t}"
+  done
+  tags_yaml="${tags_yaml}]"
+  mkdir -p "$dir"
+  cat > "$dir/${slug}.md" <<EOF
+---
+name: ${name}
+slug: ${slug_field}
+tags: ${tags_yaml}
+---
+EOF
+}
+
+# _seed_malformed_stakeholder DIR SLUG — frontmatter with no closing ---
+_seed_malformed_stakeholder() {
+  local dir="$1" slug="$2"
+  mkdir -p "$dir"
+  cat > "$dir/${slug}.md" <<EOF
+---
+name: Malformed
+tags: [design]
+EOF
+}
+
+@test "(AC1) vacuous roster fails closed on convergence and transition --to approved" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Sub-scenario 1: no roster directory
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should fail (rc!=0) with no roster dir, got rc=0"
+  [[ "$output" == *"vacuous-convergence"* ]] || \
+    fail "expected vacuous-convergence in stdout, got: $output"
+
+  # Sub-scenario 2: transition --to approved must be refused
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" transition --to approved --actor "test"
+  [ "$status" -ne 0 ] || fail "transition --to approved should be refused with vacuous roster"
+
+  # design_state must remain review
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "review" ] || fail "design_state should remain review, got: $state"
+
+  # Sub-scenario 3: roster exists but no design/ux-tagged stakeholder
+  seed_minimal_record "review" 1
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "pm" "Product Manager" "product"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should fail with no design/ux-tagged stakeholder"
+  [[ "$output" == *"vacuous-convergence"* ]] || \
+    fail "expected vacuous-convergence with untagged roster, got: $output"
+}
+
+@test "(AC6) merged roster with filename-as-slug and case-insensitive tag recognises stakeholder" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Seed a stakeholder shaped like /gaia-create-stakeholder output:
+  # kebab-case filename, design tag, NO slug: field
+  _seed_stakeholder "$TEST_TMP/custom/stakeholders" "alice" "Alice" "design"
+
+  # check-convergence should report alice as a required stakeholder
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged (alice has not approved)"
+  [[ "$output" == *"alice"* ]] || \
+    fail "expected alice in missing stakeholders, got: $output"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "expected not-converged in output, got: $output"
+
+  # Approve alice and check convergence again
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve --stakeholder "alice" --recorded-by "test"
+  [ "$status" -eq 0 ] || fail "approve should accept alice from merged roster: $output"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -eq 0 ] || fail "convergence should hold after alice approved: $output"
+  [[ "$output" == *"converged"* ]] || \
+    fail "expected converged in output, got: $output"
+
+  # Both locations: .gaia/ + root
+  seed_minimal_record "review" 1
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "alice" "Alice" "design"
+  _seed_stakeholder "$TEST_TMP/custom/stakeholders" "bob" "Bob" "ux"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged with unapproved stakeholders"
+  [[ "$output" == *"alice"* ]] || fail "expected alice in missing list: $output"
+  [[ "$output" == *"bob"* ]] || fail "expected bob in missing list: $output"
+}
+
+@test "(AC-EC1) empty roster directory returns non-zero with no-tagged-stakeholders diagnostic" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Create empty roster directory (no .md files)
+  mkdir -p "$TEST_TMP/.gaia/custom/stakeholders"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should fail on empty roster directory"
+  [[ "$output" == *"vacuous-convergence"* ]] || \
+    fail "expected vacuous-convergence output, got: $output"
+  # Must say "no design/ux-tagged stakeholders", not "no stakeholder directory"
+  [[ "$output" == *"no design/ux-tagged stakeholders"* ]] || \
+    fail "expected 'no design/ux-tagged stakeholders' diagnostic for empty dir, got: $output"
+}
+
+@test "(AC-EC2) mixed-case Design and UX tags recognised via case-insensitive match" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Seed with mixed-case tags
+  local roster_dir="$TEST_TMP/.gaia/custom/stakeholders"
+  mkdir -p "$roster_dir"
+  cat > "$roster_dir/alice.md" <<'STAKE'
+---
+name: Alice
+tags: ["Design", "UX"]
+---
+STAKE
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged (alice not approved)"
+  [[ "$output" == *"alice"* ]] || \
+    fail "expected alice recognised via case-insensitive match, got: $output"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "expected not-converged in output, got: $output"
+}
+
+@test "(AC-EC3) slug/filename disagreement warns and skips the stakeholder file" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Seed alice.md with slug: bob — disagreement
+  _seed_stakeholder_with_slug "$TEST_TMP/.gaia/custom/stakeholders" "alice" "Alice" "bob" "design"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  # The file should be skipped; with no other stakeholders, result is vacuous
+  [[ "$output" == *"vacuous-convergence"* ]] || \
+    fail "expected vacuous-convergence after skipping disagreeing file, got: $output"
+  # Stderr should have the disagreement warning
+  [[ "$output" == *"disagree"* ]] || [[ "$output" == *"alice"* ]] || \
+    fail "expected disagreement warning naming alice in output, got: $output"
+
+  # Sub-scenario 2: add a valid carol.md — should be the only required stakeholder
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "carol" "Carol" "design"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged (carol not approved)"
+  [[ "$output" == *"carol"* ]] || \
+    fail "expected carol in missing list, got: $output"
+  [[ "$output" != *"alice"* ]] || [[ "$output" == *"disagree"* ]] || \
+    fail "alice should not appear as a required stakeholder (skipped)"
+}
+
+@test "(AC-EC4) filename stem used as canonical slug when slug field is absent" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Seed product-owner.md with no slug: field (default /gaia-create-stakeholder output)
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "product-owner" "Product Owner" "design"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged"
+  [[ "$output" == *"product-owner"* ]] || \
+    fail "expected product-owner (filename stem) in missing list, got: $output"
+}
+
+@test "(AC-EC5) .gaia/ roster location takes precedence over root with no double-counting" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Same slug at both locations
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "pm" "PM (gaia)" "design"
+  _seed_stakeholder "$TEST_TMP/custom/stakeholders" "pm" "PM (root)" "ux"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged"
+  # pm should appear exactly once in the missing list, not twice
+  local pm_count
+  pm_count="$(printf '%s\n' "$output" | grep -o 'pm' | grep -c 'pm' || true)"
+  [ "$pm_count" -le 2 ] || fail "pm appears more than twice in output (double-counted): $output"
+  [[ "$output" == *"pm"* ]] || fail "expected pm in missing list: $output"
+}
+
+@test "(AC-EC6) approve records non-design-tagged stakeholder but convergence excludes it" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "pm" "PM" "product"
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "alice" "Alice" "design"
+
+  # Approve pm — should succeed (pm is on the roster even if not design-tagged)
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve --stakeholder "pm" --recorded-by "test"
+  [ "$status" -eq 0 ] || fail "approve should accept pm (known stakeholder): $output"
+
+  # Convergence should still require alice, not pm
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged (alice not approved)"
+  [[ "$output" == *"alice"* ]] || \
+    fail "expected alice in missing list (pm has no design tag), got: $output"
+}
+
+@test "(AC-EC8) malformed frontmatter skipped with diagnostic before yq parsing" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  _seed_malformed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "malformed"
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "valid" "Valid" "design"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged"
+  # Stderr should name the malformed file
+  [[ "$output" == *"malformed"* ]] || \
+    fail "expected diagnostic naming malformed.md, got: $output"
+  # valid should be the only required stakeholder
+  [[ "$output" == *"valid"* ]] || \
+    fail "expected valid in missing list, got: $output"
+  [[ "$output" == *"not-converged"* ]] || \
+    fail "expected not-converged output, got: $output"
+}
+
+@test "(AC-EC9) merged roster includes root-level design-tagged stakeholder and approve accepts them" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # .gaia/ has only a non-design stakeholder
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "pm" "PM" "product"
+  # Root has the design-tagged stakeholder
+  _seed_stakeholder "$TEST_TMP/custom/stakeholders" "alice" "Alice" "design"
+
+  # Convergence should find alice via the merged roster
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should be not-converged (alice not approved)"
+  [[ "$output" == *"alice"* ]] || \
+    fail "expected alice from root roster in missing list, got: $output"
+
+  # Approve alice — the approve verb must find her via the merged roster
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve --stakeholder "alice" --recorded-by "test"
+  [ "$status" -eq 0 ] || fail "approve should accept alice from root roster: $output"
+
+  # After approval, convergence should hold
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -eq 0 ] || fail "convergence should hold after alice approved: $output"
+  [[ "$output" == *"converged"* ]] || \
+    fail "expected converged after alice approved, got: $output"
 }

@@ -519,3 +519,41 @@ CMDS_END
     echo "FAIL: design-lifecycle.html should mention override notice being surfaced" >&2; return 1
   }
 }
+
+
+# =========================================================================
+# Fail-closed approval gate — doc sync
+# =========================================================================
+
+@test "(AC3) gaia-design-review.html troubleshooting names both roster locations and /gaia-create-stakeholder" {
+  local page="$DOC_DIR/commands/gaia-design-review.html"
+  [ -s "$page" ] || {
+    echo "FAIL: gaia-design-review.html missing or empty" >&2; return 1
+  }
+
+  grep -qF '.gaia/custom/stakeholders' "$page" || {
+    echo "FAIL: gaia-design-review.html should name .gaia/custom/stakeholders/ roster location" >&2; return 1
+  }
+  # Must name BOTH roster locations (the merged roster)
+  grep -qF 'custom/stakeholders' "$page" || {
+    echo "FAIL: gaia-design-review.html should name custom/stakeholders/ roster location" >&2; return 1
+  }
+  grep -qF '/gaia-create-stakeholder' "$page" || {
+    echo "FAIL: gaia-design-review.html should name /gaia-create-stakeholder as remediation" >&2; return 1
+  }
+}
+
+@test "(AC1) design-lifecycle.html approval section names the roster requirement" {
+  local page="$DOC_DIR/design-lifecycle.html"
+  [ -s "$page" ] || {
+    echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
+  }
+
+  # The approval section must name the roster as a requirement for convergence
+  grep -qi 'roster' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention the stakeholder roster" >&2; return 1
+  }
+  grep -qF '/gaia-create-stakeholder' "$page" || {
+    echo "FAIL: design-lifecycle.html should name /gaia-create-stakeholder as remediation" >&2; return 1
+  }
+}
