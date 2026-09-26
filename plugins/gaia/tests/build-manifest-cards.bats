@@ -10,7 +10,7 @@ bats_require_minimum_version 1.5.0
 
 load 'test_helper.bash'
 
-SKILL_SCRIPTS="$BATS_TEST_DIRNAME/../skills/gaia-create-ux/scripts"
+SKILL_SCRIPTS="$BATS_TEST_DIRNAME/../scripts"
 TARGET_SCRIPT="$SKILL_SCRIPTS/build-manifest-cards.sh"
 PLANNER_SCRIPT="$SKILL_SCRIPTS/plan-publication.sh"
 

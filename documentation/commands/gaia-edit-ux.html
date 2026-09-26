@@ -58,6 +58,7 @@ This warning is shown once per session.
           <li><span class="step-title">Version and save</span> Adds version note, writes the updated document, shows diff summary.</li>
           <li><span class="step-title">Design stale transition</span> Marks the design record as stale, since a direct UX edit changes the approved design. Downstream gates will require a new design review round before implementation proceeds.</li>
           <li><span class="step-title">Adversarial review</span> Runs if triggered by the change type.</li>
+          <li><span class="step-title">Republish changed specifications</span> After the stale transition, changed specifications are republished to the Claude Design project with read-before-write conflict detection. The design-system manifest is refreshed and the last-published manifest is persisted.</li>
           <li><span class="step-title">Cascade assessment</span> Checks impact on architecture, epics, stories, and test plan.</li>
         </ol>
       </section>

@@ -216,6 +216,16 @@
           existing design or whether the design still holds. If it still holds,
           the reviewer re-approves it and the gate clears.
         </p>
+        <p>
+          When the stale transition completes with the Claude Design integration
+          available, the changed specifications are republished to the project
+          before the skill completes. The republish step reads the last-published
+          manifest for conflict detection: files changed by both the framework
+          and a designer are surfaced as conflicts rather than silently overwritten.
+          When the manifest does not exist (projects published before manifest
+          tracking), every differing remote file is treated as a conflict to
+          confirm.
+        </p>
       </section>
 
       <footer class="page-footer">

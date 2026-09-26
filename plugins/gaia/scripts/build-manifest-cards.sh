@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # build-manifest-cards.sh — deterministic manifest card builder and
-# last-published persistence helper for screen-specification publication.
+# last-published persistence helper for screen-specification publication
+# (create-ux) and republication on stale (edit-ux, add-feature).
 #
 # Two public functions:
 #   build_manifest_cards   — merge spec-file cards into the design-system manifest

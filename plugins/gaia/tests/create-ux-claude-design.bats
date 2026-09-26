@@ -12,6 +12,7 @@ load 'test_helper.bash'
 
 SKILL_DIR="$BATS_TEST_DIRNAME/../skills/gaia-create-ux"
 SKILL_SCRIPTS="$SKILL_DIR/scripts"
+SHARED_SCRIPTS="$BATS_TEST_DIRNAME/../scripts"
 SKILL_MD="$SKILL_DIR/SKILL.md"
 TEMPLATE="$SKILL_DIR/ux-design-template.md"
 DOC_PAGE="$BATS_TEST_DIRNAME/../../../documentation/commands/gaia-create-ux.html"
@@ -155,7 +156,7 @@ _run_pub() {
   local last="${TEST_TMP}/last-published.json"
   if [ "${1:-}" = "--last-published" ]; then last="$2"; fi
   run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
-    "$SKILL_SCRIPTS/plan-publication.sh" \
+    "$SHARED_SCRIPTS/plan-publication.sh" \
     --local-manifest "$TEST_TMP/local-manifest.json" \
     --remote-listing "$TEST_TMP/remote-listing.json" \
     --last-published "$last"
@@ -252,7 +253,7 @@ EOF
 # ===========================================================================
 
 @test "(AC4) every write is preceded by a read-first in the operation plan" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"aaa-new"},{"file":"palette.yaml","hash":"bbb-new"},{"file":"components.yaml","hash":"ccc-new"}]' \
     '[{"file":"tokens.yaml","hash":"aaa-old"},{"file":"palette.yaml","hash":"bbb-old"},{"file":"components.yaml","hash":"ccc-old"}]' \
@@ -265,7 +266,7 @@ EOF
 }
 
 @test "(AC4) designer-edited file emits CONFLICT, not WRITE" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"new-framework-hash"}]' \
     '[{"file":"tokens.yaml","hash":"designer-edited-hash"}]' \
@@ -277,7 +278,7 @@ EOF
 }
 
 @test "(AC4) orphan removal only for framework-published files" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[]' \
     '[{"file":"old-palette.yaml","hash":"xxx"},{"file":"designer-notes.yaml","hash":"yyy"}]' \
@@ -289,7 +290,7 @@ EOF
 }
 
 @test "(AC4) unchanged file emits SKIP_UNCHANGED" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"same-hash"}]' \
     '[{"file":"tokens.yaml","hash":"same-hash"}]' \
@@ -300,7 +301,7 @@ EOF
 }
 
 @test "(AC-EC6) designer edit between publishes is surfaced as CONFLICT" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"buttons.yaml","hash":"hash-C"}]' \
     '[{"file":"buttons.yaml","hash":"hash-B"}]' \
@@ -311,7 +312,7 @@ EOF
 }
 
 @test "(AC-EC7) empty remote-listing forces READ_FIRST for every file" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   printf '[{"file":"a.yaml","hash":"h1"},{"file":"b.yaml","hash":"h2"}]' > "$TEST_TMP/local-manifest.json"
   printf '' > "$TEST_TMP/remote-listing.json"
   _run_pub --last-published /dev/null
@@ -321,7 +322,7 @@ EOF
 }
 
 @test "(AC4) plan-publication.sh rejects hostile filenames via --arg" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"\"; rm -rf /; echo \"","hash":"x"}]' \
     '[{"file":"\"; rm -rf /; echo \"","hash":"x"}]' \
@@ -332,7 +333,7 @@ EOF
 }
 
 @test "(AC4) plan-publication.sh fails closed on malformed JSON inputs" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   printf '{invalid' > "$TEST_TMP/local-manifest.json"
   printf '[{"file":"x.yaml","hash":"h"}]' > "$TEST_TMP/remote-listing.json"
   _run_pub --last-published /dev/null
@@ -348,7 +349,7 @@ EOF
 }
 
 @test "(AC4) framework updating its own earlier write emits READ_FIRST then WRITE" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"new-framework-hash"}]' \
     '[{"file":"tokens.yaml","hash":"original-hash"}]' \
@@ -808,7 +809,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 # ===========================================================================
 
 @test "(AC4) plan-publication.sh rejects path-traversal in local-manifest" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"../../../etc/passwd","hash":"h1"}]' \
     '[{"file":"safe.yaml","hash":"h2"}]' \
@@ -819,7 +820,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh rejects absolute path in local-manifest" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"/etc/passwd","hash":"h1"}]' \
     '[{"file":"safe.yaml","hash":"h2"}]' \
@@ -829,7 +830,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh rejects path-traversal in last-published" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"safe.yaml","hash":"h1"}]' \
     '[{"file":"safe.yaml","hash":"h1"}]' \
@@ -839,7 +840,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh rejects empty filename" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"","hash":"h1"}]' \
     '[{"file":"safe.yaml","hash":"h2"}]' \
@@ -849,7 +850,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh rejects control character in filename" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   # Filename with a newline
   printf '[{"file":"good\\nbad","hash":"h1"}]' > "$TEST_TMP/local-manifest.json"
   printf '[{"file":"safe.yaml","hash":"h2"}]' > "$TEST_TMP/remote-listing.json"
@@ -859,7 +860,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh never emits DELETE_ORPHAN for traversal path in remote" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   # Remote contains a traversal path that the framework supposedly published
   _write_pub_fixtures \
     '[]' \
@@ -873,7 +874,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) path-traversal rejection mutant: removing the check lets traversal through" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"h1"},{"file":"../escape.yaml","hash":"h2"}]' \
     '[]' \
@@ -883,7 +884,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh rejects dot-segment filename in local-manifest" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   # Each of these must be rejected: ".", "./a", "a/./b"
   local bad_name
   for bad_name in '.' './a' 'a/./b'; do
@@ -897,7 +898,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh rejects trailing slash and empty segments in local-manifest" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   local bad_name
   for bad_name in 'a/' 'a//b'; do
     _write_pub_fixtures \
@@ -910,7 +911,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh rejects dot-segment filename in last-published" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   local bad_name
   for bad_name in '.' './a' 'a/./b'; do
     _write_pub_fixtures \
@@ -923,7 +924,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 }
 
 @test "(AC4) plan-publication.sh rejects trailing slash and empty segments in last-published" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   local bad_name
   for bad_name in 'a/' 'a//b'; do
     _write_pub_fixtures \
@@ -937,7 +938,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
 
 @test "(AC4) dot-segment rejection mutant: bare dot in local produces WRITE without the check" {
   # Prove the check is load-bearing: "." would produce "READ_FIRST . / WRITE ."
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":".","hash":"h1"}]' \
     '[]' \
@@ -978,7 +979,7 @@ Read the project files and use them."
 # ===========================================================================
 
 @test "(AC4) plan-publication.sh handles 500 entries without per-file fork growth" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
 
   # Generate 500-entry fixtures
   local i
@@ -1018,7 +1019,7 @@ Read the project files and use them."
 # ===========================================================================
 
 @test "(AC1) publication plan includes bare REFRESH_MANIFEST as final line" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"screens/login.spec.html","hash":"aaa"},{"file":"components/button.spec.html","hash":"bbb"}]' \
     '[{"file":"screens/login.spec.html","hash":"old-aaa"},{"file":"components/button.spec.html","hash":"old-bbb"}]' \
@@ -1049,7 +1050,7 @@ Read the project files and use them."
 }
 
 @test "(AC-EC1) REFRESH_MANIFEST appears even when all files are SKIP_UNCHANGED" {
-  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]' \
     '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]' \
