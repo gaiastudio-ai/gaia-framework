@@ -28,10 +28,11 @@ LC_ALL=C; export LC_ALL
 
 _die() { printf 'sync-derived-artifacts.sh: %s\n' "$1" >&2; exit 1; }
 
-# File-scope temp file for screen content — cleaned up on any exit.
-content_tmp=""
-_cleanup_content_tmp() { [ -n "${content_tmp:-}" ] && rm -f "$content_tmp"; true; }
-trap _cleanup_content_tmp EXIT INT TERM
+# File-scope temp directory — every temp file lives inside it. Cleaned
+# up on any exit so no individual file can leak.
+_sync_tmpdir=""
+_cleanup_tmpdir() { [ -n "${_sync_tmpdir:-}" ] && rm -rf "$_sync_tmpdir"; true; }
+trap _cleanup_tmpdir EXIT INT TERM
 
 # _sha256_file FILE — portable sha256 of a file
 _sha256_file() {
@@ -149,7 +150,7 @@ _count_table_cols() {
 _batch_add_components() {
   local doc="$1" components_file="$2"
   local tmpfile
-  tmpfile="$(mktemp "${TMPDIR:-/tmp}/sync-derived-artifacts.XXXXXX")"
+  tmpfile="$_sync_tmpdir/awk-out"
 
   # Determine the insert format: table or bullet
   local col_count
@@ -299,13 +300,40 @@ _main() {
 
   command -v jq >/dev/null 2>&1 || _die "jq is required but not found on PATH"
 
-  # Determine whether the snapshot has components and/or screens
+  # Create the session temp directory. All temp files live inside it so
+  # the EXIT trap cleans up everything on any exit path.
+  # _sync_tmpdir is file-scope (not local) so the trap can see it.
+  _sync_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/sync-derived-artifacts.XXXXXX")"
+
+  # === Snapshot shape validation ===
+  # Validate top-level shape before any processing.
   local has_components=false
   local has_screens=false
   if jq -e '.components' "$snapshot_file" >/dev/null 2>&1; then
+    # .components must be an array
+    local comp_type
+    comp_type="$(jq -r '.components | type' "$snapshot_file")"
+    if [ "$comp_type" != "array" ]; then
+      printf 'sync-derived-artifacts.sh: .components must be an array, got %s\n' "$comp_type" >&2
+      exit 1
+    fi
+    # Every element must be a string
+    local bad_elem
+    bad_elem="$(jq -r '.components[] | select(type != "string") | type' "$snapshot_file" | head -1)" || true
+    if [ -n "$bad_elem" ]; then
+      printf 'sync-derived-artifacts.sh: .components[] elements must be strings, found %s\n' "$bad_elem" >&2
+      exit 1
+    fi
     has_components=true
   fi
   if jq -e '.screens' "$snapshot_file" >/dev/null 2>&1; then
+    # .screens must be an array
+    local screens_type
+    screens_type="$(jq -r '.screens | type' "$snapshot_file")"
+    if [ "$screens_type" != "array" ]; then
+      printf 'sync-derived-artifacts.sh: .screens must be an array, got %s\n' "$screens_type" >&2
+      exit 1
+    fi
     has_screens=true
   fi
 
@@ -338,7 +366,7 @@ _main() {
 
     # Collect all components to add in a temp file for a single-pass batch
     local additions_file
-    additions_file="$(mktemp "${TMPDIR:-/tmp}/sync-derived-artifacts.XXXXXX")"
+    additions_file="$_sync_tmpdir/additions"
 
     while IFS= read -r component; do
       [ -n "$component" ] || continue
@@ -414,8 +442,21 @@ _main() {
     screen_count="$(jq -r '.screens | length' "$snapshot_file")"
     local idx=0
 
-    # Pass 1: validate every screen (name control chars, content type)
+    # Pass 1: validate every screen (field types, name control chars, content type)
     while [ "$idx" -lt "$screen_count" ]; do
+      # Validate name and file are strings
+      local name_type file_type
+      name_type="$(jq -r --argjson i "$idx" '.screens[$i].name | type' "$snapshot_file")"
+      file_type="$(jq -r --argjson i "$idx" '.screens[$i].file | type' "$snapshot_file")"
+      if [ "$name_type" != "string" ]; then
+        printf 'sync-derived-artifacts.sh: .screens[%d].name must be a string, got %s\n' "$idx" "$name_type" >&2
+        exit 1
+      fi
+      if [ "$file_type" != "string" ]; then
+        printf 'sync-derived-artifacts.sh: .screens[%d].file must be a string, got %s\n' "$idx" "$file_type" >&2
+        exit 1
+      fi
+
       local screen_name screen_file
       screen_name="$(jq -r --argjson i "$idx" '.screens[$i].name' "$snapshot_file")"
       screen_file="$(jq -r --argjson i "$idx" '.screens[$i].file' "$snapshot_file")"
@@ -436,8 +477,7 @@ _main() {
     # Content is never captured in a shell variable — bash $() strips
     # trailing newlines, which corrupts hashes. Instead, content is
     # written to a temp file and streamed from there.
-    # content_tmp is file-scope so the EXIT trap can clean it up.
-    content_tmp="$(mktemp "${TMPDIR:-/tmp}/sync-derived-artifacts.XXXXXX")"
+    local content_tmp="$_sync_tmpdir/screen-content"
     idx=0
     while [ "$idx" -lt "$screen_count" ]; do
       local screen_name screen_file
@@ -481,7 +521,6 @@ _main() {
       idx=$((idx + 1))
     done
     rm -f "$content_tmp"
-    content_tmp=""
   fi
 
   # If no components and no screens, just report up to date
