@@ -273,7 +273,7 @@ design_gate_check() {
 
   if [ ! -f "$record_path" ]; then
     # MUTANT-ANCHOR: absent-fail-branch
-    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If Claude Design is not connected in this session, you will also need to enable it, or run /design-login to authorize it."
+    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If Claude Design is not connected in this session, you will also need to enable it, run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
     _dg_halt "$record_path" "absent" "$_dg_absent_remediation"
     return 1
   fi
@@ -344,7 +344,7 @@ design_gate_check() {
 
   # ---- Halt on non-approved applicable paths ----
 
-  local _dg_halt_remediation="${state_remediation} If Claude Design is not connected in this session, you will also need to enable it, or run /design-login to authorize it."
+  local _dg_halt_remediation="${state_remediation} If Claude Design is not connected in this session, you will also need to enable it, run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
   _dg_halt "$record_path" "$design_state" "$_dg_halt_remediation"  # MUTANT-ANCHOR: probe-fail-branch
   return 1
 }

@@ -226,6 +226,14 @@
           tracking), every differing remote file is treated as a conflict to
           confirm.
         </p>
+        <p>
+          Both <code>/gaia-create-ux</code> and <code>/gaia-design-review</code>
+          check whether the Claude Design integration is available before their
+          first project call. A missing integration halts with a remediation
+          naming the DesignSync tool surface. An unauthorized integration halts
+          with a remediation covering both <code>/design-login</code> (API-token
+          sessions) and granting design access when prompted (claude.ai sessions).
+        </p>
       </section>
 
       <footer class="page-footer">

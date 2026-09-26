@@ -54,7 +54,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 _MSG_MISSING="The Claude Design integration could not be reached in this environment (absent, or unreachable within the timeout) and is therefore treated as unavailable. To enable it, use a Claude Code session that exposes the DesignSync tool surface. Non-interactive setup performed: none. Could not perform: nothing further can be attempted without a session exposing the tool surface — that is an environment change, not a step the framework can take."
 
-_MSG_UNAUTHORIZED="The Claude Design integration is available but not authorized for this session. Run /design-login to authorize — this is an interactive step that you must run yourself; the framework cannot run it on your behalf. Non-interactive setup performed: none. Could not perform: the /design-login step is interactive and cannot be automated."
+_MSG_UNAUTHORIZED="The Claude Design integration is available but not authorized for this session. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions) — this is an interactive step that you must run yourself; the framework cannot run it on your behalf. Non-interactive setup performed: none. Could not perform: the /design-login step is interactive and cannot be automated."
 
 # ---- classification decision (underscore-prefixed: not the coverage-gate's
 # public-function surface, which keys on column-0 names with no leading

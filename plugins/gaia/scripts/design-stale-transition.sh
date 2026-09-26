@@ -153,7 +153,7 @@ case "$_resolved_state" in
     exit 0
     ;;
   unauthorized)
-    printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is unauthorized in this session. Run /design-login to authorize the integration.\n' >&2
+    printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is unauthorized in this session. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions).\n' >&2
     _relay_and_clean_probe_stderr
     exit 1
     ;;
