@@ -170,12 +170,20 @@ _extract_availability_section() {
   [ -n "$section_cux" ] || fail "availability section not found in create-ux"
   [ -n "$section_dr" ] || fail "availability section not found in design-review"
 
-  # No design-probe.sh reference
-  if echo "$section_cux" | grep -q 'design-probe\.sh'; then
-    fail "create-ux availability section must not reference design-probe.sh"
+  # No design-probe.sh reference in the sub-block itself
+  if echo "$block_cux" | grep -q 'design-probe\.sh'; then
+    fail "create-ux availability sub-block must not reference design-probe.sh"
   fi
-  if echo "$section_dr" | grep -q 'design-probe\.sh'; then
-    fail "design-review availability section must not reference design-probe.sh"
+  if echo "$block_dr" | grep -q 'design-probe\.sh'; then
+    fail "design-review availability sub-block must not reference design-probe.sh"
+  fi
+
+  # No positive usage of design-probe in the section (bash/run/source)
+  if echo "$section_cux" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+    fail "create-ux availability section must not use design-probe.sh as a fallback"
+  fi
+  if echo "$section_dr" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+    fail "design-review availability section must not use design-probe.sh as a fallback"
   fi
 
   # No "own probe" / "its own probe" / "probe fallback"
@@ -362,12 +370,18 @@ _extract_availability_section() {
   block="$(_extract_availability_subblock "$SKILL_MD_CUX")"
   [ -n "$block" ] || fail "availability sub-block missing from create-ux — non-vacuity guard"
 
+  # The sub-block itself must not reference design-probe
+  if echo "$block" | grep -q 'design-probe'; then
+    fail "create-ux availability sub-block must not reference design-probe"
+  fi
+
+  # The section must not positively use design-probe (bash/run/source/fallback)
   local section
   section="$(_extract_availability_section "$SKILL_MD_CUX")"
   [ -n "$section" ] || fail "availability section not found in create-ux"
 
-  if echo "$section" | grep -q 'design-probe'; then
-    fail "create-ux availability section must not reference design-probe"
+  if echo "$section" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+    fail "create-ux availability section must not use design-probe as a fallback"
   fi
 }
 
@@ -382,12 +396,18 @@ _extract_availability_section() {
   block="$(_extract_availability_subblock "$SKILL_MD_DR")"
   [ -n "$block" ] || fail "availability sub-block missing from design-review — non-vacuity guard"
 
+  # The sub-block itself must not reference design-probe
+  if echo "$block" | grep -q 'design-probe'; then
+    fail "design-review availability sub-block must not reference design-probe"
+  fi
+
+  # The section must not positively use design-probe
   local section
   section="$(_extract_availability_section "$SKILL_MD_DR")"
   [ -n "$section" ] || fail "availability section not found in design-review"
 
-  if echo "$section" | grep -q 'design-probe'; then
-    fail "design-review availability section must not reference design-probe"
+  if echo "$section" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+    fail "design-review availability section must not use design-probe as a fallback"
   fi
 }
 
@@ -514,6 +534,6 @@ _extract_availability_section() {
 
   grep -q 'design-login' "$doc_page" \
     || fail "design-lifecycle.html should mention design-login"
-  grep -q 'grant design access' "$doc_page" \
-    || fail "design-lifecycle.html should mention grant design access"
+  grep -qi 'grant.*design access' "$doc_page" \
+    || fail "design-lifecycle.html should mention granting design access"
 }

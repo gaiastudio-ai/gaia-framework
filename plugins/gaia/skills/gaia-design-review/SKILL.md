@@ -50,6 +50,24 @@ This skill is the review-iteration workflow. It reads the design project back th
 
 ## Steps
 
+### Precondition — Integration availability
+
+Before the first application-level Claude Design call or record transition, determine whether the integration is available. Make a single cheap Claude Design call (`list_projects`) to classify the outcome:
+
+<!-- design-availability begin -->
+- `available` — the call succeeded.
+- `unauthorized` — the call failed with an authorization or permission error.
+- `missing` — the call failed for any other reason (timeout, tool not found, etc.).
+<!-- design-availability end -->
+
+On `missing`, halt with: "The Claude Design integration could not be reached in this session (absent, or unreachable within the timeout) and is therefore treated as unavailable. To enable it, use a Claude Code session that exposes the DesignSync tool surface."
+
+On `unauthorized`, halt with: "The Claude Design integration is available but not authorized for this session. Run `/design-login` (API-token sessions), or grant design access when prompted (claude.ai sessions). This is an interactive step; the framework cannot perform it on your behalf."
+
+On `available`, proceed to the stale-resume precondition.
+
+The availability check does NOT use `design-probe.sh` (it cannot observe the session's tool surface). Do not fall back to the probe for this classification.
+
 ### Precondition — Stale-resume
 
 If the design record's `design_state` is `stale`, transition it to `review` via:

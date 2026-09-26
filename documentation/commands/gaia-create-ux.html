@@ -105,6 +105,11 @@ UX design written to: .gaia/artifacts/planning-artifacts/ux-design.md</code></pr
           </li>
         </ul>
         <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
+        <h3>Claude Design integration unavailable or unauthorized</h3>
+        <p>The skill halts before any project call when the integration cannot be reached or is not authorized.
+If <strong>missing</strong>: use a Claude Code session that exposes the DesignSync tool surface.
+If <strong>unauthorized</strong>: run <code>/design-login</code> (API-token sessions),
+or grant design access when prompted (claude.ai sessions).</p>
 </section>
       <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
         <tr><td><a href="gaia-edit-ux.html"><code>/gaia-edit-ux</code></a></td><td>Edits the UX design after creation.</td></tr>

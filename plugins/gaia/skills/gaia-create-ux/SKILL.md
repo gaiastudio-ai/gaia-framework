@@ -62,6 +62,22 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 2 — Design-System Discovery
 
+**Availability check.** Before the first application-level Claude Design call, determine whether the integration is available in this session. Make a single cheap Claude Design call (`list_projects`) to classify the outcome:
+
+<!-- design-availability begin -->
+- `available` — the call succeeded.
+- `unauthorized` — the call failed with an authorization or permission error.
+- `missing` — the call failed for any other reason (timeout, tool not found, etc.).
+<!-- design-availability end -->
+
+On `missing`, halt with: "The Claude Design integration could not be reached in this session (absent, or unreachable within the timeout) and is therefore treated as unavailable. To enable it, use a Claude Code session that exposes the DesignSync tool surface."
+
+On `unauthorized`, halt with: "The Claude Design integration is available but not authorized for this session. Run `/design-login` (API-token sessions), or grant design access when prompted (claude.ai sessions). This is an interactive step; the framework cannot perform it on your behalf."
+
+On `available`, proceed normally — no halt.
+
+The availability check does NOT use `design-probe.sh` (it cannot observe the session's tool surface). Do not fall back to the probe for this classification.
+
 Discover an existing design system before any screen authoring begins.
 
 1. **Check for an existing record.** Run `design-record.sh status` to check whether a design record already exists. If a record exists with a non-empty `project.reference`, the design system is already bound — present it for confirmation (via `scripts/format-candidates.sh`), skip to Step 5 (User Personas), and do not re-initialize the record.

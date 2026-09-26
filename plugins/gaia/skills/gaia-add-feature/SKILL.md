@@ -484,9 +484,11 @@ adhere to the hygiene rules at dispatch time.
 
 <!-- design-attestation begin -->
 **Integration availability check:** When the decision is `yes` or `ambiguous`, make a single cheap Claude Design call (`list_projects`) to determine whether the integration is available. Classify the outcome:
+<!-- design-availability begin -->
 - `available` — the call succeeded.
 - `unauthorized` — the call failed with an authorization or permission error.
 - `missing` — the call failed for any other reason (timeout, tool not found, etc.).
+<!-- design-availability end -->
 
 Pass the result as `--integration <available|missing|unauthorized>`. When the decision is `no`, skip the check and omit `--integration`. When availability cannot be determined, omit `--integration` and the driver will fall back to its own probe.
 
