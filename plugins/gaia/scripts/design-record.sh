@@ -340,7 +340,7 @@ _resolve_merged_roster() {
       # Frontmatter delimiter check: require a closing --- after line 1.
       # The opening --- is line 1; a closing --- must appear on a later line.
       if ! sed -n '2,$p' "$f" | grep -q '^---$'; then
-        printf 'design-record.sh: warning: %s has no closing --- delimiter — skipped\n' "$f" >&2
+        printf 'design-record.sh: warning: %s has no closing --- delimiter — skipped\n' "$(basename "$f")" >&2
         continue
       fi
 
