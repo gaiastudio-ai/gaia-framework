@@ -1245,7 +1245,7 @@ WRAPPER
 # Roster resolution: preference cascade tests
 # =========================================================================
 
-@test "merged roster accepts stakeholders from both .gaia/ and legacy paths" {
+@test "(AC6) merged roster accepts stakeholders from both .gaia/ and legacy paths" {
   assert_script_exists
   seed_minimal_record "review" 1
 
@@ -2580,9 +2580,9 @@ STAKE
   # The file should be skipped; with no other stakeholders, result is vacuous
   [[ "$output" == *"vacuous-convergence"* ]] || \
     fail "expected vacuous-convergence after skipping disagreeing file, got: $output"
-  # Stderr should have the disagreement warning
-  [[ "$output" == *"disagree"* ]] || [[ "$output" == *"alice"* ]] || \
-    fail "expected disagreement warning naming alice in output, got: $output"
+  # Stderr must carry the specific disagreement warning naming both slugs
+  [[ "$output" == *"slug"*"bob"*"disagrees"*"alice"* ]] || \
+    fail "expected disagreement warning: slug 'bob' disagrees with filename 'alice', got: $output"
 
   # Sub-scenario 2: add a valid carol.md — should be the only required stakeholder
   _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "carol" "Carol" "design"
@@ -2591,8 +2591,8 @@ STAKE
   [ "$status" -ne 0 ] || fail "convergence should be not-converged (carol not approved)"
   [[ "$output" == *"carol"* ]] || \
     fail "expected carol in missing list, got: $output"
-  [[ "$output" != *"alice"* ]] || [[ "$output" == *"disagree"* ]] || \
-    fail "alice should not appear as a required stakeholder (skipped)"
+  [[ "$output" == *"slug"*"bob"*"disagrees"*"alice"* ]] || \
+    fail "expected disagreement warning for skipped alice.md, got: $output"
 }
 
 @test "(AC-EC4) filename stem used as canonical slug when slug field is absent" {
@@ -2618,11 +2618,13 @@ STAKE
 
   run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
   [ "$status" -ne 0 ] || fail "convergence should be not-converged"
-  # pm should appear exactly once in the missing list, not twice
+  # Extract the missing: line and assert pm appears exactly once as a whole word
+  local missing_line
+  missing_line="$(printf '%s\n' "$output" | grep 'missing:' || true)"
+  [ -n "$missing_line" ] || fail "expected a 'missing:' line in output, got: $output"
   local pm_count
-  pm_count="$(printf '%s\n' "$output" | grep -o 'pm' | grep -c 'pm' || true)"
-  [ "$pm_count" -le 2 ] || fail "pm appears more than twice in output (double-counted): $output"
-  [[ "$output" == *"pm"* ]] || fail "expected pm in missing list: $output"
+  pm_count="$(printf '%s\n' "$missing_line" | grep -o -w 'pm' | wc -l | tr -d ' ')"
+  [ "$pm_count" -eq 1 ] || fail "pm should appear exactly once in missing list (got $pm_count): $missing_line"
 }
 
 @test "(AC-EC6) approve records non-design-tagged stakeholder but convergence excludes it" {
