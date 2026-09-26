@@ -722,19 +722,27 @@ _do_add_review() {
 
 # cmd_add_override — record an audited override.
 cmd_add_override() {
-  local actor="" reason="" entry_point=""
-  _parse_opts --actor actor --reason reason --entry-point entry_point -- "$@"
+  local actor="" reason="" entry_point="" sprint_id=""
+  _parse_opts --actor actor --reason reason --entry-point entry_point --sprint-id sprint_id -- "$@"
 
   [ -n "$actor" ] || _die "add-override: --actor required"
   [ -n "$reason" ] || _die "add-override: --reason required"
   [ -n "$entry_point" ] || _die "add-override: --entry-point required"
 
+  # Validate sprint_id format before taking the lock (early rejection).
+  if [ -n "$sprint_id" ] && ! printf '%s' "$sprint_id" | grep -Eq '^sprint-[0-9]+$'; then
+    printf 'add-override: malformed --sprint-id value.\n' >&2
+    printf '  Got:      %s\n' "$sprint_id" >&2
+    printf '  Expected: sprint-N (matching ^sprint-[0-9]+$)\n' >&2
+    exit 1
+  fi
+
   _preflight_mutate
-  _locked_mutate _do_add_override "$actor" "$reason" "$entry_point"
+  _locked_mutate _do_add_override "$actor" "$reason" "$entry_point" "$sprint_id"
 }
 
 _do_add_override() {
-  local tmp="$1" actor="$2" reason="$3" entry_point="$4"
+  local tmp="$1" actor="$2" reason="$3" entry_point="$4" sprint_id="${5:-}"
   local now design_state
   now="$(_now_iso)"
   design_state="$(yq '.design_state' "$tmp")"
@@ -746,8 +754,20 @@ _do_add_override() {
     yq -n -o=json -I=0 \
       '{"user":strenv(_DO_USER),"at":strenv(_DO_AT),"reason":strenv(_DO_REASON),"entry_point":strenv(_DO_EP),"design_state_at_override":strenv(_DO_DS)}'
   )"
+
+  # Add sprint_id to the override entry only when supplied (omit the key entirely otherwise).
+  if [ -n "$sprint_id" ]; then
+    entry="$(printf '%s' "$entry" | _DO_SID="$sprint_id" yq -o=json -I=0 '.sprint_id = strenv(_DO_SID)')"
+  fi
+
   _DO_ENTRY="$entry" yq -i '.overrides += [env(_DO_ENTRY)]' "$tmp"
-  _append_audit "$tmp" "override" "$actor" "reason=${reason}" "entry_point=${entry_point}"
+
+  # Pass sprint_id to the audit trail only when supplied.
+  if [ -n "$sprint_id" ]; then
+    _append_audit "$tmp" "override" "$actor" "reason=${reason}" "entry_point=${entry_point}" "sprint_id=${sprint_id}"
+  else
+    _append_audit "$tmp" "override" "$actor" "reason=${reason}" "entry_point=${entry_point}"
+  fi
 }
 
 # cmd_not_applicable — mark the project as not requiring design approval.

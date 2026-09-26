@@ -1087,11 +1087,11 @@ BOUNDARY
 
   # Positive: --actor "\$USER" must appear at least 5 times
   local actor_user_count
-  actor_user_count="$(grep -cF '--actor "$USER"' "$dr_skill" || true)"
+  actor_user_count="$(grep -cF -e '--actor "$USER"' "$dr_skill" || true)"
   [ "$actor_user_count" -ge 5 ] || fail "SKILL.md should have at least 5 '--actor \"\$USER\"' occurrences but has $actor_user_count"
 
   # Positive: --recorded-by "\$USER" must appear at least once
   local recorded_by_count
-  recorded_by_count="$(grep -cF '--recorded-by "$USER"' "$dr_skill" || true)"
+  recorded_by_count="$(grep -cF -e '--recorded-by "$USER"' "$dr_skill" || true)"
   [ "$recorded_by_count" -ge 1 ] || fail "SKILL.md should have at least 1 '--recorded-by \"\$USER\"' occurrence but has $recorded_by_count"
 }

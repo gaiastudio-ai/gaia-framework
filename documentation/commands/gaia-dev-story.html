@@ -162,7 +162,11 @@
             approved before implementation can begin. Run
             <code>/gaia-design-review</code> to complete the review, or pass
             <code>--force-design --reason "&lt;text&gt;"</code> to override
-            with an audited reason. Projects without a UI
+            with an audited reason. When the override succeeds, a notice is
+            emitted with the current design state, the override reason, and a
+            warning that <code>ux-design.md</code> may be outdated. Override
+            entries carry the sprint scope (<code>sprint_id</code>) in the
+            audit trail. Projects without a UI
             (<code>compliance.ui_present: false</code> or absent) skip this
             gate automatically.
           </li>

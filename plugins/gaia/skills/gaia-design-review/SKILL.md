@@ -54,7 +54,7 @@ This skill is the review-iteration workflow. It reads the design project back th
 
 If the design record's `design_state` is `stale`, transition it to `review` via:
 
-    scripts/design-record.sh transition --to review --actor <actor>
+    scripts/design-record.sh transition --to review --actor "$USER"
 
 This starts a new review round — the iteration counter bumps (stale-to-review increments iteration), so pre-stale approvals do not satisfy convergence for the new round. Proceed to Step 1 with the record now in `review` state.
 
@@ -101,11 +101,11 @@ Record an internal review verdict BEFORE any stakeholder delivery.
      --notes-ref <path-to-review-notes>
    ```
 4. If the internal verdict is `changes-requested` or `blocked` with **high-severity** internal findings, block stakeholder delivery. Surface the findings to the user and ask whether to proceed or address them first.
-   - If the user chooses to accept the findings and proceed, record the decision via `scripts/design-record.sh add-override --actor <user> --reason "accepted high-severity internal findings" --entry-point "design-review"`.
+   - If the user chooses to accept the findings and proceed, record the decision via `scripts/design-record.sh add-override --actor "$USER" --reason "accepted high-severity internal findings" --entry-point "design-review"`.
    - If the user chooses to address the findings, halt and report what needs to change.
 5. **Draft-to-review transition.** If the design record is still in `draft` state (first review round), transition it into `review` before proceeding to stakeholder delivery:
    ```bash
-   scripts/design-record.sh transition --to review --actor <actor>
+   scripts/design-record.sh transition --to review --actor "$USER"
    ```
    This first-round transition does NOT bump the iteration counter.
 
@@ -119,7 +119,7 @@ Deliver the review to stakeholders. Re-read the project first so stakeholders se
 
    **Approved:** Invoke BOTH:
    - `scripts/design-record.sh add-review --verdict approved --reviewer <stakeholder-id> --kind stakeholder --notes-ref <path>`
-   - `scripts/design-record.sh approve --stakeholder <stakeholder-slug> --recorded-by <actor>`
+   - `scripts/design-record.sh approve --stakeholder <stakeholder-slug> --recorded-by "$USER"`
 
    Convergence reads `approvals[]`, never `reviews[]`. Both calls are required.
 
@@ -144,14 +144,14 @@ After all stakeholder verdicts are recorded (or the loop is halted by escalation
 1. **If any verdict is `escalated`:** the loop already halted in Step 4. No transition. No convergence check.
 
 2. **If any verdict is `changes-requested`** (including contradictory rounds where one stakeholder approved and another requested changes):
-   - Transition `review -> review` via `scripts/design-record.sh transition --to review --actor <actor>`. This bumps the iteration exactly once.
+   - Transition `review -> review` via `scripts/design-record.sh transition --to review --actor "$USER"`. This bumps the iteration exactly once.
    - Contradictory verdicts: both are recorded in `reviews[]`. The approving stakeholder's `approve` entry is keyed to the OLD iteration and does not satisfy convergence for the new iteration. After the bump, `check-convergence` reports ALL stakeholders as missing for the new iteration (invalidation by construction).
    - Return to Step 1 for the next iteration.
 
 3. **If all verdicts are `approved`:**
    - Call `scripts/design-record.sh check-convergence` FIRST (before `transition`). This is critical because `transition` silences the convergence stderr.
    - If `check-convergence` reports `vacuous-convergence`, relay the vacuous-convergence warning to the user — do not swallow it.
-   - If converged, transition `review -> approved` via `scripts/design-record.sh transition --to approved --actor <actor>`.
+   - If converged, transition `review -> approved` via `scripts/design-record.sh transition --to approved --actor "$USER"`.
    - If not converged (missing stakeholders), remain in `review`. Surface the missing list to the user.
 
 ### Step 6 — Delta sync (reconcile designer changes)
