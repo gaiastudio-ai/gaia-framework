@@ -46,11 +46,6 @@ _sha256_bytes() {
   fi
 }
 
-# _heading_pattern — the awk tolower() pattern that matches the template
-# heading (with optional numeric prefix) and the legacy fallback.
-# Used in both _extract_doc_components and _batch_add_components.
-_HEADING_RE='^## +(([0-9]+\\. +)?components +(and|\\&) +design +system|component +inventory)'
-
 # _extract_doc_components DOC — parse component names from the components
 # section of a markdown file. Accepts the template heading (both & and
 # "and" variants, case-insensitive, with optional number prefix) and the
@@ -113,7 +108,6 @@ _extract_doc_components() {
 _count_table_cols() {
   local doc="$1"
   local in_section=false
-  local saw_separator=false
 
   shopt -s nocasematch
   while IFS= read -r line; do
@@ -142,13 +136,6 @@ _count_table_cols() {
   done < "$doc"
   shopt -u nocasematch
   printf '0\n'
-}
-
-# _has_table_in_section DOC — returns 0 if the matched section has a table
-_has_table_in_section() {
-  local cols
-  cols="$(_count_table_cols "$1")"
-  [ "$cols" -gt 0 ]
 }
 
 # _batch_add_components DOC COMPONENTS_FILE — insert all component
