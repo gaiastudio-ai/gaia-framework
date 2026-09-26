@@ -312,7 +312,7 @@ _extract_step10_createux() {
   printf '%s' "$step8" | grep -qiE 'halt|missing.*unauthorized|unauthorized.*missing' \
     || fail "edit-ux Step 8 does not document the halt on missing/unauthorized integration"
 
-  printf '%s' "$step8" | grep -qiE 'no republication\|no republish\|precedes.*republish\|halt.*precedes' \
+  printf '%s' "$step8" | grep -qiE 'no republication|no republish|precedes.*republish|halt.*precedes' \
     || fail "edit-ux Step 8 does not say halts precede republish"
 }
 
@@ -330,7 +330,7 @@ _extract_step10_createux() {
   printf '%s' "$step8" | grep -qiE 'both versions' \
     || fail "edit-ux Step 8 does not mention surfacing both versions on CONFLICT"
 
-  printf '%s' "$step8" | grep -qiE 'halt.*resolution\|resolution.*halt\|halt for\|halts for' \
+  printf '%s' "$step8" | grep -qiE 'halt.*resolution|resolution.*halt|halt for|halts for' \
     || fail "edit-ux Step 8 does not say skill halts for resolution on CONFLICT"
 
   # Script-driven: --strict-conflicts must exist in the planner
@@ -510,29 +510,40 @@ _extract_step10_createux() {
     || fail "driver header does not mention revoked/token trade-off"
 }
 
-# G4: existing planner tests reference the skill-private path (green)
-@test "(G4) create-ux-claude-design.bats planner tests are green with the current path" {
+# G4: planner tests use SHARED_SCRIPTS and the shared location exists (green)
+@test "(G4) create-ux-claude-design.bats planner tests use the shared script path" {
   local cux_bats="$BATS_TEST_DIRNAME/create-ux-claude-design.bats"
   [ -f "$cux_bats" ] || fail "create-ux-claude-design.bats not found"
 
-  # The file currently uses $SKILL_SCRIPTS for plan-publication.sh
-  grep -qF 'SKILL_SCRIPTS' "$cux_bats" \
-    || fail "create-ux-claude-design.bats does not define SKILL_SCRIPTS"
+  # The file must define SHARED_SCRIPTS for plan-publication.sh
+  grep -qF 'SHARED_SCRIPTS' "$cux_bats" \
+    || fail "create-ux-claude-design.bats does not define SHARED_SCRIPTS"
 
-  # The private script currently exists
+  # The shared script must exist
+  [ -f "$SHARED_PLANNER" ] \
+    || fail "plan-publication.sh not found at shared location ($SHARED_PLANNER)"
+
+  # The private copy must be gone
   local private_planner="$SKILLS_DIR/gaia-create-ux/scripts/plan-publication.sh"
-  [ -f "$private_planner" ] \
-    || fail "plan-publication.sh not found at private location (expected green before move)"
+  if [ -f "$private_planner" ]; then
+    fail "plan-publication.sh still exists at private location ($private_planner)"
+  fi
 }
 
-# G5: build-manifest-cards.bats points to skill-private path (green)
-@test "(G5) build-manifest-cards.bats points to the current script location" {
+# G5: build-manifest-cards.bats uses the shared script location (green)
+@test "(G5) build-manifest-cards.bats points to the shared script location" {
   local bmc_bats="$BATS_TEST_DIRNAME/build-manifest-cards.bats"
   [ -f "$bmc_bats" ] || fail "build-manifest-cards.bats not found"
 
+  # The shared script must exist
+  [ -f "$SHARED_CARD_BUILDER" ] \
+    || fail "build-manifest-cards.sh not found at shared location ($SHARED_CARD_BUILDER)"
+
+  # The private copy must be gone
   local private_builder="$SKILLS_DIR/gaia-create-ux/scripts/build-manifest-cards.sh"
-  [ -f "$private_builder" ] \
-    || fail "build-manifest-cards.sh not found at private location (expected green before move)"
+  if [ -f "$private_builder" ]; then
+    fail "build-manifest-cards.sh still exists at private location ($private_builder)"
+  fi
 }
 
 # G6: attestation block mentions revok|token (green)

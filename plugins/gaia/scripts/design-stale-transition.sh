@@ -30,7 +30,7 @@
 #
 # Authorization-expiry: when a skill attests available, the driver trusts
 # it without re-probing. If the token is revoked between the skill's
-# check and the driver run, the later Claude Design update step surfaces
+# check and the driver run, the republish step that follows the stale transition surfaces
 # the failure — it is not silently absorbed.
 #
 # Probe classification is read from the probe's STDOUT (not exit code).

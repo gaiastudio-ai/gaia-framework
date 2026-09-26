@@ -31,8 +31,12 @@
 # Script exposes no reusable public functions — the top-level flow is the
 # entire API. Public-function coverage guard is N/A.
 #
+# Flags:
+#   --strict-conflicts     — treat every differing remote file as CONFLICT
+#                            (used when last-published manifest is absent)
+#
 # Usage:
-#   plan-publication.sh --local-manifest <path> --remote-listing <path> --last-published <path>
+#   plan-publication.sh --local-manifest <path> --remote-listing <path> --last-published <path> [--strict-conflicts]
 #
 # Exit codes:
 #   0 — plan emitted successfully
@@ -49,12 +53,14 @@ _die() { printf '%s: %s\n' "$SCRIPT_NAME" "$1" >&2; exit 1; }
 LOCAL_MANIFEST=""
 REMOTE_LISTING=""
 LAST_PUBLISHED=""
+STRICT_CONFLICTS=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --local-manifest)  LOCAL_MANIFEST="$2"; shift 2 ;;
     --remote-listing)  REMOTE_LISTING="$2"; shift 2 ;;
     --last-published)  LAST_PUBLISHED="$2"; shift 2 ;;
+    --strict-conflicts) STRICT_CONFLICTS=true; shift ;;
     *) _die "unknown option: $1" ;;
   esac
 done
@@ -94,7 +100,7 @@ fi
 # One jq program reads all three inputs (via --argjson), validates filenames,
 # joins them by filename, and emits the plan. No per-file shell fork.
 
-jq -r --argjson remote "$REMOTE_JSON" --argjson published "$PUBLISHED_JSON" '
+jq -r --argjson remote "$REMOTE_JSON" --argjson published "$PUBLISHED_JSON" --argjson strict "$STRICT_CONFLICTS" '
   # Filename safety check: reject absolute, traversal (..), dot-segment (.),
   # empty, trailing slash, empty path segments (//), and control chars
   def safe_filename:
@@ -130,9 +136,11 @@ jq -r --argjson remote "$REMOTE_JSON" --argjson published "$PUBLISHED_JSON" '
     elif $lh == $rh then
       "SKIP_UNCHANGED \($f)"
     else
-      # Hashes differ — check for designer edit
+      # Hashes differ — check for designer edit (or strict mode)
       $pub_map[$f] as $ph |
-      if ($ph != null) and ($rh != $ph) then
+      if $strict then
+        "READ_FIRST \($f)\nCONFLICT \($f) designer_hash=\($rh) framework_hash=\($lh)"
+      elif ($ph != null) and ($rh != $ph) then
         "READ_FIRST \($f)\nCONFLICT \($f) designer_hash=\($rh) framework_hash=\($lh)"
       else
         "READ_FIRST \($f)\nWRITE \($f)"

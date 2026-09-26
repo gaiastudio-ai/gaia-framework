@@ -763,8 +763,8 @@ _spy_probe_count() {
   # Documentation sub-scenario: the header documents the trade-off
   grep -qE 'revok|token' "$DRIVER_SCRIPT" \
     || fail "driver header should document the authorization-expiry trade-off"
-  grep -qiE 'update step|later' "$DRIVER_SCRIPT" \
-    || fail "driver header should mention the later update step"
+  grep -qiE 'republish step' "$DRIVER_SCRIPT" \
+    || fail "driver header should mention the republish step"
 
   # The shared attestation block also documents the trade-off
   local skill_af="$PLUGIN_ROOT/skills/gaia-add-feature/SKILL.md"
