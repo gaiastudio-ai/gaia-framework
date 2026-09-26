@@ -561,3 +561,55 @@ CMDS_END
     echo "FAIL: design-lifecycle.html should name /gaia-create-stakeholder as remediation" >&2; return 1
   }
 }
+
+# =========================================================================
+# Publication manifest persistence (doc sync)
+# =========================================================================
+
+@test "(AC2) create-ux doc page describes manifest persistence after publication" {
+  local page="$DOC_DIR/commands/gaia-create-ux.html"
+  [ -s "$page" ] || {
+    echo "FAIL: gaia-create-ux.html missing or empty" >&2; return 1
+  }
+  grep -qi 'manifest' "$page" || {
+    echo "FAIL: gaia-create-ux.html should mention 'manifest'" >&2; return 1
+  }
+  grep -qiE 'persist|persisted' "$page" || {
+    echo "FAIL: gaia-create-ux.html should mention manifest persistence" >&2; return 1
+  }
+}
+
+@test "(AC2) design-lifecycle.html publication section describes persisted manifest" {
+  local page="$DOC_DIR/design-lifecycle.html"
+  [ -s "$page" ] || {
+    echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
+  }
+  # Check the publication section for persisted-manifest or design-last-published
+  local pub_section
+  pub_section="$(sed -n '/<section id="publication">/,/<\/section>/p' "$page")"
+  [ -n "$pub_section" ] || {
+    echo "FAIL: no publication section found in design-lifecycle.html" >&2; return 1
+  }
+  printf '%s' "$pub_section" | grep -qiE 'design-last-published|persisted manifest|persist' || {
+    echo "FAIL: publication section should describe the persisted manifest" >&2; return 1
+  }
+}
+
+@test "(AC1) create-ux Step 10 documents remote-listing hash computation from get_file" {
+  local skill_md="$PLUGIN_ROOT/skills/gaia-create-ux/SKILL.md"
+  [ -s "$skill_md" ] || {
+    echo "FAIL: gaia-create-ux SKILL.md missing or empty" >&2; return 1
+  }
+  # The Publication step block must describe sha256 hash computation from get_file
+  local block
+  block="$(awk '/^### Step.*Publication/{found=1} found{print} found && /^### Step/ && !/Publication/{exit}' "$skill_md")"
+  [ -n "$block" ] || {
+    echo "FAIL: no Publication step block in SKILL.md" >&2; return 1
+  }
+  printf '%s' "$block" | grep -qiF 'sha256' || {
+    echo "FAIL: Publication step should mention sha256 hash computation" >&2; return 1
+  }
+  printf '%s' "$block" | grep -qF 'get_file' || {
+    echo "FAIL: Publication step should mention get_file for hash computation" >&2; return 1
+  }
+}
