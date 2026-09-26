@@ -54,7 +54,7 @@ _extract_between_stale_end_and_step8_af() {
 
 # _extract_cascade_matrix — extract the cascade matrix table from add-feature.
 _extract_cascade_matrix() {
-  awk '/^## Cascade Matrix/{p=1} p && /^## [^C]/{exit} p' "$SKILL_MD_AF"
+  awk '/^## Cascade Matrix/{p=1} p && /^## / && !/^## Cascade Matrix/{exit} p' "$SKILL_MD_AF"
 }
 
 # _extract_attestation_block — extract the attestation block from a SKILL.md.
@@ -493,7 +493,7 @@ _extract_step10_createux() {
   [ -n "$block_ux" ] || fail "attestation block missing from edit-ux"
 
   diff <(printf '%s' "$block_af") <(printf '%s' "$block_ux") >/dev/null 2>&1 \
-    || fail "attestation blocks differ before any S17 change — pre-existing drift"
+    || fail "attestation blocks differ before any republish-on-stale change — pre-existing drift"
 }
 
 # G2: stale marker precedes Step 8 in add-feature (green before change)

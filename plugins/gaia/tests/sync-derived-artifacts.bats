@@ -1343,34 +1343,10 @@ UX
       {"name":"S2","file":"screens/s2.spec.html","content":$c2}
     ]}' > "$snapshot"
 
-  # Create shim sha256sum/shasum that fails on the 3rd call
-  local shim_dir="$root/shim-bin"
-  mkdir -p "$shim_dir"
-  local counter_file="$root/sha_call_count"
-  printf '0\n' > "$counter_file"
+  # Shim hash command: fail after the 1st call (the 2nd screen's hash)
+  _create_hash_shim "$root/shim-bin" "$root/sha_call_count" 1
 
-  # Determine which hash command the script will use
-  local real_hash_cmd
-  if command -v sha256sum >/dev/null 2>&1; then
-    real_hash_cmd="sha256sum"
-  else
-    real_hash_cmd="shasum"
-  fi
-
-  cat > "$shim_dir/$real_hash_cmd" <<SHIM
-#!/usr/bin/env bash
-count=\$(cat "$counter_file")
-count=\$((count + 1))
-printf '%d\n' "\$count" > "$counter_file"
-if [ "\$count" -gt 1 ]; then
-  printf 'FORCED HASH FAILURE\n' >&2
-  exit 1
-fi
-exec "$(command -v "$real_hash_cmd")" "\$@"
-SHIM
-  chmod +x "$shim_dir/$real_hash_cmd"
-
-  PATH="$shim_dir:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
+  PATH="$root/shim-bin:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
     "$snapshot" "$doc_dir/ux-design.md"
 
   # Must exit non-zero (the forced failure triggers set -e)
@@ -1669,10 +1645,64 @@ UX
 
 
 # =========================================================================
+# Pipe character in component name escaped in table cell (AC-EC4)
+# =========================================================================
+
+@test "(AC-EC4) pipe in component name escaped as table cell" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top |
+
+## 9. Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","Input|Output"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The pipe must be escaped as \| in the table cell
+  grep -qF 'Input\|Output' "$doc_dir/ux-design.md" || \
+    fail "pipe character not escaped in table cell"
+
+  # The table column count must be unchanged (3 columns).
+  # Count unescaped pipe delimiters on the inserted row. The escaped \|
+  # must not count as a column separator.
+  local inserted_row
+  inserted_row="$(grep 'Input' "$doc_dir/ux-design.md")"
+  # Remove escaped pipes, then count unescaped pipes minus 1
+  local unescaped
+  unescaped="$(printf '%s' "$inserted_row" | sed 's/\\|//g')"
+  local col_count
+  col_count="$(printf '%s' "$unescaped" | awk '{print gsub(/\|/,"|") - 1}')"
+  [ "$col_count" -eq 3 ] || \
+    fail "table column count changed from 3 to $col_count after inserting pipe-containing name"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
 # Wrong snapshot shape rejected
 # =========================================================================
 
-@test "(AC-EC4) components with object elements rejected" {
+@test "snapshot with object component elements rejected" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
@@ -1713,7 +1743,7 @@ UX
   rm -rf "$root"
 }
 
-@test "(AC-EC4) components with number element rejected" {
+@test "snapshot with number component element rejected" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
@@ -1754,7 +1784,7 @@ UX
   rm -rf "$root"
 }
 
-@test "(AC-EC4) components as a string rejected" {
+@test "snapshot with components as bare string rejected" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
@@ -1795,7 +1825,7 @@ UX
   rm -rf "$root"
 }
 
-@test "(AC-EC7) screens as an object rejected" {
+@test "snapshot with screens as object rejected" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
