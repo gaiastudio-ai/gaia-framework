@@ -43,6 +43,32 @@ PARSE_FORCE_DESIGN="$PLUGIN_SCRIPTS_DIR/lib/parse-force-design.sh"
 . "$PARSE_FORCE_DESIGN"
 _parse_force_design "$@"; set -- "${_PFD_REMAINING[@]+"${_PFD_REMAINING[@]}"}"
 
+# Project root resolution: env vars, then resolve-config.sh project_root
+# (absolute values only), then walk up from $PWD to the .gaia/config/
+# project-config.yaml anchor (stopping at $HOME), then $PWD as last resort.
+# Resolved before the design gate so it sees the correct project tree.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-}}}"
+if [ -z "$PROJECT_ROOT" ]; then
+  if [ -x "$RESOLVE_CONFIG" ]; then
+    _rc_out="$("$RESOLVE_CONFIG" project_root 2>/dev/null || printf '')"
+    case "${_rc_out:-}" in
+      /*) PROJECT_ROOT="$_rc_out" ;;
+    esac
+  fi
+fi
+if [ -z "$PROJECT_ROOT" ]; then
+  _walk="$PWD"
+  while [ -n "$_walk" ] && [ "$_walk" != "/" ] && [ "$_walk" != "${HOME:-}" ]; do
+    if [ -f "${_walk}/.gaia/config/project-config.yaml" ]; then
+      PROJECT_ROOT="$_walk"
+      break
+    fi
+    _walk="$(dirname "$_walk")"
+  done
+fi
+PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
+export PROJECT_ROOT
+printf 'project_root=%s\n' "$PROJECT_ROOT" >&2
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
@@ -82,31 +108,7 @@ else
 fi
 
 # ---------- 2b. Guard: architecture.md must already exist ----------
-# Three-tier idiom for project root resolution.
-# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
-# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
-# walk-up. On a marketplace/cache-installed plugin
-# (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
-# 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
-# and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
-# provided env vars first restores the project anchor that callers actually
-# rely on. The walk-up remains as the final fallback for in-source-tree dev
-# (gaia-framework/ checkout) where neither env var is set.
-# Extension: when none of the env-var anchors are set,
-# try `resolve-config.sh --field project_root` BEFORE the walk-up fallback.
-# resolve-config locates the canonical .gaia/config/project-config.yaml (it
-# searches upward from $PWD), so when the user is inside their project and
-# the harness has not exported CLAUDE_PROJECT_ROOT, the resolver still anchors
-# to the right tree. Walk-up only fires when resolve-config also fails.
-_resolved_root=""
-if [ -z "${PROJECT_ROOT:-}" ] && [ -z "${CLAUDE_PROJECT_ROOT:-}" ] && [ -z "${GAIA_PROJECT_ROOT:-}" ]; then
-  _RESOLVE_CONFIG="$SKILL_DIR/../../../scripts/resolve-config.sh"
-  if [ -x "$_RESOLVE_CONFIG" ]; then
-    _resolved_root="$("$_RESOLVE_CONFIG" --field project_root 2>/dev/null || true)"
-  fi
-fi
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-${_resolved_root:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}}"
-unset _resolved_root
+# PROJECT_ROOT was resolved at script entry (before the design gate).
 if [ -z "${ARCH_PATH:-}" ]; then
   if [ -f "$PROJECT_ROOT/docs/planning-artifacts/architecture.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/planning-artifacts" ]; then
     ARCH_PATH="$PROJECT_ROOT/docs/planning-artifacts/architecture.md"

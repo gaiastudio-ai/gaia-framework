@@ -573,6 +573,7 @@ scripts-core	run-tests.bats
 scripts-core	run-with-retry.bats
 scripts-core	sarif-multitool-merge.bats
 scripts-core	selective-test-driver.bats
+scripts-core	setup-root-resolution.bats
 scripts-core	skill-dispatch-memory-load.bats
 scripts-core	skill-md-claude-skill-dir-anti-pattern.bats
 scripts-core	skills/e117-s5-stack-dev-parity.bats
