@@ -683,15 +683,12 @@ UX
 # Screen change reported with boundary markers (AC3)
 # =========================================================================
 
-# Helper: compute sha256 of a string (jq -j style, no trailing newline)
-_sha256_string() {
-  printf '%s' "$1" | {
-    if command -v sha256sum >/dev/null 2>&1; then
-      sha256sum | awk '{print $1}'
-    else
-      shasum -a 256 | awk '{print $1}'
-    fi
-  }
+# _write_screen_file DIR NAME BODY — write a realistic screen spec file
+# with a trailing newline (as a real file would have).
+_write_screen_file() {
+  local dir="$1" name="$2" body="$3"
+  mkdir -p "$dir"
+  printf '%s\n' "$body" > "$dir/$name"
 }
 
 @test "(AC3) screen change reported with boundary markers" {
@@ -719,22 +716,21 @@ UX
   local sha_before
   sha_before="$(_sha256_file "$ux_doc")"
 
-  # Build a baseline with an OLD hash for the screen
-  local old_content="old screen content"
+  # Write a realistic screen file with trailing newline, then hash the FILE
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "old-home.spec.html" "<h1>Old Home</h1>"
   local old_hash
-  old_hash="$(_sha256_string "$old_content")"
+  old_hash="$(_sha256_file "$screens_dir/old-home.spec.html")"
 
   local baseline="$root/baseline.json"
   jq -n --arg f "screens/home.spec.html" --arg h "$old_hash" \
     '[{"file": $f, "hash": $h}]' > "$baseline"
 
-  # Build a snapshot with a screen whose content differs
-  local new_content="new screen content with changes"
+  # Write a DIFFERENT screen file and build the snapshot via --rawfile
+  _write_screen_file "$screens_dir" "new-home.spec.html" "<h1>New Home</h1>"
   local snapshot="$root/snapshot.json"
-  jq -n --arg name "Home Screen" \
-        --arg file "screens/home.spec.html" \
-        --arg content "$new_content" \
-    '{"components":[],"screens":[{"name":$name,"file":$file,"content":$content}]}' > "$snapshot"
+  jq -n --rawfile c "$screens_dir/new-home.spec.html" \
+    '{"components":[],"screens":[{"name":"Home Screen","file":"screens/home.spec.html","content":$c}]}' > "$snapshot"
 
   run "$SYNC_SCRIPT" --last-published "$baseline" \
     "$snapshot" "$ux_doc"
@@ -748,7 +744,7 @@ UX
     fail "missing closing boundary marker: $output"
 
   # Must contain the screen content
-  [[ "$output" == *"$new_content"* ]] || \
+  [[ "$output" == *"<h1>New Home</h1>"* ]] || \
     fail "screen content not in report: $output"
 
   # Must NOT contain false "added component" lines
@@ -771,7 +767,7 @@ UX
 # Unchanged screens produce no report (AC-EC5)
 # =========================================================================
 
-@test "(AC-EC5) unchanged screens produce no report" {
+@test "(AC-EC5) unchanged screen with trailing newline produces no report" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
@@ -792,32 +788,36 @@ template: ux-design
 ## Design Record Reference
 UX
 
-  local screen_content="unchanged screen body"
-  local screen_hash
-  screen_hash="$(_sha256_string "$screen_content")"
+  # Write realistic screen files WITH trailing newlines, hash the FILES
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "settings.spec.html" "<h1>Settings</h1>\n<p>Preferences</p>"
+  _write_screen_file "$screens_dir" "profile.spec.html" "<h1>Profile</h1>\n<p>User info</p>"
 
-  # Baseline with matching hash
+  local hash_settings hash_profile
+  hash_settings="$(_sha256_file "$screens_dir/settings.spec.html")"
+  hash_profile="$(_sha256_file "$screens_dir/profile.spec.html")"
+
+  # Baseline with the FILE hashes (these include the trailing newline)
   local baseline="$root/baseline.json"
-  jq -n --arg f "screens/settings.spec.html" --arg h "$screen_hash" \
-        --arg f2 "screens/profile.spec.html" --arg h2 "$screen_hash" \
-    '[{"file": $f, "hash": $h}, {"file": $f2, "hash": $h2}]' > "$baseline"
+  jq -n --arg f1 "screens/settings.spec.html" --arg h1 "$hash_settings" \
+        --arg f2 "screens/profile.spec.html" --arg h2 "$hash_profile" \
+    '[{"file": $f1, "hash": $h1}, {"file": $f2, "hash": $h2}]' > "$baseline"
 
-  # Snapshot with same content (hash will match)
+  # Build snapshot with identical content via --rawfile (preserves exact bytes)
   local snapshot="$root/snapshot.json"
-  jq -n --arg c "$screen_content" \
+  jq -n --rawfile c1 "$screens_dir/settings.spec.html" \
+        --rawfile c2 "$screens_dir/profile.spec.html" \
     '{"components":["nav"],"screens":[
-      {"name":"Settings","file":"screens/settings.spec.html","content":$c},
-      {"name":"Profile","file":"screens/profile.spec.html","content":$c}
+      {"name":"Settings","file":"screens/settings.spec.html","content":$c1},
+      {"name":"Profile","file":"screens/profile.spec.html","content":$c2}
     ]}' > "$snapshot"
 
   run "$SYNC_SCRIPT" --last-published "$baseline" \
     "$snapshot" "$doc_dir/ux-design.md"
 
-  # The script must accept --last-published as a named flag.
-  # Current code treats it as a positional arg and fails.
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
-  # No screen report (no boundary markers, no "screen" in output)
+  # No screen report (no boundary markers, no screen-changed lines)
   [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
     fail "boundary markers present for unchanged screens: $output"
   local screen_count
@@ -996,8 +996,12 @@ UX
   local baseline="$root/baseline.json"
   printf '[]\n' > "$baseline"
 
+  # Write screen file and build snapshot via --rawfile
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "new.spec.html" "<h1>Brand New</h1>"
   local snapshot="$root/snapshot.json"
-  jq -n '{"components":["nav"],"screens":[{"name":"New Screen","file":"screens/new.spec.html","content":"brand new content"}]}' > "$snapshot"
+  jq -n --rawfile c "$screens_dir/new.spec.html" \
+    '{"components":["nav"],"screens":[{"name":"New Screen","file":"screens/new.spec.html","content":$c}]}' > "$snapshot"
 
   run "$SYNC_SCRIPT" --last-published "$baseline" \
     "$snapshot" "$doc_dir/ux-design.md"
