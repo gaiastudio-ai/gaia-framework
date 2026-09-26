@@ -168,15 +168,14 @@ After all stakeholder verdicts are recorded (or the loop is halted by escalation
 
 ### Step 6 — Delta sync (reconcile designer changes)
 
-Reconcile designer-side changes from the project into the derived artifacts.
+Reconcile designer-side component changes from the project into the derived artifacts. Screen changes are reported to the user for manual review, not auto-edited.
 
-1. Read the project's component inventory and screen specifications via `get_project` / `list_files`.
+1. Read the project's component inventory and screen content via `get_project` / `list_files` / `get_file`. For screens, read each screen's full content via `get_file` (not only from `list_files` metadata).
 2. Diff against the corresponding sections in `${PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/ux-design.md`:
-   - The "Design Record Reference" section
-   - The "Component Inventory" section
-   - The "Screen Specifications" sections that trace to project content
-3. Apply field-level updates via Edit for components or screens that are present in the project but missing from `ux-design.md`.
-4. Invoke `scripts/sync-derived-artifacts.sh` with the project snapshot and the `ux-design.md` path to perform the reconciliation.
+   - The "8. Components & Design System" or "8. Components and Design System" section (the template heading, case-insensitive, with optional number prefix)
+   - The "5. Wireframe Descriptions" section (read-only — screen prose is reported to the user, not auto-edited)
+3. Apply field-level updates via Edit for components that are present in the project but missing from `ux-design.md`. Screen changes are reported to the user with their full content for manual review.
+4. Build the snapshot as `{"components":["..."], "screens":[{"name":"...","file":"...","content":"..."}]}`. Run `scripts/sync-derived-artifacts.sh --last-published "${PROJECT_ROOT}/.gaia/state/design-last-published.json" <snapshot> <ux-design.md>` to perform the reconciliation. The script matches both the `## N. Components & Design System` and `## N. Components and Design System` headings (case-insensitive, optional number prefix), with `## Component Inventory` as a legacy fallback. A non-zero exit is reported without aborting the review.
 5. Never silently delete: a component removed designer-side is reported, not dropped from the doc.
 
 ### Step 7 — Iteration loop
