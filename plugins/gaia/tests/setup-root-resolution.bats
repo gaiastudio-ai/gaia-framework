@@ -373,7 +373,8 @@ STUB
 
   local fake_scripts="$TEST_TMP/shim-tree/scripts"
   local alt_root="$TEST_TMP/alt-root"
-  mkdir -p "$alt_root"
+  # Seed a config at alt_root so the real design gate finds it and passes.
+  _seed_fixture_project "$alt_root"
 
   cat > "$fake_scripts/resolve-config.sh" << STUB
 #!/usr/bin/env bash
