@@ -141,6 +141,17 @@ _extract_step10_createux() {
   [ "$row_count" -ge 8 ] \
     || fail "cascade matrix has $row_count pipe-rows; expected at least 8 (header + 7 data rows)"
 
+  # Sub-scenario: Step 7b exists with republish for enhancement/feature path
+  grep -qF '### Step 7b' "$SKILL_MD_AF" \
+    || fail "Step 7b heading missing from add-feature SKILL.md"
+
+  local step7b
+  step7b="$(awk '/^### Step 7b/{p=1} p && /^### Step [^7]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$step7b" ] || fail "Step 7b section empty in add-feature SKILL.md"
+
+  printf '%s' "$step7b" | grep -qF 'plan-publication.sh' \
+    || fail "Step 7b does not reference plan-publication.sh"
+
   # Sub-scenario: republish text between stale-transition end and Step 8
   local between
   between="$(_extract_between_stale_end_and_step8_af)"
