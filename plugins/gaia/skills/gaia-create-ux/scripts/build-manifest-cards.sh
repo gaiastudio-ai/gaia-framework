@@ -42,40 +42,88 @@ build_manifest_cards() {
   [ -n "$local_specs" ] || _bmc_die "build_manifest_cards: --local-specs required"
   [ -n "$existing" ]    || _bmc_die "build_manifest_cards: --existing required"
 
-  # 1. Scan spec files for @dsCard annotations
-  local spec_cards_json="[]"
-  local spec_paths_json="[]"
-  local subdir file first_line group rel_path
+  # 1. Scan spec files for @dsCard annotations in a single pass.
+  # Collect file paths into an array, then one awk invocation reads line 1
+  # of every file and emits TSV. No per-file fork for head/sed/grep.
+  local spec_files=()
+  local subdir
   for subdir in screens components; do
     local scan_dir="${local_specs}/${subdir}"
     [ -d "$scan_dir" ] || continue
+    local file
     for file in "$scan_dir"/*.spec.html; do
       [ -f "$file" ] || continue
-      rel_path="${subdir}/$(basename "$file")"
-      first_line="$(head -1 "$file")"
-      # Extract group from <!-- @dsCard group="..." -->
-      if printf '%s' "$first_line" | grep -qE '^<!-- @dsCard group="[^"]*" -->'; then
-        group="$(printf '%s' "$first_line" | sed -n 's/.*@dsCard group="\([^"]*\)".*/\1/p')"
-        spec_cards_json="$(printf '%s' "$spec_cards_json" | jq --arg p "$rel_path" --arg g "$group" '. + [{"path": $p, "group": $g}]')"
-        spec_paths_json="$(printf '%s' "$spec_paths_json" | jq --arg p "$rel_path" '. + [$p]')"
-      else
-        printf 'build-manifest-cards.sh: skipping %s — missing or malformed @dsCard annotation\n' "$rel_path" >&2
-      fi
+      spec_files=("${spec_files[@]+"${spec_files[@]}"}" "$file")
     done
   done
 
-  # 2. Build framework-owned set: union of current local specs + prior published paths
-  local fw_owned_json="$spec_paths_json"
-  if [ "$last_published" != "/dev/null" ] && [ -f "$last_published" ] && [ -s "$last_published" ]; then
-    local prior_paths
-    prior_paths="$(jq -r '.[].file' "$last_published" 2>/dev/null || true)"
-    if [ -n "$prior_paths" ]; then
-      while IFS= read -r rel_path; do
-        [ -n "$rel_path" ] || continue
-        fw_owned_json="$(printf '%s' "$fw_owned_json" | jq --arg p "$rel_path" 'if (. | index($p)) then . else . + [$p] end')"
-      done <<< "$prior_paths"
+  local scan_tsv="" diag_file=""
+  if [ "${#spec_files[@]}" -gt 0 ]; then
+    diag_file="$(mktemp "${TMPDIR:-/tmp}/bmc_diag.XXXXXX")"
+
+    # One awk reads FNR==1 of each file. BSD awk safe: no match() capture
+    # groups, no nextfile (we skip remaining lines with FNR>1 guard).
+    # Emits TSV (rel_path<TAB>group) to stdout, diagnostics to diag_file.
+    scan_tsv="$(awk -v spec_root="$local_specs/" -v diag="$diag_file" '
+      FNR == 1 {
+        path = FILENAME
+        sub(spec_root, "", path)
+        # Reject tabs in relative path
+        if (index(path, "\t") > 0) {
+          print "DIAG\t" path > diag
+          next
+        }
+        # Extract @dsCard group value
+        if (match($0, /@dsCard group="/)) {
+          rest = substr($0, RSTART + 15)
+          qpos = index(rest, "\"")
+          if (qpos > 1) {
+            grp = substr(rest, 1, qpos - 1)
+            print path "\t" grp
+          } else {
+            print "SKIP\t" path > diag
+          }
+        } else {
+          print "SKIP\t" path > diag
+        }
+      }
+    ' "${spec_files[@]}")" || true
+
+    # Emit diagnostics
+    if [ -s "$diag_file" ]; then
+      while IFS='	' read -r dtype dpath; do
+        [ -n "$dtype" ] || continue
+        if [ "$dtype" = "DIAG" ]; then
+          printf 'build-manifest-cards.sh: rejecting %s — tab in filename\n' "$dpath" >&2
+        elif [ "$dtype" = "SKIP" ]; then
+          printf 'build-manifest-cards.sh: skipping %s — missing or malformed @dsCard annotation\n' "$dpath" >&2
+        fi
+      done < "$diag_file"
     fi
+    rm -f "$diag_file"
   fi
+
+  # Build spec_cards_json and spec_paths_json from TSV in one jq call
+  local spec_cards_json spec_paths_json
+  if [ -n "$scan_tsv" ]; then
+    spec_cards_json="$(printf '%s' "$scan_tsv" | jq -R '
+      split("\t") | select(length == 2) | {path: .[0], group: .[1]}
+    ' | jq -s '.')"
+    spec_paths_json="$(printf '%s' "$spec_cards_json" | jq '[.[].path]')"
+  else
+    spec_cards_json="[]"
+    spec_paths_json="[]"
+  fi
+
+  # 2. Build framework-owned set: union of current local specs + prior published paths.
+  # Single jq call merges both arrays and deduplicates.
+  local prior_paths_json="[]"
+  if [ "$last_published" != "/dev/null" ] && [ -f "$last_published" ] && [ -s "$last_published" ]; then
+    prior_paths_json="$(jq '[.[].file]' "$last_published" 2>/dev/null || printf '[]')"
+  fi
+  local fw_owned_json
+  fw_owned_json="$(jq -n --argjson specs "$spec_paths_json" --argjson prior "$prior_paths_json" \
+    '$specs + $prior | unique')"
 
   # 3. Parse existing manifest (fail-replace on corruption)
   local existing_json='{"cards":[]}'
