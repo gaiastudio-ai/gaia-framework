@@ -32,13 +32,26 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; return 1; }
 
 # _extract_step_block FILE KEYWORD — extract a ### Step block, stripping
 # HTML comments (single-line and multi-line) so comment-spoofed keywords
-# cannot satisfy structural assertions.
+# cannot satisfy structural assertions.  Comments inside backtick code
+# spans (e.g. `<!-- @dsCard ... -->`) are preserved so that assertions
+# on documented syntax examples are not defeated by the stripping.
 _extract_step_block() {
   local file="$1" keyword="$2"
   awk -v kw="$keyword" '
     /^### Step/ { if (found) exit; if (index($0, kw)) found=1 }
     found { print }
-  ' "$file" | sed 's/<!--.*-->//g; /<!--/,/-->/d'
+  ' "$file" | sed '
+    # Protect backtick-enclosed HTML comments: replace <!-- inside `...`
+    # with a placeholder so the next rule does not strip them.
+    s/`\([^`]*\)<!--\([^`]*\)-->\([^`]*\)`/`\1\x01COMMENT_OPEN\x01\2\x01COMMENT_CLOSE\x01\3`/g
+    # Strip bare (non-backtick) single-line HTML comments
+    s/<!--.*-->//g
+    # Strip multi-line HTML comments
+    /<!--/,/-->/d
+    # Restore protected comments
+    s/\x01COMMENT_OPEN\x01/<!--/g
+    s/\x01COMMENT_CLOSE\x01/-->/g
+  '
 }
 
 # _assert_not_in_file PATTERN FILE [CONTEXT] — fail when PATTERN is found.
@@ -998,4 +1011,63 @@ Read the project files and use them."
   read_count="$(printf '%s\n' "$output" | grep -c '^READ_FIRST ' || true)"
   [ "$write_count" -eq 500 ] || fail "expected 500 WRITE lines, got $write_count"
   [ "$read_count" -eq 500 ] || fail "expected 500 READ_FIRST lines, got $read_count"
+}
+
+# ===========================================================================
+# Manifest refresh and persisted publication manifest
+# ===========================================================================
+
+@test "(AC1) publication plan includes bare REFRESH_MANIFEST as final line" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":"screens/login.spec.html","hash":"aaa"},{"file":"components/button.spec.html","hash":"bbb"}]' \
+    '[{"file":"screens/login.spec.html","hash":"old-aaa"},{"file":"components/button.spec.html","hash":"old-bbb"}]' \
+    '[{"file":"screens/login.spec.html","hash":"old-aaa"},{"file":"components/button.spec.html","hash":"old-bbb"}]'
+  _run_pub
+  [ "$status" -eq 0 ]
+  # Last non-empty line must be bare REFRESH_MANIFEST (no arguments)
+  local last_line
+  last_line="$(printf '%s\n' "$output" | grep -v '^$' | tail -1)"
+  [ "$last_line" = "REFRESH_MANIFEST" ] || fail "last line is '$last_line', expected 'REFRESH_MANIFEST'"
+}
+
+@test "(AC1) Step 10 prose documents REFRESH_MANIFEST execution" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  printf '%s' "$block" | grep -qF 'REFRESH_MANIFEST' || fail "REFRESH_MANIFEST not in Publication step"
+  printf '%s' "$block" | grep -qF 'register_assets' || fail "register_assets not in Publication step"
+  printf '%s' "$block" | grep -qF 'build-manifest-cards' || fail "build-manifest-cards not in Publication step"
+}
+
+@test "(AC1) Step 10 prose documents dsCard annotation on spec files" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  printf '%s' "$block" | grep -qF '@dsCard' || fail "@dsCard not in Publication step"
+  printf '%s' "$block" | grep -qF 'group=' || fail "group= not in Publication step"
+}
+
+@test "(AC-EC1) REFRESH_MANIFEST appears even when all files are SKIP_UNCHANGED" {
+  [ -x "$SKILL_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]' \
+    '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]' \
+    '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]'
+  _run_pub
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SKIP_UNCHANGED"* ]] || fail "expected SKIP_UNCHANGED in output"
+  [[ "$output" == *"REFRESH_MANIFEST"* ]] || fail "expected REFRESH_MANIFEST in output"
+}
+
+@test "(AC2) Step 10 prose documents design-last-published.json path" {
+  grep -qF 'design-last-published.json' "$SKILL_MD" || fail "design-last-published.json not in SKILL.md"
+  grep -qF '.gaia/state/' "$SKILL_MD" || fail ".gaia/state/ not in SKILL.md"
+}
+
+@test "(AC3) Step 10 references design-last-published.json for --last-published argument" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  printf '%s' "$block" | grep -qF 'design-last-published.json' || fail "design-last-published.json not in Publication step --last-published context"
 }
