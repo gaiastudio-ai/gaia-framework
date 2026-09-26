@@ -534,9 +534,13 @@ CMDS_END
   grep -qF '.gaia/custom/stakeholders' "$page" || {
     echo "FAIL: gaia-design-review.html should name .gaia/custom/stakeholders/ roster location" >&2; return 1
   }
-  # Must name BOTH roster locations (the merged roster)
-  grep -qF 'custom/stakeholders' "$page" || {
-    echo "FAIL: gaia-design-review.html should name custom/stakeholders/ roster location" >&2; return 1
+  # Must name the root roster location independently (not just as a substring
+  # of .gaia/custom/stakeholders). Extract all custom/stakeholders occurrences
+  # and verify at least one is NOT preceded by .gaia/
+  local root_roster_count
+  root_roster_count="$(grep -oE '([^ <>"]*custom/stakeholders)' "$page" | grep -vcF '.gaia/' || true)"
+  [ "$root_roster_count" -gt 0 ] || {
+    echo "FAIL: gaia-design-review.html should name root custom/stakeholders/ independently (all occurrences are under .gaia/)" >&2; return 1
   }
   grep -qF '/gaia-create-stakeholder' "$page" || {
     echo "FAIL: gaia-design-review.html should name /gaia-create-stakeholder as remediation" >&2; return 1
