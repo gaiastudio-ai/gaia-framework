@@ -113,6 +113,14 @@
           captures who created the specification, when it was published, and
           which version of the source it was built from.
         </p>
+        <p>
+          Each publication pass persists the file set and content hashes at
+          <code>.gaia/state/design-last-published.json</code>. This persisted
+          manifest is read on subsequent publications for conflict detection
+          and orphan identification. The design-system manifest
+          (<code>_ds_manifest.json</code>) is rebuilt after each publication so
+          that every published specification appears as a browsable card.
+        </p>
       </section>
 
       <section id="review">

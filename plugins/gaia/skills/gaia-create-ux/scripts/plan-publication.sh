@@ -11,6 +11,7 @@
 #   CONFLICT <file> designer_hash=<hash> framework_hash=<hash>
 #                           — designer edited since last publish; surface to user
 #   DELETE_ORPHAN <file>    — remove a framework-published file no longer needed
+#   REFRESH_MANIFEST        — rebuild the design-system manifest from the published set
 #
 # Security: every filename in all three inputs is validated. Absolute paths,
 # path-traversal segments (../), empty names, and control characters (including
@@ -148,3 +149,6 @@ jq -r --argjson remote "$REMOTE_JSON" --argjson published "$PUBLISHED_JSON" '
 
   | .[]
 ' "$LOCAL_MANIFEST"
+
+# Unconditional: rebuild the design-system manifest from the published set
+printf '%s\n' 'REFRESH_MANIFEST'
