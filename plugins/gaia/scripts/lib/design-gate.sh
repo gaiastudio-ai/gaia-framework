@@ -150,8 +150,8 @@ _dg_validate_reason() {
 # ---------------------------------------------------------------------------
 
 # _dg_evaluate_state DESIGN_STATE DREC_SCRIPT PROJECT_ROOT — evaluate the
-# state and convergence. Returns 0 (pass), 1 (fail with state_remediation
-# printed to stdout), or exits the caller on vacuous-convergence pass.
+# state and convergence. Returns 0 (pass) or 1 (fail with state_remediation
+# printed to stdout). Vacuous convergence returns 1 (fail closed).
 _dg_evaluate_state() {
   local design_state="$1" drec_script="$2" project_root="$3"
 
@@ -180,14 +180,14 @@ _dg_evaluate_state() {
       conv_output="$("$drec_script" check-convergence 2>&1)" || conv_rc=$?
 
       # MUTANT-ANCHOR: iteration-check
-      if [ "$conv_rc" -ne 0 ]; then
+      # Vacuous convergence tested first — it is a distinct failure mode with
+      # its own remediation (create a design/ux-tagged stakeholder).
+      if printf '%s\n' "$conv_output" | grep -q "vacuous-convergence"; then
+        printf '%s' "The design approval is vacuous — no design/ux-tagged stakeholder in the roster. Create one with /gaia-create-stakeholder using a design or ux tag, then re-run the review."
+        return 1
+      elif [ "$conv_rc" -ne 0 ]; then
         printf '%s' "The design is approved but not all required stakeholders have approved the current iteration. Complete approvals, or use --force-design with a reason to override."
         return 1
-      elif printf '%s\n' "$conv_output" | grep -q "vacuous-convergence"; then
-        # Vacuous convergence: no design/ux-tagged stakeholders in the roster.
-        # Pass with a warning so the condition is surfaced, not silent.
-        printf '%s\n' "$conv_output" >&2
-        return 0
       fi
       # Approved and converged — pass. The common approved case is a pure
       # local read with no external dependency.
