@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# plan-publication.sh — publication operation planner for /gaia-create-ux.
+# plan-publication.sh — publication operation planner for screen-specification
+# publication (create-ux) and republication on stale (edit-ux, add-feature).
 #
 # Takes a local specification manifest, a remote project file listing, and a
 # last-published manifest. Emits an ordered operation plan on stdout.
