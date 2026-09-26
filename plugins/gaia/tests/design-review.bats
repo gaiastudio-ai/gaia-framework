@@ -1131,6 +1131,18 @@ BOUNDARY
   # Must limit field-level updates to components (not screens)
   printf '%s' "$step6" | grep -qiE 'screen.*(report|manual|not auto)' || \
     fail "Step 6 should state that screen changes are reported, not auto-edited"
+
+  # Must document the snapshot shape with both "components" and "screens" keys
+  printf '%s' "$step6" | grep -qF '"components"' || \
+    fail "Step 6 should document the snapshot shape with a \"components\" key"
+  printf '%s' "$step6" | grep -qF '"screens"' || \
+    fail "Step 6 should document the snapshot shape with a \"screens\" key"
+
+  # Must pass --last-published with the canonical baseline path
+  printf '%s' "$step6" | grep -qF 'design-last-published.json' || \
+    fail "Step 6 should reference design-last-published.json as the baseline"
+  printf '%s' "$step6" | grep -qF -- '--last-published' || \
+    fail "Step 6 should pass --last-published to the sync script"
 }
 
 

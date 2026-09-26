@@ -715,6 +715,10 @@ template: ux-design
 ## 9. Design Record Reference
 UX
 
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
   # Build a baseline with an OLD hash for the screen
   local old_content="old screen content"
   local old_hash
@@ -733,7 +737,7 @@ UX
     '{"components":[],"screens":[{"name":$name,"file":$file,"content":$content}]}' > "$snapshot"
 
   run "$SYNC_SCRIPT" --last-published "$baseline" \
-    "$snapshot" "$doc_dir/ux-design.md"
+    "$snapshot" "$ux_doc"
 
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
@@ -752,6 +756,12 @@ UX
   added_count="$(printf '%s\n' "$output" | grep -c 'added component' || true)"
   [ "$added_count" -eq 0 ] || \
     fail "false 'added component' lines for screen-only sync ($added_count)"
+
+  # UX doc must be byte-unchanged (screen changes are reported, not written)
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "UX doc changed during screen reporting: sha $sha_before -> $sha_after"
 
   rm -rf "$root"
 }
@@ -886,11 +896,15 @@ template: ux-design
 ## Design Record Reference
 UX
 
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
   # Snapshot with screens but NO components key
   local snapshot="$root/snapshot.json"
   jq -n '{"screens":[{"name":"Home","file":"screens/home.spec.html","content":"home body"}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
 
   [ "$status" -eq 0 ] || \
     fail "should exit 0 with screens-only snapshot (exit $status): $output"
@@ -898,6 +912,12 @@ UX
   # Screen report should be produced
   [[ "$output" == *"Home"* ]] || \
     fail "screen report should mention the screen name: $output"
+
+  # UX doc must be byte-unchanged (screens are reported, not written)
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "UX doc changed during screen-only sync: sha $sha_before -> $sha_after"
 
   rm -rf "$root"
 }
