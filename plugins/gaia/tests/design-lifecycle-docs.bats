@@ -595,6 +595,36 @@ CMDS_END
   }
 }
 
+# =========================================================================
+# Delta sync — doc page describes screen reporting
+# =========================================================================
+
+@test "(AC4) design-review doc page describes screen reporting in delta sync" {
+  local doc_page="$DOC_DIR/commands/gaia-design-review.html"
+  [ -s "$doc_page" ] || {
+    echo "FAIL: documentation page missing or empty: $doc_page" >&2; return 1
+  }
+
+  # Extract the delta sync step-list item
+  local delta_li
+  delta_li="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$doc_page" \
+    | sed 's/<li>/\n<li>/g' \
+    | grep -i 'delta sync' \
+    | head -1)"
+  [ -n "$delta_li" ] || {
+    echo "FAIL: no delta sync step-list item found in design-review doc page" >&2; return 1
+  }
+
+  # Must mention "screen" and "reported" (not auto-edited)
+  printf '%s' "$delta_li" | grep -qi 'screen' || {
+    echo "FAIL: delta sync step should mention screen changes: $delta_li" >&2; return 1
+  }
+  printf '%s' "$delta_li" | grep -qiE 'report|manual' || {
+    echo "FAIL: delta sync step should mention that screen changes are reported: $delta_li" >&2; return 1
+  }
+}
+
+
 @test "(AC1) create-ux Step 10 documents remote-listing hash computation from get_file" {
   local skill_md="$PLUGIN_ROOT/skills/gaia-create-ux/SKILL.md"
   [ -s "$skill_md" ] || {

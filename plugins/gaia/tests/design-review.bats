@@ -1094,6 +1094,46 @@ BOUNDARY
 # Fail-closed approval gate — scope boundary
 # =========================================================================
 
+# =========================================================================
+# (AC4) Step 6 heading references and component-only edit scope
+# =========================================================================
+
+@test "(AC4) Step 6 names template heading variants and Wireframe Descriptions" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  # Extract Step 6 block
+  local step6
+  step6="$(awk '/^### Step 6/{found=1} found && /^### Step [^6]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step6" ] || fail "Step 6 not found in SKILL.md"
+
+  # Must name at least one template heading variant
+  local has_template=false
+  if printf '%s' "$step6" | grep -qiF 'Components & Design System'; then
+    has_template=true
+  fi
+  if printf '%s' "$step6" | grep -qiF 'Components and Design System'; then
+    has_template=true
+  fi
+  [ "$has_template" = true ] || \
+    fail "Step 6 should name the template heading (Components & Design System or Components and Design System)"
+
+  # Must name Wireframe Descriptions
+  printf '%s' "$step6" | grep -qiF 'Wireframe Descriptions' || \
+    fail "Step 6 should name 'Wireframe Descriptions' (not 'Screen Specifications')"
+
+  # Must NOT name the wrong heading "Screen Specifications" as a section to diff
+  # (it can mention screens in the context of reporting, but not as a section heading)
+  local screen_spec_refs
+  screen_spec_refs="$(printf '%s' "$step6" | grep -c '"Screen Specifications"' || true)"
+  [ "$screen_spec_refs" -eq 0 ] || \
+    fail "Step 6 should not name 'Screen Specifications' as a section heading ($screen_spec_refs refs)"
+
+  # Must limit field-level updates to components (not screens)
+  printf '%s' "$step6" | grep -qiE 'screen.*(report|manual|not auto)' || \
+    fail "Step 6 should state that screen changes are reported, not auto-edited"
+}
+
+
 @test "(AC7) create-ux does not gate on a design approver" {
   # Regression guard: green before AND after the fail-closed change.
   # /gaia-create-ux is a design authoring skill, not a review skill.
