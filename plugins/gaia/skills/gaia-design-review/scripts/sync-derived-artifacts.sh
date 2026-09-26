@@ -521,7 +521,7 @@ _main() {
       # Look up the baseline hash from the pre-built index
       local baseline_hash=""
       if [ -s "$baseline_index" ]; then
-        baseline_hash="$(awk -F'\t' -v f="$screen_file" '$1 == f {print $2; exit}' "$baseline_index")" || true
+        baseline_hash="$(LOOKUP_FILE="$screen_file" awk -F'\t' '$1 == ENVIRON["LOOKUP_FILE"] {print $2; exit}' "$baseline_index")" || true
       fi
 
       if [ -z "$baseline_hash" ]; then
