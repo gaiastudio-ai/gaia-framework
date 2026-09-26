@@ -123,6 +123,17 @@ _extract_step10_createux() {
   printf '%s' "$matrix" | grep -qi 'UX Design' \
     || fail "cascade matrix has no UX Design row"
 
+  # Extract the UX Design row and assert YES in all three classification columns
+  local ux_row
+  ux_row="$(printf '%s' "$matrix" | grep -i 'UX Design')"
+  [ -n "$ux_row" ] || fail "could not extract UX Design row"
+
+  # The row must have YES in patch, enhancement, and feature columns
+  local col_count
+  col_count="$(printf '%s' "$ux_row" | grep -oi 'YES' | grep -c 'YES' || true)"
+  [ "$col_count" -ge 3 ] \
+    || fail "UX Design row has $col_count YES entries; expected at least 3 (patch, enhancement, feature)"
+
   # Count data rows (lines containing |...|...|...|...|)
   local row_count
   row_count="$(printf '%s' "$matrix" | grep -cE '^\|[^-]' || true)"
@@ -427,6 +438,15 @@ _extract_step10_createux() {
 
 @test "(AC-EC6) mutant: removing edit-ux republish step turns a named test red" {
   [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  # PRECONDITION: the unmutated edit-ux Step 8 MUST contain the planner
+  # reference. Without this, the sed below is a no-op and the test passes
+  # vacuously.
+  local unmutated_step8
+  unmutated_step8="$(awk '/^### Step 8/{p=1} p && /^### Step [^8]/ && NR>1{exit} p' "$SKILL_MD_UX")"
+  [ -n "$unmutated_step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
+  printf '%s' "$unmutated_step8" | grep -qF 'plan-publication.sh' \
+    || fail "PRECONDITION: unmutated edit-ux Step 8 does not contain plan-publication.sh — the republish step must be present before mutation testing"
 
   # Create a mutated copy: remove plan-publication.sh references from Step 8
   local mutant="$TEST_TMP/mutant-skill.md"
