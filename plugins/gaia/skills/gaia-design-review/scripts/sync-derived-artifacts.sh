@@ -402,19 +402,26 @@ _main() {
       baseline_json="$(cat "$baseline_path")"
     fi
 
-    # Iterate over each screen
+    # Iterate over each screen.
+    # Content is never captured in a shell variable — bash $() strips
+    # trailing newlines, which corrupts hashes. Instead, content is
+    # written to a temp file and streamed from there.
     local screen_count
     screen_count="$(jq -r '.screens | length' "$snapshot_file")"
     local idx=0
+    local content_tmp
+    content_tmp="$(mktemp)"
     while [ "$idx" -lt "$screen_count" ]; do
-      local screen_name screen_file screen_content
+      local screen_name screen_file
       screen_name="$(jq -r --argjson i "$idx" '.screens[$i].name' "$snapshot_file")"
       screen_file="$(jq -r --argjson i "$idx" '.screens[$i].file' "$snapshot_file")"
-      screen_content="$(jq -j --argjson i "$idx" '.screens[$i].content' "$snapshot_file")"
 
-      # Compute sha256 of the content (jq -j, no trailing newline)
+      # Write content to a temp file preserving exact bytes
+      jq -j --argjson i "$idx" '.screens[$i].content' "$snapshot_file" > "$content_tmp"
+
+      # Hash the exact file bytes (preserves trailing newlines)
       local content_hash
-      content_hash="$(printf '%s' "$screen_content" | _sha256_bytes)"
+      content_hash="$(_sha256_file "$content_tmp")"
 
       # Look up the baseline hash
       local baseline_hash
@@ -424,19 +431,28 @@ _main() {
         # No baseline entry — report as "no baseline"
         printf 'sync: screen "%s" has no baseline (file: %s)\n' "$screen_name" "$screen_file"
         printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n'
-        printf '%s\n' "$screen_content"
+        cat "$content_tmp"
+        # Ensure the closing marker is on its own line
+        if [ -s "$content_tmp" ] && [ "$(tail -c 1 "$content_tmp" | wc -l)" -eq 0 ]; then
+          printf '\n'
+        fi
         printf '<<<END_DESIGN_PROJECT_BOUNDARY>>>\n'
       elif [ "$content_hash" != "$baseline_hash" ]; then
         # Content changed
         printf 'sync: screen "%s" changed (file: %s)\n' "$screen_name" "$screen_file"
         printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n'
-        printf '%s\n' "$screen_content"
+        cat "$content_tmp"
+        # Ensure the closing marker is on its own line
+        if [ -s "$content_tmp" ] && [ "$(tail -c 1 "$content_tmp" | wc -l)" -eq 0 ]; then
+          printf '\n'
+        fi
         printf '<<<END_DESIGN_PROJECT_BOUNDARY>>>\n'
       fi
       # Unchanged screens: no report
 
       idx=$((idx + 1))
     done
+    rm -f "$content_tmp"
   fi
 
   # If no components and no screens, just report up to date
