@@ -354,7 +354,10 @@ Resolve the developer persona via the shared resolver (it runs in the parent con
 ### Step 4 -- Plan Implementation
 
 <!-- design-gate begin -->
-**Design gate effect.** The `setup.sh` pre-start gate has already run before reaching this step. If the design record is stale or not approved, setup.sh halted the skill — the orchestrator never reaches Step 4. A story whose design is approved proceeds normally. The override path (`--force-design`) is documented in the Override gate section above.
+**Design gate effect.** The `setup.sh` pre-start gate has already run before reaching this step. **Two outcomes reach Step 4:**
+
+1. **Design approved:** the story proceeds normally with a current design.
+2. **Override (`--force-design`):** the gate accepted the override. Read the current design state via `${CLAUDE_PLUGIN_ROOT}/scripts/design-record.sh status`, take the override reason from `--reason` in `$ARGUMENTS`, and include in the developer's plan brief: the design state, the reason, and a warning that ux-design.md may be outdated. The developer must be aware the design is not approved.
 <!-- design-gate end -->
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 4 plan {story_key}` to record the step-boundary event.

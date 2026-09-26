@@ -54,6 +54,8 @@ YAML
 
 teardown() { common_teardown; }
 
+fail() { printf '%s\n' "$1" >&2; return 1; }
+
 # Helpers ---------------------------------------------------------------
 
 # _make_brief <path> [omit_section ...] — produce a synthetic product
@@ -304,4 +306,207 @@ _make_brief() {
   [[ "$output" == *"\$(rm -rf /) malicious"* ]]
   # /tmp must not have been touched (sanity).
   [ -d /tmp ]
+}
+
+# =========================================================================
+# (AC3) Override refusal does not print force-design hint
+# =========================================================================
+
+@test "(AC3) override refusal does not print force-design hint" {
+  # Set up a UI project in review state with no sprint and no --sprint-id
+  local gate_lib="$SKILL_DIR/../../scripts/lib/gate-predicates.sh"
+  local gate_sh="$SKILL_DIR/../../scripts/lib/design-gate.sh"
+  local drec_sh="$SKILL_DIR/../../scripts/design-record.sh"
+  [ -f "$gate_lib" ] || fail "gate-predicates.sh not found"
+  [ -f "$gate_sh" ] || fail "design-gate.sh not found"
+  [ -f "$drec_sh" ] || fail "design-record.sh not found"
+
+  # Seed config and record
+  mkdir -p "$TEST_TMP/.gaia/config" "$TEST_TMP/.gaia/state" "$TEST_TMP/.gaia/custom/stakeholders"
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<YAML
+compliance:
+  ui_present: true
+YAML
+  cat > "$TEST_TMP/.gaia/custom/stakeholders/stakeholder-A.md" <<'STAKE'
+---
+name: "Stakeholder A"
+slug: stakeholder-A
+tags: [design]
+---
+STAKE
+  printf 'bypasses: []\n' > "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml"
+
+  # Create a design-probe stub
+  mkdir -p "$TEST_TMP/bin"
+  cat > "$TEST_TMP/bin/design-probe.sh" <<'STUBEOF'
+#!/usr/bin/env bash
+printf 'available\n'; exit 0
+STUBEOF
+  chmod +x "$TEST_TMP/bin/design-probe.sh"
+
+  # Create a record in review state via the real writer
+  env PROJECT_ROOT="$TEST_TMP" "$drec_sh" init \
+    --reference test --discovered-via created --questionnaire-record na
+  env PROJECT_ROOT="$TEST_TMP" "$drec_sh" transition --to review --actor ci
+
+  # No sprint-status.yaml means no resolvable sprint
+  # Set FORCE_DESIGN and a valid reason so the override path is entered
+  local error_msg="Design is not approved. Approve the design via /gaia-design-review, or pass --force-design with a reason to override."
+  run bash -c '
+    set -euo pipefail
+    export PROJECT_ROOT="'"$TEST_TMP"'"
+    export PATH="'"$TEST_TMP/bin"':$PATH"
+    export FORCE_DESIGN=1
+    export FORCE_DESIGN_REASON="valid reason text for override"
+    export FORCE_DESIGN_ENTRY_POINT="gaia-dev-story"
+    source "'"$gate_lib"'"
+    _gate_evaluate_entry "design_approved:" "'"$error_msg"'"
+  ' 2>&1
+  [ "$status" -ne 0 ] || fail "gate should fail on override refusal (no sprint scope)"
+
+  # The quality_gates error_message must NOT appear
+  if [[ "$output" == *"or pass --force-design"* ]]; then
+    fail "override refusal should NOT print 'or pass --force-design' hint; got: $output"
+  fi
+
+  # The gate's own diagnostic must appear
+  [[ "$output" == *"no active sprint scope"* ]] || [[ "$output" == *"Design gate"* ]] \
+    || fail "override refusal should contain the gate's own diagnostic; got: $output"
+}
+
+# =========================================================================
+# (AC3) Normal design halt still prints quality_gates error_message (positive control)
+# =========================================================================
+
+@test "(AC3) normal design halt still prints quality_gates error_message" {
+  local gate_lib="$SKILL_DIR/../../scripts/lib/gate-predicates.sh"
+  local gate_sh="$SKILL_DIR/../../scripts/lib/design-gate.sh"
+  local drec_sh="$SKILL_DIR/../../scripts/design-record.sh"
+  [ -f "$gate_lib" ] || fail "gate-predicates.sh not found"
+
+  # Seed a UI project in draft state — no --force-design
+  mkdir -p "$TEST_TMP/.gaia/config" "$TEST_TMP/.gaia/state" "$TEST_TMP/.gaia/custom/stakeholders"
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<YAML
+compliance:
+  ui_present: true
+YAML
+  cat > "$TEST_TMP/.gaia/custom/stakeholders/stakeholder-A.md" <<'STAKE'
+---
+name: "Stakeholder A"
+slug: stakeholder-A
+tags: [design]
+---
+STAKE
+
+  mkdir -p "$TEST_TMP/bin"
+  cat > "$TEST_TMP/bin/design-probe.sh" <<'STUBEOF'
+#!/usr/bin/env bash
+printf 'available\n'; exit 0
+STUBEOF
+  chmod +x "$TEST_TMP/bin/design-probe.sh"
+
+  env PROJECT_ROOT="$TEST_TMP" "$drec_sh" init \
+    --reference test --discovered-via created --questionnaire-record na
+
+  local error_msg="Design is not approved. Approve the design via /gaia-design-review, or pass --force-design with a reason to override."
+  run bash -c '
+    set -euo pipefail
+    export PROJECT_ROOT="'"$TEST_TMP"'"
+    export PATH="'"$TEST_TMP/bin"':$PATH"
+    source "'"$gate_lib"'"
+    _gate_evaluate_entry "design_approved:" "'"$error_msg"'"
+  ' 2>&1
+  [ "$status" -ne 0 ] || fail "gate should fail on draft state"
+
+  # The quality_gates error_message MUST appear for a normal halt
+  [[ "$output" == *"or pass --force-design"* ]] \
+    || fail "normal halt should print 'or pass --force-design' hint; got: $output"
+}
+
+# =========================================================================
+# (AC-EC5) Nine gated skills error_message suppressed on override refusal
+# =========================================================================
+
+@test "(AC-EC5) nine gated skills error_message suppressed on override refusal" {
+  local gate_lib="$SKILL_DIR/../../scripts/lib/gate-predicates.sh"
+  local drec_sh="$SKILL_DIR/../../scripts/design-record.sh"
+  [ -f "$gate_lib" ] || fail "gate-predicates.sh not found"
+
+  local skills_root="$SKILL_DIR/../.."
+  local -a gated_skills=(
+    gaia-adversarial
+    gaia-create-arch
+    gaia-create-epics
+    gaia-dev-story
+    gaia-edit-arch
+    gaia-infra-design
+    gaia-readiness-check
+    gaia-review-api
+    gaia-threat-model
+  )
+
+  # Seed the override-refusal fixture (review state, no sprint)
+  mkdir -p "$TEST_TMP/.gaia/config" "$TEST_TMP/.gaia/state" "$TEST_TMP/.gaia/custom/stakeholders"
+  cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<YAML
+compliance:
+  ui_present: true
+YAML
+  cat > "$TEST_TMP/.gaia/custom/stakeholders/stakeholder-A.md" <<'STAKE'
+---
+name: "Stakeholder A"
+slug: stakeholder-A
+tags: [design]
+---
+STAKE
+  printf 'bypasses: []\n' > "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml"
+
+  mkdir -p "$TEST_TMP/bin"
+  cat > "$TEST_TMP/bin/design-probe.sh" <<'STUBEOF'
+#!/usr/bin/env bash
+printf 'available\n'; exit 0
+STUBEOF
+  chmod +x "$TEST_TMP/bin/design-probe.sh"
+
+  env PROJECT_ROOT="$TEST_TMP" "$drec_sh" init \
+    --reference test --discovered-via created --questionnaire-record na
+  env PROJECT_ROOT="$TEST_TMP" "$drec_sh" transition --to review --actor ci
+
+  local checked=0
+  local skill_name skill_md error_msg
+  for skill_name in "${gated_skills[@]}"; do
+    skill_md="$skills_root/skills/$skill_name/SKILL.md"
+    [ -f "$skill_md" ] || fail "$skill_name/SKILL.md not found at $skill_md"
+
+    # Extract the error_message from the design_approved condition
+    error_msg="$(awk '
+      /design_approved/ { found=1; next }
+      found && /error_message:/ {
+        sub(/^[[:space:]]*error_message:[[:space:]]*/, "")
+        gsub(/^"/, ""); gsub(/"$/, "")
+        gsub(/^\047/, ""); gsub(/\047$/, "")
+        print; exit
+      }
+    ' "$skill_md")"
+    [ -n "$error_msg" ] || fail "$skill_name: could not extract error_message"
+
+    # Reset the design-gate loaded flag for a fresh source
+    run bash -c '
+      set -euo pipefail
+      export PROJECT_ROOT="'"$TEST_TMP"'"
+      export PATH="'"$TEST_TMP/bin"':$PATH"
+      export FORCE_DESIGN=1
+      export FORCE_DESIGN_REASON="valid reason text for override"
+      export FORCE_DESIGN_ENTRY_POINT="'"$skill_name"'"
+      export _DESIGN_GATE_SH_LOADED=0
+      source "'"$gate_lib"'"
+      _gate_evaluate_entry "design_approved:" "'"$error_msg"'"
+    ' 2>&1
+
+    if [[ "$output" == *"or pass --force-design"* ]]; then
+      fail "$skill_name: error_message should be suppressed on override refusal; got: $output"
+    fi
+    checked=$((checked + 1))
+  done
+
+  [ "$checked" -eq 9 ] || fail "expected 9 gated skills checked but got $checked"
 }

@@ -1071,3 +1071,27 @@ BOUNDARY
     fail "stale-resume should be in the step-list, not in Prerequisites"
   fi
 }
+
+# =========================================================================
+# (AC4) design-review SKILL.md contains no bare actor or user placeholders
+# =========================================================================
+
+@test "(AC4) design-review SKILL.md contains no bare actor or user placeholders" {
+  local dr_skill="$PLUGIN_ROOT/skills/gaia-design-review/SKILL.md"
+  [ -f "$dr_skill" ] || fail "gaia-design-review/SKILL.md not found at $dr_skill"
+
+  # No bare <actor> or <user> placeholders
+  local bare_count
+  bare_count="$(grep -cE '<actor>|<user>' "$dr_skill" || true)"
+  [ "$bare_count" -eq 0 ] || fail "SKILL.md has $bare_count bare <actor>/<user> placeholders; expected 0"
+
+  # Positive: --actor "\$USER" must appear at least 5 times
+  local actor_user_count
+  actor_user_count="$(grep -cF -e '--actor "$USER"' "$dr_skill" || true)"
+  [ "$actor_user_count" -ge 5 ] || fail "SKILL.md should have at least 5 '--actor \"\$USER\"' occurrences but has $actor_user_count"
+
+  # Positive: --recorded-by "\$USER" must appear at least once
+  local recorded_by_count
+  recorded_by_count="$(grep -cF -e '--recorded-by "$USER"' "$dr_skill" || true)"
+  [ "$recorded_by_count" -ge 1 ] || fail "SKILL.md should have at least 1 '--recorded-by \"\$USER\"' occurrence but has $recorded_by_count"
+}

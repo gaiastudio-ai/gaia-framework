@@ -284,8 +284,13 @@ _gate_evaluate_entry() {
       ;;
   esac
   if [ $rc -ne 0 ]; then
-    # Print message LITERALLY — no eval, no expansion.
-    printf '[%s] %s\n' "${_GATE_PREFIX:-quality-gate}" "$msg" >&2
+    # Suppress the quality_gates error_message on override-specific refusals.
+    # The design gate's own diagnostic is already on stderr; repeating the
+    # generic "or pass --force-design" hint is contradictory.
+    if [ "${_DG_OVERRIDE_REFUSED:-0}" != "1" ]; then
+      # Print message LITERALLY — no eval, no expansion.
+      printf '[%s] %s\n' "${_GATE_PREFIX:-quality-gate}" "$msg" >&2
+    fi
   fi
   return $rc
 }

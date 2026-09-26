@@ -7,6 +7,10 @@
 #
 # Returns 0 (pass) or 1 (hard halt with a three-part diagnostic on stderr).
 #
+# Side-effect on override refusal: sets _DG_OVERRIDE_REFUSED=1 in the
+# sourced shell. gate-predicates.sh reads this to suppress the quality_gates
+# error_message on override-specific refusals. Reset to 0 at gate entry.
+#
 # Why subprocess, not source:
 #   design-record.sh runs `main "$@"` unconditionally at bottom-of-file with
 #   no source guard. Sourcing it would execute main against this script's $@.
@@ -217,6 +221,11 @@ design_gate_check() {
     esac
   done
 
+  # Reset the override-refusal signal for this gate call. The variable is
+  # read by _gate_evaluate_entry (gate-predicates.sh) to suppress the
+  # quality_gates error_message on override-specific refusals.
+  _DG_OVERRIDE_REFUSED=0
+
   # Honour an existing PROJECT_ROOT from the caller; fall back through the
   # framework's standard chain. Export so the record writer subprocess
   # inherits it without per-call env overrides.
@@ -349,14 +358,14 @@ _dg_handle_override() {
   local reason="$4" entry_point="$5" sprint_id_arg="$6" design_state="$7"
 
   local actor
-  actor="$(git config user.name 2>/dev/null || true)"
-  actor="${actor:-${USER:-unknown}}"
+  actor="${USER:-unknown}"
 
   # ---- Validate reason ----
 
   _dg_validate_reason "$reason" >/dev/null || {
     _dg_halt "$record_path" "$design_state" \
       "Override refused: --reason must be at least 10 characters after trimming whitespace."
+    _DG_OVERRIDE_REFUSED=1
     return 1
   }
 
@@ -368,6 +377,7 @@ _dg_handle_override() {
     printf '  Either approve the design via /gaia-design-review,\n' >&2
     printf '  or plan a sprint with /gaia-sprint-plan,\n' >&2
     printf '  or pass --sprint-id sprint-N explicitly.\n' >&2
+    _DG_OVERRIDE_REFUSED=1
     return 1
   }
 
@@ -382,6 +392,7 @@ _dg_handle_override() {
   if ! acquire_lock "$gate_lock_path" 30 "$gate_lock_fd"; then
     _dg_halt "$record_path" "$design_state" \
       "Override refused: could not acquire the gate-level lock at $gate_lock_path."
+    _DG_OVERRIDE_REFUSED=1
     return 1
   fi
 
@@ -400,6 +411,7 @@ _dg_handle_override() {
   local drec_rc=0
   "$drec_script" add-override \
     --actor "$actor" --reason "$reason" --entry-point "${entry_point:-unknown}" \
+    --sprint-id "$sprint_id" \
     >/dev/null 2>&1 || drec_rc=$?
 
   if [ "$drec_rc" -ne 0 ]; then
@@ -407,6 +419,7 @@ _dg_handle_override() {
     release_lock "$gate_lock_fd" 2>/dev/null || true
     _dg_halt "$record_path" "$design_state" \
       "Override failed: design-record.sh add-override returned exit $drec_rc."
+    _DG_OVERRIDE_REFUSED=1
     return 1
   fi
 
@@ -437,11 +450,19 @@ _dg_handle_override() {
     release_lock "$gate_lock_fd" 2>/dev/null || true
     _dg_halt "$record_path" "$post_state" \
       "Override changed design_state from '$pre_state' to '$post_state' — this is a bug in the override verb."
+    _DG_OVERRIDE_REFUSED=1
     return 1
   fi
 
   # Note: iteration is re-evaluated on the next gate call. The override does
   # not affect iteration or approval state, so no explicit check here.
+
+  # ---- Override notice (surfaced to developer via stderr) ----
+  printf '\n' >&2
+  printf 'Design gate: OVERRIDE ACCEPTED\n' >&2
+  printf '  Design state:  %s\n' "$design_state" >&2
+  printf '  Reason:        %s\n' "$reason" >&2
+  printf '  Warning:       ux-design.md may be outdated — the design is not approved.\n' >&2
 
   release_lock "$gate_lock_fd" 2>/dev/null || true
   return 0
@@ -463,6 +484,7 @@ _dg_rollback_override() {
 
   release_lock "$gate_lock_fd" 2>/dev/null || true
 
+  _DG_OVERRIDE_REFUSED=1
   if [ "$rollback_ok" = "1" ]; then
     _dg_halt "$record_path" "$design_state" \
       "Override failed: lifecycle-overrides ledger write failed; design record rolled back successfully."

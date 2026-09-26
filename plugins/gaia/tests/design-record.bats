@@ -2274,3 +2274,135 @@ FIXTURE
   [ "$iter" -eq 1 ] || fail "iteration should be 1 but is $iter"
   [ "$audit_count" -ge 2 ] || fail "audit should have at least 2 entries (init + transition) but has $audit_count"
 }
+
+# =========================================================================
+# (AC2) add-override with sprint-id records sprint_id in override entry and audit
+# =========================================================================
+
+@test "(AC2) add-override with sprint-id records sprint_id in override entry and audit" {
+  assert_script_exists
+  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" transition --to review --actor ci
+
+  run "$SCRIPT" add-override \
+    --actor "test-actor" \
+    --reason "overriding for deployment" \
+    --entry-point "gaia-dev-story" \
+    --sprint-id sprint-82
+  [ "$status" -eq 0 ] || fail "add-override with --sprint-id failed: $output"
+
+  local ov_sprint
+  ov_sprint="$(yq -r '.overrides[-1].sprint_id' "$RECORD")"
+  [ "$ov_sprint" = "sprint-82" ] || fail "override entry sprint_id should be sprint-82 but is $ov_sprint"
+
+  local audit_sprint
+  audit_sprint="$(yq -r '[.audit[] | select(.event == "override")][-1].sprint_id' "$RECORD")"
+  [ "$audit_sprint" = "sprint-82" ] || fail "audit override entry sprint_id should be sprint-82 but is $audit_sprint"
+}
+
+# =========================================================================
+# (AC2) add-override rejects malformed sprint-id before lock
+# =========================================================================
+
+@test "(AC2) add-override rejects malformed sprint-id before lock" {
+  assert_script_exists
+  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" transition --to review --actor ci
+
+  local pre_hash
+  pre_hash="$(shasum -a 256 "$RECORD" | awk '{print $1}')"
+
+  run "$SCRIPT" add-override \
+    --actor "test-actor" \
+    --reason "overriding for deployment" \
+    --entry-point "gaia-dev-story" \
+    --sprint-id "bad-value"
+  [ "$status" -ne 0 ] || fail "add-override should reject malformed sprint-id"
+
+  # Must be a specific format-rejection diagnostic, not "unknown option"
+  [[ "$output" != *"unknown option"* ]] \
+    || fail "rejection should be a format diagnostic, not 'unknown option'; got: $output"
+  [[ "$output" == *"bad-value"* ]] \
+    || fail "rejection should name the bad value; got: $output"
+  [[ "$output" == *"sprint-"* ]] \
+    || fail "rejection should name the expected sprint-N pattern; got: $output"
+
+  local post_hash
+  post_hash="$(shasum -a 256 "$RECORD" | awk '{print $1}')"
+  [ "$pre_hash" = "$post_hash" ] || fail "record should be unchanged after malformed sprint-id rejection"
+}
+
+# =========================================================================
+# (AC-EC6) add-override without sprint-id succeeds and schema accepts (regression guard)
+# =========================================================================
+
+@test "(AC-EC6) add-override without sprint-id succeeds and schema accepts" {
+  assert_script_exists
+  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" transition --to review --actor ci
+
+  run "$SCRIPT" add-override \
+    --actor "test-actor" \
+    --reason "overriding for deployment" \
+    --entry-point "gaia-dev-story"
+  [ "$status" -eq 0 ] || fail "add-override without --sprint-id should succeed: $output"
+
+  # Key must be absent, not null
+  local has_key
+  has_key="$(yq -o=json '.overrides[-1] | has("sprint_id")' "$RECORD")"
+  [ "$has_key" = "false" ] || fail "override entry should not have sprint_id key but has it"
+
+  # Schema validation
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "no JSON-schema validator available — cannot validate"
+  [ "$status" -eq 0 ] || fail "schema validation failed on record without sprint_id: $output"
+}
+
+# =========================================================================
+# (AC2) schema accepts override with sprint_id
+# =========================================================================
+
+@test "(AC2) schema accepts override with sprint_id" {
+  assert_script_exists
+  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" transition --to review --actor ci
+
+  run "$SCRIPT" add-override \
+    --actor "test-actor" \
+    --reason "overriding for deployment" \
+    --entry-point "gaia-dev-story" \
+    --sprint-id sprint-42
+  [ "$status" -eq 0 ] || fail "add-override with --sprint-id failed: $output"
+
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "no JSON-schema validator available — cannot validate"
+  [ "$status" -eq 0 ] || fail "schema validation failed on record with sprint_id: $output"
+}
+
+# =========================================================================
+# (AC2) mutant: schema rejects sprint_id when property removed
+# =========================================================================
+
+@test "(AC2) mutant: schema rejects sprint_id when property removed" {
+  assert_script_exists
+  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" transition --to review --actor ci
+
+  run "$SCRIPT" add-override \
+    --actor "test-actor" \
+    --reason "overriding for deployment" \
+    --entry-point "gaia-dev-story" \
+    --sprint-id sprint-42
+  [ "$status" -eq 0 ] || fail "add-override with --sprint-id failed: $output"
+
+  # Create a mutant schema without the sprint_id property in overrides
+  local mutant_schema="$TEST_TMP/mutant-schema.json"
+  jq 'del(.properties.overrides.items.properties.sprint_id)' "$SCHEMA" > "$mutant_schema"
+
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$mutant_schema" "$RECORD"
+  [ "$status" -ne 3 ] || fail "no JSON-schema validator available — cannot validate"
+  [ "$status" -eq 1 ] || fail "mutant schema should reject record with sprint_id (status=$status): $output"
+}

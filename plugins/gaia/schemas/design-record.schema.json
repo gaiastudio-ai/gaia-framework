@@ -163,6 +163,11 @@
             "type": "string",
             "enum": ["draft", "review", "approved", "in-dev", "stale"],
             "description": "Design state at the time of override."
+          },
+          "sprint_id": {
+            "type": "string",
+            "pattern": "^sprint-[0-9]+$",
+            "description": "Sprint scope for the override (optional)."
           }
         }
       }
@@ -253,6 +258,11 @@
             "type": "string",
             "enum": ["attested", "probed"],
             "description": "How the integration state was determined."
+          },
+          "sprint_id": {
+            "type": "string",
+            "pattern": "^sprint-[0-9]+$",
+            "description": "Sprint scope (for override events)."
           }
         }
       }

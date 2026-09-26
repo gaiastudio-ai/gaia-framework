@@ -157,7 +157,10 @@
           In exceptional cases the gate can be overridden using the
           <code>force-design</code> flag. An override is an audited event: the
           design record logs the override reason, the person who authorised it,
-          and the timestamp. Overrides are visible in the sprint review and in
+          the timestamp, and the sprint scope (<code>sprint_id</code>). When the
+          override succeeds, a notice is surfaced to the developer with the
+          current design state, the reason, and a warning that the UX document
+          may be outdated. Overrides are visible in the sprint review and in
           the design record history.
         </p>
         <p>
