@@ -109,6 +109,7 @@ core	config-yaml-editor-e71-s3-coverage-stub.bats
 core	dead-code-join.bats
 core	dead-reference-scan.bats
 core	design-a11y-rebind.bats
+core	design-availability.bats
 core	design-gate-sites.bats
 core	design-gate.bats
 core	design-lifecycle-docs.bats
