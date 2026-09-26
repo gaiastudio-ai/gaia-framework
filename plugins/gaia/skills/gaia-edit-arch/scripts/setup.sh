@@ -49,9 +49,8 @@ _parse_force_design "$@"; set -- "${_PFD_REMAINING[@]+"${_PFD_REMAINING[@]}"}"
 # Resolved before the design gate so it sees the correct project tree.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-}}}"
 if [ -z "$PROJECT_ROOT" ]; then
-  _rc_helper="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
-  if [ -x "$_rc_helper" ]; then
-    _rc_out="$("$_rc_helper" project_root 2>/dev/null || printf '')"
+  if [ -x "$RESOLVE_CONFIG" ]; then
+    _rc_out="$("$RESOLVE_CONFIG" project_root 2>/dev/null || printf '')"
     case "${_rc_out:-}" in
       /*) PROJECT_ROOT="$_rc_out" ;;
     esac
