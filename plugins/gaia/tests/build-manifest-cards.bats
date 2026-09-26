@@ -738,3 +738,46 @@ _run_persist() {
   [ "$real_login_hit" -eq 1 ] \
     || fail "real script should preserve 'login' card, but it was dropped"
 }
+
+# ===========================================================================
+# ERE metacharacters in --local-specs path
+# ===========================================================================
+
+@test "(AC1) spec root with ERE metacharacters produces relative card paths" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+
+  # Directory name with parens, brackets, and plus — all ERE metacharacters
+  local spec_dir="$TEST_TMP/My Design (1)[x]+/specs"
+  mkdir -p "$spec_dir/screens" "$spec_dir/components"
+  printf '<!-- @dsCard group="Screen specs" -->\n<html>Login</html>\n' \
+    > "$spec_dir/screens/login.spec.html"
+  printf '<!-- @dsCard group="Component specs" -->\n<html>Button</html>\n' \
+    > "$spec_dir/components/button.spec.html"
+
+  _seed_existing_manifest "$TEST_TMP/existing-manifest.json"
+
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$spec_dir' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published /dev/null
+  " 2>/dev/null)" || fail "build_manifest_cards failed with metachar path"
+
+  # Card paths must be relative (screens/... and components/...), not absolute
+  local abs_count
+  abs_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path | startswith("/"))] | length')"
+  [ "$abs_count" -eq 0 ] || fail "found $abs_count cards with absolute paths"
+
+  # Must have the 2 spec cards plus Colors + Type = 4
+  local card_count
+  card_count="$(printf '%s' "$result" | jq '.cards | length')"
+  [ "$card_count" -eq 4 ] || fail "expected 4 cards, got $card_count"
+
+  # Verify the spec cards have the correct relative paths
+  printf '%s' "$result" | jq -e '.cards[] | select(.path == "screens/login.spec.html")' >/dev/null \
+    || fail "screens/login.spec.html card missing or has wrong path"
+  printf '%s' "$result" | jq -e '.cards[] | select(.path == "components/button.spec.html")' >/dev/null \
+    || fail "components/button.spec.html card missing or has wrong path"
+}

@@ -67,7 +67,10 @@ build_manifest_cards() {
     scan_tsv="$(awk -v spec_root="$local_specs/" -v diag="$diag_file" '
       FNR == 1 {
         path = FILENAME
-        sub(spec_root, "", path)
+        # Strip spec_root prefix literally (not as regex — paths may contain
+        # ERE metacharacters like parens, brackets, or plus)
+        if (index(path, spec_root) == 1)
+          path = substr(path, length(spec_root) + 1)
         # Reject tabs in relative path
         if (index(path, "\t") > 0) {
           print "DIAG\t" path > diag
