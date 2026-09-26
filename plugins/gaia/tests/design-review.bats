@@ -562,7 +562,7 @@ UX
   local root
   root="$(_seed_temp_project)"
   _seed_record "$root" "review"
-  # Do NOT seed a stakeholder roster — empty roster triggers vacuous convergence
+  # No stakeholder roster seeded — triggers vacuous convergence
   export PROJECT_ROOT="$root"
 
   run "$DESIGN_RECORD_SH" check-convergence
@@ -571,10 +571,11 @@ UX
   [[ "$output" == *"vacuous"* ]] || \
     fail "expected vacuous-convergence in output, got: $output"
 
-  # Part 2 (structural): SKILL.md must have a precondition that halts on vacuous
+  # Part 2 (structural): SKILL.md must have a precondition that halts on
+  # vacuous convergence, naming the approver requirement and the remediation
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist"
-  grep -qiE 'halt|precondition.*approver|design approver exists' "$SKILL_MD" || \
-    fail "SKILL.md does not halt on vacuous convergence — missing precondition"
+  grep -qiE 'vacuous.*halt|halt.*vacuous|precondition.*design approver|design approver exists' "$SKILL_MD" || \
+    fail "SKILL.md does not halt on vacuous convergence — missing approver precondition"
   grep -qF '/gaia-create-stakeholder' "$SKILL_MD" || \
     fail "SKILL.md does not name /gaia-create-stakeholder in the halt remediation"
 

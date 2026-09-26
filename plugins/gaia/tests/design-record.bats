@@ -2577,6 +2577,7 @@ STAKE
   _seed_stakeholder_with_slug "$TEST_TMP/.gaia/custom/stakeholders" "alice" "Alice" "bob" "design"
 
   run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "convergence should fail when only file has slug disagreement"
   # The file should be skipped; with no other stakeholders, result is vacuous
   [[ "$output" == *"vacuous-convergence"* ]] || \
     fail "expected vacuous-convergence after skipping disagreeing file, got: $output"
@@ -2657,9 +2658,12 @@ STAKE
   # Stderr should name the malformed file
   [[ "$output" == *"malformed"* ]] || \
     fail "expected diagnostic naming malformed.md, got: $output"
-  # valid should be the only required stakeholder
-  [[ "$output" == *"valid"* ]] || \
-    fail "expected valid in missing list, got: $output"
+  # valid should be the only required stakeholder — assert as whole word on missing: line
+  local missing_line
+  missing_line="$(printf '%s\n' "$output" | grep 'missing:' || true)"
+  [ -n "$missing_line" ] || fail "expected a 'missing:' line in output, got: $output"
+  printf '%s\n' "$missing_line" | grep -qw 'valid' || \
+    fail "expected 'valid' as whole word in missing list, got: $missing_line"
   [[ "$output" == *"not-converged"* ]] || \
     fail "expected not-converged output, got: $output"
 }
@@ -2688,4 +2692,119 @@ STAKE
   [ "$status" -eq 0 ] || fail "convergence should hold after alice approved: $output"
   [[ "$output" == *"converged"* ]] || \
     fail "expected converged after alice approved, got: $output"
+}
+
+
+# =========================================================================
+# Mutant tests — automated verification that fail-closed fixes are guarded
+# =========================================================================
+
+@test "(AC5) mutant restoring a passing vacuous convergence is caught" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Copy the production script to a temp location
+  local mutant_script="$TEST_TMP/design-record-mutant.sh"
+  cp "$SCRIPT" "$mutant_script"
+  ln -sfn "$SCRIPTS_DIR/lib" "$TEST_TMP/lib"
+
+  # Apply mutation: change "return 1" after vacuous-convergence to "return 0"
+  # in _check_convergence_at. The two vacuous paths both have return 1 after
+  # printf 'vacuous-convergence'. Revert them to return 0.
+  sed 's/printf '\''vacuous-convergence\\n'\''/printf '\''vacuous-convergence\\n'\''\n    return 0\n    # MUTANT-PATCHED/' \
+    "$SCRIPT" > /dev/null 2>&1 || true  # dry run to check sed syntax
+
+  # Simpler approach: directly replace "return 1" that follows the vacuous printf
+  awk '
+    /printf.*vacuous-convergence/ { saw_vacuous=1 }
+    saw_vacuous && /return 1/ { sub(/return 1/, "return 0"); saw_vacuous=0 }
+    { print }
+  ' "$SCRIPT" > "$mutant_script"
+  chmod +x "$mutant_script"
+
+  # Assert the patch actually applied
+  grep -q 'vacuous-convergence' "$mutant_script" || fail "mutant script missing vacuous-convergence"
+  if cmp -s "$SCRIPT" "$mutant_script"; then fail "mutant patch did not apply — files identical"; fi
+  # The patched file should have return 0 after vacuous, not return 1
+  local patched_returns
+  patched_returns="$(awk '/printf.*vacuous-convergence/{getline; print}' "$mutant_script" | head -2)"
+  [[ "$patched_returns" == *"return 0"* ]] || fail "mutant should have 'return 0' after vacuous, got: $patched_returns"
+
+  # Run convergence against the mutant: it should succeed (rc=0) — the bug
+  run env PROJECT_ROOT="$TEST_TMP" "$mutant_script" check-convergence
+  [ "$status" -eq 0 ] || fail "mutant should pass convergence (rc=0) but got rc=$status"
+
+  # Run against the REAL script: it should fail (rc=1) — the fix
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "real script should fail convergence (rc!=0) on vacuous roster"
+}
+
+@test "(AC-EC7) mutant restoring approve on an empty roster is caught" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  local mutant_script="$TEST_TMP/design-record-mutant.sh"
+  cp "$SCRIPT" "$mutant_script"
+  ln -sfn "$SCRIPTS_DIR/lib" "$TEST_TMP/lib"
+
+  # Apply mutation: in _assert_known_stakeholder, change "return 1" after
+  # the "vacuous roster" warning to "return 0"
+  awk '
+    /^_assert_known_stakeholder/ { in_fn=1 }
+    in_fn && /vacuous roster/ { saw_vacuous=1 }
+    in_fn && saw_vacuous && /return 1/ { sub(/return 1/, "return 0"); saw_vacuous=0; in_fn=0 }
+    { print }
+  ' "$SCRIPT" > "$mutant_script"
+  chmod +x "$mutant_script"
+
+  # Assert the patch applied
+  if cmp -s "$SCRIPT" "$mutant_script"; then fail "mutant patch did not apply — files identical"; fi
+
+  # Run approve against the mutant: it should accept anyone (the bug)
+  run env PROJECT_ROOT="$TEST_TMP" "$mutant_script" approve --stakeholder "anyone" --recorded-by "test"
+  [ "$status" -eq 0 ] || fail "mutant should accept approve on empty roster but got rc=$status: $output"
+
+  # Run against the REAL script: it should refuse (the fix)
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve --stakeholder "anyone" --recorded-by "test"
+  [ "$status" -ne 0 ] || fail "real script should refuse approve on empty roster"
+}
+
+
+# =========================================================================
+# Regex slug injection — approve must use literal matching
+# =========================================================================
+
+@test "(AC1) approve rejects regex-special slugs that would match as patterns" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "alice" "Alice" "design"
+
+  # '.*' as a slug must NOT match alice (or anything) — it is not on the roster
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve --stakeholder '.*' --recorded-by "test"
+  [ "$status" -ne 0 ] || fail "approve should reject regex wildcard slug '.*'"
+
+  # 'a.b' must NOT match 'aXb' — dot must be literal
+  _seed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "aXb" "AXB" "design"
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve --stakeholder 'a.b' --recorded-by "test"
+  [ "$status" -ne 0 ] || fail "approve should reject regex dot slug 'a.b' (no file a.b.md exists)"
+}
+
+
+# =========================================================================
+# Diagnostic accuracy — _assert_known_stakeholder on empty-but-existing roster
+# =========================================================================
+
+@test "(AC1) approve on existing roster with all files invalid gives accurate diagnostic" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+
+  # Roster directory exists, but the only file has malformed frontmatter
+  _seed_malformed_stakeholder "$TEST_TMP/.gaia/custom/stakeholders" "malformed"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve --stakeholder "anyone" --recorded-by "test"
+  [ "$status" -ne 0 ] || fail "approve should reject on empty effective roster"
+  # The diagnostic must NOT say "no stakeholder directory found" — the directory exists
+  [[ "$output" != *"no stakeholder directory found"* ]] || \
+    fail "diagnostic says 'no stakeholder directory found' but the directory exists, got: $output"
 }
