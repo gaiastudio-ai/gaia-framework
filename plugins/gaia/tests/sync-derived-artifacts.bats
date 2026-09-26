@@ -1163,3 +1163,138 @@ json.dump({"components": components}, sys.stdout)
 
   rm -rf "$root"
 }
+
+
+# =========================================================================
+# Screen with no .content key rejected (V4)
+# =========================================================================
+
+@test "(AC-EC8) screen with no content key rejected with diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Screen with no .content key at all
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"Broken","file":"screens/broken.spec.html"}]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject screen with no content key (exit $status): $output"
+
+  # Diagnostic should name the screen
+  [[ "$output" == *"Broken"* ]] || \
+    fail "diagnostic should name the screen: $output"
+
+  # No boundary markers emitted for the broken screen
+  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+    fail "boundary markers should not appear for a rejected screen: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Temp file cleanup (V2)
+# =========================================================================
+
+@test "(AC3) temp files cleaned up after sync" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Isolated TMPDIR for leak detection
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  # Write screen file and build snapshot via --rawfile
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "home.spec.html" "<h1>Home</h1>"
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c "$screens_dir/home.spec.html" \
+    '{"components":["nav"],"screens":[{"name":"Home","file":"screens/home.spec.html","content":$c}]}' > "$snapshot"
+
+  TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The isolated TMPDIR must be empty after the script exits
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp files leaked in TMPDIR ($leftover files remain)"
+
+  rm -rf "$root"
+}
+
+@test "(AC-EC8) temp files cleaned up after failed sync" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Isolated TMPDIR for leak detection
+  local iso_tmpdir="$root/tmpdir"
+  mkdir -p "$iso_tmpdir"
+
+  # Screen with no .content key — should fail
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["nav"],"screens":[{"name":"Bad","file":"screens/bad.spec.html"}]}' > "$snapshot"
+
+  TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+
+  # The isolated TMPDIR must be empty even after a failure
+  local leftover
+  leftover="$(find "$iso_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ] || \
+    fail "temp files leaked in TMPDIR after failure ($leftover files remain)"
+
+  rm -rf "$root"
+}
