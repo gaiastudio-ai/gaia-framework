@@ -52,6 +52,13 @@ _sha256_bytes() {
   fi
 }
 
+# _is_section_end LINE — true when the line is a level-1 or level-2
+# heading (which closes the component section).  Level-3 and deeper
+# headings (###, ####, ...) are subsection content and do NOT end it.
+_is_section_end() {
+  [[ "$1" == '# '* ]] || { [[ "$1" == '## '* ]] && ! [[ "$1" == '### '* ]]; }
+}
+
 # _extract_doc_components DOC — parse component names from the components
 # section of a markdown file. Accepts the template heading (both & and
 # "and" variants, case-insensitive, with optional number prefix) and the
@@ -75,32 +82,23 @@ _extract_doc_components() {
       # Second heading match — stop (template wins)
       break
     fi
-    # Section ends at level-1 or level-2 headings, but not at ### or deeper
     if [ "$in_section" = true ]; then
-      if [[ "$line" == '# '* ]] || { [[ "$line" == '## '* ]] && ! [[ "$line" == '### '* ]]; }; then
-        break
-      fi
-    fi
-    if [ "$in_section" = true ]; then
+      # Section ends at level-1 or level-2 headings
+      if _is_section_end "$line"; then break; fi
+
       # Already read the first table — skip everything else in the section
-      if [ "$first_table_done" = true ]; then
-        continue
-      fi
+      if [ "$first_table_done" = true ]; then continue; fi
 
       # Check for table separator row: cells contain only -, :, spaces
       if [[ "$line" =~ ^\|[[:space:]]*[-:] ]] && [[ "$line" =~ ^[[:space:]]*\|[[:space:]]*[-:|[:space:]]*$ ]]; then
-        # The previous pipe line was the header — discard it
         saw_separator=true
         continue
       fi
 
       # Table row
       if [[ "$line" =~ ^\| ]]; then
-        if [ "$saw_separator" = false ]; then
-          # Before any separator: skip this line (it is the header row)
-          continue
-        fi
-        # After separator: this is a data row — extract first cell
+        if [ "$saw_separator" = false ]; then continue; fi
+        # Data row — extract first cell
         local first_cell
         first_cell="$(printf '%s' "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$2); print $2}')"
         if [ -n "$first_cell" ]; then
@@ -140,13 +138,10 @@ _count_table_cols() {
       fi
       break
     fi
-    # Section ends at level-1 or level-2 headings, but not at ### or deeper
     if [ "$in_section" = true ]; then
-      if [[ "$line" == '# '* ]] || { [[ "$line" == '## '* ]] && ! [[ "$line" == '### '* ]]; }; then
-        break
-      fi
-    fi
-    if [ "$in_section" = true ]; then
+      # Section ends at level-1 or level-2 headings
+      if _is_section_end "$line"; then break; fi
+
       # Separator row tells us column count
       if [[ "$line" =~ ^\|[[:space:]]*[-:] ]] && [[ "$line" =~ ^[[:space:]]*\|[[:space:]]*[-:|[:space:]]*$ ]]; then
         # Count pipes minus 1 (leading and trailing pipes)
