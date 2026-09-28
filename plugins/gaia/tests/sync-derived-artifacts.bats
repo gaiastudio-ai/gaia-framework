@@ -417,6 +417,16 @@ UX
   sha_after="$(_sha256_file "$doc_dir/ux-design.md")"
   [ -n "$sha_after" ] || fail "sha256 computation failed"
 
+  # Position: rows must land directly after the last original data row
+  local header_ln sidebar_ln modal_ln
+  header_ln="$(grep -n '| header |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  sidebar_ln="$(grep -n 'sidebar' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  modal_ln="$(grep -n 'modal' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$sidebar_ln" -eq "$((header_ln + 1))" ] || \
+    fail "sidebar row not directly after the last table row (expected line $((header_ln + 1)), got $sidebar_ln)"
+  [ "$modal_ln" -eq "$((header_ln + 2))" ] || \
+    fail "modal row not consecutive after sidebar (expected line $((header_ln + 2)), got $modal_ln)"
+
   rm -rf "$root"
 }
 
@@ -962,6 +972,16 @@ UX
     fail "backslash component not preserved in doc"
   grep -qF 'R&D-panel' "$doc_dir/ux-design.md" || \
     fail "ampersand component not preserved in doc"
+
+  # Position: rows must land directly after the last original data row
+  local header_ln navbar_ln rdpanel_ln
+  header_ln="$(grep -n '| header |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  navbar_ln="$(grep -nF 'nav\bar' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  rdpanel_ln="$(grep -nF 'R&D-panel' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$navbar_ln" -eq "$((header_ln + 1))" ] || \
+    fail "nav\\bar row not directly after the last table row (expected line $((header_ln + 1)), got $navbar_ln)"
+  [ "$rdpanel_ln" -eq "$((header_ln + 2))" ] || \
+    fail "R&D-panel row not consecutive after nav\\bar (expected line $((header_ln + 2)), got $rdpanel_ln)"
 
   rm -rf "$root"
 }
@@ -1681,6 +1701,13 @@ UX
   grep -qF 'Input\|Output' "$doc_dir/ux-design.md" || \
     fail "pipe character not escaped in table cell"
 
+  # Position: row must land directly after the last original data row
+  local header_ln input_ln
+  header_ln="$(grep -n '| header |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  input_ln="$(grep -nF 'Input\|Output' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$input_ln" -eq "$((header_ln + 1))" ] || \
+    fail "Input|Output row not directly after the last table row (expected line $((header_ln + 1)), got $input_ln)"
+
   # The table column count must be unchanged (3 columns).
   # Count unescaped pipe delimiters on the inserted row. The escaped \|
   # must not count as a column separator.
@@ -2063,6 +2090,648 @@ GOLDEN
 
   diff -u "$expected" "$actual" || \
     fail "output differs from golden reference"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 1 (AC1) — table followed by prose: row inserted inside table
+# =========================================================================
+
+@test "(AC1) table followed by prose: row inserted inside table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes | Status |
+|-----------|--------|-------|--------|
+| HabitRow | Custom | Row card | Active |
+
+Design tokens: primary-500 = #6366F1, surface = #FFFFFF
+
+## 9. Interaction Patterns
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["HabitRow","EmptyState"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The new component must be present
+  grep -q 'EmptyState' "$doc_dir/ux-design.md" || \
+    fail "EmptyState not added to doc after sync"
+
+  # Row must appear directly after the last original data row
+  local habitrow_ln emptystate_ln
+  habitrow_ln="$(grep -n '| HabitRow |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  emptystate_ln="$(grep -n 'EmptyState' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$emptystate_ln" -eq "$((habitrow_ln + 1))" ] || \
+    fail "EmptyState row not directly after HabitRow (expected line $((habitrow_ln + 1)), got $emptystate_ln)"
+
+  # Row must be padded to 4 columns
+  local row_text
+  row_text="$(sed -n "${emptystate_ln}p" "$doc_dir/ux-design.md")"
+  [[ "$row_text" == '| EmptyState | | | |' ]] || \
+    fail "EmptyState row not padded to 4 columns: $row_text"
+
+  # Prose after the table must be byte-unchanged
+  grep -q 'Design tokens: primary-500 = #6366F1, surface = #FFFFFF' "$doc_dir/ux-design.md" || \
+    fail "prose after the table was altered"
+
+  # The heading must still be present (shifted by 1 line)
+  local heading_ln
+  heading_ln="$(grep -n '## 9\. Interaction Patterns' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ -n "$heading_ln" ] || fail "## 9. heading disappeared"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 2 (AC2) — table then blank line then heading: rows in order
+# =========================================================================
+
+@test "(AC2) table then blank line then heading: rows in order inside table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| ExistingA | Custom |
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["ExistingA","NewB","NewC"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Both new components must be present
+  grep -q 'NewB' "$doc_dir/ux-design.md" || fail "NewB not added"
+  grep -q 'NewC' "$doc_dir/ux-design.md" || fail "NewC not added"
+
+  # Rows must appear directly after ExistingA, in order
+  local existing_ln newb_ln newc_ln
+  existing_ln="$(grep -n '| ExistingA |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  newb_ln="$(grep -n 'NewB' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  newc_ln="$(grep -n 'NewC' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$newb_ln" -eq "$((existing_ln + 1))" ] || \
+    fail "NewB not directly after ExistingA (expected line $((existing_ln + 1)), got $newb_ln)"
+  [ "$newc_ln" -eq "$((existing_ln + 2))" ] || \
+    fail "NewC not directly after NewB (expected line $((existing_ln + 2)), got $newc_ln)"
+
+  # Blank line must still exist between the last new row and the heading
+  local heading_ln
+  heading_ln="$(grep -n '## 9\. Next Section' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  local line_before_heading
+  line_before_heading="$(sed -n "$((heading_ln - 1))p" "$doc_dir/ux-design.md")"
+  [ -z "$line_before_heading" ] || \
+    fail "blank line missing between new rows and heading (line $((heading_ln - 1)) is: $line_before_heading)"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 3 (AC2) — table then blank lines then EOF: rows inside table
+# =========================================================================
+
+@test "(AC2) table then blank lines then EOF: rows inside table, blanks kept" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Two trailing blank lines after the table, then EOF
+  printf '%s' '---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Only | Custom |
+
+
+' > "$doc_dir/ux-design.md"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Only","Added"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'Added' "$doc_dir/ux-design.md" || fail "Added not present in doc"
+
+  # Row must appear directly after Only
+  local only_ln added_ln
+  only_ln="$(grep -n '| Only |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  added_ln="$(grep -n 'Added' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$added_ln" -eq "$((only_ln + 1))" ] || \
+    fail "Added row not directly after Only (expected line $((only_ln + 1)), got $added_ln)"
+
+  # Two trailing blank lines must still follow the new row at EOF
+  local total_lines
+  total_lines="$(wc -l < "$doc_dir/ux-design.md" | tr -d ' ')"
+  local second_last last_line
+  second_last="$(sed -n "$((total_lines - 1))p" "$doc_dir/ux-design.md")"
+  last_line="$(sed -n "${total_lines}p" "$doc_dir/ux-design.md")"
+  [ -z "$second_last" ] || \
+    fail "second-to-last line should be blank but is: $second_last"
+  [ -z "$last_line" ] || \
+    fail "last line should be blank but is: $last_line"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 4 (AC2) — table directly abutting heading: output unchanged
+# =========================================================================
+
+@test "(AC2) table directly abutting heading: output unchanged from today" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # No blank line between table and heading
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Only | Custom |
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Only","NewRow"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'NewRow' "$doc_dir/ux-design.md" || fail "NewRow not added"
+
+  # NewRow must appear between Only and the heading
+  local only_ln newrow_ln heading_ln
+  only_ln="$(grep -n '| Only |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  newrow_ln="$(grep -n 'NewRow' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  heading_ln="$(grep -n '## 9\. Next Section' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$newrow_ln" -eq "$((only_ln + 1))" ] || \
+    fail "NewRow not directly after Only (expected line $((only_ln + 1)), got $newrow_ln)"
+  [ "$heading_ln" -eq "$((newrow_ln + 1))" ] || \
+    fail "heading not directly after NewRow (expected line $((newrow_ln + 1)), got $heading_ln)"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 5 (AC3) — bullet-list section: placement unchanged
+# =========================================================================
+
+@test "(AC3) bullet-list section: placement unchanged" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- existing-btn
+
+Some trailing prose here.
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["existing-btn","new-card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'new-card' "$doc_dir/ux-design.md" || fail "new-card not added"
+
+  # The new bullet must appear before the heading (bullet mode inserts at heading boundary)
+  local heading_ln card_ln
+  heading_ln="$(grep -n '## 9\. Next Section' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  card_ln="$(grep -n 'new-card' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$card_ln" -lt "$heading_ln" ] || \
+    fail "new-card should appear before ## 9. heading (card at $card_ln, heading at $heading_ln)"
+
+  # Must be a bullet, not a table row
+  local card_text
+  card_text="$(sed -n "${card_ln}p" "$doc_dir/ux-design.md")"
+  [[ "$card_text" == '- new-card' ]] || \
+    fail "new-card should be a bullet entry, got: $card_text"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 6 (AC4) — two tables in section: row in first, second unchanged
+# =========================================================================
+
+@test "(AC4) two tables in section: row in first, second byte-identical" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Alpha | Custom |
+
+| Token | Value |
+|-------|-------|
+| primary-500 | #6366F1 |
+
+## 9. Next Section
+UX
+
+  # Capture the second table before sync
+  local second_table_before
+  second_table_before="$(awk '/^\| Token/,/^$/' "$doc_dir/ux-design.md")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Alpha","Beta"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'Beta' "$doc_dir/ux-design.md" || fail "Beta not added"
+
+  # Beta must appear directly after Alpha (in the first table)
+  local alpha_ln beta_ln
+  alpha_ln="$(grep -n '| Alpha |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  beta_ln="$(grep -n 'Beta' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$beta_ln" -eq "$((alpha_ln + 1))" ] || \
+    fail "Beta not directly after Alpha (expected line $((alpha_ln + 1)), got $beta_ln)"
+
+  # Second table must be byte-identical
+  local second_table_after
+  second_table_after="$(awk '/^\| Token/,/^$/' "$doc_dir/ux-design.md")"
+  [ "$second_table_before" = "$second_table_after" ] || \
+    fail "second table was modified by the sync"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 7 (AC5) — header-separator-only table: row after separator
+# =========================================================================
+
+@test "(AC5) header-separator-only table: row after separator" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+
+Design tokens note.
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["FirstComp"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'FirstComp' "$doc_dir/ux-design.md" || fail "FirstComp not added"
+
+  # Row must appear directly after the separator row
+  local sep_ln comp_ln
+  sep_ln="$(grep -n '^|---' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  comp_ln="$(grep -n 'FirstComp' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$comp_ln" -eq "$((sep_ln + 1))" ] || \
+    fail "FirstComp not directly after separator (expected line $((sep_ln + 1)), got $comp_ln)"
+
+  # Prose after the table must be preserved
+  grep -q 'Design tokens note.' "$doc_dir/ux-design.md" || \
+    fail "prose after the table was lost"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 8 (AC5) — blank lines between heading and table: preserved
+# =========================================================================
+
+@test "(AC5) blank lines between heading and table: preserved" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Two blank lines between the heading and the table
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+
+| Component | Source |
+|-----------|--------|
+| Existing | Custom |
+
+## 9. Next Section
+UX
+
+  # Count blank lines between heading and table before sync
+  local heading_ln_before table_ln_before
+  heading_ln_before="$(grep -n '## 8\. Components' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  table_ln_before="$(grep -n '| Component |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  local gap_before=$((table_ln_before - heading_ln_before - 1))
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Existing","NewWidget"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'NewWidget' "$doc_dir/ux-design.md" || fail "NewWidget not added"
+
+  # Blank lines between heading and table must be preserved
+  local heading_ln_after table_ln_after
+  heading_ln_after="$(grep -n '## 8\. Components' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  table_ln_after="$(grep -n '| Component |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  local gap_after=$((table_ln_after - heading_ln_after - 1))
+  [ "$gap_after" -eq "$gap_before" ] || \
+    fail "blank lines between heading and table changed (was $gap_before, now $gap_after)"
+
+  # Row must be inside the table (after Existing)
+  local existing_ln widget_ln
+  existing_ln="$(grep -n '| Existing |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  widget_ln="$(grep -n 'NewWidget' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$widget_ln" -eq "$((existing_ln + 1))" ] || \
+    fail "NewWidget not directly after Existing (expected line $((existing_ln + 1)), got $widget_ln)"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 9 (AC6) — second Token/Value table: no spurious absent lines
+# =========================================================================
+
+@test "(AC6) second Token/Value table: no spurious absent lines, component added" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Alpha | Custom |
+
+| Token | Value |
+|-------|-------|
+| primary-500 | #6366F1 |
+
+## 9. Next Section
+UX
+
+  # Snapshot includes Alpha (existing) and primary-500 (name matching a
+  # cell in the second table — must still be added as a component)
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Alpha","primary-500"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # No "absent" line mentioning primary-500 (would mean extraction read the second table)
+  local absent_primary
+  absent_primary="$(printf '%s\n' "$output" | grep -i 'absent' | grep 'primary-500' || true)"
+  [ -z "$absent_primary" ] || \
+    fail "primary-500 reported as absent — extraction read past the first table: $absent_primary"
+
+  # primary-500 must be added as a component row in the first table
+  grep -q 'primary-500' "$doc_dir/ux-design.md" || \
+    fail "primary-500 not added to doc"
+
+  # It must appear directly after Alpha (in the first table)
+  local alpha_ln primary_ln
+  alpha_ln="$(grep -n '| Alpha |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  primary_ln="$(grep -n '| primary-500 |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$primary_ln" -eq "$((alpha_ln + 1))" ] || \
+    fail "primary-500 row not directly after Alpha (expected line $((alpha_ln + 1)), got $primary_ln)"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 10 (AC7) — table under triple-hash subheading: row added
+# =========================================================================
+
+@test "(AC7) table under triple-hash subheading: row added to table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+### Component inventory
+
+| Component | Source |
+|-----------|--------|
+| CardA | Custom |
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["CardA","CardB"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'CardB' "$doc_dir/ux-design.md" || fail "CardB not added"
+
+  # CardB must appear as a table row, not a bullet
+  local cardb_text
+  cardb_text="$(grep 'CardB' "$doc_dir/ux-design.md")"
+  [[ "$cardb_text" == '| CardB |'* ]] || \
+    fail "CardB should be a table row, got: $cardb_text"
+
+  # CardB must appear directly after CardA (inside the table)
+  local carda_ln cardb_ln
+  carda_ln="$(grep -n '| CardA |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  cardb_ln="$(grep -n '| CardB |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$cardb_ln" -eq "$((carda_ln + 1))" ] || \
+    fail "CardB not directly after CardA (expected line $((carda_ln + 1)), got $cardb_ln)"
+
+  # No bullet "- CardB" should appear
+  local bullet_count
+  bullet_count="$(grep -c '^- CardB' "$doc_dir/ux-design.md" || true)"
+  [ "$bullet_count" -eq 0 ] || \
+    fail "CardB appeared as a bullet ($bullet_count times) instead of a table row"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Scenario 11 (AC8) — duplicate snapshot names: one row, reported once
+# =========================================================================
+
+@test "(AC8) duplicate snapshot names: one row, reported once" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+design_state: review
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Existing | Custom |
+
+## 9. Next Section
+UX
+
+  # Snapshot with Alpha listed twice and Beta once
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Existing","Alpha","Alpha","Beta"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Exactly one Alpha row must be added
+  local alpha_count
+  alpha_count="$(grep -c '| Alpha |' "$doc_dir/ux-design.md" || true)"
+  [ "$alpha_count" -eq 1 ] || \
+    fail "expected exactly 1 Alpha row, found $alpha_count"
+
+  # Beta must also be present (exactly once)
+  local beta_count
+  beta_count="$(grep -c '| Beta |' "$doc_dir/ux-design.md" || true)"
+  [ "$beta_count" -eq 1 ] || \
+    fail "expected exactly 1 Beta row, found $beta_count"
+
+  # The "added" output must mention Alpha exactly once
+  local added_alpha_count
+  added_alpha_count="$(printf '%s\n' "$output" | grep -c 'added.*Alpha' || true)"
+  [ "$added_alpha_count" -eq 1 ] || \
+    fail "expected 'added' for Alpha exactly once, got $added_alpha_count"
 
   rm -rf "$root"
 }

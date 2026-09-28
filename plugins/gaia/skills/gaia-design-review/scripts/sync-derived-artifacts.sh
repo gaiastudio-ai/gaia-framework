@@ -52,6 +52,13 @@ _sha256_bytes() {
   fi
 }
 
+# _is_section_end LINE — true when the line is a level-1 or level-2
+# heading (which closes the component section).  Level-3 and deeper
+# headings (###, ####, ...) are subsection content and do NOT end it.
+_is_section_end() {
+  [[ "$1" == '# '* ]] || { [[ "$1" == '## '* ]] && ! [[ "$1" == '### '* ]]; }
+}
+
 # _extract_doc_components DOC — parse component names from the components
 # section of a markdown file. Accepts the template heading (both & and
 # "and" variants, case-insensitive, with optional number prefix) and the
@@ -60,6 +67,7 @@ _extract_doc_components() {
   local doc="$1"
   local in_section=false
   local saw_separator=false
+  local first_table_done=false
 
   shopt -s nocasematch
   while IFS= read -r line; do
@@ -74,24 +82,23 @@ _extract_doc_components() {
       # Second heading match — stop (template wins)
       break
     fi
-    if [ "$in_section" = true ] && [[ "$line" =~ ^## ]]; then
-      break
-    fi
     if [ "$in_section" = true ]; then
+      # Section ends at level-1 or level-2 headings
+      if _is_section_end "$line"; then break; fi
+
+      # Already read the first table — skip everything else in the section
+      if [ "$first_table_done" = true ]; then continue; fi
+
       # Check for table separator row: cells contain only -, :, spaces
       if [[ "$line" =~ ^\|[[:space:]]*[-:] ]] && [[ "$line" =~ ^[[:space:]]*\|[[:space:]]*[-:|[:space:]]*$ ]]; then
-        # The previous pipe line was the header — discard it
         saw_separator=true
         continue
       fi
 
       # Table row
       if [[ "$line" =~ ^\| ]]; then
-        if [ "$saw_separator" = false ]; then
-          # Before any separator: skip this line (it is the header row)
-          continue
-        fi
-        # After separator: this is a data row — extract first cell
+        if [ "$saw_separator" = false ]; then continue; fi
+        # Data row — extract first cell
         local first_cell
         first_cell="$(printf '%s' "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$2); print $2}')"
         if [ -n "$first_cell" ]; then
@@ -100,7 +107,13 @@ _extract_doc_components() {
         continue
       fi
 
-      # Bullet list entry
+      # Non-pipe line after seeing the separator — first table ended
+      if [ "$saw_separator" = true ]; then
+        first_table_done=true
+        continue
+      fi
+
+      # Bullet list entry (only reached if no table was found yet)
       if [[ "$line" =~ ^-[[:space:]] ]]; then
         printf '%s\n' "${line#- }"
       fi
@@ -125,10 +138,10 @@ _count_table_cols() {
       fi
       break
     fi
-    if [ "$in_section" = true ] && [[ "$line" =~ ^## ]]; then
-      break
-    fi
     if [ "$in_section" = true ]; then
+      # Section ends at level-1 or level-2 headings
+      if _is_section_end "$line"; then break; fi
+
       # Separator row tells us column count
       if [[ "$line" =~ ^\|[[:space:]]*[-:] ]] && [[ "$line" =~ ^[[:space:]]*\|[[:space:]]*[-:|[:space:]]*$ ]]; then
         # Count pipes minus 1 (leading and trailing pipes)
@@ -157,11 +170,14 @@ _batch_add_components() {
   col_count="$(_count_table_cols "$doc")"
 
   if [ "$col_count" -gt 0 ]; then
-    # Table mode: insert as table rows padded to col_count
+    # Table mode: insert new component rows immediately after the first
+    # table's last pipe line, before any trailing blank lines, prose, or
+    # headings.  A pending-line buffer tracks contiguous pipe blocks so
+    # the insertion point is the end of the first table that contains a
+    # separator row.
     awk -v cols="$col_count" '
       BEGIN {
         while ((getline comp < ARGV[2]) > 0) {
-          # Escape pipe characters in the component name
           gsub(/\|/, "\\|", comp)
           comps[++n] = comp
         }
@@ -171,31 +187,70 @@ _batch_add_components() {
         low = tolower(s)
         return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory)/)
       }
-      in_section && /^##/ {
-        for (i = 1; i <= n; i++) {
-          row = "| " comps[i] " |"
+      # Only level-1 and level-2 headings end the section; ### and deeper do not
+      function is_section_end(s) {
+        return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
+      }
+      function flush_pending(    i2) {
+        for (i2 = 1; i2 <= npend; i2++) printf "%s\n", pending[i2]
+        npend = 0
+      }
+      function flush_comps(    i2, row) {
+        if (flushed) return
+        for (i2 = 1; i2 <= n; i2++) {
+          row = "| " comps[i2] " |"
           for (c = 2; c <= cols; c++) row = row " |"
           printf "%s\n", row
         }
-        in_section=0
-        done_section=1
+        flushed = 1
+      }
+
+      # Rule order is load-bearing: this section-end rule MUST precede
+      # the buffer rule below.  Both end with next.  If section-end came
+      # after the buffer rule, a heading line would be captured into the
+      # pending buffer instead of triggering a flush.
+      !done_section && in_section && is_section_end($0) {
+        flush_pending()
+        flush_comps()
+        in_section = 0
+        done_section = 1
         print
         next
       }
-      !done_section && heading_match($0) { in_section=1; print; next }
-      { print }
-      END {
-        if (in_section) {
-          for (i = 1; i <= n; i++) {
-            row = "| " comps[i] " |"
-            for (c = 2; c <= cols; c++) row = row " |"
-            printf "%s\n", row
+
+      !done_section && heading_match($0) { in_section = 1; print; next }
+
+      # Buffer rule — must come AFTER section-end (see note above)
+      in_section && !first_table_done {
+        if ($0 ~ /^\|/) {
+          pending[++npend] = $0
+          if ($0 ~ /^\|[[:space:]]*[-:]/ && $0 ~ /^[[:space:]]*\|[[:space:]]*[-:|[:space:]]*$/) {
+            saw_sep = 1
           }
+          next
+        } else {
+          if (npend > 0) {
+            flush_pending()
+            if (saw_sep) {
+              flush_comps()
+              first_table_done = 1
+            }
+            saw_sep = 0
+          }
+          print
+          next
         }
+      }
+
+      { print }
+
+      END {
+        flush_pending()
+        if (in_section) flush_comps()
       }
     ' "$doc" "$components_file" > "$tmpfile"
   else
-    # Bullet mode
+    # Bullet mode: insert new bullets at the section boundary
     awk '
       BEGIN {
         while ((getline comp < ARGV[2]) > 0) {
@@ -207,7 +262,11 @@ _batch_add_components() {
         low = tolower(s)
         return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory)/)
       }
-      in_section && /^##/ {
+      # Only level-1 and level-2 headings end the section; ### and deeper do not
+      function is_section_end(s) {
+        return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
+      }
+      in_section && is_section_end($0) {
         for (i = 1; i <= n; i++) printf "- %s\n", comps[i]
         in_section=0
         done_section=1
@@ -360,6 +419,11 @@ _main() {
       printf 'sync-derived-artifacts.sh: no component section found — expected "## N. Components & Design System" or "## Component Inventory"\n' >&2
       exit 1
     fi
+
+    # Deduplicate snapshot component names, keeping first-seen order
+    local deduped_components
+    deduped_components="$(printf '%s\n' "$snapshot_components" | awk '!seen[$0]++')"
+    snapshot_components="$deduped_components"
 
     local doc_components
     doc_components="$(_extract_doc_components "$ux_doc")"
