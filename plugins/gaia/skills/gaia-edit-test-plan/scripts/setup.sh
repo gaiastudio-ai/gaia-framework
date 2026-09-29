@@ -67,16 +67,23 @@ fi
 #   Tier 2 — positive legacy evidence (legacy file exists AND canonical
 #            dir does NOT) → use legacy docs/test-artifacts/test-plan.md.
 #   Tier 3 — canonical default: .gaia/artifacts/test-artifacts/test-plan.md.
-# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
-# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
-# walk-up. On a marketplace/cache-installed plugin
-# (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
-# 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
-# and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
-# provided env vars first restores the project anchor that callers actually
-# rely on. The walk-up remains as the final fallback for in-source-tree dev
-# (gaia-framework/ checkout) where neither env var is set.
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}"
+# Project root resolution: env vars (PROJECT_ROOT, CLAUDE_PROJECT_ROOT,
+# GAIA_PROJECT_ROOT), then walk up from $PWD to the .gaia/config/
+# project-config.yaml anchor (stopping at $HOME), then $PWD as last resort.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-}}}"
+if [ -z "$PROJECT_ROOT" ]; then
+  _walk="$PWD"
+  while [ -n "$_walk" ] && [ "$_walk" != "/" ] && [ "$_walk" != "${HOME:-}" ]; do
+    if [ -f "${_walk}/.gaia/config/project-config.yaml" ]; then
+      PROJECT_ROOT="$_walk"
+      break
+    fi
+    _walk="$(dirname "$_walk")"
+  done
+fi
+PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
+export PROJECT_ROOT
+printf 'project_root=%s\n' "$PROJECT_ROOT" >&2
 if [ -z "${TEST_PLAN_PATH:-}" ]; then
   if [ -f "$PROJECT_ROOT/docs/test-artifacts/test-plan.md" ] && [ ! -d "$PROJECT_ROOT/.gaia/artifacts/test-artifacts" ]; then
     TEST_PLAN_PATH="$PROJECT_ROOT/docs/test-artifacts/test-plan.md"

@@ -26,8 +26,34 @@ export LC_ALL
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
+# Project root resolution: env vars (PROJECT_ROOT, CLAUDE_PROJECT_ROOT,
+# GAIA_PROJECT_ROOT), then walk up from $PWD to the .gaia/config/
+# project-config.yaml anchor (stopping at $HOME), then $PWD as last resort.
+# Resolved before the --bypass block and the design gate so both see the
+# correct project tree.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-}}}"
+if [ -z "$PROJECT_ROOT" ]; then
+  _walk="$PWD"
+  while [ -n "$_walk" ] && [ "$_walk" != "/" ] && [ "$_walk" != "${HOME:-}" ]; do
+    if [ -f "${_walk}/.gaia/config/project-config.yaml" ]; then
+      PROJECT_ROOT="$_walk"
+      break
+    fi
+    _walk="$(dirname "$_walk")"
+  done
+fi
+PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
+export PROJECT_ROOT
+printf 'project_root=%s\n' "$PROJECT_ROOT" >&2
+
 SCRIPT_NAME="gaia-create-arch/setup.sh"
 WORKFLOW_NAME="create-architecture"
+
+# Resolve the GAIA plugin scripts directory from this script's location:
+#   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 
 # ---------- 0. Parse --bypass / --reason flags ----------
 # The threat-model gate error message advertised
@@ -37,6 +63,14 @@ WORKFLOW_NAME="create-architecture"
 # --skill --reason --sprint-id` which records the bypass to
 # .gaia/state/lifecycle-overrides.yaml. This block parses the advertised
 # flags and writes the bypass record before the gate check below runs.
+# Parse --force-design / --reason / --entry-point / --sprint-id via the shared
+# helper. Unrecognized args (including --bypass) land in _PFD_REMAINING.
+PARSE_FORCE_DESIGN="$PLUGIN_SCRIPTS_DIR/lib/parse-force-design.sh"
+# shellcheck disable=SC1090
+. "$PARSE_FORCE_DESIGN"
+_parse_force_design "$@"; set -- "${_PFD_REMAINING[@]+"${_PFD_REMAINING[@]}"}"
+
+# Parse the remaining --bypass / --reason flags (threat-model gate bypass).
 BYPASS_SKILL=""
 BYPASS_REASON=""
 while [ $# -gt 0 ]; do
@@ -48,7 +82,7 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || { printf '%s: --reason requires a quoted text argument\n' "$SCRIPT_NAME" >&2; exit 2; }
       BYPASS_REASON="$2"; shift 2 ;;
     --help|-h)
-      printf 'Usage: %s [--bypass <skill> --reason "<text>"]\n' "$SCRIPT_NAME"
+      printf 'Usage: %s [--bypass <skill> --reason "<text>"] [--force-design --reason "<text>" --entry-point <name> [--sprint-id <id>]]\n' "$SCRIPT_NAME"
       exit 0 ;;
     -*)
       printf '%s: unknown flag: %s\n' "$SCRIPT_NAME" "$1" >&2
@@ -90,15 +124,11 @@ if [ -n "$BYPASS_SKILL" ]; then
   fi
 fi
 
-# Resolve the GAIA plugin scripts directory from this script's location:
-#   skills/gaia-create-arch/scripts/setup.sh → ../../../scripts
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
-
 RESOLVE_CONFIG="$PLUGIN_SCRIPTS_DIR/resolve-config.sh"
 VALIDATE_GATE="$PLUGIN_SCRIPTS_DIR/validate-gate.sh"
 CHECKPOINT="$PLUGIN_SCRIPTS_DIR/checkpoint.sh"
+GATE_PREDICATES="$PLUGIN_SCRIPTS_DIR/lib/gate-predicates.sh"
+SKILL_MD_PATH="$(cd "$SCRIPT_DIR/.." && pwd)/SKILL.md"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
@@ -130,20 +160,20 @@ else
   log "validate-gate.sh not found at $VALIDATE_GATE — skipping gate (non-fatal)"
 fi
 
+# ---------- 2a. Quality gates: pre_start ----------
+if [ -f "$GATE_PREDICATES" ]; then
+  # shellcheck disable=SC1090
+  . "$GATE_PREDICATES"
+  _gate_run_pre_start "$SKILL_MD_PATH" "$SCRIPT_NAME: quality-gate" || exit 1
+else
+  die "gate-predicates.sh not found at $GATE_PREDICATES — cannot evaluate required quality gates"
+fi
+
 # ---------- 2b. Guard: architecture-template.md must be present ----------
 # Check skill-local copy first, then custom/templates/ override. If neither
 # exists, fail fast.
 TEMPLATE_LOCAL="$SKILL_DIR/architecture-template.md"
-# Prefer CLAUDE_PROJECT_ROOT (the framework-standard harness var) and
-# GAIA_PROJECT_ROOT (project-specific) BEFORE the $SKILL_DIR/../../../../..
-# walk-up. On a marketplace/cache-installed plugin
-# (~/.claude/plugins/cache/<mp>/gaia/<ver>/skills/<skill>/scripts/), walking
-# 5 levels up lands in `~/.claude/plugins/cache` — NOT the user's project —
-# and every subsequent .gaia/ artifact lookup misses. Honoring the harness-
-# provided env vars first restores the project anchor that callers actually
-# rely on. The walk-up remains as the final fallback for in-source-tree dev
-# (gaia-framework/ checkout) where neither env var is set.
-PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$(cd "$SKILL_DIR/../../../../.." && pwd)}}}"
+# PROJECT_ROOT was resolved at script entry (before the design gate).
 TEMPLATE_CUSTOM="$PROJECT_ROOT/custom/templates/architecture-template.md"
 
 if [ ! -s "$TEMPLATE_LOCAL" ] && [ ! -s "$TEMPLATE_CUSTOM" ]; then

@@ -1,0 +1,7 @@
+# Exclusion list for the retirement sweep-clean verification.
+# Paths that contain the provider word as legitimate third-party comparison
+# prose, not as a surface the framework extends or exposes.
+# Format: path | one-line reason
+plugins/gaia/tests/fixtures/market-research-complete.md | competitor comparison prose in test fixture
+plugins/gaia/tests/fixtures/market-research-missing-tam-assumptions.md | competitor comparison prose in test fixture
+CHANGELOG.md | historical release notes

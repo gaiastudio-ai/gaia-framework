@@ -137,7 +137,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-security-review [story-key]"
 - Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
-- Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
+- Read the resolved story file; parse YAML frontmatter to extract `status`.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`).
 - **Persona resolution via `agent-overlay.sh` (V2).** In the parent context, resolve the security reviewer persona via the shared overlay:
   ```bash
@@ -281,7 +281,6 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 - **Security-architecture conformance.** Fork reads `.gaia/artifacts/planning-artifacts/architecture.md` and (when present) `.gaia/artifacts/planning-artifacts/threat-model.md`. For each File List entry, verify authn/authz boundaries align with the documented gateway/middleware pattern, secret-storage references match the documented vault path, and any architecture decision records referenced by the story exist with status Accepted. Findings under `category: architecture`.
 - **Threat-model cross-reference.** When threat-model context was provided, findings that match a modeled threat carry an optional `threat_ref` field (e.g., `threat_ref: "T3"`). Format the cross-reference inline as `(see T3 in threat model)`.
-- **Design fidelity.** If the story frontmatter has a `figma:` block, fork compares design-token references in the changed code against `.gaia/artifacts/planning-artifacts/design-system/design-tokens.json`. Findings under `category: fidelity`. If no `figma:` block: skip silently (no Warning, no finding).
 
 ### Phase 5 — Verdict
 

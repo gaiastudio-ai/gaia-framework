@@ -1,9 +1,7 @@
 #!/usr/bin/env bats
-# gaia-dev-story-step2b-atdd.bats — TC-DSH-13/14 regression guard for E55-S5 (AC1, AC2)
+# gaia-dev-story-step2b-atdd.bats — ATDD gate (Step 2b) + plan-structure validator regression guard
 #
-# Story: E55-S5 (ATDD gate (Step 2b) + plan-structure validator + Figma graceful-degrade)
-# ADR: ADR-073 (/gaia-dev-story Planning-Gate Halt + Val Auto-Validation Loop)
-# PRD: FR-DSH-6 (high-risk stories MUST have an ATDD file)
+# Validates the ATDD gate and plan-structure validator contracts in gaia-dev-story SKILL.md.
 #
 # Validates:
 #   AC1 — Test 1: Step 2b region is present in SKILL.md, bounded by

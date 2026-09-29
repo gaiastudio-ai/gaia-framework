@@ -217,8 +217,6 @@ EOF
   grep -qF '<!-- step1 script-wiring end -->' "$SKILL_MD"
   grep -qF '<!-- step 2b atdd gate begin -->' "$SKILL_MD"
   grep -qF '<!-- step 2b atdd gate end -->' "$SKILL_MD"
-  grep -qF '<!-- figma graceful-degrade begin -->' "$SKILL_MD"
-  grep -qF '<!-- figma graceful-degrade end -->' "$SKILL_MD"
   grep -qF '<!-- planning gate begin -->' "$SKILL_MD"
   grep -qF '<!-- planning gate end -->' "$SKILL_MD"
   grep -qF '<!-- step5 tdd-review-gate begin -->' "$SKILL_MD"

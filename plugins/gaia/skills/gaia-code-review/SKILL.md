@@ -106,7 +106,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-review-code [story-key]"
 - Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
-- Read the resolved story file; parse YAML frontmatter to extract `status` and `figma:` block (if any).
+- Read the resolved story file; parse YAML frontmatter to extract `status`.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
 - **Tool prereq probe (EC-4).** For each tool listed in the stack-toolkit table row matched by the canonical stack name: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
 - **Expected-missing-tool (case 1).** If a required toolkit binary is absent and not optional for the stack: emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
@@ -224,7 +224,7 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 The fork extends Phase 3B's findings with architecture and design checks; findings flow into the Phase 3B category buckets.
 
 - **Architecture conformance.** Fork reads `.gaia/artifacts/planning-artifacts/architecture.md`. For each File List entry, verify component placement follows the documented hierarchy, dependency direction matches the architecture, and any ADRs referenced by the story exist with status Accepted. Findings under `category: architecture`.
-- **Design fidelity.** If the story frontmatter has a `figma:` block, fork compares design-token references in the changed code against `.gaia/artifacts/planning-artifacts/design-system/design-tokens.json` and classifies as matched / drifted / missing. Findings under `category: fidelity`. If no `figma:` block: skip silently (no Warning, no finding).
+- **Design fidelity.** If the project has a design-record reference (`.gaia/state/design-record.yaml` with `design_state: approved`), resolve design truth through the project reference and compare design-token usage in the changed code. Findings under `category: fidelity`. If the reference resolves but the design surface is unreachable, surface unreachability as a finding (never fall back to a local copy). If no design-record reference exists: on a UI project (`compliance.ui_present` is true), report design truth unavailable as a finding. On a non-UI project, record not-applicable (no finding). A project that has never configured a design source will see this check report findings for the first time when a design-record reference is added; those findings are correct behaviour, not a regression.
 
 ### Phase 5 — Verdict
 

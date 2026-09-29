@@ -3,6 +3,10 @@ name: gaia-infra-design
 description: Design infrastructure topology and IaC structure through collaborative discovery with the devops subagent (Soren) — architecture skill. Use when the user wants to produce an infrastructure design document covering deployment topology, environment design, IaC structure, and observability plan.
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 orchestration_class: heavy-procedural
+quality_gates:
+  pre_start:
+    - condition: "design_approved:"
+      error_message: "Design is not approved. Approve the design via /gaia-design-review, or pass --force-design with a reason to override."
 ---
 
 ## Orchestration Mode
@@ -21,6 +25,20 @@ fi
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-infra-design/scripts/setup.sh
+
+### Override gate (if applicable)
+
+If the user supplied `--force-design` with a `--reason` (and optionally `--sprint-id`) in `$ARGUMENTS`:
+
+```bash
+export FORCE_DESIGN=1
+export FORCE_DESIGN_REASON="<reason from $ARGUMENTS>"
+export FORCE_DESIGN_ENTRY_POINT="gaia-infra-design"
+export FORCE_DESIGN_SPRINT_ID="<sprint-id from $ARGUMENTS, or empty>"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-infra-design/scripts/setup.sh" --force-design --reason "$FORCE_DESIGN_REASON" --entry-point "$FORCE_DESIGN_ENTRY_POINT" ${FORCE_DESIGN_SPRINT_ID:+--sprint-id "$FORCE_DESIGN_SPRINT_ID"}
+```
+
+The halt from the prelude's `## Setup` invocation is otherwise binding — the agent must not proceed past a design-gate halt.
 
 ## Memory
 

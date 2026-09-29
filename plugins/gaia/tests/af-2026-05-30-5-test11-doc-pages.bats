@@ -71,3 +71,43 @@ teardown() { common_teardown; }
         "$DOC_ROOT/commands/gaia-create-story.html"
   [ "$status" -eq 0 ]
 }
+
+# ===========================================================================
+# Design gate and stale propagation on affected command pages
+# ===========================================================================
+
+@test "dev-story.html documents the design approval prerequisite" {
+  local page="$DOC_ROOT/commands/gaia-dev-story.html"
+  [ -f "$page" ] || { echo "page not found: $page" >&2; return 1; }
+
+  # The phrase must be inside a prerequisites section <ul>
+  grep -qF 'Design approval required.' "$page" \
+    || { echo "missing: Design approval required." >&2; return 1; }
+  grep -qF '/gaia-design-review' "$page" \
+    || { echo "missing: /gaia-design-review" >&2; return 1; }
+  # Verify entities are intact (not corrupted to bare < or >)
+  grep -qF '&lt;text&gt;' "$page" \
+    || { echo "missing or corrupted entity: &lt;text&gt;" >&2; return 1; }
+}
+
+@test "add-feature.html documents the design impact assessment step" {
+  local page="$DOC_ROOT/commands/gaia-add-feature.html"
+  [ -f "$page" ] || { echo "page not found: $page" >&2; return 1; }
+
+  grep -qF 'Design impact assessment' "$page" \
+    || { echo "missing: Design impact assessment step" >&2; return 1; }
+  # The step must be inside the step-list <ol>
+  grep -q 'step-title.*Design impact assessment' "$page" \
+    || { echo "Design impact assessment not inside step-list" >&2; return 1; }
+}
+
+@test "edit-ux.html documents the design stale transition step" {
+  local page="$DOC_ROOT/commands/gaia-edit-ux.html"
+  [ -f "$page" ] || { echo "page not found: $page" >&2; return 1; }
+
+  grep -qF 'Design stale transition' "$page" \
+    || { echo "missing: Design stale transition step" >&2; return 1; }
+  # The step must be inside the step-list
+  grep -q 'step-title.*Design stale transition' "$page" \
+    || { echo "Design stale transition not inside step-list" >&2; return 1; }
+}

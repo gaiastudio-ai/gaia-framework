@@ -86,6 +86,8 @@ core	brain-static-guards.bats
 core	brain-update-index.bats
 core	bridge-toggle-inline-generator.bats
 core	bridge-toggle-step-5-summary.bats
+core	build-manifest-cards.bats
+core	changelog-retirement.bats
 core	check-status-discipline.bats
 core	ci-regen-helpers-coverage.bats
 core	ci-skip-shim-parity.bats
@@ -106,6 +108,15 @@ core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats
 core	dead-code-join.bats
 core	dead-reference-scan.bats
+core	design-a11y-rebind.bats
+core	design-availability.bats
+core	design-gate-sites.bats
+core	design-gate.bats
+core	design-lifecycle-docs.bats
+core	design-record-init-not-applicable.bats
+core	design-record.bats
+core	design-registration-completeness.bats
+core	design-review.bats
 core	detect-signals-proposal.bats
 core	detect-ux-scope.bats
 core	dev-story-promotion-chain-detect.bats
@@ -118,6 +129,7 @@ core	discovery-firewall.bats
 core	discovery-leak-gate.bats
 core	dispatch-provenance-teammate.bats
 core	distribution-schema.bats
+core	doc-site-retirement.bats
 core	e101-s1-adr-118-architecture-artifacts-decision.bats
 core	e101-s3-document-architecture-location.bats
 core	e102-s1-adr-119-artifact-subdirectory-grouping.bats
@@ -202,6 +214,7 @@ core	e77-s9-init-plugin-option.bats
 core	e85-s13-reconciler-writes-framework-version.bats
 core	embedded-dev-wiring.bats
 core	evidence-judgment-parity.bats
+core	expected-report-vocabulary.bats
 core	framework-version.bats
 core	gaia-add-feature-setup.bats
 core	gaia-config-distribution.bats
@@ -238,6 +251,7 @@ core	issue-1391-no-bash4-case-expansion.bats
 core	issue-1395-brownfield-walkthrough-tier2.bats
 core	issue-1396-test-strategy-artifact-home.bats
 core	issue-1405-epic-key-normalization.bats
+core	lifecycle-immutability.bats
 core	lint-bats-script-refs.bats
 core	lock-helper.bats
 core	lock-review-gate-ledger.bats
@@ -249,6 +263,7 @@ core	meeting-val-bridge-anti-pattern.bats
 core	migrate-stories-to-canonical-layout.bats
 core	mode-b-docs.bats
 core	mode-b-parity.bats
+core	never-built-commands.bats
 core	never-run-subdir-guard.bats
 core	no-bare-gaia-path-antipattern.bats
 core	no-bsd-awk-incompatible-anchors.bats
@@ -257,6 +272,7 @@ core	no-leaked-ids-in-test-names.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
 core	parallel-execution-config.bats
+core	parse-force-design.bats
 core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
@@ -272,10 +288,14 @@ core	plugin-version-resolution.bats
 core	product-brief-post-complete-gate.bats
 core	product-brief-pre-start-gate.bats
 core	promotion-trigger.bats
+core	quality-gates.bats
 core	reconcile-cross-stack.bats
+core	republish-on-stale.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
 core	retired-migrate-stories.bats
+core	retirement-fixture-traceability.bats
+core	retirement-sweep-clean.bats
 core	retro-finalize-sentinel.bats
 core	review-parity/gaia-atdd/action-skill-contract.bats
 core	review-parity/gaia-code-review/evidence-judgment-parity.bats
@@ -289,6 +309,7 @@ core	review-parity/gaia-review-security/evidence-judgment-parity.bats
 core	review-parity/gaia-test-automate/action-skill-contract.bats
 core	review-parity/gaia-test-e2e/action-skill-contract.bats
 core	review-parity/gaia-test-perf/action-skill-contract.bats
+core	review-rubric-rebind.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats
@@ -319,6 +340,7 @@ core	sprint-state-wrapper-sync.bats
 core	sprint-state.bats
 core	stacks-schema.bats
 core	stale-comment-sweep.bats
+core	stale-propagation.bats
 core	static-next-steps.bats
 core	statusline/statusline-install.bats
 core	statusline/statusline-refresh.bats
@@ -380,9 +402,6 @@ core	vcp-chk-35-36-ci-setup.bats
 core	vcp-ci-01-03-ci-setup-retry-loop.bats
 core	vcp-mem-04-scope-boundary.bats
 core	vcp-rc-02-06-readiness-conflicts.bats
-core	vcp-ux-06.bats
-core	vcp-ux-generate.bats
-core	vcp-ux-import.bats
 core	verdict-resolver-parameterized.bats
 core	worktree-chain-scripts.bats
 core	worktree-generator-parity.bats
@@ -447,8 +466,12 @@ scripts-core	cluster-9/review-summary-gen.bats
 scripts-core	cluster-9/run-all-reviews.bats
 scripts-core	config-phase-gate.bats
 scripts-core	coppa-regime.bats
+scripts-core	create-ux-claude-design.bats
 scripts-core	cross-refs-walk.bats
 scripts-core	dedup-contract.bats
+scripts-core	design-probe.bats
+scripts-core	design-record-reopen-applicable.bats
+scripts-core	design-stale-transition.bats
 scripts-core	detect-affected.bats
 scripts-core	detect-open-questions.bats
 scripts-core	detect-orchestration-mode.bats
@@ -552,6 +575,7 @@ scripts-core	run-tests.bats
 scripts-core	run-with-retry.bats
 scripts-core	sarif-multitool-merge.bats
 scripts-core	selective-test-driver.bats
+scripts-core	setup-root-resolution.bats
 scripts-core	skill-dispatch-memory-load.bats
 scripts-core	skill-md-claude-skill-dir-anti-pattern.bats
 scripts-core	skills/e117-s5-stack-dev-parity.bats
@@ -649,7 +673,6 @@ scripts-lib	path-migration-guard.bats
 scripts-lib	phase-exit-gate.bats
 scripts-lib	planning-mode-b.bats
 scripts-lib	publish-adapters.bats
-scripts-lib	quality-gates.bats
 scripts-lib	release-commit-range.bats
 scripts-lib	research-mode-b.bats
 scripts-lib	resolve-env-kind.bats
@@ -794,6 +817,7 @@ skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats
 skills	story-parse.bats
+skills	sync-derived-artifacts.bats
 skills	tdd-review-gate.bats
 skills	test-manual-skill.bats
 skills	test-manual-surface-adapter.bats
@@ -804,4 +828,5 @@ skills	test-run-invocation-mapping.bats
 skills	test-strategy-docs-only-default.bats
 skills	test-test-automate-phase-1.bats
 skills	validate-against-schema-date-fix.bats
+skills	verdict-provenance-check.bats
 skills	write-val-sentinel-sprint-id-format.bats

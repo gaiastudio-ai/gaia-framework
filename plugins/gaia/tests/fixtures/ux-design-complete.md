@@ -131,6 +131,12 @@ Each component description names its anatomy, states, and the tokens it consumes
 | FR-004 | Exception Queue | Wireframe 3 |
 | FR-005 | Payments history export | /payments/history |
 
+## Design Record Reference
+
+- **Project reference:** proj-helix-ds-001
+- **Discovered via:** created
+- **Questionnaire record:** .gaia/artifacts/planning-artifacts/ux-design/design-questionnaire.md
+
 ## Open Questions
 
 - Should the exception queue support bulk actions in v1?

@@ -1,0 +1,53 @@
+# design-record-mention-allowlist.txt
+# Every file in plugins/gaia/ that references "design-record" must appear here.
+# Classification: writer | reader | prose | test | schema
+# Format: <relative-path-from-plugins/gaia/>  <classification>  <reason>
+#
+# Adding a new file that references design-record without listing it here
+# will fail the sole-writer mention-registry test. To fix:
+#   1. Add a line below classifying the reference
+#   2. Only "writer" classification may contain write constructs
+scripts/design-record.sh          writer   sole-writer script
+tests/design-record.bats          test     test suite
+schemas/design-record.schema.json schema   JSON Schema definition
+agents/_base-dev.md                prose    dev-agent guidance to read the record
+knowledge/review-skill-template.md prose    review-skill boilerplate
+skills/gaia-code-review/SKILL.md   reader   reads design state for review context
+skills/gaia-create-story/SKILL.md  prose    story template cross-reference
+skills/gaia-create-story/story-template.md prose story template field
+skills/gaia-performance-review/SKILL.md reader reads design state
+skills/gaia-qa-tests/SKILL.md      reader   reads design state
+skills/gaia-review-security/SKILL.md reader  reads design state
+skills/gaia-test-automate/SKILL.md  reader   reads design state
+skills/gaia-test-review/SKILL.md    reader   reads design state
+skills/gaia-validate-design-a11y/SKILL.md reader reads design state
+tests/design-a11y-rebind.bats      test     rebind test
+tests/detect-ux-scope.bats         test     scope detector test
+tests/review-rubric-rebind.bats    test     rebind test
+tests/component-manifest.tsv       test     component tagger output
+tests/fixtures/design-record-mention-allowlist.txt test this allowlist references itself
+tests/fixtures/code-review/end-to-end-real-story/expected-report.md prose code-review exemplar design-fidelity section
+tests/doc-site-retirement.bats     test     asserts rewritten design pages use design-record language
+tests/create-ux-claude-design.bats test     tests the rebuilt create-ux skill's record interactions
+skills/gaia-create-ux/SKILL.md     reader   invokes design-record.sh verbs (init, status) — never writes directly
+skills/gaia-create-ux/ux-design-template.md prose   template section 9 names the design record reference
+scripts/lib/design-gate.sh          reader   reads the design record; runs design-record.sh as a subprocess
+scripts/lib/gate-predicates.sh      reader   design_approved predicate delegates to design-gate
+tests/design-gate.bats              test     design-gate test suite
+tests/design-record-init-not-applicable.bats test init-not-applicable verb tests
+tests/design-record-reopen-applicable.bats test reopen-applicable verb tests
+skills/gaia-design-review/SKILL.md     reader   invokes design-record.sh verbs (add-review, check-convergence, transition) — never writes directly
+tests/design-review.bats               test     test suite for design-review skill
+skills/gaia-design-review/scripts/verdict-provenance-check.sh    reader    verdict-provenance guard invoked by the design-review skill before every add-review write
+tests/design-gate-sites.bats       test     design-gate wiring at solutioning entry points
+skills/gaia-add-feature/SKILL.md   reader   invokes design-stale-transition.sh via prose instruction — never writes directly
+scripts/design-stale-transition.sh reader   calls design-record.sh transition as a subprocess — never writes directly
+skills/gaia-edit-ux/SKILL.md       reader   invokes design-stale-transition.sh via prose instruction — never writes directly
+skills/gaia-dev-story/SKILL.md     reader   declares quality_gates.pre_start: design_approved — design-gate.sh reads the record as a subprocess
+skills/gaia-dev-story/scripts/setup.sh reader sources gate-predicates.sh which delegates to design-gate.sh — never writes to the record directly
+tests/stale-propagation.bats       test     stale-on-change propagation test suite
+tests/design-stale-transition.bats test     driver script test suite
+tests/retirement-sweep-clean.bats  test     asserts the replacement design path resolves
+knowledge/gaia-help.csv            prose    help row names the design record as the review output
+tests/quality-gates.bats           test     quality-gate predicate suppression tests
+tests/setup-root-resolution.bats   test     stubs design-record.sh in a temp dir for the design-gate shim

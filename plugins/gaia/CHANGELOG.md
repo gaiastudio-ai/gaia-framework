@@ -2006,7 +2006,7 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 - (dev-story) step 6b conditional-check advisory hints (#325)
 - (dev-story) auto-reviews YOLO-only step 16 + 4 helper scripts + bats coverage (#323)
 - (dev-story) val-in-tdd single post-refactor pass (#322)
-- (dev-story) atdd gate + plan-structure validator + figma graceful-degrade (#321)
+- (dev-story) atdd gate + plan-structure validator + design-provider graceful-degrade (#321)
 - (dev-story) non-YOLO three-option planning gate (approve/revise/validate) (#320)
 - (dev-story) yolo val auto-validation loop with 3-iter cap and audit file (#319)
 - (dev-story) hard-halt planning gate via AskUserQuestion (#317)

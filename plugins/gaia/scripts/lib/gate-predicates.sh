@@ -219,6 +219,37 @@ _gate_check_env_var_set() {
   [ -n "$val" ]
 }
 
+# _gate_check_design_approved <arg>
+# Evaluate the design-approval gate by sourcing design-gate.sh and calling
+# design_gate_check. The arg is unused (the predicate is parameterless).
+#
+# Override env vars (set by setup.sh --force-design parser):
+#   FORCE_DESIGN            — non-empty to request override
+#   FORCE_DESIGN_REASON     — reason text (>=10 chars)
+#   FORCE_DESIGN_ENTRY_POINT — skill name for the audit record
+#   FORCE_DESIGN_SPRINT_ID  — sprint id for the lifecycle ledger
+_gate_check_design_approved() {
+  local _gp_gate_lib
+  _gp_gate_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/design-gate.sh"
+  if [ ! -f "$_gp_gate_lib" ]; then
+    _gate_log "${_GATE_PREFIX:-quality-gate}" "design-gate.sh not found at $_gp_gate_lib"
+    return 1
+  fi
+  # shellcheck source=design-gate.sh
+  source "$_gp_gate_lib"
+  local -a _gp_args=()
+  [ -n "${FORCE_DESIGN:-}" ]             && _gp_args+=(--force-design)
+  [ -n "${FORCE_DESIGN_REASON:-}" ]      && _gp_args+=(--reason "$FORCE_DESIGN_REASON")
+  [ -n "${FORCE_DESIGN_ENTRY_POINT:-}" ] && _gp_args+=(--entry-point "$FORCE_DESIGN_ENTRY_POINT")
+  [ -n "${FORCE_DESIGN_SPRINT_ID:-}" ]   && _gp_args+=(--sprint-id "$FORCE_DESIGN_SPRINT_ID")
+  # Always pass --entry-point when available via the gate prefix so the
+  # design record identifies which skill was overridden.
+  if [ ${#_gp_args[@]} -eq 0 ] || ! printf '%s\n' "${_gp_args[@]}" | grep -qxF -- '--entry-point'; then
+    [ -n "${_GATE_PREFIX:-}" ] && _gp_args+=(--entry-point "$_GATE_PREFIX")
+  fi
+  design_gate_check "${_gp_args[@]+"${_gp_args[@]}"}"
+}
+
 # _gate_evaluate_entry <condition> <error_message>
 # Dispatch on the predicate prefix, evaluate, and on failure print the
 # error_message verbatim to stderr. Returns 0 on pass, 1 on fail.
@@ -246,14 +277,20 @@ _gate_evaluate_entry() {
       _gate_check_story_status "$key" "$state" || rc=1
       ;;
     env_var_set)      _gate_check_env_var_set "$arg" || rc=1 ;;
+    design_approved)  _gate_check_design_approved "$arg" || rc=1 ;;
     *)
       _gate_log "${_GATE_PREFIX:-quality-gate}" "unknown predicate: $prefix"
       rc=1
       ;;
   esac
   if [ $rc -ne 0 ]; then
-    # Print message LITERALLY — no eval, no expansion.
-    printf '[%s] %s\n' "${_GATE_PREFIX:-quality-gate}" "$msg" >&2
+    # Suppress the quality_gates error_message on override-specific refusals.
+    # The design gate's own diagnostic is already on stderr; repeating the
+    # generic "or pass --force-design" hint is contradictory.
+    if [ "${_DG_OVERRIDE_REFUSED:-0}" != "1" ]; then
+      # Print message LITERALLY — no eval, no expansion.
+      printf '[%s] %s\n' "${_GATE_PREFIX:-quality-gate}" "$msg" >&2
+    fi
   fi
   return $rc
 }

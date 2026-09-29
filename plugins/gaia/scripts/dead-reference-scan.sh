@@ -156,6 +156,11 @@ is_allowlisted() {
   # the test body are the contractual assertion target — same precedent as
   # knowledge-paths-guard.bats above.
   [[ "$path" == */plugins/gaia/tests/e70-s5-skill-registration.bats ]] && return 0
+  # design-review.bats asserts the design-review skill is registered in
+  # workflow-manifest.csv. The CSV is itself allowlisted under
+  # plugins/gaia/knowledge/, so the filename mention is the contractual
+  # assertion target — same precedent as the registration suites above.
+  [[ "$path" == */plugins/gaia/tests/design-review.bats ]] && return 0
   # gaia-init.bats asserts that the gaia-init skill is registered in
   # workflow-manifest.csv and gaia-help.csv. The CSVs are themselves
   # allowlisted under plugins/gaia/knowledge/, so the filename mentions in the
@@ -197,6 +202,12 @@ is_allowlisted() {
   # deploy-skill-rename.bats above.
   [[ "$path" == */plugins/gaia/skills/gaia-dev-story/scripts/skill-rename-preflight.sh ]] && return 0
   [[ "$path" == */plugins/gaia/tests/skill-rename-preflight.bats ]] && return 0
+  # never-built-commands.bats asserts that eight never-built design commands
+  # have no entry in workflow-manifest.csv or gaia-help.csv. The CSVs are
+  # themselves allowlisted under plugins/gaia/knowledge/, so the filename
+  # mentions in the test body are the contractual assertion target — same
+  # precedent as deploy-skill-rename.bats above.
+  [[ "$path" == */plugins/gaia/tests/never-built-commands.bats ]] && return 0
   # static-next-steps.bats is the parity guard for next-step routing.
   # It asserts zero `lifecycle-sequence.yaml` references across the target
   # SKILL.md files; the literal token appears in assertions and prose
@@ -307,6 +318,24 @@ is_allowlisted() {
   # exempted by this rule (the path glob requires the /skills/<skill>/scripts/ segment).
   [[ "$path" == */plugins/gaia/skills/*/scripts/finalize.sh ]] && return 0
   [[ "$path" == */plugins/gaia/skills/*/scripts/setup.sh ]] && return 0
+  # design-gate-sites.bats derives the solutioning entry-point list from
+  # lifecycle-sequence.yaml as its contractual assertion target — same
+  # precedent as e70-s5-skill-registration.bats above.
+  [[ "$path" == */plugins/gaia/tests/design-gate-sites.bats ]] && return 0
+  # retirement-sweep-clean.bats asserts that no workflow-manifest.csv or
+  # gaia-help.csv row resolves to the retired stub path. The CSV filename
+  # mentions are the contractual assertion target — same precedent as
+  # e70-s5-skill-registration.bats above.
+  [[ "$path" == */plugins/gaia/tests/retirement-sweep-clean.bats ]] && return 0
+  # lifecycle-immutability.bats pins lifecycle-sequence.yaml node baselines
+  # as its contractual assertion target — same precedent as design-gate-sites.bats.
+  [[ "$path" == */plugins/gaia/tests/lifecycle-immutability.bats ]] && return 0
+  # design-registration-completeness.bats asserts registration in
+  # lifecycle-sequence.yaml, workflow-manifest.csv, and gaia-help.csv.
+  [[ "$path" == */plugins/gaia/tests/design-registration-completeness.bats ]] && return 0
+  # design-lifecycle-docs.bats asserts doc-site pages reference the design
+  # lifecycle — same precedent as brain-user-docs.bats.
+  [[ "$path" == */plugins/gaia/tests/design-lifecycle-docs.bats ]] && return 0
   # dead-reference-scan.bats asserts both positive (allowed) and negative
   # (still-failing) cases against the same retired tokens, so the literal v1
   # filenames appear in test bodies.

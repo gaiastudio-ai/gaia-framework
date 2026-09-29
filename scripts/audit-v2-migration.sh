@@ -358,7 +358,18 @@ installed_path: "$abs_root/_gaia"
 planning_artifacts: "$abs_root/docs/planning-artifacts"
 implementation_artifacts: "$abs_root/docs/implementation-artifacts"
 test_artifacts: "$abs_root/docs/test-artifacts"
+compliance:
+  ui_present: false
 YAML
+  fi
+
+  # Also seed the canonical .gaia/config/ path so the design-approval gate
+  # finds a readable config and takes the not-applicable pass. The config_file
+  # already includes compliance.ui_present: false (added above).
+  local gaia_config_dir="$PROJECT_ROOT/.gaia/config"
+  mkdir -p "$gaia_config_dir"
+  if [ ! -s "$gaia_config_dir/project-config.yaml" ]; then
+    cp "$config_file" "$gaia_config_dir/project-config.yaml"
   fi
 }
 

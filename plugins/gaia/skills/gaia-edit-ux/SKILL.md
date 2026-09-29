@@ -99,6 +99,29 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to a
 - Generate a diff summary showing exactly what changed.
 - Write updated UX design to `.gaia/artifacts/planning-artifacts/ux-design.md` with all edits applied, unchanged sections preserved, and version note added.
 
+<!-- design-stale-transition begin -->
+**Design stale transition:** A direct UX edit is always design-affecting. Transition the design record to stale so downstream gates know the design has changed since its last approval.
+
+<!-- design-attestation begin -->
+**Integration availability check:** When the decision is `yes` or `ambiguous`, make a single cheap Claude Design call (`list_projects`) to determine whether the integration is available. Classify the outcome:
+<!-- design-availability begin -->
+- `available` — the call succeeded.
+- `unauthorized` — the call failed with an authorization or permission error.
+- `missing` — the call failed for any other reason (timeout, tool not found, etc.).
+<!-- design-availability end -->
+
+Pass the result as `--integration <available|missing|unauthorized>`. When the decision is `no`, skip the check and omit `--integration`. When availability cannot be determined, omit `--integration` and the driver will fall back to its own probe.
+
+The driver trusts this classification without a second probe. If the token is revoked between this check and the driver run, the republish step that follows the stale transition surfaces the failure — it is not silently absorbed.
+<!-- design-attestation end -->
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision yes [--integration <available|missing|unauthorized>] --actor gaia-edit-ux
+```
+
+The driver transitions the record to stale and records the integration state in the audit trail. If the integration is not available, the driver halts with a message. When the impact is ambiguous or uncertain, still default to stale — it is safer than leaving the record in an outdated approved state.
+<!-- design-stale-transition end -->
+
 ### Step 6 — Adversarial Review
 
 - Read `${CLAUDE_PLUGIN_ROOT}/knowledge/adversarial-triggers.yaml` to evaluate trigger rules. (This policy table ships inside the plugin under the `knowledge/` convention; the legacy v1 location `_gaia/_config/adversarial-triggers.yaml` is retired and no longer used.) Determine the current `change_type`: if invoked with a change_type context (e.g., from add-feature triage), use that value. If no context is available, infer from the change scope: minor edits map to "low-risk-enhancement", significant feature additions map to "feature".
@@ -114,6 +137,21 @@ Delegate to the **ux-designer** subagent (Christy) via `agents/ux-designer` to a
 - Write the updated UX design to `.gaia/artifacts/planning-artifacts/ux-design.md`.
 
 ### Step 8 — Cascade Impact Check
+
+**Republish changed specifications.** When the stale transition completed with integration available (the driver exited 0), republish the changed specifications to the Claude Design project before the cascade assessment.
+
+1. **Build remote listing.** Read the current project files via `list_files` / `get_file`. Build `[{file, hash}]` where `hash` is the sha256 of each `get_file` body (64-hex lowercase), computed over exact bytes written to a file.
+2. **Build local manifest.** Derive the local spec manifest from the FULL current spec set — all screen and component specs from the edited ux-design.md, not only the changed files. Unchanged files produce `SKIP_UNCHANGED` rather than spurious `DELETE_ORPHAN`.
+3. **Read last-published manifest.** Load `${PROJECT_ROOT}/.gaia/state/design-last-published.json`. When the manifest does not exist, pass `--last-published /dev/null --strict-conflicts` (every differing remote file is treated as a conflict to confirm). When the manifest exists, pass `--last-published <path>` without `--strict-conflicts`.
+4. **Plan.** Run `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh` with the three inputs. The plan emits operation verbs in order.
+5. **Execute.** For each `WRITE` — publish via `write_files`. For each `CONFLICT` — surface both versions (the designer's remote content and the framework's local content) to the user and halt for resolution. For `SKIP_UNCHANGED` — no action. For `DELETE_ORPHAN` — remove via `delete_files`. For `READ_FIRST` — confirm current state. For `REFRESH_MANIFEST` — run `register_assets` as the primary path, read back `_ds_manifest.json`, verify all spec cards are listed; if any check fails, run `${CLAUDE_PLUGIN_ROOT}/scripts/build-manifest-cards.sh` as the reconciliation fallback.
+6. **Persist.** Run `persist_last_published` from `${CLAUDE_PLUGIN_ROOT}/scripts/build-manifest-cards.sh` with the executed outcomes, the prior manifest (read before persistence overwrites it), and the local hash map. Write to `${PROJECT_ROOT}/.gaia/state/design-last-published.json`.
+
+**Failure handling.** If `write_files` returns an error or a conflict cannot be resolved, the record stays stale, the failure is reported to the user, and the skill does not complete its finalisation steps. No rollback of the stale state.
+
+**Stale-to-stale.** When the design is already stale from a prior edit, the stale driver records a second audit entry (state no-op) and the republish step still runs because the local specs changed.
+
+**Missing or unauthorized integration.** When the stale driver halts (integration missing or unauthorized), no republication is attempted — the halt precedes this republish step.
 
 This is the cascade-aware behavior preserved from the legacy edit-ux-design workflow — the key semantic that distinguishes editing from creation.
 

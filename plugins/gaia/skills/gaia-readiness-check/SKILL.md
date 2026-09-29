@@ -12,6 +12,10 @@ allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Agent]
 discover_inputs: INDEX_GUIDED
 discover_inputs_target: ".gaia/artifacts/planning-artifacts/prd.md (or .gaia/artifacts/planning-artifacts/prd/prd.md), .gaia/artifacts/planning-artifacts/architecture.md, .gaia/artifacts/test-artifacts/test-plan.md (or .gaia/artifacts/test-artifacts/strategy/test-plan.md), .gaia/artifacts/planning-artifacts/epics-and-stories.md"
 orchestration_class: heavy-procedural
+quality_gates:
+  pre_start:
+    - condition: "design_approved:"
+      error_message: "Design is not approved. Approve the design via /gaia-design-review, or pass --force-design with a reason to override."
 ---
 
 ## Orchestration Mode
@@ -30,6 +34,20 @@ fi
 ## Setup
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh
+
+### Override gate (if applicable)
+
+If the user supplied `--force-design` with a `--reason` (and optionally `--sprint-id`) in `$ARGUMENTS`:
+
+```bash
+export FORCE_DESIGN=1
+export FORCE_DESIGN_REASON="<reason from $ARGUMENTS>"
+export FORCE_DESIGN_ENTRY_POINT="gaia-readiness-check"
+export FORCE_DESIGN_SPRINT_ID="<sprint-id from $ARGUMENTS, or empty>"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-readiness-check/scripts/setup.sh" --force-design --reason "$FORCE_DESIGN_REASON" --entry-point "$FORCE_DESIGN_ENTRY_POINT" ${FORCE_DESIGN_SPRINT_ID:+--sprint-id "$FORCE_DESIGN_SPRINT_ID"}
+```
+
+The halt from the prelude's `## Setup` invocation is otherwise binding — the agent must not proceed past a design-gate halt.
 
 ## Memory
 

@@ -1,6 +1,6 @@
-# Security Review — E99-S104
+# Security Review — Sample Story
 
-> **Story:** E99-S104 — End-to-end real-story fixture (gaia-security-review)
+> **Story:** Sample Story — End-to-end real-story fixture (security review)
 > **Model:** claude-opus-4-7
 > **Temperature:** 0
 > **prompt_hash:** sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -34,10 +34,5 @@ No deterministic findings.
 
 - Component placement matches `architecture.md` §Layered Architecture: API handlers under `src/api/`, server bootstrap under `src/server.ts`. PASS.
 - Authn/authz boundary placement aligns with documented gateway pattern. PASS.
-- ADR references: ADR-075 (review template), ADR-074 (model pin) cited; status Accepted. PASS.
-
-## Design Fidelity
-
-(no `figma:` block on this story; skipped)
 
 **Verdict: APPROVE**

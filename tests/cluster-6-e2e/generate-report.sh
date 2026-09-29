@@ -45,7 +45,8 @@ export PROJECT_ROOT="$REPORT_TMP"
 export TEST_ARTIFACTS="$REPORT_TMP/docs/test-artifacts"
 
 mkdir -p "$REPORT_TMP/memory" "$REPORT_TMP/checkpoints" "$REPORT_TMP/config" \
-         "$REPORT_TMP/docs/planning-artifacts" "$REPORT_TMP/docs/test-artifacts"
+         "$REPORT_TMP/docs/planning-artifacts" "$REPORT_TMP/docs/test-artifacts" \
+         "$REPORT_TMP/.gaia/config" "$REPORT_TMP/.gaia/state"
 
 # Seed prerequisite artifacts for gate validation
 echo "# Test Plan" > "$REPORT_TMP/docs/test-artifacts/test-plan.md"
@@ -55,6 +56,15 @@ echo "# Architecture" > "$REPORT_TMP/docs/planning-artifacts/architecture.md"
 
 cp "$REPO_ROOT/tests/cluster-6-parity/fixture/config/project-config.yaml" \
    "$REPORT_TMP/config/project-config.yaml" 2>/dev/null || true
+
+# Seed a gate-readable config at the canonical .gaia/config/ path so the
+# design-approval gate takes the not-applicable pass (headless project).
+# Copy the fixture config (has all required fields for resolve-config)
+# and add the compliance flag.
+if [ -f "$REPORT_TMP/config/project-config.yaml" ]; then
+  cp "$REPORT_TMP/config/project-config.yaml" "$REPORT_TMP/.gaia/config/project-config.yaml"
+fi
+printf 'compliance:\n  ui_present: false\n' >> "$REPORT_TMP/.gaia/config/project-config.yaml"
 
 overall_pass=true
 total_elapsed=0

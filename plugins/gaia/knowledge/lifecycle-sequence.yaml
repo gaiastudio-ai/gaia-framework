@@ -482,6 +482,13 @@ sequence:
       standalone: true
       note: "Standalone UX design editor"
 
+  design-review:
+    phase: 2-planning
+    module: lifecycle
+    command: /gaia-design-review
+    next:
+      primary: /gaia-create-arch
+
   # -- Quick flow --
   quick-spec:
     module: lifecycle

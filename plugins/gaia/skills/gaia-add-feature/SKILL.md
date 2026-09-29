@@ -212,6 +212,7 @@ classification:
 | Test Plan (`.gaia/artifacts/test-artifacts/test-plan.md`) | -- | YES | YES |
 | Threat Model (`.gaia/artifacts/planning-artifacts/threat-model.md`) | -- | -- | YES |
 | Traceability (`.gaia/artifacts/test-artifacts/traceability-matrix.md`) | -- | YES | YES |
+| UX Design + Tokens (`.gaia/artifacts/planning-artifacts/ux-design.md` + published tokens) | YES (direct fix, if design-affecting) | YES (if design-affecting) | YES (if design-affecting) |
 
 "--" means the artifact is NOT touched for that classification. "YES"
 means the artifact IS updated via the appropriate sub-workflow.
@@ -478,11 +479,39 @@ adhere to the hygiene rules at dispatch time.
 - Only when no CRITICAL findings remain AND the sentinel write succeeded
   does the skill proceed to the cascade steps below.
 
+<!-- design-stale-transition begin -->
+**Design impact assessment:** Before proceeding to story creation, assess whether this feature affects the project's design. If the feature changes user-facing layout, interaction patterns, navigation, component structure, or visual language, it is design-affecting. If the impact is ambiguous or uncertain, default to treating it as design-affecting (stale is safer than stale-undetected).
+
+<!-- design-attestation begin -->
+**Integration availability check:** When the decision is `yes` or `ambiguous`, make a single cheap Claude Design call (`list_projects`) to determine whether the integration is available. Classify the outcome:
+<!-- design-availability begin -->
+- `available` — the call succeeded.
+- `unauthorized` — the call failed with an authorization or permission error.
+- `missing` — the call failed for any other reason (timeout, tool not found, etc.).
+<!-- design-availability end -->
+
+Pass the result as `--integration <available|missing|unauthorized>`. When the decision is `no`, skip the check and omit `--integration`. When availability cannot be determined, omit `--integration` and the driver will fall back to its own probe.
+
+The driver trusts this classification without a second probe. If the token is revoked between this check and the driver run, the republish step that follows the stale transition surfaces the failure — it is not silently absorbed.
+<!-- design-attestation end -->
+
+When the feature is design-affecting (or the assessment is ambiguous):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision <yes|no|ambiguous> [--integration <available|missing|unauthorized>] --actor gaia-add-feature
+```
+
+Omit `--integration` when the Claude Design availability check could not run (e.g. the decision is `no` and the check was skipped).
+
+Pass `yes` when the feature clearly affects the design, `no` when it clearly does not, and `ambiguous` when the impact is uncertain. The driver transitions the record to stale and records the integration state in the audit trail. If the integration is not available, the driver halts and no stories are created.
+<!-- design-stale-transition end -->
+
 ### Step 3 -- Execute Cascade (patch)
 
 - If classification is `patch`:
   - Apply the fix directly to the affected document.
   - No cascade -- no downstream artifacts are touched.
+  - **Republish (design-affecting patches).** When the patch is design-affecting and the stale transition completed with integration available, republish the changed specifications. Follow the same publication procedure: build remote listing, build local manifest from the FULL current spec set, read the last-published manifest (with `--strict-conflicts` when absent), plan via `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh`, execute, carry out `REFRESH_MANIFEST`, and persist `design-last-published.json`. On failure, the record stays stale, the failure is reported, and no further steps run.
   - Skip to Step 9 (Emit Assessment-Doc) then Step 10 (Summary).
 
 ### Step 4 -- Edit PRD (feature only)
@@ -547,6 +576,16 @@ adhere to the hygiene rules at dispatch time.
     surfaces introduced by the feature.
   - Store: `threat_model_diff`.
 - If classification is `enhancement` or `patch`: skip this step.
+
+### Step 7b -- In-line UX Cascade (enhancement and feature, design-affecting)
+
+When the feature is design-affecting (or the assessment is ambiguous) and the classification is `enhancement` or `feature`, edit ux-design.md and the token specs in-line:
+
+- Apply the UX changes directly to `.gaia/artifacts/planning-artifacts/ux-design.md` and the published token specs. This step does NOT run `/gaia-edit-ux` — it performs the edit in-line as part of the cascade. Exactly ONE republish runs after the in-line edit.
+
+**Republish changed specifications.** When the stale transition completed with integration available, republish the changed specifications before story creation. Follow the same publication procedure: build remote listing, build local manifest from the FULL current spec set, read the last-published manifest (with `--strict-conflicts` when absent), plan via `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh`, execute, carry out `REFRESH_MANIFEST`, and persist `design-last-published.json`.
+
+**Failure handling.** If the republication fails midway (`write_files` error, network failure, unresolvable conflict), the record stays stale, the failure is reported to the user, and no stories are created. In deferred-seed-brief mode, no story keys are reserved and no seed briefs are written.
 
 ### Step 8 -- Add Feature Stories (enhancement and feature)
 

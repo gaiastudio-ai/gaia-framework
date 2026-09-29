@@ -234,6 +234,13 @@ the sub-routine ran (skipped fragments included for transparency).
 - Check for privilege escalation paths: horizontal (same role, different user's data — IDOR) and vertical (user → admin via weak role check).
 - Check token lifecycle: issue, refresh, revoke, expiry.
 
+### Step 4b — Design Fidelity
+
+- If the project has a design-record reference (`.gaia/state/design-record.yaml` with `design_state: approved`), resolve design truth through the project reference and compare security-relevant design-token usage (CSRF token placement, auth-gate component boundaries) in the changed code. Findings under `category: fidelity`.
+- If the reference resolves but the design surface is unreachable, surface unreachability as a finding (never fall back to a local copy).
+- If no design-record reference exists: on a UI project (`compliance.ui_present` is true), report design truth unavailable as a finding. On a non-UI project, record not-applicable (no finding). A project that has never configured a design source will see this check report findings for the first time when a design-record reference is added; those findings are correct behaviour, not a regression.
+- Route any design-fidelity finding into the Step 5 report alongside the other security findings.
+
 ### Step 5 — Report
 
 Invoke the shared foundation script to emit the deterministic artifact header:

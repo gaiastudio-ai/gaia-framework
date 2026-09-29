@@ -22,11 +22,22 @@ setup() {
   mkdir -p "$TEST_TMP/checkpoints" "$TEST_TMP/memory" \
            "$TEST_TMP/docs/planning-artifacts" \
            "$TEST_TMP/docs/test-artifacts" \
-           "$TEST_TMP/config"
+           "$TEST_TMP/config" \
+           "$TEST_TMP/.gaia/config" \
+           "$TEST_TMP/.gaia/state"
 
   # Copy fixture config
   cp "$REPO_ROOT/tests/cluster-6-parity/fixture/config/project-config.yaml" \
      "$TEST_TMP/config/" 2>/dev/null || true
+
+  # Seed a gate-readable config so the design-approval gate takes the
+  # not-applicable pass — these tests exercise the readiness-check's own
+  # gates, not the design gate. Copy the fixture config (has all required
+  # fields for resolve-config) and add the compliance flag.
+  if [ -f "$TEST_TMP/config/project-config.yaml" ]; then
+    cp "$TEST_TMP/config/project-config.yaml" "$TEST_TMP/.gaia/config/project-config.yaml"
+  fi
+  printf 'compliance:\n  ui_present: false\n' >> "$TEST_TMP/.gaia/config/project-config.yaml"
 
   # Set env overrides
   export GAIA_PROJECT_ROOT="$TEST_TMP"

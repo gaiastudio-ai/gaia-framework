@@ -1,10 +1,7 @@
 #!/usr/bin/env bats
-# validate-plan-structure.bats — TC-DSH-10 / T-38 regression guard for E55-S5 (AC3, AC4)
+# validate-plan-structure.bats — plan-structure validator regression guard
 #
-# Story: E55-S5 (ATDD gate (Step 2b) + plan-structure validator + Figma graceful-degrade)
-# ADR: ADR-073 (/gaia-dev-story Planning-Gate Halt + Val Auto-Validation Loop)
-# PRD: FR-DSH-4 (canonical 9-section plan-structure list)
-# Threat: T-38 (Unicode homoglyph spoofing of section headers)
+# Validates the canonical plan-structure section list in gaia-dev-story SKILL.md.
 #
 # Validates the validate-plan-structure.sh script:
 #

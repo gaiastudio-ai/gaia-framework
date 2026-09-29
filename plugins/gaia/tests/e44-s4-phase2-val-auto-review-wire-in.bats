@@ -197,10 +197,10 @@ teardown() { common_teardown; }
   [ "$val_line" -lt "$adv_line" ]
 }
 
-@test "placement: gaia-create-ux Val loop step appears after Step 10 (Generate Output)" {
+@test "placement: gaia-create-ux Val loop step appears after Step 11 (Generate Output)" {
   local skill="$SKILLS_DIR/gaia-create-ux/SKILL.md"
   local write_line val_line
-  write_line="$(grep -n '^### Step 10 — Generate Output' "$skill" | head -1 | cut -d: -f1)"
+  write_line="$(grep -n '^### Step 11 — Generate Output' "$skill" | head -1 | cut -d: -f1)"
   val_line="$(grep -n 'Val Auto-Fix Loop' "$skill" | head -1 | cut -d: -f1)"
   [ -n "$write_line" ]
   [ -n "$val_line" ]
@@ -228,10 +228,10 @@ teardown() { common_teardown; }
   [ "$count" = "14" ]
 }
 
-@test "step-count: gaia-create-ux has 12 Step headings after wire-in" {
+@test "step-count: gaia-create-ux has 13 Step headings after wire-in" {
   local count
   count=$(grep -cE '^### Step [0-9]+ —' "$SKILLS_DIR/gaia-create-ux/SKILL.md")
-  [ "$count" = "12" ]
+  [ "$count" = "13" ]
 }
 
 @test "step-count: gaia-product-brief has 9 Step headings after wire-in" {
@@ -250,8 +250,8 @@ teardown() { common_teardown; }
     "$SKILLS_DIR/gaia-create-prd/SKILL.md"
 }
 
-@test "checkpoint: gaia-create-ux Val loop step emits one write-checkpoint.sh invocation at step 11" {
-  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-create-ux 11 .*stage=val-auto-review' \
+@test "checkpoint: gaia-create-ux Val loop step emits one write-checkpoint.sh invocation at step 12" {
+  grep -qE '^> `!(\$\{CLAUDE_PLUGIN_ROOT\}/)?scripts/write-checkpoint\.sh gaia-create-ux 12 .*stage=val-auto-review' \
     "$SKILLS_DIR/gaia-create-ux/SKILL.md"
 }
 

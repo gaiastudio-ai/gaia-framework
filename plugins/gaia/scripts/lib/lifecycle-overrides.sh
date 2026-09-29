@@ -112,10 +112,7 @@ lifecycle_append_bypass() {
 
   local recorded_at recorded_by
   recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  recorded_by="$(git config user.name 2>/dev/null || true)"
-  if [ -z "$recorded_by" ]; then
-    recorded_by="${USER:-unknown}"
-  fi
+  recorded_by="${USER:-unknown}"
 
   local f lock
   f="$(_lifecycle_overrides_file)"

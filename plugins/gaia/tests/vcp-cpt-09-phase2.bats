@@ -5,7 +5,7 @@
 # NFR-VCP-1 mandate: every checkpoint write MUST route through
 # scripts/write-checkpoint.sh. This test extends VCP-CPT-09 coverage from
 # Phase 1 (E43-S2) to the 2 Phase 2 planning skills: gaia-create-prd
-# (13 steps) and gaia-create-ux (11 steps).
+# (14 steps) and gaia-create-ux (13 steps).
 #
 # This file also carries the VCP-CPT-02 wire-in sequence assertions for
 # Phase 2 (AC1, AC2, AC4, AC6 of E43-S3):
@@ -35,7 +35,7 @@ PHASE2_SLUGS=(
   gaia-create-prd
   gaia-create-ux
 )
-PHASE2_STEPS=(14 12)
+PHASE2_STEPS=(14 13)
 
 # ---------- AC1/AC2/AC3: canonical invocation line present per step ----------
 
@@ -196,15 +196,15 @@ PHASE2_STEPS=(14 12)
   [ "$numbers" = "1 2 3 4 5 6 7 8 9 10 11 12 13 14 " ]
 }
 
-@test "simulating gaia-create-ux 12-step run writes 12 sequential checkpoints" {
+@test "simulating gaia-create-ux 13-step run writes 13 sequential checkpoints" {
   local slug="gaia-create-ux"
   local artifact="$TEST_TMP/ux.md"
   printf '# ux\n' > "$artifact"
 
   local n
-  for n in $(seq 1 12); do
-    # Steps 10 (Generate Output) and 11 (Val Auto-Fix Loop) emit --paths.
-    if [ "$n" = "10" ] || [ "$n" = "11" ]; then
+  for n in $(seq 1 13); do
+    # Steps 11 (Generate Output) and 12 (Val Auto-Fix Loop) emit --paths.
+    if [ "$n" = "11" ] || [ "$n" = "12" ]; then
       "$SCRIPT" "$slug" "$n" project_name=acme ux_slug=web prd_path=docs/planning-artifacts/prd.md --paths "$artifact"
     else
       "$SCRIPT" "$slug" "$n" project_name=acme ux_slug=web prd_path=docs/planning-artifacts/prd.md
@@ -217,9 +217,9 @@ PHASE2_STEPS=(14 12)
 
   local count
   count=$(find "$dir" -name '*.json' -type f | wc -l | tr -d ' ')
-  [ "$count" = "12" ]
+  [ "$count" = "13" ]
 
   local numbers
   numbers=$(find "$dir" -name '*.json' -type f -exec jq -r '.step_number' {} \; | sort -n | tr '\n' ' ')
-  [ "$numbers" = "1 2 3 4 5 6 7 8 9 10 11 12 " ]
+  [ "$numbers" = "1 2 3 4 5 6 7 8 9 10 11 12 13 " ]
 }

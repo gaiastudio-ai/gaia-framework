@@ -1,0 +1,5 @@
+# Carve-out allowlist for the retirement sweep-clean verification.
+# Each entry is a root-relative file path that carries a legitimate,
+# documented retention of the retired provider word.
+# Format: path | one-line reason
+plugins/gaia-enterprise/hooks/session-start.sh | session-start hook retained with behaviour unchanged
