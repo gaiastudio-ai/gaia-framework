@@ -15,18 +15,20 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 - (design-stale) propagate stale on design-affecting change and gate dev-story on design approval (#1879)
 - (design-gate) enforce design approval at every phase-three entry point (#1875)
 - (design-review) add the design review loop with verdicts, iteration and escalation (#1870)
-- (E121-S9) rebuild /gaia-create-ux on Claude Design (#1865)
-- (E121-S6) add the design record and its sole locked writer (#1859)
-- (E121-S5) probe the design substrate and name the remedy (#1841)
-- (E121-S3) rebind the review surfaces to the design reference (#1838)
+- (design-gate) add the shared design gate and its audited override (#1867)
+- (create-ux) rebuild /gaia-create-ux on Claude Design (#1865)
+- (design-record) add the design record and its sole locked writer (#1859)
+- (design-probe) probe the design substrate and name the remedy (#1841)
+- (review-rubrics) rebind the review surfaces to the design reference (#1838)
 
 ### Changed
 
+- (retirement) retire the old design provider from the docs, changelog and tests (#1854)
 - tighten republish and delta-sync tests after review (#1944)
 - (design-review) process delta sync screens with a constant number of jq calls (#1942)
-- (E121-S6) assert the symlink guard's own diagnostic in the init symlink test (#1864)
-- (E121-S3) guard against a contradicted mandate and cover the persona (#1840)
-- (E121-S3) close four coverage gaps the test review found (#1839)
+- (design-record) assert the symlink guard's own diagnostic in the init symlink test (#1864)
+- (review-rubrics) guard against a contradicted mandate and cover the persona (#1840)
+- (review-rubrics) close four coverage gaps the test review found (#1839)
 
 ### Fixed
 
@@ -45,9 +47,9 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 - (design-review) fail closed on unexpected comparison output and normalise unicode (#1874)
 - (design-review) make the provenance check linear and harder to evade, batch the sync (#1873)
 - (design-gate) harden the gate and add a reopen verb for projects that gain a UI (#1869)
-- (E121-S9) harden the publication planner and mark read-back content as data (#1866)
-- (E121-S6) refuse re-initialising the design record and close four test gaps (#1861)
-- (E121-S5) isolate the probe's verdict from the bridge it runs (#1842)
+- (create-ux) harden the publication planner and mark read-back content as data (#1866)
+- (design-record) refuse re-initialising the design record and close four test gaps (#1861)
+- (design-probe) isolate the probe's verdict from the bridge it runs (#1842)
 
 ## [1.218.2] — 2026-09-22
 
