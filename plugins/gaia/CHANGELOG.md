@@ -3,6 +3,52 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.219.0] — 2026-09-29
+
+### Added
+
+- (design-lifecycle) check claude design availability in create-ux and design-review (#1949)
+- (design-lifecycle) republish changed specs to claude design when the design goes stale (#1941)
+- (create-ux) list published specs in claude design and persist the publication manifest (#1925)
+- (design-lifecycle) register the design review and document the design lifecycle (#1883)
+- (retirement) remove the retired design integration stub (#1882)
+- (design-stale) propagate stale on design-affecting change and gate dev-story on design approval (#1879)
+- (design-gate) enforce design approval at every phase-three entry point (#1875)
+- (design-review) add the design review loop with verdicts, iteration and escalation (#1870)
+- (E121-S9) rebuild /gaia-create-ux on Claude Design (#1865)
+- (E121-S6) add the design record and its sole locked writer (#1859)
+- (E121-S5) probe the design substrate and name the remedy (#1841)
+- (E121-S3) rebind the review surfaces to the design reference (#1838)
+
+### Changed
+
+- tighten republish and delta-sync tests after review (#1944)
+- (design-review) process delta sync screens with a constant number of jq calls (#1942)
+- (E121-S6) assert the symlink guard's own diagnostic in the init symlink test (#1864)
+- (E121-S3) guard against a contradicted mandate and cover the persona (#1840)
+- (E121-S3) close four coverage gaps the test review found (#1839)
+
+### Fixed
+
+- (design-review) place synced components inside the components table (#1958)
+- (design-review) match the delta sync baseline path literally and widen the scale gate (#1943)
+- (design-review) sync the real component section and report screen changes (#1940)
+- (setup) resolve the project root from the working directory in eight skill setup scripts (#1935)
+- (create-ux) strip the specs directory prefix literally in the manifest card builder (#1934)
+- (create-ux) match manifest cards exactly, write via mktemp, and scan specs in one pass (#1933)
+- (design-record) match stakeholders literally and automate the fail-closed mutant tests (#1924)
+- (design-record) fail closed when no design approver exists (#1923)
+- (design-gate) surface the design override to the developer and audit its sprint scope (#1922)
+- (design-integration) attest design availability and stop the gate misdiagnosing it (#1913)
+- (design-record) refuse symlinked records on write and clean stale-driver temp files (#1881)
+- (design-gate) treat every YAML spelling of true as a UI project (#1877)
+- (design-review) fail closed on unexpected comparison output and normalise unicode (#1874)
+- (design-review) make the provenance check linear and harder to evade, batch the sync (#1873)
+- (design-gate) harden the gate and add a reopen verb for projects that gain a UI (#1869)
+- (E121-S9) harden the publication planner and mark read-back content as data (#1866)
+- (E121-S6) refuse re-initialising the design record and close four test gaps (#1861)
+- (E121-S5) isolate the probe's verdict from the bridge it runs (#1842)
+
 ## [1.218.2] — 2026-09-22
 
 ### Fixed
