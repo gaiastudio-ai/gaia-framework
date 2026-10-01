@@ -326,6 +326,12 @@
             }
           },
           "additionalProperties": false
+        },
+        "ci_wait_timeout_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 360,
+          "description": "Maximum minutes to wait for CI checks before timing out. Overridden by the --timeout CLI flag. Default: 30."
         }
       }
     },

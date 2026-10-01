@@ -172,7 +172,7 @@ fields:
     type: map
     required: false
     default: null
-    description: "CI/CD promotion chain — list of environments with branch, provider, and checks. Written by /gaia-ci-setup."
+    description: "CI/CD promotion chain — list of environments with branch, provider, and checks. Written by /gaia-ci-setup. Optional key ci_wait_timeout_minutes (integer 1-360) sets the default timeout for CI polling; overridden by --timeout CLI flag; default 30."
 
   testing:
     type: map

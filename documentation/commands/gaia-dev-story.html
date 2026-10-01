@@ -342,8 +342,16 @@ This warning is shown once per session.
           </li>
           <li>
             <span class="step-title">Wait for CI</span>
-            Polls CI status until all checks pass. Reports failures with
-            details if CI does not pass.
+            Polls CI status using required checks via
+            <code>gh pr checks --required</code> (falls back to all checks
+            with a note when required checks are unavailable or the flag is
+            unsupported). Uses jq-based JSON parsing
+            with a two-poll stability rule and a grace window for
+            late-registering checks. On timeout or failure, the story run
+            halts -- CI must pass before merge. Timeout is configurable via
+            <code>ci_cd.ci_wait_timeout_minutes</code> in project config
+            (default 30 minutes, overridden by <code>--timeout</code> CLI
+            flag). Reports failures with the specific check name and bucket.
           </li>
           <li>
             <span class="step-title">Merge PR</span>

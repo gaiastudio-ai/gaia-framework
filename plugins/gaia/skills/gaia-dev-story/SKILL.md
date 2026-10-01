@@ -768,8 +768,14 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 12 wait-ci {story_key}` to record the step-boundary event.
 
-- Run `scripts/ci-wait.sh {pr_number}` to poll CI status.
-- The script handles timeout, transient errors, and failure reporting.
+- **Preferred (background):** Run `scripts/ci-wait.sh {pr_number}` as a background command (no `--timeout` — the script honours the config value or its 30-minute default internally). Wait for the background command's completion notice before evaluating the result; never start Step 13 before the script finishes.
+- **Fallback (foreground):** If background running is unavailable, fall back to bounded foreground runs. The total budget equals the configured `ci_wait_timeout_minutes` or the 30-minute default. Run `scripts/ci-wait.sh {pr_number} --timeout {T}` with `{T}` = min(8, remaining budget in minutes) and the Bash tool timeout set to 600000 ms (10 minutes). After each run, apply the outcome rules below; on a "timed out" result with budget remaining, re-run with the next min(8, remaining).
+- **Outcome rules (both paths):**
+  - **Exit 0** with stdout containing "passed" → CI checks passed. Proceed to Step 13.
+  - **Exit 1** with stderr containing "timed out" and budget remaining (foreground only) → re-run as described above.
+  - **Exit 1** with stderr containing "timed out" and no budget remaining → HALT the story run (CI has not passed).
+  - **Exit 1** with other stderr → CI check failed. Report the failure, name the failing checks from stderr, and HALT the story run.
+- The script polls required checks via `gh pr checks --required` on each poll until the `gh` version reports the flag unsupported, then falls back to all checks (with a note on stderr). It validates JSON with jq, handles cancel buckets as failures, applies a two-poll stability rule to prevent early exit on late-registering checks, and respects a configurable grace window for repos where checks take time to appear.
 
 ### Step 13 -- Merge PR
 
