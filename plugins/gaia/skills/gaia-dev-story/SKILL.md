@@ -648,11 +648,23 @@ narrative that previously inferred CI configuration inline.
   invisible in the run log and operators only discover Steps 10–13 didn't
   fire after the fact.
 - For commit-message construction, run
-  `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh {story_path}`
+  `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh {story_path} [--scope <product_scope>]`
   and feed its stdout to `git commit -F -`. Do NOT compose Conventional Commit
-  subject lines inline — `commit-msg.sh` is the single source of truth. The script enforces the
-  `<type>(<story_key>): <title>` schema and the no-`Claude` / no-`AI` /
-  no-`Co-Authored-By` policy from CLAUDE.md.
+  subject lines inline — `commit-msg.sh` is the single source of truth.
+
+  **Scope choice rule.** The `--scope` flag accepts the lowercase name of the
+  main skill or script area the change touches; omit only when the change
+  spans many areas. The scope must NOT be a story key — story keys belong
+  in the `Story:` body line.
+
+  The script emits:
+  ```
+  <type>[(<scope>)]: <title>
+
+  Story: <story_key>
+  ```
+  The story key is in the body `Story:` line, never in the subject scope.
+  The no-`Claude` / no-`AI` / no-`Co-Authored-By` policy from CLAUDE.md is enforced.
 
 **Narrative Fallback (deprecated v1.131.x → v1.132.0):**
 For brownfield projects on a stale plugin where these scripts are not yet present,
@@ -723,10 +735,18 @@ inline.
   supplied (forwarded from Step 11a), pr-body.sh emits a fifth
   section `## Allow-stub override` containing the reason.
 - Then invoke `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/pr-create.sh
-  {story_key} {title} --body-file <(printf '%s\n' "$PR_BODY")` (or pipe `$PR_BODY`
-  via the helper's body-file convention) so that `pr-create.sh` consumes the
-  pre-rendered body rather than constructing one inline. Do NOT hand-craft the PR
-  body in chat — `pr-body.sh` is the single source of truth.
+  {story_key} "$PR_TITLE" --body-file <(printf '%s\n' "$PR_BODY")` where
+  `$PR_TITLE` is the first line (subject) of the Step 10 commit message
+  (or pipe `$PR_BODY` via the helper's body-file convention) so that
+  `pr-create.sh` consumes the pre-rendered body rather than constructing one
+  inline. Do NOT hand-craft the PR body in chat — `pr-body.sh` is the single
+  source of truth.
+
+  **Resumed-run instruction.** When Step 11 runs after a context break (the
+  Step 10 commit message is no longer in the conversation context), re-run
+  `commit-msg.sh {story_path} [--scope <product_scope>]` with the same
+  `--scope` used in Step 10. Extract `$PR_TITLE` from the first line of the
+  fresh output. Do NOT guess the title or omit the scope.
 
 **Narrative Fallback (deprecated v1.131.x → v1.132.0):**
 For brownfield projects on a stale plugin where `pr-body.sh` is not yet present,

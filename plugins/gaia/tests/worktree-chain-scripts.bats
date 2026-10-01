@@ -176,7 +176,7 @@ _assert_cd_before_guard() {
   cd "$primary"
 
   PROJECT_PATH="$NONGIT_CWD" run --separate-stderr \
-    "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "a title" --body-file "$TEST_TMP/does-not-exist.md"
+    "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "fix: a title" --body-file "$TEST_TMP/does-not-exist.md"
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"skipped (non-git CWD)"* ]]
   [[ "$stderr" != *"not readable"* ]]
@@ -207,7 +207,7 @@ _assert_cd_before_guard() {
   [ ! -e "$elsewhere/body.md" ]
 
   PROJECT_PATH="$primary" run --separate-stderr \
-    "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "a title" --body-file "body.md"
+    "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "fix: a title" --body-file "body.md"
 
   # Guard against the failure mode this test previously had: if the run aborted
   # on the protected-branch invariant it never reached the body-file logic, so

@@ -1,16 +1,16 @@
 #!/usr/bin/env bats
 # commit-msg.bats — coverage for skills/gaia-dev-story/scripts/commit-msg.sh
 #
-# Story: E57-S7 — pr-body.sh (P1-2) + commit-msg.sh (P1-3)
-# Traces: TC-DSS-07 (commit-msg type mapping), TC-DSS-08 (shell-metachar safety)
-# ACs: AC2, AC3, AC4, AC5
+# Tests the conventional-commit subject construction, --scope validation,
+# story-key stripping, Story: body line emission, and shell-metachar safety.
 
+bats_require_minimum_version 1.5.0
 load 'test_helper.bash'
 
 setup() {
   common_setup
   COMMIT_MSG="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts" && pwd)/commit-msg.sh"
-  cd "$TEST_TMP"
+  cd "$TEST_TMP" || return 1
   mkdir -p docs/implementation-artifacts
   export PROJECT_PATH="$TEST_TMP"
 }
@@ -31,7 +31,7 @@ template: 'story'
 key: "$key"
 title: "$title"
 $type_line
-epic: "E57"
+epic: "E0"
 status: in-progress
 risk: "low"
 depends_on: []
@@ -51,251 +51,170 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# AC2 / TC-DSS-07 — Type mapping
+# Type mapping — scopeless subjects
 # ---------------------------------------------------------------------------
 
-@test "commit-msg: type=feature -> feat(<key>): wire <title>" {
-  path="$(_write_story "E57-S7" "feature" "Add login flow")"
+@test "commit-msg: type=feature emits scopeless feat subject" {
+  path="$(_write_story "K3-S7" "feature" "Add login flow")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  [ "$subject" = "feat(E57-S7): wire Add login flow" ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "feat: wire Add login flow" ]
 }
 
-@test "commit-msg: type=bug -> fix(<key>): fix <title>" {
-  path="$(_write_story "E1-S1" "bug" "Crash on save")"
+@test "commit-msg: type=bug emits scopeless fix subject" {
+  path="$(_write_story "K1-S1" "bug" "Crash on save")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  [ "$subject" = "fix(E1-S1): fix Crash on save" ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "fix: fix Crash on save" ]
 }
 
-@test "commit-msg: type=refactor -> refactor(<key>): refactor <title>" {
-  path="$(_write_story "E1-S2" "refactor" "Extract helper")"
+@test "commit-msg: type=refactor emits scopeless refactor subject" {
+  path="$(_write_story "K1-S2" "refactor" "Extract helper")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  [ "$subject" = "refactor(E1-S2): refactor Extract helper" ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "refactor: refactor Extract helper" ]
 }
 
-@test "commit-msg: type=chore -> chore(<key>): update <title>" {
-  path="$(_write_story "E1-S3" "chore" "Deps")"
+@test "commit-msg: type=chore emits scopeless chore subject" {
+  path="$(_write_story "K1-S3" "chore" "Deps")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  [ "$subject" = "chore(E1-S3): update Deps" ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "chore: update Deps" ]
 }
 
-@test "commit-msg: type unrecognized -> default feat with wire verb" {
-  path="$(_write_story "E1-S4" "weird" "Something")"
+@test "commit-msg: type unrecognized defaults to feat with wire verb" {
+  path="$(_write_story "K1-S4" "weird" "Something")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  [ "$subject" = "feat(E1-S4): wire Something" ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "feat: wire Something" ]
 }
 
-@test "commit-msg: type missing -> default feat with wire verb" {
-  path="$(_write_story "E1-S5" "" "No type field")"
+@test "commit-msg: type missing defaults to feat with wire verb" {
+  path="$(_write_story "K1-S5" "" "No type field")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  [ "$subject" = "feat(E1-S5): wire No type field" ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "feat: wire No type field" ]
 }
 
 # ---------------------------------------------------------------------------
-# AC2 — subject regex + 72-char cap
+# --scope validation
 # ---------------------------------------------------------------------------
 
-@test "commit-msg: subject matches Conventional Commit regex" {
-  path="$(_write_story "E57-S7" "feature" "Add login")"
-  run "$COMMIT_MSG" "$path"
+@test "commit-msg: valid scope produces scoped subject" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run "$COMMIT_MSG" "$path" --scope sprint-state
   [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  echo "$subject" | grep -qE '^(feat|fix|refactor|chore)\([A-Z][0-9]+-S[0-9]+\): .+$'
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "fix(sprint-state): fix Handle empty list" ]
 }
 
-@test "commit-msg: 90-char title is truncated to 72-char subject" {
-  long_title="This is a really long title that exceeds seventy-two chars and must be truncated cleanly here"
-  path="$(_write_story "E57-S7" "feature" "$long_title")"
+@test "commit-msg: no scope produces scopeless subject" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "fix: fix Handle empty list" ]
+}
+
+@test "commit-msg: invalid scope uppercase refused" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run --separate-stderr "$COMMIT_MSG" "$path" --scope "Sprint State"
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"scope"* ]]
+}
+
+@test "commit-msg: digit-leading scope accepted (3d-viewer)" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run "$COMMIT_MSG" "$path" --scope 3d-viewer
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  [ "$subject" = "fix(3d-viewer): fix Handle empty list" ]
+}
+
+@test "commit-msg: story-key-shaped scope refused (ab1-s1)" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run --separate-stderr "$COMMIT_MSG" "$path" --scope ab1-s1
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+@test "commit-msg: story-key-shaped scope refused (ex12-s3)" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run --separate-stderr "$COMMIT_MSG" "$path" --scope ex12-s3
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+@test "commit-msg: scope without value refused" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run --separate-stderr "$COMMIT_MSG" "$path" --scope
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+@test "commit-msg: empty-string scope refused" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run --separate-stderr "$COMMIT_MSG" "$path" --scope ""
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+@test "commit-msg: unknown extra arg refused" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run --separate-stderr "$COMMIT_MSG" "$path" --scope sprint-state --bogus
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
+# Story: body line
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: body line has Story: reference" {
+  path="$(_write_story "E88-S1" "feature" "Add login")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  # Output: line 1 = subject, line 2 = blank, line 3 = Story: KEY
+  local story_line
+  story_line="$(sed -n '3p' <<<"$output")"
+  [ "$story_line" = "Story: E88-S1" ]
+}
+
+@test "commit-msg: 72-char cap does not cut body line" {
+  local long_title="This is a really long title that exceeds seventy-two chars and must be truncated cleanly here"
+  path="$(_write_story "K3-S7" "feature" "$long_title")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
   [ "${#subject}" -le 72 ]
+  # Body line must still be complete — never truncated.
+  local story_line
+  story_line="$(sed -n '3p' <<<"$output")"
+  [ "$story_line" = "Story: K3-S7" ]
 }
 
 # ---------------------------------------------------------------------------
-# AC5 — No Claude/Co-Authored-By in output
+# story_key alias tolerance
 # ---------------------------------------------------------------------------
 
-@test "commit-msg: output contains no Claude / Co-Authored-By strings" {
-  path="$(_write_story "E57-S7" "feature" "Test")"
-  run "$COMMIT_MSG" "$path"
-  [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qE "Claude|Co-Authored-By"
-}
-
-# ---------------------------------------------------------------------------
-# AC3 / TC-DSS-08 — Adversarial title shell-metachar safety
-# ---------------------------------------------------------------------------
-
-@test "commit-msg: adversarial title with command-substitution does not execute" {
-  cat > "docs/implementation-artifacts/E57-S7-adv.md" <<'EOF'
----
-template: 'story'
-key: "E57-S7"
-title: 'Add support for $(touch /tmp/commit_msg_pwn); `whoami`; "x"; ''y'''
-type: "feature"
-epic: "E57"
-status: in-progress
-risk: "low"
-depends_on: []
----
-
-# Adversarial
-
-## Acceptance Criteria
-
-- [ ] AC1
-EOF
-  rm -f /tmp/commit_msg_pwn
-  run "$COMMIT_MSG" "docs/implementation-artifacts/E57-S7-adv.md"
-  [ "$status" -eq 0 ]
-  # Ensure the dangerous command did not execute.
-  [ ! -e /tmp/commit_msg_pwn ]
-}
-
-@test "commit-msg: adversarial title feeds cleanly into git commit -F -" {
-  cat > "docs/implementation-artifacts/E57-S7-adv2.md" <<'EOF'
----
-template: 'story'
-key: "E57-S7"
-title: 'Adv $(rm -rf /); `whoami`; "x"'
-type: "feature"
-epic: "E57"
-status: in-progress
-risk: "low"
-depends_on: []
----
-
-# Adversarial
-
-## Acceptance Criteria
-
-- [ ] AC1
-EOF
-  # Set up a throwaway git repo
-  git init -q .
-  git config user.email "test@example.com"
-  git config user.name "Test"
-  echo "x" > seed.txt
-  git add seed.txt
-  echo "y" > another.txt
-  git add another.txt
-  # Run commit-msg.sh and pipe to git commit -F -
-  msg="$("$COMMIT_MSG" "docs/implementation-artifacts/E57-S7-adv2.md")"
-  echo "$msg" | git commit -q -F -
-}
-
-# ---------------------------------------------------------------------------
-# AC4 / TC-DSS-08 — No `eval` in commit-msg.sh source
-# ---------------------------------------------------------------------------
-
-@test "commit-msg: source contains no bare 'eval'" {
-  ! grep -nE "\beval\b" "$COMMIT_MSG"
-}
-
-# ---------------------------------------------------------------------------
-# E64-S1 / AC4 / TC-E64-9 — commitlint-safe subjects for ALL-CAPS titles
-# ---------------------------------------------------------------------------
-#
-# commitlint @commitlint/config-conventional defaults reject subjects that
-# start with an upper-case / pascal-case word. Story titles often start with
-# an ALL-CAPS token (e.g., "SKILL.md gate wiring", "API client") because
-# they reference framework identifiers verbatim. The fix prepends a
-# lowercase verb derived from the type field so the SUBJECT (the part after
-# `<type>(<key>): `) starts with a lowercase letter.
-
-@test "commit-msg: ALL-CAPS title gets a lowercase verb prefix" {
-  path="$(_write_story "E64-S1" "feature" "SKILL.md gate wiring")"
-  run "$COMMIT_MSG" "$path"
-  [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  # Subject body (after `feat(KEY): `) must start with a lowercase letter
-  echo "$subject" | grep -qE '^feat\(E64-S1\): [a-z][a-z]+ SKILL\.md'
-}
-
-@test "commit-msg: PascalCase-token title gets a lowercase verb prefix" {
-  path="$(_write_story "E64-S2" "feature" "ServiceWorker registration cleanup")"
-  run "$COMMIT_MSG" "$path"
-  [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  echo "$subject" | grep -qE '^feat\(E64-S2\): [a-z]+'
-}
-
-@test "commit-msg: API-titled story gets a lowercase verb prefix" {
-  path="$(_write_story "E64-S3" "feature" "API client retry policy")"
-  run "$COMMIT_MSG" "$path"
-  [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  echo "$subject" | grep -qE '^feat\(E64-S3\): [a-z]+'
-}
-
-@test "commit-msg: title already starting with lowercase verb is left untouched" {
-  # If the title already starts with a lowercase verb, no prefix is needed.
-  path="$(_write_story "E64-S4" "feature" "wire SKILL.md gate")"
-  run "$COMMIT_MSG" "$path"
-  [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  # Body should still start with "wire" — no double prefix
-  echo "$subject" | grep -qE '^feat\(E64-S4\): wire SKILL\.md'
-  # No double "wire wire"
-  ! echo "$subject" | grep -qE 'wire wire'
-}
-
-@test "commit-msg: type=bug ALL-CAPS title prepends 'fix' verb" {
-  path="$(_write_story "E64-S5" "bug" "URL encoding regression")"
-  run "$COMMIT_MSG" "$path"
-  [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  echo "$subject" | grep -qE '^fix\(E64-S5\): fix URL'
-}
-
-@test "commit-msg: type=chore ALL-CAPS title prepends 'update' verb" {
-  path="$(_write_story "E64-S6" "chore" "DEPS bump")"
-  run "$COMMIT_MSG" "$path"
-  [ "$status" -eq 0 ]
-  subject=$(echo "$output" | head -1)
-  echo "$subject" | grep -qE '^chore\(E64-S6\): update DEPS'
-}
-
-# ---------------------------------------------------------------------------
-# E64-S1 / Subtask 4.4 / TC-E64-10 — commitlint subject-case e2e
-# ---------------------------------------------------------------------------
-#
-# When commitlint is available locally (e.g., installed via `npm i -g
-# @commitlint/cli @commitlint/config-conventional` or wired into the host
-# project), feed the generated subject through `commitlint --extends
-# @commitlint/config-conventional` and assert exit 0. Skipped on systems
-# where commitlint is not installed — the unit-level subject-case checks
-# above cover the logic deterministically.
-
-@test "commit-msg: ALL-CAPS-titled subject passes commitlint when available" {
-  if ! command -v commitlint >/dev/null 2>&1; then
-    skip "commitlint not installed on PATH"
-  fi
-  if ! node -e "require.resolve('@commitlint/config-conventional')" >/dev/null 2>&1; then
-    skip "@commitlint/config-conventional not resolvable"
-  fi
-  path="$(_write_story "E64-S99" "feature" "SKILL.md gate wiring")"
-  subject="$("$COMMIT_MSG" "$path")"
-  echo "$subject" | commitlint --extends @commitlint/config-conventional
-}
-
-# ---------------------------------------------------------------------------
-# Issue #1091 — story_key: alias tolerance
-# ---------------------------------------------------------------------------
-
-@test "commit-msg: resolves story_key: alias into the subject scope (issue #1091)" {
+@test "commit-msg: resolves story_key alias to body line" {
   cat > "docs/implementation-artifacts/E0-S103-alias.md" <<'EOF'
 ---
 template: 'story'
@@ -314,5 +233,276 @@ status: in-progress
 EOF
   run "$COMMIT_MSG" docs/implementation-artifacts/E0-S103-alias.md
   [ "$status" -eq 0 ]
-  echo "$output" | grep -F "(E0-S103):"
+  local story_line
+  story_line="$(sed -n '3p' <<<"$output")"
+  [ "$story_line" = "Story: E0-S103" ]
+}
+
+# ---------------------------------------------------------------------------
+# Key stripping from title
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: key in title prefix stripped from subject" {
+  path="$(_write_story "E88-S1" "bug" "E88-S1: fix the thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "fix: fix the thing" ]
+}
+
+@test "commit-msg: key in parens stripped from subject" {
+  path="$(_write_story "E88-S1" "feature" "Fix (E88-S1) thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "feat: wire Fix thing" ]
+}
+
+@test "commit-msg: key in parens with colon stripped without double space" {
+  path="$(_write_story "E88-S1" "feature" "Fix (E88-S1): thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "feat: wire Fix thing" ]
+}
+
+@test "commit-msg: key followed by comma stripped" {
+  path="$(_write_story "E88-S1" "bug" "Fix E88-S1, thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  # After strip: "Fix thing" → uppercase → verb prepend.
+  [ "$subject" = "fix: fix Fix thing" ]
+}
+
+@test "commit-msg: key followed by dot stripped" {
+  path="$(_write_story "E88-S1" "bug" "Fix E88-S1. thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  # After strip: "Fix thing" → uppercase → verb prepend.
+  [ "$subject" = "fix: fix Fix thing" ]
+}
+
+@test "commit-msg: colon-glued key at start stripped" {
+  path="$(_write_story "E88-S1" "bug" "Fix:E88-S1")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  # After strip: "Fix" → uppercase → verb prepend.
+  [ "$subject" = "fix: fix Fix" ]
+}
+
+@test "commit-msg: title that is only the key exits non-zero" {
+  path="$(_write_story "E88-S1" "feature" "E88-S1")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -ne 0 ]
+}
+
+# Over-strip guard: a longer key must not be stripped.
+# Key is E88-S1; title contains E88-S10 — must be left alone.
+@test "commit-msg: longer key in title not stripped (over-strip guard)" {
+  path="$(_write_story "E88-S1" "feature" "Fix E88-S10 thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "feat: wire Fix E88-S10 thing" ]
+}
+
+# Over-strip guard at START: E88-S10 at position 0 with key E88-S1.
+@test "commit-msg: longer key at start of title not stripped (over-strip guard)" {
+  path="$(_write_story "E88-S1" "feature" "E88-S10 thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "feat: wire E88-S10 thing" ]
+}
+
+# Glued-key guard: XE88-S1 has an alphanumeric left neighbour — must not strip.
+@test "commit-msg: glued key (left-boundary) not stripped (over-strip guard)" {
+  path="$(_write_story "E88-S1" "feature" "XE88-S1 thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "feat: wire XE88-S1 thing" ]
+}
+
+@test "commit-msg: key in brackets stripped from subject" {
+  path="$(_write_story "E88-S1" "bug" "[E88-S1] regression fix")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  # After strip: "regression fix" → starts with lowercase → no verb prepend.
+  [ "$subject" = "fix: regression fix" ]
+}
+
+# ---------------------------------------------------------------------------
+# Subject regex — key-free
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: subject matches key-free conventional-commit regex" {
+  path="$(_write_story "K3-S7" "feature" "Add login")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  # Must NOT contain the old (<key>) scope pattern.
+  ! grep -qE '\([A-Z][0-9]+-S[0-9]+\)' <<<"$subject"
+}
+
+# ---------------------------------------------------------------------------
+# No Claude/Co-Authored-By in output
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: output contains no Claude / Co-Authored-By strings" {
+  path="$(_write_story "K3-S7" "feature" "Test")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  ! grep -qE "Claude|Co-Authored-By" <<<"$output"
+}
+
+# ---------------------------------------------------------------------------
+# Adversarial title shell-metachar safety
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: adversarial title with command-substitution does not execute" {
+  cat > "docs/implementation-artifacts/K3-S7-adv.md" <<'EOF'
+---
+template: 'story'
+key: "K3-S7"
+title: 'Add support for $(touch /tmp/commit_msg_pwn); `whoami`; "x"; ''y'''
+type: "feature"
+epic: "E0"
+status: in-progress
+risk: "low"
+depends_on: []
+---
+
+# Adversarial
+
+## Acceptance Criteria
+
+- [ ] AC1
+EOF
+  rm -f /tmp/commit_msg_pwn
+  run "$COMMIT_MSG" "docs/implementation-artifacts/K3-S7-adv.md"
+  [ "$status" -eq 0 ]
+  [ ! -e /tmp/commit_msg_pwn ]
+}
+
+@test "commit-msg: adversarial title feeds cleanly into git commit -F -" {
+  cat > "docs/implementation-artifacts/K3-S7-adv2.md" <<'EOF'
+---
+template: 'story'
+key: "K3-S7"
+title: 'Adv $(rm -rf /); `whoami`; "x"'
+type: "feature"
+epic: "E0"
+status: in-progress
+risk: "low"
+depends_on: []
+---
+
+# Adversarial
+
+## Acceptance Criteria
+
+- [ ] AC1
+EOF
+  git init -q .
+  git config user.email "test@example.com"
+  git config user.name "Test"
+  echo "x" > seed.txt
+  git add seed.txt
+  echo "y" > another.txt
+  git add another.txt
+  msg="$("$COMMIT_MSG" "docs/implementation-artifacts/K3-S7-adv2.md")"
+  echo "$msg" | git commit -q -F -
+}
+
+# ---------------------------------------------------------------------------
+# No eval in source
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: source contains no bare 'eval'" {
+  ! grep -nE "\beval\b" "$COMMIT_MSG"
+}
+
+# ---------------------------------------------------------------------------
+# commitlint-safe subjects for ALL-CAPS titles
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: ALL-CAPS title gets a lowercase verb prefix (key-free)" {
+  path="$(_write_story "K2-S1" "feature" "SKILL.md gate wiring")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  grep -qE '^feat: [a-z]' <<<"$subject"
+  # Must not contain a key-scoped parenthetical.
+  ! grep -qE '\(K2-S1\)' <<<"$subject"
+}
+
+@test "commit-msg: PascalCase-token title key-free" {
+  path="$(_write_story "K2-S2" "feature" "ServiceWorker registration cleanup")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  grep -qE '^feat: [a-z]' <<<"$subject"
+}
+
+@test "commit-msg: API-titled story key-free" {
+  path="$(_write_story "K2-S3" "feature" "API client retry policy")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  grep -qE '^feat: [a-z]' <<<"$subject"
+}
+
+@test "commit-msg: title already starting with lowercase verb is left untouched" {
+  path="$(_write_story "K2-S4" "feature" "wire SKILL.md gate")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  grep -qE '^feat: wire SKILL\.md' <<<"$subject"
+  ! grep -qE 'wire wire' <<<"$subject"
+}
+
+@test "commit-msg: type=bug ALL-CAPS title key-free" {
+  path="$(_write_story "K2-S5" "bug" "URL encoding regression")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  grep -qE '^fix: fix URL' <<<"$subject"
+  ! grep -qE '\(K2-S5\)' <<<"$subject"
+}
+
+@test "commit-msg: type=chore ALL-CAPS title key-free" {
+  path="$(_write_story "K2-S6" "chore" "DEPS bump")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject
+  subject=$(printf '%s\n' "$output" | head -1)
+  grep -qE '^chore: update DEPS' <<<"$subject"
+  ! grep -qE '\(K2-S6\)' <<<"$subject"
+}
+
+# ---------------------------------------------------------------------------
+# commitlint e2e (skip when not installed)
+# ---------------------------------------------------------------------------
+
+@test "commit-msg: ALL-CAPS-titled subject passes commitlint when available" {
+  if ! command -v commitlint >/dev/null 2>&1; then
+    skip "commitlint not installed on PATH"
+  fi
+  if ! node -e "require.resolve('@commitlint/config-conventional')" >/dev/null 2>&1; then
+    skip "@commitlint/config-conventional not resolvable"
+  fi
+  path="$(_write_story "K2-S99" "feature" "SKILL.md gate wiring")"
+  subject="$("$COMMIT_MSG" "$path" | head -1)"
+  echo "$subject" | commitlint --extends @commitlint/config-conventional
 }
