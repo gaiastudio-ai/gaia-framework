@@ -749,7 +749,7 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 12 wait-ci {story_key}` to record the step-boundary event.
 
 - **Preferred (background):** Run `scripts/ci-wait.sh {pr_number}` as a background command (no `--timeout` — the script honours the config value or its 30-minute default internally). Wait for the background command's completion notice before evaluating the result; never start Step 13 before the script finishes.
-- **Fallback (foreground):** If background running is unavailable, fall back to bounded foreground calls. The total budget equals the configured `ci_wait_timeout_minutes` or the 30-minute default. Run `scripts/ci-wait.sh {pr_number} --timeout {T}` with `{T}` = min(8, remaining budget in minutes) and the Bash tool timeout set to 600000 ms (10 minutes). After each call, apply the outcome rules below; on a "timed out" result with budget remaining, re-run with the next min(8, remaining).
+- **Fallback (foreground):** If background running is unavailable, fall back to bounded foreground runs. The total budget equals the configured `ci_wait_timeout_minutes` or the 30-minute default. Run `scripts/ci-wait.sh {pr_number} --timeout {T}` with `{T}` = min(8, remaining budget in minutes) and the Bash tool timeout set to 600000 ms (10 minutes). After each run, apply the outcome rules below; on a "timed out" result with budget remaining, re-run with the next min(8, remaining).
 - **Outcome rules (both paths):**
   - **Exit 0** with stdout containing "passed" → CI checks passed. Proceed to Step 13.
   - **Exit 1** with stderr containing "timed out" and budget remaining (foreground only) → re-run as described above.
