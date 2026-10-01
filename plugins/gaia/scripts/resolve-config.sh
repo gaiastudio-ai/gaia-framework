@@ -876,6 +876,9 @@ _merge_3deep() {
 v_brownfield_tools_runner=$(_merge_3deep brownfield tools runner)
 v_brownfield_tools_image=$(_merge_3deep brownfield tools image)
 
+# ci_cd.ci_wait_timeout_minutes — optional timeout for CI wait polling.
+v_ci_cd_ci_wait_timeout_minutes=$(merge_nested_key ci_cd ci_wait_timeout_minutes)
+
 # review_gate.manual_test_mode — advisory (default) or gating.
 v_review_gate_manual_test_mode=$(merge_nested_key review_gate manual_test_mode)
 
@@ -1410,6 +1413,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_project_kind" ;;
     review_gate.manual_test_mode)
       printf '%s\n' "$v_review_gate_manual_test_mode" ;;
+    ci_cd.ci_wait_timeout_minutes)
+      printf '%s\n' "$v_ci_cd_ci_wait_timeout_minutes" ;;
     # Synthetic key mirroring positional dispatch (see above).
     project_config_path)
       printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;
