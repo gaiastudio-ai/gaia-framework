@@ -6,7 +6,8 @@
 # status=done, before accepting the done transition.
 #
 # Covers both squash-merge and merge-commit strategies by searching the full
-# git log (not just --merges) with a word-boundary pattern.
+# git log (not just --merges) with a word-boundary pattern and a fallback
+# Story: body-line check (plain and link forms).
 #
 # Usage:
 #   verify-pr-merged.sh <story_key> <target_branch>
@@ -62,7 +63,9 @@ cd "$WORK_DIR" || { log "cannot cd to $WORK_DIR"; exit 1; }
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 
 # Word-boundary grep pattern to avoid false positives.
-# Uses \b<key>\b as primary match. Falls back to "Story: <key>" pattern.
+# Uses \b<key>\b as primary match on one-line subjects. Falls back to
+# "Story: <key>" in full commit bodies — matching both plain form
+# (Story: KEY) and link form (Story: [KEY](url)).
 # Case-insensitive to handle squash-merge rewrites.
 #
 # The inline `git log | grep` SIGPIPE workaround is centralised in
@@ -75,8 +78,9 @@ if safe_grep_log -i -q -E "$PATTERN" --oneline "$TARGET"; then
   exit 0
 fi
 
-# Fallback: check for "Story: <key>" in full commit messages
-if safe_grep_log -i -q -E "Story:[[:space:]]*${STORY_KEY}\\b" --format='%B' "$TARGET"; then
+# Fallback: check for "Story: <key>" in full commit messages (plain or link form).
+# Plain: "Story: KEY", Link: "Story: [KEY](url)".
+if safe_grep_log -i -q -E "Story:[[:space:]]*\[?${STORY_KEY}(\]|\\b)" --format='%B' "$TARGET"; then
   log "merge commit for ${STORY_KEY} found via Story: tag on ${TARGET} — gate passes"
   exit 0
 fi

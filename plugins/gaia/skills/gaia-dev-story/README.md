@@ -54,7 +54,7 @@ To add PostToolUse hooks to another skill:
 | `tdd-review-gate.sh` | Risk-gated TDD review hook (SKIP / PROMPT / QA_AUTO) for Steps 5a / 6a / 7a |
 | `conditional-check-hints.sh` | Advisory hints for API / schema / large-blast-radius diffs (Step 6b) |
 | `dod-check.sh` | Definition-of-Done helper: build / tests / lint / secrets / subtask checks (Step 9) |
-| `commit-msg.sh` | Compose Conventional Commit subject in canonical format (Step 10) |
+| `commit-msg.sh` | Compose Conventional Commit subject with optional product scope (Step 10) |
 | `promotion-chain-guard.sh` | Resolve first promotion-chain branch or signal absence (Step 10) |
 | `pr-body.sh` | Render canonical 4-section PR body: ACs / DoD / Diff Stat / Story-link (Step 11) |
 | `pr-create.sh` | PR creation via gh CLI (Step 11) |

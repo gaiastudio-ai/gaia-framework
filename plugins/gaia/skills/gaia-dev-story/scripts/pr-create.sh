@@ -4,15 +4,17 @@
 # Creates a pull request targeting the first promotion chain environment.
 # Uses the gh CLI for GitHub Actions (the default CI provider).
 #
-# Handles: existing PR detection, conventional title construction, story-key
-# body inclusion, and error reporting with preserved local commits.
+# Validates the title as a conventional-commit line, passes it through as-is,
+# appends a Story: body reference when absent, and reports errors with
+# preserved local commits.
 #
 # Usage:
 #   pr-create.sh <story_key> <title> [--base <branch>] [--body-file <path> | -F <path>]
 #
 # When --body-file (or -F) is passed, the file content is used verbatim as the
-# PR body — the default `## ${STORY_KEY}` body is bypassed. SKILL.md Step 11
-# instructs callers to feed `pr-body.sh` output through this flag.
+# PR body — the default `## ${STORY_KEY}` body is bypassed. A `Story: <key>`
+# reference line is appended when the body does not already carry one.
+# SKILL.md Step 11 instructs callers to feed `pr-body.sh` output through this flag.
 #
 # Environment:
 #   PROJECT_PATH — required. The git working directory. Resolved and entered
@@ -21,7 +23,7 @@
 #
 # Exit codes:
 #   0 — PR created or already exists
-#   1 — error (no gh CLI, auth failure, network error, etc.)
+#   1 — error (invalid title, no gh CLI, auth failure, network error, etc.)
 
 set -euo pipefail
 LC_ALL=C
@@ -80,6 +82,18 @@ if [ -n "$BODY_FILE" ] && [ ! -r "$BODY_FILE" ]; then
   die "--body-file path is not readable: $BODY_FILE"
 fi
 
+# --- Title validation: must be a single conventional-commit line -----------
+# Refuse multi-line titles (LF or CR) and bare/non-conventional titles.
+# The regex matches: <type>[(<scope>)][!]: <subject>
+case "$PR_TITLE" in
+  *$'\n'*|*$'\r'*)
+    die "title must be a single conventional-commit line (e.g., 'fix: …' / 'feat(scope): …') — got multi-line input"
+    ;;
+esac
+cc_re='^[a-z]+(\([^)]+\))?!?: [^ ]'
+if ! [[ "$PR_TITLE" =~ $cc_re ]]; then
+  die "title must be a single conventional-commit line (e.g., 'fix: …' / 'feat(scope): …') — got: $PR_TITLE"
+fi
 
 # Verify gh CLI is available
 if ! command -v gh >/dev/null 2>&1; then
@@ -106,6 +120,7 @@ assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"
 
 # Build PR body. When --body-file was passed, read its content verbatim;
 # otherwise fall back to the default body that points at the story file.
+# Either way, a Story: reference is appended below when absent.
 if [ -n "$BODY_FILE" ]; then
   PR_BODY="$(cat "$BODY_FILE")"
 else
@@ -118,16 +133,13 @@ See story file: .gaia/artifacts/implementation-artifacts/epic-*/stories/${STORY_
 Story: ${STORY_KEY}"
 fi
 
-# When the caller already supplies a conventional-commits header like
-# `feat(E88-S1): foo` (which is what `/gaia-dev-story` Step 10's
-# `commit-msg.sh` emits), skip the `${STORY_KEY}: ` prepend. Without this
-# guard the resulting PR title is `E88-S1: feat(E88-S1): foo` — not
-# conventional-commits compliant and rejected by commitlint. Regex is
-# anchored at the start; bare titles fall through to the legacy prepend.
-if printf '%s' "$PR_TITLE" | grep -Eq '^[a-z]+\([A-Z]+[0-9]+-S[0-9]+\):'; then
-  FINAL_TITLE="$PR_TITLE"
-else
-  FINAL_TITLE="${STORY_KEY}: ${PR_TITLE}"
+# Title already validated as conventional-commit format — pass through as-is.
+FINAL_TITLE="$PR_TITLE"
+
+# Ensure the body contains a Story: reference line. When the body already has
+# one (plain or link form), skip. Otherwise append it.
+if ! grep -qE '^Story:' <<<"$PR_BODY"; then
+  PR_BODY="$(printf '%s\n\nStory: %s' "$PR_BODY" "$STORY_KEY")"
 fi
 
 # Create PR

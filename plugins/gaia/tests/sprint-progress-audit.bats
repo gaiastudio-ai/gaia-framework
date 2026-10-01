@@ -207,6 +207,75 @@ EOF
   [[ "$output" != *"EX-S3"* ]]
 }
 
+@test "link-form Story: body line is detected as merged" {
+  local yaml="$TEST_TMP/sprint-status.yaml"
+  write_sprint_status "$yaml" "EX-S4:in-progress"
+
+  local impl="$TEST_TMP/impl/epic-example"
+  write_story_file "$impl/EX-S4-story-d/story.md" in-progress UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED
+
+  # Commit with key-free subject; story reference in body only (link form).
+  local repo="$TEST_TMP/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -b staging >/dev/null 2>&1
+  git -C "$repo" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit --allow-empty -m "$(printf 'fix: handle null input\n\nStory: [EX-S4](https://example.invalid)\n')" >/dev/null 2>&1
+
+  run --separate-stderr env \
+    PROJECT_PATH="$repo" \
+    IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
+    "$SCRIPT" --sprint-status "$yaml" --target-branch staging
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"EX-S4"* ]]
+}
+
+@test "longer key with same prefix is not falsely matched (negative guard)" {
+  local yaml="$TEST_TMP/sprint-status.yaml"
+  write_sprint_status "$yaml" "EX-S1:in-progress"
+
+  local impl="$TEST_TMP/impl/epic-example"
+  write_story_file "$impl/EX-S1-story-a/story.md" in-progress UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED
+
+  # Commit mentions EX-S10 (longer key), query for EX-S1 — must NOT match.
+  local repo="$TEST_TMP/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -b staging >/dev/null 2>&1
+  git -C "$repo" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit --allow-empty -m "$(printf 'fix: edge case\n\nStory: [EX-S10](https://example.invalid)\n')" >/dev/null 2>&1
+
+  run --separate-stderr env \
+    PROJECT_PATH="$repo" \
+    IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
+    "$SCRIPT" --sprint-status "$yaml" --target-branch staging
+
+  # EX-S1 is in-progress but NOT merged — exit 0 (nothing to flag).
+  [ "$status" -eq 0 ]
+}
+
+@test "plain-form Story: body line is detected as merged (regression)" {
+  local yaml="$TEST_TMP/sprint-status.yaml"
+  write_sprint_status "$yaml" "EX-S5:in-progress"
+
+  local impl="$TEST_TMP/impl/epic-example"
+  write_story_file "$impl/EX-S5-story-e/story.md" in-progress UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED UNVERIFIED
+
+  # Plain-form body reference (no link brackets).
+  local repo="$TEST_TMP/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -b staging >/dev/null 2>&1
+  git -C "$repo" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit --allow-empty -m "$(printf 'fix: handle null\n\nStory: EX-S5\n')" >/dev/null 2>&1
+
+  run --separate-stderr env \
+    PROJECT_PATH="$repo" \
+    IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
+    "$SCRIPT" --sprint-status "$yaml" --target-branch staging
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"EX-S5"* ]]
+}
+
 @test "non-git CWD degrades gracefully with exit 0" {
   local yaml="$TEST_TMP/sprint-status.yaml"
   write_sprint_status "$yaml" "EX-S1:in-progress"

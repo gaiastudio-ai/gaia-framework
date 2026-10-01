@@ -1,89 +1,187 @@
 #!/usr/bin/env bats
-# pr-create-title-prefix-guard.bats — E57-S13 AC3 (TD-148).
-#
-# pr-create.sh prepends `${STORY_KEY}: ` to the PR title. When the caller
-# already passes a conventional-commits header like `feat(E88-S1): foo`,
-# the prepend produces `E88-S1: feat(E88-S1): foo` which (a) is not
-# conventional-commits compliant and (b) is rejected by commitlint. The
-# guard added in E57-S13 detects an existing CC prefix and skips the
-# prepend; the legacy bare-title path is preserved unchanged.
+# pr-create-title-prefix-guard.bats — conventional-commit title validation
+# and story-reference body-line tests for pr-create.sh.
 
 load 'test_helper.bash'
 
 PR_CREATE="$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts/pr-create.sh"
 
-# Helper: stub `gh` so we can capture the `--title` arg without actually
-# hitting GitHub. The stub prints the title on stdout and exits 0.
+# Helper: stub `gh` so we can capture --title and --body args without
+# hitting GitHub. Writes title to gh-title.txt and body to gh-body.txt.
 setup() {
   common_setup
   STUB_BIN="$TEST_TMP/bin"
   mkdir -p "$STUB_BIN"
   cat > "$STUB_BIN/gh" <<'STUB'
 #!/usr/bin/env bash
-# Capture the value of `--title` (the arg immediately following the flag).
+# Capture --title and --body values to sidecar files.
 while [ $# -gt 0 ]; do
-  if [ "$1" = "--title" ] && [ $# -ge 2 ]; then
-    printf 'TITLE=%s\n' "$2"
-    shift 2
-    continue
-  fi
-  shift
+  case "$1" in
+    --title)
+      printf '%s\n' "TITLE=$2" >&1
+      printf '%s' "$2" > "${TEST_TMP}/gh-title.txt"
+      shift 2 ;;
+    --body)
+      printf '%s' "$2" > "${TEST_TMP}/gh-body.txt"
+      shift 2 ;;
+    *) shift ;;
+  esac
 done
 exit 0
 STUB
   chmod +x "$STUB_BIN/gh"
   export PATH="$STUB_BIN:$PATH"
 
-  # pr-create.sh requires (a) an in-tree git workspace (otherwise it
-  # early-returns via non-git CWD guard, skipping the title-prepend logic
-  # under test) AND (b) a non-protected current branch (otherwise the
-  # assert_branch_not_protected security invariant aborts the script).
-  # Build a per-test git repo on a feature branch.
+  # pr-create.sh requires (a) an in-tree git workspace and (b) a
+  # non-protected current branch. Build a per-test git repo.
   WORK_REPO="$TEST_TMP/repo"
   mkdir -p "$WORK_REPO"
   (
     cd "$WORK_REPO" || exit 1
     git init -q -b main
-    git -c user.email=t@e -c user.name=t commit -q --allow-empty -m "init"
-    git checkout -q -b feat/E88-S1-test
+    git -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+      commit -q --allow-empty -m "init"
+    git checkout -q -b feat/test-pr
   )
-  # PROJECT_PATH is the cwd pr-create.sh `cd`s into. Also `cd` the bats
-  # process into WORK_REPO so pr-create.sh's non_git_cwd_skip guard (which
-  # checks the CURRENT cwd before honoring PROJECT_PATH) sees an in-tree
-  # workspace and proceeds to the title-prepend logic under test.
   export PROJECT_PATH="$WORK_REPO"
   cd "$WORK_REPO"
 
-  # Story file detection in pr-create.sh isn't critical; the script does not
-  # currently read a story file. The body-file path supplied below is read.
   BODY_FILE="$TEST_TMP/body.md"
   printf '%s\n' "## Test body" > "$BODY_FILE"
 }
 teardown() { common_teardown; }
 
-@test "title with conventional-commits prefix is NOT re-prepended" {
+# ---------------------------------------------------------------------------
+# Title pass-through (conventional-commit shapes) — AC1
+# ---------------------------------------------------------------------------
+
+@test "story-key-scoped conventional title passes through" {
   run "$PR_CREATE" E88-S1 "feat(E88-S1): foo" --base staging --body-file "$BODY_FILE"
   [ "$status" -eq 0 ]
-  # The captured TITLE must equal the input title exactly — no E88-S1: prefix.
-  [[ "$output" == *"TITLE=feat(E88-S1): foo"* ]]
-  [[ "$output" != *"TITLE=E88-S1: feat(E88-S1):"* ]]
+  [ "$(cat "$TEST_TMP/gh-title.txt")" = "feat(E88-S1): foo" ]
 }
 
-@test "bare title (no conventional-commits prefix) is prepended with story key" {
-  run "$PR_CREATE" E88-S1 "add foo to bar" --base staging --body-file "$BODY_FILE"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"TITLE=E88-S1: add foo to bar"* ]]
-}
-
-@test "title with conventional-commits prefix anchored at start is detected even with extra text after" {
+@test "conventional title with extra text passes through" {
   run "$PR_CREATE" E92-S3 "fix(E92-S3): swap hook to PLUGIN_ROOT" --base staging --body-file "$BODY_FILE"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"TITLE=fix(E92-S3): swap hook to PLUGIN_ROOT"* ]]
-  [[ "$output" != *"TITLE=E92-S3: fix("* ]]
+  [ "$(cat "$TEST_TMP/gh-title.txt")" = "fix(E92-S3): swap hook to PLUGIN_ROOT" ]
 }
 
-@test "title with non-conventional shape that happens to contain parentheses is still prepended" {
-  run "$PR_CREATE" E88-S1 "Refactor (cleanup)" --base staging --body-file "$BODY_FILE"
+@test "product-scoped title passes through" {
+  run "$PR_CREATE" E88-S1 "fix(x): y" --base staging --body-file "$BODY_FILE"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"TITLE=E88-S1: Refactor (cleanup)"* ]]
+  [ "$(cat "$TEST_TMP/gh-title.txt")" = "fix(x): y" ]
+}
+
+@test "scopeless title passes through" {
+  run "$PR_CREATE" E88-S1 "fix: y" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_TMP/gh-title.txt")" = "fix: y" ]
+}
+
+@test "breaking-scope title passes through" {
+  run "$PR_CREATE" E88-S1 "feat(x)!: y" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_TMP/gh-title.txt")" = "feat(x)!: y" ]
+}
+
+@test "breaking-scopeless title passes through" {
+  run "$PR_CREATE" E88-S1 "feat!: breaking change" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_TMP/gh-title.txt")" = "feat!: breaking change" ]
+}
+
+# ---------------------------------------------------------------------------
+# Title refusal (non-conventional shapes) — AC2
+# ---------------------------------------------------------------------------
+
+@test "bare title is refused" {
+  run "$PR_CREATE" E88-S1 "add foo to bar" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
+  [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+@test "empty-subject refused (nothing after colon)" {
+  run "$PR_CREATE" E88-S1 "fix:" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
+  [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+@test "empty-subject refused (no space after colon)" {
+  run "$PR_CREATE" E88-S1 "fix:y" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
+  [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+@test "empty-subject refused (trailing space only)" {
+  run "$PR_CREATE" E88-S1 "fix: " --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
+  [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+@test "parenthesised non-conventional title is refused" {
+  run "$PR_CREATE" E88-S1 "Refactor (cleanup)" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
+  [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+@test "multi-line title refused (LF — exercises guard, not regex)" {
+  run "$PR_CREATE" E88-S1 $'fix: y\nadd foo' --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
+  [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+@test "multi-line title refused (story scenario 6 input)" {
+  run "$PR_CREATE" E88-S1 $'add foo\nfix: y' --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
+  [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+@test "multi-line title refused (CR — exercises guard, not regex)" {
+  run "$PR_CREATE" E88-S1 $'fix: y\rz' --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
+  [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+# ---------------------------------------------------------------------------
+# Body story reference — AC3
+# ---------------------------------------------------------------------------
+
+@test "body file without Story: gets it appended" {
+  printf 'Some PR body\n' > "$BODY_FILE"
+  run "$PR_CREATE" E88-S1 "fix: y" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 0 ]
+  grep -q '^Story: E88-S1' < "$TEST_TMP/gh-body.txt"
+}
+
+@test "default body carries Story: reference" {
+  run "$PR_CREATE" E88-S1 "fix: y" --base staging
+  [ "$status" -eq 0 ]
+  grep -q '^Story: E88-S1' < "$TEST_TMP/gh-body.txt"
+}
+
+@test "body file with existing Story: keeps exactly one" {
+  printf 'Some body\nStory: [E88-S1](link)\n' > "$BODY_FILE"
+  run "$PR_CREATE" E88-S1 "fix: y" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 0 ]
+  local count
+  count=$(grep -c '^Story:' < "$TEST_TMP/gh-body.txt")
+  [ "$count" -eq 1 ]
+}
+
+@test "body with mid-line Story: still gets anchored Story: appended" {
+  printf 'See the Story: reference in the text above\n' > "$BODY_FILE"
+  run "$PR_CREATE" E88-S1 "fix: y" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 0 ]
+  # The mid-line mention does NOT satisfy the ^Story: anchor, so a line-start
+  # Story: reference must be appended.
+  grep -q '^Story: E88-S1' < "$TEST_TMP/gh-body.txt"
 }

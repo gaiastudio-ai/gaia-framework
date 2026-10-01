@@ -217,6 +217,7 @@ core	evidence-judgment-parity.bats
 core	expected-report-vocabulary.bats
 core	framework-version.bats
 core	gaia-add-feature-setup.bats
+core	gaia-changelog-story-link.bats
 core	gaia-config-distribution.bats
 core	gaia-create-prd.bats
 core	gaia-create-ux.bats
