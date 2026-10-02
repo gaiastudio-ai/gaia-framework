@@ -289,10 +289,22 @@
           </li>
           <li>
             <span class="step-title">Yaml write</span>
-            On the legacy <code>active &rarr; closed</code> path only:
-            <code>yq -i '.status = "closed" | .closed_at = "&lt;ISO 8601 UTC&gt;"' sprint-status.yaml</code>.
-            On the new <code>review &rarr; closed</code> path, the equivalent
-            write happens inside <code>sprint-state.sh transition</code>.
+            The primary write path routes through
+            <code>sprint-state.sh transition --sprint &lt;id&gt; --to closed</code>.
+            On success (<code>review&rarr;closed</code>), <code>close.sh</code>
+            stamps only <code>closed_at</code>. Three failure cases:
+            <ul>
+              <li><strong>Sprint-id mismatch</strong> (exit 2 with mismatch phrase) &mdash;
+                <code>close.sh</code> propagates the message naming both ids and stops
+                without writing anything.</li>
+              <li><strong>Non-mismatch exit 2</strong> &mdash; <code>close.sh</code>
+                emits the writer's stderr plus a generic &ldquo;transition failed&rdquo;
+                diagnostic and stops without writing anything.</li>
+              <li><strong>Other non-zero exit</strong> (e.g. <code>active&rarr;closed</code>
+                is not a legal edge) &mdash; falls back to direct
+                <code>yq -i '.status = "closed" | .closed_at = "&lt;ISO 8601 UTC&gt;"'</code>.
+                Safe because the sentinel gate has already passed.</li>
+            </ul>
           </li>
           <li>
             <span class="step-title">Archive</span>
