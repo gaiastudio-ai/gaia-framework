@@ -153,16 +153,14 @@ _advance_to_state() {
 
 @test "migration preserves non-project fields" {
   _create_v1_record
-  local pre_ds pre_app pre_iter
-  pre_ds="$(yq '.design_state' "$RECORD")"
+  local pre_app pre_iter
   pre_app="$(yq '.applicability' "$RECORD")"
   pre_iter="$(yq '.iteration' "$RECORD")"
 
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor "migrator"
   [ "$status" -eq 0 ] || fail "migration-trigger failed: $output"
 
-  local post_ds post_app post_iter
-  post_ds="$(yq '.design_state' "$RECORD")"
+  local post_app post_iter
   post_app="$(yq '.applicability' "$RECORD")"
   post_iter="$(yq '.iteration' "$RECORD")"
 
@@ -278,6 +276,7 @@ SHIM
   [ "$hash" = "$post_hash" ] || fail "record was modified despite I/O failure"
 }
 
+# bats test_tags=hardware-dependent
 @test "64 KB migration completes under 200 ms (best-of-3)" {
   # Build a 64 KB v1 fixture statically — no _create_v1_record overhead.
   # One jq pass builds the bulk audit array, yq -P converts to YAML, then
@@ -322,6 +321,7 @@ EOF
 
   # Verify the function exists when sourced
   (
+    # shellcheck source=../scripts/design-record.sh
     _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
     declare -F _migrate_v1_to_v2 >/dev/null
   ) || fail "_migrate_v1_to_v2 not available via source — function not yet implemented"
@@ -331,6 +331,7 @@ EOF
   local best
   best="$(
     (
+      # shellcheck source=../scripts/design-record.sh
       _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
       _best=999999
       for _attempt in 1 2 3; do
@@ -347,6 +348,15 @@ EOF
   )"
 
   [ "$best" -lt 200 ] || fail "best-of-3 migration took ${best}ms, limit is 200ms"
+
+  # Assert the timed copies were actually migrated — a no-op migration must fail here
+  local _attempt_file _sv _dsp_ref
+  for _attempt_file in "$TEST_TMP"/timing-attempt-*.yaml; do
+    _sv="$(yq '.schema_version' "$_attempt_file")"
+    [ "$_sv" = "2.0" ] || fail "timing copy ${_attempt_file} not migrated: schema_version=$_sv"
+    _dsp_ref="$(yq '.design_system_project.reference' "$_attempt_file")"
+    [ "$_dsp_ref" = "ds-perf-ref" ] || fail "timing copy not migrated: design_system_project.reference=$_dsp_ref"
+  done
 }
 
 @test "chain continuity after migration: next mutation appends correctly chained entry" {
@@ -482,12 +492,19 @@ EOF
   yq -i '.design_system_project.reference = "ds"' "$_rec_file"
   yq -i '.product_design_project = null' "$_rec_file"
 
-  local hash
+  local hash audit_count
   hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
 
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor "test"
   [ "$status" -ne 0 ] || fail "expected downgrade rejection"
   [[ "$output" == *"downgrade"* ]] || fail "expected downgrade diagnostic, got: $output"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
 }
 
 @test "schema downgrade rejected: v1 record with only product_design_project key" {
@@ -497,9 +514,19 @@ EOF
   local _rec_file="$RECORD"
   yq -i '.product_design_project.reference = "pd"' "$_rec_file"
 
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor "test"
   [ "$status" -ne 0 ] || fail "expected downgrade rejection"
   [[ "$output" == *"downgrade"* ]] || fail "expected downgrade diagnostic, got: $output"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
 }
 
 @test "wrong design_system_project.type rejected" {
@@ -512,12 +539,19 @@ EOF
   local _rec_file="$RECORD"
   yq -i '.design_system_project.type = "design"' "$_rec_file"
 
-  local hash
+  local hash audit_count
   hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
 
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
   [ "$status" -ne 0 ] || fail "expected type rejection"
   [[ "$output" == *"type"* ]] || fail "expected type diagnostic, got: $output"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
 }
 
 @test "wrong product_design_project.type rejected" {
@@ -533,9 +567,19 @@ EOF
   local _rec_file="$RECORD"
   yq -i '.product_design_project.type = "design-system"' "$_rec_file"
 
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor "test"
   [ "$status" -ne 0 ] || fail "expected type rejection"
   [[ "$output" == *"type"* ]] || fail "expected type diagnostic, got: $output"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
 }
 
 @test "identical references rejected (both non-null)" {
@@ -550,10 +594,20 @@ EOF
   yq -i '.product_design_project.surface = "artifact"' "$_rec_file"
   yq -i '.product_design_project.discovered_via = "existing"' "$_rec_file"
 
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
   [ "$status" -ne 0 ] || fail "expected identical-ref rejection"
   [[ "$output" == *"identical"* ]] || [[ "$output" == *"same"* ]] || \
     fail "expected identical-ref diagnostic, got: $output"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
 }
 
 @test "null design_system_project allowed on not-applicable record" {
@@ -575,8 +629,18 @@ EOF
   local _rec_file="$RECORD"
   yq -i '.design_system_project = null' "$_rec_file"
 
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
   [ "$status" -ne 0 ] || fail "expected null-ds refusal on applicable"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
 }
 
 @test "missing design_system_project KEY refused on applicable v2 record (distinct diagnostic)" {
@@ -588,11 +652,21 @@ EOF
   local _rec_file="$RECORD"
   yq -i 'del(.design_system_project)' "$_rec_file"
 
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
   [ "$status" -ne 0 ] || fail "expected missing-key refusal"
   # Diagnostic must be DISTINCT from the null check diagnostic
   [[ "$output" == *"missing"* ]] || [[ "$output" == *"key"* ]] || \
     fail "expected missing-key diagnostic, got: $output"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
 }
 
 @test "missing product_design_project KEY refused on applicable v2 record" {
@@ -604,8 +678,127 @@ EOF
   local _rec_file="$RECORD"
   yq -i 'del(.product_design_project)' "$_rec_file"
 
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
   [ "$status" -ne 0 ] || fail "expected missing-key refusal"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
+}
+
+@test "wrong ds type refused even when product_design_project key is absent" {
+  # Regression: the early-return bug skipped the type check when either key
+  # was missing.  This test proves the fix by removing the pd key entirely
+  # and setting a wrong type on ds.
+  _create_na_record
+
+  # Build a v2 record with design_system_project present but no pd key
+  local _rec_file="$RECORD"
+  yq -i '.applicability = "not-applicable"' "$_rec_file"
+  yq -i '.design_system_project.reference = "ds-ref"' "$_rec_file"
+  yq -i '.design_system_project.type = "design"' "$_rec_file"
+  yq -i '.design_system_project.surface = "designsync"' "$_rec_file"
+  yq -i '.design_system_project.discovered_via = "project-artifacts"' "$_rec_file"
+  yq -i 'del(.product_design_project)' "$_rec_file"
+
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
+  [ "$status" -ne 0 ] || fail "expected type rejection when pd key absent"
+  [[ "$output" == *"type"* ]] || fail "expected type diagnostic, got: $output"
+
+  # Record unchanged, no audit appended
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed"
+}
+
+@test "bogus ds_attachment_mode refused even when product_design_project key is absent" {
+  # Regression: the early-return bug skipped the enum check when either key
+  # was missing.
+  _create_na_record
+
+  local _rec_file="$RECORD"
+  yq -i '.applicability = "not-applicable"' "$_rec_file"
+  yq -i '.design_system_project = null' "$_rec_file"
+  yq -i 'del(.product_design_project)' "$_rec_file"
+  yq -i '.ds_attachment_mode = "bogus"' "$_rec_file"
+
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
+  [ "$status" -ne 0 ] || fail "expected rejection for bogus ds_attachment_mode when pd key absent"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed"
+}
+
+@test "applicability with embedded comma does not bypass cross-validation" {
+  # Regression: a crafted applicability value containing a comma shifted the
+  # CSV fields, making every boolean check see the wrong column.
+  _create_v1_record "ds-ref"
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor "test"
+  [ "$status" -eq 0 ] || fail "setup transition failed: $output"
+
+  # Hand-edit: inject comma-bearing applicability and a wrong ds type
+  local _rec_file="$RECORD"
+  yq -i '.applicability = "applicable,9,false,false,false"' "$_rec_file"
+  yq -i '.design_system_project.type = "bogus"' "$_rec_file"
+
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
+  [ "$status" -ne 0 ] || fail "comma in applicability bypassed cross-validation"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
+}
+
+@test "applicability with embedded newline does not bypass cross-validation" {
+  # Regression: a crafted applicability containing a newline could truncate
+  # the CSV line, leaving downstream fields empty and skipping all checks.
+  _create_v1_record "ds-ref"
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor "test"
+  [ "$status" -eq 0 ] || fail "setup transition failed: $output"
+
+  # Hand-edit: inject newline-bearing applicability and a wrong ds type
+  local _rec_file="$RECORD"
+  # yq literal scalar with explicit newline
+  yq -i '.applicability = "applicable\nx"' "$_rec_file"
+  yq -i '.design_system_project.type = "bogus"' "$_rec_file"
+
+  local hash audit_count
+  hash="$(_sha256_file "$RECORD")"
+  audit_count="$(yq '.audit | length' "$RECORD")"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor "test"
+  [ "$status" -ne 0 ] || fail "newline in applicability bypassed cross-validation"
+
+  local post_hash post_count
+  post_hash="$(_sha256_file "$RECORD")"
+  post_count="$(yq '.audit | length' "$RECORD")"
+  [ "$hash" = "$post_hash" ] || fail "record modified despite rejection"
+  [ "$audit_count" = "$post_count" ] || fail "audit count changed despite rejection"
 }
 
 @test "cross-check removal mutant: function body replaced with return 0" {
@@ -1477,8 +1670,10 @@ STAKE
     --reference "ds-ref-2" --pd-reference "pd-ref-2" \
     --discovered-via "created" --questionnaire-record "path/to/q2.md" --actor "test"
   [ "$status" -ne 0 ] || fail "expected no-overwrite refusal"
-  [[ "$output" == *"already"* ]] || [[ "$output" == *"set"* ]] || \
-    fail "expected overwrite diagnostic, got: $output"
+  [[ "$output" == *"already set"* ]] || fail "expected 'already set' diagnostic, got: $output"
+  # The message must tell the user what to do (omit --pd-reference), not point
+  # at set-product-project which also refuses to overwrite
+  [[ "$output" == *"omit --pd-reference"* ]] || fail "expected 'omit --pd-reference' guidance, got: $output"
 
   local post_hash
   post_hash="$(_sha256_file "$RECORD")"
@@ -1581,6 +1776,42 @@ STAKE
   [ "$dam" = "artifact-installed" ] || fail "ds_attachment_mode=$dam, expected artifact-installed"
 }
 
+@test "reopen-applicable with --pd-reference preserves existing ds_attachment_mode" {
+  # Guards against reopen overwriting an existing valid ds_attachment_mode
+  # with the default.  A writer that unconditionally sets token-by-value
+  # would silently discard the user's choice.
+  _create_na_record
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/q.md"
+
+  # First reopen to make the record applicable and set ds_attachment_mode
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
+    --reference "ds-ref" --pd-reference "pd-ref" \
+    --discovered-via "created" --questionnaire-record "path/to/q.md" --actor "test"
+  [ "$status" -eq 0 ] || fail "first reopen failed: $output"
+
+  # Set ds_attachment_mode to artifact-installed (valid, non-default)
+  local _rec_file="$RECORD"
+  yq -i '.ds_attachment_mode = "artifact-installed"' "$_rec_file"
+
+  # Flip to not-applicable so we can reopen again
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" not-applicable --actor "test"
+  [ "$status" -eq 0 ] || fail "not-applicable failed: $output"
+
+  # Clear the product_design_project so reopen can set it again
+  yq -i '.product_design_project = null' "$_rec_file"
+
+  touch "$TEST_TMP/path/to/q2.md"
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
+    --reference "ds-ref-2" --pd-reference "pd-ref-2" \
+    --discovered-via "created" --questionnaire-record "path/to/q2.md" --actor "test"
+  [ "$status" -eq 0 ] || fail "second reopen failed: $output"
+
+  local dam
+  dam="$(yq '.ds_attachment_mode' "$RECORD")"
+  [ "$dam" = "artifact-installed" ] || fail "ds_attachment_mode=$dam, expected artifact-installed (preserved)"
+}
+
 @test "bogus ds_attachment_mode rejected by writer" {
   _create_v1_record "ds-ref"
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor "test"
@@ -1633,6 +1864,91 @@ STAKE
   local has_dam
   has_dam="$(yq 'has("ds_attachment_mode")' "$RECORD")"
   [ "$has_dam" = "false" ] || fail "ds_attachment_mode should be absent without --pd-reference"
+}
+
+@test "init --pd-discovered-via created records discovered_via on product project" {
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/q.md"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" init \
+    --ds-reference "ds-ref" --pd-reference "pd-ref" \
+    --pd-discovered-via "created" \
+    --discovered-via "created" --questionnaire-record "path/to/q.md" --actor "test"
+  [ "$status" -eq 0 ] || fail "init failed: $output"
+
+  local pd_dv
+  pd_dv="$(yq '.product_design_project.discovered_via' "$RECORD")"
+  [ "$pd_dv" = "created" ] || fail "product_design_project.discovered_via=$pd_dv, expected created"
+}
+
+@test "init --pd-discovered-via defaults to existing when omitted" {
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/q.md"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" init \
+    --ds-reference "ds-ref" --pd-reference "pd-ref" \
+    --discovered-via "created" --questionnaire-record "path/to/q.md" --actor "test"
+  [ "$status" -eq 0 ] || fail "init failed: $output"
+
+  local pd_dv
+  pd_dv="$(yq '.product_design_project.discovered_via' "$RECORD")"
+  [ "$pd_dv" = "existing" ] || fail "product_design_project.discovered_via=$pd_dv, expected existing"
+}
+
+@test "init --pd-discovered-via rejects invalid enum values" {
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/q.md"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" init \
+    --ds-reference "ds-ref" --pd-reference "pd-ref" \
+    --pd-discovered-via "bogus-value" \
+    --discovered-via "created" --questionnaire-record "path/to/q.md" --actor "test"
+  [ "$status" -ne 0 ] || fail "expected rejection for invalid --pd-discovered-via"
+  [[ "$output" == *"bogus-value"* ]] || fail "expected diagnostic to name the rejected value, got: $output"
+}
+
+@test "reopen-applicable --pd-discovered-via created records discovered_via on product project" {
+  _create_na_record
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/q.md"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
+    --reference "ds-ref" --pd-reference "pd-ref" \
+    --pd-discovered-via "created" \
+    --discovered-via "created" --questionnaire-record "path/to/q.md" --actor "test"
+  [ "$status" -eq 0 ] || fail "reopen failed: $output"
+
+  local pd_dv
+  pd_dv="$(yq '.product_design_project.discovered_via' "$RECORD")"
+  [ "$pd_dv" = "created" ] || fail "product_design_project.discovered_via=$pd_dv, expected created"
+}
+
+@test "reopen-applicable --pd-discovered-via defaults to existing when omitted" {
+  _create_na_record
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/q.md"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
+    --reference "ds-ref" --pd-reference "pd-ref" \
+    --discovered-via "created" --questionnaire-record "path/to/q.md" --actor "test"
+  [ "$status" -eq 0 ] || fail "reopen failed: $output"
+
+  local pd_dv
+  pd_dv="$(yq '.product_design_project.discovered_via' "$RECORD")"
+  [ "$pd_dv" = "existing" ] || fail "product_design_project.discovered_via=$pd_dv, expected existing"
+}
+
+@test "reopen-applicable --pd-discovered-via rejects invalid enum values" {
+  _create_na_record
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/q.md"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
+    --reference "ds-ref" --pd-reference "pd-ref" \
+    --pd-discovered-via "bogus-value" \
+    --discovered-via "created" --questionnaire-record "path/to/q.md" --actor "test"
+  [ "$status" -ne 0 ] || fail "expected rejection for invalid --pd-discovered-via on reopen"
+  [[ "$output" == *"bogus-value"* ]] || fail "expected diagnostic to name the rejected value, got: $output"
 }
 
 @test "schema validates token-by-value and artifact-installed; rejects bogus" {
@@ -2094,6 +2410,7 @@ STAKE
 
   # Source script and call migration directly
   (
+    # shellcheck source=../scripts/design-record.sh
     _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
     _migrate_v1_to_v2 "$RECORD"
   ) || fail "direct migration failed"
@@ -2136,6 +2453,7 @@ STAKE
 
   # Source and migrate directly
   (
+    # shellcheck source=../scripts/design-record.sh
     _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
     _migrate_v1_to_v2 "$RECORD"
   ) || fail "direct migration failed"
@@ -2220,6 +2538,7 @@ STAKE
   local copy="$TEST_TMP/re-migration-copy.yaml"
   cp "$RECORD" "$copy"
   (
+    # shellcheck source=../scripts/design-record.sh
     _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
     _migrate_v1_to_v2 "$copy"
   ) || fail "re-migration failed"
@@ -2271,6 +2590,7 @@ STAKE
   yq -i 'del(.design_system_project)' "$RECORD"
   yq -i 'del(.product_design_project)' "$RECORD"
   (
+    # shellcheck source=../scripts/design-record.sh
     _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
     _migrate_v1_to_v2 "$RECORD"
   ) || fail "migration failed"
@@ -2590,6 +2910,7 @@ STAKE
 
   # Source and migrate directly
   (
+    # shellcheck source=../scripts/design-record.sh
     _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
     _migrate_v1_to_v2 "$RECORD"
   ) || fail "direct migration failed"
@@ -2648,6 +2969,7 @@ STAKE
   local copy="$TEST_TMP/rich-v1-copy.yaml"
   cp "$RECORD" "$copy"
   (
+    # shellcheck source=../scripts/design-record.sh
     _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
     _migrate_v1_to_v2 "$copy"
   ) || fail "direct migration failed"
@@ -2851,6 +3173,7 @@ STAKE
   local copy="$TEST_TMP/na-rich-v1-copy.yaml"
   cp "$RECORD" "$copy"
   (
+    # shellcheck source=../scripts/design-record.sh
     _GAIA_DREC_SOURCED=1 source "$DREC_SCRIPT" 2>/dev/null
     _migrate_v1_to_v2 "$copy"
   ) || fail "direct migration failed"
