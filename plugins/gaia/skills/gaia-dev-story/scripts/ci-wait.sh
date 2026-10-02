@@ -22,6 +22,12 @@
 #                         resolve-config.sh; if unset the resolver discovers
 #                         config via PROJECT_ROOT / CLAUDE_PROJECT_ROOT /
 #                         walk-up).
+#   CI_WAIT_TIMEOUT_SECONDS — testing knob only. When set to a non-negative
+#                              integer (0-86400), replaces the minute-based
+#                              timeout budget with an exact second budget.
+#                              Not for user-facing use; exists so tests can
+#                              exercise the timeout-during-polling path
+#                              without real wall-clock delay.
 #
 # Exit codes:
 #   0 — all CI checks passed (or non-git skip, or no CI configured)
@@ -57,6 +63,11 @@ fi
 
 PR_NUMBER="$1"
 shift
+
+# Validate PR_NUMBER: must be a positive decimal integer
+case "$PR_NUMBER" in
+  ''|0*|*[!0-9]*) die "PR number must be a positive integer, got: '$PR_NUMBER'" ;;
+esac
 
 CLI_TIMEOUT=""
 while [ $# -gt 0 ]; do
@@ -102,10 +113,14 @@ else
   RESOLVE_SCRIPT="$GUARD_DIR/../../../scripts/resolve-config.sh"
   if [ -x "$RESOLVE_SCRIPT" ]; then
     config_val=""
+    resolver_ec=0
     if [ -n "${GAIA_SHARED_CONFIG:-}" ]; then
-      config_val=$("$RESOLVE_SCRIPT" --shared "$GAIA_SHARED_CONFIG" --field ci_cd.ci_wait_timeout_minutes 2>/dev/null) || true
+      config_val=$("$RESOLVE_SCRIPT" --shared "$GAIA_SHARED_CONFIG" --field ci_cd.ci_wait_timeout_minutes 2>/dev/null) || resolver_ec=$?
     else
-      config_val=$("$RESOLVE_SCRIPT" --field ci_cd.ci_wait_timeout_minutes 2>/dev/null) || true
+      config_val=$("$RESOLVE_SCRIPT" --field ci_cd.ci_wait_timeout_minutes 2>/dev/null) || resolver_ec=$?
+    fi
+    if [ "$resolver_ec" -ne 0 ]; then
+      log "no configured timeout found, using default 30-minute timeout"
     fi
     if [ -n "$config_val" ]; then
       # Validate: must be a decimal integer (no leading zeros) in 1-360.
@@ -127,19 +142,41 @@ fi
 TIMEOUT_MINUTES="${TIMEOUT_MINUTES:-30}"
 TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
 
-# --- Poll interval validation ---
-POLL_INTERVAL="${CI_WAIT_POLL_INTERVAL:-30}"
-if ! printf '%s' "$POLL_INTERVAL" | grep -qE '^[0-9]+$'; then
-  log "CI_WAIT_POLL_INTERVAL='$POLL_INTERVAL' is not a non-negative integer, using default 30"
-  POLL_INTERVAL=30
+# --- Testing-only seconds override ---
+# When CI_WAIT_TIMEOUT_SECONDS is set, it replaces the minute-based budget
+# so tests can exercise the timeout-during-polling path without wall-clock delay.
+# Capped at 86400 (the CLI --timeout 1440m ceiling) to catch accidental misuse.
+if [ -n "${CI_WAIT_TIMEOUT_SECONDS:-}" ]; then
+  case "$CI_WAIT_TIMEOUT_SECONDS" in
+    ''|*[!0-9]*) die "CI_WAIT_TIMEOUT_SECONDS must be a non-negative integer (0-86400), got: '$CI_WAIT_TIMEOUT_SECONDS'" ;;
+  esac
+  if [ "$CI_WAIT_TIMEOUT_SECONDS" -gt 86400 ]; then
+    die "CI_WAIT_TIMEOUT_SECONDS exceeds 86400 (24h cap), got: '$CI_WAIT_TIMEOUT_SECONDS'"
+  fi
+  TIMEOUT_SECONDS="$CI_WAIT_TIMEOUT_SECONDS"
 fi
+
+# --- Poll interval validation ---
+# case operates on the whole string (unlike grep which matches per-line),
+# so a multi-line value is correctly rejected.
+POLL_INTERVAL="${CI_WAIT_POLL_INTERVAL:-30}"
+case "$POLL_INTERVAL" in
+  0|[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;;
+  *)
+    log "CI_WAIT_POLL_INTERVAL='$(printf '%s' "$POLL_INTERVAL" | head -1)' is not a non-negative integer, using default 30"
+    POLL_INTERVAL=30
+    ;;
+esac
 
 # --- Grace seconds validation ---
 GRACE_SECONDS="${CI_WAIT_NO_CHECKS_GRACE_SECONDS:-300}"
-if ! printf '%s' "$GRACE_SECONDS" | grep -qE '^[0-9]+$'; then
-  log "CI_WAIT_NO_CHECKS_GRACE_SECONDS='$GRACE_SECONDS' is not a non-negative integer, using default 300"
-  GRACE_SECONDS=300
-fi
+case "$GRACE_SECONDS" in
+  0|[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;;
+  *)
+    log "CI_WAIT_NO_CHECKS_GRACE_SECONDS='$(printf '%s' "$GRACE_SECONDS" | head -1)' is not a non-negative integer, using default 300"
+    GRACE_SECONDS=300
+    ;;
+esac
 
 CONSECUTIVE_FAILURES=0
 MAX_CONSECUTIVE_FAILURES=5
@@ -159,12 +196,21 @@ REQUIRED_PERMANENT_WARNED=0
 GRACE_STARTED=0
 GRACE_START_TIME=0
 
-# Centralized temp-file cleanup — every mktemp result is appended here
-_TMPFILES=""
-_cleanup() { for f in $_TMPFILES; do rm -f "$f"; done; }
+# Reusable temp files — one per kind, O(1) cleanup, space-safe.
+# The EXIT trap is installed before the first mktemp so a later mktemp
+# failure still cleans up any files already created.
+_TMP_STDERR_REQ="" _TMP_STDERR_ALL="" _TMP_YQ_STDERR=""
+_cleanup() { rm -f "$_TMP_STDERR_REQ" "$_TMP_STDERR_ALL" "$_TMP_YQ_STDERR"; }
 trap _cleanup EXIT
+_TMP_STDERR_REQ=$(mktemp "${TMPDIR:-/tmp}/ci-wait-stderr-req.XXXXXX")
+_TMP_STDERR_ALL=$(mktemp "${TMPDIR:-/tmp}/ci-wait-stderr-all.XXXXXX")
+_TMP_YQ_STDERR=$(mktemp "${TMPDIR:-/tmp}/ci-wait-yq-stderr.XXXXXX")
 
-log "waiting for CI checks on PR #${PR_NUMBER} (timeout: ${TIMEOUT_MINUTES}m)"
+if [ -n "${CI_WAIT_TIMEOUT_SECONDS:-}" ]; then
+  log "waiting for CI checks on PR #${PR_NUMBER} (timeout: ${TIMEOUT_SECONDS}s)"
+else
+  log "waiting for CI checks on PR #${PR_NUMBER} (timeout: ${TIMEOUT_MINUTES}m)"
+fi
 
 # --- Helpers ---
 
@@ -189,10 +235,10 @@ _failed_check_names() {
   printf '%s' "$1" | jq -r '.[] | select(.bucket == "fail" or .bucket == "cancel") | "\(.name) (\(.bucket))"' 2>/dev/null
 }
 
-# _find_config_file — locate the project config file using the resolver's
-# lookup order: GAIA_SHARED_CONFIG, PROJECT_ROOT, CLAUDE_PROJECT_ROOT, PWD,
-# then walk-up from PWD (stops at $HOME, skipped when GAIA_NO_PROJECT_WALKUP
-# or CLAUDE_SKILL_DIR is set).
+# _find_config_file — locate the project config file using the same discovery
+# order as resolve-config.sh: GAIA_SHARED_CONFIG, PROJECT_ROOT,
+# CLAUDE_PROJECT_ROOT, PWD, then walk-up from PWD (stops at $HOME, skipped
+# when GAIA_NO_PROJECT_WALKUP or CLAUDE_SKILL_DIR is set).
 _find_config_file() {
   # Explicit path via environment
   if [ -n "${GAIA_SHARED_CONFIG:-}" ]; then
@@ -212,7 +258,8 @@ _find_config_file() {
       fi
     done
   done
-  # Walk-up from PWD (mirrors resolve-config.sh ~L586-599)
+  # Walk-up from PWD — stops at $HOME (matches resolve-config.sh).
+  # Skipped when CLAUDE_SKILL_DIR or GAIA_NO_PROJECT_WALKUP is set.
   if [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
     local walk_dir="$PWD"
     while [ "$walk_dir" != "/" ] && [ "$walk_dir" != "${HOME:-/nonexistent}" ]; do
@@ -264,14 +311,10 @@ _grace_decision() {
 
   # Read ci_checks from config — capture yq exit code and stderr separately.
   local ci_checks="" yq_stderr="" yq_ec=0
-  local yq_stderr_file
-  yq_stderr_file=$(mktemp "${TMPDIR:-/tmp}/ci-wait-yq-stderr.XXXXXX")
-  _TMPFILES="$_TMPFILES $yq_stderr_file"
   ci_checks=$(branch="$base_branch" yq -r \
     '.ci_cd.promotion_chain[] | select(.branch == strenv(branch)) | .ci_checks // [] | .[]' \
-    "$config_file" 2>"$yq_stderr_file") || yq_ec=$?
-  yq_stderr=$(cat "$yq_stderr_file")
-  rm -f "$yq_stderr_file"
+    "$config_file" 2>"$_TMP_YQ_STDERR") || yq_ec=$?
+  yq_stderr=$(cat "$_TMP_YQ_STDERR")
 
   if [ "$yq_ec" -ne 0 ]; then
     die "grace expired: failed to read config ($config_file): $yq_stderr"
@@ -279,7 +322,7 @@ _grace_decision() {
 
   if [ -z "$ci_checks" ]; then
     log "grace expired: no CI checks configured for branch '$base_branch' — exiting OK"
-    echo "passed"
+    echo "passed (no CI checks configured for $base_branch)"
     exit 0
   else
     die "grace expired: expected checks never appeared: $ci_checks"
@@ -290,7 +333,11 @@ _grace_decision() {
 while true; do
   # Check timeout (wall clock)
   if [ "$SECONDS" -ge "$TIMEOUT_SECONDS" ]; then
-    log "CI checks timed out after ${TIMEOUT_MINUTES} minutes."
+    if [ -n "${CI_WAIT_TIMEOUT_SECONDS:-}" ]; then
+      log "CI checks timed out after ${TIMEOUT_SECONDS} seconds."
+    else
+      log "CI checks timed out after ${TIMEOUT_MINUTES} minutes."
+    fi
     log "Resume with /gaia-resume after checks complete."
     exit 1
   fi
@@ -309,11 +356,8 @@ while true; do
       REQUIRED_PERMANENT_WARNED=1
     fi
   else
-    local_stderr_file=$(mktemp "${TMPDIR:-/tmp}/ci-wait-stderr.XXXXXX")
-    _TMPFILES="$_TMPFILES $local_stderr_file"
-    local_stdout=$(gh pr checks "$PR_NUMBER" --required --json name,state,bucket 2>"$local_stderr_file") || local_ec=$?
-    local_stderr=$(cat "$local_stderr_file")
-    rm -f "$local_stderr_file"
+    local_stdout=$(gh pr checks "$PR_NUMBER" --required --json name,state,bucket 2>"$_TMP_STDERR_REQ") || local_ec=$?
+    local_stderr=$(cat "$_TMP_STDERR_REQ")
 
     use_all_checks=0
     checks_json=""
@@ -373,16 +417,16 @@ while true; do
   # --- Fall back to all-checks if needed ---
   if [ "$use_all_checks" -eq 1 ]; then
     all_stdout=""
-    all_stderr_file=$(mktemp "${TMPDIR:-/tmp}/ci-wait-stderr.XXXXXX")
-    _TMPFILES="$_TMPFILES $all_stderr_file"
     all_ec=0
-    all_stdout=$(gh pr checks "$PR_NUMBER" --json name,state,bucket 2>"$all_stderr_file") || all_ec=$?
-    all_stderr=$(cat "$all_stderr_file")
-    rm -f "$all_stderr_file"
+    all_stdout=$(gh pr checks "$PR_NUMBER" --json name,state,bucket 2>"$_TMP_STDERR_ALL") || all_ec=$?
+    all_stderr=$(cat "$_TMP_STDERR_ALL")
 
     if [ "$all_ec" -ne 0 ]; then
       if printf '%s' "$all_stderr" | grep -qi 'no checks reported'; then
-        # No checks at all — enter grace window
+        # No checks at all — enter grace window. Reset error counter
+        # because gh responded (the "no checks" message is not a transient
+        # error; scattered errors must not accumulate across grace polls).
+        CONSECUTIVE_FAILURES=0
         if [ "$GRACE_STARTED" -eq 0 ]; then
           GRACE_STARTED=1
           GRACE_START_TIME="$SECONDS"
@@ -426,6 +470,7 @@ while true; do
     # Empty array from all-checks also means grace window
     all_count=$(printf '%s' "$all_stdout" | jq 'length' 2>/dev/null || printf '0')
     if [ "$all_count" -eq 0 ]; then
+      CONSECUTIVE_FAILURES=0
       if [ "$GRACE_STARTED" -eq 0 ]; then
         GRACE_STARTED=1
         GRACE_START_TIME="$SECONDS"
@@ -458,6 +503,9 @@ while true; do
   GRACE_STARTED=0
 
   # --- Evaluate check results ---
+  total_count=$(printf '%s' "$checks_json" | jq 'length' 2>/dev/null || printf '0')
+  pass_count=$(_count_bucket "$checks_json" "pass")
+  skipping_count=$(_count_bucket "$checks_json" "skipping")
   failed_count=$(_count_bucket "$checks_json" "fail")
   cancelled_count=$(_count_bucket "$checks_json" "cancel")
   pending_count=$(_count_bucket "$checks_json" "pending")
@@ -476,6 +524,18 @@ while true; do
   if [ "$pending_count" -gt 0 ]; then
     log "CI checks in progress (${pending_count} pending, elapsed: ${SECONDS}s)..."
     # Reset two-poll stability on non-terminal poll
+    PREV_TERMINAL_NAMES=""
+    STABILITY_COUNT=0
+    sleep "$POLL_INTERVAL"
+    continue
+  fi
+
+  # Allowlist: success requires every check to be pass or skipping.
+  # A check with bucket queued, null, missing, or unknown keeps polling.
+  done_count=$((pass_count + skipping_count))
+  if [ "$done_count" -lt "$total_count" ]; then
+    other_count=$((total_count - done_count))
+    log "CI checks in progress (${other_count} in non-terminal bucket, elapsed: ${SECONDS}s)..."
     PREV_TERMINAL_NAMES=""
     STABILITY_COUNT=0
     sleep "$POLL_INTERVAL"
