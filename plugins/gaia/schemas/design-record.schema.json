@@ -20,7 +20,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "enum": ["1.0"],
+      "enum": ["1.0", "2.0"],
       "description": "Schema version for forward compatibility gating."
     },
     "applicability": {
@@ -58,6 +58,89 @@
           "minLength": 1,
           "description": "Path to the design questionnaire record."
         }
+      }
+    },
+    "design_system_project": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["reference", "type", "surface", "discovered_via"],
+          "additionalProperties": false,
+          "properties": {
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Design-system project reference identifier."
+            },
+            "type": {
+              "type": "string",
+              "enum": ["design-system"],
+              "description": "Project type discriminator."
+            },
+            "surface": {
+              "type": "string",
+              "enum": ["designsync"],
+              "description": "Integration surface for the design-system project."
+            },
+            "discovered_via": {
+              "type": "string",
+              "enum": ["project-artifacts", "integration-list", "created"],
+              "description": "How the design-system project was discovered."
+            }
+          }
+        }
+      ]
+    },
+    "product_design_project": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["reference", "type", "surface", "discovered_via"],
+          "additionalProperties": false,
+          "properties": {
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Product-design project reference identifier."
+            },
+            "type": {
+              "type": "string",
+              "enum": ["design"],
+              "description": "Project type discriminator."
+            },
+            "surface": {
+              "type": "string",
+              "enum": ["artifact"],
+              "description": "Integration surface for the product-design project."
+            },
+            "discovered_via": {
+              "type": "string",
+              "enum": ["existing", "created"],
+              "description": "How the product-design project was discovered."
+            }
+          }
+        }
+      ]
+    },
+    "sync_mode": {
+      "type": "string",
+      "enum": ["react-components", "brand-style"],
+      "description": "Synchronization mode between the design system and the codebase."
+    },
+    "ds_attachment_mode": {
+      "type": "string",
+      "enum": ["token-by-value", "artifact-installed"],
+      "default": "token-by-value",
+      "description": "How design-system tokens are consumed: inlined by value or installed as a versioned artifact."
+    },
+    "review_coverage": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["design-system", "product-design"]
       }
     },
     "reviews": {
@@ -199,7 +282,8 @@
               "override",
               "not-applicable-pass",
               "review-verdict",
-              "applicability-change"
+              "applicability-change",
+              "product-project-set"
             ],
             "description": "Audit event type."
           },
@@ -263,6 +347,10 @@
             "type": "string",
             "pattern": "^sprint-[0-9]+$",
             "description": "Sprint scope (for override events)."
+          },
+          "discovered_via": {
+            "type": "string",
+            "description": "Discovery method (for product-project-set events)."
           }
         }
       }
@@ -281,6 +369,34 @@
           "type": "string",
           "description": "Digest of the last audit entry, or empty string for count 0."
         }
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "schema_version": { "const": "2.0" },
+      "applicability": { "not": { "const": "not-applicable" } }
+    },
+    "required": ["schema_version", "applicability"]
+  },
+  "then": {
+    "required": [
+      "schema_version",
+      "applicability",
+      "design_state",
+      "iteration",
+      "project",
+      "design_system_project",
+      "product_design_project",
+      "reviews",
+      "approvals",
+      "overrides",
+      "audit",
+      "audit_head"
+    ],
+    "properties": {
+      "design_system_project": {
+        "not": { "type": "null" }
       }
     }
   }

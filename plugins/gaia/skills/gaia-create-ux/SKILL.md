@@ -80,7 +80,7 @@ The availability check does NOT use `design-probe.sh` (it cannot observe the ses
 
 Discover an existing design system before any screen authoring begins.
 
-1. **Check for an existing record.** Run `design-record.sh status` to check whether a design record already exists. If a record exists with a non-empty `project.reference`, the design system is already bound — present it for confirmation (via `scripts/format-candidates.sh`), skip to Step 5 (User Personas), and do not re-initialize the record.
+1. **Check for an existing record.** Run `design-record.sh status` to check whether a design record already exists. If a record exists with a non-empty design-system project reference (v2: `design_system_project.reference`; v1 fallback: `project.reference`), the design system is already bound — present it for confirmation (via `scripts/format-candidates.sh`), skip to Step 5 (User Personas), and do not re-initialize the record.
 
 2. **Pass 1 — project artifacts.** Scan the planning-artifact tree for a prior design-system reference in an existing UX document or brownfield-extracted design material.
 
@@ -88,7 +88,7 @@ Discover an existing design system before any screen authoring begins.
 
 4. **User selects.** The user chooses explicitly from the presented candidates. The framework never auto-binds — even when exactly one candidate is found, the user must confirm the selection. Nothing is bound without an explicit user choice.
 
-5. **Record the selection.** When the user has selected a candidate, call `design-record.sh init` with the selected reference, the discovery source (`--discovered-via "project-artifacts"` for pass 1, `--discovered-via "integration-list"` for pass 2), and the questionnaire record path. This call is made ONLY when no record exists (the writer refuses a second init).
+5. **Record the selection.** When the user has selected a candidate, call `design-record.sh init` with the selected reference and the discovery source (`--discovered-via "project-artifacts"` for pass 1, `--discovered-via "integration-list"` for pass 2). The skip path (pass 1 / pass 2) does not pass `--questionnaire-record`; the writer auto-stores `"skipped"`. The `created` path (Step 3 questionnaire) passes `--questionnaire-record <path>`. This call is made ONLY when no record exists (the writer refuses a second init).
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-ux 2 project_name="$PROJECT_NAME" ux_slug="$UX_SLUG" prd_path="$PRD_PATH"`
 

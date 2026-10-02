@@ -274,8 +274,7 @@ teardown() { common_teardown; }
 
   run "$SCRIPT" init \
     --reference "test-ref" \
-    --discovered-via "created" \
-    --questionnaire-record ".gaia/artifacts/planning-artifacts/ux-design/dq.md"
+    --discovered-via "project-artifacts"
   [ "$status" -eq 0 ] || fail "init failed: $output"
   [ -f "$RECORD" ] || fail "init did not create $RECORD"
 
@@ -315,8 +314,7 @@ teardown() { common_teardown; }
 
   run "$SCRIPT" init \
     --reference "test-ref" \
-    --discovered-via "created" \
-    --questionnaire-record ".gaia/artifacts/planning-artifacts/ux-design/dq.md"
+    --discovered-via "project-artifacts"
   [ "$status" -eq 0 ] || fail "init failed: $output"
 
   local raw_ts
@@ -406,11 +404,16 @@ bar ñ日本語 .design_state = "approved"'
 @test "(AC1) round-trip injection: init project fields survive special characters" {
   assert_script_exists
 
-  local payload='ref with "quotes" and $dollar and `backtick`'
+  local payload_ref='ref with "quotes" and $dollar and `backtick`'
+  local payload_qr='q with spaces.md'
+
+  # Create the hostile-named questionnaire file so the -f check passes
+  touch "$TEST_TMP/$payload_qr"
+
   run "$SCRIPT" init \
-    --reference "$payload" \
-    --discovered-via "$payload" \
-    --questionnaire-record "$payload"
+    --reference "$payload_ref" \
+    --discovered-via "created" \
+    --questionnaire-record "$payload_qr"
   [ "$status" -eq 0 ] || fail "init with special chars failed: $output"
 
   local stored_ref stored_dv stored_qr
@@ -418,9 +421,9 @@ bar ñ日本語 .design_state = "approved"'
   stored_dv="$(yq '.project.discovered_via' "$RECORD")"
   stored_qr="$(yq '.project.questionnaire_record' "$RECORD")"
 
-  [ "$stored_ref" = "$payload" ] || fail "project.reference not round-tripped"
-  [ "$stored_dv" = "$payload" ] || fail "project.discovered_via not round-tripped"
-  [ "$stored_qr" = "$payload" ] || fail "project.questionnaire_record not round-tripped"
+  [ "$stored_ref" = "$payload_ref" ] || fail "project.reference not round-tripped"
+  [ "$stored_dv" = "created" ] || fail "project.discovered_via not round-tripped"
+  [ "$stored_qr" = "$payload_qr" ] || fail "project.questionnaire_record not round-tripped"
 }
 
 
@@ -494,6 +497,8 @@ EOF
     # test; one yq -i injects an unknown state for the default-fail mutant.
     # Both write to temp-dir fixtures, not production records.
     [ "$rel_path" = "tests/design-gate.bats" ] && continue
+    # v2-migration tests write temp-dir fixtures for cross-validation/mutant tests
+    [ "$rel_path" = "tests/design-record-v2-migration.bats" ] && continue
 
     local matches
     matches="$(grep -nE "$write_patterns" "$filepath" 2>/dev/null \
@@ -601,6 +606,8 @@ ROGUE
   local trail_before
   trail_before="$(yq '.audit | length' "$RECORD")"
 
+  mkdir -p "$TEST_TMP/ux"
+  touch "$TEST_TMP/ux/questionnaire.md"
   run "$SCRIPT" reopen-applicable --reference "design-ref-1" \
     --discovered-via created --questionnaire-record "ux/questionnaire.md" --actor "owner"
   [ "$status" -eq 0 ] || fail "reopen-applicable failed: $output"
@@ -641,7 +648,7 @@ ROGUE
 
   [ "$app" = "not-applicable" ] || fail "applicability=$app, expected not-applicable"
   [ "$ds" = "draft" ] || fail "design_state=$ds, expected draft"
-  [ "$sv" = "1.0" ] || fail "schema_version=$sv, expected 1.0"
+  [ "$sv" = "2.0" ] || fail "schema_version=$sv, expected 2.0"
   [ "$ref" = "not-applicable" ] || fail "project.reference=$ref"
   [ "$dv" = "project-artifacts" ] || fail "project.discovered_via=$dv"
   [ "$qr" = "not-applicable" ] || fail "project.questionnaire_record=$qr"
@@ -1299,6 +1306,7 @@ WRAPPER
     "cmd_add_review:_preflight_mutate"
     "cmd_add_override:_preflight_mutate"
     "cmd_not_applicable:_preflight_mutate"
+    "cmd_set_product_project:_preflight_mutate"
   )
 
   local fail_list="" entry func validators
@@ -1478,8 +1486,7 @@ WRAPPER
   # Create an initial record via the writer
   run "$SCRIPT" init \
     --reference "original-ref" \
-    --discovered-via "created" \
-    --questionnaire-record "original-qr.md"
+    --discovered-via "project-artifacts"
   [ "$status" -eq 0 ] || fail "first init failed: $output"
 
   # Build up state: transition + approval + override so the record is populated
@@ -1497,8 +1504,7 @@ WRAPPER
   # Second init must refuse
   run "$SCRIPT" init \
     --reference "new-ref" \
-    --discovered-via "created" \
-    --questionnaire-record "new-qr.md" \
+    --discovered-via "project-artifacts" \
     --actor "evil"
   [ "$status" -ne 0 ] || fail "second init should be refused but exited 0"
 
@@ -1532,8 +1538,7 @@ WRAPPER
 
   run "$SCRIPT" init \
     --reference "sym-ref" \
-    --discovered-via "created" \
-    --questionnaire-record "sym-qr.md"
+    --discovered-via "project-artifacts"
   [ "$status" -ne 0 ] || fail "init should refuse when record path is a symlink"
   [[ "$output" == *"refusing to follow"* ]] || \
     fail "diagnostic does not contain the symlink-guard phrase 'refusing to follow'"
@@ -1974,7 +1979,7 @@ FIXTURE
 
   seed_roster_gaia
   # Init and drive to approved at iteration 1
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2027,7 +2032,7 @@ FIXTURE
   source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
 
   # Init a record and transition to stale with integration options
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2056,7 +2061,7 @@ FIXTURE
 @test "transition --integration-state without --integration-source is refused with both-required diagnostic" {
   assert_script_exists
 
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2076,7 +2081,7 @@ FIXTURE
 @test "transition --integration-source without --integration-state is refused with both-required diagnostic" {
   assert_script_exists
 
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2096,7 +2101,7 @@ FIXTURE
 @test "transition --integration-state with invalid enum is refused with enum diagnostic" {
   assert_script_exists
 
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2117,7 +2122,7 @@ FIXTURE
 @test "transition --integration-source with invalid enum is refused with enum diagnostic" {
   assert_script_exists
 
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2138,7 +2143,7 @@ FIXTURE
 @test "transition --integration-state on non-stale transition is refused with stale-only diagnostic" {
   assert_script_exists
 
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
 
   capture_record_state "$RECORD"
@@ -2157,7 +2162,7 @@ FIXTURE
 @test "transition --integration-state available --integration-source attested on stale succeeds" {
   assert_script_exists
 
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2176,7 +2181,7 @@ FIXTURE
 
   seed_roster_gaia
   # Drive to approved at iteration 1
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2198,7 +2203,7 @@ FIXTURE
 
   # Reset for mutant
   rm -f "$RECORD"
-  run "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   [ "$status" -eq 0 ]
   run "$SCRIPT" transition --to review --actor ci
   [ "$status" -eq 0 ]
@@ -2264,7 +2269,7 @@ FIXTURE
   # Run init then transition --to review under /bin/bash explicitly
   # (catches the bash 3.2 empty-array regression on macOS;
   # meaningful on Linux CI too as it proves the code path)
-  /bin/bash "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  /bin/bash "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   /bin/bash "$SCRIPT" transition --to review --actor ci
 
   local state iter audit_count
@@ -2283,7 +2288,7 @@ FIXTURE
 
 @test "(AC2) add-override with sprint-id records sprint_id in override entry and audit" {
   assert_script_exists
-  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   "$SCRIPT" transition --to review --actor ci
 
   run "$SCRIPT" add-override \
@@ -2308,7 +2313,7 @@ FIXTURE
 
 @test "(AC2) add-override rejects malformed sprint-id before lock" {
   assert_script_exists
-  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   "$SCRIPT" transition --to review --actor ci
 
   local pre_hash
@@ -2340,7 +2345,7 @@ FIXTURE
 
 @test "(AC-EC6) add-override without sprint-id succeeds and schema accepts" {
   assert_script_exists
-  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   "$SCRIPT" transition --to review --actor ci
 
   run "$SCRIPT" add-override \
@@ -2367,7 +2372,7 @@ FIXTURE
 
 @test "(AC2) schema accepts override with sprint_id" {
   assert_script_exists
-  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   "$SCRIPT" transition --to review --actor ci
 
   run "$SCRIPT" add-override \
@@ -2389,7 +2394,7 @@ FIXTURE
 
 @test "(AC2) mutant: schema rejects sprint_id when property removed" {
   assert_script_exists
-  "$SCRIPT" init --reference test --discovered-via created --questionnaire-record na
+  "$SCRIPT" init --reference test --discovered-via "project-artifacts"
   "$SCRIPT" transition --to review --actor ci
 
   run "$SCRIPT" add-override \

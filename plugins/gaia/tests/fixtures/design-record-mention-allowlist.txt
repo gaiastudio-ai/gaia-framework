@@ -51,4 +51,5 @@ tests/retirement-sweep-clean.bats  test     asserts the replacement design path 
 knowledge/gaia-help.csv            prose    help row names the design record as the review output
 tests/quality-gates.bats           test     quality-gate predicate suppression tests
 tests/setup-root-resolution.bats   test     stubs design-record.sh in a temp dir for the design-gate shim
+tests/design-record-v2-migration.bats test v2 migration, cross-validation, set-product-project, EXIT trap tests
 CHANGELOG.md                       prose    release notes list design-record changes

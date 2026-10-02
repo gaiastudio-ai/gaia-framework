@@ -58,6 +58,8 @@ slug: stakeholder-A
 tags: [design]
 ---
 STAKE
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/questionnaire.md"
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" init \
     --reference "test-ref" \
     --discovered-via "created" \
@@ -74,7 +76,6 @@ STAKE
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "new-project-ref" \
     --discovered-via "integration-list" \
-    --questionnaire-record "path/to/new-questionnaire.md" \
     --actor "reopener"
 
   local record="$TEST_TMP/.gaia/state/design-record.yaml"
@@ -93,12 +94,13 @@ STAKE
   [ "$iter" -eq 1 ]
   [ "$ref" = "new-project-ref" ]
   [ "$dv" = "integration-list" ]
-  [ "$qr" = "path/to/new-questionnaire.md" ]
+  [ "$qr" = "skipped" ]
 }
 
 @test "reopen-applicable appends applicability-change audit entry with from/to" {
   _create_na_record
 
+  touch "$TEST_TMP/q.md"
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "ref" \
     --discovered-via "created" \
@@ -124,6 +126,7 @@ STAKE
 @test "reopen-applicable preserves original not-applicable-pass audit entry" {
   _create_na_record
 
+  touch "$TEST_TMP/q.md"
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "ref" \
     --discovered-via "created" \
@@ -138,6 +141,7 @@ STAKE
 @test "reopen-applicable produces a valid audit chain" {
   _create_na_record
 
+  touch "$TEST_TMP/q.md"
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "ref" \
     --discovered-via "created" \
@@ -157,6 +161,7 @@ STAKE
   local hash
   hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
 
+  touch "$TEST_TMP/q.md"
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "ref" \
     --discovered-via "created" \
@@ -178,6 +183,7 @@ STAKE
   local hash
   hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
 
+  touch "$TEST_TMP/q.md"
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --discovered-via "created" \
     --questionnaire-record "q.md"
@@ -190,6 +196,7 @@ STAKE
   local hash
   hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
 
+  touch "$TEST_TMP/q.md"
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "ref" \
     --questionnaire-record "q.md"
@@ -221,8 +228,7 @@ STAKE
 
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "$hostile_ref" \
-    --discovered-via "project-artifacts" \
-    --questionnaire-record "q.md"
+    --discovered-via "project-artifacts"
 
   local record="$TEST_TMP/.gaia/state/design-record.yaml"
   local stored_ref
@@ -251,6 +257,7 @@ STAKE
   local pre_hash
   pre_hash="$(_sha256_file "$target")"
 
+  touch "$TEST_TMP/q.md"
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "ref" \
     --discovered-via "created" \

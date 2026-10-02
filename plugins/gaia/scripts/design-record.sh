@@ -19,15 +19,17 @@ LC_ALL=C; export LC_ALL
 #   add-review         Record a review verdict
 #   add-override       Record an audited override
 #   not-applicable     Mark the project as not requiring design approval
+#   init-not-applicable  Create a minimal not-applicable record or delegate
 #   reopen-applicable  Transition a not-applicable record back to applicable/draft
 #   check-convergence  Compute convergence from summary fields
 #   verify-integrity   Validate the chained digest
+#   set-product-project  Bind a product-design project to an existing record
 
 # ---------------------------------------------------------------------------
 # Bootstrap: shared helpers
 # ---------------------------------------------------------------------------
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/acquire-lock.sh
 source "$SCRIPT_DIR/lib/acquire-lock.sh"
 
@@ -39,8 +41,6 @@ LOCK_PATH="${RECORD_PATH}.lock"
 # high enough for the ln(2) fallback's retry loop under heavy concurrency.
 LOCK_TIMEOUT="${GAIA_LOCK_TIMEOUT:-30}"
 LOCK_FD=9
-
-SUPPORTED_SCHEMA_VERSION="1.0"
 
 # Fail loudly if yq is absent — never skip or degrade
 command -v yq >/dev/null 2>&1 || {
@@ -150,15 +150,184 @@ _validate_schema_version() {
   local ver
   ver="$(yq '.schema_version' "$file" 2>/dev/null)" || \
     _die "cannot read schema_version from $file"
-  if [ "$ver" != "$SUPPORTED_SCHEMA_VERSION" ]; then
-    printf 'design-record.sh: unknown schema_version "%s"\n' "$ver" >&2
-    printf 'design-record.sh: supported versions: %s\n' "$SUPPORTED_SCHEMA_VERSION" >&2
-    printf 'design-record.sh: update the script or migrate the record\n' >&2
-    exit 1
+  case "$ver" in
+    1.0|2.0) return 0 ;;
+  esac
+  printf 'design-record.sh: unknown schema_version "%s"\n' "$ver" >&2
+  printf 'design-record.sh: supported versions: 1.0, 2.0\n' >&2
+  printf 'design-record.sh: update the script or migrate the record\n' >&2
+  exit 1
+}
+
+# _assert_not_sentinel VALUE FLAG — reject "not-applicable" as a project reference.
+_assert_not_sentinel() {
+  local value="$1" flag="$2"
+  if [ "$value" = "not-applicable" ]; then
+    _die "${flag}: the literal \"not-applicable\" is reserved as a sentinel and cannot be used as a project reference"
   fi
 }
 
-# _compute_entry_digest ENTRY_JSON PREV_DIGEST — compute chained sha256.
+# _assert_discovered_via VALUE ENUM_LIST CONTEXT — reject unknown discovered_via values.
+_assert_discovered_via() {
+  local value="$1" enum="$2" context="$3"
+  local item
+  for item in $enum; do
+    [ "$value" = "$item" ] && return 0
+  done
+  printf 'design-record.sh: %s: unknown discovered_via value "%s"\n' "$context" "$value" >&2
+  printf 'design-record.sh: legal values: %s\n' "$enum" >&2
+  exit 1
+}
+
+# _assert_sync_mode VALUE — reject unknown sync_mode values.
+_assert_sync_mode() {
+  local value="$1"
+  case "$value" in
+    react-components|brand-style) return 0 ;;
+  esac
+  printf 'design-record.sh: unknown sync_mode value "%s"\n' "$value" >&2
+  printf 'design-record.sh: legal values: react-components, brand-style\n' >&2
+  exit 1
+}
+
+# ---------------------------------------------------------------------------
+# v2 migration and cross-validation
+# ---------------------------------------------------------------------------
+
+# _migrate_v1_to_v2 TMP — atomically upgrade a v1.0 record to v2.0 in place.
+# Writes only to TMP (the lock-held copy). Idempotent: no-op on v2.0.
+_migrate_v1_to_v2() {
+  local tmp="$1"
+
+  # Single probe: compute boolean decisions inside yq so user data never
+  # reaches shell splitting (a reference with commas/newlines would break cut).
+  # Returns 4 CSV booleans: is_v2, has_dsp, has_pdp, is_na_sentinel (1 yq fork)
+  local probe
+  probe="$(yq '[
+    .schema_version == "2.0",
+    has("design_system_project"),
+    has("product_design_project"),
+    (.applicability == "not-applicable" and .project.reference == "not-applicable")
+  ] | @csv' "$tmp")"
+  local is_v2 has_dsp has_pdp is_na
+  is_v2="$(printf '%s' "$probe" | cut -d',' -f1)"
+  has_dsp="$(printf '%s' "$probe" | cut -d',' -f2)"
+  has_pdp="$(printf '%s' "$probe" | cut -d',' -f3)"
+  is_na="$(printf '%s' "$probe" | cut -d',' -f4)"
+
+  # Already v2 — no-op
+  [ "$is_v2" = "true" ] && return 0
+
+  # Downgrade check: v1.0 with v2 keys is tampering
+  if [ "$has_dsp" = "true" ] || [ "$has_pdp" = "true" ]; then
+    _die "schema downgrade detected: v1.0 record contains v2 keys (design_system_project or product_design_project) — refusing to migrate"
+  fi
+
+  if [ "$is_na" = "true" ]; then
+    # Not-applicable sentinel: null projects, no sync_mode, no ds_attachment_mode (1 yq fork)
+    yq -i '
+      .design_system_project = null |
+      .product_design_project = null |
+      .schema_version = "2.0"
+    ' "$tmp"
+  else
+    # Applicable (or real-ref + not-applicable): copy reference INSIDE yq (1 yq fork).
+    # Copying inside yq avoids shell command-substitution trailing-newline stripping.
+    yq -i '
+      .design_system_project.reference = .project.reference |
+      .design_system_project.type = "design-system" |
+      .design_system_project.surface = "designsync" |
+      .design_system_project.discovered_via = .project.discovered_via |
+      .product_design_project = null |
+      .sync_mode = "react-components" |
+      .ds_attachment_mode = "token-by-value" |
+      .schema_version = "2.0"
+    ' "$tmp"
+  fi
+}
+
+# _validate_project_references FILE — cross-validate dual project references.
+# Null-aware: allows null design_system_project only on not-applicable records.
+_validate_project_references() {
+  local file="$1"
+  local app dsp pdp
+
+  app="$(yq '.applicability' "$file")"
+
+  # has() in its own invocation
+  local has_dsp
+  has_dsp="$(yq 'has("design_system_project")' "$file")"
+  local has_pdp
+  has_pdp="$(yq 'has("product_design_project")' "$file")"
+
+  local sv
+  sv="$(yq '.schema_version' "$file")"
+
+  # Missing key check: v2 applicable records must have both keys
+  if [ "$sv" = "2.0" ] && [ "$app" != "not-applicable" ]; then
+    if [ "$has_dsp" = "false" ]; then
+      _die "v2.0 applicable record missing design_system_project key"
+    fi
+    if [ "$has_pdp" = "false" ]; then
+      _die "v2.0 applicable record missing product_design_project key"
+    fi
+  fi
+
+  # If keys not present, nothing more to check
+  [ "$has_dsp" = "true" ] || return 0
+  [ "$has_pdp" = "true" ] || return 0
+
+  dsp="$(yq '.design_system_project' "$file")"
+  pdp="$(yq '.product_design_project' "$file")"
+
+  # Null design_system_project allowed only on not-applicable
+  if [ "$dsp" = "null" ] && [ "$app" != "not-applicable" ]; then
+    _die "design_system_project is null on an applicable record — this is not allowed"
+  fi
+
+  # Type-check non-null projects
+  if [ "$dsp" != "null" ]; then
+    local dsp_type
+    dsp_type="$(yq '.design_system_project.type' "$file")"
+    if [ "$dsp_type" != "design-system" ]; then
+      _die "design_system_project.type is \"$dsp_type\" — expected \"design-system\""
+    fi
+  fi
+  if [ "$pdp" != "null" ]; then
+    local pdp_type
+    pdp_type="$(yq '.product_design_project.type' "$file")"
+    if [ "$pdp_type" != "design" ]; then
+      _die "product_design_project.type is \"$pdp_type\" — expected \"design\""
+    fi
+  fi
+
+  # Identical references check (only when both non-null)
+  if [ "$dsp" != "null" ] && [ "$pdp" != "null" ]; then
+    local dsp_ref pdp_ref
+    dsp_ref="$(yq '.design_system_project.reference' "$file")"
+    pdp_ref="$(yq '.product_design_project.reference' "$file")"
+    if [ "$dsp_ref" = "$pdp_ref" ]; then
+      _die "design_system_project.reference and product_design_project.reference are identical (\"$dsp_ref\") — they must refer to different projects"
+    fi
+  fi
+
+  # ds_attachment_mode enum check (when present)
+  local has_dam
+  has_dam="$(yq 'has("ds_attachment_mode")' "$file")"
+  if [ "$has_dam" = "true" ]; then
+    local dam
+    dam="$(yq '.ds_attachment_mode' "$file")"
+    case "$dam" in
+      token-by-value|artifact-installed) ;;
+      *) _die "ds_attachment_mode is \"$dam\" — expected \"token-by-value\" or \"artifact-installed\"" ;;
+    esac
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Chained-digest helpers
+# ---------------------------------------------------------------------------
+
 _compute_entry_digest() {
   local entry_json="$1" prev_digest="$2"
   local canonical
@@ -288,7 +457,8 @@ _locked_mutate() {
     if ! acquire_lock "$LOCK_PATH" "$LOCK_TIMEOUT" "$LOCK_FD"; then
       _die "lock timeout acquiring $LOCK_PATH"
     fi
-    trap 'release_lock "$LOCK_FD" 2>/dev/null || true; rm -f "${_DR_TMP:-}" 2>/dev/null || true' EXIT
+    _DR_DONE=0
+    trap '_rc=$?; release_lock "$LOCK_FD" 2>/dev/null || true; [ "${_DR_DONE:-0}" = 1 ] || { [ "$_rc" -eq 0 ] && _rc=1; }; rm -f "${_DR_TMP:-}" 2>/dev/null || true; exit $_rc' EXIT
 
     # Read current record into working copy
     local tmp
@@ -300,12 +470,22 @@ _locked_mutate() {
     _validate_schema_version "$tmp"
     _verify_chain "$tmp"
 
+    # Migrate v1 → v2 before the callback
+    _migrate_v1_to_v2 "$tmp"
+
+    # Cross-validation after migration, before callback
+    _validate_project_references "$tmp"
+
     # Apply mutation callback
     "$callback" "$tmp" "$@"
+
+    # Cross-validation after callback, before publish
+    _validate_project_references "$tmp"
 
     # Atomic publish: mv is atomic on POSIX within a single filesystem
     mv -f "$tmp" "$RECORD_PATH" || _die "atomic publish failed"
     _DR_TMP=""
+    _DR_DONE=1
   )
 }
 
@@ -498,18 +678,57 @@ validate_record() {
 # Refuses when a record already exists (protecting the audit trail) and when
 # the record path is a symlink (preventing writes through symlinks).
 cmd_init() {
-  local reference="" discovered_via="" questionnaire_record="" actor=""
+  local reference="" ds_reference="__UNSET__" pd_reference="__UNSET__" discovered_via="" questionnaire_record="__UNSET__" actor="" sync_mode="__UNSET__"
   _parse_opts \
     --reference reference \
+    --ds-reference ds_reference \
+    --pd-reference pd_reference \
     --discovered-via discovered_via \
     --questionnaire-record questionnaire_record \
+    --sync-mode sync_mode \
     --actor actor \
     -- "$@"
 
-  [ -n "$reference" ] || _die "init: --reference required"
+  # --ds-reference wins over --reference when both given
+  if [ "$ds_reference" != "__UNSET__" ]; then
+    reference="$ds_reference"
+  fi
+
+  [ -n "$reference" ] || _die "init: --reference (or --ds-reference) required"
   [ -n "$discovered_via" ] || _die "init: --discovered-via required"
-  [ -n "$questionnaire_record" ] || _die "init: --questionnaire-record required"
   actor="${actor:-${USER:-unknown}}"
+
+  # Sentinel rejection on all reference flags
+  _assert_not_sentinel "$reference" "init --reference/--ds-reference"
+  if [ "$pd_reference" != "__UNSET__" ]; then
+    [ -n "$pd_reference" ] || _die "init: --pd-reference must not be empty"
+    _assert_not_sentinel "$pd_reference" "init --pd-reference"
+    # Identical references check
+    if [ "$pd_reference" = "$reference" ]; then
+      _die "init: --ds-reference and --pd-reference must refer to different projects (both are \"$reference\")"
+    fi
+  fi
+
+  # Enum validations
+  _assert_discovered_via "$discovered_via" "project-artifacts integration-list created" "init"
+  if [ "$sync_mode" != "__UNSET__" ]; then
+    _assert_sync_mode "$sync_mode"
+  else
+    sync_mode="react-components"
+  fi
+
+  # Questionnaire-record: required on created path; -f validated whenever supplied
+  if [ "$discovered_via" = "created" ] && [ "$questionnaire_record" = "__UNSET__" ]; then
+    _die "init: --questionnaire-record is required when --discovered-via is \"created\""
+  fi
+  if [ "$questionnaire_record" != "__UNSET__" ]; then
+    [ -n "$questionnaire_record" ] || _die "init: --questionnaire-record must not be empty"
+    local resolved_qr="$questionnaire_record"
+    [ "${resolved_qr#/}" = "$resolved_qr" ] && resolved_qr="${_PROJECT_ROOT}/$resolved_qr"
+    [ -f "$resolved_qr" ] || _die "init: --questionnaire-record file not found: $questionnaire_record"
+  else
+    questionnaire_record="skipped"
+  fi
 
   mkdir -p "$(dirname "$RECORD_PATH")"
 
@@ -528,10 +747,10 @@ cmd_init() {
   # same pattern as mutation verbs, preventing partial writes
   local tmp
   tmp=$(mktemp "$(dirname "$RECORD_PATH")/design-record.yaml.tmp.XXXXXX")
-  trap 'rm -f "$tmp" 2>/dev/null || true' EXIT
+  trap '_rc=$?; [ "$_rc" -eq 0 ] && _rc=1; rm -f "$tmp" 2>/dev/null || true; exit $_rc' EXIT
 
   cat > "$tmp" <<'EOF'
-schema_version: "1.0"
+schema_version: "2.0"
 applicability: applicable
 design_state: draft
 iteration: 1
@@ -539,6 +758,14 @@ project:
   reference: ""
   discovered_via: ""
   questionnaire_record: ""
+design_system_project:
+  reference: ""
+  type: "design-system"
+  surface: "designsync"
+  discovered_via: ""
+product_design_project: null
+sync_mode: "react-components"
+ds_attachment_mode: "token-by-value"
 reviews: []
 approvals: []
 overrides: []
@@ -552,6 +779,26 @@ EOF
   _CI_REF="$reference" yq -i '.project.reference = strenv(_CI_REF)' "$tmp"
   _CI_DV="$discovered_via" yq -i '.project.discovered_via = strenv(_CI_DV)' "$tmp"
   _CI_QR="$questionnaire_record" yq -i '.project.questionnaire_record = strenv(_CI_QR)' "$tmp"
+
+  # design_system_project mirrors project
+  _CI_REF="$reference" yq -i '.design_system_project.reference = strenv(_CI_REF)' "$tmp"
+  _CI_DV="$discovered_via" yq -i '.design_system_project.discovered_via = strenv(_CI_DV)' "$tmp"
+
+  # sync_mode
+  _CI_SM="$sync_mode" yq -i '.sync_mode = strenv(_CI_SM)' "$tmp"
+
+  # product_design_project when --pd-reference given
+  if [ "$pd_reference" != "__UNSET__" ]; then
+    _CI_PD="$pd_reference" yq -i '
+      .product_design_project.reference = strenv(_CI_PD) |
+      .product_design_project.type = "design" |
+      .product_design_project.surface = "artifact" |
+      .product_design_project.discovered_via = "existing"
+    ' "$tmp"
+  fi
+
+  # Cross-validation before publish
+  _validate_project_references "$tmp"
 
   # No lock needed — new file, no contention possible
   _append_audit "$tmp" "state-transition" "$actor" "from=draft" "to=draft"
@@ -857,10 +1104,10 @@ cmd_init_not_applicable() {
   # Write to a temp file first, then atomically move into place
   local tmp
   tmp=$(mktemp "$(dirname "$RECORD_PATH")/design-record.yaml.tmp.XXXXXX")
-  trap 'rm -f "$tmp" 2>/dev/null || true' EXIT
+  trap '_rc=$?; [ "$_rc" -eq 0 ] && _rc=1; rm -f "$tmp" 2>/dev/null || true; exit $_rc' EXIT
 
   cat > "$tmp" <<'EOF'
-schema_version: "1.0"
+schema_version: "2.0"
 applicability: not-applicable
 design_state: draft
 iteration: 1
@@ -868,6 +1115,8 @@ project:
   reference: "not-applicable"
   discovered_via: "project-artifacts"
   questionnaire_record: "not-applicable"
+design_system_project: null
+product_design_project: null
 reviews: []
 approvals: []
 overrides: []
@@ -890,18 +1139,54 @@ EOF
 # Refuses unless the current applicability is not-applicable. Validates inputs
 # the same way cmd_init does. Resets design_state to draft and iteration to 1.
 cmd_reopen_applicable() {
-  local reference="" discovered_via="" questionnaire_record="" actor=""
+  local reference="" ds_reference="__UNSET__" pd_reference="__UNSET__" discovered_via="" questionnaire_record="__UNSET__" actor="" sync_mode="__UNSET__"
   _parse_opts \
     --reference reference \
+    --ds-reference ds_reference \
+    --pd-reference pd_reference \
     --discovered-via discovered_via \
     --questionnaire-record questionnaire_record \
+    --sync-mode sync_mode \
     --actor actor \
     -- "$@"
 
-  [ -n "$reference" ] || _die "reopen-applicable: --reference required"
+  # --ds-reference wins over --reference when both given
+  if [ "$ds_reference" != "__UNSET__" ]; then
+    reference="$ds_reference"
+  fi
+
+  [ -n "$reference" ] || _die "reopen-applicable: --reference (or --ds-reference) required"
   [ -n "$discovered_via" ] || _die "reopen-applicable: --discovered-via required"
-  [ -n "$questionnaire_record" ] || _die "reopen-applicable: --questionnaire-record required"
   actor="${actor:-${USER:-unknown}}"
+
+  # Sentinel rejection
+  _assert_not_sentinel "$reference" "reopen-applicable --reference/--ds-reference"
+  if [ "$pd_reference" != "__UNSET__" ]; then
+    [ -n "$pd_reference" ] || _die "reopen-applicable: --pd-reference must not be empty"
+    _assert_not_sentinel "$pd_reference" "reopen-applicable --pd-reference"
+    if [ "$pd_reference" = "$reference" ]; then
+      _die "reopen-applicable: --ds-reference and --pd-reference must refer to different projects (both are \"$reference\")"
+    fi
+  fi
+
+  # Enum validations
+  _assert_discovered_via "$discovered_via" "project-artifacts integration-list created" "reopen-applicable"
+  if [ "$sync_mode" != "__UNSET__" ]; then
+    _assert_sync_mode "$sync_mode"
+  fi
+
+  # Questionnaire-record: required on created path; -f validated whenever supplied
+  if [ "$discovered_via" = "created" ] && [ "$questionnaire_record" = "__UNSET__" ]; then
+    _die "reopen-applicable: --questionnaire-record is required when --discovered-via is \"created\""
+  fi
+  if [ "$questionnaire_record" != "__UNSET__" ]; then
+    [ -n "$questionnaire_record" ] || _die "reopen-applicable: --questionnaire-record must not be empty"
+    local resolved_qr="$questionnaire_record"
+    [ "${resolved_qr#/}" = "$resolved_qr" ] && resolved_qr="${_PROJECT_ROOT}/$resolved_qr"
+    [ -f "$resolved_qr" ] || _die "reopen-applicable: --questionnaire-record file not found: $questionnaire_record"
+  else
+    questionnaire_record="skipped"
+  fi
 
   # Refuse symlinks (same discipline as init)
   if [ -L "$RECORD_PATH" ]; then
@@ -917,11 +1202,11 @@ cmd_reopen_applicable() {
     _die "reopen-applicable: record applicability is '$current_app', not 'not-applicable' — this verb only transitions from not-applicable"
   fi
 
-  _locked_mutate _do_reopen_applicable "$reference" "$discovered_via" "$questionnaire_record" "$actor"
+  _locked_mutate _do_reopen_applicable "$reference" "$discovered_via" "$questionnaire_record" "$actor" "$pd_reference" "$sync_mode"
 }
 
 _do_reopen_applicable() {
-  local tmp="$1" reference="$2" discovered_via="$3" questionnaire_record="$4" actor="$5"
+  local tmp="$1" reference="$2" discovered_via="$3" questionnaire_record="$4" actor="$5" pd_reference="${6:-__UNSET__}" sync_mode="${7:-__UNSET__}"
 
   # Double-check applicability inside the lock
   local current_app
@@ -940,8 +1225,140 @@ _do_reopen_applicable() {
   _RA_DV="$discovered_via" yq -i '.project.discovered_via = strenv(_RA_DV)' "$tmp"
   _RA_QR="$questionnaire_record" yq -i '.project.questionnaire_record = strenv(_RA_QR)' "$tmp"
 
+  # design_system_project mirrors project
+  _RA_REF="$reference" yq -i '
+    .design_system_project.reference = strenv(_RA_REF) |
+    .design_system_project.type = "design-system" |
+    .design_system_project.surface = "designsync"
+  ' "$tmp"
+  _RA_DV="$discovered_via" yq -i '.design_system_project.discovered_via = strenv(_RA_DV)' "$tmp"
+
+  # sync_mode: use given value, else keep existing, else default
+  if [ "$sync_mode" != "__UNSET__" ]; then
+    _RA_SM="$sync_mode" yq -i '.sync_mode = strenv(_RA_SM)' "$tmp"
+  else
+    local has_sm
+    has_sm="$(yq 'has("sync_mode")' "$tmp")"
+    if [ "$has_sm" = "false" ]; then
+      yq -i '.sync_mode = "react-components"' "$tmp"
+    fi
+  fi
+
+  # product_design_project handling
+  if [ "$pd_reference" != "__UNSET__" ]; then
+    # Check no-overwrite: refuse when product_design_project is already non-null
+    local current_pdp
+    current_pdp="$(yq '.product_design_project' "$tmp")"
+    if [ "$current_pdp" != "null" ]; then
+      _die "reopen-applicable: product_design_project is already set — use set-product-project to modify"
+    fi
+    _RA_PD="$pd_reference" yq -i '
+      .product_design_project.reference = strenv(_RA_PD) |
+      .product_design_project.type = "design" |
+      .product_design_project.surface = "artifact" |
+      .product_design_project.discovered_via = "existing"
+    ' "$tmp"
+    # Set ds_attachment_mode when absent
+    local has_dam
+    has_dam="$(yq 'has("ds_attachment_mode")' "$tmp")"
+    if [ "$has_dam" = "false" ]; then
+      yq -i '.ds_attachment_mode = "token-by-value"' "$tmp"
+    fi
+  else
+    # Ensure product_design_project key exists (set to null if absent)
+    local has_pdp_key
+    has_pdp_key="$(yq 'has("product_design_project")' "$tmp")"
+    if [ "$has_pdp_key" = "false" ]; then
+      yq -i '.product_design_project = null' "$tmp"
+    fi
+  fi
+
   # Append applicability-change audit entry with from/to
   _append_audit "$tmp" "applicability-change" "$actor" "from=not-applicable" "to=applicable"
+}
+
+# cmd_set_product_project — bind a product-design project to an existing record.
+cmd_set_product_project() {
+  local pd_reference="__UNSET__" discovered_via="" actor=""
+  _parse_opts \
+    --pd-reference pd_reference \
+    --discovered-via discovered_via \
+    --actor actor \
+    -- "$@"
+
+  if [ "$pd_reference" = "__UNSET__" ]; then
+    _die "set-product-project: --pd-reference is required"
+  fi
+  [ -n "$pd_reference" ] || _die "set-product-project: --pd-reference must not be empty"
+  [ -n "$discovered_via" ] || _die "set-product-project: --discovered-via required"
+  actor="${actor:-${USER:-unknown}}"
+
+  _assert_not_sentinel "$pd_reference" "set-product-project --pd-reference"
+  _assert_discovered_via "$discovered_via" "existing created" "set-product-project"
+
+  _preflight_mutate
+
+  # Pre-lock check: must be applicable
+  local current_app
+  current_app="$(yq '.applicability' "$RECORD_PATH")"
+  if [ "$current_app" = "not-applicable" ]; then
+    _die "set-product-project: cannot set product project on a not-applicable record"
+  fi
+
+  _locked_mutate _do_set_product_project "$pd_reference" "$discovered_via" "$actor"
+}
+
+_do_set_product_project() {
+  local tmp="$1" pd_reference="$2" discovered_via="$3" actor="$4"
+
+  # Re-check applicability in-lock
+  local app
+  app="$(yq '.applicability' "$tmp")"
+  if [ "$app" = "not-applicable" ]; then
+    _die "set-product-project: concurrent race — record became not-applicable"
+  fi
+
+  # No-overwrite: refuse when product_design_project is already non-null
+  local current_pdp
+  current_pdp="$(yq '.product_design_project' "$tmp")"
+  if [ "$current_pdp" != "null" ]; then
+    _die "set-product-project: product_design_project is already set — cannot overwrite"
+  fi
+
+  # Identical references check
+  local ds_ref
+  ds_ref="$(yq '.design_system_project.reference' "$tmp")"
+  if [ "$pd_reference" = "$ds_ref" ]; then
+    _die "set-product-project: --pd-reference is identical to design_system_project.reference (\"$ds_ref\") — they must refer to different projects"
+  fi
+
+  # Set product_design_project
+  _SP_PD="$pd_reference" _SP_DV="$discovered_via" yq -i '
+    .product_design_project.reference = strenv(_SP_PD) |
+    .product_design_project.type = "design" |
+    .product_design_project.surface = "artifact" |
+    .product_design_project.discovered_via = strenv(_SP_DV)
+  ' "$tmp"
+
+  # Set ds_attachment_mode when absent; preserve existing valid value
+  local has_dam
+  has_dam="$(yq 'has("ds_attachment_mode")' "$tmp")"
+  if [ "$has_dam" = "false" ]; then
+    yq -i '.ds_attachment_mode = "token-by-value"' "$tmp"
+  fi
+
+  # Stale-on-creation: when design_state is approved/in-dev/review → stale
+  local current_state
+  current_state="$(yq '.design_state' "$tmp")"
+  case "$current_state" in
+    approved|in-dev|review)
+      yq -i '.design_state = "stale"' "$tmp"
+      _append_audit "$tmp" "state-transition" "$actor" "from=${current_state}" "to=stale" "discovered_via=${discovered_via}"
+      ;;
+    *)
+      _append_audit "$tmp" "product-project-set" "$actor" "discovered_via=${discovered_via}"
+      ;;
+  esac
 }
 
 # cmd_check_convergence — compute convergence from summary fields only.
@@ -983,10 +1400,13 @@ main() {
     reopen-applicable)    cmd_reopen_applicable "$@" ;;
     check-convergence)    cmd_check_convergence "$@" ;;
     verify-integrity)     cmd_verify_integrity "$@" ;;
+    set-product-project)  cmd_set_product_project "$@" ;;
     *)
-      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, reopen-applicable, check-convergence, verify-integrity"
+      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, reopen-applicable, check-convergence, verify-integrity, set-product-project"
       ;;
   esac
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

@@ -68,6 +68,8 @@ _seed_record() {
   local root="$1" state="${2:-draft}"
   export PROJECT_ROOT="$root"
 
+  mkdir -p "$root/.gaia/artifacts/planning-artifacts/ux-design"
+  touch "$root/.gaia/artifacts/planning-artifacts/ux-design/design-questionnaire.md"
   "$DESIGN_RECORD_SH" init \
     --reference "test-project-ref" \
     --discovered-via "created" \

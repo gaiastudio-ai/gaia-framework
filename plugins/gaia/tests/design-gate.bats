@@ -118,8 +118,7 @@ _init_record() {
   env PROJECT_ROOT="$TEST_TMP" \
     "$DREC_SCRIPT" init \
       --reference "test-project-ref" \
-      --discovered-via "created" \
-      --questionnaire-record "not-applicable"
+      --discovered-via "project-artifacts"
 }
 
 # _build_approved_record — drive the record from draft through approved+converged.
@@ -1725,10 +1724,10 @@ STAKE
 # Hardening: unsupported schema version fails closed
 # =========================================================================
 
-@test "record with schema_version 2.0 fails closed" {
+@test "record with schema_version 9.9 fails closed" {
   seed_ui_project available
   _init_record
-  yq -i '.schema_version = "2.0"' "$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "9.9"' "$TEST_TMP/.gaia/state/design-record.yaml"
 
   run run_gate
   [ "$status" -eq 1 ]
@@ -1844,6 +1843,8 @@ STAKE
   _stripped_output | grep -qi "not-applicable"
 
   # Phase 2: reopen the record
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/questionnaire.md"
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "design-ref" \
     --discovered-via "created" \
@@ -1918,7 +1919,7 @@ STAKE
   seed_roster
   mkdir -p "$TEST_TMP/.gaia/state"
   cat > "$TEST_TMP/.gaia/state/design-record.yaml" <<'EOF'
-schema_version: "2.0"
+schema_version: "9.9"
 design_state: draft
 EOF
 
