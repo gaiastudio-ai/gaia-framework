@@ -137,11 +137,32 @@ teardown() { common_teardown; }
   [ ! -f "$TEST_TMP/gh-title.txt" ]
 }
 
-@test "multi-line title refused (story scenario 6 input)" {
+@test "multi-line title refused (bare first line, conventional second)" {
   run "$PR_CREATE" E88-S1 $'add foo\nfix: y' --base staging --body-file "$BODY_FILE"
   [ "$status" -eq 1 ]
   [[ "$output" == *"title must be a single conventional-commit line"* ]]
   [ ! -f "$TEST_TMP/gh-title.txt" ]
+}
+
+@test "invalid title with existing PR still refused (validation before short-circuit)" {
+  # Stub gh pr list to report an existing PR, proving the title check
+  # runs before the short-circuit.
+  cat > "$STUB_BIN/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  pr)
+    case "$2" in
+      list)
+        printf '{"number":42,"url":"https://github.com/test/repo/pull/42"}\n'
+        exit 0 ;;
+    esac ;;
+esac
+exit 0
+STUB
+  chmod +x "$STUB_BIN/gh"
+  run "$PR_CREATE" E88-S1 "add foo to bar" --base staging --body-file "$BODY_FILE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"title must be a single conventional-commit line"* ]]
 }
 
 @test "multi-line title refused (CR — exercises guard, not regex)" {

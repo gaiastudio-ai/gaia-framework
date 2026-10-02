@@ -156,10 +156,16 @@ TITLE_ONELINE="$(printf '%s' "$TITLE_VAL" | tr '\r\n' '  ')"
 #
 # When the story title contains its own key (e.g., "<KEY>: fix the thing"
 # or "Fix (<KEY>) thing" or "Fix [<KEY>] regression" or "Fix <KEY>, thing"),
-# strip it so the subject is clean. Any non-alphanumeric character acts as a
-# word boundary — the key is removed only when both left and right neighbours
-# are non-alnum (or string edges). Surrounding brackets/parens and trailing
-# colon/comma/dot are consumed with the key; doubled spaces are collapsed.
+# strip it so the subject is clean. The match is case-insensitive so that
+# "k1-s1", "K1-S1" and "K1-s1" are all recognised as the story's own key.
+# A different story's key is never stripped (only the own key is targeted).
+#
+# Bracket/paren pairs are consumed only when the key fills them:
+#   "Fix (K1-S1) thing" → "Fix thing"       (key fills the parens)
+#   "Fix (K1-S1 thing)" → "Fix (thing)"     (key does NOT fill — leave parens)
+#
+# A leading colon is always consumed with the key — "a:<KEY>" strips the
+# colon and key, keeping "a"; "Fix:<KEY>" → "Fix".
 #
 # Over-strip guard: a longer key (e.g., K1-S10) must survive when stripping
 # K1-S1. The function checks the character immediately after the key — if it
@@ -169,13 +175,21 @@ _strip_key_from_title() {
   local klen=${#key}
   local changed=1
 
+  # Case-insensitive comparison via nocasematch (bash 3.2+). Save and
+  # restore the previous setting so the caller is unaffected.
+  local _prev_nocasematch=""
+  if shopt -q nocasematch 2>/dev/null; then _prev_nocasematch=1; fi
+  shopt -s nocasematch
+
   while [ "$changed" -eq 1 ]; do
     changed=0
     local i=0 slen=${#s}
 
     while [ "$i" -lt "$slen" ]; do
-      # Quick mismatch — advance one char.
-      if [ "${s:$i:$klen}" != "$key" ]; then
+      # Extract the candidate substring and compare case-insensitively
+      # (nocasematch makes == ignore case).
+      local candidate="${s:$i:$klen}"
+      if [[ "$candidate" != "$key" ]]; then
         i=$((i + 1)); continue
       fi
 
@@ -196,28 +210,33 @@ _strip_key_from_title() {
         esac
       fi
 
-      # Valid boundary match. Compute the strip range: expand left to consume
-      # a leading bracket/paren, expand right to consume trailing bracket/paren,
-      # colon, comma, dot, and surrounding whitespace.
+      # Valid boundary match. Compute the strip range.
       local left="$i" right="$after_pos"
 
-      # Consume leading bracket, paren, or colon if present.
-      if [ "$left" -gt 0 ]; then
+      # Consume a bracket/paren pair ONLY when the key fills it — i.e.,
+      # there is a matching closer immediately after the key.
+      if [ "$left" -gt 0 ] && [ "$right" -lt "$slen" ]; then
         local lp="${s:$((left - 1)):1}"
-        case "$lp" in
-          "["|"("|":") left=$((left - 1)) ;;
-        esac
-      fi
-
-      # Consume trailing ] or ) if present.
-      if [ "$right" -lt "$slen" ]; then
         local rp="${s:$right:1}"
-        case "$rp" in
-          "]"|")") right=$((right + 1)) ;;
-        esac
+        if { [ "$lp" = "(" ] && [ "$rp" = ")" ]; } ||
+           { [ "$lp" = "[" ] && [ "$rp" = "]" ]; }; then
+          left=$((left - 1))
+          right=$((right + 1))
+        fi
       fi
 
-      # Consume trailing colon, comma, or dot.
+      # Consume a leading colon. The colon acts as a separator between the
+      # preceding word and the key — removing the key also removes the colon
+      # so "Fix:KEY" → "Fix" and "a:KEY thing" → "a thing".
+      if [ "$left" -gt 0 ]; then
+        local lp2="${s:$((left - 1)):1}"
+        if [ "$lp2" = ":" ]; then
+          left=$((left - 1))
+        fi
+      fi
+
+      # Consume trailing colon, comma, or dot (not bracket/paren —
+      # those are handled above as paired delimiters only).
       if [ "$right" -lt "$slen" ]; then
         local tc="${s:$right:1}"
         case "$tc" in
@@ -233,10 +252,22 @@ _strip_key_from_title() {
         left=$((left - 1))
       done
 
-      # Splice: keep a single space between before and after when both exist.
+      # Splice: keep a single space between before and after when both exist,
+      # unless the seam sits inside a bracket pair (before ends with "(" or
+      # "[", or after starts with ")" or "]") — then join directly so we
+      # don't inject a space into "(thing)" or "[thing]".
       local before="${s:0:$left}" after="${s:$right}"
       if [ -n "$before" ] && [ -n "$after" ]; then
-        s="${before} ${after}"
+        local last_before="${before: -1}"
+        local first_after="${after:0:1}"
+        case "$last_before" in
+          "(" | "[") s="${before}${after}" ;;
+          *)
+            case "$first_after" in
+              ")" | "]") s="${before}${after}" ;;
+              *) s="${before} ${after}" ;;
+            esac ;;
+        esac
       else
         s="${before}${after}"
       fi
@@ -251,6 +282,9 @@ _strip_key_from_title() {
       *) break ;;
     esac
   done
+
+  # Restore nocasematch to its previous state.
+  if [ -z "$_prev_nocasematch" ]; then shopt -u nocasematch 2>/dev/null; fi
 
   printf '%s' "$s"
 }
