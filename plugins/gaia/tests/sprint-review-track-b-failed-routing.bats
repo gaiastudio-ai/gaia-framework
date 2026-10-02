@@ -6,6 +6,7 @@
 # type-target-resolver sprint-correction type.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PLUGIN_DIR="$REPO_ROOT/plugins/gaia"
   COMPOSE_VERDICT="$PLUGIN_DIR/skills/gaia-sprint-review/scripts/compose-verdict.sh"

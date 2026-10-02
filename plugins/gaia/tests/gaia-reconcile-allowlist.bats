@@ -8,6 +8,7 @@
 #           ADR-096 (config_phase monotonicity).
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." && pwd)"
   HYDRATION="${PLUGIN_ROOT}/scripts/lib/config-hydration.sh"
   RECONCILER="${PLUGIN_ROOT}/scripts/gaia-reconcile-v2.sh"
