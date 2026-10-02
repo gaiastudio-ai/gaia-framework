@@ -175,6 +175,14 @@ EOF
   [ -z "$output" ]
 }
 
+@test "commit-msg: uppercase-only scope refused (SprintState)" {
+  path="$(_write_story "E88-S1" "bug" "Handle empty list")"
+  run --separate-stderr "$COMMIT_MSG" "$path" --scope SprintState
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"scope"* ]]
+}
+
 @test "commit-msg: unknown extra arg refused" {
   path="$(_write_story "E88-S1" "bug" "Handle empty list")"
   run --separate-stderr "$COMMIT_MSG" "$path" --scope sprint-state --bogus
@@ -186,11 +194,14 @@ EOF
 # Story: body line
 # ---------------------------------------------------------------------------
 
-@test "commit-msg: body line has Story: reference" {
+@test "commit-msg: body line has Story: reference with blank separator" {
   path="$(_write_story "E88-S1" "feature" "Add login")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
   # Output: line 1 = subject, line 2 = blank, line 3 = Story: KEY
+  local blank_line
+  blank_line="$(sed -n '2p' <<<"$output")"
+  [ -z "$blank_line" ]
   local story_line
   story_line="$(sed -n '3p' <<<"$output")"
   [ "$story_line" = "Story: E88-S1" ]
@@ -284,13 +295,81 @@ EOF
   [ "$subject" = "fix: fix Fix thing" ]
 }
 
-@test "commit-msg: colon-glued key at start stripped" {
+@test "commit-msg: colon-glued key at end stripped cleanly" {
   path="$(_write_story "E88-S1" "bug" "Fix:E88-S1")"
   run "$COMMIT_MSG" "$path"
   [ "$status" -eq 0 ]
   local subject; subject="$(sed -n '1p' <<<"$output")"
-  # After strip: "Fix" → uppercase → verb prepend.
+  # After strip: "Fix" → uppercase → verb prepend. The colon between
+  # 'Fix' and the key is consumed with the key (leading-colon rule).
   [ "$subject" = "fix: fix Fix" ]
+}
+
+@test "commit-msg: paren pair consumed only when key fills it" {
+  # "Fix (E88-S1 thing)" — key does NOT fill the parens → leave parens.
+  path="$(_write_story "E88-S1" "feature" "Fix (E88-S1 thing)")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  # The opening paren should NOT be stripped since the key doesn't fill it.
+  [ "$subject" = "feat: wire Fix (thing)" ]
+}
+
+@test "commit-msg: left-colon glued to word does not eat the word" {
+  # "a:E88-S1" — the colon is between 'a' and the key.  Only the key and
+  # its colon separator are stripped; the 'a' survives.
+  path="$(_write_story "E88-S1" "bug" "a:E88-S1 thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  # "a thing" starts lowercase → no verb prepend.
+  [ "$subject" = "fix: a thing" ]
+}
+
+@test "commit-msg: lowercase own key stripped from subject" {
+  path="$(_write_story "E88-S1" "bug" "e88-s1: fix the thing")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "fix: fix the thing" ]
+}
+
+@test "commit-msg: mixed-case own key stripped from subject" {
+  path="$(_write_story "E88-S1" "bug" "e88-S1 regression")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "fix: regression" ]
+}
+
+@test "commit-msg: different story key in title left alone" {
+  path="$(_write_story "E88-S1" "bug" "Follow-up to K1-S2 work")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  # A different story's key passes through — out of scope to strip.
+  [ "$subject" = "fix: fix Follow-up to K1-S2 work" ]
+}
+
+@test "commit-msg: key at closing seam stripped without dangling space" {
+  # "Fix (thing K1-S1)" — key is inside parens but does NOT fill them.
+  # After strip: "Fix (thing)" — no trailing space before ")".
+  path="$(_write_story "K1-S1" "feature" "Fix (thing K1-S1)")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "feat: wire Fix (thing)" ]
+}
+
+@test "commit-msg: lowercase frontmatter key still stripped and emitted" {
+  # Frontmatter key is lowercase — strip + Story: line both work.
+  path="$(_write_story "k9-s3" "bug" "k9-s3: handle edge case")"
+  run "$COMMIT_MSG" "$path"
+  [ "$status" -eq 0 ]
+  local subject; subject="$(sed -n '1p' <<<"$output")"
+  [ "$subject" = "fix: handle edge case" ]
+  local story_line; story_line="$(sed -n '3p' <<<"$output")"
+  [ "$story_line" = "Story: k9-s3" ]
 }
 
 @test "commit-msg: title that is only the key exits non-zero" {

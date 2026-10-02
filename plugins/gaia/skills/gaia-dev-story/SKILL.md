@@ -736,10 +736,10 @@ inline.
   section `## Allow-stub override` containing the reason.
 - Then invoke `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/pr-create.sh
   {story_key} "$PR_TITLE" --body-file <(printf '%s\n' "$PR_BODY")` where
-  `$PR_TITLE` is the first line (subject) of the Step 10 commit message
-  (or pipe `$PR_BODY` via the helper's body-file convention) so that
-  `pr-create.sh` consumes the pre-rendered body rather than constructing one
-  inline. Do NOT hand-craft the PR body in chat — `pr-body.sh` is the single
+  `$PR_TITLE` is the first line (subject) of the Step 10 commit message.
+  The `--body-file` flag passes `$PR_BODY` (the pre-rendered body from
+  `pr-body.sh`) so that `pr-create.sh` consumes it rather than constructing
+  one inline. Do NOT hand-craft the PR body in chat — `pr-body.sh` is the single
   source of truth.
 
   **Resumed-run instruction.** When Step 11 runs after a context break (the

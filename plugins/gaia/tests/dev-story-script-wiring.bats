@@ -154,7 +154,10 @@ teardown() { common_teardown; }
   block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
   # Must NOT contain the old {title} placeholder.
-  ! grep -Fq '{title}' <<<"$block"
+  if grep -Fq '{title}' <<<"$block"; then
+    echo "Step 11 block still contains {title} placeholder" >&2
+    return 1
+  fi
   # The pr-create.sh invocation must use "$PR_TITLE".
   grep -Fq '"$PR_TITLE"' <<<"$block"
   # $PR_TITLE must be bound to the first line of the Step 10 commit message.
@@ -397,7 +400,10 @@ EOF
   run "$dev_scripts/commit-msg.sh" "$child_path"
   [ "$status" -eq 0 ]
   # Subject must NOT have the key in the scope — key moves to body.
-  ! grep -qE '\(E99-S2\)' <<<"$(printf '%s\n' "$output" | head -1)"
+  if grep -qE '\(E99-S2\)' <<<"$(printf '%s\n' "$output" | head -1)"; then
+    echo "Subject still contains key in scope: $(printf '%s\n' "$output" | head -1)" >&2
+    return 1
+  fi
   # Body must have Story: reference.
   grep -q '^Story: E99-S2$' <<<"$output"
 

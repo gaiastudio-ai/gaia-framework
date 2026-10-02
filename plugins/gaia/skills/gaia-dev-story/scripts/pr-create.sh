@@ -11,9 +11,10 @@
 # Usage:
 #   pr-create.sh <story_key> <title> [--base <branch>] [--body-file <path> | -F <path>]
 #
-# When --body-file (or -F) is passed, the file content is used verbatim as the
-# PR body — the default `## ${STORY_KEY}` body is bypassed. A `Story: <key>`
-# reference line is appended when the body does not already carry one.
+# When --body-file (or -F) is passed, the file content is used as the
+# PR body — the default body is bypassed. A `Story: <key>` reference line
+# is appended when the body does not already carry one (anchored to line
+# start).
 # SKILL.md Step 11 instructs callers to feed `pr-body.sh` output through this flag.
 #
 # Environment:
@@ -118,7 +119,7 @@ fi
 assert_branch_not_protected || die "aborting: protected-branch invariant failed"
 assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"
 
-# Build PR body. When --body-file was passed, read its content verbatim;
+# Build PR body. When --body-file was passed, read its content;
 # otherwise fall back to the default body that points at the story file.
 # Either way, a Story: reference is appended below when absent.
 if [ -n "$BODY_FILE" ]; then
