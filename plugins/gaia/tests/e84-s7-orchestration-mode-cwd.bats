@@ -4,6 +4,7 @@
 # find .gaia/, so Mode B engages regardless of the prelude's CWD.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   DETECT="$PLUGIN/scripts/detect-orchestration-mode.sh"
   # Build an isolated fake project tree with orchestration.mode: team so the

@@ -10,6 +10,7 @@
 # Refs: AC1, AC2, AC3, AC4, AC5, TC-SSP-1
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   DASHBOARD="$REPO_ROOT/plugins/gaia/scripts/sprint-status-dashboard.sh"
   FIXTURE_ROOT="$BATS_TEST_DIRNAME/fixtures/stranded-ready"

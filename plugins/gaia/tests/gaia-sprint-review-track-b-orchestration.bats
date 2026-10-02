@@ -4,6 +4,7 @@
 # Story: E93-S4. Traces to AC1, AC3, AC4, AC5, AC6, AC8, AC9.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   RUNNER="${BATS_TEST_DIRNAME}/../skills/gaia-sprint-review/scripts/track-b-dispatch.sh"
   FIXTURE_DIR="${BATS_TEST_DIRNAME}/../skills/gaia-sprint-review/tests/fixtures"
   FIXTURE="${FIXTURE_DIR}/test-fixture-command.sh"

@@ -7,6 +7,7 @@
 # to the end user — the dependency is internal only.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   SKILL_MD="${PLUGIN_ROOT}/gaia/skills/gaia-bridge-toggle/SKILL.md"
   GENERATOR="${PLUGIN_ROOT}/gaia/scripts/lib/test-environment-manifest.sh"

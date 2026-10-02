@@ -330,6 +330,7 @@ core	skill-rename-preflight.bats
 core	skills/gaia-statusline-skill-md.bats
 core	skills/selective-tests-by-component-docs.bats
 core	skills/test-no-bare-name-persona-spawn.bats
+core	sprint-close-env-isolation-guard.bats
 core	sprint-close-sentinel-unconditional.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
 core	sprint-plan-phase-rendering.bats
