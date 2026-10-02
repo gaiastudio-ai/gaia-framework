@@ -114,6 +114,7 @@ core	design-gate-sites.bats
 core	design-gate.bats
 core	design-lifecycle-docs.bats
 core	design-record-init-not-applicable.bats
+core	design-record-v2-migration.bats
 core	design-record.bats
 core	design-registration-completeness.bats
 core	design-review.bats

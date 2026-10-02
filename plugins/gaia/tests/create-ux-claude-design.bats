@@ -173,15 +173,26 @@ _assert_read_before_write() {
   [ "$read_line" -lt "$write_line" ] || fail "READ_FIRST ($read_line) not before WRITE ($write_line) for $file"
 }
 
-# _init_design_record REF VIA QPATH — create a design record in $TEST_TMP.
+# _init_design_record REF VIA [QPATH] — create a design record in $TEST_TMP.
+# When VIA is "created", QPATH is required and the file is auto-created
+# if absent (design-record.sh validates -f on the path). For other VIA
+# values, --questionnaire-record is omitted (the skip path auto-stores
+# "skipped").
 _init_design_record() {
   export PROJECT_ROOT="$TEST_TMP"
   mkdir -p "$TEST_TMP/.gaia/state"
-  env PROJECT_ROOT="$TEST_TMP" \
-    "$DESIGN_RECORD_SH" init \
-    --reference "$1" \
-    --discovered-via "$2" \
-    --questionnaire-record "$3"
+  local ref="$1" via="$2" qpath="${3:-}"
+  local args=( --reference "$ref" --discovered-via "$via" )
+  if [ "$via" = "created" ]; then
+    [ -n "$qpath" ] || { printf '_init_design_record: QPATH required for created\n' >&2; return 1; }
+    # Ensure the file exists for the -f check
+    local resolved="$qpath"
+    [ "${resolved#/}" = "$resolved" ] && resolved="${TEST_TMP}/$resolved"
+    mkdir -p "$(dirname "$resolved")"
+    [ -f "$resolved" ] || printf '' > "$resolved"
+    args+=( --questionnaire-record "$qpath" )
+  fi
+  env PROJECT_ROOT="$TEST_TMP" "$DESIGN_RECORD_SH" init "${args[@]}"
 }
 
 # _write_ux_fixture [--with-ref | --without-ref] — write a UX design doc
@@ -476,6 +487,9 @@ FIXTURE
   _rec_file="${TEST_TMP}/.gaia/state/design-"
   _rec_file+="record.yaml"
   yq -i '.project.reference = ""' "$_rec_file"
+  # v2 records: should-skip-questionnaire reads design_system_project.reference
+  # first, so corrupt that too
+  yq -i '.design_system_project.reference = ""' "$_rec_file"
   run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
     "$SKILL_SCRIPTS/should-skip-questionnaire.sh" \
     --record-path "$TEST_TMP/.gaia/state/design-record.yaml"
@@ -489,6 +503,9 @@ FIXTURE
   _rec_file="${TEST_TMP}/.gaia/state/design-"
   _rec_file+="record.yaml"
   _WS_VAL="   " yq -i '.project.reference = strenv(_WS_VAL)' "$_rec_file"
+  # v2 records: should-skip-questionnaire reads design_system_project.reference
+  # first, so corrupt that too
+  _WS_VAL="   " yq -i '.design_system_project.reference = strenv(_WS_VAL)' "$_rec_file"
   run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
     "$SKILL_SCRIPTS/should-skip-questionnaire.sh" \
     --record-path "$TEST_TMP/.gaia/state/design-record.yaml"
@@ -512,7 +529,7 @@ FIXTURE
   _init_design_record "proj-first" "created" "q.md"
   run env PROJECT_ROOT="$TEST_TMP" \
     "$DESIGN_RECORD_SH" init \
-    --reference "proj-second" --discovered-via "created" --questionnaire-record "q2.md"
+    --reference "proj-second" --discovered-via "project-artifacts"
   [ "$status" -ne 0 ]
   [[ "$output" == *"already exists"* ]]
 }
@@ -546,12 +563,13 @@ FIXTURE
 }
 
 @test "(AC2) injection round-trip: hostile questionnaire answer survives yq" {
-  _init_design_record 'proj; rm -rf /' "created" '/tmp/q"; exit 1; #'
+  local hostile_qr='q with "quotes" and $dollar; exit 1; #'
+  _init_design_record 'proj; rm -rf /' "created" "$hostile_qr"
   local ref qr
   ref="$(yq '.project.reference' "$TEST_TMP/.gaia/state/design-record.yaml")"
   qr="$(yq '.project.questionnaire_record' "$TEST_TMP/.gaia/state/design-record.yaml")"
   [ "$ref" = 'proj; rm -rf /' ]
-  [ "$qr" = '/tmp/q"; exit 1; #' ]
+  [ "$qr" = "$hostile_qr" ]
 }
 
 # ===========================================================================

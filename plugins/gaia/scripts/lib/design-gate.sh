@@ -294,7 +294,7 @@ design_gate_check() {
 
   local schema_version
   schema_version="$(yq '.schema_version' "$record_path" 2>/dev/null || true)"
-  if [ "$schema_version" != "1.0" ]; then
+  if [ "$schema_version" != "1.0" ] && [ "$schema_version" != "2.0" ]; then
     _dg_halt "$record_path" "schema-invalid (version: ${schema_version:-unknown})" \
       "The design record has an unsupported schema version. Update the framework or migrate the record."
     return 1
@@ -310,7 +310,7 @@ design_gate_check() {
     # Fail closed so the user re-initializes the design record.
     if [ "$ui_present" = "true" ]; then
       _dg_halt "$record_path" "not-applicable record on UI-bearing project" \
-        "The design record says not-applicable but the project has ui_present: true. Run: design-record.sh reopen-applicable --reference <ref> --discovered-via <how> --questionnaire-record <path>, then drive the review with /gaia-design-review."
+        "The design record says not-applicable but the project has ui_present: true. Run: design-record.sh reopen-applicable --reference <ref> --discovered-via <how> [--questionnaire-record <path>], then drive the review with /gaia-design-review."
       return 1
     fi
     return 0

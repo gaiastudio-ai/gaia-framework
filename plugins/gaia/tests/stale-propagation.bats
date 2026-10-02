@@ -115,8 +115,7 @@ _init_record() {
   env PROJECT_ROOT="$TEST_TMP" \
     "$DREC_SCRIPT" init \
       --reference "test-project-ref" \
-      --discovered-via "created" \
-      --questionnaire-record "not-applicable"
+      --discovered-via "project-artifacts"
 }
 
 _build_approved_record() {
@@ -426,7 +425,7 @@ teardown() { common_teardown; }
 
     # Build stale record using the mutant's design-record.sh
     env PROJECT_ROOT="$site_tmp" "$mutant_drec" init \
-      --reference "test-ref" --discovered-via "created" --questionnaire-record "na" >/dev/null
+      --reference "test-ref" --discovered-via "project-artifacts" >/dev/null
     env PROJECT_ROOT="$site_tmp" "$mutant_drec" transition --to review --actor ci >/dev/null
     env PROJECT_ROOT="$site_tmp" "$mutant_drec" add-review --verdict approved --reviewer stakeholder-A --actor ci >/dev/null
     env PROJECT_ROOT="$site_tmp" "$mutant_drec" approve --stakeholder stakeholder-A --recorded-by ci >/dev/null

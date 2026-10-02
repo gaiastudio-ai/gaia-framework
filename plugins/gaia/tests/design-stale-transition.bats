@@ -53,8 +53,7 @@ _init_record() {
   env PROJECT_ROOT="$TEST_TMP" \
     "$DREC_SCRIPT" init \
       --reference "test-project-ref" \
-      --discovered-via "created" \
-      --questionnaire-record "not-applicable"
+      --discovered-via "project-artifacts"
 }
 
 _build_approved_record() {
