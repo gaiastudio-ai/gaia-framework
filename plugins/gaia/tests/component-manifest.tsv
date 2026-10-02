@@ -336,6 +336,7 @@ core	sprint-close-sentinel-unconditional.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
 core	sprint-plan-phase-rendering.bats
 core	sprint-review-yolo-fallback.bats
+core	sprint-state-goals-root-isolation.bats
 core	sprint-state-inject.bats
 core	sprint-state-split-repo-resolution.bats
 core	sprint-state-ssot-parity.bats
