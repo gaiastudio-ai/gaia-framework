@@ -52,4 +52,5 @@ knowledge/gaia-help.csv            prose    help row names the design record as 
 tests/quality-gates.bats           test     quality-gate predicate suppression tests
 tests/setup-root-resolution.bats   test     stubs design-record.sh in a temp dir for the design-gate shim
 tests/design-record-v2-migration.bats test v2 migration, cross-validation, set-product-project, EXIT trap tests
+skills/gaia-review-perf/SKILL.md   reader   reads design state for performance-relevant design fidelity
 CHANGELOG.md                       prose    release notes list design-record changes
