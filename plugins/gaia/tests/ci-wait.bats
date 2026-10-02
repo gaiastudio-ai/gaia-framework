@@ -74,12 +74,16 @@ CFGEOF
 
 # _count_required_calls — count --required appearances in gh call log
 _count_required_calls() {
-  grep -c -- '--required' "$TEST_TMP/gh-calls.log" 2>/dev/null || printf '0'
+  local c=0
+  c=$(grep -c -- '--required' "$TEST_TMP/gh-calls.log" 2>/dev/null) || true
+  printf '%s' "$c"
 }
 
 # _count_pr_checks_calls — count 'pr checks' appearances in gh call log
 _count_pr_checks_calls() {
-  grep -c 'pr checks' "$TEST_TMP/gh-calls.log" 2>/dev/null || printf '0'
+  local c=0
+  c=$(grep -c 'pr checks' "$TEST_TMP/gh-calls.log" 2>/dev/null) || true
+  printf '%s' "$c"
 }
 
 # All-pass JSON with an optional failing check (for all-checks fixture)
@@ -93,6 +97,8 @@ _install_sleep_shim() {
   local budget="${CI_WAIT_SLEEP_BUDGET:-10}"
   cat > "$TEST_TMP/bin/sleep" <<SHIMEOF
 #!/usr/bin/env bash
+# Log the argument so tests can assert on the actual poll/grace interval used
+printf '%s\n' "\$1" >> "\${TEST_TMP:-/tmp}/sleep-args.log"
 count_file="\${TEST_TMP:-/tmp}/sleep-count"
 if [ ! -f "\$count_file" ]; then printf '0' > "\$count_file"; fi
 n=\$(cat "\$count_file")
@@ -225,8 +231,9 @@ setup() {
     commit --allow-empty -m init >/dev/null 2>&1
   export PROJECT_PATH="$TEST_TMP/repo"
 
-  # Init call log and counter
+  # Init call log, counter, and sleep-args log
   : > "$TEST_TMP/gh-calls.log"
+  : > "$TEST_TMP/sleep-args.log"
   printf '0' > "$TEST_TMP/gh-poll-counter"
 }
 
@@ -252,6 +259,10 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"passed"* ]]
   [[ "$stderr" == *"all CI checks passed"* ]]
+  # Exact poll count: 2 polls for two-poll stability rule
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -eq 2 ]
 }
 
 # --- 2: pending checks resolve to pass after multiple polls ---
@@ -268,9 +279,10 @@ teardown() {
 
   run --separate-stderr "$CI_WAIT" 1234
   [ "$status" -eq 0 ]
+  # Exact poll count: 1 pending + 2 all-terminal (two-poll rule) = 3 polls
   local rc
   rc=$(_count_required_calls)
-  [ "$rc" -ge 2 ]
+  [ "$rc" -eq 3 ]
 }
 
 # --- 3: failed check names the specific check and its bucket ---
@@ -279,7 +291,7 @@ teardown() {
   _write_fixture all 0 '[{"name":"bats-tests","bucket":"fail","state":"FAILURE"}]'
 
   run --separate-stderr "$CI_WAIT" 1234
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
   [[ "$stderr" == *"bats-tests (fail)"* ]]
   grep -q -- '--required' "$TEST_TMP/gh-calls.log"
 }
@@ -290,7 +302,7 @@ teardown() {
   _write_fixture all 0 '[{"name":"deploy","bucket":"cancel","state":"CANCELLED"}]'
 
   run --separate-stderr "$CI_WAIT" 1234
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
   [[ "$stderr" == *"deploy (cancel)"* ]]
   grep -q -- '--required' "$TEST_TMP/gh-calls.log"
 }
@@ -674,31 +686,32 @@ teardown() {
   [[ "$stderr" == *"no CI checks configured"* ]]
 }
 
-# --- 28: config discovered by walk-up from PWD ---
+# --- 28: config discovered by walk-up within git repo ---
 @test "config found by walk-up from working directory" {
-  # Build a nested repo: parent has config, child is the git repo
-  local parent="$TEST_TMP/walkup-parent"
-  local child="$parent/child"
-  mkdir -p "$child"
+  # Build a repo with config at its root, and PROJECT_PATH at a subdirectory.
+  # Canonicalize TEST_TMP so macOS /tmp→/private/tmp doesn't cause a vacuous pass.
+  local canon_tmp
+  canon_tmp="$(cd "$TEST_TMP" && pwd -P)"
+  local repo_root="$canon_tmp/walkup-repo"
+  local subdir="$repo_root/subdir"
+  mkdir -p "$subdir"
   git -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
-    init "$child" >/dev/null 2>&1
-  git -C "$child" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    init "$repo_root" >/dev/null 2>&1
+  git -C "$repo_root" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
     commit --allow-empty -m init >/dev/null 2>&1
-  _write_config_at "$parent" "ci_cd:
-  ci_wait_timeout_minutes: 3"
-
-  # Unset everything so only walk-up can find config
-  unset GAIA_SHARED_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_NO_PROJECT_WALKUP
-  export PROJECT_PATH="$child"
-
-  _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
-  _write_fixture all 0 "" 1 "no checks reported on the 'main' branch"
-  _write_prview '{"baseRefName":"main"}'
-  _write_config_at "$parent" "ci_cd:
+  _write_config_at "$repo_root" "ci_cd:
   ci_wait_timeout_minutes: 3
   promotion_chain:
     - branch: main
       ci_provider: github_actions"
+
+  # Unset everything so only walk-up can find config
+  unset GAIA_SHARED_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_NO_PROJECT_WALKUP
+  export PROJECT_PATH="$subdir"
+
+  _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 0 "" 1 "no checks reported on the 'main' branch"
+  _write_prview '{"baseRefName":"main"}'
   export CI_WAIT_NO_CHECKS_GRACE_SECONDS=0
 
   run --separate-stderr "$CI_WAIT" 1234
@@ -796,6 +809,10 @@ teardown() {
   run --separate-stderr "$CI_WAIT" 1234
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"Invalid JSON output"* ]]
+  # Verify gh-calls.log is not empty (calls were made)
+  local pc
+  pc=$(_count_pr_checks_calls)
+  [ "$pc" -gt 0 ]
 }
 
 # --- 34: persistent all-checks error reaches max failures ---
@@ -974,7 +991,7 @@ teardown() {
 
   run --separate-stderr "$CI_WAIT" 1234
   [ "$status" -eq 0 ]
-  [[ "$stderr" == *"grace expired"* ]] || [[ "$stderr" == *"no CI checks configured"* ]]
+  [[ "$stderr" == *"no CI checks configured"* ]]
   if [[ "$stderr" == *"all CI checks passed"* ]]; then echo "stderr unexpectedly contained 'all CI checks passed'" >&2; return 1; fi
 }
 
@@ -1076,4 +1093,625 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"passed"* ]]
   [[ "$stderr" == *"no CI checks configured"* ]]
+}
+
+# ===========================================================================
+# Bucket-allowlist, validation, and edge-case tests
+# ===========================================================================
+
+# Checks with non-terminal buckets must keep polling, not exit early.
+# A check whose bucket is queued, missing or null is not done — the script
+# must continue until the bucket becomes pass or skipping.
+@test "unknown bucket keeps polling instead of passing" {
+  local queued='[{"name":"build","bucket":"queued","state":"QUEUED"}]'
+  # Poll 0: queued (should keep polling)
+  # Poll 1: queued (should keep polling)
+  # Poll 2+3: all pass (two-poll rule)
+  _write_fixture required 0 "$queued"
+  _write_fixture required 1 "$queued"
+  _write_fixture required 2 "$_ALL_PASS"
+  _write_fixture required 3 "$_ALL_PASS"
+  _write_fixture all 0 "$queued"
+  _write_fixture all 1 "$queued"
+  _write_fixture all 2 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  # Must have polled at least 4 times (2 queued + 2 pass for stability)
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 4 ]
+}
+
+@test "missing bucket field keeps polling instead of passing" {
+  local no_bucket='[{"name":"build","state":"SUCCESS"}]'
+  _write_fixture required 0 "$no_bucket"
+  _write_fixture required 1 "$no_bucket"
+  _write_fixture required 2 "$_ALL_PASS"
+  _write_fixture required 3 "$_ALL_PASS"
+  _write_fixture all 0 "$no_bucket"
+  _write_fixture all 1 "$no_bucket"
+  _write_fixture all 2 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 4 ]
+}
+
+@test "null bucket keeps polling instead of passing" {
+  local null_bucket='[{"name":"build","bucket":null,"state":"SUCCESS"}]'
+  _write_fixture required 0 "$null_bucket"
+  _write_fixture required 1 "$null_bucket"
+  _write_fixture required 2 "$_ALL_PASS"
+  _write_fixture required 3 "$_ALL_PASS"
+  _write_fixture all 0 "$null_bucket"
+  _write_fixture all 1 "$null_bucket"
+  _write_fixture all 2 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 4 ]
+}
+
+# --- Distinct "no CI configured" wording ---
+@test "no-CI-configured exit 0 uses distinct passed line" {
+  _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 0 "" 1 "no checks reported on the 'main' branch"
+  _write_prview '{"baseRefName":"main"}'
+  _write_config "ci_cd:
+  promotion_chain:
+    - branch: main
+      ci_provider: github_actions"
+  export CI_WAIT_NO_CHECKS_GRACE_SECONDS=0
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+  [[ "$output" == *"no CI"* ]]
+}
+
+# --- Walk-up discovers config above the git repo (matches resolve-config.sh) ---
+@test "grace walk-up finds config above the git repo" {
+  # Config sits ABOVE the git repo. The walk-up must find it (matches the
+  # resolver's discovery order, which stops only at $HOME).
+  # Canonicalize so macOS /tmp→/private/tmp doesn't cause a vacuous pass.
+  local canon_tmp
+  canon_tmp="$(cd "$TEST_TMP" && pwd -P)"
+  local grandparent="$canon_tmp/walkup-above"
+  local repo_root="$grandparent/repo-root"
+  local child="$repo_root/sub"
+  mkdir -p "$child"
+  git -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    init "$repo_root" >/dev/null 2>&1
+  git -C "$repo_root" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit --allow-empty -m init >/dev/null 2>&1
+  # Config above the repo with NO ci_checks — should produce exit 0
+  _write_config_at "$grandparent" "ci_cd:
+  promotion_chain:
+    - branch: main
+      ci_provider: github_actions"
+
+  unset GAIA_SHARED_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_NO_PROJECT_WALKUP
+  export PROJECT_PATH="$child"
+  export CI_WAIT_NO_CHECKS_GRACE_SECONDS=0
+
+  _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 0 "" 1 "no checks reported on the 'main' branch"
+  _write_prview '{"baseRefName":"main"}'
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+  [[ "$stderr" == *"no CI checks configured"* ]]
+}
+
+# --- Multi-line poll interval / grace seconds rejected ---
+@test "multi-line poll interval is rejected" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  CI_WAIT_POLL_INTERVAL="$(printf '5\nevil')"
+  export CI_WAIT_POLL_INTERVAL
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"not a non-negative integer"* ]]
+  [[ "$stderr" == *"using default 30"* ]]
+}
+
+@test "multi-line grace seconds is rejected" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  CI_WAIT_NO_CHECKS_GRACE_SECONDS="$(printf '5\nevil')"
+  export CI_WAIT_NO_CHECKS_GRACE_SECONDS
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"not a non-negative integer"* ]]
+  [[ "$stderr" == *"using default 300"* ]]
+}
+
+# --- Consecutive-error counter reset on no-checks polls ---
+@test "error counter resets on successful no-checks poll" {
+  # Pattern: 4 consecutive errors, then a no-checks poll (should reset counter),
+  # then 4 more errors, then no-checks, then success. Without the reset,
+  # the 5th error (poll 5) would hit MAX_CONSECUTIVE_FAILURES and die.
+  # With the reset, the no-checks poll at poll 4 resets and we survive.
+  # Required: poll 0-3 = error, poll 4 = "no checks reported",
+  #           poll 5-8 = error, poll 9 = "no checks reported",
+  #           poll 10+11 = all-pass
+  local i
+  for i in 0 1 2 3; do
+    _write_fixture required "$i" "" 1 "internal server error"
+    _write_fixture all "$i" "" 1 "internal server error"
+  done
+  _write_fixture required 4 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 4 "" 1 "no checks reported on the 'main' branch"
+  for i in 5 6 7 8; do
+    _write_fixture required "$i" "" 1 "internal server error"
+    _write_fixture all "$i" "" 1 "internal server error"
+  done
+  _write_fixture required 9 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 9 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture required 10 "$_ALL_PASS"
+  _write_fixture required 11 "$_ALL_PASS"
+  _write_fixture all 10 "$_ALL_PASS_WITH_OPT_FAIL"
+  _write_fixture all 11 "$_ALL_PASS_WITH_OPT_FAIL"
+  # Rebuild the sleep shim with a higher call budget: 4+1+4+1+1 = 11 sleeps
+  # needed, so budget of 15 gives headroom
+  export CI_WAIT_SLEEP_BUDGET=15
+  _install_sleep_shim
+
+  run --separate-stderr "$CI_WAIT" 1234
+  # Without the reset fix, this exits 1 at the 5th consecutive error.
+  # With the fix, no-checks polls reset the counter and we reach success.
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+# --- PR number validation ---
+@test "leading-dash PR number is rejected" {
+  run --separate-stderr "$CI_WAIT" -- --evil
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"PR number"* ]]
+}
+
+@test "non-numeric PR number is rejected" {
+  run --separate-stderr "$CI_WAIT" abc
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"PR number"* ]]
+}
+
+@test "zero PR number is rejected" {
+  run --separate-stderr "$CI_WAIT" 0
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"PR number"* ]]
+}
+
+@test "negative PR number is rejected" {
+  run --separate-stderr "$CI_WAIT" -1
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"PR number"* ]]
+}
+
+# --- Resolver failure prints warning about default timeout ---
+@test "resolver failure prints warning about default timeout" {
+  export GAIA_SHARED_CONFIG="$TEST_TMP/nonexistent.yaml"
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"(timeout: 30m)"* ]]
+  [[ "$stderr" == *"no configured timeout found"*"using default"* ]]
+}
+
+# --- Invalid-JSON check on --required call retries before falling back ---
+@test "invalid JSON on required call retries without falling to all-checks" {
+  _write_fixture required 0 "oops"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture required 2 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+  _write_fixture all 1 "$_ALL_PASS_WITH_OPT_FAIL"
+  _write_fixture all 2 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"polling error: invalid JSON"* ]]
+}
+
+# --- Boundary values ---
+@test "config value 1 is accepted" {
+  _write_config "ci_cd:
+  ci_wait_timeout_minutes: 1"
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"(timeout: 1m)"* ]]
+}
+
+@test "config value 360 is accepted" {
+  _write_config "ci_cd:
+  ci_wait_timeout_minutes: 360"
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"(timeout: 360m)"* ]]
+}
+
+@test "CLI timeout 1440 is accepted" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234 --timeout 1440
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"(timeout: 1440m)"* ]]
+}
+
+@test "CLI timeout 361 is accepted" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234 --timeout 361
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"(timeout: 361m)"* ]]
+}
+
+# --- Config not read when CLI provides timeout ---
+@test "out-of-range config ignored when CLI timeout is passed" {
+  _write_config "ci_cd:
+  ci_wait_timeout_minutes: 0"
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234 --timeout 5
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"(timeout: 5m)"* ]]
+  if [[ "$stderr" == *"out of range"* ]]; then echo "FAIL: config was read despite CLI --timeout" >&2; return 1; fi
+}
+
+# --- Two failed checks both reported ---
+@test "two failed checks both reported by name" {
+  _write_fixture required 0 '[{"name":"bats-tests","bucket":"fail","state":"FAILURE"},{"name":"lint","bucket":"fail","state":"FAILURE"}]'
+  _write_fixture all 0 '[{"name":"bats-tests","bucket":"fail","state":"FAILURE"},{"name":"lint","bucket":"fail","state":"FAILURE"}]'
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"bats-tests (fail)"* ]]
+  [[ "$stderr" == *"lint (fail)"* ]]
+}
+
+# --- Fail exits immediately even with pending checks ---
+@test "fail exits immediately even with pending checks" {
+  _write_fixture required 0 '[{"name":"build","bucket":"fail","state":"FAILURE"},{"name":"tests","bucket":"pending","state":"IN_PROGRESS"}]'
+  _write_fixture all 0 '[{"name":"build","bucket":"fail","state":"FAILURE"},{"name":"tests","bucket":"pending","state":"IN_PROGRESS"}]'
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"build (fail)"* ]]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -eq 1 ]
+}
+
+# --- PR number > 6 digits accepted ---
+@test "large PR number is accepted" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234567
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+# --- Resolver warning absent when config resolves successfully ---
+@test "resolver warning absent when config resolves" {
+  _write_config "ci_cd:
+  ci_wait_timeout_minutes: 5"
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"(timeout: 5m)"* ]]
+  if [[ "$stderr" == *"no configured timeout found"* ]]; then echo "FAIL: resolver warning emitted despite valid config" >&2; return 1; fi
+}
+
+# --- Error counter reset survives interleaved pending polls ---
+@test "error counter resets across interleaved pending polls" {
+  # Pattern: 4 errors → pending poll (should reset) → 4 errors → pending →
+  # pass. Without the counter reset, the 5th error (poll 5) would die.
+  local pending='[{"name":"build","bucket":"pending","state":"IN_PROGRESS"}]'
+  local i
+  for i in 0 1 2 3; do
+    _write_fixture required "$i" "" 1 "internal server error"
+    _write_fixture all "$i" "" 1 "internal server error"
+  done
+  _write_fixture required 4 "$pending"
+  _write_fixture all 4 "$pending"
+  for i in 5 6 7 8; do
+    _write_fixture required "$i" "" 1 "internal server error"
+    _write_fixture all "$i" "" 1 "internal server error"
+  done
+  _write_fixture required 9 "$_ALL_PASS"
+  _write_fixture required 10 "$_ALL_PASS"
+  _write_fixture all 9 "$_ALL_PASS_WITH_OPT_FAIL"
+  _write_fixture all 10 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_SLEEP_BUDGET=15
+  _install_sleep_shim
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+# --- Grace window resets when checks appear then disappear ---
+@test "grace window re-entered when checks disappear again" {
+  # no-checks → pending → no-checks: must log "entering grace window" twice.
+  _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 0 "" 1 "no checks reported on the 'main' branch"
+  local pending='[{"name":"build","bucket":"pending","state":"IN_PROGRESS"}]'
+  _write_fixture required 1 "$pending"
+  _write_fixture all 1 "$pending"
+  _write_fixture required 2 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 2 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture required 3 "$_ALL_PASS"
+  _write_fixture required 4 "$_ALL_PASS"
+  _write_fixture all 3 "$_ALL_PASS_WITH_OPT_FAIL"
+  _write_fixture all 4 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_SLEEP_BUDGET=15
+  _install_sleep_shim
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  # "entering grace window" must appear twice (first entry + re-entry)
+  local grace_count=0
+  grace_count=$(printf '%s' "$stderr" | grep -c 'entering grace window') || true
+  [ "$grace_count" -ge 2 ]
+}
+
+# --- Invalid poll interval actually falls back to sleep 30 ---
+@test "invalid poll interval sleeps 30 seconds" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  export CI_WAIT_POLL_INTERVAL="abc"
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  # Sleep shim logged its argument: must be "30"
+  grep -qx '30' "$TEST_TMP/sleep-args.log"
+}
+
+# --- Invalid grace seconds actually falls back to 300 ---
+@test "invalid grace seconds defaults to 300 window" {
+  _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 0 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture required 2 "$_ALL_PASS"
+  _write_fixture all 1 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_NO_CHECKS_GRACE_SECONDS="xyz"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  # The grace window message must say 300s
+  [[ "$stderr" == *"grace window (300s)"* ]]
+}
+
+# --- Pending checks keep polling until budget exhausted ---
+@test "pending checks keep polling until killed by budget" {
+  # Checks stay pending forever. The sleep-shim budget kills ci-wait after
+  # a few polls, proving the script keeps polling (not exiting early).
+  local pending='[{"name":"build","bucket":"pending","state":"IN_PROGRESS"}]'
+  local i
+  for i in 0 1 2 3 4 5 6; do
+    _write_fixture required "$i" "$pending"
+    _write_fixture all "$i" "$pending"
+  done
+
+  export CI_WAIT_SLEEP_BUDGET=4
+  _install_sleep_shim
+
+  run --separate-stderr "$CI_WAIT" 1234 --timeout 1440
+  # Killed by sleep shim: status is non-zero (143/SIGTERM or shim exit 1)
+  [ "$status" -ne 0 ]
+  # Must have polled multiple times with pending checks
+  local pc=0
+  pc=$(_count_pr_checks_calls)
+  [ "$pc" -ge 3 ]
+  # Must have seen "in progress" messages
+  [[ "$stderr" == *"in progress"* ]]
+}
+
+# --- TMPDIR with spaces does not break cleanup ---
+@test "space in TMPDIR cleans up temp files" {
+  local spacedir="$TEST_TMP/has space"
+  mkdir -p "$spacedir"
+  export TMPDIR="$spacedir"
+
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  # No ci-wait temp files should remain
+  local leftover=0
+  leftover=$(find "$spacedir" -name 'ci-wait-*' -type f 2>/dev/null | wc -l)
+  [ "$leftover" -eq 0 ]
+}
+
+# --- Error counter resets on empty all-checks array ---
+@test "error counter resets on empty all-checks array polls" {
+  # Like the no-checks-reported counter reset test, but the all-checks call
+  # succeeds with an empty array instead of failing with "no checks reported".
+  local i
+  for i in 0 1 2 3; do
+    _write_fixture required "$i" "" 1 "no required checks reported on the 'main' branch"
+    _write_fixture all "$i" "" 1 "internal server error"
+  done
+  # Poll 4: required says no required, all-checks returns empty array (grace path)
+  _write_fixture required 4 "" 1 "no required checks reported on the 'main' branch"
+  _write_fixture all 4 "[]"
+  for i in 5 6 7 8; do
+    _write_fixture required "$i" "" 1 "no required checks reported on the 'main' branch"
+    _write_fixture all "$i" "" 1 "internal server error"
+  done
+  _write_fixture required 9 "" 1 "no required checks reported on the 'main' branch"
+  _write_fixture all 9 "[]"
+  _write_fixture required 10 "$_ALL_PASS"
+  _write_fixture required 11 "$_ALL_PASS"
+  _write_fixture all 10 "$_ALL_PASS_WITH_OPT_FAIL"
+  _write_fixture all 11 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_SLEEP_BUDGET=15
+  _install_sleep_shim
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+# --- Timeout reached during active polling via seconds override ---
+@test "timeout during polling via CI_WAIT_TIMEOUT_SECONDS" {
+  # Checks stay pending. The sleep shim really sleeps ~1s per call so that
+  # SECONDS (reset to 0 after all setup) advances past the budget after ≥2 polls.
+  local pending='[{"name":"build","bucket":"pending","state":"IN_PROGRESS"}]'
+  local i
+  for i in 0 1 2 3 4 5 6 7 8 9; do
+    _write_fixture required "$i" "$pending"
+    _write_fixture all "$i" "$pending"
+  done
+
+  # Replace the sleep shim with one that really sleeps ~1s but still has a
+  # call limit matching the default shim. Without the limit a regression in
+  # timeout logic would make this test hang instead of fail fast.
+  # Must call /bin/sleep directly to avoid infinite recursion via PATH.
+  cat > "$TEST_TMP/bin/sleep" <<'SHIMEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "${TEST_TMP:-/tmp}/sleep-args.log"
+count_file="${TEST_TMP:-/tmp}/sleep-count"
+if [ ! -f "$count_file" ]; then printf '0' > "$count_file"; fi
+n=$(cat "$count_file")
+n=$((n + 1))
+printf '%s' "$n" > "$count_file"
+if [ "$n" -gt 10 ]; then
+  kill -TERM $PPID 2>/dev/null || true
+  exit 1
+fi
+/bin/sleep 1
+exit 0
+SHIMEOF
+  chmod +x "$TEST_TMP/bin/sleep"
+
+  # Budget of 5 s gives margin: SECONDS=0 is reset after setup, so each
+  # poll+sleep iteration consumes ~1 s of wall clock.
+  export CI_WAIT_TIMEOUT_SECONDS=5
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"timed out"* ]]
+  # The timeout message must report the seconds budget, not minutes
+  [[ "$stderr" == *"5 seconds"* ]]
+  # Must have polled at least twice before the timeout fired
+  local pc=0
+  pc=$(_count_pr_checks_calls)
+  [ "$pc" -ge 2 ]
+}
+
+# --- GAIA_NO_PROJECT_WALKUP skips the grace walk-up ---
+@test "GAIA_NO_PROJECT_WALKUP prevents grace walk-up" {
+  local canon_tmp
+  canon_tmp="$(cd "$TEST_TMP" && pwd -P)"
+  local grandparent="$canon_tmp/walkup-blocked"
+  local repo_root="$grandparent/repo-root"
+  local child="$repo_root/sub"
+  mkdir -p "$child"
+  git -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    init "$repo_root" >/dev/null 2>&1
+  git -C "$repo_root" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit --allow-empty -m init >/dev/null 2>&1
+  _write_config_at "$grandparent" "ci_cd:
+  promotion_chain:
+    - branch: main
+      ci_provider: github_actions"
+
+  unset GAIA_SHARED_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT
+  export GAIA_NO_PROJECT_WALKUP=1
+  export PROJECT_PATH="$child"
+  export CI_WAIT_NO_CHECKS_GRACE_SECONDS=0
+
+  _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 0 "" 1 "no checks reported on the 'main' branch"
+  _write_prview '{"baseRefName":"main"}'
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"no config available"* ]]
+}
+
+# --- CLAUDE_SKILL_DIR skips the grace walk-up ---
+@test "CLAUDE_SKILL_DIR prevents grace walk-up" {
+  local canon_tmp
+  canon_tmp="$(cd "$TEST_TMP" && pwd -P)"
+  local grandparent="$canon_tmp/walkup-skill"
+  local repo_root="$grandparent/repo-root"
+  local child="$repo_root/sub"
+  mkdir -p "$child"
+  git -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    init "$repo_root" >/dev/null 2>&1
+  git -C "$repo_root" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit --allow-empty -m init >/dev/null 2>&1
+  _write_config_at "$grandparent" "ci_cd:
+  promotion_chain:
+    - branch: main
+      ci_provider: github_actions"
+
+  unset GAIA_SHARED_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_NO_PROJECT_WALKUP
+  export CLAUDE_SKILL_DIR="$TEST_TMP/fake-skill"
+  export PROJECT_PATH="$child"
+  export CI_WAIT_NO_CHECKS_GRACE_SECONDS=0
+
+  _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
+  _write_fixture all 0 "" 1 "no checks reported on the 'main' branch"
+  _write_prview '{"baseRefName":"main"}'
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"no config available"* ]]
+}
+
+# --- CI_WAIT_TIMEOUT_SECONDS rejection: non-integer ---
+@test "CI_WAIT_TIMEOUT_SECONDS rejects non-integer value" {
+  export CI_WAIT_TIMEOUT_SECONDS="abc"
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"CI_WAIT_TIMEOUT_SECONDS"* ]]
+  [[ "$stderr" == *"non-negative integer"* ]]
+}
+
+# --- CI_WAIT_TIMEOUT_SECONDS rejection: over-cap ---
+@test "CI_WAIT_TIMEOUT_SECONDS rejects value above 86400" {
+  export CI_WAIT_TIMEOUT_SECONDS=86401
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"CI_WAIT_TIMEOUT_SECONDS"* ]]
+  [[ "$stderr" == *"86400"* ]]
+}
+
+# --- Leading-zero PR number rejected ---
+@test "leading-zero PR number is rejected" {
+  run --separate-stderr "$CI_WAIT" 01234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"PR number"* ]]
 }
