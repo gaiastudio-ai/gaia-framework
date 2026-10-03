@@ -124,7 +124,7 @@ requirements definition (Derek — Product Manager), architecture decisions
 
 ## Design Consumption
 
-- When a project has a design-record reference (`.gaia/state/design-record.yaml` with `design_state: approved`), resolve design truth through the two project references below. Do not read a local design-system copy as authoritative — the projects are the source of truth.
+- When a project has a design-record reference (`.gaia/state/design-record.yaml`), resolve design truth through the two project references below. Do not read a local design-system copy as authoritative — the projects are the source of truth.
   - Read token and component specifications from `design_system_project.reference` via DesignSync.
   - Read screen specifications from `product_design_project.reference` by per-file reads of the product design canvas: `list` with `scope: "files"`, then `read` with `path` for `project/canvas.json` and each listed board — never `page: true`.
   - Token values come only from the design-system project; the token copies embedded in each board are not a token source.
