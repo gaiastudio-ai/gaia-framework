@@ -599,75 +599,366 @@ _roster_dir_exists() {
     [ -d "${_PROJECT_ROOT}/custom/stakeholders" ]
 }
 
-# _resolve_merged_roster — output one line per resolved stakeholder file:
-#   slug\tpath
-# Scans .gaia/custom/stakeholders first (higher precedence), then root
-# custom/stakeholders. Deduplicates by slug: a slug already seen from the
-# higher-precedence directory is skipped when encountered in the root.
-# Before yq: checks that a closing --- delimiter exists after line 1.
-# If slug: is present and disagrees with the filename stem, warns and skips.
-# Bash 3.2 safe — no associative arrays.
-_resolve_merged_roster() {
-  local _seen_slugs=" "
-  local dir f stem slug_field
+# ---------------------------------------------------------------------------
+# Process-scoped roster cache — resolved at most once per process.
+# ---------------------------------------------------------------------------
 
-  for dir in "${_PROJECT_ROOT}/.gaia/custom/stakeholders" "${_PROJECT_ROOT}/custom/stakeholders"; do
-    [ -d "$dir" ] || continue
-    for f in "$dir"/*.md; do
-      [ -f "$f" ] || continue
-      stem="$(basename "$f" .md)"
+# Cache state: set by _ensure_roster, read by consumers directly.
+_CACHED_ROSTER=""
+_ROSTER_RESOLVED=0
+_ROSTER_RC=0
 
-      # Frontmatter delimiter check: require a closing --- after line 1.
-      # The opening --- is line 1; a closing --- must appear on a later line.
-      if ! sed -n '2,$p' "$f" | grep -q '^---$'; then
-        printf 'design-record.sh: warning: %s has no closing --- delimiter — skipped\n' "$(basename "$f")" >&2
-        continue
+# _ensure_roster — resolve the merged roster at most once per process.
+# Stores the result in $_CACHED_ROSTER and the resolver's exit code in
+# $_ROSTER_RC.  Subsequent calls return $_ROSTER_RC without re-running
+# the resolver.  Callers that need the roster to succeed should test the
+# return value; callers that must proceed regardless (cmd_approve) use
+# `_ensure_roster || true` and inspect $_ROSTER_RC later.
+_ensure_roster() {
+  [ "$_ROSTER_RESOLVED" -eq 1 ] && return "$_ROSTER_RC"
+  local out rc=0
+  out="$(_resolve_merged_roster_impl)" || rc=$?
+  if [ "$rc" -ne 0 ]; then out=""; fi
+  _CACHED_ROSTER="$out"
+  _ROSTER_RC=$rc
+  _ROSTER_RESOLVED=1
+  return "$rc"
+}
+
+# _check_symlink_ancestry DIR — refuse symlinks on the directory itself and
+# each parent component up to (but not including) $_PROJECT_ROOT.
+# Returns 0 when clean, 1 on refusal (with diagnostic on stderr).
+_check_symlink_ancestry() {
+  local dir="$1"
+  local cur="$dir"
+  while :; do
+    # Stop at project root BEFORE testing -L, so a symlinked project root
+    # is not falsely refused.
+    case "$cur" in
+      "${_PROJECT_ROOT}"|"${_PROJECT_ROOT}/") return 0 ;;
+    esac
+    if [ -L "$cur" ]; then
+      local target
+      target="$(readlink "$cur" 2>/dev/null || echo '(unreadable)')"
+      if [ -d "$cur" ] || [ "$cur" = "$dir" ]; then
+        printf 'design-record.sh: refusing symlinked roster directory %s -> %s\n' "$cur" "$target" >&2
+      else
+        printf 'design-record.sh: refusing symlinked roster path component %s -> %s\n' "$cur" "$target" >&2
       fi
-
-      # Read slug: field from frontmatter
-      slug_field="$(yq 'select(di == 0) | .slug' "$f" 2>/dev/null || true)"
-      if [ -n "$slug_field" ] && [ "$slug_field" != "null" ]; then
-        # slug: field present — must agree with filename stem
-        if [ "$slug_field" != "$stem" ]; then
-          printf 'design-record.sh: warning: %s: slug '\''%s'\'' disagrees with filename '\''%s'\'' — skipped\n' \
-            "$(basename "$f")" "$slug_field" "$stem" >&2
-          continue
-        fi
-      fi
-
-      # Dedup by slug: skip if already seen from a higher-precedence directory
-      case "$_seen_slugs" in
-        *" ${stem} "*) continue ;;
-      esac
-      _seen_slugs="${_seen_slugs}${stem} "
-
-      printf '%s\t%s\n' "$stem" "$f"
-    done
+      return 1
+    fi
+    local parent
+    parent="${cur%/*}"
+    [ "$parent" != "$cur" ] || return 0
+    cur="$parent"
   done
 }
 
+# _resolve_merged_roster_impl — internal resolver called by _ensure_roster.
+# Output: tab-separated lines: slug\tpath\ttags_csv
+# Constant process count: one awk (frontmatter extraction) → one yq -N
+# (slug+tags+index) → one awk (validation+dedup).  Per-file fallback on error.
+# Filenames never enter the YAML stream — awk1 builds an index→path map
+# and awk3 joins by index.
+_resolve_merged_roster_impl() {
+  local dir
+
+  # Check symlinks on parent components (.gaia, .gaia/custom, custom)
+  # unconditionally BEFORE the directory loop, so a dangling or empty-target
+  # symlink never falls through to the lower-precedence directory.
+  for dir in "${_PROJECT_ROOT}/.gaia" "${_PROJECT_ROOT}/.gaia/custom" "${_PROJECT_ROOT}/custom"; do
+    if [ -L "$dir" ]; then
+      local sl_target
+      sl_target="$(readlink "$dir" 2>/dev/null || echo '(unreadable)')"
+      printf 'design-record.sh: refusing symlinked roster path component %s -> %s\n' "$dir" "$sl_target" >&2
+      return 1
+    fi
+  done
+
+  # Collect roster directories (quoted iteration, safe with spaces in path)
+  local roster_dir_list="" roster_dir_count=0
+  for dir in "${_PROJECT_ROOT}/.gaia/custom/stakeholders" "${_PROJECT_ROOT}/custom/stakeholders"; do
+    [ -d "$dir" ] || [ -L "$dir" ] || continue
+    # Symlink check on directory itself
+    _check_symlink_ancestry "$dir" || return 1
+    roster_dir_list="${roster_dir_list}${dir}
+"
+    roster_dir_count=$((roster_dir_count + 1))
+  done
+
+  if [ "$roster_dir_count" -eq 0 ]; then
+    return 0
+  fi
+
+  # Collect all .md files, check each for symlinks and tab/newline stems
+  local _tab=$'\t' _nl=$'\n'
+  local all_files="" file_count=0
+  while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    for f in "$dir"/*.md; do
+      [ -f "$f" ] || [ -L "$f" ] || continue
+      # Symlinked file check
+      if [ -L "$f" ]; then
+        local target
+        target="$(readlink "$f" 2>/dev/null || echo '(unreadable)')"
+        printf 'design-record.sh: refusing symlinked roster file %s -> %s\n' "$f" "$target" >&2
+        return 1
+      fi
+      # Tab/newline in stem check
+      local bn
+      bn="${f##*/}"
+      local stem="${bn%.md}"
+      case "$stem" in
+        *"$_tab"*|*"$_nl"*)
+          printf 'design-record.sh: refusing stem with tab/newline: %s\n' "$bn" >&2
+          continue
+          ;;
+      esac
+      all_files="${all_files}${f}
+"
+      file_count=$((file_count + 1))
+    done
+  done <<< "$roster_dir_list"
+
+  if [ "$file_count" -eq 0 ]; then
+    return 0
+  fi
+
+  # --- Constant-process-count pipeline ---
+  # awk1: extract frontmatter, inject _gaia_rix (index) as the LAST line.
+  # Filenames never enter the YAML stream — awk emits index→path map
+  # lines prefixed with #GAIAMAP: on stdout (split out in bash afterwards
+  # — no tempfile, no signal-leak).
+  # Files with no opening --- or no closing --- are skipped with a warning.
+  # If any frontmatter line contains the reserved map prefix #GAIAMAP:
+  # (checked via index(), not anchored, to catch NUL/byte-prefixed lines),
+  # awk1 sets needs_fallback=1 so the caller forces the safe per-file path
+  # (which reads the true YAML without the index-map protocol).
+  # User-authored _gaia_rix keys are NOT stripped: yq resolves duplicate
+  # keys last-wins, and the injected index is always the last key in the
+  # document, so any user-authored _gaia_rix is harmlessly overwritten.
+  local awk1_raw
+  awk1_raw="$(printf '%s' "$all_files" | awk '
+BEGIN { idx = 0; needs_fallback = 0 }
+{
+  file = $0; if (file == "") next
+  in_fm = 0; doc_started = 0; fm = ""; got_close = 0
+  while ((getline line < file) > 0) {
+    if (!doc_started) { if (line == "---") { doc_started = 1; in_fm = 1; continue } else break }
+    if (in_fm) { if (line == "---") { got_close = 1; in_fm = 0; break } }
+    if (in_fm) {
+      if (index(line, "#GAIAMAP:") > 0) { needs_fallback = 1 }
+      fm = fm line "\n" } }
+  close(file)
+  if (!doc_started) { bn = file; sub(/.*\//, "", bn); printf "design-record.sh: warning: no frontmatter in %s — skipped\n", bn > "/dev/stderr"; next }
+  if (!got_close) { bn = file; sub(/.*\//, "", bn); printf "design-record.sh: warning: unclosed frontmatter in %s — skipped\n", bn > "/dev/stderr"; next }
+  printf "---\n%s_gaia_rix: %d\n", fm, idx
+  printf "#GAIAMAP:%d\t%s\n", idx, file
+  idx++
+}
+END { if (needs_fallback) printf "#GAIA_NEEDS_FALLBACK\n" }
+  ')" || true
+
+  # If awk1 detected a frontmatter line matching the reserved map prefix
+  # (#GAIAMAP:), it appends a sentinel.  Force the safe per-file fallback,
+  # which reads the true YAML for each file individually.
+  case "$awk1_raw" in
+    *"#GAIA_NEEDS_FALLBACK"*)
+      _resolve_merged_roster_perfile "$all_files"
+      return $?
+      ;;
+  esac
+
+  if [ -z "$awk1_raw" ]; then
+    return 0
+  fi
+
+  # Split awk1 output: YAML documents (combined_fm) and map lines (file_map).
+  local combined_fm file_map
+  combined_fm="$(printf '%s\n' "$awk1_raw" | grep -v '^#GAIAMAP:')" || true
+  file_map="$(printf '%s\n' "$awk1_raw" | sed -n 's/^#GAIAMAP://p')"
+
+  if [ -z "$combined_fm" ]; then
+    return 0
+  fi
+
+  # yq: extract slug, tags and index from each document.
+  # (.slug // "") with spaces around // to avoid yq v4.53.2 null bug.
+  # [.tags[]?] iterates only list-valued tags; scalar tags are ignored.
+  # tostring on slug guards against numeric/boolean slugs (yq returns !!int).
+  # sub() strips tab/newline/CR from slug and from each tag individually
+  # BEFORE join — so an escaped control character in a tag value cannot
+  # inject fake roster rows or split a slug across tab-delimited fields.
+  # Note: a literal comma inside a tag (e.g. "design,x") is NOT stripped;
+  # _roster_tag_is_required uses comma-padded substring matching and would
+  # still match "design" inside such a tag.  This is acceptable because
+  # stakeholder files are project-owned, not user-supplied attack surface.
+  local yq_out rc_yq=0
+  yq_out="$(printf '%s\n' "$combined_fm" | yq -N \
+    '((.slug // "" | tostring) | sub("\t","") | sub("\n","") | sub("\r","")) + "\t" + ([.tags[]? | (. | tostring | sub("\t","") | sub("\n","") | sub("\r",""))] | join(",")) + "\t" + (._gaia_rix | tostring)' \
+    2>/dev/null)" || rc_yq=$?
+  if [ "$rc_yq" -ne 0 ]; then
+    _resolve_merged_roster_perfile "$all_files"
+    return $?
+  fi
+
+  # awk3: join index→path map, validate indices (exactly once, numeric),
+  # enforce slug==stem, dedup.  Exits 2 on index anomaly to trigger fallback.
+  local awk3_out rc_awk3=0
+  awk3_out="$(printf '%s\n' "$file_map" "$yq_out" | awk -F'\t' '
+NF == 2 && $1 ~ /^[0-9]+$/ { if ($1 in fmap) { fallback = 1; exit }; fmap[$1] = $2; next }
+NF < 3 { next }
+{
+  slug = $1; tags_csv = $2; rix = $3
+  if (rix !~ /^[0-9]+$/) { fallback = 1; exit }
+  if (rix in rix_seen) { fallback = 1; exit }
+  rix_seen[rix] = 1
+  if (!(rix in fmap)) { fallback = 1; exit }
+  file_path = fmap[rix]
+  stem = file_path; sub(/.*\//, "", stem); sub(/\.md$/, "", stem)
+  if (slug == "" || slug == "null") { slug = stem }
+  else if (slug != stem) { printf "design-record.sh: warning: %s: slug \x27%s\x27 disagrees with filename \x27%s\x27 — skipped\n", stem ".md", slug, stem > "/dev/stderr"; next }
+  if (slug in seen) next
+  seen[slug] = 1
+  print slug "\t" file_path "\t" tags_csv
+}
+END { if (fallback) exit 2 }
+  ')" || rc_awk3=$?
+
+  if [ "$rc_awk3" -eq 2 ]; then
+    _resolve_merged_roster_perfile "$all_files"
+    return $?
+  fi
+  if [ -n "$awk3_out" ]; then
+    printf '%s\n' "$awk3_out"
+  fi
+  return "$rc_awk3"
+}
+
+# _resolve_merged_roster_perfile — per-file fallback when combined yq fails.
+# Accepts the newline-separated file list as $1 (from the caller's all_files).
+# Extracts frontmatter via awk (content between opening --- and closing ---),
+# then lets yq decide whether it contains multiple documents (NEL, LS, PS,
+# CR-based separators, or real --- / ... markers).  NUL bytes are handled
+# differently by awk implementations: macOS (BSD) awk drops the rest of a
+# line after a NUL, so yq never sees it; gawk and mawk pass it through.
+# Files with any
+# document index > 0 are refused as malformed.  Reads slug and tags from
+# the first document only (select(di == 0)).
+# Applies the same tab/newline/CR stripping as the fast path.
+# Drops bad files with diagnostic, then deduplicates through a final awk pass.
+_resolve_merged_roster_perfile() {
+  local all_files_arg="$1"
+  local raw=""
+  local f fm_block
+
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    local bn="${f##*/}"
+    local stem="${bn%.md}"
+
+    # Extract frontmatter only via awk (identical logic to awk1).
+    # Reads the file via getline in BEGIN, with /dev/null as main input
+    # to avoid double-reading.  ENVIRON["file"] is used instead of
+    # -v file=... so that backslash-bearing paths are passed verbatim.
+    # No regex document-marker check: yq decides what constitutes a
+    # second document (covers NEL, LS, PS, and mid-line CR cases that a
+    # regex cannot reliably detect).  NUL bytes behave differently across
+    # awk implementations: macOS (BSD) awk drops the rest of a line after
+    # a NUL, so yq never sees it; gawk and mawk pass NUL through.
+    export file="$f"
+    fm_block="$(awk 'BEGIN { file=ENVIRON["file"]; in_fm=0; ds=0; fm=""; gc=0; while ((getline line < file) > 0) { if (!ds) { if (line == "---") { ds=1; in_fm=1; continue } else break }; if (in_fm) { if (line == "---") { gc=1; in_fm=0; break } }; if (in_fm) { fm = fm line "\n" } }; close(file); if (!ds || !gc) exit 1; printf "%s", fm }' /dev/null 2>/dev/null)" || { printf 'design-record.sh: warning: malformed frontmatter in %s — skipped\n' "$bn" >&2; continue; }
+    unset file
+
+    # Empty frontmatter is valid: slug falls back to the filename, no tags.
+    # Do not refuse it — the fast path accepts it the same way.
+
+    # Wrap as a single YAML document for yq.
+    # Use -- to prevent the leading '---' from being parsed as a printf flag.
+    # No trailing ... — yq rejects comment-only content followed by ...
+    # ("did not find expected node content"), and the absence of a trailing
+    # --- means no spurious second document appears.
+    fm_block="$(printf -- '---\n%s\n' "$fm_block")"
+
+    # Refuse multi-document frontmatter: count the documents yq sees.
+    # If there is more than one, the frontmatter contains a second
+    # document (via NEL, LS, PS, CR-based marker, or a real --- / ...
+    # separator that awk did not catch).  NUL bytes may or may not reach
+    # yq depending on the awk implementation (see comment above).
+    # yq decides what constitutes a document boundary — no regex guessing.
+    local _doc_count
+    _doc_count="$(printf '%s\n' "$fm_block" | yq -N 'di' 2>/dev/null | wc -l)" || _doc_count=0
+    _doc_count="${_doc_count##* }"  # strip leading spaces (macOS wc)
+    if [ "$_doc_count" -gt 1 ] 2>/dev/null; then
+      printf 'design-record.sh: warning: malformed frontmatter in %s — skipped\n' "$bn" >&2
+      continue
+    fi
+
+    # Parse with yq — first document only (select(di == 0)).
+    # Frontmatter only, so bodies never reach yq.
+    # Apply the same tab/newline/CR stripping as the fast path for both
+    # slug and tags to prevent injection via control characters.
+    local slug_field tags_csv
+    slug_field="$(printf '%s\n' "$fm_block" | yq -N 'select(di == 0) | ((.slug // "" | tostring) | sub("\t","") | sub("\n","") | sub("\r",""))' 2>/dev/null)" \
+      || { printf 'design-record.sh: warning: malformed frontmatter in %s — skipped\n' "$bn" >&2; continue; }
+    if [ "$slug_field" = "null" ]; then slug_field=""; fi
+
+    if [ -n "$slug_field" ] && [ "$slug_field" != "$stem" ]; then
+      printf 'design-record.sh: warning: %s: slug '\''%s'\'' disagrees with filename '\''%s'\'' — skipped\n' \
+        "$bn" "$slug_field" "$stem" >&2
+      continue
+    fi
+    [ -n "$slug_field" ] || slug_field="$stem"
+
+    tags_csv="$(printf '%s\n' "$fm_block" | yq -N 'select(di == 0) | ([.tags[]? | (. | tostring | sub("\t","") | sub("\n","") | sub("\r",""))] | join(","))' 2>/dev/null)" || tags_csv=""
+
+    raw="${raw}${slug_field}	${f}	${tags_csv}
+"
+  done <<< "$all_files_arg"
+
+  # Final dedup pass
+  if [ -n "$raw" ]; then
+    printf '%s' "$raw" | awk -F'\t' '
+{ slug = $1; if (slug in seen) next; seen[slug] = 1; print }
+    '
+  fi
+}
+
+# _roster_tag_is_required TAG_CSV — true when tags include design or ux.
+# Fork-free: uses case-pattern matching instead of tr/printf subshells.
+_roster_tag_is_required() {
+  local tags_csv="$1"
+  # Prepend and append comma for boundary matching
+  local padded=",${tags_csv},"
+  # Case-insensitive match via case pattern (no fork)
+  case "$padded" in
+    *,[Dd][Ee][Ss][Ii][Gg][Nn],*) return 0 ;;
+    *,[Uu][Xx],*)                 return 0 ;;
+  esac
+  return 1
+}
+
 # _get_required_stakeholders — output one slug per line for design/ux-tagged stakeholders.
-# Reads the merged roster and filters by tag (case-insensitive).
+# Reads $_CACHED_ROSTER directly (caller must call _ensure_roster first).
 _get_required_stakeholders() {
-  local slug path tags
-  while IFS='	' read -r slug path; do
+  _ensure_roster || return 1
+  [ -n "$_CACHED_ROSTER" ] || return 0
+  local slug _path tags_csv
+  while IFS='	' read -r slug _path tags_csv; do
     [ -n "$slug" ] || continue
-    # select(di == 0): read only the first YAML document (frontmatter).
-    tags="$(yq 'select(di == 0) | .tags[]' "$path" 2>/dev/null || true)"
-    if printf '%s\n' "$tags" | grep -qiE '^(design|ux)$'; then
+    if _roster_tag_is_required "$tags_csv"; then
       printf '%s\n' "$slug"
     fi
-  done <<< "$(_resolve_merged_roster)"
+  done <<< "$_CACHED_ROSTER"
 }
 
 # _assert_known_stakeholder STAKEHOLDER — reject stakeholders not on the roster.
-# Searches the merged roster for the given slug (literal match, not regex).
+# Reads $_CACHED_ROSTER directly (caller must call _ensure_roster first).
 # Returns 1 when the roster is empty (fail closed) or the slug is not found.
 _assert_known_stakeholder() {
   local stakeholder="$1"
-  local roster
-  roster="$(_resolve_merged_roster)"
-  if [ -z "$roster" ]; then
+  _ensure_roster || return 1
+  if [ -z "$_CACHED_ROSTER" ]; then
     if _roster_dir_exists; then
       printf 'design-record.sh: warning: vacuous roster — no design/ux-tagged stakeholders\n' >&2
     else
@@ -676,7 +967,7 @@ _assert_known_stakeholder() {
     return 1
   fi
   # Literal slug match via awk -v (not grep regex) to prevent injection
-  printf '%s\n' "$roster" | awk -F'	' -v slug="$stakeholder" '$1 == slug { found=1; exit } END { exit !found }'
+  printf '%s\n' "$_CACHED_ROSTER" | awk -F'	' -v slug="$stakeholder" '$1 == slug { found=1; exit } END { exit !found }'
 }
 
 # ---------------------------------------------------------------------------
@@ -726,6 +1017,12 @@ _check_convergence_at() {
   local file="$1"
   local iteration
   iteration="$(yq '.iteration' "$file")"
+
+  # If the roster resolver failed (e.g. symlink refusal), fail closed.
+  # The diagnostic was already printed by the resolver.
+  if [ "$_ROSTER_RC" -ne 0 ]; then
+    return 1
+  fi
 
   # Detect whether any roster directory exists before running the resolver.
   # This keeps the two vacuous diagnostics distinguishable: "no stakeholder
@@ -994,6 +1291,12 @@ cmd_transition() {
   current_state="$(yq '.design_state' "$RECORD_PATH")"
   _assert_legal_transition "$current_state" "$to"
 
+  # Resolve roster only for the review→approved edge (the only edge
+  # gated by convergence).
+  if [ "$to" = "approved" ]; then
+    _ensure_roster || true
+  fi
+
   _locked_mutate _do_transition "$to" "$actor" "$int_state" "$int_source"
 }
 
@@ -1039,6 +1342,7 @@ cmd_approve() {
   [ -n "$recorded_by" ] || _die "approve: --recorded-by required"
 
   _preflight_mutate
+  _ensure_roster || true
 
   # Check roster before locking — reject unknown stakeholders early
   if ! _assert_known_stakeholder "$stakeholder"; then
@@ -1482,6 +1786,7 @@ _do_set_product_project() {
 # keeps this verb fast for CI quality gates that poll frequently.
 cmd_check_convergence() {
   _preflight_read
+  _ensure_roster || true
   _check_convergence_at "$RECORD_PATH"
 }
 
