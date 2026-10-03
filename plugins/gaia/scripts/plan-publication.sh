@@ -14,11 +14,12 @@
 #   DELETE_ORPHAN <file>    — remove a framework-published file no longer needed
 #   REFRESH_MANIFEST        — rebuild the design-system manifest from the published set
 #
-# Security: every filename in all three inputs is validated. Absolute paths,
-# path-traversal segments (../), empty names, and control characters (including
-# newlines) are rejected with a diagnostic naming the offending entry. This
-# prevents a crafted manifest from directing writes or deletions outside the
-# project boundary.
+# Security: every filename and hash in all three inputs is validated via the
+# shared safe-filename lib. Absolute paths, path-traversal segments (../),
+# empty names, control characters (including newlines and tabs) are rejected
+# with a diagnostic naming the offending entry. This prevents a crafted
+# manifest from directing writes or deletions outside the project boundary,
+# and prevents a crafted hash from forging plan lines via newline injection.
 #
 # Remote listing: a malformed or wrong-shape listing deliberately degrades to
 # "read everything first" (fail-safe), while malformed local and last-published
@@ -35,13 +36,15 @@
 # Flags:
 #   --strict-conflicts     — treat every differing remote file as CONFLICT
 #                            (used when last-published manifest is absent)
+#   --project <key>        — target project key (design_system | product_design;
+#                            default: design_system)
 #
 # Usage:
-#   plan-publication.sh --local-manifest <path> --remote-listing <path> --last-published <path> [--strict-conflicts]
+#   plan-publication.sh --local-manifest <path> --remote-listing <path> --last-published <path> [--strict-conflicts] [--project <key>]
 #
 # Exit codes:
 #   0 — plan emitted successfully
-#   1 — malformed or missing input, or unsafe filename detected
+#   1 — malformed or missing input, or unsafe filename/hash detected
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL
@@ -50,11 +53,21 @@ SCRIPT_NAME="plan-publication.sh"
 
 _die() { printf '%s: %s\n' "$SCRIPT_NAME" "$1" >&2; exit 1; }
 
+# ---- source shared libs -----------------------------------------------------
+_PLAN_PUB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_SAFE_FN_LIB="${_PLAN_PUB_DIR}/lib/safe-filename.sh"
+if [ ! -f "$_SAFE_FN_LIB" ]; then
+  _die "missing shared lib: $_SAFE_FN_LIB"
+fi
+# shellcheck source=lib/safe-filename.sh
+. "$_SAFE_FN_LIB"
+
 # ---- arg parsing ----------------------------------------------------------
 LOCAL_MANIFEST=""
 REMOTE_LISTING=""
 LAST_PUBLISHED=""
 STRICT_CONFLICTS=false
+PROJECT="design_system"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -62,6 +75,7 @@ while [ $# -gt 0 ]; do
     --remote-listing)  REMOTE_LISTING="$2"; shift 2 ;;
     --last-published)  LAST_PUBLISHED="$2"; shift 2 ;;
     --strict-conflicts) STRICT_CONFLICTS=true; shift ;;
+    --project)         PROJECT="$2"; shift 2 ;;
     *) _die "unknown option: $1" ;;
   esac
 done
@@ -69,6 +83,11 @@ done
 [ -n "$LOCAL_MANIFEST" ]  || _die "--local-manifest required"
 [ -n "$REMOTE_LISTING" ]  || _die "--remote-listing required"
 [ -n "$LAST_PUBLISHED" ]  || _die "--last-published required"
+
+case "$PROJECT" in
+  design_system|product_design) ;;
+  *) _die "invalid --project value: $PROJECT (must be design_system or product_design)" ;;
+esac
 
 # ---- input validation -----------------------------------------------------
 
@@ -91,73 +110,76 @@ if [ -f "$REMOTE_LISTING" ] && [ -s "$REMOTE_LISTING" ]; then
   REMOTE_JSON="$(jq '.' "$REMOTE_LISTING" 2>/dev/null || printf '[]')"
 fi
 
-# Last-published: /dev/null or missing means first run (no orphans)
+# Last-published: /dev/null or missing means first run (no orphans).
+# Normalise legacy flat-array to per-project object, then slice to target key.
 PUBLISHED_JSON="[]"
 if [ "$LAST_PUBLISHED" != "/dev/null" ] && [ -f "$LAST_PUBLISHED" ] && [ -s "$LAST_PUBLISHED" ]; then
-  PUBLISHED_JSON="$(jq '.' "$LAST_PUBLISHED" 2>/dev/null || printf '[]')"
+  PUBLISHED_JSON="$(jq --arg proj "$PROJECT" '
+    # Detect shape: array = legacy flat, object = per-project
+    if type == "array" then
+      # Legacy: wrap under design_system
+      {"design_system": {"reference": null, "last_published_at": null, "files": .},
+       "product_design": {"reference": null, "last_published_at": null, "files": []}}
+    else . end
+    | .[$proj].files // []
+  ' "$LAST_PUBLISHED" 2>/dev/null || printf '[]')"
 fi
 
 # ---- single-pass plan computation via jq ----------------------------------
-# One jq program reads all three inputs (via --argjson), validates filenames,
-# joins them by filename, and emits the plan. No per-file shell fork.
+# One jq program reads all three inputs (via --argjson), validates filenames
+# and hashes, joins them by filename, and emits the plan. No per-file shell fork.
 
-jq -r --argjson remote "$REMOTE_JSON" --argjson published "$PUBLISHED_JSON" --argjson strict "$STRICT_CONFLICTS" '
-  # Filename safety check: reject absolute, traversal (..), dot-segment (.),
-  # empty, trailing slash, empty path segments (//), and control chars
-  def safe_filename:
-    . as $f |
-    if ($f | length) == 0 then error("unsafe filename: empty")
-    elif ($f | startswith("/")) then error("unsafe filename (absolute): \($f)")
-    elif ($f | test("(^|/)\\.\\.(/|$)")) then error("unsafe filename (traversal): \($f)")
-    elif ($f | test("(^|/)\\.(/|$)")) then error("unsafe filename (dot-segment): \($f)")
-    elif ($f | test("/$")) then error("unsafe filename (trailing slash): \($f)")
-    elif ($f | test("//")) then error("unsafe filename (empty segment): \($f)")
-    elif ($f | test("[\\x00-\\x1f\\x7f]")) then error("unsafe filename (control char): \($f)")
-    else .
-    end;
+jq -r --argjson remote "$REMOTE_JSON" --argjson published "$PUBLISHED_JSON" --argjson strict "$STRICT_CONFLICTS" "
+  $SAFE_FILENAME_JQ_DEF
+  $SAFE_HASH_JQ_DEF
 
-  # Validate all local filenames
-  . as $local |
-  ($local | map(.file | safe_filename) | empty // null) |
+  # Validate all local filenames and hashes
+  . as \$local |
+  (\$local | map(.file | safe_filename) | empty // null) |
+  (\$local | map(.hash | safe_hash) | empty // null) |
 
-  # Validate all published filenames
-  ($published | map(.file | safe_filename) | empty // null) |
+  # Validate all published filenames and hashes
+  (\$published | map(.file | safe_filename) | empty // null) |
+  (\$published | map(.hash | safe_hash) | empty // null) |
+
+  # Validate remote hashes (filenames already validated above pattern)
+  (\$remote | map(select(.hash != null) | .hash | safe_hash) | empty // null) |
 
   # Build lookup objects: {filename: hash}
-  ($remote  | map({(.file): .hash}) | add // {}) as $remote_map |
-  ($published | map({(.file): .hash}) | add // {}) as $pub_map |
+  (\$remote  | map({(.file): .hash}) | add // {}) as \$remote_map |
+  (\$published | map({(.file): .hash}) | add // {}) as \$pub_map |
 
   # Phase 1: for each local file, determine the operation
-  ($local | map(
-    .file as $f | .hash as $lh |
-    $remote_map[$f] as $rh |
-    if $rh == null then
+  (\$local | map(
+    .file as \$f | .hash as \$lh |
+    \$remote_map[\$f] as \$rh |
+    if \$rh == null then
       # Not in remote (new file or remote empty) — read first, then write
-      "READ_FIRST \($f)\nWRITE \($f)"
-    elif $lh == $rh then
-      "SKIP_UNCHANGED \($f)"
+      \"READ_FIRST \(\$f)\nWRITE \(\$f)\"
+    elif \$lh == \$rh then
+      \"SKIP_UNCHANGED \(\$f)\"
     else
       # Hashes differ — check for designer edit (or strict mode)
-      $pub_map[$f] as $ph |
-      if $strict then
-        "READ_FIRST \($f)\nCONFLICT \($f) designer_hash=\($rh) framework_hash=\($lh)"
-      elif ($ph != null) and ($rh != $ph) then
-        "READ_FIRST \($f)\nCONFLICT \($f) designer_hash=\($rh) framework_hash=\($lh)"
+      \$pub_map[\$f] as \$ph |
+      if \$strict then
+        \"READ_FIRST \(\$f)\nCONFLICT \(\$f) designer_hash=\(\$rh) framework_hash=\(\$lh)\"
+      elif (\$ph != null) and (\$rh != \$ph) then
+        \"READ_FIRST \(\$f)\nCONFLICT \(\$f) designer_hash=\(\$rh) framework_hash=\(\$lh)\"
       else
-        "READ_FIRST \($f)\nWRITE \($f)"
+        \"READ_FIRST \(\$f)\nWRITE \(\$f)\"
       end
     end
   )) +
 
   # Phase 2: orphan detection — published files no longer in local
-  (($local | map({(.file): true}) | add // {}) as $local_set |
-   $published | map(
-    select($local_set[.file] == null) |
-    "DELETE_ORPHAN \(.file)"
+  ((\$local | map({(.file): true}) | add // {}) as \$local_set |
+   \$published | map(
+    select(\$local_set[.file] == null) |
+    \"DELETE_ORPHAN \(.file)\"
   ))
 
   | .[]
-' "$LOCAL_MANIFEST"
+" "$LOCAL_MANIFEST"
 
 # Unconditional: rebuild the design-system manifest from the published set
 printf '%s\n' 'REFRESH_MANIFEST'

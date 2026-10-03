@@ -503,6 +503,8 @@ EOF
     [ "$rel_path" = "tests/design-gate.bats" ] && continue
     # v2-migration tests write temp-dir fixtures for cross-validation/mutant tests
     [ "$rel_path" = "tests/design-record-v2-migration.bats" ] && continue
+    # build-manifest-cards tests seed temp-dir design-record fixtures
+    [ "$rel_path" = "tests/build-manifest-cards.bats" ] && continue
 
     local matches
     matches="$(grep -nE "$write_patterns" "$filepath" 2>/dev/null \
