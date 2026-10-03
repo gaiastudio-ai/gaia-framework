@@ -340,6 +340,54 @@ _compute_entry_digest() {
   printf '%s\n%s' "$canonical" "$prev_digest" | _sha256_stdin
 }
 
+# _verify_chain_tail FILE COUNT PREV_DIGEST HEAD_DIGEST — shared tail checks.
+_verify_chain_tail() {
+  local file="$1" count="$2" prev_digest="$3" head_digest="$4"
+  if [ "$prev_digest" != "$head_digest" ]; then
+    printf 'design-record.sh: integrity failure — audit_head.last_digest mismatch\n' >&2
+    printf 'design-record.sh: expected %s, found %s\n' "$prev_digest" "$head_digest" >&2
+    exit 1
+  fi
+  local top_state last_audit_state
+  top_state="$(yq '.design_state' "$file")"
+  last_audit_state="$(yq ".audit[$((count - 1))].design_state" "$file")"
+  if [ "$top_state" != "$last_audit_state" ]; then
+    printf 'design-record.sh: integrity failure — design_state (%s) disagrees with last audit entry (%s)\n' \
+      "$top_state" "$last_audit_state" >&2
+    printf 'design-record.sh: this indicates tampering outside the sole writer\n' >&2
+    exit 1
+  fi
+}
+
+# _verify_chain_legacy FILE — per-entry fallback when Digest::SHA is unavailable.
+_verify_chain_legacy() {
+  local file="$1"
+  local count
+  count="$(yq '.audit | length' "$file")"
+  [ "$count" -gt 0 ] || return 0
+  local head_count head_digest
+  head_count="$(yq '.audit_head.count' "$file")"
+  head_digest="$(yq '.audit_head.last_digest' "$file")"
+  if [ "$head_count" != "$count" ]; then
+    printf 'design-record.sh: integrity failure — audit_head.count (%s) != audit length (%s)\n' \
+      "$head_count" "$count" >&2
+    exit 1
+  fi
+  local i prev_digest="" entry_json stored_digest computed_digest
+  for (( i=0; i<count; i++ )); do
+    entry_json="$(yq -o=json -I=0 ".audit[$i]" "$file")"
+    stored_digest="$(printf '%s' "$entry_json" | yq -r '._digest')"
+    computed_digest="$(_compute_entry_digest "$entry_json" "$prev_digest")"
+    if [ "$stored_digest" != "$computed_digest" ]; then
+      printf 'design-record.sh: integrity failure — digest chain broken at audit[%d]\n' "$i" >&2
+      printf 'design-record.sh: expected %s, found %s\n' "$computed_digest" "$stored_digest" >&2
+      exit 1
+    fi
+    prev_digest="$stored_digest"
+  done
+  _verify_chain_tail "$file" "$count" "$prev_digest" "$head_digest"
+}
+
 # _verify_chain FILE — walk the audit chain and die on mismatch.
 #
 # Validates three properties:
@@ -356,48 +404,65 @@ _verify_chain() {
   count="$(yq '.audit | length' "$file")"
   [ "$count" -gt 0 ] || return 0
 
-  # Check audit_head consistency
+  # Digest::SHA guard: fall back to per-entry path with warning
+  if ! perl -MDigest::SHA -e1 2>/dev/null; then
+    printf 'design-record.sh: warning: perl Digest::SHA unavailable — using per-entry fallback\n' >&2
+    _verify_chain_legacy "$file"
+    return $?
+  fi
+
   local head_count head_digest
   head_count="$(yq '.audit_head.count' "$file")"
   head_digest="$(yq '.audit_head.last_digest' "$file")"
-
   if [ "$head_count" != "$count" ]; then
     printf 'design-record.sh: integrity failure — audit_head.count (%s) != audit length (%s)\n' \
       "$head_count" "$count" >&2
     exit 1
   fi
 
-  # Walk the chain
-  local i prev_digest="" entry_json stored_digest computed_digest
-  for (( i=0; i<count; i++ )); do
-    entry_json="$(yq -o=json -I=0 ".audit[$i]" "$file")"
-    stored_digest="$(printf '%s' "$entry_json" | yq -r '._digest')"
-    computed_digest="$(_compute_entry_digest "$entry_json" "$prev_digest")"
-    if [ "$stored_digest" != "$computed_digest" ]; then
-      printf 'design-record.sh: integrity failure — digest chain broken at audit[%d]\n' "$i" >&2
-      printf 'design-record.sh: expected %s, found %s\n' "$computed_digest" "$stored_digest" >&2
+  # Single pass: two fixed yq streams fed into one perl hashing process.
+  # Data via file descriptors, never args or env (128 KB Linux arg limit).
+  # Perl line-count check (exit 4) catches failed or malformed yq output.
+  local result rc=0
+  result="$(perl -MDigest::SHA=sha256_hex -e '
+    my $n = shift; my $prev = "";
+    open(my $c, "<&=3") or exit 3;
+    open(my $d, "<&=4") or exit 3;
+    my @c = <$c>; my @d = <$d>;
+    exit 4 if @c != $n || @d != $n;
+    for (my $i = 0; $i < $n; $i++) {
+      chomp $c[$i]; chomp $d[$i];
+      my $exp = sha256_hex($c[$i] . "\n" . $prev);
+      if ($d[$i] ne $exp) { printf "broken\n%d\n%s\n", $i, $exp; exit 0 }
+      $prev = $d[$i]; }
+    printf "ok\n%s\n", $prev;
+  ' "$count" \
+    3< <(yq -o=json -I=0 '.audit[] | sort_keys(..) | del(._digest)' "$file" 2>/dev/null) \
+    4< <(yq -r '.audit[]._digest' "$file" 2>/dev/null))" || rc=$?
+
+  case "$rc:$result" in
+    0:broken*)
+      # Re-read the broken entry's stored digest via the old two-step command.
+      # 2 yq calls on the failure path only — byte-identical to old output.
+      local idx exp ej found
+      idx="$(printf '%s\n' "$result" | sed -n 2p)"
+      exp="$(printf '%s\n' "$result" | sed -n 3p)"
+      ej="$(yq -o=json -I=0 ".audit[$idx]" "$file")"
+      found="$(printf '%s' "$ej" | yq -r '._digest')"
+      printf 'design-record.sh: integrity failure — digest chain broken at audit[%d]\n' "$idx" >&2
+      printf 'design-record.sh: expected %s, found %s\n' "$exp" "$found" >&2
       exit 1
-    fi
-    prev_digest="$stored_digest"
-  done
-
-  # Verify the last digest matches audit_head
-  if [ "$prev_digest" != "$head_digest" ]; then
-    printf 'design-record.sh: integrity failure — audit_head.last_digest mismatch\n' >&2
-    printf 'design-record.sh: expected %s, found %s\n' "$prev_digest" "$head_digest" >&2
-    exit 1
-  fi
-
-  # Cross-check: top-level design_state must match the last audit entry's
-  local top_state last_audit_state
-  top_state="$(yq '.design_state' "$file")"
-  last_audit_state="$(yq ".audit[$((count - 1))].design_state" "$file")"
-  if [ "$top_state" != "$last_audit_state" ]; then
-    printf 'design-record.sh: integrity failure — design_state (%s) disagrees with last audit entry (%s)\n' \
-      "$top_state" "$last_audit_state" >&2
-    printf 'design-record.sh: this indicates tampering outside the sole writer\n' >&2
-    exit 1
-  fi
+      ;;
+    0:ok*)
+      # Fast path succeeded — fall through to shared tail checks
+      _verify_chain_tail "$file" "$count" "$(printf '%s\n' "$result" | sed -n 2p)" "$head_digest"
+      ;;
+    *)
+      # Non-zero rc (perl exit 3/4, or signal) or unrecognised output — legacy fallback.
+      # This catches: failed yq producing wrong line count, newline-in-digest, etc.
+      _verify_chain_legacy "$file"
+      ;;
+  esac
 }
 
 # _append_audit TMP_FILE EVENT ACTOR [extra yq expressions...]
