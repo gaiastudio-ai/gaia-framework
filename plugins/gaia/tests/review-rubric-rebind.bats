@@ -1722,3 +1722,52 @@ require_section() {
   [ "$status" -ne 0 ] || { echo "read-mode mutant still has scope: files — swap failed" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
+
+# ---------------------------------------------------------------------------
+# Persona routing is not gated on design_state value
+#
+# The Design Consumption entry condition must fire whenever a design-record
+# reference exists, regardless of the record's approval state.  A draft,
+# in-review, or stale design record must still receive routing instructions.
+# The separate stale-state bullet handles the staleness warning.
+# ---------------------------------------------------------------------------
+
+@test "base-dev persona routing is not gated on a design_state value" {
+  local f="$REPO_ROOT/agents/_base-dev.md"
+  [ -f "$f" ] || { echo "file missing: $f" >&2; return 1; }
+  local section
+  section="$(extract_design_consumption_section "$f")"
+  require_section "$section" "Design Consumption"
+
+  # The routing entry sentence must mention design-record.yaml but must NOT
+  # condition on a specific design_state value (e.g. "approved", "draft").
+  # Match the parenthetical that names the file path and assert it does not
+  # also contain "design_state".
+  #
+  # Strategy: extract the line that names "design-record.yaml" and assert
+  # it does not contain "design_state".  This is tighter than a whole-section
+  # grep because design_state can legitimately appear in the stale-state
+  # bullet further down.
+  local routing_line
+  routing_line="$(printf '%s\n' "$section" | grep 'design-record\.yaml')"
+  [ -n "$routing_line" ] || \
+    { echo "no line mentioning design-record.yaml in Design Consumption" >&2; return 1; }
+  run bash -c 'printf "%s" "$1" | grep -ci "design_state"' _ "$routing_line"
+  [ "$output" = "0" ] || \
+    { echo "routing line is gated on design_state ($output hits): $routing_line" >&2; return 1; }
+
+  # Mutant: re-add the condition and assert the test catches it
+  local mutant_f mutant_tmp
+  mutant_f="$(mktemp "$BATS_TMPDIR/mutant-dstate-XXXXXX")"
+  mutant_tmp="$(mktemp "$BATS_TMPDIR/mutant-dstate-tmp-XXXXXX")"
+  cp "$f" "$mutant_f"
+  sed 's/\.yaml`)/\.yaml` with `design_state: approved`)/' "$mutant_f" > "$mutant_tmp" && mv "$mutant_tmp" "$mutant_f"
+  local mutant_section
+  mutant_section="$(extract_design_consumption_section "$mutant_f")"
+  local mutant_routing_line
+  mutant_routing_line="$(printf '%s\n' "$mutant_section" | grep 'design-record\.yaml')"
+  run bash -c 'printf "%s" "$1" | grep -ci "design_state"' _ "$mutant_routing_line"
+  [ "$output" != "0" ] || \
+    { echo "mutant with design_state re-added was not caught" >&2; return 1; }
+  rm -f "$mutant_f"
+}
