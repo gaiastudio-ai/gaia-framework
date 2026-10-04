@@ -262,7 +262,11 @@ setup() {
   command -v yq >/dev/null 2>&1 || fail "yq is required but not found on PATH"
 }
 
-teardown() { common_teardown; }
+teardown() {
+  [ -z "${_LOCK_TEST_BG:-}" ] || kill "$_LOCK_TEST_BG" 2>/dev/null || true
+  _LOCK_TEST_BG=""
+  common_teardown
+}
 
 
 # =========================================================================
@@ -2867,53 +2871,64 @@ _gen_fixture() {
 # _ms — milliseconds since epoch via perl Time::HiRes
 _ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time()*1000'; }
 
-setup_file() {
-  # Resolve real tool paths before any PATH manipulation
-  export REAL_YQ
-  REAL_YQ="$(command -v yq)"
-  export REAL_PERL
-  REAL_PERL="$(command -v perl)"
-
+_chain_setup_generate() {
   local SCRIPTS
-  SCRIPTS="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
+  SCRIPTS="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)" || return 1
 
   # Generate a template from init (produces a valid v2 record with all required fields)
   local tp="$BATS_FILE_TMPDIR/tplproj"
-  mkdir -p "$tp"
+  mkdir -p "$tp" || return 1
   PROJECT_ROOT="$tp" "$SCRIPTS/design-record.sh" init \
-    --reference "test-ref" --discovered-via "project-artifacts" >/dev/null
-  cp "$tp/.gaia/state/design-record.yaml" "$BATS_FILE_TMPDIR/template.yaml"
+    --reference "test-ref" --discovered-via "project-artifacts" >/dev/null || return 1
+  cp "$tp/.gaia/state/design-record.yaml" "$BATS_FILE_TMPDIR/template.yaml" || return 1
 
   # Generate fixtures: 3-entry, 10-entry, 200-entry
-  _gen_fixture 3   "$BATS_FILE_TMPDIR/f3.yaml"   "$BATS_FILE_TMPDIR/template.yaml"
-  _gen_fixture 10  "$BATS_FILE_TMPDIR/f10.yaml"  "$BATS_FILE_TMPDIR/template.yaml"
-  _gen_fixture 200 "$BATS_FILE_TMPDIR/f200.yaml" "$BATS_FILE_TMPDIR/template.yaml"
+  _gen_fixture 3   "$BATS_FILE_TMPDIR/f3.yaml"   "$BATS_FILE_TMPDIR/template.yaml" || return 1
+  _gen_fixture 10  "$BATS_FILE_TMPDIR/f10.yaml"  "$BATS_FILE_TMPDIR/template.yaml" || return 1
+  _gen_fixture 200 "$BATS_FILE_TMPDIR/f200.yaml" "$BATS_FILE_TMPDIR/template.yaml" || return 1
 
   # Sweep guards — fixture entry counts must be correct
-  [ "$("$REAL_YQ" '.audit | length' "$BATS_FILE_TMPDIR/f3.yaml")" -eq 3 ]
-  [ "$("$REAL_YQ" '.audit | length' "$BATS_FILE_TMPDIR/f10.yaml")" -eq 10 ]
-  [ "$("$REAL_YQ" '.audit | length' "$BATS_FILE_TMPDIR/f200.yaml")" -eq 200 ]
+  [ "$("$REAL_YQ" '.audit | length' "$BATS_FILE_TMPDIR/f3.yaml")" -eq 3 ]   || return 1
+  [ "$("$REAL_YQ" '.audit | length' "$BATS_FILE_TMPDIR/f10.yaml")" -eq 10 ]  || return 1
+  [ "$("$REAL_YQ" '.audit | length' "$BATS_FILE_TMPDIR/f200.yaml")" -eq 200 ] || return 1
 
   # Race-free yq counting shim — one line per call, count with wc -l
-  mkdir -p "$BATS_FILE_TMPDIR/shim"
-  cat > "$BATS_FILE_TMPDIR/shim/yq" <<EOF
+  mkdir -p "$BATS_FILE_TMPDIR/shim" || return 1
+  cat > "$BATS_FILE_TMPDIR/shim/yq" <<EOF || return 1
 #!/bin/bash
 echo . >> "\$YQ_COUNT_FILE"
 [ -n "\${YQ_ARGS_LOG:-}" ] && printf '%s\n' "\$*" >> "\$YQ_ARGS_LOG"
 exec "$REAL_YQ" "\$@"
 EOF
-  chmod +x "$BATS_FILE_TMPDIR/shim/yq"
+  chmod +x "$BATS_FILE_TMPDIR/shim/yq" || return 1
 
   # Fake perl shim — fails -MDigest::SHA*, passes everything else
-  mkdir -p "$BATS_FILE_TMPDIR/noperlsha"
-  cat > "$BATS_FILE_TMPDIR/noperlsha/perl" <<EOF
+  mkdir -p "$BATS_FILE_TMPDIR/noperlsha" || return 1
+  cat > "$BATS_FILE_TMPDIR/noperlsha/perl" <<EOF || return 1
 #!/bin/bash
 for a in "\$@"; do
   case "\$a" in -MDigest::SHA*) echo "Can't locate Digest/SHA.pm" >&2; exit 2;; esac
 done
 exec "$REAL_PERL" "\$@"
 EOF
-  chmod +x "$BATS_FILE_TMPDIR/noperlsha/perl"
+  chmod +x "$BATS_FILE_TMPDIR/noperlsha/perl" || return 1
+}
+
+# _need_chain_fixtures — guard for tests that depend on setup_file fixtures.
+# Fails (never skips) with a clear diagnostic when fixtures are unavailable.
+_need_chain_fixtures() {
+  [ "${_CHAIN_FIXTURES_OK:-}" = 1 ] || \
+    fail "chain fixtures unavailable: setup_file fixture generation failed"
+}
+
+setup_file() {
+  export REAL_YQ REAL_PERL
+  REAL_YQ="$(command -v yq)"
+  REAL_PERL="$(command -v perl)"
+
+  if _chain_setup_generate; then
+    export _CHAIN_FIXTURES_OK=1
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -2923,6 +2938,7 @@ EOF
 # bats test_tags=hardware-dependent
 @test "200-entry mutation completes within wall-clock bound" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f200.yaml" "$RECORD"
 
   local t0 t1
@@ -2944,6 +2960,7 @@ EOF
 
 @test "yq invocation count does not grow with entry count" {
   assert_script_exists
+  _need_chain_fixtures
   perl -MDigest::SHA -e1 || fail "Digest::SHA missing — cannot test fast path"
 
   cp "$BATS_FILE_TMPDIR/f10.yaml" "$RECORD"
@@ -2974,18 +2991,26 @@ EOF
 
 @test "tampered audit entry detected on mutating verb" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f10.yaml" "$RECORD"
 
   # Tamper audit[5] field value, THEN capture state
   yq -i '.audit[5].actor = "tampered"' "$RECORD"
   capture_record_state "$RECORD"
 
+  # Compute the expected digest: canonical form of tampered entry + previous digest
+  local prev_digest canonical expected_digest found_digest
+  prev_digest="$(yq -r '.audit[4]._digest' "$RECORD")"
+  canonical="$(yq -o=json -I=0 '.audit[5] | sort_keys(..) | del(._digest)' "$RECORD")"
+  expected_digest="$(printf '%s\n%s' "$canonical" "$prev_digest" | _sha256_stdin)"
+  found_digest="$(yq -r '.audit[5]._digest' "$RECORD")"
+
   run "$SCRIPT" transition --to review --actor t
   [ "$status" -ne 0 ] || fail "transition should fail on tampered entry"
   [[ "$output" == *"integrity failure — digest chain broken at audit[5]"* ]] || \
     fail "expected digest-chain diagnostic for audit[5], got: $output"
-  [[ "$output" == *"expected "* ]] || fail "missing expected-hex line: $output"
-  [[ "$output" == *", found "* ]] || fail "missing found-hex line: $output"
+  [[ "$output" == *"expected ${expected_digest}, found ${found_digest}"* ]] || \
+    fail "expected exact hex 'expected ${expected_digest}, found ${found_digest}', got: $output"
   assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
 }
 
@@ -2995,16 +3020,26 @@ EOF
 
 @test "reordered audit entries detected on mutating verb" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f10.yaml" "$RECORD"
 
   # Swap audit[3] and audit[4], THEN capture state
   yq -i '.audit[3] as $a | .audit[3] = .audit[4] | .audit[4] = $a' "$RECORD"
   capture_record_state "$RECORD"
 
+  # Compute expected digest for index 3 after reorder
+  local prev_digest canonical expected_digest found_digest
+  prev_digest="$(yq -r '.audit[2]._digest' "$RECORD")"
+  canonical="$(yq -o=json -I=0 '.audit[3] | sort_keys(..) | del(._digest)' "$RECORD")"
+  expected_digest="$(printf '%s\n%s' "$canonical" "$prev_digest" | _sha256_stdin)"
+  found_digest="$(yq -r '.audit[3]._digest' "$RECORD")"
+
   run "$SCRIPT" transition --to review --actor t
   [ "$status" -ne 0 ] || fail "transition should fail on reordered entries"
   [[ "$output" == *"integrity failure — digest chain broken at audit[3]"* ]] || \
     fail "expected diagnostic for audit[3], got: $output"
+  [[ "$output" == *"expected ${expected_digest}, found ${found_digest}"* ]] || \
+    fail "expected exact hex 'expected ${expected_digest}, found ${found_digest}', got: $output"
   assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
 }
 
@@ -3014,6 +3049,7 @@ EOF
 
 @test "deleted audit entry detected on mutating verb" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f10.yaml" "$RECORD"
 
   # Delete audit[7] but leave audit_head.count at 10, THEN capture state
@@ -3033,6 +3069,7 @@ EOF
 
 @test "empty-audit record succeeds, canonical pass never called" {
   assert_script_exists
+  _need_chain_fixtures
   seed_minimal_record "draft" 1
 
   export YQ_COUNT_FILE="$BATS_TEST_TMPDIR/c"
@@ -3127,11 +3164,13 @@ EOF
 
 @test "lock held for full verification, concurrent acquire fails" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f200.yaml" "$RECORD"
 
   GAIA_DREC_WRITE_DELAY=3 "$SCRIPT" transition --to review --actor t \
     > "$BATS_TEST_TMPDIR/bg.out" 2>&1 &
   local bg=$!
+  _LOCK_TEST_BG=$bg
 
   # Wait for tmp file (proves lock is held) — iteration-capped to avoid hangs
   local i=0
@@ -3190,6 +3229,7 @@ EOF
 
 @test "canonical-form parity: end-to-end on probe entries" {
   assert_script_exists
+  _need_chain_fixtures
 
   # 11 probes covering quotes, backslash, tab, control chars, Unicode, emoji, entities, floats
   local probes
@@ -3219,6 +3259,10 @@ EOF
     # Assert single-call yq expression was used (fast path)
     grep -qF '.audit[] | sort_keys(..) | del(._digest)' "$YQ_ARGS_LOG" || \
       fail "single-call canonical form not used for probe [$p]"
+
+    # Prove fast path accepted — no per-entry fallback ran
+    [[ "$output" != *"per-entry fallback"* ]] || \
+      fail "per-entry fallback ran — fast path did not accept probe [$p]: $output"
   done
 }
 
@@ -3257,6 +3301,7 @@ EOF
 
 @test "verify-integrity on valid 200-entry record" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f200.yaml" "$RECORD"
 
   run "$SCRIPT" verify-integrity
@@ -3270,14 +3315,24 @@ EOF
 
 @test "verify-integrity on tampered 200-entry record" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f200.yaml" "$RECORD"
 
   yq -i '.audit[5].actor = "tampered"' "$RECORD"
+
+  # Compute exact expected/found hex values
+  local prev_digest canonical expected_digest found_digest
+  prev_digest="$(yq -r '.audit[4]._digest' "$RECORD")"
+  canonical="$(yq -o=json -I=0 '.audit[5] | sort_keys(..) | del(._digest)' "$RECORD")"
+  expected_digest="$(printf '%s\n%s' "$canonical" "$prev_digest" | _sha256_stdin)"
+  found_digest="$(yq -r '.audit[5]._digest' "$RECORD")"
 
   run "$SCRIPT" verify-integrity
   [ "$status" -ne 0 ] || fail "verify-integrity should fail on tampered entry"
   [[ "$output" == *"integrity failure — digest chain broken at audit[5]"* ]] || \
     fail "expected diagnostic for audit[5], got: $output"
+  [[ "$output" == *"expected ${expected_digest}, found ${found_digest}"* ]] || \
+    fail "expected exact hex 'expected ${expected_digest}, found ${found_digest}', got: $output"
 }
 
 # ---------------------------------------------------------------------------
@@ -3286,14 +3341,24 @@ EOF
 
 @test "verify-integrity on reordered 200-entry record" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f200.yaml" "$RECORD"
 
   yq -i '.audit[3] as $a | .audit[3] = .audit[4] | .audit[4] = $a' "$RECORD"
+
+  # Compute exact expected/found hex values for index 3 after reorder
+  local prev_digest canonical expected_digest found_digest
+  prev_digest="$(yq -r '.audit[2]._digest' "$RECORD")"
+  canonical="$(yq -o=json -I=0 '.audit[3] | sort_keys(..) | del(._digest)' "$RECORD")"
+  expected_digest="$(printf '%s\n%s' "$canonical" "$prev_digest" | _sha256_stdin)"
+  found_digest="$(yq -r '.audit[3]._digest' "$RECORD")"
 
   run "$SCRIPT" verify-integrity
   [ "$status" -ne 0 ] || fail "verify-integrity should fail on reordered entries"
   [[ "$output" == *"integrity failure — digest chain broken at audit[3]"* ]] || \
     fail "expected diagnostic for audit[3], got: $output"
+  [[ "$output" == *"expected ${expected_digest}, found ${found_digest}"* ]] || \
+    fail "expected exact hex 'expected ${expected_digest}, found ${found_digest}', got: $output"
 }
 
 # ---------------------------------------------------------------------------
@@ -3302,6 +3367,7 @@ EOF
 
 @test "verify-integrity on deleted-entry 200-entry record" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f200.yaml" "$RECORD"
 
   yq -i 'del(.audit[7])' "$RECORD"
@@ -3318,6 +3384,7 @@ EOF
 
 @test "fallback warning emitted when Digest::SHA unavailable" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f3.yaml" "$RECORD"
 
   PATH="$BATS_FILE_TMPDIR/noperlsha:$PATH" run "$SCRIPT" verify-integrity
@@ -3334,6 +3401,7 @@ EOF
 
 @test "fallback detects design-state tamper" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f3.yaml" "$RECORD"
 
   # Tamper top-level design_state
@@ -3348,11 +3416,12 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# #21 — line-count guard catches newline in last digest
+# #21 — JSON-encoded digest reading rejects newline in last digest
 # ---------------------------------------------------------------------------
 
-@test "line-count guard catches newline in last digest" {
+@test "JSON-encoded digest reading rejects newline in last digest" {
   assert_script_exists
+  _need_chain_fixtures
   cp "$BATS_FILE_TMPDIR/f3.yaml" "$RECORD"
 
   # Replace the LAST entry's _digest with <correct hex>\nX
@@ -3361,7 +3430,371 @@ EOF
   G="$good" yq -i '.audit[2]._digest = strenv(G) + "\nX"' "$RECORD"
 
   run "$SCRIPT" verify-integrity
-  [ "$status" -ne 0 ] || fail "accepted a newline-bearing digest — line-count guard missing"
+  [ "$status" -ne 0 ] || fail "accepted a newline-bearing digest — JSON-encoded reading should reject it"
   [[ "$output" == *"integrity failure — digest chain broken at audit[2]"* ]] || \
     fail "expected diagnostic for audit[2], got: $output"
+}
+
+# =========================================================================
+# Emptied-trail rejection — head-metadata guard on empty audit arrays
+# =========================================================================
+
+# ---------------------------------------------------------------------------
+# #22 — emptied trail with non-zero head count rejects verify-integrity
+# ---------------------------------------------------------------------------
+
+@test "emptied trail with non-zero head count rejects verify-integrity" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+  yq -i '.audit = [] | .audit_head.count = 20 | .audit_head.last_digest = "abc"' "$RECORD"
+
+  run "$SCRIPT" verify-integrity
+  [ "$status" -ne 0 ] || fail "accepted an emptied trail with non-zero head count"
+  [[ "$output" == *"integrity failure — audit_head.count (20) != audit length (0)"* ]] || \
+    fail "expected count-mismatch diagnostic, got: $output"
+}
+
+# ---------------------------------------------------------------------------
+# #23 — emptied trail with non-empty last_digest rejects verify-integrity
+# ---------------------------------------------------------------------------
+
+@test "emptied trail with non-empty last_digest rejects verify-integrity" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+  local fake_digest
+  fake_digest="$(printf 'a%.0s' {1..64})"
+  yq -i '.audit = [] | .audit_head.count = 0' "$RECORD"
+  D="$fake_digest" yq -i '.audit_head.last_digest = strenv(D)' "$RECORD"
+
+  run "$SCRIPT" verify-integrity
+  [ "$status" -ne 0 ] || fail "accepted an emptied trail with non-empty last_digest"
+  [[ "$output" == *"integrity failure — audit_head.last_digest mismatch"* ]] || \
+    fail "expected last_digest mismatch diagnostic, got: $output"
+}
+
+# ---------------------------------------------------------------------------
+# #24 — mutating verb on emptied trail rejects and leaves state unchanged
+# ---------------------------------------------------------------------------
+
+@test "mutating verb on emptied trail rejects and leaves state unchanged" {
+  assert_script_exists
+  seed_minimal_record "draft" 1
+  yq -i '.audit = [] | .audit_head.count = 20 | .audit_head.last_digest = "abc"' "$RECORD"
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" transition --to review --actor t
+  [ "$status" -ne 0 ] || fail "transition should fail on emptied trail"
+  [[ "$output" == *"integrity failure — audit_head.count (20) != audit length (0)"* ]] || \
+    fail "expected count-mismatch diagnostic, got: $output"
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+# ---------------------------------------------------------------------------
+# #25 — legacy fallback rejects emptied trail directly
+# ---------------------------------------------------------------------------
+
+@test "legacy fallback rejects emptied trail directly" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+  yq -i '.audit = [] | .audit_head.count = 20 | .audit_head.last_digest = "abc"' "$RECORD"
+
+  # Source the script to call _verify_chain_legacy directly.
+  # Needs a sibling lib/acquire-lock.sh for the source to succeed.
+  local src_dir="$BATS_TEST_TMPDIR/src"
+  mkdir -p "$src_dir/lib"
+  cp "$SCRIPTS_DIR/design-record.sh" "$src_dir/design-record.sh"
+  cp "$SCRIPTS_DIR/lib/acquire-lock.sh" "$src_dir/lib/acquire-lock.sh"
+
+  run bash -c "
+    set -euo pipefail
+    source '$src_dir/design-record.sh'
+    _verify_chain_legacy '$RECORD'
+  "
+  [ "$status" -ne 0 ] || fail "legacy fallback accepted emptied trail"
+  [[ "$output" == *"integrity failure — audit_head.count (20) != audit length (0)"* ]] || \
+    fail "expected count-mismatch diagnostic from legacy path, got: $output"
+}
+
+# ---------------------------------------------------------------------------
+# #26 — legitimate empty record with absent audit_head succeeds
+# ---------------------------------------------------------------------------
+
+@test "legitimate empty record with absent audit_head succeeds" {
+  assert_script_exists
+  seed_minimal_record "draft" 1
+  yq -i '.audit = [] | del(.audit_head)' "$RECORD"
+
+  run "$SCRIPT" verify-integrity
+  [ "$status" -eq 0 ] || fail "verify-integrity failed on legitimate empty record: $output"
+  [[ "$output" == *"integrity: ok"* ]] || fail "expected integrity: ok, got: $output"
+}
+
+# ---------------------------------------------------------------------------
+# #27 — mutant restoring unconditional early return accepts emptied trail
+# ---------------------------------------------------------------------------
+
+@test "mutant restoring unconditional early return accepts emptied trail" {
+  assert_script_exists
+  seed_minimal_record "review" 1
+  yq -i '.audit = [] | .audit_head.count = 20 | .audit_head.last_digest = "abc"' "$RECORD"
+
+  # Create a mutant that restores the old unconditional early return.
+  # The sed targets the FIXED pattern (_check_empty_head guard). On unfixed
+  # code the pattern does not match, so the mutant is an identical copy and
+  # the first assertion passes vacuously — the test still fails at the
+  # real-code assertion (proving the fix is missing). After GREEN the sed
+  # matches, the mutant genuinely diverges, and both assertions are load-bearing.
+  local mut_dir="$BATS_TEST_TMPDIR/mutant"
+  mkdir -p "$mut_dir/lib"
+  cp "$SCRIPTS_DIR/lib/acquire-lock.sh" "$mut_dir/lib/acquire-lock.sh"
+
+  sed 's/\[ "\$count" -gt 0 \] || { _check_empty_head "\$file"; return 0; }/[ "$count" -gt 0 ] || return 0/' \
+    "$SCRIPTS_DIR/design-record.sh" > "$mut_dir/design-record.sh"
+  chmod +x "$mut_dir/design-record.sh"
+
+  # Guard: after the fix is in, the sed MUST have changed something.
+  # On unfixed code this guard is skipped (diff returns 0 = identical).
+  if ! diff -q "$SCRIPTS_DIR/design-record.sh" "$mut_dir/design-record.sh" >/dev/null 2>&1; then
+    # Files differ — the sed matched, so the mutant is real.
+    # Verify the mutant still has the unconditional early return.
+    grep -q '\[ "\$count" -gt 0 \] || return 0' "$mut_dir/design-record.sh" || \
+      fail "mutant sed did not restore the unconditional early return"
+  fi
+
+  # Mutant should accept the emptied trail (the old bug)
+  run bash -c "
+    set -euo pipefail
+    source '$mut_dir/design-record.sh'
+    _verify_chain '$RECORD'
+  "
+  [ "$status" -eq 0 ] || fail "mutant should accept emptied trail (old behavior), got status=$status: $output"
+
+  # Real code should reject it
+  local real_dir="$BATS_TEST_TMPDIR/real"
+  mkdir -p "$real_dir/lib"
+  cp "$SCRIPTS_DIR/design-record.sh" "$real_dir/design-record.sh"
+  cp "$SCRIPTS_DIR/lib/acquire-lock.sh" "$real_dir/lib/acquire-lock.sh"
+
+  run bash -c "
+    set -euo pipefail
+    source '$real_dir/design-record.sh'
+    _verify_chain '$RECORD'
+  "
+  [ "$status" -ne 0 ] || fail "real code should reject emptied trail"
+}
+
+# =========================================================================
+# Exact digest assertions — mutant kill tests for swapped/duplicated hex values
+# =========================================================================
+
+# ---------------------------------------------------------------------------
+# #28 — swapped expected/found digests caught by tamper test
+# ---------------------------------------------------------------------------
+
+@test "swapped expected/found digests caught by tamper test" {
+  assert_script_exists
+  _need_chain_fixtures
+  cp "$BATS_FILE_TMPDIR/f10.yaml" "$RECORD"
+  yq -i '.audit[5].actor = "tampered"' "$RECORD"
+
+  # Compute expected and found digests independently
+  local prev_digest canonical expected_digest found_digest
+  prev_digest="$(yq -r '.audit[4]._digest' "$RECORD")"
+  canonical="$(yq -o=json -I=0 '.audit[5] | sort_keys(..) | del(._digest)' "$RECORD")"
+  expected_digest="$(printf '%s\n%s' "$canonical" "$prev_digest" | _sha256_stdin)"
+  found_digest="$(yq -r '.audit[5]._digest' "$RECORD")"
+
+  # Sanity: the two digests must differ (tampered entry changes the expected)
+  [ "$expected_digest" != "$found_digest" ] || \
+    fail "expected_digest == found_digest — tamper did not change the entry"
+
+  # Run verify-integrity and capture output
+  run "$SCRIPT" verify-integrity
+  [ "$status" -ne 0 ] || fail "tampered record should fail integrity check"
+
+  # The output MUST show expected then found in the correct order.
+  # A swap-mutant would print "expected $found_digest, found $expected_digest"
+  # which this assertion catches.
+  [[ "$output" == *"expected ${expected_digest}, found ${found_digest}"* ]] || \
+    fail "expected '$expected_digest', found '$found_digest' not in output (swap mutant would survive): $output"
+}
+
+# ---------------------------------------------------------------------------
+# #29 — duplicated expected as found caught by tamper test
+# ---------------------------------------------------------------------------
+
+@test "duplicated expected as found caught by tamper test" {
+  assert_script_exists
+  _need_chain_fixtures
+  cp "$BATS_FILE_TMPDIR/f10.yaml" "$RECORD"
+  yq -i '.audit[5].actor = "tampered"' "$RECORD"
+
+  # Compute expected and found digests independently
+  local prev_digest canonical expected_digest found_digest
+  prev_digest="$(yq -r '.audit[4]._digest' "$RECORD")"
+  canonical="$(yq -o=json -I=0 '.audit[5] | sort_keys(..) | del(._digest)' "$RECORD")"
+  expected_digest="$(printf '%s\n%s' "$canonical" "$prev_digest" | _sha256_stdin)"
+  found_digest="$(yq -r '.audit[5]._digest' "$RECORD")"
+
+  # Sanity: the two digests must differ
+  [ "$expected_digest" != "$found_digest" ] || \
+    fail "expected_digest == found_digest — tamper did not change the entry"
+
+  # Run verify-integrity and capture output
+  run "$SCRIPT" verify-integrity
+  [ "$status" -ne 0 ] || fail "tampered record should fail integrity check"
+
+  # The output MUST contain the found_digest (the stored original).
+  # A duplicate-expected mutant would print expected_digest twice:
+  #   "expected $expected_digest, found $expected_digest"
+  # so it would NOT contain found_digest in the "found" position.
+  [[ "$output" == *"found ${found_digest}"* ]] || \
+    fail "found_digest '$found_digest' missing from output (duplicate mutant would survive): $output"
+
+  # Double-check: expected_digest must also be present as "expected"
+  [[ "$output" == *"expected ${expected_digest}"* ]] || \
+    fail "expected_digest '$expected_digest' missing from output: $output"
+}
+
+# =========================================================================
+# Newline-in-digest and fallback tests — JSON-encoded digest reading
+# =========================================================================
+
+# ---------------------------------------------------------------------------
+# #30a — newline in last digest of 320 entries: fast-path call-count proof
+# ---------------------------------------------------------------------------
+
+@test "newline in last digest of 320 entries detected by fast path" {
+  assert_script_exists
+  _need_chain_fixtures
+  perl -MDigest::SHA -e1 || fail "Digest::SHA missing — cannot test fast path"
+
+  # Generate 320-entry fixture
+  _gen_fixture 320 "$BATS_TEST_TMPDIR/f320.yaml" "$BATS_FILE_TMPDIR/template.yaml"
+
+  # Inject newline into LAST entry's digest only
+  local good
+  good="$(yq -r '.audit[319]._digest' "$BATS_TEST_TMPDIR/f320.yaml")"
+
+  # Baseline: 10-entry run with newline-bearing last digest
+  cp "$BATS_FILE_TMPDIR/f10.yaml" "$BATS_TEST_TMPDIR/f10_tmp.yaml"
+  local good10
+  good10="$(yq -r '.audit[9]._digest' "$BATS_TEST_TMPDIR/f10_tmp.yaml")"
+  G="$good10" yq -i '.audit[9]._digest = strenv(G) + "\nX"' "$BATS_TEST_TMPDIR/f10_tmp.yaml"
+  cp "$BATS_TEST_TMPDIR/f10_tmp.yaml" "$RECORD"
+  export YQ_COUNT_FILE="$BATS_TEST_TMPDIR/c10"
+  : > "$YQ_COUNT_FILE"
+  PATH="$BATS_FILE_TMPDIR/shim:$PATH" run "$SCRIPT" verify-integrity
+  local c10
+  c10="$(wc -l < "$YQ_COUNT_FILE" | tr -d ' ')"
+
+  # 320-entry run with newline-bearing last digest
+  cp "$BATS_TEST_TMPDIR/f320.yaml" "$RECORD"
+  G="$good" yq -i '.audit[319]._digest = strenv(G) + "\nX"' "$RECORD"
+  export YQ_COUNT_FILE="$BATS_TEST_TMPDIR/c320"
+  : > "$YQ_COUNT_FILE"
+  PATH="$BATS_FILE_TMPDIR/shim:$PATH" run "$SCRIPT" verify-integrity
+  local c320
+  c320="$(wc -l < "$YQ_COUNT_FILE" | tr -d ' ')"
+
+  echo "# c10=$c10 c320=$c320 status=$status" >&3
+
+  [ "$status" -ne 0 ] || fail "accepted a newline-bearing digest in 320-entry record"
+  [[ "$output" == *"integrity failure — digest chain broken at audit[319]"* ]] || \
+    fail "expected diagnostic for audit[319], got: $output"
+
+  # Fallback warning must be ABSENT (proves the fast path handled it)
+  [[ "$output" != *"fast-path verification failed"* ]] || \
+    fail "fallback warning present — fast path did not handle the newline: $output"
+
+  # yq call count must be O(1) — at most 2x the 10-entry count
+  [ "$c10" -gt 0 ] || fail "c10 is zero — shim not on PATH?"
+  [ "$c320" -le $((2 * c10)) ] || \
+    fail "yq count ratio too high: c320=$c320 > 2*c10=$((2 * c10))"
+}
+
+# ---------------------------------------------------------------------------
+# #30b — newline in last digest of 320 entries: wall-clock bound
+# ---------------------------------------------------------------------------
+
+# bats test_tags=hardware-dependent
+@test "newline in last digest of 320 entries completes within wall-clock bound" {
+  assert_script_exists
+  _need_chain_fixtures
+  perl -MDigest::SHA -e1 || fail "Digest::SHA missing — cannot test fast path"
+
+  # Generate 320-entry fixture with newline in last digest
+  _gen_fixture 320 "$BATS_TEST_TMPDIR/f320.yaml" "$BATS_FILE_TMPDIR/template.yaml"
+  cp "$BATS_TEST_TMPDIR/f320.yaml" "$RECORD"
+  local good
+  good="$(yq -r '.audit[319]._digest' "$RECORD")"
+  G="$good" yq -i '.audit[319]._digest = strenv(G) + "\nX"' "$RECORD"
+
+  local t0 t1
+  t0="$(_ms)"
+  run "$SCRIPT" verify-integrity
+  t1="$(_ms)"
+
+  echo "# elapsed_ms=$((t1 - t0)) status=$status" >&3
+
+  [ "$status" -ne 0 ] || fail "accepted a newline-bearing digest in 320-entry record"
+  [ $((t1 - t0)) -lt 10000 ] || \
+    fail "wall-clock $((t1 - t0)) ms exceeds 10 s bound"
+}
+
+# ---------------------------------------------------------------------------
+# #31 — forced fast-path failure prints the fallback warning and still verifies
+# ---------------------------------------------------------------------------
+
+@test "forced fast-path failure prints the fallback warning and still verifies" {
+  assert_script_exists
+  _need_chain_fixtures
+  cp "$BATS_FILE_TMPDIR/f3.yaml" "$RECORD"
+
+  # Create a yq shim that appends an extra line when reading digests,
+  # corrupting the line count seen by perl (which exits 4).
+  mkdir -p "$BATS_TEST_TMPDIR/shimx"
+  cat > "$BATS_TEST_TMPDIR/shimx/yq" <<SHIMEOF
+#!/bin/bash
+case "\$*" in *'.audit[]._digest'*) "$REAL_YQ" "\$@"; rc=\$?; echo extra; exit \$rc;; esac
+exec "$REAL_YQ" "\$@"
+SHIMEOF
+  chmod +x "$BATS_TEST_TMPDIR/shimx/yq"
+
+  PATH="$BATS_TEST_TMPDIR/shimx:$PATH" run "$SCRIPT" verify-integrity
+  [ "$status" -eq 0 ] || fail "verify-integrity should succeed via fallback: $output"
+  [[ "$output" == *"fast-path verification failed"* ]] || \
+    fail "fallback warning missing: $output"
+  [[ "$output" == *"per-entry fallback"* ]] || \
+    fail "expected 'per-entry fallback' in warning: $output"
+  [[ "$output" == *"integrity: ok"* ]] || \
+    fail "expected integrity: ok via fallback: $output"
+}
+
+# ---------------------------------------------------------------------------
+# #32 — missing JSON::PP triggers per-entry fallback
+# ---------------------------------------------------------------------------
+
+@test "missing JSON::PP triggers per-entry fallback" {
+  assert_script_exists
+  _need_chain_fixtures
+  cp "$BATS_FILE_TMPDIR/f3.yaml" "$RECORD"
+
+  # Create a perl shim that fails -MJSON::PP but passes everything else
+  mkdir -p "$BATS_TEST_TMPDIR/nojson"
+  cat > "$BATS_TEST_TMPDIR/nojson/perl" <<SHIMEOF
+#!/bin/bash
+for a in "\$@"; do
+  case "\$a" in -MJSON::PP*) echo "Can't locate JSON/PP.pm in @INC" >&2; exit 2;; esac
+done
+exec "$REAL_PERL" "\$@"
+SHIMEOF
+  chmod +x "$BATS_TEST_TMPDIR/nojson/perl"
+
+  PATH="$BATS_TEST_TMPDIR/nojson:$PATH" run "$SCRIPT" verify-integrity
+  [ "$status" -eq 0 ] || fail "verify-integrity should succeed via fallback: $output"
+  [[ "$output" == *"perl JSON::PP unavailable"* ]] || \
+    fail "expected JSON::PP-specific warning, got: $output"
+  [[ "$output" == *"integrity: ok"* ]] || \
+    fail "expected integrity: ok via fallback: $output"
 }
