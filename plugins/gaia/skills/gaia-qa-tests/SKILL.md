@@ -88,9 +88,9 @@ Examples:
 
 Examples:
 
-- **Weak assertion** — Test for AC3 ("Given valid order, when submitted, then status is `confirmed`") only contains `expect(result).toBeDefined()`. Test passes but does not verify the actual `status === 'confirmed'` post-condition. Assertion strength is a Warning regardless of coverage tier (EC-5).
-- **Brittle selector** — UI E2E test uses `cy.get('.MuiButton-root.css-1xy2z')` — a CSS class tied to MUI internals that will break on the next library upgrade. Prefer ARIA-based selectors like `screen.getByRole('button', { name: /submit/i })`. Warning regardless of whether the test currently passes (EC-12).
-- **Missing edge-case AC coverage** — Story has 13 edge-case ACs (AC-EC1..AC-EC13); 4 are uncovered. Per primary-vs-edge-case differential weighting, an uncovered edge-case AC is ALWAYS Warning (NEVER Critical), because edge cases are awareness markers not always testability targets (EC-9).
+- **Weak assertion** — Test for AC3 ("Given valid order, when submitted, then status is `confirmed`") only contains `expect(result).toBeDefined()`. Test passes but does not verify the actual `status === 'confirmed'` post-condition. Assertion strength is a Warning regardless of coverage tier.
+- **Brittle selector** — UI E2E test uses `cy.get('.MuiButton-root.css-1xy2z')` — a CSS class tied to MUI internals that will break on the next library upgrade. Prefer ARIA-based selectors like `screen.getByRole('button', { name: /submit/i })`. Warning regardless of whether the test currently passes.
+- **Missing edge-case AC coverage** — Story has 13 edge-case ACs (AC-EC1..AC-EC13); 4 are uncovered. Per primary-vs-edge-case differential weighting, an uncovered edge-case AC is ALWAYS Warning (NEVER Critical), because edge cases are awareness markers not always testability targets.
 - **Untested error path on non-boundary code** — Internal helper has a `catch` branch that recovers gracefully; no test verifies the recovery. Warning, not Critical, when the AC priority is not P0 and the path is not on a user-input boundary.
 
 ### Suggestion
@@ -99,16 +99,16 @@ Examples:
 
 Examples:
 
-- **Redundant tests (over-coverage)** — Single AC has three tests that exercise the same path with cosmetic variation. Coverage analyzer reports `count=3` for that AC; coverage is per-AC (matched: yes/no, count: N) — coverage=100% means every AC has ≥1 test, NOT weighted by count. Over-coverage is a Suggestion-tier DRY opportunity (EC-11).
-- **Missing FR-traceability comment** — Story frontmatter `traces_to: [...]` is set but no test body references those FR IDs. Phase 3B treats FR-traceability as a SEPARATE concern from AC-coverage — surfaces as Suggestion when comments are absent (EC-10).
-- **Unparseable AC text** — Story AC reads "The system should be performant" — no Given/When/Then structure, no measurable threshold. AC parser reports `category: ac-quality` for that AC; the LLM may suggest a concrete rewording. Reported as "unparseable AC" rather than "uncovered AC" (EC-14).
+- **Redundant tests (over-coverage)** — Single AC has three tests that exercise the same path with cosmetic variation. Coverage analyzer reports `count=3` for that AC; coverage is per-AC (matched: yes/no, count: N) — coverage=100% means every AC has ≥1 test, NOT weighted by count. Over-coverage is a Suggestion-tier DRY opportunity.
+- **Missing requirement-traceability comment** — Story frontmatter `traces_to: [...]` is set but no test body references those requirement IDs. Phase 3B treats requirement-traceability as a SEPARATE concern from AC-coverage — surfaces as Suggestion when comments are absent.
+- **Unparseable AC text** — Story AC reads "The system should be performant" — no Given/When/Then structure, no measurable threshold. AC parser reports `category: ac-quality` for that AC; the LLM may suggest a concrete rewording. Reported as "unparseable AC" rather than "uncovered AC".
 
 **Context-aware classification rules (rubric-driven):**
 - Primary AC gap → severity tied to AC priority (P0 → Critical; P1/P2 → Warning).
-- Edge-case AC gap → ALWAYS Warning (never Critical) — edge cases are awareness, not always testability targets (EC-9).
-- Untested error path → Critical when branch-coverage tool deterministically confirms an uncovered catch on a user-input boundary AC; Warning otherwise (EC-13).
-- Over-coverage (test_count > 1 for a single AC) → Suggestion (EC-11).
-- Cross-story tests (test names/paths attributed to a different `story_key`) → not counted as coverage, reported separately as `unattributed_tests` (EC-4).
+- Edge-case AC gap → ALWAYS Warning (never Critical) — edge cases are awareness, not always testability targets.
+- Untested error path → Critical when branch-coverage tool deterministically confirms an uncovered catch on a user-input boundary AC; Warning otherwise.
+- Over-coverage (test_count > 1 for a single AC) → Suggestion.
+- Cross-story tests (test names/paths attributed to a different `story_key`) → not counted as coverage, reported separately as `unattributed_tests`.
 
 LLM-cannot-override invariant: a deterministic 0%-coverage finding on a P0 AC cannot be downgraded by the LLM into APPROVE territory. The rubric tiers above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the verdict-resolver.sh blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 
@@ -123,7 +123,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `traces_to`.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
 - **Tool prereq probe.** For each tool used by the resolved stack: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
-- **Optional branch-coverage probe (EC-13).** Probe the stack's branch-coverage binary (`nyc`, `coverage.py`, `go test -cover`, `jacoco`, etc.). If absent, untested-error-path findings degrade from Critical-eligible to Suggestion-only — LLM cannot promote without deterministic evidence.
+- **Optional branch-coverage probe.** Probe the stack's branch-coverage binary (`nyc`, `coverage.py`, `go test -cover`, `jacoco`, etc.). If absent, untested-error-path findings degrade from Critical-eligible to Suggestion-only — LLM cannot promote without deterministic evidence.
 - **Expected-missing-tool.** If the test runner is absent for a stack that requires it, emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
 
 ### Phase 2 — Story Gate
@@ -140,20 +140,20 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 
 **Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Run test-discovery + AC-coverage analyzer per row.
 
-1. **Test-discovery (bounded scope by default per EC-6).** Glob test files matching File List directories + their nearest test-directory ancestor (e.g., `src/foo.ts → tests/foo.test.ts` or `src/__tests__/foo.test.ts`). Full-project scan only on explicit `--full` flag. Multi-stack monorepo (EC-2) runs discovery per matching convention; `analysis-results.json:tests_discovered` is keyed by stack with separate counts. On zero discovered tests, status=`skipped` with `skip_reason: "no test files found via standard discovery globs"` (EC-8). Wall-clock cap: 30s.
+1. **Test-discovery (bounded scope by default).** Glob test files matching File List directories + their nearest test-directory ancestor (e.g., `src/foo.ts → tests/foo.test.ts` or `src/__tests__/foo.test.ts`). Full-project scan only on explicit `--full` flag. Multi-stack monorepo runs discovery per matching convention; `analysis-results.json:tests_discovered` is keyed by stack with separate counts. On zero discovered tests, status=`skipped` with `skip_reason: "no test files found via standard discovery globs"`. Wall-clock cap: 30s.
 
-2. **AC parser (markdown-aware, NOT raw regex).** Use a YAML/markdown-aware parser (`mistune`, `remark`, or robust YAML extractor) to handle backticks, code blocks, pipe characters, and asterisks (EC-7). Extract Given/When/Then text content per AC. Flag malformed ACs as `status: warning, category: ac-quality` for ACs without Given/When/Then structure (EC-14). Zero-AC story → `status: failed` with finding "No acceptance criteria found in story" (EC-3); resolver maps to REQUEST_CHANGES via precedence rule 2 (LLM-cannot-override).
+2. **AC parser (markdown-aware, NOT raw regex).** Use a YAML/markdown-aware parser (`mistune`, `remark`, or robust YAML extractor) to handle backticks, code blocks, pipe characters, and asterisks. Extract Given/When/Then text content per AC. Flag malformed ACs as `status: warning, category: ac-quality` for ACs without Given/When/Then structure. Zero-AC story → `status: failed` with finding "No acceptance criteria found in story"; resolver maps to REQUEST_CHANGES via precedence rule 2 (LLM-cannot-override).
 
-3. **AC-coverage analyzer (dual-strategy matching, EC-1).** Two-pass match per AC:
+3. **AC-coverage analyzer (dual-strategy matching).** Two-pass match per AC:
    - **Primary match** — AC-ID prefix in test path or test name. Examples: `tests/E65-S4-AC1.test.ts`, `it('AC1: should reject invalid email', ...)`, `def test_AC1_rejects_invalid_email():`.
    - **Fallback match** — Given/When/Then pattern match against test description string. Example: AC text "Given invalid email, when submit, then reject" matches a test named `'should reject invalid email when submitted'`.
-   - **Cross-story attribution scoping (EC-4).** Only tests with the current `story_key` in path or test name count toward coverage. Tests without explicit story_key attribution are reported separately under `unattributed_tests[]`, NOT counted as coverage.
+   - **Cross-story attribution scoping.** Only tests with the current `story_key` in path or test name count toward coverage. Tests without explicit story_key attribution are reported separately under `unattributed_tests[]`, NOT counted as coverage.
 
-4. **Primary vs edge-case AC differential weighting (EC-9).** Primary AC gap → severity tied to AC priority (P0 → Critical, P1/P2 → Warning). Edge-case AC gap → ALWAYS Warning (NEVER Critical).
+4. **Primary vs edge-case AC differential weighting.** Primary AC gap → severity tied to AC priority (P0 → Critical, P1/P2 → Warning). Edge-case AC gap → ALWAYS Warning (NEVER Critical).
 
-5. **Per-AC coverage reporting (EC-11).** Report `{ac_id, matched: bool, test_count: N}` per AC. coverage=100% means all ACs matched ≥1 test (NOT weighted by count). Over-coverage (count>1) is Suggestion-tier (potential test redundancy / DRY opportunity).
+5. **Per-AC coverage reporting.** Report `{ac_id, matched: bool, test_count: N}` per AC. coverage=100% means all ACs matched ≥1 test (NOT weighted by count). Over-coverage (count>1) is Suggestion-tier (potential test redundancy / DRY opportunity).
 
-6. **Optional branch coverage (EC-13).** If the branch-coverage tool from Phase 1 is present, parse its output to identify uncovered catch blocks. Cross-reference with error-path ACs: error-path AC + uncovered catch + user-input boundary → Critical-eligible; else Warning.
+6. **Optional branch coverage.** If the branch-coverage tool from Phase 1 is present, parse its output to identify uncovered catch blocks. Cross-reference with error-path ACs: error-path AC + uncovered catch + user-input boundary → Critical-eligible; else Warning.
 
 **Status taxonomy.** Each tool invocation produces exactly one of:
 - `status: passed` — tool ran to completion, no findings, exit code zero.
@@ -176,7 +176,7 @@ sha256(
 )
 ```
 
-`story_acs_hash` is the EC-3 mitigation: story ACs are part of the deterministic input — when ACs change, coverage analysis MUST re-run. A cached `analysis-results.json` from a prior AC list returns a stale verdict if `story_acs_hash` is omitted.
+`story_acs_hash` is the zero-AC mitigation: story ACs are part of the deterministic input — when ACs change, coverage analysis MUST re-run. A cached `analysis-results.json` from a prior AC list returns a stale verdict if `story_acs_hash` is omitted.
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + test file hashes + story_acs_hash + tool versions.
@@ -235,7 +235,7 @@ test_execution:
 
 ### Phase 3B — LLM Semantic Review
 
-Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.json` as evidence and applies the QA severity rubric to produce category-organized Critical / Warning / Suggestion findings restricted to QA scope (missing AC coverage, weak assertion, brittle selector, untested error path, over-coverage, FR-traceability gaps, malformed AC text).
+Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.json` as evidence and applies the QA severity rubric to produce category-organized Critical / Warning / Suggestion findings restricted to QA scope (missing AC coverage, weak assertion, brittle selector, untested error path, over-coverage, requirement-traceability gaps, malformed AC text).
 
 **Fork dispatch contract.**
 - `context: fork`
@@ -250,7 +250,7 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 
 **Prompt hash recording.** The fork records `prompt_hash` (sha256 of system prompt || `analysis-results.json` content) in the report header. This is the audit trail for determinism debugging.
 
-**LLM-cannot-override (rule 2 of verdict-resolver).** A deterministic finding from Phase 3A — e.g., zero-AC story (EC-3) → `status: failed` → REQUEST_CHANGES — wins over any LLM APPROVE judgment. The rubric downgrades above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the resolver's blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
+**LLM-cannot-override (rule 2 of verdict-resolver).** A deterministic finding from Phase 3A — e.g., zero-AC story → `status: failed` → REQUEST_CHANGES — wins over any LLM APPROVE judgment. The rubric downgrades above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the resolver's blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 
 ### Phase 3C — TC generation for uncovered ACs
 
@@ -286,7 +286,7 @@ Phase 3C runs after Phase 3B's semantic review and produces TC specifications fo
 The fork extends Phase 3B's findings with architecture and design checks; findings flow into the Phase 3B category buckets.
 
 - **QA architecture conformance.** Fork reads `.gaia/artifacts/planning-artifacts/architecture.md` and (when present) `.gaia/artifacts/planning-artifacts/test-plan.md`. For each test discovered, verify it follows the documented test pyramid (unit / integration / e2e ratios) and lives under the architecture-mandated test directory. Findings under `category: architecture`.
-- **FR-traceability check.** When story frontmatter `traces_to: [FR-...]` is set, fork searches discovered test bodies for FR ID references (comments or test descriptions). Missing FR-traceability surfaces as a Suggestion-tier finding (EC-10).
+- **Requirement-traceability check.** When story frontmatter `traces_to: [...]` is set, fork searches discovered test bodies for requirement ID references (comments or test descriptions). Missing requirement-traceability surfaces as a Suggestion-tier finding.
 - **Design fidelity.** If the project has a design-record reference (`.gaia/state/design-record.yaml` with `design_state: approved`), resolve design truth through the two project references and compare E2E selectors in the discovered tests against the design-record component inventory. Findings under `category: fidelity`.
   - Read token and component specifications from `design_system_project.reference` via DesignSync.
   - Read screen specifications from `product_design_project.reference` by per-file reads of the product design canvas: `list` with `scope: "files"`, then `read` with `path` for `project/canvas.json` and each listed board — never `page: true`.

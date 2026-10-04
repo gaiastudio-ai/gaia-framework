@@ -175,7 +175,7 @@ None of these match the canonical schema above. They omit "Story Key" and "AC" c
 #### Three coverage signals (decreasing accuracy)
 
 1. **STRONG** -- canonical-schema table is present (`| TC-ID | Story-Key | AC | ... |`). The documented per-AC matching in Step 4 works. This is the only signal that proves per-AC test coverage.
-2. **MEDIUM** -- section-scoped tables present with TC-ID + requirement linkage (e.g. `| TC-VSP-1 | Scenario | Expected | Type | FR-VSP-1 | Status |`). The skill can build a TC → FR/NFR map by detecting per-section column position; story-key + AC linkage is not available, so coverage degrades to "requirement is referenced by at least one TC".
+2. **MEDIUM** -- section-scoped tables present with TC-ID + requirement linkage (e.g. `| TC-ID | Scenario | Expected | Type | Req-ID | Status |`). The skill can build a TC → requirement map by detecting per-section column position; story-key + AC linkage is not available, so coverage degrades to "requirement is referenced by at least one TC".
 3. **WEAK / DEGRADED-MODE** -- neither canonical nor section-scoped tables are detected. Last-resort coverage signal is a document-wide regex sweep for FR-NNN/NFR-NNN identifier mentions. This counts "requirement is mentioned somewhere" but does NOT prove a test case exists. Reports MUST display a `[DEGRADED-MODE: regex-sweep coverage signal]` banner in the Executive Summary.
 
 #### DEGRADED-MODE banner contract

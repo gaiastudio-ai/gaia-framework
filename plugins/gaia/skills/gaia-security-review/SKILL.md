@@ -49,7 +49,7 @@ prompt_hash: sha256:<hex>     # recorded in report header at Phase 6
 
 ## Stack Toolkit Table
 
-The toolkit invoked by Phase 3A is selected by the canonical stack name emitted by `load-stack-persona.sh`. Stack-key vocabulary is canonical across this skill and the script — they MUST match (EC-8). The Semgrep ruleset and secret scanner are stack-agnostic; only the dep-audit binary varies per stack:
+The toolkit invoked by Phase 3A is selected by the canonical stack name emitted by `load-stack-persona.sh`. Stack-key vocabulary is canonical across this skill and the script — they MUST match. The Semgrep ruleset and secret scanner are stack-agnostic; only the dep-audit binary varies per stack:
 
 | Stack key (canonical) | Semgrep ruleset                                          | Secret scanner | Dep-audit binary                             |
 |-----------------------|----------------------------------------------------------|----------------|----------------------------------------------|
@@ -77,7 +77,7 @@ The category+severity sets MUST match across two runs of identical inputs (deter
 
 ### Critical
 
-> Blocking. Produces `REQUEST_CHANGES` if the deterministic resolver did not already block. Critical-promotion threshold for Semgrep: `(rule_confidence: high) AND (rule_severity: high/error)` — prevents stock `p/security-audit` noise from forcing REQUEST_CHANGES on every diff (EC-1).
+> Blocking. Produces `REQUEST_CHANGES` if the deterministic resolver did not already block. Critical-promotion threshold for Semgrep: `(rule_confidence: high) AND (rule_severity: high/error)` — prevents stock `p/security-audit` noise from forcing REQUEST_CHANGES on every diff.
 
 Examples (per OWASP category):
 
@@ -116,18 +116,18 @@ Examples (per OWASP category):
 Examples (per OWASP category):
 
 - **A01 Broken Access Control** — Comment-only TODO referencing a future RBAC migration; no current finding, just a tracked intent.
-- **A02 Cryptographic Failures** — Synthetic test secret with the `sk-test-` prefix in `tests/fixtures/auth.test.ts` — context-aware downgrade per EC-4 (test-fixture path rule).
-- **A02 Cryptographic Failures** — High-entropy literal flagged by gitleaks but matches the hex-hash pattern (64 hex chars) in a constants file — entropy false-positive per EC-12.
+- **A02 Cryptographic Failures** — Synthetic test secret with the `sk-test-` prefix in `tests/fixtures/auth.test.ts` — context-aware downgrade (test-fixture path rule).
+- **A02 Cryptographic Failures** — High-entropy literal flagged by gitleaks but matches the hex-hash pattern (64 hex chars) in a constants file — entropy false-positive.
 - **A03 Injection** — Variable named `query` in a context that does NOT reach a SQL builder; misleading name worth a rename comment.
 - **A05 Security Misconfiguration** — Deprecated TLS cipher in dev-only configuration (not production-reachable) — note for cleanup.
 - **A05 Security Misconfiguration** — Verbose log message in a debug-only path; not user-facing.
 - **A07 Identification & Authentication Failures** — Comment in auth flow could be tightened to clarify which token type is expected.
-- **A06 Vulnerable Components** — Transitive CVE in dev-only dependency path (e.g., webpack plugin not in production bundle); evidence-gated downgrade Critical→Warning→Suggestion per EC-7.
+- **A06 Vulnerable Components** — Transitive CVE in dev-only dependency path (e.g., webpack plugin not in production bundle); evidence-gated downgrade Critical→Warning→Suggestion.
 
 **Context-aware downgrade rules (documented in rubric):**
-- Test-fixture path (e.g., `tests/`, `__tests__/`, `*.test.*`) → secret findings downgrade to Suggestion (EC-4).
-- High-entropy literal matching a known non-secret pattern (hex hash, base64-encoded UUID, fixed test-data fingerprint) → Suggestion (EC-12). LLM-cannot-override still applies if the deterministic tool's `rule_confidence` is high.
-- Transitive CVE in a dev-only dependency path or unreachable code path → Warning (EC-7); LLM-cannot-override still applies for production-reachable CVEs.
+- Test-fixture path (e.g., `tests/`, `__tests__/`, `*.test.*`) → secret findings downgrade to Suggestion.
+- High-entropy literal matching a known non-secret pattern (hex hash, base64-encoded UUID, fixed test-data fingerprint) → Suggestion. LLM-cannot-override still applies if the deterministic tool's `rule_confidence` is high.
+- Transitive CVE in a dev-only dependency path or unreachable code path → Warning; LLM-cannot-override still applies for production-reachable CVEs.
 
 ## Phases
 
@@ -146,7 +146,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
   Stdout is `{"agent_id":"zara","sidecar_path":".gaia/memory/zara-sidecar.md"}`. The parent context lazy-loads the Zara persona + sidecar BEFORE fork dispatch. The sidecar is forwarded into the fork as **read-only context** — the fork tool allowlist `[Read, Grep, Glob, Bash]` provides no write capability against the sidecar file.
 - **Threat-model context.** When `.gaia/artifacts/planning-artifacts/threat-model.md` exists, the skill loads it and injects it into the Phase 3B fork context under a "Threat Model Context" section. When the file is absent, proceed silently — preserves the prior behavior.
 - **Tool prereq probe.** For each tool (Semgrep, gitleaks/trufflehog, the dep-audit binary listed in the toolkit row): probe via `command -v <tool>` first; fall back to local binaries. NEVER use `npx <tool> --version` — registry fetch breaks the 60s P95 budget. Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
-- **Per-tool wall-clock caps (EC-10):** Semgrep ≤30s, secret scanner ≤15s, dep audit ≤15s. Cumulative Phase 3A budget ≤60s P95 cold. On individual tool timeout, that tool's `status: errored` (NOT `failed` — timeout is not a finding); resolver maps to BLOCKED for the run.
+- **Per-tool wall-clock caps:** Semgrep ≤30s, secret scanner ≤15s, dep audit ≤15s. Cumulative Phase 3A budget ≤60s P95 cold. On individual tool timeout, that tool's `status: errored` (NOT `failed` — timeout is not a finding); resolver maps to BLOCKED for the run.
 - **Expected-missing-tool.** If a required toolkit binary is absent and not optional for the stack: emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
 
 ### Phase 2 — Story Gate
@@ -183,8 +183,8 @@ The probe is the **single source of truth** for tool availability — Phase 3A M
 
 The Phase 3A toolkit, each routed through the probe and the `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/` adapter wiring:
 
-1. **Semgrep** — invoke with the registry packs `p/security-audit` + `p/secrets`. If `.semgrep/` exists in the repo root, also invoke the custom rules; if `.semgrep/` is missing or empty, the probe returns `not_applicable` and the custom-rules step is silently skipped with `skip_reason: "no Semgrep custom rules at .semgrep/"` (EC-9). Semgrep wall-clock cap: 30s. Crash on malformed source → `ran_and_errored` → BLOCKED.
-2. **Secret scanner** (gitleaks default; trufflehog acceptable per project policy) — invoke with explicit File List + working-tree scope. CLI flags MUST exclude `--history` mode (EC-2). For gitleaks: `--no-git` is REQUIRED to scope to the working tree only. Historical secrets are an out-of-scope concern for `/gaia-security-review` and belong to a separate periodic full-history scan. Secret scanner wall-clock cap: 15s.
+1. **Semgrep** — invoke with the registry packs `p/security-audit` + `p/secrets`. If `.semgrep/` exists in the repo root, also invoke the custom rules; if `.semgrep/` is missing or empty, the probe returns `not_applicable` and the custom-rules step is silently skipped with `skip_reason: "no Semgrep custom rules at .semgrep/"`. Semgrep wall-clock cap: 30s. Crash on malformed source → `ran_and_errored` → BLOCKED.
+2. **Secret scanner** (gitleaks default; trufflehog acceptable per project policy) — invoke with explicit File List + working-tree scope. CLI flags MUST exclude `--history` mode. For gitleaks: `--no-git` is REQUIRED to scope to the working tree only. Historical secrets are an out-of-scope concern for `/gaia-security-review` and belong to a separate periodic full-history scan. Secret scanner wall-clock cap: 15s.
 3. **Dep CVE audit** — invoke the binary listed in the toolkit table for the resolved stack. Capture full advisory output. Dep audit wall-clock cap: 15s. Stack mismatch → probe returns `not_applicable`; binary absent for the stack → probe returns `expected_and_missing` → BLOCKED.
 4. **`live-secret-classifier.sh` (V2 helper).** Credential-prefix pattern matcher that classifies high-confidence credential literals (AKIA…, ghp_…, xoxb-…, glpat-…, etc.) detected by gitleaks/Semgrep into known issuer families and emits a `revocation_runbook` field per finding. Invoked via:
     ```bash
@@ -203,19 +203,19 @@ The Phase 3A toolkit, each routed through the probe and the `${CLAUDE_PLUGIN_ROO
 **Status taxonomy.** Each tool invocation produces exactly one of:
 - `status: passed` — tool ran to completion, no findings, exit code zero.
 - `status: failed` — tool ran to completion AND emitted findings (e.g., Semgrep exit 1 with security findings; gitleaks exit 1 on secret detection; npm-audit exit 1 with CVE findings). Maps to REQUEST_CHANGES via verdict-resolver precedence rule 2 (LLM-cannot-override).
-- `status: errored` — tool crashed mid-run, returned an unclassified non-zero exit code, OR exceeded its wall-clock cap. Maps to BLOCKED via precedence rule 1. Examples: Semgrep parse error on malformed source (EC-5); npm-audit network failure; tool wall-clock timeout (EC-10). Even when partial findings were emitted before the crash, `errored` wins over partial findings.
-- `status: skipped` — tool not applicable; `skip_reason` populated verbatim. Examples: `skip_reason: "no Semgrep custom rules at .semgrep/"` (EC-9); dep-audit binary absent for an exotic stack.
+- `status: errored` — tool crashed mid-run, returned an unclassified non-zero exit code, OR exceeded its wall-clock cap. Maps to BLOCKED via precedence rule 1. Examples: Semgrep parse error on malformed source; npm-audit network failure; tool wall-clock timeout. Even when partial findings were emitted before the crash, `errored` wins over partial findings.
+- `status: skipped` — tool not applicable; `skip_reason` populated verbatim. Examples: `skip_reason: "no Semgrep custom rules at .semgrep/"`;  dep-audit binary absent for an exotic stack.
 
-**Distinguish `failed` vs `errored` by exit-code semantics, not by exit code alone** (EC-6). Semgrep exits 1 on findings (failed) and 2 on parse error/crash (errored). gitleaks exits 1 on secret detection (failed) and 2 on config/io error (errored).
+**Distinguish `failed` vs `errored` by exit-code semantics, not by exit code alone.** Semgrep exits 1 on findings (failed) and 2 on parse error/crash (errored). gitleaks exits 1 on secret detection (failed) and 2 on config/io error (errored).
 
-**Path normalization (EC-13).** Tool outputs vary in path convention:
+**Path normalization.** Tool outputs vary in path convention:
 - Semgrep emits absolute paths.
 - gitleaks emits paths relative to repo root.
 - npm audit emits package names with no file path.
 
 Phase 3A normalizes all `findings[].file` to repo-relative before writing `analysis-results.json`. Package-only findings (npm audit / pip-audit / govulncheck) use a synthetic location field formatted as `package.json:dependencies.<pkg>` (or per-stack equivalent: `pyproject.toml:dependencies.<pkg>`, `go.mod:require <pkg>`).
 
-**Finding deduplication (EC-11).** Phase 3A deduplicates findings across tools by the tuple `(file, line, finding_type)` before passing to Phase 3B. Example: an API key on `src/config.ts:12` flagged by both gitleaks and Semgrep `p/secrets` is deduplicated to a single finding. The dedup key is documented here so resolver counts unique findings only.
+**Finding deduplication.** Phase 3A deduplicates findings across tools by the tuple `(file, line, finding_type)` before passing to Phase 3B. Example: an API key on `src/config.ts:12` flagged by both gitleaks and Semgrep `p/secrets` is deduplicated to a single finding. The dedup key is documented here so resolver counts unique findings only.
 
 **Cache plumbing.** Cache lives at `.gaia/state/review/security-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
@@ -231,7 +231,7 @@ sha256(
 )
 ```
 
-`advisory_db_fingerprint` is the sha256 of `npm audit --json | jq .metadata.advisories` for npm, or the per-stack equivalent (e.g., `pip-audit --vulnerability-service osv` digest, or a daily date-stamp proxy). This is the EC-3 mitigation: the dep-audit advisory database refreshes daily without changing the binary version. Without this fingerprint, a story marked safe yesterday can have new CVEs today and the cache would return a stale safe verdict.
+`advisory_db_fingerprint` is the sha256 of `npm audit --json | jq .metadata.advisories` for npm, or the per-stack equivalent (e.g., `pip-audit --vulnerability-service osv` digest, or a daily date-stamp proxy). This is the staleness mitigation: the dep-audit advisory database refreshes daily without changing the binary version. Without this fingerprint, a story marked safe yesterday can have new CVEs today and the cache would return a stale safe verdict.
 
 `resolved_config_hash` is the sha256 of the rendered Semgrep configuration (registry packs + custom rules content) — NOT the raw `.semgrep/` directory listing.
 
@@ -268,10 +268,10 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 **Prompt hash recording.** The fork records `prompt_hash` (sha256 of system prompt || `analysis-results.json` content) in the report header. This is the audit trail for determinism debugging.
 
 **Context-aware classification (rubric-driven).** Per the Severity Rubric above:
-- Test-fixture path → secret findings downgrade to Suggestion (EC-4).
-- High-entropy literal matching hex-hash / base64-UUID pattern → Suggestion (EC-12).
-- Transitive CVE in dev-only dependency path or unreachable code path → Warning (EC-7).
-- Semgrep finding promotes to Critical only when `(rule_confidence: high) AND (rule_severity: high/error)` (EC-1).
+- Test-fixture path → secret findings downgrade to Suggestion.
+- High-entropy literal matching hex-hash / base64-UUID pattern → Suggestion.
+- Transitive CVE in dev-only dependency path or unreachable code path → Warning.
+- Semgrep finding promotes to Critical only when `(rule_confidence: high) AND (rule_severity: high/error)`.
 
 LLM-cannot-override invariant: a high-confidence deterministic finding cannot be downgraded by the LLM into APPROVE territory. The rubric downgrades above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the verdict-resolver.sh blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 
