@@ -32,7 +32,7 @@ This skill pattern-matches against `gaia-code-review` as the canonical reference
 - The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md` first, then legacy `docs/implementation-artifacts/{story_key}-*.md` as fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects.
 - The story MUST be in `review` status. If not, fail with "story must be in review status before test review".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
-- Test-quality scope is bounded to (a) standard test paths per stack and (b) test-helper patterns in the File List (`*.factory.*`, `fixtures/`, `helpers/`, `conftest.py`). FULL-project scan only on explicit `--full` flag (EC-12).
+- Test-quality scope is bounded to (a) standard test paths per stack and (b) test-helper patterns in the File List (`*.factory.*`, `fixtures/`, `helpers/`, `conftest.py`). FULL-project scan only on explicit `--full` flag.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
 - Mapping to Review Gate canonical vocabulary (inline, no separate script): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
 - Determinism settings: `temperature: 0`, `model: claude-opus-4-7`, `prompt_hash` recorded in the report header. Re-running with identical `analysis-results.json` MUST yield findings that match by category and severity; textual variation is allowed.
@@ -92,9 +92,9 @@ Examples:
 
 Examples:
 
-- **Hardcoded sleep in production-path test** — Test contains `await sleep(100)` to wait for an async event. Flaky-prone pattern: the 100ms is empirical, not deterministic. Warning regardless of whether the test currently passes (alignment with EC-12). Excluded: debug-only test files (path matches `*.debug.*` or annotated `@debug`) where sleep is acceptable for manual reproduction.
+- **Hardcoded sleep in production-path test** — Test contains `await sleep(100)` to wait for an async event. Flaky-prone pattern: the 100ms is empirical, not deterministic. Warning regardless of whether the test currently passes (alignment with the test-scope boundary). Excluded: debug-only test files (path matches `*.debug.*` or annotated `@debug`) where sleep is acceptable for manual reproduction.
 - **Conditional-in-test outside parameterized pattern** — Test body contains `if (env === 'ci') { expect.toBe(...) } else { expect.toBe(...) }`. Branch logic in a test body conceals coverage — one branch is silently never exercised on a given environment. Warning. Excluded: parameterized-test patterns (`it.each`, `parametrize`, table-driven) where the conditional is part of the test-data structure (downgraded to Suggestion).
-- **Long test body 2-5x stack threshold** — Stack threshold is 50 LOC for unit tests; this test is 180 LOC. Warning at 2-5x; Suggestion at 1-2x; Critical only at >5x (per EC-6 thresholds).
+- **Long test body 2-5x stack threshold** — Stack threshold is 50 LOC for unit tests; this test is 180 LOC. Warning at 2-5x; Suggestion at 1-2x; Critical only at >5x (per the severity thresholds).
 - **Intermittent flakiness 1-5% retry rate** — Test retried 3 times in 100 runs. Below the Critical threshold but above the Suggestion floor. Warrants investigation but not yet a blocker.
 
 ### Suggestion
@@ -109,13 +109,13 @@ Examples:
 - **Missing fixture-name docstring** — Pytest fixture `def user_with_admin_role():` has no docstring. Suggest adding one for future maintainers.
 
 **Context-aware classification rules (rubric-driven):**
-- Flaky test severity tied to retry rate: >5% Critical; 1-5% Warning; <1% Suggestion (EC-9).
-- Shared mutable fixture severity: no reset → Critical; reset present in `beforeEach`/`setUp` → downgrade to Warning (EC-10).
-- Hardcoded sleep in test path matching `*.debug.*` or `@debug` annotation → Suggestion (EC-8).
-- Hardcoded sleep in test name containing `debounce`, `throttle`, or `timing` → Suggestion (legitimate-use downgrade, EC-3).
-- Conditional-in-test inside parameterized pattern (it.each, parametrize, table-driven) → Suggestion (EC-7).
-- Read-only fixture access (no `.push`, `.delete`, `.set`, no assignment to fixture variable) → not flagged at all (EC-4).
-- Per-(file, line, smell-type) findings: no per-file dedup; LLM aggregates per-file when ≥2 Warning+ findings to surface "this test has multiple quality issues" summary (EC-13).
+- Flaky test severity tied to retry rate: >5% Critical; 1-5% Warning; <1% Suggestion.
+- Shared mutable fixture severity: no reset → Critical; reset present in `beforeEach`/`setUp` → downgrade to Warning.
+- Hardcoded sleep in test path matching `*.debug.*` or `@debug` annotation → Suggestion.
+- Hardcoded sleep in test name containing `debounce`, `throttle`, or `timing` → Suggestion (legitimate-use downgrade).
+- Conditional-in-test inside parameterized pattern (it.each, parametrize, table-driven) → Suggestion.
+- Read-only fixture access (no `.push`, `.delete`, `.set`, no assignment to fixture variable) → not flagged at all.
+- Per-(file, line, smell-type) findings: no per-file dedup; LLM aggregates per-file when ≥2 Warning+ findings to surface "this test has multiple quality issues" summary.
 
 LLM-cannot-override invariant: a deterministic >5% retry-rate finding from CI history cannot be downgraded by the LLM into APPROVE territory. The rubric tiers above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the `verdict-resolver.sh` blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 
@@ -130,7 +130,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - Read the resolved story file; parse YAML frontmatter to extract `status`.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
 - **Tool prereq probe.** For each parser in the stack-toolkit row matched by the canonical stack name (junit-xml parser, jest JSON parser, go-test-json parser, pytest junitxml parser, dart test JSON parser): probe via `command -v <tool>` first. Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
-- **CI-history token probe (EC-14).** For the resolved CI provider (GitHub Actions / CircleCI / Jenkins): probe for the required environment variable (`GITHUB_TOKEN`, `CIRCLE_TOKEN`, `JENKINS_TOKEN`). On missing token, mark CI history fetch as unavailable in `tool_versions` and fall back to the static flakiness signal source (annotation scan). Never crash on missing token.
+- **CI-history token probe.** For the resolved CI provider (GitHub Actions / CircleCI / Jenkins): probe for the required environment variable (`GITHUB_TOKEN`, `CIRCLE_TOKEN`, `JENKINS_TOKEN`). On missing token, mark CI history fetch as unavailable in `tool_versions` and fall back to the static flakiness signal source (annotation scan). Never crash on missing token.
 - **Three-tier flakiness signal source.** Preferred source: parse CI test-result XML/JSON for retry counts. Fallback: source-level annotations (`@flaky`, `@retry`, `pytest.mark.flaky`). Skip: neither available — emit `status: skipped` with `skip_reason: "no flakiness signal source available (no CI history, no flakiness annotations)"`.
 - **Expected-missing-tool.** If a required parser binary is absent and not optional for the stack: emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
 
@@ -176,7 +176,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/phase3a-test-review.sh \
 
 The four scanners cover the analyzers below (1–3 plus the new tag-conformance scanner that complements smell/flakiness/fixture coverage):
 
-1. **Test-smell detection (per-stack regex/AST).** Scope is bounded by default per EC-12: (a) standard test paths per stack — `**/*.{test,spec}.{ts,tsx}` for ts-dev, `test_*.py + *_test.py` for python-dev, etc.; (b) test-helper patterns in the File List — `*.factory.*`, `*Factory.{js,ts,py}`, `fixtures/`, `helpers/`, `conftest.py` (EC-11). FULL-project scan only on explicit `--full` flag. Smell categories per stack: hardcoded sleeps, conditional-in-test (excluding parameterized patterns — EC-7), magic numbers, long tests (per-stack threshold per EC-6: default 50 LOC body / 5s unit / 30s integration / 60s e2e), ignored assertions. Wall-clock cap: 30s for smell detection alone.
+1. **Test-smell detection (per-stack regex/AST).** Scope is bounded by default: (a) standard test paths per stack — `**/*.{test,spec}.{ts,tsx}` for ts-dev, `test_*.py + *_test.py` for python-dev, etc.; (b) test-helper patterns in the File List — `*.factory.*`, `*Factory.{js,ts,py}`, `fixtures/`, `helpers/`, `conftest.py`. FULL-project scan only on explicit `--full` flag. Smell categories per stack: hardcoded sleeps, conditional-in-test (excluding parameterized patterns), magic numbers, long tests (per-stack threshold: default 50 LOC body / 5s unit / 30s integration / 60s e2e), ignored assertions. Wall-clock cap: 30s for smell detection alone.
 
 2. **Flakiness retry-history analysis (three-tier signal source).** Preferred: parse the stack's CI test-result format(s) for retry counts.
    - `ts-dev` / `angular-dev`: jest `--json` output (`numFailingTests`, `retried` fields) OR junit XML (`<failure>` + `<rerunFailure>` elements).
@@ -187,17 +187,17 @@ The four scanners cover the analyzers below (1–3 plus the new tag-conformance 
    - `mobile-dev`: XCTest result bundle (`xccov`) or Android junit XML.
    - `bash-dev`: bats TAP output (`ok` / `not ok` lines with retry counts).
    - `embedded-dev`: Unity test runner output or CTest XML (`<Test>` elements with `Status="notrun"` / retry).
-   Fallback: static-source flakiness annotations (`@flaky`, `@retry`, `pytest.mark.flaky`) when CI history unavailable (EC-2). Skip: when neither source is available — `status: skipped`, `skip_reason: "no flakiness signal source available (no CI history, no flakiness annotations)"`.
+   Fallback: static-source flakiness annotations (`@flaky`, `@retry`, `pytest.mark.flaky`) when CI history unavailable. Skip: when neither source is available — `status: skipped`, `skip_reason: "no flakiness signal source available (no CI history, no flakiness annotations)"`.
 
-   Flakiness threshold: default >5% retry rate = Critical, 1-5% = Warning, <1% = Suggestion (EC-9). Threshold is per-stack overridable via `.gaia-config`.
+   Flakiness threshold: default >5% retry rate = Critical, 1-5% = Warning, <1% = Suggestion. Threshold is per-stack overridable via `.gaia-config`.
 
 3. **Fixture analysis (mutable-vs-readonly + setup/teardown reset).** Scan for shared mutable fixtures:
-   - Detect mutation methods: `.push`, `.delete`, `.set`, `Object.assign`, `.append`, `.update`, assignment to fixture variable, `Object.defineProperty` un-freeze (EC-4).
+   - Detect mutation methods: `.push`, `.delete`, `.set`, `Object.assign`, `.append`, `.update`, assignment to fixture variable, `Object.defineProperty` un-freeze.
    - Read-only access alone (e.g., `const userId = TEST_USERS[0].id`) is NOT flagged.
-   - Detect singleton-mutable-state: module-level mutable variables imported by multiple tests (EC-10).
+   - Detect singleton-mutable-state: module-level mutable variables imported by multiple tests.
    - Cross-reference with `beforeEach` / `setUp` / `afterEach` / `tearDown` for reset coverage. Reset present → downgrade Critical to Warning. Reset absent → Critical.
 
-**Per-(file, line, smell-type) findings.** Each distinct (file, line, smell-type) tuple is a separate finding — no per-file dedup (EC-13). The LLM in Phase 3B aggregates per-file when ≥2 Warning+ findings.
+**Per-(file, line, smell-type) findings.** Each distinct (file, line, smell-type) tuple is a separate finding — no per-file dedup. The LLM in Phase 3B aggregates per-file when ≥2 Warning+ findings.
 
 **Status taxonomy.** Each tool invocation produces exactly one of:
 - `status: passed` — tool ran to completion, no findings, exit code zero.
@@ -221,7 +221,7 @@ sha256(
 )
 ```
 
-`ci_history_fingerprint` is the sha256 of the last-N retry-rate snapshot (when CI history is available). This is the EC-2 mitigation: when retry rates change in CI, the cache key changes and Phase 3A re-runs even though source files are unchanged. When CI history is unavailable, this field is the constant string `"unavailable"` so the cache remains stable across runs.
+`ci_history_fingerprint` is the sha256 of the last-N retry-rate snapshot (when CI history is available). This is the staleness mitigation: when retry rates change in CI, the cache key changes and Phase 3A re-runs even though source files are unchanged. When CI history is unavailable, this field is the constant string `"unavailable"` so the cache remains stable across runs.
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + tool versions + ci_history_fingerprint.
@@ -256,12 +256,12 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 **Prompt hash recording.** The fork records `prompt_hash` (sha256 of system prompt || `analysis-results.json` content) in the report header. This is the audit trail for determinism debugging.
 
 **Context-aware downgrade rules (rubric-driven).** Apply during Phase 3B classification:
-- Smell finding in debug-only test paths (matching `*.debug.*` or annotated `@debug`) → downgrade to Suggestion (EC-8).
-- Parameterized-test conditional (it.each, parametrize, table-driven) → downgrade to Suggestion (EC-7).
-- Read-only fixture access → not flagged at all (EC-4).
-- Legitimate-use sleep (test name contains `debounce`, `throttle`, `timing`) → downgrade to Suggestion (EC-3).
+- Smell finding in debug-only test paths (matching `*.debug.*` or annotated `@debug`) → downgrade to Suggestion.
+- Parameterized-test conditional (it.each, parametrize, table-driven) → downgrade to Suggestion.
+- Read-only fixture access → not flagged at all.
+- Legitimate-use sleep (test name contains `debounce`, `throttle`, `timing`) → downgrade to Suggestion.
 
-**Multi-smell file aggregation.** When a single test file has ≥2 Warning+ findings, the LLM section surfaces a "this test has multiple quality issues" summary alongside the per-finding entries (EC-13).
+**Multi-smell file aggregation.** When a single test file has ≥2 Warning+ findings, the LLM section surfaces a "this test has multiple quality issues" summary alongside the per-finding entries.
 
 **LLM-cannot-override (rule 2 of verdict-resolver).** A deterministic >5% CI retry-rate finding from Phase 3A — `status: failed` → REQUEST_CHANGES — wins over any LLM APPROVE judgment. The rubric downgrades above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the resolver's blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 

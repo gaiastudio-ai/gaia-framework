@@ -137,9 +137,12 @@ teardown() { common_teardown; }
   grep -iE 'brittle.*selector|CSS class' "$SKILL_FILE" >/dev/null
 }
 
-@test "Suggestion examples include redundant tests and FR-traceability" {
+@test "Suggestion examples include redundant tests and requirement-traceability" {
   grep -iE 'redundant.*test|over[- ]coverage' "$SKILL_FILE" >/dev/null
-  grep -iE 'FR[- ]?traceab|traceability' "$SKILL_FILE" >/dev/null
+  # Confirm old token is absent (run ! so bats evaluates the negation).
+  run ! grep -F 'FR-traceab' "$SKILL_FILE"
+  # Confirm new wording is present.
+  grep -F 'requirement-traceability' "$SKILL_FILE" >/dev/null
 }
 
 # --- TC-DEJ-WRITE-S4-1 — FR-402 review-file path declared ---

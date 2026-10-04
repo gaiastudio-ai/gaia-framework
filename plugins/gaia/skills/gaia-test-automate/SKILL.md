@@ -367,7 +367,7 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 The fork extends Phase 3B's findings with architecture and design checks; findings flow into the Phase 3B category buckets.
 
 - **Test architecture conformance.** Fork reads `.gaia/artifacts/planning-artifacts/architecture.md` and (when present) `.gaia/artifacts/planning-artifacts/test-plan.md`. For each test in the inventory, verify it follows the documented test pyramid (unit / integration / e2e ratios) and lives under the architecture-mandated test directory. Findings under `category: architecture`.
-- **FR-traceability check.** When story frontmatter `traces_to: [FR-...]` is set, fork searches discovered test bodies for FR ID references (comments or test descriptions). Missing FR-traceability surfaces as a Suggestion-tier finding.
+- **Requirement-traceability check.** When story frontmatter `traces_to: [...]` is set, fork searches discovered test bodies for requirement-identifier references (comments or test descriptions). Missing requirement-traceability surfaces as a Suggestion-tier finding.
 - **Design fidelity.** If the project has a design-record reference (`.gaia/state/design-record.yaml` with `design_state: approved`), resolve design truth through the two project references and compare E2E selectors in the discovered tests against the design-record component inventory. Findings under `category: fidelity`.
   - Read token and component specifications from `design_system_project.reference` via DesignSync.
   - Read screen specifications from `product_design_project.reference` by per-file reads of the product design canvas: `list` with `scope: "files"`, then `read` with `path` for `project/canvas.json` and each listed board — never `page: true`.
