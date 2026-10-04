@@ -587,3 +587,113 @@ _load_literal_helper() {
   printf 'any content\n' > "$doc"
   ! literal_word_in_file '' "$doc" || { echo "an empty key must not match"; false; }
 }
+
+# ==========================================================================
+# Backslash epic-key escaping
+#
+# The detector passes the epic key to awk.  When awk receives a value via
+# -v, it interprets C-style escape sequences (\\ becomes \, \n becomes a
+# newline, and implementation-defined sequences like \S may or may not lose
+# the backslash).  The double-backslash case (\\) collapses on every awk
+# implementation and is therefore the portable red.
+# ==========================================================================
+
+# ---------- rule 4 (epic mention in ux-design.md) ----------
+
+@test "epic mention: double-backslash key in ux-design fires rule4" {
+  root="$(_make_project_tree)"
+  printf '%s\n' 'The design covers E50\\S1 in full.' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E50\\S1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule4=$(echo "$output" | jq -r '.rules_fired | index("rule4")')
+  [ "$has_rule4" != "null" ] || { echo "double-backslash key not found in ux-design: $output"; false; }
+}
+
+@test "epic mention: double-backslash key absent from ux-design does not fire rule4" {
+  root="$(_make_project_tree)"
+  # ux-design.md contains the key WITHOUT backslashes — must not match
+  printf '%s\n' 'The design covers E50S1 in full.' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E50\\S1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule4=$(echo "$output" | jq -r '.rules_fired | index("rule4")')
+  [ "$has_rule4" = "null" ] || { echo "negative control failed — rule4 fired without backslash key: $output"; false; }
+}
+
+# ---------- rule 3 (epic classification in epics document) ----------
+
+@test "epic classification: double-backslash key in epics file fires rule3" {
+  root="$(_make_project_tree)"
+  cat > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md" <<'EPICS'
+# Epics
+
+## Epic E50\\S1 — Checkout redesign
+tags: ux, design
+EPICS
+  _make_epic_story "$root/story.md" 'E50\\S1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule3=$(echo "$output" | jq -r '.rules_fired | index("rule3")')
+  [ "$has_rule3" != "null" ] || { echo "double-backslash key not found in epics file: $output"; false; }
+}
+
+@test "epic classification: double-backslash key absent from epics file does not fire rule3" {
+  root="$(_make_project_tree)"
+  cat > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md" <<'EPICS'
+# Epics
+
+## Epic E50S1 — Checkout redesign
+tags: ux, design
+EPICS
+  _make_epic_story "$root/story.md" 'E50\\S1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  has_rule3=$(echo "$output" | jq -r '.rules_fired | index("rule3")')
+  [ "$has_rule3" = "null" ] || { echo "negative control failed — rule3 fired without backslash key: $output"; false; }
+}
+
+# ---------- single-backslash keys (\S is implementation-defined in awk -v) ----------
+
+@test "epic mention: single-backslash key in ux-design fires rule4" {
+  root="$(_make_project_tree)"
+  printf '%s\n' 'The design covers E50\S1 in full.' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E50\S1'
+  grep -F 'epic: "E50\S1"' "$root/story.md"
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  echo "$output" | jq -e '.rules_fired | index("rule4") != null'
+}
+
+@test "epic mention: single-backslash key absent from ux-design does not fire rule4" {
+  root="$(_make_project_tree)"
+  printf '%s\n' 'The design covers E50S1 in full.' \
+    > "$root/.gaia/artifacts/planning-artifacts/ux-design.md"
+  _make_epic_story "$root/story.md" 'E50\S1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  echo "$output" | jq -e '.rules_fired | index("rule4") == null'
+}
+
+@test "epic classification: single-backslash key in epics fires rule3" {
+  root="$(_make_project_tree)"
+  printf '%s\n' '## Epic E50\S1 — x' 'tags: ux' \
+    > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md"
+  _make_epic_story "$root/story.md" 'E50\S1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  echo "$output" | jq -e '.rules_fired | index("rule3") != null'
+}
+
+@test "epic classification: single-backslash key absent from epics does not fire rule3" {
+  root="$(_make_project_tree)"
+  printf '%s\n' '## Epic E50S1 — x' 'tags: ux' \
+    > "$root/.gaia/artifacts/planning-artifacts/epics-and-stories.md"
+  _make_epic_story "$root/story.md" 'E50\S1'
+  _run_detector "$root" "$root/story.md"
+  [ "$status" -eq 0 ] || { echo "detector exited $status: $output"; false; }
+  echo "$output" | jq -e '.rules_fired | index("rule3") == null'
+}
