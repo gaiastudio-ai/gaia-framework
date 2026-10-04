@@ -359,12 +359,27 @@ _verify_chain_tail() {
   fi
 }
 
+# _check_empty_head FILE — an empty audit array is valid only when the head agrees.
+_check_empty_head() {
+  local file="$1" hc hd
+  hc="$(yq '.audit_head.count // 0' "$file")"
+  hd="$(yq -r '.audit_head.last_digest // ""' "$file")"
+  if [ "$hc" != "0" ]; then
+    printf 'design-record.sh: integrity failure — audit_head.count (%s) != audit length (%s)\n' "$hc" 0 >&2
+    exit 1
+  fi
+  if [ -n "$hd" ]; then
+    printf 'design-record.sh: integrity failure — audit_head.last_digest mismatch\n' >&2
+    exit 1
+  fi
+}
+
 # _verify_chain_legacy FILE — per-entry fallback when Digest::SHA is unavailable.
 _verify_chain_legacy() {
   local file="$1"
   local count
   count="$(yq '.audit | length' "$file")"
-  [ "$count" -gt 0 ] || return 0
+  [ "$count" -gt 0 ] || { _check_empty_head "$file"; return 0; }
   local head_count head_digest
   head_count="$(yq '.audit_head.count' "$file")"
   head_digest="$(yq '.audit_head.last_digest' "$file")"
@@ -402,14 +417,17 @@ _verify_chain() {
   local file="$1"
   local count
   count="$(yq '.audit | length' "$file")"
-  [ "$count" -gt 0 ] || return 0
+  [ "$count" -gt 0 ] || { _check_empty_head "$file"; return 0; }
 
-  # Digest::SHA guard: fall back to per-entry path with warning
-  if ! perl -MDigest::SHA -e1 2>/dev/null; then
-    printf 'design-record.sh: warning: perl Digest::SHA unavailable — using per-entry fallback\n' >&2
-    _verify_chain_legacy "$file"
-    return $?
-  fi
+  # Per-module guard: fall back to per-entry path with warning
+  local _mod
+  for _mod in Digest::SHA JSON::PP; do
+    if ! perl -M"$_mod" -e1 2>/dev/null; then
+      printf 'design-record.sh: warning: perl %s unavailable — using per-entry fallback\n' "$_mod" >&2
+      _verify_chain_legacy "$file"
+      return $?
+    fi
+  done
 
   local head_count head_digest
   head_count="$(yq '.audit_head.count' "$file")"
@@ -422,23 +440,27 @@ _verify_chain() {
 
   # Single pass: two fixed yq streams fed into one perl hashing process.
   # Data via file descriptors, never args or env (128 KB Linux arg limit).
+  # Digests are read as JSON-encoded strings (-o=json -I=0) so a newline
+  # inside a _digest value cannot split the stream into extra lines.
   # Perl line-count check (exit 4) catches failed or malformed yq output.
   local result rc=0
-  result="$(perl -MDigest::SHA=sha256_hex -e '
+  result="$(perl -MDigest::SHA=sha256_hex -MJSON::PP -e '
+    my $j = JSON::PP->new->allow_nonref;
     my $n = shift; my $prev = "";
     open(my $c, "<&=3") or exit 3;
     open(my $d, "<&=4") or exit 3;
     my @c = <$c>; my @d = <$d>;
     exit 4 if @c != $n || @d != $n;
     for (my $i = 0; $i < $n; $i++) {
-      chomp $c[$i]; chomp $d[$i];
+      chomp $c[$i];
+      chomp $d[$i]; $d[$i] = $j->decode($d[$i]); $d[$i] = "" unless defined $d[$i];
       my $exp = sha256_hex($c[$i] . "\n" . $prev);
       if ($d[$i] ne $exp) { printf "broken\n%d\n%s\n", $i, $exp; exit 0 }
       $prev = $d[$i]; }
     printf "ok\n%s\n", $prev;
   ' "$count" \
     3< <(yq -o=json -I=0 '.audit[] | sort_keys(..) | del(._digest)' "$file" 2>/dev/null) \
-    4< <(yq -r '.audit[]._digest' "$file" 2>/dev/null))" || rc=$?
+    4< <(yq -o=json -I=0 '.audit[]._digest' "$file" 2>/dev/null))" || rc=$?
 
   case "$rc:$result" in
     0:broken*)
@@ -459,7 +481,8 @@ _verify_chain() {
       ;;
     *)
       # Non-zero rc (perl exit 3/4, or signal) or unrecognised output — legacy fallback.
-      # This catches: failed yq producing wrong line count, newline-in-digest, etc.
+      # This catches: failed yq producing wrong line count, etc.
+      printf 'design-record.sh: warning: fast-path verification failed (rc=%s) — using per-entry fallback\n' "$rc" >&2
       _verify_chain_legacy "$file"
       ;;
   esac
