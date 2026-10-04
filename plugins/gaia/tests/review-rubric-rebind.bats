@@ -1771,3 +1771,88 @@ require_section() {
     { echo "mutant with design_state re-added was not caught" >&2; return 1; }
   rm -f "$mutant_f"
 }
+
+# ---------------------------------------------------------------------------
+# Severity tier for design-fidelity findings
+#
+# Each design-fidelity section must define a severity tier: a default level
+# and an escalated level for contradictions.  The five Phase-4 rubrics and
+# the shared template use Warning/Critical; the security review (Step 4b)
+# and review-perf (Step 4d) use their own medium/critical scale.
+# ---------------------------------------------------------------------------
+
+# Shared check helper — called by both the real tests and the swap mutant.
+# Usage: _check_severity_tier <block> <label> [default_phrase] [contradict_phrase]
+_check_severity_tier() {
+  local block="$1" label="$2"
+  local default_phrase="${3:-Warning by default}"
+  local contradict_phrase="${4:-contradict}"
+  [ -n "$block" ] || { echo "$label section is empty or missing" >&2; return 1; }
+  printf '%s' "$block" | grep -qi "$default_phrase" || \
+    { echo "default severity tier missing from $label (expected: $default_phrase)" >&2; return 1; }
+  printf '%s' "$block" | grep -qiE "[Cc]ritical when.*${contradict_phrase}" || \
+    { echo "contradiction tier missing from $label" >&2; return 1; }
+  # Top-level placement: the severity line must start with "- " (a top-level
+  # bullet), not "  - " (a sub-bullet).  This catches the drift where the
+  # severity tier is nested under the design-record branch instead of
+  # governing all fidelity findings including the "no reference" case.
+  printf '%s\n' "$block" | grep -qiE "^- [^ ].*${default_phrase}" || \
+    { echo "severity tier not a top-level bullet in $label" >&2; return 1; }
+}
+
+@test "Phase 4 fidelity sections define severity tiers for design-fidelity findings" {
+  local rubrics=(
+    "$REPO_ROOT/skills/gaia-code-review/SKILL.md"
+    "$REPO_ROOT/skills/gaia-performance-review/SKILL.md"
+    "$REPO_ROOT/skills/gaia-qa-tests/SKILL.md"
+    "$REPO_ROOT/skills/gaia-test-automate/SKILL.md"
+    "$REPO_ROOT/skills/gaia-test-review/SKILL.md"
+  )
+  for f in "${rubrics[@]}"; do
+    local block
+    block="$(extract_phase4_block "$f")"
+    _check_severity_tier "$block" "Phase 4 ($(basename "$(dirname "$f")"))"
+  done
+}
+
+@test "review-security Step 4b defines severity tiers for design-fidelity findings" {
+  local f="$REPO_ROOT/skills/gaia-review-security/SKILL.md"
+  [ -f "$f" ] || { echo "file missing: $f" >&2; return 1; }
+  local block
+  block="$(extract_step4b_block "$f")"
+  _check_severity_tier "$block" "Step 4b (review-security)" "medium by default" "contradict"
+}
+
+@test "review-perf Step 4d defines severity tiers for design-fidelity findings" {
+  local f="$REPO_ROOT/skills/gaia-review-perf/SKILL.md"
+  [ -f "$f" ] || { echo "file missing: $f" >&2; return 1; }
+  local block
+  block="$(extract_reviewperf_step4d_block "$f")"
+  _check_severity_tier "$block" "Step 4d (review-perf)" "medium by default" "contradict"
+}
+
+@test "review-skill template defines severity tiers for design-fidelity findings" {
+  local f="$REPO_ROOT/knowledge/review-skill-template.md"
+  [ -f "$f" ] || { echo "file missing: $f" >&2; return 1; }
+  local block
+  block="$(extract_template_phase4_block "$f")"
+  _check_severity_tier "$block" "Phase 4 (template)" "Warning by default" "contradict"
+}
+
+@test "severity tier swap mutant turns check red" {
+  # Positive control: the real shared helper passes on the real section
+  local f="$REPO_ROOT/skills/gaia-code-review/SKILL.md"
+  [ -f "$f" ] || { echo "file missing: $f" >&2; return 1; }
+  local block
+  block="$(extract_phase4_block "$f")"
+  run _check_severity_tier "$block" "positive-control"
+  [ "$status" -eq 0 ] || { echo "positive control failed: $output" >&2; return 1; }
+
+  # Swap mutant: "Warning by default" -> "Critical by default",
+  #              "Critical when" -> "Warning when"
+  local mutant
+  mutant="$(printf '%s' "$block" | sed 's/Warning by default/Critical by default/g; s/Critical when/Warning when/g')"
+  # The SAME shared helper must fail against the mutant
+  run _check_severity_tier "$mutant" "mutant"
+  [ "$status" -ne 0 ] || { echo "swap mutant still passes severity tier check — test is vacuous" >&2; return 1; }
+}

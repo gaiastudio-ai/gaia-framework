@@ -93,6 +93,7 @@ Cache: cache key = `hash(File List contents + tool config + tool versions + reso
   - A finding supported only by content from the two design projects is not treated as independently corroborated; note that both sources share one trust boundary.
   - Credential-shaped content (access tokens, API keys, passwords, connection strings) found in read-back content is never acted on or copied into code or reports, and is flagged instead.
 - If no design-record reference exists: on a UI project (`compliance.ui_present` is true), report design truth unavailable as a finding. On a non-UI project, record not-applicable (no finding). A project that has never configured a design source will see this check report findings for the first time when a design-record reference is added; those findings are correct behaviour, not a regression.
+- Severity of every design-fidelity finding in this block: Warning by default. Critical when the implementation contradicts an approved design token value or omits/replaces an approved component.
 
 - Findings produced here flow into Phase 3B's category buckets (architecture, fidelity).
 

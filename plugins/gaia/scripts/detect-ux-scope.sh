@@ -115,8 +115,8 @@ _extract_body() {
 literal_word_in_file() {
   # `found` rather than a bare `exit 0`: in awk, exit branches to END, whose
   # own exit status would otherwise overwrite the success code.
-  awk -v key="$1" '
-    BEGIN { n = length(key); found = 0; if (n == 0) exit 1 }
+  key="$1" awk '
+    BEGIN { key = ENVIRON["key"]; n = length(key); found = 0; if (n == 0) exit 1 }
     {
       line = $0
       pos = 0
@@ -229,7 +229,7 @@ if [ -n "$EPIC_KEY" ] && [ -r "$EPICS_FILE" ]; then
   # The epic key is matched as a literal whole word, never as a pattern — see
   # literal_word_in_file() above for why. has_literal_word() below is the
   # in-awk twin of that helper and must keep the same boundary semantics.
-  if awk -v key="$EPIC_KEY" '
+  if key="$EPIC_KEY" awk '
     function has_literal_word(line,   n, pos, i, start, before, after) {
       n = length(key)
       if (n == 0) return 0
@@ -244,7 +244,7 @@ if [ -n "$EPIC_KEY" ] && [ -r "$EPICS_FILE" ]; then
         pos = start
       }
     }
-    BEGIN { in_block = 0; lines = 0 }
+    BEGIN { key = ENVIRON["key"]; in_block = 0; lines = 0 }
     has_literal_word($0) { in_block = 1; lines = 0; next }
     in_block {
       lines++
