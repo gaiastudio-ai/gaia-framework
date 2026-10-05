@@ -13,20 +13,40 @@
 #   designsync — --metadata-file is a JSON object the CALLER writes:
 #       {"projectId": "<id passed to get_project>",
 #        "project": <raw get_project response>}
+#     The raw get_project response has the shape:
+#       {"method":"get_project","projectId":"<uuid>","name":"...","type":"PROJECT_TYPE_DESIGN_SYSTEM","ownerDisplayName":"...","canEdit":true}
 #     The verifier requires:
-#       - projectId present, non-empty, and equal to <reference>
+#       - Outer projectId present, non-empty, and equal to <reference>
+#       - project.projectId present and equal to the outer projectId
+#         (the inner id is the response's own echo of the id; its absence
+#         or a mismatch means the response does not describe the project
+#         the caller asked for)
 #       - project.type == PROJECT_TYPE_DESIGN_SYSTEM
-#       - project.canEdit == true
+#       - project.canEdit == true (strict boolean, not string "true")
+#     Owner check (only when --expected-owner is given):
+#       - project.ownerDisplayName must be present and equal to the expected
+#         value. The old "owner" field is not used; a response that carries
+#         only "owner" (no ownerDisplayName) fails the owner check.
 #     Fail closed on anything else. The get_project response itself
 #     does NOT contain a reference field — do not expect one.
 #
 #   artifact — --metadata-file is a text file the CALLER writes:
 #     Line 1: "reference: <URL the caller read>"
-#     Remaining lines: the Artifact read result header (type, access, owner).
+#     Remaining lines: the verbatim header lines the caller received from
+#     (a) the page read and (b) the per-file read of the same artifact.
+#     The per-file-read header has the form:
+#       Files saved under "..." from version <v> of <URL>, an Artifact of type "<T>".
+#     The page-read header starts with "[Artifact " and contains "— owned by you"
+#     (em dash) when the caller has write access.
 #     The verifier requires:
-#       - first reference: line present and equal to <reference>
-#       - type == Design
-#       - access == writer
+#       - first reference: line present on line 1 and equal to <reference>
+#       - exactly one per-file-read header whose URL matches <reference>
+#         exactly (not a prefix) and whose type is exactly "Design"
+#       - exactly one page-read header containing the "owned by you" proof
+#       - --expected-owner fails closed: real Artifact reads report no named
+#         owner, only "owned by you", so a named owner check is impossible
+#     A file that carries only the old type/access/owner key-value lines
+#     (no real header lines) fails.
 #
 # Flags:
 #   --metadata-file PATH     — path to metadata file (required)
@@ -132,6 +152,19 @@ _verify_designsync() {
     return 1
   fi
 
+  # Inner cross-check: the raw response echoes the project id back as
+  # project.projectId. It must be present and equal to the outer projectId.
+  local inner_id
+  inner_id="$(printf '%s' "$meta_json" | jq -r '.project.projectId // empty')"
+  if [ -z "$inner_id" ]; then
+    _vpt_die "designsync response missing project.projectId — cannot confirm the response describes the requested project"
+    return 1
+  fi
+  if ! printf '%s' "$meta_json" | jq -e --arg ref "$project_id" '.project.projectId == $ref' >/dev/null 2>&1; then
+    _vpt_die "designsync project.projectId ($inner_id) does not match outer projectId ($project_id)"
+    return 1
+  fi
+
   # Type check: project.type must be PROJECT_TYPE_DESIGN_SYSTEM
   local proj_type
   proj_type="$(printf '%s' "$meta_json" | jq -r '.project.type // empty')"
@@ -162,16 +195,17 @@ _verify_designsync() {
     return 1
   fi
 
-  # Owner check: reads project.owner ONLY (the real get_project field).
+  # Owner check: reads project.ownerDisplayName ONLY (the real get_project
+  # field). A response with only "owner" (no ownerDisplayName) fails.
   # Compare via jq --arg so a trailing newline cannot match.
   if [ -n "$expected_owner" ]; then
     local actual_owner
-    actual_owner="$(printf '%s' "$meta_json" | jq -r '.project.owner // empty')"
+    actual_owner="$(printf '%s' "$meta_json" | jq -r '.project.ownerDisplayName // empty')"
     if [ -z "$actual_owner" ]; then
-      _vpt_die "expected owner $expected_owner but metadata has no owner field"
+      _vpt_die "expected owner $expected_owner but metadata has no ownerDisplayName field"
       return 1
     fi
-    if ! printf '%s' "$meta_json" | jq -e --arg o "$expected_owner" '.project.owner == $o' >/dev/null 2>&1; then
+    if ! printf '%s' "$meta_json" | jq -e --arg o "$expected_owner" '.project.ownerDisplayName == $o' >/dev/null 2>&1; then
       _vpt_die "owner mismatch: expected $expected_owner, got $actual_owner"
       return 1
     fi
@@ -184,14 +218,24 @@ _verify_artifact() {
   local reference="$1" metadata_file="$2" expected_owner="$3"
   local ds_ref="$4" pd_ref="$5"
 
-  # Parse text header — key: value lines
+  # --expected-owner is not supported on the artifact surface: real Artifact
+  # reads report "owned by you" in the page header, not a named owner.
+  if [ -n "$expected_owner" ]; then
+    _vpt_die "the Artifact surface cannot check a named owner — ownership is proven by the 'owned by you' header, not a named owner field"
+    return 1
+  fi
+
+  # Parse text header.
   # Line 1 MUST be "reference: <URL>" (caller-written). No other reference:
   # lines are allowed (duplicates rejected). Remaining lines carry the
-  # Artifact read header fields (type, access, owner).
-  local art_type="" art_access="" art_owner="" art_ref=""
+  # verbatim header lines from the Artifact page read and per-file read.
+  local art_ref=""
   local line_num=0 ref_count=0
+  local per_file_header_count=0
+  local page_header_count=0
+  local per_file_url="" per_file_type=""
+  local has_owned_by_you=false
 
-  local ref_count_type=0 ref_count_access=0
   while IFS= read -r line || [ -n "$line" ]; do
     line_num=$((line_num + 1))
     # Reject BOM on line 1
@@ -203,30 +247,54 @@ _verify_artifact() {
         fi
         ;;
     esac
-    # Strip trailing CR (\\r) from CRLF line endings before parsing
+    # Reject CRLF line endings
     case "$line" in
       *$'\r')
         _vpt_die "Artifact header line $line_num has CRLF ending (trailing CR byte 0x0d) — convert to LF"
         return 1
         ;;
     esac
+
+    # Line 1: reference line
     case "$line" in
-      type:*|Type:*|TYPE:*)
-        ref_count_type=$((ref_count_type + 1))
-        art_type="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
-        ;;
-      access:*|Access:*|ACCESS:*)
-        ref_count_access=$((ref_count_access + 1))
-        art_access="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
-        ;;
-      owner:*|Owner:*|OWNER:*)
-        art_owner="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
-        ;;
       reference:*|Reference:*|REFERENCE:*)
         ref_count=$((ref_count + 1))
         if [ "$line_num" -eq 1 ]; then
           art_ref="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
         fi
+        ;;
+    esac
+
+    # Per-file-read header: Files saved under "..." from version <v> of <URL>, an Artifact of type "<T>".
+    # The line must match the full anchored form and end right after the closing
+    # period — no trailing text. Version must be digits only. We use the LAST
+    # "from version N of " occurrence for URL extraction (greedy sed), so a
+    # crafted dir name that embeds the form cannot override the real tail.
+    case "$line" in
+      "Files saved under "*)
+        per_file_header_count=$((per_file_header_count + 1))
+        # Validate the full form is anchored: must end with type "...".
+        # Reject if there is anything after the closing '".'.
+        if ! printf '%s' "$line" | grep -qE '^Files saved under ".*" from version [0-9]+ of .+, an Artifact of type "[^"]+"\.$'; then
+          _vpt_die "per-file-read header does not match the expected form: $line"
+          return 1
+        fi
+        # Extract URL: after the last "from version <digits> of " and before ", an Artifact"
+        per_file_url="$(printf '%s' "$line" | sed 's/.*from version [0-9][0-9]* of //' | sed 's/, an Artifact of type .*//')"
+        # Extract type: between the last 'an Artifact of type "' and '".'
+        per_file_type="$(printf '%s' "$line" | sed 's/.*an Artifact of type "//' | sed 's/"\.$//')"
+        ;;
+    esac
+
+    # Page-read header: starts with "[Artifact " and contains "— owned by you"
+    case "$line" in
+      "[Artifact "*)
+        page_header_count=$((page_header_count + 1))
+        case "$line" in
+          *"— owned by you"*)
+            has_owned_by_you=true
+            ;;
+        esac
         ;;
     esac
   done < "$metadata_file"
@@ -241,42 +309,44 @@ _verify_artifact() {
     _vpt_die "Artifact header has $ref_count reference lines (expected exactly 1)"
     return 1
   fi
-  # Reject duplicate type: lines
-  if [ "$ref_count_type" -gt 1 ]; then
-    _vpt_die "Artifact header has $ref_count_type type lines (expected exactly 1)"
-    return 1
-  fi
-  # Reject duplicate access: lines
-  if [ "$ref_count_access" -gt 1 ]; then
-    _vpt_die "Artifact header has $ref_count_access access lines (expected exactly 1)"
-    return 1
-  fi
   if [ "$art_ref" != "$reference" ]; then
     _vpt_die "Artifact header reference ($art_ref) does not match target reference ($reference)"
     return 1
   fi
 
-  # Type check: must be exactly "Design" (case-insensitive), not "Design System"
-  if [ -z "$art_type" ]; then
-    _vpt_die "missing type line in Artifact header"
+  # Require exactly one per-file-read header line
+  if [ "$per_file_header_count" -eq 0 ]; then
+    _vpt_die "Artifact header has no per-file-read header line — a file with only key-value lines is not accepted"
     return 1
   fi
-  local art_type_lower
-  art_type_lower="$(printf '%s' "$art_type" | tr '[:upper:]' '[:lower:]')"
-  if [ "$art_type_lower" != "design" ]; then
-    _vpt_die "Artifact type must be 'Design', got '$art_type'"
+  if [ "$per_file_header_count" -gt 1 ]; then
+    _vpt_die "Artifact header has $per_file_header_count per-file-read header lines (expected exactly 1)"
     return 1
   fi
 
-  # Access check: must be "writer"
-  if [ -z "$art_access" ]; then
-    _vpt_die "missing access line in Artifact header"
+  # Per-file URL must match the reference exactly (not a prefix)
+  if [ "$per_file_url" != "$reference" ]; then
+    _vpt_die "per-file-read header URL ($per_file_url) does not match target reference ($reference)"
     return 1
   fi
-  local art_access_lower
-  art_access_lower="$(printf '%s' "$art_access" | tr '[:upper:]' '[:lower:]')"
-  if [ "$art_access_lower" != "writer" ]; then
-    _vpt_die "Artifact access must be 'writer', got '$art_access'"
+
+  # Type must be exactly "Design" (case-sensitive)
+  if [ "$per_file_type" != "Design" ]; then
+    _vpt_die "Artifact type must be exactly 'Design', got '$per_file_type'"
+    return 1
+  fi
+
+  # Require exactly one page-read header with "owned by you"
+  if [ "$page_header_count" -eq 0 ]; then
+    _vpt_die "Artifact header has no page-read header line — write access could not be confirmed from the read header"
+    return 1
+  fi
+  if [ "$page_header_count" -gt 1 ]; then
+    _vpt_die "Artifact header has $page_header_count page-read header lines (expected exactly 1)"
+    return 1
+  fi
+  if [ "$has_owned_by_you" = false ]; then
+    _vpt_die "Artifact page-read header does not contain 'owned by you' — write access could not be confirmed from the read header"
     return 1
   fi
 
@@ -294,18 +364,6 @@ _verify_artifact() {
     fi
     _vpt_die "reference mismatch: artifact reference ($reference) does not match product_design_project.reference ($pd_ref)"
     return 1
-  fi
-
-  # Owner check
-  if [ -n "$expected_owner" ]; then
-    if [ -z "$art_owner" ]; then
-      _vpt_die "expected owner $expected_owner but Artifact header has no owner field"
-      return 1
-    fi
-    if [ "$art_owner" != "$expected_owner" ]; then
-      _vpt_die "owner mismatch: expected $expected_owner, got $art_owner"
-      return 1
-    fi
   fi
 
   return 0

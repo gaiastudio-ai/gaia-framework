@@ -1383,19 +1383,46 @@ _run_persist_v2() {
 }
 
 # ===========================================================================
-# AC5 — Pre-write reference verification
+# Pre-write reference verification — real response shapes
 # ===========================================================================
 
 VERIFY_SCRIPT="$BATS_TEST_DIRNAME/../scripts/lib/verify-publication-target.sh"
 
-@test "verify-target: positive control passes" {
+# _make_ds_meta FILE PROJECTID [EXTRA_PROJECT_FIELDS]
+# Writes a designsync wrapper JSON that mirrors the real get_project shape.
+_make_ds_meta() {
+  local file="$1" pid="$2" extra="${3:-}"
+  # Defaults: name, type, ownerDisplayName, canEdit — matches real response
+  local name="Acme Design System" type="PROJECT_TYPE_DESIGN_SYSTEM"
+  local owner="Jane Doe" can_edit="true"
+  jq -n --arg pid "$pid" --arg name "$name" --arg type "$type" \
+    --arg owner "$owner" --argjson canEdit "$can_edit" \
+    '{projectId: $pid, project: ({method:"get_project", projectId: $pid, name: $name, type: $type, ownerDisplayName: $owner, canEdit: $canEdit})}' \
+    > "$file"
+  # Apply overrides if provided (a jq filter)
+  if [ -n "$extra" ]; then
+    local tmp; tmp="$(jq "$extra" "$file")"
+    printf '%s\n' "$tmp" > "$file"
+  fi
+}
+
+# _make_art_meta FILE REFERENCE [PAGE_HEADER] [PERFILE_HEADER]
+# Writes an artifact metadata file that mirrors the real Artifact read shapes.
+_make_art_meta() {
+  local file="$1" ref="$2"
+  local page="${3:-[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private; the page comes from its Artifact type https://claude.ai/artifact/QKN21svewxgyPb6SYRqWnd]}"
+  local perfile="${4:-Files saved under \"/some/dir\" from version 2 of $ref, an Artifact of type \"Design\".}"
+  {
+    printf 'reference: %s\n' "$ref"
+    printf '%s\n' "$page"
+    printf '%s\n' "$perfile"
+  } > "$file"
+}
+
+@test "verify-target: positive control passes with real designsync shape" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  # DesignSync metadata wrapper: {projectId, project: <get_project response>}
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1409,10 +1436,7 @@ JSON
 @test "verify-target: cross-wire designsync using PD reference rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://claude.ai/artifact/456","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://claude.ai/artifact/456"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1427,10 +1451,8 @@ JSON
 @test "verify-target: canEdit false rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":false}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.canEdit = false'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1441,16 +1463,26 @@ JSON
   [ "$status" -ne 0 ] || fail "canEdit:false should be rejected"
 }
 
-@test "verify-target: non-writer Artifact header rejected" {
+@test "verify-target: artifact positive control with real header shapes" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456"
 
-  cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: Design
-access: viewer
-owner: owner-456
-TXT
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "positive artifact control should pass: $output"
+}
+
+@test "verify-target: non-writer artifact page header rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  # Page header says "shared with you" instead of "owned by you"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — shared with you, private]"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1459,18 +1491,16 @@ TXT
       --design-record '$TEST_TMP/design-record.yaml'
   "
   [ "$status" -ne 0 ] || fail "non-writer Artifact should be rejected"
+  [[ "$output" == *"write access could not be confirmed"* ]] \
+    || fail "should say write access could not be confirmed: $output"
 }
 
-@test "verify-target: 'Design System' Artifact type (not 'Design') rejected" {
+@test "verify-target: 'Design System' artifact type rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: Design System
-access: writer
-owner: owner-456
-TXT
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/some/dir" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design System".'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1481,14 +1511,30 @@ TXT
   [ "$status" -ne 0 ] || fail "'Design System' type should be rejected (only 'Design' accepted)"
 }
 
-@test "verify-target: missing type line in Artifact header rejected" {
+@test "verify-target: lowercase 'design' artifact type rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/some/dir" from version 2 of https://claude.ai/artifact/456, an Artifact of type "design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "lowercase 'design' type should be rejected (case-sensitive)"
+}
+
+@test "verify-target: missing per-file-read header line rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
+  # Only reference and page header, no per-file header
   cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
 reference: https://claude.ai/artifact/456
-access: writer
-owner: owner-456
+[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]
 TXT
 
   run bash -c "
@@ -1497,43 +1543,59 @@ TXT
       --metadata-file '$TEST_TMP/artifact-meta.txt' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
-  [ "$status" -ne 0 ] || fail "missing type line should be rejected"
+  [ "$status" -ne 0 ] || fail "missing per-file header should be rejected"
+  [[ "$output" == *"key-value lines"* ]] || [[ "$output" == *"per-file"* ]] \
+    || fail "should mention missing per-file header: $output"
 }
 
-@test "verify-target: owner mismatch rejected" {
+@test "verify-target: owner mismatch rejected for designsync" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"wrong-org","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.ownerDisplayName = "Wrong Org"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target designsync 'https://ds.example.com/project/123' \
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner org-123
+      --expected-owner 'Jane Doe'
   "
   [ "$status" -ne 0 ] || fail "owner mismatch should be rejected"
 }
 
-@test "verify-target: --expected-owner with no owner field in metadata rejected" {
+@test "verify-target: --expected-owner with no ownerDisplayName field rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    'del(.project.ownerDisplayName)'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target designsync 'https://ds.example.com/project/123' \
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner org-123
+      --expected-owner 'Jane Doe'
   "
-  [ "$status" -ne 0 ] || fail "missing owner field should fail closed"
+  [ "$status" -ne 0 ] || fail "missing ownerDisplayName field should fail closed"
+}
+
+@test "verify-target: only 'owner' present (no ownerDisplayName) with --expected-owner rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  # Has project.owner but not project.ownerDisplayName
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    'del(.project.ownerDisplayName) | .project.owner = "Jane Doe"'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner 'Jane Doe'
+  "
+  [ "$status" -ne 0 ] || fail "owner (without ownerDisplayName) should fail closed"
+  [[ "$output" == *"ownerDisplayName"* ]] || fail "should mention missing ownerDisplayName: $output"
 }
 
 @test "verify-target: artifact cross-wire using DS reference rejected" {
@@ -1541,12 +1603,7 @@ JSON
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Artifact surface using the DS reference (should be PD reference)
-  cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
-reference: https://ds.example.com/project/123
-type: Design
-access: writer
-owner: owner-456
-TXT
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://ds.example.com/project/123"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1558,14 +1615,14 @@ TXT
   [[ "$output" == *"cross-wire"* ]] || fail "should diagnose cross-wire (got: $output)"
 }
 
-@test "verify-target: missing access line in Artifact header rejected" {
+@test "verify-target: missing page-read header line rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
+  # Reference + per-file header but no page header
+  cat > "$TEST_TMP/artifact-meta.txt" <<TXT
 reference: https://claude.ai/artifact/456
-type: Design
-owner: owner-456
+Files saved under "/some/dir" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
 TXT
 
   run bash -c "
@@ -1574,37 +1631,15 @@ TXT
       --metadata-file '$TEST_TMP/artifact-meta.txt' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
-  [ "$status" -ne 0 ] || fail "missing access line should be rejected"
-}
-
-@test "verify-target: case-insensitive 'design' type accepted" {
-  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
-  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: DESIGN
-access: writer
-owner: owner-456
-TXT
-
-  run bash -c "
-    source '$VERIFY_SCRIPT'
-    verify_publication_target artifact 'https://claude.ai/artifact/456' \
-      --metadata-file '$TEST_TMP/artifact-meta.txt' \
-      --design-record '$TEST_TMP/design-record.yaml'
-  "
-  [ "$status" -eq 0 ] || fail "case-insensitive 'DESIGN' should be accepted: $output"
+  [ "$status" -ne 0 ] || fail "missing page header should be rejected"
+  [[ "$output" == *"write access could not be confirmed"* ]] \
+    || fail "should say write access could not be confirmed: $output"
 }
 
 @test "verify-target: reference mismatch against design record rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  # projectId does not match design_system_project.reference in the design record
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/wrong-ref","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/wrong-ref"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1617,17 +1652,12 @@ JSON
     || fail "should diagnose reference mismatch"
 }
 
-@test "verify-target: surface mismatch against design record rejected" {
+@test "verify-target: artifact surface mismatch against design record rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Artifact surface with the DS reference (should use PD reference)
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-reference: https://ds.example.com/project/123
-type: Design
-access: writer
-owner: owner-456
-TXT
+  _make_art_meta "$TEST_TMP/art-meta.txt" "https://ds.example.com/project/123"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1636,6 +1666,335 @@ TXT
       --design-record '$TEST_TMP/design-record.yaml'
   "
   [ "$status" -ne 0 ] || fail "surface mismatch should be rejected"
+}
+
+@test "verify-target: inner projectId missing in designsync rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    'del(.project.projectId)'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "missing inner projectId should be rejected"
+  [[ "$output" == *"project.projectId"* ]] || fail "should mention project.projectId: $output"
+}
+
+@test "verify-target: inner projectId differs from outer rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.projectId = "https://ds.example.com/DIFFERENT"'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "inner projectId mismatch should be rejected"
+  [[ "$output" == *"project.projectId"* ]] || fail "should mention project.projectId: $output"
+}
+
+@test "verify-target: ownerDisplayName match passes" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner 'Jane Doe'
+  "
+  [ "$status" -eq 0 ] || fail "ownerDisplayName match should pass: $output"
+}
+
+@test "verify-target: ownerDisplayName mismatch rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner 'Wrong Person'
+  "
+  [ "$status" -ne 0 ] || fail "ownerDisplayName mismatch should be rejected"
+  [[ "$output" == *"owner mismatch"* ]] || fail "should mention owner mismatch: $output"
+}
+
+@test "verify-target: create_project shape (no type/canEdit) rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # create_project response has no type, no canEdit, no ownerDisplayName
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"method":"create_project","projectId":"https://ds.example.com/project/123","name":"New project"}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "create_project shape should be rejected (no type/canEdit)"
+}
+
+@test "verify-target: URL prefix trick rejected — reference is prefix of header URL" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml" \
+    "https://ds.example.com/project/123" "https://claude.ai/artifact/abc"
+
+  # reference is .../abc but header URL is .../abcd
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/abc" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/abcd, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/abc' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "prefix-trick (.../abc matching .../abcd) should be rejected"
+}
+
+@test "verify-target: URL prefix trick rejected — header URL is prefix of reference" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml" \
+    "https://ds.example.com/project/123" "https://claude.ai/artifact/abcd"
+
+  # reference is .../abcd but header URL is .../abc
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/abcd" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/abc, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/abcd' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "prefix-trick (.../abcd vs .../abc) should be rejected"
+}
+
+@test "verify-target: per-file header for a different URL rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/WRONG, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "per-file header for a different URL should be rejected"
+}
+
+@test "verify-target: two per-file header lines rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/artifact-meta.txt" <<TXT
+reference: https://claude.ai/artifact/456
+[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]
+Files saved under "/d1" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
+Files saved under "/d2" from version 3 of https://claude.ai/artifact/456, an Artifact of type "Design".
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "two per-file header lines should be rejected"
+  [[ "$output" == *"per-file"* ]] || fail "should mention per-file headers: $output"
+}
+
+@test "verify-target: two page-read header lines rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Two page headers — one with "owned by you", one without
+  cat > "$TEST_TMP/artifact-meta.txt" <<TXT
+reference: https://claude.ai/artifact/456
+[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
+[Artifact bbbbbbbb-0000-0000-0000-000000000000 (version 1) — shared with you, private]
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "two page-read header lines should be rejected"
+  [[ "$output" == *"page-read"* ]] || fail "should mention page-read headers: $output"
+}
+
+@test "verify-target: per-file header trailing text after closing period rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design". extra trailing text'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "trailing text after closing period should be rejected"
+}
+
+@test "verify-target: per-file header missing final period rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design"'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "missing final period should be rejected"
+}
+
+@test "verify-target: per-file header non-numeric version rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2x of https://claude.ai/artifact/456, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "non-numeric version should be rejected"
+}
+
+@test "verify-target: per-file header with crafted dir embedding the full form but different tail URL rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Dir name embeds the full form with the correct URL; the real tail names a
+  # different URL. The parser must extract from the LAST "from version N of"
+  # occurrence; this test ensures the tail URL (WRONG) is what is compared, so
+  # the file is rejected. This is safe because the dir is always quoted and the
+  # real structural tail is the last match — a crafted dir cannot override it.
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design"." from version 3 of https://claude.ai/artifact/WRONG, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "crafted dir with different tail URL should be rejected"
+}
+
+@test "verify-target: per-file header with unquoted dir name rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Dir name is not quoted — the line structure is wrong even though the sed
+  # extraction would produce the right URL and type. The anchored form
+  # validation catches this because it requires "..." around the dir.
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under /d from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "unquoted dir name should be rejected"
+}
+
+@test "verify-target: per-file header with crafted dir embedding the full form and same tail URL passes" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Same scenario but the real tail URL equals the reference — this should pass.
+  # The parser takes the LAST structural match, which carries the correct URL.
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/from version 2 of https://evil.example.com/x, an Artifact of type "Design"." from version 3 of https://claude.ai/artifact/456, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "crafted dir with correct tail URL should pass: $output"
+}
+
+@test "verify-target: old key-value-only artifact file rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Old-shape file with only type/access/owner key-value lines
+  cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
+type: Design
+access: writer
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "old key-value-only file should be rejected"
+}
+
+@test "verify-target: --expected-owner on artifact surface fails closed" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner 'Some Owner'
+  "
+  [ "$status" -ne 0 ] || fail "--expected-owner on artifact should fail closed"
+  [[ "$output" == *"cannot check a named owner"* ]] \
+    || fail "should say cannot check named owner: $output"
 }
 
 # ===========================================================================
@@ -3291,9 +3650,7 @@ product_design_project:
   discovered_via: manual
 YAML
 
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3318,12 +3675,7 @@ product_design_project:
   discovered_via: manual
 YAML
 
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: Design
-access: writer
-owner: owner-456
-TXT
+  _make_art_meta "$TEST_TMP/art-meta.txt" "https://claude.ai/artifact/456"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3335,14 +3687,12 @@ TXT
   [[ "$output" == *"product_design_project.reference"* ]] || fail "should mention PD reference not set: $output"
 }
 
-@test "verify-target: projectId mismatch rejects designsync" {
+@test "verify-target: outer projectId mismatch rejects designsync" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Wrapper projectId differs from the reference argument
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/DIFFERENT/999","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/DIFFERENT/999"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3354,7 +3704,7 @@ JSON
   [[ "$output" == *"does not match"* ]] || fail "should diagnose mismatch: $output"
 }
 
-@test "verify-target: main guard invokes verify_publication_target" {
+@test "verify-target: main guard invokes the function" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
 
   # Direct execution: should fail with usage error (no args)
@@ -3363,9 +3713,7 @@ JSON
 
   # Direct execution with valid args should succeed
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
 
   run bash "$VERIFY_SCRIPT" designsync 'https://ds.example.com/project/123' \
     --metadata-file "$TEST_TMP/ds-metadata.json" \
@@ -3619,9 +3967,9 @@ JSON
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Raw get_project response (no projectId wrapper)
+  # Raw get_project response (no outer projectId wrapper)
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}
+{"method":"get_project","projectId":"https://ds.example.com/project/123","name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","ownerDisplayName":"Jane Doe","canEdit":true}
 JSON
 
   run bash -c "
@@ -3639,11 +3987,10 @@ JSON
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Artifact header WITHOUT reference line
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-type: Design
-access: writer
-owner: owner-456
+  # Artifact header WITHOUT reference line — just real header lines
+  cat > "$TEST_TMP/art-meta.txt" <<TXT
+[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
 TXT
 
   run bash -c "
@@ -3660,10 +4007,7 @@ TXT
 @test "verify-target: empty reference argument rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3841,16 +4185,13 @@ YAML
 }
 
 # ===========================================================================
-# DesignSync new-contract tests
+# DesignSync real-shape contract tests
 # ===========================================================================
 
-@test "verify-target: designsync wrapper with mismatched projectId rejected" {
+@test "verify-target: designsync wrapper with mismatched outer projectId rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/WRONG","project":{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/WRONG"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3862,12 +4203,12 @@ JSON
   [[ "$output" == *"does not match"* ]] || fail "should diagnose mismatch: $output"
 }
 
-@test "verify-target: designsync with missing projectId rejected" {
+@test "verify-target: designsync with missing outer projectId rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"project":{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
+{"project":{"method":"get_project","projectId":"https://ds.example.com/project/123","type":"PROJECT_TYPE_DESIGN_SYSTEM","ownerDisplayName":"Jane Doe","canEdit":true}}
 JSON
 
   run bash -c "
@@ -3883,10 +4224,8 @@ JSON
 @test "verify-target: designsync with wrong project.type rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"type":"PROJECT_TYPE_OTHER","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.type = "PROJECT_TYPE_OTHER"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3898,13 +4237,11 @@ JSON
   [[ "$output" == *"type mismatch"* ]] || fail "should diagnose type mismatch: $output"
 }
 
-@test "verify-target: designsync with project.canEdit false rejected" {
+@test "verify-target: designsync with project.canEdit false rejected (real shape)" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":false}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.canEdit = false'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3919,13 +4256,7 @@ JSON
 @test "verify-target: artifact with mismatched reference line rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/WRONG
-type: Design
-access: writer
-owner: owner-456
-TXT
+  _make_art_meta "$TEST_TMP/art-meta.txt" "https://claude.ai/artifact/WRONG"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3937,13 +4268,10 @@ TXT
   [[ "$output" == *"does not match"* ]] || fail "should diagnose mismatch: $output"
 }
 
-@test "verify-target: designsync positive control with new contract passes" {
+@test "verify-target: designsync positive control with real shape passes" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -3951,105 +4279,96 @@ JSON
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
-  [ "$status" -eq 0 ] || fail "positive control should pass (new contract): $output"
+  [ "$status" -eq 0 ] || fail "positive control should pass: $output"
 }
 
 # ===========================================================================
-# Owner check: reads .project.owner only (no top-level fallback)
+# Owner check: reads .project.ownerDisplayName only (no fallback to .owner)
 # ===========================================================================
 
-@test "verify-target: owner match passes with real shape" {
+@test "verify-target: ownerDisplayName match passes with real shape" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target designsync 'https://ds.example.com/project/123' \
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner org-123
+      --expected-owner 'Jane Doe'
   "
-  [ "$status" -eq 0 ] || fail "owner match should pass: $output"
+  [ "$status" -eq 0 ] || fail "ownerDisplayName match should pass: $output"
 }
 
-@test "verify-target: owner mismatch refused with real shape" {
+@test "verify-target: ownerDisplayName mismatch refused with real shape" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"evil-org","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.ownerDisplayName = "Evil Corp"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target designsync 'https://ds.example.com/project/123' \
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner org-123
+      --expected-owner 'Jane Doe'
   "
   [ "$status" -ne 0 ] || fail "owner mismatch should be refused"
   [[ "$output" == *"owner mismatch"* ]] || fail "should diagnose owner mismatch: $output"
 }
 
-@test "verify-target: forged top-level organization ignored when project.owner mismatches" {
+@test "verify-target: forged top-level organization ignored when ownerDisplayName mismatches" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Top-level "organization" matches expected owner, but project.owner does not
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","organization":"org-123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"evil-org","canEdit":true}}
-JSON
+  # Top-level "organization" matches expected owner, but project.ownerDisplayName does not
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.ownerDisplayName = "Evil Corp" | .organization = "Jane Doe"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target designsync 'https://ds.example.com/project/123' \
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner org-123
+      --expected-owner 'Jane Doe'
   "
-  [ "$status" -ne 0 ] || fail "top-level organization should be ignored; project.owner mismatches"
+  [ "$status" -ne 0 ] || fail "top-level organization should be ignored; ownerDisplayName mismatches"
 }
 
-@test "verify-target: forged top-level owner ignored when project.owner mismatches" {
+@test "verify-target: forged top-level owner ignored when ownerDisplayName mismatches" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Top-level "owner" matches expected, but project.owner does not
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","owner":"org-123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"evil-org","canEdit":true}}
-JSON
+  # Top-level "owner" matches expected, but project.ownerDisplayName does not
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.ownerDisplayName = "Evil Corp" | .owner = "Jane Doe"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target designsync 'https://ds.example.com/project/123' \
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner org-123
+      --expected-owner 'Jane Doe'
   "
-  [ "$status" -ne 0 ] || fail "top-level owner should be ignored; project.owner mismatches"
+  [ "$status" -ne 0 ] || fail "top-level owner should be ignored; ownerDisplayName mismatches"
 }
 
-@test "verify-target: missing project.owner with expected-owner fails closed" {
+@test "verify-target: missing ownerDisplayName with expected-owner fails closed" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    'del(.project.ownerDisplayName)'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target designsync 'https://ds.example.com/project/123' \
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner org-123
+      --expected-owner 'Jane Doe'
   "
-  [ "$status" -ne 0 ] || fail "missing project.owner should fail closed when --expected-owner given"
-  [[ "$output" == *"no owner field"* ]] || fail "should mention missing owner: $output"
+  [ "$status" -ne 0 ] || fail "missing ownerDisplayName should fail closed when --expected-owner given"
+  [[ "$output" == *"ownerDisplayName"* ]] || fail "should mention missing ownerDisplayName: $output"
 }
 
 # ===========================================================================
@@ -4059,10 +4378,8 @@ JSON
 @test "verify-target: canEdit string true rejected (not boolean)" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":"true"}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.canEdit = "true"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -4079,9 +4396,8 @@ JSON
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Top-level canEdit:true should not override project.canEdit:false
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","canEdit":true,"project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":false}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.canEdit = false | .canEdit = true'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -4094,17 +4410,16 @@ JSON
 }
 
 # ===========================================================================
-# Inner wrapper overrides ignored (projectId, type)
+# Inner cross-check: project.projectId must match outer
 # ===========================================================================
 
-@test "verify-target: inner project.projectId override ignored" {
+@test "verify-target: inner project.projectId mismatch rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # project has its own projectId that differs from top-level — top-level wins
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"projectId":"https://ds.example.com/EVIL","name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  # project.projectId differs from outer projectId — must be rejected
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.project.projectId = "https://ds.example.com/EVIL"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -4112,7 +4427,8 @@ JSON
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
-  [ "$status" -eq 0 ] || fail "inner projectId override should be ignored; top-level matches: $output"
+  [ "$status" -ne 0 ] || fail "inner projectId mismatch should be rejected"
+  [[ "$output" == *"project.projectId"* ]] || fail "should mention project.projectId: $output"
 }
 
 @test "verify-target: top-level type override ignored" {
@@ -4120,9 +4436,8 @@ JSON
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Top-level type is wrong, but project.type is correct — should pass
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","type":"PROJECT_TYPE_OTHER","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    '.type = "PROJECT_TYPE_OTHER"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -4142,11 +4457,10 @@ JSON
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # reference is on line 2, not line 1
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-type: Design
+  cat > "$TEST_TMP/art-meta.txt" <<TXT
+[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]
 reference: https://claude.ai/artifact/456
-access: writer
-owner: owner-456
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
 TXT
 
   run bash -c "
@@ -4163,7 +4477,7 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # blank first line, reference on line 2
-  printf '\nreference: https://claude.ai/artifact/456\ntype: Design\naccess: writer\n' \
+  printf '\nreference: https://claude.ai/artifact/456\n[Artifact a (version 2) — owned by you, private]\nFiles saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".\n' \
     > "$TEST_TMP/art-meta.txt"
 
   run bash -c "
@@ -4180,11 +4494,10 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # reference line with empty value
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+  cat > "$TEST_TMP/art-meta.txt" <<TXT
 reference:
-type: Design
-access: writer
-owner: owner-456
+[Artifact a (version 2) — owned by you, private]
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
 TXT
 
   run bash -c "
@@ -4201,12 +4514,11 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Two reference lines — second one could override the first
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+  cat > "$TEST_TMP/art-meta.txt" <<TXT
 reference: https://claude.ai/artifact/456
-type: Design
-access: writer
+[Artifact a (version 2) — owned by you, private]
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
 reference: https://claude.ai/artifact/EVIL
-owner: owner-456
 TXT
 
   run bash -c "
@@ -4223,8 +4535,8 @@ TXT
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Write a CRLF-terminated file
-  printf 'reference: https://claude.ai/artifact/456\r\ntype: Design\r\naccess: writer\r\n' \
+  # Write a CRLF-terminated file with real header shapes
+  printf 'reference: https://claude.ai/artifact/456\r\n[Artifact a (version 2) — owned by you, private]\r\nFiles saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".\r\n' \
     > "$TEST_TMP/art-meta.txt"
 
   run bash -c "
@@ -4285,10 +4597,9 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Write header WITHOUT trailing newline (printf '%s', not '%s\n')
-  printf '%s' "reference: https://claude.ai/artifact/456
-type: Design
-access: writer
-owner: owner-456" > "$TEST_TMP/art-meta.txt"
+  printf '%s' 'reference: https://claude.ai/artifact/456
+[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".' > "$TEST_TMP/art-meta.txt"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -4304,10 +4615,10 @@ owner: owner-456" > "$TEST_TMP/art-meta.txt"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Valid first reference, but a duplicate on the last unterminated line
-  printf '%s' "reference: https://claude.ai/artifact/456
-type: Design
-access: writer
-reference: https://claude.ai/artifact/EVIL" > "$TEST_TMP/art-meta.txt"
+  printf '%s' 'reference: https://claude.ai/artifact/456
+[Artifact a (version 2) — owned by you, private]
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
+reference: https://claude.ai/artifact/EVIL' > "$TEST_TMP/art-meta.txt"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -4319,14 +4630,14 @@ reference: https://claude.ai/artifact/EVIL" > "$TEST_TMP/art-meta.txt"
   [[ "$output" == *"reference lines"* ]] || fail "should mention duplicate reference lines: $output"
 }
 
-@test "verify-target: unterminated trailing access line honoured (reader refused)" {
+@test "verify-target: unterminated page header without owned-by-you refused" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Valid header except access: reader on the last unterminated line
-  printf '%s' "reference: https://claude.ai/artifact/456
-type: Design
-access: reader" > "$TEST_TMP/art-meta.txt"
+  # Valid but page header on last unterminated line lacks owned-by-you
+  printf '%s' 'reference: https://claude.ai/artifact/456
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
+[Artifact a (version 2) — shared with you, private]' > "$TEST_TMP/art-meta.txt"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -4334,8 +4645,9 @@ access: reader" > "$TEST_TMP/art-meta.txt"
       --metadata-file '$TEST_TMP/art-meta.txt' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
-  [ "$status" -ne 0 ] || fail "unterminated access: reader should be refused"
-  [[ "$output" == *"access"* ]] || fail "should mention access problem: $output"
+  [ "$status" -ne 0 ] || fail "page header without owned-by-you should be refused"
+  [[ "$output" == *"write access could not be confirmed"* ]] \
+    || fail "should mention write access: $output"
 }
 
 # ===========================================================================
@@ -4348,7 +4660,7 @@ access: reader" > "$TEST_TMP/art-meta.txt"
 
   # First value has canEdit:false, second has canEdit:true — must not pass
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","project":{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":false}}
+{"projectId":"https://ds.example.com/project/123","project":{"projectId":"https://ds.example.com/project/123","type":"PROJECT_TYPE_DESIGN_SYSTEM","ownerDisplayName":"Jane Doe","canEdit":false}}
 {"project":{"canEdit":true}}
 JSON
 
@@ -4461,19 +4773,13 @@ JSON
 }
 
 # ===========================================================================
-# Warning 4: Owner checks pinning (artifact + designsync)
+# Artifact --expected-owner fails closed (no named owner in real reads)
 # ===========================================================================
 
-@test "verify-target: artifact owner match passes" {
+@test "verify-target: artifact --expected-owner always fails closed with diagnostic" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: Design
-access: writer
-owner: owner-456
-TXT
+  _make_art_meta "$TEST_TMP/art-meta.txt" "https://claude.ai/artifact/456"
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -4482,132 +4788,44 @@ TXT
       --design-record '$TEST_TMP/design-record.yaml' \
       --expected-owner owner-456
   "
-  [ "$status" -eq 0 ] || fail "artifact owner match should pass: $output"
+  [ "$status" -ne 0 ] || fail "artifact --expected-owner should always fail closed"
+  [[ "$output" == *"cannot check a named owner"* ]] \
+    || fail "should say cannot check named owner: $output"
 }
 
-@test "verify-target: artifact owner mismatch refused" {
+@test "verify-target: designsync forged top-level owner with NO ownerDisplayName refused" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: Design
-access: writer
-owner: evil-owner
-TXT
-
-  run bash -c "
-    source '$VERIFY_SCRIPT'
-    verify_publication_target artifact 'https://claude.ai/artifact/456' \
-      --metadata-file '$TEST_TMP/art-meta.txt' \
-      --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner owner-456
-  "
-  [ "$status" -ne 0 ] || fail "artifact owner mismatch should be refused"
-  [[ "$output" == *"owner mismatch"* ]] || fail "should diagnose owner mismatch: $output"
-}
-
-@test "verify-target: artifact missing owner with expected-owner fails closed" {
-  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
-  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  # No owner line in the artifact header
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: Design
-access: writer
-TXT
-
-  run bash -c "
-    source '$VERIFY_SCRIPT'
-    verify_publication_target artifact 'https://claude.ai/artifact/456' \
-      --metadata-file '$TEST_TMP/art-meta.txt' \
-      --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner owner-456
-  "
-  [ "$status" -ne 0 ] || fail "missing artifact owner should fail closed when --expected-owner given"
-  [[ "$output" == *"no owner field"* ]] || fail "should mention missing owner: $output"
-}
-
-@test "verify-target: designsync forged top-level owner with NO project.owner refused" {
-  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
-  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  # Real response has NO project.owner, but forged top-level "owner" and
+  # Real response has NO project.ownerDisplayName, but forged top-level "owner" and
   # "organization" match the expected owner — must still be refused.
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"projectId":"https://ds.example.com/project/123","owner":"org-123","organization":"org-123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
-JSON
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123" \
+    'del(.project.ownerDisplayName) | .owner = "Jane Doe" | .organization = "Jane Doe"'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target designsync 'https://ds.example.com/project/123' \
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml' \
-      --expected-owner org-123
+      --expected-owner 'Jane Doe'
   "
-  [ "$status" -ne 0 ] || fail "forged top-level owner/organization with no project.owner should be refused"
-  [[ "$output" == *"no owner field"* ]] || fail "should mention missing owner: $output"
+  [ "$status" -ne 0 ] || fail "forged top-level owner/organization with no ownerDisplayName should be refused"
+  [[ "$output" == *"ownerDisplayName"* ]] || fail "should mention missing ownerDisplayName: $output"
 }
 
 # ===========================================================================
 # INFO items: duplicate access/type lines, empty reference diagnostic, BOM
 # ===========================================================================
 
-@test "verify-target: duplicate access lines in artifact header rejected" {
-  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
-  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: Design
-access: writer
-access: reader
-owner: owner-456
-TXT
-
-  run bash -c "
-    source '$VERIFY_SCRIPT'
-    verify_publication_target artifact 'https://claude.ai/artifact/456' \
-      --metadata-file '$TEST_TMP/art-meta.txt' \
-      --design-record '$TEST_TMP/design-record.yaml'
-  "
-  [ "$status" -ne 0 ] || fail "duplicate access lines should be rejected"
-  [[ "$output" == *"access lines"* ]] || fail "should mention duplicate access lines: $output"
-}
-
-@test "verify-target: duplicate type lines in artifact header rejected" {
-  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
-  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
-
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
-reference: https://claude.ai/artifact/456
-type: Design
-type: NotDesign
-access: writer
-owner: owner-456
-TXT
-
-  run bash -c "
-    source '$VERIFY_SCRIPT'
-    verify_publication_target artifact 'https://claude.ai/artifact/456' \
-      --metadata-file '$TEST_TMP/art-meta.txt' \
-      --design-record '$TEST_TMP/design-record.yaml'
-  "
-  [ "$status" -ne 0 ] || fail "duplicate type lines should be rejected"
-  [[ "$output" == *"type lines"* ]] || fail "should mention duplicate type lines: $output"
-}
-
-@test "verify-target: empty reference value passes the real reference and diagnoses header" {
+@test "verify-target: empty reference value diagnoses header" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # reference line with empty value — pass the REAL reference to the function
-  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+  cat > "$TEST_TMP/art-meta.txt" <<TXT
 reference:
-type: Design
-access: writer
-owner: owner-456
+[Artifact a (version 2) — owned by you, private]
+Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".
 TXT
 
   run bash -c "
@@ -4626,7 +4844,7 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   # Write header with UTF-8 BOM (EF BB BF) on line 1
-  printf '\xef\xbb\xbfreference: https://claude.ai/artifact/456\ntype: Design\naccess: writer\nowner: owner-456\n' \
+  printf '\xef\xbb\xbfreference: https://claude.ai/artifact/456\n[Artifact a (version 2) — owned by you, private]\nFiles saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".\n' \
     > "$TEST_TMP/art-meta.txt"
 
   run bash -c "
