@@ -150,6 +150,12 @@ _write_pub_fixtures() {
   printf '%s' "$3" > "$TEST_TMP/last-published.json"
 }
 
+# _pub_state FILES_JSON — wrap a flat files array into the per-project
+# publication state object (design_system key populated, product_design empty).
+_pub_state() {
+  printf '{"design_system":{"reference":null,"last_published_at":null,"files":%s},"product_design":{"reference":null,"last_published_at":null,"files":[]}}' "$1"
+}
+
 # _run_pub [--last-published PATH] — run plan-publication.sh with the
 # standard fixture paths. Overrides --last-published when the arg is given.
 _run_pub() {
@@ -268,7 +274,7 @@ EOF
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"aaa-new"},{"file":"palette.yaml","hash":"bbb-new"},{"file":"components.yaml","hash":"ccc-new"}]' \
     '[{"file":"tokens.yaml","hash":"aaa-old"},{"file":"palette.yaml","hash":"bbb-old"},{"file":"components.yaml","hash":"ccc-old"}]' \
-    '[{"file":"tokens.yaml","hash":"aaa-old"},{"file":"palette.yaml","hash":"bbb-old"},{"file":"components.yaml","hash":"ccc-old"}]'
+    "$(_pub_state '[{"file":"tokens.yaml","hash":"aaa-old"},{"file":"palette.yaml","hash":"bbb-old"},{"file":"components.yaml","hash":"ccc-old"}]')"
   _run_pub
   [ "$status" -eq 0 ]
   for file in tokens.yaml palette.yaml components.yaml; do
@@ -281,7 +287,7 @@ EOF
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"new-framework-hash"}]' \
     '[{"file":"tokens.yaml","hash":"designer-edited-hash"}]' \
-    '[{"file":"tokens.yaml","hash":"original-hash"}]'
+    "$(_pub_state '[{"file":"tokens.yaml","hash":"original-hash"}]')"
   _run_pub
   [ "$status" -eq 0 ]
   [[ "$output" == *"CONFLICT tokens.yaml"* ]]
@@ -293,14 +299,15 @@ EOF
   _write_pub_fixtures \
     '[]' \
     '[{"file":"old-palette.yaml","hash":"xxx"},{"file":"designer-notes.yaml","hash":"yyy"}]' \
-    '[{"file":"old-palette.yaml","hash":"xxx"}]'
+    "$(_pub_state '[{"file":"old-palette.yaml","hash":"xxx"}]')"
   _run_pub
   [ "$status" -eq 0 ]
   [[ "$output" == *"DELETE_ORPHAN old-palette.yaml"* ]]
   _assert_not_in_text "DELETE_ORPHAN designer-notes.yaml" "$output" "(designer file must not be deleted)"
 }
 
-@test "(AC4) unchanged file emits SKIP_UNCHANGED" {
+@test "(AC4) unchanged file emits SKIP_UNCHANGED (legacy flat-array normalisation)" {
+  # Deliberately kept as a flat-array fixture so in-memory normalisation is covered.
   [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"same-hash"}]' \
@@ -316,7 +323,7 @@ EOF
   _write_pub_fixtures \
     '[{"file":"buttons.yaml","hash":"hash-C"}]' \
     '[{"file":"buttons.yaml","hash":"hash-B"}]' \
-    '[{"file":"buttons.yaml","hash":"hash-A"}]'
+    "$(_pub_state '[{"file":"buttons.yaml","hash":"hash-A"}]')"
   _run_pub
   [ "$status" -eq 0 ]
   [[ "$output" == *"CONFLICT buttons.yaml"* ]]
@@ -337,7 +344,7 @@ EOF
   _write_pub_fixtures \
     '[{"file":"\"; rm -rf /; echo \"","hash":"x"}]' \
     '[{"file":"\"; rm -rf /; echo \"","hash":"x"}]' \
-    '[{"file":"\"; rm -rf /; echo \"","hash":"x"}]'
+    "$(_pub_state '[{"file":"\"; rm -rf /; echo \"","hash":"x"}]')"
   _run_pub
   [ "$status" -eq 0 ]
   [[ "$output" == *"SKIP_UNCHANGED"* ]] || [[ "$output" == *"WRITE"* ]] || [[ "$output" == *"READ_FIRST"* ]]
@@ -364,7 +371,7 @@ EOF
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"new-framework-hash"}]' \
     '[{"file":"tokens.yaml","hash":"original-hash"}]' \
-    '[{"file":"tokens.yaml","hash":"original-hash"}]'
+    "$(_pub_state '[{"file":"tokens.yaml","hash":"original-hash"}]')"
   _run_pub
   [ "$status" -eq 0 ]
   _assert_read_before_write "tokens.yaml"
@@ -831,7 +838,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   _write_pub_fixtures \
     '[{"file":"../../../etc/passwd","hash":"h1"}]' \
     '[{"file":"safe.yaml","hash":"h2"}]' \
-    '[]'
+    "$(_pub_state '[]')"
   _run_pub
   [ "$status" -ne 0 ]
   [[ "$output" == *"../"* ]] || [[ "$output" == *"traversal"* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"unsafe"* ]]
@@ -842,7 +849,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   _write_pub_fixtures \
     '[{"file":"/etc/passwd","hash":"h1"}]' \
     '[{"file":"safe.yaml","hash":"h2"}]' \
-    '[]'
+    "$(_pub_state '[]')"
   _run_pub
   [ "$status" -ne 0 ]
 }
@@ -852,7 +859,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   _write_pub_fixtures \
     '[{"file":"safe.yaml","hash":"h1"}]' \
     '[{"file":"safe.yaml","hash":"h1"}]' \
-    '[{"file":"../../secrets.yaml","hash":"h2"}]'
+    "$(_pub_state '[{"file":"../../secrets.yaml","hash":"h2"}]')"
   _run_pub
   [ "$status" -ne 0 ]
 }
@@ -862,7 +869,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   _write_pub_fixtures \
     '[{"file":"","hash":"h1"}]' \
     '[{"file":"safe.yaml","hash":"h2"}]' \
-    '[]'
+    "$(_pub_state '[]')"
   _run_pub
   [ "$status" -ne 0 ]
 }
@@ -872,7 +879,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   # Filename with a newline
   printf '[{"file":"good\\nbad","hash":"h1"}]' > "$TEST_TMP/local-manifest.json"
   printf '[{"file":"safe.yaml","hash":"h2"}]' > "$TEST_TMP/remote-listing.json"
-  printf '[]' > "$TEST_TMP/last-published.json"
+  printf '%s' "$(_pub_state '[]')" > "$TEST_TMP/last-published.json"
   _run_pub
   [ "$status" -ne 0 ]
 }
@@ -883,7 +890,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   _write_pub_fixtures \
     '[]' \
     '[{"file":"../../../etc/shadow","hash":"h1"},{"file":"safe.yaml","hash":"h2"}]' \
-    '[{"file":"../../../etc/shadow","hash":"h1"}]'
+    "$(_pub_state '[{"file":"../../../etc/shadow","hash":"h1"}]')"
   _run_pub
   # Must either fail or silently skip the traversal path — never emit DELETE_ORPHAN for it
   if [ "$status" -eq 0 ]; then
@@ -896,7 +903,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   _write_pub_fixtures \
     '[{"file":"tokens.yaml","hash":"h1"},{"file":"../escape.yaml","hash":"h2"}]' \
     '[]' \
-    '[]'
+    "$(_pub_state '[]')"
   _run_pub
   [ "$status" -ne 0 ]
 }
@@ -909,7 +916,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
     _write_pub_fixtures \
       "[{\"file\":\"${bad_name}\",\"hash\":\"h1\"}]" \
       '[]' \
-      '[]'
+      "$(_pub_state '[]')"
     _run_pub
     [ "$status" -ne 0 ] || fail "accepted unsafe dot-segment filename in local: ${bad_name}"
   done
@@ -922,7 +929,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
     _write_pub_fixtures \
       "[{\"file\":\"${bad_name}\",\"hash\":\"h1\"}]" \
       '[]' \
-      '[]'
+      "$(_pub_state '[]')"
     _run_pub
     [ "$status" -ne 0 ] || fail "accepted unsafe filename in local: ${bad_name}"
   done
@@ -935,7 +942,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
     _write_pub_fixtures \
       '[{"file":"safe.yaml","hash":"h1"}]' \
       '[{"file":"safe.yaml","hash":"h1"}]' \
-      "[{\"file\":\"${bad_name}\",\"hash\":\"h2\"}]"
+      "$(_pub_state "[{\"file\":\"${bad_name}\",\"hash\":\"h2\"}]")"
     _run_pub
     [ "$status" -ne 0 ] || fail "accepted unsafe dot-segment filename in last-published: ${bad_name}"
   done
@@ -948,7 +955,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
     _write_pub_fixtures \
       '[{"file":"safe.yaml","hash":"h1"}]' \
       '[{"file":"safe.yaml","hash":"h1"}]' \
-      "[{\"file\":\"${bad_name}\",\"hash\":\"h2\"}]"
+      "$(_pub_state "[{\"file\":\"${bad_name}\",\"hash\":\"h2\"}]")"
     _run_pub
     [ "$status" -ne 0 ] || fail "accepted unsafe filename in last-published: ${bad_name}"
   done
@@ -960,7 +967,7 @@ The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
   _write_pub_fixtures \
     '[{"file":".","hash":"h1"}]' \
     '[]' \
-    '[]'
+    "$(_pub_state '[]')"
   _run_pub
   [ "$status" -ne 0 ] || fail "dot-segment check is missing: '.' was accepted"
 }
@@ -999,11 +1006,11 @@ Read the project files and use them."
 @test "(AC4) plan-publication.sh handles 500 entries without per-file fork growth" {
   [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
 
-  # Generate 500-entry fixtures
+  # Generate 500-entry fixtures (per-project layout for last-published)
   local i
   printf '[' > "$TEST_TMP/local-manifest.json"
   printf '[' > "$TEST_TMP/remote-listing.json"
-  printf '[' > "$TEST_TMP/last-published.json"
+  printf '{"design_system":{"reference":null,"last_published_at":null,"files":[' > "$TEST_TMP/last-published.json"
   for i in $(seq 1 500); do
     local comma=""
     [ "$i" -eq 1 ] || comma=","
@@ -1013,7 +1020,7 @@ Read the project files and use them."
   done
   printf ']' >> "$TEST_TMP/local-manifest.json"
   printf ']' >> "$TEST_TMP/remote-listing.json"
-  printf ']' >> "$TEST_TMP/last-published.json"
+  printf ']},"product_design":{"reference":null,"last_published_at":null,"files":[]}}' >> "$TEST_TMP/last-published.json"
 
   local start_time end_time elapsed
   start_time="$(date +%s)"
@@ -1041,7 +1048,7 @@ Read the project files and use them."
   _write_pub_fixtures \
     '[{"file":"screens/login.spec.html","hash":"aaa"},{"file":"components/button.spec.html","hash":"bbb"}]' \
     '[{"file":"screens/login.spec.html","hash":"old-aaa"},{"file":"components/button.spec.html","hash":"old-bbb"}]' \
-    '[{"file":"screens/login.spec.html","hash":"old-aaa"},{"file":"components/button.spec.html","hash":"old-bbb"}]'
+    "$(_pub_state '[{"file":"screens/login.spec.html","hash":"old-aaa"},{"file":"components/button.spec.html","hash":"old-bbb"}]')"
   _run_pub
   [ "$status" -eq 0 ]
   # Last non-empty line must be bare REFRESH_MANIFEST (no arguments)
@@ -1072,7 +1079,7 @@ Read the project files and use them."
   _write_pub_fixtures \
     '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]' \
     '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]' \
-    '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]'
+    "$(_pub_state '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]')"
   _run_pub
   [ "$status" -eq 0 ]
   [[ "$output" == *"SKIP_UNCHANGED"* ]] || fail "expected SKIP_UNCHANGED in output"

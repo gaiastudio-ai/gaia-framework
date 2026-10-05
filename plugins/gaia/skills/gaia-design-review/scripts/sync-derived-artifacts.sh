@@ -28,6 +28,13 @@ LC_ALL=C; export LC_ALL
 
 _die() { printf 'sync-derived-artifacts.sh: %s\n' "$1" >&2; exit 1; }
 
+# ---- source shared libs -----------------------------------------------------
+_SYNC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_SYNC_SAFE_FN="$(cd "$_SYNC_DIR" && cd ../../../scripts/lib && pwd)/safe-filename.sh"
+[ -f "$_SYNC_SAFE_FN" ] || _die "missing shared lib: $_SYNC_SAFE_FN"
+# shellcheck source=../../../scripts/lib/safe-filename.sh
+. "$_SYNC_SAFE_FN"
+
 # File-scope temp directory — every temp file lives inside it. Cleaned
 # up on any exit so no individual file can leak.
 _sync_tmpdir=""
@@ -328,12 +335,17 @@ _resolve_baseline() {
 # _main — entry point.
 _main() {
   # Parse named flags before positional args
-  local last_published_arg=""
+  local last_published_arg="" _sync_project="design_system"
   while [ $# -gt 0 ]; do
     case "$1" in
       --last-published)
         [ $# -ge 2 ] || _die "usage: --last-published requires a path argument"
         last_published_arg="$2"
+        shift 2
+        ;;
+      --project)
+        [ $# -ge 2 ] || _die "usage: --project requires a value argument"
+        _sync_project="$2"
         shift 2
         ;;
       --)
@@ -348,6 +360,11 @@ _main() {
         ;;
     esac
   done
+
+  case "$_sync_project" in
+    design_system|product_design) ;;
+    *) _die "invalid --project value: $_sync_project (must be design_system or product_design)" ;;
+  esac
 
   [ $# -ge 2 ] || _die "usage: sync-derived-artifacts.sh [--last-published <path>] <snapshot-file> <ux-design-doc-path>"
 
@@ -533,8 +550,20 @@ _main() {
     local baseline_index="$_sync_tmpdir/baseline-index"
     : > "$baseline_index"
     if [ -n "$baseline_path" ] && [ -f "$baseline_path" ]; then
-      # Build tab-delimited index: file<TAB>hash — one jq call
-      jq -r '.[] | "\(.file)\t\(.hash)"' "$baseline_path" > "$baseline_index"
+      # Normalise: legacy flat array → per-project object → slice to target key's files
+      # Validate every filename and hash via shared jq defs (fail closed)
+      jq -r --arg proj "$_sync_project" "
+        ${SAFE_FILENAME_JQ_DEF}
+        ${SAFE_HASH_JQ_DEF}
+        if type == \"array\" then
+          {\"design_system\": {\"files\": .}, \"product_design\": {\"files\": []}}
+        else . end
+        | .[\$proj].files // []
+        | .[] | (.file | safe_filename) as \$f | (.hash | safe_hash) as \$h
+        | \"\(\$f)\t\(\$h)\"
+      " "$baseline_path" > "$baseline_index" || {
+        _die "unsafe or malformed baseline: $baseline_path"
+      }
     fi
 
     # --- Extract screen metadata in one jq call ---
