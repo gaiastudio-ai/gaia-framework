@@ -176,7 +176,7 @@ sha256(
 )
 ```
 
-`story_acs_hash` is the zero-AC mitigation: story ACs are part of the deterministic input — when ACs change, coverage analysis MUST re-run. A cached `analysis-results.json` from a prior AC list returns a stale verdict if `story_acs_hash` is omitted.
+`story_acs_hash` is the cache-staleness mitigation: story ACs are part of the deterministic input — when ACs change, coverage analysis MUST re-run. A cached `analysis-results.json` from a prior AC list returns a stale verdict if `story_acs_hash` is omitted.
 
 Cache lookup:
 1. Compute the candidate cache key from current File List + test file hashes + story_acs_hash + tool versions.

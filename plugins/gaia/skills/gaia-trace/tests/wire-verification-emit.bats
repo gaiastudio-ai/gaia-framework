@@ -98,7 +98,7 @@ EOF
 
   PATH="$mockdir:$PATH" run bash "$HELPER" --story-file "$story" --matrix-file "$matrix"
   [ "$status" -eq 1 ]
-  [[ "$output" =~ HALT ]] || [[ "$stderr" =~ HALT ]]
+  [[ "$output" =~ HALT ]]
 }
 
 # ============================================================================

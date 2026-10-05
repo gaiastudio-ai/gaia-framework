@@ -627,11 +627,11 @@ _E="$(printf '%s%s' E C)"
   local count
   count="$(_scan_prose_for_fr_alpha_ids "$f")"
   # Two lines; bounded placeholder stripped, leaked alpha tokens remain
-  [[ "$count" -eq 2 ]]
+  [ "$count" -eq 2 ]
   # Without leaks: only exempt tokens
   g="$(_fx skills/gaia-trace/SKILL.md "(${_R}-xxx, N${_R}-xxx)")"
   count="$(_scan_prose_for_fr_alpha_ids "$g")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
 }
 
 @test "exempt range-end in trace with boundary plant caught" {
@@ -641,11 +641,11 @@ _E="$(printf '%s%s' E C)"
   local count
   count="$(_scan_prose_for_fr_alpha_ids "$f")"
   # Two lines; bounded range-end stripped, leaked alpha tokens remain
-  [[ "$count" -eq 2 ]]
+  [ "$count" -eq 2 ]
   # Without leaks
   g="$(_fx skills/gaia-trace/SKILL.md "Rows: ${_R}-001 through ${_R}-N (from")"
   count="$(_scan_prose_for_fr_alpha_ids "$g")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
 }
 
 @test "exempt gap-analysis placeholder with boundary and leak caught" {
@@ -655,11 +655,11 @@ _E="$(printf '%s%s' E C)"
   local count
   count="$(_scan_prose_for_fr_alpha_ids "$f")"
   # Two lines; bounded placeholder stripped, leaked alpha tokens remain
-  [[ "$count" -eq 2 ]]
+  [ "$count" -eq 2 ]
   # Without leaks
   g="$(_fx skills/gaia-test-gap-analysis/SKILL.md "for ${_R}-NNN/N${_R}-NNN id")"
   count="$(_scan_prose_for_fr_alpha_ids "$g")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
 }
 
 @test "exempt meeting telemetry with leak caught" {
@@ -667,10 +667,20 @@ _E="$(printf '%s%s' E C)"
   f="$(_fx skills/gaia-meeting/SKILL.md "HALT fr=<${_R}-MTG-ID> ${_R}-traceability")"
   local count
   count="$(_scan_prose_for_fr_alpha_ids "$f")"
-  [[ "$count" -eq 1 ]]
+  [ "$count" -eq 1 ]
   g="$(_fx skills/gaia-meeting/SKILL.md "HALT fr=<${_R}-MTG-ID> detail")"
   count="$(_scan_prose_for_fr_alpha_ids "$g")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
+}
+
+@test "meeting-telemetry exemption does not strip a leak on another line" {
+  # The exemption must be token-level, not file-wide: a real leak on a
+  # different line of the same meeting-skill fixture must still be caught.
+  local f
+  f="$(_fx skills/gaia-meeting/SKILL.md "HALT fr=<${_R}-MTG-ID> detail" "${_R}-traceability on separate line")"
+  local count
+  count="$(_scan_prose_for_fr_alpha_ids "$f")"
+  [ "$count" -eq 1 ]
 }
 
 @test "exempt ux heading with leak caught" {
@@ -678,10 +688,10 @@ _E="$(printf '%s%s' E C)"
   f="$(_fx skills/gaia-create-ux/SKILL.md "${_R}-to-Screen Mapping ${_R}-traceability")"
   local count
   count="$(_scan_prose_for_fr_alpha_ids "$f")"
-  [[ "$count" -eq 1 ]]
+  [ "$count" -eq 1 ]
   g="$(_fx skills/gaia-create-ux/SKILL.md "${_R}-to-Screen Mapping table")"
   count="$(_scan_prose_for_fr_alpha_ids "$g")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
 }
 
 @test "exempt column header with singular phrase leak caught" {
@@ -690,10 +700,10 @@ _E="$(printf '%s%s' E C)"
   local count
   count="$(_scan_prose_for_fr_id_phrase "$f")"
   # Standalone "for <requirement> ID references" = 1 hit; column header stripped
-  [[ "$count" -eq 1 ]]
+  [ "$count" -eq 1 ]
   g="$(_fx skills/gaia-trace/SKILL.md "Columns: ${_R} ID | Description")"
   count="$(_scan_prose_for_fr_id_phrase "$g")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
 }
 
 @test "exempt edge-case folder but requirement form fires" {
@@ -702,9 +712,9 @@ _E="$(printf '%s%s' E C)"
   # Edge-case ID exempt (folder skip); alpha requirement token caught
   local count
   count="$(_scan_prose_for_ec_ids "$f")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
   count="$(_scan_prose_for_fr_alpha_ids "$f")"
-  [[ "$count" -eq 1 ]]
+  [ "$count" -eq 1 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -808,7 +818,7 @@ _E="$(printf '%s%s' E C)"
 }
 
 # ---------------------------------------------------------------------------
-# Edge-case plant in a non-exempt skills/ folder is caught (n1 kill)
+# Edge-case plant in a non-exempt skills/ folder is caught
 # ---------------------------------------------------------------------------
 
 @test "edge-case token in a non-exempt skills folder is caught" {
@@ -822,13 +832,13 @@ _E="$(printf '%s%s' E C)"
 }
 
 # ---------------------------------------------------------------------------
-# Multi-file scanning: leak only in second file is caught (n19 kill)
+# Multi-file scanning: leak only in second file is caught
 # ---------------------------------------------------------------------------
 
 @test "alpha requirement scanner catches leak in second of two files" {
   local clean leaky
-  clean="$(_fx n19a-clean.md "no leak here")"
-  leaky="$(_fx n19a-leaky.md "has ${_R}-traceability token")"
+  clean="$(_fx scan-a-clean.md "no leak here")"
+  leaky="$(_fx scan-a-leaky.md "has ${_R}-traceability token")"
   local count
   count="$(_scan_prose_for_fr_alpha_ids "$clean" "$leaky")"
   [[ "$count" -gt 0 ]]
@@ -836,8 +846,8 @@ _E="$(printf '%s%s' E C)"
 
 @test "standalone phrase scanner catches leak in second of two files" {
   local clean leaky
-  clean="$(_fx n19b-clean.md "no leak here")"
-  leaky="$(_fx n19b-leaky.md "uses ${_R} ID here")"
+  clean="$(_fx scan-b-clean.md "no leak here")"
+  leaky="$(_fx scan-b-leaky.md "uses ${_R} ID here")"
   local count
   count="$(_scan_prose_for_fr_id_phrase "$clean" "$leaky")"
   [[ "$count" -gt 0 ]]
@@ -845,19 +855,19 @@ _E="$(printf '%s%s' E C)"
 
 @test "edge-case scanner catches leak in second of two files" {
   local clean leaky
-  clean="$(_fx n19c-clean.md "no leak here")"
-  leaky="$(_fx n19c-leaky.md "per ${_E}-10 rule")"
+  clean="$(_fx scan-c-clean.md "no leak here")"
+  leaky="$(_fx scan-c-leaky.md "per ${_E}-10 rule")"
   local count
   count="$(_scan_prose_for_ec_ids "$clean" "$leaky")"
   [[ "$count" -gt 0 ]]
 }
 
 # ---------------------------------------------------------------------------
-# Optional hardening: planted requirement-identifier forms (n5, n7, n9 kills)
+# Optional hardening: planted requirement-identifier forms
 # ---------------------------------------------------------------------------
 
 @test "planted prefix-only requirement form in ux skill is caught" {
-  # Kills n5: ensures the ux heading exemption strips only the exact
+  # Ensures the ux heading exemption strips only the exact
   # "FR-to-Screen Mapping" phrase, not all "FR-to" prefixes.
   local f
   f="$(_fx skills/gaia-create-ux/SKILL.md "${_R}-tomato heading")"
@@ -867,7 +877,7 @@ _E="$(printf '%s%s' E C)"
 }
 
 @test "planted requirement-identifier in a non-exempt file is caught" {
-  # Kills n7: ensures the gap-analysis/edit-test-plan exemption does NOT
+  # Ensures the gap-analysis/edit-test-plan exemption does NOT
   # extend to gaia-qa-tests, which is a non-exempt file.
   local f
   f="$(_fx skills/gaia-qa-tests/SKILL.md "for ${_R}-NNN mentions")"
@@ -877,10 +887,19 @@ _E="$(printf '%s%s' E C)"
 }
 
 @test "planted format-convention form is caught by alpha scanner" {
-  # Kills n9: ensures the alpha scanner does NOT add old carve-outs
+  # Ensures the alpha scanner does NOT add old carve-outs
   # like "Format as" — those belong to the numeric requirement scanner only.
   local f
   f="$(_fx a.md "Format as ${_R}-xxx, ${_R}-yyy")"
+  local count
+  count="$(_scan_prose_for_fr_alpha_ids "$f")"
+  [[ "$count" -gt 0 ]]
+}
+
+@test "planted underscore-form requirement token is caught by alpha scanner" {
+  # The alpha pattern has an underscore branch that is otherwise untested.
+  local f
+  f="$(_fx a.md "see ${_R}-some_thing doc")"
   local count
   count="$(_scan_prose_for_fr_alpha_ids "$f")"
   [[ "$count" -gt 0 ]]
@@ -892,10 +911,10 @@ _E="$(printf '%s%s' E C)"
 
 @test "test-gap-analysis example uses neutral placeholders" {
   local skill="${BATS_TEST_DIRNAME}/../skills/gaia-test-gap-analysis/SKILL.md"
-  [[ -f "$skill" ]] || fail "gap-analysis SKILL.md not found at expected path"
+  [ -f "$skill" ] || { printf 'gap-analysis SKILL.md not found at expected path\n' >&2; return 1; }
   local count
   # Must not contain feature-key-shaped tokens or internal test-case IDs
-  count="$(/usr/bin/grep -cE 'TC-[A-Z]+-[0-9]|VSP' "$skill" || true)"
+  count="$(grep -cE 'TC-[A-Z]+-[0-9]|VSP' "$skill" || true)"
   [[ "$count" -eq 0 ]]
 }
 
@@ -908,15 +927,13 @@ _E="$(printf '%s%s' E C)"
   local -a prose_targets
   _build_prose_target_list
 
-  if [[ ${#prose_targets[@]} -eq 0 ]]; then
-    skip "no .md files found under the published tree"
-  fi
+  [ ${#prose_targets[@]} -gt 0 ] || { printf 'FAIL: no .md files found under the published tree\n' >&2; return 1; }
 
   local count
   count="$(_scan_prose_for_fr_alpha_ids "${prose_targets[@]}")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
   count="$(_scan_prose_for_fr_id_phrase "${prose_targets[@]}")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
   count="$(_scan_prose_for_ec_ids "${prose_targets[@]}")"
-  [[ "$count" -eq 0 ]]
+  [ "$count" -eq 0 ]
 }
