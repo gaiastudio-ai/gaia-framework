@@ -1079,34 +1079,13 @@ STAKE
 }
 
 # =========================================================================
-# slug with embedded tab/newline is sanitized [regression]
+# (deleted) slug with embedded tab/newline is sanitized [regression]
+# Removed: this test accepted either outcome (slug mismatch warning OR
+# sanitized slug).  The exact-match variants cover both paths:
+#   - "tab-bearing slug in fallback still resolves correctly"
+#   - "tab-bearing slug on fast path resolves correctly"
+#   - "newline-bearing slug exact match on both paths"
 # =========================================================================
-
-@test "slug with embedded tab/newline is sanitized [regression]" {
-  [ -x "$SCRIPT" ] || fail "script not found"
-
-  _seed_record "review" 1
-  local roster_dir="$TEST_TMP/custom/stakeholders"
-  mkdir -p "$roster_dir"
-
-  # File where the slug field contains a literal \t (YAML string)
-  # yq sub("\t","") should strip it
-  cat > "$roster_dir/alice.md" <<'STAKE'
----
-slug: "ali\tce"
-tags: [design]
----
-STAKE
-
-  _mk_stakeholder "$roster_dir" "bob" "[design]"
-
-  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
-  # The file should resolve (possibly via fallback with slug mismatch warning
-  # or sanitized slug); bob must also resolve; no crash.
-  # Non-zero exit is expected (not-converged).
-  [ "$status" -ne 0 ] || fail "expected non-zero exit (not-converged): $output"
-  [[ "$output" == *"bob"* ]] || fail "bob should resolve alongside sanitized slug: $output"
-}
 
 # =========================================================================
 # symlinked project root is not falsely refused [regression]
@@ -2848,6 +2827,321 @@ slug: [unclosed
   run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve --stakeholder bob --recorded-by t
   [ "$status" -eq 0 ] \
     || fail "fallback: approving bob should succeed: $output"
+}
+
+# =========================================================================
+# symlinked roster file prints diagnostic but must also fail the check
+# =========================================================================
+
+@test "symlinked roster file prints diagnostic but must also fail the check" {
+  # When a symlinked roster FILE is present alongside other approved
+  # stakeholders, resolution must fail — never fall through to "converged".
+  # Without the return-1, the diagnostic prints but resolution continues,
+  # and an attacker-controlled file can land approvals that bypass the gate.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  _seed_record "review" 1
+  local roster_dir="$TEST_TMP/custom/stakeholders"
+  mkdir -p "$roster_dir"
+
+  # alice: a real stakeholder who has approved
+  _mk_stakeholder "$roster_dir" "alice" "[design]"
+  env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve \
+    --stakeholder alice --recorded-by test >/dev/null 2>&1
+
+  # evil: symlinked roster file pointing at an external target
+  local target_dir="$BATS_TEST_TMPDIR/evil-file-target"
+  mkdir -p "$target_dir"
+  _mk_stakeholder "$target_dir" "evil" "[design]"
+  ln -s "$target_dir/evil.md" "$roster_dir/evil.md"
+
+  # Check-convergence must fail
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "check-convergence must fail on symlinked roster file"
+  [[ "$output" != *"converged"* ]] || [[ "$output" == *"not-converged"* ]] \
+    || fail "must not say converged: $output"
+  [[ "$output" == *"refusing symlinked roster file"* ]] \
+    || fail "expected symlink refusal diagnostic: $output"
+
+  # Transition to approved must also fail
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" transition --to approved --actor test
+  [ "$status" -ne 0 ] || fail "transition to approved must fail"
+
+  # design_state must remain review
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "review" ] || fail "design_state should remain review, got: $state"
+}
+
+# =========================================================================
+# symlinked roster directory skipped must still fail resolution
+# =========================================================================
+
+@test "symlinked roster directory skipped must still fail resolution" {
+  # When the higher-precedence roster directory is a symlink, resolution
+  # must fail — not silently skip it and fall back to the lower-precedence
+  # custom/stakeholders directory, which would allow convergence via the
+  # lower-precedence roster alone.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  _seed_record "review" 1
+
+  # Lower-precedence directory: alice is the sole required stakeholder, approved
+  local lower_dir="$TEST_TMP/custom/stakeholders"
+  _mk_stakeholder "$lower_dir" "alice" "[design]"
+  env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve \
+    --stakeholder alice --recorded-by test >/dev/null 2>&1
+
+  # Higher-precedence directory: a symlink (the attacked surface)
+  local target="$BATS_TEST_TMPDIR/evil-dir-target"
+  mkdir -p "$target"
+  _mk_stakeholder "$target" "mallory" "[design]"
+  mkdir -p "$TEST_TMP/.gaia/custom"
+  ln -s "$target" "$TEST_TMP/.gaia/custom/stakeholders"
+
+  # Check-convergence must fail (not converge via the lower-precedence dir alone)
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "must fail on symlinked higher-precedence roster dir"
+  [[ "$output" != *"converged"* ]] || [[ "$output" == *"not-converged"* ]] \
+    || fail "must not say converged: $output"
+  [[ "$output" == *"refusing symlinked"* ]] \
+    || fail "expected symlink refusal diagnostic: $output"
+
+  # Transition to approved must also fail
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" transition --to approved --actor test
+  [ "$status" -ne 0 ] || fail "transition to approved must fail"
+
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "review" ] || fail "design_state should remain review, got: $state"
+}
+
+# =========================================================================
+# symlinked parent component must also fail the check
+# =========================================================================
+
+@test "symlinked parent component must also fail the check" {
+  # When a parent component (.gaia/custom) is a symlink, resolution must
+  # fail even when an unsymlinked custom/stakeholders directory with all
+  # approved stakeholders exists.  The symlinked higher-precedence dir
+  # contains no extra stakeholders — just the same alice — so that if
+  # the parent check is broken and fallback to the lower-precedence dir
+  # occurs, convergence would incorrectly succeed.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  _seed_record "review" 1
+
+  # Lower-precedence directory: alice is the sole required stakeholder, approved
+  local lower_dir="$TEST_TMP/custom/stakeholders"
+  _mk_stakeholder "$lower_dir" "alice" "[design]"
+  env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve \
+    --stakeholder alice --recorded-by test >/dev/null 2>&1
+
+  # .gaia/custom is a symlink — parent component attack
+  # Target also has alice (same slug) so dedup won't add a new required stakeholder
+  local target="$BATS_TEST_TMPDIR/evil-parent"
+  mkdir -p "$target/stakeholders"
+  _mk_stakeholder "$target/stakeholders" "alice" "[design]"
+  rm -rf "$TEST_TMP/.gaia/custom"
+  mkdir -p "$TEST_TMP/.gaia"
+  ln -s "$target" "$TEST_TMP/.gaia/custom"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "must fail on symlinked parent component"
+  [[ "$output" != *"converged"* ]] || [[ "$output" == *"not-converged"* ]] \
+    || fail "must not say converged: $output"
+  [[ "$output" == *"refusing symlinked"* ]] \
+    || fail "expected symlink refusal diagnostic: $output"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" transition --to approved --actor test
+  [ "$status" -ne 0 ] || fail "transition to approved must fail"
+
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "review" ] || fail "design_state should remain review, got: $state"
+}
+
+# =========================================================================
+# empty roster directory resolves with zero stakeholders and no diagnostic
+# =========================================================================
+
+@test "empty roster directory resolves with zero stakeholders and no diagnostic" {
+  # An existing but empty roster directory must return success (rc 0),
+  # produce an empty roster, and print no diagnostic or warning.
+  # The check-convergence test for this case (vacuous, rc 1) already exists;
+  # this tests resolution itself.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  _seed_record "review" 1
+  mkdir -p "$TEST_TMP/custom/stakeholders"
+  # No .md files inside
+
+  # Source the script and call _resolve_merged_roster_impl directly
+  local out rc=0
+  out="$(env PROJECT_ROOT="$TEST_TMP" bash -c '
+    source "'"$SCRIPT"'"
+    _resolve_merged_roster_impl
+  ' 2>"$BATS_TEST_TMPDIR/empty-roster-stderr")" || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "resolution of empty roster should return 0, got rc=$rc"
+  [ -z "$out" ] || fail "resolution of empty roster should be empty, got: $out"
+
+  local stderr_out
+  stderr_out="$(cat "$BATS_TEST_TMPDIR/empty-roster-stderr")"
+  [ -z "$stderr_out" ] || fail "empty roster should produce no diagnostic, got: $stderr_out"
+}
+
+# =========================================================================
+# space-in-stem assertion rejects plain alice match
+# =========================================================================
+
+@test "space-in-stem assertion rejects plain alice match" {
+  # The original test for space-in-stem checked for *"alice"* which also
+  # matches "alice review". This test asserts the exact roster so that
+  # dropping "alice" (the plain entry) fails.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  _seed_record "review" 1
+  local roster_dir="$TEST_TMP/custom/stakeholders"
+  _mk_stakeholder "$roster_dir" "alice" "[design]"
+  _mk_stakeholder_no_slug "$roster_dir" "alice review.md" "[design]"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  # Both alice and "alice review" must be in the missing list
+  local missing_line
+  missing_line="$(printf '%s\n' "$output" | "$REAL_GREP" 'not-converged' || true)"
+  # The missing line must contain both. "alice review" contains "alice" so
+  # a test for just *alice* is vacuous.  Assert that removing "alice review"
+  # from the line still leaves a standalone "alice" mention.
+  local after_removing_compound
+  after_removing_compound="$(printf '%s' "$missing_line" | "$REAL_SED" 's/alice review//g')"
+  [[ "$after_removing_compound" == *"alice"* ]] \
+    || fail "plain 'alice' must appear independently in the missing line: $missing_line"
+  [[ "$missing_line" == *"alice review"* ]] \
+    || fail "'alice review' must appear in the missing line: $missing_line"
+}
+
+# =========================================================================
+# duplicate-index unit test with positive control
+# =========================================================================
+
+@test "duplicate-index unit test with positive control" {
+  # The awk3 program extracted from the script must (a) work correctly on
+  # valid non-duplicate input and (b) exit 2 on duplicate map indices.
+  # Without the positive control, a broken extraction (syntax error) would
+  # also exit non-zero and the test would pass vacuously.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  local awk3_prog
+  awk3_prog="$("$REAL_SED" -n '/NF == 2 && \$1 ~ \/\^/,/END.*exit 2/p' "$SCRIPT")"
+  [ -n "$awk3_prog" ] || fail "could not extract awk3 program from script"
+
+  local tab=$'\t'
+
+  # Positive control: valid (non-duplicate) input gives rc 0 and the expected row
+  local valid_input valid_out valid_rc=0
+  valid_input="0${tab}/path/alice.md
+alice${tab}design${tab}0"
+  valid_out="$(printf '%s\n' "$valid_input" | awk -F'\t' "$awk3_prog" 2>"$BATS_TEST_TMPDIR/awk3-pos-stderr")" || valid_rc=$?
+  [ "$valid_rc" -eq 0 ] \
+    || fail "awk3 must exit 0 on valid input, got rc=$valid_rc"
+  [[ "$valid_out" == "alice${tab}/path/alice.md${tab}design" ]] \
+    || fail "awk3 positive control output wrong: got '$valid_out'"
+
+  local pos_stderr
+  pos_stderr="$(cat "$BATS_TEST_TMPDIR/awk3-pos-stderr")"
+  [ -z "$pos_stderr" ] || fail "awk3 should produce no stderr on valid input, got: $pos_stderr"
+
+  # Negative control: duplicate map index → exit 2
+  local dup_input dup_rc=0
+  dup_input="0${tab}/path/alice.md
+0${tab}/path/mallory.md
+alice${tab}design${tab}0"
+  printf '%s\n' "$dup_input" | awk -F'\t' "$awk3_prog" >/dev/null 2>&1 || dup_rc=$?
+  [ "$dup_rc" -eq 2 ] \
+    || fail "awk3 should exit 2 on duplicate map index, got rc=$dup_rc"
+}
+
+# =========================================================================
+# non-YAML body resolves via the fast path with exact output
+# =========================================================================
+
+@test "non-YAML body resolves via the fast path with exact output" {
+  # Tightens the existing non-YAML body test: asserts the fast path (one
+  # roster yq call) and the exact "not-converged (missing: eve frank)" line.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  _seed_record "review" 1
+  local roster_dir="$TEST_TMP/custom/stakeholders"
+
+  _mk_stakeholder "$roster_dir" "dan" "[other]"
+  _mk_stakeholder "$roster_dir" "eve" "[design]" \
+    "Note: Eve reviews tokens.
+Also she reviews more."
+  _mk_stakeholder "$roster_dir" "frank" "[design]"
+
+  _create_shims
+  rm -rf "$SHIM_LOG"; mkdir -p "$SHIM_LOG"
+
+  run env PROJECT_ROOT="$TEST_TMP" SHIM_LOG="$SHIM_LOG" \
+    PATH="$SHIM_DIR:$PATH" "$SCRIPT" check-convergence
+
+  # Fast path: exactly one roster yq call
+  local yqr
+  yqr="$(_yq_roster_count)"
+  [ "$yqr" -eq 1 ] \
+    || fail "expected fast path (1 roster yq call), got $yqr"
+
+  # Exact output line
+  [[ "$output" == *"not-converged (missing: eve frank)"* ]] \
+    || fail "expected exact 'not-converged (missing: eve frank)': $output"
+}
+
+# =========================================================================
+# approve reports roster refusal reason, not unknown-stakeholder
+# =========================================================================
+
+@test "approve reports roster refusal reason, not unknown-stakeholder" {
+  # When roster resolution is refused (e.g. symlinked directory), the
+  # approve verb must report the roster refusal reason — not the generic
+  # "unknown stakeholder ... not on the roster" message.  The audit entry
+  # must also carry the real reason.  The refusal itself (exit 1, an
+  # approval-refused entry) stays the same.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  _seed_record "review" 1
+
+  local target="$BATS_TEST_TMPDIR/evil-approve-reason"
+  mkdir -p "$target"
+  _mk_stakeholder "$target" "alice" "[design]"
+
+  mkdir -p "$TEST_TMP/.gaia/custom"
+  ln -s "$target" "$TEST_TMP/.gaia/custom/stakeholders"
+
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve \
+    --stakeholder alice --recorded-by test
+  [ "$status" -ne 0 ] || fail "approve must fail on symlinked roster"
+
+  # Must NOT say "unknown stakeholder"
+  [[ "$output" != *"unknown stakeholder"* ]] \
+    || fail "approve must not say 'unknown stakeholder' when roster resolution was refused: $output"
+
+  # Must say something about symlink refusal
+  [[ "$output" == *"refusing symlinked"* ]] \
+    || fail "approve must report the symlink refusal: $output"
+  [[ "$output" == *"roster resolution refused"* ]] \
+    || fail "approve must say 'roster resolution refused': $output"
+
+  # Audit entry: event should be approval-refused
+  local audit_event audit_reason
+  audit_event="$(yq '.audit[-1].event' "$RECORD")"
+  [ "$audit_event" = "approval-refused" ] \
+    || fail "expected approval-refused audit entry, got: $audit_event"
+
+  # Audit reason must mention the real refusal, not "stakeholder not on roster"
+  audit_reason="$(yq '.audit[-1].reason' "$RECORD")"
+  [[ "$audit_reason" == *"roster resolution refused"* ]] \
+    || fail "audit reason must mention 'roster resolution refused', got: $audit_reason"
 }
 
 # =========================================================================
