@@ -1392,9 +1392,9 @@ VERIFY_SCRIPT="$BATS_TEST_DIRNAME/../scripts/lib/verify-publication-target.sh"
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # DesignSync metadata fixture (invented structure)
+  # DesignSync metadata wrapper: {projectId, project: <get_project response>}
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123","reference":"https://ds.example.com/project/123"}
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
 JSON
 
   run bash -c "
@@ -1411,7 +1411,7 @@ JSON
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123","reference":"https://claude.ai/artifact/456"}
+{"projectId":"https://claude.ai/artifact/456","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
 JSON
 
   run bash -c "
@@ -1429,7 +1429,7 @@ JSON
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":false,"organization":"org-123","reference":"https://ds.example.com/project/123"}
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":false}}
 JSON
 
   run bash -c "
@@ -1446,10 +1446,10 @@ JSON
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
 type: Design
 access: viewer
 owner: owner-456
-reference: https://claude.ai/artifact/456
 TXT
 
   run bash -c "
@@ -1466,10 +1466,10 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
 type: Design System
 access: writer
 owner: owner-456
-reference: https://claude.ai/artifact/456
 TXT
 
   run bash -c "
@@ -1486,9 +1486,9 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
 access: writer
 owner: owner-456
-reference: https://claude.ai/artifact/456
 TXT
 
   run bash -c "
@@ -1505,7 +1505,7 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"wrong-org","reference":"https://ds.example.com/project/123"}
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"wrong-org","canEdit":true}}
 JSON
 
   run bash -c "
@@ -1523,7 +1523,7 @@ JSON
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"reference":"https://ds.example.com/project/123"}
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
 JSON
 
   run bash -c "
@@ -1542,10 +1542,10 @@ JSON
 
   # Artifact surface using the DS reference (should be PD reference)
   cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
+reference: https://ds.example.com/project/123
 type: Design
 access: writer
 owner: owner-456
-reference: https://ds.example.com/project/123
 TXT
 
   run bash -c "
@@ -1563,9 +1563,9 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
 type: Design
 owner: owner-456
-reference: https://claude.ai/artifact/456
 TXT
 
   run bash -c "
@@ -1582,10 +1582,10 @@ TXT
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/artifact-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
 type: DESIGN
 access: writer
 owner: owner-456
-reference: https://claude.ai/artifact/456
 TXT
 
   run bash -c "
@@ -1601,9 +1601,9 @@ TXT
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # DS metadata with wrong reference (does not match design_system_project.reference)
+  # projectId does not match design_system_project.reference in the design record
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123","reference":"https://ds.example.com/wrong-ref"}
+{"projectId":"https://ds.example.com/wrong-ref","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
 JSON
 
   run bash -c "
@@ -1621,16 +1621,18 @@ JSON
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Correct reference but passed as artifact surface instead of designsync
-  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123","reference":"https://ds.example.com/project/123"}
-JSON
+  # Artifact surface with the DS reference (should use PD reference)
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://ds.example.com/project/123
+type: Design
+access: writer
+owner: owner-456
+TXT
 
-  # Surface is "artifact" but the reference belongs to designsync (DS project)
   run bash -c "
     source '$VERIFY_SCRIPT'
     verify_publication_target artifact 'https://ds.example.com/project/123' \
-      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
   [ "$status" -ne 0 ] || fail "surface mismatch should be rejected"
@@ -2871,7 +2873,7 @@ _assert_state_unchanged() {
     || fail "state file was modified during failure (sha changed)"
 }
 
-@test "ret-dr-notfound: persist exits 1 when design-record file missing" {
+@test "persist rejects missing design-record file" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
   printf '{"a.html":"deadbeef"}\n' > "$TEST_TMP/hash-map.json"
@@ -2884,7 +2886,7 @@ _assert_state_unchanged() {
   _assert_state_unchanged
 }
 
-@test "ret-dr-required: persist exits 1 when --design-record omitted" {
+@test "persist rejects omitted --design-record" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
   printf '{"a.html":"deadbeef"}\n' > "$TEST_TMP/hash-map.json"
@@ -2897,7 +2899,7 @@ _assert_state_unchanged() {
   _assert_state_unchanged
 }
 
-@test "ret-outcomes-required: persist exits 1 when --outcomes omitted" {
+@test "persist rejects omitted --outcomes" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '{"a.html":"deadbeef"}\n' > "$TEST_TMP/hash-map.json"
@@ -2910,7 +2912,7 @@ _assert_state_unchanged() {
   _assert_state_unchanged
 }
 
-@test "ret-future: persist exits 1 on future timestamp" {
+@test "persist rejects future timestamp" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -2924,7 +2926,7 @@ _assert_state_unchanged() {
   _assert_state_unchanged
 }
 
-@test "ret-invalid-proj-persist: persist exits 1 on invalid --project" {
+@test "persist rejects invalid --project value" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -2938,7 +2940,7 @@ _assert_state_unchanged() {
   _assert_state_unchanged
 }
 
-@test "ret-nullref: persist exits 1 on null reference in design record" {
+@test "persist rejects null reference in design record" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   cat > "$TEST_TMP/design-record-empty.yaml" <<'YAML'
 schema_version: "2.0"
@@ -2960,7 +2962,7 @@ YAML
   _assert_state_unchanged
 }
 
-@test "ret-malformed-ts: persist exits 1 on malformed timestamp" {
+@test "persist rejects malformed timestamp" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -2974,7 +2976,7 @@ YAML
   _assert_state_unchanged
 }
 
-@test "ret-v1-pd: persist exits 1 on v1.0 design record with --project product_design" {
+@test "persist rejects v1.0 design record with --project product_design" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v1 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -2988,7 +2990,7 @@ YAML
   _assert_state_unchanged
 }
 
-@test "ret-projkey-null: persist exits 1 when project key missing from design record" {
+@test "persist rejects design record with missing project key" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   cat > "$TEST_TMP/design-record-nokey.yaml" <<'YAML'
 schema_version: "2.0"
@@ -3007,7 +3009,7 @@ YAML
   _assert_state_unchanged
 }
 
-@test "ret-null-hash: persist exits 1 on null hash on persisted outcome" {
+@test "persist rejects null hash in outcome" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"components/button.spec.html","outcome":"written","hash":null}]\n' > "$TEST_TMP/outcomes.json"
@@ -3021,7 +3023,7 @@ YAML
   _assert_state_unchanged
 }
 
-@test "ret-unsafe-outcomes: persist exits 1 on unsafe outcome filename" {
+@test "persist rejects unsafe outcome filename" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"../../../etc/passwd","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3035,7 +3037,7 @@ YAML
   _assert_state_unchanged
 }
 
-@test "ret-prior-corrupt: persist exits 1 on corrupt --prior JSON" {
+@test "persist rejects corrupt --prior JSON" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3050,7 +3052,7 @@ YAML
   _assert_state_unchanged
 }
 
-@test "ret-prior-unsafe: persist exits 1 on unsafe prior filename" {
+@test "persist rejects unsafe prior filename" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3067,7 +3069,7 @@ JSON
   _assert_state_unchanged
 }
 
-@test "ret-hashmap: persist exits 1 on unsafe hash-map value" {
+@test "persist rejects unsafe hash-map value" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3081,7 +3083,7 @@ JSON
   _assert_state_unchanged
 }
 
-@test "ret-ondisk-corrupt: persist exits 1 on corrupt on-disk --output" {
+@test "persist rejects corrupt on-disk --output" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3109,7 +3111,7 @@ JSON
   _assert_state_unchanged
 }
 
-@test "ret-ondisk-unsafe: persist exits 1 on unsafe on-disk other key" {
+@test "persist rejects unsafe on-disk other key" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3139,32 +3141,42 @@ JSON
   _assert_state_unchanged
 }
 
-@test "spin-bmc: build_manifest_cards exits 1 on unknown option" {
+@test "build_manifest_cards rejects unknown option" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  local EXEC_TIMEOUT="$BATS_TEST_DIRNAME/../scripts/lib/exec-with-timeout.sh"
+  [ -f "$EXEC_TIMEOUT" ] || fail "exec-with-timeout.sh does not exist"
 
   local rc=0
   bash -c "
-    source '$TARGET_SCRIPT'
-    set +e
-    build_manifest_cards --local-specs /tmp --existing /dev/null --bad-flag
-    exit \$?
+    source '$EXEC_TIMEOUT'
+    exec_with_timeout 20 bash -c '
+      source \"$TARGET_SCRIPT\"
+      set +e
+      build_manifest_cards --local-specs /tmp --existing /dev/null --bad-flag
+      exit \$?
+    '
   " 2>/dev/null && rc=0 || rc=$?
 
-  [ "$rc" -eq 1 ] || fail "expected exit 1, got $rc"
+  [ "$rc" -eq 1 ] || fail "expected exit 1, got $rc (124=spin/timeout, 137=killed)"
 }
 
-@test "ret-bmc-invalid-proj: build_manifest_cards exits 1 on invalid --project" {
+@test "build_manifest_cards rejects invalid --project value" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  local EXEC_TIMEOUT="$BATS_TEST_DIRNAME/../scripts/lib/exec-with-timeout.sh"
+  [ -f "$EXEC_TIMEOUT" ] || fail "exec-with-timeout.sh does not exist"
 
   local rc=0
   bash -c "
-    source '$TARGET_SCRIPT'
-    set +e
-    build_manifest_cards --local-specs /tmp --existing /dev/null --project invalid_value
-    exit \$?
+    source '$EXEC_TIMEOUT'
+    exec_with_timeout 20 bash -c '
+      source \"$TARGET_SCRIPT\"
+      set +e
+      build_manifest_cards --local-specs /tmp --existing /dev/null --project invalid_value
+      exit \$?
+    '
   " 2>/dev/null && rc=0 || rc=$?
 
-  [ "$rc" -eq 1 ] || fail "expected exit 1, got $rc"
+  [ "$rc" -eq 1 ] || fail "expected exit 1, got $rc (124=spin/timeout, 137=killed)"
 }
 
 @test "shell-opts: \$- unchanged after persist_last_published call" {
@@ -3280,7 +3292,7 @@ product_design_project:
 YAML
 
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123","reference":"https://ds.example.com/project/123"}
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
 JSON
 
   run bash -c "
@@ -3307,10 +3319,10 @@ product_design_project:
 YAML
 
   cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
 type: Design
 access: writer
 owner: owner-456
-reference: https://claude.ai/artifact/456
 TXT
 
   run bash -c "
@@ -3323,13 +3335,13 @@ TXT
   [[ "$output" == *"product_design_project.reference"* ]] || fail "should mention PD reference not set: $output"
 }
 
-@test "verify-target: metadata reference mismatch rejects designsync" {
+@test "verify-target: projectId mismatch rejects designsync" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Metadata has a DIFFERENT reference than what we pass
+  # Wrapper projectId differs from the reference argument
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123","reference":"https://ds.example.com/DIFFERENT/999"}
+{"projectId":"https://ds.example.com/DIFFERENT/999","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
 JSON
 
   run bash -c "
@@ -3338,7 +3350,7 @@ JSON
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
-  [ "$status" -ne 0 ] || fail "metadata reference mismatch should be rejected"
+  [ "$status" -ne 0 ] || fail "projectId mismatch should be rejected"
   [[ "$output" == *"does not match"* ]] || fail "should diagnose mismatch: $output"
 }
 
@@ -3352,7 +3364,7 @@ JSON
   # Direct execution with valid args should succeed
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123","reference":"https://ds.example.com/project/123"}
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
 JSON
 
   run bash "$VERIFY_SCRIPT" designsync 'https://ds.example.com/project/123' \
@@ -3472,7 +3484,7 @@ JSON
 # Writer validation per-branch mutant tests
 # ===========================================================================
 
-@test "w-outcome-hash: unsafe hash in outcome rejected" {
+@test "persist rejects outcome with control-char hash" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   # Outcome with a newline-injected hash
@@ -3487,7 +3499,7 @@ JSON
   _assert_state_unchanged
 }
 
-@test "w-prior-arr-fname: unsafe filename in flat-array prior rejected" {
+@test "persist rejects traversal filename in flat-array prior" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3503,7 +3515,7 @@ JSON
   _assert_state_unchanged
 }
 
-@test "w-prior-arr-hash: unsafe hash in flat-array prior rejected" {
+@test "persist rejects control-char hash in flat-array prior" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3519,7 +3531,7 @@ JSON
   _assert_state_unchanged
 }
 
-@test "w-prior-obj-hash: unsafe hash in per-project prior rejected" {
+@test "persist rejects control-char hash in per-project prior" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3535,7 +3547,7 @@ JSON
   _assert_state_unchanged
 }
 
-@test "w-ondisk-hash: unsafe hash in on-disk other key rejected" {
+@test "persist rejects control-char hash in on-disk other key" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
   printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
@@ -3570,7 +3582,7 @@ JSON
 # Discovery phantom-card mutant test
 # ===========================================================================
 
-@test "ctl-discovery: control char in discovered filename rejected via discovery" {
+@test "discovery rejects filename with control character" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   mkdir -p "$TEST_TMP/specs/components"
   printf '<!-- @dsCard group="Component specs" -->\n<html>Good</html>\n' > "$TEST_TMP/specs/components/good.spec.html"
@@ -3603,13 +3615,13 @@ JSON
 # verify-publication-target distinct diagnostic tests
 # ===========================================================================
 
-@test "vt-empty-ds: designsync with no metadata reference fails with specific diagnostic" {
+@test "verify-target: raw get_project response without wrapper rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
-  # Metadata WITHOUT a reference field
+  # Raw get_project response (no projectId wrapper)
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123"}
+{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}
 JSON
 
   run bash -c "
@@ -3618,12 +3630,12 @@ JSON
       --metadata-file '$TEST_TMP/ds-metadata.json' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
-  [ "$status" -ne 0 ] || fail "missing metadata reference should fail"
-  [[ "$output" == *"no reference field"* ]] \
-    || fail "should mention 'no reference field': $output"
+  [ "$status" -ne 0 ] || fail "raw unwrapped response should be rejected"
+  [[ "$output" == *"projectId"* ]] \
+    || fail "should mention missing projectId: $output"
 }
 
-@test "vt-empty-pd: artifact with no header reference fails with specific diagnostic" {
+@test "verify-target: artifact without reference line rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
@@ -3645,12 +3657,12 @@ TXT
     || fail "should mention 'no reference line': $output"
 }
 
-@test "vt-ref-required: verify_publication_target fails when reference arg empty" {
+@test "verify-target: empty reference argument rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
-{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true,"organization":"org-123","reference":"https://ds.example.com/project/123"}
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
 JSON
 
   run bash -c "
@@ -3668,7 +3680,7 @@ JSON
 # Other-key reference fill: existing key with null ref stays unchanged
 # ===========================================================================
 
-@test "other-ref-fill: existing PD key with null reference not overwritten" {
+@test "persist preserves existing product_design key with null reference" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
@@ -3696,4 +3708,932 @@ JSON
   pd_ref="$(jq -r '.product_design.reference // "null"' "$TEST_TMP/last-published.json")"
   [ "$pd_ref" = "null" ] \
     || fail "existing PD key reference should stay null, got $pd_ref"
+}
+
+# ===========================================================================
+# Legacy flat-array: PD target fills design_system.reference from design record
+# ===========================================================================
+
+@test "legacy flat-array with --project product_design fills design_system reference" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Seed a legacy flat-array state file
+  printf '[{"file":"components/button.spec.html","hash":"old_h1"}]\n' > "$TEST_TMP/last-published.json"
+  printf '[{"file":"screens/login.spec.html","outcome":"written","hash":"pd_h1"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"screens/login.spec.html":"pd_h1"}\n' > "$TEST_TMP/hash-map.json"
+
+  bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior '$TEST_TMP/last-published.json' \
+      --output '$TEST_TMP/last-published.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project product_design \
+      --published-at '2026-09-02T00:00:00Z'
+  " 2>/dev/null || fail "persist on legacy flat-array (PD target) should succeed"
+
+  # The design_system.reference must be filled from design_system_project.reference
+  local ds_ref
+  ds_ref="$(jq -r '.design_system.reference // "null"' "$TEST_TMP/last-published.json")"
+  [ "$ds_ref" = "https://ds.example.com/project/123" ] \
+    || fail "expected DS reference from design record, got $ds_ref"
+}
+
+# ===========================================================================
+# Additional persist failure-path tests
+# ===========================================================================
+
+@test "persist rejects omitted --local-hash-map" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
+
+  _errexit_off_persist "--outcomes '$TEST_TMP/outcomes.json' --prior /dev/null --output '$TEST_TMP/last-published.json' --design-record '$TEST_TMP/design-record.yaml' --published-at '2026-09-01T00:00:00Z'"
+
+  [ "$_PERSIST_RC" -eq 1 ] || fail "expected exit 1, got $_PERSIST_RC"
+  _assert_state_unchanged
+}
+
+@test "persist rejects v1.0 design record with null reference" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+
+  cat > "$TEST_TMP/dr-v1-null.yaml" <<'YAML'
+schema_version: "1.0"
+project:
+  reference: null
+  discovered_via: manual
+YAML
+
+  printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"a.html":"deadbeef"}\n' > "$TEST_TMP/hash-map.json"
+
+  _errexit_off_persist "--outcomes '$TEST_TMP/outcomes.json' --prior /dev/null --output '$TEST_TMP/last-published.json' --local-hash-map '$TEST_TMP/hash-map.json' --design-record '$TEST_TMP/dr-v1-null.yaml' --published-at '2026-09-01T00:00:00Z'"
+
+  [ "$_PERSIST_RC" -eq 1 ] || fail "expected exit 1, got $_PERSIST_RC"
+  _assert_state_unchanged
+}
+
+@test "persist under lock timeout rejects write and leaves state file unchanged" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  local EXEC_TIMEOUT="$BATS_TEST_DIRNAME/../scripts/lib/exec-with-timeout.sh"
+  [ -f "$EXEC_TIMEOUT" ] || fail "exec-with-timeout.sh does not exist"
+  local LOCK_LIB="$BATS_TEST_DIRNAME/../scripts/lib/acquire-lock.sh"
+  [ -f "$LOCK_LIB" ] || skip "acquire-lock.sh not present"
+
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  printf '[{"file":"a.html","outcome":"written","hash":"deadbeef"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"a.html":"deadbeef"}\n' > "$TEST_TMP/hash-map.json"
+  printf '{"sentinel":"untouched"}\n' > "$TEST_TMP/last-published.json"
+  _SENTINEL_SHA="$(shasum -a 256 "$TEST_TMP/last-published.json" | awk '{print $1}')"
+
+  local lock_file="$TEST_TMP/last-published.json.lock"
+
+  # Hold the lock externally via flock
+  local holder_pid
+  (
+    bash -c "
+      source '$LOCK_LIB'
+      acquire_lock '$lock_file' 3600 200
+      # Signal readiness
+      printf 'ready\n' > '$TEST_TMP/holder-ready.txt'
+      # Close bats fd-3 pipe, then exec sleep so no orphan lingers
+      exec 3>&-
+      exec sleep 60
+    " 2>/dev/null
+  ) &
+  holder_pid=$!
+
+  # Wait for the holder to signal ready
+  local wait_count=0
+  while [ ! -f "$TEST_TMP/holder-ready.txt" ] && [ "$wait_count" -lt 50 ]; do
+    sleep 0.1
+    wait_count=$((wait_count + 1))
+  done
+  [ -f "$TEST_TMP/holder-ready.txt" ] || { kill "$holder_pid" 2>/dev/null; wait "$holder_pid" 2>/dev/null; fail "lock holder never signalled ready"; }
+
+  # Now try to write — should fail because lock is held
+  local rc=0
+  GAIA_LOCK_FORCE_FALLBACK=1 bash -c "
+    source '$EXEC_TIMEOUT'
+    exec_with_timeout 20 bash -c '
+      source \"$TARGET_SCRIPT\"
+      set +e
+      persist_last_published \
+        --outcomes \"$TEST_TMP/outcomes.json\" \
+        --prior /dev/null \
+        --output \"$TEST_TMP/last-published.json\" \
+        --local-hash-map \"$TEST_TMP/hash-map.json\" \
+        --design-record \"$TEST_TMP/design-record.yaml\" \
+        --published-at 2026-09-30T10:00:00Z
+      exit \$?
+    '
+  " 2>"$TEST_TMP/lock-stderr.txt" || rc=$?
+
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+
+  [ "$rc" -ne 0 ] || fail "locked persist should fail (got rc=0)"
+  _assert_state_unchanged
+}
+
+# ===========================================================================
+# DesignSync new-contract tests
+# ===========================================================================
+
+@test "verify-target: designsync wrapper with mismatched projectId rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/WRONG","project":{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "mismatched projectId should be rejected"
+  [[ "$output" == *"does not match"* ]] || fail "should diagnose mismatch: $output"
+}
+
+@test "verify-target: designsync with missing projectId rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"project":{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "missing projectId should be rejected"
+  [[ "$output" == *"projectId"* ]] || fail "should mention projectId: $output"
+}
+
+@test "verify-target: designsync with wrong project.type rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"type":"PROJECT_TYPE_OTHER","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "wrong type should be rejected"
+  [[ "$output" == *"type mismatch"* ]] || fail "should diagnose type mismatch: $output"
+}
+
+@test "verify-target: designsync with project.canEdit false rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":false}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "canEdit false should be rejected"
+  [[ "$output" == *"canEdit"* ]] || fail "should diagnose canEdit: $output"
+}
+
+@test "verify-target: artifact with mismatched reference line rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/WRONG
+type: Design
+access: writer
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "mismatched reference line should be rejected"
+  [[ "$output" == *"does not match"* ]] || fail "should diagnose mismatch: $output"
+}
+
+@test "verify-target: designsync positive control with new contract passes" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "positive control should pass (new contract): $output"
+}
+
+# ===========================================================================
+# Owner check: reads .project.owner only (no top-level fallback)
+# ===========================================================================
+
+@test "verify-target: owner match passes with real shape" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner org-123
+  "
+  [ "$status" -eq 0 ] || fail "owner match should pass: $output"
+}
+
+@test "verify-target: owner mismatch refused with real shape" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"evil-org","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner org-123
+  "
+  [ "$status" -ne 0 ] || fail "owner mismatch should be refused"
+  [[ "$output" == *"owner mismatch"* ]] || fail "should diagnose owner mismatch: $output"
+}
+
+@test "verify-target: forged top-level organization ignored when project.owner mismatches" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Top-level "organization" matches expected owner, but project.owner does not
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","organization":"org-123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"evil-org","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner org-123
+  "
+  [ "$status" -ne 0 ] || fail "top-level organization should be ignored; project.owner mismatches"
+}
+
+@test "verify-target: forged top-level owner ignored when project.owner mismatches" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Top-level "owner" matches expected, but project.owner does not
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","owner":"org-123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"evil-org","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner org-123
+  "
+  [ "$status" -ne 0 ] || fail "top-level owner should be ignored; project.owner mismatches"
+}
+
+@test "verify-target: missing project.owner with expected-owner fails closed" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner org-123
+  "
+  [ "$status" -ne 0 ] || fail "missing project.owner should fail closed when --expected-owner given"
+  [[ "$output" == *"no owner field"* ]] || fail "should mention missing owner: $output"
+}
+
+# ===========================================================================
+# canEdit strict boolean — string "true" rejected
+# ===========================================================================
+
+@test "verify-target: canEdit string true rejected (not boolean)" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":"true"}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "string 'true' canEdit should be rejected (must be boolean)"
+  [[ "$output" == *"canEdit"* ]] || fail "should mention canEdit: $output"
+}
+
+@test "verify-target: top-level canEdit true ignored when project.canEdit false" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Top-level canEdit:true should not override project.canEdit:false
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","canEdit":true,"project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":false}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "top-level canEdit should be ignored; project.canEdit is false"
+  [[ "$output" == *"canEdit"* ]] || fail "should mention canEdit: $output"
+}
+
+# ===========================================================================
+# Inner wrapper overrides ignored (projectId, type)
+# ===========================================================================
+
+@test "verify-target: inner project.projectId override ignored" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # project has its own projectId that differs from top-level — top-level wins
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"projectId":"https://ds.example.com/EVIL","name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "inner projectId override should be ignored; top-level matches: $output"
+}
+
+@test "verify-target: top-level type override ignored" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Top-level type is wrong, but project.type is correct — should pass
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","type":"PROJECT_TYPE_OTHER","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","owner":"org-123","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "top-level type override should be ignored; project.type is correct: $output"
+}
+
+# ===========================================================================
+# Artifact header: reference must be line 1, no duplicates
+# ===========================================================================
+
+@test "verify-target: artifact reference not on line 1 rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # reference is on line 2, not line 1
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+type: Design
+reference: https://claude.ai/artifact/456
+access: writer
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "reference not on line 1 should be rejected"
+}
+
+@test "verify-target: blank line 1 in artifact header rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # blank first line, reference on line 2
+  printf '\nreference: https://claude.ai/artifact/456\ntype: Design\naccess: writer\n' \
+    > "$TEST_TMP/art-meta.txt"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "blank line 1 should be rejected"
+}
+
+@test "verify-target: empty reference value in artifact header rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # reference line with empty value
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference:
+type: Design
+access: writer
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact '' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "empty reference value should be rejected"
+}
+
+@test "verify-target: duplicate reference lines in artifact header rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Two reference lines — second one could override the first
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
+type: Design
+access: writer
+reference: https://claude.ai/artifact/EVIL
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "duplicate reference lines should be rejected"
+  [[ "$output" == *"reference lines"* ]] || fail "should mention duplicate reference lines: $output"
+}
+
+@test "verify-target: artifact CRLF line ending rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Write a CRLF-terminated file
+  printf 'reference: https://claude.ai/artifact/456\r\ntype: Design\r\naccess: writer\r\n' \
+    > "$TEST_TMP/art-meta.txt"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "CRLF line endings should be rejected"
+  [[ "$output" == *"CRLF"* ]] || [[ "$output" == *"0x0d"* ]] \
+    || fail "should mention CRLF or CR byte: $output"
+}
+
+# ===========================================================================
+# Legacy fill scope: design_system target does NOT fill product_design
+# ===========================================================================
+
+@test "legacy flat-array with --project design_system does not fill product_design reference" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Seed a legacy flat-array state file
+  printf '[{"file":"components/button.spec.html","hash":"old_h1"}]\n' > "$TEST_TMP/last-published.json"
+  printf '[{"file":"components/card.spec.html","outcome":"written","hash":"ds_h1"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"components/card.spec.html":"ds_h1"}\n' > "$TEST_TMP/hash-map.json"
+
+  bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior '$TEST_TMP/last-published.json' \
+      --output '$TEST_TMP/last-published.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project design_system \
+      --published-at '2026-09-02T00:00:00Z'
+  " 2>/dev/null || fail "persist on legacy flat-array (DS target) should succeed"
+
+  # product_design.reference must be null — DS target should NOT fill PD reference
+  local pd_ref
+  pd_ref="$(jq -r '.product_design.reference // "null"' "$TEST_TMP/last-published.json")"
+  [ "$pd_ref" = "null" ] \
+    || fail "legacy + design_system target should NOT fill product_design.reference, got $pd_ref"
+
+  # design_system.reference should be filled
+  local ds_ref
+  ds_ref="$(jq -r '.design_system.reference // "null"' "$TEST_TMP/last-published.json")"
+  [ "$ds_ref" = "https://ds.example.com/project/123" ] \
+    || fail "design_system.reference should be filled from design record, got $ds_ref"
+}
+
+# ===========================================================================
+# Warning 1: Unterminated last line in artifact header
+# ===========================================================================
+
+@test "verify-target: header with no trailing newline passes" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Write header WITHOUT trailing newline (printf '%s', not '%s\n')
+  printf '%s' "reference: https://claude.ai/artifact/456
+type: Design
+access: writer
+owner: owner-456" > "$TEST_TMP/art-meta.txt"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "header without trailing newline should pass: $output"
+}
+
+@test "verify-target: unterminated conflicting reference line on last line refused" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Valid first reference, but a duplicate on the last unterminated line
+  printf '%s' "reference: https://claude.ai/artifact/456
+type: Design
+access: writer
+reference: https://claude.ai/artifact/EVIL" > "$TEST_TMP/art-meta.txt"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "unterminated duplicate reference line should be refused"
+  [[ "$output" == *"reference lines"* ]] || fail "should mention duplicate reference lines: $output"
+}
+
+@test "verify-target: unterminated trailing access line honoured (reader refused)" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Valid header except access: reader on the last unterminated line
+  printf '%s' "reference: https://claude.ai/artifact/456
+type: Design
+access: reader" > "$TEST_TMP/art-meta.txt"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "unterminated access: reader should be refused"
+  [[ "$output" == *"access"* ]] || fail "should mention access problem: $output"
+}
+
+# ===========================================================================
+# Warning 2: Multiple JSON values fail open in designsync
+# ===========================================================================
+
+@test "verify-target: designsync two-value JSON file refused" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # First value has canEdit:false, second has canEdit:true — must not pass
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","project":{"type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":false}}
+{"project":{"canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "two-value JSON file should be refused"
+  [[ "$output" == *"exactly one JSON object"* ]] || fail "should diagnose multi-value: $output"
+}
+
+@test "verify-target: designsync empty file refused" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  printf '' > "$TEST_TMP/ds-metadata.json"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "empty designsync metadata file should be refused"
+}
+
+@test "verify-target: designsync non-object top level (array) refused" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  printf '[{"projectId":"https://ds.example.com/project/123"}]\n' > "$TEST_TMP/ds-metadata.json"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "array top-level should be refused"
+  [[ "$output" == *"exactly one JSON object"* ]] || fail "should diagnose non-object: $output"
+}
+
+@test "verify-target: designsync non-object top level (string) refused" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  printf '"just a string"\n' > "$TEST_TMP/ds-metadata.json"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "string top-level should be refused"
+  [[ "$output" == *"exactly one JSON object"* ]] || fail "should diagnose non-object: $output"
+}
+
+# ===========================================================================
+# Warning 3: Legacy-only fill condition pinning
+# ===========================================================================
+
+@test "fresh output (no file) with product_design leaves design_system.reference null" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # No existing output file — fresh write
+  rm -f "$TEST_TMP/last-published.json"
+  printf '[{"file":"screens/login.spec.html","outcome":"written","hash":"pd_h1"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"screens/login.spec.html":"pd_h1"}\n' > "$TEST_TMP/hash-map.json"
+
+  _run_persist_v2 --project product_design \
+    --design-record "$TEST_TMP/design-record.yaml" \
+    --published-at "2026-09-01T00:00:00Z"
+
+  # design_system.reference must be null — no legacy file means no fill
+  local ds_ref
+  ds_ref="$(jq -r '.design_system.reference // "null"' "$TEST_TMP/last-published.json")"
+  [ "$ds_ref" = "null" ] \
+    || fail "fresh output + product_design should leave design_system.reference null, got $ds_ref"
+}
+
+@test "existing per-project file with null DS reference stays null after product_design publish" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Existing per-project file with null DS reference (NOT legacy)
+  cat > "$TEST_TMP/last-published.json" <<'JSON'
+{
+  "design_system": {"reference": null, "last_published_at": null, "files": []},
+  "product_design": {"reference": null, "last_published_at": null, "files": []}
+}
+JSON
+
+  printf '[{"file":"screens/login.spec.html","outcome":"written","hash":"pd_h1"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"screens/login.spec.html":"pd_h1"}\n' > "$TEST_TMP/hash-map.json"
+
+  _run_persist_v2 --project product_design \
+    --design-record "$TEST_TMP/design-record.yaml" \
+    --prior "$TEST_TMP/last-published.json" \
+    --published-at "2026-09-01T00:00:00Z"
+
+  # design_system.reference must still be null — file was NOT legacy
+  local ds_ref
+  ds_ref="$(jq -r '.design_system.reference // "null"' "$TEST_TMP/last-published.json")"
+  [ "$ds_ref" = "null" ] \
+    || fail "non-legacy per-project file should NOT fill design_system.reference, got $ds_ref"
+}
+
+# ===========================================================================
+# Warning 4: Owner checks pinning (artifact + designsync)
+# ===========================================================================
+
+@test "verify-target: artifact owner match passes" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
+type: Design
+access: writer
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner owner-456
+  "
+  [ "$status" -eq 0 ] || fail "artifact owner match should pass: $output"
+}
+
+@test "verify-target: artifact owner mismatch refused" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
+type: Design
+access: writer
+owner: evil-owner
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner owner-456
+  "
+  [ "$status" -ne 0 ] || fail "artifact owner mismatch should be refused"
+  [[ "$output" == *"owner mismatch"* ]] || fail "should diagnose owner mismatch: $output"
+}
+
+@test "verify-target: artifact missing owner with expected-owner fails closed" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # No owner line in the artifact header
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
+type: Design
+access: writer
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner owner-456
+  "
+  [ "$status" -ne 0 ] || fail "missing artifact owner should fail closed when --expected-owner given"
+  [[ "$output" == *"no owner field"* ]] || fail "should mention missing owner: $output"
+}
+
+@test "verify-target: designsync forged top-level owner with NO project.owner refused" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Real response has NO project.owner, but forged top-level "owner" and
+  # "organization" match the expected owner — must still be refused.
+  cat > "$TEST_TMP/ds-metadata.json" <<'JSON'
+{"projectId":"https://ds.example.com/project/123","owner":"org-123","organization":"org-123","project":{"name":"Acme DS","type":"PROJECT_TYPE_DESIGN_SYSTEM","canEdit":true}}
+JSON
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --expected-owner org-123
+  "
+  [ "$status" -ne 0 ] || fail "forged top-level owner/organization with no project.owner should be refused"
+  [[ "$output" == *"no owner field"* ]] || fail "should mention missing owner: $output"
+}
+
+# ===========================================================================
+# INFO items: duplicate access/type lines, empty reference diagnostic, BOM
+# ===========================================================================
+
+@test "verify-target: duplicate access lines in artifact header rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
+type: Design
+access: writer
+access: reader
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "duplicate access lines should be rejected"
+  [[ "$output" == *"access lines"* ]] || fail "should mention duplicate access lines: $output"
+}
+
+@test "verify-target: duplicate type lines in artifact header rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference: https://claude.ai/artifact/456
+type: Design
+type: NotDesign
+access: writer
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "duplicate type lines should be rejected"
+  [[ "$output" == *"type lines"* ]] || fail "should mention duplicate type lines: $output"
+}
+
+@test "verify-target: empty reference value passes the real reference and diagnoses header" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # reference line with empty value — pass the REAL reference to the function
+  cat > "$TEST_TMP/art-meta.txt" <<'TXT'
+reference:
+type: Design
+access: writer
+owner: owner-456
+TXT
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "empty reference value should be rejected"
+  # The empty value after sed produces empty art_ref, caught as "no reference line"
+  [[ "$output" == *"reference"* ]] || fail "should diagnose the reference problem: $output"
+}
+
+@test "verify-target: BOM on line 1 gives specific diagnostic" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Write header with UTF-8 BOM (EF BB BF) on line 1
+  printf '\xef\xbb\xbfreference: https://claude.ai/artifact/456\ntype: Design\naccess: writer\nowner: owner-456\n' \
+    > "$TEST_TMP/art-meta.txt"
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/art-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "BOM on line 1 should be rejected"
+  [[ "$output" == *"BOM"* ]] || fail "should mention BOM in diagnostic: $output"
 }

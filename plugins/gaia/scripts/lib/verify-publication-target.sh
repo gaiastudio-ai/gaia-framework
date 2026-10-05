@@ -9,8 +9,24 @@
 #   verify_publication_target <surface> <reference> [flags]
 #
 # Surfaces:
-#   designsync — JSON metadata with keys: type, canEdit, organization, reference
-#   artifact   — text header with lines: type, access, owner, reference
+#
+#   designsync — --metadata-file is a JSON object the CALLER writes:
+#       {"projectId": "<id passed to get_project>",
+#        "project": <raw get_project response>}
+#     The verifier requires:
+#       - projectId present, non-empty, and equal to <reference>
+#       - project.type == PROJECT_TYPE_DESIGN_SYSTEM
+#       - project.canEdit == true
+#     Fail closed on anything else. The get_project response itself
+#     does NOT contain a reference field — do not expect one.
+#
+#   artifact — --metadata-file is a text file the CALLER writes:
+#     Line 1: "reference: <URL the caller read>"
+#     Remaining lines: the Artifact read result header (type, access, owner).
+#     The verifier requires:
+#       - first reference: line present and equal to <reference>
+#       - type == Design
+#       - access == writer
 #
 # Flags:
 #   --metadata-file PATH     — path to metadata file (required)
@@ -94,18 +110,38 @@ _verify_designsync() {
     _vpt_die "failed to parse designsync metadata: $metadata_file"; return 1
   }
 
-  # Type check: must be PROJECT_TYPE_DESIGN_SYSTEM
+  # Fail closed: require exactly one JSON object (reject concatenated values,
+  # arrays, strings, or empty files).
+  if ! jq -e -s 'length == 1 and (.[0] | type == "object")' "$metadata_file" >/dev/null 2>&1; then
+    _vpt_die "designsync metadata must be exactly one JSON object"
+    return 1
+  fi
+
+  # The metadata file is a wrapper: {"projectId": "...", "project": {...}}
+  # Require the projectId field and match it against the reference.
+  # Compare via jq --arg to avoid trailing-newline mismatches.
+  local project_id
+  project_id="$(printf '%s' "$meta_json" | jq -r '.projectId // empty')"
+  if [ -z "$project_id" ]; then
+    _vpt_die "designsync metadata missing projectId — raw get_project response not accepted"
+    return 1
+  fi
+  # Compare via jq --arg so a trailing newline cannot match
+  if ! printf '%s' "$meta_json" | jq -e --arg ref "$reference" '.projectId == $ref' >/dev/null 2>&1; then
+    _vpt_die "designsync projectId ($project_id) does not match target reference ($reference)"
+    return 1
+  fi
+
+  # Type check: project.type must be PROJECT_TYPE_DESIGN_SYSTEM
   local proj_type
-  proj_type="$(printf '%s' "$meta_json" | jq -r '.type // empty')"
+  proj_type="$(printf '%s' "$meta_json" | jq -r '.project.type // empty')"
   if [ "$proj_type" != "PROJECT_TYPE_DESIGN_SYSTEM" ]; then
     _vpt_die "designsync type mismatch: expected PROJECT_TYPE_DESIGN_SYSTEM, got $proj_type"
     return 1
   fi
 
-  # canEdit check
-  local can_edit
-  can_edit="$(printf '%s' "$meta_json" | jq -r '.canEdit // "false"')"
-  if [ "$can_edit" != "true" ]; then
+  # canEdit check: project.canEdit must be boolean true (not string "true")
+  if ! printf '%s' "$meta_json" | jq -e '.project.canEdit == true' >/dev/null 2>&1; then
     _vpt_die "designsync canEdit is false — no write access"
     return 1
   fi
@@ -113,18 +149,6 @@ _verify_designsync() {
   # Fail closed: the design record MUST have a DS reference for designsync
   if [ -z "$ds_ref" ]; then
     _vpt_die "design_system_project.reference is not set in design record"
-    return 1
-  fi
-
-  # Compare the reference in the metadata to the target reference (mandatory)
-  local meta_ref
-  meta_ref="$(printf '%s' "$meta_json" | jq -r '.reference // empty')"
-  if [ -z "$meta_ref" ]; then
-    _vpt_die "designsync metadata has no reference field — cannot verify target"
-    return 1
-  fi
-  if [ "$meta_ref" != "$reference" ]; then
-    _vpt_die "metadata reference ($meta_ref) does not match target reference ($reference)"
     return 1
   fi
 
@@ -138,15 +162,16 @@ _verify_designsync() {
     return 1
   fi
 
-  # Owner check
+  # Owner check: reads project.owner ONLY (the real get_project field).
+  # Compare via jq --arg so a trailing newline cannot match.
   if [ -n "$expected_owner" ]; then
     local actual_owner
-    actual_owner="$(printf '%s' "$meta_json" | jq -r '.organization // empty')"
+    actual_owner="$(printf '%s' "$meta_json" | jq -r '.project.owner // empty')"
     if [ -z "$actual_owner" ]; then
-      _vpt_die "expected owner $expected_owner but metadata has no organization field"
+      _vpt_die "expected owner $expected_owner but metadata has no owner field"
       return 1
     fi
-    if [ "$actual_owner" != "$expected_owner" ]; then
+    if ! printf '%s' "$meta_json" | jq -e --arg o "$expected_owner" '.project.owner == $o' >/dev/null 2>&1; then
       _vpt_die "owner mismatch: expected $expected_owner, got $actual_owner"
       return 1
     fi
@@ -160,24 +185,76 @@ _verify_artifact() {
   local ds_ref="$4" pd_ref="$5"
 
   # Parse text header — key: value lines
+  # Line 1 MUST be "reference: <URL>" (caller-written). No other reference:
+  # lines are allowed (duplicates rejected). Remaining lines carry the
+  # Artifact read header fields (type, access, owner).
   local art_type="" art_access="" art_owner="" art_ref=""
+  local line_num=0 ref_count=0
 
-  while IFS= read -r line; do
+  local ref_count_type=0 ref_count_access=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_num=$((line_num + 1))
+    # Reject BOM on line 1
+    case "$line" in
+      $'\xef\xbb\xbf'*)
+        if [ "$line_num" -eq 1 ]; then
+          _vpt_die "Artifact header line 1 has a UTF-8 BOM (bytes EF BB BF) — remove the BOM"
+          return 1
+        fi
+        ;;
+    esac
+    # Strip trailing CR (\\r) from CRLF line endings before parsing
+    case "$line" in
+      *$'\r')
+        _vpt_die "Artifact header line $line_num has CRLF ending (trailing CR byte 0x0d) — convert to LF"
+        return 1
+        ;;
+    esac
     case "$line" in
       type:*|Type:*|TYPE:*)
+        ref_count_type=$((ref_count_type + 1))
         art_type="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
         ;;
       access:*|Access:*|ACCESS:*)
+        ref_count_access=$((ref_count_access + 1))
         art_access="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
         ;;
       owner:*|Owner:*|OWNER:*)
         art_owner="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
         ;;
       reference:*|Reference:*|REFERENCE:*)
-        art_ref="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
+        ref_count=$((ref_count + 1))
+        if [ "$line_num" -eq 1 ]; then
+          art_ref="$(printf '%s' "$line" | sed 's/^[^:]*:[[:space:]]*//')"
+        fi
         ;;
     esac
   done < "$metadata_file"
+
+  # Reference MUST be on line 1
+  if [ -z "$art_ref" ]; then
+    _vpt_die "Artifact header has no reference line — cannot verify target"
+    return 1
+  fi
+  # Reject duplicate reference: lines (only one allowed)
+  if [ "$ref_count" -gt 1 ]; then
+    _vpt_die "Artifact header has $ref_count reference lines (expected exactly 1)"
+    return 1
+  fi
+  # Reject duplicate type: lines
+  if [ "$ref_count_type" -gt 1 ]; then
+    _vpt_die "Artifact header has $ref_count_type type lines (expected exactly 1)"
+    return 1
+  fi
+  # Reject duplicate access: lines
+  if [ "$ref_count_access" -gt 1 ]; then
+    _vpt_die "Artifact header has $ref_count_access access lines (expected exactly 1)"
+    return 1
+  fi
+  if [ "$art_ref" != "$reference" ]; then
+    _vpt_die "Artifact header reference ($art_ref) does not match target reference ($reference)"
+    return 1
+  fi
 
   # Type check: must be exactly "Design" (case-insensitive), not "Design System"
   if [ -z "$art_type" ]; then
@@ -200,16 +277,6 @@ _verify_artifact() {
   art_access_lower="$(printf '%s' "$art_access" | tr '[:upper:]' '[:lower:]')"
   if [ "$art_access_lower" != "writer" ]; then
     _vpt_die "Artifact access must be 'writer', got '$art_access'"
-    return 1
-  fi
-
-  # Compare the reference in the Artifact header to the target reference (mandatory)
-  if [ -z "$art_ref" ]; then
-    _vpt_die "Artifact header has no reference line — cannot verify target"
-    return 1
-  fi
-  if [ "$art_ref" != "$reference" ]; then
-    _vpt_die "Artifact header reference ($art_ref) does not match target reference ($reference)"
     return 1
   fi
 

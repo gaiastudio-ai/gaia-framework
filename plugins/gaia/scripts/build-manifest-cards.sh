@@ -7,6 +7,9 @@
 #   build_manifest_cards   — merge spec-file cards into the design-system manifest
 #   persist_last_published — write the persisted publication manifest from outcomes
 #
+# Note: a legacy --prior with a not-yet-existing output file is not
+# carried into design_system for product_design targets.
+#
 # Bash 3.2 safe: no associative arrays, no mapfile, no readarray.
 # All jq values go through --arg / --argjson.
 
@@ -522,6 +525,7 @@ persist_last_published() {
 
   # Re-read the on-disk --output inside the lock to pick up the OTHER key's data
   local on_disk_json='{"design_system":{"reference":null,"last_published_at":null,"files":[]},"product_design":{"reference":null,"last_published_at":null,"files":[]}}'
+  local _on_disk_was_legacy=0
   if [ -f "$output_file" ] && [ -s "$output_file" ]; then
     if ! jq '.' "$output_file" >/dev/null 2>&1; then
       if [ "$use_lock" -eq 1 ]; then
@@ -529,6 +533,10 @@ persist_last_published() {
       fi
       _bmc_die "persist_last_published: corrupt on-disk --output: $output_file"
       return 1
+    fi
+    # Detect legacy flat-array format before normalising
+    if jq -e 'type == "array"' "$output_file" >/dev/null 2>&1; then
+      _on_disk_was_legacy=1
     fi
     on_disk_json="$(jq '
       if type == "array" then
@@ -581,19 +589,16 @@ persist_last_published() {
     '.[$proj] = {"reference": $ref, "last_published_at": $ts, "files": $files}'
   )"
 
-  # Fill the other key's reference from the design record ONLY when creating
-  # a new key (legacy migration: flat array wraps under DS, PD key is born
-  # with null reference). An existing key with null reference stays as-is.
+  # Fill design_system.reference from the design record ONLY during legacy
+  # migration when the target is product_design: the on-disk file was a flat
+  # array (no per-project keys) and the newly-born design_system key needs
+  # its reference seeded. Does NOT fill product_design.reference when the
+  # target is design_system — that would contradict the per-project contract.
   local other_key
   if [ "$project" = "design_system" ]; then other_key="product_design"; else other_key="design_system"; fi
   local other_ref
   other_ref="$(printf '%s' "$merged" | jq -r --arg k "$other_key" '.[$k].reference // empty')" || other_ref=""
-  # Only fill when the on-disk file did NOT already have this key at all
-  # (newly created during legacy migration). An existing key with null
-  # reference stays as-is — the user may have cleared it deliberately.
-  local on_disk_has_other
-  on_disk_has_other="$(printf '%s' "$on_disk_json" | jq --arg k "$other_key" 'has($k)')" || on_disk_has_other="true"
-  if [ -z "$other_ref" ] && [ "$on_disk_has_other" != "true" ]; then
+  if [ -z "$other_ref" ] && [ "$_on_disk_was_legacy" -eq 1 ] && [ "$project" = "product_design" ]; then
     local other_dr_ref=""
     case "$schema_version" in
       1.0|1)
