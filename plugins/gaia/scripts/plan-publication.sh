@@ -111,9 +111,34 @@ if [ -f "$REMOTE_LISTING" ] && [ -s "$REMOTE_LISTING" ]; then
 fi
 
 # Last-published: /dev/null or missing means first run (no orphans).
-# Normalise legacy flat-array to per-project object, then slice to target key.
+# Validate shape, normalise legacy flat-array to per-project object, then
+# slice to target key. Valid shapes:
+#   (a) flat array of {file, hash} objects (legacy)
+#   (b) per-project object whose target entry is an object with array "files"
+# Anything else (number, string, wrong-shape array, missing/non-array files)
+# is a hard error — fail closed, never plan writes against corrupt state.
 PUBLISHED_JSON="[]"
 if [ "$LAST_PUBLISHED" != "/dev/null" ] && [ -f "$LAST_PUBLISHED" ] && [ -s "$LAST_PUBLISHED" ]; then
+  # Shape validation (before normalisation)
+  local_shape="$(jq -r --arg proj "$PROJECT" '
+    if type == "array" then
+      # Legacy flat: every element must be an object with .file
+      if all(type == "object" and has("file")) then "legacy_array"
+      else "invalid" end
+    elif type == "object" then
+      # Per-project: target key must be an object with array .files (or absent)
+      if .[$proj] == null then "valid_object"
+      elif (.[$proj] | type) != "object" then "invalid"
+      elif (.[$proj] | has("files")) and ((.[$proj].files | type) != "array") then "invalid"
+      elif (.[$proj] | has("files") | not) then "invalid"
+      else "valid_object" end
+    else "invalid" end
+  ' "$LAST_PUBLISHED" 2>/dev/null)" || local_shape="invalid"
+
+  if [ "$local_shape" = "invalid" ]; then
+    _die "invalid state file shape: $LAST_PUBLISHED (expected a flat array of {file,hash} objects or a per-project object with array files)"
+  fi
+
   PUBLISHED_JSON="$(jq --arg proj "$PROJECT" '
     # Detect shape: array = legacy flat, object = per-project
     if type == "array" then
@@ -122,7 +147,7 @@ if [ "$LAST_PUBLISHED" != "/dev/null" ] && [ -f "$LAST_PUBLISHED" ] && [ -s "$LA
        "product_design": {"reference": null, "last_published_at": null, "files": []}}
     else . end
     | .[$proj].files // []
-  ' "$LAST_PUBLISHED" 2>/dev/null || printf '[]')"
+  ' "$LAST_PUBLISHED")" || _die "failed to read state file: $LAST_PUBLISHED"
 fi
 
 # ---- single-pass plan computation via jq ----------------------------------
