@@ -3791,10 +3791,11 @@ YAML
 
   local lock_file="$TEST_TMP/last-published.json.lock"
 
-  # Hold the lock externally via flock
+  # Hold the lock in fallback mode (same as the contending write below)
   local holder_pid
   (
-    bash -c "
+    GAIA_LOCK_FORCE_FALLBACK=1 bash -c "
+      export GAIA_LOCK_FORCE_FALLBACK=1
       source '$LOCK_LIB'
       acquire_lock '$lock_file' 3600 200
       # Signal readiness
