@@ -1344,9 +1344,15 @@ cmd_approve() {
   _preflight_mutate
   _ensure_roster || true
 
-  # Check roster before locking — reject unknown stakeholders early
+  # Check roster before locking — reject unknown stakeholders early.
+  # Distinguish two refusal reasons: roster resolution itself failed
+  # (e.g. symlink) vs. the stakeholder is simply not on a valid roster.
   if ! _assert_known_stakeholder "$stakeholder"; then
-    _locked_mutate _do_refuse_approval "$stakeholder" "$recorded_by"
+    if [ "$_ROSTER_RC" -ne 0 ]; then
+      _locked_mutate _do_refuse_approval_resolution "$stakeholder" "$recorded_by"
+    else
+      _locked_mutate _do_refuse_approval "$stakeholder" "$recorded_by"
+    fi
     exit 1
   fi
 
@@ -1374,6 +1380,13 @@ _do_refuse_approval() {
   printf 'design-record.sh: unknown stakeholder "%s" — not on the roster\n' "$stakeholder" >&2
   _append_audit "$tmp" "approval-refused" "$recorded_by" \
     "stakeholder_id=${stakeholder}" "reason=stakeholder not on roster"
+}
+
+_do_refuse_approval_resolution() {
+  local tmp="$1" stakeholder="$2" recorded_by="$3"
+  printf 'design-record.sh: roster resolution refused — cannot verify stakeholder "%s"\n' "$stakeholder" >&2
+  _append_audit "$tmp" "approval-refused" "$recorded_by" \
+    "stakeholder_id=${stakeholder}" "reason=roster resolution refused"
 }
 
 # cmd_add_review — record a review verdict.
