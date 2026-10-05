@@ -476,6 +476,7 @@ scripts-core	cross-refs-walk.bats
 scripts-core	dedup-contract.bats
 scripts-core	design-probe.bats
 scripts-core	design-record-reopen-applicable.bats
+scripts-core	design-record-review-coverage.bats
 scripts-core	design-stale-transition.bats
 scripts-core	detect-affected.bats
 scripts-core	detect-open-questions.bats
@@ -654,6 +655,7 @@ scripts-lib	e45-s3-auto-save-memory.bats
 scripts-lib	e45-s3-phase-classification.bats
 scripts-lib	e55-s6-security-invariants.bats
 scripts-lib	e76-s23-clarify-mode.bats
+scripts-lib	escape-boundary-markers.bats
 scripts-lib	execution-mode-b.bats
 scripts-lib	forbidden-sentinel-scan.bats
 scripts-lib	gaia-paths.bats

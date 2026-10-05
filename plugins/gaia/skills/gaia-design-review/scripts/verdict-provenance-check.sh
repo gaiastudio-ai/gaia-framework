@@ -22,7 +22,8 @@ LC_ALL=C; export LC_ALL
 # Exit codes:
 #   0  — notes text passes the provenance check (no verbatim match)
 #   1  — notes text contains a verbatim match from the boundary content
-#   2  — argument error (missing, unreadable, or empty file)
+#   2  — argument error (missing, unreadable, or empty file),
+#        or malformed boundary file (unmatched marker, missing marker)
 
 _die() { printf 'verdict-provenance-check.sh: %s\n' "$1" >&2; exit 2; }
 
@@ -83,16 +84,88 @@ out_file = sys.argv[2]
 with open(boundary_file) as f:
     text = f.read()
 
-OPEN  = "<<<DESIGN_PROJECT_BOUNDARY>>>"
-CLOSE = "<<<END_DESIGN_PROJECT_BOUNDARY>>>"
+# Dual marker pairs
+MARKER_PAIRS = [
+    ("<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>",  "<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>"),
+    ("<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>", "<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>"),
+]
 
-start = text.find(OPEN)
-if start == -1:
-    inner = text
-else:
-    after = text[start + len(OPEN):]
-    end = after.find(CLOSE)
-    inner = after[:end] if end != -1 else after
+# Check that at least one marker of either type exists
+has_any = False
+for open_m, close_m in MARKER_PAIRS:
+    if open_m in text or close_m in text:
+        has_any = True
+        break
+
+if not has_any:
+    sys.stderr.write("verdict-provenance-check.sh: boundary file contains no markers of either type\n")
+    sys.exit(2)
+
+# Extract ALL regions for both marker types.
+# Pair the i-th OPEN with the i-th CLOSE for each marker type (index-based
+# matching). This makes the extraction resilient to an embedded close marker
+# inside region content (the defence is at write time via the shared escape,
+# but a wider extraction is safer for checking).
+regions = []
+for open_m, close_m in MARKER_PAIRS:
+    # Collect all positions of OPENs and CLOSEs
+    opens = []
+    closes = []
+    pos = 0
+    while True:
+        idx = text.find(open_m, pos)
+        if idx == -1:
+            break
+        opens.append(idx)
+        pos = idx + len(open_m)
+    pos = 0
+    while True:
+        idx = text.find(close_m, pos)
+        if idx == -1:
+            break
+        closes.append(idx)
+        pos = idx + len(close_m)
+
+    if len(opens) == 0 and len(closes) == 0:
+        continue  # no markers of this type
+
+    # Unmatched: more opens than closes
+    if len(opens) > len(closes):
+        sys.stderr.write(
+            "verdict-provenance-check.sh: unmatched open marker (no matching close): %s\n" % open_m
+        )
+        sys.exit(2)
+
+    # Pair i-th OPEN with the i-th CLOSE (from the end: last OPEN with last CLOSE,
+    # etc., to handle embedded markers correctly). Reversed pairing: pair opens[i]
+    # with closes[len(closes)-len(opens)+i].
+    n_opens = len(opens)
+    n_closes = len(closes)
+    offset = n_closes - n_opens  # extra closes consumed as embedded markers
+
+    for i in range(n_opens):
+        o_pos = opens[i]
+        c_idx = offset + i  # pair with the (offset+i)-th close
+        c_pos = closes[c_idx]
+        after_open = o_pos + len(open_m)
+        if c_pos < after_open:
+            sys.stderr.write(
+                "verdict-provenance-check.sh: malformed boundary file — "
+                "close marker before its open marker: %s\n" % close_m
+            )
+            sys.exit(2)
+        region_text = text[after_open:c_pos]
+        # Check for nested open markers of ANY type inside the region
+        for other_open, _ in MARKER_PAIRS:
+            if other_open in region_text:
+                sys.stderr.write(
+                    "verdict-provenance-check.sh: malformed boundary file — "
+                    "nested open marker %s inside an open %s region\n" % (other_open, open_m)
+                )
+                sys.exit(2)
+        regions.append(region_text)
+
+inner = "\n".join(regions)
 
 with open(out_file, "w") as f:
     f.write(inner)

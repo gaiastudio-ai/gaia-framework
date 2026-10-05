@@ -5356,3 +5356,27 @@ JSON
   [ "$elapsed_ms" -lt 30000 ] \
     || fail "2000 files took ${elapsed_ms}ms — expected under 30000ms"
 }
+
+# ===========================================================================
+# Hostile screen filename rejection under the product-design run
+# ===========================================================================
+
+@test "hostile screen filename rejected under product_design run" {
+  local SYNC_SCRIPT="$BATS_TEST_DIRNAME/../skills/gaia-design-review/scripts/sync-derived-artifacts.sh"
+  [ -f "$SYNC_SCRIPT" ] || fail "sync-derived-artifacts.sh not found (must not skip)"
+
+  local root
+  root="$(mktemp -d)"
+  mkdir -p "$root/doc"
+  printf -- '---\ntemplate: ux-design\n---\n\n# UX\n\n## Component Inventory\n\n- nav\n' > "$root/doc/ux.md"
+
+  # Snapshot with hostile screen filename containing shell metacharacters
+  jq -n '{"components":[],"screens":[{"name":"Evil","file":"screens/evil$(cmd).spec.html","content":"body"}]}' > "$root/snap.json"
+
+  run "$SYNC_SCRIPT" --project product_design "$root/snap.json" "$root/doc/ux.md"
+  [ "$status" -ne 0 ] || fail "hostile screen filename should be rejected under product_design, got rc=0: $output"
+  [[ "$output" == *"unsafe"* ]] || [[ "$output" == *"invalid"* ]] || \
+    fail "should diagnose unsafe/invalid filename: $output"
+
+  rm -rf "$root"
+}

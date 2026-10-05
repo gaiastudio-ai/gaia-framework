@@ -734,7 +734,7 @@ UX
 
   local baseline="$root/baseline.json"
   jq -n --arg f "screens/home.spec.html" --arg h "$old_hash" \
-    '[{"file": $f, "hash": $h}]' > "$baseline"
+    '{"product_design":{"files":[{"file": $f, "hash": $h}]}}' > "$baseline"
 
   # Write a DIFFERENT screen file and build the snapshot via --rawfile
   _write_screen_file "$screens_dir" "new-home.spec.html" "<h1>New Home</h1>"
@@ -742,15 +742,15 @@ UX
   jq -n --rawfile c "$screens_dir/new-home.spec.html" \
     '{"components":[],"screens":[{"name":"Home Screen","file":"screens/home.spec.html","content":$c}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" --last-published "$baseline" \
+  run "$SYNC_SCRIPT" --project product_design --last-published "$baseline" \
     "$snapshot" "$ux_doc"
 
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # Must contain boundary markers
-  [[ "$output" == *'<<<DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+  [[ "$output" == *'<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
     fail "missing opening boundary marker: $output"
-  [[ "$output" == *'<<<END_DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+  [[ "$output" == *'<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
     fail "missing closing boundary marker: $output"
 
   # Must contain the screen content
@@ -811,7 +811,7 @@ UX
   local baseline="$root/baseline.json"
   jq -n --arg f1 "screens/settings.spec.html" --arg h1 "$hash_settings" \
         --arg f2 "screens/profile.spec.html" --arg h2 "$hash_profile" \
-    '[{"file": $f1, "hash": $h1}, {"file": $f2, "hash": $h2}]' > "$baseline"
+    '{"product_design":{"files":[{"file": $f1, "hash": $h1}, {"file": $f2, "hash": $h2}]}}' > "$baseline"
 
   # Build snapshot with identical content via --rawfile (preserves exact bytes)
   local snapshot="$root/snapshot.json"
@@ -822,13 +822,13 @@ UX
       {"name":"Profile","file":"screens/profile.spec.html","content":$c2}
     ]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" --last-published "$baseline" \
+  run "$SYNC_SCRIPT" --project product_design --last-published "$baseline" \
     "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # No screen report (no boundary markers, no screen-changed lines)
-  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+  [[ "$output" != *'PRODUCT_DESIGN_PROJECT_BOUNDARY'* ]] || \
     fail "boundary markers present for unchanged screens: $output"
   local screen_count
   screen_count="$(printf '%s\n' "$output" | grep -ci 'screen.*changed\|screen.*baseline' || true)"
@@ -868,7 +868,7 @@ UX
   local snapshot="$root/snapshot.json"
   printf '{"components":["nav"],"screens":[{"name":"evil\\nscreen","file":"screens/evil.spec.html","content":"some body"}]}\n' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -ne 0 ] || \
     fail "should reject screen name with control characters (exit $status): $output"
@@ -914,7 +914,7 @@ UX
   local snapshot="$root/snapshot.json"
   jq -n '{"screens":[{"name":"Home","file":"screens/home.spec.html","content":"home body"}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$ux_doc"
 
   [ "$status" -eq 0 ] || \
     fail "should exit 0 with screens-only snapshot (exit $status): $output"
@@ -1012,9 +1012,9 @@ template: ux-design
 ## Design Record Reference
 UX
 
-  # Empty baseline — no entries
+  # Empty baseline — no entries for the product_design key
   local baseline="$root/baseline.json"
-  printf '[]\n' > "$baseline"
+  printf '{"product_design":{"files":[]}}\n' > "$baseline"
 
   # Write screen file and build snapshot via --rawfile
   local screens_dir="$root/screens"
@@ -1023,7 +1023,7 @@ UX
   jq -n --rawfile c "$screens_dir/new.spec.html" \
     '{"components":["nav"],"screens":[{"name":"New Screen","file":"screens/new.spec.html","content":$c}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" --last-published "$baseline" \
+  run "$SYNC_SCRIPT" --project product_design --last-published "$baseline" \
     "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
@@ -1033,7 +1033,7 @@ UX
     fail "should report 'no baseline' for screen not in baseline: $output"
 
   # Must still show content in boundary markers
-  [[ "$output" == *'<<<DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+  [[ "$output" == *'<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
     fail "missing boundary markers for no-baseline screen: $output"
 
   rm -rf "$root"
@@ -1067,7 +1067,7 @@ UX
   local snapshot="$root/snapshot.json"
   jq -n '{"screens":[{"name":"Only Screen","file":"screens/only.spec.html","content":"only body"}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -eq 0 ] || \
     fail "should exit 0 with screens-only snapshot and no heading (exit $status): $output"
@@ -1236,7 +1236,7 @@ UX
   local snapshot="$root/snapshot.json"
   jq -n '{"components":["nav"],"screens":[{"name":"Broken","file":"screens/broken.spec.html"}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -ne 0 ] || \
     fail "should reject screen with no content key (exit $status): $output"
@@ -1246,7 +1246,7 @@ UX
     fail "diagnostic should name the screen: $output"
 
   # No boundary markers emitted for the broken screen
-  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+  [[ "$output" != *'PRODUCT_DESIGN_PROJECT_BOUNDARY'* ]] || \
     fail "boundary markers should not appear for a rejected screen: $output"
 
   rm -rf "$root"
@@ -1289,7 +1289,7 @@ UX
   jq -n --rawfile c "$screens_dir/home.spec.html" \
     '{"components":["nav"],"screens":[{"name":"Home","file":"screens/home.spec.html","content":$c}]}' > "$snapshot"
 
-  TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # The isolated TMPDIR must be empty after the script exits
@@ -1330,7 +1330,7 @@ UX
   local snapshot="$root/snapshot.json"
   jq -n '{"components":["nav"],"screens":[{"name":"Bad","file":"screens/bad.spec.html"}]}' > "$snapshot"
 
-  TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   # The isolated TMPDIR must be empty even after a failure
   local leftover
@@ -1372,8 +1372,7 @@ UX
   mkdir -p "$iso_tmpdir"
 
   # Two valid screens. We force a mid-loop abort by making shasum/sha256sum
-  # fail on the 3rd invocation (the 2nd screen's hash; the 1st is the ux doc
-  # sha check, the 2nd is screen 1's hash).
+  # fail after the 1st call: screen 1's hash succeeds, screen 2's hash fails.
   local screens_dir="$root/screens"
   _write_screen_file "$screens_dir" "s1.spec.html" "<h1>Screen 1</h1>"
   _write_screen_file "$screens_dir" "s2.spec.html" "<h1>Screen 2</h1>"
@@ -1385,11 +1384,11 @@ UX
       {"name":"S2","file":"screens/s2.spec.html","content":$c2}
     ]}' > "$snapshot"
 
-  # Shim hash command: fail after the 1st call (the 2nd screen's hash)
+  # Shim hash command: fail after the 1st call (screen 2's hash)
   _create_hash_shim "$root/shim-bin" "$root/sha_call_count" 1
 
   PATH="$root/shim-bin:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
-    "$snapshot" "$doc_dir/ux-design.md"
+    --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   # Must exit non-zero (the forced failure triggers set -e)
   [ "$status" -ne 0 ] || \
@@ -1433,11 +1432,11 @@ UX
   local snapshot="$root/snapshot.json"
   jq -n '{"components":["nav"],"screens":[{"name":"NumScreen","file":"screens/num.spec.html","content":42}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -ne 0 ] || fail "should reject numeric content (exit $status): $output"
   [[ "$output" == *"NumScreen"* ]] || fail "diagnostic should name the screen: $output"
-  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+  [[ "$output" != *'PRODUCT_DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
 
   rm -rf "$root"
 }
@@ -1466,11 +1465,11 @@ UX
   local snapshot="$root/snapshot.json"
   jq -n '{"components":["nav"],"screens":[{"name":"ObjScreen","file":"screens/obj.spec.html","content":{"x":1}}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -ne 0 ] || fail "should reject object content (exit $status): $output"
   [[ "$output" == *"ObjScreen"* ]] || fail "diagnostic should name the screen: $output"
-  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+  [[ "$output" != *'PRODUCT_DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
 
   rm -rf "$root"
 }
@@ -1499,11 +1498,11 @@ UX
   local snapshot="$root/snapshot.json"
   jq -n '{"components":["nav"],"screens":[{"name":"ArrScreen","file":"screens/arr.spec.html","content":[1]}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -ne 0 ] || fail "should reject array content (exit $status): $output"
   [[ "$output" == *"ArrScreen"* ]] || fail "diagnostic should name the screen: $output"
-  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
+  [[ "$output" != *'PRODUCT_DESIGN_PROJECT_BOUNDARY'* ]] || fail "no boundary markers for rejected screen"
 
   rm -rf "$root"
 }
@@ -1544,12 +1543,12 @@ UX
       {"name":"Bad","file":"screens/bad.spec.html","content":42}
     ]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -ne 0 ] || fail "should fail on invalid screen (exit $status): $output"
 
   # No boundary markers at all — the valid screen must not have been reported
-  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+  [[ "$output" != *'PRODUCT_DESIGN_PROJECT_BOUNDARY'* ]] || \
     fail "boundary markers present — partial output emitted before validation: $output"
 
   rm -rf "$root"
@@ -1668,11 +1667,11 @@ UX
       {"name":"S2","file":"screens/s2.spec.html","content":$c2}
     ]}' > "$snapshot"
 
-  # Shim: fail on the 2nd hash call (the 2nd screen)
+  # Shim: fail on the 2nd hash call (screen 2's hash)
   _create_hash_shim "$root/shim-bin" "$root/sha_call_count" 1
 
   PATH="$root/shim-bin:$PATH" TMPDIR="$iso_tmpdir" run "$SYNC_SCRIPT" \
-    "$snapshot" "$doc_dir/ux-design.md"
+    --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -ne 0 ] || \
     fail "should fail when hash command fails in screen phase (exit $status)"
@@ -1898,7 +1897,7 @@ UX
   local snapshot="$root/snapshot.json"
   jq -n '{"components":["nav"],"screens":{"name":"Bad","file":"bad.html","content":"x"}}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -ne 0 ] || \
     fail "should reject screens as an object (exit $status): $output"
@@ -1943,7 +1942,7 @@ UX
   # Baseline entry with the backslash path and the matching hash
   local baseline="$root/baseline.json"
   jq -n --arg f "$bslash_path" --arg h "$file_hash" \
-    '[{"file": $f, "hash": $h}]' > "$baseline"
+    '{"product_design":{"files":[{"file": $f, "hash": $h}]}}' > "$baseline"
 
   # Snapshot with the same content and backslash path
   local snapshot="$root/snapshot.json"
@@ -1951,13 +1950,13 @@ UX
         --arg f "$bslash_path" \
     '{"components":["nav"],"screens":[{"name":"Backslash Screen","file":$f,"content":$c}]}' > "$snapshot"
 
-  run "$SYNC_SCRIPT" --last-published "$baseline" \
+  run "$SYNC_SCRIPT" --project product_design --last-published "$baseline" \
     "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # No screen report — the hashes match, so no change
-  [[ "$output" != *'DESIGN_PROJECT_BOUNDARY'* ]] || \
+  [[ "$output" != *'PRODUCT_DESIGN_PROJECT_BOUNDARY'* ]] || \
     fail "boundary markers present for unchanged screen with backslash path: $output"
   local screen_count
   screen_count="$(printf '%s\n' "$output" | grep -ci 'screen.*changed\|screen.*baseline' || true)"
@@ -2021,7 +2020,7 @@ UX
   local start_ms end_ms elapsed_ms
   start_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
 
-  run "$SYNC_SCRIPT" "$root/snapshot.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" --project product_design "$root/snapshot.json" "$doc_dir/ux-design.md"
 
   end_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
   elapsed_ms=$((end_ms - start_ms))
@@ -2073,7 +2072,7 @@ UX
   # Baseline: s0 matches, s1 has a stale hash, s2 absent
   jq -n --arg f0 "screens/s0.html" --arg h0 "$s0_hash" \
         --arg f1 "screens/s1.html" --arg h1 "0000000000000000000000000000000000000000000000000000000000000000" \
-    '[{"file":$f0,"hash":$h0},{"file":$f1,"hash":$h1}]' > "$root/baseline.json"
+    '{"product_design":{"files":[{"file":$f0,"hash":$h0},{"file":$f1,"hash":$h1}]}}' > "$root/baseline.json"
 
   # Snapshot via --rawfile
   jq -n --rawfile c0 "$root/s0.html" \
@@ -2088,20 +2087,19 @@ UX
   # Golden expected output — generated from the current script
   local expected="$root/expected.txt"
   cat > "$expected" <<'GOLDEN'
-sync: ux-design.md is up to date — no components to add
 sync: screen "Settings" changed (file: screens/s1.html)
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
 <h1>Settings</h1>
 <p>Updated settings page</p>
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
 sync: screen "Profile" has no baseline (file: screens/s2.html)
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
 <h1>Profile</h1>
 <p>User profile</p>
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
 GOLDEN
 
-  run "$SYNC_SCRIPT" --last-published "$root/baseline.json" \
+  run "$SYNC_SCRIPT" --project product_design --last-published "$root/baseline.json" \
     "$root/snapshot.json" "$doc_dir/ux-design.md"
 
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
@@ -2754,6 +2752,766 @@ UX
   added_alpha_count="$(printf '%s\n' "$output" | grep -c 'added.*Alpha' || true)"
   [ "$added_alpha_count" -eq 1 ] || \
     fail "expected 'added' for Alpha exactly once, got $added_alpha_count"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Combined snapshot shape — design_system selection
+# =========================================================================
+
+@test "combined snapshot design_system selects only design_system part" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Existing | Custom |
+
+## Design Record Reference
+UX
+
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "home.spec.html" "<h1>Home</h1>"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile sc "$screens_dir/home.spec.html" \
+    '{"design_system":{"components":["Existing","Button"],"templates":["Card"]},
+      "product_design":{"screens":[{"name":"Home","file":"screens/home.spec.html","content":$sc}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Button must be added to the components section
+  grep -q 'Button' "$doc_dir/ux-design.md" || \
+    fail "Button not added by design_system pass"
+
+  # No screen output (screens belong to product_design)
+  [[ "$output" != *'PRODUCT_DESIGN_PROJECT_BOUNDARY'* ]] || \
+    fail "design_system pass should not emit product-design boundary markers"
+  [[ "$output" != *'screen'*'changed'* ]] && [[ "$output" != *'no baseline'* ]] || \
+    fail "design_system pass should not report screens"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Combined snapshot shape — product_design selection
+# =========================================================================
+
+@test "combined snapshot product_design selects only product_design part" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Existing | Custom |
+
+## Design Record Reference
+UX
+
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "home.spec.html" "<h1>Home</h1>"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile sc "$screens_dir/home.spec.html" \
+    '{"design_system":{"components":["Existing","Button"]},
+      "product_design":{"screens":[{"name":"Home","file":"screens/home.spec.html","content":$sc}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Screens should be reported
+  [[ "$output" == *'no baseline'* ]] || [[ "$output" == *'changed'* ]] || \
+    fail "product_design pass should report screens: $output"
+
+  # Components should NOT be added (Button belongs to design_system)
+  local sha_before sha_after
+  sha_before="$(_sha256_file "$doc_dir/ux-design.md")"
+  # Doc should be unchanged — product_design doesn't write components
+  # (already ran above, so check output for added-component lines)
+  local added_count
+  added_count="$(printf '%s\n' "$output" | grep -c 'added component' || true)"
+  [ "$added_count" -eq 0 ] || \
+    fail "product_design pass should not add components ($added_count added)"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Legacy flat snapshot — design_system selects components
+# =========================================================================
+
+@test "legacy flat snapshot under design_system selects components" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Existing | Custom |
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Existing","NewComp"],"screens":[{"name":"Home","file":"screens/home.spec.html","content":"body"}]}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'NewComp' "$doc_dir/ux-design.md" || \
+    fail "NewComp not added by design_system pass on flat snapshot"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Legacy flat snapshot — product_design selects screens
+# =========================================================================
+
+@test "legacy flat snapshot under product_design selects screens" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Existing | Custom |
+
+## Design Record Reference
+UX
+
+  local screens_dir="$root/screens"
+  _write_screen_file "$screens_dir" "home.spec.html" "<h1>Home</h1>"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile sc "$screens_dir/home.spec.html" \
+    '{"components":["Existing","NewComp"],"screens":[{"name":"Home","file":"screens/home.spec.html","content":$sc}]}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Screens should be reported
+  [[ "$output" == *'no baseline'* ]] || [[ "$output" == *'changed'* ]] || \
+    fail "product_design pass should report screens on flat snapshot: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Templates reconciled into components section
+# =========================================================================
+
+@test "templates reconciled into components section" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Existing | Custom |
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["Existing"],"templates":["CardTemplate"]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'CardTemplate' "$doc_dir/ux-design.md" || \
+    fail "CardTemplate from templates not added to components section"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Removal report compares against union of components and templates
+# =========================================================================
+
+@test "removal report compares against union of components and templates" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| CardTemplate | Custom |
+
+## Design Record Reference
+UX
+
+  # CardTemplate is in templates (not components) — the union should include it
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":[],"templates":["CardTemplate"]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must NOT report CardTemplate as absent — it is in the templates union
+  [[ "$output" != *'CardTemplate'*'absent'* ]] || \
+    fail "CardTemplate reported as absent despite being in templates: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Flows emitted like screens with product-design markers
+# =========================================================================
+
+@test "flows emitted like screens with product-design markers" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"product_design":{"screens":[],"flows":[{"name":"Login Flow","file":"flows/login.flow.html","content":"flow body"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Flow content should be emitted with product-design markers
+  [[ "$output" == *'<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+    fail "missing product-design boundary markers for flow: $output"
+  [[ "$output" == *'flow body'* ]] || \
+    fail "flow content not in output: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Token change with referencing screen produces reconciliation finding
+# =========================================================================
+
+@test "token change with referencing screen produces reconciliation finding" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/tok-baseline-$$.json"
+  printf '{"--primary-color":"#3B82F6"}\n' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary-color":"#2563EB"}},
+          "product_design":{"screens":[{"name":"login","file":"screens/login.spec.html","content":"body { color: var(--primary-color); }"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must produce a reconciliation finding
+  [[ "$output" == *'reconciliation'*'--primary-color'*'#3B82F6'*'#2563EB'*'login'* ]] || \
+    fail "expected reconciliation finding for --primary-color: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Token prefix does not collide
+# =========================================================================
+
+@test "token prefix does not collide" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/tok-prefix-baseline-$$.json"
+  printf '{"--primary-color":"#3B82F6"}\n' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary-color":"#2563EB"}},
+          "product_design":{"screens":[{"name":"settings","file":"screens/settings.spec.html","content":"body { color: var(--primary-color-dark); }"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must NOT produce a reconciliation finding for --primary-color-dark
+  [[ "$output" != *'reconciliation'* ]] || \
+    fail "should not produce reconciliation finding for prefix match: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# First sync writes baseline with no finding
+# =========================================================================
+
+@test "first sync writes baseline with no finding" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/first-baseline-$$.json"
+  # No baseline file exists yet
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary-color":"#3B82F6","--bg-color":"#FFFFFF"}}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Baseline must be created
+  [ -f "$tok_baseline" ] || fail "baseline file not created at $tok_baseline"
+
+  # No reconciliation findings on first sync
+  [[ "$output" != *'reconciliation'* ]] || \
+    fail "first sync should not produce reconciliation findings: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# No product part writes baseline with no finding
+# =========================================================================
+
+@test "no product part writes baseline with no finding" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/nopd-baseline-$$.json"
+  printf '{"--primary-color":"#3B82F6"}\n' > "$tok_baseline"
+
+  # Combined snapshot with only design_system (no product_design key)
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary-color":"#2563EB"}}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Baseline must be updated
+  [ -f "$tok_baseline" ] || fail "baseline file missing"
+
+  # No reconciliation findings (no product_design screens to scan)
+  [[ "$output" != *'reconciliation'* ]] || \
+    fail "no-product-part sync should not produce reconciliation findings: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Explicit token-baseline flag isolates path
+# =========================================================================
+
+@test "explicit token-baseline flag isolates path" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/iso-baseline-$$.json"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--color":"#000"}}}' \
+    > "$snapshot"
+
+  # Run without PROJECT_ROOT so the only baseline path is the explicit flag
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Baseline must be written at the explicit path
+  [ -f "$tok_baseline" ] || fail "baseline not written at explicit path $tok_baseline"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# No project config folder skips baseline with warning
+# =========================================================================
+
+@test "no project config folder skips baseline with warning" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Deliberately do NOT create .gaia/config/project-config.yaml
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--color":"#000"}}}' \
+    > "$snapshot"
+
+  # No --token-baseline, no PROJECT_ROOT, no .gaia/config
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$SYNC_SCRIPT" --project design_system \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync should continue without error (exit $status): $output"
+
+  # No baseline file should exist anywhere under root
+  local baseline_count
+  baseline_count="$(find "$root" -name 'design-token-baseline.json' 2>/dev/null | wc -l)"
+  [ "$baseline_count" -eq 0 ] || \
+    fail "baseline should not be written when no project config folder exists"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Token with control character skipped with diagnostic
+# =========================================================================
+
+@test "token with control character skipped with diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/ctrl-tok-baseline-$$.json"
+  printf '{"--normal":"#000"}\n' > "$tok_baseline"
+
+  # Token name with a control character (tab)
+  local snapshot="$root/snapshot.json"
+  printf '{"design_system":{"components":["nav"],"tokens":{"--bad\\ttoken":"#FFF","--normal":"#111"}}}\n' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  # Run should continue (not hard-fail) but emit a diagnostic
+  [ "$status" -eq 0 ] || fail "sync should continue past control-char token (exit $status): $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Screen content escaped before wrapping in markers
+# =========================================================================
+
+@test "screen content escaped before wrapping in markers" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Screen content with double angle brackets that must be escaped
+  local screens_dir="$root/screens"
+  mkdir -p "$screens_dir"
+  printf '<h1>Test</h1>\n<<alert>>\n' > "$screens_dir/angles.spec.html"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile sc "$screens_dir/angles.spec.html" \
+    '{"components":[],"screens":[{"name":"Angles","file":"screens/angles.spec.html","content":$sc}]}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The << in the content must be escaped to <~<
+  [[ "$output" == *'<~<'* ]] || \
+    fail "double angle bracket in screen content not escaped to <~<: $output"
+
+  # Raw << should NOT appear inside the boundary markers
+  # (The markers themselves contain <<< but the content between them should not have raw <<)
+  local between_markers
+  between_markers="$(printf '%s\n' "$output" | sed -n '/<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>/,/<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>/p' | grep -v 'BOUNDARY')"
+  [[ "$between_markers" != *'<<'* ]] || [[ "$between_markers" == *'<~<'* ]] || \
+    fail "raw << found between markers (should be escaped): $between_markers"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Hostile screen filename rejection under product_design run
+# =========================================================================
+
+@test "hostile screen filename rejection under product_design run" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Screen with shell-meta characters in the file path
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":[],"screens":[{"name":"Evil","file":"screens/evil$(cmd).html","content":"body"}]}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
+
+  # Must reject the hostile filename
+  [ "$status" -ne 0 ] || \
+    fail "should reject hostile filename with shell-meta characters (exit $status): $output"
 
   rm -rf "$root"
 }

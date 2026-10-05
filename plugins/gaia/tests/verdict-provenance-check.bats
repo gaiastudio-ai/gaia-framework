@@ -48,9 +48,9 @@ _write_files() {
   _write_files \
     "Overall the design quality is strong with good contrast ratios" \
     "$(cat <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 The project has a sidebar component with navigation links and a footer.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
@@ -65,9 +65,9 @@ BOUNDARY
   _write_files \
     "The layout is well structured with good spacing" \
     "$(cat <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 The project uses a modern responsive layout with clear typography.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
@@ -87,15 +87,15 @@ BOUNDARY
   _write_files \
     "I found that distinctive sentinel MARKER_SENTINEL_e9f2a7 appears prominently in the design" \
     "$(cat <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 The distinctive sentinel MARKER_SENTINEL_e9f2a7 appears prominently in this project content section.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || \
-    fail "should reject verdict containing verbatim boundary content"
+  [ "$status" -eq 1 ] || \
+    fail "should reject verdict containing verbatim boundary content (exit $status)"
 }
 
 @test "rejects verdict echoing a long phrase from boundary content" {
@@ -104,15 +104,15 @@ BOUNDARY
   _write_files \
     "The sidebar component has a navigation drawer with expandable menu items" \
     "$(cat <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 The sidebar component has a navigation drawer with expandable menu items and breadcrumb trail.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || \
-    fail "should reject verdict echoing a long phrase from boundary content"
+  [ "$status" -eq 1 ] || \
+    fail "should reject verdict echoing a long phrase from boundary content (exit $status)"
 }
 
 @test "reject emits diagnostic on stderr" {
@@ -121,14 +121,14 @@ BOUNDARY
   _write_files \
     "The MARKER_SENTINEL_e9f2a7 is present and visible in the full design read-back" \
     "$(cat <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 MARKER_SENTINEL_e9f2a7 is present and visible in the full design read-back content section.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || fail "should reject"
+  [ "$status" -eq 1 ] || fail "should reject (exit $status)"
 
   # Diagnostic should be present (stderr is captured in $output by bats run)
   [[ "$output" == *"verbatim"* ]] || [[ "$output" == *"provenance"* ]] || [[ "$output" == *"match"* ]] || \
@@ -213,14 +213,14 @@ BOUNDARY
 
   # Generate test data via python3 and write directly to files
   python3 -c '
-lines = ["<<<DESIGN_PROJECT_BOUNDARY>>>"]
+lines = ["<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>"]
 i, total = 0, 0
 while total < 204800:
     line = f"boundary line {i} with unique filler text alpha-bravo-charlie-delta-echo-foxtrot-golf-hotel-india-juliet"
     lines.append(line)
     total += len(line) + 1
     i += 1
-lines.append("<<<END_DESIGN_PROJECT_BOUNDARY>>>")
+lines.append("<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>")
 with open("'"$TEST_TMP"'/boundary.txt", "w") as f:
     f.write("\n".join(lines))
 '
@@ -260,14 +260,14 @@ with open("'"$TEST_TMP"'/notes.txt", "w") as f:
 
   # Generate 300 KB of boundary content directly to file
   python3 -c '
-lines = ["<<<DESIGN_PROJECT_BOUNDARY>>>"]
+lines = ["<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>"]
 i, total = 0, 0
 while total < 307200:
     line = f"boundary line {i} with unique filler alpha-bravo-charlie-delta-echo-foxtrot-golf-hotel-india-juliet-kilo-lima"
     lines.append(line)
     total += len(line) + 1
     i += 1
-lines.append("<<<END_DESIGN_PROJECT_BOUNDARY>>>")
+lines.append("<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>")
 with open("'"$TEST_TMP"'/boundary.txt", "w") as f:
     f.write("\n".join(lines))
 '
@@ -300,7 +300,7 @@ with open("'"$TEST_TMP"'/notes.txt", "w") as f:
 
   _write_files \
     "I observed that ${shared_phrase} overall." \
-    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s with some extra filler text for the boundary.\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$shared_phrase")"
+    "$(printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n%s with some extra filler text for the boundary.\n<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' "$shared_phrase")"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
   [ "$status" -eq 0 ] || \
@@ -314,11 +314,11 @@ with open("'"$TEST_TMP"'/notes.txt", "w") as f:
 
   _write_files \
     "The review found that ${verbatim_passage} needs improvement." \
-    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\nSome prefix text. %s and more suffix text.\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$verbatim_passage")"
+    "$(printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\nSome prefix text. %s and more suffix text.\n<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' "$verbatim_passage")"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || \
-    fail "should reject a verbatim passage of 40+ characters"
+  [ "$status" -eq 1 ] || \
+    fail "should reject a verbatim passage of 40+ characters (exit $status)"
 }
 
 
@@ -335,11 +335,11 @@ with open("'"$TEST_TMP"'/notes.txt", "w") as f:
 
   _write_files \
     "Finding: ${upper_phrase} needs work" \
-    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$phrase")"
+    "$(printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' "$phrase")"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || \
-    fail "should reject an upper-cased copy of boundary content"
+  [ "$status" -eq 1 ] || \
+    fail "should reject an upper-cased copy of boundary content (exit $status)"
 }
 
 @test "boundary markers are stripped — verdict echoing marker-adjacent text is accepted" {
@@ -349,7 +349,7 @@ with open("'"$TEST_TMP"'/notes.txt", "w") as f:
 
   _write_files \
     "review data: ject_boundary>>> zephyr widget renders u found in the log." \
-    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$inner")"
+    "$(printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' "$inner")"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
   [ "$status" -eq 0 ] || \
@@ -363,11 +363,11 @@ with open("'"$TEST_TMP"'/notes.txt", "w") as f:
 
   _write_files \
     "Found that ${inner_phrase} needs improvement" \
-    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$inner_phrase")"
+    "$(printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' "$inner_phrase")"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || \
-    fail "should reject verdict echoing inner boundary content"
+  [ "$status" -eq 1 ] || \
+    fail "should reject verdict echoing inner boundary content (exit $status)"
 }
 
 @test "rejects a whitespace-padded copy of boundary content" {
@@ -379,11 +379,11 @@ with open("'"$TEST_TMP"'/notes.txt", "w") as f:
 
   _write_files \
     "Finding: ${padded_phrase} needs work" \
-    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$phrase")"
+    "$(printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' "$phrase")"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || \
-    fail "should reject a whitespace-padded copy of boundary content"
+  [ "$status" -eq 1 ] || \
+    fail "should reject a whitespace-padded copy of boundary content (exit $status)"
 }
 
 
@@ -423,9 +423,9 @@ with open(sys.argv[1], "w") as f:
   _write_files \
     "Some legitimate review notes that are completely original text for checking" \
     "$(cat <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 The project has a sidebar component with navigation links and a footer section and header.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
@@ -445,9 +445,9 @@ BOUNDARY
   _write_files \
     "Some legitimate review notes that are completely original text for checking" \
     "$(cat <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 The project has a sidebar component with navigation links and a footer section and header.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
@@ -483,9 +483,9 @@ with open(sys.argv[1], "w") as f:
   _write_files \
     "Some legitimate review notes that are completely original text for checking" \
     "$(cat <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 The project has a sidebar component with navigation links and a footer section and header.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 )"
 
@@ -516,11 +516,11 @@ print("".join(chr(0xFEE0 + ord(c)) if " " < c < "~" else c for c in s))
 
   _write_files \
     "Finding: ${fullwidth_phrase} needs improvement" \
-    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s plus extra filler text to pad the boundary.\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$phrase")"
+    "$(printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n%s plus extra filler text to pad the boundary.\n<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' "$phrase")"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || \
-    fail "should reject a full-width copy of boundary content"
+  [ "$status" -eq 1 ] || \
+    fail "should reject a full-width copy of boundary content (exit $status)"
 }
 
 @test "rejects casefold-variant copy of boundary passage" {
@@ -535,9 +535,178 @@ print("".join(chr(0xFEE0 + ord(c)) if " " < c < "~" else c for c in s))
 
   _write_files \
     "Observation: ${candidate_phrase} needs review" \
-    "$(printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_PROJECT_BOUNDARY>>>' "$boundary_phrase")"
+    "$(printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n%s\n<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' "$boundary_phrase")"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -ne 0 ] || \
-    fail "should reject a casefold-variant copy of boundary content"
+  [ "$status" -eq 1 ] || \
+    fail "should reject a casefold-variant copy of boundary content (exit $status)"
+}
+
+
+# =========================================================================
+# Dual-marker and multi-region extraction tests
+# =========================================================================
+
+@test "dual markers extract correct project for each region" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+The design system has tokens and components for the brand palette.
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+text between the two project regions that is not extracted
+<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
+The product design has screens for login and dashboard workflows.
+<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
+EOF
+
+  # Notes copying text between the regions should pass (not extracted)
+  printf '%s' "text between the two project regions that is not extracted" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 0 ] || \
+    fail "inter-region text should not be extracted (exit $status)"
+
+  # Notes copying design-system region text should be rejected
+  printf '%s' "The design system has tokens and components for the brand palette." > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 1 ] || \
+    fail "design-system region text should be rejected (exit $status)"
+
+  # Notes copying product-design region text should be rejected
+  printf '%s' "The product design has screens for login and dashboard workflows." > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 1 ] || \
+    fail "product-design region text should be rejected (exit $status)"
+}
+
+@test "dual markers — nested open marker is malformed exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # A DESIGN_SYSTEM OPEN inside an open PRODUCT_DESIGN region is malformed
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
+product content here
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+nested open inside an already open region
+<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
+EOF
+
+  printf '%s' "unrelated notes that do not copy anything from the boundary" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "nested open marker inside open region should be malformed (exit $status)"
+}
+
+@test "three regions all extracted and checked" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+Region one has the primary token definitions for the design system.
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+Region two has the secondary token definitions for typography rules.
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+Region three has the component inventory with button and card specs.
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+EOF
+
+  # Notes copying text from region 3 should be rejected (all regions extracted)
+  printf '%s' "Region three has the component inventory with button and card specs." > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 1 ] || \
+    fail "text from region 3 should be rejected when all regions extracted (exit $status)"
+
+  # Notes copying text from region 2 should also be rejected
+  printf '%s' "Region two has the secondary token definitions for typography rules." > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 1 ] || \
+    fail "text from region 2 should be rejected when all regions extracted (exit $status)"
+}
+
+@test "embedded marker does not narrow extraction" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # Region content contains the literal close marker — should not truncate
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+prefix content before the embedded marker text appears here
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+suffix content after the embedded marker still inside the real region
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+EOF
+
+  # Notes copying text that appears after the embedded marker but before the
+  # real close should be rejected (still inside the region)
+  printf '%s' "suffix content after the embedded marker still inside the real region" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 1 ] || \
+    fail "text after embedded marker should still be inside the region (exit $status)"
+}
+
+@test "unmatched open marker fails closed with exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # OPEN with no CLOSE
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+This region was opened but never properly closed in the boundary file.
+EOF
+
+  printf '%s' "unrelated notes text that does not match any boundary content" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "unmatched open marker should fail closed with exit 2 (exit $status)"
+}
+
+@test "file with no markers fails closed with exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # No markers at all
+  printf '%s' "This is plain text with no boundary markers of any kind present at all." > "$BOUNDARY_FILE"
+  printf '%s' "unrelated notes text that does not match any boundary content" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "file with no markers should fail closed with exit 2 (exit $status)"
+}
+
+@test "five angle bracket embedded marker escaped then extracted" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # After escape (<<  -> <~<), the five-angle-bracket attack
+  # <<<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>> becomes
+  # <~<<~<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>> which is not a marker.
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+content before the escaped attack string and then <~<<~<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>> and then more content after the escaped string still in the same region boundary
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+EOF
+
+  # Notes copying the text that includes the escaped attack string should be rejected
+  printf '%s' "content before the escaped attack string and then <~<<~<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>> and then more content after the escaped string still in the same region boundary" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 1 ] || \
+    fail "escaped marker content should still be inside the region (exit $status)"
 }

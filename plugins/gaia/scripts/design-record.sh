@@ -1797,6 +1797,78 @@ cmd_verify_integrity() {
   printf 'integrity: ok\n'
 }
 
+# cmd_record_review_coverage — record which projects the review covered.
+cmd_record_review_coverage() {
+  local coverage=""
+  _parse_opts --coverage coverage -- "$@"
+  [ -n "$coverage" ] || _die "record-review-coverage: --coverage is required"
+
+  # Split comma-separated values, deduplicate, sort
+  local -a raw_values=()
+  local IFS=','
+  for val in $coverage; do
+    raw_values+=("$val")
+  done
+  unset IFS
+
+  # Deduplicate and sort
+  local -a values=()
+  local seen_ds=false seen_pd=false
+  local v
+  for v in ${raw_values[@]+"${raw_values[@]}"}; do
+    case "$v" in
+      design-system)
+        if [ "$seen_ds" = false ]; then
+          values+=("design-system")
+          seen_ds=true
+        fi
+        ;;
+      product-design)
+        if [ "$seen_pd" = false ]; then
+          values+=("product-design")
+          seen_pd=true
+        fi
+        ;;
+      *)
+        _die "record-review-coverage: unknown coverage value: $v — valid values: design-system, product-design"
+        ;;
+    esac
+  done
+
+  # Sort: design-system always comes before product-design
+  local sorted=""
+  if [ "$seen_ds" = true ] && [ "$seen_pd" = true ]; then
+    sorted='["design-system","product-design"]'
+  elif [ "$seen_ds" = true ]; then
+    sorted='["design-system"]'
+  elif [ "$seen_pd" = true ]; then
+    _die "record-review-coverage: product-design requires design-system — cannot record product-design-only coverage"
+  fi
+
+  _preflight_mutate
+  _locked_mutate _do_record_review_coverage "$sorted"
+}
+
+_do_record_review_coverage() {
+  local tmp="$1" coverage_json="$2"
+
+  # Write review_coverage as a YAML array
+  case "$coverage_json" in
+    '["design-system"]')
+      yq -i '.review_coverage = ["design-system"]' "$tmp"
+      ;;
+    '["design-system","product-design"]')
+      yq -i '.review_coverage = ["design-system","product-design"]' "$tmp"
+      ;;
+    *)
+      _die "record-review-coverage: unexpected serialised coverage: $coverage_json"
+      ;;
+  esac
+
+  # Append audit entry with the serialised coverage string
+  _append_audit "$tmp" "review-coverage-recorded" "${USER:-unknown}" "coverage=${coverage_json}"
+}
+
 # ---------------------------------------------------------------------------
 # main — dispatch verbs
 # ---------------------------------------------------------------------------
@@ -1819,9 +1891,10 @@ main() {
     reopen-applicable)    cmd_reopen_applicable "$@" ;;
     check-convergence)    cmd_check_convergence "$@" ;;
     verify-integrity)     cmd_verify_integrity "$@" ;;
-    set-product-project)  cmd_set_product_project "$@" ;;
+    set-product-project)        cmd_set_product_project "$@" ;;
+    record-review-coverage)     cmd_record_review_coverage "$@" ;;
     *)
-      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, reopen-applicable, check-convergence, verify-integrity, set-product-project"
+      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, reopen-applicable, check-convergence, verify-integrity, set-product-project, record-review-coverage"
       ;;
   esac
 }

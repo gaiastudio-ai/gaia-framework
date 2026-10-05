@@ -35,6 +35,11 @@ _SYNC_SAFE_FN="$(cd "$_SYNC_DIR" && cd ../../../scripts/lib && pwd)/safe-filenam
 # shellcheck source=../../../scripts/lib/safe-filename.sh
 . "$_SYNC_SAFE_FN"
 
+_SYNC_ESCAPE="$(cd "$_SYNC_DIR" && cd ../../../scripts/lib && pwd)/escape-boundary-markers.sh"
+[ -f "$_SYNC_ESCAPE" ] || _die "missing shared lib: $_SYNC_ESCAPE"
+# shellcheck source=../../../scripts/lib/escape-boundary-markers.sh
+. "$_SYNC_ESCAPE"
+
 # File-scope temp directory — every temp file lives inside it. Cleaned
 # up on any exit so no individual file can leak.
 _sync_tmpdir=""
@@ -332,10 +337,38 @@ _resolve_baseline() {
   printf ''
 }
 
+# _resolve_token_baseline — resolve the token baseline path.
+# Unlike _resolve_baseline, returns the path EVEN WHEN THE FILE DOES NOT
+# EXIST YET (the first sync creates it).
+_resolve_token_baseline() {
+  local explicit_path="${1:-}"
+  if [ -n "$explicit_path" ]; then
+    printf '%s\n' "$explicit_path"
+    return
+  fi
+  # Try PROJECT_ROOT
+  if [ -n "${PROJECT_ROOT:-}" ]; then
+    printf '%s\n' "${PROJECT_ROOT}/.gaia/state/design-token-baseline.json"
+    return
+  fi
+  # Walk up from PWD to find project-config anchor
+  local dir
+  dir="$(pwd)"
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "$dir/.gaia/state/design-token-baseline.json"
+      return
+    fi
+    dir="$(dirname "$dir")"
+  done
+  # Not found — return empty (caller decides whether to warn or fail)
+  printf ''
+}
+
 # _main — entry point.
 _main() {
   # Parse named flags before positional args
-  local last_published_arg="" _sync_project="design_system"
+  local last_published_arg="" _sync_project="design_system" _token_baseline_arg=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --last-published)
@@ -346,6 +379,11 @@ _main() {
       --project)
         [ $# -ge 2 ] || _die "usage: --project requires a value argument"
         _sync_project="$2"
+        shift 2
+        ;;
+      --token-baseline)
+        [ $# -ge 2 ] || _die "usage: --token-baseline requires a path argument"
+        _token_baseline_arg="$2"
         shift 2
         ;;
       --)
@@ -381,6 +419,47 @@ _main() {
   # _sync_tmpdir is file-scope (not local) so the trap can see it.
   _sync_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/sync-derived-artifacts.XXXXXX")"
 
+  # === Snapshot shape projection ===
+  # Support combined shape {design_system:{...}, product_design:{...}} and
+  # legacy flat shape {components:[...], screens:[...]}.
+  # Project the snapshot to a working file containing only what this --project
+  # pass needs: .components/.templates/.tokens for design_system,
+  # .screens/.flows for product_design.
+  local _orig_snapshot_file="$snapshot_file"
+  local _is_combined=false
+  if jq -e '.design_system // .product_design' "$snapshot_file" >/dev/null 2>&1; then
+    _is_combined=true
+  fi
+
+  local _projected="$_sync_tmpdir/projected.json"
+  if [ "$_is_combined" = true ]; then
+    # Combined shape — extract the part matching --project
+    if [ "$_sync_project" = "design_system" ]; then
+      # Merge templates into components for the design_system pass
+      jq --arg proj "$_sync_project" '
+        (.design_system // {}) |
+        {components: ((.components // []) + (.templates // []) | unique),
+         screens: [], tokens: (.tokens // {})}
+      ' "$snapshot_file" > "$_projected"
+    else
+      # product_design pass — extract screens and flows
+      jq --arg proj "$_sync_project" '
+        (.product_design // {}) |
+        {components: [], screens: (.screens // []),
+         flows: (.flows // [])}
+      ' "$snapshot_file" > "$_projected"
+    fi
+    snapshot_file="$_projected"
+  else
+    # Legacy flat shape — map components to design_system, screens to product_design
+    if [ "$_sync_project" = "design_system" ]; then
+      jq '{components: (.components // []), screens: []}' "$snapshot_file" > "$_projected"
+    else
+      jq '{components: [], screens: (.screens // [])}' "$snapshot_file" > "$_projected"
+    fi
+    snapshot_file="$_projected"
+  fi
+
   # === Snapshot shape validation ===
   # Validate top-level shape before any processing.
   local has_components=false
@@ -400,7 +479,12 @@ _main() {
       printf 'sync-derived-artifacts.sh: .components[] elements must be strings, found %s\n' "$bad_elem" >&2
       exit 1
     fi
-    has_components=true
+    # Only flag components as present when the array is non-empty
+    local comp_len
+    comp_len="$(jq '.components | length' "$snapshot_file")"
+    if [ "$comp_len" -gt 0 ]; then
+      has_components=true
+    fi
   fi
   if jq -e '.screens' "$snapshot_file" >/dev/null 2>&1; then
     # .screens must be an array
@@ -410,7 +494,56 @@ _main() {
       printf 'sync-derived-artifacts.sh: .screens must be an array, got %s\n' "$screens_type" >&2
       exit 1
     fi
-    has_screens=true
+    local scr_len
+    scr_len="$(jq '.screens | length' "$snapshot_file")"
+    if [ "$scr_len" -gt 0 ]; then
+      has_screens=true
+    fi
+  fi
+
+  # Check for flows (product_design pass only)
+  local has_flows=false
+  if jq -e '.flows' "$snapshot_file" >/dev/null 2>&1; then
+    local flows_type
+    flows_type="$(jq -r '.flows | type' "$snapshot_file")"
+    if [ "$flows_type" != "array" ]; then
+      printf 'sync-derived-artifacts.sh: .flows must be an array, got %s\n' "$flows_type" >&2
+      exit 1
+    fi
+    has_flows=true
+  fi
+
+  # === Baseline validation (always, even with no screens) ===
+  # Validates the publication baseline for hostile entries regardless of
+  # whether this pass will process screens.
+  local baseline_path
+  baseline_path="$(_resolve_baseline "$last_published_arg")"
+  if [ -n "$baseline_path" ] && [ -f "$baseline_path" ]; then
+    local _bl_validation_rc=0
+    jq -r --arg proj "$_sync_project" "
+      ${SAFE_FILENAME_JQ_DEF}
+      ${SAFE_HASH_JQ_DEF}
+      if type == \"array\" then
+        {\"design_system\": {\"files\": .}, \"product_design\": {\"files\": []}}
+      else . end
+      | .[\$proj].files // []
+      | .[] | (.file | safe_filename) as \$f | (.hash | safe_hash) as \$h
+      | \"\(\$f)\t\(\$h)\"
+    " "$baseline_path" > /dev/null 2>&1 || _bl_validation_rc=$?
+    if [ "$_bl_validation_rc" -ne 0 ]; then
+      # Re-run to get the diagnostic on stderr
+      jq -r --arg proj "$_sync_project" "
+        ${SAFE_FILENAME_JQ_DEF}
+        ${SAFE_HASH_JQ_DEF}
+        if type == \"array\" then
+          {\"design_system\": {\"files\": .}, \"product_design\": {\"files\": []}}
+        else . end
+        | .[\$proj].files // []
+        | .[] | (.file | safe_filename) as \$f | (.hash | safe_hash) as \$h
+        | \"\(\$f)\t\(\$h)\"
+      " "$baseline_path" >&2 2>&1 || true
+      _die "unsafe or malformed baseline: $baseline_path"
+    fi
   fi
 
   # === Component sync ===
@@ -501,6 +634,26 @@ _main() {
     # --- Single-jq validation pass ---
     # One jq call validates all screens: field types, name control chars,
     # and content type. Emits "OK" or a single error line.
+    # Validate screen filenames before any processing
+    local scr_files
+    scr_files="$(jq -r '.screens[].file' "$snapshot_file")" || true
+    if [ -n "$scr_files" ]; then
+      while IFS= read -r scr_fn; do
+        if ! safe_filename_check "$scr_fn"; then
+          printf 'sync-derived-artifacts.sh: unsafe screen filename rejected\n' >&2
+          exit 1
+        fi
+        # Reject shell-meta characters in screen filenames
+        # shellcheck disable=SC2254
+        case "$scr_fn" in
+          *'$('*|*'`'*|*'|'*|*'>'*|*'<'*|*'&'*|*';'*)
+            printf 'sync-derived-artifacts.sh: unsafe screen filename (shell meta-characters): %s\n' "$scr_fn" >&2
+            exit 1
+            ;;
+        esac
+      done <<< "$scr_files"
+    fi
+
     local validation_result
     validation_result="$(jq -r '
       .screens | to_entries[] |
@@ -620,30 +773,199 @@ _main() {
       if [ -z "$baseline_hash" ]; then
         # No baseline entry — report as "no baseline"
         printf 'sync: screen "%s" has no baseline (file: %s)\n' "$screen_name" "$screen_file"
-        printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n'
-        cat "$content_file"
+        printf '<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>\n'
+        escape_boundary_markers < "$content_file"
         # Ensure the closing marker is on its own line
         if [ -s "$content_file" ] && [ "$(tail -c 1 "$content_file" | wc -l)" -eq 0 ]; then
           printf '\n'
         fi
-        printf '<<<END_DESIGN_PROJECT_BOUNDARY>>>\n'
+        printf '<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>\n'
       elif [ "$content_hash" != "$baseline_hash" ]; then
         # Content changed
         printf 'sync: screen "%s" changed (file: %s)\n' "$screen_name" "$screen_file"
-        printf '<<<DESIGN_PROJECT_BOUNDARY>>>\n'
-        cat "$content_file"
+        printf '<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>\n'
+        escape_boundary_markers < "$content_file"
         # Ensure the closing marker is on its own line
         if [ -s "$content_file" ] && [ "$(tail -c 1 "$content_file" | wc -l)" -eq 0 ]; then
           printf '\n'
         fi
-        printf '<<<END_DESIGN_PROJECT_BOUNDARY>>>\n'
+        printf '<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>\n'
       fi
       # Unchanged screens: no report
     done < "$screen_meta"
   fi
 
-  # If no components and no screens, just report up to date
-  if [ "$has_components" = false ] && [ "$has_screens" = false ]; then
+  # === Flow reporting (product_design pass only, same treatment as screens) ===
+  if [ "$has_flows" = true ]; then
+    local flow_validation
+    flow_validation="$(jq -r '
+      .flows | to_entries[] |
+      if (.value.name | type) != "string" then
+        "ERR\t.flows[\(.key)].name must be a string, got \(.value.name | type)"
+      elif (.value.file | type) != "string" then
+        "ERR\t.flows[\(.key)].file must be a string, got \(.value.file | type)"
+      elif (.value.name | test("[[:cntrl:]]")) then
+        "ERR_CTRL\t\(.value.name)"
+      elif (.value.content | type) != "string" then
+        "ERR_CONTENT\t\(.value.name)\t\(.value.content | type)\t\(.value.file)"
+      else empty end
+    ' "$snapshot_file" | head -1)" || true
+
+    if [ -n "$flow_validation" ]; then
+      local flow_err_kind
+      flow_err_kind="${flow_validation%%	*}"
+      case "$flow_err_kind" in
+        ERR)
+          local flow_err_msg="${flow_validation#*	}"
+          printf 'sync-derived-artifacts.sh: %s\n' "$flow_err_msg" >&2
+          exit 1
+          ;;
+        ERR_CTRL)
+          local flow_bad_name="${flow_validation#*	}"
+          printf 'sync-derived-artifacts.sh: invalid flow name (contains control characters): %q\n' "$flow_bad_name" >&2
+          exit 1
+          ;;
+        ERR_CONTENT)
+          local flow_rest="${flow_validation#*	}"
+          local flow_name="${flow_rest%%	*}"
+          flow_rest="${flow_rest#*	}"
+          local flow_type="${flow_rest%%	*}"
+          local flow_file="${flow_rest#*	}"
+          printf 'sync-derived-artifacts.sh: flow "%s" has invalid content (type: %s, expected string; file: %s)\n' \
+            "$flow_name" "$flow_type" "$flow_file" >&2
+          exit 1
+          ;;
+      esac
+    fi
+
+    # Validate flow filenames via safe-filename
+    local flow_meta="$_sync_tmpdir/flow-meta"
+    jq -r '.flows | to_entries[] | "\(.key)\t\(.value.name)\t\(.value.file)"' \
+      "$snapshot_file" > "$flow_meta"
+
+    # Extract flow content
+    local flow_content_dir="$_sync_tmpdir/flow-contents"
+    mkdir -p "$flow_content_dir"
+    local flow_lengths="$_sync_tmpdir/flow-lengths"
+    jq -r '[.flows[].content | utf8bytelength] | .[]' "$snapshot_file" > "$flow_lengths"
+    local flow_concat="$_sync_tmpdir/flow-all"
+    jq -j '[.flows[].content] | join("")' "$snapshot_file" > "$flow_concat"
+
+    local fidx=0
+    exec 4< "$flow_concat"
+    while IFS= read -r flen; do
+      if [ "$flen" -gt 0 ]; then
+        dd bs="$flen" count=1 of="$flow_content_dir/$fidx" 2>/dev/null <&4
+      else
+        : > "$flow_content_dir/$fidx"
+      fi
+      fidx=$((fidx + 1))
+    done < "$flow_lengths"
+    exec 4<&-
+
+    while IFS=$'\t' read -r fidx flow_name flow_file; do
+      local flow_content_file="$flow_content_dir/$fidx"
+      printf 'sync: flow "%s" (file: %s)\n' "$flow_name" "$flow_file"
+      printf '<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>\n'
+      escape_boundary_markers < "$flow_content_file"
+      if [ -s "$flow_content_file" ] && [ "$(tail -c 1 "$flow_content_file" | wc -l)" -eq 0 ]; then
+        printf '\n'
+      fi
+      printf '<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>\n'
+    done < "$flow_meta"
+  fi
+
+  # === Token reconciliation (design_system pass only) ===
+  if [ "$_sync_project" = "design_system" ]; then
+    local has_tokens=false
+    if jq -e '.tokens' "$snapshot_file" >/dev/null 2>&1; then
+      local tokens_type
+      tokens_type="$(jq -r '.tokens | type' "$snapshot_file")"
+      if [ "$tokens_type" = "object" ]; then
+        has_tokens=true
+      fi
+    fi
+
+    if [ "$has_tokens" = true ]; then
+      local tok_baseline_path
+      tok_baseline_path="$(_resolve_token_baseline "$_token_baseline_arg")"
+
+      if [ -z "$tok_baseline_path" ]; then
+        printf 'sync-derived-artifacts.sh: no project config folder found — skipping token baseline write\n' >&2
+      else
+        # Ensure the state directory exists
+        local tok_baseline_dir
+        tok_baseline_dir="$(dirname "$tok_baseline_path")"
+        mkdir -p "$tok_baseline_dir" 2>/dev/null || true
+
+        local new_tokens_file="$_sync_tmpdir/new-tokens.json"
+        jq -S '.tokens' "$snapshot_file" > "$new_tokens_file"
+
+        # Check for tokens with control characters — skip them
+        local bad_tokens
+        bad_tokens="$(jq -r 'to_entries[] | select(.key | test("[[:cntrl:]]")) | .key' "$new_tokens_file" 2>/dev/null)" || true
+        if [ -n "$bad_tokens" ]; then
+          while IFS= read -r bad_tok; do
+            printf 'sync-derived-artifacts.sh: skipping token with control character in name: %q\n' "$bad_tok" >&2
+          done <<< "$bad_tokens"
+          # Remove bad tokens from the working file
+          jq 'with_entries(select(.key | test("[[:cntrl:]]") | not))' "$new_tokens_file" > "$_sync_tmpdir/clean-tokens.json"
+          mv -f "$_sync_tmpdir/clean-tokens.json" "$new_tokens_file"
+        fi
+
+        # Reconciliation: compare with existing baseline
+        if [ -f "$tok_baseline_path" ]; then
+          # Read the product_design screens from the ORIGINAL combined snapshot
+          local pd_screens_file="$_sync_tmpdir/pd-screens.json"
+          if [ "$_is_combined" = true ]; then
+            jq '.product_design.screens // []' "$_orig_snapshot_file" > "$pd_screens_file" 2>/dev/null || printf '[]\n' > "$pd_screens_file"
+          else
+            jq '.screens // []' "$_orig_snapshot_file" > "$pd_screens_file" 2>/dev/null || printf '[]\n' > "$pd_screens_file"
+          fi
+
+          local old_tokens_file="$tok_baseline_path"
+          # Find changed tokens and check against screen content
+          local changed_tokens="$_sync_tmpdir/changed-tokens"
+          jq -r --slurpfile old "$old_tokens_file" '
+            to_entries[] |
+            select($old[0][.key] != null and $old[0][.key] != .value) |
+            "\(.key)\t\($old[0][.key])\t\(.value)"
+          ' "$new_tokens_file" > "$changed_tokens" 2>/dev/null || true
+
+          if [ -s "$changed_tokens" ]; then
+            while IFS=$'\t' read -r tok_name tok_old tok_new; do
+              # Scan each screen's content for the token on a token boundary
+              local screen_count
+              screen_count="$(jq 'length' "$pd_screens_file")"
+              local si=0
+              while [ "$si" -lt "$screen_count" ]; do
+                local scr_name scr_content
+                scr_name="$(jq -r ".[$si].name" "$pd_screens_file")"
+                scr_content="$(jq -r ".[$si].content // empty" "$pd_screens_file")"
+                if [ -n "$scr_content" ]; then
+                  # Token boundary: preceded and followed by chars outside [A-Za-z0-9_-]
+                  # or at text boundary. Use grep -E with word-boundary-like pattern.
+                  if printf '%s' "$scr_content" | grep -qE "(^|[^A-Za-z0-9_-])$(printf '%s' "$tok_name" | sed 's/[.[\*^$()+?{|\\]/\\&/g')([^A-Za-z0-9_-]|$)"; then
+                    printf 'reconciliation (medium): token %s %s -> %s affects screen %s\n' \
+                      "$tok_name" "$tok_old" "$tok_new" "$scr_name"
+                  fi
+                fi
+                si=$((si + 1))
+              done
+            done < "$changed_tokens"
+          fi
+        fi
+
+        # Write new baseline (tempfile + mv for atomicity)
+        local tok_tmp="$_sync_tmpdir/tok-baseline-tmp.json"
+        cp "$new_tokens_file" "$tok_tmp"
+        mv -f "$tok_tmp" "$tok_baseline_path"
+      fi
+    fi
+  fi
+
+  # If no components and no screens and no flows, just report up to date
+  if [ "$has_components" = false ] && [ "$has_screens" = false ] && [ "$has_flows" = false ]; then
     printf 'sync: ux-design.md is up to date — no components to add\n'
   fi
 }
