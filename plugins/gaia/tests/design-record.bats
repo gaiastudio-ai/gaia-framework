@@ -3798,3 +3798,143 @@ SHIMEOF
   [[ "$output" == *"integrity: ok"* ]] || \
     fail "expected integrity: ok via fallback: $output"
 }
+
+
+# =========================================================================
+# Nested / non-string digest rejection — fast path handles without fallback
+# =========================================================================
+
+# _write_nested_json DEPTH OUT — write a JSON array nested to DEPTH levels.
+# e.g. DEPTH=3 → [[[1]]]  — written to OUT as a file (for yq load()).
+_write_nested_json() {
+  local depth="$1" out="$2"
+  perl -e 'print "[" x $ARGV[0] . "1" . "]" x $ARGV[0] . "\n"' "$depth" > "$out"
+}
+
+# ---------------------------------------------------------------------------
+# #33 — deeply nested array digest (>512 levels) in 320-entry record:
+#       rejected at the right index with constant yq call count, no fallback.
+#       The digest is stored as a NATIVE YAML sequence (not a string) so yq
+#       emits it as raw JSON and perl must handle the decode failure.
+# ---------------------------------------------------------------------------
+
+@test "deeply nested array digest in 320-entry record detected by fast path" {
+  assert_script_exists
+  _need_chain_fixtures
+  perl -MDigest::SHA -e1 || fail "Digest::SHA missing — cannot test fast path"
+
+  # Generate 320-entry fixture
+  _gen_fixture 320 "$BATS_TEST_TMPDIR/f320_nested.yaml" "$BATS_FILE_TMPDIR/template.yaml"
+
+  # Build a >512-deep nested JSON array file (for yq load())
+  local nested_file="$BATS_TEST_TMPDIR/nested-600.json"
+  _write_nested_json 600 "$nested_file"
+
+  # Replace LAST entry's _digest with a NATIVE array (not a string)
+  NFILE="$nested_file" yq -i '.audit[319]._digest = load(strenv(NFILE))' \
+    "$BATS_TEST_TMPDIR/f320_nested.yaml"
+
+  # Baseline: 10-entry run with nested native digest in last entry
+  cp "$BATS_FILE_TMPDIR/f10.yaml" "$BATS_TEST_TMPDIR/f10_nested.yaml"
+  NFILE="$nested_file" yq -i '.audit[9]._digest = load(strenv(NFILE))' \
+    "$BATS_TEST_TMPDIR/f10_nested.yaml"
+  cp "$BATS_TEST_TMPDIR/f10_nested.yaml" "$RECORD"
+  export YQ_COUNT_FILE="$BATS_TEST_TMPDIR/cn10"
+  : > "$YQ_COUNT_FILE"
+  PATH="$BATS_FILE_TMPDIR/shim:$PATH" run "$SCRIPT" verify-integrity
+  local cn10
+  cn10="$(wc -l < "$YQ_COUNT_FILE" | tr -d ' ')"
+
+  # 320-entry run with nested native digest in last entry
+  cp "$BATS_TEST_TMPDIR/f320_nested.yaml" "$RECORD"
+  export YQ_COUNT_FILE="$BATS_TEST_TMPDIR/cn320"
+  : > "$YQ_COUNT_FILE"
+  PATH="$BATS_FILE_TMPDIR/shim:$PATH" run "$SCRIPT" verify-integrity
+  local cn320
+  cn320="$(wc -l < "$YQ_COUNT_FILE" | tr -d ' ')"
+
+  echo "# cn10=$cn10 cn320=$cn320 status=$status" >&3
+
+  [ "$status" -ne 0 ] || fail "accepted a nested-array digest in 320-entry record"
+  [[ "$output" == *"integrity failure — digest chain broken at audit[319]"* ]] || \
+    fail "expected diagnostic for audit[319], got: $output"
+
+  # Fallback warning must be ABSENT (proves the fast path handled it)
+  [[ "$output" != *"fast-path verification failed"* ]] || \
+    fail "fallback warning present — fast path did not handle the nested digest: $output"
+  [[ "$output" != *"per-entry fallback"* ]] || \
+    fail "per-entry fallback triggered — fast path should handle nested digests: $output"
+
+  # yq call count must be O(1) — at most 2x the 10-entry count
+  [ "$cn10" -gt 0 ] || fail "cn10 is zero — shim not on PATH?"
+  [ "$cn320" -le $((2 * cn10)) ] || \
+    fail "yq count ratio too high: cn320=$cn320 > 2*cn10=$((2 * cn10))"
+}
+
+# ---------------------------------------------------------------------------
+# #34 — nested map digest in a small record: rejected at the right index.
+#       The digest is stored as a NATIVE YAML map (not a string).
+# ---------------------------------------------------------------------------
+
+@test "nested map digest in a small record rejected at the right index" {
+  assert_script_exists
+  _need_chain_fixtures
+  perl -MDigest::SHA -e1 || fail "Digest::SHA missing — cannot test fast path"
+  cp "$BATS_FILE_TMPDIR/f3.yaml" "$RECORD"
+
+  # Replace audit[1]._digest with a native YAML map (not a string).
+  # Using a yq expression to create a map structure directly.
+  yq -i '.audit[1]._digest = {"a": {"b": "c"}}' "$RECORD"
+  # Verify it's a native map, not a string
+  [ "$(yq '.audit[1]._digest | tag' "$RECORD")" = "!!map" ] || \
+    fail "fixture setup: _digest is not a native map"
+
+  run "$SCRIPT" verify-integrity
+  [ "$status" -ne 0 ] || fail "accepted a nested-map digest"
+  [[ "$output" == *"integrity failure — digest chain broken at audit[1]"* ]] || \
+    fail "expected diagnostic for audit[1], got: $output"
+
+  # Must NOT fall back to per-entry path
+  [[ "$output" != *"fast-path verification failed"* ]] || \
+    fail "fallback warning present — fast path should handle map digests: $output"
+  [[ "$output" != *"per-entry fallback"* ]] || \
+    fail "per-entry fallback triggered for map digest: $output"
+}
+
+# ---------------------------------------------------------------------------
+# #35 — numeric and boolean digests in a small record: rejected at the right
+#       index. These are native YAML scalars (not strings).
+# ---------------------------------------------------------------------------
+
+@test "numeric and boolean digests rejected at the right index" {
+  assert_script_exists
+  _need_chain_fixtures
+  perl -MDigest::SHA -e1 || fail "Digest::SHA missing — cannot test fast path"
+
+  # Numeric digest at audit[1] — yq writes it as a native number
+  cp "$BATS_FILE_TMPDIR/f3.yaml" "$RECORD"
+  yq -i '.audit[1]._digest = 42' "$RECORD"
+  # Verify it's a native int, not a string
+  [ "$(yq '.audit[1]._digest | tag' "$RECORD")" = "!!int" ] || \
+    fail "fixture setup: _digest is not a native int"
+
+  run "$SCRIPT" verify-integrity
+  [ "$status" -ne 0 ] || fail "accepted a numeric digest"
+  [[ "$output" == *"integrity failure — digest chain broken at audit[1]"* ]] || \
+    fail "expected diagnostic for audit[1] with numeric digest, got: $output"
+  [[ "$output" != *"fast-path verification failed"* ]] || \
+    fail "fallback warning present for numeric digest: $output"
+
+  # Boolean digest at audit[2] — yq writes it as a native bool
+  cp "$BATS_FILE_TMPDIR/f3.yaml" "$RECORD"
+  yq -i '.audit[2]._digest = true' "$RECORD"
+  [ "$(yq '.audit[2]._digest | tag' "$RECORD")" = "!!bool" ] || \
+    fail "fixture setup: _digest is not a native bool"
+
+  run "$SCRIPT" verify-integrity
+  [ "$status" -ne 0 ] || fail "accepted a boolean digest"
+  [[ "$output" == *"integrity failure — digest chain broken at audit[2]"* ]] || \
+    fail "expected diagnostic for audit[2] with boolean digest, got: $output"
+  [[ "$output" != *"fast-path verification failed"* ]] || \
+    fail "fallback warning present for boolean digest: $output"
+}
