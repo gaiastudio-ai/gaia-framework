@@ -141,7 +141,10 @@
       "items": {
         "type": "string",
         "enum": ["design-system", "product-design"]
-      }
+      },
+      "if": { "minItems": 1 },
+      "then": { "contains": { "const": "design-system" } },
+      "description": "Which projects the review covered. When non-empty, must always include design-system."
     },
     "reviews": {
       "type": "array",
@@ -283,7 +286,8 @@
               "not-applicable-pass",
               "review-verdict",
               "applicability-change",
-              "product-project-set"
+              "product-project-set",
+              "review-coverage-recorded"
             ],
             "description": "Audit event type."
           },
@@ -351,6 +355,14 @@
           "discovered_via": {
             "type": "string",
             "description": "Discovery method (for product-project-set events)."
+          },
+          "coverage": {
+            "type": "string",
+            "enum": [
+              "[\"design-system\"]",
+              "[\"design-system\",\"product-design\"]"
+            ],
+            "description": "Serialised coverage array (for review-coverage-recorded events)."
           }
         }
       }

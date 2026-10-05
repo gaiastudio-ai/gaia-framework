@@ -57,4 +57,5 @@ scripts/build-manifest-cards.sh     reader   reads design record to resolve per-
 scripts/lib/verify-publication-target.sh reader reads design record to verify target reference matches
 tests/build-manifest-cards.bats     test     tests build-manifest-cards including design-record interactions
 tests/design-record-roster.bats    test     roster-resolution test suite
+tests/design-record-review-coverage.bats test review-coverage verb tests
 CHANGELOG.md                       prose    release notes list design-record changes

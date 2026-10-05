@@ -796,10 +796,10 @@ UX
 
   # Write boundary-marker-wrapped project content containing a sentinel
   cat > "$root/boundary.txt" <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 This is the project read-back content.
 It contains the distinctive literal MARKER_SENTINEL_e9f2a7 which should never appear in a verdict notes text under any circumstances.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 
   # Candidate notes echoing a 40+ char substring from the boundary — should be rejected
@@ -834,9 +834,9 @@ BOUNDARY
   tmpdir="$(mktemp -d)"
 
   cat > "$tmpdir/boundary.txt" <<'BOUNDARY'
-<<<DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 This is the project read-back content with specific project terms.
-<<<END_DESIGN_PROJECT_BOUNDARY>>>
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 BOUNDARY
 
   printf '%s' "The overall design quality is excellent with minor spacing issues" \
@@ -1169,4 +1169,320 @@ BOUNDARY
     [ "$gate_refs" -eq 0 ] || \
       fail "gaia-create-ux setup.sh references design_approved gate ($gate_refs occurrences)"
   fi
+}
+
+
+# =========================================================================
+# Two-project read-back structural tests
+# =========================================================================
+
+@test "structural: Step 1 reads design-system project through DesignSync" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local step1
+  step1="$(awk '/^### Step 1/{found=1} found && /^### Step [^1]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step1" ] || fail "Step 1 not found in SKILL.md"
+
+  printf '%s' "$step1" | grep -qi 'DesignSync' || \
+    fail "Step 1 should mention DesignSync for the design-system project read"
+  printf '%s' "$step1" | grep -qF 'DESIGN_SYSTEM_PROJECT_BOUNDARY' || \
+    fail "Step 1 should wrap design-system content in DESIGN_SYSTEM_PROJECT_BOUNDARY markers"
+}
+
+@test "structural: Step 1 reads product design project through per-file reads" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local step1
+  step1="$(awk '/^### Step 1/{found=1} found && /^### Step [^1]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step1" ] || fail "Step 1 not found in SKILL.md"
+
+  printf '%s' "$step1" | grep -qiE 'per-file|list.*scope.*files|read.*path' || \
+    fail "Step 1 should describe per-file reads for the product design project"
+  printf '%s' "$step1" | grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' || \
+    fail "Step 1 should wrap product-design content in PRODUCT_DESIGN_PROJECT_BOUNDARY markers"
+}
+
+@test "structural: Step 4 re-read is dual for both projects" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local step4
+  step4="$(awk '/^### Step 4/{found=1} found && /^### Step [^4]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step4" ] || fail "Step 4 not found in SKILL.md"
+
+  printf '%s' "$step4" | grep -qF 'DESIGN_SYSTEM_PROJECT_BOUNDARY' || \
+    fail "Step 4 re-read should mention DESIGN_SYSTEM_PROJECT_BOUNDARY markers"
+  printf '%s' "$step4" | grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' || \
+    fail "Step 4 re-read should mention PRODUCT_DESIGN_PROJECT_BOUNDARY markers"
+}
+
+@test "structural: null product project skips product-project read" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'product_design_project.*null|null.*product.*skip|product.*null.*skip' "$SKILL_MD" || \
+    fail "SKILL.md should describe skipping product-project read when product_design_project is null"
+  grep -qiE 'absence|absent|skip.*log|note.*absence' "$SKILL_MD" || \
+    fail "SKILL.md should log the absence when product project is null"
+}
+
+
+# =========================================================================
+# Read-back failure halts
+# =========================================================================
+
+@test "structural: DesignSync read-back error halts review" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'designsync.*(error|fail).*halt|designsync.*read.*fail.*halt' "$SKILL_MD" || \
+    fail "SKILL.md should describe halting on DesignSync read-back error with a diagnostic"
+}
+
+@test "structural: Artifact read-back failure halts review" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE '(per-file|artifact).*(fail|error|summary).*halt|(fail|summary).*per-file.*halt' "$SKILL_MD" || \
+    fail "SKILL.md should describe halting on per-file read failure or summary"
+}
+
+@test "structural: default read leaving out type page does not halt" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'type page.*(normal|does not|not.*halt)|default read.*type page' "$SKILL_MD" || \
+    fail "SKILL.md should state that a default read leaving out the type page is normal and does not halt"
+}
+
+
+# =========================================================================
+# Finding attribution structural tests
+# =========================================================================
+
+@test "structural: token/component/template findings attributed to design-system" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local step2
+  step2="$(awk '/^### Step 2/{found=1} found && /^### Step [^2]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step2" ] || fail "Step 2 not found in SKILL.md"
+
+  printf '%s' "$step2" | grep -qiE 'token.*design.system|component.*design.system|template.*design.system|design.system.*(token|component|template)' || \
+    fail "Step 2 should attribute token/component/template findings to the design-system project"
+}
+
+@test "structural: screen/flow findings attributed to product design project" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local step2
+  step2="$(awk '/^### Step 2/{found=1} found && /^### Step [^2]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step2" ] || fail "Step 2 not found in SKILL.md"
+
+  printf '%s' "$step2" | grep -qiE 'screen.*product.design|flow.*product.design|product.design.*(screen|flow)' || \
+    fail "Step 2 should attribute screen/flow findings to the product design project"
+}
+
+@test "structural: high-severity finding in either project excludes approved verdict" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'high.severity.*either.*project.*(not|never).*approved|high.*finding.*either.*(not|never).*approved|either project.*high.*(not|never).*approved' "$SKILL_MD" || \
+    fail "SKILL.md should state that a high-severity finding in either project excludes the approved verdict"
+}
+
+
+# =========================================================================
+# Provenance exit-code split
+# =========================================================================
+
+@test "structural: provenance exit 1 re-authors notes independently" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  # Must specifically mention exit 1 (not just "non-zero") and re-author
+  grep -qiE 'exit 1.*re-author|exit.1.*re.author' "$SKILL_MD" || \
+    fail "SKILL.md should describe exit 1 from provenance check triggering re-authoring"
+}
+
+@test "structural: provenance exit 2 rebuilds boundary file once then halts" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'exit 2.*rebuild|exit.2.*boundary.*rebuild' "$SKILL_MD" || \
+    fail "SKILL.md should describe exit 2 from provenance check triggering a boundary rebuild"
+  grep -qiE 'second.*exit 2.*halt|exit 2.*halt' "$SKILL_MD" || \
+    fail "SKILL.md should describe halting on a second exit 2"
+}
+
+
+# =========================================================================
+# Pre-write guard sweep
+# =========================================================================
+
+@test "structural: pre-write guard sweep finds no unguarded writes" {
+  [ -d "$SKILL_DIR" ] || fail "design-review skill dir does not exist: $SKILL_DIR"
+
+  local file_count=0
+  local unguarded=0
+
+  while IFS= read -r -d '' f; do
+    file_count=$((file_count + 1))
+    # Look for write_files or action followed by publish
+    local writes
+    writes="$(grep -cE 'write_files|action[^"]*"publish"' "$f" || true)"
+    if [ "$writes" -gt 0 ]; then
+      # Each write must be preceded by verify-publication-target
+      local guarded
+      guarded="$(grep -cE 'verify-publication-target' "$f" || true)"
+      if [ "$guarded" -lt "$writes" ]; then
+        unguarded=$((unguarded + writes - guarded))
+      fi
+    fi
+  done < <(find "$SKILL_DIR" -type f -print0)
+
+  [ "$file_count" -gt 0 ] || fail "sweep scanned 0 files in $SKILL_DIR"
+  [ "$unguarded" -eq 0 ] || \
+    fail "found $unguarded unguarded write(s) in $SKILL_DIR (write_files or publish without verify-publication-target)"
+}
+
+@test "structural: mutant with unguarded write_files turns sweep red" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local mutant_dir
+  mutant_dir="$(mktemp -d)"
+  cp "$SKILL_MD" "$mutant_dir/SKILL.md"
+  # Inject an unguarded write_files call
+  printf '\n\nCall write_files to update the component.\n' >> "$mutant_dir/SKILL.md"
+
+  local file_count=0
+  local unguarded=0
+  while IFS= read -r -d '' f; do
+    file_count=$((file_count + 1))
+    local writes
+    writes="$(grep -cE 'write_files|action[^"]*"publish"' "$f" || true)"
+    if [ "$writes" -gt 0 ]; then
+      local guarded
+      guarded="$(grep -cE 'verify-publication-target' "$f" || true)"
+      if [ "$guarded" -lt "$writes" ]; then
+        unguarded=$((unguarded + writes - guarded))
+      fi
+    fi
+  done < <(find "$mutant_dir" -type f -print0)
+
+  [ "$file_count" -gt 0 ] || fail "mutant sweep scanned 0 files"
+  [ "$unguarded" -gt 0 ] || \
+    fail "mutant with unguarded write_files was not caught by the sweep"
+
+  rm -rf "$mutant_dir"
+}
+
+
+# =========================================================================
+# Artifact read-back hardening
+# =========================================================================
+
+@test "structural: Artifact title sanitised of control characters and markers" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE '(title|description|capabilities).*(strip|sanitise|sanitize).*(control|boundary)|control.character.*(title|description|capabilities)' "$SKILL_MD" || \
+    fail "SKILL.md should describe stripping control characters and boundary markers from Artifact title/description/capabilities"
+}
+
+@test "structural: single-source findings labelled not independently verified" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'not independently verified|shared trust boundary' "$SKILL_MD" || \
+    fail "SKILL.md should label findings supported only by the two design projects as not independently verified"
+}
+
+@test "structural: credential-shaped content only reported as finding" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'credential.*(never acted|only reported|never.*follow|never.*echo)' "$SKILL_MD" || \
+    fail "SKILL.md should state that credential-shaped content is never acted on, only reported"
+}
+
+
+# =========================================================================
+# Delta sync routing structural tests
+# =========================================================================
+
+@test "structural: Step 6 routes tokens/components/templates to design-system run" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local step6
+  step6="$(awk '/^### Step 6/{found=1} found && /^### Step [^6]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step6" ] || fail "Step 6 not found in SKILL.md"
+
+  printf '%s' "$step6" | grep -qiE 'design.system.*(token|component|template)|--project design_system' || \
+    fail "Step 6 should route tokens/components/templates to the design-system run"
+}
+
+@test "structural: Step 6 routes screens/flows to product-design per-file reads" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local step6
+  step6="$(awk '/^### Step 6/{found=1} found && /^### Step [^6]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step6" ] || fail "Step 6 not found in SKILL.md"
+
+  printf '%s' "$step6" | grep -qiE 'product.design.*(screen|flow)|--project product_design|screen.*per-file|flow.*per-file' || \
+    fail "Step 6 should route screens/flows to the product-design per-file reads"
+}
+
+
+# =========================================================================
+# Coverage write and null-project handling
+# =========================================================================
+
+@test "structural: record-review-coverage called before transition to approved" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qF 'record-review-coverage' "$SKILL_MD" || \
+    fail "SKILL.md should reference record-review-coverage"
+
+  # Extract Step 5 with line numbers preserved
+  local step5
+  step5="$(awk '/^### Step 5/{found=1} found && /^### Step [^5]/{exit} found{print NR": "$0}' "$SKILL_MD")"
+  [ -n "$step5" ] || fail "Step 5 not found in SKILL.md"
+
+  # Find the first line number where record-review-coverage appears
+  local cov_line
+  cov_line="$(printf '%s\n' "$step5" | grep -m1 'record-review-coverage' | cut -d: -f1)"
+  [ -n "$cov_line" ] || fail "Step 5 should call record-review-coverage"
+
+  # Find the first line number where transition --to approved appears
+  local trans_line
+  trans_line="$(printf '%s\n' "$step5" | grep -m1 'transition.*--to approved' | cut -d: -f1)"
+  [ -n "$trans_line" ] || fail "Step 5 should contain transition --to approved"
+
+  # Coverage must come BEFORE the transition (lower line number)
+  [ "$cov_line" -lt "$trans_line" ] || \
+    fail "record-review-coverage (line $cov_line) must appear before transition --to approved (line $trans_line) in Step 5"
+}
+
+@test "structural: review coverage design-system only when product project null" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  # The coverage rule must appear in Step 5, not just anywhere in the file
+  local step5
+  step5="$(awk '/^### Step 5/{found=1} found && /^### Step [^5]/{exit} found{print}' "$SKILL_MD")"
+  [ -n "$step5" ] || fail "Step 5 not found in SKILL.md"
+
+  printf '%s' "$step5" | grep -qiE 'null.*(design-system|design.system)' || \
+    fail "Step 5 should specify design-system-only coverage when product project is null"
+  printf '%s' "$step5" | grep -qiE 'design-system.*when.*null|null.*design-system-only' || \
+    fail "Step 5 should describe design-system-only coverage linked to the null product project"
+}
+
+@test "structural: unclassified canvas path gets medium-severity notice" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'unclassified|neither.*screens.*nor.*flows|not.*screens.*not.*flows' "$SKILL_MD" || \
+    fail "SKILL.md should describe handling of canvas paths matching neither screens/ nor flows/"
+  grep -qiE '(unclassified|neither).*(medium|notice|warning)' "$SKILL_MD" || \
+    fail "SKILL.md should emit a medium-severity notice for unclassified canvas paths"
+
+  # Pin the user ruling: unclassified paths are assigned to NEITHER project
+  grep -qiE 'assigned to neither project|neither project' "$SKILL_MD" || \
+    fail "SKILL.md should state that unclassified paths are assigned to neither project"
+
+  # Must NOT route unclassified paths to the design-system project
+  local unclassified_rules
+  unclassified_rules="$(grep -iE 'unclassified|canvas.*neither' "$SKILL_MD")"
+  local ds_assignment
+  ds_assignment="$(printf '%s\n' "$unclassified_rules" | grep -ciE 'assigned to.*design.system|route.*design.system' || true)"
+  [ "$ds_assignment" -eq 0 ] || \
+    fail "SKILL.md must not route unclassified paths to the design-system project ($ds_assignment occurrences)"
 }
