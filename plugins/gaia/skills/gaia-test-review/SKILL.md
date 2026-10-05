@@ -92,7 +92,7 @@ Examples:
 
 Examples:
 
-- **Hardcoded sleep in production-path test** — Test contains `await sleep(100)` to wait for an async event. Flaky-prone pattern: the 100ms is empirical, not deterministic. Warning regardless of whether the test currently passes (alignment with the test-scope boundary). Excluded: debug-only test files (path matches `*.debug.*` or annotated `@debug`) where sleep is acceptable for manual reproduction.
+- **Hardcoded sleep in production-path test** — Test contains `await sleep(100)` to wait for an async event. Flaky-prone pattern: the 100ms is empirical, not deterministic. Warning regardless of whether the test currently passes. Excluded: debug-only test files (path matches `*.debug.*` or annotated `@debug`) where sleep is acceptable for manual reproduction.
 - **Conditional-in-test outside parameterized pattern** — Test body contains `if (env === 'ci') { expect.toBe(...) } else { expect.toBe(...) }`. Branch logic in a test body conceals coverage — one branch is silently never exercised on a given environment. Warning. Excluded: parameterized-test patterns (`it.each`, `parametrize`, table-driven) where the conditional is part of the test-data structure (downgraded to Suggestion).
 - **Long test body 2-5x stack threshold** — Stack threshold is 50 LOC for unit tests; this test is 180 LOC. Warning at 2-5x; Suggestion at 1-2x; Critical only at >5x (per the severity thresholds).
 - **Intermittent flakiness 1-5% retry rate** — Test retried 3 times in 100 runs. Below the Critical threshold but above the Suggestion floor. Warrants investigation but not yet a blocker.
