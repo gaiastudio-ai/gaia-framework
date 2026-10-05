@@ -442,6 +442,10 @@ _verify_chain() {
   # Data via file descriptors, never args or env (128 KB Linux arg limit).
   # Digests are read as JSON-encoded strings (-o=json -I=0) so a newline
   # inside a _digest value cannot split the stream into extra lines.
+  # Each digest decode is wrapped in eval: a deeply nested structure that
+  # exceeds the JSON nesting limit, or any non-string decoded value (array,
+  # hash, number, boolean), is treated as a chain break at that index —
+  # never allowed to make perl die for the whole stream.
   # Perl line-count check (exit 4) catches failed or malformed yq output.
   local result rc=0
   result="$(perl -MDigest::SHA=sha256_hex -MJSON::PP -e '
@@ -453,10 +457,12 @@ _verify_chain() {
     exit 4 if @c != $n || @d != $n;
     for (my $i = 0; $i < $n; $i++) {
       chomp $c[$i];
-      chomp $d[$i]; $d[$i] = $j->decode($d[$i]); $d[$i] = "" unless defined $d[$i];
+      chomp $d[$i];
+      my $v = eval { $j->decode($d[$i]) };
+      $v = "" if !defined $v || ref $v;
       my $exp = sha256_hex($c[$i] . "\n" . $prev);
-      if ($d[$i] ne $exp) { printf "broken\n%d\n%s\n", $i, $exp; exit 0 }
-      $prev = $d[$i]; }
+      if ($v ne $exp) { printf "broken\n%d\n%s\n", $i, $exp; exit 0 }
+      $prev = $v; }
     printf "ok\n%s\n", $prev;
   ' "$count" \
     3< <(yq -o=json -I=0 '.audit[] | sort_keys(..) | del(._digest)' "$file" 2>/dev/null) \
