@@ -3250,11 +3250,11 @@ STAKE
   local skill_file="$PLUGIN_ROOT/skills/gaia-create-ux/SKILL.md"
   [ -f "$skill_file" ] || fail "SKILL.md not found"
 
-  # The "Record the selection" step must explain that the skip path does not
-  # pass --questionnaire-record (the writer auto-stores "skipped").
+  # The record step must explain that the skip path does not pass
+  # --questionnaire-record (the writer auto-stores "skipped").
   local record_step
-  record_step="$(grep 'Record the selection' "$skill_file")"
-  [ -n "$record_step" ] || fail "Record the selection step not found"
+  record_step="$(grep -E 'Record the (selection|design-system project)' "$skill_file")"
+  [ -n "$record_step" ] || fail "Record step not found"
 
   # Must mention "skipped" (auto-store) and NOT say the skip path passes the path
   printf '%s' "$record_step" | grep -q 'skipped' || \

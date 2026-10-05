@@ -74,22 +74,23 @@ _assert_not_in_text() {
   fi
 }
 
-# _assert_no_auto_bind_instruction TEXT [CONTEXT] — fail when TEXT contains
-# an imperative auto-bind instruction. Checks a family of auto-bind verb
-# patterns and only exempts lines where a negation word IMMEDIATELY governs
-# the verb (e.g. "never auto-binds", "not auto-bind"). A negation elsewhere
-# on the same line (e.g. "auto-bind it; do not ask") does NOT exempt it.
-#
-# Additionally asserts that the block carries an AFFIRMATIVE confirmation
-# requirement ("must confirm" / "user selects" / "explicit selection") that
-# is itself not negated — so "need not confirm" / "does not require
-# confirmation" cannot satisfy it.
-_assert_no_auto_bind_instruction() {
+# _assert_structured_bind_marker TEXT [CONTEXT] — assert the text calls
+# confirm-bind.sh before any bind/init step.  This is the structured-marker
+# replacement for the old phrasing-based _assert_no_auto_bind_instruction.
+_assert_structured_bind_marker() {
   local text="$1" context="${2:-}"
+  printf '%s' "$text" | grep -qF 'confirm-bind.sh' \
+    || { printf 'FAIL: confirm-bind.sh not called %s\n' "$context" >&2; return 1; }
+}
 
-  # Part 1: catch imperative auto-bind verbs.
-  # A line is a violation unless the verb is immediately preceded by a
-  # negation word (never/not/no + up to 2 intervening words).
+# _assert_no_auto_bind_phrasing TEXT [CONTEXT] — compact negative phrasing
+# check.  Fails when the text contains an imperative auto-bind or
+# skip-confirmation instruction that is not immediately governed by a
+# negation (never/not/no + up to 2 words).  This runs alongside the
+# structural marker check to catch prose that tells the agent to bind
+# automatically even while confirm-bind.sh is referenced nearby.
+_assert_no_auto_bind_phrasing() {
+  local text="$1" context="${2:-}"
   local verb_patterns=(
     'auto-?bind'
     'bind automatically'
@@ -98,46 +99,18 @@ _assert_no_auto_bind_instruction() {
   )
   local pat
   for pat in "${verb_patterns[@]}"; do
-    # Find lines that match the verb pattern
-    local matching_lines
-    matching_lines="$(printf '%s' "$text" | grep -iE "$pat" || true)"
-    [ -z "$matching_lines" ] && continue
-
-    # Filter out lines where a negation IMMEDIATELY governs the verb
-    # (negation + 0-2 words + the verb)
+    local matching
+    matching="$(printf '%s' "$text" | grep -iE "$pat" || true)"
+    [ -z "$matching" ] && continue
     local ungoverned
-    ungoverned="$(printf '%s' "$matching_lines" \
+    ungoverned="$(printf '%s' "$matching" \
       | grep -viE "(never|not|no)[[:space:]]+([[:alpha:]]+[[:space:]]+){0,2}${pat}" \
       || true)"
-
     if [ -n "$ungoverned" ]; then
       printf 'FAIL: imperative auto-bind instruction found %s:\n%s\n' "$context" "$ungoverned" >&2
       return 1
     fi
   done
-
-  # Part 2: assert an AFFIRMATIVE confirmation requirement exists.
-  # Match "must confirm" / "user selects" / "explicit selection" but
-  # reject negated forms: lines containing these phrases where a negation
-  # governs them are not counted.
-  local confirm_lines
-  confirm_lines="$(printf '%s' "$text" \
-    | grep -iE 'must confirm|user selects|explicit selection' \
-    || true)"
-  if [ -z "$confirm_lines" ]; then
-    printf 'FAIL: no affirmative confirmation requirement found %s\n' "$context" >&2
-    return 1
-  fi
-
-  # Check that at least one confirmation line is not negated
-  local affirmative
-  affirmative="$(printf '%s' "$confirm_lines" \
-    | grep -viE '(need not|not|never|does not|cannot)[[:space:]]+([[:alpha:]]+[[:space:]]+){0,2}confirm' \
-    || true)"
-  if [ -z "$affirmative" ]; then
-    printf 'FAIL: all confirmation phrases are negated %s\n' "$context" >&2
-    return 1
-  fi
 }
 
 # ---- fixture builders (deduplicate the UX-doc fixture and pub-script call) --
@@ -156,16 +129,25 @@ _pub_state() {
   printf '{"design_system":{"reference":null,"last_published_at":null,"files":%s},"product_design":{"reference":null,"last_published_at":null,"files":[]}}' "$1"
 }
 
-# _run_pub [--last-published PATH] — run plan-publication.sh with the
-# standard fixture paths. Overrides --last-published when the arg is given.
+# _run_pub [--last-published PATH] [--project KEY] — run plan-publication.sh
+# with the standard fixture paths.  Overrides --last-published and --project
+# when the respective arg is given.
 _run_pub() {
   local last="${TEST_TMP}/last-published.json"
-  if [ "${1:-}" = "--last-published" ]; then last="$2"; fi
+  local project_args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --last-published) last="$2"; shift 2 ;;
+      --project)        project_args=(--project "$2"); shift 2 ;;
+      *)                shift ;;
+    esac
+  done
   run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
     "$SHARED_SCRIPTS/plan-publication.sh" \
     --local-manifest "$TEST_TMP/local-manifest.json" \
     --remote-listing "$TEST_TMP/remote-listing.json" \
-    --last-published "$last"
+    --last-published "$last" \
+    "${project_args[@]+"${project_args[@]}"}"
 }
 
 # _assert_read_before_write FILE — assert READ_FIRST precedes WRITE for FILE.
@@ -735,41 +717,39 @@ FIXTURE
 
 # ---- AC-EC2: auto-bind guard (orthogonal patterns, prohibition-aware) ----
 
-@test "(AC-EC2) no auto-bind instruction in SKILL.md Discovery step" {
+@test "Discovery step calls confirm-bind.sh before bind" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Discovery")"
   [ -n "$block" ] || fail "no Discovery step block"
-  _assert_no_auto_bind_instruction "$block" "(Discovery step)"
+  _assert_structured_bind_marker "$block" "(Discovery step)"
 }
 
-@test "(AC-EC2) auto-bind guard catches realistic escaping mutants" {
-  # Val's four realistic bypass sentences — each must be caught.
-  local mutants=(
-    "If exactly one candidate is found, auto-bind it; do not ask the user. Otherwise present the list."
-    "Auto-bind the single candidate; the user need not confirm."
-    "When one candidate exists, bind automatically -- the framework does not require confirmation."
-    "Skip confirmation when there is not more than one candidate."
-  )
-  local m caught
-  for m in "${mutants[@]}"; do
-    caught=false
-    # Each mutant needs the confirmation phrase to pass Part 2; append one
-    # so the test exercises Part 1 (the verb catch) in isolation.
-    _assert_no_auto_bind_instruction "${m}
-The user must confirm the selection." "(mutant)" 2>/dev/null || caught=true
-    [ "$caught" = "true" ] || fail "guard missed mutant: $m"
-  done
-}
-
-@test "(AC-EC2) auto-bind guard passes the current SKILL.md prose" {
-  # The current text "The framework never auto-binds" and "the user must
-  # confirm the selection" must not trip the guard.
+@test "Discovery step has no imperative auto-bind instruction" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Discovery")"
   [ -n "$block" ] || fail "no Discovery step block"
-  # This is the same call as the main test; running it here with a clear
-  # name proves the current prose is green, not just non-red-by-accident.
-  _assert_no_auto_bind_instruction "$block" "(current SKILL.md prose)"
+  _assert_no_auto_bind_phrasing "$block" "(Discovery step)"
+}
+
+@test "auto-bind phrasing guard catches auto-bind mutant" {
+  # Feed a sentence that tells the agent to auto-bind, appended to
+  # otherwise-clean text.  The phrasing guard must catch it.
+  local mutant="When exactly one candidate is found, auto-bind it."
+  local caught=false
+  _assert_no_auto_bind_phrasing "$mutant" "(mutant)" 2>/dev/null || caught=true
+  [ "$caught" = "true" ] || fail "phrasing guard missed: $mutant"
+}
+
+@test "confirm-bind.sh exits 0 on exact bind token" {
+  [ -f "$SKILL_SCRIPTS/confirm-bind.sh" ] || fail "confirm-bind.sh missing"
+  run bash "$SKILL_SCRIPTS/confirm-bind.sh" "Bind this project"
+  [ "$status" -eq 0 ]
+}
+
+@test "confirm-bind.sh exits non-zero on paraphrased answer" {
+  [ -f "$SKILL_SCRIPTS/confirm-bind.sh" ] || fail "confirm-bind.sh missing"
+  run bash "$SKILL_SCRIPTS/confirm-bind.sh" "Sure, go ahead and use that project"
+  [ "$status" -ne 0 ]
 }
 
 # ===========================================================================
@@ -1046,10 +1026,10 @@ Read the project files and use them."
 @test "(AC1) publication plan includes bare REFRESH_MANIFEST as final line" {
   [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
-    '[{"file":"screens/login.spec.html","hash":"aaa"},{"file":"components/button.spec.html","hash":"bbb"}]' \
-    '[{"file":"screens/login.spec.html","hash":"old-aaa"},{"file":"components/button.spec.html","hash":"old-bbb"}]' \
-    "$(_pub_state '[{"file":"screens/login.spec.html","hash":"old-aaa"},{"file":"components/button.spec.html","hash":"old-bbb"}]')"
-  _run_pub
+    '[{"file":"components/button.spec.html","hash":"bbb"},{"file":"tokens/brand.html","hash":"ccc"}]' \
+    '[{"file":"components/button.spec.html","hash":"old-bbb"},{"file":"tokens/brand.html","hash":"old-ccc"}]' \
+    "$(_pub_state '[{"file":"components/button.spec.html","hash":"old-bbb"},{"file":"tokens/brand.html","hash":"old-ccc"}]')"
+  _run_pub --project design_system
   [ "$status" -eq 0 ]
   # Last non-empty line must be bare REFRESH_MANIFEST (no arguments)
   local last_line
@@ -1077,10 +1057,10 @@ Read the project files and use them."
 @test "(AC-EC1) REFRESH_MANIFEST appears even when all files are SKIP_UNCHANGED" {
   [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
   _write_pub_fixtures \
-    '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]' \
-    '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]' \
-    "$(_pub_state '[{"file":"tokens.json","hash":"same-hash"},{"file":"screens/home.spec.html","hash":"same-hash-2"}]')"
-  _run_pub
+    '[{"file":"tokens/brand.html","hash":"same-hash"},{"file":"components/button.spec.html","hash":"same-hash-2"}]' \
+    '[{"file":"tokens/brand.html","hash":"same-hash"},{"file":"components/button.spec.html","hash":"same-hash-2"}]' \
+    "$(_pub_state '[{"file":"tokens/brand.html","hash":"same-hash"},{"file":"components/button.spec.html","hash":"same-hash-2"}]')"
+  _run_pub --project design_system
   [ "$status" -eq 0 ]
   [[ "$output" == *"SKIP_UNCHANGED"* ]] || fail "expected SKIP_UNCHANGED in output"
   [[ "$output" == *"REFRESH_MANIFEST"* ]] || fail "expected REFRESH_MANIFEST in output"
@@ -1096,4 +1076,640 @@ Read the project files and use them."
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   printf '%s' "$block" | grep -qF 'design-last-published.json' || fail "design-last-published.json not in Publication step --last-published context"
+}
+
+# ===========================================================================
+# Two-project discovery, creation, and screen publication tests
+# ===========================================================================
+# Tier 1: script-level tests
+
+@test "confirm-bind.sh exits non-zero on empty input" {
+  [ -f "$SKILL_SCRIPTS/confirm-bind.sh" ] || fail "confirm-bind.sh missing"
+  run bash "$SKILL_SCRIPTS/confirm-bind.sh" ""
+  [ "$status" -ne 0 ]
+}
+
+@test "confirm-bind.sh exits non-zero on token-containing paraphrase" {
+  [ -f "$SKILL_SCRIPTS/confirm-bind.sh" ] || fail "confirm-bind.sh missing"
+  run bash "$SKILL_SCRIPTS/confirm-bind.sh" "Bind this project please"
+  [ "$status" -ne 0 ]
+  run bash "$SKILL_SCRIPTS/confirm-bind.sh" "yes, Bind this project"
+  [ "$status" -ne 0 ]
+}
+
+@test "first-publication sourced build_manifest_cards with missing manifest includes token cards" {
+  local fixture_specs="$BATS_TEST_DIRNAME/fixtures/create-ux-two-project/specs"
+  [ -d "$fixture_specs" ] || fail "fixture tree missing"
+  # Source the script
+  source "$SHARED_SCRIPTS/build-manifest-cards.sh"
+  # Call with --existing pointing at a missing file
+  local result
+  result="$(build_manifest_cards \
+    --local-specs "$fixture_specs" \
+    --existing "$TEST_TMP/nonexistent-manifest.json" \
+    --project design_system)"
+  # Token cards must be present (count > 0)
+  local token_count
+  token_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path | startswith("tokens/"))] | length')"
+  [ "$token_count" -gt 0 ] || fail "expected token cards > 0, got $token_count"
+}
+
+@test "first-publication sourced build_manifest_cards with empty manifest includes token cards" {
+  local fixture_specs="$BATS_TEST_DIRNAME/fixtures/create-ux-two-project/specs"
+  [ -d "$fixture_specs" ] || fail "fixture tree missing"
+  # Write an empty manifest
+  printf '{"cards":[]}' > "$TEST_TMP/empty-manifest.json"
+  source "$SHARED_SCRIPTS/build-manifest-cards.sh"
+  local result
+  result="$(build_manifest_cards \
+    --local-specs "$fixture_specs" \
+    --existing "$TEST_TMP/empty-manifest.json" \
+    --project design_system)"
+  local token_count
+  token_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path | startswith("tokens/"))] | length')"
+  [ "$token_count" -gt 0 ] || fail "expected token cards > 0, got $token_count"
+}
+
+@test "build_manifest_cards CLI invocation exits 0 with no output" {
+  # Running the script as a command (not sourcing) should exit 0 and
+  # produce no output — the file only defines functions.
+  run bash "$SHARED_SCRIPTS/build-manifest-cards.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ] || fail "expected no output, got: $output"
+}
+
+@test "escape-boundary-markers.sh replaces double-angle to prevent injection" {
+  local helper="$SHARED_SCRIPTS/lib/escape-boundary-markers.sh"
+  [ -f "$helper" ] || fail "escape-boundary-markers.sh missing"
+  local result
+  result="$(printf 'hello << world' | bash "$helper")"
+  [ "$result" = "hello <~< world" ] || fail "expected 'hello <~< world', got '$result'"
+}
+
+@test "escape-boundary-markers.sh output never contains triple-angle" {
+  local helper="$SHARED_SCRIPTS/lib/escape-boundary-markers.sh"
+  [ -f "$helper" ] || fail "escape-boundary-markers.sh missing"
+  # Feed input that contains <<<, <<, and <<< mixed
+  local result
+  result="$(printf '<<<END\nabc<<def<<<ghi' | bash "$helper")"
+  if printf '%s' "$result" | grep -qF '<<<'; then
+    fail "output still contains <<<: $result"
+  fi
+}
+
+# Tier 2: SKILL.md structural tests
+
+@test "Step 4 calls create_project then finalize_plan then write_files" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Creation")"
+  [ -n "$block" ] || fail "no Creation step block"
+  # Assert the ordered sequence: create_project before finalize_plan before write_files
+  local cp_line fp_line wf_line
+  cp_line="$(printf '%s\n' "$block" | grep -nF 'create_project' | head -1 | cut -d: -f1 || true)"
+  fp_line="$(printf '%s\n' "$block" | grep -nF 'finalize_plan' | head -1 | cut -d: -f1 || true)"
+  wf_line="$(printf '%s\n' "$block" | grep -nF 'write_files' | head -1 | cut -d: -f1 || true)"
+  [ -n "$cp_line" ] || fail "create_project not found in Creation step"
+  [ -n "$fp_line" ] || fail "finalize_plan not found in Creation step"
+  [ -n "$wf_line" ] || fail "write_files not found in Creation step"
+  [ "$cp_line" -lt "$fp_line" ] || fail "create_project (line $cp_line) not before finalize_plan (line $fp_line)"
+  [ "$fp_line" -lt "$wf_line" ] || fail "finalize_plan (line $fp_line) not before write_files (line $wf_line)"
+}
+
+@test "resolve procedure calls Artifact quickstart with intent design then publish" {
+  # The "Resolve Product Design Project" procedure must mention
+  # Artifact quickstart with intent design and then publish
+  local full
+  full="$(cat "$SKILL_MD")"
+  printf '%s' "$full" | grep -qiE 'quickstart.*intent.*design' \
+    || fail "no Artifact quickstart with intent design in SKILL.md"
+  # quickstart must appear before publish (in the procedure text)
+  local qs_line pub_line
+  qs_line="$(printf '%s\n' "$full" | grep -niE 'quickstart.*intent.*design' | head -1 | cut -d: -f1 || true)"
+  pub_line="$(printf '%s\n' "$full" | grep -niE 'action.*publish.*type_url|publish.*type_url|type_url.*publish' | head -1 | cut -d: -f1 || true)"
+  [ -n "$qs_line" ] || fail "no Artifact quickstart with intent design line-number in SKILL.md"
+  [ -n "$pub_line" ] || fail "no Artifact publish with type_url found in SKILL.md"
+  [ "$qs_line" -lt "$pub_line" ] || fail "quickstart (line $qs_line) not before publish (line $pub_line)"
+}
+
+@test "every create_project targets design-system only" {
+  # Static scan: every create_project call must be for a design-system project,
+  # never for screens or flows
+  local file_count=0
+  local f
+  while IFS= read -r -d '' f; do
+    file_count=$((file_count + 1))
+    local lines
+    lines="$(grep -niF 'create_project' "$f" || true)"
+    [ -z "$lines" ] && continue
+    # No line should mention screens or flows as a project type
+    if printf '%s' "$lines" | grep -qiE 'screen|flow'; then
+      fail "create_project for screens/flows found in $f"
+    fi
+  done < <(find "$SKILL_DIR" "$SHARED_SCRIPTS" -type f \( -name '*.md' -o -name '*.sh' \) -print0)
+  [ "$file_count" -gt 0 ] || fail "no files scanned"
+}
+
+@test "canvas read-back records token-by-value and does not use page true" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention ds_attachment_mode: token-by-value (or token-by-value recording)
+  printf '%s' "$full" | grep -qF 'token-by-value' \
+    || fail "token-by-value not mentioned in SKILL.md"
+  # Must mention per-file read of project/canvas.json
+  printf '%s' "$full" | grep -qF 'project/canvas.json' \
+    || fail "project/canvas.json not mentioned in SKILL.md"
+  # Must NOT use page: true for the read-back
+  if printf '%s' "$full" | grep -iE 'page.*true.*canvas|canvas.*page.*true' | grep -qv '^[[:space:]]*#'; then
+    fail "page: true used near canvas read-back"
+  fi
+  # Must explicitly prohibit page: true (never / not / do not)
+  printf '%s' "$full" | grep -qiE 'never.*page.*true|not.*page.*true' \
+    || fail "no prohibition of page: true found in SKILL.md"
+}
+
+@test "canvas read-back positioned after first content publish not between creation and publish" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must state that the read-back runs AFTER first content publish
+  printf '%s' "$full" | grep -qiE 'after.*first.*content.*publish|after.*first.*publish.*content' \
+    || fail "no 'after first content publish' statement for canvas read-back"
+  # Must state NOT to read between creation and first publish
+  printf '%s' "$full" | grep -qiE 'not.*read.*between.*creation.*publish|do not.*read.*canvas.*between|no.*read.*before.*first.*content' \
+    || fail "no prohibition on reading between creation and first publish"
+}
+
+@test "questionnaire writes target design-system only" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Questionnaire")"
+  [ -n "$block" ] || fail "no Questionnaire step block"
+  # Must state writes target design-system
+  printf '%s' "$block" | grep -qiE 'design.system\b' \
+    || fail "design-system not mentioned in Questionnaire step"
+  # Must not route writes to product design project in the questionnaire step
+  if printf '%s' "$block" | grep -qiE 'product.design.*write|write.*product.design'; then
+    fail "product design write found in Questionnaire step"
+  fi
+}
+
+@test "screen authoring gated on both projects non-null" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must gate screen authoring on both design_system_project and
+  # product_design_project being non-null
+  printf '%s' "$full" | grep -qiE 'design.system.project.*non.null|design_system_project.*non.null' \
+    || fail "no gate on design_system_project non-null"
+  printf '%s' "$full" | grep -qiE 'product.design.project.*non.null|product_design_project.*non.null' \
+    || fail "no gate on product_design_project non-null"
+}
+
+@test "unavailable Design artifact surface halts with remediation and no fallback" {
+  # Extract the Resolve Product Design Project section specifically
+  local resolve_block
+  resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
+  [ -n "$resolve_block" ] || fail "no Resolve Product Design Project section"
+  # Must mention a halt when the Design artifact surface is unavailable
+  printf '%s' "$resolve_block" | grep -qiE 'artifact.*surface.*halt|halt.*artifact.*surface|Design.*artifact.*unavailable.*halt|halt.*Design.*unavailable' \
+    || fail "no halt on unavailable Design artifact surface"
+  # Must mention remediation
+  printf '%s' "$resolve_block" | grep -qiE 'Artifact.*tool.*available|enable.*Artifact|Design artifact surface' \
+    || fail "no remediation for unavailable Design artifact surface"
+  # Must NOT fall back to design-system project for screens
+  local full
+  full="$(cat "$SKILL_MD")"
+  if printf '%s' "$full" | grep -qiE 'fallback.*design.system.*screen|screen.*fallback.*design.system'; then
+    fail "fallback to design-system project for screens found"
+  fi
+}
+
+@test "non-React detection sets brand-style with finalize_plan and product design project" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Discovery")"
+  [ -n "$block" ] || fail "no Discovery step block"
+  # Must mention brand-style
+  printf '%s' "$block" | grep -qF 'brand-style' \
+    || fail "brand-style not in Discovery step"
+  # Must mention finalize_plan on the brand-style path
+  printf '%s' "$block" | grep -qF 'finalize_plan' \
+    || fail "finalize_plan not in Discovery step"
+  # Must mention product design project is created regardless
+  printf '%s' "$block" | grep -qiE 'product.design.*project.*created|product.design.*regardless|create.*product.design' \
+    || fail "product design project creation not mentioned on brand-style path"
+}
+
+@test "first-publication branch is a distinct code path in Step 10" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must mention first-publication as a distinct code path
+  printf '%s' "$block" | grep -qiE 'first.publication|first.publish' \
+    || fail "first-publication branch not in Step 10"
+  # Must mention token cards on the first-publication path
+  printf '%s' "$block" | grep -qiE 'token.*card|card.*token' \
+    || fail "token cards not mentioned in first-publication branch"
+}
+
+@test "confirm-bind.sh called before each bind step and not on created path" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Discovery")"
+  [ -n "$block" ] || fail "no Discovery step block"
+  # confirm-bind.sh must appear
+  printf '%s' "$block" | grep -qF 'confirm-bind.sh' \
+    || fail "confirm-bind.sh not called in Discovery step"
+  # Must be called before the bind steps (init and set-product-project)
+  # and NOT on the created path
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Check the created path (Step 4) does NOT call confirm-bind.sh
+  local creation_block
+  creation_block="$(_extract_step_block "$SKILL_MD" "Creation")"
+  [ -n "$creation_block" ] || fail "no Creation step block"
+  if printf '%s' "$creation_block" | grep -qF 'confirm-bind.sh'; then
+    fail "confirm-bind.sh called on the created path (Step 4)"
+  fi
+}
+
+@test "finalize_plan precedes every DesignSync write batch in Step 10" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Every write_files / delete_files / register_assets must be preceded by finalize_plan
+  printf '%s' "$block" | grep -qF 'finalize_plan' \
+    || fail "finalize_plan not in Publication step"
+  # Assert finalize_plan appears before each write batch
+  local fp_line wf_line
+  fp_line="$(printf '%s\n' "$block" | grep -nF 'finalize_plan' | head -1 | cut -d: -f1 || true)"
+  wf_line="$(printf '%s\n' "$block" | grep -nE 'write_files|delete_files|register_assets' | head -1 | cut -d: -f1 || true)"
+  [ -n "$fp_line" ] || fail "finalize_plan line not found"
+  [ -n "$wf_line" ] || fail "no write_files/delete_files/register_assets in Publication step"
+  [ "$fp_line" -lt "$wf_line" ] || fail "finalize_plan (line $fp_line) not before first write batch (line $wf_line)"
+}
+
+@test "DesignSync authorization error halts with design-login remediation" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention the DesignSync authorization error and /design-login
+  printf '%s' "$full" | grep -qF '/design-login' \
+    || fail "/design-login not mentioned in SKILL.md"
+  # The halt must be present
+  printf '%s' "$full" | grep -qiE 'authorization.*halt|halt.*authorization|needs.*authorization.*halt' \
+    || fail "no authorization error halt in SKILL.md"
+}
+
+@test "per-file read-back does not use page true" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention per-file read-back
+  printf '%s' "$full" | grep -qiE 'per.file.*read|read.*path.*canvas' \
+    || fail "per-file read-back not mentioned"
+  # Must explicitly prohibit page: true
+  printf '%s' "$full" | grep -qiE 'never.*page.*true|not.*page.*true' \
+    || fail "no prohibition of page: true found"
+  # Must NOT use page: true positively near read-back
+  if printf '%s' "$full" | grep -qiE 'page.*true.*read.back|read.back.*page.*true' | grep -qv 'never\|not\|do not'; then
+    fail "page: true used in read-back context"
+  fi
+}
+
+@test "quickstart unusable type halts with remediation for manual design creation" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention halting when quickstart type is unusable
+  printf '%s' "$full" | grep -qiE 'quickstart.*unusable.*halt|unusable.*type.*halt|halt.*unusable.*type|halt.*remediation.*design' \
+    || fail "no halt for unusable quickstart type"
+}
+
+@test "no pre-split single-project publication assertion remains in tests" {
+  # Meta-test: scan the test file for old-style single-project assertions
+  # (screen and component specs in one manifest/project)
+  local test_file="$BATS_TEST_DIRNAME/create-ux-claude-design.bats"
+  [ -f "$test_file" ] || fail "test file missing"
+  # Look for _write_pub_fixtures calls that mix screens and components in
+  # a single fixture without --project.  Exclude comment lines and the
+  # meta-test's own grep pattern line.
+  local mixed_lines
+  mixed_lines="$(grep -n '_write_pub_fixtures\|_run_pub' "$test_file" | \
+    grep 'screens/' | grep 'components/' | \
+    grep -v '\-\-project' || true)"
+  [ -z "$mixed_lines" ] || fail "pre-split single-project assertion found:\n$mixed_lines"
+}
+
+@test "static scan finds no DesignSync write_files to screens or flows paths" {
+  # The Publication step must explicitly route screen/flow specs AWAY from
+  # DesignSync write_files and into the Artifact tool.  When the step text
+  # uses write_files for screen specs (the pre-split state), this test is RED.
+  #
+  # Two checks:
+  #   1. The step names a product-design pass for screen/flow specs.
+  #   2. No SKILL or script file contains a DesignSync write_files that
+  #      targets screens/ or flows/ — the current SKILL.md line ~190
+  #      ("publish the specification or component via write_files") covers
+  #      all specs including screens, so this assertion is RED until that
+  #      single-pass line is replaced by explicit two-pass routing.
+
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+
+  # 1. Explicit product-design routing statement
+  printf '%s' "$block" | grep -qiE 'product.design.*pass|product.design.*screen|screen.*product.design|screen.*Artifact' \
+    || fail "no product-design routing for screens in Publication step"
+
+  # 2. Negative scan: every write_files mention in SKILL/script files.
+  #    Two sub-checks per write_files line:
+  #      a. 5-line context must not mention screens/ or flows/ as a target.
+  #      b. If the write_files line or its context covers "specification"
+  #         (or matches WRITE.*write_files case-insensitively), the context
+  #         must carry a design-system-only qualifier.
+  #    Additionally, a whole-file scan verifies that no file directs
+  #    DesignSync write_files at screen or flow paths anywhere, even
+  #    outside the 5-line window.
+  local file_count=0
+  local violations=""
+  local f
+  while IFS= read -r -d '' f; do
+    file_count=$((file_count + 1))
+    local wf_lines
+    wf_lines="$(grep -n 'write_files' "$f" || true)"
+    [ -z "$wf_lines" ] && continue
+
+    # Whole-file check: any line that mentions both write_files and
+    # screen/flow targets is a violation regardless of context window.
+    local wf_screen_lines
+    wf_screen_lines="$(grep -n 'write_files' "$f" | grep -iE 'screens/|flows/' || true)"
+    if [ -n "$wf_screen_lines" ]; then
+      local wsl
+      while IFS= read -r wsl; do
+        local wsl_ln="${wsl%%:*}"
+        violations="${violations}${f}:${wsl_ln} (write_files targets screen/flow path on same line)\n"
+      done <<< "$wf_screen_lines"
+    fi
+
+    local ln _rest
+    while IFS=: read -r ln _rest; do
+      [ -n "$ln" ] || continue
+      local start end ctx
+      start=$((ln > 5 ? ln - 5 : 1))
+      end=$((ln + 5))
+      ctx="$(sed -n "${start},${end}p" "$f")"
+      # Direct screen/flow target near write_files
+      if printf '%s' "$ctx" | grep -qiE 'screens/|flows/'; then
+        violations="${violations}${f}:${ln} (screen/flow target near write_files)\n"
+        continue
+      fi
+      # Generic write_files covering "specification" without explicit
+      # design-system-only qualifier
+      if printf '%s' "$ctx" | grep -qiE 'specification.*write_files|write_files.*specification|WRITE.*write_files'; then
+        if ! printf '%s' "$ctx" | grep -qiE 'design.system.only|design.system.pass|component.*only|token.*only'; then
+          violations="${violations}${f}:${ln} (generic write_files covers all specs including screens)\n"
+        fi
+      fi
+    done <<< "$wf_lines"
+  done < <(find "$SKILL_DIR" "$SHARED_SCRIPTS" -type f \( -name '*.md' -o -name '*.sh' \) -print0)
+  [ "$file_count" -gt 0 ] || fail "no files scanned"
+  [ -z "$violations" ] || fail "DesignSync write_files covers screen/flow specs:\n${violations}"
+}
+
+@test "resume with null product design project routes to resolve procedure" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention routing to the resolve procedure when product_design_project
+  # is null
+  # Must mention product_design_project null AND routing to the resolve procedure
+  # on the same line (not just "starts as null" in a different context)
+  printf '%s' "$full" | grep -qiE 'product_design_project.*is null.*resolve|product_design_project.*is null.*procedure|product_design_project.*null.*route' \
+    || fail "no routing for null product_design_project to resolve procedure"
+}
+
+@test "every recorded-project write preceded by verify-publication-target check" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention verify-publication-target before write operations
+  printf '%s' "$full" | grep -qF 'verify-publication-target' \
+    || fail "verify-publication-target not mentioned in SKILL.md"
+  # Must mention --metadata-file and --design-record as required
+  printf '%s' "$full" | grep -qF -- '--metadata-file' \
+    || fail "--metadata-file not mentioned in SKILL.md"
+  printf '%s' "$full" | grep -qF -- '--design-record' \
+    || fail "--design-record not mentioned in SKILL.md"
+}
+
+@test "creating writes verified against response before recording reference" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention verifying type/surface/write access for creating writes
+  printf '%s' "$full" | grep -qiE 'creating.*write.*verif|verify.*creating.*write|response.*type.*surface.*write|canEdit.*creat' \
+    || fail "no creating-write verification against response"
+}
+
+@test "verify-publication-target mutant with one check removed turns test red" {
+  # This test asserts that every write_files / delete_files / register_assets /
+  # publish against a recorded project has a preceding verify-publication-target
+  # call.  It counts both the write ops and the checks, and fails if the
+  # counts diverge in either direction — exact parity is required so that
+  # removing any single check is detected.
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local write_count check_count
+  write_count="$(printf '%s\n' "$block" | grep -cE 'write_files|delete_files|register_assets' || true)"
+  check_count="$(printf '%s\n' "$block" | grep -cF 'verify-publication-target' || true)"
+  [ "$write_count" -gt 0 ] || fail "no write operations in Publication step"
+  [ "$check_count" -gt 0 ] || fail "no verify-publication-target checks in Publication step"
+  [ "$check_count" -eq "$write_count" ] || fail "check/write mismatch: $check_count checks vs $write_count writes (must be equal)"
+}
+
+@test "Artifact reads wrapped in product-design boundary markers after escape" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention boundary markers for product design reads
+  printf '%s' "$full" | grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' \
+    || fail "PRODUCT_DESIGN_PROJECT_BOUNDARY not in SKILL.md"
+  printf '%s' "$full" | grep -qF 'END_PRODUCT_DESIGN_PROJECT_BOUNDARY' \
+    || fail "END_PRODUCT_DESIGN_PROJECT_BOUNDARY not in SKILL.md"
+  # Must mention escape-boundary-markers.sh
+  printf '%s' "$full" | grep -qF 'escape-boundary-markers.sh' \
+    || fail "escape-boundary-markers.sh not referenced in SKILL.md"
+}
+
+@test "Artifact metadata stripped of control characters and markers" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention stripping control characters and markers from metadata
+  printf '%s' "$full" | grep -qiE 'metadata.*strip|strip.*control.*character|sanitise.*metadata|sanitize.*metadata|metadata.*control.*character' \
+    || fail "no metadata stripping mentioned in SKILL.md"
+}
+
+@test "post-publish read-back uses per-file reads with screen-key rule" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must mention post-publish read-back specifically (the heading or phrase)
+  printf '%s' "$block" | grep -qiE 'post.publish.*read|read.back.*publish|read.*back.*screen' \
+    || fail "post-publish read-back not in Publication step"
+  # Must mention screen-key rule (project/<screen>.dc.html) in read-back context
+  # Check that .dc.html appears in a line mentioning read-back or screen-key
+  printf '%s' "$block" | grep -i 'read.back' | grep -qF '.dc.html' \
+    || fail "screen-key rule (.dc.html) not in Publication step"
+}
+
+@test "missing screen in read-back halts with diagnostic" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must mention halting on missing screens with diagnostic
+  printf '%s' "$block" | grep -qiE 'halt.*missing.*screen|missing.*screen.*halt|diagnostic.*missing' \
+    || fail "no halt on missing screen in read-back"
+}
+
+@test "screen artboard carries token block in helmet style" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention helmet/style and :root{--token:value} pattern
+  printf '%s' "$full" | grep -qiE 'helmet.*style|<helmet><style>' \
+    || fail "no helmet style mentioned for token block"
+  printf '%s' "$full" | grep -qiE ':root.*--.*token|:root{--' \
+    || fail "no :root{--token:value} pattern mentioned"
+}
+
+@test "canvas.json updated with boards entry and order slot in one publish" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must mention boards entry and order slot
+  printf '%s' "$full" | grep -qF 'boards' \
+    || fail "boards not mentioned in SKILL.md"
+  printf '%s' "$full" | grep -qF 'order' \
+    || fail "order not mentioned in SKILL.md"
+  # Must mention one files publish (single publish call for both artboard + canvas)
+  printf '%s' "$full" | grep -qiE 'one.*files.*publish|single.*files.*publish|one.*publish.*files|both.*artboard.*canvas.*one|artboard.*canvas.*one.*publish' \
+    || fail "no single files publish for artboard and canvas"
+}
+
+@test "product-design pass uses Artifact operations only and no DesignSync operations" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must mention Artifact read/publish for product-design pass
+  printf '%s' "$block" | grep -qiE 'product.design.*Artifact|Artifact.*product.design|product.design.*publish' \
+    || fail "product-design pass does not use Artifact operations"
+  # Must mention that product-design pass does NOT use register_assets,
+  # write_files, or _ds_manifest.json
+  printf '%s' "$block" | grep -qiE 'REFRESH_MANIFEST.*no.op|no.op.*REFRESH_MANIFEST|product.design.*REFRESH_MANIFEST.*no' \
+    || fail "REFRESH_MANIFEST not marked as no-op for product-design pass"
+}
+
+@test "no screen or flow content in design-system after surface-unavailable halt" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must state no screen/flow content written to design-system after halt
+  printf '%s' "$full" | grep -qiE 'no.*screen.*flow.*design.system|no.*content.*design.system|no.*fallback.*design.system|not.*screen.*design.system' \
+    || fail "no statement about no screen/flow content in design-system after halt"
+}
+
+@test "design-system pass WRITE names only component and token specs never screen or flow" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Extract all WRITE-operation bullet lines from the design-system pass
+  # (between "Design-system pass" heading and "Product-design pass" heading)
+  local ds_section
+  ds_section="$(printf '%s' "$block" | awk '/Design-system pass/{found=1} /Product-design pass/{found=0} found{print}')"
+  [ -n "$ds_section" ] || fail "no design-system pass section in Publication step"
+  # The WRITE bullet must name component and token specs
+  local write_line
+  write_line="$(printf '%s' "$ds_section" | grep -i 'WRITE.*write_files' || true)"
+  [ -n "$write_line" ] || fail "no WRITE bullet with write_files in design-system pass"
+  # The WRITE bullet must mention component or token routing
+  printf '%s' "$write_line" | grep -qiE 'component|token' \
+    || fail "WRITE bullet does not name component or token specs"
+  # The WRITE bullet must NOT mention screen or flow routing
+  if printf '%s' "$write_line" | grep -qiE 'screen|flow'; then
+    fail "WRITE bullet in design-system pass mentions screen or flow specs"
+  fi
+}
+
+@test "verify-publication-target scoped to Publication step with at least one check per pass" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must have verify-publication-target in the Publication step itself
+  printf '%s' "$block" | grep -qF 'verify-publication-target' \
+    || fail "verify-publication-target not in Publication step"
+  # Must have at least one check in the design-system pass section
+  local ds_section
+  ds_section="$(printf '%s' "$block" | awk '/Design-system pass/{found=1} /Product-design pass/{found=0} found{print}')"
+  printf '%s' "$ds_section" | grep -qF 'verify-publication-target' \
+    || fail "no verify-publication-target in design-system pass"
+  # Must have at least one check in the product-design pass section
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  printf '%s' "$pd_section" | grep -qF 'verify-publication-target' \
+    || fail "no verify-publication-target in product-design pass"
+  # Must mention --metadata-file and --design-record in the Publication step
+  printf '%s' "$block" | grep -qF -- '--metadata-file' \
+    || fail "--metadata-file not mentioned in Publication step"
+  printf '%s' "$block" | grep -qF -- '--design-record' \
+    || fail "--design-record not mentioned in Publication step"
+}
+
+@test "persist_last_published calls in Step 10 name all required flags" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Extract persist_last_published invocations that live inside fenced code
+  # blocks (``` ... ```).  The window for each invocation ends at the
+  # closing fence, so prose that repeats flag names outside the block
+  # cannot satisfy the assertion.
+  local fenced_calls
+  fenced_calls="$(printf '%s\n' "$block" | awk '
+    /^[[:space:]]*```/ && !in_fence { in_fence=1; buf=""; next }
+    /^[[:space:]]*```/ && in_fence  { if (buf != "") print buf; in_fence=0; buf=""; next }
+    in_fence && /persist_last_published/ { capture=1 }
+    in_fence && capture { buf = (buf == "" ? $0 : buf "\n" $0) }
+  ')"
+  [ -n "$fenced_calls" ] || fail "no persist_last_published inside a fenced code block"
+  # There must be at least two invocations (one per pass)
+  local call_count
+  call_count="$(printf '%s\n' "$fenced_calls" | grep -c 'persist_last_published')"
+  [ "$call_count" -ge 2 ] || fail "expected at least 2 fenced persist_last_published calls, found $call_count"
+  # Split on persist_last_published boundaries and check each call
+  # separately for the five required flags.
+  local call_idx=0
+  local current_call=""
+  while IFS= read -r line; do
+    if printf '%s' "$line" | grep -qF 'persist_last_published'; then
+      # Flush previous call if any
+      if [ -n "$current_call" ]; then
+        call_idx=$((call_idx + 1))
+        printf '%s' "$current_call" | grep -qF -- '--outcomes' \
+          || fail "persist_last_published call $call_idx missing --outcomes"
+        printf '%s' "$current_call" | grep -qF -- '--output' \
+          || fail "persist_last_published call $call_idx missing --output"
+        printf '%s' "$current_call" | grep -qF -- '--local-hash-map' \
+          || fail "persist_last_published call $call_idx missing --local-hash-map"
+        printf '%s' "$current_call" | grep -qF -- '--design-record' \
+          || fail "persist_last_published call $call_idx missing --design-record"
+        printf '%s' "$current_call" | grep -qF -- '--project' \
+          || fail "persist_last_published call $call_idx missing --project"
+      fi
+      current_call="$line"
+    else
+      current_call="${current_call}
+${line}"
+    fi
+  done <<< "$fenced_calls"
+  # Flush the last call
+  if [ -n "$current_call" ]; then
+    call_idx=$((call_idx + 1))
+    printf '%s' "$current_call" | grep -qF -- '--outcomes' \
+      || fail "persist_last_published call $call_idx missing --outcomes"
+    printf '%s' "$current_call" | grep -qF -- '--output' \
+      || fail "persist_last_published call $call_idx missing --output"
+    printf '%s' "$current_call" | grep -qF -- '--local-hash-map' \
+      || fail "persist_last_published call $call_idx missing --local-hash-map"
+    printf '%s' "$current_call" | grep -qF -- '--design-record' \
+      || fail "persist_last_published call $call_idx missing --design-record"
+    printf '%s' "$current_call" | grep -qF -- '--project' \
+      || fail "persist_last_published call $call_idx missing --project"
+  fi
+  [ "$call_idx" -ge 2 ] || fail "expected at least 2 persist_last_published calls checked, got $call_idx"
 }
