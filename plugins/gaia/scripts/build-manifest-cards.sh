@@ -89,20 +89,14 @@ build_manifest_cards() {
       find . -mindepth 1 -maxdepth 3 -name '*.spec.html' -print0 2>/dev/null
       # token pages: ./tokens/*.html at depth 2 only
       find . -maxdepth 2 -path './tokens/*.html' -print0 2>/dev/null
-    } | LC_ALL=C sort -z > "$_disc_tmp" ) || true
+    } | LC_ALL=C sort -uz > "$_disc_tmp" ) || true
 
-    # Strip leading ./, deduplicate, validate
-    local seen_paths=""
+    # Strip leading ./, validate (dedup handled by sort -uz above)
     local line
     while IFS= read -r -d '' line; do
       [ -n "$line" ] || continue
       # Strip leading ./
       line="${line#./}"
-      # Deduplicate (tokens/x.spec.html may match both patterns)
-      case "$seen_paths" in
-        *"|${line}|"*) continue ;;
-      esac
-      seen_paths="${seen_paths}|${line}|"
       # Shell-side safety check before awk
       if ! safe_filename_check "$line" 2>/dev/null; then
         printf 'build-manifest-cards.sh: rejecting discovered path: %q\n' "$line" >&2
@@ -133,28 +127,35 @@ build_manifest_cards() {
     rm -f "$_disc_tmp"
   fi
 
-  # 2. Scan for @dsCard annotations using awk on discovered files
-  local spec_files=()
+  # 2. Scan for @dsCard annotations using awk on discovered files.
+  # Build paths into a NUL-delimited temp file (avoids O(n^2) bash array
+  # append), then feed them to awk via xargs -0.
+  local _spec_list
+  _spec_list="$(mktemp "${TMPDIR:-/tmp}/bmc_speclist.XXXXXX")"
   local p
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     local full="${local_specs}/${p}"
     [ -f "$full" ] || continue
-    spec_files=("${spec_files[@]+"${spec_files[@]}"}" "$full")
-  done <<< "$discovered_paths"
+    printf '%s\0' "$full"
+  done <<< "$discovered_paths" > "$_spec_list"
+
+  local _spec_count
+  _spec_count="$(tr -cd '\0' < "$_spec_list" | wc -c | tr -d ' ')"
 
   local scan_tsv="" diag_file=""
-  if [ "${#spec_files[@]}" -gt 0 ]; then
+  if [ "$_spec_count" -gt 0 ]; then
     diag_file="$(mktemp "${TMPDIR:-/tmp}/bmc_diag.XXXXXX")"
 
-    scan_tsv="$(awk -v spec_root="$local_specs/" -v diag="$diag_file" '
+    # xargs -0 feeds NUL-delimited paths to awk. nextfile skips past line 1.
+    scan_tsv="$(xargs -0 awk -v spec_root="$local_specs/" -v diag="$diag_file" '
       FNR == 1 {
         path = FILENAME
         if (index(path, spec_root) == 1)
           path = substr(path, length(spec_root) + 1)
         if (index(path, "\t") > 0) {
           print "DIAG\t" path > diag
-          next
+          nextfile
         }
         if (match($0, /@dsCard group="/)) {
           rest = substr($0, RSTART + 15)
@@ -168,8 +169,9 @@ build_manifest_cards() {
         } else {
           print "SKIP\t" path > diag
         }
+        nextfile
       }
-    ' "${spec_files[@]}")" || true
+    ' < "$_spec_list")" || true
 
     if [ -s "$diag_file" ]; then
       while IFS='	' read -r dtype dpath; do
@@ -183,6 +185,7 @@ build_manifest_cards() {
     fi
     rm -f "$diag_file"
   fi
+  rm -f "$_spec_list"
 
   # 3. Build spec_cards and spec_paths, then partition by project
   local all_spec_cards_json all_spec_paths_json
@@ -537,6 +540,28 @@ persist_last_published() {
     # Detect legacy flat-array format before normalising
     if jq -e 'type == "array"' "$output_file" >/dev/null 2>&1; then
       _on_disk_was_legacy=1
+    fi
+    # Shape validation: reject numbers, strings, booleans, null, and objects
+    # whose entries are not properly shaped (must have array .files)
+    local _od_shape
+    _od_shape="$(jq -r --arg proj "$project" '
+      if type == "array" then
+        if all(type == "object" and has("file")) then "ok"
+        else "invalid" end
+      elif type == "object" then
+        # Each present key must be an object with array files
+        [.design_system, .product_design] |
+        map(select(. != null)) |
+        if all(type == "object" and (.files | type) == "array") then "ok"
+        else "invalid" end
+      else "invalid" end
+    ' "$output_file" 2>/dev/null)" || _od_shape="invalid"
+    if [ "$_od_shape" = "invalid" ]; then
+      if [ "$use_lock" -eq 1 ]; then
+        release_lock "$_PERSIST_LOCK_FD" 2>/dev/null || true
+      fi
+      _bmc_die "persist_last_published: invalid state file shape in on-disk --output: $output_file"
+      return 1
     fi
     on_disk_json="$(jq '
       if type == "array" then

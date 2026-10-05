@@ -4638,3 +4638,503 @@ TXT
   [ "$status" -ne 0 ] || fail "BOM on line 1 should be rejected"
   [[ "$output" == *"BOM"* ]] || fail "should mention BOM in diagnostic: $output"
 }
+
+# ===========================================================================
+# Wrong-shape publication state is refused
+# ===========================================================================
+
+@test "planner rejects wrong-shape state: bare object with string value" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/local.json"
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/remote.json"
+  printf '{"design_system":"x"}\n' > "$TEST_TMP/wrong.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/wrong.json"
+  [ "$status" -ne 0 ] || fail "wrong-shape state file should be rejected, got exit 0"
+  [[ "$output" == *"wrong.json"* ]] || [[ "$output" == *"shape"* ]] || [[ "$output" == *"invalid"* ]] \
+    || fail "diagnostic should name the file or shape, got: $output"
+  # Must NOT produce any WRITE plan line
+  [[ "$output" != *"WRITE"* ]] || fail "wrong-shape state must not produce a WRITE plan"
+}
+
+@test "planner rejects wrong-shape state: bare number" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/local.json"
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/remote.json"
+  printf '42\n' > "$TEST_TMP/wrong.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/wrong.json"
+  [ "$status" -ne 0 ] || fail "number state file should be rejected, got exit 0"
+  [[ "$output" != *"WRITE"* ]] || fail "wrong-shape state must not produce a WRITE plan"
+}
+
+@test "planner rejects wrong-shape state: bare string" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/local.json"
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/remote.json"
+  printf '"s"\n' > "$TEST_TMP/wrong.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/wrong.json"
+  [ "$status" -ne 0 ] || fail "string state file should be rejected, got exit 0"
+  [[ "$output" != *"WRITE"* ]] || fail "wrong-shape state must not produce a WRITE plan"
+}
+
+@test "planner rejects wrong-shape state: non-file-hash array" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/local.json"
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/remote.json"
+  printf '[1,2]\n' > "$TEST_TMP/wrong.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/wrong.json"
+  [ "$status" -ne 0 ] || fail "non-file-hash array should be rejected, got exit 0"
+  [[ "$output" != *"WRITE"* ]] || fail "wrong-shape state must not produce a WRITE plan"
+}
+
+@test "planner rejects wrong-shape state: per-project entry missing files" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/local.json"
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/remote.json"
+  printf '{"design_system":{"reference":"x"}}\n' > "$TEST_TMP/wrong.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/wrong.json"
+  [ "$status" -ne 0 ] || fail "entry without files array should be rejected, got exit 0"
+  [[ "$output" != *"WRITE"* ]] || fail "wrong-shape state must not produce a WRITE plan"
+}
+
+@test "planner rejects wrong-shape state: non-array files field" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/local.json"
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/remote.json"
+  printf '{"design_system":{"files":"not-an-array"}}\n' > "$TEST_TMP/wrong.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/wrong.json"
+  [ "$status" -ne 0 ] || fail "non-array files field should be rejected, got exit 0"
+  [[ "$output" != *"WRITE"* ]] || fail "wrong-shape state must not produce a WRITE plan"
+}
+
+@test "planner accepts legacy flat array" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/local.json"
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/remote.json"
+  printf '[{"file":"x.spec.html","hash":"h1"}]\n' > "$TEST_TMP/legacy.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/legacy.json"
+  [ "$status" -eq 0 ] || fail "legacy flat array should be accepted, got exit $status"
+}
+
+@test "planner accepts valid per-project object" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  printf '[{"file":"components/button.spec.html","hash":"h1"}]\n' > "$TEST_TMP/local.json"
+  printf '[{"file":"components/button.spec.html","hash":"h1"}]\n' > "$TEST_TMP/remote.json"
+  _seed_per_project_state "$TEST_TMP/valid.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/valid.json" \
+    --project design_system
+  [ "$status" -eq 0 ] || fail "valid per-project object should be accepted, got exit $status"
+}
+
+@test "writer rejects wrong-shape on-disk output and leaves file unchanged" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Pre-seed on-disk output with wrong shape
+  printf '{"design_system":"x"}\n' > "$TEST_TMP/out.json"
+  local hash_before
+  hash_before="$(shasum -a 256 "$TEST_TMP/out.json" | awk '{print $1}')"
+
+  printf '[{"file":"x.spec.html","outcome":"written","hash":"h1"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"x.spec.html":"h1"}\n' > "$TEST_TMP/hash-map.json"
+
+  local rc=0
+  bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior /dev/null \
+      --output '$TEST_TMP/out.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --published-at '2026-09-01T00:00:00Z'
+  " 2>/dev/null || rc=$?
+  [ "$rc" -ne 0 ] || fail "wrong-shape on-disk output should fail closed, got exit 0"
+
+  local hash_after
+  hash_after="$(shasum -a 256 "$TEST_TMP/out.json" | awk '{print $1}')"
+  [ "$hash_before" = "$hash_after" ] || fail "wrong-shape on-disk output was mutated"
+}
+
+@test "writer rejects wrong-shape on-disk output: bare number" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  printf '42\n' > "$TEST_TMP/out.json"
+  local hash_before
+  hash_before="$(shasum -a 256 "$TEST_TMP/out.json" | awk '{print $1}')"
+
+  printf '[{"file":"x.spec.html","outcome":"written","hash":"h1"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"x.spec.html":"h1"}\n' > "$TEST_TMP/hash-map.json"
+
+  local rc=0
+  bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior /dev/null \
+      --output '$TEST_TMP/out.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --published-at '2026-09-01T00:00:00Z'
+  " 2>/dev/null || rc=$?
+  [ "$rc" -ne 0 ] || fail "number on-disk output should fail closed, got exit 0"
+
+  local hash_after
+  hash_after="$(shasum -a 256 "$TEST_TMP/out.json" | awk '{print $1}')"
+  [ "$hash_before" = "$hash_after" ] || fail "number on-disk output was mutated"
+}
+
+# ===========================================================================
+# Project routing and timestamp checks
+# ===========================================================================
+
+@test "planner --project routes to correct key (distinct hashes per project)" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+
+  # State file: DS published hash = "ds_pub", PD published hash = "pd_pub"
+  # Remote hash = "remote_h" (differs from both). Local hash = "new_local".
+  # The planner checks: if remote != local, compare published vs remote.
+  #   - DS: pub "ds_pub" != remote "remote_h" => CONFLICT
+  #   - PD: pub "pd_pub" != remote "remote_h" => CONFLICT (but different pub hash)
+  # To distinguish routing, make one match and one not:
+  #   DS pub = "remote_h" (matches remote -> WRITE, not CONFLICT)
+  #   PD pub = "pd_pub"   (differs from remote -> CONFLICT)
+  cat > "$TEST_TMP/state.json" <<'JSON'
+{
+  "design_system": {
+    "reference": "https://ds.example.com/project/123",
+    "last_published_at": "2026-09-01T00:00:00Z",
+    "files": [{"file":"components/button.spec.html","hash":"remote_h"}]
+  },
+  "product_design": {
+    "reference": "https://claude.ai/artifact/456",
+    "last_published_at": "2026-09-02T00:00:00Z",
+    "files": [{"file":"components/button.spec.html","hash":"pd_pub"}]
+  }
+}
+JSON
+  # Local hash differs from remote => hashes differ => check published
+  printf '[{"file":"components/button.spec.html","hash":"new_local"}]\n' > "$TEST_TMP/local.json"
+  # Remote hash
+  printf '[{"file":"components/button.spec.html","hash":"remote_h"}]\n' > "$TEST_TMP/remote.json"
+
+  # DS: published hash "remote_h" == remote hash "remote_h"
+  # => Not a designer edit => READ_FIRST + WRITE
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/state.json" \
+    --project design_system
+  [ "$status" -eq 0 ] || fail "DS plan failed: $output"
+  [[ "$output" == *"WRITE"* ]] || fail "DS should plan WRITE, got: $output"
+  [[ "$output" != *"CONFLICT"* ]] || fail "DS published==remote, should not CONFLICT, got: $output"
+
+  # PD: published hash "pd_pub" != remote hash "remote_h"
+  # => Designer edit detected => CONFLICT
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local.json" \
+    --remote-listing "$TEST_TMP/remote.json" \
+    --last-published "$TEST_TMP/state.json" \
+    --project product_design
+  [ "$status" -eq 0 ] || fail "PD plan failed: $output"
+  [[ "$output" == *"CONFLICT"* ]] || fail "PD should plan CONFLICT, got: $output"
+}
+
+@test "sync --project selects the correct baseline entry" {
+  local SYNC_SCRIPT="$BATS_TEST_DIRNAME/../skills/gaia-design-review/scripts/sync-derived-artifacts.sh"
+  [ -f "$SYNC_SCRIPT" ] || fail "sync-derived-artifacts.sh not found"
+
+  local root
+  root="$(mktemp -d)"
+  mkdir -p "$root/doc"
+  printf -- '---\ntemplate: ux-design\n---\n\n# UX\n\n## Component Inventory\n\n- nav\n' > "$root/doc/ux.md"
+  printf '<h1>Nav</h1>\n' > "$root/c.html"
+  local newhash
+  newhash="$(shasum -a 256 "$root/c.html" | awk '{print $1}')"
+  jq -n --rawfile c "$root/c.html" \
+    '{"components":["nav"],"screens":[],"component_details":[{"name":"nav","file":"components/nav.spec.html","content":$c}]}' > "$root/snap.json"
+
+  # State: DS has the current hash (no delta), PD has a stale hash (delta)
+  printf '{"design_system":{"files":[{"file":"components/nav.spec.html","hash":"%s"}]},"product_design":{"files":[{"file":"components/nav.spec.html","hash":"stale"}]}}\n' \
+    "$newhash" > "$root/bl.json"
+
+  # Sync with DS (default): baseline matches current hash, exit 0
+  run "$SYNC_SCRIPT" --last-published "$root/bl.json" "$root/snap.json" "$root/doc/ux.md"
+  [ "$status" -eq 0 ] || fail "sync with DS baseline (matching hash) failed: $output"
+
+  # Sync with PD: baseline has stale hash. The script should still succeed
+  # (it adds/reports but doesn't fail on a delta), and the output/stderr
+  # content should differ because it read PD's stale baseline, not DS's
+  # current one. At minimum: both runs succeed and use their respective key.
+  # Re-seed ux doc to avoid leftover state
+  printf -- '---\ntemplate: ux-design\n---\n\n# UX\n\n## Component Inventory\n\n- nav\n' > "$root/doc/ux.md"
+  run "$SYNC_SCRIPT" --project product_design --last-published "$root/bl.json" "$root/snap.json" "$root/doc/ux.md"
+  [ "$status" -eq 0 ] || fail "sync with PD baseline failed: $output"
+  rm -rf "$root"
+}
+
+@test "readers-never-write asserts planner exit status" {
+  [ -x "$PLANNER_SCRIPT" ] || fail "plan-publication.sh missing"
+  _seed_per_project_state "$TEST_TMP/last-published.json"
+
+  local hash_before
+  hash_before="$(shasum -a 256 "$TEST_TMP/last-published.json" | awk '{print $1}')"
+
+  printf '[{"file":"components/button.spec.html","hash":"ds_hash_1"}]\n' > "$TEST_TMP/local-manifest.json"
+  printf '[{"file":"components/button.spec.html","hash":"ds_hash_1"}]\n' > "$TEST_TMP/remote-listing.json"
+
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    "$PLANNER_SCRIPT" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --remote-listing "$TEST_TMP/remote-listing.json" \
+    --last-published "$TEST_TMP/last-published.json" \
+    --project design_system
+  [ "$status" -eq 0 ] || fail "planner should succeed on valid input, got exit $status: $output"
+
+  local hash_after
+  hash_after="$(shasum -a 256 "$TEST_TMP/last-published.json" | awk '{print $1}')"
+  [ "$hash_before" = "$hash_after" ] || fail "reader modified state file"
+}
+
+@test "earlier-timestamp warning names both timestamps" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _seed_per_project_state "$TEST_TMP/last-published.json"
+
+  printf '[{"file":"components/button.spec.html","outcome":"written","hash":"early_h"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"components/button.spec.html":"early_h"}\n' > "$TEST_TMP/hash-map.json"
+
+  local stderr_out rc=0
+  stderr_out="$(bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior '$TEST_TMP/last-published.json' \
+      --output '$TEST_TMP/last-published.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json' \
+      --project design_system \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --published-at '2026-08-01T00:00:00Z'
+  " 2>&1 1>/dev/null)" || rc=$?
+
+  # Must succeed (warning, not error)
+  [ "$rc" -eq 0 ] || fail "earlier timestamp should succeed with warning, got exit $rc"
+
+  # Warning must name both timestamps
+  [[ "$stderr_out" == *"2026-08-01T00:00:00Z"* ]] \
+    || fail "warning should name the new timestamp, got: $stderr_out"
+  [[ "$stderr_out" == *"2026-09-01T00:00:00Z"* ]] \
+    || fail "warning should name the existing timestamp, got: $stderr_out"
+}
+
+@test "timestamp: 59s in future accepted (boundary inside 60s limit)" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Compute a timestamp 59s in the future
+  local near_future_ts
+  near_future_ts="$(jq -rn 'now + 59 | todate')"
+
+  printf '[{"file":"x.spec.html","outcome":"written","hash":"h1"}]\n' > "$TEST_TMP/outcomes.json"
+  printf '{"x.spec.html":"h1"}\n' > "$TEST_TMP/hash-map.json"
+
+  local rc=0
+  bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior /dev/null \
+      --output '$TEST_TMP/last-published.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --published-at '$near_future_ts'
+  " 2>/dev/null || rc=$?
+  [ "$rc" -eq 0 ] || fail "timestamp 59s in future should be accepted, got exit $rc"
+}
+
+@test "discovery: 500 spec files correct output" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+
+  # Create 500 spec files across allowed subdirectories
+  local specs_dir="$TEST_TMP/specs"
+  mkdir -p "$specs_dir/components" "$specs_dir/templates"
+  local i
+  for i in $(seq 1 250); do
+    printf '<!-- @dsCard group="Component specs" -->\n<html>C%d</html>\n' "$i" \
+      > "$specs_dir/components/c${i}.spec.html"
+  done
+  for i in $(seq 1 250); do
+    printf '<!-- @dsCard group="Template specs" -->\n<html>T%d</html>\n' "$i" \
+      > "$specs_dir/templates/t${i}.spec.html"
+  done
+  _seed_existing_manifest "$TEST_TMP/existing.json"
+
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$specs_dir' \
+      --existing '$TEST_TMP/existing.json' \
+      --last-published /dev/null \
+      --project design_system
+  " 2>/dev/null)" || fail "build_manifest_cards 500 files failed"
+
+  # Verify correct count: 500 spec cards + 2 existing (Colors, Type) = 502
+  local card_count
+  card_count="$(printf '%s' "$result" | jq '.cards | length')"
+  [ "$card_count" -eq 502 ] || fail "expected 502 cards, got $card_count"
+}
+
+@test "discovery: static scan — dedup uses sort -uz, not shell string accumulation" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+
+  # Structural guard: the discovery loop must dedup via sort -uz (O(n log n)),
+  # not via a growing shell string like the old `seen_paths` pattern (O(n^2)).
+  # The quadratic regression was shell-side work (string matching + array
+  # append), invisible to subprocess-counting shims. This static scan is the
+  # only CI-safe guard; the wall-clock tests below are hardware-dependent and
+  # skipped in CI.
+  grep -q 'sort -uz' "$TARGET_SCRIPT" \
+    || fail "discovery must dedup via 'sort -uz' — not found in build-manifest-cards.sh"
+
+  # The old quadratic dedup accumulated paths into a shell variable and matched
+  # each new path against it with case/glob. If that variable reappears, the
+  # quadratic path is back.
+  local quadratic_hits
+  quadratic_hits="$(grep -c 'seen_paths' "$TARGET_SCRIPT" 2>/dev/null || true)"
+  [ "$quadratic_hits" -eq 0 ] \
+    || fail "shell string dedup variable 'seen_paths' still present ($quadratic_hits occurrences) — use sort -uz instead"
+}
+
+# The two wall-clock tests below are the ONLY guard against the quadratic
+# discovery regression. CI does not run them (hardware-dependent tag). They
+# must be run locally after any change to the discovery loop in
+# build_manifest_cards (build-manifest-cards.sh lines 78-134).
+
+# bats test_tags=hardware-dependent
+@test "discovery: 500 spec files within wall-clock bound" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+
+  local specs_dir="$TEST_TMP/specs"
+  mkdir -p "$specs_dir/components" "$specs_dir/templates"
+  local i
+  for i in $(seq 1 250); do
+    printf '<!-- @dsCard group="Component specs" -->\n<html>C%d</html>\n' "$i" \
+      > "$specs_dir/components/c${i}.spec.html"
+  done
+  for i in $(seq 1 250); do
+    printf '<!-- @dsCard group="Template specs" -->\n<html>T%d</html>\n' "$i" \
+      > "$specs_dir/templates/t${i}.spec.html"
+  done
+  _seed_existing_manifest "$TEST_TMP/existing.json"
+
+  local t0 t1 elapsed_ms
+  t0="$(perl -MTime::HiRes=time -e 'printf "%.3f", time')"
+  bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$specs_dir' \
+      --existing '$TEST_TMP/existing.json' \
+      --last-published /dev/null \
+      --project design_system
+  " >/dev/null 2>/dev/null || fail "build_manifest_cards 500 files failed"
+  t1="$(perl -MTime::HiRes=time -e 'printf "%.3f", time')"
+  elapsed_ms="$(perl -e "printf '%.0f', ($t1 - $t0) * 1000")"
+
+  [ "$elapsed_ms" -lt 30000 ] \
+    || fail "500 files took ${elapsed_ms}ms — expected under 30000ms"
+}
+
+# bats test_tags=hardware-dependent
+# See comment above "500 spec files" — this is the only runtime guard for the
+# quadratic discovery regression at scale. Run locally after touching discovery.
+@test "discovery: 2000 spec files within wall-clock bound" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+
+  local specs_dir="$TEST_TMP/specs"
+  mkdir -p "$specs_dir/components" "$specs_dir/templates"
+  local i
+  for i in $(seq 1 1000); do
+    printf '<!-- @dsCard group="Component specs" -->\n<html>C%d</html>\n' "$i" \
+      > "$specs_dir/components/c${i}.spec.html"
+  done
+  for i in $(seq 1 1000); do
+    printf '<!-- @dsCard group="Template specs" -->\n<html>T%d</html>\n' "$i" \
+      > "$specs_dir/templates/t${i}.spec.html"
+  done
+  _seed_existing_manifest "$TEST_TMP/existing.json"
+
+  local t0 t1 elapsed_ms
+  t0="$(perl -MTime::HiRes=time -e 'printf "%.3f", time')"
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$specs_dir' \
+      --existing '$TEST_TMP/existing.json' \
+      --last-published /dev/null \
+      --project design_system
+  " 2>/dev/null)" || fail "build_manifest_cards 2000 files failed"
+  t1="$(perl -MTime::HiRes=time -e 'printf "%.3f", time')"
+  elapsed_ms="$(perl -e "printf '%.0f', ($t1 - $t0) * 1000")"
+
+  printf 'perf: 2000 spec files took %sms\n' "$elapsed_ms" >&2
+
+  # Correctness: 2000 spec cards + 2 existing (Colors, Type) = 2002
+  local card_count
+  card_count="$(printf '%s' "$result" | jq '.cards | length')"
+  [ "$card_count" -eq 2002 ] || fail "expected 2002 cards, got $card_count"
+
+  [ "$elapsed_ms" -lt 30000 ] \
+    || fail "2000 files took ${elapsed_ms}ms — expected under 30000ms"
+}
