@@ -229,6 +229,53 @@ JSON
   [ "$screen_count" -eq 2 ] || fail "expected 2 screen spec cards in PD partition, got $screen_count"
 }
 
+@test "existing designer cards partition correctly for product_design carry-over" {
+  [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
+  # Seed 1 screen spec on disk
+  mkdir -p "$TEST_TMP/specs/screens"
+  printf '<!-- @dsCard group="Screen specs" -->\n<html>Login</html>\n' > "$TEST_TMP/specs/screens/login.spec.html"
+
+  # Existing manifest carries designer cards from BOTH partitions:
+  # a component card (design_system territory) and a flow card (product_design territory)
+  cat > "$TEST_TMP/existing-manifest.json" <<'JSON'
+{"cards":[
+  {"path":"components/header.spec.html","group":"Component specs","designer":true},
+  {"path":"flows/onboarding.spec.html","group":"Flow specs","designer":true},
+  {"path":"screens/old.spec.html","group":"Screen specs","designer":true}
+]}
+JSON
+
+  local result
+  result="$(bash -c "
+    source '$TARGET_SCRIPT'
+    build_manifest_cards \
+      --local-specs '$TEST_TMP/specs' \
+      --existing '$TEST_TMP/existing-manifest.json' \
+      --last-published /dev/null \
+      --project product_design
+  " 2>/dev/null)" || fail "build_manifest_cards --project product_design failed"
+
+  # The component card must NOT appear (it belongs to design_system)
+  local comp_count
+  comp_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path | startswith("components/"))] | length')"
+  [ "$comp_count" -eq 0 ] || fail "component card carried over to product_design (should be filtered), got $comp_count"
+
+  # The flow designer card must appear (flows/ routes to product_design)
+  local flow_count
+  flow_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "flows/onboarding.spec.html")] | length')"
+  [ "$flow_count" -eq 1 ] || fail "flow designer card not carried over for product_design, got $flow_count"
+
+  # The screen designer card must appear (screens/ routes to product_design)
+  local screen_designer_count
+  screen_designer_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "screens/old.spec.html")] | length')"
+  [ "$screen_designer_count" -eq 1 ] || fail "screen designer card not carried over for product_design, got $screen_designer_count"
+
+  # The on-disk screen spec must also be present
+  local login_count
+  login_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path == "screens/login.spec.html")] | length')"
+  [ "$login_count" -eq 1 ] || fail "on-disk login screen spec not present, got $login_count"
+}
+
 @test "(AC-EC3) corrupted existing manifest replaced, not halted" {
   [ -f "$TARGET_SCRIPT" ] || fail "build-manifest-cards.sh does not exist"
   _seed_spec_tree "$TEST_TMP/specs"

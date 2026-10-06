@@ -1591,10 +1591,9 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention routing to the resolve procedure when product_design_project
-  # is null
-  # Must mention product_design_project null AND routing to the resolve procedure
-  # on the same line (not just "starts as null" in a different context)
-  printf '%s' "$full" | grep -qiE 'product_design_project.*is null.*resolve|product_design_project.*is null.*procedure|product_design_project.*null.*route' \
+  # is null — either explicitly for the null case alone, or as part of an
+  # always-route that covers both null and non-null.
+  printf '%s' "$full" | grep -qiE 'product_design_project.*is null.*resolve|product_design_project.*is null.*procedure|product_design_project.*null.*route|product_design_project.*null.*Resolve Product Design' \
     || fail "no routing for null product_design_project to resolve procedure"
 }
 
@@ -2563,15 +2562,38 @@ TOKENS
   rm -rf "$tmp_root"
 }
 
-@test "re-run with both projects recorded performs the canvas read-back" {
-  # When both projects are already recorded, the gate still needs a read-back.
-  # The SKILL.md must describe how the read-back runs in that case.
-  local gate_section
-  gate_section="$(awk '/Screen-publication gate/{found=1} found{print} /^### Step 10/{exit}' "$SKILL_MD")"
-  [ -n "$gate_section" ] || fail "no Screen-publication gate"
-  # Condition 3 must specify how the read-back applies to existing projects
-  printf '%s' "$gate_section" | grep -qiE 'existing.*canvas.*read.back|read.back.*succeeded' \
-    || fail "gate condition 3 does not mention read-back for existing projects"
+@test "re-run with both projects recorded routes to the resolve procedure for canvas read-back" {
+  # When both projects are already recorded, the callers must still route to
+  # the resolve procedure so the Record-first path performs the canvas
+  # read-back that the screen-publication gate needs.
+  local full
+  full="$(cat "$SKILL_MD")"
+  # The existing-record caller (first numbered item in Step 2) must route to the resolve
+  # procedure regardless of whether product_design_project is null or non-null.
+  local step2_record
+  step2_record="$(printf '%s\n' "$full" | awk '/Check for an existing record/{found=1} found && /^[0-9]+\. \*\*Pass 1/{exit} found{print}')"
+  [ -n "$step2_record" ] || fail "no existing-record paragraph"
+  # Must mention routing when product_design_project is non-null
+  printf '%s' "$step2_record" | grep -qiE 'non.null.*canvas.*read.back|non.null.*gate|whether.*null.*non.null' \
+    || fail "existing-record caller does not route on non-null product_design_project"
+  # The Record-first bullet must list files before reading canvas.json
+  local resolve_section
+  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  [ -n "$resolve_section" ] || fail "no resolve procedure section"
+  local record_first
+  record_first="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found && /User pick/{exit} found{print}')"
+  [ -n "$record_first" ] || fail "no Record-first bullet"
+  # Record-first must mention listing files and canvas read-back
+  printf '%s' "$record_first" | grep -qiE 'list.*files.*first|list.*canvas.*files' \
+    || fail "Record-first does not list files before reading"
+  printf '%s' "$record_first" | grep -qiE 'canvas.*read.back|read.*project/canvas\.json' \
+    || fail "Record-first does not mention canvas read-back"
+  # The Step 3 questionnaire-skip path must also route on non-null
+  local step3_skip
+  step3_skip="$(printf '%s\n' "$full" | awk '/Step 3.*Stakeholder Questionnaire/{found=1} found{print} /^### Step 4/{exit}')"
+  [ -n "$step3_skip" ] || fail "no Step 3 skip text"
+  printf '%s' "$step3_skip" | grep -qiE 'whether.*null.*non.null|non.null.*canvas' \
+    || fail "Step 3 skip path does not route on non-null product_design_project"
 }
 
 # ===========================================================================
@@ -2656,10 +2678,13 @@ TOKENS
 # empty name and trailing tab handling
 # ===========================================================================
 
-@test "validate-token-value.sh refuses a line with an empty name" {
+@test "validate-token-value.sh refuses a line with an empty name and a dashed value" {
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
   local stdout_out stderr_out
-  stdout_out="$(printf '\tsome-value\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  # Use a value starting with -- so that the old IFS-tab loop would misread
+  # it as a valid name (the new whole-line-then-split loop correctly treats
+  # the leading empty field as the name).
+  stdout_out="$(printf '\t--some-value\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
   printf '%s' "$stderr_out" | grep -qF 'refused' \
     || fail "empty name not refused on stderr: $stderr_out"
@@ -2708,4 +2733,127 @@ TOKENS
   [ -n "$write_step" ] || fail "no write_files in design-system pass steps"
   [ "$vpt_step" -lt "$write_step" ] \
     || fail "verify-publication-target (step at line $vpt_step) not before write_files (step at line $write_step)"
+}
+
+# ===========================================================================
+# Record-first lists files before reading canvas.json
+# ===========================================================================
+
+@test "Record-first path lists canvas files before reading canvas.json" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  local resolve_section
+  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  [ -n "$resolve_section" ] || fail "no resolve procedure section"
+  local record_first
+  record_first="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found && /User pick/{exit} found{print}')"
+  [ -n "$record_first" ] || fail "no Record-first bullet"
+  # The listing must come before the canvas read-back.
+  # Since the entire Record-first bullet may be on one line, compare byte
+  # positions of the listing instruction and the read-back instruction.
+  printf '%s' "$record_first" | grep -qiF 'list' \
+    || fail "Record-first does not mention listing files"
+  printf '%s' "$record_first" | grep -qiF 'canvas read-back' \
+    || fail "Record-first does not mention canvas read-back"
+  local list_pos readback_pos
+  list_pos="$(printf '%s' "$record_first" | grep -bioF 'List the canvas files' | head -1 | cut -d: -f1 || true)"
+  readback_pos="$(printf '%s' "$record_first" | grep -bioF 'canvas read-back' | head -1 | cut -d: -f1 || true)"
+  [ -n "$list_pos" ] || fail "cannot find listing position"
+  [ -n "$readback_pos" ] || fail "cannot find canvas read-back position"
+  [ "$list_pos" -lt "$readback_pos" ] \
+    || fail "listing (byte $list_pos) not before canvas read-back (byte $readback_pos) in Record-first"
+  # Empty listing must skip the read entirely
+  printf '%s' "$record_first" | grep -qiE 'empty.*without.*read|empty.*not.*read|empty.*creation.*sequence' \
+    || fail "Record-first does not skip canvas.json read on empty listing"
+}
+
+# ===========================================================================
+# Token name character check after prefix
+# ===========================================================================
+
+@test "validate-token-value.sh refuses name with valid prefix but disallowed character" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  # Name starts with -- but contains : and } and < which are not in [A-Za-z0-9_-]
+  stdout_out="$(printf -- '--x:1}</style><script>\tvalue\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "name with disallowed characters not refused on stderr: $stderr_out"
+  [ -z "$stdout_out" ] || fail "name with disallowed characters refused but still on stdout: $stdout_out"
+}
+
+@test "validate-token-value.sh refuses name with dot after prefix" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf -- '--color.primary\t#2563EB\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "dotted name not refused on stderr: $stderr_out"
+  [ -z "$stdout_out" ] || fail "dotted name refused but still on stdout: $stdout_out"
+}
+
+@test "validate-token-value.sh refuses name with space after prefix" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf -- '--my token\tvalue\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "name with space not refused on stderr: $stderr_out"
+  [ -z "$stdout_out" ] || fail "name with space refused but still on stdout: $stdout_out"
+}
+
+# ===========================================================================
+# Creating-write exemption list includes empty-canvas first publish
+# ===========================================================================
+
+@test "creating-write exemption list includes the first content publish to an empty canvas" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # The pre-write target check paragraph lists creating-write exemptions
+  local target_check_para
+  target_check_para="$(printf '%s\n' "$full" | awk '/Pre-write target check/{found=1} found && /^#### /{exit} found{print}')"
+  [ -n "$target_check_para" ] || fail "no pre-write target check paragraph"
+  # Must mention empty canvas in the creating-write exemption list
+  printf '%s' "$target_check_para" | grep -qiE 'creating.write.*empty.*canvas|empty.*canvas.*creating.write|first.*content.*publish.*empty.*canvas' \
+    || fail "creating-write exemptions do not mention the first content publish to an empty canvas"
+}
+
+# ===========================================================================
+# Token name mapping from dotted to custom-property form
+# ===========================================================================
+
+@test "token name mapping describes dotted-to-kebab conversion with double-dash prefix" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must describe: dots become hyphens, -- prefix added
+  printf '%s' "$pd_section" | grep -qiE 'dot.*hyphen|dots.*replace.*hyphen|dotted.*becomes.*--' \
+    || fail "no dotted-to-hyphen mapping in token name text"
+  # Must state that names already starting with -- are used as-is
+  printf '%s' "$pd_section" | grep -qiE 'already.*starts.*--.*as.is|already.*--.*used.*as.is' \
+    || fail "no as-is rule for names already starting with --"
+  # Must state the template never produces ----name
+  printf '%s' "$pd_section" | grep -qF -- '----' \
+    || fail "no mention of preventing ----name in the template"
+}
+
+# ===========================================================================
+# Step 4 ordering: no write_files before finalize_plan in the full block
+# ===========================================================================
+
+@test "Step 4: no write_files precedes any finalize_plan in the block" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Creation")"
+  [ -n "$block" ] || fail "no Creation step block"
+  # Find the line number of the FIRST finalize_plan
+  local first_fp
+  first_fp="$(printf '%s\n' "$block" | grep -nF 'finalize_plan' | head -1 | cut -d: -f1 || true)"
+  [ -n "$first_fp" ] || fail "finalize_plan not found in Creation step"
+  # Assert no write_files appears before the first finalize_plan
+  local early_wf
+  early_wf="$(printf '%s\n' "$block" | head -n "$((first_fp - 1))" | grep -nF 'write_files' || true)"
+  [ -z "$early_wf" ] || fail "write_files appears before finalize_plan at line(s): $early_wf"
 }
