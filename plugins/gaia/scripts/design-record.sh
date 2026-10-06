@@ -1819,9 +1819,11 @@ cmd_record_review_coverage() {
   # Split comma-separated values, deduplicate, sort
   local -a raw_values=()
   local IFS=','
+  set -f  # disable glob expansion during the split
   for val in $coverage; do
     raw_values+=("$val")
   done
+  set +f
   unset IFS
 
   # Deduplicate and sort

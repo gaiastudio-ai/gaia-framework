@@ -136,9 +136,17 @@ for open_m, close_m in MARKER_PAIRS:
         )
         sys.exit(2)
 
-    # Pair i-th OPEN with the i-th CLOSE (from the end: last OPEN with last CLOSE,
-    # etc., to handle embedded markers correctly). Reversed pairing: pair opens[i]
-    # with closes[len(closes)-len(opens)+i].
+    # Unmatched: closes with no opens
+    if len(opens) == 0 and len(closes) > 0:
+        sys.stderr.write(
+            "verdict-provenance-check.sh: unmatched close marker (no matching open): %s\n" % close_m
+        )
+        sys.exit(2)
+
+    # Pair i-th OPEN with the i-th CLOSE. When the counts match,
+    # pairing is direct (opens[i] with closes[i]). When there are
+    # extra closes, the surplus are treated as embedded markers
+    # (the defence is at write time via the shared escape).
     n_opens = len(opens)
     n_closes = len(closes)
     offset = n_closes - n_opens  # extra closes consumed as embedded markers

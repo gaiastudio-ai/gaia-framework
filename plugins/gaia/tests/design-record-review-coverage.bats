@@ -330,3 +330,44 @@ except jsonschema.ValidationError:
   [ "$coverage" = '["design-system","product-design"]' ] \
     || fail "expected both coverage values after set-product-project, got: $coverage"
 }
+
+
+# =========================================================================
+# Coverage value split is not subject to glob expansion
+# =========================================================================
+
+@test "coverage glob expansion blocked by globbing guard" {
+  # Create files named like coverage values in the current directory
+  local trap_dir
+  trap_dir="$(mktemp -d)"
+  touch "$trap_dir/design-system"
+  touch "$trap_dir/product-design"
+
+  # Prepare a minimal design record for the verb to work on
+  local record_dir="$trap_dir/.gaia/state"
+  mkdir -p "$record_dir"
+  cat > "$record_dir/design-record.yaml" <<'YAML'
+design_state: review
+iteration: 1
+reviews: []
+approvals: []
+audit: []
+YAML
+  mkdir -p "$trap_dir/.gaia/config"
+  cat > "$trap_dir/.gaia/config/project-config.yaml" <<'YAML'
+project_name: test
+YAML
+
+  # Run with --coverage "design-*" from the trap directory.
+  # Before the fix, * would glob-expand to the filenames.
+  run env PROJECT_ROOT="$trap_dir" \
+    bash -c "cd '$trap_dir' && '$DREC_SCRIPT' record-review-coverage --coverage 'design-*'"
+
+  # Must reject the unknown value "design-*" (not expand to filenames)
+  [ "$status" -ne 0 ] || \
+    fail "should reject 'design-*' as unknown coverage value (exit $status): $output"
+  [[ "$output" == *'unknown coverage value'* ]] || \
+    fail "expected 'unknown coverage value' diagnostic: $output"
+
+  rm -rf "$trap_dir"
+}

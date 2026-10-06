@@ -27,13 +27,86 @@ _sha256_file() {
 
 SYNC_SCRIPT=""
 
+# _find_enclosing_project — walk up from the test file's directory to find
+# the nearest .gaia/config/project-config.yaml.  Returns the project root
+# or empty if none exists (e.g. CI checkout with no enclosing project).
+_find_enclosing_project() {
+  local dir
+  dir="$(cd "$BATS_TEST_DIRNAME" && pwd)"
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/.gaia/config/project-config.yaml" ]; then
+      printf '%s' "$dir"
+      return
+    fi
+    dir="$(dirname "$dir")"
+  done
+}
+
+setup_file() {
+  # Snapshot the real baseline state once per file, so teardown can
+  # detect a leak without ever deleting or modifying the file.
+  _ENCLOSING_PROJECT="$(_find_enclosing_project)"
+  export _ENCLOSING_PROJECT
+  if [ -n "$_ENCLOSING_PROJECT" ]; then
+    _REAL_BASELINE="${_ENCLOSING_PROJECT}/.gaia/state/design-token-baseline.json"
+    export _REAL_BASELINE
+    if [ -f "$_REAL_BASELINE" ]; then
+      _BASELINE_EXISTED=true
+      if command -v sha256sum >/dev/null 2>&1; then
+        _BASELINE_HASH="$(sha256sum "$_REAL_BASELINE" | awk '{print $1}')"
+      else
+        _BASELINE_HASH="$(shasum -a 256 "$_REAL_BASELINE" | awk '{print $1}')"
+      fi
+    else
+      _BASELINE_EXISTED=false
+      _BASELINE_HASH=""
+    fi
+    export _BASELINE_EXISTED _BASELINE_HASH
+  fi
+}
+
 setup() {
   common_setup
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SYNC_SCRIPT="$PLUGIN_ROOT/skills/gaia-design-review/scripts/sync-derived-artifacts.sh"
+  # Isolate every test from the real project's config tree. Export
+  # PROJECT_ROOT to a temp directory with no .gaia/config/ ancestor,
+  # so the walk-up in _resolve_token_baseline never reaches the real
+  # project and never writes the real baseline.
+  export PROJECT_ROOT="$TEST_TMP"
 }
 
-teardown() { common_teardown; }
+teardown() {
+  common_teardown
+  # Safety guard: detect if any test changed the real baseline.
+  # Never delete or modify the file — it may be legitimate state.
+  # On CI or when no enclosing project exists, skip silently.
+  [ -n "${_ENCLOSING_PROJECT:-}" ] || return 0
+  if [ "$_BASELINE_EXISTED" = true ]; then
+    # File existed before the suite — verify it was not changed
+    if [ ! -f "$_REAL_BASELINE" ]; then
+      printf 'TEARDOWN FAILURE: test deleted the real baseline %s\n' "$_REAL_BASELINE" >&2
+      return 1
+    fi
+    local current_hash
+    if command -v sha256sum >/dev/null 2>&1; then
+      current_hash="$(sha256sum "$_REAL_BASELINE" | awk '{print $1}')"
+    else
+      current_hash="$(shasum -a 256 "$_REAL_BASELINE" | awk '{print $1}')"
+    fi
+    if [ "$current_hash" != "$_BASELINE_HASH" ]; then
+      printf 'TEARDOWN FAILURE: test modified the real baseline %s (hash %s -> %s)\n' \
+        "$_REAL_BASELINE" "$_BASELINE_HASH" "$current_hash" >&2
+      return 1
+    fi
+  else
+    # File did not exist before — it must not have been created
+    if [ -f "$_REAL_BASELINE" ]; then
+      printf 'TEARDOWN FAILURE: test created the real baseline %s\n' "$_REAL_BASELINE" >&2
+      return 1
+    fi
+  fi
+}
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -2087,6 +2160,7 @@ UX
   # Golden expected output — generated from the current script
   local expected="$root/expected.txt"
   cat > "$expected" <<'GOLDEN'
+sync: component "nav" is in ux-design.md but absent from the project snapshot (not removed — reporting only)
 sync: screen "Settings" changed (file: screens/s1.html)
 <<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
 <h1>Settings</h1>
@@ -3023,11 +3097,13 @@ template: ux-design
 | Component | Source |
 |-----------|--------|
 | CardTemplate | Custom |
+| OldWidget | Legacy |
 
 ## Design Record Reference
 UX
 
   # CardTemplate is in templates (not components) — the union should include it
+  # OldWidget is absent from both — positive control for the absence report
   local snapshot="$root/snapshot.json"
   jq -n '{"design_system":{"components":[],"templates":["CardTemplate"]}}' \
     > "$snapshot"
@@ -3039,6 +3115,49 @@ UX
   # Must NOT report CardTemplate as absent — it is in the templates union
   [[ "$output" != *'CardTemplate'*'absent'* ]] || \
     fail "CardTemplate reported as absent despite being in templates: $output"
+
+  # Must report OldWidget as absent — positive control
+  [[ "$output" == *'OldWidget'*'absent'* ]] || \
+    fail "OldWidget should be reported as absent (positive control): $output"
+
+  rm -rf "$root"
+}
+
+@test "empty components and templates still reports doc components as absent" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Button | Custom |
+
+## Design Record Reference
+UX
+
+  # Both components and templates are empty
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":[],"templates":[]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must report Button as absent even with empty snapshot
+  [[ "$output" == *'Button'*'absent'* ]] || \
+    fail "Button should be reported as absent when snapshot has no components: $output"
 
   rm -rf "$root"
 }
@@ -3126,9 +3245,67 @@ UX
 
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
-  # Must produce a reconciliation finding
-  [[ "$output" == *'reconciliation'*'--primary-color'*'#3B82F6'*'#2563EB'*'login'* ]] || \
-    fail "expected reconciliation finding for --primary-color: $output"
+  # Must produce exactly one reconciliation finding with the exact pinned line
+  local recon_lines
+  recon_lines="$(printf '%s\n' "$output" | grep -c 'reconciliation (medium)' || true)"
+  [ "$recon_lines" -eq 1 ] || \
+    fail "expected exactly 1 reconciliation finding, got $recon_lines: $output"
+  [[ "$output" == *'reconciliation (medium): token --primary-color #3B82F6 -> #2563EB affects screen login'* ]] || \
+    fail "expected exact reconciliation line for --primary-color: $output"
+
+  # Baseline must be updated with the new value
+  local baseline_val
+  baseline_val="$(jq -r '."--primary-color"' "$tok_baseline")"
+  [ "$baseline_val" = "#2563EB" ] || \
+    fail "baseline should hold the new value #2563EB, got: $baseline_val"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+@test "token change with non-referencing screen produces no finding for it" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/tok-nonref-baseline-$$.json"
+  printf '{"--primary-color":"#3B82F6"}\n' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary-color":"#2563EB"}},
+          "product_design":{"screens":[
+            {"name":"login","file":"screens/login.spec.html","content":"body { color: var(--primary-color); }"},
+            {"name":"about","file":"screens/about.spec.html","content":"body { color: var(--other-token); }"}
+          ]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must produce a finding for login but not for about
+  [[ "$output" == *'affects screen login'* ]] || \
+    fail "expected reconciliation finding for login: $output"
+  [[ "$output" != *'affects screen about'* ]] || \
+    fail "about does not reference --primary-color, should have no finding: $output"
 
   rm -f "$tok_baseline"
   rm -rf "$root"
@@ -3224,6 +3401,13 @@ UX
   # Baseline must be created
   [ -f "$tok_baseline" ] || fail "baseline file not created at $tok_baseline"
 
+  # Baseline must hold both tokens
+  local bl_primary bl_bg
+  bl_primary="$(jq -r '."--primary-color"' "$tok_baseline")"
+  bl_bg="$(jq -r '."--bg-color"' "$tok_baseline")"
+  [ "$bl_primary" = "#3B82F6" ] || fail "baseline --primary-color should be #3B82F6, got: $bl_primary"
+  [ "$bl_bg" = "#FFFFFF" ] || fail "baseline --bg-color should be #FFFFFF, got: $bl_bg"
+
   # No reconciliation findings on first sync
   [[ "$output" != *'reconciliation'* ]] || \
     fail "first sync should not produce reconciliation findings: $output"
@@ -3272,8 +3456,11 @@ UX
 
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
-  # Baseline must be updated
+  # Baseline must be updated with the new value
   [ -f "$tok_baseline" ] || fail "baseline file missing"
+  local bl_val
+  bl_val="$(jq -r '."--primary-color"' "$tok_baseline")"
+  [ "$bl_val" = "#2563EB" ] || fail "baseline should be updated to #2563EB, got: $bl_val"
 
   # No reconciliation findings (no product_design screens to scan)
   [[ "$output" != *'reconciliation'* ]] || \
@@ -3361,16 +3548,22 @@ UX
   jq -n '{"design_system":{"components":["nav"],"tokens":{"--color":"#000"}}}' \
     > "$snapshot"
 
-  # No --token-baseline, no PROJECT_ROOT, no .gaia/config
+  # Run from inside root (no .gaia/config ancestor) so the walk-up
+  # cannot find a real project config and leak a baseline write.
   run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    -C "$root" \
     "$SYNC_SCRIPT" --project design_system \
     "$snapshot" "$doc_dir/ux-design.md"
 
   [ "$status" -eq 0 ] || fail "sync should continue without error (exit $status): $output"
 
+  # The skip warning must appear on stderr (captured by bats `run`)
+  [[ "$output" == *'no project config folder'*'skipping token baseline'* ]] || \
+    fail "expected 'no project config folder ... skipping token baseline' warning: $output"
+
   # No baseline file should exist anywhere under root
   local baseline_count
-  baseline_count="$(find "$root" -name 'design-token-baseline.json' 2>/dev/null | wc -l)"
+  baseline_count="$(find "$root" -name 'design-token-baseline.json' 2>/dev/null | wc -l | tr -d ' ')"
   [ "$baseline_count" -eq 0 ] || \
     fail "baseline should not be written when no project config folder exists"
 
@@ -3382,7 +3575,7 @@ UX
 # Token with control character skipped with diagnostic
 # =========================================================================
 
-@test "token with control character skipped with diagnostic" {
+@test "token with control character in name skipped with diagnostic" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
@@ -3417,6 +3610,154 @@ UX
 
   # Run should continue (not hard-fail) but emit a diagnostic
   [ "$status" -eq 0 ] || fail "sync should continue past control-char token (exit $status): $output"
+  # The diagnostic must name the skipped token
+  [[ "$output" == *'skipping token with control character'* ]] || \
+    fail "expected diagnostic for control-char token name: $output"
+  # The bad token must not appear in the baseline
+  jq -e '."--bad\ttoken" // empty' "$tok_baseline" >/dev/null 2>&1 && \
+    fail "bad token should not be in the baseline"
+  # The normal token must still be updated
+  local normal_val
+  normal_val="$(jq -r '."--normal"' "$tok_baseline")"
+  [ "$normal_val" = "#111" ] || \
+    fail "normal token should be updated in baseline, got: $normal_val"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+@test "token with control character in value skipped with diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/ctrl-val-baseline-$$.json"
+  printf '{"--normal":"#000"}\n' > "$tok_baseline"
+
+  # Token VALUE with a control character (tab)
+  local snapshot="$root/snapshot.json"
+  printf '{"design_system":{"components":["nav"],"tokens":{"--bad-val":"2\\tX","--normal":"#111"}}}\n' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync should continue past control-char value (exit $status): $output"
+  [[ "$output" == *'skipping token with control character'* ]] || \
+    fail "expected diagnostic for control-char token value: $output"
+  # The bad-value token must not appear in the baseline
+  jq -e '."--bad-val" // empty' "$tok_baseline" >/dev/null 2>&1 && \
+    fail "token with control-char value should not be in the baseline"
+  # The normal token must still be updated
+  local normal_val
+  normal_val="$(jq -r '."--normal"' "$tok_baseline")"
+  [ "$normal_val" = "#111" ] || \
+    fail "normal token should be updated in baseline, got: $normal_val"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+@test "malformed token baseline emits diagnostic and is not overwritten" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/malformed-baseline-$$.json"
+  printf 'not json at all\n' > "$tok_baseline"
+  local before_hash
+  before_hash="$(shasum -a 256 "$tok_baseline" | awk '{print $1}')"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--color":"#FFF"}}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync should continue past malformed baseline (exit $status): $output"
+  [[ "$output" == *'malformed token baseline'* ]] || \
+    fail "expected diagnostic for malformed baseline: $output"
+  # The malformed baseline must NOT be overwritten
+  local after_hash
+  after_hash="$(shasum -a 256 "$tok_baseline" | awk '{print $1}')"
+  [ "$before_hash" = "$after_hash" ] || \
+    fail "malformed baseline must not be overwritten"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+@test "non-object tokens emits diagnostic and skips reconciliation" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/nonobj-baseline-$$.json"
+  printf '{"--color":"#000"}\n' > "$tok_baseline"
+
+  # .tokens is an array instead of an object
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":["not","an","object"]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync should continue past non-object tokens (exit $status): $output"
+  [[ "$output" == *'invalid token data'* ]] || \
+    fail "expected diagnostic for non-object tokens: $output"
 
   rm -f "$tok_baseline"
   rm -rf "$root"
@@ -3481,6 +3822,43 @@ UX
 # Hostile screen filename rejection under product_design run
 # =========================================================================
 
+@test "hostile flow filename rejection under product_design run" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Flow with shell-meta characters in the file path
+  local snapshot="$root/snapshot.json"
+  jq -n '{"product_design":{"screens":[],"flows":[{"name":"Evil Flow","file":"flows/evil$(id);.flow.html","content":"body"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
+
+  # Must reject the hostile flow filename
+  [ "$status" -ne 0 ] || \
+    fail "should reject hostile flow filename with shell-meta characters (exit $status): $output"
+  [[ "$output" == *'unsafe'* ]] || \
+    fail "expected 'unsafe' diagnostic for hostile flow filename: $output"
+
+  rm -rf "$root"
+}
+
 @test "hostile screen filename rejection under product_design run" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
@@ -3513,5 +3891,111 @@ UX
   [ "$status" -ne 0 ] || \
     fail "should reject hostile filename with shell-meta characters (exit $status): $output"
 
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Reconciliation uses pre-extracted screens (structure test)
+# =========================================================================
+
+@test "reconciliation does not fork per screen per token" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Verify the script pre-extracts screen content into files via dd
+  # rather than running jq per (token, screen) pair in the inner loop.
+  # The reconciliation section must use grep on pre-split files, not
+  # jq inside the while loop.
+  local recon_section
+  recon_section="$(awk '/changed_tokens/,/done < .*changed_tokens/' "$SYNC_SCRIPT")"
+  [ -n "$recon_section" ] || fail "could not find the reconciliation section"
+
+  # Must NOT have jq calls inside the inner screen loop
+  local inner_jq_count
+  inner_jq_count="$(printf '%s\n' "$recon_section" | grep -c 'jq.*\.\[.*\$si' || true)"
+  [ "$inner_jq_count" -eq 0 ] || \
+    fail "reconciliation inner loop must not fork jq per screen (found $inner_jq_count jq calls with index variable)"
+
+  # Must use grep on pre-split files
+  printf '%s\n' "$recon_section" | grep -q 'grep.*scr_content_dir\|grep.*scr_content_file' || \
+    fail "reconciliation must grep pre-split screen content files"
+}
+
+
+# =========================================================================
+# Reconciliation at 20x20 scale completes in reasonable time
+# =========================================================================
+
+# bats test_tags=hardware-dependent
+@test "reconciliation 20x20 completes in under 15 seconds" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/scale-baseline-$$.json"
+
+  # Build a baseline with 20 tokens and a snapshot with 20 changed tokens + 20 screens
+  local baseline_obj='{' new_tok_obj='{'
+  local screens_arr='['
+  local i
+  for i in $(seq 1 20); do
+    [ "$i" -gt 1 ] && baseline_obj="${baseline_obj},"
+    [ "$i" -gt 1 ] && new_tok_obj="${new_tok_obj},"
+    [ "$i" -gt 1 ] && screens_arr="${screens_arr},"
+    baseline_obj="${baseline_obj}\"--color-${i}\":\"#old${i}\""
+    new_tok_obj="${new_tok_obj}\"--color-${i}\":\"#new${i}\""
+    screens_arr="${screens_arr}{\"name\":\"screen${i}\",\"file\":\"screens/s${i}.html\",\"content\":\"body { color: var(--color-${i}); }\"}"
+  done
+  baseline_obj="${baseline_obj}}"
+  new_tok_obj="${new_tok_obj}}"
+  screens_arr="${screens_arr}]"
+
+  printf '%s\n' "$baseline_obj" > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --argjson t "$new_tok_obj" --argjson s "$screens_arr" \
+    '{"design_system":{"components":["nav"],"tokens":$t},"product_design":{"screens":$s}}' \
+    > "$snapshot"
+
+  local start_time
+  start_time="$(date +%s)"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  local end_time elapsed
+  end_time="$(date +%s)"
+  elapsed=$((end_time - start_time))
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must complete in under 15 seconds (the old quadratic loop took ~10s at 20x20)
+  [ "$elapsed" -lt 15 ] || \
+    fail "20x20 reconciliation took ${elapsed}s (limit: 15s)"
+
+  # Must produce 20 reconciliation findings
+  local recon_count
+  recon_count="$(printf '%s\n' "$output" | grep -c 'reconciliation (medium)' || true)"
+  [ "$recon_count" -eq 20 ] || \
+    fail "expected 20 reconciliation findings, got $recon_count"
+
+  rm -f "$tok_baseline"
   rm -rf "$root"
 }
