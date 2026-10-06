@@ -1104,6 +1104,13 @@ _main() {
               local scr_concat_file="$_sync_tmpdir/scr-all"
               jq -j '[.[].content // ""] | join("")' "$pd_screens_file" > "$scr_concat_file"
 
+              # Replace NUL bytes with spaces in one pass over the joined
+              # file before splitting.  A NUL is not an identifier character,
+              # so replacing it with a space (also non-identifier) keeps
+              # boundary detection correct and preserves byte lengths for dd.
+              tr '\000' ' ' < "$scr_concat_file" > "$scr_concat_file.clean" \
+                && mv -f "$scr_concat_file.clean" "$scr_concat_file"
+
               local scr_idx=0
               exec 5< "$scr_concat_file"
               while IFS= read -r scr_len; do
@@ -1146,19 +1153,6 @@ _main() {
               _sn_idx=$((_sn_idx + 1))
             done < "$scr_names_file" | escape_boundary_markers > "$scr_safe_file"
 
-            # Strip NUL bytes from screen content files. macOS awk stops
-            # reading a line at a NUL, so any changed token after a NUL
-            # would be silently missed. One tr per file is O(S).
-            local _nul_idx=0
-            while [ "$_nul_idx" -lt "$screen_count" ]; do
-              if [ -s "$scr_content_dir/$_nul_idx" ]; then
-                tr -d '\000' < "$scr_content_dir/$_nul_idx" \
-                  > "$scr_content_dir/${_nul_idx}.clean" \
-                  && mv -f "$scr_content_dir/${_nul_idx}.clean" "$scr_content_dir/$_nul_idx"
-              fi
-              _nul_idx=$((_nul_idx + 1))
-            done
-
             # Build a file listing all screen content files that exist and
             # are non-empty, with their index.
             local scr_files_list="$_sync_tmpdir/scr-files-list"
@@ -1174,7 +1168,19 @@ _main() {
             # Single awk pass: read changed tokens, read screen names,
             # then scan each screen content file for token references.
             # Token-major order: for each token, list affected screens.
-            # Uses split() on the token to avoid O(N^2) substring copies.
+            #
+            # Two matching paths, both literal (no token-derived regex):
+            #
+            # 1. Identifier-only tokens (all chars in [A-Za-z0-9_-]):
+            #    split the content into maximal identifier runs ONCE per
+            #    screen using a FIXED non-identifier regex, build a set,
+            #    then look up each token.  O(content + tokens) per screen.
+            #
+            # 2. Tokens with non-identifier chars (--a.b, --p(1), etc.):
+            #    literal index() walk.  These tokens are rare in practice
+            #    (non-identifier chars are not valid unescaped in CSS
+            #    custom property names), so the walk cost is acceptable.
+            #
             # Total: 1 awk subprocess regardless of T and S.
             awk -F'\t' '
               # Pass 1: read token safe table (raw, safe, old, new)
@@ -1198,6 +1204,18 @@ _main() {
                 # Identifier boundary chars
                 id_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 
+                # Classify each token: id-only or mixed.
+                for (t = 1; t <= nt; t++) {
+                  tok = traw[t]
+                  tok_is_id[t] = 1
+                  for (c = 1; c <= length(tok); c++) {
+                    if (index(id_chars, substr(tok, c, 1)) == 0) {
+                      tok_is_id[t] = 0
+                      break
+                    }
+                  }
+                }
+
                 # Pre-read all screen contents into memory
                 for (s = 1; s <= nscr; s++) {
                   scr_content[s] = ""
@@ -1211,43 +1229,60 @@ _main() {
                 for (t = 1; t <= nt; t++) {
                   tok = traw[t]
                   tlen = length(tok)
+                  if (tlen == 0) continue
                   for (s = 1; s <= nscr; s++) {
                     content = scr_content[s]
                     clen = length(content)
                     if (clen == 0) continue
 
-                    # Split content on the token. Each boundary between
-                    # parts[i] and parts[i+1] is a potential match. This
-                    # is O(content_length) total, not per near-miss.
-                    nparts = split(content, parts, tok)
-                    if (nparts < 2) continue
+                    found = 0
 
-                    # Check word boundaries at each split point
-                    prefix_len = 0
-                    for (p = 1; p < nparts; p++) {
-                      plen = length(parts[p])
-                      prefix_len += plen
-                      # Left boundary: char before token (last char of parts[p])
-                      if (plen > 0) {
-                        lch = substr(parts[p], plen, 1)
-                        before_ok = (index(id_chars, lch) == 0)
-                      } else {
-                        before_ok = (prefix_len == 0)
+                    if (tok_is_id[t]) {
+                      # Fast path: split into identifier runs once per
+                      # screen (cached), then do a set lookup.
+                      if (!(s in scr_runs_n)) {
+                        scr_runs_n[s] = split(content, _tmp_runs, \
+                          /[^ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-]+/)
+                        for (_r = 1; _r <= scr_runs_n[s]; _r++)
+                          scr_run_set[s, _tmp_runs[_r]] = 1
                       }
-                      # Right boundary: char after token (first char of parts[p+1])
-                      rpart = parts[p + 1]
-                      if (length(rpart) > 0) {
-                        rch = substr(rpart, 1, 1)
-                        after_ok = (index(id_chars, rch) == 0)
-                      } else {
-                        after_ok = 1
+                      if ((s, tok) in scr_run_set)
+                        found = 1
+                    } else {
+                      # Slow path: literal index() walk for tokens that
+                      # contain non-identifier characters.
+                      pos = 1
+                      while (pos <= clen - tlen + 1) {
+                        hit = index(substr(content, pos), tok)
+                        if (hit == 0) break
+                        abs = pos + hit - 1
+
+                        # Left boundary
+                        if (abs > 1) {
+                          lch = substr(content, abs - 1, 1)
+                          before_ok = (index(id_chars, lch) == 0)
+                        } else {
+                          before_ok = 1
+                        }
+                        # Right boundary
+                        rpos = abs + tlen
+                        if (rpos <= clen) {
+                          rch = substr(content, rpos, 1)
+                          after_ok = (index(id_chars, rch) == 0)
+                        } else {
+                          after_ok = 1
+                        }
+                        if (before_ok && after_ok) {
+                          found = 1
+                          break
+                        }
+                        pos = abs + 1
                       }
-                      if (before_ok && after_ok) {
-                        nhits++
-                        hit_line[nhits] = sprintf("reconciliation (medium): token %s %s -> %s affects screen %s", tsafe[t], told[t], tnew[t], sname[scr_idx[s]])
-                        break
-                      }
-                      prefix_len += tlen
+                    }
+
+                    if (found) {
+                      nhits++
+                      hit_line[nhits] = sprintf("reconciliation (medium): token %s %s -> %s affects screen %s", tsafe[t], told[t], tnew[t], sname[scr_idx[s]])
                     }
                   }
                 }

@@ -888,3 +888,71 @@ EOF
   [ "$status" -eq 2 ] || \
     fail "unmatched marker should exit 2 (malformed boundary), got $status: $output"
 }
+
+
+# =========================================================================
+# Exit-code wrapper maps non-python failures to exit 2
+# =========================================================================
+
+@test "wrapper maps a failing python3 to exit 2 with diagnostic" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  # Create a python3 shim that exits 1 (simulating an unexpected failure)
+  local shim_dir
+  shim_dir="$(mktemp -d)"
+  cat > "$shim_dir/python3" <<'SHIM'
+#!/usr/bin/env bash
+exit 1
+SHIM
+  chmod +x "$shim_dir/python3"
+
+  NOTES_FILE="$TEST_TMP/notes-wrapper.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary-wrapper.txt"
+
+  printf 'Some notes text that is long enough to exceed the minimum match threshold for provenance checking purposes and more.\n' > "$NOTES_FILE"
+
+  printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n' > "$BOUNDARY_FILE"
+  printf 'content between markers for extraction\n' >> "$BOUNDARY_FILE"
+  printf '<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n' >> "$BOUNDARY_FILE"
+
+  PATH="$shim_dir:$PATH" run "$PROVENANCE_SCRIPT" \
+    --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+
+  rm -rf "$shim_dir"
+
+  [ "$status" -eq 2 ] || \
+    fail "python3 exit 1 should be mapped to exit 2, got $status: $output"
+  [[ "$output" == *'boundary extraction failed (exit 1)'* ]] || \
+    fail "expected diagnostic about extraction failure: $output"
+}
+
+@test "wrapper maps a python3 exit 3 to exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  local shim_dir
+  shim_dir="$(mktemp -d)"
+  cat > "$shim_dir/python3" <<'SHIM'
+#!/usr/bin/env bash
+exit 3
+SHIM
+  chmod +x "$shim_dir/python3"
+
+  NOTES_FILE="$TEST_TMP/notes-wrapper3.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary-wrapper3.txt"
+
+  printf 'Some notes text that is long enough to exceed the minimum match threshold for provenance checking purposes and more.\n' > "$NOTES_FILE"
+
+  printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n' > "$BOUNDARY_FILE"
+  printf 'content between markers for extraction\n' >> "$BOUNDARY_FILE"
+  printf '<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n' >> "$BOUNDARY_FILE"
+
+  PATH="$shim_dir:$PATH" run "$PROVENANCE_SCRIPT" \
+    --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+
+  rm -rf "$shim_dir"
+
+  [ "$status" -eq 2 ] || \
+    fail "python3 exit 3 should be mapped to exit 2, got $status: $output"
+  [[ "$output" == *'boundary extraction failed (exit 3)'* ]] || \
+    fail "expected diagnostic about extraction failure with exit 3: $output"
+}

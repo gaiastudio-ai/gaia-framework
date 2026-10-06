@@ -1876,8 +1876,11 @@ _do_record_review_coverage() {
   # This check runs inside the lock, against the working copy, so that the
   # guard and the write are atomic.
   if [ "$seen_pd" = true ]; then
-    local _pdp_val
-    _pdp_val="$(yq '.product_design_project' "$tmp")" || true
+    local _pdp_val _pdp_rc=0
+    _pdp_val="$(yq '.product_design_project' "$tmp" 2>/dev/null)" || _pdp_rc=$?
+    if [ "$_pdp_rc" -ne 0 ]; then
+      _die "record-review-coverage: could not read product_design_project from the design record (yq exit $_pdp_rc)"
+    fi
     if [ "$_pdp_val" = "null" ] || [ -z "$_pdp_val" ]; then
       _die "record-review-coverage: product-design coverage requested but product_design_project is null in the design record"
     fi

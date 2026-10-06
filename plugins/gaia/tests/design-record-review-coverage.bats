@@ -465,3 +465,72 @@ YAML
 
   rm -rf "$record_dir"
 }
+
+
+# =========================================================================
+# Corrupt record gives a read-failure diagnostic, not "null"
+# =========================================================================
+
+@test "yq read failure in product-project guard gives its own diagnostic" {
+  [ -x "$DREC_SCRIPT" ] || fail "script missing: $DREC_SCRIPT"
+
+  # Create a valid record so schema validation passes, then place a yq
+  # shim first on PATH that fails when asked for .product_design_project.
+  local record_dir
+  record_dir="$(mktemp -d)"
+  mkdir -p "$record_dir/.gaia/state"
+  cat > "$record_dir/.gaia/state/design-record.yaml" <<'YAML'
+schema_version: "2.0"
+design_state: review
+design_system_project:
+  reference: "test-ds-ref"
+  type: "design-system"
+  surface: "artifact"
+  discovered_via: "manual"
+product_design_project:
+  reference: "test-pd-ref"
+  type: "design"
+  surface: "artifact"
+  discovered_via: "manual"
+iteration: 1
+reviews: []
+approvals: []
+audit: []
+review_coverage: ["design-system"]
+YAML
+  mkdir -p "$record_dir/.gaia/config"
+  cat > "$record_dir/.gaia/config/project-config.yaml" <<'YAML'
+project_name: test
+YAML
+
+  # yq shim: fail only on .product_design_project queries (the guard query),
+  # pass all other invocations through to the real yq.
+  local shim_dir real_yq
+  shim_dir="$(mktemp -d)"
+  real_yq="$(command -v yq)"
+  cat > "$shim_dir/yq" <<SHIM
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [ "\$arg" = ".product_design_project" ]; then
+    exit 7
+  fi
+done
+exec "$real_yq" "\$@"
+SHIM
+  chmod +x "$shim_dir/yq"
+
+  PATH="$shim_dir:$PATH" run env PROJECT_ROOT="$record_dir" \
+    "$DREC_SCRIPT" record-review-coverage --coverage "design-system,product-design"
+
+  rm -rf "$shim_dir"
+
+  [ "$status" -ne 0 ] || \
+    fail "should fail when yq cannot read product_design_project (exit $status): $output"
+  # The diagnostic must name the read failure, not say "is null".
+  [[ "$output" == *'could not read product_design_project'* ]] || \
+    fail "expected read-failure diagnostic, got: $output"
+  [[ "$output" != *'product_design_project is null'* ]] || \
+    fail "yq failure should not be reported as null: $output"
+
+  rm -rf "$record_dir"
+}
