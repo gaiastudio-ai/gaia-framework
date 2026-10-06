@@ -129,32 +129,28 @@ for open_m, close_m in MARKER_PAIRS:
     if len(opens) == 0 and len(closes) == 0:
         continue  # no markers of this type
 
-    # Unmatched: more opens than closes
-    if len(opens) > len(closes):
-        sys.stderr.write(
-            "verdict-provenance-check.sh: unmatched open marker (no matching close): %s\n" % open_m
-        )
+    # Strict: open and close counts must match exactly.
+    # Any mismatch — extra opens OR extra closes — is malformed.
+    if len(opens) != len(closes):
+        if len(opens) > len(closes):
+            sys.stderr.write(
+                "verdict-provenance-check.sh: unmatched open marker (no matching close): %s\n" % open_m
+            )
+        elif len(opens) == 0:
+            sys.stderr.write(
+                "verdict-provenance-check.sh: unmatched close marker (no matching open): %s\n" % close_m
+            )
+        else:
+            sys.stderr.write(
+                "verdict-provenance-check.sh: marker count mismatch (%d opens, %d closes): %s\n"
+                % (len(opens), len(closes), open_m.split(">>>")[0] + ">>>")
+            )
         sys.exit(2)
 
-    # Unmatched: closes with no opens
-    if len(opens) == 0 and len(closes) > 0:
-        sys.stderr.write(
-            "verdict-provenance-check.sh: unmatched close marker (no matching open): %s\n" % close_m
-        )
-        sys.exit(2)
-
-    # Pair i-th OPEN with the i-th CLOSE. When the counts match,
-    # pairing is direct (opens[i] with closes[i]). When there are
-    # extra closes, the surplus are treated as embedded markers
-    # (the defence is at write time via the shared escape).
-    n_opens = len(opens)
-    n_closes = len(closes)
-    offset = n_closes - n_opens  # extra closes consumed as embedded markers
-
-    for i in range(n_opens):
+    # Pair i-th OPEN with the i-th CLOSE (counts are equal).
+    for i in range(len(opens)):
         o_pos = opens[i]
-        c_idx = offset + i  # pair with the (offset+i)-th close
-        c_pos = closes[c_idx]
+        c_pos = closes[i]
         after_open = o_pos + len(open_m)
         if c_pos < after_open:
             sys.stderr.write(
