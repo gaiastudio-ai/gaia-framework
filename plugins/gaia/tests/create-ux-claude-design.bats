@@ -1591,10 +1591,22 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention routing to the resolve procedure when product_design_project
-  # is null — either explicitly for the null case alone, or as part of an
-  # always-route that covers both null and non-null.
-  printf '%s' "$full" | grep -qiE 'product_design_project.*is null.*resolve|product_design_project.*is null.*procedure|product_design_project.*null.*route|product_design_project.*null.*Resolve Product Design' \
-    || fail "no routing for null product_design_project to resolve procedure"
+  # is null. The routing sentence must appear in the existing-record caller
+  # (Step 2 item 1) or the Step 3 skip paragraph, not in the init lines
+  # (Step 2 item 5 and Step 4 item 5) which say "starts as null".
+  local step2_record
+  step2_record="$(printf '%s\n' "$full" | awk '/Check for an existing record/{found=1} found && /^[0-9]+\. \*\*Pass 1/{exit} found{print}')"
+  local step3_skip
+  step3_skip="$(printf '%s\n' "$full" | awk '/Step 3.*Stakeholder Questionnaire/{found=1} found{print} /^### Step 4/{exit}')"
+  local found_route=""
+  if printf '%s' "$step2_record" | grep -qiE 'product_design_project.*(null|non.null).*[Rr]esolve|[Rr]esolve.*[Pp]roduct.*[Dd]esign.*[Pp]roject.*procedure'; then
+    found_route="step2"
+  fi
+  if printf '%s' "$step3_skip" | grep -qiE 'product_design_project.*(null|non.null).*[Rr]esolve|[Rr]esolve.*[Pp]roduct.*[Dd]esign.*[Pp]roject.*procedure'; then
+    found_route="${found_route:+$found_route,}step3"
+  fi
+  [ -n "$found_route" ] \
+    || fail "no routing for null product_design_project to resolve procedure in the existing-record or skip callers"
 }
 
 @test "every recorded-project write preceded by verify-publication-target check" {
@@ -2762,9 +2774,18 @@ TOKENS
   [ -n "$readback_pos" ] || fail "cannot find canvas read-back position"
   [ "$list_pos" -lt "$readback_pos" ] \
     || fail "listing (byte $list_pos) not before canvas read-back (byte $readback_pos) in Record-first"
-  # Empty listing must skip the read entirely
-  printf '%s' "$record_first" | grep -qiE 'empty.*without.*read|empty.*not.*read|empty.*creation.*sequence' \
-    || fail "Record-first does not skip canvas.json read on empty listing"
+  # Empty listing must skip the read entirely: extract the empty-listing
+  # sentence and assert it says "without reading" (not just "creation sequence").
+  # A mutant that adds a canvas.json read on the empty branch must go red.
+  local empty_sentence
+  empty_sentence="$(printf '%s' "$record_first" | grep -oi 'empty[^.]*\.' | head -1 || true)"
+  [ -n "$empty_sentence" ] || fail "no empty-listing sentence in Record-first"
+  printf '%s' "$empty_sentence" | grep -qiE 'without.*reading|without.*read' \
+    || fail "empty-listing sentence does not say 'without reading': $empty_sentence"
+  # The empty-listing sentence must not contain any instruction to read canvas.json
+  if printf '%s' "$empty_sentence" | grep -qiE 'read.*project/canvas\.json|read.*canvas\.json'; then
+    fail "empty-listing sentence contains a canvas.json read instruction: $empty_sentence"
+  fi
 }
 
 # ===========================================================================
@@ -2835,25 +2856,169 @@ TOKENS
   # Must state that names already starting with -- are used as-is
   printf '%s' "$pd_section" | grep -qiE 'already.*starts.*--.*as.is|already.*--.*used.*as.is' \
     || fail "no as-is rule for names already starting with --"
-  # Must state the template never produces ----name
-  printf '%s' "$pd_section" | grep -qF -- '----' \
-    || fail "no mention of preventing ----name in the template"
+  # The ordered steps must prevent ----name structurally: stripping leading
+  # dashes before adding the prefix ensures no quadruple-dash result.
+  printf '%s' "$pd_section" | grep -qiE 'strip.*leading.*dash' \
+    || fail "mapping does not strip leading dashes (needed to prevent ----name)"
 }
 
 # ===========================================================================
 # Step 4 ordering: no write_files before finalize_plan in the full block
 # ===========================================================================
 
-@test "Step 4: no write_files precedes any finalize_plan in the block" {
+@test "Step 4: every write_files call step is preceded by a finalize_plan since the previous write_files" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Creation")"
   [ -n "$block" ] || fail "no Creation step block"
-  # Find the line number of the FIRST finalize_plan
-  local first_fp
-  first_fp="$(printf '%s\n' "$block" | grep -nF 'finalize_plan' | head -1 | cut -d: -f1 || true)"
-  [ -n "$first_fp" ] || fail "finalize_plan not found in Creation step"
-  # Assert no write_files appears before the first finalize_plan
-  local early_wf
-  early_wf="$(printf '%s\n' "$block" | head -n "$((first_fp - 1))" | grep -nF 'write_files' || true)"
-  [ -z "$early_wf" ] || fail "write_files appears before finalize_plan at line(s): $early_wf"
+  # Extract only the numbered list items (lines starting with a digit followed
+  # by a period), which represent actual call steps.  Mentions of write_files
+  # in failure/error-handling text are not call steps.
+  local numbered_items
+  numbered_items="$(printf '%s\n' "$block" | grep -nE '^[0-9]+\.' || true)"
+  [ -n "$numbered_items" ] || fail "no numbered items in Creation step"
+  # From the numbered items, find those that CALL write_files and finalize_plan.
+  # Error-handling items that say "write_files fails" are not calls — match only
+  # items that say "Call `write_files`" (the verb immediately before the function).
+  local wf_lines fp_lines
+  wf_lines="$(printf '%s\n' "$numbered_items" | grep -E 'Call.*write_files' | cut -d: -f1 || true)"
+  fp_lines="$(printf '%s\n' "$numbered_items" | grep -E 'Call.*finalize_plan' | cut -d: -f1 || true)"
+  [ -n "$wf_lines" ] || fail "write_files call not found in numbered Creation steps"
+  [ -n "$fp_lines" ] || fail "finalize_plan call not found in numbered Creation steps"
+  # For every write_files step, there must be a finalize_plan step between the
+  # previous write_files step (or start of block) and it.
+  local last_wf=0
+  local wf_ln
+  while IFS= read -r wf_ln; do
+    [ -n "$wf_ln" ] || continue
+    local found_fp=""
+    local fp_ln
+    while IFS= read -r fp_ln; do
+      [ -n "$fp_ln" ] || continue
+      if [ "$fp_ln" -gt "$last_wf" ] && [ "$fp_ln" -lt "$wf_ln" ]; then
+        found_fp="$fp_ln"
+        break
+      fi
+    done <<< "$fp_lines"
+    [ -n "$found_fp" ] \
+      || fail "write_files at step line $wf_ln has no finalize_plan between it and the previous write_files (at step line $last_wf)"
+    last_wf="$wf_ln"
+  done <<< "$wf_lines"
+}
+
+# ===========================================================================
+# User-picked canvas with existing files gets a list-then-read
+# ===========================================================================
+
+@test "user-pick path lists canvas files and reads back when non-empty" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  local resolve_section
+  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  [ -n "$resolve_section" ] || fail "no resolve procedure section"
+  local user_pick
+  user_pick="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found && /Create\./{exit} found{print}')"
+  [ -n "$user_pick" ] || fail "no User pick bullet"
+  # User pick must list canvas files after confirming the pick
+  printf '%s' "$user_pick" | grep -qiE 'list.*canvas.*files|list.*files.*scope.*files' \
+    || fail "User pick does not list canvas files after confirming"
+  # Non-empty listing must read canvas.json
+  printf '%s' "$user_pick" | grep -qiE 'non.empty.*read.*canvas|read.*project/canvas\.json' \
+    || fail "User pick does not read canvas.json when listing is non-empty"
+  # Empty listing must skip the read
+  printf '%s' "$user_pick" | grep -qiE 'empty.*without.*read|empty.*creation.*sequence' \
+    || fail "User pick does not skip canvas.json read on empty listing"
+  # Must state this is the same rule as Record-first
+  printf '%s' "$user_pick" | grep -qiE 'same.*list.*read.*rule.*Record|same.*rule.*Record' \
+    || fail "User pick does not reference the shared list-then-read rule"
+}
+
+# ===========================================================================
+# Canvas index merge rule preserves existing boards
+# ===========================================================================
+
+@test "canvas index merge keeps existing boards and appends new screens" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state the merge rule
+  printf '%s' "$pd_section" | grep -qiE 'merge.*rule|[Mm]erge' \
+    || fail "no canvas index merge rule in product-design pass"
+  # Must keep existing boards
+  printf '%s' "$pd_section" | grep -qiE 'keep.*existing.*boards|never.*drop.*existing.*board' \
+    || fail "merge rule does not keep existing boards"
+  # Must append new screens at the end
+  printf '%s' "$pd_section" | grep -qiE 'append.*new.*screen|new.*screen.*end' \
+    || fail "merge rule does not append new screens"
+}
+
+# ===========================================================================
+# Record-first cross-references point to the correct items
+# ===========================================================================
+
+@test "Record-first empty branch references Step 10 product-design pass creation sequence" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  local resolve_section
+  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  [ -n "$resolve_section" ] || fail "no resolve procedure section"
+  local record_first
+  record_first="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found && /User pick/{exit} found{print}')"
+  [ -n "$record_first" ] || fail "no Record-first bullet"
+  # Empty branch must reference "Step 10, product-design pass, item 5" (not "item 5 below")
+  printf '%s' "$record_first" | grep -qiE 'Step 10.*product.design.*pass.*item 5|product.design.*pass.*item 5' \
+    || fail "Record-first empty branch does not reference Step 10 product-design pass item 5"
+  # Both branches must say "return to the caller"
+  local return_count
+  return_count="$(printf '%s' "$record_first" | grep -oi 'return to the caller' | wc -l | tr -d ' ')"
+  [ "$return_count" -ge 2 ] \
+    || fail "expected both branches to say 'return to the caller', found $return_count"
+}
+
+# ===========================================================================
+# Creating-write exemption describes how empty-canvas publish is verified
+# ===========================================================================
+
+@test "creating-write exemption describes verification of empty-canvas first publish" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  local target_check_para
+  target_check_para="$(printf '%s\n' "$full" | awk '/Pre-write target check/{found=1} found && /^#### /{exit} found && /^\*\*Metadata/{exit} found{print}')"
+  [ -n "$target_check_para" ] || fail "no pre-write target check paragraph"
+  # Must mention the empty-canvas first publish
+  printf '%s' "$target_check_para" | grep -qiE 'first.*content.*publish.*empty.*canvas|empty.*canvas' \
+    || fail "exemption paragraph does not mention empty-canvas first publish"
+  # Must describe verification by page read and per-file read-back
+  printf '%s' "$target_check_para" | grep -qiE 'page.*read.*per.file.*read.back|page.*read.*read.back|owned.*by.*you.*read.back' \
+    || fail "exemption does not describe page read plus per-file read-back verification"
+}
+
+# ===========================================================================
+# Token name mapping states the step order
+# ===========================================================================
+
+@test "token name mapping states the ordered steps for name conversion" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state the steps in order: strip leading dashes/dots, replace dots/slashes,
+  # collapse hyphens, add prefix
+  printf '%s' "$pd_section" | grep -qiE 'strip.*leading.*dash' \
+    || fail "mapping does not mention stripping leading dashes/dots"
+  printf '%s' "$pd_section" | grep -qiE 'replace.*dots.*slash.*hyphen|replace.*remaining.*dots' \
+    || fail "mapping does not mention replacing dots/slashes with hyphens"
+  printf '%s' "$pd_section" | grep -qiE 'collapse.*hyphen|consecutive.*hyphen' \
+    || fail "mapping does not mention collapsing consecutive hyphens"
+  # Must give the worked examples
+  printf '%s' "$pd_section" | grep -qF '..name' \
+    || fail "mapping does not give the ..name example"
+  printf '%s' "$pd_section" | grep -qF -- '-.name' \
+    || fail "mapping does not give the -.name example"
+  printf '%s' "$pd_section" | grep -qF 'color/primary' \
+    || fail "mapping does not give the color/primary example"
 }
