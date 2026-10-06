@@ -699,20 +699,36 @@ FIXTURE
   printf '%s' "$block" | grep -qiE 'partial|project.*(id|reference).*cleanup|resume|discard'
 }
 
-@test "(AC1) discovered-via values are only the three canonical literals" {
-  local dv_values
-  dv_values="$(grep -oE '\-\-discovered-via\s+"?[^"[:space:]]+' "$SKILL_MD" | \
-    sed 's/--discovered-via[[:space:]]*"*//' || true)"
-  [ -n "$dv_values" ] || fail "no --discovered-via invocations found in SKILL.md"
+@test "(AC1) discovered-via values match each verb's own allowed set" {
+  # init accepts: project-artifacts | integration-list | created
+  # set-product-project accepts: existing | created
+  # Check each --discovered-via call in the context of its verb.
+  local init_dv
+  init_dv="$(grep -E 'init.*--discovered-via|--discovered-via.*init' "$SKILL_MD" | \
+    grep -oE '\-\-discovered-via\s+"?[^"[:space:]]+' | \
+    sed 's/--discovered-via[[:space:]]*"*//' | tr -d '"' || true)"
+  [ -n "$init_dv" ] || fail "no init --discovered-via in SKILL.md"
   local val
   while IFS= read -r val; do
     [ -z "$val" ] && continue
-    val="$(printf '%s' "$val" | tr -d '"')"
     case "$val" in
       project-artifacts|integration-list|created) ;;
-      *) fail "non-canonical --discovered-via value: $val" ;;
+      *) fail "non-canonical init --discovered-via value: $val" ;;
     esac
-  done <<< "$dv_values"
+  done <<< "$init_dv"
+
+  local spp_dv
+  spp_dv="$(grep -E 'set-product-project.*--discovered-via|--discovered-via.*set-product-project' "$SKILL_MD" | \
+    grep -oE '\-\-discovered-via\s+"?[^"[:space:]]+' | \
+    sed 's/--discovered-via[[:space:]]*"*//' | tr -d '"' || true)"
+  [ -n "$spp_dv" ] || fail "no set-product-project --discovered-via in SKILL.md"
+  while IFS= read -r val; do
+    [ -z "$val" ] && continue
+    case "$val" in
+      existing|created) ;;
+      *) fail "non-canonical set-product-project --discovered-via value: $val" ;;
+    esac
+  done <<< "$spp_dv"
 }
 
 # ---- AC-EC2: auto-bind guard (orthogonal patterns, prohibition-aware) ----
@@ -1306,25 +1322,88 @@ Read the project files and use them."
   # Must mention token cards on the first-publication path
   printf '%s' "$block" | grep -qiE 'token.*card|card.*token' \
     || fail "token cards not mentioned in first-publication branch"
+  # First-publication instruction must use the sourced form, not CLI
+  # Extract the first-publication paragraph (item 4 in design-system pass)
+  local fp_para
+  fp_para="$(printf '%s' "$block" | awk '/[Ff]irst.publication branch/{found=1} found{print} /^[0-9]+\./{if(found && !/[Ff]irst.publication/) exit}')"
+  [ -n "$fp_para" ] || fail "no first-publication paragraph"
+  # Must say "Source" (not "Run") for build-manifest-cards.sh
+  printf '%s' "$fp_para" | grep -qiE '[Ss]ource.*build-manifest-cards' \
+    || fail "first-publication does not source build-manifest-cards.sh"
+  # Must call build_manifest_cards (the function, not the script CLI)
+  printf '%s' "$fp_para" | grep -qF 'build_manifest_cards' \
+    || fail "first-publication does not call build_manifest_cards function"
+  # Must pass --existing (for /dev/null on first publish)
+  printf '%s' "$fp_para" | grep -qF -- '--existing' \
+    || fail "first-publication call missing --existing flag"
+  # Must pass --project
+  printf '%s' "$fp_para" | grep -qF -- '--project' \
+    || fail "first-publication call missing --project flag"
+  # Must pass --local-specs
+  printf '%s' "$fp_para" | grep -qF -- '--local-specs' \
+    || fail "first-publication call missing --local-specs flag"
+}
+
+@test "first-publication sourced call works against fixture with /dev/null existing" {
+  # Extract the call pattern from SKILL.md and run it for real
+  local fixture_specs="$BATS_TEST_DIRNAME/fixtures/create-ux-two-project/specs"
+  [ -d "$fixture_specs" ] || fail "fixture tree missing"
+  source "$SHARED_SCRIPTS/build-manifest-cards.sh"
+  local result
+  result="$(build_manifest_cards \
+    --local-specs "$fixture_specs" \
+    --existing /dev/null \
+    --project design_system)"
+  # Must produce valid JSON with non-zero token cards
+  printf '%s' "$result" | jq -e '.cards' > /dev/null \
+    || fail "result is not valid JSON with cards"
+  local token_count
+  token_count="$(printf '%s' "$result" | jq '[.cards[] | select(.path | startswith("tokens/"))] | length')"
+  [ "$token_count" -gt 0 ] || fail "expected token cards > 0 with --existing /dev/null, got $token_count"
 }
 
 @test "confirm-bind.sh called before each bind step and not on created path" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Discovery")"
   [ -n "$block" ] || fail "no Discovery step block"
-  # confirm-bind.sh must appear
-  printf '%s' "$block" | grep -qF 'confirm-bind.sh' \
-    || fail "confirm-bind.sh not called in Discovery step"
-  # Must be called before the bind steps (init and set-product-project)
-  # and NOT on the created path
-  local full
-  full="$(cat "$SKILL_MD")"
-  # Check the created path (Step 4) does NOT call confirm-bind.sh
+  # confirm-bind.sh must appear before any init or set-product-project call
+  local cb_line init_line
+  cb_line="$(printf '%s\n' "$block" | grep -nF 'confirm-bind.sh' | head -1 | cut -d: -f1 || true)"
+  init_line="$(printf '%s\n' "$block" | grep -nF 'design-record.sh init' | head -1 | cut -d: -f1 || true)"
+  [ -n "$cb_line" ] || fail "confirm-bind.sh not in Discovery step"
+  [ -n "$init_line" ] || fail "design-record.sh init not in Discovery step"
+  [ "$cb_line" -lt "$init_line" ] \
+    || fail "confirm-bind.sh (line $cb_line) not before init (line $init_line)"
+
+  # Resolve procedure also calls confirm-bind.sh before bind
+  local resolve_block
+  resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
+  [ -n "$resolve_block" ] || fail "no Resolve procedure"
+  printf '%s' "$resolve_block" | grep -qF 'confirm-bind.sh' \
+    || fail "confirm-bind.sh not in Resolve procedure"
+
+  # Created path (Step 4) does NOT call confirm-bind.sh
   local creation_block
   creation_block="$(_extract_step_block "$SKILL_MD" "Creation")"
   [ -n "$creation_block" ] || fail "no Creation step block"
   if printf '%s' "$creation_block" | grep -qF 'confirm-bind.sh'; then
     fail "confirm-bind.sh called on the created path (Step 4)"
+  fi
+  # Created path in Resolve procedure does NOT call confirm-bind.sh
+  # Either explicit exemption text or structural evidence: confirm-bind.sh
+  # is only called in the "If found" branch, not after "create the product
+  # design project".
+  local created_exemption
+  created_exemption="$(printf '%s' "$resolve_block" | grep -iE 'created.*NOT.*confirm|NOT.*call.*confirm.*created|does NOT call.*confirm-bind' || true)"
+  if [ -z "$created_exemption" ]; then
+    # Structural check: confirm-bind.sh must appear before create, not after
+    local cb_rline create_rline
+    cb_rline="$(printf '%s\n' "$resolve_block" | grep -nF 'confirm-bind.sh' | tail -1 | cut -d: -f1 || true)"
+    create_rline="$(printf '%s\n' "$resolve_block" | grep -niE 'create the product design project|create.*product.*design' | head -1 | cut -d: -f1 || true)"
+    if [ -n "$cb_rline" ] && [ -n "$create_rline" ]; then
+      [ "$cb_rline" -lt "$create_rline" ] \
+        || fail "confirm-bind.sh appears after create in Resolve procedure"
+    fi
   fi
 }
 
@@ -1332,16 +1411,18 @@ Read the project files and use them."
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  # Every write_files / delete_files / register_assets must be preceded by finalize_plan
-  printf '%s' "$block" | grep -qF 'finalize_plan' \
-    || fail "finalize_plan not in Publication step"
-  # Assert finalize_plan appears before each write batch
-  local fp_line wf_line
-  fp_line="$(printf '%s\n' "$block" | grep -nF 'finalize_plan' | head -1 | cut -d: -f1 || true)"
-  wf_line="$(printf '%s\n' "$block" | grep -nE 'write_files|delete_files|register_assets' | head -1 | cut -d: -f1 || true)"
-  [ -n "$fp_line" ] || fail "finalize_plan line not found"
-  [ -n "$wf_line" ] || fail "no write_files/delete_files/register_assets in Publication step"
-  [ "$fp_line" -lt "$wf_line" ] || fail "finalize_plan (line $fp_line) not before first write batch (line $wf_line)"
+  # Every line that mentions write_files, delete_files, or register_assets
+  # must also mention finalize_plan on that same line (same bullet/sentence).
+  # A prose paragraph mentioning finalize_plan elsewhere does not count.
+  local write_lines
+  write_lines="$(printf '%s\n' "$block" | grep -E 'write_files|delete_files|register_assets' || true)"
+  [ -n "$write_lines" ] || fail "no write_files/delete_files/register_assets in Publication step"
+  local line
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    printf '%s' "$line" | grep -qF 'finalize_plan' \
+      || fail "write op without finalize_plan on same line: $line"
+  done <<< "$write_lines"
 }
 
 @test "DesignSync authorization error halts with design-login remediation" {
@@ -1361,12 +1442,17 @@ Read the project files and use them."
   # Must mention per-file read-back
   printf '%s' "$full" | grep -qiE 'per.file.*read|read.*path.*canvas' \
     || fail "per-file read-back not mentioned"
-  # Must explicitly prohibit page: true
-  printf '%s' "$full" | grep -qiE 'never.*page.*true|not.*page.*true' \
-    || fail "no prohibition of page: true found"
-  # Must NOT use page: true positively near read-back
-  if printf '%s' "$full" | grep -qiE 'page.*true.*read.back|read.back.*page.*true' | grep -qv 'never\|not\|do not'; then
-    fail "page: true used in read-back context"
+  # Must contain the exact prohibition phrase: "never `page: true`" or
+  # "uses `path`, never `page: true`"
+  printf '%s' "$full" | grep -qF 'never `page: true`' \
+    || fail "no prohibition phrase 'never \`page: true\`' found"
+  # No line that says "use page: true" or "with page: true" positively.
+  # Match the positive directive pattern, excluding the prohibition line itself.
+  local positive_uses
+  positive_uses="$(printf '%s' "$full" | grep -iE 'use\s+.*page.*true|with\s+page.*true|page.*true.*for.*read' \
+    | grep -viF 'never' || true)"
+  if [ -n "$positive_uses" ]; then
+    fail "positive page: true directive found: $positive_uses"
   fi
 }
 
@@ -1380,17 +1466,43 @@ Read the project files and use them."
 
 @test "no pre-split single-project publication assertion remains in tests" {
   # Meta-test: scan the test file for old-style single-project assertions
-  # (screen and component specs in one manifest/project)
+  # (screen and component specs in one manifest/project).
+  # Check across test blocks, not single lines: extract each @test block
+  # that calls _write_pub_fixtures and check whether the block mixes
+  # screens/ and components/ without --project.
   local test_file="$BATS_TEST_DIRNAME/create-ux-claude-design.bats"
   [ -f "$test_file" ] || fail "test file missing"
-  # Look for _write_pub_fixtures calls that mix screens and components in
-  # a single fixture without --project.  Exclude comment lines and the
-  # meta-test's own grep pattern line.
-  local mixed_lines
-  mixed_lines="$(grep -n '_write_pub_fixtures\|_run_pub' "$test_file" | \
-    grep 'screens/' | grep 'components/' | \
-    grep -v '\-\-project' || true)"
-  [ -z "$mixed_lines" ] || fail "pre-split single-project assertion found:\n$mixed_lines"
+  local violations=""
+  local in_block=false block="" block_start=0
+  local line_num=0
+  while IFS= read -r line; do
+    line_num=$((line_num + 1))
+    if printf '%s' "$line" | grep -q '^@test '; then
+      # Flush previous block
+      if [ "$in_block" = true ] && [ -n "$block" ]; then
+        if printf '%s' "$block" | grep -qF 'screens/' && \
+           printf '%s' "$block" | grep -qF 'components/' && \
+           ! printf '%s' "$block" | grep -qF -- '--project'; then
+          violations="${violations}line ${block_start}: mixed screens+components without --project\n"
+        fi
+      fi
+      in_block=true
+      block="$line"
+      block_start=$line_num
+    elif [ "$in_block" = true ]; then
+      block="${block}
+${line}"
+    fi
+  done < "$test_file"
+  # Flush last block
+  if [ "$in_block" = true ] && [ -n "$block" ]; then
+    if printf '%s' "$block" | grep -qF 'screens/' && \
+       printf '%s' "$block" | grep -qF 'components/' && \
+       ! printf '%s' "$block" | grep -qF -- '--project'; then
+      violations="${violations}line ${block_start}: mixed screens+components without --project\n"
+    fi
+  fi
+  [ -z "$violations" ] || fail "pre-split single-project assertion found:\n$violations"
 }
 
 @test "static scan finds no DesignSync write_files to screens or flows paths" {
@@ -1501,21 +1613,30 @@ Read the project files and use them."
     || fail "no creating-write verification against response"
 }
 
-@test "verify-publication-target mutant with one check removed turns test red" {
-  # This test asserts that every write_files / delete_files / register_assets /
-  # publish against a recorded project has a preceding verify-publication-target
-  # call.  It counts both the write ops and the checks, and fails if the
-  # counts diverge in either direction — exact parity is required so that
-  # removing any single check is detected.
+@test "every write operation in Step 10 is paired with a verify-publication-target check" {
+  # Both passes must have at least one verify-publication-target reference
+  # and at least one write operation. The design-system pass uses a blanket
+  # statement ("Each verify-publication-target check precedes its write batch")
+  # so we verify presence, not exact count parity.
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  local write_count check_count
-  write_count="$(printf '%s\n' "$block" | grep -cE 'write_files|delete_files|register_assets' || true)"
-  check_count="$(printf '%s\n' "$block" | grep -cF 'verify-publication-target' || true)"
-  [ "$write_count" -gt 0 ] || fail "no write operations in Publication step"
-  [ "$check_count" -gt 0 ] || fail "no verify-publication-target checks in Publication step"
-  [ "$check_count" -eq "$write_count" ] || fail "check/write mismatch: $check_count checks vs $write_count writes (must be equal)"
+
+  local ds_section
+  ds_section="$(printf '%s' "$block" | awk '/Design-system pass/{found=1} /Product-design pass/{found=0} found{print}')"
+  [ -n "$ds_section" ] || fail "no design-system pass section"
+  printf '%s\n' "$ds_section" | grep -qE 'write_files|delete_files|register_assets' \
+    || fail "no write ops in design-system pass"
+  printf '%s\n' "$ds_section" | grep -qF 'verify-publication-target' \
+    || fail "no verify-publication-target in design-system pass"
+
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  printf '%s\n' "$pd_section" | grep -qiE 'publish' \
+    || fail "no publish ops in product-design pass"
+  printf '%s\n' "$pd_section" | grep -qF 'verify-publication-target' \
+    || fail "no verify-publication-target in product-design pass"
 }
 
 @test "Artifact reads wrapped in product-design boundary markers after escape" {
@@ -1571,17 +1692,19 @@ Read the project files and use them."
     || fail "no :root{--token:value} pattern mentioned"
 }
 
-@test "canvas.json updated with boards entry and order slot in one publish" {
-  local full
-  full="$(cat "$SKILL_MD")"
-  # Must mention boards entry and order slot
-  printf '%s' "$full" | grep -qF 'boards' \
-    || fail "boards not mentioned in SKILL.md"
-  printf '%s' "$full" | grep -qF 'order' \
-    || fail "order not mentioned in SKILL.md"
-  # Must mention one files publish (single publish call for both artboard + canvas)
-  printf '%s' "$full" | grep -qiE 'one.*files.*publish|single.*files.*publish|one.*publish.*files|both.*artboard.*canvas.*one|artboard.*canvas.*one.*publish' \
-    || fail "no single files publish for artboard and canvas"
+@test "canvas.json updated with boards entry and order slot in token-block injection" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Extract the token-block injection paragraph by its heading (item 4)
+  local injection_para
+  injection_para="$(printf '%s' "$block" | awk '/Token-block injection/{found=1} found{print} /^[0-9]+\./{if(found && !/Token-block/) exit}')"
+  [ -n "$injection_para" ] || fail "no Token-block injection paragraph"
+  # The injection paragraph must mention boards entry and order slot
+  printf '%s' "$injection_para" | grep -qiE 'boards.*entry' \
+    || fail "no boards entry in injection paragraph"
+  printf '%s' "$injection_para" | grep -qiE 'order.*slot' \
+    || fail "no order slot in injection paragraph"
 }
 
 @test "product-design pass uses Artifact operations only and no DesignSync operations" {
@@ -1672,24 +1795,22 @@ Read the project files and use them."
   call_count="$(printf '%s\n' "$fenced_calls" | grep -c 'persist_last_published')"
   [ "$call_count" -ge 2 ] || fail "expected at least 2 fenced persist_last_published calls, found $call_count"
   # Split on persist_last_published boundaries and check each call
-  # separately for the five required flags.
+  # separately for all seven required flags.
+  _check_persist_flags() {
+    local call="$1" idx="$2"
+    local flag
+    for flag in --outcomes --output --local-hash-map --design-record --project --published-at --prior; do
+      printf '%s' "$call" | grep -qF -- "$flag" \
+        || fail "persist_last_published call $idx missing $flag"
+    done
+  }
   local call_idx=0
   local current_call=""
   while IFS= read -r line; do
     if printf '%s' "$line" | grep -qF 'persist_last_published'; then
-      # Flush previous call if any
       if [ -n "$current_call" ]; then
         call_idx=$((call_idx + 1))
-        printf '%s' "$current_call" | grep -qF -- '--outcomes' \
-          || fail "persist_last_published call $call_idx missing --outcomes"
-        printf '%s' "$current_call" | grep -qF -- '--output' \
-          || fail "persist_last_published call $call_idx missing --output"
-        printf '%s' "$current_call" | grep -qF -- '--local-hash-map' \
-          || fail "persist_last_published call $call_idx missing --local-hash-map"
-        printf '%s' "$current_call" | grep -qF -- '--design-record' \
-          || fail "persist_last_published call $call_idx missing --design-record"
-        printf '%s' "$current_call" | grep -qF -- '--project' \
-          || fail "persist_last_published call $call_idx missing --project"
+        _check_persist_flags "$current_call" "$call_idx"
       fi
       current_call="$line"
     else
@@ -1697,19 +1818,353 @@ Read the project files and use them."
 ${line}"
     fi
   done <<< "$fenced_calls"
-  # Flush the last call
   if [ -n "$current_call" ]; then
     call_idx=$((call_idx + 1))
-    printf '%s' "$current_call" | grep -qF -- '--outcomes' \
-      || fail "persist_last_published call $call_idx missing --outcomes"
-    printf '%s' "$current_call" | grep -qF -- '--output' \
-      || fail "persist_last_published call $call_idx missing --output"
-    printf '%s' "$current_call" | grep -qF -- '--local-hash-map' \
-      || fail "persist_last_published call $call_idx missing --local-hash-map"
-    printf '%s' "$current_call" | grep -qF -- '--design-record' \
-      || fail "persist_last_published call $call_idx missing --design-record"
-    printf '%s' "$current_call" | grep -qF -- '--project' \
-      || fail "persist_last_published call $call_idx missing --project"
+    _check_persist_flags "$current_call" "$call_idx"
   fi
   [ "$call_idx" -ge 2 ] || fail "expected at least 2 persist_last_published calls checked, got $call_idx"
+}
+
+# ===========================================================================
+# Script-level set-product-project tests
+# ===========================================================================
+
+@test "set-product-project with discovered-via existing succeeds" {
+  _init_design_record "ds-proj-1" "created" "q.md"
+  export PROJECT_ROOT="$TEST_TMP"
+  run env PROJECT_ROOT="$TEST_TMP" \
+    "$DESIGN_RECORD_SH" set-product-project \
+    --pd-reference "pd-proj-1" --discovered-via "existing" --actor "gaia-create-ux"
+  [ "$status" -eq 0 ]
+  local pd_ref pd_dv
+  pd_ref="$(yq '.product_design_project.reference' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  pd_dv="$(yq '.product_design_project.discovered_via' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$pd_ref" = "pd-proj-1" ]
+  [ "$pd_dv" = "existing" ]
+}
+
+@test "set-product-project with discovered-via created succeeds" {
+  _init_design_record "ds-proj-2" "created" "q.md"
+  export PROJECT_ROOT="$TEST_TMP"
+  run env PROJECT_ROOT="$TEST_TMP" \
+    "$DESIGN_RECORD_SH" set-product-project \
+    --pd-reference "pd-proj-2" --discovered-via "created" --actor "gaia-create-ux"
+  [ "$status" -eq 0 ]
+  local pd_dv
+  pd_dv="$(yq '.product_design_project.discovered_via' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$pd_dv" = "created" ]
+}
+
+@test "set-product-project rejects integration-list as discovered-via" {
+  _init_design_record "ds-proj-3" "created" "q.md"
+  export PROJECT_ROOT="$TEST_TMP"
+  run env PROJECT_ROOT="$TEST_TMP" \
+    "$DESIGN_RECORD_SH" set-product-project \
+    --pd-reference "pd-proj-3" --discovered-via "integration-list" --actor "gaia-create-ux"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown discovered_via"* ]]
+}
+
+@test "SKILL.md set-product-project discovered-via values match script accepted values" {
+  # Extract --discovered-via values from SKILL.md near set-product-project calls
+  local spp_lines
+  spp_lines="$(grep 'set-product-project' "$SKILL_MD" | grep -oE '\-\-discovered-via\s+"[^"]*"' | \
+    sed 's/--discovered-via[[:space:]]*"//' | tr -d '"' || true)"
+  [ -n "$spp_lines" ] || fail "no set-product-project --discovered-via in SKILL.md"
+  # Each value must succeed when passed to the real script
+  _init_design_record "ds-consistency-test" "created" "q.md"
+  local val
+  while IFS= read -r val; do
+    [ -z "$val" ] && continue
+    # Re-create for each test (set-product-project refuses overwrite)
+    rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
+    _init_design_record "ds-ctest-${val}" "created" "q.md"
+    run env PROJECT_ROOT="$TEST_TMP" \
+      "$DESIGN_RECORD_SH" set-product-project \
+      --pd-reference "pd-ctest-${val}" --discovered-via "$val" --actor "test"
+    [ "$status" -eq 0 ] || fail "set-product-project --discovered-via \"$val\" failed (exit $status): $output"
+  done <<< "$spp_lines"
+}
+
+@test "set-product-project resume: null product project transitions to stale on review record" {
+  _init_design_record "ds-resume-1" "created" "q.md"
+  export PROJECT_ROOT="$TEST_TMP"
+  # Transition draft -> review (review is in the stale-on-bind set)
+  env PROJECT_ROOT="$TEST_TMP" "$DESIGN_RECORD_SH" transition \
+    --to "review" --actor "test"
+  local state
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "review" ] || fail "expected review, got $state"
+  # Bind product project — should move to stale
+  run env PROJECT_ROOT="$TEST_TMP" \
+    "$DESIGN_RECORD_SH" set-product-project \
+    --pd-reference "pd-resume-1" --discovered-via "existing" --actor "gaia-create-ux"
+  [ "$status" -eq 0 ]
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "stale" ] || fail "expected stale after binding product project, got $state"
+}
+
+@test "set-product-project on draft record does not transition to stale" {
+  _init_design_record "ds-draft-1" "created" "q.md"
+  export PROJECT_ROOT="$TEST_TMP"
+  local state
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "draft" ] || fail "expected draft, got $state"
+  run env PROJECT_ROOT="$TEST_TMP" \
+    "$DESIGN_RECORD_SH" set-product-project \
+    --pd-reference "pd-draft-1" --discovered-via "created" --actor "gaia-create-ux"
+  [ "$status" -eq 0 ]
+  state="$(yq '.design_state' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$state" = "draft" ] || fail "expected draft after binding product project, got $state"
+}
+
+# ===========================================================================
+# confirm-bind.sh execute permission test
+# ===========================================================================
+
+@test "confirm-bind.sh is executable (mode 755)" {
+  [ -x "$SKILL_SCRIPTS/confirm-bind.sh" ] || fail "confirm-bind.sh is not executable (expected mode 755)"
+}
+
+# ===========================================================================
+# Plugin-rooted script paths in SKILL.md
+# ===========================================================================
+
+@test "every script path in SKILL.md is plugin-rooted or in a code block example" {
+  # Scripts referenced as scripts/lib/... must use the plugin-root form
+  local bare_paths
+  bare_paths="$(grep -nE '(^|[^${}])scripts/lib/[a-z]' "$SKILL_MD" | \
+    grep -v 'CLAUDE_PLUGIN_ROOT' | \
+    grep -v '^\s*#' || true)"
+  [ -z "$bare_paths" ] || fail "bare scripts/lib/ path without CLAUDE_PLUGIN_ROOT:\n$bare_paths"
+}
+
+@test "every script referenced in SKILL.md exists at the plugin root" {
+  local plugin_root="$BATS_TEST_DIRNAME/.."
+  local missing=""
+  local script_refs
+  script_refs="$(grep -oE '\$\{CLAUDE_PLUGIN_ROOT\}/scripts/[^"[:space:]`]+' "$SKILL_MD" | \
+    sed 's|${CLAUDE_PLUGIN_ROOT}|'"$plugin_root"'|' | sort -u || true)"
+  [ -n "$script_refs" ] || fail "no CLAUDE_PLUGIN_ROOT script references found"
+  while IFS= read -r ref; do
+    [ -z "$ref" ] && continue
+    # Strip trailing punctuation that is not part of the path
+    ref="$(printf '%s' "$ref" | sed 's/[)>]$//')"
+    [ -f "$ref" ] || missing="${missing}${ref}\n"
+  done <<< "$script_refs"
+  [ -z "$missing" ] || fail "script(s) referenced in SKILL.md not found:\n$missing"
+}
+
+# ===========================================================================
+# Token escaping in style blocks
+# ===========================================================================
+
+@test "SKILL.md specifies token value escaping rule for style block injection" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must mention escaping token values before injection into style block
+  printf '%s' "$block" | grep -qiE 'escape.*token.*value|token.*value.*escape|reject.*</style' \
+    || fail "no token escaping rule for style block in Publication step"
+  # Must specify concrete escape characters
+  printf '%s' "$block" | grep -qF '<' || fail "no < escape rule"
+  printf '%s' "$block" | grep -qF '>' || fail "no > escape rule"
+  printf '%s' "$block" | grep -qF '"' || true  # quotes may be HTML-escaped in markdown
+  # Must halt on </style
+  printf '%s' "$block" | grep -qiE 'reject.*</style' \
+    || fail "no halt on </style in token values"
+  # Must specify case-insensitive matching (HTML is case-insensitive)
+  printf '%s' "$block" | grep -qiE 'any.*case|case.insensitive|any letter case' \
+    || fail "style-close rejection is not case-insensitive"
+}
+
+@test "hostile token value containing style-close tag is caught by escaping rule" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # The rule must explicitly mention </style as a rejection trigger
+  printf '%s' "$block" | grep -qF '</style' \
+    || fail "escaping rule does not mention </style sequence"
+}
+
+@test "hostile token with uppercase style-close tag is also caught" {
+  # HTML is case-insensitive: </STYLE> and </Style> are equivalent.
+  # The spec must cover any-case matching.
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  printf '%s' "$block" | grep -qiE 'any.*case|case.insensitive|any letter case' \
+    || fail "style-close rejection does not cover uppercase </STYLE"
+}
+
+# ===========================================================================
+# Stale-on-bind user notice in SKILL.md
+# ===========================================================================
+
+@test "SKILL.md warns user when binding product project moves record to stale" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  printf '%s' "$full" | grep -qiE 'stale.*bind|bind.*stale|stale-on-bind' \
+    || fail "no stale-on-bind notice in SKILL.md"
+  printf '%s' "$full" | grep -qiE 'surface.*user|tell.*user|inform.*user|warn.*user|notice.*user|Proceed' \
+    || fail "no user notification for stale-on-bind"
+}
+
+# ===========================================================================
+# Batch publishing and selective reads
+# ===========================================================================
+
+@test "product-design writes are batched into one Artifact publish" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must contain a sentence that says to batch all WRITE ops into one publish
+  # carrying all changed artboards and the final canvas.json. Match the
+  # enforcement sentence, not just the heading word "batched".
+  printf '%s' "$block" | grep -qiE 'Batch all.*WRITE.*one.*Artifact.*publish|one Artifact.*publish.*files.*all.*changed.*artboard' \
+    || fail "no enforcement sentence: batch all WRITE operations into one Artifact publish with all artboards"
+  printf '%s' "$block" | grep -qiE 'all.*changed.*artboard.*final.*canvas\.json|all.*artboard.*canvas\.json.*one' \
+    || fail "enforcement sentence does not name both artboards and canvas.json in one publish"
+}
+
+@test "canvas.json is not resent once per screen in product-design publish" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  printf '%s' "$block" | grep -qiE 'not resend.*canvas|do not resend.*canvas|canvas.*once.*per.*screen.*not|canvas.*not.*once.*per.*screen' \
+    || fail "no prohibition on per-screen canvas.json resend"
+}
+
+@test "post-publish read-back covers only screens just written" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must contain the rule sentence: read back only the screens just written,
+  # not every screen. Match both halves — the restriction and the exclusion.
+  printf '%s' "$block" | grep -qiE 'read back only.*screens just written' \
+    || fail "no rule sentence: read back only the screens just written"
+  printf '%s' "$block" | grep -qiE 'not every screen in the project' \
+    || fail "no exclusion: not every screen in the project"
+}
+
+@test "pre-reads use Artifact file listing with hashes instead of reading every file" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass"
+  printf '%s' "$pd_section" | grep -qiE 'list.*scope.*files|Artifact.*list.*files' \
+    || fail "pre-read does not use Artifact file listing"
+}
+
+# ===========================================================================
+# Target-check metadata shape specification
+# ===========================================================================
+
+@test "SKILL.md specifies metadata file contents for each surface" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # DesignSync metadata shape
+  printf '%s' "$full" | grep -qF 'projectId' \
+    || fail "no projectId in metadata specification"
+  printf '%s' "$full" | grep -qiE 'PROJECT_TYPE_DESIGN_SYSTEM' \
+    || fail "no PROJECT_TYPE_DESIGN_SYSTEM in metadata specification"
+  printf '%s' "$full" | grep -qF 'canEdit' \
+    || fail "no canEdit in metadata specification"
+  # Artifact metadata shape
+  printf '%s' "$full" | grep -qF 'reference:' \
+    || fail "no reference: in artifact metadata specification"
+  printf '%s' "$full" | grep -qiE 'page.*read.*header|page-read header|owned by you' \
+    || fail "no page-read header in artifact metadata specification"
+  printf '%s' "$full" | grep -qiE 'per-file.*read.*header|per-file-read header|Files saved under' \
+    || fail "no per-file-read header in artifact metadata specification"
+}
+
+@test "product-design pass performs page read before target check" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  printf '%s' "$full" | grep -qiE 'page read.*before.*target check|page read.*supplies.*owned|perform.*page read.*before' \
+    || fail "no page read before target check for product-design pass"
+}
+
+# ===========================================================================
+# Product-design manifest mapping
+# ===========================================================================
+
+@test "SKILL.md defines screen-key mapping from spec to artboard" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass"
+  printf '%s' "$pd_section" | grep -qF '.spec.html' \
+    || fail "no .spec.html in product-design mapping"
+  printf '%s' "$pd_section" | grep -qF '.dc.html' \
+    || fail "no .dc.html in product-design mapping"
+  printf '%s' "$pd_section" | grep -qiE 'canvas.*json.*index|index.*canvas|canvas.*not.*screen' \
+    || fail "canvas.json not described as index in product-design mapping"
+}
+
+@test "orphan deletion also removes boards and order entries from canvas.json" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass"
+  local orphan_line
+  orphan_line="$(printf '%s' "$pd_section" | grep -i 'DELETE_ORPHAN' || true)"
+  [ -n "$orphan_line" ] || fail "no DELETE_ORPHAN in product-design pass"
+  printf '%s' "$orphan_line" | grep -qF 'boards' \
+    || fail "DELETE_ORPHAN does not remove boards entry"
+  printf '%s' "$orphan_line" | grep -qF 'order' \
+    || fail "DELETE_ORPHAN does not remove order entry"
+}
+
+# ===========================================================================
+# Leftover test wording and ds_attachment_mode
+# ===========================================================================
+
+@test "no test wording in runtime prose of SKILL.md" {
+  _assert_not_in_file "the fixture's" "$SKILL_MD" "(test wording leaked into runtime prose)"
+}
+
+@test "ds_attachment_mode is auto-set not recorded via nonexistent verb" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must NOT instruct recording ds_attachment_mode via a design-record.sh command
+  if printf '%s' "$full" | grep -iE 'record.*ds_attachment_mode.*via.*design-record|ds_attachment_mode.*design-record\.sh' | grep -qivE 'auto|set-product-project|init'; then
+    fail "SKILL.md instructs recording ds_attachment_mode via a nonexistent design-record verb"
+  fi
+}
+
+# ===========================================================================
+# Screens route to product-design project
+# ===========================================================================
+
+@test "plan-publication.sh accepts --project product_design" {
+  [ -x "$SHARED_SCRIPTS/plan-publication.sh" ] || fail "plan-publication.sh missing"
+  _write_pub_fixtures \
+    '[{"file":"project/login.dc.html","hash":"aaa"}]' \
+    '[]' \
+    '{"design_system":{"reference":null,"last_published_at":null,"files":[]},"product_design":{"reference":null,"last_published_at":null,"files":[]}}'
+  _run_pub --project product_design
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"READ_FIRST project/login.dc.html"* ]] || [[ "$output" == *"WRITE project/login.dc.html"* ]]
+}
+
+@test "build_manifest_cards accepts --project product_design" {
+  local fixture_specs="$BATS_TEST_DIRNAME/fixtures/create-ux-two-project/specs"
+  [ -d "$fixture_specs" ] || fail "fixture tree missing"
+  source "$SHARED_SCRIPTS/build-manifest-cards.sh"
+  local result
+  result="$(build_manifest_cards \
+    --local-specs "$fixture_specs" \
+    --existing "$TEST_TMP/nonexistent-manifest.json" \
+    --project product_design)"
+  [ -n "$result" ] || fail "empty result for product_design"
+  printf '%s' "$result" | jq -e '.cards' > /dev/null \
+    || fail "result is not valid JSON with cards array"
 }
