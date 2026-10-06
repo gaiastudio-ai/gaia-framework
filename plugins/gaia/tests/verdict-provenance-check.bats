@@ -634,13 +634,15 @@ EOF
     fail "text from region 2 should be rejected when all regions extracted (exit $status)"
 }
 
-@test "embedded marker does not narrow extraction" {
+@test "embedded close marker triggers count mismatch and exits 2" {
   [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
 
   NOTES_FILE="$TEST_TMP/notes.txt"
   BOUNDARY_FILE="$TEST_TMP/boundary.txt"
 
-  # Region content contains the literal close marker — should not truncate
+  # Region content contains the literal close marker — 1 open, 2 closes.
+  # The strict count rule rejects this as malformed (content with an
+  # embedded close marker should have been escaped at write time).
   cat > "$BOUNDARY_FILE" <<'EOF'
 <<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 prefix content before the embedded marker text appears here
@@ -649,12 +651,10 @@ suffix content after the embedded marker still inside the real region
 <<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
 EOF
 
-  # Notes copying text that appears after the embedded marker but before the
-  # real close should be rejected (still inside the region)
-  printf '%s' "suffix content after the embedded marker still inside the real region" > "$NOTES_FILE"
+  printf '%s' "unrelated notes that do not copy anything from any region" > "$NOTES_FILE"
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
-  [ "$status" -eq 1 ] || \
-    fail "text after embedded marker should still be inside the region (exit $status)"
+  [ "$status" -eq 2 ] || \
+    fail "embedded close marker (count mismatch) should exit 2 (exit $status)"
 }
 
 @test "orphan close marker with no open fails closed with exit 2" {
@@ -730,6 +730,97 @@ EOF
   [ "$status" -eq 2 ] || \
     fail "file with no markers should fail closed with exit 2 (exit $status)"
 }
+
+# =========================================================================
+# Same-type open/close count mismatch — exit 2
+# =========================================================================
+
+@test "same-type stray close before valid region fails closed with exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # One CLOSE then one OPEN then one CLOSE of the same type — the content
+  # before the stray close must not pass unchecked.
+  cat > "$BOUNDARY_FILE" <<'EOF'
+content A that must not be silently accepted by the provenance check
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+content B properly delimited between open and close markers in the file
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+EOF
+
+  printf '%s' "unrelated notes that do not copy anything from any region" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "same-type stray close before valid region should exit 2 (exit $status)"
+}
+
+@test "same-type stray close after valid region fails closed with exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # Valid region then a trailing stray CLOSE
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+content properly delimited between open and close boundary markers
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+trailing content followed by a stray close marker in this boundary file
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+EOF
+
+  printf '%s' "unrelated notes that do not copy anything from any region" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "same-type stray close after valid region should exit 2 (exit $status)"
+}
+
+@test "extra open marker for the same type fails closed with exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # Two OPENs and only one CLOSE of the same type
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+first region content inside the first open marker boundary section
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+second open without the first being closed by a matching close
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+EOF
+
+  printf '%s' "unrelated notes that do not copy anything from any region" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "extra open marker should fail closed with exit 2 (exit $status)"
+}
+
+@test "interleaved marker types fail closed with exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # DS open, PD open, DS close, PD close — interleaved nesting
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+design system content that overlaps with the product design region
+<<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
+product design content nested inside the design system region
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
+EOF
+
+  printf '%s' "unrelated notes that do not copy anything from any region" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "interleaved marker types should fail closed with exit 2 (exit $status)"
+}
+
 
 @test "five angle bracket embedded marker escaped then extracted" {
   [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"

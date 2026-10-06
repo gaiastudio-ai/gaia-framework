@@ -436,14 +436,14 @@ _main() {
     # Combined shape — extract the part matching --project
     if [ "$_sync_project" = "design_system" ]; then
       # Merge templates into components for the design_system pass
-      jq --arg proj "$_sync_project" '
+      jq '
         (.design_system // {}) |
         {components: ((.components // []) + (.templates // []) | unique),
          screens: [], tokens: (.tokens // {})}
       ' "$snapshot_file" > "$_projected"
     else
       # product_design pass — extract screens and flows
-      jq --arg proj "$_sync_project" '
+      jq '
         (.product_design // {}) |
         {components: [], screens: (.screens // []),
          flows: (.flows // [])}
@@ -519,8 +519,8 @@ _main() {
   local baseline_path
   baseline_path="$(_resolve_baseline "$last_published_arg")"
   if [ -n "$baseline_path" ] && [ -f "$baseline_path" ]; then
-    local _bl_validation_rc=0
-    jq -r --arg proj "$_sync_project" "
+    local _bl_jq_prog
+    _bl_jq_prog="
       ${SAFE_FILENAME_JQ_DEF}
       ${SAFE_HASH_JQ_DEF}
       if type == \"array\" then
@@ -529,19 +529,14 @@ _main() {
       | .[\$proj].files // []
       | .[] | (.file | safe_filename) as \$f | (.hash | safe_hash) as \$h
       | \"\(\$f)\t\(\$h)\"
-    " "$baseline_path" > /dev/null 2>&1 || _bl_validation_rc=$?
+    "
+    local _bl_validation_rc=0
+    jq -r --arg proj "$_sync_project" "$_bl_jq_prog" \
+      "$baseline_path" > /dev/null 2>&1 || _bl_validation_rc=$?
     if [ "$_bl_validation_rc" -ne 0 ]; then
       # Re-run to get the diagnostic on stderr
-      jq -r --arg proj "$_sync_project" "
-        ${SAFE_FILENAME_JQ_DEF}
-        ${SAFE_HASH_JQ_DEF}
-        if type == \"array\" then
-          {\"design_system\": {\"files\": .}, \"product_design\": {\"files\": []}}
-        else . end
-        | .[\$proj].files // []
-        | .[] | (.file | safe_filename) as \$f | (.hash | safe_hash) as \$h
-        | \"\(\$f)\t\(\$h)\"
-      " "$baseline_path" >&2 2>&1 || true
+      jq -r --arg proj "$_sync_project" "$_bl_jq_prog" \
+        "$baseline_path" >&2 2>&1 || true
       _die "unsafe or malformed baseline: $baseline_path"
     fi
   fi
@@ -621,11 +616,14 @@ _main() {
     fi
   fi
 
-  # === Removal report (always runs when the doc has a component section) ===
+  # === Removal report (design-system pass only) ===
   # A design-system snapshot with zero components and zero templates must
   # still produce the absence report for any doc component. The snapshot's
   # projected components (union of .components + .templates) is the source.
-  if _has_component_heading "$ux_doc"; then
+  # The product-design projection sets components=[], so this check runs
+  # only on the design-system pass to avoid false absence reports.
+  local _reported_absent=false
+  if [ "$_sync_project" = "design_system" ] && _has_component_heading "$ux_doc"; then
     local _removal_snapshot_components=""
     if jq -e '.components' "$snapshot_file" >/dev/null 2>&1; then
       _removal_snapshot_components="$(jq -r '.components[]' "$snapshot_file" 2>/dev/null)" || true
@@ -637,6 +635,7 @@ _main() {
       if [ -z "$_removal_snapshot_components" ] || \
          ! printf '%s\n' "$_removal_snapshot_components" | grep -qxF "$component"; then
         printf 'sync: component "%s" is in ux-design.md but absent from the project snapshot (not removed — reporting only)\n' "$component"
+        _reported_absent=true
       fi
     done <<< "$_removal_doc_components"
   fi
@@ -926,11 +925,6 @@ _main() {
       if [ -z "$tok_baseline_path" ]; then
         printf 'sync-derived-artifacts.sh: no project config folder found — skipping token baseline write\n' >&2
       else
-        # Ensure the state directory exists
-        local tok_baseline_dir
-        tok_baseline_dir="$(dirname "$tok_baseline_path")"
-        mkdir -p "$tok_baseline_dir" 2>/dev/null || true
-
         local new_tokens_file="$_sync_tmpdir/new-tokens.json"
         jq -S '.tokens' "$snapshot_file" > "$new_tokens_file"
 
@@ -983,6 +977,27 @@ _main() {
             jq '.product_design.screens // []' "$_orig_snapshot_file" > "$pd_screens_file" 2>/dev/null || printf '[]\n' > "$pd_screens_file"
           else
             jq '.screens // []' "$_orig_snapshot_file" > "$pd_screens_file" 2>/dev/null || printf '[]\n' > "$pd_screens_file"
+          fi
+
+          # Validate screen entries before using them: names must be strings
+          # without control characters (newlines would break line-based pairing),
+          # and content must be a string.
+          local _pd_screen_err
+          _pd_screen_err="$(jq -r '
+            .[] |
+            if (.name | type) != "string" then
+              "screen entry has non-string name (type: \(.name | type))"
+            elif (.name | test("[[:cntrl:]]")) then
+              "screen name contains control characters"
+            elif (.content | type) != "string" then
+              "screen \(.name) has non-string content (type: \(.content | type))"
+            else empty end
+          ' "$pd_screens_file" 2>/dev/null | head -1)" || true
+          if [ -n "$_pd_screen_err" ]; then
+            printf 'sync-derived-artifacts.sh: invalid product screen data: %s — skipping token-screen reconciliation\n' \
+              "$_pd_screen_err" >&2
+            # Replace with empty array so reconciliation has no screens to match
+            printf '[]\n' > "$pd_screens_file"
           fi
 
           local old_tokens_file="$tok_baseline_path"
@@ -1043,13 +1058,14 @@ _main() {
                   if grep -qE "(^|[^A-Za-z0-9_-])${escaped_tok}([^A-Za-z0-9_-]|\$)" "$scr_content_file"; then
                     local scr_name
                     scr_name="$(sed -n "$((si + 1))p" "$scr_names_file")"
-                    # Escape values to prevent boundary-marker injection in output
-                    local safe_old safe_new safe_scr
+                    # Escape all interpolated values to prevent boundary-marker injection
+                    local safe_tok safe_old safe_new safe_scr
+                    safe_tok="$(printf '%s' "$tok_name" | escape_boundary_markers)"
                     safe_old="$(printf '%s' "$tok_old" | escape_boundary_markers)"
                     safe_new="$(printf '%s' "$tok_new" | escape_boundary_markers)"
                     safe_scr="$(printf '%s' "$scr_name" | escape_boundary_markers)"
                     printf 'reconciliation (medium): token %s %s -> %s affects screen %s\n' \
-                      "$tok_name" "$safe_old" "$safe_new" "$safe_scr"
+                      "$safe_tok" "$safe_old" "$safe_new" "$safe_scr"
                   fi
                 fi
                 si=$((si + 1))
@@ -1057,10 +1073,12 @@ _main() {
             done < "$changed_tokens"
           fi
 
-          # Report removed tokens that screens may still reference
+          # Report removed tokens (the design system no longer defines them)
           if [ -s "$removed_tokens" ]; then
             while IFS= read -r removed_tok; do
-              printf 'reconciliation (medium): token %s was removed from the design system\n' "$removed_tok"
+              local safe_removed_tok
+              safe_removed_tok="$(printf '%s' "$removed_tok" | escape_boundary_markers)"
+              printf 'reconciliation (medium): token %s was removed from the design system\n' "$safe_removed_tok"
             done < "$removed_tokens"
           fi
 
@@ -1074,8 +1092,12 @@ _main() {
           if mkdir -p "$tok_baseline_dir" 2>/dev/null; then
             local tok_tmp
             tok_tmp="$(mktemp "${tok_baseline_dir}/tok-baseline-tmp.XXXXXX")"
-            cp "$new_tokens_file" "$tok_tmp"
-            mv -f "$tok_tmp" "$tok_baseline_path"
+            if cp "$new_tokens_file" "$tok_tmp"; then
+              mv -f "$tok_tmp" "$tok_baseline_path"
+            else
+              rm -f "$tok_tmp"
+              printf 'sync-derived-artifacts.sh: failed to write token baseline — cleaned up temp file\n' >&2
+            fi
           else
             printf 'sync-derived-artifacts.sh: could not create state directory %s — skipping baseline write\n' \
               "$tok_baseline_dir" >&2
@@ -1087,8 +1109,10 @@ _main() {
     fi
   fi
 
-  # If no components and no screens and no flows, just report up to date
-  if [ "$has_components" = false ] && [ "$has_screens" = false ] && [ "$has_flows" = false ]; then
+  # If no components and no screens and no flows, report up to date — but
+  # not when the absence report already ran (that would read as a contradiction).
+  if [ "$has_components" = false ] && [ "$has_screens" = false ] && [ "$has_flows" = false ] \
+     && [ "$_reported_absent" = false ]; then
     printf 'sync: ux-design.md is up to date — no components to add\n'
   fi
 }

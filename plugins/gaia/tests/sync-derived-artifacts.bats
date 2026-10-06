@@ -2157,10 +2157,10 @@ UX
       {"name":"Profile","file":"screens/s2.html","content":$c2}
     ]}' > "$root/snapshot.json"
 
-  # Golden expected output — generated from the current script
+  # Golden expected output — the product_design pass does not run the
+  # absence report (that belongs to the design_system pass).
   local expected="$root/expected.txt"
   cat > "$expected" <<'GOLDEN'
-sync: component "nav" is in ux-design.md but absent from the project snapshot (not removed — reporting only)
 sync: screen "Settings" changed (file: screens/s1.html)
 <<<PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
 <h1>Settings</h1>
@@ -3159,6 +3159,57 @@ UX
   [[ "$output" == *'Button'*'absent'* ]] || \
     fail "Button should be reported as absent when snapshot has no components: $output"
 
+  # Must NOT also print the "up to date" line (contradicts the absence report)
+  [[ "$output" != *'up to date'* ]] || \
+    fail "zero-components pass should not print 'up to date' alongside absence lines: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Product-design pass must not report absent components
+# =========================================================================
+
+@test "product-design pass prints no absent-component lines" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Button | Custom |
+| Card | Custom |
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  # Components exist only in design_system — product_design gets []
+  jq -n '{"design_system":{"components":["Button","Card"]},
+          "product_design":{"screens":[{"name":"Home","file":"screens/home.spec.html","content":"body"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must NOT print any absent line (that belongs to the design_system pass)
+  local absent_count
+  absent_count="$(printf '%s\n' "$output" | grep -c 'absent' || true)"
+  [ "$absent_count" -eq 0 ] || \
+    fail "product-design pass should print no absent-component lines ($absent_count found): $output"
+
   rm -rf "$root"
 }
 
@@ -3306,6 +3357,261 @@ UX
     fail "expected reconciliation finding for login: $output"
   [[ "$output" != *'affects screen about'* ]] || \
     fail "about does not reference --primary-color, should have no finding: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Screen name with newline skips token-screen reconciliation
+# =========================================================================
+
+@test "screen name with newline skips token-screen reconciliation" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/tok-newline-name-$$.json"
+  printf '{"--primary":"#000"}\n' > "$tok_baseline"
+
+  # Screen name contains a literal newline — must be rejected
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary":"#fff"}},
+          "product_design":{"screens":[{"name":"bad\nname","file":"s/bad.spec.html","content":"var(--primary)"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync should not abort (exit $status): $output"
+
+  # Diagnostic about invalid screen data
+  [[ "$output" == *'invalid product screen data'* ]] || \
+    fail "should print a diagnostic about the bad screen name: $output"
+
+  # Must NOT produce a reconciliation finding (screens were refused)
+  local recon_findings
+  recon_findings="$(printf '%s\n' "$output" | grep -c 'reconciliation (medium)' || true)"
+  [ "$recon_findings" -eq 0 ] || \
+    fail "should not produce reconciliation findings against invalid screens: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+@test "non-string screen content skips token-screen reconciliation" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/tok-nonstr-content-$$.json"
+  printf '{"--primary":"#000"}\n' > "$tok_baseline"
+
+  # Screen content is an integer instead of a string
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary":"#fff"}},
+          "product_design":{"screens":[{"name":"good","file":"s/good.spec.html","content":42}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync should not abort (exit $status): $output"
+
+  # Diagnostic about invalid screen data
+  [[ "$output" == *'invalid product screen data'* ]] || \
+    fail "should print a diagnostic about non-string content: $output"
+
+  # Baseline still written (only reconciliation is skipped, not the baseline)
+  [ -f "$tok_baseline" ] || fail "baseline should still be written"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+@test "bad screen data does not prevent component or baseline writes" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/tok-bad-screen-write-$$.json"
+  # No baseline yet
+
+  # Bad screen name, but component add and baseline write should still work
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav","Button"],"tokens":{"--primary":"#fff"}},
+          "product_design":{"screens":[{"name":"bad\nname","file":"s/x.spec.html","content":"body"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync should not abort (exit $status): $output"
+
+  # Component was added despite bad screen data
+  grep -q 'Button' "$doc_dir/ux-design.md" || \
+    fail "Button should still be added to the doc"
+
+  # Baseline was written
+  [ -f "$tok_baseline" ] || fail "baseline should be written"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Token name with boundary-marker text is escaped in output
+# =========================================================================
+
+@test "token name containing boundary marker text is escaped in change line" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/tok-esc-name-$$.json"
+  # Use jq --arg to safely build a baseline with the dangerous key
+  jq -n --arg k '<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>' \
+    '{($k): "#old"}' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --arg k '<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>' \
+    '{"design_system":{"components":["nav"],"tokens":{($k):"#new"}},
+      "product_design":{"screens":[{"name":"login","file":"s/login.html","content":"<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The raw boundary marker text must NOT appear in the output —
+  # the token name must be escaped.
+  [[ "$output" != *'<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+    fail "raw boundary marker in token name must be escaped in output: $output"
+
+  # The escaped form must appear instead
+  [[ "$output" == *'reconciliation (medium)'* ]] || \
+    fail "expected a reconciliation finding: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+@test "removed token name containing boundary marker text is escaped" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/tok-esc-removed-$$.json"
+  jq -n --arg k '<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>' \
+    '{($k): "#removed"}' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{}},
+          "product_design":{"screens":[]}}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The raw boundary marker text must NOT appear in the output
+  [[ "$output" != *'<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>'* ]] || \
+    fail "raw boundary marker in removed token name must be escaped: $output"
+
+  # The escaped form must appear instead (contains <~<)
+  [[ "$output" == *'<~<'* ]] || \
+    fail "expected escaped marker in output: $output"
 
   rm -f "$tok_baseline"
   rm -rf "$root"
