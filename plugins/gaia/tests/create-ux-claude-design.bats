@@ -2006,7 +2006,7 @@ ${line}"
   [ -x "$vtv" ] || fail "validate-token-value.sh missing or not executable"
   # </style must be refused (the < alone catches it)
   local out
-  out="$(printf 'bad\t</style>\n' | bash "$vtv" 2>&1)"
+  out="$(printf '%s\n' '--bad	</style>' | bash "$vtv" 2>&1)"
   printf '%s' "$out" | grep -qF 'refused' || fail "</style value not refused"
 }
 
@@ -2015,7 +2015,7 @@ ${line}"
   [ -x "$vtv" ] || fail "validate-token-value.sh missing or not executable"
   # </STYLE must be refused
   local out
-  out="$(printf 'bad\t</STYLE>\n' | bash "$vtv" 2>&1)"
+  out="$(printf '%s\n' '--bad	</STYLE>' | bash "$vtv" 2>&1)"
   printf '%s' "$out" | grep -qF 'refused' || fail "</STYLE value not refused"
 }
 
@@ -2207,7 +2207,7 @@ ${line}"
 }
 
 # ===========================================================================
-# Item 1: --local-specs takes a directory, not a JSON file
+# local-specs directory form
 # ===========================================================================
 
 @test "local-specs argument in SKILL.md names a directory form, not a json file" {
@@ -2249,7 +2249,7 @@ ${line}"
 }
 
 # ===========================================================================
-# Item 2: first content publish is a creating write
+# first content publish as creating write
 # ===========================================================================
 
 @test "first content publish is a creating write without target check" {
@@ -2292,7 +2292,7 @@ ${line}"
 }
 
 # ===========================================================================
-# Item 3: validate-token-value.sh script tests
+# validate-token-value.sh script tests
 # ===========================================================================
 
 @test "validate-token-value.sh is executable" {
@@ -2304,11 +2304,11 @@ ${line}"
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
   # Write input with trailing newline to a temp file so read sees it
   cat > "$TEST_TMP/vtv-input.tsv" <<'TOKENS'
-color	#2563EB
-size	16px
-font	"Inter", sans-serif
-alpha	rgba(0,0,0,.5)
-ref	var(--x)
+--color	#2563EB
+--size	16px
+--font	"Inter", sans-serif
+--alpha	rgba(0,0,0,.5)
+--ref	var(--x)
 TOKENS
   local out
   out="$(bash "$vtv" < "$TEST_TMP/vtv-input.tsv" 2>/dev/null)"
@@ -2319,62 +2319,81 @@ TOKENS
 
 @test "validate-token-value.sh refuses angle brackets" {
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
-  local out
-  out="$(printf 'a\tval<ue\n' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "< not refused"
-  out="$(printf 'b\tval>ue\n' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "> not refused"
+  local stdout_out stderr_out
+  stdout_out="$(printf '%s\n' '--lt	val<ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "< not refused on stderr"
+  [ -z "$stdout_out" ] || fail "< refused but token still on stdout: $stdout_out"
+  stdout_out="$(printf '%s\n' '--gt	val>ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "> not refused on stderr"
+  [ -z "$stdout_out" ] || fail "> refused but token still on stdout: $stdout_out"
 }
 
 @test "validate-token-value.sh refuses braces and semicolons" {
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
-  local out
-  out="$(printf 'a\tval{ue\n' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "{ not refused"
-  out="$(printf 'b\tval}ue\n' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "} not refused"
-  out="$(printf 'c\tval;ue\n' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "; not refused"
+  local stdout_out stderr_out
+  stdout_out="$(printf '%s\n' '--brace-open	val{ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "{ not refused on stderr"
+  [ -z "$stdout_out" ] || fail "{ refused but token still on stdout: $stdout_out"
+  stdout_out="$(printf '%s\n' '--brace-close	val}ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "} not refused on stderr"
+  [ -z "$stdout_out" ] || fail "} refused but token still on stdout: $stdout_out"
+  stdout_out="$(printf '%s\n' '--semi	val;ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "; not refused on stderr"
+  [ -z "$stdout_out" ] || fail "; refused but token still on stdout: $stdout_out"
 }
 
 @test "validate-token-value.sh refuses backslash" {
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
-  local out
-  out="$(printf 'bs\tval\\ue\n' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "backslash not refused"
+  local stdout_out stderr_out
+  printf '%s\t%s\n' "--bs" 'val\ue' > "$TEST_TMP/vtv-bs-input"
+  stdout_out="$(bash "$vtv" < "$TEST_TMP/vtv-bs-input" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "backslash not refused on stderr"
+  [ -z "$stdout_out" ] || fail "backslash refused but token still on stdout: $stdout_out"
 }
 
 @test "validate-token-value.sh refuses style-close in any case" {
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
-  local out
-  out="$(printf 'lo\t</style>\n' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "</style> not refused"
-  out="$(printf 'hi\t</STYLE>\n' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "</STYLE> not refused"
+  local stdout_out stderr_out
+  stdout_out="$(printf '%s\n' '--lo	</style>' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "</style> not refused on stderr"
+  [ -z "$stdout_out" ] || fail "</style> refused but token still on stdout: $stdout_out"
+  stdout_out="$(printf '%s\n' '--hi	</STYLE>' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "</STYLE> not refused on stderr"
+  [ -z "$stdout_out" ] || fail "</STYLE> refused but token still on stdout: $stdout_out"
 }
 
 @test "validate-token-value.sh refuses control characters" {
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
   local tmpf
   tmpf="$(mktemp "$TEST_TMP/vtv-ctrl.XXXXXX")"
-  printf 'ctrl\tval\x01ue\n' > "$tmpf"
-  local out
-  out="$(bash "$vtv" < "$tmpf" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' \
-    || fail "control character not refused"
+  printf -- '--ctrl\tval\x01ue\n' > "$tmpf"
+  local stdout_out stderr_out
+  stdout_out="$(bash "$vtv" < "$tmpf" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "control character not refused on stderr"
+  [ -z "$stdout_out" ] || fail "control char refused but token still on stdout: $stdout_out"
   rm -f "$tmpf"
 }
 
 @test "validate-token-value.sh names the refused token on stderr" {
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
   local stderr_out
-  stderr_out="$(printf 'my-bad-token\tval<ue\n' | bash "$vtv" 2>&1 1>/dev/null)"
+  stderr_out="$(printf '%s\n' '--my-bad-token	val<ue' | bash "$vtv" 2>&1 1>/dev/null)"
   printf '%s' "$stderr_out" | grep -qF 'my-bad-token' \
     || fail "refused token name not on stderr: $stderr_out"
 }
 
 # ===========================================================================
-# Item 4: listing carries no hashes
+# listing carries no hashes
 # ===========================================================================
 
 @test "SKILL.md states listing carries no hashes" {
@@ -2386,7 +2405,7 @@ TOKENS
 }
 
 # ===========================================================================
-# Item 5: product design project discovery order
+# product design project discovery order
 # ===========================================================================
 
 @test "product design discovery checks record first, then lists artifacts, then creates" {
@@ -2420,7 +2439,7 @@ TOKENS
 }
 
 # ===========================================================================
-# Item 6: canvas.json excluded from persist
+# canvas.json excluded from persist
 # ===========================================================================
 
 @test "canvas.json excluded from product-pass persist inputs" {
@@ -2458,4 +2477,235 @@ TOKENS
   if printf '%s' "$resolve_block" | grep -qiF 'linked to the selected design system'; then
     fail "old 'linked to the selected design system' wording still present"
   fi
+}
+
+# ===========================================================================
+# empty canvas treated as creation sequence
+# ===========================================================================
+
+@test "empty-listing canvas is treated as the creation sequence" {
+  # SKILL.md must say that ANY canvas whose file listing is empty is treated
+  # as the creating sequence — not only one created in the same run.
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local creation_seq
+  creation_seq="$(printf '%s' "$block" | awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}')"
+  [ -n "$creation_seq" ] || fail "no creation sequence section"
+  # Must explicitly say "any" canvas or "whose file listing is empty", not
+  # only the one "created in the Resolve procedure".
+  printf '%s' "$creation_seq" | grep -qiE 'any.*canvas.*file listing.*empty|whose file listing is empty|any.*product design canvas' \
+    || fail "creation sequence does not cover all empty-listing canvases"
+}
+
+@test "gate condition 3 accounts for empty existing canvas" {
+  # Gate condition 3 must handle an existing canvas with an empty listing,
+  # where canvas.json does not yet exist. It should mention the empty listing
+  # explicitly.
+  local gate_section
+  gate_section="$(awk '/Screen-publication gate/{found=1} found{print} /^### Step 10/{exit}' "$SKILL_MD")"
+  [ -n "$gate_section" ] || fail "no Screen-publication gate"
+  # Must mention empty listing or empty canvas in the gate definition
+  printf '%s' "$gate_section" | grep -qiE 'empty.*file listing|file listing.*empty|empty.*canvas' \
+    || fail "gate condition 3 does not account for empty existing canvas"
+}
+
+# ===========================================================================
+# record-first path skips duplicate set-product-project
+# ===========================================================================
+
+@test "record-first path skips set-product-project and performs read-back" {
+  local resolve_block
+  resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
+  [ -n "$resolve_block" ] || fail "no Resolve procedure"
+  # Extract the Record-first bullet
+  local record_first
+  record_first="$(printf '%s\n' "$resolve_block" | awk '/Record-first/{found=1} found{print} /User pick/{exit}')"
+  [ -n "$record_first" ] || fail "no Record-first paragraph"
+  # Must say NOT to call set-product-project (prohibit, not invoke)
+  printf '%s' "$record_first" | grep -qiE 'do not call.*set-product-project|not.*call.*set-product-project|skip.*set-product-project' \
+    || fail "record-first path does not prohibit calling set-product-project"
+  # Must not say to skip to Step 5 (Record) — that path would call it
+  if printf '%s' "$record_first" | grep -qiE 'skip to step 5'; then
+    fail "record-first path still skips to Step 5 (Record)"
+  fi
+  # Must mention performing a read-back
+  printf '%s' "$record_first" | grep -qiE 'read.back|canvas.*read|read.*canvas' \
+    || fail "record-first path does not perform the canvas read-back"
+}
+
+@test "set-product-project refuses a second call on an already-set record" {
+  local dr="$DESIGN_RECORD_SH"
+  [ -x "$dr" ] || fail "design-record.sh not executable"
+  local tmp_root
+  tmp_root="$(mktemp -d "$TEST_TMP/vtv-dr.XXXXXX")"
+  mkdir -p "$tmp_root/.gaia/state"
+  # Initialize a record with a design-system project
+  PROJECT_ROOT="$tmp_root" bash "$dr" init \
+    --ds-reference "https://example.com/ds-project" \
+    --discovered-via "integration-list" \
+    --sync-mode "brand-style" \
+    --actor "test" 2>/dev/null
+  # Set the product-design project
+  PROJECT_ROOT="$tmp_root" bash "$dr" set-product-project \
+    --pd-reference "https://example.com/pd-project" \
+    --discovered-via "created" \
+    --actor "test" 2>/dev/null
+  # A second call must fail
+  local rc=0
+  PROJECT_ROOT="$tmp_root" bash "$dr" set-product-project \
+    --pd-reference "https://example.com/pd-project-2" \
+    --discovered-via "created" \
+    --actor "test" 2>"$TEST_TMP/dr-err" || rc=$?
+  [ "$rc" -ne 0 ] || fail "second set-product-project succeeded (should refuse)"
+  grep -qF 'already set' "$TEST_TMP/dr-err" \
+    || fail "no 'already set' in error: $(cat "$TEST_TMP/dr-err")"
+  rm -rf "$tmp_root"
+}
+
+@test "re-run with both projects recorded performs the canvas read-back" {
+  # When both projects are already recorded, the gate still needs a read-back.
+  # The SKILL.md must describe how the read-back runs in that case.
+  local gate_section
+  gate_section="$(awk '/Screen-publication gate/{found=1} found{print} /^### Step 10/{exit}' "$SKILL_MD")"
+  [ -n "$gate_section" ] || fail "no Screen-publication gate"
+  # Condition 3 must specify how the read-back applies to existing projects
+  printf '%s' "$gate_section" | grep -qiE 'existing.*canvas.*read.back|read.back.*succeeded' \
+    || fail "gate condition 3 does not mention read-back for existing projects"
+}
+
+# ===========================================================================
+# non-ASCII values accepted
+# ===========================================================================
+
+@test "validate-token-value.sh accepts Japanese font family value" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  printf -- '--jp-font\t"Noto Sans JP", "\xe3\x83\xa1\xe3\x82\xa4\xe3\x83\xaa\xe3\x82\xaa", sans-serif\n' > "$TEST_TMP/vtv-jp-input"
+  stdout_out="$(bash "$vtv" < "$TEST_TMP/vtv-jp-input" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  [ -z "$stderr_out" ] || fail "Japanese font family refused: $stderr_out"
+  [ -n "$stdout_out" ] || fail "Japanese font family produced no output"
+}
+
+@test "validate-token-value.sh accepts accented Latin characters" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  printf -- '--accent\tHelv\xc3\xa9tica\n' > "$TEST_TMP/vtv-accent-input"
+  stdout_out="$(bash "$vtv" < "$TEST_TMP/vtv-accent-input" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  [ -z "$stderr_out" ] || fail "accented value refused: $stderr_out"
+  [ -n "$stdout_out" ] || fail "accented value produced no output"
+}
+
+@test "validate-token-value.sh accepts emoji values" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  printf -- '--emoji\t\xf0\x9f\x8e\xa8 palette\n' > "$TEST_TMP/vtv-emoji-input"
+  stdout_out="$(bash "$vtv" < "$TEST_TMP/vtv-emoji-input" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  [ -z "$stderr_out" ] || fail "emoji value refused: $stderr_out"
+  [ -n "$stdout_out" ] || fail "emoji value produced no output"
+}
+
+# ===========================================================================
+# token name validation
+# ===========================================================================
+
+@test "validate-token-value.sh refuses injection in token name" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf 'x:1}</style><script>\tvalue\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "injection name not refused on stderr: $stderr_out"
+  [ -z "$stdout_out" ] || fail "injection name refused but token still on stdout: $stdout_out"
+}
+
+@test "validate-token-value.sh refuses name without leading dashes" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf 'no-dash-prefix\tvalue\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "name without -- prefix not refused on stderr: $stderr_out"
+  [ -z "$stdout_out" ] || fail "bare name refused but token still on stdout: $stdout_out"
+}
+
+@test "validate-token-value.sh accepts valid custom property names" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf '%s\n' "--color-primary	#2563EB" "--font-size-lg	18px" "--my_token-2	bold" | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  [ -z "$stderr_out" ] || fail "valid names refused: $stderr_out"
+  local count
+  count="$(printf '%s\n' "$stdout_out" | grep -c '.' || true)"
+  [ "$count" -eq 3 ] || fail "expected 3 accepted lines, got $count"
+}
+
+# ===========================================================================
+# defence-in-depth comment for style-close check
+# ===========================================================================
+
+@test "validate-token-value.sh documents style-close check as defence in depth" {
+  grep -qiE 'defen[cs]e in depth' "$SKILL_SCRIPTS/validate-token-value.sh" \
+    || fail "no defence-in-depth comment in validate-token-value.sh"
+}
+
+# ===========================================================================
+# empty name and trailing tab handling
+# ===========================================================================
+
+@test "validate-token-value.sh refuses a line with an empty name" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf '\tsome-value\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "empty name not refused on stderr: $stderr_out"
+  [ -z "$stdout_out" ] || fail "empty name refused but token still on stdout: $stdout_out"
+}
+
+@test "validate-token-value.sh refuses value with embedded tab as control character" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  # A tab (0x09) is a control character; a value containing a trailing tab
+  # is refused by the control-character check.  This documents the behaviour.
+  printf '%s\t%s\t\n' "--ok" "value" > "$TEST_TMP/vtv-trail-input"
+  local stdout_out stderr_out
+  stdout_out="$(bash "$vtv" < "$TEST_TMP/vtv-trail-input" 2>"$TEST_TMP/vtv-err")"
+  stderr_out="$(cat "$TEST_TMP/vtv-err")"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "value with trailing tab not refused: $stderr_out"
+  [ -z "$stdout_out" ] || fail "trailing-tab value refused but still on stdout"
+}
+
+# ===========================================================================
+# design-system pass ordering checks order not just presence
+# ===========================================================================
+
+@test "design-system pass: target check precedes each write batch" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local ds_section
+  ds_section="$(printf '%s' "$block" | awk '/Design-system pass/{found=1} /Product-design pass/{found=0} found{print}')"
+  [ -n "$ds_section" ] || fail "no design-system pass section"
+  # The summary line says "each verify-publication-target check precedes its
+  # write batch". Additionally, the numbered steps must mention verify first.
+  # Look for explicit precedence wording (precedes, before) on the same line
+  # as both concepts, OR verify-publication-target on an earlier numbered step.
+  local precedes_line
+  precedes_line="$(printf '%s\n' "$ds_section" | grep -iE 'verify-publication-target.*prece|verify-publication-target.*before|target.*check.*prece.*write' || true)"
+  if [ -n "$precedes_line" ]; then
+    return 0
+  fi
+  # Fallback: the numbered-step check — verify-publication-target on a step
+  # that precedes the step containing write_files.
+  local vpt_step write_step
+  vpt_step="$(printf '%s\n' "$ds_section" | grep -nE '^[0-9]+\.' | grep -iF 'verify-publication-target' | head -1 | cut -d: -f1 || true)"
+  write_step="$(printf '%s\n' "$ds_section" | grep -nE '^[0-9]+\.' | grep -iE 'write_files' | head -1 | cut -d: -f1 || true)"
+  [ -n "$vpt_step" ] || fail "no verify-publication-target in design-system pass steps"
+  [ -n "$write_step" ] || fail "no write_files in design-system pass steps"
+  [ "$vpt_step" -lt "$write_step" ] \
+    || fail "verify-publication-target (step at line $vpt_step) not before write_files (step at line $write_step)"
 }
