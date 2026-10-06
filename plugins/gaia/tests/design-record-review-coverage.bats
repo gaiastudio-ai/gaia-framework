@@ -394,7 +394,7 @@ schema_version: "2.0"
 design_state: review
 design_system_project:
   reference: "test-ds-ref"
-  type: "design"
+  type: "design-system"
   surface: "artifact"
   discovered_via: "manual"
 product_design_project: null
@@ -415,6 +415,53 @@ YAML
     fail "should reject product-design coverage when product_design_project is null (exit $status): $output"
   [[ "$output" == *'product_design_project is null'* ]] || \
     fail "expected diagnostic about null product_design_project: $output"
+
+  rm -rf "$record_dir"
+}
+
+
+# =========================================================================
+# Symlinked record refused before product-project guard
+# =========================================================================
+
+@test "symlinked record refused before product-project guard" {
+  [ -x "$DREC_SCRIPT" ] || fail "script missing: $DREC_SCRIPT"
+
+  local record_dir
+  record_dir="$(mktemp -d)"
+  mkdir -p "$record_dir/.gaia/state"
+  mkdir -p "$record_dir/.gaia/config"
+  cat > "$record_dir/.gaia/config/project-config.yaml" <<'YAML'
+project_name: test
+YAML
+
+  # Create a real record, then replace it with a symlink.
+  local real_record="$record_dir/.gaia/state/design-record-real.yaml"
+  cat > "$real_record" <<'YAML'
+schema_version: "2.0"
+design_state: review
+design_system_project:
+  reference: "test-ds-ref"
+  type: "design-system"
+  surface: "artifact"
+  discovered_via: "manual"
+product_design_project: null
+iteration: 1
+reviews: []
+approvals: []
+audit: []
+YAML
+
+  ln -sf "$real_record" "$record_dir/.gaia/state/design-record.yaml"
+
+  run env PROJECT_ROOT="$record_dir" \
+    "$DREC_SCRIPT" record-review-coverage --coverage "design-system,product-design"
+
+  # The symlink refusal must fire before the product-project guard.
+  [ "$status" -ne 0 ] || \
+    fail "should refuse a symlinked record (exit $status): $output"
+  [[ "$output" == *'symlink'* ]] || \
+    fail "expected symlink diagnostic, not product-project guard: $output"
 
   rm -rf "$record_dir"
 }

@@ -849,7 +849,7 @@ EOF
 # Non-UTF-8 boundary file exits 2 (not 1)
 # =========================================================================
 
-@test "non-UTF-8 boundary file exits 2" {
+@test "non-UTF-8 boundary file decoded with replacements exits 0" {
   [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
 
   NOTES_FILE="$TEST_TMP/notes.txt"
@@ -858,18 +858,33 @@ EOF
   printf 'Some notes text that is long enough to exceed the minimum match threshold for provenance checking purposes.\n' > "$NOTES_FILE"
 
   # Write a boundary file with valid markers but invalid UTF-8 bytes
-  # in the region content. The \xff\xfe bytes are not valid UTF-8.
+  # in the region content. With errors="replace", Python decodes them
+  # as replacement characters and extraction succeeds, so exit 0.
   printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n' > "$BOUNDARY_FILE"
   printf 'valid text before binary \xff\xfe\x80 content after binary\n' >> "$BOUNDARY_FILE"
   printf '<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n' >> "$BOUNDARY_FILE"
 
   run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
 
-  # Must exit 2 (malformed boundary), not 1 (provenance match)
-  [ "$status" -eq 0 ] || [ "$status" -eq 2 ] || \
-    fail "non-UTF-8 boundary file should exit 0 or 2 (graceful handling), not $status: $output"
+  # Replace-decoding lets extraction succeed; no match means exit 0.
+  [ "$status" -eq 0 ] || \
+    fail "non-UTF-8 boundary with replace-decoding should exit 0, got $status: $output"
+}
 
-  # Must NOT exit 1 (which would mean "provenance match — re-author the notes")
-  [ "$status" -ne 1 ] || \
-    fail "non-UTF-8 boundary file must not exit 1 (that triggers re-authoring): $output"
+@test "boundary extraction failure maps to exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary-bad.txt"
+
+  printf 'Some notes text that is long enough to exceed the minimum match threshold for provenance checking purposes.\n' > "$NOTES_FILE"
+
+  # Unmatched open marker (no close) makes extraction fail with exit 2.
+  printf '<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>\n' > "$BOUNDARY_FILE"
+  printf 'content with no close marker\n' >> "$BOUNDARY_FILE"
+
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+
+  [ "$status" -eq 2 ] || \
+    fail "unmatched marker should exit 2 (malformed boundary), got $status: $output"
 }
