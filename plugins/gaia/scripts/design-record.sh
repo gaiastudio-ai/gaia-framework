@@ -1865,22 +1865,23 @@ cmd_record_review_coverage() {
     _die "record-review-coverage: product-design requires design-system — cannot record product-design-only coverage"
   fi
 
+  _preflight_mutate
+  _locked_mutate _do_record_review_coverage "$sorted" "$seen_pd"
+}
+
+_do_record_review_coverage() {
+  local tmp="$1" coverage_json="$2" seen_pd="$3"
+
   # Reject product-design coverage when the record has no product project.
+  # This check runs inside the lock, against the working copy, so that the
+  # guard and the write are atomic.
   if [ "$seen_pd" = true ]; then
-    _preflight_read
     local _pdp_val
-    _pdp_val="$(yq '.product_design_project' "$RECORD_PATH")" || true
+    _pdp_val="$(yq '.product_design_project' "$tmp")" || true
     if [ "$_pdp_val" = "null" ] || [ -z "$_pdp_val" ]; then
       _die "record-review-coverage: product-design coverage requested but product_design_project is null in the design record"
     fi
   fi
-
-  _preflight_mutate
-  _locked_mutate _do_record_review_coverage "$sorted"
-}
-
-_do_record_review_coverage() {
-  local tmp="$1" coverage_json="$2"
 
   # Write review_coverage as a YAML array
   case "$coverage_json" in

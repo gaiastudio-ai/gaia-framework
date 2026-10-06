@@ -435,6 +435,13 @@ _main() {
   if [ "$_is_combined" = true ]; then
     # Combined shape — validate part types before projecting.
     if [ "$_sync_project" = "design_system" ]; then
+      # The design_system part must be an object (or absent/null).
+      local _ds_type
+      _ds_type="$(jq -r '.design_system | type' "$snapshot_file" 2>/dev/null)" || _ds_type="unknown"
+      if [ "$_ds_type" != "object" ] && [ "$_ds_type" != "null" ]; then
+        printf 'sync-derived-artifacts.sh: combined snapshot design_system must be an object, got %s\n' "$_ds_type" >&2
+        exit 1
+      fi
       # Validate components and templates are arrays when present
       local _ds_part_err
       _ds_part_err="$(jq -r '
@@ -456,6 +463,13 @@ _main() {
          screens: [], tokens: (.tokens // {})}
       ' "$snapshot_file" > "$_projected"
     else
+      # The product_design part must be an object (or absent/null).
+      local _pd_part_type
+      _pd_part_type="$(jq -r '.product_design | type' "$snapshot_file" 2>/dev/null)" || _pd_part_type="unknown"
+      if [ "$_pd_part_type" != "object" ] && [ "$_pd_part_type" != "null" ]; then
+        printf 'sync-derived-artifacts.sh: combined snapshot product_design must be an object, got %s\n' "$_pd_part_type" >&2
+        exit 1
+      fi
       # product_design pass — extract screens and flows
       jq '
         (.product_design // {}) |
@@ -559,6 +573,7 @@ _main() {
   local added=0
   local snapshot_components=""
   local doc_components=""
+  local _doc_components_extracted=false
   if [ "$has_components" = true ]; then
     # Validate all component names before any processing — reject on first
     # control-character violation so the doc stays byte-identical.
@@ -586,6 +601,7 @@ _main() {
     snapshot_components="$deduped_components"
 
     doc_components="$(_extract_doc_components "$ux_doc")"
+    _doc_components_extracted=true
 
     # Collect all components to add in a temp file for a single-pass batch
     local additions_file
@@ -643,9 +659,12 @@ _main() {
   # the pre-addition doc_components is the correct set to check.
   local _reported_absent=false
   if [ "$_sync_project" = "design_system" ]; then
-    # When has_components was false, doc_components is still empty;
+    # When has_components was false, doc_components was never extracted;
     # we need to extract it for the zero-components-in-snapshot case.
-    if [ -z "$doc_components" ] && _has_component_heading "$ux_doc"; then
+    # But when the addition phase already extracted it (even if the result
+    # was empty), re-extracting would re-read the doc after additions —
+    # wasting O(N) subprocesses on content we already know is absent.
+    if [ "$_doc_components_extracted" = false ] && _has_component_heading "$ux_doc"; then
       doc_components="$(_extract_doc_components "$ux_doc")"
     fi
     if [ -n "$doc_components" ]; then
@@ -1049,12 +1068,16 @@ _main() {
           fi
 
           local old_tokens_file="$_clean_baseline_path"
-          # Find changed tokens and check against screen content
+          # Find changed tokens and check against screen content.
+          # Uses unit separator (\u001f) between fields so that empty
+          # values are preserved. Tab would collapse empty fields in
+          # IFS-based read. Control characters are already rejected in
+          # token names and values, so \u001f cannot appear in data.
           local changed_tokens="$_sync_tmpdir/changed-tokens"
           jq -r --slurpfile old "$old_tokens_file" '
             to_entries[] |
             select($old[0][.key] != null and $old[0][.key] != .value) |
-            "\(.key)\t\($old[0][.key])\t\(.value)"
+            "\(.key)\u001f\($old[0][.key])\u001f\(.value)"
           ' "$new_tokens_file" > "$changed_tokens" 2>/dev/null || true
 
           # Also find removed tokens (in baseline, absent from new)
@@ -1094,28 +1117,47 @@ _main() {
               exec 5<&-
             fi
 
-            # Pre-escape all token values once (not per screen).
+            # Pre-escape all token values through the shared helper.
             # Build a TSV: raw_name \t safe_name \t safe_old \t safe_new.
+            # Input uses unit separator (\037) to preserve empty fields.
+            # First write an intermediate file with \037-separated columns
+            # (raw_name, name, old, new), then cut fields 2-4, pipe
+            # through escape_boundary_markers, and paste back to field 1.
+            # This keeps the escape rule in one place.
             local tok_safe_file="$_sync_tmpdir/tok-safe.tsv"
-            : > "$tok_safe_file"
-            while IFS=$'\t' read -r tok_name tok_old tok_new; do
-              local safe_tok safe_old safe_new
-              safe_tok="$(printf '%s' "$tok_name" | escape_boundary_markers)"
-              safe_old="$(printf '%s' "$tok_old" | escape_boundary_markers)"
-              safe_new="$(printf '%s' "$tok_new" | escape_boundary_markers)"
-              printf '%s\t%s\t%s\t%s\n' "$tok_name" "$safe_tok" "$safe_old" "$safe_new" >> "$tok_safe_file"
+            local tok_raw_file="$_sync_tmpdir/tok-raw.tsv"
+            : > "$tok_raw_file"
+            while IFS=$'\037' read -r tok_name tok_old tok_new; do
+              printf '%s\037%s\037%s\037%s\n' "$tok_name" "$tok_name" "$tok_old" "$tok_new" >> "$tok_raw_file"
             done < "$changed_tokens"
+            # Cut field 1 (raw, unescaped) and fields 2-4 (to escape).
+            # Pipe fields 2-4 through the shared helper, then paste with
+            # field 1 to produce the final tab-separated safe table.
+            paste -d$'\t' \
+              <(cut -d$'\037' -f1 "$tok_raw_file") \
+              <(cut -d$'\037' -f2- "$tok_raw_file" | tr '\037' '\t' | escape_boundary_markers) \
+              > "$tok_safe_file"
 
-            # Pre-escape all screen names once.
+            # Pre-escape all screen names through the shared helper.
             local scr_safe_file="$_sync_tmpdir/scr-safe-names.tsv"
-            : > "$scr_safe_file"
             local _sn_idx=0
             while IFS= read -r _sn_raw; do
-              local _sn_safe
-              _sn_safe="$(printf '%s' "$_sn_raw" | escape_boundary_markers)"
-              printf '%d\t%s\n' "$_sn_idx" "$_sn_safe" >> "$scr_safe_file"
+              printf '%d\t%s\n' "$_sn_idx" "$_sn_raw"
               _sn_idx=$((_sn_idx + 1))
-            done < "$scr_names_file"
+            done < "$scr_names_file" | escape_boundary_markers > "$scr_safe_file"
+
+            # Strip NUL bytes from screen content files. macOS awk stops
+            # reading a line at a NUL, so any changed token after a NUL
+            # would be silently missed. One tr per file is O(S).
+            local _nul_idx=0
+            while [ "$_nul_idx" -lt "$screen_count" ]; do
+              if [ -s "$scr_content_dir/$_nul_idx" ]; then
+                tr -d '\000' < "$scr_content_dir/$_nul_idx" \
+                  > "$scr_content_dir/${_nul_idx}.clean" \
+                  && mv -f "$scr_content_dir/${_nul_idx}.clean" "$scr_content_dir/$_nul_idx"
+              fi
+              _nul_idx=$((_nul_idx + 1))
+            done
 
             # Build a file listing all screen content files that exist and
             # are non-empty, with their index.
@@ -1131,7 +1173,8 @@ _main() {
 
             # Single awk pass: read changed tokens, read screen names,
             # then scan each screen content file for token references.
-            # Word-boundary check done inside awk with substr().
+            # Token-major order: for each token, list affected screens.
+            # Uses split() on the token to avoid O(N^2) substring copies.
             # Total: 1 awk subprocess regardless of T and S.
             awk -F'\t' '
               # Pass 1: read token safe table (raw, safe, old, new)
@@ -1155,39 +1198,63 @@ _main() {
                 # Identifier boundary chars
                 id_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 
+                # Pre-read all screen contents into memory
                 for (s = 1; s <= nscr; s++) {
-                  # Read screen content
-                  content = ""
+                  scr_content[s] = ""
                   while ((getline line < scr_path[s]) > 0)
-                    content = content line "\n"
+                    scr_content[s] = scr_content[s] line "\n"
                   close(scr_path[s])
-                  clen = length(content)
-                  if (clen == 0) continue
+                }
 
-                  safe_scr = sname[scr_idx[s]]
+                # Token-major: for each token, scan all screens
+                nhits = 0
+                for (t = 1; t <= nt; t++) {
+                  tok = traw[t]
+                  tlen = length(tok)
+                  for (s = 1; s <= nscr; s++) {
+                    content = scr_content[s]
+                    clen = length(content)
+                    if (clen == 0) continue
 
-                  for (t = 1; t <= nt; t++) {
-                    tok = traw[t]
-                    tlen = length(tok)
-                    pos = 1
-                    found = 0
-                    while (pos <= clen - tlen + 1) {
-                      idx = index(substr(content, pos), tok)
-                      if (idx == 0) break
-                      abs_pos = pos + idx - 1
-                      # Check word boundaries
-                      before_ok = (abs_pos == 1 || index(id_chars, substr(content, abs_pos - 1, 1)) == 0)
-                      after_pos = abs_pos + tlen
-                      after_ok = (after_pos > clen || index(id_chars, substr(content, after_pos, 1)) == 0)
+                    # Split content on the token. Each boundary between
+                    # parts[i] and parts[i+1] is a potential match. This
+                    # is O(content_length) total, not per near-miss.
+                    nparts = split(content, parts, tok)
+                    if (nparts < 2) continue
+
+                    # Check word boundaries at each split point
+                    prefix_len = 0
+                    for (p = 1; p < nparts; p++) {
+                      plen = length(parts[p])
+                      prefix_len += plen
+                      # Left boundary: char before token (last char of parts[p])
+                      if (plen > 0) {
+                        lch = substr(parts[p], plen, 1)
+                        before_ok = (index(id_chars, lch) == 0)
+                      } else {
+                        before_ok = (prefix_len == 0)
+                      }
+                      # Right boundary: char after token (first char of parts[p+1])
+                      rpart = parts[p + 1]
+                      if (length(rpart) > 0) {
+                        rch = substr(rpart, 1, 1)
+                        after_ok = (index(id_chars, rch) == 0)
+                      } else {
+                        after_ok = 1
+                      }
                       if (before_ok && after_ok) {
-                        printf "reconciliation (medium): token %s %s -> %s affects screen %s\n", tsafe[t], told[t], tnew[t], safe_scr
-                        found = 1
+                        nhits++
+                        hit_line[nhits] = sprintf("reconciliation (medium): token %s %s -> %s affects screen %s", tsafe[t], told[t], tnew[t], sname[scr_idx[s]])
                         break
                       }
-                      pos = abs_pos + 1
+                      prefix_len += tlen
                     }
                   }
                 }
+
+                # Print all findings in token-major order
+                for (h = 1; h <= nhits; h++)
+                  print hit_line[h]
               }
             ' "$tok_safe_file" "$scr_safe_file" "$scr_files_list"
           fi

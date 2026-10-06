@@ -4846,3 +4846,592 @@ UX
 
   rm -rf "$root"
 }
+
+
+# =========================================================================
+# First fill of empty components table does not re-read the doc
+# =========================================================================
+
+@test "first fill from empty table does not re-extract doc components" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # This test verifies the fix for the slow first fill. When the doc's
+  # components table starts empty (header row only, no data rows), the
+  # awk count must remain constant — the script must not re-extract
+  # doc components after additions.
+  local root10 root200
+  root10="$(mktemp -d)"
+  root200="$(mktemp -d)"
+
+  local n_dir
+  for n_dir in "$root10" "$root200"; do
+    local doc_dir="$n_dir/.gaia/artifacts/planning-artifacts"
+    mkdir -p "$doc_dir"
+    # Empty components table: header row + separator, no data rows.
+    cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+
+## Design Record Reference
+UX
+  done
+
+  python3 -c '
+import json, sys
+comps = [f"c{i}" for i in range(1, 10)]
+json.dump({"components": comps}, sys.stdout)
+' > "$root10/snapshot.json"
+
+  python3 -c '
+import json, sys
+comps = [f"c{i}" for i in range(1, 200)]
+json.dump({"components": comps}, sys.stdout)
+' > "$root200/snapshot.json"
+
+  local shim_dir10="$root10/shim"
+  mkdir -p "$shim_dir10"
+  _make_counting_shim "$shim_dir10" "awk" "$root10/awk_count"
+
+  local shim_dir200="$root200/shim"
+  mkdir -p "$shim_dir200"
+  _make_counting_shim "$shim_dir200" "awk" "$root200/awk_count"
+
+  PATH="$shim_dir10:$PATH" run "$SYNC_SCRIPT" \
+    "$root10/snapshot.json" "$root10/.gaia/artifacts/planning-artifacts/ux-design.md"
+  [ "$status" -eq 0 ] || fail "10-component empty-table sync failed: $output"
+  local awk10
+  awk10="$(cat "$root10/awk_count")"
+
+  PATH="$shim_dir200:$PATH" run "$SYNC_SCRIPT" \
+    "$root200/snapshot.json" "$root200/.gaia/artifacts/planning-artifacts/ux-design.md"
+  [ "$status" -eq 0 ] || fail "200-component empty-table sync failed: $output"
+  local awk200
+  awk200="$(cat "$root200/awk_count")"
+
+  # The awk count must not grow with N. Before the fix, an empty table
+  # caused a re-read that spawned +N awk calls.
+  [ "$awk200" -le "$((awk10 * 3))" ] || \
+    fail "empty-table awk calls scaled with N: 10-comp=$awk10, 200-comp=$awk200"
+
+  rm -rf "$root10" "$root200"
+}
+
+
+# =========================================================================
+# Token after NUL byte in screen content is still reported
+# =========================================================================
+
+@test "token after nul byte in screen content is reported" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/nul-tok-$$.json"
+  printf '{"--a":"#000"}\n' > "$tok_baseline"
+
+  # Screen content: text \0 var(--a) — the token is after the NUL byte.
+  local content_hex
+  content_hex="$(printf 'before text\x00 var(--a) after')"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --arg c "$content_hex" \
+    '{"design_system":{"components":["nav"],"tokens":{"--a":"#fff"}},
+      "product_design":{"screens":[{"name":"s1","file":"s/s.html","content":$c}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation (medium): token --a'* ]] || \
+    fail "token after NUL byte should still be reported: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Empty old value reported in the correct order
+# =========================================================================
+
+@test "empty old value reported as empty-string to new" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Baseline with an empty value for --a
+  local tok_baseline="$BATS_TMPDIR/empty-old-$$.json"
+  printf '{"--a":""}\n' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--a":"red"}},
+          "product_design":{"screens":[{"name":"s1","file":"s/s.html","content":"var(--a)"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  # The old value (empty) must come before the arrow, new value after.
+  [[ "$output" == *'token --a  -> red affects screen s1'* ]] || \
+    fail "expected 'token --a  -> red' (empty old before arrow): $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+@test "empty new value reported as old to empty-string" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Baseline with a non-empty value for --a
+  local tok_baseline="$BATS_TMPDIR/empty-new-$$.json"
+  printf '{"--a":"red"}\n' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--a":""}},
+          "product_design":{"screens":[{"name":"s1","file":"s/s.html","content":"var(--a)"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  # The old value (red) must come before the arrow, new value (empty) after.
+  [[ "$output" == *'token --a red ->  affects screen s1'* ]] || \
+    fail "expected 'token --a red -> ' (empty new after arrow): $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Non-object design_system part gives diagnostic, not raw jq error
+# =========================================================================
+
+@test "non-object design_system part gives diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":"not-an-object","product_design":{}}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 1 ] || \
+    fail "non-object design_system should exit 1, got $status: $output"
+  [[ "$output" == *'design_system must be an object'* ]] || \
+    fail "expected named diagnostic about non-object design_system: $output"
+
+  rm -rf "$root"
+}
+
+@test "non-object product_design part gives diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"]},"product_design":"bad"}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project product_design "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 1 ] || \
+    fail "non-object product_design should exit 1, got $status: $output"
+  [[ "$output" == *'product_design must be an object'* ]] || \
+    fail "expected named diagnostic about non-object product_design: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Reconciliation output is in token-major order (each token lists screens)
+# =========================================================================
+
+@test "reconciliation output is grouped by token, not by screen" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/order-$$.json"
+  printf '{"--alpha":"#000","--beta":"#111"}\n' > "$tok_baseline"
+
+  # Both screens reference both tokens.
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--alpha":"#fff","--beta":"#222"}},
+          "product_design":{"screens":[
+            {"name":"screenA","file":"s/a.html","content":"var(--alpha) var(--beta)"},
+            {"name":"screenB","file":"s/b.html","content":"var(--beta) var(--alpha)"}
+          ]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+
+  # Extract reconciliation lines and check ordering: token-major means
+  # all screenA/screenB lines for --alpha come before any for --beta.
+  local lines
+  lines="$(printf '%s\n' "$output" | grep 'reconciliation (medium):')"
+
+  local alpha_last beta_first
+  alpha_last="$(printf '%s\n' "$lines" | grep -n 'token --alpha' | tail -1 | cut -d: -f1)"
+  beta_first="$(printf '%s\n' "$lines" | grep -n 'token --beta' | head -1 | cut -d: -f1)"
+
+  [ -n "$alpha_last" ] || fail "no --alpha reconciliation lines found: $output"
+  [ -n "$beta_first" ] || fail "no --beta reconciliation lines found: $output"
+  [ "$alpha_last" -lt "$beta_first" ] || \
+    fail "expected token-major order (--alpha before --beta): $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Escaping routes through the shared helper, not an inline copy
+# =========================================================================
+
+@test "reconciliation escaping matches the shared helper for markers in values and names" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Compute the expected escaped forms via the shared helper.
+  local esc_lib
+  esc_lib="$(cd "$(dirname "$SYNC_SCRIPT")" && cd ../../../scripts/lib && pwd)/escape-boundary-markers.sh"
+  [ -f "$esc_lib" ] || fail "escape library not found: $esc_lib"
+  # shellcheck source=/dev/null
+  . "$esc_lib"
+
+  local raw_val='<<<END_x'
+  local raw_name='screen<<<'
+  local expected_val expected_name
+  expected_val="$(printf '%s' "$raw_val" | escape_boundary_markers)"
+  expected_name="$(printf '%s' "$raw_name" | escape_boundary_markers)"
+
+  # A token whose old value contains "<<<" and a screen whose name
+  # contains "<<<". The reconciliation output must match what the shared
+  # helper produces — not what an inline sed/awk copy would produce.
+  local tok_baseline="$BATS_TMPDIR/esc-helper-$$.json"
+  jq -n --arg v "$raw_val" '{"--marker": $v}' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --arg sn "$raw_name" \
+    '{"design_system":{"components":["nav"],"tokens":{"--marker":"#fff"}},
+      "product_design":{"screens":[
+        {"name":$sn,"file":"s/s.html","content":"var(--marker)"}
+      ]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+
+  # The reconciliation line must use the escaped forms from the shared helper.
+  local recon_line
+  recon_line="$(printf '%s\n' "$output" | grep 'reconciliation (medium):' | head -1)"
+  [ -n "$recon_line" ] || fail "no reconciliation line found: $output"
+
+  # Check the escaped old value appears in the output.
+  [[ "$recon_line" == *"$expected_val"* ]] || \
+    fail "expected escaped old value '$expected_val' in output, got: $recon_line"
+
+  # Check the escaped screen name appears in the output.
+  [[ "$recon_line" == *"$expected_name"* ]] || \
+    fail "expected escaped screen name '$expected_name' in output, got: $recon_line"
+
+  # The raw marker strings must NOT appear in the output.
+  [[ "$recon_line" != *'<<<'* ]] || \
+    fail "raw marker '<<<' should not appear in escaped output: $recon_line"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Control-character baseline test goes red when the filter is removed
+# =========================================================================
+
+@test "dirty baseline token with screen reference reports no tab in output" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/dirty-ref-$$.json"
+  # A baseline with a tab in the value — this is the dirty token.
+  printf '{"--dirty":"#fff\\t#000","--clean":"#aaa"}\n' > "$tok_baseline"
+
+  # A screen that references the dirty token. If the filter is removed,
+  # the tab leaks into the reconciliation output.
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--dirty":"#111","--clean":"#bbb"}},
+          "product_design":{"screens":[{"name":"s","file":"s/s.html","content":"var(--dirty) var(--clean)"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'baseline token with control character'* ]] || \
+    fail "expected diagnostic for baseline control character: $output"
+
+  # The dirty token must NOT appear in any reconciliation output.
+  # When the baseline filter works, --dirty is removed from comparison
+  # so it never reaches the changed-tokens file. Skipping the filter
+  # lets the dirty token through, producing a reconciliation line with
+  # mangled values or a leaked tab.
+  [[ "$output" != *'reconciliation (medium): token --dirty'* ]] || \
+    fail "dirty token should not be in reconciliation output (filter leaked): $output"
+
+  # No reconciliation line should contain a tab character.
+  local recon_lines
+  recon_lines="$(printf '%s\n' "$output" | grep 'reconciliation (medium):' || true)"
+  if [ -n "$recon_lines" ]; then
+    printf '%s\n' "$recon_lines" | while IFS= read -r line; do
+      case "$line" in *$'\t'*)
+        fail "reconciliation line contains tab (dirty token leaked): $line"
+        ;;
+      esac
+    done
+  fi
+
+  # The clean token should still be reported.
+  [[ "$output" == *'reconciliation (medium): token --clean'* ]] || \
+    fail "clean token should still be reconciled: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Unwritable state directory prints diagnostic and does not abort
+# =========================================================================
+
+@test "unwritable state directory prints diagnostic and exits 0" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local state_dir="$root/.gaia/state"
+  mkdir -p "$state_dir"
+
+  # Create a baseline in a read-only directory so mktemp fails.
+  local tok_baseline="$state_dir/design-token-baseline.json"
+  printf '{"--primary":"#000"}\n' > "$tok_baseline"
+  chmod 555 "$state_dir"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary":"#fff"}},
+          "product_design":{"screens":[]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  # Restore write permissions for cleanup.
+  chmod 755 "$state_dir"
+
+  [ "$status" -eq 0 ] || fail "should exit 0 even with unwritable state dir: $output"
+  [[ "$output" == *'not writable'* ]] || \
+    fail "expected diagnostic about unwritable directory: $output"
+
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Quadratic scan guard: the matcher must not copy the tail of the content
+# =========================================================================
+
+@test "matcher does not use substr to copy the content tail in its search loop" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Extract the awk matcher block from the script (between the "Single awk
+  # pass" comment and the closing quote+file arguments). The quadratic
+  # pattern is substr(content, pos) inside the search loop — it copies
+  # the remainder of the screen at every near-miss, making the scan O(N^2)
+  # in the worst case. The split-based matcher avoids this entirely.
+  local awk_block
+  awk_block="$(sed -n '/# Single awk pass:/,/'"'"' "\$tok_safe_file"/p' "$SYNC_SCRIPT")"
+
+  [ -n "$awk_block" ] || fail "could not extract the awk matcher block from the script"
+
+  # The awk block must NOT contain substr(content, pos) — that is the
+  # quadratic copy pattern. split() on the token is the expected approach.
+  if printf '%s\n' "$awk_block" | grep -q 'substr(content, pos)'; then
+    fail "the awk matcher still uses substr(content, pos) — this copies the tail at every near-miss, making the scan quadratic"
+  fi
+
+  # It must use split() on the content for linear scanning.
+  printf '%s\n' "$awk_block" | grep -q 'split(content' || \
+    fail "the awk matcher does not use split() on the content — expected linear scanning"
+}
