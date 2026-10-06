@@ -616,17 +616,29 @@ _main() {
     fi
     rm -f "$additions_file"
 
-    # Report components in the doc but removed from the snapshot
-    while IFS= read -r component; do
-      [ -n "$component" ] || continue
-      if ! printf '%s\n' "$snapshot_components" | grep -qxF "$component"; then
-        printf 'sync: component "%s" is in ux-design.md but absent from the project snapshot (not removed — reporting only)\n' "$component"
-      fi
-    done <<< "$doc_components"
-
     if [ "$added" -eq 0 ]; then
       printf 'sync: ux-design.md is up to date — no components to add\n'
     fi
+  fi
+
+  # === Removal report (always runs when the doc has a component section) ===
+  # A design-system snapshot with zero components and zero templates must
+  # still produce the absence report for any doc component. The snapshot's
+  # projected components (union of .components + .templates) is the source.
+  if _has_component_heading "$ux_doc"; then
+    local _removal_snapshot_components=""
+    if jq -e '.components' "$snapshot_file" >/dev/null 2>&1; then
+      _removal_snapshot_components="$(jq -r '.components[]' "$snapshot_file" 2>/dev/null)" || true
+    fi
+    local _removal_doc_components
+    _removal_doc_components="$(_extract_doc_components "$ux_doc")"
+    while IFS= read -r component; do
+      [ -n "$component" ] || continue
+      if [ -z "$_removal_snapshot_components" ] || \
+         ! printf '%s\n' "$_removal_snapshot_components" | grep -qxF "$component"; then
+        printf 'sync: component "%s" is in ux-design.md but absent from the project snapshot (not removed — reporting only)\n' "$component"
+      fi
+    done <<< "$_removal_doc_components"
   fi
 
   # === Screen reporting ===
@@ -644,7 +656,7 @@ _main() {
           exit 1
         fi
         # Reject shell-meta characters in screen filenames
-        # shellcheck disable=SC2254
+        # shellcheck disable=SC2016
         case "$scr_fn" in
           *'$('*|*'`'*|*'|'*|*'>'*|*'<'*|*'&'*|*';'*)
             printf 'sync-derived-artifacts.sh: unsafe screen filename (shell meta-characters): %s\n' "$scr_fn" >&2
@@ -838,7 +850,26 @@ _main() {
       esac
     fi
 
-    # Validate flow filenames via safe-filename
+    # Validate flow filenames via safe-filename and shell-meta rejection
+    local flow_files
+    flow_files="$(jq -r '.flows[].file' "$snapshot_file")" || true
+    if [ -n "$flow_files" ]; then
+      while IFS= read -r flow_fn; do
+        if ! safe_filename_check "$flow_fn"; then
+          printf 'sync-derived-artifacts.sh: unsafe flow filename rejected\n' >&2
+          exit 1
+        fi
+        # Reject shell-meta characters in flow filenames
+        # shellcheck disable=SC2016
+        case "$flow_fn" in
+          *'$('*|*'`'*|*'|'*|*'>'*|*'<'*|*'&'*|*';'*)
+            printf 'sync-derived-artifacts.sh: unsafe flow filename (shell meta-characters): %s\n' "$flow_fn" >&2
+            exit 1
+            ;;
+        esac
+      done <<< "$flow_files"
+    fi
+
     local flow_meta="$_sync_tmpdir/flow-meta"
     jq -r '.flows | to_entries[] | "\(.key)\t\(.value.name)\t\(.value.file)"' \
       "$snapshot_file" > "$flow_meta"
@@ -883,6 +914,8 @@ _main() {
       tokens_type="$(jq -r '.tokens | type' "$snapshot_file")"
       if [ "$tokens_type" = "object" ]; then
         has_tokens=true
+      else
+        printf 'sync-derived-artifacts.sh: invalid token data: tokens must be an object, got %s\n' "$tokens_type" >&2
       fi
     fi
 
@@ -901,20 +934,49 @@ _main() {
         local new_tokens_file="$_sync_tmpdir/new-tokens.json"
         jq -S '.tokens' "$snapshot_file" > "$new_tokens_file"
 
-        # Check for tokens with control characters — skip them
+        # Validate that .tokens is a flat object with string values
+        local tok_shape_ok=true
+        local tok_shape_err
+        tok_shape_err="$(jq -r '
+          if type != "object" then "tokens must be an object, got \(type)"
+          else (to_entries[] | select(.value | type != "string")
+                | "token \(.key) has non-string value (type: \(.value | type))") // empty
+          end
+        ' "$new_tokens_file" 2>/dev/null | head -1)" || true
+        if [ -n "$tok_shape_err" ]; then
+          printf 'sync-derived-artifacts.sh: invalid token data: %s\n' "$tok_shape_err" >&2
+          tok_shape_ok=false
+        fi
+        if [ "$tok_shape_ok" = false ]; then
+          printf 'sync-derived-artifacts.sh: skipping token reconciliation due to invalid token shape\n' >&2
+        else
+
+        # Check for tokens with control characters in name or value — skip them
         local bad_tokens
-        bad_tokens="$(jq -r 'to_entries[] | select(.key | test("[[:cntrl:]]")) | .key' "$new_tokens_file" 2>/dev/null)" || true
+        bad_tokens="$(jq -r 'to_entries[] | select((.key | test("[[:cntrl:]]")) or (.value | test("[[:cntrl:]]"))) | .key' "$new_tokens_file" 2>/dev/null)" || true
         if [ -n "$bad_tokens" ]; then
           while IFS= read -r bad_tok; do
-            printf 'sync-derived-artifacts.sh: skipping token with control character in name: %q\n' "$bad_tok" >&2
+            printf 'sync-derived-artifacts.sh: skipping token with control character in name or value: %q\n' "$bad_tok" >&2
           done <<< "$bad_tokens"
           # Remove bad tokens from the working file
-          jq 'with_entries(select(.key | test("[[:cntrl:]]") | not))' "$new_tokens_file" > "$_sync_tmpdir/clean-tokens.json"
+          jq 'with_entries(select((.key | test("[[:cntrl:]]") | not) and (.value | test("[[:cntrl:]]") | not)))' "$new_tokens_file" > "$_sync_tmpdir/clean-tokens.json"
           mv -f "$_sync_tmpdir/clean-tokens.json" "$new_tokens_file"
         fi
 
         # Reconciliation: compare with existing baseline
+        local _skip_baseline_write=false
         if [ -f "$tok_baseline_path" ]; then
+          # Validate the existing baseline shape before consuming it
+          local bl_shape_rc=0
+          jq -e 'type == "object" and (to_entries | all(.value | type == "string"))' \
+            "$tok_baseline_path" >/dev/null 2>&1 || bl_shape_rc=$?
+          if [ "$bl_shape_rc" -ne 0 ]; then
+            printf 'sync-derived-artifacts.sh: malformed token baseline (expected flat object with string values): %s\n' \
+              "$tok_baseline_path" >&2
+            printf 'sync-derived-artifacts.sh: skipping reconciliation and preserving the malformed baseline\n' >&2
+            _skip_baseline_write=true
+          else
+
           # Read the product_design screens from the ORIGINAL combined snapshot
           local pd_screens_file="$_sync_tmpdir/pd-screens.json"
           if [ "$_is_combined" = true ]; then
@@ -932,34 +994,95 @@ _main() {
             "\(.key)\t\($old[0][.key])\t\(.value)"
           ' "$new_tokens_file" > "$changed_tokens" 2>/dev/null || true
 
+          # Also find removed tokens (in baseline, absent from new)
+          local removed_tokens="$_sync_tmpdir/removed-tokens"
+          jq -r --slurpfile newt "$new_tokens_file" '
+            to_entries[] |
+            select($newt[0][.key] == null) |
+            .key
+          ' "$old_tokens_file" > "$removed_tokens" 2>/dev/null || true
+
           if [ -s "$changed_tokens" ]; then
+            # Pre-extract screen names and content once for efficient matching
+            local screen_count
+            screen_count="$(jq 'length' "$pd_screens_file")"
+            local scr_names_file="$_sync_tmpdir/scr-names.tsv"
+            jq -r '.[] | .name' "$pd_screens_file" > "$scr_names_file" 2>/dev/null || true
+
+            # Split screen contents into individual files using dd
+            local scr_content_dir="$_sync_tmpdir/scr-contents"
+            mkdir -p "$scr_content_dir"
+            if [ "$screen_count" -gt 0 ]; then
+              local scr_lengths_file="$_sync_tmpdir/scr-lengths"
+              jq -r '[.[].content // "" | utf8bytelength] | .[]' "$pd_screens_file" > "$scr_lengths_file"
+              local scr_concat_file="$_sync_tmpdir/scr-all"
+              jq -j '[.[].content // ""] | join("")' "$pd_screens_file" > "$scr_concat_file"
+
+              local scr_idx=0
+              exec 5< "$scr_concat_file"
+              while IFS= read -r scr_len; do
+                if [ "$scr_len" -gt 0 ]; then
+                  dd bs="$scr_len" count=1 of="$scr_content_dir/$scr_idx" 2>/dev/null <&5
+                else
+                  : > "$scr_content_dir/$scr_idx"
+                fi
+                scr_idx=$((scr_idx + 1))
+              done < "$scr_lengths_file"
+              exec 5<&-
+            fi
+
             while IFS=$'\t' read -r tok_name tok_old tok_new; do
-              # Scan each screen's content for the token on a token boundary
-              local screen_count
-              screen_count="$(jq 'length' "$pd_screens_file")"
+              # Escape the token name for grep once per token
+              local escaped_tok
+              escaped_tok="$(printf '%s' "$tok_name" | sed 's/[.[\*^$()+?{|\\]/\\&/g')"
+              # Scan each pre-extracted screen for the token
               local si=0
               while [ "$si" -lt "$screen_count" ]; do
-                local scr_name scr_content
-                scr_name="$(jq -r ".[$si].name" "$pd_screens_file")"
-                scr_content="$(jq -r ".[$si].content // empty" "$pd_screens_file")"
-                if [ -n "$scr_content" ]; then
-                  # Token boundary: preceded and followed by chars outside [A-Za-z0-9_-]
-                  # or at text boundary. Use grep -E with word-boundary-like pattern.
-                  if printf '%s' "$scr_content" | grep -qE "(^|[^A-Za-z0-9_-])$(printf '%s' "$tok_name" | sed 's/[.[\*^$()+?{|\\]/\\&/g')([^A-Za-z0-9_-]|$)"; then
+                local scr_content_file="$scr_content_dir/$si"
+                if [ -s "$scr_content_file" ]; then
+                  if grep -qE "(^|[^A-Za-z0-9_-])${escaped_tok}([^A-Za-z0-9_-]|\$)" "$scr_content_file"; then
+                    local scr_name
+                    scr_name="$(sed -n "$((si + 1))p" "$scr_names_file")"
+                    # Escape values to prevent boundary-marker injection in output
+                    local safe_old safe_new safe_scr
+                    safe_old="$(printf '%s' "$tok_old" | escape_boundary_markers)"
+                    safe_new="$(printf '%s' "$tok_new" | escape_boundary_markers)"
+                    safe_scr="$(printf '%s' "$scr_name" | escape_boundary_markers)"
                     printf 'reconciliation (medium): token %s %s -> %s affects screen %s\n' \
-                      "$tok_name" "$tok_old" "$tok_new" "$scr_name"
+                      "$tok_name" "$safe_old" "$safe_new" "$safe_scr"
                   fi
                 fi
                 si=$((si + 1))
               done
             done < "$changed_tokens"
           fi
+
+          # Report removed tokens that screens may still reference
+          if [ -s "$removed_tokens" ]; then
+            while IFS= read -r removed_tok; do
+              printf 'reconciliation (medium): token %s was removed from the design system\n' "$removed_tok"
+            done < "$removed_tokens"
+          fi
+
+          fi  # end baseline shape validation guard
         fi
 
-        # Write new baseline (tempfile + mv for atomicity)
-        local tok_tmp="$_sync_tmpdir/tok-baseline-tmp.json"
-        cp "$new_tokens_file" "$tok_tmp"
-        mv -f "$tok_tmp" "$tok_baseline_path"
+        # Write new baseline (tempfile in the target directory for atomicity)
+        if [ "$_skip_baseline_write" = false ]; then
+          local tok_baseline_dir
+          tok_baseline_dir="$(dirname "$tok_baseline_path")"
+          if mkdir -p "$tok_baseline_dir" 2>/dev/null; then
+            local tok_tmp
+            tok_tmp="$(mktemp "${tok_baseline_dir}/tok-baseline-tmp.XXXXXX")"
+            cp "$new_tokens_file" "$tok_tmp"
+            mv -f "$tok_tmp" "$tok_baseline_path"
+          else
+            printf 'sync-derived-artifacts.sh: could not create state directory %s — skipping baseline write\n' \
+              "$tok_baseline_dir" >&2
+          fi
+        fi
+
+        fi  # end tok_shape_ok else
       fi
     fi
   fi

@@ -497,6 +497,8 @@ EOF
     # Skip the sole writer and test files (which manipulate temp-dir fixtures)
     [ "$rel_path" = "scripts/design-record.sh" ] && continue
     [ "$rel_path" = "tests/design-record.bats" ] && continue
+    # review-coverage tests write temp-dir fixtures for the coverage verb
+    [ "$rel_path" = "tests/design-record-review-coverage.bats" ] && continue
     # design-gate.bats: one printf writes corrupt YAML for the schema-invalid
     # test; one yq -i injects an unknown state for the default-fail mutant.
     # Both write to temp-dir fixtures, not production records.

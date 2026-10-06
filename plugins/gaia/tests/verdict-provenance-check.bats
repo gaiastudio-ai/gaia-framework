@@ -657,6 +657,48 @@ EOF
     fail "text after embedded marker should still be inside the region (exit $status)"
 }
 
+@test "orphan close marker with no open fails closed with exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # CLOSE with no OPEN — content around it must not pass unchecked
+  cat > "$BOUNDARY_FILE" <<'EOF'
+Some unprotected text that lives outside any properly delimited region in this file.
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+EOF
+
+  printf '%s' "unrelated notes text that does not match any boundary content" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "orphan close marker should fail closed with exit 2 (exit $status)"
+  [[ "$output" == *'unmatched close marker'* ]] || \
+    fail "diagnostic should name the unmatched close marker: $output"
+}
+
+@test "stray close before valid region fails closed with exit 2" {
+  [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
+
+  NOTES_FILE="$TEST_TMP/notes.txt"
+  BOUNDARY_FILE="$TEST_TMP/boundary.txt"
+
+  # A stray CLOSE for product-design before a valid design-system region
+  cat > "$BOUNDARY_FILE" <<'EOF'
+<<<END_PRODUCT_DESIGN_PROJECT_BOUNDARY>>>
+<<<DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+legitimate design system content that is properly delimited by markers
+<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>
+EOF
+
+  printf '%s' "unrelated notes text that does not match any boundary content" > "$NOTES_FILE"
+  run "$PROVENANCE_SCRIPT" --notes-file "$NOTES_FILE" --boundary-file "$BOUNDARY_FILE"
+  [ "$status" -eq 2 ] || \
+    fail "stray close before valid region should fail closed with exit 2 (exit $status)"
+  [[ "$output" == *'unmatched close marker'* ]] || \
+    fail "diagnostic should name the unmatched close marker: $output"
+}
+
 @test "unmatched open marker fails closed with exit 2" {
   [ -x "$PROVENANCE_SCRIPT" ] || fail "script missing: $PROVENANCE_SCRIPT"
 
