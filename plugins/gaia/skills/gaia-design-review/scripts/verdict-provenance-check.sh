@@ -75,13 +75,14 @@ command -v python3 >/dev/null 2>&1 || _die "python3 is required but not found on
 _tmp_inner="$(mktemp)"
 trap 'rm -f "$_tmp_inner"' EXIT
 
+_extract_rc=0
 python3 -c '
 import sys
 
 boundary_file = sys.argv[1]
 out_file = sys.argv[2]
 
-with open(boundary_file) as f:
+with open(boundary_file, errors="replace") as f:
     text = f.read()
 
 # Dual marker pairs
@@ -173,7 +174,17 @@ inner = "\n".join(regions)
 
 with open(out_file, "w") as f:
     f.write(inner)
-' "$boundary_file" "$_tmp_inner"
+' "$boundary_file" "$_tmp_inner" || _extract_rc=$?
+
+# Map any extraction failure to exit 2 (malformed boundary file).
+# The Python program already exits 2 for structural marker errors;
+# this catches any other failure (e.g. filesystem errors).
+if [ "$_extract_rc" -ne 0 ]; then
+  if [ "$_extract_rc" -ne 2 ]; then
+    printf 'verdict-provenance-check.sh: boundary extraction failed (exit %d) — treating as malformed boundary file\n' "$_extract_rc" >&2
+  fi
+  exit 2
+fi
 
 # If inner content is too short, nothing can match
 _inner_len="$(wc -c < "$_tmp_inner" | tr -d ' ')"

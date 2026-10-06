@@ -1865,6 +1865,16 @@ cmd_record_review_coverage() {
     _die "record-review-coverage: product-design requires design-system — cannot record product-design-only coverage"
   fi
 
+  # Reject product-design coverage when the record has no product project.
+  if [ "$seen_pd" = true ]; then
+    _preflight_read
+    local _pdp_val
+    _pdp_val="$(yq '.product_design_project' "$RECORD_PATH")" || true
+    if [ "$_pdp_val" = "null" ] || [ -z "$_pdp_val" ]; then
+      _die "record-review-coverage: product-design coverage requested but product_design_project is null in the design record"
+    fi
+  fi
+
   _preflight_mutate
   _locked_mutate _do_record_review_coverage "$sorted"
 }

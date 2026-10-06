@@ -116,6 +116,9 @@ teardown() {
 
 @test "coverage verb writes design-system and product-design" {
   _create_test_record
+  # Set a product project so product-design coverage is valid
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" set-product-project \
+    --pd-reference "pd-ref" --discovered-via existing --actor test
 
   run env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" record-review-coverage \
     --coverage design-system,product-design
@@ -184,6 +187,9 @@ teardown() {
 
 @test "coverage verb appends one audit entry per call" {
   _create_test_record
+  # Set a product project so product-design coverage is valid
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" set-product-project \
+    --pd-reference "pd-ref" --discovered-via existing --actor test
 
   local count_before
   count_before="$(yq '.audit | length' "$RECORD")"
@@ -370,4 +376,45 @@ YAML
     fail "expected 'unknown coverage value' diagnostic: $output"
 
   rm -rf "$trap_dir"
+}
+
+
+# =========================================================================
+# Product-design coverage rejected when product_design_project is null
+# =========================================================================
+
+@test "coverage verb rejects product-design when product project is null" {
+  [ -x "$DREC_SCRIPT" ] || fail "script missing: $DREC_SCRIPT"
+
+  local record_dir
+  record_dir="$(mktemp -d)"
+  mkdir -p "$record_dir/.gaia/state"
+  cat > "$record_dir/.gaia/state/design-record.yaml" <<'YAML'
+schema_version: "2.0"
+design_state: review
+design_system_project:
+  reference: "test-ds-ref"
+  type: "design"
+  surface: "artifact"
+  discovered_via: "manual"
+product_design_project: null
+iteration: 1
+reviews: []
+approvals: []
+audit: []
+YAML
+  mkdir -p "$record_dir/.gaia/config"
+  cat > "$record_dir/.gaia/config/project-config.yaml" <<'YAML'
+project_name: test
+YAML
+
+  run env PROJECT_ROOT="$record_dir" \
+    "$DREC_SCRIPT" record-review-coverage --coverage "design-system,product-design"
+
+  [ "$status" -ne 0 ] || \
+    fail "should reject product-design coverage when product_design_project is null (exit $status): $output"
+  [[ "$output" == *'product_design_project is null'* ]] || \
+    fail "expected diagnostic about null product_design_project: $output"
+
+  rm -rf "$record_dir"
 }

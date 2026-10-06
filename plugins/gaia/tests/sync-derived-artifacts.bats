@@ -4208,23 +4208,23 @@ UX
 @test "reconciliation does not fork per screen per token" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  # Verify the script pre-extracts screen content into files via dd
-  # rather than running jq per (token, screen) pair in the inner loop.
-  # The reconciliation section must use grep on pre-split files, not
-  # jq inside the while loop.
+  # Verify the reconciliation section uses a single awk pass over all
+  # screens instead of spawning one grep/jq per (token, screen) pair.
+  # The section must read screen content files from within awk (via
+  # getline) and must NOT have per-screen grep or jq calls.
   local recon_section
-  recon_section="$(awk '/changed_tokens/,/done < .*changed_tokens/' "$SYNC_SCRIPT")"
+  recon_section="$(sed -n '/changed_tokens/,/removed_tokens/p' "$SYNC_SCRIPT")"
   [ -n "$recon_section" ] || fail "could not find the reconciliation section"
 
   # Must NOT have jq calls inside the inner screen loop
   local inner_jq_count
   inner_jq_count="$(printf '%s\n' "$recon_section" | grep -c 'jq.*\.\[.*\$si' || true)"
   [ "$inner_jq_count" -eq 0 ] || \
-    fail "reconciliation inner loop must not fork jq per screen (found $inner_jq_count jq calls with index variable)"
+    fail "reconciliation must not fork jq per screen (found $inner_jq_count jq calls with index variable)"
 
-  # Must use grep on pre-split files
-  printf '%s\n' "$recon_section" | grep -q 'grep.*scr_content_dir\|grep.*scr_content_file' || \
-    fail "reconciliation must grep pre-split screen content files"
+  # Must use a single awk call that reads screen content via getline
+  printf '%s\n' "$recon_section" | grep -q 'getline.*scr_path' || \
+    fail "reconciliation must use a single awk with getline for screen content"
 }
 
 
@@ -4303,5 +4303,546 @@ UX
     fail "expected 20 reconciliation findings, got $recon_count"
 
   rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Component-sync subprocess count does not grow with N
+# =========================================================================
+
+# Helper: create a counting shim for a command.
+# Usage: _make_counting_shim SHIM_DIR CMD COUNTER_FILE
+_make_counting_shim() {
+  local shim_dir="$1" cmd="$2" counter_file="$3"
+  local real_path
+  real_path="$(command -v "$cmd")"
+  printf '0\n' > "$counter_file"
+  cat > "$shim_dir/$cmd" <<SHIM
+#!/usr/bin/env bash
+count=\$(cat "$counter_file")
+printf '%d\n' "\$((count + 1))" > "$counter_file"
+exec "$real_path" "\$@"
+SHIM
+  chmod +x "$shim_dir/$cmd"
+}
+
+@test "removal report awk count is constant regardless of component count" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # The regression was that the removal report re-extracted doc components
+  # after additions, spawning N awk calls. The fix reuses the pre-computed
+  # variable. This test verifies that the awk count does not grow with N.
+  # Grep counts scale linearly with N (one per snapshot component in the
+  # addition loop) — that is inherent, not a regression.
+  local root10 root200
+  root10="$(mktemp -d)"
+  root200="$(mktemp -d)"
+
+  local n_dir
+  for n_dir in "$root10" "$root200"; do
+    local doc_dir="$n_dir/.gaia/artifacts/planning-artifacts"
+    mkdir -p "$doc_dir"
+    cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| Existing | Custom |
+
+## Design Record Reference
+UX
+  done
+
+  python3 -c '
+import json, sys
+comps = ["Existing"] + [f"c{i}" for i in range(1, 10)]
+json.dump({"components": comps}, sys.stdout)
+' > "$root10/snapshot.json"
+
+  python3 -c '
+import json, sys
+comps = ["Existing"] + [f"c{i}" for i in range(1, 200)]
+json.dump({"components": comps}, sys.stdout)
+' > "$root200/snapshot.json"
+
+  local shim_dir10="$root10/shim"
+  mkdir -p "$shim_dir10"
+  _make_counting_shim "$shim_dir10" "awk" "$root10/awk_count"
+
+  local shim_dir200="$root200/shim"
+  mkdir -p "$shim_dir200"
+  _make_counting_shim "$shim_dir200" "awk" "$root200/awk_count"
+
+  PATH="$shim_dir10:$PATH" run "$SYNC_SCRIPT" \
+    "$root10/snapshot.json" "$root10/.gaia/artifacts/planning-artifacts/ux-design.md"
+  [ "$status" -eq 0 ] || fail "10-component sync failed: $output"
+  local awk10
+  awk10="$(cat "$root10/awk_count")"
+
+  PATH="$shim_dir200:$PATH" run "$SYNC_SCRIPT" \
+    "$root200/snapshot.json" "$root200/.gaia/artifacts/planning-artifacts/ux-design.md"
+  [ "$status" -eq 0 ] || fail "200-component sync failed: $output"
+  local awk200
+  awk200="$(cat "$root200/awk_count")"
+
+  # The awk count must not grow with N (was +200 before the fix).
+  # Allow up to 3x headroom for constant-factor variation.
+  [ "$awk200" -le "$((awk10 * 3))" ] || \
+    fail "awk calls scaled with N: 10-comp=$awk10, 200-comp=$awk200"
+
+  rm -rf "$root10" "$root200"
+}
+
+
+# =========================================================================
+# Token reconciliation process count is constant per screen count
+# =========================================================================
+
+@test "reconciliation process count does not grow with token count" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root5 root50
+  root5="$(mktemp -d)"
+  root50="$(mktemp -d)"
+
+  local n_dir
+  for n_dir in "$root5" "$root50"; do
+    local doc_dir="$n_dir/.gaia/artifacts/planning-artifacts"
+    mkdir -p "$doc_dir"
+    cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+  done
+
+  # Build scale snapshots with different token counts
+  python3 -c "
+import json, sys
+n = int(sys.argv[1])
+baseline = {}
+tokens = {}
+for i in range(n):
+    baseline['--tok-%d' % i] = '#old%d' % i
+    tokens['--tok-%d' % i] = '#new%d' % i
+screens = []
+for j in range(5):
+    body = 'body { '
+    for i in range(n):
+        body += 'var(--tok-%d) ' % i
+    body += '}'
+    screens.append({'name': 'screen%d' % j, 'file': 'screens/s%d.html' % j, 'content': body})
+json.dump(baseline, open(sys.argv[2], 'w'))
+json.dump({'design_system': {'components': ['nav'], 'tokens': tokens}, 'product_design': {'screens': screens}}, sys.stdout)
+" 5 "$root5/tok-baseline.json" > "$root5/snapshot.json"
+
+  python3 -c "
+import json, sys
+n = int(sys.argv[1])
+baseline = {}
+tokens = {}
+for i in range(n):
+    baseline['--tok-%d' % i] = '#old%d' % i
+    tokens['--tok-%d' % i] = '#new%d' % i
+screens = []
+for j in range(5):
+    body = 'body { '
+    for i in range(n):
+        body += 'var(--tok-%d) ' % i
+    body += '}'
+    screens.append({'name': 'screen%d' % j, 'file': 'screens/s%d.html' % j, 'content': body})
+json.dump(baseline, open(sys.argv[2], 'w'))
+json.dump({'design_system': {'components': ['nav'], 'tokens': tokens}, 'product_design': {'screens': screens}}, sys.stdout)
+" 50 "$root50/tok-baseline.json" > "$root50/snapshot.json"
+
+  local shim5="$root5/shim"
+  mkdir -p "$shim5"
+  _make_counting_shim "$shim5" "grep" "$root5/grep_count"
+
+  local shim50="$root50/shim"
+  mkdir -p "$shim50"
+  _make_counting_shim "$shim50" "grep" "$root50/grep_count"
+
+  PATH="$shim5:$PATH" run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$root5/tok-baseline.json" \
+    "$root5/snapshot.json" "$root5/.gaia/artifacts/planning-artifacts/ux-design.md"
+  [ "$status" -eq 0 ] || fail "5-token sync failed: $output"
+  local grep5
+  grep5="$(cat "$root5/grep_count")"
+
+  PATH="$shim50:$PATH" run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$root50/tok-baseline.json" \
+    "$root50/snapshot.json" "$root50/.gaia/artifacts/planning-artifacts/ux-design.md"
+  [ "$status" -eq 0 ] || fail "50-token sync failed: $output"
+  local grep50
+  grep50="$(cat "$root50/grep_count")"
+
+  # Grep count must not grow proportionally with token count.
+  [ "$grep50" -le "$((grep5 * 3))" ] || \
+    fail "grep calls scaled with token count: 5-tok=$grep5, 50-tok=$grep50"
+
+  rm -rf "$root5" "$root50"
+}
+
+
+# =========================================================================
+# Non-array screens in design-system pass gives diagnostic, not crash
+# =========================================================================
+
+@test "design-system pass with non-array screens gives diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/nonarray-screens-$$.json"
+  printf '{"--primary":"#000"}\n' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary":"#fff"}},
+          "product_design":{"screens":"oops"}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "should not crash on non-array screens (exit $status): $output"
+  [[ "$output" == *'invalid product screen data'* ]] || \
+    fail "should print a diagnostic about non-array screens: $output"
+
+  # Baseline must NOT be updated
+  local bl_val
+  bl_val="$(jq -r '."--primary"' "$tok_baseline")"
+  [ "$bl_val" = "#000" ] || \
+    fail "baseline should be preserved when reconciliation is skipped, got: $bl_val"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+@test "design-system pass with non-object screen entries gives diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/nonobj-screens-$$.json"
+  printf '{"--primary":"#000"}\n' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary":"#fff"}},
+          "product_design":{"screens":["login"]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "should not crash on non-object screen entries (exit $status): $output"
+  [[ "$output" == *'invalid product screen data'* ]] || \
+    fail "should print a diagnostic: $output"
+
+  local bl_val
+  bl_val="$(jq -r '."--primary"' "$tok_baseline")"
+  [ "$bl_val" = "#000" ] || \
+    fail "baseline should be preserved, got: $bl_val"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Skipped reconciliation preserves baseline for re-evaluation
+# =========================================================================
+
+@test "invalid screen data then fixed data still reports token change" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/skip-reeval-$$.json"
+  printf '{"--primary":"#3B82F6"}\n' > "$tok_baseline"
+
+  # First run: invalid screen (null entry), token changed
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary":"#2563EB"}},
+          "product_design":{"screens":[null,{"name":"login","file":"s/login.html","content":"var(--primary)"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "first run failed: $output"
+
+  local bl_val1
+  bl_val1="$(jq -r '."--primary"' "$tok_baseline")"
+  [ "$bl_val1" = "#3B82F6" ] || \
+    fail "baseline should be preserved after skipped reconciliation, got: $bl_val1"
+
+  # Second run: fixed screen data
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary":"#2563EB"}},
+          "product_design":{"screens":[{"name":"login","file":"s/login.html","content":"var(--primary)"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "second run failed: $output"
+
+  [[ "$output" == *'reconciliation (medium): token --primary #3B82F6 -> #2563EB affects screen login'* ]] || \
+    fail "expected reconciliation finding on re-run after fix: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Baseline token with control character filtered before reconciliation
+# =========================================================================
+
+@test "baseline token with tab in value filtered with diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/bl-ctrl-$$.json"
+  printf '{"--dirty":"#fff\\t#000","--clean":"#aaa"}\n' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--dirty":"#111","--clean":"#bbb"}},
+          "product_design":{"screens":[{"name":"s","file":"s/s.html","content":"var(--clean)"}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'baseline token with control character'* ]] || \
+    fail "expected diagnostic for baseline control character: $output"
+  [[ "$output" == *'reconciliation (medium): token --clean'* ]] || \
+    fail "expected reconciliation finding for clean token: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Left word boundary: identifier char before token suppresses finding
+# =========================================================================
+
+@test "token preceded by identifier char is not reported" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/left-boundary-$$.json"
+  printf '{"--primary":"#000"}\n' > "$tok_baseline"
+
+  # Screen A: token preceded by identifier chars (no left word boundary)
+  # Screen B: token inside var() (left word boundary present)
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":["nav"],"tokens":{"--primary":"#fff"}},
+          "product_design":{"screens":[
+            {"name":"no-boundary","file":"screens/a.html","content":"body { color: var(--brand--primary); x--primary; }"},
+            {"name":"has-boundary","file":"screens/b.html","content":"body { color: var(--primary); }"}
+          ]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must NOT report for the screen where the token is preceded by an identifier char
+  [[ "$output" != *'affects screen no-boundary'* ]] || \
+    fail "token preceded by identifier char should not be reported: $output"
+
+  # Must report for the screen where the token has a proper word boundary
+  [[ "$output" == *'reconciliation (medium): token --primary #000 -> #fff affects screen has-boundary'* ]] || \
+    fail "token with word boundary should be reported: $output"
+
+  rm -f "$tok_baseline"
+  rm -rf "$root"
+}
+
+
+# =========================================================================
+# Combined snapshot with non-array components exits with diagnostic
+# =========================================================================
+
+@test "combined snapshot with non-array components exits with diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":"not-an-array"}}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system "$snapshot" "$ux_doc"
+
+  [ "$status" -ne 0 ] || \
+    fail "should exit non-zero for non-array components (exit $status): $output"
+  [[ "$output" == *'.components must be an array'* ]] || \
+    fail "expected diagnostic about non-array components: $output"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc changed despite rejected snapshot"
+
+  rm -rf "$root"
+}
+
+@test "combined snapshot with non-array templates exits with diagnostic" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"design_system":{"components":[],"templates":"not-an-array"}}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -ne 0 ] || \
+    fail "should exit non-zero for non-array templates (exit $status): $output"
+  [[ "$output" == *'.templates must be an array'* ]] || \
+    fail "expected diagnostic about non-array templates: $output"
+
   rm -rf "$root"
 }
