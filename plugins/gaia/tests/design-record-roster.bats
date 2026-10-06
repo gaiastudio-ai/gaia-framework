@@ -155,6 +155,21 @@ _yq_roster_count() {
   fi
 }
 
+# _yq_perfile_fallback_count — count yq calls whose argv contains
+# 'select(di ==' — the per-file fallback's per-document extraction pattern.
+# This expression appears only in the fallback path, never in the fast path
+# (which uses _gaia_rix).  A non-zero count proves the fast path failed and
+# the per-file fallback was invoked.
+_yq_perfile_fallback_count() {
+  if [ -f "$SHIM_LOG/yq" ]; then
+    local n
+    n="$("$REAL_GREP" -c 'select(di ==' "$SHIM_LOG/yq" 2>/dev/null)" || true
+    printf '%s' "${n:-0}"
+  else
+    printf '0'
+  fi
+}
+
 # _mk_n_roster N — create N roster files with s1 design-tagged, rest untagged
 _mk_n_roster() {
   local n="$1" roster_dir="$TEST_TMP/.gaia/custom/stakeholders"
@@ -2846,8 +2861,10 @@ slug: [unclosed
 
   # alice: a real stakeholder who has approved
   _mk_stakeholder "$roster_dir" "alice" "[design]"
+  local _arc=0
   env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve \
-    --stakeholder alice --recorded-by test >/dev/null 2>&1
+    --stakeholder alice --recorded-by test >/dev/null 2>&1 || _arc=$?
+  [ "$_arc" -eq 0 ] || fail "setup: approve alice must succeed (rc=$_arc)"
 
   # evil: symlinked roster file pointing at an external target
   local target_dir="$BATS_TEST_TMPDIR/evil-file-target"
@@ -2889,8 +2906,10 @@ slug: [unclosed
   # Lower-precedence directory: alice is the sole required stakeholder, approved
   local lower_dir="$TEST_TMP/custom/stakeholders"
   _mk_stakeholder "$lower_dir" "alice" "[design]"
+  local _arc=0
   env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve \
-    --stakeholder alice --recorded-by test >/dev/null 2>&1
+    --stakeholder alice --recorded-by test >/dev/null 2>&1 || _arc=$?
+  [ "$_arc" -eq 0 ] || fail "setup: approve alice must succeed (rc=$_arc)"
 
   # Higher-precedence directory: a symlink (the attacked surface)
   local target="$BATS_TEST_TMPDIR/evil-dir-target"
@@ -2934,8 +2953,10 @@ slug: [unclosed
   # Lower-precedence directory: alice is the sole required stakeholder, approved
   local lower_dir="$TEST_TMP/custom/stakeholders"
   _mk_stakeholder "$lower_dir" "alice" "[design]"
+  local _arc=0
   env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve \
-    --stakeholder alice --recorded-by test >/dev/null 2>&1
+    --stakeholder alice --recorded-by test >/dev/null 2>&1 || _arc=$?
+  [ "$_arc" -eq 0 ] || fail "setup: approve alice must succeed (rc=$_arc)"
 
   # .gaia/custom is a symlink — parent component attack
   # Target also has alice (same slug) so dedup won't add a new required stakeholder
@@ -2956,6 +2977,53 @@ slug: [unclosed
   run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" transition --to approved --actor test
   [ "$status" -ne 0 ] || fail "transition to approved must fail"
 
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "review" ] || fail "design_state should remain review, got: $state"
+}
+
+# =========================================================================
+# dangling parent symlink with approved lower-precedence roster must fail
+# =========================================================================
+
+@test "dangling parent symlink with approved lower-precedence roster must fail" {
+  # A dangling .gaia/custom symlink makes the higher-precedence roster
+  # unreachable.  If the parent-component refusal is a skip (continue)
+  # rather than a failure (return 1), the lower-precedence custom/stakeholders
+  # directory is found alone, and an approved stakeholder there makes the
+  # transition to approved succeed — a security bypass.
+  [ -x "$SCRIPT" ] || fail "script not found"
+
+  _seed_record "review" 1
+
+  # Lower-precedence directory: alice is the sole required stakeholder
+  local lower_dir="$TEST_TMP/custom/stakeholders"
+  _mk_stakeholder "$lower_dir" "alice" "[design]"
+
+  # Approve alice so the lower-precedence roster would converge on its own
+  local approve_rc=0
+  env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" approve \
+    --stakeholder alice --recorded-by test >/dev/null 2>&1 || approve_rc=$?
+  [ "$approve_rc" -eq 0 ] || fail "setup: approve alice must succeed (rc=$approve_rc)"
+
+  # Dangling .gaia/custom symlink (target does not exist)
+  mkdir -p "$TEST_TMP/.gaia"
+  rm -rf "$TEST_TMP/.gaia/custom"
+  ln -s "/nonexistent/evil-target" "$TEST_TMP/.gaia/custom"
+
+  # Check-convergence must fail
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" check-convergence
+  [ "$status" -ne 0 ] || fail "must fail on dangling parent symlink"
+  [[ "$output" != *"converged"* ]] || [[ "$output" == *"not-converged"* ]] \
+    || fail "must not say converged: $output"
+  [[ "$output" == *"refusing symlinked"* ]] \
+    || fail "expected symlink refusal diagnostic: $output"
+
+  # Transition to approved must also fail
+  run env PROJECT_ROOT="$TEST_TMP" "$SCRIPT" transition --to approved --actor test
+  [ "$status" -ne 0 ] || fail "transition to approved must fail"
+
+  # design_state must remain review
   local state
   state="$(yq '.design_state' "$RECORD")"
   [ "$state" = "review" ] || fail "design_state should remain review, got: $state"
@@ -3091,6 +3159,14 @@ Also she reviews more."
   yqr="$(_yq_roster_count)"
   [ "$yqr" -eq 1 ] \
     || fail "expected fast path (1 roster yq call), got $yqr"
+
+  # No per-file fallback yq calls — proves the fast path succeeded, not just
+  # that the combined call was attempted.  The fallback's yq expressions
+  # contain 'select(di ==' which the fast path never uses.
+  local fb
+  fb="$(_yq_perfile_fallback_count)"
+  [ "$fb" -eq 0 ] \
+    || fail "expected zero per-file fallback yq calls, got $fb — fast path did not succeed"
 
   # Exact output line
   [[ "$output" == *"not-converged (missing: eve frank)"* ]] \
