@@ -4953,12 +4953,70 @@ UX
   local tok_baseline="$BATS_TMPDIR/nul-tok-$$.json"
   printf '{"--a":"#000"}\n' > "$tok_baseline"
 
-  # Screen content: text \0 var(--a) — the token is after the NUL byte.
-  local content_hex
-  content_hex="$(printf 'before text\x00 var(--a) after')"
+  # Build a screen content string that contains a real NUL byte.
+  # Write the raw content to a file, inject it into JSON via --rawfile,
+  # and verify the NUL round-trips through jq.
+  local content_file="$BATS_TMPDIR/nul-content-$$.bin"
+  printf 'before text\x00 var(--a) after' > "$content_file"
 
   local snapshot="$root/snapshot.json"
-  jq -n --arg c "$content_hex" \
+  jq -n --rawfile c "$content_file" \
+    '{"design_system":{"components":["nav"],"tokens":{"--a":"#fff"}},
+      "product_design":{"screens":[{"name":"s1","file":"s/s.html","content":$c}]}}' \
+    > "$snapshot"
+
+  # Confirm the NUL byte survives a jq extraction of the content field
+  local nul_count
+  nul_count="$(jq -j '.product_design.screens[0].content' "$snapshot" \
+    | od -A n -t x1 | tr ' ' '\n' | grep -c '^00$')" || true
+  [ "$nul_count" -ge 1 ] || fail "extracted content should contain at least one NUL byte, got $nul_count"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation (medium): token --a'* ]] || \
+    fail "token after NUL byte should still be reported: $output"
+
+  rm -f "$tok_baseline" "$content_file"
+  rm -rf "$root"
+}
+
+@test "nul byte replaced with space preserves token boundary" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # When NUL is deleted (tr -d), "x\0--a" becomes "x--a" and the token
+  # is not found because "x" is an identifier character touching "--a".
+  # When NUL is replaced with a space, "x --a" has a proper boundary.
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  local tok_baseline="$BATS_TMPDIR/nul-join-tok-$$.json"
+  printf '{"--a":"#000"}\n' > "$tok_baseline"
+
+  # Content: identifier char immediately before NUL, then the token.
+  # tr -d would merge them (false negative); tr '\0' ' ' preserves the boundary.
+  local content_file="$BATS_TMPDIR/nul-join-content-$$.bin"
+  printf 'x\x00--a rest' > "$content_file"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --rawfile c "$content_file" \
     '{"design_system":{"components":["nav"],"tokens":{"--a":"#fff"}},
       "product_design":{"screens":[{"name":"s1","file":"s/s.html","content":$c}]}}' \
     > "$snapshot"
@@ -4969,9 +5027,9 @@ UX
 
   [ "$status" -eq 0 ] || fail "sync failed: $output"
   [[ "$output" == *'reconciliation (medium): token --a'* ]] || \
-    fail "token after NUL byte should still be reported: $output"
+    fail "token separated from identifier by NUL should be reported: $output"
 
-  rm -f "$tok_baseline"
+  rm -f "$tok_baseline" "$content_file"
   rm -rf "$root"
 }
 
@@ -5409,29 +5467,271 @@ UX
 
 
 # =========================================================================
-# Quadratic scan guard: the matcher must not copy the tail of the content
+# Literal token matching: tokens with regex metacharacters
 # =========================================================================
 
-@test "matcher does not use substr to copy the content tail in its search loop" {
+# Helper: build a one-screen reconciliation fixture with a specific
+# token name and screen content, run the script, and return whether
+# a reconciliation finding was reported.
+_run_token_match_test() {
+  local tok_name="$1" screen_content="$2"
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+  # Baseline with old value, snapshot with new value
+  local tok_baseline="$root/tok-baseline.json"
+  jq -n --arg k "$tok_name" '{ ($k): "#000" }' > "$tok_baseline"
+
+  local snapshot="$root/snapshot.json"
+  jq -n --arg k "$tok_name" --arg c "$screen_content" \
+    '{"design_system":{"components":["nav"],"tokens":{($k):"#fff"}},
+      "product_design":{"screens":[{"name":"s1","file":"s/s.html","content":$c}]}}' \
+    > "$snapshot"
+
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$tok_baseline" \
+    "$snapshot" "$doc_dir/ux-design.md"
+
+  rm -rf "$root"
+}
+
+@test "token with dot is matched literally, not as regex wildcard" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  # Extract the awk matcher block from the script (between the "Single awk
-  # pass" comment and the closing quote+file arguments). The quadratic
-  # pattern is substr(content, pos) inside the search loop — it copies
-  # the remainder of the screen at every near-miss, making the scan O(N^2)
-  # in the worst case. The split-based matcher avoids this entirely.
-  local awk_block
-  awk_block="$(sed -n '/# Single awk pass:/,/'"'"' "\$tok_safe_file"/p' "$SYNC_SCRIPT")"
+  # --a.b must NOT match --axb (dot-as-wildcard would match)
+  _run_token_match_test "--a.b" "var(--axb)"
+  [ "$status" -eq 0 ] || fail "sync failed on false-content: $output"
+  [[ "$output" != *'reconciliation'* ]] || \
+    fail "dot in token should not match as regex wildcard: $output"
 
-  [ -n "$awk_block" ] || fail "could not extract the awk matcher block from the script"
+  # --a.b MUST match --a.b (literal dot)
+  _run_token_match_test "--a.b" "var(--a.b)"
+  [ "$status" -eq 0 ] || fail "sync failed on literal-content: $output"
+  [[ "$output" == *'reconciliation (medium): token --a.b'* ]] || \
+    fail "literal dot in token should match: $output"
+}
 
-  # The awk block must NOT contain substr(content, pos) — that is the
-  # quadratic copy pattern. split() on the token is the expected approach.
-  if printf '%s\n' "$awk_block" | grep -q 'substr(content, pos)'; then
-    fail "the awk matcher still uses substr(content, pos) — this copies the tail at every near-miss, making the scan quadratic"
+@test "token with plus is matched literally" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  _run_token_match_test "--x+y" "var(--x+y)"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation (medium): token --x+y'* ]] || \
+    fail "token with plus should match literally: $output"
+}
+
+@test "token with parentheses is matched literally" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  _run_token_match_test "--p(1)" "var(--p(1))"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation (medium): token --p(1)'* ]] || \
+    fail "token with parentheses should match literally: $output"
+}
+
+@test "token with dollar sign is matched literally" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  _run_token_match_test '--a$' 'var(--a$)'
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation (medium): token --a$'* ]] || \
+    fail "token with dollar should match literally: $output"
+}
+
+@test "token with open bracket does not crash awk" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  _run_token_match_test "--a[" "var(--a[)"
+  [ "$status" -eq 0 ] || fail "token with [ should not crash: $output"
+  [[ "$output" == *'reconciliation (medium): token --a['* ]] || \
+    fail "token with [ should match literally: $output"
+}
+
+@test "token with backslash-dot is matched literally" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  _run_token_match_test '--a\.b' 'var(--a\.b)'
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation (medium): token --a'* ]] || \
+    fail "token with backslash-dot should match literally: $output"
+}
+
+@test "token with pipe is matched literally" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  _run_token_match_test "--a|b" "x --a|b y"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation'* ]] || \
+    fail "token with pipe should match literally: $output"
+}
+
+@test "token with asterisk is matched literally" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  _run_token_match_test "--a*" "var(--a*)"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation'* ]] || \
+    fail "token with asterisk should match literally: $output"
+}
+
+
+# =========================================================================
+# Adjacent occurrences must not give a false positive
+# =========================================================================
+
+@test "adjacent identical tokens are not a false boundary match" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # var(--a--a): both sides of each occurrence border an identifier char
+  _run_token_match_test "--a" "var(--a--a)"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" != *'reconciliation'* ]] || \
+    fail "adjacent --a--a should not be reported as a match: $output"
+
+  # --a --a: space-separated, first occurrence has a valid boundary
+  _run_token_match_test "--a" "x --a --a y"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+  [[ "$output" == *'reconciliation (medium): token --a'* ]] || \
+    fail "space-separated --a --a should be reported: $output"
+}
+
+
+# =========================================================================
+# Pathological token name finishes quickly
+# =========================================================================
+
+@test "pathological token name does not cause exponential regex backtracking" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A name that would cause catastrophic backtracking if used as a regex.
+  # With literal matching, this runs in milliseconds.
+  local tok_name="--(a{1,255}){1,255}"
+  _run_token_match_test "$tok_name" "var(--ok)"
+
+  # The test has a 120s bats timeout. If we reach this line, it was fast.
+  [ "$status" -eq 0 ] || fail "pathological token name should not crash: $output"
+}
+
+
+# =========================================================================
+# Quadratic scan guard: the matcher must scale linearly
+# =========================================================================
+
+@test "matcher scales linearly with content length and near-miss count" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Behavioural bound: run reconciliation at N and 10N near-misses
+  # with proportional content length (each near-miss adds 10 bytes).
+  # A linear matcher gives about 10x; a quadratic one about 100x.
+  # Threshold 30 gives wide margins for noisy CI runners.
+  #
+  # The script is invoked directly (not through bats `run`) so the
+  # timing measures only the script, without fork/capture overhead.
+  # If the small run is under 0.2s, repeat it 5 times and average.
+  _build_scaling_fixture() {
+    local n="$1" root="$2"
+    local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+    mkdir -p "$doc_dir"
+    cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- nav
+
+## Design Record Reference
+UX
+
+    printf '{"--a":"#000"}\n' > "$root/tok-baseline.json"
+
+    # Write content to a file, then inject via --rawfile to avoid
+    # ARG_MAX limits on large content strings.
+    python3 -c "
+import sys
+for i in range($n):
+    sys.stdout.write('var(--ab) ')
+sys.stdout.write('var(--a)')
+" > "$root/content.txt"
+
+    jq -n --rawfile c "$root/content.txt" \
+      '{"design_system":{"components":["nav"],"tokens":{"--a":"#fff"}},
+        "product_design":{"screens":[{"name":"s1","file":"s/s.html","content":$c}]}}' \
+      > "$root/snapshot.json"
+  }
+
+  local root_small root_large
+  root_small="$(mktemp -d)"
+  root_large="$(mktemp -d)"
+  _build_scaling_fixture 10000 "$root_small"
+  _build_scaling_fixture 100000 "$root_large"
+
+  # Correctness check: the small fixture must succeed.
+  run "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$root_small/tok-baseline.json" \
+    "$root_small/snapshot.json" "$root_small/.gaia/artifacts/planning-artifacts/ux-design.md"
+  [ "$status" -eq 0 ] || fail "small fixture failed: $output"
+
+  # Time the small fixture directly (no bats run overhead).
+  local t0 t1 dur_small
+  t0="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
+  "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$root_small/tok-baseline.json" \
+    "$root_small/snapshot.json" \
+    "$root_small/.gaia/artifacts/planning-artifacts/ux-design.md" > /dev/null 2>&1
+  t1="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
+  dur_small="$(perl -e "printf '%.3f', $t1 - $t0")"
+
+  if perl -e "exit($dur_small < 0.2 ? 0 : 1)"; then
+    # Too fast for a single sample — run 5 iterations and average.
+    t0="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
+    local _rep=0
+    while [ "$_rep" -lt 5 ]; do
+      "$SYNC_SCRIPT" --project design_system \
+        --token-baseline "$root_small/tok-baseline.json" \
+        "$root_small/snapshot.json" \
+        "$root_small/.gaia/artifacts/planning-artifacts/ux-design.md" > /dev/null 2>&1
+      _rep=$((_rep + 1))
+    done
+    t1="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
+    dur_small="$(perl -e "printf '%.3f', ($t1 - $t0) / 5")"
   fi
 
-  # It must use split() on the content for linear scanning.
-  printf '%s\n' "$awk_block" | grep -q 'split(content' || \
-    fail "the awk matcher does not use split() on the content — expected linear scanning"
+  # Time the large fixture directly.
+  local t2 t3 dur_large
+  t2="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
+  "$SYNC_SCRIPT" --project design_system \
+    --token-baseline "$root_large/tok-baseline.json" \
+    "$root_large/snapshot.json" \
+    "$root_large/.gaia/artifacts/planning-artifacts/ux-design.md" > /dev/null 2>&1 || \
+    fail "large fixture script failed"
+  t3="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
+  dur_large="$(perl -e "printf '%.3f', $t3 - $t2")"
+
+  local ratio
+  ratio="$(perl -e "printf '%.1f', $dur_large / $dur_small")"
+
+  # Linear: ratio near 10.  Quadratic: ratio near 100.  Bound: 30.
+  perl -e "exit($ratio > 30.0 ? 1 : 0)" || \
+    fail "near-miss scaling looks quadratic: 10K=${dur_small}s, 100K=${dur_large}s, ratio=$ratio (expected < 30)"
+
+  rm -rf "$root_small" "$root_large"
 }
