@@ -5619,12 +5619,46 @@ UX
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   # A name that would cause catastrophic backtracking if used as a regex.
-  # With literal matching, this runs in milliseconds.
+  # The content is much longer than the name and contains many near-matches
+  # (repeated "(a" runs) that force the literal index() walk to work.
   local tok_name="--(a{1,255}){1,255}"
-  _run_token_match_test "$tok_name" "var(--ok)"
 
-  # The test has a 120s bats timeout. If we reach this line, it was fast.
+  # Build content: 500 near-misses of "(a" then the literal token itself.
+  local content
+  content="$(printf '%0500s' '' | sed 's/ /(a /g') x ${tok_name} y"
+
+  # The run must finish well under 30 seconds.  With literal matching
+  # it completes in milliseconds; a regex matcher would hang or crash.
+  local t0 t1 elapsed
+  t0="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
+  _run_token_match_test "$tok_name" "$content"
+  t1="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
+  elapsed="$(perl -e "printf '%.1f', $t1 - $t0")"
+
   [ "$status" -eq 0 ] || fail "pathological token name should not crash: $output"
+  perl -e "exit($elapsed > 30.0 ? 1 : 0)" || \
+    fail "pathological token name took ${elapsed}s (expected < 30)"
+
+  # The token literally appears in the content with non-identifier chars
+  # on both sides, so the matcher must find it.
+  [[ "$output" == *'reconciliation'* ]] || \
+    fail "token should be found where it literally appears: $output"
+}
+
+
+# =========================================================================
+# Empty token name must not produce a false finding
+# =========================================================================
+
+@test "empty token name does not produce a finding" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A token whose name is empty after parsing.  The matcher must skip it
+  # (no output for that token) and the run must still succeed.
+  _run_token_match_test "" "var(--a); color: red"
+  [ "$status" -eq 0 ] || fail "empty token name should not crash: $output"
+  [[ "$output" != *'reconciliation'* ]] || \
+    fail "empty token name should not produce a finding: $output"
 }
 
 
@@ -5691,7 +5725,10 @@ sys.stdout.write('var(--a)')
   [ "$status" -eq 0 ] || fail "small fixture failed: $output"
 
   # Time the small fixture directly (no bats run overhead).
+  # Reset the baseline before every timed run so the matcher always
+  # sees a changed token and actually reconciles.
   local t0 t1 dur_small
+  printf '{"--a":"#000"}\n' > "$root_small/tok-baseline.json"
   t0="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
   "$SYNC_SCRIPT" --project design_system \
     --token-baseline "$root_small/tok-baseline.json" \
@@ -5705,6 +5742,7 @@ sys.stdout.write('var(--a)')
     t0="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
     local _rep=0
     while [ "$_rep" -lt 5 ]; do
+      printf '{"--a":"#000"}\n' > "$root_small/tok-baseline.json"
       "$SYNC_SCRIPT" --project design_system \
         --token-baseline "$root_small/tok-baseline.json" \
         "$root_small/snapshot.json" \
@@ -5717,6 +5755,7 @@ sys.stdout.write('var(--a)')
 
   # Time the large fixture directly.
   local t2 t3 dur_large
+  printf '{"--a":"#000"}\n' > "$root_large/tok-baseline.json"
   t2="$(perl -e 'use Time::HiRes qw(time); printf "%.3f\n", time()')"
   "$SYNC_SCRIPT" --project design_system \
     --token-baseline "$root_large/tok-baseline.json" \

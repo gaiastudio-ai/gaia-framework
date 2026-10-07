@@ -1174,7 +1174,9 @@ _main() {
             # 1. Identifier-only tokens (all chars in [A-Za-z0-9_-]):
             #    split the content into maximal identifier runs ONCE per
             #    screen using a FIXED non-identifier regex, build a set,
-            #    then look up each token.  O(content + tokens) per screen.
+            #    then look up each token.  Linear on gawk and mawk;
+            #    slower on macOS awk for very large screens because
+            #    split() with a regex separator costs length * matches.
             #
             # 2. Tokens with non-identifier chars (--a.b, --p(1), etc.):
             #    literal index() walk.  These tokens are rare in practice
@@ -1239,7 +1241,9 @@ _main() {
 
                     if (tok_is_id[t]) {
                       # Fast path: split into identifier runs once per
-                      # screen (cached), then do a set lookup.
+                      # screen (cached), then do a set lookup.  Linear
+                      # on gawk and mawk; slower on macOS awk for very
+                      # large screens.
                       if (!(s in scr_runs_n)) {
                         scr_runs_n[s] = split(content, _tmp_runs, \
                           /[^ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-]+/)
