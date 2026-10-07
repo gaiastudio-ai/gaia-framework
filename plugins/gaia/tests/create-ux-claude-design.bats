@@ -2493,31 +2493,54 @@ TOKENS
 # empty canvas treated as creation sequence
 # ===========================================================================
 
-@test "empty-listing canvas is treated as the creation sequence" {
-  # SKILL.md must say that ANY canvas whose file listing is empty is treated
-  # as the creating sequence — not only one created in the same run.
+@test "creation sequence scoped to canvases with no project/canvas.json" {
+  # SKILL.md must say that ANY canvas whose listing has no project/canvas.json
+  # is treated as the creating sequence — not only one created in the same run.
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   local creation_seq
   creation_seq="$(printf '%s' "$block" | awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}')"
   [ -n "$creation_seq" ] || fail "no creation sequence section"
-  # Must explicitly say "any" canvas or "whose file listing is empty", not
-  # only the one "created in the Resolve procedure".
-  printf '%s' "$creation_seq" | grep -qiE 'any.*canvas.*file listing.*empty|whose file listing is empty|any.*product design canvas' \
-    || fail "creation sequence does not cover all empty-listing canvases"
+  # Must scope the rule to project/canvas.json absence, not bare "empty listing"
+  printf '%s' "$creation_seq" | grep -qiE 'no.*project/canvas\.json|listing has no.*project/' \
+    || fail "creation sequence not scoped to project/canvas.json absence"
 }
 
-@test "gate condition 3 accounts for empty existing canvas" {
-  # Gate condition 3 must handle an existing canvas with an empty listing,
-  # where canvas.json does not yet exist. It should mention the empty listing
-  # explicitly.
+@test "gate condition 3 uses project/canvas.json as the emptiness criterion" {
+  # Gate condition 3 must decide emptiness by the presence of project/canvas.json,
+  # not by whether the full listing is empty (type-owned files exist on fresh canvases).
   local gate_section
   gate_section="$(awk '/Screen-publication gate/{found=1} found{print} /^### Step 10/{exit}' "$SKILL_MD")"
   [ -n "$gate_section" ] || fail "no Screen-publication gate"
-  # Must mention empty listing or empty canvas in the gate definition
-  printf '%s' "$gate_section" | grep -qiE 'empty.*file listing|file listing.*empty|empty.*canvas' \
-    || fail "gate condition 3 does not account for empty existing canvas"
+  # Must mention project/canvas.json in the gate definition
+  printf '%s' "$gate_section" | grep -qF 'project/canvas.json' \
+    || fail "gate condition 3 does not use project/canvas.json as the criterion"
+}
+
+@test "shared sub-step tells agent to ignore non-project files when judging content" {
+  # A fresh Design canvas created from the Design type lists type-owned files
+  # outside project/. The skill must instruct the agent to ignore them.
+  local full
+  full="$(cat "$SKILL_MD")"
+  local resolve_section
+  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  [ -n "$resolve_section" ] || fail "no resolve procedure section"
+  local shared_step
+  shared_step="$(printf '%s\n' "$resolve_section" | awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}')"
+  [ -n "$shared_step" ] || fail "no shared sub-step"
+  # Must say files outside project/ belong to the type and are ignored
+  printf '%s' "$shared_step" | grep -qiE 'outside.*project/.*ignored|files outside.*project/.*type|type.*files outside.*project/' \
+    || fail "shared sub-step does not tell agent to ignore non-project/ files"
+}
+
+@test "no stale bare listing-is-empty wording remains in the skill" {
+  # After the project/ scoping fix, no instance of "file listing is empty" or
+  # "listing is empty" (without the project/canvas.json qualifier) should remain.
+  local count
+  count="$(grep -ciE 'file listing is empty|listing is empty' "$SKILL_MD" || true)"
+  [ "$count" -eq 0 ] \
+    || fail "found $count stale 'listing is empty' occurrence(s) in SKILL.md — should be 0"
 }
 
 # ===========================================================================
@@ -2762,41 +2785,28 @@ TOKENS
   # the instruction "List the canvas files" which is the body directive.
   printf '%s' "$shared_step" | grep -qiF 'List the canvas files' \
     || fail "shared sub-step does not mention listing files"
-  # The non-empty branch must read canvas.json
-  printf '%s' "$shared_step" | grep -qiE 'non.empty.*read.*project/canvas\.json' \
-    || fail "shared sub-step does not mention reading canvas.json on non-empty"
-  # Byte-order check: "List the canvas files" must precede "listing is non-empty, read"
-  # Use "listing is non-empty" (the body instruction) rather than bare "non-empty"
-  # which also appears in the heading.
+  # The has-content branch must read canvas.json when project/canvas.json is listed
+  printf '%s' "$shared_step" | grep -qiE 'project/canvas\.json.*is listed.*read' \
+    || fail "shared sub-step does not mention reading canvas.json when it is listed"
+  # Byte-order check: "List the canvas files" must precede the read-back branch
   local list_pos read_pos
   list_pos="$(printf '%s' "$shared_step" | grep -bioF 'List the canvas files' | head -1 | cut -d: -f1 || true)"
-  read_pos="$(printf '%s' "$shared_step" | grep -bioF 'listing is non-empty' | head -1 | cut -d: -f1 || true)"
+  read_pos="$(printf '%s' "$shared_step" | grep -bioF 'project/canvas.json' | head -1 | cut -d: -f1 || true)"
   [ -n "$list_pos" ] || fail "cannot find listing position"
-  [ -n "$read_pos" ] || fail "cannot find non-empty read position"
+  [ -n "$read_pos" ] || fail "cannot find project/canvas.json position"
   [ "$list_pos" -lt "$read_pos" ] \
-    || fail "listing (byte $list_pos) not before non-empty read (byte $read_pos)"
-  # Empty listing branch: extract the full sentence span from "file listing
-  # is empty" through the next period-at-sentence-boundary. The span must
-  # contain "do not read" and must not contain a positive read instruction.
-  # Use sed to isolate the sentence from "If the file listing is empty"
-  # to the next sentence boundary (". If" or end of paragraph).
+    || fail "listing (byte $list_pos) not before canvas.json check (byte $read_pos)"
+  # No-content branch: extract the sentence from "no project/canvas.json"
+  # through the next sentence boundary. The span must contain "do not read".
   local empty_sentence
-  empty_sentence="$(printf '%s' "$shared_step" | sed -n 's/.*\(If the file listing is empty[^.]*\. [^I]*\).*/\1/p' | head -1 || true)"
+  empty_sentence="$(printf '%s' "$shared_step" | grep -oiE 'If the listing has no.*project/canvas\.json[^.]*\.[^.]*\.' | head -1 || true)"
   if [ -z "$empty_sentence" ]; then
-    # Fallback: grab everything from "file listing is empty" to end of line
-    empty_sentence="$(printf '%s' "$shared_step" | grep -oiE 'If the file listing is empty[^.]*\.[^.]*\.' | head -1 || true)"
+    empty_sentence="$(printf '%s' "$shared_step" | grep -oiE 'no.*project/canvas\.json[^.]*\.[^I]*' | head -1 || true)"
   fi
-  [ -n "$empty_sentence" ] || fail "no empty-listing sentence in shared sub-step"
-  # Assert the prohibition itself: "do not read" must appear in the sentence.
+  [ -n "$empty_sentence" ] || fail "no project/canvas.json absence sentence in shared sub-step"
+  # Assert the prohibition: "do not read" must appear
   printf '%s' "$empty_sentence" | grep -qiE 'do not read' \
-    || fail "empty-listing sentence does not contain 'do not read': $empty_sentence"
-  # Negative assertion: strip the prohibition phrase and check that what
-  # remains does not contain a positive read instruction for canvas.json.
-  local after_prohibition
-  after_prohibition="$(printf '%s' "$empty_sentence" | sed 's/[Dd]o not read[^;.]*//')"
-  if printf '%s' "$after_prohibition" | grep -qiE 'read.*project/canvas\.json'; then
-    fail "empty-listing sentence contains a positive canvas.json read after the prohibition: $empty_sentence"
-  fi
+    || fail "no-content sentence does not contain 'do not read': $empty_sentence"
 }
 
 # ===========================================================================
@@ -2838,16 +2848,16 @@ TOKENS
 # Creating-write exemption list includes empty-canvas first publish
 # ===========================================================================
 
-@test "creating-write exemption list includes the first content publish to an empty canvas" {
+@test "creating-write exemption list includes the first content publish to a canvas with no own content" {
   local full
   full="$(cat "$SKILL_MD")"
   # The pre-write target check paragraph lists creating-write exemptions
   local target_check_para
   target_check_para="$(printf '%s\n' "$full" | awk '/Pre-write target check/{found=1} found && /^#### /{exit} found{print}')"
   [ -n "$target_check_para" ] || fail "no pre-write target check paragraph"
-  # Must mention empty canvas in the creating-write exemption list
-  printf '%s' "$target_check_para" | grep -qiE 'creating.write.*empty.*canvas|empty.*canvas.*creating.write|first.*content.*publish.*empty.*canvas' \
-    || fail "creating-write exemptions do not mention the first content publish to an empty canvas"
+  # Must mention the project/canvas.json criterion in the creating-write exemption list
+  printf '%s' "$target_check_para" | grep -qiE 'no.*project/canvas\.json|first.*content.*publish.*no.*own content' \
+    || fail "creating-write exemptions do not mention first content publish scoped to project/canvas.json"
 }
 
 # ===========================================================================
@@ -2996,15 +3006,15 @@ TOKENS
 # Creating-write exemption describes how empty-canvas publish is verified
 # ===========================================================================
 
-@test "creating-write exemption describes verification of empty-canvas first publish" {
+@test "creating-write exemption describes verification of first publish to canvas with no own content" {
   local full
   full="$(cat "$SKILL_MD")"
   local target_check_para
   target_check_para="$(printf '%s\n' "$full" | awk '/Pre-write target check/{found=1} found && /^#### /{exit} found && /^\*\*Metadata/{exit} found{print}')"
   [ -n "$target_check_para" ] || fail "no pre-write target check paragraph"
-  # Must mention the empty-canvas first publish
-  printf '%s' "$target_check_para" | grep -qiE 'first.*content.*publish.*empty.*canvas|empty.*canvas' \
-    || fail "exemption paragraph does not mention empty-canvas first publish"
+  # Must mention the first content publish scoped to project/canvas.json absence
+  printf '%s' "$target_check_para" | grep -qiE 'no.*project/canvas\.json|no own content|first.*content.*publish' \
+    || fail "exemption paragraph does not mention first content publish scoped to project/canvas.json"
   # Must describe verification by page read and per-file read-back
   printf '%s' "$target_check_para" | grep -qiE 'page.*read.*per.file.*read.back|page.*read.*read.back|owned.*by.*you.*read.back' \
     || fail "exemption does not describe page read plus per-file read-back verification"
@@ -3103,9 +3113,9 @@ TOKENS
   # Must NOT call confirm-bind.sh
   printf '%s' "$path_c" | grep -qiE 'NOT.*call.*confirm-bind' \
     || fail "path (c) does not state it skips confirm-bind"
-  # Canvas is empty and pending first content publish
-  printf '%s' "$path_c" | grep -qiE 'canvas is empty.*pending.*first content' \
-    || fail "path (c) does not state canvas is empty"
+  # Canvas has no own content and is pending first content publish
+  printf '%s' "$path_c" | grep -qiE 'no own content.*pending.*first content|no.*project/canvas\.json.*pending' \
+    || fail "path (c) does not state canvas has no own content and is pending first content publish"
   # Must exit with "return to the caller"
   printf '%s' "$path_c" | grep -qF 'return to the caller' \
     || fail "path (c) does not return to the caller"
@@ -3550,19 +3560,19 @@ TOKENS
 }
 
 # ===========================================================================
-# S-R4: condition-3 handler clarifies empty listing is not a failure
+# S-R4: condition-3 handler clarifies no-content listing is not a failure
 # ===========================================================================
 
-@test "gate-failure handler clarifies empty listing pending first publish is not a failure" {
+@test "gate-failure handler clarifies no-content listing pending first publish is not a failure" {
   local full
   full="$(cat "$SKILL_MD")"
   local gate_section
   gate_section="$(printf '%s\n' "$full" | awk '/Screen-publication gate/{found=1} found && /^### Step 10/{exit} found{print}')"
   [ -n "$gate_section" ] || fail "no gate section"
-  # Must say the condition-3 handler fires only on failed reads of non-empty listings
-  printf '%s' "$gate_section" | grep -qiE 'empty listing.*not a failure|empty.*pending.*not.*failure|fires only.*non-empty.*listing' \
-    || fail "gate handler does not clarify that empty listing pending first publish is not a failure"
-  # Must reference Step 10 item 5 as the handler for empty listings
+  # Must say a listing with no project/canvas.json pending first publish is not a failure
+  printf '%s' "$gate_section" | grep -qiE 'no.*project/canvas\.json.*not a failure|pending.*first content.*not.*failure|not a failure' \
+    || fail "gate handler does not clarify that no-content listing pending first publish is not a failure"
+  # Must reference Step 10 item 5 as the handler for no-content listings
   printf '%s' "$gate_section" | grep -qiE 'Step 10.*item 5|item 5 handles' \
-    || fail "gate handler does not reference Step 10 item 5 for empty listings"
+    || fail "gate handler does not reference Step 10 item 5 for no-content listings"
 }

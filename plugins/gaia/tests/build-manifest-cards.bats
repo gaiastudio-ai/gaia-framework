@@ -1524,6 +1524,136 @@ _make_art_meta() {
   [ "$status" -eq 0 ] || fail "positive artifact control should pass: $output"
 }
 
+@test "verify-target: real canvas version id with hex accepted" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  local ref="https://claude.ai/artifact/3eAbQNaoCntM4RhQ9TYZsW"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml" "https://ds.example.com/project/123" "$ref"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "$ref" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 1791378024-1c52) — owned by you, private; the page comes from its Artifact type https://claude.ai/artifact/QKN21svewxgyPb6SYRqWnd]" \
+    "Files saved under \"/var/folders/tmp/art-read\" from version 1791378024-1c52 of ${ref}, an Artifact of type \"Design\"."
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact '$ref' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "real canvas hex version should pass: $output"
+}
+
+@test "verify-target: real canvas version id extracts URL and type correctly" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  local ref="https://claude.ai/artifact/3eAbQNaoCntM4RhQ9TYZsW"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml" "https://ds.example.com/project/123" "$ref"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "$ref" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 1791378024-1c52) — owned by you, private; the page comes from its Artifact type https://claude.ai/artifact/QKN21svewxgyPb6SYRqWnd]" \
+    "Files saved under \"/var/folders/tmp/art-read\" from version 1791378024-1c52 of ${ref}, an Artifact of type \"Design\"."
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact '$ref' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "extraction should pass: $output"
+  # The positive pass means the URL was extracted as the expected reference
+  # and the type was extracted as "Design" — both verified internally.
+}
+
+@test "verify-target: plain numeric version still accepted" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456"
+  # Default header uses "from version 2 of" — digits only
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "plain numeric version should still pass: $output"
+}
+
+@test "verify-target: empty version rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/some/dir" from version  of https://claude.ai/artifact/456, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "empty version should be rejected"
+}
+
+@test "verify-target: version with space rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/some/dir" from version 2 beta of https://claude.ai/artifact/456, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "version with space should be rejected"
+}
+
+@test "verify-target: version with quote rejected" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/some/dir" from version 2" of https://claude.ai/artifact/456, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -ne 0 ] || fail "version with quote should be rejected"
+}
+
+@test "verify-target: crafted directory with embedded version form still uses real tail" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  # Dir name embeds 'from version 999 of https://evil.example.com'
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/tmp/from version 999 of https://evil.example.com" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  # Should pass (the greedy sed picks the LAST "from version N of", extracting
+  # the real URL, not the crafted one).
+  [ "$status" -eq 0 ] || fail "crafted dir should not override real tail: $output"
+}
+
+@test "verify-target: old digits-only regex would reject real hex version" {
+  # Demonstrate that the old pattern [0-9]+ fails on a real hex version.
+  local header='Files saved under "/var/folders/tmp/art-read" from version 1791378024-1c52 of https://claude.ai/artifact/abc, an Artifact of type "Design".'
+  # Old regex: digits only
+  if printf '%s' "$header" | grep -qE '^Files saved under ".*" from version [0-9]+ of .+, an Artifact of type "[^"]+"\.$'; then
+    fail "old digits-only regex should NOT match a hex version — this test proves the fix was needed"
+  fi
+  # New regex: alphanumeric with hyphens
+  printf '%s' "$header" | grep -qE '^Files saved under ".*" from version [0-9A-Za-z][0-9A-Za-z-]* of .+, an Artifact of type "[^"]+"\.$' \
+    || fail "new regex should match the real hex version"
+}
+
 @test "verify-target: non-writer artifact page header rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
@@ -1928,13 +2058,13 @@ TXT
   [ "$status" -ne 0 ] || fail "missing final period should be rejected"
 }
 
-@test "verify-target: per-file header non-numeric version rejected" {
+@test "verify-target: per-file header version with a dot rejected" {
   [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
   _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
 
   _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
     "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
-    'Files saved under "/d" from version 2x of https://claude.ai/artifact/456, an Artifact of type "Design".'
+    'Files saved under "/d" from version 2.1 of https://claude.ai/artifact/456, an Artifact of type "Design".'
 
   run bash -c "
     source '$VERIFY_SCRIPT'
@@ -1942,7 +2072,7 @@ TXT
       --metadata-file '$TEST_TMP/artifact-meta.txt' \
       --design-record '$TEST_TMP/design-record.yaml'
   "
-  [ "$status" -ne 0 ] || fail "non-numeric version should be rejected"
+  [ "$status" -ne 0 ] || fail "version with a dot should be rejected"
 }
 
 @test "verify-target: per-file header with crafted dir embedding the full form but different tail URL rejected" {
