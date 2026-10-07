@@ -2051,13 +2051,12 @@ ${line}"
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  # Must contain a sentence that says to batch all WRITE ops into one publish
-  # carrying all changed artboards and the final canvas.json. Match the
-  # enforcement sentence, not just the heading word "batched".
-  printf '%s' "$block" | grep -qiE 'Batch all.*WRITE.*one.*Artifact.*publish|one Artifact.*publish.*files.*all.*changed.*artboard' \
-    || fail "no enforcement sentence: batch all WRITE operations into one Artifact publish with all artboards"
-  printf '%s' "$block" | grep -qiE 'all.*changed.*artboard.*final.*canvas\.json|all.*artboard.*canvas\.json.*one' \
-    || fail "enforcement sentence does not name both artboards and canvas.json in one publish"
+  # Must contain a sentence that says all writes go in ONE batched Artifact
+  # publish carrying artboards and canvas.json together.
+  printf '%s' "$block" | grep -qiE 'ONE batched Artifact.*publish|all go in ONE.*Artifact.*publish|Batch all.*WRITE.*one.*Artifact.*publish' \
+    || fail "no enforcement sentence: all writes go in ONE batched Artifact publish"
+  printf '%s' "$block" | grep -qiE 'all.*artboard.*all.*orphan.*deletion.*one call|all.*artboard.*canvas\.json.*one|artboard.*deletion.*one call' \
+    || fail "enforcement sentence does not name artboards and deletions in one publish call"
 }
 
 @test "canvas.json is not resent once per screen in product-design publish" {
@@ -2469,7 +2468,7 @@ TOKENS
   local resolve_block
   resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve procedure"
-  printf '%s' "$resolve_block" | grep -qiE 'decline.*not.*bind|on decline.*do not bind|decline.*leave.*null' \
+  printf '%s' "$resolve_block" | grep -qiE 'decline.*halt|decline.*not.*bind|on decline.*do not bind|decline.*leave.*null' \
     || fail "no decline path for stale-on-bind prompt"
 }
 
@@ -2525,24 +2524,23 @@ TOKENS
 # record-first path skips duplicate set-product-project
 # ===========================================================================
 
-@test "record-first path skips set-product-project and performs read-back" {
+@test "record-first path skips set-product-project and runs list-then-read" {
   local resolve_block
   resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve procedure"
-  # Extract the Record-first bullet
+  # Extract the Record-first bullet (path a)
   local record_first
   record_first="$(printf '%s\n' "$resolve_block" | awk '/Record-first/{found=1} found{print} /User pick/{exit}')"
   [ -n "$record_first" ] || fail "no Record-first paragraph"
   # Must say NOT to call set-product-project (prohibit, not invoke)
-  printf '%s' "$record_first" | grep -qiE 'do not call.*set-product-project|not.*call.*set-product-project|skip.*set-product-project' \
+  printf '%s' "$record_first" | grep -qiE 'do not call.*set-product-project|not.*call.*set-product-project|refuses.*overwrite' \
     || fail "record-first path does not prohibit calling set-product-project"
-  # Must not say to skip to Step 5 (Record) — that path would call it
-  if printf '%s' "$record_first" | grep -qiE 'skip to step 5'; then
-    fail "record-first path still skips to Step 5 (Record)"
-  fi
-  # Must mention performing a read-back
-  printf '%s' "$record_first" | grep -qiE 'read.back|canvas.*read|read.*canvas' \
-    || fail "record-first path does not perform the canvas read-back"
+  # Must reference the shared list-then-read sub-step
+  printf '%s' "$record_first" | grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' \
+    || fail "record-first path does not reference the shared list-then-read sub-step"
+  # Must end with "return to the caller"
+  printf '%s' "$record_first" | grep -qF 'return to the caller' \
+    || fail "record-first path does not end with 'return to the caller'"
 }
 
 @test "set-product-project refuses a second call on an already-set record" {
@@ -2576,7 +2574,7 @@ TOKENS
 
 @test "re-run with both projects recorded routes to the resolve procedure for canvas read-back" {
   # When both projects are already recorded, the callers must still route to
-  # the resolve procedure so the Record-first path performs the canvas
+  # the resolve procedure so the Record-first path (a) performs the canvas
   # read-back that the screen-publication gate needs.
   local full
   full="$(cat "$SKILL_MD")"
@@ -2588,18 +2586,16 @@ TOKENS
   # Must mention routing when product_design_project is non-null
   printf '%s' "$step2_record" | grep -qiE 'non.null.*canvas.*read.back|non.null.*gate|whether.*null.*non.null' \
     || fail "existing-record caller does not route on non-null product_design_project"
-  # The Record-first bullet must list files before reading canvas.json
+  # The Record-first bullet (a) must reference the shared list-then-read sub-step
   local resolve_section
   resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
   local record_first
   record_first="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found && /User pick/{exit} found{print}')"
   [ -n "$record_first" ] || fail "no Record-first bullet"
-  # Record-first must mention listing files and canvas read-back
-  printf '%s' "$record_first" | grep -qiE 'list.*files.*first|list.*canvas.*files' \
-    || fail "Record-first does not list files before reading"
-  printf '%s' "$record_first" | grep -qiE 'canvas.*read.back|read.*project/canvas\.json' \
-    || fail "Record-first does not mention canvas read-back"
+  # Record-first must reference the shared list-then-read sub-step
+  printf '%s' "$record_first" | grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' \
+    || fail "Record-first does not reference the shared list-then-read sub-step"
   # The Step 3 questionnaire-skip path must also route on non-null
   local step3_skip
   step3_skip="$(printf '%s\n' "$full" | awk '/Step 3.*Stakeholder Questionnaire/{found=1} found{print} /^### Step 4/{exit}')"
@@ -2751,40 +2747,55 @@ TOKENS
 # Record-first lists files before reading canvas.json
 # ===========================================================================
 
-@test "Record-first path lists canvas files before reading canvas.json" {
+@test "shared sub-step lists canvas files before reading canvas.json" {
   local full
   full="$(cat "$SKILL_MD")"
   local resolve_section
   resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
-  local record_first
-  record_first="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found && /User pick/{exit} found{print}')"
-  [ -n "$record_first" ] || fail "no Record-first bullet"
-  # The listing must come before the canvas read-back.
-  # Since the entire Record-first bullet may be on one line, compare byte
-  # positions of the listing instruction and the read-back instruction.
-  printf '%s' "$record_first" | grep -qiF 'list' \
-    || fail "Record-first does not mention listing files"
-  printf '%s' "$record_first" | grep -qiF 'canvas read-back' \
-    || fail "Record-first does not mention canvas read-back"
-  local list_pos readback_pos
-  list_pos="$(printf '%s' "$record_first" | grep -bioF 'List the canvas files' | head -1 | cut -d: -f1 || true)"
-  readback_pos="$(printf '%s' "$record_first" | grep -bioF 'canvas read-back' | head -1 | cut -d: -f1 || true)"
+  # The shared sub-step is defined in the procedure, not inside a path bullet.
+  local shared_step
+  shared_step="$(printf '%s\n' "$resolve_section" | awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}')"
+  [ -n "$shared_step" ] || fail "no shared sub-step"
+  # The body instructions (after the heading) must list before reading.
+  # Skip the heading phrase "list, then read back if non-empty" by matching
+  # the instruction "List the canvas files" which is the body directive.
+  printf '%s' "$shared_step" | grep -qiF 'List the canvas files' \
+    || fail "shared sub-step does not mention listing files"
+  # The non-empty branch must read canvas.json
+  printf '%s' "$shared_step" | grep -qiE 'non.empty.*read.*project/canvas\.json' \
+    || fail "shared sub-step does not mention reading canvas.json on non-empty"
+  # Byte-order check: "List the canvas files" must precede "listing is non-empty, read"
+  # Use "listing is non-empty" (the body instruction) rather than bare "non-empty"
+  # which also appears in the heading.
+  local list_pos read_pos
+  list_pos="$(printf '%s' "$shared_step" | grep -bioF 'List the canvas files' | head -1 | cut -d: -f1 || true)"
+  read_pos="$(printf '%s' "$shared_step" | grep -bioF 'listing is non-empty' | head -1 | cut -d: -f1 || true)"
   [ -n "$list_pos" ] || fail "cannot find listing position"
-  [ -n "$readback_pos" ] || fail "cannot find canvas read-back position"
-  [ "$list_pos" -lt "$readback_pos" ] \
-    || fail "listing (byte $list_pos) not before canvas read-back (byte $readback_pos) in Record-first"
-  # Empty listing must skip the read entirely: extract the empty-listing
-  # sentence and assert it says "without reading" (not just "creation sequence").
-  # A mutant that adds a canvas.json read on the empty branch must go red.
+  [ -n "$read_pos" ] || fail "cannot find non-empty read position"
+  [ "$list_pos" -lt "$read_pos" ] \
+    || fail "listing (byte $list_pos) not before non-empty read (byte $read_pos)"
+  # Empty listing branch: extract the full sentence span from "file listing
+  # is empty" through the next period-at-sentence-boundary. The span must
+  # contain "do not read" and must not contain a positive read instruction.
+  # Use sed to isolate the sentence from "If the file listing is empty"
+  # to the next sentence boundary (". If" or end of paragraph).
   local empty_sentence
-  empty_sentence="$(printf '%s' "$record_first" | grep -oi 'empty[^.]*\.' | head -1 || true)"
-  [ -n "$empty_sentence" ] || fail "no empty-listing sentence in Record-first"
-  printf '%s' "$empty_sentence" | grep -qiE 'without.*reading|without.*read' \
-    || fail "empty-listing sentence does not say 'without reading': $empty_sentence"
-  # The empty-listing sentence must not contain any instruction to read canvas.json
-  if printf '%s' "$empty_sentence" | grep -qiE 'read.*project/canvas\.json|read.*canvas\.json'; then
-    fail "empty-listing sentence contains a canvas.json read instruction: $empty_sentence"
+  empty_sentence="$(printf '%s' "$shared_step" | sed -n 's/.*\(If the file listing is empty[^.]*\. [^I]*\).*/\1/p' | head -1 || true)"
+  if [ -z "$empty_sentence" ]; then
+    # Fallback: grab everything from "file listing is empty" to end of line
+    empty_sentence="$(printf '%s' "$shared_step" | grep -oiE 'If the file listing is empty[^.]*\.[^.]*\.' | head -1 || true)"
+  fi
+  [ -n "$empty_sentence" ] || fail "no empty-listing sentence in shared sub-step"
+  # Assert the prohibition itself: "do not read" must appear in the sentence.
+  printf '%s' "$empty_sentence" | grep -qiE 'do not read' \
+    || fail "empty-listing sentence does not contain 'do not read': $empty_sentence"
+  # Negative assertion: strip the prohibition phrase and check that what
+  # remains does not contain a positive read instruction for canvas.json.
+  local after_prohibition
+  after_prohibition="$(printf '%s' "$empty_sentence" | sed 's/[Dd]o not read[^;.]*//')"
+  if printf '%s' "$after_prohibition" | grep -qiE 'read.*project/canvas\.json'; then
+    fail "empty-listing sentence contains a positive canvas.json read after the prohibition: $empty_sentence"
   fi
 }
 
@@ -2843,7 +2854,7 @@ TOKENS
 # Token name mapping from dotted to custom-property form
 # ===========================================================================
 
-@test "token name mapping describes dotted-to-kebab conversion with double-dash prefix" {
+@test "token name mapping applies all steps to every name" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
@@ -2851,15 +2862,21 @@ TOKENS
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must describe: dots become hyphens, -- prefix added
-  printf '%s' "$pd_section" | grep -qiE 'dot.*hyphen|dots.*replace.*hyphen|dotted.*becomes.*--' \
+  printf '%s' "$pd_section" | grep -qiE 'dot.*hyphen|dots.*replace.*hyphen|replace.*dots.*slash.*hyphen' \
     || fail "no dotted-to-hyphen mapping in token name text"
-  # Must state that names already starting with -- are used as-is
-  printf '%s' "$pd_section" | grep -qiE 'already.*starts.*--.*as.is|already.*--.*used.*as.is' \
-    || fail "no as-is rule for names already starting with --"
-  # The ordered steps must prevent ----name structurally: stripping leading
-  # dashes before adding the prefix ensures no quadruple-dash result.
+  # Must apply all steps to every name (no "as-is" exception)
+  printf '%s' "$pd_section" | grep -qiE 'all.*steps.*every name.*without exception|applies.*all.*steps.*every name' \
+    || fail "mapping does not state that all steps apply to every name"
+  # The "used as-is" exception must be gone
+  if printf '%s' "$pd_section" | grep -qiE 'used as-is'; then
+    fail "stale 'used as-is' exception still present — contradicts the all-steps rule"
+  fi
+  # Must strip leading dashes (prevents ----name)
   printf '%s' "$pd_section" | grep -qiE 'strip.*leading.*dash' \
     || fail "mapping does not strip leading dashes (needed to prevent ----name)"
+  # Must reference map-token-name.sh
+  printf '%s' "$pd_section" | grep -qF 'map-token-name.sh' \
+    || fail "mapping does not reference map-token-name.sh"
 }
 
 # ===========================================================================
@@ -2909,27 +2926,24 @@ TOKENS
 # User-picked canvas with existing files gets a list-then-read
 # ===========================================================================
 
-@test "user-pick path lists canvas files and reads back when non-empty" {
+@test "user-pick path records then runs the shared list-then-read" {
   local full
   full="$(cat "$SKILL_MD")"
   local resolve_section
   resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
   local user_pick
-  user_pick="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found && /Create\./{exit} found{print}')"
+  user_pick="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found && /Create/{exit} found{print}')"
   [ -n "$user_pick" ] || fail "no User pick bullet"
-  # User pick must list canvas files after confirming the pick
-  printf '%s' "$user_pick" | grep -qiE 'list.*canvas.*files|list.*files.*scope.*files' \
-    || fail "User pick does not list canvas files after confirming"
-  # Non-empty listing must read canvas.json
-  printf '%s' "$user_pick" | grep -qiE 'non.empty.*read.*canvas|read.*project/canvas\.json' \
-    || fail "User pick does not read canvas.json when listing is non-empty"
-  # Empty listing must skip the read
-  printf '%s' "$user_pick" | grep -qiE 'empty.*without.*read|empty.*creation.*sequence' \
-    || fail "User pick does not skip canvas.json read on empty listing"
-  # Must state this is the same rule as Record-first
-  printf '%s' "$user_pick" | grep -qiE 'same.*list.*read.*rule.*Record|same.*rule.*Record' \
-    || fail "User pick does not reference the shared list-then-read rule"
+  # User pick must record the project before the list-then-read
+  printf '%s' "$user_pick" | grep -qiE 'Record.*product.*design.*project|set-product-project' \
+    || fail "User pick does not record the product design project"
+  # User pick must reference the shared list-then-read sub-step
+  printf '%s' "$user_pick" | grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' \
+    || fail "User pick does not reference the shared list-then-read sub-step"
+  # Must end with "return to the caller"
+  printf '%s' "$user_pick" | grep -qF 'return to the caller' \
+    || fail "User pick does not end with 'return to the caller'"
 }
 
 # ===========================================================================
@@ -2946,9 +2960,9 @@ TOKENS
   # Must state the merge rule
   printf '%s' "$pd_section" | grep -qiE 'merge.*rule|[Mm]erge' \
     || fail "no canvas index merge rule in product-design pass"
-  # Must keep existing boards
-  printf '%s' "$pd_section" | grep -qiE 'keep.*existing.*boards|never.*drop.*existing.*board' \
-    || fail "merge rule does not keep existing boards"
+  # Must preserve boards for screens this cycle did not touch
+  printf '%s' "$pd_section" | grep -qiE 'copy.*boards.*entry.*unchanged|keep.*existing.*boards|never.*drop.*existing.*board' \
+    || fail "merge rule does not copy unchanged boards from the read-back index"
   # Must append new screens at the end
   printf '%s' "$pd_section" | grep -qiE 'append.*new.*screen|new.*screen.*end' \
     || fail "merge rule does not append new screens"
@@ -2958,23 +2972,24 @@ TOKENS
 # Record-first cross-references point to the correct items
 # ===========================================================================
 
-@test "Record-first empty branch references Step 10 product-design pass creation sequence" {
+@test "shared sub-step empty branch references Step 10 creation sequence" {
   local full
   full="$(cat "$SKILL_MD")"
   local resolve_section
   resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
-  local record_first
-  record_first="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found && /User pick/{exit} found{print}')"
-  [ -n "$record_first" ] || fail "no Record-first bullet"
-  # Empty branch must reference "Step 10, product-design pass, item 5" (not "item 5 below")
-  printf '%s' "$record_first" | grep -qiE 'Step 10.*product.design.*pass.*item 5|product.design.*pass.*item 5' \
-    || fail "Record-first empty branch does not reference Step 10 product-design pass item 5"
-  # Both branches must say "return to the caller"
+  # The shared sub-step defines the empty and non-empty branches
+  local shared_step
+  shared_step="$(printf '%s\n' "$resolve_section" | awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}')"
+  [ -n "$shared_step" ] || fail "no shared sub-step"
+  # Empty branch must reference Step 10 product-design pass item 5
+  printf '%s' "$shared_step" | grep -qiE 'Step 10.*product.design.*pass.*item 5|product.design.*pass.*item 5' \
+    || fail "shared sub-step empty branch does not reference Step 10 product-design pass item 5"
+  # All three path bullets (a, b, c) must say "return to the caller"
   local return_count
-  return_count="$(printf '%s' "$record_first" | grep -oi 'return to the caller' | wc -l | tr -d ' ')"
-  [ "$return_count" -ge 2 ] \
-    || fail "expected both branches to say 'return to the caller', found $return_count"
+  return_count="$(printf '%s\n' "$resolve_section" | grep -oi 'return to the caller' | wc -l | tr -d ' ')"
+  [ "$return_count" -ge 3 ] \
+    || fail "expected all 3 path bullets to say 'return to the caller', found $return_count"
 }
 
 # ===========================================================================
@@ -3021,4 +3036,533 @@ TOKENS
     || fail "mapping does not give the -.name example"
   printf '%s' "$pd_section" | grep -qF 'color/primary' \
     || fail "mapping does not give the color/primary example"
+  printf '%s' "$pd_section" | grep -qF -- '--a--b' \
+    || fail "mapping does not give the --a--b example"
+  printf '%s' "$pd_section" | grep -qF -- '--color.primary' \
+    || fail "mapping does not give the --color.primary example"
+}
+
+# ===========================================================================
+# Procedure path tests: each path's actions and exit
+# ===========================================================================
+
+@test "path (a) record-first: actions are list-then-read only, exit returns to caller" {
+  local resolve_section
+  resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
+  [ -n "$resolve_section" ] || fail "no Resolve procedure"
+  local path_a
+  path_a="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found{print} /User pick/{exit}')"
+  [ -n "$path_a" ] || fail "no path (a)"
+  # Must NOT call set-product-project
+  printf '%s' "$path_a" | grep -qiE 'do not call.*set-product-project|refuses.*overwrite' \
+    || fail "path (a) does not prohibit set-product-project"
+  # Must reference the shared sub-step
+  printf '%s' "$path_a" | grep -qF 'shared list-then-read sub-step' \
+    || fail "path (a) does not reference the shared sub-step"
+  # Must exit with "return to the caller"
+  printf '%s' "$path_a" | grep -qF 'return to the caller' \
+    || fail "path (a) does not return to the caller"
+}
+
+@test "path (b) user-pick: records then list-then-read, exit returns to caller" {
+  local resolve_section
+  resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
+  [ -n "$resolve_section" ] || fail "no Resolve procedure"
+  local path_b
+  path_b="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}')"
+  [ -n "$path_b" ] || fail "no path (b)"
+  # Must call set-product-project with --discovered-via existing
+  printf '%s' "$path_b" | grep -qiE 'set-product-project.*discovered-via.*existing' \
+    || fail "path (b) does not record with --discovered-via existing"
+  # Must reference the shared sub-step AFTER recording
+  local record_pos substep_pos
+  record_pos="$(printf '%s' "$path_b" | grep -bioF 'set-product-project' | head -1 | cut -d: -f1 || true)"
+  substep_pos="$(printf '%s' "$path_b" | grep -bioF 'shared list-then-read sub-step' | head -1 | cut -d: -f1 || true)"
+  [ -n "$record_pos" ] || fail "no record position"
+  [ -n "$substep_pos" ] || fail "no sub-step position"
+  [ "$record_pos" -lt "$substep_pos" ] \
+    || fail "recording (byte $record_pos) not before sub-step (byte $substep_pos)"
+  # Must exit with "return to the caller"
+  printf '%s' "$path_b" | grep -qF 'return to the caller' \
+    || fail "path (b) does not return to the caller"
+}
+
+@test "path (c) create: publish then record, exit returns to caller" {
+  local resolve_section
+  resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
+  [ -n "$resolve_section" ] || fail "no Resolve procedure"
+  local path_c
+  path_c="$(printf '%s\n' "$resolve_section" | awk '/Create \(no reference/{found=1} found{print} /Canvas index read-back/{exit}')"
+  [ -n "$path_c" ] || fail "no path (c)"
+  # Must call Artifact publish with type_url
+  printf '%s' "$path_c" | grep -qiE 'Artifact.*publish.*type_url' \
+    || fail "path (c) does not create via Artifact publish with type_url"
+  # Must record with --discovered-via created
+  printf '%s' "$path_c" | grep -qiE 'set-product-project.*discovered-via.*created' \
+    || fail "path (c) does not record with --discovered-via created"
+  # Must NOT call confirm-bind.sh
+  printf '%s' "$path_c" | grep -qiE 'NOT.*call.*confirm-bind' \
+    || fail "path (c) does not state it skips confirm-bind"
+  # Canvas is empty and pending first content publish
+  printf '%s' "$path_c" | grep -qiE 'canvas is empty.*pending.*first content' \
+    || fail "path (c) does not state canvas is empty"
+  # Must exit with "return to the caller"
+  printf '%s' "$path_c" | grep -qF 'return to the caller' \
+    || fail "path (c) does not return to the caller"
+}
+
+# ===========================================================================
+# Step 10 reads canvas.json itself (resume safety)
+# ===========================================================================
+
+@test "Step 10 item 1 reads canvas.json from the listing for resume safety" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Item 1 must read canvas.json from the listing
+  local item1
+  item1="$(printf '%s\n' "$pd_section" | awk '/1\. \*\*Read current state/{found=1} found{print} /2\. \*\*Plan/{exit}')"
+  [ -n "$item1" ] || fail "no item 1 in product-design pass"
+  # Must mention reading canvas.json at the start of the pass
+  printf '%s' "$item1" | grep -qiE 'canvas\.json.*exists.*listing.*read.*NOW|read.*canvas\.json.*NOW' \
+    || fail "item 1 does not read canvas.json from the listing"
+  # Must mention resume safety
+  printf '%s' "$item1" | grep -qiE 'resumed.*Step 10.*checkpoint.*safe|resumed.*checkpoint' \
+    || fail "item 1 does not mention resume safety"
+  # Must use the result as the merge base
+  printf '%s' "$item1" | grep -qiE 'merge base.*item 4|merge base' \
+    || fail "item 1 does not use the result as the merge base"
+}
+
+# ===========================================================================
+# Deletion-only cycle: merge rule removes deleted boards
+# ===========================================================================
+
+@test "merge rule removes boards for deleted orphan screens" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # The merge and delete rule must say to REMOVE entries for DELETE_ORPHAN screens
+  printf '%s' "$pd_section" | grep -qiE 'REMOVE.*boards.*entry.*order.*slot.*DELETE_ORPHAN' \
+    || fail "merge rule does not remove boards/order for deleted screens"
+  # Must say did not write and did not delete (not just "did not write")
+  printf '%s' "$pd_section" | grep -qiE 'NOT write.*NOT delete|neither wrote nor deleted|did not write.*did not delete' \
+    || fail "merge rule does not exclude both writes and deletes"
+}
+
+@test "orphan deletions go in the same batched publish as writes" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state that null paths for orphan deletions go in the same publish
+  printf '%s' "$pd_section" | grep -qiE 'null.*paths.*orphan.*deletion.*artboard.*ONE.*publish|orphan.*deletion.*artboard.*one call' \
+    || fail "orphan deletions not described as going in the same batched publish"
+}
+
+# ===========================================================================
+# Token name mapping: refusal and collision behavior stated
+# ===========================================================================
+
+@test "token name mapping states refusal behavior with visible warning" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state names the validator refuses are dropped with a warning visible
+  # in the terminal output
+  printf '%s' "$pd_section" | grep -qiE 'dropped.*warning.*stderr.*visible.*terminal|dropped.*warning.*terminal' \
+    || fail "mapping does not state refusal behavior with visible warning in terminal output"
+}
+
+@test "token name mapping states collision behavior with first-wins rule" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state collision rule: first definition wins
+  printf '%s' "$pd_section" | grep -qiE 'keeping.*first.*definition|first.*definition' \
+    || fail "mapping does not state first-definition-wins collision rule"
+  # Must state collision is reported on stderr
+  printf '%s' "$pd_section" | grep -qiE 'collision.*reported.*stderr|collision.*stderr' \
+    || fail "mapping does not state collision is reported on stderr"
+}
+
+# ===========================================================================
+# map-token-name.sh script tests
+# ===========================================================================
+
+@test "map-token-name.sh maps color.primary to --color-primary" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  [ -x "$mtn" ] || fail "map-token-name.sh not executable"
+  local out
+  out="$(printf 'color.primary\n' | bash "$mtn" 2>/dev/null)"
+  printf '%s' "$out" | grep -qF -- '--color-primary' \
+    || fail "color.primary not mapped to --color-primary: $out"
+  # Output format: mapped<TAB>original
+  printf '%s' "$out" | grep -qP '\t' \
+    || printf '%s' "$out" | grep -qF "	" \
+    || fail "output missing tab separator: $out"
+}
+
+@test "map-token-name.sh maps --color.primary to --color-primary" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local out
+  out="$(printf -- '--color.primary\n' | bash "$mtn" 2>/dev/null)"
+  printf '%s' "$out" | grep -qF -- '--color-primary' \
+    || fail "--color.primary not mapped to --color-primary: $out"
+}
+
+@test "map-token-name.sh maps ..name to --name" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local out
+  out="$(printf '..name\n' | bash "$mtn" 2>/dev/null)"
+  printf '%s' "$out" | grep -qF -- '--name' \
+    || fail "..name not mapped to --name: $out"
+}
+
+@test "map-token-name.sh maps -.name to --name" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local out
+  out="$(printf -- '-.name\n' | bash "$mtn" 2>/dev/null)"
+  printf '%s' "$out" | grep -qF -- '--name' \
+    || fail "-.name not mapped to --name: $out"
+}
+
+@test "map-token-name.sh maps color/primary to --color-primary" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local out
+  out="$(printf 'color/primary\n' | bash "$mtn" 2>/dev/null)"
+  printf '%s' "$out" | grep -qF -- '--color-primary' \
+    || fail "color/primary not mapped to --color-primary: $out"
+}
+
+@test "map-token-name.sh maps --a--b to --a-b" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local out
+  out="$(printf -- '--a--b\n' | bash "$mtn" 2>/dev/null)"
+  printf '%s' "$out" | grep -qF -- '--a-b' \
+    || fail "--a--b not mapped to --a-b: $out"
+}
+
+@test "map-token-name.sh refuses names that become empty after stripping" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf '...\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail "... should produce no stdout: $stdout_out"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "... should be refused on stderr: $stderr_out"
+}
+
+@test "map-token-name.sh detects collisions and keeps first definition" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf 'color.primary\ncolor-primary\ncolor--primary\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  # Only the first definition should appear on stdout
+  local count
+  count="$(printf '%s\n' "$stdout_out" | grep -cF -- '--color-primary' || true)"
+  [ "$count" = "1" ] \
+    || fail "expected exactly 1 --color-primary on stdout, got $count: $stdout_out"
+  # The original of the first definition should be color.primary
+  printf '%s' "$stdout_out" | grep -qF 'color.primary' \
+    || fail "first definition original not color.primary: $stdout_out"
+  # Collisions should be reported on stderr
+  printf '%s' "$stderr_out" | grep -qF 'collision' \
+    || fail "no collision report on stderr: $stderr_out"
+  # Two collisions expected (color-primary and color--primary)
+  local coll_count
+  coll_count="$(printf '%s\n' "$stderr_out" | grep -c 'collision' || true)"
+  [ "$coll_count" = "2" ] \
+    || fail "expected 2 collision reports, got $coll_count: $stderr_out"
+}
+
+@test "map-token-name.sh produces no output on empty input" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf '' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail "empty input should produce no stdout: $stdout_out"
+  [ -z "$stderr_out" ] || fail "empty input should produce no stderr: $stderr_out"
+}
+
+@test "map-token-name.sh refuses name with unmappable characters" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf 'color@primary\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail "unmappable name should produce no stdout: $stdout_out"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "unmappable name should be refused on stderr: $stderr_out"
+}
+
+@test "map-token-name.sh refuses name that is only dashes" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf -- '---\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail "dashes-only name should produce no stdout: $stdout_out"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "dashes-only name should be refused on stderr: $stderr_out"
+}
+
+# ===========================================================================
+# Fix 1: stale-on-bind decline halts immediately, gate-failure handler
+# ===========================================================================
+
+@test "stale-on-bind decline halts immediately and does not continue to Step 5" {
+  local resolve_section
+  resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
+  [ -n "$resolve_section" ] || fail "no Resolve procedure"
+  local path_b
+  path_b="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}')"
+  [ -n "$path_b" ] || fail "no path (b)"
+  # The decline must say to halt, not to return to the caller
+  printf '%s' "$path_b" | grep -qiE 'decline.*halt|On decline.*halt' \
+    || fail "stale-on-bind decline does not halt"
+  # The decline must NOT say to continue to Steps 5-9
+  printf '%s' "$path_b" | grep -qiE 'Do not continue.*Step' \
+    || fail "decline path does not prohibit continuing to later steps"
+}
+
+@test "gate-failure handler halts with remediation naming the failed condition" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must have a gate-failure handler paragraph
+  local gate_section
+  gate_section="$(printf '%s\n' "$full" | awk '/Screen-publication gate/{found=1} found && /^### Step 10/{exit} found{print}')"
+  [ -n "$gate_section" ] || fail "no gate section"
+  # Must have a gate-failure handler
+  printf '%s' "$gate_section" | grep -qiE 'Gate-failure handler|gate.*condition.*not satisfied.*halt' \
+    || fail "no gate-failure handler"
+  # Must name condition 2 (product_design_project null)
+  printf '%s' "$gate_section" | grep -qiE 'condition 2.*product_design_project.*null|product_design_project is null' \
+    || fail "gate-failure handler does not name condition 2"
+  # Must say never proceed silently
+  printf '%s' "$gate_section" | grep -qiE 'Never proceed silently|never.*silently' \
+    || fail "gate-failure handler does not say never proceed silently"
+}
+
+# ===========================================================================
+# Fix 2: slash-only and dot-only names refused by map-token-name.sh
+# ===========================================================================
+
+@test "map-token-name.sh refuses single slash" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf '/\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail "/ should produce no stdout: $stdout_out"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "/ should be refused on stderr: $stderr_out"
+}
+
+@test "map-token-name.sh refuses triple slash" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf '///\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail "/// should produce no stdout: $stdout_out"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "/// should be refused on stderr: $stderr_out"
+}
+
+@test "map-token-name.sh refuses slash-dot mix" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf '/.\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail "/. should produce no stdout: $stdout_out"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "/. should be refused on stderr: $stderr_out"
+}
+
+@test "map-token-name.sh refuses dot-slash-slash mix" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf './/\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail ".// should produce no stdout: $stdout_out"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail ".// should be refused on stderr: $stderr_out"
+}
+
+@test "map-token-name.sh refuses double-dash-slash" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local stdout_out stderr_out
+  stdout_out="$(printf -- '--/\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
+  stderr_out="$(cat "$TEST_TMP/mtn-err")"
+  [ -z "$stdout_out" ] || fail "--/ should produce no stdout: $stdout_out"
+  printf '%s' "$stderr_out" | grep -qF 'refused' \
+    || fail "--/ should be refused on stderr: $stderr_out"
+}
+
+# ===========================================================================
+# Fix 3: path (b-to-c) jump documented with confirm-bind scoping
+# ===========================================================================
+
+@test "path (b) documents the create sub-branch as a jump to path (c)" {
+  local resolve_section
+  resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
+  [ -n "$resolve_section" ] || fail "no Resolve procedure"
+  # Must have the b-to-c jump
+  printf '%s' "$resolve_section" | grep -qiE 'switch to path.*c|go to path.*c|chooses to create.*switch' \
+    || fail "no b-to-c jump for create choice in pick list"
+  # confirm-bind must be scoped to the bind choice, not the create choice
+  printf '%s' "$resolve_section" | grep -qiE 'confirm-bind.*not made|confirm-bind.*only.*when.*pick|confirm-bind.*applies only' \
+    || fail "confirm-bind not scoped to bind-only choice"
+}
+
+# ===========================================================================
+# CRLF tolerance in map-token-name.sh
+# ===========================================================================
+
+@test "map-token-name.sh tolerates CRLF input" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  local out
+  out="$(printf 'color.primary\r\n' | bash "$mtn" 2>/dev/null)"
+  printf '%s' "$out" | grep -qF -- '--color-primary' \
+    || fail "CRLF input not mapped correctly: $out"
+  # The original in the output should not contain a trailing CR
+  printf '%s' "$out" | grep -qF 'color.primary' \
+    || fail "original not present in output: $out"
+}
+
+# ===========================================================================
+# Fix 5: merge rule respects designer-removed boards
+# ===========================================================================
+
+@test "merge rule states read-back index is authoritative for boards not written this cycle" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state the read-back index is authoritative
+  printf '%s' "$pd_section" | grep -qiE 'read-back.*index.*authoritative|authoritative.*boards.*this run did not write' \
+    || fail "merge rule does not state read-back index is authoritative"
+  # Must say designer-removed boards stay removed
+  printf '%s' "$pd_section" | grep -qiE 'designer.*removed.*stay.*removed|designer.*removed.*keep.*removed' \
+    || fail "merge rule does not state designer-removed boards stay removed"
+  # Must say only written-this-cycle boards are added or updated
+  printf '%s' "$pd_section" | grep -qiE 'Only boards.*written this cycle.*added or updated' \
+    || fail "merge rule does not limit additions to written-this-cycle boards"
+}
+
+# ===========================================================================
+# Token mapping step 4b: strip leading and trailing hyphens
+# ===========================================================================
+
+@test "token name mapping states step 4b strips leading and trailing hyphens" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state step 4b
+  printf '%s' "$pd_section" | grep -qiE '4b.*strip.*leading.*trailing.*hyphen' \
+    || fail "mapping does not state step 4b (strip leading and trailing hyphens)"
+  # Must state slash is refused with the worked example
+  printf '%s' "$pd_section" | grep -qF '/' \
+    || fail "mapping does not give the / refused example"
+}
+
+# ===========================================================================
+# Unmappable characters documented
+# ===========================================================================
+
+@test "token mapping documents handling of characters outside recognised classes" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state that unrecognised characters are not transformed and fail the validator
+  printf '%s' "$pd_section" | grep -qiE 'not transformed.*fails the validator|not transformed.*dropped' \
+    || fail "mapping does not document handling of unrecognised characters"
+}
+
+# ===========================================================================
+# W-R4: path (c) has its own stale-on-create notice
+# ===========================================================================
+
+@test "path (c) surfaces a stale-on-create notice before recording" {
+  local resolve_section
+  resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
+  [ -n "$resolve_section" ] || fail "no Resolve procedure"
+  local path_c
+  path_c="$(printf '%s\n' "$resolve_section" | awk '/Create \(no reference/{found=1} found{print} /Canvas index read-back/{exit}')"
+  [ -n "$path_c" ] || fail "no path (c)"
+  # Must have a stale-on-create notice
+  printf '%s' "$path_c" | grep -qiE 'Stale-on-create notice' \
+    || fail "path (c) has no stale-on-create notice"
+  # The notice must come before the record call (byte order)
+  local notice_pos record_pos
+  notice_pos="$(printf '%s' "$path_c" | grep -bioF 'Stale-on-create notice' | head -1 | cut -d: -f1 || true)"
+  record_pos="$(printf '%s' "$path_c" | grep -bioF 'set-product-project' | head -1 | cut -d: -f1 || true)"
+  [ -n "$notice_pos" ] || fail "no notice position"
+  [ -n "$record_pos" ] || fail "no record position"
+  [ "$notice_pos" -lt "$record_pos" ] \
+    || fail "stale-on-create notice (byte $notice_pos) not before record call (byte $record_pos)"
+  # Must include a decline-and-halt
+  printf '%s' "$path_c" | grep -qiE 'decline.*halt|On decline.*halt' \
+    || fail "path (c) stale-on-create notice has no decline-and-halt"
+}
+
+# ===========================================================================
+# W-R5: path (b) stale notice precedes the record call in text order
+# ===========================================================================
+
+@test "path (b) stale notice precedes the record call in text order" {
+  local resolve_section
+  resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
+  [ -n "$resolve_section" ] || fail "no Resolve procedure"
+  local path_b
+  path_b="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}')"
+  [ -n "$path_b" ] || fail "no path (b)"
+  # The stale-on-bind notice must precede set-product-project in byte order
+  local notice_pos record_pos
+  notice_pos="$(printf '%s' "$path_b" | grep -bioF 'Stale-on-bind notice' | head -1 | cut -d: -f1 || true)"
+  record_pos="$(printf '%s' "$path_b" | grep -bioF 'set-product-project' | head -1 | cut -d: -f1 || true)"
+  [ -n "$notice_pos" ] || fail "no stale-on-bind notice in path (b)"
+  [ -n "$record_pos" ] || fail "no set-product-project in path (b)"
+  [ "$notice_pos" -lt "$record_pos" ] \
+    || fail "stale notice (byte $notice_pos) not before record call (byte $record_pos)"
+  # The notice must say "before recording" or "before the call"
+  printf '%s' "$path_b" | grep -qiE 'before recording|before the record call' \
+    || fail "stale notice does not say 'before recording'"
+}
+
+# ===========================================================================
+# S-R4: condition-3 handler clarifies empty listing is not a failure
+# ===========================================================================
+
+@test "gate-failure handler clarifies empty listing pending first publish is not a failure" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  local gate_section
+  gate_section="$(printf '%s\n' "$full" | awk '/Screen-publication gate/{found=1} found && /^### Step 10/{exit} found{print}')"
+  [ -n "$gate_section" ] || fail "no gate section"
+  # Must say the condition-3 handler fires only on failed reads of non-empty listings
+  printf '%s' "$gate_section" | grep -qiE 'empty listing.*not a failure|empty.*pending.*not.*failure|fires only.*non-empty.*listing' \
+    || fail "gate handler does not clarify that empty listing pending first publish is not a failure"
+  # Must reference Step 10 item 5 as the handler for empty listings
+  printf '%s' "$gate_section" | grep -qiE 'Step 10.*item 5|item 5 handles' \
+    || fail "gate handler does not reference Step 10 item 5 for empty listings"
 }
