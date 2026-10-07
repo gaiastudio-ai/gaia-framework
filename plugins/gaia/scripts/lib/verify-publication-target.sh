@@ -267,20 +267,22 @@ _verify_artifact() {
 
     # Per-file-read header: Files saved under "..." from version <v> of <URL>, an Artifact of type "<T>".
     # The line must match the full anchored form and end right after the closing
-    # period — no trailing text. Version must be digits only. We use the LAST
-    # "from version N of " occurrence for URL extraction (greedy sed), so a
-    # crafted dir name that embeds the form cannot override the real tail.
+    # period — no trailing text. Version is an opaque token: digits, lowercase
+    # hex, and hyphens (e.g. "2" or "1791378024-1c52"); it must not contain
+    # spaces, quotes, or dots. We use the LAST "from version V of " occurrence
+    # for URL extraction (greedy sed), so a crafted dir name that embeds the
+    # form cannot override the real tail.
     case "$line" in
       "Files saved under "*)
         per_file_header_count=$((per_file_header_count + 1))
         # Validate the full form is anchored: must end with type "...".
         # Reject if there is anything after the closing '".'.
-        if ! printf '%s' "$line" | grep -qE '^Files saved under ".*" from version [0-9]+ of .+, an Artifact of type "[^"]+"\.$'; then
+        if ! printf '%s' "$line" | grep -qE '^Files saved under ".*" from version [0-9A-Za-z][0-9A-Za-z-]* of .+, an Artifact of type "[^"]+"\.$'; then
           _vpt_die "per-file-read header does not match the expected form: $line"
           return 1
         fi
-        # Extract URL: after the last "from version <digits> of " and before ", an Artifact"
-        per_file_url="$(printf '%s' "$line" | sed 's/.*from version [0-9][0-9]* of //' | sed 's/, an Artifact of type .*//')"
+        # Extract URL: after the last "from version <token> of " and before ", an Artifact"
+        per_file_url="$(printf '%s' "$line" | sed 's/.*from version [0-9A-Za-z][0-9A-Za-z-]* of //' | sed 's/, an Artifact of type .*//')"
         # Extract type: between the last 'an Artifact of type "' and '".'
         per_file_type="$(printf '%s' "$line" | sed 's/.*an Artifact of type "//' | sed 's/"\.$//')"
         ;;
