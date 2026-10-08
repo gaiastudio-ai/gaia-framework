@@ -2301,6 +2301,17 @@ ${line}"
     || fail "no statement about per-file header from first read-back for subsequent checks"
 }
 
+@test "per-file header passed as tool returns it with verifier tolerating trailing notice" {
+  local full
+  full="$(cat "$SKILL_MD")"
+  # Must say the line is passed as the tool returns it
+  printf '%s' "$full" | grep -qiE 'pass.*line.*as the tool returns|as the tool returns it' \
+    || fail "no statement to pass per-file header as the tool returns it"
+  # Must say the verifier tolerates the trailing notice
+  printf '%s' "$full" | grep -qiE 'verifier tolerat' \
+    || fail "no statement that verifier tolerates the trailing notice"
+}
+
 # ===========================================================================
 # validate-token-value.sh script tests
 # ===========================================================================
@@ -3471,6 +3482,46 @@ TOKENS
   # Must say only written-this-cycle boards are added or updated
   printf '%s' "$pd_section" | grep -qiE 'Only boards.*written this cycle.*added or updated' \
     || fail "merge rule does not limit additions to written-this-cycle boards"
+}
+
+# ===========================================================================
+# Canvas index merge keeps all keys from the read-back index
+# ===========================================================================
+
+@test "merge rule starts from read-back index and keeps all other keys unchanged" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must say to start from the read-back index
+  printf '%s' "$pd_section" | grep -qiE 'start from the read-back index' \
+    || fail "merge rule does not say to start from the read-back index"
+  # Must say all other keys are copied unchanged
+  printf '%s' "$pd_section" | grep -qiE 'copied unchanged.*notes.*pages|notes.*pages.*copied unchanged|notes.*pages.*title.*launch' \
+    || fail "merge rule does not name notes and pages as keys kept unchanged"
+}
+
+@test "merge rule mutant: removing read-back-index-as-base clause turns test red" {
+  # Verify the test above is not vacuously true by checking the specific
+  # phrase exists and that a hypothetical removal would cause failure.
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Strip the clause about starting from the read-back index
+  local mutated
+  mutated="$(printf '%s' "$pd_section" | sed 's/start from the read-back index as the base//')"
+  # The grep must NOT match the mutated text
+  if printf '%s' "$mutated" | grep -qiE 'start from the read-back index'; then
+    fail "mutant removal did not actually remove the clause (duplicate?)"
+  fi
+  # Confirm the original does match
+  printf '%s' "$pd_section" | grep -qiE 'start from the read-back index' \
+    || fail "original should match — sanity check failed"
 }
 
 # ===========================================================================
