@@ -3789,25 +3789,24 @@ validate-token-value: refused "--has-ctrl": contains control character'
     || fail "merge rule does not name notes and pages as keys kept unchanged"
 }
 
-@test "merge rule mutant: removing read-back-index-as-base clause turns test red" {
-  # Verify the test above is not vacuously true by checking the specific
-  # phrase exists and that a hypothetical removal would cause failure.
+@test "merge rule names notes and pages as keys kept unchanged and mentions read-back index" {
+  # Assert both the key-list and the base-selection clauses are present,
+  # so neither can be removed without a test failure.
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   local pd_section
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
-  # Strip the clause about starting from the read-back index
-  local mutated
-  mutated="$(printf '%s' "$pd_section" | sed 's/start from the read-back index as the base//')"
-  # The grep must NOT match the mutated text
-  if printf '%s' "$mutated" | grep -qiE 'start from the read-back index'; then
-    fail "mutant removal did not actually remove the clause (duplicate?)"
-  fi
-  # Confirm the original does match
+  # Read-back index as base
   printf '%s' "$pd_section" | grep -qiE 'start from the read-back index' \
-    || fail "original should match — sanity check failed"
+    || fail "merge rule must say to start from the read-back index"
+  # Key list includes notes and pages
+  printf '%s' "$pd_section" | grep -qiE 'notes.*pages' \
+    || fail "merge rule must name notes and pages as keys kept unchanged"
+  # Independently: the designer-arranged position preservation
+  printf '%s' "$pd_section" | grep -qi 'x.*y.*title.*untouched\|x.*y.*every other board field.*untouched\|leave.*x.*y.*untouched' \
+    || fail "merge rule must say x, y, title stay untouched on rewrite"
 }
 
 # ===========================================================================
@@ -4087,4 +4086,168 @@ validate-token-value: refused "--has-ctrl": contains control character'
     "$SKILL_SCRIPTS/finalize.sh"
   [[ "$output" == *"[FAIL] SV-20"* ]] || \
     fail "component heading sync check should fail for wrong heading: $output"
+}
+
+# ===========================================================================
+# Per-file conflict protection — designer files not in baseline
+# ===========================================================================
+
+@test "planner emits per-file conflict for remote file absent from baseline" {
+  # Baseline has home; remote has home + login (designer-created); local adds login.
+  # login is absent from baseline — the planner must emit CONFLICT, not WRITE.
+  _write_pub_fixtures \
+    '[{"file":"project/home.dc.html","hash":"aaaa"},{"file":"project/login.dc.html","hash":"mine"}]' \
+    '[{"file":"project/home.dc.html","hash":"aaaa"},{"file":"project/login.dc.html","hash":"designer"}]' \
+    '{"design_system":{"reference":null,"last_published_at":null,"files":[]},"product_design":{"reference":null,"last_published_at":null,"files":[{"file":"project/home.dc.html","hash":"aaaa"}]}}'
+  _run_pub --project product_design
+  [ "$status" -eq 0 ] || fail "planner should succeed, got rc=$status: $output"
+  [[ "$output" == *"CONFLICT project/login.dc.html"* ]] \
+    || fail "expected CONFLICT for file absent from baseline but present in remote: $output"
+}
+
+@test "planner does not conflict identical file absent from baseline" {
+  # Same as above but local hash == remote hash — no conflict needed
+  _write_pub_fixtures \
+    '[{"file":"project/home.dc.html","hash":"aaaa"},{"file":"project/login.dc.html","hash":"same"}]' \
+    '[{"file":"project/home.dc.html","hash":"aaaa"},{"file":"project/login.dc.html","hash":"same"}]' \
+    '{"design_system":{"reference":null,"last_published_at":null,"files":[]},"product_design":{"reference":null,"last_published_at":null,"files":[{"file":"project/home.dc.html","hash":"aaaa"}]}}'
+  _run_pub --project product_design
+  [ "$status" -eq 0 ] || fail "planner should succeed, got rc=$status: $output"
+  [[ "$output" == *"SKIP_UNCHANGED project/login.dc.html"* ]] \
+    || fail "identical file should be skipped: $output"
+}
+
+@test "planner still emits write for file with matching baseline entry" {
+  # Baseline has home with the same hash as the current remote — designer
+  # did not change it — so WRITE is correct.
+  _write_pub_fixtures \
+    '[{"file":"project/home.dc.html","hash":"new"}]' \
+    '[{"file":"project/home.dc.html","hash":"old"}]' \
+    '{"design_system":{"reference":null,"last_published_at":null,"files":[]},"product_design":{"reference":null,"last_published_at":null,"files":[{"file":"project/home.dc.html","hash":"old"}]}}'
+  _run_pub --project product_design
+  [ "$status" -eq 0 ] || fail "planner should succeed, got rc=$status: $output"
+  [[ "$output" == *"WRITE project/home.dc.html"* ]] \
+    || fail "file with matching baseline should get WRITE: $output"
+  [[ "$output" != *"CONFLICT project/home.dc.html"* ]] \
+    || fail "file with matching baseline should not conflict: $output"
+}
+
+# ===========================================================================
+# Canvas with artboards but no index
+# ===========================================================================
+
+@test "skill describes partial-publish handling for missing canvas index" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  # Must mention partial earlier publish and missing index
+  printf '%s' "$block" | grep -qi 'partial earlier publish' \
+    || fail "step 10 should describe partial earlier publish handling"
+  # Must mention adding board entries for remote artboards
+  printf '%s' "$block" | grep -qi 'add board entries for.*remote' \
+    || fail "step 10 should say to add board entries for remote artboards"
+  # Must warn against dropping remote artboards
+  printf '%s' "$block" | grep -qi 'never drop remote artboards' \
+    || fail "step 10 should say never drop remote artboards"
+}
+
+@test "shared sub-step describes missing-index-with-artboards case" {
+  # Check the resolve procedure's shared sub-step
+  local resolve_block
+  resolve_block="$(awk '/^### Resolve Product Design/,/^### Step 3/' "$SKILL_MD")"
+  [ -n "$resolve_block" ] || fail "no Resolve Product Design block"
+  printf '%s' "$resolve_block" | grep -qi 'partial earlier publish' \
+    || fail "shared sub-step should describe partial earlier publish handling"
+}
+
+# ===========================================================================
+# Board position preservation on rewrite
+# ===========================================================================
+
+@test "merge rule preserves designer-arranged x y title on rewritten boards" {
+  local block
+  block="$(_extract_step_block "$SKILL_MD" "Publication")"
+  [ -n "$block" ] || fail "no Publication step block"
+  local pd_section
+  pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
+  [ -n "$pd_section" ] || fail "no product-design pass section"
+  # Must state x, y, title stay untouched
+  printf '%s' "$pd_section" | grep -qi 'x.*y.*title.*untouched\|leave.*x.*y.*title.*untouched' \
+    || fail "merge rule must explicitly preserve x, y, title on rewritten boards"
+  # Must mention only w/h updated
+  printf '%s' "$pd_section" | grep -qi 'update.*w.*h.*only\|only.*w.*h' \
+    || fail "merge rule must say only w/h are updated"
+}
+
+# ===========================================================================
+# Resolve procedure is a no-op when already resolved
+# ===========================================================================
+
+@test "resolve procedure is a no-op when already resolved" {
+  local resolve_block
+  resolve_block="$(awk '/^### Resolve Product Design/,/^### Step 3/' "$SKILL_MD")"
+  [ -n "$resolve_block" ] || fail "no Resolve Product Design block"
+  printf '%s' "$resolve_block" | grep -qi 'no-op\|already.*resolved.*return immediately' \
+    || fail "resolve procedure should be a no-op when already resolved"
+}
+
+# ===========================================================================
+# Confirm-bind decline outcome is documented
+# ===========================================================================
+
+@test "skill documents decline outcome for confirm-bind" {
+  grep -qi 'non-zero.*declined\|declined.*halt\|user declined.*halt\|On non-zero' "$SKILL_MD" \
+    || fail "SKILL.md must document what happens when confirm-bind is declined"
+}
+
+# ===========================================================================
+# Finalize heading test: Components Library rejected
+# ===========================================================================
+
+@test "finalize rejects Components Library heading" {
+  _write_ux_fixture --with-ref
+  sed 's/## 8. Components & Design System/## 8. Components Library/' \
+    "$TEST_TMP/ux-design.md" > "$TEST_TMP/ux-design.md.tmp" && \
+    mv "$TEST_TMP/ux-design.md.tmp" "$TEST_TMP/ux-design.md"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    UX_DESIGN_ARTIFACT="$TEST_TMP/ux-design.md" \
+    "$SKILL_SCRIPTS/finalize.sh"
+  [[ "$output" == *"[FAIL] SV-20"* ]] || \
+    fail "Components Library heading should fail SV-20: $output"
+}
+
+@test "finalize accepts bare Components heading" {
+  _write_ux_fixture --with-ref
+  sed 's/## 8. Components & Design System/## Components/' \
+    "$TEST_TMP/ux-design.md" > "$TEST_TMP/ux-design.md.tmp" && \
+    mv "$TEST_TMP/ux-design.md.tmp" "$TEST_TMP/ux-design.md"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    UX_DESIGN_ARTIFACT="$TEST_TMP/ux-design.md" \
+    "$SKILL_SCRIPTS/finalize.sh"
+  [[ "$output" == *"[PASS] SV-20"* ]] || \
+    fail "bare Components heading should pass SV-20: $output"
+}
+
+@test "finalize accepts legacy Component Inventory heading" {
+  _write_ux_fixture --with-ref
+  sed 's/## 8. Components & Design System/## Component Inventory/' \
+    "$TEST_TMP/ux-design.md" > "$TEST_TMP/ux-design.md.tmp" && \
+    mv "$TEST_TMP/ux-design.md.tmp" "$TEST_TMP/ux-design.md"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    UX_DESIGN_ARTIFACT="$TEST_TMP/ux-design.md" \
+    "$SKILL_SCRIPTS/finalize.sh"
+  [[ "$output" == *"[PASS] SV-20"* ]] || \
+    fail "legacy Component Inventory heading should pass SV-20: $output"
+}
+
+@test "finalize accepts numbered bare Components heading" {
+  _write_ux_fixture --with-ref
+  sed 's/## 8. Components & Design System/## 12. Components/' \
+    "$TEST_TMP/ux-design.md" > "$TEST_TMP/ux-design.md.tmp" && \
+    mv "$TEST_TMP/ux-design.md.tmp" "$TEST_TMP/ux-design.md"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    UX_DESIGN_ARTIFACT="$TEST_TMP/ux-design.md" \
+    "$SKILL_SCRIPTS/finalize.sh"
+  [[ "$output" == *"[PASS] SV-20"* ]] || \
+    fail "numbered bare Components heading should pass SV-20: $output"
 }

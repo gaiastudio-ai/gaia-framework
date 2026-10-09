@@ -395,6 +395,30 @@ persist_last_published() {
   esac
 
   # ---- Validate ALL inputs (safety check BEFORE compute) ----
+  # Outcomes: must be a non-empty JSON array of objects
+  local _outcomes_shape
+  _outcomes_shape="$(jq -r '
+    if type != "array" then "not-array"
+    elif length == 0 then "empty"
+    elif all(type == "object") | not then "not-objects"
+    else "ok" end
+  ' "$outcomes" 2>/dev/null)" || _outcomes_shape="unparseable"
+  case "$_outcomes_shape" in
+    ok) ;;
+    not-array)
+      _bmc_die "persist_last_published: --outcomes must be a JSON array, got $(jq -r 'type' "$outcomes" 2>/dev/null || echo 'unparseable')"
+      return 1 ;;
+    empty)
+      _bmc_die "persist_last_published: --outcomes is an empty array (every planned file must appear)"
+      return 1 ;;
+    not-objects)
+      _bmc_die "persist_last_published: --outcomes entries must all be objects"
+      return 1 ;;
+    *)
+      _bmc_die "persist_last_published: --outcomes is not valid JSON"
+      return 1 ;;
+  esac
+
   # Outcomes: reject unknown outcome values before any compute or write
   local _bad_outcomes
   _bad_outcomes="$(jq -r '
@@ -504,10 +528,16 @@ persist_last_published() {
   fi
 
   # ---- Compute the persisted file list for the target key ----
+  # Files listed in outcomes are handled per their outcome value.
+  # Files present in the prior record but absent from outcomes are
+  # carried forward with their prior hash (they were not touched).
+  # Removal requires an explicit "deleted" outcome.
   local target_files
   target_files="$(jq --arg proj "$project" --argjson hash_map "$hash_map_json" '
     ($input | .[$proj].files // [] | map({(.file): .hash}) | add // {}) as $prior_map |
-    [.[] |
+    (map(.file) | map({(.): true}) | add // {}) as $outcome_set |
+    # Files from the outcomes list
+    ([.[] |
       if .outcome == "written" or .outcome == "skipped" then
         {file: .file, hash: .hash}
       elif .outcome == "kept-designer" or .outcome == "merged" then
@@ -523,6 +553,11 @@ persist_last_published() {
       else
         empty
       end
+    ]) +
+    # Carry forward prior files not mentioned in outcomes
+    [$prior_map | to_entries[] |
+      select($outcome_set[.key] | not) |
+      {file: .key, hash: .value}
     ]
   ' --argjson input "$prior_json" "$outcomes")" || {
     _bmc_die "persist_last_published: jq compute failed"
