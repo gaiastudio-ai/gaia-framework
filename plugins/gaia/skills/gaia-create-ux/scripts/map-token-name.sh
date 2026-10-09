@@ -35,118 +35,146 @@ LC_ALL=C; export LC_ALL
 # Refusal and collision diagnostics are printed to stderr and are
 # visible in the terminal output at the end of the step.
 #
-# Bash 3.2 safe.  No awk regex on the names (tr + sed only).
+# Single-pass, no subprocesses per token.  Bash 3.2 safe.
 
-_mtn_refuse() {
-  printf 'map-token-name: refused "%s": %s\n' "$1" "$2" >&2
-}
+# _mtn_map_and_emit — single-pass main loop.
+# All mapping, validation, and collision detection happens in pure bash
+# with no subprocesses per token.  Collision tracking uses variable-name
+# encoding (Bash 3.2 safe, no associative arrays needed).
+_mtn_map_and_emit() {
+  local raw name mapped ch i len suffix valid _enc _varname _prev_val
 
-_mtn_collision() {
-  printf 'map-token-name: collision — "%s" and "%s" both map to "%s"; keeping the first\n' "$1" "$2" "$3" >&2
-}
+  while IFS= read -r raw || [ -n "$raw" ]; do
+    # Strip trailing CR for CRLF tolerance.
+    raw="${raw%$'\r'}"
+    # Skip empty lines.
+    [ -n "$raw" ] || continue
 
-# _mtn_valid NAME — true when NAME matches --[A-Za-z0-9_][A-Za-z0-9_-]*.
-# The first character after -- must not be a hyphen.
-_mtn_valid() {
-  case "$1" in
-    --[A-Za-z0-9_]*) ;;
-    *) return 1 ;;
-  esac
-  local suffix="${1#--}"
-  local cleaned
-  cleaned="$(printf '%s' "$suffix" | tr -d 'A-Za-z0-9_-')"
-  [ -z "$cleaned" ]
-}
+    name="$raw"
 
-# _mtn_map RAW — print the mapped name to stdout, or return 1 on refusal.
-_mtn_map() {
-  local raw="$1"
-  local name="$raw"
-
-  # Step 1: if it starts with --, drop that prefix.
-  case "$name" in
-    --*) name="${name#--}" ;;
-  esac
-
-  # Step 2: strip remaining leading dashes and dots.
-  while :; do
+    # Step 1: if it starts with --, drop that prefix.
     case "$name" in
-      [-.]*)  name="${name#?}" ;;
-      *)      break ;;
+      --*) name="${name#--}" ;;
     esac
-  done
 
-  # If nothing remains after stripping, refuse.
-  if [ -z "$name" ]; then
-    _mtn_refuse "$raw" "name is empty after stripping leading characters"
-    return 1
-  fi
+    # Step 2: strip remaining leading dashes and dots.
+    while :; do
+      case "$name" in
+        [-.]*)  name="${name#?}" ;;
+        *)      break ;;
+      esac
+    done
 
-  # Step 3: replace dots and slashes with hyphens.
-  name="$(printf '%s' "$name" | tr './' '--')"
+    # If nothing remains after stripping, refuse.
+    if [ -z "$name" ]; then
+      printf 'map-token-name: refused "%s": %s\n' "$raw" "name is empty after stripping leading characters" >&2
+      continue
+    fi
 
-  # Step 4: collapse runs of consecutive hyphens into one.
-  # Use sed for portability (no awk regex on the names).
-  name="$(printf '%s' "$name" | sed 's/--*/-/g')"
+    # Steps 3+4: replace dots and slashes with hyphens, collapse runs.
+    # Walk character by character — no subprocesses, no regex on names.
+    mapped=""
+    len="${#name}"
+    i=0
+    while [ "$i" -lt "$len" ]; do
+      ch="${name:$i:1}"
+      case "$ch" in
+        .|/|-)
+          # Emit a hyphen only if the last character of mapped is not one.
+          case "$mapped" in
+            *-) ;;
+            *)  mapped="${mapped}-" ;;
+          esac
+          ;;
+        *)
+          mapped="${mapped}${ch}"
+          ;;
+      esac
+      i=$((i + 1))
+    done
 
-  # Step 4b: strip leading and trailing hyphens from the result.
-  # If nothing remains, refuse.
-  while :; do
-    case "$name" in
-      -*) name="${name#-}" ;;
-      *)  break ;;
+    # Step 4b: strip leading and trailing hyphens.
+    while :; do
+      case "$mapped" in
+        -*) mapped="${mapped#-}" ;;
+        *)  break ;;
+      esac
+    done
+    while :; do
+      case "$mapped" in
+        *-) mapped="${mapped%-}" ;;
+        *)  break ;;
+      esac
+    done
+
+    if [ -z "$mapped" ]; then
+      printf 'map-token-name: refused "%s": %s\n' "$raw" "name reduces to only hyphens after mapping" >&2
+      continue
+    fi
+
+    # Step 5: add the -- prefix.
+    mapped="--${mapped}"
+
+    # Validate: must match --[A-Za-z0-9_][A-Za-z0-9_-]*.
+    # Check prefix pattern.
+    valid=true
+    case "$mapped" in
+      --[A-Za-z0-9_]*) ;;
+      *) valid=false ;;
     esac
+
+    # Check every character in the suffix is in [A-Za-z0-9_-].
+    if "$valid"; then
+      suffix="${mapped#--}"
+      len="${#suffix}"
+      i=0
+      while [ "$i" -lt "$len" ]; do
+        ch="${suffix:$i:1}"
+        case "$ch" in
+          [A-Za-z0-9_-]) ;;
+          *) valid=false; break ;;
+        esac
+        i=$((i + 1))
+      done
+    fi
+
+    if ! "$valid"; then
+      printf 'map-token-name: refused "%s": mapped to "%s" which is not a valid CSS custom-property name\n' "$raw" "$mapped" >&2
+      continue
+    fi
+
+    # Collision detection using variable-name encoding.
+    # Encode the mapped suffix into a safe variable name.
+    # Bijective: underscore -> __, hyphen -> _D, all other chars pass through.
+    # The suffix is already validated to contain only [A-Za-z0-9_-].
+    _enc=""
+    suffix="${mapped#--}"
+    len="${#suffix}"
+    i=0
+    while [ "$i" -lt "$len" ]; do
+      ch="${suffix:$i:1}"
+      case "$ch" in
+        _) _enc="${_enc}__" ;;
+        -) _enc="${_enc}_D" ;;
+        *) _enc="${_enc}${ch}" ;;
+      esac
+      i=$((i + 1))
+    done
+    _varname="_mtn_s_${_enc}"
+
+    # Check if we have already seen this mapped name.
+    eval "_prev_val=\"\${${_varname}:-}\""
+    if [ -n "$_prev_val" ]; then
+      printf 'map-token-name: collision — "%s" and "%s" both map to "%s"; keeping the first\n' "$_prev_val" "$raw" "$mapped" >&2
+      continue
+    fi
+
+    # Record: store the raw name in the variable.
+    eval "${_varname}=\"\${raw}\""
+
+    # Emit.
+    printf '%s\t%s\n' "$mapped" "$raw"
   done
-  while :; do
-    case "$name" in
-      *-) name="${name%-}" ;;
-      *)  break ;;
-    esac
-  done
-  if [ -z "$name" ]; then
-    _mtn_refuse "$raw" "name reduces to only hyphens after mapping"
-    return 1
-  fi
-
-  # Step 5: add the -- prefix.
-  name="--${name}"
-
-  # Validate.
-  if ! _mtn_valid "$name"; then
-    _mtn_refuse "$raw" "mapped to \"$name\" which is not a valid CSS custom-property name"
-    return 1
-  fi
-
-  printf '%s' "$name"
 }
 
-# Track seen mapped names for collision detection.
-# Bash 3.2: no associative arrays.  Use a temp file.
-_seen_file=""
-_cleanup() {
-  [ -z "$_seen_file" ] || rm -f "$_seen_file"
-}
-trap _cleanup EXIT
-_seen_file="$(mktemp "${TMPDIR:-/tmp}/mtn-seen.XXXXXX")"
-
-while IFS= read -r _raw || [ -n "$_raw" ]; do
-  # Strip trailing CR for CRLF tolerance.
-  _raw="${_raw%$'\r'}"
-  [ -n "$_raw" ] || continue
-
-  _mapped="$(_mtn_map "$_raw")" || continue
-
-  # Check for collisions.
-  _prev="$(grep -F "	${_mapped}	" "$_seen_file" 2>/dev/null | head -1 || true)"
-  if [ -n "$_prev" ]; then
-    _prev_raw="${_prev%%	*}"
-    _mtn_collision "$_prev_raw" "$_raw" "$_mapped"
-    continue
-  fi
-
-  # Record.
-  printf '%s\t%s\t\n' "$_raw" "$_mapped" >> "$_seen_file"
-
-  # Emit.
-  printf '%s\t%s\n' "$_mapped" "$_raw"
-done
+_mtn_map_and_emit
