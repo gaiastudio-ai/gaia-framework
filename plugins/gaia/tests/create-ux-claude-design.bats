@@ -3627,3 +3627,53 @@ TOKENS
   printf '%s' "$gate_section" | grep -qiE 'Step 10.*item 5|item 5 handles' \
     || fail "gate handler does not reference Step 10 item 5 for no-content listings"
 }
+
+# ===========================================================================
+# Canvas index publish rule — send only when the layout changes
+# ===========================================================================
+
+@test "skill states canvas index is sent only when the board layout changes" {
+  grep -q 'Include.*project/canvas\.json.*in the batched publish ONLY when the set or order of boards changes' "$SKILL_MD"
+}
+
+@test "content-only cycle publishes artboards without the index" {
+  grep -q 'A cycle that only rewrites the content of existing artboards publishes the artboard files alone and does NOT resend.*project/canvas\.json' "$SKILL_MD"
+}
+
+@test "read-back covers canvas.json only when it was sent" {
+  grep -q 'project/canvas\.json.*only if it was included in the publish' "$SKILL_MD"
+}
+
+@test "new screen addition triggers canvas index send" {
+  grep -q 'a new screen is added' "$SKILL_MD"
+  grep -q 'WRITE with no prior entry' "$SKILL_MD"
+}
+
+@test "delete-orphan triggers canvas index send" {
+  grep -q 'DELETE_ORPHAN' "$SKILL_MD"
+  grep -q 'a screen is deleted (DELETE_ORPHAN)' "$SKILL_MD"
+}
+
+@test "first content publish triggers canvas index send" {
+  grep -q 'first content publish on an empty canvas' "$SKILL_MD"
+}
+
+@test "resending unchanged index risk is documented" {
+  grep -q 'resending an unchanged index can overwrite layout edits the designer made by hand' "$SKILL_MD"
+}
+
+# ===========================================================================
+# Outcome validation rules in skill text
+# ===========================================================================
+
+@test "skill names the allowed outcome values for persist" {
+  grep -q 'written.*skipped.*kept-designer.*merged.*failed.*delete-failed.*deleted' "$SKILL_MD"
+}
+
+@test "skill warns that planner verbs are not valid outcomes" {
+  grep -q 'Planner verbs.*are NOT valid outcomes' "$SKILL_MD"
+}
+
+@test "skill says wrong case is rejected" {
+  grep -q 'wrong case' "$SKILL_MD"
+}
