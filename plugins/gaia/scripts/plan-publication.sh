@@ -200,7 +200,11 @@ jq -r --argjson remote "$REMOTE_JSON" --argjson published "$PUBLISHED_JSON" --ar
       \$pub_map[\$f] as \$ph |
       if \$strict then
         \"READ_FIRST \(\$f)\nCONFLICT \(\$f) designer_hash=\(\$rh) framework_hash=\(\$lh)\"
-      elif (\$ph != null) and (\$rh != \$ph) then
+      elif \$ph == null then
+        # No baseline entry — the framework never published this file.
+        # A differing remote was not written by us; protect it as a conflict.
+        \"READ_FIRST \(\$f)\nCONFLICT \(\$f) designer_hash=\(\$rh) framework_hash=\(\$lh)\"
+      elif \$rh != \$ph then
         \"READ_FIRST \(\$f)\nCONFLICT \(\$f) designer_hash=\(\$rh) framework_hash=\(\$lh)\"
       else
         \"READ_FIRST \(\$f)\nWRITE \(\$f)\"

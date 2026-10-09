@@ -272,13 +272,13 @@ _verify_artifact() {
     # The tool may append a trailing notice after the closing period; the only
     # accepted suffix is a space followed by text starting with "The file"
     # (covers "The file's" and "The files'"). Any other trailing text is
-    # rejected. Before validating and extracting, cut the line at the end of
-    # the first ', an Artifact of type "<T>".' that is followed by end-of-line
-    # or by ' The file'.
-    # Version is an opaque token: digits, lowercase hex, and hyphens
+    # rejected. Before validating and extracting, cut the line at the LAST
+    # ', an Artifact of type "<T>".' that is followed by end-of-line or by
+    # ' The file' (greedy sed).
+    # Version is an opaque token: ASCII letters, digits, and hyphens
     # (e.g. "2" or "1791378024-1c52"); it must not contain spaces, quotes,
-    # or dots. We use the LAST "from version V of " occurrence for URL
-    # extraction (greedy sed), so a crafted dir name that embeds the form
+    # or dots. We extract the URL from the LAST "from version V of "
+    # occurrence (greedy sed), so a crafted dir name that embeds the form
     # cannot override the real tail.
     case "$line" in
       "Files saved under "*)
@@ -289,9 +289,9 @@ _verify_artifact() {
         local header_core="$line"
         case "$header_core" in
           *'".'*' The file'*)
-            # Cut at the first '". The file' boundary: keep up to and
-            # including the period, discard the rest.
-            header_core="$(printf '%s' "$header_core" | sed 's/\"\. The file.*/"\./')"
+            # Cut at the LAST '". The file' boundary (greedy): keep up to
+            # and including the period, discard the trailing notice.
+            header_core="$(printf '%s' "$header_core" | sed 's/\(.*\"\.\) The file.*/\1/')"
             ;;
           *'".'*)
             # Ends with '".', or has other trailing text — the regex below

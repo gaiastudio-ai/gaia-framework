@@ -1609,7 +1609,40 @@ _sweep_prewrite_guards() {
   step6="$(awk '/^### Step 6/,/^### Step 7/' "$SKILL_MD")"
   [ -n "$step6" ] || fail "Step 6 not found in SKILL.md"
 
-  printf '%s' "$step6" | grep -qi 'bare.*Components\|## N\. Components' || \
-    fail "Step 6 should list the bare Components heading"
+  # Match the bare form followed by a backtick (the markdown inline code
+  # boundary), so it does not falsely match the template heading.
+  printf '%s' "$step6" | grep -q 'bare.*## N\. Components' || \
+    printf '%s' "$step6" | grep -q '`## N\. Components`' || \
+    fail "Step 6 should list the bare Components heading distinctly"
+}
+
+# ===========================================================================
+# Plugin-rooted script paths — design-record.sh and escape-boundary-markers.sh
+# ===========================================================================
+
+@test "no bare scripts/design-record.sh reference in SKILL.md" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  # Count all references to scripts/design-record.sh
+  local bare_count
+  bare_count="$(grep -c 'scripts/design-record\.sh' "$SKILL_MD" || true)"
+  # Count those that are plugin-rooted (preceded by CLAUDE_PLUGIN_ROOT or a skill path)
+  local rooted_count
+  rooted_count="$(grep -c 'CLAUDE_PLUGIN_ROOT}/scripts/design-record\.sh' "$SKILL_MD" || true)"
+
+  [ "$bare_count" -eq "$rooted_count" ] || \
+    fail "found $bare_count references to scripts/design-record.sh but only $rooted_count are plugin-rooted"
+}
+
+@test "no bare scripts/lib/escape-boundary-markers.sh reference in SKILL.md" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local bare_count
+  bare_count="$(grep -c 'scripts/lib/escape-boundary-markers\.sh' "$SKILL_MD" || true)"
+  local rooted_count
+  rooted_count="$(grep -c 'CLAUDE_PLUGIN_ROOT}/scripts/lib/escape-boundary-markers\.sh' "$SKILL_MD" || true)"
+
+  [ "$bare_count" -eq "$rooted_count" ] || \
+    fail "found $bare_count references to scripts/lib/escape-boundary-markers.sh but only $rooted_count are plugin-rooted"
 }
 

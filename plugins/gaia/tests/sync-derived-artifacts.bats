@@ -5907,3 +5907,142 @@ sys.stdout.write('var(--a)')
 
   rm -rf "$root_small" "$root_large"
 }
+
+# ===========================================================================
+# Heading end-of-line anchor tests — pin all five match sites
+# ===========================================================================
+
+@test "sync rejects Components of the backend heading — doc unchanged" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  export PROJECT_ROOT="$root"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Components of the backend
+
+| Component | Variants | Usage |
+|-----------|----------|-------|
+| header | default | Navigation |
+
+## Design Record Reference
+
+Present.
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["widget"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+  [ "$status" -ne 0 ] || \
+    fail "should reject 'Components of the backend' heading (exit $status)"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc should be unchanged when heading is rejected"
+
+  rm -rf "$root"
+}
+
+@test "sync does not produce duplicate header row under numbered bare heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  export PROJECT_ROOT="$root"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components
+
+| Component | Variants | Usage |
+|-----------|----------|-------|
+| header | default | Navigation |
+
+## Design Record Reference
+
+Present.
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","newone"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+  [ "$status" -eq 0 ] || fail "exit $status: $output"
+
+  # Exactly one header row (no duplicate)
+  local header_count
+  header_count="$(grep -c '| Component |' "$ux_doc")"
+  [ "$header_count" -eq 1 ] || \
+    fail "expected exactly 1 header row under numbered bare heading, got $header_count"
+
+  # New component is present as a table row (not a bullet)
+  grep -q '| newone |' "$ux_doc" || \
+    fail "newone should be added as a table row, not a bullet"
+
+  rm -rf "$root"
+}
+
+@test "sync finds column count under numbered bare Components heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  export PROJECT_ROOT="$root"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components
+
+| Component | Variants | Usage | Notes |
+|-----------|----------|-------|-------|
+| header | default | Navigation | top |
+
+## Design Record Reference
+
+Present.
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","widget"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+  [ "$status" -eq 0 ] || fail "exit $status: $output"
+
+  # widget should have 4 columns (matching the table)
+  local widget_pipes
+  widget_pipes="$(grep '| widget |' "$ux_doc" | tr -cd '|' | wc -c | tr -d ' ')"
+  [ "$widget_pipes" -eq 5 ] || \
+    fail "widget row should have 4 columns (5 pipes), got $widget_pipes pipes"
+
+  rm -rf "$root"
+}
