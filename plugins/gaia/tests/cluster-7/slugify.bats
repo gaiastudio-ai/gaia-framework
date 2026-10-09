@@ -151,7 +151,7 @@ teardown() { common_teardown; }
 @test "E63-S12 AC1: --help stdout contains literal 'Usage:'" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '^Usage:'
+  grep -q '^Usage:' <<<"$output"
 }
 
 @test "E63-S12 AC1: --help stdout enumerates --title and --help flags" {

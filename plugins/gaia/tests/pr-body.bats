@@ -69,10 +69,10 @@ EOF
   run "$PR_BODY" "$path"
   [ "$status" -eq 0 ]
   # Verify presence and ordering of section headings
-  ac_line=$(echo "$output" | grep -n "Acceptance Criteria" | head -1 | cut -d: -f1)
-  dod_line=$(echo "$output" | grep -n "Definition of Done" | head -1 | cut -d: -f1)
-  diff_line=$(echo "$output" | grep -n "Diff Stat" | head -1 | cut -d: -f1)
-  link_line=$(echo "$output" | grep -n "Story:" | head -1 | cut -d: -f1)
+  ac_line=$(grep -n "Acceptance Criteria" <<<"$output" | head -1 | cut -d: -f1)
+  dod_line=$(grep -n "Definition of Done" <<<"$output" | head -1 | cut -d: -f1)
+  diff_line=$(grep -n "Diff Stat" <<<"$output" | head -1 | cut -d: -f1)
+  link_line=$(grep -n "Story:" <<<"$output" | head -1 | cut -d: -f1)
   [ -n "$ac_line" ]
   [ -n "$dod_line" ]
   [ -n "$diff_line" ]
@@ -98,14 +98,14 @@ EOF
   git add change.txt
   run "$PR_BODY" "$path"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '```'
+  grep -q '```' <<<"$output"
 }
 
 @test "pr-body: relative story link points under docs/" {
   path="$(_write_story "E57-S7")"
   run "$PR_BODY" "$path"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qE "docs/implementation-artifacts/E57-S7-test\.md"
+  grep -qE "docs/implementation-artifacts/E57-S7-test\.md" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ EOF
   path="$(_write_story "E57-S7")"
   run "$PR_BODY" "$path"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qE "Claude|Co-Authored-By"
+  ! grep -qE "Claude|Co-Authored-By" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ EOF
   # Ensure the dangerous command did not execute.
   [ ! -e /tmp/pr_body_pwn ]
   # The literal text should appear somewhere (we don't lock exact form, just no exec).
-  echo "$output" | grep -q 'rm' || echo "$output" | grep -q 'touch' || true
+  grep -q 'rm' <<<"$output" || echo "$output" | grep -q 'touch' || true
 }
 
 # ---------------------------------------------------------------------------

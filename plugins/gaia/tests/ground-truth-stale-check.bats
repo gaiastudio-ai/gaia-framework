@@ -225,7 +225,7 @@ mtime() {
   # Discoverable by the registry scanner's maxdepth-1 contract.
   run bash -c 'find "$MEM" -maxdepth 1 -type f -name ".*-stale"'
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF '.ground-truth-stale'
+  grep -qF '.ground-truth-stale' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------

@@ -43,8 +43,8 @@ setup() {
   # including the next `- id:` line).
   block="$(awk '/^- id: AI-2026-05-09-10$/{flag=1} flag{print} /^- id:/ && !/AI-2026-05-09-10/ && NR>1 && flag{exit}' "$AI_FILE")"
 
-  echo "$block" | grep -qE "audit_note_2026-05-(1[0-9]|2[0-9]|3[01]):"
-  echo "$block" | grep -qE "E83-S6"
+  grep -qE "audit_note_2026-05-(1[0-9]|2[0-9]|3[01]):" <<<"$block"
+  grep -qE "E83-S6" <<<"$block"
 }
 
 # AC6 — AI-11 carries an `audit_note_2026-05-DD` field where DD >= 10.
@@ -54,8 +54,8 @@ setup() {
 
   block="$(awk '/^- id: AI-2026-05-09-11$/{flag=1} flag{print} /^- id:/ && !/AI-2026-05-09-11/ && NR>1 && flag{exit}' "$AI_FILE")"
 
-  echo "$block" | grep -qE "audit_note_2026-05-(1[0-9]|2[0-9]|3[01]):"
-  echo "$block" | grep -qE "E83-S6"
+  grep -qE "audit_note_2026-05-(1[0-9]|2[0-9]|3[01]):" <<<"$block"
+  grep -qE "E83-S6" <<<"$block"
 }
 
 # AC4 — AI-10 status MUST be `resolved` when re-validation verdict is PASS or
@@ -67,8 +67,8 @@ setup() {
   block="$(awk '/^- id: AI-2026-05-09-10$/{flag=1} flag{print} /^- id:/ && !/AI-2026-05-09-10/ && NR>1 && flag{exit}' "$AI_FILE")"
 
   # First `status:` line in the block MUST be `status: resolved`.
-  first_status="$(echo "$block" | grep -m1 -E '^\s*status:')"
-  echo "$first_status" | grep -qE 'status:\s*resolved'
+  first_status="$(grep -m1 -E '^\s*status:' <<<"$block")"
+  grep -qE 'status:\s*resolved' <<<"$first_status"
 }
 
 @test "AC4: AI-11 status transitioned to resolved (re-validation PASS/WARNING)" {
@@ -77,8 +77,8 @@ setup() {
 
   block="$(awk '/^- id: AI-2026-05-09-11$/{flag=1} flag{print} /^- id:/ && !/AI-2026-05-09-11/ && NR>1 && flag{exit}' "$AI_FILE")"
 
-  first_status="$(echo "$block" | grep -m1 -E '^\s*status:')"
-  echo "$first_status" | grep -qE 'status:\s*resolved'
+  first_status="$(grep -m1 -E '^\s*status:' <<<"$block")"
+  grep -qE 'status:\s*resolved' <<<"$first_status"
 }
 
 # AC7 — change-log carries the canonical re-validation line referencing E83-S6

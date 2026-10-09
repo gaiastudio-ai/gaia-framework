@@ -51,7 +51,7 @@ teardown() { common_teardown; }
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   frontmatter=$(awk '/^---$/{f++; next} f==1{print}' "$SKILL_MD")
   for key in 'name:[[:space:]]*gaia-sprint-review' 'description:' 'argument-hint:' 'allowed-tools:' 'orchestration_class:[[:space:]]*heavy-procedural'; do
-    echo "$frontmatter" | grep -qE "^$key" || {
+    grep -qE "^$key" <<<"$frontmatter" || {
       echo "Frontmatter missing required key matching: $key"
       echo "Frontmatter content:"
       echo "$frontmatter"
@@ -288,7 +288,7 @@ teardown() { common_teardown; }
   result=$(printf '%s' "$mock_val_return" | bash "$WRITE_VAL_SENTINEL" --sprint-id sprint-99 2>&1 || true)
   # The helper should either write the sentinel or print a usage error on missing flags.
   # Verify the script accepts --sprint-id and emits a path on stdout / writes to .gaia/memory/checkpoints/
-  echo "$result" | grep -qE 'sentinel.*written|sprint-99.*val-dispatched|sprint-review-sprint-99-val-dispatched' || {
+  grep -qE 'sentinel.*written|sprint-99.*val-dispatched|sprint-review-sprint-99-val-dispatched' <<<"$result" || {
     echo "write-val-sentinel.sh did not write the E83 dispatch sentinel for sprint-99"
     echo "Output: $result"
     return 1

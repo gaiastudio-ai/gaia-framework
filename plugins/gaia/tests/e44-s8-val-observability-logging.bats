@@ -178,6 +178,6 @@ teardown() { common_teardown; }
   local row
   row="$(grep '^| VCP-FIX-07' "$TEST_PLAN")"
   [ -n "$row" ]
-  echo "$row" | grep -qv 'Planned / Not Yet Written'
-  echo "$row" | grep -q 'Written'
+  grep -qv 'Planned / Not Yet Written' <<<"$row"
+  grep -q 'Written' <<<"$row"
 }

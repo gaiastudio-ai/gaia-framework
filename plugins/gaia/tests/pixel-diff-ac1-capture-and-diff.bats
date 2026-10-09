@@ -58,7 +58,7 @@ teardown() {
     --project-root "$TEST_TMP" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "PASSED"
+  grep -q "PASSED" <<<"$output"
 }
 
 # ---------- S1.2: Paths helper routing — no hard-coded baseline dir ----------
@@ -103,9 +103,9 @@ teardown() {
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
   # Each breakpoint should be mentioned independently
-  echo "$output" | grep -q "375"
-  echo "$output" | grep -q "768"
-  echo "$output" | grep -q "1440"
+  grep -q "375" <<<"$output"
+  grep -q "768" <<<"$output"
+  grep -q "1440" <<<"$output"
 }
 
 # ---------- S1.4: Partial failure — one breakpoint exceeds threshold ----------
@@ -132,13 +132,13 @@ teardown() {
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
 
   # Overall must be FAILED
-  echo "$output" | grep -qi "FAILED"
+  grep -qi "FAILED" <<<"$output"
   # 375 and 1440 should pass
-  echo "$output" | grep "375" | grep -qi "PASSED"
-  echo "$output" | grep "1440" | grep -qi "PASSED"
+  grep "375" <<<"$output" | grep -qi "PASSED"
+  grep "1440" <<<"$output" | grep -qi "PASSED"
   # 768 should fail with a percentage
-  echo "$output" | grep "768" | grep -qi "FAILED"
-  echo "$output" | grep "768" | grep -qE '[0-9]+(\.[0-9]+)?%'
+  grep "768" <<<"$output" | grep -qi "FAILED"
+  grep "768" <<<"$output" | grep -qE '[0-9]+(\.[0-9]+)?%'
 }
 
 # ---------- S1.5: Degradation — image-compare tool not installed ----------
@@ -159,8 +159,8 @@ teardown() {
     --project-root "$TEST_TMP" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
 
-  echo "$output" | grep -qi "UNVERIFIED"
+  grep -qi "UNVERIFIED" <<<"$output"
   # Must NOT be FAILED or SKIPPED
-  ! echo "$output" | grep -qi "^FAILED"
-  ! echo "$output" | grep -qi "SKIPPED"
+  ! grep -qi "^FAILED" <<<"$output"
+  ! grep -qi "SKIPPED" <<<"$output"
 }

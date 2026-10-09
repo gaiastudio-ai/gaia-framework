@@ -50,7 +50,7 @@ YAML
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_THEME=rich printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_THEME=rich PROJECT_PATH='$TEST_TMP' '$RUNTIME'"
   [ "$status" -eq 0 ]
   # sprint-42 MUST NOT appear in rendered output.
-  ! echo "$output" | grep -q "sprint-42"
+  ! grep -q "sprint-42" <<<"$output"
 }
 
 @test "rich theme: missing status field (legacy yaml) defaults to active and renders sprint_id" {
@@ -74,5 +74,5 @@ YAML
   stdin="$(_stdin)"
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_THEME=rich printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_THEME=rich PROJECT_PATH='$TEST_TMP' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q "sprint-42"
+  ! grep -q "sprint-42" <<<"$output"
 }

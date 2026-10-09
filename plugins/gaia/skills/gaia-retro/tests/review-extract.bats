@@ -24,9 +24,9 @@ teardown() {
   # Empty impl-dir — no review artifacts at all.
   run bash "$SCRIPT" --impl-dir "$TMPDIR" --sprint-id sprint-XX
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '_no review artifacts for sprint sprint-XX_ (empty findings)'
+  grep -q '_no review artifacts for sprint sprint-XX_ (empty findings)' <<<"$output"
   # stderr must be free of unbound-variable error.
-  ! printf '%s\n' "$stderr" | grep -q 'unbound variable'
+  ! grep -q 'unbound variable' <<<"$stderr"
 }
 
 @test "AC4: impl-dir populated with non-matching files still exits 0 cleanly" {
@@ -34,7 +34,7 @@ teardown() {
   printf '# noise\n' > "$TMPDIR/random.md"
   run bash "$SCRIPT" --impl-dir "$TMPDIR" --sprint-id sprint-XX
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '_no review artifacts for sprint sprint-XX_'
+  grep -q '_no review artifacts for sprint sprint-XX_' <<<"$output"
 }
 
 @test "AC4: impl-dir populated with wrong-sprint files exits 0 cleanly" {
@@ -46,7 +46,7 @@ sprint_id: sprint-OTHER
 EOF
   run bash "$SCRIPT" --impl-dir "$TMPDIR" --sprint-id sprint-XX
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '_no review artifacts for sprint sprint-XX_'
+  grep -q '_no review artifacts for sprint sprint-XX_' <<<"$output"
 }
 
 @test "AC6: happy path with one matching artifact emits verdict block" {
@@ -61,11 +61,11 @@ EOF
   # Family-name derivation: strip `-sprint-*\.md`. Without a sprint suffix the
   # filename is preserved verbatim. Either form is accepted by the verdict
   # column extraction.
-  printf '%s\n' "$output" | grep -qE '\| code-review-Esrc-S1(\.md)? \| PASSED \|'
+  grep -qE '\| code-review-Esrc-S1(\.md)? \| PASSED \|' <<<"$output"
 }
 
 @test "AC4: missing impl-dir exits 0 with impl-dir-missing note (legacy behavior)" {
   run bash "$SCRIPT" --impl-dir "$TMPDIR/does-not-exist" --sprint-id sprint-XX
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'no review artifacts for sprint sprint-XX (impl-dir missing)'
+  grep -q 'no review artifacts for sprint sprint-XX (impl-dir missing)' <<<"$output"
 }

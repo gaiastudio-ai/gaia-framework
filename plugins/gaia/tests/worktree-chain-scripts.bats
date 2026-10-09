@@ -243,7 +243,7 @@ _step_3a_region() {
   [ -n "$region" ]
 
   local body; body="$(printf '%s\n' "$region" | awk '/```bash/{f=1;next} /```/{f=0} f')"
-  printf '%s\n' "$body" | grep -q 'worktree_create' \
+  grep -q 'worktree_create' <<<"$body" \
     || { echo "no create call found in the step fences"; return 1; }
 
   # Walk the fence bodies tracking whether we are inside the else arm of a
@@ -278,7 +278,7 @@ EOF
   local region; region="$(_step_3a_region)" || { echo "step region not found"; return 1; }
   # An "I already checked" argument would be unverifiable by construction, so
   # the step must not carry one.
-  if printf '%s\n' "$region" | grep -q 'mode-checked'; then
+  if grep -q 'mode-checked' <<<"$region"; then
     echo "the step still references a gate-bypass token"
     return 1
   fi
@@ -290,8 +290,8 @@ EOF
 
   # The create fence must branch on the reserved degradation code, so a project
   # root with no git work tree runs in place instead of aborting the story.
-  printf '%s\n' "$body" | grep -q -- '-eq 3' \
+  grep -q -- '-eq 3' <<<"$body" \
     || { echo "the step does not handle the non-git degradation code"; return 1; }
-  printf '%s\n' "$body" | grep -qi 'running in place' \
+  grep -qi 'running in place' <<<"$body" \
     || { echo "the step does not say it runs in place on degradation"; return 1; }
 }

@@ -42,7 +42,7 @@ teardown() {
 @test "unit: resolver design_baselines kind resolves canonical path with slug" {
   run bash "$RESOLVER" design_baselines --slug my-story --project-root "$TEST_TMP"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "test-artifacts/manual-test/my-story/design-baselines"
+  grep -q "test-artifacts/manual-test/my-story/design-baselines" <<<"$output"
 }
 
 @test "unit: resolver design_baselines kind requires --slug" {
@@ -65,7 +65,7 @@ teardown() {
   run bash "$RESOLVER" design_baselines --slug "$SLUG" \
     --project-root "$TEST_TMP" --existing-only
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "design-baselines"
+  grep -q "design-baselines" <<<"$output"
 }
 
 # ---------- read-visual-diff-config.sh functions ----------
@@ -74,7 +74,7 @@ teardown() {
   source "$READ_CONFIG"
   run read_threshold "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "0.3"
+  grep -q "0.3" <<<"$output"
 }
 
 @test "unit: read_threshold returns 0.1 default when not configured" {
@@ -84,16 +84,16 @@ YAML
   source "$READ_CONFIG"
   run read_threshold "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "0.1"
+  grep -q "0.1" <<<"$output"
 }
 
 @test "unit: read_breakpoints returns configured breakpoints" {
   source "$READ_CONFIG"
   run read_breakpoints "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "375"
-  echo "$output" | grep -q "768"
-  echo "$output" | grep -q "1440"
+  grep -q "375" <<<"$output"
+  grep -q "768" <<<"$output"
+  grep -q "1440" <<<"$output"
 }
 
 @test "unit: read_breakpoints returns 1440 default when not configured" {
@@ -103,14 +103,14 @@ YAML
   source "$READ_CONFIG"
   run read_breakpoints "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "1440"
+  grep -q "1440" <<<"$output"
 }
 
 @test "unit: read_mask_regions emits x,y,w,h,label lines" {
   source "$READ_CONFIG"
   run read_mask_regions "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "0,0,5,5,clock"
+  grep -q "0,0,5,5,clock" <<<"$output"
 }
 
 @test "unit: read_mask_regions returns empty when none configured" {
@@ -176,13 +176,13 @@ YAML
   # Identical images
   run diff_single_breakpoint "$FIXTURE_DIR/baseline-375.png" \
     "$FIXTURE_DIR/screenshot-375.png" "0.5"
-  echo "$output" | grep -qi "PASSED"
-  echo "$output" | grep -qE '[0-9]+(\.[0-9]+)?%'
+  grep -qi "PASSED" <<<"$output"
+  grep -qE '[0-9]+(\.[0-9]+)?%' <<<"$output"
 
   # Different images
   run diff_single_breakpoint "$FIXTURE_DIR/baseline-768.png" \
     "$FIXTURE_DIR/screenshot-768-drifted.png" "0.5"
-  echo "$output" | grep -qi "FAILED"
+  grep -qi "FAILED" <<<"$output"
 }
 
 @test "unit: run_pixel_diff function exists and is callable" {

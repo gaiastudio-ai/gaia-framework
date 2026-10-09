@@ -27,7 +27,7 @@ _filter_exclusions() {
     [ -z "$line" ] && continue
     local excluded=0
     for ex in "${excl[@]}"; do
-      if printf '%s' "$line" | grep -qF "$ex"; then
+      if grep -qF "$ex" <<<"$line"; then
         excluded=1; break
       fi
     done

@@ -173,5 +173,5 @@ assert 'sprint-review-sprint-50' not in api[0].get('raw',''), 'sprint slug leake
 print('ok')
 "
   # The log notes the skip reason.
-  echo "$output" | grep -qi 'no sprint_review.manual_test.api_command configured'
+  grep -qi 'no sprint_review.manual_test.api_command configured' <<<"$output"
 }

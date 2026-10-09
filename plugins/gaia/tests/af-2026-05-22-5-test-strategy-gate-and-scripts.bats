@@ -61,7 +61,7 @@ teardown() { common_teardown; }
 @test "+2: validate-gate.sh --list documents all 4 test_plan_exists acceptable paths" {
   run bash "$PLUGIN_ROOT/scripts/validate-gate.sh" --list
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF "strategy/test-strategy.md"
+  grep -qF "strategy/test-strategy.md" <<<"$output"
 }
 
 # --- Bug 4: gaia-test-strategy ships setup.sh + finalize.sh ---
@@ -103,7 +103,7 @@ teardown() { common_teardown; }
   printf 'config_phase: minimal\n' > "$tmp/.gaia/config/project-config.yaml"
   run bash -c "CLAUDE_PROJECT_ROOT='$tmp' source '$PLUGIN_ROOT/scripts/lib/config-hydration.sh' && config_hydration_resolve_target"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF ".gaia/config/project-config.yaml"
+  grep -qF ".gaia/config/project-config.yaml" <<<"$output"
 }
 
 @test "config-hydration.sh falls back to legacy config/ when .gaia/config/ absent" {

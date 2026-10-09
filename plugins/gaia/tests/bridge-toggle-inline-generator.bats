@@ -43,25 +43,25 @@ teardown() {
 @test "option [b] still references install-test-environment-manifest.sh as schema-doc starter" {
   STEP4=$(awk '/^## Step 4/,/^## Step 5/' "${SKILL_MD}")
   # Option [b] should still exist
-  echo "${STEP4}" | grep -qE "^\s+\-\s+\`\[b\]\`"
+  grep -qE "^\s+\-\s+\`\[b\]\`" <<<"${STEP4}"
   # And should reference the .example template
-  echo "${STEP4}" | grep -qF "test-environment.yaml.example"
+  grep -qF "test-environment.yaml.example" <<<"${STEP4}"
 }
 
 # AC3 — YOLO branch auto-invokes the generator (NOT the E17-S31 template-copy)
 @test "YOLO branch auto-invokes the inline generator with the canonical log line" {
   STEP4=$(awk '/^## Step 4/,/^## Step 5/' "${SKILL_MD}")
   # YOLO branch must mention the generator helper
-  echo "${STEP4}" | grep -q "absent (YOLO)"
+  grep -q "absent (YOLO)" <<<"${STEP4}"
   # And include the canonical log line
-  echo "${STEP4}" | grep -qF "auto-generated .gaia/config/test-environment.yaml for detected stack"
+  grep -qF "auto-generated .gaia/config/test-environment.yaml for detected stack" <<<"${STEP4}"
 }
 
 # AC4 — Generator-failure fallback to template-copy
 @test "SKILL.md describes the generator-failure → template-copy fallback" {
   STEP4=$(awk '/^## Step 4/,/^## Step 5/' "${SKILL_MD}")
   # Some explicit fallback prose must mention the install-test-environment-manifest.sh as a fallback
-  echo "${STEP4}" | grep -qF "install-test-environment-manifest.sh"
+  grep -qF "install-test-environment-manifest.sh" <<<"${STEP4}"
 }
 
 # Functional check: the helper invocation pattern actually works against a real fixture

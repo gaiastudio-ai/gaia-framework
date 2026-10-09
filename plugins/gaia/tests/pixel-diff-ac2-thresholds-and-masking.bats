@@ -48,7 +48,7 @@ YAML
     --project-root "$TEST_TMP" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "PASSED"
+  grep -qi "PASSED" <<<"$output"
 }
 
 # ---------- S2.2: Threshold boundary — diff exactly at threshold ----------
@@ -63,7 +63,7 @@ YAML
   BASELINE="$FIXTURE_DIR/baseline-375.png"
   SCREENSHOT="$FIXTURE_DIR/screenshot-375-1pct.png"
   run diff_single_breakpoint "$BASELINE" "$SCREENSHOT" "1.0"
-  echo "$output" | grep -qi "PASSED"
+  grep -qi "PASSED" <<<"$output"
 }
 
 # ---------- S2.3: Threshold boundary — diff above threshold ----------
@@ -93,9 +93,9 @@ YAML
     --project-root "$TEST_TMP" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
 
-  echo "$output" | grep -qi "FAILED"
+  grep -qi "FAILED" <<<"$output"
   # Must include both measured diff and threshold for diagnostics
-  echo "$output" | grep -qE '[0-9]+(\.[0-9]+)?%'
+  grep -qE '[0-9]+(\.[0-9]+)?%' <<<"$output"
 }
 
 # ---------- S2.4: Dynamic-region masking ----------
@@ -134,8 +134,8 @@ YAML
     --project-root "$TEST_TMP" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
 
-  echo "$output" | grep -qi "PASSED"
-  echo "$output" | grep -qi "masked"
+  grep -qi "PASSED" <<<"$output"
+  grep -qi "masked" <<<"$output"
 }
 
 # ---------- S2.5: No threshold configured — falls back to default ----------
@@ -150,7 +150,7 @@ YAML
   run read_threshold "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
   # Default threshold is 0.1
-  echo "$output" | grep -q "0.1"
+  grep -q "0.1" <<<"$output"
 }
 
 @test "S2.5: read_breakpoints defaults to 1440 when not configured" {
@@ -162,5 +162,5 @@ YAML
   source "$READ_CONFIG"
   run read_breakpoints "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "1440"
+  grep -q "1440" <<<"$output"
 }

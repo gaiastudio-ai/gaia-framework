@@ -78,22 +78,22 @@ teardown() { common_teardown; }
   # Extract the Step 5 hook block and verify it contains 'red' as the phase.
   block="$(awk '/<!-- step5 tdd-review-gate begin -->/,/<!-- step5 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'tdd-review-gate.sh'
-  echo "$block" | grep -Eq '\bred\b'
+  grep -Fq 'tdd-review-gate.sh' <<<"$block"
+  grep -Eq '\bred\b' <<<"$block"
 }
 
 @test "Step 6 hook block passes phase=green to tdd-review-gate.sh" {
   block="$(awk '/<!-- step6 tdd-review-gate begin -->/,/<!-- step6 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'tdd-review-gate.sh'
-  echo "$block" | grep -Eq '\bgreen\b'
+  grep -Fq 'tdd-review-gate.sh' <<<"$block"
+  grep -Eq '\bgreen\b' <<<"$block"
 }
 
 @test "Step 7 hook block passes phase=refactor to tdd-review-gate.sh" {
   block="$(awk '/<!-- step7 tdd-review-gate begin -->/,/<!-- step7 tdd-review-gate end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'tdd-review-gate.sh'
-  echo "$block" | grep -Eq '\brefactor\b'
+  grep -Fq 'tdd-review-gate.sh' <<<"$block"
+  grep -Eq '\brefactor\b' <<<"$block"
 }
 
 # ---------------------------------------------------------------------------
@@ -107,9 +107,9 @@ assert_block_has_verbatim_labels() {
   local block
   block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
   [ -n "$block" ]
-  echo "$block" | grep -Fq 'review-myself'
-  echo "$block" | grep -Fq 'route-to-qa'
-  echo "$block" | grep -Fq 'proceed-anyway'
+  grep -Fq 'review-myself' <<<"$block"
+  grep -Fq 'route-to-qa' <<<"$block"
+  grep -Fq 'proceed-anyway' <<<"$block"
 }
 
 @test "Step 5 hook contains verbatim labels review-myself, route-to-qa, proceed-anyway" {
@@ -130,9 +130,9 @@ assert_block_has_verbatim_labels() {
   # line still resolve a strict relative order.
   for marker in step5 step6 step7; do
     block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
-    rm_off="$(printf '%s\n' "$block" | grep -boF 'review-myself' | head -1 | cut -d: -f1)"
-    rq_off="$(printf '%s\n' "$block" | grep -boF 'route-to-qa' | head -1 | cut -d: -f1)"
-    pa_off="$(printf '%s\n' "$block" | grep -boF 'proceed-anyway' | head -1 | cut -d: -f1)"
+    rm_off="$(grep -boF 'review-myself' <<<"$block" | head -1 | cut -d: -f1)"
+    rq_off="$(grep -boF 'route-to-qa' <<<"$block" | head -1 | cut -d: -f1)"
+    pa_off="$(grep -boF 'proceed-anyway' <<<"$block" | head -1 | cut -d: -f1)"
     [ -n "$rm_off" ] && [ -n "$rq_off" ] && [ -n "$pa_off" ]
     [ "$rm_off" -lt "$rq_off" ]
     [ "$rq_off" -lt "$pa_off" ]
@@ -148,7 +148,7 @@ assert_block_has_verbatim_labels() {
   for marker in step5 step6 step7; do
     block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     [ -n "$block" ]
-    echo "$block" | grep -Fq 'SKIP'
+    grep -Fq 'SKIP' <<<"$block"
   done
 }
 
@@ -161,9 +161,9 @@ assert_block_has_verbatim_labels() {
   for marker in step5 step6 step7; do
     block="$(awk "/<!-- ${marker} tdd-review-gate begin -->/,/<!-- ${marker} tdd-review-gate end -->/" "$SKILL_MD")"
     [ -n "$block" ]
-    echo "$block" | grep -Fq 'QA_AUTO'
+    grep -Fq 'QA_AUTO' <<<"$block"
     # tdd-reviewer subagent name appears (Tex / tdd-reviewer / agents/tdd-reviewer.md).
-    echo "$block" | grep -Eq 'tdd-reviewer'
+    grep -Eq 'tdd-reviewer' <<<"$block"
   done
 }
 
@@ -177,8 +177,8 @@ assert_block_has_verbatim_labels() {
     [ -n "$block" ]
     # Block names checkpoint persistence and timestamp recording on
     # proceed-anyway. Accept either 'checkpoint' + 'timestamp' phrasing.
-    echo "$block" | grep -Eqi 'checkpoint'
-    echo "$block" | grep -Eqi 'timestamp|timestamped'
+    grep -Eqi 'checkpoint' <<<"$block"
+    grep -Eqi 'timestamp|timestamped' <<<"$block"
   done
 }
 
@@ -238,7 +238,7 @@ assert_block_has_verbatim_labels() {
   # The behavioral anchor is "Surface the verdict" — present in each block's
   # route-to-qa and QA_AUTO branches.
   hooks="$(awk '/<!-- step[567] tdd-review-gate begin -->/,/<!-- step[567] tdd-review-gate end -->/' "$SKILL_MD")"
-  echo "$hooks" | grep -Fq 'Surface the verdict'
+  grep -Fq 'Surface the verdict' <<<"$hooks"
 }
 
 @test "tdd-review-gate hook blocks reference hard-CRITICAL halt" {
@@ -247,5 +247,5 @@ assert_block_has_verbatim_labels() {
   # present in the step5 block and mirrored by "HALT on \`severity: CRITICAL\`"
   # throughout all three blocks.
   hooks="$(awk '/<!-- step[567] tdd-review-gate begin -->/,/<!-- step[567] tdd-review-gate end -->/' "$SKILL_MD")"
-  echo "$hooks" | grep -Eq 'HALT on.*severity: CRITICAL|YOLO MUST NOT auto-resolve CRITICAL'
+  grep -Eq 'HALT on.*severity: CRITICAL|YOLO MUST NOT auto-resolve CRITICAL' <<<"$hooks"
 }

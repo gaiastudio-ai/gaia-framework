@@ -440,9 +440,9 @@ PARITY_TRACE="$(cd "${BATS_TEST_DIRNAME}/../../test/fixtures/parity-baseline/tra
   fm=$(awk '/^---$/{c++; next} c==1' "$SKILL_FILE")
 
   # argument-hint check (exact string match)
-  echo "$fm" | grep -Fq 'argument-hint: "[story-key] [--force]"'
+  grep -Fq 'argument-hint: "[story-key] [--force]"' <<<"$fm"
   # allowed-tools unchanged
-  echo "$fm" | grep -Fq 'allowed-tools: [Read, Grep, Glob, Bash]'
+  grep -Fq 'allowed-tools: [Read, Grep, Glob, Bash]' <<<"$fm"
 }
 
 # AC2 (TC-RAR-15): SKILL.md Step 2 must reference review-skip-check.sh and

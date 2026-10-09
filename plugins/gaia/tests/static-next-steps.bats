@@ -54,7 +54,7 @@ _assert_section_with_primary() {
   local body
   body="$(_extract_next_steps_body "$file")"
   [ -n "$body" ] || { echo "$skill: '## Next Steps' section is empty"; return 1; }
-  echo "$body" | grep -qE "(^|[^A-Za-z0-9_-])${expected}([^A-Za-z0-9_-]|$)" \
+  grep -qE "(^|[^A-Za-z0-9_-])${expected}([^A-Za-z0-9_-]|$)" <<<"$body" \
     || { echo "$skill: expected primary '${expected}' not found in '## Next Steps' body. Body was:"; echo "$body"; return 1; }
 }
 
@@ -82,7 +82,7 @@ _assert_section_with_primary() {
   grep -qE '^## Next Steps[[:space:]]*$' "$file"
   local body
   body="$(_extract_next_steps_body "$file")"
-  echo "$body" | grep -qE '/gaia-ci-setup|/gaia-readiness-check' \
+  grep -qE '/gaia-ci-setup|/gaia-readiness-check' <<<"$body" \
     || { echo "gaia-trace: neither /gaia-ci-setup nor /gaia-readiness-check found in '## Next Steps' body. Body was:"; echo "$body"; return 1; }
 }
 
@@ -140,7 +140,7 @@ _assert_section_with_primary() {
     [ -f "$file" ] || continue
     local body
     body="$(_extract_next_steps_body "$file")"
-    if echo "$body" | grep -qE '\{|\$\('; then
+    if grep -qE '\{|\$\(' <<<"$body"; then
       offenders="${offenders}${file}"$'\n'
     fi
   done

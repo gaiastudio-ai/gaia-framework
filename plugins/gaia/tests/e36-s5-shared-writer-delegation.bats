@@ -65,9 +65,9 @@ mk_action_items_yaml_with_entry() {
   # missing-args exit and the delegation pattern is impossible.
   run bash -c "set +e; source '$WRITER'; declare -F allowlist_match resolve_real normalize_payload"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "allowlist_match"
-  echo "$output" | grep -q "resolve_real"
-  echo "$output" | grep -q "normalize_payload"
+  grep -q "allowlist_match" <<<"$output"
+  grep -q "resolve_real" <<<"$output"
+  grep -q "normalize_payload" <<<"$output"
 }
 
 # ===========================================================================

@@ -168,20 +168,20 @@ _run_query() {
   # non-error "(no ... edges)" line, not raise an error.
   _run_query "E777-S6"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'no .*(UP|DOWN|LATERAL).* edges|no edges'
+  grep -qiE 'no .*(UP|DOWN|LATERAL).* edges|no edges' <<<"$output"
 }
 
 @test "an unknown key is reported as unresolved and still exits 0" {
   _run_query "E999-S999"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'unresolved|not found|no .*entry'
+  grep -qiE 'unresolved|not found|no .*entry' <<<"$output"
 }
 
 @test "a missing manifest exits 0 with an explanatory line" {
   rm -f "$MANIFEST"
   _run_query "E777-S2"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'no.*manifest|not found|no brain index'
+  grep -qiE 'no.*manifest|not found|no brain index' <<<"$output"
 }
 
 # --- C1: read-time content-hash fall-through -------------------------------
@@ -190,8 +190,8 @@ _run_query() {
   _run_query "E777-S2"
   [ "$status" -eq 0 ]
   # The synopsis seed line from the canonical story is surfaced, not a stale marker.
-  printf '%s\n' "$output" | grep -q 'Primary reindex node'
-  ! printf '%s\n' "$output" | grep -qi 'stale'
+  grep -q 'Primary reindex node' <<<"$output"
+  ! grep -qi 'stale' <<<"$output"
 }
 
 @test "a node whose canonical file changed is marked stale and surfaces the path" {
@@ -211,7 +211,7 @@ _run_query() {
   rm -f "$PROJ/.gaia/artifacts/implementation-artifacts/epic-E777-demo/E777-S2-primary/story.md"
   _run_query "E777-S2"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qi 'stale'
+  grep -qi 'stale' <<<"$output"
 }
 
 # --- Read-only boundary hardening: out-of-bounds manifest path is never read --
@@ -300,8 +300,8 @@ _run_query() {
   # it must surface the usage error and a non-zero usage exit (2).
   _run_query "E777-S2" --search
   [ "$status" -eq 2 ]
-  printf '%s\n' "$output" | grep -qi 'search requires a term'
-  ! printf '%s\n' "$output" | grep -qi 'unbound variable'
+  grep -qi 'search requires a term' <<<"$output"
+  ! grep -qi 'unbound variable' <<<"$output"
 }
 
 # --- AC4: read-only boundary, query direction ------------------------------
@@ -329,8 +329,8 @@ _run_query() {
   after="$(stat -c %Y "$MEMORY_DECOY" 2>/dev/null || stat -f %m "$MEMORY_DECOY")"
   [ "$before" = "$after" ]
   # And the memory decoy never surfaces in the query output.
-  ! printf '%s\n' "$output" | grep -q 'validator-sidecar'
-  ! printf '%s\n' "$output" | grep -q 'DECOY'
+  ! grep -q 'validator-sidecar' <<<"$output"
+  ! grep -q 'DECOY' <<<"$output"
 }
 
 # --- AC4: read-only boundary, refresh direction (pin existing behaviour) ----
@@ -348,13 +348,13 @@ _run_query() {
 @test "the --health mode delegates to the unlinked-node view and exits 0" {
   _run_query --health
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'unlinked|gap'
+  grep -qiE 'unlinked|gap' <<<"$output"
 }
 
 @test "the --search mode greps the indexed synopses and exits 0" {
   _run_query --search "Primary"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'E777-S2'
+  grep -q 'E777-S2' <<<"$output"
 }
 
 # --- AC3: no vector / embedding / external dependency ----------------------

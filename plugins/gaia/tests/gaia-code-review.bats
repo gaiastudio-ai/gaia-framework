@@ -41,7 +41,7 @@ teardown() { common_teardown; }
   local prev_line=0
   for p in "${expected[@]}"; do
     local line
-    line="$(printf '%s\n' "$got" | grep -F "$p" | head -1 | cut -d: -f1)"
+    line="$(grep -F "$p" <<<"$got" | head -1 | cut -d: -f1)"
     [ -n "$line" ] || { echo "missing phase header: $p" >&2; return 1; }
     [ "$line" -gt "$prev_line" ] || { echo "phase out of order: $p (line=$line, prev=$prev_line)" >&2; return 1; }
     prev_line="$line"

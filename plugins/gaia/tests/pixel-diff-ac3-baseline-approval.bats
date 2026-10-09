@@ -156,7 +156,7 @@ teardown() {
     --project-root "$TEST_TMP" \
     --screenshot-dir "$SCREENSHOT_DIR" </dev/null
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "tty\|interactive\|terminal"
+  grep -qi "tty\|interactive\|terminal" <<<"$output"
 }
 
 # ---------- S3: sourced function non-tty refusal ----------
@@ -181,7 +181,7 @@ teardown() {
   " </dev/null
 
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "non-interactive\|refused"
+  grep -qi "non-interactive\|refused" <<<"$output"
 
   # Baseline must be unchanged (checksum identical)
   after_sum="$(shasum "$BASELINE_DIR/baseline-375.png" | cut -d' ' -f1)"

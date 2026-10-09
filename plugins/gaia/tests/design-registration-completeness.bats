@@ -53,7 +53,7 @@ teardown() { common_teardown; }
     echo "FAIL: no help CSV row for gaia-design-review" >&2
     return 1
   }
-  echo "$row" | grep -qi 'architecture will not start' || {
+  grep -qi 'architecture will not start' <<<"$row" || {
     echo "FAIL: help row description missing symptom phrase 'architecture will not start'" >&2
     return 1
   }
@@ -74,7 +74,7 @@ teardown() { common_teardown; }
     echo "FAIL: no help CSV row for gaia-design-review" >&2
     return 1
   }
-  echo "$row" | grep -qi 'design not approved' || {
+  grep -qi 'design not approved' <<<"$row" || {
     echo "FAIL: help row description missing symptom phrase 'design not approved'" >&2
     return 1
   }
@@ -95,7 +95,7 @@ teardown() { common_teardown; }
     echo "FAIL: no help CSV row for gaia-design-review" >&2
     return 1
   }
-  echo "$row" | grep -qi 'solutioning blocked' || {
+  grep -qi 'solutioning blocked' <<<"$row" || {
     echo "FAIL: help row description missing symptom phrase 'solutioning blocked'" >&2
     return 1
   }
@@ -120,7 +120,7 @@ teardown() { common_teardown; }
   # The actual CSV columns per the header are:
   #   name,title,description,module,phase,path,command,agent
   # So phase is field 5. Extract it.
-  echo "$row" | grep -q '"2-planning"' || {
+  grep -q '"2-planning"' <<<"$row" || {
     echo "FAIL: manifest row phase for design-review should be 2-planning" >&2
     echo "  row: $row" >&2
     return 1

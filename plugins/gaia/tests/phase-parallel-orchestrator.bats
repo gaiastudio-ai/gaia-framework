@@ -408,7 +408,7 @@ _reason_of() {
   local last
   last="$(printf '%s\n' "$1" | grep -E '^mode=' | tail -1)"
   [ -n "$last" ] || last="$1"
-  printf '%s' "$last" | sed -n 's/.*reason=\([a-z0-9-]*\).*/\1/p;q'
+  sed -n 's/.*reason=\([a-z0-9-]*\).*/\1/p;q' <<<"$last"
 }
 
 # ---------------------------------------------------------------------------
@@ -1509,7 +1509,7 @@ EOF
     || { echo "default admission path referenced gaia-dispatch-story: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
   [ "$rc" -eq 0 ] \
     || { echo "expected a successful admission via the real surface, got $rc: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
-  printf '%s\n' "$out" | grep -q '^handle:tm-bash-dev-K1$' \
+  grep -q '^handle:tm-bash-dev-K1$' <<<"$out" \
     || { echo "expected a real handle on stdout: $out"; return 1; }
 }
 
@@ -1546,7 +1546,7 @@ EOF
   ppo_record_outcome K2 done >/dev/null 2>"$TEST_TMP/record.err"
 
   local ledger; ledger="$(ppo_report)"
-  printf '%s\n' "$ledger" | grep -q '^story=K2 outcome=done$' \
+  grep -q '^story=K2 outcome=done$' <<<"$ledger" \
     || { echo "the skill's own done report was not authoritative: $ledger ($(cat "$TEST_TMP/record.err"))"; return 1; }
   [ ! -e "$wt" ] \
     || { echo "a done outcome did not tear down the worktree despite the story file never going terminal: $wt"; return 1; }
@@ -1630,7 +1630,7 @@ EOF
   local n; n="$(grep -c '^K1$' "$TEST_TMP/stubstate/dispatched.log" 2>/dev/null)" || n=0
   [ "$n" -eq 1 ] \
     || { echo "a story with a live worktree was dispatched $n times, expected exactly 1"; return 1; }
-  printf '%s\n' "$output" | grep -qE '^event=story_complete story=K1 .*outcome=done$' \
+  grep -qE '^event=story_complete story=K1 .*outcome=done$' <<<"$output" \
     || { echo "K1's outcome was not taken from the real dispatch result: $output"; return 1; }
 
   # The pre-existing worktree PATH must be the one the run actually used --
@@ -1669,9 +1669,9 @@ EOF
   local n; n="$(grep -c '^K1$' "$TEST_TMP/stubstate/dispatched.log" 2>/dev/null)" || n=0
   [ "$n" -eq 1 ] \
     || { echo "a re-attached story was dispatched $n times, expected exactly 1"; return 1; }
-  printf '%s\n' "$output" | grep -qE '^event=story_complete story=K1 .*outcome=failed$' \
+  grep -qE '^event=story_complete story=K1 .*outcome=failed$' <<<"$output" \
     || { echo "a re-attached story's real failure was not recorded: $output"; return 1; }
-  printf '%s\n' "$output" | grep -qE '^event=story_complete story=K1 .*outcome=done$' \
+  grep -qE '^event=story_complete story=K1 .*outcome=done$' <<<"$output" \
     && { echo "a re-attached story that failed was still recorded done: $output"; return 1; }
   return 0
 }
@@ -1765,7 +1765,7 @@ EOF
   line="$(grep -n -- '--discard-ignored' "$ORCH" \
            | grep -vE '^[0-9]+:[[:space:]]*#')"
   line="${line%%$'\n'*}"
-  printf '%s' "$line" | grep -q 'worktree_teardown' \
+  grep -q 'worktree_teardown' <<<"$line" \
     || { echo "the discard flag is not on a worktree_teardown call: $line"; return 1; }
 
   # Nothing else may PASS the flag. Three files may legitimately name it: the
@@ -2000,7 +2000,7 @@ except OSError:
   # It degrades -- exit 0 with a sequential plan -- and never hard-refuses.
   # Skip comment lines to find the CODE usage.
   local ctx; ctx="$(grep -n 'admission-lock-timeout' "$ORCH" | grep -v '^[0-9]*:[[:space:]]*#' | head -1)"
-  printf '%s' "$ctx" | grep -q 'mode=sequential' \
+  grep -q 'mode=sequential' <<<"$ctx" \
     || { echo "admission-lock-timeout is not emitted as a sequential degradation: $ctx"; return 1; }
 }
 
@@ -2049,7 +2049,7 @@ except OSError:
   '
   [ "$status" -eq 0 ] \
     || { echo "a missing sprint file exited $status, expected 0: $output"; return 1; }
-  printf '%s' "$output" | grep -q 'CALLER CONTINUED' \
+  grep -q 'CALLER CONTINUED' <<<"$output" \
     || { echo "errexit killed the caller on the missing-sprint path: $output"; return 1; }
   [ "$(_reason_of "$output")" = "sprint-unreadable" ] \
     || { echo "expected sprint-unreadable, got: $output"; return 1; }
@@ -2075,7 +2075,7 @@ except OSError:
   '
   [ "$status" -eq 0 ] \
     || { echo "an unset PROJECT_ROOT exited $status, expected 0: $output"; return 1; }
-  printf '%s' "$output" | grep -q 'CALLER CONTINUED' \
+  grep -q 'CALLER CONTINUED' <<<"$output" \
     || { echo "errexit killed the caller on the unset-PROJECT_ROOT path: $output"; return 1; }
 }
 
@@ -2106,7 +2106,7 @@ except OSError:
 
   [ "$status" -eq 0 ] \
     || { echo "an unreadable sprint file exited $status, expected 0: $output"; return 1; }
-  printf '%s' "$output" | grep -q 'CALLER CONTINUED' \
+  grep -q 'CALLER CONTINUED' <<<"$output" \
     || { echo "errexit killed the caller mid-run: $output"; return 1; }
 }
 
@@ -2122,9 +2122,9 @@ except OSError:
   printf 'stories:\n  - key: K1\n  - key: K2\n' > "$yaml"
   local out
   out="$(ppo_plan_sequential --repo "$TEST_TMP/repo" --yaml "$yaml")"
-  printf '%s' "$out" | grep -q '^K1$' \
+  grep -q '^K1$' <<<"$out" \
     || { echo "roster-order fallback lost K1: $out"; return 1; }
-  printf '%s' "$out" | grep -q '^K2$' \
+  grep -q '^K2$' <<<"$out" \
     || { echo "roster-order fallback lost K2: $out"; return 1; }
 }
 
@@ -2148,7 +2148,7 @@ except OSError:
   '
   [ "$status" -eq 0 ] \
     || { echo "an empty phase list exited $status, expected 0: $output"; return 1; }
-  printf '%s' "$output" | grep -q 'CALLER CONTINUED' \
+  grep -q 'CALLER CONTINUED' <<<"$output" \
     || { echo "errexit killed the caller on an empty phase list: $output"; return 1; }
 }
 
@@ -2192,9 +2192,9 @@ _mk_yaml_raw() {
   '
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
 
-  printf '%s\n' "$output" | grep -q '^story=GOOD outcome=' \
+  grep -q '^story=GOOD outcome=' <<<"$output" \
     || { echo "the valid story GOOD is missing from the ledger: $output"; return 1; }
-  printf '%s\n' "$output" | grep -qE '^story=(aa|bb) outcome=' \
+  grep -qE '^story=(aa|bb) outcome=' <<<"$output" \
     && { echo "a fragment of the split key was reported as its own story: $output"; return 1; }
   return 0
 }
@@ -2219,7 +2219,7 @@ _mk_yaml_raw() {
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
   local k
   for k in OK1 OK2; do
-    printf '%s\n' "$output" | grep -q "^story=${k} outcome=" \
+    grep -q "^story=${k} outcome=" <<<"$output" \
       || { echo "$k completed but is absent from the ledger: $output"; return 1; }
   done
 }
@@ -2241,12 +2241,12 @@ _mk_yaml_raw() {
     ppo_report
   '
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q '^story=REAL outcome=' \
+  grep -q '^story=REAL outcome=' <<<"$output" \
     || { echo "the valid story REAL is missing from the ledger: $output"; return 1; }
   # No fragment of a split key may appear as a story of its own.
   local frag
   for frag in t1 t2 lead trail; do
-    printf '%s\n' "$output" | grep -qE "^story=${frag} outcome=" \
+    grep -qE "^story=${frag} outcome=" <<<"$output" \
       && { echo "phantom story '$frag' reported from a split key: $output"; return 1; }
   done
   return 0
@@ -2275,9 +2275,9 @@ _mk_yaml_raw() {
     ppo_report
   '
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q 'outcome=resume-requeued' \
+  grep -q 'outcome=resume-requeued' <<<"$output" \
     || { echo "the story was never re-dispatched on the resume path: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q '^story=K1 outcome=done$' \
+  grep -q '^story=K1 outcome=done$' <<<"$output" \
     || { echo "K1 did not reach done after its gate closed: $output"; return 1; }
 }
 
@@ -2304,11 +2304,11 @@ _mk_yaml_raw() {
     ppo_report
   '
   [ "$status" -eq 0 ] || { echo "run failed or never terminated: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q 'outcome=not-done' \
+  grep -q 'outcome=not-done' <<<"$output" \
     || { echo "an unclosable gate was not reported as not-done: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q '^story=K1 outcome=merged-not-done$' \
+  grep -q '^story=K1 outcome=merged-not-done$' <<<"$output" \
     || { echo "K1 is not recorded merged-not-done: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q '^story=K1 outcome=done$' \
+  grep -q '^story=K1 outcome=done$' <<<"$output" \
     && { echo "a story with an open gate was recorded done: $output"; return 1; }
   return 0
 }
@@ -2335,8 +2335,8 @@ _mk_yaml_raw() {
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
 
   local k1_done k2_disp
-  k1_done="$(printf '%s\n' "$output" | grep -n 'event=story_complete story=K1 .*outcome=done' | head -1 | cut -d: -f1)"
-  k2_disp="$(printf '%s\n' "$output" | grep -n 'event=dispatched story=K2' | head -1 | cut -d: -f1)"
+  k1_done="$(grep -n 'event=story_complete story=K1 .*outcome=done' <<<"$output" | head -1 | cut -d: -f1)"
+  k2_disp="$(grep -n 'event=dispatched story=K2' <<<"$output" | head -1 | cut -d: -f1)"
   [ -n "$k1_done" ] \
     || { echo "K1 never completed: $output"; return 1; }
   [ -n "$k2_disp" ] \
@@ -2386,9 +2386,9 @@ _mk_yaml_raw() {
 
   # With no headroom at all the run must degrade with the capacity reason, and
   # must NOT report a story as dispatched-and-done as though there were room.
-  printf '%s\n' "$output" | grep -q 'reason=ceiling-cannot-admit' \
+  grep -q 'reason=ceiling-cannot-admit' <<<"$output" \
     || { echo "a registry at the ceiling did not produce ceiling-cannot-admit: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q 'mode=parallel reason=none' \
+  grep -q 'mode=parallel reason=none' <<<"$output" \
     && { echo "the run claimed parallel mode with no ceiling headroom: $output"; return 1; }
   return 0
 }
@@ -2675,7 +2675,7 @@ _mk_yaml_raw() {
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
 
   # The resume path must fire.
-  printf '%s\n' "$output" | grep -q 'outcome=resume-requeued' \
+  grep -q 'outcome=resume-requeued' <<<"$output" \
     || { echo "K1 was not re-queued: $output"; return 1; }
 
   # The counter must be a real value from real events, not a hardcoded constant.
@@ -2714,11 +2714,11 @@ _mk_yaml_raw() {
   [ "$status" -eq 0 ] || { echo "run failed: $output"; return 1; }
 
   # The resume path must fire.
-  printf '%s\n' "$output" | grep -q 'outcome=resume-requeued' \
+  grep -q 'outcome=resume-requeued' <<<"$output" \
     || { echo "the resume re-dispatch never fired: $output"; return 1; }
 
   # And the story must reach done.
-  printf '%s\n' "$output" | grep -q '^story=K1 outcome=done$' \
+  grep -q '^story=K1 outcome=done$' <<<"$output" \
     || { echo "K1 did not reach done via the resume path: $output"; return 1; }
 }
 
@@ -2773,7 +2773,7 @@ _mk_yaml_raw() {
     || { echo "expected the stub's own contract (0) under the test marker: $output"; return 1; }
   grep -q "K1" "$TEST_TMP/stubstate/dispatched.log" \
     || { echo "the stub was never invoked: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=honoured" \
+  grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=honoured" <<<"$output" \
     || { echo "no honoured log line: $output"; return 1; }
 }
 
@@ -2808,9 +2808,9 @@ _mk_yaml_raw() {
 
   [ ! -s "$TEST_TMP/stubstate/dispatched.log" ] \
     || { echo "the stub was invoked with no test marker present: $(cat "$TEST_TMP/stubstate/dispatched.log")"; return 1; }
-  printf '%s\n' "$output" | grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=refused" \
+  grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=refused" <<<"$output" \
     || { echo "no refused log line: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q "run: no bash-drivable dispatcher in this context" \
+  grep -q "run: no bash-drivable dispatcher in this context" <<<"$output" \
     || { echo "expected the no-bash-drivable-dispatcher line once the hook was refused: $output"; return 1; }
 }
 
@@ -2834,7 +2834,7 @@ _mk_yaml_raw() {
 
   [ "$status" -eq 0 ] \
     || { echo "expected the stub's own contract (0) under the explicit marker: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=honoured" \
+  grep -q "event=dispatch_hook cmd=gaia-dispatch-story action=honoured" <<<"$output" \
     || { echo "no honoured log line: $output"; return 1; }
   grep -q "K1" "$TEST_TMP/stubstate/dispatched.log" \
     || { echo "the stub was never invoked despite the explicit marker: $(cat "$TEST_TMP/stubstate/dispatched.log" 2>/dev/null)"; return 1; }
@@ -3122,7 +3122,7 @@ EOF
   # unlike the exit-2 ambiguous case above which refuses outright.
   [ "$rc" -eq 0 ] \
     || { echo "expected a successful admission (default persona) on the exit-1/not-found path, got $rc: $(cat "$TEST_TMP/dispatch.err")"; return 1; }
-  printf '%s\n' "$out" | grep -q '^persona:bash-dev$' \
+  grep -q '^persona:bash-dev$' <<<"$out" \
     || { echo "expected the default persona on the not-found path: $out"; return 1; }
 }
 
@@ -3250,9 +3250,9 @@ EOF
     || { echo "expected 2 dispatch lines with handles for K1 and K2: $out1"; return 1; }
   [ "$k1_handle" != "$k2_handle" ] \
     || { echo "same-persona stories collided on one handle: $k1_handle"; return 1; }
-  printf '%s\n' "$out1" | grep -q '^dispatch story=K3' \
+  grep -q '^dispatch story=K3' <<<"$out1" \
     && { echo "K3 was admitted before a slot freed: $out1"; return 1; }
-  printf '%s\n' "$out1" | grep -q '^dispatch story=K4' \
+  grep -q '^dispatch story=K4' <<<"$out1" \
     && { echo "phase 2 (K4) was admitted while phase 1 is still open: $out1"; return 1; }
 
   # Real registry entries exist for K1 and K2, story-keyed.
@@ -3266,7 +3266,7 @@ EOF
   # Phase 1 is full: another `next` reports the barrier, not a new dispatch.
   local out2
   out2="$(ppo_next)"
-  printf '%s\n' "$out2" | grep -q '^barrier phase=1 waiting=2$' \
+  grep -q '^barrier phase=1 waiting=2$' <<<"$out2" \
     || { echo "expected barrier phase=1 waiting=2 with both slots full: $out2"; return 1; }
 
   # `record K1 done` frees a slot; the VERY NEXT `next` backfills with K3
@@ -3282,7 +3282,7 @@ EOF
     || { echo "K3 was not backfilled after K1 completed: $out3"; return 1; }
   [ "$k3_handle" != "$k1_handle" ] && [ "$k3_handle" != "$k2_handle" ] \
     || { echo "K3 was admitted with a REUSED handle instead of its own: $k3_handle"; return 1; }
-  printf '%s\n' "$out3" | grep -q '^dispatch story=K4' \
+  grep -q '^dispatch story=K4' <<<"$out3" \
     && { echo "phase 2 (K4) was admitted before phase 1 fully drained: $out3"; return 1; }
 
   # Finish K2 and K3; phase 2 (K4) only becomes admittable once BOTH are
@@ -3290,13 +3290,13 @@ EOF
   ppo_record_outcome K2 done >/dev/null
   local out4
   out4="$(ppo_next)"
-  printf '%s\n' "$out4" | grep -q '^dispatch story=K4' \
+  grep -q '^dispatch story=K4' <<<"$out4" \
     && { echo "phase 2 (K4) was admitted while K3 is still running: $out4"; return 1; }
 
   ppo_record_outcome K3 done >/dev/null
   local out5
   out5="$(ppo_next)"
-  printf '%s\n' "$out5" | grep -q '^dispatch story=K4' \
+  grep -q '^dispatch story=K4' <<<"$out5" \
     || { echo "phase 2 (K4) was never admitted once phase 1 fully drained: $out5"; return 1; }
 
   # `record K4 merged`, audited (via the gated test hook -- see
@@ -3318,12 +3318,12 @@ AUDIT
 
   ppo_record_outcome K4 merged >/dev/null
   local ledger; ledger="$(ppo_report)"
-  printf '%s\n' "$ledger" | grep -q '^story=K4 outcome=done$' \
+  grep -q '^story=K4 outcome=done$' <<<"$ledger" \
     && { echo "K4 was recorded done despite the audit flagging it not-done: $ledger"; return 1; }
 
   local out6
   out6="$(ppo_next)"
-  printf '%s\n' "$out6" | grep -q '^dispatch story=K4' \
+  grep -q '^dispatch story=K4' <<<"$out6" \
     || { echo "the re-queued K4 was not re-admitted: $out6"; return 1; }
 }
 
@@ -3343,12 +3343,12 @@ AUDIT
   ppo_plan --repo "$repo" --yaml "$yaml" --slots 2 >/dev/null
   local out; out="$(ppo_next)"
 
-  printf '%s\n' "$out" | grep -q '^mode=sequential reason=mode-b-fallback' \
+  grep -q '^mode=sequential reason=mode-b-fallback' <<<"$out" \
     || { echo "expected a mode-b-fallback degradation from the real rc-7 spawn path: $out"; return 1; }
   # Phase order preserved: K1 (phase 1) named before K2 (phase 2).
   local k1_line k2_line
-  k1_line="$(printf '%s\n' "$out" | grep -n '^event=sequential story=K1$' | head -1 | cut -d: -f1)"
-  k2_line="$(printf '%s\n' "$out" | grep -n '^event=sequential story=K2$' | head -1 | cut -d: -f1)"
+  k1_line="$(grep -n '^event=sequential story=K1$' <<<"$out" | head -1 | cut -d: -f1)"
+  k2_line="$(grep -n '^event=sequential story=K2$' <<<"$out" | head -1 | cut -d: -f1)"
   [ -n "$k1_line" ] && [ -n "$k2_line" ] \
     || { echo "expected both stories in the sequential worklist: $out"; return 1; }
   [ "$k1_line" -lt "$k2_line" ] \
@@ -3425,7 +3425,7 @@ AUDIT
   # elapsed is computed against a FRESH `date +%s` inside ppo_status, so
   # assert on the boundary condition (overdue=0) rather than an exact
   # elapsed value that could drift by a second under real clock skew.
-  printf '%s\n' "$output" | grep -qE '^running story=K1 elapsed=(99|100) budget=100 overdue=0$' \
+  grep -qE '^running story=K1 elapsed=(99|100) budget=100 overdue=0$' <<<"$output" \
     || { echo "expected overdue=0 at the elapsed==budget boundary: $output"; return 1; }
 }
 
@@ -3447,7 +3447,7 @@ AUDIT
 
   run ppo_status
   [ "$status" -eq 0 ] || { echo "ppo_status exited non-zero: $output"; return 1; }
-  printf '%s\n' "$output" | grep -qE '^running story=K1 elapsed=(101|102) budget=100 overdue=1$' \
+  grep -qE '^running story=K1 elapsed=(101|102) budget=100 overdue=1$' <<<"$output" \
     || { echo "expected overdue=1 one second past the budget: $output"; return 1; }
 }
 
@@ -3470,7 +3470,7 @@ AUDIT
 
   run ppo_status
   [ "$status" -eq 0 ] || { echo "ppo_status exited non-zero on a missing dispatched_at: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q '^running story=K1 elapsed=0 budget=100 overdue=1$' \
+  grep -q '^running story=K1 elapsed=0 budget=100 overdue=1$' <<<"$output" \
     || { echo "expected overdue=1 (unknown start time), got: $output"; return 1; }
 }
 
@@ -3505,9 +3505,9 @@ AUDIT
   run ppo_status
   [ "$status" -eq 0 ] \
     || { echo "ppo_status crashed on a garbage dispatched_at instead of refusing the one field: $output"; return 1; }
-  printf '%s\n' "$output" | grep -q '^running story=K1 elapsed=0 budget=100 overdue=1$' \
+  grep -q '^running story=K1 elapsed=0 budget=100 overdue=1$' <<<"$output" \
     || { echo "expected K1 (garbage dispatched_at) reported overdue=1, got: $output"; return 1; }
-  printf '%s\n' "$output" | grep -qE '^running story=K2 elapsed=[01] budget=100 overdue=0$' \
+  grep -qE '^running story=K2 elapsed=[01] budget=100 overdue=0$' <<<"$output" \
     || { echo "expected K2 (healthy dispatched_at) still reported correctly: $output"; return 1; }
 }
 
@@ -3523,7 +3523,7 @@ AUDIT
   # back to the silent default without any of them noticing.
   local body
   body="$(sed -n '/^ppo_status() {/,/^}/p' "$ORCH")"
-  printf '%s\n' "$body" | grep -q 'event=status_field_refused' \
+  grep -q 'event=status_field_refused' <<<"$body" \
     || { echo "ppo_status no longer refuses an invalid dispatched_at with a logged reason"; return 1; }
 }
 
@@ -3639,7 +3639,7 @@ AUDIT
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local body
   body="$(sed -n '/^_ppo_record_outcome_locked() {/,/^}/p' "$ORCH")"
-  printf '%s\n' "$body" | grep -q '_ppo_validate_key "\$key"' \
+  grep -q '_ppo_validate_key "\$key"' <<<"$body" \
     || { echo "_ppo_record_outcome_locked no longer validates its key argument before building a path"; return 1; }
 }
 
@@ -3713,7 +3713,7 @@ AUDIT
     body="$(sed -n "/^${fn}() {/,/^}/p" "$ORCH")"
     [ -n "$body" ] \
       || { echo "could not locate the ${fn} function body in $ORCH"; return 1; }
-    printf '%s\n' "$body" | grep -q '_ppo_validate_key "\${1:-}"' \
+    grep -q '_ppo_validate_key "\${1:-}"' <<<"$body" \
       || { echo "${fn} no longer validates its key argument before building a path"; return 1; }
   done
 }
@@ -3789,10 +3789,10 @@ STUB
   local body
   body="$(sed -n '/^_ppo_record_outcome_locked() {/,/^}/p' "$ORCH")"
   for lit in done failed timeout merged; do
-    printf '%s\n' "$body" | grep -qE "^\s*${lit}\)" \
+    grep -qE "^\s*${lit}\)" <<<"$body" \
       || { echo "expected a case arm for '${lit}' in _ppo_record_outcome_locked"; return 1; }
   done
-  printf '%s\n' "$body" | grep -qE '^\s*merged-not-done\)' \
+  grep -qE '^\s*merged-not-done\)' <<<"$body" \
     && { echo "merged-not-done must not be a case arm in the CLI-reachable outcome vocabulary"; return 1; }
   true
 }
@@ -3965,9 +3965,9 @@ _kill_probe_group() {
   _source_orch || { echo "orchestrator not implemented: $ORCH"; return 1; }
   local body
   body="$(sed -n '/^ppo_run_sprint() {/,/^}/p' "$ORCH")"
-  printf '%s\n' "$body" | grep -q 'run-pgids' \
+  grep -q 'run-pgids' <<<"$body" \
     || { echo "expected ppo_run_sprint to reference run-pgids at all"; return 1; }
-  printf '%s\n' "$body" | grep -qE 'grep .*-v.*run-pgids|run-pgids.*\.tmp' \
+  grep -qE 'grep .*-v.*run-pgids|run-pgids.*\.tmp' <<<"$body" \
     && { echo "ppo_run_sprint still contains a read-modify-write against run-pgids -- must be append-only"; return 1; }
   true
 }
@@ -4133,8 +4133,8 @@ _kill_probe_group() {
   fi
 
   local ledger; ledger="$(ppo_report)"
-  printf '%s\n' "$ledger" | grep -q '^story=K1 outcome=failed$' \
+  grep -q '^story=K1 outcome=failed$' <<<"$ledger" \
     || { echo "K1 was not recorded failed: $ledger"; return 1; }
-  printf '%s\n' "$ledger" | grep -q '^story=K2 outcome=slot-timeout$' \
+  grep -q '^story=K2 outcome=slot-timeout$' <<<"$ledger" \
     || { echo "K2 was not recorded slot-timeout: $ledger"; return 1; }
 }

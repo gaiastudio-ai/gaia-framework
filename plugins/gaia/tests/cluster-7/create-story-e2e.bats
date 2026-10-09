@@ -100,7 +100,7 @@ _sha256() {
     [ -n "$output" ]
     # At least one flag of the shape `--<word>` must appear somewhere in help
     # output (either as a flag declaration or in a usage example).
-    echo "$output" | grep -q -- '--[a-zA-Z]'
+    grep -q -- '--[a-zA-Z]' <<<"$output"
   done
 }
 

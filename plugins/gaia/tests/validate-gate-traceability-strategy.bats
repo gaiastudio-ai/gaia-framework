@@ -126,7 +126,7 @@ teardown() { common_teardown; }
   run "$SCRIPT" --list
   [ "$status" -eq 0 ]
   # Find the traceability_exists row and assert it mentions strategy/.
-  trace_row=$(printf '%s\n' "$output" | awk '$1 == "traceability_exists" { print; exit }')
+  trace_row=$(awk '$1 == "traceability_exists" { print; exit }' <<<"$output")
   [ -n "$trace_row" ]
   [[ "$trace_row" == *"strategy/traceability-matrix.md"* ]]
 }
@@ -197,7 +197,7 @@ teardown() { common_teardown; }
 @test "list output mentions strategy/ placement for test_plan_exists" {
   run "$SCRIPT" --list
   [ "$status" -eq 0 ]
-  plan_row=$(printf '%s\n' "$output" | awk '$1 == "test_plan_exists" { print; exit }')
+  plan_row=$(awk '$1 == "test_plan_exists" { print; exit }' <<<"$output")
   [ -n "$plan_row" ]
   [[ "$plan_row" == *"strategy/test-plan.md"* ]]
 }

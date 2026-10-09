@@ -115,7 +115,7 @@ gaia-test-design gaia-threat-model gaia-validate-prd"
 @test "validator exits 0 when every WorkerSpawn skill complies" {
   run "$VALIDATOR" --plugin-root "$PLUGIN_ROOT"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "CLEAN"
+  grep -q "CLEAN" <<<"$output"
 }
 
 @test "validator fails when a skill's memory-loader invocation is missing" {
@@ -133,7 +133,7 @@ gaia-test-design gaia-threat-model gaia-validate-prd"
 
   run "$VALIDATOR" --plugin-root "$tmp_root"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "gaia-create-arch"
+  grep -q "gaia-create-arch" <<<"$output"
 
   rm -rf "$tmp_root"
 }
@@ -150,7 +150,7 @@ gaia-test-design gaia-threat-model gaia-validate-prd"
 
   run "$VALIDATOR" --plugin-root "$tmp_root"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "gaia-threat-model"
+  grep -q "gaia-threat-model" <<<"$output"
 
   rm -rf "$tmp_root"
 }
@@ -194,9 +194,9 @@ YAML
   "
   [ "$status" -eq 0 ]
   # Must include all three expected triples.
-  echo "$output" | grep -qF $'fake-skill-a\tvalidator\tdecision-log'
-  echo "$output" | grep -qF $'fake-skill-b\tarchitect\tall'
-  echo "$output" | grep -qF $'fake-skill-b\tpm\tground-truth'
+  grep -qF $'fake-skill-a\tvalidator\tdecision-log' <<<"$output"
+  grep -qF $'fake-skill-b\tarchitect\tall' <<<"$output"
+  grep -qF $'fake-skill-b\tpm\tground-truth' <<<"$output"
 
   rm -rf "$tmp_dir"
 }

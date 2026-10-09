@@ -102,14 +102,14 @@ STORY
   _seed_legacy active
   run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qF "stale legacy sprint-status.yaml"
-  ! echo "$output" | grep -qF "remove it to avoid divergence"
-  ! echo "$output" | grep -qF "shadows the canonical"
+  ! grep -qF "stale legacy sprint-status.yaml" <<<"$output"
+  ! grep -qF "remove it to avoid divergence" <<<"$output"
+  ! grep -qF "shadows the canonical" <<<"$output"
 }
 
 @test "issue #1109 (deprecated): no WARNING when only the canonical copy exists" {
   _seed_canonical closed
   run env PROJECT_PATH="$TEST_TMP" bash "$SPRINT_STATE" reconcile --dry-run
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qF "stale legacy sprint-status.yaml"
+  ! grep -qF "stale legacy sprint-status.yaml" <<<"$output"
 }

@@ -233,7 +233,7 @@ HEADER
   _load_aiw
   run aiw_validate_classification "unknown-type"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q "unknown-type"
+  grep -q "unknown-type" <<<"$output"
 }
 
 @test "aiw_validate_classification: rejects empty string" {
@@ -250,29 +250,29 @@ HEADER
   _load_aiw
   local got
   got="$(aiw_build_entry "AI-5" "sprint-25" "process" "Deferred story" "story_key" "E99-S9")"
-  echo "$got" | grep -q 'id: "AI-5"'
-  echo "$got" | grep -q 'sprint_id: "sprint-25"'
-  echo "$got" | grep -q 'classification: "process"'
-  echo "$got" | grep -q 'status: "open"'
-  echo "$got" | grep -q 'escalation_count: 0'
-  echo "$got" | grep -q 'story_key: "E99-S9"'
-  echo "$got" | grep -q 'text: "Deferred story"'
-  echo "$got" | grep -q 'created_at:'
+  grep -q 'id: "AI-5"' <<<"$got"
+  grep -q 'sprint_id: "sprint-25"' <<<"$got"
+  grep -q 'classification: "process"' <<<"$got"
+  grep -q 'status: "open"' <<<"$got"
+  grep -q 'escalation_count: 0' <<<"$got"
+  grep -q 'story_key: "E99-S9"' <<<"$got"
+  grep -q 'text: "Deferred story"' <<<"$got"
+  grep -q 'created_at:' <<<"$got"
 }
 
 @test "aiw_build_entry: uses finding_id reference for triage entries (AC2)" {
   _load_aiw
   local got
   got="$(aiw_build_entry "AI-1" "sprint-25" "bug" "Bug found" "finding_id" "F-001")"
-  echo "$got" | grep -q 'finding_id: "F-001"'
-  ! echo "$got" | grep -q 'story_key:'
+  grep -q 'finding_id: "F-001"' <<<"$got"
+  ! grep -q 'story_key:' <<<"$got"
 }
 
 @test "aiw_build_entry: includes theme_hash as sha256 hex" {
   _load_aiw
   local got
   got="$(aiw_build_entry "AI-1" "sprint-25" "process" "Test text" "story_key" "E1-S1")"
-  echo "$got" | grep -q 'theme_hash: "sha256:'
+  grep -q 'theme_hash: "sha256:' <<<"$got"
 }
 
 @test "aiw_build_entry: created_at is ISO 8601 format" {
@@ -280,7 +280,7 @@ HEADER
   local got
   got="$(aiw_build_entry "AI-1" "sprint-25" "process" "Test" "story_key" "E1-S1")"
   # Match ISO 8601 pattern: YYYY-MM-DDTHH:MM:SSZ
-  echo "$got" | grep -qE 'created_at: "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"'
+  grep -qE 'created_at: "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"' <<<"$got"
 }
 
 # ===========================================================================
@@ -392,7 +392,7 @@ HEADER
     --classification "mystery" --text "Unknown type" \
     --ref-key "finding_id" --ref-value "F-999"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q "mystery"
+  grep -q "mystery" <<<"$output"
   # No entry should have been written
   [ ! -e "$target" ] || ! grep -q 'finding_id: "F-999"' "$target"
 }
@@ -433,7 +433,7 @@ HEADER
   got="$(aiw_write --target "$target" --sprint-id "sprint-25" \
     --classification "process" --text "Test" \
     --ref-key "story_key" --ref-value "E1-S1")"
-  echo "$got" | grep -q "status=ok"
+  grep -q "status=ok" <<<"$got"
 }
 
 @test "aiw_write: outputs status=skipped_idempotent on dedup hit" {
@@ -447,7 +447,7 @@ HEADER
   got="$(aiw_write --target "$target" --sprint-id "sprint-25" \
     --classification "process" --text "Test again" \
     --ref-key "story_key" --ref-value "E1-S1")"
-  echo "$got" | grep -q "status=skipped_idempotent"
+  grep -q "status=skipped_idempotent" <<<"$got"
 }
 
 @test "aiw_write: missing --target argument halts with error" {

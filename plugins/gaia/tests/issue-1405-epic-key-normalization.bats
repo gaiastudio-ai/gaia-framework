@@ -66,7 +66,7 @@ teardown() { common_teardown; }
 @test "issue-1405: --reconcile-only succeeds when epic: holds the full title" {
   run "$TRANSITION" E14-S11 --reconcile-only
   [ "$status" -eq 0 ] || { echo "exit=$status output=$output"; false; }
-  ! printf '%s\n' "$output" | grep -q 'resolve_epic_slug failed'
+  ! grep -q 'resolve_epic_slug failed' <<<"$output"
 }
 
 @test "issue-1405: the per-epic story-index.yaml is created under the resolved epic slug" {

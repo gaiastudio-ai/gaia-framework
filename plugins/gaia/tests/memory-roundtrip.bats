@@ -59,10 +59,10 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 
   # ISO 8601 UTC timestamp format is present.
-  echo "$output" | grep -qE '\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\]'
+  grep -qE '\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\]' <<<"$output"
   # The exact timestamp the writer stored is what the reader returns.
   local ts
-  ts="$(printf '%s\n' "$on_disk" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' | head -n 1)"
+  ts="$(grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' <<<"$on_disk" | head -n 1)"
   [ -n "$ts" ]
   [[ "$output" == *"$ts"* ]]
   # Source workflow and agent id are preserved unchanged.

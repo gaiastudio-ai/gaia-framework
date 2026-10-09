@@ -50,7 +50,7 @@ _has_pyyaml() {
   # contributes no link; the link here comes purely from the epics-prose
   # Allocates row for E777-S2.
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '^unlinked: false$'
+  grep -q '^unlinked: false$' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ _has_pyyaml() {
     --matrix "$MATRIX" \
     --frontmatter "$FIX/story-frontmatter-zerolink.md"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '^unlinked: false$'
+  grep -q '^unlinked: false$' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ _has_pyyaml() {
     --matrix /dev/null \
     --frontmatter "$FM_EMPTY"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '^unlinked: false$'
+  grep -q '^unlinked: false$' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ _has_pyyaml() {
     --matrix /dev/null \
     --frontmatter "$FM_TRACES"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '^unlinked: false$'
+  grep -q '^unlinked: false$' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -114,8 +114,8 @@ _has_pyyaml() {
     --matrix "$MATRIX" \
     --frontmatter "$FM_ZERO"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '^edges: \[\]$'
-  printf '%s\n' "$output" | grep -q '^unlinked: true$'
+  grep -q '^edges: \[\]$' <<<"$output"
+  grep -q '^unlinked: true$' <<<"$output"
 }
 
 @test "a zero-link node is emitted, never dropped, and exits 0" {
@@ -128,5 +128,5 @@ _has_pyyaml() {
   [ "$status" -eq 0 ]
   # The fragment is non-empty (the node is emitted, not silently dropped).
   [ -n "$output" ]
-  printf '%s\n' "$output" | grep -q '^unlinked:'
+  grep -q '^unlinked:' <<<"$output"
 }

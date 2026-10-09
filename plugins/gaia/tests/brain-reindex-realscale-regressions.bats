@@ -81,7 +81,7 @@ EOF
   run bash "$REINDEX"
   [ "$status" -eq 0 ]
   # The sweep must NOT have aborted with the overflow error.
-  ! printf '%s' "$output" | grep -q 'File name too long'
+  ! grep -q 'File name too long' <<<"$output"
   # The manifest installed and the deep artifact is indexed by its path key.
   [ -f "$MANIFEST" ]
   grep -q 'security-review-E700-S1-with-a-long-report-basename-cccccccc' "$MANIFEST"
@@ -120,7 +120,7 @@ EOF
   # ScannerError ("mapping values are not allowed here") here.
   run python3 -c "import yaml,sys; yaml.safe_load(open('$MANIFEST')); print('PARSED')"
   [ "$status" -eq 0 ]
-  printf '%s' "$output" | grep -q 'PARSED'
+  grep -q 'PARSED' <<<"$output"
   # And the colon-laden target is present and intact in the manifest.
   grep -q 'Review System v2: Tool Adapter Framework' "$MANIFEST"
 }

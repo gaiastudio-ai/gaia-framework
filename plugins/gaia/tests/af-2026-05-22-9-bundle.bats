@@ -100,7 +100,7 @@ teardown() { common_teardown; }
   run env SPRINT_STATUS_YAML="$tmp/sprint-status.yaml" \
     bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --sprint-id sprint-8
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF 'already exists'
+  grep -qF 'already exists' <<<"$output"
 }
 
 # --- Bug 9: set-goals replaces goals: [] (end-to-end) ---

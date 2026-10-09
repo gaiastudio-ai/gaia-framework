@@ -42,7 +42,7 @@ teardown() { common_teardown; }
   local vc
   vc="$(jq -r '.tools.spotbugs.version_cmd' "$REGISTRY")"
   # Must pipe through a version-extracting filter, not the raw banner.
-  printf '%s\n' "$vc" | grep -qE 'grep -oE'
+  grep -qE 'grep -oE' <<<"$vc"
 }
 
 @test "issue-1304: the version_cmd's extraction tail yields 4.8.3 from a banner" {

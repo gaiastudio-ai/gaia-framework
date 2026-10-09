@@ -87,9 +87,9 @@ snapshot_files() {
   [[ "$output" =~ "E92-S3" ]]
   [[ "$output" =~ "E93-S1" ]]
   # Order: E92-S2 before E92-S3 before E93-S1
-  s2_line=$(printf '%s\n' "$output" | grep -n 'E92-S2' | head -1 | cut -d: -f1)
-  s3_line=$(printf '%s\n' "$output" | grep -n 'E92-S3' | head -1 | cut -d: -f1)
-  d1_line=$(printf '%s\n' "$output" | grep -n 'E93-S1' | head -1 | cut -d: -f1)
+  s2_line=$(grep -n 'E92-S2' <<<"$output" | head -1 | cut -d: -f1)
+  s3_line=$(grep -n 'E92-S3' <<<"$output" | head -1 | cut -d: -f1)
+  d1_line=$(grep -n 'E93-S1' <<<"$output" | head -1 | cut -d: -f1)
   [ -n "$s2_line" ]
   [ -n "$s3_line" ]
   [ -n "$d1_line" ]
@@ -103,7 +103,7 @@ snapshot_files() {
   [ "$status" -eq 0 ]
   # Stranded-ready section header should appear, then check each decoy is NOT
   # inside the stranded section. We carve the stranded section out by line range.
-  stranded_start=$(printf '%s\n' "$output" | grep -n 'Stranded ready stories' | head -1 | cut -d: -f1)
+  stranded_start=$(grep -n 'Stranded ready stories' <<<"$output" | head -1 | cut -d: -f1)
   [ -n "$stranded_start" ]
   stranded_block=$(printf '%s\n' "$output" | tail -n +"$stranded_start")
   # In-progress decoy E92-S1 must NOT be in the stranded section

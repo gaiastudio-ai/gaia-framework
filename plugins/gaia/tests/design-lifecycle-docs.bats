@@ -431,7 +431,7 @@ CMDS_END
 
   local missing=0
   for href in "${SIDEBAR_BASELINE[@]}"; do
-    if ! echo "$current_hrefs" | grep -qxF "$href"; then
+    if ! grep -qxF "$href" <<<"$current_hrefs"; then
       echo "MISSING: pre-existing sidebar link '$href'" >&2
       missing=$((missing + 1))
     fi
@@ -590,7 +590,7 @@ CMDS_END
   [ -n "$pub_section" ] || {
     echo "FAIL: no publication section found in design-lifecycle.html" >&2; return 1
   }
-  printf '%s' "$pub_section" | grep -qiE 'design-last-published|persisted manifest|persist' || {
+  grep -qiE 'design-last-published|persisted manifest|persist' <<<"$pub_section" || {
     echo "FAIL: publication section should describe the persisted manifest" >&2; return 1
   }
 }
@@ -616,10 +616,10 @@ CMDS_END
   }
 
   # Must mention "screen" and "reported" (not auto-edited)
-  printf '%s' "$delta_li" | grep -qi 'screen' || {
+  grep -qi 'screen' <<<"$delta_li" || {
     echo "FAIL: delta sync step should mention screen changes: $delta_li" >&2; return 1
   }
-  printf '%s' "$delta_li" | grep -qiE 'report|manual' || {
+  grep -qiE 'report|manual' <<<"$delta_li" || {
     echo "FAIL: delta sync step should mention that screen changes are reported: $delta_li" >&2; return 1
   }
 }
@@ -636,10 +636,10 @@ CMDS_END
   [ -n "$block" ] || {
     echo "FAIL: no Publication step block in SKILL.md" >&2; return 1
   }
-  printf '%s' "$block" | grep -qiF 'sha256' || {
+  grep -qiF 'sha256' <<<"$block" || {
     echo "FAIL: Publication step should mention sha256 hash computation" >&2; return 1
   }
-  printf '%s' "$block" | grep -qF 'get_file' || {
+  grep -qF 'get_file' <<<"$block" || {
     echo "FAIL: Publication step should mention get_file for hash computation" >&2; return 1
   }
 }

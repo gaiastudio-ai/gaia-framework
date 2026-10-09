@@ -1326,18 +1326,18 @@ WRAPPER
     body="$(_extract_fn_body "$func" "$script")"
 
     # The function must call _locked_mutate
-    printf '%s' "$body" | grep -q '_locked_mutate' || {
+    grep -q '_locked_mutate' <<<"$body" || {
       fail_list="${fail_list}${func} does not call _locked_mutate\n"; continue; }
 
     local mutate_line
-    mutate_line="$(printf '%s' "$body" | grep -n '_locked_mutate' | head -1 | cut -d: -f1)"
+    mutate_line="$(grep -n '_locked_mutate' <<<"$body" | head -1 | cut -d: -f1)"
 
     # Each required validator must appear before _locked_mutate
     local v
     IFS=',' read -ra v_arr <<< "$validators"
     for v in "${v_arr[@]}"; do
       local v_line
-      v_line="$(printf '%s' "$body" | grep -n "$v" | head -1 | cut -d: -f1)"
+      v_line="$(grep -n "$v" <<<"$body" | head -1 | cut -d: -f1)"
       if [ -z "$v_line" ]; then
         fail_list="${fail_list}${func} missing required validator: $v\n"
       elif [ "$v_line" -gt "$mutate_line" ]; then
@@ -2675,7 +2675,7 @@ STAKE
   local missing_line
   missing_line="$(printf '%s\n' "$output" | grep 'missing:' || true)"
   [ -n "$missing_line" ] || fail "expected a 'missing:' line in output, got: $output"
-  printf '%s\n' "$missing_line" | grep -qw 'valid' || \
+  grep -qw 'valid' <<<"$missing_line" || \
     fail "expected 'valid' as whole word in missing list, got: $missing_line"
   [[ "$output" == *"not-converged"* ]] || \
     fail "expected not-converged output, got: $output"
@@ -3213,14 +3213,14 @@ setup_file() {
     fail "release_lock outside trap: $release_lines"
 
   # _verify_chain appears inside the subshell
-  printf '%s' "$fn_body" | grep -qF '_verify_chain' || \
+  grep -qF '_verify_chain' <<<"$fn_body" || \
     fail "_verify_chain not found in _locked_mutate"
 
   # _verify_chain after acquire_lock, before "$callback"
   local verify_line acquire_line callback_line
-  acquire_line="$(printf '%s' "$fn_body" | grep -n 'acquire_lock' | head -1 | cut -d: -f1)"
-  verify_line="$(printf '%s' "$fn_body" | grep -n '_verify_chain' | head -1 | cut -d: -f1)"
-  callback_line="$(printf '%s' "$fn_body" | grep -n '"$callback"' | head -1 | cut -d: -f1)"
+  acquire_line="$(grep -n 'acquire_lock' <<<"$fn_body" | head -1 | cut -d: -f1)"
+  verify_line="$(grep -n '_verify_chain' <<<"$fn_body" | head -1 | cut -d: -f1)"
+  callback_line="$(grep -n '"$callback"' <<<"$fn_body" | head -1 | cut -d: -f1)"
   [ "$verify_line" -gt "$acquire_line" ] || \
     fail "_verify_chain (line $verify_line) not after acquire_lock (line $acquire_line)"
   [ "$verify_line" -lt "$callback_line" ] || \

@@ -518,9 +518,9 @@ SH
   run "$CHECK_SCRIPT" --root "$TEST_TMP"
   [ "$status" -eq 0 ]
   # Neither forward-pass nor reverse-pass WARNING for "4. Functional Requirements".
-  ! echo "$output" | grep -q 'section "4. Functional Requirements" present in'
-  ! echo "$output" | grep -q 'section "4. Functional Requirements — Sub-Sharded"'
-  ! echo "$output" | grep -q 'section "4. Functional Requirements" diverges'
+  ! grep -q 'section "4. Functional Requirements" present in' <<<"$output"
+  ! grep -q 'section "4. Functional Requirements — Sub-Sharded"' <<<"$output"
+  ! grep -q 'section "4. Functional Requirements" diverges' <<<"$output"
 }
 
 @test "marker-shard without sibling dir KEEPS the WARNING (corruption signal)" {
@@ -543,7 +543,7 @@ SH
   [ "$status" -eq 0 ]
   # The `— Sub-Sharded` suffix in the shard title doesn't match the
   # monolith H2 — reverse-pass WARNING fires because the pair is incomplete.
-  echo "$output" | grep -q "WARNING: prd"
+  grep -q "WARNING: prd" <<<"$output"
 }
 
 @test "_strip_sub_sharded_suffix strips em-dash + literal token" {
@@ -580,5 +580,5 @@ SH
   run "$CHECK_SCRIPT" --root "$TEST_TMP"
   [ "$status" -eq 0 ]
   # Synced flat layout — no WARNINGs at all.
-  ! echo "$output" | grep -q "WARNING: prd"
+  ! grep -q "WARNING: prd" <<<"$output"
 }

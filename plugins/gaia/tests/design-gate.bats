@@ -870,7 +870,7 @@ STAKE
   _ns_now() {
     local ts
     ts="$(date +%s%N 2>/dev/null)" || true
-    if printf '%s' "$ts" | grep -Eq '^[0-9]+$'; then
+    if grep -Eq '^[0-9]+$' <<<"$ts"; then
       printf '%s' "$ts"
     else
       python3 -c 'import time; print(int(time.time()*1e9))'
@@ -1996,12 +1996,12 @@ EOF
 
   [ "$status" -eq 1 ] || fail "gate should halt on stale record"
   local out="${output//$TEST_TMP/}"
-  echo "$out" | grep -qi 'stale' || fail "halt should name stale state"
-  echo "$out" | grep -qi '/gaia-design-review' || fail "halt should mention /gaia-design-review"
-  if echo "$out" | grep -q '(integration:'; then
+  grep -qi 'stale' <<<"$out" || fail "halt should name stale state"
+  grep -qi '/gaia-design-review' <<<"$out" || fail "halt should mention /gaia-design-review"
+  if grep -q '(integration:' <<<"$out"; then
     fail "gate should not include integration diagnosis"
   fi
-  if ! echo "$out" | grep -qi 'if claude design is not connected'; then
+  if ! grep -qi 'if claude design is not connected' <<<"$out"; then
     fail "conditional integration clause should be present"
   fi
   local count
@@ -2025,15 +2025,15 @@ EOF
 
   [ "$status" -eq 1 ] || fail "gate should halt on absent record"
   local out="${output//$TEST_TMP/}"
-  echo "$out" | grep -qi 'absent' || fail "halt should name absent state"
-  echo "$out" | grep -qi 'gaia-create-ux' || fail "halt should mention /gaia-create-ux"
-  if echo "$out" | grep -q '(integration: missing)'; then
+  grep -qi 'absent' <<<"$out" || fail "halt should name absent state"
+  grep -qi 'gaia-create-ux' <<<"$out" || fail "halt should mention /gaia-create-ux"
+  if grep -q '(integration: missing)' <<<"$out"; then
     fail "gate should not include direct integration diagnosis"
   fi
-  if echo "$out" | grep -q '(integration: unauthorized)'; then
+  if grep -q '(integration: unauthorized)' <<<"$out"; then
     fail "gate should not include direct integration diagnosis"
   fi
-  if ! echo "$out" | grep -qi 'if claude design is not connected'; then
+  if ! grep -qi 'if claude design is not connected' <<<"$out"; then
     fail "conditional integration clause should be present"
   fi
   local count
@@ -2110,15 +2110,15 @@ EOF
   [ -n "$block" ] || fail "could not extract text between design-gate begin/end markers"
 
   # Must contain the four required items
-  echo "$block" | grep -q 'design-record.sh status' \
+  grep -q 'design-record.sh status' <<<"$block" \
     || fail "block should reference 'design-record.sh status'; got: $block"
-  echo "$block" | grep -qi 'plan brief' \
+  grep -qi 'plan brief' <<<"$block" \
     || fail "block should mention 'plan brief'; got: $block"
-  echo "$block" | grep -q 'reason' \
+  grep -q 'reason' <<<"$block" \
     || fail "block should mention 'reason'; got: $block"
-  echo "$block" | grep -q 'ux-design.md' \
+  grep -q 'ux-design.md' <<<"$block" \
     || fail "block should reference 'ux-design.md'; got: $block"
-  echo "$block" | grep -qi 'outdated' \
+  grep -qi 'outdated' <<<"$block" \
     || fail "block should mention 'outdated'; got: $block"
 }
 

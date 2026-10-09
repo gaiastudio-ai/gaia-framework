@@ -95,8 +95,8 @@ EOF
   local count
   count="$(printf '%s\n' "$got" | grep -c .)"
   [ "$count" -eq 2 ]
-  echo "$got" | grep -q "AI-1"
-  echo "$got" | grep -q "AI-2"
+  grep -q "AI-1" <<<"$got"
+  grep -q "AI-2" <<<"$got"
 }
 
 @test "esch_scan: returns empty on missing file (AC4)" {
@@ -110,7 +110,7 @@ EOF
   _load_esch_helpers
   local err
   err="$(esch_scan "$TEST_TMP/nonexistent.yaml" 2>&1 >/dev/null)"
-  echo "$err" | grep -q "action-items.yaml not found"
+  grep -q "action-items.yaml not found" <<<"$err"
 }
 
 @test "esch_scan: returns empty on empty file (AC4)" {
@@ -138,7 +138,7 @@ EOF
   local got
   got="$(esch_scan "$yaml")"
   # Expected: AI-42|My title|HIGH|open|3
-  echo "$got" | grep -q "^AI-42|My title|HIGH|open|3$"
+  grep -q "^AI-42|My title|HIGH|open|3$" <<<"$got"
 }
 
 # ===========================================================================
@@ -156,11 +156,11 @@ EOF
     "AI-5|Fifth|HIGH|open|3")
   local got
   got="$(printf '%s\n' "$records" | esch_filter_blocking)"
-  echo "$got" | grep -q "AI-1"
-  echo "$got" | grep -q "AI-5"
-  ! echo "$got" | grep -q "AI-2"
-  ! echo "$got" | grep -q "AI-3"
-  ! echo "$got" | grep -q "AI-4"
+  grep -q "AI-1" <<<"$got"
+  grep -q "AI-5" <<<"$got"
+  ! grep -q "AI-2" <<<"$got"
+  ! grep -q "AI-3" <<<"$got"
+  ! grep -q "AI-4" <<<"$got"
 }
 
 @test "esch_filter_blocking: empty input produces empty output" {
@@ -205,12 +205,12 @@ EOF
     "AI-77|Another item|HIGH|open|3")
   local got
   got="$(printf '%s\n' "$records" | esch_format_halt_message)"
-  echo "$got" | grep -q "AI-42"
-  echo "$got" | grep -q "Long-running item"
-  echo "$got" | grep -q "AI-77"
+  grep -q "AI-42" <<<"$got"
+  grep -q "Long-running item" <<<"$got"
+  grep -q "AI-77" <<<"$got"
   # escalation_count visible
-  echo "$got" | grep -q "2"
-  echo "$got" | grep -q "3"
+  grep -q "2" <<<"$got"
+  grep -q "3" <<<"$got"
 }
 
 @test "esch_format_halt_message: includes exit guidance referencing /gaia-action-items" {
@@ -219,7 +219,7 @@ EOF
   records=$(printf '%s\n' "AI-42|Long-running item|HIGH|open|2")
   local got
   got="$(printf '%s\n' "$records" | esch_format_halt_message)"
-  echo "$got" | grep -q "/gaia-action-items"
+  grep -q "/gaia-action-items" <<<"$got"
 }
 
 @test "esch_format_halt_message: mentions override flag" {
@@ -228,7 +228,7 @@ EOF
   records=$(printf '%s\n' "AI-42|Long-running item|HIGH|open|2")
   local got
   got="$(printf '%s\n' "$records" | esch_format_halt_message)"
-  echo "$got" | grep -q "override-escalation-halt"
+  grep -q "override-escalation-halt" <<<"$got"
 }
 
 @test "esch_format_halt_message: shows priority: HIGH in each row (AC2)" {
@@ -237,7 +237,7 @@ EOF
   records=$(printf '%s\n' "AI-42|T|HIGH|open|2")
   local got
   got="$(printf '%s\n' "$records" | esch_format_halt_message)"
-  echo "$got" | grep -q "HIGH"
+  grep -q "HIGH" <<<"$got"
 }
 
 # ===========================================================================
@@ -348,8 +348,8 @@ EOF
   _make_sprint_status_yaml "$ss"
   run esch_check_blocking "$ai" "$ss"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "AI-42"
-  echo "$output" | grep -q "/gaia-action-items"
+  grep -q "AI-42" <<<"$output"
+  grep -q "/gaia-action-items" <<<"$output"
 }
 
 @test "esch_check_blocking: exit 0 when blocking items have recorded override (AC3 idempotency)" {
@@ -379,7 +379,7 @@ EOF
   run esch_check_blocking "$TEST_TMP/missing.yaml" "$ss"
   [ "$status" -eq 0 ]
   # Warning surfaces on stderr (captured into $output by bats run)
-  echo "$output" | grep -q "action-items.yaml not found"
+  grep -q "action-items.yaml not found" <<<"$output"
 }
 
 @test "esch_check_blocking: GAIA_ESCALATION_HALT=off kill switch bypasses halt" {
@@ -565,7 +565,7 @@ _load_sprint_state_override_helpers() {
 
   run do_record_override_locked "AI-42" "alice" "ack"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "missing or empty"
+  grep -q "missing or empty" <<<"$output"
 }
 
 @test "do_record_override_locked: dies on empty ids after normalization" {
@@ -580,5 +580,5 @@ _load_sprint_state_override_helpers() {
 
   run do_record_override_locked ",," "alice" "ack"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "empty list"
+  grep -q "empty list" <<<"$output"
 }

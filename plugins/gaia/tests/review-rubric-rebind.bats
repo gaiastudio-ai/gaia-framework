@@ -124,8 +124,8 @@ extract_design_consumption_section() {
   local block
   block="$(extract_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "design-record" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "fidelity" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "design-record" <<<"$block" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "fidelity" <<<"$block" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
 }
 
 @test "(AC2) performance-review SKILL.md contains design-record reference under fidelity" {
@@ -133,8 +133,8 @@ extract_design_consumption_section() {
   local block
   block="$(extract_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "design-record" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "fidelity" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "design-record" <<<"$block" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "fidelity" <<<"$block" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
 }
 
 @test "(AC2) qa-tests SKILL.md contains design-record reference under fidelity" {
@@ -142,8 +142,8 @@ extract_design_consumption_section() {
   local block
   block="$(extract_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "design-record" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "fidelity" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "design-record" <<<"$block" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "fidelity" <<<"$block" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
 }
 
 @test "(AC2) review-security canonical SKILL.md contains design-record reference in Step 4b" {
@@ -156,8 +156,8 @@ extract_design_consumption_section() {
   local block
   block="$(extract_step4b_block "$f")"
   [ -n "$block" ] || { echo "Step 4b block empty in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "design-record" || { echo "design-record missing from Step 4b in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "fidelity" || { echo "fidelity missing from Step 4b in $f" >&2; return 1; }
+  grep -qi "design-record" <<<"$block" || { echo "design-record missing from Step 4b in $f" >&2; return 1; }
+  grep -qi "fidelity" <<<"$block" || { echo "fidelity missing from Step 4b in $f" >&2; return 1; }
 }
 
 @test "(AC2) test-automate SKILL.md contains design-record reference under fidelity" {
@@ -165,8 +165,8 @@ extract_design_consumption_section() {
   local block
   block="$(extract_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "design-record" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "fidelity" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "design-record" <<<"$block" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "fidelity" <<<"$block" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
 }
 
 @test "(AC2) test-review SKILL.md contains design-record reference under fidelity" {
@@ -174,8 +174,8 @@ extract_design_consumption_section() {
   local block
   block="$(extract_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "design-record" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "fidelity" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "design-record" <<<"$block" || { echo "design-record missing from Phase 4 in $f" >&2; return 1; }
+  grep -qi "fidelity" <<<"$block" || { echo "fidelity missing from Phase 4 in $f" >&2; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ extract_design_consumption_section() {
   local block
   block="$(extract_template_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "design-record" || \
+  grep -qi "design-record" <<<"$block" || \
     { echo "design-record missing from Phase 4 in template" >&2; return 1; }
 }
 
@@ -261,7 +261,7 @@ extract_design_consumption_section() {
     fidelity_block="$(extract_phase4_block "$f")"
     [ -n "$fidelity_block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
     # Must explicitly say "unavailable" (not just "finding" which is vacuously true)
-    printf '%s' "$fidelity_block" | grep -qi "unavailable" || \
+    grep -qi "unavailable" <<<"$fidelity_block" || \
       { echo "unavailable missing from Phase 4 fidelity in $f" >&2; return 1; }
     # Must NOT say "skip silently" -- the old wording
     run bash -c 'printf "%s" "$1" | grep -ci "skip silently"' _ "$fidelity_block"
@@ -273,7 +273,7 @@ extract_design_consumption_section() {
   local step4b_block
   step4b_block="$(extract_step4b_block "$sec_f")"
   [ -n "$step4b_block" ] || { echo "Step 4b block empty in $sec_f" >&2; return 1; }
-  printf '%s' "$step4b_block" | grep -qi "unavailable" || \
+  grep -qi "unavailable" <<<"$step4b_block" || \
     { echo "unavailable missing from Step 4b fidelity in $sec_f" >&2; return 1; }
   run bash -c 'printf "%s" "$1" | grep -ci "skip silently"' _ "$step4b_block"
   [ "$output" = "0" ] || { echo "skip silently still present in Step 4b of $sec_f" >&2; return 1; }
@@ -296,7 +296,7 @@ extract_design_consumption_section() {
     # WARNING: Block extraction is load-bearing.  See extract_phase4_block.
     fidelity_block="$(extract_phase4_block "$f")"
     [ -n "$fidelity_block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
-    printf '%s' "$fidelity_block" | grep -qiE "not-applicable|not applicable" || \
+    grep -qiE "not-applicable|not applicable" <<<"$fidelity_block" || \
       { echo "not-applicable missing from Phase 4 fidelity in $f" >&2; return 1; }
   done
   # review-security uses Step 4b instead of Phase 4 -- same obligation applies
@@ -305,7 +305,7 @@ extract_design_consumption_section() {
   local step4b_block
   step4b_block="$(extract_step4b_block "$sec_f")"
   [ -n "$step4b_block" ] || { echo "Step 4b block empty in $sec_f" >&2; return 1; }
-  printf '%s' "$step4b_block" | grep -qiE "not-applicable|not applicable" || \
+  grep -qiE "not-applicable|not applicable" <<<"$step4b_block" || \
     { echo "not-applicable missing from Step 4b fidelity in $sec_f" >&2; return 1; }
 }
 
@@ -329,9 +329,9 @@ extract_design_consumption_section() {
     local block
     block="$(extract_phase4_block "$f")"
     [ -n "$block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
-    printf '%s' "$block" | grep -qiE "unreachab.*finding|finding.*unreachab" || \
+    grep -qiE "unreachab.*finding|finding.*unreachab" <<<"$block" || \
       { echo "unreachability not paired with finding in Phase 4 of $f" >&2; return 1; }
-    printf '%s' "$block" | grep -qiE "never.*fall back|never.*fallback" || \
+    grep -qiE "never.*fall back|never.*fallback" <<<"$block" || \
       { echo "never-fall-back mandate missing from Phase 4 of $f" >&2; return 1; }
   done
 }
@@ -342,9 +342,9 @@ extract_design_consumption_section() {
   local block
   block="$(extract_step4b_block "$f")"
   [ -n "$block" ] || { echo "Step 4b block empty in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qiE "unreachab.*finding|finding.*unreachab" || \
+  grep -qiE "unreachab.*finding|finding.*unreachab" <<<"$block" || \
     { echo "unreachability not paired with finding in Step 4b of $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qiE "never.*fall back|never.*fallback" || \
+  grep -qiE "never.*fall back|never.*fallback" <<<"$block" || \
     { echo "never-fall-back mandate missing from Step 4b of $f" >&2; return 1; }
 }
 
@@ -354,9 +354,9 @@ extract_design_consumption_section() {
   local block
   block="$(extract_template_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
-  printf '%s' "$block" | grep -qiE "unreachab.*finding|finding.*unreachab" || \
+  grep -qiE "unreachab.*finding|finding.*unreachab" <<<"$block" || \
     { echo "unreachability not paired with finding in Phase 4 of template" >&2; return 1; }
-  printf '%s' "$block" | grep -qiE "never.*fall back|never.*fallback" || \
+  grep -qiE "never.*fall back|never.*fallback" <<<"$block" || \
     { echo "never-fall-back mandate missing from Phase 4 of template" >&2; return 1; }
 }
 
@@ -378,7 +378,7 @@ extract_design_consumption_section() {
     # WARNING: Block extraction is load-bearing.  See extract_phase4_block.
     block="$(extract_phase4_block "$f")"
     [ -n "$block" ] || { echo "Phase 4 block empty in $f" >&2; return 1; }
-    printf '%s' "$block" | grep -qi "correct behaviour, not a regression" || \
+    grep -qi "correct behaviour, not a regression" <<<"$block" || \
       { echo "correct-behaviour note missing from Phase 4 fidelity in $f" >&2; return 1; }
   done
 }
@@ -389,7 +389,7 @@ extract_design_consumption_section() {
   local block
   block="$(extract_step4b_block "$f")"
   [ -n "$block" ] || { echo "Step 4b block empty in $f" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "correct behaviour, not a regression" || \
+  grep -qi "correct behaviour, not a regression" <<<"$block" || \
     { echo "correct-behaviour note missing from Step 4b in $f" >&2; return 1; }
 }
 
@@ -399,7 +399,7 @@ extract_design_consumption_section() {
   local block
   block="$(extract_template_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "correct behaviour, not a regression" || \
+  grep -qi "correct behaviour, not a regression" <<<"$block" || \
     { echo "correct-behaviour note missing from Phase 4 in template" >&2; return 1; }
 }
 
@@ -414,7 +414,7 @@ extract_design_consumption_section() {
   local block
   block="$(extract_template_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "unavailable" || \
+  grep -qi "unavailable" <<<"$block" || \
     { echo "unavailable missing from Phase 4 in template" >&2; return 1; }
 }
 
@@ -424,7 +424,7 @@ extract_design_consumption_section() {
   local block
   block="$(extract_template_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
-  printf '%s' "$block" | grep -qiE "not-applicable|not applicable" || \
+  grep -qiE "not-applicable|not applicable" <<<"$block" || \
     { echo "not-applicable missing from Phase 4 in template" >&2; return 1; }
 }
 
@@ -527,10 +527,10 @@ extract_design_consumption_section() {
   [ -n "$section" ] || \
     { echo "Design Consumption section missing or empty in $f" >&2; return 1; }
   # Unreachability paired with finding
-  printf '%s' "$section" | grep -qiE "unreachab.*finding|finding.*unreachab" || \
+  grep -qiE "unreachab.*finding|finding.*unreachab" <<<"$section" || \
     { echo "unreachability not paired with finding in Design Consumption of $f" >&2; return 1; }
   # Never-fall-back mandate
-  printf '%s' "$section" | grep -qiE "never.*fall back|never.*fallback" || \
+  grep -qiE "never.*fall back|never.*fallback" <<<"$section" || \
     { echo "never-fall-back mandate missing from Design Consumption of $f" >&2; return 1; }
 }
 
@@ -541,7 +541,7 @@ extract_design_consumption_section() {
   section="$(extract_design_consumption_section "$f")"
   [ -n "$section" ] || \
     { echo "Design Consumption section missing or empty in $f" >&2; return 1; }
-  printf '%s' "$section" | grep -qi "unavailable" || \
+  grep -qi "unavailable" <<<"$section" || \
     { echo "unavailable branch missing from Design Consumption of $f" >&2; return 1; }
 }
 
@@ -552,7 +552,7 @@ extract_design_consumption_section() {
   section="$(extract_design_consumption_section "$f")"
   [ -n "$section" ] || \
     { echo "Design Consumption section missing or empty in $f" >&2; return 1; }
-  printf '%s' "$section" | grep -qiE "not-applicable|not applicable" || \
+  grep -qiE "not-applicable|not applicable" <<<"$section" || \
     { echo "not-applicable branch missing from Design Consumption of $f" >&2; return 1; }
 }
 
@@ -663,9 +663,9 @@ require_section() {
     { echo "token binding missing in _base-dev" >&2; return 1; }
   printf '%s' "$section" | grep -iE 'screen[^.]*product_design_project\.reference' > /dev/null || \
     { echo "screen binding missing in _base-dev" >&2; return 1; }
-  printf '%s' "$section" | grep -qi 'via DesignSync' || \
+  grep -qi 'via DesignSync' <<<"$section" || \
     { echo "DesignSync mention missing in _base-dev" >&2; return 1; }
-  printf '%s' "$section" | grep -q 'project/canvas\.json' || \
+  grep -q 'project/canvas\.json' <<<"$section" || \
     { echo "project/canvas.json mention missing in _base-dev" >&2; return 1; }
   checked=$((checked + 1))
 
@@ -686,9 +686,9 @@ require_section() {
       { echo "token binding missing in $rf" >&2; return 1; }
     printf '%s' "$block" | grep -iE 'screen[^.]*product_design_project\.reference' > /dev/null || \
       { echo "screen binding missing in $rf" >&2; return 1; }
-    printf '%s' "$block" | grep -qi 'via DesignSync' || \
+    grep -qi 'via DesignSync' <<<"$block" || \
       { echo "DesignSync mention missing in $rf" >&2; return 1; }
-    printf '%s' "$block" | grep -q 'project/canvas\.json' || \
+    grep -q 'project/canvas\.json' <<<"$block" || \
       { echo "project/canvas.json mention missing in $rf" >&2; return 1; }
     checked=$((checked + 1))
   done
@@ -703,9 +703,9 @@ require_section() {
     { echo "token binding missing in review-security Step 4b" >&2; return 1; }
   printf '%s' "$sec_block" | grep -iE 'screen[^.]*product_design_project\.reference' > /dev/null || \
     { echo "screen binding missing in review-security Step 4b" >&2; return 1; }
-  printf '%s' "$sec_block" | grep -qi 'via DesignSync' || \
+  grep -qi 'via DesignSync' <<<"$sec_block" || \
     { echo "DesignSync mention missing in review-security" >&2; return 1; }
-  printf '%s' "$sec_block" | grep -q 'project/canvas\.json' || \
+  grep -q 'project/canvas\.json' <<<"$sec_block" || \
     { echo "project/canvas.json mention missing in review-security" >&2; return 1; }
   checked=$((checked + 1))
 
@@ -719,9 +719,9 @@ require_section() {
     { echo "token binding missing in review-perf Step 4d" >&2; return 1; }
   printf '%s' "$perf_block" | grep -iE 'screen[^.]*product_design_project\.reference' > /dev/null || \
     { echo "screen binding missing in review-perf Step 4d" >&2; return 1; }
-  printf '%s' "$perf_block" | grep -qi 'via DesignSync' || \
+  grep -qi 'via DesignSync' <<<"$perf_block" || \
     { echo "DesignSync mention missing in review-perf Step 4d" >&2; return 1; }
-  printf '%s' "$perf_block" | grep -q 'project/canvas\.json' || \
+  grep -q 'project/canvas\.json' <<<"$perf_block" || \
     { echo "project/canvas.json mention missing in review-perf Step 4d" >&2; return 1; }
   checked=$((checked + 1))
 
@@ -735,9 +735,9 @@ require_section() {
     { echo "token binding missing in template" >&2; return 1; }
   printf '%s' "$tmpl_block" | grep -iE 'screen[^.]*product_design_project\.reference' > /dev/null || \
     { echo "screen binding missing in template" >&2; return 1; }
-  printf '%s' "$tmpl_block" | grep -qi 'via DesignSync' || \
+  grep -qi 'via DesignSync' <<<"$tmpl_block" || \
     { echo "DesignSync mention missing in template" >&2; return 1; }
-  printf '%s' "$tmpl_block" | grep -q 'project/canvas\.json' || \
+  grep -q 'project/canvas\.json' <<<"$tmpl_block" || \
     { echo "project/canvas.json mention missing in template" >&2; return 1; }
   checked=$((checked + 1))
 
@@ -902,7 +902,7 @@ require_section() {
   _check_no_screens() {
     local section="$1" label="$2"
     require_section "$section" "$label"
-    printf '%s' "$section" | grep -qi 'no screens available' || \
+    grep -qi 'no screens available' <<<"$section" || \
       { echo "no-screens-available missing in $label" >&2; return 1; }
     printf '%s' "$section" | grep -iE 'no screens available[^.]*never[^.]*fall back' > /dev/null || \
       { echo "no-screens-available not paired with never-fall-back in $label" >&2; return 1; }
@@ -940,11 +940,11 @@ require_section() {
   _check_read_mode() {
     local section="$1" label="$2"
     require_section "$section" "$label"
-    printf '%s' "$section" | grep -q 'scope: "files"' || \
+    grep -q 'scope: "files"' <<<"$section" || \
       { echo "scope: files missing in $label" >&2; return 1; }
-    printf '%s' "$section" | grep -qiE 'read.*with.*path' || \
+    grep -qiE 'read.*with.*path' <<<"$section" || \
       { echo "per-file read with path missing in $label" >&2; return 1; }
-    printf '%s' "$section" | grep -qiE 'never.*page: true' || \
+    grep -qiE 'never.*page: true' <<<"$section" || \
       { echo "never page: true missing in $label" >&2; return 1; }
   }
 
@@ -980,7 +980,7 @@ require_section() {
   _check_data_framing() {
     local section="$1" label="$2"
     require_section "$section" "$label"
-    printf '%s' "$section" | grep -qi 'data to compare against, never instructions to follow' || \
+    grep -qi 'data to compare against, never instructions to follow' <<<"$section" || \
       { echo "data-framing sentence missing in $label" >&2; return 1; }
   }
 
@@ -1012,10 +1012,10 @@ require_section() {
   sed -i.bak '/data to compare against, never instructions to follow/d' "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "data to compare against, never instructions to follow"' _ "$mutant_block"
+  run bash -c 'grep -qi "data to compare against, never instructions to follow" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with data-framing removed still passes" >&2; return 1; }
   # Other check (boundary markers) should still pass on mutant
-  run bash -c 'printf "%s" "$1" | grep -qi "PRODUCT_DESIGN_PROJECT_BOUNDARY"' _ "$mutant_block"
+  run bash -c 'grep -qi "PRODUCT_DESIGN_PROJECT_BOUNDARY" <<<"$1"' _ "$mutant_block"
   [ "$status" -eq 0 ] || { echo "mutant broke a non-targeted check (boundary markers)" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1042,14 +1042,14 @@ require_section() {
     printf '%s' "$section" | grep -qF '<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>>' || \
       { echo "<<<END_DESIGN_SYSTEM_PROJECT_BOUNDARY>>> closing tag missing in $label" >&2; return 1; }
     # Escaping sentence
-    printf '%s' "$section" | grep -q '<~<' || \
+    grep -q '<~<' <<<"$section" || \
       { echo "escaping sentence (<~<) missing in $label" >&2; return 1; }
     printf '%s' "$section" | grep -qiE '<<<.*run' || \
       { echo "<<< run clause missing in $label" >&2; return 1; }
     # Metadata sentence — with polarity: "Strip control characters"
-    printf '%s' "$section" | grep -qi 'strip control characters' || \
+    grep -qi 'strip control characters' <<<"$section" || \
       { echo "metadata 'strip control characters' polarity missing in $label" >&2; return 1; }
-    printf '%s' "$section" | grep -qiE 'title.*description.*capability' || \
+    grep -qiE 'title.*description.*capability' <<<"$section" || \
       { echo "metadata sentence (title, description, capability) missing in $label" >&2; return 1; }
   }
 
@@ -1081,10 +1081,10 @@ require_section() {
   sed -i.bak '/<~</d' "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -q "<~<"' _ "$mutant_block"
+  run bash -c 'grep -q "<~<" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with escaping removed still passes" >&2; return 1; }
   # Marker tags should still pass
-  run bash -c 'printf "%s" "$1" | grep -q "PRODUCT_DESIGN_PROJECT_BOUNDARY"' _ "$mutant_block"
+  run bash -c 'grep -q "PRODUCT_DESIGN_PROJECT_BOUNDARY" <<<"$1"' _ "$mutant_block"
   [ "$status" -eq 0 ] || { echo "mutant broke marker tag check" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1093,10 +1093,10 @@ require_section() {
   cp "$REPO_ROOT/skills/gaia-code-review/SKILL.md" "$mutant_f"
   sed -i.bak '/PRODUCT_DESIGN_PROJECT_BOUNDARY/d; /DESIGN_SYSTEM_PROJECT_BOUNDARY/d' "$mutant_f"
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -q "PRODUCT_DESIGN_PROJECT_BOUNDARY"' _ "$mutant_block"
+  run bash -c 'grep -q "PRODUCT_DESIGN_PROJECT_BOUNDARY" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with markers removed still passes" >&2; return 1; }
   # Escaping should still pass
-  run bash -c 'printf "%s" "$1" | grep -q "<~<"' _ "$mutant_block"
+  run bash -c 'grep -q "<~<" <<<"$1"' _ "$mutant_block"
   [ "$status" -eq 0 ] || { echo "mutant broke escaping check" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1105,10 +1105,10 @@ require_section() {
   cp "$REPO_ROOT/skills/gaia-code-review/SKILL.md" "$mutant_f"
   sed -i.bak '/title.*description.*capability/Id' "$mutant_f"
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qiE "title.*description.*capability"' _ "$mutant_block"
+  run bash -c 'grep -qiE "title.*description.*capability" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with metadata removed still passes" >&2; return 1; }
   # Markers should still pass
-  run bash -c 'printf "%s" "$1" | grep -q "PRODUCT_DESIGN_PROJECT_BOUNDARY"' _ "$mutant_block"
+  run bash -c 'grep -q "PRODUCT_DESIGN_PROJECT_BOUNDARY" <<<"$1"' _ "$mutant_block"
   [ "$status" -eq 0 ] || { echo "mutant broke marker tag check" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1124,16 +1124,16 @@ require_section() {
     local section="$1" label="$2"
     require_section "$section" "$label"
     # Verdict provenance — with polarity: "No verdict … taken from inside"
-    printf '%s' "$section" | grep -qiE 'No verdict.*taken from inside' || \
+    grep -qiE 'No verdict.*taken from inside' <<<"$section" || \
       { echo "verdict-provenance negation ('No verdict … taken from inside') missing in $label" >&2; return 1; }
     # Single-source confidence — with polarity: "not … independently corroborated"
-    printf '%s' "$section" | grep -qi 'not treated as independently corroborated' || \
+    grep -qi 'not treated as independently corroborated' <<<"$section" || \
       { echo "single-source 'not treated as independently corroborated' missing in $label" >&2; return 1; }
     # Credential-shaped content — with polarity: "never acted on"
-    printf '%s' "$section" | grep -qi 'never acted on' || \
+    grep -qi 'never acted on' <<<"$section" || \
       { echo "credential 'never acted on' polarity missing in $label" >&2; return 1; }
     # Credential enumeration: "access tokens" present
-    printf '%s' "$section" | grep -qi 'access tokens' || \
+    grep -qi 'access tokens' <<<"$section" || \
       { echo "credential enumeration 'access tokens' missing in $label" >&2; return 1; }
   }
 
@@ -1165,9 +1165,9 @@ require_section() {
   sed -i.bak "/originate.*consumer/Id" "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qiE "verdict.*originate.*consumer.s own analysis"' _ "$mutant_block"
+  run bash -c 'grep -qiE "verdict.*originate.*consumer.s own analysis" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with verdict-provenance removed still passes" >&2; return 1; }
-  run bash -c 'printf "%s" "$1" | grep -qiE "trust boundary"' _ "$mutant_block"
+  run bash -c 'grep -qiE "trust boundary" <<<"$1"' _ "$mutant_block"
   [ "$status" -eq 0 ] || { echo "mutant broke trust-boundary check" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1176,9 +1176,9 @@ require_section() {
   cp "$REPO_ROOT/skills/gaia-code-review/SKILL.md" "$mutant_f"
   sed -i.bak "/trust boundary/Id" "$mutant_f"
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qiE "trust boundary"' _ "$mutant_block"
+  run bash -c 'grep -qiE "trust boundary" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with trust-boundary removed still passes" >&2; return 1; }
-  run bash -c 'printf "%s" "$1" | grep -qiE "credential-shaped"' _ "$mutant_block"
+  run bash -c 'grep -qiE "credential-shaped" <<<"$1"' _ "$mutant_block"
   [ "$status" -eq 0 ] || { echo "mutant broke credential check" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1187,9 +1187,9 @@ require_section() {
   cp "$REPO_ROOT/skills/gaia-code-review/SKILL.md" "$mutant_f"
   sed -i.bak "/credential-shaped/Id" "$mutant_f"
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qiE "credential-shaped"' _ "$mutant_block"
+  run bash -c 'grep -qiE "credential-shaped" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with credential sentence removed still passes" >&2; return 1; }
-  run bash -c 'printf "%s" "$1" | grep -qiE "verdict.*originate.*consumer.s own analysis"' _ "$mutant_block"
+  run bash -c 'grep -qiE "verdict.*originate.*consumer.s own analysis" <<<"$1"' _ "$mutant_block"
   [ "$status" -eq 0 ] || { echo "mutant broke verdict-provenance check" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1220,11 +1220,11 @@ require_section() {
     { echo "'4a through 4e' intro missing" >&2; return 1; }
 
   # Performance scope keywords
-  printf '%s' "$block" | grep -qi 'token size' || \
+  grep -qi 'token size' <<<"$block" || \
     { echo "performance scope: 'token size' missing" >&2; return 1; }
-  printf '%s' "$block" | grep -qi 'component render budget' || \
+  grep -qi 'component render budget' <<<"$block" || \
     { echo "performance scope: 'component render budget' missing" >&2; return 1; }
-  printf '%s' "$block" | grep -qi 'screen render budget' || \
+  grep -qi 'screen render budget' <<<"$block" || \
     { echo "performance scope: 'screen render budget' missing" >&2; return 1; }
 
   # Section-removed mutant
@@ -1249,9 +1249,9 @@ require_section() {
   _check_brand_style() {
     local section="$1" label="$2"
     require_section "$section" "$label"
-    printf '%s' "$section" | grep -qi 'sync_mode' || \
+    grep -qi 'sync_mode' <<<"$section" || \
       { echo "sync_mode mention missing in $label" >&2; return 1; }
-    printf '%s' "$section" | grep -qi 'unaffected by.*sync_mode' || \
+    grep -qi 'unaffected by.*sync_mode' <<<"$section" || \
       { echo "routing-unaffected-by-sync_mode statement missing in $label" >&2; return 1; }
   }
 
@@ -1283,10 +1283,10 @@ require_section() {
   sed -i.bak '/sync_mode/Id' "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "sync_mode"' _ "$mutant_block"
+  run bash -c 'grep -qi "sync_mode" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with sync_mode removed still passes" >&2; return 1; }
   # Other checks should still pass
-  run bash -c 'printf "%s" "$1" | grep -qi "design-record"' _ "$mutant_block"
+  run bash -c 'grep -qi "design-record" <<<"$1"' _ "$mutant_block"
   [ "$status" -eq 0 ] || { echo "mutant broke design-record check" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1301,9 +1301,9 @@ require_section() {
   local block
   block="$(extract_reviewperf_step4d_block "$f")"
   require_section "$block" "Step 4d (review-perf)"
-  printf '%s' "$block" | grep -qiE "unreachab.*finding|finding.*unreachab" || \
+  grep -qiE "unreachab.*finding|finding.*unreachab" <<<"$block" || \
     { echo "unreachability not paired with finding in review-perf Step 4d" >&2; return 1; }
-  printf '%s' "$block" | grep -qiE "never.*fall back|never.*fallback" || \
+  grep -qiE "never.*fall back|never.*fallback" <<<"$block" || \
     { echo "never-fall-back mandate missing from review-perf Step 4d" >&2; return 1; }
 }
 
@@ -1317,7 +1317,7 @@ require_section() {
   local block
   block="$(extract_reviewperf_step4d_block "$f")"
   require_section "$block" "Step 4d (review-perf)"
-  printf '%s' "$block" | grep -qi "unavailable" || \
+  grep -qi "unavailable" <<<"$block" || \
     { echo "unavailable missing from review-perf Step 4d" >&2; return 1; }
 }
 
@@ -1331,7 +1331,7 @@ require_section() {
   local block
   block="$(extract_reviewperf_step4d_block "$f")"
   require_section "$block" "Step 4d (review-perf)"
-  printf '%s' "$block" | grep -qiE "not-applicable|not applicable" || \
+  grep -qiE "not-applicable|not applicable" <<<"$block" || \
     { echo "not-applicable missing from review-perf Step 4d" >&2; return 1; }
 }
 
@@ -1345,7 +1345,7 @@ require_section() {
   local block
   block="$(extract_reviewperf_step4d_block "$f")"
   require_section "$block" "Step 4d (review-perf)"
-  printf '%s' "$block" | grep -qi "correct behaviour, not a regression" || \
+  grep -qi "correct behaviour, not a regression" <<<"$block" || \
     { echo "correct-behaviour note missing from review-perf Step 4d" >&2; return 1; }
 }
 
@@ -1382,9 +1382,9 @@ require_section() {
   local block
   block="$(extract_reviewperf_step4d_block "$f")"
   require_section "$block" "Step 4d (review-perf)"
-  printf '%s' "$block" | grep -qi "design-record" || \
+  grep -qi "design-record" <<<"$block" || \
     { echo "design-record missing from review-perf Step 4d" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "fidelity" || \
+  grep -qi "fidelity" <<<"$block" || \
     { echo "fidelity missing from review-perf Step 4d" >&2; return 1; }
 }
 
@@ -1448,7 +1448,7 @@ require_section() {
   local step6
   step6="$(sed -n '/^### Step 6/,/^### Step 7/{ /^### Step [67]/d; p; }' "$f")"
   [ -n "$step6" ] || { echo "Step 6 section empty in $f" >&2; return 1; }
-  printf '%s' "$step6" | grep -qi 'design-fidelity' || \
+  grep -qi 'design-fidelity' <<<"$step6" || \
     { echo "design-fidelity missing from Step 6 report list" >&2; return 1; }
 }
 
@@ -1464,7 +1464,7 @@ require_section() {
   local region
   region="$(sed -n '/^#### Step 4d/,/^#### Step 4e/p' "$f")"
   [ -n "$region" ] || { echo "Step 4d–4e region empty" >&2; return 1; }
-  printf '%s' "$region" | grep -qi 'Step 4d findings feed Step 4e' || \
+  grep -qi 'Step 4d findings feed Step 4e' <<<"$region" || \
     { echo "Step 4d → Step 4e linkage sentence missing from 4d–4e region" >&2; return 1; }
 }
 
@@ -1478,10 +1478,10 @@ require_section() {
   _check_token_copies() {
     local section="$1" label="$2"
     require_section "$section" "$label"
-    printf '%s' "$section" | grep -qi 'token copies embedded in each board' || \
+    grep -qi 'token copies embedded in each board' <<<"$section" || \
       { echo "board token-copies sentence missing in $label" >&2; return 1; }
     # Polarity: "are not a token source"
-    printf '%s' "$section" | grep -qi 'are not a token source' || \
+    grep -qi 'are not a token source' <<<"$section" || \
       { echo "token-copies 'are not a token source' polarity missing in $label" >&2; return 1; }
   }
 
@@ -1513,7 +1513,7 @@ require_section() {
   sed -i.bak '/token copies embedded in each board/d' "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "token copies embedded in each board"' _ "$mutant_block"
+  run bash -c 'grep -qi "token copies embedded in each board" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with token-copies removed still passes" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1528,8 +1528,8 @@ require_section() {
   _check_tools_unavail() {
     local section="$1" label="$2"
     require_section "$section" "$label"
-    printf '%s' "$section" | grep -qiE 'design tools.*not available.*unreachability' || \
-      printf '%s' "$section" | grep -qiE 'DesignSync.*Artifact.*not available' || \
+    grep -qiE 'design tools.*not available.*unreachability' <<<"$section" || \
+      grep -qiE 'DesignSync.*Artifact.*not available' <<<"$section" || \
       { echo "tools-unavailable sentence missing in $label" >&2; return 1; }
   }
 
@@ -1561,7 +1561,7 @@ require_section() {
   sed -i.bak '/design tools.*not available/Id' "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qiE "design tools.*not available|DesignSync.*Artifact.*not available"' _ "$mutant_block"
+  run bash -c 'grep -qiE "design tools.*not available|DesignSync.*Artifact.*not available" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with tools-unavailable removed still passes" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1576,7 +1576,7 @@ require_section() {
   _check_ds_failure() {
     local section="$1" label="$2"
     require_section "$section" "$label"
-    printf '%s' "$section" | grep -qi 'DesignSync or design-system project failure' || \
+    grep -qi 'DesignSync or design-system project failure' <<<"$section" || \
       { echo "DesignSync failure mode missing from unreachability clause in $label" >&2; return 1; }
   }
 
@@ -1608,7 +1608,7 @@ require_section() {
   sed -i.bak 's/DesignSync or design-system project failure, //' "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "DesignSync or design-system project failure"' _ "$mutant_block"
+  run bash -c 'grep -qi "DesignSync or design-system project failure" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "mutant with DesignSync failure removed still passes" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1633,7 +1633,7 @@ require_section() {
   sed -i.bak 's/is never acted on/is acted on/' "$mutant_f"
   local mutant_section
   mutant_section="$(extract_design_consumption_section "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "never acted on"' _ "$mutant_section"
+  run bash -c 'grep -qi "never acted on" <<<"$1"' _ "$mutant_section"
   [ "$status" -ne 0 ] || { echo "persona: dropped-never mutant passes credential polarity" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1642,7 +1642,7 @@ require_section() {
   cp "$persona" "$mutant_f"
   sed -i.bak 's/is not treated as independently corroborated/is treated as independently corroborated/' "$mutant_f"
   mutant_section="$(extract_design_consumption_section "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "not treated as independently corroborated"' _ "$mutant_section"
+  run bash -c 'grep -qi "not treated as independently corroborated" <<<"$1"' _ "$mutant_section"
   [ "$status" -ne 0 ] || { echo "persona: dropped-not mutant passes single-source polarity" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1651,7 +1651,7 @@ require_section() {
   cp "$persona" "$mutant_f"
   sed -i.bak 's/No verdict/Verdict/' "$mutant_f"
   mutant_section="$(extract_design_consumption_section "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qiE "No verdict.*taken from inside"' _ "$mutant_section"
+  run bash -c 'grep -qiE "No verdict.*taken from inside" <<<"$1"' _ "$mutant_section"
   [ "$status" -ne 0 ] || { echo "persona: dropped-No mutant passes verdict-provenance polarity" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1660,7 +1660,7 @@ require_section() {
   cp "$persona" "$mutant_f"
   sed -i.bak 's/are not a token source/are a token source/' "$mutant_f"
   mutant_section="$(extract_design_consumption_section "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "are not a token source"' _ "$mutant_section"
+  run bash -c 'grep -qi "are not a token source" <<<"$1"' _ "$mutant_section"
   [ "$status" -ne 0 ] || { echo "persona: dropped-not mutant passes token-copies polarity" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1673,7 +1673,7 @@ require_section() {
   sed -i.bak 's/is never acted on/is acted on/' "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "never acted on"' _ "$mutant_block"
+  run bash -c 'grep -qi "never acted on" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "code-review: dropped-never mutant passes credential polarity" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1682,7 +1682,7 @@ require_section() {
   cp "$f" "$mutant_f"
   sed -i.bak '/[Ss]trip control characters/d' "$mutant_f"
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "strip control characters"' _ "$mutant_block"
+  run bash -c 'grep -qi "strip control characters" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "code-review: dropped-strip mutant passes metadata polarity" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 
@@ -1691,7 +1691,7 @@ require_section() {
   cp "$f" "$mutant_f"
   sed -i.bak 's/are not a token source/are a token source/' "$mutant_f"
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -qi "are not a token source"' _ "$mutant_block"
+  run bash -c 'grep -qi "are not a token source" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "code-review: dropped-not mutant passes token-copies polarity" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1708,7 +1708,7 @@ require_section() {
   local block
   block="$(extract_phase4_block "$f")"
   require_section "$block" "Phase 4 (code-review)"
-  printf '%s' "$block" | grep -q 'scope: "files"' || \
+  grep -q 'scope: "files"' <<<"$block" || \
     { echo "positive control failed: scope: files missing" >&2; return 1; }
 
   # Mutant: swap scope: "files" to scope: "pages"
@@ -1718,7 +1718,7 @@ require_section() {
   sed -i.bak 's/scope: "files"/scope: "pages"/g' "$mutant_f"
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  run bash -c 'printf "%s" "$1" | grep -q "scope: \"files\""' _ "$mutant_block"
+  run bash -c 'grep -q "scope: \"files\"" <<<"$1"' _ "$mutant_block"
   [ "$status" -ne 0 ] || { echo "read-mode mutant still has scope: files — swap failed" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
 }
@@ -1788,15 +1788,15 @@ _check_severity_tier() {
   local default_phrase="${3:-Warning by default}"
   local contradict_phrase="${4:-contradict}"
   [ -n "$block" ] || { echo "$label section is empty or missing" >&2; return 1; }
-  printf '%s' "$block" | grep -qi "$default_phrase" || \
+  grep -qi "$default_phrase" <<<"$block" || \
     { echo "default severity tier missing from $label (expected: $default_phrase)" >&2; return 1; }
-  printf '%s' "$block" | grep -qiE "[Cc]ritical when.*${contradict_phrase}" || \
+  grep -qiE "[Cc]ritical when.*${contradict_phrase}" <<<"$block" || \
     { echo "contradiction tier missing from $label" >&2; return 1; }
   # Top-level placement: the severity line must start with "- " (a top-level
   # bullet), not "  - " (a sub-bullet).  This catches the drift where the
   # severity tier is nested under the design-record branch instead of
   # governing all fidelity findings including the "no reference" case.
-  printf '%s\n' "$block" | grep -qiE "^- [^ ].*${default_phrase}" || \
+  grep -qiE "^- [^ ].*${default_phrase}" <<<"$block" || \
     { echo "severity tier not a top-level bullet in $label" >&2; return 1; }
 }
 

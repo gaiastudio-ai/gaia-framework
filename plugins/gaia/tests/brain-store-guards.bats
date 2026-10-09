@@ -99,7 +99,7 @@ _has_yaml() {
   rm -rf "$elsewhere"
 
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi "index-in-place violation"
+  grep -qi "index-in-place violation" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------

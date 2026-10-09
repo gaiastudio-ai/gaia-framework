@@ -165,11 +165,11 @@ UX
   [ -n "$readback_step" ] || fail "SKILL.md has no read-back step"
 
   # The step must mention get_project or list_files as the source
-  printf '%s' "$readback_step" | grep -qE 'get_project|list_files|get_file' || \
+  grep -qE 'get_project|list_files|get_file' <<<"$readback_step" || \
     fail "read-back step does not reference project integration tools as authoritative source"
 
   # The step must NOT treat local derivation (ux-design.md) as the primary source
-  printf '%s' "$readback_step" | grep -qE 'authoritative|primary|source.of.truth' || \
+  grep -qE 'authoritative|primary|source.of.truth' <<<"$readback_step" || \
     fail "read-back step does not mark project content as authoritative"
 }
 
@@ -197,11 +197,11 @@ UX
   [ -n "$findings_step" ] || fail "SKILL.md has no findings step"
 
   # The findings step must mention severity tags
-  printf '%s' "$findings_step" | grep -qE 'severity|high|medium|low|info' || \
+  grep -qE 'severity|high|medium|low|info' <<<"$findings_step" || \
     fail "findings step does not mention severity tags"
 
   # Missing components must be findings (not a separate detection loop)
-  printf '%s' "$findings_step" | grep -qiE 'missing.*component|component.*absent|component.*finding' || \
+  grep -qiE 'missing.*component|component.*absent|component.*finding' <<<"$findings_step" || \
     fail "findings step does not treat missing UX-required components as findings"
 }
 
@@ -347,7 +347,7 @@ UX
   # Match the writer call form (design-record.sh ... transition) to avoid
   # matching prose mentions of the word "transition".
   local invocation_pattern='design-record\.sh[[:space:]].*transition --to review\|design-record\.sh transition --to review'
-  printf '%s\n' "$step3" | grep -qE 'design-record\.sh[^`]*transition --to review|design-record\.sh transition --to review' || \
+  grep -qE 'design-record\.sh[^`]*transition --to review|design-record\.sh transition --to review' <<<"$step3" || \
     fail "Step 3 does not contain a writer invocation for transition --to review"
 
   # The transition must appear BEFORE any stakeholder delivery instruction.
@@ -356,8 +356,8 @@ UX
   # after the internal review verdict (add-review) so the ordering is:
   # internal verdict -> draft-to-review transition -> stakeholder delivery.
   local review_line trans_line
-  review_line="$(printf '%s\n' "$step3" | grep -nE 'design-record\.sh[^`]*add-review|design-record\.sh add-review' | head -1 | cut -d: -f1)"
-  trans_line="$(printf '%s\n' "$step3" | grep -nE 'design-record\.sh[^`]*transition --to review|design-record\.sh transition --to review' | head -1 | cut -d: -f1)"
+  review_line="$(grep -nE 'design-record\.sh[^`]*add-review|design-record\.sh add-review' <<<"$step3" | head -1 | cut -d: -f1)"
+  trans_line="$(grep -nE 'design-record\.sh[^`]*transition --to review|design-record\.sh transition --to review' <<<"$step3" | head -1 | cut -d: -f1)"
 
   [ -n "$review_line" ] || fail "add-review writer invocation not found in Step 3"
   [ -n "$trans_line" ] || fail "transition --to review writer invocation not found in Step 3"
@@ -739,7 +739,7 @@ UX
   delivery_step="$(awk '/^### Step.*[Dd]eliver/{found=1} found && /^### Step/ && !/[Dd]eliver/{exit} found{print}' "$SKILL_MD" 2>/dev/null | head -80)"
   [ -n "$delivery_step" ] || fail "SKILL.md has no stakeholder delivery step"
 
-  printf '%s' "$delivery_step" | grep -qE 're-read|get_project|list_files|current.state|fresh.*read' || \
+  grep -qE 're-read|get_project|list_files|current.state|fresh.*read' <<<"$delivery_step" || \
     fail "stakeholder delivery step does not re-read project for current state"
 }
 
@@ -949,8 +949,8 @@ BOUNDARY
   # Match the writer INVOCATION forms only (design-record.sh ... verb), not
   # prose mentions like "check-convergence reports" or "(before transition)".
   local conv_line trans_line
-  conv_line="$(printf '%s\n' "$approved_block" | grep -nE 'design-record\.sh[^`]*check-convergence|design-record\.sh check-convergence' | head -1 | cut -d: -f1)"
-  trans_line="$(printf '%s\n' "$approved_block" | grep -nE 'design-record\.sh[^`]*transition --to|design-record\.sh transition --to' | head -1 | cut -d: -f1)"
+  conv_line="$(grep -nE 'design-record\.sh[^`]*check-convergence|design-record\.sh check-convergence' <<<"$approved_block" | head -1 | cut -d: -f1)"
+  trans_line="$(grep -nE 'design-record\.sh[^`]*transition --to|design-record\.sh transition --to' <<<"$approved_block" | head -1 | cut -d: -f1)"
 
   [ -n "$conv_line" ] || fail "check-convergence writer invocation not found in the approval path"
   [ -n "$trans_line" ] || fail "transition writer invocation not found in the approval path"
@@ -973,13 +973,13 @@ BOUNDARY
   [ -n "$step_block" ] || fail "SKILL.md has no step block containing add-review"
 
   # Within that block, verdict-provenance-check must appear
-  printf '%s' "$step_block" | grep -q 'verdict-provenance-check' || \
+  grep -q 'verdict-provenance-check' <<<"$step_block" || \
     fail "SKILL.md does not call verdict-provenance-check.sh in the add-review step"
 
   # Provenance check must appear BEFORE add-review in the step block
   local prov_line add_line
-  prov_line="$(printf '%s' "$step_block" | grep -n 'verdict-provenance-check' | head -1 | cut -d: -f1)"
-  add_line="$(printf '%s' "$step_block" | grep -n 'add-review' | head -1 | cut -d: -f1)"
+  prov_line="$(grep -n 'verdict-provenance-check' <<<"$step_block" | head -1 | cut -d: -f1)"
+  add_line="$(grep -n 'add-review' <<<"$step_block" | head -1 | cut -d: -f1)"
   [ -n "$prov_line" ] && [ -n "$add_line" ] || \
     fail "could not locate both provenance-check and add-review in the step block"
   [ "$prov_line" -lt "$add_line" ] || \
@@ -1025,7 +1025,7 @@ BOUNDARY
   # The precondition should mention the writer transition
   local precondition_block
   precondition_block="$(awk "NR>=$precondition_line && NR<$step1_line" "$SKILL_MD")"
-  echo "$precondition_block" | grep -qi 'transition --to review' \
+  grep -qi 'transition --to review' <<<"$precondition_block" \
     || fail "precondition should mention 'transition --to review'"
 }
 
@@ -1036,7 +1036,7 @@ BOUNDARY
   step7="$(awk '/^### Step 7/{found=1} found && /^### Step [^7]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step7" ] || fail "Step 7 not found in SKILL.md"
 
-  echo "$step7" | grep -qi 'stale.*review.*bump\|stale.*review.*iteration\|stale-to-review.*bump\|stale-to-review.*iteration' \
+  grep -qi 'stale.*review.*bump\|stale.*review.*iteration\|stale-to-review.*bump\|stale-to-review.*iteration' <<<"$step7" \
     || fail "Step 7 should mention the stale-to-review iteration bump"
 }
 
@@ -1054,15 +1054,15 @@ BOUNDARY
     | head -1)"
   [ -n "$first_step" ] || fail "could not extract first step-list item"
 
-  echo "$first_step" | grep -qi 'stale' \
+  grep -qi 'stale' <<<"$first_step" \
     || fail "first step-list item should mention stale-resume"
-  echo "$first_step" | grep -qi 'iteration.*bump\|earlier approvals.*no longer' \
+  grep -qi 'iteration.*bump\|earlier approvals.*no longer' <<<"$first_step" \
     || fail "first step-list item should mention the iteration bump"
 
   # Must NOT add a new Prerequisites item for stale-resume
   local prereqs
   prereqs="$(sed -n '/<section id="prerequisites">/,/<\/section>/p' "$doc_page")"
-  if echo "$prereqs" | grep -qi 'stale.*resume\|stale.*review'; then
+  if grep -qi 'stale.*resume\|stale.*review' <<<"$prereqs"; then
     fail "stale-resume should be in the step-list, not in Prerequisites"
   fi
 }
@@ -1110,17 +1110,17 @@ BOUNDARY
 
   # Must name at least one template heading variant
   local has_template=false
-  if printf '%s' "$step6" | grep -qiF 'Components & Design System'; then
+  if grep -qiF 'Components & Design System' <<<"$step6"; then
     has_template=true
   fi
-  if printf '%s' "$step6" | grep -qiF 'Components and Design System'; then
+  if grep -qiF 'Components and Design System' <<<"$step6"; then
     has_template=true
   fi
   [ "$has_template" = true ] || \
     fail "Step 6 should name the template heading (Components & Design System or Components and Design System)"
 
   # Must name Wireframe Descriptions
-  printf '%s' "$step6" | grep -qiF 'Wireframe Descriptions' || \
+  grep -qiF 'Wireframe Descriptions' <<<"$step6" || \
     fail "Step 6 should name 'Wireframe Descriptions' (not 'Screen Specifications')"
 
   # Must NOT name the wrong heading "Screen Specifications" as a section to diff
@@ -1131,19 +1131,19 @@ BOUNDARY
     fail "Step 6 should not name 'Screen Specifications' as a section heading ($screen_spec_refs refs)"
 
   # Must limit field-level updates to components (not screens)
-  printf '%s' "$step6" | grep -qiE 'screen.*(report|manual|not auto)' || \
+  grep -qiE 'screen.*(report|manual|not auto)' <<<"$step6" || \
     fail "Step 6 should state that screen changes are reported, not auto-edited"
 
   # Must document the snapshot shape with both "components" and "screens" keys
-  printf '%s' "$step6" | grep -qF '"components"' || \
+  grep -qF '"components"' <<<"$step6" || \
     fail "Step 6 should document the snapshot shape with a \"components\" key"
-  printf '%s' "$step6" | grep -qF '"screens"' || \
+  grep -qF '"screens"' <<<"$step6" || \
     fail "Step 6 should document the snapshot shape with a \"screens\" key"
 
   # Must pass --last-published with the canonical baseline path
-  printf '%s' "$step6" | grep -qF 'design-last-published.json' || \
+  grep -qF 'design-last-published.json' <<<"$step6" || \
     fail "Step 6 should reference design-last-published.json as the baseline"
-  printf '%s' "$step6" | grep -qF -- '--last-published' || \
+  grep -qF -- '--last-published' <<<"$step6" || \
     fail "Step 6 should pass --last-published to the sync script"
 }
 
@@ -1183,9 +1183,9 @@ BOUNDARY
   step1="$(awk '/^### Step 1/{found=1} found && /^### Step [^1]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step1" ] || fail "Step 1 not found in SKILL.md"
 
-  printf '%s' "$step1" | grep -qi 'DesignSync' || \
+  grep -qi 'DesignSync' <<<"$step1" || \
     fail "Step 1 should mention DesignSync for the design-system project read"
-  printf '%s' "$step1" | grep -qF 'DESIGN_SYSTEM_PROJECT_BOUNDARY' || \
+  grep -qF 'DESIGN_SYSTEM_PROJECT_BOUNDARY' <<<"$step1" || \
     fail "Step 1 should wrap design-system content in DESIGN_SYSTEM_PROJECT_BOUNDARY markers"
 }
 
@@ -1196,9 +1196,9 @@ BOUNDARY
   step1="$(awk '/^### Step 1/{found=1} found && /^### Step [^1]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step1" ] || fail "Step 1 not found in SKILL.md"
 
-  printf '%s' "$step1" | grep -qiE 'per-file|list.*scope.*files|read.*path' || \
+  grep -qiE 'per-file|list.*scope.*files|read.*path' <<<"$step1" || \
     fail "Step 1 should describe per-file reads for the product design project"
-  printf '%s' "$step1" | grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' || \
+  grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' <<<"$step1" || \
     fail "Step 1 should wrap product-design content in PRODUCT_DESIGN_PROJECT_BOUNDARY markers"
 }
 
@@ -1209,9 +1209,9 @@ BOUNDARY
   step4="$(awk '/^### Step 4/{found=1} found && /^### Step [^4]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step4" ] || fail "Step 4 not found in SKILL.md"
 
-  printf '%s' "$step4" | grep -qF 'DESIGN_SYSTEM_PROJECT_BOUNDARY' || \
+  grep -qF 'DESIGN_SYSTEM_PROJECT_BOUNDARY' <<<"$step4" || \
     fail "Step 4 re-read should mention DESIGN_SYSTEM_PROJECT_BOUNDARY markers"
-  printf '%s' "$step4" | grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' || \
+  grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' <<<"$step4" || \
     fail "Step 4 re-read should mention PRODUCT_DESIGN_PROJECT_BOUNDARY markers"
 }
 
@@ -1222,9 +1222,9 @@ BOUNDARY
   step1="$(awk '/^### Step 1/{found=1} found && /^### Step [^1]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step1" ] || fail "Step 1 not found in SKILL.md"
 
-  printf '%s' "$step1" | grep -qiE 'product_design_project.*null|null.*product.*skip|product.*null.*skip' || \
+  grep -qiE 'product_design_project.*null|null.*product.*skip|product.*null.*skip' <<<"$step1" || \
     fail "Step 1 should describe skipping product-project read when product_design_project is null"
-  printf '%s' "$step1" | grep -qiE 'absence|absent|skip.*log|log.*absence' || \
+  grep -qiE 'absence|absent|skip.*log|log.*absence' <<<"$step1" || \
     fail "Step 1 should log the absence when product project is null"
 }
 
@@ -1240,7 +1240,7 @@ BOUNDARY
   step1="$(awk '/^### Step 1/{found=1} found && /^### Step [^1]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step1" ] || fail "Step 1 not found in SKILL.md"
 
-  printf '%s' "$step1" | grep -qiE 'designsync.*(error|fail).*halt|read.*fail.*halt.*designsync|halt.*diagnostic.*designsync' || \
+  grep -qiE 'designsync.*(error|fail).*halt|read.*fail.*halt.*designsync|halt.*diagnostic.*designsync' <<<"$step1" || \
     fail "Step 1 should describe halting on DesignSync read-back error with a diagnostic"
 }
 
@@ -1251,7 +1251,7 @@ BOUNDARY
   step1="$(awk '/^### Step 1/{found=1} found && /^### Step [^1]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step1" ] || fail "Step 1 not found in SKILL.md"
 
-  printf '%s' "$step1" | grep -qiE '(per-file|artifact).*(fail|error|summary).*halt|halt.*diagnostic.*artifact' || \
+  grep -qiE '(per-file|artifact).*(fail|error|summary).*halt|halt.*diagnostic.*artifact' <<<"$step1" || \
     fail "Step 1 should describe halting on per-file read failure or summary"
 }
 
@@ -1262,7 +1262,7 @@ BOUNDARY
   step4="$(awk '/^### Step 4/{found=1} found && /^### Step [^4]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step4" ] || fail "Step 4 not found in SKILL.md"
 
-  printf '%s' "$step4" | grep -qiE 'designsync.*re-read.*fail.*halt|re-read.*fail.*halt.*designsync|halt.*diagnostic.*designsync' || \
+  grep -qiE 'designsync.*re-read.*fail.*halt|re-read.*fail.*halt.*designsync|halt.*diagnostic.*designsync' <<<"$step4" || \
     fail "Step 4 should describe halting on DesignSync re-read failure"
 }
 
@@ -1273,7 +1273,7 @@ BOUNDARY
   step4="$(awk '/^### Step 4/{found=1} found && /^### Step [^4]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step4" ] || fail "Step 4 not found in SKILL.md"
 
-  printf '%s' "$step4" | grep -qiE '(per-file|artifact).*re-read.*(fail|summary).*halt|halt.*diagnostic.*artifact' || \
+  grep -qiE '(per-file|artifact).*re-read.*(fail|summary).*halt|halt.*diagnostic.*artifact' <<<"$step4" || \
     fail "Step 4 should describe halting on per-file re-read failure or summary"
 }
 
@@ -1285,7 +1285,7 @@ BOUNDARY
   [ -n "$step4" ] || fail "Step 4 not found in SKILL.md"
 
   # Both the design-system and product re-reads must name the shared escape
-  printf '%s' "$step4" | grep -qiE 'shared escape.*product|product.*shared escape|escape.*boundary.*markers.*product|product.*escape-boundary' || \
+  grep -qiE 'shared escape.*product|product.*shared escape|escape.*boundary.*markers.*product|product.*escape-boundary' <<<"$step4" || \
     fail "Step 4 product re-read should name the shared escape"
 }
 
@@ -1308,7 +1308,7 @@ BOUNDARY
   step2="$(awk '/^### Step 2/{found=1} found && /^### Step [^2]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step2" ] || fail "Step 2 not found in SKILL.md"
 
-  printf '%s' "$step2" | grep -qiE 'token.*design.system|component.*design.system|template.*design.system|design.system.*(token|component|template)' || \
+  grep -qiE 'token.*design.system|component.*design.system|template.*design.system|design.system.*(token|component|template)' <<<"$step2" || \
     fail "Step 2 should attribute token/component/template findings to the design-system project"
 }
 
@@ -1319,7 +1319,7 @@ BOUNDARY
   step2="$(awk '/^### Step 2/{found=1} found && /^### Step [^2]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step2" ] || fail "Step 2 not found in SKILL.md"
 
-  printf '%s' "$step2" | grep -qiE 'screen.*product.design|flow.*product.design|product.design.*(screen|flow)' || \
+  grep -qiE 'screen.*product.design|flow.*product.design|product.design.*(screen|flow)' <<<"$step2" || \
     fail "Step 2 should attribute screen/flow findings to the product design project"
 }
 
@@ -1371,10 +1371,10 @@ _sweep_prewrite_guards() {
     local line_num=0
     while IFS= read -r line; do
       line_num=$((line_num + 1))
-      if printf '%s' "$line" | grep -qE 'verify-publication-target'; then
+      if grep -qE 'verify-publication-target' <<<"$line"; then
         last_guard_line=$line_num
       fi
-      if printf '%s' "$line" | grep -qE 'write_files|action[^"]*"publish"'; then
+      if grep -qE 'write_files|action[^"]*"publish"' <<<"$line"; then
         if [ "$last_guard_line" -eq 0 ] || [ "$last_guard_line" -ge "$line_num" ]; then
           _sweep_unguarded=$((_sweep_unguarded + 1))
         fi
@@ -1449,7 +1449,7 @@ _sweep_prewrite_guards() {
   step6="$(awk '/^### Step 6/{found=1} found && /^### Step [^6]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step6" ] || fail "Step 6 not found in SKILL.md"
 
-  printf '%s' "$step6" | grep -qiE 'design.system.*(token|component|template)|--project design_system' || \
+  grep -qiE 'design.system.*(token|component|template)|--project design_system' <<<"$step6" || \
     fail "Step 6 should route tokens/components/templates to the design-system run"
 }
 
@@ -1460,7 +1460,7 @@ _sweep_prewrite_guards() {
   step6="$(awk '/^### Step 6/{found=1} found && /^### Step [^6]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step6" ] || fail "Step 6 not found in SKILL.md"
 
-  printf '%s' "$step6" | grep -qiE 'product.design.*(screen|flow)|--project product_design|screen.*per-file|flow.*per-file' || \
+  grep -qiE 'product.design.*(screen|flow)|--project product_design|screen.*per-file|flow.*per-file' <<<"$step6" || \
     fail "Step 6 should route screens/flows to the product-design per-file reads"
 }
 
@@ -1484,23 +1484,23 @@ _sweep_prewrite_guards() {
     if [ "$label" = "Step 2" ]; then step="$step2"; else step="$step6"; fi
 
     # Artboard dc.html is a product-design screen
-    printf '%s' "$step" | grep -qiE 'artboard.*product.design.*screen|dc\.html.*product.design.*screen|artboard.*screen' || \
+    grep -qiE 'artboard.*product.design.*screen|dc\.html.*product.design.*screen|artboard.*screen' <<<"$step" || \
       fail "$label should classify artboard dc.html as a product-design screen"
 
     # canvas.json is the canvas index, never a screen
-    printf '%s' "$step" | grep -qiE 'canvas\.json.*index.*never.*screen|canvas\.json.*never.*screen' || \
+    grep -qiE 'canvas\.json.*index.*never.*screen|canvas\.json.*never.*screen' <<<"$step" || \
       fail "$label should state that canvas.json is the canvas index, never a screen"
 
     # Flows have no canvas form yet
-    printf '%s' "$step" | grep -qiE 'flows.*no canvas form.*yet|no canvas form.*yet' || \
+    grep -qiE 'flows.*no canvas form.*yet|no canvas form.*yet' <<<"$step" || \
       fail "$label should state that flows have no canvas form yet"
 
     # Unmatched canvas path gets a medium-severity notice
-    printf '%s' "$step" | grep -qiE 'none of these patterns.*medium.*notice|medium.*notice.*none' || \
+    grep -qiE 'none of these patterns.*medium.*notice|medium.*notice.*none' <<<"$step" || \
       fail "$label should give a medium-severity notice for canvas paths matching none of the patterns"
 
     # Unmatched canvas path is assigned to neither project
-    printf '%s' "$step" | grep -qiE 'neither project|assigned to neither' || \
+    grep -qiE 'neither project|assigned to neither' <<<"$step" || \
       fail "$label should state that unclassified canvas paths are assigned to neither project"
   done
 }
@@ -1523,12 +1523,12 @@ _sweep_prewrite_guards() {
 
   # Find the first line number where record-review-coverage appears
   local cov_line
-  cov_line="$(printf '%s\n' "$step5" | grep -m1 'record-review-coverage' | cut -d: -f1)"
+  cov_line="$(grep -m1 'record-review-coverage' <<<"$step5" | cut -d: -f1)"
   [ -n "$cov_line" ] || fail "Step 5 should call record-review-coverage"
 
   # Find the first line number where transition --to approved appears
   local trans_line
-  trans_line="$(printf '%s\n' "$step5" | grep -m1 'transition.*--to approved' | cut -d: -f1)"
+  trans_line="$(grep -m1 'transition.*--to approved' <<<"$step5" | cut -d: -f1)"
   [ -n "$trans_line" ] || fail "Step 5 should contain transition --to approved"
 
   # Coverage must come BEFORE the transition (lower line number)
@@ -1544,9 +1544,9 @@ _sweep_prewrite_guards() {
   step5="$(awk '/^### Step 5/{found=1} found && /^### Step [^5]/{exit} found{print}' "$SKILL_MD")"
   [ -n "$step5" ] || fail "Step 5 not found in SKILL.md"
 
-  printf '%s' "$step5" | grep -qiE 'null.*(design-system|design.system)' || \
+  grep -qiE 'null.*(design-system|design.system)' <<<"$step5" || \
     fail "Step 5 should specify design-system-only coverage when product project is null"
-  printf '%s' "$step5" | grep -qiE 'design-system.*when.*null|null.*design-system-only' || \
+  grep -qiE 'design-system.*when.*null|null.*design-system-only' <<<"$step5" || \
     fail "Step 5 should describe design-system-only coverage linked to the null product project"
 }
 
@@ -1611,8 +1611,8 @@ _sweep_prewrite_guards() {
 
   # Match the bare form followed by a backtick (the markdown inline code
   # boundary), so it does not falsely match the template heading.
-  printf '%s' "$step6" | grep -q 'bare.*## N\. Components' || \
-    printf '%s' "$step6" | grep -q '`## N\. Components`' || \
+  grep -q 'bare.*## N\. Components' <<<"$step6" || \
+    grep -q '`## N\. Components`' <<<"$step6" || \
     fail "Step 6 should list the bare Components heading distinctly"
 }
 

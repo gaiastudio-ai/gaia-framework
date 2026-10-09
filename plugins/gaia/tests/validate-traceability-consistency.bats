@@ -210,9 +210,9 @@ MD
   _write_defective_matrix
   run "$SCRIPT" --epics-file "$EPICS" --matrix-file "$MATRIX" --format json --check all
   [ "$status" -eq 0 ]   # severity defaults to warn → exit 0 even with issues
-  echo "$output" | grep -q '"gate_count"'
-  echo "$output" | grep -q '"scope_mismatches"'
-  echo "$output" | grep -q '"invented_keys"'
+  grep -q '"gate_count"' <<<"$output"
+  grep -q '"scope_mismatches"' <<<"$output"
+  grep -q '"invented_keys"' <<<"$output"
 }
 
 @test "--help exits 0 and prints usage" {

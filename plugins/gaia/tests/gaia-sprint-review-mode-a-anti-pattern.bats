@@ -93,7 +93,7 @@ teardown() { common_teardown; }
   [ -f "$SKILL_MD" ] || skip "SKILL.md not yet implemented (TDD red)"
   # Extract frontmatter block (between first two --- lines) via awk state-machine.
   frontmatter=$(awk '/^---$/{f++; next} f==1{print}' "$SKILL_MD")
-  echo "$frontmatter" | grep -qE '^orchestration_class:[[:space:]]*heavy-procedural[[:space:]]*$' || {
+  grep -qE '^orchestration_class:[[:space:]]*heavy-procedural[[:space:]]*$' <<<"$frontmatter" || {
     echo "SKILL.md frontmatter missing or mis-set orchestration_class. Expected 'orchestration_class: heavy-procedural'."
     echo "Frontmatter content:"
     echo "$frontmatter"

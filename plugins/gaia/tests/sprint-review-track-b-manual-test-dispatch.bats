@@ -85,7 +85,7 @@ teardown() {
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
   # Must contain at least one envelope with type "manual-test"
-  echo "$output" | grep -q '"type"[[:space:]]*:[[:space:]]*"manual-test"'
+  grep -q '"type"[[:space:]]*:[[:space:]]*"manual-test"' <<<"$output"
 }
 
 @test "manual-test envelope contains surface field matching dispatch output" {
@@ -93,7 +93,7 @@ teardown() {
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
   # The api surface should appear (server platform → api surface configured)
-  echo "$output" | grep -q '"surface"[[:space:]]*:[[:space:]]*"api"'
+  grep -q '"surface"[[:space:]]*:[[:space:]]*"api"' <<<"$output"
 }
 
 @test "stack-command envelopes also carry type field" {
@@ -101,7 +101,7 @@ teardown() {
   run bash "$RUNNER" --sprint sprint-50 --config "$CONFIG"
   [ "$status" -eq 0 ]
   # The per-stack (node) envelope must have type "stack-command"
-  echo "$output" | grep -q '"type"[[:space:]]*:[[:space:]]*"stack-command"'
+  grep -q '"type"[[:space:]]*:[[:space:]]*"stack-command"' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ EOF
   [ "$status" -eq 0 ]
   # Should have stack-command envelopes but no manual-test envelopes
   # (or manual-test envelopes are all SKIPPED)
-  echo "$output" | grep -q '"type"[[:space:]]*:[[:space:]]*"stack-command"'
+  grep -q '"type"[[:space:]]*:[[:space:]]*"stack-command"' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------

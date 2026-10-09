@@ -325,7 +325,7 @@ YAMLEOF
     false
   }
   # The success line must NOT be printed.
-  if echo "$output" | grep -qF "sprint_id bound to"; then
+  if grep -qF "sprint_id bound to" <<<"$output"; then
     echo "printed the success line despite the failure: $output" >&2
     false
   fi
@@ -336,7 +336,7 @@ YAMLEOF
   }
   # The acquisition itself must have succeeded — otherwise this test would be
   # asserting on a lock timeout rather than on the critical section.
-  if echo "$output" | grep -qF "lock timeout"; then
+  if grep -qF "lock timeout" <<<"$output"; then
     echo "the run failed at lock acquisition, not in the critical section: $output" >&2
     false
   fi
@@ -587,7 +587,7 @@ YAMLEOF
   # Assert ABSENCE directly: `grep -v` succeeds whenever any single line
   # fails to match, so it silently stops meaning "absent" the moment the
   # output grows a second line.
-  if echo "$output" | grep -qF "lock timeout"; then
+  if grep -qF "lock timeout" <<<"$output"; then
     echo "failure was lock-timeout, not post-acquire fault: $output" >&2
     false
   fi

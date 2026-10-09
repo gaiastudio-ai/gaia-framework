@@ -175,7 +175,7 @@ YAML
           IMPLEMENTATION_ARTIFACTS="$root/docs/implementation-artifacts" \
           bash "$SP_SETUP"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF 'no status: field'
+  grep -qF 'no status: field' <<<"$output"
 }
 
 @test "follow-up: real readiness-report with status: FAIL still gates (strict)" {
@@ -193,5 +193,5 @@ YAML
           IMPLEMENTATION_ARTIFACTS="$root/docs/implementation-artifacts" \
           bash "$SP_SETUP"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -qF 'no PASS/CONDITIONAL'
+  grep -qF 'no PASS/CONDITIONAL' <<<"$output"
 }

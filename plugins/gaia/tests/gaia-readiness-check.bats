@@ -117,29 +117,29 @@ teardown() { common_teardown; }
 
 @test "SKILL.md frontmatter contains required 'name' field" {
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^name:'
+  grep -q '^name:' <<<"$frontmatter"
 }
 
 @test "SKILL.md frontmatter contains required 'description' field" {
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^description:'
+  grep -q '^description:' <<<"$frontmatter"
 }
 
 @test "SKILL.md frontmatter name is 'gaia-readiness-check'" {
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^name: gaia-readiness-check'
+  grep -q '^name: gaia-readiness-check' <<<"$frontmatter"
 }
 
 @test "SKILL.md frontmatter declares orchestration_class (post-migration)" {
   # ADR-093 / E84-S3: `context: fork` stripped from non-reviewer plugin
   # SKILL.md. gaia-readiness-check is heavy-procedural.
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^orchestration_class: heavy-procedural'
+  grep -q '^orchestration_class: heavy-procedural' <<<"$frontmatter"
 }
 
 @test "SKILL.md frontmatter contains 'allowed-tools' list" {
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^allowed-tools:'
+  grep -q '^allowed-tools:' <<<"$frontmatter"
 }
 
 # ---------- AC2: setup.sh dual gate enforcement ----------

@@ -50,5 +50,5 @@ _gen() {
     bash "$FINALIZE"
   # finalize may exit non-zero for unrelated env reasons, but SV-17/SV-19 must
   # NOT appear in any FAIL/violation lines.
-  ! printf '%s\n' "$output" | grep -E 'SV-17|SV-19' | grep -qiE 'fail|violation|missing'
+  ! grep -E 'SV-17|SV-19' <<<"$output" | grep -qiE 'fail|violation|missing'
 }

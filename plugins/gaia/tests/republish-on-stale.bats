@@ -80,7 +80,7 @@ _extract_step10_createux() {
   step8="$(_extract_step8_editux)"
   [ -n "$step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
 
-  printf '%s' "$step8" | grep -qF 'plan-publication.sh' \
+  grep -qF 'plan-publication.sh' <<<"$step8" \
     || fail "Step 8 section does not reference plan-publication.sh"
 
   # Sub-scenario: ordering — stale-transition end marker BEFORE the
@@ -96,11 +96,11 @@ _extract_step10_createux() {
     || fail "stale-transition end marker (line $stale_end_line) must precede plan-publication.sh reference (line $pub_line)"
 
   # Sub-scenario: conflict handling documented
-  printf '%s' "$step8" | grep -qiE 'CONFLICT' \
+  grep -qiE 'CONFLICT' <<<"$step8" \
     || fail "Step 8 does not mention CONFLICT handling"
-  printf '%s' "$step8" | grep -qi 'write_files' \
+  grep -qi 'write_files' <<<"$step8" \
     || fail "Step 8 does not mention write_files"
-  printf '%s' "$step8" | grep -qF 'strict-conflicts' \
+  grep -qF 'strict-conflicts' <<<"$step8" \
     || fail "Step 8 does not mention --strict-conflicts"
 
   # Sub-scenario: shared planner location
@@ -120,7 +120,7 @@ _extract_step10_createux() {
   matrix="$(_extract_cascade_matrix)"
   [ -n "$matrix" ] || fail "Cascade Matrix section not found"
 
-  printf '%s' "$matrix" | grep -qi 'UX Design' \
+  grep -qi 'UX Design' <<<"$matrix" \
     || fail "cascade matrix has no UX Design row"
 
   # Extract the UX Design row and assert YES in all three classification columns
@@ -149,7 +149,7 @@ _extract_step10_createux() {
   step7b="$(awk '/^### Step 7b/{p=1} p && /^### Step [^7]/{exit} p' "$SKILL_MD_AF")"
   [ -n "$step7b" ] || fail "Step 7b section empty in add-feature SKILL.md"
 
-  printf '%s' "$step7b" | grep -qF 'plan-publication.sh' \
+  grep -qF 'plan-publication.sh' <<<"$step7b" \
     || fail "Step 7b does not reference plan-publication.sh"
 
   # Sub-scenario: republish text between stale-transition end and Step 8
@@ -157,7 +157,7 @@ _extract_step10_createux() {
   between="$(_extract_between_stale_end_and_step8_af)"
   [ -n "$between" ] || fail "no text found between stale-transition end and Step 8 in add-feature"
 
-  printf '%s' "$between" | grep -qF 'plan-publication.sh' \
+  grep -qF 'plan-publication.sh' <<<"$between" \
     || fail "no plan-publication.sh reference between stale-transition end and Step 8 in add-feature"
 
   # Sub-scenario: patch path also has republish
@@ -165,7 +165,7 @@ _extract_step10_createux() {
   patch_section="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
   [ -n "$patch_section" ] || fail "Step 3 patch section not found"
 
-  printf '%s' "$patch_section" | grep -qiE 'republish|plan-publication' \
+  grep -qiE 'republish|plan-publication' <<<"$patch_section" \
     || fail "Step 3 patch section has no republish reference"
 }
 
@@ -182,25 +182,25 @@ _extract_step10_createux() {
   step8="$(_extract_step8_editux)"
   [ -n "$step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
 
-  printf '%s' "$step8" | grep -qi 'stays stale\|stays.*stale\|record.*stale' \
+  grep -qi 'stays stale\|stays.*stale\|record.*stale' <<<"$step8" \
     || fail "edit-ux Step 8 does not describe the record staying stale on failure"
-  printf '%s' "$step8" | grep -qi 'failure' \
+  grep -qi 'failure' <<<"$step8" \
     || fail "edit-ux Step 8 does not mention failure handling"
 
   # add-feature failure text (enhancement/feature path)
   local between
   between="$(_extract_between_stale_end_and_step8_af)"
-  printf '%s' "$between" | grep -qiE 'no stories|no story' \
+  grep -qiE 'no stories|no story' <<<"$between" \
     || fail "add-feature republish text does not say no stories on failure"
 
   # add-feature failure text (patch path)
   local patch_section
   patch_section="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
-  printf '%s' "$patch_section" | grep -qi 'stale\|failure' \
+  grep -qi 'stale\|failure' <<<"$patch_section" \
     || fail "Step 3 patch section has no failure handling"
 
   # add-feature seed-brief mode
-  printf '%s' "$between" | grep -qiE 'seed brief|story keys' \
+  grep -qiE 'seed brief|story keys' <<<"$between" \
     || fail "add-feature republish text does not mention seed briefs or story keys on failure"
 }
 
@@ -216,10 +216,10 @@ _extract_step10_createux() {
   # (a) driver header: no dangling phrase
   local header
   header="$(head -40 "$DRIVER_SCRIPT")"
-  if printf '%s' "$header" | grep -qiE 'later.*update step'; then
+  if grep -qiE 'later.*update step' <<<"$header"; then
     fail "driver header still contains the dangling 'later update step' phrase"
   fi
-  printf '%s' "$header" | grep -qi 'republish step' \
+  grep -qi 'republish step' <<<"$header" \
     || fail "driver header does not mention 'republish step' (the replacement wording)"
 
   # (b) attestation blocks: no dangling phrase
@@ -229,10 +229,10 @@ _extract_step10_createux() {
   block_ux="$(_extract_attestation_block "$SKILL_MD_UX")"
   [ -n "$block_ux" ] || fail "attestation block missing from edit-ux SKILL.md"
 
-  if printf '%s' "$block_af" | grep -qiE 'later.*update step'; then
+  if grep -qiE 'later.*update step' <<<"$block_af"; then
     fail "add-feature attestation block still contains the dangling phrase"
   fi
-  if printf '%s' "$block_ux" | grep -qiE 'later.*update step'; then
+  if grep -qiE 'later.*update step' <<<"$block_ux"; then
     fail "edit-ux attestation block still contains the dangling phrase"
   fi
 
@@ -280,7 +280,7 @@ _extract_step10_createux() {
   [ -n "$step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
 
   # The republish text must address the stale-to-stale case
-  printf '%s' "$step8" | grep -qiE 'stale-to-stale|already stale|second.*audit|state no-op' \
+  grep -qiE 'stale-to-stale|already stale|second.*audit|state no-op' <<<"$step8" \
     || fail "edit-ux Step 8 does not document the stale-to-stale republish case"
 }
 
@@ -303,7 +303,7 @@ _extract_step10_createux() {
   # The republish is gated on "design-affecting"
   local between
   between="$(_extract_between_stale_end_and_step8_af)"
-  printf '%s' "$between" | grep -qiE 'design-affecting' \
+  grep -qiE 'design-affecting' <<<"$between" \
     || fail "add-feature republish text is not gated on design-affecting classification"
 }
 
@@ -320,10 +320,10 @@ _extract_step10_createux() {
 
   # The republish text must document: halts when missing/unauthorized,
   # no republication attempted
-  printf '%s' "$step8" | grep -qiE 'halt|missing.*unauthorized|unauthorized.*missing' \
+  grep -qiE 'halt|missing.*unauthorized|unauthorized.*missing' <<<"$step8" \
     || fail "edit-ux Step 8 does not document the halt on missing/unauthorized integration"
 
-  printf '%s' "$step8" | grep -qiE 'no republication|no republish|precedes.*republish|halt.*precedes' \
+  grep -qiE 'no republication|no republish|precedes.*republish|halt.*precedes' <<<"$step8" \
     || fail "edit-ux Step 8 does not say halts precede republish"
 }
 
@@ -338,10 +338,10 @@ _extract_step10_createux() {
   step8="$(_extract_step8_editux)"
   [ -n "$step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
 
-  printf '%s' "$step8" | grep -qiE 'both versions' \
+  grep -qiE 'both versions' <<<"$step8" \
     || fail "edit-ux Step 8 does not mention surfacing both versions on CONFLICT"
 
-  printf '%s' "$step8" | grep -qiE 'halt.*resolution|resolution.*halt|halt for|halts for' \
+  grep -qiE 'halt.*resolution|resolution.*halt|halt for|halts for' <<<"$step8" \
     || fail "edit-ux Step 8 does not say skill halts for resolution on CONFLICT"
 
   # Script-driven: --strict-conflicts must exist in the planner
@@ -456,7 +456,7 @@ _extract_step10_createux() {
   local unmutated_step8
   unmutated_step8="$(awk '/^### Step 8/{p=1} p && /^### Step [^8]/ && NR>1{exit} p' "$SKILL_MD_UX")"
   [ -n "$unmutated_step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
-  printf '%s' "$unmutated_step8" | grep -qF 'plan-publication.sh' \
+  grep -qF 'plan-publication.sh' <<<"$unmutated_step8" \
     || fail "PRECONDITION: unmutated edit-ux Step 8 does not contain plan-publication.sh — the republish step must be present before mutation testing"
 
   # Create a mutated copy: remove plan-publication.sh references from Step 8
@@ -468,7 +468,7 @@ _extract_step10_createux() {
   step8="$(awk '/^### Step 8/{p=1} p && /^### Step [^8]/ && NR>1{exit} p' "$mutant")"
 
   # The grep for plan-publication.sh must FAIL on the mutant
-  if printf '%s' "$step8" | grep -qF 'plan-publication.sh'; then
+  if grep -qF 'plan-publication.sh' <<<"$step8"; then
     fail "mutant still contains plan-publication.sh — the mutation did not work"
   fi
 
@@ -517,7 +517,7 @@ _extract_step10_createux() {
 
   local header
   header="$(head -40 "$DRIVER_SCRIPT")"
-  printf '%s' "$header" | grep -qE 'revok|token' \
+  grep -qE 'revok|token' <<<"$header" \
     || fail "driver header does not mention revoked/token trade-off"
 }
 
@@ -565,7 +565,7 @@ _extract_step10_createux() {
   block_af="$(_extract_attestation_block "$SKILL_MD_AF")"
   [ -n "$block_af" ] || fail "attestation block missing"
 
-  printf '%s' "$block_af" | grep -qiE 'revok|token' \
+  grep -qiE 'revok|token' <<<"$block_af" \
     || fail "attestation block does not mention revoked/token"
 }
 
@@ -618,7 +618,7 @@ _extract_step10_createux() {
   stale_section="$(awk '/<section id="stale-on-change">/{p=1} p && /<\/section>/{print;exit} p' "$page")"
   [ -n "$stale_section" ] || fail "stale-on-change section not found in design-lifecycle.html"
 
-  printf '%s' "$stale_section" | grep -qiE 'republish|conflict' \
+  grep -qiE 'republish|conflict' <<<"$stale_section" \
     || fail "stale-on-change section does not mention republish or conflict"
 }
 
@@ -646,7 +646,7 @@ _extract_step10_createux() {
 
   local t
   for t in "${tokens[@]}"; do
-    printf '%s' "$cux_step10" | grep -qF "$t" \
+    grep -qF "$t" <<<"$cux_step10" \
       || fail "create-ux Step 10 is missing token: $t"
   done
 
@@ -656,7 +656,7 @@ _extract_step10_createux() {
   [ -n "$ux_step8" ] || fail "edit-ux Step 8 section not found"
 
   for t in "${tokens[@]}"; do
-    printf '%s' "$ux_step8" | grep -qF "$t" \
+    grep -qF "$t" <<<"$ux_step8" \
       || fail "edit-ux Step 8 is missing token: $t (drift from create-ux Step 10)"
   done
 
@@ -670,15 +670,15 @@ _extract_step10_createux() {
   [ -n "$af_combined" ] || fail "add-feature publication procedure text not found"
 
   for t in "${tokens[@]}"; do
-    printf '%s' "$af_combined" | grep -qF "$t" \
+    grep -qF "$t" <<<"$af_combined" \
       || fail "add-feature publication procedure is missing token: $t (drift from create-ux Step 10)"
   done
 
   # Failure-rule token: each site must document the stale-on-failure semantics
-  printf '%s' "$cux_step10" | grep -qiE 'failed.*operations|failure' \
+  grep -qiE 'failed.*operations|failure' <<<"$cux_step10" \
     || fail "create-ux Step 10 does not mention failure handling"
-  printf '%s' "$ux_step8" | grep -qiE 'stays stale|failure' \
+  grep -qiE 'stays stale|failure' <<<"$ux_step8" \
     || fail "edit-ux Step 8 does not mention failure/stays-stale"
-  printf '%s' "$af_combined" | grep -qiE 'stays stale|failure' \
+  grep -qiE 'stays stale|failure' <<<"$af_combined" \
     || fail "add-feature publication procedure does not mention failure/stays-stale"
 }

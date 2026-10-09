@@ -38,7 +38,7 @@ run_check() { # $1=stories file ; remaining args appended
 @test "points-heavy (73pt) but coherent + shallow-dep batch is NOT flagged" {
   run_check "$FIX/sprint53-like.stories"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'capacity:[[:space:]]*ok|verdict:[[:space:]]*ok|not flagged|within' \
+  grep -Eiq 'capacity:[[:space:]]*ok|verdict:[[:space:]]*ok|not flagged|within' <<<"$output" \
     || { echo "sprint-53-like batch should pass capacity, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -46,7 +46,7 @@ run_check() { # $1=stories file ; remaining args appended
   run_check "$FIX/sprint53-like.stories"
   [ "$status" -eq 0 ]
   # must NOT reason about points-per-time, velocity floors, or "too many points"
-  ! echo "$output" | grep -Eiq 'points per (day|week|month|duration)|too many points|points.*too much|velocity.*floor|points.*sprint|pt.*wk|throughput.*point' \
+  ! grep -Eiq 'points per (day|week|month|duration)|too many points|points.*too much|velocity.*floor|points.*sprint|pt.*wk|throughput.*point' <<<"$output" \
     || { echo "must not use points-per-duration/velocity-floor heuristic, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -56,9 +56,9 @@ run_check() { # $1=stories file ; remaining args appended
   # 7-deep serial chain, 14 points total -> exceeds depth-threshold 5
   run_check "$FIX/deep-chain.stories"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'depth|critical.path|chain' \
+  grep -Eiq 'depth|critical.path|chain' <<<"$output" \
     || { echo "expected a depth measure, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eiq 'flag|exceed|over' \
+  grep -Eiq 'flag|exceed|over' <<<"$output" \
     || { echo "deep chain should be flagged, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -76,9 +76,9 @@ run_check() { # $1=stories file ; remaining args appended
   # 20 distinct stories, 20 points, shallow deps -> exceeds coherence-ceiling 15
   run_check "$FIX/wide-batch.stories"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'coherence' \
+  grep -Eiq 'coherence' <<<"$output" \
     || { echo "expected a coherence measure, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eiq 'flag|exceed|over' \
+  grep -Eiq 'flag|exceed|over' <<<"$output" \
     || { echo "wide batch should be flagged, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -118,7 +118,7 @@ run_check() { # $1=stories file ; remaining args appended
     --events "$EVENTS_EMPTY" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   wc_line=$(echo "$output" | grep -i 'wall.clock' || true)
-  echo "$wc_line" | grep -Eiq 'uncalibrated'
+  grep -Eiq 'uncalibrated' <<<"$wc_line"
 }
 
 # ---------- AC4 / TS2: warm (all three measures) ----------
@@ -145,7 +145,7 @@ run_check() { # $1=stories file ; remaining args appended
 @test "--help prints usage and exits 0" {
   run bash "$SCRIPT" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'capacity'
+  grep -Eiq 'capacity' <<<"$output"
 }
 
 # ---------- AC-INT1 / TS6: sprint-plan wiring present ----------

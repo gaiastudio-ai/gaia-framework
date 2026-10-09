@@ -94,7 +94,7 @@ mk_action_items_yaml() {
 
   run "$CROSS_RETRO" --retros-dir "$retros_dir" --action-items "$ai_yaml" --current-sprint "sprint-3"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "systemic"
+  grep -q "systemic" <<<"$output"
   grep -q "escalation_count: 1" "$ai_yaml"
 }
 
@@ -113,10 +113,10 @@ mk_action_items_yaml() {
 
   run "$REVIEW_EXTRACT" --impl-dir "$sprint_dir" --sprint-id "sprint-test"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "code-review"
-  echo "$output" | grep -q "PASSED"
-  echo "$output" | grep -q "FAILED"
-  echo "$output" | grep -q "PARTIAL"
+  grep -q "code-review" <<<"$output"
+  grep -q "PASSED" <<<"$output"
+  grep -q "FAILED" <<<"$output"
+  grep -q "PARTIAL" <<<"$output"
 }
 
 # ===========================================================================
@@ -170,7 +170,7 @@ mk_action_items_yaml() {
   run "$CROSS_RETRO" --retros-dir "$retros_dir" --action-items "$TEST_TMP/does-not-exist.yaml" --current-sprint "sprint-3"
   [ "$status" -eq 0 ]
   # combined output should include a warning token
-  echo "$output" | grep -qiE "warn|skip"
+  grep -qiE "warn|skip" <<<"$output"
 }
 
 # ===========================================================================
@@ -211,7 +211,7 @@ mk_action_items_yaml() {
 
   run "$REVIEW_EXTRACT" --impl-dir "$sprint_dir" --sprint-id "sprint-test"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "UNKNOWN"
+  grep -q "UNKNOWN" <<<"$output"
 }
 
 # ===========================================================================
@@ -231,7 +231,7 @@ mk_action_items_yaml() {
   run "$REVIEW_EXTRACT" --impl-dir "$sprint_dir" --sprint-id "sprint-test"
   [ "$status" -eq 0 ]
   # No current-sprint review artifacts found.
-  echo "$output" | grep -qiE "no review artifacts|empty"
+  grep -qiE "no review artifacts|empty" <<<"$output"
 }
 
 # Regression: a sprint-status.yaml that EXISTS but carries no story keys is a

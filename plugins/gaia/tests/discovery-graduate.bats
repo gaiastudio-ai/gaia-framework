@@ -385,8 +385,8 @@ seed_artifact() {
   # Ordering: hydrated intake lines (description:) must appear BEFORE the
   # "graduated" confirmation line — proving emission precedes state mutation.
   local desc_line grad_line
-  desc_line=$(printf '%s\n' "$output" | grep -n 'description:' | head -1 | cut -d: -f1)
-  grad_line=$(printf '%s\n' "$output" | grep -n 'graduated' | head -1 | cut -d: -f1)
+  desc_line=$(grep -n 'description:' <<<"$output" | head -1 | cut -d: -f1)
+  grad_line=$(grep -n 'graduated' <<<"$output" | head -1 | cut -d: -f1)
   [ -n "$desc_line" ]
   [ -n "$grad_line" ]
   [ "$desc_line" -lt "$grad_line" ]

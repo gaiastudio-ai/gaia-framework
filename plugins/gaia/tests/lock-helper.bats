@@ -1264,7 +1264,7 @@ STORYEOF
   '
   chmod 755 "$ro_dir"
   [ "$status" -ne 0 ] || { echo "acquire succeeded in an unwritable directory" >&2; false; }
-  if echo "$output" | grep -qF ".lock-tmp."; then
+  if grep -qF ".lock-tmp." <<<"$output"; then
     echo "raw diagnostic leaked the internal temp-name scheme: $output" >&2
     false
   fi

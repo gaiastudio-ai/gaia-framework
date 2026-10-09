@@ -91,7 +91,7 @@ _assert_required_fields() {
   local keys
   keys=$(_yaml_top_keys "$file") || return 1
   for k in name language platform build_tool package_manager linters formatters test_frameworks adapters; do
-    echo "$keys" | grep -qx "$k" || { echo "missing required key '$k' in $file" >&2; return 1; }
+    grep -qx "$k" <<<"$keys" || { echo "missing required key '$k' in $file" >&2; return 1; }
   done
 }
 
@@ -229,41 +229,41 @@ _assert_required_fields() {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$SWIFT_YAML"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi 'swiftlint'
-  echo "$output" | grep -qi 'swiftformat'
+  grep -qi 'swiftlint' <<<"$output"
+  grep -qi 'swiftformat' <<<"$output"
 }
 
 @test "swift.yaml adapters.static does NOT include kotlin/js tools" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$SWIFT_YAML"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qi 'detekt'
-  ! echo "$output" | grep -qi 'ktlint'
-  ! echo "$output" | grep -qi 'eslint'
+  ! grep -qi 'detekt' <<<"$output"
+  ! grep -qi 'ktlint' <<<"$output"
+  ! grep -qi 'eslint' <<<"$output"
 }
 
 @test "kotlin.yaml adapters.static contains Detekt and ktlint" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$KOTLIN_YAML"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi 'detekt'
-  echo "$output" | grep -qi 'ktlint'
+  grep -qi 'detekt' <<<"$output"
+  grep -qi 'ktlint' <<<"$output"
 }
 
 @test "kotlin.yaml adapters.static does NOT include swift/js tools" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$KOTLIN_YAML"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qi 'swiftlint'
-  ! echo "$output" | grep -qi 'swiftformat'
-  ! echo "$output" | grep -qi 'eslint'
+  ! grep -qi 'swiftlint' <<<"$output"
+  ! grep -qi 'swiftformat' <<<"$output"
+  ! grep -qi 'eslint' <<<"$output"
 }
 
 @test "react-native.yaml adapters.static contains ESLint" {
   _yaml_supported || skip "python3+yaml unavailable"
   run _yaml_adapters_static "$RN_YAML"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi 'eslint'
+  grep -qi 'eslint' <<<"$output"
 }
 
 @test "flutter.yaml adapters.static references dart analyzer / flutter lints" {
@@ -271,7 +271,7 @@ _assert_required_fields() {
   run _yaml_adapters_static "$FLUTTER_YAML"
   [ "$status" -eq 0 ]
   # Either "dart_analyzer" / "dart-analyzer" or "flutter_lints" / "flutter-lints" must appear
-  echo "$output" | grep -qiE 'dart[-_]?analyzer|flutter[-_]?lints'
+  grep -qiE 'dart[-_]?analyzer|flutter[-_]?lints' <<<"$output"
 }
 
 # --- AC7: resolve-config.sh / parser load --------------------------------

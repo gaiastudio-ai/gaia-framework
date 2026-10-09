@@ -118,6 +118,100 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
+# ---------------- SIGPIPE reproduction: old form fails, new form passes --------
+@test "here-string eliminates SIGPIPE under pipefail with large input" {
+  # Build a 1 MB string with the match on the first line.
+  # Under pipefail, the old pipe form (printf | grep -q) can fail because
+  # grep exits early and printf receives SIGPIPE (exit 141).  The here-string
+  # form avoids the race: bash writes the variable to a temp file that grep
+  # reads after the write completes.
+  run bash -c '
+    set -euo pipefail
+    big="match-sentinel-XYZ"
+    big="$big"$'"'"'\n'"'"'"$(head -c 1048576 < /dev/zero | tr "\0" "x")"
+    grep -qF "match-sentinel-XYZ" <<<"$big"
+  '
+  [ "$status" -eq 0 ]
+
+  # The equivalent pipe form — printf "%s\n" "$big" | grep -qF "..." — is
+  # unsafe under pipefail: grep -q exits on first match, the still-writing
+  # printf receives SIGPIPE (exit 141), and pipefail surfaces that 141 as
+  # the pipeline status.  The race is nondeterministic (fires reliably on
+  # Linux CI, rarely on macOS) so it cannot be asserted portably.
+}
+
+# ---------------- Lint: no racy printf/echo | grep -q pipelines ---------------
+@test "no racy printf/echo piped to grep -q in bats test files" {
+  # Scan all bats files for the pattern:  printf/echo VAR | grep -q
+  # These are racy under pipefail because grep -q exits on first match,
+  # causing SIGPIPE to the writer.  The fix is to use a here-string.
+  #
+  # Exempt patterns:
+  #   - Comments (lines starting with #)
+  #   - Lines inside run bash -c (single-line, intentional)
+  #   - Lines that already use <<<
+  #   - printf piped to non-grep commands (jq, yq, awk without exit, sed, etc.)
+  #   - grep searching a FILE, not a pipe
+  #   - echo/printf piped to tail (tail reads all input, no early exit)
+  #   - Array expansions ${arr[@]} (can't use here-string)
+  #   - The safe_grep_log PIPESTATUS test (intentionally racy)
+  #   - Lines without pipefail (e.g., inside run bash -c without set -o pipefail)
+
+  local test_dir
+  test_dir="$(cd "$BATS_TEST_DIRNAME" && pwd)"
+
+  local file_count=0
+  local hits=""
+
+  while IFS= read -r -d '' f; do
+    file_count=$((file_count + 1))
+    # Find lines where printf/echo pipes directly to grep -q (racy shape)
+    local matches
+    # The racy shape: writer (printf/echo) piped DIRECTLY to grep -q.
+    # We look for:  printf FORMAT "$var" | grep -qFLAGS
+    #           or: echo "$var" | grep -qFLAGS
+    # The variable must be a $-prefixed expression in double quotes.
+    # Exemptions:
+    #   - This file itself (SIGPIPE demo + lint own commentary)
+    #   - grep searching a FILE for a literal printf string
+    #   - Lines inside run bash -c (separate process)
+    #   - Array expansions (can't use here-string)
+    #   - Pipes through non-early-exiting readers (jq, yq, tail)
+    [ "$f" = "$test_dir/safe-grep-log.bats" ] && continue
+    matches="$(grep -n 'printf .*"\$.*|.*grep  *-[a-zA-Z]*q' "$f" 2>/dev/null \
+      | grep -v '#.*printf' \
+      | grep -v '<<<' \
+      | grep -v 'run bash -c' \
+      | grep -v '@\]' \
+      | grep -v 'jq ' \
+      | grep -v "grep -qF.*'printf" \
+      || true)"
+    local echo_matches
+    echo_matches="$(grep -n 'echo  *"\$.*|.*grep  *-[a-zA-Z]*q' "$f" 2>/dev/null \
+      | grep -v '#.*echo' \
+      | grep -v '<<<' \
+      | grep -v 'run bash -c' \
+      | grep -v '@\]' \
+      | grep -v '| *tail ' \
+      | grep -v '| *yq ' \
+      || true)"
+    [ -n "$echo_matches" ] && matches="${matches}${matches:+
+}${echo_matches}"
+    if [ -n "$matches" ]; then
+      hits="${hits}${f}:
+${matches}
+"
+    fi
+  done < <(find "$test_dir" -name '*.bats' -print0)
+
+  [ "$file_count" -gt 0 ] || fail "scanned 0 bats files"
+
+  if [ -n "$hits" ]; then
+    printf 'Racy printf/echo | grep -q pipelines found:\n%s\n' "$hits" >&2
+    return 1
+  fi
+}
+
 # ---------------- TC-5: usage error (missing pattern) ----------------
 @test "safe_grep_log exits 2 on missing pattern" {
   run bash -c "

@@ -65,7 +65,7 @@ YAML
   run "$SCRIPT" --config "$cfg" --files-from "$files_list"
   [ "$status" -eq 0 ]
   # Output must be a JSON array containing "gaia-plugin"
-  echo "$output" | grep -q '"gaia-plugin"'
+  grep -q '"gaia-plugin"' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -150,5 +150,5 @@ YAML
 
   run "$SCRIPT" --config "$cfg" --files-from "$files_list"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '"test-stack"'
+  grep -q '"test-stack"' <<<"$output"
 }

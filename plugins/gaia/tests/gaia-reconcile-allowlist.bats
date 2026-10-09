@@ -48,7 +48,7 @@ _get_managed() {
                   severity gates stacks cross_service_tests environments ci_platform \
                   device_targets distribution health_check val_integration ci_cd \
                   platforms project_name sizing_map; do
-    printf '%s\n' "$allowlist" | grep -Fxq "$required" || {
+    grep -Fxq "$required" <<<"$allowlist" || {
       printf 'FAIL: required allowlist member missing: %s\n' "$required" >&2
       return 1
     }
@@ -59,7 +59,7 @@ _get_managed() {
                   framework_version date config_phase schema_version \
                   user_name communication_language project_kind \
                   project_shape; do
-    if printf '%s\n' "$allowlist" | grep -Fxq "$excluded"; then
+    if grep -Fxq "$excluded" <<<"$allowlist"; then
       printf 'FAIL: forbidden allowlist member present: %s\n' "$excluded" >&2
       return 1
     fi
@@ -67,7 +67,7 @@ _get_managed() {
 
   # Managed-elsewhere set MUST include the 4 artifact-bucket path fields (Val F2).
   for required_managed in planning_artifacts implementation_artifacts test_artifacts creative_artifacts; do
-    printf '%s\n' "$managed" | grep -Fxq "$required_managed" || {
+    grep -Fxq "$required_managed" <<<"$managed" || {
       printf 'FAIL: required managed-elsewhere member missing: %s (Val F2)\n' "$required_managed" >&2
       return 1
     }
@@ -78,7 +78,7 @@ _get_managed() {
   # it is NOT in schema v2.0.0, but kept here so legacy test fixtures (e.g.
   # gaia-reconcile-v2.bats write_schema helper) that still declare project_shape
   # do not trip the AC5 hard-error path. Pin this invariant explicitly.
-  printf '%s\n' "$managed" | grep -Fxq "project_shape" || {
+  grep -Fxq "project_shape" <<<"$managed" || {
     printf 'FAIL: project_shape must remain in managed-elsewhere as back-compat shim (Val F3)\n' >&2
     return 1
   }
@@ -124,7 +124,7 @@ YAML
   [ "$status" -eq 5 ]
 
   # AC5: stderr names the offending section(s).
-  printf '%s\n' "$output" | grep -Fq "is declared in schema but not in hydration allowlist or managed-elsewhere set"
+  grep -Fq "is declared in schema but not in hydration allowlist or managed-elsewhere set" <<<"$output"
 
   # AC5: config rolled back (byte-identical to pre-write state).
   post_sha=$(shasum -a 256 config/project-config.yaml | awk '{print $1}')
@@ -211,7 +211,7 @@ YAML
   # Backward: full -> partial is rejected with rc=3.
   run bash "$HYDRATION" advance-phase --to partial
   [ "$status" -eq 3 ]
-  printf '%s\n' "$output" | grep -Fq "backward config_phase transition"
+  grep -Fq "backward config_phase transition" <<<"$output"
 }
 
 @test "TC-RV2-50 — Reconciler invokes phase advancement after full hydration pass" {
@@ -304,7 +304,7 @@ YAML
   done
 
   # The audit trail MUST show the reconciliation completed (not the silent skip pattern).
-  printf '%s\n' "$output" | grep -Fq "reconciliation complete"
+  grep -Fq "reconciliation complete" <<<"$output"
 
   # Reproduction-pin telemetry: the broken 2026-05-13 run hydrated 4 sections;
   # the fixed run MUST hydrate strictly more than 4 (covers the 33 previously skipped).

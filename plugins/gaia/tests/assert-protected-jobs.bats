@@ -25,9 +25,9 @@ jobs:
 YAML
   run bash -c "source '$ASSERT' && assert_protected_jobs '$WORKDIR/gaia-ci.user-jobs.yml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'protected job name collision'
-  echo "$output" | grep -q 'bats-tests'
-  echo "$output" | grep -q 'gaia-ci.user-jobs.yml'
+  grep -q 'protected job name collision' <<<"$output"
+  grep -q 'bats-tests' <<<"$output"
+  grep -q 'gaia-ci.user-jobs.yml' <<<"$output"
 }
 
 @test "shellcheck is protected → exit non-zero" {
@@ -40,7 +40,7 @@ jobs:
 YAML
   run bash -c "source '$ASSERT' && assert_protected_jobs '$WORKDIR/gaia-ci.user-jobs.yml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'shellcheck'
+  grep -q 'shellcheck' <<<"$output"
 }
 
 @test "markdownlint is protected → exit non-zero" {
@@ -53,7 +53,7 @@ jobs:
 YAML
   run bash -c "source '$ASSERT' && assert_protected_jobs '$WORKDIR/gaia-ci.user-jobs.yml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'markdownlint'
+  grep -q 'markdownlint' <<<"$output"
 }
 
 # ---------- TC-CCL-7 non-protected names exit 0 ----------
@@ -106,8 +106,8 @@ jobs:
 YAML
   run bash -c "source '$ASSERT' && assert_protected_jobs '$WORKDIR/gaia-ci.user-jobs.yml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'rename'
-  echo "$output" | grep -q 'non-colliding'
+  grep -q 'rename' <<<"$output"
+  grep -q 'non-colliding' <<<"$output"
 }
 
 # ---------- TC-CCL-6: stitcher HALTs on collision; no file written ----------
@@ -133,7 +133,7 @@ YAML
   STITCHER="$PLUGIN_DIR/scripts/lib/ci-workflow-stitcher.sh"
   run bash -c "source '$STITCHER' && gaia_ci_stitch '$WORKDIR/gaia-ci.yml' '$target'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'protected job name collision'
+  grep -q 'protected job name collision' <<<"$output"
   # Output file MUST NOT exist (no partial regeneration)
   [ ! -f "$target" ]
 }
@@ -160,6 +160,6 @@ jobs:
 YAML
   run bash -c "source '$ASSERT' && assert_protected_jobs '$WORKDIR/gaia-ci.user-jobs.yml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'bats-tests'
-  echo "$output" | grep -q 'shellcheck'
+  grep -q 'bats-tests' <<<"$output"
+  grep -q 'shellcheck' <<<"$output"
 }

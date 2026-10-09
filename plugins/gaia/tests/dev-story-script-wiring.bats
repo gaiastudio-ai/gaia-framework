@@ -114,8 +114,8 @@ teardown() { common_teardown; }
 @test "promotion-chain-guard.sh appears BEFORE commit-msg.sh inside Step 10 block" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  guard_off="$(printf '%s\n' "$block" | grep -boF 'promotion-chain-guard.sh' | head -1 | cut -d: -f1)"
-  msg_off="$(printf '%s\n' "$block" | grep -boF 'commit-msg.sh' | head -1 | cut -d: -f1)"
+  guard_off="$(grep -boF 'promotion-chain-guard.sh' <<<"$block" | head -1 | cut -d: -f1)"
+  msg_off="$(grep -boF 'commit-msg.sh' <<<"$block" | head -1 | cut -d: -f1)"
   [ -n "$guard_off" ] && [ -n "$msg_off" ]
   [ "$guard_off" -lt "$msg_off" ]
 }

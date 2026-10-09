@@ -44,8 +44,8 @@ _stdin_with_context() {
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
   [ "$status" -eq 0 ]
   # No filled/empty glyphs present in output.
-  ! echo "$output" | grep -q "#"
-  ! echo "$output" | grep -q -- "----------"
+  ! grep -q "#" <<<"$output"
+  ! grep -q -- "----------" <<<"$output"
 }
 
 # ---------- AC7: 0% with non-null current_usage -> visible empty bar ------
@@ -58,7 +58,7 @@ _stdin_with_context() {
   [ "$status" -eq 0 ]
   # 10 empty glyphs in a row (ASCII: `-`).
   stripped="$(printf '%s' "$output" | LC_ALL=C sed -E $'s/\033\\[[0-9;]*m//g')"
-  echo "$stripped" | grep -q -- "----------"
+  grep -q -- "----------" <<<"$stripped"
 }
 
 # ---------- AC1: floor(pct/10) filled, remainder empty --------------------
@@ -72,7 +72,7 @@ _stdin_with_context() {
   # Strip SGR escape sequences before substring match (color reset sits
   # between filled run and empty run).
   stripped="$(printf '%s' "$output" | LC_ALL=C sed -E $'s/\033\\[[0-9;]*m//g')"
-  echo "$stripped" | grep -q "##--------"
+  grep -q "##--------" <<<"$stripped"
 }
 
 @test "E82-S9 / AC1: 50% renders 5 filled + 5 empty (ASCII)" {
@@ -82,7 +82,7 @@ _stdin_with_context() {
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(printf '%s' "$output" | LC_ALL=C sed -E $'s/\033\\[[0-9;]*m//g')"
-  echo "$stripped" | grep -q "#####-----"
+  grep -q "#####-----" <<<"$stripped"
 }
 
 @test "E82-S9 / AC8: 100% renders 10 filled + 0 empty (ASCII)" {
@@ -92,7 +92,7 @@ _stdin_with_context() {
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_ASCII=1 printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(printf '%s' "$output" | LC_ALL=C sed -E $'s/\033\\[[0-9;]*m//g')"
-  echo "$stripped" | grep -q "##########"
+  grep -q "##########" <<<"$stripped"
 }
 
 # ---------- AC5: ASCII fallback glyphs are `#` and `-` --------------------
@@ -105,7 +105,7 @@ _stdin_with_context() {
   [ "$status" -eq 0 ]
   # 4 filled + 6 empty for 40%.
   stripped="$(printf '%s' "$output" | LC_ALL=C sed -E $'s/\033\\[[0-9;]*m//g')"
-  echo "$stripped" | grep -q "####------"
+  grep -q "####------" <<<"$stripped"
 }
 
 # ---------- TRUE gradient (green -> amber -> red), not 3 discrete bands ----
@@ -121,7 +121,7 @@ _stdin_with_context() {
   [ "$status" -eq 0 ]
   # The number sits near the green end: the 10%-cell + number use a
   # green-dominant RGB. Endpoint at 0% is the exact green token.
-  echo "$output" | LC_ALL=C grep -qE $'\033\[38;2;[0-9]+;[12][0-9][0-9];[0-9]+m'   # G channel in 100s (green-dominant)
+  LC_ALL=C grep -qE $'\033\[38;2;[0-9]+;[12][0-9][0-9];[0-9]+m' <<<"$output"   # G channel in 100s (green-dominant)
 }
 
 @test "gradient: 0% number is the exact green endpoint (46,204,113)" {
@@ -130,7 +130,7 @@ _stdin_with_context() {
   stdin="$(_stdin_with_context 0 1000)"
   run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | LC_ALL=C grep -q $'\033\[38;2;46;204;113m'
+  LC_ALL=C grep -q $'\033\[38;2;46;204;113m' <<<"$output"
 }
 
 @test "gradient: 50% number is the amber midpoint (~255,176/177,0/1)" {
@@ -140,7 +140,7 @@ _stdin_with_context() {
   run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
   [ "$status" -eq 0 ]
   # Amber midpoint: R=255, G≈176-177, B≈0-1 (integer-rounding tolerant).
-  echo "$output" | LC_ALL=C grep -qE $'\033\[38;2;255;17[67];[01]m'
+  LC_ALL=C grep -qE $'\033\[38;2;255;17[67];[01]m' <<<"$output"
 }
 
 @test "gradient: 100% number is the red endpoint (~231/232,76/77,60)" {
@@ -149,7 +149,7 @@ _stdin_with_context() {
   stdin="$(_stdin_with_context 100 5000)"
   run bash -c "COLUMNS=200 COLORTERM=truecolor printf '%s' '$stdin' | env COLUMNS=200 COLORTERM=truecolor '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | LC_ALL=C grep -qE $'\033\[38;2;23[12];7[67];60m'
+  LC_ALL=C grep -qE $'\033\[38;2;23[12];7[67];60m' <<<"$output"
 }
 
 @test "gradient: NOT a 3-band step — a mid pct (35%) yields an interpolated hue (not the exact green/amber tokens)" {
@@ -160,10 +160,10 @@ _stdin_with_context() {
   [ "$status" -eq 0 ]
   # The 35% number must NOT be the old discrete green or amber band token —
   # it is an interpolated value between them (proves true gradient).
-  ! echo "$output" | LC_ALL=C grep -q $'\033\[38;2;46;204;113m'    # not pure green
-  ! echo "$output" | LC_ALL=C grep -q $'\033\[38;2;255;176;0m'     # not pure amber
+  ! LC_ALL=C grep -q $'\033\[38;2;46;204;113m' <<<"$output"    # not pure green
+  ! LC_ALL=C grep -q $'\033\[38;2;255;176;0m' <<<"$output"     # not pure amber
   # And it carries a truecolor fg escape (gradient emitted).
-  echo "$output" | LC_ALL=C grep -qE $'\033\[38;2;[0-9]+;[0-9]+;[0-9]+m'
+  LC_ALL=C grep -qE $'\033\[38;2;[0-9]+;[0-9]+;[0-9]+m' <<<"$output"
 }
 
 @test "gradient: 256-color terminals get an interpolated cube color (not the 3 band tokens)" {
@@ -175,7 +175,7 @@ _stdin_with_context() {
   run bash -c "printf '%s' '$stdin' | env -u COLORTERM COLUMNS=200 '$RUNTIME'"
   [ "$status" -eq 0 ]
   # A 38;5;N foreground escape is present (gradient mapped to the 6x6x6 cube).
-  echo "$output" | LC_ALL=C grep -qE $'\033\[38;5;[0-9]+m'
+  LC_ALL=C grep -qE $'\033\[38;5;[0-9]+m' <<<"$output"
 }
 
 # ---------- AC11: NO_COLOR suppresses SGR escapes -------------------------
@@ -188,8 +188,8 @@ _stdin_with_context() {
   [ "$status" -eq 0 ]
   # Bar structure still rendered (5 #, 5 -), but no SGR escape sequences.
   stripped="$(printf '%s' "$output" | LC_ALL=C sed -E $'s/\033\\[[0-9;]*m//g')"
-  echo "$stripped" | grep -q "#####-----"
-  ! echo "$output" | LC_ALL=C grep -q $'\033\['
+  grep -q "#####-----" <<<"$stripped"
+  ! LC_ALL=C grep -q $'\033\[' <<<"$output"
 }
 
 # ---------- AC10: width-ladder — bar survives narrow COLS, branch dropped ----
@@ -201,8 +201,8 @@ _stdin_with_context() {
   run bash -c "COLUMNS=45 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$stdin' | env COLUMNS=45 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(printf '%s' "$output" | LC_ALL=C sed -E $'s/\033\\[[0-9;]*m//g')"
-  echo "$stripped" | grep -q "#####-----"
-  ! echo "$stripped" | grep -q "feature/x"
+  grep -q "#####-----" <<<"$stripped"
+  ! grep -q "feature/x" <<<"$stripped"
 }
 
 # ---------- AC9: extended-context (1M) — still 10-char percentage bar -----
@@ -216,5 +216,5 @@ _stdin_with_context() {
   [ "$status" -eq 0 ]
   # Still 10-char bar (5 filled, 5 empty), not 1,000,000-char.
   stripped="$(printf '%s' "$output" | LC_ALL=C sed -E $'s/\033\\[[0-9;]*m//g')"
-  echo "$stripped" | grep -q "#####-----"
+  grep -q "#####-----" <<<"$stripped"
 }

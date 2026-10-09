@@ -107,7 +107,7 @@ _make_story() {
   touch "$TEST_TMP/E5-S1-existing-story.md"
   run "$SPAWN_GUARD_SH" check-collision "$TEST_TMP" "E5-S1"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q "E5-S1"
+  grep -q "E5-S1" <<<"$output"
 }
 
 @test "COLL: collision prevents duplicate on parent retry (AC-EC1)" {
@@ -115,7 +115,7 @@ _make_story() {
   _make_story "$TEST_TMP" "E10-S5" "correct-course" "sprint-26" >/dev/null
   run "$SPAWN_GUARD_SH" check-collision "$TEST_TMP" "E10-S5"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q "E10-S5"
+  grep -q "E10-S5" <<<"$output"
 }
 
 @test "check-collision does not false-positive on different key" {
@@ -127,13 +127,13 @@ _make_story() {
 @test "check-collision requires directory argument" {
   run "$SPAWN_GUARD_SH" check-collision "" "E1-S1"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi "missing\|required\|usage\|argument"
+  grep -qi "missing\|required\|usage\|argument" <<<"$output"
 }
 
 @test "check-collision requires story key argument" {
   run "$SPAWN_GUARD_SH" check-collision "$TEST_TMP" ""
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi "missing\|required\|usage\|argument"
+  grep -qi "missing\|required\|usage\|argument" <<<"$output"
 }
 
 # ===========================================================================
@@ -188,7 +188,7 @@ EOF
   file="$(_make_story "$TEST_TMP" "E1-S1" "triage-findings" "sprint-26")"
   run "$SPAWN_GUARD_SH" verify "$file" "correct-course" "sprint-26"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi "mismatch\|drift\|schema"
+  grep -qi "mismatch\|drift\|schema" <<<"$output"
 }
 
 @test "verify fails on origin_ref value mismatch" {
@@ -233,7 +233,7 @@ EOF
 @test "spawn-guard.sh: usage on no arguments" {
   run "$SPAWN_GUARD_SH"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "usage"
+  grep -qi "usage" <<<"$output"
 }
 
 @test "spawn-guard.sh: unknown subcommand exits 1" {

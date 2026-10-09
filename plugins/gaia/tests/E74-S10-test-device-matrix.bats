@@ -92,9 +92,9 @@ device_targets:
 YAML
   run bash "$EXPAND" --config "$TMPDIR_BATS/cfg.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"os_version"[[:space:]]*:[[:space:]]*"14"'
-  echo "$output" | grep -Eq '"form_factor"[[:space:]]*:[[:space:]]*"phone"'
-  echo "$output" | grep -Eq '"screen_size"[[:space:]]*:[[:space:]]*"default"'
+  grep -Eq '"os_version"[[:space:]]*:[[:space:]]*"14"' <<<"$output"
+  grep -Eq '"form_factor"[[:space:]]*:[[:space:]]*"phone"' <<<"$output"
+  grep -Eq '"screen_size"[[:space:]]*:[[:space:]]*"default"' <<<"$output"
 }
 
 # ---------------- AC4 — composite verdict logic ---------------------------
@@ -102,40 +102,40 @@ YAML
 @test "composite-verdict — all PASSED yields PASSED" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-all-pass.json"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"PASSED"'
+  grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"PASSED"' <<<"$output"
 }
 
 @test "composite-verdict — any FAILED yields FAILED" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-one-fail.json"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"FAILED"'
+  grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"FAILED"' <<<"$output"
 }
 
 @test "composite-verdict — ERROR with no FAILED yields ERROR" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-one-error.json"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"ERROR"'
+  grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"ERROR"' <<<"$output"
 }
 
 @test "composite-verdict — TIMEOUT with no FAILED/ERROR yields TIMEOUT" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-one-timeout.json"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"TIMEOUT"'
+  grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"TIMEOUT"' <<<"$output"
 }
 
 @test "composite-verdict — FAILED dominates ERROR (priority)" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-fail-and-error.json"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"FAILED"'
+  grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"FAILED"' <<<"$output"
 }
 
 @test "composite-verdict emits summary counts" {
   run bash "$COMPOSITE" --results "$FIXTURES/per-device-mixed.json"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"passed_count"'
-  echo "$output" | grep -Eq '"failed_count"'
-  echo "$output" | grep -Eq '"error_count"'
-  echo "$output" | grep -Eq '"timeout_count"'
+  grep -Eq '"passed_count"' <<<"$output"
+  grep -Eq '"failed_count"' <<<"$output"
+  grep -Eq '"error_count"' <<<"$output"
+  grep -Eq '"timeout_count"' <<<"$output"
 }
 
 # ---------------- AC3 — per-device structure carried through dispatch ----
@@ -144,11 +144,11 @@ YAML
   GAIA_DEVICE_FARM_MOCK=1 \
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-matrix.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"device_id"'
-  echo "$output" | grep -Eq '"os_version"'
-  echo "$output" | grep -Eq '"form_factor"'
-  echo "$output" | grep -Eq '"verdict"'
-  echo "$output" | grep -Eq '"duration_ms"'
+  grep -Eq '"device_id"' <<<"$output"
+  grep -Eq '"os_version"' <<<"$output"
+  grep -Eq '"form_factor"' <<<"$output"
+  grep -Eq '"verdict"' <<<"$output"
+  grep -Eq '"duration_ms"' <<<"$output"
 }
 
 # AF-2026-05-17-10 — platforms-mobile defense-in-depth gate (mirror of
@@ -157,17 +157,17 @@ YAML
 @test "dispatch SKIPS with no_mobile_platform on non-mobile project" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-mobile-platforms.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Fq '"verdict":"SKIPPED"'
-  echo "$output" | grep -Fq '"reason":"no_mobile_platform"'
+  grep -Fq '"verdict":"SKIPPED"' <<<"$output"
+  grep -Fq '"reason":"no_mobile_platform"' <<<"$output"
 }
 
 @test "honest device_farm.adapter diagnostic names canonical adapters" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
-  echo "$output" | grep -Fq '"verdict":"ERROR"'
-  echo "$output" | grep -Fq '"reason":"no_device_farm_adapter"'
-  echo "$output" | grep -Fq 'firebase-test-lab'
-  echo "$output" | grep -Fq 'browserstack'
-  echo "$output" | grep -Fq 'sauce-labs'
+  grep -Fq '"verdict":"ERROR"' <<<"$output"
+  grep -Fq '"reason":"no_device_farm_adapter"' <<<"$output"
+  grep -Fq 'firebase-test-lab' <<<"$output"
+  grep -Fq 'browserstack' <<<"$output"
+  grep -Fq 'sauce-labs' <<<"$output"
 }
 
 @test "dispatch.sh contains the platforms-mobile gate logic" {

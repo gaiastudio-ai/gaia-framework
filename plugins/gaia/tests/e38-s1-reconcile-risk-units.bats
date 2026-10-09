@@ -187,10 +187,10 @@ EOF
   _make_yaml "$yaml" "E5-S1" "in-progress" "E5-S2" "done"
   local got
   got="$(reconcile_list_yaml_stories "$yaml")"
-  echo "$got" | grep -q "E5-S1"
-  echo "$got" | grep -q "in-progress"
-  echo "$got" | grep -q "E5-S2"
-  echo "$got" | grep -q "done"
+  grep -q "E5-S1" <<<"$got"
+  grep -q "in-progress" <<<"$got"
+  grep -q "E5-S2" <<<"$got"
+  grep -q "done" <<<"$got"
 }
 
 @test "reconcile_list_yaml_stories returns 1 for unreadable file" {

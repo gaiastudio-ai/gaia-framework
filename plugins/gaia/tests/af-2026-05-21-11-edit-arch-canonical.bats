@@ -27,8 +27,8 @@ run_finalize_and_capture_resolution() {
 @test "edit-arch: greenfield (no architecture anywhere) → finalize.sh skips checklist gracefully" {
   [ ! -d ".gaia" ] && [ ! -d "docs" ]
   OUTPUT="$(run_finalize_and_capture_resolution)"
-  echo "$OUTPUT" | grep -qF "no architecture artifact found"
-  ! echo "$OUTPUT" | grep -qF "running 25-item checklist"
+  grep -qF "no architecture artifact found" <<<"$OUTPUT"
+  ! grep -qF "running 25-item checklist" <<<"$OUTPUT"
 }
 
 @test "edit-arch: post-migration (only .gaia/ exists) → resolves to canonical" {
@@ -39,7 +39,7 @@ run_finalize_and_capture_resolution() {
 test overview content
 ARCH
   OUTPUT="$(run_finalize_and_capture_resolution)"
-  echo "$OUTPUT" | grep -qF "running 25-item checklist against .gaia/artifacts/planning-artifacts/architecture.md"
+  grep -qF "running 25-item checklist against .gaia/artifacts/planning-artifacts/architecture.md" <<<"$OUTPUT"
   [ ! -d "docs" ]
 }
 
@@ -51,7 +51,7 @@ ARCH
 pre-ADR-111 project content
 ARCH
   OUTPUT="$(run_finalize_and_capture_resolution)"
-  echo "$OUTPUT" | grep -qF "running 25-item checklist against docs/planning-artifacts/architecture.md"
+  grep -qF "running 25-item checklist against docs/planning-artifacts/architecture.md" <<<"$OUTPUT"
   [ ! -d ".gaia" ]
 }
 
@@ -64,8 +64,8 @@ ARCH
 # Legacy Architecture (should NOT be used)
 ARCH
   OUTPUT="$(run_finalize_and_capture_resolution)"
-  echo "$OUTPUT" | grep -qF "running 25-item checklist against .gaia/artifacts/planning-artifacts/architecture.md"
-  ! echo "$OUTPUT" | grep -qF "running 25-item checklist against docs/planning-artifacts/architecture.md"
+  grep -qF "running 25-item checklist against .gaia/artifacts/planning-artifacts/architecture.md" <<<"$OUTPUT"
+  ! grep -qF "running 25-item checklist against docs/planning-artifacts/architecture.md" <<<"$OUTPUT"
 }
 
 @test "edit-arch: ARCHITECTURE_ARTIFACT env-var override (Tier 1) wins over both legacy and canonical" {
@@ -77,5 +77,5 @@ ARCH
   export ARCHITECTURE_ARTIFACT="custom-location/my-arch.md"
   OUTPUT="$(bash "$FINALIZE" 2>&1 || true)"
   unset ARCHITECTURE_ARTIFACT
-  echo "$OUTPUT" | grep -qF "running 25-item checklist against custom-location/my-arch.md"
+  grep -qF "running 25-item checklist against custom-location/my-arch.md" <<<"$OUTPUT"
 }

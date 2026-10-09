@@ -85,7 +85,7 @@ _write() {
   run env MEMORY_PATH="$root/.gaia/memory" bash -c '
     eval "$(awk "/^_gaia_stray_legacy_memory_warn\\(\\) \\{/,/^}/" "'"$ml"'")"
     _gaia_stray_legacy_memory_warn 2>&1'
-  printf '%s\n' "$output" | grep -qF 'a project-root _memory/ tree coexists with the canonical .gaia/memory/'
+  grep -qF 'a project-root _memory/ tree coexists with the canonical .gaia/memory/' <<<"$output"
 }
 
 @test "memory-loader is silent on a clean .gaia project (no stray _memory/)" {

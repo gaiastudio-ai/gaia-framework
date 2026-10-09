@@ -126,7 +126,7 @@ run_resolver_isolated() {
   mkdir -p "$TEST_TMP/cache"
   run_resolver_isolated
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qx "project_root='/tmp/gaia-art'"
+  grep -qx "project_root='/tmp/gaia-art'" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
