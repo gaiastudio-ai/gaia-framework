@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # finalize.sh — /gaia-create-ux skill finalize
 #
-# Extends the finalize scaffolding with a 27-item post-completion checklist
-# (19 script-verifiable + 8 LLM-checkable) derived from the V1
+# Extends the finalize scaffolding with a 28-item post-completion checklist
+# (20 script-verifiable + 8 LLM-checkable) derived from the V1
 # /gaia-create-ux (create-ux-design) checklist.
 #
 # Responsibilities:
@@ -16,7 +16,7 @@
 # the checklist outcome never suppresses the checkpoint/event write.
 #
 # Exit codes:
-#   0 — finalize succeeded; all 18 script-verifiable items PASS (or
+#   0 — finalize succeeded; all 20 script-verifiable items PASS (or
 #       no artifact was requested — checklist skipped).
 #   1 — one or more script-verifiable checklist items FAIL; the
 #       AC4 "output file not found" violation; or a
@@ -196,6 +196,16 @@ fr_id_present() {
   grep -Eq 'FR-[0-9]{3,}' "$1" && echo "pass" || echo "fail"
 }
 
+# component_heading_sync_compatible <file>
+# Pass when the Components section heading matches one the sync-derived-artifacts
+# script would accept: "## N. Components & Design System", "## N. Components and
+# Design System" (case-insensitive, optional number prefix), "## N. Components"
+# (bare, number optional), or the legacy "## Component Inventory".
+component_heading_sync_compatible() {
+  local f="$1"
+  grep -Eiq '^##[[:space:]]+(([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]+(and|&)[[:space:]]+[Dd]esign[[:space:]]+[Ss]ystem|[Cc]omponent[[:space:]]+[Ii]nventory|([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]*$)' "$f" && echo "pass" || echo "fail"
+}
+
 # Section-body helpers — bind the heading pattern for each required body
 personas_body_nonempty()           { section_body_nonempty "$1" "[Pp]ersonas"; }
 ia_body_nonempty()                 { section_body_nonempty "$1" "[Ii]nformation[[:space:]]+[Aa]rchitecture"; }
@@ -217,10 +227,10 @@ if [ "$ARTIFACT_REQUESTED" -eq 1 ] && [ ! -f "$ARTIFACT" ]; then
   printf 'Remediation: rerun /gaia-create-ux to produce .gaia/artifacts/planning-artifacts/ux-design.md, then rerun finalize.sh.\n' >&2
   CHECKLIST_STATUS=1
 elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
-  log "running 26-item checklist against $ARTIFACT"
-  printf '\nChecklist: /gaia-create-ux (27 items — 19 script-verifiable, 8 LLM-checkable)\n' >&2
+  log "running 28-item checklist against $ARTIFACT"
+  printf '\nChecklist: /gaia-create-ux (28 items — 20 script-verifiable, 8 LLM-checkable)\n' >&2
 
-  # --- Script-verifiable items (18) ---
+  # --- Script-verifiable items (20) ---
 
   # Envelope (SV-01..SV-03)
   item_check "SV-01" "Output file exists at resolved path ($ARTIFACT)" \
@@ -276,6 +286,10 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   item_check "SV-19" "Design Record Reference section present" \
     "$(heading_present "$ARTIFACT" "Design Record Reference")"
 
+  # Component heading sync-compatible (SV-20)
+  item_check "SV-20" "Component heading compatible with sync-derived-artifacts" \
+    "$(component_heading_sync_compatible "$ARTIFACT")"
+
   # --- LLM-checkable items (8) ---
   printf '\n[LLM-CHECK] The following 8 items require semantic review by the host LLM:\n' >&2
   cat >&2 <<'EOF'
@@ -289,7 +303,7 @@ elif [ -n "$ARTIFACT" ] && [ -f "$ARTIFACT" ]; then
   LLM-08 — Component descriptions specific enough for implementation (not vague)
 EOF
 
-  TOTAL_ITEMS=27
+  TOTAL_ITEMS=28
   LLM_ITEMS=8
   printf '\nChecklist summary: %d/%d script-verifiable items PASS; %d LLM-checkable items deferred to host review. Total items: %d.\n' \
     "$PASSED" "$CHECKED" "$LLM_ITEMS" "$TOTAL_ITEMS" >&2

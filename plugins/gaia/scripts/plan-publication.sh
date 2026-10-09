@@ -150,6 +150,18 @@ if [ "$LAST_PUBLISHED" != "/dev/null" ] && [ -f "$LAST_PUBLISHED" ] && [ -s "$LA
   ' "$LAST_PUBLISHED")" || _die "failed to read state file: $LAST_PUBLISHED"
 fi
 
+# ---- auto-strict on absent baseline with non-empty remote -------------------
+# When we have no publication record for this project (PUBLISHED_JSON is empty)
+# AND the remote already has files, every differing remote file must be a
+# CONFLICT so the user can resolve it — plain WRITEs would silently overwrite
+# designer work. First-publication to an empty remote is unaffected.
+if [ "$STRICT_CONFLICTS" = false ] && [ "$PUBLISHED_JSON" = "[]" ]; then
+  _has_remote_files="$(printf '%s' "$REMOTE_JSON" | jq 'length > 0')"
+  if [ "$_has_remote_files" = "true" ]; then
+    STRICT_CONFLICTS=true
+  fi
+fi
+
 # ---- single-pass plan computation via jq ----------------------------------
 # One jq program reads all three inputs (via --argjson), validates filenames
 # and hashes, joins them by filename, and emits the plan. No per-file shell fork.

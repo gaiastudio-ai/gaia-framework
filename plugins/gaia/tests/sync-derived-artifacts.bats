@@ -5615,6 +5615,139 @@ UX
 # Pathological token name finishes quickly
 # =========================================================================
 
+# ===========================================================================
+# Bare "## N. Components" heading support
+# ===========================================================================
+
+@test "sync adds component to doc with bare numbered Components heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  export PROJECT_ROOT="$root"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components
+
+| Component | Variants | Usage |
+|-----------|----------|-------|
+| header | default | Navigation |
+
+## Design Record Reference
+
+Present.
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","bare-widget"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+  [ "$status" -eq 0 ] || fail "exit $status: $output"
+
+  grep -q 'bare-widget' "$ux_doc" || \
+    fail "bare-widget not added under bare ## 8. Components heading"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" != "$sha_after" ] || \
+    fail "doc should have changed after adding bare-widget"
+
+  rm -rf "$root"
+}
+
+@test "sync adds component to doc with bare unnumbered Components heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  export PROJECT_ROOT="$root"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Components
+
+- header
+- footer
+
+## Design Record Reference
+
+Present.
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","footer","new-comp"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+  [ "$status" -eq 0 ] || fail "exit $status: $output"
+
+  grep -q 'new-comp' "$ux_doc" || \
+    fail "new-comp not added under bare ## Components heading"
+
+  rm -rf "$root"
+}
+
+@test "sync rejects unrelated heading like Component testing" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  export PROJECT_ROOT="$root"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component testing
+
+Some test content.
+
+## Design Record Reference
+
+Present.
+UX
+
+  local ux_doc="$doc_dir/ux-design.md"
+  local sha_before
+  sha_before="$(_sha256_file "$ux_doc")"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["widget"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$ux_doc"
+  [ "$status" -ne 0 ] || \
+    fail "should exit non-zero when only unrelated heading present (exit $status)"
+
+  local sha_after
+  sha_after="$(_sha256_file "$ux_doc")"
+  [ "$sha_before" = "$sha_after" ] || \
+    fail "doc should be unchanged when heading is unrelated"
+
+  rm -rf "$root"
+}
+
 @test "pathological token name does not cause exponential regex backtracking" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
