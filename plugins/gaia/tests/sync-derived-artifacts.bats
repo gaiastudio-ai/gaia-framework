@@ -6550,6 +6550,19 @@ UX
   [ "$pipe_count" -eq 2 ] || \
     fail "expected 2 pipes (3 columns, pipe-less form), got $pipe_count: $card_row"
 
+  # Card must land immediately after the last existing data row (Button)
+  local button_ln card_ln
+  button_ln="$(grep -nF 'Button' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  card_ln="$(grep -nF 'Card' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$card_ln" -eq "$((button_ln + 1))" ] || \
+    fail "Card row not directly after Button (expected line $((button_ln + 1)), got $card_ln)"
+
+  # No existing component duplicated: Button must appear exactly once
+  local button_count
+  button_count="$(grep -cF 'Button' "$doc_dir/ux-design.md")"
+  [ "$button_count" -eq 1 ] || \
+    fail "Button duplicated: appears $button_count times"
+
   rm -rf "$root"
 }
 

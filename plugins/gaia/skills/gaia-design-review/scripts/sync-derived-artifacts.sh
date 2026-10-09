@@ -92,10 +92,10 @@ _extract_doc_components() {
     function is_section_end(s) {
       return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
     }
-    # is_separator LINE — true when the line is a table separator:
+    # is_sep LINE — true when the line is a table separator:
     # contains at least one | and three consecutive dashes, and consists
     # only of -, :, |, spaces, and optional trailing \r.
-    function is_separator(s,   clean) {
+    function is_sep(s,   clean) {
       if (index(s, "|") == 0) return 0
       if (index(s, "---") == 0) return 0
       clean = s
@@ -180,7 +180,7 @@ _extract_doc_components() {
     }
     in_section && is_section_end($0) { done_section = 1; next }
     in_section && !first_table_done {
-      if (is_separator($0)) { saw_sep = 1; next }
+      if (is_sep($0)) { saw_sep = 1; next }
       if (saw_sep && is_data_row($0)) {
         name = extract_first_cell($0)
         if (name != "") print name
@@ -226,9 +226,10 @@ _count_table_cols() {
       if [[ "$clean" == *'|'* ]] && [[ "$clean" == *'---'* ]]; then
         local stripped="${clean//[-:|[:space:]]/}"
         if [ -z "$stripped" ]; then
-          # Count pipes
-          local pipe_count
-          pipe_count="$(printf '%s' "$line" | awk '{n=gsub(/\|/,"|"); print n}')"
+          # Count pipes (bash expansion, no subprocess)
+          local pipe_count _pipes_only
+          _pipes_only="${line//[^|]/}"
+          pipe_count="${#_pipes_only}"
           # Detect outer pipes: leading pipe = first non-space is |
           # trailing pipe = last non-space (ignoring \r) is |
           local has_leading=false has_trailing=false
