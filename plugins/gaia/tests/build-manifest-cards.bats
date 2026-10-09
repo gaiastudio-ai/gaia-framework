@@ -5639,3 +5639,98 @@ JSON
 
   rm -rf "$root"
 }
+
+# ===========================================================================
+# Outcome validation — reject unknown outcome values
+# ===========================================================================
+
+# Helper: run persist_last_published with a given outcomes JSON string and
+# check whether rejection leaves the prior output byte-identical.
+_run_persist_raw() {
+  local outcome_json="$1"
+  printf '%s' "$outcome_json" > "$TEST_TMP/outcomes.json"
+  local HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc12345"
+  printf '{"screen-a.dc.html":"%s"}' "$HASH" > "$TEST_TMP/hash-map.json"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  # Pre-seed a prior output to verify byte-identity on rejection
+  if [ ! -f "$TEST_TMP/last-published.json" ]; then
+    cat > "$TEST_TMP/last-published.json" <<JSON
+{"design_system":{"reference":null,"last_published_at":null,"files":[]},"product_design":{"reference":"https://claude.ai/artifact/456","last_published_at":"2026-10-01T00:00:00Z","files":[{"file":"old.dc.html","hash":"$HASH"}]}}
+JSON
+  fi
+  local before_sum
+  before_sum="$(shasum -a 256 "$TEST_TMP/last-published.json" | awk '{print $1}')"
+
+  local rc=0
+  bash -c "
+    source '$TARGET_SCRIPT'
+    persist_last_published \
+      --outcomes '$TEST_TMP/outcomes.json' \
+      --prior '$TEST_TMP/last-published.json' \
+      --output '$TEST_TMP/last-published.json' \
+      --local-hash-map '$TEST_TMP/hash-map.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project product_design \
+      --published-at '2026-10-09T00:00:00Z'
+  " 2>&1 || rc=$?
+
+  local after_sum
+  after_sum="$(shasum -a 256 "$TEST_TMP/last-published.json" | awk '{print $1}')"
+
+  # Export for assertions
+  _PERSIST_RC=$rc
+  _PERSIST_BEFORE=$before_sum
+  _PERSIST_AFTER=$after_sum
+}
+
+@test "planner verb WRITE is rejected with diagnostic" {
+  local HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc12345"
+  _run_persist_raw '[{"file":"screen-a.dc.html","outcome":"WRITE","hash":"'"$HASH"'"}]'
+  [ "$_PERSIST_RC" -ne 0 ] || fail "should reject WRITE, got rc=0"
+  [ "$_PERSIST_BEFORE" = "$_PERSIST_AFTER" ] || fail "output file changed on rejection"
+}
+
+@test "planner verb SKIP_UNCHANGED is rejected with diagnostic" {
+  local HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc12345"
+  _run_persist_raw '[{"file":"screen-a.dc.html","outcome":"SKIP_UNCHANGED","hash":"'"$HASH"'"}]'
+  [ "$_PERSIST_RC" -ne 0 ] || fail "should reject SKIP_UNCHANGED, got rc=0"
+  [ "$_PERSIST_BEFORE" = "$_PERSIST_AFTER" ] || fail "output file changed on rejection"
+}
+
+@test "wrong-case Written is rejected" {
+  local HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc12345"
+  _run_persist_raw '[{"file":"screen-a.dc.html","outcome":"Written","hash":"'"$HASH"'"}]'
+  [ "$_PERSIST_RC" -ne 0 ] || fail "should reject wrong-case Written, got rc=0"
+  [ "$_PERSIST_BEFORE" = "$_PERSIST_AFTER" ] || fail "output file changed on rejection"
+}
+
+@test "missing outcome field is rejected" {
+  local HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc12345"
+  _run_persist_raw '[{"file":"screen-a.dc.html","hash":"'"$HASH"'"}]'
+  [ "$_PERSIST_RC" -ne 0 ] || fail "should reject missing outcome, got rc=0"
+  [ "$_PERSIST_BEFORE" = "$_PERSIST_AFTER" ] || fail "output file changed on rejection"
+}
+
+@test "valid outcome written is accepted and output updated" {
+  local HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc12345"
+  _run_persist_raw '[{"file":"screen-a.dc.html","outcome":"written","hash":"'"$HASH"'"}]'
+  [ "$_PERSIST_RC" -eq 0 ] || fail "should accept valid outcome, got rc=$_PERSIST_RC"
+  [ "$_PERSIST_BEFORE" != "$_PERSIST_AFTER" ] || fail "output file should have been updated"
+  jq -e '.product_design.files | length > 0' "$TEST_TMP/last-published.json" >/dev/null \
+    || fail "files list should not be empty"
+}
+
+@test "planner verb DELETE_ORPHAN is rejected" {
+  local HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc12345"
+  _run_persist_raw '[{"file":"screen-a.dc.html","outcome":"DELETE_ORPHAN","hash":null}]'
+  [ "$_PERSIST_RC" -ne 0 ] || fail "should reject DELETE_ORPHAN, got rc=0"
+  [ "$_PERSIST_BEFORE" = "$_PERSIST_AFTER" ] || fail "output file changed on rejection"
+}
+
+@test "null outcome value is rejected" {
+  local HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc12345"
+  _run_persist_raw '[{"file":"screen-a.dc.html","outcome":null,"hash":"'"$HASH"'"}]'
+  [ "$_PERSIST_RC" -ne 0 ] || fail "should reject null outcome, got rc=0"
+  [ "$_PERSIST_BEFORE" = "$_PERSIST_AFTER" ] || fail "output file changed on rejection"
+}

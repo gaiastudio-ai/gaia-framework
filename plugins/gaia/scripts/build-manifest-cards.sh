@@ -395,6 +395,27 @@ persist_last_published() {
   esac
 
   # ---- Validate ALL inputs (safety check BEFORE compute) ----
+  # Outcomes: reject unknown outcome values before any compute or write
+  local _bad_outcomes
+  _bad_outcomes="$(jq -r '
+    [.[] | .outcome //= null |
+     select(.outcome | . == null or
+       (. != "written" and . != "skipped" and
+        . != "kept-designer" and . != "merged" and
+        . != "failed" and . != "delete-failed" and
+        . != "deleted")) |
+     if .outcome == null then
+       ("entry for " + (.file // "<no file>") + ": missing outcome field")
+     else
+       (.file // "<no file>") + ": unknown outcome " + (.outcome | tojson)
+     end
+    ] | join("; ")
+  ' "$outcomes")" || _bad_outcomes="unparseable outcomes"
+  if [ -n "$_bad_outcomes" ]; then
+    _bmc_die "persist_last_published: invalid outcome values: $_bad_outcomes"
+    return 1
+  fi
+
   # Outcomes: validate every filename
   jq "$SAFE_FILENAME_JQ_DEF"'
     .[] | .file | safe_filename
