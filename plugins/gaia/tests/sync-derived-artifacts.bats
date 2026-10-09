@@ -6046,3 +6046,775 @@ UX
 
   rm -rf "$root"
 }
+
+
+# =========================================================================
+# Escape / CRLF / pipe-less table defect-class tests
+# =========================================================================
+
+@test "backslash-pipe name round-trips through table write and read" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top |
+
+## 9. Next Section
+UX
+
+  # Snapshot with Nav\|Bar (a component name containing backslash then pipe)
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","Nav\\|Bar"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The doc must contain the escaped form: Nav\\\|Bar
+  # (backslash doubled to \\, then pipe escaped to \|)
+  grep -qF 'Nav\\\|Bar' "$doc_dir/ux-design.md" || \
+    fail "expected escaped form Nav\\\|Bar in doc, got: $(grep 'Nav' "$doc_dir/ux-design.md")"
+
+  # Column count must be unchanged (3 columns = 4 pipes on the row)
+  local row
+  row="$(grep 'Nav' "$doc_dir/ux-design.md")"
+  # Count only unescaped pipes: remove \| sequences, then count |
+  local cleaned
+  cleaned="$(printf '%s' "$row" | sed 's/\\|//g')"
+  local pipe_count
+  pipe_count="$(printf '%s' "$cleaned" | tr -cd '|' | wc -c | tr -d ' ')"
+  [ "$pipe_count" -eq 4 ] || \
+    fail "expected 4 unescaped pipes (3 columns), got $pipe_count"
+
+  # Second sync: Nav\|Bar must be read back correctly and not re-added
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "second sync failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "second sync should report up to date, got: $output"
+
+  # Exactly one Nav row in the doc
+  local nav_count
+  nav_count="$(grep -cF 'Nav' "$doc_dir/ux-design.md")"
+  [ "$nav_count" -eq 1 ] || \
+    fail "expected exactly 1 Nav row after two syncs, got $nav_count"
+
+  rm -rf "$root"
+}
+
+@test "literal pipe name round-trips through table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top |
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","A|B"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The pipe must be escaped in the doc
+  grep -qF 'A\|B' "$doc_dir/ux-design.md" || \
+    fail "pipe not escaped in doc, got: $(grep 'A' "$doc_dir/ux-design.md" | head -1)"
+
+  # Second sync: A|B must be read back and not re-added
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "second sync failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "second sync should report up to date (no re-add), got: $output"
+
+  rm -rf "$root"
+}
+
+@test "lone backslash name round-trips through table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top |
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","nav\\bar"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The backslash must be doubled in the doc: nav\\bar
+  grep -qF 'nav\\bar' "$doc_dir/ux-design.md" || \
+    fail "backslash not doubled in doc, got: $(grep 'nav' "$doc_dir/ux-design.md" | head -1)"
+
+  # Second sync: nav\bar must read back correctly and not re-add
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "second sync failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "second sync should report up to date (no re-add), got: $output"
+
+  rm -rf "$root"
+}
+
+@test "escaped name synced twice produces exactly one row" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top |
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","Nav\\|Bar"]}' > "$snapshot"
+
+  # First sync: adds the row
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "first sync failed: $output"
+
+  # Second sync
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "second sync failed: $output"
+
+  # Third sync
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "third sync failed: $output"
+
+  # Count rows containing Nav (escaped form) — must be exactly 1
+  local nav_count
+  nav_count="$(grep -cF 'Nav' "$doc_dir/ux-design.md")"
+  [ "$nav_count" -eq 1 ] || \
+    fail "expected exactly 1 Nav row after three syncs, got $nav_count"
+
+  rm -rf "$root"
+}
+
+@test "legacy broken row yields correct extracted name and next sync adds fixed row" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Seed a doc with the OLD broken escaping: | Nav\\|Bar |
+  # Under the AC4 read rule, the | after \\ is an unescaped cell boundary
+  # (two backslashes = even count), so the first cell is Nav\\ -> unescape -> Nav\
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Nav\\|Bar | custom | legacy |
+
+## 9. Next Section
+UX
+
+  # Sync with an empty snapshot to trigger the absence report.
+  # The report will say what name was extracted from the legacy row.
+  local snapshot="$root/snapshot.json"
+  printf '{"components":[]}\n' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The extracted name from | Nav\\|Bar | under AC4 rules must be exactly Nav\
+  # (Nav\\ unescaped = Nav\). Assert via the absence report.
+  local absent_line
+  absent_line="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -n "$absent_line" ] || \
+    fail "no absence report for the legacy row"
+
+  # The reported name must be Nav\ (with a single trailing backslash).
+  # The absence report format is: component "NAME" is in ux-design.md ...
+  # We grep for the exact quoted name.
+  printf '%s\n' "$absent_line" | grep -qF '"Nav\"' || \
+    fail "expected extracted name Nav\\ from legacy row, got: $absent_line"
+
+  # Now sync with the CORRECT name Nav\|Bar — it should add a new correctly
+  # escaped row (Nav\\\|Bar) since the legacy row reads as Nav\, not Nav\|Bar
+  local snapshot2="$root/snapshot2.json"
+  jq -n '{"components":["Nav\\|Bar"]}' > "$snapshot2"
+
+  run "$SYNC_SCRIPT" "$snapshot2" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "second sync failed: $output"
+
+  # Doc should now have both the legacy row and the new correctly escaped row
+  grep -qF 'Nav\\\|Bar' "$doc_dir/ux-design.md" || \
+    fail "correctly escaped Nav\\\|Bar row not added"
+
+  # The legacy row should still be in the doc (never silently deleted)
+  grep -qF 'Nav\\|Bar' "$doc_dir/ux-design.md" || \
+    fail "legacy row was silently deleted"
+
+  rm -rf "$root"
+}
+
+@test "CRLF document table insert ends with CR LF" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Create a CRLF-terminated document (sed adds \r before every \n)
+  cat > "$doc_dir/ux-design.md.tmp" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top |
+
+## 9. Next Section
+UX
+  sed "s/\$/$( printf '\r' )/" "$doc_dir/ux-design.md.tmp" > "$doc_dir/ux-design.md"
+  rm -f "$doc_dir/ux-design.md.tmp"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","NewComponent"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The inserted row must end with \r\n (CRLF), verified with od
+  local inserted_line
+  inserted_line="$(grep 'NewComponent' "$doc_dir/ux-design.md")"
+  [ -n "$inserted_line" ] || fail "NewComponent row not found"
+
+  # Check the byte before \n on the NewComponent line is \r (0d)
+  local line_bytes
+  line_bytes="$(grep 'NewComponent' "$doc_dir/ux-design.md" | od -c | head -1)"
+  printf '%s\n' "$line_bytes" | grep -q '\\r' || \
+    fail "inserted table row does not end with CR LF: $line_bytes"
+
+  rm -rf "$root"
+}
+
+@test "CRLF document bullet insert ends with CR LF" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Create a CRLF bullet-mode document (no table)
+  cat > "$doc_dir/ux-design.md.tmp" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- header
+
+## Design Record Reference
+UX
+  sed "s/\$/$( printf '\r' )/" "$doc_dir/ux-design.md.tmp" > "$doc_dir/ux-design.md"
+  rm -f "$doc_dir/ux-design.md.tmp"
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The inserted bullet must end with \r\n
+  local bullet_line
+  bullet_line="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$bullet_line" ] || fail "Card bullet not found"
+
+  local bullet_bytes
+  bullet_bytes="$(grep 'Card' "$doc_dir/ux-design.md" | od -c | head -1)"
+  printf '%s\n' "$bullet_bytes" | grep -q '\\r' || \
+    fail "inserted bullet does not end with CR LF: $bullet_bytes"
+
+  rm -rf "$root"
+}
+
+@test "CRLF bullet read strips trailing carriage return" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # CRLF bullet-mode doc with ButtonPrimary
+  cat > "$doc_dir/ux-design.md.tmp" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- ButtonPrimary
+
+## Design Record Reference
+UX
+  sed "s/\$/$( printf '\r' )/" "$doc_dir/ux-design.md.tmp" > "$doc_dir/ux-design.md"
+  rm -f "$doc_dir/ux-design.md.tmp"
+
+  # Snapshot includes ButtonPrimary — if the reader strips \r, this is
+  # already present and no re-add occurs
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["ButtonPrimary"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Must report "up to date" (no re-add), meaning ButtonPrimary was read
+  # without a trailing \r
+  [[ "$output" == *"up to date"* ]] || \
+    fail "ButtonPrimary was re-added (reader did not strip CR): $output"
+
+  rm -rf "$root"
+}
+
+@test "pipe-less table detected with correct column count" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Pipe-less table: no leading or trailing pipes on separator or data rows
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Component | Source | Notes
+----------|--------|------
+Button | primary | yes
+Toggle | custom | no
+
+## 9. Next Section
+UX
+
+  # Snapshot includes Button (already in doc) and Card (new)
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Button","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Button must NOT be re-added (it was read from the pipe-less table).
+  # The output must say "up to date" OR report only Card, never Button.
+  local added_button
+  added_button="$(printf '%s\n' "$output" | grep 'added.*"Button"' || true)"
+  [ -z "$added_button" ] || \
+    fail "Button was re-added (pipe-less table not detected): $output"
+
+  # Card must be added
+  local added_card
+  added_card="$(printf '%s\n' "$output" | grep 'added.*"Card"' || true)"
+  [ -n "$added_card" ] || \
+    fail "Card was not added: $output"
+
+  # The inserted Card row must be in table form (pipe-separated), not bullet
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_row" ] || fail "Card row not found in doc"
+
+  # Must NOT be a bullet (must not start with "- ")
+  [[ "$card_row" != '- '* ]] || \
+    fail "Card was inserted as a bullet in a pipe-less table: $card_row"
+
+  # Must contain at least one pipe (it's a pipe-less table row)
+  [[ "$card_row" == *'|'* ]] || \
+    fail "Card row has no pipes (not a table row): $card_row"
+
+  # Must NOT start with | (matching the pipe-less form)
+  [[ "$card_row" != '|'* ]] || \
+    fail "Card row has leading pipe in a pipe-less table: $card_row"
+
+  rm -rf "$root"
+}
+
+@test "pipe-less table new row inserted without outer pipes" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # 3-column pipe-less table
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Component | Source | Notes
+----------|--------|------
+Button | primary | yes
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Button","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_row" ] || fail "Card row not found"
+
+  # For a 3-column pipe-less table, the new row must be exactly:
+  # Card | |  (no outer pipes, 2 inner pipes for 3 columns)
+  # Verify: no leading pipe, has exactly 2 pipes total (for 3 columns)
+  [[ "$card_row" != '|'* ]] || \
+    fail "Card row starts with pipe in pipe-less table: $card_row"
+
+  local pipe_count
+  pipe_count="$(printf '%s' "$card_row" | tr -cd '|' | wc -c | tr -d ' ')"
+  [ "$pipe_count" -eq 2 ] || \
+    fail "expected 2 pipes (3 columns, pipe-less form), got $pipe_count: $card_row"
+
+  rm -rf "$root"
+}
+
+@test "bullet line containing pipe is not treated as pipe-less row" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Bullet-mode doc where a bullet contains a pipe character
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- A|B
+- header
+
+## Design Record Reference
+UX
+
+  # Snapshot includes A|B — if bullets are correctly read, no re-add
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["A|B","header"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  [[ "$output" == *"up to date"* ]] || \
+    fail "A|B was re-added (bullet with pipe treated as table row?): $output"
+
+  rm -rf "$root"
+}
+
+@test "half-piped separator detected with correct column count" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Leading-pipe-only table (no trailing pipe)
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes
+|-----------|--------|------
+| Button | primary | yes
+
+## 9. Next Section
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["Button","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Card must be added
+  [[ "$output" == *"Card"* ]] || \
+    fail "Card was not added: $output"
+
+  # Verify Card row has correct column count (3 = same as table)
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_row" ] || fail "Card row not found"
+
+  # For a 3-column table with leading-pipe-only, there are 3 pipes
+  # (leading + 2 internal, no trailing)
+  local pipe_count
+  pipe_count="$(printf '%s' "$card_row" | tr -cd '|' | wc -c | tr -d ' ')"
+  [ "$pipe_count" -eq 3 ] || \
+    fail "expected 3 pipes for 3-col half-piped table, got $pipe_count: $card_row"
+
+  rm -rf "$root"
+}
+
+@test "bullet mode writes raw name with backslash" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local root
+  root="$(mktemp -d)"
+  local doc_dir="$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$doc_dir"
+  # Bullet-mode doc (no table)
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- header
+
+## Design Record Reference
+UX
+
+  local snapshot="$root/snapshot.json"
+  jq -n '{"components":["header","nav\\bar"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Bullet mode must write the raw name, NOT the escaped form.
+  # The bullet must be exactly "- nav\bar" (single backslash).
+  local bullet_line
+  bullet_line="$(grep 'nav' "$doc_dir/ux-design.md")"
+  [ "$bullet_line" = '- nav\bar' ] || \
+    fail "expected bullet '- nav\\bar', got: $bullet_line"
+
+  # Second sync: nav\bar must not be re-added
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "second sync failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "nav\\bar was re-added in bullet mode: $output"
+
+  rm -rf "$root"
+}
+
+@test "component extraction scales without per-row subprocesses" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Deterministic subprocess counter: put counting shims for awk, sed,
+  # grep, cut, tr on PATH. Each shim increments a file counter and then
+  # calls the real tool. Comparing the counts on 50 vs 500 rows detects
+  # per-row subprocess spawning without timing or CI-load sensitivity.
+
+  local shim_dir
+  shim_dir="$(mktemp -d)"
+
+  # Locate the real tools BEFORE we prepend the shim dir to PATH.
+  local real_awk real_sed real_grep real_cut real_tr
+  real_awk="$(command -v awk)"
+  real_sed="$(command -v sed)"
+  real_grep="$(command -v grep)"
+  real_cut="$(command -v cut)"
+  real_tr="$(command -v tr)"
+
+  # Create counting shims.
+  for tool in awk sed grep cut tr; do
+    eval "local real_path=\$real_${tool}"
+    cat > "$shim_dir/$tool" <<SHIM
+#!/usr/bin/env bash
+# counting shim for $tool
+_cnt_file="\${_SHIM_COUNT_DIR}/${tool}.count"
+if [ -n "\${_SHIM_COUNT_DIR:-}" ] && [ -d "\${_SHIM_COUNT_DIR:-}" ]; then
+  printf 'x' >> "\$_cnt_file"
+fi
+exec "$real_path" "\$@"
+SHIM
+    chmod +x "$shim_dir/$tool"
+  done
+
+  # Verify the shim actually intercepts: call awk through the shimmed
+  # PATH and check it counts.
+  local verify_dir
+  verify_dir="$(mktemp -d)"
+  _SHIM_COUNT_DIR="$verify_dir" PATH="$shim_dir:$PATH" awk 'BEGIN{print "ok"}' >/dev/null
+  local verify_count
+  verify_count="$(wc -c < "$verify_dir/awk.count" | tr -d ' ')"
+  [ "$verify_count" -gt 0 ] || \
+    fail "shim verification failed: awk shim counted 0 calls"
+  rm -rf "$verify_dir"
+
+  # Helper: generate a table doc with N component rows
+  _gen_table_doc() {
+    local out="$1" count="$2"
+    local dir
+    dir="$(dirname "$out")"
+    mkdir -p "$dir"
+    {
+      cat <<'HEADER'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+HEADER
+      local i
+      for i in $(seq 1 "$count"); do
+        printf '| comp-%03d | auto | row |\n' "$i"
+      done
+      printf '\n## 9. Next Section\n'
+    } > "$out"
+  }
+
+  # Generate 50-row and 500-row table docs
+  local root50 root500
+  root50="$(mktemp -d)"
+  root500="$(mktemp -d)"
+  local doc_dir_50="$root50/.gaia/artifacts/planning-artifacts"
+  local doc_dir_500="$root500/.gaia/artifacts/planning-artifacts"
+  _gen_table_doc "$doc_dir_50/ux-design.md" 50
+  _gen_table_doc "$doc_dir_500/ux-design.md" 500
+
+  # Build snapshots with all existing components plus one new one
+  _gen_snap() {
+    local out="$1" count="$2"
+    {
+      printf '{"components":['
+      local i
+      for i in $(seq 1 "$count"); do
+        printf '"comp-%03d"' "$i"
+        [ "$i" -lt "$count" ] && printf ','
+      done
+      printf ',"newcomp"]}'
+    } > "$out"
+  }
+  _gen_snap "$root50/snapshot.json" 50
+  _gen_snap "$root500/snapshot.json" 500
+
+  # Run 50-row sync with counting shims
+  local count_dir_50
+  count_dir_50="$(mktemp -d)"
+  _SHIM_COUNT_DIR="$count_dir_50" PATH="$shim_dir:$PATH" \
+    run "$SYNC_SCRIPT" "$root50/snapshot.json" "$doc_dir_50/ux-design.md"
+  [ "$status" -eq 0 ] || fail "50-row sync failed: $output"
+
+  # Run 500-row sync with counting shims
+  local count_dir_500
+  count_dir_500="$(mktemp -d)"
+  _SHIM_COUNT_DIR="$count_dir_500" PATH="$shim_dir:$PATH" \
+    run "$SYNC_SCRIPT" "$root500/snapshot.json" "$doc_dir_500/ux-design.md"
+  [ "$status" -eq 0 ] || fail "500-row sync failed: $output"
+
+  # Count total tool invocations for each run.
+  # Each shim appends one 'x' per call; wc -c counts bytes = calls.
+  local total_50=0 total_500=0
+  for tool in awk sed grep cut tr; do
+    local c50=0 c500=0
+    [ -f "$count_dir_50/${tool}.count" ] && \
+      c50="$(wc -c < "$count_dir_50/${tool}.count" | tr -d ' ')"
+    [ -f "$count_dir_500/${tool}.count" ] && \
+      c500="$(wc -c < "$count_dir_500/${tool}.count" | tr -d ' ')"
+    total_50=$((total_50 + c50))
+    total_500=$((total_500 + c500))
+  done
+
+  # Non-vacuity: the 50-row run must have counted more than 0 calls
+  [ "$total_50" -gt 0 ] || \
+    fail "shim counted 0 tool calls on 50-row run — shim is not intercepting"
+
+  # The 500-row count must not exceed the 50-row count plus a small
+  # constant (5). If extraction spawns a subprocess per row, the
+  # 500-row run will have ~450 more calls than the 50-row run.
+  local limit=$((total_50 + 5))
+  [ "$total_500" -le "$limit" ] || \
+    fail "500-row run had $total_500 tool calls vs $total_50 for 50-row (limit $limit) — per-row subprocess detected"
+
+  rm -rf "$root50" "$root500" "$shim_dir" "$count_dir_50" "$count_dir_500"
+}
