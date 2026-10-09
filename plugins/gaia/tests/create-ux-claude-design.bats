@@ -3463,6 +3463,292 @@ TOKENS
 }
 
 # ===========================================================================
+# Token-script equivalence and scaling
+# ===========================================================================
+
+# Comprehensive corpus covering dotted/slashed/dashed names, collisions,
+# refusals, CRLF, empty lines, non-ASCII values, every refused character,
+# and regex metacharacters in names and values.
+
+@test "map-token-name.sh produces byte-identical output on comprehensive corpus" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+
+  # Build corpus inline — covers every documented edge case.
+  local corpus
+  corpus="$(cat <<'EOF'
+color.primary
+--color.primary
+font/size/base
+--font/size/base
+spacing.layout.large
+...leading-dots
+---leading-dashes
+--.leading-combo
+token-with-hyphens
+token..double.dots
+token//double/slashes
+token.with/mixed.separators
+my_underscore_token
+simple
+ALLCAPS_TOKEN
+MixedCase.Token
+color.primary
+duplicate.color.primary
+/
+///
+.
+..
+--/
+--.
+a
+--
+EOF
+)"
+  # Append names with regex metacharacters (must be refused, never used as regex).
+  corpus="${corpus}
+reg[ex].meta(chars)+star*
+dollar\$pipe|question?"
+  corpus="${corpus}
+dot.bracket[0]"
+  # Append backslash path.
+  corpus="$(printf '%s\nbackslash\\path\n' "$corpus")"
+  # Append CRLF line.
+  corpus="$(printf '%s\ncrlf.token\r\n' "$corpus")"
+  # Append empty line + trailing name.
+  corpus="$(printf '%s\n\nafter.empty\n' "$corpus")"
+
+  # Known-good stdout (captured from the original multi-subprocess version).
+  local expected_stdout
+  expected_stdout="$(cat <<'EOF'
+--color-primary	color.primary
+--font-size-base	font/size/base
+--spacing-layout-large	spacing.layout.large
+--leading-dots	...leading-dots
+--leading-dashes	---leading-dashes
+--leading-combo	--.leading-combo
+--token-with-hyphens	token-with-hyphens
+--token-double-dots	token..double.dots
+--token-double-slashes	token//double/slashes
+--token-with-mixed-separators	token.with/mixed.separators
+--my_underscore_token	my_underscore_token
+--simple	simple
+--ALLCAPS_TOKEN	ALLCAPS_TOKEN
+--MixedCase-Token	MixedCase.Token
+--duplicate-color-primary	duplicate.color.primary
+--a	a
+--crlf-token	crlf.token
+--after-empty	after.empty
+EOF
+)"
+
+  # Known-good stderr lines (order matters).
+  local expected_stderr
+  expected_stderr="$(cat <<'EOF'
+map-token-name: collision — "color.primary" and "--color.primary" both map to "--color-primary"; keeping the first
+map-token-name: collision — "font/size/base" and "--font/size/base" both map to "--font-size-base"; keeping the first
+map-token-name: collision — "color.primary" and "color.primary" both map to "--color-primary"; keeping the first
+map-token-name: refused "/": name reduces to only hyphens after mapping
+map-token-name: refused "///": name reduces to only hyphens after mapping
+map-token-name: refused ".": name is empty after stripping leading characters
+map-token-name: refused "..": name is empty after stripping leading characters
+map-token-name: refused "--/": name reduces to only hyphens after mapping
+map-token-name: refused "--.": name is empty after stripping leading characters
+map-token-name: refused "--": name is empty after stripping leading characters
+EOF
+)"
+  # Stderr lines for regex-metachar names (mapped names contain the chars).
+  expected_stderr="${expected_stderr}
+"'map-token-name: refused "reg[ex].meta(chars)+star*": mapped to "--reg[ex]-meta(chars)+star*" which is not a valid CSS custom-property name'
+  expected_stderr="${expected_stderr}
+"'map-token-name: refused "dollar$pipe|question?": mapped to "--dollar$pipe|question?" which is not a valid CSS custom-property name'
+  expected_stderr="${expected_stderr}
+"'map-token-name: refused "dot.bracket[0]": mapped to "--dot-bracket[0]" which is not a valid CSS custom-property name'
+  # The backslash name.
+  expected_stderr="$(printf '%s\nmap-token-name: refused "backslash\\path": mapped to "--backslash\\path" which is not a valid CSS custom-property name\n' "$expected_stderr")"
+
+  local actual_stdout actual_stderr
+  actual_stdout="$(printf '%s\n' "$corpus" | bash "$mtn" 2>"$TEST_TMP/mtn-equiv-err")"
+  actual_stderr="$(cat "$TEST_TMP/mtn-equiv-err")"
+
+  [ "$actual_stdout" = "$expected_stdout" ] \
+    || fail "stdout mismatch (run diff to inspect)"
+  [ "$actual_stderr" = "$expected_stderr" ] \
+    || fail "stderr mismatch (run diff to inspect)"
+}
+
+@test "validate-token-value.sh produces byte-identical output on comprehensive corpus" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+
+  # Build corpus: tab-separated name<TAB>value lines.
+  local corpus
+  corpus="$(printf '%s\t%s\n' \
+    '--color-primary'    '#ff0000' \
+    '--font-family'      '"Noto Sans JP", "メイリオ", sans-serif' \
+    '--accent'           'Helvética' \
+    '--empty-val'        '' \
+    '--good-name'        'normal value' \
+    'badname'            'some value' \
+    ''                   'orphan value' \
+    '--has-lt'           'value with < char' \
+    '--has-gt'           'value with > char' \
+    '--has-brace-open'   'value with { char' \
+    '--has-brace-close'  'value with } char' \
+    '--has-semi'         'value with ; char' \
+    '--regex-dot'        'value.with.dots' \
+    '--regex-star'       'value*with*stars' \
+    '--regex-plus'       'value+with+plus' \
+    '--regex-bracket'    'value[0]' \
+    '--regex-paren'      'value(group)' \
+    '--regex-dollar'     'value$end' \
+    '--regex-pipe'       'value|alt' \
+    '--regex-question'   'value?maybe' \
+    '--after-blank'      'post blank'
+  )"
+  # Append backslash value.
+  corpus="$(printf '%s\n--has-backslash\tvalue with \\ char' "$corpus")"
+  # Append </style variants.
+  corpus="$(printf '%s\n--has-style-tag\tvalue with </style inside' "$corpus")"
+  corpus="$(printf '%s\n--has-Style-tag\tvalue with </Style inside' "$corpus")"
+  corpus="$(printf '%s\n--has-STYLE-tag\tvalue with </STYLE inside' "$corpus")"
+  # Append control character (BEL 0x07).
+  corpus="$(printf '%s\n--has-ctrl\tvalue with \a bell' "$corpus")"
+
+  local expected_stdout
+  expected_stdout="$(printf '%s\t%s\n' \
+    '--color-primary'    '#ff0000' \
+    '--font-family'      '"Noto Sans JP", "メイリオ", sans-serif' \
+    '--accent'           'Helvética' \
+    '--empty-val'        '' \
+    '--good-name'        'normal value' \
+    '--regex-dot'        'value.with.dots' \
+    '--regex-star'       'value*with*stars' \
+    '--regex-plus'       'value+with+plus' \
+    '--regex-bracket'    'value[0]' \
+    '--regex-paren'      'value(group)' \
+    '--regex-dollar'     'value$end' \
+    '--regex-pipe'       'value|alt' \
+    '--regex-question'   'value?maybe' \
+    '--after-blank'      'post blank'
+  )"
+
+  local expected_stderr
+  expected_stderr='validate-token-value: refused "badname": invalid token name (must match --[A-Za-z0-9_-]+)
+validate-token-value: refused "(empty)": token name is empty
+validate-token-value: refused "--has-lt": contains <
+validate-token-value: refused "--has-gt": contains >
+validate-token-value: refused "--has-brace-open": contains {
+validate-token-value: refused "--has-brace-close": contains }
+validate-token-value: refused "--has-semi": contains ;'
+  expected_stderr="$(printf '%s\nvalidate-token-value: refused "--has-backslash": contains backslash' "$expected_stderr")"
+  expected_stderr="${expected_stderr}
+"'validate-token-value: refused "--has-style-tag": contains <
+validate-token-value: refused "--has-Style-tag": contains <
+validate-token-value: refused "--has-STYLE-tag": contains <
+validate-token-value: refused "--has-ctrl": contains control character'
+
+  local actual_stdout actual_stderr
+  actual_stdout="$(printf '%s\n' "$corpus" | bash "$vtv" 2>"$TEST_TMP/vtv-equiv-err")"
+  actual_stderr="$(cat "$TEST_TMP/vtv-equiv-err")"
+
+  [ "$actual_stdout" = "$expected_stdout" ] \
+    || fail "stdout mismatch (run diff to inspect)"
+  [ "$actual_stderr" = "$expected_stderr" ] \
+    || fail "stderr mismatch (run diff to inspect)"
+}
+
+@test "map-token-name.sh scales linearly: no per-token subprocesses" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+
+  # Generate 100 and 1000 unique tokens.
+  local i
+  { for i in $(seq 0 99); do printf 'color.shade.l%d\n' "$i"; done; } \
+    > "$TEST_TMP/mtn-100.txt"
+  { for i in $(seq 0 999); do printf 'color.shade.l%d\n' "$i"; done; } \
+    > "$TEST_TMP/mtn-1000.txt"
+
+  local t100 t1000
+  t100=$( { TIMEFORMAT='%R'; time bash "$mtn" < "$TEST_TMP/mtn-100.txt" \
+            > /dev/null 2>&1; } 2>&1 )
+  t1000=$( { TIMEFORMAT='%R'; time bash "$mtn" < "$TEST_TMP/mtn-1000.txt" \
+             > /dev/null 2>&1; } 2>&1 )
+
+  # With 10x input the time should be less than 20x (generous).
+  # Old quadratic script would be ~100x.
+  local ratio
+  ratio="$(awk "BEGIN { r = $t1000 / ($t100 + 0.001); printf \"%.1f\", r }")"
+  local int_ratio
+  int_ratio="$(awk "BEGIN { printf \"%d\", $t1000 / ($t100 + 0.001) }")"
+  [ "$int_ratio" -lt 20 ] \
+    || fail "scaling ratio ${ratio}x exceeds 20x ceiling (quadratic?)"
+}
+
+@test "validate-token-value.sh scales linearly: no per-token subprocesses" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+
+  # Generate 100 and 1000 valid tokens.
+  local i
+  { for i in $(seq 0 99); do printf -- '--shade-%d\t#%06x\n' "$i" "$i"; done; } \
+    > "$TEST_TMP/vtv-100.txt"
+  { for i in $(seq 0 999); do printf -- '--shade-%d\t#%06x\n' "$i" "$i"; done; } \
+    > "$TEST_TMP/vtv-1000.txt"
+
+  local t100 t1000
+  t100=$( { TIMEFORMAT='%R'; time bash "$vtv" < "$TEST_TMP/vtv-100.txt" \
+            > /dev/null 2>&1; } 2>&1 )
+  t1000=$( { TIMEFORMAT='%R'; time bash "$vtv" < "$TEST_TMP/vtv-1000.txt" \
+             > /dev/null 2>&1; } 2>&1 )
+
+  local ratio
+  ratio="$(awk "BEGIN { r = $t1000 / ($t100 + 0.001); printf \"%.1f\", r }")"
+  local int_ratio
+  int_ratio="$(awk "BEGIN { printf \"%d\", $t1000 / ($t100 + 0.001) }")"
+  [ "$int_ratio" -lt 20 ] \
+    || fail "scaling ratio ${ratio}x exceeds 20x ceiling (quadratic?)"
+}
+
+@test "map-token-name.sh does not use token names as regex patterns" {
+  local mtn="$SKILL_SCRIPTS/map-token-name.sh"
+  # Feed a name whose characters are regex metacharacters.
+  # If the script uses any of them as a regex, awk/grep/sed would either
+  # error or produce wrong results.
+  local out err
+  out="$(printf 'safe_token\nreg[ex]+star*\n' | bash "$mtn" 2>"$TEST_TMP/mtn-rx-err")"
+  err="$(cat "$TEST_TMP/mtn-rx-err")"
+  # safe_token must appear in stdout.
+  printf '%s' "$out" | grep -qF -- '--safe_token' \
+    || fail "safe_token not mapped: $out"
+  # reg[ex]+star* must be refused on stderr (not crash or match wrong).
+  printf '%s' "$err" | grep -qF 'refused "reg[ex]+star*"' \
+    || fail "regex-meta name not refused on stderr: $err"
+}
+
+@test "validate-token-value.sh does not use token values as regex patterns" {
+  local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
+  # Feed values containing regex metacharacters — they must all pass.
+  local corpus
+  corpus="$(printf '%s\t%s\n' \
+    '--rx-dot'     'a.b' \
+    '--rx-star'    'a*b' \
+    '--rx-plus'    'a+b' \
+    '--rx-bracket' 'a[0]b' \
+    '--rx-paren'   'a(b)c' \
+    '--rx-dollar'  'a$b' \
+    '--rx-pipe'    'a|b' \
+    '--rx-quest'   'a?b'
+  )"
+  local out err
+  out="$(printf '%s\n' "$corpus" | bash "$vtv" 2>"$TEST_TMP/vtv-rx-err")"
+  err="$(cat "$TEST_TMP/vtv-rx-err")"
+  # All 8 tokens must appear in stdout (accepted).
+  local count
+  count="$(printf '%s\n' "$out" | grep -c '^--rx-')"
+  [ "$count" -eq 8 ] \
+    || fail "expected 8 accepted regex-meta tokens, got $count"
+  # No refusals on stderr.
+  [ -z "$err" ] || fail "unexpected stderr: $err"
+}
+
+# ===========================================================================
 # Fix 5: merge rule respects designer-removed boards
 # ===========================================================================
 
