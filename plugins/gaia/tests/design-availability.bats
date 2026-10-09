@@ -60,6 +60,31 @@ _extract_availability_section() {
   ' "$1"
 }
 
+# _assert_availability_identity <create-ux-file> <design-review-file>
+# Asserts the availability sub-block is present in both files,
+# byte-identical between them, and free of design-probe references.
+# Every assertion returns explicitly on failure — under bats `run`,
+# errexit is off, so a bare `|| fail` would let the function return 0
+# from a subsequent command.
+_assert_availability_identity() {
+  local cux_file="$1" dr_file="$2"
+  local block_cux block_dr
+
+  block_cux="$(_extract_availability_subblock "$cux_file")"
+  [ -n "$block_cux" ] || { fail "availability sub-block missing from create-ux"; return 1; }
+
+  block_dr="$(_extract_availability_subblock "$dr_file")"
+  [ -n "$block_dr" ] || { fail "availability sub-block missing from design-review"; return 1; }
+
+  diff <(printf '%s' "$block_cux") <(printf '%s' "$block_dr") >/dev/null 2>&1 \
+    || { fail "availability sub-block differs between create-ux and design-review"; return 1; }
+
+  if echo "$block_cux" | grep -q 'design-probe\.sh'; then
+    fail "availability sub-block must not reference design-probe.sh"
+    return 1
+  fi
+}
+
 # =========================================================================
 # (AC4a) Classification sub-block identity across all four sites
 # =========================================================================
@@ -256,49 +281,147 @@ _extract_availability_section() {
 }
 
 # =========================================================================
-# (AC-EC5) removing create-ux availability block makes identity check fail
+# Bounded extraction: create-ux availability section excludes discovery text
 # =========================================================================
 
-@test "(AC-EC5) removing create-ux availability block breaks sub-block identity" {
+@test "create-ux availability extraction is bounded and excludes discovery text" {
   [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
 
-  # Non-vacuity: the sub-block must currently exist
-  local block_cux
-  block_cux="$(_extract_availability_subblock "$SKILL_MD_CUX")"
-  [ -n "$block_cux" ] || fail "availability sub-block missing from create-ux — mutant test cannot run"
+  # Work on a copy so we can inject a sentinel
+  local copy="$TEST_TMP/create-ux-SKILL.md"
+  cp "$SKILL_MD_CUX" "$copy"
 
-  # Create a temp copy with the sub-block removed
-  local stripped
-  stripped="$(awk '/<!-- design-availability begin -->/{skip=1;next} /<!-- design-availability end -->/{skip=0;next} !skip' "$SKILL_MD_CUX")"
-  local mutant_block
-  mutant_block="$(echo "$stripped" | awk '/<!-- design-availability begin -->/{p=1;next} /<!-- design-availability end -->/{p=0} p')"
+  # Inject a sentinel into the discovery text that follows the availability
+  # paragraphs (the DesignSync error handling or the design-system discovery).
+  # Use a line that cannot appear in real availability text.
+  local sentinel="__AVAIL_SENTINEL__"
+  # Place sentinel after the "does NOT use design-probe.sh" paragraph —
+  # in the next non-empty paragraph (DesignSync authorization error handling).
+  awk -v s="$sentinel" '
+    /DesignSync authorization error handling/ && !done { print s; done=1 }
+    { print }
+  ' "$copy" > "$copy.tmp" && mv "$copy.tmp" "$copy"
 
-  # The mutant must have NO sub-block
-  [ -z "$mutant_block" ] \
-    || fail "after removing the availability markers the sub-block should be empty but got content"
+  local section
+  section="$(_extract_availability_section "$copy")"
+  [ -n "$section" ] || fail "availability section not found in create-ux copy"
+
+  # Must be at most 20 lines
+  local line_count
+  line_count="$(printf '%s\n' "$section" | wc -l | tr -d ' ')"
+  [ "$line_count" -le 20 ] \
+    || fail "create-ux availability extraction is $line_count lines (expected <= 20)"
+
+  # Sentinel must be absent (proves extraction is bounded)
+  if printf '%s\n' "$section" | grep -qF "$sentinel"; then
+    fail "create-ux extraction should not contain the sentinel — extraction is not bounded"
+  fi
+
+  # Discovery text must be absent
+  if printf '%s\n' "$section" | grep -q 'Discover an existing design system'; then
+    fail "create-ux extraction must not contain discovery text"
+  fi
+  if printf '%s\n' "$section" | grep -q 'Pass 2'; then
+    fail "create-ux extraction must not contain Pass 2 reference"
+  fi
+
+  # list_projects must appear exactly once (the availability paragraph itself)
+  local lp_count
+  lp_count="$(printf '%s\n' "$section" | grep -c 'list_projects' || true)"
+  [ "$lp_count" -eq 1 ] \
+    || fail "expected exactly 1 list_projects in bounded extraction, got $lp_count"
 }
 
 # =========================================================================
-# (AC-EC5) removing design-review availability block breaks identity check
+# Bounded extraction: design-review availability section excludes stale-resume
 # =========================================================================
 
-@test "(AC-EC5) removing design-review availability block breaks sub-block identity" {
+@test "design-review availability extraction is bounded and excludes stale-resume" {
   [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
 
-  # Non-vacuity: the sub-block must currently exist
-  local block_dr
-  block_dr="$(_extract_availability_subblock "$SKILL_MD_DR")"
-  [ -n "$block_dr" ] || fail "availability sub-block missing from design-review — mutant test cannot run"
+  # Work on a copy so we can inject a sentinel
+  local copy="$TEST_TMP/design-review-SKILL.md"
+  cp "$SKILL_MD_DR" "$copy"
 
-  # Create a temp copy with the sub-block removed
-  local stripped
-  stripped="$(awk '/<!-- design-availability begin -->/{skip=1;next} /<!-- design-availability end -->/{skip=0;next} !skip' "$SKILL_MD_DR")"
-  local mutant_block
-  mutant_block="$(echo "$stripped" | awk '/<!-- design-availability begin -->/{p=1;next} /<!-- design-availability end -->/{p=0} p')"
+  # Inject a sentinel into the Stale-resume section
+  local sentinel="__AVAIL_SENTINEL__"
+  awk -v s="$sentinel" '
+    /^### Precondition — Stale-resume/ && !done { print; print s; done=1; next }
+    { print }
+  ' "$copy" > "$copy.tmp" && mv "$copy.tmp" "$copy"
 
-  # The mutant must have NO sub-block
-  [ -z "$mutant_block" ] \
-    || fail "after removing the availability markers the sub-block should be empty but got content"
+  local section
+  section="$(_extract_availability_section "$copy")"
+  [ -n "$section" ] || fail "availability section not found in design-review copy"
+
+  # Must be at most 20 lines
+  local line_count
+  line_count="$(printf '%s\n' "$section" | wc -l | tr -d ' ')"
+  [ "$line_count" -le 20 ] \
+    || fail "design-review availability extraction is $line_count lines (expected <= 20)"
+
+  # Sentinel must be absent
+  if printf '%s\n' "$section" | grep -qF "$sentinel"; then
+    fail "design-review extraction should not contain the sentinel — extraction is not bounded"
+  fi
+
+  # Stale-resume heading itself must be absent
+  if printf '%s\n' "$section" | grep -q 'Stale-resume'; then
+    fail "design-review extraction must not contain Stale-resume text"
+  fi
+}
+
+# =========================================================================
+# Mutant: removing create-ux availability block fails identity check
+# =========================================================================
+
+@test "create-ux mutant with removed availability block fails identity check" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  # Generate mutant: delete the design-availability markers and everything
+  # between them — the sub-block extraction should then return empty.
+  local mutant="$TEST_TMP/mutant-create-ux.md"
+  sed '/<!-- design-availability begin -->/,/<!-- design-availability end -->/d' \
+    "$SKILL_MD_CUX" > "$mutant"
+
+  # Mutant must fail the identity check (sub-block is gone)
+  run _assert_availability_identity "$mutant" "$SKILL_MD_DR"
+  [ "$status" -ne 0 ] \
+    || fail "mutant create-ux should fail identity check but exited $status"
+}
+
+# =========================================================================
+# Mutant: removing design-review availability block fails identity check
+# =========================================================================
+
+@test "design-review mutant with removed availability block fails identity check" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  # Generate mutant: delete the design-availability markers and everything
+  # between them from design-review.
+  local mutant="$TEST_TMP/mutant-design-review.md"
+  sed '/<!-- design-availability begin -->/,/<!-- design-availability end -->/d' \
+    "$SKILL_MD_DR" > "$mutant"
+
+  # Mutant must fail the identity check (sub-block is gone)
+  run _assert_availability_identity "$SKILL_MD_CUX" "$mutant"
+  [ "$status" -ne 0 ] \
+    || fail "mutant design-review should fail identity check but exited $status"
+}
+
+# =========================================================================
+# Real skill texts pass availability identity check
+# =========================================================================
+
+@test "real skill texts pass availability identity check" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  run _assert_availability_identity "$SKILL_MD_CUX" "$SKILL_MD_DR"
+  [ "$status" -eq 0 ] \
+    || fail "real files should pass identity check: $output"
 }
 
 # =========================================================================
