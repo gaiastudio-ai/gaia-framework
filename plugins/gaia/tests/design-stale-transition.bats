@@ -9,6 +9,7 @@
 # Public functions covered: (script entry point, not a library)
 
 load 'test_helper.bash'
+bats_require_minimum_version 1.5.0
 
 # ---------------------------------------------------------------------------
 # Portable helpers
@@ -996,4 +997,148 @@ _spy_probe_count() {
 
   spy_count="$(_spy_probe_count)"
   [ "$spy_count" -gt 0 ] || fail "mutant should run the probe despite attestation"
+}
+
+# ===========================================================================
+# Scope flag: target list, stderr log, validation
+# ===========================================================================
+
+@test "scope design-system prints single target" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope design-system
+
+  [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
+  # stdout must contain exactly one target line
+  [ "$(grep -c 'republish-target:' <<<"$output")" -eq 1 ] \
+    || fail "expected exactly 1 republish-target line on stdout, got: $output"
+  grep -qF 'republish-target: design-system' <<<"$output" \
+    || fail "stdout should contain 'republish-target: design-system' but got: $output"
+  # stderr must log scope and reason
+  grep -qF 'scope=design-system reason=derived' <<<"$stderr" \
+    || fail "stderr should contain 'scope=design-system reason=derived' but got: $stderr"
+}
+
+@test "scope product-design prints single target" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope product-design
+
+  [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
+  [ "$(grep -c 'republish-target:' <<<"$output")" -eq 1 ] \
+    || fail "expected exactly 1 republish-target line on stdout, got: $output"
+  grep -qF 'republish-target: product-design' <<<"$output" \
+    || fail "stdout should contain 'republish-target: product-design' but got: $output"
+}
+
+@test "scope both prints both targets design-system first" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope both
+
+  [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
+  local target_lines
+  target_lines="$(grep 'republish-target:' <<<"$output")"
+  [ "$(wc -l <<<"$target_lines" | tr -d ' ')" -eq 2 ] \
+    || fail "expected 2 republish-target lines on stdout, got: $output"
+  local first_line second_line
+  first_line="$(sed -n '1p' <<<"$target_lines")"
+  second_line="$(sed -n '2p' <<<"$target_lines")"
+  [ "$first_line" = "republish-target: design-system" ] \
+    || fail "first target should be design-system but got: $first_line"
+  [ "$second_line" = "republish-target: product-design" ] \
+    || fail "second target should be product-design but got: $second_line"
+}
+
+@test "default scope prints both targets and logs default reason" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # No --scope flag at all
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test
+
+  [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
+  local target_lines
+  target_lines="$(grep 'republish-target:' <<<"$output")"
+  [ "$(wc -l <<<"$target_lines" | tr -d ' ')" -eq 2 ] \
+    || fail "expected 2 republish-target lines on stdout, got: $output"
+  grep -qF 'scope=both reason=default' <<<"$stderr" \
+    || fail "stderr should contain 'scope=both reason=default' but got: $stderr"
+}
+
+@test "scope log emitted before transition for runs that halt" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # --integration missing makes the driver halt after the stale transition
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration missing --actor test --scope design-system
+
+  [ "$status" -ne 0 ] || fail "driver should halt (non-zero) on missing integration"
+  # The scope log must still have been emitted before the halt
+  grep -qF 'scope=' <<<"$stderr" \
+    || fail "stderr should contain scope= log even on halt, but got: $stderr"
+}
+
+@test "invalid scope exits 2 with diagnostic" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # Capture sha256 of the record BEFORE the run
+  local before_hash
+  before_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope screens
+
+  [ "$status" -eq 2 ] || fail "invalid scope should exit 2 but exited $status"
+  # Record must be unchanged (no transition written)
+  local after_hash
+  after_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$before_hash" = "$after_hash" ] \
+    || fail "record should be unchanged after invalid scope but hash changed"
+}
+
+@test "repeated scope exits 2" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope both --scope both
+
+  [ "$status" -eq 2 ] || fail "repeated --scope should exit 2 but exited $status"
+}
+
+@test "scope missing value exits 2" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # --scope is the last argument, with no value following it
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope
+
+  [ "$status" -eq 2 ] || fail "scope without value should exit 2 but exited $status"
 }
