@@ -1040,16 +1040,17 @@ UX
   run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
-  # Both special-char components must appear in the doc intact
-  grep -qF 'nav\bar' "$doc_dir/ux-design.md" || \
-    fail "backslash component not preserved in doc"
+  # Both special-char components must appear in the doc intact.
+  # After the escape fix, nav\bar is stored as nav\\bar (backslash doubled).
+  grep -qF 'nav\\bar' "$doc_dir/ux-design.md" || \
+    fail "backslash component not preserved in doc (expected nav\\\\bar)"
   grep -qF 'R&D-panel' "$doc_dir/ux-design.md" || \
     fail "ampersand component not preserved in doc"
 
   # Position: rows must land directly after the last original data row
   local header_ln navbar_ln rdpanel_ln
   header_ln="$(grep -n '| header |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
-  navbar_ln="$(grep -nF 'nav\bar' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  navbar_ln="$(grep -nF 'nav\\bar' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
   rdpanel_ln="$(grep -nF 'R&D-panel' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
   [ "$navbar_ln" -eq "$((header_ln + 1))" ] || \
     fail "nav\\bar row not directly after the last table row (expected line $((header_ln + 1)), got $navbar_ln)"
@@ -6347,9 +6348,9 @@ UX
   inserted_line="$(grep 'NewComponent' "$doc_dir/ux-design.md")"
   [ -n "$inserted_line" ] || fail "NewComponent row not found"
 
-  # Check the byte before \n on the NewComponent line is \r (0d)
+  # Check that the line contains \r (0d) before \n
   local line_bytes
-  line_bytes="$(grep 'NewComponent' "$doc_dir/ux-design.md" | od -c | head -1)"
+  line_bytes="$(grep 'NewComponent' "$doc_dir/ux-design.md" | od -c)"
   printf '%s\n' "$line_bytes" | grep -q '\\r' || \
     fail "inserted table row does not end with CR LF: $line_bytes"
 
