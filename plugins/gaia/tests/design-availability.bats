@@ -54,8 +54,8 @@ _extract_availability_subblock() {
 # Returns empty if absent.
 _extract_availability_section() {
   awk '
-    /^\*\*Availability check\.\*\*|^### Precondition — Integration availability/ { found=1; p=1 }
-    p && found && /^###[^#]|^## / { if (seen_start) exit; seen_start=1 }
+    /^\*\*Availability check\.\*\*|^### Precondition — Integration availability/ { p=1; print; next }
+    p && (/^###[^#]|^## / || /<!-- availability-check end -->/) { exit }
     p { print }
   ' "$1"
 }
