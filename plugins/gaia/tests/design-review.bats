@@ -1550,3 +1550,66 @@ _sweep_prewrite_guards() {
     fail "Step 5 should describe design-system-only coverage linked to the null product project"
 }
 
+# ===========================================================================
+# Script path correctness — scripts under skills/gaia-design-review/scripts/
+# must be cited with the full plugin-rooted path, not bare scripts/ prefixes
+# ===========================================================================
+
+@test "no bare scripts/verdict-provenance-check.sh reference in SKILL.md" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  # Every mention of verdict-provenance-check.sh must include the skill path
+  local bare_count
+  bare_count="$(grep -c 'scripts/verdict-provenance-check\.sh' "$SKILL_MD" || true)"
+  local rooted_count
+  rooted_count="$(grep -c 'skills/gaia-design-review/scripts/verdict-provenance-check\.sh' "$SKILL_MD" || true)"
+
+  [ "$bare_count" -eq "$rooted_count" ] || \
+    fail "found $bare_count references to verdict-provenance-check.sh but only $rooted_count are plugin-rooted"
+}
+
+@test "no bare scripts/sync-derived-artifacts.sh reference in SKILL.md" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local bare_count
+  bare_count="$(grep -c 'scripts/sync-derived-artifacts\.sh' "$SKILL_MD" || true)"
+  local rooted_count
+  rooted_count="$(grep -c 'skills/gaia-design-review/scripts/sync-derived-artifacts\.sh' "$SKILL_MD" || true)"
+
+  [ "$bare_count" -eq "$rooted_count" ] || \
+    fail "found $bare_count references to sync-derived-artifacts.sh but only $rooted_count are plugin-rooted"
+}
+
+@test "cited verdict-provenance-check.sh path exists in the plugin" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  [ -f "$SKILL_DIR/scripts/verdict-provenance-check.sh" ] || \
+    fail "verdict-provenance-check.sh does not exist at the cited path"
+  [ -x "$SKILL_DIR/scripts/verdict-provenance-check.sh" ] || \
+    fail "verdict-provenance-check.sh is not executable"
+}
+
+@test "cited sync-derived-artifacts.sh path exists in the plugin" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  [ -f "$SKILL_DIR/scripts/sync-derived-artifacts.sh" ] || \
+    fail "sync-derived-artifacts.sh does not exist at the cited path"
+  [ -x "$SKILL_DIR/scripts/sync-derived-artifacts.sh" ] || \
+    fail "sync-derived-artifacts.sh is not executable"
+}
+
+# ===========================================================================
+# Component heading in delta sync — accepts bare ## N. Components
+# ===========================================================================
+
+@test "SKILL.md delta sync section lists the bare Components heading" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local step6
+  step6="$(awk '/^### Step 6/,/^### Step 7/' "$SKILL_MD")"
+  [ -n "$step6" ] || fail "Step 6 not found in SKILL.md"
+
+  printf '%s' "$step6" | grep -qi 'bare.*Components\|## N\. Components' || \
+    fail "Step 6 should list the bare Components heading"
+}
+

@@ -72,9 +72,10 @@ _is_section_end() {
 }
 
 # _extract_doc_components DOC — parse component names from the components
-# section of a markdown file. Accepts the template heading (both & and
-# "and" variants, case-insensitive, with optional number prefix) and the
-# legacy "## Component Inventory" heading.
+# section of a markdown file. Accepts: the template heading "## N. Components
+# & Design System" (both & and "and" variants, case-insensitive, with optional
+# number prefix), the bare "## N. Components" heading (number optional), and
+# the legacy "## Component Inventory" heading.
 _extract_doc_components() {
   local doc="$1"
   local in_section=false
@@ -85,7 +86,8 @@ _extract_doc_components() {
   while IFS= read -r line; do
     # Check for heading match (template or legacy)
     if [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]+(and|\&)[[:space:]]+[Dd]esign[[:space:]]+[Ss]ystem ]] ||
-       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]]; then
+       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]] ||
+       [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]*$ ]]; then
       if [ "$in_section" = false ]; then
         in_section=true
         saw_separator=false
@@ -143,7 +145,8 @@ _count_table_cols() {
   shopt -s nocasematch
   while IFS= read -r line; do
     if [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]+(and|\&)[[:space:]]+[Dd]esign[[:space:]]+[Ss]ystem ]] ||
-       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]]; then
+       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]] ||
+       [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]*$ ]]; then
       if [ "$in_section" = false ]; then
         in_section=true
         continue
@@ -197,7 +200,7 @@ _batch_add_components() {
       }
       function heading_match(s,   low) {
         low = tolower(s)
-        return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory)/)
+        return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
       }
       # Only level-1 and level-2 headings end the section; ### and deeper do not
       function is_section_end(s) {
@@ -272,7 +275,7 @@ _batch_add_components() {
       }
       function heading_match(s,   low) {
         low = tolower(s)
-        return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory)/)
+        return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
       }
       # Only level-1 and level-2 headings end the section; ### and deeper do not
       function is_section_end(s) {
@@ -299,7 +302,8 @@ _has_component_heading() {
   shopt -s nocasematch
   while IFS= read -r line; do
     if [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]+(and|\&)[[:space:]]+[Dd]esign[[:space:]]+[Ss]ystem ]] ||
-       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]]; then
+       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]] ||
+       [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]*$ ]]; then
       shopt -u nocasematch
       return 0
     fi
@@ -591,7 +595,7 @@ _main() {
     local component_count
     component_count="$(jq -r '.components | length' "$snapshot_file")"
     if [ "$component_count" -gt 0 ] && ! _has_component_heading "$ux_doc"; then
-      printf 'sync-derived-artifacts.sh: no component section found — expected "## N. Components & Design System" or "## Component Inventory"\n' >&2
+      printf 'sync-derived-artifacts.sh: no component section found — expected "## N. Components & Design System", "## N. Components", or "## Component Inventory"\n' >&2
       exit 1
     fi
 
@@ -634,7 +638,7 @@ _main() {
       else
         # File unchanged despite additions — heading was not found by awk
         # (should not happen if _has_component_heading passed, but guard)
-        printf 'sync-derived-artifacts.sh: no component section found — expected "## N. Components & Design System" or "## Component Inventory"\n' >&2
+        printf 'sync-derived-artifacts.sh: no component section found — expected "## N. Components & Design System", "## N. Components", or "## Component Inventory"\n' >&2
         rm -f "$additions_file"
         exit 1
       fi

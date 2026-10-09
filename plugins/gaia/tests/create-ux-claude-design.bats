@@ -3632,12 +3632,12 @@ TOKENS
 # Canvas index publish rule — send only when the layout changes
 # ===========================================================================
 
-@test "skill states canvas index is sent only when the board layout changes" {
-  grep -q 'Include.*project/canvas\.json.*in the batched publish ONLY when the set or order of boards changes' "$SKILL_MD"
+@test "skill states canvas index is sent when the board layout or frame sizes change" {
+  grep -q 'Include.*project/canvas\.json.*in the batched publish when the set or order of boards changes' "$SKILL_MD"
 }
 
-@test "content-only cycle publishes artboards without the index" {
-  grep -q 'A cycle that only rewrites the content of existing artboards publishes the artboard files alone and does NOT resend.*project/canvas\.json' "$SKILL_MD"
+@test "content-only cycle with matching sizes publishes artboards without the index" {
+  grep -q 'A cycle that only rewrites the content of existing artboards whose preview sizes match the current board dimensions publishes the artboard files alone and does NOT resend.*project/canvas\.json' "$SKILL_MD"
 }
 
 @test "read-back covers canvas.json only when it was sent" {
@@ -3676,4 +3676,129 @@ TOKENS
 
 @test "skill says wrong case is rejected" {
   grep -q 'wrong case' "$SKILL_MD"
+}
+
+# ===========================================================================
+# Conflict protection on existing-project bind (plan-publication.sh)
+# ===========================================================================
+
+@test "plan-publication: absent baseline with differing remote gives CONFLICT" {
+  local root
+  root="$(mktemp -d)"
+  # local manifest: one file
+  printf '[{"file":"tokens.yaml","hash":"aaa"}]\n' > "$root/local.json"
+  # remote has same file with different hash
+  printf '[{"file":"tokens.yaml","hash":"bbb"}]\n' > "$root/remote.json"
+
+  # last-published is /dev/null (no baseline)
+  run bash "$SHARED_SCRIPTS/plan-publication.sh" \
+    --local-manifest "$root/local.json" \
+    --remote-listing "$root/remote.json" \
+    --last-published /dev/null
+
+  [ "$status" -eq 0 ] || fail "exit $status: $output"
+  [[ "$output" == *"CONFLICT tokens.yaml"* ]] || \
+    fail "expected CONFLICT for differing remote without baseline, got: $output"
+  rm -rf "$root"
+}
+
+@test "plan-publication: absent baseline with identical remote gives no conflict" {
+  local root
+  root="$(mktemp -d)"
+  printf '[{"file":"tokens.yaml","hash":"aaa"}]\n' > "$root/local.json"
+  printf '[{"file":"tokens.yaml","hash":"aaa"}]\n' > "$root/remote.json"
+
+  run bash "$SHARED_SCRIPTS/plan-publication.sh" \
+    --local-manifest "$root/local.json" \
+    --remote-listing "$root/remote.json" \
+    --last-published /dev/null
+
+  [ "$status" -eq 0 ] || fail "exit $status: $output"
+  [[ "$output" == *"SKIP_UNCHANGED tokens.yaml"* ]] || \
+    fail "expected SKIP_UNCHANGED for identical remote, got: $output"
+  _assert_not_in_text "CONFLICT" "$output" "identical hashes should not conflict"
+  rm -rf "$root"
+}
+
+@test "plan-publication: absent baseline with empty remote gives plain WRITE" {
+  local root
+  root="$(mktemp -d)"
+  printf '[{"file":"tokens.yaml","hash":"aaa"}]\n' > "$root/local.json"
+  printf '[]\n' > "$root/remote.json"
+
+  run bash "$SHARED_SCRIPTS/plan-publication.sh" \
+    --local-manifest "$root/local.json" \
+    --remote-listing "$root/remote.json" \
+    --last-published /dev/null
+
+  [ "$status" -eq 0 ] || fail "exit $status: $output"
+  [[ "$output" == *"WRITE tokens.yaml"* ]] || \
+    fail "expected WRITE for empty remote first-publish, got: $output"
+  _assert_not_in_text "CONFLICT" "$output" "empty remote should not conflict"
+  rm -rf "$root"
+}
+
+@test "skill calls plan-publication with strict-conflicts on absent baseline" {
+  grep -q 'strict-conflicts' "$SKILL_MD" || \
+    fail "SKILL.md should mention --strict-conflicts"
+  grep -q 'no last-published entry.*strict-conflicts\|strict-conflicts.*no last-published' "$SKILL_MD" || \
+    fail "SKILL.md should describe when --strict-conflicts is passed"
+}
+
+@test "skill describes strict-conflicts for both design-system and product-design passes" {
+  local ds_section pd_section
+  ds_section="$(awk '/^#### Design-system pass/,/^#### Product-design pass/' "$SKILL_MD")"
+  pd_section="$(awk '/^#### Product-design pass/,/^### Step 11/' "$SKILL_MD")"
+
+  printf '%s' "$ds_section" | grep -q 'strict-conflicts' || \
+    fail "design-system pass should mention --strict-conflicts"
+  printf '%s' "$pd_section" | grep -q 'strict-conflicts' || \
+    fail "product-design pass should mention --strict-conflicts"
+}
+
+# ===========================================================================
+# Canvas frame size update on artboard replacement
+# ===========================================================================
+
+@test "skill includes artboard preview size in canvas index publish trigger" {
+  grep -q 'preview size.*differs.*board' "$SKILL_MD" || \
+    grep -q 'preview.*width.*height.*board' "$SKILL_MD" || \
+    fail "SKILL.md should describe the preview-size trigger for canvas index publish"
+}
+
+@test "skill specifies only w and h updated on size change, not x or y" {
+  grep -q 'updates ONLY.*w.*h.*affected boards' "$SKILL_MD" || \
+    grep -qi 'updates only.*w.*and.*h' "$SKILL_MD" || \
+    fail "SKILL.md should specify that only w/h are updated on size change"
+}
+
+@test "skill states artboard declares its size via data-props preview" {
+  grep -q 'data-props.*preview.*width.*height' "$SKILL_MD" || \
+    fail "SKILL.md should describe the preview size location in artboard HTML"
+}
+
+# ===========================================================================
+# Component heading sync compatibility (finalize SV-20)
+# ===========================================================================
+
+@test "finalize component-heading-sync check passes on template heading" {
+  _write_ux_fixture --with-ref
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    UX_DESIGN_ARTIFACT="$TEST_TMP/ux-design.md" \
+    "$SKILL_SCRIPTS/finalize.sh"
+  [[ "$output" == *"[PASS] SV-20"* ]] || \
+    fail "component heading sync check should pass for template heading: $output"
+}
+
+@test "finalize component-heading-sync check fails on wrong heading" {
+  _write_ux_fixture --with-ref
+  # Replace the component heading with something the sync does not accept
+  sed 's/## 8. Components & Design System/## 8. Component Library/' \
+    "$TEST_TMP/ux-design.md" > "$TEST_TMP/ux-design.md.tmp" && \
+    mv "$TEST_TMP/ux-design.md.tmp" "$TEST_TMP/ux-design.md"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    UX_DESIGN_ARTIFACT="$TEST_TMP/ux-design.md" \
+    "$SKILL_SCRIPTS/finalize.sh"
+  [[ "$output" == *"[FAIL] SV-20"* ]] || \
+    fail "component heading sync check should fail for wrong heading: $output"
 }
