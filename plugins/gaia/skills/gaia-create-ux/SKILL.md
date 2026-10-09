@@ -80,6 +80,8 @@ On `available`, proceed normally — no halt.
 
 The availability check does NOT use `design-probe.sh` (it cannot observe the session's tool surface). Do not fall back to the probe for this classification.
 
+<!-- availability-check end -->
+
 **DesignSync authorization error handling.** If any DesignSync call returns a "needs design-system authorization" error after the availability check succeeds, apply the authorization halt: "The design system requires authorization. Run `/design-login` and then re-run `/gaia-create-ux`." No project created, no content written on this halt path.
 
 **Non-React detection.** Determine whether React is present: a stack whose framework is `react` or `next` in `.gaia/config/project-config.yaml`, or a `react` dependency in the project's `package.json`. When React is absent, set `sync_mode: "brand-style"` in the design record. The `create_project`, `finalize_plan`, `write_files` sequence for the design-system pass still runs (DesignSync rejects the write without the `planId` from `finalize_plan`). On the brand-style path the written content comprises token and guideline files instead of a compiled component bundle; no `/design-sync` compile step. The product design project is created regardless of sync mode.
