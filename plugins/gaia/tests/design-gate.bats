@@ -2569,6 +2569,8 @@ SHIMEOF
   [ "$status" -eq 1 ] || fail "force-design should not override coverage halt, got status=$status"
   _stripped_output | grep -qi 'cannot be overridden' \
     || fail "remediation should say the halt cannot be overridden"
+}
+
 # =========================================================================
 # Override reason control-character neutralisation
 # =========================================================================
@@ -2934,4 +2936,85 @@ _assert_no_raw_control_in_reason() {
     || fail "design record was written despite over-cap refusal"
   [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
     || fail "lifecycle ledger was written despite over-cap refusal"
+}
+
+# =========================================================================
+# Structural: the UTF-8 byte walker is defined exactly once
+# =========================================================================
+
+@test "UTF-8 byte walker logic is defined once, not duplicated" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+
+  # The overlong/surrogate/range lead-byte checks are structural markers
+  # unique to the UTF-8 walker. Each must appear exactly once in the file
+  # to prove the walker is not duplicated.
+  local count
+
+  count="$(grep -cF 'v == 224' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 224' exactly once but found $count"
+
+  count="$(grep -cF 'v == 237' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 237' exactly once but found $count"
+
+  count="$(grep -cF 'v == 244' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 244' exactly once but found $count"
+}
+
+@test "mutant: duplicating the walker diverges sanitise and strip paths" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+
+  # Mutant: change one range check (E0 overlong threshold from 160 to 128)
+  # in the shared walker. Both the sanitise and strip paths must break.
+  local patched
+  patched="$(_make_patched 's/v == 224 && v2 >= 160/v == 224 \&\& v2 >= 128/')"
+
+  # Sanitise path: overlong E0 82 85 should be neutralised, but the mutant
+  # accepts it as valid UTF-8.
+  seed_override_fixture
+  local reason_s
+  reason_s="$(printf 'test \xe0\x82\x85 rest of reason')"
+  run _run_patched_gate "$patched" --force-design \
+    --reason "$reason_s" --entry-point test --sprint-id sprint-99
+  local sanitise_red=0
+  if [ "$status" -eq 0 ]; then
+    local rline
+    rline="$(printf '%s\n' "$output" | grep '^ *Reason:')" || true
+    [[ "$rline" == *'<0xE0>'* ]] || sanitise_red=1
+  else
+    sanitise_red=1
+  fi
+  [ "$sanitise_red" -eq 1 ] \
+    || fail "sanitise path did not break with the mutant"
+
+  # Strip path: 10 bytes of overlong sequences (all control-equivalent)
+  # should be stripped to nothing, but the mutant keeps them as content,
+  # so a control-only reason passes the minimum check.
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  local reason_c
+  reason_c="$(printf '\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85')"
+  run _run_patched_gate "$patched" --force-design \
+    --reason "$reason_c" --entry-point test --sprint-id sprint-99
+  local strip_red=0
+  if [ "$status" -eq 0 ]; then
+    strip_red=1
+  elif _stripped_output | grep -qF "at least 10 characters"; then
+    strip_red=0
+  else
+    strip_red=1
+  fi
+
+  rm -f "$patched"
+
+  # The mutant must fail both because the walker is a single definition:
+  # a change in it affects sanitise AND strip simultaneously.
+  [ "$sanitise_red" -eq 1 ] \
+    || fail "sanitise path did not break — walker may be duplicated"
+  [ "$strip_red" -eq 1 ] \
+    || fail "strip path did not break — walker may be duplicated"
+}
 

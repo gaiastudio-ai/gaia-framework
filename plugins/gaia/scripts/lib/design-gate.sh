@@ -132,144 +132,122 @@ _dg_resolve_sprint_id() {
   return 1
 }
 
+# ---------------------------------------------------------------------------
+# UTF-8 byte walker — single definition, two modes
+# ---------------------------------------------------------------------------
+# _DG_UTF8_WALKER_AWK: a strict RFC-3629 UTF-8 byte-level state machine.
+# Accepts awk variable `mode`:
+#   mode="replace" — emit <0xHH> placeholders for control/invalid bytes
+#   mode="strip"   — silently drop control/invalid bytes
+# Valid multi-byte UTF-8 always passes through unchanged. C1 control
+# characters (U+0080–U+009F, encoded as C2 80–C2 9F) are treated as
+# control bytes in both modes.
+#
+# The end-of-input guards (i+N<=n) have no behavioural effect because awk
+# returns "" for out-of-range array elements, but they document the
+# expected sequence length and are kept for clarity.
+
+# shellcheck disable=SC2016  # single-quoted awk program, $ is intentional
+_DG_UTF8_WALKER_AWK='
+BEGIN {
+  # Build byte-to-ordinal lookup for all 256 byte values.
+  # The entry for the empty string (byte 0x00) is unreachable:
+  # NUL cannot travel through shell argv or awk strings.
+  for (i = 0; i <= 255; i++) ord[sprintf("%c", i)] = i
+}
+# In replace mode, emit <0x0A> for each newline consumed as a record separator
+NR > 1 && mode == "replace" { printf "<0x0A>" }
+{
+  n = split($0, c, "")
+  i = 1
+  while (i <= n) {
+    v = ord[c[i]]
+
+    # ASCII printable (0x20-0x7E): pass through
+    if (v >= 32 && v <= 126) { printf "%s", c[i]; i++; continue }
+
+    # C0 control (0x01-0x1F) or DEL (0x7F)
+    if ((v >= 1 && v <= 31) || v == 127) {
+      if (mode == "replace") printf "<0x%02X>", v
+      i++; continue
+    }
+
+    # 2-byte UTF-8: lead 0xC2-0xDF
+    if (v >= 194 && v <= 223) {
+      if (i + 1 <= n) {
+        v2 = ord[c[i + 1]]
+        if (v2 >= 128 && v2 <= 191) {
+          # C1 control range: C2 80-C2 9F
+          if (v == 194 && v2 >= 128 && v2 <= 159) {
+            if (mode == "replace") printf "<0x%02X><0x%02X>", v, v2
+          } else {
+            printf "%s%s", c[i], c[i + 1]
+          }
+          i += 2; continue
+        }
+      }
+      if (mode == "replace") printf "<0x%02X>", v
+      i++; continue
+    }
+
+    # 3-byte UTF-8: lead 0xE0-0xEF
+    if (v >= 224 && v <= 239) {
+      if (i + 2 <= n) {
+        v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]
+        ok = 0
+        if (v2 >= 128 && v2 <= 191 && v3 >= 128 && v3 <= 191) {
+          if (v == 224 && v2 >= 160) ok = 1
+          else if (v == 237 && v2 <= 159) ok = 1
+          else if (v != 224 && v != 237) ok = 1
+        }
+        if (ok) {
+          printf "%s%s%s", c[i], c[i + 1], c[i + 2]
+          i += 3; continue
+        }
+      }
+      if (mode == "replace") printf "<0x%02X>", v
+      i++; continue
+    }
+
+    # 4-byte UTF-8: lead 0xF0-0xF4
+    if (v >= 240 && v <= 244) {
+      if (i + 3 <= n) {
+        v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]; v4 = ord[c[i + 3]]
+        ok = 0
+        if (v3 >= 128 && v3 <= 191 && v4 >= 128 && v4 <= 191) {
+          if (v == 240 && v2 >= 144 && v2 <= 191) ok = 1
+          else if (v == 244 && v2 >= 128 && v2 <= 143) ok = 1
+          else if (v >= 241 && v <= 243 && v2 >= 128 && v2 <= 191) ok = 1
+        }
+        if (ok) {
+          printf "%s%s%s%s", c[i], c[i + 1], c[i + 2], c[i + 3]
+          i += 4; continue
+        }
+      }
+      if (mode == "replace") printf "<0x%02X>", v
+      i++; continue
+    }
+
+    # Stray continuation (0x80-0xBF), overlong lead (0xC0-0xC1),
+    # or out-of-range lead (0xF5-0xFF)
+    if (mode == "replace") printf "<0x%02X>", v
+    i++
+  }
+}
+'
+
 # _dg_sanitise_reason TEXT — replace control bytes and invalid UTF-8 with
 # visible <0xHH> placeholders. Valid multi-byte UTF-8 passes through
-# unchanged. C1 control characters (U+0080–U+009F, encoded as C2 80–C2 9F)
-# are shown as two placeholders <0xC2><0xHH>.
-# Reads $1. Writes sanitised text to stdout. Pure function, no side effects.
+# unchanged. Reads $1. Writes sanitised text to stdout.
 _dg_sanitise_reason() {
-  printf '%s' "$1" | LC_ALL=C awk '
-    BEGIN {
-      # Build byte-to-ordinal lookup for all 256 byte values.
-      # The entry for the empty string (byte 0x00) is unreachable:
-      # NUL cannot travel through shell argv or awk strings.
-      for (i = 0; i <= 255; i++) ord[sprintf("%c", i)] = i
-    }
-    # Emit <0x0A> for each newline consumed as a record separator
-    NR > 1 { printf "<0x0A>" }
-    {
-      n = split($0, c, "")
-      i = 1
-      while (i <= n) {
-        v = ord[c[i]]
-
-        # ASCII printable (0x20–0x7E): pass through
-        if (v >= 32 && v <= 126) { printf "%s", c[i]; i++; continue }
-
-        # C0 control (0x01–0x1F) or DEL (0x7F): replace
-        if ((v >= 1 && v <= 31) || v == 127) {
-          printf "<0x%02X>", v; i++; continue
-        }
-
-        # 2-byte UTF-8: lead 0xC2–0xDF
-        if (v >= 194 && v <= 223) {
-          if (i + 1 <= n) {
-            v2 = ord[c[i + 1]]
-            if (v2 >= 128 && v2 <= 191) {
-              # C1 control range: C2 80–C2 9F
-              if (v == 194 && v2 >= 128 && v2 <= 159) {
-                printf "<0x%02X><0x%02X>", v, v2
-              } else {
-                printf "%s%s", c[i], c[i + 1]
-              }
-              i += 2; continue
-            }
-          }
-          printf "<0x%02X>", v; i++; continue
-        }
-
-        # 3-byte UTF-8: lead 0xE0–0xEF
-        if (v >= 224 && v <= 239) {
-          if (i + 2 <= n) {
-            v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]
-            ok = 0
-            if (v2 >= 128 && v2 <= 191 && v3 >= 128 && v3 <= 191) {
-              if (v == 224 && v2 >= 160) ok = 1
-              else if (v == 237 && v2 <= 159) ok = 1
-              else if (v != 224 && v != 237) ok = 1
-            }
-            if (ok) {
-              printf "%s%s%s", c[i], c[i + 1], c[i + 2]
-              i += 3; continue
-            }
-          }
-          printf "<0x%02X>", v; i++; continue
-        }
-
-        # 4-byte UTF-8: lead 0xF0–0xF4
-        if (v >= 240 && v <= 244) {
-          if (i + 3 <= n) {
-            v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]; v4 = ord[c[i + 3]]
-            ok = 0
-            if (v3 >= 128 && v3 <= 191 && v4 >= 128 && v4 <= 191) {
-              if (v == 240 && v2 >= 144 && v2 <= 191) ok = 1
-              else if (v == 244 && v2 >= 128 && v2 <= 143) ok = 1
-              else if (v >= 241 && v <= 243 && v2 >= 128 && v2 <= 191) ok = 1
-            }
-            if (ok) {
-              printf "%s%s%s%s", c[i], c[i + 1], c[i + 2], c[i + 3]
-              i += 4; continue
-            }
-          }
-          printf "<0x%02X>", v; i++; continue
-        }
-
-        # Stray continuation (0x80–0xBF), overlong lead (0xC0–0xC1),
-        # or out-of-range lead (0xF5–0xFF): replace
-        printf "<0x%02X>", v; i++
-      }
-    }
-  '
+  printf '%s' "$1" | LC_ALL=C awk -v mode=replace "$_DG_UTF8_WALKER_AWK"
 }
 
 # _dg_strip_controls TEXT — remove control bytes and invalid UTF-8, keeping
 # only printable content and valid multi-byte sequences. Used to measure
 # real content length before the minimum-length check.
 _dg_strip_controls() {
-  printf '%s' "$1" | LC_ALL=C awk '
-    BEGIN { for (i = 0; i <= 255; i++) ord[sprintf("%c", i)] = i }
-    {
-      n = split($0, c, "")
-      i = 1
-      while (i <= n) {
-        v = ord[c[i]]
-        if (v >= 32 && v <= 126) { printf "%s", c[i]; i++; continue }
-        if ((v >= 1 && v <= 31) || v == 127) { i++; continue }
-        if (v >= 194 && v <= 223) {
-          if (i + 1 <= n) { v2 = ord[c[i + 1]]
-            if (v2 >= 128 && v2 <= 191) {
-              if (v == 194 && v2 >= 128 && v2 <= 159) { i += 2; continue }
-              printf "%s%s", c[i], c[i + 1]; i += 2; continue
-            }
-          }
-          i++; continue
-        }
-        if (v >= 224 && v <= 239) {
-          if (i + 2 <= n) { v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]; ok = 0
-            if (v2 >= 128 && v2 <= 191 && v3 >= 128 && v3 <= 191) {
-              if (v == 224 && v2 >= 160) ok = 1
-              else if (v == 237 && v2 <= 159) ok = 1
-              else if (v != 224 && v != 237) ok = 1
-            }
-            if (ok) { printf "%s%s%s", c[i], c[i + 1], c[i + 2]; i += 3; continue }
-          }
-          i++; continue
-        }
-        if (v >= 240 && v <= 244) {
-          if (i + 3 <= n) { v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]; v4 = ord[c[i + 3]]; ok = 0
-            if (v3 >= 128 && v3 <= 191 && v4 >= 128 && v4 <= 191) {
-              if (v == 240 && v2 >= 144 && v2 <= 191) ok = 1
-              else if (v == 244 && v2 >= 128 && v2 <= 143) ok = 1
-              else if (v >= 241 && v <= 243 && v2 >= 128 && v2 <= 191) ok = 1
-            }
-            if (ok) { printf "%s%s%s%s", c[i], c[i + 1], c[i + 2], c[i + 3]; i += 4; continue }
-          }
-          i++; continue
-        }
-        i++
-      }
-    }
-  '
+  printf '%s' "$1" | LC_ALL=C awk -v mode=strip "$_DG_UTF8_WALKER_AWK"
 }
 
 # _dg_validate_reason REASON — validate, trim and sanitise the override reason.
