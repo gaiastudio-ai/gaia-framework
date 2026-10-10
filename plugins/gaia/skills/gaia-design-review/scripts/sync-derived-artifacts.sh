@@ -79,10 +79,10 @@ _is_section_end() {
 _extract_doc_components() {
   local doc="$1"
 
-  # Single awk pass: find the components section, detect separator
-  # (piped or pipe-less), extract first cell from data rows using an
-  # escape-aware splitter (index/substr on fixed characters only —
-  # never uses a data value as a regex), unescape, and print.
+  # Single awk pass: find the components section, locate the first
+  # table (header immediately followed by separator), extract first
+  # cell from data rows, unescape, and print. A | line not followed
+  # by a separator is ordinary text and never stops the search.
   # Bullet-mode extraction runs when no table is found.
   awk '
     function heading_match(s,   low) {
@@ -108,13 +108,13 @@ _extract_doc_components() {
       return 1
     }
     # extract_first_cell LINE STRIP_MARKER — escape-aware first-cell
-    # extraction using index()/substr() jumps (linear in line length).
-    # When STRIP_MARKER is true (pipe-less tables), a leading single \
-    # not followed by \ or | is the writer marker prefix and is dropped
-    # before unescaping. Never strips in piped tables.
-    function extract_first_cell(line, strip_marker,   pos, len, has_lp, ch, cell, bs, cell_idx, target, hit, seg, slen, j, nch, out) {
+    # extraction. Linear in line length: finds each | with index(),
+    # counts preceding backslashes by scanning backwards from the |
+    # position (no string rebuild). When STRIP_MARKER is true
+    # (pipe-less tables), drops a leading single \ not followed by
+    # \ or | before unescaping. Never strips in piped tables.
+    function extract_first_cell(line, strip_marker,   pos, len, has_lp, ch, cell_start, cell_end, bs, cell_idx, target, seg, slen, j, nch, out) {
       len = length(line)
-      # Detect leading pipe (after optional whitespace)
       has_lp = 0
       for (pos = 1; pos <= len; pos++) {
         ch = substr(line, pos, 1)
@@ -122,55 +122,37 @@ _extract_doc_components() {
         if (ch == "|") has_lp = 1
         break
       }
-      # Jump-based cell splitting: find the next | using index().
-      # To check if | is escaped, count trailing backslashes in cell.
-      cell = ""
+      cell_start = 1
       cell_idx = 0
+      target = ""
       pos = 1
       while (pos <= len) {
         seg = substr(line, pos)
         slen = index(seg, "|")
-        if (slen == 0) {
-          cell = cell seg
-          break
-        }
-        # Append everything before the pipe
-        if (slen > 1) cell = cell substr(seg, 1, slen - 1)
-        # Count trailing backslashes in cell to check parity
+        if (slen == 0) break
+        cell_end = pos + slen - 1
         bs = 0
-        j = length(cell)
-        while (j > 0 && substr(cell, j, 1) == "\\") {
-          bs++
-          j--
-        }
+        j = cell_end - 1
+        while (j >= 1 && substr(line, j, 1) == "\\") { bs++; j-- }
         if ((bs % 2) == 0) {
-          # Unescaped pipe — cell boundary
           if (has_lp && cell_idx == 0) {
-            # Skip leading empty cell
+            # skip leading empty cell
           } else if ((has_lp && cell_idx == 1) || (!has_lp && cell_idx == 0)) {
-            target = cell
+            target = substr(line, cell_start, cell_end - cell_start)
             break
           }
           cell_idx++
-          cell = ""
-        } else {
-          # Escaped pipe — literal |
-          cell = cell "|"
+          cell_start = cell_end + 1
         }
-        pos = pos + slen
+        pos = cell_end + 1
       }
-      # If we never hit a second boundary, use what we have
       if (target == "") {
-        if (has_lp && cell_idx == 1) target = cell
-        else if (!has_lp && cell_idx == 0) target = cell
+        if (has_lp && cell_idx == 1) target = substr(line, cell_start)
+        else if (!has_lp && cell_idx == 0) target = substr(line, cell_start)
       }
-      # Trim whitespace (including \r)
       gsub(/^[[:space:]]+/, "", target)
       gsub(/[[:space:]]+$/, "", target)
       # Strip the block-marker escape BEFORE unescaping (pipe-less only).
-      # In the raw cell text every real backslash is doubled, so a
-      # single leading \ not followed by \ or | can only be the
-      # marker prefix the writer added.
       if (strip_marker && substr(target, 1, 1) == "\\" && length(target) >= 2) {
         nch = substr(target, 2, 1)
         if (nch != "\\" && nch != "|") {
@@ -183,19 +165,16 @@ _extract_doc_components() {
       len = length(target)
       while (j <= len) {
         seg = substr(target, j)
-        hit = index(seg, "\\")
-        if (hit == 0) {
-          out = out seg
-          break
-        }
-        if (hit > 1) out = out substr(seg, 1, hit - 1)
-        if (j + hit - 1 < len) {
-          nch = substr(target, j + hit, 1)
-          if (nch == "\\") { out = out "\\"; j = j + hit + 1; continue }
-          if (nch == "|")  { out = out "|";  j = j + hit + 1; continue }
+        slen = index(seg, "\\")
+        if (slen == 0) { out = out seg; break }
+        if (slen > 1) out = out substr(seg, 1, slen - 1)
+        if (j + slen - 1 < len) {
+          nch = substr(target, j + slen, 1)
+          if (nch == "\\") { out = out "\\"; j = j + slen + 1; continue }
+          if (nch == "|")  { out = out "|";  j = j + slen + 1; continue }
         }
         out = out "\\"
-        j = j + hit
+        j = j + slen
       }
       return out
     }
@@ -219,29 +198,31 @@ _extract_doc_components() {
     }
     in_section && is_section_end($0) { in_section = 0; done_section = 1; next }
     in_section && !first_table_done {
-      # Bullet (only when no table header has been seen yet)
-      if (!saw_header && $0 ~ /^-[[:space:]]/) {
+      # When holding a candidate header, the current line decides
+      # whether a table was found.
+      if (have_candidate) {
+        have_candidate = 0
+        if (is_sep($0)) {
+          saw_sep = 1
+          sep_piped = ($0 ~ /^[[:space:]]*\|/)
+          next
+        }
+        # Not a separator — candidate was just text; fall through
+        # to re-evaluate the current line as a possible candidate.
+      }
+      # Bullet (only when no table has been found)
+      if (!saw_sep && $0 ~ /^-[[:space:]]/) {
         name = substr($0, 3)
         gsub(/\r$/, "", name)
         print name
         next
       }
-      # Header row: the first line containing | that is not a bullet
-      if (!saw_header && index($0, "|") > 0) {
-        saw_header = 1
+      # Candidate header: a | line not yet in table mode
+      if (!saw_sep && index($0, "|") > 0) {
+        have_candidate = 1
         next
       }
-      # Separator: only valid on the line right after the header
-      if (saw_header && !saw_sep && is_sep($0)) {
-        saw_sep = 1
-        sep_piped = ($0 ~ /^[[:space:]]*\|/)
-        next
-      }
-      # After header but before/without separator, a non-sep line
-      # means no table was found on this header attempt
-      if (saw_header && !saw_sep) {
-        saw_header = 0
-      }
+      # Data rows after separator
       if (saw_sep && is_table_row($0, sep_piped)) {
         name = extract_first_cell($0, !sep_piped)
         if (name != "") print name
@@ -257,6 +238,7 @@ _extract_doc_components() {
 _count_table_cols() {
   local doc="$1"
   local in_section=false
+  local _coltbl_have_candidate=false
 
   shopt -s nocasematch
   while IFS= read -r line; do
@@ -273,39 +255,48 @@ _count_table_cols() {
       # Section ends at level-1 or level-2 headings
       if _is_section_end "$line"; then break; fi
 
-      # Separator: must contain | and -, consist only of -:|spaces/\r.
-      # Pipe-less form also requires three consecutive dashes.
-      # Only recognised on the line right after the header row.
-      local clean="${line%$'\r'}"
-      if [[ "$clean" == *'|'* ]] && [[ "$clean" == *'-'* ]]; then
-        local stripped="${clean//[-:|[:space:]]/}"
-        local _has_leading_pipe=false
-        [[ "$clean" =~ ^[[:space:]]*\| ]] && _has_leading_pipe=true
-        if [ "$_has_leading_pipe" = false ] && [[ "$clean" != *'---'* ]]; then
-          continue
-        fi
-        if [ -z "$stripped" ]; then
-          # Count pipes (bash expansion, no subprocess)
-          local pipe_count _pipes_only
-          _pipes_only="${line//[^|]/}"
-          pipe_count="${#_pipes_only}"
-          # Detect outer pipes: leading pipe = first non-space is |
-          # trailing pipe = last non-space (ignoring \r) is |
-          local has_leading=false has_trailing=false
-          [[ "$clean" =~ ^[[:space:]]*\| ]] && has_leading=true
-          [[ "$clean" =~ \|[[:space:]]*$ ]] && has_trailing=true
-          local cols
-          if [ "$has_leading" = true ] && [ "$has_trailing" = true ]; then
-            cols=$((pipe_count - 1))
-          elif [ "$has_leading" = true ] || [ "$has_trailing" = true ]; then
-            cols=$pipe_count
-          else
-            cols=$((pipe_count + 1))
+      # Table locator: header (| line) immediately followed by separator.
+      # A | line not followed by a separator is ordinary text.
+      if [ "$_coltbl_have_candidate" = true ]; then
+        _coltbl_have_candidate=false
+        local clean="${line%$'\r'}"
+        if [[ "$clean" == *'|'* ]] && [[ "$clean" == *'-'* ]]; then
+          local stripped="${clean//[-:|[:space:]]/}"
+          if [ -z "$stripped" ]; then
+            local _has_leading_pipe=false
+            [[ "$clean" =~ ^[[:space:]]*\| ]] && _has_leading_pipe=true
+            if [ "$_has_leading_pipe" = false ] && [[ "$clean" != *'---'* ]]; then
+              # Pipe-less form needs three dashes — not a separator.
+              # Fall through to re-evaluate this line.
+              :
+            else
+              # Valid separator — count columns from it
+              local pipe_count _pipes_only
+              _pipes_only="${line//[^|]/}"
+              pipe_count="${#_pipes_only}"
+              local has_leading=false has_trailing=false
+              [[ "$clean" =~ ^[[:space:]]*\| ]] && has_leading=true
+              [[ "$clean" =~ \|[[:space:]]*$ ]] && has_trailing=true
+              local cols
+              if [ "$has_leading" = true ] && [ "$has_trailing" = true ]; then
+                cols=$((pipe_count - 1))
+              elif [ "$has_leading" = true ] || [ "$has_trailing" = true ]; then
+                cols=$pipe_count
+              else
+                cols=$((pipe_count + 1))
+              fi
+              shopt -u nocasematch
+              printf '%d\n' "$cols"
+              return 0
+            fi
           fi
-          shopt -u nocasematch
-          printf '%d\n' "$cols"
-          return 0
         fi
+        # Not a separator — fall through to re-evaluate
+      fi
+      # Candidate header: any line containing |
+      if [[ "${line%$'\r'}" == *'|'* ]]; then
+        _coltbl_have_candidate=true
+        continue
       fi
     fi
   done < "$doc"
@@ -356,16 +347,26 @@ _batch_add_components() {
       function is_section_end(s) {
         return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
       }
+      function is_sep(s,   clean, lp) {
+        if (index(s, "|") == 0) return 0
+        if (index(s, "-") == 0) return 0
+        clean = s; gsub(/\r$/, "", clean); gsub(/[-:|[:space:]]/, "", clean)
+        if (clean != "") return 0
+        lp = (s ~ /^[[:space:]]*\|/)
+        if (!lp && index(s, "---") == 0) return 0
+        return 1
+      }
       !found && heading_match($0) { in_s = 1; next }
       in_s && is_section_end($0) { exit }
-      in_s && !saw_hdr && index($0, "|") > 0 { saw_hdr = 1; next }
-      in_s && saw_hdr && !found && /\|/ && /-/ {
-        clean = $0; gsub(/\r$/, "", clean); gsub(/[-:|[:space:]]/, "", clean)
-        if (clean != "") { found = 2; next }
-        if ($0 !~ /^[[:space:]]*\|/ && index($0, "---") == 0) { found = 2; next }
-        print $0; found = 1; exit
+      # Table locator: header (| line) immediately followed by separator.
+      in_s && !found {
+        if (have_cand) {
+          have_cand = 0
+          if (is_sep($0)) { print $0; found = 1; exit }
+          # Not a separator — fall through to re-evaluate
+        }
+        if (index($0, "|") > 0) { have_cand = 1; next }
       }
-      in_s && saw_hdr && !found { found = 2 }
     ' "$doc")"
     _sep_clean="${_sep_line%$'\r'}"
     [[ "$_sep_clean" =~ ^[[:space:]]*\| ]] && _has_lp=1
@@ -420,12 +421,17 @@ _batch_add_components() {
       }
       # _needs_prefix NAME — true when the escaped name starts with a
       # character that would be a markdown block marker in the row.
-      # The set: # - + * > < ` ~ = _ or a digit.
-      function _needs_prefix(nm,   fc) {
+      # The set covers characters that start headings, bullets,
+      # ordered lists, quotes, code fences, thematic breaks, HTML
+      # blocks, and definition markers. Digits are only prefixed
+      # when followed by . or ) and a space (ordered-list form).
+      function _needs_prefix(nm,   fc, sc) {
         if (length(nm) == 0) return 0
         fc = substr(nm, 1, 1)
         if (index("#-+*><`~=_", fc) > 0) return 1
-        if (fc ~ /[0-9]/) return 1
+        if (fc ~ /[0-9]/) {
+          if (nm ~ /^[0-9]+[.)][[:space:]]/ || nm ~ /^[0-9]+[.)]$/) return 1
+        }
         return 0
       }
       function flush_comps(    i2, row, c2, name) {
@@ -467,33 +473,54 @@ _batch_add_components() {
       !done_section && heading_match($0) { in_section = 1; print; next }
 
       # Buffer rule — must come AFTER section-end (see note above).
-      # Separator is only valid on the line right after the header row.
+      # Table locator: a header (| line) immediately followed by a
+      # separator. A | line not followed by a separator is ordinary
+      # text. After finding the table, buffer data rows and insert
+      # new components after the last row.
       in_section && !first_table_done {
-        if (is_table_line($0)) {
-          pending[++npend] = $0
-          if (!saw_sep && saw_header && is_sep($0)) {
-            saw_sep = 1
-          }
-          if (!saw_header) saw_header = 1
-          next
-        } else {
-          if (npend > 0) {
-            flush_pending()
-            if (saw_sep) {
-              flush_comps()
-              first_table_done = 1
+        # Phase 1: looking for a table (no separator found yet)
+        if (!saw_sep) {
+          # Holding a candidate header — check if this line is the separator
+          if (have_candidate) {
+            have_candidate = 0
+            if (is_sep($0)) {
+              # Table found: flush the candidate header, then the separator
+              printf "%s\n", candidate_line
+              pending[++npend] = $0
+              saw_sep = 1
+              next
             }
-            saw_sep = 0
-            saw_header = 0
+            # Not a separator — candidate was just text, print it
+            printf "%s\n", candidate_line
+            # Fall through to re-evaluate the current line
           }
+          # A | line is a candidate header
+          if (index($0, "|") > 0) {
+            have_candidate = 1
+            candidate_line = $0
+            next
+          }
+          # Non-| line: just text
           print
           next
         }
+        # Phase 2: inside the table (separator was found)
+        if (is_table_line($0)) {
+          pending[++npend] = $0
+          next
+        }
+        # Non-row line ends the table
+        flush_pending()
+        flush_comps()
+        first_table_done = 1
+        print
+        next
       }
 
       { print }
 
       END {
+        if (have_candidate) printf "%s\n", candidate_line
         flush_pending()
         if (in_section) flush_comps()
       }
