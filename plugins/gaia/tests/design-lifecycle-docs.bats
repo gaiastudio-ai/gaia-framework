@@ -675,6 +675,11 @@ CMDS_END
     echo "FAIL: stakeholder step has old single-project wording" >&2; return 1
   fi
 
+  # Null product design project: skips product read and notes absence
+  grep -qiE 'product.design.project.*null.*skip|null.*skip.*product' "$page" || {
+    echo "FAIL: should describe skipping product read when null" >&2; return 1
+  }
+
   # SKILL.md cross-checks
   grep -qi 'DesignSync' "$SKILL_DR" || { echo "FAIL: SKILL drift" >&2; return 1; }
   grep -qiE 'either project|either.*verdict' "$SKILL_DR" || { echo "FAIL: SKILL drift" >&2; return 1; }
