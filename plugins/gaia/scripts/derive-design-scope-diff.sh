@@ -128,7 +128,8 @@ while IFS= read -r _line; do
 
   if [ "$_pub_hash" != "$_lhash" ]; then
     # New or changed
-    _changed_paths="${_changed_paths:+${_changed_paths} }${_lpath}"
+    _changed_paths="${_changed_paths:+${_changed_paths}
+}${_lpath}"
     case "$_lpath" in
       tokens/*) _has_token_change=1 ;;
     esac
@@ -148,7 +149,8 @@ if [ -n "$_ds_published" ]; then
     # Check if path exists in local manifest
     _in_local="$(jq -r --arg p "$_pp" 'has($p)' "$_local_manifest" 2>/dev/null || printf 'false')"
     if [ "$_in_local" != "true" ]; then
-      _changed_paths="${_changed_paths:+${_changed_paths} }${_pp}"
+      _changed_paths="${_changed_paths:+${_changed_paths}
+}${_pp}"
       case "$_pp" in
         tokens/*) _has_token_change=1 ;;
       esac
@@ -181,7 +183,8 @@ if [ -n "$_edited_paths" ]; then
   while IFS= read -r _ep; do
     [ -n "$_ep" ] || continue
     case "$_ep" in
-      screens/*|flows/*) _changed_paths="${_changed_paths:+${_changed_paths} }${_ep}" ;;
+      screens/*|flows/*) _changed_paths="${_changed_paths:+${_changed_paths}
+}${_ep}" ;;
     esac
   done <<EDEOF
 $_edited_paths
@@ -209,7 +212,8 @@ $_pd_published_specs
 PSEOF
   fi
   if [ "$_found" -eq 0 ]; then
-    _changed_paths="${_changed_paths:+${_changed_paths} }${_lpath}"
+    _changed_paths="${_changed_paths:+${_changed_paths}
+}${_lpath}"
   fi
 done <<LMEOF
 $(jq -c 'to_entries[] | {key, value}' "$_local_manifest" 2>/dev/null)
@@ -221,7 +225,8 @@ if [ -n "$_pd_published_specs" ]; then
     [ -n "$_ps" ] || continue
     _in_local="$(jq -r --arg p "$_ps" 'has($p)' "$_local_manifest" 2>/dev/null || printf 'false')"
     if [ "$_in_local" != "true" ]; then
-      _changed_paths="${_changed_paths:+${_changed_paths} }${_ps}"
+      _changed_paths="${_changed_paths:+${_changed_paths}
+}${_ps}"
     fi
   done <<RMEOF
 $_pd_published_specs
@@ -233,23 +238,27 @@ fi
 # ---------------------------------------------------------------------------
 
 if [ "$_has_token_change" -eq 1 ]; then
-  _changed_paths="${_changed_paths:+${_changed_paths} }screens/__token_change__"
+  _changed_paths="${_changed_paths:+${_changed_paths}
+}screens/__token_change__"
 fi
 
 # ---------------------------------------------------------------------------
 # Classify via derive-design-scope.sh
 # ---------------------------------------------------------------------------
 
-_spec_root_args=""
+# Build args array (bash 3.2 safe: use set --)
+set --
 if [ -n "$_spec_root" ]; then
-  _spec_root_args="--spec-root ${_spec_root}"
+  set -- --spec-root "$_spec_root"
 fi
 
-if [ -z "$_changed_paths" ]; then
-  # No changes — pass no args to derive-design-scope.sh (returns both)
-  # shellcheck disable=SC2086
-  exec bash derive-design-scope.sh $_spec_root_args
-else
-  # shellcheck disable=SC2086
-  exec bash derive-design-scope.sh $_spec_root_args $_changed_paths
+if [ -n "$_changed_paths" ]; then
+  while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
+    set -- "$@" "$_p"
+  done <<CPEOF
+$_changed_paths
+CPEOF
 fi
+
+exec bash derive-design-scope.sh "$@"

@@ -263,3 +263,22 @@ SHIMEOF
   [ "$status" -eq 0 ]
   [ "$output" = "both" ] || fail "expected both (no changes = no args to classifier), got: $output"
 }
+
+@test "screen name with space classifies correctly" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/Sign In.spec.html=fff666"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "screens/Sign In.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "product-design" ] || fail "expected product-design for screen with space, got: $output"
+}
