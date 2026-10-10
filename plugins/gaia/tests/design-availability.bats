@@ -48,10 +48,9 @@ _extract_availability_subblock() {
 
 # _extract_availability_section <file>
 # Extracts the full availability section from the heading
-# ("Availability check" or "Integration availability") to the next
-# heading (### or ##). Stops at the FIRST boundary heading after
-# the start, so negative assertions check only the availability block.
-# Returns empty if absent.
+# ("Availability check" or "Integration availability") up to the
+# <!-- availability-check end --> comment or the next heading (### or
+# ##), whichever comes first. Returns empty if absent.
 _extract_availability_section() {
   awk '
     /^\*\*Availability check\.\*\*|^### Precondition — Integration availability/ { p=1; print; next }
@@ -60,29 +59,36 @@ _extract_availability_section() {
   ' "$1"
 }
 
-# _assert_availability_identity <create-ux-file> <design-review-file>
-# Asserts the availability sub-block is present in both files,
-# byte-identical between them, and free of design-probe references.
+# _assert_availability_identity <file> [<file> ...]
+# Asserts the availability sub-block is present in every file,
+# byte-identical across all of them, and free of design-probe
+# references. Requires at least two files.
 # Every assertion returns explicitly on failure — under bats `run`,
 # errexit is off, so a bare `|| fail` would let the function return 0
 # from a subsequent command.
 _assert_availability_identity() {
-  local cux_file="$1" dr_file="$2"
-  local block_cux block_dr
+  [ "$#" -ge 2 ] || { fail "identity helper requires at least two files"; return 1; }
 
-  block_cux="$(_extract_availability_subblock "$cux_file")"
-  [ -n "$block_cux" ] || { fail "availability sub-block missing from create-ux"; return 1; }
+  local ref_file="$1" ref_block
+  ref_block="$(_extract_availability_subblock "$ref_file")"
+  [ -n "$ref_block" ] \
+    || { fail "availability sub-block missing from ${ref_file##*/}"; return 1; }
 
-  block_dr="$(_extract_availability_subblock "$dr_file")"
-  [ -n "$block_dr" ] || { fail "availability sub-block missing from design-review"; return 1; }
-
-  diff <(printf '%s' "$block_cux") <(printf '%s' "$block_dr") >/dev/null 2>&1 \
-    || { fail "availability sub-block differs between create-ux and design-review"; return 1; }
-
-  if echo "$block_cux" | grep -q 'design-probe\.sh'; then
-    fail "availability sub-block must not reference design-probe.sh"
+  if grep -qF 'design-probe.sh' <<< "$ref_block"; then
+    fail "availability sub-block in ${ref_file##*/} must not reference design-probe.sh"
     return 1
   fi
+
+  shift
+  local f cur_block
+  for f in "$@"; do
+    cur_block="$(_extract_availability_subblock "$f")"
+    [ -n "$cur_block" ] \
+      || { fail "availability sub-block missing from ${f##*/}"; return 1; }
+
+    diff <(printf '%s' "$ref_block") <(printf '%s' "$cur_block") >/dev/null 2>&1 \
+      || { fail "availability sub-block differs between ${ref_file##*/} and ${f##*/}"; return 1; }
+  done
 }
 
 # =========================================================================
@@ -95,23 +101,7 @@ _assert_availability_identity() {
   [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
   [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
 
-  local block_cux block_dr block_af block_ux
-  block_cux="$(_extract_availability_subblock "$SKILL_MD_CUX")"
-  block_dr="$(_extract_availability_subblock "$SKILL_MD_DR")"
-  block_af="$(_extract_availability_subblock "$SKILL_MD_AF")"
-  block_ux="$(_extract_availability_subblock "$SKILL_MD_UX")"
-
-  [ -n "$block_cux" ] || fail "availability sub-block missing from create-ux SKILL.md"
-  [ -n "$block_dr" ] || fail "availability sub-block missing from design-review SKILL.md"
-  [ -n "$block_af" ] || fail "availability sub-block missing from add-feature SKILL.md"
-  [ -n "$block_ux" ] || fail "availability sub-block missing from edit-ux SKILL.md"
-
-  diff <(printf '%s' "$block_cux") <(printf '%s' "$block_dr") >/dev/null 2>&1 \
-    || fail "availability sub-block differs between create-ux and design-review"
-  diff <(printf '%s' "$block_cux") <(printf '%s' "$block_af") >/dev/null 2>&1 \
-    || fail "availability sub-block differs between create-ux and add-feature"
-  diff <(printf '%s' "$block_cux") <(printf '%s' "$block_ux") >/dev/null 2>&1 \
-    || fail "availability sub-block differs between create-ux and edit-ux"
+  _assert_availability_identity "$SKILL_MD_CUX" "$SKILL_MD_DR" "$SKILL_MD_AF" "$SKILL_MD_UX"
 }
 
 # =========================================================================
@@ -302,6 +292,10 @@ _assert_availability_identity() {
     { print }
   ' "$copy" > "$copy.tmp" && mv "$copy.tmp" "$copy"
 
+  # Sentinel guard: confirm the sentinel was actually injected
+  grep -qF -- "$sentinel" "$copy" \
+    || fail "sentinel was not injected into create-ux copy — test is vacuous"
+
   local section
   section="$(_extract_availability_section "$copy")"
   [ -n "$section" ] || fail "availability section not found in create-ux copy"
@@ -330,6 +324,11 @@ _assert_availability_identity() {
   lp_count="$(printf '%s\n' "$section" | grep -c 'list_projects' || true)"
   [ "$lp_count" -eq 1 ] \
     || fail "expected exactly 1 list_projects in bounded extraction, got $lp_count"
+
+  # Boundary pin: the "does NOT use design-probe.sh" sentence must be inside
+  # the extraction. Moving the end comment above that paragraph would lose it.
+  grep -qF 'does NOT use' <<< "$section" \
+    || fail "extraction must include the design-probe exclusion sentence"
 }
 
 # =========================================================================
@@ -349,6 +348,10 @@ _assert_availability_identity() {
     /^### Precondition — Stale-resume/ && !done { print; print s; done=1; next }
     { print }
   ' "$copy" > "$copy.tmp" && mv "$copy.tmp" "$copy"
+
+  # Sentinel guard: confirm the sentinel was actually injected
+  grep -qF -- "$sentinel" "$copy" \
+    || fail "sentinel was not injected into design-review copy — test is vacuous"
 
   local section
   section="$(_extract_availability_section "$copy")"
@@ -385,10 +388,12 @@ _assert_availability_identity() {
   sed '/<!-- design-availability begin -->/,/<!-- design-availability end -->/d' \
     "$SKILL_MD_CUX" > "$mutant"
 
-  # Mutant must fail the identity check (sub-block is gone)
+  # Mutant must fail the identity check with a "missing" message
   run _assert_availability_identity "$mutant" "$SKILL_MD_DR"
   [ "$status" -ne 0 ] \
     || fail "mutant create-ux should fail identity check but exited $status"
+  grep -qF "missing" <<< "$output" \
+    || fail "expected 'missing' in failure output, got: $output"
 }
 
 # =========================================================================
@@ -405,10 +410,12 @@ _assert_availability_identity() {
   sed '/<!-- design-availability begin -->/,/<!-- design-availability end -->/d' \
     "$SKILL_MD_DR" > "$mutant"
 
-  # Mutant must fail the identity check (sub-block is gone)
+  # Mutant must fail the identity check with a "missing" message
   run _assert_availability_identity "$SKILL_MD_CUX" "$mutant"
   [ "$status" -ne 0 ] \
     || fail "mutant design-review should fail identity check but exited $status"
+  grep -qF "missing" <<< "$output" \
+    || fail "expected 'missing' in failure output, got: $output"
 }
 
 # =========================================================================
@@ -418,10 +425,106 @@ _assert_availability_identity() {
 @test "real skill texts pass availability identity check" {
   [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
   [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
 
-  run _assert_availability_identity "$SKILL_MD_CUX" "$SKILL_MD_DR"
+  run _assert_availability_identity "$SKILL_MD_CUX" "$SKILL_MD_DR" "$SKILL_MD_AF" "$SKILL_MD_UX"
   [ "$status" -eq 0 ] \
     || fail "real files should pass identity check: $output"
+}
+
+# =========================================================================
+# Mutant: one-byte change in availability block triggers differ failure
+# =========================================================================
+
+@test "one-byte mutant in availability block triggers differ failure" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # Generate a mutant with a one-byte change inside the shared block.
+  local mutant="$TEST_TMP/mutant-onebyte-dr.md"
+  awk '
+    /<!-- design-availability begin -->/ { inside=1 }
+    /<!-- design-availability end -->/   { inside=0 }
+    inside && !flipped && /available/ {
+      sub(/available/, "availablX"); flipped=1
+    }
+    { print }
+  ' "$SKILL_MD_DR" > "$mutant"
+
+  # Place the mutant in the middle (not last) so a missing return-after-fail
+  # in the helper would let the loop continue to a passing final file and
+  # mask the failure.
+  run _assert_availability_identity "$SKILL_MD_CUX" "$mutant" "$SKILL_MD_AF"
+  [ "$status" -ne 0 ] \
+    || fail "one-byte mutant should fail identity check"
+  grep -qF "differs" <<< "$output" \
+    || fail "expected 'differs' in failure output, got: $output"
+}
+
+# =========================================================================
+# Mutant: design-probe smuggled into all copies triggers probe failure
+# =========================================================================
+
+@test "design-probe smuggled into shared block triggers probe failure" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  # Smuggle a design-probe.sh mention into the shared block of both files,
+  # keeping them byte-identical so the diff check would pass — the probe
+  # check must still catch it.
+  local mut_cux="$TEST_TMP/mutant-probe-cux.md"
+  local mut_dr="$TEST_TMP/mutant-probe-dr.md"
+
+  _smuggle_probe() {
+    awk '
+      /<!-- design-availability begin -->/ { inside=1 }
+      /<!-- design-availability end -->/ && inside && !injected {
+        print "- Use design-probe.sh to verify."
+        injected=1; inside=0
+      }
+      { print }
+    ' "$1"
+  }
+  _smuggle_probe "$SKILL_MD_CUX" > "$mut_cux"
+  _smuggle_probe "$SKILL_MD_DR" > "$mut_dr"
+
+  run _assert_availability_identity "$mut_cux" "$mut_dr"
+  [ "$status" -ne 0 ] \
+    || fail "design-probe smuggle should fail identity check"
+  grep -qF "design-probe" <<< "$output" \
+    || fail "expected 'design-probe' in failure output, got: $output"
+}
+
+# =========================================================================
+# Boundary pin: moving end comment above design-probe sentence goes red
+# =========================================================================
+
+@test "moving end comment above the design-probe exclusion sentence goes red" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+
+  # Create a mutant where the end comment is moved one paragraph up —
+  # placed right before the "does NOT use design-probe.sh" line.
+  local mutant="$TEST_TMP/mutant-endcomment-cux.md"
+  awk '
+    /does NOT use.*design-probe/ && !injected {
+      print "<!-- availability-check end -->"
+      injected=1
+    }
+    /<!-- availability-check end -->/ && injected { next }
+    { print }
+  ' "$SKILL_MD_CUX" > "$mutant"
+
+  local section
+  section="$(_extract_availability_section "$mutant")"
+  [ -n "$section" ] || fail "extraction returned empty for mutant"
+
+  # The extraction should now be MISSING the exclusion sentence, proving
+  # the boundary pin catches this move.
+  if grep -qF 'does NOT use' <<< "$section"; then
+    fail "mutant with moved end comment should lose the exclusion sentence"
+  fi
 }
 
 # =========================================================================

@@ -81,6 +81,7 @@ On `available`, proceed normally — no halt.
 The availability check does NOT use `design-probe.sh` (it cannot observe the session's tool surface). Do not fall back to the probe for this classification.
 
 <!-- availability-check end -->
+<!-- This marker bounds the availability section for test extraction. -->
 
 **DesignSync authorization error handling.** If any DesignSync call returns a "needs design-system authorization" error after the availability check succeeds, apply the authorization halt: "The design system requires authorization. Run `/design-login` and then re-run `/gaia-create-ux`." No project created, no content written on this halt path.
 
