@@ -138,7 +138,10 @@ $1"
       done
       ;;
     *)
-      printf 'derive-design-scope-diff.sh: unknown flag: %s\n' "$1" >&2
+      # Sanitise the flag before echoing: strip control characters so a
+      # crafted flag cannot inject terminal escape sequences into stderr.
+      _sanitised="$(printf '%s' "$1" | LC_ALL=C tr -d '[:cntrl:]')"
+      printf 'derive-design-scope-diff.sh: unknown flag: %s\n' "$_sanitised" >&2
       exit 2
       ;;
   esac
@@ -150,6 +153,12 @@ if [ -n "$_raw_edited" ]; then
   while IFS= read -r _raw_p; do
     [ -n "$_raw_p" ] || continue
     _norm="$(_normalise_path "$_raw_p" "$_spec_root")"
+    # An empty normalised path (e.g. from --edited ./ or a spec-root that
+    # equals the edited prefix) is unclassifiable; map it to "." which the
+    # classifier treats as unrecognised (both).
+    if [ -z "$_norm" ]; then
+      _norm="."
+    fi
     if [ -n "$_edited_paths" ]; then
       _edited_paths="${_edited_paths}
 ${_norm}"
@@ -276,6 +285,11 @@ set --
 if [ -n "$_spec_root" ]; then
   set -- --spec-root "$_spec_root"
 fi
+
+# End-of-options marker: paths may begin with "--" after normalisation
+# (e.g. an edited path "./--foo" becomes "--foo" after ./ stripping).
+# The marker ensures derive-design-scope.sh treats them as paths.
+set -- "$@" --
 
 if [ -n "$_changed_output" ]; then
   while IFS= read -r _p; do
