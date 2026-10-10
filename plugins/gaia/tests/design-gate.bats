@@ -2570,3 +2570,451 @@ SHIMEOF
   _stripped_output | grep -qi 'cannot be overridden' \
     || fail "remediation should say the halt cannot be overridden"
 }
+
+# =========================================================================
+# Override reason control-character neutralisation
+# =========================================================================
+
+# _extract_reason_line — pull the "Reason:" line from gate output.
+# Fails the test if no such line exists.
+_extract_reason_line() {
+  local line
+  line="$(printf '%s\n' "$output" | grep '^ *Reason:')" \
+    || fail "no Reason: line in output; got: $output"
+  printf '%s' "$line"
+}
+
+# _assert_no_raw_control_in_reason — byte-scan the Reason: line for raw
+# control bytes (0x00-0x1F, 0x7F) and C1 sequences (0xC2 0x80-0x9F).
+# Uses od for a portable pairwise byte check.
+_assert_no_raw_control_in_reason() {
+  local line="$1"
+  local hexdump
+  hexdump="$(printf '%s' "$line" | od -An -tx1 | tr -d ' \n')"
+
+  # Check for any raw C0 byte (00-1f) or DEL (7f)
+  local i=0 byte
+  while [ "$i" -lt "${#hexdump}" ]; do
+    byte="${hexdump:$i:2}"
+    case "$byte" in
+      0[0-9a-f]|1[0-9a-f]|7f)
+        fail "raw control byte 0x$byte found in Reason: line; got: $line"
+        ;;
+    esac
+    i=$((i + 2))
+  done
+
+  # Check for C1: pairwise scan for 0xC2 followed by 0x80-0x9F
+  i=0
+  while [ "$i" -lt "$((${#hexdump} - 2))" ]; do
+    byte="${hexdump:$i:2}"
+    if [ "$byte" = "c2" ]; then
+      local next="${hexdump:$((i+2)):2}"
+      case "$next" in
+        8[0-9a-f]|9[0-9a-f])
+          fail "raw C1 sequence 0xC2 0x$next found in Reason: line; got: $line"
+          ;;
+      esac
+    fi
+    i=$((i + 2))
+  done
+}
+
+@test "escape sequence in override reason is neutralised in notice" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf 'stale \x1b[31mRED\x1b[0m fix')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  # The Reason: line must show the placeholder, not raw ESC
+  [[ "$rline" == *'<0x1B>[31mRED<0x1B>[0m'* ]] \
+    || fail "expected <0x1B> placeholders in reason line; got: $rline"
+
+  # No raw ESC byte in the line
+  local esc_count
+  esc_count="$(printf '%s' "$rline" | od -An -tx1 | tr ' ' '\n' | grep -c '^1b$')" || true
+  [ "$esc_count" -eq 0 ] \
+    || fail "raw ESC byte (0x1b) still present in Reason: line ($esc_count occurrences)"
+}
+
+@test "BEL tab LF CR in override reason neutralised" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf 'late\x07fix\tnow\ncheck\rdone ok')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  [[ "$rline" == *'<0x07>'* ]] || fail "BEL not neutralised; got: $rline"
+  [[ "$rline" == *'<0x09>'* ]] || fail "tab not neutralised; got: $rline"
+  [[ "$rline" == *'<0x0A>'* ]] || fail "LF not neutralised; got: $rline"
+  [[ "$rline" == *'<0x0D>'* ]] || fail "CR not neutralised; got: $rline"
+
+  # The notice must not have an extra line from the embedded LF
+  local reason_line_count
+  reason_line_count="$(printf '%s\n' "$output" | grep -c '^ *Reason:')"
+  [ "$reason_line_count" -eq 1 ] \
+    || fail "expected 1 Reason: line but got $reason_line_count — embedded LF leaked"
+}
+
+@test "C1 character in override reason neutralised" {
+  seed_override_fixture
+
+  # U+0085 NEXT LINE is encoded as C2 85 in UTF-8
+  local reason
+  reason="$(printf 'test \xc2\x85 reason text here')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  [[ "$rline" == *'<0xC2><0x85>'* ]] \
+    || fail "C1 character U+0085 not neutralised as <0xC2><0x85>; got: $rline"
+}
+
+@test "stray high byte in override reason neutralised" {
+  seed_override_fixture
+
+  # A lone 0x80 is not valid UTF-8 (it is a continuation byte without a lead)
+  local reason
+  reason="$(printf 'test \x80 reason text here')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  [[ "$rline" == *'<0x80>'* ]] \
+    || fail "stray 0x80 not neutralised; got: $rline"
+}
+
+@test "printable UTF-8 reason with em dash unchanged" {
+  seed_override_fixture
+
+  local reason="Override approved by lead — 2026-09-30"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  # The reason text must appear byte-identically (em dash is E2 80 94)
+  [[ "$rline" == *"$reason"* ]] \
+    || fail "printable UTF-8 reason mangled; got: $rline"
+
+  # Double-check the em dash bytes are intact, not turned into placeholders
+  [[ "$rline" != *'<0xE2>'* ]] \
+    || fail "em dash byte E2 was replaced; got: $rline"
+  [[ "$rline" != *'<0x80>'* ]] \
+    || fail "em dash byte 80 was replaced; got: $rline"
+  [[ "$rline" != *'<0x94>'* ]] \
+    || fail "em dash byte 94 was replaced; got: $rline"
+}
+
+@test "byte scan of reason line finds no control bytes" {
+  seed_override_fixture
+
+  # Sub-run a: every C0 byte 0x01-0x1F plus DEL between readable text
+  local reason_a
+  reason_a="$(printf 'readable'
+    i=1; while [ "$i" -le 31 ]; do printf "\\x$(printf '%02x' "$i")"; i=$((i+1)); done
+    printf '\x7f'
+    printf 'text')"
+  run run_gate --force-design \
+    --reason "$reason_a" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "sub-run a: override should succeed; got status $status: $output"
+
+  local rline_a
+  rline_a="$(_extract_reason_line)"
+  _assert_no_raw_control_in_reason "$rline_a"
+
+  # Sub-run b: every C1 character U+0080-U+009F between readable text
+  # Clean state for the second sub-run (design-record.sh init refuses
+  # if a record already exists from sub-run a).
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  local reason_b
+  reason_b="$(printf 'readable'
+    i=128; while [ "$i" -le 159 ]; do printf '\xc2'; printf "\\x$(printf '%02x' "$i")"; i=$((i+1)); done
+    printf 'text')"
+  run run_gate --force-design \
+    --reason "$reason_b" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "sub-run b: override should succeed; got status $status: $output"
+
+  local rline_b
+  rline_b="$(_extract_reason_line)"
+  _assert_no_raw_control_in_reason "$rline_b"
+}
+
+@test "stored reason and ledger entry are sanitised text" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf 'late\x1b[2Jfix approved')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local expected_sanitised="late<0x1B>[2Jfix approved"
+
+  # Design record must hold the sanitised text
+  local drec_reason
+  drec_reason="$(yq -r '.overrides[0].reason' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$drec_reason" = "$expected_sanitised" ] \
+    || fail "design record holds raw reason, not sanitised; got: <<<$drec_reason>>>"
+
+  # Lifecycle ledger must hold the sanitised text
+  local lo_reason
+  lo_reason="$(yq -r '.bypasses[0].reason' "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+  [ "$lo_reason" = "$expected_sanitised" ] \
+    || fail "lifecycle ledger holds raw reason, not sanitised; got: <<<$lo_reason>>>"
+}
+
+@test "sanitised reason over 500 bytes refused before any write" {
+  seed_override_fixture
+
+  # Build a reason of ~400 printable bytes with 40 embedded ESC bytes.
+  # Raw: 400 + 40 = 440 < 500. Sanitised: 400 + 40*6 = 640 > 500.
+  local reason=""
+  local i=0
+  while [ "$i" -lt 40 ]; do
+    reason="${reason}abcdefghij$(printf '\x1b')"
+    i=$((i + 1))
+  done
+
+  local drec_hash lo_hash
+  drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal (status 1); got status $status"
+
+  # Must say "longer than 500 bytes", not "at least 10 characters"
+  _stripped_output | grep -qF "longer than 500 bytes" \
+    || fail "expected gate-level over-cap message with 'longer than 500 bytes'; got: $output"
+  if _stripped_output | grep -q "at least 10 characters"; then
+    fail "got the short-reason message instead of the over-cap message; got: $output"
+  fi
+
+  # Both ledgers untouched
+  [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite over-cap refusal"
+  [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite over-cap refusal"
+}
+
+@test "overlong and surrogate bytes neutralised" {
+  seed_override_fixture
+
+  # Overlong encoding of U+0085: E0 82 85 (should be C2 85)
+  # Surrogate: ED A0 80 (U+D800 lead surrogate)
+  local reason
+  reason="$(printf 'test \xe0\x82\x85 and \xed\xa0\x80 rest of reason')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  # Each byte of the overlong sequence must be individually replaced
+  [[ "$rline" == *'<0xE0><0x82><0x85>'* ]] \
+    || fail "overlong sequence not neutralised byte-by-byte; got: $rline"
+
+  # Each byte of the surrogate sequence must be individually replaced
+  [[ "$rline" == *'<0xED><0xA0><0x80>'* ]] \
+    || fail "surrogate sequence not neutralised byte-by-byte; got: $rline"
+}
+
+@test "control-only reason refused" {
+  # Each sub-case: a reason made only of control characters or spaces
+  # wrapped in them, must be refused with the "at least 10 characters" message.
+
+  local cases=()
+  # (a) 10 tab bytes
+  cases+=("$(printf '\t\t\t\t\t\t\t\t\t\t')")
+  # (b) 2 BEL bytes
+  cases+=("$(printf '\a\a')")
+  # (c) 10 BEL bytes
+  cases+=("$(printf '\a\a\a\a\a\a\a\a\a\a')")
+  # (d) alternating tab and CR
+  cases+=("$(printf '\t\r\t\r\t\r\t\r\t\r')")
+  # (e) tab + 10 spaces + tab
+  cases+=("$(printf '\t          \t')")
+  # (f) LF + 10 spaces + LF
+  cases+=("$(printf '\n          \n')")
+  # (g) ten 0xFF bytes
+  cases+=("$(printf '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff')")
+
+  local idx=0
+  for bad_reason in "${cases[@]}"; do
+    # Clean state for each sub-case — design-record.sh init refuses if a record
+    # already exists, so remove the prior iteration's state tree.
+    rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+    mkdir -p "$TEST_TMP/.gaia/state"
+    seed_override_fixture
+
+    local drec_hash lo_hash
+    drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+    lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+    run run_gate --force-design \
+      --reason "$bad_reason" \
+      --entry-point test --sprint-id sprint-99
+    [ "$status" -eq 1 ] \
+      || fail "case $idx: expected refusal (status 1); got $status: $output"
+    _stripped_output | grep -qF "at least 10 characters" \
+      || fail "case $idx: expected 'at least 10 characters' message; got: $output"
+
+    [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+      || fail "case $idx: design record was written despite control-only refusal"
+    [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+      || fail "case $idx: lifecycle ledger was written despite control-only refusal"
+
+    idx=$((idx + 1))
+  done
+}
+
+@test "raw reason over 500 bytes refused before sanitising" {
+  seed_override_fixture
+
+  # Build a 501-byte printable reason
+  local reason=""
+  local i=0
+  while [ "$i" -lt 501 ]; do
+    reason="${reason}A"
+    i=$((i + 1))
+  done
+  [ "${#reason}" -eq 501 ] || fail "reason length is ${#reason}, expected 501"
+
+  local drec_hash lo_hash
+  drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal (status 1); got status $status"
+
+  # The gate must refuse up front with its own message, not downstream rollback
+  _stripped_output | grep -qF "longer than 500 bytes" \
+    || fail "expected gate-level over-cap message with 'longer than 500 bytes'; got: $output"
+  if _stripped_output | grep -q "at least 10 characters"; then
+    fail "got the short-reason message instead of the over-cap message; got: $output"
+  fi
+  if _stripped_output | grep -qi "rolled back"; then
+    fail "refusal came from downstream writer + rollback, not the gate guard; got: $output"
+  fi
+
+  [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite over-cap refusal"
+  [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite over-cap refusal"
+}
+
+# =========================================================================
+# Structural: the UTF-8 byte walker is defined exactly once
+# =========================================================================
+
+@test "UTF-8 byte walker logic is defined once, not duplicated" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+
+  # The overlong/surrogate/range lead-byte checks are structural markers
+  # unique to the UTF-8 walker. Each must appear exactly once in the file
+  # to prove the walker is not duplicated.
+  local count
+
+  count="$(grep -cF 'v == 224' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 224' exactly once but found $count"
+
+  count="$(grep -cF 'v == 237' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 237' exactly once but found $count"
+
+  count="$(grep -cF 'v == 244' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 244' exactly once but found $count"
+}
+
+@test "mutant: duplicating the walker diverges sanitise and strip paths" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+
+  # Mutant: change one range check (E0 overlong threshold from 160 to 128)
+  # in the shared walker. Both the sanitise and strip paths must break.
+  local patched
+  patched="$(_make_patched 's/v == 224 && v2 >= 160/v == 224 \&\& v2 >= 128/')"
+
+  # Sanitise path: overlong E0 82 85 should be neutralised, but the mutant
+  # accepts it as valid UTF-8.
+  seed_override_fixture
+  local reason_s
+  reason_s="$(printf 'test \xe0\x82\x85 rest of reason')"
+  run _run_patched_gate "$patched" --force-design \
+    --reason "$reason_s" --entry-point test --sprint-id sprint-99
+  local sanitise_red=0
+  if [ "$status" -eq 0 ]; then
+    local rline
+    rline="$(printf '%s\n' "$output" | grep '^ *Reason:')" || true
+    [[ "$rline" == *'<0xE0>'* ]] || sanitise_red=1
+  else
+    sanitise_red=1
+  fi
+  [ "$sanitise_red" -eq 1 ] \
+    || fail "sanitise path did not break with the mutant"
+
+  # Strip path: 10 bytes of overlong sequences (all control-equivalent)
+  # should be stripped to nothing, but the mutant keeps them as content,
+  # so a control-only reason passes the minimum check.
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  local reason_c
+  reason_c="$(printf '\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85')"
+  run _run_patched_gate "$patched" --force-design \
+    --reason "$reason_c" --entry-point test --sprint-id sprint-99
+  local strip_red=0
+  if [ "$status" -eq 0 ]; then
+    strip_red=1
+  elif _stripped_output | grep -qF "at least 10 characters"; then
+    strip_red=0
+  else
+    strip_red=1
+  fi
+
+  rm -f "$patched"
+
+  # The mutant must fail both because the walker is a single definition:
+  # a change in it affects sanitise AND strip simultaneously.
+  [ "$sanitise_red" -eq 1 ] \
+    || fail "sanitise path did not break — walker may be duplicated"
+  [ "$strip_red" -eq 1 ] \
+    || fail "strip path did not break — walker may be duplicated"
+}
+
