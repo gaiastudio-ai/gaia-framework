@@ -2747,6 +2747,10 @@ _assert_no_raw_control_in_reason() {
   _assert_no_raw_control_in_reason "$rline_a"
 
   # Sub-run b: every C1 character U+0080-U+009F between readable text
+  # Clean state for the second sub-run (design-record.sh init refuses
+  # if a record already exists from sub-run a).
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
   seed_override_fixture
   local reason_b
   reason_b="$(printf 'readable'

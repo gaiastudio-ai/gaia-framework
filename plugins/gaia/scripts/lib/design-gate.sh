@@ -132,17 +132,185 @@ _dg_resolve_sprint_id() {
   return 1
 }
 
-# _dg_validate_reason REASON — validate override reason after trimming.
-# Stdout: trimmed reason. Returns 1 with a message on failure.
+# _dg_sanitise_reason TEXT — replace control bytes and invalid UTF-8 with
+# visible <0xHH> placeholders. Valid multi-byte UTF-8 passes through
+# unchanged. C1 control characters (U+0080–U+009F, encoded as C2 80–C2 9F)
+# are shown as two placeholders <0xC2><0xHH>.
+# Reads $1. Writes sanitised text to stdout. Pure function, no side effects.
+_dg_sanitise_reason() {
+  printf '%s' "$1" | LC_ALL=C awk '
+    BEGIN {
+      # Build byte-to-ordinal lookup for all 256 byte values.
+      # The entry for the empty string (byte 0x00) is unreachable:
+      # NUL cannot travel through shell argv or awk strings.
+      for (i = 0; i <= 255; i++) ord[sprintf("%c", i)] = i
+    }
+    # Emit <0x0A> for each newline consumed as a record separator
+    NR > 1 { printf "<0x0A>" }
+    {
+      n = split($0, c, "")
+      i = 1
+      while (i <= n) {
+        v = ord[c[i]]
+
+        # ASCII printable (0x20–0x7E): pass through
+        if (v >= 32 && v <= 126) { printf "%s", c[i]; i++; continue }
+
+        # C0 control (0x01–0x1F) or DEL (0x7F): replace
+        if ((v >= 1 && v <= 31) || v == 127) {
+          printf "<0x%02X>", v; i++; continue
+        }
+
+        # 2-byte UTF-8: lead 0xC2–0xDF
+        if (v >= 194 && v <= 223) {
+          if (i + 1 <= n) {
+            v2 = ord[c[i + 1]]
+            if (v2 >= 128 && v2 <= 191) {
+              # C1 control range: C2 80–C2 9F
+              if (v == 194 && v2 >= 128 && v2 <= 159) {
+                printf "<0x%02X><0x%02X>", v, v2
+              } else {
+                printf "%s%s", c[i], c[i + 1]
+              }
+              i += 2; continue
+            }
+          }
+          printf "<0x%02X>", v; i++; continue
+        }
+
+        # 3-byte UTF-8: lead 0xE0–0xEF
+        if (v >= 224 && v <= 239) {
+          if (i + 2 <= n) {
+            v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]
+            ok = 0
+            if (v2 >= 128 && v2 <= 191 && v3 >= 128 && v3 <= 191) {
+              if (v == 224 && v2 >= 160) ok = 1
+              else if (v == 237 && v2 <= 159) ok = 1
+              else if (v != 224 && v != 237) ok = 1
+            }
+            if (ok) {
+              printf "%s%s%s", c[i], c[i + 1], c[i + 2]
+              i += 3; continue
+            }
+          }
+          printf "<0x%02X>", v; i++; continue
+        }
+
+        # 4-byte UTF-8: lead 0xF0–0xF4
+        if (v >= 240 && v <= 244) {
+          if (i + 3 <= n) {
+            v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]; v4 = ord[c[i + 3]]
+            ok = 0
+            if (v3 >= 128 && v3 <= 191 && v4 >= 128 && v4 <= 191) {
+              if (v == 240 && v2 >= 144 && v2 <= 191) ok = 1
+              else if (v == 244 && v2 >= 128 && v2 <= 143) ok = 1
+              else if (v >= 241 && v <= 243 && v2 >= 128 && v2 <= 191) ok = 1
+            }
+            if (ok) {
+              printf "%s%s%s%s", c[i], c[i + 1], c[i + 2], c[i + 3]
+              i += 4; continue
+            }
+          }
+          printf "<0x%02X>", v; i++; continue
+        }
+
+        # Stray continuation (0x80–0xBF), overlong lead (0xC0–0xC1),
+        # or out-of-range lead (0xF5–0xFF): replace
+        printf "<0x%02X>", v; i++
+      }
+    }
+  '
+}
+
+# _dg_strip_controls TEXT — remove control bytes and invalid UTF-8, keeping
+# only printable content and valid multi-byte sequences. Used to measure
+# real content length before the minimum-length check.
+_dg_strip_controls() {
+  printf '%s' "$1" | LC_ALL=C awk '
+    BEGIN { for (i = 0; i <= 255; i++) ord[sprintf("%c", i)] = i }
+    {
+      n = split($0, c, "")
+      i = 1
+      while (i <= n) {
+        v = ord[c[i]]
+        if (v >= 32 && v <= 126) { printf "%s", c[i]; i++; continue }
+        if ((v >= 1 && v <= 31) || v == 127) { i++; continue }
+        if (v >= 194 && v <= 223) {
+          if (i + 1 <= n) { v2 = ord[c[i + 1]]
+            if (v2 >= 128 && v2 <= 191) {
+              if (v == 194 && v2 >= 128 && v2 <= 159) { i += 2; continue }
+              printf "%s%s", c[i], c[i + 1]; i += 2; continue
+            }
+          }
+          i++; continue
+        }
+        if (v >= 224 && v <= 239) {
+          if (i + 2 <= n) { v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]; ok = 0
+            if (v2 >= 128 && v2 <= 191 && v3 >= 128 && v3 <= 191) {
+              if (v == 224 && v2 >= 160) ok = 1
+              else if (v == 237 && v2 <= 159) ok = 1
+              else if (v != 224 && v != 237) ok = 1
+            }
+            if (ok) { printf "%s%s%s", c[i], c[i + 1], c[i + 2]; i += 3; continue }
+          }
+          i++; continue
+        }
+        if (v >= 240 && v <= 244) {
+          if (i + 3 <= n) { v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]; v4 = ord[c[i + 3]]; ok = 0
+            if (v3 >= 128 && v3 <= 191 && v4 >= 128 && v4 <= 191) {
+              if (v == 240 && v2 >= 144 && v2 <= 191) ok = 1
+              else if (v == 244 && v2 >= 128 && v2 <= 143) ok = 1
+              else if (v >= 241 && v <= 243 && v2 >= 128 && v2 <= 191) ok = 1
+            }
+            if (ok) { printf "%s%s%s%s", c[i], c[i + 1], c[i + 2], c[i + 3]; i += 4; continue }
+          }
+          i++; continue
+        }
+        i++
+      }
+    }
+  '
+}
+
+# _dg_validate_reason REASON — validate, trim and sanitise the override reason.
+# Stdout: sanitised text on success.
+# Returns: 0 success, 1 too short (< 10 content bytes), 2 too long (> 500 bytes).
 _dg_validate_reason() {
   local reason="$1"
+
+  # (1) Trim ASCII spaces only from both ends (not tab/CR/LF — those become
+  #     visible placeholders). sed with literal space, not [[:space:]].
   local trimmed
-  trimmed="$(printf '%s' "$reason" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  if [ -z "$trimmed" ] || [ "${#trimmed}" -lt 10 ]; then
-    printf 'Override refused: --reason must be at least 10 characters after trimming whitespace (got %d).\n' "${#trimmed}" >&2
+  trimmed="$(printf '%s' "$reason" | sed 's/^ *//;s/ *$//')"
+
+  # (2a) Minimum on content: strip controls and invalid UTF-8, then trim
+  #      spaces, then check >= 10 bytes.
+  local content content_trimmed
+  content="$(_dg_strip_controls "$trimmed")"
+  content_trimmed="$(printf '%s' "$content" | sed 's/^ *//;s/ *$//')"
+  if [ -z "$content_trimmed" ] || [ "${#content_trimmed}" -lt 10 ]; then
+    printf 'Override refused: --reason must be at least 10 characters after trimming whitespace (got %d).\n' "${#content_trimmed}" >&2
     return 1
   fi
-  printf '%s' "$trimmed"
+
+  # (2b) Early maximum on the raw trimmed text (sanitising never shortens,
+  #      so this bounds the byte walker).
+  if [ "${#trimmed}" -gt 500 ]; then
+    printf 'Override refused: --reason is longer than 500 bytes once control characters are shown as <0xHH> placeholders (got %d).\n' "${#trimmed}" >&2
+    return 2
+  fi
+
+  # (2c) Sanitise: replace control bytes with <0xHH> placeholders.
+  local sanitised
+  sanitised="$(_dg_sanitise_reason "$trimmed")"
+
+  # (2d) Maximum on the sanitised text (the ledger cap).
+  if [ "${#sanitised}" -gt 500 ]; then
+    printf 'Override refused: --reason is longer than 500 bytes once control characters are shown as <0xHH> placeholders (got %d).\n' "${#sanitised}" >&2
+    return 2
+  fi
+
+  printf '%s' "$sanitised"
 }
 
 # ---------------------------------------------------------------------------
@@ -417,14 +585,21 @@ _dg_handle_override() {
   local actor
   actor="${USER:-unknown}"
 
-  # ---- Validate reason ----
+  # ---- Validate and sanitise reason ----
 
-  _dg_validate_reason "$reason" >/dev/null || {
-    _dg_halt "$record_path" "$design_state" \
-      "Override refused: --reason must be at least 10 characters after trimming whitespace."
+  local _dg_vr_rc=0
+  reason="$(_dg_validate_reason "$reason")" || _dg_vr_rc=$?
+  if [ "$_dg_vr_rc" -ne 0 ]; then
+    local _dg_vr_remediation
+    if [ "$_dg_vr_rc" -eq 1 ]; then
+      _dg_vr_remediation="Override refused: --reason must be at least 10 characters after trimming whitespace."
+    else
+      _dg_vr_remediation="Override refused: --reason is longer than 500 bytes once control characters are shown as <0xHH> placeholders."
+    fi
+    _dg_halt "$record_path" "$design_state" "$_dg_vr_remediation"
     _DG_OVERRIDE_REFUSED=1
     return 1
-  }
+  fi
 
   # ---- Resolve sprint scope ----
 
