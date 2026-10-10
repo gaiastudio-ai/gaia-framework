@@ -93,47 +93,57 @@ _extract_doc_components() {
       return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
     }
     # is_sep LINE — true when the line is a table separator.
-    # Piped form (leading |): each cell must be one or more dashes,
-    # with optional leading/trailing colons — any length is valid.
-    # Pipe-less form (no leading |): requires at least three
-    # consecutive dashes so that a lone dash or `- foo` is never
-    # mistaken for a separator.
-    # Both forms consist only of -, :, |, spaces, and optional \r.
+    # Every cell must contain at least one dash. Colons and spaces
+    # may surround the dashes. Pipe-less form also requires three
+    # consecutive dashes so a lone dash is never a separator.
     function is_sep(s,   clean, lp) {
       if (index(s, "|") == 0) return 0
+      if (index(s, "-") == 0) return 0
       clean = s
       gsub(/\r$/, "", clean)
       gsub(/[-:|[:space:]]/, "", clean)
       if (clean != "") return 0
-      # Detect leading pipe
       lp = (s ~ /^[[:space:]]*\|/)
-      # Pipe-less form requires three consecutive dashes
       if (!lp && index(s, "---") == 0) return 0
       return 1
     }
-    # extract_first_cell LINE — escape-aware first-cell extraction.
-    # Splits on unescaped | (preceded by even number of backslashes).
-    # Returns unescaped first data cell (skipping the leading empty
-    # cell when the row has a leading pipe).
-    function extract_first_cell(line,   i, ch, cell, bs, cell_idx, target, has_lp, len, j, uch, nch, out) {
+    # extract_first_cell LINE STRIP_MARKER — escape-aware first-cell
+    # extraction using index()/substr() jumps (linear in line length).
+    # When STRIP_MARKER is true (pipe-less tables), a leading single \
+    # not followed by \ or | is the writer marker prefix and is dropped
+    # before unescaping. Never strips in piped tables.
+    function extract_first_cell(line, strip_marker,   pos, len, has_lp, ch, cell, bs, cell_idx, target, hit, seg, slen, j, nch, out) {
       len = length(line)
       # Detect leading pipe (after optional whitespace)
       has_lp = 0
-      for (i = 1; i <= len; i++) {
-        ch = substr(line, i, 1)
+      for (pos = 1; pos <= len; pos++) {
+        ch = substr(line, pos, 1)
         if (ch == " " || ch == "\t") continue
         if (ch == "|") has_lp = 1
         break
       }
+      # Jump-based cell splitting: find the next | using index().
+      # To check if | is escaped, count trailing backslashes in cell.
       cell = ""
-      bs = 0
       cell_idx = 0
-      for (i = 1; i <= len; i++) {
-        ch = substr(line, i, 1)
-        if (ch == "\\") {
-          cell = cell ch
+      pos = 1
+      while (pos <= len) {
+        seg = substr(line, pos)
+        slen = index(seg, "|")
+        if (slen == 0) {
+          cell = cell seg
+          break
+        }
+        # Append everything before the pipe
+        if (slen > 1) cell = cell substr(seg, 1, slen - 1)
+        # Count trailing backslashes in cell to check parity
+        bs = 0
+        j = length(cell)
+        while (j > 0 && substr(cell, j, 1) == "\\") {
           bs++
-        } else if (ch == "|" && (bs % 2) == 0) {
+          j--
+        }
+        if ((bs % 2) == 0) {
           # Unescaped pipe — cell boundary
           if (has_lp && cell_idx == 0) {
             # Skip leading empty cell
@@ -143,11 +153,11 @@ _extract_doc_components() {
           }
           cell_idx++
           cell = ""
-          bs = 0
         } else {
-          cell = cell ch
-          bs = 0
+          # Escaped pipe — literal |
+          cell = cell "|"
         }
+        pos = pos + slen
       }
       # If we never hit a second boundary, use what we have
       if (target == "") {
@@ -157,54 +167,48 @@ _extract_doc_components() {
       # Trim whitespace (including \r)
       gsub(/^[[:space:]]+/, "", target)
       gsub(/[[:space:]]+$/, "", target)
-      # Strip the block-marker escape BEFORE unescaping. In the raw
-      # cell text every real backslash is doubled, so a single leading
-      # \ that is NOT followed by \ or | can only be the marker prefix
-      # that the writer added. Strip exactly that.
-      if (substr(target, 1, 1) == "\\" && length(target) >= 2) {
+      # Strip the block-marker escape BEFORE unescaping (pipe-less only).
+      # In the raw cell text every real backslash is doubled, so a
+      # single leading \ not followed by \ or | can only be the
+      # marker prefix the writer added.
+      if (strip_marker && substr(target, 1, 1) == "\\" && length(target) >= 2) {
         nch = substr(target, 2, 1)
         if (nch != "\\" && nch != "|") {
-          if (nch == "#" || nch == "-" || nch == "*" || \
-              nch == "+" || nch == ">") {
-            target = substr(target, 2)
-          } else if (nch ~ /[0-9]/) {
-            if (target ~ /^\\[0-9]+\.[[:space:]]/) {
-              target = substr(target, 2)
-            }
-          }
+          target = substr(target, 2)
         }
       }
-      # Unescape: \\ -> \, \| -> | (process left to right with substr)
+      # Unescape: \\ -> \, \| -> | (jump-based, linear)
       out = ""
       j = 1
       len = length(target)
       while (j <= len) {
-        uch = substr(target, j, 1)
-        if (uch == "\\" && j < len) {
-          nch = substr(target, j + 1, 1)
-          if (nch == "\\") { out = out "\\"; j += 2; continue }
-          if (nch == "|")  { out = out "|";  j += 2; continue }
+        seg = substr(target, j)
+        hit = index(seg, "\\")
+        if (hit == 0) {
+          out = out seg
+          break
         }
-        out = out uch
-        j++
+        if (hit > 1) out = out substr(seg, 1, hit - 1)
+        if (j + hit - 1 < len) {
+          nch = substr(target, j + hit, 1)
+          if (nch == "\\") { out = out "\\"; j = j + hit + 1; continue }
+          if (nch == "|")  { out = out "|";  j = j + hit + 1; continue }
+        }
+        out = out "\\"
+        j = j + hit
       }
       return out
     }
-    # is_data_row LINE PIPED — true when the line is a table data row.
-    # Piped table rows must start with | (after optional whitespace).
-    # Pipe-less table rows must contain an unescaped | and must not
-    # start with a markdown block marker (heading, bullet, quote, blank).
-    function is_data_row(s, piped) {
-      if (piped) {
-        return (s ~ /^[[:space:]]*\|/)
-      }
+    # is_table_row LINE PIPED — true when the line is a table data row.
+    # Piped rows must start with |. Pipe-less rows must contain |
+    # and not start with a block-level markdown marker.
+    function is_table_row(s, piped) {
+      if (piped) return (s ~ /^[[:space:]]*\|/)
       if (s ~ /^[[:space:]]*$/) return 0
       if (s ~ /^#+[[:space:]]/) return 0
-      if (s ~ /^-[[:space:]]/) return 0
-      if (s ~ /^\*[[:space:]]/) return 0
-      if (s ~ /^\+[[:space:]]/) return 0
-      if (s ~ /^>[[:space:]]/) return 0
-      if (s ~ /^>$/) return 0
+      if (s ~ /^[[:space:]]*[-*+][[:space:]]/) return 0
+      if (s ~ /^[[:space:]]*[0-9]+[.)][[:space:]]/) return 0
+      if (s ~ /^[[:space:]]*>/) return 0
       if (index(s, "|") > 0) return 1
       return 0
     }
@@ -215,25 +219,35 @@ _extract_doc_components() {
     }
     in_section && is_section_end($0) { in_section = 0; done_section = 1; next }
     in_section && !first_table_done {
-      if (is_sep($0)) {
+      # Bullet (only when no table header has been seen yet)
+      if (!saw_header && $0 ~ /^-[[:space:]]/) {
+        name = substr($0, 3)
+        gsub(/\r$/, "", name)
+        print name
+        next
+      }
+      # Header row: the first line containing | that is not a bullet
+      if (!saw_header && index($0, "|") > 0) {
+        saw_header = 1
+        next
+      }
+      # Separator: only valid on the line right after the header
+      if (saw_header && !saw_sep && is_sep($0)) {
         saw_sep = 1
-        # Track whether the separator has a leading pipe
         sep_piped = ($0 ~ /^[[:space:]]*\|/)
         next
       }
-      if (saw_sep && is_data_row($0, sep_piped)) {
-        name = extract_first_cell($0)
+      # After header but before/without separator, a non-sep line
+      # means no table was found on this header attempt
+      if (saw_header && !saw_sep) {
+        saw_header = 0
+      }
+      if (saw_sep && is_table_row($0, sep_piped)) {
+        name = extract_first_cell($0, !sep_piped)
         if (name != "") print name
         next
       }
       if (saw_sep) { first_table_done = 1 }
-      # Bullet (only when no table found yet)
-      if (!saw_sep && $0 ~ /^-[[:space:]]/) {
-        name = substr($0, 3)
-        # Strip trailing \r from CRLF docs
-        gsub(/\r$/, "", name)
-        print name
-      }
     }
   ' "$doc"
 }
@@ -259,15 +273,14 @@ _count_table_cols() {
       # Section ends at level-1 or level-2 headings
       if _is_section_end "$line"; then break; fi
 
-      # Separator row: must have at least one | and consist only of
-      # -, :, |, spaces, and optional \r.  Pipe-less form also requires
-      # three consecutive dashes; piped form accepts shorter cells.
+      # Separator: must contain | and -, consist only of -:|spaces/\r.
+      # Pipe-less form also requires three consecutive dashes.
+      # Only recognised on the line right after the header row.
       local clean="${line%$'\r'}"
-      if [[ "$clean" == *'|'* ]]; then
+      if [[ "$clean" == *'|'* ]] && [[ "$clean" == *'-'* ]]; then
         local stripped="${clean//[-:|[:space:]]/}"
         local _has_leading_pipe=false
         [[ "$clean" =~ ^[[:space:]]*\| ]] && _has_leading_pipe=true
-        # Pipe-less separator requires three consecutive dashes
         if [ "$_has_leading_pipe" = false ] && [[ "$clean" != *'---'* ]]; then
           continue
         fi
@@ -345,13 +358,14 @@ _batch_add_components() {
       }
       !found && heading_match($0) { in_s = 1; next }
       in_s && is_section_end($0) { exit }
-      in_s && /\|/ {
+      in_s && !saw_hdr && index($0, "|") > 0 { saw_hdr = 1; next }
+      in_s && saw_hdr && !found && /\|/ && /-/ {
         clean = $0; gsub(/\r$/, "", clean); gsub(/[-:|[:space:]]/, "", clean)
-        if (clean != "") next
-        # Pipe-less form requires three consecutive dashes
-        if ($0 !~ /^[[:space:]]*\|/ && index($0, "---") == 0) next
+        if (clean != "") { found = 2; next }
+        if ($0 !~ /^[[:space:]]*\|/ && index($0, "---") == 0) { found = 2; next }
         print $0; found = 1; exit
       }
+      in_s && saw_hdr && !found { found = 2 }
     ' "$doc")"
     _sep_clean="${_sep_line%$'\r'}"
     [[ "$_sep_clean" =~ ^[[:space:]]*\| ]] && _has_lp=1
@@ -379,35 +393,40 @@ _batch_add_components() {
       function is_section_end(s) {
         return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
       }
-      # is_separator — piped separators accept any dash count per cell;
-      # pipe-less separators require three consecutive dashes.
+      # is_sep — separator must contain | and -, consist only of
+      # -:|spaces/\r. Pipe-less form also requires three dashes.
       function is_sep(s,   clean, lp) {
         if (index(s, "|") == 0) return 0
+        if (index(s, "-") == 0) return 0
         clean = s; gsub(/\r$/, "", clean); gsub(/[-:|[:space:]]/, "", clean)
         if (clean != "") return 0
         lp = (s ~ /^[[:space:]]*\|/)
         if (!lp && index(s, "---") == 0) return 0
         return 1
       }
-      # is_table_line — for piped tables, rows must start with |.
-      # For pipe-less tables, rows must contain | and not start with
-      # a markdown block marker (heading, bullet, quote, blank).
+      # is_table_line — shared row test for piped and pipe-less tables.
       function is_table_line(s) {
-        if (has_lp) {
-          return (s ~ /^[[:space:]]*\|/)
-        }
+        if (has_lp) return (s ~ /^[[:space:]]*\|/)
         if (s ~ /^[[:space:]]*$/) return 0
         if (s ~ /^#+[[:space:]]/) return 0
-        if (s ~ /^-[[:space:]]/) return 0
-        if (s ~ /^\*[[:space:]]/) return 0
-        if (s ~ /^\+[[:space:]]/) return 0
-        if (s ~ /^>[[:space:]]/) return 0
-        if (s ~ /^>$/) return 0
+        if (s ~ /^[[:space:]]*[-*+][[:space:]]/) return 0
+        if (s ~ /^[[:space:]]*[0-9]+[.)][[:space:]]/) return 0
+        if (s ~ /^[[:space:]]*>/) return 0
         return (index(s, "|") > 0)
       }
       function flush_pending(    i2) {
         for (i2 = 1; i2 <= npend; i2++) printf "%s\n", pending[i2]
         npend = 0
+      }
+      # _needs_prefix NAME — true when the escaped name starts with a
+      # character that would be a markdown block marker in the row.
+      # The set: # - + * > < ` ~ = _ or a digit.
+      function _needs_prefix(nm,   fc) {
+        if (length(nm) == 0) return 0
+        fc = substr(nm, 1, 1)
+        if (index("#-+*><`~=_", fc) > 0) return 1
+        if (fc ~ /[0-9]/) return 1
+        return 0
       }
       function flush_comps(    i2, row, c2, name) {
         if (flushed) return
@@ -416,13 +435,9 @@ _batch_add_components() {
           if (has_lp) {
             row = "| " name " |"
           } else {
-            # Neutralise leading block markers so the row is never
-            # parsed as a heading, bullet, quote, or ordered list.
-            # Prefix with \ which the reader strips on the next sync.
-            if (name ~ /^#+[[:space:]]/ || \
-                name ~ /^[-*+][[:space:]]/ || \
-                name ~ /^>[[:space:]]/ || name ~ /^>$/ || \
-                name ~ /^[0-9]+\.[[:space:]]/) {
+            # Prefix with \ when the first character could start a
+            # markdown block. The reader strips it before unescaping.
+            if (_needs_prefix(name)) {
               name = "\\" name
             }
             row = name " |"
@@ -451,13 +466,15 @@ _batch_add_components() {
 
       !done_section && heading_match($0) { in_section = 1; print; next }
 
-      # Buffer rule — must come AFTER section-end (see note above)
+      # Buffer rule — must come AFTER section-end (see note above).
+      # Separator is only valid on the line right after the header row.
       in_section && !first_table_done {
         if (is_table_line($0)) {
           pending[++npend] = $0
-          if (is_sep($0)) {
+          if (!saw_sep && saw_header && is_sep($0)) {
             saw_sep = 1
           }
+          if (!saw_header) saw_header = 1
           next
         } else {
           if (npend > 0) {
@@ -467,6 +484,7 @@ _batch_add_components() {
               first_table_done = 1
             }
             saw_sep = 0
+            saw_header = 0
           }
           print
           next
