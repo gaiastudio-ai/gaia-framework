@@ -115,3 +115,55 @@ teardown() { common_teardown; }
   run bash "$SCOPE_SCRIPT" --spec-root
   [ "$status" -eq 2 ] || fail "expected exit 2 for flag without value, got: $status"
 }
+
+# ===========================================================================
+# Absolute path outside the spec root is unclassified (both)
+# ===========================================================================
+
+@test "absolute path outside spec root classifies as both" {
+  [ -f "$SCOPE_SCRIPT" ] || fail "derive-design-scope.sh not found at $SCOPE_SCRIPT"
+
+  local spec_root="$TEST_TMP/spec"
+  mkdir -p "$spec_root/tokens"
+
+  # /tmp/other is outside $spec_root so the prefix stripping does not match
+  run bash "$SCOPE_SCRIPT" --spec-root "$spec_root" "/tmp/other/tokens/colors.html"
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "absolute path outside spec root should be unclassified (both), got: $output"
+}
+
+# ===========================================================================
+# Spec root with trailing slash still strips the prefix correctly
+# ===========================================================================
+
+@test "spec root with trailing slash classifies correctly" {
+  [ -f "$SCOPE_SCRIPT" ] || fail "derive-design-scope.sh not found at $SCOPE_SCRIPT"
+
+  local spec_root="$TEST_TMP/spec"
+  mkdir -p "$spec_root/components"
+
+  # Trailing slash on --spec-root
+  run bash "$SCOPE_SCRIPT" --spec-root "$spec_root/" "$spec_root/components/button.spec.html"
+  [ "$status" -eq 0 ]
+  [ "$output" = "design-system" ] || fail "spec root with trailing slash should still classify, got: $output"
+}
+
+# ===========================================================================
+# Bare .. segment treated as unclassified
+# ===========================================================================
+
+@test "bare dotdot segment treated as unclassified" {
+  [ -f "$SCOPE_SCRIPT" ] || fail "derive-design-scope.sh not found at $SCOPE_SCRIPT"
+
+  run bash "$SCOPE_SCRIPT" ".."
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "bare .. should be unclassified (both), got: $output"
+}
+
+@test "leading dotdot segment treated as unclassified" {
+  [ -f "$SCOPE_SCRIPT" ] || fail "derive-design-scope.sh not found at $SCOPE_SCRIPT"
+
+  run bash "$SCOPE_SCRIPT" "../tokens/colors.html"
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "leading ../path should be unclassified (both), got: $output"
+}

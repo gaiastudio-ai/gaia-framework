@@ -447,6 +447,76 @@ DECOYEOF
 }
 
 # ===========================================================================
+# Mutant resistance: ignoring edited flows or removed design-system files
+# ===========================================================================
+
+@test "mutant: ignoring edited flows changes the scope" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # Setup: a flow is edited, no other changes. Should yield product-design.
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444" \
+    "flows/checkout.spec.html=eee555"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "flows/checkout.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "product-design" ] \
+    || fail "original: edited flow should yield product-design, got: $output"
+
+  # Mutant: same run without --edited. The flow is not tracked by artboard
+  # mapping, so dropping --edited makes the diff script miss it. The scope
+  # should change to 'both' (no changes = no args to classifier).
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" != "product-design" ] \
+    || fail "mutant: without --edited, flow should NOT yield product-design"
+}
+
+@test "mutant: ignoring removed design-system files changes the scope" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # Setup: a component file is removed (in published but not in local)
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "screens/login.spec.html=ddd444"
+  # components/button.spec.html is absent from local
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "design-system" ] \
+    || fail "original: removed component should yield design-system, got: $output"
+
+  # Mutant: if we restore the component in the local manifest at the same
+  # hash, no removal is detected, so the scope should change.
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" != "design-system" ] \
+    || fail "mutant: with component restored, scope should not be design-system"
+}
+
+# ===========================================================================
 # Robustness: error handling
 # ===========================================================================
 
@@ -517,6 +587,41 @@ DECOYEOF
   [ "$status" -eq 0 ]
   [ "$output" != "HIJACKED" ] \
     || fail "production honoured the helper override — must ignore it without BATS_TEST_FILENAME"
+  # The real scope should be computed, not the override
+  case "$output" in
+    design-system|product-design|both) ;;
+    *) fail "production mode should produce a real scope, got: $output" ;;
+  esac
+}
+
+@test "test seam override is honoured inside bats" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # Create a deterministic override that returns a known answer
+  local test_helper="$TEST_TMP/test-helper.sh"
+  cat > "$test_helper" <<'HELPEOF'
+#!/usr/bin/env bash
+printf 'design-system\n'
+HELPEOF
+  chmod +x "$test_helper"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  # Token change + screen edit would normally yield both via token rule
+  _seed_local_manifest \
+    "tokens/colors.html=new-hash" \
+    "screens/login.spec.html=ddd444"
+
+  # Run WITH BATS_TEST_FILENAME set (as bats sets it)
+  run env BATS_TEST_FILENAME="$BATS_TEST_FILENAME" \
+    _DERIVE_SCOPE_HELPER_OVERRIDE="$test_helper" \
+    bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  # The override helper always returns design-system
+  [ "$output" = "design-system" ] \
+    || fail "test seam should be honoured inside bats, got: $output"
 }
 
 # ===========================================================================
