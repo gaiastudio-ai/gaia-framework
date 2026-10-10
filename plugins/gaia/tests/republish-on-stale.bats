@@ -1593,20 +1593,24 @@ $hits"
   local gate_script="$SCRIPTS_DIR/lib/design-gate.sh"
   [ -f "$gate_script" ] || fail "design-gate.sh not found"
 
+  # In the gate source, the remediation uses variable references.
+  # The structure must be: "...review both projects. <clause> <force-note>"
+  # i.e. $_dg_cov_clause before $_dg_force_note on each remediation line.
   local remediation_lines
   remediation_lines="$(grep -F 'The design review did not cover' "$gate_script")"
   [ -n "$remediation_lines" ] || fail "no coverage remediation in design-gate.sh"
 
   while IFS= read -r line; do
     if grep -qF 'Run /gaia-design-review' <<<"$line"; then
-      grep -qF 'If the design integration is not connected' <<<"$line" \
-        || fail "conditional clause not on the same line as review sentence"
-      local review_pos clause_pos force_pos
-      review_pos="$(awk -v l="$line" 'BEGIN{print index(l,"Run /gaia-design-review")}')"
-      clause_pos="$(awk -v l="$line" 'BEGIN{print index(l,"If the design integration")}')"
-      force_pos="$(awk -v l="$line" 'BEGIN{print index(l,"cannot be overridden")}')"
+      # The clause variable must be present
+      grep -qF '_dg_cov_clause' <<<"$line" \
+        || fail "clause variable missing from coverage remediation line"
+      # The force note must come AFTER the clause variable
+      local clause_pos force_pos
+      clause_pos="$(awk -v l="$line" 'BEGIN{print index(l,"_dg_cov_clause")}')"
+      force_pos="$(awk -v l="$line" 'BEGIN{print index(l,"_dg_force_note")}')"
       if [ "$force_pos" -gt 0 ] && [ "$force_pos" -lt "$clause_pos" ]; then
-        fail "force-design note sits between review and conditional clause"
+        fail "force-design note sits before conditional clause"
       fi
     fi
   done <<<"$remediation_lines"

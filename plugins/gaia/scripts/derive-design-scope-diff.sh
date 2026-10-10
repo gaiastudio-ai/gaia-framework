@@ -53,13 +53,24 @@ fi
 # Path normalisation helper
 # ---------------------------------------------------------------------------
 
-# _normalise_path PATH SPEC_ROOT — strip leading ./, remove spec-root prefix.
+# _normalise_path PATH SPEC_ROOT — normalise a spec path for classification.
+#  - Strip leading ./
+#  - Collapse repeated slashes
+#  - Remove spec-root prefix (with or without trailing slash)
+#  - Map artboard path project/<name>.dc.html to screens/<name>.spec.html
 # Paths containing .. segments are treated as unclassified (passed through
 # literally; derive-design-scope.sh will map them to "both").
 _normalise_path() {
   local p="$1" sr="$2"
   # Strip leading ./
   p="${p#./}"
+  # Collapse repeated slashes (bash 3.2 safe: loop until stable)
+  while :; do
+    case "$p" in
+      *//*) p="$(printf '%s' "$p" | sed 's|//|/|g')" ;;
+      *) break ;;
+    esac
+  done
   # Remove spec-root prefix (strip trailing slash from root for matching)
   if [ -n "$sr" ]; then
     local sr_clean="${sr%/}"
@@ -67,6 +78,14 @@ _normalise_path() {
       "${sr_clean}/"*) p="${p#"${sr_clean}/"}" ;;
     esac
   fi
+  # Map artboard path project/<name>.dc.html to screens/<name>.spec.html
+  case "$p" in
+    project/*.dc.html)
+      local name="${p#project/}"
+      name="${name%.dc.html}"
+      p="screens/${name}.spec.html"
+      ;;
+  esac
   printf '%s\n' "$p"
 }
 
@@ -78,8 +97,8 @@ _last_published=""
 _local_manifest=""
 _spec_root=""
 
-# Collect --edited paths into a newline-delimited string (bash 3.2 safe)
-_edited_paths=""
+# Collect raw --edited paths first (bash 3.2 safe); normalised after all flags.
+_raw_edited=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -107,13 +126,11 @@ while [ $# -gt 0 ]; do
         case "$1" in
           --*) break ;;
           *)
-            # Normalise each edited path before storing
-            _norm="$(_normalise_path "$1" "$_spec_root")"
-            if [ -n "$_edited_paths" ]; then
-              _edited_paths="${_edited_paths}
-${_norm}"
+            if [ -n "$_raw_edited" ]; then
+              _raw_edited="${_raw_edited}
+$1"
             else
-              _edited_paths="$_norm"
+              _raw_edited="$1"
             fi
             shift
             ;;
@@ -126,6 +143,23 @@ ${_norm}"
       ;;
   esac
 done
+
+# Normalise edited paths now that --spec-root is known.
+_edited_paths=""
+if [ -n "$_raw_edited" ]; then
+  while IFS= read -r _raw_p; do
+    [ -n "$_raw_p" ] || continue
+    _norm="$(_normalise_path "$_raw_p" "$_spec_root")"
+    if [ -n "$_edited_paths" ]; then
+      _edited_paths="${_edited_paths}
+${_norm}"
+    else
+      _edited_paths="$_norm"
+    fi
+  done <<RAWEOF
+$_raw_edited
+RAWEOF
+fi
 
 if [ -z "$_local_manifest" ]; then
   printf 'derive-design-scope-diff.sh: --local-manifest required\n' >&2
@@ -203,8 +237,16 @@ _changed_output="$(jq -r --arg edited "$_edited_paths" \
   # Token change flag
   ([$all_ds[] | select(startswith("tokens/"))] | length > 0) as $has_token |
 
-  # (b-i) Edited screens/flows (already normalised)
+  # (b-i) Edited screens/flows (already normalised).
+  # Paths matching screens/ or flows/ are product-design edits.
   ([$edited_list[] | select(test("^(screens|flows)/"))]) as $edited_pd |
+
+  # Unclassified edited paths: not in a known directory, OR containing ..
+  # segments. These are passed through to the classifier as "both".
+  ([$edited_list[] | select(
+    (test("^(tokens|components|templates|screens|flows)/") | not) or
+    test("/\\.\\./|\\.\\./|/\\.\\.$")
+  )]) as $edited_unclassified |
 
   # (b-ii) Added screens: in local manifest but not in published.
   # Only screens/ are checked against the published artboard set.
@@ -219,7 +261,7 @@ _changed_output="$(jq -r --arg edited "$_edited_paths" \
   (if $has_token then ["screens/__token_change__"] else [] end) as $token_marker |
 
   # Combine all changed paths (deduplicated)
-  ($all_ds + $edited_pd + $added_pd + $removed_pd + $token_marker | unique | .[])
+  ($all_ds + $edited_pd + $added_pd + $removed_pd + $token_marker + $edited_unclassified | unique | .[])
 ' "$_local_manifest" 2>/dev/null)" || {
   printf 'derive-design-scope-diff.sh: jq diff failed\n' >&2
   exit 2
