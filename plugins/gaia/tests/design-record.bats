@@ -507,6 +507,8 @@ EOF
     [ "$rel_path" = "tests/design-record-v2-migration.bats" ] && continue
     # build-manifest-cards tests seed temp-dir design-record fixtures
     [ "$rel_path" = "tests/build-manifest-cards.bats" ] && continue
+    # design-stale-transition tests create temp-dir shims wrapping the writer
+    [ "$rel_path" = "tests/design-stale-transition.bats" ] && continue
 
     local matches
     matches="$(grep -nE "$write_patterns" "$filepath" 2>/dev/null \
