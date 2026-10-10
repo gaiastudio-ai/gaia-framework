@@ -2766,6 +2766,13 @@ _assert_no_raw_control_in_reason() {
   local rline_b
   rline_b="$(_extract_reason_line)"
   _assert_no_raw_control_in_reason "$rline_b"
+
+  # Assert the placeholders ARE present (silently deleting C1 bytes would
+  # also pass the absence check above, but must fail here).
+  [[ "$rline_b" == *'<0xC2><0x80>'* ]] \
+    || fail "C1 placeholder <0xC2><0x80> missing from reason line; got: $rline_b"
+  [[ "$rline_b" == *'<0xC2><0x9F>'* ]] \
+    || fail "C1 placeholder <0xC2><0x9F> missing from reason line; got: $rline_b"
 }
 
 @test "stored reason and ledger entry are sanitised text" {
@@ -2901,7 +2908,7 @@ _assert_no_raw_control_in_reason() {
   done
 }
 
-@test "raw reason over 500 bytes refused before sanitising" {
+@test "printable reason over 500 bytes refused at the gate with byte count" {
   seed_override_fixture
 
   # Build a 501-byte printable reason
@@ -2922,9 +2929,11 @@ _assert_no_raw_control_in_reason() {
     --entry-point test --sprint-id sprint-99
   [ "$status" -eq 1 ] || fail "expected refusal (status 1); got status $status"
 
-  # The gate must refuse up front with its own message, not downstream rollback
-  _stripped_output | grep -qF "longer than 500 bytes" \
-    || fail "expected gate-level over-cap message with 'longer than 500 bytes'; got: $output"
+  # The gate must refuse up front with its own raw-cap message
+  _stripped_output | grep -qF "500" \
+    || fail "expected over-cap message mentioning 500; got: $output"
+  _stripped_output | grep -qF "501" \
+    || fail "expected message to report the measured byte count 501; got: $output"
   if _stripped_output | grep -q "at least 10 characters"; then
     fail "got the short-reason message instead of the over-cap message; got: $output"
   fi
@@ -3033,3 +3042,208 @@ _assert_no_raw_control_in_reason() {
   [ "$status" -eq 1 ] \
     || fail "gate should reject coverage item with embedded newline, got status=$status"
 }
+# =========================================================================
+# Trim, boundary and walker-coverage hardening
+# =========================================================================
+
+@test "interior spaces around LF are preserved" {
+  seed_override_fixture
+
+  # "abc   \n   def" — the spaces next to the LF must survive
+  local reason
+  reason="$(printf 'abc   \n   def reason text')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  # The three spaces before the LF placeholder must be present
+  [[ "$rline" == *'abc   <0x0A>   def'* ]] \
+    || fail "interior spaces around LF were eaten; got: $rline"
+}
+
+@test "trailing LF gets a placeholder" {
+  seed_override_fixture
+
+  # Use $'...' to preserve the trailing LF ($(printf ...) would eat it)
+  local reason=$'a valid reason text\n'
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0x0A>'* ]] \
+    || fail "trailing LF has no placeholder; got: $rline"
+}
+
+@test "trailing CR gets a placeholder" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf 'a valid reason text\r')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0x0D>'* ]] \
+    || fail "trailing CR has no placeholder; got: $rline"
+}
+
+@test "leading and trailing tabs become placeholders not trimmed" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf '\ta valid reason text\t')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  # The reason must start and end with <0x09> (the tab placeholder),
+  # not have the tabs silently trimmed.
+  [[ "$rline" == *'<0x09>a valid reason text<0x09>'* ]] \
+    || fail "tabs were trimmed instead of becoming placeholders; got: $rline"
+}
+
+@test "C0 and C1 overlong lead bytes neutralised" {
+  seed_override_fixture
+
+  # 0xC0 and 0xC1 can never start valid UTF-8 (overlong for ASCII)
+  local reason
+  reason="$(printf 'test \xc0\xaf and \xc1\xbf rest reason')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0xC0>'* ]] \
+    || fail "0xC0 not neutralised; got: $rline"
+  [[ "$rline" == *'<0xC1>'* ]] \
+    || fail "0xC1 not neutralised; got: $rline"
+}
+
+@test "F0 overlong sequence neutralised" {
+  seed_override_fixture
+
+  # F0 80 80 80 is overlong (encodes U+0000); F0 8F BF BF is overlong too
+  # Valid F0 sequences need second byte 0x90-0xBF
+  local reason
+  reason="$(printf 'test \xf0\x80\x80\x80 rest of reason')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0xF0>'* ]] \
+    || fail "F0 overlong not neutralised; got: $rline"
+}
+
+@test "F4 above U+10FFFF neutralised" {
+  seed_override_fixture
+
+  # F4 90 80 80 encodes U+110000, above the Unicode maximum
+  local reason
+  reason="$(printf 'test \xf4\x90\x80\x80 rest of reason')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0xF4>'* ]] \
+    || fail "F4 above U+10FFFF not neutralised; got: $rline"
+}
+
+@test "exact 9-byte reason refused and 10-byte accepted" {
+  # 9 printable bytes: refused
+  seed_override_fixture
+  run run_gate --force-design \
+    --reason "abcdefghi" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "9-byte reason should be refused; got status $status"
+  _stripped_output | grep -qF "at least 10 characters" \
+    || fail "expected short-reason message for 9 bytes; got: $output"
+
+  # 10 printable bytes: accepted
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  run run_gate --force-design \
+    --reason "abcdefghij" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "10-byte reason should be accepted; got status $status: $output"
+}
+
+@test "exact 500-byte sanitised reason accepted and 501-byte refused" {
+  # 500 printable bytes: accepted
+  seed_override_fixture
+  local reason_500=""
+  local i=0
+  while [ "$i" -lt 500 ]; do reason_500="${reason_500}B"; i=$((i+1)); done
+  [ "${#reason_500}" -eq 500 ] || fail "length is ${#reason_500}"
+
+  run run_gate --force-design \
+    --reason "$reason_500" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "500-byte reason should be accepted; got status $status: $output"
+
+  # 501 printable bytes: refused at the gate before any write
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+
+  local drec_hash_501 lo_hash_501
+  drec_hash_501="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash_501="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  local reason_501="${reason_500}B"
+  [ "${#reason_501}" -eq 501 ] || fail "length is ${#reason_501}"
+
+  run run_gate --force-design \
+    --reason "$reason_501" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "501-byte reason should be refused; got status $status"
+
+  # The gate must refuse before any ledger write (no rollback)
+  if _stripped_output | grep -qi "rolled back"; then
+    fail "501-byte refusal came from rollback, not gate guard; got: $output"
+  fi
+  [ "$drec_hash_501" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite 501-byte refusal"
+  [ "$lo_hash_501" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite 501-byte refusal"
+  [ ! -f "$TEST_TMP/.gaia/state/design-record.yaml.gate-backup" ] \
+    || fail "gate backup exists — refusal came too late"
+}
+
+@test "raw cap message reports the raw byte count" {
+  seed_override_fixture
+
+  local reason=""
+  local i=0
+  while [ "$i" -lt 501 ]; do reason="${reason}C"; i=$((i+1)); done
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal; got status $status"
+
+  # The message must name the measured quantity (raw trimmed bytes)
+  _stripped_output | grep -qF "501" \
+    || fail "raw-cap message should report the byte count 501; got: $output"
+}
+

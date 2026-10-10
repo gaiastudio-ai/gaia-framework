@@ -158,6 +158,9 @@ BEGIN {
 # In replace mode, emit <0x0A> for each newline consumed as a record separator
 NR > 1 && mode == "replace" { printf "<0x0A>" }
 {
+  # split(s, a, "") splits into individual bytes under LC_ALL=C.
+  # Not POSIX-specified but works on BSD awk, gawk, mawk and busybox awk;
+  # the test suite runs all four.
   n = split($0, c, "")
   i = 1
   while (i <= n) {
@@ -239,15 +242,33 @@ NR > 1 && mode == "replace" { printf "<0x0A>" }
 # _dg_sanitise_reason TEXT — replace control bytes and invalid UTF-8 with
 # visible <0xHH> placeholders. Valid multi-byte UTF-8 passes through
 # unchanged. Reads $1. Writes sanitised text to stdout.
+# A trailing sentinel preserves trailing newlines from command substitution.
 _dg_sanitise_reason() {
-  printf '%s' "$1" | LC_ALL=C awk -v mode=replace "$_DG_UTF8_WALKER_AWK"
+  local _out
+  _out="$(printf '%s.' "$1" | LC_ALL=C awk -v mode=replace "$_DG_UTF8_WALKER_AWK")"
+  printf '%s' "${_out%.}"
 }
 
 # _dg_strip_controls TEXT — remove control bytes and invalid UTF-8, keeping
 # only printable content and valid multi-byte sequences. Used to measure
 # real content length before the minimum-length check.
+# A trailing sentinel preserves trailing newlines from command substitution.
 _dg_strip_controls() {
-  printf '%s' "$1" | LC_ALL=C awk -v mode=strip "$_DG_UTF8_WALKER_AWK"
+  local _out
+  _out="$(printf '%s.' "$1" | LC_ALL=C awk -v mode=strip "$_DG_UTF8_WALKER_AWK")"
+  printf '%s' "${_out%.}"
+}
+
+# _dg_trim_spaces TEXT — trim ASCII spaces only from both ends of the whole
+# string. Tab, CR, LF and other bytes are not trimmed (they become visible
+# placeholders). Uses bash parameter expansion, not sed, to avoid
+# line-by-line splitting that would eat interior spaces next to newlines.
+# Appends a sentinel so the caller's $() does not eat trailing newlines.
+_dg_trim_spaces() {
+  local s="$1"
+  while [ "${s#" "}" != "$s" ]; do s="${s#" "}"; done
+  while [ "${s%" "}" != "$s" ]; do s="${s%" "}"; done
+  printf '%s.' "$s"
 }
 
 # _dg_validate_reason REASON — validate, trim and sanitise the override reason.
@@ -257,25 +278,27 @@ _dg_validate_reason() {
   local reason="$1"
 
   # (1) Trim ASCII spaces only from both ends (not tab/CR/LF — those become
-  #     visible placeholders). sed with literal space, not [[:space:]].
+  #     visible placeholders). Strip the sentinel that _dg_trim_spaces appends.
   local trimmed
-  trimmed="$(printf '%s' "$reason" | sed 's/^ *//;s/ *$//')"
+  trimmed="$(_dg_trim_spaces "$reason")"
+  trimmed="${trimmed%.}"
 
-  # (2a) Minimum on content: strip controls and invalid UTF-8, then trim
+  # (2a) Early maximum on the raw trimmed text. Checked before any awk walk
+  #      to bound processing time on very long arguments.
+  if [ "${#trimmed}" -gt 500 ]; then
+    printf 'Override refused: --reason exceeds 500 raw bytes after trimming spaces (got %d).\n' "${#trimmed}" >&2
+    return 2
+  fi
+
+  # (2b) Minimum on content: strip controls and invalid UTF-8, then trim
   #      spaces, then check >= 10 bytes.
   local content content_trimmed
   content="$(_dg_strip_controls "$trimmed")"
-  content_trimmed="$(printf '%s' "$content" | sed 's/^ *//;s/ *$//')"
+  content_trimmed="$(_dg_trim_spaces "$content")"
+  content_trimmed="${content_trimmed%.}"
   if [ -z "$content_trimmed" ] || [ "${#content_trimmed}" -lt 10 ]; then
     printf 'Override refused: --reason must be at least 10 characters after trimming whitespace (got %d).\n' "${#content_trimmed}" >&2
     return 1
-  fi
-
-  # (2b) Early maximum on the raw trimmed text (sanitising never shortens,
-  #      so this bounds the byte walker).
-  if [ "${#trimmed}" -gt 500 ]; then
-    printf 'Override refused: --reason is longer than 500 bytes once control characters are shown as <0xHH> placeholders (got %d).\n' "${#trimmed}" >&2
-    return 2
   fi
 
   # (2c) Sanitise: replace control bytes with <0xHH> placeholders.
