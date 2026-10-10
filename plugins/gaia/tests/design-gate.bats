@@ -3018,3 +3018,18 @@ _assert_no_raw_control_in_reason() {
     || fail "strip path did not break — walker may be duplicated"
 }
 
+@test "newline inside coverage list item is rejected" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+
+  # Overwrite coverage with a single item containing a literal newline.
+  # The gate reads elements with jq -r and splits on newlines, so this
+  # item would look like two matching values. The gate should reject it.
+  yq -i 'del(.review_coverage)' "$rec"
+  printf 'review_coverage:\n  - "design-system\\nproduct-design"\n' >> "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] \
+    || fail "gate should reject coverage item with embedded newline, got status=$status"
+}

@@ -496,34 +496,31 @@ design_gate_check() {
       return 1
     fi
 
+    local _dg_force_note="This halt cannot be overridden with --force-design."
+
     if [ "$_dg_cov_type" = "null" ]; then
       # Absent coverage field
       if [ -n "$_dg_pdp_ref" ]; then
         _dg_halt "$record_path" "coverage-incomplete" \
-          "The design review did not cover the product design project. Run /gaia-design-review to review both projects. This halt cannot be overridden with --force-design. $_dg_cov_clause"
+          "The design review did not cover the product design project. Run /gaia-design-review to review both projects. $_dg_cov_clause $_dg_force_note"
         return 1
       fi
       # product_design_project null — treat as design-system only, pass through
     elif [ "$_dg_cov_type" = "array" ]; then
-      # Coverage is present and is a list — compare elements exactly
-      local _dg_has_ds=0 _dg_has_pd=0
-      local _dg_cov_item
-      while IFS= read -r _dg_cov_item; do
-        [ -n "$_dg_cov_item" ] || continue
-        if [ "$_dg_cov_item" = "design-system" ]; then _dg_has_ds=1; fi
-        if [ "$_dg_cov_item" = "product-design" ]; then _dg_has_pd=1; fi
-      done <<COVEOF
-$(jq -r '.rc[]' <<<"$_dg_cov_json" 2>/dev/null || true)
-COVEOF
+      # Coverage is present and is a list — compare elements inside jq
+      # (exact match, no newline splitting, no whitespace tolerance)
+      local _dg_has_ds _dg_has_pd
+      _dg_has_ds="$(jq -r 'any(.rc[]; . == "design-system")' <<<"$_dg_cov_json" 2>/dev/null || printf 'false')"
+      _dg_has_pd="$(jq -r 'any(.rc[]; . == "product-design")' <<<"$_dg_cov_json" 2>/dev/null || printf 'false')"
 
-      if [ -n "$_dg_dsp_ref" ] && [ "$_dg_has_ds" -eq 0 ]; then
+      if [ -n "$_dg_dsp_ref" ] && [ "$_dg_has_ds" != "true" ]; then
         _dg_halt "$record_path" "coverage-incomplete" \
-          "The design review did not cover the design-system project. Run /gaia-design-review to review both projects. This halt cannot be overridden with --force-design. $_dg_cov_clause"
+          "The design review did not cover the design-system project. Run /gaia-design-review to review both projects. $_dg_cov_clause $_dg_force_note"
         return 1
       fi
-      if [ -n "$_dg_pdp_ref" ] && [ "$_dg_has_pd" -eq 0 ]; then
+      if [ -n "$_dg_pdp_ref" ] && [ "$_dg_has_pd" != "true" ]; then
         _dg_halt "$record_path" "coverage-incomplete" \
-          "The design review did not cover the product design project. Run /gaia-design-review to review both projects. This halt cannot be overridden with --force-design. $_dg_cov_clause"
+          "The design review did not cover the product design project. Run /gaia-design-review to review both projects. $_dg_cov_clause $_dg_force_note"
         return 1
       fi
     else

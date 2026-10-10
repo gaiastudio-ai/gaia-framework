@@ -686,3 +686,102 @@ HELPEOF
   [ "$elapsed" -lt 5 ] || fail "diff at 100 entries took ${elapsed}s (limit 5s)"
 }
 
+# ===========================================================================
+# Path normalisation: flag order, repeated slashes, artboard mapping, dotdot
+# ===========================================================================
+
+@test "spec-root placed after edited still normalises absolute path" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  local sr="$TEST_TMP/specroot"
+  mkdir -p "$sr"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp-hash" \
+    "screens/login.spec.html=ddd444"
+
+  # --edited comes BEFORE --spec-root
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "$sr/screens/login.spec.html" \
+    --spec-root "$sr"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (component + absolute screen after spec-root), got: $output"
+}
+
+@test "repeated slashes in edited path are collapsed" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp-hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited ".//screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (component + .//screen), got: $output"
+}
+
+@test "artboard path project/name.dc.html maps to screens/name.spec.html" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp-hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "project/login.dc.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (component + artboard path), got: $output"
+}
+
+@test "dotdot segment in edited path yields both via unclassified" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp-hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "tokens/../screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (component + dotdot path), got: $output"
+}
+
+@test "absolute path with no spec-root yields both via unclassified" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp-hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "/some/absolute/screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (component + unclassified absolute), got: $output"
+}
+
