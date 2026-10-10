@@ -77,7 +77,12 @@
         </p>
         <p>
           Run <a href="commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>
-          to begin the discovery process. The command walks through a structured
+          to begin the discovery process. The command creates two Claude Design
+          projects: the <strong>design-system project</strong> (tokens, reusable
+          components, reusable page templates) managed through the DesignSync
+          tool surface, and the <strong>product design project</strong> (screens,
+          flows) managed through the Design artifact surface (the
+          <code>/design</code> command). Discovery walks through a structured
           conversation that covers user research, information architecture, and
           interaction patterns.
         </p>
@@ -94,6 +99,8 @@
         </p>
         <p>
           The questionnaire runs as part of <code>/gaia-create-ux</code>. Its
+          answers feed only the design-system project; the product design
+          project receives no content during this phase. The questionnaire
           answers are recorded in the design specification artifact and
           referenced by downstream stages.
         </p>
@@ -121,6 +128,17 @@
           (<code>_ds_manifest.json</code>) is rebuilt after each publication so
           that every published specification appears as a browsable card.
         </p>
+        <p>
+          Screens are published to the product design project via the Artifact
+          tool. Component specs remain in the design-system project. Each
+          published screen carries the design-system token values as
+          <code>:root{--token:value}</code> CSS custom-property blocks (the
+          token-by-value model). The canvas <code>designSystems</code> list
+          stays empty -- this is the expected state. A reserved future mode
+          (<code>artifact-installed</code>) would install a Design System
+          artifact into the canvas instead. After creation, the framework
+          verifies the canvas index read to confirm the expected state.
+        </p>
       </section>
 
       <section id="review">
@@ -135,11 +153,12 @@
           designer addresses before requesting another review.
         </p>
         <p>
-          During review, designer-side component changes are reconciled into the
-          derived UX design document via delta sync. Screen-level changes are
-          detected by comparing content hashes against the persisted publication
-          manifest and reported to the user with full content — screen prose is
-          not auto-edited.
+          During review, designer-side component changes are read from the
+          design-system project and reconciled into the derived UX design
+          document via delta sync. Screen-level changes are read from the
+          product design project, detected by comparing content hashes against
+          the persisted publication manifest, and reported to the user with
+          full content -- screen prose is not auto-edited.
         </p>
       </section>
 
@@ -174,9 +193,14 @@
         <h2>6. Gate and Override</h2>
         <p>
           The design approval gate is enforced at every solutioning entry
-          point. When the gate fires, it checks the design record for an
-          <code>approved: true</code> verdict. If the design is not approved,
-          the entry point halts with a diagnostic naming the review command.
+          point. A single composite approval state covers both the
+          design-system project and the product design project. The gate reads
+          only local state (zero integration calls) and checks the design
+          record for an <code>approved: true</code> verdict. If the design is
+          not approved, the entry point halts with a diagnostic naming the
+          review command. Remediation names both projects and their surfaces
+          (DesignSync for the design-system project, the Design artifact
+          surface for the product design project).
         </p>
         <p>
           In exceptional cases the gate can be overridden using the
@@ -218,13 +242,27 @@
         </p>
         <p>
           When the stale transition completes with the Claude Design integration
-          available, the changed specifications are republished to the project
-          before the skill completes. The republish step reads the last-published
+          available, the changed specifications are republished based on scope:
+          a token or component change republishes to the design-system project first,
+          a screen or flow change republishes to the product design project,
+          and when both are affected the design-system project is republished first. The republish step reads the last-published
           manifest for conflict detection: files changed by both the framework
           and a designer are surfaced as conflicts rather than silently overwritten.
           When the manifest does not exist (projects published before manifest
           tracking), every differing remote file is treated as a conflict to
           confirm.
+        </p>
+        <p>
+          When the stack does not include React, the design system is built as
+          a brand-style artifact (fonts, colors, guidelines) instead of a
+          compiled component bundle. The product design project is created
+          regardless of sync mode.
+        </p>
+        <p>
+          The dev agent and reviewers read tokens and components from the
+          design-system project and screens from the product design project.
+          When there is no product design project, they report
+          "no screens available".
         </p>
         <p>
           Both <code>/gaia-create-ux</code> and <code>/gaia-design-review</code>
