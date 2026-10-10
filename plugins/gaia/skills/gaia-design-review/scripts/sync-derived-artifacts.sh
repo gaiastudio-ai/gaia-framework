@@ -78,62 +78,124 @@ _is_section_end() {
 # the legacy "## Component Inventory" heading.
 _extract_doc_components() {
   local doc="$1"
-  local in_section=false
-  local saw_separator=false
-  local first_table_done=false
 
-  shopt -s nocasematch
-  while IFS= read -r line; do
-    # Check for heading match (template or legacy)
-    if [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]+(and|\&)[[:space:]]+[Dd]esign[[:space:]]+[Ss]ystem ]] ||
-       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]] ||
-       [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]*$ ]]; then
-      if [ "$in_section" = false ]; then
-        in_section=true
-        saw_separator=false
-        continue
-      fi
-      # Second heading match — stop (template wins)
-      break
-    fi
-    if [ "$in_section" = true ]; then
-      # Section ends at level-1 or level-2 headings
-      if _is_section_end "$line"; then break; fi
+  # Single awk pass: find the components section, detect separator
+  # (piped or pipe-less), extract first cell from data rows using an
+  # escape-aware splitter (index/substr on fixed characters only —
+  # never uses a data value as a regex), unescape, and print.
+  # Bullet-mode extraction runs when no table is found.
+  awk '
+    function heading_match(s,   low) {
+      low = tolower(s)
+      return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
+    }
+    function is_section_end(s) {
+      return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
+    }
+    # is_sep LINE — true when the line is a table separator:
+    # contains at least one | and three consecutive dashes, and consists
+    # only of -, :, |, spaces, and optional trailing \r.
+    function is_sep(s,   clean) {
+      if (index(s, "|") == 0) return 0
+      if (index(s, "---") == 0) return 0
+      clean = s
+      gsub(/\r$/, "", clean)
+      gsub(/[-:|[:space:]]/, "", clean)
+      return (clean == "")
+    }
+    # extract_first_cell LINE — escape-aware first-cell extraction.
+    # Splits on unescaped | (preceded by even number of backslashes).
+    # Returns unescaped first data cell (skipping the leading empty
+    # cell when the row has a leading pipe).
+    function extract_first_cell(line,   i, ch, cell, bs, cell_idx, target, has_lp, len, j, uch, out) {
+      len = length(line)
+      # Detect leading pipe (after optional whitespace)
+      has_lp = 0
+      for (i = 1; i <= len; i++) {
+        ch = substr(line, i, 1)
+        if (ch == " " || ch == "\t") continue
+        if (ch == "|") has_lp = 1
+        break
+      }
+      cell = ""
+      bs = 0
+      cell_idx = 0
+      for (i = 1; i <= len; i++) {
+        ch = substr(line, i, 1)
+        if (ch == "\\") {
+          cell = cell ch
+          bs++
+        } else if (ch == "|" && (bs % 2) == 0) {
+          # Unescaped pipe — cell boundary
+          if (has_lp && cell_idx == 0) {
+            # Skip leading empty cell
+          } else if ((has_lp && cell_idx == 1) || (!has_lp && cell_idx == 0)) {
+            target = cell
+            break
+          }
+          cell_idx++
+          cell = ""
+          bs = 0
+        } else {
+          cell = cell ch
+          bs = 0
+        }
+      }
+      # If we never hit a second boundary, use what we have
+      if (target == "") {
+        if (has_lp && cell_idx == 1) target = cell
+        else if (!has_lp && cell_idx == 0) target = cell
+      }
+      # Trim whitespace (including \r)
+      gsub(/^[[:space:]]+/, "", target)
+      gsub(/[[:space:]]+$/, "", target)
+      # Unescape: \\ -> \, \| -> | (process left to right with substr)
+      out = ""
+      j = 1
+      len = length(target)
+      while (j <= len) {
+        uch = substr(target, j, 1)
+        if (uch == "\\" && j < len) {
+          nch = substr(target, j + 1, 1)
+          if (nch == "\\") { out = out "\\"; j += 2; continue }
+          if (nch == "|")  { out = out "|";  j += 2; continue }
+        }
+        out = out uch
+        j++
+      }
+      return out
+    }
+    # is_data_row LINE — true when inside a table block and the line is
+    # a data row: starts with | or contains a | (pipe-less form), but
+    # is never a bullet.
+    function is_data_row(s) {
+      if (s ~ /^-[[:space:]]/) return 0
+      if (index(s, "|") > 0) return 1
+      return 0
+    }
 
-      # Already read the first table — skip everything else in the section
-      if [ "$first_table_done" = true ]; then continue; fi
-
-      # Check for table separator row: cells contain only -, :, spaces
-      if [[ "$line" =~ ^\|[[:space:]]*[-:] ]] && [[ "$line" =~ ^[[:space:]]*\|[[:space:]]*[-:|[:space:]]*$ ]]; then
-        saw_separator=true
-        continue
-      fi
-
-      # Table row
-      if [[ "$line" =~ ^\| ]]; then
-        if [ "$saw_separator" = false ]; then continue; fi
-        # Data row — extract first cell
-        local first_cell
-        first_cell="$(printf '%s' "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$2); print $2}')"
-        if [ -n "$first_cell" ]; then
-          printf '%s\n' "$first_cell"
-        fi
-        continue
-      fi
-
-      # Non-pipe line after seeing the separator — first table ended
-      if [ "$saw_separator" = true ]; then
-        first_table_done=true
-        continue
-      fi
-
-      # Bullet list entry (only reached if no table was found yet)
-      if [[ "$line" =~ ^-[[:space:]] ]]; then
-        printf '%s\n' "${line#- }"
-      fi
-    fi
-  done < "$doc"
-  shopt -u nocasematch
+    !done_section && heading_match($0) {
+      if (!in_section) { in_section = 1; next }
+      else { done_section = 1; next }
+    }
+    in_section && is_section_end($0) { done_section = 1; next }
+    in_section && !first_table_done {
+      if (is_sep($0)) { saw_sep = 1; next }
+      if (saw_sep && is_data_row($0)) {
+        name = extract_first_cell($0)
+        if (name != "") print name
+        next
+      }
+      if (saw_sep) { first_table_done = 1 }
+      # Bullet (only when no table found yet)
+      if (!saw_sep && $0 ~ /^-[[:space:]]/) {
+        name = substr($0, 3)
+        # Strip trailing \r from CRLF docs
+        gsub(/\r$/, "", name)
+        print name
+      }
+    }
+  ' "$doc"
 }
 
 # _count_table_cols DOC — count the number of columns in the first table
@@ -157,14 +219,34 @@ _count_table_cols() {
       # Section ends at level-1 or level-2 headings
       if _is_section_end "$line"; then break; fi
 
-      # Separator row tells us column count
-      if [[ "$line" =~ ^\|[[:space:]]*[-:] ]] && [[ "$line" =~ ^[[:space:]]*\|[[:space:]]*[-:|[:space:]]*$ ]]; then
-        # Count pipes minus 1 (leading and trailing pipes)
-        local pipe_count
-        pipe_count="$(printf '%s' "$line" | awk '{n=gsub(/\|/,"|"); print n}')"
-        shopt -u nocasematch
-        printf '%d\n' "$((pipe_count - 1))"
-        return 0
+      # Separator row: must have at least one | and three consecutive
+      # dashes, and consist only of -, :, |, spaces, and optional \r.
+      # Accepts piped (|---|---|---) and pipe-less (---|---|---) forms.
+      local clean="${line%$'\r'}"
+      if [[ "$clean" == *'|'* ]] && [[ "$clean" == *'---'* ]]; then
+        local stripped="${clean//[-:|[:space:]]/}"
+        if [ -z "$stripped" ]; then
+          # Count pipes (bash expansion, no subprocess)
+          local pipe_count _pipes_only
+          _pipes_only="${line//[^|]/}"
+          pipe_count="${#_pipes_only}"
+          # Detect outer pipes: leading pipe = first non-space is |
+          # trailing pipe = last non-space (ignoring \r) is |
+          local has_leading=false has_trailing=false
+          [[ "$clean" =~ ^[[:space:]]*\| ]] && has_leading=true
+          [[ "$clean" =~ \|[[:space:]]*$ ]] && has_trailing=true
+          local cols
+          if [ "$has_leading" = true ] && [ "$has_trailing" = true ]; then
+            cols=$((pipe_count - 1))
+          elif [ "$has_leading" = true ] || [ "$has_trailing" = true ]; then
+            cols=$pipe_count
+          else
+            cols=$((pipe_count + 1))
+          fi
+          shopt -u nocasematch
+          printf '%d\n' "$cols"
+          return 0
+        fi
       fi
     fi
   done < "$doc"
@@ -180,20 +262,62 @@ _batch_add_components() {
   local tmpfile
   tmpfile="$_sync_tmpdir/awk-out"
 
+  # Detect document line-ending convention from the first line.
+  # Pass as a 0/1 flag to awk (awk -v cannot carry embedded newlines).
+  local _doc_crlf=0
+  local _first_line
+  _first_line="$(head -1 "$doc")"
+  if [[ "$_first_line" == *$'\r' ]]; then
+    _doc_crlf=1
+  fi
+
   # Determine the insert format: table or bullet
   local col_count
   col_count="$(_count_table_cols "$doc")"
 
   if [ "$col_count" -gt 0 ]; then
+    # Escape component names in bash for table mode:
+    # \ -> \\, then | -> \|. Never done in awk gsub (portability).
+    local escaped_file="$_sync_tmpdir/escaped-additions"
+    local _v
+    while IFS= read -r _v; do
+      _v="${_v//\\/\\\\}"
+      _v="${_v//|/\\|}"
+      printf '%s\n' "$_v"
+    done < "$components_file" > "$escaped_file"
+
+    # Detect the table's pipe form from the separator line.
+    # has_leading_pipe / has_trailing_pipe are passed to awk.
+    local _sep_line _sep_clean _has_lp=0 _has_tp=0
+    _sep_line="$(awk '
+      function heading_match(s,   low) {
+        low = tolower(s)
+        return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
+      }
+      function is_section_end(s) {
+        return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
+      }
+      !found && heading_match($0) { in_s = 1; next }
+      in_s && is_section_end($0) { exit }
+      in_s && /\|/ && /---/ {
+        clean = $0; gsub(/\r$/, "", clean); gsub(/[-:|[:space:]]/, "", clean)
+        if (clean == "") { print $0; found = 1; exit }
+      }
+    ' "$doc")"
+    _sep_clean="${_sep_line%$'\r'}"
+    [[ "$_sep_clean" =~ ^[[:space:]]*\| ]] && _has_lp=1
+    [[ "$_sep_clean" =~ \|[[:space:]]*$ ]] && _has_tp=1
+
     # Table mode: insert new component rows immediately after the first
     # table's last pipe line, before any trailing blank lines, prose, or
     # headings.  A pending-line buffer tracks contiguous pipe blocks so
     # the insertion point is the end of the first table that contains a
     # separator row.
-    awk -v cols="$col_count" '
+    awk -v cols="$col_count" -v crlf="$_doc_crlf" \
+        -v has_lp="$_has_lp" -v has_tp="$_has_tp" '
       BEGIN {
+        eol = (crlf ? "\r\n" : "\n")
         while ((getline comp < ARGV[2]) > 0) {
-          gsub(/\|/, "\\|", comp)
           comps[++n] = comp
         }
         delete ARGV[2]
@@ -206,16 +330,35 @@ _batch_add_components() {
       function is_section_end(s) {
         return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
       }
+      # is_separator — pipe-less-aware separator check
+      function is_sep(s,   clean) {
+        if (index(s, "|") == 0) return 0
+        if (index(s, "---") == 0) return 0
+        clean = s; gsub(/\r$/, "", clean); gsub(/[-:|[:space:]]/, "", clean)
+        return (clean == "")
+      }
+      # is_table_line — starts with | or contains | and is not a bullet
+      function is_table_line(s) {
+        if (s ~ /^-[[:space:]]/) return 0
+        return (index(s, "|") > 0)
+      }
       function flush_pending(    i2) {
         for (i2 = 1; i2 <= npend; i2++) printf "%s\n", pending[i2]
         npend = 0
       }
-      function flush_comps(    i2, row) {
+      function flush_comps(    i2, row, c2) {
         if (flushed) return
         for (i2 = 1; i2 <= n; i2++) {
-          row = "| " comps[i2] " |"
-          for (c = 2; c <= cols; c++) row = row " |"
-          printf "%s\n", row
+          if (has_lp) {
+            row = "| " comps[i2] " |"
+          } else {
+            row = comps[i2] " |"
+          }
+          for (c2 = 2; c2 <= cols; c2++) {
+            if (c2 < cols || has_tp) row = row " |"
+            else row = row " "
+          }
+          printf "%s%s", row, eol
         }
         flushed = 1
       }
@@ -237,9 +380,9 @@ _batch_add_components() {
 
       # Buffer rule — must come AFTER section-end (see note above)
       in_section && !first_table_done {
-        if ($0 ~ /^\|/) {
+        if (is_table_line($0)) {
           pending[++npend] = $0
-          if ($0 ~ /^\|[[:space:]]*[-:]/ && $0 ~ /^[[:space:]]*\|[[:space:]]*[-:|[:space:]]*$/) {
+          if (is_sep($0)) {
             saw_sep = 1
           }
           next
@@ -263,11 +406,13 @@ _batch_add_components() {
         flush_pending()
         if (in_section) flush_comps()
       }
-    ' "$doc" "$components_file" > "$tmpfile"
+    ' "$doc" "$escaped_file" > "$tmpfile"
   else
-    # Bullet mode: insert new bullets at the section boundary
-    awk '
+    # Bullet mode: insert new bullets at the section boundary.
+    # No escaping — bullet mode writes raw names. CRLF-aware.
+    awk -v crlf="$_doc_crlf" '
       BEGIN {
+        eol = (crlf ? "\r\n" : "\n")
         while ((getline comp < ARGV[2]) > 0) {
           comps[++n] = comp
         }
@@ -282,7 +427,7 @@ _batch_add_components() {
         return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
       }
       in_section && is_section_end($0) {
-        for (i = 1; i <= n; i++) printf "- %s\n", comps[i]
+        for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol
         in_section=0
         done_section=1
         print
@@ -290,7 +435,7 @@ _batch_add_components() {
       }
       !done_section && heading_match($0) { in_section=1; print; next }
       { print }
-      END { if (in_section) for (i = 1; i <= n; i++) printf "- %s\n", comps[i] }
+      END { if (in_section) for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol }
     ' "$doc" "$components_file" > "$tmpfile"
   fi
   mv -f "$tmpfile" "$doc"
@@ -607,17 +752,24 @@ _main() {
     doc_components="$(_extract_doc_components "$ux_doc")"
     _doc_components_extracted=true
 
-    # Collect all components to add in a temp file for a single-pass batch
+    # Collect all components to add in a temp file for a single-pass batch.
+    # Uses a single awk pass (set lookup) instead of per-component grep.
     local additions_file
     additions_file="$_sync_tmpdir/additions"
 
-    while IFS= read -r component; do
-      [ -n "$component" ] || continue
-      if ! printf '%s\n' "$doc_components" | grep -qxF "$component"; then
-        printf '%s\n' "$component" >> "$additions_file"
-        added=$((added + 1))
-      fi
-    done <<< "$snapshot_components"
+    local _doc_comp_file="$_sync_tmpdir/doc-components"
+    printf '%s\n' "$doc_components" > "$_doc_comp_file"
+
+    local _snap_comp_file="$_sync_tmpdir/snap-components"
+    printf '%s\n' "$snapshot_components" > "$_snap_comp_file"
+
+    awk '
+      FILENAME == ARGV[1] { doc[$0] = 1; next }
+      $0 != "" && !($0 in doc) { print }
+    ' "$_doc_comp_file" "$_snap_comp_file" > "$additions_file"
+    if [ -s "$additions_file" ]; then
+      added="$(wc -l < "$additions_file" | tr -d ' ')"
+    fi
 
     # Apply all additions in a single rewrite, then verify the file changed
     if [ "$added" -gt 0 ]; then
@@ -672,14 +824,26 @@ _main() {
       doc_components="$(_extract_doc_components "$ux_doc")"
     fi
     if [ -n "$doc_components" ]; then
-      while IFS= read -r component; do
-        [ -n "$component" ] || continue
-        if [ -z "$snapshot_components" ] || \
-           ! printf '%s\n' "$snapshot_components" | grep -qxF "$component"; then
+      # Single awk pass to find doc components absent from the snapshot
+      local _absent_file="$_sync_tmpdir/absent-components"
+      local _snap_file="$_sync_tmpdir/snap-for-absent"
+      if [ -n "$snapshot_components" ]; then
+        printf '%s\n' "$snapshot_components" > "$_snap_file"
+      else
+        : > "$_snap_file"
+      fi
+      local _doc_absent_file="$_sync_tmpdir/doc-for-absent"
+      printf '%s\n' "$doc_components" > "$_doc_absent_file"
+      awk '
+        FILENAME == ARGV[1] { snap[$0] = 1; next }
+        $0 != "" && !($0 in snap) { print }
+      ' "$_snap_file" "$_doc_absent_file" > "$_absent_file"
+      if [ -s "$_absent_file" ]; then
+        while IFS= read -r component; do
           printf 'sync: component "%s" is in ux-design.md but absent from the project snapshot (not removed — reporting only)\n' "$component"
           _reported_absent=true
-        fi
-      done <<< "$doc_components"
+        done < "$_absent_file"
+      fi
     fi
   fi
 
