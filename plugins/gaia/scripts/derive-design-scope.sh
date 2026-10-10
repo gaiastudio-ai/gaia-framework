@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --spec-root)
       [ $# -ge 2 ] || { printf 'derive-design-scope.sh: --spec-root requires a value\n' >&2; exit 2; }
-      _spec_root="$2"; shift 2 ;;
+      _spec_root="${2%/}"; shift 2 ;;
     *) break ;;
   esac
 done
