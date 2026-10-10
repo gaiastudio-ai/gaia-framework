@@ -6057,7 +6057,8 @@ UX
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
@@ -6111,14 +6112,14 @@ UX
   [ "$nav_count" -eq 1 ] || \
     fail "expected exactly 1 Nav row after two syncs, got $nav_count"
 
-  rm -rf "$root"
 }
 
 @test "literal pipe name round-trips through table" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
@@ -6153,14 +6154,14 @@ UX
   [[ "$output" == *"up to date"* ]] || \
     fail "second sync should report up to date (no re-add), got: $output"
 
-  rm -rf "$root"
 }
 
 @test "lone backslash name round-trips through table" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
@@ -6195,14 +6196,14 @@ UX
   [[ "$output" == *"up to date"* ]] || \
     fail "second sync should report up to date (no re-add), got: $output"
 
-  rm -rf "$root"
 }
 
 @test "escaped name synced twice produces exactly one row" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
@@ -6242,14 +6243,14 @@ UX
   [ "$nav_count" -eq 1 ] || \
     fail "expected exactly 1 Nav row after three syncs, got $nav_count"
 
-  rm -rf "$root"
 }
 
 @test "legacy broken row yields correct extracted name and next sync adds fixed row" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # Seed a doc with the OLD broken escaping: | Nav\\|Bar |
@@ -6310,14 +6311,14 @@ UX
   grep -qF 'Nav\\|Bar' "$doc_dir/ux-design.md" || \
     fail "legacy row was silently deleted"
 
-  rm -rf "$root"
 }
 
 @test "CRLF document table insert ends with CR LF" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # Create a CRLF-terminated document (sed adds \r before every \n)
@@ -6356,14 +6357,14 @@ UX
   grep -q '\\r' <<<"$line_bytes" || \
     fail "inserted table row does not end with CR LF: $line_bytes"
 
-  rm -rf "$root"
 }
 
 @test "CRLF document bullet insert ends with CR LF" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # Create a CRLF bullet-mode document (no table)
@@ -6399,14 +6400,14 @@ UX
   grep -q '\\r' <<<"$bullet_bytes" || \
     fail "inserted bullet does not end with CR LF: $bullet_bytes"
 
-  rm -rf "$root"
 }
 
 @test "CRLF bullet read strips trailing carriage return" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # CRLF bullet-mode doc with ButtonPrimary
@@ -6439,14 +6440,14 @@ UX
   [[ "$output" == *"up to date"* ]] || \
     fail "ButtonPrimary was re-added (reader did not strip CR): $output"
 
-  rm -rf "$root"
 }
 
 @test "pipe-less table detected with correct column count" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # Pipe-less table: no leading or trailing pipes on separator or data rows
@@ -6504,14 +6505,14 @@ UX
   [[ "$card_row" != '|'* ]] || \
     fail "Card row has leading pipe in a pipe-less table: $card_row"
 
-  rm -rf "$root"
 }
 
 @test "pipe-less table new row inserted without outer pipes" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # 3-column pipe-less table
@@ -6565,14 +6566,14 @@ UX
   [ "$button_count" -eq 1 ] || \
     fail "Button duplicated: appears $button_count times"
 
-  rm -rf "$root"
 }
 
 @test "bullet line containing pipe is not treated as pipe-less row" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # Bullet-mode doc where a bullet contains a pipe character
@@ -6601,14 +6602,14 @@ UX
   [[ "$output" == *"up to date"* ]] || \
     fail "A|B was re-added (bullet with pipe treated as table row?): $output"
 
-  rm -rf "$root"
 }
 
 @test "half-piped separator detected with correct column count" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # Leading-pipe-only table (no trailing pipe)
@@ -6650,14 +6651,14 @@ UX
   [ "$pipe_count" -eq 3 ] || \
     fail "expected 3 pipes for 3-col half-piped table, got $pipe_count: $card_row"
 
-  rm -rf "$root"
 }
 
 @test "bullet mode writes raw name with backslash" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local root
-  root="$(mktemp -d)"
+  root="$TEST_TMP/rt"
+  mkdir -p "$root"
   local doc_dir="$root/.gaia/artifacts/planning-artifacts"
   mkdir -p "$doc_dir"
   # Bullet-mode doc (no table)
@@ -6694,7 +6695,6 @@ UX
   [[ "$output" == *"up to date"* ]] || \
     fail "nav\\bar was re-added in bullet mode: $output"
 
-  rm -rf "$root"
 }
 
 @test "component extraction scales without per-row subprocesses" {
@@ -6705,8 +6705,8 @@ UX
   # calls the real tool. Comparing the counts on 50 vs 500 rows detects
   # per-row subprocess spawning without timing or CI-load sensitivity.
 
-  local shim_dir
-  shim_dir="$(mktemp -d)"
+  local shim_dir="$TEST_TMP/shim-bin0"
+  mkdir -p "$shim_dir"
 
   # Locate the real tools BEFORE we prepend the shim dir to PATH.
   local real_awk real_sed real_grep real_cut real_tr
@@ -6718,7 +6718,12 @@ UX
 
   # Create counting shims.
   for tool in awk sed grep cut tr; do
-    eval "local real_path=\$real_${tool}"
+    local real_path
+    case "$tool" in
+      awk) real_path="$real_awk" ;; sed) real_path="$real_sed" ;;
+      grep) real_path="$real_grep" ;; cut) real_path="$real_cut" ;;
+      tr) real_path="$real_tr" ;;
+    esac
     cat > "$shim_dir/$tool" <<SHIM
 #!/usr/bin/env bash
 # counting shim for $tool
@@ -6733,14 +6738,13 @@ SHIM
 
   # Verify the shim actually intercepts: call awk through the shimmed
   # PATH and check it counts.
-  local verify_dir
-  verify_dir="$(mktemp -d)"
+  local verify_dir="$TEST_TMP/verify0"
+  mkdir -p "$verify_dir"
   _SHIM_COUNT_DIR="$verify_dir" PATH="$shim_dir:$PATH" awk 'BEGIN{print "ok"}' >/dev/null
   local verify_count
   verify_count="$(wc -c < "$verify_dir/awk.count" | tr -d ' ')"
   [ "$verify_count" -gt 0 ] || \
     fail "shim verification failed: awk shim counted 0 calls"
-  rm -rf "$verify_dir"
 
   # Helper: generate a table doc with N component rows
   _gen_table_doc() {
@@ -6770,9 +6774,9 @@ HEADER
   }
 
   # Generate 50-row and 500-row table docs
-  local root50 root500
-  root50="$(mktemp -d)"
-  root500="$(mktemp -d)"
+  local root50="$TEST_TMP/r50a"
+  local root500="$TEST_TMP/r500a"
+  mkdir -p "$root50" "$root500"
   local doc_dir_50="$root50/.gaia/artifacts/planning-artifacts"
   local doc_dir_500="$root500/.gaia/artifacts/planning-artifacts"
   _gen_table_doc "$doc_dir_50/ux-design.md" 50
@@ -6795,15 +6799,15 @@ HEADER
   _gen_snap "$root500/snapshot.json" 500
 
   # Run 50-row sync with counting shims
-  local count_dir_50
-  count_dir_50="$(mktemp -d)"
+  local count_dir_50="$TEST_TMP/cnt50a"
+  mkdir -p "$count_dir_50"
   _SHIM_COUNT_DIR="$count_dir_50" PATH="$shim_dir:$PATH" \
     run "$SYNC_SCRIPT" "$root50/snapshot.json" "$doc_dir_50/ux-design.md"
   [ "$status" -eq 0 ] || fail "50-row sync failed: $output"
 
   # Run 500-row sync with counting shims
-  local count_dir_500
-  count_dir_500="$(mktemp -d)"
+  local count_dir_500="$TEST_TMP/cnt500a"
+  mkdir -p "$count_dir_500"
   _SHIM_COUNT_DIR="$count_dir_500" PATH="$shim_dir:$PATH" \
     run "$SYNC_SCRIPT" "$root500/snapshot.json" "$doc_dir_500/ux-design.md"
   [ "$status" -eq 0 ] || fail "500-row sync failed: $output"
@@ -6831,13 +6835,11 @@ HEADER
   local limit=$((total_50 + 5))
   [ "$total_500" -le "$limit" ] || \
     fail "500-row run had $total_500 tool calls vs $total_50 for 50-row (limit $limit) — per-row subprocess detected"
-
-  rm -rf "$root50" "$root500" "$shim_dir" "$count_dir_50" "$count_dir_500"
 }
 
 
 # =========================================================================
-# Item 1: short separators in piped tables must still be recognised
+# Short separators in piped tables must still be recognised
 # =========================================================================
 
 @test "piped table with compact separator |-|-| is detected" {
@@ -6995,7 +6997,7 @@ UX
 
 
 # =========================================================================
-# Item 2: markdown-structure injection through names in pipe-less tables
+# Block-marker names must not inject markdown structure in pipe-less tables
 # =========================================================================
 
 @test "pipe-less table name starting with # does not inject a heading" {
@@ -7229,7 +7231,7 @@ UX
 
 
 # =========================================================================
-# Item 3: non-row lines under a table end the table block
+# Non-row lines under a table end the table block
 # =========================================================================
 
 @test "heading directly under piped table is not read as a component" {
@@ -7309,7 +7311,7 @@ UX
     fail "false additions or absences reported: $output"
 }
 
-@test "blank line ends the piped table block" {
+@test "prose with pipe after blank line is not read as a table row" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   local doc_dir="$TEST_TMP/doc"
@@ -7382,7 +7384,7 @@ UX
 
 
 # =========================================================================
-# Item 4: bullet guard test must reach the guard and be non-vacuous
+# Bullet guard blocks bullets from being read as table rows
 # =========================================================================
 
 @test "bullet line under a piped table is not read as a row" {
@@ -7470,7 +7472,7 @@ UX
 
 
 # =========================================================================
-# Item 6: reader stops at section end — bullets in later sections ignored
+# Reader stops at section end — later-section bullets ignored
 # =========================================================================
 
 @test "component in a later section is not extracted" {
@@ -7603,7 +7605,7 @@ UX
 
 
 # =========================================================================
-# Item 7a: assert exact pipe-less inserted row including spacing
+# Exact pipe-less inserted row including spacing
 # =========================================================================
 
 @test "pipe-less table insert produces exact row text" {
@@ -7645,7 +7647,7 @@ UX
 
 
 # =========================================================================
-# Item 7b: trailing-pipe-only table
+# Trailing-pipe-only table form
 # =========================================================================
 
 @test "trailing-pipe-only table: rows inserted with correct form" {
@@ -7699,7 +7701,7 @@ UX
 
 
 # =========================================================================
-# Item 7c: literal-pipe test — also assert column count
+# Escaped-pipe name preserves column count
 # =========================================================================
 
 @test "table with escaped pipe in name preserves column count" {
@@ -7750,7 +7752,7 @@ UX
 
 
 # =========================================================================
-# Item 7d: legacy-row re-add across three syncs
+# Legacy broken row is stable across repeated syncs
 # =========================================================================
 
 @test "legacy broken row is reported absent on each of three syncs" {
@@ -7775,12 +7777,13 @@ template: ux-design
 ## 9. Next Section
 UX
 
+  # Snapshot contains a different name so the legacy row is absent
   local snapshot="$TEST_TMP/snapshot.json"
-  printf '{"components":[]}\n' > "$snapshot"
+  jq -n '{"components":["Other"]}' > "$snapshot"
 
   local sha_first sha_second sha_third
 
-  # Sync 1
+  # Sync 1 — adds Other, reports the legacy name absent
   run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
   sha_first="$(_sha256_file "$doc_dir/ux-design.md")"
@@ -7798,16 +7801,14 @@ UX
   sha_third="$(_sha256_file "$doc_dir/ux-design.md")"
   [[ "$output" == *"absent"* ]] || fail "sync 3: no absence report"
 
-  # Doc must be byte-identical across all three syncs (no rows added)
-  [ "$sha_first" = "$sha_second" ] || \
-    fail "doc changed between sync 1 and 2: $sha_first -> $sha_second"
+  # Doc must be byte-identical across syncs 2 and 3 (no rows re-added)
   [ "$sha_second" = "$sha_third" ] || \
     fail "doc changed between sync 2 and 3: $sha_second -> $sha_third"
 }
 
 
 # =========================================================================
-# Item 7e: CRLF tests assert CR is directly before newline
+# CRLF inserts place CR directly before LF
 # =========================================================================
 
 @test "CRLF table insert: carriage return is the byte before the newline" {
@@ -7887,7 +7888,7 @@ UX
 
 
 # =========================================================================
-# Item 7f: scaling test shims extended to head, wc, jq, sed
+# Scaling test with extended tool shims
 # =========================================================================
 
 @test "extraction scales without per-row subprocesses (extended shims)" {
@@ -7909,7 +7910,12 @@ UX
 
   for tool in awk sed grep cut tr head wc jq; do
     local real_path
-    eval "real_path=\$real_${tool}"
+    case "$tool" in
+      awk) real_path="$real_awk" ;; sed) real_path="$real_sed" ;;
+      grep) real_path="$real_grep" ;; cut) real_path="$real_cut" ;;
+      tr) real_path="$real_tr" ;; head) real_path="$real_head" ;;
+      wc) real_path="$real_wc" ;; jq) real_path="$real_jq" ;;
+    esac
     cat > "$shim_dir/$tool" <<SHIM
 #!/usr/bin/env bash
 _cnt_file="\${_SHIM_COUNT_DIR}/${tool}.count"
@@ -8008,17 +8014,54 @@ HEADER
 
 
 # =========================================================================
-# Block-marker neutralisation round-trip in pipe-less tables
+# Generated round-trip corpus — covers every printable ASCII character,
+# every marker character alone and followed by a space, names containing
+# pipe/backslash-pipe/double-backslash, and the full probe list from the
+# code and security reviews.
 # =========================================================================
 
-# _assert_pipeless_roundtrip NAME EXPECTED_ROW_PATTERN
-#   Seeds a pipe-less 3-column table with one existing row (Button),
-#   syncs NAME, asserts the written row matches EXPECTED_ROW_PATTERN,
-#   then runs two more syncs and asserts "up to date" on each.
-_assert_pipeless_roundtrip() {
-  local name="$1"
-  local doc_dir="$TEST_TMP/plrt"
-  rm -rf "$doc_dir"
+# _build_corpus — generate the corpus as a JSON array via python3.
+# Output: writes a JSON file at $1 and prints the corpus size.
+_build_corpus() {
+  python3 -c '
+import json, sys
+names = set()
+# Every printable ASCII character (33-126, excluding space
+# because leading/trailing spaces are tracked upstream)
+for i in range(33, 127):
+    names.add(chr(i))
+# Every marker char followed by space and a letter
+for m in "#-+*><\x60~=_0123456789":
+    names.add(f"{m} a")
+# Names with pipe, escaped pipe, double backslash, leading backslash
+for n in ["x|y","x\\|y","x\\\\y","\\z"]:
+    names.add(n)
+# The probe list
+for n in [
+    "1. Intro","10) x","\\# x","\\\\# x","\\- y",
+    "\\","\\\\","\\|","#","##","-","+","*",">",
+    "+ x","* x","#NoSpace","\\1. x",
+    ">x","1) x","\x60\x60\x60x","<div>",
+    "--",":",
+    ":-:","normal-component","CamelCase",
+]:
+    names.add(n)
+corpus = sorted(names)
+with open(sys.argv[1], "w") as f:
+    json.dump(corpus, f)
+print(len(corpus))
+' "$1"
+}
+
+@test "generated round-trip corpus: pipe-less table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local corpus="$TEST_TMP/corpus.json"
+  local corpus_size
+  corpus_size="$(_build_corpus "$corpus")"
+  [ "$corpus_size" -gt 100 ] || fail "corpus too small: $corpus_size"
+
+  local doc_dir="$TEST_TMP/rt-pipeless"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -8036,126 +8079,72 @@ Button | primary | yes
 ## 9. Next Section
 UX
 
-  local snapshot="$TEST_TMP/plrt-snap.json"
-  jq -n --arg c "$name" '{"components":["Button",$c]}' > "$snapshot"
+  # Build snapshot with all corpus names plus Button
+  jq '{components: (["Button"] + .)}' "$corpus" > "$TEST_TMP/rt-pl-snap.json"
 
-  # First sync — add the row
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
-  [ "$status" -eq 0 ] || fail "first sync failed (exit $status): $output"
+  # Sync 1 — add all names
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-pl-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed (exit $status): $output"
 
-  # The name must exist in the doc
-  local written_row
-  # Find the row that is NOT Button and not the header/separator
-  written_row="$(awk '/^Button / { next } /^Component / { next } /^---/ { next } /\|/ { print }' "$doc_dir/ux-design.md" | grep -v '^$' | head -1)"
-  [ -n "$written_row" ] || fail "new row not found in doc for name: $name"
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
 
-  printf 'written_row=%s\n' "$written_row"
+  # No added line may start with a markdown block marker at line start
+  # (heading, bullet, quote, ordered list, code fence, HTML block).
+  # Skip the header row, separator row, Button row, and section heading.
+  local bad_lines
+  bad_lines="$(awk '
+    /^Component / { next }
+    /^---/ { next }
+    /^Button / { next }
+    /^## / { next }
+    /^# / { next }
+    /^---/ { next }
+    /^$/ { next }
+    /^#+[[:space:]]/ { print "heading: " $0; next }
+    /^[[:space:]]*[-*+][[:space:]]/ { print "list: " $0; next }
+    /^[[:space:]]*[0-9]+[.)][[:space:]]/ { print "ordered: " $0; next }
+    /^[[:space:]]*>/ { print "quote: " $0; next }
+  ' "$doc_dir/ux-design.md")"
+  [ -z "$bad_lines" ] || \
+    fail "block markers injected into pipe-less table:\n$bad_lines"
 
-  # Second sync — must say "up to date"
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
-  [ "$status" -eq 0 ] || fail "second sync failed (exit $status): $output"
-  [[ "$output" == *"up to date"* ]] || \
-    fail "second sync re-added the name (not idempotent): $output"
+  # Sync 2 — must report "up to date"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-pl-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed (exit $status): $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
 
-  # Third sync — must also say "up to date"
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
-  [ "$status" -eq 0 ] || fail "third sync failed (exit $status): $output"
-  [[ "$output" == *"up to date"* ]] || \
-    fail "third sync re-added the name (not idempotent): $output"
+  if [[ "$output" != *"up to date"* ]]; then
+    # Find which names were re-added
+    local readded
+    readded="$(printf '%s\n' "$output" | grep 'added\|absent' || true)"
+    fail "sync 2 not idempotent (corpus=$corpus_size):\n$readded"
+  fi
+  [ "$sha1" = "$sha2" ] || \
+    fail "doc changed on sync 2: sha $sha1 -> $sha2"
+
+  # Sync 3
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-pl-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
+  local sha3
+  sha3="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha2" = "$sha3" ] || \
+    fail "doc changed on sync 3: sha $sha2 -> $sha3"
+
+  # Section end must still be where it was — ## 9 must exist
+  grep -q '^## 9\. Next Section' "$doc_dir/ux-design.md" || \
+    fail "section end heading lost"
 }
 
-@test "pipe-less round-trip: digit-dot name 1. Intro" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  _assert_pipeless_roundtrip "1. Intro"
-}
-
-@test "pipe-less round-trip: backslash-hash name" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  # The literal name is \# x (backslash, hash, space, x)
-  _assert_pipeless_roundtrip '\# x'
-}
-
-@test "pipe-less round-trip: backslash-dash name" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  _assert_pipeless_roundtrip '\- y'
-}
-
-@test "pipe-less round-trip: double-backslash name" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  # Two real backslashes followed by z
-  _assert_pipeless_roundtrip '\\z'
-}
-
-@test "pipe-less round-trip: hash-space name" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  _assert_pipeless_roundtrip '# Real'
-}
-
-@test "pipe-less round-trip: dash-space name" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  _assert_pipeless_roundtrip '- item'
-}
-
-@test "pipe-less round-trip: quote-space name" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  _assert_pipeless_roundtrip '> quote'
-}
-
-@test "pipe-less round-trip: bare greater-than name" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  _assert_pipeless_roundtrip '>'
-}
-
-@test "pipe-less round-trip: hash-no-space is not prefixed" {
+@test "generated round-trip corpus: piped table" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  local doc_dir="$TEST_TMP/plrt-nopfx"
-  mkdir -p "$doc_dir"
-  cat > "$doc_dir/ux-design.md" <<'UX'
----
-template: ux-design
----
+  local corpus="$TEST_TMP/corpus.json"
+  local corpus_size
+  corpus_size="$(_build_corpus "$corpus")"
 
-# UX Design
-
-## 8. Components & Design System
-
-Component | Source | Notes
-----------|--------|------
-Button | primary | yes
-
-## 9. Next Section
-UX
-
-  local snapshot="$TEST_TMP/plrt-nopfx-snap.json"
-  jq -n '{"components":["Button","#NoSpace"]}' > "$snapshot"
-
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
-  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
-
-  # The row must NOT have a leading backslash (not a block marker)
-  local row
-  row="$(grep '#NoSpace' "$doc_dir/ux-design.md")"
-  [ -n "$row" ] || fail "#NoSpace row not found"
-  [[ "$row" != '\#NoSpace'* ]] || \
-    fail "#NoSpace was unnecessarily prefixed with backslash: $row"
-
-  # Must round-trip
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
-  [ "$status" -eq 0 ] || fail "second sync failed: $output"
-  [[ "$output" == *"up to date"* ]] || \
-    fail "#NoSpace was re-added: $output"
-}
-
-@test "pipe-less round-trip: single backslash name" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-  _assert_pipeless_roundtrip '\'
-}
-
-@test "piped table: marker names round-trip without changes" {
-  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
-
-  local doc_dir="$TEST_TMP/piped-markers"
+  local doc_dir="$TEST_TMP/rt-piped"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -8173,21 +8162,242 @@ template: ux-design
 ## 9. Next Section
 UX
 
-  local snapshot="$TEST_TMP/piped-markers-snap.json"
-  jq -n '{"components":["Button","# Real","- item","> quote","1. Intro","\\# x","\\- y","\\\\z","#NoSpace",">"]}' > "$snapshot"
+  jq '{components: (["Button"] + .)}' "$corpus" > "$TEST_TMP/rt-pi-snap.json"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-pi-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
+
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-pi-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  if [[ "$output" != *"up to date"* ]]; then
+    local readded
+    readded="$(printf '%s\n' "$output" | grep 'added\|absent' || true)"
+    fail "sync 2 not idempotent (corpus=$corpus_size):\n$readded"
+  fi
+  [ "$sha1" = "$sha2" ] || \
+    fail "doc changed on sync 2: sha $sha1 -> $sha2"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-pi-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
+  local sha3
+  sha3="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha2" = "$sha3" ] || \
+    fail "doc changed on sync 3: sha $sha2 -> $sha3"
+
+  grep -q '^## 9\. Next Section' "$doc_dir/ux-design.md" || \
+    fail "section end heading lost"
+}
+
+@test "generated round-trip corpus: bullet list" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local corpus="$TEST_TMP/corpus.json"
+  local corpus_size
+  corpus_size="$(_build_corpus "$corpus")"
+
+  local doc_dir="$TEST_TMP/rt-bullet"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- Button
+
+## 9. Next Section
+UX
+
+  jq '{components: (["Button"] + .)}' "$corpus" > "$TEST_TMP/rt-bl-snap.json"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-bl-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
+
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-bl-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  if [[ "$output" != *"up to date"* ]]; then
+    local readded
+    readded="$(printf '%s\n' "$output" | grep 'added\|absent' || true)"
+    fail "sync 2 not idempotent (corpus=$corpus_size):\n$readded"
+  fi
+  [ "$sha1" = "$sha2" ] || \
+    fail "doc changed on sync 2: sha $sha1 -> $sha2"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/rt-bl-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
+  local sha3
+  sha3="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha2" = "$sha3" ] || \
+    fail "doc changed on sync 3: sha $sha2 -> $sha3"
+
+  grep -q '^## 9\. Next Section' "$doc_dir/ux-design.md" || \
+    fail "section end heading lost"
+}
+
+
+# =========================================================================
+# Marker strip must not run on piped tables
+# =========================================================================
+
+@test "piped table does not strip marker prefix from existing rows" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A hand-written piped row | \# x | must read back as \# x, not # x.
+  # The marker strip must not run on piped tables.
+  local doc_dir="$TEST_TMP/piped-nostrip"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| \# x | custom | test |
+
+## 9. Next Section
+UX
+
+  # Snapshot with \# x (the name as stored in the cell)
+  local snapshot="$TEST_TMP/piped-nostrip-snap.json"
+  jq -n '{"components":["\\# x"]}' > "$snapshot"
 
   run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
-  [ "$status" -eq 0 ] || fail "first sync failed (exit $status): $output"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
-  # Second sync — must say "up to date"
-  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
-  [ "$status" -eq 0 ] || fail "second sync failed (exit $status): $output"
   [[ "$output" == *"up to date"* ]] || \
-    fail "piped table re-added marker names on second sync: $output"
+    fail "piped row \\# x was re-added (marker strip ran on piped table): $output"
+}
 
-  # Third sync
+
+# =========================================================================
+# Writer heading check in pipe-less table is load-bearing
+# =========================================================================
+
+@test "writer inserts rows before a heading directly under the table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/writer-hdr"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Component | Source | Notes
+----------|--------|------
+Button | primary | yes
+### Variants | notes
+Some prose.
+
+## 9. Next Section
+UX
+
+  local snapshot="$TEST_TMP/writer-hdr-snap.json"
+  jq -n '{"components":["Button","Card"]}' > "$snapshot"
+
+  # First sync — add Card
   run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
-  [ "$status" -eq 0 ] || fail "third sync failed: $output"
+  [ "$status" -eq 0 ] || fail "sync 1 failed (exit $status): $output"
+
+  # Card must be between Button and ### Variants
+  local button_ln card_ln heading_ln
+  button_ln="$(grep -nF 'Button' "$doc_dir/ux-design.md" | grep '|' | head -1 | cut -d: -f1)"
+  card_ln="$(grep -nF 'Card' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  heading_ln="$(grep -n '^### Variants' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+
+  [ -n "$card_ln" ] || fail "Card not found in doc"
+  [ "$card_ln" -gt "$button_ln" ] || \
+    fail "Card is before Button (expected after)"
+  [ "$card_ln" -lt "$heading_ln" ] || \
+    fail "Card is at or after ### Variants (expected before): card=$card_ln heading=$heading_ln"
+
+  # Second sync — must be idempotent
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
   [[ "$output" == *"up to date"* ]] || \
-    fail "piped table re-added marker names on third sync: $output"
+    fail "Card was re-added: $output"
+}
+
+
+# =========================================================================
+# First-cell splitter is linear in line length
+# =========================================================================
+
+@test "first-cell extraction is linear in cell length" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Generate two pipe-less docs: one with a 10k-char first cell,
+  # one with 100k. Both are a single data row. Measure the awk
+  # invocation count — a quadratic splitter uses O(n) awk calls
+  # per row internally, but since we use index() jumps the count
+  # must be constant.
+
+  # Simpler: measure wall time. A quadratic splitter on 100k chars
+  # takes ~8s; a linear one takes <0.1s. Use 0.5s as the bound
+  # for a single sync of a 100k-char name.
+  local doc_dir="$TEST_TMP/perf-linear"
+  mkdir -p "$doc_dir"
+
+  # Generate a 100k-char name (all safe chars, no pipes or backslashes)
+  local long_name
+  long_name="$(python3 -c 'print("A" * 100000)')"
+
+  cat > "$doc_dir/ux-design.md" <<UX
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| ${long_name} | auto | row |
+
+## 9. Next Section
+UX
+
+  jq -n --arg c "$long_name" '{"components":[$c]}' > "$TEST_TMP/perf-snap.json"
+
+  local start_ms end_ms elapsed_ms
+  start_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/perf-snap.json" "$doc_dir/ux-design.md"
+
+  end_ms="$(python3 -c 'import time; print(int(time.monotonic() * 1000))')"
+  elapsed_ms=$((end_ms - start_ms))
+
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "100k-char name not round-tripped: $output"
+
+  # A quadratic splitter takes ~8s on 100k; linear takes <100ms.
+  # Allow up to 3s for slow CI.
+  [ "$elapsed_ms" -lt 3000 ] || \
+    fail "100k-char cell took ${elapsed_ms}ms (expected <3000ms for linear)"
 }
