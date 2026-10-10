@@ -71,6 +71,135 @@ _is_section_end() {
   [[ "$1" == '# '* ]] || { [[ "$1" == '## '* ]] && ! [[ "$1" == '### '* ]]; }
 }
 
+# ---- shared awk function library --------------------------------------------
+# Every awk program in this script prepends $_SDA_AWK_LIB so that
+# heading_match, is_section_end, is_sep, is_table_row,
+# extract_first_cell and _needs_prefix are defined exactly once.
+# shellcheck disable=SC2016
+_SDA_AWK_LIB='
+function heading_match(s,   low) {
+  low = tolower(s)
+  return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
+}
+function is_section_end(s) {
+  return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
+}
+# is_sep LINE — true when the line is a table separator.
+# Every cell must contain at least one dash. Colons and spaces
+# may surround the dashes. Pipe-less form also requires three
+# consecutive dashes so a lone dash is never a separator.
+function is_sep(s,   clean, lp) {
+  if (index(s, "|") == 0) return 0
+  if (index(s, "-") == 0) return 0
+  clean = s
+  gsub(/\r$/, "", clean)
+  gsub(/[-:|[:space:]]/, "", clean)
+  if (clean != "") return 0
+  lp = (s ~ /^[[:space:]]*\|/)
+  if (!lp && index(s, "---") == 0) return 0
+  return 1
+}
+# is_table_row LINE PIPED — true when the line is a table data row.
+# Piped rows must start with |. Pipe-less rows must contain |
+# and not start with a block-level markdown marker.
+function is_table_row(s, piped) {
+  if (piped) return (s ~ /^[[:space:]]*\|/)
+  if (s ~ /^[[:space:]]*$/) return 0
+  if (s ~ /^#+[[:space:]]/) return 0
+  if (s ~ /^[[:space:]]*[-*+][[:space:]]/) return 0
+  if (s ~ /^[[:space:]]*[0-9]+[.)][[:space:]]/) return 0
+  if (s ~ /^[[:space:]]*>/) return 0
+  if (index(s, "|") > 0) return 1
+  return 0
+}
+# extract_first_cell LINE STRIP_MARKER — escape-aware first-cell
+# extraction. Linear in line length: finds each | with index(),
+# counts preceding backslashes by scanning backwards from the |
+# position (no string rebuild). When STRIP_MARKER is true
+# (pipe-less tables), drops a leading single \ not followed by
+# \ or | before unescaping. Never strips in piped tables.
+function extract_first_cell(line, strip_marker,   pos, len, has_lp, ch, cell_start, cell_end, bs, cell_idx, target, seg, slen, j, nch, out) {
+  len = length(line)
+  has_lp = 0
+  for (pos = 1; pos <= len; pos++) {
+    ch = substr(line, pos, 1)
+    if (ch == " " || ch == "\t") continue
+    if (ch == "|") has_lp = 1
+    break
+  }
+  cell_start = 1
+  cell_idx = 0
+  target = ""
+  pos = 1
+  while (pos <= len) {
+    seg = substr(line, pos)
+    slen = index(seg, "|")
+    if (slen == 0) break
+    cell_end = pos + slen - 1
+    bs = 0
+    j = cell_end - 1
+    while (j >= 1 && substr(line, j, 1) == "\\") { bs++; j-- }
+    if ((bs % 2) == 0) {
+      if (has_lp && cell_idx == 0) {
+        # skip leading empty cell
+      } else if ((has_lp && cell_idx == 1) || (!has_lp && cell_idx == 0)) {
+        target = substr(line, cell_start, cell_end - cell_start)
+        break
+      }
+      cell_idx++
+      cell_start = cell_end + 1
+    }
+    pos = cell_end + 1
+  }
+  if (target == "") {
+    if (has_lp && cell_idx == 1) target = substr(line, cell_start)
+    else if (!has_lp && cell_idx == 0) target = substr(line, cell_start)
+  }
+  gsub(/^[[:space:]]+/, "", target)
+  gsub(/[[:space:]]+$/, "", target)
+  # Strip the block-marker escape BEFORE unescaping (pipe-less only).
+  if (strip_marker && substr(target, 1, 1) == "\\" && length(target) >= 2) {
+    nch = substr(target, 2, 1)
+    if (nch != "\\" && nch != "|") {
+      target = substr(target, 2)
+    }
+  }
+  # Unescape: \\ -> \, \| -> | (jump-based, linear)
+  out = ""
+  j = 1
+  len = length(target)
+  while (j <= len) {
+    seg = substr(target, j)
+    slen = index(seg, "\\")
+    if (slen == 0) { out = out seg; break }
+    if (slen > 1) out = out substr(seg, 1, slen - 1)
+    if (j + slen - 1 < len) {
+      nch = substr(target, j + slen, 1)
+      if (nch == "\\") { out = out "\\"; j = j + slen + 1; continue }
+      if (nch == "|")  { out = out "|";  j = j + slen + 1; continue }
+    }
+    out = out "\\"
+    j = j + slen
+  }
+  return out
+}
+# _needs_prefix NAME — true when the escaped name starts with a
+# character that would be a markdown block marker in the row.
+# The set covers characters that start headings, bullets,
+# ordered lists, quotes, code fences, thematic breaks, HTML
+# blocks, and definition markers. Digits are only prefixed
+# when followed by . or ) and a space (ordered-list form).
+function _needs_prefix(nm,   fc, sc) {
+  if (length(nm) == 0) return 0
+  fc = substr(nm, 1, 1)
+  if (index("#-+*><`~=_", fc) > 0) return 1
+  if (fc ~ /[0-9]/) {
+    if (nm ~ /^[0-9]+[.)][[:space:]]/ || nm ~ /^[0-9]+[.)]$/) return 1
+  }
+  return 0
+}
+'
+
 # _extract_doc_components DOC — parse component names from the components
 # section of a markdown file. Accepts: the template heading "## N. Components
 # & Design System" (both & and "and" variants, case-insensitive, with optional
@@ -84,113 +213,7 @@ _extract_doc_components() {
   # cell from data rows, unescape, and print. A | line not followed
   # by a separator is ordinary text and never stops the search.
   # Bullet-mode extraction runs when no table is found.
-  awk '
-    function heading_match(s,   low) {
-      low = tolower(s)
-      return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
-    }
-    function is_section_end(s) {
-      return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
-    }
-    # is_sep LINE — true when the line is a table separator.
-    # Every cell must contain at least one dash. Colons and spaces
-    # may surround the dashes. Pipe-less form also requires three
-    # consecutive dashes so a lone dash is never a separator.
-    function is_sep(s,   clean, lp) {
-      if (index(s, "|") == 0) return 0
-      if (index(s, "-") == 0) return 0
-      clean = s
-      gsub(/\r$/, "", clean)
-      gsub(/[-:|[:space:]]/, "", clean)
-      if (clean != "") return 0
-      lp = (s ~ /^[[:space:]]*\|/)
-      if (!lp && index(s, "---") == 0) return 0
-      return 1
-    }
-    # extract_first_cell LINE STRIP_MARKER — escape-aware first-cell
-    # extraction. Linear in line length: finds each | with index(),
-    # counts preceding backslashes by scanning backwards from the |
-    # position (no string rebuild). When STRIP_MARKER is true
-    # (pipe-less tables), drops a leading single \ not followed by
-    # \ or | before unescaping. Never strips in piped tables.
-    function extract_first_cell(line, strip_marker,   pos, len, has_lp, ch, cell_start, cell_end, bs, cell_idx, target, seg, slen, j, nch, out) {
-      len = length(line)
-      has_lp = 0
-      for (pos = 1; pos <= len; pos++) {
-        ch = substr(line, pos, 1)
-        if (ch == " " || ch == "\t") continue
-        if (ch == "|") has_lp = 1
-        break
-      }
-      cell_start = 1
-      cell_idx = 0
-      target = ""
-      pos = 1
-      while (pos <= len) {
-        seg = substr(line, pos)
-        slen = index(seg, "|")
-        if (slen == 0) break
-        cell_end = pos + slen - 1
-        bs = 0
-        j = cell_end - 1
-        while (j >= 1 && substr(line, j, 1) == "\\") { bs++; j-- }
-        if ((bs % 2) == 0) {
-          if (has_lp && cell_idx == 0) {
-            # skip leading empty cell
-          } else if ((has_lp && cell_idx == 1) || (!has_lp && cell_idx == 0)) {
-            target = substr(line, cell_start, cell_end - cell_start)
-            break
-          }
-          cell_idx++
-          cell_start = cell_end + 1
-        }
-        pos = cell_end + 1
-      }
-      if (target == "") {
-        if (has_lp && cell_idx == 1) target = substr(line, cell_start)
-        else if (!has_lp && cell_idx == 0) target = substr(line, cell_start)
-      }
-      gsub(/^[[:space:]]+/, "", target)
-      gsub(/[[:space:]]+$/, "", target)
-      # Strip the block-marker escape BEFORE unescaping (pipe-less only).
-      if (strip_marker && substr(target, 1, 1) == "\\" && length(target) >= 2) {
-        nch = substr(target, 2, 1)
-        if (nch != "\\" && nch != "|") {
-          target = substr(target, 2)
-        }
-      }
-      # Unescape: \\ -> \, \| -> | (jump-based, linear)
-      out = ""
-      j = 1
-      len = length(target)
-      while (j <= len) {
-        seg = substr(target, j)
-        slen = index(seg, "\\")
-        if (slen == 0) { out = out seg; break }
-        if (slen > 1) out = out substr(seg, 1, slen - 1)
-        if (j + slen - 1 < len) {
-          nch = substr(target, j + slen, 1)
-          if (nch == "\\") { out = out "\\"; j = j + slen + 1; continue }
-          if (nch == "|")  { out = out "|";  j = j + slen + 1; continue }
-        }
-        out = out "\\"
-        j = j + slen
-      }
-      return out
-    }
-    # is_table_row LINE PIPED — true when the line is a table data row.
-    # Piped rows must start with |. Pipe-less rows must contain |
-    # and not start with a block-level markdown marker.
-    function is_table_row(s, piped) {
-      if (piped) return (s ~ /^[[:space:]]*\|/)
-      if (s ~ /^[[:space:]]*$/) return 0
-      if (s ~ /^#+[[:space:]]/) return 0
-      if (s ~ /^[[:space:]]*[-*+][[:space:]]/) return 0
-      if (s ~ /^[[:space:]]*[0-9]+[.)][[:space:]]/) return 0
-      if (s ~ /^[[:space:]]*>/) return 0
-      if (index(s, "|") > 0) return 1
-      return 0
-    }
+  awk "$_SDA_AWK_LIB"'
 
     !done_section && heading_match($0) {
       if (!in_section) { in_section = 1; next }
@@ -339,23 +362,7 @@ _batch_add_components() {
     # Detect the table's pipe form from the separator line.
     # has_leading_pipe / has_trailing_pipe are passed to awk.
     local _sep_line _sep_clean _has_lp=0 _has_tp=0
-    _sep_line="$(awk '
-      function heading_match(s,   low) {
-        low = tolower(s)
-        return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
-      }
-      function is_section_end(s) {
-        return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
-      }
-      function is_sep(s,   clean, lp) {
-        if (index(s, "|") == 0) return 0
-        if (index(s, "-") == 0) return 0
-        clean = s; gsub(/\r$/, "", clean); gsub(/[-:|[:space:]]/, "", clean)
-        if (clean != "") return 0
-        lp = (s ~ /^[[:space:]]*\|/)
-        if (!lp && index(s, "---") == 0) return 0
-        return 1
-      }
+    _sep_line="$(awk "$_SDA_AWK_LIB"'
       !found && heading_match($0) { in_s = 1; next }
       in_s && is_section_end($0) { exit }
       # Table locator: header (| line) immediately followed by separator.
@@ -378,7 +385,7 @@ _batch_add_components() {
     # the insertion point is the end of the first table that contains a
     # separator row.
     awk -v cols="$col_count" -v crlf="$_doc_crlf" \
-        -v has_lp="$_has_lp" -v has_tp="$_has_tp" '
+        -v has_lp="$_has_lp" -v has_tp="$_has_tp" "$_SDA_AWK_LIB"'
       BEGIN {
         eol = (crlf ? "\r\n" : "\n")
         while ((getline comp < ARGV[2]) > 0) {
@@ -386,53 +393,9 @@ _batch_add_components() {
         }
         delete ARGV[2]
       }
-      function heading_match(s,   low) {
-        low = tolower(s)
-        return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
-      }
-      # Only level-1 and level-2 headings end the section; ### and deeper do not
-      function is_section_end(s) {
-        return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
-      }
-      # is_sep — separator must contain | and -, consist only of
-      # -:|spaces/\r. Pipe-less form also requires three dashes.
-      function is_sep(s,   clean, lp) {
-        if (index(s, "|") == 0) return 0
-        if (index(s, "-") == 0) return 0
-        clean = s; gsub(/\r$/, "", clean); gsub(/[-:|[:space:]]/, "", clean)
-        if (clean != "") return 0
-        lp = (s ~ /^[[:space:]]*\|/)
-        if (!lp && index(s, "---") == 0) return 0
-        return 1
-      }
-      # is_table_line — shared row test for piped and pipe-less tables.
-      function is_table_line(s) {
-        if (has_lp) return (s ~ /^[[:space:]]*\|/)
-        if (s ~ /^[[:space:]]*$/) return 0
-        if (s ~ /^#+[[:space:]]/) return 0
-        if (s ~ /^[[:space:]]*[-*+][[:space:]]/) return 0
-        if (s ~ /^[[:space:]]*[0-9]+[.)][[:space:]]/) return 0
-        if (s ~ /^[[:space:]]*>/) return 0
-        return (index(s, "|") > 0)
-      }
       function flush_pending(    i2) {
         for (i2 = 1; i2 <= npend; i2++) printf "%s\n", pending[i2]
         npend = 0
-      }
-      # _needs_prefix NAME — true when the escaped name starts with a
-      # character that would be a markdown block marker in the row.
-      # The set covers characters that start headings, bullets,
-      # ordered lists, quotes, code fences, thematic breaks, HTML
-      # blocks, and definition markers. Digits are only prefixed
-      # when followed by . or ) and a space (ordered-list form).
-      function _needs_prefix(nm,   fc, sc) {
-        if (length(nm) == 0) return 0
-        fc = substr(nm, 1, 1)
-        if (index("#-+*><`~=_", fc) > 0) return 1
-        if (fc ~ /[0-9]/) {
-          if (nm ~ /^[0-9]+[.)][[:space:]]/ || nm ~ /^[0-9]+[.)]$/) return 1
-        }
-        return 0
       }
       function flush_comps(    i2, row, c2, name) {
         if (flushed) return
@@ -505,7 +468,7 @@ _batch_add_components() {
           next
         }
         # Phase 2: inside the table (separator was found)
-        if (is_table_line($0)) {
+        if (is_table_row($0, has_lp)) {
           pending[++npend] = $0
           next
         }
@@ -528,21 +491,13 @@ _batch_add_components() {
   else
     # Bullet mode: insert new bullets at the section boundary.
     # No escaping — bullet mode writes raw names. CRLF-aware.
-    awk -v crlf="$_doc_crlf" '
+    awk -v crlf="$_doc_crlf" "$_SDA_AWK_LIB"'
       BEGIN {
         eol = (crlf ? "\r\n" : "\n")
         while ((getline comp < ARGV[2]) > 0) {
           comps[++n] = comp
         }
         delete ARGV[2]
-      }
-      function heading_match(s,   low) {
-        low = tolower(s)
-        return (low ~ /^## +(([0-9]+\. +)?components +(and|&) +design +system|component +inventory|([0-9]+\. +)?components[[:space:]]*$)/)
-      }
-      # Only level-1 and level-2 headings end the section; ### and deeper do not
-      function is_section_end(s) {
-        return (s ~ /^# [^#]/ || s ~ /^# $/ || (s ~ /^## / && s !~ /^### /))
       }
       in_section && is_section_end($0) {
         for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol

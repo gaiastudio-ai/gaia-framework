@@ -8989,3 +8989,92 @@ UX
   [[ "$card_row" == '|'* ]] || \
     fail "Card written as pipe-less (table not found): $card_row"
 }
+
+
+# =========================================================================
+# Shared awk functions are defined exactly once in the script
+# =========================================================================
+
+@test "shared awk functions are each defined exactly once" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local fn count
+  for fn in heading_match is_section_end is_sep is_table_row \
+            extract_first_cell _needs_prefix; do
+    count="$(grep -c "function ${fn}(" "$SYNC_SCRIPT")"
+    [ "$count" -eq 1 ] || \
+      fail "function $fn is defined $count times (expected 1)"
+  done
+
+  # is_table_line must not exist (renamed to is_table_row)
+  count="$(grep -c 'function is_table_line(' "$SYNC_SCRIPT" || true)"
+  [ "$count" -eq 0 ] || \
+    fail "is_table_line still defined ($count times); use is_table_row"
+}
+
+
+# =========================================================================
+# A local separator copy must not replace the shared one
+# =========================================================================
+
+@test "colon-only separator line is not treated as a table separator" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A header line followed by | : | : | must NOT form a table, because
+  # the separator has no dashes. If the dash requirement is dropped from
+  # is_sep, the reader would treat the colon line as a separator and
+  # the column count from _count_table_cols would be wrong, causing
+  # rows to be written with the wrong number of pipes.
+  # The real table comes later. Both tables share the same section.
+  local doc_dir="$TEST_TMP/sep-colon"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| X | Y |
+| : | : |
+Some prose.
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | primary | yes |
+
+## 9. Next Section
+UX
+
+  # Button is in the 3-column table. If the colon line is taken as a
+  # separator for the 2-column table, the writer inserts 2-column rows
+  # and the reader ignores them, so they are re-added every sync.
+  local snapshot="$TEST_TMP/sep-colon-snap.json"
+  jq -n '{"components":["Button","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Card must have 3-column form (4 unescaped pipes for leading+trailing)
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_row" ] || fail "Card not found"
+  local pipe_count
+  pipe_count="$(printf '%s' "$card_row" | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')"
+  [ "$pipe_count" -eq 4 ] || \
+    fail "Card has $pipe_count pipes (expected 4 for 3-col table): $card_row"
+
+  # Button must NOT be re-added (it was already in the 3-col table)
+  local added_button
+  added_button="$(printf '%s\n' "$output" | grep 'added.*"Button"' || true)"
+  [ -z "$added_button" ] || \
+    fail "Button re-added (wrong table chosen): $output"
+
+  # Second sync must be stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable (dashless separator?): $output"
+}
