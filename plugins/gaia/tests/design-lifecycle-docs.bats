@@ -15,6 +15,11 @@ setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   DOC_DIR="$PLUGIN_ROOT/../../documentation"
   DOC_DIR="$(cd "$DOC_DIR" 2>/dev/null && pwd)" || DOC_DIR="$BATS_TEST_DIRNAME/../../documentation"
+  # SKILL.md paths for dual-side content assertions (doc page + skill source).
+  SKILL_CUX="$PLUGIN_ROOT/skills/gaia-create-ux/SKILL.md"
+  SKILL_EUX="$PLUGIN_ROOT/skills/gaia-edit-ux/SKILL.md"
+  SKILL_DR="$PLUGIN_ROOT/skills/gaia-design-review/SKILL.md"
+  SKILL_AF="$PLUGIN_ROOT/skills/gaia-add-feature/SKILL.md"
 }
 
 teardown() { common_teardown; }
@@ -23,7 +28,7 @@ teardown() { common_teardown; }
 # Leaked-identifier regex — same families as the repo-wide gates.
 # ---------------------------------------------------------------------------
 _leak_regex() {
-  printf '%s' 'E[0-9]+-S[0-9]+|FR-[0-9]+|NFR-[0-9]+|SR-[0-9]+|ADR-[0-9]+|(AF|AI)-[0-9]{4}-[0-9]{2}|TC-[A-Z]|T-[0-9]+ |F-[0-9]+ '
+  printf '%s' 'FR-[0-9]+|NFR-[0-9]+|ADR-[0-9]+|E[0-9]+-S[0-9]+|TC-[A-Z]+-|SR-[0-9]+|(AF|AI)-[0-9]{4}|T-DPS-[0-9]+|GitHub #[0-9]+|(^|[^A-Za-z0-9])(T|F)-[0-9]+([^0-9]|$)'
 }
 
 # Pinned sidebar links: the 43 unique hrefs in index.html before this story.
@@ -642,4 +647,407 @@ CMDS_END
   grep -qF 'get_file' <<<"$block" || {
     echo "FAIL: Publication step should mention get_file for hash computation" >&2; return 1
   }
+}
+
+# ===========================================================================
+# Two-project model: design-lifecycle page content
+# ===========================================================================
+
+@test "design-lifecycle describes both projects and token-by-value model" {
+  local page="$DOC_DIR/design-lifecycle.html"
+  [ -s "$page" ] || {
+    echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
+  }
+
+  # Doc-page assertions (pins create-ux SKILL.md project terms)
+  grep -qi 'design-system project' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention 'design-system project'" >&2; return 1
+  }
+  grep -qi 'product design project' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention 'product design project'" >&2; return 1
+  }
+  grep -qi 'DesignSync' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention 'DesignSync'" >&2; return 1
+  }
+  grep -qi 'Design artifact' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention 'Design artifact' surface" >&2; return 1
+  }
+  grep -qiE 'token-by-value|:root\{--|CSS custom-property' "$page" || {
+    echo "FAIL: design-lifecycle.html should describe the token-by-value model" >&2; return 1
+  }
+  grep -qi 'artifact-installed' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention the reserved artifact-installed mode" >&2; return 1
+  }
+  grep -qi 'designSystems' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention the designSystems canvas list" >&2; return 1
+  }
+  # Old single-project phrasing must be gone
+  if grep -qi 'republished to the project' "$page"; then
+    echo "FAIL: design-lifecycle.html still has old 'republished to the project' phrasing" >&2
+    return 1
+  fi
+
+  # SKILL.md cross-checks (drift guard: if the skill drops these, docs need updating)
+  [ -s "$SKILL_CUX" ] || {
+    echo "FAIL: create-ux SKILL.md missing" >&2; return 1
+  }
+  grep -qi 'design-system project' "$SKILL_CUX" || {
+    echo "FAIL: create-ux SKILL.md should mention 'design-system project'" >&2; return 1
+  }
+  grep -qi 'token-by-value' "$SKILL_CUX" || {
+    echo "FAIL: create-ux SKILL.md should mention 'token-by-value'" >&2; return 1
+  }
+}
+
+# ===========================================================================
+# Two-project model: create-ux page content
+# ===========================================================================
+
+@test "create-ux page describes two-project discovery and creation" {
+  local page="$DOC_DIR/commands/gaia-create-ux.html"
+  [ -s "$page" ] || {
+    echo "FAIL: gaia-create-ux.html missing or empty" >&2; return 1
+  }
+
+  # Doc-page assertions
+  grep -qi 'design-system project' "$page" || {
+    echo "FAIL: gaia-create-ux.html should mention 'design-system project'" >&2; return 1
+  }
+  grep -qi 'product design project' "$page" || {
+    echo "FAIL: gaia-create-ux.html should mention 'product design project'" >&2; return 1
+  }
+  grep -qi 'questionnaire' "$page" || {
+    echo "FAIL: gaia-create-ux.html should still mention 'questionnaire'" >&2; return 1
+  }
+  grep -qiE 'brand-style|non-React' "$page" || {
+    echo "FAIL: gaia-create-ux.html should mention the brand-style or non-React path" >&2; return 1
+  }
+
+  # SKILL.md cross-checks
+  [ -s "$SKILL_CUX" ] || {
+    echo "FAIL: create-ux SKILL.md missing" >&2; return 1
+  }
+  grep -qi 'design-system project' "$SKILL_CUX" || {
+    echo "FAIL: create-ux SKILL.md should mention 'design-system project'" >&2; return 1
+  }
+  grep -qi 'product design project' "$SKILL_CUX" || {
+    echo "FAIL: create-ux SKILL.md should mention 'product design project'" >&2; return 1
+  }
+  grep -qi 'brand-style' "$SKILL_CUX" || {
+    echo "FAIL: create-ux SKILL.md should mention 'brand-style'" >&2; return 1
+  }
+}
+
+# ===========================================================================
+# Two-project model: edit-ux page content
+# ===========================================================================
+
+@test "edit-ux page describes scope-based republish routing" {
+  local page="$DOC_DIR/commands/gaia-edit-ux.html"
+  [ -s "$page" ] || {
+    echo "FAIL: gaia-edit-ux.html missing or empty" >&2; return 1
+  }
+
+  # Extract the step-list for scoped assertions
+  local step_section
+  step_section="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$page")"
+  [ -n "$step_section" ] || {
+    echo "FAIL: no step-list section in gaia-edit-ux.html" >&2; return 1
+  }
+
+  # Doc-page assertions
+  grep -qi 'republish' "$page" || {
+    echo "FAIL: gaia-edit-ux.html should mention 'republish'" >&2; return 1
+  }
+  # The old single-project phrasing must be gone
+  if grep -qi 'republished to the Claude Design project' "$page"; then
+    echo "FAIL: gaia-edit-ux.html still has old single-project phrasing" >&2
+    return 1
+  fi
+  # Scope routing sentence must be in the step-list: token/component -> DS,
+  # screen/flow -> PD
+  grep -qiE 'token.*component.*design-system|design-system.*token.*component' <<<"$step_section" || {
+    echo "FAIL: step-list should route token and component changes to design-system" >&2; return 1
+  }
+  grep -qiE 'screen.*flow.*product design|product design.*screen.*flow' <<<"$step_section" || {
+    echo "FAIL: step-list should route screen and flow changes to product design" >&2; return 1
+  }
+
+  # SKILL.md cross-checks
+  [ -s "$SKILL_EUX" ] || {
+    echo "FAIL: edit-ux SKILL.md missing" >&2; return 1
+  }
+  grep -qiE 'design.system pass|design_system' "$SKILL_EUX" || {
+    echo "FAIL: edit-ux SKILL.md should mention the design-system pass" >&2; return 1
+  }
+  grep -qiE 'product.design pass|product_design' "$SKILL_EUX" || {
+    echo "FAIL: edit-ux SKILL.md should mention the product-design pass" >&2; return 1
+  }
+}
+
+# ===========================================================================
+# Two-project model: design-review page content
+# ===========================================================================
+
+@test "design-review page describes two-project read-back and combined verdict" {
+  local page="$DOC_DIR/commands/gaia-design-review.html"
+  [ -s "$page" ] || {
+    echo "FAIL: gaia-design-review.html missing or empty" >&2; return 1
+  }
+
+  # Extract the step-list section where the two-project read-back lives.
+  # Scoped so existing troubleshooting/artifact-path mentions do not satisfy.
+  local step_section
+  step_section="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$page")"
+  [ -n "$step_section" ] || {
+    echo "FAIL: no step-list section in gaia-design-review.html" >&2; return 1
+  }
+
+  # Doc-page assertions — scoped to step-list
+  grep -qi 'design-system project.*DesignSync\|DesignSync.*design-system' <<<"$step_section" || {
+    echo "FAIL: step-list should mention design-system project through DesignSync" >&2; return 1
+  }
+  grep -qiE 'product design.*Artifact tool|Artifact tool.*product design|product design.*Design artifact|Design artifact.*product design' <<<"$step_section" || {
+    echo "FAIL: step-list should mention product design project via Artifact tool or Design artifact" >&2; return 1
+  }
+  grep -qiE 'failure in either|either project' "$page" || {
+    echo "FAIL: gaia-design-review.html should describe the combined verdict" >&2; return 1
+  }
+  # Step-list must also carry the combined verdict (what-it-does alone is not enough)
+  grep -qiE 'failure in either|either project' <<<"$step_section" || {
+    echo "FAIL: step-list should describe the combined verdict" >&2; return 1
+  }
+  grep -qiE 'reconciliation' "$page" || {
+    echo "FAIL: gaia-design-review.html should mention token-change reconciliation" >&2; return 1
+  }
+
+  # SKILL.md cross-checks
+  [ -s "$SKILL_DR" ] || {
+    echo "FAIL: design-review SKILL.md missing" >&2; return 1
+  }
+  grep -qi 'DesignSync' "$SKILL_DR" || {
+    echo "FAIL: design-review SKILL.md should mention 'DesignSync'" >&2; return 1
+  }
+  grep -qiE 'either project|either.*verdict' "$SKILL_DR" || {
+    echo "FAIL: design-review SKILL.md should describe the combined verdict" >&2; return 1
+  }
+  grep -qi 'reconciliation' "$SKILL_DR" || {
+    echo "FAIL: design-review SKILL.md should mention reconciliation" >&2; return 1
+  }
+}
+
+# ===========================================================================
+# Two-project model: design-lifecycle brand-style path and scope routing
+# ===========================================================================
+
+@test "design-lifecycle describes brand-style path and scope routing" {
+  local page="$DOC_DIR/design-lifecycle.html"
+  [ -s "$page" ] || {
+    echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
+  }
+
+  # Doc-page assertions
+  grep -qi 'brand-style' "$page" || {
+    echo "FAIL: design-lifecycle.html should mention 'brand-style'" >&2; return 1
+  }
+  grep -qiE 'design-system.*first|design-system project.*first' "$page" || {
+    echo "FAIL: design-lifecycle.html should describe design-system-first order" >&2; return 1
+  }
+  grep -qiE 'no screens available|no product design project' "$page" || {
+    echo "FAIL: design-lifecycle.html should describe the null product-design behavior" >&2; return 1
+  }
+  grep -qiE 'composite|single.*gate|zero integration calls' "$page" || {
+    echo "FAIL: design-lifecycle.html should describe the composite gate" >&2; return 1
+  }
+
+  # SKILL.md cross-checks
+  [ -s "$SKILL_CUX" ] || {
+    echo "FAIL: create-ux SKILL.md missing" >&2; return 1
+  }
+  grep -qi 'brand-style' "$SKILL_CUX" || {
+    echo "FAIL: create-ux SKILL.md should mention 'brand-style'" >&2; return 1
+  }
+  [ -s "$SKILL_EUX" ] || {
+    echo "FAIL: edit-ux SKILL.md missing" >&2; return 1
+  }
+  grep -qiE 'design-system.*first|design.system pass first' "$SKILL_EUX" || {
+    echo "FAIL: edit-ux SKILL.md should describe design-system-first order" >&2; return 1
+  }
+  [ -s "$SKILL_DR" ] || {
+    echo "FAIL: design-review SKILL.md missing" >&2; return 1
+  }
+  grep -qiE 'product_design_project.*null|null.*skip' "$SKILL_DR" || {
+    echo "FAIL: design-review SKILL.md should describe null product-design skip" >&2; return 1
+  }
+}
+
+# ===========================================================================
+# Two-project model: add-feature page scope routing
+# ===========================================================================
+
+@test "add-feature page describes scope-based republish routing" {
+  local page="$DOC_DIR/commands/gaia-add-feature.html"
+  [ -s "$page" ] || {
+    echo "FAIL: gaia-add-feature.html missing or empty" >&2; return 1
+  }
+
+  # The old single-project phrasing must be gone
+  if grep -qi 'republished to the design project' "$page"; then
+    echo "FAIL: gaia-add-feature.html still has old single-project phrasing" >&2
+    return 1
+  fi
+  grep -qi 'design-system project' "$page" || {
+    echo "FAIL: gaia-add-feature.html should mention 'design-system project'" >&2; return 1
+  }
+  grep -qi 'product design project' "$page" || {
+    echo "FAIL: gaia-add-feature.html should mention 'product design project'" >&2; return 1
+  }
+  grep -qi 'republish' "$page" || {
+    echo "FAIL: gaia-add-feature.html should mention 'republish'" >&2; return 1
+  }
+
+  # SKILL.md cross-checks
+  [ -s "$SKILL_AF" ] || {
+    echo "FAIL: add-feature SKILL.md missing" >&2; return 1
+  }
+  grep -qiE 'design_system|design-system' "$SKILL_AF" || {
+    echo "FAIL: add-feature SKILL.md should mention the design-system project" >&2; return 1
+  }
+  grep -qiE 'product_design|product design' "$SKILL_AF" || {
+    echo "FAIL: add-feature SKILL.md should mention the product design project" >&2; return 1
+  }
+}
+
+# ===========================================================================
+# Leaked-identifier gates: new pages
+# ===========================================================================
+
+@test "no internal identifier in create-ux command page" {
+  [ -f "$DOC_DIR/commands/gaia-create-ux.html" ] || {
+    echo "FAIL: commands/gaia-create-ux.html not found" >&2; return 1
+  }
+  local hits
+  hits="$(grep -nE "$(_leak_regex)" "$DOC_DIR/commands/gaia-create-ux.html" || true)"
+  hits="$(echo "$hits" | grep -vE '\[0-9\]' || true)"
+  [ -z "$hits" ] || {
+    echo "FAIL: leaked identifier(s) in commands/gaia-create-ux.html:" >&2
+    echo "$hits" >&2
+    return 1
+  }
+}
+
+@test "no internal identifier in edit-ux command page" {
+  [ -f "$DOC_DIR/commands/gaia-edit-ux.html" ] || {
+    echo "FAIL: commands/gaia-edit-ux.html not found" >&2; return 1
+  }
+  local hits
+  hits="$(grep -nE "$(_leak_regex)" "$DOC_DIR/commands/gaia-edit-ux.html" || true)"
+  hits="$(echo "$hits" | grep -vE '\[0-9\]' || true)"
+  [ -z "$hits" ] || {
+    echo "FAIL: leaked identifier(s) in commands/gaia-edit-ux.html:" >&2
+    echo "$hits" >&2
+    return 1
+  }
+}
+
+@test "no internal identifier in add-feature command page" {
+  [ -f "$DOC_DIR/commands/gaia-add-feature.html" ] || {
+    echo "FAIL: commands/gaia-add-feature.html not found" >&2; return 1
+  }
+  local hits
+  hits="$(grep -nE "$(_leak_regex)" "$DOC_DIR/commands/gaia-add-feature.html" || true)"
+  hits="$(echo "$hits" | grep -vE '\[0-9\]' || true)"
+  [ -z "$hits" ] || {
+    echo "FAIL: leaked identifier(s) in commands/gaia-add-feature.html:" >&2
+    echo "$hits" >&2
+    return 1
+  }
+}
+
+# ===========================================================================
+# Leaked-identifier sweep: count assertion
+# ===========================================================================
+
+@test "leak sweep scans at least five doc pages" {
+  local count=0
+  local f
+  for f in \
+    "$DOC_DIR/design-lifecycle.html" \
+    "$DOC_DIR/commands/gaia-create-ux.html" \
+    "$DOC_DIR/commands/gaia-edit-ux.html" \
+    "$DOC_DIR/commands/gaia-design-review.html" \
+    "$DOC_DIR/commands/gaia-add-feature.html"; do
+    [ -f "$f" ] || {
+      echo "FAIL: swept page not found: $f" >&2; return 1
+    }
+    count=$((count + 1))
+  done
+  [ "$count" -ge 5 ] || {
+    echo "FAIL: leak sweep scanned only $count pages (need >= 5)" >&2; return 1
+  }
+}
+
+# ===========================================================================
+# Leaked-identifier regex: whole-token proof for T-N and F-N
+# ===========================================================================
+
+@test "leak regex catches T-N and F-N as whole tokens" {
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+
+  # Positive cases: T-N and F-N at word boundaries
+  cat > "$tmpdir/positive.html" <<'SEEDEOF'
+found T-12
+value F-3.
+end T-99
+F-1
+SEEDEOF
+  local pos_hits
+  pos_hits="$(grep -cE "$(_leak_regex)" "$tmpdir/positive.html")"
+  [ "$pos_hits" -ge 4 ] || {
+    echo "FAIL: leak regex matched only $pos_hits of 4 seeded T-N/F-N tokens" >&2
+    rm -rf "$tmpdir"
+    return 1
+  }
+
+  # Negative cases: legitimate text that must NOT match the T/F branch.
+  # Use a focused sub-regex to test only the T/F branch.
+  local tf_regex='(^|[^A-Za-z0-9])(T|F)-[0-9]+([^0-9]|$)'
+  cat > "$tmpdir/negative.html" <<'NEGEOF'
+UTF-8 encoding
+TF-100 combined
+NEGEOF
+  local neg_hits
+  neg_hits="$(grep -cE "$tf_regex" "$tmpdir/negative.html" || true)"
+  [ "$neg_hits" -eq 0 ] || {
+    echo "FAIL: T/F regex false-positive on legitimate text ($neg_hits hits)" >&2
+    rm -rf "$tmpdir"
+    return 1
+  }
+
+  rm -rf "$tmpdir"
+}
+
+# ===========================================================================
+# Two-project model: recipes page publication wording
+# ===========================================================================
+
+@test "recipes page describes two-project publication" {
+  local page="$DOC_DIR/recipes.html"
+  [ -s "$page" ] || {
+    echo "FAIL: recipes.html missing or empty" >&2; return 1
+  }
+
+  # New wording must be present
+  grep -qi 'design-system project' "$page" || {
+    echo "FAIL: recipes.html should mention 'design-system project'" >&2; return 1
+  }
+  grep -qi 'product design project' "$page" || {
+    echo "FAIL: recipes.html should mention 'product design project'" >&2; return 1
+  }
+  # Old wording must be gone
+  if grep -qi 'publish them to Claude Design' "$page"; then
+    echo "FAIL: recipes.html still has old 'publish them to Claude Design' wording" >&2
+    return 1
+  fi
 }
