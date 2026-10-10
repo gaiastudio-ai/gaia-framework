@@ -207,18 +207,18 @@ teardown() { common_teardown; }
 @test "output to classifier never contains a project/ path" {
   [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
 
-  # Set up a shim for derive-design-scope.sh that logs all arguments
-  local shim_dir="$TEST_TMP/shim-bin"
-  mkdir -p "$shim_dir"
-  cat > "$shim_dir/derive-design-scope.sh" <<'SHIMEOF'
+  # Set up a logging shim that records the args passed to the classifier.
+  # The diff script honours _DERIVE_SCOPE_HELPER_OVERRIDE for testing.
+  local shim_path="$TEST_TMP/scope-shim.sh"
+  local shim_log="$TEST_TMP/shim-args.log"
+  cat > "$shim_path" <<'SHIMEOF'
 #!/usr/bin/env bash
-# Log all args to a file, then output "both" to satisfy the caller
 for arg in "$@"; do
   printf '%s\n' "$arg"
 done > "${SHIM_LOG_FILE}"
 printf 'both\n'
 SHIMEOF
-  chmod +x "$shim_dir/derive-design-scope.sh"
+  chmod +x "$shim_path"
 
   _seed_last_published "aaa111" "bbb222" "ccc333"
 
@@ -226,16 +226,15 @@ SHIMEOF
     "tokens/colors.html=new-hash" \
     "screens/login.spec.html=ddd444"
 
-  local shim_log="$TEST_TMP/shim-args.log"
-  SHIM_LOG_FILE="$shim_log" \
-    run env PATH="$shim_dir:$PATH" \
+  run env SHIM_LOG_FILE="$shim_log" \
+    _DERIVE_SCOPE_HELPER_OVERRIDE="$shim_path" \
     bash "$DIFF_SCRIPT" \
     --last-published "$TEST_TMP/design-last-published.json" \
     --local-manifest "$TEST_TMP/local-manifest.json" \
     --edited "screens/login.spec.html"
 
   [ "$status" -eq 0 ]
-  [ -f "$shim_log" ] || fail "shim log not created — the diff script did not call derive-design-scope.sh"
+  [ -f "$shim_log" ] || fail "shim log not created — the diff script did not call the classifier"
 
   # Assert no argument starts with "project/"
   local project_lines
@@ -281,4 +280,44 @@ SHIMEOF
 
   [ "$status" -eq 0 ]
   [ "$output" = "product-design" ] || fail "expected product-design for screen with space, got: $output"
+}
+
+# ===========================================================================
+# Hijack resistance: a decoy in CWD must not be executed
+# ===========================================================================
+
+@test "decoy derive-design-scope.sh in working directory is not executed" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  # Create a temp working directory with a decoy script
+  local decoy_dir="$TEST_TMP/decoy-cwd"
+  mkdir -p "$decoy_dir"
+  cat > "$decoy_dir/derive-design-scope.sh" <<'DECOYEOF'
+#!/usr/bin/env bash
+printf 'HIJACKED\n'
+DECOYEOF
+  chmod +x "$decoy_dir/derive-design-scope.sh"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=new-hash" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  # Run the diff script from the decoy directory
+  run bash -c "cd '$decoy_dir' && bash '$DIFF_SCRIPT' \
+    --last-published '$TEST_TMP/design-last-published.json' \
+    --local-manifest '$TEST_TMP/local-manifest.json' \
+    --edited 'screens/login.spec.html'"
+
+  [ "$status" -eq 0 ]
+  # The real classifier should run, not the decoy
+  [ "$output" != "HIJACKED" ] \
+    || fail "decoy script in CWD was executed — the helper must be called by absolute path"
+  # The output should be a valid scope, not HIJACKED
+  case "$output" in
+    design-system|product-design|both) ;;
+    *) fail "unexpected output: $output (expected a valid scope)" ;;
+  esac
 }

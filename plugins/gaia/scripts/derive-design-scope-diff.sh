@@ -34,9 +34,7 @@ set -euo pipefail
 LC_ALL=C; export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Append SCRIPT_DIR so derive-design-scope.sh is reachable by bare name.
-# A test shim prepended to PATH takes priority over the real script.
-PATH="${PATH:+${PATH}:}${SCRIPT_DIR}"
+SCOPE_HELPER="${_DERIVE_SCOPE_HELPER_OVERRIDE:-$SCRIPT_DIR/derive-design-scope.sh}"
 
 # ---------------------------------------------------------------------------
 # Arg parsing
@@ -261,4 +259,4 @@ $_changed_paths
 CPEOF
 fi
 
-exec bash derive-design-scope.sh "$@"
+exec bash "$SCOPE_HELPER" "$@"
