@@ -109,7 +109,7 @@ USERMD
   # no templates/CLAUDE.md
   run bash "${fake_plugin}/scripts/install-claude-md.sh" --target "${TARGET_DIR}"
   [ "${status}" -eq 1 ]
-  echo "${output}" | grep -qF "plugin source template is missing"
+  grep -qF "plugin source template is missing" <<<"${output}"
   rm -rf "${fake_plugin}"
 }
 
@@ -182,7 +182,7 @@ REPO_ROOT="${BATS_TEST_DIRNAME}/../../.."
 
   run "${DRIFT_GUARD}" --root "${fake_root}"
   [ "${status}" -eq 1 ]
-  echo "${output}" | grep -qF "## Kept"
+  grep -qF "## Kept" <<<"${output}"
   rm -rf "${fake_root}"
 }
 
@@ -200,8 +200,8 @@ REPO_ROOT="${BATS_TEST_DIRNAME}/../../.."
 
   run "${DRIFT_GUARD}" --root "${fake_root}"
   [ "${status}" -eq 1 ]
-  echo "${output}" | grep -qF "missing hard rule"
-  echo "${output}" | grep -qF "NEVER"
+  grep -qF "missing hard rule" <<<"${output}"
+  grep -qF "NEVER" <<<"${output}"
   rm -rf "${fake_root}"
 }
 
@@ -216,7 +216,7 @@ REPO_ROOT="${BATS_TEST_DIRNAME}/../../.."
 
   run "${DRIFT_GUARD}" --root "${fake_root}"
   [ "${status}" -eq 0 ]
-  ! echo "${output}" | grep -qF "invalid option"
+  ! grep -qF "invalid option" <<<"${output}"
   rm -rf "${fake_root}"
 }
 
@@ -265,6 +265,6 @@ REPO_ROOT="${BATS_TEST_DIRNAME}/../../.."
     > "${fake_root}/plugins/gaia/templates/CLAUDE.md"
   run "${DRIFT_GUARD}" --root "${fake_root}"
   [ "${status}" -eq 1 ]
-  echo "${output}" | grep -qF "a real rule"
+  grep -qF "a real rule" <<<"${output}"
   rm -rf "${fake_root}"
 }

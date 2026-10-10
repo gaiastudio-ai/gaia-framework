@@ -96,7 +96,7 @@ _leak_verdict() {
   out="$all"
   # A suite that failed to load reports a single gather-tests failure and would
   # make two broken runs compare equal. Refuse that rather than pass vacuously.
-  if printf '%s\n' "$out" | grep -qF 'bats-gather-tests'; then
+  if grep -qF 'bats-gather-tests' <<<"$out"; then
     printf 'LEAK-GATE-FAILED-TO-LOAD\n'
     return 0
   fi

@@ -329,7 +329,7 @@ JSON
   [ "$button_hit" -eq 1 ] || fail "annotated spec should be included"
 
   # stderr must name the broken file
-  printf '%s' "$stderr_out" | grep -qF 'broken.spec.html' || fail "diagnostic should name broken.spec.html"
+  grep -qF 'broken.spec.html' <<<"$stderr_out" || fail "diagnostic should name broken.spec.html"
 }
 
 @test "(AC-EC6) non-framework cards preserved verbatim" {
@@ -1646,11 +1646,11 @@ _make_art_meta() {
   # Demonstrate that the old pattern [0-9]+ fails on a real hex version.
   local header='Files saved under "/var/folders/tmp/art-read" from version 1791378024-1c52 of https://claude.ai/artifact/abc, an Artifact of type "Design".'
   # Old regex: digits only
-  if printf '%s' "$header" | grep -qE '^Files saved under ".*" from version [0-9]+ of .+, an Artifact of type "[^"]+"\.$'; then
+  if grep -qE '^Files saved under ".*" from version [0-9]+ of .+, an Artifact of type "[^"]+"\.$' <<<"$header"; then
     fail "old digits-only regex should NOT match a hex version — this test proves the fix was needed"
   fi
   # New regex: alphanumeric with hyphens
-  printf '%s' "$header" | grep -qE '^Files saved under ".*" from version [0-9A-Za-z][0-9A-Za-z-]* of .+, an Artifact of type "[^"]+"\.$' \
+  grep -qE '^Files saved under ".*" from version [0-9A-Za-z][0-9A-Za-z-]* of .+, an Artifact of type "[^"]+"\.$' <<<"$header" \
     || fail "new regex should match the real hex version"
 }
 

@@ -68,11 +68,11 @@ _run_rich() { # $1 = stdin
   # runtime reading `date +%s` flips 2h13m -> 2h12m, which made an exact-string
   # match flake (even locally). The unit shape (Nh Nm / Nd Nh) is the stable
   # contract.
-  echo "$stripped" | grep -qE "5h:23% \([0-9]+h[0-9]+m\)"
-  echo "$stripped" | grep -qE "7d:63% \([0-9]+d[0-9]+h\)"
+  grep -qE "5h:23% \([0-9]+h[0-9]+m\)" <<<"$stripped"
+  grep -qE "7d:63% \([0-9]+d[0-9]+h\)" <<<"$stripped"
   # The legacy combined "RL: x%/y%" form is gone.
-  ! echo "$stripped" | grep -q "RL:"
-  ! echo "$stripped" | grep -q "23%/63%"
+  ! grep -q "RL:" <<<"$stripped"
+  ! grep -q "23%/63%" <<<"$stripped"
 }
 
 # ---------- per-window gradient color (NOT a shared max-band) --------------
@@ -91,9 +91,9 @@ _run_rich() { # $1 = stdin
 @test "AC2: a low-pct window is green-dominant; a high-pct window is red-dominant" {
   _run_rich "$(_stdin_rl 5 7980 95 352800)"
   # 5% -> near green endpoint (G channel in the 200s).
-  printf '%s' "$output" | LC_ALL=C grep -qE $'\033\\[38;2;[0-9]+;20[0-9];[0-9]+m5h:'
+  LC_ALL=C grep -qE $'\033\\[38;2;[0-9]+;20[0-9];[0-9]+m5h:' <<<"$output"
   # 95% -> near red endpoint (R high ~230, G low ~70s).
-  printf '%s' "$output" | LC_ALL=C grep -qE $'\033\\[38;2;2[0-9][0-9];[0-9]+;[0-9]+m7d:'
+  LC_ALL=C grep -qE $'\033\\[38;2;2[0-9][0-9];[0-9]+;[0-9]+m7d:' <<<"$output"
 }
 
 # ---------- adaptive reset countdown ---------------------------------------
@@ -102,32 +102,32 @@ _run_rich() { # $1 = stdin
   _run_rich "$(_stdin_rl 30 $((47*60)) null '')"
   stripped="$(_strip_sgr "$output")"
   # 47m delta; live elapsed seconds may shave to 46m — accept 46m or 47m.
-  echo "$stripped" | grep -qE "5h:30% \((46|47)m\)"
+  grep -qE "5h:30% \((46|47)m\)" <<<"$stripped"
 }
 
 @test "reset 1-24h renders NhNm (e.g. 2h13m)" {
   _run_rich "$(_stdin_rl 30 $((2*3600+13*60+30)) null '')"
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "5h:30% (2h13m)"
+  grep -q "5h:30% (2h13m)" <<<"$stripped"
 }
 
 @test "reset >24h renders NdNh (e.g. 4d2h)" {
   _run_rich "$(_stdin_rl null '' 63 $((4*86400+2*3600+30*60)))"
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "7d:63% (4d2h)"
+  grep -q "7d:63% (4d2h)" <<<"$stripped"
 }
 
 @test "reset already past renders (now)" {
   _run_rich "$(_stdin_rl null '' 91 -100)"
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "7d:91% (now)"
+  grep -q "7d:91% (now)" <<<"$stripped"
 }
 
 @test "present pct but resets_at MISSING -> no parens" {
   _run_rich "$(_stdin_rl 23 '' null '')"
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "5h:23%"
-  ! echo "$stripped" | grep -q "5h:23% ("
+  grep -q "5h:23%" <<<"$stripped"
+  ! grep -q "5h:23% (" <<<"$stripped"
 }
 
 # ---------- single-window + absence ----------------------------------------
@@ -135,21 +135,21 @@ _run_rich() { # $1 = stdin
 @test "only 5h present -> single 5h segment, no 7d" {
   _run_rich "$(_stdin_rl 23 7980 null '')"
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "5h:23%"
-  ! echo "$stripped" | grep -q "7d:"
+  grep -q "5h:23%" <<<"$stripped"
+  ! grep -q "7d:" <<<"$stripped"
 }
 
 @test "only 7d present -> single 7d segment, no 5h" {
   _run_rich "$(_stdin_rl null '' 41 352800)"
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "7d:41%"
-  ! echo "$stripped" | grep -q "5h:"
+  grep -q "7d:41%" <<<"$stripped"
+  ! grep -q "5h:" <<<"$stripped"
 }
 
 @test "rate_limits entirely absent -> no RL segment at all" {
   _run_rich "$(_stdin_rl null '' null '')"
   stripped="$(_strip_sgr "$output")"
-  ! echo "$stripped" | grep -qE "5h:|7d:"
+  ! grep -qE "5h:|7d:" <<<"$stripped"
 }
 
 # ---------- float percentage truncation ------------------------------------
@@ -162,8 +162,8 @@ _run_rich() { # $1 = stdin
   # and that the float-form segment "5h:23.5%" is NOT emitted.
   _run_rich "$(_stdin_rl 23.5 7980 null '')"
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "5h:23%"
-  ! echo "$stripped" | grep -q "5h:23\.5"
+  grep -q "5h:23%" <<<"$stripped"
+  ! grep -q "5h:23\.5" <<<"$stripped"
 }
 
 # ---------- theme + width gating (unchanged contract) ----------------------
@@ -172,21 +172,21 @@ _run_rich() { # $1 = stdin
   stdin="$(_stdin_rl 23 7980 41 352800)"
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_THEME=minimal printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_THEME=minimal '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qE "5h:|7d:"
+  ! grep -qE "5h:|7d:" <<<"$output"
 }
 
 @test "default theme (rich) DOES emit the rate-limits segment" {
   stdin="$(_stdin_rl 23 7980 41 352800)"
   run bash -c "COLUMNS=200 printf '%s' '$stdin' | env -u GAIA_STATUSLINE_THEME COLUMNS=200 '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qE "5h:|7d:"
+  grep -qE "5h:|7d:" <<<"$output"
 }
 
 @test "narrow COLS (<80) drops the rate-limits segment" {
   stdin="$(_stdin_rl 23 7980 41 352800)"
   run bash -c "COLUMNS=79 GAIA_STATUSLINE_THEME=rich printf '%s' '$stdin' | env COLUMNS=79 GAIA_STATUSLINE_THEME=rich '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qE "5h:|7d:"
+  ! grep -qE "5h:|7d:" <<<"$output"
 }
 
 @test "COLS >= 80 keeps the rate-limits segment" {
@@ -194,8 +194,8 @@ _run_rich() { # $1 = stdin
   run bash -c "COLUMNS=80 GAIA_STATUSLINE_THEME=rich printf '%s' '$stdin' | env COLUMNS=80 GAIA_STATUSLINE_THEME=rich '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(_strip_sgr "$output")"
-  echo "$stripped" | grep -q "5h:23%"
-  echo "$stripped" | grep -q "7d:41%"
+  grep -q "5h:23%" <<<"$stripped"
+  grep -q "7d:41%" <<<"$stripped"
 }
 
 # ---------- NO_COLOR strips the gradient escapes ---------------------------
@@ -204,6 +204,6 @@ _run_rich() { # $1 = stdin
   stdin="$(_stdin_rl 23 7980 41 352800)"
   run bash -c "COLUMNS=200 GAIA_STATUSLINE_THEME=rich NO_COLOR=1 printf '%s' '$stdin' | env COLUMNS=200 GAIA_STATUSLINE_THEME=rich NO_COLOR=1 '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "5h:23%"
-  ! echo "$output" | LC_ALL=C grep -q $'\033\[38;2;'
+  grep -q "5h:23%" <<<"$output"
+  ! LC_ALL=C grep -q $'\033\[38;2;' <<<"$output"
 }

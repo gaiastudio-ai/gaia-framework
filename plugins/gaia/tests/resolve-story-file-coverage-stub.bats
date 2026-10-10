@@ -45,7 +45,7 @@ setup() {
   source "$HELPER"
   run resolve_story_file "E99-S99"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q "story file not found for key E99-S99"
+  grep -q "story file not found for key E99-S99" <<<"$output"
 }
 
 @test "resolve_story_file: multiple nested matches exits 2 (ambiguity)" {
@@ -56,5 +56,5 @@ setup() {
   source "$HELPER"
   run resolve_story_file "E5-S1"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q "multiple nested story files matched key E5-S1"
+  grep -q "multiple nested story files matched key E5-S1" <<<"$output"
 }

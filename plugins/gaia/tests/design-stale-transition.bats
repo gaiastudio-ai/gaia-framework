@@ -770,7 +770,7 @@ _spy_probe_count() {
   local att_block
   att_block="$(awk '/<!-- design-attestation begin -->/{p=1;next} /<!-- design-attestation end -->/{p=0} p' "$skill_af")"
   [ -n "$att_block" ] || fail "attestation block not found in add-feature SKILL.md"
-  echo "$att_block" | grep -qiE 'revok|token' \
+  grep -qiE 'revok|token' <<<"$att_block" \
     || fail "attestation block should document the authorization-expiry trade-off"
 }
 

@@ -239,7 +239,7 @@ _advance_to_state() {
   [ -n "$body" ] || fail "_migrate_v1_to_v2 function body is empty"
 
   # Must reference only $1 (the tmp parameter) or "$tmp" or "$file" — never $RECORD_PATH
-  if printf '%s' "$body" | grep -qE '\$RECORD_PATH|\$\{RECORD_PATH'; then
+  if grep -qE '\$RECORD_PATH|\$\{RECORD_PATH' <<<"$body"; then
     fail "_migrate_v1_to_v2 references RECORD_PATH — must only write to the passed tmp file"
   fi
 }
@@ -2183,7 +2183,7 @@ STAKE
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     # Every trap must contain the exact forcing clause
-    if ! printf '%s' "$line" | grep -qF '[ "$_rc" -eq 0 ] && _rc=1'; then
+    if ! grep -qF '[ "$_rc" -eq 0 ] && _rc=1' <<<"$line"; then
       fail "trap at $line lacks exact error-forcing clause: [ \"\$_rc\" -eq 0 ] && _rc=1"
     fi
   done <<< "$trap_lines"
@@ -2197,10 +2197,10 @@ STAKE
   [ -n "$trap_line" ] || fail "no trap EXIT line found in _locked_mutate"
 
   # Must contain the exact completion guard before the forcing clause
-  printf '%s' "$trap_line" | grep -qF '[ "${_DR_DONE:-0}" = 1 ] ||' || \
+  grep -qF '[ "${_DR_DONE:-0}" = 1 ] ||' <<<"$trap_line" || \
     fail "_locked_mutate trap lacks completion guard: [ \"\${_DR_DONE:-0}\" = 1 ] ||"
   # Must contain the exact forcing clause
-  printf '%s' "$trap_line" | grep -qF '[ "$_rc" -eq 0 ] && _rc=1' || \
+  grep -qF '[ "$_rc" -eq 0 ] && _rc=1' <<<"$trap_line" || \
     fail "_locked_mutate trap lacks exact error-forcing clause"
 }
 
@@ -2212,7 +2212,7 @@ STAKE
   [ -n "$trap_line" ] || fail "no second trap EXIT line found (cmd_init)"
 
   # Must contain the exact forcing clause
-  printf '%s' "$trap_line" | grep -qF '[ "$_rc" -eq 0 ] && _rc=1' || \
+  grep -qF '[ "$_rc" -eq 0 ] && _rc=1' <<<"$trap_line" || \
     fail "cmd_init trap lacks exact error-forcing clause"
 }
 
@@ -2224,7 +2224,7 @@ STAKE
   [ -n "$trap_line" ] || fail "no third trap EXIT line found (cmd_init_not_applicable)"
 
   # Must contain the exact forcing clause
-  printf '%s' "$trap_line" | grep -qF '[ "$_rc" -eq 0 ] && _rc=1' || \
+  grep -qF '[ "$_rc" -eq 0 ] && _rc=1' <<<"$trap_line" || \
     fail "init-not-applicable trap lacks exact error-forcing clause"
 }
 
@@ -2256,18 +2256,18 @@ STAKE
   body="$(_extract_fn_body "_locked_mutate" "$DREC_SCRIPT")"
 
   # Must contain _migrate_v1_to_v2
-  printf '%s' "$body" | grep -q '_migrate_v1_to_v2' || \
+  grep -q '_migrate_v1_to_v2' <<<"$body" || \
     fail "_locked_mutate missing _migrate_v1_to_v2"
 
   # Must contain _validate_project_references
-  printf '%s' "$body" | grep -q '_validate_project_references' || \
+  grep -q '_validate_project_references' <<<"$body" || \
     fail "_locked_mutate missing _validate_project_references"
 
   # Order: migrate before callback, cross-check before callback AND before mv
   local migrate_line callback_line mv_line
-  migrate_line="$(printf '%s' "$body" | grep -n '_migrate_v1_to_v2' | head -1 | cut -d: -f1)"
-  callback_line="$(printf '%s' "$body" | grep -n '"$callback"' | head -1 | cut -d: -f1)"
-  mv_line="$(printf '%s' "$body" | grep -n 'mv -f' | head -1 | cut -d: -f1)"
+  migrate_line="$(grep -n '_migrate_v1_to_v2' <<<"$body" | head -1 | cut -d: -f1)"
+  callback_line="$(grep -n '"$callback"' <<<"$body" | head -1 | cut -d: -f1)"
+  mv_line="$(grep -n 'mv -f' <<<"$body" | head -1 | cut -d: -f1)"
 
   [ -n "$migrate_line" ] || fail "migrate line not found"
   [ -n "$callback_line" ] || fail "callback line not found"
@@ -2304,12 +2304,12 @@ STAKE
   local body
   body="$(_extract_fn_body "cmd_init" "$DREC_SCRIPT")"
 
-  printf '%s' "$body" | grep -q '_validate_project_references' || \
+  grep -q '_validate_project_references' <<<"$body" || \
     fail "cmd_init missing _validate_project_references"
 
   local check_line mv_line
-  check_line="$(printf '%s' "$body" | grep -n '_validate_project_references' | head -1 | cut -d: -f1)"
-  mv_line="$(printf '%s' "$body" | grep -n 'mv -f' | head -1 | cut -d: -f1)"
+  check_line="$(grep -n '_validate_project_references' <<<"$body" | head -1 | cut -d: -f1)"
+  mv_line="$(grep -n 'mv -f' <<<"$body" | head -1 | cut -d: -f1)"
 
   [ "$check_line" -lt "$mv_line" ] || \
     fail "cross-check ($check_line) must come before mv ($mv_line) in cmd_init"
@@ -3257,6 +3257,6 @@ STAKE
   [ -n "$record_step" ] || fail "Record step not found"
 
   # Must mention "skipped" (auto-store) and NOT say the skip path passes the path
-  printf '%s' "$record_step" | grep -q 'skipped' || \
+  grep -q 'skipped' <<<"$record_step" || \
     fail "step 2.5 should mention auto-store 'skipped'"
 }

@@ -95,7 +95,7 @@ teardown() { common_teardown; }
   [[ "$body" == *"sm"* ]]
   [[ "$body" == *"Body text here"* ]]
   # ISO 8601 UTC: YYYY-MM-DDTHH:MM:SSZ
-  echo "$body" | grep -qE '\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\]'
+  grep -qE '\[[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\]' <<<"$body"
 }
 
 @test "memory-writer.sh: decision append is additive — prior entries preserved" {

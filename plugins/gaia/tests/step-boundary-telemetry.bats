@@ -49,7 +49,7 @@ teardown() {
   # All 9 sub-steps must be listed
   scope_line=$(grep 'out of scope for v1' "$SKILL_MD")
   for sub in 2a 2b 3b 5a 6a 6b 7a 7b 14b; do
-    echo "$scope_line" | grep -qF "$sub" \
+    grep -qF "$sub" <<<"$scope_line" \
       || { echo "Missing sub-step $sub in out-of-scope documentation" >&2; false; }
   done
 }
@@ -72,7 +72,7 @@ teardown() {
   # Step 1 -> Step 2 is 5 minutes. Match with a literal tab after the step
   # number so "step 1" cannot match "step 10" or "step 11" (F-2 precision fix).
   local tab=$'\t'
-  printf '%s\n' "$output" | grep -qF "step 1${tab}5 min" \
+  grep -qF "step 1${tab}5 min" <<<"$output" \
     || { echo "Expected step 1 duration of 5 min, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -167,7 +167,7 @@ EOF
   run bash "$SCRIPT" --events "$FIXTURE_DIR/duplicate-step.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # No negative durations should appear
-  ! echo "$output" | grep -Eq '\-[0-9]+ min' \
+  ! grep -Eq '\-[0-9]+ min' <<<"$output" \
     || { echo "Negative duration found:" >&2; echo "$output" >&2; false; }
 }
 
@@ -185,7 +185,7 @@ EOF
   [ "$dur_count" -eq 1 ] \
     || { echo "Expected exactly 1 duration line, got $dur_count:" >&2; echo "$dur_lines" >&2; false; }
   # Assert the value is 10 min (first-occurrence difference), not 5 min (second).
-  printf '%s\n' "$dur_lines" | grep -qF "step 1${tab}10 min" \
+  grep -qF "step 1${tab}10 min" <<<"$dur_lines" \
     || { echo "Expected step 1 = 10 min (first-occurrence diff), got:" >&2; echo "$dur_lines" >&2; false; }
 }
 

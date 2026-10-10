@@ -38,7 +38,7 @@ _run_probe() {
 # word, isolated from any stderr diagnostic lines that may precede it in
 # the merged `run` capture.
 _probe_state_line() {
-  printf '%s\n' "$output" | head -1
+  head -1 <<<"$output"
 }
 
 # Helper: run the probe with an internal DESIGN_PROBE_TIMEOUT_SECONDS bound
@@ -482,7 +482,7 @@ STUB
     || { echo "expected exactly 1 refusal log line, got $refused_line_count (newline was not sanitized): $output"; return 1; }
 
   # The forged second line's marker must never appear as its own line.
-  ! printf '%s\n' "$output" | grep -qx 'second-line-should-not-exist' \
+  ! grep -qx 'second-line-should-not-exist' <<<"$output" \
     || { echo "embedded newline forged a second log line: $output"; return 1; }
 
   # Raw control bytes (ESC 0x1b, BEL 0x07) must not appear in the

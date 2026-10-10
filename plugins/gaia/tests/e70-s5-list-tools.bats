@@ -54,10 +54,10 @@ SH
   run env BUILTIN_ADAPTERS_DIR="$builtin" CUSTOM_ADAPTERS_DIR="$TEST_TMP/no-custom" \
     GAIA_LIST_TOOLS_SKIP_PROBE=1 "$LIST_TOOLS"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "semgrep"
-  echo "$output" | grep -q "gitleaks"
-  echo "$output" | grep -q ">=1.0.0"
-  echo "$output" | grep -q "subprocess"
+  grep -q "semgrep" <<<"$output"
+  grep -q "gitleaks" <<<"$output"
+  grep -q ">=1.0.0" <<<"$output"
+  grep -q "subprocess" <<<"$output"
 }
 
 @test "empty adapter directory emits a 'No adapters found' notice and exits 0" {
@@ -67,7 +67,7 @@ SH
   run env BUILTIN_ADAPTERS_DIR="$builtin" CUSTOM_ADAPTERS_DIR="$TEST_TMP/no-custom" \
     GAIA_LIST_TOOLS_SKIP_PROBE=1 "$LIST_TOOLS"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "No adapters found"
+  grep -qi "No adapters found" <<<"$output"
 }
 
 @test "custom adapter shadows built-in — custom shows [custom], built-in shows [shadowed]" {
@@ -80,8 +80,8 @@ SH
   run env BUILTIN_ADAPTERS_DIR="$builtin" CUSTOM_ADAPTERS_DIR="$custom" \
     GAIA_LIST_TOOLS_SKIP_PROBE=1 "$LIST_TOOLS"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "\[custom\]"
-  echo "$output" | grep -q "\[shadowed\]"
+  grep -q "\[custom\]" <<<"$output"
+  grep -q "\[shadowed\]" <<<"$output"
 }
 
 @test "malformed adapter.json is skipped with a warning, listing continues" {
@@ -96,9 +96,9 @@ SH
   run env BUILTIN_ADAPTERS_DIR="$builtin" CUSTOM_ADAPTERS_DIR="$TEST_TMP/no-custom" \
     GAIA_LIST_TOOLS_SKIP_PROBE=1 "$LIST_TOOLS"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "semgrep"
+  grep -q "semgrep" <<<"$output"
   # broken should NOT appear as a normal row; warning surfaces in combined output.
-  echo "$output" | grep -qi "broken"
+  grep -qi "broken" <<<"$output"
 }
 
 @test "output is grouped by category — same category clusters together" {
@@ -112,7 +112,7 @@ SH
     GAIA_LIST_TOOLS_SKIP_PROBE=1 "$LIST_TOOLS"
   [ "$status" -eq 0 ]
   # Category headers (one per distinct category) must appear in the output.
-  echo "$output" | grep -qi "sast"
-  echo "$output" | grep -qi "secret-scan"
-  echo "$output" | grep -qi "linter"
+  grep -qi "sast" <<<"$output"
+  grep -qi "secret-scan" <<<"$output"
+  grep -qi "linter" <<<"$output"
 }

@@ -57,7 +57,7 @@ EOF
   output=$(bash -c "source '${PLUGIN_ROOT}/scripts/review-common/tag-conformance-detector.sh' 2>/dev/null; has_tag_python '$TMPDIR_F14/test_module_pytestmark.py' && echo MATCHED || echo NOT_MATCHED")
   set -e
   # If sourcing fails (script has main scan logic), do the regex check directly
-  if echo "$output" | grep -q "MATCHED\|NOT_MATCHED"; then
+  if grep -q "MATCHED\|NOT_MATCHED" <<<"$output"; then
     [ "$output" = "MATCHED" ]
   else
     # Fall back to direct regex check

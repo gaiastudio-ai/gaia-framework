@@ -103,7 +103,7 @@ skill'
 
 @test "coppa.json declares schema_version matching N.N pattern" {
   sv=$(jq -r '.schema_version' "$COPPA_RUBRIC")
-  printf '%s' "$sv" | grep -Eq '^[0-9]+\.[0-9]+$' || {
+  grep -Eq '^[0-9]+\.[0-9]+$' <<<"$sv" || {
     echo "schema_version='$sv' does not match N.N" >&2
     return 1
   }
@@ -238,7 +238,7 @@ skill'
 @test "coppa.json metadata.last_updated is present and ISO 8601 (YYYY-MM-DD)" {
   ts=$(jq -r '.metadata.last_updated // empty' "$COPPA_RUBRIC")
   [ -n "$ts" ] || { echo "metadata.last_updated missing" >&2; return 1; }
-  printf '%s' "$ts" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || {
+  grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' <<<"$ts" || {
     echo "last_updated='$ts' does not match YYYY-MM-DD" >&2
     return 1
   }
@@ -247,7 +247,7 @@ skill'
 @test "coppa.json metadata.source_reference cites FTC COPPA Rule" {
   ref=$(jq -r '.metadata.source_reference // empty' "$COPPA_RUBRIC")
   [ -n "$ref" ] || { echo "metadata.source_reference missing" >&2; return 1; }
-  printf '%s' "$ref" | grep -Fq '16 CFR Part 312' || {
+  grep -Fq '16 CFR Part 312' <<<"$ref" || {
     echo "source_reference='$ref' does not cite '16 CFR Part 312'" >&2
     return 1
   }

@@ -264,7 +264,7 @@ STAKE
     --questionnaire-record "q.md"
   [ "$status" -ne 0 ]
   # Match the refusal text only — the temp path itself contains the word.
-  printf '%s\n' "${output//$TEST_TMP/}" | grep -qi "symlink" \
+  grep -qi "symlink" <<<"${output//$TEST_TMP/}" \
     || fail "expected a symlink refusal; got: $output"
 
   # Real record untouched

@@ -177,5 +177,5 @@ INGEST
   [ "$status" -eq 0 ]
 
   # The ingested entry must NOT appear in the unlinked output.
-  ! printf '%s\n' "$output" | grep -q 'ext-no-edges'
+  ! grep -q 'ext-no-edges' <<<"$output"
 }

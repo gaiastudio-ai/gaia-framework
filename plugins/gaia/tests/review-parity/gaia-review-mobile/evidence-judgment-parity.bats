@@ -37,11 +37,11 @@ teardown() {
   # entitlements, signing, store metadata, privacy manifest, universal links.
   run jq -r '.checks[].subject' "$EVIDENCE"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'entitlements'
-  printf '%s\n' "$output" | grep -q 'signing'
-  printf '%s\n' "$output" | grep -q 'store metadata'
-  printf '%s\n' "$output" | grep -q 'privacy manifest'
-  printf '%s\n' "$output" | grep -q 'universal links'
+  grep -q 'entitlements' <<<"$output"
+  grep -q 'signing' <<<"$output"
+  grep -q 'store metadata' <<<"$output"
+  grep -q 'privacy manifest' <<<"$output"
+  grep -q 'universal links' <<<"$output"
 }
 
 @test "${SKILL_NAME}: tier 2 — judgment maps evidence to findings with severities" {

@@ -44,7 +44,7 @@ _sanitize_child_env() {
   # TAP plan line must match exactly: 1..<N> where N = @test count
   local expected_count
   expected_count="$(grep -c '^@test ' "$suite")"
-  printf '%s\n' "$output" | grep -qE "^1\\.\\.$expected_count\$"
+  grep -qE "^1\\.\\.$expected_count\$" <<<"$output"
 
   # No skipped tests
   local skip_count

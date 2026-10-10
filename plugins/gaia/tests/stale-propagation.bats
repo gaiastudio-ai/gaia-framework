@@ -924,13 +924,13 @@ teardown() { common_teardown; }
   fi
 
   # Block mentions --integration and all three values
-  echo "$block_af" | grep -q '\-\-integration' \
+  grep -q '\-\-integration' <<<"$block_af" \
     || fail "attestation block should mention --integration"
-  echo "$block_af" | grep -q 'available' \
+  grep -q 'available' <<<"$block_af" \
     || fail "attestation block should mention 'available'"
-  echo "$block_af" | grep -q 'missing' \
+  grep -q 'missing' <<<"$block_af" \
     || fail "attestation block should mention 'missing'"
-  echo "$block_af" | grep -q 'unauthorized' \
+  grep -q 'unauthorized' <<<"$block_af" \
     || fail "attestation block should mention 'unauthorized'"
 
   # Absent from all nine gate sites (8 solutioning entry points + dev-story)

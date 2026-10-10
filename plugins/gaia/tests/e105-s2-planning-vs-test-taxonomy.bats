@@ -42,9 +42,9 @@ treehash() { find "$1" -type f -exec shasum -a 256 {} \; | sort | shasum -a 256 
   before="$(treehash "$t")"
   run bash "$MIGRATE" --test-artifacts "$t/test-artifacts" --planning-artifacts "$t/planning-artifacts" --dry-run
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'dry.run|would move|plan' \
+  grep -Eiq 'dry.run|would move|plan' <<<"$output" \
     || { echo "dry-run should report planned moves, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eq 'test-plan|traceability-matrix' \
+  grep -Eq 'test-plan|traceability-matrix' <<<"$output" \
     || { echo "dry-run should name the moved docs, got:" >&2; echo "$output" >&2; false; }
   after="$(treehash "$t")"
   [ "$before" = "$after" ] || { echo "--dry-run mutated the tree" >&2; false; }
@@ -118,7 +118,7 @@ treehash() { find "$1" -type f -exec shasum -a 256 {} \; | sort | shasum -a 256 
   t="$(mktree)"
   run bash "$MIGRATE" --test-artifacts "$t/test-artifacts" --planning-artifacts "$t/planning-artifacts" --migrate
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'manifest|verified [0-9]+ of [0-9]+|gate' \
+  grep -Eiq 'manifest|verified [0-9]+ of [0-9]+|gate' <<<"$output" \
     || { echo "migrate should report a manifest-based completion gate, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -153,7 +153,7 @@ treehash() { find "$1" -type f -exec shasum -a 256 {} \; | sort | shasum -a 256 
     [ -s "$c" ] && { resolved="$c"; break; }
   done
   [ -n "$resolved" ] || { echo "create-epics resolver found no test-plan post-migration" >&2; false; }
-  echo "$resolved" | grep -Eq 'planning-artifacts/(test-plan|test-strategy)\.md$' \
+  grep -Eq 'planning-artifacts/(test-plan|test-strategy)\.md$' <<<"$resolved" \
     || { echo "create-epics must resolve test-plan at planning-artifacts/, got: $resolved" >&2; false; }
   # AF-2026-05-27-8 / Test06 F-007: create-epics setup.sh no longer carries an
   # inline ${PLANNING_ARTIFACTS}/test-plan.md candidate — it delegates to the
@@ -189,5 +189,5 @@ treehash() { find "$1" -type f -exec shasum -a 256 {} \; | sort | shasum -a 256 
 @test "--help prints usage and exits 0" {
   run bash "$MIGRATE" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'migrat'
+  grep -Eiq 'migrat' <<<"$output"
 }

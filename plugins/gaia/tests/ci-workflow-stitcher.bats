@@ -53,9 +53,9 @@ YAML
   [ "$status" -eq 0 ]
 
   # All three job names present in stitched output
-  printf '%s\n' "$output" | grep -q '^  lint:'
-  printf '%s\n' "$output" | grep -q '^  coverage-upload:'
-  printf '%s\n' "$output" | grep -q '^  notify-slack:'
+  grep -q '^  lint:' <<<"$output"
+  grep -q '^  coverage-upload:' <<<"$output"
+  grep -q '^  notify-slack:' <<<"$output"
 }
 
 # ---------- TC-CCL-5: steps_before_gaia / steps_after_gaia splicing ----------
@@ -87,16 +87,16 @@ YAML
   [ "$status" -eq 0 ]
 
   # All step names present
-  printf '%s\n' "$output" | grep -q 'name: user-pre'
-  printf '%s\n' "$output" | grep -q 'name: gaia-checkout'
-  printf '%s\n' "$output" | grep -q 'name: gaia-build'
-  printf '%s\n' "$output" | grep -q 'name: user-post'
+  grep -q 'name: user-pre' <<<"$output"
+  grep -q 'name: gaia-checkout' <<<"$output"
+  grep -q 'name: gaia-build' <<<"$output"
+  grep -q 'name: user-post' <<<"$output"
 
   # Ordering: user-pre BEFORE gaia-checkout BEFORE gaia-build BEFORE user-post
-  line_pre=$(  printf '%s\n' "$output" | grep -n 'name: user-pre'     | head -1 | cut -d: -f1)
-  line_co=$(   printf '%s\n' "$output" | grep -n 'name: gaia-checkout'| head -1 | cut -d: -f1)
-  line_build=$(printf '%s\n' "$output" | grep -n 'name: gaia-build'   | head -1 | cut -d: -f1)
-  line_post=$( printf '%s\n' "$output" | grep -n 'name: user-post'    | head -1 | cut -d: -f1)
+  line_pre=$(  grep -n 'name: user-pre' <<<"$output"     | head -1 | cut -d: -f1)
+  line_co=$(   grep -n 'name: gaia-checkout' <<<"$output"| head -1 | cut -d: -f1)
+  line_build=$(grep -n 'name: gaia-build' <<<"$output"   | head -1 | cut -d: -f1)
+  line_post=$( grep -n 'name: user-post' <<<"$output"    | head -1 | cut -d: -f1)
   [ "$line_pre" -lt "$line_co" ]
   [ "$line_co" -lt "$line_build" ]
   [ "$line_build" -lt "$line_post" ]
@@ -171,9 +171,9 @@ YAML
 
   run bash -c "source '$STITCHER' && gaia_ci_stitch '$WORKDIR/gaia-ci.yml'"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '^  lint:'
+  grep -q '^  lint:' <<<"$output"
   # No injected user-* anything
-  ! printf '%s\n' "$output" | grep -q 'user-'
+  ! grep -q 'user-' <<<"$output"
 }
 
 # ---------- Source-guard sanity ----------
@@ -230,8 +230,8 @@ YAML
 
   run bash -c "source '$STITCHER' && gaia_ci_stitch '$WORKDIR/gaia-ci.yml'"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '# top-level managed comment'
-  printf '%s\n' "$output" | grep -q '# managed-step comment'
+  grep -q '# top-level managed comment' <<<"$output"
+  grep -q '# managed-step comment' <<<"$output"
 }
 
 # ---------- TEST_TMP is NOT required at runtime (Critical 1 fix) ----------
@@ -259,7 +259,7 @@ YAML
   # own temp dir via mktemp.
   run env -u TEST_TMP bash -c "source '$STITCHER' && gaia_ci_stitch '$WORKDIR/gaia-ci.yml'"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'name: user-pre'
+  grep -q 'name: user-pre' <<<"$output"
 }
 
 # ---------- Block-level only: no per-step insert_after/insert_before honored ----------
@@ -292,7 +292,7 @@ YAML
 
   # stray-with-marker MUST land in the steps_before_gaia slot (top of managed
   # steps block), NOT split-inserted after gaia-checkout per its (ignored) marker.
-  line_stray=$(    printf '%s\n' "$output" | grep -n 'name: stray-with-marker' | head -1 | cut -d: -f1)
-  line_checkout=$( printf '%s\n' "$output" | grep -n 'name: gaia-checkout'     | head -1 | cut -d: -f1)
+  line_stray=$(    grep -n 'name: stray-with-marker' <<<"$output" | head -1 | cut -d: -f1)
+  line_checkout=$( grep -n 'name: gaia-checkout' <<<"$output"     | head -1 | cut -d: -f1)
   [ "$line_stray" -lt "$line_checkout" ]
 }

@@ -149,17 +149,17 @@ _assert_availability_identity() {
 
   # The unauthorized remediation must contain the exact dual-path wording
   local _expected_dual="Run \`/design-login\` (API-token sessions), or grant design access when prompted (claude.ai sessions)"
-  echo "$unauth_cux" | grep -qF '/design-login' \
+  grep -qF '/design-login' <<<"$unauth_cux" \
     || fail "create-ux unauthorized remediation should mention /design-login"
-  echo "$unauth_cux" | grep -q 'API-token sessions' \
+  grep -q 'API-token sessions' <<<"$unauth_cux" \
     || fail "create-ux unauthorized remediation should say API-token sessions"
-  echo "$unauth_cux" | grep -q 'grant design access when prompted' \
+  grep -q 'grant design access when prompted' <<<"$unauth_cux" \
     || fail "create-ux unauthorized remediation should say grant design access when prompted"
-  echo "$unauth_dr" | grep -qF '/design-login' \
+  grep -qF '/design-login' <<<"$unauth_dr" \
     || fail "design-review unauthorized remediation should mention /design-login"
-  echo "$unauth_dr" | grep -q 'API-token sessions' \
+  grep -q 'API-token sessions' <<<"$unauth_dr" \
     || fail "design-review unauthorized remediation should say API-token sessions"
-  echo "$unauth_dr" | grep -q 'grant design access when prompted' \
+  grep -q 'grant design access when prompted' <<<"$unauth_dr" \
     || fail "design-review unauthorized remediation should say grant design access when prompted"
 }
 
@@ -186,34 +186,34 @@ _assert_availability_identity() {
   [ -n "$section_dr" ] || fail "availability section not found in design-review"
 
   # No design-probe.sh reference in the sub-block itself
-  if echo "$block_cux" | grep -q 'design-probe\.sh'; then
+  if grep -q 'design-probe\.sh' <<<"$block_cux"; then
     fail "create-ux availability sub-block must not reference design-probe.sh"
   fi
-  if echo "$block_dr" | grep -q 'design-probe\.sh'; then
+  if grep -q 'design-probe\.sh' <<<"$block_dr"; then
     fail "design-review availability sub-block must not reference design-probe.sh"
   fi
 
   # No positive usage of design-probe in the section (bash/run/source)
-  if echo "$section_cux" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+  if grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe' <<<"$section_cux"; then
     fail "create-ux availability section must not use design-probe.sh as a fallback"
   fi
-  if echo "$section_dr" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+  if grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe' <<<"$section_dr"; then
     fail "design-review availability section must not use design-probe.sh as a fallback"
   fi
 
   # No "own probe" / "its own probe" / "probe fallback"
-  if echo "$section_cux" | grep -qiE 'own probe|its own probe|probe fallback'; then
+  if grep -qiE 'own probe|its own probe|probe fallback' <<<"$section_cux"; then
     fail "create-ux availability section must not mention probe fallback"
   fi
-  if echo "$section_dr" | grep -qiE 'own probe|its own probe|probe fallback'; then
+  if grep -qiE 'own probe|its own probe|probe fallback' <<<"$section_dr"; then
     fail "design-review availability section must not mention probe fallback"
   fi
 
   # No --integration pass-through
-  if echo "$section_cux" | grep -q '\-\-integration'; then
+  if grep -q '\-\-integration' <<<"$section_cux"; then
     fail "create-ux availability section must not have --integration pass-through"
   fi
-  if echo "$section_dr" | grep -q '\-\-integration'; then
+  if grep -q '\-\-integration' <<<"$section_dr"; then
     fail "design-review availability section must not have --integration pass-through"
   fi
 }
@@ -234,28 +234,28 @@ _assert_availability_identity() {
   local probe_line
   probe_line="$(grep '_MSG_UNAUTHORIZED=' "$PROBE_SCRIPT")"
   [ -n "$probe_line" ] || fail "design-probe.sh has no _MSG_UNAUTHORIZED"
-  echo "$probe_line" | grep -qF "$_dual_path" \
+  grep -qF "$_dual_path" <<<"$probe_line" \
     || fail "design-probe.sh unauthorized should contain the full dual-path wording"
 
   # Site 2: design-stale-transition.sh unauthorized printf
   local dst_line
   dst_line="$(grep 'unauthorized.*Run' "$STALE_DRIVER")"
   [ -n "$dst_line" ] || fail "design-stale-transition.sh has no unauthorized remediation line"
-  echo "$dst_line" | grep -qF "$_dual_path" \
+  grep -qF "$_dual_path" <<<"$dst_line" \
     || fail "design-stale-transition.sh unauthorized should contain the full dual-path wording"
 
   # Site 3: lib/design-gate.sh _dg_absent_remediation
   local absent_line
   absent_line="$(grep '_dg_absent_remediation=' "$GATE_LIB")"
   [ -n "$absent_line" ] || fail "design-gate.sh has no _dg_absent_remediation"
-  echo "$absent_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$absent_line" \
     || fail "design-gate.sh absent remediation should contain the dual-path wording"
 
   # Site 4: lib/design-gate.sh _dg_halt_remediation
   local halt_line
   halt_line="$(grep '_dg_halt_remediation=' "$GATE_LIB")"
   [ -n "$halt_line" ] || fail "design-gate.sh has no _dg_halt_remediation"
-  echo "$halt_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$halt_line" \
     || fail "design-gate.sh halt remediation should contain the dual-path wording"
 
   # Order check: design-login must appear before "grant design access" at each site
@@ -307,15 +307,15 @@ _assert_availability_identity() {
     || fail "create-ux availability extraction is $line_count lines (expected <= 20)"
 
   # Sentinel must be absent (proves extraction is bounded)
-  if printf '%s\n' "$section" | grep -qF "$sentinel"; then
+  if grep -qF "$sentinel" <<<"$section"; then
     fail "create-ux extraction should not contain the sentinel — extraction is not bounded"
   fi
 
   # Discovery text must be absent
-  if printf '%s\n' "$section" | grep -q 'Discover an existing design system'; then
+  if grep -q 'Discover an existing design system' <<<"$section"; then
     fail "create-ux extraction must not contain discovery text"
   fi
-  if printf '%s\n' "$section" | grep -q 'Pass 2'; then
+  if grep -q 'Pass 2' <<<"$section"; then
     fail "create-ux extraction must not contain Pass 2 reference"
   fi
 
@@ -364,12 +364,12 @@ _assert_availability_identity() {
     || fail "design-review availability extraction is $line_count lines (expected <= 20)"
 
   # Sentinel must be absent
-  if printf '%s\n' "$section" | grep -qF "$sentinel"; then
+  if grep -qF "$sentinel" <<<"$section"; then
     fail "design-review extraction should not contain the sentinel — extraction is not bounded"
   fi
 
   # Stale-resume heading itself must be absent
-  if printf '%s\n' "$section" | grep -q 'Stale-resume'; then
+  if grep -q 'Stale-resume' <<<"$section"; then
     fail "design-review extraction must not contain Stale-resume text"
   fi
 }
@@ -597,7 +597,7 @@ _assert_availability_identity() {
   [ -n "$block" ] || fail "availability sub-block missing from create-ux — non-vacuity guard"
 
   # The sub-block itself must not reference design-probe
-  if echo "$block" | grep -q 'design-probe'; then
+  if grep -q 'design-probe' <<<"$block"; then
     fail "create-ux availability sub-block must not reference design-probe"
   fi
 
@@ -606,7 +606,7 @@ _assert_availability_identity() {
   section="$(_extract_availability_section "$SKILL_MD_CUX")"
   [ -n "$section" ] || fail "availability section not found in create-ux"
 
-  if echo "$section" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+  if grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe' <<<"$section"; then
     fail "create-ux availability section must not use design-probe as a fallback"
   fi
 }
@@ -623,7 +623,7 @@ _assert_availability_identity() {
   [ -n "$block" ] || fail "availability sub-block missing from design-review — non-vacuity guard"
 
   # The sub-block itself must not reference design-probe
-  if echo "$block" | grep -q 'design-probe'; then
+  if grep -q 'design-probe' <<<"$block"; then
     fail "design-review availability sub-block must not reference design-probe"
   fi
 
@@ -632,7 +632,7 @@ _assert_availability_identity() {
   section="$(_extract_availability_section "$SKILL_MD_DR")"
   [ -n "$section" ] || fail "availability section not found in design-review"
 
-  if echo "$section" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+  if grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe' <<<"$section"; then
     fail "design-review availability section must not use design-probe as a fallback"
   fi
 }
@@ -658,10 +658,10 @@ _assert_availability_identity() {
   [ -n "$section_cux" ] || fail "availability section not found in create-ux"
   [ -n "$section_dr" ] || fail "availability section not found in design-review"
 
-  if echo "$section_cux" | grep -q '\-\-integration'; then
+  if grep -q '\-\-integration' <<<"$section_cux"; then
     fail "create-ux availability section must not have --integration"
   fi
-  if echo "$section_dr" | grep -q '\-\-integration'; then
+  if grep -q '\-\-integration' <<<"$section_dr"; then
     fail "design-review availability section must not have --integration"
   fi
 }
@@ -677,7 +677,7 @@ _assert_availability_identity() {
   msg_line="$(grep '_MSG_UNAUTHORIZED=' "$PROBE_SCRIPT")"
   [ -n "$msg_line" ] || fail "design-probe.sh has no _MSG_UNAUTHORIZED"
 
-  echo "$msg_line" | grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$msg_line" \
     || fail "design-probe.sh unauthorized should contain the full dual-path wording"
 }
 
@@ -692,7 +692,7 @@ _assert_availability_identity() {
   unauth_line="$(grep 'unauthorized.*Run\|unauthorized.*design-login' "$STALE_DRIVER")"
   [ -n "$unauth_line" ] || fail "design-stale-transition.sh has no unauthorized remediation line"
 
-  echo "$unauth_line" | grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$unauth_line" \
     || fail "stale-transition unauthorized should contain the full dual-path wording"
 }
 
@@ -707,7 +707,7 @@ _assert_availability_identity() {
   absent_line="$(grep '_dg_absent_remediation=' "$GATE_LIB")"
   [ -n "$absent_line" ] || fail "design-gate.sh has no _dg_absent_remediation"
 
-  echo "$absent_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$absent_line" \
     || fail "design-gate.sh absent remediation should contain the dual-path wording"
 }
 
@@ -722,7 +722,7 @@ _assert_availability_identity() {
   halt_line="$(grep '_dg_halt_remediation=' "$GATE_LIB")"
   [ -n "$halt_line" ] || fail "design-gate.sh has no _dg_halt_remediation"
 
-  echo "$halt_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$halt_line" \
     || fail "design-gate.sh halt remediation should contain the dual-path wording"
 }
 
@@ -738,7 +738,7 @@ _assert_availability_identity() {
   ts_section="$(sed -n '/<section id="troubleshooting">/,/<\/section>/p' "$doc_page")"
   [ -n "$ts_section" ] || fail "troubleshooting section not found in create-ux doc page"
 
-  echo "$ts_section" | grep -qi 'unavailable\|unauthorized' \
+  grep -qi 'unavailable\|unauthorized' <<<"$ts_section" \
     || fail "create-ux doc page troubleshooting should mention unavailable or unauthorized"
 }
 
@@ -750,7 +750,7 @@ _assert_availability_identity() {
   ts_section="$(sed -n '/<section id="troubleshooting">/,/<\/section>/p' "$doc_page")"
   [ -n "$ts_section" ] || fail "troubleshooting section not found in design-review doc page"
 
-  echo "$ts_section" | grep -qi 'unavailable\|unauthorized' \
+  grep -qi 'unavailable\|unauthorized' <<<"$ts_section" \
     || fail "design-review doc page troubleshooting should mention unavailable or unauthorized"
 }
 

@@ -40,7 +40,7 @@ platforms: [server]
 YAML
   run bash "$ADAPTER" --surface browser --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qi "not configured"
+  grep -qi "not configured" <<<"$output"
 }
 
 @test "browser SKIPPED output does not contain UNVERIFIED" {
@@ -49,7 +49,7 @@ project_name: test-project
 platforms: [server]
 YAML
   run bash "$ADAPTER" --surface browser --config "$TEST_TMP/.gaia/config/project-config.yaml"
-  ! echo "$output" | grep -qi "UNVERIFIED"
+  ! grep -qi "UNVERIFIED" <<<"$output"
 }
 
 @test "browser SKIPPED output does not contain FAILED" {
@@ -58,7 +58,7 @@ project_name: test-project
 platforms: [server]
 YAML
   run bash "$ADAPTER" --surface browser --config "$TEST_TMP/.gaia/config/project-config.yaml"
-  ! echo "$output" | grep -qi "FAILED"
+  ! grep -qi "FAILED" <<<"$output"
 }
 
 # ---------- AC2: api SKIPPED when server not in platforms ----------

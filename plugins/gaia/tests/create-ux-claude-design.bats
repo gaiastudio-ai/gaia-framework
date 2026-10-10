@@ -68,7 +68,7 @@ _assert_not_in_file() {
 # (case-insensitive, fixed-string match).
 _assert_not_in_text() {
   local pattern="$1" text="$2" context="${3:-}"
-  if printf '%s' "$text" | grep -qiF "$pattern"; then
+  if grep -qiF "$pattern" <<<"$text"; then
     printf 'FAIL: pattern "%s" found %s\n' "$pattern" "$context" >&2
     return 1
   fi
@@ -79,7 +79,7 @@ _assert_not_in_text() {
 # replacement for the old phrasing-based _assert_no_auto_bind_instruction.
 _assert_structured_bind_marker() {
   local text="$1" context="${2:-}"
-  printf '%s' "$text" | grep -qF 'confirm-bind.sh' \
+  grep -qF 'confirm-bind.sh' <<<"$text" \
     || { printf 'FAIL: confirm-bind.sh not called %s\n' "$context" >&2; return 1; }
 }
 
@@ -154,8 +154,8 @@ _run_pub() {
 _assert_read_before_write() {
   local file="$1"
   local read_line write_line
-  read_line="$(printf '%s\n' "$output" | grep -nF "READ_FIRST $file" | head -1 | cut -d: -f1)"
-  write_line="$(printf '%s\n' "$output" | grep -nF "WRITE $file" | head -1 | cut -d: -f1)"
+  read_line="$(grep -nF "READ_FIRST $file" <<<"$output" | head -1 | cut -d: -f1)"
+  write_line="$(grep -nF "WRITE $file" <<<"$output" | head -1 | cut -d: -f1)"
   [ -n "$read_line" ]  || fail "no READ_FIRST for $file"
   [ -n "$write_line" ] || fail "no WRITE for $file"
   [ "$read_line" -lt "$write_line" ] || fail "READ_FIRST ($read_line) not before WRITE ($write_line) for $file"
@@ -569,8 +569,8 @@ FIXTURE
   local steps
   steps="$(grep '^### Step' "$SKILL_MD")"
   local discovery_line pub_line
-  discovery_line="$(printf '%s\n' "$steps" | grep -niF 'Discovery' | head -1 | cut -d: -f1)"
-  pub_line="$(printf '%s\n' "$steps" | grep -niE 'Screen|Publication' | head -1 | cut -d: -f1)"
+  discovery_line="$(grep -niF 'Discovery' <<<"$steps" | head -1 | cut -d: -f1)"
+  pub_line="$(grep -niE 'Screen|Publication' <<<"$steps" | head -1 | cut -d: -f1)"
   [ -n "$discovery_line" ] || fail "no Discovery step heading"
   [ -n "$pub_line" ]        || fail "no Publication step heading"
   [ "$discovery_line" -lt "$pub_line" ]
@@ -580,42 +580,42 @@ FIXTURE
   local block
   block="$(_extract_step_block "$SKILL_MD" "Discovery")"
   [ -n "$block" ] || fail "no Discovery step block"
-  printf '%s' "$block" | grep -qF 'format-candidates.sh'
+  grep -qF 'format-candidates.sh' <<<"$block"
 }
 
 @test "(AC1) SKILL.md checks existing record before init (re-run path)" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Discovery")"
   [ -n "$block" ] || fail "no Discovery step block"
-  printf '%s' "$block" | grep -qiE 'design-record\.sh status|record already exists|existing record'
+  grep -qiE 'design-record\.sh status|record already exists|existing record' <<<"$block"
 }
 
 @test "(AC2) questionnaire covers seven areas in SKILL.md" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Questionnaire")"
   [ -n "$block" ] || fail "no Questionnaire step block"
-  printf '%s' "$block" | grep -qiF 'colors'
-  printf '%s' "$block" | grep -qiF 'logo'
-  printf '%s' "$block" | grep -qiF 'typography'
-  printf '%s' "$block" | grep -qiE 'spacing.scale|spacing_scale'
-  printf '%s' "$block" | grep -qiE 'style.and.tone|style_tone'
-  printf '%s' "$block" | grep -qiE 'component.inventory|component_inventory'
-  printf '%s' "$block" | grep -qiF 'platforms'
+  grep -qiF 'colors' <<<"$block"
+  grep -qiF 'logo' <<<"$block"
+  grep -qiF 'typography' <<<"$block"
+  grep -qiE 'spacing.scale|spacing_scale' <<<"$block"
+  grep -qiE 'style.and.tone|style_tone' <<<"$block"
+  grep -qiE 'component.inventory|component_inventory' <<<"$block"
+  grep -qiF 'platforms' <<<"$block"
 }
 
 @test "(AC2) SKILL.md calls should-skip-questionnaire.sh" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Questionnaire")"
   [ -n "$block" ] || fail "no Questionnaire step block"
-  printf '%s' "$block" | grep -qF 'should-skip-questionnaire.sh'
+  grep -qF 'should-skip-questionnaire.sh' <<<"$block"
 }
 
 @test "(AC2) deferral answers described as verbatim-recorded" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Questionnaire")"
   [ -n "$block" ] || fail "no Questionnaire step block"
-  printf '%s' "$block" | grep -qiF 'verbatim'
-  printf '%s' "$block" | grep -qiE 'framework-chosen|none'
+  grep -qiF 'verbatim' <<<"$block"
+  grep -qiE 'framework-chosen|none' <<<"$block"
 }
 
 @test "(AC2) questionnaire record path uses artifact-path resolver, not hardcoded" {
@@ -656,16 +656,16 @@ FIXTURE
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qE 'plan-publication\.sh.*--local-manifest.*--remote-listing.*--last-published'
+  grep -qE 'plan-publication\.sh.*--local-manifest.*--remote-listing.*--last-published' <<<"$block"
 }
 
 @test "(AC5) SKILL.md Publication step reads the plan and executes in order" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qiE 'read the operation plan|read.*(plan|output).*from stdout'
-  printf '%s' "$block" | grep -qiE 'execute each (line|operation)|execute.*(plan|operations).*in'
-  printf '%s' "$block" | grep -qiE 'in the order emitted|in order|in the emitted order'
+  grep -qiE 'read the operation plan|read.*(plan|output).*from stdout' <<<"$block"
+  grep -qiE 'execute each (line|operation)|execute.*(plan|operations).*in' <<<"$block"
+  grep -qiE 'in the order emitted|in order|in the emitted order' <<<"$block"
   _assert_not_in_text "sort" "$block" "(must not sort the operation plan)"
   _assert_not_in_text "reverse" "$block" "(must not reverse the operation plan)"
 }
@@ -678,7 +678,7 @@ FIXTURE
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qiE 'screen specifications|specifications and components'
+  grep -qiE 'screen specifications|specifications and components' <<<"$block"
 }
 
 @test "(AC1/AC4) skill never writes design-record.yaml directly" {
@@ -695,8 +695,8 @@ FIXTURE
   local block
   block="$(_extract_step_block "$SKILL_MD" "Creation")"
   [ -n "$block" ] || fail "no Creation step block"
-  printf '%s' "$block" | grep -qiE 'do not.*init|NOT.*init|failure|unavailable'
-  printf '%s' "$block" | grep -qiE 'partial|project.*(id|reference).*cleanup|resume|discard'
+  grep -qiE 'do not.*init|NOT.*init|failure|unavailable' <<<"$block"
+  grep -qiE 'partial|project.*(id|reference).*cleanup|resume|discard' <<<"$block"
 }
 
 @test "(AC1) discovered-via values match each verb's own allowed set" {
@@ -812,9 +812,9 @@ FIXTURE
   local step_section
   step_section="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$DOC_PAGE")"
   [ -n "$step_section" ] || fail "no step-list found in doc page"
-  printf '%s' "$step_section" | grep -qiE 'discovery|design.system discovery'
-  printf '%s' "$step_section" | grep -qiE 'questionnaire|stakeholder'
-  printf '%s' "$step_section" | grep -qiE 'publication|screen.*specification'
+  grep -qiE 'discovery|design.system discovery' <<<"$step_section"
+  grep -qiE 'questionnaire|stakeholder' <<<"$step_section"
+  grep -qiE 'publication|screen.*specification' <<<"$step_section"
 }
 
 @test "(AC5) doc page does not describe text-only fallback as primary" {
@@ -976,14 +976,14 @@ FIXTURE
   local block
   block="$(_extract_step_block "$SKILL_MD" "Discovery")"
   [ -n "$block" ] || fail "no Discovery step block"
-  printf '%s' "$block" | grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data'
+  grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data' <<<"$block"
 }
 
 @test "(AC4) Publication step carries boundary-marker data-treatment instruction" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data'
+  grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data' <<<"$block"
 }
 
 @test "(AC4) boundary-marker instruction mutant: removing it makes test fail" {
@@ -991,7 +991,7 @@ FIXTURE
   local fake_block="### Step 99 — Fake
 Read the project files and use them."
   local found=false
-  printf '%s' "$fake_block" | grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data' || found=true
+  grep -qiE 'boundary.marker|data.*not.*instruction|treat.*as.*data|untrusted.*data' <<<"$fake_block" || found=true
   [ "$found" = "true" ] || fail "mutant block should NOT contain boundary-marker instruction"
 }
 
@@ -1057,17 +1057,17 @@ Read the project files and use them."
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qF 'REFRESH_MANIFEST' || fail "REFRESH_MANIFEST not in Publication step"
-  printf '%s' "$block" | grep -qF 'register_assets' || fail "register_assets not in Publication step"
-  printf '%s' "$block" | grep -qF 'build-manifest-cards' || fail "build-manifest-cards not in Publication step"
+  grep -qF 'REFRESH_MANIFEST' <<<"$block" || fail "REFRESH_MANIFEST not in Publication step"
+  grep -qF 'register_assets' <<<"$block" || fail "register_assets not in Publication step"
+  grep -qF 'build-manifest-cards' <<<"$block" || fail "build-manifest-cards not in Publication step"
 }
 
 @test "(AC1) Step 10 prose documents dsCard annotation on spec files" {
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qF '@dsCard' || fail "@dsCard not in Publication step"
-  printf '%s' "$block" | grep -qF 'group=' || fail "group= not in Publication step"
+  grep -qF '@dsCard' <<<"$block" || fail "@dsCard not in Publication step"
+  grep -qF 'group=' <<<"$block" || fail "group= not in Publication step"
 }
 
 @test "(AC-EC1) REFRESH_MANIFEST appears even when all files are SKIP_UNCHANGED" {
@@ -1091,7 +1091,7 @@ Read the project files and use them."
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qF 'design-last-published.json' || fail "design-last-published.json not in Publication step --last-published context"
+  grep -qF 'design-last-published.json' <<<"$block" || fail "design-last-published.json not in Publication step --last-published context"
 }
 
 # ===========================================================================
@@ -1181,9 +1181,9 @@ Read the project files and use them."
   [ -n "$block" ] || fail "no Creation step block"
   # Assert the ordered sequence: create_project before finalize_plan before write_files
   local cp_line fp_line wf_line
-  cp_line="$(printf '%s\n' "$block" | grep -nF 'create_project' | head -1 | cut -d: -f1 || true)"
-  fp_line="$(printf '%s\n' "$block" | grep -nF 'finalize_plan' | head -1 | cut -d: -f1 || true)"
-  wf_line="$(printf '%s\n' "$block" | grep -nF 'write_files' | head -1 | cut -d: -f1 || true)"
+  cp_line="$(grep -nF 'create_project' <<<"$block" | head -1 | cut -d: -f1 || true)"
+  fp_line="$(grep -nF 'finalize_plan' <<<"$block" | head -1 | cut -d: -f1 || true)"
+  wf_line="$(grep -nF 'write_files' <<<"$block" | head -1 | cut -d: -f1 || true)"
   [ -n "$cp_line" ] || fail "create_project not found in Creation step"
   [ -n "$fp_line" ] || fail "finalize_plan not found in Creation step"
   [ -n "$wf_line" ] || fail "write_files not found in Creation step"
@@ -1196,12 +1196,12 @@ Read the project files and use them."
   # Artifact quickstart with intent design and then publish
   local full
   full="$(cat "$SKILL_MD")"
-  printf '%s' "$full" | grep -qiE 'quickstart.*intent.*design' \
+  grep -qiE 'quickstart.*intent.*design' <<<"$full" \
     || fail "no Artifact quickstart with intent design in SKILL.md"
   # quickstart must appear before publish (in the procedure text)
   local qs_line pub_line
-  qs_line="$(printf '%s\n' "$full" | grep -niE 'quickstart.*intent.*design' | head -1 | cut -d: -f1 || true)"
-  pub_line="$(printf '%s\n' "$full" | grep -niE 'action.*publish.*type_url|publish.*type_url|type_url.*publish' | head -1 | cut -d: -f1 || true)"
+  qs_line="$(grep -niE 'quickstart.*intent.*design' <<<"$full" | head -1 | cut -d: -f1 || true)"
+  pub_line="$(grep -niE 'action.*publish.*type_url|publish.*type_url|type_url.*publish' <<<"$full" | head -1 | cut -d: -f1 || true)"
   [ -n "$qs_line" ] || fail "no Artifact quickstart with intent design line-number in SKILL.md"
   [ -n "$pub_line" ] || fail "no Artifact publish with type_url found in SKILL.md"
   [ "$qs_line" -lt "$pub_line" ] || fail "quickstart (line $qs_line) not before publish (line $pub_line)"
@@ -1218,7 +1218,7 @@ Read the project files and use them."
     lines="$(grep -niF 'create_project' "$f" || true)"
     [ -z "$lines" ] && continue
     # No line should mention screens or flows as a project type
-    if printf '%s' "$lines" | grep -qiE 'screen|flow'; then
+    if grep -qiE 'screen|flow' <<<"$lines"; then
       fail "create_project for screens/flows found in $f"
     fi
   done < <(find "$SKILL_DIR" "$SHARED_SCRIPTS" -type f \( -name '*.md' -o -name '*.sh' \) -print0)
@@ -1229,17 +1229,17 @@ Read the project files and use them."
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention ds_attachment_mode: token-by-value (or token-by-value recording)
-  printf '%s' "$full" | grep -qF 'token-by-value' \
+  grep -qF 'token-by-value' <<<"$full" \
     || fail "token-by-value not mentioned in SKILL.md"
   # Must mention per-file read of project/canvas.json
-  printf '%s' "$full" | grep -qF 'project/canvas.json' \
+  grep -qF 'project/canvas.json' <<<"$full" \
     || fail "project/canvas.json not mentioned in SKILL.md"
   # Must NOT use page: true for the read-back
-  if printf '%s' "$full" | grep -iE 'page.*true.*canvas|canvas.*page.*true' | grep -qv '^[[:space:]]*#'; then
+  if grep -iE 'page.*true.*canvas|canvas.*page.*true' <<<"$full" | grep -qv '^[[:space:]]*#'; then
     fail "page: true used near canvas read-back"
   fi
   # Must explicitly prohibit page: true (never / not / do not)
-  printf '%s' "$full" | grep -qiE 'never.*page.*true|not.*page.*true' \
+  grep -qiE 'never.*page.*true|not.*page.*true' <<<"$full" \
     || fail "no prohibition of page: true found in SKILL.md"
 }
 
@@ -1247,10 +1247,10 @@ Read the project files and use them."
   local full
   full="$(cat "$SKILL_MD")"
   # Must state that the read-back runs AFTER first content publish
-  printf '%s' "$full" | grep -qiE 'after.*first.*content.*publish|after.*first.*publish.*content' \
+  grep -qiE 'after.*first.*content.*publish|after.*first.*publish.*content' <<<"$full" \
     || fail "no 'after first content publish' statement for canvas read-back"
   # Must state NOT to read between creation and first publish
-  printf '%s' "$full" | grep -qiE 'not.*read.*between.*creation.*publish|do not.*read.*canvas.*between|no.*read.*before.*first.*content' \
+  grep -qiE 'not.*read.*between.*creation.*publish|do not.*read.*canvas.*between|no.*read.*before.*first.*content' <<<"$full" \
     || fail "no prohibition on reading between creation and first publish"
 }
 
@@ -1259,10 +1259,10 @@ Read the project files and use them."
   block="$(_extract_step_block "$SKILL_MD" "Questionnaire")"
   [ -n "$block" ] || fail "no Questionnaire step block"
   # Must state writes target design-system
-  printf '%s' "$block" | grep -qiE 'design.system\b' \
+  grep -qiE 'design.system\b' <<<"$block" \
     || fail "design-system not mentioned in Questionnaire step"
   # Must not route writes to product design project in the questionnaire step
-  if printf '%s' "$block" | grep -qiE 'product.design.*write|write.*product.design'; then
+  if grep -qiE 'product.design.*write|write.*product.design' <<<"$block"; then
     fail "product design write found in Questionnaire step"
   fi
 }
@@ -1272,9 +1272,9 @@ Read the project files and use them."
   full="$(cat "$SKILL_MD")"
   # Must gate screen authoring on both design_system_project and
   # product_design_project being non-null
-  printf '%s' "$full" | grep -qiE 'design.system.project.*non.null|design_system_project.*non.null' \
+  grep -qiE 'design.system.project.*non.null|design_system_project.*non.null' <<<"$full" \
     || fail "no gate on design_system_project non-null"
-  printf '%s' "$full" | grep -qiE 'product.design.project.*non.null|product_design_project.*non.null' \
+  grep -qiE 'product.design.project.*non.null|product_design_project.*non.null' <<<"$full" \
     || fail "no gate on product_design_project non-null"
 }
 
@@ -1284,15 +1284,15 @@ Read the project files and use them."
   resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve Product Design Project section"
   # Must mention a halt when the Design artifact surface is unavailable
-  printf '%s' "$resolve_block" | grep -qiE 'artifact.*surface.*halt|halt.*artifact.*surface|Design.*artifact.*unavailable.*halt|halt.*Design.*unavailable' \
+  grep -qiE 'artifact.*surface.*halt|halt.*artifact.*surface|Design.*artifact.*unavailable.*halt|halt.*Design.*unavailable' <<<"$resolve_block" \
     || fail "no halt on unavailable Design artifact surface"
   # Must mention remediation
-  printf '%s' "$resolve_block" | grep -qiE 'Artifact.*tool.*available|enable.*Artifact|Design artifact surface' \
+  grep -qiE 'Artifact.*tool.*available|enable.*Artifact|Design artifact surface' <<<"$resolve_block" \
     || fail "no remediation for unavailable Design artifact surface"
   # Must NOT fall back to design-system project for screens
   local full
   full="$(cat "$SKILL_MD")"
-  if printf '%s' "$full" | grep -qiE 'fallback.*design.system.*screen|screen.*fallback.*design.system'; then
+  if grep -qiE 'fallback.*design.system.*screen|screen.*fallback.*design.system' <<<"$full"; then
     fail "fallback to design-system project for screens found"
   fi
 }
@@ -1302,13 +1302,13 @@ Read the project files and use them."
   block="$(_extract_step_block "$SKILL_MD" "Discovery")"
   [ -n "$block" ] || fail "no Discovery step block"
   # Must mention brand-style
-  printf '%s' "$block" | grep -qF 'brand-style' \
+  grep -qF 'brand-style' <<<"$block" \
     || fail "brand-style not in Discovery step"
   # Must mention finalize_plan on the brand-style path
-  printf '%s' "$block" | grep -qF 'finalize_plan' \
+  grep -qF 'finalize_plan' <<<"$block" \
     || fail "finalize_plan not in Discovery step"
   # Must mention product design project is created regardless
-  printf '%s' "$block" | grep -qiE 'product.design.*project.*created|product.design.*regardless|create.*product.design' \
+  grep -qiE 'product.design.*project.*created|product.design.*regardless|create.*product.design' <<<"$block" \
     || fail "product design project creation not mentioned on brand-style path"
 }
 
@@ -1317,30 +1317,30 @@ Read the project files and use them."
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   # Must mention first-publication as a distinct code path
-  printf '%s' "$block" | grep -qiE 'first.publication|first.publish' \
+  grep -qiE 'first.publication|first.publish' <<<"$block" \
     || fail "first-publication branch not in Step 10"
   # Must mention token cards on the first-publication path
-  printf '%s' "$block" | grep -qiE 'token.*card|card.*token' \
+  grep -qiE 'token.*card|card.*token' <<<"$block" \
     || fail "token cards not mentioned in first-publication branch"
   # First-publication instruction must use the sourced form, not CLI
   # Extract the first-publication paragraph (item 4 in design-system pass)
   local fp_para
-  fp_para="$(printf '%s' "$block" | awk '/[Ff]irst.publication branch/{found=1} found{print} /^[0-9]+\./{if(found && !/[Ff]irst.publication/) exit}')"
+  fp_para="$(awk '/[Ff]irst.publication branch/{found=1} found{print} /^[0-9]+\./{if(found && !/[Ff]irst.publication/) exit}' <<<"$block")"
   [ -n "$fp_para" ] || fail "no first-publication paragraph"
   # Must say "Source" (not "Run") for build-manifest-cards.sh
-  printf '%s' "$fp_para" | grep -qiE '[Ss]ource.*build-manifest-cards' \
+  grep -qiE '[Ss]ource.*build-manifest-cards' <<<"$fp_para" \
     || fail "first-publication does not source build-manifest-cards.sh"
   # Must call build_manifest_cards (the function, not the script CLI)
-  printf '%s' "$fp_para" | grep -qF 'build_manifest_cards' \
+  grep -qF 'build_manifest_cards' <<<"$fp_para" \
     || fail "first-publication does not call build_manifest_cards function"
   # Must pass --existing (for /dev/null on first publish)
-  printf '%s' "$fp_para" | grep -qF -- '--existing' \
+  grep -qF -- '--existing' <<<"$fp_para" \
     || fail "first-publication call missing --existing flag"
   # Must pass --project
-  printf '%s' "$fp_para" | grep -qF -- '--project' \
+  grep -qF -- '--project' <<<"$fp_para" \
     || fail "first-publication call missing --project flag"
   # Must pass --local-specs
-  printf '%s' "$fp_para" | grep -qF -- '--local-specs' \
+  grep -qF -- '--local-specs' <<<"$fp_para" \
     || fail "first-publication call missing --local-specs flag"
 }
 
@@ -1372,10 +1372,10 @@ Read the project files and use them."
   # design project bind — those come AFTER init and that is correct.
   # Extract the text before the Resolve procedure to check the DS bind order.
   local ds_part
-  ds_part="$(printf '%s' "$block" | awk '/^### Resolve/{exit} {print}')"
+  ds_part="$(awk '/^### Resolve/{exit} {print}' <<<"$block")"
   local cb_lines init_line
   cb_lines="$(printf '%s\n' "$ds_part" | grep -nF 'confirm-bind.sh' | cut -d: -f1 || true)"
-  init_line="$(printf '%s\n' "$ds_part" | grep -nF 'design-record.sh init' | head -1 | cut -d: -f1 || true)"
+  init_line="$(grep -nF 'design-record.sh init' <<<"$ds_part" | head -1 | cut -d: -f1 || true)"
   [ -n "$cb_lines" ] || fail "confirm-bind.sh not in Discovery step (before Resolve)"
   [ -n "$init_line" ] || fail "design-record.sh init not in Discovery step"
   local cb_l
@@ -1389,14 +1389,14 @@ Read the project files and use them."
   local resolve_block
   resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve procedure"
-  printf '%s' "$resolve_block" | grep -qF 'confirm-bind.sh' \
+  grep -qF 'confirm-bind.sh' <<<"$resolve_block" \
     || fail "confirm-bind.sh not in Resolve procedure"
 
   # Created path (Step 4) does NOT call confirm-bind.sh
   local creation_block
   creation_block="$(_extract_step_block "$SKILL_MD" "Creation")"
   [ -n "$creation_block" ] || fail "no Creation step block"
-  if printf '%s' "$creation_block" | grep -qF 'confirm-bind.sh'; then
+  if grep -qF 'confirm-bind.sh' <<<"$creation_block"; then
     fail "confirm-bind.sh called on the created path (Step 4)"
   fi
   # Created path in Resolve procedure does NOT call confirm-bind.sh
@@ -1405,7 +1405,7 @@ Read the project files and use them."
   if [ -z "$created_exemption" ]; then
     local cb_rline create_rline
     cb_rline="$(printf '%s\n' "$resolve_block" | grep -nF 'confirm-bind.sh' | tail -1 | cut -d: -f1 || true)"
-    create_rline="$(printf '%s\n' "$resolve_block" | grep -niE 'create the product design project|create.*product.*design' | head -1 | cut -d: -f1 || true)"
+    create_rline="$(grep -niE 'create the product design project|create.*product.*design' <<<"$resolve_block" | head -1 | cut -d: -f1 || true)"
     if [ -n "$cb_rline" ] && [ -n "$create_rline" ]; then
       [ "$cb_rline" -lt "$create_rline" ] \
         || fail "confirm-bind.sh appears after create in Resolve procedure"
@@ -1426,7 +1426,7 @@ Read the project files and use them."
   local line
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    printf '%s' "$line" | grep -qF 'finalize_plan' \
+    grep -qF 'finalize_plan' <<<"$line" \
       || fail "write op without finalize_plan on same line: $line"
   done <<< "$write_lines"
 }
@@ -1435,10 +1435,10 @@ Read the project files and use them."
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention the DesignSync authorization error and /design-login
-  printf '%s' "$full" | grep -qF '/design-login' \
+  grep -qF '/design-login' <<<"$full" \
     || fail "/design-login not mentioned in SKILL.md"
   # The halt must be present
-  printf '%s' "$full" | grep -qiE 'authorization.*halt|halt.*authorization|needs.*authorization.*halt' \
+  grep -qiE 'authorization.*halt|halt.*authorization|needs.*authorization.*halt' <<<"$full" \
     || fail "no authorization error halt in SKILL.md"
 }
 
@@ -1446,11 +1446,11 @@ Read the project files and use them."
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention per-file read-back
-  printf '%s' "$full" | grep -qiE 'per.file.*read|read.*path.*canvas' \
+  grep -qiE 'per.file.*read|read.*path.*canvas' <<<"$full" \
     || fail "per-file read-back not mentioned"
   # Must contain the exact prohibition phrase: "never `page: true`" or
   # "uses `path`, never `page: true`"
-  printf '%s' "$full" | grep -qF 'never `page: true`' \
+  grep -qF 'never `page: true`' <<<"$full" \
     || fail "no prohibition phrase 'never \`page: true\`' found"
   # No line that says "use page: true" or "with page: true" positively.
   # Match the positive directive pattern, excluding the prohibition line itself.
@@ -1466,7 +1466,7 @@ Read the project files and use them."
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention halting when quickstart type is unusable
-  printf '%s' "$full" | grep -qiE 'quickstart.*unusable.*halt|unusable.*type.*halt|halt.*unusable.*type|halt.*remediation.*design' \
+  grep -qiE 'quickstart.*unusable.*halt|unusable.*type.*halt|halt.*unusable.*type|halt.*remediation.*design' <<<"$full" \
     || fail "no halt for unusable quickstart type"
 }
 
@@ -1483,12 +1483,12 @@ Read the project files and use them."
   local line_num=0
   while IFS= read -r line; do
     line_num=$((line_num + 1))
-    if printf '%s' "$line" | grep -q '^@test '; then
+    if grep -q '^@test ' <<<"$line"; then
       # Flush previous block
       if [ "$in_block" = true ] && [ -n "$block" ]; then
-        if printf '%s' "$block" | grep -qF 'screens/' && \
-           printf '%s' "$block" | grep -qF 'components/' && \
-           ! printf '%s' "$block" | grep -qF -- '--project'; then
+        if grep -qF 'screens/' <<<"$block" && \
+           grep -qF 'components/' <<<"$block" && \
+           ! grep -qF -- '--project' <<<"$block"; then
           violations="${violations}line ${block_start}: mixed screens+components without --project\n"
         fi
       fi
@@ -1502,9 +1502,9 @@ ${line}"
   done < "$test_file"
   # Flush last block
   if [ "$in_block" = true ] && [ -n "$block" ]; then
-    if printf '%s' "$block" | grep -qF 'screens/' && \
-       printf '%s' "$block" | grep -qF 'components/' && \
-       ! printf '%s' "$block" | grep -qF -- '--project'; then
+    if grep -qF 'screens/' <<<"$block" && \
+       grep -qF 'components/' <<<"$block" && \
+       ! grep -qF -- '--project' <<<"$block"; then
       violations="${violations}line ${block_start}: mixed screens+components without --project\n"
     fi
   fi
@@ -1529,7 +1529,7 @@ ${line}"
   [ -n "$block" ] || fail "no Publication step block"
 
   # 1. Explicit product-design routing statement
-  printf '%s' "$block" | grep -qiE 'product.design.*pass|product.design.*screen|screen.*product.design|screen.*Artifact' \
+  grep -qiE 'product.design.*pass|product.design.*screen|screen.*product.design|screen.*Artifact' <<<"$block" \
     || fail "no product-design routing for screens in Publication step"
 
   # 2. Negative scan: every write_files mention in SKILL/script files.
@@ -1570,14 +1570,14 @@ ${line}"
       end=$((ln + 5))
       ctx="$(sed -n "${start},${end}p" "$f")"
       # Direct screen/flow target near write_files
-      if printf '%s' "$ctx" | grep -qiE 'screens/|flows/'; then
+      if grep -qiE 'screens/|flows/' <<<"$ctx"; then
         violations="${violations}${f}:${ln} (screen/flow target near write_files)\n"
         continue
       fi
       # Generic write_files covering "specification" without explicit
       # design-system-only qualifier
-      if printf '%s' "$ctx" | grep -qiE 'specification.*write_files|write_files.*specification|WRITE.*write_files'; then
-        if ! printf '%s' "$ctx" | grep -qiE 'design.system.only|design.system.pass|component.*only|token.*only'; then
+      if grep -qiE 'specification.*write_files|write_files.*specification|WRITE.*write_files' <<<"$ctx"; then
+        if ! grep -qiE 'design.system.only|design.system.pass|component.*only|token.*only' <<<"$ctx"; then
           violations="${violations}${f}:${ln} (generic write_files covers all specs including screens)\n"
         fi
       fi
@@ -1595,14 +1595,14 @@ ${line}"
   # (Step 2 item 1) or the Step 3 skip paragraph, not in the init lines
   # (Step 2 item 5 and Step 4 item 5) which say "starts as null".
   local step2_record
-  step2_record="$(printf '%s\n' "$full" | awk '/Check for an existing record/{found=1} found && /^[0-9]+\. \*\*Pass 1/{exit} found{print}')"
+  step2_record="$(awk '/Check for an existing record/{found=1} found && /^[0-9]+\. \*\*Pass 1/{exit} found{print}' <<<"$full")"
   local step3_skip
-  step3_skip="$(printf '%s\n' "$full" | awk '/Step 3.*Stakeholder Questionnaire/{found=1} found{print} /^### Step 4/{exit}')"
+  step3_skip="$(awk '/Step 3.*Stakeholder Questionnaire/{found=1} found{print} /^### Step 4/{exit}' <<<"$full")"
   local found_route=""
-  if printf '%s' "$step2_record" | grep -qiE 'product_design_project.*(null|non.null).*[Rr]esolve|[Rr]esolve.*[Pp]roduct.*[Dd]esign.*[Pp]roject.*procedure'; then
+  if grep -qiE 'product_design_project.*(null|non.null).*[Rr]esolve|[Rr]esolve.*[Pp]roduct.*[Dd]esign.*[Pp]roject.*procedure' <<<"$step2_record"; then
     found_route="step2"
   fi
-  if printf '%s' "$step3_skip" | grep -qiE 'product_design_project.*(null|non.null).*[Rr]esolve|[Rr]esolve.*[Pp]roduct.*[Dd]esign.*[Pp]roject.*procedure'; then
+  if grep -qiE 'product_design_project.*(null|non.null).*[Rr]esolve|[Rr]esolve.*[Pp]roduct.*[Dd]esign.*[Pp]roject.*procedure' <<<"$step3_skip"; then
     found_route="${found_route:+$found_route,}step3"
   fi
   [ -n "$found_route" ] \
@@ -1613,12 +1613,12 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention verify-publication-target before write operations
-  printf '%s' "$full" | grep -qF 'verify-publication-target' \
+  grep -qF 'verify-publication-target' <<<"$full" \
     || fail "verify-publication-target not mentioned in SKILL.md"
   # Must mention --metadata-file and --design-record as required
-  printf '%s' "$full" | grep -qF -- '--metadata-file' \
+  grep -qF -- '--metadata-file' <<<"$full" \
     || fail "--metadata-file not mentioned in SKILL.md"
-  printf '%s' "$full" | grep -qF -- '--design-record' \
+  grep -qF -- '--design-record' <<<"$full" \
     || fail "--design-record not mentioned in SKILL.md"
 }
 
@@ -1626,7 +1626,7 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention verifying type/surface/write access for creating writes
-  printf '%s' "$full" | grep -qiE 'creating.*write.*verif|verify.*creating.*write|response.*type.*surface.*write|canEdit.*creat' \
+  grep -qiE 'creating.*write.*verif|verify.*creating.*write|response.*type.*surface.*write|canEdit.*creat' <<<"$full" \
     || fail "no creating-write verification against response"
 }
 
@@ -1639,12 +1639,12 @@ ${line}"
   local ds_section
   ds_section="$(printf '%s' "$block" | awk '/Design-system pass/{found=1} /Product-design pass/{found=0} found{print}')"
   [ -n "$ds_section" ] || fail "no design-system pass section"
-  printf '%s\n' "$ds_section" | grep -qE 'write_files|delete_files|register_assets' \
+  grep -qE 'write_files|delete_files|register_assets' <<<"$ds_section" \
     || fail "no write ops in design-system pass"
   # verify-publication-target must appear at or before the first write op
   local ds_vpt_line ds_write_line
-  ds_vpt_line="$(printf '%s\n' "$ds_section" | grep -nF 'verify-publication-target' | head -1 | cut -d: -f1 || true)"
-  ds_write_line="$(printf '%s\n' "$ds_section" | grep -nE 'write_files|delete_files|register_assets' | head -1 | cut -d: -f1 || true)"
+  ds_vpt_line="$(grep -nF 'verify-publication-target' <<<"$ds_section" | head -1 | cut -d: -f1 || true)"
+  ds_write_line="$(grep -nE 'write_files|delete_files|register_assets' <<<"$ds_section" | head -1 | cut -d: -f1 || true)"
   [ -n "$ds_vpt_line" ] || fail "no verify-publication-target in design-system pass"
   [ "$ds_vpt_line" -le "$ds_write_line" ] \
     || fail "verify-publication-target (line $ds_vpt_line) not before first write (line $ds_write_line) in design-system pass"
@@ -1654,8 +1654,8 @@ ${line}"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # verify-publication-target must appear before the first publish op
   local pd_vpt_line pd_pub_line
-  pd_vpt_line="$(printf '%s\n' "$pd_section" | grep -nF 'verify-publication-target' | head -1 | cut -d: -f1 || true)"
-  pd_pub_line="$(printf '%s\n' "$pd_section" | grep -niE 'publish' | head -1 | cut -d: -f1 || true)"
+  pd_vpt_line="$(grep -nF 'verify-publication-target' <<<"$pd_section" | head -1 | cut -d: -f1 || true)"
+  pd_pub_line="$(grep -niE 'publish' <<<"$pd_section" | head -1 | cut -d: -f1 || true)"
   [ -n "$pd_vpt_line" ] || fail "no verify-publication-target in product-design pass"
   [ -n "$pd_pub_line" ] || fail "no publish ops in product-design pass"
   [ "$pd_vpt_line" -le "$pd_pub_line" ] \
@@ -1666,12 +1666,12 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention boundary markers for product design reads
-  printf '%s' "$full" | grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' \
+  grep -qF 'PRODUCT_DESIGN_PROJECT_BOUNDARY' <<<"$full" \
     || fail "PRODUCT_DESIGN_PROJECT_BOUNDARY not in SKILL.md"
-  printf '%s' "$full" | grep -qF 'END_PRODUCT_DESIGN_PROJECT_BOUNDARY' \
+  grep -qF 'END_PRODUCT_DESIGN_PROJECT_BOUNDARY' <<<"$full" \
     || fail "END_PRODUCT_DESIGN_PROJECT_BOUNDARY not in SKILL.md"
   # Must mention escape-boundary-markers.sh
-  printf '%s' "$full" | grep -qF 'escape-boundary-markers.sh' \
+  grep -qF 'escape-boundary-markers.sh' <<<"$full" \
     || fail "escape-boundary-markers.sh not referenced in SKILL.md"
 }
 
@@ -1679,7 +1679,7 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention stripping control characters and markers from metadata
-  printf '%s' "$full" | grep -qiE 'metadata.*strip|strip.*control.*character|sanitise.*metadata|sanitize.*metadata|metadata.*control.*character' \
+  grep -qiE 'metadata.*strip|strip.*control.*character|sanitise.*metadata|sanitize.*metadata|metadata.*control.*character' <<<"$full" \
     || fail "no metadata stripping mentioned in SKILL.md"
 }
 
@@ -1688,11 +1688,11 @@ ${line}"
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   # Must mention post-publish read-back specifically (the heading or phrase)
-  printf '%s' "$block" | grep -qiE 'post.publish.*read|read.back.*publish|read.*back.*screen' \
+  grep -qiE 'post.publish.*read|read.back.*publish|read.*back.*screen' <<<"$block" \
     || fail "post-publish read-back not in Publication step"
   # Must mention screen-key rule (project/<screen>.dc.html) in read-back context
   # Check that .dc.html appears in a line mentioning read-back or screen-key
-  printf '%s' "$block" | grep -i 'read.back' | grep -qF '.dc.html' \
+  grep -i 'read.back' <<<"$block" | grep -qF '.dc.html' \
     || fail "screen-key rule (.dc.html) not in Publication step"
 }
 
@@ -1701,7 +1701,7 @@ ${line}"
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   # Must mention halting on missing screens with diagnostic
-  printf '%s' "$block" | grep -qiE 'halt.*missing.*screen|missing.*screen.*halt|diagnostic.*missing' \
+  grep -qiE 'halt.*missing.*screen|missing.*screen.*halt|diagnostic.*missing' <<<"$block" \
     || fail "no halt on missing screen in read-back"
 }
 
@@ -1709,9 +1709,9 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must mention helmet/style and :root{--token:value} pattern
-  printf '%s' "$full" | grep -qiE 'helmet.*style|<helmet><style>' \
+  grep -qiE 'helmet.*style|<helmet><style>' <<<"$full" \
     || fail "no helmet style mentioned for token block"
-  printf '%s' "$full" | grep -qiE ':root.*--.*token|:root{--' \
+  grep -qiE ':root.*--.*token|:root{--' <<<"$full" \
     || fail "no :root{--token:value} pattern mentioned"
 }
 
@@ -1721,12 +1721,12 @@ ${line}"
   [ -n "$block" ] || fail "no Publication step block"
   # Extract the token-block injection paragraph by its heading (item 4)
   local injection_para
-  injection_para="$(printf '%s' "$block" | awk '/Token-block injection/{found=1} found{print} /^[0-9]+\./{if(found && !/Token-block/) exit}')"
+  injection_para="$(awk '/Token-block injection/{found=1} found{print} /^[0-9]+\./{if(found && !/Token-block/) exit}' <<<"$block")"
   [ -n "$injection_para" ] || fail "no Token-block injection paragraph"
   # The injection paragraph must mention boards entry and order slot
-  printf '%s' "$injection_para" | grep -qiE 'boards.*entry' \
+  grep -qiE 'boards.*entry' <<<"$injection_para" \
     || fail "no boards entry in injection paragraph"
-  printf '%s' "$injection_para" | grep -qiE 'order.*slot' \
+  grep -qiE 'order.*slot' <<<"$injection_para" \
     || fail "no order slot in injection paragraph"
 }
 
@@ -1735,11 +1735,11 @@ ${line}"
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   # Must mention Artifact read/publish for product-design pass
-  printf '%s' "$block" | grep -qiE 'product.design.*Artifact|Artifact.*product.design|product.design.*publish' \
+  grep -qiE 'product.design.*Artifact|Artifact.*product.design|product.design.*publish' <<<"$block" \
     || fail "product-design pass does not use Artifact operations"
   # Must mention that product-design pass does NOT use register_assets,
   # write_files, or _ds_manifest.json
-  printf '%s' "$block" | grep -qiE 'REFRESH_MANIFEST.*no.op|no.op.*REFRESH_MANIFEST|product.design.*REFRESH_MANIFEST.*no' \
+  grep -qiE 'REFRESH_MANIFEST.*no.op|no.op.*REFRESH_MANIFEST|product.design.*REFRESH_MANIFEST.*no' <<<"$block" \
     || fail "REFRESH_MANIFEST not marked as no-op for product-design pass"
 }
 
@@ -1747,7 +1747,7 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must state no screen/flow content written to design-system after halt
-  printf '%s' "$full" | grep -qiE 'no.*screen.*flow.*design.system|no.*content.*design.system|no.*fallback.*design.system|not.*screen.*design.system' \
+  grep -qiE 'no.*screen.*flow.*design.system|no.*content.*design.system|no.*fallback.*design.system|not.*screen.*design.system' <<<"$full" \
     || fail "no statement about no screen/flow content in design-system after halt"
 }
 
@@ -1766,10 +1766,10 @@ ${line}"
   write_line="$(printf '%s\n' "$ds_section" | grep '`WRITE`' || true)"
   [ -n "$write_line" ] || fail "no WRITE bullet in design-system pass"
   # The WRITE bullet must mention component or token routing
-  printf '%s' "$write_line" | grep -qiE 'component|token' \
+  grep -qiE 'component|token' <<<"$write_line" \
     || fail "WRITE bullet does not name component or token specs"
   # The WRITE bullet must NOT mention screen or flow routing
-  if printf '%s' "$write_line" | grep -qiE 'screen|flow'; then
+  if grep -qiE 'screen|flow' <<<"$write_line"; then
     fail "WRITE bullet in design-system pass mentions screen or flow specs"
   fi
 }
@@ -1779,22 +1779,22 @@ ${line}"
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   # Must have verify-publication-target in the Publication step itself
-  printf '%s' "$block" | grep -qF 'verify-publication-target' \
+  grep -qF 'verify-publication-target' <<<"$block" \
     || fail "verify-publication-target not in Publication step"
   # Must have at least one check in the design-system pass section
   local ds_section
   ds_section="$(printf '%s' "$block" | awk '/Design-system pass/{found=1} /Product-design pass/{found=0} found{print}')"
-  printf '%s' "$ds_section" | grep -qF 'verify-publication-target' \
+  grep -qF 'verify-publication-target' <<<"$ds_section" \
     || fail "no verify-publication-target in design-system pass"
   # Must have at least one check in the product-design pass section
   local pd_section
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
-  printf '%s' "$pd_section" | grep -qF 'verify-publication-target' \
+  grep -qF 'verify-publication-target' <<<"$pd_section" \
     || fail "no verify-publication-target in product-design pass"
   # Must mention --metadata-file and --design-record in the Publication step
-  printf '%s' "$block" | grep -qF -- '--metadata-file' \
+  grep -qF -- '--metadata-file' <<<"$block" \
     || fail "--metadata-file not mentioned in Publication step"
-  printf '%s' "$block" | grep -qF -- '--design-record' \
+  grep -qF -- '--design-record' <<<"$block" \
     || fail "--design-record not mentioned in Publication step"
 }
 
@@ -1824,14 +1824,14 @@ ${line}"
     local call="$1" idx="$2"
     local flag
     for flag in --outcomes --output --local-hash-map --design-record --project --published-at --prior; do
-      printf '%s' "$call" | grep -qF -- "$flag" \
+      grep -qF -- "$flag" <<<"$call" \
         || fail "persist_last_published call $idx missing $flag"
     done
   }
   local call_idx=0
   local current_call=""
   while IFS= read -r line; do
-    if printf '%s' "$line" | grep -qF 'persist_last_published'; then
+    if grep -qF 'persist_last_published' <<<"$line"; then
       if [ -n "$current_call" ]; then
         call_idx=$((call_idx + 1))
         _check_persist_flags "$current_call" "$call_idx"
@@ -1992,23 +1992,23 @@ ${line}"
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   # Must call the validator script by its plugin-rooted path
-  printf '%s' "$block" | grep -qF 'validate-token-value.sh' \
+  grep -qF 'validate-token-value.sh' <<<"$block" \
     || fail "no validate-token-value.sh call in Publication step"
-  printf '%s' "$block" | grep -qF 'CLAUDE_PLUGIN_ROOT' \
+  grep -qF 'CLAUDE_PLUGIN_ROOT' <<<"$block" \
     || fail "validate-token-value.sh not called via plugin-rooted path"
   # Must mention the refused character classes
-  printf '%s' "$block" | grep -qF '<' || fail "no < in refused set"
-  printf '%s' "$block" | grep -qF '>' || fail "no > in refused set"
-  printf '%s' "$block" | grep -qF '{' || fail "no { in refused set"
-  printf '%s' "$block" | grep -qF '}' || fail "no } in refused set"
-  printf '%s' "$block" | grep -qF ';' || fail "no ; in refused set"
+  grep -qF '<' <<<"$block" || fail "no < in refused set"
+  grep -qF '>' <<<"$block" || fail "no > in refused set"
+  grep -qF '{' <<<"$block" || fail "no { in refused set"
+  grep -qF '}' <<<"$block" || fail "no } in refused set"
+  grep -qF ';' <<<"$block" || fail "no ; in refused set"
   # Must halt on </style in any case
-  printf '%s' "$block" | grep -qiE 'reject.*</style|refuses.*</style|</style.*any.*case' \
+  grep -qiE 'reject.*</style|refuses.*</style|</style.*any.*case' <<<"$block" \
     || fail "no </style rejection in Publication step"
-  printf '%s' "$block" | grep -qiE 'any.*case|any letter case' \
+  grep -qiE 'any.*case|any letter case' <<<"$block" \
     || fail "style-close rejection is not case-insensitive"
   # Quotes must be left intact (no hex escaping)
-  printf '%s' "$block" | grep -qiE 'quotes.*intact|intact.*quotes|left intact' \
+  grep -qiE 'quotes.*intact|intact.*quotes|left intact' <<<"$block" \
     || fail "no statement that quotes are left intact"
 }
 
@@ -2018,7 +2018,7 @@ ${line}"
   # </style must be refused (the < alone catches it)
   local out
   out="$(printf '%s\n' '--bad	</style>' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "</style value not refused"
+  grep -qF 'refused' <<<"$out" || fail "</style value not refused"
 }
 
 @test "hostile token with uppercase style-close tag is also caught by validator" {
@@ -2027,7 +2027,7 @@ ${line}"
   # </STYLE must be refused
   local out
   out="$(printf '%s\n' '--bad	</STYLE>' | bash "$vtv" 2>&1)"
-  printf '%s' "$out" | grep -qF 'refused' || fail "</STYLE value not refused"
+  grep -qF 'refused' <<<"$out" || fail "</STYLE value not refused"
 }
 
 # ===========================================================================
@@ -2037,9 +2037,9 @@ ${line}"
 @test "SKILL.md warns user when binding product project moves record to stale" {
   local full
   full="$(cat "$SKILL_MD")"
-  printf '%s' "$full" | grep -qiE 'stale.*bind|bind.*stale|stale-on-bind' \
+  grep -qiE 'stale.*bind|bind.*stale|stale-on-bind' <<<"$full" \
     || fail "no stale-on-bind notice in SKILL.md"
-  printf '%s' "$full" | grep -qiE 'surface.*user|tell.*user|inform.*user|warn.*user|notice.*user|Proceed' \
+  grep -qiE 'surface.*user|tell.*user|inform.*user|warn.*user|notice.*user|Proceed' <<<"$full" \
     || fail "no user notification for stale-on-bind"
 }
 
@@ -2053,9 +2053,9 @@ ${line}"
   [ -n "$block" ] || fail "no Publication step block"
   # Must contain a sentence that says all writes go in ONE batched Artifact
   # publish carrying artboards and canvas.json together.
-  printf '%s' "$block" | grep -qiE 'ONE batched Artifact.*publish|all go in ONE.*Artifact.*publish|Batch all.*WRITE.*one.*Artifact.*publish' \
+  grep -qiE 'ONE batched Artifact.*publish|all go in ONE.*Artifact.*publish|Batch all.*WRITE.*one.*Artifact.*publish' <<<"$block" \
     || fail "no enforcement sentence: all writes go in ONE batched Artifact publish"
-  printf '%s' "$block" | grep -qiE 'all.*artboard.*all.*orphan.*deletion.*one call|all.*artboard.*canvas\.json.*one|artboard.*deletion.*one call' \
+  grep -qiE 'all.*artboard.*all.*orphan.*deletion.*one call|all.*artboard.*canvas\.json.*one|artboard.*deletion.*one call' <<<"$block" \
     || fail "enforcement sentence does not name artboards and deletions in one publish call"
 }
 
@@ -2063,7 +2063,7 @@ ${line}"
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qiE 'not resend.*canvas|do not resend.*canvas|canvas.*once.*per.*screen.*not|canvas.*not.*once.*per.*screen' \
+  grep -qiE 'not resend.*canvas|do not resend.*canvas|canvas.*once.*per.*screen.*not|canvas.*not.*once.*per.*screen' <<<"$block" \
     || fail "no prohibition on per-screen canvas.json resend"
 }
 
@@ -2073,9 +2073,9 @@ ${line}"
   [ -n "$block" ] || fail "no Publication step block"
   # Must contain the rule sentence: read back only the screens just written,
   # not every screen. Match both halves — the restriction and the exclusion.
-  printf '%s' "$block" | grep -qiE 'read back only.*screens just written' \
+  grep -qiE 'read back only.*screens just written' <<<"$block" \
     || fail "no rule sentence: read back only the screens just written"
-  printf '%s' "$block" | grep -qiE 'not every screen in the project' \
+  grep -qiE 'not every screen in the project' <<<"$block" \
     || fail "no exclusion: not every screen in the project"
 }
 
@@ -2087,13 +2087,13 @@ ${line}"
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass"
   # Must use listing for presence
-  printf '%s' "$pd_section" | grep -qiE 'list.*scope.*files|Artifact.*list.*files' \
+  grep -qiE 'list.*scope.*files|Artifact.*list.*files' <<<"$pd_section" \
     || fail "pre-read does not use Artifact file listing"
   # Must use batched per-file read for hashes
-  printf '%s' "$pd_section" | grep -qiE 'read.*paths.*sha256|batched.*read.*paths|per-file read.*sha256' \
+  grep -qiE 'read.*paths.*sha256|batched.*read.*paths|per-file read.*sha256' <<<"$pd_section" \
     || fail "pre-read does not use batched per-file read for hashes"
   # Must state that listing carries no hashes
-  printf '%s' "$pd_section" | grep -qiE 'listing.*no.*hash|no.*hash.*listing' \
+  grep -qiE 'listing.*no.*hash|no.*hash.*listing' <<<"$pd_section" \
     || fail "does not state that listing has no hashes"
 }
 
@@ -2105,25 +2105,25 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # DesignSync metadata shape
-  printf '%s' "$full" | grep -qF 'projectId' \
+  grep -qF 'projectId' <<<"$full" \
     || fail "no projectId in metadata specification"
-  printf '%s' "$full" | grep -qiE 'PROJECT_TYPE_DESIGN_SYSTEM' \
+  grep -qiE 'PROJECT_TYPE_DESIGN_SYSTEM' <<<"$full" \
     || fail "no PROJECT_TYPE_DESIGN_SYSTEM in metadata specification"
-  printf '%s' "$full" | grep -qF 'canEdit' \
+  grep -qF 'canEdit' <<<"$full" \
     || fail "no canEdit in metadata specification"
   # Artifact metadata shape
-  printf '%s' "$full" | grep -qF 'reference:' \
+  grep -qF 'reference:' <<<"$full" \
     || fail "no reference: in artifact metadata specification"
-  printf '%s' "$full" | grep -qiE 'page.*read.*header|page-read header|owned by you' \
+  grep -qiE 'page.*read.*header|page-read header|owned by you' <<<"$full" \
     || fail "no page-read header in artifact metadata specification"
-  printf '%s' "$full" | grep -qiE 'per-file.*read.*header|per-file-read header|Files saved under' \
+  grep -qiE 'per-file.*read.*header|per-file-read header|Files saved under' <<<"$full" \
     || fail "no per-file-read header in artifact metadata specification"
 }
 
 @test "product-design pass performs page read before target check" {
   local full
   full="$(cat "$SKILL_MD")"
-  printf '%s' "$full" | grep -qiE 'page read.*before.*target check|page read.*supplies.*owned|perform.*page read.*before' \
+  grep -qiE 'page read.*before.*target check|page read.*supplies.*owned|perform.*page read.*before' <<<"$full" \
     || fail "no page read before target check for product-design pass"
 }
 
@@ -2138,11 +2138,11 @@ ${line}"
   local pd_section
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass"
-  printf '%s' "$pd_section" | grep -qF '.spec.html' \
+  grep -qF '.spec.html' <<<"$pd_section" \
     || fail "no .spec.html in product-design mapping"
-  printf '%s' "$pd_section" | grep -qF '.dc.html' \
+  grep -qF '.dc.html' <<<"$pd_section" \
     || fail "no .dc.html in product-design mapping"
-  printf '%s' "$pd_section" | grep -qiE 'canvas.*json.*index|index.*canvas|canvas.*not.*screen' \
+  grep -qiE 'canvas.*json.*index|index.*canvas|canvas.*not.*screen' <<<"$pd_section" \
     || fail "canvas.json not described as index in product-design mapping"
 }
 
@@ -2156,9 +2156,9 @@ ${line}"
   local orphan_line
   orphan_line="$(printf '%s' "$pd_section" | grep -i 'DELETE_ORPHAN' || true)"
   [ -n "$orphan_line" ] || fail "no DELETE_ORPHAN in product-design pass"
-  printf '%s' "$orphan_line" | grep -qF 'boards' \
+  grep -qF 'boards' <<<"$orphan_line" \
     || fail "DELETE_ORPHAN does not remove boards entry"
-  printf '%s' "$orphan_line" | grep -qF 'order' \
+  grep -qF 'order' <<<"$orphan_line" \
     || fail "DELETE_ORPHAN does not remove order entry"
 }
 
@@ -2174,7 +2174,7 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must NOT instruct recording ds_attachment_mode via a design-record.sh command
-  if printf '%s' "$full" | grep -iE 'record.*ds_attachment_mode.*via.*design-record|ds_attachment_mode.*design-record\.sh' | grep -qivE 'auto|set-product-project|init'; then
+  if grep -iE 'record.*ds_attachment_mode.*via.*design-record|ds_attachment_mode.*design-record\.sh' <<<"$full" | grep -qivE 'auto|set-product-project|init'; then
     fail "SKILL.md instructs recording ds_attachment_mode via a nonexistent design-record verb"
   fi
 }
@@ -2267,13 +2267,13 @@ ${line}"
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   local creation_seq
-  creation_seq="$(printf '%s' "$block" | awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}')"
+  creation_seq="$(awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}' <<<"$block")"
   [ -n "$creation_seq" ] || fail "no creation sequence section"
   # Must state it is a creating write
-  printf '%s' "$creation_seq" | grep -qiE 'creating write' \
+  grep -qiE 'creating write' <<<"$creation_seq" \
     || fail "first content publish not described as a creating write"
   # Must state NOT to run the target check
-  printf '%s' "$creation_seq" | grep -qiE 'NOT.*target check|not.*per-file-header.*target' \
+  grep -qiE 'NOT.*target check|not.*per-file-header.*target' <<<"$creation_seq" \
     || fail "no prohibition on target check for first content publish"
 }
 
@@ -2282,10 +2282,10 @@ ${line}"
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   local creation_seq
-  creation_seq="$(printf '%s' "$block" | awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}')"
+  creation_seq="$(awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}' <<<"$block")"
   [ -n "$creation_seq" ] || fail "no creation sequence section"
   # Must state that later publishes run the full target check
-  printf '%s' "$creation_seq" | grep -qiE 'later.*publish.*full.*target|every.*later.*target check|subsequent.*target check' \
+  grep -qiE 'later.*publish.*full.*target|every.*later.*target check|subsequent.*target check' <<<"$creation_seq" \
     || fail "no statement that later publishes run the full target check"
 }
 
@@ -2294,10 +2294,10 @@ ${line}"
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   local creation_seq
-  creation_seq="$(printf '%s' "$block" | awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}')"
+  creation_seq="$(awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}' <<<"$block")"
   [ -n "$creation_seq" ] || fail "no creation sequence section"
   # Must mention that the per-file read-back supplies the header
-  printf '%s' "$creation_seq" | grep -qiE 'per-file.*header.*subsequent|per-file.*read.*header.*target' \
+  grep -qiE 'per-file.*header.*subsequent|per-file.*read.*header.*target' <<<"$creation_seq" \
     || fail "no statement about per-file header from first read-back for subsequent checks"
 }
 
@@ -2305,10 +2305,10 @@ ${line}"
   local full
   full="$(cat "$SKILL_MD")"
   # Must say the line is passed as the tool returns it
-  printf '%s' "$full" | grep -qiE 'pass.*line.*as the tool returns|as the tool returns it' \
+  grep -qiE 'pass.*line.*as the tool returns|as the tool returns it' <<<"$full" \
     || fail "no statement to pass per-file header as the tool returns it"
   # Must say the verifier tolerates the trailing notice
-  printf '%s' "$full" | grep -qiE 'verifier tolerat' \
+  grep -qiE 'verifier tolerat' <<<"$full" \
     || fail "no statement that verifier tolerates the trailing notice"
 }
 
@@ -2343,11 +2343,11 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(printf '%s\n' '--lt	val<ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "< not refused on stderr"
+  grep -qF 'refused' <<<"$stderr_out" || fail "< not refused on stderr"
   [ -z "$stdout_out" ] || fail "< refused but token still on stdout: $stdout_out"
   stdout_out="$(printf '%s\n' '--gt	val>ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "> not refused on stderr"
+  grep -qF 'refused' <<<"$stderr_out" || fail "> not refused on stderr"
   [ -z "$stdout_out" ] || fail "> refused but token still on stdout: $stdout_out"
 }
 
@@ -2356,15 +2356,15 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(printf '%s\n' '--brace-open	val{ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "{ not refused on stderr"
+  grep -qF 'refused' <<<"$stderr_out" || fail "{ not refused on stderr"
   [ -z "$stdout_out" ] || fail "{ refused but token still on stdout: $stdout_out"
   stdout_out="$(printf '%s\n' '--brace-close	val}ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "} not refused on stderr"
+  grep -qF 'refused' <<<"$stderr_out" || fail "} not refused on stderr"
   [ -z "$stdout_out" ] || fail "} refused but token still on stdout: $stdout_out"
   stdout_out="$(printf '%s\n' '--semi	val;ue' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "; not refused on stderr"
+  grep -qF 'refused' <<<"$stderr_out" || fail "; not refused on stderr"
   [ -z "$stdout_out" ] || fail "; refused but token still on stdout: $stdout_out"
 }
 
@@ -2374,7 +2374,7 @@ TOKENS
   printf '%s\t%s\n' "--bs" 'val\ue' > "$TEST_TMP/vtv-bs-input"
   stdout_out="$(bash "$vtv" < "$TEST_TMP/vtv-bs-input" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "backslash not refused on stderr"
+  grep -qF 'refused' <<<"$stderr_out" || fail "backslash not refused on stderr"
   [ -z "$stdout_out" ] || fail "backslash refused but token still on stdout: $stdout_out"
 }
 
@@ -2383,11 +2383,11 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(printf '%s\n' '--lo	</style>' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "</style> not refused on stderr"
+  grep -qF 'refused' <<<"$stderr_out" || fail "</style> not refused on stderr"
   [ -z "$stdout_out" ] || fail "</style> refused but token still on stdout: $stdout_out"
   stdout_out="$(printf '%s\n' '--hi	</STYLE>' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' || fail "</STYLE> not refused on stderr"
+  grep -qF 'refused' <<<"$stderr_out" || fail "</STYLE> not refused on stderr"
   [ -z "$stdout_out" ] || fail "</STYLE> refused but token still on stdout: $stdout_out"
 }
 
@@ -2399,7 +2399,7 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(bash "$vtv" < "$tmpf" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "control character not refused on stderr"
   [ -z "$stdout_out" ] || fail "control char refused but token still on stdout: $stdout_out"
   rm -f "$tmpf"
@@ -2409,7 +2409,7 @@ TOKENS
   local vtv="$SKILL_SCRIPTS/validate-token-value.sh"
   local stderr_out
   stderr_out="$(printf '%s\n' '--my-bad-token	val<ue' | bash "$vtv" 2>&1 1>/dev/null)"
-  printf '%s' "$stderr_out" | grep -qF 'my-bad-token' \
+  grep -qF 'my-bad-token' <<<"$stderr_out" \
     || fail "refused token name not on stderr: $stderr_out"
 }
 
@@ -2421,7 +2421,7 @@ TOKENS
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qiE 'listing.*no.*hash|no.*hash' \
+  grep -qiE 'listing.*no.*hash|no.*hash' <<<"$block" \
     || fail "no statement that listing carries no hashes"
 }
 
@@ -2435,9 +2435,9 @@ TOKENS
   [ -n "$resolve_block" ] || fail "no Resolve procedure"
   # The sub-headings must follow the order: Record-first, User pick, Create.
   local record_line list_line create_line
-  record_line="$(printf '%s\n' "$resolve_block" | grep -niF 'Record-first' | head -1 | cut -d: -f1 || true)"
-  list_line="$(printf '%s\n' "$resolve_block" | grep -niF 'User pick' | head -1 | cut -d: -f1 || true)"
-  create_line="$(printf '%s\n' "$resolve_block" | grep -niE '^\s+- \*\*Create\.\*\*|user chooses to create' | head -1 | cut -d: -f1 || true)"
+  record_line="$(grep -niF 'Record-first' <<<"$resolve_block" | head -1 | cut -d: -f1 || true)"
+  list_line="$(grep -niF 'User pick' <<<"$resolve_block" | head -1 | cut -d: -f1 || true)"
+  create_line="$(grep -niE '^\s+- \*\*Create\.\*\*|user chooses to create' <<<"$resolve_block" | head -1 | cut -d: -f1 || true)"
   [ -n "$record_line" ] || fail "no Record-first discovery step"
   [ -n "$list_line" ] || fail "no User pick listing step"
   [ -n "$create_line" ] || fail "no Create step"
@@ -2452,10 +2452,10 @@ TOKENS
   resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve procedure"
   # confirm-bind.sh must still be called
-  printf '%s' "$resolve_block" | grep -qF 'confirm-bind.sh' \
+  grep -qF 'confirm-bind.sh' <<<"$resolve_block" \
     || fail "confirm-bind.sh not in Resolve procedure"
   # The "Bind this project" requirement must be mentioned
-  printf '%s' "$resolve_block" | grep -qF 'exit 0' \
+  grep -qF 'exit 0' <<<"$resolve_block" \
     || fail "exit 0 gate not in Resolve procedure"
 }
 
@@ -2471,7 +2471,7 @@ TOKENS
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass"
   # Must exclude canvas.json from persist
-  printf '%s' "$pd_section" | grep -qiE 'exclude.*canvas\.json.*outcomes|canvas\.json.*not.*outcomes|canvas\.json.*canvas index.*not.*screen' \
+  grep -qiE 'exclude.*canvas\.json.*outcomes|canvas\.json.*not.*outcomes|canvas\.json.*canvas index.*not.*screen' <<<"$pd_section" \
     || fail "no exclusion of canvas.json from product-pass persist"
 }
 
@@ -2479,7 +2479,7 @@ TOKENS
   local resolve_block
   resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve procedure"
-  printf '%s' "$resolve_block" | grep -qiE 'decline.*halt|decline.*not.*bind|on decline.*do not bind|decline.*leave.*null' \
+  grep -qiE 'decline.*halt|decline.*not.*bind|on decline.*do not bind|decline.*leave.*null' <<<"$resolve_block" \
     || fail "no decline path for stale-on-bind prompt"
 }
 
@@ -2487,7 +2487,7 @@ TOKENS
   local block
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
-  printf '%s' "$block" | grep -qiE 'not-found.*expected|not.found read.*expected|brand.new.*not.*halt' \
+  grep -qiE 'not-found.*expected|not.found read.*expected|brand.new.*not.*halt' <<<"$block" \
     || fail "no statement that not-found read is expected for new files"
 }
 
@@ -2495,7 +2495,7 @@ TOKENS
   local resolve_block
   resolve_block="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step/ && found{exit}' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve procedure"
-  if printf '%s' "$resolve_block" | grep -qiF 'linked to the selected design system'; then
+  if grep -qiF 'linked to the selected design system' <<<"$resolve_block"; then
     fail "old 'linked to the selected design system' wording still present"
   fi
 }
@@ -2511,10 +2511,10 @@ TOKENS
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   local creation_seq
-  creation_seq="$(printf '%s' "$block" | awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}')"
+  creation_seq="$(awk '/creation sequence/{found=1} found{print} /^[0-9]+\./{if(found && !/creation sequence/) exit}' <<<"$block")"
   [ -n "$creation_seq" ] || fail "no creation sequence section"
   # Must scope the rule to project/canvas.json absence, not bare "empty listing"
-  printf '%s' "$creation_seq" | grep -qiE 'no.*project/canvas\.json|listing has no.*project/' \
+  grep -qiE 'no.*project/canvas\.json|listing has no.*project/' <<<"$creation_seq" \
     || fail "creation sequence not scoped to project/canvas.json absence"
 }
 
@@ -2525,7 +2525,7 @@ TOKENS
   gate_section="$(awk '/Screen-publication gate/{found=1} found{print} /^### Step 10/{exit}' "$SKILL_MD")"
   [ -n "$gate_section" ] || fail "no Screen-publication gate"
   # Must mention project/canvas.json in the gate definition
-  printf '%s' "$gate_section" | grep -qF 'project/canvas.json' \
+  grep -qF 'project/canvas.json' <<<"$gate_section" \
     || fail "gate condition 3 does not use project/canvas.json as the criterion"
 }
 
@@ -2535,13 +2535,13 @@ TOKENS
   local full
   full="$(cat "$SKILL_MD")"
   local resolve_section
-  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  resolve_section="$(awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}' <<<"$full")"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
   local shared_step
-  shared_step="$(printf '%s\n' "$resolve_section" | awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}')"
+  shared_step="$(awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}' <<<"$resolve_section")"
   [ -n "$shared_step" ] || fail "no shared sub-step"
   # Must say files outside project/ belong to the type and are ignored
-  printf '%s' "$shared_step" | grep -qiE 'outside.*project/.*ignored|files outside.*project/.*type|type.*files outside.*project/' \
+  grep -qiE 'outside.*project/.*ignored|files outside.*project/.*type|type.*files outside.*project/' <<<"$shared_step" \
     || fail "shared sub-step does not tell agent to ignore non-project/ files"
 }
 
@@ -2564,16 +2564,16 @@ TOKENS
   [ -n "$resolve_block" ] || fail "no Resolve procedure"
   # Extract the Record-first bullet (path a)
   local record_first
-  record_first="$(printf '%s\n' "$resolve_block" | awk '/Record-first/{found=1} found{print} /User pick/{exit}')"
+  record_first="$(awk '/Record-first/{found=1} found{print} /User pick/{exit}' <<<"$resolve_block")"
   [ -n "$record_first" ] || fail "no Record-first paragraph"
   # Must say NOT to call set-product-project (prohibit, not invoke)
-  printf '%s' "$record_first" | grep -qiE 'do not call.*set-product-project|not.*call.*set-product-project|refuses.*overwrite' \
+  grep -qiE 'do not call.*set-product-project|not.*call.*set-product-project|refuses.*overwrite' <<<"$record_first" \
     || fail "record-first path does not prohibit calling set-product-project"
   # Must reference the shared list-then-read sub-step
-  printf '%s' "$record_first" | grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' \
+  grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' <<<"$record_first" \
     || fail "record-first path does not reference the shared list-then-read sub-step"
   # Must end with "return to the caller"
-  printf '%s' "$record_first" | grep -qF 'return to the caller' \
+  grep -qF 'return to the caller' <<<"$record_first" \
     || fail "record-first path does not end with 'return to the caller'"
 }
 
@@ -2615,26 +2615,26 @@ TOKENS
   # The existing-record caller (first numbered item in Step 2) must route to the resolve
   # procedure regardless of whether product_design_project is null or non-null.
   local step2_record
-  step2_record="$(printf '%s\n' "$full" | awk '/Check for an existing record/{found=1} found && /^[0-9]+\. \*\*Pass 1/{exit} found{print}')"
+  step2_record="$(awk '/Check for an existing record/{found=1} found && /^[0-9]+\. \*\*Pass 1/{exit} found{print}' <<<"$full")"
   [ -n "$step2_record" ] || fail "no existing-record paragraph"
   # Must mention routing when product_design_project is non-null
-  printf '%s' "$step2_record" | grep -qiE 'non.null.*canvas.*read.back|non.null.*gate|whether.*null.*non.null' \
+  grep -qiE 'non.null.*canvas.*read.back|non.null.*gate|whether.*null.*non.null' <<<"$step2_record" \
     || fail "existing-record caller does not route on non-null product_design_project"
   # The Record-first bullet (a) must reference the shared list-then-read sub-step
   local resolve_section
-  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  resolve_section="$(awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}' <<<"$full")"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
   local record_first
-  record_first="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found && /User pick/{exit} found{print}')"
+  record_first="$(awk '/Record-first/{found=1} found && /User pick/{exit} found{print}' <<<"$resolve_section")"
   [ -n "$record_first" ] || fail "no Record-first bullet"
   # Record-first must reference the shared list-then-read sub-step
-  printf '%s' "$record_first" | grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' \
+  grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' <<<"$record_first" \
     || fail "Record-first does not reference the shared list-then-read sub-step"
   # The Step 3 questionnaire-skip path must also route on non-null
   local step3_skip
-  step3_skip="$(printf '%s\n' "$full" | awk '/Step 3.*Stakeholder Questionnaire/{found=1} found{print} /^### Step 4/{exit}')"
+  step3_skip="$(awk '/Step 3.*Stakeholder Questionnaire/{found=1} found{print} /^### Step 4/{exit}' <<<"$full")"
   [ -n "$step3_skip" ] || fail "no Step 3 skip text"
-  printf '%s' "$step3_skip" | grep -qiE 'whether.*null.*non.null|non.null.*canvas' \
+  grep -qiE 'whether.*null.*non.null|non.null.*canvas' <<<"$step3_skip" \
     || fail "Step 3 skip path does not route on non-null product_design_project"
 }
 
@@ -2681,7 +2681,7 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(printf 'x:1}</style><script>\tvalue\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "injection name not refused on stderr: $stderr_out"
   [ -z "$stdout_out" ] || fail "injection name refused but token still on stdout: $stdout_out"
 }
@@ -2691,7 +2691,7 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(printf 'no-dash-prefix\tvalue\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "name without -- prefix not refused on stderr: $stderr_out"
   [ -z "$stdout_out" ] || fail "bare name refused but token still on stdout: $stdout_out"
 }
@@ -2728,7 +2728,7 @@ TOKENS
   # the leading empty field as the name).
   stdout_out="$(printf '\t--some-value\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "empty name not refused on stderr: $stderr_out"
   [ -z "$stdout_out" ] || fail "empty name refused but token still on stdout: $stdout_out"
 }
@@ -2741,7 +2741,7 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(bash "$vtv" < "$TEST_TMP/vtv-trail-input" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "value with trailing tab not refused: $stderr_out"
   [ -z "$stdout_out" ] || fail "trailing-tab value refused but still on stdout"
 }
@@ -2769,8 +2769,8 @@ TOKENS
   # Fallback: the numbered-step check — verify-publication-target on a step
   # that precedes the step containing write_files.
   local vpt_step write_step
-  vpt_step="$(printf '%s\n' "$ds_section" | grep -nE '^[0-9]+\.' | grep -iF 'verify-publication-target' | head -1 | cut -d: -f1 || true)"
-  write_step="$(printf '%s\n' "$ds_section" | grep -nE '^[0-9]+\.' | grep -iE 'write_files' | head -1 | cut -d: -f1 || true)"
+  vpt_step="$(grep -nE '^[0-9]+\.' <<<"$ds_section" | grep -iF 'verify-publication-target' | head -1 | cut -d: -f1 || true)"
+  write_step="$(grep -nE '^[0-9]+\.' <<<"$ds_section" | grep -iE 'write_files' | head -1 | cut -d: -f1 || true)"
   [ -n "$vpt_step" ] || fail "no verify-publication-target in design-system pass steps"
   [ -n "$write_step" ] || fail "no write_files in design-system pass steps"
   [ "$vpt_step" -lt "$write_step" ] \
@@ -2785,24 +2785,24 @@ TOKENS
   local full
   full="$(cat "$SKILL_MD")"
   local resolve_section
-  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  resolve_section="$(awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}' <<<"$full")"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
   # The shared sub-step is defined in the procedure, not inside a path bullet.
   local shared_step
-  shared_step="$(printf '%s\n' "$resolve_section" | awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}')"
+  shared_step="$(awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}' <<<"$resolve_section")"
   [ -n "$shared_step" ] || fail "no shared sub-step"
   # The body instructions (after the heading) must list before reading.
   # Skip the heading phrase "list, then read back if non-empty" by matching
   # the instruction "List the canvas files" which is the body directive.
-  printf '%s' "$shared_step" | grep -qiF 'List the canvas files' \
+  grep -qiF 'List the canvas files' <<<"$shared_step" \
     || fail "shared sub-step does not mention listing files"
   # The has-content branch must read canvas.json when project/canvas.json is listed
-  printf '%s' "$shared_step" | grep -qiE 'project/canvas\.json.*is listed.*read' \
+  grep -qiE 'project/canvas\.json.*is listed.*read' <<<"$shared_step" \
     || fail "shared sub-step does not mention reading canvas.json when it is listed"
   # Byte-order check: "List the canvas files" must precede the read-back branch
   local list_pos read_pos
-  list_pos="$(printf '%s' "$shared_step" | grep -bioF 'List the canvas files' | head -1 | cut -d: -f1 || true)"
-  read_pos="$(printf '%s' "$shared_step" | grep -bioF 'project/canvas.json' | head -1 | cut -d: -f1 || true)"
+  list_pos="$(grep -bioF 'List the canvas files' <<<"$shared_step" | head -1 | cut -d: -f1 || true)"
+  read_pos="$(grep -bioF 'project/canvas.json' <<<"$shared_step" | head -1 | cut -d: -f1 || true)"
   [ -n "$list_pos" ] || fail "cannot find listing position"
   [ -n "$read_pos" ] || fail "cannot find project/canvas.json position"
   [ "$list_pos" -lt "$read_pos" ] \
@@ -2810,13 +2810,13 @@ TOKENS
   # No-content branch: extract the sentence from "no project/canvas.json"
   # through the next sentence boundary. The span must contain "do not read".
   local empty_sentence
-  empty_sentence="$(printf '%s' "$shared_step" | grep -oiE 'If the listing has no.*project/canvas\.json[^.]*\.[^.]*\.' | head -1 || true)"
+  empty_sentence="$(grep -oiE 'If the listing has no.*project/canvas\.json[^.]*\.[^.]*\.' <<<"$shared_step" | head -1 || true)"
   if [ -z "$empty_sentence" ]; then
-    empty_sentence="$(printf '%s' "$shared_step" | grep -oiE 'no.*project/canvas\.json[^.]*\.[^I]*' | head -1 || true)"
+    empty_sentence="$(grep -oiE 'no.*project/canvas\.json[^.]*\.[^I]*' <<<"$shared_step" | head -1 || true)"
   fi
   [ -n "$empty_sentence" ] || fail "no project/canvas.json absence sentence in shared sub-step"
   # Assert the prohibition: "do not read" must appear
-  printf '%s' "$empty_sentence" | grep -qiE 'do not read' \
+  grep -qiE 'do not read' <<<"$empty_sentence" \
     || fail "no-content sentence does not contain 'do not read': $empty_sentence"
 }
 
@@ -2830,7 +2830,7 @@ TOKENS
   # Name starts with -- but contains : and } and < which are not in [A-Za-z0-9_-]
   stdout_out="$(printf -- '--x:1}</style><script>\tvalue\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "name with disallowed characters not refused on stderr: $stderr_out"
   [ -z "$stdout_out" ] || fail "name with disallowed characters refused but still on stdout: $stdout_out"
 }
@@ -2840,7 +2840,7 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(printf -- '--color.primary\t#2563EB\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "dotted name not refused on stderr: $stderr_out"
   [ -z "$stdout_out" ] || fail "dotted name refused but still on stdout: $stdout_out"
 }
@@ -2850,7 +2850,7 @@ TOKENS
   local stdout_out stderr_out
   stdout_out="$(printf -- '--my token\tvalue\n' | bash "$vtv" 2>"$TEST_TMP/vtv-err")"
   stderr_out="$(cat "$TEST_TMP/vtv-err")"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "name with space not refused on stderr: $stderr_out"
   [ -z "$stdout_out" ] || fail "name with space refused but still on stdout: $stdout_out"
 }
@@ -2864,10 +2864,10 @@ TOKENS
   full="$(cat "$SKILL_MD")"
   # The pre-write target check paragraph lists creating-write exemptions
   local target_check_para
-  target_check_para="$(printf '%s\n' "$full" | awk '/Pre-write target check/{found=1} found && /^#### /{exit} found{print}')"
+  target_check_para="$(awk '/Pre-write target check/{found=1} found && /^#### /{exit} found{print}' <<<"$full")"
   [ -n "$target_check_para" ] || fail "no pre-write target check paragraph"
   # Must mention the project/canvas.json criterion in the creating-write exemption list
-  printf '%s' "$target_check_para" | grep -qiE 'no.*project/canvas\.json|first.*content.*publish.*no.*own content' \
+  grep -qiE 'no.*project/canvas\.json|first.*content.*publish.*no.*own content' <<<"$target_check_para" \
     || fail "creating-write exemptions do not mention first content publish scoped to project/canvas.json"
 }
 
@@ -2883,20 +2883,20 @@ TOKENS
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must describe: dots become hyphens, -- prefix added
-  printf '%s' "$pd_section" | grep -qiE 'dot.*hyphen|dots.*replace.*hyphen|replace.*dots.*slash.*hyphen' \
+  grep -qiE 'dot.*hyphen|dots.*replace.*hyphen|replace.*dots.*slash.*hyphen' <<<"$pd_section" \
     || fail "no dotted-to-hyphen mapping in token name text"
   # Must apply all steps to every name (no "as-is" exception)
-  printf '%s' "$pd_section" | grep -qiE 'all.*steps.*every name.*without exception|applies.*all.*steps.*every name' \
+  grep -qiE 'all.*steps.*every name.*without exception|applies.*all.*steps.*every name' <<<"$pd_section" \
     || fail "mapping does not state that all steps apply to every name"
   # The "used as-is" exception must be gone
-  if printf '%s' "$pd_section" | grep -qiE 'used as-is'; then
+  if grep -qiE 'used as-is' <<<"$pd_section"; then
     fail "stale 'used as-is' exception still present — contradicts the all-steps rule"
   fi
   # Must strip leading dashes (prevents ----name)
-  printf '%s' "$pd_section" | grep -qiE 'strip.*leading.*dash' \
+  grep -qiE 'strip.*leading.*dash' <<<"$pd_section" \
     || fail "mapping does not strip leading dashes (needed to prevent ----name)"
   # Must reference map-token-name.sh
-  printf '%s' "$pd_section" | grep -qF 'map-token-name.sh' \
+  grep -qF 'map-token-name.sh' <<<"$pd_section" \
     || fail "mapping does not reference map-token-name.sh"
 }
 
@@ -2951,19 +2951,19 @@ TOKENS
   local full
   full="$(cat "$SKILL_MD")"
   local resolve_section
-  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  resolve_section="$(awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}' <<<"$full")"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
   local user_pick
-  user_pick="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found && /Create/{exit} found{print}')"
+  user_pick="$(awk '/User pick/{found=1} found && /Create/{exit} found{print}' <<<"$resolve_section")"
   [ -n "$user_pick" ] || fail "no User pick bullet"
   # User pick must record the project before the list-then-read
-  printf '%s' "$user_pick" | grep -qiE 'Record.*product.*design.*project|set-product-project' \
+  grep -qiE 'Record.*product.*design.*project|set-product-project' <<<"$user_pick" \
     || fail "User pick does not record the product design project"
   # User pick must reference the shared list-then-read sub-step
-  printf '%s' "$user_pick" | grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' \
+  grep -qiE 'shared.*list.*read.*sub.step|list.*then.*read' <<<"$user_pick" \
     || fail "User pick does not reference the shared list-then-read sub-step"
   # Must end with "return to the caller"
-  printf '%s' "$user_pick" | grep -qF 'return to the caller' \
+  grep -qF 'return to the caller' <<<"$user_pick" \
     || fail "User pick does not end with 'return to the caller'"
 }
 
@@ -2979,13 +2979,13 @@ TOKENS
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state the merge rule
-  printf '%s' "$pd_section" | grep -qiE 'merge.*rule|[Mm]erge' \
+  grep -qiE 'merge.*rule|[Mm]erge' <<<"$pd_section" \
     || fail "no canvas index merge rule in product-design pass"
   # Must preserve boards for screens this cycle did not touch
-  printf '%s' "$pd_section" | grep -qiE 'copy.*boards.*entry.*unchanged|keep.*existing.*boards|never.*drop.*existing.*board' \
+  grep -qiE 'copy.*boards.*entry.*unchanged|keep.*existing.*boards|never.*drop.*existing.*board' <<<"$pd_section" \
     || fail "merge rule does not copy unchanged boards from the read-back index"
   # Must append new screens at the end
-  printf '%s' "$pd_section" | grep -qiE 'append.*new.*screen|new.*screen.*end' \
+  grep -qiE 'append.*new.*screen|new.*screen.*end' <<<"$pd_section" \
     || fail "merge rule does not append new screens"
 }
 
@@ -2997,14 +2997,14 @@ TOKENS
   local full
   full="$(cat "$SKILL_MD")"
   local resolve_section
-  resolve_section="$(printf '%s\n' "$full" | awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}')"
+  resolve_section="$(awk '/Resolve Product Design Project/{found=1} found && /^### Step 3/{exit} found{print}' <<<"$full")"
   [ -n "$resolve_section" ] || fail "no resolve procedure section"
   # The shared sub-step defines the empty and non-empty branches
   local shared_step
-  shared_step="$(printf '%s\n' "$resolve_section" | awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}')"
+  shared_step="$(awk '/Shared sub-step/{found=1} found{print} /Record-first/{exit}' <<<"$resolve_section")"
   [ -n "$shared_step" ] || fail "no shared sub-step"
   # Empty branch must reference Step 10 product-design pass item 5
-  printf '%s' "$shared_step" | grep -qiE 'Step 10.*product.design.*pass.*item 5|product.design.*pass.*item 5' \
+  grep -qiE 'Step 10.*product.design.*pass.*item 5|product.design.*pass.*item 5' <<<"$shared_step" \
     || fail "shared sub-step empty branch does not reference Step 10 product-design pass item 5"
   # All three path bullets (a, b, c) must say "return to the caller"
   local return_count
@@ -3021,13 +3021,13 @@ TOKENS
   local full
   full="$(cat "$SKILL_MD")"
   local target_check_para
-  target_check_para="$(printf '%s\n' "$full" | awk '/Pre-write target check/{found=1} found && /^#### /{exit} found && /^\*\*Metadata/{exit} found{print}')"
+  target_check_para="$(awk '/Pre-write target check/{found=1} found && /^#### /{exit} found && /^\*\*Metadata/{exit} found{print}' <<<"$full")"
   [ -n "$target_check_para" ] || fail "no pre-write target check paragraph"
   # Must mention the first content publish scoped to project/canvas.json absence
-  printf '%s' "$target_check_para" | grep -qiE 'no.*project/canvas\.json|no own content|first.*content.*publish' \
+  grep -qiE 'no.*project/canvas\.json|no own content|first.*content.*publish' <<<"$target_check_para" \
     || fail "exemption paragraph does not mention first content publish scoped to project/canvas.json"
   # Must describe verification by page read and per-file read-back
-  printf '%s' "$target_check_para" | grep -qiE 'page.*read.*per.file.*read.back|page.*read.*read.back|owned.*by.*you.*read.back' \
+  grep -qiE 'page.*read.*per.file.*read.back|page.*read.*read.back|owned.*by.*you.*read.back' <<<"$target_check_para" \
     || fail "exemption does not describe page read plus per-file read-back verification"
 }
 
@@ -3044,22 +3044,22 @@ TOKENS
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state the steps in order: strip leading dashes/dots, replace dots/slashes,
   # collapse hyphens, add prefix
-  printf '%s' "$pd_section" | grep -qiE 'strip.*leading.*dash' \
+  grep -qiE 'strip.*leading.*dash' <<<"$pd_section" \
     || fail "mapping does not mention stripping leading dashes/dots"
-  printf '%s' "$pd_section" | grep -qiE 'replace.*dots.*slash.*hyphen|replace.*remaining.*dots' \
+  grep -qiE 'replace.*dots.*slash.*hyphen|replace.*remaining.*dots' <<<"$pd_section" \
     || fail "mapping does not mention replacing dots/slashes with hyphens"
-  printf '%s' "$pd_section" | grep -qiE 'collapse.*hyphen|consecutive.*hyphen' \
+  grep -qiE 'collapse.*hyphen|consecutive.*hyphen' <<<"$pd_section" \
     || fail "mapping does not mention collapsing consecutive hyphens"
   # Must give the worked examples
-  printf '%s' "$pd_section" | grep -qF '..name' \
+  grep -qF '..name' <<<"$pd_section" \
     || fail "mapping does not give the ..name example"
-  printf '%s' "$pd_section" | grep -qF -- '-.name' \
+  grep -qF -- '-.name' <<<"$pd_section" \
     || fail "mapping does not give the -.name example"
-  printf '%s' "$pd_section" | grep -qF 'color/primary' \
+  grep -qF 'color/primary' <<<"$pd_section" \
     || fail "mapping does not give the color/primary example"
-  printf '%s' "$pd_section" | grep -qF -- '--a--b' \
+  grep -qF -- '--a--b' <<<"$pd_section" \
     || fail "mapping does not give the --a--b example"
-  printf '%s' "$pd_section" | grep -qF -- '--color.primary' \
+  grep -qF -- '--color.primary' <<<"$pd_section" \
     || fail "mapping does not give the --color.primary example"
 }
 
@@ -3072,16 +3072,16 @@ TOKENS
   resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
   [ -n "$resolve_section" ] || fail "no Resolve procedure"
   local path_a
-  path_a="$(printf '%s\n' "$resolve_section" | awk '/Record-first/{found=1} found{print} /User pick/{exit}')"
+  path_a="$(awk '/Record-first/{found=1} found{print} /User pick/{exit}' <<<"$resolve_section")"
   [ -n "$path_a" ] || fail "no path (a)"
   # Must NOT call set-product-project
-  printf '%s' "$path_a" | grep -qiE 'do not call.*set-product-project|refuses.*overwrite' \
+  grep -qiE 'do not call.*set-product-project|refuses.*overwrite' <<<"$path_a" \
     || fail "path (a) does not prohibit set-product-project"
   # Must reference the shared sub-step
-  printf '%s' "$path_a" | grep -qF 'shared list-then-read sub-step' \
+  grep -qF 'shared list-then-read sub-step' <<<"$path_a" \
     || fail "path (a) does not reference the shared sub-step"
   # Must exit with "return to the caller"
-  printf '%s' "$path_a" | grep -qF 'return to the caller' \
+  grep -qF 'return to the caller' <<<"$path_a" \
     || fail "path (a) does not return to the caller"
 }
 
@@ -3090,21 +3090,21 @@ TOKENS
   resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
   [ -n "$resolve_section" ] || fail "no Resolve procedure"
   local path_b
-  path_b="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}')"
+  path_b="$(awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}' <<<"$resolve_section")"
   [ -n "$path_b" ] || fail "no path (b)"
   # Must call set-product-project with --discovered-via existing
-  printf '%s' "$path_b" | grep -qiE 'set-product-project.*discovered-via.*existing' \
+  grep -qiE 'set-product-project.*discovered-via.*existing' <<<"$path_b" \
     || fail "path (b) does not record with --discovered-via existing"
   # Must reference the shared sub-step AFTER recording
   local record_pos substep_pos
-  record_pos="$(printf '%s' "$path_b" | grep -bioF 'set-product-project' | head -1 | cut -d: -f1 || true)"
-  substep_pos="$(printf '%s' "$path_b" | grep -bioF 'shared list-then-read sub-step' | head -1 | cut -d: -f1 || true)"
+  record_pos="$(grep -bioF 'set-product-project' <<<"$path_b" | head -1 | cut -d: -f1 || true)"
+  substep_pos="$(grep -bioF 'shared list-then-read sub-step' <<<"$path_b" | head -1 | cut -d: -f1 || true)"
   [ -n "$record_pos" ] || fail "no record position"
   [ -n "$substep_pos" ] || fail "no sub-step position"
   [ "$record_pos" -lt "$substep_pos" ] \
     || fail "recording (byte $record_pos) not before sub-step (byte $substep_pos)"
   # Must exit with "return to the caller"
-  printf '%s' "$path_b" | grep -qF 'return to the caller' \
+  grep -qF 'return to the caller' <<<"$path_b" \
     || fail "path (b) does not return to the caller"
 }
 
@@ -3113,22 +3113,22 @@ TOKENS
   resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
   [ -n "$resolve_section" ] || fail "no Resolve procedure"
   local path_c
-  path_c="$(printf '%s\n' "$resolve_section" | awk '/Create \(no reference/{found=1} found{print} /Canvas index read-back/{exit}')"
+  path_c="$(awk '/Create \(no reference/{found=1} found{print} /Canvas index read-back/{exit}' <<<"$resolve_section")"
   [ -n "$path_c" ] || fail "no path (c)"
   # Must call Artifact publish with type_url
-  printf '%s' "$path_c" | grep -qiE 'Artifact.*publish.*type_url' \
+  grep -qiE 'Artifact.*publish.*type_url' <<<"$path_c" \
     || fail "path (c) does not create via Artifact publish with type_url"
   # Must record with --discovered-via created
-  printf '%s' "$path_c" | grep -qiE 'set-product-project.*discovered-via.*created' \
+  grep -qiE 'set-product-project.*discovered-via.*created' <<<"$path_c" \
     || fail "path (c) does not record with --discovered-via created"
   # Must NOT call confirm-bind.sh
-  printf '%s' "$path_c" | grep -qiE 'NOT.*call.*confirm-bind' \
+  grep -qiE 'NOT.*call.*confirm-bind' <<<"$path_c" \
     || fail "path (c) does not state it skips confirm-bind"
   # Canvas has no own content and is pending first content publish
-  printf '%s' "$path_c" | grep -qiE 'no own content.*pending.*first content|no.*project/canvas\.json.*pending' \
+  grep -qiE 'no own content.*pending.*first content|no.*project/canvas\.json.*pending' <<<"$path_c" \
     || fail "path (c) does not state canvas has no own content and is pending first content publish"
   # Must exit with "return to the caller"
-  printf '%s' "$path_c" | grep -qF 'return to the caller' \
+  grep -qF 'return to the caller' <<<"$path_c" \
     || fail "path (c) does not return to the caller"
 }
 
@@ -3145,16 +3145,16 @@ TOKENS
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Item 1 must read canvas.json from the listing
   local item1
-  item1="$(printf '%s\n' "$pd_section" | awk '/1\. \*\*Read current state/{found=1} found{print} /2\. \*\*Plan/{exit}')"
+  item1="$(awk '/1\. \*\*Read current state/{found=1} found{print} /2\. \*\*Plan/{exit}' <<<"$pd_section")"
   [ -n "$item1" ] || fail "no item 1 in product-design pass"
   # Must mention reading canvas.json at the start of the pass
-  printf '%s' "$item1" | grep -qiE 'canvas\.json.*exists.*listing.*read.*NOW|read.*canvas\.json.*NOW' \
+  grep -qiE 'canvas\.json.*exists.*listing.*read.*NOW|read.*canvas\.json.*NOW' <<<"$item1" \
     || fail "item 1 does not read canvas.json from the listing"
   # Must mention resume safety
-  printf '%s' "$item1" | grep -qiE 'resumed.*Step 10.*checkpoint.*safe|resumed.*checkpoint' \
+  grep -qiE 'resumed.*Step 10.*checkpoint.*safe|resumed.*checkpoint' <<<"$item1" \
     || fail "item 1 does not mention resume safety"
   # Must use the result as the merge base
-  printf '%s' "$item1" | grep -qiE 'merge base.*item 4|merge base' \
+  grep -qiE 'merge base.*item 4|merge base' <<<"$item1" \
     || fail "item 1 does not use the result as the merge base"
 }
 
@@ -3170,10 +3170,10 @@ TOKENS
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # The merge and delete rule must say to REMOVE entries for DELETE_ORPHAN screens
-  printf '%s' "$pd_section" | grep -qiE 'REMOVE.*boards.*entry.*order.*slot.*DELETE_ORPHAN' \
+  grep -qiE 'REMOVE.*boards.*entry.*order.*slot.*DELETE_ORPHAN' <<<"$pd_section" \
     || fail "merge rule does not remove boards/order for deleted screens"
   # Must say did not write and did not delete (not just "did not write")
-  printf '%s' "$pd_section" | grep -qiE 'NOT write.*NOT delete|neither wrote nor deleted|did not write.*did not delete' \
+  grep -qiE 'NOT write.*NOT delete|neither wrote nor deleted|did not write.*did not delete' <<<"$pd_section" \
     || fail "merge rule does not exclude both writes and deletes"
 }
 
@@ -3185,7 +3185,7 @@ TOKENS
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state that null paths for orphan deletions go in the same publish
-  printf '%s' "$pd_section" | grep -qiE 'null.*paths.*orphan.*deletion.*artboard.*ONE.*publish|orphan.*deletion.*artboard.*one call' \
+  grep -qiE 'null.*paths.*orphan.*deletion.*artboard.*ONE.*publish|orphan.*deletion.*artboard.*one call' <<<"$pd_section" \
     || fail "orphan deletions not described as going in the same batched publish"
 }
 
@@ -3202,7 +3202,7 @@ TOKENS
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state names the validator refuses are dropped with a warning visible
   # in the terminal output
-  printf '%s' "$pd_section" | grep -qiE 'dropped.*warning.*stderr.*visible.*terminal|dropped.*warning.*terminal' \
+  grep -qiE 'dropped.*warning.*stderr.*visible.*terminal|dropped.*warning.*terminal' <<<"$pd_section" \
     || fail "mapping does not state refusal behavior with visible warning in terminal output"
 }
 
@@ -3214,10 +3214,10 @@ TOKENS
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state collision rule: first definition wins
-  printf '%s' "$pd_section" | grep -qiE 'keeping.*first.*definition|first.*definition' \
+  grep -qiE 'keeping.*first.*definition|first.*definition' <<<"$pd_section" \
     || fail "mapping does not state first-definition-wins collision rule"
   # Must state collision is reported on stderr
-  printf '%s' "$pd_section" | grep -qiE 'collision.*reported.*stderr|collision.*stderr' \
+  grep -qiE 'collision.*reported.*stderr|collision.*stderr' <<<"$pd_section" \
     || fail "mapping does not state collision is reported on stderr"
 }
 
@@ -3230,11 +3230,11 @@ TOKENS
   [ -x "$mtn" ] || fail "map-token-name.sh not executable"
   local out
   out="$(printf 'color.primary\n' | bash "$mtn" 2>/dev/null)"
-  printf '%s' "$out" | grep -qF -- '--color-primary' \
+  grep -qF -- '--color-primary' <<<"$out" \
     || fail "color.primary not mapped to --color-primary: $out"
   # Output format: mapped<TAB>original
-  printf '%s' "$out" | grep -qP '\t' \
-    || printf '%s' "$out" | grep -qF "	" \
+  grep -qP '\t' <<<"$out" \
+    || grep -qF "	" <<<"$out" \
     || fail "output missing tab separator: $out"
 }
 
@@ -3242,7 +3242,7 @@ TOKENS
   local mtn="$SKILL_SCRIPTS/map-token-name.sh"
   local out
   out="$(printf -- '--color.primary\n' | bash "$mtn" 2>/dev/null)"
-  printf '%s' "$out" | grep -qF -- '--color-primary' \
+  grep -qF -- '--color-primary' <<<"$out" \
     || fail "--color.primary not mapped to --color-primary: $out"
 }
 
@@ -3250,7 +3250,7 @@ TOKENS
   local mtn="$SKILL_SCRIPTS/map-token-name.sh"
   local out
   out="$(printf '..name\n' | bash "$mtn" 2>/dev/null)"
-  printf '%s' "$out" | grep -qF -- '--name' \
+  grep -qF -- '--name' <<<"$out" \
     || fail "..name not mapped to --name: $out"
 }
 
@@ -3258,7 +3258,7 @@ TOKENS
   local mtn="$SKILL_SCRIPTS/map-token-name.sh"
   local out
   out="$(printf -- '-.name\n' | bash "$mtn" 2>/dev/null)"
-  printf '%s' "$out" | grep -qF -- '--name' \
+  grep -qF -- '--name' <<<"$out" \
     || fail "-.name not mapped to --name: $out"
 }
 
@@ -3266,7 +3266,7 @@ TOKENS
   local mtn="$SKILL_SCRIPTS/map-token-name.sh"
   local out
   out="$(printf 'color/primary\n' | bash "$mtn" 2>/dev/null)"
-  printf '%s' "$out" | grep -qF -- '--color-primary' \
+  grep -qF -- '--color-primary' <<<"$out" \
     || fail "color/primary not mapped to --color-primary: $out"
 }
 
@@ -3274,7 +3274,7 @@ TOKENS
   local mtn="$SKILL_SCRIPTS/map-token-name.sh"
   local out
   out="$(printf -- '--a--b\n' | bash "$mtn" 2>/dev/null)"
-  printf '%s' "$out" | grep -qF -- '--a-b' \
+  grep -qF -- '--a-b' <<<"$out" \
     || fail "--a--b not mapped to --a-b: $out"
 }
 
@@ -3284,7 +3284,7 @@ TOKENS
   stdout_out="$(printf '...\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
   stderr_out="$(cat "$TEST_TMP/mtn-err")"
   [ -z "$stdout_out" ] || fail "... should produce no stdout: $stdout_out"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "... should be refused on stderr: $stderr_out"
 }
 
@@ -3299,10 +3299,10 @@ TOKENS
   [ "$count" = "1" ] \
     || fail "expected exactly 1 --color-primary on stdout, got $count: $stdout_out"
   # The original of the first definition should be color.primary
-  printf '%s' "$stdout_out" | grep -qF 'color.primary' \
+  grep -qF 'color.primary' <<<"$stdout_out" \
     || fail "first definition original not color.primary: $stdout_out"
   # Collisions should be reported on stderr
-  printf '%s' "$stderr_out" | grep -qF 'collision' \
+  grep -qF 'collision' <<<"$stderr_out" \
     || fail "no collision report on stderr: $stderr_out"
   # Two collisions expected (color-primary and color--primary)
   local coll_count
@@ -3326,7 +3326,7 @@ TOKENS
   stdout_out="$(printf 'color@primary\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
   stderr_out="$(cat "$TEST_TMP/mtn-err")"
   [ -z "$stdout_out" ] || fail "unmappable name should produce no stdout: $stdout_out"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "unmappable name should be refused on stderr: $stderr_out"
 }
 
@@ -3336,7 +3336,7 @@ TOKENS
   stdout_out="$(printf -- '---\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
   stderr_out="$(cat "$TEST_TMP/mtn-err")"
   [ -z "$stdout_out" ] || fail "dashes-only name should produce no stdout: $stdout_out"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "dashes-only name should be refused on stderr: $stderr_out"
 }
 
@@ -3349,13 +3349,13 @@ TOKENS
   resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
   [ -n "$resolve_section" ] || fail "no Resolve procedure"
   local path_b
-  path_b="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}')"
+  path_b="$(awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}' <<<"$resolve_section")"
   [ -n "$path_b" ] || fail "no path (b)"
   # The decline must say to halt, not to return to the caller
-  printf '%s' "$path_b" | grep -qiE 'decline.*halt|On decline.*halt' \
+  grep -qiE 'decline.*halt|On decline.*halt' <<<"$path_b" \
     || fail "stale-on-bind decline does not halt"
   # The decline must NOT say to continue to Steps 5-9
-  printf '%s' "$path_b" | grep -qiE 'Do not continue.*Step' \
+  grep -qiE 'Do not continue.*Step' <<<"$path_b" \
     || fail "decline path does not prohibit continuing to later steps"
 }
 
@@ -3364,16 +3364,16 @@ TOKENS
   full="$(cat "$SKILL_MD")"
   # Must have a gate-failure handler paragraph
   local gate_section
-  gate_section="$(printf '%s\n' "$full" | awk '/Screen-publication gate/{found=1} found && /^### Step 10/{exit} found{print}')"
+  gate_section="$(awk '/Screen-publication gate/{found=1} found && /^### Step 10/{exit} found{print}' <<<"$full")"
   [ -n "$gate_section" ] || fail "no gate section"
   # Must have a gate-failure handler
-  printf '%s' "$gate_section" | grep -qiE 'Gate-failure handler|gate.*condition.*not satisfied.*halt' \
+  grep -qiE 'Gate-failure handler|gate.*condition.*not satisfied.*halt' <<<"$gate_section" \
     || fail "no gate-failure handler"
   # Must name condition 2 (product_design_project null)
-  printf '%s' "$gate_section" | grep -qiE 'condition 2.*product_design_project.*null|product_design_project is null' \
+  grep -qiE 'condition 2.*product_design_project.*null|product_design_project is null' <<<"$gate_section" \
     || fail "gate-failure handler does not name condition 2"
   # Must say never proceed silently
-  printf '%s' "$gate_section" | grep -qiE 'Never proceed silently|never.*silently' \
+  grep -qiE 'Never proceed silently|never.*silently' <<<"$gate_section" \
     || fail "gate-failure handler does not say never proceed silently"
 }
 
@@ -3387,7 +3387,7 @@ TOKENS
   stdout_out="$(printf '/\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
   stderr_out="$(cat "$TEST_TMP/mtn-err")"
   [ -z "$stdout_out" ] || fail "/ should produce no stdout: $stdout_out"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "/ should be refused on stderr: $stderr_out"
 }
 
@@ -3397,7 +3397,7 @@ TOKENS
   stdout_out="$(printf '///\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
   stderr_out="$(cat "$TEST_TMP/mtn-err")"
   [ -z "$stdout_out" ] || fail "/// should produce no stdout: $stdout_out"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "/// should be refused on stderr: $stderr_out"
 }
 
@@ -3407,7 +3407,7 @@ TOKENS
   stdout_out="$(printf '/.\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
   stderr_out="$(cat "$TEST_TMP/mtn-err")"
   [ -z "$stdout_out" ] || fail "/. should produce no stdout: $stdout_out"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "/. should be refused on stderr: $stderr_out"
 }
 
@@ -3417,7 +3417,7 @@ TOKENS
   stdout_out="$(printf './/\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
   stderr_out="$(cat "$TEST_TMP/mtn-err")"
   [ -z "$stdout_out" ] || fail ".// should produce no stdout: $stdout_out"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail ".// should be refused on stderr: $stderr_out"
 }
 
@@ -3427,7 +3427,7 @@ TOKENS
   stdout_out="$(printf -- '--/\n' | bash "$mtn" 2>"$TEST_TMP/mtn-err")"
   stderr_out="$(cat "$TEST_TMP/mtn-err")"
   [ -z "$stdout_out" ] || fail "--/ should produce no stdout: $stdout_out"
-  printf '%s' "$stderr_out" | grep -qF 'refused' \
+  grep -qF 'refused' <<<"$stderr_out" \
     || fail "--/ should be refused on stderr: $stderr_out"
 }
 
@@ -3440,10 +3440,10 @@ TOKENS
   resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
   [ -n "$resolve_section" ] || fail "no Resolve procedure"
   # Must have the b-to-c jump
-  printf '%s' "$resolve_section" | grep -qiE 'switch to path.*c|go to path.*c|chooses to create.*switch' \
+  grep -qiE 'switch to path.*c|go to path.*c|chooses to create.*switch' <<<"$resolve_section" \
     || fail "no b-to-c jump for create choice in pick list"
   # confirm-bind must be scoped to the bind choice, not the create choice
-  printf '%s' "$resolve_section" | grep -qiE 'confirm-bind.*not made|confirm-bind.*only.*when.*pick|confirm-bind.*applies only' \
+  grep -qiE 'confirm-bind.*not made|confirm-bind.*only.*when.*pick|confirm-bind.*applies only' <<<"$resolve_section" \
     || fail "confirm-bind not scoped to bind-only choice"
 }
 
@@ -3455,10 +3455,10 @@ TOKENS
   local mtn="$SKILL_SCRIPTS/map-token-name.sh"
   local out
   out="$(printf 'color.primary\r\n' | bash "$mtn" 2>/dev/null)"
-  printf '%s' "$out" | grep -qF -- '--color-primary' \
+  grep -qF -- '--color-primary' <<<"$out" \
     || fail "CRLF input not mapped correctly: $out"
   # The original in the output should not contain a trailing CR
-  printf '%s' "$out" | grep -qF 'color.primary' \
+  grep -qF 'color.primary' <<<"$out" \
     || fail "original not present in output: $out"
 }
 
@@ -3715,10 +3715,10 @@ validate-token-value: refused "--has-ctrl": contains control character'
   out="$(printf 'safe_token\nreg[ex]+star*\n' | bash "$mtn" 2>"$TEST_TMP/mtn-rx-err")"
   err="$(cat "$TEST_TMP/mtn-rx-err")"
   # safe_token must appear in stdout.
-  printf '%s' "$out" | grep -qF -- '--safe_token' \
+  grep -qF -- '--safe_token' <<<"$out" \
     || fail "safe_token not mapped: $out"
   # reg[ex]+star* must be refused on stderr (not crash or match wrong).
-  printf '%s' "$err" | grep -qF 'refused "reg[ex]+star*"' \
+  grep -qF 'refused "reg[ex]+star*"' <<<"$err" \
     || fail "regex-meta name not refused on stderr: $err"
 }
 
@@ -3760,13 +3760,13 @@ validate-token-value: refused "--has-ctrl": contains control character'
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state the read-back index is authoritative
-  printf '%s' "$pd_section" | grep -qiE 'read-back.*index.*authoritative|authoritative.*boards.*this run did not write' \
+  grep -qiE 'read-back.*index.*authoritative|authoritative.*boards.*this run did not write' <<<"$pd_section" \
     || fail "merge rule does not state read-back index is authoritative"
   # Must say designer-removed boards stay removed
-  printf '%s' "$pd_section" | grep -qiE 'designer.*removed.*stay.*removed|designer.*removed.*keep.*removed' \
+  grep -qiE 'designer.*removed.*stay.*removed|designer.*removed.*keep.*removed' <<<"$pd_section" \
     || fail "merge rule does not state designer-removed boards stay removed"
   # Must say only written-this-cycle boards are added or updated
-  printf '%s' "$pd_section" | grep -qiE 'Only boards.*written this cycle.*added or updated' \
+  grep -qiE 'Only boards.*written this cycle.*added or updated' <<<"$pd_section" \
     || fail "merge rule does not limit additions to written-this-cycle boards"
 }
 
@@ -3782,10 +3782,10 @@ validate-token-value: refused "--has-ctrl": contains control character'
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must say to start from the read-back index
-  printf '%s' "$pd_section" | grep -qiE 'start from the read-back index' \
+  grep -qiE 'start from the read-back index' <<<"$pd_section" \
     || fail "merge rule does not say to start from the read-back index"
   # Must say all other keys are copied unchanged
-  printf '%s' "$pd_section" | grep -qiE 'copied unchanged.*notes.*pages|notes.*pages.*copied unchanged|notes.*pages.*title.*launch' \
+  grep -qiE 'copied unchanged.*notes.*pages|notes.*pages.*copied unchanged|notes.*pages.*title.*launch' <<<"$pd_section" \
     || fail "merge rule does not name notes and pages as keys kept unchanged"
 }
 
@@ -3799,13 +3799,13 @@ validate-token-value: refused "--has-ctrl": contains control character'
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Read-back index as base
-  printf '%s' "$pd_section" | grep -qiE 'start from the read-back index' \
+  grep -qiE 'start from the read-back index' <<<"$pd_section" \
     || fail "merge rule must say to start from the read-back index"
   # Key list includes notes and pages
-  printf '%s' "$pd_section" | grep -qiE 'notes.*pages' \
+  grep -qiE 'notes.*pages' <<<"$pd_section" \
     || fail "merge rule must name notes and pages as keys kept unchanged"
   # Independently: the designer-arranged position preservation
-  printf '%s' "$pd_section" | grep -qi 'x.*y.*title.*untouched\|x.*y.*every other board field.*untouched\|leave.*x.*y.*untouched' \
+  grep -qi 'x.*y.*title.*untouched\|x.*y.*every other board field.*untouched\|leave.*x.*y.*untouched' <<<"$pd_section" \
     || fail "merge rule must say x, y, title stay untouched on rewrite"
 }
 
@@ -3821,10 +3821,10 @@ validate-token-value: refused "--has-ctrl": contains control character'
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state step 4b
-  printf '%s' "$pd_section" | grep -qiE '4b.*strip.*leading.*trailing.*hyphen' \
+  grep -qiE '4b.*strip.*leading.*trailing.*hyphen' <<<"$pd_section" \
     || fail "mapping does not state step 4b (strip leading and trailing hyphens)"
   # Must state slash is refused with the worked example
-  printf '%s' "$pd_section" | grep -qF '/' \
+  grep -qF '/' <<<"$pd_section" \
     || fail "mapping does not give the / refused example"
 }
 
@@ -3840,7 +3840,7 @@ validate-token-value: refused "--has-ctrl": contains control character'
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state that unrecognised characters are not transformed and fail the validator
-  printf '%s' "$pd_section" | grep -qiE 'not transformed.*fails the validator|not transformed.*dropped' \
+  grep -qiE 'not transformed.*fails the validator|not transformed.*dropped' <<<"$pd_section" \
     || fail "mapping does not document handling of unrecognised characters"
 }
 
@@ -3853,21 +3853,21 @@ validate-token-value: refused "--has-ctrl": contains control character'
   resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
   [ -n "$resolve_section" ] || fail "no Resolve procedure"
   local path_c
-  path_c="$(printf '%s\n' "$resolve_section" | awk '/Create \(no reference/{found=1} found{print} /Canvas index read-back/{exit}')"
+  path_c="$(awk '/Create \(no reference/{found=1} found{print} /Canvas index read-back/{exit}' <<<"$resolve_section")"
   [ -n "$path_c" ] || fail "no path (c)"
   # Must have a stale-on-create notice
-  printf '%s' "$path_c" | grep -qiE 'Stale-on-create notice' \
+  grep -qiE 'Stale-on-create notice' <<<"$path_c" \
     || fail "path (c) has no stale-on-create notice"
   # The notice must come before the record call (byte order)
   local notice_pos record_pos
-  notice_pos="$(printf '%s' "$path_c" | grep -bioF 'Stale-on-create notice' | head -1 | cut -d: -f1 || true)"
-  record_pos="$(printf '%s' "$path_c" | grep -bioF 'set-product-project' | head -1 | cut -d: -f1 || true)"
+  notice_pos="$(grep -bioF 'Stale-on-create notice' <<<"$path_c" | head -1 | cut -d: -f1 || true)"
+  record_pos="$(grep -bioF 'set-product-project' <<<"$path_c" | head -1 | cut -d: -f1 || true)"
   [ -n "$notice_pos" ] || fail "no notice position"
   [ -n "$record_pos" ] || fail "no record position"
   [ "$notice_pos" -lt "$record_pos" ] \
     || fail "stale-on-create notice (byte $notice_pos) not before record call (byte $record_pos)"
   # Must include a decline-and-halt
-  printf '%s' "$path_c" | grep -qiE 'decline.*halt|On decline.*halt' \
+  grep -qiE 'decline.*halt|On decline.*halt' <<<"$path_c" \
     || fail "path (c) stale-on-create notice has no decline-and-halt"
 }
 
@@ -3880,18 +3880,18 @@ validate-token-value: refused "--has-ctrl": contains control character'
   resolve_section="$(awk '/^### Resolve Product Design Project/{found=1} found{print} /^### Step 3/{exit}' "$SKILL_MD")"
   [ -n "$resolve_section" ] || fail "no Resolve procedure"
   local path_b
-  path_b="$(printf '%s\n' "$resolve_section" | awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}')"
+  path_b="$(awk '/User pick/{found=1} found{print} /Create \(no reference/{exit}' <<<"$resolve_section")"
   [ -n "$path_b" ] || fail "no path (b)"
   # The stale-on-bind notice must precede set-product-project in byte order
   local notice_pos record_pos
-  notice_pos="$(printf '%s' "$path_b" | grep -bioF 'Stale-on-bind notice' | head -1 | cut -d: -f1 || true)"
-  record_pos="$(printf '%s' "$path_b" | grep -bioF 'set-product-project' | head -1 | cut -d: -f1 || true)"
+  notice_pos="$(grep -bioF 'Stale-on-bind notice' <<<"$path_b" | head -1 | cut -d: -f1 || true)"
+  record_pos="$(grep -bioF 'set-product-project' <<<"$path_b" | head -1 | cut -d: -f1 || true)"
   [ -n "$notice_pos" ] || fail "no stale-on-bind notice in path (b)"
   [ -n "$record_pos" ] || fail "no set-product-project in path (b)"
   [ "$notice_pos" -lt "$record_pos" ] \
     || fail "stale notice (byte $notice_pos) not before record call (byte $record_pos)"
   # The notice must say "before recording" or "before the call"
-  printf '%s' "$path_b" | grep -qiE 'before recording|before the record call' \
+  grep -qiE 'before recording|before the record call' <<<"$path_b" \
     || fail "stale notice does not say 'before recording'"
 }
 
@@ -3903,13 +3903,13 @@ validate-token-value: refused "--has-ctrl": contains control character'
   local full
   full="$(cat "$SKILL_MD")"
   local gate_section
-  gate_section="$(printf '%s\n' "$full" | awk '/Screen-publication gate/{found=1} found && /^### Step 10/{exit} found{print}')"
+  gate_section="$(awk '/Screen-publication gate/{found=1} found && /^### Step 10/{exit} found{print}' <<<"$full")"
   [ -n "$gate_section" ] || fail "no gate section"
   # Must say a listing with no project/canvas.json pending first publish is not a failure
-  printf '%s' "$gate_section" | grep -qiE 'no.*project/canvas\.json.*not a failure|pending.*first content.*not.*failure|not a failure' \
+  grep -qiE 'no.*project/canvas\.json.*not a failure|pending.*first content.*not.*failure|not a failure' <<<"$gate_section" \
     || fail "gate handler does not clarify that no-content listing pending first publish is not a failure"
   # Must reference Step 10 item 5 as the handler for no-content listings
-  printf '%s' "$gate_section" | grep -qiE 'Step 10.*item 5|item 5 handles' \
+  grep -qiE 'Step 10.*item 5|item 5 handles' <<<"$gate_section" \
     || fail "gate handler does not reference Step 10 item 5 for no-content listings"
 }
 
@@ -4035,9 +4035,9 @@ validate-token-value: refused "--has-ctrl": contains control character'
   ds_section="$(awk '/^#### Design-system pass/,/^#### Product-design pass/' "$SKILL_MD")"
   pd_section="$(awk '/^#### Product-design pass/,/^### Step 11/' "$SKILL_MD")"
 
-  printf '%s' "$ds_section" | grep -q 'strict-conflicts' || \
+  grep -q 'strict-conflicts' <<<"$ds_section" || \
     fail "design-system pass should mention --strict-conflicts"
-  printf '%s' "$pd_section" | grep -q 'strict-conflicts' || \
+  grep -q 'strict-conflicts' <<<"$pd_section" || \
     fail "product-design pass should mention --strict-conflicts"
 }
 
@@ -4141,13 +4141,13 @@ validate-token-value: refused "--has-ctrl": contains control character'
   block="$(_extract_step_block "$SKILL_MD" "Publication")"
   [ -n "$block" ] || fail "no Publication step block"
   # Must mention partial earlier publish and missing index
-  printf '%s' "$block" | grep -qi 'partial earlier publish' \
+  grep -qi 'partial earlier publish' <<<"$block" \
     || fail "step 10 should describe partial earlier publish handling"
   # Must mention adding board entries for remote artboards
-  printf '%s' "$block" | grep -qi 'add board entries for.*remote' \
+  grep -qi 'add board entries for.*remote' <<<"$block" \
     || fail "step 10 should say to add board entries for remote artboards"
   # Must warn against dropping remote artboards
-  printf '%s' "$block" | grep -qi 'never drop remote artboards' \
+  grep -qi 'never drop remote artboards' <<<"$block" \
     || fail "step 10 should say never drop remote artboards"
 }
 
@@ -4156,7 +4156,7 @@ validate-token-value: refused "--has-ctrl": contains control character'
   local resolve_block
   resolve_block="$(awk '/^### Resolve Product Design/,/^### Step 3/' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve Product Design block"
-  printf '%s' "$resolve_block" | grep -qi 'partial earlier publish' \
+  grep -qi 'partial earlier publish' <<<"$resolve_block" \
     || fail "shared sub-step should describe partial earlier publish handling"
 }
 
@@ -4172,10 +4172,10 @@ validate-token-value: refused "--has-ctrl": contains control character'
   pd_section="$(printf '%s' "$block" | awk '/Product-design pass/{found=1} found{print}')"
   [ -n "$pd_section" ] || fail "no product-design pass section"
   # Must state x, y, title stay untouched
-  printf '%s' "$pd_section" | grep -qi 'x.*y.*title.*untouched\|leave.*x.*y.*title.*untouched' \
+  grep -qi 'x.*y.*title.*untouched\|leave.*x.*y.*title.*untouched' <<<"$pd_section" \
     || fail "merge rule must explicitly preserve x, y, title on rewritten boards"
   # Must mention only w/h updated
-  printf '%s' "$pd_section" | grep -qi 'update.*w.*h.*only\|only.*w.*h' \
+  grep -qi 'update.*w.*h.*only\|only.*w.*h' <<<"$pd_section" \
     || fail "merge rule must say only w/h are updated"
 }
 
@@ -4187,7 +4187,7 @@ validate-token-value: refused "--has-ctrl": contains control character'
   local resolve_block
   resolve_block="$(awk '/^### Resolve Product Design/,/^### Step 3/' "$SKILL_MD")"
   [ -n "$resolve_block" ] || fail "no Resolve Product Design block"
-  printf '%s' "$resolve_block" | grep -qi 'no-op\|already.*resolved.*return immediately' \
+  grep -qi 'no-op\|already.*resolved.*return immediately' <<<"$resolve_block" \
     || fail "resolve procedure should be a no-op when already resolved"
 }
 

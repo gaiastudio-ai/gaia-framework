@@ -137,7 +137,7 @@ teardown() { common_teardown; }
     run jq -r '.captured_at' "$FIXTURE"
     [ "$status" -eq 0 ]
     # Loose ISO8601 shape: YYYY-MM-DD with optional T-time
-    echo "$output" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+    grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' <<<"$output"
   else
     grep -E '"captured_at"' "$FIXTURE" | head -n1 | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}'
   fi

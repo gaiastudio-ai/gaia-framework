@@ -168,5 +168,5 @@ _render() {
 @test "the renderer is invocable as a sourceable library exposing render_moc" {
   run bash -c ". \"$RENDER\"; type render_moc"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'render_moc'
+  grep -q 'render_moc' <<<"$output"
 }

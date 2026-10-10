@@ -63,7 +63,7 @@ teardown() { common_teardown; }
     --intent "test scratchpad" \
     --content-type "md" 2>&1 || true)
   # Output should begin with .gaia/artifacts/creative-artifacts/meeting-scratchpad/
-  echo "$result" | grep -qE '^\.gaia/artifacts/creative-artifacts/meeting-scratchpad/'
+  grep -qE '^\.gaia/artifacts/creative-artifacts/meeting-scratchpad/' <<<"$result"
 }
 
 # --- write-boundary.sh runtime contract: accepts canonical, rejects legacy ---

@@ -80,5 +80,5 @@ _mk_matrix() {
   _mk_matrix "$tmp" 'Verdict: BLOCKED'
   cd "$tmp"
   run bash "$FINALIZE"
-  printf '%s\n' "$output" | grep -qiE 'BLOCKED/FAIL'
+  grep -qiE 'BLOCKED/FAIL' <<<"$output"
 }

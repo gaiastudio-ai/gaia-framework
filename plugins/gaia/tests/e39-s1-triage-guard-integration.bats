@@ -52,10 +52,10 @@ EOF
   file="$(_make_story "$TEST_TMP" "E1-S1" "done" "sprint-20")"
   run "$TRIAGE_GUARD_SH" check "$file"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q "E1-S1"
-  echo "$output" | grep -q "sprint-20"
-  echo "$output" | grep -q "/gaia-create-story"
-  echo "$output" | grep -q "/gaia-add-feature"
+  grep -q "E1-S1" <<<"$output"
+  grep -q "sprint-20" <<<"$output"
+  grep -q "/gaia-create-story" <<<"$output"
+  grep -q "/gaia-add-feature" <<<"$output"
 }
 
 @test "guard emits retrospective-linkage sentence" {
@@ -63,7 +63,7 @@ EOF
   file="$(_make_story "$TEST_TMP" "E1-S1" "done")"
   run "$TRIAGE_GUARD_SH" check "$file"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qi "retro"
+  grep -qi "retro" <<<"$output"
 }
 
 @test "guard performs NO mutation to story file on halt" {
@@ -188,5 +188,5 @@ EOF
 @test "guard: usage on no arguments" {
   run "$TRIAGE_GUARD_SH"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "usage"
+  grep -qi "usage" <<<"$output"
 }

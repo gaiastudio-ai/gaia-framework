@@ -21,7 +21,7 @@ setup() {
     local offending
     offending="$(grep 'Write.*test-artifacts.*test-strategy\|Output.*test-artifacts.*test-strategy' \
       "$SKILLS_DIR/gaia-test-strategy/SKILL.md" || true)"
-    if printf '%s' "$offending" | grep -qiE 'legacy|read.only|fallback|pre-migration'; then
+    if grep -qiE 'legacy|read.only|fallback|pre-migration' <<<"$offending"; then
       return 0
     fi
     fail "test-strategy specifies test-artifacts as a primary write target"

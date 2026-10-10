@@ -29,7 +29,7 @@ teardown() {
   out=$(build_env_args)
   # Each var should appear once
   for v in PATH HOME USER TMPDIR TERM LANG LC_ALL; do
-    echo "$out" | grep -Eq "(^| )${v}=" || { echo "missing $v in: $out"; return 1; }
+    grep -Eq "(^| )${v}=" <<<"$out" || { echo "missing $v in: $out"; return 1; }
   done
 }
 
@@ -39,9 +39,9 @@ teardown() {
   export GITHUB_TOKEN="ghp-leak"
   export OPENAI_API_KEY="sk-leak"
   out=$(build_env_args)
-  echo "$out" | grep -q "AWS_SECRET_ACCESS_KEY" && return 1
-  echo "$out" | grep -q "GITHUB_TOKEN" && return 1
-  echo "$out" | grep -q "OPENAI_API_KEY" && return 1
+  grep -q "AWS_SECRET_ACCESS_KEY" <<<"$out" && return 1
+  grep -q "GITHUB_TOKEN" <<<"$out" && return 1
+  grep -q "OPENAI_API_KEY" <<<"$out" && return 1
   return 0
 }
 
@@ -51,8 +51,8 @@ teardown() {
   args=$(build_env_args)
   # Use env -i with the args, then run env to print resulting env
   out=$(eval env -i $args env)
-  echo "$out" | grep -q "AWS_SECRET_ACCESS_KEY" && return 1
-  echo "$out" | grep -Eq "^PATH=" || return 1
+  grep -q "AWS_SECRET_ACCESS_KEY" <<<"$out" && return 1
+  grep -Eq "^PATH=" <<<"$out" || return 1
   return 0
 }
 

@@ -442,7 +442,7 @@ _has_manifest_edge() {
   [ "$status" -eq 0 ]
   # log() writes to stderr; bats `run` (no --separate-stderr) merges stderr into
   # $output, so the failure notice is captured there.
-  printf '%s\n' "$output" | grep -qi 'reindex'
+  grep -qi 'reindex' <<<"$output"
 }
 
 @test "sprint-close finalize refreshes the manifest on a successful reindex" {

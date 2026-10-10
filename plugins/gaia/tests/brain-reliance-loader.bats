@@ -112,7 +112,7 @@ EOF
   _write_map_one "gaia-dev-story:validate" "absent-decision" "OPTIONAL"
   run bash "$LOADER" "gaia-dev-story:validate"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'warn|optional'
+  grep -qiE 'warn|optional' <<<"$output"
 }
 
 # --- fail-OPEN: malformed reliance-map -------------------------------------
@@ -129,7 +129,7 @@ stages:
 EOF
   run bash "$LOADER" "gaia-dev-story:validate"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|skip'
+  grep -qiE 'un-?evaluable|warn|skip' <<<"$output"
 }
 
 # --- fail-OPEN: absent/corrupt brain-index ---------------------------------
@@ -139,7 +139,7 @@ EOF
   rm -f "$INDEX"
   run bash "$LOADER" "gaia-dev-story:validate"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|index'
+  grep -qiE 'un-?evaluable|warn|index' <<<"$output"
 }
 
 @test "a corrupt brain-index fails OPEN (warn and continue, not HALT)" {
@@ -152,7 +152,7 @@ this is: not a [valid brain index
 EOF
   run bash "$LOADER" "gaia-dev-story:validate"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|index'
+  grep -qiE 'un-?evaluable|warn|index' <<<"$output"
 }
 
 # --- MANDATORY node present -> pass -----------------------------------------
@@ -169,14 +169,14 @@ EOF
   _write_map_one "gaia-dev-story:validate" "governing-decision" "MANDATORY"
   run bash "$LOADER" "some-skill:never-declared"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|unknown stage|not.*map|warn'
+  grep -qiE 'un-?evaluable|unknown stage|not.*map|warn' <<<"$output"
 }
 
 @test "an absent reliance-map fails OPEN with exit 0" {
   rm -f "$MAP"
   run bash "$LOADER" "gaia-dev-story:validate"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|map'
+  grep -qiE 'un-?evaluable|warn|map' <<<"$output"
 }
 
 # --- the un-evaluable vs cleanly-missing distinction is explicit -----------

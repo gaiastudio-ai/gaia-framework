@@ -86,7 +86,7 @@ teardown() {
   out_dir="${TMP_DIR}/empty-out"
   run "$SCRIPT" --input "$EMPTY_FIXTURE" --output-dir "$out_dir"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -qi 'no h3 boundaries'
+  grep -qi 'no h3 boundaries' <<<"$output"
 }
 
 @test "AC3: positional invocation (back-compat) matches flag-style output" {

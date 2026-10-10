@@ -36,7 +36,7 @@ teardown() {
 @test "path-traversal sprint ID REJECTED (T-37 mitigation preserved)" {
   run bash -c "echo '$PAYLOAD' | bash '$SCRIPT' --sprint-id '../../../etc/passwd'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "invalid sprint_id format"
+  grep -qi "invalid sprint_id format" <<<"$output"
 }
 
 @test "sprint-id with shell metachar REJECTED" {

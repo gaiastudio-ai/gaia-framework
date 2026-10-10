@@ -119,13 +119,13 @@ _step_count() {
 @test "Step 7 documents the priority/schedule conflict scan (AC1, AC5)" {
   local block
   block="$(_extract_step_block 7)"
-  echo "$block" | grep -qiE 'priority/schedule.*conflict|priority/schedule conflicts'
-  echo "$block" | grep -qiE 'P0|P1'
-  echo "$block" | grep -qiE 'GDPR'
-  echo "$block" | grep -qiE 'HIPAA'
-  echo "$block" | grep -qiE 'PCI[- ]DSS'
-  echo "$block" | grep -qiE 'WARNING'
-  echo "$block" | grep -qiE 'late.?phase|Post-MVP|Phase 2|Phase 3'
+  grep -qiE 'priority/schedule.*conflict|priority/schedule conflicts' <<<"$block"
+  grep -qiE 'P0|P1' <<<"$block"
+  grep -qiE 'GDPR' <<<"$block"
+  grep -qiE 'HIPAA' <<<"$block"
+  grep -qiE 'PCI[- ]DSS' <<<"$block"
+  grep -qiE 'WARNING' <<<"$block"
+  grep -qiE 'late.?phase|Post-MVP|Phase 2|Phase 3' <<<"$block"
 }
 
 # ---------- AC2 / VCP-RC-05: compliance timeline estimation ----------
@@ -133,10 +133,10 @@ _step_count() {
 @test "Step 7 documents the compliance timeline estimation formula (AC2)" {
   local block
   block="$(_extract_step_block 7)"
-  echo "$block" | grep -qiE 'compliance timeline'
+  grep -qiE 'compliance timeline' <<<"$block"
   # Formula must be auditable inline.
-  echo "$block" | grep -qE 'ceil\(.*story_count.*\*.*1\.5'
-  echo "$block" | grep -qiE 'min.*1 week|minimum.*1.*week'
+  grep -qE 'ceil\(.*story_count.*\*.*1\.5' <<<"$block"
+  grep -qiE 'min.*1 week|minimum.*1.*week' <<<"$block"
 }
 
 # ---------- AC4 / VCP-RC-06: silent on zero-compliance projects ----------
@@ -144,7 +144,7 @@ _step_count() {
 @test "Step 7 explicitly states that zero compliance stories suppresses the section (AC4)" {
   local block
   block="$(_extract_step_block 7)"
-  echo "$block" | grep -qiE 'no.*compliance|zero.*compliance|omit'
+  grep -qiE 'no.*compliance|zero.*compliance|omit' <<<"$block"
 }
 
 # ---------- AC3 / VCP-RC-02: inline self-contradiction sweep at Step 10 ----------
@@ -152,17 +152,17 @@ _step_count() {
 @test "Step 10 documents the inline self-contradiction sweep (AC3)" {
   local block
   block="$(_extract_step_block 10)"
-  echo "$block" | grep -qiE 'self-contradiction'
-  echo "$block" | grep -qiE 'fully traced'
-  echo "$block" | grep -qiE 'no test coverage'
+  grep -qiE 'self-contradiction' <<<"$block"
+  grep -qiE 'fully traced' <<<"$block"
+  grep -qiE 'no test coverage' <<<"$block"
 }
 
 @test "Step 10 documents enumeration of ALL contradiction pairs (AC6)" {
   local block
   block="$(_extract_step_block 10)"
   # Must mention enumerate/all and deterministic ordering.
-  echo "$block" | grep -qiE 'enumerate|all.*pairs|every.*pair'
-  echo "$block" | grep -qiE 'deterministic|alphabetical|stable'
+  grep -qiE 'enumerate|all.*pairs|every.*pair' <<<"$block"
+  grep -qiE 'deterministic|alphabetical|stable' <<<"$block"
 }
 
 # ---------- AC4 sub-promise (Subtask 4.1): three new frontmatter fields ----------
@@ -170,9 +170,9 @@ _step_count() {
 @test "Step 10 declares the three new YAML frontmatter fields (Subtask 4.1)" {
   local block
   block="$(_extract_step_block 10)"
-  echo "$block" | grep -qE 'priority_schedule_conflicts_count'
-  echo "$block" | grep -qE 'compliance_timeline_present'
-  echo "$block" | grep -qE 'self_contradictions_count'
+  grep -qE 'priority_schedule_conflicts_count' <<<"$block"
+  grep -qE 'compliance_timeline_present' <<<"$block"
+  grep -qE 'self_contradictions_count' <<<"$block"
 }
 
 # ---------- AC4 sub-promise (Subtask 4.2): gate downgrade rule ----------
@@ -181,7 +181,7 @@ _step_count() {
   local block
   block="$(_extract_step_block 10)"
   # Must connect the count field to the PASS/CONDITIONAL downgrade.
-  echo "$block" | grep -qiE 'self_contradictions_count.*>.*0|MUST NOT be PASS|CONDITIONAL'
+  grep -qiE 'self_contradictions_count.*>.*0|MUST NOT be PASS|CONDITIONAL' <<<"$block"
 }
 
 # ---------- compliance-keyword scope guard (Dev Notes) ----------
@@ -190,11 +190,11 @@ _step_count() {
   local block
   block="$(_extract_step_block 7)"
   # The closed compliance list MUST include GDPR, HIPAA, PCI-DSS.
-  echo "$block" | grep -qiE 'GDPR'
-  echo "$block" | grep -qiE 'HIPAA'
-  echo "$block" | grep -qiE 'PCI[- ]DSS'
+  grep -qiE 'GDPR' <<<"$block"
+  grep -qiE 'HIPAA' <<<"$block"
+  grep -qiE 'PCI[- ]DSS' <<<"$block"
   # And MUST explicitly call the list closed — no silent extension.
-  echo "$block" | grep -qiE 'closed list|do NOT extend|no others'
+  grep -qiE 'closed list|do NOT extend|no others' <<<"$block"
 }
 
 # ---------- traceability: FR-352 row references E46-S4 + VCP-RC-01..06 ----------
@@ -223,7 +223,7 @@ _step_count() {
     local row
     row=$(grep -E "^\| $id " "$plan" || true)
     [ -n "$row" ] || { echo "row for $id not found"; return 1; }
-    if echo "$row" | grep -qE 'Planned / Not Yet Written'; then
+    if grep -qE 'Planned / Not Yet Written' <<<"$row"; then
       echo "$id still marked Planned / Not Yet Written: $row"
       return 1
     fi

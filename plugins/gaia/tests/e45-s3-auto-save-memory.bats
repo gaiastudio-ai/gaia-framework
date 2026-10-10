@@ -130,7 +130,7 @@ run_save() {
     [ "$status" -eq 0 ]
 
     # Combined stdout+stderr must not contain the interactive prompt.
-    printf '%s' "$output" | grep -q '\[y\]/\[n\]/\[e\]' && return 1
+    grep -q '\[y\]/\[n\]/\[e\]' <<<"$output" && return 1
     return 0
 }
 
@@ -182,7 +182,7 @@ run_save() {
 @test "unknown skill exits 64 with actionable error" {
     run_save gaia-not-real-skill
     [ "$status" -eq 64 ]
-    printf '%s' "$output" | grep -q 'cannot resolve agent sidecar'
+    grep -q 'cannot resolve agent sidecar' <<<"$output"
 }
 
 # --- AC-EC8: secret redaction ---------------------------------------------

@@ -129,9 +129,9 @@ EOF
   # Run esch_check_blocking against the state-tier path
   run bash -c "source '$ESCALATION_HALT_SH' && esch_check_blocking '$ai' '$ss'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "AI-42"
-  echo "$output" | grep -q "Long-running blocker"
-  echo "$output" | grep -q "HALT"
+  grep -q "AI-42" <<<"$output"
+  grep -q "Long-running blocker" <<<"$output"
+  grep -q "HALT" <<<"$output"
 }
 
 # ===========================================================================

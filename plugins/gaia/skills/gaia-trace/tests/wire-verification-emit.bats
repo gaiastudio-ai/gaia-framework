@@ -210,8 +210,8 @@ EOF
   PATH="$mockdir:$PATH" run bash "$HELPER" --story-file "$story" --matrix-file "$matrix"
   [ "$status" -eq 1 ]
   # Both requirement ids should appear in the HALT output
-  echo "$output $stderr" | grep -q 'FR-005a'
-  echo "$output $stderr" | grep -q 'FR-005b'
+  grep -q 'FR-005a' <<<"$output $stderr"
+  grep -q 'FR-005b' <<<"$output $stderr"
 }
 
 # ============================================================================

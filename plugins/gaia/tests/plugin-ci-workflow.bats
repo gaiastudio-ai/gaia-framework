@@ -60,7 +60,7 @@ teardown() { common_teardown; }
   # `kcov` must not appear as a whitespace-delimited token in any apt-get
   # install line. A comment mentioning kcov elsewhere is fine — this check
   # targets the install command only.
-  if printf '%s\n' "$apt_lines" | grep -Eq '(^|[[:space:]])kcov([[:space:]]|$)'; then
+  if grep -Eq '(^|[[:space:]])kcov([[:space:]]|$)' <<<"$apt_lines"; then
     echo "apt install line still references kcov: $apt_lines" >&2
     return 1
   fi

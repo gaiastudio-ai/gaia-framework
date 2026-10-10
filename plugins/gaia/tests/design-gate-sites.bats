@@ -260,7 +260,7 @@ teardown() {
 
     local extracted
     extracted="$(_gate_extract_block "$skill_md" pre_start)"
-    echo "$extracted" | grep -q "design_approved" || {
+    grep -q "design_approved" <<<"$extracted" || {
       echo "FAIL: $site SKILL.md does not declare design_approved in pre_start" >&2
       return 1
     }
@@ -361,11 +361,11 @@ teardown() {
     local captured
     captured="$(cat "$stderr_file")"
     captured="${captured//$site_tmp/}"
-    echo "$captured" | grep -qiE "(design.gate|quality.gate)" || {
+    grep -qiE "(design.gate|quality.gate)" <<<"$captured" || {
       echo "FAIL: $site halt did not come from the design gate (stderr: $captured)" >&2
       return 1
     }
-    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
       echo "FAIL: $site failed in resolve-config, not at the design gate (stderr: $captured)" >&2
       return 1
     fi
@@ -521,7 +521,7 @@ teardown() {
     local captured
     captured="$(cat "$stderr_file")"
     captured="${captured//$site_tmp/}"
-    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
       echo "FAIL: $site failed in resolve-config, not at the design gate (stderr: $captured)" >&2
       return 1
     fi
@@ -566,7 +566,7 @@ teardown() {
     local captured
     captured="$(cat "$stderr_file")"
     captured="${captured//$site_tmp/}"
-    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
       echo "FAIL: $site failed in resolve-config (stderr: $captured)" >&2
       return 1
     fi
@@ -617,7 +617,7 @@ teardown() {
   local captured
   captured="$(cat "$stderr_file")"
   captured="${captured//$site_tmp/}"
-  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+  if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
     echo "FAIL: failed in resolve-config (stderr: $captured)" >&2
     return 1
   fi
@@ -664,7 +664,7 @@ teardown() {
   local captured
   captured="$(cat "$stderr_file")"
   captured="${captured//$site_tmp/}"
-  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+  if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
     echo "FAIL: failed in resolve-config (stderr: $captured)" >&2
     return 1
   fi
@@ -710,7 +710,7 @@ teardown() {
   local captured
   captured="$(cat "$stderr_file")"
   captured="${captured//$site_tmp/}"
-  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+  if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
     echo "FAIL: failed in resolve-config (stderr: $captured)" >&2
     return 1
   fi
@@ -794,7 +794,7 @@ teardown() {
   local captured
   captured="$(cat "$stderr_file")"
   captured="${captured//$site_tmp/}"
-  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+  if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
     echo "FAIL: failed in resolve-config (stderr: $captured)" >&2
     return 1
   fi
@@ -858,14 +858,14 @@ teardown() {
     extracted="$(_gate_extract_block "$mutant_md" pre_start)"
 
     # The mutant must NOT contain design_approved
-    if echo "$extracted" | grep -q "design_approved"; then
+    if grep -q "design_approved" <<<"$extracted"; then
       echo "FAIL: mutant for $site still has design_approved after removal" >&2
       return 1
     fi
 
     # Verify the original still has it (cross-check)
     extracted="$(_gate_extract_block "$skill_md" pre_start)"
-    echo "$extracted" | grep -q "design_approved" || {
+    grep -q "design_approved" <<<"$extracted" || {
       echo "FAIL: original $site SKILL.md missing design_approved (Red phase: production code not written yet)" >&2
       return 1
     }
@@ -888,7 +888,7 @@ teardown() {
       # Strip comments, then grep for inlined logic patterns
       local stripped
       stripped="$(sed 's/#.*//' "$f")"
-      if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))"; then
+      if grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))" <<<"$stripped"; then
         echo "INLINED: $f contains direct design-state logic" >&2
         inlined_count=$((inlined_count + 1))
       fi
@@ -917,7 +917,7 @@ teardown() {
   # The sweep should catch it
   local stripped
   stripped="$(sed 's/#.*//' "$mutant_sh")"
-  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))"; then
+  if grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))" <<<"$stripped"; then
     # Good — mutant caught
     :
   else
@@ -943,7 +943,7 @@ teardown() {
 
   local stripped
   stripped="$(sed 's/#.*//' "$mutant_sh")"
-  if printf '%s\n' "$stripped" | grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))"; then
+  if grep -qE "(yq.*design_state|design-record\.sh|= *\"?(draft|review|approved|in-dev|stale)\"?([^-a-z]|$))" <<<"$stripped"; then
     # Good — mutant caught
     :
   else
@@ -988,7 +988,7 @@ teardown() {
     local captured
     captured="$(cat "$stderr_file")"
     captured="${captured//$site_tmp/}"
-    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
       echo "FAIL: $site failed in resolve-config (stderr: $captured)" >&2
       return 1
     fi
@@ -1198,7 +1198,7 @@ teardown() {
     # Strip comments, search for override step
     local stripped
     stripped="$(sed 's/<!--.*-->//g' "$skill_md")"
-    if ! printf '%s\n' "$stripped" | grep -qE "(FORCE_DESIGN|--force-design)"; then
+    if ! grep -qE "(FORCE_DESIGN|--force-design)" <<<"$stripped"; then
       echo "FAIL: $site/SKILL.md has no override step (FORCE_DESIGN/--force-design)" >&2
       return 1
     fi
@@ -1244,7 +1244,7 @@ teardown() {
   local derived_set=""
   while IFS= read -r cand; do
     [ -n "$cand" ] || continue
-    if ! echo "$non_phase3_commands" | grep -qxF "$cand"; then
+    if ! grep -qxF "$cand" <<<"$non_phase3_commands"; then
       derived_set="${derived_set}${derived_set:+
 }${cand}"
     fi
@@ -1274,7 +1274,7 @@ teardown() {
     [ -f "$skill_md" ] || { echo "FAIL: SKILL.md missing for $site" >&2; return 1; }
     local ex
     ex="$(_gate_extract_block "$skill_md" pre_start)"
-    echo "$ex" | grep -q "design_approved" || {
+    grep -q "design_approved" <<<"$ex" || {
       echo "FAIL: $site does not declare design_approved" >&2
       return 1
     }
@@ -1297,7 +1297,7 @@ teardown() {
   phase3_commands="$(yq '.sequence | to_entries[] | select(.value.phase == "3-solutioning") | .value.command' "$mutant_seq" | sed 's|^/||' | sort -u)"
 
   # The ninth node must show up
-  if ! echo "$phase3_commands" | grep -qxF "gaia-test-ninth"; then
+  if ! grep -qxF "gaia-test-ninth" <<<"$phase3_commands"; then
     echo "FAIL: ninth node not detected in mutant" >&2
     return 1
   fi
@@ -1322,11 +1322,11 @@ teardown() {
   nodes_only="$(yq '.sequence | to_entries[] | select(.value.phase == "3-solutioning") | .value.command' "$LIFECYCLE_SEQ" | sed 's|^/||' | sort -u)"
 
   # review-api and adversarial must NOT be in the nodes-only set
-  if echo "$nodes_only" | grep -qxF "gaia-review-api"; then
+  if grep -qxF "gaia-review-api" <<<"$nodes_only"; then
     echo "FAIL: review-api found in nodes-only (should only be an edge target)" >&2
     return 1
   fi
-  if echo "$nodes_only" | grep -qxF "gaia-adversarial"; then
+  if grep -qxF "gaia-adversarial" <<<"$nodes_only"; then
     echo "FAIL: adversarial found in nodes-only (should only be an edge target)" >&2
     return 1
   fi
@@ -1355,11 +1355,11 @@ teardown() {
     before_gate="$(sed -n '1,/_gate_run_pre_start/p' "$setup_sh" | sed 's/#.*//')"
 
     # Look for artifact-tree writes (touch/mkdir/cp/mv/tee/>> on .gaia/artifacts paths)
-    if printf '%s\n' "$before_gate" | grep -qE '(touch|mkdir -p|cp |mv |tee |>>).*\.gaia/artifacts'; then
+    if grep -qE '(touch|mkdir -p|cp |mv |tee |>>).*\.gaia/artifacts' <<<"$before_gate"; then
       echo "FAIL: $site/setup.sh has artifact-tree writes before the gate call" >&2
       return 1
     fi
-    if printf '%s\n' "$before_gate" | grep -qE '(touch|mkdir -p|cp |mv |tee |>>).*\$(PLANNING_ARTIFACTS|IMPLEMENTATION_ARTIFACTS|TEST_ARTIFACTS|CREATIVE_ARTIFACTS)'; then
+    if grep -qE '(touch|mkdir -p|cp |mv |tee |>>).*\$(PLANNING_ARTIFACTS|IMPLEMENTATION_ARTIFACTS|TEST_ARTIFACTS|CREATIVE_ARTIFACTS)' <<<"$before_gate"; then
       echo "FAIL: $site/setup.sh has artifact-variable writes before the gate call" >&2
       return 1
     fi
@@ -1387,7 +1387,7 @@ teardown() {
   local before_gate
   before_gate="$(sed -n '1,/_gate_run_pre_start/p' "$mutant_sh" | sed 's/#.*//')"
 
-  if printf '%s\n' "$before_gate" | grep -qE '(touch|mkdir).*\.gaia/artifacts'; then
+  if grep -qE '(touch|mkdir).*\.gaia/artifacts' <<<"$before_gate"; then
     # Good — mutant caught
     :
   else
@@ -1430,7 +1430,7 @@ teardown() {
     local captured
     captured="$(cat "$stderr_file")"
     captured="${captured//$site_tmp/}"
-    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
       echo "FAIL: headless $site failed in resolve-config (stderr: $captured)" >&2
       all_passed=false
       continue
@@ -1442,7 +1442,7 @@ teardown() {
     }
 
     # stderr must not contain halt/error/fail/block/refused (stripped of temp path)
-    if echo "$captured" | grep -qiE "(halt|error|fail|block|refused)"; then
+    if grep -qiE "(halt|error|fail|block|refused)" <<<"$captured"; then
       echo "FAIL: headless $site emitted halt/error-like text on stderr" >&2
       all_passed=false
     fi
@@ -1495,7 +1495,7 @@ teardown() {
   local captured
   captured="$(cat "$stderr_file")"
   captured="${captured//$site_tmp/}"
-  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+  if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
     echo "FAIL: headless run failed in resolve-config (stderr: $captured)" >&2
     return 1
   fi
@@ -1522,7 +1522,7 @@ teardown() {
   local captured2
   captured2="$(cat "$stderr_file2")"
   captured2="${captured2//$site_tmp/}"
-  echo "$captured2" | grep -qiE "(design.gate|quality.gate|not-applicable.*ui)" || {
+  grep -qiE "(design.gate|quality.gate|not-applicable.*ui)" <<<"$captured2" || {
     echo "FAIL: halt did not come from the design gate (stderr: $captured2)" >&2
     return 1
   }
@@ -1622,28 +1622,28 @@ teardown() {
   captured="${captured//$site_tmp/}"
 
   # Must not have failed in resolve-config
-  if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+  if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
     echo "FAIL: failed in resolve-config, not at the design gate (stderr: $captured)" >&2
     return 1
   fi
 
   # Three required elements (emitted by the design gate's halt message):
   # 1. Record path reference
-  echo "$captured" | grep -qi "record\|design-record" || {
+  grep -qi "record\|design-record" <<<"$captured" || {
     echo "FAIL: stderr missing record path reference" >&2
     echo "Captured: $captured" >&2
     return 1
   }
 
   # 2. State name
-  echo "$captured" | grep -qiE "(review|draft|stale|in-dev)" || {
+  grep -qiE "(review|draft|stale|in-dev)" <<<"$captured" || {
     echo "FAIL: stderr missing state name" >&2
     echo "Captured: $captured" >&2
     return 1
   }
 
   # 3. Remediation command or guidance
-  echo "$captured" | grep -qiE "(approve|/gaia-design-review|--force-design)" || {
+  grep -qiE "(approve|/gaia-design-review|--force-design)" <<<"$captured" || {
     echo "FAIL: stderr missing remediation guidance" >&2
     echo "Captured: $captured" >&2
     return 1
@@ -1706,7 +1706,7 @@ teardown() {
     local captured
     captured="$(cat "$stderr_file")"
     captured="${captured//$site_tmp/}"
-    if echo "$captured" | grep -qi "resolve-config.*failed\|missing required field"; then
+    if grep -qi "resolve-config.*failed\|missing required field" <<<"$captured"; then
       echo "FAIL: $site failed in resolve-config (stderr: $captured)" >&2
       return 1
     fi
@@ -1813,7 +1813,7 @@ teardown() {
     local captured
     captured="$(cat "$stderr_file")"
     captured="${captured//$site_tmp/}"
-    echo "$captured" | grep -qi "gate-predicates" || {
+    grep -qi "gate-predicates" <<<"$captured" || {
       echo "FAIL: $site stderr does not name the missing library" >&2
       echo "Captured: $captured" >&2
       return 1
@@ -1891,13 +1891,13 @@ teardown() {
     [ -n "$prereq" ] || { echo "FAIL: $site.html has no prerequisites section" >&2; return 1; }
 
     # Item must be inside the section
-    echo "$prereq" | grep -q "Design approval required" || {
+    grep -q "Design approval required" <<<"$prereq" || {
       echo "FAIL: $site.html design-approval item is not inside the prerequisites section" >&2
       return 1
     }
 
     # Item must contain the literal &lt;text&gt; placeholder
-    echo "$prereq" | grep -q '&lt;text&gt;' || {
+    grep -q '&lt;text&gt;' <<<"$prereq" || {
       echo "FAIL: $site.html missing literal &lt;text&gt; in design-approval item" >&2
       return 1
     }
@@ -1905,7 +1905,7 @@ teardown() {
     # No sed-corruption artifacts anywhere on the page
     local full
     full="$(cat "$page")"
-    if echo "$full" | grep -qE '</ul></section>lt;|</ul></section>gt;|</ul></section>amp;'; then
+    if grep -qE '</ul></section>lt;|</ul></section>gt;|</ul></section>amp;' <<<"$full"; then
       echo "FAIL: $site.html contains sed-corruption artifact (</ul></section> followed by lt;/gt;/amp;)" >&2
       return 1
     fi

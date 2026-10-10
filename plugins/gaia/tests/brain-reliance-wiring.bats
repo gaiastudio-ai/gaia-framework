@@ -118,7 +118,7 @@ EOF
   # Gate: the brain-blind skill named in the SAME map is flagged (exit 1).
   run bash "$AUDIT" --plugin "$plug" --map "$MAP"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'demo-skill'
+  grep -q 'demo-skill' <<<"$output"
 
   # --- Flip the obligation in the SAME single map file: MANDATORY -> OPTIONAL ---
   _write_map "demo-skill:entry" "absent-node" "OPTIONAL"
@@ -127,12 +127,12 @@ EOF
   # is observed by the loader from the one map.
   run bash "$LOADER" "demo-skill:entry"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qiE 'optional|warn'
+  grep -qiE 'optional|warn' <<<"$output"
   # Gate still derives its scope from the SAME map (stage still declared), so it
   # still flags the brain-blind skill — proving it reads the identical file.
   run bash "$AUDIT" --plugin "$plug" --map "$MAP"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'demo-skill'
+  grep -q 'demo-skill' <<<"$output"
 }
 
 @test "the loader and the CI gate default to the SAME canonical reliance-map path" {
@@ -155,8 +155,8 @@ EOF
   _write_map "gaia-create-arch:discover-inputs" "absent-governing-node" "MANDATORY"
   run bash "$LOADER" "gaia-create-arch:discover-inputs"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -q 'absent-governing-node'
-  printf '%s\n' "$output" | grep -q 'gaia-create-arch:discover-inputs'
+  grep -q 'absent-governing-node' <<<"$output"
+  grep -q 'gaia-create-arch:discover-inputs' <<<"$output"
 }
 
 @test "end-to-end: entry proceeds when the MANDATORY node is present" {
@@ -169,7 +169,7 @@ EOF
   _write_map "gaia-create-arch:discover-inputs" "absent-governing-node" "OPTIONAL"
   run bash "$LOADER" "gaia-create-arch:discover-inputs"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'optional|warn'
+  grep -qiE 'optional|warn' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -280,5 +280,5 @@ EOF
   plug="$(cd "$SKILLS_DIR/.." && pwd)"
   run bash "$AUDIT" --plugin "$plug" --map "$MAP"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q 'GAP'
+  ! grep -q 'GAP' <<<"$output"
 }

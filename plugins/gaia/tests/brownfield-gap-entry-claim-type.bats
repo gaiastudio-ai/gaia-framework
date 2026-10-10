@@ -183,8 +183,8 @@ FIXTURE
   # emission rule, not just the pre-existing enum annotation.
   local filtered
   filtered="$(grep -i 'negative' "$SKILL" | grep -vi 'claim_type-enum:' | grep -vi 'non-negative')"
-  printf '%s\n' "$filtered" | grep -qi 'absence\|missing'
-  printf '%s\n' "$filtered" | grep -qi 'MUST.*claim_type\|claim_type.*MUST\|MUST.*negative\|negative.*MUST'
+  grep -qi 'absence\|missing' <<<"$filtered"
+  grep -qi 'MUST.*claim_type\|claim_type.*MUST\|MUST.*negative\|negative.*MUST' <<<"$filtered"
 }
 
 # ===========================================================================
@@ -198,5 +198,5 @@ FIXTURE
   # paragraph to require a substantive rule.
   local filtered
   filtered="$(grep -i 'contradiction' "$SKILL" | grep -vi 'claim_type-enum:' | grep -vi 'config-contradiction' | grep -vi 'cross-scanner drift')"
-  printf '%s\n' "$filtered" | grep -qi 'MUST.*contradiction\|contradiction.*MUST\|claim_type.*contradiction\|contradiction.*claim_type'
+  grep -qi 'MUST.*contradiction\|contradiction.*MUST\|claim_type.*contradiction\|contradiction.*claim_type' <<<"$filtered"
 }

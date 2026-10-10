@@ -50,7 +50,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
   [ "$status" -eq 0 ]
   [ "$(count_stories)" -eq "$before" ] \
     || { echo "re-run must not create new files (idempotent), before=$before after=$(count_stories)" >&2; false; }
-  echo "$output" | grep -Eiq 'skip|already|exists' \
+  grep -Eiq 'skip|already|exists' <<<"$output" \
     || { echo "re-run should report skipped/already-materialized, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -70,7 +70,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
   [ -n "$sf" ]
   # per-story layout: parent dir is E900-S1-<slug>, grandparent is epic-E900-<slug>
   parent="$(basename "$(dirname "$sf")")"
-  echo "$parent" | grep -Eq '^E900-S1-' \
+  grep -Eq '^E900-S1-' <<<"$parent" \
     || { echo "story.md should be in a per-story E900-S1-<slug>/ dir, got parent: $parent" >&2; false; }
   grep -Eq '^priority_flag:[[:space:]]*(null|~)?[[:space:]]*$' "$sf" \
     || { echo "priority_flag must be null, got:" >&2; grep priority_flag "$sf" >&2; false; }
@@ -117,7 +117,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
   # the in-progress edit must survive the refresh (guarded)
   grep -q 'HANDCRAFTED-IN-PROGRESS-CONTENT' "$sf" \
     || { echo "--refresh must NOT clobber an in-progress story" >&2; false; }
-  echo "$output" | grep -Eiq 'guard|skip|in-progress|protected'
+  grep -Eiq 'guard|skip|in-progress|protected' <<<"$output"
 }
 
 # ---------- robustness ----------
@@ -130,7 +130,7 @@ count_stories() { find "$IMPL" -type f -name 'story.md' 2>/dev/null | wc -l | tr
 @test "--help prints usage and exits 0" {
   run bash "$MAT" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'for-sprint|materializ'
+  grep -Eiq 'for-sprint|materializ' <<<"$output"
 }
 
 # ---------- AC3 doc: SKILL.md documents the --for-sprint mode ----------

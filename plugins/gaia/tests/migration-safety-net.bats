@@ -77,9 +77,9 @@ YAML
   run bash -c "source '$STATUS' && gaia_config_migration_warning_text '$CONFIG'"
   [ "$status" -eq 0 ]
   # Warning MUST cite the migration command + the canonical FR / ADR refs
-  echo "$output" | grep -qi 'warning'
-  echo "$output" | grep -qE 'environments.*kind|distribution:'
-  echo "$output" | grep -qE 'FR-528|E99|migration'
+  grep -qi 'warning' <<<"$output"
+  grep -qE 'environments.*kind|distribution:' <<<"$output"
+  grep -qE 'FR-528|E99|migration' <<<"$output"
 }
 
 # ---------- TC-MSN-3: partial migration enumerates missing pieces ----------
@@ -94,8 +94,8 @@ YAML
   [ "$status" -eq 0 ]
   [ "$output" = "partial-missing-distribution" ]
   run bash -c "source '$STATUS' && gaia_config_migration_warning_text '$CONFIG'"
-  echo "$output" | grep -qi 'distribution'
-  ! echo "$output" | grep -qE 'kind:.*missing'
+  grep -qi 'distribution' <<<"$output"
+  ! grep -qE 'kind:.*missing' <<<"$output"
 }
 
 @test "partial migration (distribution: present, no kind:) enumerates missing kind" {
@@ -113,7 +113,7 @@ YAML
   [ "$status" -eq 0 ]
   [ "$output" = "partial-missing-kind" ]
   run bash -c "source '$STATUS' && gaia_config_migration_warning_text '$CONFIG'"
-  echo "$output" | grep -qi 'kind'
+  grep -qi 'kind' <<<"$output"
 }
 
 # ---------- AC1: drift detector .config-stale marker writer ----------

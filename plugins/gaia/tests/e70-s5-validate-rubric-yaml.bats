@@ -75,7 +75,7 @@ YAML
   _write_valid_json_rubric "$f"
   run "$VALIDATOR" "$f"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "PASS"
+  grep -q "PASS" <<<"$output"
 }
 
 @test "validate-rubric.sh PASSes a conforming YAML rubric" {
@@ -84,7 +84,7 @@ YAML
   _write_valid_yaml_rubric "$f"
   run "$VALIDATOR" "$f"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "PASS"
+  grep -q "PASS" <<<"$output"
 }
 
 @test "validate-rubric.sh FAILs a YAML rubric missing required fields" {
@@ -94,15 +94,15 @@ YAML
   run "$VALIDATOR" "$f"
   [ "$status" -ne 0 ]
   # The script emits "FAIL: <path> ..." on stderr.
-  echo "$output" | grep -qi "fail"
+  grep -qi "fail" <<<"$output"
   # The missing-field violation should mention severity_rules.
-  echo "$output" | grep -qi "severity_rules"
+  grep -qi "severity_rules" <<<"$output"
 }
 
 @test "validate-rubric.sh emits file-not-found for a non-existent path" {
   run "$VALIDATOR" "$TEST_TMP/does-not-exist.yaml"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "not found"
+  grep -qi "not found" <<<"$output"
 }
 
 @test ".yml extension is accepted as YAML" {
@@ -111,5 +111,5 @@ YAML
   _write_valid_yaml_rubric "$f"
   run "$VALIDATOR" "$f"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "PASS"
+  grep -q "PASS" <<<"$output"
 }

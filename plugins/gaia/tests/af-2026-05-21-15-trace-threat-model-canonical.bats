@@ -64,8 +64,8 @@ teardown() { common_teardown; }
 @test "threat-model finalize.sh — greenfield → skips checklist" {
   unset THREAT_MODEL_ARTIFACT
   OUTPUT=$(bash "$THREAT_MODEL_FINALIZE" 2>&1 || true)
-  echo "$OUTPUT" | grep -qF "no threat-model artifact found"
-  ! echo "$OUTPUT" | grep -qF "running 25-item checklist"
+  grep -qF "no threat-model artifact found" <<<"$OUTPUT"
+  ! grep -qF "running 25-item checklist" <<<"$OUTPUT"
 }
 
 @test "threat-model finalize.sh — post-migration → resolves to canonical" {
@@ -73,7 +73,7 @@ teardown() { common_teardown; }
   mkdir -p ".gaia/artifacts/planning-artifacts"
   echo "# Threat Model" > ".gaia/artifacts/planning-artifacts/threat-model.md"
   OUTPUT=$(bash "$THREAT_MODEL_FINALIZE" 2>&1 || true)
-  echo "$OUTPUT" | grep -qF ".gaia/artifacts/planning-artifacts/threat-model.md"
+  grep -qF ".gaia/artifacts/planning-artifacts/threat-model.md" <<<"$OUTPUT"
   [ ! -d "docs" ]
 }
 
@@ -82,7 +82,7 @@ teardown() { common_teardown; }
   mkdir -p "docs/planning-artifacts"
   echo "# Legacy" > "docs/planning-artifacts/threat-model.md"
   OUTPUT=$(bash "$THREAT_MODEL_FINALIZE" 2>&1 || true)
-  echo "$OUTPUT" | grep -qF "docs/planning-artifacts/threat-model.md"
+  grep -qF "docs/planning-artifacts/threat-model.md" <<<"$OUTPUT"
   [ ! -d ".gaia" ]
 }
 
@@ -92,7 +92,7 @@ teardown() { common_teardown; }
   echo "# Canonical" > ".gaia/artifacts/planning-artifacts/threat-model.md"
   echo "# Legacy" > "docs/planning-artifacts/threat-model.md"
   OUTPUT=$(bash "$THREAT_MODEL_FINALIZE" 2>&1 || true)
-  echo "$OUTPUT" | grep -qF "running 25-item checklist against .gaia/artifacts/planning-artifacts/threat-model.md"
+  grep -qF "running 25-item checklist against .gaia/artifacts/planning-artifacts/threat-model.md" <<<"$OUTPUT"
 }
 
 @test "threat-model finalize.sh — THREAT_MODEL_ARTIFACT env-var (Tier 1) wins" {
@@ -103,5 +103,5 @@ teardown() { common_teardown; }
   export THREAT_MODEL_ARTIFACT="$TEST_TMP/custom/my-threat.md"
   OUTPUT=$(bash "$THREAT_MODEL_FINALIZE" 2>&1 || true)
   unset THREAT_MODEL_ARTIFACT
-  echo "$OUTPUT" | grep -qF "running 25-item checklist against $TEST_TMP/custom/my-threat.md"
+  grep -qF "running 25-item checklist against $TEST_TMP/custom/my-threat.md" <<<"$OUTPUT"
 }

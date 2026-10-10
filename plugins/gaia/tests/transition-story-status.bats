@@ -218,7 +218,7 @@ index_status() {
 
   run "$TRANSITION" "$STORY_KEY" --to backlog
   [ "$status" -eq 0 ]
-  echo "$output $stderr" | grep -q "no-op"
+  grep -q "no-op" <<<"$output $stderr"
 
   local after_sha; after_sha=$(shasum "$STORY_FILE" "$SPRINT_YAML" "$EPICS_MD" "$INDEX_YAML" | shasum)
   [ "$before_sha" = "$after_sha" ]
@@ -232,9 +232,9 @@ index_status() {
 
   run "$TRANSITION" "$STORY_KEY" --to backlog
   [ "$status" -ne 0 ]
-  echo "$output $stderr" | grep -qiE "invalid|illegal|not allowed|transition"
-  echo "$output $stderr" | grep -q "done"
-  echo "$output $stderr" | grep -q "backlog"
+  grep -qiE "invalid|illegal|not allowed|transition" <<<"$output $stderr"
+  grep -q "done" <<<"$output $stderr"
+  grep -q "backlog" <<<"$output $stderr"
 }
 
 # AC6 — preserves epics-and-stories.md ordering byte-stable except the target story's status line
@@ -316,7 +316,7 @@ index_status() {
 @test "AC: --from flag rejects when current status != expected" {
   run "$TRANSITION" "$STORY_KEY" --to validating --from ready-for-dev
   [ "$status" -ne 0 ]
-  echo "$output $stderr" | grep -qiE "from|expected|mismatch"
+  grep -qiE "from|expected|mismatch" <<<"$output $stderr"
 }
 
 # AC4 / TC-CSE-12 — Step 6 PASSED canonical ordering documented in SKILL.md

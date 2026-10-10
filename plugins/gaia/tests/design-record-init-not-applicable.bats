@@ -151,7 +151,7 @@ _init_existing_record() {
   run "$SCRIPT" init-not-applicable --actor "design-gate"
   [ "$status" -ne 0 ]
   # Match the refusal text only — the temp path itself contains the word.
-  printf '%s\n' "${output//$TEST_TMP/}" | grep -qi "symlink" \
+  grep -qi "symlink" <<<"${output//$TEST_TMP/}" \
     || fail "expected a symlink refusal; got: $output"
   # The symlink target must be left empty
   [ ! -s "$target" ]

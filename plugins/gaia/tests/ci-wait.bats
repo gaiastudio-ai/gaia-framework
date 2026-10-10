@@ -915,24 +915,24 @@ teardown() {
   [ -n "$step12" ] || { echo "Step 12 block not found"; return 1; }
 
   # Background command present, explicitly says no --timeout
-  echo "$step12" | grep -qi 'background'
-  echo "$step12" | grep -q 'ci-wait.sh.*no.*--timeout\|no.*--timeout.*ci-wait.sh'
+  grep -qi 'background' <<<"$step12"
+  grep -q 'ci-wait.sh.*no.*--timeout\|no.*--timeout.*ci-wait.sh' <<<"$step12"
   # Must wait for background completion before Step 13
-  echo "$step12" | grep -qi 'wait.*completion\|completion.*notice'
-  echo "$step12" | grep -qi 'never start Step 13 before'
+  grep -qi 'wait.*completion\|completion.*notice' <<<"$step12"
+  grep -qi 'never start Step 13 before' <<<"$step12"
   # Foreground fallback with --timeout and 600000
-  echo "$step12" | grep -q -- '--timeout'
-  echo "$step12" | grep -qE '600.?000|10.min'
+  grep -q -- '--timeout' <<<"$step12"
+  grep -qE '600.?000|10.min' <<<"$step12"
   # Outcome rules apply to both paths
-  echo "$step12" | grep -qi 'both paths'
+  grep -qi 'both paths' <<<"$step12"
   # Anchored halt assertions: timed-out-no-budget → HALT, other-failure → HALT
   # A mutant changing HALT to "Proceed to Step 13" on these lines must go red.
-  echo "$step12" | grep -q 'no budget remaining.*HALT'
-  echo "$step12" | grep -q 'CI check failed.*HALT'
+  grep -q 'no budget remaining.*HALT' <<<"$step12"
+  grep -q 'CI check failed.*HALT' <<<"$step12"
   # Only exit 0 with "passed" should proceed to Step 13
-  echo "$step12" | grep -q 'Exit 0.*passed.*Step 13'
+  grep -q 'Exit 0.*passed.*Step 13' <<<"$step12"
   # Must NOT claim merge script will re-check
-  if echo "$step12" | grep -qi 'merge.*re-check\|re-check.*merge'; then
+  if grep -qi 'merge.*re-check\|re-check.*merge' <<<"$step12"; then
     echo "Step 12 unexpectedly claims merge script re-checks" >&2
     return 1
   fi

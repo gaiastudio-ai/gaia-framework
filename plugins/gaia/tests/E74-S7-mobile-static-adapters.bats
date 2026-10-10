@@ -115,32 +115,32 @@ PY
 @test "platforms ios returns ios adapters + cross-platform mobsf" {
   run "$RESOLVER" --platforms ios --adapters-dir "$ADAPTERS_DIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qx 'swiftlint'
-  echo "$output" | grep -qx 'swiftformat'
-  echo "$output" | grep -qx 'xcsize'
-  echo "$output" | grep -qx 'mobsf'
-  ! echo "$output" | grep -qx 'detekt'
-  ! echo "$output" | grep -qx 'ktlint'
-  ! echo "$output" | grep -qx 'apkanalyzer'
+  grep -qx 'swiftlint' <<<"$output"
+  grep -qx 'swiftformat' <<<"$output"
+  grep -qx 'xcsize' <<<"$output"
+  grep -qx 'mobsf' <<<"$output"
+  ! grep -qx 'detekt' <<<"$output"
+  ! grep -qx 'ktlint' <<<"$output"
+  ! grep -qx 'apkanalyzer' <<<"$output"
 }
 
 @test "platforms android returns android adapters + cross-platform mobsf" {
   run "$RESOLVER" --platforms android --adapters-dir "$ADAPTERS_DIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qx 'detekt'
-  echo "$output" | grep -qx 'ktlint'
-  echo "$output" | grep -qx 'apkanalyzer'
-  echo "$output" | grep -qx 'mobsf'
-  ! echo "$output" | grep -qx 'swiftlint'
-  ! echo "$output" | grep -qx 'swiftformat'
-  ! echo "$output" | grep -qx 'xcsize'
+  grep -qx 'detekt' <<<"$output"
+  grep -qx 'ktlint' <<<"$output"
+  grep -qx 'apkanalyzer' <<<"$output"
+  grep -qx 'mobsf' <<<"$output"
+  ! grep -qx 'swiftlint' <<<"$output"
+  ! grep -qx 'swiftformat' <<<"$output"
+  ! grep -qx 'xcsize' <<<"$output"
 }
 
 @test "platforms ios,android returns both-platform sets" {
   run "$RESOLVER" --platforms ios,android --adapters-dir "$ADAPTERS_DIR"
   [ "$status" -eq 0 ]
   for adapter in swiftlint swiftformat xcsize detekt ktlint apkanalyzer mobsf; do
-    echo "$output" | grep -qx "$adapter" || { echo "missing $adapter in output: $output" >&2; return 1; }
+    grep -qx "$adapter" <<<"$output" || { echo "missing $adapter in output: $output" >&2; return 1; }
   done
 }
 
@@ -148,7 +148,7 @@ PY
   run "$RESOLVER" --platforms web --adapters-dir "$ADAPTERS_DIR"
   [ "$status" -eq 0 ]
   for adapter in "${ADAPTERS[@]}"; do
-    ! echo "$output" | grep -qx "$adapter" || { echo "$adapter should not be selected for web platforms" >&2; return 1; }
+    ! grep -qx "$adapter" <<<"$output" || { echo "$adapter should not be selected for web platforms" >&2; return 1; }
   done
 }
 

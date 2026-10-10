@@ -462,7 +462,7 @@ JSON
   [[ "$output" == *"PARTIAL-DEPLOY"* ]]
   # Must NOT contain a bare PASSED or FAILED line (only PARTIAL-DEPLOY).
   local stdout_verdict
-  stdout_verdict="$(printf '%s\n' "$output" | grep -v '^gaia-deploy' | head -1)"
+  stdout_verdict="$(grep -v '^gaia-deploy' <<<"$output" | head -1)"
   [ "$stdout_verdict" = "PARTIAL-DEPLOY" ]
 }
 

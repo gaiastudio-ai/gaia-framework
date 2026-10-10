@@ -46,9 +46,9 @@ setup() {
   run bash "$LINT" --epics "$EPICS" --candidates "E900-S3" --done ""
   [ "$status" -ne 0 ] \
     || { echo "E900-S3 with unmet cross-sprint dep E901-S9 should hard-block, got status $status" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eq 'E901-S9' \
+  grep -Eq 'E901-S9' <<<"$output" \
     || { echo "hard-block message should name the unmet dep E901-S9, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eiq 'block|unmet|not (done|selected)'
+  grep -Eiq 'block|unmet|not (done|selected)' <<<"$output"
 }
 
 # ---------- AC3b / TS4: co-selected dep allowed ----------
@@ -96,7 +96,7 @@ setup() {
   run bash "$LINT" --epics "$FX/epics-and-stories-reordered.md" --candidates "E900-S2" --done ""
   [ "$status" -ne 0 ] \
     || { echo "reordered-column dep must still hard-block via header sniff, got: $output" >&2; false; }
-  echo "$output" | grep -Eq 'E901-S9'
+  grep -Eq 'E901-S9' <<<"$output"
 }
 
 # ---------- robustness ----------
@@ -109,7 +109,7 @@ setup() {
 @test "--help prints usage and exits 0" {
   run bash "$LINT" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'backlog|lint|depends'
+  grep -Eiq 'backlog|lint|depends' <<<"$output"
 }
 
 # ---------- AC4 / TS5: SKILL.md commits as planned + inverts selectability ----------

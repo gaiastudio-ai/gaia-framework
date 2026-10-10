@@ -178,7 +178,7 @@ _make_story() {
   touch "$TEST_TMP/E10-S1-existing.md"
   run sg_check_collision "$TEST_TMP" "E10-S1"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "E10-S1"
+  grep -q "E10-S1" <<<"$output"
 }
 
 @test "sg_check_collision: rejects missing directory argument" {
@@ -224,7 +224,7 @@ _make_story() {
   echo "content" > "$file"
   run sg_cleanup_partial "$file"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "E2-S1-cleanup.md" || echo "$stderr" | grep -q "E2-S1-cleanup.md" || true
+  grep -q "E2-S1-cleanup.md" <<<"$output" || echo "$stderr" | grep -q "E2-S1-cleanup.md" || true
 }
 
 # ===========================================================================
@@ -297,7 +297,7 @@ EOF
   file="$(_make_story "$TEST_TMP" "E1-S1" "triage-findings" "F-001")"
   run sg_verify_frontmatter "$file" "correct-course" "sprint-26"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "schema" || echo "$output" | grep -qi "mismatch" || echo "$output" | grep -qi "drift"
+  grep -qi "schema" <<<"$output" || echo "$output" | grep -qi "mismatch" || echo "$output" | grep -qi "drift"
 }
 
 @test "sg_verify_frontmatter: rejects empty expected_origin argument" {
@@ -316,8 +316,8 @@ EOF
   # leak the printf-style "%s" placeholder (log() prints $* verbatim).
   run sg_verify_frontmatter "$file" "correct-course" "F-001"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'expected=correct-course actual=triage-findings'
-  ! echo "$output" | grep -q 'expected=%s'
+  grep -q 'expected=correct-course actual=triage-findings' <<<"$output"
+  ! grep -q 'expected=%s' <<<"$output"
 }
 
 # ===========================================================================
@@ -353,7 +353,7 @@ _make_epic_story() {
   _make_epic_story "$TEST_TMP" "E70-demo" "E70-S99" "triage-findings" "F-1" >/dev/null
   run sg_check_collision "$TEST_TMP" "E70-S99"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "collision"
+  grep -qi "collision" <<<"$output"
 }
 
 @test "check-collision: passes for a key absent from the epic-grouped tree" {
@@ -408,5 +408,5 @@ _make_epic_story() {
   done
   run sg_check_collision "$TEST_TMP" "E1-S1"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi "collision"
+  grep -qi "collision" <<<"$output"
 }

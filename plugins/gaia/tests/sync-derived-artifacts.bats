@@ -1187,7 +1187,7 @@ UX
   # new-gamma should appear in the template section (between "Components & Design System" and "Component Inventory")
   local template_section
   template_section="$(awk '/## 8\. Components/,/## Component Inventory/' "$doc_dir/ux-design.md")"
-  printf '%s\n' "$template_section" | grep -q 'new-gamma' || \
+  grep -q 'new-gamma' <<<"$template_section" || \
     fail "new-gamma should be in the template heading section, not the legacy one"
 
   # The legacy section should NOT contain new-gamma
@@ -4223,7 +4223,7 @@ UX
     fail "reconciliation must not fork jq per screen (found $inner_jq_count jq calls with index variable)"
 
   # Must use a single awk call that reads screen content via getline
-  printf '%s\n' "$recon_section" | grep -q 'getline.*scr_path' || \
+  grep -q 'getline.*scr_path' <<<"$recon_section" || \
     fail "reconciliation must use a single awk with getline for screen content"
 }
 
@@ -5248,7 +5248,7 @@ UX
 
   local alpha_last beta_first
   alpha_last="$(printf '%s\n' "$lines" | grep -n 'token --alpha' | tail -1 | cut -d: -f1)"
-  beta_first="$(printf '%s\n' "$lines" | grep -n 'token --beta' | head -1 | cut -d: -f1)"
+  beta_first="$(grep -n 'token --beta' <<<"$lines" | head -1 | cut -d: -f1)"
 
   [ -n "$alpha_last" ] || fail "no --alpha reconciliation lines found: $output"
   [ -n "$beta_first" ] || fail "no --beta reconciliation lines found: $output"
@@ -5320,7 +5320,7 @@ UX
 
   # The reconciliation line must use the escaped forms from the shared helper.
   local recon_line
-  recon_line="$(printf '%s\n' "$output" | grep 'reconciliation (medium):' | head -1)"
+  recon_line="$(grep 'reconciliation (medium):' <<<"$output" | head -1)"
   [ -n "$recon_line" ] || fail "no reconciliation line found: $output"
 
   # Check the escaped old value appears in the output.

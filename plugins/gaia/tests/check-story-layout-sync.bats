@@ -98,8 +98,8 @@ EOF
 
   run "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -q '^WARNING'
-  ! printf '%s\n' "$output" | grep -q '^CRITICAL'
+  ! grep -q '^WARNING' <<<"$output"
+  ! grep -q '^CRITICAL' <<<"$output"
 }
 
 # TS2 / AC1 — single legacy flat-path story emits exactly one WARNING legacy-flat-path line.
@@ -165,7 +165,7 @@ EOF
 
   run "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -q 'heterogeneous-story-index'
+  ! grep -q 'heterogeneous-story-index' <<<"$output"
 }
 
 # AC2 — only per-epic story-index files (no flat) do NOT trigger heterogeneous warning.
@@ -175,7 +175,7 @@ EOF
 
   run "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -q 'heterogeneous-story-index'
+  ! grep -q 'heterogeneous-story-index' <<<"$output"
 }
 
 # TS4 / AC3 — epic-slug-mismatch: one WARNING line naming the file, dir epic-key, frontmatter value.
@@ -209,7 +209,7 @@ EOF
 
   run "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -q 'epic-slug-mismatch'
+  ! grep -q 'epic-slug-mismatch' <<<"$output"
 }
 
 # TS5 — all three classes simultaneously: all three check-ids appear, exit 0.
@@ -225,10 +225,10 @@ EOF
   run "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
 
-  printf '%s\n' "$output" | grep -q 'legacy-flat-path'
-  printf '%s\n' "$output" | grep -q 'heterogeneous-story-index'
-  printf '%s\n' "$output" | grep -q 'epic-slug-mismatch'
-  ! printf '%s\n' "$output" | grep -q '^CRITICAL'
+  grep -q 'legacy-flat-path' <<<"$output"
+  grep -q 'heterogeneous-story-index' <<<"$output"
+  grep -q 'epic-slug-mismatch' <<<"$output"
+  ! grep -q '^CRITICAL' <<<"$output"
 }
 
 # TS6 / AC4 — advisory exit invariant: exit 0 in every scenario.
@@ -282,5 +282,5 @@ EOF
   # set -euo pipefail somewhere near the top (within first 50 lines).
   run head -n50 "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'set -euo pipefail'
+  grep -q 'set -euo pipefail' <<<"$output"
 }

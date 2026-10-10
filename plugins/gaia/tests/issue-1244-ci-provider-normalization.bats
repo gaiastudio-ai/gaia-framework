@@ -28,14 +28,14 @@ _gen() {
 @test "issue-1244: ci_platform.provider 'github_actions' is normalized to 'github-actions'" {
   local json='{"project_name":"X","project_shape":"web-app","project_kind":"web-app","ci_platform":{"provider":"github_actions"},"stacks":[{"name":"b","language":"python","paths":["b/"]}]}'
   local cfg; cfg="$(_gen "$json" full)"
-  printf '%s\n' "$cfg" | grep -qE '^[[:space:]]+provider:[[:space:]]*"?github-actions"?'
-  ! printf '%s\n' "$cfg" | grep -qE 'provider:.*github_actions'
+  grep -qE '^[[:space:]]+provider:[[:space:]]*"?github-actions"?' <<<"$cfg"
+  ! grep -qE 'provider:.*github_actions' <<<"$cfg"
 }
 
 @test "issue-1244: an already-hyphenated provider passes through unchanged" {
   local json='{"project_name":"X","project_shape":"web-app","project_kind":"web-app","ci_platform":{"provider":"gitlab-ci"},"stacks":[{"name":"b","language":"python","paths":["b/"]}]}'
   local cfg; cfg="$(_gen "$json" full)"
-  printf '%s\n' "$cfg" | grep -qE '^[[:space:]]+provider:[[:space:]]*"?gitlab-ci"?'
+  grep -qE '^[[:space:]]+provider:[[:space:]]*"?gitlab-ci"?' <<<"$cfg"
 }
 
 @test "issue-1244: azure_pipelines and bitbucket_pipelines normalize too" {
@@ -43,7 +43,7 @@ _gen() {
     local json="{\"project_name\":\"X\",\"project_shape\":\"web-app\",\"project_kind\":\"web-app\",\"ci_platform\":{\"provider\":\"$p\"},\"stacks\":[{\"name\":\"b\",\"language\":\"python\",\"paths\":[\"b/\"]}]}"
     local cfg; cfg="$(_gen "$json" full)"
     local want="${p//_/-}"
-    printf '%s\n' "$cfg" | grep -qE "provider:[[:space:]]*\"?${want}\"?" \
+    grep -qE "provider:[[:space:]]*\"?${want}\"?" <<<"$cfg" \
       || { echo "no normalization for $p -> $want"; printf '%s\n' "$cfg" | grep provider; false; }
   done
 }

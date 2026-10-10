@@ -40,8 +40,8 @@ teardown() { common_teardown; }
   run bash -c "printf '%s' '$STDIN_JSON' | env HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
   # No update arrow glyph (↑) and no [update] prefix.
-  ! echo "$output" | grep -q '↑'
-  ! echo "$output" | grep -q '\[update\]'
+  ! grep -q '↑' <<<"$output"
+  ! grep -q '\[update\]' <<<"$output"
 }
 
 @test "TC-7: cache older than 7d suppresses [update] in ASCII theme" {
@@ -50,7 +50,7 @@ teardown() { common_teardown; }
   printf '%s' '{"checked_at_iso":"'"$ts_old"'","latest_tag":"2.0.0","current_tag":"1.0.0","update_available":true}' > "$CACHE"
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q '\[update\]'
+  ! grep -q '\[update\]' <<<"$output"
 }
 
 @test "TC-7: cache fresh (< 7d) with update_available=true shows update glyph" {
@@ -60,7 +60,7 @@ teardown() { common_teardown; }
   # In ASCII theme to make the assertion unicode-agnostic.
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '\[update\]'
+  grep -q '\[update\]' <<<"$output"
 }
 
 @test "TC-7: cache fresh with update_available=false hides update signal" {
@@ -69,7 +69,7 @@ teardown() { common_teardown; }
   printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"1.0.0","current_tag":"1.0.0","update_available":false}' > "$CACHE"
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q '\[update\]'
+  ! grep -q '\[update\]' <<<"$output"
 }
 
 @test "TC-7: cache missing -> no update signal, exit 0" {
@@ -77,7 +77,7 @@ teardown() { common_teardown; }
   rm -f "$CACHE"
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q '\[update\]'
+  ! grep -q '\[update\]' <<<"$output"
 }
 
 @test "TC-7: cache malformed -> no update signal, exit 0 (silent on miss)" {
@@ -85,7 +85,7 @@ teardown() { common_teardown; }
   printf 'not json' > "$CACHE"
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q '\[update\]'
+  ! grep -q '\[update\]' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ teardown() { common_teardown; }
   printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"1.0.0","current_tag":"0.9.0","update_available":true}' > "$CACHE"
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q '\[update\]'
+  ! grep -q '\[update\]' <<<"$output"
 }
 
 @test "AF-27-5: installed NEWER than cached latest_tag -> no arrow (the reported bug)" {
@@ -114,7 +114,7 @@ teardown() { common_teardown; }
   printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"0.9.0","current_tag":"0.9.0","update_available":true}' > "$CACHE"
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q '\[update\]'
+  ! grep -q '\[update\]' <<<"$output"
 }
 
 @test "AF-27-5: cached latest_tag strictly NEWER than installed -> arrow shows" {
@@ -124,7 +124,7 @@ teardown() { common_teardown; }
   printf '%s' '{"checked_at_iso":"'"$ts_recent"'","latest_tag":"1.1.0","current_tag":"1.0.0","update_available":true}' > "$CACHE"
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '\[update\]'
+  grep -q '\[update\]' <<<"$output"
 }
 
 @test "AF-27-5: semver-aware — 1.10.0 installed, latest 1.9.0 -> no arrow" {
@@ -138,5 +138,5 @@ PJ
   run bash -c "GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_ASCII=1 HOME='$HOME' PROJECT_PATH='$PROJECT_PATH' '$RUNTIME'"
   [ "$status" -eq 0 ]
   # 1.9.0 is NOT > 1.10.0 under semver -> no arrow (a string '>' would wrongly fire).
-  ! echo "$output" | grep -q '\[update\]'
+  ! grep -q '\[update\]' <<<"$output"
 }

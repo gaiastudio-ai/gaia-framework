@@ -97,8 +97,8 @@ snapshot() {
   run "$DASHBOARD"
   [ "$status" -eq 0 ]
   # Find line numbers of key markers; banner must appear before "Story" header row
-  banner_line=$(printf '%s\n' "$output" | grep -nE 'READY-TO-REVIEW' | head -1 | cut -d: -f1)
-  stories_header_line=$(printf '%s\n' "$output" | grep -nE '^  Story ' | head -1 | cut -d: -f1)
+  banner_line=$(grep -nE 'READY-TO-REVIEW' <<<"$output" | head -1 | cut -d: -f1)
+  stories_header_line=$(grep -nE '^  Story ' <<<"$output" | head -1 | cut -d: -f1)
   [ -n "$banner_line" ]
   [ -n "$stories_header_line" ]
   [ "$banner_line" -lt "$stories_header_line" ]

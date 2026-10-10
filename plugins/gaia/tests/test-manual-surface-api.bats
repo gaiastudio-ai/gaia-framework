@@ -39,7 +39,7 @@ teardown() {
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "PASSED"
+  grep -qi "PASSED" <<<"$output"
 }
 
 @test "api dispatch writes run-record.md with transcript" {
@@ -63,7 +63,7 @@ teardown() {
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   # dispatch itself exits 0 (it completed its job), but verdict is FAILED
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "FAILED"
+  grep -qi "FAILED" <<<"$output"
 }
 
 @test "api dispatch captures exit code in evidence for failing command" {
@@ -81,8 +81,8 @@ teardown() {
   run bash "$DISPATCH" --surface api --target "echo test" \
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
-  ! echo "$output" | grep -qi "pixel"
-  ! echo "$output" | grep -qi "screenshot"
+  ! grep -qi "pixel" <<<"$output"
+  ! grep -qi "screenshot" <<<"$output"
 }
 
 # ---------- AC3: non-api surfaces emit PENDING ----------
@@ -97,7 +97,7 @@ YAML
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
   # Without baselines, browser surface resolves UNVERIFIED (non-blocking)
-  echo "$output" | grep -qi "UNVERIFIED"
+  grep -qi "UNVERIFIED" <<<"$output"
 }
 
 @test "mobile dispatch emits PENDING when configured" {
@@ -109,7 +109,7 @@ YAML
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "PENDING"
+  grep -qi "PENDING" <<<"$output"
 }
 
 @test "desktop dispatch emits PENDING when configured" {
@@ -125,7 +125,7 @@ YAML
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "PENDING"
+  grep -qi "PENDING" <<<"$output"
 }
 
 # ---------- AC3: SKIPPED surface passes through ----------
@@ -139,5 +139,5 @@ YAML
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "SKIPPED"
+  grep -qi "SKIPPED" <<<"$output"
 }

@@ -213,9 +213,9 @@ teardown() { common_teardown; }
   local tsv
   tsv="$(parse_cross_refs "$TEST_TMP/config-chain.yaml")"
   # stack-a depends on stack-b → consumer=stack-a, dep=stack-b
-  printf '%s\n' "$tsv" | grep -qF $'stack-a\tstack-b'
+  grep -qF $'stack-a\tstack-b' <<<"$tsv"
   # stack-b depends on stack-c → consumer=stack-b, dep=stack-c
-  printf '%s\n' "$tsv" | grep -qF $'stack-b\tstack-c'
+  grep -qF $'stack-b\tstack-c' <<<"$tsv"
 }
 
 @test "build_inverted_index maps dependency to its consumer" {
@@ -229,7 +229,7 @@ teardown() { common_teardown; }
   # _consumers_of stack-b should return stack-a
   local consumers
   consumers="$(_consumers_of "stack-b")"
-  printf '%s\n' "$consumers" | grep -q "stack-a"
+  grep -q "stack-a" <<<"$consumers"
   rm -f "$tmp_tsv"
 }
 
@@ -238,8 +238,8 @@ teardown() { common_teardown; }
   local tsv
   tsv="$(parse_cross_refs "$TEST_TMP/config-inline.yaml")"
   # stack-a: [stack-b, stack-c] — must produce two TSV rows
-  printf '%s\n' "$tsv" | grep -qF $'stack-a\tstack-b'
-  printf '%s\n' "$tsv" | grep -qF $'stack-a\tstack-c'
+  grep -qF $'stack-a\tstack-b' <<<"$tsv"
+  grep -qF $'stack-a\tstack-c' <<<"$tsv"
 }
 
 # ---------------------------------------------------------------------------

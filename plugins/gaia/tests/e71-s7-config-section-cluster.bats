@@ -247,7 +247,7 @@ teardown() { common_teardown; }
     # Capture every `extract <path> <name>` and `replace <path> <name> <file>` invocation.
     while IFS= read -r section; do
       [ -z "$section" ] && continue
-      if ! printf '%s\n' "$declared" | grep -Fxq "$section"; then
+      if ! grep -Fxq "$section" <<<"$declared"; then
         echo "VIOLATION: $skill references section '$section' not in schema" >&2
         violations=$((violations + 1))
       fi

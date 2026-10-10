@@ -186,28 +186,28 @@ EOF
   _load_guard_helpers
   local out
   out="$(tg_render_guidance "E39-S1" "sprint-26")"
-  echo "$out" | grep -q "E39-S1"
+  grep -q "E39-S1" <<<"$out"
 }
 
 @test "tg_render_guidance: includes sprint ID" {
   _load_guard_helpers
   local out
   out="$(tg_render_guidance "E39-S1" "sprint-26")"
-  echo "$out" | grep -q "sprint-26"
+  grep -q "sprint-26" <<<"$out"
 }
 
 @test "tg_render_guidance: recommends /gaia-create-story" {
   _load_guard_helpers
   local out
   out="$(tg_render_guidance "E39-S1" "sprint-26")"
-  echo "$out" | grep -q "/gaia-create-story"
+  grep -q "/gaia-create-story" <<<"$out"
 }
 
 @test "tg_render_guidance: recommends /gaia-add-feature" {
   _load_guard_helpers
   local out
   out="$(tg_render_guidance "E39-S1" "sprint-26")"
-  echo "$out" | grep -q "/gaia-add-feature"
+  grep -q "/gaia-add-feature" <<<"$out"
 }
 
 @test "tg_render_guidance: mentions retrospective linkage" {
@@ -215,14 +215,14 @@ EOF
   local out
   out="$(tg_render_guidance "E39-S1" "sprint-26")"
   # Must include a retrospective-linkage sentence
-  echo "$out" | grep -qi "retro"
+  grep -qi "retro" <<<"$out"
 }
 
 @test "tg_render_guidance: handles null sprint ID gracefully" {
   _load_guard_helpers
   local out
   out="$(tg_render_guidance "E1-S99" "null")"
-  echo "$out" | grep -q "E1-S99"
+  grep -q "E1-S99" <<<"$out"
 }
 
 # ===========================================================================

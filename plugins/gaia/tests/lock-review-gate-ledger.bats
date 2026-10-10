@@ -292,7 +292,7 @@ STORYEOF
   }
   # It must have failed in the rename, not at acquisition — otherwise the
   # critical section never ran and this asserts nothing about the trap.
-  if echo "$write_output" | grep -qF "lock timeout"; then
+  if grep -qF "lock timeout" <<<"$write_output"; then
     echo "failed at acquisition, not inside the critical section: $write_output" >&2
     false
   fi
@@ -306,7 +306,7 @@ STORYEOF
   if [ -f "$lock_file" ] && [ -s "$lock_file" ]; then
     local content
     content="$(cat "$lock_file")"
-    if echo "$content" | grep -qE '^[0-9]+ [0-9]+$'; then
+    if grep -qE '^[0-9]+ [0-9]+$' <<<"$content"; then
       echo "ledger_write leaked a PID-bearing lock after die: $content" >&2
       false
     fi
@@ -388,7 +388,7 @@ STORYEOF
   }
   # It must have failed in the rename, not at acquisition — otherwise the
   # critical section never ran and this asserts nothing about the trap.
-  if echo "$update_output" | grep -qF "lock timeout"; then
+  if grep -qF "lock timeout" <<<"$update_output"; then
     echo "failed at acquisition, not inside the critical section: $update_output" >&2
     false
   fi
@@ -401,7 +401,7 @@ STORYEOF
   if [ -f "$lock_file" ] && [ -s "$lock_file" ]; then
     local content
     content="$(cat "$lock_file")"
-    if echo "$content" | grep -qE '^[0-9]+ [0-9]+$'; then
+    if grep -qE '^[0-9]+ [0-9]+$' <<<"$content"; then
       echo "cmd_update leaked a PID-bearing lock after die: $content" >&2
       false
     fi
@@ -463,7 +463,7 @@ STORYEOF
     echo "— the fast path is fail-closed; every write on a flock host breaks" >&2
     false
   }
-  if echo "$output" | grep -qF "changed identity during open"; then
+  if grep -qF "changed identity during open" <<<"$output"; then
     echo "the post-open identity check rejected a legitimate open: $output" >&2
     false
   fi

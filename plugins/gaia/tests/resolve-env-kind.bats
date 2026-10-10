@@ -100,12 +100,12 @@ environments:
 YAML
   run bash -c "source '$RESOLVER' && gaia_resolve_env_kind '$CONFIG' staging"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'ADR-112|closed enum|invalid kind'
-  echo "$output" | grep -q 'hybrid'
+  grep -qE 'ADR-112|closed enum|invalid kind' <<<"$output"
+  grep -q 'hybrid' <<<"$output"
   # All three legal values should be listed in the error message
-  echo "$output" | grep -q 'deployable'
-  echo "$output" | grep -q 'branch-only'
-  echo "$output" | grep -q 'distribution-only'
+  grep -q 'deployable' <<<"$output"
+  grep -q 'branch-only' <<<"$output"
+  grep -q 'distribution-only' <<<"$output"
 }
 
 @test "unknown value is NEVER silently coerced to deployable" {
@@ -117,7 +117,7 @@ YAML
   run bash -c "source '$RESOLVER' && gaia_resolve_env_kind '$CONFIG' staging"
   [ "$status" -ne 0 ]
   # Must NOT print "deployable" as a fallback — must HALT
-  ! echo "$output" | grep -qE '^deployable$'
+  ! grep -qE '^deployable$' <<<"$output"
 }
 
 # ---------- AC8 / TC-NFR-080-2: default propagation across consumers ----------
@@ -188,7 +188,7 @@ distribution-only" ]
 @test "usage: missing config arg fails with non-zero exit" {
   run bash -c "source '$RESOLVER' && gaia_resolve_env_kind"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'usage|config'
+  grep -qE 'usage|config' <<<"$output"
 }
 
 @test "usage: missing env-id arg fails with non-zero exit" {
@@ -198,7 +198,7 @@ environments:
 YAML
   run bash -c "source '$RESOLVER' && gaia_resolve_env_kind '$CONFIG'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'usage|env|id'
+  grep -qE 'usage|env|id' <<<"$output"
 }
 
 @test "missing env-id in config: clear error" {
@@ -208,7 +208,7 @@ environments:
 YAML
   run bash -c "source '$RESOLVER' && gaia_resolve_env_kind '$CONFIG' nonexistent"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'not found|nonexistent'
+  grep -qE 'not found|nonexistent' <<<"$output"
 }
 
 # ---------- Source guard ----------

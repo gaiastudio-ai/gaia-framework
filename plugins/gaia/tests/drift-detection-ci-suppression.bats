@@ -190,8 +190,8 @@ run_resolver_no_ci() {
   # The skip guard must precede any reference to GAIA_FW_VER_IN_RESOLVER
   # (which is the first non-guard runtime statement).
   local skip_line resolver_line
-  skip_line=$(printf '%s\n' "$body" | grep -n 'GAIA_SKIP_VERSION_CHECK' | head -1 | cut -d: -f1)
-  resolver_line=$(printf '%s\n' "$body" | grep -n 'GAIA_FW_VER_IN_RESOLVER' | head -1 | cut -d: -f1)
+  skip_line=$(grep -n 'GAIA_SKIP_VERSION_CHECK' <<<"$body" | head -1 | cut -d: -f1)
+  resolver_line=$(grep -n 'GAIA_FW_VER_IN_RESOLVER' <<<"$body" | head -1 | cut -d: -f1)
   [ -n "$skip_line" ]
   [ -n "$resolver_line" ]
   [ "$skip_line" -lt "$resolver_line" ]

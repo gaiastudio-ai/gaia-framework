@@ -638,7 +638,7 @@ CHILD
   worktree_prune_stale "$primary"
   # The lock is the ownership marker the next run depends on: it must survive.
   local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A3 -F "$wt" || true)"
-  printf '%s\n' "$rec" | grep -q '^locked' \
+  grep -q '^locked' <<<"$rec" \
     || { echo "the lock was stripped from a kept worktree"; return 1; }
 }
 
@@ -773,7 +773,7 @@ CHILD
   [ "$(_wt_count "$primary" "$wt")" -ge 1 ] \
     || { echo "another tool's worktree was unregistered"; return 1; }
   local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A3 -F "$wt" || true)"
-  printf '%s\n' "$rec" | grep -q '^locked' \
+  grep -q '^locked' <<<"$rec" \
     || { echo "another tool's lock was stripped"; return 1; }
 }
 
