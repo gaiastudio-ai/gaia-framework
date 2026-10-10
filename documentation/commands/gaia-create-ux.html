@@ -8,9 +8,9 @@
     <main class="main-content">
       <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/planning.html">Planning</a><span class="separator">/</span>/gaia-create-ux</nav>
       <header class="command-header"><div class="command-title"><h1>/gaia-create-ux</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/planning.html">Planning</a></dd><dt>Lifecycle phase:</dt><dd>2 -- Planning</dd><dt>Arguments:</dt><dd>None</dd></dl></header>
-      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-create-ux</code> creates UX design specifications from your PRD. It begins with design-system discovery (searching project artifacts and existing Claude Design projects), runs a stakeholder questionnaire when no design system is found, creates the design-system project from the answers via DesignSync (<code>create_project</code>, <code>finalize_plan</code>, <code>write_files</code>), then creates the product design project via the Design artifact surface. After both projects exist, it covers persona refinement, information architecture (sitemap and navigation), wireframes, interaction patterns, accessibility standards, and publishes screen specifications to the product design project and component specs to the design-system project. When the stack does not include React, the design system is built as a brand-style artifact (fonts, colors, guidelines); the product design project is created regardless.</p></section>
+      <section id="what-it-does"><h2>What it does</h2><p><code>/gaia-create-ux</code> creates UX design specifications from your PRD. It begins with design-system discovery (searching project artifacts and existing Claude Design projects), runs a stakeholder questionnaire when no design system is found, creates or binds the design-system project from the answers via DesignSync (<code>create_project</code>, <code>finalize_plan</code>, <code>write_files</code>), then creates or binds the product design project via the Design artifact surface (the Artifact tool). After both projects exist, it covers persona refinement, information architecture (sitemap and navigation), wireframes, interaction patterns, accessibility standards, and publishes screen specifications to the product design project and component specs to the design-system project. When the stack does not include React, the design system is built as a brand-style artifact (fonts, colors, guidelines); the product design project is created regardless.</p></section>
       <section id="when-to-use"><h2>When to use it</h2><ul><li>Your PRD is complete and your product has a user interface.</li><li>You want to define UX patterns and accessibility standards before architecture or implementation.</li></ul></section>
-      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code>.</li><li><strong>Claude Design integration available</strong> for design-system discovery and publication.</li></ul></section>
+      <section id="prerequisites"><h2>Prerequisites</h2><ul><li><strong>PRD must exist</strong> at <code>.gaia/artifacts/planning-artifacts/prd.md</code>.</li><li><strong>Claude Design integration available</strong> for design-system discovery and publication.</li><li><strong>Design artifact surface (Artifact tool) available</strong> for creating and publishing to the product design project.</li></ul></section>
       <section id="orchestration-mode">
         <h2>Orchestration mode</h2>
         <p>When <code>/gaia-create-ux</code> starts in <strong>subagent mode (Mode A -- the default)</strong>, the framework emits a one-shot warning to your conversation. The warning text:</p>
@@ -55,7 +55,7 @@ This warning is shown once per session.
           <li><span class="step-title">Load PRD</span> Reads the PRD and extracts user personas, user journeys, and functional requirements.</li>
           <li><span class="step-title">Design-system discovery</span> Searches project artifacts and existing Claude Design projects for a design system. Presents candidates for explicit user selection.</li>
           <li><span class="step-title">Stakeholder questionnaire</span> When no design system is found, interviews the stakeholder on colors, logo, typography, spacing, style, components, and platforms. The questionnaire feeds only the design-system project. Skipped when a design system is already bound.</li>
-          <li><span class="step-title">Project creation</span> Creates the design-system project via DesignSync from the questionnaire answers, then creates the product design project via the Artifact tool. Records both project identities in the design record.</li>
+          <li><span class="step-title">Project creation</span> Creates or binds the design-system project via DesignSync from the questionnaire answers, then creates or binds the product design project via the Artifact tool. When binding an existing project, the user confirms with &ldquo;Bind this project&rdquo;. Records both project identities in the design record.</li>
           <li><span class="step-title">User personas</span> Refines persona definitions from the PRD. Adds scenarios, goals, tech proficiency, and accessibility needs.</li>
           <li><span class="step-title">Information architecture</span> Designs the sitemap and navigation structure. Maps each page to the functional requirements it serves.</li>
           <li><span class="step-title">Wireframes</span> Creates text-based wireframe descriptions for key screens with layout, component placement, and interaction patterns.</li>
@@ -78,7 +78,13 @@ Pass 2: 1 Claude Design project found.
   id:            proj-abc123
   name:          Acme Design System
   last_modified:  2026-09-20
-Confirm selection? [y/n] y
+Bind this project? [y/n] y
+
+Design-system project bound.
+
+Product design project: no existing reference found.
+Creating product design project via the Artifact tool...
+Product design project created.
 
 Questionnaire skipped (design system already bound).
 
@@ -111,6 +117,10 @@ UX design written to: .gaia/artifacts/planning-artifacts/ux-design.md</code></pr
 If <strong>missing</strong>: use a Claude Code session that exposes the DesignSync tool surface.
 If <strong>unauthorized</strong>: run <code>/design-login</code> (API-token sessions),
 or grant design access when prompted (claude.ai sessions).</p>
+        <h3>Design artifact surface unavailable</h3>
+        <p>The product design project requires the Artifact tool. When it is
+unavailable, the skill halts with a remediation directing you to ensure
+your Claude Code session has artifact access enabled.</p>
 </section>
       <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
         <tr><td><a href="gaia-edit-ux.html"><code>/gaia-edit-ux</code></a></td><td>Edits the UX design after creation.</td></tr>
