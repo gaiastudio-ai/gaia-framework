@@ -70,18 +70,18 @@
         <p>
           Discovery is the initial exploration of user needs, existing patterns,
           and design constraints. During this stage the UX designer gathers
-          research inputs -- personas, user journeys, competitive benchmarks --
+          research inputs &mdash; personas, user journeys, competitive benchmarks &mdash;
           and identifies the key interaction surfaces the project will need.
           Discovery feeds directly into the questionnaire that captures concrete
           design parameters.
         </p>
         <p>
           Run <a href="commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>
-          to begin the discovery process. The command creates two Claude Design
-          projects: the <strong>design-system project</strong> (tokens, reusable
-          components, reusable page templates) managed through the DesignSync
-          tool surface, and the <strong>product design project</strong> (screens,
-          flows) managed through the Design artifact surface (the
+          to begin the discovery process. The command creates or binds two
+          Claude Design projects: the <strong>design-system project</strong> managed through DesignSync
+          (tokens, reusable components, reusable page templates), and the
+          <strong>product design project</strong> managed through the Design artifact surface
+          (screens, flows, the
           <code>/design</code> command). Discovery walks through a structured
           conversation that covers user research, information architecture, and
           interaction patterns.
@@ -133,11 +133,21 @@
           tool. Component specs remain in the design-system project. Each
           published screen carries the design-system token values as
           <code>:root{--token:value}</code> CSS custom-property blocks (the
-          token-by-value model). The canvas <code>designSystems</code> list
-          stays empty -- this is the expected state. A reserved future mode
+          token-by-value model). Because every screen carries the full resolved
+          token block, a token change also republishes the screens of the
+          product design project, after the design-system project. The canvas
+          <code>designSystems</code> list stays empty &mdash; this is the expected state.
+          A reserved future mode
           (<code>artifact-installed</code>) would install a Design System
-          artifact into the canvas instead. After creation, the framework
-          verifies the canvas index read to confirm the expected state.
+          artifact into the canvas instead. After the first screens are published,
+          the framework verifies the canvas index read to confirm the expected
+          state.
+        </p>
+        <p>
+          When the stack does not include React, the design system is built as
+          a brand-style artifact (fonts, colors, guidelines) instead of a
+          compiled component bundle. The product design project is created
+          regardless of sync mode.
         </p>
       </section>
 
@@ -149,7 +159,7 @@
           <a href="commands/gaia-design-review.html"><code>/gaia-design-review</code></a>
           command drives this stage: it loads the design specification, runs a
           rubric-guided review, and records the reviewer's findings. Review can
-          iterate -- each round produces a new set of findings that the
+          iterate &mdash; each round produces a new set of findings that the
           designer addresses before requesting another review.
         </p>
         <p>
@@ -158,7 +168,13 @@
           document via delta sync. Screen-level changes are read from the
           product design project, detected by comparing content hashes against
           the persisted publication manifest, and reported to the user with
-          full content -- screen prose is not auto-edited.
+          full content &mdash; screen prose is not auto-edited.
+        </p>
+        <p>
+          The dev agent and reviewers read tokens and components from the
+          design-system project and screens from the product design project.
+          When there is no product design project, they report
+          &ldquo;no screens available&rdquo;.
         </p>
       </section>
 
@@ -185,7 +201,10 @@
           taking precedence per slug). Without a tagged approver, the gate
           halts with a remediation naming
           <code>/gaia-create-stakeholder</code>. An empty or missing roster
-          never satisfies convergence.
+          never satisfies convergence. The roster reader refuses symlinked
+          roster directories, files, and parent path components. A stakeholder
+          file whose name contains a tab or newline character is skipped with
+          a warning.
         </p>
       </section>
 
@@ -194,13 +213,17 @@
         <p>
           The design approval gate is enforced at every solutioning entry
           point. A single composite approval state covers both the
-          design-system project and the product design project. The gate reads
-          only local state (zero integration calls) and checks the design
-          record for an <code>approved: true</code> verdict. If the design is
-          not approved, the entry point halts with a diagnostic naming the
-          review command. Remediation names both projects and their surfaces
-          (DesignSync for the design-system project, the Design artifact
-          surface for the product design project).
+          design-system project and the product design project. The gate
+          reads only local state (zero integration calls) and checks three
+          conditions: the design record must be in the
+          <code>approved</code> state, stakeholder convergence must be
+          satisfied, and review coverage must include both projects. When a
+          review did not cover a project, the gate halts with a remediation
+          directing the user to run
+          <code>/gaia-design-review</code> to review both projects.
+          Remediation names both projects and their surfaces (DesignSync for
+          the design-system project, the Design artifact surface for the
+          product design project).
         </p>
         <p>
           In exceptional cases the gate can be overridden using the
@@ -227,8 +250,8 @@
         <p>
           A design that was approved can become stale if the project changes in
           ways that affect the design assumptions. When a design-affecting
-          change lands -- a new user journey, a modified data model, a revised
-          set of target devices -- the framework marks the design record as
+          change lands &mdash; a new user journey, a modified data model, a revised
+          set of target devices &mdash; the framework marks the design record as
           stale. A stale design blocks solutioning just as an unapproved design
           does: the gate fires with the same halt as any other non-approved state,
           and the design must be re-approved through a review round.
@@ -246,24 +269,14 @@
           a token or component change republishes to the design-system project,
           a screen or flow change republishes to the product design project,
           and when both are affected the design-system project is republished first.
+          Because each screen carries the full resolved token block, a token
+          change also refreshes the screens of the product design project.
           The republish step reads the last-published
           manifest for conflict detection: files changed by both the framework
           and a designer are surfaced as conflicts rather than silently overwritten.
           When the manifest does not exist (projects published before manifest
           tracking), every differing remote file is treated as a conflict to
           confirm.
-        </p>
-        <p>
-          When the stack does not include React, the design system is built as
-          a brand-style artifact (fonts, colors, guidelines) instead of a
-          compiled component bundle. The product design project is created
-          regardless of sync mode.
-        </p>
-        <p>
-          The dev agent and reviewers read tokens and components from the
-          design-system project and screens from the product design project.
-          When there is no product design project, they report
-          "no screens available".
         </p>
         <p>
           Both <code>/gaia-create-ux</code> and <code>/gaia-design-review</code>
