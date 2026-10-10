@@ -748,13 +748,14 @@ CMDS_END
     echo "FAIL: gaia-edit-ux.html missing or empty" >&2; return 1
   }
 
+  # Extract the step-list for scoped assertions
+  local step_section
+  step_section="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$page")"
+  [ -n "$step_section" ] || {
+    echo "FAIL: no step-list section in gaia-edit-ux.html" >&2; return 1
+  }
+
   # Doc-page assertions
-  grep -qi 'design-system' "$page" || {
-    echo "FAIL: gaia-edit-ux.html should mention the design-system project" >&2; return 1
-  }
-  grep -qi 'product design' "$page" || {
-    echo "FAIL: gaia-edit-ux.html should mention the product design project" >&2; return 1
-  }
   grep -qi 'republish' "$page" || {
     echo "FAIL: gaia-edit-ux.html should mention 'republish'" >&2; return 1
   }
@@ -763,6 +764,14 @@ CMDS_END
     echo "FAIL: gaia-edit-ux.html still has old single-project phrasing" >&2
     return 1
   fi
+  # Scope routing sentence must be in the step-list: token/component -> DS,
+  # screen/flow -> PD
+  grep -qiE 'token.*component.*design-system|design-system.*token.*component' <<<"$step_section" || {
+    echo "FAIL: step-list should route token and component changes to design-system" >&2; return 1
+  }
+  grep -qiE 'screen.*flow.*product design|product design.*screen.*flow' <<<"$step_section" || {
+    echo "FAIL: step-list should route screen and flow changes to product design" >&2; return 1
+  }
 
   # SKILL.md cross-checks
   [ -s "$SKILL_EUX" ] || {
@@ -803,6 +812,10 @@ CMDS_END
   }
   grep -qiE 'failure in either|either project' "$page" || {
     echo "FAIL: gaia-design-review.html should describe the combined verdict" >&2; return 1
+  }
+  # Step-list must also carry the combined verdict (what-it-does alone is not enough)
+  grep -qiE 'failure in either|either project' <<<"$step_section" || {
+    echo "FAIL: step-list should describe the combined verdict" >&2; return 1
   }
   grep -qiE 'reconciliation' "$page" || {
     echo "FAIL: gaia-design-review.html should mention token-change reconciliation" >&2; return 1

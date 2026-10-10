@@ -243,9 +243,10 @@
         <p>
           When the stale transition completes with the Claude Design integration
           available, the changed specifications are republished based on scope:
-          a token or component change republishes to the design-system project first,
+          a token or component change republishes to the design-system project,
           a screen or flow change republishes to the product design project,
-          and when both are affected the design-system project is republished first. The republish step reads the last-published
+          and when both are affected the design-system project is republished first.
+          The republish step reads the last-published
           manifest for conflict detection: files changed by both the framework
           and a designer are surfaced as conflicts rather than silently overwritten.
           When the manifest does not exist (projects published before manifest
