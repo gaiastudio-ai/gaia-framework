@@ -6289,7 +6289,7 @@ UX
   # The reported name must be Nav\ (with a single trailing backslash).
   # The absence report format is: component "NAME" is in ux-design.md ...
   # We grep for the exact quoted name.
-  printf '%s\n' "$absent_line" | grep -qF '"Nav\"' || \
+  grep -qF '"Nav\"' <<<"$absent_line" || \
     fail "expected extracted name Nav\\ from legacy row, got: $absent_line"
 
   # Now sync with the CORRECT name Nav\|Bar — it should add a new correctly
@@ -6351,7 +6351,7 @@ UX
   # Check that the line contains \r (0d) before \n
   local line_bytes
   line_bytes="$(grep 'NewComponent' "$doc_dir/ux-design.md" | od -c)"
-  printf '%s\n' "$line_bytes" | grep -q '\\r' || \
+  grep -q '\\r' <<<"$line_bytes" || \
     fail "inserted table row does not end with CR LF: $line_bytes"
 
   rm -rf "$root"
@@ -6394,7 +6394,7 @@ UX
 
   local bullet_bytes
   bullet_bytes="$(grep 'Card' "$doc_dir/ux-design.md" | od -c | head -1)"
-  printf '%s\n' "$bullet_bytes" | grep -q '\\r' || \
+  grep -q '\\r' <<<"$bullet_bytes" || \
     fail "inserted bullet does not end with CR LF: $bullet_bytes"
 
   rm -rf "$root"
