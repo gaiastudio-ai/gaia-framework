@@ -1070,34 +1070,47 @@ _spy_probe_count() {
     || fail "stderr should contain 'scope=both reason=default' but got: $stderr"
 }
 
-@test "scope log line precedes the stale transition in stderr" {
+@test "scope log line precedes the transition call in stderr" {
   seed_config true
   seed_roster
   _build_indev_record
 
-  # --integration missing makes the driver halt after the stale transition
+  # Create a shim for design-record.sh that emits a marker to stderr
+  local shim_dir="$TEST_TMP/scope-order-shim"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/design-record.sh" <<SHIMEOF
+#!/usr/bin/env bash
+printf 'TRANSITION_MARKER\n' >&2
+exec "$DREC_SCRIPT" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/design-record.sh"
+
+  # Patch the driver to use the shim
+  local patched_driver="$TEST_TMP/scope-order-driver.sh"
+  sed "s|DREC_SCRIPT=.*|DREC_SCRIPT=\"$shim_dir/design-record.sh\"|" \
+    "$DRIVER_SCRIPT" > "$patched_driver"
+  chmod +x "$patched_driver"
+
   local stderr_file="$TEST_TMP/scope-order-stderr.txt"
   local rc=0
   env PROJECT_ROOT="$TEST_TMP" \
-    bash "$DRIVER_SCRIPT" \
+    bash "$patched_driver" \
       --decision yes --integration missing --actor test --scope design-system \
     2>"$stderr_file" || rc=$?
 
   [ "$rc" -ne 0 ] || fail "driver should halt (non-zero) on missing integration"
-  # The scope log must be present
   grep -qF 'scope=design-system reason=derived' "$stderr_file" \
     || fail "stderr should contain 'scope=design-system reason=derived'"
-  # The halt message must also be present
-  grep -qF 'design-first ordering cannot be kept' "$stderr_file" \
-    || fail "stderr should contain the halt message"
-  # Scope log must appear BEFORE the halt message: check line numbers
-  local scope_line halt_line
+  grep -qF 'TRANSITION_MARKER' "$stderr_file" \
+    || fail "stderr should contain the transition marker"
+  # Scope log must appear BEFORE the transition marker
+  local scope_line marker_line
   scope_line="$(grep -n 'scope=design-system' "$stderr_file" | head -1 | cut -d: -f1)"
-  halt_line="$(grep -n 'design-first ordering cannot be kept' "$stderr_file" | head -1 | cut -d: -f1)"
-  [ -n "$scope_line" ] && [ -n "$halt_line" ] \
-    || fail "both scope and halt lines should be found"
-  [ "$scope_line" -lt "$halt_line" ] \
-    || fail "scope log (line $scope_line) should precede halt (line $halt_line)"
+  marker_line="$(grep -n 'TRANSITION_MARKER' "$stderr_file" | head -1 | cut -d: -f1)"
+  [ -n "$scope_line" ] && [ -n "$marker_line" ] \
+    || fail "both scope and marker lines should be found"
+  [ "$scope_line" -lt "$marker_line" ] \
+    || fail "scope log (line $scope_line) should precede transition (line $marker_line)"
 }
 
 @test "ambiguous decision logs scope" {

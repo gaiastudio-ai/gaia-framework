@@ -1340,3 +1340,274 @@ $hits"
   grep -qiE "$empty_condition|$empty_condition_short" <<<"$af_cascade" \
     || fail "add-feature cascade missing the remote-is-empty condition"
 }
+
+# ===========================================================================
+# Unauthorized remediation pinned at each site (kills N1)
+# ===========================================================================
+
+@test "unauthorized remediation is stated at each artifact-halt site" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  _check_unauthorized() {
+    local section="$1" site="$2"
+
+    # The "on `unauthorized`" clause must be a distinct branch
+    grep -qF 'on `unauthorized`' <<<"$section" \
+      || fail "$site does not name the unauthorized branch"
+
+    # The remediation text must be stated, not just cross-referenced
+    grep -qi 'unauthorized.*remediation\|unauthorized.*halt\|unauthorized.*authorization' <<<"$section" \
+      || fail "$site does not give the unauthorized remediation"
+  }
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+  _check_unauthorized "$step8" "edit-ux Step 8"
+
+  local af_patch
+  af_patch="$(_extract_step3_patch_af)"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  _check_unauthorized "$af_patch" "add-feature patch"
+
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  _check_unauthorized "$af_cascade" "add-feature cascade"
+}
+
+# ===========================================================================
+# Union scope sentence pinned (kills N2)
+# ===========================================================================
+
+@test "edit-ux Step 8 says the union and does not negate it" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+
+  grep -qF 'The republish scope is the union of the Step 5 scope and the Step 8 re-derivation' <<<"$step8" \
+    || fail "edit-ux Step 8 missing the positive union sentence"
+
+  if grep -qF 'do not take the union' <<<"$step8"; then
+    fail "edit-ux Step 8 negates the union scope"
+  fi
+}
+
+# ===========================================================================
+# Persist per-project flag pinned (kills N3)
+# ===========================================================================
+
+@test "persist line names both project keys distinctly at edit-ux" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+
+  local persist_line
+  persist_line="$(grep -F 'persist_last_published' <<<"$step8")"
+  [ -n "$persist_line" ] || fail "edit-ux Step 8 has no persist_last_published call"
+
+  grep -qF 'design_system' <<<"$persist_line" \
+    || fail "persist line missing design_system"
+  grep -qF 'product_design' <<<"$persist_line" \
+    || fail "persist line missing product_design"
+
+  # Must NOT use one key for both passes
+  if grep -q 'design_system.*(for both passes)\|design_system.*both passes' <<<"$persist_line"; then
+    fail "persist line uses design_system for both passes"
+  fi
+}
+
+# ===========================================================================
+# edit-ux Step 5 diff call carries --local-manifest (kills N5)
+# ===========================================================================
+
+@test "edit-ux Step 5 diff call carries local-manifest flag" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step5
+  step5="$(_extract_step5_editux)"
+  [ -n "$step5" ] || fail "edit-ux Step 5 not found"
+
+  local diff_line
+  diff_line="$(grep -F 'derive-design-scope-diff.sh' <<<"$step5")"
+  [ -n "$diff_line" ] || fail "edit-ux Step 5 has no diff call"
+  grep -qF -- '--local-manifest' <<<"$diff_line" \
+    || fail "edit-ux Step 5 diff call is missing --local-manifest"
+}
+
+# ===========================================================================
+# Artifact probe before the product-design republish (kills N6)
+# ===========================================================================
+
+@test "artifact probe is before the product-design republish at add-feature sites" {
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  _check_probe_before() {
+    local section="$1" site="$2"
+    grep -qi 'Before the product-design republish.*probe\|Before.*product-design.*probe' <<<"$section" \
+      || fail "$site does not say Before the product-design republish"
+
+    if grep -qi 'After the product-design republish.*probe\|After.*product-design.*probe' <<<"$section"; then
+      fail "$site says After instead of Before"
+    fi
+  }
+
+  local af_patch
+  af_patch="$(_extract_step3_patch_af)"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  _check_probe_before "$af_patch" "add-feature patch"
+
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  _check_probe_before "$af_cascade" "add-feature cascade"
+}
+
+# ===========================================================================
+# First-publication full card set non-zero count (kills N8)
+# ===========================================================================
+
+@test "first-publication branch says full card set non-zero count at edit-ux" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+
+  grep -qF 'full card set (non-zero count)' <<<"$step8" \
+    || fail "edit-ux first-publication does not say 'full card set (non-zero count)'"
+
+  if grep -qF 'no cards (zero count)' <<<"$step8"; then
+    fail "edit-ux first-publication says zero count"
+  fi
+}
+
+# ===========================================================================
+# Null-project halt instruction pinned (kills N9)
+# ===========================================================================
+
+@test "null-project halt says halt not proceed at add-feature sites" {
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  _check_halt_not_proceed() {
+    local section="$1" site="$2"
+    local halt_text="The product design project is not set up"
+    local halt_lines
+    halt_lines="$(grep -F "$halt_text" <<<"$section")"
+    [ -n "$halt_lines" ] || fail "$site missing the halt sentence"
+
+    grep -qi 'halt with\|halt:' <<<"$halt_lines" \
+      || fail "$site null-project sentence does not say halt"
+
+    if grep -qi 'proceed\|continue.*both\|note.*and proceed' <<<"$halt_lines"; then
+      fail "$site null-project sentence says proceed/continue"
+    fi
+  }
+
+  local af_patch
+  af_patch="$(_extract_step3_patch_af)"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  _check_halt_not_proceed "$af_patch" "add-feature patch"
+
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  _check_halt_not_proceed "$af_cascade" "add-feature cascade"
+}
+
+# ===========================================================================
+# Pass order: design-system first (kills N13)
+# ===========================================================================
+
+@test "republish pass order is design-system first at each site" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  _check_pass_order() {
+    local section="$1" site="$2"
+    grep -qF 'design-system pass first' <<<"$section" \
+      || fail "$site does not say design-system pass first"
+    if grep -qF 'product-design pass first' <<<"$section"; then
+      fail "$site says product-design pass first"
+    fi
+  }
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+  _check_pass_order "$step8" "edit-ux Step 8"
+
+  local af_patch
+  af_patch="$(_extract_step3_patch_af)"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  _check_pass_order "$af_patch" "add-feature patch"
+
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  _check_pass_order "$af_cascade" "add-feature cascade"
+}
+
+# ===========================================================================
+# edit-ux Step 5 states edited path form (item 1 skill text)
+# ===========================================================================
+
+@test "edit-ux Step 5 states that edited paths are spec-relative" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step5
+  step5="$(_extract_step5_editux)"
+  grep -qi 'spec-relative\|spec.relative\|relative.*spec\|spec-side' <<<"$step5" \
+    || fail "edit-ux Step 5 does not state that edited paths are spec-relative"
+}
+
+# ===========================================================================
+# exit 2 handling documented (suggestion 7b)
+# ===========================================================================
+
+@test "skills say what to do when diff script exits 2" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  local step5
+  step5="$(_extract_step5_editux)"
+  grep -qi 'exit.*2\|diagnostic\|halt.*diff\|non-zero.*halt\|abort.*scope' <<<"$step5" \
+    || fail "edit-ux Step 5 does not document diff script exit 2 handling"
+
+  local af_patch
+  af_patch="$(_extract_step3_patch_af)"
+  grep -qi 'exit.*2\|diagnostic\|halt.*diff\|non-zero.*halt\|abort.*scope' <<<"$af_patch" \
+    || fail "add-feature patch does not document diff script exit 2 handling"
+}
+
+# ===========================================================================
+# Coverage sentence order in gate (item 4)
+# ===========================================================================
+
+@test "coverage force-design note does not sit between review and clause" {
+  local gate_script="$SCRIPTS_DIR/lib/design-gate.sh"
+  [ -f "$gate_script" ] || fail "design-gate.sh not found"
+
+  local remediation_lines
+  remediation_lines="$(grep -F 'The design review did not cover' "$gate_script")"
+  [ -n "$remediation_lines" ] || fail "no coverage remediation in design-gate.sh"
+
+  while IFS= read -r line; do
+    if grep -qF 'Run /gaia-design-review' <<<"$line"; then
+      grep -qF 'If the design integration is not connected' <<<"$line" \
+        || fail "conditional clause not on the same line as review sentence"
+      local review_pos clause_pos force_pos
+      review_pos="$(awk -v l="$line" 'BEGIN{print index(l,"Run /gaia-design-review")}')"
+      clause_pos="$(awk -v l="$line" 'BEGIN{print index(l,"If the design integration")}')"
+      force_pos="$(awk -v l="$line" 'BEGIN{print index(l,"cannot be overridden")}')"
+      if [ "$force_pos" -gt 0 ] && [ "$force_pos" -lt "$clause_pos" ]; then
+        fail "force-design note sits between review and conditional clause"
+      fi
+    fi
+  done <<<"$remediation_lines"
+}
