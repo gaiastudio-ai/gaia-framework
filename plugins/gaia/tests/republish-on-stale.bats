@@ -996,3 +996,84 @@ _extract_step10_createux() {
   grep -qF '/gaia-create-ux' <<<"$af_patch" \
     || fail "add-feature patch null-product-project remediation does not mention /gaia-create-ux"
 }
+
+# ===========================================================================
+# Guard: no empty inline code spans in SKILL.md files
+# ===========================================================================
+
+@test "no empty inline code spans in edit-ux or add-feature SKILL.md" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  local hits=""
+  local f
+  for f in "$SKILL_MD_UX" "$SKILL_MD_AF"; do
+    # Find lines with `` that are not inside triple-backtick fences.
+    # Strip triple-backtick lines first, then look for empty code spans.
+    local empty_spans
+    empty_spans="$(awk '
+      /^```/ { fence=!fence; next }
+      !fence && /``/ {
+        # Check for actual empty span: two backticks with nothing between
+        line = $0
+        # Remove triple-backtick sequences first
+        gsub(/```[^`]*```/, "", line)
+        gsub(/```/, "", line)
+        if (match(line, /``/)) print NR": "$0
+      }
+    ' "$f")"
+    if [ -n "$empty_spans" ]; then
+      hits="${hits}${hits:+
+}$(basename "$f"):
+${empty_spans}"
+    fi
+  done
+
+  [ -z "$hits" ] || fail "empty inline code spans found:
+$hits"
+}
+
+# ===========================================================================
+# Guard: planner line names both project keys at every republish site
+# ===========================================================================
+
+@test "planner line names both project keys at each republish site" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # edit-ux Step 8: extract the Planner bullet
+  local ux_step8
+  ux_step8="$(_extract_step8_editux)"
+  [ -n "$ux_step8" ] || fail "edit-ux Step 8 not found"
+  local ux_planner
+  ux_planner="$(grep -i 'Planner.*Step 10 item 2' <<<"$ux_step8")"
+  [ -n "$ux_planner" ] || fail "edit-ux Step 8 has no Planner line"
+  grep -qF -- '--project design_system' <<<"$ux_planner" \
+    || fail "edit-ux planner line missing --project design_system"
+  grep -qF -- '--project product_design' <<<"$ux_planner" \
+    || fail "edit-ux planner line missing --project product_design"
+
+  # add-feature patch: extract the Planner bullet from Step 3
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  local af_patch_planner
+  af_patch_planner="$(grep -i 'Planner.*Step 10 item 2' <<<"$af_patch")"
+  [ -n "$af_patch_planner" ] || fail "add-feature patch has no Planner line"
+  grep -qF -- '--project design_system' <<<"$af_patch_planner" \
+    || fail "add-feature patch planner line missing --project design_system"
+  grep -qF -- '--project product_design' <<<"$af_patch_planner" \
+    || fail "add-feature patch planner line missing --project product_design"
+
+  # add-feature cascade: extract the Planner bullet from Step 7b
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  local af_cascade_planner
+  af_cascade_planner="$(grep -i 'Planner.*Step 10 item 2' <<<"$af_cascade")"
+  [ -n "$af_cascade_planner" ] || fail "add-feature cascade has no Planner line"
+  grep -qF -- '--project design_system' <<<"$af_cascade_planner" \
+    || fail "add-feature cascade planner line missing --project design_system"
+  grep -qF -- '--project product_design' <<<"$af_cascade_planner" \
+    || fail "add-feature cascade planner line missing --project product_design"
+}
