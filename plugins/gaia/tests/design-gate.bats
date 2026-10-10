@@ -2929,9 +2929,11 @@ _assert_no_raw_control_in_reason() {
     --entry-point test --sprint-id sprint-99
   [ "$status" -eq 1 ] || fail "expected refusal (status 1); got status $status"
 
-  # The gate must refuse up front with its own message, not downstream rollback
-  _stripped_output | grep -qF "longer than 500 bytes" \
-    || fail "expected gate-level over-cap message with 'longer than 500 bytes'; got: $output"
+  # The gate must refuse up front with its own raw-cap message
+  _stripped_output | grep -qF "500" \
+    || fail "expected over-cap message mentioning 500; got: $output"
+  _stripped_output | grep -qF "501" \
+    || fail "expected message to report the measured byte count 501; got: $output"
   if _stripped_output | grep -q "at least 10 characters"; then
     fail "got the short-reason message instead of the over-cap message; got: $output"
   fi
@@ -3065,8 +3067,8 @@ _assert_no_raw_control_in_reason() {
 @test "trailing LF gets a placeholder" {
   seed_override_fixture
 
-  local reason
-  reason="$(printf 'a valid reason text\n')"
+  # Use $'...' to preserve the trailing LF ($(printf ...) would eat it)
+  local reason=$'a valid reason text\n'
   run run_gate --force-design \
     --reason "$reason" \
     --entry-point test --sprint-id sprint-99
@@ -3199,10 +3201,15 @@ _assert_no_raw_control_in_reason() {
     --entry-point test --sprint-id sprint-99
   [ "$status" -eq 0 ] || fail "500-byte reason should be accepted; got status $status: $output"
 
-  # 501 printable bytes: refused
+  # 501 printable bytes: refused at the gate before any write
   rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
   mkdir -p "$TEST_TMP/.gaia/state"
   seed_override_fixture
+
+  local drec_hash_501 lo_hash_501
+  drec_hash_501="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash_501="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
   local reason_501="${reason_500}B"
   [ "${#reason_501}" -eq 501 ] || fail "length is ${#reason_501}"
 
@@ -3210,6 +3217,17 @@ _assert_no_raw_control_in_reason() {
     --reason "$reason_501" \
     --entry-point test --sprint-id sprint-99
   [ "$status" -eq 1 ] || fail "501-byte reason should be refused; got status $status"
+
+  # The gate must refuse before any ledger write (no rollback)
+  if _stripped_output | grep -qi "rolled back"; then
+    fail "501-byte refusal came from rollback, not gate guard; got: $output"
+  fi
+  [ "$drec_hash_501" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite 501-byte refusal"
+  [ "$lo_hash_501" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite 501-byte refusal"
+  [ ! -f "$TEST_TMP/.gaia/state/design-record.yaml.gate-backup" ] \
+    || fail "gate backup exists — refusal came too late"
 }
 
 @test "raw cap message reports the raw byte count" {
