@@ -511,7 +511,22 @@ Pass `yes` when the feature clearly affects the design, `no` when it clearly doe
 - If classification is `patch`:
   - Apply the fix directly to the affected document.
   - No cascade -- no downstream artifacts are touched.
-  - **Republish (design-affecting patches).** When the patch is design-affecting and the stale transition completed with integration available, republish the changed specifications. Follow the same publication procedure: build remote listing, build local manifest from the FULL current spec set, read the last-published manifest (with `--strict-conflicts` when absent), plan via `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh`, execute, carry out `REFRESH_MANIFEST`, and persist `design-last-published.json`. On failure, the record stays stale, the failure is reported, and no further steps run.
+  - **Republish (design-affecting patches).** When the patch is design-affecting and the stale transition completed with integration available, republish the changed specifications. Derive the scope from the per-project diff using `${CLAUDE_PLUGIN_ROOT}/scripts/derive-design-scope-diff.sh` with the specs the patch edited as `--edited`, and republish only the affected project(s).
+
+    **Null product design project halt.** Check that `product_design_project` is not null before the product-design republish. When the product design project is not set up, halt with: "The product design project is not set up. Run /gaia-create-ux to create and bind a product design project before republishing."
+
+    **Artifact surface check.** Before any product-design write, probe the Design artifact surface with `Artifact action: "quickstart"` and `intent: "design"`.
+
+    For each project, follow the create-ux Step 10 publication procedure by cross-reference:
+
+    - **Pre-write target check** (Step 10 preamble): before every DesignSync mutation and Artifact publish, call `verify-publication-target.sh` with `--metadata-file` and `--design-record`. Halt on non-zero.
+    - **Planner** (Step 10 item 2): run `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh --project design_system` or `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh --project product_design`. Pass `--strict-conflicts` when the state file is absent, the project key is absent from `design-last-published.json`, or `last_published_at` is null and the remote has files. For each `CONFLICT`, surface both versions and halt for resolution.
+    - **finalize_plan** (Step 10 item 3): every `write_files`, `delete_files` and `register_assets` batch is preceded by `finalize_plan` for its `planId`.
+    - **Canvas index publish rule** (Step 10 item 4): a cycle that only rewrites existing artboards whose preview sizes match publishes the artboard files alone and does NOT resend `project/canvas.json`. Follow the merge and board-position preservation rules from Step 10 item 4.
+    - **First-publication branch** (Step 10 item 4): when a project has never been published (the state file is absent, the project's key is absent, or `last_published_at` is null) and the remote is empty, publish the full card set (non-zero count). When the state is absent but the remote already has files, run the normal plan with `--strict-conflicts`.
+    - **Persist** (Step 10 items 5 and 8): call `persist_last_published` with `--outcomes <outcomes.json>`, `--output ${PROJECT_ROOT}/.gaia/state/design-last-published.json`, `--local-hash-map <local-hashes.json>`, `--project design_system` or `--project product_design`, `--design-record ${PROJECT_ROOT}/.gaia/state/design-record.yaml`, `--published-at <ts>`, and `--prior <prior-manifest.json>`. One call per project, design-system first. Carry out `REFRESH_MANIFEST` on the design-system pass only.
+
+    **Failure handling.** On failure, the record stays stale, the failure is reported, and no further steps run.
   - Skip to Step 9 (Emit Assessment-Doc) then Step 10 (Summary).
 
 ### Step 4 -- Edit PRD (feature only)
@@ -583,7 +598,20 @@ When the feature is design-affecting (or the assessment is ambiguous) and the cl
 
 - Apply the UX changes directly to `.gaia/artifacts/planning-artifacts/ux-design.md` and the published token specs. This step does NOT run `/gaia-edit-ux` — it performs the edit in-line as part of the cascade. Exactly ONE republish runs after the in-line edit.
 
-**Republish changed specifications.** When the stale transition completed with integration available, republish the changed specifications before story creation. Follow the same publication procedure: build remote listing, build local manifest from the FULL current spec set, read the last-published manifest (with `--strict-conflicts` when absent), plan via `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh`, execute, carry out `REFRESH_MANIFEST`, and persist `design-last-published.json`.
+**Republish changed specifications.** When the stale transition completed with integration available, republish the changed specifications before story creation. Derive the scope from the per-project diff using `${CLAUDE_PLUGIN_ROOT}/scripts/derive-design-scope-diff.sh` with the specs the cascade edited as `--edited`, and republish only the affected project(s).
+
+**Null product design project halt.** Check that `product_design_project` is not null before the product-design republish. When the product design project is not set up, halt with: "The product design project is not set up. Run /gaia-create-ux to create and bind a product design project before republishing."
+
+**Artifact surface check.** Before any product-design write, probe the Design artifact surface with `Artifact action: "quickstart"` and `intent: "design"`.
+
+For each project, follow the create-ux Step 10 publication procedure by cross-reference:
+
+- **Pre-write target check** (Step 10 preamble): before every DesignSync mutation and Artifact publish, call `verify-publication-target.sh` with `--metadata-file` and `--design-record`. Halt on non-zero.
+- **Planner** (Step 10 item 2): run `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh --project design_system` or `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh --project product_design`. Pass `--strict-conflicts` when the state file is absent, the project key is absent from `design-last-published.json`, or `last_published_at` is null and the remote has files. For each `CONFLICT`, surface both versions and halt for resolution.
+- **finalize_plan** (Step 10 item 3): every `write_files`, `delete_files` and `register_assets` batch is preceded by `finalize_plan` for its `planId`.
+- **Canvas index publish rule** (Step 10 item 4): a cycle that only rewrites existing artboards whose preview sizes match publishes the artboard files alone and does NOT resend `project/canvas.json`. Follow the merge and board-position preservation rules from Step 10 item 4.
+- **First-publication branch** (Step 10 item 4): when a project has never been published (the state file is absent, the project's key is absent, or `last_published_at` is null) and the remote is empty, publish the full card set (non-zero count). When the state is absent but the remote already has files, run the normal plan with `--strict-conflicts`.
+- **Persist** (Step 10 items 5 and 8): call `persist_last_published` with `--outcomes <outcomes.json>`, `--output ${PROJECT_ROOT}/.gaia/state/design-last-published.json`, `--local-hash-map <local-hashes.json>`, `--project design_system` or `--project product_design`, `--design-record ${PROJECT_ROOT}/.gaia/state/design-record.yaml`, `--published-at <ts>`, and `--prior <prior-manifest.json>`. One call per project, design-system first. Carry out `REFRESH_MANIFEST` on the design-system pass only.
 
 **Failure handling.** If the republication fails midway (`write_files` error, network failure, unresolvable conflict), the record stays stale, the failure is reported to the user, and no stories are created. In deferred-seed-brief mode, no story keys are reserved and no seed briefs are written.
 

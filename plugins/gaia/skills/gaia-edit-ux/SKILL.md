@@ -115,8 +115,10 @@ Pass the result as `--integration <available|missing|unauthorized>`. When the de
 The driver trusts this classification without a second probe. If the token is revoked between this check and the driver run, the republish step that follows the stale transition surfaces the failure — it is not silently absorbed.
 <!-- design-attestation end -->
 
+**Scope derivation.** Before calling the driver, derive the scope of the change. Build the local spec manifest from the saved ux-design.md (spec path and source-content hash, no rendering). Identify the spec paths this run edited in Step 3 (the `--edited` list). Call `bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-design-scope-diff.sh" --last-published ${PROJECT_ROOT}/.gaia/state/design-last-published.json --local-manifest <local-manifest.json> --edited <path>...` to derive the scope per the three diff rules: (a) design-system entries diffed by source-content hash, (b) product design entries matched by edited, added or removed screens, (c) any changed token path also marks the product design project changed.
+
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision yes [--integration <available|missing|unauthorized>] --actor gaia-edit-ux
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-stale-transition.sh" --decision yes [--integration <available|missing|unauthorized>] --actor gaia-edit-ux --scope <derived-scope>
 ```
 
 The driver transitions the record to stale and records the integration state in the audit trail. If the integration is not available, the driver halts with a message. When the impact is ambiguous or uncertain, still default to stale — it is safer than leaving the record in an outdated approved state.
@@ -138,14 +140,22 @@ The driver transitions the record to stale and records the integration state in 
 
 ### Step 8 — Cascade Impact Check
 
-**Republish changed specifications.** When the stale transition completed with integration available (the driver exited 0), republish the changed specifications to the Claude Design project before the cascade assessment.
+**Scope re-derivation.** Re-run `${CLAUDE_PLUGIN_ROOT}/scripts/derive-design-scope-diff.sh` with the current local manifest and the specs that Steps 3 and 7 edited (merged `--edited` list). The republish scope is the re-derived scope; the per-file planner marks unchanged specs as `SKIP_UNCHANGED`, so over-inclusion from Step 5 is harmless.
 
-1. **Build remote listing.** Read the current project files via `list_files` / `get_file`. Build `[{file, hash}]` where `hash` is the sha256 of each `get_file` body (64-hex lowercase), computed over exact bytes written to a file.
-2. **Build local manifest.** Derive the local spec manifest from the FULL current spec set — all screen and component specs from the edited ux-design.md, not only the changed files. Unchanged files produce `SKIP_UNCHANGED` rather than spurious `DELETE_ORPHAN`.
-3. **Read last-published manifest.** Load `${PROJECT_ROOT}/.gaia/state/design-last-published.json`. When the manifest does not exist, pass `--last-published /dev/null --strict-conflicts` (every differing remote file is treated as a conflict to confirm). When the manifest exists, pass `--last-published <path>` without `--strict-conflicts`.
-4. **Plan.** Run `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh` with the three inputs. The plan emits operation verbs in order.
-5. **Execute.** For each `WRITE` — publish via `write_files`. For each `CONFLICT` — surface both versions (the designer's remote content and the framework's local content) to the user and halt for resolution. For `SKIP_UNCHANGED` — no action. For `DELETE_ORPHAN` — remove via `delete_files`. For `READ_FIRST` — confirm current state. For `REFRESH_MANIFEST` — run `register_assets` as the primary path, read back `_ds_manifest.json`, verify all spec cards are listed; if any check fails, run `${CLAUDE_PLUGIN_ROOT}/scripts/build-manifest-cards.sh` as the reconciliation fallback.
-6. **Persist.** Run `persist_last_published` from `${CLAUDE_PLUGIN_ROOT}/scripts/build-manifest-cards.sh` with the executed outcomes, the prior manifest (read before persistence overwrites it), and the local hash map. Write to `${PROJECT_ROOT}/.gaia/state/design-last-published.json`.
+**Null product design project halt.** Before the product-design republish, check that `product_design_project.reference` is non-null in the design record. When the product design project is not set up (reference is null), halt with: "The product design project is not set up. Run /gaia-create-ux to create and bind a product design project before republishing." Do not fail with a generic error or attempt to publish to a null reference.
+
+**Artifact surface check.** Before the product-design republish, probe the Design artifact surface with `Artifact action: "quickstart"` and `intent: "design"`. Classify the result: on `unauthorized`, halt with the unauthorized remediation. On `missing` or any non-usable result, halt with: "The Design artifact surface is required for the product design project but is not available in this session. Ensure your Claude Code session has artifact access enabled." When halted, do not write anything to the design-system project in its place. This probe sits outside the shared availability block.
+
+**Two-project republish.** When the stale transition completed with integration available (the driver exited 0), republish the changed specifications before the cascade assessment. Run the design-system pass first, then the product-design pass. A token-value edit changes every screen's rendered bytes because each artboard carries the full resolved token block.
+
+For each project, follow the create-ux Step 10 publication procedure by cross-reference:
+
+- **Pre-write target check** (Step 10 preamble): before every DesignSync mutation and Artifact publish, call `verify-publication-target.sh` with `--metadata-file` and `--design-record`. Halt on non-zero.
+- **Planner** (Step 10 item 2): run `${CLAUDE_PLUGIN_ROOT}/scripts/plan-publication.sh --project design_system` or `--project product_design`. When the project has no last-published entry (state file is absent, the project key is absent from `design-last-published.json`, or `last_published_at` is null) and the remote listing contains files, pass `--strict-conflicts`. For each `CONFLICT`, surface both versions (the designer's remote content and the framework's local content) to the user and halt for resolution.
+- **finalize_plan** (Step 10 item 3): every `write_files`, `delete_files` and `register_assets` batch is preceded by `finalize_plan` for its `planId`.
+- **Canvas index publish rule** (Step 10 item 4): include `project/canvas.json` only when the set or order of boards changes (add, remove, reorder) or when a written artboard's preview size differs from its board's dimensions. A cycle that only rewrites the content of existing artboards whose preview sizes match the current board dimensions publishes the artboard files alone and does NOT resend `project/canvas.json`. Follow the merge and board-position preservation rules from Step 10 item 4.
+- **First-publication branch** (Step 10 item 4): when a project has never been published (the state file is absent, the project's key is absent from the state, or `last_published_at` is null) and the remote project is empty, use the explicit first-publication code path that publishes the full card set (non-zero count). When the state is absent but the remote project already has files, the normal plan runs with `--strict-conflicts` per project.
+- **Persist** (Step 10 items 5 and 8): after each completed project pass, call `persist_last_published` with `--outcomes <outcomes.json>`, `--output ${PROJECT_ROOT}/.gaia/state/design-last-published.json`, `--local-hash-map <local-hashes.json>`, `--project design_system` or `--project product_design`, `--design-record ${PROJECT_ROOT}/.gaia/state/design-record.yaml`, `--published-at <ts>`, and `--prior <prior-manifest.json>`. One call per project, design-system first. Carry out `REFRESH_MANIFEST` on the design-system pass only.
 
 **Failure handling.** If `write_files` returns an error or a conflict cannot be resolved, the record stays stale, the failure is reported to the user, and the skill does not complete its finalisation steps. No rollback of the stale state.
 

@@ -48,8 +48,16 @@ _extract_step8_editux() {
 
 # _extract_between_stale_end_and_step8_af — extract text between the
 # stale-transition end marker and the Step 8 heading in add-feature SKILL.md.
+# NOTE: this window spans both Step 3 (patch) and Step 7b (cascade). Tests
+# that need to check one site independently should use the narrow extractors
+# _extract_step3_patch_af or _extract_step7b_af instead.
 _extract_between_stale_end_and_step8_af() {
   awk '/<!-- design-stale-transition end -->/{p=1;next} /^### Step 8/{exit} p' "$SKILL_MD_AF"
+}
+
+# _extract_step7b_af — narrow extractor for the Step 7b cascade section only.
+_extract_step7b_af() {
+  awk '/^### Step 7b/{p=1} p && /^### Step [^7]/{exit} p' "$SKILL_MD_AF"
 }
 
 # _extract_cascade_matrix — extract the cascade matrix table from add-feature.
@@ -623,20 +631,24 @@ _extract_step10_createux() {
 }
 
 # ===========================================================================
-# Drift guard (Val INFO F4): publication procedure consistency
+# Drift guard: publication procedure consistency
 # ===========================================================================
 
-@test "(F4) publication procedure tokens are consistent across all three skill sites" {
+@test "publication procedure tokens are consistent across all three skill sites" {
   [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
   [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
   [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
 
   # The key tokens that must appear in every publication procedure site.
-  # create-ux: Step 10. edit-ux: Step 8. add-feature: Step 7b + patch.
+  # create-ux: Step 10. edit-ux: Step 8. add-feature: Step 7b (cascade) + Step 3 (patch).
   local tokens=(
     'plan-publication.sh'
     'REFRESH_MANIFEST'
     'design-last-published.json'
+    '--project design_system'
+    '--project product_design'
+    'verify-publication-target.sh'
+    'publishes the artboard files alone'
   )
 
   # create-ux Step 10 — the reference site
@@ -646,7 +658,7 @@ _extract_step10_createux() {
 
   local t
   for t in "${tokens[@]}"; do
-    grep -qF "$t" <<<"$cux_step10" \
+    grep -qF -- "$t" <<<"$cux_step10" \
       || fail "create-ux Step 10 is missing token: $t"
   done
 
@@ -656,22 +668,29 @@ _extract_step10_createux() {
   [ -n "$ux_step8" ] || fail "edit-ux Step 8 section not found"
 
   for t in "${tokens[@]}"; do
-    grep -qF "$t" <<<"$ux_step8" \
+    grep -qF -- "$t" <<<"$ux_step8" \
       || fail "edit-ux Step 8 is missing token: $t (drift from create-ux Step 10)"
   done
 
-  # add-feature — check the combined text between stale-transition-end
-  # and Step 8, PLUS the patch section in Step 3
-  local af_combined
-  af_combined="$(_extract_between_stale_end_and_step8_af)"
-  local patch_section
-  patch_section="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
-  af_combined="${af_combined}${patch_section}"
-  [ -n "$af_combined" ] || fail "add-feature publication procedure text not found"
+  # add-feature cascade (Step 7b only, narrowed to avoid patch overlap)
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade publication text not found"
 
   for t in "${tokens[@]}"; do
-    grep -qF "$t" <<<"$af_combined" \
-      || fail "add-feature publication procedure is missing token: $t (drift from create-ux Step 10)"
+    grep -qF -- "$t" <<<"$af_cascade" \
+      || fail "add-feature cascade is missing token: $t (drift from create-ux Step 10)"
+  done
+
+  # add-feature patch (Step 3) — checked separately so removing a flag
+  # from just the patch fails independently of the cascade
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch publication text not found"
+
+  for t in "${tokens[@]}"; do
+    grep -qF -- "$t" <<<"$af_patch" \
+      || fail "add-feature patch is missing token: $t (drift from create-ux Step 10)"
   done
 
   # Failure-rule token: each site must document the stale-on-failure semantics
@@ -679,6 +698,382 @@ _extract_step10_createux() {
     || fail "create-ux Step 10 does not mention failure handling"
   grep -qiE 'stays stale|failure' <<<"$ux_step8" \
     || fail "edit-ux Step 8 does not mention failure/stays-stale"
-  grep -qiE 'stays stale|failure' <<<"$af_combined" \
-    || fail "add-feature publication procedure does not mention failure/stays-stale"
+  grep -qiE 'stays stale|failure' <<<"$af_cascade" \
+    || fail "add-feature cascade does not mention failure/stays-stale"
+  grep -qiE 'stays stale|failure' <<<"$af_patch" \
+    || fail "add-feature patch does not mention failure/stays-stale"
+}
+
+# ===========================================================================
+# Artifact surface halt and no-fallback sweep
+# ===========================================================================
+
+@test "artifact surface halt blocks product-design republish" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
+
+  # The quickstart probe must be documented
+  grep -qiF 'quickstart' <<<"$step8" \
+    || fail "edit-ux Step 8 does not mention the Artifact quickstart probe"
+
+  # The halt text must name the Design artifact surface
+  grep -qi 'Design artifact surface' <<<"$step8" \
+    || fail "edit-ux Step 8 does not mention the Design artifact surface halt"
+}
+
+@test "no DesignSync write to screens or flows paths" {
+  # Scan all SKILL.md and script files for DesignSync write_files/delete_files
+  # calls whose path argument targets screens/ or flows/.
+  local scan_dirs=(
+    "$SKILLS_DIR/gaia-edit-ux/"
+    "$SKILLS_DIR/gaia-add-feature/"
+    "$SCRIPTS_DIR/"
+  )
+
+  local file_count=0
+  local violations=0
+  local f
+  for d in "${scan_dirs[@]}"; do
+    [ -d "$d" ] || continue
+    while IFS= read -r f; do
+      file_count=$((file_count + 1))
+      # Look for DesignSync write_files/delete_files with screens/ or flows/
+      if grep -qE '(write_files|delete_files).*screens/' "$f" 2>/dev/null; then
+        violations=$((violations + 1))
+      fi
+      if grep -qE '(write_files|delete_files).*flows/' "$f" 2>/dev/null; then
+        violations=$((violations + 1))
+      fi
+    done < <(find "$d" -type f \( -name '*.md' -o -name '*.sh' \) 2>/dev/null)
+  done
+
+  [ "$file_count" -gt 0 ] || fail "sweep scanned 0 files — directory structure missing"
+  [ "$violations" -eq 0 ] || fail "found $violations DesignSync write to screens/ or flows/ — must route through Artifact tool"
+
+  # Mutant: seed a temp file with a violating step and assert the sweep catches it
+  local mutant_dir="$TEST_TMP/mutant-skill"
+  mkdir -p "$mutant_dir"
+  printf 'Run write_files with path screens/login.spec.html\n' > "$mutant_dir/mutant.md"
+
+  local mutant_violations=0
+  while IFS= read -r f; do
+    if grep -qE '(write_files|delete_files).*screens/' "$f" 2>/dev/null; then
+      mutant_violations=$((mutant_violations + 1))
+    fi
+  done < <(find "$mutant_dir" -type f -name '*.md' 2>/dev/null)
+
+  [ "$mutant_violations" -gt 0 ] || fail "mutant with write_files to screens/ was not caught"
+}
+
+# ===========================================================================
+# First-publication branch documentation
+# ===========================================================================
+
+@test "edit-ux documents first-publication branch per project" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
+
+  # Must document the first-publication concept
+  grep -qiE 'first.publication|first.publish|full card set' <<<"$step8" \
+    || fail "edit-ux Step 8 does not document the first-publication branch"
+
+  # Must name the three never-published conditions
+  grep -qi 'state file.*absent\|state.*absent\|file is absent' <<<"$step8" \
+    || fail "edit-ux Step 8 does not mention state file absent condition"
+  grep -qi 'key.*absent\|absent.*key' <<<"$step8" \
+    || fail "edit-ux Step 8 does not mention project key absent condition"
+  grep -qi 'last_published_at.*null\|null.*last_published' <<<"$step8" \
+    || fail "edit-ux Step 8 does not mention last_published_at null condition"
+}
+
+@test "add-feature documents strict-conflicts when remote has files" {
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # Patch section (Step 3)
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch section not found"
+
+  grep -qF 'strict-conflicts' <<<"$af_patch" \
+    || fail "add-feature patch does not document --strict-conflicts when remote has files"
+
+  # Cascade section (Step 7b)
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade section not found"
+
+  grep -qF 'strict-conflicts' <<<"$af_cascade" \
+    || fail "add-feature cascade does not document --strict-conflicts when remote has files"
+}
+
+# ===========================================================================
+# Split republish routing and token parity
+# ===========================================================================
+
+@test "token-value change marks product-design as changed" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
+
+  # The text must document that a token-value edit changes screen bytes
+  grep -qi 'token.*edit.*screen\|token.*change.*screen\|token.*change.*rendered\|token.*edit.*rendered' <<<"$step8" \
+    || fail "edit-ux Step 8 does not document that a token-value edit changes screen rendered bytes"
+}
+
+# ===========================================================================
+# Pre-write target check on every republish write
+# ===========================================================================
+
+@test "every republish write preceded by verify-publication-target" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+
+  # edit-ux Step 8 must mention the verify-publication-target check
+  grep -qF 'verify-publication-target' <<<"$step8" \
+    || grep -qF 'verify_publication_target' <<<"$step8" \
+    || fail "edit-ux Step 8 has no verify-publication-target check"
+
+  # add-feature cascade
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade section not found"
+
+  grep -qF 'verify-publication-target' <<<"$af_cascade" \
+    || grep -qF 'verify_publication_target' <<<"$af_cascade" \
+    || fail "add-feature cascade has no verify-publication-target check"
+
+  # add-feature patch
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch section not found"
+
+  grep -qF 'verify-publication-target' <<<"$af_patch" \
+    || grep -qF 'verify_publication_target' <<<"$af_patch" \
+    || fail "add-feature patch has no verify-publication-target check"
+}
+
+# ===========================================================================
+# Per-project persist flags
+# ===========================================================================
+
+@test "persist calls carry all required flags at all sites" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  local required_flags=(
+    '--outcomes'
+    '--output'
+    '--local-hash-map'
+    '--project'
+    '--design-record'
+    '--published-at'
+  )
+
+  # edit-ux Step 8 persist
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+
+  grep -qF 'persist_last_published' <<<"$step8" \
+    || fail "edit-ux Step 8 does not contain persist_last_published"
+
+  local flag
+  for flag in "${required_flags[@]}"; do
+    grep -qF -- "$flag" <<<"$step8" \
+      || fail "edit-ux Step 8 persist is missing flag: $flag"
+  done
+
+  # add-feature cascade
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+
+  grep -qF 'persist_last_published' <<<"$af_cascade" \
+    || fail "add-feature cascade does not contain persist_last_published"
+
+  for flag in "${required_flags[@]}"; do
+    grep -qF -- "$flag" <<<"$af_cascade" \
+      || fail "add-feature cascade persist is missing flag: $flag"
+  done
+
+  # add-feature patch
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+
+  grep -qF 'persist_last_published' <<<"$af_patch" \
+    || fail "add-feature patch does not contain persist_last_published"
+
+  for flag in "${required_flags[@]}"; do
+    grep -qF -- "$flag" <<<"$af_patch" \
+      || fail "add-feature patch persist is missing flag: $flag"
+  done
+}
+
+# ===========================================================================
+# finalize_plan before every write_files
+# ===========================================================================
+
+@test "finalize_plan precedes every write_files in republish" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # edit-ux Step 8
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+
+  grep -qi 'finalize_plan' <<<"$step8" \
+    || fail "edit-ux Step 8 does not mention finalize_plan"
+
+  # add-feature cascade
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+
+  grep -qi 'finalize_plan' <<<"$af_cascade" \
+    || fail "add-feature cascade does not mention finalize_plan"
+
+  # add-feature patch
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+
+  grep -qi 'finalize_plan' <<<"$af_patch" \
+    || fail "add-feature patch does not mention finalize_plan"
+}
+
+# ===========================================================================
+# Null product design project halts with remediation
+# ===========================================================================
+
+@test "null product design project halts with create-ux remediation" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # edit-ux Step 8
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+
+  grep -qi 'product.design.project.*not.*set\|product_design_project.*null' <<<"$step8" \
+    || fail "edit-ux Step 8 does not document null product design project halt"
+
+  grep -qF '/gaia-create-ux' <<<"$step8" \
+    || fail "edit-ux Step 8 null-product-project remediation does not mention /gaia-create-ux"
+
+  # add-feature cascade
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+
+  grep -qi 'product.design.project.*not.*set\|product_design_project.*null' <<<"$af_cascade" \
+    || fail "add-feature cascade does not document null product design project halt"
+
+  grep -qF '/gaia-create-ux' <<<"$af_cascade" \
+    || fail "add-feature cascade null-product-project remediation does not mention /gaia-create-ux"
+
+  # add-feature patch
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+
+  grep -qi 'product.design.project.*not.*set\|product_design_project.*null' <<<"$af_patch" \
+    || fail "add-feature patch does not document null product design project halt"
+
+  grep -qF '/gaia-create-ux' <<<"$af_patch" \
+    || fail "add-feature patch null-product-project remediation does not mention /gaia-create-ux"
+}
+
+# ===========================================================================
+# Guard: no empty inline code spans in SKILL.md files
+# ===========================================================================
+
+@test "no empty inline code spans in edit-ux or add-feature SKILL.md" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  local hits=""
+  local f
+  for f in "$SKILL_MD_UX" "$SKILL_MD_AF"; do
+    # Find lines with `` that are not inside triple-backtick fences.
+    # Strip triple-backtick lines first, then look for empty code spans.
+    local empty_spans
+    empty_spans="$(awk '
+      /^```/ { fence=!fence; next }
+      !fence && /``/ {
+        # Check for actual empty span: two backticks with nothing between
+        line = $0
+        # Remove triple-backtick sequences first
+        gsub(/```[^`]*```/, "", line)
+        gsub(/```/, "", line)
+        if (match(line, /``/)) print NR": "$0
+      }
+    ' "$f")"
+    if [ -n "$empty_spans" ]; then
+      hits="${hits}${hits:+
+}$(basename "$f"):
+${empty_spans}"
+    fi
+  done
+
+  [ -z "$hits" ] || fail "empty inline code spans found:
+$hits"
+}
+
+# ===========================================================================
+# Guard: planner line names both project keys at every republish site
+# ===========================================================================
+
+@test "planner line names both project keys at each republish site" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # edit-ux Step 8: extract the Planner bullet
+  local ux_step8
+  ux_step8="$(_extract_step8_editux)"
+  [ -n "$ux_step8" ] || fail "edit-ux Step 8 not found"
+  local ux_planner
+  ux_planner="$(grep -i 'Planner.*Step 10 item 2' <<<"$ux_step8")"
+  [ -n "$ux_planner" ] || fail "edit-ux Step 8 has no Planner line"
+  grep -qF -- '--project design_system' <<<"$ux_planner" \
+    || fail "edit-ux planner line missing --project design_system"
+  grep -qF -- '--project product_design' <<<"$ux_planner" \
+    || fail "edit-ux planner line missing --project product_design"
+
+  # add-feature patch: extract the Planner bullet from Step 3
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  local af_patch_planner
+  af_patch_planner="$(grep -i 'Planner.*Step 10 item 2' <<<"$af_patch")"
+  [ -n "$af_patch_planner" ] || fail "add-feature patch has no Planner line"
+  grep -qF -- '--project design_system' <<<"$af_patch_planner" \
+    || fail "add-feature patch planner line missing --project design_system"
+  grep -qF -- '--project product_design' <<<"$af_patch_planner" \
+    || fail "add-feature patch planner line missing --project product_design"
+
+  # add-feature cascade: extract the Planner bullet from Step 7b
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  local af_cascade_planner
+  af_cascade_planner="$(grep -i 'Planner.*Step 10 item 2' <<<"$af_cascade")"
+  [ -n "$af_cascade_planner" ] || fail "add-feature cascade has no Planner line"
+  grep -qF -- '--project design_system' <<<"$af_cascade_planner" \
+    || fail "add-feature cascade planner line missing --project design_system"
+  grep -qF -- '--project product_design' <<<"$af_cascade_planner" \
+    || fail "add-feature cascade planner line missing --project product_design"
 }

@@ -54,6 +54,9 @@ _actor=""
 _integration=""
 _integration_seen=0
 _probe_stderr=""
+_scope=""
+_scope_seen=0
+_scope_reason="default"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -71,9 +74,32 @@ while [ $# -gt 0 ]; do
       _integration="$2"
       _integration_seen=1
       shift 2 ;;
+    --scope)
+      if [ $# -lt 2 ]; then
+        printf 'design-stale-transition.sh: --scope requires a value; legal values: design-system, product-design, both\n' >&2
+        exit 2
+      fi
+      if [ "$_scope_seen" -eq 1 ]; then
+        printf 'design-stale-transition.sh: --scope specified more than once\n' >&2
+        exit 2
+      fi
+      case "$2" in
+        design-system|product-design|both) ;;
+        *)
+          printf 'design-stale-transition.sh: invalid --scope value: %s; legal values: design-system, product-design, both\n' \
+            "$(printf '%s' "$2" | tr -c '[:print:]' '?')" >&2
+          exit 2 ;;
+      esac
+      _scope="$2"
+      _scope_seen=1
+      _scope_reason="derived"
+      shift 2 ;;
     *)          shift ;;
   esac
 done
+
+# Default scope when not specified
+[ -n "$_scope" ] || _scope="both"
 
 [ -n "$_decision" ] || { printf 'design-stale-transition.sh: --decision required\n' >&2; exit 2; }
 [ -n "$_actor" ]    || { printf 'design-stale-transition.sh: --actor required\n' >&2; exit 2; }
@@ -97,7 +123,11 @@ if [ "$_decision" = "no" ]; then
   exit 0
 fi
 
-# yes or ambiguous — resolve state, write stale, then halt if not available
+# yes or ambiguous — log scope, resolve state, write stale, then halt if not available
+
+# Scope log — emitted after argument validation and before Phase 1 for every
+# yes or ambiguous decision, including runs that later halt at Phase 3.
+printf 'scope=%s reason=%s\n' "$_scope" "$_scope_reason" >&2
 
 # ---------------------------------------------------------------------------
 # Phase 1: resolve integration state
@@ -149,6 +179,19 @@ _relay_and_clean_probe_stderr() {
 
 case "$_resolved_state" in
   available)
+    # Print the ordered republish target list on stdout
+    case "$_scope" in
+      design-system)
+        printf 'republish-target: design-system\n'
+        ;;
+      product-design)
+        printf 'republish-target: product-design\n'
+        ;;
+      both)
+        printf 'republish-target: design-system\n'
+        printf 'republish-target: product-design\n'
+        ;;
+    esac
     rm -f "$_probe_stderr" 2>/dev/null || true
     exit 0
     ;;

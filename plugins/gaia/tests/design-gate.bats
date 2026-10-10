@@ -199,7 +199,7 @@ setup() {
 teardown() {
   # Clean up any stale lock files
   rm -f "$TEST_TMP"/.gaia/state/*.lock "$TEST_TMP"/.gaia/state/*.gate.lock 2>/dev/null || true
-  # Clean up patched gate copies left by _make_patched or manual awk patches
+  # Clean up patched gate copies left by _make_patched (mktemp-named) or manual patches
   rm -f "$(cd "$BATS_TEST_DIRNAME/../scripts/lib" && pwd)"/design-gate-patched-*.sh 2>/dev/null || true
   common_teardown
 }
@@ -230,12 +230,12 @@ _run_patched_gate() {
     bash -c 'export _DESIGN_GATE_SH_LOADED=0; source "'"$patched"'"; design_gate_check "$@"' -- "$@" 2>&1
 }
 
-# _make_patched <sed_expression> — create a patched copy next to the original,
-# stdout = path to the patched file. Caller must rm -f it.
+# _make_patched <sed_expression> — create a collision-proof patched copy next
+# to the original, stdout = path to the patched file. Caller must rm -f it.
 _make_patched() {
   local sed_expr="$1"
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
+  patched="$(mktemp "$(dirname "$GATE_SCRIPT")/design-gate-patched-XXXXXX.sh")"
   sed "$sed_expr" "$GATE_SCRIPT" > "$patched"
   printf '%s' "$patched"
 }
@@ -517,7 +517,7 @@ STAKE
     fail "gate should not assert integration is unauthorized"
   fi
   # Conditional clause present
-  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+  if ! _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional integration clause should be present"
   fi
   # Remediation leads with /gaia-design-review (before the conditional clause)
@@ -527,7 +527,7 @@ STAKE
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause"
 }
@@ -545,7 +545,7 @@ STAKE
   count="$(probe_call_count)"
   [ "$count" -eq 0 ] || fail "gate should not probe"
   # Conditional clause present and names design-login
-  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+  if ! _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should be present on state-based halt"
   fi
   _stripped_output | grep -qi 'design-login' \
@@ -740,7 +740,7 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -qi '/gaia-design-review' \
     || fail "draft remediation should lead with /gaia-design-review"
-  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+  if ! _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should be present"
   fi
   # /gaia-design-review must appear before the conditional clause on the Remediation line
@@ -748,7 +748,7 @@ STAKE
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
@@ -765,7 +765,7 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -qi '/gaia-design-review' \
     || fail "stale remediation should lead with /gaia-design-review"
-  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+  if ! _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should be present"
   fi
   _stripped_output | grep -qi 'design-login' \
@@ -775,7 +775,7 @@ STAKE
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
@@ -1884,7 +1884,7 @@ STAKE
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on config halt"
   fi
 }
@@ -1896,7 +1896,7 @@ STAKE
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on symlink halt"
   fi
 }
@@ -1909,7 +1909,7 @@ STAKE
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on corrupt YAML halt"
   fi
 }
@@ -1925,7 +1925,7 @@ EOF
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on schema-invalid halt"
   fi
 }
@@ -1954,7 +1954,7 @@ EOF
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on not-applicable-on-UI halt"
   fi
 }
@@ -1969,7 +1969,7 @@ EOF
 
   run run_gate --force-design --reason "short" --entry-point "test"
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on override failure halt"
   fi
 }
@@ -2001,7 +2001,7 @@ EOF
   if grep -q '(integration:' <<<"$out"; then
     fail "gate should not include integration diagnosis"
   fi
-  if ! grep -qi 'if claude design is not connected' <<<"$out"; then
+  if ! grep -qi 'if the design integration is not connected' <<<"$out"; then
     fail "conditional integration clause should be present"
   fi
   local count
@@ -2033,7 +2033,7 @@ EOF
   if grep -q '(integration: unauthorized)' <<<"$out"; then
     fail "gate should not include direct integration diagnosis"
   fi
-  if ! grep -qi 'if claude design is not connected' <<<"$out"; then
+  if ! grep -qi 'if the design integration is not connected' <<<"$out"; then
     fail "conditional integration clause should be present"
   fi
   local count
@@ -2250,5 +2250,155 @@ EOF
 
   run run_gate
   [ "$status" -eq 0 ] || fail "gate should pass on approved+converged record, got status=$status"
+}
+
+# =========================================================================
+# Review coverage check — gate must fail when a project is not reviewed
+# =========================================================================
+
+# Helper: build an approved v2 record with both project references set
+_build_approved_dual_project_record() {
+  _build_approved_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Ensure v2 schema with both project references
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.reference = "ds-ref-001"' "$rec"
+  yq -i '.design_system_project.type = "design-system"' "$rec"
+  yq -i '.design_system_project.surface = "designsync"' "$rec"
+  yq -i '.design_system_project.discovered_via = "project-artifacts"' "$rec"
+  yq -i '.product_design_project.reference = "pd-ref-001"' "$rec"
+  yq -i '.product_design_project.type = "product-design"' "$rec"
+  yq -i '.product_design_project.surface = "artifact"' "$rec"
+  yq -i '.product_design_project.discovered_via = "created"' "$rec"
+}
+
+@test "gate fails when design-system project not reviewed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Coverage only includes product-design — design-system is missing
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should fail when design-system project not reviewed, got status=$status"
+  _assert_gate_output
+  _stripped_output | grep -qi 'design-system project' \
+    || fail "remediation should name the design-system project"
+  _stripped_output | grep -qi '/gaia-design-review' \
+    || fail "remediation should mention /gaia-design-review"
+}
+
+@test "gate fails when product project not reviewed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Coverage only includes design-system — product design is missing
+  yq -i '.review_coverage = ["design-system"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should fail when product design project not reviewed, got status=$status"
+  _assert_gate_output
+  _stripped_output | grep -qi 'product design project' \
+    || fail "remediation should name the product design project"
+  _stripped_output | grep -qi '/gaia-design-review' \
+    || fail "remediation should mention /gaia-design-review"
+}
+
+@test "absent coverage with null product passes" {
+  seed_ui_project available
+  _build_approved_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # v2 with product_design_project null — simulates a v1-migrated record
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.reference = "ds-ref-001"' "$rec"
+  yq -i '.design_system_project.type = "design-system"' "$rec"
+  yq -i '.design_system_project.surface = "designsync"' "$rec"
+  yq -i '.design_system_project.discovered_via = "project-artifacts"' "$rec"
+  yq -i '.product_design_project = null' "$rec"
+  # No review_coverage field at all
+
+  run run_gate
+  [ "$status" -eq 0 ] || fail "gate should pass when coverage absent and product null, got status=$status"
+}
+
+@test "absent coverage with non-null product fails" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Remove review_coverage so it is absent, but product ref is set
+  yq -i 'del(.review_coverage)' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should fail when coverage absent and product non-null, got status=$status"
+  _assert_gate_output
+  _stripped_output | grep -qi 'product design project' \
+    || fail "remediation should name the product design project"
+}
+
+@test "gate stays local and fast with coverage check" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["design-system", "product-design"]' "$rec"
+
+  # Shim to detect any external calls
+  mkdir -p "$TEST_TMP/shim-bin"
+  for cmd in curl gh; do
+    cat > "$TEST_TMP/shim-bin/$cmd" <<'SHIMEOF'
+#!/usr/bin/env bash
+echo 1 >> "${SHIM_COUNTER_FILE:-/dev/null}"
+exit 1
+SHIMEOF
+    chmod +x "$TEST_TMP/shim-bin/$cmd"
+  done
+  export SHIM_COUNTER_FILE="$TEST_TMP/.shim-counter"
+
+  run env PATH="$TEST_TMP/shim-bin:$TEST_TMP/bin:$PATH" \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash -c '
+      set -euo pipefail
+      source "'"$GATE_SCRIPT"'"
+      design_gate_check
+    '
+  [ "$status" -eq 0 ] || fail "gate should pass with full coverage, got status=$status"
+
+  # Zero external calls
+  local call_count=0
+  if [ -f "$SHIM_COUNTER_FILE" ]; then
+    call_count="$(wc -l < "$SHIM_COUNTER_FILE" | tr -d ' ')"
+  fi
+  [ "$call_count" -eq 0 ] || fail "gate should make zero external calls but made $call_count"
+
+  # Probe should not have been called
+  local probe_count
+  probe_count="$(probe_call_count)"
+  [ "$probe_count" -eq 0 ] || fail "gate should not run the probe but counted $probe_count"
+}
+
+@test "mutant: removing coverage check turns test red" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh missing: $GATE_SCRIPT"
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Coverage missing design-system — should fail with the coverage check
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  # Original gate should fail on incomplete coverage
+  run run_gate
+  [ "$status" -eq 1 ] || fail "original gate should fail on incomplete coverage"
+
+  # Patch: remove the coverage check (awk removes lines containing review_coverage)
+  local patched
+  patched="$(_make_patched '/review_coverage/d')"
+
+  # Reset the record — rebuild since the gate may have mutated state
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
+  _build_approved_dual_project_record
+  yq -i '.review_coverage = ["product-design"]' "$TEST_TMP/.gaia/state/design-record.yaml"
+
+  # Patched gate should PASS (no coverage check)
+  run _run_patched_gate "$patched"
+  rm -f "$patched"
+  [ "$status" -eq 0 ] || fail "patched gate (coverage removed) should pass, proving the mutant is caught"
 }
 

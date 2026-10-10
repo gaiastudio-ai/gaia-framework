@@ -273,7 +273,7 @@ design_gate_check() {
 
   if [ ! -f "$record_path" ]; then
     # MUTANT-ANCHOR: absent-fail-branch
-    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If Claude Design is not connected in this session, you will also need to enable it, run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
     _dg_halt "$record_path" "absent" "$_dg_absent_remediation"
     return 1
   fi
@@ -331,6 +331,32 @@ design_gate_check() {
   state_remediation="$(_dg_evaluate_state "$design_state" "$drec_script" "$PROJECT_ROOT")" && verdict="pass"
 
   if [ "$verdict" = "pass" ]; then
+    # ---- Review coverage check (review_coverage) ----
+    local _dg_coverage _dg_pdp_ref _dg_cov_clause # review_coverage locals
+    _dg_coverage="$(yq '.review_coverage' "$record_path" 2>/dev/null || true)"
+    _dg_pdp_ref="$(yq '.product_design_project.reference' "$record_path" 2>/dev/null || true)" # review_coverage
+    _dg_cov_clause="If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)." # review_coverage
+    if [ "$_dg_coverage" = "null" ] || [ -z "$_dg_coverage" ]; then # review_coverage absent
+      if [ -n "$_dg_pdp_ref" ] && [ "$_dg_pdp_ref" != "null" ]; then # review_coverage pdp-guard
+        _dg_halt "$record_path" "coverage-incomplete" "The design review did not cover the product design project. Run /gaia-design-review to review both projects. $_dg_cov_clause" # review_coverage
+        return 1 # review_coverage
+      fi # review_coverage
+    else # review_coverage present
+      local _dg_has_ds=0 _dg_has_pd=0 # review_coverage
+      if printf '%s\n' "$_dg_coverage" | grep -qF -- 'design-system'; then _dg_has_ds=1; fi # review_coverage
+      if printf '%s\n' "$_dg_coverage" | grep -qF -- 'product-design'; then _dg_has_pd=1; fi # review_coverage
+      local _dg_dsp_ref # review_coverage
+      _dg_dsp_ref="$(yq '.design_system_project.reference // .project.reference' "$record_path" 2>/dev/null || true)" # review_coverage
+      if [ -n "$_dg_dsp_ref" ] && [ "$_dg_dsp_ref" != "null" ] && [ "$_dg_has_ds" -eq 0 ]; then # review_coverage
+        _dg_halt "$record_path" "coverage-incomplete" "The design review did not cover the design-system project. Run /gaia-design-review to review both projects. $_dg_cov_clause" # review_coverage
+        return 1 # review_coverage
+      fi # review_coverage
+      if [ -n "$_dg_pdp_ref" ] && [ "$_dg_pdp_ref" != "null" ] && [ "$_dg_has_pd" -eq 0 ]; then # review_coverage
+        _dg_halt "$record_path" "coverage-incomplete" "The design review did not cover the product design project. Run /gaia-design-review to review both projects. $_dg_cov_clause" # review_coverage
+        return 1 # review_coverage
+      fi # review_coverage
+    fi # review_coverage
+
     return 0
   fi
 
@@ -344,7 +370,7 @@ design_gate_check() {
 
   # ---- Halt on non-approved applicable paths ----
 
-  local _dg_halt_remediation="${state_remediation} If Claude Design is not connected in this session, you will also need to enable it, run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+  local _dg_halt_remediation="${state_remediation} If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
   _dg_halt "$record_path" "$design_state" "$_dg_halt_remediation"  # MUTANT-ANCHOR: probe-fail-branch
   return 1
 }

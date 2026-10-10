@@ -59,3 +59,4 @@ tests/build-manifest-cards.bats     test     tests build-manifest-cards includin
 tests/design-record-roster.bats    test     roster-resolution test suite
 tests/design-record-review-coverage.bats test review-coverage verb tests
 CHANGELOG.md                       prose    release notes list design-record changes
+tests/republish-on-stale.bats      test     asserts republish sites pass the design record to the persist call

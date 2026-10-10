@@ -474,6 +474,8 @@ scripts-core	coppa-regime.bats
 scripts-core	create-ux-claude-design.bats
 scripts-core	cross-refs-walk.bats
 scripts-core	dedup-contract.bats
+scripts-core	derive-design-scope-diff.bats
+scripts-core	derive-design-scope.bats
 scripts-core	design-probe.bats
 scripts-core	design-record-reopen-applicable.bats
 scripts-core	design-record-review-coverage.bats
