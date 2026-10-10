@@ -527,7 +527,7 @@ STAKE
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause"
 }
@@ -748,7 +748,7 @@ STAKE
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
@@ -775,7 +775,7 @@ STAKE
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
