@@ -558,9 +558,9 @@ CMDS_END
     echo "FAIL: components should go to design-system" >&2; return 1
   }
 
-  # Creates or binds
-  grep -qiE 'creates or binds|create or bind' "$page" || {
-    echo "FAIL: should say creates or binds" >&2; return 1
+  # Creates or binds — must be in the Project creation step (reuse $creation)
+  grep -qiE 'creates or binds|create or bind' <<<"$creation" || {
+    echo "FAIL: Project creation step should say creates or binds" >&2; return 1
   }
   grep -qiE 'brand-style|non-React' "$page" || {
     echo "FAIL: should mention brand-style" >&2; return 1
@@ -590,21 +590,30 @@ CMDS_END
     echo "FAIL: old single-project phrasing" >&2; return 1
   fi
 
-  # Direction: token/component -> design-system
-  grep -qiE 'token.*component.*design-system' <<<"$republish" || {
+  # Split step into sentences for direction-sensitive matching.
+  # Each sentence boundary is a period followed by a space or tag.
+  local sentences
+  sentences="$(printf '%s' "$republish" | sed 's/\. /.\n/g')"
+
+  # Direction: exact phrase pins token/component to design-system
+  grep -qiF 'token and component changes go to the design-system project' <<<"$republish" || {
     echo "FAIL: should route token/component to design-system" >&2; return 1
   }
-  # Direction: screen/flow -> product design
-  grep -qiE 'screen.*flow.*product design' <<<"$republish" || {
+  # Negative: token/component must not target the product design project
+  if grep -qiF 'token and component changes go to the product design project' <<<"$republish"; then
+    echo "FAIL: token/component must not go to the product design project" >&2; return 1
+  fi
+  # Direction: one sentence pairs screen/flow with product design
+  grep -qiE 'screen.*flow.*product design' <<<"$sentences" || {
     echo "FAIL: should route screen/flow to product design" >&2; return 1
   }
   # Token change also refreshes screens
-  grep -qiE 'token.*also.*screen|token.*refresh.*screen|screen.*carries.*token' <<<"$republish" || {
+  grep -qiE 'token change also' <<<"$sentences" || {
     echo "FAIL: should say token change also refreshes screens" >&2; return 1
   }
-  # DS first
-  grep -qiE 'design-system.*first' <<<"$republish" || {
-    echo "FAIL: should say design-system first" >&2; return 1
+  # DS first: exact phrase so "product design project is republished first" is caught
+  grep -qiF 'design-system project is republished first' <<<"$republish" || {
+    echo "FAIL: should say design-system project is republished first" >&2; return 1
   }
 
   # SKILL.md cross-checks
@@ -644,10 +653,15 @@ CMDS_END
   # Delta sync: screens from product design, components from design-system
   local delta
   delta="$(_step_item "$step_section" "Delta sync")"
-  grep -qiE 'screen.*product design|product design.*screen' <<<"$delta" || {
+  # Split into sentences for direction-sensitive matching.
+  local delta_sentences
+  delta_sentences="$(printf '%s' "$delta" | sed 's/\. /.\n/g')"
+  # Screen changes read from product design (not from design-system)
+  grep -qiE 'screen.*read.*product design|screen.*from.*product design' <<<"$delta_sentences" || {
     echo "FAIL: delta sync should read screens from product design" >&2; return 1
   }
-  grep -qiE 'component.*design-system|design-system.*component' <<<"$delta" || {
+  # Component changes from design-system
+  grep -qiE 'component.*design-system|design-system.*component' <<<"$delta_sentences" || {
     echo "FAIL: delta sync should read components from design-system" >&2; return 1
   }
   grep -qi 'reconciliation' <<<"$delta" || {
@@ -677,8 +691,10 @@ CMDS_END
 
   grep -qi 'brand-style' "$page" || { echo "FAIL: no brand-style" >&2; return 1; }
   grep -qiE 'design-system.*first' "$page" || { echo "FAIL: no DS-first" >&2; return 1; }
-  grep -qiE 'no screens available|no product design project' "$page" || {
-    echo "FAIL: no null-PD behavior" >&2; return 1
+  local review_sec
+  review_sec="$(sed -n '/<section id="review">/,/<\/section>/p' "$page")"
+  grep -qiF 'no screens available' <<<"$review_sec" || {
+    echo "FAIL: review section should say no screens available" >&2; return 1
   }
 
   # Gate: convergence, review coverage, zero integration calls
@@ -694,11 +710,21 @@ CMDS_END
     echo "FAIL: gate should mention review coverage" >&2; return 1
   }
 
-  # Token change also refreshes screens
+  # Stale section: token change also refreshes screens, routing direction
   local stale
   stale="$(sed -n '/<section id="stale-on-change">/,/<\/section>/p' "$page" | tr '\n' ' ')"
   grep -qiE 'token.*also.*screen|token.*refresh.*screen|screen.*carries.*token' <<<"$stale" || {
     echo "FAIL: stale section should say token change refreshes screens" >&2; return 1
+  }
+  # Direction: exact phrases pin the routing
+  grep -qiF 'token or component change republishes to the design-system project' <<<"$stale" || {
+    echo "FAIL: stale should route token/component to design-system" >&2; return 1
+  }
+  if grep -qiF 'token or component change republishes to the product design project' <<<"$stale"; then
+    echo "FAIL: token/component must not go to the product design project" >&2; return 1
+  fi
+  grep -qiF 'screen or flow change republishes to the product design project' <<<"$stale" || {
+    echo "FAIL: stale should route screen/flow to product design" >&2; return 1
   }
 
   # SKILL.md cross-checks
@@ -725,10 +751,15 @@ CMDS_END
   impact="$(_step_item "$step_section" "Design impact assessment")"
   [ -n "$impact" ] || { echo "FAIL: no Design impact step" >&2; return 1; }
 
-  grep -qiE 'token.*component.*design-system' <<<"$impact" || {
+  # Direction: exact phrase pins token/component to design-system
+  grep -qiF 'token, component and template changes go to the design-system project' <<<"$impact" || {
     echo "FAIL: should route token/component to design-system" >&2; return 1
   }
-  grep -qiE 'screen.*flow.*product design' <<<"$impact" || {
+  # Negative: token/component must not target product design
+  if grep -qiF 'token, component and template changes go to the product design project' <<<"$impact"; then
+    echo "FAIL: token/component must not go to product design" >&2; return 1
+  fi
+  grep -qiF 'screen and flow changes go to the product design project' <<<"$impact" || {
     echo "FAIL: should route screen/flow to product design" >&2; return 1
   }
   grep -qi 'republish' "$page" || { echo "FAIL: no republish" >&2; return 1; }
