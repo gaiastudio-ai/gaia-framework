@@ -8016,8 +8016,8 @@ HEADER
 # =========================================================================
 # Generated round-trip corpus — covers every printable ASCII character,
 # every marker character alone and followed by a space, names containing
-# pipe/backslash-pipe/double-backslash, and the full probe list from the
-# code and security reviews.
+# pipe, backslash-pipe, double-backslash, and a set of boundary names
+# that exercise every prefix and escape rule.
 # =========================================================================
 
 # _build_corpus — generate the corpus as a JSON array via python3.
@@ -8026,8 +8026,8 @@ _build_corpus() {
   python3 -c '
 import json, sys
 names = set()
-# Every printable ASCII character (33-126, excluding space
-# because leading/trailing spaces are tracked upstream)
+# Every printable ASCII character (33-126; leading/trailing spaces
+# are not handled by the escape scheme)
 for i in range(33, 127):
     names.add(chr(i))
 # Every marker char followed by space and a letter
@@ -8036,7 +8036,7 @@ for m in "#-+*><\x60~=_0123456789":
 # Names with pipe, escaped pipe, double backslash, leading backslash
 for n in ["x|y","x\\|y","x\\\\y","\\z"]:
     names.add(n)
-# The probe list
+# Boundary names that exercise prefix, separator and table-end rules
 for n in [
     "1. Intro","10) x","\\# x","\\\\# x","\\- y",
     "\\","\\\\","\\|","#","##","-","+","*",">",
@@ -8044,6 +8044,7 @@ for n in [
     ">x","1) x","\x60\x60\x60x","<div>",
     "--",":",
     ":-:","normal-component","CamelCase",
+    "3D Viewer","404 Page","1.5x Zoom","2) step",
 ]:
     names.add(n)
 corpus = sorted(names)
@@ -8089,38 +8090,56 @@ UX
   local sha1
   sha1="$(_sha256_file "$doc_dir/ux-design.md")"
 
-  # No added line may start with a markdown block marker at line start
-  # (heading, bullet, quote, ordered list, code fence, HTML block).
-  # Skip the header row, separator row, Button row, and section heading.
+  # Every corpus name must appear exactly once in the added output
+  local added_count
+  added_count="$(printf '%s\n' "$output" | grep -c 'added' || true)"
+  [ "$added_count" -eq "$corpus_size" ] || \
+    fail "expected $corpus_size added lines, got $added_count"
+
+  # No name must be reported absent
+  local absent_report
+  absent_report="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -z "$absent_report" ] || \
+    fail "names reported absent after sync 1:\n$absent_report"
+
+  # No added line inside the components section may start with a markdown
+  # block marker. Only check lines between the section heading and the
+  # next section heading. Skip the original table header, separator,
+  # Button row, and the section heading itself.
   local bad_lines
   bad_lines="$(awk '
+    /^## .*[Cc]omponent/ { in_sec = 1; next }
+    in_sec && /^## / { in_sec = 0; next }
+    in_sec && /^# / { in_sec = 0; next }
+    !in_sec { next }
+    /^---/ { next }
     /^Component / { next }
-    /^---/ { next }
     /^Button / { next }
-    /^## / { next }
-    /^# / { next }
-    /^---/ { next }
     /^$/ { next }
     /^#+[[:space:]]/ { print "heading: " $0; next }
     /^[[:space:]]*[-*+][[:space:]]/ { print "list: " $0; next }
     /^[[:space:]]*[0-9]+[.)][[:space:]]/ { print "ordered: " $0; next }
     /^[[:space:]]*>/ { print "quote: " $0; next }
+    /^```/ || /^~~~/ { print "fence: " $0; next }
+    /^<[a-zA-Z]/ { print "html: " $0; next }
   ' "$doc_dir/ux-design.md")"
   [ -z "$bad_lines" ] || \
     fail "block markers injected into pipe-less table:\n$bad_lines"
 
-  # Sync 2 — must report "up to date"
+  # Sync 2 — must report "up to date" with no absent reports
   run "$SYNC_SCRIPT" "$TEST_TMP/rt-pl-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 2 failed (exit $status): $output"
   local sha2
   sha2="$(_sha256_file "$doc_dir/ux-design.md")"
 
   if [[ "$output" != *"up to date"* ]]; then
-    # Find which names were re-added
     local readded
     readded="$(printf '%s\n' "$output" | grep 'added\|absent' || true)"
     fail "sync 2 not idempotent (corpus=$corpus_size):\n$readded"
   fi
+  absent_report="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -z "$absent_report" ] || \
+    fail "names reported absent on sync 2:\n$absent_report"
   [ "$sha1" = "$sha2" ] || \
     fail "doc changed on sync 2: sha $sha1 -> $sha2"
 
@@ -8143,6 +8162,7 @@ UX
   local corpus="$TEST_TMP/corpus.json"
   local corpus_size
   corpus_size="$(_build_corpus "$corpus")"
+  [ "$corpus_size" -gt 100 ] || fail "corpus too small: $corpus_size"
 
   local doc_dir="$TEST_TMP/rt-piped"
   mkdir -p "$doc_dir"
@@ -8170,6 +8190,18 @@ UX
   local sha1
   sha1="$(_sha256_file "$doc_dir/ux-design.md")"
 
+  # Every corpus name must appear exactly once
+  local added_count
+  added_count="$(printf '%s\n' "$output" | grep -c 'added' || true)"
+  [ "$added_count" -eq "$corpus_size" ] || \
+    fail "expected $corpus_size added lines, got $added_count"
+
+  # No absent reports
+  local absent_report
+  absent_report="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -z "$absent_report" ] || \
+    fail "names reported absent after sync 1:\n$absent_report"
+
   run "$SYNC_SCRIPT" "$TEST_TMP/rt-pi-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
   local sha2
@@ -8180,6 +8212,9 @@ UX
     readded="$(printf '%s\n' "$output" | grep 'added\|absent' || true)"
     fail "sync 2 not idempotent (corpus=$corpus_size):\n$readded"
   fi
+  absent_report="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -z "$absent_report" ] || \
+    fail "names reported absent on sync 2:\n$absent_report"
   [ "$sha1" = "$sha2" ] || \
     fail "doc changed on sync 2: sha $sha1 -> $sha2"
 
@@ -8200,6 +8235,7 @@ UX
   local corpus="$TEST_TMP/corpus.json"
   local corpus_size
   corpus_size="$(_build_corpus "$corpus")"
+  [ "$corpus_size" -gt 100 ] || fail "corpus too small: $corpus_size"
 
   local doc_dir="$TEST_TMP/rt-bullet"
   mkdir -p "$doc_dir"
@@ -8225,6 +8261,18 @@ UX
   local sha1
   sha1="$(_sha256_file "$doc_dir/ux-design.md")"
 
+  # Every corpus name must appear exactly once
+  local added_count
+  added_count="$(printf '%s\n' "$output" | grep -c 'added' || true)"
+  [ "$added_count" -eq "$corpus_size" ] || \
+    fail "expected $corpus_size added lines, got $added_count"
+
+  # No absent reports
+  local absent_report
+  absent_report="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -z "$absent_report" ] || \
+    fail "names reported absent after sync 1:\n$absent_report"
+
   run "$SYNC_SCRIPT" "$TEST_TMP/rt-bl-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
   local sha2
@@ -8235,6 +8283,9 @@ UX
     readded="$(printf '%s\n' "$output" | grep 'added\|absent' || true)"
     fail "sync 2 not idempotent (corpus=$corpus_size):\n$readded"
   fi
+  absent_report="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -z "$absent_report" ] || \
+    fail "names reported absent on sync 2:\n$absent_report"
   [ "$sha1" = "$sha2" ] || \
     fail "doc changed on sync 2: sha $sha1 -> $sha2"
 
@@ -8400,4 +8451,630 @@ UX
   # Allow up to 3s for slow CI.
   [ "$elapsed_ms" -lt 3000 ] || \
     fail "100k-char cell took ${elapsed_ms}ms (expected <3000ms for linear)"
+}
+
+
+# =========================================================================
+# Context corpus — documents with realistic surroundings
+# =========================================================================
+
+# _assert_context_sync DOC_PATH SNAPSHOT_PATH EXPECTED_NAMES_COUNT LABEL
+#   Syncs three times, asserts the right number of names are added on
+#   sync 1, that no name is reported absent, and that syncs 2 and 3
+#   leave the document byte-identical.
+_assert_context_sync() {
+  local doc_path="$1" snap_path="$2" expected="$3" label="$4"
+
+  # Sync 1
+  run "$SYNC_SCRIPT" "$snap_path" "$doc_path"
+  [ "$status" -eq 0 ] || fail "$label: sync 1 failed (exit $status): $output"
+  local sha1
+  sha1="$(_sha256_file "$doc_path")"
+
+  # Count added names
+  local added_count
+  added_count="$(printf '%s\n' "$output" | grep -c 'added' || true)"
+  [ "$added_count" -eq "$expected" ] || \
+    fail "$label: expected $expected additions, got $added_count: $output"
+
+  # No absent reports
+  local absent
+  absent="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -z "$absent" ] || \
+    fail "$label: names reported absent after sync 1:\n$absent"
+
+  # Sync 2
+  run "$SYNC_SCRIPT" "$snap_path" "$doc_path"
+  [ "$status" -eq 0 ] || fail "$label: sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_path")"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "$label: sync 2 not idempotent: $output"
+  absent="$(printf '%s\n' "$output" | grep 'absent' || true)"
+  [ -z "$absent" ] || \
+    fail "$label: names reported absent on sync 2:\n$absent"
+  [ "$sha1" = "$sha2" ] || \
+    fail "$label: doc changed on sync 2"
+
+  # Sync 3
+  run "$SYNC_SCRIPT" "$snap_path" "$doc_path"
+  [ "$status" -eq 0 ] || fail "$label: sync 3 failed: $output"
+  local sha3
+  sha3="$(_sha256_file "$doc_path")"
+  [ "$sha2" = "$sha3" ] || \
+    fail "$label: doc changed on sync 3"
+}
+
+@test "context: pipe prose above piped table (blank-separated)" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-pipe-prose"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Buttons take a `size` prop: `sm | md | lg`.
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card","Nav"]}' > "$TEST_TMP/ctx-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-snap.json" 2 "pipe-prose-blank-sep"
+
+  # New rows must be piped (not pipe-less)
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [[ "$card_row" == '|'* ]] || \
+    fail "Card written as pipe-less into piped table: $card_row"
+}
+
+@test "context: pipe prose directly above piped table header (no blank line)" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-pipe-adjacent"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Variants: primary | secondary
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-adj-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-adj-snap.json" 1 "pipe-prose-adjacent"
+}
+
+@test "context: pipe prose below piped table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-pipe-below"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+Note: supports `variant: primary | secondary`.
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-below-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-below-snap.json" 1 "pipe-prose-below"
+}
+
+@test "context: bullet-mode section with pipe-bearing prose above" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Prose with | above a bullet list must not interfere with reading
+  local doc_dir="$TEST_TMP/ctx-bullet-pipe"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+Sizes: `sm | md | lg`.
+
+- Button
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-bpipe-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-bpipe-snap.json" 1 "bullet-pipe-prose"
+}
+
+@test "context: heading containing pipe in section" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-heading-pipe"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+### Desktop | Mobile variants
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-hpipe-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-hpipe-snap.json" 1 "heading-pipe"
+}
+
+@test "context: fenced code block after the real table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A code fence after the table must not interfere with sync
+  local doc_dir="$TEST_TMP/ctx-fence"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+```
+| Fake | Table |
+|------|-------|
+| x | y |
+```
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-fence-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-fence-snap.json" 1 "fenced-code"
+}
+
+@test "context: two tables in section, only the first is target" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-two-tables"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+| Token | Value |
+|-------|-------|
+| color | blue |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-two-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-two-snap.json" 1 "two-tables"
+
+  # Card must be in the first table, not the second
+  local card_ln token_ln
+  card_ln="$(grep -nF 'Card' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  token_ln="$(grep -nF 'Token' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$card_ln" -lt "$token_ln" ] || \
+    fail "Card is in or after the second table (card=$card_ln token=$token_ln)"
+}
+
+@test "context: separator-only table (no header row)" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-sep-only"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+|-----------|--------|-------|
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Card"]}' > "$TEST_TMP/ctx-sep-snap.json"
+
+  # This is a malformed table. The separator line looks like a table
+  # but has no header. The script should handle it gracefully.
+  run "$SYNC_SCRIPT" "$TEST_TMP/ctx-sep-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
+
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Sync 2 — must be stable (even if it was added as bullet)
+  run "$SYNC_SCRIPT" "$TEST_TMP/ctx-sep-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha1" = "$sha2" ] || \
+    fail "sep-only table: doc changed on sync 2"
+}
+
+@test "context: rows before separator" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-rows-before"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Button | custom | top |
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Nav | lib | bar |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Nav","Card"]}' > "$TEST_TMP/ctx-rb-snap.json"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/ctx-rb-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Sync 2 — must be stable
+  run "$SYNC_SCRIPT" "$TEST_TMP/ctx-rb-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha1" = "$sha2" ] || \
+    fail "rows-before-sep: doc changed on sync 2"
+}
+
+@test "context: CRLF document with pipe prose above piped table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-crlf"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md.tmp" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Sizes: `sm | md | lg`.
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+## 9. Next Section
+UX
+  sed "s/\$/$( printf '\r' )/" "$doc_dir/ux-design.md.tmp" > "$doc_dir/ux-design.md"
+  rm -f "$doc_dir/ux-design.md.tmp"
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-crlf-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-crlf-snap.json" 1 "crlf-pipe-prose"
+}
+
+@test "context: pipe prose above pipe-less table (blank-separated)" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-pl-prose"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Sizes: `sm | md | lg`.
+
+Component | Source | Notes
+----------|--------|------
+Button | primary | yes
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-pl-prose-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-pl-prose-snap.json" 1 "pipeless-pipe-prose"
+}
+
+@test "context: pipe prose above bullet list" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-bl-prose"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+Sizes: `sm | md | lg`.
+
+- Button
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-bl-prose-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-bl-prose-snap.json" 1 "bullet-pipe-prose"
+}
+
+@test "context: quote in section above piped table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/ctx-quote"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+> Note: reuse the design system components.
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-quote-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-quote-snap.json" 1 "quote-above"
+}
+
+@test "context: reduced prefix set mutant is killed" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # If the prefix set is reduced to only #-+*>, names starting with
+  # <, backtick, ~, =, _ would not be prefixed. This test catches that
+  # by checking that the pipe-less corpus has no structure injection.
+  # The pipe-less corpus test already checks this, so this test is
+  # a targeted mutant killer: it syncs specific names that need the
+  # full prefix set and asserts they round-trip.
+  local doc_dir="$TEST_TMP/ctx-pfx-set"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Component | Source | Notes
+----------|--------|------
+Button | primary | yes
+
+## 9. Next Section
+UX
+
+  # Names that need the extended prefix set
+  jq -n '{"components":["Button","<div>","` + \"`\" + `x","~strike","=title","_underline"]}' > "$TEST_TMP/ctx-pfx-snap.json"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/ctx-pfx-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
+
+  # Check that all rows have the marker prefix (backslash at start)
+  local bad_rows
+  bad_rows="$(awk '
+    /^Button / { next }
+    /^Component / { next }
+    /^---/ { next }
+    /^## / { next }
+    /^# / { next }
+    /^$/ { next }
+    /^```/ { print "fence: " $0; next }
+    /^<[a-zA-Z]/ { print "html: " $0; next }
+    /^~/ && !/^\\/ { print "tilde: " $0; next }
+    /^=/ && !/^\\/ { print "equals: " $0; next }
+    /^_/ && !/^\\/ { print "underscore: " $0; next }
+  ' "$doc_dir/ux-design.md")"
+  [ -z "$bad_rows" ] || \
+    fail "extended prefix set not applied:\n$bad_rows"
+
+  # Must round-trip
+  run "$SYNC_SCRIPT" "$TEST_TMP/ctx-pfx-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "extended prefix names re-added: $output"
+}
+
+@test "context: header-reset mutant is killed (pipe line before real header)" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # If the reader permanently gives up after a failed header attempt
+  # (instead of continuing to search), a | prose line before the real
+  # table header hides the table entirely.
+  local doc_dir="$TEST_TMP/ctx-hdr-reset"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Variants: primary | secondary
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | custom | top |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["Button","Card"]}' > "$TEST_TMP/ctx-hdr-snap.json"
+  _assert_context_sync "$doc_dir/ux-design.md" "$TEST_TMP/ctx-hdr-snap.json" 1 "header-reset"
+
+  # Card must be in piped form (table was found despite the prose)
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [[ "$card_row" == '|'* ]] || \
+    fail "Card written as pipe-less (table not found): $card_row"
+}
+
+
+# =========================================================================
+# Shared awk functions are defined exactly once in the script
+# =========================================================================
+
+@test "shared awk functions are each defined exactly once" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local fn count
+  for fn in heading_match is_section_end is_sep is_table_row \
+            extract_first_cell _needs_prefix; do
+    count="$(grep -c "function ${fn}(" "$SYNC_SCRIPT")"
+    [ "$count" -eq 1 ] || \
+      fail "function $fn is defined $count times (expected 1)"
+  done
+
+  # is_table_line must not exist (renamed to is_table_row)
+  count="$(grep -c 'function is_table_line(' "$SYNC_SCRIPT" || true)"
+  [ "$count" -eq 0 ] || \
+    fail "is_table_line still defined ($count times); use is_table_row"
+}
+
+
+# =========================================================================
+# A local separator copy must not replace the shared one
+# =========================================================================
+
+@test "colon-only separator line is not treated as a table separator" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A header line followed by | : | : | must NOT form a table, because
+  # the separator has no dashes. If the dash requirement is dropped from
+  # is_sep, the reader would treat the colon line as a separator and
+  # the column count from _count_table_cols would be wrong, causing
+  # rows to be written with the wrong number of pipes.
+  # The real table comes later. Both tables share the same section.
+  local doc_dir="$TEST_TMP/sep-colon"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| X | Y |
+| : | : |
+Some prose.
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | primary | yes |
+
+## 9. Next Section
+UX
+
+  # Button is in the 3-column table. If the colon line is taken as a
+  # separator for the 2-column table, the writer inserts 2-column rows
+  # and the reader ignores them, so they are re-added every sync.
+  local snapshot="$TEST_TMP/sep-colon-snap.json"
+  jq -n '{"components":["Button","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Card must have 3-column form (4 unescaped pipes for leading+trailing)
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_row" ] || fail "Card not found"
+  local pipe_count
+  pipe_count="$(printf '%s' "$card_row" | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')"
+  [ "$pipe_count" -eq 4 ] || \
+    fail "Card has $pipe_count pipes (expected 4 for 3-col table): $card_row"
+
+  # Button must NOT be re-added (it was already in the 3-col table)
+  local added_button
+  added_button="$(printf '%s\n' "$output" | grep 'added.*"Button"' || true)"
+  [ -z "$added_button" ] || \
+    fail "Button re-added (wrong table chosen): $output"
+
+  # Second sync must be stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable (dashless separator?): $output"
 }
