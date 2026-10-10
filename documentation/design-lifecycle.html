@@ -183,8 +183,8 @@
         <p>
           Approval marks the point where stakeholders agree the design is ready
           for implementation. The approval verdict is recorded in the design
-          record as <code>approved: true</code> with a timestamp and the
-          approver's identity. Once approved, the design becomes the binding
+          record as <code>design_state: approved</code> with a timestamp and
+          the approver's identity in the <code>approvals</code> list. Once approved, the design becomes the binding
           contract that solutioning works against.
         </p>
         <p>
@@ -217,10 +217,10 @@
           reads only local state (zero integration calls) and checks three
           conditions: the design record must be in the
           <code>approved</code> state, stakeholder convergence must be
-          satisfied, and review coverage must include both projects. When a
-          review did not cover a project, the gate halts with a remediation
-          directing the user to run
-          <code>/gaia-design-review</code> to review both projects.
+          satisfied, and review coverage must include every project the
+          design record references. When a review did not cover a
+          referenced project, the gate halts with a remediation directing
+          the user to run <code>/gaia-design-review</code>.
           Remediation names both projects and their surfaces (DesignSync for
           the design-system project, the Design artifact surface for the
           product design project).

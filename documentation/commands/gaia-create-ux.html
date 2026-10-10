@@ -78,15 +78,17 @@ Pass 2: 1 Claude Design project found.
   id:            proj-abc123
   name:          Acme Design System
   last_modified:  2026-09-20
-Bind this project? [y/n] y
-
+&gt; Bind this project
 Design-system project bound.
 
-Product design project: no existing reference found.
-Creating product design project via the Artifact tool...
-Product design project created.
-
 Questionnaire skipped (design system already bound).
+
+Product design project: no existing reference found.
+1 existing Design artifact found:
+  My App Screens (last modified 2026-09-22)
+Pick an existing project, or create a new one?
+&gt; Create a new one
+Product design project created.
 
 Personas refined: added accessibility needs and tech proficiency.
 Information architecture: 12-page sitemap mapped.
@@ -117,10 +119,14 @@ UX design written to: .gaia/artifacts/planning-artifacts/ux-design.md</code></pr
 If <strong>missing</strong>: use a Claude Code session that exposes the DesignSync tool surface.
 If <strong>unauthorized</strong>: run <code>/design-login</code> (API-token sessions),
 or grant design access when prompted (claude.ai sessions).</p>
-        <h3>Design artifact surface unavailable</h3>
-        <p>The product design project requires the Artifact tool. When it is
-unavailable, the skill halts with a remediation directing you to ensure
-your Claude Code session has artifact access enabled.</p>
+        <h3>Design artifact surface unavailable or unauthorized</h3>
+        <p>The product design project requires the Design artifact surface
+(Artifact tool). If <strong>missing</strong>: the skill halts with
+&ldquo;The Design artifact surface (Artifact tool) could not be
+reached &mdash; ensure the Artifact tool is available in this
+session.&rdquo; If <strong>unauthorized</strong>: the skill halts with
+&ldquo;The Design artifact surface requires authorization &mdash;
+follow the authorization prompt and re-run.&rdquo;</p>
 </section>
       <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
         <tr><td><a href="gaia-edit-ux.html"><code>/gaia-edit-ux</code></a></td><td>Edits the UX design after creation.</td></tr>
