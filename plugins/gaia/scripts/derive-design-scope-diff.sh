@@ -34,6 +34,7 @@ set -euo pipefail
 LC_ALL=C; export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Test seam only; production always resolves the helper next to this script.
 SCOPE_HELPER="${_DERIVE_SCOPE_HELPER_OVERRIDE:-$SCRIPT_DIR/derive-design-scope.sh}"
 
 # ---------------------------------------------------------------------------

@@ -48,8 +48,16 @@ _extract_step8_editux() {
 
 # _extract_between_stale_end_and_step8_af — extract text between the
 # stale-transition end marker and the Step 8 heading in add-feature SKILL.md.
+# NOTE: this window spans both Step 3 (patch) and Step 7b (cascade). Tests
+# that need to check one site independently should use the narrow extractors
+# _extract_step3_patch_af or _extract_step7b_af instead.
 _extract_between_stale_end_and_step8_af() {
   awk '/<!-- design-stale-transition end -->/{p=1;next} /^### Step 8/{exit} p' "$SKILL_MD_AF"
+}
+
+# _extract_step7b_af — narrow extractor for the Step 7b cascade section only.
+_extract_step7b_af() {
+  awk '/^### Step 7b/{p=1} p && /^### Step [^7]/{exit} p' "$SKILL_MD_AF"
 }
 
 # _extract_cascade_matrix — extract the cascade matrix table from add-feature.
@@ -664,9 +672,9 @@ _extract_step10_createux() {
       || fail "edit-ux Step 8 is missing token: $t (drift from create-ux Step 10)"
   done
 
-  # add-feature cascade (Step 7b, between stale-transition-end and Step 8)
+  # add-feature cascade (Step 7b only, narrowed to avoid patch overlap)
   local af_cascade
-  af_cascade="$(_extract_between_stale_end_and_step8_af)"
+  af_cascade="$(_extract_step7b_af)"
   [ -n "$af_cascade" ] || fail "add-feature cascade publication text not found"
 
   for t in "${tokens[@]}"; do
@@ -797,7 +805,7 @@ _extract_step10_createux() {
 
   # Cascade section (Step 7b)
   local af_cascade
-  af_cascade="$(_extract_between_stale_end_and_step8_af)"
+  af_cascade="$(_extract_step7b_af)"
   [ -n "$af_cascade" ] || fail "add-feature cascade section not found"
 
   grep -qF 'strict-conflicts' <<<"$af_cascade" \
@@ -839,7 +847,7 @@ _extract_step10_createux() {
 
   # add-feature cascade
   local af_cascade
-  af_cascade="$(_extract_between_stale_end_and_step8_af)"
+  af_cascade="$(_extract_step7b_af)"
   [ -n "$af_cascade" ] || fail "add-feature cascade section not found"
 
   grep -qF 'verify-publication-target' <<<"$af_cascade" \
@@ -889,7 +897,7 @@ _extract_step10_createux() {
 
   # add-feature cascade
   local af_cascade
-  af_cascade="$(_extract_between_stale_end_and_step8_af)"
+  af_cascade="$(_extract_step7b_af)"
   [ -n "$af_cascade" ] || fail "add-feature cascade not found"
 
   grep -qF 'persist_last_published' <<<"$af_cascade" \
@@ -932,7 +940,7 @@ _extract_step10_createux() {
 
   # add-feature cascade
   local af_cascade
-  af_cascade="$(_extract_between_stale_end_and_step8_af)"
+  af_cascade="$(_extract_step7b_af)"
   [ -n "$af_cascade" ] || fail "add-feature cascade not found"
 
   grep -qi 'finalize_plan' <<<"$af_cascade" \
@@ -968,7 +976,7 @@ _extract_step10_createux() {
 
   # add-feature cascade
   local af_cascade
-  af_cascade="$(_extract_between_stale_end_and_step8_af)"
+  af_cascade="$(_extract_step7b_af)"
   [ -n "$af_cascade" ] || fail "add-feature cascade not found"
 
   grep -qi 'product.design.project.*not.*set\|product_design_project.*null' <<<"$af_cascade" \

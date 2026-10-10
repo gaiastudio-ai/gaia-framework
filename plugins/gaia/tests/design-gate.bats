@@ -199,7 +199,7 @@ setup() {
 teardown() {
   # Clean up any stale lock files
   rm -f "$TEST_TMP"/.gaia/state/*.lock "$TEST_TMP"/.gaia/state/*.gate.lock 2>/dev/null || true
-  # Clean up patched gate copies left by _make_patched or manual awk patches
+  # Clean up patched gate copies left by _make_patched (mktemp-named) or manual patches
   rm -f "$(cd "$BATS_TEST_DIRNAME/../scripts/lib" && pwd)"/design-gate-patched-*.sh 2>/dev/null || true
   common_teardown
 }
@@ -230,12 +230,12 @@ _run_patched_gate() {
     bash -c 'export _DESIGN_GATE_SH_LOADED=0; source "'"$patched"'"; design_gate_check "$@"' -- "$@" 2>&1
 }
 
-# _make_patched <sed_expression> — create a patched copy next to the original,
-# stdout = path to the patched file. Caller must rm -f it.
+# _make_patched <sed_expression> — create a collision-proof patched copy next
+# to the original, stdout = path to the patched file. Caller must rm -f it.
 _make_patched() {
   local sed_expr="$1"
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
+  patched="$(mktemp "$(dirname "$GATE_SCRIPT")/design-gate-patched-XXXXXX.sh")"
   sed "$sed_expr" "$GATE_SCRIPT" > "$patched"
   printf '%s' "$patched"
 }
