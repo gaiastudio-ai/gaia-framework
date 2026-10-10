@@ -331,31 +331,62 @@ design_gate_check() {
   state_remediation="$(_dg_evaluate_state "$design_state" "$drec_script" "$PROJECT_ROOT")" && verdict="pass"
 
   if [ "$verdict" = "pass" ]; then
-    # ---- Review coverage check (review_coverage) ----
-    local _dg_coverage _dg_pdp_ref _dg_cov_clause # review_coverage locals
-    _dg_coverage="$(yq '.review_coverage' "$record_path" 2>/dev/null || true)"
-    _dg_pdp_ref="$(yq '.product_design_project.reference' "$record_path" 2>/dev/null || true)" # review_coverage
-    _dg_cov_clause="If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)." # review_coverage
-    if [ "$_dg_coverage" = "null" ] || [ -z "$_dg_coverage" ]; then # review_coverage absent
-      if [ -n "$_dg_pdp_ref" ] && [ "$_dg_pdp_ref" != "null" ]; then # review_coverage pdp-guard
-        _dg_halt "$record_path" "coverage-incomplete" "The design review did not cover the product design project. Run /gaia-design-review to review both projects. $_dg_cov_clause" # review_coverage
-        return 1 # review_coverage
-      fi # review_coverage
-    else # review_coverage present
-      local _dg_has_ds=0 _dg_has_pd=0 # review_coverage
-      if printf '%s\n' "$_dg_coverage" | grep -qF -- 'design-system'; then _dg_has_ds=1; fi # review_coverage
-      if printf '%s\n' "$_dg_coverage" | grep -qF -- 'product-design'; then _dg_has_pd=1; fi # review_coverage
-      local _dg_dsp_ref # review_coverage
-      _dg_dsp_ref="$(yq '.design_system_project.reference // .project.reference' "$record_path" 2>/dev/null || true)" # review_coverage
-      if [ -n "$_dg_dsp_ref" ] && [ "$_dg_dsp_ref" != "null" ] && [ "$_dg_has_ds" -eq 0 ]; then # review_coverage
-        _dg_halt "$record_path" "coverage-incomplete" "The design review did not cover the design-system project. Run /gaia-design-review to review both projects. $_dg_cov_clause" # review_coverage
-        return 1 # review_coverage
-      fi # review_coverage
-      if [ -n "$_dg_pdp_ref" ] && [ "$_dg_pdp_ref" != "null" ] && [ "$_dg_has_pd" -eq 0 ]; then # review_coverage
-        _dg_halt "$record_path" "coverage-incomplete" "The design review did not cover the product design project. Run /gaia-design-review to review both projects. $_dg_cov_clause" # review_coverage
-        return 1 # review_coverage
-      fi # review_coverage
-    fi # review_coverage
+    # ---- Review coverage check ----
+    # MUTANT-ANCHOR: coverage-check-begin
+    local _dg_cov_json _dg_cov_type _dg_pdp_ref _dg_pdp_type _dg_dsp_ref
+    _dg_cov_json="$(yq -o=json '{"rc": .review_coverage, "pdp": .product_design_project, "dsp": (.design_system_project.reference // .project.reference)}' "$record_path" 2>/dev/null || true)"
+
+    _dg_cov_type="$(jq -r '.rc | type' <<<"$_dg_cov_json" 2>/dev/null || printf 'null')"
+    _dg_pdp_ref="$(jq -r '.pdp.reference // empty' <<<"$_dg_cov_json" 2>/dev/null || true)"
+    _dg_pdp_type="$(jq -r '.pdp | type' <<<"$_dg_cov_json" 2>/dev/null || printf 'null')"
+    _dg_dsp_ref="$(jq -r '.dsp // empty' <<<"$_dg_cov_json" 2>/dev/null || true)"
+
+    local _dg_cov_clause="If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+
+    # Validate product_design_project type: must be null, absent, or a map
+    if [ -n "$_dg_pdp_type" ] && [ "$_dg_pdp_type" != "null" ] && [ "$_dg_pdp_type" != "object" ]; then
+      _dg_halt "$record_path" "malformed-record" \
+        "product_design_project must be a map or null, but is $_dg_pdp_type. Fix the design record or re-run /gaia-create-ux."
+      return 1
+    fi
+
+    if [ "$_dg_cov_type" = "null" ]; then
+      # Absent coverage field
+      if [ -n "$_dg_pdp_ref" ]; then
+        _dg_halt "$record_path" "coverage-incomplete" \
+          "The design review did not cover the product design project. Run /gaia-design-review to review both projects. This halt cannot be overridden with --force-design. $_dg_cov_clause"
+        return 1
+      fi
+      # product_design_project null — treat as design-system only, pass through
+    elif [ "$_dg_cov_type" = "array" ]; then
+      # Coverage is present and is a list — compare elements exactly
+      local _dg_has_ds=0 _dg_has_pd=0
+      local _dg_cov_item
+      while IFS= read -r _dg_cov_item; do
+        [ -n "$_dg_cov_item" ] || continue
+        if [ "$_dg_cov_item" = "design-system" ]; then _dg_has_ds=1; fi
+        if [ "$_dg_cov_item" = "product-design" ]; then _dg_has_pd=1; fi
+      done <<COVEOF
+$(jq -r '.rc[]' <<<"$_dg_cov_json" 2>/dev/null || true)
+COVEOF
+
+      if [ -n "$_dg_dsp_ref" ] && [ "$_dg_has_ds" -eq 0 ]; then
+        _dg_halt "$record_path" "coverage-incomplete" \
+          "The design review did not cover the design-system project. Run /gaia-design-review to review both projects. This halt cannot be overridden with --force-design. $_dg_cov_clause"
+        return 1
+      fi
+      if [ -n "$_dg_pdp_ref" ] && [ "$_dg_has_pd" -eq 0 ]; then
+        _dg_halt "$record_path" "coverage-incomplete" \
+          "The design review did not cover the product design project. Run /gaia-design-review to review both projects. This halt cannot be overridden with --force-design. $_dg_cov_clause"
+        return 1
+      fi
+    else
+      # review_coverage is present but not a list — fail closed
+      _dg_halt "$record_path" "malformed-record" \
+        "review_coverage must be a list, but is $_dg_cov_type. Fix the design record or re-run /gaia-design-review."
+      return 1
+    fi
+    # MUTANT-ANCHOR: coverage-check-end
 
     return 0
   fi

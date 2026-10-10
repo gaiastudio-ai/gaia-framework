@@ -96,3 +96,22 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
   [ "$output" = "product-design" ] || fail "expected product-design, got: $output"
 }
+
+# ===========================================================================
+# Path with .. segments treated as unclassified
+# ===========================================================================
+
+@test "dotdot path treated as unclassified" {
+  [ -f "$SCOPE_SCRIPT" ] || fail "derive-design-scope.sh not found at $SCOPE_SCRIPT"
+
+  run bash "$SCOPE_SCRIPT" "screens/../tokens/colors.html"
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (.. is unclassified), got: $output"
+}
+
+@test "flag without value exits 2" {
+  [ -f "$SCOPE_SCRIPT" ] || fail "derive-design-scope.sh not found at $SCOPE_SCRIPT"
+
+  run bash "$SCOPE_SCRIPT" --spec-root
+  [ "$status" -eq 2 ] || fail "expected exit 2 for flag without value, got: $status"
+}

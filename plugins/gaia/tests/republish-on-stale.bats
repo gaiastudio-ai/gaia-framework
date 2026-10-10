@@ -708,20 +708,45 @@ _extract_step10_createux() {
 # Artifact surface halt and no-fallback sweep
 # ===========================================================================
 
-@test "artifact surface halt blocks product-design republish" {
+@test "artifact surface halt with classification and no-fallback at all three sites" {
   [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
 
+  local halt_msg="The Design artifact surface is required for the product design project but is not available in this session"
+  local no_fallback="do not write anything to the design-system project"
+
+  # edit-ux Step 8
   local step8
   step8="$(_extract_step8_editux)"
-  [ -n "$step8" ] || fail "Step 8 section not found in edit-ux SKILL.md"
-
-  # The quickstart probe must be documented
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
   grep -qiF 'quickstart' <<<"$step8" \
-    || fail "edit-ux Step 8 does not mention the Artifact quickstart probe"
+    || fail "edit-ux Step 8 does not mention the quickstart probe"
+  grep -qF -- "$halt_msg" <<<"$step8" \
+    || fail "edit-ux Step 8 missing the halt message"
+  grep -qi -- "$no_fallback" <<<"$step8" \
+    || fail "edit-ux Step 8 missing the no-fallback clause"
 
-  # The halt text must name the Design artifact surface
-  grep -qi 'Design artifact surface' <<<"$step8" \
-    || fail "edit-ux Step 8 does not mention the Design artifact surface halt"
+  # add-feature patch
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  grep -qiF 'quickstart' <<<"$af_patch" \
+    || fail "add-feature patch does not mention the quickstart probe"
+  grep -qF -- "$halt_msg" <<<"$af_patch" \
+    || fail "add-feature patch missing the halt message"
+  grep -qi -- "$no_fallback" <<<"$af_patch" \
+    || fail "add-feature patch missing the no-fallback clause"
+
+  # add-feature cascade
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  grep -qiF 'quickstart' <<<"$af_cascade" \
+    || fail "add-feature cascade does not mention the quickstart probe"
+  grep -qF -- "$halt_msg" <<<"$af_cascade" \
+    || fail "add-feature cascade missing the halt message"
+  grep -qi -- "$no_fallback" <<<"$af_cascade" \
+    || fail "add-feature cascade missing the no-fallback clause"
 }
 
 @test "no DesignSync write to screens or flows paths" {
@@ -753,18 +778,25 @@ _extract_step10_createux() {
   [ "$file_count" -gt 0 ] || fail "sweep scanned 0 files — directory structure missing"
   [ "$violations" -eq 0 ] || fail "found $violations DesignSync write to screens/ or flows/ — must route through Artifact tool"
 
-  # Mutant: seed a temp file with a violating step and assert the sweep catches it
-  local mutant_dir="$TEST_TMP/mutant-skill"
-  mkdir -p "$mutant_dir"
-  printf 'Run write_files with path screens/login.spec.html\n' > "$mutant_dir/mutant.md"
+  # Mutant: seed a violating file in the REAL scan directory and verify the
+  # sweep catches it, then clean up.
+  local mutant_file="$SCRIPTS_DIR/.mutant-sweep-probe-$$.md"
+  printf 'Run write_files with path screens/login.spec.html\n' > "$mutant_file"
 
+  local mutant_file_count=0
   local mutant_violations=0
-  while IFS= read -r f; do
-    if grep -qE '(write_files|delete_files).*screens/' "$f" 2>/dev/null; then
-      mutant_violations=$((mutant_violations + 1))
-    fi
-  done < <(find "$mutant_dir" -type f -name '*.md' 2>/dev/null)
+  for d in "${scan_dirs[@]}"; do
+    [ -d "$d" ] || continue
+    while IFS= read -r f; do
+      mutant_file_count=$((mutant_file_count + 1))
+      if grep -qE '(write_files|delete_files).*screens/' "$f" 2>/dev/null; then
+        mutant_violations=$((mutant_violations + 1))
+      fi
+    done < <(find "$d" -type f \( -name '*.md' -o -name '*.sh' \) 2>/dev/null)
+  done
+  rm -f "$mutant_file"
 
+  [ "$mutant_file_count" -gt 0 ] || fail "mutant sweep scanned 0 files"
   [ "$mutant_violations" -gt 0 ] || fail "mutant with write_files to screens/ was not caught"
 }
 
@@ -1076,4 +1108,59 @@ $hits"
     || fail "add-feature cascade planner line missing --project design_system"
   grep -qF -- '--project product_design' <<<"$af_cascade_planner" \
     || fail "add-feature cascade planner line missing --project product_design"
+}
+
+# ===========================================================================
+# add-feature republish step names diff inputs and scope line
+# ===========================================================================
+
+@test "add-feature republish steps name diff inputs and scope line" {
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # Patch
+  local af_patch
+  af_patch="$(awk '/^### Step 3.*patch/{p=1} p && /^### Step [^3]/{exit} p' "$SKILL_MD_AF")"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  grep -qF -- '--last-published' <<<"$af_patch" \
+    || fail "add-feature patch does not name --last-published"
+  grep -qF -- '--local-manifest' <<<"$af_patch" \
+    || fail "add-feature patch does not name --local-manifest"
+  grep -qF -- '--edited' <<<"$af_patch" \
+    || fail "add-feature patch does not name --edited"
+  grep -qF 'scope=' <<<"$af_patch" \
+    || fail "add-feature patch does not print scope= line"
+  grep -qF 'reason=derived' <<<"$af_patch" \
+    || fail "add-feature patch does not print reason=derived"
+
+  # Cascade
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  grep -qF -- '--last-published' <<<"$af_cascade" \
+    || fail "add-feature cascade does not name --last-published"
+  grep -qF -- '--local-manifest' <<<"$af_cascade" \
+    || fail "add-feature cascade does not name --local-manifest"
+  grep -qF -- '--edited' <<<"$af_cascade" \
+    || fail "add-feature cascade does not name --edited"
+  grep -qF 'scope=' <<<"$af_cascade" \
+    || fail "add-feature cascade does not print scope= line"
+  grep -qF 'reason=derived' <<<"$af_cascade" \
+    || fail "add-feature cascade does not print reason=derived"
+}
+
+# ===========================================================================
+# edit-ux Step 8 uses the union of Step 5 and Step 8 scopes
+# ===========================================================================
+
+@test "edit-ux Step 8 republish uses the union of both scopes" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+
+  grep -qi 'union' <<<"$step8" \
+    || fail "edit-ux Step 8 does not mention the union of the two scopes"
+  grep -qF 'republish-target:' <<<"$step8" \
+    || fail "edit-ux Step 8 does not consume the driver republish-target: lines"
 }

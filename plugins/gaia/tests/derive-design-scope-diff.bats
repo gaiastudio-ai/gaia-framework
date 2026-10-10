@@ -321,3 +321,263 @@ DECOYEOF
     *) fail "unexpected output: $output (expected a valid scope)" ;;
   esac
 }
+
+# ===========================================================================
+# Path normalisation: ./ prefix and --spec-root on edited paths
+# ===========================================================================
+
+@test "dotslash edited screen with component change yields both" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp-hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "./screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (component + ./screen), got: $output"
+}
+
+@test "absolute edited screen under spec-root with component change yields both" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  local sr="$TEST_TMP/specroot"
+  mkdir -p "$sr"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp-hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --spec-root "$sr" \
+    --edited "$sr/screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (component + absolute screen), got: $output"
+}
+
+# ===========================================================================
+# Flows handling
+# ===========================================================================
+
+@test "edited flow yields scope product-design" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444" \
+    "flows/checkout.spec.html=eee555"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "flows/checkout.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "product-design" ] || fail "expected product-design for edited flow, got: $output"
+}
+
+@test "components-only edit with a flow spec in local yields design-system" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # Flow exists in local manifest but was NOT edited. Flows have no
+  # artboard mapping in the published record, so the diff script only
+  # detects flow changes via --edited. A component-only edit with an
+  # unedited flow must derive design-system, not both.
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp" \
+    "screens/login.spec.html=ddd444" \
+    "flows/checkout.spec.html=eee555"
+
+  # Only component changed, flow exists but was NOT edited
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "design-system" ] || fail "expected design-system (component-only, flow not edited), got: $output"
+}
+
+@test "removed design-system file yields design-system" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  # Local manifest is missing tokens/colors.html (it was removed)
+  _seed_local_manifest \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (removed token triggers token rule), got: $output"
+}
+
+@test "removed component file yields design-system" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "design-system" ] || fail "expected design-system (removed component), got: $output"
+}
+
+# ===========================================================================
+# Robustness: error handling
+# ===========================================================================
+
+@test "missing --local-manifest flag exits 2" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  run bash "$DIFF_SCRIPT" --last-published /dev/null
+  [ "$status" -eq 2 ] || fail "expected exit 2 for missing --local-manifest, got: $status"
+}
+
+@test "nonexistent local-manifest file exits 2" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published /dev/null \
+    --local-manifest "$TEST_TMP/nonexistent.json"
+  [ "$status" -eq 2 ] || fail "expected exit 2 for nonexistent file, got: $status"
+}
+
+@test "malformed local-manifest exits 2" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  printf 'not json' > "$TEST_TMP/bad.json"
+  run bash "$DIFF_SCRIPT" \
+    --last-published /dev/null \
+    --local-manifest "$TEST_TMP/bad.json"
+  [ "$status" -eq 2 ] || fail "expected exit 2 for malformed manifest, got: $status"
+}
+
+@test "unknown flag exits 2" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_local_manifest "tokens/colors.html=aaa111"
+  run bash "$DIFF_SCRIPT" \
+    --last-published /dev/null \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --bogus-flag
+  [ "$status" -eq 2 ] || fail "expected exit 2 for unknown flag, got: $status"
+}
+
+@test "flag with no value exits 2" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  run bash "$DIFF_SCRIPT" --spec-root
+  [ "$status" -eq 2 ] || fail "expected exit 2 for flag with no value, got: $status"
+}
+
+@test "production ignores helper override without bats" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # Create a malicious override
+  local bad_helper="$TEST_TMP/bad-helper.sh"
+  printf '#!/usr/bin/env bash\nprintf HIJACKED\n' > "$bad_helper"
+  chmod +x "$bad_helper"
+
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=new-hash" \
+    "screens/login.spec.html=ddd444"
+
+  # Run WITHOUT BATS_TEST_FILENAME — production mode
+  run env -u BATS_TEST_FILENAME \
+    _DERIVE_SCOPE_HELPER_OVERRIDE="$bad_helper" \
+    bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" != "HIJACKED" ] \
+    || fail "production honoured the helper override — must ignore it without BATS_TEST_FILENAME"
+}
+
+# ===========================================================================
+# Scaling: single-pass jq must not spawn per-entry processes
+# ===========================================================================
+
+@test "diff at 100 entries completes in under 5 seconds" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # Generate a 100-entry manifest
+  local manifest="$TEST_TMP/large-manifest.json"
+  local lp="$TEST_TMP/large-lp.json"
+
+  # Build local manifest with 50 tokens + 50 screens
+  printf '{' > "$manifest"
+  local i=0 sep=""
+  while [ "$i" -lt 50 ]; do
+    printf '%s"tokens/t%d.html":"hash%d"' "$sep" "$i" "$i" >> "$manifest"
+    sep=","
+    i=$((i + 1))
+  done
+  i=0
+  while [ "$i" -lt 50 ]; do
+    printf ',"screens/s%d.spec.html":"shash%d"' "$i" "$i" >> "$manifest"
+    i=$((i + 1))
+  done
+  printf '}' >> "$manifest"
+
+  # Build last-published with the same entries but different hashes for half
+  printf '{"design_system":{"files":[' > "$lp"
+  i=0; sep=""
+  while [ "$i" -lt 50 ]; do
+    local h="hash$i"
+    if [ $((i % 2)) -eq 0 ]; then h="old$i"; fi
+    printf '%s{"path":"tokens/t%d.html","hash":"%s"}' "$sep" "$i" "$h" >> "$lp"
+    sep=","
+    i=$((i + 1))
+  done
+  printf ']},"product_design":{"files":[' >> "$lp"
+  i=0; sep=""
+  while [ "$i" -lt 50 ]; do
+    local sh="shash$i"
+    if [ $((i % 2)) -eq 0 ]; then sh="old$i"; fi
+    printf '%s{"path":"project/s%d.dc.html","hash":"%s"}' "$sep" "$i" "$sh" >> "$lp"
+    sep=","
+    i=$((i + 1))
+  done
+  printf ']}}' >> "$lp"
+
+  local start_s
+  start_s="$(date +%s)"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$lp" \
+    --local-manifest "$manifest"
+
+  local end_s
+  end_s="$(date +%s)"
+  local elapsed=$(( end_s - start_s ))
+
+  [ "$status" -eq 0 ] || fail "diff script failed at 100 entries: $output"
+  [ "$elapsed" -lt 5 ] || fail "diff at 100 entries took ${elapsed}s (limit 5s)"
+}
+

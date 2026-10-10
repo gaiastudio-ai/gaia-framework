@@ -2387,9 +2387,9 @@ SHIMEOF
   run run_gate
   [ "$status" -eq 1 ] || fail "original gate should fail on incomplete coverage"
 
-  # Patch: remove the coverage check (awk removes lines containing review_coverage)
+  # Patch: remove the coverage check between the MUTANT-ANCHOR markers
   local patched
-  patched="$(_make_patched '/review_coverage/d')"
+  patched="$(_make_patched '/MUTANT-ANCHOR: coverage-check-begin/,/MUTANT-ANCHOR: coverage-check-end/d')"
 
   # Reset the record — rebuild since the gate may have mutated state
   rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
@@ -2402,3 +2402,69 @@ SHIMEOF
   [ "$status" -eq 0 ] || fail "patched gate (coverage removed) should pass, proving the mutant is caught"
 }
 
+
+# =========================================================================
+# Malformed coverage fields fail closed
+# =========================================================================
+
+@test "near-miss coverage values fail the gate" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["design-system-pending", "product-design-todo"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "near-miss values should fail, got status=$status"
+}
+
+@test "coverage as map fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = {"design-system": false, "product-design": false}' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "map coverage should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a list' \
+    || fail "remediation should name the type error"
+}
+
+@test "coverage as free-text string fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = "none of design-system or product-design"' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "string coverage should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a list' \
+    || fail "remediation should name the type error"
+}
+
+@test "scalar product_design_project fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.product_design_project = "not-a-map"' "$rec"
+  yq -i '.review_coverage = ["design-system", "product-design"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "scalar product_design_project should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a map' \
+    || fail "remediation should say product_design_project must be a map"
+}
+
+@test "force-design cannot override coverage halt" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  seed_sprint_status sprint-99
+  seed_lifecycle_overrides
+
+  run run_gate --force-design --reason "forcing past coverage" --entry-point "test"
+  [ "$status" -eq 1 ] || fail "force-design should not override coverage halt, got status=$status"
+  _stripped_output | grep -qi 'cannot be overridden' \
+    || fail "remediation should say the halt cannot be overridden"
+}

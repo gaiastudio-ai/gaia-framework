@@ -7,7 +7,12 @@
 #
 # Usage:
 #   design-stale-transition.sh --decision <yes|no|ambiguous> --actor <name> \
-#     [--integration <available|missing|unauthorized>]
+#     [--integration <available|missing|unauthorized>] \
+#     [--scope <design-system|product-design|both>]
+#
+# Stdout (on available only): one republish-target: line per project,
+#   design-system first when scope is both.
+# Stderr (on yes/ambiguous): scope=<value> reason=<derived|default>
 #
 # The --integration flag carries the skill-attested integration state.
 # When present, the driver trusts it and does not run the probe. When
