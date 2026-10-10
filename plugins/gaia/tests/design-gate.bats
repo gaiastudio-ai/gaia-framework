@@ -199,8 +199,6 @@ setup() {
 teardown() {
   # Clean up any stale lock files
   rm -f "$TEST_TMP"/.gaia/state/*.lock "$TEST_TMP"/.gaia/state/*.gate.lock 2>/dev/null || true
-  # Clean up patched gate copies left by _make_patched (mktemp-named) or manual patches
-  rm -f "$(cd "$BATS_TEST_DIRNAME/../scripts/lib" && pwd)"/design-gate-patched-*.sh 2>/dev/null || true
   common_teardown
 }
 
@@ -222,21 +220,35 @@ run_gate() {
 }
 
 # _run_patched_gate <patched_file> [args...] — run a patched copy of design-gate.sh.
-# The patched file MUST be in the same directory as the original (so source
-# dependencies resolve). Resets _DESIGN_GATE_SH_LOADED to allow re-source.
+# The patched file is inside a temp copy of the lib directory (created by
+# _make_patched), so source dependencies resolve. Resets _DESIGN_GATE_SH_LOADED
+# to allow re-source.
 _run_patched_gate() {
   local patched="$1"; shift
   env PROJECT_ROOT="$TEST_TMP" PATH="$TEST_TMP/bin:$PATH" \
     bash -c 'export _DESIGN_GATE_SH_LOADED=0; source "'"$patched"'"; design_gate_check "$@"' -- "$@" 2>&1
 }
 
-# _make_patched <sed_expression> — create a collision-proof patched copy next
-# to the original, stdout = path to the patched file. Caller must rm -f it.
+# _make_patched <sed_expression> — create a patched copy of design-gate.sh
+# inside a temp copy of the scripts directory (so source dependencies AND
+# design-record.sh resolve). The temp directory is under TEST_TMP, so it is
+# cleaned up automatically; no rm -f needed in the caller.
 _make_patched() {
   local sed_expr="$1"
-  local patched
-  patched="$(mktemp "$(dirname "$GATE_SCRIPT")/design-gate-patched-XXXXXX.sh")"
+  local scripts_copy="$TEST_TMP/patched-scripts-$$-${RANDOM:-0}"
+  cp -R "$SCRIPTS_DIR" "$scripts_copy"
+  local patched="$scripts_copy/lib/design-gate.sh"
   sed "$sed_expr" "$GATE_SCRIPT" > "$patched"
+  printf '%s' "$patched"
+}
+
+# _make_awk_patched <awk_program> — same as _make_patched but uses awk.
+_make_awk_patched() {
+  local awk_prog="$1"
+  local scripts_copy="$TEST_TMP/patched-scripts-awk-$$-${RANDOM:-0}"
+  cp -R "$SCRIPTS_DIR" "$scripts_copy"
+  local patched="$scripts_copy/lib/design-gate.sh"
+  awk "$awk_prog" "$GATE_SCRIPT" > "$patched"
   printf '%s' "$patched"
 }
 
@@ -597,11 +609,9 @@ STAKE
   grep -q '# MUTANT-ANCHOR: absent-fail-branch' "$GATE_SCRIPT" || \
     fail "anchor '# MUTANT-ANCHOR: absent-fail-branch' not found in $GATE_SCRIPT"
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  awk '/# MUTANT-ANCHOR: absent-fail-branch/{print; print "    return 0"; next} {print}' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_awk_patched '/# MUTANT-ANCHOR: absent-fail-branch/{print; print "    return 0"; next} {print}')"
 
   run _run_patched_gate "$patched"
-  rm -f "$patched"
   [ "$status" -eq 0 ] || fail "mutant should survive (missing record treated as pass)"
 }
 
@@ -622,11 +632,9 @@ STAKE
   grep -q '# MUTANT-ANCHOR: stale-fail-branch' "$GATE_SCRIPT" || \
     fail "anchor '# MUTANT-ANCHOR: stale-fail-branch' not found in $GATE_SCRIPT"
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  awk '/# MUTANT-ANCHOR: stale-fail-branch/{print; print "      return 0"; next} {print}' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_awk_patched '/# MUTANT-ANCHOR: stale-fail-branch/{print; print "      return 0"; next} {print}')"
 
   run _run_patched_gate "$patched"
-  rm -f "$patched"
   [ "$status" -eq 0 ] || fail "mutant should survive (stale treated as pass)"
 }
 
@@ -646,12 +654,10 @@ STAKE
   grep -q '# MUTANT-ANCHOR: probe-fail-branch' "$GATE_SCRIPT" || \
     fail "anchor '# MUTANT-ANCHOR: probe-fail-branch' not found in $GATE_SCRIPT"
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  sed '/# MUTANT-ANCHOR: probe-fail-branch/,+1d' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_patched '/# MUTANT-ANCHOR: probe-fail-branch/,+1d')"
   if cmp -s "$GATE_SCRIPT" "$patched"; then fail "patch did not apply"; fi
 
   run _run_patched_gate "$patched"
-  rm -f "$patched"
   [ "$status" -eq 0 ] || fail "mutant should survive (halt removed from fail path)"
 }
 
@@ -692,7 +698,7 @@ STAKE
 # (AC3) Halt message — record path, state, remediation
 # =========================================================================
 
-@test "(AC3) halt message names record path, state, and remediation for absent" {
+@test "(AC3) halt message names record path, state, and full remediation for absent" {
   seed_config true
   seed_probe_stub missing
 
@@ -701,6 +707,15 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -q "design-record.yaml" || _stripped_output | grep -q ".gaia/state"
   _stripped_output | grep -qi "absent"
+  # Absent-record remediation should contain both DesignSync and Design artifact sentences
+  _stripped_output | grep -qF 'enable the DesignSync surface' \
+    || fail "absent-record remediation should mention DesignSync surface"
+  _stripped_output | grep -qF 'ensure the Design artifact surface is available' \
+    || fail "absent-record remediation should mention Design artifact surface"
+  # Old clause must not appear
+  if _stripped_output | grep -qF 'If Claude Design is not connected'; then
+    fail "old clause 'If Claude Design is not connected' should not appear"
+  fi
 }
 
 @test "(AC3) halt message names record path, state, and remediation for draft" {
@@ -729,7 +744,7 @@ STAKE
   _stripped_output | grep -qi "stale"
 }
 
-@test "(AC3) halt remediation leads with /gaia-design-review for draft" {
+@test "(AC3) halt remediation has full conditional clause and no old clause for draft" {
   seed_config true
   seed_roster
   seed_probe_stub available
@@ -740,8 +755,16 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -qi '/gaia-design-review' \
     || fail "draft remediation should lead with /gaia-design-review"
-  if ! _stripped_output | grep -qi 'if the design integration is not connected'; then
-    fail "conditional clause should be present"
+  # Assert the full conditional clause including both sentences
+  _stripped_output | grep -qF 'for the design-system project, enable the DesignSync surface' \
+    || fail "conditional clause should contain DesignSync sentence"
+  _stripped_output | grep -qF 'For the product design project, ensure the Design artifact surface is available' \
+    || fail "conditional clause should contain Design artifact sentence"
+  _stripped_output | grep -qF '/design-login' \
+    || fail "conditional clause should mention /design-login"
+  # Old clause must not appear
+  if _stripped_output | grep -qF 'If Claude Design is not connected'; then
+    fail "old clause 'If Claude Design is not connected' should not appear"
   fi
   # /gaia-design-review must appear before the conditional clause on the Remediation line
   local remediation_line
@@ -753,7 +776,7 @@ STAKE
     || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
 
-@test "(AC3) halt remediation leads with /gaia-design-review for stale" {
+@test "(AC3) halt remediation has full conditional clause and no old clause for stale" {
   seed_config true
   seed_roster
   seed_probe_stub available
@@ -765,11 +788,17 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -qi '/gaia-design-review' \
     || fail "stale remediation should lead with /gaia-design-review"
-  if ! _stripped_output | grep -qi 'if the design integration is not connected'; then
-    fail "conditional clause should be present"
+  # Assert both sentences of the conditional clause
+  _stripped_output | grep -qF 'for the design-system project, enable the DesignSync surface' \
+    || fail "conditional clause should contain DesignSync sentence"
+  _stripped_output | grep -qF 'For the product design project, ensure the Design artifact surface is available' \
+    || fail "conditional clause should contain Design artifact sentence"
+  _stripped_output | grep -qF '/design-login' \
+    || fail "conditional clause should mention /design-login"
+  # Old clause must not appear
+  if _stripped_output | grep -qF 'If Claude Design is not connected'; then
+    fail "old clause 'If Claude Design is not connected' should not appear"
   fi
-  _stripped_output | grep -qi 'design-login' \
-    || fail "conditional clause should mention design-login"
   # /gaia-design-review must appear before the conditional clause on the Remediation line
   local remediation_line
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
@@ -1354,13 +1383,11 @@ STAKE
   # Patch: make the lifecycle write fail (portable — chmod 000 is
   # ineffective as root in CI Docker containers)
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  sed 's|( lifecycle_append_bypass.*)|( false )|' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_patched 's|( lifecycle_append_bypass.*)|( false )|')"
 
   run _run_patched_gate "$patched" --force-design \
     --reason "This override should be rolled back" \
     --entry-point test --sprint-id sprint-99
-  rm -f "$patched"
   [ "$status" -eq 1 ] || fail "expected exit 1 (lifecycle write failed); got exit $status: $output"
 
   # Design record must be rolled back to pre-override state
@@ -1386,11 +1413,9 @@ STAKE
   # Create a patched gate where the lifecycle subshell fails AND the backup
   # is removed before the rollback can use it. This triggers the CRITICAL path.
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  sed 's|( lifecycle_append_bypass.*)|( rm -f "${backup_path}" 2>/dev/null; false )|' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_patched 's|( lifecycle_append_bypass.*)|( rm -f "${backup_path}" 2>/dev/null; false )|')"
 
   run _run_patched_gate "$patched" --force-design --reason "Trigger CRITICAL path" --entry-point test --sprint-id sprint-99
-  rm -f "$patched"
   [ "$status" -eq 1 ]
 
   # The gate must emit the CRITICAL dual-ledger inconsistency message
@@ -1670,32 +1695,26 @@ STAKE
   # Patch the gate to emit backup file permissions and exit early after
   # creating the backup, so we can inspect the mode before it is cleaned up.
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-backup-$$.sh"
-  awk '
+  patched="$(_make_awk_patched '
     /backup_path="\$\{record_path\}\.gate-backup"/ {
       print
-      # After the assignment, inject a permissions-check shim that runs after
-      # the cp line (next line) and prints the mode then bails.
-      getline  # consume the cp line
-      print $0  # emit the original cp line
+      getline
+      print $0
       print "  { stat -f \"%Lp\" \"$backup_path\" 2>/dev/null || stat -c \"%a\" \"$backup_path\" 2>/dev/null; } >&2"
       print "  return 1"
       next
     }
     { print }
-  ' "$GATE_SCRIPT" > "$patched"
+  ')"
 
   # (3a) Assert the awk patch actually injected the stat line, so a refactor
   # of the anchor cannot silently turn this into a no-op.
-  grep -q 'stat -f "%Lp"' "$patched" || {
-    rm -f "$patched"
+  grep -q 'stat -f "%Lp"' "$patched" || \
     fail "awk patch did not inject the stat line — anchor may have been refactored"
-  }
 
   run _run_patched_gate "$patched" --force-design \
     --reason "Checking backup permissions at creation time" \
     --entry-point test --sprint-id sprint-99
-  # patched file is cleaned up by teardown (registered glob)
 
   # (3b) Match the mode exactly (a whole line equal to "600"), not a substring.
   local mode_line
@@ -2061,13 +2080,10 @@ EOF
 
   # Mutant: insert integration diagnosis before the halt anchor
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  awk '/# MUTANT-ANCHOR: probe-fail-branch/{print "  printf \"(integration: missing)\\n\" >&2"} {print}' \
-    "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_awk_patched '/# MUTANT-ANCHOR: probe-fail-branch/{print "  printf \"(integration: missing)\\n\" >&2"} {print}')"
   if cmp -s "$GATE_SCRIPT" "$patched"; then fail "patch did not apply"; fi
 
   run _run_patched_gate "$patched"
-  rm -f "$patched"
 
   # The mutant output should now contain the diagnosis
   if ! _stripped_output | grep -q '(integration:'; then
@@ -2272,7 +2288,7 @@ _build_approved_dual_project_record() {
   yq -i '.product_design_project.discovered_via = "created"' "$rec"
 }
 
-@test "gate fails when design-system project not reviewed" {
+@test "gate fails when design-system project not reviewed with exact coverage sentence" {
   seed_ui_project available
   _build_approved_dual_project_record
   local rec="$TEST_TMP/.gaia/state/design-record.yaml"
@@ -2282,13 +2298,19 @@ _build_approved_dual_project_record() {
   run run_gate
   [ "$status" -eq 1 ] || fail "gate should fail when design-system project not reviewed, got status=$status"
   _assert_gate_output
-  _stripped_output | grep -qi 'design-system project' \
-    || fail "remediation should name the design-system project"
-  _stripped_output | grep -qi '/gaia-design-review' \
-    || fail "remediation should mention /gaia-design-review"
+  # Assert the exact coverage-failure sentence
+  _stripped_output | grep -qF 'The design review did not cover the design-system project.' \
+    || fail "should contain the exact coverage sentence naming 'design-system project'"
+  _stripped_output | grep -qF 'Run /gaia-design-review to review both projects.' \
+    || fail "should contain the exact review instruction"
+  # Assert the full conditional clause with both DesignSync and Design artifact sentences
+  _stripped_output | grep -qF 'for the design-system project, enable the DesignSync surface' \
+    || fail "conditional clause should contain DesignSync sentence"
+  _stripped_output | grep -qF 'For the product design project, ensure the Design artifact surface is available' \
+    || fail "conditional clause should contain Design artifact sentence"
 }
 
-@test "gate fails when product project not reviewed" {
+@test "gate fails when product project not reviewed with exact coverage sentence" {
   seed_ui_project available
   _build_approved_dual_project_record
   local rec="$TEST_TMP/.gaia/state/design-record.yaml"
@@ -2298,10 +2320,35 @@ _build_approved_dual_project_record() {
   run run_gate
   [ "$status" -eq 1 ] || fail "gate should fail when product design project not reviewed, got status=$status"
   _assert_gate_output
-  _stripped_output | grep -qi 'product design project' \
-    || fail "remediation should name the product design project"
-  _stripped_output | grep -qi '/gaia-design-review' \
-    || fail "remediation should mention /gaia-design-review"
+  # Assert the exact coverage-failure sentence
+  _stripped_output | grep -qF 'The design review did not cover the product design project.' \
+    || fail "should contain the exact coverage sentence naming 'product design project'"
+  _stripped_output | grep -qF 'Run /gaia-design-review to review both projects.' \
+    || fail "should contain the exact review instruction"
+  # Assert the full conditional clause
+  _stripped_output | grep -qF 'for the design-system project, enable the DesignSync surface' \
+    || fail "conditional clause should contain DesignSync sentence"
+  _stripped_output | grep -qF 'For the product design project, ensure the Design artifact surface is available' \
+    || fail "conditional clause should contain Design artifact sentence"
+}
+
+@test "mutant: replacing project name with XXXX in coverage message fails" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh missing: $GATE_SCRIPT"
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  # Patch: replace the project name with XXXX in the ds coverage message
+  local patched
+  patched="$(_make_patched 's/did not cover the design-system project/did not cover the XXXX project/')"
+
+  run _run_patched_gate "$patched"
+  [ "$status" -eq 1 ] || fail "gate should still fail"
+  # The exact sentence with 'design-system project' must be absent
+  if _stripped_output | grep -qF 'The design review did not cover the design-system project.'; then
+    fail "mutant should have replaced the design-system project name — test is vacuous"
+  fi
 }
 
 @test "absent coverage with null product passes" {
@@ -2321,7 +2368,7 @@ _build_approved_dual_project_record() {
   [ "$status" -eq 0 ] || fail "gate should pass when coverage absent and product null, got status=$status"
 }
 
-@test "absent coverage with non-null product fails" {
+@test "absent coverage with non-null product fails with exact sentence" {
   seed_ui_project available
   _build_approved_dual_project_record
   local rec="$TEST_TMP/.gaia/state/design-record.yaml"
@@ -2331,11 +2378,13 @@ _build_approved_dual_project_record() {
   run run_gate
   [ "$status" -eq 1 ] || fail "gate should fail when coverage absent and product non-null, got status=$status"
   _assert_gate_output
-  _stripped_output | grep -qi 'product design project' \
-    || fail "remediation should name the product design project"
+  _stripped_output | grep -qF 'The design review did not cover the product design project.' \
+    || fail "should contain exact coverage sentence naming product design project"
+  _stripped_output | grep -qF 'Run /gaia-design-review to review both projects.' \
+    || fail "should contain exact review instruction"
 }
 
-@test "gate stays local and fast with coverage check" {
+@test "gate stays local and fast with dual-project coverage check" {
   seed_ui_project available
   _build_approved_dual_project_record
   local rec="$TEST_TMP/.gaia/state/design-record.yaml"
@@ -2353,14 +2402,43 @@ SHIMEOF
   done
   export SHIM_COUNTER_FILE="$TEST_TMP/.shim-counter"
 
-  run env PATH="$TEST_TMP/shim-bin:$TEST_TMP/bin:$PATH" \
-    PROJECT_ROOT="$TEST_TMP" \
-    bash -c '
-      set -euo pipefail
-      source "'"$GATE_SCRIPT"'"
-      design_gate_check
-    '
-  [ "$status" -eq 0 ] || fail "gate should pass with full coverage, got status=$status"
+  # Measure time using the same p95 approach as the existing timing test
+  _ns_now() {
+    local ts
+    ts="$(date +%s%N 2>/dev/null)" || true
+    if grep -Eq '^[0-9]+$' <<<"$ts"; then
+      printf '%s' "$ts"
+    else
+      python3 -c 'import time; print(int(time.time()*1e9))'
+    fi
+  }
+
+  local iterations=20
+  local times_file="$TEST_TMP/coverage-times.txt"
+  local i
+  for i in $(seq 1 "$iterations"); do
+    local start end elapsed
+    start="$(_ns_now)"
+    run env PATH="$TEST_TMP/shim-bin:$TEST_TMP/bin:$PATH" \
+      PROJECT_ROOT="$TEST_TMP" \
+      bash -c '
+        set -euo pipefail
+        source "'"$GATE_SCRIPT"'"
+        design_gate_check
+      '
+    [ "$status" -eq 0 ] || fail "gate should pass with full coverage, got status=$status"
+    end="$(_ns_now)"
+    elapsed="$(( (end - start) / 1000000 ))"
+    printf '%d\n' "$elapsed" >> "$times_file"
+  done
+
+  # p95 bound: 5 seconds (same as the existing timing test)
+  local p95_idx p95_ms
+  p95_idx="$(( iterations * 95 / 100 ))"
+  [ "$p95_idx" -lt 1 ] && p95_idx=1
+  p95_ms="$(sort -n "$times_file" | sed -n "${p95_idx}p")"
+  [ "$p95_ms" -lt 5000 ] \
+    || fail "dual-project gate p95 = ${p95_ms}ms exceeds 5000ms bound"
 
   # Zero external calls
   local call_count=0
@@ -2387,9 +2465,9 @@ SHIMEOF
   run run_gate
   [ "$status" -eq 1 ] || fail "original gate should fail on incomplete coverage"
 
-  # Patch: remove the coverage check (awk removes lines containing review_coverage)
+  # Patch: remove the coverage check between the MUTANT-ANCHOR markers
   local patched
-  patched="$(_make_patched '/review_coverage/d')"
+  patched="$(_make_patched '/MUTANT-ANCHOR: coverage-check-begin/,/MUTANT-ANCHOR: coverage-check-end/d')"
 
   # Reset the record — rebuild since the gate may have mutated state
   rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
@@ -2398,7 +2476,97 @@ SHIMEOF
 
   # Patched gate should PASS (no coverage check)
   run _run_patched_gate "$patched"
-  rm -f "$patched"
   [ "$status" -eq 0 ] || fail "patched gate (coverage removed) should pass, proving the mutant is caught"
 }
 
+
+# =========================================================================
+# Malformed coverage fields fail closed
+# =========================================================================
+
+@test "near-miss coverage values fail the gate" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["design-system-pending", "product-design-todo"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "near-miss values should fail, got status=$status"
+}
+
+@test "product-design-x substring does not count as covered" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # product-design-x is a superset of product-design but must not match
+  yq -i '.review_coverage = ["design-system", "product-design-x"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "product-design-x should not match product-design, got status=$status"
+  _stripped_output | grep -qF 'product design project' \
+    || fail "remediation should name the product design project"
+}
+
+@test "design-system-v2 substring does not count as covered" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["design-system-v2", "product-design"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "design-system-v2 should not match design-system, got status=$status"
+  _stripped_output | grep -qF 'design-system project' \
+    || fail "remediation should name the design-system project"
+}
+
+@test "coverage as map fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = {"design-system": false, "product-design": false}' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "map coverage should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a list' \
+    || fail "remediation should name the type error"
+}
+
+@test "coverage as free-text string fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = "none of design-system or product-design"' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "string coverage should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a list' \
+    || fail "remediation should name the type error"
+}
+
+@test "scalar product_design_project fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.product_design_project = "not-a-map"' "$rec"
+  yq -i '.review_coverage = ["design-system", "product-design"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "scalar product_design_project should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a map' \
+    || fail "remediation should say product_design_project must be a map"
+}
+
+@test "force-design cannot override coverage halt" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  seed_sprint_status sprint-99
+  seed_lifecycle_overrides
+
+  run run_gate --force-design --reason "forcing past coverage" --entry-point "test"
+  [ "$status" -eq 1 ] || fail "force-design should not override coverage halt, got status=$status"
+  _stripped_output | grep -qi 'cannot be overridden' \
+    || fail "remediation should say the halt cannot be overridden"
+}

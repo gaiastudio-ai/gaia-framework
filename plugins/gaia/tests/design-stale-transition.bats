@@ -1003,7 +1003,7 @@ _spy_probe_count() {
 # Scope flag: target list, stderr log, validation
 # ===========================================================================
 
-@test "scope design-system prints single target" {
+@test "scope design-system prints exact single target on stdout" {
   seed_config true
   seed_roster
   _build_indev_record
@@ -1013,17 +1013,15 @@ _spy_probe_count() {
       --decision yes --integration available --actor test --scope design-system
 
   [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
-  # stdout must contain exactly one target line
-  [ "$(grep -c 'republish-target:' <<<"$output")" -eq 1 ] \
-    || fail "expected exactly 1 republish-target line on stdout, got: $output"
-  grep -qF 'republish-target: design-system' <<<"$output" \
-    || fail "stdout should contain 'republish-target: design-system' but got: $output"
+  # Compare stdout exactly
+  [ "$output" = "republish-target: design-system" ] \
+    || fail "stdout should be exactly 'republish-target: design-system' but got: $output"
   # stderr must log scope and reason
   grep -qF 'scope=design-system reason=derived' <<<"$stderr" \
     || fail "stderr should contain 'scope=design-system reason=derived' but got: $stderr"
 }
 
-@test "scope product-design prints single target" {
+@test "scope product-design prints exact single target on stdout" {
   seed_config true
   seed_roster
   _build_indev_record
@@ -1033,13 +1031,11 @@ _spy_probe_count() {
       --decision yes --integration available --actor test --scope product-design
 
   [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
-  [ "$(grep -c 'republish-target:' <<<"$output")" -eq 1 ] \
-    || fail "expected exactly 1 republish-target line on stdout, got: $output"
-  grep -qF 'republish-target: product-design' <<<"$output" \
-    || fail "stdout should contain 'republish-target: product-design' but got: $output"
+  [ "$output" = "republish-target: product-design" ] \
+    || fail "stdout should be exactly 'republish-target: product-design' but got: $output"
 }
 
-@test "scope both prints both targets design-system first" {
+@test "scope both prints exact two targets design-system first on stdout" {
   seed_config true
   seed_roster
   _build_indev_record
@@ -1049,20 +1045,13 @@ _spy_probe_count() {
       --decision yes --integration available --actor test --scope both
 
   [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
-  local target_lines
-  target_lines="$(grep 'republish-target:' <<<"$output")"
-  [ "$(wc -l <<<"$target_lines" | tr -d ' ')" -eq 2 ] \
-    || fail "expected 2 republish-target lines on stdout, got: $output"
-  local first_line second_line
-  first_line="$(sed -n '1p' <<<"$target_lines")"
-  second_line="$(sed -n '2p' <<<"$target_lines")"
-  [ "$first_line" = "republish-target: design-system" ] \
-    || fail "first target should be design-system but got: $first_line"
-  [ "$second_line" = "republish-target: product-design" ] \
-    || fail "second target should be product-design but got: $second_line"
+  local expected
+  expected="$(printf 'republish-target: design-system\nrepublish-target: product-design')"
+  [ "$output" = "$expected" ] \
+    || fail "stdout should be exactly two target lines ds first, got: $output"
 }
 
-@test "default scope prints both targets and logs default reason" {
+@test "default scope prints exact two targets and logs default reason" {
   seed_config true
   seed_roster
   _build_indev_record
@@ -1073,31 +1062,62 @@ _spy_probe_count() {
       --decision yes --integration available --actor test
 
   [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
-  local target_lines
-  target_lines="$(grep 'republish-target:' <<<"$output")"
-  [ "$(wc -l <<<"$target_lines" | tr -d ' ')" -eq 2 ] \
-    || fail "expected 2 republish-target lines on stdout, got: $output"
+  local expected
+  expected="$(printf 'republish-target: design-system\nrepublish-target: product-design')"
+  [ "$output" = "$expected" ] \
+    || fail "stdout should be exactly two target lines ds first, got: $output"
   grep -qF 'scope=both reason=default' <<<"$stderr" \
     || fail "stderr should contain 'scope=both reason=default' but got: $stderr"
 }
 
-@test "scope log emitted before transition for runs that halt" {
+@test "scope log line precedes the stale transition in stderr" {
   seed_config true
   seed_roster
   _build_indev_record
 
   # --integration missing makes the driver halt after the stale transition
-  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+  local stderr_file="$TEST_TMP/scope-order-stderr.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
     bash "$DRIVER_SCRIPT" \
-      --decision yes --integration missing --actor test --scope design-system
+      --decision yes --integration missing --actor test --scope design-system \
+    2>"$stderr_file" || rc=$?
 
-  [ "$status" -ne 0 ] || fail "driver should halt (non-zero) on missing integration"
-  # The scope log must still have been emitted before the halt
-  grep -qF 'scope=' <<<"$stderr" \
-    || fail "stderr should contain scope= log even on halt, but got: $stderr"
+  [ "$rc" -ne 0 ] || fail "driver should halt (non-zero) on missing integration"
+  # The scope log must be present
+  grep -qF 'scope=design-system reason=derived' "$stderr_file" \
+    || fail "stderr should contain 'scope=design-system reason=derived'"
+  # The halt message must also be present
+  grep -qF 'design-first ordering cannot be kept' "$stderr_file" \
+    || fail "stderr should contain the halt message"
+  # Scope log must appear BEFORE the halt message: check line numbers
+  local scope_line halt_line
+  scope_line="$(grep -n 'scope=design-system' "$stderr_file" | head -1 | cut -d: -f1)"
+  halt_line="$(grep -n 'design-first ordering cannot be kept' "$stderr_file" | head -1 | cut -d: -f1)"
+  [ -n "$scope_line" ] && [ -n "$halt_line" ] \
+    || fail "both scope and halt lines should be found"
+  [ "$scope_line" -lt "$halt_line" ] \
+    || fail "scope log (line $scope_line) should precede halt (line $halt_line)"
 }
 
-@test "invalid scope exits 2 with diagnostic" {
+@test "ambiguous decision logs scope" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local stderr_file="$TEST_TMP/ambiguous-stderr.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision ambiguous --integration available --actor test --scope product-design \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "ambiguous+available should exit 0 but got $rc"
+  grep -qF 'scope=product-design reason=derived' "$stderr_file" \
+    || fail "ambiguous decision should log scope on stderr"
+}
+
+@test "invalid scope exits 2 with exact diagnostic naming the value and legal values" {
   seed_config true
   seed_roster
   _build_indev_record
@@ -1106,11 +1126,20 @@ _spy_probe_count() {
   local before_hash
   before_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
 
-  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+  local stderr_file="$TEST_TMP/invalid-scope-stderr.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
     bash "$DRIVER_SCRIPT" \
-      --decision yes --integration available --actor test --scope screens
+      --decision yes --integration available --actor test --scope screens \
+    2>"$stderr_file" || rc=$?
 
-  [ "$status" -eq 2 ] || fail "invalid scope should exit 2 but exited $status"
+  [ "$rc" -eq 2 ] || fail "invalid scope should exit 2 but exited $rc"
+  # Diagnostic must name the invalid value
+  grep -qF 'screens' "$stderr_file" \
+    || fail "diagnostic should name the invalid value 'screens'"
+  # Diagnostic must list the legal values
+  grep -qF 'design-system, product-design, both' "$stderr_file" \
+    || fail "diagnostic should list 'design-system, product-design, both'"
   # Record must be unchanged (no transition written)
   local after_hash
   after_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
