@@ -28,7 +28,18 @@ teardown() { common_teardown; }
 # Leaked-identifier regex — same families as the repo-wide gates.
 # ---------------------------------------------------------------------------
 _leak_regex() {
-  printf '%s' 'FR-[0-9]+|NFR-[0-9]+|ADR-[0-9]+|E[0-9]+-S[0-9]+|TC-[A-Z]+-|SR-[0-9]+|(AF|AI)-[0-9]{4}|T-DPS-[0-9]+|GitHub #[0-9]+|(^|[^A-Za-z0-9])(T|F)-[0-9]+([^0-9]|$)'
+  printf '%s' 'FR-[0-9]+|NFR-[0-9]+|ADR-[0-9]+|E[0-9]+-S[0-9]+|TC-[A-Z]+|SR-[0-9]+|(AF|AI)-[0-9]{4}|T-DPS-[0-9]+|GitHub #[0-9]+|(^|[^A-Za-z0-9])(T|F)-[0-9]+([^0-9]|$)'
+}
+
+# Extract the <li> that contains a fixed string from an HTML step-list.
+# Usage: _step_item "$html_file" "fixed string"
+# Splits on </li>, finds the item containing the string.
+_step_item() {
+  local file="$1" needle="$2"
+  sed -n '/<ol class="step-list">/,/<\/ol>/p' "$file" \
+    | awk -v RS='</li>' -v needle="$needle" '
+        index($0, needle) { print $0; exit }
+      '
 }
 
 # Pinned sidebar links: the 43 unique hrefs in index.html before this story.
@@ -659,35 +670,91 @@ CMDS_END
     echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
   }
 
-  # Doc-page assertions (pins create-ux SKILL.md project terms)
-  grep -qi 'design-system project' "$page" || {
-    echo "FAIL: design-lifecycle.html should mention 'design-system project'" >&2; return 1
+  # Discovery section: DS project managed through DesignSync
+  local disc
+  disc="$(sed -n '/<section id="discovery">/,/<\/section>/p' "$page")"
+  grep -qF 'design-system project' <<<"$disc" || {
+    echo "FAIL: discovery section should mention 'design-system project'" >&2; return 1
   }
-  grep -qi 'product design project' "$page" || {
-    echo "FAIL: design-lifecycle.html should mention 'product design project'" >&2; return 1
+  grep -qF 'DesignSync' <<<"$disc" || {
+    echo "FAIL: discovery section should mention 'DesignSync'" >&2; return 1
   }
-  grep -qi 'DesignSync' "$page" || {
-    echo "FAIL: design-lifecycle.html should mention 'DesignSync'" >&2; return 1
+  # Discovery section: PD project managed through Design artifact surface
+  grep -qF 'product design project' <<<"$disc" || {
+    echo "FAIL: discovery section should mention 'product design project'" >&2; return 1
   }
-  grep -qi 'Design artifact' "$page" || {
-    echo "FAIL: design-lifecycle.html should mention 'Design artifact' surface" >&2; return 1
+  grep -qi 'Design artifact surface' <<<"$disc" || {
+    echo "FAIL: discovery section should mention 'Design artifact surface'" >&2; return 1
   }
-  grep -qiE 'token-by-value|:root\{--|CSS custom-property' "$page" || {
-    echo "FAIL: design-lifecycle.html should describe the token-by-value model" >&2; return 1
+
+  # Questionnaire section: feeds only DS project
+  local quest
+  quest="$(sed -n '/<section id="questionnaire">/,/<\/section>/p' "$page")"
+  grep -qiF 'feed only the design-system project' <<<"$quest" \
+    || grep -qiF 'feeds only the design-system project' <<<"$quest" \
+    || grep -qiF 'feed only the design-system' <<<"$quest" || {
+    echo "FAIL: questionnaire section should say it feeds only the design-system project" >&2; return 1
   }
-  grep -qi 'artifact-installed' "$page" || {
-    echo "FAIL: design-lifecycle.html should mention the reserved artifact-installed mode" >&2; return 1
+
+  # Publication section: token-by-value, designSystems, artifact-installed
+  local pub
+  pub="$(sed -n '/<section id="publication">/,/<\/section>/p' "$page")"
+  grep -qiE 'token-by-value|:root\{--|CSS custom-property' <<<"$pub" || {
+    echo "FAIL: publication section should describe the token-by-value model" >&2; return 1
   }
-  grep -qi 'designSystems' "$page" || {
-    echo "FAIL: design-lifecycle.html should mention the designSystems canvas list" >&2; return 1
+  grep -qF 'designSystems' <<<"$pub" || {
+    echo "FAIL: publication section should mention the designSystems canvas list" >&2; return 1
   }
+  grep -qiE 'empty.*expected state|stays empty' <<<"$pub" || {
+    echo "FAIL: publication section should say the designSystems list is empty as expected" >&2; return 1
+  }
+  grep -qF 'artifact-installed' <<<"$pub" || {
+    echo "FAIL: publication section should mention the reserved artifact-installed mode" >&2; return 1
+  }
+  # Screens -> PD, components -> DS
+  grep -qi 'product design project.*Artifact' <<<"$pub" || {
+    echo "FAIL: publication section should say screens go to the product design project via Artifact" >&2; return 1
+  }
+  grep -qi 'design-system project' <<<"$pub" || {
+    echo "FAIL: publication section should mention the design-system project" >&2; return 1
+  }
+  # Token change also republishes screens
+  grep -qiE 'token.*change.*also.*product|token.*change.*screen|token.*republish.*product|token.*edit.*screen' <<<"$pub" \
+    || grep -qiE 'token.*change.*also.*product|token.*change.*screen|token.*republish.*product|token.*edit.*screen' "$page" || {
+    echo "FAIL: page should say a token change also republishes screens to the product design project" >&2; return 1
+  }
+
   # Old single-project phrasing must be gone
   if grep -qi 'republished to the project' "$page"; then
     echo "FAIL: design-lifecycle.html still has old 'republished to the project' phrasing" >&2
     return 1
   fi
 
-  # SKILL.md cross-checks (drift guard: if the skill drops these, docs need updating)
+  # Gate section: approved state, stakeholder convergence, review coverage, no integration calls
+  local gate
+  gate="$(sed -n '/<section id="gate-and-override">/,/<\/section>/p' "$page")"
+  grep -qiF 'stakeholder convergence' <<<"$gate" \
+    || grep -qiE 'convergence.*stakeholder|stakeholder.*convergence' <<<"$gate" || {
+    echo "FAIL: gate section should mention stakeholder convergence" >&2; return 1
+  }
+  grep -qiE 'review coverage' <<<"$gate" || {
+    echo "FAIL: gate section should mention review coverage" >&2; return 1
+  }
+  grep -qiF 'zero integration calls' <<<"$gate" || {
+    echo "FAIL: gate section should say zero integration calls" >&2; return 1
+  }
+
+  # Roster: symlink and tab/newline refusal
+  local approval
+  approval="$(sed -n '/<section id="approval">/,/<\/section>/p' "$page")"
+  grep -qiE 'symlink.*refused|refuses.*symlink|symlinked.*refused' <<<"$approval" || {
+    echo "FAIL: approval section should mention symlink refusal" >&2; return 1
+  }
+  grep -qiE 'tab.*newline|tab or newline' <<<"$approval" || {
+    echo "FAIL: approval section should mention tab/newline refusal" >&2; return 1
+  }
+
+  # SKILL.md cross-checks
   [ -s "$SKILL_CUX" ] || {
     echo "FAIL: create-ux SKILL.md missing" >&2; return 1
   }
@@ -709,18 +776,53 @@ CMDS_END
     echo "FAIL: gaia-create-ux.html missing or empty" >&2; return 1
   }
 
-  # Doc-page assertions
-  grep -qi 'design-system project' "$page" || {
-    echo "FAIL: gaia-create-ux.html should mention 'design-system project'" >&2; return 1
+  # Project creation step: creates or binds DS via DesignSync, PD via Artifact
+  local creation_step
+  creation_step="$(_step_item "$page" "Project creation")"
+  [ -n "$creation_step" ] || {
+    echo "FAIL: no Project creation step in gaia-create-ux.html" >&2; return 1
   }
-  grep -qi 'product design project' "$page" || {
-    echo "FAIL: gaia-create-ux.html should mention 'product design project'" >&2; return 1
+  grep -qiE 'creates or binds' <<<"$creation_step" || {
+    echo "FAIL: Project creation step should say creates or binds" >&2; return 1
   }
-  grep -qi 'questionnaire' "$page" || {
-    echo "FAIL: gaia-create-ux.html should still mention 'questionnaire'" >&2; return 1
+  grep -qi 'design-system project' <<<"$creation_step" || {
+    echo "FAIL: Project creation step should mention design-system project" >&2; return 1
   }
+  grep -qi 'product design project' <<<"$creation_step" || {
+    echo "FAIL: Project creation step should mention product design project" >&2; return 1
+  }
+
+  # Questionnaire step: feeds only DS
+  local quest_step
+  quest_step="$(_step_item "$page" "questionnaire")"
+  [ -n "$quest_step" ] || {
+    echo "FAIL: no questionnaire step in gaia-create-ux.html" >&2; return 1
+  }
+  grep -qiF 'design-system project' <<<"$quest_step" || {
+    echo "FAIL: questionnaire step should mention the design-system project" >&2; return 1
+  }
+
+  # Screen publication step: screens -> PD via Artifact, components -> DS
+  local pub_step
+  pub_step="$(_step_item "$page" "Screen specification publication")"
+  [ -n "$pub_step" ] || {
+    echo "FAIL: no Screen specification publication step" >&2; return 1
+  }
+  grep -qi 'product design project' <<<"$pub_step" || {
+    echo "FAIL: publication step should mention product design project" >&2; return 1
+  }
+  grep -qi 'design-system project' <<<"$pub_step" || {
+    echo "FAIL: publication step should mention design-system project" >&2; return 1
+  }
+
+  # Brand-style path
   grep -qiE 'brand-style|non-React' "$page" || {
     echo "FAIL: gaia-create-ux.html should mention the brand-style or non-React path" >&2; return 1
+  }
+
+  # Prerequisites: Artifact tool
+  grep -qiE 'Artifact tool|Design artifact surface' "$page" || {
+    echo "FAIL: gaia-create-ux.html should mention the Artifact tool or Design artifact surface" >&2; return 1
   }
 
   # SKILL.md cross-checks
@@ -748,29 +850,30 @@ CMDS_END
     echo "FAIL: gaia-edit-ux.html missing or empty" >&2; return 1
   }
 
-  # Extract the step-list for scoped assertions
-  local step_section
-  step_section="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$page")"
-  [ -n "$step_section" ] || {
-    echo "FAIL: no step-list section in gaia-edit-ux.html" >&2; return 1
+  # Extract the Republish step item
+  local repub_step
+  repub_step="$(_step_item "$page" "Republish")"
+  [ -n "$repub_step" ] || {
+    echo "FAIL: no Republish step in gaia-edit-ux.html" >&2; return 1
   }
 
-  # Doc-page assertions
-  grep -qi 'republish' "$page" || {
-    echo "FAIL: gaia-edit-ux.html should mention 'republish'" >&2; return 1
+  # Token/component -> design-system in the republish step
+  grep -qiE 'token.*component.*design-system|design-system.*token.*component' <<<"$repub_step" || {
+    echo "FAIL: republish step should route token and component changes to design-system" >&2; return 1
   }
-  # The old single-project phrasing must be gone
+  # Screen/flow -> product design in the republish step
+  grep -qiE 'screen.*flow.*product design|product design.*screen.*flow' <<<"$repub_step" || {
+    echo "FAIL: republish step should route screen and flow changes to product design" >&2; return 1
+  }
+  # Old phrasing gone
   if grep -qi 'republished to the Claude Design project' "$page"; then
     echo "FAIL: gaia-edit-ux.html still has old single-project phrasing" >&2
     return 1
   fi
-  # Scope routing sentence must be in the step-list: token/component -> DS,
-  # screen/flow -> PD
-  grep -qiE 'token.*component.*design-system|design-system.*token.*component' <<<"$step_section" || {
-    echo "FAIL: step-list should route token and component changes to design-system" >&2; return 1
-  }
-  grep -qiE 'screen.*flow.*product design|product design.*screen.*flow' <<<"$step_section" || {
-    echo "FAIL: step-list should route screen and flow changes to product design" >&2; return 1
+
+  # Troubleshooting: product design project not set up
+  grep -qiE 'product design project.*not set up|not set up.*product design' "$page" || {
+    echo "FAIL: gaia-edit-ux.html should have troubleshooting for product design project not set up" >&2; return 1
   }
 
   # SKILL.md cross-checks
@@ -795,31 +898,62 @@ CMDS_END
     echo "FAIL: gaia-design-review.html missing or empty" >&2; return 1
   }
 
-  # Extract the step-list section where the two-project read-back lives.
-  # Scoped so existing troubleshooting/artifact-path mentions do not satisfy.
-  local step_section
-  step_section="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$page")"
-  [ -n "$step_section" ] || {
-    echo "FAIL: no step-list section in gaia-design-review.html" >&2; return 1
+  # Read-back step: DS through DesignSync, PD through Artifact tool
+  local readback_step
+  readback_step="$(_step_item "$page" "Read-back")"
+  [ -n "$readback_step" ] || {
+    echo "FAIL: no Read-back step in gaia-design-review.html" >&2; return 1
+  }
+  grep -qi 'design-system project.*DesignSync\|DesignSync.*design-system' <<<"$readback_step" || {
+    echo "FAIL: Read-back step should mention design-system project through DesignSync" >&2; return 1
+  }
+  grep -qiE 'product design.*Artifact tool|Artifact tool.*product design' <<<"$readback_step" || {
+    echo "FAIL: Read-back step should mention product design project via Artifact tool" >&2; return 1
   }
 
-  # Doc-page assertions — scoped to step-list
-  grep -qi 'design-system project.*DesignSync\|DesignSync.*design-system' <<<"$step_section" || {
-    echo "FAIL: step-list should mention design-system project through DesignSync" >&2; return 1
+  # Findings step: combined verdict
+  local findings_step
+  findings_step="$(_step_item "$page" "Findings")"
+  [ -n "$findings_step" ] || {
+    echo "FAIL: no Findings step in gaia-design-review.html" >&2; return 1
   }
-  grep -qiE 'product design.*Artifact tool|Artifact tool.*product design|product design.*Design artifact|Design artifact.*product design' <<<"$step_section" || {
-    echo "FAIL: step-list should mention product design project via Artifact tool or Design artifact" >&2; return 1
+  grep -qiE 'failure in either|either project' <<<"$findings_step" || {
+    echo "FAIL: Findings step should describe the combined verdict" >&2; return 1
   }
-  grep -qiE 'failure in either|either project' "$page" || {
-    echo "FAIL: gaia-design-review.html should describe the combined verdict" >&2; return 1
+
+  # Delta sync step: screens from PD
+  local delta_step
+  delta_step="$(_step_item "$page" "Delta sync")"
+  [ -n "$delta_step" ] || {
+    echo "FAIL: no Delta sync step in gaia-design-review.html" >&2; return 1
   }
-  # Step-list must also carry the combined verdict (what-it-does alone is not enough)
-  grep -qiE 'failure in either|either project' <<<"$step_section" || {
-    echo "FAIL: step-list should describe the combined verdict" >&2; return 1
+  grep -qi 'design-system project' <<<"$delta_step" || {
+    echo "FAIL: delta sync step should mention design-system project" >&2; return 1
   }
-  grep -qiE 'reconciliation' "$page" || {
-    echo "FAIL: gaia-design-review.html should mention token-change reconciliation" >&2; return 1
+  grep -qi 'product design project' <<<"$delta_step" || {
+    echo "FAIL: delta sync step should mention product design project" >&2; return 1
   }
+  grep -qi 'reconciliation' <<<"$delta_step" || {
+    echo "FAIL: delta sync step should mention reconciliation" >&2; return 1
+  }
+
+  # Stakeholder delivery step: re-reads both projects
+  local delivery_step
+  delivery_step="$(_step_item "$page" "Stakeholder delivery")"
+  [ -n "$delivery_step" ] || {
+    echo "FAIL: no Stakeholder delivery step" >&2; return 1
+  }
+  grep -qiE 'both projects|re-reads.*projects' <<<"$delivery_step" || {
+    echo "FAIL: Stakeholder delivery step should re-read both projects" >&2; return 1
+  }
+
+  # No single-project references in step list
+  local step_section
+  step_section="$(sed -n '/<ol class="step-list">/,/<\/ol>/p' "$page")"
+  if grep -qi 'Re-reads the project for current state' <<<"$step_section"; then
+    echo "FAIL: step-list still has single-project 'Re-reads the project' phrasing" >&2
+    return 1
+  fi
 
   # SKILL.md cross-checks
   [ -s "$SKILL_DR" ] || {
@@ -846,18 +980,32 @@ CMDS_END
     echo "FAIL: design-lifecycle.html missing or empty" >&2; return 1
   }
 
-  # Doc-page assertions
-  grep -qi 'brand-style' "$page" || {
-    echo "FAIL: design-lifecycle.html should mention 'brand-style'" >&2; return 1
+  # Brand-style in the publication section (not stale)
+  local pub
+  pub="$(sed -n '/<section id="publication">/,/<\/section>/p' "$page")"
+  grep -qi 'brand-style' <<<"$pub" || {
+    echo "FAIL: publication section should mention 'brand-style'" >&2; return 1
   }
-  grep -qiE 'design-system.*first|design-system project.*first' "$page" || {
-    echo "FAIL: design-lifecycle.html should describe design-system-first order" >&2; return 1
+
+  # DS-first order in stale section
+  local stale
+  stale="$(sed -n '/<section id="stale-on-change">/,/<\/section>/p' "$page")"
+  grep -qiE 'design-system.*first|design-system project.*first' <<<"$stale" || {
+    echo "FAIL: stale section should describe design-system-first order" >&2; return 1
   }
-  grep -qiE 'no screens available|no product design project' "$page" || {
-    echo "FAIL: design-lifecycle.html should describe the null product-design behavior" >&2; return 1
+
+  # Consumer routing in review section
+  local review
+  review="$(sed -n '/<section id="review">/,/<\/section>/p' "$page")"
+  grep -qiE 'no screens available|no product design project' <<<"$review" || {
+    echo "FAIL: review section should describe the null product-design behavior" >&2; return 1
   }
-  grep -qiE 'composite|single.*gate|zero integration calls' "$page" || {
-    echo "FAIL: design-lifecycle.html should describe the composite gate" >&2; return 1
+
+  # Composite gate
+  local gate
+  gate="$(sed -n '/<section id="gate-and-override">/,/<\/section>/p' "$page")"
+  grep -qiF 'zero integration calls' <<<"$gate" || {
+    echo "FAIL: gate section should say zero integration calls" >&2; return 1
   }
 
   # SKILL.md cross-checks
@@ -891,20 +1039,29 @@ CMDS_END
     echo "FAIL: gaia-add-feature.html missing or empty" >&2; return 1
   }
 
-  # The old single-project phrasing must be gone
+  # Extract the Design impact step
+  local impact_step
+  impact_step="$(_step_item "$page" "Design impact")"
+  [ -n "$impact_step" ] || {
+    echo "FAIL: no Design impact step in gaia-add-feature.html" >&2; return 1
+  }
+
+  # Routing in the step
+  grep -qi 'design-system project' <<<"$impact_step" || {
+    echo "FAIL: Design impact step should mention 'design-system project'" >&2; return 1
+  }
+  grep -qi 'product design project' <<<"$impact_step" || {
+    echo "FAIL: Design impact step should mention 'product design project'" >&2; return 1
+  }
+  grep -qi 'republish' <<<"$impact_step" || {
+    echo "FAIL: Design impact step should mention 'republish'" >&2; return 1
+  }
+
+  # Old phrasing gone
   if grep -qi 'republished to the design project' "$page"; then
     echo "FAIL: gaia-add-feature.html still has old single-project phrasing" >&2
     return 1
   fi
-  grep -qi 'design-system project' "$page" || {
-    echo "FAIL: gaia-add-feature.html should mention 'design-system project'" >&2; return 1
-  }
-  grep -qi 'product design project' "$page" || {
-    echo "FAIL: gaia-add-feature.html should mention 'product design project'" >&2; return 1
-  }
-  grep -qi 'republish' "$page" || {
-    echo "FAIL: gaia-add-feature.html should mention 'republish'" >&2; return 1
-  }
 
   # SKILL.md cross-checks
   [ -s "$SKILL_AF" ] || {
@@ -928,7 +1085,6 @@ CMDS_END
   }
   local hits
   hits="$(grep -nE "$(_leak_regex)" "$DOC_DIR/commands/gaia-create-ux.html" || true)"
-  hits="$(echo "$hits" | grep -vE '\[0-9\]' || true)"
   [ -z "$hits" ] || {
     echo "FAIL: leaked identifier(s) in commands/gaia-create-ux.html:" >&2
     echo "$hits" >&2
@@ -942,7 +1098,6 @@ CMDS_END
   }
   local hits
   hits="$(grep -nE "$(_leak_regex)" "$DOC_DIR/commands/gaia-edit-ux.html" || true)"
-  hits="$(echo "$hits" | grep -vE '\[0-9\]' || true)"
   [ -z "$hits" ] || {
     echo "FAIL: leaked identifier(s) in commands/gaia-edit-ux.html:" >&2
     echo "$hits" >&2
@@ -956,7 +1111,6 @@ CMDS_END
   }
   local hits
   hits="$(grep -nE "$(_leak_regex)" "$DOC_DIR/commands/gaia-add-feature.html" || true)"
-  hits="$(echo "$hits" | grep -vE '\[0-9\]' || true)"
   [ -z "$hits" ] || {
     echo "FAIL: leaked identifier(s) in commands/gaia-add-feature.html:" >&2
     echo "$hits" >&2
@@ -980,6 +1134,13 @@ CMDS_END
     [ -f "$f" ] || {
       echo "FAIL: swept page not found: $f" >&2; return 1
     }
+    local hits
+    hits="$(grep -nE "$(_leak_regex)" "$f" || true)"
+    [ -z "$hits" ] || {
+      echo "FAIL: leaked identifier(s) in $f:" >&2
+      echo "$hits" >&2
+      return 1
+    }
     count=$((count + 1))
   done
   [ "$count" -ge 5 ] || {
@@ -992,40 +1153,44 @@ CMDS_END
 # ===========================================================================
 
 @test "leak regex catches T-N and F-N as whole tokens" {
-  local tmpdir
-  tmpdir="$(mktemp -d)"
-
-  # Positive cases: T-N and F-N at word boundaries
-  cat > "$tmpdir/positive.html" <<'SEEDEOF'
+  # Use BATS_TEST_TMPDIR for temp files
+  cat > "$BATS_TEST_TMPDIR/positive.html" <<'SEEDEOF'
 found T-12
 value F-3.
 end T-99
 F-1
 SEEDEOF
   local pos_hits
-  pos_hits="$(grep -cE "$(_leak_regex)" "$tmpdir/positive.html")"
+  pos_hits="$(grep -cE "$(_leak_regex)" "$BATS_TEST_TMPDIR/positive.html")"
   [ "$pos_hits" -ge 4 ] || {
     echo "FAIL: leak regex matched only $pos_hits of 4 seeded T-N/F-N tokens" >&2
-    rm -rf "$tmpdir"
     return 1
   }
 
-  # Negative cases: legitimate text that must NOT match the T/F branch.
-  # Use a focused sub-regex to test only the T/F branch.
-  local tf_regex='(^|[^A-Za-z0-9])(T|F)-[0-9]+([^0-9]|$)'
-  cat > "$tmpdir/negative.html" <<'NEGEOF'
+  # Negative cases: use the shared sub-regex from _leak_regex
+  local tf_regex
+  tf_regex='(^|[^A-Za-z0-9])(T|F)-[0-9]+([^0-9]|$)'
+  cat > "$BATS_TEST_TMPDIR/negative.html" <<'NEGEOF'
 UTF-8 encoding
 TF-100 combined
 NEGEOF
   local neg_hits
-  neg_hits="$(grep -cE "$tf_regex" "$tmpdir/negative.html" || true)"
+  neg_hits="$(grep -cE "$tf_regex" "$BATS_TEST_TMPDIR/negative.html" || true)"
   [ "$neg_hits" -eq 0 ] || {
     echo "FAIL: T/F regex false-positive on legitimate text ($neg_hits hits)" >&2
-    rm -rf "$tmpdir"
     return 1
   }
 
-  rm -rf "$tmpdir"
+  # TC pattern: TC-AB1 must be caught
+  cat > "$BATS_TEST_TMPDIR/tc-test.html" <<'TCEOF'
+test case TC-AB1
+TCEOF
+  local tc_hits
+  tc_hits="$(grep -cE "$(_leak_regex)" "$BATS_TEST_TMPDIR/tc-test.html")"
+  [ "$tc_hits" -ge 1 ] || {
+    echo "FAIL: leak regex did not catch TC-AB1" >&2
+    return 1
+  }
 }
 
 # ===========================================================================
