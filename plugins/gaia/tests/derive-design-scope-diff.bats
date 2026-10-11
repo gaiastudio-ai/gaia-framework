@@ -38,14 +38,14 @@ _seed_last_published() {
   "design_system": {
     "last_published_at": "2026-01-01T00:00:00Z",
     "files": [
-      {"path": "tokens/colors.html", "hash": "$token_hash"},
-      {"path": "components/button.spec.html", "hash": "$component_hash"}
+      {"file": "tokens/colors.html", "hash": "$token_hash"},
+      {"file": "components/button.spec.html", "hash": "$component_hash"}
     ]
   },
   "product_design": {
     "last_published_at": "2026-01-01T00:00:00Z",
     "files": [
-      {"path": "project/login.dc.html", "hash": "$screen_hash"}
+      {"file": "project/login.dc.html", "hash": "$screen_hash"}
     ]
   }
 }
@@ -656,7 +656,7 @@ HELPEOF
   while [ "$i" -lt 50 ]; do
     local h="hash$i"
     if [ $((i % 2)) -eq 0 ]; then h="old$i"; fi
-    printf '%s{"path":"tokens/t%d.html","hash":"%s"}' "$sep" "$i" "$h" >> "$lp"
+    printf '%s{"file":"tokens/t%d.html","hash":"%s"}' "$sep" "$i" "$h" >> "$lp"
     sep=","
     i=$((i + 1))
   done
@@ -665,7 +665,7 @@ HELPEOF
   while [ "$i" -lt 50 ]; do
     local sh="shash$i"
     if [ $((i % 2)) -eq 0 ]; then sh="old$i"; fi
-    printf '%s{"path":"project/s%d.dc.html","hash":"%s"}' "$sep" "$i" "$sh" >> "$lp"
+    printf '%s{"file":"project/s%d.dc.html","hash":"%s"}' "$sep" "$i" "$sh" >> "$lp"
     sep=","
     i=$((i + 1))
   done
@@ -875,5 +875,286 @@ HELPEOF
   case "$output" in
     *"$(printf '\t')"*) fail "control character not stripped from diagnostic" ;;
   esac
+}
+
+# ===========================================================================
+# Contract test: fixtures must use the writer's real key (.file, not .path)
+# ===========================================================================
+
+# _seed_last_published_real — write design-last-published.json using the
+# real persist_last_published output shape: each entry is {file, hash},
+# keyed under .design_system.files[] and .product_design.files[].
+_seed_last_published_real() {
+  local token_hash="${1:-aaa111}"
+  local component_hash="${2:-bbb222}"
+  local screen_hash="${3:-ccc333}"
+
+  cat > "$TEST_TMP/design-last-published.json" <<EOF
+{
+  "design_system": {
+    "reference": "ds-ref-001",
+    "last_published_at": "2026-01-01T00:00:00Z",
+    "files": [
+      {"file": "tokens/colors.html", "hash": "$token_hash"},
+      {"file": "components/button.spec.html", "hash": "$component_hash"}
+    ]
+  },
+  "product_design": {
+    "reference": "pd-ref-001",
+    "last_published_at": "2026-01-01T00:00:00Z",
+    "files": [
+      {"file": "project/login.dc.html", "hash": "$screen_hash"}
+    ]
+  }
+}
+EOF
+}
+
+@test "contract: writer-shaped fixture with token edit yields both" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  _seed_last_published_real "old-token-hash" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=new-token-hash" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (token edit via writer-shaped fixture), got: $output"
+}
+
+@test "contract: writer-shaped fixture with screen edit yields product-design" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  _seed_last_published_real "aaa111" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "product-design" ] \
+    || fail "expected product-design (screen edit via writer-shaped fixture), got: $output"
+}
+
+@test "contract: writer-shaped fixture with component edit yields design-system" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  _seed_last_published_real "aaa111" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-component-hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "design-system" ] \
+    || fail "expected design-system (component edit via writer-shaped fixture), got: $output"
+}
+
+@test "contract: root-level tokens.json counts as a token change" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  # The writer stores root-level files like tokens.json and README.md.
+  # A change to tokens.json must trigger the token rule (scope=both),
+  # because tokens.json at the spec root is a design-system token file.
+  cat > "$TEST_TMP/design-last-published.json" <<EOF
+{
+  "design_system": {
+    "reference": "ds-ref-001",
+    "last_published_at": "2026-01-01T00:00:00Z",
+    "files": [
+      {"file": "tokens.json", "hash": "old-json-hash"},
+      {"file": "tokens/colors.html", "hash": "aaa111"},
+      {"file": "components/button.spec.html", "hash": "bbb222"}
+    ]
+  },
+  "product_design": {
+    "reference": "pd-ref-001",
+    "last_published_at": "2026-01-01T00:00:00Z",
+    "files": [
+      {"file": "project/login.dc.html", "hash": "ccc333"}
+    ]
+  }
+}
+EOF
+
+  _seed_local_manifest \
+    "tokens.json=new-json-hash" \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] \
+    || fail "expected both (root tokens.json change triggers token rule), got: $output"
+}
+
+# ===========================================================================
+# Live-writer contract: call persist_last_published, feed to diff script
+# ===========================================================================
+
+# _build_writer_state — call the real persist_last_published for both
+# projects, producing a design-last-published.json identical to what
+# edit-ux Step 10 writes. Requires yq.
+_build_writer_state() {
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+
+  local wdir="$TEST_TMP/writer"
+  mkdir -p "$wdir"
+
+  local bmc="$PLUGIN_ROOT/scripts/build-manifest-cards.sh"
+  [ -f "$bmc" ] || fail "build-manifest-cards.sh not found"
+
+  local drec="$PLUGIN_ROOT/scripts/design-record.sh"
+  [ -f "$drec" ] || fail "design-record.sh not found"
+
+  # Source the writer library (brings in persist_last_published)
+  # shellcheck source=../scripts/build-manifest-cards.sh
+  . "$bmc"
+
+  # Create the design record via the sole writer (v2, both refs)
+  env PROJECT_ROOT="$wdir" bash "$drec" init \
+    --ds-reference "ds-uuid-001" \
+    --pd-reference "pd-uuid-001" \
+    --discovered-via "project-artifacts"
+
+  local dr_path="$wdir/.gaia/state/design-record.yaml"
+  [ -f "$dr_path" ] \
+    || fail "design-record.sh init did not create $dr_path"
+
+  # --- design-system outcomes ---
+  cat > "$wdir/ds-outcomes.json" <<'DSO'
+[
+  {"file":"tokens/colors.html","outcome":"written","hash":"t1hash"},
+  {"file":"components/button.spec.html","outcome":"written","hash":"c1hash"}
+]
+DSO
+
+  # --- product-design outcomes ---
+  cat > "$wdir/pd-outcomes.json" <<'PDO'
+[
+  {"file":"project/login.dc.html","outcome":"written","hash":"s1hash"}
+]
+PDO
+
+  # --- local hash maps ---
+  cat > "$wdir/ds-hashes.json" <<'DSH'
+{"tokens/colors.html":"t1hash","components/button.spec.html":"c1hash"}
+DSH
+  cat > "$wdir/pd-hashes.json" <<'PDH'
+{"project/login.dc.html":"s1hash"}
+PDH
+
+  local ts="2026-01-01T00:00:00Z"
+  local out="$wdir/design-last-published.json"
+
+  # First call: design_system
+  persist_last_published \
+    --project design_system \
+    --outcomes "$wdir/ds-outcomes.json" \
+    --output "$out" \
+    --local-hash-map "$wdir/ds-hashes.json" \
+    --design-record "$dr_path" \
+    --published-at "$ts"
+
+  # Second call: product_design (uses prior from first call)
+  persist_last_published \
+    --project product_design \
+    --outcomes "$wdir/pd-outcomes.json" \
+    --output "$out" \
+    --local-hash-map "$wdir/pd-hashes.json" \
+    --design-record "$dr_path" \
+    --published-at "$ts"
+
+  # Export the path for callers
+  WRITER_LP="$out"
+}
+
+@test "live-writer contract: token edit yields both" {
+  [ -f "$DIFF_SCRIPT" ] || fail "diff script not found"
+
+  _build_writer_state
+
+  # Verify the writer actually produced {file, hash} entries
+  local ds_key
+  ds_key="$(jq -r '.design_system.files[0] | keys[]' \
+    "$WRITER_LP" | sort | head -1)"
+  [ "$ds_key" = "file" ] \
+    || fail "writer entry key is '$ds_key', expected 'file'"
+
+  # Local manifest: token hash changed
+  _seed_local_manifest \
+    "tokens/colors.html=CHANGED-TOKEN" \
+    "components/button.spec.html=c1hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$WRITER_LP" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] \
+    || fail "expected both (token edit), got: $output"
+}
+
+@test "live-writer contract: screen edit yields product-design" {
+  [ -f "$DIFF_SCRIPT" ] || fail "diff script not found"
+
+  _build_writer_state
+
+  # Local manifest: all hashes match design-system
+  _seed_local_manifest \
+    "tokens/colors.html=t1hash" \
+    "components/button.spec.html=c1hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$WRITER_LP" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "product-design" ] \
+    || fail "expected product-design (screen edit), got: $output"
+}
+
+@test "live-writer contract: component edit yields design-system" {
+  [ -f "$DIFF_SCRIPT" ] || fail "diff script not found"
+
+  _build_writer_state
+
+  # Local manifest: component hash changed
+  _seed_local_manifest \
+    "tokens/colors.html=t1hash" \
+    "components/button.spec.html=CHANGED-COMP" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$WRITER_LP" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "design-system" ] \
+    || fail "expected design-system (component edit), got: $output"
 }
 

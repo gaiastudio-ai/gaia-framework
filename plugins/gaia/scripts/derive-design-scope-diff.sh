@@ -213,38 +213,46 @@ _changed_output="$(jq -r --arg edited "$_edited_paths" \
   # Parse edited paths (newline-delimited, already normalised)
   ($edited | split("\n") | map(select(length > 0))) as $edited_list |
 
-  # Build published design-system lookup: {path: hash}
+  # Build published design-system lookup: {file: hash}
   (($pub.design_system.files // [])
-    | map({key: .path, value: .hash}) | from_entries) as $ds_pub |
+    | map({key: .file, value: .hash}) | from_entries) as $ds_pub |
 
   # Build published product-design lookup: ONLY project/*.dc.html artboards
   # map to screens/*.spec.html. Non-artboard paths are ignored.
   (($pub.product_design.files // [])
-    | map(select(.path | test("^project/[^/]+\\.dc\\.html$")))
-    | map({key: (.path | sub("^project/"; "screens/") | sub("\\.dc\\.html$"; ".spec.html")),
+    | map(select(.file | test("^project/[^/]+\\.dc\\.html$")))
+    | map({key: (.file | sub("^project/"; "screens/") | sub("\\.dc\\.html$"; ".spec.html")),
            value: .hash})
     | from_entries) as $pd_pub |
 
   # Read local manifest from stdin
   . as $local |
 
-  # (a) Design-system diff: changed or added entries
+  # (a) Design-system diff: changed or added entries.
+  # A local entry is design-system when it lives under tokens/, components/,
+  # or templates/, OR when it was previously published in design_system.files[]
+  # (covers root-level files like tokens.json and README.md).
   ([$local | to_entries[]
-    | select(.key | test("^(tokens|components|templates)/"))
+    | select(
+        (.key | test("^(tokens|components|templates)/")) or
+        ($ds_pub[.key] != null)
+      )
     | select(($ds_pub[.key] // null) != .value)
     | .key]) as $ds_changed |
 
-  # (a) Design-system removed: in published but not in local
+  # (a) Design-system removed: in published DS but not in local.
+  # All published DS entries are design-system by definition.
   ([$ds_pub | to_entries[]
-    | select(.key | test("^(tokens|components|templates)/"))
     | select($local[.key] == null)
     | .key]) as $ds_removed |
 
   # All design-system changes
   ($ds_changed + $ds_removed) as $all_ds |
 
-  # Token change flag
-  ([$all_ds[] | select(startswith("tokens/"))] | length > 0) as $has_token |
+  # Token change flag: any change under tokens/ or to a root-level
+  # tokens.* file (e.g. tokens.json) triggers the token rule.
+  ([$all_ds[] | select(startswith("tokens/") or test("^tokens\\."))]
+    | length > 0) as $has_token |
 
   # (b-i) Edited screens/flows (already normalised).
   # Paths matching screens/ or flows/ are product-design edits.
