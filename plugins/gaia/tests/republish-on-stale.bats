@@ -1063,6 +1063,9 @@ _extract_step5_editux() {
 
   local halt_text="The product design project is not set up"
   local remediation="Run /gaia-create-ux"
+  # The halt applies only to the product-design republish, not the
+  # design-system pass. Pin this scoping sentence at every site.
+  local scoping="design-system-only scope with no product design project does not trigger this halt"
 
   # Helper: assert the halt text and the remediation both appear, and that
   # the halt does NOT say "log a note" or "continue".
@@ -1083,6 +1086,15 @@ _extract_step5_editux() {
     if grep -qi 'log a note.*continue\|continue publishing' <<<"$null_lines"; then
       fail "$site null-project block says log a note and continue (must halt)"
     fi
+
+    # The halt is scoped to product-design work only. Widening it to
+    # every republish (removing the exemption) must fail.
+    grep -qF "$scoping" <<<"$section" \
+      || fail "$site missing the scoping sentence (halt is product-design only)"
+
+    # "Before the product-design republish" must appear (not "Before any")
+    grep -qF 'Before the product-design republish' <<<"$section" \
+      || fail "$site says before any republish instead of before product-design"
   }
 
   # edit-ux Step 8
@@ -1221,6 +1233,17 @@ $hits"
     || fail "add-feature cascade does not print scope= line"
   grep -qF 'reason=derived' <<<"$af_cascade" \
     || fail "add-feature cascade does not print reason=derived"
+
+  # The driver target lines are informational, not the scope source.
+  # Pin the exact sentence at both add-feature republish sites.
+  grep -qF 'informational only and are not used here' <<<"$af_patch" \
+    || fail "add-feature patch missing the driver-target informational sentence"
+  grep -qF 'Derive the target list from the derived scope' <<<"$af_patch" \
+    || fail "add-feature patch missing the derived-scope target sentence"
+  grep -qF 'informational only and are not used here' <<<"$af_cascade" \
+    || fail "add-feature cascade missing the driver-target informational sentence"
+  grep -qF 'Derive the target list from the derived scope' <<<"$af_cascade" \
+    || fail "add-feature cascade missing the derived-scope target sentence"
 }
 
 # ===========================================================================
@@ -1239,6 +1262,13 @@ $hits"
     || fail "edit-ux Step 8 does not contain the pinned union wording"
   grep -qF 'republish-target:' <<<"$step8" \
     || fail "edit-ux Step 8 does not consume the driver republish-target: lines"
+
+  # The driver target lines must NOT be the scope source (they reflect
+  # only the Step 5 scope). Pin the exact prohibition sentence.
+  grep -qF 'must not be used as the source here' <<<"$step8" \
+    || fail "edit-ux Step 8 missing the driver-target prohibition sentence"
+  grep -qF 'Derive the target list from the union scope' <<<"$step8" \
+    || fail "edit-ux Step 8 missing the union-derived target sentence"
 }
 
 # ===========================================================================
@@ -1342,12 +1372,17 @@ $hits"
 }
 
 # ===========================================================================
-# Unauthorized remediation pinned at each site (kills N1)
+# Unauthorized remediation pinned at each site
 # ===========================================================================
 
 @test "unauthorized remediation is stated at each artifact-halt site" {
   [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
   [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # The exact unauthorized sentence must be quoted verbatim, not
+  # cross-referenced or paraphrased. Reverting to a vague "halt with
+  # the unauthorized remediation" must fail.
+  local exact_sentence="The Design artifact surface requires authorization"
 
   _check_unauthorized() {
     local section="$1" site="$2"
@@ -1356,9 +1391,13 @@ $hits"
     grep -qF 'on `unauthorized`' <<<"$section" \
       || fail "$site does not name the unauthorized branch"
 
-    # The remediation text must be stated, not just cross-referenced
-    grep -qi 'unauthorized.*remediation\|unauthorized.*halt\|unauthorized.*authorization' <<<"$section" \
-      || fail "$site does not give the unauthorized remediation"
+    # The exact remediation sentence must be present verbatim
+    grep -qF "$exact_sentence" <<<"$section" \
+      || fail "$site does not quote the exact unauthorized sentence"
+
+    # The sentence must include the re-run instruction
+    grep -qF 'follow the authorization prompt and re-run' <<<"$section" \
+      || fail "$site unauthorized sentence missing re-run instruction"
   }
 
   local step8
@@ -1378,7 +1417,7 @@ $hits"
 }
 
 # ===========================================================================
-# Union scope sentence pinned (kills N2)
+# Union scope sentence pinned at edit-ux Step 8
 # ===========================================================================
 
 @test "edit-ux Step 8 says the union and does not negate it" {
@@ -1397,7 +1436,7 @@ $hits"
 }
 
 # ===========================================================================
-# Persist per-project flag pinned (kills N3)
+# Persist per-project flag pinned at edit-ux
 # ===========================================================================
 
 @test "persist line names both project keys distinctly at edit-ux" {
@@ -1423,7 +1462,7 @@ $hits"
 }
 
 # ===========================================================================
-# edit-ux Step 5 diff call carries --local-manifest (kills N5)
+# edit-ux Step 5 diff call carries --local-manifest
 # ===========================================================================
 
 @test "edit-ux Step 5 diff call carries local-manifest flag" {
@@ -1441,7 +1480,7 @@ $hits"
 }
 
 # ===========================================================================
-# Artifact probe before the product-design republish (kills N6)
+# Artifact probe before the product-design republish
 # ===========================================================================
 
 @test "artifact probe is before the product-design republish at add-feature sites" {
@@ -1469,7 +1508,7 @@ $hits"
 }
 
 # ===========================================================================
-# First-publication full card set non-zero count (kills N8)
+# First-publication full card set with non-zero count
 # ===========================================================================
 
 @test "first-publication branch says full card set non-zero count at edit-ux" {
@@ -1488,7 +1527,7 @@ $hits"
 }
 
 # ===========================================================================
-# Null-project halt instruction pinned (kills N9)
+# Null-project halt instruction pinned as halt not proceed
 # ===========================================================================
 
 @test "null-project halt says halt not proceed at add-feature sites" {
@@ -1521,7 +1560,48 @@ $hits"
 }
 
 # ===========================================================================
-# Pass order: design-system first (kills N13)
+# Null-project halt scoped to product-design work only
+# ===========================================================================
+
+@test "null-project halt applies only to product-design scope at each site" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # The halt is scoped to product-design work. Widening it to every
+  # republish (including design-system-only) must fail.
+  _check_halt_scope() {
+    local section="$1" site="$2"
+
+    # Must say "Before the product-design republish", not "Before any republish"
+    grep -qF 'Before the product-design republish' <<<"$section" \
+      || fail "$site null-project halt is not scoped to product-design"
+    if grep -qF 'Before any republish' <<<"$section"; then
+      fail "$site null-project halt is widened to every republish"
+    fi
+
+    # Must carry the design-system-only exemption sentence
+    grep -qF 'design-system-only scope' <<<"$section" \
+      || fail "$site missing the design-system-only exemption"
+  }
+
+  local step8
+  step8="$(_extract_step8_editux)"
+  [ -n "$step8" ] || fail "edit-ux Step 8 not found"
+  _check_halt_scope "$step8" "edit-ux Step 8"
+
+  local af_patch
+  af_patch="$(_extract_step3_patch_af)"
+  [ -n "$af_patch" ] || fail "add-feature patch not found"
+  _check_halt_scope "$af_patch" "add-feature patch"
+
+  local af_cascade
+  af_cascade="$(_extract_step7b_af)"
+  [ -n "$af_cascade" ] || fail "add-feature cascade not found"
+  _check_halt_scope "$af_cascade" "add-feature cascade"
+}
+
+# ===========================================================================
+# Pass order: design-system first at every republish site
 # ===========================================================================
 
 @test "republish pass order is design-system first at each site" {
@@ -1554,7 +1634,7 @@ $hits"
 }
 
 # ===========================================================================
-# edit-ux Step 5 states edited path form (item 1 skill text)
+# edit-ux Step 5 states edited path form
 # ===========================================================================
 
 @test "edit-ux Step 5 states that edited paths are spec-relative" {
@@ -1567,7 +1647,7 @@ $hits"
 }
 
 # ===========================================================================
-# exit 2 handling documented (suggestion 7b)
+# exit 2 handling stated at each republish site
 # ===========================================================================
 
 @test "skills say what to do when diff script exits 2" {
@@ -1586,7 +1666,7 @@ $hits"
 }
 
 # ===========================================================================
-# Coverage sentence order in gate (item 4)
+# Coverage sentence order in gate script
 # ===========================================================================
 
 @test "coverage force-design note does not sit between review and clause" {

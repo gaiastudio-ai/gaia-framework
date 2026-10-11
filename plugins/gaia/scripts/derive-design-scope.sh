@@ -33,6 +33,7 @@ while [ $# -gt 0 ]; do
     --spec-root)
       [ $# -ge 2 ] || { printf 'derive-design-scope.sh: --spec-root requires a value\n' >&2; exit 2; }
       _spec_root="${2%/}"; shift 2 ;;
+    --) shift; break ;;
     *) break ;;
   esac
 done
