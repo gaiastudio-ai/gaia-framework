@@ -1009,3 +1009,148 @@ EOF
     || fail "expected both (root tokens.json change triggers token rule), got: $output"
 }
 
+# ===========================================================================
+# Live-writer contract: call persist_last_published, feed to diff script
+# ===========================================================================
+
+# _build_writer_state — call the real persist_last_published for both
+# projects, producing a design-last-published.json identical to what
+# edit-ux Step 10 writes. Requires yq.
+_build_writer_state() {
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+
+  local wdir="$TEST_TMP/writer"
+  mkdir -p "$wdir"
+
+  local bmc="$PLUGIN_ROOT/scripts/build-manifest-cards.sh"
+  [ -f "$bmc" ] || fail "build-manifest-cards.sh not found"
+
+  # Source the writer library (brings in persist_last_published)
+  # shellcheck source=../scripts/build-manifest-cards.sh
+  . "$bmc"
+
+  # --- design record (v2, both projects have a reference) ---
+  cat > "$wdir/design-record.yaml" <<'DR'
+schema_version: 2
+design_system_project:
+  reference: "ds-uuid-001"
+product_design_project:
+  reference: "pd-uuid-001"
+DR
+
+  # --- design-system outcomes ---
+  cat > "$wdir/ds-outcomes.json" <<'DSO'
+[
+  {"file":"tokens/colors.html","outcome":"written","hash":"t1hash"},
+  {"file":"components/button.spec.html","outcome":"written","hash":"c1hash"}
+]
+DSO
+
+  # --- product-design outcomes ---
+  cat > "$wdir/pd-outcomes.json" <<'PDO'
+[
+  {"file":"project/login.dc.html","outcome":"written","hash":"s1hash"}
+]
+PDO
+
+  # --- local hash maps ---
+  cat > "$wdir/ds-hashes.json" <<'DSH'
+{"tokens/colors.html":"t1hash","components/button.spec.html":"c1hash"}
+DSH
+  cat > "$wdir/pd-hashes.json" <<'PDH'
+{"project/login.dc.html":"s1hash"}
+PDH
+
+  local ts="2026-01-01T00:00:00Z"
+  local out="$wdir/design-last-published.json"
+
+  # First call: design_system
+  persist_last_published \
+    --project design_system \
+    --outcomes "$wdir/ds-outcomes.json" \
+    --output "$out" \
+    --local-hash-map "$wdir/ds-hashes.json" \
+    --design-record "$wdir/design-record.yaml" \
+    --published-at "$ts"
+
+  # Second call: product_design (uses prior from first call)
+  persist_last_published \
+    --project product_design \
+    --outcomes "$wdir/pd-outcomes.json" \
+    --output "$out" \
+    --local-hash-map "$wdir/pd-hashes.json" \
+    --design-record "$wdir/design-record.yaml" \
+    --published-at "$ts"
+
+  # Export the path for callers
+  WRITER_LP="$out"
+}
+
+@test "live-writer contract: token edit yields both" {
+  [ -f "$DIFF_SCRIPT" ] || fail "diff script not found"
+
+  _build_writer_state
+
+  # Verify the writer actually produced {file, hash} entries
+  local ds_key
+  ds_key="$(jq -r '.design_system.files[0] | keys[]' \
+    "$WRITER_LP" | sort | head -1)"
+  [ "$ds_key" = "file" ] \
+    || fail "writer entry key is '$ds_key', expected 'file'"
+
+  # Local manifest: token hash changed
+  _seed_local_manifest \
+    "tokens/colors.html=CHANGED-TOKEN" \
+    "components/button.spec.html=c1hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$WRITER_LP" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] \
+    || fail "expected both (token edit), got: $output"
+}
+
+@test "live-writer contract: screen edit yields product-design" {
+  [ -f "$DIFF_SCRIPT" ] || fail "diff script not found"
+
+  _build_writer_state
+
+  # Local manifest: all hashes match design-system
+  _seed_local_manifest \
+    "tokens/colors.html=t1hash" \
+    "components/button.spec.html=c1hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$WRITER_LP" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "product-design" ] \
+    || fail "expected product-design (screen edit), got: $output"
+}
+
+@test "live-writer contract: component edit yields design-system" {
+  [ -f "$DIFF_SCRIPT" ] || fail "diff script not found"
+
+  _build_writer_state
+
+  # Local manifest: component hash changed
+  _seed_local_manifest \
+    "tokens/colors.html=t1hash" \
+    "components/button.spec.html=CHANGED-COMP" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$WRITER_LP" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "design-system" ] \
+    || fail "expected design-system (component edit), got: $output"
+}
+
