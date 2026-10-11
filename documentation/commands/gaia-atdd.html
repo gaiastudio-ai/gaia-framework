@@ -304,10 +304,12 @@ This warning is shown once per session.
           </li>
           <li>
             <span class="step-title">Write ATDD artifact</span>
-            Writes the artifact to
-            <code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code> using an
-            atomic write (temp file then rename) to prevent corruption if
-            interrupted. The artifact contains:
+            Writes the artifact to the per-story mirror path
+            <code>.gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{story_key}-{story_slug}/atdd.md</code>
+            using an atomic write (temp file then rename) to prevent corruption if
+            interrupted. The legacy flat path
+            <code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code>
+            remains a read-only fallback during the migration window. The artifact contains:
             <ul>
               <li>Header with story key, title, risk level, and generation date.</li>
               <li>AC-to-test mapping table (AC ID, description, test name).</li>
@@ -431,10 +433,11 @@ This warning is shown once per session.
           <tbody>
             <tr>
               <td>ATDD artifact</td>
-              <td><code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code></td>
+              <td><code>.gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{story_key}-{story_slug}/atdd.md</code></td>
               <td>
                 Given/When/Then test skeletons for every AC in the story,
                 plus the AC-to-test traceability table. One file per story.
+                Legacy flat path <code>atdd-{story_key}.md</code> is a read-only fallback.
               </td>
             </tr>
             <tr>
@@ -531,7 +534,7 @@ Writing test skeletons...
     - AND no partial user record is created
   **Status:** FAILING (red phase -- implementation does not exist)
 
-Artifact written to: .gaia/artifacts/test-artifacts/atdd-E3-S7.md
+Artifact written to: .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md
   3 ACs mapped to 3 tests. All tests in red (failing) state.
 
 Validation: PASSED
@@ -542,7 +545,7 @@ Validation: PASSED
 Run generated tests now to confirm red phase? [y/N]
 &gt; n
 
-Done. ATDD artifact ready at .gaia/artifacts/test-artifacts/atdd-E3-S7.md</code></pre>
+Done. ATDD artifact ready at .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md</code></pre>
 
         <h3>Batch mode</h3>
         <pre><code>&gt; /gaia-atdd
@@ -560,12 +563,12 @@ Enter story numbers (comma-separated): 1,3
 
 Processing E3-S7 (1/2)...
   Loaded 3 ACs. Generating test skeletons...
-  Artifact written to: .gaia/artifacts/test-artifacts/atdd-E3-S7.md (generated)
+  Artifact written to: .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md (generated)
 
 Processing E5-S3 (2/2)...
   Loaded 7 ACs. Generating test skeletons...
-  Overwriting existing ATDD artifact at .gaia/artifacts/test-artifacts/atdd-E5-S3.md
-  Artifact written to: .gaia/artifacts/test-artifacts/atdd-E5-S3.md (overwritten)
+  Overwriting existing ATDD artifact.
+  Artifact written to: .gaia/artifacts/test-artifacts/epic-E5-payments/stories/E5-S3-payment-webhook/atdd.md (overwritten)
 
 Batch summary:
   Generated:   1 (E3-S7)

@@ -359,14 +359,14 @@
           A time-boxed work iteration containing a set of stories selected
           from the backlog. Sprints are planned with
           <a href="commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>
-          and tracked in <code>sprint-status.yaml</code>. Each sprint has
+          and tracked in <code>.gaia/state/sprint-status.yaml</code>. Each sprint has
           an ID (e.g., <code>sprint-3</code>), a velocity target, and a
           set of committed stories.
         </dd>
 
         <dt id="sprint-status">sprint-status.yaml</dt>
         <dd>
-          The file that records the current sprint's state: which stories
+          The file at <code>.gaia/state/sprint-status.yaml</code> that records the current sprint's state: which stories
           are committed, their statuses, and aggregate metrics. This file
           is managed exclusively through GAIA commands (never edited by
           hand). Viewed with

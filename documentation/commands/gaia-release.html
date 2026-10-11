@@ -61,9 +61,8 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/deployment.html">Deployment</a></dd>
           <dt>Lifecycle phase:</dt><dd>5 -- Deployment</dd>
-          <dt>Arguments:</dt><dd><code>[patch|minor|major|none|X.Y.Z] [--prerelease rc] [--strip-prerelease] [<del>--modules mod1,mod2</del>]<sup>*</sup> [--dry-run]</code></dd>
+          <dt>Arguments:</dt><dd><code>[patch|minor|major|X.Y.Z] [--scope &lt;prefixes&gt;] [--scope-map &lt;json&gt;] [--dry-run]</code></dd>
         </dl>
-        <p><small>* <code>--modules</code> is documented in SKILL.md but not yet implemented in <code>scripts/version-bump.js</code> — see <a href="#arguments">Arguments</a> section.</small></p>
       </header>
 
       <section id="what-it-does">
@@ -76,14 +75,13 @@
         <ul>
           <li>You are explicitly cutting a manual release after merging a sprint PR to main.</li>
           <li>You are performing a hotfix release via the <code>hotfix/{ticket-id}</code> branch convention and need the tag+publish ceremony.</li>
-          <li>You need to promote a release candidate to its final stable version (<code>--strip-prerelease</code>).</li>
         </ul>
       </section>
 
       <section id="scope-clarification">
         <h2>Scope clarification</h2>
-        <p>The primary release path is automated via <code>release.yml</code> (GitHub Actions). When code merges to <code>main</code>, the workflow detects qualifying commits under <code>plugins/gaia/</code>, computes the semver bump, opens a release PR, and -- on merge of that PR -- creates the tag and GitHub Release automatically. As of PR #771, the commit-classification range uses a tag-based anchor (<code>git describe --tags --abbrev=0 --match 'v*'</code>) instead of the previous <code>github.event.before</code> SHA, which resolves the symptom where the version-bump PR sometimes never opened after squash-merge.</p>
-        <p><code>/gaia-release</code> remains in the Phase-5 deployment catalog for <strong>explicit manual invocation only</strong>. Typical uses: hotfix releases, RC promotions, and resolving version drift between <code>package.json</code> and the config. The framework does not auto-suggest <code>/gaia-release</code> after staging-to-main merges.</p>
+        <p>The primary release path is automated via <code>release.yml</code> (GitHub Actions). When code merges to <code>main</code>, the workflow detects qualifying commits under <code>plugins/gaia/</code>, computes the semver bump, opens a release PR, and -- on merge of that PR -- creates the tag and GitHub Release automatically. The commit-classification range uses a tag-based anchor (<code>git describe --tags --abbrev=0 --match 'v*'</code>).</p>
+        <p><code>/gaia-release</code> remains in the Phase-5 deployment catalog for <strong>explicit manual invocation only</strong>. Typical uses: hotfix releases and resolving version drift between version files. The framework does not auto-suggest <code>/gaia-release</code> after staging-to-main merges.</p>
       </section>
 
       <section id="prerequisites">
@@ -98,45 +96,31 @@
           <tbody>
             <tr>
               <td>Bump specifier</td>
-              <td><code>patch</code> | <code>minor</code> | <code>major</code> | <code>none</code> | <code>X.Y.Z</code></td>
-              <td>Yes</td>
+              <td><code>patch</code> | <code>minor</code> | <code>major</code> | <code>X.Y.Z</code></td>
+              <td>Yes (unless <code>--scope-map</code> supplies per-component types)</td>
               <td>--</td>
-              <td>Standard semver bump, or <code>none</code> to increment only the RC counter (requires existing <code>-rc.N</code> suffix), or an explicit version string.</td>
+              <td>Standard semver bump or an explicit version string.</td>
             </tr>
             <tr>
-              <td><code>--prerelease rc</code></td>
-              <td>Flag</td>
-              <td>No</td>
-              <td>Off</td>
-              <td>Turn the bump into an RC prerelease (e.g., <code>1.127.2</code> becomes <code>1.128.0-rc.1</code> for a minor bump).</td>
-            </tr>
-            <tr>
-              <td><code>--strip-prerelease</code></td>
-              <td>Flag</td>
-              <td>No</td>
-              <td>Off</td>
-              <td>Drop the <code>-rc.N</code> suffix without changing version numbers. Promotes an RC to its final stable cut.</td>
-            </tr>
-            <tr>
-              <td><code>--modules mod1,mod2</code></td>
+              <td><code>--scope &lt;prefixes&gt;</code></td>
               <td>Comma-separated list</td>
               <td>No</td>
               <td>--</td>
-              <td>Also bump per-module <code>config.yaml</code> and manifest entries. Valid modules: <code>core</code>, <code>lifecycle</code>, <code>dev</code>, <code>creative</code>, <code>testing</code>, or <code>all</code>.</td>
+              <td>Limit the bump to version files whose path starts with one of the listed prefixes. Each file bumps from its own current version. Prefix matching is directory-boundary-safe.</td>
             </tr>
             <tr>
-              <td colspan="5">
-                <div class="callout callout-warning">
-                  <p><strong>Implementation note:</strong> Currently documented in SKILL.md but <strong>not implemented</strong> in <code>scripts/version-bump.js</code>. Passing <code>--modules</code> has no effect on the bump. Tracked as upstream SKILL.md drift; will be removed from docs once either implementation lands or SKILL.md is corrected.</p>
-                </div>
-              </td>
+              <td><code>--scope-map &lt;json&gt;</code></td>
+              <td>JSON object</td>
+              <td>No</td>
+              <td>--</td>
+              <td>Map path prefix to bump type for independent per-component bumps (e.g., <code>'{"packages/api":"minor","packages/ui":"patch"}'</code>). The positional bump specifier is not required when this flag is used.</td>
             </tr>
             <tr>
               <td><code>--dry-run</code></td>
               <td>Flag</td>
               <td>No</td>
               <td>Off</td>
-              <td>Print the planned changes and exit without writing. Use this first on every release.</td>
+              <td>Print the planned changes as JSON and exit without writing. Use this first on every release.</td>
             </tr>
           </tbody>
         </table>
@@ -145,29 +129,27 @@
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
         <pre><code>/gaia-release patch --dry-run
-/gaia-release minor --prerelease rc
-/gaia-release --strip-prerelease</code></pre>
+/gaia-release minor
+/gaia-release --scope packages/api,packages/ui patch</code></pre>
       </section>
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Verify main branch</span> Confirms you are on main with a clean working tree. Halts if not.</li><li><span class="step-title">Dry-run the bump</span> Runs the version bump in preview mode showing the current version, new version, and files that would change.</li><li><span class="step-title">Execute the bump</span> Updates package.json and the framework version config key.</li><li><span class="step-title">Commit</span> Creates a conventional commit with the version bump.</li><li><span class="step-title">Tag</span> Creates an annotated git tag for the new version.</li><li><span class="step-title">Push</span> Pushes the commit and tag to the remote.</li><li><span class="step-title">Create GitHub Release</span> Creates a GitHub Release from the changelog, flagging RC builds as prerelease.</li><li><span class="step-title">Post-release verification</span> Confirms the release is published and the tag is visible.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Verify main branch</span> Confirms you are on main with a clean working tree. Halts if not.</li><li><span class="step-title">Resolve config</span> Locates <code>project-config.yaml</code> and the project root via <code>resolve-config.sh</code>.</li><li><span class="step-title">Resolve release strategy</span> Reads <code>release.strategy</code> from config (defaults to <code>manual</code> when absent). Strategies: <code>conventional-commits</code> (derives bump from commit classification), <code>manual</code> (prompts for bump specifier), <code>calendar</code> (derives a CalVer version). If conventional-commits finds no releasable changes, exits cleanly.</li><li><span class="step-title">Dry-run the bump</span> Runs the version bump in preview mode showing the current version, new version, and files that would change. Exit code 4 means all files are already at or above the target version (monotonic no-op guard).</li><li><span class="step-title">Execute the bump</span> Updates every file listed in <code>release.version_files[]</code>.</li><li><span class="step-title">Commit</span> Creates a conventional commit staging exactly the files from the bump output.</li><li><span class="step-title">Tag</span> Creates an annotated git tag for the new version.</li><li><span class="step-title">Push</span> Pushes the commit and tag to the remote.</li><li><span class="step-title">Create GitHub Release</span> Creates a GitHub Release from the changelog.</li><li><span class="step-title">Post-release verification</span> Confirms the release is published and the tag is visible.</li></ol>
       </section>
 
       <section id="inputs">
         <h2>Inputs</h2>
-        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Bump specifier</td><td>Command argument</td><td><code>patch</code>, <code>minor</code>, <code>major</code>, <code>none</code> (RC increment only), or an explicit version.</td></tr><tr><td><code>--prerelease rc</code></td><td>Command argument (optional)</td><td>Create an RC prerelease version.</td></tr><tr><td><code>--strip-prerelease</code></td><td>Command argument (optional)</td><td>Promote an RC to its final release.</td></tr><tr><td><code>--modules mod1,mod2</code></td><td>Command argument (optional)</td><td>Also bump per-module config and manifest entries. Valid: <code>core</code>, <code>lifecycle</code>, <code>dev</code>, <code>creative</code>, <code>testing</code>, <code>all</code>. <strong>Implementation note:</strong> Currently documented in SKILL.md but <strong>not implemented</strong> in <code>scripts/version-bump.js</code>. Passing <code>--modules</code> has no effect on the bump.</td></tr><tr><td><code>--dry-run</code></td><td>Command argument (optional)</td><td>Preview changes without writing.</td></tr></tbody></table>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Bump specifier</td><td>Command argument</td><td><code>patch</code>, <code>minor</code>, <code>major</code>, or an explicit <code>X.Y.Z</code> version. Not required when <code>--scope-map</code> is used.</td></tr><tr><td><code>--scope &lt;prefixes&gt;</code></td><td>Command argument (optional)</td><td>Comma-separated path prefixes to limit the bump to named components.</td></tr><tr><td><code>--scope-map &lt;json&gt;</code></td><td>Command argument (optional)</td><td>JSON object mapping path prefix to bump type for independent per-component bumps.</td></tr><tr><td><code>--dry-run</code></td><td>Command argument (optional)</td><td>Preview changes as JSON without writing.</td></tr><tr><td><code>release.version_files[]</code></td><td><code>.gaia/config/project-config.yaml</code></td><td>List of version-carrying files to bump, each in its native format (JSON or plain text).</td></tr><tr><td><code>release.strategy</code></td><td><code>.gaia/config/project-config.yaml</code></td><td>Release strategy: <code>conventional-commits</code>, <code>manual</code> (default), or <code>calendar</code>.</td></tr></tbody></table>
       </section>
 
       <section id="outputs">
         <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Version bump</td><td><code>package.json</code> + config</td><td>Updated version number in both locations.</td></tr><tr><td>Git tag</td><td>Git</td><td>Annotated tag for the release version.</td></tr><tr><td>GitHub Release</td><td>GitHub</td><td>Published release with changelog notes.</td></tr></tbody></table>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Version bump</td><td>Every file listed in <code>release.version_files[]</code></td><td>Updated version string in each file, in its native format.</td></tr><tr><td>Git tag</td><td>Git</td><td>Annotated tag for the release version.</td></tr><tr><td>GitHub Release</td><td>GitHub</td><td>Published release with changelog notes.</td></tr></tbody></table>
       </section>
 
       <section id="examples">
         <h2>Examples</h2>
-        <p><strong>Note:</strong> No example demonstrates <code>--modules</code> because the flag is currently a no-op — see <a href="#arguments">Arguments</a> section for context.</p>
-
         <h3>1. Explicit manual patch release</h3>
         <pre><code>&gt; /gaia-release patch --dry-run
 
@@ -210,32 +192,7 @@ Creating GitHub Release v1.128.0...
 
 Release v1.128.0 published.</code></pre>
 
-        <h3>3. RC prerelease workflow</h3>
-        <p>Create a release candidate, then increment the RC counter with <code>none</code>.</p>
-        <pre><code>&gt; /gaia-release minor --prerelease rc
-
-Current version: 1.128.0
-New version:     1.129.0-rc.1
-
-Bumping version to 1.129.0-rc.1...
-Committing: chore(release): bump version to v1.129.0-rc.1
-Tagging: v1.129.0-rc.1
-Creating GitHub Release v1.129.0-rc.1 (prerelease)...
-
-Release v1.129.0-rc.1 published (marked prerelease).
-
-&gt; /gaia-release none
-
-Current version: 1.129.0-rc.1
-New version:     1.129.0-rc.2
-
-Bumping version to 1.129.0-rc.2...
-Tagging: v1.129.0-rc.2
-Creating GitHub Release v1.129.0-rc.2 (prerelease)...
-
-Release v1.129.0-rc.2 published (marked prerelease).</code></pre>
-
-        <h3>4. Hotfix release lane</h3>
+        <h3>3. Hotfix release lane</h3>
         <p>After a hotfix is developed on a <code>hotfix/{ticket-id}</code> branch targeting main, the release ceremony composes <code>/gaia-deploy</code> and <code>/gaia-release</code>:</p>
         <pre><code># Development (on hotfix/E1-S4 branch targeting main):
 &gt; /gaia-dev-story E1-S4
@@ -258,19 +215,6 @@ Release v1.128.1 published.
 &gt; /gaia-deploy --env production
 &gt; /gaia-deploy-post</code></pre>
 
-        <h3>5. Promote an RC to stable with --strip-prerelease</h3>
-        <pre><code>&gt; /gaia-release --strip-prerelease
-
-Current version: 1.129.0-rc.2
-New version:     1.129.0
-
-Bumping version to 1.129.0...
-Committing: chore(release): bump version to v1.129.0
-Tagging: v1.129.0
-Pushing to origin/main...
-Creating GitHub Release v1.129.0...
-
-Release v1.129.0 published (stable).</code></pre>
       </section>
 
       <section id="what-next">

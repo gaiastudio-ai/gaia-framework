@@ -59,13 +59,13 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
           <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
-          
+          <dt>Arguments:</dt><dd><code>&lt;add|remove|list&gt; [platform-id]</code></dd>
         </dl>
       </header>
 
       <section id="what-it-does">
         <h2>What it does</h2>
-        <p><code>/gaia-config-platform</code> edits the <code>platforms</code> section of <code>.gaia/config/project-config.yaml</code>. The platforms section is a flat list of platform identifiers. Baseline identifiers are <code>web</code>, <code>ios</code>, <code>android</code>, <code>server</code>, and <code>embedded</code>; common aliases are normalised (<code>firmware</code> to <code>embedded</code>, <code>backend</code> to <code>server</code>). Identifiers must be kebab-case (<code>^[a-z][a-z0-9-]*$</code>); unknown identifiers are accepted with a warning. Mobile gates, rubric layer selection, and device-target requirements trigger based on this list. Subcommands: <code>add &lt;id&gt;</code>, <code>remove &lt;id&gt;</code>, <code>list</code> (idempotent). The editor preserves all YAML comments and formatting outside the edited section.</p>
+        <p><code>/gaia-config-platform</code> edits the <code>platforms</code> section of <code>.gaia/config/project-config.yaml</code>. The platforms section is a flat list of platform identifiers. Baseline identifiers are <code>web</code>, <code>ios</code>, and <code>android</code>; other kebab-case identifiers (e.g., <code>server</code>, <code>embedded</code>) are accepted with a warning. Identifiers must be kebab-case (<code>^[a-z][a-z0-9-]*$</code>); unknown identifiers are accepted with a warning. Mobile gates, rubric layer selection, and device-target requirements trigger based on this list. Subcommands: <code>add &lt;id&gt;</code>, <code>remove &lt;id&gt;</code>, <code>list</code> (idempotent). The editor preserves all YAML comments and formatting outside the edited section.</p>
       </section>
 
       <section id="when-to-use">

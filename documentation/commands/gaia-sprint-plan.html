@@ -197,7 +197,7 @@ This warning is shown once per session.
       <section id="hotfix-injection">
         <h2>Hotfix auto-injection</h2>
         <p>Stories with <code>priority_flag: "hotfix"</code> in their frontmatter are auto-injected into the <strong>active</strong> sprint at Step 1, before the interactive selection ceremony begins. This differs from the <code>"next-sprint"</code> flag, which pre-fills the candidate set for user confirmation.</p>
-        <p>Key behaviors (PR #772):</p>
+        <p>Key behaviors:</p>
         <ul>
           <li>Injection uses <code>sprint-state.sh inject</code> (the sanctioned boundary writer). The call is idempotent -- re-runs are no-ops.</li>
           <li>Capacity-exceeded does <strong>not</strong> block hotfix injection. A hotfix is a sanctioned bypass of normal sprint capacity.</li>
@@ -308,12 +308,12 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Action items</td>
-              <td><code>.gaia/artifacts/planning-artifacts/action-items.yaml</code></td>
-              <td>Checked for blocking escalations before planning begins.</td>
+              <td><code>.gaia/state/action-items.yaml</code></td>
+              <td>Checked for blocking escalations before planning begins. Falls back to the legacy path <code>.gaia/artifacts/planning-artifacts/action-items.yaml</code>.</td>
             </tr>
             <tr>
               <td>Previous retrospective</td>
-              <td><code>.gaia/artifacts/implementation-artifacts/retro-*.md</code></td>
+              <td><code>.gaia/artifacts/implementation-artifacts/retro-{sprint_id}.md</code></td>
               <td>If available, open action items are surfaced as sprint constraints.</td>
             </tr>
             <tr>

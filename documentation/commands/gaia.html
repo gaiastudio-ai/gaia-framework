@@ -134,6 +134,14 @@
             and invokes the best match. If the intent is ambiguous, asks
             a clarifying question before routing.
           </li>
+          <li>
+            <span class="step-title">Sprint Execution Mode</span>
+            When invoked with <code>sprint</code>, auto-orchestrates the active sprint's stories through the dev workflow per the orchestrator's Sprint Execution Mode definition.
+          </li>
+          <li>
+            <span class="step-title">Story Creation Mode</span>
+            When invoked with <code>story [count] [parallel]</code>, batch-creates stories from <code>epics-and-stories.md</code> per the orchestrator's Story Creation Mode definition.
+          </li>
         </ol>
       </section>
 
@@ -152,6 +160,16 @@
               <td><code>request</code></td>
               <td>Command argument (optional)</td>
               <td>Free-text description of what you want to do.</td>
+            </tr>
+            <tr>
+              <td><code>sprint</code></td>
+              <td>Command argument (optional)</td>
+              <td>Enters Sprint Execution Mode: auto-orchestrates the active sprint's stories through the dev workflow.</td>
+            </tr>
+            <tr>
+              <td><code>story [count] [parallel]</code></td>
+              <td>Command argument (optional)</td>
+              <td>Enters Story Creation Mode: batch-creates stories from epics-and-stories.md. <code>count</code> sets how many; <code>parallel</code> sets concurrency.</td>
             </tr>
           </tbody>
         </table>

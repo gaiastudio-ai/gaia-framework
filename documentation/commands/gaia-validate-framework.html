@@ -102,8 +102,12 @@
           <li><span class="step-title">Skill index integrity</span> Checks that every skill index entry has a real file and valid line ranges.</li>
           <li><span class="step-title">Knowledge index integrity</span> Checks that every knowledge index entry has a real fragment under 200 lines.</li>
           <li><span class="step-title">Monolith-shard sync</span> Invokes the monolith-shard sync checker and folds any warnings into the findings list.</li>
-          <li value="10"><span class="step-title">Extended integrity checks</span> Runs five additional checks: orphan-tmp sweep allowlist validation, orchestration-class coverage (every SKILL.md must declare a valid class), fork-strip invariant (non-reviewers must not declare <code>context: fork</code>), orchestration-warning invocation presence, and stale-flag registry audit.</li>
-          <li value="11"><span class="step-title">Report</span> Emits a PASS/FAIL overall verdict with itemized findings grouped by severity (CRITICAL first).</li>
+          <li value="10"><span class="step-title">Orphan-tmp sweep allowlist</span> Static check rejecting any startup orphan-tmp <code>find ... -delete</code> whose target paths fall outside the allowlist. Out-of-bounds sweeps are CRITICAL findings.</li>
+          <li><span class="step-title">Orchestration-class coverage</span> Verifies every SKILL.md declares a valid <code>orchestration_class:</code> frontmatter field. Missing fields or unknown values are CRITICAL findings.</li>
+          <li><span class="step-title">Fork-strip invariant</span> Verifies that no non-reviewer SKILL.md declares <code>context: fork</code>. Reviewers may retain <code>context: fork</code> (clean-room invariant). Violations are CRITICAL findings.</li>
+          <li><span class="step-title">Orchestration-warning invocation presence</span> Verifies that every heavy-procedural or conversational SKILL.md invokes both the orchestration-mode detection and warning scripts. Missing invocations are CRITICAL findings.</li>
+          <li><span class="step-title">Stale-flag registry audit</span> Scans <code>.gaia/memory/</code> for <code>*-stale</code> marker files and verifies every marker is registered in the stale-flag registry. Unregistered markers are CRITICAL findings.</li>
+          <li><span class="step-title">Report</span> Emits a PASS/FAIL overall verdict with itemized findings grouped by severity (CRITICAL first).</li>
         </ol>
       </section>
 
