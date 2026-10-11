@@ -278,7 +278,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/gaia-retro/scripts/cross-retro-detect.sh \
 
 The scanner:
 
-1. Globs `retrospective-*.md` under the retros dir.
+1. Globs `retrospective-*.md` under both the canonical nested `retrospective/` subdir and the legacy flat location directly under the retros dir, de-duplicated by realpath.
 2. Extracts action-item lines under `## Action Items` sections (or resolves `AI-{n}` references in `.gaia/state/action-items.yaml`).
 3. Normalizes each line (`lowercase(trim(text))`) and computes `SHA-256(norm)`.
 4. Flags themes seen in 2+ distinct sprint IDs as systemic.

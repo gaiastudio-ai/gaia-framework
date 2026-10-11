@@ -382,12 +382,12 @@ steps_after_gaia:
         <h3>Protected test jobs (cannot disable)</h3>
         <p>
           Five security-critical jobs are protected from the
-          <code>ci_cd.template_overrides.disable:</code> list: the
-          commit-message linter, the architecture boundary guard, the
-          AI-attribution check, the secrets scanner, and the credential
-          auditor. The schema rejects any attempt to disable them, and the
-          regen-time helper rejects hyphen and case-canonicalized bypass
-          attempts as defense in depth.
+          <code>ci_cd.template_overrides.disable:</code> list:
+          <code>commitlint</code>, <code>legacy-reference-guard</code>,
+          <code>no-claude-attribution</code>, <code>secrets-scan</code>, and
+          <code>credential-audit</code>. The schema rejects any attempt to disable them, and the
+          regen-time helper rejects hyphen and case variations (for example
+          <code>commit-lint</code> or <code>Commit-Lint</code>) as defense in depth.
         </p>
 
         <h3>Migration from a legacy test surface</h3>

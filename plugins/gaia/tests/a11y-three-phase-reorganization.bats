@@ -20,7 +20,7 @@ setup() {
   RUBRIC_LOADER="$PLUGIN_DIR/scripts/rubric-loader.sh"
   # MANIFEST_TOKEN is the trailing segment of the workflow-manifest knowledge
   # filename. We compose the filename via this token so the bats source does
-  # not contain the literal bare filename — the adr-048-guard PATTERN matches
+  # not contain the literal bare filename — the legacy-reference-guard PATTERN matches
   # the bare token but exempts shell-variable forms via its negative filter.
   MANIFEST_TOKEN="manifest.csv"
   export PLUGIN_DIR SKILLS_DIR KNOWLEDGE_DIR RUBRICS_DIR AGENT_OVERLAY RUBRIC_LOADER MANIFEST_TOKEN
@@ -126,7 +126,7 @@ teardown() { common_teardown; }
 }
 
 @test "workflow manifest has rows for all three a11y skills with correct phase" {
-  # Compose the manifest filename from a token to keep adr-048-guard's literal-pattern
+  # Compose the manifest filename from a token to keep the reference guard's literal-pattern
   # matcher happy — the guard PATTERN matches the bare filename token, but its negative
   # filter exempts shell-variable forms.
   local manifest_name

@@ -5,7 +5,7 @@
 # Reads the status and Review Gate table from each gate story in the GATES list below
 # and asserts each one is `done` with all 6 reviews PASSED. Used by:
 #   (1) gaia-cleanup-legacy-engine.sh as its pre-flight gate
-#   (2) .github/workflows/adr-048-guard.yml as the CI compensating control
+#   (2) .github/workflows/legacy-reference-guard.yml as the CI compensating control
 #
 # Falls back to {gate}-review-summary.md when the main story file does not
 # contain the Review Gate table inline (some stories keep reviews in a

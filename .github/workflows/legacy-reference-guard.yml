@@ -1,4 +1,4 @@
-name: adr-048-guard
+name: legacy-reference-guard
 
 # Two independent checks run on every PR to staging or main:
 #
@@ -24,7 +24,7 @@ on:
 
 jobs:
   guard:
-    name: adr-048-guard
+    name: legacy-reference-guard
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

@@ -7,7 +7,7 @@
 # tooling itself, and explicit per-file allowlist entries for passive/historical
 # prose references).
 #
-# Used by .github/workflows/adr-048-guard.yml as the required PR check.
+# Used by .github/workflows/legacy-reference-guard.yml as the required PR check.
 #
 # Exit codes:
 #   0 — clean (no active-code references)
@@ -291,7 +291,7 @@ is_allowlisted() {
   [[ "$path" == */plugins/gaia/skills/gaia-product-brief/SKILL.md ]] && return 0
   [[ "$path" == */plugins/gaia/skills/gaia-brainstorm/SKILL.md ]] && return 0
   # The dead-reference guard workflow itself names the patterns it is supposed to catch.
-  [[ "$path" == */.github/workflows/adr-048-guard.yml ]] && return 0
+  [[ "$path" == */.github/workflows/legacy-reference-guard.yml ]] && return 0
   # V1 checkpoint deletion plan fixture — the deletion plan IS the document
   # describing how to clean up legacy V1 (workflow.xml-engine-era) checkpoints, so
   # its prose intentionally names workflow.xml as the historical engine the
