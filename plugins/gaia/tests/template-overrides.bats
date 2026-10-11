@@ -129,7 +129,7 @@ YAML
 
 @test "each of the 5 security-critical names is rejected" {
   _canonical_workflow
-  for name in commitlint adr-048-guard no-claude-attribution secrets-scan nfr-082-credential-audit; do
+  for name in commitlint legacy-reference-guard no-claude-attribution secrets-scan credential-audit; do
     cat > "$WORKDIR/project-config.yaml" <<YAML
 ci_cd:
   template_overrides:
@@ -138,6 +138,65 @@ YAML
     run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
     [ "$status" -ne 0 ] || { echo "FAIL: $name should have been rejected" >&2; return 1; }
   done
+}
+
+@test "legacy alias names are also rejected as security-critical" {
+  _canonical_workflow
+  # Old names that were renamed must still be rejected to prevent bypass.
+  for name in adr-048-guard nfr-082-credential-audit; do
+    cat > "$WORKDIR/project-config.yaml" <<YAML
+ci_cd:
+  template_overrides:
+    disable: [$name]
+YAML
+    run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
+    [ "$status" -ne 0 ] || { echo "FAIL: legacy alias $name should have been rejected" >&2; return 1; }
+  done
+}
+
+@test "protected names written with underscores, spaces or dots are rejected" {
+  _canonical_workflow
+  for name in credential_audit secrets_scan legacy_reference_guard Commit_Lint "  credential-audit  " "no claude attribution" "secrets.scan"; do
+    cat > "$WORKDIR/project-config.yaml" <<YAML
+ci_cd:
+  template_overrides:
+    disable: ["$name"]
+YAML
+    run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
+    [ "$status" -ne 0 ] || { echo "FAIL: variant '$name' should have been rejected" >&2; return 1; }
+  done
+}
+
+@test "an ordinary job name with underscores is still allowed" {
+  _canonical_workflow
+  cat > "$WORKDIR/project-config.yaml" <<'YAML'
+ci_cd:
+  template_overrides:
+    disable: ["docs_preview"]
+YAML
+  run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
+  [ "$status" -eq 0 ]
+}
+
+@test "mutant: dropping alias mapping lets the old name through" {
+  # Create a mutant that strips the legacy alias line from the critical list.
+  local mutant="$WORKDIR/mutant-overrides.sh"
+  sed '/# legacy alias/d' "$OVERRIDES" > "$mutant"
+  _canonical_workflow
+  # Try the old name against the mutant. With the alias line removed, the
+  # old name is no longer security-critical and should pass through (exit 0
+  # with a WARNING about unknown job, or silently). The real code rejects it.
+  cat > "$WORKDIR/project-config.yaml" <<'YAML'
+ci_cd:
+  template_overrides:
+    disable: [adr-048-guard]
+YAML
+  # Real code: must reject (non-zero exit).
+  run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
+  [ "$status" -ne 0 ]
+  # Mutant: must NOT reject (exit 0 — old name no longer protected).
+  run bash -c "source '$mutant' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml' 2>&1"
+  [ "$status" -eq 0 ]
 }
 
 # ---------- AC6: per-field validation ----------

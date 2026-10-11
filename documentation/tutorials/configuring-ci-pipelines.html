@@ -393,10 +393,10 @@ ci_cd:
       markdownlint: "0.41.0"               # pin adapter version</code></pre>
         <p>
           Five security-critical jobs are protected from <code>disable:</code>:
-          the commit-message linter, the architecture boundary guard, the
-          AI-attribution check, the secrets scanner, and the credential
-          auditor. Any <code>disable:</code> entry matching one of these
-          names (including hyphen and case variations) is rejected with an
+          <code>commitlint</code>, <code>legacy-reference-guard</code>,
+          <code>no-claude-attribution</code>, <code>secrets-scan</code>, and
+          <code>credential-audit</code>. Any <code>disable:</code> entry matching one of these
+          names (including case, hyphen, underscore and spacing variations) is rejected with an
           actionable error.
         </p>
 
