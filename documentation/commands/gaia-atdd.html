@@ -145,10 +145,11 @@
         <h2>Prerequisites</h2>
         <ul>
           <li>
-            <strong>A story file must exist.</strong> The file lives inside
-            its epic directory at
-            <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>
-            (epic-grouped layout). If it does not exist, the command stops
+            <strong>A story file must exist.</strong> The canonical location is
+            <code>.gaia/artifacts/implementation-artifacts/epic-{slug}/{story_key}-{story-slug}/story.md</code>
+            (per-story directory layout). The legacy layout
+            <code>epic-{slug}/stories/{story_key}-{slug}.md</code> is also
+            supported as a fallback. If neither exists, the command stops
             with "Story file not found for {story_key}". Create it first with
             <a href="gaia-create-story.html"><code>/gaia-create-story</code></a>.
           </li>
@@ -278,9 +279,9 @@ This warning is shown once per session.
           </li>
           <li>
             <span class="step-title">Load story file</span>
-            Searches
-            <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>
-            for the story file. Reads the story title, risk level, and every
+            Resolves the story file via the canonical per-story directory
+            (<code>epic-{slug}/{story_key}-{story-slug}/story.md</code>) or the
+            legacy grouped layout as a fallback. Reads the story title, risk level, and every
             entry in the <code>## Acceptance Criteria</code> section. Stories
             with zero ACs are skipped with a warning.
           </li>
@@ -377,7 +378,7 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Story file</td>
-              <td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code></td>
+              <td><code>.gaia/artifacts/implementation-artifacts/epic-{slug}/{story_key}-{story-slug}/story.md</code></td>
               <td>
                 Contains the acceptance criteria that are transformed into
                 test skeletons. Also provides story title and risk level.

@@ -221,23 +221,23 @@ How would you like to elaborate this story?
 
         <h3>3. Hotfix priority_flag workflow</h3>
         <p>When a story's frontmatter has <code>priority_flag: "hotfix"</code> (human-set), the story file is created normally. The <code>"hotfix"</code> value is preserved in the frontmatter. When <code>/gaia-sprint-plan</code> runs next, it auto-injects the story into the active sprint via <code>sprint-state.sh inject</code>.</p>
-        <pre><code>&gt; /gaia-create-story E12-S4
+        <pre><code>&gt; /gaia-create-story E1-S4
 
-Loading story E12-S4 from epics-and-stories.md...
+Loading story E1-S4 from epics-and-stories.md...
   Title: Fix payment webhook timeout
-  Epic: E12 -- Hotfix queue
+  Epic: E1 -- Hotfix queue
 
-[gaia-create-story] Canonical basename preview: E12-S4-fix-payment-webhook-timeout.md
+[gaia-create-story] Canonical basename preview: E1-S4-fix-payment-webhook-timeout.md
 
 Writing story file...
   Frontmatter: 17/17 required fields populated.
   priority_flag: "hotfix"
 
-Registering E12-S4 as backlog...
+Registering E1-S4 as backlog...
 Validation: PASSED (0 critical, 0 warning).
-Transitioning E12-S4 to ready-for-dev.
+Transitioning E1-S4 to ready-for-dev.
 
-Story E12-S4 created. priority_flag: "hotfix" preserved.
+Story E1-S4 created. priority_flag: "hotfix" preserved.
 Next: /gaia-sprint-plan will auto-inject this story into the active sprint.</code></pre>
 
         <h3>4. Regenerating an existing backlog story</h3>

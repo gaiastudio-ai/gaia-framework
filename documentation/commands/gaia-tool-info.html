@@ -58,7 +58,7 @@
         </div>
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
-          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Lifecycle phase:</dt><dd>Any (configuration / inspection)</dd>
           <dt>Arguments:</dt><dd><code>&lt;adapter-name&gt;</code></dd>
         </dl>
       </header>
@@ -109,6 +109,7 @@ Provider:   semgrep
 Source:     built-in
 Scope:      file
 Availability: available</code></pre>
+        <p>The <strong>Availability</strong> field uses a four-state probe vocabulary: <code>available</code> (binary found and working), <code>unavailable</code> (expected but not installed), <code>degraded</code> (installed but erroring), or <code>unknown</code> (probe skipped).</p>
       </section>
 
       <section id="what-next">

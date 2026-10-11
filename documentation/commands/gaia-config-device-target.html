@@ -87,7 +87,7 @@
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the device_targets section</span> Reads the current device_targets block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current device_targets configuration and an operation menu (add, remove, edit, view, exit).</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Screen sizes use the WxH@D format (e.g., 390x844@3.0). The platform must exist in the platforms list.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the device_targets section</span> Reads the current device_targets block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Dispatch subcommand</span> Executes the subcommand: <code>set</code> (upsert a platform's matrix), <code>show</code> (display one platform's targets), or <code>clear</code> (remove a platform from the device targets).</li><li><span class="step-title">Validate inputs</span> Screen sizes must use the <code>WxH@D</code> format (e.g., <code>390x844@3.0</code>). The platform must exist in the <code>platforms[]</code> list.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
       </section>
 
       <section id="inputs">
@@ -102,18 +102,12 @@
 
       <section id="example">
         <h2>Example session</h2>
-        <pre><code>> /gaia-config-device-target
+        <pre><code>> /gaia-config-device-target set android --os-versions "13,14,15" --form-factors "phone,tablet"
 
-Current device_targets configuration:
+current device_targets:
   ios:
     os_versions: ["17", "18"]
     form_factors: ["phone", "tablet"]
-
-Operations: [s] set key  [r] remove key  [v] view  [x] exit
-> s
-
-Key: android.os_versions
-Value: ["13", "14", "15"]
 
 Diff preview:
   device_targets:
@@ -122,11 +116,12 @@ Diff preview:
       form_factors: ["phone", "tablet"]
   + android:
   +   os_versions: ["13", "14", "15"]
+  +   form_factors: ["phone", "tablet"]
 
 Apply this edit? [y/n]
 > y
 
-Device_targets section updated. Run /gaia-config-validate to verify.</code></pre>
+device_targets section updated. Run /gaia-config-validate to verify.</code></pre>
       </section>
 
       <section id="what-next">
@@ -136,6 +131,7 @@ Device_targets section updated. Run /gaia-config-validate to verify.</code></pre
 
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
+        <h3>Unknown platform</h3><p>The platform identifier is not in your <code>platforms[]</code> list. The command exits with an error pointing you to <code>/gaia-config-platform add &lt;platform&gt;</code> to register it first.</p>
         <h3>device_targets section not found</h3><p>The section does not exist in your config file. The command offers to scaffold a default: <pre><code>device_targets:
   ios:
     os_versions: ["16.0", "17.0"]

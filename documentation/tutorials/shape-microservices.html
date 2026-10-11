@@ -424,7 +424,7 @@ ci_cd:
     cancel_in_progress: true</code></pre>
         <p>
           Running
-          <a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a>
+          <a href="../commands/gaia-config-ci.html"><code>/gaia-config-ci</code></a>
           generates one workflow per stack, each triggered by changes to
           that stack's path. A change to <code>services/user-service/</code>
           triggers only the user-service CI job.
@@ -434,7 +434,7 @@ ci_cd:
         <p>
           In a polyrepo, each repository has its own CI workflow. No path
           filters needed -- the entire repository is one stack. Run
-          <code>/gaia-ci-setup</code> in each repository independently.
+          <code>/gaia-config-ci</code> in each repository independently.
         </p>
 
         <h3>Cross-service integration tests</h3>

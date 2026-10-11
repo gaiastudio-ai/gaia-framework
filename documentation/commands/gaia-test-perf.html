@@ -63,7 +63,15 @@ This warning is shown once per session.
 /gaia-test-perf --target-url https://staging.example.com
 /gaia-test-perf --scenario load-test
 /gaia-test-perf E3-S7 --adapter k6 --target-url https://staging.example.com --scenario load-test</code></pre></section>
-      <section id="step-by-step"><h2>What it does step by step</h2><p>See the <a href="#what-it-does">description above</a> for the high-level flow. The command handles all steps automatically.</p></section>
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Resolve adapter</span> Selects the performance adapter (k6 or Lighthouse) from the <code>--adapter</code> flag, the <code>test_execution.perf.adapter</code> config key, or the default.</li>
+          <li><span class="step-title">Probe and collect evidence (Phase 3A)</span> Checks adapter availability, then executes the adapter's test against the target URL. Captures results and writes <code>analysis-results.json</code>.</li>
+          <li><span class="step-title">SLO and baseline checks</span> Evaluates measured metrics against declared SLOs and compares against stored baselines for regression detection. SLO breaches are Critical severity; regressions above the threshold are High.</li>
+          <li><span class="step-title">LLM judgment (Phase 3B)</span> The test architect agent interprets SLO conformance, regression severity, throughput consistency, and browser performance opportunities.</li>
+          <li><span class="step-title">Compute verdict and update gate</span> The verdict resolver produces APPROVE, REQUEST_CHANGES, or BLOCKED. If a story key was provided, the Review Gate is updated.</li>
+        </ol>
+      </section>
       <section id="inputs"><h2>Inputs</h2>
         <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody>
           <tr><td><code>story-key</code></td><td>Positional argument (optional)</td><td>Links the run to a story's Review Gate.</td><td><code>/gaia-test-perf E3-S7</code></td></tr>

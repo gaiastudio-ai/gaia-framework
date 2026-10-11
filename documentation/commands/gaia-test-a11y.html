@@ -62,7 +62,16 @@ This warning is shown once per session.
 /gaia-test-a11y --target-url https://staging.example.com
 /gaia-test-a11y --wcag-level AA
 /gaia-test-a11y E3-S7 --adapter pa11y --target-url https://staging.example.com --wcag-level AAA</code></pre></section>
-      <section id="step-by-step"><h2>What it does step by step</h2><p>See the <a href="#what-it-does">description above</a> for the high-level flow. The command handles all steps automatically.</p></section>
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Resolve adapter</span> Selects the a11y adapter (axe-core, pa11y, or Lighthouse) from the <code>--adapter</code> flag, the <code>test_execution.a11y.adapter</code> config key, or the default (axe-core).</li>
+          <li><span class="step-title">Probe availability</span> Checks whether the adapter's binary is installed. If missing, emits a BLOCKED verdict with an installation hint.</li>
+          <li><span class="step-title">Run adapter (Phase 3A)</span> Executes the adapter's scanner against the target URL at the configured WCAG level and captures structured results.</li>
+          <li><span class="step-title">LLM severity triage (Phase 3B)</span> Applies the shared WCAG rubric to classify each finding by severity. The LLM cannot override a deterministic adapter failure or a Critical-tier WCAG violation.</li>
+          <li><span class="step-title">Compute verdict</span> The verdict resolver produces APPROVE, REQUEST_CHANGES, or BLOCKED based on the combined Phase 3A/3B findings.</li>
+          <li><span class="step-title">Update Review Gate</span> If a story key was provided, maps the verdict to the canonical vocabulary (APPROVE to PASSED, REQUEST_CHANGES or BLOCKED to FAILED) and updates the story's Review Gate.</li>
+        </ol>
+      </section>
       <section id="inputs"><h2>Inputs</h2>
         <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody>
           <tr><td><code>story-key</code></td><td>Positional argument (optional)</td><td>Links the run to a story's Review Gate.</td><td><code>/gaia-test-a11y E3-S7</code></td></tr>

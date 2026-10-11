@@ -59,13 +59,18 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
           <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
-          <dt>Arguments:</dt><dd><code>[section-name]</code></dd>
+          <dt>Arguments:</dt><dd><code>[&lt;section-name&gt; | --full]</code></dd>
         </dl>
       </header>
 
       <section id="what-it-does">
         <h2>What it does</h2>
-        <p><code>/gaia-config-show</code> displays your <code>.gaia/config/project-config.yaml</code> file in read-only mode. With no argument, it shows the entire file. With a section name argument (e.g., <code>environments</code>, <code>stacks</code>), it shows only that section. Output is byte-verbatim -- comments and formatting are preserved exactly.</p>
+        <p><code>/gaia-config-show</code> displays your <code>.gaia/config/project-config.yaml</code> file in read-only mode. Three invocation shapes:</p>
+        <ul>
+          <li><strong>No argument (default)</strong> -- renders a top-level section TOC: an alphabetical list of every declared section in the schema. Helps you orient before drilling in.</li>
+          <li><strong>Positional <code>&lt;section-name&gt;</code></strong> -- displays that one section verbatim. Dotted paths (e.g., <code>ci_cd.template_overrides</code>) drill into nested subsections.</li>
+          <li><strong><code>--full</code></strong> -- renders the entire file byte-verbatim, including comments and formatting.</li>
+        </ul>
       </section>
 
       <section id="when-to-use">
@@ -80,18 +85,20 @@
 
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
-        <pre><code>/gaia-config-show
-/gaia-config-show environments</code></pre>
+        <pre><code>/gaia-config-show                          # section TOC (default)
+/gaia-config-show environments             # one section verbatim
+/gaia-config-show ci_cd.template_overrides # dotted drill-down
+/gaia-config-show --full                   # entire file verbatim</code></pre>
       </section>
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Render the file or section</span> Outputs the entire file or the named section verbatim. Uses syntax highlighting when available.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Dispatch by argument</span> <strong>No argument:</strong> renders the top-level section TOC (one section name per line, alphabetical). <strong>Positional section:</strong> extracts and displays that section verbatim. Dotted paths drill into nested subsections. <strong><code>--full</code>:</strong> outputs the entire file byte-verbatim. Uses syntax highlighting when available.</li></ol>
       </section>
 
       <section id="inputs">
         <h2>Inputs</h2>
-        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>section-name</code></td><td>Command argument (optional)</td><td>A top-level section name: project, stacks, platforms, regimes, ci_cd, environments, test_execution, tool_adapters, rubrics, compliance, deployment.</td></tr></tbody></table>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>section-name</code></td><td>Command argument (optional)</td><td>A top-level section name (e.g., <code>stacks</code>, <code>environments</code>, <code>compliance</code>). Dotted paths (e.g., <code>ci_cd.template_overrides</code>) drill into nested subsections. Run with no argument to see the full list.</td></tr><tr><td><code>--full</code></td><td>Flag (optional)</td><td>Renders the entire file byte-verbatim instead of a single section or the TOC.</td></tr></tbody></table>
       </section>
 
       <section id="outputs">
@@ -101,6 +108,26 @@
 
       <section id="example">
         <h2>Example session</h2>
+        <h3>Default (section TOC)</h3>
+        <pre><code>> /gaia-config-show
+
+Top-level sections in project-config.yaml:
+  brownfield
+  ci_cd
+  compliance
+  deployment
+  device_targets
+  environments
+  orchestration
+  platforms
+  project
+  stacks
+  test_execution
+  test_execution_bridge
+  tool_adapters
+  ...</code></pre>
+
+        <h3>Single section</h3>
         <pre><code>> /gaia-config-show environments
 
 environments:
@@ -121,7 +148,7 @@ environments:
 
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
-        <h3>Section not found</h3><p>The section name you provided does not exist in the config file. Check the available section names (project, stacks, platforms, etc.).</p><h3>project-config.yaml not found</h3><p>No configuration file exists. Run <a href="gaia-init.html"><code>/gaia-init</code></a> to create one.</p>
+        <h3>Section not found</h3><p>The section name you provided does not exist in the config file. Run <code>/gaia-config-show</code> with no argument to see the available sections.</p><h3>project-config.yaml not found</h3><p>No configuration file exists. Run <a href="gaia-init.html"><code>/gaia-init</code></a> to create one.</p>
       </section>
 
       <section id="related">

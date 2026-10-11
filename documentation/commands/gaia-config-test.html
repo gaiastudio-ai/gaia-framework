@@ -107,26 +107,31 @@
 Current test_execution configuration:
   tier_1:
     placement: local
-    runner: vitest
+  tier_2:
+    placement: ci-pre-merge
+  tier_3:
+    placement: ci-post-merge
 
-Operations: [s] set key  [r] remove key  [v] view  [x] exit
-> s
+Which tier to edit? [1/2/3]
+> 2
 
-Key: e2e.adapter
-Value: playwright-e2e
+Choose placement for tier_2: local, ci-pre-merge, ci-post-merge, deployment, post-deploy
+> deployment
 
 Diff preview:
   test_execution:
     tier_1:
       placement: local
-      runner: vitest
-  + e2e:
-  +   adapter: playwright-e2e
+    tier_2:
+  -   placement: ci-pre-merge
+  +   placement: deployment
+    tier_3:
+      placement: ci-post-merge
 
 Apply this edit? [y/n]
 > y
 
-Test_execution section updated. Run /gaia-config-validate to verify.</code></pre>
+test_execution section updated. Run /gaia-config-validate to verify.</code></pre>
       </section>
 
       <section id="what-next">

@@ -32,13 +32,20 @@
           <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
           <li><a href="shape-microservices.html">Shape: Microservices</a></li>
           <li><a href="shape-multi-repo.html">Shape: Multi-Repo / Per-Service</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html">Shape: Library</a></li>
+          <li><a href="shape-cli.html">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
         </ul>
         <p class="sidebar-section-title">On this page</p>
         <ul>
           <li><a href="#what-is-a-shape">What is a project shape?</a></li>
           <li><a href="#decision-tree">Decision tree</a></li>
           <li><a href="#comparison">Comparison table</a></li>
-          <li><a href="#shapes">The three shapes</a></li>
+          <li><a href="#shapes">The shapes</a></li>
           <li><a href="#whats-next">What to read next</a></li>
         </ul>
       </nav>
@@ -152,12 +159,54 @@
               <td>3+ environments</td>
               <td><code>standard</code> or <code>enterprise</code></td>
             </tr>
+            <tr>
+              <td><a href="shape-plugin.html">Plugin</a></td>
+              <td>1</td>
+              <td>marketplace</td>
+              <td>1--2 environments</td>
+              <td><code>solo</code> or <code>small-team</code></td>
+            </tr>
+            <tr>
+              <td><a href="shape-library.html">Library</a></td>
+              <td>1</td>
+              <td>registry (npm, PyPI, etc.)</td>
+              <td>1--2 environments</td>
+              <td><code>solo</code> or <code>small-team</code></td>
+            </tr>
+            <tr>
+              <td><a href="shape-cli.html">CLI</a></td>
+              <td>1</td>
+              <td>Homebrew / GitHub Releases</td>
+              <td>1--2 environments</td>
+              <td><code>solo</code> or <code>small-team</code></td>
+            </tr>
+            <tr>
+              <td><a href="shape-mobile-app.html">Mobile App</a></td>
+              <td>1--2</td>
+              <td>iOS / Android</td>
+              <td>2--3 environments</td>
+              <td><code>small-team</code> or <code>standard</code></td>
+            </tr>
+            <tr>
+              <td><a href="shape-container-image.html">Container Image</a></td>
+              <td>1</td>
+              <td>container registry</td>
+              <td>1--2 environments</td>
+              <td><code>solo</code> or <code>small-team</code></td>
+            </tr>
+            <tr>
+              <td><a href="shape-static-site.html">Static Site</a></td>
+              <td>1</td>
+              <td>CDN / static host</td>
+              <td>1--2 environments</td>
+              <td><code>solo</code> or <code>small-team</code></td>
+            </tr>
           </tbody>
         </table>
       </section>
 
       <section id="shapes">
-        <h2>The three shapes</h2>
+        <h2>The shapes</h2>
 
         <h3><a href="shape-single-repo.html">Single Repo</a></h3>
         <p>
@@ -182,6 +231,54 @@
           service in its own repository). The key challenges are contract
           testing between services and coordinated deployments.
         </p>
+
+        <h3><a href="shape-multi-repo.html">Multi-Repo / Per-Service</a></h3>
+        <p>
+          Each service lives in its own git repository. GAIA projects a
+          per-service config slice into each repo so that
+          <code>/gaia-config-ci</code> can generate self-contained workflows
+          without reading the central config.
+        </p>
+
+        <h3><a href="shape-plugin.html">Plugin</a></h3>
+        <p>
+          A Claude Code plugin (or any marketplace-distributed extension).
+          Phase 5 routes to <code>/gaia-publish</code> rather than
+          <code>/gaia-deploy</code> because there is no server to deploy to.
+        </p>
+
+        <h3><a href="shape-library.html">Library</a></h3>
+        <p>
+          A package published to a registry (npm, PyPI, Maven Central, etc.).
+          The release workflow pushes the built artifact to the registry via
+          the configured distribution channel.
+        </p>
+
+        <h3><a href="shape-cli.html">CLI</a></h3>
+        <p>
+          A command-line tool distributed via Homebrew, GitHub Releases,
+          or a custom channel. Phase 5 routes to <code>/gaia-publish</code>.
+        </p>
+
+        <h3><a href="shape-mobile-app.html">Mobile App</a></h3>
+        <p>
+          An iOS or Android application distributed through an app store.
+          Phase 5 routes to <code>/gaia-publish</code> and validates the
+          store submission payload.
+        </p>
+
+        <h3><a href="shape-container-image.html">Container Image</a></h3>
+        <p>
+          A Docker image pushed to a container registry. Phase 5 routes to
+          <code>/gaia-publish</code> and tags the image.
+        </p>
+
+        <h3><a href="shape-static-site.html">Static Site</a></h3>
+        <p>
+          An HTML/CSS/JS site deployed to a CDN or static-hosting provider.
+          Phase 5 routes to <code>/gaia-publish</code> because there are no
+          smoke endpoints to verify against.
+        </p>
       </section>
 
       <section id="whats-next">
@@ -195,6 +292,13 @@
           <li><a href="shape-fullstack.html">Shape: Full-Stack</a></li>
           <li><a href="shape-microservices.html">Shape: Microservices</a></li>
           <li><a href="shape-multi-repo.html">Shape: Multi-Repo / Per-Service</a></li>
+          <li><a href="shape-plugin.html">Shape: Plugin</a></li>
+          <li><a href="shape-library.html">Shape: Library</a></li>
+          <li><a href="shape-cli.html">Shape: CLI</a></li>
+          <li><a href="shape-mobile-app.html">Shape: Mobile App</a></li>
+          <li><a href="shape-container-image.html">Shape: Container Image</a></li>
+          <li><a href="shape-static-site.html">Shape: Static Site</a></li>
+          <li><a href="phase-5-for-non-deployable-projects.html">Phase 5 for Non-Deployable Projects</a></li>
           <li><a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a></li>
           <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a></li>
         </ul>
