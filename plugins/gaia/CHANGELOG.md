@@ -3,6 +3,77 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.220.0] — 2026-10-11
+
+### Added
+
+- route republish scope per project, check review coverage, split republish (#2075)
+- bound availability extraction and prove the identity tests with mutants (#2068)
+- create-ux discovers, creates and publishes to both design projects (#2032)
+- design-review reads back both design projects and routes the delta sync (#2033)
+- resolve the stakeholder roster once per run without following symlinks (#2024)
+- keep publication state per design project and partition the manifest (#2018)
+- route design-fidelity consumers to the right design project (#1998)
+- add design record schema v2 with separate design-system and product design references (#1993)
+- use the pull-request title as given and keep the story reference in the body (#1989)
+
+### Changed
+
+- drop leaked review labels, lint them, and close scope-path edge cases (#2092)
+- fix coverage, approval, example and troubleshooting (#2081)
+- correct two-project doc details and pin each fact in its sentence (#2078)
+- describe the two-project design model on the documentation site (#2077)
+- remove sigpipe races from grep -q pipelines over large text (#2072)
+- use the identity helper at every site and pin the helper and boundary with mutants (#2069)
+- map and validate design tokens in a single pass (#2066)
+- make the scaling, empty-name and pathological-name checks real (#2049)
+- drop doc re-read, make reconciliation linear, close review warnings (#2040)
+- pin the roster fast path and the dangling-parent refusal (#2034)
+- verify the design record hash chain in a single pass (#2000)
+
+### Fixed
+
+- read the published record's file key and count root token files (#2094)
+- bound the override reason before trimming and test the sanitised cap (#2093)
+- keep every interior byte, show trailing controls, cap raw length first (#2091)
+- never drop an edited screen, own scope per skill, stated remediation (#2086)
+- neutralise control characters in the design gate override reason (#2082)
+- add-feature surface halt and scope line, path normalisation, per-line rule tests (#2080)
+- one table locator so pipe prose never breaks delta sync (#2079)
+- general round-trip rules for block markers, separator, table end (#2076)
+- harden delta-sync table edges and stop at the section end (#2074)
+- round-trip escapes, line endings and pipe-less tables in delta sync (#2071)
+- protect designer files per file, close a header bypass, harden the publish record (#2067)
+- protect existing projects on bind, resize frames, fix review paths and heading (#2062)
+- send the canvas index only on layout changes and reject unknown publish outcomes (#2058)
+- accept the read tool's trailing notice and keep all canvas index keys on merge (#2057)
+- accept real canvas version ids and judge empty canvases by their own files (#2051)
+- rewrite the product-design resolve and canvas index flow as one procedure (#2050)
+- match tokens literally, fix adjacent and nul cases, test the exit wrapper (#2047)
+- keep existing canvas boards on bind, fix record-first references, pin name mapping (#2046)
+- fast first fill, nul-safe and order-stable reconciliation, guard fixes with tests (#2045)
+- reach the canvas read-back on re-runs, list before reading, pin token-name checks (#2042)
+- treat any empty canvas as creation, check token names, allow non-ascii values (#2039)
+- pass the specs directory, verify first publish at creation, reject unsafe tokens (#2038)
+- fail on stray markers, scope absent report (#2037)
+- close the create-ux binding, publication and test gaps from review (#2036)
+- close the design-review provenance, sync and test gaps from review (#2035)
+- pin the roster fail-closed paths and report the real refusal reason (#2031)
+- check the real Claude Design response shapes before a write (#2023)
+- fail closed on a wrong-shape publication state and drop quadratic discovery (#2021)
+- close review findings in the leak guard tests and two reworded skill lines (#2019)
+- treat an undecodable or non-string digest as a chain break (#2017)
+- remove internal traceability identifiers from the review and test skills (#2016)
+- reject an emptied audit trail and keep newline digests on the fast path (#2015)
+- escape ux-scope detector keys and add design-fidelity severity tiers (#2006)
+- apply the dev persona's design routing to any design record (#2001)
+- close design record review findings (#1997)
+- refuse a mismatched sprint id in every sprint-state writer (#1995)
+- make ci-wait report success, wait for every required check and take its timeout from project config (#1988)
+- harden ci-wait required-check polling and timeout handling (#1992)
+- tighten commit-subject key stripping and the pr wiring tests (#1991)
+- keep sprint-close and other suites out of the real project root (#1990)
+
 ## [1.219.0] — 2026-09-29
 
 ### Added
