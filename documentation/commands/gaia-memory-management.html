@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>/memory-management - GAIA Documentation</title>
+  <title>/gaia-memory-management - GAIA Documentation</title>
   <link rel="stylesheet" href="../styles.css">
 </head>
 <body>
@@ -43,11 +43,11 @@
       <nav class="breadcrumb">
         <a href="../index.html">Home</a><span class="separator">/</span>
         <a href="../categories/internal.html">Internal Skills</a><span class="separator">/</span>
-        /memory-management
+        /gaia-memory-management
       </nav>
       <header class="command-header">
         <div class="command-title">
-          <h1>/memory-management</h1>
+          <h1>/gaia-memory-management</h1>
           <span class="tag tag-internal">internal</span>
         </div>
         <dl class="command-meta">
@@ -79,7 +79,7 @@
 
       <section id="technical-notes">
         <h2>Technical notes</h2>
-        <ul><li>Missing sidecar directories are handled gracefully -- empty structures are returned, no files created eagerly.</li><li>Decision logs use read-entire, append-in-memory, write-entire semantics (last-writer-wins).</li><li>All budget thresholds come from <code>_memory/config.yaml</code> -- never hardcoded.</li><li>Companion skill: <code>memory-management-cross-agent</code> handles cross-agent memory reads.</li></ul>
+        <ul><li>Missing sidecar directories are handled gracefully -- empty structures are returned, no files created eagerly.</li><li>Decision logs use read-entire, append-in-memory, write-entire semantics (last-writer-wins).</li><li>All budget thresholds come from <code>.gaia/memory/config.yaml</code> -- never hardcoded.</li><li>Companion skill: <code>memory-management-cross-agent</code> handles cross-agent memory reads.</li></ul>
       </section>
       <footer class="page-footer">
         <p><a href="../categories/internal.html">Back to Internal Skills</a></p>

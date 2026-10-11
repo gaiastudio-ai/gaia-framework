@@ -95,7 +95,7 @@
         <ol class="step-list">
           <li><span class="step-title">Resolve story file</span> Locates the story file using the story key. Fails if the file is not found or if multiple files match.</li>
           <li><span class="step-title">Run validation</span> Invokes the validator in an isolated context. The validator checks frontmatter completeness (15 required fields), acceptance criteria format, file path references, dependency accuracy, and structural conformance.</li>
-          <li><span class="step-title">Fix loop (up to 3 attempts)</span> If the validator reports CRITICAL or WARNING findings, the command automatically attempts to fix them (adding missing frontmatter fields, correcting AC format, updating references). After each fix, it re-validates. The loop runs up to 3 attempts.</li>
+          <li><span class="step-title">Fix loop (up to 3 attempts)</span> If the validator reports CRITICAL or WARNING findings, the command automatically attempts to fix them (adding missing frontmatter fields, correcting AC format, updating references). After each fix, it re-validates with a fresh validator dispatch (not a continuation of the prior session). Each re-validation includes an envelope assertion; if the assertion fails, the verdict is recorded as UNVERIFIED. The loop runs up to 3 attempts.</li>
           <li><span class="step-title">Record verdict</span> Records the terminal verdict (PASSED, FAILED, or UNVERIFIED) in the story's validation ledger. This verdict is separate from the six Review Gate rows used by review commands.</li>
           <li><span class="step-title">Report results</span> Displays the verdict and lists any remaining findings.</li>
         </ol>

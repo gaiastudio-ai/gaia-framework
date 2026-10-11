@@ -93,12 +93,20 @@
       <section id="step-by-step">
         <h2>What it does step by step</h2>
         <ol class="step-list">
-          <li><span class="step-title">File inventory</span> Scans the plugin directory tree and compares file counts by type against the manifest.</li>
-          <li><span class="step-title">Workflow integrity</span> Verifies every workflow YAML has its companion instruction and validation files.</li>
+          <li><span class="step-title">File inventory</span> Scans the plugin directory tree and compares file counts by type against the manifest. Halts immediately if <code>manifest.yaml</code> is missing.</li>
+          <li><span class="step-title">Workflow integrity</span> Verifies every workflow YAML has its companion instruction, validation, and config-source files.</li>
           <li><span class="step-title">Agent integrity</span> Checks that agent definition files are well-formed and reference real files.</li>
-          <li><span class="step-title">Manifest integrity</span> Verifies the agent manifest matches the on-disk agent files.</li>
-          <li><span class="step-title">Config resolution</span> Verifies the configuration resolver produces parseable output.</li>
-          <li><span class="step-title">Skill and knowledge index integrity</span> Checks that skill index entries and knowledge fragments point to real files.</li>
+          <li><span class="step-title">Command integrity</span> Verifies every command definition references a real framework workflow, agent, or skill file. Cross-references the help CSV.</li>
+          <li><span class="step-title">Manifest integrity</span> Verifies the agent manifest matches the on-disk agent files and vice versa.</li>
+          <li><span class="step-title">Config resolution</span> Invokes the configuration resolver and verifies it produces parseable output under the two-file split.</li>
+          <li><span class="step-title">Skill index integrity</span> Checks that every skill index entry has a real file and valid line ranges.</li>
+          <li><span class="step-title">Knowledge index integrity</span> Checks that every knowledge index entry has a real fragment under 200 lines.</li>
+          <li><span class="step-title">Monolith-shard sync</span> Invokes the monolith-shard sync checker and folds any warnings into the findings list.</li>
+          <li value="10"><span class="step-title">Orphan-tmp sweep allowlist</span> Static check rejecting any startup orphan-tmp <code>find ... -delete</code> whose target paths fall outside the allowlist. Out-of-bounds sweeps are CRITICAL findings.</li>
+          <li><span class="step-title">Orchestration-class coverage</span> Verifies every SKILL.md declares a valid <code>orchestration_class:</code> frontmatter field. Missing fields or unknown values are CRITICAL findings.</li>
+          <li><span class="step-title">Fork-strip invariant</span> Verifies that no non-reviewer SKILL.md declares <code>context: fork</code>. Reviewers may retain <code>context: fork</code> (clean-room invariant). Violations are CRITICAL findings.</li>
+          <li><span class="step-title">Orchestration-warning invocation presence</span> Verifies that every heavy-procedural or conversational SKILL.md invokes both the orchestration-mode detection and warning scripts. Missing invocations are CRITICAL findings.</li>
+          <li><span class="step-title">Stale-flag registry audit</span> Scans <code>.gaia/memory/</code> for <code>*-stale</code> marker files and verifies every marker is registered in the stale-flag registry. Unregistered markers are CRITICAL findings.</li>
           <li><span class="step-title">Report</span> Emits a PASS/FAIL overall verdict with itemized findings grouped by severity (CRITICAL first).</li>
         </ol>
       </section>

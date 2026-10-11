@@ -59,7 +59,7 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
           <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
-          
+          <dt>Arguments:</dt><dd><code>[--add|--remove|--edit] [env-name]</code></dd>
         </dl>
       </header>
 
@@ -80,12 +80,15 @@
 
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
-        <pre><code>/gaia-config-env</code></pre>
+        <pre><code>/gaia-config-env                       # interactive menu
+/gaia-config-env --add production
+/gaia-config-env --remove staging
+/gaia-config-env --edit production</code></pre>
       </section>
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the environments section</span> Reads the current environments block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current environments configuration and an operation menu (add, remove, edit, view, exit).</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Credential values must be environment variable names, not literal secrets.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the environments section</span> Reads the current environments block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current environments configuration and an operation menu: <code>[a] add  [r] remove  [e] edit  [v] view  [x] exit</code>.</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Credential values must be environment variable names, not literal secrets.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
       </section>
 
       <section id="inputs">
@@ -108,11 +111,11 @@ Current environments configuration:
   staging:
     url: https://staging.example.com
 
-Operations: [s] set key  [r] remove key  [v] view  [x] exit
-> s
+Operations: [a] add  [r] remove  [e] edit  [v] view  [x] exit
+> a
 
-Key: production.url
-Value: https://app.example.com
+Environment name: production
+URL: https://app.example.com
 
 Diff preview:
   environments:

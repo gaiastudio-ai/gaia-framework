@@ -59,7 +59,7 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
           <dt>Lifecycle phase:</dt><dd>Any</dd>
-          <dt>Arguments:</dt><dd><code>[--preset solo|small-team|standard|enterprise|custom] [--regenerate]</code></dd>
+          <dt>Arguments:</dt><dd><code>[--preset solo|small-team|standard|enterprise|custom] [--regenerate] [--project-slice &lt;owner/repo|stack&gt; [--out &lt;path&gt;]]</code></dd>
         </dl>
       </header>
 
@@ -102,12 +102,12 @@
 
       <section id="inputs">
         <h2>Inputs</h2>
-        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>--preset</code></td><td>Command argument (optional)</td><td>Promotion chain preset: solo, small-team, standard, enterprise, or custom.</td></tr><tr><td><code>--regenerate</code></td><td>Flag (optional)</td><td>Refresh generated workflow files instead of scaffolding from scratch.</td></tr></tbody></table>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>--preset</code></td><td>Command argument (optional)</td><td>Promotion chain preset: solo, small-team, standard, enterprise, or custom.</td></tr><tr><td><code>--regenerate</code></td><td>Flag (optional)</td><td>Refresh generated workflow files instead of scaffolding from scratch.</td></tr><tr><td><code>--project-slice</code></td><td>Argument (optional)</td><td>Project a minimal per-service config slice for multi-repo or per-service setups. Takes <code>&lt;owner/repo|stack&gt;</code> and an optional <code>--out &lt;path&gt;</code> for the output location.</td></tr></tbody></table>
       </section>
 
       <section id="outputs">
         <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>CI workflow file</td><td>e.g., <code>.github/workflows/ci.yml</code></td><td>The generated pipeline configuration.</td></tr><tr><td>CI setup document</td><td><code>.gaia/artifacts/test-artifacts/ci-setup.md</code></td><td>Documentation of the CI/CD pipeline configuration.</td></tr><tr><td>Promotion chain</td><td><code>.gaia/config/project-config.yaml</code></td><td>The promotion chain written to the CI configuration.</td></tr></tbody></table>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>CI workflow file</td><td>e.g., <code>.github/workflows/gaia-pre-merge.yml</code></td><td>The generated pipeline configuration. Multi-stack projects also get selective-tests and release workflows.</td></tr><tr><td>CI setup document</td><td><code>.gaia/artifacts/test-artifacts/ci-setup.md</code></td><td>Documentation of the CI/CD pipeline configuration.</td></tr><tr><td>Promotion chain</td><td><code>.gaia/config/project-config.yaml</code></td><td>The promotion chain written to the CI configuration.</td></tr></tbody></table>
       </section>
 
       <section id="example">

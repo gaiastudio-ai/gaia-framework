@@ -15,7 +15,7 @@
     </aside>
     <main class="main-content">
       <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/testing.html">Testing</a><span class="separator">/</span>/gaia-test-perf</nav>
-      <header class="command-header"><div class="command-title"><h1>/gaia-test-perf</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd><!-- TODO Iris: drift between SKILL.md (no --scenario documented in argument-hint) and SKILL.md body (lists --scenario). -->
+      <header class="command-header"><div class="command-title"><h1>/gaia-test-perf</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd>
 <dt>Arguments:</dt><dd><code>[story-key] [--adapter k6|lighthouse] [--target-url URL] [--scenario NAME]</code></dd></dl></header>
       <section id="what-it-does"><h2>What it does</h2><p>Executes post-deploy performance tests via k6 (load testing) or Lighthouse (Core Web Vitals). Checks measured metrics against declared SLOs and compares against baseline for regression detection.</p></section>
       <section id="when-to-use"><h2>When to use it</h2><ul><li>You need to run performance tests against a live deployed endpoint.</li></ul></section>
@@ -55,7 +55,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
       <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-test-perf E3-S7
@@ -63,7 +63,15 @@ This warning is shown once per session.
 /gaia-test-perf --target-url https://staging.example.com
 /gaia-test-perf --scenario load-test
 /gaia-test-perf E3-S7 --adapter k6 --target-url https://staging.example.com --scenario load-test</code></pre></section>
-      <section id="step-by-step"><h2>What it does step by step</h2><p>See the <a href="#what-it-does">description above</a> for the high-level flow. The command handles all steps automatically.</p></section>
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Resolve adapter</span> Selects the performance adapter (k6 or Lighthouse) from the <code>--adapter</code> flag, the <code>test_execution.perf.adapter</code> config key, or the default.</li>
+          <li><span class="step-title">Probe and collect evidence (Phase 3A)</span> Checks adapter availability, then executes the adapter's test against the target URL. Captures results and writes <code>analysis-results.json</code>.</li>
+          <li><span class="step-title">SLO and baseline checks</span> Evaluates measured metrics against declared SLOs and compares against stored baselines for regression detection. SLO breaches are Critical severity; regressions above the threshold are High.</li>
+          <li><span class="step-title">LLM judgment (Phase 3B)</span> The test architect agent interprets SLO conformance, regression severity, throughput consistency, and browser performance opportunities.</li>
+          <li><span class="step-title">Compute verdict and update gate</span> The verdict resolver produces APPROVE, REQUEST_CHANGES, or BLOCKED. If a story key was provided, the Review Gate is updated.</li>
+        </ol>
+      </section>
       <section id="inputs"><h2>Inputs</h2>
         <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody>
           <tr><td><code>story-key</code></td><td>Positional argument (optional)</td><td>Links the run to a story's Review Gate.</td><td><code>/gaia-test-perf E3-S7</code></td></tr>
@@ -90,6 +98,6 @@ Running...
         </ul>
         <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
 </section>
-      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href=""><code>/</code></a></td><td>Related command.</td></tr></tbody></table></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-test-e2e.html"><code>/gaia-test-e2e</code></a></td><td>Post-deploy end-to-end tests. Peer deployment-phase action skill with the same Phase 3A/3B/3C plumbing.</td></tr><tr><td><a href="gaia-review-perf.html"><code>/gaia-review-perf</code></a></td><td>Static pre-merge performance review (N+1, complexity). Complementary to this dynamic post-deploy test.</td></tr></tbody></table></section>
       <footer class="page-footer"><p><a href="../categories/testing.html">Back to Testing</a></p></footer>
     </main></div></body></html>

@@ -236,8 +236,8 @@
           summary of what brownfield found. The assessment header carries
           <code>schema_version: 2.0.0</code> -- this is the wire version the
           downstream consumers expect. If you see anything else, run
-          <a href="../commands/gaia-migrate.html"><code>/gaia-migrate v1 v2</code></a>
-          to align the schema.
+          <a href="../commands/gaia-migrate.html"><code>/gaia-migrate dry-run</code></a>
+          (then <code>/gaia-migrate apply</code>) to align the schema.
         </p>
         <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/brownfield-assessment.md</code> (<code>schema_version: 2.0.0</code>).</p>
         <p><em>Expected duration: 1 minute.</em></p>
@@ -252,12 +252,14 @@
           re-run the brownfield architecture through
           <a href="../commands/gaia-create-arch.html"><code>/gaia-create-arch</code></a>:
         </p>
-        <pre><code>/gaia-create-arch --from-brownfield</code></pre>
+        <pre><code>/gaia-create-arch</code></pre>
         <p>
-          This is a known caveat: brownfield's Phase 2
-          stops at the descriptive architecture; the Review-Findings layer
-          only writes when <code>/gaia-create-arch</code> ingests the
-          brownfield draft as input.
+          <code>/gaia-create-arch</code> auto-detects the brownfield context
+          when <code>.gaia/artifacts/planning-artifacts/brownfield-assessment.md</code>
+          is present -- no special flag is needed. This is a known caveat:
+          brownfield's Phase 2 stops at the descriptive architecture; the
+          Review-Findings layer only writes when <code>/gaia-create-arch</code>
+          ingests the brownfield draft as input.
         </p>
         <p><em>Expected duration: 3 minutes.</em></p>
       </section>
@@ -339,16 +341,16 @@
           <li>
             <strong><code>/gaia-init</code>'s CI workflow scaffold is a
             deliberate <code>exit 1</code> stub until
-            <code>/gaia-ci-setup</code> runs.</strong> On a brownfield repo that already has tests
+            <code>/gaia-config-ci</code> runs.</strong> On a brownfield repo that already has tests
             asserting CI shape (e.g., a pytest test that checks for
             <code>actions/setup-python@v5</code> in the workflow), the
             stub <strong>fails those pre-existing assertions</strong>
-            until <code>/gaia-ci-setup</code> replaces the stub with a
+            until <code>/gaia-config-ci</code> replaces the stub with a
             real workflow. This is intentional fail-loud behaviour
             documented at
             <a href="../../plugins/gaia/skills/gaia-init/docs/ci-scaffold-stub.html">ci-scaffold-stub</a>,
             but expect a brief red window between
-            <code>/gaia-init</code> and <code>/gaia-ci-setup</code> on
+            <code>/gaia-init</code> and <code>/gaia-config-ci</code> on
             any repo with CI-shape tests.
           </li>
           <li>
@@ -377,15 +379,18 @@
             carries the schema version; downstream consumers (PRD, epics,
             test-plan generators) hard-require 2.0.0. Older schemas migrate
             via
-            <a href="../commands/gaia-migrate.html"><code>/gaia-migrate v1 v2</code></a>.
+            <a href="../commands/gaia-migrate.html"><code>/gaia-migrate dry-run</code></a>
+            (then <code>/gaia-migrate apply</code>).
           </li>
           <li>
             <strong>brownfield-arch is descriptive only.</strong> The Phase 2
             architecture documents what exists; it does not include the
             Review-Findings adversarial section. Re-run the brownfield draft
             through
-            <a href="../commands/gaia-create-arch.html"><code>/gaia-create-arch --from-brownfield</code></a>
-            (Step 8 above) to get the Review-Findings layer.
+            <a href="../commands/gaia-create-arch.html"><code>/gaia-create-arch</code></a>
+            (Step 8 above) to get the Review-Findings layer. The command
+            auto-detects brownfield context when the brownfield assessment
+            is present.
           </li>
           <li>
             <strong>Phase 8b downgrades CRITICAL to WARNING under YOLO; 8c

@@ -228,8 +228,10 @@
         <p>
           In exceptional cases the gate can be overridden using the
           <code>force-design</code> flag. An override is an audited event: the
-          design record logs the override reason, the person who authorised it,
-          the timestamp, and the sprint scope (<code>sprint_id</code>). When the
+          design record logs the override reason (control characters in the
+          reason text are neutralised before storage), the person who
+          authorised it, the timestamp, and the sprint scope
+          (<code>sprint_id</code>). When the
           override succeeds, a notice is surfaced to the developer with the
           current design state, the reason, and a warning that the UX document
           may be outdated. Overrides are visible in the sprint review and in
@@ -252,9 +254,14 @@
           ways that affect the design assumptions. When a design-affecting
           change lands &mdash; a new user journey, a modified data model, a revised
           set of target devices &mdash; the framework marks the design record as
-          stale. A stale design blocks solutioning just as an unapproved design
-          does: the gate fires with the same halt as any other non-approved state,
-          and the design must be re-approved through a review round.
+          stale. Stale transitions are triggered by
+          <a href="commands/gaia-edit-ux.html"><code>/gaia-edit-ux</code></a>
+          (always, since a direct UX edit is design-affecting) and by
+          <a href="commands/gaia-add-feature.html"><code>/gaia-add-feature</code></a>
+          (when the feature is design-affecting or ambiguous). A stale design
+          blocks solutioning just as an unapproved design does: the gate fires
+          with the same halt as any other non-approved state, and the design
+          must be re-approved through a review round.
         </p>
         <p>
           To clear the stale state, run

@@ -125,7 +125,7 @@ Gate: CONDITIONAL (1 FR without implementing story)
 Step 6b: dispatch-verb enforcement: clean.
 Step 6c: wire-verification: clean.
 
-Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
+Written to .gaia/artifacts/planning-artifacts/traceability-matrix.md</code></pre>
 
         <h3>2. surface_type column rendering</h3>
         <p>The matrix now includes a <code>surface_type</code> column read from each linked story's frontmatter. Stories without the field show <code>none</code> (forward-only adoption).</p>
@@ -134,7 +134,7 @@ Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
   FR-001   | User login          | command      | E1-S1    | 2    | 1   | 1   | 100%
   FR-008   | Config validation   | config       | E8-S3    | 1    | 0   | 0   | 33%
   FR-010   | Audit log export    | output       | E9-S2    | 1    | 1   | 0   | 66%
-  FR-012   | Legacy migration    | none         | E10-S1   | 2    | 0   | 0   | 50%</code></pre>
+  FR-012   | Legacy migration    | none         | E2-S1    | 2    | 0   | 0   | 50%</code></pre>
 
         <h3>3. BLOCKED finding -- missing integration row for a wired surface</h3>
         <p>When <code>surface_type != none</code> and zero integration-test rows link to the FR, Step 6c emits a BLOCKED finding and writes FAILED to the story's Test Review gate.</p>
@@ -163,7 +163,7 @@ Step 6c: wire-verification: clean (0 violations).
 NOTE: Test Review gate for E8-S3 is still FAILED from a prior run.
       Run /gaia-review-all to restore the gate to PASSED.
 
-Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
+Written to .gaia/artifacts/planning-artifacts/traceability-matrix.md</code></pre>
 
         <h3>5. Forward-only adoption -- existing stories without surface_type</h3>
         <p>Stories created before the surface_type column was introduced lack the <code>surface_type:</code> frontmatter field. These are treated as <code>surface_type: none</code> and produce no wire-verification findings.</p>
@@ -172,13 +172,13 @@ Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
 Loading requirements from prd.md... 20 FRs, 8 NFRs found.
 Building matrix...
 
-  FR-015  User preferences   none     E14-S2   Unit: 3, E2E: 1   100%
-  (surface_type field absent in E14-S2 frontmatter -- defaulting to none)
+  FR-015  User preferences   none     E4-S2    Unit: 3, E2E: 1   100%
+  (surface_type field absent in E4-S2 frontmatter -- defaulting to none)
 
 Step 6c: wire-verification: clean (0 violations).
   18 stories scanned, 12 with surface_type field, 6 defaulted to none.
 
-Written to .gaia/artifacts/test-artifacts/traceability-matrix.md</code></pre>
+Written to .gaia/artifacts/planning-artifacts/traceability-matrix.md</code></pre>
       </section>
 
       <section id="what-next"><h2>What to run next</h2>

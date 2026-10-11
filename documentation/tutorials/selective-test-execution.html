@@ -72,8 +72,7 @@
         <p>
           You need a <code>project-config.yaml</code> with at least one entry
           in the <code>stacks</code> section. Each stack must have a
-          <code>name</code> and a <code>paths</code> list (or a scalar
-          <code>path</code>). Read
+          <code>name</code> and a <code>paths</code> array. Read
           <a href="configuring-ci-pipelines.html">Configuring CI Pipelines</a>
           and
           <a href="test-strategy-configuration.html">Test Strategy Configuration</a>
@@ -182,9 +181,9 @@
         <pre><code># .gaia/config/project-config.yaml
 stacks:
   - name: api
-    path: src
+    paths: ["src/**"]
     language: typescript
-    test_command: npm test</code></pre>
+    test_cmd: npm test</code></pre>
 
         <h3>What happens</h3>
         <p>
@@ -235,17 +234,17 @@ stacks:
         <pre><code># .gaia/config/project-config.yaml
 stacks:
   - name: frontend
-    path: packages/web
+    paths: ["packages/web/**"]
     language: typescript
-    test_command: npm test
+    test_cmd: npm test
   - name: backend
-    path: packages/api
+    paths: ["packages/api/**"]
     language: python
-    test_command: pytest
+    test_cmd: pytest
   - name: worker
-    path: packages/worker
+    paths: ["packages/worker/**"]
     language: go
-    test_command: go test ./...</code></pre>
+    test_cmd: go test ./...</code></pre>
 
         <h3>What happens</h3>
         <p>
@@ -313,28 +312,28 @@ stacks:
         <pre><code># .gaia/config/project-config.yaml
 stacks:
   - name: shared-lib
-    path: packages/shared
+    paths: ["packages/shared/**"]
     language: typescript
-    test_command: npm test
+    test_cmd: npm test
 
   - name: frontend
-    path: packages/web
+    paths: ["packages/web/**"]
     language: typescript
-    test_command: npm test
+    test_cmd: npm test
     cross_refs:
       - shared-lib
 
   - name: backend
-    path: packages/api
+    paths: ["packages/api/**"]
     language: python
-    test_command: pytest
+    test_cmd: pytest
     cross_refs:
       - shared-lib
 
   - name: worker
-    path: packages/worker
+    paths: ["packages/worker/**"]
     language: go
-    test_command: go test ./...</code></pre>
+    test_cmd: go test ./...</code></pre>
 
         <h3>What happens</h3>
         <p>

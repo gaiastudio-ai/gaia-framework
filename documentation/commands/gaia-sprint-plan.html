@@ -190,14 +190,14 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
 
       <section id="hotfix-injection">
         <h2>Hotfix auto-injection</h2>
         <p>Stories with <code>priority_flag: "hotfix"</code> in their frontmatter are auto-injected into the <strong>active</strong> sprint at Step 1, before the interactive selection ceremony begins. This differs from the <code>"next-sprint"</code> flag, which pre-fills the candidate set for user confirmation.</p>
-        <p>Key behaviors (PR #772):</p>
+        <p>Key behaviors:</p>
         <ul>
           <li>Injection uses <code>sprint-state.sh inject</code> (the sanctioned boundary writer). The call is idempotent -- re-runs are no-ops.</li>
           <li>Capacity-exceeded does <strong>not</strong> block hotfix injection. A hotfix is a sanctioned bypass of normal sprint capacity.</li>
@@ -308,12 +308,12 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Action items</td>
-              <td><code>.gaia/artifacts/planning-artifacts/action-items.yaml</code></td>
-              <td>Checked for blocking escalations before planning begins.</td>
+              <td><code>.gaia/state/action-items.yaml</code></td>
+              <td>Checked for blocking escalations before planning begins. Falls back to the legacy path <code>.gaia/artifacts/planning-artifacts/action-items.yaml</code>.</td>
             </tr>
             <tr>
               <td>Previous retrospective</td>
-              <td><code>.gaia/artifacts/implementation-artifacts/retro-*.md</code></td>
+              <td><code>.gaia/artifacts/implementation-artifacts/retro-{sprint_id}.md</code></td>
               <td>If available, open action items are surfaced as sprint constraints.</td>
             </tr>
             <tr>
@@ -405,9 +405,9 @@ Loading backlog from epics-and-stories.md...
   12 stories total, 6 selectable.
 
 Hotfix injection:
-  WARNING: hotfix story E12-S4 injected into active sprint via
+  WARNING: hotfix story E1-S4 injected into active sprint via
            priority_flag: "hotfix"
-  WARNING: hotfix story E12-S5 injected into active sprint via
+  WARNING: hotfix story E1-S5 injected into active sprint via
            priority_flag: "hotfix"
 
   Auto-included by priority_flag: E5-S18
@@ -418,8 +418,8 @@ Sprint scoping:
   Sprint number? sprint-5
 
 Story selection (hotfix stories already injected):
-  E12-S4  Fix payment webhook timeout    S (2)  [hotfix -- already injected]
-  E12-S5  Patch auth token expiry        S (2)  [hotfix -- already injected]
+  E1-S4  Fix payment webhook timeout    S (2)  [hotfix -- already injected]
+  E1-S5  Patch auth token expiry        S (2)  [hotfix -- already injected]
   E5-S18  Webhook retry backoff          M (3)  [priority_flag: next-sprint]
   E3-S11  Dashboard filtering            L (5)
   Total: 12 / 21 points (57% capacity)
@@ -436,14 +436,14 @@ Loading backlog...
   8 selectable stories.
 
 Hotfix injection:
-  WARNING: hotfix story E12-S4 injected into active sprint via
+  WARNING: hotfix story E1-S4 injected into active sprint via
            priority_flag: "hotfix"
 
 Sprint scoping:
   Velocity estimate? 13 points
 
 Story selection:
-  E12-S4  Fix payment webhook timeout    S (2)  [hotfix -- already injected]
+  E1-S4  Fix payment webhook timeout    S (2)  [hotfix -- already injected]
   E3-S9   Dashboard search               L (5)
   E4-S6   Rate limiting middleware        L (5)
   E3-S10  Export CSV                      M (3)

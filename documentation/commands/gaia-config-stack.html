@@ -59,13 +59,13 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
           <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
-          
+          <dt>Arguments:</dt><dd><code>[--add|--remove|--edit|--reorder] [stack-name]</code></dd>
         </dl>
       </header>
 
       <section id="what-it-does">
         <h2>What it does</h2>
-        <p><code>/gaia-config-stack</code> edits the <code>stacks</code> section of <code>.gaia/config/project-config.yaml</code>. The stacks section defines the technology stacks in your project with their languages and file path patterns. Review skills use this to determine which stack applies to the changed files. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
+        <p><code>/gaia-config-stack</code> edits the <code>stacks</code> section of <code>.gaia/config/project-config.yaml</code>. The stacks section is an ordered list of stack-path rules -- each entry has a <code>name</code>, <code>language</code>, and <code>paths</code> (glob patterns). Review skills resolve the active stack by walking entries in declaration order and matching against the changed-file list (first-match wins). Optional fields support multi-stack monorepo partitioning: <code>path</code> (root directory), <code>excludes</code> (globs to skip), <code>cross_refs</code> (allowed inter-stack references), and <code>ignore_nested_manifests</code>. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
       </section>
 
       <section id="when-to-use">
@@ -80,12 +80,16 @@
 
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
-        <pre><code>/gaia-config-stack</code></pre>
+        <pre><code>/gaia-config-stack                    # interactive menu
+/gaia-config-stack --add my-api
+/gaia-config-stack --remove my-api
+/gaia-config-stack --edit my-api
+/gaia-config-stack --reorder</code></pre>
       </section>
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the stacks section</span> Reads the current stacks block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current stacks configuration and an operation menu (add, remove, edit, view, exit).</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Each stack entry requires a name, language, and paths (glob patterns).</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the stacks section</span> Reads the current stacks block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present operation menu</span> Shows the current stacks as a numbered table (position, name, language, paths) and a menu: <code>[a] add  [r] remove  [e] edit  [o] reorder  [v] view  [x] exit</code>.</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Each stack entry requires <code>name</code>, <code>language</code>, and <code>paths</code> (glob patterns). Optional fields (<code>path</code>, <code>excludes</code>, <code>cross_refs</code>, <code>ignore_nested_manifests</code>) are additive. Stack names must be unique. Declaration order is significant (first-match resolution).</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
       </section>
 
       <section id="inputs">
@@ -102,26 +106,26 @@
         <h2>Example session</h2>
         <pre><code>> /gaia-config-stack
 
-Current stacks configuration:
-  api:
-    language: typescript
-    path: packages/api
-    framework: express
+Current stacks:
+  | # | Name | Language   | Paths            |
+  |---|------|------------|------------------|
+  | 1 | api  | typescript | ["packages/api/**"] |
 
-Operations: [s] set key  [r] remove key  [v] view  [x] exit
-> s
+Operations: [a] add  [r] remove  [e] edit  [o] reorder  [v] view  [x] exit
+> a
 
-Key: web.language
-Value: typescript
+Stack name: web
+Language: typescript
+Paths (glob patterns): ["apps/web/**"]
 
 Diff preview:
   stacks:
-    api:
+    - name: api
       language: typescript
-      path: packages/api
-      framework: express
-  + web:
+      paths: ["packages/api/**"]
+  + - name: web
   +   language: typescript
+  +   paths: ["apps/web/**"]
 
 Apply this edit? [y/n]
 > y

@@ -58,7 +58,7 @@
         </div>
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
-          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Lifecycle phase:</dt><dd>Any (configuration / inspection)</dd>
           <dt>Arguments:</dt><dd><code>&lt;adapter-name&gt;</code></dd>
         </dl>
       </header>
@@ -109,6 +109,7 @@ Provider:   semgrep
 Source:     built-in
 Scope:      file
 Availability: available</code></pre>
+        <p>The <strong>Availability</strong> field uses a five-state probe vocabulary: <code>available</code> (tool installed, files match, run exits 0), <code>expected_and_missing</code> (tool declared in adapter but not on PATH), <code>ran_and_errored</code> (run exits non-zero or times out), <code>not_applicable</code> (no input files match the adapter's extensions), or <code>unknown</code> (probe skipped).</p>
       </section>
 
       <section id="what-next">

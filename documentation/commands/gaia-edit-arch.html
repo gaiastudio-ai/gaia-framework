@@ -46,7 +46,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
       <section id="how-to-invoke"><h2>How to invoke</h2><pre><code>/gaia-edit-arch</code></pre></section>
@@ -58,7 +58,9 @@ This warning is shown once per session.
           <li><span class="step-title">Record ADRs</span> Creates new ADR entries with auto-incremented IDs. Supersedes old ADRs when applicable.</li>
           <li><span class="step-title">Version and save</span> Adds a version note and writes the updated document.</li>
           <li><span class="step-title">Adversarial review</span> If triggered by the change type, runs an adversarial review.</li>
+          <li><span class="step-title">Val auto-fix loop</span> Runs validation against the saved document. If critical or warning findings are returned, applies a fix and re-validates (up to 3 iterations).</li>
           <li><span class="step-title">Cascade assessment</span> Checks impact on epics, stories, test plan, infrastructure design, and traceability matrix. Reports impact level and recommended next commands.</li>
+          <li><span class="step-title">Re-shard</span> Re-shards the architecture monolith so per-section shards stay aligned. Skipped when <code>--monolith-only</code> is passed.</li>
         </ol>
       </section>
       <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Existing architecture</td><td><code>.gaia/artifacts/planning-artifacts/architecture.md</code></td><td>The architecture document to edit.</td></tr></tbody></table></section>
@@ -85,7 +87,9 @@ Cascade assessment:
         <li><a href="gaia-add-stories.html"><code>/gaia-add-stories</code></a> -- add stories for the new architecture scope.</li>
         <li><a href="gaia-edit-test-plan.html"><code>/gaia-edit-test-plan</code></a> -- update test plan for architecture changes.</li>
       </ul></section>
-      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"No architecture document found"</h3><p>Run <a href="gaia-create-arch.html"><code>/gaia-create-arch</code></a> first.</p>
+      <section id="troubleshooting"><h2>Troubleshooting</h2>
+        <h3>"Design is not approved"</h3><p>The design must be approved via <code>/gaia-design-review</code> before editing the architecture. Pass <code>--force-design</code> with a reason to override this gate.</p>
+        <h3>"No architecture document found"</h3><p>Run <a href="gaia-create-arch.html"><code>/gaia-create-arch</code></a> first.</p>
         <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
         <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
         <ul>

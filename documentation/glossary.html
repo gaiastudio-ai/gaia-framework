@@ -89,15 +89,71 @@
         <dt id="artifact">Artifact</dt>
         <dd>
           A document that GAIA creates or reads during a workflow. Artifacts
-          are stored in subdirectories of <code>docs/</code>: planning
-          artifacts (PRD, architecture, UX design) go in
+          are stored in subdirectories of <code>.gaia/artifacts/</code>: planning
+          artifacts (PRD, architecture, UX design, test plan, test strategy,
+          traceability matrix) go in
           <code>.gaia/artifacts/planning-artifacts/</code>, implementation artifacts
           (sprint plans, story files) in
           <code>.gaia/artifacts/implementation-artifacts/</code>, test artifacts
-          (test plans, ATDD scenarios, traceability matrices) in
+          (<code>ci-setup.md</code> and test reports) in
           <code>.gaia/artifacts/test-artifacts/</code>, and creative artifacts
           (brainstorms, design thinking outputs) in
           <code>.gaia/artifacts/creative-artifacts/</code>.
+        </dd>
+
+        <dt id="claude-design">Claude Design</dt>
+        <dd>
+          The framework's sole design surface. Claude Design hosts two
+          project types: a <a href="#design-system-project">design-system
+          project</a> (tokens and components, accessed through DesignSync)
+          and a <a href="#product-design-project">product design project</a>
+          (screens and flows, accessed through the Artifact tool as a
+          Design-type artifact). The integration is checked for
+          availability before the first call in any design-touching skill.
+          See the <a href="design-lifecycle.html">design lifecycle
+          overview</a>.
+        </dd>
+
+        <dt id="design-gate">Design Gate</dt>
+        <dd>
+          A prerequisite that blocks phase-three entry points
+          (<code>/gaia-dev-story</code>,
+          <code>/gaia-create-arch</code>,
+          <code>/gaia-readiness-check</code>,
+          <code>/gaia-adversarial</code>,
+          <code>/gaia-threat-model</code>, and others) until the
+          <a href="#design-record">design record</a> is in the
+          <code>approved</code> state. Projects without a UI
+          (<code>compliance.ui_present: false</code> or absent) skip
+          the gate. An audited override
+          (<code>--force-design --reason "&lt;text&gt;"</code>) is
+          available; the reason is sanitised (control characters are
+          neutralised) and the override entry records the sprint scope.
+        </dd>
+
+        <dt id="design-record">Design Record</dt>
+        <dd>
+          The YAML state machine at
+          <code>.gaia/state/design-record.yaml</code> that tracks the
+          design's approval lifecycle. It moves through
+          <code>draft &rarr; review &rarr; approved &rarr; stale</code>
+          (stale loops back to review after changes). All writes go
+          through a sole writer script; no skill writes the file
+          directly. The record references both the
+          <a href="#design-system-project">design-system project</a> and
+          the <a href="#product-design-project">product design project</a>,
+          and carries an append-only audit trail with a hash chain.
+        </dd>
+
+        <dt id="design-system-project">Design-system Project</dt>
+        <dd>
+          The <a href="#claude-design">Claude Design</a> project that
+          holds design tokens (colours, spacing, typography) and
+          component specifications. Accessed through DesignSync
+          (<code>create_project</code>, <code>finalize_plan</code>,
+          <code>write_files</code>). When the stack does not include
+          React, the project is built as a brand-style artifact (fonts,
+          colours, guidelines) instead of a compiled component bundle.
         </dd>
 
         <dt id="edge-types">Edge types (knowledge layer)</dt>
@@ -150,10 +206,13 @@
           manifest and <code>brain-index.md</code> as a human-readable
           <a href="#moc">Map of Content</a>. Retrieval uses grep, tags, and
           the manifest only -- no vectors, no embeddings, no external service.
-          Three commands expose the Brain:
+          Six commands expose the Brain:
           <a href="commands/gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a>,
-          <a href="commands/gaia-brain-query.html"><code>/gaia-brain-query</code></a>, and
-          <a href="commands/gaia-brain-health.html"><code>/gaia-brain-health</code></a>.
+          <a href="commands/gaia-brain-query.html"><code>/gaia-brain-query</code></a>,
+          <a href="commands/gaia-brain-health.html"><code>/gaia-brain-health</code></a>,
+          <a href="commands/gaia-feed.html"><code>/gaia-feed</code></a>,
+          <a href="commands/gaia-knowledge-refresh.html"><code>/gaia-knowledge-refresh</code></a>, and
+          <a href="commands/gaia-unfeed.html"><code>/gaia-unfeed</code></a>.
           See the <a href="gaia-brain.html">GAIA Brain concept page</a>.
         </dd>
 
@@ -217,6 +276,20 @@
           <a href="commands/gaia-nfr.html"><code>/gaia-nfr</code></a>.
         </dd>
 
+        <dt id="product-design-project">Product Design Project</dt>
+        <dd>
+          The <a href="#claude-design">Claude Design</a> project that
+          holds screen specifications and user flows. It is a Design-type
+          artifact accessed through the Artifact tool. Screens carry the
+          full resolved token block, so a token change in the
+          <a href="#design-system-project">design-system project</a>
+          also refreshes the product design project's screens. Created
+          or bound during
+          <a href="commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>
+          and reviewed during
+          <a href="commands/gaia-design-review.html"><code>/gaia-design-review</code></a>.
+        </dd>
+
         <dt id="promotion-chain">Promotion chain</dt>
         <dd>
           An ordered list of branches or environments that a change moves
@@ -249,7 +322,8 @@
         <dt id="review-gate">Review Gate</dt>
         <dd>
           A table in a story file that tracks the status of six review
-          types: code, QA, security, test, performance, and accessibility.
+          types: Code Review, QA Tests, Security Review, Test Automation,
+          Test Review, and Performance Review.
           Each row starts as UNVERIFIED and is updated to PASSED or FAILED
           when the corresponding review command runs. A story cannot
           transition to <code>done</code> status until all Review Gate rows
@@ -264,12 +338,15 @@
           uses a four-layer rubric pipeline (base, compliance, project,
           custom) that merges into a single effective rubric at runtime.
           Configured in <code>.gaia/config/project-config.yaml</code> under the
-          <code>rubrics</code> section.
+          <code>rubrics</code> section. Severity mapping and per-gate
+          overrides are managed with
+          <a href="commands/gaia-config-severity.html"><code>/gaia-config-severity</code></a> and
+          <a href="commands/gaia-config-gates.html"><code>/gaia-config-gates</code></a>.
         </dd>
 
         <dt id="sidecar">Sidecar (Memory Sidecar)</dt>
         <dd>
-          A per-agent memory file stored in <code>_memory/</code> that
+          A per-agent memory file stored in <code>.gaia/memory/</code> that
           persists decisions, context, and session state across
           conversations. Each GAIA agent (pm, architect, dev, test-architect,
           validator, etc.) has its own sidecar. The
@@ -282,14 +359,14 @@
           A time-boxed work iteration containing a set of stories selected
           from the backlog. Sprints are planned with
           <a href="commands/gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a>
-          and tracked in <code>sprint-status.yaml</code>. Each sprint has
+          and tracked in <code>.gaia/state/sprint-status.yaml</code>. Each sprint has
           an ID (e.g., <code>sprint-3</code>), a velocity target, and a
           set of committed stories.
         </dd>
 
         <dt id="sprint-status">sprint-status.yaml</dt>
         <dd>
-          The file that records the current sprint's state: which stories
+          The file at <code>.gaia/state/sprint-status.yaml</code> that records the current sprint's state: which stories
           are committed, their statuses, and aggregate metrics. This file
           is managed exclusively through GAIA commands (never edited by
           hand). Viewed with

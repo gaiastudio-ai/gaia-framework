@@ -49,7 +49,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
 
@@ -63,6 +63,7 @@ This warning is shown once per session.
           <li><span class="step-title">Save and version</span> Writes the updated PRD with a version note documenting what changed and why.</li>
           <li><span class="step-title">Adversarial review</span> If the change type triggers it, runs an adversarial review and incorporates findings.</li>
           <li><span class="step-title">Cascade assessment</span> Compares PRD changes against the architecture scope and classifies cascade impact: NONE, MINOR, or SIGNIFICANT. Recommends the appropriate next command.</li>
+          <li><span class="step-title">Re-shard</span> Re-shards the PRD monolith so per-section shards stay aligned. Skipped when <code>--monolith-only</code> is passed.</li>
         </ol>
       </section>
 

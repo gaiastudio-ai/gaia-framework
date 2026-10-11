@@ -39,7 +39,7 @@
             </tr>
           </tbody>
         </table>
-        <p>The story file is written to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code> with the 15 required frontmatter fields. The <code>priority_flag</code> field accepts <code>null</code> (default), <code>"next-sprint"</code>, or <code>"hotfix"</code> (PR #772). The <code>"hotfix"</code> value is human-set only and causes <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> to auto-inject the story into the active sprint.</p>
+        <p>The story file is written to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code> with the 17 required frontmatter fields. The <code>priority_flag</code> field accepts <code>null</code> (default), <code>"next-sprint"</code>, or <code>"hotfix"</code>. The <code>"hotfix"</code> value is human-set only and causes <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> to auto-inject the story into the active sprint.</p>
         <p><strong>Layout note.</strong> The canonical layout is the <strong>nested per-story directory</strong> shown above — the basename is always the literal <code>story.md</code> and the parent directory carries the story key + slug. Earlier doc revisions and legacy SKILL.md text showed a flat <code>{key}-{slug}.md</code> shape; that legacy form remains read-only (consumers like <a href="gaia-check-dod.html"><code>/gaia-check-dod</code></a> and <a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a> walk all three tiers: flat, legacy-nested-with-<code>stories/</code>, and the new per-story). New writes always use the per-story directory; a sibling <code>reviews/</code> subdir holds review reports.</p>
       </section>
 
@@ -95,7 +95,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
 
@@ -109,7 +109,7 @@ This warning is shown once per session.
           <li><span class="step-title">Select story</span> Locates the story in epics-and-stories.md and checks whether a file already exists.</li>
           <li><span class="step-title">Load context</span> Reads the architecture, UX design, and PRD for elaboration context.</li>
           <li><span class="step-title">Elaborate story</span> Offers two paths: answer elaboration questions yourself, or auto-delegate to PM and Architect agents (and UX Designer if the story has UI scope). For medium and larger stories, edge-case analysis runs automatically.</li>
-          <li><span class="step-title">Generate story file</span> Writes the story file with complete frontmatter (15 required fields), acceptance criteria, tasks, test scenarios, and dependencies to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code>.</li>
+          <li><span class="step-title">Generate story file</span> Writes the story file with complete frontmatter (17 required fields), acceptance criteria, tasks, test scenarios, and dependencies to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code>.</li>
           <li><span class="step-title">Register in backlog</span> Registers the story with <code>status: backlog</code> across all tracking surfaces.</li>
           <li><span class="step-title">Validate</span> Runs validation against the story file. If critical issues are found, attempts auto-fix (up to 3 attempts). On pass, transitions the story to <code>ready-for-dev</code>.</li>
         </ol>
@@ -188,7 +188,7 @@ Edge case analysis: 6 scenarios generated (boundary, error, security).
 Appending edge-case ACs to story...
 
 Writing story file to .gaia/artifacts/implementation-artifacts/epic-E3-security/E3-S7-user-authentication/story.md...
-  Frontmatter: 15/15 required fields populated.
+  Frontmatter: 17/17 required fields populated.
   ACs: 5 primary + 3 edge-case (Given/When/Then format).
   Tasks: 8 subtasks.
   Test scenarios: 6 rows.
@@ -221,23 +221,23 @@ How would you like to elaborate this story?
 
         <h3>3. Hotfix priority_flag workflow</h3>
         <p>When a story's frontmatter has <code>priority_flag: "hotfix"</code> (human-set), the story file is created normally. The <code>"hotfix"</code> value is preserved in the frontmatter. When <code>/gaia-sprint-plan</code> runs next, it auto-injects the story into the active sprint via <code>sprint-state.sh inject</code>.</p>
-        <pre><code>&gt; /gaia-create-story E12-S4
+        <pre><code>&gt; /gaia-create-story E1-S4
 
-Loading story E12-S4 from epics-and-stories.md...
+Loading story E1-S4 from epics-and-stories.md...
   Title: Fix payment webhook timeout
-  Epic: E12 -- Hotfix queue
+  Epic: E1 -- Hotfix queue
 
-[gaia-create-story] Canonical basename preview: E12-S4-fix-payment-webhook-timeout.md
+[gaia-create-story] Canonical basename preview: E1-S4-fix-payment-webhook-timeout.md
 
 Writing story file...
-  Frontmatter: 15/15 required fields populated.
+  Frontmatter: 17/17 required fields populated.
   priority_flag: "hotfix"
 
-Registering E12-S4 as backlog...
+Registering E1-S4 as backlog...
 Validation: PASSED (0 critical, 0 warning).
-Transitioning E12-S4 to ready-for-dev.
+Transitioning E1-S4 to ready-for-dev.
 
-Story E12-S4 created. priority_flag: "hotfix" preserved.
+Story E1-S4 created. priority_flag: "hotfix" preserved.
 Next: /gaia-sprint-plan will auto-inject this story into the active sprint.</code></pre>
 
         <h3>4. Regenerating an existing backlog story</h3>
@@ -261,7 +261,7 @@ Writing story file...
 Registering E6-S9 as backlog...
 
 Validation attempt 1/3: 1 CRITICAL (missing traces_to field).
-  Auto-fix: added traces_to: [FR-042].
+  Auto-fix: added traces_to field.
 
 Validation attempt 2/3: 1 WARNING (AC-3 missing Given/When/Then format).
   Auto-fix: reformatted AC-3.
