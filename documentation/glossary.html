@@ -100,6 +100,61 @@
           <code>.gaia/artifacts/creative-artifacts/</code>.
         </dd>
 
+        <dt id="claude-design">Claude Design</dt>
+        <dd>
+          The framework's sole design surface. Claude Design hosts two
+          project types: a <a href="#design-system-project">design-system
+          project</a> (tokens and components, accessed through DesignSync)
+          and a <a href="#product-design-project">product design project</a>
+          (screens and flows, accessed through the Artifact tool as a
+          Design-type artifact). The integration is checked for
+          availability before the first call in any design-touching skill.
+          See the <a href="design-lifecycle.html">design lifecycle
+          overview</a>.
+        </dd>
+
+        <dt id="design-gate">Design Gate</dt>
+        <dd>
+          A prerequisite that blocks phase-three entry points
+          (<code>/gaia-dev-story</code>,
+          <code>/gaia-create-arch</code>,
+          <code>/gaia-readiness-check</code>,
+          <code>/gaia-adversarial</code>,
+          <code>/gaia-threat-model</code>, and others) until the
+          <a href="#design-record">design record</a> is in the
+          <code>approved</code> state. Projects without a UI
+          (<code>compliance.ui_present: false</code> or absent) skip
+          the gate. An audited override
+          (<code>--force-design --reason "&lt;text&gt;"</code>) is
+          available; the reason is sanitised (control characters are
+          neutralised) and the override entry records the sprint scope.
+        </dd>
+
+        <dt id="design-record">Design Record</dt>
+        <dd>
+          The YAML state machine at
+          <code>.gaia/state/design-record.yaml</code> that tracks the
+          design's approval lifecycle. It moves through
+          <code>draft &rarr; review &rarr; approved &rarr; stale</code>
+          (stale loops back to review after changes). All writes go
+          through a sole writer script; no skill writes the file
+          directly. The record references both the
+          <a href="#design-system-project">design-system project</a> and
+          the <a href="#product-design-project">product design project</a>,
+          and carries an append-only audit trail with a hash chain.
+        </dd>
+
+        <dt id="design-system-project">Design-system Project</dt>
+        <dd>
+          The <a href="#claude-design">Claude Design</a> project that
+          holds design tokens (colours, spacing, typography) and
+          component specifications. Accessed through DesignSync
+          (<code>create_project</code>, <code>finalize_plan</code>,
+          <code>write_files</code>). When the stack does not include
+          React, the project is built as a brand-style artifact (fonts,
+          colours, guidelines) instead of a compiled component bundle.
+        </dd>
+
         <dt id="edge-types">Edge types (knowledge layer)</dt>
         <dd>
           The seven typed relationships the <a href="#gaia-brain">GAIA Brain</a>
@@ -215,6 +270,20 @@
           specific behavior: performance targets, scalability limits,
           reliability SLAs, security standards. NFRs are assessed by
           <a href="commands/gaia-nfr.html"><code>/gaia-nfr</code></a>.
+        </dd>
+
+        <dt id="product-design-project">Product Design Project</dt>
+        <dd>
+          The <a href="#claude-design">Claude Design</a> project that
+          holds screen specifications and user flows. It is a Design-type
+          artifact accessed through the Artifact tool. Screens carry the
+          full resolved token block, so a token change in the
+          <a href="#design-system-project">design-system project</a>
+          also refreshes the product design project's screens. Created
+          or bound during
+          <a href="commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>
+          and reviewed during
+          <a href="commands/gaia-design-review.html"><code>/gaia-design-review</code></a>.
         </dd>
 
         <dt id="promotion-chain">Promotion chain</dt>
