@@ -154,6 +154,30 @@ YAML
   done
 }
 
+@test "protected names written with underscores, spaces or dots are rejected" {
+  _canonical_workflow
+  for name in credential_audit secrets_scan legacy_reference_guard Commit_Lint "  credential-audit  " "no claude attribution" "secrets.scan"; do
+    cat > "$WORKDIR/project-config.yaml" <<YAML
+ci_cd:
+  template_overrides:
+    disable: ["$name"]
+YAML
+    run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
+    [ "$status" -ne 0 ] || { echo "FAIL: variant '$name' should have been rejected" >&2; return 1; }
+  done
+}
+
+@test "an ordinary job name with underscores is still allowed" {
+  _canonical_workflow
+  cat > "$WORKDIR/project-config.yaml" <<'YAML'
+ci_cd:
+  template_overrides:
+    disable: ["docs_preview"]
+YAML
+  run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
+  [ "$status" -eq 0 ]
+}
+
 @test "mutant: dropping alias mapping lets the old name through" {
   # Create a mutant that strips the legacy alias line from the critical list.
   local mutant="$WORKDIR/mutant-overrides.sh"

@@ -38,11 +38,13 @@ export LC_ALL
 _GAIA_SR78_CRITICAL="commitlint legacy-reference-guard no-claude-attribution secrets-scan credential-audit"
 _GAIA_SR78_CRITICAL="$_GAIA_SR78_CRITICAL adr-048-guard nfr-082-credential-audit"  # legacy alias
 
-# Canonicalize a job name for security-critical enum check: lowercase + strip hyphens.
-# So `commit-lint`, `commitlint`, and `Commit-Lint` all collapse to the
-# same token (refusal-bypass guard).
+# Canonicalize a job name for security-critical enum check: lowercase, then
+# keep only letters and digits. So `commit-lint`, `Commit_Lint`, `commit.lint`
+# and a space-padded `" commitlint "` all collapse to the same token
+# (refusal-bypass guard). Job ids only allow letters, digits, `-` and `_`,
+# so no legitimate name is merged with a protected one by this.
 _gaia_to_canonical() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '-'
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]'
 }
 
 # Check: is the given disable-entry security-critical?

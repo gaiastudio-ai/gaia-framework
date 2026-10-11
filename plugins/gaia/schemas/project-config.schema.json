@@ -310,9 +310,9 @@
                 "not": {
                   "enum": ["commitlint", "legacy-reference-guard", "no-claude-attribution", "secrets-scan", "credential-audit", "adr-048-guard", "nfr-082-credential-audit"]
                 },
-                "description": "Job name to remove. The five security-critical names (commitlint, legacy-reference-guard, no-claude-attribution, secrets-scan, credential-audit) are REJECTED at /gaia-config-validate time. Legacy aliases for renamed jobs are also rejected. Note: the schema enforces the LITERAL form only — hyphen+case canonicalization (e.g. `commit-lint` → `commitlint`) happens at regen time in template-overrides.sh as a defense-in-depth layer."
+                "description": "Job name to remove. The five security-critical names (commitlint, legacy-reference-guard, no-claude-attribution, secrets-scan, credential-audit) are REJECTED at /gaia-config-validate time. Legacy aliases for renamed jobs are also rejected. Note: the schema enforces the LITERAL form only — canonicalization to lowercase letters and digits (e.g. `commit-lint` or `Commit_Lint` → `commitlint`) happens at regen time in template-overrides.sh as a defense-in-depth layer."
               },
-              "description": "Job names to remove from the generated workflow's jobs: map. Security-critical names (commitlint, legacy-reference-guard, no-claude-attribution, secrets-scan, credential-audit) are REJECTED both at /gaia-config-validate time (schema-level not.enum) and at regen time (template-overrides.sh, with hyphen+case canonicalization for defense in depth). Legacy aliases for renamed jobs are also rejected."
+              "description": "Job names to remove from the generated workflow's jobs: map. Security-critical names (commitlint, legacy-reference-guard, no-claude-attribution, secrets-scan, credential-audit) are REJECTED both at /gaia-config-validate time (schema-level not.enum) and at regen time (template-overrides.sh, with canonicalization to lowercase letters and digits for defense in depth). Legacy aliases for renamed jobs are also rejected."
             },
             "timeout_overrides": {
               "type": "object",
