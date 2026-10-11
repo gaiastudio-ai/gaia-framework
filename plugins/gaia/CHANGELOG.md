@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Fixed
 
-- find past retrospectives in the nested folder and harden the protected guard jobs
+- find past retrospectives in the nested folder and harden the protected guard jobs (#2108)
 
 ## [1.220.0] — 2026-10-11
 
