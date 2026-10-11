@@ -65,12 +65,12 @@
 
       <section id="what-it-does">
         <h2>What it does</h2>
-        <p><code>/gaia-config-tool</code> edits the <code>tool_adapters</code> section of <code>.gaia/config/project-config.yaml</code>. The tool_adapters section maps tool categories (SAST, secrets scanning, SCA, etc.) to specific provider tools and their configuration. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
+        <p><code>/gaia-config-tool</code> edits the <code>tools</code> section of <code>.gaia/config/project-config.yaml</code>. The tools section maps adapter categories (such as sast, secret-scan, dep-audit, linter, formatter, and others) to specific provider tools and their configuration. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
       </section>
 
       <section id="when-to-use">
         <h2>When to use it</h2>
-        <ul><li>You need to add, remove, or modify entries in the <code>tool_adapters</code> configuration section.</li><li>You set up a new project and need to configure the <code>tool_adapters</code> section.</li></ul>
+        <ul><li>You need to add, remove, or modify entries in the <code>tools</code> configuration section.</li><li>You set up a new project and need to configure the <code>tools</code> section.</li></ul>
       </section>
 
       <section id="prerequisites">
@@ -80,70 +80,67 @@
 
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
-        <pre><code>/gaia-config-tool</code></pre>
+        <pre><code>/gaia-config-tool [--category &lt;name&gt;] [--provider &lt;name&gt;]</code></pre>
+        <p>When <code>--category</code> is given, the editor jumps straight to that category. An unknown category exits with: <code>category '&lt;name&gt;' is not a known adapter category — see /gaia-list-tools</code>.</p>
       </section>
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the tool_adapters section</span> Reads the current tool_adapters block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current tool_adapters configuration and an operation menu (add, remove, edit, view, exit).</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Provider values should resolve to a built-in or registered adapter.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the tools section</span> Reads the current tools block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present category editor</span> Renders the current category-to-provider mapping as a table and prompts for category and new provider/config. Cross-references the adapter list to surface available providers.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
       </section>
 
       <section id="inputs">
         <h2>Inputs</h2>
-        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Project configuration</td><td><code>.gaia/config/project-config.yaml</code></td><td>The file containing the tool_adapters section.</td></tr></tbody></table>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Project configuration</td><td><code>.gaia/config/project-config.yaml</code></td><td>The file containing the tools section.</td></tr></tbody></table>
       </section>
 
       <section id="outputs">
         <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated tool_adapters section</td><td><code>.gaia/config/project-config.yaml</code></td><td>The modified tool_adapters configuration.</td></tr></tbody></table>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Updated tools section</td><td><code>.gaia/config/project-config.yaml</code></td><td>The modified tools configuration.</td></tr></tbody></table>
       </section>
 
       <section id="example">
         <h2>Example session</h2>
-        <pre><code>> /gaia-config-tool
+        <pre><code>> /gaia-config-tool --category secret-scan --provider gitleaks
 
-Current tool_adapters configuration:
+Current tools configuration:
   deploy:
     provider: script-deploy
 
-Operations: [s] set key  [r] remove key  [v] view  [x] exit
-> s
-
-Key: dast.provider
-Value: owasp-zap
-
 Diff preview:
-  tool_adapters:
+  tools:
     deploy:
       provider: script-deploy
-  + dast:
-  +   provider: owasp-zap
+  + secret-scan:
+  +   provider: gitleaks
 
 Apply this edit? [y/n]
 > y
 
-Tool_adapters section updated. Run /gaia-config-validate to verify.</code></pre>
+Tools section updated. Run /gaia-config-validate to verify.</code></pre>
       </section>
 
       <section id="what-next">
         <h2>What to run next</h2>
-        <ul><li><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> -- validate the modified configuration file.</li><li><a href="gaia-config-show.html"><code>/gaia-config-show tool_adapters</code></a> -- view the section after editing.</li></ul>
+        <ul><li><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> -- validate the modified configuration file.</li><li><a href="gaia-config-show.html"><code>/gaia-config-show tools</code></a> -- view the section after editing.</li></ul>
       </section>
 
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
-        <h3>tool_adapters section not found</h3><p>The section does not exist in your config file. The command offers to scaffold a default: <pre><code>tool_adapters:
-  sast:
-    provider: semgrep
-  secrets:
-    provider: gitleaks
-  sca:
-    provider: trivy</code></pre></p><h3>Edit cancelled</h3><p>You chose not to apply the edit. The file remains unchanged.</p>
+        <h3>tools section not found</h3><p>The section does not exist in your config file. The command offers to scaffold a default with commented-out adapter categories:</p><pre><code>tools:
+  # Available adapter categories:
+  #   a11y-scanner | dast | dep-audit | deploy | e2e-runner |
+  #   formatter | linter | mobile-static | perf-tool | sast | secret-scan
+  # Plus the prose-only category (no adapter; direct invocation):
+  #   test_runner    -- consumed by /gaia-test-run</code></pre>
+        <p>Note that <code>tools.aggregation</code> is a reserved key for pipeline-wide SARIF-merge and dedup settings -- it is not a scanner category.</p>
+        <h3>Unknown category</h3><p>The category you supplied is not in the canonical adapter-category set. Run <a href="gaia-list-tools.html"><code>/gaia-list-tools</code></a> to see available categories and providers.</p>
+        <h3>Edit cancelled</h3><p>You chose not to apply the edit. The file remains unchanged.</p>
       </section>
 
       <section id="related">
         <h2>Related commands</h2>
-        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-config-show.html"><code>/gaia-config-show</code></a></td><td>View the configuration file or a specific section.</td></tr><tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Validate the configuration against the schema.</td></tr></tbody></table>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-config-show.html"><code>/gaia-config-show</code></a></td><td>View the configuration file or a specific section.</td></tr><tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Validate the configuration against the schema.</td></tr><tr><td><a href="gaia-list-tools.html"><code>/gaia-list-tools</code></a></td><td>List available adapter categories and providers.</td></tr></tbody></table>
       </section>
       <footer class="page-footer">
         <p><a href="../categories/configuration.html">Back to Configuration</a></p>

@@ -101,7 +101,7 @@
             exists at the pre-v1.157.0 location
             <code>.gaia/artifacts/test-artifacts/test-environment.yaml</code>, it is
             moved to the canonical
-            <code>config/test-environment.yaml</code>. The move
+            <code>.gaia/config/test-environment.yaml</code>. The move
             is idempotent and emits a one-time deprecation warning.
           </li>
           <li>
@@ -143,7 +143,7 @@
           No arguments. State is read from
           <code>.gaia/config/project-config.yaml</code> and behaviour adapts to
           the current presence or absence of
-          <code>config/test-environment.yaml</code>.
+          <code>.gaia/config/test-environment.yaml</code>.
         </p>
       </section>
 
@@ -155,7 +155,7 @@
             Before the numbered steps run, the command checks for a file
             at the pre-v1.157.0 location
             <code>.gaia/artifacts/test-artifacts/test-environment.yaml</code>. If
-            found, it is moved to <code>config/test-environment.yaml</code>
+            found, it is moved to <code>.gaia/config/test-environment.yaml</code>
             with a one-time deprecation warning. This migration is
             idempotent and non-fatal on failure.
           </p>
@@ -178,17 +178,36 @@
           </li>
           <li>
             <span class="step-title">Post-flip checks (resolve the manifest)</span>
-            Stats <code>config/test-environment.yaml</code>. Three
+            Stats <code>.gaia/config/test-environment.yaml</code>. Three
             outcomes drive the next behaviour: <em>present and valid</em>
             (proceed), <em>present but invalid</em> (surface schema
             errors as warnings; do not roll back the enable flag), or
             <em>absent</em> (offer the manifest options below).
           </li>
           <li>
+            <span class="step-title">Manifest readiness</span>
+            Checks the manifest for the <code># GAIA-MANIFEST-TEMPLATE:</code>
+            sentinel. When present, the file is an un-edited template copy
+            and Layer 0 will refuse to run tests. The command walks the
+            operator through a copy-and-edit flow to populate stack-specific
+            runners.
+          </li>
+          <li>
+            <span class="step-title">Auto-populate test_execution tiers</span>
+            Reads the <code>runners[]</code> array from
+            <code>.gaia/config/test-environment.yaml</code> and writes
+            <code>test_execution.tier_N.{placement, command, required,
+            timeout_seconds}</code> into
+            <code>.gaia/config/project-config.yaml</code>. Verify the
+            result with <a href="gaia-doctor.html"><code>/gaia-doctor</code></a>
+            or direct inspection.
+          </li>
+          <li>
             <span class="step-title">Report</span>
             Prints a summary including the canonical manifest path, the
-            detected runners (when present), and an
-            &ldquo;edit <code>config/test-environment.yaml</code> to
+            detected runners (when present), the <code>test_execution</code>
+            tiers that were populated, and an
+            &ldquo;edit <code>.gaia/config/test-environment.yaml</code> to
             fine-tune for your project&rdquo; nudge when the manifest
             was just generated in this invocation.
           </li>
@@ -226,7 +245,7 @@
               <td><strong>[b] Copy the schema example template</strong></td>
               <td>
                 Copies the canonical
-                <code>config/test-environment.yaml.example</code> verbatim.
+                <code>.gaia/config/test-environment.yaml.example</code> verbatim.
                 The result includes the
                 <code>GAIA-MANIFEST-TEMPLATE</code> sentinel and a full
                 set of inline comments documenting every field. Useful as
@@ -264,7 +283,7 @@
         </p>
         <ul>
           <li><code>.gaia/config/project-config.yaml</code> (the bridge_enabled flag and CI block)</li>
-          <li><code>config/test-environment.yaml</code> (presence, schema, sentinel state)</li>
+          <li><code>.gaia/config/test-environment.yaml</code> (presence, schema, sentinel state)</li>
           <li><code>.gaia/artifacts/test-artifacts/test-environment.yaml</code> (legacy path; migrated if present)</li>
           <li>Project tree (consulted by the auto-generator to detect the stack)</li>
         </ul>
@@ -288,12 +307,12 @@
             </tr>
             <tr>
               <td>Manifest (when generated)</td>
-              <td><code>config/test-environment.yaml</code></td>
+              <td><code>.gaia/config/test-environment.yaml</code></td>
               <td>A stack-specific manifest from option [a], a schema-doc copy from option [b], or unchanged when the file was already present.</td>
             </tr>
             <tr>
               <td>Migrated manifest (when applicable)</td>
-              <td><code>config/test-environment.yaml</code></td>
+              <td><code>.gaia/config/test-environment.yaml</code></td>
               <td>Pre-v1.157.0 file moved from <code>.gaia/artifacts/test-artifacts/</code> on first invocation.</td>
             </tr>
           </tbody>
@@ -309,19 +328,19 @@
 
 Bridge enabled. Test execution bridge is now active.
 
-Manifest: config/test-environment.yaml does not exist.
+Manifest: .gaia/config/test-environment.yaml does not exist.
 
   [a] Auto-generate a stack-specific manifest (recommended)
   [b] Copy the schema example template
 
 Choice: a
 
-Auto-generated config/test-environment.yaml for detected stack: python.
+Auto-generated .gaia/config/test-environment.yaml for detected stack: python.
 
-  Path:    config/test-environment.yaml
+  Path:    .gaia/config/test-environment.yaml
   Runners: unit (tier 1), integration (tier 2)
 
-edit config/test-environment.yaml to fine-tune for your project</code></pre>
+edit .gaia/config/test-environment.yaml to fine-tune for your project</code></pre>
         <p>Idempotent re-invocation:</p>
         <pre><code>&gt; /gaia-bridge-enable
 
@@ -330,12 +349,12 @@ Bridge already enabled.</code></pre>
         <pre><code>&gt; /gaia-bridge-enable
 
 Detected legacy manifest at .gaia/artifacts/test-artifacts/test-environment.yaml.
-Moved to config/test-environment.yaml.
+Moved to .gaia/config/test-environment.yaml.
 DEPRECATION: the legacy path will be removed in a future release.
 
 Bridge enabled. Test execution bridge is now active.
 
-  Path:    config/test-environment.yaml
+  Path:    .gaia/config/test-environment.yaml
   Runners: unit (tier 1), e2e (tier 3)</code></pre>
       </section>
 
@@ -344,7 +363,7 @@ Bridge enabled. Test execution bridge is now active.
         <ul>
           <li>
             <strong>Review and edit the manifest.</strong> Open
-            <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+            <a href="../test-environment-yaml.html"><code>.gaia/config/test-environment.yaml</code></a>
             and verify the runners and timeouts match your project. The
             full schema reference, every field, and copy-ready examples
             for all supported stacks live on
@@ -384,7 +403,7 @@ Bridge enabled. Test execution bridge is now active.
           refuses to run tests. The literal output from
           <code>check-manifest-sentinel.sh</code> is:
         </p>
-        <pre><code>Layer 0 readiness FAILED: config/test-environment.yaml contains the unmodified-template sentinel (GAIA-MANIFEST-TEMPLATE). Either run /gaia-bridge-enable to regenerate against current detection signals, or edit config/test-environment.yaml directly to populate stack-specific runners.
+        <pre><code>Layer 0 readiness FAILED: .gaia/config/test-environment.yaml contains the unmodified-template sentinel (GAIA-MANIFEST-TEMPLATE). Either run /gaia-bridge-enable to regenerate against current detection signals, or edit .gaia/config/test-environment.yaml directly to populate stack-specific runners.
 bridge_status: manifest_unmodified_template</code></pre>
         <p>
           This happens when no stack was detected (generic
@@ -424,7 +443,7 @@ bridge_status: manifest_unmodified_template</code></pre>
           automatic on first invocation. If the move appeared to fail,
           inspect the stderr output of the migration helper and move the
           file by hand: <code>mv .gaia/artifacts/test-artifacts/test-environment.yaml
-          config/test-environment.yaml</code>.
+          .gaia/config/test-environment.yaml</code>.
         </p>
       </section>
 

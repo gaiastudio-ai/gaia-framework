@@ -109,8 +109,9 @@
         <ul>
           <li>
             <strong>Memory directory must exist.</strong> The
-            <code>_memory/</code> directory must be present. If it does
-            not exist, the command exits with "no sidecars discovered."
+            <code>.gaia/memory/</code> directory must be present. If it does
+            not exist, the command exits with "no sidecars discovered
+            -- <code>.gaia/memory/</code> directory not present."
           </li>
         </ul>
       </section>
@@ -130,7 +131,7 @@
           <li>
             <span class="step-title">Discover sidecars</span>
             Finds all agent memory directories under
-            <code>_memory/*-sidecar/</code>, classifies each by tier
+            <code>.gaia/memory/*-sidecar/</code>, classifies each by tier
             (Tier 1/2/3), and identifies empty or legacy-format sidecars.
           </li>
           <li>
@@ -181,7 +182,7 @@
           <li>
             <span class="step-title">Optional checkpoint pruning</span>
             Offers to clean up old completed checkpoints from
-            <code>_memory/checkpoints/completed/</code>.
+            <code>.gaia/memory/checkpoints/completed/</code>.
           </li>
         </ol>
       </section>
@@ -204,12 +205,12 @@
             </tr>
             <tr>
               <td>Agent sidecar files</td>
-              <td><code>_memory/*-sidecar/</code></td>
+              <td><code>.gaia/memory/*-sidecar/</code></td>
               <td>Decision logs, ground truth, and context files for each agent.</td>
             </tr>
             <tr>
               <td>Reference artifacts</td>
-              <td><code>docs/</code> directories</td>
+              <td><code>.gaia/artifacts/</code> directories</td>
               <td>Current PRD, architecture, epics, test plan, sprint status.</td>
             </tr>
           </tbody>
@@ -234,7 +235,7 @@
             </tr>
             <tr>
               <td>Modified sidecars</td>
-              <td><code>_memory/*-sidecar/</code></td>
+              <td><code>.gaia/memory/*-sidecar/</code></td>
               <td>Only if you confirm per-entry actions in interactive mode.</td>
             </tr>
           </tbody>
@@ -296,7 +297,7 @@ Report written to:
 
         <h3>"No sidecars discovered"</h3>
         <p>
-          The <code>_memory/</code> directory does not exist. This is
+          The <code>.gaia/memory/</code> directory does not exist. This is
           normal for new projects that have not yet run workflows that
           produce agent memory.
         </p>

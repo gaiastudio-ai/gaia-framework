@@ -207,7 +207,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
 
@@ -330,15 +330,19 @@ This warning is shown once per session.
           <li>
             <span class="step-title">Commit and push</span>
             Stages all changes, creates a commit with a conventional commit
-            message derived from the story, and pushes the feature branch to
-            the remote. The push is blocked if you are on a protected branch
-            (main or staging).
+            message, and pushes the feature branch to the remote. The commit
+            subject uses a product scope (the main skill or script area the
+            change touches), not the story key. The story key appears in a
+            <code>Story:</code> line in the commit body. The push is blocked
+            if you are on a protected branch (main or staging).
           </li>
           <li>
             <span class="step-title">Create pull request</span>
             Creates a PR targeting the first environment in your CI promotion
-            chain. The PR body includes the acceptance criteria, Definition
-            of Done, and a diff summary.
+            chain. The PR title is the commit subject as written (the story
+            key is not prepended). The PR body includes the acceptance
+            criteria, Definition of Done, a diff summary, and the story
+            cross-reference.
           </li>
           <li>
             <span class="step-title">Wait for CI</span>
@@ -511,7 +515,7 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Checkpoint files</td>
-              <td><code>_memory/checkpoints/</code></td>
+              <td><code>.gaia/memory/checkpoints/</code></td>
               <td>Automatic checkpoints written after every file edit, enabling <code>/gaia-resume</code>.</td>
             </tr>
           </tbody>
@@ -592,8 +596,9 @@ Running test suite: 8 tests, 8 PASSING.
   All checks passed.
 
 Committing: feat(auth): add email/password authentication
+  Story: E3-S7
 Pushing to origin/feat/E3-S7-user-authentication...
-Creating PR #42 targeting staging...
+Creating PR #42 "feat(auth): add email/password authentication" targeting staging...
 Waiting for CI... all checks passed.
 Merging PR #42...
 

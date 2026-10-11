@@ -15,7 +15,7 @@
     </aside>
     <main class="main-content">
       <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/testing.html">Testing</a><span class="separator">/</span>/gaia-test-device-matrix</nav>
-      <header class="command-header"><div class="command-title"><h1>/gaia-test-device-matrix</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd><!-- TODO Iris: drift between SKILL.md (no --config) and dispatch.sh L25 (parses --config). Script is ground truth. -->
+      <header class="command-header"><div class="command-title"><h1>/gaia-test-device-matrix</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd>
 <dt>Arguments:</dt><dd><code>[--platform ios|android|all] [--filter REGEX] [--config PATH]</code></dd></dl></header>
       <section id="what-it-does"><h2>What it does</h2><p>Expands a configured device-target matrix (OS versions x form factors x screen sizes) and dispatches each entry to the device-farm adapter. Returns per-device verdicts plus a composite verdict.</p></section>
       <section id="when-to-use"><h2>When to use it</h2><ul><li>You need to verify your app across a matrix of devices, OS versions, and form factors.</li></ul></section>
@@ -25,7 +25,15 @@
 /gaia-test-device-matrix --platform all
 /gaia-test-device-matrix --filter "iPhone.*"
 /gaia-test-device-matrix --platform ios --filter "iPad.*"</code></pre></section>
-      <section id="step-by-step"><h2>What it does step by step</h2><p>See the <a href="#what-it-does">description above</a> for the high-level flow. The command handles all steps automatically.</p></section>
+      <section id="step-by-step"><h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Platform gate</span> Checks that <code>platforms[]</code> contains <code>ios</code> or <code>android</code>. If neither is present, exits with <code>SKIPPED</code> (reason: <code>no_mobile_platform</code>).</li>
+          <li><span class="step-title">Expand matrix</span> Reads <code>device_targets</code> from <code>.gaia/config/project-config.yaml</code> and computes the cartesian product of <code>os_versions</code>, <code>form_factors</code>, and <code>screen_sizes</code>. Empty axes default to a single <code>"default"</code> entry.</li>
+          <li><span class="step-title">Apply filters</span> Narrows the expanded matrix by <code>--platform</code> (ios, android, or all) and <code>--filter</code> (regex match on device entries).</li>
+          <li><span class="step-title">Dispatch each entry</span> Sends each matrix entry to the configured device-farm adapter (Firebase Test Lab, BrowserStack, or Sauce Labs) and collects per-device results.</li>
+          <li><span class="step-title">Composite verdict</span> Aggregates per-device verdicts using priority: <code>FAILED</code> &gt; <code>ERROR</code> &gt; <code>TIMEOUT</code> &gt; <code>PASSED</code>.</li>
+        </ol>
+      </section>
       <section id="inputs"><h2>Inputs</h2>
         <table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody>
           <tr><td><code>--platform</code></td><td>Argument (optional)</td><td>Platform to test: ios, android, or all.</td><td><code>/gaia-test-device-matrix --platform ios</code></td></tr>
@@ -40,6 +48,6 @@ Running...
 (Command output varies by project and configuration.)</code></pre></section>
       <section id="what-next"><h2>What to run next</h2><p>Follow the suggestions displayed at the end of the command output.</p></section>
       <section id="troubleshooting"><h2>Troubleshooting</h2><p>Check that prerequisite files and tools are in place. The command provides specific error messages with guidance when something is missing.</p></section>
-      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href=""><code>/</code></a></td><td>Related command.</td></tr></tbody></table></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-test-mobile-e2e.html"><code>/gaia-test-mobile-e2e</code></a></td><td>Dispatches a single test suite to whatever device set the farm is configured to use. This skill explicitly enumerates and dispatches each device matrix entry.</td></tr></tbody></table></section>
       <footer class="page-footer"><p><a href="../categories/testing.html">Back to Testing</a></p></footer>
     </main></div></body></html>

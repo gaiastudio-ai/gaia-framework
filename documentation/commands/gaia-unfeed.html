@@ -96,8 +96,8 @@
         <ol class="step-list">
           <li><span class="step-title">Validate the slug</span> Confirms the slug is well-formed and does not contain path traversal sequences. Rejects any slug that would escape the <code>.gaia/knowledge/ingested/</code> namespace.</li>
           <li><span class="step-title">Locate the entry</span> Looks up the slug in <code>brain-index.yaml</code> among <code>source_type: ingested</code> entries. Only ingested entries can be removed -- project-artifact entries are never touched.</li>
-          <li><span class="step-title">Delete the ingested file</span> Removes <code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code> from disk.</li>
-          <li><span class="step-title">De-register the index entry</span> Removes the matching entry from <code>brain-index.yaml</code>. The index is validated before committing; on failure the prior index is preserved.</li>
+          <li><span class="step-title">De-register the index entry</span> Removes the matching entry from <code>brain-index.yaml</code>. The updated index is written to a temporary file, validated, and renamed into place. On validation failure the prior index is preserved and the ingested file is not deleted.</li>
+          <li><span class="step-title">Delete the ingested file</span> Only after a successful index update, removes <code>.gaia/knowledge/ingested/&lt;slug&gt;.md</code> from disk (after a realpath containment check).</li>
           <li><span class="step-title">Re-render the human index</span> Updates <code>brain-index.md</code> (the human-readable Map of Content) to reflect the removal.</li>
         </ol>
       </section>

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-doctor - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/getting-started.html">Getting Started</a><span class="separator">/</span>
+        /gaia-doctor
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-doctor</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/getting-started.html">Getting Started</a></dd>
+          <dt>Lifecycle phase:</dt><dd>Any (preflight)</dd>
+          <dt>Arguments:</dt><dd><code>[--install [--docker|--no-docker]] [--json] [--stack &lt;name&gt;]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-doctor</code> scans your project for declared stacks and checks which deterministic tools (jq, yq, grype, cdxgen, vulture, etc.) are installed on the host. It produces a per-stack readiness table, a scan-tier verdict, and a copy-pasteable install plan for anything missing. The command is read-only by default -- it probes the host environment without modifying project files or installing anything.</p>
+        <p>Three scan tiers exist:</p>
+        <ul>
+          <li><strong>Tier 0 (LLM-only)</strong> -- always achievable; no external tools required.</li>
+          <li><strong>Tier 1 (pure-pip / npm / static-binary)</strong> -- lightweight tools that are easy to install on any host.</li>
+          <li><strong>Tier 2 (heavy/native or containerized)</strong> -- tools like grype, syft, spotbugs, mobsf that typically require Homebrew or Docker.</li>
+        </ul>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You are onboarding a project and want to know which tools are missing before running <a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a>.</li>
+          <li>A scan degraded to LLM-only heuristics and you want to see which tools would restore deterministic coverage.</li>
+          <li>You want a machine-readable readiness report for CI integration (<code>--json</code>).</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong>None required.</strong> If <code>.gaia/config/project-config.yaml</code> is absent, the command falls back to signal-based stack detection. It never halts on a missing config.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-doctor
+/gaia-doctor --stack python
+/gaia-doctor --install
+/gaia-doctor --install --docker
+/gaia-doctor --json</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Detect stacks</span> Reads <code>stacks[].language</code> from <code>.gaia/config/project-config.yaml</code>. If <code>--stack &lt;name&gt;</code> is provided, uses that single value. If no config exists, falls back to signal-based auto-detection.</li>
+          <li><span class="step-title">Load readiness registry</span> Reads the bundled <code>tool-readiness.json</code> registry and filters entries whose <code>applies_to_stacks</code> intersects the detected stack set.</li>
+          <li><span class="step-title">Probe each applicable tool</span> Runs each tool's probe command (typically <code>command -v &lt;bin&gt;</code>) and records <code>present</code>, <code>missing</code>, or <code>warning</code> plus the resolved version.</li>
+          <li><span class="step-title">Render readiness table</span> Emits a per-stack table with four possible states per tool: present, missing (with install command), not-applicable, or environment warning.</li>
+          <li><span class="step-title">Emit tier verdict</span> Computes the achievable scan tier from the present/missing tool set and reports it.</li>
+          <li><span class="step-title">Install (opt-in only)</span> When <code>--install</code> is passed, prompts before each missing tool and runs the registry's install command for the detected OS. Re-probes after installation to confirm. Without <code>--install</code>, emits the install plan as copy-pasteable shell commands.</li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody>
+          <tr><td><code>--stack &lt;name&gt;</code></td><td>Command argument (optional)</td><td>Limit the probe to a single named stack instead of auto-detecting.</td></tr>
+          <tr><td><code>--install</code></td><td>Flag (optional)</td><td>Enter interactive install mode. Prompts per tool before installing.</td></tr>
+          <tr><td><code>--docker</code></td><td>Flag (optional, with --install)</td><td>Pull the bundled OCI image instead of installing Tier 2 tools individually.</td></tr>
+          <tr><td><code>--no-docker</code></td><td>Flag (optional, with --install)</td><td>Force per-tool host installs even when the project runner is set to docker.</td></tr>
+          <tr><td><code>--json</code></td><td>Flag (optional)</td><td>Emit machine-readable JSON output for CI integration.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody>
+          <tr><td>Readiness table</td><td>Console output</td><td>Per-stack table showing present/missing/warning/not-applicable status for each tool.</td></tr>
+          <tr><td>Tier verdict</td><td>Console output</td><td>The achievable scan tier (0, 1, or 2) with a reason summary.</td></tr>
+          <tr><td>Install plan</td><td>Console output</td><td>Copy-pasteable shell commands grouped by package manager (when <code>--install</code> is not used).</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-doctor
+
+GAIA deterministic tools -- readiness for stack: python
+  &#10003; jq, yq, python3            (core, present)
+  &#10007; grype          CVE scan of dependencies      &#8594;  brew install grype
+  &#10007; cdxgen         SBOM generation               &#8594;  npm i -g @cyclonedx/cdxgen
+  &#10007; vulture        Python dead-code              &#8594;  pip install vulture
+  &#8211; spotbugs       JVM dead-code                 (not needed: no JVM stack)
+
+Result: 1/3 applicable tools available. CVE + SBOM + dead-code will fall
+back to LLM heuristics. Run /gaia-doctor --install to fix, or proceed.
+
+Achievable scan tier: TIER 0 (LLM-only)</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a> -- run the brownfield scanner now that you know which tools are available.</li>
+          <li><a href="gaia-config-brownfield.html"><code>/gaia-config-brownfield</code></a> -- configure the brownfield section (runner, tier, grype toggle) before scanning.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>bash 3.2 detected</h3><p>The probe found macOS's built-in Bash 3.2. Some orchestration features require Bash 4.0+. Install a newer version via <code>brew install bash</code>.</p>
+        <h3>No stacks detected</h3><p>Neither the config file nor signal detection found any stacks. Create a project configuration with <a href="gaia-init.html"><code>/gaia-init</code></a> or pass <code>--stack &lt;name&gt;</code> explicitly.</p>
+        <h3>Docker pull fails</h3><p>When using <code>--install --docker</code>, ensure Docker is running and you have access to <code>ghcr.io</code>. Check your Docker daemon status and any proxy/firewall configuration.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+          <tr><td><a href="gaia-brownfield.html"><code>/gaia-brownfield</code></a></td><td>The scanner that consumes the tools this command checks for.</td></tr>
+          <tr><td><a href="gaia-config-brownfield.html"><code>/gaia-config-brownfield</code></a></td><td>Configures the brownfield section (runner, tier, grype toggle).</td></tr>
+          <tr><td><a href="gaia-init.html"><code>/gaia-init</code></a></td><td>Creates the project configuration that declares stacks.</td></tr>
+          <tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Validates the project configuration against the schema.</td></tr>
+        </tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/getting-started.html">Back to Getting Started</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

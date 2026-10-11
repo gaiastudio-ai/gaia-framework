@@ -70,7 +70,7 @@
           <dt>Lifecycle phase:</dt>
           <dd>Any</dd>
           <dt>Arguments:</dt>
-          <dd><code>[optional free-text request]</code></dd>
+          <dd><code>[free-text request | sprint | story [count] [parallel]]</code></dd>
         </dl>
       </header>
 
@@ -113,6 +113,12 @@
 
         <pre><code>/gaia I want to create a PRD from my product brief</code></pre>
         <p>Routes directly to the appropriate command based on your request.</p>
+
+        <pre><code>/gaia sprint</code></pre>
+        <p>Enters Sprint Execution Mode: auto-orchestrates the active sprint's stories through the dev workflow.</p>
+
+        <pre><code>/gaia story 4</code></pre>
+        <p>Enters Story Creation Mode: batch-creates stories (here, 4 stories) from epics-and-stories.md.</p>
       </section>
 
       <section id="step-by-step">
@@ -127,6 +133,14 @@
             Matches your intent against the full catalog of GAIA commands
             and invokes the best match. If the intent is ambiguous, asks
             a clarifying question before routing.
+          </li>
+          <li>
+            <span class="step-title">Sprint Execution Mode</span>
+            When invoked with <code>sprint</code>, auto-orchestrates the active sprint's stories through the dev workflow per the orchestrator's Sprint Execution Mode definition.
+          </li>
+          <li>
+            <span class="step-title">Story Creation Mode</span>
+            When invoked with <code>story [count] [parallel]</code>, batch-creates stories from <code>epics-and-stories.md</code> per the orchestrator's Story Creation Mode definition.
           </li>
         </ol>
       </section>
@@ -146,6 +160,16 @@
               <td><code>request</code></td>
               <td>Command argument (optional)</td>
               <td>Free-text description of what you want to do.</td>
+            </tr>
+            <tr>
+              <td><code>sprint</code></td>
+              <td>Command argument (optional)</td>
+              <td>Enters Sprint Execution Mode: auto-orchestrates the active sprint's stories through the dev workflow.</td>
+            </tr>
+            <tr>
+              <td><code>story [count] [parallel]</code></td>
+              <td>Command argument (optional)</td>
+              <td>Enters Story Creation Mode: batch-creates stories from epics-and-stories.md. <code>count</code> sets how many; <code>parallel</code> sets concurrency.</td>
             </tr>
           </tbody>
         </table>

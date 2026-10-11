@@ -32,16 +32,19 @@ _GAIA_TEMPLATE_OVERRIDES_LOADED=1
 LC_ALL=C
 export LC_ALL
 
-# Canonical closed enum of security-critical job names (per threat-model.md:1473).
+# Canonical closed enum of security-critical job names.
 # Stored as a string of space-separated names so we can iterate without
 # requiring bash arrays in callers.
-_GAIA_SR78_CRITICAL="commitlint adr-048-guard no-claude-attribution secrets-scan nfr-082-credential-audit"
+_GAIA_SR78_CRITICAL="commitlint legacy-reference-guard no-claude-attribution secrets-scan credential-audit"
+_GAIA_SR78_CRITICAL="$_GAIA_SR78_CRITICAL adr-048-guard nfr-082-credential-audit"  # legacy alias
 
-# Canonicalize a job name for security-critical enum check: lowercase + strip hyphens.
-# So `commit-lint`, `commitlint`, and `Commit-Lint` all collapse to the
-# same token (refusal-bypass guard).
+# Canonicalize a job name for security-critical enum check: lowercase, then
+# keep only letters and digits. So `commit-lint`, `Commit_Lint`, `commit.lint`
+# and a space-padded `" commitlint "` all collapse to the same token
+# (refusal-bypass guard). Job ids only allow letters, digits, `-` and `_`,
+# so no legitimate name is merged with a protected one by this.
 _gaia_to_canonical() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '-'
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]'
 }
 
 # Check: is the given disable-entry security-critical?
@@ -141,7 +144,7 @@ gaia_apply_template_overrides() {
   while IFS= read -r entry; do
     [ -z "$entry" ] && continue
     if _gaia_is_sr78_critical "$entry"; then
-      printf 'template-overrides.sh: refusal: cannot disable security-critical job "%s" — closed enum {commitlint, adr-048-guard, no-claude-attribution, secrets-scan, nfr-082-credential-audit}.\n' \
+      printf 'template-overrides.sh: refusal: cannot disable security-critical job "%s" — closed enum {commitlint, legacy-reference-guard, no-claude-attribution, secrets-scan, credential-audit}.\n' \
         "$entry" >&2
       return 1
     fi

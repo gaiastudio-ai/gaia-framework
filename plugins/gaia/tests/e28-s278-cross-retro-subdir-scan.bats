@@ -63,9 +63,34 @@ EOF
   [[ "$output" == *"systemic themes detected: 1"* ]]
 }
 
+@test "theme across nested + flat retros is flagged systemic (AC4)" {
+  # Sprint-1 in the flat location, sprint-2 in the nested subdir.
+  # The shared theme must be detected across both locations.
+  _seed_retro "$RD" sprint-1 2026-06-01
+  _seed_retro "$RD/retrospective" sprint-2 2026-06-08
+  run bash "$SCRIPT" --retros-dir "$RD" --current-sprint sprint-3
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"systemic themes detected: 1"* ]]
+}
+
 @test "no prior retros anywhere → clean exit 0, no detection (AC1)" {
   mkdir -p "$RD"
   run bash "$SCRIPT" --retros-dir "$RD" --current-sprint sprint-3
   [ "$status" -eq 0 ]
+  [[ "$output" != *"systemic themes detected"* ]]
+}
+
+@test "mutant: removing the nested glob makes the nested test fail" {
+  # Create a mutant copy with the nested glob line removed.
+  local mutant="$BATS_TEST_TMPDIR/mutant-cross-retro.sh"
+  sed '/"$RETROS_DIR"\/retrospective\/retrospective-\*\.md/d' "$SCRIPT" > "$mutant"
+  chmod +x "$mutant"
+
+  # Nested-only retros: the mutant must find zero files.
+  _seed_retro "$RD/retrospective" sprint-1 2026-06-01
+  _seed_retro "$RD/retrospective" sprint-2 2026-06-08
+  run bash "$mutant" --retros-dir "$RD" --current-sprint sprint-3
+  [ "$status" -eq 0 ]
+  # The mutant must NOT detect systemic themes (it cannot see nested retros).
   [[ "$output" != *"systemic themes detected"* ]]
 }

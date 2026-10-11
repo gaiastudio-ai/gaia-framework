@@ -80,7 +80,7 @@
           All CI configuration lives in the <code>ci_cd</code> section of
           <code>.gaia/config/project-config.yaml</code>. This is the single source of
           truth that
-          <a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a>
+          <a href="../commands/gaia-config-ci.html"><code>/gaia-config-ci</code></a>
           reads when it generates your workflow files.
         </p>
       </section>
@@ -169,7 +169,7 @@ ci_cd:
         <p>
           Once your <code>ci_cd</code> section is configured, run:
         </p>
-        <pre><code>/gaia-ci-setup</code></pre>
+        <pre><code>/gaia-config-ci</code></pre>
         <p>
           This reads your <code>project-config.yaml</code> and generates
           platform-specific workflow files. For GitHub Actions, it writes files
@@ -182,7 +182,7 @@ ci_cd:
           If you already have workflow files and want to regenerate them after
           changing your config, use the <code>--regenerate</code> flag:
         </p>
-        <pre><code>/gaia-ci-setup --regenerate</code></pre>
+        <pre><code>/gaia-config-ci --regenerate</code></pre>
         <p>
           This backs up your existing files before overwriting, so you can diff
           the changes.
@@ -304,7 +304,7 @@ ci_cd:
     enabled: true</code></pre>
         <p>
           When path filters are enabled,
-          <a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a>
+          <a href="../commands/gaia-config-ci.html"><code>/gaia-config-ci</code></a>
           generates workflow triggers that match the <code>path</code> of each
           stack. A change to <code>packages/web/</code> triggers only the
           frontend test job; a change to <code>packages/api/</code> triggers
@@ -392,10 +392,12 @@ ci_cd:
     adapter_versions:
       markdownlint: "0.41.0"               # pin adapter version</code></pre>
         <p>
-          Five security-critical jobs are protected from <code>disable:</code> -- you
-          cannot disable <code>commitlint</code>, <code>attribution-guard</code>,
-          <code>no-claude-attribution</code>, <code>secrets-scan</code>, or
-          <code>credential-audit</code>.
+          Five security-critical jobs are protected from <code>disable:</code>:
+          <code>commitlint</code>, <code>legacy-reference-guard</code>,
+          <code>no-claude-attribution</code>, <code>secrets-scan</code>, and
+          <code>credential-audit</code>. Any <code>disable:</code> entry matching one of these
+          names (including case, hyphen, underscore and spacing variations) is rejected with an
+          actionable error.
         </p>
 
         <h3>Required checks and fallback behaviour</h3>
@@ -428,7 +430,7 @@ ci_cd:
           key under <code>ci_cd:</code> to an integer between 1 and 360:
         </p>
         <pre><code>ci_cd:
-  ci_wait_timeout_minutes: 15   # wait up to 15 minutes for CI</code></pre>
+  ci_wait_timeout_minutes: 30   # wait up to 30 minutes for CI (default)</code></pre>
         <p>
           The CLI flag <code>--timeout &lt;minutes&gt;</code> overrides this
           value for a single run. When neither the config key nor the flag is
@@ -457,7 +459,7 @@ ci_cd:
           <li><a href="test-strategy-configuration.html">Test Strategy Configuration</a> -- how to configure which tests run and when.</li>
           <li><a href="selective-test-execution.html">Selective Test Execution</a> -- run only the test suites for stacks affected by a change.</li>
           <li><a href="automated-versioning-and-deploy.html">Automated Versioning &amp; Deploy</a></li>
-          <li><a href="../commands/gaia-ci-setup.html"><code>/gaia-ci-setup</code></a> -- full command reference.</li>
+          <li><a href="../commands/gaia-config-ci.html"><code>/gaia-config-ci</code></a> -- full command reference (formerly <code>/gaia-ci-setup</code>).</li>
           <li><a href="../commands/gaia-ci-edit.html"><code>/gaia-ci-edit</code></a> -- editing the promotion chain after initial setup.</li>
         </ul>
       </section>

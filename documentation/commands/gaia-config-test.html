@@ -87,7 +87,7 @@
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the test_execution section</span> Reads the current test_execution block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current test_execution configuration and an operation menu (add, remove, edit, view, exit).</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Placement values must be one of: local, ci-pre-merge, ci-post-merge, deployment, post-deploy.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the test_execution section</span> Reads the current test_execution block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present tier editor</span> Renders the current tier-to-placement mapping as a table. Prompts for tier (1, 2, or 3) and the new placement, validated against the canonical placement set.</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Placement values must be one of: local, ci-pre-merge, ci-post-merge, deployment, post-deploy.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
       </section>
 
       <section id="inputs">
@@ -107,26 +107,31 @@
 Current test_execution configuration:
   tier_1:
     placement: local
-    runner: vitest
+  tier_2:
+    placement: ci-pre-merge
+  tier_3:
+    placement: ci-post-merge
 
-Operations: [s] set key  [r] remove key  [v] view  [x] exit
-> s
+Which tier to edit? [1/2/3]
+> 2
 
-Key: e2e.adapter
-Value: playwright-e2e
+Choose placement for tier_2: local, ci-pre-merge, ci-post-merge, deployment, post-deploy
+> deployment
 
 Diff preview:
   test_execution:
     tier_1:
       placement: local
-      runner: vitest
-  + e2e:
-  +   adapter: playwright-e2e
+    tier_2:
+  -   placement: ci-pre-merge
+  +   placement: deployment
+    tier_3:
+      placement: ci-post-merge
 
 Apply this edit? [y/n]
 > y
 
-Test_execution section updated. Run /gaia-config-validate to verify.</code></pre>
+test_execution section updated. Run /gaia-config-validate to verify.</code></pre>
       </section>
 
       <section id="what-next">

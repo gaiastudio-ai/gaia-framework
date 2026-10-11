@@ -143,7 +143,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
 
@@ -195,8 +195,14 @@ This warning is shown once per session.
             parking lot, and next steps.
           </li>
           <li>
-            <span class="step-title">Validation</span>
-            Runs an automated quality check to verify all required sections
+            <span class="step-title">Val auto-review</span>
+            Dispatches <code>/gaia-val-validate</code> against the generated
+            artifact. If findings are returned, the command fixes them and
+            re-validates (up to 3 iterations).
+          </li>
+          <li>
+            <span class="step-title">Finalize</span>
+            Runs the finalize checklist to verify all required sections
             are present and substantive.
           </li>
         </ol>

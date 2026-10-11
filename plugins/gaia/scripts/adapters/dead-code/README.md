@@ -76,7 +76,7 @@ Security + CrowdStrike triple-source), the `deadcode`, `vulture`, and `spotbugs`
 binaries SHOULD be version-pinned via checksum verification in the CI image.
 
 **Status: deferred.** This repo has no CI-image build / dependency-pinning workflow
-to pin against today (`gaia-framework/.github/workflows/` carries only `adr-048-guard`,
+to pin against today (`gaia-framework/.github/workflows/` carries only `legacy-reference-guard`,
 `commitlint`, `plugin-ci`, `release`). The pinning is a shared infra gap that also
 affects the grype/cdxgen and SARIF Multitool adapters. It lands when the brownfield
 CI-image build step is built as a dedicated infra story. The adapters themselves are

@@ -354,12 +354,12 @@ ci_cd:
 The closed enum of security-critical job names that **CANNOT** be disabled is hard-coded:
 
 - `commitlint`
-- `adr-048-guard`
+- `legacy-reference-guard`
 - `no-claude-attribution`
 - `secrets-scan`
-- `nfr-082-credential-audit`
+- `credential-audit`
 
-Any `disable:` entry matching one of these names (after hyphen+case canonicalization — `commit-lint` / `Commit-Lint` / `commitlint` all collide with the canonical token) is **REJECTED** with a non-zero exit and an actionable error.
+Any `disable:` entry matching one of these names (after canonicalization to lowercase letters and digits — `commit-lint` / `Commit_Lint` / `commit.lint` / `commitlint` all collide with the canonical token) is **REJECTED** with a non-zero exit and an actionable error.
 
 ### Per-field validation
 

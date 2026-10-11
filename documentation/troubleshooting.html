@@ -25,6 +25,7 @@
           <li><a href="#path-canonicals">Canonical path cheat-sheet</a></li>
           <li><a href="#platform-requirements">Platform requirements</a></li>
           <li><a href="#statusline">Statusline issues</a></li>
+          <li><a href="#design">Design lifecycle issues</a></li>
           <li><a href="#bridge">Test Execution Bridge issues</a></li>
         </ul>
       </nav>
@@ -213,6 +214,60 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
 
         <h3>Rate-limit display shows ".../.." for one or both windows</h3>
         <p>The runtime hides missing windows by design — Pro/Max accounts only see the rate-limit JSON after their first API response in the session. Wait for a few interactions; the field will populate.</p>
+      </section>
+
+      <section id="design">
+        <h2>Design lifecycle issues</h2>
+
+        <h3>Design gate blocks solutioning commands</h3>
+        <p>Phase-three entry points (<code>/gaia-dev-story</code>,
+        <code>/gaia-create-arch</code>, <code>/gaia-create-epics</code>,
+        <code>/gaia-readiness-check</code>, <code>/gaia-adversarial</code>,
+        <code>/gaia-threat-model</code>, and others) halt with
+        &ldquo;Design is not approved&rdquo; when the design record is
+        not in the <code>approved</code> state. To unblock: run
+        <code>/gaia-design-review</code> to complete the approval round,
+        or pass <code>--force-design --reason "&lt;text&gt;"</code> for
+        an audited override. Projects without a UI
+        (<code>compliance.ui_present: false</code> or absent) skip the
+        gate automatically.</p>
+
+        <h3>Claude Design integration unavailable</h3>
+        <p>Design skills halt with &ldquo;The Claude Design integration
+        could not be reached&rdquo; when DesignSync is absent or
+        unreachable. Use a Claude Code session that exposes the
+        DesignSync tool surface. If the message says
+        &ldquo;unauthorized&rdquo; instead, run <code>/design-login</code>
+        (API-token sessions) or grant design access when prompted
+        (claude.ai sessions).</p>
+
+        <h3>Design artifact surface unavailable</h3>
+        <p>The product design project requires the Artifact tool. If it
+        cannot be reached, skills halt with &ldquo;The Design artifact
+        surface (Artifact tool) could not be reached.&rdquo; Ensure the
+        Artifact tool is available in your session.</p>
+
+        <h3>Convergence reports &ldquo;vacuous&rdquo;</h3>
+        <p><code>/gaia-design-review</code> halts if no stakeholder is
+        tagged with <code>design</code> or <code>ux</code>. Create an
+        approver with
+        <a href="commands/gaia-create-stakeholder.html"><code>/gaia-create-stakeholder</code></a>
+        using a <code>design</code> or <code>ux</code> tag.</p>
+
+        <h3>Product design project not set up</h3>
+        <p>Republish steps in <code>/gaia-edit-ux</code> and
+        <code>/gaia-add-feature</code> halt with &ldquo;The product
+        design project is not set up.&rdquo; Run
+        <a href="commands/gaia-create-ux.html"><code>/gaia-create-ux</code></a>
+        to create and bind a product design project.</p>
+
+        <h3>Sprint-id mismatch on close</h3>
+        <p><code>/gaia-sprint-close</code> and other sprint-state writers
+        refuse to write when the caller's sprint id does not match the
+        one in <code>sprint-status.yaml</code>. The error message names
+        both ids. Verify the active sprint with
+        <a href="commands/gaia-sprint-status.html"><code>/gaia-sprint-status</code></a>
+        and use the correct id.</p>
       </section>
 
       <section id="bridge">

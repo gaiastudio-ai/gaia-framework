@@ -84,17 +84,29 @@
         </p>
         <pre><code># .gaia/config/project-config.yaml
 test_execution:
-  default_command: npm test
-  timeout_seconds: 300
-  coverage:
-    enabled: true
-    threshold: 80</code></pre>
+  tier_1:
+    placement: pr
+    command: npm test
+    timeout_seconds: 120
+  tier_2:
+    placement: nightly
+    command: npm run test:integration
+    timeout_seconds: 300
+  tier_3:
+    placement: nightly
+    command: npm run test:e2e
+    timeout_seconds: 600
+
+testing:
+  coverage_threshold: 80</code></pre>
         <p>
-          <code>default_command</code> is the fallback test command. If a stack
-          does not specify its own test command, this one is used.
-          <code>timeout_seconds</code> kills tests that hang.
-          <code>coverage.threshold</code> sets the minimum coverage percentage
-          for a pass.
+          Each tier carries a <code>placement</code> (which pipeline stage
+          runs it), a <code>command</code> (the runner command-string the
+          bridge dispatcher executes), and a <code>timeout_seconds</code>
+          budget. When a tier lacks <code>command</code>, the bridge skips
+          it with a "no command declared" evidence entry.
+          <code>testing.coverage_threshold</code> sets the minimum coverage
+          percentage for a pass.
         </p>
         <p>
           Edit this section directly or use
@@ -167,21 +179,21 @@ test_execution:
         <pre><code># .gaia/config/project-config.yaml
 stacks:
   - name: frontend
-    path: packages/web
+    paths: ["packages/web/**"]
     language: typescript
-    test_command: npm test
+    test_cmd: npm test
   - name: backend
-    path: packages/api
+    paths: ["packages/api/**"]
     language: python
-    test_command: pytest --cov=src --cov-report=term-missing
+    test_cmd: pytest --cov=src --cov-report=term-missing
   - name: mobile
-    path: packages/mobile
+    paths: ["packages/mobile/**"]
     language: dart
-    test_command: flutter test</code></pre>
+    test_cmd: flutter test</code></pre>
         <p>
           When
           <a href="../commands/gaia-dev-story.html"><code>/gaia-dev-story</code></a>
-          runs tests, it uses the <code>test_command</code> for the stack
+          runs tests, it uses the <code>test_cmd</code> for the stack
           relevant to the current story. If a story touches multiple stacks,
           all relevant test commands run.
         </p>
@@ -273,13 +285,14 @@ markers =
         </p>
         <pre><code># .gaia/config/project-config.yaml
 test_execution:
-  tiers:
-    pr:
-      command: pytest -m "not slow"
-      timeout_seconds: 120
-    nightly:
-      command: pytest
-      timeout_seconds: 600</code></pre>
+  tier_1:
+    placement: pr
+    command: pytest -m "not slow"
+    timeout_seconds: 120
+  tier_2:
+    placement: nightly
+    command: pytest
+    timeout_seconds: 600</code></pre>
       </section>
 
       <section id="tiering">
@@ -368,13 +381,13 @@ steps_after_gaia:
 
         <h3>Protected test jobs (cannot disable)</h3>
         <p>
-          Five test-adjacent jobs are protected from the
+          Five security-critical jobs are protected from the
           <code>ci_cd.template_overrides.disable:</code> list:
-          <code>commitlint</code>, <code>boundary-guard</code>,
-          <code>no-claude-attribution</code>, <code>secrets-scan</code>,
-          <code>credential-audit</code>. The schema rejects any attempt to disable them,
-          AND the regen-time helper rejects hyphen+case-canonicalized bypass attempts
-          (<code>commit-lint</code>, <code>Commit-Lint</code>) as defense in depth.
+          <code>commitlint</code>, <code>legacy-reference-guard</code>,
+          <code>no-claude-attribution</code>, <code>secrets-scan</code>, and
+          <code>credential-audit</code>. The schema rejects any attempt to disable them, and the
+          regen-time helper rejects spelling variations such as case, hyphens, underscores or spaces (for example
+          <code>commit-lint</code> or <code>Commit-Lint</code>) as defense in depth.
         </p>
 
         <h3>Migration from a legacy test surface</h3>

@@ -61,7 +61,7 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/sprint-management.html">Sprint Management</a></dd>
           <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
-          <dt>Arguments:</dt><dd><code>&lt;story-key&gt;</code> plus an optional mode flag (<code>--envelope</code>, <code>--health</code>, or <code>--search &lt;terms&gt;</code>)</dd>
+          <dt>Arguments:</dt><dd><code>&lt;story-key&gt;</code> plus an optional mode flag (<code>--envelope</code>, <code>--health</code>, <code>--search &lt;terms&gt;</code>, or <code>--category &lt;tag&gt;</code>)</dd>
         </dl>
       </header>
 
@@ -76,7 +76,7 @@
         <ul>
           <li>You want to see, for one story, the requirements and decisions that govern it, the tests and reviews that gate it, and the design that sits alongside it -- all at once.</li>
           <li>You are reviewing a story and want a quick read on its governance coverage.</li>
-          <li>You want to search the indexed synopses for a phrase, or browse the unlinked-node health view, from the same entry point.</li>
+          <li>You want to search the indexed synopses for a phrase, filter lesson entries by category tag, or browse the unlinked-node health view, from the same entry point.</li>
         </ul>
       </section>
 
@@ -90,7 +90,8 @@
         <pre><code>/gaia-brain-query &lt;story-key&gt;                 # the governance envelope (default)
 /gaia-brain-query &lt;story-key&gt; --envelope      # explicit
 /gaia-brain-query --health                    # the unlinked-node view
-/gaia-brain-query --search "&lt;terms&gt;"          # synopsis substring search</code></pre>
+/gaia-brain-query --search "&lt;terms&gt;"          # synopsis substring search
+/gaia-brain-query --category "&lt;tag&gt;"          # lesson entries by category tag</code></pre>
       </section>
 
       <section id="envelope">

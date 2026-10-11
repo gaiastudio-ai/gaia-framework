@@ -129,14 +129,14 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
         <pre><code>/gaia-meeting --charter "Decide the database technology for the user service" --invitees Theo,Soren</code></pre>
         <h3>Resuming a paused session</h3>
-        <p>If you chose <code>[p]ause</code> at a yield boundary, the session is persisted to <code>_memory/meeting-sessions/{date}-{slug}.yaml</code>. Resume it with one of the following:</p>
+        <p>If you chose <code>[p]ause</code> at a yield boundary, the session is persisted to <code>.gaia/memory/meeting-sessions/{date}-{slug}.yaml</code>. Resume it with one of the following:</p>
         <pre><code>/gaia-meeting --resume &lt;session-id&gt; --continue
 /gaia-meeting --resume &lt;session-id&gt; --interject "I want to revisit the caching concern"
 /gaia-meeting --resume &lt;session-id&gt; --wrap-up</code></pre>
@@ -214,7 +214,7 @@ This warning is shown once per session.
               <td><code>--resume</code></td>
               <td>Command argument</td>
               <td>Yes (resuming)</td>
-              <td>Session ID of a paused meeting to resume. Sessions are stored under <code>_memory/meeting-sessions/{date}-{slug}.yaml</code>.</td>
+              <td>Session ID of a paused meeting to resume. Sessions are stored under <code>.gaia/memory/meeting-sessions/{date}-{slug}.yaml</code>.</td>
               <td><code>--resume 2026-05-18-database-decision</code></td>
             </tr>
             <tr>

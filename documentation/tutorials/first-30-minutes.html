@@ -26,19 +26,22 @@
           <li><a href="#step-3">3. /gaia-brainstorm</a></li>
           <li><a href="#step-4">4. /gaia-product-brief</a></li>
           <li><a href="#step-5">5. /gaia-create-prd</a></li>
-          <li><a href="#step-6">6. /gaia-create-arch</a></li>
-          <li><a href="#step-7">7. /gaia-create-epics</a></li>
-          <li><a href="#step-8">8. /gaia-create-story</a></li>
-          <li><a href="#step-9">9. /gaia-sprint-plan</a></li>
-          <li><a href="#step-10">10. /gaia-dev-story</a></li>
-          <li><a href="#step-11">11. /gaia-check-dod</a></li>
-          <li><a href="#step-12">12. /gaia-review-all</a></li>
-          <li><a href="#step-13">13. transition to done</a></li>
-          <li><a href="#step-14">14. repeat for the sprint</a></li>
-          <li><a href="#step-15">15. /gaia-sprint-review</a></li>
-          <li><a href="#step-16">16. /gaia-retro</a></li>
-          <li><a href="#step-17">17. /gaia-sprint-close</a></li>
-          <li><a href="#step-18">18. plan next sprint</a></li>
+          <li><a href="#step-6">6. /gaia-create-ux</a></li>
+          <li><a href="#step-7">7. /gaia-create-arch</a></li>
+          <li><a href="#step-8">8. /gaia-create-epics</a></li>
+          <li><a href="#step-9">9. /gaia-readiness-check</a></li>
+          <li><a href="#step-10">10. /gaia-create-story</a></li>
+          <li><a href="#step-11">11. /gaia-sprint-plan</a></li>
+          <li><a href="#step-12">12. /gaia-dev-story</a></li>
+          <li><a href="#step-13">13. /gaia-check-dod</a></li>
+          <li><a href="#step-14">14. /gaia-review-all</a></li>
+          <li><a href="#step-15">15. transition to done</a></li>
+          <li><a href="#step-16">16. repeat for the sprint</a></li>
+          <li><a href="#step-17">17. /gaia-sprint-review</a></li>
+          <li><a href="#step-18">18. /gaia-triage-findings</a></li>
+          <li><a href="#step-19">19. /gaia-retro</a></li>
+          <li><a href="#step-20">20. /gaia-sprint-close</a></li>
+          <li><a href="#step-21">21. plan next sprint</a></li>
           <li><a href="#whats-next">What to read next</a></li>
         </ul>
       </nav>
@@ -53,9 +56,9 @@
       <h1>First 30 Minutes with GAIA — Full Lifecycle End-to-End</h1>
         <p>This tutorial walks the entire GAIA lifecycle from a fresh project to a closed sprint:
         bootstrap → discovery → planning → solutioning → first sprint (implement, review, transition,
-        close) → planning the next sprint. The first ten steps get you to your first story being
-        implemented; Steps 11-18 take that story through reviews, mark it done, run the sprint
-        review and retro, close the sprint, and plan the next one.</p>
+        close) → planning the next sprint. The first twelve steps get you to your first story being
+        implemented; Steps 13-21 take that story through reviews, mark it done, run the sprint
+        review, triage findings, write the retro, close the sprint, and plan the next one.</p>
       <p>
         This walkthrough takes you from a blank directory to a running sprint.
         Each step builds on the previous one, producing an
@@ -76,11 +79,12 @@
       <section id="overview">
         <h2>Overview</h2>
         <p>
-          The walkthrough follows GAIA's five
+          The walkthrough follows GAIA's
           <a href="../glossary.html#lifecycle-phase">lifecycle phases</a>:
-          Analysis (steps 1--4), Planning (step 5), Solutioning (steps 6--7),
-          and Implementation (steps 8--10). Deployment is covered separately
-          in the <a href="../recipes.html">Recipes</a> page.
+          Analysis (steps 1--4), Planning (steps 5--6), Solutioning (steps 7--9),
+          Implementation (steps 10--16), and Sprint Management (steps 17--21).
+          Deployment is covered separately in the
+          <a href="../recipes.html">Recipes</a> page.
         </p>
       </section>
 
@@ -145,7 +149,7 @@
           Product Requirements Document. The PRD contains functional
           requirements (FRs), non-functional requirements (NFRs), user
           journeys, data requirements, integrations, and success criteria.
-          Every FR gets a unique identifier (e.g., <code>FR-001</code>) that
+          Every functional requirement gets a unique identifier that
           flows through the rest of the lifecycle.
         </p>
         <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/prd.md</code></p>
@@ -153,21 +157,43 @@
       </section>
 
       <section id="step-6">
-        <h2>Step 6 -- Design the system</h2>
+        <h2>Step 6 -- Design the user experience (UI projects)</h2>
+        <pre><code>/gaia-create-ux</code></pre>
+        <p>
+          If your project has a user interface
+          (<code>compliance.ui_present: true</code> in your config), the UX
+          designer agent (Christy) reads the PRD and produces a UX design
+          document covering personas, information architecture, wireframes,
+          interaction patterns, and accessibility guidelines. Run
+          <a href="../commands/gaia-design-review.html"><code>/gaia-design-review</code></a>
+          to drive stakeholder approval before moving to architecture.
+        </p>
+        <p>
+          <strong>Headless service?</strong> Skip this step. When
+          <code>compliance.ui_present</code> is <code>false</code> (or the
+          project has no UI layer), GAIA bypasses UX prerequisites
+          automatically.
+        </p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/ux-design.md</code></p>
+        <p><em>Expected duration: 5 minutes.</em></p>
+      </section>
+
+      <section id="step-7">
+        <h2>Step 7 -- Design the system</h2>
         <pre><code>/gaia-create-arch</code></pre>
         <p>
           The architect agent (Theo) reads the PRD and produces an
           architecture document covering technology selection, system
           components, data architecture, API design, infrastructure,
-          security architecture, and ADRs. Each architecture decision
-          traces back to a PRD requirement.
+          security architecture, and architecture decision records. Each
+          decision traces back to a PRD requirement.
         </p>
         <p><strong>Artifact produced:</strong> <code>.gaia/artifacts/planning-artifacts/architecture.md</code></p>
         <p><em>Expected duration: 5 minutes.</em></p>
       </section>
 
-      <section id="step-7">
-        <h2>Step 7 -- Break into deliverable units</h2>
+      <section id="step-8">
+        <h2>Step 8 -- Break into deliverable units</h2>
         <pre><code>/gaia-create-epics</code></pre>
         <p>
           GAIA breaks the architecture into epics and stories. Each epic
@@ -179,8 +205,21 @@
         <p><em>Expected duration: 3 minutes.</em></p>
       </section>
 
-      <section id="step-8">
-        <h2>Step 8 -- Prepare individual stories</h2>
+      <section id="step-9">
+        <h2>Step 9 -- Check implementation readiness</h2>
+        <pre><code>/gaia-readiness-check</code></pre>
+        <p>
+          Validates that all planning and testing artifacts are complete,
+          consistent, and free of cross-artifact contradictions before you
+          start implementing. The architect and devops agents assess
+          readiness; two mandatory quality gates (traceability matrix and
+          CI setup) must pass.
+        </p>
+        <p><em>Expected duration: 2 minutes.</em></p>
+      </section>
+
+      <section id="step-10">
+        <h2>Step 10 -- Prepare individual stories</h2>
         <pre><code>/gaia-create-story E1-S1</code></pre>
         <p>
           Creates a detailed story file for a specific story from the
@@ -193,21 +232,21 @@
         <p><em>Expected duration: 2 minutes per story.</em></p>
       </section>
 
-      <section id="step-9">
-        <h2>Step 9 -- Pick what to work on</h2>
+      <section id="step-11">
+        <h2>Step 11 -- Pick what to work on</h2>
         <pre><code>/gaia-sprint-plan</code></pre>
         <p>
           The sprint manager agent (Nate) selects stories from the backlog
           based on priority, dependencies, and velocity. The sprint is
-          committed atomically to <code>sprint-status.yaml</code>, which
+          committed atomically to <code>.gaia/state/sprint-status.yaml</code>, which
           becomes your source of truth for the iteration.
         </p>
-        <p><strong>Artifact produced:</strong> <code>sprint-status.yaml</code></p>
+        <p><strong>Artifact produced:</strong> <code>.gaia/state/sprint-status.yaml</code></p>
         <p><em>Expected duration: 2 minutes.</em></p>
       </section>
 
-      <section id="step-10">
-        <h2>Step 10 -- Implement your first story</h2>
+      <section id="step-12">
+        <h2>Step 12 -- Implement your first story</h2>
         <pre><code>/gaia-dev-story E1-S1</code></pre>
         <p>
           The full implementation workflow: plan approval, TDD
@@ -220,8 +259,8 @@
         <p><em>Expected duration: varies by story complexity.</em></p>
       </section>
 
-      <section id="step-11">
-        <h2>Step 11 -- Verify Definition of Done</h2>
+      <section id="step-13">
+        <h2>Step 13 -- Verify Definition of Done</h2>
         <pre><code>/gaia-check-dod E1-S1</code></pre>
         <p>
           Parses the story's DoD checklist and reports which items are checked vs unchecked.
@@ -231,8 +270,8 @@
         <p><em>Expected duration: under 1 minute.</em></p>
       </section>
 
-      <section id="step-12">
-        <h2>Step 12 -- Run all 6 reviews</h2>
+      <section id="step-14">
+        <h2>Step 14 -- Run all 6 reviews</h2>
         <pre><code>/gaia-review-all E1-S1</code></pre>
         <p>
           Dispatches six review sub-agents in parallel against the just-implemented story:
@@ -256,8 +295,8 @@
         <p><em>Expected duration: 5-10 minutes for the parallel battery.</em></p>
       </section>
 
-      <section id="step-13">
-        <h2>Step 13 -- Transition the story to done</h2>
+      <section id="step-15">
+        <h2>Step 15 -- Transition the story to done</h2>
         <pre><code>/gaia-check-review-gate E1-S1
 # (all 6 PASSED → COMPLETE)
 ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to review
@@ -278,10 +317,10 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
         <p><em>Expected duration: under 1 minute.</em></p>
       </section>
 
-      <section id="step-14">
-        <h2>Step 14 -- Repeat for the rest of the sprint</h2>
+      <section id="step-16">
+        <h2>Step 16 -- Repeat for the rest of the sprint</h2>
         <p>
-          Loop Steps 10-13 for every other story in the sprint. The bridge runs unit/integration
+          Loop Steps 12-15 for every other story in the sprint. The bridge runs unit/integration
           tests across all stories as you go, and each story's reviews accumulate evidence the
           sprint review will consult. Use <code>/gaia-sprint-status</code> at any time to see the
           dashboard (sprint id, done/total counts, points burned, risk-flagged stories).
@@ -289,8 +328,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
         <p><em>Expected duration: 1-3 days for a typical 5-story sprint.</em></p>
       </section>
 
-      <section id="step-15">
-        <h2>Step 15 -- Run the end-of-sprint review</h2>
+      <section id="step-17">
+        <h2>Step 17 -- Run the end-of-sprint review</h2>
         <pre><code>/gaia-sprint-review</code></pre>
         <p>
           Two parallel tracks: <strong>Track A</strong> dispatches Val to text-validate every story
@@ -308,8 +347,27 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
         <p><em>Expected duration: 5-15 minutes (most time is in the Val dispatch).</em></p>
       </section>
 
-      <section id="step-16">
-        <h2>Step 16 -- Write the retrospective</h2>
+      <section id="step-18">
+        <h2>Step 18 -- Triage findings</h2>
+        <pre><code>/gaia-triage-findings</code></pre>
+        <p>
+          Scans in-progress and completed story files for development findings
+          and triages each one into a new backlog story, an existing story, or
+          dismissal. The tech-debt review phase runs automatically as part of
+          triage. This step is a mandatory prerequisite for sprint close --
+          the close gate checks for a triage sentinel and refuses to proceed
+          without it.
+        </p>
+        <p><strong>Artifacts produced:</strong>
+          new backlog story files (when findings are triaged to new stories),
+          triage sentinel at <code>.gaia/memory/checkpoints/triage-findings-{sprint_id}-completed.json</code>,
+          updated <code>.gaia/artifacts/implementation-artifacts/tech-debt-dashboard.md</code>.
+        </p>
+        <p><em>Expected duration: 5-10 minutes.</em></p>
+      </section>
+
+      <section id="step-19">
+        <h2>Step 19 -- Write the retrospective</h2>
         <pre><code>/gaia-retro</code></pre>
         <p>
           Walks went-well, didn't-go-well, and action items. <strong>Step 7 (Val sidecar
@@ -326,8 +384,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
         <p><em>Expected duration: 10-15 minutes (mostly facilitation).</em></p>
       </section>
 
-      <section id="step-17">
-        <h2>Step 17 -- Close the sprint</h2>
+      <section id="step-20">
+        <h2>Step 20 -- Close the sprint</h2>
         <pre><code>/gaia-sprint-close</code></pre>
         <p>
           Atomically writes <code>status: closed</code> + <code>closed_at</code> to
@@ -345,8 +403,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
         <p><em>Expected duration: under 1 minute.</em></p>
       </section>
 
-      <section id="step-18">
-        <h2>Step 18 -- Plan the next sprint</h2>
+      <section id="step-21">
+        <h2>Step 21 -- Plan the next sprint</h2>
         <pre><code>/gaia-action-items
 /gaia-sprint-plan</code></pre>
         <p>
@@ -362,7 +420,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh E1-S1 --to done</code><
           seeded next-sprint <code>.gaia/state/sprint-status.yaml</code>.
         </p>
         <p><em>Expected duration: 15-30 minutes for action-items + planning combined.</em></p>
-        <p>You are now back at <a href="#step-10">Step 10</a> for the next sprint. Welcome to the loop.</p>
+        <p>You are now back at <a href="#step-12">Step 12</a> for the next sprint. Welcome to the loop.</p>
       </section>
 
       <section id="whats-next">

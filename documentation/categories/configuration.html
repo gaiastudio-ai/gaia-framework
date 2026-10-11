@@ -84,8 +84,8 @@
         </li>
         <li>
           <span class="command-name"><a href="../commands/gaia-config-rubric.html">/gaia-config-rubric</a></span>
-          <span class="tag tag-user">user-facing</span>
-          <span class="command-summary">Edit the rubrics section (review criteria and thresholds).</span>
+          <span class="tag" style="background:#b91c1c;color:#fff;font-weight:600;padding:2px 8px;border-radius:3px">retired</span>
+          <span class="command-summary">Retired -- replaced by <a href="../commands/gaia-config-severity.html">/gaia-config-severity</a> (5-into-3 severity map) and <a href="../commands/gaia-config-gates.html">/gaia-config-gates</a> (per-gate severity overrides).</span>
         </li>
         <li>
           <span class="command-name"><a href="../commands/gaia-config-compliance.html">/gaia-config-compliance</a></span>
@@ -107,19 +107,44 @@
           <span class="tag tag-user">user-facing</span>
           <span class="command-summary">Edit device_targets per platform (OS versions, form factors, screen sizes).</span>
         </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-severity.html">/gaia-config-severity</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the severity section (5-into-3 severity map for review findings).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-gates.html">/gaia-config-gates</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit per-gate severity overrides for review gates.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-brownfield.html">/gaia-config-brownfield</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit brownfield-specific configuration settings.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-distribution.html">/gaia-config-distribution</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the distribution section (output channels and packaging).</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-config-sprint-review.html">/gaia-config-sprint-review</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Edit the sprint_review section (review ceremony configuration).</span>
+        </li>
       </ul>
 
       <h2>CI/CD</h2>
       <ul class="command-list">
         <li>
-          <span class="command-name"><a href="../commands/gaia-ci-setup.html">/gaia-ci-setup</a></span>
+          <span class="command-name"><a href="../commands/gaia-ci-setup.html">/gaia-config-ci</a></span>
           <span class="tag tag-user">user-facing</span>
-          <span class="command-summary">Scaffold a CI/CD quality pipeline for your chosen CI platform.</span>
+          <span class="command-summary">Scaffold or regenerate a CI/CD quality pipeline for your chosen CI platform. (Formerly <code>/gaia-ci-setup</code>.)</span>
         </li>
         <li>
           <span class="command-name"><a href="../commands/gaia-ci-edit.html">/gaia-ci-edit</a></span>
           <span class="tag tag-user">user-facing</span>
-          <span class="command-summary">Edit the promotion chain in global.yaml (add, remove, edit, or reorder environments).</span>
+          <span class="command-summary">Edit the promotion chain in project-config.yaml (add, remove, edit, or reorder environments).</span>
         </li>
       </ul>
 
@@ -162,6 +187,11 @@
           <span class="command-name"><a href="../commands/gaia-statusline-disable.html">/gaia-statusline-disable</a></span>
           <span class="tag tag-user">user-facing</span>
           <span class="command-summary">Disable the GAIA statusline without removing the runtime files.</span>
+        </li>
+        <li>
+          <span class="command-name"><a href="../commands/gaia-statusline-refresh.html">/gaia-statusline-refresh</a></span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Refresh the GAIA statusline runtime files.</span>
         </li>
         <li>
           <span class="command-name"><a href="../commands/gaia-statusline.html">Statusline Reference</a></span>

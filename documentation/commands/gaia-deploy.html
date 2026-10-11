@@ -60,7 +60,7 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/deployment.html">Deployment</a></dd>
           <dt>Lifecycle phase:</dt><dd>5 -- Deployment</dd>
-          <dt>Arguments:</dt><dd><code>--env &lt;env&gt; --version &lt;ver&gt; [--skip-smoke] [--story-key &lt;key&gt;]</code></dd>
+          <dt>Arguments:</dt><dd><code>--env &lt;env&gt; --version &lt;ver&gt; [--components &lt;list&gt;] [--skip-smoke] [--story-key &lt;key&gt;]</code></dd>
         </dl>
       </header>
 
@@ -113,7 +113,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
 
@@ -129,7 +129,7 @@ This warning is shown once per session.
 
       <section id="inputs">
         <h2>Inputs</h2>
-        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>--env</code></td><td>Command argument (required)</td><td>Target environment (e.g., staging, production).</td></tr><tr><td><code>--version</code></td><td>Command argument (required)</td><td>Version tag or artifact identifier to deploy.</td></tr><tr><td><code>--skip-smoke</code></td><td>Command argument (optional)</td><td>Skip the post-deploy smoke phase.</td></tr><tr><td><code>--story-key</code></td><td>Command argument (optional)</td><td>Story key for Review Gate context.</td></tr></tbody></table>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>--env</code></td><td>Command argument (required)</td><td>Target environment (e.g., staging, production).</td></tr><tr><td><code>--version</code></td><td>Command argument (required)</td><td>Version tag or artifact identifier to deploy.</td></tr><tr><td><code>--components</code></td><td>Command argument (optional)</td><td>Comma-separated stack/component names to scope the deploy (e.g. <code>backend,frontend</code>). Omitted means full deploy.</td></tr><tr><td><code>--skip-smoke</code></td><td>Command argument (optional)</td><td>Skip the post-deploy smoke phase.</td></tr><tr><td><code>--story-key</code></td><td>Command argument (optional)</td><td>Story key for Review Gate context.</td></tr></tbody></table>
       </section>
 
       <section id="outputs">
@@ -159,7 +159,8 @@ Deployment report written to evidence/deployment-report.json</code></pre>
 
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
-        <h3>Pre-deploy gate BLOCKED</h3><p>One or more reviews have not passed. Run the failing reviews or check <code>/gaia-check-review-gate</code>.</p><h3>Deploy adapter BLOCKED</h3><p>The configured deploy adapter is not available. Install the required tool or check your <code>deployment.adapter</code> setting.</p><h3>Health-check timeout</h3><p>The deployed service did not respond within the timeout. Check that the service is running and network routing is correct.</p>
+        <h3>Pre-deploy gate BLOCKED</h3><p>One or more reviews have not passed. Run the failing reviews or check <code>/gaia-check-review-gate</code>.</p>
+        <h3>Environment is not deployable</h3><p>The target environment's <code>kind</code> is not <code>deployable</code>. The deploy halts with: <code>environment '&lt;env-id&gt;' is kind: &lt;kind&gt; — use /gaia-publish instead</code>. Check <code>environments[].kind</code> in your project configuration.</p><h3>Deploy adapter BLOCKED</h3><p>The configured deploy adapter is not available. Install the required tool or check your <code>deployment.adapter</code> setting.</p><h3>Health-check timeout</h3><p>The deployed service did not respond within the timeout. Check that the service is running and network routing is correct.</p>
       
         <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
         <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>

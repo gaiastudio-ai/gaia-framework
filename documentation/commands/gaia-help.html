@@ -151,8 +151,9 @@
           </li>
           <li>
             <span class="step-title">Detect lifecycle phase</span>
-            Scans your <code>docs/</code> directory to see which artifacts
-            exist:
+            Scans your <code>.gaia/artifacts/</code> directory to see which
+            artifacts exist (falls back to <code>docs/</code> on pre-migration
+            installs):
             <ul>
               <li>No artifacts -- you are in Phase 1 (Analysis).</li>
               <li>PRD exists but no architecture -- Phase 2/3 (Planning).</li>
@@ -203,7 +204,7 @@
             </tr>
             <tr>
               <td>Artifact tree</td>
-              <td><code>docs/</code> directories</td>
+              <td><code>.gaia/artifacts/</code> directories (legacy <code>docs/</code> fallback)</td>
               <td>Scanned to detect which lifecycle phase the project is in.</td>
             </tr>
           </tbody>

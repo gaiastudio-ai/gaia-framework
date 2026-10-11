@@ -211,7 +211,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
         <p><strong>Caveat.</strong> The one-shot contract depends on <code>CLAUDE_SESSION_ID</code> being exported. Without it, the marker falls back to the orchestrator PID, so each fresh shell becomes a new "session" from the dedupe's point of view and the warning re-fires on every command invocation. Operators who see repeat warnings on every command should export <code>CLAUDE_SESSION_ID</code> (any stable per-session value).</p>
       </section>
 
@@ -261,7 +261,7 @@ This warning is shown once per session.
             <span class="step-title">Test environment generation</span>
             If test infrastructure is detected (test runners, CI config,
             Docker test config, browser matrix), generates a
-            <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+            <a href="../test-environment-yaml.html"><code>.gaia/config/test-environment.yaml</code></a>
             via the shared manifest generator. If the file already
             exists, copy-if-absent semantics preserve it byte-identical;
             the legacy <code>merge / skip / overwrite</code> prompt is
@@ -479,7 +479,7 @@ Done. Run /gaia-create-epics to break the gaps into stories.</code></pre>
         <h3>test-environment.yaml already present</h3>
         <p>
           Phase 5 uses copy-if-absent semantics: if
-          <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+          <a href="../test-environment-yaml.html"><code>.gaia/config/test-environment.yaml</code></a>
           already exists, it is preserved byte-identical and the review
           pause is skipped. To regenerate from scratch, move the
           existing file aside before re-running brownfield.

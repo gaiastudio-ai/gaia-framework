@@ -26,7 +26,7 @@
         </ol>
       </section>
       <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th><th>Example</th></tr></thead><tbody><tr><td><code>design-target</code></td><td>Positional argument or interactive prompt</td><td>Design-record path, design document path, or component name.</td><td><code>/gaia-validate-design-a11y .gaia/artifacts/planning-artifacts/ux-design.md</code></td></tr></tbody></table></section>
-      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Findings table</td><td>Console output</td><td>Each finding with severity, WCAG criterion, and remediation.</td></tr><tr><td>Verdict</td><td>Console output</td><td>APPROVE, REQUEST_CHANGES, or BLOCKED.</td></tr></tbody></table></section>
+      <section id="outputs"><h2>Outputs</h2><table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Findings table</td><td>Console output</td><td>Each finding with severity, WCAG criterion, and remediation.</td></tr><tr><td>Verdict</td><td>Console output</td><td>APPROVE, REQUEST_CHANGES, or BLOCKED.</td></tr><tr><td>Review report</td><td><code>.gaia/artifacts/test-artifacts/design-a11y-review-{date}.md</code></td><td>Persistent report with verdict, findings table, rubric source, and design target reference.</td></tr></tbody></table></section>
       <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-validate-design-a11y .gaia/artifacts/planning-artifacts/ux-design.md
 
 Analyzing design for WCAG 2.1 compliance...

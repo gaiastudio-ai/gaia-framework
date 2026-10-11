@@ -59,13 +59,13 @@
         <dl class="command-meta">
           <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
           <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
-          
+          <dt>Arguments:</dt><dd><code>&lt;add|remove|list&gt; [platform-id]</code></dd>
         </dl>
       </header>
 
       <section id="what-it-does">
         <h2>What it does</h2>
-        <p><code>/gaia-config-platform</code> edits the <code>platforms</code> section of <code>.gaia/config/project-config.yaml</code>. The platforms section is a flat list of platform identifiers (ios, android, web). Mobile gates, rubric layer selection, and device-target requirements trigger based on this list. The editor preserves all YAML comments and formatting outside the edited section. Every edit goes through a diff preview and confirmation gate before writing.</p>
+        <p><code>/gaia-config-platform</code> edits the <code>platforms</code> section of <code>.gaia/config/project-config.yaml</code>. The platforms section is a flat list of platform identifiers. Baseline identifiers are <code>web</code>, <code>ios</code>, and <code>android</code>; other kebab-case identifiers (e.g., <code>server</code>, <code>embedded</code>) are accepted with a warning. Identifiers must be kebab-case (<code>^[a-z][a-z0-9-]*$</code>); unknown identifiers are accepted with a warning. Mobile gates, rubric layer selection, and device-target requirements trigger based on this list. Subcommands: <code>add &lt;id&gt;</code>, <code>remove &lt;id&gt;</code>, <code>list</code> (idempotent). The editor preserves all YAML comments and formatting outside the edited section.</p>
       </section>
 
       <section id="when-to-use">
@@ -80,12 +80,14 @@
 
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
-        <pre><code>/gaia-config-platform</code></pre>
+        <pre><code>/gaia-config-platform add ios
+/gaia-config-platform remove android
+/gaia-config-platform list</code></pre>
       </section>
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the platforms section</span> Reads the current platforms block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Present edit menu</span> Shows the current platforms configuration and an operation menu (add, remove, edit, view, exit).</li><li><span class="step-title">Apply operation</span> Collects the new values and validates them. Platform identifiers must be kebab-case. Unknown identifiers are accepted with a warning.</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path.</li><li><span class="step-title">Extract the platforms section</span> Reads the current platforms block. If the section is missing, offers to scaffold a default.</li><li><span class="step-title">Dispatch subcommand</span> Executes the subcommand: <code>add &lt;id&gt;</code> (idempotent), <code>remove &lt;id&gt;</code>, or <code>list</code>. Shows the current platforms preamble before applying.</li><li><span class="step-title">Validate identifier</span> Platform identifiers must be kebab-case (<code>^[a-z][a-z0-9-]*$</code>). Unknown identifiers are accepted with a warning (not an error).</li><li><span class="step-title">Diff preview and confirmation</span> Shows a unified diff of what will change. You must confirm before anything is written.</li><li><span class="step-title">Write back</span> Writes only the modified section, preserving all other content byte-for-byte.</li><li><span class="step-title">Suggest validation</span> Recommends running <code>/gaia-config-validate</code> to confirm the file still passes schema validation.</li></ol>
       </section>
 
       <section id="inputs">
@@ -100,29 +102,23 @@
 
       <section id="example">
         <h2>Example session</h2>
-        <pre><code>> /gaia-config-platform
+        <pre><code>> /gaia-config-platform add ios
 
-Current platforms configuration:
-  - web
-
-Operations: [s] set key  [r] remove key  [v] view  [x] exit
-> s
-
-Key: platforms
-Value: [web, ios, android]
+current platforms: [web]
 
 Diff preview:
-  - platforms:
-  -   - web
-  + platforms:
-  +   - web
+    platforms:
+      - web
   +   - ios
-  +   - android
 
 Apply this edit? [y/n]
 > y
 
-Platforms section updated. Run /gaia-config-validate to verify.</code></pre>
+Platforms section updated. Run /gaia-config-validate to verify.
+
+> /gaia-config-platform list
+
+current platforms: [web, ios]</code></pre>
       </section>
 
       <section id="what-next">

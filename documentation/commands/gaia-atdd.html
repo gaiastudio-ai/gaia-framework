@@ -145,10 +145,11 @@
         <h2>Prerequisites</h2>
         <ul>
           <li>
-            <strong>A story file must exist.</strong> The file lives inside
-            its epic directory at
-            <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>
-            (epic-grouped layout). If it does not exist, the command stops
+            <strong>A story file must exist.</strong> The canonical location is
+            <code>.gaia/artifacts/implementation-artifacts/epic-{slug}/{story_key}-{story-slug}/story.md</code>
+            (per-story directory layout). The legacy layout
+            <code>epic-{slug}/stories/{story_key}-{slug}.md</code> is also
+            supported as a fallback. If neither exists, the command stops
             with "Story file not found for {story_key}". Create it first with
             <a href="gaia-create-story.html"><code>/gaia-create-story</code></a>.
           </li>
@@ -171,7 +172,7 @@
           <li>
             <strong>For red-phase execution (optional): a test runner must be
             configured.</strong> Step 5b reads
-            <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+            <a href="../test-environment-yaml.html"><code>.gaia/config/test-environment.yaml</code></a>
             and the Test Execution Bridge configuration. If no runner is
             configured, red-phase execution is skipped with a warning -- it
             does not fail the overall invocation.
@@ -213,7 +214,7 @@ This warning is shown once per session.
         <pre><code>orchestration:
   mode: team</code></pre>
         <h3>One-shot semantics</h3>
-        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>_memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
+        <p>The warning is emitted <strong>once per Claude Code session</strong>. A marker file at <code>.gaia/memory/checkpoints/orchestration-warning-shown.&lt;session-id&gt;</code> suppresses the warning for the rest of the session. Starting a new session re-emits the warning once.</p>
       </section>
 
 
@@ -278,9 +279,9 @@ This warning is shown once per session.
           </li>
           <li>
             <span class="step-title">Load story file</span>
-            Searches
-            <code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code>
-            for the story file. Reads the story title, risk level, and every
+            Resolves the story file via the canonical per-story directory
+            (<code>epic-{slug}/{story_key}-{story-slug}/story.md</code>) or the
+            legacy grouped layout as a fallback. Reads the story title, risk level, and every
             entry in the <code>## Acceptance Criteria</code> section. Stories
             with zero ACs are skipped with a warning.
           </li>
@@ -303,10 +304,12 @@ This warning is shown once per session.
           </li>
           <li>
             <span class="step-title">Write ATDD artifact</span>
-            Writes the artifact to
-            <code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code> using an
-            atomic write (temp file then rename) to prevent corruption if
-            interrupted. The artifact contains:
+            Writes the artifact to the per-story mirror path
+            <code>.gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{story_key}-{story_slug}/atdd.md</code>
+            using an atomic write (temp file then rename) to prevent corruption if
+            interrupted. The legacy flat path
+            <code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code>
+            remains a read-only fallback during the migration window. The artifact contains:
             <ul>
               <li>Header with story key, title, risk level, and generation date.</li>
               <li>AC-to-test mapping table (AC ID, description, test name).</li>
@@ -377,7 +380,7 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Story file</td>
-              <td><code>.gaia/artifacts/implementation-artifacts/epic-{epic_key}-{slug}/stories/{story_key}-{slug}.md</code></td>
+              <td><code>.gaia/artifacts/implementation-artifacts/epic-{slug}/{story_key}-{story-slug}/story.md</code></td>
               <td>
                 Contains the acceptance criteria that are transformed into
                 test skeletons. Also provides story title and risk level.
@@ -395,7 +398,7 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Test environment config</td>
-              <td><code>config/test-environment.yaml</code></td>
+              <td><code>.gaia/config/test-environment.yaml</code></td>
               <td>
                 Read during optional Step 5b (red-phase execution) to locate
                 the configured test runner. Not required if you skip
@@ -430,10 +433,11 @@ This warning is shown once per session.
           <tbody>
             <tr>
               <td>ATDD artifact</td>
-              <td><code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code></td>
+              <td><code>.gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{story_key}-{story_slug}/atdd.md</code></td>
               <td>
                 Given/When/Then test skeletons for every AC in the story,
                 plus the AC-to-test traceability table. One file per story.
+                Legacy flat path <code>atdd-{story_key}.md</code> is a read-only fallback.
               </td>
             </tr>
             <tr>
@@ -446,7 +450,7 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Checkpoint files</td>
-              <td><code>_memory/checkpoints/</code></td>
+              <td><code>.gaia/memory/checkpoints/</code></td>
               <td>
                 Written after each step to enable
                 <a href="gaia-resume.html"><code>/gaia-resume</code></a> if
@@ -530,7 +534,7 @@ Writing test skeletons...
     - AND no partial user record is created
   **Status:** FAILING (red phase -- implementation does not exist)
 
-Artifact written to: .gaia/artifacts/test-artifacts/atdd-E3-S7.md
+Artifact written to: .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md
   3 ACs mapped to 3 tests. All tests in red (failing) state.
 
 Validation: PASSED
@@ -541,7 +545,7 @@ Validation: PASSED
 Run generated tests now to confirm red phase? [y/N]
 &gt; n
 
-Done. ATDD artifact ready at .gaia/artifacts/test-artifacts/atdd-E3-S7.md</code></pre>
+Done. ATDD artifact ready at .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md</code></pre>
 
         <h3>Batch mode</h3>
         <pre><code>&gt; /gaia-atdd
@@ -559,12 +563,12 @@ Enter story numbers (comma-separated): 1,3
 
 Processing E3-S7 (1/2)...
   Loaded 3 ACs. Generating test skeletons...
-  Artifact written to: .gaia/artifacts/test-artifacts/atdd-E3-S7.md (generated)
+  Artifact written to: .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md (generated)
 
 Processing E5-S3 (2/2)...
   Loaded 7 ACs. Generating test skeletons...
-  Overwriting existing ATDD artifact at .gaia/artifacts/test-artifacts/atdd-E5-S3.md
-  Artifact written to: .gaia/artifacts/test-artifacts/atdd-E5-S3.md (overwritten)
+  Overwriting existing ATDD artifact.
+  Artifact written to: .gaia/artifacts/test-artifacts/epic-E5-payments/stories/E5-S3-payment-webhook/atdd.md (overwritten)
 
 Batch summary:
   Generated:   1 (E3-S7)
@@ -655,7 +659,7 @@ Done.</code></pre>
         <h3>"Test runner not configured -- skipping red-phase execution"</h3>
         <p>
           You opted to run red-phase tests, but no test runner is configured
-          in <code>config/test-environment.yaml</code> or the
+          in <code>.gaia/config/test-environment.yaml</code> or the
           Test Execution Bridge is disabled. The ATDD artifact is still
           written -- only the optional execution step is skipped. Configure
           a test runner or enable the bridge to use this feature.
