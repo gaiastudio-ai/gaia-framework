@@ -38,14 +38,14 @@ _seed_last_published() {
   "design_system": {
     "last_published_at": "2026-01-01T00:00:00Z",
     "files": [
-      {"path": "tokens/colors.html", "hash": "$token_hash"},
-      {"path": "components/button.spec.html", "hash": "$component_hash"}
+      {"file": "tokens/colors.html", "hash": "$token_hash"},
+      {"file": "components/button.spec.html", "hash": "$component_hash"}
     ]
   },
   "product_design": {
     "last_published_at": "2026-01-01T00:00:00Z",
     "files": [
-      {"path": "project/login.dc.html", "hash": "$screen_hash"}
+      {"file": "project/login.dc.html", "hash": "$screen_hash"}
     ]
   }
 }
@@ -656,7 +656,7 @@ HELPEOF
   while [ "$i" -lt 50 ]; do
     local h="hash$i"
     if [ $((i % 2)) -eq 0 ]; then h="old$i"; fi
-    printf '%s{"path":"tokens/t%d.html","hash":"%s"}' "$sep" "$i" "$h" >> "$lp"
+    printf '%s{"file":"tokens/t%d.html","hash":"%s"}' "$sep" "$i" "$h" >> "$lp"
     sep=","
     i=$((i + 1))
   done
@@ -665,7 +665,7 @@ HELPEOF
   while [ "$i" -lt 50 ]; do
     local sh="shash$i"
     if [ $((i % 2)) -eq 0 ]; then sh="old$i"; fi
-    printf '%s{"path":"project/s%d.dc.html","hash":"%s"}' "$sep" "$i" "$sh" >> "$lp"
+    printf '%s{"file":"project/s%d.dc.html","hash":"%s"}' "$sep" "$i" "$sh" >> "$lp"
     sep=","
     i=$((i + 1))
   done
