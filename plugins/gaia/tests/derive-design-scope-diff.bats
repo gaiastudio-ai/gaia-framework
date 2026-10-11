@@ -713,31 +713,40 @@ HELPEOF
   [ "$output" = "both" ] || fail "expected both (component + absolute screen after spec-root), got: $output"
 }
 
-@test "repeated slashes in edited path are collapsed" {
+@test "repeated slashes under spec-root are collapsed before prefix stripping" {
   [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
 
+  # NO design-system change — only the edited screen path. The double-slash
+  # sits between the spec-root prefix and the real directory. Without the
+  # collapse, spec-root stripping leaves a leading slash that makes the path
+  # unclassified (both). With the collapse, the path normalises to
+  # screens/login.spec.html and the scope is product-design.
   _seed_last_published "aaa111" "bbb222" "ccc333"
   _seed_local_manifest \
     "tokens/colors.html=aaa111" \
-    "components/button.spec.html=new-comp-hash" \
+    "components/button.spec.html=bbb222" \
     "screens/login.spec.html=ddd444"
 
   run bash "$DIFF_SCRIPT" \
     --last-published "$TEST_TMP/design-last-published.json" \
     --local-manifest "$TEST_TMP/local-manifest.json" \
-    --edited ".//screens/login.spec.html"
+    --spec-root /a --edited "/a//screens/login.spec.html"
 
   [ "$status" -eq 0 ]
-  [ "$output" = "both" ] || fail "expected both (component + .//screen), got: $output"
+  [ "$output" = "product-design" ] || fail "expected product-design (// collapsed before spec-root strip), got: $output"
 }
 
-@test "artboard path project/name.dc.html maps to screens/name.spec.html" {
+@test "artboard path project/name.dc.html maps to a screen match" {
   [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
 
+  # NO component change — only the edited artboard path. Without the mapping,
+  # project/login.dc.html would be unclassified and produce both. With it,
+  # the path normalises to screens/login.spec.html and the scope is
+  # product-design.
   _seed_last_published "aaa111" "bbb222" "ccc333"
   _seed_local_manifest \
     "tokens/colors.html=aaa111" \
-    "components/button.spec.html=new-comp-hash" \
+    "components/button.spec.html=bbb222" \
     "screens/login.spec.html=ddd444"
 
   run bash "$DIFF_SCRIPT" \
@@ -746,7 +755,7 @@ HELPEOF
     --edited "project/login.dc.html"
 
   [ "$status" -eq 0 ]
-  [ "$output" = "both" ] || fail "expected both (component + artboard path), got: $output"
+  [ "$output" = "product-design" ] || fail "expected product-design (artboard mapped), got: $output"
 }
 
 @test "dotdot segment in edited path yields both via unclassified" {
@@ -783,5 +792,88 @@ HELPEOF
 
   [ "$status" -eq 0 ]
   [ "$output" = "both" ] || fail "expected both (component + unclassified absolute), got: $output"
+}
+
+# ---------------------------------------------------------------------------
+# Edge cases: empty normalised path and dash-prefixed path
+# ---------------------------------------------------------------------------
+
+@test "edited dotslash alone yields both because the normalised path is empty" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # --edited ./ normalises to an empty string. That must count as unclassified
+  # (both), not be silently dropped.
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ccc333"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "./"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (./ yields empty path), got: $output"
+}
+
+@test "spec-root that equals the edited path yields both not design-system" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # --edited /spec/ --spec-root /spec normalises to empty after stripping.
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp" \
+    "screens/login.spec.html=ccc333"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --spec-root /spec --edited "/spec/"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (spec-root==edited yields empty), got: $output"
+}
+
+@test "edited path that normalises to a dash-prefixed value is not read as a flag" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  # --edited ./--spec-root screens/login.spec.html: after ./ stripping the
+  # first path becomes "--spec-root". The end-of-options marker must prevent
+  # the helper from reading it as its own --spec-root flag.
+  _seed_last_published "aaa111" "bbb222" "ccc333"
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-comp" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "./--spec-root" "screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (dash-prefixed path + screen), got: $output"
+}
+
+@test "unknown flag with control characters is sanitised in the diagnostic" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found"
+
+  _seed_local_manifest "tokens/colors.html=aaa111"
+
+  # Pass a flag containing a tab character
+  local bad_flag
+  bad_flag="$(printf -- '--bad\tflag')"
+  run bash "$DIFF_SCRIPT" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    "$bad_flag"
+
+  [ "$status" -eq 2 ]
+  # The tab must not appear in the output — it is stripped by tr -d cntrl
+  case "$output" in
+    *"$(printf '\t')"*) fail "control character not stripped from diagnostic" ;;
+  esac
 }
 

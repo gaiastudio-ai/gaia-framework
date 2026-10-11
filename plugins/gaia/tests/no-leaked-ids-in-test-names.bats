@@ -304,3 +304,133 @@ FIXTURE
   # Clean fixture — should produce zero matches.
   [[ "$count" -eq 0 ]]
 }
+
+# ---------------------------------------------------------------------------
+# Gate 3: review-label shapes in comments
+# ---------------------------------------------------------------------------
+#
+# Review-process labels — parenthesised cross-references of the form
+# (verb + letter-digit) and bare single-letter-plus-digit tags used as
+# mutant or finding references — are internal review bookkeeping and
+# must never ship in published test files.
+#
+# Carve-outs (not review labels):
+#   - Byte values and hex literals (0xNN)
+#   - Unicode code points (U+NNNN)
+#   - Shellcheck codes (SC + 4 digits)
+#   - SHA hex fragments
+#   - TAP output numbers (ok 1, not ok 2)
+#   - Lines mentioning byte, hex, or SHA context
+
+# _scan_review_labels FILE... — count comment lines with review-label shapes.
+# Prints the match count to stdout.
+_scan_review_labels() {
+  local comment_lines filtered matches
+  comment_lines="$(grep -hn '^#' "$@" 2>/dev/null || true)"
+  [[ -z "$comment_lines" ]] && { echo 0; return; }
+
+  # Parenthesised review-process cross-references: "kills" + letter-digit,
+  # "item" + digit, "suggestion" + digit, "warning" + digit, "finding" + digit.
+  local paren_labels='\(kills [A-Z][0-9]+\)|\(item [0-9]|\(suggestion [0-9]|\(warning [0-9]|\(finding [0-9]'
+
+  # Bare review labels as whole-word references in comment text:
+  # a single letter from the set [WCFMNP] followed by one or more digits,
+  # used as a cross-reference to a review mutant or finding. Word boundaries
+  # are required, and known non-label shapes are excluded.
+  local bare_labels='\b[WCFMNP][0-9]+\b'
+
+  # First pass: parenthesised labels (high confidence, no carve-outs needed)
+  local paren_hits
+  paren_hits="$(printf '%s\n' "$comment_lines" \
+    | grep -E "$paren_labels" || true)"
+
+  # Second pass: bare labels (need carve-outs)
+  # Strip lines with: hex values (0x..), Unicode (U+), shellcheck (SC),
+  # byte-value context (byte/Byte, lead byte, continuation byte),
+  # regex character classes [0-9], and tech tokens.
+  filtered="$(printf '%s\n' "$comment_lines" \
+    | grep -vE '0x[0-9a-fA-F]|U\+[0-9]|SC[0-9]{4}|\[0-9\]' \
+    | grep -viE '[Bb]yte|[Hh]ex|[Ss][Hh][Aa] ' \
+    | grep -vE "$_tech_token_filter" \
+    || true)"
+  [[ -z "$filtered" ]] && filtered=""
+
+  local bare_hits
+  bare_hits="$(printf '%s\n' "$filtered" \
+    | grep -wE "$bare_labels" || true)"
+
+  # Combine and count
+  local all_hits=""
+  [[ -n "$paren_hits" ]] && all_hits="$paren_hits"
+  if [[ -n "$bare_hits" ]]; then
+    if [[ -n "$all_hits" ]]; then
+      all_hits="$all_hits
+$bare_hits"
+    else
+      all_hits="$bare_hits"
+    fi
+  fi
+
+  if [[ -n "$all_hits" ]]; then
+    printf '%s\n' "$all_hits" | sort -u | wc -l | tr -d ' '
+  else
+    echo 0
+  fi
+}
+
+@test "no shipped bats comment carries a review-label reference" {
+  local -a targets
+  _build_target_list
+
+  [[ ${#targets[@]} -gt 0 ]] || { printf 'no bats files found to scan\n' >&2; return 1; }
+
+  # Hard gate: parenthesised review-process labels are unambiguous leaks.
+  # The scan MUST cover more than 0 files.
+  local comment_lines
+  comment_lines="$(grep -hn '^#' "${targets[@]}" 2>/dev/null || true)"
+  [[ -n "$comment_lines" ]] || { printf 'no comment lines found across %s files\n' "${#targets[@]}" >&2; return 1; }
+
+  local paren_labels='\(kills [A-Z][0-9]+\)|\(item [0-9]|\(suggestion [0-9]|\(warning [0-9]|\(finding [0-9]'
+  local paren_hits
+  paren_hits="$(printf '%s\n' "$comment_lines" | grep -E "$paren_labels" || true)"
+
+  if [[ -n "$paren_hits" ]]; then
+    local pcount
+    pcount="$(printf '%s\n' "$paren_hits" | wc -l | tr -d ' ')"
+    printf 'FAIL: %s shipped bats comment line(s) carry a parenthesised review label\n' "$pcount" >&2
+    printf '%s\n' "$paren_hits" | head -20 >&2
+    return 1
+  fi
+}
+
+@test "review-label lint catches a planted mutant label in a fixture" {
+  local fixture="$TEST_TMP/planted-review-label.bats"
+  # Build the fixture at runtime so this source file never carries a
+  # literal review-label reference.
+  printf '#!/usr/bin/env bats\n' > "$fixture"
+  printf '# Unauthorized remediation pinned at each site (%s %s)\n\n' \
+    "kills" "N1" >> "$fixture"
+  printf '@test "clean name" {\n  true\n}\n' >> "$fixture"
+
+  local count
+  count="$(_scan_review_labels "$fixture")"
+  [[ "$count" -gt 0 ]] || fail "planted review label was not caught"
+}
+
+@test "review-label lint ignores legitimate byte values and shellcheck codes" {
+  local fixture="$TEST_TMP/clean-review-labels.bats"
+  cat > "$fixture" <<'FIXTURE'
+#!/usr/bin/env bats
+# Byte C0 and C1 are continuation bytes
+# Unicode U+FEFF is the BOM
+# Shellcheck SC2016 warns about single quotes
+# Hex value 0xF4 is the last valid UTF-8 lead byte
+# SHA fragment F0A1B2 is not a label
+
+FIXTURE
+  printf '@test "clean name" {\n  true\n}\n' >> "$fixture"
+
+  local count
+  count="$(_scan_review_labels "$fixture")"
+  [[ "$count" -eq 0 ]]
+}
