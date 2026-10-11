@@ -3286,13 +3286,13 @@ _assert_no_raw_control_in_reason() {
 @test "sanitised cap reached when raw is under 500" {
   seed_override_fixture
 
-  # 488 B's plus 3 ESC bytes = 491 raw bytes (under 500).
-  # Sanitised: 488 + 3*6 = 506 (over 500).
+  # 495 B's plus 1 ESC = 496 raw bytes (under 500).
+  # Sanitised: 495 + 6 = 501 (over 500, exactly at the boundary).
   local reason=""
   local i=0
-  while [ "$i" -lt 488 ]; do reason="${reason}B"; i=$((i + 1)); done
-  reason="${reason}$(printf '\x1b\x1b\x1b')"
-  [ "${#reason}" -eq 491 ] || fail "raw length is ${#reason}, expected 491"
+  while [ "$i" -lt 495 ]; do reason="${reason}B"; i=$((i + 1)); done
+  reason="${reason}$(printf '\x1b')"
+  [ "${#reason}" -eq 496 ] || fail "raw length is ${#reason}, expected 496"
 
   run run_gate --force-design \
     --reason "$reason" \
@@ -3305,6 +3305,22 @@ _assert_no_raw_control_in_reason() {
   if _stripped_output | grep -qF "raw bytes"; then
     fail "got the raw-cap message instead of the sanitised-cap message; got: $output"
   fi
+
+  # Sub-check: 494 B's + 1 ESC = 495 raw, 500 sanitised — accepted
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  local reason_ok=""
+  i=0
+  while [ "$i" -lt 494 ]; do reason_ok="${reason_ok}B"; i=$((i + 1)); done
+  reason_ok="${reason_ok}$(printf '\x1b')"
+  [ "${#reason_ok}" -eq 495 ] || fail "raw length is ${#reason_ok}, expected 495"
+
+  run run_gate --force-design \
+    --reason "$reason_ok" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] \
+    || fail "494 B + 1 ESC (500 sanitised) should be accepted; got status $status: $output"
 }
 
 @test "leading spaces are trimmed from the reason" {
