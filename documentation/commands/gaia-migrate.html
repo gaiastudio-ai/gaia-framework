@@ -230,9 +230,9 @@ DRY-RUN: Migration plan for ./
     1. Backup _gaia/, _memory/, custom/ (87 MB)
     2. Split _gaia/_config/global.yaml into .gaia/config/project-config.yaml
     3. Migrate custom templates to custom/templates/
-    4. Migrate memory sidecars to _memory/ (v2 layout)
+    4. Migrate memory sidecars to .gaia/memory/ (v2 layout)
     5. Validate config against schema
-    6. Remove v1 directories (_gaia/, _memory/v1, custom/v1)
+    6. Remove v1 directories (_gaia/, _memory/, custom/)
 
   No HALT conditions detected.
 

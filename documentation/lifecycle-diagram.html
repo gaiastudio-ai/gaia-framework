@@ -468,6 +468,7 @@
                   <span class="ld-review-item-name">4. Test Automation</span>
                   <span class="ld-review-item-cmd">/gaia-test-automate</span>
                   <span class="ld-review-item-agent">Sable (Test Architect)</span>
+                  <span style="font-size:0.65rem;color:var(--color-text-muted)">Reviews automation adequacy; does not generate code</span>
                 </a>
                 <a href="commands/gaia-review-test.html" class="ld-review-item" style="--ri-color: var(--phase-2-color)">
                   <span class="ld-review-item-name">5. Test Review</span>
@@ -526,6 +527,15 @@
             <!-- Sprint Closure -->
             <div class="ld-group-label">Sprint Closure</div>
 
+            <a href="commands/gaia-sprint-review.html" class="ld-node ld-node--gate">
+              <span class="ld-node-cmd">/gaia-sprint-review</span>
+              <span class="ld-node-desc">End-of-sprint review: Val rubric + per-stack execution, composite verdict</span>
+              <span class="ld-node-agent">Nate</span>
+              <span class="ld-node-gate-tag">REQUIRED GATE</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
             <a href="commands/gaia-triage-findings.html" class="ld-node">
               <span class="ld-node-cmd">/gaia-triage-findings</span>
               <span class="ld-node-desc">Scan the active sprint, triage findings into backlog, then classify and prioritize tech debt (absorbed tech-debt-review). Required before sprint close.</span>
@@ -545,6 +555,14 @@
             <a href="commands/gaia-action-items.html" class="ld-node ld-node--optional">
               <span class="ld-node-cmd">/gaia-action-items</span>
               <span class="ld-node-desc">Process action items from retro and triage</span>
+              <span class="ld-node-cue">Open docs</span>
+            </a>
+            <div class="ld-flow-arrow">&#9662;</div>
+
+            <a href="commands/gaia-sprint-close.html" class="ld-node">
+              <span class="ld-node-cmd">/gaia-sprint-close</span>
+              <span class="ld-node-desc">Close the active sprint, archive status, emit lifecycle event</span>
+              <span class="ld-node-agent">Nate</span>
               <span class="ld-node-cue">Open docs</span>
             </a>
 
@@ -765,7 +783,8 @@
               <li><a href="commands/gaia-config-test.html">/gaia-config-test</a></li>
               <li><a href="commands/gaia-config-tool.html">/gaia-config-tool</a></li>
               <li><a href="commands/gaia-config-compliance.html">/gaia-config-compliance</a></li>
-              <li><a href="commands/gaia-config-rubric.html">/gaia-config-rubric</a></li>
+              <li><a href="commands/gaia-config-severity.html">/gaia-config-severity</a></li>
+              <li><a href="commands/gaia-config-gates.html">/gaia-config-gates</a></li>
               <li><a href="commands/gaia-config-platform.html">/gaia-config-platform</a></li>
               <li><a href="commands/gaia-config-device-target.html">/gaia-config-device-target</a></li>
               <li><a href="commands/gaia-config-ci.html">/gaia-config-ci</a></li>
@@ -891,6 +910,12 @@
               <td>Run <a href="commands/gaia-edit-prd.html">/gaia-edit-prd</a>, re-validate</td>
             </tr>
             <tr>
+              <td>Design Approval</td>
+              <td><a href="commands/gaia-design-review.html">/gaia-design-review</a></td>
+              <td>Design record approved; stakeholder convergence; per-project review coverage</td>
+              <td>Run <a href="commands/gaia-design-review.html">/gaia-design-review</a> (or audited override <code>--force-design --reason "&lt;text&gt;"</code>)</td>
+            </tr>
+            <tr>
               <td>Arch Adversarial</td>
               <td><a href="commands/gaia-adversarial.html">/gaia-adversarial</a></td>
               <td>Architecture "Review Findings" section present</td>
@@ -943,6 +968,12 @@
               <td><a href="commands/gaia-check-review-gate.html">/gaia-check-review-gate</a></td>
               <td>Composite gate: all 6 reviews passed</td>
               <td>Return to IN-PROGRESS, fix remaining failures</td>
+            </tr>
+            <tr>
+              <td>Sprint Review</td>
+              <td><a href="commands/gaia-sprint-review.html">/gaia-sprint-review</a></td>
+              <td>Val text-validation track + per-stack execution review, composite verdict</td>
+              <td>Route to <a href="commands/gaia-correct-course.html">/gaia-correct-course</a> (FAILED) or UNVERIFIED-bypass</td>
             </tr>
             <tr>
               <td>Deploy Checklist</td>

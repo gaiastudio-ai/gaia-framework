@@ -261,7 +261,7 @@ This warning is shown once per session.
             <span class="step-title">Test environment generation</span>
             If test infrastructure is detected (test runners, CI config,
             Docker test config, browser matrix), generates a
-            <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+            <a href="../test-environment-yaml.html"><code>.gaia/config/test-environment.yaml</code></a>
             via the shared manifest generator. If the file already
             exists, copy-if-absent semantics preserve it byte-identical;
             the legacy <code>merge / skip / overwrite</code> prompt is
@@ -479,7 +479,7 @@ Done. Run /gaia-create-epics to break the gaps into stories.</code></pre>
         <h3>test-environment.yaml already present</h3>
         <p>
           Phase 5 uses copy-if-absent semantics: if
-          <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+          <a href="../test-environment-yaml.html"><code>.gaia/config/test-environment.yaml</code></a>
           already exists, it is preserved byte-identical and the review
           pause is skipped. To regenerate from scratch, move the
           existing file aside before re-running brownfield.

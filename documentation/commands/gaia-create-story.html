@@ -109,7 +109,7 @@ This warning is shown once per session.
           <li><span class="step-title">Select story</span> Locates the story in epics-and-stories.md and checks whether a file already exists.</li>
           <li><span class="step-title">Load context</span> Reads the architecture, UX design, and PRD for elaboration context.</li>
           <li><span class="step-title">Elaborate story</span> Offers two paths: answer elaboration questions yourself, or auto-delegate to PM and Architect agents (and UX Designer if the story has UI scope). For medium and larger stories, edge-case analysis runs automatically.</li>
-          <li><span class="step-title">Generate story file</span> Writes the story file with complete frontmatter (15 required fields), acceptance criteria, tasks, test scenarios, and dependencies to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code>.</li>
+          <li><span class="step-title">Generate story file</span> Writes the story file with complete frontmatter (17 required fields), acceptance criteria, tasks, test scenarios, and dependencies to <code>.gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{slug}/story.md</code>.</li>
           <li><span class="step-title">Register in backlog</span> Registers the story with <code>status: backlog</code> across all tracking surfaces.</li>
           <li><span class="step-title">Validate</span> Runs validation against the story file. If critical issues are found, attempts auto-fix (up to 3 attempts). On pass, transitions the story to <code>ready-for-dev</code>.</li>
         </ol>
@@ -188,7 +188,7 @@ Edge case analysis: 6 scenarios generated (boundary, error, security).
 Appending edge-case ACs to story...
 
 Writing story file to .gaia/artifacts/implementation-artifacts/epic-E3-security/E3-S7-user-authentication/story.md...
-  Frontmatter: 15/15 required fields populated.
+  Frontmatter: 17/17 required fields populated.
   ACs: 5 primary + 3 edge-case (Given/When/Then format).
   Tasks: 8 subtasks.
   Test scenarios: 6 rows.
@@ -230,7 +230,7 @@ Loading story E12-S4 from epics-and-stories.md...
 [gaia-create-story] Canonical basename preview: E12-S4-fix-payment-webhook-timeout.md
 
 Writing story file...
-  Frontmatter: 15/15 required fields populated.
+  Frontmatter: 17/17 required fields populated.
   priority_flag: "hotfix"
 
 Registering E12-S4 as backlog...
@@ -261,7 +261,7 @@ Writing story file...
 Registering E6-S9 as backlog...
 
 Validation attempt 1/3: 1 CRITICAL (missing traces_to field).
-  Auto-fix: added traces_to: [FR-042].
+  Auto-fix: added traces_to field.
 
 Validation attempt 2/3: 1 WARNING (AC-3 missing Given/When/Then format).
   Auto-fix: reformatted AC-3.

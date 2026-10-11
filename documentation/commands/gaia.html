@@ -70,7 +70,7 @@
           <dt>Lifecycle phase:</dt>
           <dd>Any</dd>
           <dt>Arguments:</dt>
-          <dd><code>[optional free-text request]</code></dd>
+          <dd><code>[free-text request | sprint | story [count] [parallel]]</code></dd>
         </dl>
       </header>
 
@@ -113,6 +113,12 @@
 
         <pre><code>/gaia I want to create a PRD from my product brief</code></pre>
         <p>Routes directly to the appropriate command based on your request.</p>
+
+        <pre><code>/gaia sprint</code></pre>
+        <p>Enters Sprint Execution Mode: auto-orchestrates the active sprint's stories through the dev workflow.</p>
+
+        <pre><code>/gaia story 4</code></pre>
+        <p>Enters Story Creation Mode: batch-creates stories (here, 4 stories) from epics-and-stories.md.</p>
       </section>
 
       <section id="step-by-step">

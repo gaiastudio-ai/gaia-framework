@@ -15,7 +15,7 @@
     </aside>
     <main class="main-content">
       <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/testing.html">Testing</a><span class="separator">/</span>/gaia-test-perf</nav>
-      <header class="command-header"><div class="command-title"><h1>/gaia-test-perf</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd><!-- TODO Iris: drift between SKILL.md (no --scenario documented in argument-hint) and SKILL.md body (lists --scenario). -->
+      <header class="command-header"><div class="command-title"><h1>/gaia-test-perf</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd>
 <dt>Arguments:</dt><dd><code>[story-key] [--adapter k6|lighthouse] [--target-url URL] [--scenario NAME]</code></dd></dl></header>
       <section id="what-it-does"><h2>What it does</h2><p>Executes post-deploy performance tests via k6 (load testing) or Lighthouse (Core Web Vitals). Checks measured metrics against declared SLOs and compares against baseline for regression detection.</p></section>
       <section id="when-to-use"><h2>When to use it</h2><ul><li>You need to run performance tests against a live deployed endpoint.</li></ul></section>
@@ -90,6 +90,6 @@ Running...
         </ul>
         <p>If either is missing the framework silently uses Mode A and re-emits the warning each session.</p>
 </section>
-      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href=""><code>/</code></a></td><td>Related command.</td></tr></tbody></table></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-test-e2e.html"><code>/gaia-test-e2e</code></a></td><td>Post-deploy end-to-end tests. Peer deployment-phase action skill with the same Phase 3A/3B/3C plumbing.</td></tr><tr><td><a href="gaia-review-perf.html"><code>/gaia-review-perf</code></a></td><td>Static pre-merge performance review (N+1, complexity). Complementary to this dynamic post-deploy test.</td></tr></tbody></table></section>
       <footer class="page-footer"><p><a href="../categories/testing.html">Back to Testing</a></p></footer>
     </main></div></body></html>

@@ -90,7 +90,7 @@
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Load target</span> Reads the target document, design, or code.</li><li><span class="step-title">Adversarial analysis</span> Attacks from ten perspectives: feasibility, completeness, contradictions, assumptions, scale, failure modes, dependencies, security, user impact, and business risk.</li><li><span class="step-title">Generate report</span> Produces a ranked findings report with severity and confidence levels. Writes to <code>.gaia/artifacts/creative-artifacts/adversarial-review-{target}-{date}.md</code>.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Load target</span> Reads the target document, design, or code.</li><li><span class="step-title">Adversarial analysis</span> Attacks from ten perspectives: feasibility, completeness, contradictions, assumptions, scale, failure modes, dependencies, security, user impact, and business risk.</li><li><span class="step-title">Generate report</span> Produces a ranked findings report with severity and confidence levels. Writes to <code>.gaia/artifacts/planning-artifacts/adversarial/adversarial-review-{target}-{date}.md</code>.</li></ol>
       </section>
 
       <section id="inputs">
@@ -100,7 +100,7 @@
 
       <section id="outputs">
         <h2>Outputs</h2>
-        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Creative artifact</td><td><code>.gaia/artifacts/creative-artifacts/</code></td><td>The session output document.</td></tr></tbody></table>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody><tr><td>Adversarial review report</td><td><code>.gaia/artifacts/planning-artifacts/adversarial/</code></td><td>Dated adversarial review report with ranked findings.</td></tr></tbody></table>
       </section>
 
       <section id="example">
@@ -114,7 +114,7 @@
 | high | medium | Scale: no pagination on user listing |
 | medium | high | Assumption: third-party API SLA not verified |
 
-Written to .gaia/artifacts/creative-artifacts/adversarial-review-prd-2026-05-07.md</code></pre>
+Written to .gaia/artifacts/planning-artifacts/adversarial/adversarial-review-prd-2026-05-07.md</code></pre>
       </section>
 
       <section id="what-next">

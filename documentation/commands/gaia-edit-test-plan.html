@@ -57,6 +57,7 @@ This warning is shown once per session.
           <li><span class="step-title">Define new test cases</span> Creates new test cases in the same format as existing ones, with auto-incremented IDs and proper categorization.</li>
           <li><span class="step-title">Update coverage summary</span> Updates the coverage summary to reflect the new test cases.</li>
           <li><span class="step-title">Save</span> Appends the new test cases, adds a version note, and writes the updated test plan.</li>
+          <li><span class="step-title">Val auto-fix loop</span> Runs validation against the saved test plan. If critical or warning findings are returned, applies a fix and re-validates (up to 3 iterations).</li>
         </ol>
       </section>
       <section id="inputs"><h2>Inputs</h2><table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td>Existing test plan</td><td><code>.gaia/artifacts/test-artifacts/test-plan.md</code></td><td>The test plan to extend (required).</td></tr></tbody></table></section>
@@ -78,7 +79,7 @@ Written to: .gaia/artifacts/test-artifacts/test-plan.md</code></pre></section>
       <section id="what-next"><h2>What to run next</h2><ul>
         <li><a href="gaia-readiness-check.html"><code>/gaia-readiness-check</code></a> -- re-validate readiness with the updated test plan.</li>
       </ul></section>
-      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"test-plan.md not found"</h3><p>Run <code>/gaia-test-strategy</code> to create the initial test plan.</p>
+      <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"test-plan.md not found"</h3><p>Run <code>/gaia-test-strategy --plan</code> (or the older <code>/gaia-test-design</code>) to create the initial test plan.</p>
         <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>
         <p>The warning is shown once per session, so if it fires again that's a new session -- not a per-skill repeat. If you want to silence it entirely, enable Mode B (full-fidelity orchestration via Agent Teams). Both of these conditions must be true:</p>
         <ul>

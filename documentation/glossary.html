@@ -89,12 +89,13 @@
         <dt id="artifact">Artifact</dt>
         <dd>
           A document that GAIA creates or reads during a workflow. Artifacts
-          are stored in subdirectories of <code>docs/</code>: planning
-          artifacts (PRD, architecture, UX design) go in
+          are stored in subdirectories of <code>.gaia/artifacts/</code>: planning
+          artifacts (PRD, architecture, UX design, test plan, test strategy,
+          traceability matrix) go in
           <code>.gaia/artifacts/planning-artifacts/</code>, implementation artifacts
           (sprint plans, story files) in
           <code>.gaia/artifacts/implementation-artifacts/</code>, test artifacts
-          (test plans, ATDD scenarios, traceability matrices) in
+          (<code>ci-setup.md</code> and test reports) in
           <code>.gaia/artifacts/test-artifacts/</code>, and creative artifacts
           (brainstorms, design thinking outputs) in
           <code>.gaia/artifacts/creative-artifacts/</code>.
@@ -205,10 +206,13 @@
           manifest and <code>brain-index.md</code> as a human-readable
           <a href="#moc">Map of Content</a>. Retrieval uses grep, tags, and
           the manifest only -- no vectors, no embeddings, no external service.
-          Three commands expose the Brain:
+          Six commands expose the Brain:
           <a href="commands/gaia-brain-reindex.html"><code>/gaia-brain-reindex</code></a>,
-          <a href="commands/gaia-brain-query.html"><code>/gaia-brain-query</code></a>, and
-          <a href="commands/gaia-brain-health.html"><code>/gaia-brain-health</code></a>.
+          <a href="commands/gaia-brain-query.html"><code>/gaia-brain-query</code></a>,
+          <a href="commands/gaia-brain-health.html"><code>/gaia-brain-health</code></a>,
+          <a href="commands/gaia-feed.html"><code>/gaia-feed</code></a>,
+          <a href="commands/gaia-knowledge-refresh.html"><code>/gaia-knowledge-refresh</code></a>, and
+          <a href="commands/gaia-unfeed.html"><code>/gaia-unfeed</code></a>.
           See the <a href="gaia-brain.html">GAIA Brain concept page</a>.
         </dd>
 
@@ -318,7 +322,8 @@
         <dt id="review-gate">Review Gate</dt>
         <dd>
           A table in a story file that tracks the status of six review
-          types: code, QA, security, test, performance, and accessibility.
+          types: Code Review, QA Tests, Security Review, Test Automation,
+          Test Review, and Performance Review.
           Each row starts as UNVERIFIED and is updated to PASSED or FAILED
           when the corresponding review command runs. A story cannot
           transition to <code>done</code> status until all Review Gate rows
@@ -333,12 +338,15 @@
           uses a four-layer rubric pipeline (base, compliance, project,
           custom) that merges into a single effective rubric at runtime.
           Configured in <code>.gaia/config/project-config.yaml</code> under the
-          <code>rubrics</code> section.
+          <code>rubrics</code> section. Severity mapping and per-gate
+          overrides are managed with
+          <a href="commands/gaia-config-severity.html"><code>/gaia-config-severity</code></a> and
+          <a href="commands/gaia-config-gates.html"><code>/gaia-config-gates</code></a>.
         </dd>
 
         <dt id="sidecar">Sidecar (Memory Sidecar)</dt>
         <dd>
-          A per-agent memory file stored in <code>_memory/</code> that
+          A per-agent memory file stored in <code>.gaia/memory/</code> that
           persists decisions, context, and session state across
           conversations. Each GAIA agent (pm, architect, dev, test-architect,
           validator, etc.) has its own sidecar. The

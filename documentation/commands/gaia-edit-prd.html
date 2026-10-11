@@ -63,6 +63,7 @@ This warning is shown once per session.
           <li><span class="step-title">Save and version</span> Writes the updated PRD with a version note documenting what changed and why.</li>
           <li><span class="step-title">Adversarial review</span> If the change type triggers it, runs an adversarial review and incorporates findings.</li>
           <li><span class="step-title">Cascade assessment</span> Compares PRD changes against the architecture scope and classifies cascade impact: NONE, MINOR, or SIGNIFICANT. Recommends the appropriate next command.</li>
+          <li><span class="step-title">Re-shard</span> Re-shards the PRD monolith so per-section shards stay aligned. Skipped when <code>--monolith-only</code> is passed.</li>
         </ol>
       </section>
 

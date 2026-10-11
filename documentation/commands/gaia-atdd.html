@@ -171,7 +171,7 @@
           <li>
             <strong>For red-phase execution (optional): a test runner must be
             configured.</strong> Step 5b reads
-            <a href="../test-environment-yaml.html"><code>config/test-environment.yaml</code></a>
+            <a href="../test-environment-yaml.html"><code>.gaia/config/test-environment.yaml</code></a>
             and the Test Execution Bridge configuration. If no runner is
             configured, red-phase execution is skipped with a warning -- it
             does not fail the overall invocation.
@@ -395,7 +395,7 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Test environment config</td>
-              <td><code>config/test-environment.yaml</code></td>
+              <td><code>.gaia/config/test-environment.yaml</code></td>
               <td>
                 Read during optional Step 5b (red-phase execution) to locate
                 the configured test runner. Not required if you skip
@@ -446,7 +446,7 @@ This warning is shown once per session.
             </tr>
             <tr>
               <td>Checkpoint files</td>
-              <td><code>_memory/checkpoints/</code></td>
+              <td><code>.gaia/memory/checkpoints/</code></td>
               <td>
                 Written after each step to enable
                 <a href="gaia-resume.html"><code>/gaia-resume</code></a> if
@@ -655,7 +655,7 @@ Done.</code></pre>
         <h3>"Test runner not configured -- skipping red-phase execution"</h3>
         <p>
           You opted to run red-phase tests, but no test runner is configured
-          in <code>config/test-environment.yaml</code> or the
+          in <code>.gaia/config/test-environment.yaml</code> or the
           Test Execution Bridge is disabled. The ATDD artifact is still
           written -- only the optional execution step is skipped. Configure
           a test runner or enable the bridge to use this feature.

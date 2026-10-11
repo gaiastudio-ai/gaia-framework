@@ -15,7 +15,7 @@
     </aside>
     <main class="main-content">
       <nav class="breadcrumb"><a href="../index.html">Home</a><span class="separator">/</span><a href="../categories/testing.html">Testing</a><span class="separator">/</span>/gaia-test-device-matrix</nav>
-      <header class="command-header"><div class="command-title"><h1>/gaia-test-device-matrix</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd><!-- TODO Iris: drift between SKILL.md (no --config) and dispatch.sh L25 (parses --config). Script is ground truth. -->
+      <header class="command-header"><div class="command-title"><h1>/gaia-test-device-matrix</h1><span class="tag tag-user">user-facing</span></div><dl class="command-meta"><dt>Category:</dt><dd><a href="../categories/testing.html">Testing</a></dd><dt>Lifecycle phase:</dt><dd>Anytime</dd>
 <dt>Arguments:</dt><dd><code>[--platform ios|android|all] [--filter REGEX] [--config PATH]</code></dd></dl></header>
       <section id="what-it-does"><h2>What it does</h2><p>Expands a configured device-target matrix (OS versions x form factors x screen sizes) and dispatches each entry to the device-farm adapter. Returns per-device verdicts plus a composite verdict.</p></section>
       <section id="when-to-use"><h2>When to use it</h2><ul><li>You need to verify your app across a matrix of devices, OS versions, and form factors.</li></ul></section>
@@ -40,6 +40,6 @@ Running...
 (Command output varies by project and configuration.)</code></pre></section>
       <section id="what-next"><h2>What to run next</h2><p>Follow the suggestions displayed at the end of the command output.</p></section>
       <section id="troubleshooting"><h2>Troubleshooting</h2><p>Check that prerequisite files and tools are in place. The command provides specific error messages with guidance when something is missing.</p></section>
-      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href=""><code>/</code></a></td><td>Related command.</td></tr></tbody></table></section>
+      <section id="related"><h2>Related commands</h2><table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody><tr><td><a href="gaia-test-mobile-e2e.html"><code>/gaia-test-mobile-e2e</code></a></td><td>Dispatches a single test suite to whatever device set the farm is configured to use. This skill explicitly enumerates and dispatches each device matrix entry.</td></tr></tbody></table></section>
       <footer class="page-footer"><p><a href="../categories/testing.html">Back to Testing</a></p></footer>
     </main></div></body></html>

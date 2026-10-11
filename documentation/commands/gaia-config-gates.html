@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/gaia-config-gates - GAIA Documentation</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <aside class="sidebar">
+      <a href="../index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul><li><a href="../index.html">Home</a></li><li><a href="../glossary.html">Glossary</a></li>
+          <li><a href="../lifecycle-diagram.html">Lifecycle Diagram</a></li></ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="../categories/getting-started.html">Getting Started</a></li>
+          <li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="../categories/planning.html">Planning</a></li>
+          <li><a href="../categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="../categories/development.html">Development</a></li>
+          <li><a href="../categories/testing.html">Testing</a></li>
+          <li><a href="../categories/reviews.html">Reviews</a></li>
+          <li><a href="../categories/validation.html">Validation</a></li>
+          <li><a href="../categories/deployment.html">Deployment</a></li>
+          <li><a href="../categories/configuration.html">Configuration</a></li>
+          <li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="../categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#what-it-does">What it does</a></li>
+          <li><a href="#when-to-use">When to use it</a></li>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#how-to-invoke">How to invoke</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#inputs">Inputs</a></li>
+          <li><a href="#outputs">Outputs</a></li>
+          <li><a href="#example">Example session</a></li>
+          <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li><a href="#related">Related commands</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Home</a><span class="separator">/</span>
+        <a href="../categories/configuration.html">Configuration</a><span class="separator">/</span>
+        /gaia-config-gates
+      </nav>
+      <header class="command-header">
+        <div class="command-title">
+          <h1>/gaia-config-gates</h1>
+          <span class="tag tag-user">user-facing</span>
+        </div>
+        <dl class="command-meta">
+          <dt>Category:</dt><dd><a href="../categories/configuration.html">Configuration</a></dd>
+          <dt>Lifecycle phase:</dt><dd>4 -- Implementation</dd>
+          <dt>Arguments:</dt><dd><code>&lt;set|show|clear&gt; &lt;gate&gt; [&lt;internal&gt; &lt;verdict&gt;]</code></dd>
+        </dl>
+      </header>
+
+      <section id="what-it-does">
+        <h2>What it does</h2>
+        <p><code>/gaia-config-gates</code> edits the <code>gates</code> section of <code>.gaia/config/project-config.yaml</code> -- the per-gate severity overrides. Each review gate (e.g., <code>code-review</code>, <code>qa-tests</code>, <code>security-review</code>) can override the global <a href="gaia-config-severity.html">severity map</a> with its own 5-into-3 mapping. When a per-gate override is absent for a given severity level, the global <code>severity</code> map wins by fall-through.</p>
+        <p>The editor preserves all YAML comments and formatting outside the edited section.</p>
+        <h3>Fall-through semantics</h3>
+        <p>When a review gate composes its verdict, the severity-to-verdict lookup follows this precedence:</p>
+        <ol>
+          <li><strong>Per-gate override present</strong> -- the gate's own override wins.</li>
+          <li><strong>Per-gate override absent</strong> -- falls through to the global <code>severity</code> map.</li>
+          <li><strong>Neither present</strong> -- system defaults apply (<code>APPROVE</code> for Info and Low, <code>REQUEST_CHANGES</code> for Medium, <code>BLOCKED</code> for High and Critical).</li>
+        </ol>
+      </section>
+
+      <section id="when-to-use">
+        <h2>When to use it</h2>
+        <ul>
+          <li>You want a specific review gate to be stricter or more lenient than the global severity map.</li>
+          <li>You want to view or remove per-gate severity overrides.</li>
+        </ul>
+      </section>
+
+      <section id="prerequisites">
+        <h2>Prerequisites</h2>
+        <ul>
+          <li><strong>project-config.yaml must exist.</strong> Run <a href="gaia-init.html"><code>/gaia-init</code></a> to create one if missing.</li>
+        </ul>
+      </section>
+
+      <section id="how-to-invoke">
+        <h2>How to invoke</h2>
+        <pre><code>/gaia-config-gates show security-review
+/gaia-config-gates set security-review Medium BLOCKED
+/gaia-config-gates set code-review Low REQUEST_CHANGES
+/gaia-config-gates clear security-review</code></pre>
+      </section>
+
+      <section id="step-by-step">
+        <h2>What it does step by step</h2>
+        <ol class="step-list">
+          <li><span class="step-title">Locate project-config.yaml</span> Resolves the configuration file path via the canonical resolver.</li>
+          <li><span class="step-title">Dispatch subcommand</span> Routes to the deterministic helper script:
+            <ul>
+              <li><code>set &lt;gate&gt; &lt;internal&gt; &lt;verdict&gt;</code> -- set or replace a single per-gate mapping. Creates the gate block and the <code>gates</code> section if absent.</li>
+              <li><code>show &lt;gate&gt;</code> -- print the current override map for the named gate, or "no overrides" when absent.</li>
+              <li><code>clear &lt;gate&gt;</code> -- remove the named gate's override block. If no gates remain, removes the <code>gates</code> section.</li>
+            </ul>
+          </li>
+          <li><span class="step-title">Suggest validation</span> Recommends running <a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> to confirm the file still passes schema validation.</li>
+        </ol>
+      </section>
+
+      <section id="inputs">
+        <h2>Inputs</h2>
+        <table><thead><tr><th>Input</th><th>Source</th><th>Description</th></tr></thead><tbody>
+          <tr><td>Project configuration</td><td><code>.gaia/config/project-config.yaml</code></td><td>The file containing the <code>gates</code> section.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="outputs">
+        <h2>Outputs</h2>
+        <table><thead><tr><th>Output</th><th>Location</th><th>Description</th></tr></thead><tbody>
+          <tr><td>Updated gates section</td><td><code>.gaia/config/project-config.yaml</code></td><td>The modified <code>gates</code> block (comment-preserving).</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="example">
+        <h2>Example session</h2>
+        <pre><code>> /gaia-config-gates show security-review
+
+no overrides for gate: security-review (falls through to global severity map)
+
+> /gaia-config-gates set security-review Medium BLOCKED
+
+gates section updated. Run /gaia-config-validate to verify.
+
+> /gaia-config-gates show security-review
+
+gates.security-review:
+  Medium: BLOCKED
+  (all other severities fall through to global map)</code></pre>
+      </section>
+
+      <section id="what-next">
+        <h2>What to run next</h2>
+        <ul>
+          <li><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a> -- validate the modified configuration file.</li>
+          <li><a href="gaia-config-severity.html"><code>/gaia-config-severity</code></a> -- edit the global severity map that gates fall through to.</li>
+          <li><a href="gaia-config-show.html"><code>/gaia-config-show gates</code></a> -- view the section after editing.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>no gates section</h3><p>The section does not exist in your config file. The <code>set</code> subcommand creates it automatically on first write.</p>
+        <h3>Invalid internal severity name</h3><p>Only the closed set <code>Critical</code>, <code>High</code>, <code>Medium</code>, <code>Low</code>, <code>Info</code> is accepted. Any other value is rejected with exit 1.</p>
+        <h3>Invalid verdict value</h3><p>Only <code>BLOCKED</code>, <code>REQUEST_CHANGES</code>, <code>APPROVE</code> are accepted. Any other value is rejected with exit 1.</p>
+        <h3>Unknown gate name warning</h3><p>Gate names follow the kebab-case pattern. Unknown gate names produce a warning but proceed -- the gate registry is open to support custom review gates.</p>
+      </section>
+
+      <section id="related">
+        <h2>Related commands</h2>
+        <table><thead><tr><th>Command</th><th>Relationship</th></tr></thead><tbody>
+          <tr><td><a href="gaia-config-severity.html"><code>/gaia-config-severity</code></a></td><td>The global severity map. Per-gate overrides in <code>gates</code> take precedence; absent entries fall through to this map.</td></tr>
+          <tr><td><a href="gaia-config-show.html"><code>/gaia-config-show</code></a></td><td>View the configuration file or a specific section.</td></tr>
+          <tr><td><a href="gaia-config-validate.html"><code>/gaia-config-validate</code></a></td><td>Validate the configuration against the schema.</td></tr>
+        </tbody></table>
+      </section>
+      <footer class="page-footer">
+        <p><a href="../categories/configuration.html">Back to Configuration</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
