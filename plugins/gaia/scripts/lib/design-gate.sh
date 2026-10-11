@@ -159,8 +159,8 @@ BEGIN {
 NR > 1 && mode == "replace" { printf "<0x0A>" }
 {
   # split(s, a, "") splits into individual bytes under LC_ALL=C.
-  # Not POSIX-specified but works on BSD awk, gawk, mawk and busybox awk;
-  # the test suite runs all four.
+  # Not POSIX-specified but behaves the same on BSD awk, gawk, mawk
+  # and busybox awk.
   n = split($0, c, "")
   i = 1
   while (i <= n) {
@@ -259,23 +259,44 @@ _dg_strip_controls() {
   printf '%s' "${_out%.}"
 }
 
-# _dg_trim_spaces TEXT — trim ASCII spaces only from both ends of the whole
-# string. Tab, CR, LF and other bytes are not trimmed (they become visible
-# placeholders). Uses bash parameter expansion, not sed, to avoid
-# line-by-line splitting that would eat interior spaces next to newlines.
+# _dg_trim_spaces TEXT — trim ASCII spaces (0x20) only from both ends of the
+# whole string in linear time. Tab, CR, LF and other bytes are not trimmed.
+# Uses bash substring extraction with index arithmetic instead of a
+# per-character loop, so the cost is proportional to the string length,
+# not to the number of leading/trailing spaces.
 # Appends a sentinel so the caller's $() does not eat trailing newlines.
 _dg_trim_spaces() {
-  local s="$1"
-  while [ "${s#" "}" != "$s" ]; do s="${s#" "}"; done
-  while [ "${s%" "}" != "$s" ]; do s="${s%" "}"; done
-  printf '%s.' "$s"
+  local s="$1" len="${#1}"
+  # Find first non-space from the left
+  local lo=0
+  while [ "$lo" -lt "$len" ] && [ "${s:$lo:1}" = " " ]; do
+    lo=$((lo + 1))
+  done
+  # Find last non-space from the right
+  local hi=$((len - 1))
+  while [ "$hi" -ge "$lo" ] && [ "${s:$hi:1}" = " " ]; do
+    hi=$((hi - 1))
+  done
+  if [ "$lo" -gt "$hi" ]; then
+    printf '.'
+  else
+    printf '%s.' "${s:$lo:$((hi - lo + 1))}"
+  fi
 }
 
 # _dg_validate_reason REASON — validate, trim and sanitise the override reason.
 # Stdout: sanitised text on success.
-# Returns: 0 success, 1 too short (< 10 content bytes), 2 too long (> 500 bytes).
+# Returns: 0 success, 1 too short, 2 sanitised too long, 3 raw too long.
 _dg_validate_reason() {
   local reason="$1"
+
+  # (0) Cheap length guard — refuse before any trimming or walking when
+  #     the raw argument exceeds a generous ceiling. This bounds the trim
+  #     and the awk walker to a small, predictable input.
+  if [ "${#reason}" -gt 4096 ]; then
+    printf 'Override refused: --reason exceeds 500 raw bytes after trimming spaces (got %d).\n' "${#reason}" >&2
+    return 3
+  fi
 
   # (1) Trim ASCII spaces only from both ends (not tab/CR/LF — those become
   #     visible placeholders). Strip the sentinel that _dg_trim_spaces appends.
@@ -283,11 +304,10 @@ _dg_validate_reason() {
   trimmed="$(_dg_trim_spaces "$reason")"
   trimmed="${trimmed%.}"
 
-  # (2a) Early maximum on the raw trimmed text. Checked before any awk walk
-  #      to bound processing time on very long arguments.
+  # (2a) Early maximum on the raw trimmed text. Checked before any awk walk.
   if [ "${#trimmed}" -gt 500 ]; then
     printf 'Override refused: --reason exceeds 500 raw bytes after trimming spaces (got %d).\n' "${#trimmed}" >&2
-    return 2
+    return 3
   fi
 
   # (2b) Minimum on content: strip controls and invalid UTF-8, then trim
@@ -591,6 +611,8 @@ _dg_handle_override() {
     local _dg_vr_remediation
     if [ "$_dg_vr_rc" -eq 1 ]; then
       _dg_vr_remediation="Override refused: --reason must be at least 10 characters after trimming whitespace."
+    elif [ "$_dg_vr_rc" -eq 3 ]; then
+      _dg_vr_remediation="Override refused: --reason exceeds 500 raw bytes after trimming spaces."
     else
       _dg_vr_remediation="Override refused: --reason is longer than 500 bytes once control characters are shown as <0xHH> placeholders."
     fi
