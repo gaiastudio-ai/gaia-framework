@@ -877,3 +877,135 @@ HELPEOF
   esac
 }
 
+# ===========================================================================
+# Contract test: fixtures must use the writer's real key (.file, not .path)
+# ===========================================================================
+
+# _seed_last_published_real — write design-last-published.json using the
+# real persist_last_published output shape: each entry is {file, hash},
+# keyed under .design_system.files[] and .product_design.files[].
+_seed_last_published_real() {
+  local token_hash="${1:-aaa111}"
+  local component_hash="${2:-bbb222}"
+  local screen_hash="${3:-ccc333}"
+
+  cat > "$TEST_TMP/design-last-published.json" <<EOF
+{
+  "design_system": {
+    "reference": "ds-ref-001",
+    "last_published_at": "2026-01-01T00:00:00Z",
+    "files": [
+      {"file": "tokens/colors.html", "hash": "$token_hash"},
+      {"file": "components/button.spec.html", "hash": "$component_hash"}
+    ]
+  },
+  "product_design": {
+    "reference": "pd-ref-001",
+    "last_published_at": "2026-01-01T00:00:00Z",
+    "files": [
+      {"file": "project/login.dc.html", "hash": "$screen_hash"}
+    ]
+  }
+}
+EOF
+}
+
+@test "contract: writer-shaped fixture with token edit yields both" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  _seed_last_published_real "old-token-hash" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=new-token-hash" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] || fail "expected both (token edit via writer-shaped fixture), got: $output"
+}
+
+@test "contract: writer-shaped fixture with screen edit yields product-design" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  _seed_last_published_real "aaa111" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json" \
+    --edited "screens/login.spec.html"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "product-design" ] \
+    || fail "expected product-design (screen edit via writer-shaped fixture), got: $output"
+}
+
+@test "contract: writer-shaped fixture with component edit yields design-system" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  _seed_last_published_real "aaa111" "bbb222" "ccc333"
+
+  _seed_local_manifest \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=new-component-hash" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "design-system" ] \
+    || fail "expected design-system (component edit via writer-shaped fixture), got: $output"
+}
+
+@test "contract: root-level tokens.json counts as a token change" {
+  [ -f "$DIFF_SCRIPT" ] || fail "derive-design-scope-diff.sh not found at $DIFF_SCRIPT"
+
+  # The writer stores root-level files like tokens.json and README.md.
+  # A change to tokens.json must trigger the token rule (scope=both),
+  # because tokens.json at the spec root is a design-system token file.
+  cat > "$TEST_TMP/design-last-published.json" <<EOF
+{
+  "design_system": {
+    "reference": "ds-ref-001",
+    "last_published_at": "2026-01-01T00:00:00Z",
+    "files": [
+      {"file": "tokens.json", "hash": "old-json-hash"},
+      {"file": "tokens/colors.html", "hash": "aaa111"},
+      {"file": "components/button.spec.html", "hash": "bbb222"}
+    ]
+  },
+  "product_design": {
+    "reference": "pd-ref-001",
+    "last_published_at": "2026-01-01T00:00:00Z",
+    "files": [
+      {"file": "project/login.dc.html", "hash": "ccc333"}
+    ]
+  }
+}
+EOF
+
+  _seed_local_manifest \
+    "tokens.json=new-json-hash" \
+    "tokens/colors.html=aaa111" \
+    "components/button.spec.html=bbb222" \
+    "screens/login.spec.html=ddd444"
+
+  run bash "$DIFF_SCRIPT" \
+    --last-published "$TEST_TMP/design-last-published.json" \
+    --local-manifest "$TEST_TMP/local-manifest.json"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "both" ] \
+    || fail "expected both (root tokens.json change triggers token rule), got: $output"
+}
+
