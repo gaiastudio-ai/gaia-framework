@@ -3247,3 +3247,134 @@ _assert_no_raw_control_in_reason() {
     || fail "raw-cap message should report the byte count 501; got: $output"
 }
 
+# =========================================================================
+# Linear trim, boundary discrimination and sentinel coverage
+# =========================================================================
+
+@test "100k leading spaces refused without quadratic delay" {
+  seed_override_fixture
+
+  # Build a reason of 100,000 spaces followed by 20 printable bytes.
+  # The total is 100,020 bytes, well over the raw cap. This must be
+  # refused, and must not take minutes (the per-character trim loop
+  # would be quadratic on the leading spaces).
+  local reason=""
+  local i=0
+  while [ "$i" -lt 1000 ]; do
+    reason="${reason}$(printf '%100s' "")"
+    i=$((i + 1))
+  done
+  reason="${reason}valid reason text!!"
+  [ "${#reason}" -ge 100000 ] || fail "reason too short: ${#reason}"
+
+  local drec_hash lo_hash
+  drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal; got status $status"
+
+  # Both ledgers must be untouched
+  [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite over-size refusal"
+  [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite over-size refusal"
+}
+
+@test "sanitised cap reached when raw is under 500" {
+  seed_override_fixture
+
+  # 488 B's plus 3 ESC bytes = 491 raw bytes (under 500).
+  # Sanitised: 488 + 3*6 = 506 (over 500).
+  local reason=""
+  local i=0
+  while [ "$i" -lt 488 ]; do reason="${reason}B"; i=$((i + 1)); done
+  reason="${reason}$(printf '\x1b\x1b\x1b')"
+  [ "${#reason}" -eq 491 ] || fail "raw length is ${#reason}, expected 491"
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal; got status $status"
+
+  # Must say the sanitised-cap message, not the raw-cap message
+  _stripped_output | grep -qF "control characters are shown" \
+    || fail "expected sanitised-cap message; got: $output"
+  if _stripped_output | grep -qF "raw bytes"; then
+    fail "got the raw-cap message instead of the sanitised-cap message; got: $output"
+  fi
+}
+
+@test "leading spaces are trimmed from the reason" {
+  seed_override_fixture
+
+  run run_gate --force-design \
+    --reason "   leading spaces reason text" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  # The Reason: field value must not start with spaces
+  [[ "$rline" == *'Reason:        leading spaces'* ]] \
+    || fail "leading spaces were not trimmed; got: $rline"
+}
+
+@test "trailing spaces are trimmed from the reason" {
+  seed_override_fixture
+
+  run run_gate --force-design \
+    --reason "trailing spaces reason text   " \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local drec_reason
+  drec_reason="$(yq -r '.overrides[0].reason' \
+    "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [[ "$drec_reason" != *"   " ]] \
+    || fail "trailing spaces were not trimmed from stored reason; got: <<<$drec_reason>>>"
+  [ "$drec_reason" = "trailing spaces reason text" ] \
+    || fail "stored reason not trimmed correctly; got: <<<$drec_reason>>>"
+}
+
+@test "10-byte reason ending in period accepted" {
+  seed_override_fixture
+
+  # "approved.!" is 10 bytes. Tests that the strip-controls sentinel
+  # (a trailing period) is not confused with a real period in the reason.
+  run run_gate --force-design \
+    --reason "approved.!" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "10-byte reason ending near sentinel should be accepted; got status $status: $output"
+
+  local drec_reason
+  drec_reason="$(yq -r '.overrides[0].reason' \
+    "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$drec_reason" = "approved.!" ] \
+    || fail "reason was mangled; got: <<<$drec_reason>>>"
+}
+
+@test "raw-cap message says raw bytes not placeholder bytes" {
+  seed_override_fixture
+
+  local reason=""
+  local i=0
+  while [ "$i" -lt 501 ]; do reason="${reason}D"; i=$((i + 1)); done
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal; got status $status"
+
+  # The raw-cap message must contain "raw bytes" to distinguish it
+  # from the sanitised-cap message
+  _stripped_output | grep -qF "raw bytes" \
+    || fail "raw-cap message should say 'raw bytes'; got: $output"
+  # And must NOT mention control-character placeholders
+  if _stripped_output | grep -qF "control characters"; then
+    fail "raw-cap message mentions placeholders — wrong message; got: $output"
+  fi
+}
+
