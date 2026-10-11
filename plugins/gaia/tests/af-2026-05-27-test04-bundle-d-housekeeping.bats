@@ -27,7 +27,7 @@ teardown() { common_teardown; }
   local out
   out="$(printf '%s' '{"project_shape":"single backend","stacks":[{"name":"api","language":"node","paths":["src"]}],"compliance":{"ui_present":true},"environments":[]}' \
     | bash "$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh" --path "$TEST_TMP" --name demo --phase full 2>&1 >/dev/null || true)"
-  printf '%s\n' "$out" | grep -qF "NOTICE — no environments were declared"
+  grep -qF "NOTICE — no environments were declared" <<<"$out"
 }
 
 @test "F-001: the default local env is still seeded (behavior preserved)" {
@@ -72,7 +72,7 @@ teardown() { common_teardown; }
   run env MEMORY_PATH="$TEST_TMP/.gaia/memory" bash -c '
     eval "$(awk "/^_gaia_stray_legacy_memory_warn\\(\\) \\{/,/^}/" "'"$PLUGIN_ROOT"'/scripts/memory-loader.sh")"
     _gaia_stray_legacy_memory_warn 2>&1'
-  printf '%s\n' "$output" | grep -qF 'coexists with the canonical .gaia/memory/'
+  grep -qF 'coexists with the canonical .gaia/memory/' <<<"$output"
 }
 
 # --- F-006: GC sweep present ---

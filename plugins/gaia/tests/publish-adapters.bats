@@ -343,8 +343,8 @@ _run_static_site() {
     --action trigger --manifest x --version 1.0.0 --registry x \
     --output "$OUTPUT" --provider invalid --domain x
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "unknown static-site provider 'invalid'"
-  echo "$output" | grep -qF 'must be one of {cloudflare-pages, s3, netlify, vercel, github-pages, custom}'
+  grep -qF "unknown static-site provider 'invalid'" <<<"$output"
+  grep -qF 'must be one of {cloudflare-pages, s3, netlify, vercel, github-pages, custom}' <<<"$output"
 }
 
 @test "netlify non-mock without NETLIFY_AUTH_TOKEN → FAILED" {
@@ -401,7 +401,7 @@ _run_static_site() {
     run "$PLUGIN_DIR/scripts/adapters/publish-$ch/run.sh" \
       --action trigger --manifest m --version 1.0.0 --registry r --output "$TEST_TMP/uf-$ch.json" --bogus
     [ "$status" -ne 0 ] || { echo "$ch did not reject --bogus" >&2; false; }
-    echo "$output" | grep -qF 'unknown flag'
+    grep -qF 'unknown flag' <<<"$output"
   done
 }
 

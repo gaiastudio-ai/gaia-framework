@@ -63,7 +63,7 @@ teardown() {
   GAIA_DEVICE_FARM_MOCK=1 \
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-farm-browserstack.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"adapter":[[:space:]]*"browserstack"'
+  grep -Eq '"adapter":[[:space:]]*"browserstack"' <<<"$output"
 }
 
 # ---------------- AC3 — per-device verdict structure ----------------------
@@ -73,11 +73,11 @@ teardown() {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-farm-firebase.yaml"
   [ "$status" -eq 0 ]
   # Each device entry must have device_id, os_version, form_factor, verdict, duration_ms.
-  echo "$output" | grep -Eq '"device_id"'
-  echo "$output" | grep -Eq '"os_version"'
-  echo "$output" | grep -Eq '"form_factor"'
-  echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"(PASSED|FAILED|ERROR|TIMEOUT)"'
-  echo "$output" | grep -Eq '"duration_ms"'
+  grep -Eq '"device_id"' <<<"$output"
+  grep -Eq '"os_version"' <<<"$output"
+  grep -Eq '"form_factor"' <<<"$output"
+  grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"(PASSED|FAILED|ERROR|TIMEOUT)"' <<<"$output"
+  grep -Eq '"duration_ms"' <<<"$output"
 }
 
 # ---------------- AC5 — bridge-disabled enforcement -----------------------
@@ -85,8 +85,8 @@ teardown() {
 @test "bridge_enabled=false yields verdict=SKIPPED with diagnostic" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-bridge-disabled.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"SKIPPED"'
-  echo "$output" | grep -iEq 'bridge'
+  grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"SKIPPED"' <<<"$output"
+  grep -iEq 'bridge' <<<"$output"
 }
 
 # ---------------- AC6 — missing adapter fails gracefully ------------------
@@ -94,8 +94,8 @@ teardown() {
 @test "missing device_farm adapter yields verdict=ERROR with guidance" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
   [ "$status" -ne 0 ] || [ "$status" -eq 0 ]   # non-throwing path; either is acceptable
-  echo "$output" | grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"ERROR"'
-  echo "$output" | grep -iEq 'device-farm|gaia-config-device-target'
+  grep -Eq '"verdict"[[:space:]]*:[[:space:]]*"ERROR"' <<<"$output"
+  grep -iEq 'device-farm|gaia-config-device-target' <<<"$output"
 }
 
 @test "dispatch.sh does not throw an unhandled exception on missing adapter" {
@@ -120,8 +120,8 @@ teardown() {
 @test "dispatch SKIPS with no_mobile_platform on non-mobile project" {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-mobile-platforms.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Fq '"verdict":"SKIPPED"'
-  echo "$output" | grep -Fq '"reason":"no_mobile_platform"'
+  grep -Fq '"verdict":"SKIPPED"' <<<"$output"
+  grep -Fq '"reason":"no_mobile_platform"' <<<"$output"
 }
 
 @test "dispatch proceeds past the gate when platforms contains ios" {
@@ -130,8 +130,8 @@ teardown() {
   run bash "$DISPATCH" --config "$FIXTURES/project-config-device-farm-firebase.yaml"
   [ "$status" -ne 1 ]
   # If it skipped, reason should NOT be no_mobile_platform
-  if echo "$output" | grep -Fq '"verdict":"SKIPPED"'; then
-    ! echo "$output" | grep -Fq '"reason":"no_mobile_platform"'
+  if grep -Fq '"verdict":"SKIPPED"' <<<"$output"; then
+    ! grep -Fq '"reason":"no_mobile_platform"' <<<"$output"
   fi
 }
 
@@ -139,11 +139,11 @@ teardown() {
   # The no-device-farm fixture declares platforms but no adapter; should ERROR
   # with the new honest diagnostic naming firebase/browserstack/sauce.
   run bash "$DISPATCH" --config "$FIXTURES/project-config-no-device-farm.yaml"
-  echo "$output" | grep -Fq '"verdict":"ERROR"'
-  echo "$output" | grep -Fq '"reason":"no_device_farm_adapter"'
-  echo "$output" | grep -Fq 'firebase-test-lab'
-  echo "$output" | grep -Fq 'browserstack'
-  echo "$output" | grep -Fq 'sauce-labs'
+  grep -Fq '"verdict":"ERROR"' <<<"$output"
+  grep -Fq '"reason":"no_device_farm_adapter"' <<<"$output"
+  grep -Fq 'firebase-test-lab' <<<"$output"
+  grep -Fq 'browserstack' <<<"$output"
+  grep -Fq 'sauce-labs' <<<"$output"
 }
 
 @test "dispatch.sh contains the platforms-mobile gate logic" {

@@ -206,7 +206,7 @@ _extract_region() {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   region=$(_extract_region "4" "5" "$DEV_STORY_MD")
   [ -n "$region" ]
-  echo "$region" | grep -q 'assert_agent_envelope'
+  grep -q 'assert_agent_envelope' <<<"$region"
 }
 
 # ---------------- TC-VBR-7b: Step 4 no context: fork Val-dispatch refs ----------------
@@ -226,7 +226,7 @@ _extract_region() {
   [ -f "$DEV_STORY_MD" ] || skip "dev-story SKILL.md not present"
   region=$(_extract_region "7b" "8" "$DEV_STORY_MD")
   [ -n "$region" ]
-  echo "$region" | grep -q 'assert_agent_envelope'
+  grep -q 'assert_agent_envelope' <<<"$region"
 }
 
 # ---------------- TC-VBR-8b: Step 7b no context: fork Val-dispatch refs ----------------
@@ -263,12 +263,12 @@ _extract_steps_10_to_16() {
   region=$(_extract_steps_10_to_16 "$DEV_STORY_MD")
   [ -n "$region" ]
   # The canonical promotion-chain tokens that MUST remain in Steps 10-16.
-  echo "$region" | grep -q 'git-push.sh'
-  echo "$region" | grep -q 'pr-create.sh'
-  echo "$region" | grep -q 'ci-wait.sh'
-  echo "$region" | grep -q 'merge.sh'
-  echo "$region" | grep -q 'verify-pr-merged.sh'
-  echo "$region" | grep -q 'init-review-gate.sh'
+  grep -q 'git-push.sh' <<<"$region"
+  grep -q 'pr-create.sh' <<<"$region"
+  grep -q 'ci-wait.sh' <<<"$region"
+  grep -q 'merge.sh' <<<"$region"
+  grep -q 'verify-pr-merged.sh' <<<"$region"
+  grep -q 'init-review-gate.sh' <<<"$region"
 }
 
 # ---------------- TC-VBR-8e: Steps 10-16 leak guard ----------------
@@ -278,7 +278,7 @@ _extract_steps_10_to_16() {
   [ -n "$region" ]
   # Steps 10-16 are push/PR/CI/merge/review-gate — they MUST NOT reference
   # the envelope-assert (which is a Val-dispatch concern living in Steps 4 + 7b only).
-  ! echo "$region" | grep -q 'assert_agent_envelope'
+  ! grep -q 'assert_agent_envelope' <<<"$region"
 }
 
 # ============================================================================
@@ -310,7 +310,7 @@ _extract_add_feature_step_2() {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
   region=$(_extract_add_feature_step_2 "$ADD_FEATURE_MD")
   [ -n "$region" ]
-  echo "$region" | grep -q 'assert_agent_envelope'
+  grep -q 'assert_agent_envelope' <<<"$region"
 }
 
 # ---------------- TC-VBR-11b: Step 2 main-turn dispatch token ----------------
@@ -318,7 +318,7 @@ _extract_add_feature_step_2() {
   [ -f "$ADD_FEATURE_MD" ] || skip "add-feature SKILL.md not present"
   region=$(_extract_add_feature_step_2 "$ADD_FEATURE_MD")
   [ -n "$region" ]
-  echo "$region" | grep -q 'main-turn Agent tool'
+  grep -q 'main-turn Agent tool' <<<"$region"
 }
 
 # ---------------- TC-VBR-11c: Step 2 no context: fork Val-dispatch refs (region-scoped) ----------------

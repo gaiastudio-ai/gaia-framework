@@ -7,6 +7,7 @@
 # E17-S30 where the file lives at the legacy path.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   HELPER="${PLUGIN_ROOT}/gaia/scripts/migrate-test-environment-path.sh"
   TARGET_DIR="$(mktemp -d -t e17s32-bats-XXXXXX)"

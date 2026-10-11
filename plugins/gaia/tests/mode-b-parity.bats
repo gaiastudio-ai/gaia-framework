@@ -164,8 +164,8 @@ _make_skill() {
 @test "roster-cost P95 is at or under the documented threshold (AC3)" {
   run bash "$ROSTER" --iterations 20
   [ "$status" -eq 0 ]
-  p95="$(printf '%s\n' "$output" | grep -oE 'p95_ms=[0-9]+' | head -1 | cut -d= -f2)"
-  thr="$(printf '%s\n' "$output" | grep -oE 'threshold_ms=[0-9]+' | head -1 | cut -d= -f2)"
+  p95="$(grep -oE 'p95_ms=[0-9]+' <<<"$output" | head -1 | cut -d= -f2)"
+  thr="$(grep -oE 'threshold_ms=[0-9]+' <<<"$output" | head -1 | cut -d= -f2)"
   [ -n "$p95" ]
   [ -n "$thr" ]
   [ "$p95" -le "$thr" ]

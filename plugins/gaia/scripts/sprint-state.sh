@@ -294,7 +294,8 @@ Exit codes:
      failure, review gate failure, glob mismatch, drift (validate), or
      reconcile/lint-dependencies error (missing story file, parse failure)
   2  reconcile --dry-run detected drift but wrote nothing, or
-     lint-dependencies detected inversions (advisory, non-blocking)
+     lint-dependencies detected inversions (advisory, non-blocking), or
+     sprint-id mismatch on transition --sprint
 USAGE
 }
 
@@ -1051,6 +1052,27 @@ read_yaml_sprint_id() {
   ' "$file"
 }
 
+# _assert_sprint_id_matches — guard that the caller's sprint id matches the
+# yaml's sprint_id field. Dies with a descriptive message when the yaml has no
+# sprint_id or when the ids disagree. Uses the shared phrase "does not match
+# active sprint-status.yaml sprint_id" for pattern-anchored callers.
+_assert_sprint_id_matches() {
+  local verb="$1" flag_label="$2" caller_sid="$3" yaml="$4"
+  local exit_code="${5:-1}"
+  local yaml_sid
+  yaml_sid=$(read_yaml_sprint_id "$yaml" 2>/dev/null || true)
+  if [ -z "$yaml_sid" ]; then
+    printf '%s: error: %s: sprint-status.yaml has no sprint_id field\n' \
+      "$SCRIPT_NAME" "$verb" >&2
+    exit "$exit_code"
+  fi
+  if [ "$yaml_sid" != "$caller_sid" ]; then
+    printf '%s: error: %s: %s '\''%s'\'' does not match active sprint-status.yaml sprint_id '\''%s'\''\n' \
+      "$SCRIPT_NAME" "$verb" "$flag_label" "$caller_sid" "$yaml_sid" >&2
+    exit "$exit_code"
+  fi
+}
+
 # Read top-level scalar field <name> from sprint-status.yaml. Stdout = value.
 # Exit 1 if absent.
 read_yaml_scalar_field() {
@@ -1370,16 +1392,15 @@ cmd_inject() {
   if [ -n "$phase" ]; then
     _validate_phase_value "inject" "$phase"
   fi
-  # sprint_id_override is accepted for forward-compat (multi-sprint yaml,
-  # mirror of cmd_reconcile's --sprint-id posture). Today the drift guard
-  # uses the yaml's own sprint_id; an explicit override is silently ignored
-  # unless it disagrees with the yaml — in which case we surface that as a
-  # clear error rather than write to a non-active sprint.
+  # sprint_id_override is checked via the shared helper when the yaml has a
+  # sprint_id field. When the yaml lacks a sprint_id (e.g. a fresh seed that
+  # has not been initialised yet), the check is skipped and inject proceeds —
+  # this preserves the tolerant behaviour for legacy and test fixtures.
   if [ -n "$sprint_id_override" ]; then
     local yaml_sid
     yaml_sid=$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null || true)
-    if [ -n "$yaml_sid" ] && [ "$yaml_sid" != "$sprint_id_override" ]; then
-      die "inject: --sprint-id '$sprint_id_override' does not match active sprint-status.yaml sprint_id '$yaml_sid'"
+    if [ -n "$yaml_sid" ]; then
+      _assert_sprint_id_matches "inject" "--sprint-id" "$sprint_id_override" "$SPRINT_STATUS_YAML"
     fi
   fi
 
@@ -2893,10 +2914,12 @@ cmd_get_goals() {
 # Each goal is capped at 280 chars.
 cmd_set_goals() {
   local sprint_id="$1" goals_str="$2"
+  local verb="${3:-set-goals}"
   local yaml
   yaml="$(_resolve_active_yaml)"
-  [ -r "$yaml" ] || die "set-goals: yaml not readable: $yaml"
-  [ -n "$goals_str" ] || die "set-goals: --goals must be non-empty (pipe-delimited)"
+  [ -r "$yaml" ] || die "${verb}: yaml not readable: $yaml"
+  _assert_sprint_id_matches "$verb" "--sprint" "$sprint_id" "$yaml"
+  [ -n "$goals_str" ] || die "${verb}: --goals must be non-empty (pipe-delimited)"
   # Validate each goal: 1..280 chars
   local IFS='|'
   local g
@@ -2964,7 +2987,7 @@ PY
 
 # cmd_update_goals — alias for set-goals (REPLACES, does not append).
 cmd_update_goals() {
-  cmd_set_goals "$@"
+  cmd_set_goals "$1" "$2" "update-goals"
 }
 
 # cmd_set_shape — Set the optional `sprint_shape:` field on sprint-status.yaml.
@@ -2976,6 +2999,7 @@ cmd_set_shape() {
   local yaml
   yaml="$(_resolve_active_yaml)"
   [ -r "$yaml" ] || die "set-shape: yaml not readable: $yaml"
+  _assert_sprint_id_matches "set-shape" "--sprint" "$sprint_id" "$yaml"
   case "$shape" in
     thrust|completion-pass) ;;
     *) die "sprint_shape must be one of: thrust, completion-pass — got: $shape" ;;
@@ -3061,6 +3085,7 @@ cmd_transition_sprint() {
   local yaml
   yaml="$(_resolve_active_yaml)"
   [ -r "$yaml" ] || die "transition --sprint: yaml not readable: $yaml"
+  _assert_sprint_id_matches "transition" "--sprint" "$sprint_id" "$yaml" 2
   local current
   current="$(_yaml_sprint_status "$yaml")"
   [ -n "$current" ] || die "transition --sprint: cannot read current status from $yaml"
@@ -3189,6 +3214,7 @@ cmd_set_review_justification() {
   local yaml
   yaml="$(_resolve_active_yaml)"
   [ -r "$yaml" ] || die "set-review-justification: yaml not readable: $yaml"
+  _assert_sprint_id_matches "set-review-justification" "--sprint" "$sprint_id" "$yaml"
   [ -r "$file" ] || die "set-review-justification: payload file not readable: $file"
 
   # Schema validation via python (single deterministic pass).
@@ -3405,7 +3431,7 @@ main() {
   # under `set -u` an undeclared reference in the set-phase dispatch arm
   # would abort with an unbound-variable crash instead of the intended usage
   # diagnostic.
-  local phase_arg="" _GAIA_PHASE_FLAG_SEEN=0
+  local phase_arg="" _GAIA_PHASE_FLAG_SEEN=0 _GAIA_SPRINT_FLAG_LABEL=""
   # Optional init-only fields.
   local init_start_date="" init_end_date="" init_capacity_points="" init_sprint_length=""
   while [ $# -gt 0 ]; do
@@ -3422,9 +3448,9 @@ main() {
         to_state="${1#--to=}"; shift ;;
       --sprint-id)
         [ $# -ge 2 ] || die "--sprint-id requires a value"
-        reconcile_sprint_id="$2"; shift 2 ;;
+        reconcile_sprint_id="$2"; _GAIA_SPRINT_FLAG_LABEL="--sprint-id"; shift 2 ;;
       --sprint-id=*)
-        reconcile_sprint_id="${1#--sprint-id=}"; shift ;;
+        reconcile_sprint_id="${1#--sprint-id=}"; _GAIA_SPRINT_FLAG_LABEL="--sprint-id"; shift ;;
       --dry-run)
         reconcile_dry_run=1; shift ;;
       --format)
@@ -3459,12 +3485,12 @@ main() {
         rollover_keys="${1#--keys=}"; shift ;;
       --sprint)
         # --sprint is an alias for --sprint-id on sprint-level subcommands
-        # (get-goals / set-goals / update-goals / set-review-justification /
-        # transition --sprint).
+        # (get-goals / set-goals / update-goals / set-shape /
+        # set-review-justification / transition --sprint).
         [ $# -ge 2 ] || die "--sprint requires a value"
-        reconcile_sprint_id="$2"; shift 2 ;;
+        reconcile_sprint_id="$2"; _GAIA_SPRINT_FLAG_LABEL="--sprint"; shift 2 ;;
       --sprint=*)
-        reconcile_sprint_id="${1#--sprint=}"; shift ;;
+        reconcile_sprint_id="${1#--sprint=}"; _GAIA_SPRINT_FLAG_LABEL="--sprint"; shift ;;
       --goals)
         # Pipe-delimited goal list for set-goals / update-goals.
         [ $# -ge 2 ] || die "--goals requires a value"
@@ -3625,6 +3651,11 @@ main() {
       cmd_inject "$story_key" "${reconcile_sprint_id:-}" "${phase_arg:-}" ;;
     set-phase)
       [ -n "$story_key" ] || die "set-phase requires --story <key>"
+      if [ -n "$_GAIA_SPRINT_FLAG_LABEL" ]; then
+        printf '%s: error: unknown flag for set-phase: %s\n' \
+          "$SCRIPT_NAME" "$_GAIA_SPRINT_FLAG_LABEL" >&2
+        exit 1
+      fi
       # Clearing must be deliberate, never the residue of a forgotten flag.
       [ "$_GAIA_PHASE_FLAG_SEEN" = "1" ] \
         || die "set-phase requires --phase <n> (use --phase \"\" to clear)"
@@ -3637,10 +3668,13 @@ main() {
       [ -n "$reconcile_sprint_id" ] || die "set-story-sprint requires --sprint <id>"
       _cmd_set_story_sprint "$story_key" "$reconcile_sprint_id" ;;
     reconcile)
-      # reconcile_sprint_id currently scopes to the active sprint implicitly
-      # since the yaml holds one sprint at a time. Accepted for
-      # forward-compatibility but not yet consulted.
-      : "${reconcile_sprint_id:=}"
+      # When --sprint-id is supplied, check it against the yaml before
+      # reconciliation. Without it, behaviour is unchanged.
+      if [ -n "${reconcile_sprint_id:-}" ]; then
+        local _recon_yaml
+        _recon_yaml="$(_resolve_active_yaml)"
+        _assert_sprint_id_matches "reconcile" "--sprint-id" "$reconcile_sprint_id" "$_recon_yaml"
+      fi
       cmd_reconcile "$reconcile_dry_run" ;;
     lint-dependencies)
       # lint_sprint_id reuses reconcile_sprint_id from shared --sprint-id flag.

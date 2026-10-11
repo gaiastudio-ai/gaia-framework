@@ -66,8 +66,8 @@ EOF
   run "$AUDIT" --plugin "$tmp"
   rm -rf "$tmp"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'fixture-blind'
-  echo "$output" | grep -q 'validator'
+  grep -q 'fixture-blind' <<<"$output"
+  grep -q 'validator' <<<"$output"
 }
 
 @test "audit passes a fixture skill that dispatches AND loads" {

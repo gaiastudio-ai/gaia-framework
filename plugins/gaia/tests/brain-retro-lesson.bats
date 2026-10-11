@@ -349,5 +349,5 @@ YAML
   local syn_line
   syn_line="$(grep 'synopsis:' "$MANIFEST" | grep -v '^#' | head -1)"
   # The line must contain a doubled backslash (\\U or \\d).
-  printf '%s\n' "$syn_line" | grep -qF '\\'
+  grep -qF '\\' <<<"$syn_line"
 }

@@ -69,5 +69,5 @@ FM
   # The validator must NOT emit any finding scoped to the `delivered` field
   # for a well-formed story carrying delivered: false.
   run "$VALIDATE" --file "$story"
-  ! printf '%s\n' "$output" | grep -qiE '(^|\|)[^|]*deliver'
+  ! grep -qiE '(^|\|)[^|]*deliver' <<<"$output"
 }

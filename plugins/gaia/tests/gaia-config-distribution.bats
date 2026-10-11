@@ -90,8 +90,8 @@ YAML
   # Extract section content
   run bash "$EDITOR" extract "$CONFIG" distribution
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'channel: npm'
-  echo "$output" | grep -q 'registry: https://old.example'
+  grep -q 'channel: npm' <<<"$output"
+  grep -q 'registry: https://old.example' <<<"$output"
   # The surrounding comments are still in the file
   grep -q '# Pre-distribution comment' "$CONFIG"
   grep -q '# Post-distribution comment' "$CONFIG"
@@ -104,7 +104,7 @@ YAML
   # gate-2 SR-80 string-validator that the skill calls before any write.
   run bash -c "source '$CANON' && gaia_distribution_validate_url 'https://evil.com; rm -rf /'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'shell-metacharacter'
+  grep -q 'shell-metacharacter' <<<"$output"
 }
 
 @test "distribution-canonicalize rejects non-https registry" {
@@ -116,7 +116,7 @@ YAML
   mkdir -p "$TEST_TMP/proj"
   run bash -c "source '$CANON' && gaia_distribution_canonicalize_manifest '$TEST_TMP/proj' '../../../etc/passwd'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'traversal'
+  grep -q 'traversal' <<<"$output"
 }
 
 # ---------- AC5: clear removes section ----------
@@ -193,10 +193,10 @@ distribution:
 YAML
   run bash "$EDITOR" extract "$CONFIG" distribution
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'channel: npm'
-  echo "$output" | grep -q 'registry:'
-  echo "$output" | grep -q 'manifest:'
-  echo "$output" | grep -q 'release_workflow:'
+  grep -q 'channel: npm' <<<"$output"
+  grep -q 'registry:' <<<"$output"
+  grep -q 'manifest:' <<<"$output"
+  grep -q 'release_workflow:' <<<"$output"
 }
 
 # ---------- AC7: pre-write validation chain wired in SKILL.md ----------

@@ -32,12 +32,12 @@ setup() {
   [ "$status" -eq 0 ]
   # None of the headings should mention "Fake Heading"; all five real
   # sections are titled "Real Section <N>".
-  ! printf '%s\n' "$output" | grep -q "Fake Heading"
-  printf '%s\n' "$output" | grep -q "Real Section One"
-  printf '%s\n' "$output" | grep -q "Real Section Two"
-  printf '%s\n' "$output" | grep -q "Real Section Three"
-  printf '%s\n' "$output" | grep -q "Real Section Four"
-  printf '%s\n' "$output" | grep -q "Real Section Five"
+  ! grep -q "Fake Heading" <<<"$output"
+  grep -q "Real Section One" <<<"$output"
+  grep -q "Real Section Two" <<<"$output"
+  grep -q "Real Section Three" <<<"$output"
+  grep -q "Real Section Four" <<<"$output"
+  grep -q "Real Section Five" <<<"$output"
 }
 
 @test "AC3: matches E53-S222 reference algorithm — naked '## ' on toggled state" {
@@ -56,9 +56,9 @@ EOF
   [ "$status" -eq 0 ]
   count=$(printf '%s\n' "$output" | grep -c '^[0-9][0-9]*:')
   [ "$count" -eq 2 ]
-  printf '%s\n' "$output" | grep -q "Outside One"
-  printf '%s\n' "$output" | grep -q "Outside Two"
-  ! printf '%s\n' "$output" | grep -q "Inside"
+  grep -q "Outside One" <<<"$output"
+  grep -q "Outside Two" <<<"$output"
+  ! grep -q "Inside" <<<"$output"
   rm -f "$tmp"
 }
 

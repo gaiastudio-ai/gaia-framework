@@ -70,7 +70,7 @@ teardown() {
 @test "neither segment carries the probe sentinel" {
   run bash -c ". '$LIB' && gaia_tree_segments"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -q 'gaia-path-segment-probe'
+  ! grep -q 'gaia-path-segment-probe' <<<"$output"
 }
 
 @test "the artifacts segment is emitted first, the memory segment second" {

@@ -52,7 +52,7 @@ _grep_credentials_in() {
   # Fixed-string scan: any literal in source → match.
   if [ -n "$fixed_patterns" ]; then
     # shellcheck disable=SC2086
-    if printf '%s' "$fixed_patterns" | sed '/^$/d' | xargs -I {} grep -RF "{}" "$target" --include='*.sh' --include='*.py' --include='*.js' --include='*.yaml' --include='*.yml' 2>/dev/null | grep -v 'tests/fixtures/' | grep -v 'credential-isolation-patterns.txt' | grep -q .; then
+    if sed '/^$/d' <<<"$fixed_patterns" | xargs -I {} grep -RF "{}" "$target" --include='*.sh' --include='*.py' --include='*.js' --include='*.yaml' --include='*.yml' 2>/dev/null | grep -v 'tests/fixtures/' | grep -v 'credential-isolation-patterns.txt' | grep -q .; then
       return 1
     fi
   fi
@@ -93,7 +93,7 @@ _grep_credentials_in() {
       entries=$(yq eval '.credential_env_vars[]' "$manifest")
       while IFS= read -r ev; do
         [ -z "$ev" ] && continue
-        if ! printf '%s' "$ev" | grep -Eq '^[A-Z][A-Z0-9_]*$'; then
+        if ! grep -Eq '^[A-Z][A-Z0-9_]*$' <<<"$ev"; then
           echo "$(basename "$dir") has malformed env-var name: $ev" >&2; false
         fi
       done <<< "$entries"
@@ -179,7 +179,7 @@ _grep_credentials_in() {
         # Inspect summary for "MOCK" — if present, the adapter incorrectly trusted the env.
         local summary
         summary=$(jq -r '.summary // ""' "$out" 2>/dev/null)
-        if ! echo "$summary" | grep -qiE 'token missing|credential.*missing|refuses to fall back'; then
+        if ! grep -qiE 'token missing|credential.*missing|refuses to fall back' <<<"$summary"; then
           echo "Adapter $name silently PASSED without declared credentials (verdict=$verdict)" >&2
           echo "summary: $summary" >&2
           false
@@ -231,7 +231,7 @@ SHIM
   chmod +x "$evil/run.sh"
   run "$audit" "$evil"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qF "HALT: adapter credential audit failed — undeclared credential source"
+  grep -qF "HALT: adapter credential audit failed — undeclared credential source" <<<"$output"
 }
 
 @test "AC5 (C2 fix): SR-76 audit catches malicious custom adapter that invokes aws configure" {

@@ -225,7 +225,7 @@ PY
   _yaml_supported || skip "python3+yaml unavailable"
   keys=$(_yaml_top_keys "$PLUGIN_YAML") || return 1
   for k in file_extensions discovery_rules casing frontmatter_requirements; do
-    echo "$keys" | grep -qx "$k" || { echo "missing top-level key '$k'" >&2; return 1; }
+    grep -qx "$k" <<<"$keys" || { echo "missing top-level key '$k'" >&2; return 1; }
   done
 }
 

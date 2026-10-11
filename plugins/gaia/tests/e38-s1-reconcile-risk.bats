@@ -43,7 +43,7 @@ assert_reconcile_recognized() {
   # Run reconcile and capture combined stdout+stderr by redirecting stderr.
   local combined
   combined="$("$SPRINT_STATE" reconcile 2>&1 || true)"
-  if printf '%s' "$combined" | grep -q "unknown subcommand: reconcile"; then
+  if grep -q "unknown subcommand: reconcile" <<<"$combined"; then
     echo "ATDD GUARD: reconcile subcommand not yet implemented in sprint-state.sh" >&2
     return 1
   fi

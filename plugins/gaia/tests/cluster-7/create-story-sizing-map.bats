@@ -70,7 +70,7 @@ mk_shared_no_override() {
 # numeric value for the requested size on stdout.
 extract_size_value() {
   local size="$1" output="$2"
-  printf '%s\n' "$output" | awk -F= -v k="$size" '$1==k{print $2; exit}'
+  awk -F= -v k="$size" '$1==k{print $2; exit}' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------

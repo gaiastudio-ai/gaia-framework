@@ -31,20 +31,20 @@ ANALYSIS_RESULTS_SCHEMA="$BATS_TEST_DIRNAME/../schemas/analysis-results.schema.j
 @test "schema 'required' lists the canonical seven fields" {
   run jq -r '.required | sort | .[]' "$ADAPTER_SCHEMA"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qx 'provider'
-  echo "$output" | grep -qx 'category'
-  echo "$output" | grep -qx 'runtime-profile'
-  echo "$output" | grep -qx 'default-timeout-seconds'
-  echo "$output" | grep -qx 'file-extensions'
-  echo "$output" | grep -qx 'version-range'
-  echo "$output" | grep -qx 'description'
+  grep -qx 'provider' <<<"$output"
+  grep -qx 'category' <<<"$output"
+  grep -qx 'runtime-profile' <<<"$output"
+  grep -qx 'default-timeout-seconds' <<<"$output"
+  grep -qx 'file-extensions' <<<"$output"
+  grep -qx 'version-range' <<<"$output"
+  grep -qx 'description' <<<"$output"
 }
 
 @test "'category' enum covers all canonical values" {
   run jq -r '.properties.category.enum[]' "$ADAPTER_SCHEMA"
   [ "$status" -eq 0 ]
   for v in linter formatter type-checker sast secret-scan dep-audit dast e2e-runner perf-tool a11y-scanner mobile-static mobile-dynamic device-farm; do
-    echo "$output" | grep -qx "$v" || { echo "missing category enum value: $v" >&2; return 1; }
+    grep -qx "$v" <<<"$output" || { echo "missing category enum value: $v" >&2; return 1; }
   done
 }
 

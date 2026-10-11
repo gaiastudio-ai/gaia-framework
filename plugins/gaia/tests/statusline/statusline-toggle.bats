@@ -81,7 +81,7 @@ write_settings() {
   cp "$HOME/.claude/settings.json" "$TEST_TMP/before.json"
   run bash "$TOGGLE" --enable
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "no-op (already enabled)"
+  grep -q "no-op (already enabled)" <<<"$output"
   # Byte-identical content IS the no-op contract. (A prior mtime-equality check
   # was dropped: mtime-on-no-op is second-granularity and flakes on fast CI
   # filesystems even when the file is genuinely untouched.)
@@ -115,7 +115,7 @@ write_settings() {
   cp "$HOME/.claude/settings.json" "$TEST_TMP/before.json"
   run bash "$TOGGLE" --disable
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "no-op (already disabled)"
+  grep -q "no-op (already disabled)" <<<"$output"
   # Byte-identical content IS the no-op contract (mtime-equality dropped: it
   # flakes on fast CI filesystems even when the file is genuinely untouched).
   diff "$TEST_TMP/before.json" "$HOME/.claude/settings.json"
@@ -125,7 +125,7 @@ write_settings() {
   rm -f "$HOME/.claude/settings.json"
   run bash "$TOGGLE" --disable
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "no-op (already disabled)"
+  grep -q "no-op (already disabled)" <<<"$output"
   [ ! -f "$HOME/.claude/settings.json" ]
 }
 
@@ -178,7 +178,7 @@ write_settings() {
   # are visible to grep.
   run bash -c "bash '$TOGGLE' --enable 2>&1"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "install-statusline.sh"
+  grep -qi "install-statusline.sh" <<<"$output"
   # settings.json unmodified.
   diff "$TEST_TMP/before.json" "$HOME/.claude/settings.json"
 }
@@ -194,7 +194,7 @@ write_settings() {
   run bash -c "bash '$TOGGLE' --enable 2>&1"
   [ "$status" -ne 0 ]
   # Error message must reference settings.json or "malformed"/"invalid".
-  echo "$output" | grep -qiE "malformed|invalid|settings"
+  grep -qiE "malformed|invalid|settings" <<<"$output"
   diff "$TEST_TMP/before.json" "$HOME/.claude/settings.json"
 }
 
@@ -204,7 +204,7 @@ write_settings() {
   cp "$HOME/.claude/settings.json" "$TEST_TMP/before.json"
   run bash -c "bash '$TOGGLE' --disable 2>&1"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qiE "malformed|invalid|settings"
+  grep -qiE "malformed|invalid|settings" <<<"$output"
   diff "$TEST_TMP/before.json" "$HOME/.claude/settings.json"
 }
 

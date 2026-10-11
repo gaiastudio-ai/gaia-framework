@@ -132,17 +132,206 @@ _dg_resolve_sprint_id() {
   return 1
 }
 
-# _dg_validate_reason REASON — validate override reason after trimming.
-# Stdout: trimmed reason. Returns 1 with a message on failure.
+# ---------------------------------------------------------------------------
+# UTF-8 byte walker — single definition, two modes
+# ---------------------------------------------------------------------------
+# _DG_UTF8_WALKER_AWK: a strict RFC-3629 UTF-8 byte-level state machine.
+# Accepts awk variable `mode`:
+#   mode="replace" — emit <0xHH> placeholders for control/invalid bytes
+#   mode="strip"   — silently drop control/invalid bytes
+# Valid multi-byte UTF-8 always passes through unchanged. C1 control
+# characters (U+0080–U+009F, encoded as C2 80–C2 9F) are treated as
+# control bytes in both modes.
+#
+# The end-of-input guards (i+N<=n) have no behavioural effect because awk
+# returns "" for out-of-range array elements, but they document the
+# expected sequence length and are kept for clarity.
+
+# shellcheck disable=SC2016  # single-quoted awk program, $ is intentional
+_DG_UTF8_WALKER_AWK='
+BEGIN {
+  # Build byte-to-ordinal lookup for all 256 byte values.
+  # The entry for the empty string (byte 0x00) is unreachable:
+  # NUL cannot travel through shell argv or awk strings.
+  for (i = 0; i <= 255; i++) ord[sprintf("%c", i)] = i
+}
+# In replace mode, emit <0x0A> for each newline consumed as a record separator
+NR > 1 && mode == "replace" { printf "<0x0A>" }
+{
+  # split(s, a, "") splits into individual bytes under LC_ALL=C.
+  # Not POSIX-specified but behaves the same on BSD awk, gawk, mawk
+  # and busybox awk.
+  n = split($0, c, "")
+  i = 1
+  while (i <= n) {
+    v = ord[c[i]]
+
+    # ASCII printable (0x20-0x7E): pass through
+    if (v >= 32 && v <= 126) { printf "%s", c[i]; i++; continue }
+
+    # C0 control (0x01-0x1F) or DEL (0x7F)
+    if ((v >= 1 && v <= 31) || v == 127) {
+      if (mode == "replace") printf "<0x%02X>", v
+      i++; continue
+    }
+
+    # 2-byte UTF-8: lead 0xC2-0xDF
+    if (v >= 194 && v <= 223) {
+      if (i + 1 <= n) {
+        v2 = ord[c[i + 1]]
+        if (v2 >= 128 && v2 <= 191) {
+          # C1 control range: C2 80-C2 9F
+          if (v == 194 && v2 >= 128 && v2 <= 159) {
+            if (mode == "replace") printf "<0x%02X><0x%02X>", v, v2
+          } else {
+            printf "%s%s", c[i], c[i + 1]
+          }
+          i += 2; continue
+        }
+      }
+      if (mode == "replace") printf "<0x%02X>", v
+      i++; continue
+    }
+
+    # 3-byte UTF-8: lead 0xE0-0xEF
+    if (v >= 224 && v <= 239) {
+      if (i + 2 <= n) {
+        v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]
+        ok = 0
+        if (v2 >= 128 && v2 <= 191 && v3 >= 128 && v3 <= 191) {
+          if (v == 224 && v2 >= 160) ok = 1
+          else if (v == 237 && v2 <= 159) ok = 1
+          else if (v != 224 && v != 237) ok = 1
+        }
+        if (ok) {
+          printf "%s%s%s", c[i], c[i + 1], c[i + 2]
+          i += 3; continue
+        }
+      }
+      if (mode == "replace") printf "<0x%02X>", v
+      i++; continue
+    }
+
+    # 4-byte UTF-8: lead 0xF0-0xF4
+    if (v >= 240 && v <= 244) {
+      if (i + 3 <= n) {
+        v2 = ord[c[i + 1]]; v3 = ord[c[i + 2]]; v4 = ord[c[i + 3]]
+        ok = 0
+        if (v3 >= 128 && v3 <= 191 && v4 >= 128 && v4 <= 191) {
+          if (v == 240 && v2 >= 144 && v2 <= 191) ok = 1
+          else if (v == 244 && v2 >= 128 && v2 <= 143) ok = 1
+          else if (v >= 241 && v <= 243 && v2 >= 128 && v2 <= 191) ok = 1
+        }
+        if (ok) {
+          printf "%s%s%s%s", c[i], c[i + 1], c[i + 2], c[i + 3]
+          i += 4; continue
+        }
+      }
+      if (mode == "replace") printf "<0x%02X>", v
+      i++; continue
+    }
+
+    # Stray continuation (0x80-0xBF), overlong lead (0xC0-0xC1),
+    # or out-of-range lead (0xF5-0xFF)
+    if (mode == "replace") printf "<0x%02X>", v
+    i++
+  }
+}
+'
+
+# _dg_sanitise_reason TEXT — replace control bytes and invalid UTF-8 with
+# visible <0xHH> placeholders. Valid multi-byte UTF-8 passes through
+# unchanged. Reads $1. Writes sanitised text to stdout.
+# A trailing sentinel preserves trailing newlines from command substitution.
+_dg_sanitise_reason() {
+  local _out
+  _out="$(printf '%s.' "$1" | LC_ALL=C awk -v mode=replace "$_DG_UTF8_WALKER_AWK")"
+  printf '%s' "${_out%.}"
+}
+
+# _dg_strip_controls TEXT — remove control bytes and invalid UTF-8, keeping
+# only printable content and valid multi-byte sequences. Used to measure
+# real content length before the minimum-length check.
+# A trailing sentinel preserves trailing newlines from command substitution.
+_dg_strip_controls() {
+  local _out
+  _out="$(printf '%s.' "$1" | LC_ALL=C awk -v mode=strip "$_DG_UTF8_WALKER_AWK")"
+  printf '%s' "${_out%.}"
+}
+
+# _dg_trim_spaces TEXT — trim ASCII spaces (0x20) only from both ends of the
+# whole string in linear time. Tab, CR, LF and other bytes are not trimmed.
+# Uses bash substring extraction with index arithmetic instead of a
+# per-character loop, so the cost is proportional to the string length,
+# not to the number of leading/trailing spaces.
+# Appends a sentinel so the caller's $() does not eat trailing newlines.
+_dg_trim_spaces() {
+  local s="$1" len="${#1}"
+  # Find first non-space from the left
+  local lo=0
+  while [ "$lo" -lt "$len" ] && [ "${s:$lo:1}" = " " ]; do
+    lo=$((lo + 1))
+  done
+  # Find last non-space from the right
+  local hi=$((len - 1))
+  while [ "$hi" -ge "$lo" ] && [ "${s:$hi:1}" = " " ]; do
+    hi=$((hi - 1))
+  done
+  if [ "$lo" -gt "$hi" ]; then
+    printf '.'
+  else
+    printf '%s.' "${s:$lo:$((hi - lo + 1))}"
+  fi
+}
+
+# _dg_validate_reason REASON — validate, trim and sanitise the override reason.
+# Stdout: sanitised text on success.
+# Returns: 0 success, 1 too short, 2 sanitised too long, 3 raw too long.
 _dg_validate_reason() {
   local reason="$1"
+
+  # (0) Cheap length guard — refuse before any trimming or walking when
+  #     the raw argument exceeds a generous ceiling. This bounds the trim
+  #     and the awk walker to a small, predictable input.
+  if [ "${#reason}" -gt 4096 ]; then
+    printf 'Override refused: --reason exceeds 500 raw bytes after trimming spaces (got %d).\n' "${#reason}" >&2
+    return 3
+  fi
+
+  # (1) Trim ASCII spaces only from both ends (not tab/CR/LF — those become
+  #     visible placeholders). Strip the sentinel that _dg_trim_spaces appends.
   local trimmed
-  trimmed="$(printf '%s' "$reason" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  if [ -z "$trimmed" ] || [ "${#trimmed}" -lt 10 ]; then
-    printf 'Override refused: --reason must be at least 10 characters after trimming whitespace (got %d).\n' "${#trimmed}" >&2
+  trimmed="$(_dg_trim_spaces "$reason")"
+  trimmed="${trimmed%.}"
+
+  # (2a) Early maximum on the raw trimmed text. Checked before any awk walk.
+  if [ "${#trimmed}" -gt 500 ]; then
+    printf 'Override refused: --reason exceeds 500 raw bytes after trimming spaces (got %d).\n' "${#trimmed}" >&2
+    return 3
+  fi
+
+  # (2b) Minimum on content: strip controls and invalid UTF-8, then trim
+  #      spaces, then check >= 10 bytes.
+  local content content_trimmed
+  content="$(_dg_strip_controls "$trimmed")"
+  content_trimmed="$(_dg_trim_spaces "$content")"
+  content_trimmed="${content_trimmed%.}"
+  if [ -z "$content_trimmed" ] || [ "${#content_trimmed}" -lt 10 ]; then
+    printf 'Override refused: --reason must be at least 10 characters after trimming whitespace (got %d).\n' "${#content_trimmed}" >&2
     return 1
   fi
-  printf '%s' "$trimmed"
+
+  # (2c) Sanitise: replace control bytes with <0xHH> placeholders.
+  local sanitised
+  sanitised="$(_dg_sanitise_reason "$trimmed")"
+
+  # (2d) Maximum on the sanitised text (the ledger cap).
+  if [ "${#sanitised}" -gt 500 ]; then
+    printf 'Override refused: --reason is longer than 500 bytes once control characters are shown as <0xHH> placeholders (got %d).\n' "${#sanitised}" >&2
+    return 2
+  fi
+
+  printf '%s' "$sanitised"
 }
 
 # ---------------------------------------------------------------------------
@@ -273,7 +462,7 @@ design_gate_check() {
 
   if [ ! -f "$record_path" ]; then
     # MUTANT-ANCHOR: absent-fail-branch
-    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If Claude Design is not connected in this session, you will also need to enable it, run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
     _dg_halt "$record_path" "absent" "$_dg_absent_remediation"
     return 1
   fi
@@ -294,7 +483,7 @@ design_gate_check() {
 
   local schema_version
   schema_version="$(yq '.schema_version' "$record_path" 2>/dev/null || true)"
-  if [ "$schema_version" != "1.0" ]; then
+  if [ "$schema_version" != "1.0" ] && [ "$schema_version" != "2.0" ]; then
     _dg_halt "$record_path" "schema-invalid (version: ${schema_version:-unknown})" \
       "The design record has an unsupported schema version. Update the framework or migrate the record."
     return 1
@@ -310,7 +499,7 @@ design_gate_check() {
     # Fail closed so the user re-initializes the design record.
     if [ "$ui_present" = "true" ]; then
       _dg_halt "$record_path" "not-applicable record on UI-bearing project" \
-        "The design record says not-applicable but the project has ui_present: true. Run: design-record.sh reopen-applicable --reference <ref> --discovered-via <how> --questionnaire-record <path>, then drive the review with /gaia-design-review."
+        "The design record says not-applicable but the project has ui_present: true. Run: design-record.sh reopen-applicable --reference <ref> --discovered-via <how> [--questionnaire-record <path>], then drive the review with /gaia-design-review."
       return 1
     fi
     return 0
@@ -331,6 +520,60 @@ design_gate_check() {
   state_remediation="$(_dg_evaluate_state "$design_state" "$drec_script" "$PROJECT_ROOT")" && verdict="pass"
 
   if [ "$verdict" = "pass" ]; then
+    # ---- Review coverage check ----
+    # MUTANT-ANCHOR: coverage-check-begin
+    local _dg_cov_json _dg_cov_type _dg_pdp_ref _dg_pdp_type _dg_dsp_ref
+    _dg_cov_json="$(yq -o=json '{"rc": .review_coverage, "pdp": .product_design_project, "dsp": (.design_system_project.reference // .project.reference)}' "$record_path" 2>/dev/null || true)"
+
+    _dg_cov_type="$(jq -r '.rc | type' <<<"$_dg_cov_json" 2>/dev/null || printf 'null')"
+    _dg_pdp_ref="$(jq -r '.pdp.reference // empty' <<<"$_dg_cov_json" 2>/dev/null || true)"
+    _dg_pdp_type="$(jq -r '.pdp | type' <<<"$_dg_cov_json" 2>/dev/null || printf 'null')"
+    _dg_dsp_ref="$(jq -r '.dsp // empty' <<<"$_dg_cov_json" 2>/dev/null || true)"
+
+    local _dg_cov_clause="If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+
+    # Validate product_design_project type: must be null, absent, or a map
+    if [ -n "$_dg_pdp_type" ] && [ "$_dg_pdp_type" != "null" ] && [ "$_dg_pdp_type" != "object" ]; then
+      _dg_halt "$record_path" "malformed-record" \
+        "product_design_project must be a map or null, but is $_dg_pdp_type. Fix the design record or re-run /gaia-create-ux."
+      return 1
+    fi
+
+    local _dg_force_note="This halt cannot be overridden with --force-design."
+
+    if [ "$_dg_cov_type" = "null" ]; then
+      # Absent coverage field
+      if [ -n "$_dg_pdp_ref" ]; then
+        _dg_halt "$record_path" "coverage-incomplete" \
+          "The design review did not cover the product design project. Run /gaia-design-review to review both projects. $_dg_cov_clause $_dg_force_note"
+        return 1
+      fi
+      # product_design_project null — treat as design-system only, pass through
+    elif [ "$_dg_cov_type" = "array" ]; then
+      # Coverage is present and is a list — compare elements inside jq
+      # (exact match, no newline splitting, no whitespace tolerance)
+      local _dg_has_ds _dg_has_pd
+      _dg_has_ds="$(jq -r 'any(.rc[]; . == "design-system")' <<<"$_dg_cov_json" 2>/dev/null || printf 'false')"
+      _dg_has_pd="$(jq -r 'any(.rc[]; . == "product-design")' <<<"$_dg_cov_json" 2>/dev/null || printf 'false')"
+
+      if [ -n "$_dg_dsp_ref" ] && [ "$_dg_has_ds" != "true" ]; then
+        _dg_halt "$record_path" "coverage-incomplete" \
+          "The design review did not cover the design-system project. Run /gaia-design-review to review both projects. $_dg_cov_clause $_dg_force_note"
+        return 1
+      fi
+      if [ -n "$_dg_pdp_ref" ] && [ "$_dg_has_pd" != "true" ]; then
+        _dg_halt "$record_path" "coverage-incomplete" \
+          "The design review did not cover the product design project. Run /gaia-design-review to review both projects. $_dg_cov_clause $_dg_force_note"
+        return 1
+      fi
+    else
+      # review_coverage is present but not a list — fail closed
+      _dg_halt "$record_path" "malformed-record" \
+        "review_coverage must be a list, but is $_dg_cov_type. Fix the design record or re-run /gaia-design-review."
+      return 1
+    fi
+    # MUTANT-ANCHOR: coverage-check-end
+
     return 0
   fi
 
@@ -344,7 +587,7 @@ design_gate_check() {
 
   # ---- Halt on non-approved applicable paths ----
 
-  local _dg_halt_remediation="${state_remediation} If Claude Design is not connected in this session, you will also need to enable it, run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+  local _dg_halt_remediation="${state_remediation} If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
   _dg_halt "$record_path" "$design_state" "$_dg_halt_remediation"  # MUTANT-ANCHOR: probe-fail-branch
   return 1
 }
@@ -360,14 +603,23 @@ _dg_handle_override() {
   local actor
   actor="${USER:-unknown}"
 
-  # ---- Validate reason ----
+  # ---- Validate and sanitise reason ----
 
-  _dg_validate_reason "$reason" >/dev/null || {
-    _dg_halt "$record_path" "$design_state" \
-      "Override refused: --reason must be at least 10 characters after trimming whitespace."
+  local _dg_vr_rc=0
+  reason="$(_dg_validate_reason "$reason")" || _dg_vr_rc=$?
+  if [ "$_dg_vr_rc" -ne 0 ]; then
+    local _dg_vr_remediation
+    if [ "$_dg_vr_rc" -eq 1 ]; then
+      _dg_vr_remediation="Override refused: --reason must be at least 10 characters after trimming whitespace."
+    elif [ "$_dg_vr_rc" -eq 3 ]; then
+      _dg_vr_remediation="Override refused: --reason exceeds 500 raw bytes after trimming spaces."
+    else
+      _dg_vr_remediation="Override refused: --reason is longer than 500 bytes once control characters are shown as <0xHH> placeholders."
+    fi
+    _dg_halt "$record_path" "$design_state" "$_dg_vr_remediation"
     _DG_OVERRIDE_REFUSED=1
     return 1
-  }
+  fi
 
   # ---- Resolve sprint scope ----
 

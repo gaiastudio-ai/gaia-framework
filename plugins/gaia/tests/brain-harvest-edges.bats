@@ -110,8 +110,8 @@ _has_edge() {
   # must NOT appear is an actual `- type: <bad>` edge line.)
   run _emit_edge "inspired-by" "E777-S9"
   [ "$status" -ne 0 ]
-  ! printf '%s\n' "$output" | grep -q '^- type: inspired-by'
-  printf '%s\n' "$output" | grep -q 'WARNING'
+  ! grep -q '^- type: inspired-by' <<<"$output"
+  grep -q 'WARNING' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ _has_edge() {
   # The prose bullet reads `FR-901 (master harvest policy)`; the emitted target
   # is the bare `FR-901`, not the glossed string.
   _has_edge "implements" "FR-901"
-  ! printf '%s\n' "$output" | grep -q 'master harvest policy'
+  ! grep -q 'master harvest policy' <<<"$output"
 }
 
 @test "a decision-shaped allocation token routes to governed-by, not implements" {
@@ -217,8 +217,8 @@ _has_edge() {
 
 @test "reviewed-in excludes summary / bare-review / evidence / key-first siblings" {
   _harvest_primary
-  ! printf '%s\n' "$output" | grep -q 'review-summary'
-  ! printf '%s\n' "$output" | grep -q 'execution-evidence'
+  ! grep -q 'review-summary' <<<"$output"
+  ! grep -q 'execution-evidence' <<<"$output"
   # The bare `*-review-<KEY>.md` whose review token is not an allowlisted type
   # must be excluded.
   ! _has_edge "reviewed-in" "align-research-slug-with-filename-review-E777-S2"

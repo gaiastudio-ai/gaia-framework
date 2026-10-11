@@ -91,7 +91,7 @@ EOF
       SPRINT_STATUS_YAML="$TEST_TMP/sprint-status.yaml" \
       bash "$SPRINT_STATE_SH" lint-dependencies --format json
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '"sprint_id"'
+  grep -q '"sprint_id"' <<<"$output"
 }
 
 @test "lint-dependencies: --format text produces text output" {
@@ -118,7 +118,7 @@ EOF
       SPRINT_STATUS_YAML="$TEST_TMP/sprint-status.yaml" \
       bash "$SPRINT_STATE_SH" lint-dependencies
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '"sprint_id"'
+  grep -q '"sprint_id"' <<<"$output"
 }
 
 # ===========================================================================
@@ -144,8 +144,8 @@ EOF
       SPRINT_STATUS_YAML="$TEST_TMP/sprint-status.yaml" \
       bash "$SPRINT_STATE_SH" lint-dependencies --format json
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '"status": "clean"'
-  echo "$output" | grep -q '"stories_analyzed": 5'
+  grep -q '"status": "clean"' <<<"$output"
+  grep -q '"stories_analyzed": 5' <<<"$output"
 }
 
 @test "forward-reference inversion flagged" {
@@ -167,10 +167,10 @@ EOF
       SPRINT_STATUS_YAML="$TEST_TMP/sprint-status.yaml" \
       bash "$SPRINT_STATE_SH" lint-dependencies --format json
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q '"dependent": "E1-S3"'
-  echo "$output" | grep -q '"dependency": "E1-S5"'
-  echo "$output" | grep -q '"confidence": "explicit"'
-  echo "$output" | grep -q '"suggested_reorder"'
+  grep -q '"dependent": "E1-S3"' <<<"$output"
+  grep -q '"dependency": "E1-S5"' <<<"$output"
+  grep -q '"confidence": "explicit"' <<<"$output"
+  grep -q '"suggested_reorder"' <<<"$output"
 }
 
 # ===========================================================================
@@ -191,8 +191,8 @@ EOF
       SPRINT_STATUS_YAML="$yaml" \
       bash "$SPRINT_STATE_SH" lint-dependencies --format json
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '"stories_analyzed": 0'
-  echo "$output" | grep -q '"status": "clean"'
+  grep -q '"stories_analyzed": 0' <<<"$output"
+  grep -q '"status": "clean"' <<<"$output"
 }
 
 @test "external dependency emits heuristic inversion" {
@@ -208,8 +208,8 @@ EOF
       SPRINT_STATUS_YAML="$TEST_TMP/sprint-status.yaml" \
       bash "$SPRINT_STATE_SH" lint-dependencies --format json
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q '"confidence": "heuristic"'
-  echo "$output" | grep -q "External dependency"
+  grep -q '"confidence": "heuristic"' <<<"$output"
+  grep -q "External dependency" <<<"$output"
 }
 
 @test "circular A->B->A reports inversions, terminates" {
@@ -250,7 +250,7 @@ EOF
       SPRINT_STATUS_YAML="$TEST_TMP/sprint-status.yaml" \
       bash "$SPRINT_STATE_SH" lint-dependencies
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi "not found"
+  grep -qi "not found" <<<"$output"
 }
 
 @test "Unicode in AC text does not crash" {
@@ -303,5 +303,5 @@ EOF
 
 @test "help text mentions lint-dependencies" {
   run bash "$SPRINT_STATE_SH" --help
-  echo "$output" | grep -q "lint-dependencies"
+  grep -q "lint-dependencies" <<<"$output"
 }

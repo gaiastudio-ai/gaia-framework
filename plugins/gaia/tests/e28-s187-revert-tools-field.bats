@@ -49,7 +49,7 @@ teardown() { common_teardown; }
     local line
     line="$(grep '^allowed-tools:' "$file" | head -1)"
     # Match `allowed-tools: [...]` — the canonical list form.
-    if ! echo "$line" | grep -qE '^allowed-tools:[[:space:]]*\['; then
+    if ! grep -qE '^allowed-tools:[[:space:]]*\[' <<<"$line"; then
       offenders="$offenders$file:$line\n"
     fi
   done < <(ls "$PLUGIN_SKILLS_DIR"/*/SKILL.md)

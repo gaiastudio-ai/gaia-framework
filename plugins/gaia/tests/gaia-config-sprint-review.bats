@@ -219,7 +219,7 @@ YAML
   run "$SCRIPT" "$fixture"
   [ "$status" -eq 0 ]
   # No reference to sprint_review in output (silent absence)
-  ! echo "${output}${stderr:-}" | grep -qE 'sprint_review'
+  ! grep -qE 'sprint_review' <<<"${output}${stderr:-}"
 }
 
 # ---------- TC-SGR-37(f): frontend_commands map (issue #1047 / AF-2026-06-01-4) ----------

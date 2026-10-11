@@ -62,8 +62,8 @@ Dispatch via subagent_type: validator without loading any brain context.'
 
   run "$AUDIT" --plugin "$TMP" --map "$TMP/map/brain-reliance-map.yaml"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'GAP'
-  echo "$output" | grep -q 'fixture-blind'
+  grep -q 'GAP' <<<"$output"
+  grep -q 'fixture-blind' <<<"$output"
 }
 
 # TC: a clean repo where every consultation-required skill loads its brain
@@ -86,7 +86,7 @@ Dispatch via subagent_type: validator.'
 
   run "$AUDIT" --plugin "$TMP" --map "$TMP/map/brain-reliance-map.yaml"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q 'GAP'
+  ! grep -q 'GAP' <<<"$output"
 }
 
 # TC: a malformed reliance map at build time fails CLOSED with exit 2 — the
@@ -121,7 +121,7 @@ No brain loader here, but no stage declared so nothing to audit.'
 
   run "$AUDIT" --plugin "$TMP" --map "$TMP/map/brain-reliance-map.yaml"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q 'GAP'
+  ! grep -q 'GAP' <<<"$output"
 }
 
 # TC: scope is derived from the map, not a hard-coded list — adding a second
@@ -154,6 +154,6 @@ no brain loader' > "$TMP/skills/skill-blind/SKILL.md"
 
   run "$AUDIT" --plugin "$TMP" --map "$TMP/map/brain-reliance-map.yaml"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'skill-blind'
-  ! echo "$output" | grep -q 'GAP  skill-loads'
+  grep -q 'skill-blind' <<<"$output"
+  ! grep -q 'GAP  skill-loads' <<<"$output"
 }

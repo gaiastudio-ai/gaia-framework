@@ -118,8 +118,7 @@ _init_record() {
   env PROJECT_ROOT="$TEST_TMP" \
     "$DREC_SCRIPT" init \
       --reference "test-project-ref" \
-      --discovered-via "created" \
-      --questionnaire-record "not-applicable"
+      --discovered-via "project-artifacts"
 }
 
 # _build_approved_record — drive the record from draft through approved+converged.
@@ -200,8 +199,6 @@ setup() {
 teardown() {
   # Clean up any stale lock files
   rm -f "$TEST_TMP"/.gaia/state/*.lock "$TEST_TMP"/.gaia/state/*.gate.lock 2>/dev/null || true
-  # Clean up patched gate copies left by _make_patched or manual awk patches
-  rm -f "$(cd "$BATS_TEST_DIRNAME/../scripts/lib" && pwd)"/design-gate-patched-*.sh 2>/dev/null || true
   common_teardown
 }
 
@@ -223,21 +220,35 @@ run_gate() {
 }
 
 # _run_patched_gate <patched_file> [args...] — run a patched copy of design-gate.sh.
-# The patched file MUST be in the same directory as the original (so source
-# dependencies resolve). Resets _DESIGN_GATE_SH_LOADED to allow re-source.
+# The patched file is inside a temp copy of the lib directory (created by
+# _make_patched), so source dependencies resolve. Resets _DESIGN_GATE_SH_LOADED
+# to allow re-source.
 _run_patched_gate() {
   local patched="$1"; shift
   env PROJECT_ROOT="$TEST_TMP" PATH="$TEST_TMP/bin:$PATH" \
     bash -c 'export _DESIGN_GATE_SH_LOADED=0; source "'"$patched"'"; design_gate_check "$@"' -- "$@" 2>&1
 }
 
-# _make_patched <sed_expression> — create a patched copy next to the original,
-# stdout = path to the patched file. Caller must rm -f it.
+# _make_patched <sed_expression> — create a patched copy of design-gate.sh
+# inside a temp copy of the scripts directory (so source dependencies AND
+# design-record.sh resolve). The temp directory is under TEST_TMP, so it is
+# cleaned up automatically; no rm -f needed in the caller.
 _make_patched() {
   local sed_expr="$1"
-  local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
+  local scripts_copy="$TEST_TMP/patched-scripts-$$-${RANDOM:-0}"
+  cp -R "$SCRIPTS_DIR" "$scripts_copy"
+  local patched="$scripts_copy/lib/design-gate.sh"
   sed "$sed_expr" "$GATE_SCRIPT" > "$patched"
+  printf '%s' "$patched"
+}
+
+# _make_awk_patched <awk_program> — same as _make_patched but uses awk.
+_make_awk_patched() {
+  local awk_prog="$1"
+  local scripts_copy="$TEST_TMP/patched-scripts-awk-$$-${RANDOM:-0}"
+  cp -R "$SCRIPTS_DIR" "$scripts_copy"
+  local patched="$scripts_copy/lib/design-gate.sh"
+  awk "$awk_prog" "$GATE_SCRIPT" > "$patched"
   printf '%s' "$patched"
 }
 
@@ -518,7 +529,7 @@ STAKE
     fail "gate should not assert integration is unauthorized"
   fi
   # Conditional clause present
-  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+  if ! _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional integration clause should be present"
   fi
   # Remediation leads with /gaia-design-review (before the conditional clause)
@@ -528,7 +539,7 @@ STAKE
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause"
 }
@@ -546,7 +557,7 @@ STAKE
   count="$(probe_call_count)"
   [ "$count" -eq 0 ] || fail "gate should not probe"
   # Conditional clause present and names design-login
-  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
+  if ! _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should be present on state-based halt"
   fi
   _stripped_output | grep -qi 'design-login' \
@@ -598,11 +609,9 @@ STAKE
   grep -q '# MUTANT-ANCHOR: absent-fail-branch' "$GATE_SCRIPT" || \
     fail "anchor '# MUTANT-ANCHOR: absent-fail-branch' not found in $GATE_SCRIPT"
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  awk '/# MUTANT-ANCHOR: absent-fail-branch/{print; print "    return 0"; next} {print}' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_awk_patched '/# MUTANT-ANCHOR: absent-fail-branch/{print; print "    return 0"; next} {print}')"
 
   run _run_patched_gate "$patched"
-  rm -f "$patched"
   [ "$status" -eq 0 ] || fail "mutant should survive (missing record treated as pass)"
 }
 
@@ -623,11 +632,9 @@ STAKE
   grep -q '# MUTANT-ANCHOR: stale-fail-branch' "$GATE_SCRIPT" || \
     fail "anchor '# MUTANT-ANCHOR: stale-fail-branch' not found in $GATE_SCRIPT"
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  awk '/# MUTANT-ANCHOR: stale-fail-branch/{print; print "      return 0"; next} {print}' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_awk_patched '/# MUTANT-ANCHOR: stale-fail-branch/{print; print "      return 0"; next} {print}')"
 
   run _run_patched_gate "$patched"
-  rm -f "$patched"
   [ "$status" -eq 0 ] || fail "mutant should survive (stale treated as pass)"
 }
 
@@ -647,12 +654,10 @@ STAKE
   grep -q '# MUTANT-ANCHOR: probe-fail-branch' "$GATE_SCRIPT" || \
     fail "anchor '# MUTANT-ANCHOR: probe-fail-branch' not found in $GATE_SCRIPT"
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  sed '/# MUTANT-ANCHOR: probe-fail-branch/,+1d' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_patched '/# MUTANT-ANCHOR: probe-fail-branch/,+1d')"
   if cmp -s "$GATE_SCRIPT" "$patched"; then fail "patch did not apply"; fi
 
   run _run_patched_gate "$patched"
-  rm -f "$patched"
   [ "$status" -eq 0 ] || fail "mutant should survive (halt removed from fail path)"
 }
 
@@ -693,7 +698,7 @@ STAKE
 # (AC3) Halt message — record path, state, remediation
 # =========================================================================
 
-@test "(AC3) halt message names record path, state, and remediation for absent" {
+@test "(AC3) halt message names record path, state, and full remediation for absent" {
   seed_config true
   seed_probe_stub missing
 
@@ -702,6 +707,15 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -q "design-record.yaml" || _stripped_output | grep -q ".gaia/state"
   _stripped_output | grep -qi "absent"
+  # Absent-record remediation should contain both DesignSync and Design artifact sentences
+  _stripped_output | grep -qF 'enable the DesignSync surface' \
+    || fail "absent-record remediation should mention DesignSync surface"
+  _stripped_output | grep -qF 'ensure the Design artifact surface is available' \
+    || fail "absent-record remediation should mention Design artifact surface"
+  # Old clause must not appear
+  if _stripped_output | grep -qF 'If Claude Design is not connected'; then
+    fail "old clause 'If Claude Design is not connected' should not appear"
+  fi
 }
 
 @test "(AC3) halt message names record path, state, and remediation for draft" {
@@ -730,7 +744,7 @@ STAKE
   _stripped_output | grep -qi "stale"
 }
 
-@test "(AC3) halt remediation leads with /gaia-design-review for draft" {
+@test "(AC3) halt remediation has full conditional clause and no old clause for draft" {
   seed_config true
   seed_roster
   seed_probe_stub available
@@ -741,20 +755,28 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -qi '/gaia-design-review' \
     || fail "draft remediation should lead with /gaia-design-review"
-  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
-    fail "conditional clause should be present"
+  # Assert the full conditional clause including both sentences
+  _stripped_output | grep -qF 'for the design-system project, enable the DesignSync surface' \
+    || fail "conditional clause should contain DesignSync sentence"
+  _stripped_output | grep -qF 'For the product design project, ensure the Design artifact surface is available' \
+    || fail "conditional clause should contain Design artifact sentence"
+  _stripped_output | grep -qF '/design-login' \
+    || fail "conditional clause should mention /design-login"
+  # Old clause must not appear
+  if _stripped_output | grep -qF 'If Claude Design is not connected'; then
+    fail "old clause 'If Claude Design is not connected' should not appear"
   fi
   # /gaia-design-review must appear before the conditional clause on the Remediation line
   local remediation_line
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
 
-@test "(AC3) halt remediation leads with /gaia-design-review for stale" {
+@test "(AC3) halt remediation has full conditional clause and no old clause for stale" {
   seed_config true
   seed_roster
   seed_probe_stub available
@@ -766,17 +788,23 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -qi '/gaia-design-review' \
     || fail "stale remediation should lead with /gaia-design-review"
-  if ! _stripped_output | grep -qi 'if claude design is not connected'; then
-    fail "conditional clause should be present"
+  # Assert both sentences of the conditional clause
+  _stripped_output | grep -qF 'for the design-system project, enable the DesignSync surface' \
+    || fail "conditional clause should contain DesignSync sentence"
+  _stripped_output | grep -qF 'For the product design project, ensure the Design artifact surface is available' \
+    || fail "conditional clause should contain Design artifact sentence"
+  _stripped_output | grep -qF '/design-login' \
+    || fail "conditional clause should mention /design-login"
+  # Old clause must not appear
+  if _stripped_output | grep -qF 'If Claude Design is not connected'; then
+    fail "old clause 'If Claude Design is not connected' should not appear"
   fi
-  _stripped_output | grep -qi 'design-login' \
-    || fail "conditional clause should mention design-login"
   # /gaia-design-review must appear before the conditional clause on the Remediation line
   local remediation_line
   remediation_line="$(_stripped_output | grep -i 'Remediation:')"
   local dr_pos cl_pos
   dr_pos="$(echo "$remediation_line" | grep -bo -i '/gaia-design-review' | head -1 | cut -d: -f1)"
-  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if claude design' | head -1 | cut -d: -f1)"
+  cl_pos="$(echo "$remediation_line" | grep -bo -i 'if the design integration' | head -1 | cut -d: -f1)"
   [ -n "$dr_pos" ] && [ -n "$cl_pos" ] && [ "$dr_pos" -lt "$cl_pos" ] \
     || fail "/gaia-design-review should appear before the conditional clause on the Remediation line"
 }
@@ -871,7 +899,7 @@ STAKE
   _ns_now() {
     local ts
     ts="$(date +%s%N 2>/dev/null)" || true
-    if printf '%s' "$ts" | grep -Eq '^[0-9]+$'; then
+    if grep -Eq '^[0-9]+$' <<<"$ts"; then
       printf '%s' "$ts"
     else
       python3 -c 'import time; print(int(time.time()*1e9))'
@@ -1355,13 +1383,11 @@ STAKE
   # Patch: make the lifecycle write fail (portable — chmod 000 is
   # ineffective as root in CI Docker containers)
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  sed 's|( lifecycle_append_bypass.*)|( false )|' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_patched 's|( lifecycle_append_bypass.*)|( false )|')"
 
   run _run_patched_gate "$patched" --force-design \
     --reason "This override should be rolled back" \
     --entry-point test --sprint-id sprint-99
-  rm -f "$patched"
   [ "$status" -eq 1 ] || fail "expected exit 1 (lifecycle write failed); got exit $status: $output"
 
   # Design record must be rolled back to pre-override state
@@ -1387,11 +1413,9 @@ STAKE
   # Create a patched gate where the lifecycle subshell fails AND the backup
   # is removed before the rollback can use it. This triggers the CRITICAL path.
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  sed 's|( lifecycle_append_bypass.*)|( rm -f "${backup_path}" 2>/dev/null; false )|' "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_patched 's|( lifecycle_append_bypass.*)|( rm -f "${backup_path}" 2>/dev/null; false )|')"
 
   run _run_patched_gate "$patched" --force-design --reason "Trigger CRITICAL path" --entry-point test --sprint-id sprint-99
-  rm -f "$patched"
   [ "$status" -eq 1 ]
 
   # The gate must emit the CRITICAL dual-ledger inconsistency message
@@ -1671,32 +1695,26 @@ STAKE
   # Patch the gate to emit backup file permissions and exit early after
   # creating the backup, so we can inspect the mode before it is cleaned up.
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-backup-$$.sh"
-  awk '
+  patched="$(_make_awk_patched '
     /backup_path="\$\{record_path\}\.gate-backup"/ {
       print
-      # After the assignment, inject a permissions-check shim that runs after
-      # the cp line (next line) and prints the mode then bails.
-      getline  # consume the cp line
-      print $0  # emit the original cp line
+      getline
+      print $0
       print "  { stat -f \"%Lp\" \"$backup_path\" 2>/dev/null || stat -c \"%a\" \"$backup_path\" 2>/dev/null; } >&2"
       print "  return 1"
       next
     }
     { print }
-  ' "$GATE_SCRIPT" > "$patched"
+  ')"
 
   # (3a) Assert the awk patch actually injected the stat line, so a refactor
   # of the anchor cannot silently turn this into a no-op.
-  grep -q 'stat -f "%Lp"' "$patched" || {
-    rm -f "$patched"
+  grep -q 'stat -f "%Lp"' "$patched" || \
     fail "awk patch did not inject the stat line — anchor may have been refactored"
-  }
 
   run _run_patched_gate "$patched" --force-design \
     --reason "Checking backup permissions at creation time" \
     --entry-point test --sprint-id sprint-99
-  # patched file is cleaned up by teardown (registered glob)
 
   # (3b) Match the mode exactly (a whole line equal to "600"), not a substring.
   local mode_line
@@ -1725,10 +1743,10 @@ STAKE
 # Hardening: unsupported schema version fails closed
 # =========================================================================
 
-@test "record with schema_version 2.0 fails closed" {
+@test "record with schema_version 9.9 fails closed" {
   seed_ui_project available
   _init_record
-  yq -i '.schema_version = "2.0"' "$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "9.9"' "$TEST_TMP/.gaia/state/design-record.yaml"
 
   run run_gate
   [ "$status" -eq 1 ]
@@ -1844,6 +1862,8 @@ STAKE
   _stripped_output | grep -qi "not-applicable"
 
   # Phase 2: reopen the record
+  mkdir -p "$TEST_TMP/path/to"
+  touch "$TEST_TMP/path/to/questionnaire.md"
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" reopen-applicable \
     --reference "design-ref" \
     --discovered-via "created" \
@@ -1883,7 +1903,7 @@ STAKE
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on config halt"
   fi
 }
@@ -1895,7 +1915,7 @@ STAKE
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on symlink halt"
   fi
 }
@@ -1908,7 +1928,7 @@ STAKE
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on corrupt YAML halt"
   fi
 }
@@ -1918,13 +1938,13 @@ STAKE
   seed_roster
   mkdir -p "$TEST_TMP/.gaia/state"
   cat > "$TEST_TMP/.gaia/state/design-record.yaml" <<'EOF'
-schema_version: "2.0"
+schema_version: "9.9"
 design_state: draft
 EOF
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on schema-invalid halt"
   fi
 }
@@ -1953,7 +1973,7 @@ EOF
 
   run run_gate
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on not-applicable-on-UI halt"
   fi
 }
@@ -1968,7 +1988,7 @@ EOF
 
   run run_gate --force-design --reason "short" --entry-point "test"
   [ "$status" -eq 1 ]
-  if _stripped_output | grep -qi 'if claude design is not connected'; then
+  if _stripped_output | grep -qi 'if the design integration is not connected'; then
     fail "conditional clause should not appear on override failure halt"
   fi
 }
@@ -1995,12 +2015,12 @@ EOF
 
   [ "$status" -eq 1 ] || fail "gate should halt on stale record"
   local out="${output//$TEST_TMP/}"
-  echo "$out" | grep -qi 'stale' || fail "halt should name stale state"
-  echo "$out" | grep -qi '/gaia-design-review' || fail "halt should mention /gaia-design-review"
-  if echo "$out" | grep -q '(integration:'; then
+  grep -qi 'stale' <<<"$out" || fail "halt should name stale state"
+  grep -qi '/gaia-design-review' <<<"$out" || fail "halt should mention /gaia-design-review"
+  if grep -q '(integration:' <<<"$out"; then
     fail "gate should not include integration diagnosis"
   fi
-  if ! echo "$out" | grep -qi 'if claude design is not connected'; then
+  if ! grep -qi 'if the design integration is not connected' <<<"$out"; then
     fail "conditional integration clause should be present"
   fi
   local count
@@ -2024,15 +2044,15 @@ EOF
 
   [ "$status" -eq 1 ] || fail "gate should halt on absent record"
   local out="${output//$TEST_TMP/}"
-  echo "$out" | grep -qi 'absent' || fail "halt should name absent state"
-  echo "$out" | grep -qi 'gaia-create-ux' || fail "halt should mention /gaia-create-ux"
-  if echo "$out" | grep -q '(integration: missing)'; then
+  grep -qi 'absent' <<<"$out" || fail "halt should name absent state"
+  grep -qi 'gaia-create-ux' <<<"$out" || fail "halt should mention /gaia-create-ux"
+  if grep -q '(integration: missing)' <<<"$out"; then
     fail "gate should not include direct integration diagnosis"
   fi
-  if echo "$out" | grep -q '(integration: unauthorized)'; then
+  if grep -q '(integration: unauthorized)' <<<"$out"; then
     fail "gate should not include direct integration diagnosis"
   fi
-  if ! echo "$out" | grep -qi 'if claude design is not connected'; then
+  if ! grep -qi 'if the design integration is not connected' <<<"$out"; then
     fail "conditional integration clause should be present"
   fi
   local count
@@ -2060,13 +2080,10 @@ EOF
 
   # Mutant: insert integration diagnosis before the halt anchor
   local patched
-  patched="$(dirname "$GATE_SCRIPT")/design-gate-patched-$$.sh"
-  awk '/# MUTANT-ANCHOR: probe-fail-branch/{print "  printf \"(integration: missing)\\n\" >&2"} {print}' \
-    "$GATE_SCRIPT" > "$patched"
+  patched="$(_make_awk_patched '/# MUTANT-ANCHOR: probe-fail-branch/{print "  printf \"(integration: missing)\\n\" >&2"} {print}')"
   if cmp -s "$GATE_SCRIPT" "$patched"; then fail "patch did not apply"; fi
 
   run _run_patched_gate "$patched"
-  rm -f "$patched"
 
   # The mutant output should now contain the diagnosis
   if ! _stripped_output | grep -q '(integration:'; then
@@ -2109,15 +2126,15 @@ EOF
   [ -n "$block" ] || fail "could not extract text between design-gate begin/end markers"
 
   # Must contain the four required items
-  echo "$block" | grep -q 'design-record.sh status' \
+  grep -q 'design-record.sh status' <<<"$block" \
     || fail "block should reference 'design-record.sh status'; got: $block"
-  echo "$block" | grep -qi 'plan brief' \
+  grep -qi 'plan brief' <<<"$block" \
     || fail "block should mention 'plan brief'; got: $block"
-  echo "$block" | grep -q 'reason' \
+  grep -q 'reason' <<<"$block" \
     || fail "block should mention 'reason'; got: $block"
-  echo "$block" | grep -q 'ux-design.md' \
+  grep -q 'ux-design.md' <<<"$block" \
     || fail "block should reference 'ux-design.md'; got: $block"
-  echo "$block" | grep -qi 'outdated' \
+  grep -qi 'outdated' <<<"$block" \
     || fail "block should mention 'outdated'; got: $block"
 }
 
@@ -2249,5 +2266,1131 @@ EOF
 
   run run_gate
   [ "$status" -eq 0 ] || fail "gate should pass on approved+converged record, got status=$status"
+}
+
+# =========================================================================
+# Review coverage check — gate must fail when a project is not reviewed
+# =========================================================================
+
+# Helper: build an approved v2 record with both project references set
+_build_approved_dual_project_record() {
+  _build_approved_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Ensure v2 schema with both project references
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.reference = "ds-ref-001"' "$rec"
+  yq -i '.design_system_project.type = "design-system"' "$rec"
+  yq -i '.design_system_project.surface = "designsync"' "$rec"
+  yq -i '.design_system_project.discovered_via = "project-artifacts"' "$rec"
+  yq -i '.product_design_project.reference = "pd-ref-001"' "$rec"
+  yq -i '.product_design_project.type = "product-design"' "$rec"
+  yq -i '.product_design_project.surface = "artifact"' "$rec"
+  yq -i '.product_design_project.discovered_via = "created"' "$rec"
+}
+
+@test "gate fails when design-system project not reviewed with exact coverage sentence" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Coverage only includes product-design — design-system is missing
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should fail when design-system project not reviewed, got status=$status"
+  _assert_gate_output
+  # Assert the exact coverage-failure sentence
+  _stripped_output | grep -qF 'The design review did not cover the design-system project.' \
+    || fail "should contain the exact coverage sentence naming 'design-system project'"
+  _stripped_output | grep -qF 'Run /gaia-design-review to review both projects.' \
+    || fail "should contain the exact review instruction"
+  # Assert the full conditional clause with both DesignSync and Design artifact sentences
+  _stripped_output | grep -qF 'for the design-system project, enable the DesignSync surface' \
+    || fail "conditional clause should contain DesignSync sentence"
+  _stripped_output | grep -qF 'For the product design project, ensure the Design artifact surface is available' \
+    || fail "conditional clause should contain Design artifact sentence"
+}
+
+@test "gate fails when product project not reviewed with exact coverage sentence" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Coverage only includes design-system — product design is missing
+  yq -i '.review_coverage = ["design-system"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should fail when product design project not reviewed, got status=$status"
+  _assert_gate_output
+  # Assert the exact coverage-failure sentence
+  _stripped_output | grep -qF 'The design review did not cover the product design project.' \
+    || fail "should contain the exact coverage sentence naming 'product design project'"
+  _stripped_output | grep -qF 'Run /gaia-design-review to review both projects.' \
+    || fail "should contain the exact review instruction"
+  # Assert the full conditional clause
+  _stripped_output | grep -qF 'for the design-system project, enable the DesignSync surface' \
+    || fail "conditional clause should contain DesignSync sentence"
+  _stripped_output | grep -qF 'For the product design project, ensure the Design artifact surface is available' \
+    || fail "conditional clause should contain Design artifact sentence"
+}
+
+@test "mutant: replacing project name with XXXX in coverage message fails" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh missing: $GATE_SCRIPT"
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  # Patch: replace the project name with XXXX in the ds coverage message
+  local patched
+  patched="$(_make_patched 's/did not cover the design-system project/did not cover the XXXX project/')"
+
+  run _run_patched_gate "$patched"
+  [ "$status" -eq 1 ] || fail "gate should still fail"
+  # The exact sentence with 'design-system project' must be absent
+  if _stripped_output | grep -qF 'The design review did not cover the design-system project.'; then
+    fail "mutant should have replaced the design-system project name — test is vacuous"
+  fi
+}
+
+@test "absent coverage with null product passes" {
+  seed_ui_project available
+  _build_approved_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # v2 with product_design_project null — simulates a v1-migrated record
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.reference = "ds-ref-001"' "$rec"
+  yq -i '.design_system_project.type = "design-system"' "$rec"
+  yq -i '.design_system_project.surface = "designsync"' "$rec"
+  yq -i '.design_system_project.discovered_via = "project-artifacts"' "$rec"
+  yq -i '.product_design_project = null' "$rec"
+  # No review_coverage field at all
+
+  run run_gate
+  [ "$status" -eq 0 ] || fail "gate should pass when coverage absent and product null, got status=$status"
+}
+
+@test "absent coverage with non-null product fails with exact sentence" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Remove review_coverage so it is absent, but product ref is set
+  yq -i 'del(.review_coverage)' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should fail when coverage absent and product non-null, got status=$status"
+  _assert_gate_output
+  _stripped_output | grep -qF 'The design review did not cover the product design project.' \
+    || fail "should contain exact coverage sentence naming product design project"
+  _stripped_output | grep -qF 'Run /gaia-design-review to review both projects.' \
+    || fail "should contain exact review instruction"
+}
+
+@test "gate stays local and fast with dual-project coverage check" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["design-system", "product-design"]' "$rec"
+
+  # Shim to detect any external calls
+  mkdir -p "$TEST_TMP/shim-bin"
+  for cmd in curl gh; do
+    cat > "$TEST_TMP/shim-bin/$cmd" <<'SHIMEOF'
+#!/usr/bin/env bash
+echo 1 >> "${SHIM_COUNTER_FILE:-/dev/null}"
+exit 1
+SHIMEOF
+    chmod +x "$TEST_TMP/shim-bin/$cmd"
+  done
+  export SHIM_COUNTER_FILE="$TEST_TMP/.shim-counter"
+
+  # Measure time using the same p95 approach as the existing timing test
+  _ns_now() {
+    local ts
+    ts="$(date +%s%N 2>/dev/null)" || true
+    if grep -Eq '^[0-9]+$' <<<"$ts"; then
+      printf '%s' "$ts"
+    else
+      python3 -c 'import time; print(int(time.time()*1e9))'
+    fi
+  }
+
+  local iterations=20
+  local times_file="$TEST_TMP/coverage-times.txt"
+  local i
+  for i in $(seq 1 "$iterations"); do
+    local start end elapsed
+    start="$(_ns_now)"
+    run env PATH="$TEST_TMP/shim-bin:$TEST_TMP/bin:$PATH" \
+      PROJECT_ROOT="$TEST_TMP" \
+      bash -c '
+        set -euo pipefail
+        source "'"$GATE_SCRIPT"'"
+        design_gate_check
+      '
+    [ "$status" -eq 0 ] || fail "gate should pass with full coverage, got status=$status"
+    end="$(_ns_now)"
+    elapsed="$(( (end - start) / 1000000 ))"
+    printf '%d\n' "$elapsed" >> "$times_file"
+  done
+
+  # p95 bound: 5 seconds (same as the existing timing test)
+  local p95_idx p95_ms
+  p95_idx="$(( iterations * 95 / 100 ))"
+  [ "$p95_idx" -lt 1 ] && p95_idx=1
+  p95_ms="$(sort -n "$times_file" | sed -n "${p95_idx}p")"
+  [ "$p95_ms" -lt 5000 ] \
+    || fail "dual-project gate p95 = ${p95_ms}ms exceeds 5000ms bound"
+
+  # Zero external calls
+  local call_count=0
+  if [ -f "$SHIM_COUNTER_FILE" ]; then
+    call_count="$(wc -l < "$SHIM_COUNTER_FILE" | tr -d ' ')"
+  fi
+  [ "$call_count" -eq 0 ] || fail "gate should make zero external calls but made $call_count"
+
+  # Probe should not have been called
+  local probe_count
+  probe_count="$(probe_call_count)"
+  [ "$probe_count" -eq 0 ] || fail "gate should not run the probe but counted $probe_count"
+}
+
+@test "mutant: removing coverage check turns test red" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh missing: $GATE_SCRIPT"
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Coverage missing design-system — should fail with the coverage check
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  # Original gate should fail on incomplete coverage
+  run run_gate
+  [ "$status" -eq 1 ] || fail "original gate should fail on incomplete coverage"
+
+  # Patch: remove the coverage check between the MUTANT-ANCHOR markers
+  local patched
+  patched="$(_make_patched '/MUTANT-ANCHOR: coverage-check-begin/,/MUTANT-ANCHOR: coverage-check-end/d')"
+
+  # Reset the record — rebuild since the gate may have mutated state
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
+  _build_approved_dual_project_record
+  yq -i '.review_coverage = ["product-design"]' "$TEST_TMP/.gaia/state/design-record.yaml"
+
+  # Patched gate should PASS (no coverage check)
+  run _run_patched_gate "$patched"
+  [ "$status" -eq 0 ] || fail "patched gate (coverage removed) should pass, proving the mutant is caught"
+}
+
+
+# =========================================================================
+# Malformed coverage fields fail closed
+# =========================================================================
+
+@test "near-miss coverage values fail the gate" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["design-system-pending", "product-design-todo"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "near-miss values should fail, got status=$status"
+}
+
+@test "product-design-x substring does not count as covered" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # product-design-x is a superset of product-design but must not match
+  yq -i '.review_coverage = ["design-system", "product-design-x"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "product-design-x should not match product-design, got status=$status"
+  _stripped_output | grep -qF 'product design project' \
+    || fail "remediation should name the product design project"
+}
+
+@test "design-system-v2 substring does not count as covered" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["design-system-v2", "product-design"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "design-system-v2 should not match design-system, got status=$status"
+  _stripped_output | grep -qF 'design-system project' \
+    || fail "remediation should name the design-system project"
+}
+
+@test "coverage as map fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = {"design-system": false, "product-design": false}' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "map coverage should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a list' \
+    || fail "remediation should name the type error"
+}
+
+@test "coverage as free-text string fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = "none of design-system or product-design"' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "string coverage should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a list' \
+    || fail "remediation should name the type error"
+}
+
+@test "scalar product_design_project fails closed" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.product_design_project = "not-a-map"' "$rec"
+  yq -i '.review_coverage = ["design-system", "product-design"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "scalar product_design_project should fail closed, got status=$status"
+  _stripped_output | grep -qi 'must be a map' \
+    || fail "remediation should say product_design_project must be a map"
+}
+
+@test "force-design cannot override coverage halt" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  seed_sprint_status sprint-99
+  seed_lifecycle_overrides
+
+  run run_gate --force-design --reason "forcing past coverage" --entry-point "test"
+  [ "$status" -eq 1 ] || fail "force-design should not override coverage halt, got status=$status"
+  _stripped_output | grep -qi 'cannot be overridden' \
+    || fail "remediation should say the halt cannot be overridden"
+}
+
+# =========================================================================
+# Override reason control-character neutralisation
+# =========================================================================
+
+# _extract_reason_line — pull the "Reason:" line from gate output.
+# Fails the test if no such line exists.
+_extract_reason_line() {
+  local line
+  line="$(printf '%s\n' "$output" | grep '^ *Reason:')" \
+    || fail "no Reason: line in output; got: $output"
+  printf '%s' "$line"
+}
+
+# _assert_no_raw_control_in_reason — byte-scan the Reason: line for raw
+# control bytes (0x00-0x1F, 0x7F) and C1 sequences (0xC2 0x80-0x9F).
+# Uses od for a portable pairwise byte check.
+_assert_no_raw_control_in_reason() {
+  local line="$1"
+  local hexdump
+  hexdump="$(printf '%s' "$line" | od -An -tx1 | tr -d ' \n')"
+
+  # Check for any raw C0 byte (00-1f) or DEL (7f)
+  local i=0 byte
+  while [ "$i" -lt "${#hexdump}" ]; do
+    byte="${hexdump:$i:2}"
+    case "$byte" in
+      0[0-9a-f]|1[0-9a-f]|7f)
+        fail "raw control byte 0x$byte found in Reason: line; got: $line"
+        ;;
+    esac
+    i=$((i + 2))
+  done
+
+  # Check for C1: pairwise scan for 0xC2 followed by 0x80-0x9F
+  i=0
+  while [ "$i" -lt "$((${#hexdump} - 2))" ]; do
+    byte="${hexdump:$i:2}"
+    if [ "$byte" = "c2" ]; then
+      local next="${hexdump:$((i+2)):2}"
+      case "$next" in
+        8[0-9a-f]|9[0-9a-f])
+          fail "raw C1 sequence 0xC2 0x$next found in Reason: line; got: $line"
+          ;;
+      esac
+    fi
+    i=$((i + 2))
+  done
+}
+
+@test "escape sequence in override reason is neutralised in notice" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf 'stale \x1b[31mRED\x1b[0m fix')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  # The Reason: line must show the placeholder, not raw ESC
+  [[ "$rline" == *'<0x1B>[31mRED<0x1B>[0m'* ]] \
+    || fail "expected <0x1B> placeholders in reason line; got: $rline"
+
+  # No raw ESC byte in the line
+  local esc_count
+  esc_count="$(printf '%s' "$rline" | od -An -tx1 | tr ' ' '\n' | grep -c '^1b$')" || true
+  [ "$esc_count" -eq 0 ] \
+    || fail "raw ESC byte (0x1b) still present in Reason: line ($esc_count occurrences)"
+}
+
+@test "BEL tab LF CR in override reason neutralised" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf 'late\x07fix\tnow\ncheck\rdone ok')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  [[ "$rline" == *'<0x07>'* ]] || fail "BEL not neutralised; got: $rline"
+  [[ "$rline" == *'<0x09>'* ]] || fail "tab not neutralised; got: $rline"
+  [[ "$rline" == *'<0x0A>'* ]] || fail "LF not neutralised; got: $rline"
+  [[ "$rline" == *'<0x0D>'* ]] || fail "CR not neutralised; got: $rline"
+
+  # The notice must not have an extra line from the embedded LF
+  local reason_line_count
+  reason_line_count="$(printf '%s\n' "$output" | grep -c '^ *Reason:')"
+  [ "$reason_line_count" -eq 1 ] \
+    || fail "expected 1 Reason: line but got $reason_line_count — embedded LF leaked"
+}
+
+@test "C1 character in override reason neutralised" {
+  seed_override_fixture
+
+  # U+0085 NEXT LINE is encoded as C2 85 in UTF-8
+  local reason
+  reason="$(printf 'test \xc2\x85 reason text here')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  [[ "$rline" == *'<0xC2><0x85>'* ]] \
+    || fail "C1 character U+0085 not neutralised as <0xC2><0x85>; got: $rline"
+}
+
+@test "stray high byte in override reason neutralised" {
+  seed_override_fixture
+
+  # A lone 0x80 is not valid UTF-8 (it is a continuation byte without a lead)
+  local reason
+  reason="$(printf 'test \x80 reason text here')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  [[ "$rline" == *'<0x80>'* ]] \
+    || fail "stray 0x80 not neutralised; got: $rline"
+}
+
+@test "printable UTF-8 reason with em dash unchanged" {
+  seed_override_fixture
+
+  local reason="Override approved by lead — 2026-09-30"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  # The reason text must appear byte-identically (em dash is E2 80 94)
+  [[ "$rline" == *"$reason"* ]] \
+    || fail "printable UTF-8 reason mangled; got: $rline"
+
+  # Double-check the em dash bytes are intact, not turned into placeholders
+  [[ "$rline" != *'<0xE2>'* ]] \
+    || fail "em dash byte E2 was replaced; got: $rline"
+  [[ "$rline" != *'<0x80>'* ]] \
+    || fail "em dash byte 80 was replaced; got: $rline"
+  [[ "$rline" != *'<0x94>'* ]] \
+    || fail "em dash byte 94 was replaced; got: $rline"
+}
+
+@test "byte scan of reason line finds no control bytes" {
+  seed_override_fixture
+
+  # Sub-run a: every C0 byte 0x01-0x1F plus DEL between readable text
+  local reason_a
+  reason_a="$(printf 'readable'
+    i=1; while [ "$i" -le 31 ]; do printf "\\x$(printf '%02x' "$i")"; i=$((i+1)); done
+    printf '\x7f'
+    printf 'text')"
+  run run_gate --force-design \
+    --reason "$reason_a" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "sub-run a: override should succeed; got status $status: $output"
+
+  local rline_a
+  rline_a="$(_extract_reason_line)"
+  _assert_no_raw_control_in_reason "$rline_a"
+
+  # Sub-run b: every C1 character U+0080-U+009F between readable text
+  # Clean state for the second sub-run (design-record.sh init refuses
+  # if a record already exists from sub-run a).
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  local reason_b
+  reason_b="$(printf 'readable'
+    i=128; while [ "$i" -le 159 ]; do printf '\xc2'; printf "\\x$(printf '%02x' "$i")"; i=$((i+1)); done
+    printf 'text')"
+  run run_gate --force-design \
+    --reason "$reason_b" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "sub-run b: override should succeed; got status $status: $output"
+
+  local rline_b
+  rline_b="$(_extract_reason_line)"
+  _assert_no_raw_control_in_reason "$rline_b"
+
+  # Assert the placeholders ARE present (silently deleting C1 bytes would
+  # also pass the absence check above, but must fail here).
+  [[ "$rline_b" == *'<0xC2><0x80>'* ]] \
+    || fail "C1 placeholder <0xC2><0x80> missing from reason line; got: $rline_b"
+  [[ "$rline_b" == *'<0xC2><0x9F>'* ]] \
+    || fail "C1 placeholder <0xC2><0x9F> missing from reason line; got: $rline_b"
+}
+
+@test "stored reason and ledger entry are sanitised text" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf 'late\x1b[2Jfix approved')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local expected_sanitised="late<0x1B>[2Jfix approved"
+
+  # Design record must hold the sanitised text
+  local drec_reason
+  drec_reason="$(yq -r '.overrides[0].reason' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$drec_reason" = "$expected_sanitised" ] \
+    || fail "design record holds raw reason, not sanitised; got: <<<$drec_reason>>>"
+
+  # Lifecycle ledger must hold the sanitised text
+  local lo_reason
+  lo_reason="$(yq -r '.bypasses[0].reason' "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+  [ "$lo_reason" = "$expected_sanitised" ] \
+    || fail "lifecycle ledger holds raw reason, not sanitised; got: <<<$lo_reason>>>"
+}
+
+@test "sanitised reason over 500 bytes refused before any write" {
+  seed_override_fixture
+
+  # Build a reason of ~400 printable bytes with 40 embedded ESC bytes.
+  # Raw: 400 + 40 = 440 < 500. Sanitised: 400 + 40*6 = 640 > 500.
+  local reason=""
+  local i=0
+  while [ "$i" -lt 40 ]; do
+    reason="${reason}abcdefghij$(printf '\x1b')"
+    i=$((i + 1))
+  done
+
+  local drec_hash lo_hash
+  drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal (status 1); got status $status"
+
+  # Must say "longer than 500 bytes", not "at least 10 characters"
+  _stripped_output | grep -qF "longer than 500 bytes" \
+    || fail "expected gate-level over-cap message with 'longer than 500 bytes'; got: $output"
+  if _stripped_output | grep -q "at least 10 characters"; then
+    fail "got the short-reason message instead of the over-cap message; got: $output"
+  fi
+
+  # Both ledgers untouched
+  [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite over-cap refusal"
+  [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite over-cap refusal"
+}
+
+@test "overlong and surrogate bytes neutralised" {
+  seed_override_fixture
+
+  # Overlong encoding of U+0085: E0 82 85 (should be C2 85)
+  # Surrogate: ED A0 80 (U+D800 lead surrogate)
+  local reason
+  reason="$(printf 'test \xe0\x82\x85 and \xed\xa0\x80 rest of reason')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+
+  # Each byte of the overlong sequence must be individually replaced
+  [[ "$rline" == *'<0xE0><0x82><0x85>'* ]] \
+    || fail "overlong sequence not neutralised byte-by-byte; got: $rline"
+
+  # Each byte of the surrogate sequence must be individually replaced
+  [[ "$rline" == *'<0xED><0xA0><0x80>'* ]] \
+    || fail "surrogate sequence not neutralised byte-by-byte; got: $rline"
+}
+
+@test "control-only reason refused" {
+  # Each sub-case: a reason made only of control characters or spaces
+  # wrapped in them, must be refused with the "at least 10 characters" message.
+
+  local cases=()
+  # (a) 10 tab bytes
+  cases+=("$(printf '\t\t\t\t\t\t\t\t\t\t')")
+  # (b) 2 BEL bytes
+  cases+=("$(printf '\a\a')")
+  # (c) 10 BEL bytes
+  cases+=("$(printf '\a\a\a\a\a\a\a\a\a\a')")
+  # (d) alternating tab and CR
+  cases+=("$(printf '\t\r\t\r\t\r\t\r\t\r')")
+  # (e) tab + 10 spaces + tab
+  cases+=("$(printf '\t          \t')")
+  # (f) LF + 10 spaces + LF
+  cases+=("$(printf '\n          \n')")
+  # (g) ten 0xFF bytes
+  cases+=("$(printf '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff')")
+
+  local idx=0
+  for bad_reason in "${cases[@]}"; do
+    # Clean state for each sub-case — design-record.sh init refuses if a record
+    # already exists, so remove the prior iteration's state tree.
+    rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+    mkdir -p "$TEST_TMP/.gaia/state"
+    seed_override_fixture
+
+    local drec_hash lo_hash
+    drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+    lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+    run run_gate --force-design \
+      --reason "$bad_reason" \
+      --entry-point test --sprint-id sprint-99
+    [ "$status" -eq 1 ] \
+      || fail "case $idx: expected refusal (status 1); got $status: $output"
+    _stripped_output | grep -qF "at least 10 characters" \
+      || fail "case $idx: expected 'at least 10 characters' message; got: $output"
+
+    [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+      || fail "case $idx: design record was written despite control-only refusal"
+    [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+      || fail "case $idx: lifecycle ledger was written despite control-only refusal"
+
+    idx=$((idx + 1))
+  done
+}
+
+@test "printable reason over 500 bytes refused at the gate with byte count" {
+  seed_override_fixture
+
+  # Build a 501-byte printable reason
+  local reason=""
+  local i=0
+  while [ "$i" -lt 501 ]; do
+    reason="${reason}A"
+    i=$((i + 1))
+  done
+  [ "${#reason}" -eq 501 ] || fail "reason length is ${#reason}, expected 501"
+
+  local drec_hash lo_hash
+  drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal (status 1); got status $status"
+
+  # The gate must refuse up front with its own raw-cap message
+  _stripped_output | grep -qF "500" \
+    || fail "expected over-cap message mentioning 500; got: $output"
+  _stripped_output | grep -qF "501" \
+    || fail "expected message to report the measured byte count 501; got: $output"
+  if _stripped_output | grep -q "at least 10 characters"; then
+    fail "got the short-reason message instead of the over-cap message; got: $output"
+  fi
+  if _stripped_output | grep -qi "rolled back"; then
+    fail "refusal came from downstream writer + rollback, not the gate guard; got: $output"
+  fi
+
+  [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite over-cap refusal"
+  [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite over-cap refusal"
+}
+
+# =========================================================================
+# Structural: the UTF-8 byte walker is defined exactly once
+# =========================================================================
+
+@test "UTF-8 byte walker logic is defined once, not duplicated" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+
+  # The overlong/surrogate/range lead-byte checks are structural markers
+  # unique to the UTF-8 walker. Each must appear exactly once in the file
+  # to prove the walker is not duplicated.
+  local count
+
+  count="$(grep -cF 'v == 224' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 224' exactly once but found $count"
+
+  count="$(grep -cF 'v == 237' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 237' exactly once but found $count"
+
+  count="$(grep -cF 'v == 244' "$GATE_SCRIPT")"
+  [ "$count" -eq 1 ] \
+    || fail "expected 'v == 244' exactly once but found $count"
+}
+
+@test "mutant: duplicating the walker diverges sanitise and strip paths" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+
+  # Mutant: change one range check (E0 overlong threshold from 160 to 128)
+  # in the shared walker. Both the sanitise and strip paths must break.
+  local patched
+  patched="$(_make_patched 's/v == 224 && v2 >= 160/v == 224 \&\& v2 >= 128/')"
+
+  # Sanitise path: overlong E0 82 85 should be neutralised, but the mutant
+  # accepts it as valid UTF-8.
+  seed_override_fixture
+  local reason_s
+  reason_s="$(printf 'test \xe0\x82\x85 rest of reason')"
+  run _run_patched_gate "$patched" --force-design \
+    --reason "$reason_s" --entry-point test --sprint-id sprint-99
+  local sanitise_red=0
+  if [ "$status" -eq 0 ]; then
+    local rline
+    rline="$(printf '%s\n' "$output" | grep '^ *Reason:')" || true
+    [[ "$rline" == *'<0xE0>'* ]] || sanitise_red=1
+  else
+    sanitise_red=1
+  fi
+  [ "$sanitise_red" -eq 1 ] \
+    || fail "sanitise path did not break with the mutant"
+
+  # Strip path: 10 bytes of overlong sequences (all control-equivalent)
+  # should be stripped to nothing, but the mutant keeps them as content,
+  # so a control-only reason passes the minimum check.
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  local reason_c
+  reason_c="$(printf '\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85\xe0\x82\x85')"
+  run _run_patched_gate "$patched" --force-design \
+    --reason "$reason_c" --entry-point test --sprint-id sprint-99
+  local strip_red=0
+  if [ "$status" -eq 0 ]; then
+    strip_red=1
+  elif _stripped_output | grep -qF "at least 10 characters"; then
+    strip_red=0
+  else
+    strip_red=1
+  fi
+
+  rm -f "$patched"
+
+  # The mutant must fail both because the walker is a single definition:
+  # a change in it affects sanitise AND strip simultaneously.
+  [ "$sanitise_red" -eq 1 ] \
+    || fail "sanitise path did not break — walker may be duplicated"
+  [ "$strip_red" -eq 1 ] \
+    || fail "strip path did not break — walker may be duplicated"
+}
+
+@test "newline inside coverage list item is rejected" {
+  seed_ui_project available
+  _build_approved_dual_project_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+
+  # Overwrite coverage with a single item containing a literal newline.
+  # The gate reads elements with jq -r and splits on newlines, so this
+  # item would look like two matching values. The gate should reject it.
+  yq -i 'del(.review_coverage)' "$rec"
+  printf 'review_coverage:\n  - "design-system\\nproduct-design"\n' >> "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] \
+    || fail "gate should reject coverage item with embedded newline, got status=$status"
+}
+# =========================================================================
+# Trim, boundary and walker-coverage hardening
+# =========================================================================
+
+@test "interior spaces around LF are preserved" {
+  seed_override_fixture
+
+  # "abc   \n   def" — the spaces next to the LF must survive
+  local reason
+  reason="$(printf 'abc   \n   def reason text')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  # The three spaces before the LF placeholder must be present
+  [[ "$rline" == *'abc   <0x0A>   def'* ]] \
+    || fail "interior spaces around LF were eaten; got: $rline"
+}
+
+@test "trailing LF gets a placeholder" {
+  seed_override_fixture
+
+  # Use $'...' to preserve the trailing LF ($(printf ...) would eat it)
+  local reason=$'a valid reason text\n'
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0x0A>'* ]] \
+    || fail "trailing LF has no placeholder; got: $rline"
+}
+
+@test "trailing CR gets a placeholder" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf 'a valid reason text\r')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0x0D>'* ]] \
+    || fail "trailing CR has no placeholder; got: $rline"
+}
+
+@test "leading and trailing tabs become placeholders not trimmed" {
+  seed_override_fixture
+
+  local reason
+  reason="$(printf '\ta valid reason text\t')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  # The reason must start and end with <0x09> (the tab placeholder),
+  # not have the tabs silently trimmed.
+  [[ "$rline" == *'<0x09>a valid reason text<0x09>'* ]] \
+    || fail "tabs were trimmed instead of becoming placeholders; got: $rline"
+}
+
+@test "C0 and C1 overlong lead bytes neutralised" {
+  seed_override_fixture
+
+  # 0xC0 and 0xC1 can never start valid UTF-8 (overlong for ASCII)
+  local reason
+  reason="$(printf 'test \xc0\xaf and \xc1\xbf rest reason')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0xC0>'* ]] \
+    || fail "0xC0 not neutralised; got: $rline"
+  [[ "$rline" == *'<0xC1>'* ]] \
+    || fail "0xC1 not neutralised; got: $rline"
+}
+
+@test "F0 overlong sequence neutralised" {
+  seed_override_fixture
+
+  # F0 80 80 80 is overlong (encodes U+0000); F0 8F BF BF is overlong too
+  # Valid F0 sequences need second byte 0x90-0xBF
+  local reason
+  reason="$(printf 'test \xf0\x80\x80\x80 rest of reason')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0xF0>'* ]] \
+    || fail "F0 overlong not neutralised; got: $rline"
+}
+
+@test "F4 above U+10FFFF neutralised" {
+  seed_override_fixture
+
+  # F4 90 80 80 encodes U+110000, above the Unicode maximum
+  local reason
+  reason="$(printf 'test \xf4\x90\x80\x80 rest of reason')"
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  [[ "$rline" == *'<0xF4>'* ]] \
+    || fail "F4 above U+10FFFF not neutralised; got: $rline"
+}
+
+@test "exact 9-byte reason refused and 10-byte accepted" {
+  # 9 printable bytes: refused
+  seed_override_fixture
+  run run_gate --force-design \
+    --reason "abcdefghi" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "9-byte reason should be refused; got status $status"
+  _stripped_output | grep -qF "at least 10 characters" \
+    || fail "expected short-reason message for 9 bytes; got: $output"
+
+  # 10 printable bytes: accepted
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  run run_gate --force-design \
+    --reason "abcdefghij" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "10-byte reason should be accepted; got status $status: $output"
+}
+
+@test "exact 500-byte sanitised reason accepted and 501-byte refused" {
+  # 500 printable bytes: accepted
+  seed_override_fixture
+  local reason_500=""
+  local i=0
+  while [ "$i" -lt 500 ]; do reason_500="${reason_500}B"; i=$((i+1)); done
+  [ "${#reason_500}" -eq 500 ] || fail "length is ${#reason_500}"
+
+  run run_gate --force-design \
+    --reason "$reason_500" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "500-byte reason should be accepted; got status $status: $output"
+
+  # 501 printable bytes: refused at the gate before any write
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+
+  local drec_hash_501 lo_hash_501
+  drec_hash_501="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash_501="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  local reason_501="${reason_500}B"
+  [ "${#reason_501}" -eq 501 ] || fail "length is ${#reason_501}"
+
+  run run_gate --force-design \
+    --reason "$reason_501" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "501-byte reason should be refused; got status $status"
+
+  # The gate must refuse before any ledger write (no rollback)
+  if _stripped_output | grep -qi "rolled back"; then
+    fail "501-byte refusal came from rollback, not gate guard; got: $output"
+  fi
+  [ "$drec_hash_501" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite 501-byte refusal"
+  [ "$lo_hash_501" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite 501-byte refusal"
+  [ ! -f "$TEST_TMP/.gaia/state/design-record.yaml.gate-backup" ] \
+    || fail "gate backup exists — refusal came too late"
+}
+
+@test "raw cap message reports the raw byte count" {
+  seed_override_fixture
+
+  local reason=""
+  local i=0
+  while [ "$i" -lt 501 ]; do reason="${reason}C"; i=$((i+1)); done
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal; got status $status"
+
+  # The message must name the measured quantity (raw trimmed bytes)
+  _stripped_output | grep -qF "501" \
+    || fail "raw-cap message should report the byte count 501; got: $output"
+}
+
+# =========================================================================
+# Linear trim, boundary discrimination and sentinel coverage
+# =========================================================================
+
+@test "100k leading spaces refused without quadratic delay" {
+  seed_override_fixture
+
+  # Build a reason of 100,000 spaces followed by 20 printable bytes.
+  # The total is 100,020 bytes, well over the raw cap. This must be
+  # refused, and must not take minutes (the per-character trim loop
+  # would be quadratic on the leading spaces).
+  local reason=""
+  local i=0
+  while [ "$i" -lt 1000 ]; do
+    reason="${reason}$(printf '%100s' "")"
+    i=$((i + 1))
+  done
+  reason="${reason}valid reason text!!"
+  [ "${#reason}" -ge 100000 ] || fail "reason too short: ${#reason}"
+
+  local drec_hash lo_hash
+  drec_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  lo_hash="$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")"
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal; got status $status"
+
+  # Both ledgers must be untouched
+  [ "$drec_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")" ] \
+    || fail "design record was written despite over-size refusal"
+  [ "$lo_hash" = "$(_sha256_file "$TEST_TMP/.gaia/state/lifecycle-overrides.yaml")" ] \
+    || fail "lifecycle ledger was written despite over-size refusal"
+}
+
+@test "sanitised cap reached when raw is under 500" {
+  seed_override_fixture
+
+  # 495 B's plus 1 ESC = 496 raw bytes (under 500).
+  # Sanitised: 495 + 6 = 501 (over 500, exactly at the boundary).
+  local reason=""
+  local i=0
+  while [ "$i" -lt 495 ]; do reason="${reason}B"; i=$((i + 1)); done
+  reason="${reason}$(printf '\x1b')"
+  [ "${#reason}" -eq 496 ] || fail "raw length is ${#reason}, expected 496"
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal; got status $status"
+
+  # Must say the sanitised-cap message, not the raw-cap message
+  _stripped_output | grep -qF "control characters are shown" \
+    || fail "expected sanitised-cap message; got: $output"
+  if _stripped_output | grep -qF "raw bytes"; then
+    fail "got the raw-cap message instead of the sanitised-cap message; got: $output"
+  fi
+
+  # Sub-check: 494 B's + 1 ESC = 495 raw, 500 sanitised — accepted
+  rm -rf "$TEST_TMP/.gaia" 2>/dev/null || true
+  mkdir -p "$TEST_TMP/.gaia/state"
+  seed_override_fixture
+  local reason_ok=""
+  i=0
+  while [ "$i" -lt 494 ]; do reason_ok="${reason_ok}B"; i=$((i + 1)); done
+  reason_ok="${reason_ok}$(printf '\x1b')"
+  [ "${#reason_ok}" -eq 495 ] || fail "raw length is ${#reason_ok}, expected 495"
+
+  run run_gate --force-design \
+    --reason "$reason_ok" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] \
+    || fail "494 B + 1 ESC (500 sanitised) should be accepted; got status $status: $output"
+}
+
+@test "leading spaces are trimmed from the reason" {
+  seed_override_fixture
+
+  run run_gate --force-design \
+    --reason "   leading spaces reason text" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local rline
+  rline="$(_extract_reason_line)"
+  # The Reason: field value must not start with spaces
+  [[ "$rline" == *'Reason:        leading spaces'* ]] \
+    || fail "leading spaces were not trimmed; got: $rline"
+}
+
+@test "trailing spaces are trimmed from the reason" {
+  seed_override_fixture
+
+  run run_gate --force-design \
+    --reason "trailing spaces reason text   " \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "override should succeed; got status $status: $output"
+
+  local drec_reason
+  drec_reason="$(yq -r '.overrides[0].reason' \
+    "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [[ "$drec_reason" != *"   " ]] \
+    || fail "trailing spaces were not trimmed from stored reason; got: <<<$drec_reason>>>"
+  [ "$drec_reason" = "trailing spaces reason text" ] \
+    || fail "stored reason not trimmed correctly; got: <<<$drec_reason>>>"
+}
+
+@test "10-byte reason ending in period accepted" {
+  seed_override_fixture
+
+  # "approved.!" is 10 bytes. Tests that the strip-controls sentinel
+  # (a trailing period) is not confused with a real period in the reason.
+  run run_gate --force-design \
+    --reason "approved.!" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 0 ] || fail "10-byte reason ending near sentinel should be accepted; got status $status: $output"
+
+  local drec_reason
+  drec_reason="$(yq -r '.overrides[0].reason' \
+    "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$drec_reason" = "approved.!" ] \
+    || fail "reason was mangled; got: <<<$drec_reason>>>"
+}
+
+@test "raw-cap message says raw bytes not placeholder bytes" {
+  seed_override_fixture
+
+  local reason=""
+  local i=0
+  while [ "$i" -lt 501 ]; do reason="${reason}D"; i=$((i + 1)); done
+
+  run run_gate --force-design \
+    --reason "$reason" \
+    --entry-point test --sprint-id sprint-99
+  [ "$status" -eq 1 ] || fail "expected refusal; got status $status"
+
+  # The raw-cap message must contain "raw bytes" to distinguish it
+  # from the sanitised-cap message
+  _stripped_output | grep -qF "raw bytes" \
+    || fail "raw-cap message should say 'raw bytes'; got: $output"
+  # And must NOT mention control-character placeholders
+  if _stripped_output | grep -qF "control characters"; then
+    fail "raw-cap message mentions placeholders — wrong message; got: $output"
+  fi
 }
 

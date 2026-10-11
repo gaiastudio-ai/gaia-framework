@@ -51,9 +51,9 @@ run_finalize_and_capture_resolution() {
   [ ! -d ".gaia" ] && [ ! -d "docs" ]
   OUTPUT="$(run_finalize_and_capture_resolution)"
   # finalize.sh logs the skip message when ARTIFACT is empty.
-  echo "$OUTPUT" | grep -qF "no PRD artifact found"
+  grep -qF "no PRD artifact found" <<<"$OUTPUT"
   # MUST NOT have run the checklist against a phantom legacy path.
-  ! echo "$OUTPUT" | grep -qF "running 36-item checklist"
+  ! grep -qF "running 36-item checklist" <<<"$OUTPUT"
 }
 
 # ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ run_finalize_and_capture_resolution() {
 test overview content
 PRD
   OUTPUT="$(run_finalize_and_capture_resolution)"
-  echo "$OUTPUT" | grep -qF "running 36-item checklist against .gaia/artifacts/planning-artifacts/prd.md"
+  grep -qF "running 36-item checklist against .gaia/artifacts/planning-artifacts/prd.md" <<<"$OUTPUT"
   # MUST NOT have created a rogue docs/ directory.
   [ ! -d "docs" ]
 }
@@ -85,7 +85,7 @@ PRD
 pre-ADR-111 project content
 PRD
   OUTPUT="$(run_finalize_and_capture_resolution)"
-  echo "$OUTPUT" | grep -qF "running 36-item checklist against docs/planning-artifacts/prd.md"
+  grep -qF "running 36-item checklist against docs/planning-artifacts/prd.md" <<<"$OUTPUT"
   # Canonical dir MUST NOT be silently created on a pre-ADR-111 project.
   [ ! -d ".gaia" ]
 }
@@ -106,8 +106,8 @@ PRD
 PRD
   OUTPUT="$(run_finalize_and_capture_resolution)"
   # Canonical wins because positive-evidence guard fails on `! -d .gaia/...`.
-  echo "$OUTPUT" | grep -qF "running 36-item checklist against .gaia/artifacts/planning-artifacts/prd.md"
-  ! echo "$OUTPUT" | grep -qF "docs/planning-artifacts/prd.md"
+  grep -qF "running 36-item checklist against .gaia/artifacts/planning-artifacts/prd.md" <<<"$OUTPUT"
+  ! grep -qF "docs/planning-artifacts/prd.md" <<<"$OUTPUT"
 }
 
 # ---------------------------------------------------------------------------
@@ -123,5 +123,5 @@ PRD
   export PRD_ARTIFACT="custom-location/my-prd.md"
   OUTPUT="$(bash "$FINALIZE" 2>&1 || true)"
   unset PRD_ARTIFACT
-  echo "$OUTPUT" | grep -qF "running 36-item checklist against custom-location/my-prd.md"
+  grep -qF "running 36-item checklist against custom-location/my-prd.md" <<<"$OUTPUT"
 }

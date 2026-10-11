@@ -30,7 +30,7 @@ teardown() {
   [ "$status" -eq 0 ]
   # Step 1 -> Step 2: input_tokens diff = 8200-5000 = 3200
   # The output must contain the full formatted string with the approx label
-  printf '%s\n' "$output" | grep -qF "~3200 tok (approx)" \
+  grep -qF "~3200 tok (approx)" <<<"$output" \
     || { echo "Missing '~3200 tok (approx)' input diff label in token output" >&2; echo "$output" >&2; false; }
 }
 
@@ -41,14 +41,14 @@ teardown() {
   #   input:  8200 - 5000 = 3200  (raws: 5000, 8200, 12500 — no match)
   #   output: 2400 - 1000 = 1400  (raws: 1000, 2400, 3900 — no match)
   # Assert the full formatted diff string, not a bare number.
-  printf '%s\n' "$output" | grep "step 1" | grep -qF "input: ~3200 tok (approx)" \
+  grep "step 1" <<<"$output" | grep -qF "input: ~3200 tok (approx)" \
     || { echo "Expected 'input: ~3200 tok (approx)' for step 1" >&2; echo "$output" >&2; false; }
-  printf '%s\n' "$output" | grep "step 1" | grep -qF "output: ~1400 tok (approx)" \
+  grep "step 1" <<<"$output" | grep -qF "output: ~1400 tok (approx)" \
     || { echo "Expected 'output: ~1400 tok (approx)' for step 1" >&2; echo "$output" >&2; false; }
   # Step 2->3 diffs: input 4300, output 1500 — also distinct from all raws
-  printf '%s\n' "$output" | grep "step 2" | grep -qF "input: ~4300 tok (approx)" \
+  grep "step 2" <<<"$output" | grep -qF "input: ~4300 tok (approx)" \
     || { echo "Expected 'input: ~4300 tok (approx)' for step 2" >&2; echo "$output" >&2; false; }
-  printf '%s\n' "$output" | grep "step 2" | grep -qF "output: ~1500 tok (approx)" \
+  grep "step 2" <<<"$output" | grep -qF "output: ~1500 tok (approx)" \
     || { echo "Expected 'output: ~1500 tok (approx)' for step 2" >&2; echo "$output" >&2; false; }
 }
 
@@ -69,7 +69,7 @@ teardown() {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/no-tokens.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # Timing data (step durations) must still appear
-  printf '%s\n' "$output" | grep -q "step 1" \
+  grep -q "step 1" <<<"$output" \
     || { echo "Expected step 1 timing in output" >&2; echo "$output" >&2; false; }
 }
 
@@ -78,10 +78,10 @@ teardown() {
   [ "$status" -eq 0 ]
   # When tokens are absent, the output MUST contain an explicit "tokens: n/a"
   # field on every step line — stable column contract for E112-S3.
-  printf '%s\n' "$output" | grep "E961-S1" | grep -qF "tokens: n/a" \
+  grep "E961-S1" <<<"$output" | grep -qF "tokens: n/a" \
     || { echo "Expected explicit 'tokens: n/a' for no-tokens step, got:" >&2; echo "$output" >&2; false; }
   # No approximate token numbers should appear for this story
-  ! printf '%s\n' "$output" | grep "E961-S1" | grep -qE '~[0-9]+ tok' \
+  ! grep "E961-S1" <<<"$output" | grep -qE '~[0-9]+ tok' \
     || { echo "Unexpected approximate token counts in no-tokens fixture" >&2; echo "$output" >&2; false; }
 }
 
@@ -91,14 +91,14 @@ teardown() {
   run bash "$SCRIPT" --events "$FIXTURE_DIR/negative-diff.jsonl" --step-durations
   [ "$status" -eq 0 ]
   # input_tokens goes 15000 -> 9000 (diff = -6000). Must NOT appear as -6000.
-  ! printf '%s\n' "$output" | grep -qE '\-[0-9]+ tok' \
+  ! grep -qE '\-[0-9]+ tok' <<<"$output" \
     || { echo "Negative token count found in output" >&2; echo "$output" >&2; false; }
   # The negative field (input) should render as n/a scoped to the step line.
   # output_tokens goes 3000 -> 3500 (diff = +500), so the line has BOTH n/a and approx.
-  printf '%s\n' "$output" | grep "E962-S1" | grep "step 1" | grep -qF "input: n/a" \
+  grep "E962-S1" <<<"$output" | grep "step 1" | grep -qF "input: n/a" \
     || { echo "Expected 'input: n/a' for negative diff on step 1" >&2; echo "$output" >&2; false; }
   # The positive field (output) should still show an approximate value.
-  printf '%s\n' "$output" | grep "E962-S1" | grep "step 1" | grep -qF "output: ~500 tok (approx)" \
+  grep "E962-S1" <<<"$output" | grep "step 1" | grep -qF "output: ~500 tok (approx)" \
     || { echo "Expected 'output: ~500 tok (approx)' for positive diff on step 1" >&2; echo "$output" >&2; false; }
 }
 

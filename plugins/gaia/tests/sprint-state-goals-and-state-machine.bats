@@ -238,3 +238,328 @@ EOF
     grep -q '^status: done' "$ART/S1-fake.md"
   done
 }
+
+# ============================================================
+# Sprint-id mismatch guard
+# ============================================================
+
+# Helper: seed a minimal yaml without goals (for mismatch tests).
+_seed_mismatch_yaml() {
+  local sprint_id="$1" sprint_status="${2:-active}"
+  cat > "$YAML" <<EOF
+sprint_id: "$sprint_id"
+status: $sprint_status
+stories:
+  - key: "S1"
+    title: "Fake"
+    status: "done"
+    points: 3
+    risk: medium
+EOF
+}
+
+# Helper: seed a yaml with no sprint_id field.
+_seed_no_sprint_id_yaml() {
+  cat > "$YAML" <<EOF
+status: active
+stories:
+  - key: "S1"
+    title: "Fake"
+    status: "done"
+    points: 3
+    risk: medium
+EOF
+}
+
+# Helper: seed a valid review-justification payload.
+_seed_review_justification() {
+  local file="$1"
+  cat > "$file" <<'PAYLOAD'
+primary_criterion: C1
+qualifying_story_points: 18
+total_story_points: 20
+qualifying_ratio: 0.90
+explanation: |
+  This sprint delivered the full sprint-id mismatch guard across every writer
+  in sprint-state.sh, hardened close.sh exit-code dispatch, and added
+  comprehensive test coverage. All stories met their acceptance criteria and
+  the sprint review confirmed no regressions. The qualifying ratio exceeds
+  the minimum threshold set by the rubric.
+PAYLOAD
+}
+
+@test "set-goals with mismatched sprint id is refused" {
+  _seed_mismatch_yaml "sprint-82"
+  local before
+  before="$(cksum < "$YAML")"
+  run "$SCRIPT" set-goals --sprint sprint-1 --goals "g1"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+  [[ "$output" == *"does not match active sprint-status.yaml sprint_id"* ]]
+  local after
+  after="$(cksum < "$YAML")"
+  [ "$before" = "$after" ]
+}
+
+@test "update-goals with mismatched sprint id is refused and names update-goals" {
+  _seed_mismatch_yaml "sprint-82"
+  local before
+  before="$(cksum < "$YAML")"
+  run "$SCRIPT" update-goals --sprint sprint-1 --goals "g1"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"update-goals"* ]]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+  local after
+  after="$(cksum < "$YAML")"
+  [ "$before" = "$after" ]
+}
+
+@test "set-shape with mismatched sprint id is refused and leaves no temp files" {
+  _seed_mismatch_yaml "sprint-82"
+  local before
+  before="$(cksum < "$YAML")"
+  run "$SCRIPT" set-shape --sprint sprint-1 --shape thrust
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+  local after
+  after="$(cksum < "$YAML")"
+  [ "$before" = "$after" ]
+  # No temp files left behind
+  local tmp_count
+  tmp_count="$(find "$ART" -name '*.tmp.*' | wc -l)"
+  [ "$tmp_count" -eq 0 ]
+}
+
+@test "set-review-justification with mismatched sprint id is refused" {
+  _seed_mismatch_yaml "sprint-82"
+  local payload="$TEST_TMP/justification.yaml"
+  _seed_review_justification "$payload"
+  local before
+  before="$(cksum < "$YAML")"
+  run "$SCRIPT" set-review-justification --sprint sprint-1 --file "$payload"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+  local after
+  after="$(cksum < "$YAML")"
+  [ "$before" = "$after" ]
+}
+
+@test "transition --sprint with mismatched sprint id exits 2 and names both ids" {
+  _seed_mismatch_yaml "sprint-82" "active"
+  local before
+  before="$(cksum < "$YAML")"
+  run "$SCRIPT" transition --sprint sprint-1 --to closed
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+  [[ "$output" == *"does not match active sprint-status.yaml sprint_id"* ]]
+  local after
+  after="$(cksum < "$YAML")"
+  [ "$before" = "$after" ]
+}
+
+@test "set-goals against a yaml with no sprint_id field exits 1" {
+  _seed_no_sprint_id_yaml
+  run "$SCRIPT" set-goals --sprint sprint-1 --goals "g1"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no sprint_id"* ]]
+}
+
+@test "transition --sprint against a yaml with no sprint_id field exits 2" {
+  _seed_no_sprint_id_yaml
+  run "$SCRIPT" transition --sprint sprint-1 --to closed
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"no sprint_id"* ]]
+}
+
+# ============================================================
+# set-phase rejects sprint flags
+# ============================================================
+
+@test "set-phase rejects --sprint" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" set-phase --story S1 --phase 1 --sprint sprint-1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unknown flag for set-phase: --sprint"* ]]
+}
+
+@test "set-phase rejects --sprint-id" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" set-phase --story S1 --phase 1 --sprint-id sprint-1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unknown flag for set-phase: --sprint-id"* ]]
+}
+
+@test "set-phase rejects --sprint with empty value" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" set-phase --story S1 --phase 1 --sprint ""
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unknown flag for set-phase: --sprint"* ]]
+}
+
+@test "set-phase rejects --sprint= (equals form)" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" set-phase --story S1 --phase 1 --sprint=
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unknown flag for set-phase: --sprint"* ]]
+}
+
+@test "set-phase rejects --sprint-id= (equals form)" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" set-phase --story S1 --phase 1 --sprint-id=
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unknown flag for set-phase: --sprint-id"* ]]
+}
+
+@test "bare trailing --sprint with no value fails in the parser" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" set-phase --story S1 --phase 1 --sprint
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"--sprint requires a value"* ]]
+}
+
+# ============================================================
+# reconcile sprint-id guard
+# ============================================================
+
+@test "reconcile --sprint-id mismatch is refused" {
+  _seed_mismatch_yaml "sprint-82"
+  local before
+  before="$(cksum < "$YAML")"
+  run "$SCRIPT" reconcile --sprint-id sprint-1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+  local after
+  after="$(cksum < "$YAML")"
+  [ "$before" = "$after" ]
+}
+
+@test "reconcile --sprint-id mismatch refuses before taking the lock" {
+  _seed_mismatch_yaml "sprint-82"
+  # Hold the sprint-status lock so a guard placed after cmd_reconcile's
+  # acquire_lock would time out instead of returning the mismatch message.
+  local lock_file="${YAML}.lock"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$lock_file"
+  export GAIA_LOCK_FORCE_FALLBACK=1
+  run "$SCRIPT" reconcile --sprint-id sprint-1
+  rm -f "$lock_file"
+  # Must refuse immediately with the mismatch message, not a lock timeout.
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+  [[ "$output" == *"does not match active sprint-status.yaml sprint_id"* ]]
+  # Must NOT mention lock timeout
+  local lock_msg_count
+  lock_msg_count="$(printf '%s\n' "$output" | grep -c 'lock timeout' || true)"
+  [ "$lock_msg_count" -eq 0 ]
+}
+
+@test "reconcile without --sprint-id succeeds" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" reconcile
+  [ "$status" -eq 0 ]
+}
+
+@test "reconcile with matching --sprint-id succeeds" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" reconcile --sprint-id sprint-82
+  [ "$status" -eq 0 ]
+}
+
+# ============================================================
+# inject sprint-id guard
+# ============================================================
+
+@test "inject --sprint-id mismatch names --sprint-id in message" {
+  _seed_mismatch_yaml "sprint-82"
+  seed_story S1 done
+  run "$SCRIPT" inject --story S1 --sprint-id sprint-1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--sprint-id"* ]]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+}
+
+@test "inject with --sprint-id on yaml without sprint_id with already-injected story exits 0" {
+  # Seed yaml without sprint_id but with S1 already present
+  cat > "$YAML" <<EOF
+status: active
+stories:
+  - key: "S1"
+    title: "Fake"
+    status: "done"
+    points: 3
+    risk: medium
+EOF
+  seed_story S1 done
+  run "$SCRIPT" inject --story S1 --sprint-id sprint-1
+  [ "$status" -eq 0 ]
+}
+
+# ============================================================
+# Matching sprint id passes through
+# ============================================================
+
+@test "set-goals with matching sprint id passes through" {
+  _seed_mismatch_yaml "sprint-82"
+  run "$SCRIPT" set-goals --sprint sprint-82 --goals "g1|g2"
+  [ "$status" -eq 0 ]
+  grep -q 'g1' "$YAML"
+  grep -q 'g2' "$YAML"
+}
+
+@test "set-shape with matching sprint id passes through" {
+  _seed_mismatch_yaml "sprint-82"
+  run "$SCRIPT" set-shape --sprint sprint-82 --shape thrust
+  [ "$status" -eq 0 ]
+}
+
+@test "set-review-justification with matching sprint id passes through" {
+  _seed_mismatch_yaml "sprint-82"
+  local payload="$TEST_TMP/justification.yaml"
+  _seed_review_justification "$payload"
+  run "$SCRIPT" set-review-justification --sprint sprint-82 --file "$payload"
+  [ "$status" -eq 0 ]
+}
+
+# ============================================================
+# Sentinel isolation — mismatch against a different project root
+# ============================================================
+
+@test "mismatched update-goals against sentinel project is refused and file unchanged" {
+  local sentinel="$TEST_TMP/sentinel"
+  mkdir -p "$sentinel/.gaia/state"
+  cat > "$sentinel/.gaia/state/sprint-status.yaml" <<EOF
+sprint_id: "sprint-82"
+status: active
+stories:
+  - key: "S1"
+    title: "Fake"
+    status: "done"
+    points: 3
+    risk: medium
+EOF
+  export PROJECT_ROOT="$sentinel" CLAUDE_PROJECT_ROOT="$sentinel"
+  local before
+  before="$(cksum < "$sentinel/.gaia/state/sprint-status.yaml")"
+  run "$SCRIPT" update-goals --sprint sprint-1 --goals "X|Y"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-82"* ]]
+  local after
+  after="$(cksum < "$sentinel/.gaia/state/sprint-status.yaml")"
+  [ "$before" = "$after" ]
+}

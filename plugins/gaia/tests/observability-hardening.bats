@@ -33,10 +33,10 @@ teardown() {
 @test "all-negative-diff story renders n/a total tokens in text mode" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/all-negative-diff.jsonl"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'Total token estimate.*n/a' \
+  grep -Eq 'Total token estimate.*n/a' <<<"$output" \
     || { echo "Expected 'Total token estimate: n/a' for all-negative-diff, got:" >&2; echo "$output" >&2; false; }
   # Must NOT contain ~0 tok
-  ! echo "$output" | grep -qF '~0 tok' \
+  ! grep -qF '~0 tok' <<<"$output" \
     || { echo "Found '~0 tok' in all-negative-diff output (bug)" >&2; echo "$output" >&2; false; }
 }
 
@@ -45,12 +45,12 @@ teardown() {
   [ "$status" -eq 0 ]
   # Both step lines should have all four fields as n/a (all diffs negative, but
   # token snapshots are present so the per-field form is used, not collapsed n/a)
-  printf '%s\n' "$output" | grep "NEG-S1" | grep "step 1" | grep -qF "input: n/a" \
+  grep "NEG-S1" <<<"$output" | grep "step 1" | grep -qF "input: n/a" \
     || { echo "Expected 'input: n/a' for all-negative-diff step 1" >&2; echo "$output" >&2; false; }
-  printf '%s\n' "$output" | grep "NEG-S1" | grep "step 1" | grep -qF "output: n/a" \
+  grep "NEG-S1" <<<"$output" | grep "step 1" | grep -qF "output: n/a" \
     || { echo "Expected 'output: n/a' for all-negative-diff step 1" >&2; echo "$output" >&2; false; }
   # Must not show any approximate token numbers (all fields are negative -> n/a)
-  ! printf '%s\n' "$output" | grep "NEG-S1" | grep -qE '~[0-9]+ tok' \
+  ! grep "NEG-S1" <<<"$output" | grep -qE '~[0-9]+ tok' \
     || { echo "Unexpected approximate token counts for all-negative-diff" >&2; echo "$output" >&2; false; }
 }
 
@@ -62,10 +62,10 @@ teardown() {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/ere-metachar.jsonl" --story "E1-S1"
   [ "$status" -eq 0 ]
   # Must contain E1-S1 data
-  echo "$output" | grep -qF 'E1-S1' \
+  grep -qF 'E1-S1' <<<"$output" \
     || { echo "Expected E1-S1 in filtered output" >&2; echo "$output" >&2; false; }
   # Must NOT contain E+1-S1 data
-  ! echo "$output" | grep -qF 'E+1-S1' \
+  ! grep -qF 'E+1-S1' <<<"$output" \
     || { echo "E+1-S1 cross-matched into E1-S1 filter (ERE escaping bug)" >&2; echo "$output" >&2; false; }
 }
 
@@ -89,8 +89,8 @@ teardown() {
   [ "$status" -eq 0 ]
   # E+1-S1's step row must show 10 min (its own data), not 5 min (E1-S1's data)
   # E+1-S1: step1 at t=10, step2 at t=20 => 10 min
-  eplus_section=$(echo "$output" | awk '/Story: E[+]1-S1/{found=1} found && /^Story: E1-S1/{exit} found{print}')
-  echo "$eplus_section" | grep -Eq 'load-story.*10 min' \
+  eplus_section=$(awk '/Story: E[+]1-S1/{found=1} found && /^Story: E1-S1/{exit} found{print}' <<<"$output")
+  grep -Eq 'load-story.*10 min' <<<"$eplus_section" \
     || { echo "E+1-S1 step row should show 10 min (own data), section:" >&2; echo "$eplus_section" >&2; false; }
 }
 
@@ -139,7 +139,7 @@ teardown() {
   : > "$TEST_TMP/empty.jsonl"
   run bash "$THROUGHPUT" --events "$TEST_TMP/empty.jsonl" --step-durations
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF '(none)' \
+  grep -qF '(none)' <<<"$output" \
     || { echo "Expected (none) for empty events step-durations" >&2; echo "$output" >&2; false; }
 }
 
@@ -225,7 +225,7 @@ teardown() {
 @test "all-tokens-missing story renders n/a in text mode" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/all-tokens-missing.jsonl"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'Total token estimate.*n/a' \
+  grep -Eq 'Total token estimate.*n/a' <<<"$output" \
     || { echo "Expected 'Total token estimate: n/a' for all-missing, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -241,7 +241,7 @@ teardown() {
 @test "story unknown-key text mode produces no-events message" {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl" --story "NOPE-S99"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF 'no step_boundary events found' \
+  grep -qF 'no step_boundary events found' <<<"$output" \
     || { echo "Expected no-events message for unknown key" >&2; echo "$output" >&2; false; }
 }
 
@@ -273,14 +273,14 @@ teardown() {
   run bash "$STEP_REPORT" --events "$FIXTURE_DIR/cache-field-diffs.jsonl"
   [ "$status" -eq 0 ]
   # Header line
-  echo "$output" | grep -qF 'step-report' || { echo "Missing header" >&2; false; }
+  grep -qF 'step-report' <<<"$output" || { echo "Missing header" >&2; false; }
   # Story header
-  echo "$output" | grep -qF 'Story: CFD-S1' || { echo "Missing story header" >&2; false; }
+  grep -qF 'Story: CFD-S1' <<<"$output" || { echo "Missing story header" >&2; false; }
   # Column header
-  echo "$output" | grep -qF 'Step' && echo "$output" | grep -qF 'Name' && echo "$output" | grep -qF 'Duration'
+  grep -qF 'Step' <<<"$output" && echo "$output" | grep -qF 'Name' && echo "$output" | grep -qF 'Duration'
   # Step rows with format: step number, name, duration, token fields
-  echo "$output" | grep -Eq '1[[:space:]]+load-story[[:space:]]+5 min'
+  grep -Eq '1[[:space:]]+load-story[[:space:]]+5 min' <<<"$output"
   # Total lines
-  echo "$output" | grep -qF 'Total wall-clock:'
-  echo "$output" | grep -qF 'Total token estimate:'
+  grep -qF 'Total wall-clock:' <<<"$output"
+  grep -qF 'Total token estimate:' <<<"$output"
 }

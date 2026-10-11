@@ -48,13 +48,13 @@ SH
   run env BUILTIN_ADAPTERS_DIR="$builtin" CUSTOM_ADAPTERS_DIR="$TEST_TMP/no-custom" \
     GAIA_TOOL_INFO_SKIP_PROBE=1 "$TOOL_INFO" semgrep
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "semgrep"
-  echo "$output" | grep -q "sast"
-  echo "$output" | grep -q ">=1.0.0"
-  echo "$output" | grep -q "subprocess"
-  echo "$output" | grep -q "42"
-  echo "$output" | grep -q '\.py'
-  echo "$output" | grep -qi "fixture adapter"
+  grep -q "semgrep" <<<"$output"
+  grep -q "sast" <<<"$output"
+  grep -q ">=1.0.0" <<<"$output"
+  grep -q "subprocess" <<<"$output"
+  grep -q "42" <<<"$output"
+  grep -q '\.py' <<<"$output"
+  grep -qi "fixture adapter" <<<"$output"
 }
 
 @test "gaia-tool-info <name> output includes an availability slot" {
@@ -65,7 +65,7 @@ SH
     GAIA_TOOL_INFO_SKIP_PROBE=1 "$TOOL_INFO" semgrep
   [ "$status" -eq 0 ]
   # availability label appears even when probe is skipped (slot is rendered).
-  echo "$output" | grep -qi "availability"
+  grep -qi "availability" <<<"$output"
 }
 
 @test "unknown adapter exits non-zero and lists available adapters" {
@@ -77,8 +77,8 @@ SH
     GAIA_TOOL_INFO_SKIP_PROBE=1 "$TOOL_INFO" no-such-tool
   [ "$status" -ne 0 ]
   # Error must enumerate the available adapter names so the user can self-correct.
-  echo "$output" | grep -q "semgrep"
-  echo "$output" | grep -q "gitleaks"
+  grep -q "semgrep" <<<"$output"
+  grep -q "gitleaks" <<<"$output"
 }
 
 @test "custom adapter wins over built-in when both exist" {
@@ -90,5 +90,5 @@ SH
   run env BUILTIN_ADAPTERS_DIR="$builtin" CUSTOM_ADAPTERS_DIR="$custom" \
     GAIA_TOOL_INFO_SKIP_PROBE=1 "$TOOL_INFO" semgrep
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q ">=1.50.0"
+  grep -q ">=1.50.0" <<<"$output"
 }

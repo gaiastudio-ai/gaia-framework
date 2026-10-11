@@ -51,4 +51,13 @@ tests/retirement-sweep-clean.bats  test     asserts the replacement design path 
 knowledge/gaia-help.csv            prose    help row names the design record as the review output
 tests/quality-gates.bats           test     quality-gate predicate suppression tests
 tests/setup-root-resolution.bats   test     stubs design-record.sh in a temp dir for the design-gate shim
+tests/design-record-v2-migration.bats test v2 migration, cross-validation, set-product-project, EXIT trap tests
+skills/gaia-review-perf/SKILL.md   reader   reads design state for performance-relevant design fidelity
+scripts/build-manifest-cards.sh     reader   reads design record to resolve per-project reference for publication state
+scripts/lib/verify-publication-target.sh reader reads design record to verify target reference matches
+tests/build-manifest-cards.bats     test     tests build-manifest-cards including design-record interactions
+tests/design-record-roster.bats    test     roster-resolution test suite
+tests/design-record-review-coverage.bats test review-coverage verb tests
 CHANGELOG.md                       prose    release notes list design-record changes
+tests/republish-on-stale.bats      test     asserts republish sites pass the design record to the persist call
+tests/derive-design-scope-diff.bats test    live-writer contract seeds a record via design-record.sh init

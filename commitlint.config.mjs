@@ -13,7 +13,7 @@ export default {
   // legitimately use a non-conforming subject by convention.
   //
   // - "release:" subjects are produced by the staging→main release PRs
-  //   (e.g., #495 "release: sprint-37 + sprint-38 ...") and are part of the
+  //   (e.g., "release: sprint-37 + sprint-38 ...") and are part of the
   //   sprint-cadence release flow; they predate this config and live on main.
   //   When a fixup or hotfix PR merges main into staging, the action walks
   //   past the merge commit into main's history and re-lints these subjects.
@@ -24,23 +24,19 @@ export default {
   ignores: [
     (commit) => /^release: /.test(commit),
     (commit) => /^Merge (branch|pull request|remote-tracking) /.test(commit),
-    // Squash-merge commits from PRs whose subject was authored as a bare
-    // story-key prefix (e.g. "E87-S1: shared assert-agent-envelope.sh ..."
-    // or "E57-S10: fix safe_grep_log SIGPIPE ..."). The /gaia-dev-story
-    // commit-msg.sh helper emits `feat(EXX-SY): ...` for the feature
-    // commit, but GitHub's squash-merge UI sometimes truncates or rewrites
-    // the subject to the PR title, dropping the Conventional Commits type
-    // prefix when the PR title itself was set without one. The story-key
-    // prefix is unambiguous and traces back to GAIA's story-id contract;
-    // exempting it from commitlint avoids blocking staging→main release
-    // PRs on historical subjects that pre-date this allowlist.
+    // Older commits whose subject started with a bare story-key prefix
+    // (e.g. "EXX-SY: description ..."). commit-msg.sh now emits a
+    // scope-free or product-scope subject with a Story: body line, but
+    // these historical subjects remain on main and are re-linted when a
+    // staging→main promotion PR walks into the range. Exempting the
+    // story-key prefix avoids blocking release PRs on legacy subjects.
     (commit) => /^E\d+-S\d+:\s/.test(commit),
     // Already-merged squash commits carry GitHub's `(#NNNN)` PR-number suffix
     // that the squash UI appends to the subject. On a staging→main promotion
     // PR the action walks into the range and re-lints these subjects — and
     // the appended ` (#NNNN)` can push an otherwise-valid, already-linted
     // subject past the 100-char limit (e.g. a 95-char `fix(...)` subject
-    // becomes 103 after ` (#1110)`). They were already linted when their own
+    // becomes 103 after ` (#NNNN)`). They were already linted when their own
     // PR merged, so skip any subject ending in a GitHub PR-number suffix.
     // The promotion PR's OWN head commit (`chore: promote …`) has no such
     // suffix and is still linted normally.

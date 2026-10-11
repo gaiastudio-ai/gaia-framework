@@ -35,7 +35,7 @@ teardown() {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S1 = 10:00->10:40 = 40, E900-S2 = 11:00->12:00 = 60 ; median{40,60} = 50
-  echo "$output" | grep -Eq 'median_minutes_per_story:[[:space:]]*50' \
+  grep -Eq 'median_minutes_per_story:[[:space:]]*50' <<<"$output" \
     || { echo "expected median_minutes_per_story: 50, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -43,14 +43,14 @@ teardown() {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S1 = 40min/4pt = 10 ; E900-S2 = 60min/2pt = 30 ; median{10,30} = 20
-  echo "$output" | grep -Eq 'median_minutes_per_point:[[:space:]]*20' \
+  grep -Eq 'median_minutes_per_point:[[:space:]]*20' <<<"$output" \
     || { echo "expected median_minutes_per_point: 20, got:" >&2; echo "$output" >&2; false; }
 }
 
 @test "emits per-story wall-clock for a clean multi-transition story" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'E900-S1.*40'
+  grep -Eq 'E900-S1.*40' <<<"$output"
 }
 
 # ---------- AC2 / TS2: rework loop, no double-count ----------
@@ -59,7 +59,7 @@ teardown() {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S2 has review->in-progress->review loop; total span 11:00->12:00 = 60 (not 30+20+10 summed twice)
-  echo "$output" | grep -Eq 'E900-S2.*60'
+  grep -Eq 'E900-S2.*60' <<<"$output"
 }
 
 # ---------- AC3 / TS3: missing/partial pair -> skip + note ----------
@@ -68,14 +68,14 @@ teardown() {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S3 has only review->done (1 transition) -> skipped with note
-  echo "$output" | grep -Eq 'E900-S3.*(skip|note|insufficient)'
+  grep -Eq 'E900-S3.*(skip|note|insufficient)' <<<"$output"
 }
 
 @test "skipped story does not count as zero in the median" {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # if E900-S3 counted as 0, median{0,40,60} = 40, not 50
-  echo "$output" | grep -Eq 'median_minutes_per_story:[[:space:]]*50'
+  grep -Eq 'median_minutes_per_story:[[:space:]]*50' <<<"$output"
 }
 
 # ---------- AC4 / TS4: pre-log story excluded from median ----------
@@ -84,8 +84,8 @@ teardown() {
   run bash "$SCRIPT" --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # E900-S4 (5pt) has zero events; if counted as 0 the medians would shift
-  echo "$output" | grep -Eq 'median_minutes_per_story:[[:space:]]*50'
-  echo "$output" | grep -Eq 'median_minutes_per_point:[[:space:]]*20'
+  grep -Eq 'median_minutes_per_story:[[:space:]]*50' <<<"$output"
+  grep -Eq 'median_minutes_per_point:[[:space:]]*20' <<<"$output"
 }
 
 # ---------- TS5: single-transition handling (distinct from AC3 skip) ----------
@@ -98,7 +98,7 @@ teardown() {
   # numeric wall-clock on its line (skip/note marker instead).
   s3_line=$(echo "$output" | grep -E 'E900-S3' || true)
   [ -n "$s3_line" ]
-  ! echo "$s3_line" | grep -Eq '\b(40|60|[0-9]+ min)\b' \
+  ! grep -Eq '\b(40|60|[0-9]+ min)\b' <<<"$s3_line" \
     || { echo "E900-S3 should carry no wall-clock, got: $s3_line" >&2; false; }
 }
 
@@ -127,7 +127,7 @@ teardown() {
 @test "--help prints usage and exits 0" {
   run bash "$SCRIPT" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'throughput-telemetry'
+  grep -Eq 'throughput-telemetry' <<<"$output"
 }
 
 # ---------- AC5: /gaia-history renders trend, accuracy, recurring findings ----------
@@ -137,16 +137,16 @@ teardown() {
     --events "$EVENTS"
   [ "$status" -eq 0 ]
   # three archived sprints (898=30pt, 899=45pt, 900=14pt) must appear in a trend section
-  echo "$output" | grep -Eiq 'velocity trend' \
+  grep -Eiq 'velocity trend' <<<"$output" \
     || { echo "expected a velocity trend section, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eq 'sprint-898' && echo "$output" | grep -Eq 'sprint-900'
+  grep -Eq 'sprint-898' <<<"$output" && echo "$output" | grep -Eq 'sprint-900'
 }
 
 @test "history-render surfaces estimate-accuracy (estimated vs measured)" {
   run bash "$HISTORY" --archive-dir "$ARCHIVE_DIR" --retros-dir "$RETROS_DIR" \
     --events "$EVENTS"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'estimate.accuracy|estimated vs measured|measured' \
+  grep -Eiq 'estimate.accuracy|estimated vs measured|measured' <<<"$output" \
     || { echo "expected an estimate-accuracy section, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -154,10 +154,10 @@ teardown() {
   run bash "$HISTORY" --archive-dir "$ARCHIVE_DIR" --retros-dir "$RETROS_DIR" \
     --events "$EVENTS"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'recurring' \
+  grep -Eiq 'recurring' <<<"$output" \
     || { echo "expected a recurring-finding section, got:" >&2; echo "$output" >&2; false; }
   # 'CI checkout flake' appears in BOTH retro fixtures -> must be flagged as recurring
-  echo "$output" | grep -Eiq 'checkout' \
+  grep -Eiq 'checkout' <<<"$output" \
     || { echo "expected the recurring 'checkout flake' theme, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -190,7 +190,7 @@ teardown() {
   # allowed-tools must not grant Write or Edit
   run grep -E '^allowed-tools:' "$SKILL"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -Eq '(Write|Edit|NotebookEdit)'
+  ! grep -Eq '(Write|Edit|NotebookEdit)' <<<"$output"
 }
 
 # ---------- AC-INT1 / TS7: integration round-trip ----------
@@ -214,6 +214,6 @@ teardown() {
     --events "$EVENTS" --sprint-yaml "$SPRINT_YAML"
   [ "$status" -eq 0 ]
   # the rendered history must reflect the derived median for the active fixture sprint
-  echo "$output" | grep -Eq '50' \
+  grep -Eq '50' <<<"$output" \
     || { echo "expected derived median 50 to appear in history render, got:" >&2; echo "$output" >&2; false; }
 }

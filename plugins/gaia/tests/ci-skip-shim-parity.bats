@@ -91,5 +91,5 @@ _path_list() {
   # real entrypoints appear.
   run_lines="$(grep -E '^\s+run:' "$SHIM" || true)"
   echo "run lines: $run_lines"
-  ! printf '%s' "$run_lines" | grep -qE 'lint-skill-frontmatter|structure-validate\.sh|run-with-coverage|setup-bats'
+  ! grep -qE 'lint-skill-frontmatter|structure-validate\.sh|run-with-coverage|setup-bats' <<<"$run_lines"
 }

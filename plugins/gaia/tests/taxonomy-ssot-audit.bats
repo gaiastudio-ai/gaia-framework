@@ -119,7 +119,7 @@ _is_allowlisted() {
   allowlist="$(_allowed_paths_regex)"
   while IFS= read -r rx; do
     [ -z "$rx" ] && continue
-    if printf '%s\n' "$path" | grep -qE "$rx"; then
+    if grep -qE "$rx" <<<"$path"; then
       return 0
     fi
   done <<<"$allowlist"

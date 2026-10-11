@@ -32,7 +32,7 @@
 
 # Ensure essential system tools (awk, sed, mkdir, cat, mv, grep, date, shasum)
 # are on PATH even if the caller constrains PATH to simulate bridge-unavailable
-# (EC-8 test sets PATH to a stub-bin only). We add /usr/bin and /bin only —
+# (the bridge-unavailable test sets PATH to a stub-bin only). We add /usr/bin and /bin only —
 # NOT /usr/local/bin, so that runner binaries (bats, node, etc.) installed
 # there remain hidden when the caller intends to test bridge unavailability.
 for _d in /usr/bin /bin; do

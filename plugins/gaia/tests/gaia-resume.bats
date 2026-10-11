@@ -22,12 +22,12 @@ teardown() { common_teardown; }
 
 @test "SKILL.md frontmatter contains required 'name' field equal to gaia-resume" {
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^name: gaia-resume'
+  grep -q '^name: gaia-resume' <<<"$frontmatter"
 }
 
 @test "SKILL.md frontmatter contains 'description' field" {
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^description:'
+  grep -q '^description:' <<<"$frontmatter"
 }
 
 @test "SKILL.md body documents when_to_use guidance" {
@@ -37,7 +37,7 @@ teardown() { common_teardown; }
 
 @test "SKILL.md frontmatter contains 'allowed-tools' field" {
   frontmatter=$(awk 'BEGIN{in_fm=0;seen=0}/^---[[:space:]]*$/{if(seen==0){in_fm=1;seen=1;next}else if(in_fm==1){exit}}in_fm==1{print}' "$SKILL_FILE")
-  echo "$frontmatter" | grep -q '^allowed-tools:'
+  grep -q '^allowed-tools:' <<<"$frontmatter"
 }
 
 @test "SKILL.md body contains procedural Steps section" {

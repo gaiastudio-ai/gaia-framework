@@ -89,6 +89,6 @@ teardown() {
   rm -rf "$root"
 
   [ "$status" -eq 3 ] || { echo "expected the unwired-dispatch exit, got $status: $output"; return 1; }
-  printf '%s' "$output" | grep -qF "${artifacts_rel}/planning-artifacts/architecture" \
+  grep -qF "${artifacts_rel}/planning-artifacts/architecture" <<<"$output" \
     || { echo "diagnostic does not name the canonical artifacts tree (${artifacts_rel}):"; printf '%s\n' "$output"; return 1; }
 }

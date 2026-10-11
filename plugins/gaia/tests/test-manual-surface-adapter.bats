@@ -76,7 +76,7 @@ YAML
 @test "output contains surface name on CONFIGURED" {
   run bash "$ADAPTER" --surface api --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "api"
+  grep -qi "api" <<<"$output"
 }
 
 # ---------- AC1: block-style YAML platforms ----------
@@ -90,7 +90,7 @@ platforms:
 YAML
   run bash "$ADAPTER" --surface browser --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "CONFIGURED"
+  grep -qi "CONFIGURED" <<<"$output"
 }
 
 @test "api CONFIGURED with block-style YAML platforms list" {
@@ -102,5 +102,5 @@ platforms:
 YAML
   run bash "$ADAPTER" --surface api --config "$TEST_TMP/.gaia/config/project-config.yaml"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi "CONFIGURED"
+  grep -qi "CONFIGURED" <<<"$output"
 }

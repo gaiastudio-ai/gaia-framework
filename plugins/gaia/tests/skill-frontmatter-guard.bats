@@ -47,7 +47,7 @@ teardown() { common_teardown; }
   while IFS= read -r file; do
     local line
     line="$(grep '^allowed-tools:' "$file" | head -1)"
-    if ! echo "$line" | grep -qE '^allowed-tools:[[:space:]]*\['; then
+    if ! grep -qE '^allowed-tools:[[:space:]]*\[' <<<"$line"; then
       offenders="$offenders$file\n"
     fi
   done < <(ls "$PLUGIN_SKILLS_DIR"/*/SKILL.md)

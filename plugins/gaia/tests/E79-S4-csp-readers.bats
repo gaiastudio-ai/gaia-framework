@@ -113,8 +113,8 @@ EOF
   source "$PRIORITY_FLAG_SH"
   run pflag_scan_backlog "$IMPL"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qx "E79-S99"
-  echo "$output" | grep -qx "E76-S99"
+  grep -qx "E79-S99" <<<"$output"
+  grep -qx "E76-S99" <<<"$output"
 }
 
 @test "pflag_scan_backlog excludes nested-null stories" {
@@ -124,8 +124,8 @@ EOF
   source "$PRIORITY_FLAG_SH"
   run pflag_scan_backlog "$IMPL"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qx "E79-S99"
-  if echo "$output" | grep -qx "E79-S98"; then
+  grep -qx "E79-S99" <<<"$output"
+  if grep -qx "E79-S98" <<<"$output"; then
     echo "unexpected: nested-null story surfaced" >&2
     return 1
   fi
@@ -137,7 +137,7 @@ EOF
   source "$PRIORITY_FLAG_SH"
   run pflag_scan_backlog "$IMPL"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qx "E20-S99"
+  grep -qx "E20-S99" <<<"$output"
 }
 
 @test "edge: pflag_scan_backlog skips non-story .md under stories/ without erroring" {
@@ -148,7 +148,7 @@ EOF
   source "$PRIORITY_FLAG_SH"
   run pflag_scan_backlog "$IMPL"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qx "E79-S99"
+  grep -qx "E79-S99" <<<"$output"
 }
 
 @test "edge: pflag_scan_backlog tolerates empty epic dir without stories/ subdir" {

@@ -128,5 +128,5 @@ EOF
 @test "F-28: assert-agent-envelope.sh exits non-zero on direct execution" {
   run bash "${PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh" /tmp/nonexistent.json
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "must be sourced, not executed"
+  grep -qF "must be sourced, not executed" <<<"$output"
 }

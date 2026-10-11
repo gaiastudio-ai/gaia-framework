@@ -66,7 +66,7 @@ _render() {
   line_count=$(echo "$output" | wc -l | tr -d ' ')
   [ "$line_count" = "2" ]
   # Line 1 has GAIA brand; line 2 has branch + dirty
-  echo "$output" | head -1 | grep -q "GAIA"
+  head -1 <<<"$output" | grep -q "GAIA"
   echo "$output" | tail -1 | grep -q "feat/x"
 }
 
@@ -94,7 +94,7 @@ _render() {
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "feat/from-cache"
+  grep -q "feat/from-cache" <<<"$output"
 }
 
 @test "branch: cache.active_branch=null falls back to local git probe (empty here)" {
@@ -103,7 +103,7 @@ _render() {
   run _render "$stdin"
   [ "$status" -eq 0 ]
   # No branch should appear (TEST_TMP is not a git repo and cache is null).
-  ! echo "$output" | grep -q "@ "
+  ! grep -q "@ " <<<"$output"
 }
 
 # ---- Dirty marker is its own chunk ---------------------------------------
@@ -120,9 +120,9 @@ _render() {
   # AF-2026-05-27-5: dirty chunk shows per-class line counts (the cache here has
   # no count fields, so they default to +0 -0). Marker is the S/U counts, not "*".
   stripped="$(echo "$line2" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
-  echo "$stripped" | grep -q "S +0 -0"
-  echo "$stripped" | grep -q "U +0 -0"
-  ! echo "$stripped" | grep -qE '\| \* \|'
+  grep -q "S +0 -0" <<<"$stripped"
+  grep -q "U +0 -0" <<<"$stripped"
+  ! grep -qE '\| \* \|' <<<"$stripped"
 }
 
 @test "dirty: marker suppressed when git_dirty=false" {
@@ -133,7 +133,7 @@ _render() {
   line2="$(echo "$output" | tail -1)"
   stripped="$(echo "$line2" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
   # No dirty chunk at all on a clean tree — no S/U counts.
-  ! echo "$stripped" | grep -qE 'S \+|U \+'
+  ! grep -qE 'S \+|U \+' <<<"$stripped"
 }
 
 # ---- Context-bar gradient + percentage + size hint ----------------------
@@ -143,7 +143,7 @@ _render() {
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":42,"current_usage":420000,"context_size":"1M"}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "42%"
+  grep -q "42%" <<<"$output"
 }
 
 @test "context-bar: size hint shows [1M] when context_window_size > 500000" {
@@ -152,7 +152,7 @@ _render() {
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":50,"context_window_size":1000000,"current_usage":{"input_tokens":1,"output_tokens":2}}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "\[1M\]"
+  grep -q "\[1M\]" <<<"$output"
 }
 
 @test "context-bar: size hint shows [200K] when context_window_size <= 500000" {
@@ -160,7 +160,7 @@ _render() {
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":50,"context_window_size":200000,"current_usage":{"input_tokens":1,"output_tokens":2}}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "\[200K\]"
+  grep -q "\[200K\]" <<<"$output"
 }
 
 @test "context-bar: 90% renders 9 filled cells in gradient" {
@@ -181,9 +181,9 @@ _render() {
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":0,"current_usage":0,"context_size":"200K"}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "0%"
+  grep -q "0%" <<<"$output"
   # No filled "#" cells in line 1.
-  ! echo "$output" | head -1 | grep -q "#"
+  ! head -1 <<<"$output" | grep -q "#"
 }
 
 @test "context-bar: null used_percentage suppresses entire chunk" {
@@ -194,5 +194,5 @@ _render() {
   stdin='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$TEST_TMP"'"},"context_window":{"used_percentage":null}}'
   run _render "$stdin"
   [ "$status" -eq 0 ]
-  ! echo "$output" | head -1 | grep -q "%"
+  ! head -1 <<<"$output" | grep -q "%"
 }

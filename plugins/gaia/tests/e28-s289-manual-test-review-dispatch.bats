@@ -18,6 +18,7 @@
 # fail-open / wrong-target defects cannot hide.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PLUGIN_DIR="$REPO_ROOT/plugins/gaia"
   HELPER="$PLUGIN_DIR/scripts/manual-test-review-dispatch.sh"

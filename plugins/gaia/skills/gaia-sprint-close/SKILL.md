@@ -142,10 +142,12 @@ When the `review→closed` path is taken via `sprint-state.sh transition`, Step 
 
 ### Step 4 — Yaml write
 
-The primary write path routes through `sprint-state.sh transition --to closed`. When the transition succeeds (the `review->closed` edge), `close.sh` stamps only `closed_at` (the status flip was handled by the boundary writer). When `sprint-state.sh` is absent or refuses the transition for a non-sentinel reason (e.g., `active->closed` is not a legal edge in the state machine), `close.sh` falls back to a direct `yq -i` write of both `status: closed` and `closed_at`. This fallback is safe because the sentinel gate (Step 3a) has already passed unconditionally before Step 4 runs, proving that a sprint review verdict exists (or was explicitly bypassed via `--force`).
+The primary write path routes through `sprint-state.sh transition --to closed`. When the transition succeeds (the `review->closed` edge), `close.sh` stamps only `closed_at` (the status flip was handled by the boundary writer). `close.sh` captures the transition's exit code and stderr so it can distinguish three failure cases:
 
 - Primary: `sprint-state.sh transition --sprint <id> --to closed` (boundary writer).
-- Fallback: `yq -i '.status = "closed" | .closed_at = "<ISO 8601 UTC>"' <yaml_path>` — fires when the transition is not a legal state-machine edge (e.g., closing from `active` without an intermediate `review` step) or when `sprint-state.sh` is not available.
+- Mismatch refusal: when the transition exits 2 and stderr contains the sprint-id mismatch phrase (`does not match active sprint-status.yaml sprint_id`), `close.sh` propagates the writer's message (which names both the caller's id and the yaml's id) and stops without writing anything. This prevents a close with a stale or wrong sprint id from silently corrupting the yaml.
+- Non-mismatch exit 2: when the transition exits 2 without the mismatch phrase (e.g., a parse error), `close.sh` emits the writer's stderr plus a generic "transition failed" diagnostic and stops without writing anything.
+- Fallback: `yq -i '.status = "closed" | .closed_at = "<ISO 8601 UTC>"' <yaml_path>` — fires on any other non-zero exit (including the missing-sentinel refusal that the `--force` bypass relies on, and `active->closed` not being a legal edge in the state machine) or when `sprint-state.sh` is not available. This fallback is safe because the sentinel gate (Step 3a) has already passed unconditionally before Step 4 runs, proving that a sprint review verdict exists (or was explicitly bypassed via `--force`).
 
 ### Step 5 — Archive
 

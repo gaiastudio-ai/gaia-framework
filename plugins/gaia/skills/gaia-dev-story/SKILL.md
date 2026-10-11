@@ -648,11 +648,23 @@ narrative that previously inferred CI configuration inline.
   invisible in the run log and operators only discover Steps 10–13 didn't
   fire after the fact.
 - For commit-message construction, run
-  `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh {story_path}`
+  `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh {story_path} [--scope <product_scope>]`
   and feed its stdout to `git commit -F -`. Do NOT compose Conventional Commit
-  subject lines inline — `commit-msg.sh` is the single source of truth. The script enforces the
-  `<type>(<story_key>): <title>` schema and the no-`Claude` / no-`AI` /
-  no-`Co-Authored-By` policy from CLAUDE.md.
+  subject lines inline — `commit-msg.sh` is the single source of truth.
+
+  **Scope choice rule.** The `--scope` flag accepts the lowercase name of the
+  main skill or script area the change touches; omit only when the change
+  spans many areas. The scope must NOT be a story key — story keys belong
+  in the `Story:` body line.
+
+  The script emits:
+  ```
+  <type>[(<scope>)]: <title>
+
+  Story: <story_key>
+  ```
+  The story key is in the body `Story:` line, never in the subject scope.
+  The no-`Claude` / no-`AI` / no-`Co-Authored-By` policy from CLAUDE.md is enforced.
 
 **Narrative Fallback (deprecated v1.131.x → v1.132.0):**
 For brownfield projects on a stale plugin where these scripts are not yet present,
@@ -723,10 +735,18 @@ inline.
   supplied (forwarded from Step 11a), pr-body.sh emits a fifth
   section `## Allow-stub override` containing the reason.
 - Then invoke `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/pr-create.sh
-  {story_key} {title} --body-file <(printf '%s\n' "$PR_BODY")` (or pipe `$PR_BODY`
-  via the helper's body-file convention) so that `pr-create.sh` consumes the
-  pre-rendered body rather than constructing one inline. Do NOT hand-craft the PR
-  body in chat — `pr-body.sh` is the single source of truth.
+  {story_key} "$PR_TITLE" --body-file <(printf '%s\n' "$PR_BODY")` where
+  `$PR_TITLE` is the first line (subject) of the Step 10 commit message.
+  The `--body-file` flag passes `$PR_BODY` (the pre-rendered body from
+  `pr-body.sh`) so that `pr-create.sh` consumes it rather than constructing
+  one inline. Do NOT hand-craft the PR body in chat — `pr-body.sh` is the single
+  source of truth.
+
+  **Resumed-run instruction.** When Step 11 runs after a context break (the
+  Step 10 commit message is no longer in the conversation context), re-run
+  `commit-msg.sh {story_path} [--scope <product_scope>]` with the same
+  `--scope` used in Step 10. Extract `$PR_TITLE` from the first line of the
+  fresh output. Do NOT guess the title or omit the scope.
 
 **Narrative Fallback (deprecated v1.131.x → v1.132.0):**
 For brownfield projects on a stale plugin where `pr-body.sh` is not yet present,
@@ -748,8 +768,14 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 12 wait-ci {story_key}` to record the step-boundary event.
 
-- Run `scripts/ci-wait.sh {pr_number}` to poll CI status.
-- The script handles timeout, transient errors, and failure reporting.
+- **Preferred (background):** Run `scripts/ci-wait.sh {pr_number}` as a background command (no `--timeout` — the script honours the config value or its 30-minute default internally). Wait for the background command's completion notice before evaluating the result; never start Step 13 before the script finishes.
+- **Fallback (foreground):** If background running is unavailable, fall back to bounded foreground runs. The total budget equals the configured `ci_wait_timeout_minutes` or the 30-minute default. Run `scripts/ci-wait.sh {pr_number} --timeout {T}` with `{T}` = min(8, remaining budget in minutes) and the Bash tool timeout set to 600000 ms (10 minutes). After each run, apply the outcome rules below; on a "timed out" result with budget remaining, re-run with the next min(8, remaining).
+- **Outcome rules (both paths):**
+  - **Exit 0** with stdout containing "passed" → CI checks passed. Proceed to Step 13.
+  - **Exit 1** with stderr containing "timed out" and budget remaining (foreground only) → re-run as described above.
+  - **Exit 1** with stderr containing "timed out" and no budget remaining → HALT the story run (CI has not passed).
+  - **Exit 1** with other stderr → CI check failed. Report the failure, name the failing checks from stderr, and HALT the story run.
+- The script polls required checks via `gh pr checks --required` on each poll until the `gh` version reports the flag unsupported, then falls back to all checks (with a note on stderr). It validates JSON with jq, handles cancel buckets as failures, applies a two-poll stability rule to prevent early exit on late-registering checks, and respects a configurable grace window for repos where checks take time to appear.
 
 ### Step 13 -- Merge PR
 

@@ -176,7 +176,7 @@ _assert_cd_before_guard() {
   cd "$primary"
 
   PROJECT_PATH="$NONGIT_CWD" run --separate-stderr \
-    "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "a title" --body-file "$TEST_TMP/does-not-exist.md"
+    "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "fix: a title" --body-file "$TEST_TMP/does-not-exist.md"
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"skipped (non-git CWD)"* ]]
   [[ "$stderr" != *"not readable"* ]]
@@ -207,7 +207,7 @@ _assert_cd_before_guard() {
   [ ! -e "$elsewhere/body.md" ]
 
   PROJECT_PATH="$primary" run --separate-stderr \
-    "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "a title" --body-file "body.md"
+    "$DEVSTORY_SCRIPTS/pr-create.sh" "K1-S1" "fix: a title" --body-file "body.md"
 
   # Guard against the failure mode this test previously had: if the run aborted
   # on the protected-branch invariant it never reached the body-file logic, so
@@ -243,7 +243,7 @@ _step_3a_region() {
   [ -n "$region" ]
 
   local body; body="$(printf '%s\n' "$region" | awk '/```bash/{f=1;next} /```/{f=0} f')"
-  printf '%s\n' "$body" | grep -q 'worktree_create' \
+  grep -q 'worktree_create' <<<"$body" \
     || { echo "no create call found in the step fences"; return 1; }
 
   # Walk the fence bodies tracking whether we are inside the else arm of a
@@ -278,7 +278,7 @@ EOF
   local region; region="$(_step_3a_region)" || { echo "step region not found"; return 1; }
   # An "I already checked" argument would be unverifiable by construction, so
   # the step must not carry one.
-  if printf '%s\n' "$region" | grep -q 'mode-checked'; then
+  if grep -q 'mode-checked' <<<"$region"; then
     echo "the step still references a gate-bypass token"
     return 1
   fi
@@ -290,8 +290,8 @@ EOF
 
   # The create fence must branch on the reserved degradation code, so a project
   # root with no git work tree runs in place instead of aborting the story.
-  printf '%s\n' "$body" | grep -q -- '-eq 3' \
+  grep -q -- '-eq 3' <<<"$body" \
     || { echo "the step does not handle the non-git degradation code"; return 1; }
-  printf '%s\n' "$body" | grep -qi 'running in place' \
+  grep -qi 'running in place' <<<"$body" \
     || { echo "the step does not say it runs in place on degradation"; return 1; }
 }

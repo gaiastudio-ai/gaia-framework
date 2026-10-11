@@ -107,8 +107,8 @@ STUB
   [ "$status" -eq 0 ]
   [ -n "$output" ]
   # Brand glyph + GAIA + version + model + project segment.
-  echo "$output" | grep -q "GAIA"
-  echo "$output" | grep -q "9.9.9-test"
+  grep -q "GAIA" <<<"$output"
+  grep -q "9.9.9-test" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -137,8 +137,8 @@ PJ
   run bash -c "printf '%s' '$STDIN_JSON' | '$RUNTIME'"
   [ "$status" -eq 0 ]
   # Must show the tier-1 cache version, NOT the tier-2 in-tree 9.9.9-test.
-  echo "$output" | grep -q "1.141.0-active"
-  ! echo "$output" | grep -q "9.9.9-test"
+  grep -q "1.141.0-active" <<<"$output"
+  ! grep -q "9.9.9-test" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ PJ
   run bash -c "COLUMNS=49 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/test printf '%s' '$STDIN_JSON' | env COLUMNS=49 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/test '$RUNTIME'"
   [ "$status" -eq 0 ]
   # Branch segment must NOT be in output.
-  ! echo "$output" | grep -q "feature/test"
+  ! grep -q "feature/test" <<<"$output"
 }
 
 @test "TC-4: width ladder at 80 cols keeps branch segment" {
@@ -174,7 +174,7 @@ PJ
   cd "$TEST_TMP"
   run bash -c "COLUMNS=80 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/test printf '%s' '$STDIN_JSON' | env COLUMNS=80 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/test '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "feature/test"
+  grep -q "feature/test" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ PJ
   cd "$TEST_TMP"
   run bash -c "GAIA_STATUSLINE_THEME=rich printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_THEME=rich '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "sprint-99"
+  grep -q "sprint-99" <<<"$output"
 }
 
 @test "TC-6: minimal theme does NOT read sprint-status.yaml (sprint-43 update)" {
@@ -197,7 +197,7 @@ PJ
   cd "$TEST_TMP"
   run bash -c "GAIA_STATUSLINE_THEME=minimal printf '%s' '$STDIN_JSON' | env GAIA_STATUSLINE_THEME=minimal '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q "sprint-99"
+  ! grep -q "sprint-99" <<<"$output"
 }
 
 @test "TC-6 (sprint-43): default theme NOW reads sprint-status.yaml (rich is default)" {
@@ -206,7 +206,7 @@ PJ
   cd "$TEST_TMP"
   run bash -c "printf '%s' '$STDIN_JSON' | '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "sprint-99"
+  grep -q "sprint-99" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -220,7 +220,7 @@ PJ
   [ "$status" -eq 0 ]
   # OSC-8 sequence: ESC ] 8 ; ; URL ESC \ TEXT ESC ] 8 ; ; ESC \
   # Detect the bell-form OSC-8: ESC ] 8 (octal \033]8) anywhere.
-  echo "$output" | LC_ALL=C grep -q $'\033\]8'
+  LC_ALL=C grep -q $'\033\]8' <<<"$output"
 }
 
 @test "TC-15: OSC-8 NOT emitted for TERM_PROGRAM=xterm-256color" {
@@ -228,7 +228,7 @@ PJ
   cd "$TEST_TMP"
   run bash -c "TERM_PROGRAM=xterm-256color printf '%s' '$STDIN_JSON' | env TERM_PROGRAM=xterm-256color '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | LC_ALL=C grep -q $'\033\]8'
+  ! LC_ALL=C grep -q $'\033\]8' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -299,8 +299,8 @@ assert_no_orphans() {
   run bash -c "printf '%s' '$STDIN_JSON' | '$RUNTIME'"
   [ "$status" -eq 0 ]
   # Default render contains GAIA brand AND at least one separator.
-  echo "$output" | grep -q "GAIA"
-  echo "$output" | grep -q " | "
+  grep -q "GAIA" <<<"$output"
+  grep -q " | " <<<"$output"
 }
 
 @test "E82-S5 / AC2: empty PROJECT chunk produces no orphan separator" {
@@ -348,7 +348,7 @@ assert_no_orphans() {
   STDIN_PIPE='{"model":{"id":"a","display_name":"A | B"},"workspace":{"current_dir":"'"$TEST_TMP"'"}}'
   run bash -c "printf '%s' '$STDIN_PIPE' | '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "A | B"
+  grep -q "A | B" <<<"$output"
 }
 
 @test "E82-S5 / smoke: very narrow COLS (only BRAND survives) has zero separators" {
@@ -396,7 +396,7 @@ JSON
   # No prior per-day marker.
   run bash -c "HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "stale: rerun install-statusline"
+  grep -q "stale: rerun install-statusline" <<<"$output"
 }
 
 @test "E82-S6 / WARN: per-day suppression — second render same UTC day omits the warn segment" {
@@ -409,11 +409,11 @@ JSON
   # First render — should emit the warn.
   run bash -c "HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "stale: rerun install-statusline"
+  grep -q "stale: rerun install-statusline" <<<"$output"
   # Second render same day — should NOT emit (per-day marker is now present).
   run bash -c "HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q "stale: rerun install-statusline"
+  ! grep -q "stale: rerun install-statusline" <<<"$output"
 }
 
 @test "E82-S6 / WARN: backward-compat — cache without installed_version_stale field does not emit warn" {
@@ -426,7 +426,7 @@ JSON
 JSON
   run bash -c "HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' GAIA_STATUSLINE_ASCII=1 '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q "stale:"
+  ! grep -q "stale:" <<<"$output"
 }
 
 # ===========================================================================
@@ -444,15 +444,15 @@ JSON
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
   line2="$(echo "$output" | tail -1)"
-  echo "$line2" | grep -q "feature/x"
+  grep -q "feature/x" <<<"$line2"
   # branch | dirty-counts | project = two separators.
   sep_count=$(echo "$line2" | grep -o " | " | wc -l | tr -d ' ')
   [ "$sep_count" -ge 2 ]
   stripped="$(echo "$line2" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
-  echo "$stripped" | grep -q "S +30 -4"
-  echo "$stripped" | grep -q "U +12 -3"
+  grep -q "S +30 -4" <<<"$stripped"
+  grep -q "U +12 -3" <<<"$stripped"
   # The legacy standalone "*" chunk is gone.
-  ! echo "$stripped" | grep -qE '\| \* \|'
+  ! grep -qE '\| \* \|' <<<"$stripped"
 }
 
 @test "AF-27-5: dirty tree with no line diff (untracked-only) still shows +0 -0" {
@@ -463,8 +463,8 @@ JSON
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(echo "$output" | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
-  echo "$stripped" | grep -q "S +0 -0"
-  echo "$stripped" | grep -q "U +0 -0"
+  grep -q "S +0 -0" <<<"$stripped"
+  grep -q "U +0 -0" <<<"$stripped"
 }
 
 @test "AF-27-5: counts absent from cache (legacy dirty=true) default to +0 -0" {
@@ -475,8 +475,8 @@ JSON
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
   stripped="$(echo "$output" | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\]8;;[^\\]*\\//g')"
-  echo "$stripped" | grep -q "S +0 -0"
-  echo "$stripped" | grep -q "U +0 -0"
+  grep -q "S +0 -0" <<<"$stripped"
+  grep -q "U +0 -0" <<<"$stripped"
 }
 
 @test "E82-S8 / AC3: git_dirty=false leaves BRANCH chunk clean" {
@@ -490,8 +490,8 @@ JSON
   [ "$status" -eq 0 ]
   # Branch should be "feature/x" with NO trailing asterisk (other asterisks
   # may appear elsewhere, e.g., GLYPH_SPARK).
-  echo "$output" | grep -q "feature/x"
-  ! echo "$output" | grep -q "feature/x\*"
+  grep -q "feature/x" <<<"$output"
+  ! grep -q "feature/x\*" <<<"$output"
 }
 
 @test "E82-S8 / AC4: detached HEAD (BRANCH empty) -> no dirty marker leaks" {
@@ -505,7 +505,7 @@ JSON
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE='' printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE='' '$RUNTIME'"
   [ "$status" -eq 0 ]
   # No branch glyph anywhere — and no stray dirty marker leaking elsewhere.
-  ! echo "$output" | grep -q "@ "
+  ! grep -q "@ " <<<"$output"
 }
 
 @test "E82-S8 / backward-compat: cache without git_dirty field -> no marker" {
@@ -517,7 +517,7 @@ JSON
 JSON
   run bash -c "HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x printf '%s' '$STDIN_JSON' | env HOME='$TEST_TMP' COLUMNS=200 GAIA_STATUSLINE_ASCII=1 GAIA_STATUSLINE_BRANCH_OVERRIDE=feature/x '$RUNTIME'"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q "feature/x\*"
+  ! grep -q "feature/x\*" <<<"$output"
 }
 
 # ---------- model display-name: strip trailing context-window parenthetical ----
@@ -534,31 +534,31 @@ _model_line() { # $1 = display_name ; prints stripped line 1 (no color)
 
 @test "model: strips '(1M context)' suffix -> shows bare model" {
   _model_line "Opus 4.7 (1M context)"
-  echo "$output" | grep -q "Opus 4.7"
-  ! echo "$output" | grep -q "1M context"
-  ! echo "$output" | grep -qF "(1M"
+  grep -q "Opus 4.7" <<<"$output"
+  ! grep -q "1M context" <<<"$output"
+  ! grep -qF "(1M" <<<"$output"
 }
 
 @test "model: strips '(1M)' suffix" {
   _model_line "Opus 4.7 (1M)"
-  echo "$output" | grep -q "Opus 4.7"
-  ! echo "$output" | grep -qF "(1M)"
+  grep -q "Opus 4.7" <<<"$output"
+  ! grep -qF "(1M)" <<<"$output"
 }
 
 @test "model: strips '(200K context)' suffix" {
   _model_line "Sonnet 4.6 (200K context)"
-  echo "$output" | grep -q "Sonnet 4.6"
-  ! echo "$output" | grep -q "200K context"
+  grep -q "Sonnet 4.6" <<<"$output"
+  ! grep -q "200K context" <<<"$output"
 }
 
 @test "model: leaves a plain model name unchanged" {
   _model_line "Claude Opus 4.7"
-  echo "$output" | grep -q "Claude Opus 4.7"
+  grep -q "Claude Opus 4.7" <<<"$output"
 }
 
 @test "model: leaves a NON-context parenthetical intact (e.g. '(preview)')" {
   _model_line "Opus 4.7 (preview)"
-  echo "$output" | grep -qF "Opus 4.7 (preview)"
+  grep -qF "Opus 4.7 (preview)" <<<"$output"
 }
 
 # ---------- AF-27-7: installed runtime self-heals from the plugin cache -----

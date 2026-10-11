@@ -151,3 +151,47 @@ EOF
   grep -F "phases: [red]" "$CHANGELOG"
   grep -F "threshold: off" "$CHANGELOG"
 }
+
+# ---------------------------------------------------------------------------
+# ci_cd.ci_wait_timeout_minutes resolver tests
+# ---------------------------------------------------------------------------
+
+@test "ci_cd.ci_wait_timeout_minutes set returns raw value" {
+  cat >> "$TEST_TMP/config/project-config.yaml" <<'EOF'
+ci_cd:
+  ci_wait_timeout_minutes: 15
+EOF
+  run "$RESOLVE" --shared "$TEST_TMP/config/project-config.yaml" \
+                 --field ci_cd.ci_wait_timeout_minutes
+  [ "$status" -eq 0 ]
+  [ "$output" = "15" ]
+}
+
+@test "ci_cd.ci_wait_timeout_minutes absent returns empty with exit 0" {
+  run "$RESOLVE" --shared "$TEST_TMP/config/project-config.yaml" \
+                 --field ci_cd.ci_wait_timeout_minutes
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "ci_cd.ci_wait_timeout_minutes zero returns raw value" {
+  cat >> "$TEST_TMP/config/project-config.yaml" <<'EOF'
+ci_cd:
+  ci_wait_timeout_minutes: 0
+EOF
+  run "$RESOLVE" --shared "$TEST_TMP/config/project-config.yaml" \
+                 --field ci_cd.ci_wait_timeout_minutes
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+}
+
+@test "ci_cd.ci_wait_timeout_minutes non-integer returns raw value" {
+  cat >> "$TEST_TMP/config/project-config.yaml" <<'EOF'
+ci_cd:
+  ci_wait_timeout_minutes: abc
+EOF
+  run "$RESOLVE" --shared "$TEST_TMP/config/project-config.yaml" \
+                 --field ci_cd.ci_wait_timeout_minutes
+  [ "$status" -eq 0 ]
+  [ "$output" = "abc" ]
+}

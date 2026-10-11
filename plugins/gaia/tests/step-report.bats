@@ -75,20 +75,20 @@ teardown() {
   run bash "$SCRIPT" --events "$EVENTS_3STEP"
   [ "$status" -eq 0 ]
   # Verify step rows are present
-  echo "$output" | grep -Eq 'load-story.*5 min'
-  echo "$output" | grep -Eq 'validate.*8 min'
-  echo "$output" | grep -Eq 'implement.*12 min'
+  grep -Eq 'load-story.*5 min' <<<"$output"
+  grep -Eq 'validate.*8 min' <<<"$output"
+  grep -Eq 'implement.*12 min' <<<"$output"
   # Verify total line
-  echo "$output" | grep -Eq 'Total wall-clock.*25 min'
+  grep -Eq 'Total wall-clock.*25 min' <<<"$output"
 }
 
 @test "text mode labels token estimates as approximate" {
   run bash "$SCRIPT" --events "$EVENTS_3STEP"
   [ "$status" -eq 0 ]
   # Token values must always be labelled approximate
-  echo "$output" | grep -Eq 'approx'
+  grep -Eq 'approx' <<<"$output"
   # Total token line must say approximate
-  echo "$output" | grep -Eq 'Total token estimate.*approx'
+  grep -Eq 'Total token estimate.*approx' <<<"$output"
 }
 
 @test "last step (open-ended) is excluded from the table" {
@@ -107,8 +107,8 @@ teardown() {
   # Steps 1 and 2 should have n/a tokens (step 1: next has no snapshot;
   # step 2: self has no snapshot)
   # The word n/a must appear for the steps without token data
-  echo "$output" | grep -Eq 'load-story.*n/a'
-  echo "$output" | grep -Eq 'validate.*n/a'
+  grep -Eq 'load-story.*n/a' <<<"$output"
+  grep -Eq 'validate.*n/a' <<<"$output"
 }
 
 @test "steps with missing tokens have null tokens in JSON" {
@@ -143,7 +143,7 @@ teardown() {
   token_lines=$(echo "$output" | grep -i 'tok' || true)
   [ -n "$token_lines" ]
   while IFS= read -r line; do
-    echo "$line" | grep -Eiq '(approx|n/a|estimated)' \
+    grep -Eiq '(approx|n/a|estimated)' <<<"$line" \
       || { echo "line implies exact token count: $line" >&2; false; }
   done <<< "$token_lines"
 }
@@ -160,8 +160,8 @@ teardown() {
   run bash "$SCRIPT" --events "$EVENTS_3STEP"
   [ "$status" -eq 0 ]
   # Must have a story header and a table-like structure
-  echo "$output" | grep -Eq 'E960-S1'
-  echo "$output" | grep -Eq 'Step'
+  grep -Eq 'E960-S1' <<<"$output"
+  grep -Eq 'Step' <<<"$output"
 }
 
 @test "script is read-only (writes nothing to disk)" {
@@ -261,7 +261,7 @@ EOF
 @test "--help prints usage and exits 0" {
   run bash "$SCRIPT" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'step-report'
+  grep -Eq 'step-report' <<<"$output"
 }
 
 @test "non-step_boundary events are ignored" {

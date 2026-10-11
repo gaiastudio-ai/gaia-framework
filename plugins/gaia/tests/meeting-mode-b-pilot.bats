@@ -172,9 +172,9 @@ teardown() { common_teardown; }
   [[ "$items" =~ "Review threat model" ]]
   [[ "$items" =~ "security" ]]
   # YAML-parseable lines.
-  echo "$items" | grep -qE '^\s*- description:'
-  echo "$items" | grep -qE '^\s*assignee:'
-  echo "$items" | grep -qE '^\s*due_date:'
+  grep -qE '^\s*- description:' <<<"$items"
+  grep -qE '^\s*assignee:' <<<"$items"
+  grep -qE '^\s*due_date:' <<<"$items"
 }
 
 @test "action-items format is identical between Mode A and Mode B for same input (AC3)" {

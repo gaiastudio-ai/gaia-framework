@@ -39,7 +39,7 @@ YAML
   run "$RESOLVER" --adapter my-custom --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
   # Output is absolute path to the custom adapter directory.
-  echo "$output" | grep -qF "/.gaia/custom/adapters/publish-my-custom"
+  grep -qF "/.gaia/custom/adapters/publish-my-custom" <<<"$output"
 }
 
 @test "custom adapter manifest exists at the resolved path" {
@@ -58,17 +58,17 @@ YAML
   run "$RESOLVER" --adapter npm --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
   # Returned path is the CUSTOM adapter (ADR-020 precedence)
-  echo "$output" | grep -qF "/.gaia/custom/adapters/publish-npm"
+  grep -qF "/.gaia/custom/adapters/publish-npm" <<<"$output"
   # Canonical WARN message per AC5
-  echo "$output" | grep -qF "WARN: custom adapter at .gaia/custom/adapters/publish-npm/ shadows built-in adapter"
+  grep -qF "WARN: custom adapter at .gaia/custom/adapters/publish-npm/ shadows built-in adapter" <<<"$output"
 }
 
 @test "built-in only): no custom → built-in wins, no WARN" {
   # No custom adapter — should resolve built-in npm.
   run "$RESOLVER" --adapter npm --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF "scripts/adapters/publish-npm"
-  ! echo "$output" | grep -q "WARN:"
+  grep -qF "scripts/adapters/publish-npm" <<<"$output"
+  ! grep -q "WARN:" <<<"$output"
 }
 
 # ---------- TC-PUB-10 (strict): --strict-builtin refuses sensitive shadow ----------
@@ -77,16 +77,16 @@ YAML
   _make_custom_adapter npm
   run "$RESOLVER" --adapter npm --strict-builtin --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 3 ]
-  echo "$output" | grep -qF "HALT: --strict-builtin refuses custom shadow for sensitive channel"
+  grep -qF "HALT: --strict-builtin refuses custom shadow for sensitive channel" <<<"$output"
 }
 
 @test "strict, non-sensitive): --strict-builtin does NOT block custom shadow on non-sensitive channel" {
   _make_custom_adapter homebrew  # homebrew is NOT in default sensitive list
   run "$RESOLVER" --adapter homebrew --strict-builtin --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF "/.gaia/custom/adapters/publish-homebrew"
+  grep -qF "/.gaia/custom/adapters/publish-homebrew" <<<"$output"
   # WARN still emitted because shadow exists
-  echo "$output" | grep -qF "WARN:"
+  grep -qF "WARN:" <<<"$output"
 }
 
 # ---------- SR-81 negative case: path-traversal payload ----------
@@ -107,25 +107,25 @@ SHIM
   ln -s "$outside" "$PROJECT_ROOT/.gaia/custom/adapters/publish-evil"
   run "$RESOLVER" --adapter evil --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qF "HALT: custom adapter resolves outside .gaia/custom/adapters/"
+  grep -qF "HALT: custom adapter resolves outside .gaia/custom/adapters/" <<<"$output"
 }
 
 @test "traversal payload (../../bin/sh) rejected by regex" {
   run "$RESOLVER" --adapter "../../bin/sh" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qF "violates regex"
+  grep -qF "violates regex" <<<"$output"
 }
 
 @test "uppercase in adapter_name rejected" {
   run "$RESOLVER" --adapter "MyAdapter" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qF "violates regex"
+  grep -qF "violates regex" <<<"$output"
 }
 
 @test "underscore in adapter_name rejected" {
   run "$RESOLVER" --adapter "my_adapter" --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qF "violates regex"
+  grep -qF "violates regex" <<<"$output"
 }
 
 @test "65-char name rejected (exceeds 64-char limit)" {
@@ -153,7 +153,7 @@ SHIM
   # No adapter-manifest.yaml
   run "$RESOLVER" --adapter noyaml --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qF "HALT: custom adapter missing adapter-manifest.yaml"
+  grep -qF "HALT: custom adapter missing adapter-manifest.yaml" <<<"$output"
 }
 
 @test "C1 fix): custom adapter with missing required field is REJECTED" {
@@ -170,7 +170,7 @@ adapter_name: publish-incomplete
 YAML
   run "$RESOLVER" --adapter incomplete --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qiE 'HALT: custom adapter manifest missing required field'
+  grep -qiE 'HALT: custom adapter manifest missing required field' <<<"$output"
 }
 
 @test "C1 fix): custom adapter with complete manifest is ACCEPTED" {
@@ -184,7 +184,7 @@ YAML
 @test "Not found: nonexistent adapter exits 1 with diagnostic" {
   run "$RESOLVER" --adapter doesnt-exist --project-root "$PROJECT_ROOT" --plugin-root "$PLUGIN_DIR"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi "adapter not found"
+  grep -qi "adapter not found" <<<"$output"
 }
 
 # ---------- Project-config schema regex (SR-81 enforced schema-side) ----------

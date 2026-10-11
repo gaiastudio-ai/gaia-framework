@@ -171,7 +171,7 @@ EOF
   # --- S4: readiness gate REFUSES while stories are still backlog ---
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -Eiq 'E900-S1|E900-S2|not.?ready|ready-for-dev'
+  grep -Eiq 'E900-S1|E900-S2|not.?ready|ready-for-dev' <<<"$output"
 
   # --- activate each story: backlog → ready-for-dev (the E107-S5 transition) ---
   env "${CHAIN_ENV[@]}" bash "$TRANSITION" E900-S1 --to ready-for-dev
@@ -207,5 +207,5 @@ EOF
   # Gate must still refuse — naming the un-ready story.
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q 'E900-S2'
+  grep -q 'E900-S2' <<<"$output"
 }

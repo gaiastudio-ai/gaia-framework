@@ -45,7 +45,7 @@ teardown() { common_teardown; }
   line_count=$(grep -c '^' "$backup_dir/.sha256-manifest")
   [ "$line_count" = "2" ]
   while IFS= read -r line; do
-    echo "$line" | grep -qE '^[a-f0-9]{64}  [^ ]+$'
+    grep -qE '^[a-f0-9]{64}  [^ ]+$' <<<"$line"
   done < "$backup_dir/.sha256-manifest"
 }
 
@@ -69,8 +69,8 @@ teardown() { common_teardown; }
   printf 'X' >> "$backup_dir/ci.yml"
   run bash "$VERIFY" "$backup_dir"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qiE 'tampered|mismatch|drift|integrity'
-  echo "$output" | grep -q 'ci.yml'
+  grep -qiE 'tampered|mismatch|drift|integrity' <<<"$output"
+  grep -q 'ci.yml' <<<"$output"
 }
 
 @test "verify failure emits the canonical HALT message" {
@@ -80,7 +80,7 @@ teardown() { common_teardown; }
   printf 'X' >> "$backup_dir/ci.yml"
   run bash "$VERIFY" "$backup_dir"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'HALT: backup integrity check failed'
+  grep -q 'HALT: backup integrity check failed' <<<"$output"
 }
 
 # ---------- Usage / edge cases ----------
@@ -88,7 +88,7 @@ teardown() { common_teardown; }
 @test "verify-backup-integrity.sh: usage on missing argument" {
   run bash "$VERIFY"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qiE 'usage'
+  grep -qiE 'usage' <<<"$output"
 }
 
 @test "verify-backup-integrity.sh: missing manifest emits clear error" {
@@ -96,7 +96,7 @@ teardown() { common_teardown; }
   printf 'data\n' > "$TEST_TMP/no-manifest/foo.yml"
   run bash "$VERIFY" "$TEST_TMP/no-manifest"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'manifest|not found'
+  grep -qE 'manifest|not found' <<<"$output"
 }
 
 @test "verify-backup-integrity.sh: detects file added since manifest (extra-file drift)" {
@@ -106,5 +106,5 @@ teardown() { common_teardown; }
   printf 'tampered-extra\n' > "$backup_dir/extra.yml"
   run bash "$VERIFY" "$backup_dir"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'extra|unexpected|drift|tampered'
+  grep -qE 'extra|unexpected|drift|tampered' <<<"$output"
 }

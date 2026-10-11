@@ -36,8 +36,7 @@ teardown() { common_teardown; }
 _init_existing_record() {
   "$SCRIPT" init \
     --reference "test-ref" \
-    --discovered-via "created" \
-    --questionnaire-record "path/to/questionnaire.md"
+    --discovered-via "project-artifacts"
 }
 
 # =========================================================================
@@ -59,7 +58,7 @@ _init_existing_record() {
   dv="$(yq '.project.discovered_via' "$RECORD")"
   qr="$(yq '.project.questionnaire_record' "$RECORD")"
 
-  [ "$sv" = "1.0" ]
+  [ "$sv" = "2.0" ]
   [ "$app" = "not-applicable" ]
   [ "$ds" = "draft" ]
   [ "$iter" -eq 1 ]
@@ -152,7 +151,7 @@ _init_existing_record() {
   run "$SCRIPT" init-not-applicable --actor "design-gate"
   [ "$status" -ne 0 ]
   # Match the refusal text only — the temp path itself contains the word.
-  printf '%s\n' "${output//$TEST_TMP/}" | grep -qi "symlink" \
+  grep -qi "symlink" <<<"${output//$TEST_TMP/}" \
     || fail "expected a symlink refusal; got: $output"
   # The symlink target must be left empty
   [ ! -s "$target" ]

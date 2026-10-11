@@ -15,25 +15,25 @@ setup() {
   # Run the script directly to capture usage output
   local out
   out="$(bash "$SCRIPT")"
-  printf '%s' "$out" | grep -q 'extract_tech_debt_reflection'
+  grep -q 'extract_tech_debt_reflection' <<<"$out"
 }
 
 @test "usage documents build_proposal (AC3)" {
   local out
   out="$(bash "$SCRIPT")"
-  printf '%s' "$out" | grep -q 'build_proposal'
+  grep -q 'build_proposal' <<<"$out"
 }
 
 @test "usage documents validate_proposal (AC4)" {
   local out
   out="$(bash "$SCRIPT")"
-  printf '%s' "$out" | grep -q 'validate_proposal'
+  grep -q 'validate_proposal' <<<"$out"
 }
 
 @test "usage documents write_approved_proposal (AC5)" {
   local out
   out="$(bash "$SCRIPT")"
-  printf '%s' "$out" | grep -q 'write_approved_proposal'
+  grep -q 'write_approved_proposal' <<<"$out"
 }
 
 @test "SKILL.md Step 5e references usage docs (AC6)" {

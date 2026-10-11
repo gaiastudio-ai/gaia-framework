@@ -36,7 +36,7 @@ teardown() {
   # Skill-specific: code-review evidence references the linter checks.
   run jq -r '.checks[].name' "$EVIDENCE"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'eslint'
+  grep -q 'eslint' <<<"$output"
 }
 
 @test "${SKILL_NAME}: tier 2 — judgment maps evidence to findings with severities" {

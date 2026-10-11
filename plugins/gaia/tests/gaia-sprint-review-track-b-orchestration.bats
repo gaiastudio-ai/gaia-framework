@@ -4,6 +4,7 @@
 # Story: E93-S4. Traces to AC1, AC3, AC4, AC5, AC6, AC8, AC9.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   RUNNER="${BATS_TEST_DIRNAME}/../skills/gaia-sprint-review/scripts/track-b-dispatch.sh"
   FIXTURE_DIR="${BATS_TEST_DIRNAME}/../skills/gaia-sprint-review/tests/fixtures"
   FIXTURE="${FIXTURE_DIR}/test-fixture-command.sh"
@@ -54,8 +55,8 @@ teardown() {
   export FIXTURE_EXIT_CODE=0
   write_config 5
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
-  echo "$output" | grep -q "AWS_SECRET_ACCESS_KEY" && return 1
-  echo "$output" | grep -q "GITHUB_TOKEN" && return 1
+  grep -q "AWS_SECRET_ACCESS_KEY" <<<"$output" && return 1
+  grep -q "GITHUB_TOKEN" <<<"$output" && return 1
   return 0
 }
 
@@ -68,7 +69,7 @@ teardown() {
   end=$(date +%s)
   duration=$((end - start))
   [ "$duration" -lt 10 ]
-  echo "$output" | grep -q "TIMEOUT"
+  grep -q "TIMEOUT" <<<"$output"
 }
 
 @test "transcript file lands under .gaia/memory/checkpoints/sprint-review-{sprint_id}/ at mode 0600" {
@@ -93,21 +94,21 @@ teardown() {
   write_config 5
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "gitignore"
+  grep -qi "gitignore" <<<"$output"
 }
 
 @test "exit code 0 yields verdict PASSED" {
   export FIXTURE_EXIT_CODE=0
   write_config 5
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
-  echo "$output" | grep -q "PASSED"
+  grep -q "PASSED" <<<"$output"
 }
 
 @test "exit code 42 yields verdict FAILED" {
   export FIXTURE_EXIT_CODE=42
   write_config 5
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
-  echo "$output" | grep -q "FAILED"
+  grep -q "FAILED" <<<"$output"
 }
 
 @test "envelope JSON has all 9 required fields" {
@@ -116,7 +117,7 @@ teardown() {
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
   # Extract last line of JSON output (envelope array)
   for field in stack verdict exit_code stdout stderr transcript_path duration_seconds started_at ended_at; do
-    echo "$output" | grep -q "\"$field\"" || { echo "missing field $field in: $output"; return 1; }
+    grep -q "\"$field\"" <<<"$output" || { echo "missing field $field in: $output"; return 1; }
   done
 }
 
@@ -126,8 +127,8 @@ teardown() {
   write_config 5
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "GAIA_HEADLESS=1 detected"
-  echo "$output" | grep -q "Track B requires foreground"
+  grep -q "GAIA_HEADLESS=1 detected" <<<"$output"
+  grep -q "Track B requires foreground" <<<"$output"
 }
 
 @test "non-TTY stdout emits WARNING (not HALT) and continues" {
@@ -137,7 +138,7 @@ teardown() {
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
   [ "$status" -eq 0 ]
   # WARNING line emitted to stderr (captured in $output too by `run`)
-  echo "$output" | grep -qi "WARNING.*TTY" || true  # WARNING is optional under bats, but no HALT
+  grep -qi "WARNING.*TTY" <<<"$output" || true  # WARNING is optional under bats, but no HALT
 }
 
 @test "runner does NOT invoke AskUserQuestion" {
@@ -149,5 +150,5 @@ teardown() {
   echo "{}" >"$CONFIG"
   run bash "$RUNNER" --sprint sprint-47 --config "$CONFIG"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq "^\[\]" || echo "$output" | grep -q '\[\]'
+  grep -Eq "^\[\]" <<<"$output" || echo "$output" | grep -q '\[\]'
 }

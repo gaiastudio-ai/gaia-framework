@@ -78,7 +78,7 @@ teardown() { common_teardown; }
   GAIA_STRICT_LIFECYCLE=0 run bash "$SETUP_SH"
   # The F-33 gate emits a WARNING; or upstream gate kills it first. Both are acceptable; the
   # specific assertion is that the F-33 gate does NOT die when strict_on=0 AND matrix missing.
-  if echo "$output" | grep -qF "WARNING: traceability-matrix.md not found"; then
+  if grep -qF "WARNING: traceability-matrix.md not found" <<<"$output"; then
     # Expected path: F-33 gate reached, warned, proceeded
     true
   else

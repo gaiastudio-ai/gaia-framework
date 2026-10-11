@@ -42,7 +42,7 @@ teardown() { common_teardown; }
 @test "classify-commits.js usage message documents --stdin" {
   run node "$REPO_ROOT/scripts/classify-commits.js"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qFe '--stdin'
+  grep -qFe '--stdin' <<<"$output"
 }
 
 # --- Workflow wiring ---

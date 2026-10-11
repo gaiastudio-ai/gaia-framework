@@ -220,7 +220,7 @@ teardown() { common_teardown; }
   local entry
   while IFS= read -r entry; do
     [ -z "$entry" ] && continue
-    if printf '%s' "$rosters" | grep -qiE "persona:[[:space:]]*(gaia:)?${entry}([[:space:]]|$)"; then
+    if grep -qiE "persona:[[:space:]]*(gaia:)?${entry}([[:space:]]|$)" <<<"$rosters"; then
       echo "run-all-reviews declares reviewer teammate: $entry"
       return 1
     fi

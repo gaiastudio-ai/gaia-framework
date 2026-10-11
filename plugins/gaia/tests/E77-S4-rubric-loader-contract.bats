@@ -274,7 +274,7 @@ EOF
   # When --debug-order is implemented it emits one filename per line in merge
   # order. The first three lines must be the numerically-prefixed files in
   # ASC order; the last two lines the alpha-sorted non-prefixed files.
-  if printf '%s\n' "$order" | grep -q '^05-foo\.json$'; then
+  if grep -q '^05-foo\.json$' <<<"$order"; then
     [ "$(printf '%s\n' "$order" | sed -n '1p')" = "05-foo.json" ]
     [ "$(printf '%s\n' "$order" | sed -n '2p')" = "10-bar.json" ]
     [ "$(printf '%s\n' "$order" | sed -n '3p')" = "20-baz.json" ]

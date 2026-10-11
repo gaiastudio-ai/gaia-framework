@@ -201,7 +201,7 @@ YAML
   _write_plugin_json
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qi 'usage'
+  grep -qi 'usage' <<<"$output"
 }
 
 @test "unknown flag rejected with usage error" {
@@ -209,7 +209,7 @@ YAML
   _write_plugin_json
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --bogus
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q 'unknown flag'
+  grep -q 'unknown flag' <<<"$output"
 }
 
 @test "version= form accepted" {
@@ -226,11 +226,11 @@ YAML
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): PASSED'
-  echo "$output" | grep -q 'step 2/5 (manifest-version-check): PASSED'
-  echo "$output" | grep -q 'step 3/5 (trigger-publish): PASSED'
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
-  echo "$output" | grep -q 'step 5/5 (final-verdict): PASSED'
+  grep -q 'step 1/5 (pre-publish-gate): PASSED' <<<"$output"
+  grep -q 'step 2/5 (manifest-version-check): PASSED' <<<"$output"
+  grep -q 'step 3/5 (trigger-publish): PASSED' <<<"$output"
+  grep -q 'step 4/5 (post-publish-verify): PASSED' <<<"$output"
+  grep -q 'step 5/5 (final-verdict): PASSED' <<<"$output"
 }
 
 @test "assessment doc written + names channel + verdict PASSED" {
@@ -253,8 +253,8 @@ YAML
   _write_plugin_json 2.0.0   # manifest says 2.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0   # asking for 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 2/5 (manifest-version-check): FAILED'
-  echo "$output" | grep -q 'does not match'
+  grep -q 'step 2/5 (manifest-version-check): FAILED' <<<"$output"
+  grep -q 'does not match' <<<"$output"
 }
 
 @test "leading v on --version is normalized for comparison" {
@@ -271,10 +271,10 @@ YAML
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --dry-run
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 3/5 (trigger-publish): PASSED'
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): SKIPPED'
-  echo "$output" | grep -q 'dry-run mode'
-  echo "$output" | grep -q 'step 5/5 (final-verdict): SKIPPED'
+  grep -q 'step 3/5 (trigger-publish): PASSED' <<<"$output"
+  grep -q 'step 4/5 (post-publish-verify): SKIPPED' <<<"$output"
+  grep -q 'dry-run mode' <<<"$output"
+  grep -q 'step 5/5 (final-verdict): SKIPPED' <<<"$output"
 }
 
 @test "dry-run records the dry-run in the assessment doc" {
@@ -295,9 +295,9 @@ YAML
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --skip-verify
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): SKIPPED'
-  echo "$output" | grep -qE 'WARNING|skip-verify'
-  echo "$output" | grep -q 'step 5/5 (final-verdict): PASSED'
+  grep -q 'step 4/5 (post-publish-verify): SKIPPED' <<<"$output"
+  grep -qE 'WARNING|skip-verify' <<<"$output"
+  grep -q 'step 5/5 (final-verdict): PASSED' <<<"$output"
 }
 
 # ---------- AC4: config resolution ----------
@@ -305,7 +305,7 @@ YAML
 @test "missing project-config.yaml fails with clear error" {
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q 'project-config.yaml not found'
+  grep -q 'project-config.yaml not found' <<<"$output"
 }
 
 @test "missing distribution.channel fails with clear error" {
@@ -314,7 +314,7 @@ project_name: example
 YAML
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q 'distribution.channel not set'
+  grep -q 'distribution.channel not set' <<<"$output"
 }
 
 # ---------- AC5: per-step progress markers consistent ----------
@@ -353,15 +353,15 @@ YAML
   export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"failure","headSha":"abc123"},{"name":"lint","status":"completed","conclusion":"success","headSha":"abc123"}]'
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): FAILED'
+  grep -q 'step 1/5 (pre-publish-gate): FAILED' <<<"$output"
   # Step 2 MUST NOT run with PASSED status before the HALT — it is SKIPPED.
-  echo "$output" | grep -q 'step 2/5 (manifest-version-check): SKIPPED'
+  grep -q 'step 2/5 (manifest-version-check): SKIPPED' <<<"$output"
   # Step 3 (adapter trigger) MUST NOT run.
-  echo "$output" | grep -q 'step 3/5 (trigger-publish): SKIPPED'
+  grep -q 'step 3/5 (trigger-publish): SKIPPED' <<<"$output"
   # Stderr / output names the red check + commit SHA + remediation hint.
-  echo "$output" | grep -q 'test'
-  echo "$output" | grep -q 'abc123'
-  echo "$output" | grep -qi 'CI'
+  grep -q 'test' <<<"$output"
+  grep -q 'abc123' <<<"$output"
+  grep -qi 'CI' <<<"$output"
   # Audit-trail reason marker in assessment doc.
   local doc
   doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
@@ -376,7 +376,7 @@ YAML
   export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"success","headSha":"abc123"},{"name":"lint","status":"completed","conclusion":"success","headSha":"abc123"}]'
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): PASSED'
+  grep -q 'step 1/5 (pre-publish-gate): PASSED' <<<"$output"
 }
 
 @test "missing required check on HEAD → step 1 FAILED (treated as not-success)" {
@@ -387,8 +387,8 @@ YAML
   export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"success","headSha":"abc123"},{"name":"lint","status":"completed","conclusion":"success","headSha":"abc123"}]'
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): FAILED'
-  echo "$output" | grep -q 'required-extra'
+  grep -q 'step 1/5 (pre-publish-gate): FAILED' <<<"$output"
+  grep -q 'required-extra' <<<"$output"
 }
 
 @test "pending CI conclusion → step 1 FAILED" {
@@ -398,7 +398,7 @@ YAML
   export GH_FAKE_JSON='[{"name":"test","status":"in_progress","conclusion":null,"headSha":"abc123"}]'
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): FAILED'
+  grep -q 'step 1/5 (pre-publish-gate): FAILED' <<<"$output"
 }
 
 # ---------- TC-GPO-3: manifest version mismatch verbatim stderr ----------
@@ -411,10 +411,10 @@ YAML
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version v1.2.3
   [ "$status" -eq 1 ]
   # Step 2 FAILED; step 3 SKIPPED (no adapter trigger).
-  echo "$output" | grep -q 'step 2/5 (manifest-version-check): FAILED'
-  echo "$output" | grep -q 'step 3/5 (trigger-publish): SKIPPED'
+  grep -q 'step 2/5 (manifest-version-check): FAILED' <<<"$output"
+  grep -q 'step 3/5 (trigger-publish): SKIPPED' <<<"$output"
   # Verbatim AC4 format: "manifest version 1.2.4 does not match --version v1.2.3"
-  echo "$output" | grep -qF 'manifest version 1.2.4 does not match --version v1.2.3'
+  grep -qF 'manifest version 1.2.4 does not match --version v1.2.3' <<<"$output"
   # Audit-trail reason marker.
   local doc
   doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
@@ -431,8 +431,8 @@ YAML
   export GH_FAKE_JSON='[{"name":"test","status":"completed","conclusion":"failure","headSha":"abc123"}]'
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0 --dry-run
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): FAILED'
-  echo "$output" | grep -q 'step 3/5 (trigger-publish): SKIPPED'
+  grep -q 'step 1/5 (pre-publish-gate): FAILED' <<<"$output"
+  grep -q 'step 3/5 (trigger-publish): SKIPPED' <<<"$output"
 }
 
 # ---------- Backward-compat: config WITHOUT ci_cd.promotion_chain ----------
@@ -443,7 +443,7 @@ YAML
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 1/5 (pre-publish-gate): PASSED'
+  grep -q 'step 1/5 (pre-publish-gate): PASSED' <<<"$output"
 }
 
 # ---------- TC-GPO-5: post-publish verify adapter dispatch ----------
@@ -455,7 +455,7 @@ YAML
   ADAPTER_VERIFY_OUTCOME=PASSED _install_adapter_shim claude-marketplace
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=PASSED bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
+  grep -q 'step 4/5 (post-publish-verify): PASSED' <<<"$output"
 }
 
 @test "adapter verify returns FAILED → step 4 FAILED → orchestrator FAILED" {
@@ -465,8 +465,8 @@ YAML
   _install_adapter_shim claude-marketplace
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=FAILED bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): FAILED'
-  echo "$output" | grep -qi 'artifact not resolvable'
+  grep -q 'step 4/5 (post-publish-verify): FAILED' <<<"$output"
+  grep -qi 'artifact not resolvable' <<<"$output"
   # Audit trail records the FAILED step.
   local doc
   doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
@@ -480,8 +480,8 @@ YAML
   _install_adapter_shim claude-marketplace
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=UNVERIFIED bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
-  echo "$output" | grep -qi 'unverified'
+  grep -q 'step 4/5 (post-publish-verify): PASSED' <<<"$output"
+  grep -qi 'unverified' <<<"$output"
 }
 
 # ---------- TC-GPO-6: --skip-verify NFR-082 opt-out ----------
@@ -491,9 +491,9 @@ YAML
   _write_plugin_json 1.0.0
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0 --skip-verify
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): SKIPPED'
-  echo "$output" | grep -qi 'skip-verify opt-out\|MANDATORY post-publish registry probe bypassed'
-  echo "$output" | grep -qi 'WARNING'
+  grep -q 'step 4/5 (post-publish-verify): SKIPPED' <<<"$output"
+  grep -qi 'skip-verify opt-out\|MANDATORY post-publish registry probe bypassed' <<<"$output"
+  grep -qi 'WARNING' <<<"$output"
   # Audit trail records verify-skipped flag.
   local doc
   doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
@@ -513,7 +513,7 @@ YAML
   end=$SECONDS
   elapsed=$((end - start))
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): FAILED'
+  grep -q 'step 4/5 (post-publish-verify): FAILED' <<<"$output"
   # Tolerance band: 2s window + up to 5s CI jitter → elapsed should be < 8s.
   [ "$elapsed" -lt 8 ] || { echo "elapsed=${elapsed}s exceeds 8s tolerance" >&2; false; }
 }
@@ -527,8 +527,8 @@ YAML
   _install_adapter_shim claude-marketplace
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_VERIFY_OUTCOME=PASSED bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qi 'exceeds.*cap\|clamping to 3600\|clamp'
-  echo "$output" | grep -qi '3600'
+  grep -qi 'exceeds.*cap\|clamping to 3600\|clamp' <<<"$output"
+  grep -qi '3600' <<<"$output"
 }
 
 # ---------- Backward-compat: no adapter binary AND no manifest ----------
@@ -539,7 +539,7 @@ YAML
   # No adapter shim, no adapter manifest.
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): PASSED'
+  grep -q 'step 4/5 (post-publish-verify): PASSED' <<<"$output"
 }
 
 # ---------- TC-GPO-7: FAILED verdict propagation with adapter findings ----------
@@ -552,7 +552,7 @@ YAML
   local fixture_dir="$BATS_TEST_DIRNAME/fixtures/publish-adapter-contract/good"
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_FIXTURE_DIR="$fixture_dir" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): FAILED'
+  grep -q 'step 4/5 (post-publish-verify): FAILED' <<<"$output"
   # The adapter's summary is surfaced in the assessment doc.
   local doc
   doc=$(find "$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts" -name 'assessment-publish-*.md' | head -1)
@@ -570,8 +570,8 @@ YAML
   _install_adapter_crash_shim claude-marketplace 1
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 4/5 (post-publish-verify): FAILED'
-  echo "$output" | grep -qi 'adapter-internal-failure\|without writing findings'
+  grep -q 'step 4/5 (post-publish-verify): FAILED' <<<"$output"
+  grep -qi 'adapter-internal-failure\|without writing findings' <<<"$output"
 }
 
 # ---------- TC-GPO-9: envelope schema violation ----------
@@ -584,8 +584,8 @@ YAML
   local fixture_dir="$BATS_TEST_DIRNAME/fixtures/publish-adapter-contract/bad-missing-verdict"
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_FIXTURE_DIR="$fixture_dir" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi 'envelope.*schema.*violation\|adr-037'
-  echo "$output" | grep -qi 'verdict'
+  grep -qi 'envelope.*schema.*violation\|adr-037' <<<"$output"
+  grep -qi 'verdict' <<<"$output"
 }
 
 @test "verdict outside enum → envelope-schema-violation HALT" {
@@ -596,8 +596,8 @@ YAML
   local fixture_dir="$BATS_TEST_DIRNAME/fixtures/publish-adapter-contract/bad-verdict-outside-enum"
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_FIXTURE_DIR="$fixture_dir" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi 'envelope.*schema.*violation\|adr-037'
-  echo "$output" | grep -qF 'SUCCESS'
+  grep -qi 'envelope.*schema.*violation\|adr-037' <<<"$output"
+  grep -qF 'SUCCESS' <<<"$output"
 }
 
 @test "evidence not an array → envelope-schema-violation HALT" {
@@ -608,7 +608,7 @@ YAML
   local fixture_dir="$BATS_TEST_DIRNAME/fixtures/publish-adapter-contract/bad-evidence-not-array"
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" ADAPTER_FIXTURE_DIR="$fixture_dir" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi 'envelope.*schema.*violation\|adr-037'
+  grep -qi 'envelope.*schema.*violation\|adr-037' <<<"$output"
 }
 
 @test "malformed JSON in findings.json → envelope-schema-violation HALT" {
@@ -618,7 +618,7 @@ YAML
   _install_adapter_malformed_shim claude-marketplace
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qi 'envelope.*schema.*violation\|malformed\|invalid.*json'
+  grep -qi 'envelope.*schema.*violation\|malformed\|invalid.*json' <<<"$output"
 }
 
 # ---------- Adapter-manifest JSON Schema validation (SR-77 + SR-83) ----------
@@ -646,6 +646,6 @@ YAML
   # No plugin.json written
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" bash "$ORCH" --version 1.0.0
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'step 2/5 (manifest-version-check): FAILED'
-  echo "$output" | grep -q 'manifest file not found'
+  grep -q 'step 2/5 (manifest-version-check): FAILED' <<<"$output"
+  grep -q 'manifest file not found' <<<"$output"
 }

@@ -130,8 +130,8 @@ entries:
 EOF
   run bash "$LOADER" "gaia-create-story:load-context"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -q 'epics-and-stories'
-  printf '%s\n' "$output" | grep -q 'gaia-create-story:load-context'
+  grep -q 'epics-and-stories' <<<"$output"
+  grep -q 'gaia-create-story:load-context' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ entries:
 EOF
   run bash "$LOADER" "gaia-create-story:load-context"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'warn|optional'
+  grep -qiE 'warn|optional' <<<"$output"
 }
 
 @test "create-story:load-context warns and continues when OPTIONAL prd-overview node is absent" {
@@ -207,7 +207,7 @@ entries:
 EOF
   run bash "$LOADER" "gaia-create-story:load-context"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'warn|optional'
+  grep -qiE 'warn|optional' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -225,7 +225,7 @@ stages:
 EOF
   run bash "$LOADER" "gaia-create-story:load-context"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|skip'
+  grep -qiE 'un-?evaluable|warn|skip' <<<"$output"
 }
 
 @test "create-story:load-context fails OPEN on absent brain-index" {
@@ -233,14 +233,14 @@ EOF
   rm -f "$INDEX"
   run bash "$LOADER" "gaia-create-story:load-context"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|index'
+  grep -qiE 'un-?evaluable|warn|index' <<<"$output"
 }
 
 @test "create-story:load-context fails OPEN on unknown stage id" {
   _write_create_story_map
   run bash "$LOADER" "gaia-create-story:nonexistent"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|unknown stage|not.*map|warn'
+  grep -qiE 'un-?evaluable|unknown stage|not.*map|warn' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -284,7 +284,7 @@ EOF
   plug="$(cd "$SKILLS_DIR/.." && pwd)"
   run bash "$AUDIT" --plugin "$plug" --map "$MAP"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q 'gaia-create-story'
+  ! grep -q 'gaia-create-story' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------

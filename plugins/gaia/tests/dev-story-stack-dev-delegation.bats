@@ -54,7 +54,7 @@ teardown() { common_teardown; }
 @test "resolver supports the --story-file flag (contract the SKILL.md depends on)" {
   run "$RESOLVER" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qiE 'story|stack'
+  grep -qiE 'story|stack' <<<"$output"
 }
 
 @test "unsupported/unresolved stack HALTs rather than self-implementing" {

@@ -44,8 +44,8 @@ setup() {
   [ "$cleared_count" -eq 3 ]
   # Sanity: each cleared line should mention either "no matching shard" or
   # "Sub-Sharded".
-  printf '%s\n' "$cleared" | grep -q 'no matching shard'
-  printf '%s\n' "$cleared" | grep -q 'Sub-Sharded'
+  grep -q 'no matching shard' <<<"$cleared"
+  grep -q 'Sub-Sharded' <<<"$cleared"
 }
 
 @test "9 unchanged lines are real per-section drift (out of scope for this AF)" {

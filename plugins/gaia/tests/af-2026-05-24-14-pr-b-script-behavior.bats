@@ -67,7 +67,7 @@ EOF
   _highest="$(grep -oE 'AI-[0-9]+' "$TMPYAML" 2>/dev/null | sed 's/^AI-//' | sort -n | tail -1)"
   [ "$_highest" = "1" ]
   _resolved_payload="$NORM_PAYLOAD"
-  while printf '%s' "$_resolved_payload" | grep -qF 'AI-{auto}'; do
+  while grep -qF 'AI-{auto}' <<<"$_resolved_payload"; do
     _next=$((_highest + 1))
     _resolved_payload="$(printf '%s' "$_resolved_payload" | awk -v repl="AI-${_next}" '
       !done && /AI-\{auto\}/ { sub(/AI-\{auto\}/, repl); done=1 }
@@ -75,9 +75,9 @@ EOF
     ')"
     _highest=$_next
   done
-  printf '%s' "$_resolved_payload" | grep -qF 'id: AI-2'
-  printf '%s' "$_resolved_payload" | grep -qF 'id: AI-3'
-  ! printf '%s' "$_resolved_payload" | grep -qF 'AI-{auto}'
+  grep -qF 'id: AI-2' <<<"$_resolved_payload"
+  grep -qF 'id: AI-3' <<<"$_resolved_payload"
+  ! grep -qF 'AI-{auto}' <<<"$_resolved_payload"
   rm -f "$TMPYAML"
 }
 

@@ -205,7 +205,7 @@ _extract_entry_block() {
   [ -n "$entry_block" ]
 
   # At least one reviewed-in edge must be present.
-  printf '%s\n' "$entry_block" | grep -q 'type: reviewed-in'
+  grep -q 'type: reviewed-in' <<<"$entry_block"
 }
 
 # ---- TC-BRN-76 — story→done links final reviews via reviewed-in edges
@@ -304,7 +304,7 @@ YAML
   entry_block="$(_extract_entry_block "$MANIFEST" "E99-S1")"
 
   # Should have a reviewed-in edge.
-  printf '%s\n' "$entry_block" | grep -q 'type: reviewed-in'
+  grep -q 'type: reviewed-in' <<<"$entry_block"
 }
 
 # ---- TC-BRN-78 — repeated lifecycle events are idempotent
@@ -397,7 +397,7 @@ YAML
   [ -n "$lesson_after" ]
 
   # Synopsis must be preserved.
-  printf '%s\n' "$lesson_after" | grep -q 'Lesson from sprint 50 retro.'
+  grep -q 'Lesson from sprint 50 retro.' <<<"$lesson_after"
 }
 
 # ---- TC-BRN-80 — lesson entries survive a full index rebuild
@@ -459,5 +459,5 @@ YAML
   # Beta's edge must survive.
   local beta_block
   beta_block="$(_extract_entry_block "$MANIFEST" "lesson-process-beta")"
-  printf '%s\n' "$beta_block" | grep -q 'reviewed-in'
+  grep -q 'reviewed-in' <<<"$beta_block"
 }

@@ -56,13 +56,13 @@ _step1_body() {
 @test "Step 1 prose explicitly mentions the brainstorm artifact" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
-  echo "$body" | grep -qiE 'brainstorm'
+  grep -qiE 'brainstorm' <<<"$body"
 }
 
 @test "Step 1 prose names INDEX_GUIDED in the body (not just frontmatter)" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
-  echo "$body" | grep -qE 'INDEX_GUIDED'
+  grep -qE 'INDEX_GUIDED' <<<"$body"
 }
 
 # ---------- AC4 / Subtask 2.3: research artifacts permitted to FULL_LOAD ----------
@@ -75,8 +75,8 @@ _step1_body() {
   # narrowly scoped to the brainstorm artifact per E46-S10 Subtask 2.3.
   # We require both signals: a "smaller" / "typically small" qualifier AND
   # FULL_LOAD acceptance for non-brainstorm research artifacts.
-  echo "$body" | grep -qE 'FULL_LOAD|full-load|full load'
-  echo "$body" | grep -qiE 'smaller|typically small|under 20 ?kb|under 50 ?kb|small file'
+  grep -qE 'FULL_LOAD|full-load|full load' <<<"$body"
+  grep -qiE 'smaller|typically small|under 20 ?kb|under 50 ?kb|small file' <<<"$body"
 }
 
 @test "Step 1 prose narrows INDEX_GUIDED to the brainstorm artifact (Subtask 2.3)" {
@@ -85,13 +85,13 @@ _step1_body() {
   # Look for an explicit narrowing phrase: "INDEX_GUIDED applies … brainstorm"
   # or equivalent. The prose must make it readable that brainstorm is the
   # primary INDEX_GUIDED target while other research artifacts may FULL_LOAD.
-  echo "$body" | grep -qiE 'INDEX_GUIDED applies|INDEX_GUIDED.*brainstorm|brainstorm.*INDEX_GUIDED|narrowly|specifically.*brainstorm|brainstorm artifact'
+  grep -qiE 'INDEX_GUIDED applies|INDEX_GUIDED.*brainstorm|brainstorm.*INDEX_GUIDED|narrowly|specifically.*brainstorm|brainstorm artifact' <<<"$body"
 }
 
 @test "Step 1 prose names at least one of the research artifact types" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
-  echo "$body" | grep -qiE 'market research|domain research|technical research|tech research'
+  grep -qiE 'market research|domain research|technical research|tech research' <<<"$body"
 }
 
 # ---------- AC2: brainstorm path is named so the runtime heuristic can target it ----------
@@ -99,7 +99,7 @@ _step1_body() {
 @test "Step 1 prose references the brainstorm artifact glob" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
-  echo "$body" | grep -qE 'brainstorm-\*\.md|brainstorm\*\.md|(docs|\.gaia/artifacts)/creative-artifacts/brainstorm'
+  grep -qE 'brainstorm-\*\.md|brainstorm\*\.md|(docs|\.gaia/artifacts)/creative-artifacts/brainstorm' <<<"$body"
 }
 
 # ---------- AC3: graceful fallback prose (no halt for small artifacts) ----------
@@ -107,7 +107,7 @@ _step1_body() {
 @test "Step 1 prose documents fallback when an artifact lacks a parseable index" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
-  echo "$body" | grep -qiE 'fall ?back|fallback|degrade|degrades gracefully'
+  grep -qiE 'fall ?back|fallback|degrade|degrades gracefully' <<<"$body"
 }
 
 # ---------- Regression: existing load-list bullets preserved verbatim (Subtask 2.2) ----------
@@ -115,9 +115,9 @@ _step1_body() {
 @test "regression: Step 1 still scans market research, domain research, and technical research" {
   local body
   body="$(_step1_body "$SKILL_FILE")"
-  echo "$body" | grep -qiE 'market research'
-  echo "$body" | grep -qiE 'domain research'
-  echo "$body" | grep -qiE 'technical research|tech research'
+  grep -qiE 'market research' <<<"$body"
+  grep -qiE 'domain research' <<<"$body"
+  grep -qiE 'technical research|tech research' <<<"$body"
 }
 
 # ---------- Regression: output file path unchanged (DoD line) ----------

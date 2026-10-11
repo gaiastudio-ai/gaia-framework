@@ -632,7 +632,7 @@ frontmatter_value() {
   local analysis_block
   analysis_block="$(awk '/^### Phase 3A/,/^## Approval Gate/' "$SKILL_MD")"
   # No shell invocation of review-gate.sh update inside the analysis block.
-  if echo "$analysis_block" | grep -q 'review-gate\.sh update\|review-gate\.sh.*--story\|review-gate\.sh.*--gate\|review-gate\.sh.*--verdict'; then
+  if grep -q 'review-gate\.sh update\|review-gate\.sh.*--story\|review-gate\.sh.*--gate\|review-gate\.sh.*--verdict' <<<"$analysis_block"; then
     echo "FAIL: review-gate.sh invocation found in Review Phases 3A-7 (analysis phases should not finalize verdicts)"
     return 1
   fi

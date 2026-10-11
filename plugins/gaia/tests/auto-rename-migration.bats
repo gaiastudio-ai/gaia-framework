@@ -61,7 +61,7 @@ teardown() { common_teardown; }
   [ "$pre_sha" = "$post_sha" ]
   [ -f "$MEMORY/.config-stale" ]
   grep -q 'originating_skill\|deferred' "$MEMORY/.config-stale"
-  echo "$output" | grep -qiE 'warn|deferred|stale'
+  grep -qiE 'warn|deferred|stale' <<<"$output"
 }
 
 # ---------- TC-ARM-4: idempotent (already-prefixed files skip the prompt) ----------
@@ -74,7 +74,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
   [ -f "$WORKDIR/gaia-ci.yml" ]
   [ -f "$WORKDIR/user-deploy.yml" ]
-  echo "$output" | grep -qiE 'no migration|already|skip' || true
+  grep -qiE 'no migration|already|skip' <<<"$output" || true
 }
 
 # ---------- TC-ARM-5: backup created with byte-identical content + sha256 verified ----------
@@ -121,8 +121,8 @@ teardown() { common_teardown; }
   # GAIA_NONINTERACTIVE=1 simulates the substrate's non-interactive detection
   run env -u GAIA_MIGRATE_DECISION_ci_yml GAIA_NONINTERACTIVE=1 bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'HALT'
-  echo "$output" | grep -qE 'force|GAIA_MIGRATE_ALLOW_FORCE'
+  grep -q 'HALT' <<<"$output"
+  grep -qE 'force|GAIA_MIGRATE_ALLOW_FORCE' <<<"$output"
 }
 
 @test "force alone (without env-var) still HALTs" {
@@ -130,7 +130,7 @@ teardown() { common_teardown; }
   run env -u GAIA_MIGRATE_DECISION_ci_yml -u GAIA_MIGRATE_ALLOW_FORCE GAIA_NONINTERACTIVE=1 \
     bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration --force"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-84|GAIA_MIGRATE_ALLOW_FORCE'
+  grep -qE 'SR-84|GAIA_MIGRATE_ALLOW_FORCE' <<<"$output"
 }
 
 @test "env-var alone (without --force) still HALTs" {
@@ -138,7 +138,7 @@ teardown() { common_teardown; }
   run env -u GAIA_MIGRATE_DECISION_ci_yml GAIA_NONINTERACTIVE=1 GAIA_MIGRATE_ALLOW_FORCE=1 \
     bash -c "source '$MIGRATE' && PROJECT_ROOT='$PROJECT_ROOT' gaia_auto_rename_migration"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'SR-84|--force'
+  grep -qE 'SR-84|--force' <<<"$output"
 }
 
 @test "force AND env-var together succeed" {

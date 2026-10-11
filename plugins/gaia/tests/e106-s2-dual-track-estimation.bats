@@ -29,11 +29,11 @@ setup() {
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 5
   [ "$status" -eq 0 ]
   # 20 min/pt * 5 pt = 100 min ≈ 1.7h
-  echo "$output" | grep -Eq 'points:[[:space:]]*5' \
+  grep -Eq 'points:[[:space:]]*5' <<<"$output" \
     || { echo "expected points: 5, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eiq 'agent_wall_clock_estimate|~[0-9.]+h' \
+  grep -Eiq 'agent_wall_clock_estimate|~[0-9.]+h' <<<"$output" \
     || { echo "expected an agent-wall-clock estimate, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eq '1\.7h|~1\.7|100 ?min|~2h' \
+  grep -Eq '1\.7h|~1\.7|100 ?min|~2h' <<<"$output" \
     || { echo "expected ~1.7h (100 min) estimate, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -58,9 +58,9 @@ setup() {
 @test "cold-start (no telemetry) renders uncalibrated marker" {
   run bash "$SCRIPT" --events "$EVENTS_EMPTY" --sprint-yaml "$SPRINT_YAML" --points 5
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'uncalibrated' \
+  grep -Eiq 'uncalibrated' <<<"$output" \
     || { echo "expected uncalibrated marker, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eiq 'no closed-sprint telemetry' \
+  grep -Eiq 'no closed-sprint telemetry' <<<"$output" \
     || { echo "expected the 'no closed-sprint telemetry' reason, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -69,7 +69,7 @@ setup() {
   [ "$status" -eq 0 ]
   # the agent-wall-clock line must NOT carry a numeric hour/minute figure
   awc_line=$(echo "$output" | grep -i 'agent_wall_clock\|estimate' || true)
-  ! echo "$awc_line" | grep -Eq '~?[0-9]+(\.[0-9]+)?[hmd]\b' \
+  ! grep -Eq '~?[0-9]+(\.[0-9]+)?[hmd]\b' <<<"$awc_line" \
     || { echo "cold-start must not fabricate a number, got: $awc_line" >&2; false; }
 }
 
@@ -86,7 +86,7 @@ setup() {
 @test "render never emits calendar-month units" {
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 5
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -Eiq '\bmonths?\b' \
+  ! grep -Eiq '\bmonths?\b' <<<"$output" \
     || { echo "render must not emit month units, got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -94,9 +94,9 @@ setup() {
   # 20 min/pt * 100 pt = 2000 min = 33.3h -> should render as days (~4.2d), never months
   run bash "$SCRIPT" --events "$EVENTS_CAL" --sprint-yaml "$SPRINT_YAML" --points 100
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq '[0-9.]+d\b|days' \
+  grep -Eiq '[0-9.]+d\b|days' <<<"$output" \
     || { echo "expected agent-days for a large estimate, got:" >&2; echo "$output" >&2; false; }
-  ! echo "$output" | grep -Eiq '\bmonths?\b'
+  ! grep -Eiq '\bmonths?\b' <<<"$output"
 }
 
 # ---------- robustness ----------
@@ -109,7 +109,7 @@ setup() {
 @test "--help prints usage and exits 0" {
   run bash "$SCRIPT" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'dual-track'
+  grep -Eiq 'dual-track' <<<"$output"
 }
 
 # ---------- AC5: both render paths asserted (calibrated + cold-start) ----------

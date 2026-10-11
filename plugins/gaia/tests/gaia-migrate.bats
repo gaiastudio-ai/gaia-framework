@@ -88,17 +88,17 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
   # The dry-run plan must include the stubs section (guards against a vacuous
   # pass where the section was never rendered at all).
-  if ! printf '%s\n' "$output" | grep -q 'Legacy command stubs to remove'; then
+  if ! grep -q 'Legacy command stubs to remove' <<<"$output"; then
     printf 'dry-run output did not include the stubs section:\n%s\n' "$output" >&2
     return 1
   fi
   # The dry-run plan must not mention user-owned files as "to remove".
   stubs_section=$(printf '%s\n' "$output" | sed -n '/Legacy command stubs to remove/,/^===/p')
-  if printf '%s\n' "$stubs_section" | grep -q 'my-tool.md'; then
+  if grep -q 'my-tool.md' <<<"$stubs_section"; then
     printf 'stubs section incorrectly listed my-tool.md:\n%s\n' "$stubs_section" >&2
     return 1
   fi
-  if printf '%s\n' "$stubs_section" | grep -q 'my-gaia-tool.md'; then
+  if grep -q 'my-gaia-tool.md' <<<"$stubs_section"; then
     printf 'stubs section incorrectly listed my-gaia-tool.md:\n%s\n' "$stubs_section" >&2
     return 1
   fi
@@ -160,11 +160,11 @@ teardown() { common_teardown; }
   # Anchor to the SUMMARY section so test-name echoing does not create a
   # false positive.
   summary=$(printf '%s\n' "$output" | sed -n '/SUCCESS /,$p')
-  if ! printf '%s\n' "$summary" | grep -q '\.claude/commands'; then
+  if ! grep -q '\.claude/commands' <<<"$summary"; then
     printf 'summary did not mention .claude/commands:\n%s\n' "$summary" >&2
     return 1
   fi
-  if ! printf '%s\n' "$summary" | grep -q '\.gaia-migrate-backup'; then
+  if ! grep -q '\.gaia-migrate-backup' <<<"$summary"; then
     printf 'summary did not mention .gaia-migrate-backup:\n%s\n' "$summary" >&2
     return 1
   fi
@@ -232,7 +232,7 @@ _seed_v1_content() {
   [[ "$v1_section" == *"custom"* ]]
   # Size column — expect either "KB", "MB", or a bare integer followed by
   # "file" (file-count). Accept any of these forms.
-  printf '%s\n' "$v1_section" | grep -qE '[0-9]+[[:space:]]*(KB|MB|file)'
+  grep -qE '[0-9]+[[:space:]]*(KB|MB|file)' <<<"$v1_section"
 }
 
 # ---------- AC2 + AC4 + AC6 — apply backs up, deletes, prints rollback ----------
@@ -407,7 +407,7 @@ EOF
   ' "$skill")
   [ -n "$step6" ]
   # The namespaced form MUST be present.
-  if ! printf '%s\n' "$step6" | grep -qF '/gaia:gaia-help'; then
+  if ! grep -qF '/gaia:gaia-help' <<<"$step6"; then
     printf 'Step 6 body missing /gaia:gaia-help:\n%s\n' "$step6" >&2
     return 1
   fi
@@ -443,7 +443,7 @@ EOF
     capture==1 { print }
   ' "$script")
   [ -n "$summary" ]
-  if ! printf '%s\n' "$summary" | grep -qF '/gaia:gaia-help'; then
+  if ! grep -qF '/gaia:gaia-help' <<<"$summary"; then
     printf 'Success summary in gaia-migrate.sh missing /gaia:gaia-help hint.\n' >&2
     return 1
   fi
@@ -455,7 +455,7 @@ EOF
   # The user-facing summary block printed to stdout must mention the
   # namespaced command so users can copy-paste it directly.
   summary=$(printf '%s\n' "$output" | sed -n '/SUCCESS /,$p')
-  if ! printf '%s\n' "$summary" | grep -qF '/gaia:gaia-help'; then
+  if ! grep -qF '/gaia:gaia-help' <<<"$summary"; then
     printf 'runtime summary did not include /gaia:gaia-help:\n%s\n' "$summary" >&2
     return 1
   fi

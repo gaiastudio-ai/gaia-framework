@@ -58,9 +58,9 @@ teardown() {
 
   [ "$status" -eq 0 ]
   [ "$output" = "$STORY_TREE/E2-S1-bar.md" ]
-  echo "$stderr" | grep -q "WARNING: legacy-flat path"
-  echo "$stderr" | grep -q "$STORY_TREE/E2-S1-bar.md"
-  echo "$stderr" | grep -q "migrate to the nested layout"
+  grep -q "WARNING: legacy-flat path" <<<"$stderr"
+  grep -q "$STORY_TREE/E2-S1-bar.md" <<<"$stderr"
+  grep -q "migrate to the nested layout" <<<"$stderr"
 }
 
 # ---------------------------------------------------------------------------
@@ -75,8 +75,8 @@ teardown() {
 
   [ "$status" -eq 0 ]
   [ "$output" = "$STORY_TREE/epic-Eshadow/stories/E3-S1-nested.md" ]
-  echo "$stderr" | grep -q "WARNING: legacy-flat shadow ignored"
-  echo "$stderr" | grep -q "$STORY_TREE/E3-S1-flat.md"
+  grep -q "WARNING: legacy-flat shadow ignored" <<<"$stderr"
+  grep -q "$STORY_TREE/E3-S1-flat.md" <<<"$stderr"
   # The flat path MUST NOT appear as the resolved stdout output.
   [ "$output" != "$STORY_TREE/E3-S1-flat.md" ]
 }
@@ -89,9 +89,9 @@ teardown() {
 
   [ "$status" -eq 1 ]
   [ -z "$output" ]
-  echo "$stderr" | grep -q "story file not found for key E4-S1"
-  echo "$stderr" | grep -q "epic-\*/stories/E4-S1-\*\.md"
-  echo "$stderr" | grep -q "E4-S1-\*\.md"
+  grep -q "story file not found for key E4-S1" <<<"$stderr"
+  grep -q "epic-\*/stories/E4-S1-\*\.md" <<<"$stderr"
+  grep -q "E4-S1-\*\.md" <<<"$stderr"
 }
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ teardown() {
 
   [ "$status" -eq 2 ]
   [ -z "$output" ]
-  echo "$stderr" | grep -q "multiple nested story files matched key E5-S1"
-  echo "$stderr" | grep -q "$STORY_TREE/epic-Efoo/stories/E5-S1-a.md"
-  echo "$stderr" | grep -q "$STORY_TREE/epic-Ebar/stories/E5-S1-b.md"
+  grep -q "multiple nested story files matched key E5-S1" <<<"$stderr"
+  grep -q "$STORY_TREE/epic-Efoo/stories/E5-S1-a.md" <<<"$stderr"
+  grep -q "$STORY_TREE/epic-Ebar/stories/E5-S1-b.md" <<<"$stderr"
 }

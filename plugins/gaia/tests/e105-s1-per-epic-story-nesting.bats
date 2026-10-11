@@ -40,7 +40,7 @@ mkroot() { # $1 = root name ; remaining = fixture subdirs to copy in
   root="$(mkroot r1 new-layout)"
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E900-S1
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'E900-S1-alpha/story\.md$' \
+  grep -Eq 'E900-S1-alpha/story\.md$' <<<"$output" \
     || { echo "expected new-layout story.md path, got: $output" >&2; false; }
 }
 
@@ -50,14 +50,14 @@ mkroot() { # $1 = root name ; remaining = fixture subdirs to copy in
   root="$(mkroot r2 legacy-stories)"
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E901-S1
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'stories/E901-S1-beta\.md$'
+  grep -Eq 'stories/E901-S1-beta\.md$' <<<"$output"
 }
 
 @test "resolver finds a legacy flat story (fallback tier 3)" {
   root="$(mkroot r3 flat)"
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E902-S1
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'E902-S1-gamma\.md$'
+  grep -Eq 'E902-S1-gamma\.md$' <<<"$output"
 }
 
 # ---------- AC2: precedence — nested wins over legacy stories for same key ----------
@@ -77,7 +77,7 @@ EOF
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E900-S1
   [ "$status" -eq 0 ]
   # nested per-story story.md must win
-  echo "$output" | grep -Eq 'E900-S1-alpha/story\.md$' \
+  grep -Eq 'E900-S1-alpha/story\.md$' <<<"$output" \
     || { echo "nested should win over legacy stories, got: $output" >&2; false; }
 }
 
@@ -88,10 +88,10 @@ EOF
   # key E28-S2 must resolve to the REAL nested story, never the evidence dir
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E28-S2
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'E28-S2-real/story\.md$' \
+  grep -Eq 'E28-S2-real/story\.md$' <<<"$output" \
     || { echo "E28-S2 must resolve to the real story, got: $output" >&2; false; }
   # must NOT have matched the evidence dir or the E28-S21 prefix sibling
-  ! echo "$output" | grep -Eq 'E28-S21|diff-report' \
+  ! grep -Eq 'E28-S21|diff-report' <<<"$output" \
     || { echo "E28-S2 must not match E28-S21 evidence dir, got: $output" >&2; false; }
 }
 
@@ -104,9 +104,9 @@ EOF
   [ "$status" -eq 0 ]
   # tier-0 must resolve the REAL new-layout story, never the stories/ evidence story.md,
   # and must NOT report spurious ambiguity (exit 2)
-  echo "$output" | grep -Eq 'E900-S1-alpha/story\.md$' \
+  grep -Eq 'E900-S1-alpha/story\.md$' <<<"$output" \
     || { echo "must resolve the real new-layout story, got: $output" >&2; false; }
-  ! echo "$output" | grep -Eq 'stories/E900-S1-evidence' \
+  ! grep -Eq 'stories/E900-S1-evidence' <<<"$output" \
     || { echo "must exclude the stories/ evidence story.md, got: $output" >&2; false; }
 }
 
@@ -125,7 +125,7 @@ EOF
   run env IMPLEMENTATION_ARTIFACTS="$root" bash "$RESOLVER" E28-S2
   # E28-S2 has no story -> must be not-found (exit 1), NOT a false E28-S21 match
   [ "$status" -ne 0 ]
-  ! echo "$output" | grep -Eq 'E28-S21'
+  ! grep -Eq 'E28-S21' <<<"$output"
 }
 
 # ---------- AC3 / TS5: validate-canonical-filename accepts the new layout ----------
@@ -214,7 +214,7 @@ EOF
     printf "%s\n" "${matches[@]}"
   '
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'E900-S1-alpha/story\.md$' \
+  grep -Eq 'E900-S1-alpha/story\.md$' <<<"$output" \
     || { echo "transition nested glob must functionally match the new-layout story, got: $output" >&2; false; }
 }
 

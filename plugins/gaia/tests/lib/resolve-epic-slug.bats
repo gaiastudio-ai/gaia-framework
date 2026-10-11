@@ -230,6 +230,6 @@ _fixture_impl_dir() {
       || true)"
   # At least the story-writing path (create-story) and the status-transition
   # path must consume the resolver so they stay in sync on directory naming.
-  printf '%s\n' "$hits" | grep -q "gaia-create-story"
-  printf '%s\n' "$hits" | grep -q "transition-story-status.sh"
+  grep -q "gaia-create-story" <<<"$hits"
+  grep -q "transition-story-status.sh" <<<"$hits"
 }

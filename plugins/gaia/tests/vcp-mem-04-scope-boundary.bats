@@ -176,8 +176,8 @@ _run_save() {
     # but it MUST NOT report a synchronous OR async save for Phase 4.
     _run_save gaia-dev-story
     [ "$status" -eq 0 ]
-    ! echo "$output" | grep -qE 'session summary saved synchronously'
-    ! echo "$output" | grep -qE 'saving asynchronously'
+    ! grep -qE 'session summary saved synchronously' <<<"$output"
+    ! grep -qE 'saving asynchronously' <<<"$output"
 }
 
 # --- AC5 — Phase 1-3 counterexample: auto-save fires, no prompt ------------
@@ -197,9 +197,9 @@ _run_save() {
     [ "$status" -eq 0 ]
 
     # No interactive prompt string in captured output.
-    ! echo "$output" | grep -qE '\[y\] Save'
-    ! echo "$output" | grep -qE '\[n\] Skip'
-    ! echo "$output" | grep -qE '\[e\] Edit'
+    ! grep -qE '\[y\] Save' <<<"$output"
+    ! grep -qE '\[n\] Skip' <<<"$output"
+    ! grep -qE '\[e\] Edit' <<<"$output"
 
     # A sidecar decision-log.md file was created — auto-save did fire.
     run find "$FAKE_MEMORY" -name 'decision-log.md' -print

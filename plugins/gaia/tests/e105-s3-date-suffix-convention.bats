@@ -23,9 +23,9 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
 @test "resolver returns the newest dated artifact (glob + sort)" {
   run bash "$RESOLVER" --dir "$FX/dated/nfr-assessment" --base nfr-assessment
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'nfr-assessment-2026-05-26\.md$' \
+  grep -Eq 'nfr-assessment-2026-05-26\.md$' <<<"$output" \
     || { echo "expected newest dated (2026-05-26), got: $output" >&2; false; }
-  ! echo "$output" | grep -Eq '2026-04-01|2026-05-10' \
+  ! grep -Eq '2026-04-01|2026-05-10' <<<"$output" \
     || { echo "must not return an older dated file, got: $output" >&2; false; }
 }
 
@@ -34,7 +34,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
 @test "resolver falls back to the undated legacy file when no dated form exists" {
   run bash "$RESOLVER" --dir "$FX/undated" --base nfr-assessment
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'nfr-assessment\.md$' \
+  grep -Eq 'nfr-assessment\.md$' <<<"$output" \
     || { echo "expected undated fallback, got: $output" >&2; false; }
 }
 
@@ -44,7 +44,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
   printf 'x\n' > "$d/nfr-assessment-2026-05-20.md"
   run bash "$RESOLVER" --dir "$d" --base nfr-assessment
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eq 'nfr-assessment-2026-05-20\.md$' \
+  grep -Eq 'nfr-assessment-2026-05-20\.md$' <<<"$output" \
     || { echo "dated must win over undated when both exist, got: $output" >&2; false; }
 }
 
@@ -52,7 +52,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
   d="$TEST_TMP/empty"; mkdir -p "$d"
   run bash "$RESOLVER" --dir "$d" --base nfr-assessment
   [ "$status" -ne 0 ]
-  echo "$output" | grep -Eiq 'not found|no .*artifact' \
+  grep -Eiq 'not found|no .*artifact' <<<"$output" \
     || { echo "expected an actionable not-found error, got: $output" >&2; false; }
 }
 
@@ -66,7 +66,7 @@ teardown() { rm -rf "$TEST_TMP" 2>/dev/null || true; }
 @test "--help prints usage and exits 0" {
   run bash "$RESOLVER" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'latest|dated'
+  grep -Eiq 'latest|dated' <<<"$output"
 }
 
 # ---------- AC1 / AC2 / AC3: convention documented + producers + conformance ----------

@@ -6,6 +6,7 @@
 # runners contract; ADR-110).
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   HELPER="${PLUGIN_ROOT}/gaia/scripts/lib/test-environment-manifest.sh"
   TARGET_DIR="$(mktemp -d -t e17s33-bats-XXXXXX)"

@@ -23,12 +23,12 @@ teardown() {
   n=$(printf '%s\n' "$output" | grep -cE '.')
   [ "$n" -eq 6 ]
   # Sanity-check each canonical phrase.
-  printf '%s\n' "$output" | grep -qxF 'deferred'
-  printf '%s\n' "$output" | grep -qxF 'follow-up integration story'
-  printf '%s\n' "$output" | grep -qxF 'stub seam'
-  printf '%s\n' "$output" | grep -qxF 'harness wiring lands'
-  printf '%s\n' "$output" | grep -qxF 'not-yet-wired'
-  printf '%s\n' "$output" | grep -qxF 'production wiring'
+  grep -qxF 'deferred' <<<"$output"
+  grep -qxF 'follow-up integration story' <<<"$output"
+  grep -qxF 'stub seam' <<<"$output"
+  grep -qxF 'harness wiring lands' <<<"$output"
+  grep -qxF 'not-yet-wired' <<<"$output"
+  grep -qxF 'production wiring' <<<"$output"
 }
 
 # TC-DPD-2 — dispatch mode emits exactly 5 lines.
@@ -38,11 +38,11 @@ teardown() {
   local n
   n=$(printf '%s\n' "$output" | grep -cE '.')
   [ "$n" -eq 5 ]
-  printf '%s\n' "$output" | grep -qxF 'spawns'
-  printf '%s\n' "$output" | grep -qxF 'dispatches'
-  printf '%s\n' "$output" | grep -qxF 'invokes'
-  printf '%s\n' "$output" | grep -qxF 'wires'
-  printf '%s\n' "$output" | grep -qxF 'calls'
+  grep -qxF 'spawns' <<<"$output"
+  grep -qxF 'dispatches' <<<"$output"
+  grep -qxF 'invokes' <<<"$output"
+  grep -qxF 'wires' <<<"$output"
+  grep -qxF 'calls' <<<"$output"
 }
 
 # TC-DPD-3 — unknown taxonomy exits 1 with stderr enumerating valid names.

@@ -293,7 +293,7 @@ EOF
 @test "adapter-category-hygiene rule pattern references the canonical 14-value enum" {
   local pattern
   pattern=$(jq -r '.severity_rules[] | select(.id == "plugin-versioning-adapter-category-unknown-warning") | .pattern' "$SUB_RUBRIC")
-  printf '%s' "$pattern" | grep -q '14' \
+  grep -q '14' <<<"$pattern" \
     || { echo "AC8 FAIL: pattern must reference the 14-value canonical enum" >&2; return 1; }
 }
 
@@ -339,7 +339,7 @@ EOF
     rem=$(jq -r --arg id "$id" '.severity_rules[] | select(.id == $id) | .remediation // ""' "$SUB_RUBRIC")
     [ -n "$rem" ] \
       || { echo "FAIL: rule $id is missing a remediation field" >&2; return 1; }
-    printf '%s' "$rem" | grep -qi 'bump\|version' \
+    grep -qi 'bump\|version' <<<"$rem" \
       || { echo "FAIL: rule $id remediation must describe a version bump, got: $rem" >&2; return 1; }
   done
 }

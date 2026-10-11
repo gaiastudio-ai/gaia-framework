@@ -189,14 +189,14 @@ assert_claim() {
     return 1
   fi
 
-  if ! printf '%s' "$found" | grep -qiE "$required"; then
+  if ! grep -qiE "$required" <<<"$found"; then
     printf 'claim present but wrong (%s).\n' "$label" >&2
     printf '  expected the sentence to match: %s\n' "$required" >&2
     printf '  actual sentence(s):\n%s\n' "$found" >&2
     return 1
   fi
 
-  if [ -n "$forbidden" ] && printf '%s' "$found" | grep -qiE "$forbidden"; then
+  if [ -n "$forbidden" ] && grep -qiE "$forbidden" <<<"$found"; then
     printf 'claim contradicted (%s): sentence matches the negation %s\n' "$label" "$forbidden" >&2
     printf '  actual sentence(s):\n%s\n' "$found" >&2
     return 1
@@ -213,7 +213,7 @@ assert_claim() {
 # decides the outcome, silently disarming every negative check above it. Writing
 # the failure explicitly makes each one live, and names the offending phrase.
 refute_wording() {
-  if printf '%s' "$1" | grep -qi "$2"; then
+  if grep -qi "$2" <<<"$1"; then
     printf 'forbidden wording present (matches: %s):\n' "$2" >&2
     printf '%s' "$1" | grep -in "$2" >&2
     return 1
@@ -222,7 +222,7 @@ refute_wording() {
 
 # refute_wording_ere — same contract, extended-regex flavour.
 refute_wording_ere() {
-  if printf '%s' "$1" | grep -qiE "$2"; then
+  if grep -qiE "$2" <<<"$1"; then
     printf 'forbidden wording present (matches: %s):\n' "$2" >&2
     printf '%s' "$1" | grep -inE "$2" >&2
     return 1
@@ -312,8 +312,8 @@ leak_regex() {
   local about
   about="$(grep -n 'sectioned-loading IDs' "$SKILL" | head -1 | cut -d: -f2-)"
   [ -n "$about" ]
-  printf '%s' "$about" | grep -qF 'four original sectioned-loading IDs'
-  printf '%s' "$about" | grep -qF 'worktrees'
+  grep -qF 'four original sectioned-loading IDs' <<<"$about"
+  grep -qF 'worktrees' <<<"$about"
 }
 
 @test "the worktrees section appears before the terminal Test Scenarios heading (AC1)" {
@@ -428,7 +428,7 @@ leak_regex() {
   local true_sentence
   true_sentence="$(claim_sentence "$body" 'GAIA_WORKTREE_MODE=true')"
   if [ -n "$true_sentence" ]; then
-    if ! printf '%s' "$true_sentence" | grep -qiE '\boff\b|does not enable|not enabled|leaves? the mode off'; then
+    if ! grep -qiE '\boff\b|does not enable|not enabled|leaves? the mode off' <<<"$true_sentence"; then
       printf 'the =true sentence does not say the mode stays off:\n%s\n' "$true_sentence" >&2
       return 1
     fi
@@ -504,8 +504,8 @@ leak_regex() {
   # unlock first or it does not work.
   local body
   body="$(subsection_with_code "teardown and prune")"; [ -n "$body" ]
-  printf '%s' "$body" | grep -qF 'worktree unlock'
-  printf '%s' "$body" | grep -qE 'worktree unlock.*&&.*worktree remove'
+  grep -qF 'worktree unlock' <<<"$body"
+  grep -qE 'worktree unlock.*&&.*worktree remove' <<<"$body"
 }
 
 @test "the section does not promise that teardown always removes the worktree (AC1)" {
@@ -577,8 +577,8 @@ leak_regex() {
   # A truncated or emptied baseline must not make this pass vacuously: the
   # slice has to carry the real table.
   [ -n "$before" ]
-  printf '%s' "$before" | grep -qF '| `feat` |'
-  printf '%s' "$before" | grep -qF '| `perf` |'
+  grep -qF '| `feat` |' <<<"$before"
+  grep -qF '| `perf` |' <<<"$before"
 
   [ "$before" = "$after" ]
 }
@@ -630,8 +630,8 @@ leak_regex() {
     'skill: a worktree holding ignored files is kept'
 
   # Clause 3 — the story-branch prefix agrees across surfaces.
-  printf '%s' "$page_text" | grep -qF 'feat/'
-  printf '%s' "$skill_text" | grep -qF 'feat/'
+  grep -qF 'feat/' <<<"$page_text"
+  grep -qF 'feat/' <<<"$skill_text"
 }
 
 @test "the glossary promotion-chain definition mentions worktree mode (AC3)" {
@@ -645,7 +645,7 @@ leak_regex() {
     inside && /<\/dd>/ { exit }
   ' "$DOC_GLOSSARY")"
   [ -n "$dd" ]
-  printf '%s' "$dd" | grep -qi 'worktree'
+  grep -qi 'worktree' <<<"$dd"
 }
 
 @test "the lifecycle diagram's dev-story node mentions the worktree (AC3)" {
@@ -658,7 +658,7 @@ leak_regex() {
     inside && /<\/a>/ { exit }
   ' "$DOC_LIFECYCLE")"
   [ -n "$node" ]
-  printf '%s' "$node" | grep -qi 'worktree'
+  grep -qi 'worktree' <<<"$node"
 }
 
 # ---------------------------------------------------------------------------
@@ -738,8 +738,8 @@ EOF
   [ -n "$body" ]
 
   # The library's own verbs must be the ones used.
-  printf '%s' "$body" | grep -qi 'teardown\|tear down'
-  printf '%s' "$body" | grep -qi 'prune'
+  grep -qi 'teardown\|tear down' <<<"$body"
+  grep -qi 'prune' <<<"$body"
 
   # Competing spellings for the same two operations.
   # Self-reporting, for the errexit reason documented on refute_wording.

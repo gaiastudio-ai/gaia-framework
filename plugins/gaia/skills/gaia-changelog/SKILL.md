@@ -17,7 +17,7 @@ This skill is the native Claude Code conversion of the legacy generate-changelog
 - **Follow Keep a Changelog format.** See https://keepachangelog.com/ — the six categories are canonical: Added, Changed, Fixed, Deprecated, Removed, Security.
 - **Group every commit into exactly one category.** Map conventional-commit prefixes: `feat:` → Added, `fix:` → Fixed, `refactor:` / `chore:` / `perf:` / `docs:` / `style:` → Changed, `BREAKING CHANGE:` footer or `!` marker → Removed (breaking) section. Commits with no recognizable prefix go to an "Uncategorized" group rather than being silently dropped.
 - **Include version number and date.** The entry header is `## [{version}] — {YYYY-MM-DD}` where `{version}` is either the argument supplied, the next semver tag, or `Unreleased` when no version is known.
-- **Cross-reference story keys.** If a commit subject contains a match for `E\d+-S\d+`, link the entry back to the corresponding story file under `.gaia/artifacts/implementation-artifacts/` so reviewers can open the full context.
+- **Cross-reference story keys.** If a commit subject or a `Story:` body line contains a match for `E\d+-S\d+`, link the entry back to the corresponding story file under `.gaia/artifacts/implementation-artifacts/` so reviewers can open the full context. The `Story:` body line is the canonical cross-reference for commits with product-scoped subjects.
 - Do NOT invent version numbers or dates. If the argument is missing and no tag exists, use `Unreleased` as the version and today's ISO date as the date.
 - Output path is `CHANGELOG.md` in the repository root. Append to an existing file rather than overwriting; new entries go above the previous top entry.
 
@@ -36,10 +36,12 @@ This skill is the native Claude Code conversion of the legacy generate-changelog
 Use inline bash for the deterministic git operations:
 
 ```bash
-!git log $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD --oneline --no-merges
+!git log $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD --format='commit %H%nsubject %s%n%b%n--end--' --no-merges
 ```
 
-If the previous-tag command returns empty (no tags yet), fall back to `git log --oneline --no-merges` for the entire history.
+If the previous-tag command returns empty (no tags yet), fall back to `git log --format='commit %H%nsubject %s%n%b%n--end--' --no-merges` for the entire history.
+
+The `--format` reads full commit bodies so that `Story:` body lines (the canonical story cross-reference) are visible. Do NOT use `--oneline` alone — it truncates to the subject and hides body-only story references.
 
 Then read any sprint-status files in `.gaia/artifacts/implementation-artifacts/` that name stories shipping in this release.
 
@@ -79,6 +81,8 @@ Walk the commit list and bucket each commit into one of the Keep a Changelog cat
 - **Security** — commits that mention a CVE, a security fix, or start with `security:`.
 
 Extract a meaningful one-line description from each commit subject (strip the conventional-commit prefix). For story-linked commits, append `— [{story_key}](.gaia/artifacts/implementation-artifacts/{story_key}-*.md)` so reviewers can open the story file. The story-key cross-reference (`E\d+-S\d+`) is a V2 win and MUST be preserved — do NOT silently drop story-linked commits.
+
+**Story: body-line cross-reference.** Story keys may appear as a `Story: <key>` or `Story: [<key>](link)` line in the commit body instead of (or in addition to) the subject. When iterating commits, check both the subject and any `Story:` body line for the `E\d+-S\d+` pattern. A `Story:` line is the canonical cross-reference mechanism for commits with product-scoped subjects.
 
 Commits with no recognizable conventional-commit prefix are placed in an **Uncategorized** group rather than being silently dropped. The "Uncategorized" group is the V2-added uncategorised-commit capture and MUST be preserved as a distinct section so unparseable commits remain visible.
 

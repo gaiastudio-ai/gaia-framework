@@ -73,10 +73,10 @@ MD
   eval "$(awk '/^_parse_high_risk\(\) \{/,/^\}/' "$DS")"
   run _parse_high_risk
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qE '^E1-S1'
-  printf '%s\n' "$output" | grep -qE '^E2-S1'
+  grep -qE '^E1-S1' <<<"$output"
+  grep -qE '^E2-S1' <<<"$output"
   # the low-risk story must NOT appear
-  ! printf '%s\n' "$output" | grep -qE '^E1-S2'
+  ! grep -qE '^E1-S2' <<<"$output"
 }
 
 @test "F-014: _parse_high_risk tolerates bold '- **Risk:** high' in a block" {
@@ -88,7 +88,7 @@ MD
   _EPICS="$TEST_TMP/epics.md"
   eval "$(awk '/^_parse_high_risk\(\) \{/,/^\}/' "$DS")"
   run _parse_high_risk
-  printf '%s\n' "$output" | grep -qE '^E3-S1'
+  grep -qE '^E3-S1' <<<"$output"
 }
 
 @test "F-014: _parse_high_risk still parses the legacy pipe-table format" {
@@ -102,9 +102,9 @@ MD
   _EPICS="$TEST_TMP/epics.md"
   eval "$(awk '/^_parse_high_risk\(\) \{/,/^\}/' "$DS")"
   run _parse_high_risk
-  printf '%s\n' "$output" | grep -qE '^E1-S1'
-  printf '%s\n' "$output" | grep -qE '^E3-S1'
-  ! printf '%s\n' "$output" | grep -qE '^E1-S2'
+  grep -qE '^E1-S1' <<<"$output"
+  grep -qE '^E3-S1' <<<"$output"
+  ! grep -qE '^E1-S2' <<<"$output"
 }
 
 @test "F-014: _parse_high_risk dedups a story matched by both formats" {

@@ -14,6 +14,7 @@
 # contract-only annotation.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-example.sh"
   TEMPLATE="${PLUGIN_ROOT}/gaia/templates/test-environment.yaml.example"

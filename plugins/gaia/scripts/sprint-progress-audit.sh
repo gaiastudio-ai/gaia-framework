@@ -146,8 +146,8 @@ _is_merged() {
     return 0
   fi
 
-  # Fallback: "Story: <key>" in full commit bodies
-  if (cd "$work_dir" && safe_grep_log -i -q -E "Story:[[:space:]]*${story_key}\\b" --format='%B' "$target") 2>/dev/null; then
+  # Fallback: "Story: <key>" in full commit bodies (plain or link form).
+  if (cd "$work_dir" && safe_grep_log -i -q -E "Story:[[:space:]]*\[?${story_key}(\]|\\b)" --format='%B' "$target") 2>/dev/null; then
     return 0
   fi
 

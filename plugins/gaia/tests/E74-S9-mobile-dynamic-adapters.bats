@@ -122,7 +122,7 @@ EOF
     run "$DISPATCH_DF" --adapter firebase-test-lab --suite "$BATS_TEST_TMPDIR/suite" \
       --device-matrix "$BATS_TEST_TMPDIR/matrix.yaml"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q 'runtime-profile: network' || { echo "expected network diag, got: $output" >&2; return 1; }
+  grep -q 'runtime-profile: network' <<<"$output" || { echo "expected network diag, got: $output" >&2; return 1; }
 }
 
 # ---------------- AC6 — missing auth credential detection -----------------
@@ -132,7 +132,7 @@ EOF
   run "$DISPATCH_DF" --adapter firebase-test-lab --suite "$BATS_TEST_TMPDIR/suite" \
     --device-matrix "$BATS_TEST_TMPDIR/matrix.yaml"
   [ "$status" -eq 3 ]
-  echo "$output" | grep -q 'FIREBASE_TEST_LAB_TOKEN' || { echo "expected env var name in diag, got: $output" >&2; return 1; }
+  grep -q 'FIREBASE_TEST_LAB_TOKEN' <<<"$output" || { echo "expected env var name in diag, got: $output" >&2; return 1; }
 }
 
 # ---------------- AC7 — adapter output normalization ----------------------
@@ -197,7 +197,7 @@ JSON
       --device-matrix "$BATS_TEST_TMPDIR/matrix.yaml" \
       --max-poll-attempts 2 --poll-interval-seconds 0
   [ "$status" -eq 4 ]
-  echo "$output" | grep -qi 'timeout\|max_poll_attempts' || { echo "expected poll-timeout diag, got: $output" >&2; return 1; }
+  grep -qi 'timeout\|max_poll_attempts' <<<"$output" || { echo "expected poll-timeout diag, got: $output" >&2; return 1; }
 }
 
 @test "dispatch-device-farm.sh webhook strategy times out -> exit 4" {
@@ -207,7 +207,7 @@ JSON
       --device-matrix "$BATS_TEST_TMPDIR/matrix.yaml" \
       --webhook-timeout-seconds 1
   [ "$status" -eq 4 ]
-  echo "$output" | grep -qi 'webhook\|timeout' || { echo "expected webhook-timeout diag, got: $output" >&2; return 1; }
+  grep -qi 'webhook\|timeout' <<<"$output" || { echo "expected webhook-timeout diag, got: $output" >&2; return 1; }
 }
 
 # ---------------- AC2 specifics — polling-strategy mapping ----------------

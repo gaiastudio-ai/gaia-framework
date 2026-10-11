@@ -151,7 +151,7 @@ _build_shim_tree() {
 _extract_project_root() {
   local text="$1"
   local match
-  match="$(printf '%s\n' "$text" | grep -o 'project_root=[^ )]*' | head -1 || true)"
+  match="$(grep -o 'project_root=[^ )]*' <<<"$text" | head -1 || true)"
   if [ -n "$match" ]; then
     printf '%s' "${match#project_root=}"
   fi

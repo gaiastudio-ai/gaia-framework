@@ -49,9 +49,9 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -qE '^  shellcheck:'
-  printf '%s\n' "$output" | grep -qE '^  bats-tests:'
-  printf '%s\n' "$output" | grep -qE '^  markdownlint:'
+  ! grep -qE '^  shellcheck:' <<<"$output"
+  grep -qE '^  bats-tests:' <<<"$output"
+  grep -qE '^  markdownlint:' <<<"$output"
 }
 
 # ---------- TC-TOV-2: timeout_overrides rewrites timeout-minutes ----------
@@ -85,7 +85,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'markdownlint@0\.41\.0'
+  grep -q 'markdownlint@0\.41\.0' <<<"$output"
 }
 
 # ---------- TC-TOV-4 / SR-78: refuse security-critical disable entries ----------
@@ -99,8 +99,8 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'refusal|security-critical'
-  echo "$output" | grep -q 'commitlint'
+  grep -qE 'refusal|security-critical' <<<"$output"
+  grep -q 'commitlint' <<<"$output"
 }
 
 @test "hyphenated form commit-lint is canonicalized and STILL rejected" {
@@ -112,7 +112,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'refusal|security-critical'
+  grep -qE 'refusal|security-critical' <<<"$output"
 }
 
 @test "uppercase form Commit-Lint is canonicalized and STILL rejected" {
@@ -124,7 +124,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'refusal|security-critical'
+  grep -qE 'refusal|security-critical' <<<"$output"
 }
 
 @test "each of the 5 security-critical names is rejected" {
@@ -151,7 +151,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml' 2>&1"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qiE 'WARN|warning'
+  grep -qiE 'WARN|warning' <<<"$output"
 }
 
 @test "timeout out of range (> 360 min) is HARD ERROR" {
@@ -164,7 +164,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'timeout|range|360'
+  grep -qE 'timeout|range|360' <<<"$output"
 }
 
 @test "timeout below range (< 1 min) is HARD ERROR" {
@@ -189,7 +189,7 @@ ci_cd:
 YAML
   run bash -c "source '$OVERRIDES' && gaia_apply_template_overrides '$WORKDIR/gaia-ci.yml' '$WORKDIR/project-config.yaml'"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qE 'semver|version'
+  grep -qE 'semver|version' <<<"$output"
 }
 
 # ---------- Source-guard ----------

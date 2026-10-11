@@ -9,6 +9,7 @@
 # Public functions covered: (script entry point, not a library)
 
 load 'test_helper.bash'
+bats_require_minimum_version 1.5.0
 
 # ---------------------------------------------------------------------------
 # Portable helpers
@@ -53,8 +54,7 @@ _init_record() {
   env PROJECT_ROOT="$TEST_TMP" \
     "$DREC_SCRIPT" init \
       --reference "test-project-ref" \
-      --discovered-via "created" \
-      --questionnaire-record "not-applicable"
+      --discovered-via "project-artifacts"
 }
 
 _build_approved_record() {
@@ -771,7 +771,7 @@ _spy_probe_count() {
   local att_block
   att_block="$(awk '/<!-- design-attestation begin -->/{p=1;next} /<!-- design-attestation end -->/{p=0} p' "$skill_af")"
   [ -n "$att_block" ] || fail "attestation block not found in add-feature SKILL.md"
-  echo "$att_block" | grep -qiE 'revok|token' \
+  grep -qiE 'revok|token' <<<"$att_block" \
     || fail "attestation block should document the authorization-expiry trade-off"
 }
 
@@ -997,4 +997,190 @@ _spy_probe_count() {
 
   spy_count="$(_spy_probe_count)"
   [ "$spy_count" -gt 0 ] || fail "mutant should run the probe despite attestation"
+}
+
+# ===========================================================================
+# Scope flag: target list, stderr log, validation
+# ===========================================================================
+
+@test "scope design-system prints exact single target on stdout" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope design-system
+
+  [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
+  # Compare stdout exactly
+  [ "$output" = "republish-target: design-system" ] \
+    || fail "stdout should be exactly 'republish-target: design-system' but got: $output"
+  # stderr must log scope and reason
+  grep -qF 'scope=design-system reason=derived' <<<"$stderr" \
+    || fail "stderr should contain 'scope=design-system reason=derived' but got: $stderr"
+}
+
+@test "scope product-design prints exact single target on stdout" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope product-design
+
+  [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
+  [ "$output" = "republish-target: product-design" ] \
+    || fail "stdout should be exactly 'republish-target: product-design' but got: $output"
+}
+
+@test "scope both prints exact two targets design-system first on stdout" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope both
+
+  [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
+  local expected
+  expected="$(printf 'republish-target: design-system\nrepublish-target: product-design')"
+  [ "$output" = "$expected" ] \
+    || fail "stdout should be exactly two target lines ds first, got: $output"
+}
+
+@test "default scope prints exact two targets and logs default reason" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # No --scope flag at all
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test
+
+  [ "$status" -eq 0 ] || fail "driver should exit 0 but exited $status"
+  local expected
+  expected="$(printf 'republish-target: design-system\nrepublish-target: product-design')"
+  [ "$output" = "$expected" ] \
+    || fail "stdout should be exactly two target lines ds first, got: $output"
+  grep -qF 'scope=both reason=default' <<<"$stderr" \
+    || fail "stderr should contain 'scope=both reason=default' but got: $stderr"
+}
+
+@test "scope log line precedes the transition call in stderr" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # Create a shim for design-record.sh that emits a marker to stderr
+  local shim_dir="$TEST_TMP/scope-order-shim"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/design-record.sh" <<SHIMEOF
+#!/usr/bin/env bash
+printf 'TRANSITION_MARKER\n' >&2
+exec "$DREC_SCRIPT" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/design-record.sh"
+
+  # Patch the driver to use the shim
+  local patched_driver="$TEST_TMP/scope-order-driver.sh"
+  sed "s|DREC_SCRIPT=.*|DREC_SCRIPT=\"$shim_dir/design-record.sh\"|" \
+    "$DRIVER_SCRIPT" > "$patched_driver"
+  chmod +x "$patched_driver"
+
+  local stderr_file="$TEST_TMP/scope-order-stderr.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$patched_driver" \
+      --decision yes --integration missing --actor test --scope design-system \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "driver should halt (non-zero) on missing integration"
+  grep -qF 'scope=design-system reason=derived' "$stderr_file" \
+    || fail "stderr should contain 'scope=design-system reason=derived'"
+  grep -qF 'TRANSITION_MARKER' "$stderr_file" \
+    || fail "stderr should contain the transition marker"
+  # Scope log must appear BEFORE the transition marker
+  local scope_line marker_line
+  scope_line="$(grep -n 'scope=design-system' "$stderr_file" | head -1 | cut -d: -f1)"
+  marker_line="$(grep -n 'TRANSITION_MARKER' "$stderr_file" | head -1 | cut -d: -f1)"
+  [ -n "$scope_line" ] && [ -n "$marker_line" ] \
+    || fail "both scope and marker lines should be found"
+  [ "$scope_line" -lt "$marker_line" ] \
+    || fail "scope log (line $scope_line) should precede transition (line $marker_line)"
+}
+
+@test "ambiguous decision logs scope" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local stderr_file="$TEST_TMP/ambiguous-stderr.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision ambiguous --integration available --actor test --scope product-design \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "ambiguous+available should exit 0 but got $rc"
+  grep -qF 'scope=product-design reason=derived' "$stderr_file" \
+    || fail "ambiguous decision should log scope on stderr"
+}
+
+@test "invalid scope exits 2 with exact diagnostic naming the value and legal values" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # Capture sha256 of the record BEFORE the run
+  local before_hash
+  before_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+
+  local stderr_file="$TEST_TMP/invalid-scope-stderr.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope screens \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -eq 2 ] || fail "invalid scope should exit 2 but exited $rc"
+  # Diagnostic must name the invalid value
+  grep -qF 'screens' "$stderr_file" \
+    || fail "diagnostic should name the invalid value 'screens'"
+  # Diagnostic must list the legal values
+  grep -qF 'design-system, product-design, both' "$stderr_file" \
+    || fail "diagnostic should list 'design-system, product-design, both'"
+  # Record must be unchanged (no transition written)
+  local after_hash
+  after_hash="$(_sha256_file "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$before_hash" = "$after_hash" ] \
+    || fail "record should be unchanged after invalid scope but hash changed"
+}
+
+@test "repeated scope exits 2" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope both --scope both
+
+  [ "$status" -eq 2 ] || fail "repeated --scope should exit 2 but exited $status"
+}
+
+@test "scope missing value exits 2" {
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  # --scope is the last argument, with no value following it
+  run --separate-stderr env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --integration available --actor test --scope
+
+  [ "$status" -eq 2 ] || fail "scope without value should exit 2 but exited $status"
 }

@@ -20,6 +20,7 @@
 #   F. absent snapshot file -> graceful-skip (timing lands, no tokens_snapshot)
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   STATUSLINE="$REPO_ROOT/plugins/gaia/scripts/statusline.sh"
   EMIT_HELPER="$REPO_ROOT/plugins/gaia/skills/gaia-dev-story/scripts/emit-step-boundary.sh"

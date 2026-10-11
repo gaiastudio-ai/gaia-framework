@@ -398,6 +398,46 @@ ci_cd:
           <code>credential-audit</code>.
         </p>
 
+        <h3>Required checks and fallback behaviour</h3>
+        <p>
+          The CI polling script sends <code>gh pr checks --required</code> on
+          each poll until the installed <code>gh</code> version reports the
+          flag as unsupported, after which it stops retrying and falls back to
+          all checks for the remainder of the run. When the repository has
+          required checks configured in branch protection rules, only those
+          checks determine success or failure -- optional checks that fail are
+          ignored. When no required checks are configured, the script also
+          falls back to all checks with a note on stderr.
+        </p>
+        <p>
+          The <code>ci_checks</code> list under each promotion-chain entry
+          names the CI <em>workflow</em> names you expect on that branch. These
+          names are <strong>not</strong> matched against the check names
+          returned by <code>gh</code> during polling. They are used only at
+          grace-window expiry: when no checks appear within the grace period,
+          the script reads <code>ci_checks</code> to decide whether the
+          absence is expected (no CI configured &rarr; exit&nbsp;0) or a
+          problem (expected checks never appeared &rarr; exit&nbsp;1, naming
+          the workflow names from the config).
+        </p>
+
+        <h3><code>ci_wait_timeout_minutes:</code> polling timeout</h3>
+        <p>
+          Control how long <code>/gaia-dev-story</code> waits for CI checks to
+          complete before timing out. Set the <code>ci_wait_timeout_minutes</code>
+          key under <code>ci_cd:</code> to an integer between 1 and 360:
+        </p>
+        <pre><code>ci_cd:
+  ci_wait_timeout_minutes: 15   # wait up to 15 minutes for CI</code></pre>
+        <p>
+          The CLI flag <code>--timeout &lt;minutes&gt;</code> overrides this
+          value for a single run. When neither the config key nor the flag is
+          set, the default is 30 minutes. The polling script also applies a
+          two-poll stability rule (two consecutive all-terminal polls with the
+          same check set) and a grace window (default 5 minutes) for repos where
+          checks register after a delay.
+        </p>
+
         <h3>Auto-rename migration flow</h3>
         <p>
           On a project that predates the layered model whose <code>.github/workflows/</code> contains files without the

@@ -69,9 +69,9 @@ all_ready() {
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
   [ "$status" -ne 0 ] \
     || { echo "an unmaterialized story should refuse activation" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eq 'E900-S3' \
+  grep -Eq 'E900-S3' <<<"$output" \
     || { echo "refusal should name the unmaterialized story E900-S3, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eiq 'unmaterialized|no file|missing file'
+  grep -Eiq 'unmaterialized|no file|missing file' <<<"$output"
 }
 
 # ---------- AC1 / TS2: a not-ready story blocks ----------
@@ -81,9 +81,9 @@ all_ready() {
   mk_story E900-S1 in-progress low   # flip S1 to in-progress
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -Eq 'E900-S1' \
+  grep -Eq 'E900-S1' <<<"$output" \
     || { echo "refusal should name the not-ready story E900-S1, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eiq 'not.ready|not ready-for-dev|in-progress'
+  grep -Eiq 'not.ready|not ready-for-dev|in-progress' <<<"$output"
 }
 
 # ---------- AC2 / TS3: a high-risk story missing ATDD blocks ----------
@@ -94,9 +94,9 @@ all_ready() {
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
   [ "$status" -ne 0 ] \
     || { echo "high-risk story missing ATDD should refuse, got $status" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eq 'E900-S2' \
+  grep -Eq 'E900-S2' <<<"$output" \
     || { echo "refusal should name the missing-ATDD story E900-S2, got:" >&2; echo "$output" >&2; false; }
-  echo "$output" | grep -Eiq 'atdd'
+  grep -Eiq 'atdd' <<<"$output"
 }
 
 @test "a low-risk story with no ATDD does NOT block (ATDD only required for high-risk)" {
@@ -115,7 +115,7 @@ all_ready() {
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA" --coherence-ceiling 2
   [ "$status" -ne 0 ] \
     || { echo "a capacity overflow (coherence > ceiling) should refuse, got $status: $output" >&2; false; }
-  echo "$output" | grep -Eiq 'capacity|coherence|overflow'
+  grep -Eiq 'capacity|coherence|overflow' <<<"$output"
 }
 
 # ---------- AC4: multi-failure message names each failing story ----------
@@ -126,7 +126,7 @@ all_ready() {
   rm -f "$TA/atdd-E900-S2.md"                      # S2 missing ATDD
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -Eq 'E900-S3' && echo "$output" | grep -Eq 'E900-S2' \
+  grep -Eq 'E900-S3' <<<"$output" && echo "$output" | grep -Eq 'E900-S2' \
     || { echo "multi-failure message should name BOTH E900-S3 (unmaterialized) and E900-S2 (missing ATDD), got:" >&2; echo "$output" >&2; false; }
 }
 
@@ -140,7 +140,7 @@ all_ready() {
 @test "--help prints usage and exits 0" {
   run bash "$GATE" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -Eiq 'planned|active|readiness|gate'
+  grep -Eiq 'planned|active|readiness|gate' <<<"$output"
 }
 
 # ---------- AC-INT1 / TS5: SKILL.md documents the gate-before-activate hook ----------

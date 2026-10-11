@@ -1,20 +1,16 @@
 #!/usr/bin/env bats
-# dev-story-script-wiring.bats — bats coverage for E57-S8
+# dev-story-script-wiring.bats — bats coverage for SKILL.md script wiring
 #
-# Story: E57-S8 — SKILL.md script wiring (Steps 1, 10, 11) + narrative-fallback retention
-#
-# Acceptance Criteria covered:
+# Coverage:
 #   AC1 — Step 1 invokes story-parse.sh, detect-mode.sh, check-deps.sh and
-#         contains a narrative-fallback block (TC-DSS-09).
+#         contains a narrative-fallback block.
 #   AC2 — Step 10 invokes promotion-chain-guard.sh at the top of the CI section
-#         AND commit-msg.sh in the commit subsection (TC-DSS-09).
+#         AND commit-msg.sh in the commit subsection.
 #   AC3 — Step 11 documents that pr-create.sh reads its body from
-#         pr-body.sh output (TC-DSS-09).
+#         pr-body.sh output.
 #   AC5 — Regression: re-introducing inline LLM frontmatter parsing or inline
 #         PR body construction causes this test to FAIL naming the offending
-#         step (TC-DSS-10).
-#
-# Refs: FR-DSS-1..6, AF-2026-04-28-6.
+#         step.
 
 bats_require_minimum_version 1.5.0
 load 'test_helper.bash'
@@ -118,10 +114,54 @@ teardown() { common_teardown; }
 @test "promotion-chain-guard.sh appears BEFORE commit-msg.sh inside Step 10 block" {
   block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
   [ -n "$block" ]
-  guard_off="$(printf '%s\n' "$block" | grep -boF 'promotion-chain-guard.sh' | head -1 | cut -d: -f1)"
-  msg_off="$(printf '%s\n' "$block" | grep -boF 'commit-msg.sh' | head -1 | cut -d: -f1)"
+  guard_off="$(grep -boF 'promotion-chain-guard.sh' <<<"$block" | head -1 | cut -d: -f1)"
+  msg_off="$(grep -boF 'commit-msg.sh' <<<"$block" | head -1 | cut -d: -f1)"
   [ -n "$guard_off" ] && [ -n "$msg_off" ]
   [ "$guard_off" -lt "$msg_off" ]
+}
+
+# ---------------------------------------------------------------------------
+# Step 10 describes scope rule and schema — AC7
+# ---------------------------------------------------------------------------
+
+@test "Step 10 block describes scope-choice rule (awk-scoped)" {
+  block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
+  [ -n "$block" ]
+  grep -qi 'scope' <<<"$block"
+  grep -q '\-\-scope' <<<"$block"
+}
+
+@test "Step 10 commit-msg.sh invocation line carries --scope" {
+  block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
+  [ -n "$block" ]
+  # The invocation line itself (not just the prose) must show --scope.
+  grep -E 'commit-msg\.sh.*--scope' <<<"$block"
+}
+
+@test "Step 10 block shows Story: body-line in the output format block (awk-scoped)" {
+  block="$(awk '/<!-- step10 script-wiring begin -->/,/<!-- step10 script-wiring end -->/' "$SKILL_MD")"
+  [ -n "$block" ]
+  # The format block's Story: line uses the <story_key> placeholder — this
+  # string appears only inside the code-fenced output format, not in prose.
+  grep -Fq 'Story: <story_key>' <<<"$block"
+}
+
+# ---------------------------------------------------------------------------
+# Step 11 no longer contains the {title} placeholder — AC7
+# ---------------------------------------------------------------------------
+
+@test "Step 11 block uses PR_TITLE variable (not a bare placeholder)" {
+  block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
+  [ -n "$block" ]
+  # Must NOT contain the old {title} placeholder.
+  if grep -Fq '{title}' <<<"$block"; then
+    echo "Step 11 block still contains {title} placeholder" >&2
+    return 1
+  fi
+  # The pr-create.sh invocation must use "$PR_TITLE".
+  grep -Fq '"$PR_TITLE"' <<<"$block"
+  # $PR_TITLE must be bound to the first line of the Step 10 commit message.
+  grep -qE 'PR_TITLE.*first line.*Step 10|first line.*Step 10.*PR_TITLE|\$PR_TITLE.*subject.*Step 10' <<<"$block"
 }
 
 # ---------------------------------------------------------------------------
@@ -145,6 +185,13 @@ teardown() { common_teardown; }
   [ -n "$block" ]
   grep -Fq 'Narrative Fallback' <<<"$block"
   grep -Fq 'command -v pr-body.sh' <<<"$block"
+}
+
+@test "Step 11 block contains resumed-run instruction for commit-msg.sh" {
+  block="$(awk '/<!-- step11 script-wiring begin -->/,/<!-- step11 script-wiring end -->/' "$SKILL_MD")"
+  [ -n "$block" ]
+  grep -qi 'resumed-run\|context break' <<<"$block"
+  grep -q 'commit-msg.sh' <<<"$block"
 }
 
 # ---------------------------------------------------------------------------
@@ -188,7 +235,7 @@ teardown() { common_teardown; }
 }
 
 # ---------------------------------------------------------------------------
-# AC5 (TC-DSS-10) — Absence-assertion regression contract.
+# AC5 — Absence-assertion regression contract.
 #
 # The wiring blocks above prove the new scripts are PRESENT. AC5 also requires
 # that the legacy LLM narrative is ABSENT outside the marker-fenced regions.
@@ -196,12 +243,12 @@ teardown() { common_teardown; }
 # construction (alongside, or in place of, the new script invocations) MUST
 # cause this test to FAIL naming the offending step.
 #
-# Strategy: strip the three E57-S8 wiring blocks (begin..end inclusive) from
+# Strategy: strip the three wiring blocks (begin..end inclusive) from
 # SKILL.md, then grep the residue for legacy patterns. The Narrative Fallback
 # subsections live INSIDE the wiring blocks, so they are not flagged.
 # ---------------------------------------------------------------------------
 
-# Emit SKILL.md with all three E57-S8 wiring blocks removed (begin..end inclusive).
+# Emit SKILL.md with all three wiring blocks removed (begin..end inclusive).
 _skill_md_minus_wiring_blocks() {
   awk '
     /<!-- step1 script-wiring begin -->/  { skip=1 }
@@ -219,9 +266,8 @@ _skill_md_minus_wiring_blocks() {
   # Legacy inline narrative: 'Read the story file: extract' / 'Detect execution mode' / 'FRESH (new implementation)'.
   # Any of these outside the wiring block means a regression has re-introduced
   # the inline LLM frontmatter-parsing path that script-wiring replaced.
-  if grep -nE 'Read the story file: extract|Detect execution mode|FRESH \(new implementation\)|REWORK \(fix review|RESUME \(continue from'; then <<<"$residue"
+  if grep -nE 'Read the story file: extract|Detect execution mode|FRESH \(new implementation\)|REWORK \(fix review|RESUME \(continue from' <<<"$residue"; then
     echo "REGRESSION: Step 1 inline LLM frontmatter parsing re-introduced outside <!-- step1 script-wiring --> block." >&2
-    echo "story-parse.sh + detect-mode.sh are the single source of truth (FR-DSS-1, FR-DSS-2)." >&2
     return 1
   fi
 }
@@ -230,10 +276,9 @@ _skill_md_minus_wiring_blocks() {
   residue="$(_skill_md_minus_wiring_blocks)"
   # Legacy inline narrative: 'Conventional Commit' subject composition guidance, or
   # an inline 'git commit -m' usage that hand-crafts the subject. commit-msg.sh
-  # is the single source of truth (FR-DSS-5, FR-DSS-6).
-  if grep -nE 'Compose .*Conventional Commit subject|hand-craft.*commit subject|git commit -m "[^"]*\$\{?story_key\}?'; then <<<"$residue"
+  # is the single source of truth.
+  if grep -nE 'Compose .*Conventional Commit subject|hand-craft.*commit subject|git commit -m "[^"]*\$\{?story_key\}?' <<<"$residue"; then
     echo "REGRESSION: Step 10 inline commit-subject composition re-introduced outside <!-- step10 script-wiring --> block." >&2
-    echo "commit-msg.sh is the single source of truth (FR-DSS-5, FR-DSS-6, NFR-DSS-1)." >&2
     return 1
   fi
 }
@@ -242,10 +287,9 @@ _skill_md_minus_wiring_blocks() {
   residue="$(_skill_md_minus_wiring_blocks)"
   # Legacy inline narrative: heredoc-built PR body fed straight to gh, or
   # 'pr-create.sh ... --body "$(cat <<' inline-body construction. pr-body.sh is
-  # the single source of truth (FR-DSS-5, FR-DSS-6).
-  if grep -nE 'gh pr create .*--body "\$\(cat <<|pr-create\.sh.*--body "\$\(cat <<|Compose the PR body inline|hand-craft the PR body'; then <<<"$residue"
+  # the single source of truth.
+  if grep -nE 'gh pr create .*--body "\$\(cat <<|pr-create\.sh.*--body "\$\(cat <<|Compose the PR body inline|hand-craft the PR body' <<<"$residue"; then
     echo "REGRESSION: Step 11 inline PR-body construction re-introduced outside <!-- step11 script-wiring --> block." >&2
-    echo "pr-body.sh is the single source of truth (FR-DSS-5, FR-DSS-6)." >&2
     return 1
   fi
 }
@@ -255,25 +299,16 @@ _skill_md_minus_wiring_blocks() {
   # Sanity guard: if the awk strip ever over-deletes (e.g. a regex change drops
   # too much), this test fails loudly rather than silently passing the absence
   # checks above on an empty residue.
-  #
-  # Use a here-string, NOT `grep -Fq`: grep -q exits on the <<<"$residue"
-  # first match and closes the pipe, so echo (the writer) takes SIGPIPE and
-  # exits 141, which fails the test nondeterministically under load / parallel
-  # execution. A here-string has no upstream writer process to signal.
   grep -Fq '### Step 1 -- Load Story'       <<<"$residue"
   grep -Fq '### Step 10 -- Commit and Push' <<<"$residue"
   grep -Fq '### Step 11 -- Create PR'        <<<"$residue"
 }
 
 # ---------------------------------------------------------------------------
-# AC4 (TC-DSS-09 integration) — End-to-end smoke run on the cluster-7-chain
-# fixture. Exercises the six new scripts wired into Steps 1, 10, 11 against a
-# clean fixture story file; asserts each script is invokable from SKILL.md's
+# Integration — End-to-end smoke run on the cluster-7-chain fixture.
+# Exercises the six new scripts wired into Steps 1, 10, 11 against a clean
+# fixture story file; asserts each script is invokable from SKILL.md's
 # canonical path and emits the expected exit code / stdout shape.
-#
-# This is a unit-of-integration smoke test (not a full /gaia-dev-story run) —
-# it proves the wiring resolves to working scripts on the cluster-7-chain
-# fixture without LLM involvement.
 # ---------------------------------------------------------------------------
 
 @test "integration: cluster-7-chain smoke — Step 1 + Step 10 + Step 11 scripts all invokable" {
@@ -350,7 +385,7 @@ EOF
   grep -Eq "^STATUS='in-progress'$" <<<"$output"
 
   # detect-mode.sh: in-progress -> RESUME or REWORK; either is acceptable for
-  # AC4 smoke — the contract is "exit 0 + a known mode token on stdout".
+  # the smoke test — the contract is "exit 0 + a known mode token on stdout".
   run "$dev_scripts/detect-mode.sh" "$child_path"
   [ "$status" -eq 0 ]
   grep -Eq '^(FRESH|RESUME|REWORK)$' <<<"$output"
@@ -361,10 +396,16 @@ EOF
   [ -z "$stderr" ]
 
   # ----- Step 10 wiring -----
-  # commit-msg.sh: emits a Conventional Commit line with the story key.
+  # commit-msg.sh: emits a Conventional Commit line + Story: body line.
   run "$dev_scripts/commit-msg.sh" "$child_path"
   [ "$status" -eq 0 ]
-  grep -Eq '\(E99-S2\)' <<<"$output"
+  # Subject must NOT have the key in the scope — key moves to body.
+  if grep -qE '\(E99-S2\)' <<<"$(printf '%s\n' "$output" | head -1)"; then
+    echo "Subject still contains key in scope: $(printf '%s\n' "$output" | head -1)" >&2
+    return 1
+  fi
+  # Body must have Story: reference.
+  grep -q '^Story: E99-S2$' <<<"$output"
 
   # ----- Step 11 wiring -----
   # pr-body.sh: emits the four canonical Markdown sections.

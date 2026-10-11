@@ -83,7 +83,7 @@ yaml_top_scalar() {
   line=$(grep "^${key}:" "$path" 2>/dev/null | head -1)
   set -o pipefail
   [ -z "$line" ] && { printf ''; return 0; }
-  value=$(printf '%s' "$line" | sed "s/^${key}:[[:space:]]*//" | tr -d '"')
+  value=$(printf '%s' "$line" | sed "s/^${key}:[[:space:]]*//" | tr -d "\"'")
   printf '%s' "$value"
 }
 
@@ -340,25 +340,43 @@ fi
 # /gaia-sprint-review ran (or --force was passed), so every path below is safe.
 
 CLOSED_AT="$(iso_now)"
-SPRINT_STATE_SH="${SPRINT_STATE_SH:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../../.." && pwd)}/plugins/gaia/scripts/sprint-state.sh}"
+SPRINT_STATE_SH="${SPRINT_STATE_SH:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/sprint-state.sh}"
 
 if [ -x "$SPRINT_STATE_SH" ]; then
-  # Try the sprint-state.sh transition. If it succeeds (review->closed), stamp
-  # closed_at only (sprint-state.sh already wrote status:closed). If it fails
-  # (active->closed is not a legal edge in the state machine), fall back to a
-  # direct yq write. The sentinel gate (Step 3a) already passed above, so the
-  # fallback is safe.
+  # Capture the transition's exit code and stderr so close.sh can distinguish:
+  #   exit 0  — review->closed succeeded; stamp closed_at only.
+  #   exit 2 + mismatch phrase — sprint-id mismatch; propagate the message, stop.
+  #   exit 2 without mismatch phrase — other exit-2 error; stop with generic message.
+  #   any other non-zero — non-legal edge (e.g. active->closed). Fall back to
+  #     direct yq — safe because the sentinel gate already passed above.
   #
-  # The `if` construct (not var=$(...); rc=$?) is required here: under
-  # `set -e`, a failing command substitution in a variable assignment exits
-  # the script before $? can be captured. The `if` suppresses `set -e` for
-  # the tested command per POSIX §2.8.1.
-  if "$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed >/dev/null 2>&1; then
+  # Plain assignments (not `local`) because close.sh runs at script top level
+  # where every bash version rejects `local` outside a function.
+  _trans_stderr="$(mktemp)"
+  _trans_rc=0
+  "$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed \
+    >/dev/null 2>"$_trans_stderr" || _trans_rc=$?
+
+  if [ "$_trans_rc" -eq 0 ]; then
+    rm -f "$_trans_stderr"
     yq -i ".closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
       || die "yq closed_at write failed on $YAML_PATH after sprint-state.sh transition"
+  elif [ "$_trans_rc" -eq 2 ] \
+    && grep -q 'does not match active sprint-status.yaml sprint_id' "$_trans_stderr"; then
+    # Sprint-id mismatch — propagate the writer's message (it names both ids).
+    cat "$_trans_stderr" >&2
+    rm -f "$_trans_stderr"
+    exit 1
+  elif [ "$_trans_rc" -eq 2 ]; then
+    # Exit 2 without the mismatch phrase (parse error or other advisory).
+    cat "$_trans_stderr" >&2
+    rm -f "$_trans_stderr"
+    die "transition failed (exit $_trans_rc)"
   else
-    # Transition failed (e.g. active->closed is not a legal edge). Fall back
-    # to direct yq — safe because the sentinel gate already passed above.
+    # Any other non-zero exit (e.g. active->closed is not a legal edge in the
+    # state machine, missing sentinel). Fall back to direct yq — safe because
+    # the sentinel gate already passed above.
+    rm -f "$_trans_stderr"
     yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
       || die "yq write failed on $YAML_PATH"
   fi

@@ -19,7 +19,7 @@
 #           --verdict FAILED exactly once per story (NOT per FR/NFR);
 #       (c) review-gate dominance handles composite BLOCKED automatically.
 #
-# Fail-closed on misspelled surface_type values (EC-1): any value other than
+# Fail-closed on misspelled surface_type values: any value other than
 # `none` is treated as user-visible surface — surfaces taxonomy errors at
 # gate time.
 

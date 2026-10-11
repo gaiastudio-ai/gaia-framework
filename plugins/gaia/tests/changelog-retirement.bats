@@ -34,11 +34,11 @@ setup() {
   [ -n "$line" ]
 
   # Assert each shipped feature name is present.
-  printf '%s' "$line" | grep -qF 'atdd gate'
-  printf '%s' "$line" | grep -qF 'plan-structure validator'
-  printf '%s' "$line" | grep -qF 'graceful-degrade'
+  grep -qF 'atdd gate' <<<"$line"
+  grep -qF 'plan-structure validator' <<<"$line"
+  grep -qF 'graceful-degrade' <<<"$line"
   # Assert the PR number is cited.
-  printf '%s' "$line" | grep -qF '#321'
+  grep -qF '#321' <<<"$line"
 }
 
 # ---------------------------------------------------------------------------

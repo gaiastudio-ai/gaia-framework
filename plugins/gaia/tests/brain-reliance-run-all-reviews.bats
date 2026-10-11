@@ -109,8 +109,8 @@ EOF
   _write_review_entry_mandatory_only
   run bash "$LOADER" "gaia-run-all-reviews:review-entry" --story-key "E99-S99"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -q 'E99-S99'
-  printf '%s\n' "$output" | grep -q 'gaia-run-all-reviews:review-entry'
+  grep -q 'E99-S99' <<<"$output"
+  grep -q 'gaia-run-all-reviews:review-entry' <<<"$output"
 }
 
 @test "review-entry: MANDATORY story-key node present -> pass (exit 0)" {
@@ -128,7 +128,7 @@ EOF
   _write_review_entry_map
   run bash "$LOADER" "gaia-run-all-reviews:review-entry" --story-key "E99-S1"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'optional|warn'
+  grep -qiE 'optional|warn' <<<"$output"
 }
 
 @test "review-entry: fail-OPEN on malformed reliance-map" {
@@ -142,7 +142,7 @@ stages:
 EOF
   run bash "$LOADER" "gaia-run-all-reviews:review-entry" --story-key "E99-S1"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|malformed'
+  grep -qiE 'un-?evaluable|warn|malformed' <<<"$output"
 }
 
 @test "review-entry: fail-OPEN on absent brain-index" {
@@ -150,7 +150,7 @@ EOF
   rm -f "$INDEX"
   run bash "$LOADER" "gaia-run-all-reviews:review-entry" --story-key "E99-S1"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|index'
+  grep -qiE 'un-?evaluable|warn|index' <<<"$output"
 }
 
 @test "review-entry: fail-OPEN on corrupt brain-index" {
@@ -162,14 +162,14 @@ this is: not a [valid brain index
 EOF
   run bash "$LOADER" "gaia-run-all-reviews:review-entry" --story-key "E99-S1"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|index'
+  grep -qiE 'un-?evaluable|warn|index' <<<"$output"
 }
 
 @test "review-entry: fail-OPEN on unknown stage id" {
   _write_review_entry_mandatory_only
   run bash "$LOADER" "gaia-run-all-reviews:never-declared" --story-key "E99-S1"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|unknown stage|not.*map|warn'
+  grep -qiE 'un-?evaluable|unknown stage|not.*map|warn' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -190,9 +190,9 @@ EOF
   run bash "$LOADER" "gaia-run-all-reviews:review-entry" --story-key "E99-S99"
   [ "$status" -ne 0 ]
   # The HALT diagnostic must name the INTERPOLATED key, not the raw template.
-  printf '%s\n' "$output" | grep -q 'E99-S99'
+  grep -q 'E99-S99' <<<"$output"
   # Must NOT contain the raw template literal.
-  ! printf '%s\n' "$output" | grep -qF '${STORY_KEY}'
+  ! grep -qF '${STORY_KEY}' <<<"$output"
 }
 
 @test "interpolation: without --story-key, a templated node is resolved as the literal placeholder" {
@@ -303,7 +303,7 @@ EOF
   plug="$(cd "$SKILLS_DIR/.." && pwd)"
   run bash "$AUDIT" --plugin "$plug" --map "$MAP"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q 'GAP'
+  ! grep -q 'GAP' <<<"$output"
 }
 
 @test "wiring: the three existing wired skills still pass the audit alongside the new stage" {

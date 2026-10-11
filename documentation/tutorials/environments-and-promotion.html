@@ -189,6 +189,18 @@ environments:
           dependencies that fail intermittently, staging becomes noisy. In that
           case, add a dev environment.
         </p>
+        <p>
+          Each branch in the promotion chain can declare <code>ci_checks:</code>
+          -- a list of CI <em>workflow</em> names you expect on that branch.
+          These names are not matched against check names during polling;
+          they are used only at grace-window expiry. When the grace window for
+          late-registering checks expires, the CI polling script reads this
+          list to decide whether missing checks mean "no CI configured" (safe
+          to proceed) or "expected checks never appeared" (exit with failure,
+          naming the workflow names from the config). The
+          <code>ci_wait_timeout_minutes</code> key controls how long the poll
+          waits overall (default 30, range 1-360).
+        </p>
       </section>
 
       <section id="secrets">

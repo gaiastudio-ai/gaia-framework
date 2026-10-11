@@ -350,14 +350,14 @@ CV() { echo "$PLUGIN/skills/gaia-sprint-review/scripts/compose-verdict.sh"; }
   run bash "$(CV)" --track-a WARNING --track-b PASSED
   [ "$status" -eq 0 ]
   [ "$output" = "PASSED" ]
-  ! echo "$output" | grep -q 'original_status'
+  ! grep -q 'original_status' <<<"$output"
 }
 
 @test "default invocation never leaks original_status even when both tracks coerced" {
   run bash "$(CV)" --track-a PASS --track-b CRITICAL
   [ "$status" -eq 0 ]
   [ "$output" = "FAILED" ]
-  ! echo "$output" | grep -q 'original_status'
+  ! grep -q 'original_status' <<<"$output"
 }
 
 # --- (c) regression: composite verdict UNCHANGED across all existing cases ---

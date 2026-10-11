@@ -62,16 +62,16 @@ EOF
   run "$STORY_PARSE" "$path"
   [ "$status" -eq 0 ]
   # Each canonical var must appear as KEY='...'
-  echo "$output" | grep -q "^STORY_KEY="
-  echo "$output" | grep -q "^STATUS="
-  echo "$output" | grep -q "^RISK="
-  echo "$output" | grep -q "^EPIC_KEY="
-  echo "$output" | grep -q "^TYPE="
-  echo "$output" | grep -q "^DEPENDS_ON="
-  echo "$output" | grep -q "^SUBTASK_COUNT="
-  echo "$output" | grep -q "^SUBTASK_CHECKED="
-  echo "$output" | grep -q "^AC_COUNT="
-  echo "$output" | grep -q "^STORY_PATH="
+  grep -q "^STORY_KEY=" <<<"$output"
+  grep -q "^STATUS=" <<<"$output"
+  grep -q "^RISK=" <<<"$output"
+  grep -q "^EPIC_KEY=" <<<"$output"
+  grep -q "^TYPE=" <<<"$output"
+  grep -q "^DEPENDS_ON=" <<<"$output"
+  grep -q "^SUBTASK_COUNT=" <<<"$output"
+  grep -q "^SUBTASK_CHECKED=" <<<"$output"
+  grep -q "^AC_COUNT=" <<<"$output"
+  grep -q "^STORY_PATH=" <<<"$output"
 }
 
 @test "story-parse: eval round-trip populates shell variables correctly" {
@@ -127,7 +127,7 @@ EOF
   run "$STORY_PARSE" "docs/implementation-artifacts/E99-S99-nonexistent.md"
   [ "$status" -eq 1 ]
   # No stdout STORY_KEY var on error
-  ! echo "$output" | grep -q "^STORY_KEY="
+  ! grep -q "^STORY_KEY=" <<<"$output"
   # bats combines stderr into $output by default
   echo "$output" | grep -F "E99-S99-nonexistent.md"
 }
@@ -142,7 +142,7 @@ status: ready-for-dev
 EOF
   run "$STORY_PARSE" "docs/implementation-artifacts/E10-S1-bad.md"
   [ "$status" -eq 2 ]
-  ! echo "$output" | grep -q "^STORY_KEY=" || false
+  ! grep -q "^STORY_KEY=" <<<"$output" || false
 }
 
 @test "story-parse: missing required key field exits 2" {
@@ -165,7 +165,7 @@ EOF
 @test "story-parse: path containing .. is rejected before any read" {
   run "$STORY_PARSE" "docs/implementation-artifacts/../../etc/passwd"
   [ "$status" -ne 0 ]
-  ! echo "$output" | grep -q "^STORY_KEY=" || false
+  ! grep -q "^STORY_KEY=" <<<"$output" || false
 }
 
 @test "story-parse: bare .. path is rejected" {

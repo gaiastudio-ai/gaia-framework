@@ -43,9 +43,9 @@ teardown() {
     --project-root "$TEST_TMP" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
 
-  echo "$output" | grep -qi "UNVERIFIED"
-  ! echo "$output" | grep -qi "^FAILED"
-  ! echo "$output" | grep -qi "SKIPPED"
+  grep -qi "UNVERIFIED" <<<"$output"
+  ! grep -qi "^FAILED" <<<"$output"
+  ! grep -qi "SKIPPED" <<<"$output"
 }
 
 # ---------- S4.2: Baseline directory exists but is empty ----------
@@ -65,9 +65,9 @@ teardown() {
     --project-root "$TEST_TMP" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
 
-  echo "$output" | grep -qi "UNVERIFIED"
+  grep -qi "UNVERIFIED" <<<"$output"
   # Should name the empty baseline directory in diagnostics
-  echo "$output" | grep -qi "baseline\|empty"
+  grep -qi "baseline\|empty" <<<"$output"
 }
 
 # ---------- S4.3: Partial baselines — some exist, some missing ----------
@@ -94,10 +94,10 @@ teardown() {
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
 
   # 375 and 768 should report PASSED
-  echo "$output" | grep "375" | grep -qi "PASSED"
-  echo "$output" | grep "768" | grep -qi "PASSED"
+  grep "375" <<<"$output" | grep -qi "PASSED"
+  grep "768" <<<"$output" | grep -qi "PASSED"
   # 1440 should report UNVERIFIED
-  echo "$output" | grep "1440" | grep -qi "UNVERIFIED"
+  grep "1440" <<<"$output" | grep -qi "UNVERIFIED"
   # Overall should be PASSED (worst non-UNVERIFIED result; UNVERIFIED is advisory)
   echo "$output" | tail -1 | grep -qi "PASSED"
 }
@@ -116,7 +116,7 @@ teardown() {
     --project-root "$TEST_TMP" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   unverified_output="$output"
-  echo "$unverified_output" | grep -qi "UNVERIFIED"
+  grep -qi "UNVERIFIED" <<<"$unverified_output"
 
   # SKIPPED: browser surface is NOT configured (no web in platforms)
   cat > "$TEST_TMP/.gaia/config/project-config.yaml" <<'YAML'
@@ -131,7 +131,7 @@ YAML
     --evidence-dir "$EVIDENCE_DIR" \
     --config "$TEST_TMP/.gaia/config/project-config.yaml"
   skipped_output="$output"
-  echo "$skipped_output" | grep -qi "SKIPPED"
+  grep -qi "SKIPPED" <<<"$skipped_output"
 
   # The two verdicts must be distinct strings
   [ "$unverified_output" != "$skipped_output" ]

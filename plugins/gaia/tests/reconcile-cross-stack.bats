@@ -125,9 +125,9 @@ teardown() { common_teardown; }
     bash "$DETECTOR" 2>/dev/null)" || true
 
   # The detector must report the unsanctioned edge (frontend -> backend).
-  echo "$out" | grep -q 'unsanctioned-cross-stack-reference'
-  echo "$out" | grep -q 'frontend'
-  echo "$out" | grep -q 'backend'
+  grep -q 'unsanctioned-cross-stack-reference' <<<"$out"
+  grep -q 'frontend' <<<"$out"
+  grep -q 'backend' <<<"$out"
 }
 
 # ---------------------------------------------------------------------------
@@ -170,9 +170,9 @@ teardown() { common_teardown; }
     bash "$DETECTOR" 2>/dev/null)" || true
 
   # The edge must be detected as cross-stack (frontend -> backend).
-  echo "$out" | grep -q 'unsanctioned-cross-stack-reference'
-  echo "$out" | grep -q 'frontend'
-  echo "$out" | grep -q 'backend'
+  grep -q 'unsanctioned-cross-stack-reference' <<<"$out"
+  grep -q 'frontend' <<<"$out"
+  grep -q 'backend' <<<"$out"
 }
 
 # ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ teardown() { common_teardown; }
     bash "$DETECTOR" 2>&1 >/dev/null)" || true
 
   # stderr must mention the unowned file.
-  echo "$stderr_out" | grep -qi 'unowned'
+  grep -qi 'unowned' <<<"$stderr_out"
 }
 
 # ---------------------------------------------------------------------------
@@ -229,7 +229,7 @@ EOF
     bash "$DETECTOR" 2>/dev/null)" || true
 
   # Edge must be detected (beta -> alpha, no cross_refs declared).
-  echo "$out" | grep -q 'unsanctioned-cross-stack-reference'
+  grep -q 'unsanctioned-cross-stack-reference' <<<"$out"
 }
 
 # ---------------------------------------------------------------------------
@@ -293,7 +293,7 @@ EOF
   [ "$match_count" -eq 0 ]
 
   # stderr should mention the file as unowned.
-  echo "$stderr_out" | grep -qi 'unowned'
+  grep -qi 'unowned' <<<"$stderr_out"
 }
 
 @test "non-** glob depth guard: shallow file resolves to owning stack through reconcile" {
@@ -336,7 +336,7 @@ EOF
 
   # The shallow file DOES resolve to "cfg" — the edge is a real cross-stack
   # reference (cfg -> api) and must be reported as unsanctioned.
-  echo "$out" | grep -q 'unsanctioned-cross-stack-reference'
-  echo "$out" | grep -q 'cfg'
-  echo "$out" | grep -q 'api'
+  grep -q 'unsanctioned-cross-stack-reference' <<<"$out"
+  grep -q 'cfg' <<<"$out"
+  grep -q 'api' <<<"$out"
 }

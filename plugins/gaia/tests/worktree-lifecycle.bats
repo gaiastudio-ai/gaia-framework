@@ -410,6 +410,64 @@ CHILD
   [[ "$stderr" != *"cannot cd"* ]]
 }
 
+@test "verify-pr-merged detects link-form Story: body line after teardown" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary" staging)"
+  local wt; wt="$(worktree_create "$primary" "K6-S5" "slug")"
+  printf 'work\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  # Key-free subject; story reference is in the body only (link form).
+  git -C "$wt" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit -q -m "$(printf 'fix: handle null input\n\nStory: [K6-S5](https://example.invalid)\n')"
+  git -C "$primary" merge --no-ff -q -m "Merge pull request #99" "feat/K6-S5-slug"
+
+  local PRIMARY_CODE_TREE="$primary"
+  worktree_teardown "$PRIMARY_CODE_TREE" "$wt"
+  export PROJECT_PATH="$PRIMARY_CODE_TREE"
+
+  run --separate-stderr "$DEVSTORY_SCRIPTS/verify-pr-merged.sh" "K6-S5" staging
+  [ "$status" -eq 0 ]
+}
+
+@test "verify-pr-merged detects plain-form Story: body line with key-free subject" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary" staging)"
+  local wt; wt="$(worktree_create "$primary" "K6-S8" "slug")"
+  printf 'work\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  # Key-free subject; story reference is plain form in the body.
+  git -C "$wt" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit -q -m "$(printf 'fix: handle null input\n\nStory: K6-S8\n')"
+  git -C "$primary" merge --no-ff -q -m "Merge pull request #101" "feat/K6-S8-slug"
+
+  local PRIMARY_CODE_TREE="$primary"
+  worktree_teardown "$PRIMARY_CODE_TREE" "$wt"
+  export PROJECT_PATH="$PRIMARY_CODE_TREE"
+
+  run --separate-stderr "$DEVSTORY_SCRIPTS/verify-pr-merged.sh" "K6-S8" staging
+  [ "$status" -eq 0 ]
+}
+
+@test "verify-pr-merged does not match longer key with same prefix (negative guard)" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary" staging)"
+  local wt; wt="$(worktree_create "$primary" "K6-S10" "slug")"
+  printf 'work\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  # The commit mentions K6-S10 but we query K6-S1 — must NOT match.
+  git -C "$wt" -c user.email=t@e -c user.name=t -c commit.gpgsign=false \
+    commit -q -m "$(printf 'fix: handle edge\n\nStory: [K6-S10](https://example.invalid)\n')"
+  git -C "$primary" merge --no-ff -q -m "Merge pull request #100" "feat/K6-S10-slug"
+
+  local PRIMARY_CODE_TREE="$primary"
+  worktree_teardown "$PRIMARY_CODE_TREE" "$wt"
+  export PROJECT_PATH="$PRIMARY_CODE_TREE"
+
+  # Query for K6-S1 (shorter prefix) — must NOT match the K6-S10 commit.
+  run "$DEVSTORY_SCRIPTS/verify-pr-merged.sh" "K6-S1" staging
+  [ "$status" -eq 2 ]
+}
+
 @test "the post-merge retry path stays reachable after teardown (AC4)" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary" staging)"
@@ -580,7 +638,7 @@ CHILD
   worktree_prune_stale "$primary"
   # The lock is the ownership marker the next run depends on: it must survive.
   local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A3 -F "$wt" || true)"
-  printf '%s\n' "$rec" | grep -q '^locked' \
+  grep -q '^locked' <<<"$rec" \
     || { echo "the lock was stripped from a kept worktree"; return 1; }
 }
 
@@ -715,7 +773,7 @@ CHILD
   [ "$(_wt_count "$primary" "$wt")" -ge 1 ] \
     || { echo "another tool's worktree was unregistered"; return 1; }
   local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A3 -F "$wt" || true)"
-  printf '%s\n' "$rec" | grep -q '^locked' \
+  grep -q '^locked' <<<"$rec" \
     || { echo "another tool's lock was stripped"; return 1; }
 }
 

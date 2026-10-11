@@ -391,7 +391,7 @@ EIGHT_SITES=(
   local derived_set=""
   while IFS= read -r cand; do
     [ -n "$cand" ] || continue
-    if ! echo "$non_phase3_commands" | grep -qxF "$cand"; then
+    if ! grep -qxF "$cand" <<<"$non_phase3_commands"; then
       derived_set="${derived_set}${derived_set:+
 }${cand}"
     fi

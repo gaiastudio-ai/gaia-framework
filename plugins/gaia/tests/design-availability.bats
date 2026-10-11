@@ -48,16 +48,47 @@ _extract_availability_subblock() {
 
 # _extract_availability_section <file>
 # Extracts the full availability section from the heading
-# ("Availability check" or "Integration availability") to the next
-# heading (### or ##). Stops at the FIRST boundary heading after
-# the start, so negative assertions check only the availability block.
-# Returns empty if absent.
+# ("Availability check" or "Integration availability") up to the
+# <!-- availability-check end --> comment or the next heading (### or
+# ##), whichever comes first. Returns empty if absent.
 _extract_availability_section() {
   awk '
-    /^\*\*Availability check\.\*\*|^### Precondition — Integration availability/ { found=1; p=1 }
-    p && found && /^###[^#]|^## / { if (seen_start) exit; seen_start=1 }
+    /^\*\*Availability check\.\*\*|^### Precondition — Integration availability/ { p=1; print; next }
+    p && (/^###[^#]|^## / || /<!-- availability-check end -->/) { exit }
     p { print }
   ' "$1"
+}
+
+# _assert_availability_identity <file> [<file> ...]
+# Asserts the availability sub-block is present in every file,
+# byte-identical across all of them, and free of design-probe
+# references. Requires at least two files.
+# Every assertion returns explicitly on failure — under bats `run`,
+# errexit is off, so a bare `|| fail` would let the function return 0
+# from a subsequent command.
+_assert_availability_identity() {
+  [ "$#" -ge 2 ] || { fail "identity helper requires at least two files"; return 1; }
+
+  local ref_file="$1" ref_block
+  ref_block="$(_extract_availability_subblock "$ref_file")"
+  [ -n "$ref_block" ] \
+    || { fail "availability sub-block missing from ${ref_file##*/}"; return 1; }
+
+  if grep -qF 'design-probe.sh' <<< "$ref_block"; then
+    fail "availability sub-block in ${ref_file##*/} must not reference design-probe.sh"
+    return 1
+  fi
+
+  shift
+  local f cur_block
+  for f in "$@"; do
+    cur_block="$(_extract_availability_subblock "$f")"
+    [ -n "$cur_block" ] \
+      || { fail "availability sub-block missing from ${f##*/}"; return 1; }
+
+    diff <(printf '%s' "$ref_block") <(printf '%s' "$cur_block") >/dev/null 2>&1 \
+      || { fail "availability sub-block differs between ${ref_file##*/} and ${f##*/}"; return 1; }
+  done
 }
 
 # =========================================================================
@@ -70,23 +101,7 @@ _extract_availability_section() {
   [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
   [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
 
-  local block_cux block_dr block_af block_ux
-  block_cux="$(_extract_availability_subblock "$SKILL_MD_CUX")"
-  block_dr="$(_extract_availability_subblock "$SKILL_MD_DR")"
-  block_af="$(_extract_availability_subblock "$SKILL_MD_AF")"
-  block_ux="$(_extract_availability_subblock "$SKILL_MD_UX")"
-
-  [ -n "$block_cux" ] || fail "availability sub-block missing from create-ux SKILL.md"
-  [ -n "$block_dr" ] || fail "availability sub-block missing from design-review SKILL.md"
-  [ -n "$block_af" ] || fail "availability sub-block missing from add-feature SKILL.md"
-  [ -n "$block_ux" ] || fail "availability sub-block missing from edit-ux SKILL.md"
-
-  diff <(printf '%s' "$block_cux") <(printf '%s' "$block_dr") >/dev/null 2>&1 \
-    || fail "availability sub-block differs between create-ux and design-review"
-  diff <(printf '%s' "$block_cux") <(printf '%s' "$block_af") >/dev/null 2>&1 \
-    || fail "availability sub-block differs between create-ux and add-feature"
-  diff <(printf '%s' "$block_cux") <(printf '%s' "$block_ux") >/dev/null 2>&1 \
-    || fail "availability sub-block differs between create-ux and edit-ux"
+  _assert_availability_identity "$SKILL_MD_CUX" "$SKILL_MD_DR" "$SKILL_MD_AF" "$SKILL_MD_UX"
 }
 
 # =========================================================================
@@ -134,17 +149,17 @@ _extract_availability_section() {
 
   # The unauthorized remediation must contain the exact dual-path wording
   local _expected_dual="Run \`/design-login\` (API-token sessions), or grant design access when prompted (claude.ai sessions)"
-  echo "$unauth_cux" | grep -qF '/design-login' \
+  grep -qF '/design-login' <<<"$unauth_cux" \
     || fail "create-ux unauthorized remediation should mention /design-login"
-  echo "$unauth_cux" | grep -q 'API-token sessions' \
+  grep -q 'API-token sessions' <<<"$unauth_cux" \
     || fail "create-ux unauthorized remediation should say API-token sessions"
-  echo "$unauth_cux" | grep -q 'grant design access when prompted' \
+  grep -q 'grant design access when prompted' <<<"$unauth_cux" \
     || fail "create-ux unauthorized remediation should say grant design access when prompted"
-  echo "$unauth_dr" | grep -qF '/design-login' \
+  grep -qF '/design-login' <<<"$unauth_dr" \
     || fail "design-review unauthorized remediation should mention /design-login"
-  echo "$unauth_dr" | grep -q 'API-token sessions' \
+  grep -q 'API-token sessions' <<<"$unauth_dr" \
     || fail "design-review unauthorized remediation should say API-token sessions"
-  echo "$unauth_dr" | grep -q 'grant design access when prompted' \
+  grep -q 'grant design access when prompted' <<<"$unauth_dr" \
     || fail "design-review unauthorized remediation should say grant design access when prompted"
 }
 
@@ -171,34 +186,34 @@ _extract_availability_section() {
   [ -n "$section_dr" ] || fail "availability section not found in design-review"
 
   # No design-probe.sh reference in the sub-block itself
-  if echo "$block_cux" | grep -q 'design-probe\.sh'; then
+  if grep -q 'design-probe\.sh' <<<"$block_cux"; then
     fail "create-ux availability sub-block must not reference design-probe.sh"
   fi
-  if echo "$block_dr" | grep -q 'design-probe\.sh'; then
+  if grep -q 'design-probe\.sh' <<<"$block_dr"; then
     fail "design-review availability sub-block must not reference design-probe.sh"
   fi
 
   # No positive usage of design-probe in the section (bash/run/source)
-  if echo "$section_cux" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+  if grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe' <<<"$section_cux"; then
     fail "create-ux availability section must not use design-probe.sh as a fallback"
   fi
-  if echo "$section_dr" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+  if grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe' <<<"$section_dr"; then
     fail "design-review availability section must not use design-probe.sh as a fallback"
   fi
 
   # No "own probe" / "its own probe" / "probe fallback"
-  if echo "$section_cux" | grep -qiE 'own probe|its own probe|probe fallback'; then
+  if grep -qiE 'own probe|its own probe|probe fallback' <<<"$section_cux"; then
     fail "create-ux availability section must not mention probe fallback"
   fi
-  if echo "$section_dr" | grep -qiE 'own probe|its own probe|probe fallback'; then
+  if grep -qiE 'own probe|its own probe|probe fallback' <<<"$section_dr"; then
     fail "design-review availability section must not mention probe fallback"
   fi
 
   # No --integration pass-through
-  if echo "$section_cux" | grep -q '\-\-integration'; then
+  if grep -q '\-\-integration' <<<"$section_cux"; then
     fail "create-ux availability section must not have --integration pass-through"
   fi
-  if echo "$section_dr" | grep -q '\-\-integration'; then
+  if grep -q '\-\-integration' <<<"$section_dr"; then
     fail "design-review availability section must not have --integration pass-through"
   fi
 }
@@ -219,28 +234,28 @@ _extract_availability_section() {
   local probe_line
   probe_line="$(grep '_MSG_UNAUTHORIZED=' "$PROBE_SCRIPT")"
   [ -n "$probe_line" ] || fail "design-probe.sh has no _MSG_UNAUTHORIZED"
-  echo "$probe_line" | grep -qF "$_dual_path" \
+  grep -qF "$_dual_path" <<<"$probe_line" \
     || fail "design-probe.sh unauthorized should contain the full dual-path wording"
 
   # Site 2: design-stale-transition.sh unauthorized printf
   local dst_line
   dst_line="$(grep 'unauthorized.*Run' "$STALE_DRIVER")"
   [ -n "$dst_line" ] || fail "design-stale-transition.sh has no unauthorized remediation line"
-  echo "$dst_line" | grep -qF "$_dual_path" \
+  grep -qF "$_dual_path" <<<"$dst_line" \
     || fail "design-stale-transition.sh unauthorized should contain the full dual-path wording"
 
   # Site 3: lib/design-gate.sh _dg_absent_remediation
   local absent_line
   absent_line="$(grep '_dg_absent_remediation=' "$GATE_LIB")"
   [ -n "$absent_line" ] || fail "design-gate.sh has no _dg_absent_remediation"
-  echo "$absent_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$absent_line" \
     || fail "design-gate.sh absent remediation should contain the dual-path wording"
 
   # Site 4: lib/design-gate.sh _dg_halt_remediation
   local halt_line
   halt_line="$(grep '_dg_halt_remediation=' "$GATE_LIB")"
   [ -n "$halt_line" ] || fail "design-gate.sh has no _dg_halt_remediation"
-  echo "$halt_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$halt_line" \
     || fail "design-gate.sh halt remediation should contain the dual-path wording"
 
   # Order check: design-login must appear before "grant design access" at each site
@@ -256,49 +271,260 @@ _extract_availability_section() {
 }
 
 # =========================================================================
-# (AC-EC5) removing create-ux availability block makes identity check fail
+# Bounded extraction: create-ux availability section excludes discovery text
 # =========================================================================
 
-@test "(AC-EC5) removing create-ux availability block breaks sub-block identity" {
+@test "create-ux availability extraction is bounded and excludes discovery text" {
   [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
 
-  # Non-vacuity: the sub-block must currently exist
-  local block_cux
-  block_cux="$(_extract_availability_subblock "$SKILL_MD_CUX")"
-  [ -n "$block_cux" ] || fail "availability sub-block missing from create-ux — mutant test cannot run"
+  # Work on a copy so we can inject a sentinel
+  local copy="$TEST_TMP/create-ux-SKILL.md"
+  cp "$SKILL_MD_CUX" "$copy"
 
-  # Create a temp copy with the sub-block removed
-  local stripped
-  stripped="$(awk '/<!-- design-availability begin -->/{skip=1;next} /<!-- design-availability end -->/{skip=0;next} !skip' "$SKILL_MD_CUX")"
-  local mutant_block
-  mutant_block="$(echo "$stripped" | awk '/<!-- design-availability begin -->/{p=1;next} /<!-- design-availability end -->/{p=0} p')"
+  # Inject a sentinel into the discovery text that follows the availability
+  # paragraphs (the DesignSync error handling or the design-system discovery).
+  # Use a line that cannot appear in real availability text.
+  local sentinel="__AVAIL_SENTINEL__"
+  # Place sentinel after the "does NOT use design-probe.sh" paragraph —
+  # in the next non-empty paragraph (DesignSync authorization error handling).
+  awk -v s="$sentinel" '
+    /DesignSync authorization error handling/ && !done { print s; done=1 }
+    { print }
+  ' "$copy" > "$copy.tmp" && mv "$copy.tmp" "$copy"
 
-  # The mutant must have NO sub-block
-  [ -z "$mutant_block" ] \
-    || fail "after removing the availability markers the sub-block should be empty but got content"
+  # Sentinel guard: confirm the sentinel was actually injected
+  grep -qF -- "$sentinel" "$copy" \
+    || fail "sentinel was not injected into create-ux copy — test is vacuous"
+
+  local section
+  section="$(_extract_availability_section "$copy")"
+  [ -n "$section" ] || fail "availability section not found in create-ux copy"
+
+  # Must be at most 20 lines
+  local line_count
+  line_count="$(printf '%s\n' "$section" | wc -l | tr -d ' ')"
+  [ "$line_count" -le 20 ] \
+    || fail "create-ux availability extraction is $line_count lines (expected <= 20)"
+
+  # Sentinel must be absent (proves extraction is bounded)
+  if grep -qF "$sentinel" <<<"$section"; then
+    fail "create-ux extraction should not contain the sentinel — extraction is not bounded"
+  fi
+
+  # Discovery text must be absent
+  if grep -q 'Discover an existing design system' <<<"$section"; then
+    fail "create-ux extraction must not contain discovery text"
+  fi
+  if grep -q 'Pass 2' <<<"$section"; then
+    fail "create-ux extraction must not contain Pass 2 reference"
+  fi
+
+  # list_projects must appear exactly once (the availability paragraph itself)
+  local lp_count
+  lp_count="$(printf '%s\n' "$section" | grep -c 'list_projects' || true)"
+  [ "$lp_count" -eq 1 ] \
+    || fail "expected exactly 1 list_projects in bounded extraction, got $lp_count"
+
+  # Boundary pin: the "does NOT use design-probe.sh" sentence must be inside
+  # the extraction. Moving the end comment above that paragraph would lose it.
+  grep -qF 'does NOT use' <<< "$section" \
+    || fail "extraction must include the design-probe exclusion sentence"
 }
 
 # =========================================================================
-# (AC-EC5) removing design-review availability block breaks identity check
+# Bounded extraction: design-review availability section excludes stale-resume
 # =========================================================================
 
-@test "(AC-EC5) removing design-review availability block breaks sub-block identity" {
+@test "design-review availability extraction is bounded and excludes stale-resume" {
   [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
 
-  # Non-vacuity: the sub-block must currently exist
-  local block_dr
-  block_dr="$(_extract_availability_subblock "$SKILL_MD_DR")"
-  [ -n "$block_dr" ] || fail "availability sub-block missing from design-review — mutant test cannot run"
+  # Work on a copy so we can inject a sentinel
+  local copy="$TEST_TMP/design-review-SKILL.md"
+  cp "$SKILL_MD_DR" "$copy"
 
-  # Create a temp copy with the sub-block removed
-  local stripped
-  stripped="$(awk '/<!-- design-availability begin -->/{skip=1;next} /<!-- design-availability end -->/{skip=0;next} !skip' "$SKILL_MD_DR")"
-  local mutant_block
-  mutant_block="$(echo "$stripped" | awk '/<!-- design-availability begin -->/{p=1;next} /<!-- design-availability end -->/{p=0} p')"
+  # Inject a sentinel into the Stale-resume section
+  local sentinel="__AVAIL_SENTINEL__"
+  awk -v s="$sentinel" '
+    /^### Precondition — Stale-resume/ && !done { print; print s; done=1; next }
+    { print }
+  ' "$copy" > "$copy.tmp" && mv "$copy.tmp" "$copy"
 
-  # The mutant must have NO sub-block
-  [ -z "$mutant_block" ] \
-    || fail "after removing the availability markers the sub-block should be empty but got content"
+  # Sentinel guard: confirm the sentinel was actually injected
+  grep -qF -- "$sentinel" "$copy" \
+    || fail "sentinel was not injected into design-review copy — test is vacuous"
+
+  local section
+  section="$(_extract_availability_section "$copy")"
+  [ -n "$section" ] || fail "availability section not found in design-review copy"
+
+  # Must be at most 20 lines
+  local line_count
+  line_count="$(printf '%s\n' "$section" | wc -l | tr -d ' ')"
+  [ "$line_count" -le 20 ] \
+    || fail "design-review availability extraction is $line_count lines (expected <= 20)"
+
+  # Sentinel must be absent
+  if grep -qF "$sentinel" <<<"$section"; then
+    fail "design-review extraction should not contain the sentinel — extraction is not bounded"
+  fi
+
+  # Stale-resume heading itself must be absent
+  if grep -q 'Stale-resume' <<<"$section"; then
+    fail "design-review extraction must not contain Stale-resume text"
+  fi
+}
+
+# =========================================================================
+# Mutant: removing create-ux availability block fails identity check
+# =========================================================================
+
+@test "create-ux mutant with removed availability block fails identity check" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  # Generate mutant: delete the design-availability markers and everything
+  # between them — the sub-block extraction should then return empty.
+  local mutant="$TEST_TMP/mutant-create-ux.md"
+  sed '/<!-- design-availability begin -->/,/<!-- design-availability end -->/d' \
+    "$SKILL_MD_CUX" > "$mutant"
+
+  # Mutant must fail the identity check with a "missing" message
+  run _assert_availability_identity "$mutant" "$SKILL_MD_DR"
+  [ "$status" -ne 0 ] \
+    || fail "mutant create-ux should fail identity check but exited $status"
+  grep -qF "missing" <<< "$output" \
+    || fail "expected 'missing' in failure output, got: $output"
+}
+
+# =========================================================================
+# Mutant: removing design-review availability block fails identity check
+# =========================================================================
+
+@test "design-review mutant with removed availability block fails identity check" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  # Generate mutant: delete the design-availability markers and everything
+  # between them from design-review.
+  local mutant="$TEST_TMP/mutant-design-review.md"
+  sed '/<!-- design-availability begin -->/,/<!-- design-availability end -->/d' \
+    "$SKILL_MD_DR" > "$mutant"
+
+  # Mutant must fail the identity check with a "missing" message
+  run _assert_availability_identity "$SKILL_MD_CUX" "$mutant"
+  [ "$status" -ne 0 ] \
+    || fail "mutant design-review should fail identity check but exited $status"
+  grep -qF "missing" <<< "$output" \
+    || fail "expected 'missing' in failure output, got: $output"
+}
+
+# =========================================================================
+# Real skill texts pass availability identity check
+# =========================================================================
+
+@test "real skill texts pass availability identity check" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+
+  run _assert_availability_identity "$SKILL_MD_CUX" "$SKILL_MD_DR" "$SKILL_MD_AF" "$SKILL_MD_UX"
+  [ "$status" -eq 0 ] \
+    || fail "real files should pass identity check: $output"
+}
+
+# =========================================================================
+# Mutant: one-byte change in availability block triggers differ failure
+# =========================================================================
+
+@test "one-byte mutant in availability block triggers differ failure" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # Generate a mutant with a one-byte change inside the shared block.
+  local mutant="$TEST_TMP/mutant-onebyte-dr.md"
+  awk '
+    /<!-- design-availability begin -->/ { inside=1 }
+    /<!-- design-availability end -->/   { inside=0 }
+    inside && !flipped && /available/ {
+      sub(/available/, "availablX"); flipped=1
+    }
+    { print }
+  ' "$SKILL_MD_DR" > "$mutant"
+
+  # Place the mutant in the middle (not last) so a missing return-after-fail
+  # in the helper would let the loop continue to a passing final file and
+  # mask the failure.
+  run _assert_availability_identity "$SKILL_MD_CUX" "$mutant" "$SKILL_MD_AF"
+  [ "$status" -ne 0 ] \
+    || fail "one-byte mutant should fail identity check"
+  grep -qF "differs" <<< "$output" \
+    || fail "expected 'differs' in failure output, got: $output"
+}
+
+# =========================================================================
+# Mutant: design-probe smuggled into all copies triggers probe failure
+# =========================================================================
+
+@test "design-probe smuggled into shared block triggers probe failure" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  # Smuggle a design-probe.sh mention into the shared block of both files,
+  # keeping them byte-identical so the diff check would pass — the probe
+  # check must still catch it.
+  local mut_cux="$TEST_TMP/mutant-probe-cux.md"
+  local mut_dr="$TEST_TMP/mutant-probe-dr.md"
+
+  _smuggle_probe() {
+    awk '
+      /<!-- design-availability begin -->/ { inside=1 }
+      /<!-- design-availability end -->/ && inside && !injected {
+        print "- Use design-probe.sh to verify."
+        injected=1; inside=0
+      }
+      { print }
+    ' "$1"
+  }
+  _smuggle_probe "$SKILL_MD_CUX" > "$mut_cux"
+  _smuggle_probe "$SKILL_MD_DR" > "$mut_dr"
+
+  run _assert_availability_identity "$mut_cux" "$mut_dr"
+  [ "$status" -ne 0 ] \
+    || fail "design-probe smuggle should fail identity check"
+  grep -qF "design-probe" <<< "$output" \
+    || fail "expected 'design-probe' in failure output, got: $output"
+}
+
+# =========================================================================
+# Boundary pin: moving end comment above design-probe sentence goes red
+# =========================================================================
+
+@test "moving end comment above the design-probe exclusion sentence goes red" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+
+  # Create a mutant where the end comment is moved one paragraph up —
+  # placed right before the "does NOT use design-probe.sh" line.
+  local mutant="$TEST_TMP/mutant-endcomment-cux.md"
+  awk '
+    /does NOT use.*design-probe/ && !injected {
+      print "<!-- availability-check end -->"
+      injected=1
+    }
+    /<!-- availability-check end -->/ && injected { next }
+    { print }
+  ' "$SKILL_MD_CUX" > "$mutant"
+
+  local section
+  section="$(_extract_availability_section "$mutant")"
+  [ -n "$section" ] || fail "extraction returned empty for mutant"
+
+  # The extraction should now be MISSING the exclusion sentence, proving
+  # the boundary pin catches this move.
+  if grep -qF 'does NOT use' <<< "$section"; then
+    fail "mutant with moved end comment should lose the exclusion sentence"
+  fi
 }
 
 # =========================================================================
@@ -371,7 +597,7 @@ _extract_availability_section() {
   [ -n "$block" ] || fail "availability sub-block missing from create-ux — non-vacuity guard"
 
   # The sub-block itself must not reference design-probe
-  if echo "$block" | grep -q 'design-probe'; then
+  if grep -q 'design-probe' <<<"$block"; then
     fail "create-ux availability sub-block must not reference design-probe"
   fi
 
@@ -380,7 +606,7 @@ _extract_availability_section() {
   section="$(_extract_availability_section "$SKILL_MD_CUX")"
   [ -n "$section" ] || fail "availability section not found in create-ux"
 
-  if echo "$section" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+  if grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe' <<<"$section"; then
     fail "create-ux availability section must not use design-probe as a fallback"
   fi
 }
@@ -397,7 +623,7 @@ _extract_availability_section() {
   [ -n "$block" ] || fail "availability sub-block missing from design-review — non-vacuity guard"
 
   # The sub-block itself must not reference design-probe
-  if echo "$block" | grep -q 'design-probe'; then
+  if grep -q 'design-probe' <<<"$block"; then
     fail "design-review availability sub-block must not reference design-probe"
   fi
 
@@ -406,7 +632,7 @@ _extract_availability_section() {
   section="$(_extract_availability_section "$SKILL_MD_DR")"
   [ -n "$section" ] || fail "availability section not found in design-review"
 
-  if echo "$section" | grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe'; then
+  if grep -qiE 'bash.*design-probe|run.*design-probe|source.*design-probe|fall back to.*design-probe|fallback.*design-probe' <<<"$section"; then
     fail "design-review availability section must not use design-probe as a fallback"
   fi
 }
@@ -432,10 +658,10 @@ _extract_availability_section() {
   [ -n "$section_cux" ] || fail "availability section not found in create-ux"
   [ -n "$section_dr" ] || fail "availability section not found in design-review"
 
-  if echo "$section_cux" | grep -q '\-\-integration'; then
+  if grep -q '\-\-integration' <<<"$section_cux"; then
     fail "create-ux availability section must not have --integration"
   fi
-  if echo "$section_dr" | grep -q '\-\-integration'; then
+  if grep -q '\-\-integration' <<<"$section_dr"; then
     fail "design-review availability section must not have --integration"
   fi
 }
@@ -451,7 +677,7 @@ _extract_availability_section() {
   msg_line="$(grep '_MSG_UNAUTHORIZED=' "$PROBE_SCRIPT")"
   [ -n "$msg_line" ] || fail "design-probe.sh has no _MSG_UNAUTHORIZED"
 
-  echo "$msg_line" | grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$msg_line" \
     || fail "design-probe.sh unauthorized should contain the full dual-path wording"
 }
 
@@ -466,7 +692,7 @@ _extract_availability_section() {
   unauth_line="$(grep 'unauthorized.*Run\|unauthorized.*design-login' "$STALE_DRIVER")"
   [ -n "$unauth_line" ] || fail "design-stale-transition.sh has no unauthorized remediation line"
 
-  echo "$unauth_line" | grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -qF 'Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$unauth_line" \
     || fail "stale-transition unauthorized should contain the full dual-path wording"
 }
 
@@ -481,7 +707,7 @@ _extract_availability_section() {
   absent_line="$(grep '_dg_absent_remediation=' "$GATE_LIB")"
   [ -n "$absent_line" ] || fail "design-gate.sh has no _dg_absent_remediation"
 
-  echo "$absent_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$absent_line" \
     || fail "design-gate.sh absent remediation should contain the dual-path wording"
 }
 
@@ -496,7 +722,7 @@ _extract_availability_section() {
   halt_line="$(grep '_dg_halt_remediation=' "$GATE_LIB")"
   [ -n "$halt_line" ] || fail "design-gate.sh has no _dg_halt_remediation"
 
-  echo "$halt_line" | grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' \
+  grep -q 'design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)' <<<"$halt_line" \
     || fail "design-gate.sh halt remediation should contain the dual-path wording"
 }
 
@@ -512,7 +738,7 @@ _extract_availability_section() {
   ts_section="$(sed -n '/<section id="troubleshooting">/,/<\/section>/p' "$doc_page")"
   [ -n "$ts_section" ] || fail "troubleshooting section not found in create-ux doc page"
 
-  echo "$ts_section" | grep -qi 'unavailable\|unauthorized' \
+  grep -qi 'unavailable\|unauthorized' <<<"$ts_section" \
     || fail "create-ux doc page troubleshooting should mention unavailable or unauthorized"
 }
 
@@ -524,7 +750,7 @@ _extract_availability_section() {
   ts_section="$(sed -n '/<section id="troubleshooting">/,/<\/section>/p' "$doc_page")"
   [ -n "$ts_section" ] || fail "troubleshooting section not found in design-review doc page"
 
-  echo "$ts_section" | grep -qi 'unavailable\|unauthorized' \
+  grep -qi 'unavailable\|unauthorized' <<<"$ts_section" \
     || fail "design-review doc page troubleshooting should mention unavailable or unauthorized"
 }
 

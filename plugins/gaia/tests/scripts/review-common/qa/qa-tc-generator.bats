@@ -80,8 +80,8 @@ write_story_no_key() {
   [ "$status" -eq 0 ]
   run jq -r '.[0].type, .[1].type' "$OUTPUT"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q '^Unit$'
-  printf '%s\n' "$output" | grep -vq 'null'
+  grep -q '^Unit$' <<<"$output"
+  grep -vq 'null' <<<"$output"
 }
 
 @test "AC1: emitted JSON validates against the schema (when ajv installed)" {
@@ -155,7 +155,7 @@ EOF
   # Combine stderr into stdout so we can inspect the diagnostic.
   run bash -c '"$1" --story "$2" --output "$3" 2>&1' _ "$GENERATOR" "$STORY_FILE" "$OUTPUT"
   [ "$status" -eq 2 ]
-  printf '%s\n' "$output" | grep -q 'missing key:'
+  grep -q 'missing key:' <<<"$output"
 }
 
 @test "missing --story flag returns exit 2 with usage message" {

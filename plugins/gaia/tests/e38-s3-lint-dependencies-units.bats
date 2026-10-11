@@ -127,8 +127,8 @@ ENTRY
   local count
   count="$(printf '%s\n' "$got" | grep -c .)"
   [ "$count" -eq 2 ]
-  echo "$got" | grep -q "E1-S2"
-  echo "$got" | grep -q "E1-S3"
+  grep -q "E1-S2" <<<"$got"
+  grep -q "E1-S3" <<<"$got"
 }
 
 @test "lint_read_depends_on: returns empty for missing depends_on field (AC-EC2)" {
@@ -169,7 +169,7 @@ EOF
     "Given the system reads from the output produced by E1-S3 reconciliation"
   local got
   got="$(lint_scan_ac_text "$dir/E1-S2-story.md" "E1-S1 E1-S2 E1-S3")"
-  echo "$got" | grep -q "E1-S3"
+  grep -q "E1-S3" <<<"$got"
 }
 
 @test "lint_scan_ac_text: detects 'uses' + target story key" {
@@ -180,7 +180,7 @@ EOF
     "This story uses the output from E1-S3 reconciliation step"
   local got
   got="$(lint_scan_ac_text "$dir/E1-S2-story.md" "E1-S1 E1-S2 E1-S3")"
-  echo "$got" | grep -q "E1-S3"
+  grep -q "E1-S3" <<<"$got"
 }
 
 @test "lint_scan_ac_text: detects 'consumes' + resource" {
@@ -191,7 +191,7 @@ EOF
     "The lint step consumes sprint-status.yaml produced by E1-S5"
   local got
   got="$(lint_scan_ac_text "$dir/E1-S2-story.md" "E1-S1 E1-S2 E1-S3 E1-S5")"
-  echo "$got" | grep -q "E1-S5"
+  grep -q "E1-S5" <<<"$got"
 }
 
 @test "lint_scan_ac_text: no false positive on 'reads from stdout' (AC-EC5)" {
@@ -230,9 +230,9 @@ EOF
   SPRINT_STATUS_YAML="$dir/sprint-status.yaml"
   local got
   got="$(lint_build_order_map)"
-  echo "$got" | grep -q "E1-S1"
-  echo "$got" | grep -q "E1-S2"
-  echo "$got" | grep -q "E1-S3"
+  grep -q "E1-S1" <<<"$got"
+  grep -q "E1-S2" <<<"$got"
+  grep -q "E1-S3" <<<"$got"
 }
 
 # ===========================================================================
@@ -281,9 +281,9 @@ EOF
 
   local got
   got="$(lint_detect_inversions)"
-  echo "$got" | grep -q "E1-S3"
-  echo "$got" | grep -q "E1-S5"
-  echo "$got" | grep -q "explicit"
+  grep -q "E1-S3" <<<"$got"
+  grep -q "E1-S5" <<<"$got"
+  grep -q "explicit" <<<"$got"
 }
 
 @test "lint_detect_inversions: external dependency flagged as heuristic (AC-EC3)" {
@@ -302,8 +302,8 @@ EOF
 
   local got
   got="$(lint_detect_inversions)"
-  echo "$got" | grep -q "E2-S1"
-  echo "$got" | grep -q "External"
+  grep -q "E2-S1" <<<"$got"
+  grep -q "External" <<<"$got"
 }
 
 @test "lint_detect_inversions: circular A->B->A reports both edges (AC-EC4)" {
@@ -333,9 +333,9 @@ EOF
   _load_lint_helpers
   local got
   got="$(lint_format_json "sprint-99" 5 "")"
-  echo "$got" | grep -q '"status": "clean"'
-  echo "$got" | grep -q '"stories_analyzed": 5'
-  echo "$got" | grep -q '"inversions": \[\]'
+  grep -q '"status": "clean"' <<<"$got"
+  grep -q '"stories_analyzed": 5' <<<"$got"
+  grep -q '"inversions": \[\]' <<<"$got"
 }
 
 @test "lint_format_json: inversions present emits status inversions_detected" {
@@ -343,9 +343,9 @@ EOF
   local inversions="E1-S3|E1-S5|depends_on|explicit||Move E1-S5 before E1-S3"
   local got
   got="$(lint_format_json "sprint-99" 5 "$inversions")"
-  echo "$got" | grep -q '"status": "inversions_detected"'
-  echo "$got" | grep -q '"dependent": "E1-S3"'
-  echo "$got" | grep -q '"dependency": "E1-S5"'
+  grep -q '"status": "inversions_detected"' <<<"$got"
+  grep -q '"dependent": "E1-S3"' <<<"$got"
+  grep -q '"dependency": "E1-S5"' <<<"$got"
 }
 
 # ===========================================================================
@@ -356,7 +356,7 @@ EOF
   _load_lint_helpers
   local got
   got="$(lint_format_text "sprint-99" 5 "")"
-  echo "$got" | grep -qi "clean\|no inversions"
+  grep -qi "clean\|no inversions" <<<"$got"
 }
 
 @test "lint_format_text: inversions present shows table" {
@@ -364,8 +364,8 @@ EOF
   local inversions="E1-S3|E1-S5|depends_on|explicit||Move E1-S5 before E1-S3"
   local got
   got="$(lint_format_text "sprint-99" 5 "$inversions")"
-  echo "$got" | grep -q "E1-S3"
-  echo "$got" | grep -q "E1-S5"
+  grep -q "E1-S3" <<<"$got"
+  grep -q "E1-S5" <<<"$got"
 }
 
 # ===========================================================================
@@ -388,8 +388,8 @@ EOF
 
   run cmd_lint_dependencies "json" ""
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '"stories_analyzed": 0'
-  echo "$output" | grep -q '"status": "clean"'
+  grep -q '"stories_analyzed": 0' <<<"$output"
+  grep -q '"status": "clean"' <<<"$output"
 }
 
 @test "cmd_lint_dependencies: clean sprint exits 0 (AC1)" {
@@ -410,7 +410,7 @@ EOF
 
   run cmd_lint_dependencies "json" ""
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q '"status": "clean"'
+  grep -q '"status": "clean"' <<<"$output"
 }
 
 @test "cmd_lint_dependencies: inversion detected exits 2 (AC2)" {
@@ -435,7 +435,7 @@ EOF
 
   run cmd_lint_dependencies "json" ""
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q '"status": "inversions_detected"'
+  grep -q '"status": "inversions_detected"' <<<"$output"
 }
 
 @test "cmd_lint_dependencies: malformed yaml exits 1 (AC-EC8)" {
@@ -468,7 +468,7 @@ EOF
   run cmd_lint_dependencies "json" ""
   [ "$status" -eq 1 ]
   # Error message may reference "not found" or "failed"
-  echo "$output" | grep -qiE "not found|failed"
+  grep -qiE "not found|failed" <<<"$output"
 }
 
 @test "cmd_lint_dependencies: text format works" {

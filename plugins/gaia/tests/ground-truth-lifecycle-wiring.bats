@@ -108,9 +108,9 @@ make_no_sidecar() {
   make_stale
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-sprint-plan/scripts/ground-truth-gate.sh"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -qi 'ground.truth'
-  printf '%s\n' "$output" | grep -qi 'stale'
-  printf '%s\n' "$output" | grep -qF -- '--incremental'
+  grep -qi 'ground.truth' <<<"$output"
+  grep -qi 'stale' <<<"$output"
+  grep -qF -- '--incremental' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -131,9 +131,9 @@ make_no_sidecar() {
   # still fire and BLOCK before the lifecycle-event emit.
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-add-feature/scripts/finalize.sh"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -qi 'ground.truth'
-  printf '%s\n' "$output" | grep -qi 'stale'
-  printf '%s\n' "$output" | grep -qF -- '--incremental'
+  grep -qi 'ground.truth' <<<"$output"
+  grep -qi 'stale' <<<"$output"
+  grep -qF -- '--incremental' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -147,9 +147,9 @@ make_no_sidecar() {
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-add-feature/scripts/finalize.sh"
   [ "$status" -ne 0 ]
   # The gate diagnostic must appear...
-  printf '%s\n' "$output" | grep -qi 'stale'
+  grep -qi 'stale' <<<"$output"
   # ...and the lifecycle-event success line must NOT (emit never reached).
-  ! printf '%s\n' "$output" | grep -qi 'lifecycle event emitted'
+  ! grep -qi 'lifecycle event emitted' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -160,7 +160,7 @@ make_no_sidecar() {
   GAIA_YOLO_MODE=1 GAIA_YOLO_FLAG=1 GAIA_GT_BEST_EFFORT=1 \
     run bash "$BATS_TEST_DIRNAME/../skills/gaia-add-feature/scripts/finalize.sh"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -qi 'stale'
+  grep -qi 'stale' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -170,8 +170,8 @@ make_no_sidecar() {
   make_stale
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/finalize.sh"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qi 'ground.truth'
-  printf '%s\n' "$output" | grep -qi 'stale'
+  grep -qi 'ground.truth' <<<"$output"
+  grep -qi 'stale' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ make_no_sidecar() {
   make_stale
   run bash -c '. "$GATE"; gt_gate_best_effort "story-done"'
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qi 'stale'
+  grep -qi 'stale' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -201,7 +201,7 @@ make_no_sidecar() {
   make_fresh
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/finalize.sh"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -qi 'ground.truth.*stale'
+  ! grep -qi 'ground.truth.*stale' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -211,16 +211,16 @@ make_no_sidecar() {
   make_stale
   run bash -c '. "$GATE"; gt_gate_blocking "sprint-plan-entry"'
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -qF -- '--incremental'
-  ! printf '%s\n' "$output" | grep -qF -- '--agent all'
+  grep -qF -- '--incremental' <<<"$output"
+  ! grep -qF -- '--agent all' <<<"$output"
 }
 
 @test "AC4b: best-effort diagnostic instructs --incremental and never --agent all" {
   make_stale
   run bash -c '. "$GATE"; gt_gate_best_effort "sprint-close"'
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF -- '--incremental'
-  ! printf '%s\n' "$output" | grep -qF -- '--agent all'
+  grep -qF -- '--incremental' <<<"$output"
+  ! grep -qF -- '--agent all' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -283,9 +283,9 @@ SHIM
   make_no_sidecar
   run bash -c '. "$GATE"; gt_gate_blocking "add-feature-completion"'
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -qi 'stale'
-  ! printf '%s\n' "$output" | grep -qi 'blocked'
-  printf '%s\n' "$output" | grep -qi 'not applicable'
+  ! grep -qi 'stale' <<<"$output"
+  ! grep -qi 'blocked' <<<"$output"
+  grep -qi 'not applicable' <<<"$output"
 }
 
 @test "applicability: add-feature finalize completes (exit 0) when project has no sidecar ground-truth" {
@@ -294,7 +294,7 @@ SHIM
   make_no_sidecar
   run bash "$BATS_TEST_DIRNAME/../skills/gaia-add-feature/scripts/finalize.sh"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -qi 'ground-truth gate.*blocked'
+  ! grep -qi 'ground-truth gate.*blocked' <<<"$output"
 }
 
 @test "applicability: blocking gate STILL BLOCKS when sidecar ground-truth EXISTS but is stale (artifact newer)" {
@@ -303,8 +303,8 @@ SHIM
   [ -f "$GT" ]   # sidecar exists — this is NOT the not-applicable path
   run bash -c '. "$GATE"; gt_gate_blocking "add-feature-completion"'
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -qi 'stale'
-  printf '%s\n' "$output" | grep -qF -- '--incremental'
+  grep -qi 'stale' <<<"$output"
+  grep -qF -- '--incremental' <<<"$output"
 }
 
 @test "applicability: blocking gate STILL BLOCKS on equal-mtime tie when sidecar ground-truth EXISTS" {
@@ -313,7 +313,7 @@ SHIM
   [ -f "$GT" ]
   run bash -c '. "$GATE"; gt_gate_blocking "add-feature-completion"'
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -qi 'stale'
+  grep -qi 'stale' <<<"$output"
 }
 
 @test "applicability: best-effort gate is fully silent (exit 0, no warning) with no sidecar ground-truth" {

@@ -223,7 +223,7 @@ EOF
   run bash -c '"$1" "$2" --to in-progress 2>&1 1>/dev/null' \
     _ "$TRANSITION" "$STORY_KEY"
   [ "$status" -eq 0 ]
-  ! printf '%s' "$output" | grep -qE 'legacy-flat-fallback|story-index\.yaml.*missing'
+  ! grep -qE 'legacy-flat-fallback|story-index\.yaml.*missing' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------

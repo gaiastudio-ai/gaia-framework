@@ -45,7 +45,7 @@ _get_x_no_auto() {
   orphans=""
   while IFS= read -r entry; do
     [ -z "$entry" ] && continue
-    if ! printf '%s\n' "$schema_props" | grep -Fxq "$entry"; then
+    if ! grep -Fxq "$entry" <<<"$schema_props"; then
       orphans="${orphans}${entry}\n"
     fi
   done <<< "$allowlist"
@@ -64,9 +64,9 @@ _get_x_no_auto() {
   orphans=""
   while IFS= read -r prop; do
     [ -z "$prop" ] && continue
-    if printf '%s\n' "$allowlist" | grep -Fxq "$prop"; then continue; fi
-    if printf '%s\n' "$managed" | grep -Fxq "$prop"; then continue; fi
-    if printf '%s\n' "$optout" | grep -Fxq "$prop"; then continue; fi
+    if grep -Fxq "$prop" <<<"$allowlist"; then continue; fi
+    if grep -Fxq "$prop" <<<"$managed"; then continue; fi
+    if grep -Fxq "$prop" <<<"$optout"; then continue; fi
     orphans="${orphans}${prop}\n"
   done <<< "$schema_props"
 

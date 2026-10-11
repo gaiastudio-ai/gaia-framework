@@ -84,7 +84,7 @@ _assert_names_in_phase() {
   block="$(_phase_block "$rubric" "$phase_pat")"
   [ -n "$block" ] || { printf 'Phase %s block not found in %s rubric\n' "$phase_pat" "$label"; return 1; }
   for name in "$@"; do
-    if ! printf '%s' "$block" | grep -qF "$name"; then
+    if ! grep -qF "$name" <<<"$block"; then
       printf 'Pinned name "%s" missing from %s Phase %s block (rubric changed?)\n' "$name" "$label" "$phase_pat"
       return 1
     fi

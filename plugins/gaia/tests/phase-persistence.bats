@@ -179,7 +179,7 @@ assert_surface_implemented() {
   run entry_block AAA-S1
   [ "$status" -eq 0 ]
   # Unquoted integer, matching the `points:` precedent — not "2" and not '2'.
-  printf '%s\n' "$output" | grep -q '^    phase: 2$'
+  grep -q '^    phase: 2$' <<<"$output"
   run grep -c 'phase: "2"' "$YAML"
   [ "$output" = "0" ]
 
@@ -237,7 +237,7 @@ EOF
   assert_surface_implemented "$output"
   [ "$status" -eq 0 ]
   run entry_block AAA-S2
-  printf '%s\n' "$output" | grep -q '^    phase: 1$'
+  grep -q '^    phase: 1$' <<<"$output"
 }
 
 @test "inject --phase 0 is rejected and the yaml is unchanged (AC1)" {
@@ -323,7 +323,7 @@ EOF
   run bash "$CANONICAL" inject --story AAA-S2 --phase 999
   [ "$status" -eq 0 ]
   run entry_block AAA-S2
-  printf '%s\n' "$output" | grep -q '^    phase: 999$'
+  grep -q '^    phase: 999$' <<<"$output"
 }
 
 @test "inject --phase with a 26-digit value is rejected without shell noise on stderr (AC1)" {
@@ -375,7 +375,7 @@ EOF
   run bash "$CANONICAL" inject --story AAA-S1 --phase
   [ "$status" -ne 0 ]
   assert_surface_implemented "$output"
-  printf '%s\n' "$output" | grep -q -- '--phase requires a value'
+  grep -q -- '--phase requires a value' <<<"$output"
   cmp "$YAML.pre" "$YAML"
 }
 
@@ -411,7 +411,7 @@ EOF
   [ "$status" -eq 0 ]
 
   run entry_block CCC-S1
-  printf '%s\n' "$output" | grep -q '^    phase: 3$'
+  grep -q '^    phase: 3$' <<<"$output"
   [ "$(entry_phase_count CCC-S1)" = "1" ]
 }
 
@@ -422,7 +422,7 @@ EOF
   [ "$status" -eq 0 ]
 
   run entry_block CCC-S1
-  printf '%s\n' "$output" | grep -q '^    phase: 4$'
+  grep -q '^    phase: 4$' <<<"$output"
   # Entry-scoped count: a rewriter that appended instead of replacing would
   # leave two phase lines on this one row.
   [ "$(entry_phase_count CCC-S1)" = "1" ]
@@ -443,7 +443,7 @@ EOF
   seed_yaml_with_rows sprint-99 CCC-S1:2
   run bash "$CANONICAL" set-phase --story CCC-S1
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -q -- '--phase'
+  grep -q -- '--phase' <<<"$output"
   # A `grep && return 1` line would itself fail under set -e when the pattern
   # is absent (the passing case), so assert the absence positively instead.
   case "$output" in
@@ -464,7 +464,7 @@ EOF
     [ "$status" -eq 0 ]
     # A rewriter that re-emitted an identical row would be invisible to cmp,
     # so the stdout no-op marker is the real mutation detector here.
-    printf '%s\n' "$output" | grep -q 'no-op'
+    grep -q 'no-op' <<<"$output"
     cmp "$YAML.pre" "$YAML"
   done
 }
@@ -479,7 +479,7 @@ EOF
     # legitimate idempotent call.
     run bash "$script" set-phase --story CCC-S1 --phase ""
     [ "$status" -eq 0 ]
-    printf '%s\n' "$output" | grep -q 'no-op'
+    grep -q 'no-op' <<<"$output"
     cmp "$YAML.pre" "$YAML"
   done
 }
@@ -505,7 +505,7 @@ EOF
   # The write must actually land on the target row.
   [ "$(entry_phase_count CCC-S2)" = "1" ]
   run entry_block CCC-S2
-  printf '%s\n' "$output" | grep -q '^    phase: 2$'
+  grep -q '^    phase: 2$' <<<"$output"
   # And the sibling must be untouched.
   [ "$(entry_phase_count CCC-S1)" = "1" ]
 }
@@ -520,7 +520,7 @@ EOF
 
   run bash "$CANONICAL" set-phase --story CCC-S2 --phase 2
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'no-op'
+  grep -q 'no-op' <<<"$output"
   cmp "$YAML.pre" "$YAML"
 
   # Clearing a phase-less target must also read the target, not the sibling.
@@ -528,7 +528,7 @@ EOF
   snapshot_yaml
   run bash "$CANONICAL" set-phase --story CCC-S2 --phase ""
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'no-op'
+  grep -q 'no-op' <<<"$output"
   cmp "$YAML.pre" "$YAML"
 }
 
@@ -545,7 +545,7 @@ EOF
   snapshot_yaml
   run bash "$CANONICAL" set-phase --story CCC-S2 --phase 3
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'no-op'
+  grep -q 'no-op' <<<"$output"
   cmp "$YAML.pre" "$YAML"
 
   # Last row: same probe, different value, so no single wrong read satisfies
@@ -553,7 +553,7 @@ EOF
   snapshot_yaml
   run bash "$CANONICAL" set-phase --story CCC-S3 --phase 5
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'no-op'
+  grep -q 'no-op' <<<"$output"
   cmp "$YAML.pre" "$YAML"
 
   # And the first row's value must NOT be reported for a row that lacks one.
@@ -572,7 +572,7 @@ EOF
   run bash "$CANONICAL" set-phase --story NOPE-S9 --phase 1
   [ "$status" -ne 0 ]
   assert_surface_implemented "$output"
-  printf '%s\n' "$output" | grep -q 'NOPE-S9'
+  grep -q 'NOPE-S9' <<<"$output"
   cmp "$YAML.pre" "$YAML"
 }
 
@@ -657,19 +657,19 @@ EOF
   run bash "$CANONICAL" inject --story DDD-S1 --phase 2
   [ "$status" -eq 0 ]
   run entry_block DDD-S1
-  printf '%s\n' "$output" | grep -q '^    phase: 2$'
+  grep -q '^    phase: 2$' <<<"$output"
 
   # Single-field patchers must pass unknown lines through verbatim.
   run bash "$CANONICAL" transition --story DDD-S1 --to in-progress
   [ "$status" -eq 0 ]
   run entry_block DDD-S1
-  printf '%s\n' "$output" | grep -q '^    phase: 2$'
-  printf '%s\n' "$output" | grep -q 'status: "in-progress"'
+  grep -q '^    phase: 2$' <<<"$output"
+  grep -q 'status: "in-progress"' <<<"$output"
 
   run bash "$CANONICAL" reconcile
   [ "$status" -eq 0 ]
   run entry_block DDD-S1
-  printf '%s\n' "$output" | grep -q '^    phase: 2$'
+  grep -q '^    phase: 2$' <<<"$output"
   [ "$(entry_phase_count DDD-S1)" = "1" ]
 }
 

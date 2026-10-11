@@ -117,8 +117,8 @@ entries:
 EOF
   run bash "$LOADER" "gaia-dev-story:load-story"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -q 'epics-and-stories'
-  printf '%s\n' "$output" | grep -q 'gaia-dev-story:load-story'
+  grep -q 'epics-and-stories' <<<"$output"
+  grep -q 'gaia-dev-story:load-story' <<<"$output"
 }
 
 @test "dev-story:load-story HALTs when architecture-decisions MANDATORY node is absent" {
@@ -142,8 +142,8 @@ entries:
 EOF
   run bash "$LOADER" "gaia-dev-story:load-story"
   [ "$status" -ne 0 ]
-  printf '%s\n' "$output" | grep -q 'architecture-decisions'
-  printf '%s\n' "$output" | grep -q 'gaia-dev-story:load-story'
+  grep -q 'architecture-decisions' <<<"$output"
+  grep -q 'gaia-dev-story:load-story' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ entries:
 EOF
   run bash "$LOADER" "gaia-dev-story:load-story"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'warn|optional'
+  grep -qiE 'warn|optional' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -201,7 +201,7 @@ stages:
 EOF
   run bash "$LOADER" "gaia-dev-story:load-story"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|skip'
+  grep -qiE 'un-?evaluable|warn|skip' <<<"$output"
 }
 
 @test "dev-story:load-story fails OPEN on absent brain-index" {
@@ -209,14 +209,14 @@ EOF
   rm -f "$INDEX"
   run bash "$LOADER" "gaia-dev-story:load-story"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|warn|index'
+  grep -qiE 'un-?evaluable|warn|index' <<<"$output"
 }
 
 @test "dev-story:load-story fails OPEN on unknown stage id" {
   _write_dev_story_map
   run bash "$LOADER" "gaia-dev-story:nonexistent"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'un-?evaluable|unknown stage|not.*map|warn'
+  grep -qiE 'un-?evaluable|unknown stage|not.*map|warn' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -260,7 +260,7 @@ EOF
   plug="$(cd "$SKILLS_DIR/.." && pwd)"
   run bash "$AUDIT" --plugin "$plug" --map "$MAP"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q 'gaia-dev-story'
+  ! grep -q 'gaia-dev-story' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------

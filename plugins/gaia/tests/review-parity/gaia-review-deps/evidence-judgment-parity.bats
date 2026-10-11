@@ -27,7 +27,7 @@ teardown() {
   assert_evidence_structured "$EVIDENCE"
   run jq -r '.checks[].name' "$EVIDENCE"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qE 'audit|license'
+  grep -qE 'audit|license' <<<"$output"
 }
 
 @test "${SKILL_NAME}: tier 2 — judgment maps evidence to findings with severities" {

@@ -256,3 +256,172 @@ STUB
   # Must state they are intentionally distinct.
   grep -qiE 'intentionally.*distinct|two.*event|dual.*event|both.*event' "$SPRINT_CLOSE_SKILL"
 }
+
+# ============================================================================
+# Sprint-id mismatch dispatch in close.sh
+# ============================================================================
+
+@test "close.sh stops on a sprint-id mismatch refusal (exit 2 with mismatch phrase)" {
+  local stub_dir="$TEST_TMP/stubs"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/sprint-state.sh" <<'STUB'
+#!/usr/bin/env bash
+printf "transition: --sprint 'sprint-1' does not match active sprint-status.yaml sprint_id 'sprint-80'\n" >&2
+exit 2
+STUB
+  chmod +x "$stub_dir/sprint-state.sh"
+  export SPRINT_STATE_SH="$stub_dir/sprint-state.sh"
+
+  _seed_yaml "sprint-80" "review" 3 3
+  _seed_retro "sprint-80"
+  _seed_sentinel "sprint-80"
+
+  run "$CLOSE_SH"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" == *"sprint-80"* ]]
+  [[ "$output" == *"does not match active sprint-status.yaml sprint_id"* ]]
+  # Must NOT contain the generic "transition failed" message — the mismatch
+  # branch propagates the writer's message directly, not via die().
+  local tf_count
+  tf_count="$(printf '%s\n' "$output" | grep -c 'transition failed' || true)"
+  [ "$tf_count" -eq 0 ]
+  # Status must stay review — close.sh must not write anything
+  [ "$(_yaml_status)" = "review" ]
+  # No archive should have been written
+  if [ -d "${ARCHIVE:-$ART/sprint-archive}" ]; then
+    local archive_count
+    archive_count="$(find "${ARCHIVE:-$ART/sprint-archive}" -type f | wc -l)"
+    [ "$archive_count" -eq 0 ]
+  fi
+}
+
+@test "close.sh stops on exit 2 without the mismatch phrase (generic message)" {
+  local stub_dir="$TEST_TMP/stubs"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/sprint-state.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'syntax error near line 42\n' >&2
+exit 2
+STUB
+  chmod +x "$stub_dir/sprint-state.sh"
+  export SPRINT_STATE_SH="$stub_dir/sprint-state.sh"
+
+  _seed_yaml "sprint-80" "review" 3 3
+  _seed_retro "sprint-80"
+  _seed_sentinel "sprint-80"
+
+  run "$CLOSE_SH"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"transition failed"* ]]
+  # Must NOT contain the mismatch phrase
+  local mismatch_count
+  mismatch_count="$(printf '%s\n' "$output" | grep -c 'does not match' || true)"
+  [ "$mismatch_count" -eq 0 ]
+  # Status must stay review
+  [ "$(_yaml_status)" = "review" ]
+}
+
+@test "close.sh closes a single-quoted sprint_id yaml without mismatch" {
+  # Seed yaml with single-quoted sprint_id — close.sh must strip single
+  # quotes so the id matches what sprint-state.sh reads.
+  mkdir -p "$(dirname "$YAML")"
+  {
+    printf "sprint_id: 'sprint-80'\n"
+    printf 'status: review\n'
+    printf 'total_points: 9\n'
+    printf 'stories:\n'
+    printf '  - key: "S1"\n    status: done\n    points: 3\n    risk: medium\n'
+    printf '  - key: "S2"\n    status: done\n    points: 3\n    risk: medium\n'
+    printf '  - key: "S3"\n    status: done\n    points: 3\n    risk: medium\n'
+  } > "$YAML"
+  _seed_retro "sprint-80"
+  _seed_sentinel "sprint-80"
+
+  export SPRINT_STATE_SH="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+  run "$CLOSE_SH" --force
+  [ "$status" -eq 0 ]
+  [ "$(_yaml_status)" = "closed" ]
+  grep -q '^closed_at:' "$YAML"
+}
+
+# ============================================================================
+# Path resolution: close.sh finds sprint-state.sh via dirname "$0"
+# ============================================================================
+
+@test "close.sh finds sprint-state.sh from the source layout (no SPRINT_STATE_SH, no CLAUDE_PLUGIN_ROOT)" {
+  # When both SPRINT_STATE_SH and CLAUDE_PLUGIN_ROOT are unset, close.sh
+  # resolves sprint-state.sh via dirname "$0"/../../.. which must reach
+  # plugins/gaia/ then /scripts/sprint-state.sh.  If the path is correct
+  # the real transition runs and emits a sprint_transitioned lifecycle event.
+  # The yq fallback does NOT emit that event.
+  unset SPRINT_STATE_SH
+  unset CLAUDE_PLUGIN_ROOT
+
+  _seed_yaml "sprint-80" "review" 3 3
+  _seed_retro "sprint-80"
+  _seed_sentinel "sprint-80"
+
+  run "$CLOSE_SH" --force
+  [ "$status" -eq 0 ]
+  [ "$(_yaml_status)" = "closed" ]
+  grep -q '^closed_at:' "$YAML"
+
+  # Observable: the real transition emits sprint_transitioned.
+  # The yq fallback (broken path) would NOT produce this event.
+  [ -f "$LIFECYCLE" ]
+  grep -q '"event_type":"sprint_transitioned"' "$LIFECYCLE"
+  grep -q '"from":"review"' "$LIFECYCLE"
+  grep -q '"to":"closed"' "$LIFECYCLE"
+}
+
+@test "close.sh finds sprint-state.sh via CLAUDE_PLUGIN_ROOT when set" {
+  # Run a COPY of close.sh from an isolated tree where the dirname-relative
+  # path has lifecycle-event.sh (close.sh needs it) but NO sprint-state.sh.
+  # CLAUDE_PLUGIN_ROOT must supply the sprint-state.sh scripts path.
+  # Without the CLAUDE_PLUGIN_ROOT branch the dirname fallback finds no
+  # sprint-state.sh and the test fails (the mutant the test kills).
+  unset SPRINT_STATE_SH
+
+  local real_scripts="$BATS_TEST_DIRNAME/../scripts"
+  local real_skill_scripts="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts"
+
+  # 1. Build the isolated close.sh tree with its dirname-relative deps but
+  #    WITHOUT sprint-state.sh — only lifecycle-event.sh (close.sh line 25-26).
+  local iso_root="$TEST_TMP/isolated-root"
+  local iso_skill="$iso_root/skills/gaia-sprint-close/scripts"
+  mkdir -p "$iso_skill" "$iso_root/scripts"
+  cp "$real_skill_scripts/close.sh" "$iso_skill/close.sh"
+  chmod +x "$iso_skill/close.sh"
+  # close.sh line 25: PLUGIN_SCRIPTS_DIR = dirname/$SCRIPT_DIR/../../../scripts
+  cp "$real_scripts/lifecycle-event.sh" "$iso_root/scripts/"
+  chmod +x "$iso_root/scripts/lifecycle-event.sh"
+
+  # 2. Build a separate custom plugin root WITH the full scripts tree.
+  local plugin_root="$TEST_TMP/custom-plugin-root"
+  mkdir -p "$plugin_root/scripts/lib"
+  cp "$real_scripts/sprint-state.sh"             "$plugin_root/scripts/"
+  cp "$real_scripts/lifecycle-event.sh"           "$plugin_root/scripts/"
+  cp "$real_scripts/lib/story-state-machine.sh"   "$plugin_root/scripts/lib/"
+  cp "$real_scripts/lib/acquire-lock.sh"           "$plugin_root/scripts/lib/"
+  chmod +x "$plugin_root/scripts/sprint-state.sh" \
+           "$plugin_root/scripts/lifecycle-event.sh"
+
+  # 3. Point CLAUDE_PLUGIN_ROOT at the custom root.
+  export CLAUDE_PLUGIN_ROOT="$plugin_root"
+
+  _seed_yaml "sprint-80" "review" 3 3
+  _seed_retro "sprint-80"
+  _seed_sentinel "sprint-80"
+
+  run "$iso_skill/close.sh" --force
+  [ "$status" -eq 0 ]
+  [ "$(_yaml_status)" = "closed" ]
+  grep -q '^closed_at:' "$YAML"
+
+  # Observable: the real transition emits sprint_transitioned.
+  [ -f "$LIFECYCLE" ]
+  grep -q '"event_type":"sprint_transitioned"' "$LIFECYCLE"
+  grep -q '"from":"review"' "$LIFECYCLE"
+  grep -q '"to":"closed"' "$LIFECYCLE"
+}

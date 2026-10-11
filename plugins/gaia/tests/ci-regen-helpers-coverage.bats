@@ -14,6 +14,7 @@
 # coverage is not just textual reference — each function actually runs.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPTS_DIR="$REPO_ROOT/plugins/gaia/scripts"
   TEST_TMPDIR="$(mktemp -d)"

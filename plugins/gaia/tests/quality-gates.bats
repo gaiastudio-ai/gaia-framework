@@ -346,7 +346,7 @@ STUBEOF
 
   # Create a record in review state via the real writer
   env PROJECT_ROOT="$TEST_TMP" "$drec_sh" init \
-    --reference test --discovered-via created --questionnaire-record na
+    --reference test --discovered-via project-artifacts
   env PROJECT_ROOT="$TEST_TMP" "$drec_sh" transition --to review --actor ci
 
   # No sprint-status.yaml means no resolvable sprint
@@ -406,7 +406,7 @@ STUBEOF
   chmod +x "$TEST_TMP/bin/design-probe.sh"
 
   env PROJECT_ROOT="$TEST_TMP" "$drec_sh" init \
-    --reference test --discovered-via created --questionnaire-record na
+    --reference test --discovered-via project-artifacts
 
   local error_msg="Design is not approved. Approve the design via /gaia-design-review, or pass --force-design with a reason to override."
   run bash -c '
@@ -468,7 +468,7 @@ STUBEOF
   chmod +x "$TEST_TMP/bin/design-probe.sh"
 
   env PROJECT_ROOT="$TEST_TMP" "$drec_sh" init \
-    --reference test --discovered-via created --questionnaire-record na
+    --reference test --discovered-via project-artifacts
   env PROJECT_ROOT="$TEST_TMP" "$drec_sh" transition --to review --actor ci
 
   local checked=0

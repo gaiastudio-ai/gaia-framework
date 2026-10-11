@@ -127,8 +127,8 @@ EOF
   local count
   count="$(printf '%s\n' "$got" | grep -c .)"
   [ "$count" -eq 2 ]
-  echo "$got" | grep -q "E1-S1"
-  echo "$got" | grep -q "E1-S2"
+  grep -q "E1-S1" <<<"$got"
+  grep -q "E1-S2" <<<"$got"
 }
 
 @test "pflag_scan_backlog: returns empty when no flagged stories exist" {
@@ -278,5 +278,5 @@ EOF
   # expose any function that writes "next-sprint" to a story file.
   local functions
   functions="$(grep -E '^pflag_[a-z_]+\(\)' "$PRIORITY_FLAG_SH" || true)"
-  echo "$functions" | grep -vq 'pflag_set\|pflag_write\|write_next_sprint'
+  grep -vq 'pflag_set\|pflag_write\|write_next_sprint' <<<"$functions"
 }

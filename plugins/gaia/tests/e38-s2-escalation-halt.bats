@@ -85,7 +85,7 @@ _run_escalation_halt() {
   run _run_escalation_halt "$ai" "$ss"
   [ "$status" -eq 0 ]
   # No halt message should be emitted
-  ! echo "$output" | grep -q "BLOCKING"
+  ! grep -q "BLOCKING" <<<"$output"
 }
 
 # ===========================================================================
@@ -99,11 +99,11 @@ _run_escalation_halt() {
 
   run _run_escalation_halt "$ai" "$ss"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "AI-42"
-  echo "$output" | grep -q "Long-running"
-  echo "$output" | grep -q "HIGH"
-  echo "$output" | grep -q "/gaia-action-items"
-  echo "$output" | grep -q "override-escalation-halt"
+  grep -q "AI-42" <<<"$output"
+  grep -q "Long-running" <<<"$output"
+  grep -q "HIGH" <<<"$output"
+  grep -q "/gaia-action-items" <<<"$output"
+  grep -q "override-escalation-halt" <<<"$output"
 
   # No sprint-status.yaml mutation from the halt itself (only record-override writes)
   local before after
@@ -177,7 +177,7 @@ _run_escalation_halt() {
 
   run _run_escalation_halt "$TEST_TMP/no-such-file.yaml" "$ss"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "action-items.yaml not found"
+  grep -q "action-items.yaml not found" <<<"$output"
 
   # File must NOT be created by escalation-halt (AC4: creation is E36-S2's job)
   [ ! -e "$TEST_TMP/no-such-file.yaml" ]
@@ -253,7 +253,7 @@ _run_escalation_halt() {
 
   run _run_escalation_halt "$ai" "$ss"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q "AI-42"
-  ! echo "$output" | grep -q "AI-01"
-  ! echo "$output" | grep -q "AI-02"
+  grep -q "AI-42" <<<"$output"
+  ! grep -q "AI-01" <<<"$output"
+  ! grep -q "AI-02" <<<"$output"
 }

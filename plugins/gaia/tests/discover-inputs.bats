@@ -210,7 +210,7 @@ _read_strategy() {
   while IFS= read -r file; do
     local skill
     skill="$(basename "$(dirname "$file")")"
-    if echo "$in_scope" | grep -q " $skill "; then
+    if grep -q " $skill " <<<"$in_scope"; then
       continue
     fi
     if _extract_frontmatter "$file" | grep -qE '^discover_inputs:[[:space:]]+'; then

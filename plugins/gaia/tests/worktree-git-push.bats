@@ -98,6 +98,6 @@ _remote_branches() {
   # discover the contract without reading the implementation.
   local header
   header="$(sed -n '1,40p' "$GIT_PUSH")"
-  printf '%s' "$header" | grep -q 'PROJECT_PATH' \
+  grep -q 'PROJECT_PATH' <<<"$header" \
     || { echo "header does not document PROJECT_PATH"; return 1; }
 }

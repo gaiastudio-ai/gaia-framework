@@ -26,7 +26,7 @@ teardown() {
 @test "transcript_path_for emits canonical path under .gaia/memory/checkpoints/" {
   source "$HELPER"
   out=$(transcript_path_for "sprint-47" "node")
-  echo "$out" | grep -q ".gaia/memory/checkpoints/sprint-review-sprint-47/node.log"
+  grep -q ".gaia/memory/checkpoints/sprint-review-sprint-47/node.log" <<<"$out"
 }
 
 @test "write_transcript creates file with mode 0600" {
@@ -66,7 +66,7 @@ EOF
   echo "# empty" >.gitignore
   run assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qi "HALT" || echo "$output" | grep -qi "gitignore"
+  grep -qi "HALT" <<<"$output" || echo "$output" | grep -qi "gitignore"
 }
 
 @test "assert_gitignored HALT message names the required pattern" {
@@ -74,5 +74,5 @@ EOF
   cd "$TMPDIR_TEST"
   echo "" >.gitignore
   run assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
-  echo "$output" | grep -q ".gaia/memory/checkpoints/sprint-review"
+  grep -q ".gaia/memory/checkpoints/sprint-review" <<<"$output"
 }

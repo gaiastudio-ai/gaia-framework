@@ -226,12 +226,12 @@ EOS
   local hits
   hits="$(_memory_write_lines "$decoy")"
   # Literal form must be caught: the `echo ... > .gaia/memory/leak.txt` line.
-  printf '%s\n' "$hits" | grep -q 'leak.txt'
+  grep -q 'leak.txt' <<<"$hits"
   # Var-indirected form: the flagged line is `mv "$tmp" "$target"` — no memory
   # literal sits on it; it is caught only because $target derives (via
   # $mem_subtree <- sidecar_subdir="memory") from the memory subtree. That hit
   # is what proves the guard resolves writes THROUGH variables.
-  printf '%s\n' "$hits" | grep -q 'mv "\$tmp" "\$target"'
+  grep -q 'mv "\$tmp" "\$target"' <<<"$hits"
 }
 
 @test "the query memory-subtree assignment is a read, not a write, and does not trip the guard" {
@@ -290,11 +290,11 @@ EOS
   # Three direct writers detected by taint analysis.
   [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 3 ]
   # The reindex sweep (project-artifact partition).
-  printf '%s\n' "$writers" | grep -q 'gaia-brain-reindex\.sh'
+  grep -q 'gaia-brain-reindex\.sh' <<<"$writers"
   # The refresh lifecycle (ingested partition — re-fetch).
-  printf '%s\n' "$writers" | grep -q 'gaia-knowledge-refresh\.sh'
+  grep -q 'gaia-knowledge-refresh\.sh' <<<"$writers"
   # The lesson partition writer (incremental lesson/edge updates).
-  printf '%s\n' "$writers" | grep -q 'update-brain-index\.sh'
+  grep -q 'update-brain-index\.sh' <<<"$writers"
 
   # Feed and unfeed delegate manifest writes through the shared atomic helper.
   # Verify they source it.
@@ -352,7 +352,7 @@ EOS
   writers="$(_manifest_writer_files "$injdir")"
   # Four writers now present (three sanctioned + one rogue).
   [ "$(printf '%s\n' "$writers" | grep -c .)" -eq 4 ]
-  printf '%s\n' "$writers" | grep -q 'rogue-writer.sh'
+  grep -q 'rogue-writer.sh' <<<"$writers"
 }
 
 @test "a read-only manifest consumer does not trip the single-writer guard" {
@@ -490,5 +490,5 @@ EOS
   hits="$(_memory_write_lines "$decoy")"
   # The flagged line is the redirection into $target, which derives (via
   # $sidecar <- $mem_root <- ".gaia/memory") from the memory subtree.
-  printf '%s\n' "$hits" | grep -q 'target'
+  grep -q 'target' <<<"$hits"
 }

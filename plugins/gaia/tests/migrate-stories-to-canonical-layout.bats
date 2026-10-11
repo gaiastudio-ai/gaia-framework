@@ -114,7 +114,7 @@ _snapshot_tree() {
   # git mv stages a rename — `git status --porcelain` shows an `R` entry
   # whose destination is the moved path.
   run git status --porcelain
-  printf '%s\n' "$output" | grep -qE "^R.*${moved}"
+  grep -qE "^R.*${moved}" <<<"$output"
 }
 
 # AC1b — Non-git CWD fallback uses plain mv with canonical notice.
@@ -145,7 +145,7 @@ _snapshot_tree() {
 
   run --separate-stderr "$MIGRATE_SCRIPT"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$stderr" | grep -q 'non-git CWD: using plain mv'
+  grep -q 'non-git CWD: using plain mv' <<<"$stderr"
 }
 
 # AC2a / TC-CSP-9 — flat story-index.yaml merges into per-epic indices and is
@@ -212,7 +212,7 @@ EOF
   [ -f "docs/implementation-artifacts/story-index.yaml" ]
 
   # WARNING about residual unresolved entries on stderr.
-  printf '%s\n' "$stderr" | grep -q 'WARNING: 1 unresolved entries retained in flat story-index.yaml'
+  grep -q 'WARNING: 1 unresolved entries retained in flat story-index.yaml' <<<"$stderr"
 }
 
 # AC3 / TC-CSP-14 — idempotent rerun on a converged tree emits no-op notice
@@ -249,7 +249,7 @@ EOF
 
   run --separate-stderr "$MIGRATE_SCRIPT"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$stderr" | grep -q 'migration: no-op (already converged)'
+  grep -q 'migration: no-op (already converged)' <<<"$stderr"
 
   local post
   post="$(_snapshot_tree)"
@@ -285,8 +285,8 @@ EOF
   # Independent re-run of the advisory script should be quiet too.
   run "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -q '^WARNING'
-  ! printf '%s\n' "$output" | grep -q '^CRITICAL'
+  ! grep -q '^WARNING' <<<"$output"
+  ! grep -q '^CRITICAL' <<<"$output"
 }
 
 # Per-epic merge conflict — existing per-epic entry wins, flat entry logged.
@@ -331,5 +331,5 @@ EOF
   # Flat index drained and deleted.
   [ ! -f "docs/implementation-artifacts/story-index.yaml" ]
   # INFO log line emitted on stderr.
-  printf '%s\n' "$stderr" | grep -q 'INFO: index-merge conflict on E77-S10: keeping per-epic entry'
+  grep -q 'INFO: index-merge conflict on E77-S10: keeping per-epic entry' <<<"$stderr"
 }

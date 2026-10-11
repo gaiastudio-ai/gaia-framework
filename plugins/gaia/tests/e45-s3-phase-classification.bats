@@ -131,7 +131,7 @@ gaia-trace gaia-ci-setup gaia-review-a11y gaia-val-validate"
     [ "$status" -eq 0 ]
     local s
     for s in $expected; do
-        printf '%s\n' "$output" | grep -qx "$s" || {
+        grep -qx "$s" <<<"$output" || {
             echo "missing skill in list_phase_1_3: $s" >&2
             return 1
         }

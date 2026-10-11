@@ -64,21 +64,21 @@ EOF
 @test "--help exits 0 and mentions the three detection classes" {
   run "$SCRIPT" --help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qiE 'story.?key collisions'
-  echo "$output" | grep -qiE 'epic.?number collisions'
-  echo "$output" | grep -qiE 'orphan'
+  grep -qiE 'story.?key collisions' <<<"$output"
+  grep -qiE 'epic.?number collisions' <<<"$output"
+  grep -qiE 'orphan' <<<"$output"
 }
 
 @test "unknown flag → exit 2 with usage error on stderr" {
   run "$SCRIPT" --not-a-flag
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qiE 'unknown argument'
+  grep -qiE 'unknown argument' <<<"$output"
 }
 
 @test "missing epics-file → exit 2 with clear error" {
   run "$SCRIPT" --epics-file /tmp/does-not-exist-$$.md --artifacts-dir "$WORK/impl"
   [ "$status" -eq 2 ]
-  echo "$output" | grep -qiE 'unreadable|not found'
+  grep -qiE 'unreadable|not found' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ EOF
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/impl"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'OK'
+  grep -q 'OK' <<<"$output"
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/impl" --severity halt
   [ "$status" -eq 0 ]
@@ -117,8 +117,8 @@ EOF
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/impl"
   [ "$status" -eq 0 ]   # warn → exit 0
-  echo "$output" | grep -qE 'story-key collisions'
-  echo "$output" | grep -qE 'E18-S1'
+  grep -qE 'story-key collisions' <<<"$output"
+  grep -qE 'E18-S1' <<<"$output"
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/impl" --severity halt
   [ "$status" -eq 1 ]   # halt → exit 1
@@ -142,7 +142,7 @@ EOF
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/impl"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qE 'story-key collisions'
+  grep -qE 'story-key collisions' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -160,10 +160,10 @@ EOF
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/impl" --format text
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qE 'epic-number collisions'
-  echo "$output" | grep -qE 'E18'
-  echo "$output" | grep -qiE 'cloud deployment'
-  echo "$output" | grep -qiE 'action items management'
+  grep -qE 'epic-number collisions' <<<"$output"
+  grep -qE 'E18' <<<"$output"
+  grep -qiE 'cloud deployment' <<<"$output"
+  grep -qiE 'action items management' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -180,9 +180,9 @@ EOF
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/impl"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qE 'orphan'
-  echo "$output" | grep -qE 'E99-S1'
-  echo "$output" | grep -qE 'E99'
+  grep -qE 'orphan' <<<"$output"
+  grep -qE 'E99-S1' <<<"$output"
+  grep -qE 'E99' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -207,9 +207,9 @@ EOF
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/impl" --severity halt
   [ "$status" -eq 1 ]
-  echo "$output" | grep -qE 'epic-number collisions'
-  echo "$output" | grep -qiE 'cloud deployment'
-  echo "$output" | grep -qiE 'action items management'
+  grep -qE 'epic-number collisions' <<<"$output"
+  grep -qiE 'cloud deployment' <<<"$output"
+  grep -qiE 'action items management' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -230,8 +230,8 @@ EOF
   if command -v jq >/dev/null 2>&1; then
     echo "$output" | jq -e '.summary.total >= 1 and (.issues | length) >= 1' >/dev/null
   else
-    echo "$output" | grep -qE '"summary":\s*\{'
-    echo "$output" | grep -qE '"issues":\s*\['
+    grep -qE '"summary":\s*\{' <<<"$output"
+    grep -qE '"issues":\s*\[' <<<"$output"
   fi
 }
 
@@ -248,5 +248,5 @@ EOF
 
   run "$SCRIPT" --epics-file "$EPICS" --artifacts-dir "$WORK/no-such-dir"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'OK'
+  grep -q 'OK' <<<"$output"
 }

@@ -103,7 +103,7 @@ teardown() { common_teardown; }
     grep -q 'gaia-product-brief Session Summary' "$sidecar"
 
     # No interactive prompt should have been emitted.
-    printf '%s' "$output" | grep -q '\[y\]/\[n\]/\[e\]' && return 1
+    grep -q '\[y\]/\[n\]/\[e\]' <<<"$output" && return 1
     return 0
 }
 

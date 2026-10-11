@@ -8,6 +8,7 @@
 # as the api --target; absent ⇒ api surface SKIPPED (not a bogus slug run).
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PLUGIN_DIR="$REPO_ROOT/plugins/gaia"
   RUNNER="$PLUGIN_DIR/skills/gaia-sprint-review/scripts/track-b-dispatch.sh"
@@ -172,5 +173,5 @@ assert 'sprint-review-sprint-50' not in api[0].get('raw',''), 'sprint slug leake
 print('ok')
 "
   # The log notes the skip reason.
-  echo "$output" | grep -qi 'no sprint_review.manual_test.api_command configured'
+  grep -qi 'no sprint_review.manual_test.api_command configured' <<<"$output"
 }

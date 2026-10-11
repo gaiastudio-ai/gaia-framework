@@ -267,7 +267,7 @@ EOF
   # markdown; match the continuation line that names all three classification
   # categories to confirm the unconditional-gate contract is present.
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
-  printf '%s\n' "$step2" | grep -Eq 'patch-mode exception.*patch.*enhancement|[Tt]here is NO patch-mode exception'
+  grep -Eq 'patch-mode exception.*patch.*enhancement|[Tt]here is NO patch-mode exception' <<<"$step2"
 }
 
 @test "SKILL.md does not license auto-judging in patch mode" {
@@ -291,20 +291,20 @@ EOF
   # literal to `main-turn Agent tool` semantic equivalent.
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
-  printf '%s\n' "$step2" | grep -Eq 'Val MUST be dispatched via the .*main-turn Agent tool'
+  grep -Eq 'Val MUST be dispatched via the .*main-turn Agent tool' <<<"$step2"
 }
 
 @test "SKILL.md Step 2 contains parent-thread re-invoke HALT instruction" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
-  printf '%s\n' "$step2" | grep -Eq 're-invoke .* from a parent orchestrator thread'
+  grep -Eq 're-invoke .* from a parent orchestrator thread' <<<"$step2"
 }
 
 @test "SKILL.md Step 2 prose does not license inline-Val verdicts" {
   [ -f "$ADD_FEATURE_SKILL" ] || skip "SKILL.md not present"
   step2="$(awk '/^### Step 2/{flag=1} /^### Step 3/{flag=0} flag' "$ADD_FEATURE_SKILL")"
   # Negative guard — no sentence licensing inline review as a Val verdict.
-  ! printf '%s\n' "$step2" | grep -Eqi 'inline.*Val.*verdict'
+  ! grep -Eqi 'inline.*Val.*verdict' <<<"$step2"
 }
 
 # ---------------------------------------------------------------------------

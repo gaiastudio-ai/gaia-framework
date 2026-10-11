@@ -81,7 +81,7 @@ run_resolver() {
   # 'me' MUST appear in resolved= line.
   echo "$output" | grep -E "^resolved=.*\bme\b" >/dev/null
   # No WARNING about user-token.
-  ! echo "$output" | grep -q "resolves to the user"
+  ! grep -q "resolves to the user" <<<"$output"
   # session-state user_attendance=true.
   flag="$("$SESSION_STATE" read --file "$SESSION_FILE" --field user_attendance)"
   [ "$flag" = "true" ]
@@ -93,7 +93,7 @@ run_resolver() {
   run_resolver "Theo,USER,Lyra"
   [ "$status" -eq 0 ]
   echo "$output" | grep -E "^resolved=.*USER" >/dev/null
-  ! echo "$output" | grep -q "resolves to the user"
+  ! grep -q "resolves to the user" <<<"$output"
   flag="$("$SESSION_STATE" read --file "$SESSION_FILE" --field user_attendance)"
   [ "$flag" = "true" ]
 }
@@ -117,7 +117,7 @@ run_resolver() {
   run_resolver "${lower_name},christy"
   [ "$status" -eq 0 ]
   echo "$output" | grep -E "^resolved=.*${lower_name}" >/dev/null
-  ! echo "$output" | grep -q "resolves to the user"
+  ! grep -q "resolves to the user" <<<"$output"
   flag="$("$SESSION_STATE" read --file "$SESSION_FILE" --field user_attendance)"
   [ "$flag" = "true" ]
 }
@@ -127,7 +127,7 @@ run_resolver() {
 @test "TC-MTG-USER-4: --invitees alice,bob (no user-token) sets user_attendance=false and emits no carve-out WARNING" {
   run_resolver "alice,bob"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q "resolves to the user"
+  ! grep -q "resolves to the user" <<<"$output"
   flag="$("$SESSION_STATE" read --file "$SESSION_FILE" --field user_attendance)"
   [ "$flag" = "false" ]
 }
@@ -150,7 +150,7 @@ run_resolver() {
 @test "TC-MTG-NOFAB-3a: --invitees me,alice emits NO WARNING and preserves 'me'" {
   run_resolver "me,alice"
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -q "resolves to the user"
+  ! grep -q "resolves to the user" <<<"$output"
   echo "$output" | grep -E "^resolved=.*\bme\b" >/dev/null
 }
 

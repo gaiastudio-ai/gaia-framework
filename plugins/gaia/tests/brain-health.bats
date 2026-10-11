@@ -53,7 +53,7 @@ _run_health() {
   [ "$status" -eq 0 ]
   # The orphan story (no traces_to / no epic / no Allocates / no matrix row) is
   # listed as unlinked.
-  printf '%s\n' "$output" | grep -q 'E777-S6'
+  grep -q 'E777-S6' <<<"$output"
 }
 
 @test "brain-health does NOT list a fully-linked node as unlinked" {
@@ -75,7 +75,7 @@ _run_health() {
   _run_health
   [ "$status" -eq 0 ]
   # And it did surface at least one unlinked node (the orphan).
-  printf '%s\n' "$output" | grep -q 'E777-S6'
+  grep -q 'E777-S6' <<<"$output"
 }
 
 @test "brain-health output is deterministic across runs" {
@@ -91,7 +91,7 @@ _run_health() {
   _run_health
   [ "$status" -eq 0 ]
   # A count line is emitted (the human payoff: how many gaps).
-  printf '%s\n' "$output" | grep -qiE 'unlinked|gap'
+  grep -qiE 'unlinked|gap' <<<"$output"
 }
 
 @test "brain-health handles a manifest entry whose source file is missing" {
@@ -106,11 +106,11 @@ _run_health() {
   rm -f "$MANIFEST"
   _run_health
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qiE 'no.*manifest|not found|no brain index'
+  grep -qiE 'no.*manifest|not found|no brain index' <<<"$output"
 }
 
 @test "brain-health accepts an explicit --manifest path" {
   _run_health --manifest "$MANIFEST"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -q 'E777-S6'
+  grep -q 'E777-S6' <<<"$output"
 }

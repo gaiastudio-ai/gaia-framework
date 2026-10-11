@@ -29,21 +29,21 @@ _gen() {
   local json='{"project_name":"X","project_shape":"backend","project_kind":"backend","primary_platform":"backend","platforms":["backend"],"stacks":[{"name":"b","language":"python","paths":["b/"]}]}'
   local cfg; cfg="$(_gen "$json" full)"
   # primary_platform must NOT be the un-normalized 'backend'.
-  ! printf '%s\n' "$cfg" | grep -qE '^primary_platform:[[:space:]]*"?backend"?[[:space:]]*$'
+  ! grep -qE '^primary_platform:[[:space:]]*"?backend"?[[:space:]]*$' <<<"$cfg"
   # It should be 'server', the same vocab as platforms[].
-  printf '%s\n' "$cfg" | grep -qE '^primary_platform:[[:space:]]*"?server"?[[:space:]]*$'
+  grep -qE '^primary_platform:[[:space:]]*"?server"?[[:space:]]*$' <<<"$cfg"
 }
 
 @test "issue-1393: a non-backend primary_platform passes through unchanged" {
   local json='{"project_name":"X","project_shape":"web-app","project_kind":"web-app","primary_platform":"web","platforms":["web"],"stacks":[{"name":"b","language":"python","paths":["b/"]}]}'
   local cfg; cfg="$(_gen "$json" full)"
-  printf '%s\n' "$cfg" | grep -qE '^primary_platform:[[:space:]]*"?web"?[[:space:]]*$'
+  grep -qE '^primary_platform:[[:space:]]*"?web"?[[:space:]]*$' <<<"$cfg"
 }
 
 @test "issue-1393: primary_platform and platforms[] agree on the backend→server vocab" {
   local json='{"project_name":"X","project_shape":"backend","project_kind":"backend","primary_platform":"backend","platforms":["backend"],"stacks":[{"name":"b","language":"python","paths":["b/"]}]}'
   local cfg; cfg="$(_gen "$json" full)"
   # platforms[] already normalizes to server; primary_platform must match.
-  printf '%s\n' "$cfg" | grep -qE '^primary_platform:[[:space:]]*"?server"?'
-  printf '%s\n' "$cfg" | grep -qE 'server'
+  grep -qE '^primary_platform:[[:space:]]*"?server"?' <<<"$cfg"
+  grep -qE 'server' <<<"$cfg"
 }

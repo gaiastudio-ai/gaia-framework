@@ -63,7 +63,7 @@ teardown() { common_teardown; }
   # Must contain opening --- on its own line and closing --- on its own line.
   # Use awk (rather than grep -Fxq '---') because BSD grep on macOS treats the
   # literal `---` token as an unknown flag.
-  printf '%s\n' "$output" | awk '$0=="---"{found=1} END{exit !found}'
+  awk '$0=="---"{found=1} END{exit !found}' <<<"$output"
 }
 
 @test "AC1: happy path parses depends_on as a YAML flow array" {
