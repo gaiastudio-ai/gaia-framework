@@ -1025,18 +1025,22 @@ _build_writer_state() {
   local bmc="$PLUGIN_ROOT/scripts/build-manifest-cards.sh"
   [ -f "$bmc" ] || fail "build-manifest-cards.sh not found"
 
+  local drec="$PLUGIN_ROOT/scripts/design-record.sh"
+  [ -f "$drec" ] || fail "design-record.sh not found"
+
   # Source the writer library (brings in persist_last_published)
   # shellcheck source=../scripts/build-manifest-cards.sh
   . "$bmc"
 
-  # --- design record (v2, both projects have a reference) ---
-  cat > "$wdir/design-record.yaml" <<'DR'
-schema_version: 2
-design_system_project:
-  reference: "ds-uuid-001"
-product_design_project:
-  reference: "pd-uuid-001"
-DR
+  # Create the design record via the sole writer (v2, both refs)
+  env PROJECT_ROOT="$wdir" bash "$drec" init \
+    --ds-reference "ds-uuid-001" \
+    --pd-reference "pd-uuid-001" \
+    --discovered-via "project-artifacts"
+
+  local dr_path="$wdir/.gaia/state/design-record.yaml"
+  [ -f "$dr_path" ] \
+    || fail "design-record.sh init did not create $dr_path"
 
   # --- design-system outcomes ---
   cat > "$wdir/ds-outcomes.json" <<'DSO'
@@ -1070,7 +1074,7 @@ PDH
     --outcomes "$wdir/ds-outcomes.json" \
     --output "$out" \
     --local-hash-map "$wdir/ds-hashes.json" \
-    --design-record "$wdir/design-record.yaml" \
+    --design-record "$dr_path" \
     --published-at "$ts"
 
   # Second call: product_design (uses prior from first call)
@@ -1079,7 +1083,7 @@ PDH
     --outcomes "$wdir/pd-outcomes.json" \
     --output "$out" \
     --local-hash-map "$wdir/pd-hashes.json" \
-    --design-record "$wdir/design-record.yaml" \
+    --design-record "$dr_path" \
     --published-at "$ts"
 
   # Export the path for callers

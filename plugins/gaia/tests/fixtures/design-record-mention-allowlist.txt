@@ -60,3 +60,4 @@ tests/design-record-roster.bats    test     roster-resolution test suite
 tests/design-record-review-coverage.bats test review-coverage verb tests
 CHANGELOG.md                       prose    release notes list design-record changes
 tests/republish-on-stale.bats      test     asserts republish sites pass the design record to the persist call
+tests/derive-design-scope-diff.bats test    live-writer contract seeds a record via design-record.sh init
