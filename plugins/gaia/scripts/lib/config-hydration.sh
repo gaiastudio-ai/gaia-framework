@@ -105,18 +105,11 @@ _CONFIG_HYDRATION_ALLOWLIST=(
 
 # Sections that are intentionally NOT auto-hydrated. The reconciler MUST recognize these
 # and skip them without triggering the hard-error path. Forward + reverse invariants:
-# every schema property is in EXACTLY ONE of allowlist, managed-elsewhere, or x-no-auto-hydration.
+# every schema property is in AT LEAST ONE of allowlist, managed-elsewhere, or x-no-auto-hydration.
 #
-#   - Computed path/identity (5):        written by resolve-config.sh at runtime.
-#   - framework_version (1):             written by gaia-reconcile-v2.sh apply at
-#                                        end of successful reconciliation.
-#                                        resolve-config.sh ONLY READS this value for
-#                                        drift detection; it does not write.
-#   - date (1):                          written by resolve-config.sh at runtime.
-#   - State-machine (2):                 written by config-hydration.sh advance-phase
-#                                        and schema discovery.
-#   - User-identity (3):                 written by /gaia-init Phase 0 / --full.
-#   - Artifact-bucket paths (4):         written by resolve-config.sh and /gaia-init.
+#   Categories are documented inline on each entry below. The total is
+#   enforced dynamically by config-hydration-allowlist-invariant.bats
+#   (forward + reverse invariants).
 _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # Computed path/identity (5).
   project_root
@@ -179,6 +172,15 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # as defense-in-depth documentation; this entry registers it for the
   # reconciler's managed-elsewhere check.
   parallel_execution
+  # sprint_status_mod (1): operator-managed user alias list and waiting-agent
+  # threshold. Never auto-hydrated, because an empty stub would mean exactly
+  # what the section's ABSENCE already means (built-in defaults) while adding
+  # a key to every project config. The effective values are applied at the
+  # read site, not materialised from the schema `default` annotations. The
+  # schema property also carries `x-no-auto-hydration: true` as
+  # defense-in-depth documentation; this entry registers it for the
+  # reconciler's managed-elsewhere check.
+  sprint_status_mod
 )
 
 # ---- Logging helpers ------------------------------------------------------

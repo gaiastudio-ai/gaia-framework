@@ -92,7 +92,7 @@ Standard set/show/clear CRUD semantics per the config-skill canon, applied per s
 ## Notes
 
 - Stack declaration order is the resolution order. Surface this in any reorder confirmation so the user is aware before applying.
-- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (42 properties in schema v2.0.0). This skill ONLY edits `stacks`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list. This skill ONLY edits `stacks`.
 - The four optional fields are written through `config-yaml-editor.sh` like every other `stacks` mutation — comments and formatting outside the edited section are preserved byte-for-byte. Do NOT use a bare `yq -i` round-trip.
 
 ### The four multi-stack fields — semantics + worked examples
