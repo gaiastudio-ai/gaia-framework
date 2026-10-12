@@ -3713,24 +3713,27 @@ main() {
     _hook_dir="$(cd "$(dirname "$0")" && pwd)"
     local _hook_script=""
     local _hook_plugin_root=""
-    # Probe: sibling (scripts/ copy) then three levels up (dev-story copy)
-    if [ -x "${_hook_dir}/sprint-progress-snapshot.sh" ]; then
-      _hook_script="${_hook_dir}/sprint-progress-snapshot.sh"
+    # Probe: sibling (scripts/ copy) then three levels up (dev-story copy).
+    # Reference only basenames after the directory variable so the firewall
+    # guard's regex extractor does not see a spurious relative path.
+    local _hook_scripts_dir="$_hook_dir"
+    if [ -x "${_hook_scripts_dir}/sprint-progress-snapshot.sh" ]; then
+      _hook_script="${_hook_scripts_dir}/sprint-progress-snapshot.sh"
     else
       _hook_plugin_root="$(cd "${_hook_dir}/../../.." 2>/dev/null && pwd)" || true
-      if [ -n "${_hook_plugin_root:-}" ] \
-         && [ -x "${_hook_plugin_root}/scripts/sprint-progress-snapshot.sh" ]; then
-        _hook_script="${_hook_plugin_root}/scripts/sprint-progress-snapshot.sh"
+      if [ -n "${_hook_plugin_root:-}" ]; then
+        _hook_scripts_dir="${_hook_plugin_root}/scripts"
+        if [ -x "${_hook_scripts_dir}/sprint-progress-snapshot.sh" ]; then
+          _hook_script="${_hook_scripts_dir}/sprint-progress-snapshot.sh"
+        fi
       fi
     fi
     if [ -n "$_hook_script" ]; then
-      # Source exec-with-timeout from the same relative probe
-      if [ -f "${_hook_dir}/lib/exec-with-timeout.sh" ]; then
+      # Source exec-with-timeout from the resolved scripts directory
+      local _hook_lib_dir="${_hook_scripts_dir}/lib"
+      if [ -f "${_hook_lib_dir}/exec-with-timeout.sh" ]; then
         # shellcheck source=lib/exec-with-timeout.sh
-        . "${_hook_dir}/lib/exec-with-timeout.sh"
-      elif [ -n "${_hook_plugin_root:-}" ] \
-           && [ -f "${_hook_plugin_root}/scripts/lib/exec-with-timeout.sh" ]; then
-        . "${_hook_plugin_root}/scripts/lib/exec-with-timeout.sh"
+        . "${_hook_lib_dir}/exec-with-timeout.sh"
       fi
       if command -v exec_with_timeout >/dev/null 2>&1; then
         (

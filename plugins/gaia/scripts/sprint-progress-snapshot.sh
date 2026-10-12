@@ -50,11 +50,46 @@ _ALLOWED_COMMANDS=("/gaia-test-manual" "/gaia-sprint-close" "/gaia-action-items"
 _warn() { printf 'sprint-progress-snapshot: %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
-# Cross-platform helpers
+# Cross-platform detection — run ONCE at source time
+# ---------------------------------------------------------------------------
+
+# Detect stat flavour: GNU uses -c, BSD uses -f.
+# On GNU, `stat -f %m /` prints filesystem info to stdout (wrong), so we
+# must never fall through from a BSD attempt to a GNU attempt in a single
+# invocation — that pollutes the captured output.
+if stat -c %Y / >/dev/null 2>&1; then
+  _SNAP_STAT_FMT="gnu"   # stat -c %Y
+else
+  _SNAP_STAT_FMT="bsd"   # stat -f %m
+fi
+
+# Detect date flavour: GNU uses `date -d`, BSD uses `date -r` for epoch
+# and `date -jf` for parsing date strings.
+if date -u -d @0 +%s >/dev/null 2>&1; then
+  _SNAP_DATE_FMT="gnu"   # date -u -d @EPOCH / date -u -d YYYY-MM-DD
+else
+  _SNAP_DATE_FMT="bsd"   # date -u -r EPOCH / date -jf '%Y-%m-%d'
+fi
+
+# ---------------------------------------------------------------------------
+# Cross-platform helpers (use detected flavour, never || chain)
 # ---------------------------------------------------------------------------
 
 _stat_mtime() {
-  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"
+  if [ "$_SNAP_STAT_FMT" = "gnu" ]; then
+    stat -c %Y "$1"
+  else
+    stat -f %m "$1"
+  fi
+}
+
+# _stat_mtime_batch FILE [FILE...] — print one mtime per line
+_stat_mtime_batch() {
+  if [ "$_SNAP_STAT_FMT" = "gnu" ]; then
+    stat -c %Y "$@"
+  else
+    stat -f %m "$@"
+  fi
 }
 
 _stat_mtime_age() {
@@ -65,16 +100,23 @@ _stat_mtime_age() {
 }
 
 _date_to_epoch() {
-  date -jf '%Y-%m-%d' "$1" +%s 2>/dev/null \
-    || date -u -d "$1" +%s 2>/dev/null \
-    || printf ''
+  if [ "$_SNAP_DATE_FMT" = "gnu" ]; then
+    date -u -d "$1" +%s 2>/dev/null || printf ''
+  else
+    date -jf '%Y-%m-%d' "$1" +%s 2>/dev/null || printf ''
+  fi
 }
 
-_mtime_to_date() {
-  date -u -r "$1" +%Y-%m-%d 2>/dev/null \
-    || date -u -d "@$1" +%Y-%m-%d 2>/dev/null \
-    || printf '%s' "1970-01-01"
+# _epoch_to_date EPOCH — convert epoch seconds to YYYY-MM-DD
+_epoch_to_date() {
+  if [ "$_SNAP_DATE_FMT" = "gnu" ]; then
+    date -u -d "@$1" +%Y-%m-%d 2>/dev/null || printf '1970-01-01'
+  else
+    date -u -r "$1" +%Y-%m-%d 2>/dev/null || printf '1970-01-01'
+  fi
 }
+
+_mtime_to_date() { _epoch_to_date "$1"; }
 
 # ---------------------------------------------------------------------------
 # JSON escaping (pure bash, no subprocess)
@@ -520,8 +562,7 @@ _try_warm_fast_path() {
 
   # ONE batch stat
   local actual
-  actual="$(stat -f %m "${paths_arr[@]}" 2>/dev/null \
-            || stat -c %Y "${paths_arr[@]}" 2>/dev/null)" || return 1
+  actual="$(_stat_mtime_batch "${paths_arr[@]}")" || return 1
   local wi=0
   while IFS= read -r act_mt; do
     [ "$act_mt" = "${mt_expected[$wi]}" ] || return 1
@@ -803,8 +844,7 @@ _snapshot_main() {
       stat_files+=("${entry#*	}")
     done
     local all_mts
-    all_mts="$(stat -f %m "${stat_files[@]}" 2>/dev/null \
-               || stat -c %Y "${stat_files[@]}" 2>/dev/null)" || all_mts=""
+    all_mts="$(_stat_mtime_batch "${stat_files[@]}")" || all_mts=""
     while IFS= read -r mt; do mt_arr+=("$mt"); done <<< "$all_mts"
   fi
 

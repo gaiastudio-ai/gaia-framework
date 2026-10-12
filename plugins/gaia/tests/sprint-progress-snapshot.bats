@@ -1010,8 +1010,7 @@ YAML
   local now_ep target_ep target_date
   now_ep="$(date +%s)"
   target_ep=$((now_ep - 49 * 3600))
-  target_date="$(date -u -r "$target_ep" +%Y%m%d%H%M.%S 2>/dev/null || date -u -d "@${target_ep}" +%Y%m%d%H%M.%S)"
-  touch -t "${target_date%.*}" "$sf"
+  touch -t "$(_epoch_to_touchdate "$target_ep")" "$sf"
 
   run "$SCRIPT"
   [ "$status" -eq 0 ]
@@ -1027,11 +1026,10 @@ YAML
   local sf
   sf="$(write_story E900-S1 review 5)"
   # Backdate the story file to 47 hours ago (under threshold)
-  local now_ep target_ep target_date
+  local now_ep target_ep
   now_ep="$(date +%s)"
   target_ep=$((now_ep - 47 * 3600))
-  target_date="$(date -u -r "$target_ep" +%Y%m%d%H%M.%S 2>/dev/null || date -u -d "@${target_ep}" +%Y%m%d%H%M.%S)"
-  touch -t "${target_date%.*}" "$sf"
+  touch -t "$(_epoch_to_touchdate "$target_ep")" "$sf"
 
   # Cold run — under threshold, no stale_review entry
   run "$SCRIPT"
@@ -1039,12 +1037,10 @@ YAML
   [ "$(jq '[.drift[] | select(.type == "stale_review")] | length' "$CACHE")" = "0" ]
 
   # Simulate time passing: backdate file to 49h ago and update the sidecar
-  # to match (so the warm path sees "no change" but the mtime is stale)
   target_ep=$((now_ep - 49 * 3600))
-  target_date="$(date -u -r "$target_ep" +%Y%m%d%H%M.%S 2>/dev/null || date -u -d "@${target_ep}" +%Y%m%d%H%M.%S)"
-  touch -t "${target_date%.*}" "$sf"
+  touch -t "$(_epoch_to_touchdate "$target_ep")" "$sf"
   local new_mt
-  new_mt="$(stat -f %m "$sf" 2>/dev/null || stat -c %Y "$sf")"
+  new_mt="$(_stat_mtime "$sf")"
   # Update the sidecar story entry to record this new mtime
   awk -F'\t' -v k="E900-S1" -v mt="$new_mt" -v path="$sf" '
     $1=="story" && $2==k { print "story\t" k "\t" path "\t" mt; next }

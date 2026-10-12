@@ -18,6 +18,40 @@ export GAIA_SNAPSHOT_HOOK_DISABLE=1
 SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
 export SCRIPTS_DIR
 
+# ---------------------------------------------------------------------------
+# Cross-platform helpers (detect once, use everywhere in tests)
+# ---------------------------------------------------------------------------
+
+if stat -c %Y / >/dev/null 2>&1; then
+  _TEST_STAT_FMT="gnu"
+else
+  _TEST_STAT_FMT="bsd"
+fi
+
+if date -u -d @0 +%s >/dev/null 2>&1; then
+  _TEST_DATE_FMT="gnu"
+else
+  _TEST_DATE_FMT="bsd"
+fi
+
+# _stat_mtime FILE — portable single-file mtime (epoch seconds)
+_stat_mtime() {
+  if [ "$_TEST_STAT_FMT" = "gnu" ]; then
+    stat -c %Y "$1"
+  else
+    stat -f %m "$1"
+  fi
+}
+
+# _epoch_to_touchdate EPOCH — print YYYYMMDDHHmm for touch -t
+_epoch_to_touchdate() {
+  if [ "$_TEST_DATE_FMT" = "gnu" ]; then
+    date -u -d "@$1" +%Y%m%d%H%M
+  else
+    date -u -r "$1" +%Y%m%d%H%M
+  fi
+}
+
 # common_setup — called from every test's setup(). Creates a per-test temp
 # dir, namespaces it by $BATS_TEST_NAME, and exports TEST_TMP.
 common_setup() {
