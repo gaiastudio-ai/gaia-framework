@@ -128,9 +128,14 @@ _resolve_conventional_commits() {
 
   # Locate classify-commits.js. Discovery order:
   #   1. CLASSIFY_COMMITS_JS env var (explicit override for tests / CI).
-  #   2. Shared locate_repo_script helper (walks up from lib dir and
-  #      CLAUDE_PLUGIN_ROOT, then CWD — no brittle relative traversal).
+  #   2. Plugin scripts dir via CLAUDE_PLUGIN_ROOT (works in installed plugins).
+  #   3. Shared locate_repo_script helper (sibling scripts/ of lib dir,
+  #      then CLAUDE_PLUGIN_ROOT walk-up, then CWD walk-up).
   local classify_js="${CLASSIFY_COMMITS_JS:-}"
+  if [ -z "$classify_js" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
+      && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/classify-commits.js" ]; then
+    classify_js="${CLAUDE_PLUGIN_ROOT}/scripts/classify-commits.js"
+  fi
   if [ -z "$classify_js" ]; then
     classify_js="$(locate_repo_script "classify-commits.js")"
   fi

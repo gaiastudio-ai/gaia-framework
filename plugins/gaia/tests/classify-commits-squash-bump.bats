@@ -13,7 +13,7 @@ CLASSIFY_JS=""
 
 setup() {
   common_setup
-  CLASSIFY_JS="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/scripts/classify-commits.js"
+  CLASSIFY_JS="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/scripts/classify-commits.js"
 }
 teardown() { common_teardown; }
 

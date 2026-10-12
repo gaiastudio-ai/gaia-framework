@@ -124,7 +124,7 @@ jobs:
           # Pipe via stdin to avoid ARG_MAX on large ranges
           # (e.g., 45+-commit staging→main merges that exceed the Linux argv limit).
           ESCAPED=$(echo "$FILTERED" | sed ':a;N;$!ba;s/\n/\\n/g')
-          RESULT=$(printf '%s' "$ESCAPED" | node scripts/classify-commits.js --stdin)
+          RESULT=$(printf '%s' "$ESCAPED" | node plugins/gaia/scripts/classify-commits.js --stdin)
           BUMP_SIZE=$(echo "$RESULT" | grep "bump_size=" | cut -d= -f2)
           HAS_COMMITS=$(echo "$RESULT" | grep "has_commits=" | cut -d= -f2)
 
@@ -160,7 +160,7 @@ jobs:
           # instead of process.argv, mirroring the classify-commits.js --stdin
           # fix above.
           printf '%s' "$ESCAPED" | node -e "
-            const { generateChangelog } = require('./scripts/classify-commits.js');
+            const { generateChangelog } = require('./plugins/gaia/scripts/classify-commits.js');
             const input = require('fs').readFileSync(0, 'utf8');
             const commits = input.split('\\\\n').filter(Boolean);
             const delta = generateChangelog(commits, '$NEW_VERSION');

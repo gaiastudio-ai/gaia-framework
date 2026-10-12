@@ -18,13 +18,13 @@ teardown() { common_teardown; }
 
 @test "classify-commits.js supports --stdin flag" {
   printf 'feat(x): one\\n---COMMIT---\\nfix(y): two\\n---COMMIT---\\n' \
-    | node "$REPO_ROOT/scripts/classify-commits.js" --stdin > "$BATS_TEST_TMPDIR/out"
+    | node "$REPO_ROOT/plugins/gaia/scripts/classify-commits.js" --stdin > "$BATS_TEST_TMPDIR/out"
   grep -q '^bump_size=minor$' "$BATS_TEST_TMPDIR/out"
   grep -q '^has_commits=true$' "$BATS_TEST_TMPDIR/out"
 }
 
 @test "classify-commits.js argv mode still works (backward compat)" {
-  node "$REPO_ROOT/scripts/classify-commits.js" "feat(x): one\n---COMMIT---\nfix(y): two\n---COMMIT---\n" > "$BATS_TEST_TMPDIR/out"
+  node "$REPO_ROOT/plugins/gaia/scripts/classify-commits.js" "feat(x): one\n---COMMIT---\nfix(y): two\n---COMMIT---\n" > "$BATS_TEST_TMPDIR/out"
   grep -q '^bump_size=minor$' "$BATS_TEST_TMPDIR/out"
 }
 
@@ -35,12 +35,12 @@ teardown() { common_teardown; }
   for i in $(seq 1 60); do
     blob+="feat(scope-${i}): commit ${i}\\nbody line for commit ${i} with extra padding to inflate size\\n---COMMIT---\\n"
   done
-  printf '%s' "$blob" | node "$REPO_ROOT/scripts/classify-commits.js" --stdin > "$BATS_TEST_TMPDIR/out"
+  printf '%s' "$blob" | node "$REPO_ROOT/plugins/gaia/scripts/classify-commits.js" --stdin > "$BATS_TEST_TMPDIR/out"
   grep -q '^bump_size=minor$' "$BATS_TEST_TMPDIR/out"
 }
 
 @test "classify-commits.js usage message documents --stdin" {
-  run node "$REPO_ROOT/scripts/classify-commits.js"
+  run node "$REPO_ROOT/plugins/gaia/scripts/classify-commits.js"
   [ "$status" -ne 0 ]
   grep -qFe '--stdin' <<<"$output"
 }
@@ -48,7 +48,7 @@ teardown() { common_teardown; }
 # --- Workflow wiring ---
 
 @test "release.yml Classify step pipes via stdin (not argv)" {
-  grep -qE 'printf .* \| node scripts/classify-commits\.js --stdin' "$REPO_ROOT/.github/workflows/release.yml"
+  grep -qE 'printf .* \| node plugins/gaia/scripts/classify-commits\.js --stdin' "$REPO_ROOT/.github/workflows/release.yml"
 }
 
 @test "release.yml Update CHANGELOG step pipes via stdin (not argv)" {
@@ -58,5 +58,5 @@ teardown() { common_teardown; }
 
 @test "release.yml no longer passes large blob via argv to classify-commits.js" {
   # Regression guard against the old pattern "node scripts/classify-commits.js \"$ESCAPED\""
-  ! grep -qE 'node scripts/classify-commits\.js "\$ESCAPED"' "$REPO_ROOT/.github/workflows/release.yml"
+  ! grep -qE 'node plugins/gaia/scripts/classify-commits\.js "\$ESCAPED"' "$REPO_ROOT/.github/workflows/release.yml"
 }

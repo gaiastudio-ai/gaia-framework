@@ -2,7 +2,7 @@
 "use strict";
 
 /**
- * Unit tests for scripts/classify-commits.js
+ * Unit tests for plugins/gaia/scripts/classify-commits.js
  * Tests the commit classification logic used by release.yml to determine bump type.
  *
  * Covers: AC1 (bump classification from Conventional Commits),
@@ -15,7 +15,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 // The classify function will be exported from the module
-const SCRIPT_PATH = path.resolve(__dirname, "../../scripts/classify-commits.js");
+const SCRIPT_PATH = path.resolve(__dirname, "../../plugins/gaia/scripts/classify-commits.js");
 
 function loadClassify() {
   // Clear require cache to get fresh module
