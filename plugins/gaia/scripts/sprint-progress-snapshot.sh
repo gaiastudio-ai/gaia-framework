@@ -7,9 +7,22 @@
 # (sidebar, band, status line, dashboard) consume the cache instead of
 # parsing story files directly.
 #
+# Data flow: awk extracts raw fields into unit-separator (0x1f) delimited
+# records, and ONE jq program assembles the whole document from them.  No
+# JSON is ever built by string concatenation, so no field value can change
+# the document structure, and every string is encoded by jq.
+#
+# Incremental refresh: the mtime sidecar (.sprint-progress-mtimes) records
+# each tracked file with its project-relative path and mtime (0 = absent).
+# The per-story parse records are kept in .sprint-progress-parsed, so a run
+# only re-parses story files whose path or mtime changed.
+#
 # Environment variable overrides (for testability):
-#   PROJECT_ROOT          Project root directory (default: CLAUDE_PROJECT_ROOT or PWD)
-#   SPRINT_STATUS_YAML    Path to sprint-status.yaml (default: .gaia/state/sprint-status.yaml)
+#   PROJECT_ROOT              Project root (default: CLAUDE_PROJECT_ROOT or PWD)
+#   SPRINT_STATUS_YAML        Path to sprint-status.yaml (default: .gaia/state/sprint-status.yaml)
+#   IMPLEMENTATION_ARTIFACTS  Story tree (default: .gaia/artifacts/implementation-artifacts,
+#                             falling back to the legacy docs/implementation-artifacts)
+#   REVIEW_GATE_LEDGER        Review-gate ledger path (same resolution as review-gate.sh)
 #   GAIA_LOCK_FORCE_FALLBACK  Force the ln-based lock backend (skip flock)
 #
 # The post-transition hook in sprint-state.sh honours:
@@ -27,12 +40,11 @@ LC_ALL=C; export LC_ALL
 # Resolve own directory and load libraries
 # ---------------------------------------------------------------------------
 
-_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-if [ "${_GAIA_PATHS_LOADED:-0}" != "1" ]; then
-  # shellcheck source=lib/gaia-paths.sh
-  . "${_SELF_DIR}/lib/gaia-paths.sh" 2>/dev/null || true
-fi
+# No subshell: only the cold path uses it (to reach lib/resolve-artifact-path.sh).
+case "${BASH_SOURCE[0]}" in
+  */*) _SELF_DIR="${BASH_SOURCE[0]%/*}" ;;
+  *)   _SELF_DIR="." ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -40,8 +52,10 @@ fi
 
 _CACHE_NAME=".sprint-progress-cache.json"
 _SIDECAR_NAME=".sprint-progress-mtimes"
+_PARSED_NAME=".sprint-progress-parsed"
 _LOCK_SUFFIX=".lock"
 _ALLOWED_COMMANDS=("/gaia-test-manual" "/gaia-sprint-close" "/gaia-action-items")
+_US=$'\037'   # record field separator (ASCII unit separator)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -61,14 +75,6 @@ if stat -c %Y / >/dev/null 2>&1; then
   _SNAP_STAT_FMT="gnu"   # stat -c %Y
 else
   _SNAP_STAT_FMT="bsd"   # stat -f %m
-fi
-
-# Detect date flavour: GNU uses `date -d`, BSD uses `date -r` for epoch
-# and `date -jf` for parsing date strings.
-if date -u -d @0 +%s >/dev/null 2>&1; then
-  _SNAP_DATE_FMT="gnu"   # date -u -d @EPOCH / date -u -d YYYY-MM-DD
-else
-  _SNAP_DATE_FMT="bsd"   # date -u -r EPOCH / date -jf '%Y-%m-%d'
 fi
 
 # ---------------------------------------------------------------------------
@@ -99,73 +105,77 @@ _stat_mtime_age() {
   printf '%s' "$(( now - mt ))"
 }
 
-_date_to_epoch() {
-  if [ "$_SNAP_DATE_FMT" = "gnu" ]; then
-    date -u -d "$1" +%s 2>/dev/null || printf ''
-  else
-    date -jf '%Y-%m-%d' "$1" +%s 2>/dev/null || printf ''
+# _realpath_one PATH — resolve the FULL symlink chain of PATH (every hop of
+# the final component, plus all parent directories via `cd -P`).  Prints the
+# physical path; returns 1 on a missing target or a loop longer than 40 hops.
+_realpath_one() {
+  local p="$1" hops=0 t d
+  while [ -L "$p" ]; do
+    hops=$((hops + 1))
+    [ "$hops" -le 40 ] || return 1
+    t="$(readlink "$p")" || return 1
+    case "$t" in
+      /*) p="$t" ;;
+      *)  case "$p" in */*) p="${p%/*}/$t" ;; *) p="$t" ;; esac ;;
+    esac
+  done
+  [ -e "$p" ] || return 1
+  case "$p" in
+    */*) d="$(cd -P "${p%/*}" 2>/dev/null && pwd -P)" || return 1
+         printf '%s/%s\n' "${d%/}" "${p##*/}" ;;
+    *)   d="$(pwd -P)"; printf '%s/%s\n' "${d%/}" "$p" ;;
+  esac
+}
+
+# _realpath_batch PATH... — one resolved path per argument, in order, with the
+# placeholder "?" for a path that cannot be resolved (never a blank line,
+# which command substitution would silently drop at the end).  Uses a single `realpath` process
+# when it is available and resolves every argument; otherwise resolves each
+# path with _realpath_one.
+_realpath_batch() {
+  [ "$#" -gt 0 ] || return 0
+  local out="" n=0 line
+  if command -v realpath >/dev/null 2>&1; then
+    # GNU realpath resolves a dangling link without failing unless given -e;
+    # BSD realpath already fails on a missing target and has no -e.
+    if [ -z "${_SNAP_REALPATH_E:-}" ]; then
+      if realpath -e / >/dev/null 2>&1; then _SNAP_REALPATH_E="-e"; else _SNAP_REALPATH_E="none"; fi
+    fi
+    if [ "$_SNAP_REALPATH_E" = "-e" ]; then
+      out="$(realpath -e "$@" 2>/dev/null)" || out=""
+    else
+      out="$(realpath "$@" 2>/dev/null)" || out=""
+    fi
+    if [ -n "$out" ]; then
+      while IFS= read -r line; do n=$((n + 1)); done <<< "$out"
+      if [ "$n" -eq "$#" ]; then printf '%s\n' "$out"; return 0; fi
+    fi
   fi
-}
-
-# _epoch_to_date EPOCH — convert epoch seconds to YYYY-MM-DD
-_epoch_to_date() {
-  if [ "$_SNAP_DATE_FMT" = "gnu" ]; then
-    date -u -d "@$1" +%Y-%m-%d 2>/dev/null || printf '1970-01-01'
-  else
-    date -u -r "$1" +%Y-%m-%d 2>/dev/null || printf '1970-01-01'
-  fi
-}
-
-_mtime_to_date() { _epoch_to_date "$1"; }
-
-# ---------------------------------------------------------------------------
-# JSON escaping (pure bash, no subprocess)
-# ---------------------------------------------------------------------------
-
-_json_escape_var() {
-  # Escape backslashes and double-quotes in $1, print result.
-  local v="${1//\\/\\\\}"
-  printf '%s' "${v//\"/\\\"}"
-}
-
-# _json_str_or_null VAL — prints "VAL" or null.
-_json_str_or_null() {
-  if [ -n "$1" ] && [ "$1" != "null" ]; then
-    printf '"%s"' "$(_json_escape_var "$1")"
-  else
-    printf 'null'
-  fi
+  local p
+  for p in "$@"; do
+    _realpath_one "$p" || printf '?\n'
+  done
 }
 
 # ---------------------------------------------------------------------------
-# Input sanitization
+# Input validation
 # ---------------------------------------------------------------------------
-
-# _sanitize_alias STR — strip control chars (NL/CR/TAB/ESC/etc.), cap to 100 chars
-_sanitize_alias() {
-  local v="$1"
-  # Strip control characters (bytes 0x00-0x1F and 0x7F)
-  v="$(printf '%s' "$v" | tr -d '[:cntrl:]')"
-  [ "${#v}" -le 100 ] || v="${v:0:100}"
-  printf '%s' "$v"
-}
 
 # _validate_threshold STR — return a valid non-negative integer, or 120 with a warning
 _validate_threshold() {
   local v="$1"
   # Must be a plain non-negative integer (digits only, bounded length)
   if [ -n "$v" ] && [ "${#v}" -le 10 ] && [[ $v =~ ^[0-9]+$ ]]; then
-    printf '%s' "$v"
+    printf '%s' "$((10#$v))"
   else
     [ -z "$v" ] || _warn "invalid threshold value '${v:0:20}', using default 120"
     printf '120'
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Command allowlist
-# ---------------------------------------------------------------------------
-
+# _validate_command CMD — prints CMD when it is in the hardcoded allowlist,
+# otherwise prints null.  The jq assembly applies the same allowlist (it is
+# handed _ALLOWED_COMMANDS as positional arguments) on every run, cold or warm.
 _validate_command() {
   local cmd="$1"
   if [ -z "$cmd" ]; then printf 'null'; return 0; fi
@@ -176,21 +186,26 @@ _validate_command() {
   printf 'null'
 }
 
-# ---------------------------------------------------------------------------
-# Story-key validation
-# ---------------------------------------------------------------------------
-
 _valid_story_key() {
   [[ $1 =~ ^E[0-9]+\-S[0-9]+$ ]]
 }
 
+# _rel_ok REL — a sidecar path must be project-relative with no `..` segment.
+_rel_ok() {
+  case "$1" in
+    ""|/*|..|../*|*/../*|*/..) return 1 ;;
+  esac
+  return 0
+}
+
 # ---------------------------------------------------------------------------
-# Single-flight non-blocking lock
+# Single-flight non-blocking lock (fixed fd 9)
 # ---------------------------------------------------------------------------
 
-_SNAPSHOT_LOCK_FD=9
 _SNAPSHOT_LOCK_FILE=""
 _SNAPSHOT_LOCK_BACKEND=""
+_SNAPSHOT_LOCK_REFUSED=0
+_SNAP_TMP_FILES=""
 
 _snapshot_lock_path_policy() {
   local lock_file="$1"
@@ -205,16 +220,16 @@ _snapshot_lock_path_policy() {
 
 _try_snapshot_lock() {
   local lock_file="$1"
-  _SNAPSHOT_LOCK_FILE="$lock_file"
-  mkdir -p "$(dirname "$lock_file")" 2>/dev/null || true
-
-  if ! _snapshot_lock_path_policy "$lock_file"; then return 1; fi
+  _SNAPSHOT_LOCK_REFUSED=0
+  if ! _snapshot_lock_path_policy "$lock_file"; then
+    _SNAPSHOT_LOCK_REFUSED=1; return 1
+  fi
 
   if command -v flock >/dev/null 2>&1 && [ "${GAIA_LOCK_FORCE_FALLBACK:-}" != "1" ]; then
     _SNAPSHOT_LOCK_BACKEND="flock"
-    eval "exec ${_SNAPSHOT_LOCK_FD}>>'${lock_file}'"
-    if flock -n "$_SNAPSHOT_LOCK_FD" 2>/dev/null; then return 0; fi
-    eval "exec ${_SNAPSHOT_LOCK_FD}>&-" 2>/dev/null || true
+    exec 9>>"$lock_file" || return 1
+    if flock -n 9 2>/dev/null; then _SNAPSHOT_LOCK_FILE="$lock_file"; return 0; fi
+    exec 9>&-
     return 1
   fi
 
@@ -225,7 +240,7 @@ _try_snapshot_lock() {
     rm -f "$tmp_lock" 2>/dev/null || true; return 1
   }
   if ln "$tmp_lock" "$lock_file" 2>/dev/null; then
-    rm -f "$tmp_lock" 2>/dev/null || true; return 0
+    rm -f "$tmp_lock" 2>/dev/null || true; _SNAPSHOT_LOCK_FILE="$lock_file"; return 0
   fi
   rm -f "$tmp_lock" 2>/dev/null || true
 
@@ -241,7 +256,7 @@ _try_snapshot_lock() {
         rm -f "$tmp2" 2>/dev/null || true; return 1
       }
       if ln "$tmp2" "$lock_file" 2>/dev/null; then
-        rm -f "$tmp2" 2>/dev/null || true; return 0
+        rm -f "$tmp2" 2>/dev/null || true; _SNAPSHOT_LOCK_FILE="$lock_file"; return 0
       fi
       rm -f "$tmp2" 2>/dev/null || true
     fi
@@ -250,49 +265,484 @@ _try_snapshot_lock() {
 }
 
 _release_snapshot_lock() {
+  # Remove any in-flight temp file first (a signal can land mid-write).
+  if [ -n "$_SNAP_TMP_FILES" ]; then
+    local t
+    while IFS= read -r t; do
+      if [ -n "$t" ] && [ -e "$t" ]; then rm -f "$t" 2>/dev/null || true; fi
+    done <<< "$_SNAP_TMP_FILES"
+    _SNAP_TMP_FILES=""
+  fi
   local lock_file="${_SNAPSHOT_LOCK_FILE:-}"
   [ -n "$lock_file" ] || return 0
   if [ "$_SNAPSHOT_LOCK_BACKEND" = "flock" ]; then
-    flock -u "$_SNAPSHOT_LOCK_FD" 2>/dev/null || true
-    eval "exec ${_SNAPSHOT_LOCK_FD}>&-" 2>/dev/null || true
+    # Closing the only descriptor on the lock file releases the flock.
+    exec 9>&- 2>/dev/null || true
   else
     local holder=""
     read -r holder _ < "$lock_file" 2>/dev/null || true
-    [ "$holder" = "$$" ] && rm -f "$lock_file" 2>/dev/null || true
+    if [ "$holder" = "$$" ]; then rm -f "$lock_file" 2>/dev/null || true; fi
   fi
   _SNAPSHOT_LOCK_FILE=""
 }
 
+# Re-run-on-release marker.  A run that finds the lock held leaves this
+# marker; the holder re-checks it after releasing and rebuilds once more, so
+# a change committed while a snapshot was in flight is never lost.  It is a
+# directory (mkdir never follows a planted symlink).
+_mark_dirty()  { mkdir "$1" 2>/dev/null || true; }
+_clear_dirty() { if [ -d "$1" ] && [ ! -L "$1" ]; then rmdir "$1" 2>/dev/null || true; fi; }
+_is_dirty()    { [ -d "$1" ] && [ ! -L "$1" ]; }
+
 # ---------------------------------------------------------------------------
-# Sprint-status.yaml reader (awk-based, fast)
+# Atomic write (mktemp in the same directory + mv)
 # ---------------------------------------------------------------------------
 
+# _new_tmp TARGET — create an empty, exclusive temp file next to TARGET and
+# set _TMP to its path.  noclobber makes the create O_EXCL, so a planted file
+# or symlink at the name is never followed or truncated.
+_new_tmp() {
+  local n=0
+  while :; do
+    _TMP="${1}.tmp.$$.${RANDOM}${RANDOM}"
+    set -C
+    if { : > "$_TMP"; } 2>/dev/null; then set +C; break; fi
+    set +C
+    n=$((n + 1)); [ "$n" -lt 20 ] || return 1
+  done
+  _SNAP_TMP_FILES="${_SNAP_TMP_FILES}${_TMP}
+"
+}
+
+# _write_atomic_from TARGET — copy stdin to TARGET atomically.
+_write_atomic_from() {
+  local target="$1" tmp
+  _new_tmp "$target" || return 1
+  tmp="$_TMP"
+  if cat >> "$tmp"; then
+    mv -f "$tmp" "$target"
+  else
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Record producers (awk).  Every record is one line of 0x1f-separated fields.
+# Fields never contain 0x1f, CR, or newline (stripped at the source).
+# ---------------------------------------------------------------------------
+
+# _read_sprint_yaml FILE — Z (sprint scalar) and K (story) records.
+#   Z <name> <value>
+#   K <index> <key> <yaml_status> <points> <risk_level> <blocked_by> <phase>
 _read_sprint_yaml() {
   local yaml_file="$1"
-  [ -f "$yaml_file" ] || { printf 'ABSENT'; return 0; }
+  [ -f "$yaml_file" ] || return 0
   awk '
+  function v(s, name) { s = $0; sub("^[[:space:]]*-?[[:space:]]*" name ":[[:space:]]*", "", s); gsub(/"/, "", s); gsub(/[\037\r]/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+  function z(name) { print "Z\037" name "\037" v($0, name) }
   BEGIN { in_stories=0; in_goals=0; si=0; gi=0; ck="" }
-  /^sprint_id:/ { val=$0; sub(/^sprint_id:[[:space:]]*/, "", val); gsub(/"/, "", val); print "SPRINT_ID=" val; next }
-  /^status:/ && !in_stories { val=$0; sub(/^status:[[:space:]]*/, "", val); gsub(/"/, "", val); print "SPRINT_STATUS=" val; next }
-  /^start_date:/ { val=$0; sub(/^start_date:[[:space:]]*/, "", val); gsub(/"/, "", val); print "START_DATE=" val; next }
-  /^end_date:/ { val=$0; sub(/^end_date:[[:space:]]*/, "", val); gsub(/"/, "", val); print "END_DATE=" val; next }
-  /^capacity_utilization:/ { val=$0; sub(/^capacity_utilization:[[:space:]]*/, "", val); gsub(/"/, "", val); print "CAPACITY_UTILIZATION=" val; next }
-  /^epic_focus:/ { val=$0; sub(/^epic_focus:[[:space:]]*/, "", val); gsub(/"/, "", val); print "EPIC_FOCUS=" val; next }
+  /^sprint_id:/ { z("sprint_id"); next }
+  /^status:/ && !in_stories { z("status"); next }
+  /^start_date:/ { z("start_date"); next }
+  /^end_date:/ { z("end_date"); next }
+  /^capacity_utilization:/ { z("capacity_utilization"); next }
+  /^epic_focus:/ { z("epic_focus"); next }
   /^goals:/ { in_goals=1; in_stories=0; rest=$0; sub(/^goals:[[:space:]]*/, "", rest); if (rest ~ /^\[\]/) in_goals=0; next }
-  in_goals && /^[[:space:]]+-/ { gsub(/^[[:space:]]+-[[:space:]]*"?|"?[[:space:]]*$/, ""); if (gi==0) print "GOAL=" $0; gi++; next }
+  in_goals && /^[[:space:]]+-/ { g=$0; gsub(/^[[:space:]]+-[[:space:]]*"?|"?[[:space:]]*$/, "", g); gsub(/[\037\r]/, "", g); if (gi==0) print "Z\037goal\037" g; gi++; next }
   in_goals && /^[^[:space:]]/ { in_goals=0 }
   /^stories:/ { in_stories=1; in_goals=0; next }
   in_stories && /^[^[:space:]]/ && !/^stories:/ { in_stories=0; next }
-  in_stories && /^[[:space:]]+-[[:space:]]+key:/ { si++; val=$0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", val); gsub(/"/, "", val); ck=val; print "STORY_KEY_" si "=" val; next }
+  in_stories && /^[[:space:]]+-[[:space:]]+key:/ { si++; ck=v($0, "key"); key[si]=ck; next }
   in_stories && ck != "" {
-    if (/^[[:space:]]+status:/)     { val=$0; sub(/^[[:space:]]+status:[[:space:]]*/, "", val); gsub(/"/, "", val); print "STORY_YAML_STATUS_" si "=" val; next }
-    if (/^[[:space:]]+points:/)     { val=$0; sub(/^[[:space:]]+points:[[:space:]]*/, "", val); gsub(/"/, "", val); print "STORY_POINTS_" si "=" val; next }
-    if (/^[[:space:]]+risk_level:/) { val=$0; sub(/^[[:space:]]+risk_level:[[:space:]]*/, "", val); gsub(/"/, "", val); print "STORY_RISK_" si "=" val; next }
-    if (/^[[:space:]]+blocked_by:/) { val=$0; sub(/^[[:space:]]+blocked_by:[[:space:]]*/, "", val); gsub(/"/, "", val); if (val=="null"||val==""||val=="~") val="null"; print "STORY_BLOCKED_BY_" si "=" val; next }
-    if (/^[[:space:]]+phase:/)      { val=$0; sub(/^[[:space:]]+phase:[[:space:]]*/, "", val); gsub(/"/, "", val); print "STORY_PHASE_" si "=" val; next }
+    if (/^[[:space:]]+status:/)     { yst[si]=v($0, "status"); next }
+    if (/^[[:space:]]+points:/)     { ypt[si]=v($0, "points"); next }
+    if (/^[[:space:]]+risk_level:/) { yrk[si]=v($0, "risk_level"); next }
+    if (/^[[:space:]]+blocked_by:/) { ybl[si]=v($0, "blocked_by"); next }
+    if (/^[[:space:]]+phase:/)      { yph[si]=v($0, "phase"); next }
   }
-  END { print "STORY_COUNT=" si }
+  END { for (i=1; i<=si; i++) print "K\037" i "\037" key[i] "\037" yst[i] "\037" ypt[i] "\037" yrk[i] "\037" ybl[i] "\037" yph[i] }
   ' "$yaml_file"
+}
+
+# _read_config_records FILE — L (alias) and H (threshold) records.
+_read_config_records() {
+  local config_file="$1"
+  [ -f "$config_file" ] || return 0
+  awk '
+    /^sprint_status_mod:/ { in_mod=1; next }
+    in_mod && /^[^[:space:]]/ { in_mod=0; in_aliases=0 }
+    in_mod && /user_aliases:/ { in_aliases=1; next }
+    in_aliases && /^[[:space:]]+- / { val=$0; sub(/^[[:space:]]+-[[:space:]]*/, "", val); gsub(/["'\'']/, "", val); gsub(/[\037\r\n]/, "", val); print "L\037" val; next }
+    in_aliases && /^[[:space:]]/ && !/^[[:space:]]+- / { in_aliases=0 }
+    in_mod && /waiting_agent_threshold_seconds:/ { t=$0; sub(/.*waiting_agent_threshold_seconds:[[:space:]]*/, "", t); gsub(/"/, "", t); gsub(/[\037\r]/, "", t); sub(/[[:space:]]+$/, "", t); if (t!="" && t!="null") print "H\037" t }
+  ' "$config_file" 2>/dev/null || true
+}
+
+# _story_records PARSED_CACHE — P/T/G records for every wanted story.
+#   P <key> <rel> <mtime> <status> <points> <title> <manual_verification>
+#   T <key> <done:true|false> <text>
+#   G <key> <gate name> <gate status>
+# SNAP_WANT (environment) lists the wanted stories, one per line:
+#   key 0x1f rel 0x1f mtime 0x1f absolute-path
+# A story whose (key, rel, mtime) matches a record set in PARSED_CACHE is
+# copied from it; only the others are opened and parsed.
+_story_records() {
+  awk '
+  function sx(s) { gsub(/[\037\r]/, "", s); return s }
+  function parse(i,   f, r, line, n, in_fm, fm_done, in_tasks, in_gate, gsep, st, pts, ttl, mav, out, gfound, v, dm, tid, tx, l, c, cn, gn, gs) {
+    f = wa[i]; n = 0; in_fm=0; fm_done=0; in_tasks=0; in_gate=0; gsep=0
+    st=""; pts=0; ttl=""; mav="false"; out=""; gfound=0
+    while ((r = (getline line < f)) > 0) {
+      n++
+      sub(/\r$/, "", line)
+      if (line ~ /^---$/ && !fm_done) { if (in_fm) { fm_done=1; in_fm=0 } else in_fm=1; continue }
+      if (in_fm) {
+        if (line ~ /^status:/) { v=line; sub(/^status:[[:space:]]*/, "", v); gsub(/"/, "", v); sub(/[[:space:]]+$/, "", v); st=v; continue }
+        if (line ~ /^points:/) { v=line; sub(/^points:[[:space:]]*/, "", v); gsub(/"/, "", v); pts=v+0; continue }
+        if (line ~ /^title:/) { v=line; sub(/^title:[[:space:]]*/, "", v); sub(/^"/, "", v); sub(/"[[:space:]]*$/, "", v); sub(/^'\''/, "", v); sub(/'\''[[:space:]]*$/, "", v); ttl=v; continue }
+        if (line ~ /^manual_verification:/) { v=line; sub(/^manual_verification:[[:space:]]*/, "", v); gsub(/"/, "", v); sub(/[[:space:]]+$/, "", v); mav=v; continue }
+        continue
+      }
+      if (line ~ /^## Tasks \/ Subtasks/) { in_tasks=1; in_gate=0; continue }
+      if (line ~ /^## / && in_tasks) in_tasks=0
+      if (in_tasks && line ~ /^- \[/) {
+        dm = substr(line, 4, 1); tid = (dm=="x" || dm=="X") ? "true" : "false"
+        tx = line; sub(/^- \[.\][[:space:]]*/, "", tx)
+        out = out "T" US wk[i] US tid US sx(tx) "\n"
+        continue
+      }
+      if (line ~ /^## Review Gate/) { in_gate=1; in_tasks=0; gsep=0; continue }
+      if (line ~ /^## / && in_gate) in_gate=0
+      if (in_gate && line ~ /^\|.*\|.*\|/) {
+        if (line ~ /Review.*Status.*Report/) continue
+        if (line ~ /^[[:space:]]*\|[-]+/) { gsep=1; continue }
+        if (!gsep) continue
+        l = line; gsub(/^[[:space:]]*\|[[:space:]]*/, "", l)
+        cn = split(l, c, /[[:space:]]*\|[[:space:]]*/)
+        if (cn >= 2) {
+          gn = c[1]; gs = c[2]
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", gn); gsub(/^[[:space:]]+|[[:space:]]+$/, "", gs)
+          out = out "G" US wk[i] US sx(gn) US sx(gs) "\n"; gfound=1
+        }
+      }
+    }
+    close(f)
+    if (n == 0) { print "sprint-progress-snapshot: story file unreadable for " wk[i] ", skipping" > "/dev/stderr"; return }
+    if (!gfound) print "sprint-progress-snapshot: no parseable Review Gate table for " wk[i] ", using default gates" > "/dev/stderr"
+    print "P" US wk[i] US wr[i] US wm[i] US sx(st) US pts US sx(ttl) US sx(mav)
+    printf "%s", out
+  }
+  BEGIN {
+    FS = "\037"; US = "\037"; nw = 0; cur = 0
+    m = split(ENVIRON["SNAP_WANT"], wl, "\n")
+    for (j = 1; j <= m; j++) {
+      if (wl[j] == "") continue
+      split(wl[j], f, US); nw++
+      wk[nw]=f[1]; wr[nw]=f[2]; wm[nw]=f[3]; wa[nw]=f[4]
+      if (f[3] != "racy") ident[f[1] US f[2] US f[3]] = nw
+    }
+  }
+  $1 == "P" { id = $2 US $3 US $4; cur = (id in ident) ? ident[id] : 0; if (cur && !(cur in cached)) { cached[cur]=1; buf[cur]=$0 } else cur=0; next }
+  ($1 == "T" || $1 == "G") && cur { buf[cur] = buf[cur] "\n" $0; next }
+  { cur = 0 }
+  END {
+    for (i = 1; i <= nw; i++) {
+      if (i in cached) print buf[i]
+      else parse(i)
+    }
+  }
+  ' "$1"
+}
+
+# _ledger_records LEDGER — V <key> <latest manual-test verdict>.
+# SNAP_KEYS (environment) holds the space-separated story keys; passing them
+# through the environment keeps BSD awk away from multi-line -v strings.
+_ledger_records() {
+  awk -F'\t' '
+    BEGIN { n = split(ENVIRON["SNAP_KEYS"], ka, " "); for (i = 1; i <= n; i++) w[ka[i]] = 1 }
+    ($1 in w) && $2 == "manual-test" { last[$1] = $4 }
+    END { for (k in last) { v = last[k]; gsub(/[\037\r]/, "", v); print "V\037" k "\037" v } }
+  ' "$1" 2>/dev/null || true
+}
+
+# _action_item_records REGISTRY — one A record holding the items as JSON.
+_action_item_records() {
+  local registry="$1" out
+  if out="$(yq -o=json -I=0 '[(.items // [])[] | {"id": (.id // ""), "status": (.status // ""), "assignee": (.assignee // ""), "created": (.created_at // .created // "")}]' "$registry" 2>/dev/null)"; then
+    printf 'A%s%s\n' "$_US" "$out"
+  else
+    _warn "action-items registry is unparseable, skipping rule-c"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# jq programs
+# ---------------------------------------------------------------------------
+
+# Shared definitions.  $ARGS.positional carries the command allowlist.
+# shellcheck disable=SC2016  # jq program text, not shell expansions
+_JQ_DEFS='
+def strip: gsub("[\\x00-\\x1f\\x7f]"; "");
+def clean: tostring | gsub("\t"; " ") | strip;
+def cap($n): if length > $n then .[0:$n] else . end;
+def nn: if . == null then null else (clean | if . == "" or . == "null" or . == "~" then null else . end) end;
+def allow: . as $c | if ($c | type) == "string" and (($ARGS.positional | index([$c])) != null) then $c else null end;
+def d2ep: if type == "string" then (try (strptime("%Y-%m-%d") | mktime) catch null) else null end;
+def ep2d: floor | strftime("%Y-%m-%d");
+def timefields($sm):
+  (now | floor) as $now
+  | ($now | ep2d | d2ep) as $tep
+  | (if .sprint == null then null else (.sprint.start_date | d2ep) end) as $sep
+  | (if .sprint == null then null else (.sprint.end_date | d2ep) end) as $eep
+  | (if $sep != null and $tep != null then ([((($tep - $sep) / 86400) | floor), 0] | max) else 0 end) as $cur
+  | (if $sep != null and $eep != null then ((($eep - $sep) / 86400) | floor) else null end) as $tot
+  | .generated_at = ($now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+  | (if .sprint != null then .sprint.total_days = $tot else . end)
+  | .day = {
+      current: $cur,
+      total: $tot,
+      pace: (if $tot == null then null
+             elif $cur == 0 then "starting"
+             elif $eep != null and $tep > $eep then "overdue"
+             elif $tot > 0 and $cur > 0 then
+               (if (.totals.done_points * $tot) >= (.totals.total_points * $cur) then "on-pace" else "behind-pace" end)
+             else "on-pace" end)
+    }
+  | .drift = ([.drift[] | select(.type != "stale_review")]
+      + [.stories[] | select(.status == "review") | .key as $k | ($sm[$k] // 0) as $m
+         | select($m > 0 and ($now - $m) > 172800)
+         | {story_key: $k, type: "stale_review", detail: "Story in review for over 48 hours"}]);
+'
+
+# Warm program: validate the prior cache, re-apply the allowlist, refresh the
+# time-derived fields.  Input: the cache file.  $smt: "key mtime key mtime …".
+# shellcheck disable=SC2016
+_JQ_WARM="${_JQ_DEFS}"'
+if (type != "object") or (.schema_version != "1.0") or ((.stories | type) != "array")
+   or ((.action_needed | type) != "array") or ((.drift | type) != "array")
+then error("cache shape mismatch") else . end
+| ([$smt | split(" ") | map(select(. != ""))] | .[0]) as $p
+| ([range(0; ($p | length) - 1; 2) as $i | {key: $p[$i], value: ($p[$i + 1] | tonumber)}] | from_entries) as $sm
+| .action_needed |= map(.command |= allow)
+| timefields($sm)
+'
+
+# Cold program: assemble the whole document from records on stdin.
+# shellcheck disable=SC2016
+_JQ_COLD="${_JQ_DEFS}"'
+[inputs | split("\u001f")] as $R
+| ([$R[] | select(.[0] == "Z") | {key: .[1], value: (.[2] // "")}] | from_entries) as $Z
+| ([$R[] | select(.[0] == "K") | {key: (.[2] // ""), value: {ys: (.[3] // ""), risk: (.[5] // ""), blk: (.[6] // ""), ph: (.[7] // "")}}] | from_entries) as $Y
+| ([$R[] | select(.[0] == "M") | {key: .[1], value: ((.[2] // "") | tonumber? // null)}] | from_entries) as $MT
+| (reduce ($R[] | select(.[0] == "P")) as $r ({}; .[$r[1]] = {status: ($r[4] // ""), points: ($r[5] // ""), title: ($r[6] // ""), mv: ($r[7] // "")})) as $P
+| (reduce ($R[] | select(.[0] == "T")) as $r ({}; .[$r[1]] += [{text: ($r[3] // "" | clean | cap(200)), done: ($r[2] == "true")}])) as $T
+| (reduce ($R[] | select(.[0] == "G")) as $r ({}; .[$r[1]] += [{name: ($r[2] // "" | clean | cap(100)),
+      status: ($r[3] // "" | clean | cap(50) | if . == "NOT STARTED" then "UNVERIFIED" else . end)}])) as $G
+| (reduce ($R[] | select(.[0] == "V")) as $r ({}; .[$r[1]] = ($r[2] // "" | clean | cap(50)))) as $V
+| ([$R[] | select(.[0] == "L") | (.[1] // "") | strip | cap(100) | select(. != "")] | .[0:20]) as $aliases
+| ([$R[] | select(.[0] == "H") | (.[1] // "") | tonumber? ] | (.[0] // 120)) as $thr
+| ([$R[] | select(.[0] == "A") | .[1]] | .[0]
+    | if . == null then [] else (try fromjson catch []) end
+    | if type == "array" then . else [] end) as $AI
+| ($Z.sprint_id // "" | nn) as $sid
+| if $sid == null then
+    {schema_version: "1.0", generated_at: "", sprint: null,
+     totals: {done_points: 0, total_points: 0, done_stories: 0, total_stories: 0, progress_pct: 0},
+     by_status: {}, day: {current: 0, total: null, pace: null}, active_phase: null,
+     phases: [], unphased_stories: [], stories: [], action_needed: [], drift: [],
+     readiness: {sprint_review: false, sprint_close: false},
+     user_aliases: $aliases, waiting_agent_threshold_seconds: $thr}
+    | timefields({})
+  else
+    ([$R[] | select(.[0] == "S") | {k: .[1], rel: (.[2] // ""), mt: ((.[3] // "0") | tonumber? // 0)}
+      | select($P[.k] != null)]) as $S
+    | [ $S[] | . as $s | $P[$s.k] as $p | ($Y[$s.k] // {}) as $y
+        | ($p.status | clean | cap(50) | if . == "" then "unknown" else . end) as $st
+        | (($p.points | tonumber? | floor) // 0) as $pts
+        | ($y.ph | nn | if . == null then null else (tonumber? | select(. == floor and . >= 0)) // null end) as $ph
+        | ($s.rel | split("/") | if length >= 2 then .[-2] else "" end) as $dir
+        | ($G[$s.k] // []) as $rows
+        | ($T[$s.k] // []) as $items
+        | {key: $s.k,
+           title: ($p.title | clean | cap(200) | if . == "" then "Story \($s.k)" else . end),
+           slug: ($dir | if startswith($s.k + "-") then .[(($s.k | length) + 1):] else . end | clean | cap(200)),
+           status: $st,
+           points: $pts,
+           phase: $ph,
+           risk_level: ((($y.risk | nn) // "medium") | cap(50)),
+           blocked_by: ($y.blk | nn | if . == null then null else cap(200) end),
+           blocked_since: (if $st == "blocked" then ($s.mt | ep2d) else null end),
+           tasks: {done: ([$items[] | select(.done)] | length), total: ($items | length), items: $items},
+           gates: {passed: ([$rows[] | select(.status == "PASSED")] | length),
+                   total: ($rows | length | if . == 0 then 6 else . end), rows: $rows},
+           manual_test: {required: (($p.mv | clean) == "true"),
+                         verdict: ($V[$s.k] // null | if . == "" then null else . end)},
+           _mt: $s.mt,
+           _ys: ($y.ys | nn)} ] as $stories
+    | ($stories | length) as $n
+    | ([$stories[] | select(.status == "done")]) as $done
+    | (($done | map(.points) | add) // 0) as $dp
+    | (($stories | map(.points) | add) // 0) as $tp
+    | ($n > 0 and ($done | length) == $n) as $all_done
+    | ($n > 0 and ([$stories[] | select(.status == "done" or .status == "review")] | length) == $n) as $all_dr
+    | ($Z.status // "" | nn | if . == null then null else cap(50) end) as $sst
+    | ([$stories[] | select(.phase != null) | .phase] | unique) as $pnums
+    | ([$pnums[] as $pn | select([$stories[] | select(.phase == $pn and .status != "done")] | length > 0) | $pn] | .[0]) as $active
+    | ($MT.ai_mt // null) as $aimt
+    | ([$aliases[] | ascii_downcase]) as $al
+    | (
+        [ $stories[] | select(.manual_test.required and .gates.passed == 6 and .status != "done"
+                              and (.manual_test.verdict == null or .manual_test.verdict == "UNVERIFIED"))
+          | {rule: "a", type: "manual_test_due", story_keys: [.key],
+             message: ("Manual test is due for \(.key)" | cap(300)),
+             command: ("/gaia-test-manual" | allow), since: (._mt | ep2d), source: "story-file"} ]
+      + ( [ $AI[] | select(type == "object")
+            | {id: (.id // "" | clean | cap(100)), st: (.status // "" | clean),
+               asn: (.assignee // "" | clean | ascii_downcase), cr: (.created // "" | clean)}
+            | select(.id != "" and (.st == "open" or .st == "in-progress"))
+            | select(.asn as $a | ($al | index([$a])) != null)
+            | {rule: "c", type: "action_item_assigned", story_keys: [], item_id: .id,
+               message: ("Action item \(.id) is assigned and \(.st)" | cap(300)),
+               command: ("/gaia-action-items" | allow),
+               since: (if .cr != "" and .cr != "null" then .cr[0:10]
+                       elif $aimt != null and $aimt > 0 then ($aimt | ep2d)
+                       else (now | ep2d) end),
+               source: "action-items"} ]
+          | unique_by(.item_id) )
+      + (if $sst == "active" and $all_done then
+           [{rule: "d", type: "sprint_can_close", story_keys: [],
+             message: "All stories are done, sprint can be closed",
+             command: ("/gaia-sprint-close" | allow),
+             since: (([$done[] | ._mt] | max) as $m | if $m != null and $m > 0 then ($m | ep2d) else (now | ep2d) end),
+             source: "sprint-status"}]
+         else [] end)
+      | sort_by(.rule, (.story_keys[0] // ""), (.item_id // ""))
+      ) as $actions
+    | {schema_version: "1.0",
+       generated_at: "",
+       sprint: {id: ($sid | cap(200)),
+                goal: ($Z.goal // "" | nn | if . == null then null else cap(200) end),
+                start_date: ($Z.start_date // "" | nn | if . == null then null else cap(40) end),
+                end_date: ($Z.end_date // "" | nn | if . == null then null else cap(40) end),
+                status: $sst,
+                total_days: null,
+                capacity_utilization: ($Z.capacity_utilization // "" | nn | if . == null then null else cap(200) end),
+                epic_focus: ($Z.epic_focus // "" | nn | if . == null then null else cap(200) end)},
+       totals: {done_points: $dp, total_points: $tp, done_stories: ($done | length), total_stories: $n,
+                progress_pct: (if $tp == 0 then 0 else (($dp * 100 / $tp) | floor) end)},
+       by_status: (reduce $stories[] as $s ({}; .[$s.status].count += 1 | .[$s.status].points += $s.points)),
+       day: {current: 0, total: null, pace: null},
+       active_phase: $active,
+       phases: [ $pnums[] as $pn | [$stories[] | select(.phase == $pn)] as $ps
+                 | {phase: $pn,
+                    status: (if $active == null or $pn < $active then "done" elif $pn == $active then "active" else "future" end),
+                    stories: [$ps[] | .key],
+                    done_count: ([$ps[] | select(.status == "done")] | length),
+                    total_count: ($ps | length)} ],
+       unphased_stories: [$stories[] | select(.phase == null) | .key],
+       stories: [$stories[] | del(._mt, ._ys)],
+       action_needed: $actions,
+       drift: [ $stories[] | select(._ys != null and .status != ._ys)
+                | {story_key: .key, type: "status_mismatch",
+                   detail: ("Story file says \(.status), sprint yaml says \(._ys | cap(50))" | cap(200))} ],
+       readiness: {sprint_review: $all_dr, sprint_close: $all_done},
+       user_aliases: $aliases,
+       waiting_agent_threshold_seconds: $thr}
+    | timefields([$stories[] | {key: .key, value: ._mt}] | from_entries)
+  end
+'
+
+# ---------------------------------------------------------------------------
+# Warm fast-path: nothing tracked changed — refresh time-derived fields only
+# ---------------------------------------------------------------------------
+
+# Expected meta entries (name 0x09 project-relative-or-absolute path) are
+# provided by the caller in _SNAP_EXPECTED_META.  The sidecar must carry
+# exactly those entries; any story path must be project-relative, resolve
+# (full symlink chain) inside the project root, and match its mtime; a
+# tracked file recorded as absent (mtime 0) must still be absent.
+_try_warm_fast_path() {
+  [ -f "$CACHE_FILE" ] && [ -f "$SIDECAR_FILE" ] && [ -f "$PARSED_FILE" ] || return 1
+
+  local typ a b c ver=0 seen_meta="" smt=""
+  local -a st_paths=() st_exp=() rp_in=() rp_exp=()
+  while IFS=$'\t' read -r typ a b c; do
+    case "$typ" in
+      v2) ver=1 ;;
+      story)
+        _valid_story_key "$a" || return 1
+        _rel_ok "$b" || return 1
+        [[ $c =~ ^[0-9]+$ ]] || return 1
+        rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=("$c")
+        smt="${smt} ${a} ${c}" ;;
+      meta)
+        [[ $c =~ ^[0-9]+$ ]] || return 1
+        local exp_line="${_SNAP_EXPECTED_META#*"${a}"	}"
+        [ "$exp_line" != "$_SNAP_EXPECTED_META" ] || return 1
+        exp_line="${exp_line%%
+*}"
+        [ "$b" = "$exp_line" ] || return 1
+        local abs="$b"; case "$abs" in /*) ;; *) abs="${RESOLVED_ROOT}/${abs}" ;; esac
+        if [ "$c" = "0" ]; then
+          if [ -e "$abs" ]; then return 1; fi
+        else
+          st_paths+=("$abs"); st_exp+=("$c")
+        fi
+        seen_meta="${seen_meta}${a}
+" ;;
+      *) return 1 ;;
+    esac
+  done < "$SIDECAR_FILE"
+  [ "$ver" = "1" ] || return 1
+
+  # Every expected meta entry must be present.
+  local name _p
+  while IFS=$'\t' read -r name _p; do
+    [ -n "$name" ] || continue
+    case "
+${seen_meta}" in *"
+${name}
+"*) ;; *) return 1 ;; esac
+  done <<< "$_SNAP_EXPECTED_META"
+
+  # Story paths must resolve (full symlink chain) inside the project root;
+  # the mtime that counts is the resolved file's, not a link's.
+  if [ "${#rp_in[@]}" -gt 0 ]; then
+    local resolved line ri=0
+    resolved="$(_realpath_batch "${rp_in[@]}")" || return 1
+    while IFS= read -r line; do
+      case "$line" in "${RESOLVED_ROOT}/"*) ;; *) return 1 ;; esac
+      [ "$ri" -lt "${#rp_in[@]}" ] || return 1
+      st_paths+=("$line"); st_exp+=("${rp_exp[$ri]}")
+      ri=$((ri + 1))
+    done <<< "$resolved"
+    [ "$ri" -eq "${#rp_in[@]}" ] || return 1
+  fi
+
+  # ONE batch stat of every present tracked file.
+  if [ "${#st_paths[@]}" -gt 0 ]; then
+    local actual wi=0 act_mt
+    actual="$(_stat_mtime_batch "${st_paths[@]}" 2>/dev/null)" || return 1
+    while IFS= read -r act_mt; do
+      [ "$wi" -lt "${#st_exp[@]}" ] || return 1
+      [ "$act_mt" = "${st_exp[$wi]}" ] || return 1
+      wi=$((wi + 1))
+    done <<< "$actual"
+    [ "$wi" -eq "${#st_exp[@]}" ] || return 1
+  fi
+
+  # Nothing changed — ONE jq call re-validates and refreshes the cache.
+  local tmp
+  _new_tmp "$CACHE_FILE" || return 1
+  tmp="$_TMP"
+  if jq -c --arg smt "$smt" "$_JQ_WARM" "$CACHE_FILE" --args "${_ALLOWED_COMMANDS[@]}" > "$tmp" 2>/dev/null \
+     && [ -s "$tmp" ]; then
+    mv -f "$tmp" "$CACHE_FILE"
+    return 0
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -301,343 +751,326 @@ _read_sprint_yaml() {
 
 _resolve_all_story_paths() {
   local impl_dir="$1"; shift
-  find "$impl_dir" -type f \( -name 'story.md' -o -name 'E*.md' \) 2>/dev/null | awk -v keys="$*" '
-  BEGIN { n=split(keys,ka," "); for(i=1;i<=n;i++) wanted[ka[i]]=1 }
+  find "$impl_dir" -type f \( -name 'story.md' -o -name 'E*.md' \) 2>/dev/null | SNAP_KEYS="$*" awk '
+  BEGIN { n=split(ENVIRON["SNAP_KEYS"],ka," "); for(i=1;i<=n;i++) wanted[ka[i]]=1 }
+  # keyof(NAME) — the story key NAME starts with ("KEY" or "KEY-..."), or "".
+  function keyof(name,   k) {
+    if (!match(name, /^E[0-9]+-S[0-9]+/)) return ""
+    k = substr(name, 1, RLENGTH)
+    if (length(name) > RLENGTH && substr(name, RLENGTH + 1, 1) != "-") return ""
+    return k
+  }
+  function take(k, t, path) {
+    if (k == "" || !(k in wanted)) return
+    if (!(k in bt) || t < bt[k]) { bt[k]=t; bp[k]=path; delete am[k] }
+    else if (t == bt[k] && path != bp[k]) am[k]=1
+  }
   {
     path=$0; fname=path; sub(/.*\//,"",fname)
     parent=path; sub(/\/[^\/]*$/,"",parent); pname=parent; sub(/.*\//,"",pname)
-    if (fname=="story.md") {
-      for(k in wanted) { kp=k"-"; if(substr(pname,1,length(kp))==kp||pname==k) { t=1; if(!(k in bt)||t<bt[k]){bt[k]=t;bp[k]=path;delete am[k]}else if(t==bt[k]&&path!=bp[k])am[k]=1 } }
-    }
-    if (pname=="stories") {
-      for(k in wanted) { kp=k"-"; if(substr(fname,1,length(kp))==kp) { t=2; if(!(k in bt)||t<bt[k]){bt[k]=t;bp[k]=path;delete am[k]}else if(t==bt[k]&&path!=bp[k])am[k]=1 } }
-    }
-    if (fname!="story.md"&&pname!="stories") {
-      for(k in wanted) { kp=k"-"; kex=k".md"; if(substr(fname,1,length(kp))==kp||fname==kex) { t=3; if(!(k in bt)||t<bt[k]){bt[k]=t;bp[k]=path;delete am[k]}else if(t==bt[k]&&path!=bp[k])am[k]=1 } }
-    }
+    if (fname=="story.md") take(keyof(pname), 1, path)
+    else if (pname=="stories") { k=keyof(fname); if (k != "" && fname != k ".md") take(k, 2, path) }
+    else { base=fname; sub(/\.md$/,"",base); take(keyof(base), 3, path) }
   }
-  END { for(k in wanted) { if(k in am) print "AMBIG\t"k; else if(k in bp) print "FOUND\t"k"\t"bp[k]; else print "MISSING\t"k } }
+  END { for(i=1;i<=n;i++) { k=ka[i]; if(k in am) print "AMBIG\t"k; else if(k in bp) print "FOUND\t"k"\t"bp[k]; else print "MISSING\t"k } }
   '
 }
 
-# ---------------------------------------------------------------------------
-# Config readers (awk-based for speed)
-# ---------------------------------------------------------------------------
-
-_read_user_aliases() {
-  local config_file="$1"
-  if [ -f "$config_file" ]; then
-    local aliases
-    aliases="$(awk '
-      /^sprint_status_mod:/ { in_mod=1; next }
-      in_mod && /^[^[:space:]]/ { in_mod=0 }
-      in_mod && /user_aliases:/ { in_aliases=1; next }
-      in_aliases && /^[[:space:]]+- / { val=$0; sub(/^[[:space:]]+-[[:space:]]*/, "", val); gsub(/["'\'']/, "", val); print val; next }
-      in_aliases && /^[[:space:]]/ && !/^[[:space:]]+- / { in_aliases=0 }
-    ' "$config_file" 2>/dev/null)" || aliases=""
-    if [ -n "$aliases" ]; then printf '%s\n' "$aliases"; return 0; fi
-  fi
-  printf 'user\n'
-  git config user.name 2>/dev/null || true
+# _rel_of PATH — project-relative form of PATH when it is inside the root.
+# Sets _REL (no subshell).  Accepts both the physical root and the root as
+# given (on macOS a temp root under /var is physically /private/var).
+_rel_of() {
+  case "$1" in
+    "${RESOLVED_ROOT}/"*) _REL="${1#"${RESOLVED_ROOT}"/}" ;;
+    "${GIVEN_ROOT}/"*)    _REL="${1#"${GIVEN_ROOT}"/}" ;;
+    *) _REL="$1" ;;
+  esac
 }
 
-_read_threshold() {
-  local config_file="$1"
-  if [ -f "$config_file" ]; then
-    local val
-    val="$(awk '
-      /^sprint_status_mod:/ { in_mod=1; next }
-      in_mod && /^[^[:space:]]/ { in_mod=0 }
-      in_mod && /waiting_agent_threshold_seconds:/ { sub(/.*waiting_agent_threshold_seconds:[[:space:]]*/, ""); gsub(/"/, ""); if ($0!=""&&$0!="null") print $0 }
-    ' "$config_file" 2>/dev/null)" || val=""
-    if [ -n "$val" ]; then
-      _validate_threshold "$val"
-      return 0
-    fi
-  fi
-  printf '120'
-}
+# ---------------------------------------------------------------------------
+# One build: warm fast path, or a (partially) incremental cold rebuild
+# ---------------------------------------------------------------------------
 
-_read_action_items() {
-  local registry="$1"
-  [ -f "$registry" ] || return 0
-  yq -r '(.items // [])[] | [.id // "", .status // "", .assignee // "", .created_at // .created // ""] | @tsv' "$registry" 2>/dev/null || {
-    _warn "action-items registry is unparseable, skipping rule-c"
+_snapshot_build() {
+  # Tracked meta files and the paths the sidecar must record for them.
+  local ai_state="${STATE_DIR}/action-items.yaml"
+  local ai_planning="${RESOLVED_ROOT}/.gaia/artifacts/planning-artifacts/action-items.yaml"
+  local -a meta_names=("__sprint_status__" "__review_gate_ledger__" "__project_config__" "__action_items_state__" "__action_items_planning__")
+  local -a meta_paths=("$YAML_FILE" "$LEDGER_FILE" "$CONFIG_FILE" "$ai_state" "$ai_planning")
+  local -a meta_rels=()
+  local mi
+  _SNAP_EXPECTED_META=""
+  for mi in "${!meta_paths[@]}"; do
+    _rel_of "${meta_paths[$mi]}"; meta_rels+=("$_REL")
+    _SNAP_EXPECTED_META="${_SNAP_EXPECTED_META}${meta_names[$mi]}	${_REL}
+"
+  done
+  local yaml_rel="${meta_rels[0]}"
+
+  if _try_warm_fast_path; then
     return 0
-  }
-}
-
-# ---------------------------------------------------------------------------
-# Sidecar I/O
-# ---------------------------------------------------------------------------
-
-_read_sidecar() { [ -f "$1" ] && cat "$1" || true; }
-
-_write_atomic() {
-  local target="$1" content="$2"
-  local tmp; tmp="$(mktemp "${target}.tmp.XXXXXX")"
-  printf '%s\n' "$content" > "$tmp"
-  mv -f "$tmp" "$target"
-}
-
-# ---------------------------------------------------------------------------
-# Empty-cache template — used when sprint-status.yaml is absent or has no id
-# ---------------------------------------------------------------------------
-
-_write_empty_cache() {
-  local cache_file="$1" sidecar_file="$2" gen_at="$3" aliases_json="$4" threshold="$5"
-  _write_atomic "$cache_file" \
-    "{\"schema_version\":\"1.0\",\"generated_at\":\"${gen_at}\",\"sprint\":null,\"totals\":{\"done_points\":0,\"total_points\":0,\"done_stories\":0,\"total_stories\":0,\"progress_pct\":0},\"by_status\":{},\"day\":{\"current\":0,\"total\":null,\"pace\":null},\"active_phase\":null,\"phases\":[],\"unphased_stories\":[],\"stories\":[],\"action_needed\":[],\"drift\":[],\"readiness\":{\"sprint_review\":false,\"sprint_close\":false},\"user_aliases\":${aliases_json},\"waiting_agent_threshold_seconds\":${threshold}}"
-  _write_atomic "$sidecar_file" ""
-}
-
-# ---------------------------------------------------------------------------
-# Delimited-field to JSON-array builder
-# Items are separated by ";;;" and each item is "key:::value".
-# ---------------------------------------------------------------------------
-
-_delimited_to_json_array() {
-  local data="$1" key_label="$2" val_label="$3"
-  local result="[" first=1
-  if [ -n "$data" ]; then
-    local IFS_SAVE="$IFS"
-    IFS=";;;"
-    # shellcheck disable=SC2086
-    set -- $data
-    IFS="$IFS_SAVE"
-    while [ $# -gt 0 ]; do
-      local part="$1"; shift
-      [ -n "$part" ] || continue
-      local k="${part%%:::*}" v="${part#*:::}"
-      [ "$first" = "1" ] || result="${result},"
-      result="${result}{\"${key_label}\":\"${v}\",\"${val_label}\":${k}}"
-      first=0
-    done
   fi
-  printf '%s]' "$result"
-}
 
-_gate_rows_to_json() {
-  local data="$1"
-  local result="[" first=1
-  if [ -n "$data" ]; then
-    local IFS_SAVE="$IFS"
-    IFS=";;;"
-    # shellcheck disable=SC2086
-    set -- $data
-    IFS="$IFS_SAVE"
-    while [ $# -gt 0 ]; do
-      local part="$1"; shift
-      [ -n "$part" ] || continue
-      local gname="${part%%:::*}" gstatus="${part#*:::}"
-      [ "$first" = "1" ] || result="${result},"
-      result="${result}{\"name\":\"${gname}\",\"status\":\"${gstatus}\"}"
-      first=0
-    done
+  # =========================================================================
+  # Cold path
+  # =========================================================================
+
+  # Start of this build, in epoch seconds.  A tracked file whose mtime is
+  # not older than this second may still change within the same second
+  # without moving its mtime, so it is recorded as unverified ("racy") and
+  # re-read by the next run instead of being trusted.
+  local build_start="${EPOCHSECONDS:-}"
+  [ -n "$build_start" ] || build_start="$(date +%s)"
+
+  # --- Old sidecar: recorded sprint-status mtime ---
+  local old_yaml_mt="" typ a b c
+  if [ -f "$SIDECAR_FILE" ]; then
+    while IFS=$'\t' read -r typ a b c; do
+      if [ "$typ" = "meta" ] && [ "$a" = "__sprint_status__" ] && [ "$b" = "$yaml_rel" ]; then old_yaml_mt="$c"; fi
+    done < "$SIDECAR_FILE"
   fi
-  printf '%s]' "$result"
-}
 
-# ---------------------------------------------------------------------------
-# Compute day/pace from sprint dates
-# ---------------------------------------------------------------------------
+  # --- Sprint yaml ---
+  local yaml_rec
+  yaml_rec="$(_read_sprint_yaml "$YAML_FILE")"
+  local sprint_id_present=0
+  local -a valid_keys=()
+  local seen_keys=" " t1 t2 t3 rest
+  if [ -n "$yaml_rec" ]; then
+    while IFS="$_US" read -r t1 t2 t3 rest; do
+      case "$t1" in
+        Z) if [ "$t2" = "sprint_id" ] && [ -n "$t3" ] && [ "$t3" != "null" ] && [ "$t3" != "~" ]; then sprint_id_present=1; fi ;;
+        K) [ -n "$t3" ] || continue
+           if ! _valid_story_key "$t3"; then _warn "skipping invalid story key: ${t3:0:80}"; continue; fi
+           case "$seen_keys" in *" ${t3} "*) continue ;; esac
+           seen_keys="${seen_keys}${t3} "
+           valid_keys+=("$t3") ;;
+      esac
+    done <<< "$yaml_rec"
+  fi
+  [ "$sprint_id_present" = "1" ] || valid_keys=()
 
-_compute_day_pace() {
-  local start_date="$1" end_date="$2" done_pts="$3" total_pts="$4"
-  local day_current=0 day_total="null" day_pace="null"
-  local today_str
-  today_str="$(date -u +%Y-%m-%d)"
+  local yaml_mt=0
+  if [ -f "$YAML_FILE" ]; then yaml_mt="$(_stat_mtime "$YAML_FILE")"; fi
+  local yaml_changed=1
+  if [ -n "$old_yaml_mt" ] && [ "$old_yaml_mt" = "$yaml_mt" ]; then yaml_changed=0; fi
 
-  if [ -n "$start_date" ] && [ "$start_date" != "null" ]; then
-    local se te
-    se="$(_date_to_epoch "$start_date")" || se=""
-    te="$(_date_to_epoch "$today_str")" || te=""
-    if [ -n "$se" ] && [ -n "$te" ]; then
-      day_current=$(( (te - se) / 86400 ))
-      [ "$day_current" -ge 0 ] || day_current=0
+  # --- Resolve story paths: cached path when the yaml is unchanged, else ONE find.
+  # Both lookups print one line per key in yaml order, so the merged list
+  # keeps the yaml story order.
+  local -a key_path=()
+  local keys_to_find="" miss_lines="" key ki=0
+  if [ "${#valid_keys[@]}" -gt 0 ]; then
+    local cached_out="" ck crel
+    if [ "$yaml_changed" = "0" ] && [ -f "$SIDECAR_FILE" ]; then
+      cached_out="$(SNAP_KEYS="${valid_keys[*]}" awk -F'\t' '
+        BEGIN { n = split(ENVIRON["SNAP_KEYS"], ka, " ") }
+        $1 == "story" && !($2 in rel) { rel[$2] = $3 }
+        END { for (i = 1; i <= n; i++) print ka[i] "\t" rel[ka[i]] }
+      ' "$SIDECAR_FILE" 2>/dev/null)" || cached_out=""
     fi
-  fi
-
-  if [ -n "$start_date" ] && [ "$start_date" != "null" ] \
-     && [ -n "$end_date" ] && [ "$end_date" != "null" ]; then
-    local se2 ee
-    se2="$(_date_to_epoch "$start_date")" || se2=""
-    ee="$(_date_to_epoch "$end_date")" || ee=""
-    if [ -n "$se2" ] && [ -n "$ee" ]; then
-      day_total="$(( (ee - se2) / 86400 ))"
-    fi
-  fi
-
-  if [ "$day_total" != "null" ] && [ -n "$day_total" ]; then
-    if [ "$day_current" = "0" ]; then
-      day_pace="starting"
-    elif [ -n "$end_date" ] && [ "$end_date" != "null" ]; then
-      local ee2 te2
-      ee2="$(_date_to_epoch "$end_date")" || ee2=""
-      te2="$(_date_to_epoch "$today_str")" || te2=""
-      if [ -n "$ee2" ] && [ -n "$te2" ] && [ "$te2" -gt "$ee2" ]; then
-        day_pace="overdue"
-      elif [ "$day_total" -gt 0 ] && [ "$day_current" -gt 0 ]; then
-        if [ $((done_pts * day_total)) -ge $((total_pts * day_current)) ]; then
-          day_pace="on-pace"
-        else
-          day_pace="behind-pace"
+    for key in "${valid_keys[@]}"; do key_path+=(""); done
+    if [ -n "$cached_out" ]; then
+      # A cached path is only reused when it lies in the story tree; anything
+      # else is re-resolved by the find below.
+      _rel_of "$IMPL_DIR"; local impl_rel="$_REL"
+      ki=0
+      while IFS=$'\t' read -r ck crel; do
+        if [ "$ck" = "${valid_keys[$ki]:-}" ] && [ -n "$crel" ] && _rel_ok "$crel" \
+           && [ "${crel#"${impl_rel}"/}" != "$crel" ] \
+           && [ -f "${RESOLVED_ROOT}/${crel}" ]; then
+          key_path[ki]="${RESOLVED_ROOT}/${crel}"
         fi
+        ki=$((ki + 1))
+      done <<< "$cached_out"
+    fi
+    for ki in "${!valid_keys[@]}"; do
+      [ -n "${key_path[$ki]}" ] || keys_to_find="${keys_to_find:+${keys_to_find} }${valid_keys[$ki]}"
+    done
+  fi
+  if [ -n "$keys_to_find" ]; then
+    local find_output="" sc fkey fpath
+    if [ -d "$IMPL_DIR" ]; then
+      find_output="$(_resolve_all_story_paths "$IMPL_DIR" "$keys_to_find")"
+    fi
+    ki=0
+    while IFS=$'\t' read -r sc fkey fpath; do
+      [ -n "$fkey" ] || continue
+      # advance to this key's yaml slot (find output follows the same order)
+      while [ "$ki" -lt "${#valid_keys[@]}" ] && [ "${valid_keys[$ki]}" != "$fkey" ]; do ki=$((ki + 1)); done
+      case "$sc" in
+        FOUND)   [ "$ki" -lt "${#valid_keys[@]}" ] && key_path[ki]="$fpath" ;;
+        AMBIG)   _warn "multiple files match key $fkey, skipping"; miss_lines="${miss_lines}miss	${fkey}
+" ;;
+        *)       _warn "no file found for key $fkey"; miss_lines="${miss_lines}miss	${fkey}
+" ;;
+      esac
+    done <<< "${find_output:-$(for key in $keys_to_find; do printf 'MISSING\t%s\n' "$key"; done)}"
+  fi
+  local -a cand_keys=() cand_paths=()
+  for ki in "${!valid_keys[@]}"; do
+    if [ -n "${key_path[$ki]}" ]; then cand_keys+=("${valid_keys[$ki]}"); cand_paths+=("${key_path[$ki]}"); fi
+  done
+
+  # --- Containment: resolve the full symlink chain, keep paths inside the root ---
+  local -a ok_keys=() ok_abs=() ok_rel=()
+  if [ "${#cand_keys[@]}" -gt 0 ]; then
+    local -a exist_keys=() exist_paths=()
+    local ci
+    for ci in "${!cand_keys[@]}"; do
+      if [ -e "${cand_paths[$ci]}" ]; then
+        exist_keys+=("${cand_keys[$ci]}"); exist_paths+=("${cand_paths[$ci]}")
       else
-        day_pace="on-pace"
+        _warn "story file missing for ${cand_keys[$ci]}: ${cand_paths[$ci]}"
+        miss_lines="${miss_lines}miss	${cand_keys[$ci]}
+"
       fi
+    done
+    if [ "${#exist_keys[@]}" -gt 0 ]; then
+      local resolved rp ri=0
+      resolved="$(_realpath_batch "${exist_paths[@]}")" || resolved=""
+      while IFS= read -r rp; do
+        [ "$ri" -lt "${#exist_keys[@]}" ] || break
+        case "$rp" in
+          "${RESOLVED_ROOT}/"*)
+            ok_keys+=("${exist_keys[$ri]}"); ok_abs+=("$rp"); ok_rel+=("${rp#"${RESOLVED_ROOT}"/}") ;;
+          *)
+            _warn "path escapes project root for ${exist_keys[$ri]}, skipping"
+            miss_lines="${miss_lines}miss	${exist_keys[$ri]}
+" ;;
+        esac
+        ri=$((ri + 1))
+      done <<< "$resolved"
+      while [ "$ri" -lt "${#exist_keys[@]}" ]; do
+        _warn "path could not be resolved for ${exist_keys[$ri]}, skipping"
+        miss_lines="${miss_lines}miss	${exist_keys[$ri]}
+"
+        ri=$((ri + 1))
+      done
     fi
   fi
 
-  printf '%d\t%s\t%s' "$day_current" "$day_total" "$day_pace"
-}
+  # --- Meta files present / absent ---
+  local -a stat_targets=()
+  for mi in "${!meta_paths[@]}"; do
+    if [ -e "${meta_paths[$mi]}" ]; then stat_targets+=("${meta_paths[$mi]}"); fi
+  done
+  if [ "${#ok_abs[@]}" -gt 0 ]; then stat_targets+=("${ok_abs[@]}"); fi
 
-# ---------------------------------------------------------------------------
-# Build phases JSON from collected phase data
-# ---------------------------------------------------------------------------
-
-_build_phases_json() {
-  local phase_data="$1"
-  local phases_json="" active_phase="null"
-
-  [ -n "$phase_data" ] || { printf '\t%s' "$active_phase"; return 0; }
-
-  local sorted_nums
-  sorted_nums="$(printf '%s\n' "$phase_data" | cut -f1 | sort -n | uniq)"
-
-  # First pass: find active_phase (lowest phase with a non-done story)
-  while IFS= read -r pn; do
-    [ -n "$pn" ] || continue
-    local has_non_done=0
-    while IFS=$'\t' read -r ppn pk pst; do
-      [ "$ppn" = "$pn" ] || continue
-      [ "$pst" = "done" ] || has_non_done=1
-    done <<< "$phase_data"
-    if [ "$has_non_done" = "1" ] && [ "$active_phase" = "null" ]; then
-      active_phase="$pn"
-    fi
-  done <<< "$sorted_nums"
-
-  # Second pass: build JSON with correct statuses
-  while IFS= read -r pn; do
-    [ -n "$pn" ] || continue
-    local p_skeys="" p_dc=0 p_tc=0
-    while IFS=$'\t' read -r ppn pk pst; do
-      [ "$ppn" = "$pn" ] || continue
-      p_skeys="${p_skeys:+${p_skeys},}\"${pk}\""
-      p_tc=$((p_tc + 1))
-      [ "$pst" != "done" ] || p_dc=$((p_dc + 1))
-    done <<< "$phase_data"
-
-    local pstatus="future"
-    if [ "$active_phase" = "null" ] || [ "$pn" -lt "$active_phase" ]; then
-      pstatus="done"
-    elif [ "$pn" = "$active_phase" ]; then
-      pstatus="active"
-    fi
-
-    phases_json="${phases_json:+${phases_json},}{\"phase\":${pn},\"status\":\"${pstatus}\",\"stories\":[${p_skeys}],\"done_count\":${p_dc},\"total_count\":${p_tc}}"
-  done <<< "$sorted_nums"
-
-  printf '%s\t%s' "$phases_json" "$active_phase"
-}
-
-# ---------------------------------------------------------------------------
-# Warm fast-path: update only time-derived fields in the existing cache
-# ---------------------------------------------------------------------------
-
-_try_warm_fast_path() {
-  local cache_file="$1" sidecar="$2"
-  [ -f "$cache_file" ] && [ -n "$sidecar" ] || return 1
-
-  # Collect sidecar paths and expected mtimes
-  local -a paths_arr=() mt_expected=()
-  while IFS=$'\t' read -r _ _ wpath wmt; do
-    [ -n "$wpath" ] || continue
-    paths_arr+=("$wpath")
-    mt_expected+=("$wmt")
-  done <<< "$sidecar"
-
-  [ "${#paths_arr[@]}" -gt 0 ] || return 1
-
-  # ONE batch stat
-  local actual
-  actual="$(_stat_mtime_batch "${paths_arr[@]}")" || return 1
-  local wi=0
-  while IFS= read -r act_mt; do
-    [ "$act_mt" = "${mt_expected[$wi]}" ] || return 1
-    wi=$((wi + 1))
-  done <<< "$actual"
-
-  # Nothing changed -- update time-derived fields with ONE date + ONE jq call
-  local date_out
-  date_out="$(date -u '+%Y-%m-%dT%H:%M:%SZ %Y-%m-%d %s')"
-  local gen_at="${date_out%% *}"
-  local rest="${date_out#* }"
-  local today_str="${rest%% *}"
-  local now_ep="${rest##* }"
-
-  # Build a map of story key -> mtime from the sidecar (pure bash, no subprocess)
-  local story_mtimes_json="{"
-  local _smf=1
-  while IFS=$'\t' read -r _sty _sk2 _sp2 _sm2; do
-    [ "$_sty" = "story" ] && [ -n "$_sk2" ] && [ -n "$_sm2" ] || continue
-    [ "$_smf" = "1" ] || story_mtimes_json="${story_mtimes_json},"
-    story_mtimes_json="${story_mtimes_json}\"${_sk2}\":${_sm2}"
-    _smf=0
-  done <<< "$sidecar"
-  story_mtimes_json="${story_mtimes_json}}"
-
-  local warm_cache
-  warm_cache="$(jq \
-    --arg gen "$gen_at" \
-    --arg today "$today_str" \
-    --argjson now_ep "$now_ep" \
-    --argjson smtimes "$story_mtimes_json" \
-    '
-    .generated_at = $gen |
-    (if .sprint != null and .sprint.start_date != null and .sprint.start_date != "" then
-      (($today | strptime("%Y-%m-%d") | mktime) - (.sprint.start_date | strptime("%Y-%m-%d") | mktime)) / 86400 | floor
-    else 0 end) as $cur |
-    .day.current = $cur |
-    (if .day.total != null then
-      if $cur == 0 then "starting"
-      elif .sprint.end_date != null and .sprint.end_date != "" then
-        if (($today | strptime("%Y-%m-%d") | mktime) > (.sprint.end_date | strptime("%Y-%m-%d") | mktime)) then "overdue"
-        elif .day.total > 0 and $cur > 0 then
-          if (.totals.done_points * .day.total) >= (.totals.total_points * $cur) then "on-pace"
-          else "behind-pace" end
-        else "on-pace" end
-      else "on-pace" end
-    else null end) as $pace |
-    .day.pace = $pace |
-    # Recompute stale_review drift from story mtimes and current time
-    .drift = [.drift[] | select(.type != "stale_review")] +
-      [.stories[] | select(.status == "review") |
-       .key as $k |
-       if ($smtimes[$k] // 0) > 0 and ($now_ep - ($smtimes[$k] // 0)) > 172800 then
-         {story_key: $k, type: "stale_review", detail: "Story in review for over 48 hours"}
-       else empty end]
-    ' "$cache_file" 2>/dev/null)" || return 1
-
-  [ -n "$warm_cache" ] || return 1
-  _write_atomic "$cache_file" "$warm_cache"
-  return 0
-}
-
-# ---------------------------------------------------------------------------
-# Append a meta entry to the sidecar string
-# ---------------------------------------------------------------------------
-
-_sidecar_append_meta() {
-  local entries="$1" sentinel="$2" filepath="$3"
-  [ -f "$filepath" ] || { printf '%s' "$entries"; return 0; }
-  local mt; mt="$(_stat_mtime "$filepath")"
-  if [ -n "$entries" ]; then
-    printf '%s\nmeta\t%s\t%s\t%s' "$entries" "$sentinel" "$filepath" "$mt"
-  else
-    printf 'meta\t%s\t%s\t%s' "$sentinel" "$filepath" "$mt"
+  # --- ONE batch stat for stories + meta files ---
+  local -a stat_out=()
+  if [ "${#stat_targets[@]}" -gt 0 ]; then
+    local all_mts mt_line
+    all_mts="$(_stat_mtime_batch "${stat_targets[@]}" 2>/dev/null)" || all_mts=""
+    while IFS= read -r mt_line; do stat_out+=("$mt_line"); done <<< "$all_mts"
   fi
+  local si=0
+  local -a meta_mts=()
+  for mi in "${!meta_paths[@]}"; do
+    if [ -e "${meta_paths[$mi]}" ]; then meta_mts+=("${stat_out[$si]:-0}"); si=$((si + 1)); else meta_mts+=("0"); fi
+  done
+  local -a ok_mts=() ok_rec=()
+  local oi
+  for oi in "${!ok_abs[@]}"; do ok_mts+=("${stat_out[$si]:-0}"); si=$((si + 1)); done
+  # Recorded mtimes: the real value, or "racy" when it is not older than this
+  # build (never matches on the next run, so the file is re-read).
+  local -a meta_rec=()
+  for mi in "${!meta_mts[@]}"; do
+    if [ "${meta_mts[$mi]}" != "0" ] && [ "${meta_mts[$mi]}" -ge "$build_start" ]; then meta_rec+=("racy"); else meta_rec+=("${meta_mts[$mi]}"); fi
+  done
+  for oi in "${!ok_mts[@]}"; do
+    if [ "${ok_mts[$oi]}" -ge "$build_start" ]; then ok_rec+=("racy"); else ok_rec+=("${ok_mts[$oi]}"); fi
+  done
+
+  # --- Story records (unchanged stories come from the parse cache) ---
+  local want="" story_rec="" s_lines="" new_sidecar="v2
+"
+  for oi in "${!ok_keys[@]}"; do
+    want="${want}${ok_keys[$oi]}${_US}${ok_rel[$oi]}${_US}${ok_rec[$oi]}${_US}${ok_abs[$oi]}
+"
+    s_lines="${s_lines}S${_US}${ok_keys[$oi]}${_US}${ok_rel[$oi]}${_US}${ok_mts[$oi]}
+"
+    new_sidecar="${new_sidecar}story	${ok_keys[$oi]}	${ok_rel[$oi]}	${ok_rec[$oi]}
+"
+  done
+  if [ -n "$want" ]; then
+    local parsed_src="/dev/null"
+    if [ -f "$PARSED_FILE" ] && [ ! -L "$PARSED_FILE" ]; then parsed_src="$PARSED_FILE"; fi
+    story_rec="$(SNAP_WANT="$want" _story_records "$parsed_src")" || story_rec=""
+  fi
+
+  # --- Ledger verdicts ---
+  local ledger_rec=""
+  if [ -f "$LEDGER_FILE" ] && [ "${#ok_keys[@]}" -gt 0 ]; then
+    ledger_rec="$(SNAP_KEYS="${ok_keys[*]}" _ledger_records "$LEDGER_FILE")"
+  fi
+
+  # --- Config: aliases + threshold ---
+  local cfg_rec cfg_out="" have_alias=0 thr_raw=""
+  cfg_rec="$(_read_config_records "$CONFIG_FILE")"
+  if [ -n "$cfg_rec" ]; then
+    while IFS="$_US" read -r t1 t2; do
+      case "$t1" in
+        L) have_alias=1; cfg_out="${cfg_out}L${_US}${t2}
+" ;;
+        H) thr_raw="$t2" ;;
+      esac
+    done <<< "$cfg_rec"
+  fi
+  if [ "$have_alias" = "0" ]; then
+    local gname
+    gname="$(git config user.name 2>/dev/null || true)"
+    gname="${gname//$_US/}"
+    cfg_out="L${_US}user
+L${_US}${gname}
+"
+  fi
+  local thr; thr="$(_validate_threshold "$thr_raw")"
+
+  # --- Action-items registry (canonical state file first, then the resolver) ---
+  local ai_rec="" ai_path="" ai_mt=""
+  if [ "${#ok_keys[@]}" -gt 0 ] || [ "$sprint_id_present" = "1" ]; then
+    if [ -s "$ai_state" ]; then
+      ai_path="$ai_state"
+    elif [ -x "${_SELF_DIR}/lib/resolve-artifact-path.sh" ]; then
+      ai_path="$("${_SELF_DIR}/lib/resolve-artifact-path.sh" action_items --project-root "$RESOLVED_ROOT" --existing-only 2>/dev/null)" || ai_path=""
+    fi
+    if [ -n "$ai_path" ] && [ -f "$ai_path" ]; then
+      ai_rec="$(_action_item_records "$ai_path")"
+      for mi in "${!meta_paths[@]}"; do
+        if [ "${meta_paths[$mi]}" = "$ai_path" ]; then ai_mt="${meta_mts[$mi]}"; fi
+      done
+      [ -n "$ai_mt" ] || ai_mt="$(_stat_mtime "$ai_path" 2>/dev/null || printf '0')"
+    fi
+  fi
+
+  # --- Assemble with ONE jq call and write atomically ---
+  local cache_tmp
+  _new_tmp "$CACHE_FILE" || return 1
+  cache_tmp="$_TMP"
+  if ! {
+    [ -z "$yaml_rec" ]   || printf '%s\n' "$yaml_rec"
+    printf '%s' "$s_lines"
+    [ -z "$story_rec" ]  || printf '%s\n' "$story_rec"
+    [ -z "$ledger_rec" ] || printf '%s\n' "$ledger_rec"
+    printf '%s' "$cfg_out"
+    printf 'H%s%s\n' "$_US" "$thr"
+    printf 'M%sai_mt%s%s\n' "$_US" "$_US" "${ai_mt:-0}"
+    [ -z "$ai_rec" ]     || printf '%s\n' "$ai_rec"
+  } | jq -n -R -c "$_JQ_COLD" --args "${_ALLOWED_COMMANDS[@]}" > "$cache_tmp" || [ ! -s "$cache_tmp" ]; then
+    rm -f "$cache_tmp" 2>/dev/null || true
+    _warn "cache assembly failed, keeping the previous cache"
+    return 0
+  fi
+  mv -f "$cache_tmp" "$CACHE_FILE"
+
+  # --- Parse cache + sidecar ---
+  printf '%s\n' "$story_rec" | _write_atomic_from "$PARSED_FILE"
+  for mi in "${!meta_names[@]}"; do
+    new_sidecar="${new_sidecar}meta	${meta_names[$mi]}	${meta_rels[$mi]}	${meta_rec[$mi]}
+"
+  done
+  printf '%s%s' "$new_sidecar" "$miss_lines" | _write_atomic_from "$SIDECAR_FILE"
 }
 
 # ---------------------------------------------------------------------------
@@ -645,516 +1078,62 @@ _sidecar_append_meta() {
 # ---------------------------------------------------------------------------
 
 _snapshot_main() {
-  local RESOLVED_ROOT
-  RESOLVED_ROOT="$(cd "${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-$PWD}}" 2>/dev/null && pwd -P)"
+  GIVEN_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-$PWD}}"
+  while [ "${#GIVEN_ROOT}" -gt 1 ] && [ "${GIVEN_ROOT%/}" != "$GIVEN_ROOT" ]; do GIVEN_ROOT="${GIVEN_ROOT%/}"; done
+  RESOLVED_ROOT="$(cd "$GIVEN_ROOT" 2>/dev/null && pwd -P)" || {
+    _warn "project root not found"; exit 1; }
 
-  local STATE_DIR="${RESOLVED_ROOT}/.gaia/state"
-  local CACHE_FILE="${STATE_DIR}/${_CACHE_NAME}"
-  local SIDECAR_FILE="${STATE_DIR}/${_SIDECAR_NAME}"
-  local LOCK_FILE="${CACHE_FILE}${_LOCK_SUFFIX}"
-  local CONFIG_FILE="${RESOLVED_ROOT}/.gaia/config/project-config.yaml"
-  local IMPL_DIR="${RESOLVED_ROOT}/.gaia/artifacts/implementation-artifacts"
+  STATE_DIR="${RESOLVED_ROOT}/.gaia/state"
+  CACHE_FILE="${STATE_DIR}/${_CACHE_NAME}"
+  SIDECAR_FILE="${STATE_DIR}/${_SIDECAR_NAME}"
+  PARSED_FILE="${STATE_DIR}/${_PARSED_NAME}"
+  LOCK_FILE="${CACHE_FILE}${_LOCK_SUFFIX}"
+  CONFIG_FILE="${RESOLVED_ROOT}/.gaia/config/project-config.yaml"
+  YAML_FILE="${SPRINT_STATUS_YAML:-${STATE_DIR}/sprint-status.yaml}"
 
-  mkdir -p "$STATE_DIR" 2>/dev/null || true
-
-  # --- Lock ---
-  if ! _try_snapshot_lock "$LOCK_FILE"; then
-    _warn "lock held by another process, skipping"; exit 0
-  fi
-  trap '_release_snapshot_lock' EXIT INT TERM
-
-  # --- Paths ---
-  local YAML_FILE="${SPRINT_STATUS_YAML:-${STATE_DIR}/sprint-status.yaml}"
-  local ledger_path="${STATE_DIR}/.review-gate-ledger"
-  local action_items_path=""
-  if [ -s "${STATE_DIR}/action-items.yaml" ]; then
-    action_items_path="${STATE_DIR}/action-items.yaml"
-  elif [ -x "${_SELF_DIR}/lib/resolve-artifact-path.sh" ]; then
-    action_items_path="$(
-      "${_SELF_DIR}/lib/resolve-artifact-path.sh" action_items --project-root "$RESOLVED_ROOT" --existing-only 2>/dev/null
-    )" || action_items_path=""
-  fi
-
-  # --- Sidecar + warm fast-path ---
-  local old_sidecar=""
-  old_sidecar="$(_read_sidecar "$SIDECAR_FILE")"
-
-  if _try_warm_fast_path "$CACHE_FILE" "$old_sidecar"; then
-    exit 0
-  fi
-
-  # =========================================================================
-  # Cold path: full rebuild
-  # =========================================================================
-
-  # --- Config ---
-  local alias_list threshold
-  alias_list="$(_read_user_aliases "$CONFIG_FILE")"
-  threshold="$(_read_threshold "$CONFIG_FILE")"
-
-  # Sanitize aliases: strip control chars, cap per-alias length and count
-  local aliases_json_str="" alias_count=0
-  local -a user_aliases_lower=()
-  while IFS= read -r aline; do
-    [ -n "$aline" ] || continue
-    [ "$alias_count" -lt 20 ] || break
-    local clean; clean="$(_sanitize_alias "$aline")"
-    [ -n "$clean" ] || continue
-    alias_count=$((alias_count + 1))
-    local ea="${clean//\\/\\\\}"; ea="${ea//\"/\\\"}"
-    aliases_json_str="${aliases_json_str:+${aliases_json_str},}\"${ea}\""
-    user_aliases_lower+=("$(printf '%s' "$clean" | tr '[:upper:]' '[:lower:]')")
-  done <<< "$alias_list"
-  local aliases_json="[${aliases_json_str}]"
-
-  # --- Sprint YAML ---
-  local yaml_output
-  yaml_output="$(_read_sprint_yaml "$YAML_FILE")"
-
-  if [ "$yaml_output" = "ABSENT" ]; then
-    _write_empty_cache "$CACHE_FILE" "$SIDECAR_FILE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$aliases_json" "${threshold:-120}"
-    exit 0
-  fi
-
-  local SPRINT_ID="" SPRINT_STATUS="" START_DATE="" END_DATE="" GOAL="" CAPACITY_UTIL="" EPIC_FOCUS=""
-  local STORY_COUNT=0
-  local -a S_KEYS=() S_YAML_ST=() S_PTS=() S_RISKS=() S_BLOCKED=() S_PHASES=()
-
-  # shellcheck disable=SC2034
-  while IFS= read -r line; do
-    case "$line" in
-      SPRINT_ID=*)          SPRINT_ID="${line#SPRINT_ID=}" ;;
-      SPRINT_STATUS=*)      SPRINT_STATUS="${line#SPRINT_STATUS=}" ;;
-      START_DATE=*)         START_DATE="${line#START_DATE=}" ;;
-      END_DATE=*)           END_DATE="${line#END_DATE=}" ;;
-      GOAL=*)               GOAL="${line#GOAL=}" ;;
-      CAPACITY_UTILIZATION=*) CAPACITY_UTIL="${line#CAPACITY_UTILIZATION=}" ;;
-      EPIC_FOCUS=*)         EPIC_FOCUS="${line#EPIC_FOCUS=}" ;;
-      STORY_COUNT=*)        STORY_COUNT="${line#STORY_COUNT=}" ;;
-      STORY_KEY_*)          local idx="${line%%=*}"; idx="${idx#STORY_KEY_}";          S_KEYS[idx]="${line#*=}" ;;
-      STORY_YAML_STATUS_*)  local idx="${line%%=*}"; idx="${idx#STORY_YAML_STATUS_}";  S_YAML_ST[idx]="${line#*=}" ;;
-      STORY_POINTS_*)       local idx="${line%%=*}"; idx="${idx#STORY_POINTS_}";       S_PTS[idx]="${line#*=}" ;;
-      STORY_RISK_*)         local idx="${line%%=*}"; idx="${idx#STORY_RISK_}";         S_RISKS[idx]="${line#*=}" ;;
-      STORY_BLOCKED_BY_*)   local idx="${line%%=*}"; idx="${idx#STORY_BLOCKED_BY_}";   S_BLOCKED[idx]="${line#*=}" ;;
-      STORY_PHASE_*)        local idx="${line%%=*}"; idx="${idx#STORY_PHASE_}";        S_PHASES[idx]="${line#*=}" ;;
-    esac
-  done <<< "$yaml_output"
-
-  if [ -z "$SPRINT_ID" ]; then
-    _write_empty_cache "$CACHE_FILE" "$SIDECAR_FILE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$aliases_json" "${threshold:-120}"
-    exit 0
-  fi
-
-  # --- Validate keys ---
-  local -a valid_keys=()
-  local i
-  for i in $(seq 1 "$STORY_COUNT"); do
-    local key="${S_KEYS[$i]:-}"
-    [ -n "$key" ] || continue
-    _valid_story_key "$key" || { _warn "skipping invalid story key: $key"; continue; }
-    valid_keys+=("$key")
-  done
-
-  # --- Resolve story paths (sidecar cache + batched find) ---
-  local yaml_changed=0
-  if [ -f "$YAML_FILE" ]; then
-    local yaml_mt; yaml_mt="$(_stat_mtime "$YAML_FILE")"
-    local old_yaml_mt=""
-    [ -z "$old_sidecar" ] || old_yaml_mt="$(printf '%s' "$old_sidecar" | awk -F'\t' '$2=="__sprint_status__"{print $4;exit}')"
-    [ -n "$old_yaml_mt" ] && [ "$yaml_mt" = "$old_yaml_mt" ] || yaml_changed=1
+  # Story tree: env override, canonical tree, then the legacy docs/ tree.
+  if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+    IMPL_DIR="$IMPLEMENTATION_ARTIFACTS"
+  elif [ -d "${RESOLVED_ROOT}/.gaia/artifacts/implementation-artifacts" ]; then
+    IMPL_DIR="${RESOLVED_ROOT}/.gaia/artifacts/implementation-artifacts"
   else
-    yaml_changed=1
+    IMPL_DIR="${RESOLVED_ROOT}/docs/implementation-artifacts"
   fi
 
-  local -a story_paths=()
-  local need_find=0 keys_to_find_str=""
+  # Review-gate ledger: same precedence as review-gate.sh.
+  if [ -n "${REVIEW_GATE_LEDGER:-}" ]; then
+    LEDGER_FILE="$REVIEW_GATE_LEDGER"
+  elif [ -d "${RESOLVED_ROOT}/.gaia" ]; then
+    LEDGER_FILE="${STATE_DIR}/.review-gate-ledger"
+  else
+    LEDGER_FILE="${RESOLVED_ROOT}/.review-gate-ledger"
+  fi
 
-  if [ "${#valid_keys[@]}" -gt 0 ]; then
-    for key in "${valid_keys[@]}"; do
-      local cached_path=""
-      [ -z "$old_sidecar" ] || cached_path="$(printf '%s' "$old_sidecar" | awk -F'\t' -v k="$key" '$1=="story"&&$2==k{print $3;exit}')"
-      if [ -n "$cached_path" ] && [ -f "$cached_path" ] && [ "$yaml_changed" = "0" ]; then
-        story_paths+=("$key	$cached_path")
-      else
-        need_find=1
-        keys_to_find_str="${keys_to_find_str:+${keys_to_find_str} }${key}"
+  [ -d "$STATE_DIR" ] || mkdir -p "$STATE_DIR" 2>/dev/null || true
+
+  trap '_release_snapshot_lock' EXIT
+  trap '_release_snapshot_lock; exit 143' TERM
+  trap '_release_snapshot_lock; exit 130' INT
+
+  local dirty="${LOCK_FILE}.dirty" pass=0
+  while :; do
+    if ! _try_snapshot_lock "$LOCK_FILE"; then
+      [ "$_SNAPSHOT_LOCK_REFUSED" = "0" ] || exit 0
+      # Ask the holder to rebuild after it releases, then retry once in case
+      # it released between our attempt and the marker.
+      _mark_dirty "$dirty"
+      if [ "$pass" -gt 0 ] || ! _try_snapshot_lock "$LOCK_FILE"; then
+        _warn "lock held by another process, skipping"; exit 0
       fi
-    done
-  fi
-
-  if [ "$need_find" = "1" ] && [ -d "$IMPL_DIR" ] && [ -n "$keys_to_find_str" ]; then
-    local find_output
-    # shellcheck disable=SC2086
-    find_output="$(_resolve_all_story_paths "$IMPL_DIR" $keys_to_find_str)"
-    while IFS=$'\t' read -r sc fkey fpath; do
-      sc="$(printf '%s' "$sc" | tr -d ' ')"
-      fkey="$(printf '%s' "$fkey" | tr -d ' ')"
-      case "$sc" in
-        FOUND)   story_paths+=("$fkey	$fpath") ;;
-        AMBIG)   _warn "multiple files match key $fkey, skipping" ;;
-        MISSING) _warn "no file found for key $fkey" ;;
-      esac
-    done <<< "$find_output"
-  fi
-
-  # --- Containment check ---
-  # Reject any path (including file-level symlinks) whose real target is outside
-  # the project root. Guard realpath with [ -e ] for BSD compatibility.
-  local -a checked_paths=()
-  if [ "${#story_paths[@]}" -gt 0 ]; then
-    for entry in "${story_paths[@]}"; do
-      local ck="${entry%%	*}" cp="${entry#*	}"
-      [ -e "$cp" ] || { _warn "story file missing for $ck: $cp"; continue; }
-      # Reject file-level symlinks pointing outside the project root
-      if [ -L "$cp" ]; then
-        local link_target
-        link_target="$(readlink "$cp" 2>/dev/null)" || link_target=""
-        # Resolve relative symlink targets against the parent dir
-        if [ -n "$link_target" ]; then
-          case "$link_target" in
-            /*) ;; # absolute
-            *)  link_target="$(cd "$(dirname "$cp")" && pwd -P)/${link_target}" ;;
-          esac
-          # Resolve the target fully
-          if [ -e "$link_target" ]; then
-            link_target="$(cd "$(dirname "$link_target")" && pwd -P)/$(basename "$link_target")"
-          fi
-          case "$link_target" in
-            "${RESOLVED_ROOT}/"*) ;;
-            *) _warn "symlink escapes project root for $ck, skipping"; continue ;;
-          esac
-        fi
-      fi
-      local resolved
-      resolved="$(cd "$(dirname "$cp")" && pwd -P)/$(basename "$cp")"
-      case "$resolved" in
-        "${RESOLVED_ROOT}/"*) checked_paths+=("$ck	$cp") ;;
-        *) _warn "path escapes project root for $ck, skipping" ;;
-      esac
-    done
-  fi
-
-  # --- Batch stat + batch parse ---
-  local -a ck_arr=() cp_arr=() mt_arr=()
-  if [ "${#checked_paths[@]}" -gt 0 ]; then
-    local -a stat_files=()
-    for entry in "${checked_paths[@]}"; do
-      ck_arr+=("${entry%%	*}")
-      cp_arr+=("${entry#*	}")
-      stat_files+=("${entry#*	}")
-    done
-    local all_mts
-    all_mts="$(_stat_mtime_batch "${stat_files[@]}")" || all_mts=""
-    while IFS= read -r mt; do mt_arr+=("$mt"); done <<< "$all_mts"
-  fi
-
-  local all_parsed=""
-  if [ "${#cp_arr[@]}" -gt 0 ]; then
-    all_parsed="$(awk '
-    BEGIN { in_fm=0;fm_done=0;in_tasks=0;in_gate=0;gsep=0;key="";st="";pts=0;ttl="";mav="false";td=0;tt=0;gp=0;gt=0;ti="";gr="";fc=0 }
-    FILENAME!=pf { if(fc>0){if(gt==0)gt=6;gsub(/\\/,"\\\\",ttl);gsub(/"/,"\\\"",ttl);gsub(/\t/," ",ttl);if(length(ttl)>200)ttl=substr(ttl,1,200);printf"%s\t%s\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n",key,st,pts,ttl,mav,td,tt,gp,gt,ti,gr}; pf=FILENAME;fc++;in_fm=0;fm_done=0;in_tasks=0;in_gate=0;gsep=0;key="";st="";pts=0;ttl="";mav="false";td=0;tt=0;gp=0;gt=0;ti="";gr="" }
-    /^---$/&&!fm_done{if(in_fm){fm_done=1;in_fm=0}else in_fm=1;next}
-    in_fm&&/^status:/{v=$0;sub(/^status:[[:space:]]*/,"",v);gsub(/"/,"",v);st=v;next}
-    in_fm&&/^points:/{v=$0;sub(/^points:[[:space:]]*/,"",v);gsub(/"/,"",v);pts=v+0;next}
-    in_fm&&/^title:/{v=$0;sub(/^title:[[:space:]]*/,"",v);gsub(/^"/,"",v);gsub(/"[[:space:]]*$/,"",v);gsub(/^'\''/,"",v);gsub(/'\''[[:space:]]*$/,"",v);ttl=v;next}
-    in_fm&&/^manual_verification:/{v=$0;sub(/^manual_verification:[[:space:]]*/,"",v);gsub(/"/,"",v);mav=v;next}
-    in_fm&&/^key:/{v=$0;sub(/^key:[[:space:]]*/,"",v);gsub(/"/,"",v);key=v;next}
-    /^## Tasks \/ Subtasks/{in_tasks=1;in_gate=0;next}
-    /^## /&&in_tasks{in_tasks=0}
-    in_tasks&&/^- \[/{tt++;dm=substr($0,4,1);if(dm=="x"||dm=="X"){td++;tid="true"}else tid="false";tx=$0;sub(/^- \[.\][[:space:]]*/,"",tx);gsub(/\\/,"\\\\",tx);gsub(/"/,"\\\"",tx);gsub(/\t/," ",tx);if(length(tx)>200)tx=substr(tx,1,200);if(ti!="")ti=ti";;;";ti=ti tid":::"tx;next}
-    /^## Review Gate/{in_gate=1;in_tasks=0;gsep=0;next}
-    /^## /&&in_gate{in_gate=0}
-    in_gate&&/^\|.*\|.*\|/{if($0~/Review.*Status.*Report/)next;if($0~/^[[:space:]]*\|[-]+/){gsep=1;next};if(!gsep)next;l=$0;gsub(/^[[:space:]]*\|[[:space:]]*/,"",l);n=split(l,c,/[[:space:]]*\|[[:space:]]*/);if(n>=2){gn=c[1];gs=c[2];gsub(/^[[:space:]]+|[[:space:]]+$/,"",gn);gsub(/^[[:space:]]+|[[:space:]]+$/,"",gs);if(gs=="NOT STARTED")gs="UNVERIFIED";gt++;if(gs=="PASSED")gp++;if(gr!="")gr=gr";;;";gr=gr gn":::"gs}}
-    END{if(gt==0)gt=6;gsub(/\\/,"\\\\",ttl);gsub(/"/,"\\\"",ttl);gsub(/\t/," ",ttl);if(length(ttl)>200)ttl=substr(ttl,1,200);printf"%s\t%s\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n",key,st,pts,ttl,mav,td,tt,gp,gt,ti,gr}
-    ' "${cp_arr[@]}")" || all_parsed=""
-  fi
-
-  # Batch ledger verdicts
-  local all_verdicts=""
-  if [ -f "$ledger_path" ] && [ "${#ck_arr[@]}" -gt 0 ]; then
-    local keys_str; keys_str="$(printf '%s\n' "${ck_arr[@]}")"
-    all_verdicts="$(awk -F'\t' -v keys="$keys_str" '
-      BEGIN{n=split(keys,ka,"\n");for(i=1;i<=n;i++)w[ka[i]]=1}
-      $1 in w&&$2=="manual-test"{last[$1]=$4}
-      END{for(k in last)print k"\t"last[k]}
-    ' "$ledger_path")" || all_verdicts=""
-  fi
-
-  # Pre-build key-to-yaml-index map and mtime-to-date map
-  local key_idx_map=""
-  for yi in $(seq 1 "$STORY_COUNT"); do
-    key_idx_map="${key_idx_map}${S_KEYS[$yi]:-}	${yi}
-"
+    fi
+    pass=$((pass + 1))
+    _clear_dirty "$dirty"
+    _snapshot_build
+    _release_snapshot_lock
+    _is_dirty "$dirty" || break
+    [ "$pass" -lt 5 ] || break
   done
-
-  local mt_date_map=""
-  if [ "${#mt_arr[@]}" -gt 0 ]; then
-    local unique_mts; unique_mts="$(printf '%s\n' "${mt_arr[@]}" | sort -u)"
-    mt_date_map="$(printf '%s\n' "$unique_mts" | while IFS= read -r emt; do
-      [ -n "$emt" ] || continue
-      printf '%s\t%s\n' "$emt" "$(_mtime_to_date "$emt")"
-    done)"
-  fi
-
-  # Fast epoch-to-date lookup (no subprocess)
-  _mt_date_fast() {
-    local line="${mt_date_map#*"$1"	}"
-    if [ "$line" != "$mt_date_map" ]; then
-      printf '%s' "${line%%
-*}"
-    else
-      printf '1970-01-01'
-    fi
-  }
-
-  # --- Process stories ---
-  local stories_jsonl="" new_sidecar="" by_status_data="" phase_data="" unphased=""
-  local done_points=0 total_points=0 done_stories=0 total_stories=0
-  local all_done=1 all_done_or_review=1 has_stories=0 latest_done_mt=0
-  local action_lines="" drift_lines=""
-  local now_epoch; now_epoch="$(date +%s)"
-
-  if [ "${#ck_arr[@]}" -gt 0 ]; then
-    local -a parsed_lines=()
-    [ -z "$all_parsed" ] || while IFS= read -r pl; do parsed_lines+=("$pl"); done <<< "$all_parsed"
-
-    local si
-    for si in $(seq 0 $((${#ck_arr[@]} - 1))); do
-      local ck="${ck_arr[$si]}" cp="${cp_arr[$si]}" fmt="${mt_arr[$si]:-0}"
-      has_stories=1; total_stories=$((total_stories + 1))
-      new_sidecar="${new_sidecar:+${new_sidecar}
-}story	${ck}	${cp}	${fmt}"
-
-      # Yaml data via index map (no subprocess)
-      local yidx=""
-      local il="${key_idx_map#*"${ck}"	}"
-      [ "$il" = "$key_idx_map" ] || yidx="${il%%
-*}"
-      local s_phase="${S_PHASES[${yidx:-0}]:-}" s_risk="${S_RISKS[${yidx:-0}]:-medium}"
-      local s_blocked="${S_BLOCKED[${yidx:-0}]:-null}" s_yaml_st="${S_YAML_ST[${yidx:-0}]:-}"
-
-      local parsed="${parsed_lines[$si]:-}"
-      [ -n "$parsed" ] || { _warn "failed to parse $ck"; continue; }
-      local p_key="" p_st="" p_pts="" p_ttl="" p_mv="" p_td="" p_tt="" p_gp="" p_gt="" p_ti="" p_gr=""
-      # shellcheck disable=SC2034
-      IFS=$'\t' read -r p_key p_st p_pts p_ttl p_mv p_td p_tt p_gp p_gt p_ti p_gr <<< "$parsed"
-
-      local status="${p_st:-unknown}" points="${p_pts:-0}"
-      local title="${p_ttl:-Story $ck}"
-      [ "${#title}" -le 200 ] || title="${title:0:200}"
-      local dir_name; dir_name="${cp%/*}"; dir_name="${dir_name##*/}"
-      local slug="${dir_name#"${ck}"-}"; [ "$slug" != "$dir_name" ] || slug="$dir_name"
-
-      # Totals
-      total_points=$((total_points + points))
-      if [ "$status" = "done" ]; then
-        done_points=$((done_points + points)); done_stories=$((done_stories + 1))
-        [ "$fmt" -le "$latest_done_mt" ] || latest_done_mt="$fmt"
-      else all_done=0; fi
-      [ "$status" = "done" ] || [ "$status" = "review" ] || all_done_or_review=0
-      by_status_data="${by_status_data:+${by_status_data}
-}${status}	${points}"
-
-      # Phase / unphased
-      if [ -n "$s_phase" ] && [ "$s_phase" != "null" ]; then
-        phase_data="${phase_data:+${phase_data}
-}${s_phase}	${ck}	${status}"
-      else
-        unphased="${unphased:+${unphased},}\"${ck}\""
-      fi
-
-      # Story JSON
-      local bss="null"; [ "$status" != "blocked" ] || bss="\"$(_mt_date_fast "$fmt")\""
-      local mv=""; [ -z "$all_verdicts" ] || { local vl="${all_verdicts#*"${ck}"	}"; [ "$vl" = "$all_verdicts" ] || mv="${vl%%
-*}"; }
-      # Build task items JSON inline (no subprocess)
-      local ti_j="[" _tf=1
-      if [ -n "$p_ti" ]; then
-        local _IS="$IFS"; IFS=";;;"
-        # shellcheck disable=SC2086
-        set -- $p_ti; IFS="$_IS"
-        while [ $# -gt 0 ]; do local _tp="$1"; shift; [ -n "$_tp" ] || continue
-          [ "$_tf" = "1" ] || ti_j="${ti_j},"
-          ti_j="${ti_j}{\"text\":\"${_tp#*:::}\",\"done\":${_tp%%:::*}}"
-          _tf=0; done; fi
-      ti_j="${ti_j}]"
-      # Build gate rows JSON inline (no subprocess)
-      local gr_j="[" _gf=1
-      if [ -n "$p_gr" ]; then
-        local _IS="$IFS"; IFS=";;;"
-        # shellcheck disable=SC2086
-        set -- $p_gr; IFS="$_IS"
-        while [ $# -gt 0 ]; do local _gp="$1"; shift; [ -n "$_gp" ] || continue
-          [ "$_gf" = "1" ] || gr_j="${gr_j},"
-          gr_j="${gr_j}{\"name\":\"${_gp%%:::*}\",\"status\":\"${_gp#*:::}\"}"
-          _gf=0; done; fi
-      gr_j="${gr_j}]"
-      local mreq="false"; [ "$p_mv" != "true" ] || mreq="true"
-      local vj="null"; [ -z "$mv" ] || vj="\"$mv\""
-      local bbj="null"; [ "$s_blocked" = "null" ] || [ -z "$s_blocked" ] || bbj="\"$s_blocked\""
-      local phj="null"; [ -z "$s_phase" ] || [ "$s_phase" = "null" ] || phj="$s_phase"
-
-      stories_jsonl="${stories_jsonl:+${stories_jsonl},}{\"key\":\"${ck}\",\"title\":\"${title}\",\"slug\":\"${slug}\",\"status\":\"${status}\",\"points\":${points},\"phase\":${phj},\"risk_level\":\"${s_risk}\",\"blocked_by\":${bbj},\"blocked_since\":${bss},\"tasks\":{\"done\":${p_td:-0},\"total\":${p_tt:-0},\"items\":${ti_j}},\"gates\":{\"passed\":${p_gp:-0},\"total\":${p_gt:-6},\"rows\":${gr_j}},\"manual_test\":{\"required\":${mreq},\"verdict\":${vj}}}"
-
-      # Rule (a)
-      if [ "$mreq" = "true" ] && [ "${p_gp:-0}" = "6" ] && [ "$status" != "done" ]; then
-        if [ -z "$mv" ] || [ "$mv" = "UNVERIFIED" ]; then
-          action_lines="${action_lines:+${action_lines}
-}a	manual_test_due	${ck}	_	/gaia-test-manual	story-file	$(_mt_date_fast "$fmt")	Manual test is due for ${ck}"
-        fi
-      fi
-
-      # Drift
-      if [ -n "$s_yaml_st" ] && [ "$status" != "$s_yaml_st" ]; then
-        local det="Story file says ${status}, sprint yaml says ${s_yaml_st}"
-        [ "${#det}" -le 200 ] || det="${det:0:200}"
-        drift_lines="${drift_lines:+${drift_lines}
-}${ck}	status_mismatch	${det}"
-      fi
-      if [ "$status" = "review" ] && [ $(( now_epoch - fmt )) -gt 172800 ]; then
-        drift_lines="${drift_lines:+${drift_lines}
-}${ck}	stale_review	Story in review for over 48 hours"
-      fi
-    done
-  fi
-  [ "$has_stories" = "1" ] || { all_done=0; all_done_or_review=0; }
-
-  # --- Rule (c) ---
-  if [ -n "$action_items_path" ] && [ -f "$action_items_path" ]; then
-    local ai_output; ai_output="$(_read_action_items "$action_items_path")" || ai_output=""
-    local ai_mt=""; [ ! -f "$action_items_path" ] || ai_mt="$(_stat_mtime "$action_items_path")"
-    if [ -n "$ai_output" ]; then
-      while IFS=$'\t' read -r ai_id ai_st ai_asn ai_cr; do
-        [ -n "$ai_id" ] || continue
-        case "$ai_st" in open|in-progress) ;; *) continue ;; esac
-        local ai_low; ai_low="$(printf '%s' "$ai_asn" | tr '[:upper:]' '[:lower:]')"
-        local amatch=0
-        if [ "${#user_aliases_lower[@]}" -gt 0 ]; then
-          for al in "${user_aliases_lower[@]}"; do [ "$ai_low" != "$al" ] || { amatch=1; break; }; done
-        fi
-        [ "$amatch" = "1" ] || continue
-        local sc=""
-        if [ -n "$ai_cr" ] && [ "$ai_cr" != "null" ]; then sc="${ai_cr:0:10}"
-        elif [ -n "$ai_mt" ]; then sc="$(_mtime_to_date "$ai_mt")"
-        else sc="$(date -u +%Y-%m-%d)"; fi
-        local mc="Action item ${ai_id} is assigned and ${ai_st}"; [ "${#mc}" -le 300 ] || mc="${mc:0:300}"
-        action_lines="${action_lines:+${action_lines}
-}c	action_item_assigned	_	${ai_id}	/gaia-action-items	action-items	${sc}	${mc}"
-      done <<< "$ai_output"
-    fi
-  fi
-
-  # --- Rule (d) ---
-  if [ "$SPRINT_STATUS" = "active" ] && [ "$has_stories" = "1" ] && [ "$all_done" = "1" ]; then
-    local sd; [ "$latest_done_mt" -gt 0 ] && sd="$(_mt_date_fast "$latest_done_mt")" || sd="$(date -u +%Y-%m-%d)"
-    action_lines="${action_lines:+${action_lines}
-}d	sprint_can_close	_	_	/gaia-sprint-close	sprint-status	${sd}	All stories are done, sprint can be closed"
-  fi
-
-  # --- Action needed JSON ---
-  local an_json=""
-  if [ -n "$action_lines" ]; then
-    local sorted; sorted="$(printf '%s\n' "$action_lines" | sort -s -t'	' -k1,1 -k3,3 -k4,4)"
-    while IFS=$'\t' read -r rl ty sk iid cmd src sin msg; do
-      [ "$sk" != "_" ] || sk=""; [ "$iid" != "_" ] || iid=""
-      local vc; vc="$(_validate_command "$cmd")"
-      local skj="[]"; [ -z "$sk" ] || skj="[\"${sk}\"]"
-      local cj="null"; [ "$vc" = "null" ] || cj="\"${vc}\""
-      local em="${msg//\\/\\\\}"; em="${em//\"/\\\"}"
-      local e="{\"rule\":\"${rl}\",\"type\":\"${ty}\",\"story_keys\":${skj}"
-      [ -z "$iid" ] || e="${e},\"item_id\":\"${iid}\""
-      e="${e},\"message\":\"${em}\",\"command\":${cj},\"since\":\"${sin}\",\"source\":\"${src}\"}"
-      an_json="${an_json:+${an_json},}${e}"
-    done <<< "$sorted"
-  fi
-
-  # --- By-status ---
-  local bs_json=""
-  [ -z "$by_status_data" ] || bs_json="$(printf '%s\n' "$by_status_data" | awk -F'\t' '
-    {c[$1]++;p[$1]+=$2} END{f=1;for(s in c){if(!f)printf",";printf"\"%s\":{\"count\":%d,\"points\":%d}",s,c[s],p[s];f=0}}')"
-
-  # --- Phases ---
-  local phases_result; phases_result="$(_build_phases_json "$phase_data")"
-  local phases_json="${phases_result%%	*}" active_phase="${phases_result#*	}"
-
-  # --- Drift JSON ---
-  local dr_json=""
-  if [ -n "$drift_lines" ]; then
-    while IFS=$'\t' read -r dk dt dd; do
-      local ed="${dd//\\/\\\\}"; ed="${ed//\"/\\\"}"
-      dr_json="${dr_json:+${dr_json},}{\"story_key\":\"${dk}\",\"type\":\"${dt}\",\"detail\":\"${ed}\"}"
-    done <<< "$drift_lines"
-  fi
-
-  # --- Day / pace ---
-  local dp_result; dp_result="$(_compute_day_pace "$START_DATE" "$END_DATE" "$done_points" "$total_points")"
-  local day_current day_total day_pace
-  IFS=$'\t' read -r day_current day_total day_pace <<< "$dp_result"
-
-  # --- Readiness ---
-  local sr="false" scl="false"
-  if [ "$has_stories" = "1" ]; then
-    [ "$all_done_or_review" != "1" ] || sr="true"
-    [ "$all_done" != "1" ] || scl="true"
-  fi
-
-  # --- Progress ---
-  local progress_pct=0
-  [ "$total_points" -eq 0 ] || progress_pct=$(( (done_points * 100) / total_points ))
-
-  # --- Sprint JSON fields (inline to avoid subprocesses) ---
-  local goal_raw="${GOAL:-}"; [ "${#goal_raw}" -le 200 ] || goal_raw="${goal_raw:0:200}"
-  local sprint_goal="null"
-  if [ -n "$goal_raw" ] && [ "$goal_raw" != "null" ]; then
-    local _ge="${goal_raw//\\/\\\\}"; sprint_goal="\"${_ge//\"/\\\"}\""; fi
-  local sprint_end="null"
-  [ -z "$END_DATE" ] || [ "$END_DATE" = "null" ] || sprint_end="\"${END_DATE}\""
-  local sprint_cap="null"
-  [ -z "$CAPACITY_UTIL" ] || [ "$CAPACITY_UTIL" = "null" ] || sprint_cap="\"${CAPACITY_UTIL}\""
-  local sprint_epic="null"
-  [ -z "$EPIC_FOCUS" ] || [ "$EPIC_FOCUS" = "null" ] || sprint_epic="\"${EPIC_FOCUS}\""
-  local pace_json="null"; [ "$day_pace" = "null" ] || pace_json="\"${day_pace}\""
-
-  # --- Assemble + atomic write ---
-  local gen_at; gen_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-  _write_atomic "$CACHE_FILE" "$(printf '{
-  "schema_version": "1.0",
-  "generated_at": "%s",
-  "sprint": {"id":"%s","goal":%s,"start_date":"%s","end_date":%s,"status":"%s","total_days":%s,"capacity_utilization":%s,"epic_focus":%s},
-  "totals": {"done_points":%d,"total_points":%d,"done_stories":%d,"total_stories":%d,"progress_pct":%d},
-  "by_status": {%s},
-  "day": {"current":%d,"total":%s,"pace":%s},
-  "active_phase": %s,
-  "phases": [%s],
-  "unphased_stories": [%s],
-  "stories": [%s],
-  "action_needed": [%s],
-  "drift": [%s],
-  "readiness": {"sprint_review":%s,"sprint_close":%s},
-  "user_aliases": %s,
-  "waiting_agent_threshold_seconds": %s
-}' "$gen_at" \
-   "$SPRINT_ID" "$sprint_goal" "$START_DATE" "$sprint_end" "$SPRINT_STATUS" "$day_total" "$sprint_cap" "$sprint_epic" \
-   "$done_points" "$total_points" "$done_stories" "$total_stories" "$progress_pct" \
-   "${bs_json:-}" "$day_current" "$day_total" "$pace_json" "$active_phase" \
-   "${phases_json:-}" "${unphased:-}" "${stories_jsonl:-}" "${an_json:-}" "${dr_json:-}" \
-   "$sr" "$scl" "$aliases_json" "${threshold:-120}")"
-
-  # --- Sidecar meta entries (inline to avoid subprocesses) ---
-  local _meta_files="__sprint_status__	${YAML_FILE}
-__review_gate_ledger__	${ledger_path}"
-  [ -z "$action_items_path" ] || _meta_files="${_meta_files}
-__action_items__	${action_items_path}"
-  _meta_files="${_meta_files}
-__project_config__	${CONFIG_FILE}"
-  while IFS=$'\t' read -r _ms _mf; do
-    [ -f "$_mf" ] || continue
-    local _mm; _mm="$(_stat_mtime "$_mf")"
-    new_sidecar="${new_sidecar:+${new_sidecar}
-}meta	${_ms}	${_mf}	${_mm}"
-  done <<< "$_meta_files"
-  _write_atomic "$SIDECAR_FILE" "${new_sidecar:-}"
+  exit 0
 }
 
 # Main guard — allow sourcing for testability
