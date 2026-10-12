@@ -8,6 +8,7 @@
 # quotes) and silently failed the ADR-108 D1 case-match.
 
 setup() {
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
   SCRIPT="${BATS_TEST_DIRNAME}/../scripts/sprint-state.sh"
   TMPDIR_TEST="$(mktemp -d)"
   YAML="$TMPDIR_TEST/sprint-status.yaml"
