@@ -14,7 +14,7 @@ orchestration_class: light-procedural
 
 You are displaying `project-config.yaml` in read-only mode. The skill is one of the `/gaia-config-*` editors — the only one without write semantics. Three invocation shapes:
 
-- **No argument (default)** — render the top-level section TOC: a list of the declared sections from `schemas/project-config.schema.json` `.properties` (40 entries in schema v2.0.0). Helps users orient before drilling in.
+- **No argument (default)** — render the top-level section TOC: a list of the declared sections from `schemas/project-config.schema.json` `.properties`. Helps users orient before drilling in.
 - **`<section-name>`** — single positional argument naming a top-level section to display. Output is the section's lines verbatim (no parse-and-reserialize round-trip).
 - **`--full`** — explicit flag for the byte-verbatim full-file render. Output is the file's bytes verbatim — no comment stripping, no formatting normalization. This is the legacy contract preserved behind an explicit flag.
 
@@ -48,4 +48,4 @@ If the terminal supports syntax highlighting and a YAML highlighter is available
 
 - This skill is intentionally minimal — it is the inverse of the seven editor skills. Use it before/after edits to confirm the file state.
 - `/gaia-config-show environments`, `/gaia-config-show stacks`, etc. are equivalent to `config-yaml-editor.sh extract <path> <section>`.
-- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0).
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list.

@@ -69,4 +69,4 @@ Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the 
 ## Notes
 
 - Regime declaration order is the layered-loader merge order — moving `gdpr` from position 0 to position 1 changes the merged rubric output. Surface this in the confirmation prompt so the user is aware before clicking through.
-- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `compliance`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list. This skill ONLY edits `compliance`.

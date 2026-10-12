@@ -75,5 +75,5 @@ This skill targets ONLY the `environments` section. All other top-level sections
 
 ## Notes
 
-- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `environments`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list. This skill ONLY edits `environments`.
 - Mobile-specific editors (`/gaia-config-platform`, `/gaia-config-device-target`) are shipped as separate section editors.
