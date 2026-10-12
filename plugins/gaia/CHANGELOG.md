@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.220.2] — 2026-10-12
+
+### Fixed
+
+- ship commit classifier inside the plugin for user-project resolution (#2118)
+
 ## [1.220.1] — 2026-10-11
 
 ### Fixed
