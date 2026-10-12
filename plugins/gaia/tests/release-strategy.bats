@@ -17,7 +17,7 @@ setup() {
   common_setup
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   RESOLVE_SCRIPT="$BATS_TEST_DIRNAME/../skills/gaia-release/scripts/resolve-release-version.sh"
-  CLASSIFY_JS="$REPO_ROOT/scripts/classify-commits.js"
+  CLASSIFY_JS="$REPO_ROOT/plugins/gaia/scripts/classify-commits.js"
   export CLASSIFY_COMMITS_JS="$CLASSIFY_JS"
 }
 
