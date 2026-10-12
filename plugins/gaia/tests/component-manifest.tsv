@@ -760,6 +760,7 @@ skills	atdd-gate.bats
 skills	brain-user-docs.bats
 skills	check-deps.bats
 skills	ci-wait.bats
+skills	classify-commits-shipped.bats
 skills	cluster-7/append-edge-case-acs.bats
 skills	cluster-7/append-edge-case-tests.bats
 skills	cluster-7/generate-frontmatter.bats
