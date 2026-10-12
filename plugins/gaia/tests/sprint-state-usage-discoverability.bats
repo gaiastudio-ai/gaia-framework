@@ -6,6 +6,7 @@
 # and the sprint-level transition form `transition --sprint <id> --to <state>`).
 
 setup() {
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
   SCRIPT="${BATS_TEST_DIRNAME}/../scripts/sprint-state.sh"
 }
 

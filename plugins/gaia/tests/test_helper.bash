@@ -10,6 +10,9 @@ LC_ALL=C
 export LC_ALL
 export TZ=UTC
 
+# Suppress the post-mutation snapshot hook during tests
+export GAIA_SNAPSHOT_HOOK_DISABLE=1
+
 # Resolve SCRIPTS_DIR once. BATS_TEST_DIRNAME is set by bats to the dir of
 # the .bats file — tests/ — so scripts live one level up under scripts/.
 SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"

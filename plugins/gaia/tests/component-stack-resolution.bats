@@ -13,6 +13,7 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   CFG="$REPO_ROOT/.gaia/ci-config.yaml"
   DETECT="$REPO_ROOT/plugins/gaia/scripts/detect-affected.sh"

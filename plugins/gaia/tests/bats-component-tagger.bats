@@ -20,6 +20,7 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
   SCRIPTS="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
   TAGGER="$SCRIPTS/bats-component-tagger.sh"
   FIX="$BATS_TEST_TMPDIR/tests"

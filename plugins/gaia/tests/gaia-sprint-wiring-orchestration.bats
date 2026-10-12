@@ -6,6 +6,7 @@
 # Story: E93-S5. Traces to AC1, AC2, AC3, AC5, AC6.
 
 setup() {
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
   PLUGIN_DIR="${BATS_TEST_DIRNAME}/../skills"
   SPRINT_PLAN_SKILL="$PLUGIN_DIR/gaia-sprint-plan/SKILL.md"
   CORRECT_COURSE_SKILL="$PLUGIN_DIR/gaia-correct-course/SKILL.md"

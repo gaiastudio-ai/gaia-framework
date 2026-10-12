@@ -3578,6 +3578,9 @@ main() {
       -maxdepth 2 -name '*.tmp.??????' -mmin +60 -delete 2>/dev/null || true
   fi
 
+  local _dispatch_rc=0
+  set +e
+  ( set -e
   case "$subcmd" in
     init|advance)
       # Bootstrap a fresh sprint-status.yaml (init) or advance to the next
@@ -3686,6 +3689,58 @@ main() {
     rollover)
       cmd_rollover "$rollover_from" "$to_state" "$rollover_keys" ;;
   esac
+  )
+  _dispatch_rc=$?
+  set -e
+  [ "$_dispatch_rc" -eq 0 ] || exit "$_dispatch_rc"
+
+  # --- Post-mutation snapshot hook ---
+  # Best-effort, background, detached. Never fails the parent.
+  local _run_snapshot_hook=0
+  case "$subcmd" in
+    init|advance|transition|inject|set-phase|set-story-sprint|\
+    set-goals|update-goals|set-shape|set-review-justification|\
+    rollover|record-escalation-override)
+      _run_snapshot_hook=1 ;;
+    reconcile)
+      [ "${reconcile_dry_run:-0}" != "1" ] && _run_snapshot_hook=1 || _run_snapshot_hook=0 ;;
+    *) _run_snapshot_hook=0 ;;
+  esac
+  if [ "${_run_snapshot_hook:-0}" = "1" ] \
+     && [ "${GAIA_SNAPSHOT_HOOK_DISABLE:-}" != "1" ] \
+     && [ "${GAIA_SNAPSHOT_HOOK_ACTIVE:-}" != "1" ]; then
+    local _hook_dir
+    _hook_dir="$(cd "$(dirname "$0")" && pwd)"
+    local _hook_script=""
+    local _hook_plugin_root=""
+    # Probe: sibling (scripts/ copy) then three levels up (dev-story copy)
+    if [ -x "${_hook_dir}/sprint-progress-snapshot.sh" ]; then
+      _hook_script="${_hook_dir}/sprint-progress-snapshot.sh"
+    else
+      _hook_plugin_root="$(cd "${_hook_dir}/../../.." 2>/dev/null && pwd)" || true
+      if [ -n "${_hook_plugin_root:-}" ] \
+         && [ -x "${_hook_plugin_root}/scripts/sprint-progress-snapshot.sh" ]; then
+        _hook_script="${_hook_plugin_root}/scripts/sprint-progress-snapshot.sh"
+      fi
+    fi
+    if [ -n "$_hook_script" ]; then
+      # Source exec-with-timeout from the same relative probe
+      if [ -f "${_hook_dir}/lib/exec-with-timeout.sh" ]; then
+        # shellcheck source=lib/exec-with-timeout.sh
+        . "${_hook_dir}/lib/exec-with-timeout.sh"
+      elif [ -n "${_hook_plugin_root:-}" ] \
+           && [ -f "${_hook_plugin_root}/scripts/lib/exec-with-timeout.sh" ]; then
+        . "${_hook_plugin_root}/scripts/lib/exec-with-timeout.sh"
+      fi
+      if command -v exec_with_timeout >/dev/null 2>&1; then
+        (
+          export GAIA_SNAPSHOT_HOOK_ACTIVE=1
+          export PROJECT_ROOT SPRINT_STATUS_YAML
+          exec_with_timeout 10 "$_hook_script"
+        ) </dev/null >/dev/null 2>&1 &
+      fi
+    fi
+  fi || true
 
 }
 
