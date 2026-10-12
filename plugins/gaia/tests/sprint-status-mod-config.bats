@@ -82,12 +82,11 @@ _write_reconciler_fixture() {
     printf 'schema_version: "1.0.0"\n'
 
     local section
-    for section in \
-      ci_cd testing test_execution_bridge sprint review_gate \
-      team_conventions agent_customizations dev_story compliance \
-      tools test_execution severity gates stacks cross_service_tests \
-      environments sizing_map device_targets distribution \
-      health_check val_integration release; do
+    # Derive the section list from the canonical allowlist so this fixture
+    # cannot drift when a new section is added to config-hydration.sh.
+    local sections
+    sections="$(_get_hydration_array _CONFIG_HYDRATION_ALLOWLIST)"
+    for section in $sections; do
       case "$omit" in
         *" $section "*) ;;  # deliberately omitted
         *) printf '%s: {}\n' "$section" ;;
@@ -318,4 +317,43 @@ EOF
   local val
   val="$(jq -r '.properties.sprint_status_mod["x-no-auto-hydration"] // "absent"' "$SCHEMA")"
   [ "$val" = "true" ]
+}
+
+# ---------------------------------------------------------------------------
+# Type-constraint rejection tests — kill M9, M10, M11, M14
+# ---------------------------------------------------------------------------
+
+@test "fractional threshold is rejected (type integer, not number)" {
+  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
+  waiting_agent_threshold_seconds: 1.5')"
+}
+
+@test "string threshold is rejected" {
+  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
+  waiting_agent_threshold_seconds: "120"')"
+}
+
+@test "scalar string user_aliases is rejected (must be array)" {
+  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
+  user_aliases: "alice"')"
+}
+
+@test "non-string items in user_aliases are rejected" {
+  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
+  user_aliases:
+    - 1')"
+}
+
+@test "plain string for the whole section is rejected" {
+  _assert_validator_rejects "$(_write_config 'sprint_status_mod: some-string')"
+}
+
+# ---------------------------------------------------------------------------
+# Schema default assertion — kill M12
+# ---------------------------------------------------------------------------
+
+@test "schema default for waiting_agent_threshold_seconds is 120" {
+  local val
+  val="$(jq '.properties.sprint_status_mod.properties.waiting_agent_threshold_seconds.default' "$SCHEMA")"
+  [ "$val" = "120" ]
 }

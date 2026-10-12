@@ -111,59 +111,59 @@ _CONFIG_HYDRATION_ALLOWLIST=(
 #   enforced dynamically by config-hydration-allowlist-invariant.bats
 #   (forward + reverse invariants).
 _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
-  # Computed path/identity (5).
+  # Computed path/identity.
   project_root
   project_path
   memory_path
   checkpoint_path
   installed_path
-  # framework_version (1) — written by gaia-reconcile-v2.sh apply.
+  # framework_version — written by gaia-reconcile-v2.sh apply.
   framework_version
-  # date (1) — written by resolve-config.sh at runtime.
+  # date — written by resolve-config.sh at runtime.
   date
-  # State-machine (2).
+  # State-machine.
   config_phase
   schema_version
-  # User-identity (3).
+  # User-identity.
   user_name
   communication_language
   project_kind
-  # Artifact-bucket paths (4).
+  # Artifact-bucket paths.
   planning_artifacts
   implementation_artifacts
   test_artifacts
   creative_artifacts
-  # project_shape (1): back-compat shim. NOT a current schema property — the
+  # project_shape: back-compat shim. NOT a current schema property — the
   # init questionnaire uses a free-text `project_shape` input field (consumed
   # transiently by generate-config.sh, never persisted), and some reconciler
   # test fixtures still declare it. Retained here so those callers do not trip
   # the reconciler's hard-error path. The persisted, operator-managed shape key
   # is `deployment_model` (below).
   project_shape
-  # deployment_model (1): operator-managed declarative deployment-model signal.
+  # deployment_model: operator-managed declarative deployment-model signal.
   # A real schema property (closed enum) that carries `x-no-auto-hydration:
   # true` in the schema as defense-in-depth; this entry registers it for the
   # reconciler's managed-elsewhere check. Never auto-hydrated by the
   # reconciler — operators declare the deployment model explicitly.
   deployment_model
-  # sprint_review (1): human-managed exclusively via /gaia-config-sprint-review;
+  # sprint_review: human-managed exclusively via /gaia-config-sprint-review;
   # never auto-hydrated by the reconciler.
   sprint_review
-  # lifecycle (1): operator-managed (lifecycle.strict_mode default-ON).
+  # lifecycle: operator-managed (lifecycle.strict_mode default-ON).
   # Never auto-hydrated by the reconciler — operators opt in/out explicitly.
   # The schema property also carries `x-no-auto-hydration: true` as
   # defense-in-depth documentation.
   lifecycle
-  # brownfield (1): operator-managed via /gaia-config-brownfield and feeds
+  # brownfield: operator-managed via /gaia-config-brownfield and feeds
   # /gaia-doctor's tier classifier. Never auto-hydrated by the reconciler.
   # The schema property carries `x-no-auto-hydration: true` as
   # defense-in-depth documentation; this entry registers it for the
   # reconciler's managed-elsewhere check.
   brownfield
-  # test_policy (1): operator-managed per-trigger scope rules;
+  # test_policy: operator-managed per-trigger scope rules;
   # x-no-auto-hydration. Never auto-hydrated by the reconciler.
   test_policy
-  # parallel_execution (1): operator-managed concurrency budget. Never
+  # parallel_execution: operator-managed concurrency budget. Never
   # auto-hydrated, because an empty stub would mean exactly what the section's
   # ABSENCE already means (the default budget) while adding a key to every
   # project config. The effective values are applied at the read site, not
@@ -172,7 +172,7 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # as defense-in-depth documentation; this entry registers it for the
   # reconciler's managed-elsewhere check.
   parallel_execution
-  # sprint_status_mod (1): operator-managed user alias list and waiting-agent
+  # sprint_status_mod: operator-managed user alias list and waiting-agent
   # threshold. Never auto-hydrated, because an empty stub would mean exactly
   # what the section's ABSENCE already means (built-in defaults) while adding
   # a key to every project config. The effective values are applied at the
