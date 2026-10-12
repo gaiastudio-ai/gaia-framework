@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=config
 # sprint-status-mod-config.bats — schema surface, hydration classification,
 # reconciler skip behaviour, and config-show extract for the sprint_status_mod
 # config section.
@@ -55,13 +56,28 @@ _assert_schema_declares() {
   jq -e '.properties | has("sprint_status_mod")' "$SCHEMA" >/dev/null
 }
 
-# _assert_validator_rejects <config-yaml> — run the validator on a config that
-# must be rejected. Asserts exit 1 AND that the validator used a full schema
-# engine (not the degraded jq-only path, which cannot enforce constraints like
-# additionalProperties, minLength, or minimum).
+# _assert_validator_rejects <config-yaml> [expected-field] — run the validator
+# on a config that must be rejected. Asserts exit 1, that the validator used a
+# full schema engine (not the degraded jq-only path), and optionally that the
+# error output names the expected field.
 _assert_validator_rejects() {
-  run "$VALIDATOR" "$1"
+  local cfg="$1"
+  local expected_field="${2:-}"
+  run "$VALIDATOR" "$cfg"
   [ "$status" -eq 1 ]
+  [[ "$output" != *"PASS (DEGRADED)"* ]]
+  if [ -n "$expected_field" ]; then
+    [[ "$output" == *"$expected_field"* ]]
+  fi
+}
+
+# _assert_validator_passes <config-yaml> — run the validator on a config that
+# must pass. Asserts exit 0 AND a full (non-degraded) PASS so tests cannot
+# vacuously pass on a runner without a schema engine.
+_assert_validator_passes() {
+  run "$VALIDATOR" "$1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS"* ]]
   [[ "$output" != *"PASS (DEGRADED)"* ]]
 }
 
@@ -84,12 +100,17 @@ _write_reconciler_fixture() {
     local section
     # Derive the section list from the canonical allowlist so this fixture
     # cannot drift when a new section is added to config-hydration.sh.
+    # ci_platform and platforms are in the allowlist but have explicit typed
+    # values below, so skip them here to avoid duplicate YAML keys.
     local sections
     sections="$(_get_hydration_array _CONFIG_HYDRATION_ALLOWLIST)"
     for section in $sections; do
       case "$omit" in
         *" $section "*) ;;  # deliberately omitted
-        *) printf '%s: {}\n' "$section" ;;
+        *) case "$section" in
+             ci_platform|platforms) ;;  # written below with typed values
+             *) printf '%s: {}\n' "$section" ;;
+           esac ;;
       esac
     done
 
@@ -124,9 +145,7 @@ _get_hydration_array() {
     - alice
     - bob
   waiting_agent_threshold_seconds: 60')"
-  run "$VALIDATOR" "$cfg"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"PASS"* ]]
+  _assert_validator_passes "$cfg"
 }
 
 # ---------------------------------------------------------------------------
@@ -136,7 +155,7 @@ _get_hydration_array() {
 @test "unknown key inside sprint_status_mod is rejected" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
   user_aliases: []
-  unknown_key: true')"
+  unknown_key: true')" "sprint_status_mod"
 }
 
 # ---------------------------------------------------------------------------
@@ -148,9 +167,7 @@ _get_hydration_array() {
 
   local cfg
   cfg="$(_write_config 'sprint_status_mod:')"
-  run "$VALIDATOR" "$cfg"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"PASS"* ]]
+  _assert_validator_passes "$cfg"
 }
 
 # ---------------------------------------------------------------------------
@@ -162,9 +179,20 @@ _get_hydration_array() {
 
   local cfg
   cfg="$(_write_config 'sprint_status_mod: {}')"
-  run "$VALIDATOR" "$cfg"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"PASS"* ]]
+  _assert_validator_passes "$cfg"
+}
+
+# ---------------------------------------------------------------------------
+# Scenario 3c: empty user_aliases array accepted (disables alias matching)
+# ---------------------------------------------------------------------------
+
+@test "empty user_aliases array is accepted" {
+  _assert_schema_declares
+
+  local cfg
+  cfg="$(_write_config 'sprint_status_mod:
+  user_aliases: []')"
+  _assert_validator_passes "$cfg"
 }
 
 # ---------------------------------------------------------------------------
@@ -174,7 +202,7 @@ _get_hydration_array() {
 @test "empty string in user_aliases is rejected" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
   user_aliases:
-    - ""')"
+    - ""')" "user_aliases"
 }
 
 # ---------------------------------------------------------------------------
@@ -184,9 +212,7 @@ _get_hydration_array() {
 @test "absent sprint_status_mod section validates" {
   local cfg
   cfg="$(_write_config 'project_name: demo')"
-  run "$VALIDATOR" "$cfg"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"PASS"* ]]
+  _assert_validator_passes "$cfg"
 }
 
 @test "reconciler does not write a sprint_status_mod stub" {
@@ -233,6 +259,28 @@ _get_hydration_array() {
   [ "$pre_line" = "$post_line" ]
 }
 
+@test "reconciler preserves bare sprint_status_mod key (null) without injecting a stub" {
+  _assert_schema_declares
+
+  local tmpdir="$TEST_TMP/reconciler-bare-key"
+  _write_reconciler_fixture "$tmpdir"
+
+  # Append a bare key (YAML null) — the reconciler must leave it alone.
+  printf 'sprint_status_mod:\n' >> "$tmpdir/config/project-config.yaml"
+
+  cd "$tmpdir"
+  run env CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$RECONCILER" apply --project-root . --yes
+  printf 'reconciler output:\n%s\n' "$output" >&2
+  [ "$status" -eq 0 ]
+
+  # The bare key must still be present and unchanged.
+  grep -Fxq 'sprint_status_mod:' "$tmpdir/config/project-config.yaml"
+
+  # No stub object must have been injected.
+  run grep -c 'sprint_status_mod' "$tmpdir/config/project-config.yaml"
+  [ "$output" = "1" ]
+}
+
 # ---------------------------------------------------------------------------
 # Scenario 5: threshold of 0 accepted
 # ---------------------------------------------------------------------------
@@ -243,9 +291,7 @@ _get_hydration_array() {
   local cfg
   cfg="$(_write_config 'sprint_status_mod:
   waiting_agent_threshold_seconds: 0')"
-  run "$VALIDATOR" "$cfg"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"PASS"* ]]
+  _assert_validator_passes "$cfg"
 }
 
 # ---------------------------------------------------------------------------
@@ -254,7 +300,7 @@ _get_hydration_array() {
 
 @test "negative waiting_agent_threshold_seconds is rejected" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: -1')"
+  waiting_agent_threshold_seconds: -1')" "waiting_agent_threshold_seconds"
 }
 
 # ---------------------------------------------------------------------------
@@ -309,7 +355,12 @@ EOF
 }
 
 @test "sprint_status_mod is NOT in the auto-hydration allowlist" {
-  run grep -Fxc "sprint_status_mod" <<<"$(_get_hydration_array _CONFIG_HYDRATION_ALLOWLIST)"
+  local entries
+  entries="$(_get_hydration_array _CONFIG_HYDRATION_ALLOWLIST)"
+  # Guard against vacuously passing on an empty list (e.g. if source errors
+  # are swallowed). A known stable member must be present.
+  grep -Fxq "release" <<<"$entries"
+  run grep -Fxc "sprint_status_mod" <<<"$entries"
   [ "$output" = "0" ]
 }
 
@@ -320,36 +371,38 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Type-constraint rejection tests — kill M9, M10, M11, M14
+# Type-constraint rejection tests — guards against the threshold accepting
+# fractional numbers or strings, aliases accepting non-array or non-string
+# types, and the section accepting bare scalars.
 # ---------------------------------------------------------------------------
 
 @test "fractional threshold is rejected (type integer, not number)" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: 1.5')"
+  waiting_agent_threshold_seconds: 1.5')" "waiting_agent_threshold_seconds"
 }
 
 @test "string threshold is rejected" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: "120"')"
+  waiting_agent_threshold_seconds: "120"')" "waiting_agent_threshold_seconds"
 }
 
 @test "scalar string user_aliases is rejected (must be array)" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
-  user_aliases: "alice"')"
+  user_aliases: "alice"')" "user_aliases"
 }
 
 @test "non-string items in user_aliases are rejected" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
   user_aliases:
-    - 1')"
+    - 1')" "user_aliases"
 }
 
 @test "plain string for the whole section is rejected" {
-  _assert_validator_rejects "$(_write_config 'sprint_status_mod: some-string')"
+  _assert_validator_rejects "$(_write_config 'sprint_status_mod: some-string')" "sprint_status_mod"
 }
 
 # ---------------------------------------------------------------------------
-# Schema default assertion — kill M12
+# Schema default assertion — pins the built-in threshold to the documented value.
 # ---------------------------------------------------------------------------
 
 @test "schema default for waiting_agent_threshold_seconds is 120" {
