@@ -1,7 +1,11 @@
 #!/usr/bin/env bats
 # sprint-progress-snapshot-perf.bats — performance budget tests for the sprint
-# progress snapshot: cold < 1.5 s, warm < 200 ms (exact, no CI multiplier),
-# and batched find resolution on a realistic tree.
+# progress snapshot: cold < 1.5 s, warm < 200 ms (exact budgets, no CI
+# multiplier), measured as the MEDIAN of 5 runs per mode; batched find
+# resolution on a realistic tree; a realistic action-items registry; and a
+# 300-story sprint that must finish inside the 10 s hook timeout.
+
+# bats file_tags=sprint-progress,perf
 
 load 'test_helper.bash'
 
@@ -19,6 +23,7 @@ setup() {
   mkdir -p "$IMPL"
   CACHE="$PROJECT_ROOT/.gaia/state/.sprint-progress-cache.json"
   SIDECAR="$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
+  PARSED="$PROJECT_ROOT/.gaia/state/.sprint-progress-parsed"
   export SPRINT_STATUS_YAML="$PROJECT_ROOT/.gaia/state/sprint-status.yaml"
 }
 teardown() { common_teardown; }
@@ -53,153 +58,119 @@ _elapsed_ms() {
   printf '%s' "$(( (end - start) / 1000000 ))"
 }
 
-# ---------------------------------------------------------------------------
-# Fixture generator — 30-story sprint with realistic structure
-# ---------------------------------------------------------------------------
+# _median N... — print the median of the given integers.
+_median() {
+  printf '%s\n' "$@" | sort -n | awk '{ v[NR] = $1 } END { print v[int((NR + 1) / 2)] }'
+}
 
-_generate_30_story_sprint() {
-  local statuses=("done" "in-progress" "review" "blocked" "ready-for-dev")
-  local yaml_stories=""
-  local total_pts=0
-  local i key status pts
-
-  for i in $(seq 1 30); do
-    key="E900-S${i}"
-    status="${statuses[$(( (i - 1) % 5 ))]}"
-    pts=$(( (i % 8) + 1 ))
-    total_pts=$((total_pts + pts))
-
-    # Create story file
-    local slug
-    slug="$(echo "$key" | tr '[:upper:]' '[:lower:]')-perf"
-    local dir="$IMPL/epic-perf/${key}-${slug}"
-    mkdir -p "$dir"
-    cat > "$dir/story.md" <<EOF
----
-template: 'story'
-key: "${key}"
-title: "Performance test story ${i} with enough text to exercise parsing"
-status: ${status}
-points: ${pts}
-manual_verification: false
-depends_on: []
----
-
-# Story: ${key}
-
-> **Status:** ${status}
-
-## Tasks / Subtasks
-
-- [x] Task 1: Build the component
-- [ ] Task 2: Wire integration
-- [x] Task 3: Write unit tests
-- [ ] Task 4: Review and polish
-- [x] Task 5: Update docs
-
-## Review Gate
-
-| Review | Status | Report |
-|--------|--------|--------|
-| Code Review | PASSED | — |
-| QA Tests | PASSED | — |
-| Security Review | PASSED | — |
-| Test Automation | PASSED | — |
-| Test Review | UNVERIFIED | — |
-| Performance Review | UNVERIFIED | — |
-
-## Definition of Done
-
-- [x] All done
-EOF
-
-    yaml_stories="${yaml_stories}
-  - key: \"${key}\"
-    title: \"Performance test story ${i}\"
-    status: \"${status}\"
-    points: ${pts}
-    risk_level: \"medium\"
-    assignee: null
-    blocked_by: null
-    updated: \"2026-10-01\"
-    phase: $(( (i - 1) / 10 + 1 ))"
+# _time_runs MODE RUNS — run the snapshot RUNS times and print the elapsed
+# milliseconds of each run on one line.  MODE "cold" removes the cache,
+# sidecar and parse cache before every run; "warm" leaves them in place.
+_time_runs() {
+  local mode="$1" runs="$2" i t0 t1 out=""
+  for i in $(seq 1 "$runs"); do
+    if [ "$mode" = "cold" ]; then
+      rm -f "$CACHE" "$SIDECAR" "$PARSED"
+    fi
+    t0="$(_now_ns)"
+    "$SCRIPT" >/dev/null 2>&1 || return 1
+    t1="$(_now_ns)"
+    out="${out:+$out }$(_elapsed_ms "$t0" "$t1")"
   done
+  printf '%s' "$out"
+}
 
-  cat > "$SPRINT_STATUS_YAML" <<EOF
-sprint_id: "sprint-perf"
-status: active
-start_date: "2026-10-01"
-end_date: "2026-10-14"
-total_points: ${total_pts}
-velocity_capacity: 120
-goals:
-  - "Performance validation"
-stories:${yaml_stories}
-EOF
+# _report LABEL BUDGET SAMPLES... — print samples + median to the TAP stream.
+_report() {
+  local label="$1" budget="$2"; shift 2
+  printf '# %s: runs(ms)=[%s] median=%s ms budget=%s ms\n' \
+    "$label" "$*" "$(_median "$@")" "$budget" >&3
+}
+
+# backdate_tree — fixture files older than the run, so the warm path is not
+# defeated by files written in the snapshot's own second.
+backdate_tree() {
+  find "$PROJECT_ROOT" -type f -exec touch -t 202610010000 {} + 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
-# Performance budget tests
+# Fixture generator — N-story sprint with realistic structure
+# ---------------------------------------------------------------------------
+
+_generate_sprint() {
+  local count="${1:-30}"
+  # One awk process writes every story file, the ledger and the yaml (a
+  # shell loop of thousands of printf calls is slow under bats' tracing).
+  awk -v n="$count" -v impl="$IMPL" -v yaml="$SPRINT_STATUS_YAML" \
+      -v ledger="$PROJECT_ROOT/.gaia/state/.review-gate-ledger" '
+  BEGIN {
+    split("done in-progress review blocked ready-for-dev", sts, " ")
+    total = 0; ys = ""
+    for (i = 1; i <= n; i++) {
+      key = "E900-S" i; st = sts[((i - 1) % 5) + 1]; pts = (i % 8) + 1; total += pts
+      dir = impl "/epic-perf/" key "-e900-s" i "-perf"
+      system("mkdir -p \"" dir "\"")
+      f = dir "/story.md"
+      printf "---\ntemplate: '\''story'\''\nkey: \"%s\"\ntitle: \"Performance test story %d; with enough text to exercise parsing\"\nstatus: %s\npoints: %d\nmanual_verification: true\ndepends_on: []\n---\n\n# Story: %s\n\n> **Status:** %s\n\n## Acceptance Criteria\n\n", key, i, st, pts, key, st > f
+      for (a = 1; a <= 8; a++) printf "- [ ] **AC%d:** Given a context, when an action; then a result.\n", a > f
+      printf "\n## Tasks / Subtasks\n\n" > f
+      for (t = 1; t <= 12; t++) printf "- [%s] Task %d: do this; then that\n  - [x] %d.1 subtask\n", (t % 2 ? " " : "x"), t, t > f
+      printf "\n## Dev Notes\n\n" > f
+      for (l = 1; l <= 120; l++) printf "Dev note line %d with some text.\n", l > f
+      printf "\n## Review Gate\n\n| Review | Status | Report |\n|--------|--------|--------|\n| Code Review | PASSED | — |\n| QA Tests | PASSED | — |\n| Security Review | PASSED | — |\n| Test Automation | PASSED | — |\n| Test Review | UNVERIFIED | — |\n| Performance Review | UNVERIFIED | — |\n\n## Definition of Done\n\n- [x] All done\n" > f
+      close(f)
+      printf "%s\tmanual-test\tplan-1\tUNVERIFIED\n", key > ledger
+      ys = ys sprintf("  - key: \"%s\"\n    title: \"Performance test story %d\"\n    status: \"%s\"\n    points: %d\n    risk_level: \"medium\"\n    assignee: null\n    blocked_by: null\n    phase: %d\n", key, i, st, pts, int((i - 1) / 10) + 1)
+    }
+    printf "sprint_id: \"sprint-perf\"\nstatus: active\nstart_date: \"2026-10-01\"\nend_date: \"2026-10-14\"\ntotal_points: %d\nvelocity_capacity: 120\ngoals:\n  - \"Performance validation\"\nstories:\n%s", total, ys > yaml
+  }'
+}
+
+_generate_30_story_sprint() { _generate_sprint 30; }
+
+# _generate_registry N — action-items registry of N items, about half open
+# or in progress, a mix of assignees (some matching the default "user" alias).
+_generate_registry() {
+  awk -v n="$1" 'BEGIN {
+    split("open in-progress resolved done", sts, " ")
+    print "items:"
+    for (i = 1; i <= n; i++) {
+      asn = (i % 5 == 0) ? "user" : "agent-" (i % 7)
+      printf "  - id: \"AI-9%03d\"\n    title: \"Follow-up item %d; check the logs\"\n    type: \"process\"\n    status: \"%s\"\n    assignee: \"%s\"\n    created_at: \"2026-09-%02d\"\n    context_for_target: \"Some longer context text for item %d\"\n", i, i, sts[(i % 4) + 1], asn, (i % 28) + 1, i
+    }
+  }' > "$PROJECT_ROOT/.gaia/state/action-items.yaml"
+}
+
+# ---------------------------------------------------------------------------
+# Performance budget tests (median of 5, exact budgets)
 # ---------------------------------------------------------------------------
 
 @test "cold run under 1.5 seconds with 30 story fixtures" {
   _generate_30_story_sprint
-
-  # Best of 3 runs to absorb scheduler noise
-  local best_ms=999999
-  local attempt
-  for attempt in 1 2 3; do
-    # Remove cache and sidecar for a cold start
-    rm -f "$CACHE" "$SIDECAR"
-
-    local t_start t_end elapsed
-    t_start="$(_now_ns)"
-    run "$SCRIPT"
-    t_end="$(_now_ns)"
-    [ "$status" -eq 0 ]
-
-    elapsed="$(_elapsed_ms "$t_start" "$t_end")"
-    if [ "$elapsed" -lt "$best_ms" ]; then
-      best_ms="$elapsed"
-    fi
-  done
-
-  # Budget: cold < 1500 ms (exact, no CI multiplier)
-  printf 'Best cold run: %s ms (budget: 1500 ms)\n' "$best_ms"
-  [ "$best_ms" -lt 1500 ]
-
-  # Validate the cache is complete
+  backdate_tree
+  local samples
+  samples="$(_time_runs cold 5)"
+  # shellcheck disable=SC2086
+  _report "cold 30 stories" 1500 $samples
+  # shellcheck disable=SC2086
+  [ "$(_median $samples)" -lt 1500 ]
   [ "$(jq '.totals.total_stories' "$CACHE")" = "30" ]
 }
 
 @test "warm run under 200 milliseconds with unchanged files" {
   _generate_30_story_sprint
-
-  # Cold run to prime the cache and sidecar
+  backdate_tree
+  # Prime the cache and sidecar.
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ -f "$CACHE" ]
   [ -f "$SIDECAR" ]
-
-  # Best of 3 warm runs
-  local best_ms=999999
-  local attempt
-  for attempt in 1 2 3; do
-    local t_start t_end elapsed
-    t_start="$(_now_ns)"
-    run "$SCRIPT"
-    t_end="$(_now_ns)"
-    [ "$status" -eq 0 ]
-
-    elapsed="$(_elapsed_ms "$t_start" "$t_end")"
-    if [ "$elapsed" -lt "$best_ms" ]; then
-      best_ms="$elapsed"
-    fi
-  done
-
-  # Budget: warm < 200 ms (exact, no CI multiplier)
-  printf 'Best warm run: %s ms (budget: 200 ms)\n' "$best_ms"
-  [ "$best_ms" -lt 200 ]
+  local samples
+  samples="$(_time_runs warm 5)"
+  # shellcheck disable=SC2086
+  _report "warm 30 stories" 200 $samples
+  # shellcheck disable=SC2086
+  [ "$(_median $samples)" -lt 200 ]
 }
 
 @test "batched find resolves paths in realistic tree of thousands of files" {
@@ -209,38 +180,44 @@ EOF
   # the batched find resolution
   local decoy_dir="$IMPL/epic-decoy"
   mkdir -p "$decoy_dir"
-  local j
+  local j k
   for j in $(seq 1 200); do
     mkdir -p "$decoy_dir/noise-${j}"
-    # 10 .md files per directory = 2000 total decoy files
-    local k
     for k in $(seq 1 10); do
       printf -- '---\ntemplate: other\n---\n# Noise\n' > "$decoy_dir/noise-${j}/file-${k}.md"
     done
   done
+  backdate_tree
 
-  # Cold run on the expanded tree
-  rm -f "$CACHE" "$SIDECAR"
-
-  local best_ms=999999
-  local attempt
-  for attempt in 1 2 3; do
-    rm -f "$CACHE" "$SIDECAR"
-    local t_start t_end elapsed
-    t_start="$(_now_ns)"
-    run "$SCRIPT"
-    t_end="$(_now_ns)"
-    [ "$status" -eq 0 ]
-
-    elapsed="$(_elapsed_ms "$t_start" "$t_end")"
-    if [ "$elapsed" -lt "$best_ms" ]; then
-      best_ms="$elapsed"
-    fi
-  done
-
-  # Still within cold budget even with thousands of decoy files
-  printf 'Best cold run with %s decoy files: %s ms (budget: 1500 ms)\n' \
-    "2000" "$best_ms"
-  [ "$best_ms" -lt 1500 ]
+  local samples
+  samples="$(_time_runs cold 5)"
+  # shellcheck disable=SC2086
+  _report "cold 30 stories + 2000 decoy files" 1500 $samples
+  # shellcheck disable=SC2086
+  [ "$(_median $samples)" -lt 1500 ]
   [ "$(jq '.totals.total_stories' "$CACHE")" = "30" ]
+}
+
+@test "cold run under 1.5 seconds with a realistic action-items registry" {
+  _generate_30_story_sprint
+  _generate_registry 270
+  backdate_tree
+  local samples
+  samples="$(_time_runs cold 5)"
+  # shellcheck disable=SC2086
+  _report "cold 30 stories + 270-item registry" 1500 $samples
+  # shellcheck disable=SC2086
+  [ "$(_median $samples)" -lt 1500 ]
+  [ "$(jq '[.action_needed[] | select(.rule == "c")] | length' "$CACHE")" -gt 0 ]
+}
+
+@test "300-story sprint finishes inside the 10 second hook timeout" {
+  _generate_sprint 300
+  _generate_registry 270
+  backdate_tree
+  local samples
+  samples="$(_time_runs cold 1)"
+  _report "cold 300 stories + 270-item registry" 10000 "$samples"
+  [ "$samples" -lt 10000 ]
+  [ "$(jq '.totals.total_stories' "$CACHE")" = "300" ]
 }

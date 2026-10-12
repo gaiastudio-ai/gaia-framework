@@ -3,6 +3,8 @@
 # sprint progress snapshot: single-writer sweep, command allowlist, story-key
 # validation, realpath containment, and single-flight lock (flock + fallback).
 
+# bats file_tags=sprint-progress,security
+
 load 'test_helper.bash'
 
 bats_require_minimum_version 1.5.0
@@ -106,59 +108,62 @@ depends_on: []
 EOF
 }
 
+# backdate_tree — move every fixture file's mtime well into the past, so a
+# snapshot run does not treat it as written in its own second (such files
+# are deliberately re-read by the next run).
+backdate_tree() {
+  find "$PROJECT_ROOT" -type f -exec touch -t 202610010000 {} + 2>/dev/null || true
+}
+
 # ---------------------------------------------------------------------------
 # Single-writer enforcement sweep
 # ---------------------------------------------------------------------------
 
+# _cache_writer_sweep ROOT — print every plugin source file under ROOT's
+# scripts/, hooks/ and skills/ (tests excluded) that names the cache file.
+# Shared by the real sweep and the planted-writer check below.
+_cache_writer_sweep() {
+  local root="$1" d
+  local -a dirs=()
+  for d in scripts hooks skills; do [ -d "$root/$d" ] && dirs+=("$root/$d/"); done
+  grep -rlF '.sprint-progress-cache.json' "${dirs[@]}" \
+    --include='*.sh' --include='*.bash' --include='*.js' --include='*.mjs' \
+    --include='*.cjs' --include='*.ts' --include='*.py' 2>/dev/null \
+    | grep -v '/tests/' | grep -v '__tests__' || true
+}
+
+# _sweep_scanned_count ROOT — how many candidate files the sweep looked at.
+_sweep_scanned_count() {
+  find "$1/scripts" "$1/hooks" "$1/skills" -type f \( -name '*.sh' -o -name '*.bash' \
+    -o -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' -o -name '*.py' \) \
+    2>/dev/null | grep -v '/tests/' | wc -l | tr -d ' '
+}
+
 @test "single-writer sweep finds only snapshot script" {
-  # Scan plugin scripts/, hooks/, skills/ (excl. tests/) for writes to the cache file
-  local cache_name=".sprint-progress-cache.json"
+  [ "$(_sweep_scanned_count "$PLUGIN_ROOT")" -gt 0 ]
   local writers
-  writers="$(grep -rl "$cache_name" \
-    "$PLUGIN_ROOT/scripts/" \
-    "$PLUGIN_ROOT/hooks/" \
-    "$PLUGIN_ROOT/skills/" \
-    --include='*.sh' --include='*.js' --include='*.ts' \
-    2>/dev/null \
-    | grep -v '/tests/' \
-    | grep -v '__tests__' \
-    || true)"
-
-  # Must have scanned >0 files
-  local scanned
-  scanned="$(find "$PLUGIN_ROOT/scripts/" "$PLUGIN_ROOT/skills/" \
-    -name '*.sh' -o -name '*.js' -o -name '*.ts' 2>/dev/null | grep -v '/tests/' | wc -l)"
-  [ "$scanned" -gt 0 ]
-
-  # Only sprint-progress-snapshot.sh should match
+  writers="$(_cache_writer_sweep "$PLUGIN_ROOT")"
   [ -n "$writers" ]
-  local count
-  count="$(echo "$writers" | wc -l | tr -d ' ')"
-  [ "$count" -eq 1 ]
-  grep -q "sprint-progress-snapshot.sh" <<< "$writers"
+  [ "$(printf '%s\n' "$writers" | wc -l | tr -d ' ')" -eq 1 ]
+  [ "$(basename "$writers")" = "sprint-progress-snapshot.sh" ]
 }
 
 @test "single-writer sweep mutant turns red when second writer planted" {
-  local cache_name=".sprint-progress-cache.json"
-  # Plant a mutant writer in a temp copy of scripts/
-  local mutant_dir="$TEST_TMP/mutant-scripts"
-  mkdir -p "$mutant_dir"
-  printf '# mutant\necho test > .gaia/state/%s\n' "$cache_name" > "$mutant_dir/rogue-writer.sh"
+  # Copy the real plugin source tree and plant a second writer in each
+  # language the sweep covers, then run the SAME sweep helper over the copy.
+  local copy="$TEST_TMP/plugin-copy"
+  mkdir -p "$copy"
+  cp -R "$PLUGIN_ROOT/scripts" "$PLUGIN_ROOT/skills" "$copy/"
+  [ -d "$PLUGIN_ROOT/hooks" ] && cp -R "$PLUGIN_ROOT/hooks" "$copy/"
+  [ "$(_cache_writer_sweep "$copy" | wc -l | tr -d ' ')" -eq 1 ]
 
-  # Scan including the mutant dir
-  local writers
-  writers="$(grep -rl "$cache_name" \
-    "$PLUGIN_ROOT/scripts/" \
-    "$mutant_dir/" \
-    --include='*.sh' \
-    2>/dev/null \
-    | grep -v '/tests/' \
-    || true)"
-
-  # Should find >1 writer (mutant + real)
-  local count
-  count="$(echo "$writers" | wc -l | tr -d ' ')"
-  [ "$count" -gt 1 ]
+  local ext
+  for ext in sh py mjs; do
+    mkdir -p "$copy/hooks"
+    printf 'write(".gaia/state/.sprint-progress-cache.json")\n' > "$copy/hooks/rogue-writer.$ext"
+    [ "$(_cache_writer_sweep "$copy" | wc -l | tr -d ' ')" -eq 2 ]
+    rm -f "$copy/hooks/rogue-writer.$ext"
+  done
 }
 
 # ---------------------------------------------------------------------------
@@ -337,6 +342,32 @@ EOF
   grep -qi "INVALID-KEY\|skipp" <<< "$output"
 }
 
+@test "story-key validation is anchored at both ends" {
+  cat > "$SPRINT_STATUS_YAML" <<'EOF'
+sprint_id: "sprint-test"
+status: active
+stories:
+  - key: "E900-S1"
+    status: "in-progress"
+  - key: "xE900-S2"
+    status: "in-progress"
+  - key: "E900-S3x"
+    status: "in-progress"
+EOF
+  write_story E900-S1 in-progress 5
+  # Story directories exist for the near-miss keys, so only the key check can
+  # keep them out.
+  mkdir -p "$IMPL/epic-test/xE900-S2-near" "$IMPL/epic-test/E900-S3x-near"
+  cp "$IMPL/epic-test/E900-S1-e900-s1-enf/story.md" "$IMPL/epic-test/xE900-S2-near/story.md"
+  cp "$IMPL/epic-test/E900-S1-e900-s1-enf/story.md" "$IMPL/epic-test/E900-S3x-near/story.md"
+
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'skipping invalid story key: xE900-S2' <<< "$stderr"
+  grep -q 'skipping invalid story key: E900-S3x' <<< "$stderr"
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S1"]' ]
+}
+
 # ---------------------------------------------------------------------------
 # Realpath containment
 # ---------------------------------------------------------------------------
@@ -411,14 +442,86 @@ EOF
   [ "$(jq '[.stories[] | select(.key == "E900-S1")] | length' "$CACHE")" = "1" ]
 }
 
-@test "realpath guard handles missing file on BSD" {
-  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+@test "realpath containment follows a two-hop symlink chain out of the root" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5" "E900-S2:in-progress:3"
   write_story E900-S1 done 5
-
-  # The script should NOT crash when realpath encounters a missing file
-  # (BSD realpath fails on non-existent paths)
+  write_story E900-S2 in-progress 3
+  backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
+  [ "$(jq '[.stories[] | select(.key == "E900-S2")] | length' "$CACHE")" = "1" ]
+
+  # Replace E900-S2's story with: story.md -> inner (inside the root) ->
+  # secret outside the root.  The yaml is unchanged, so the cached sidecar
+  # path is reused and the containment check is the only guard.
+  local dir="$IMPL/epic-test/E900-S2-e900-s2-enf"
+  local outside="$TEST_TMP/outside-chain"; mkdir -p "$outside"
+  printf -- '---\nkey: "E900-S2"\ntitle: "ESCAPED TWO HOP"\nstatus: review\npoints: 3\n---\n' > "$outside/secret.md"
+  rm -f "$dir/story.md"
+  ln -s "$outside/secret.md" "$dir/inner"
+  ln -s inner "$dir/story.md"
+
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  jq -e . "$CACHE" >/dev/null
+  grep -q 'escapes project root for E900-S2' <<< "$stderr"
+  [ "$(jq '[.stories[] | select(.key == "E900-S2")] | length' "$CACHE")" = "0" ]
+  run grep -c 'ESCAPED TWO HOP' "$CACHE"
+  [ "$output" = "0" ]
+}
+
+@test "realpath helper resolves every hop and refuses missing targets" {
+  local d="$TEST_TMP/rp"; mkdir -p "$d/a" "$d/b"
+  echo x > "$d/b/target"
+  ln -s ../b/target "$d/a/hop2"
+  ln -s hop2 "$d/a/hop1"
+  local phys; phys="$(cd "$d/b" && pwd -P)/target"
+  run bash -c ". '$SCRIPT'; _realpath_one '$d/a/hop1'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$phys" ]
+  # Dangling chain: no path is produced (BSD-safe guard on missing targets).
+  ln -s nowhere "$d/a/dangling"
+  run bash -c ". '$SCRIPT'; _realpath_one '$d/a/dangling'"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+  # The batch form keeps one line per argument, in order, with a blank line
+  # for the unresolvable one.
+  run bash -c ". '$SCRIPT'; _realpath_batch '$d/a/hop1' '$d/a/dangling' '$d/b/target'"
+  [ "$(printf '%s\n' "$output" | sed -n 1p)" = "$phys" ]
+  [ "$(printf '%s\n' "$output" | sed -n 2p)" = "?" ]
+  [ "$(printf '%s\n' "$output" | sed -n 3p)" = "$phys" ]
+}
+
+@test "story file missing between resolution and parse is skipped with a warning" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5" "E900-S2:in-progress:3"
+  write_story E900-S1 done 5
+  write_story E900-S2 in-progress 3
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  # Cached path for E900-S2 now points at a dangling symlink.
+  local sf="$IMPL/epic-test/E900-S2-e900-s2-enf/story.md"
+  rm -f "$sf"; ln -s "$TEST_TMP/gone.md" "$sf"
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  jq -e . "$CACHE" >/dev/null
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S1"]' ]
+  grep -q 'E900-S2' <<< "$stderr"
+}
+
+@test "lock works for a project path containing a single quote" {
+  local q="$TEST_TMP/it's a project"
+  mkdir -p "$q/.gaia/state" "$q/.gaia/artifacts/implementation-artifacts"
+  local probe="$TEST_TMP/EVAL_PWNED"
+  local evil="$TEST_TMP/proj'\$(touch $probe)'x"
+  mkdir -p "$evil/.gaia/state"
+  for root in "$q" "$evil"; do
+    printf 'sprint_id: "s"\nstatus: active\nstories: []\n' > "$root/.gaia/state/sprint-status.yaml"
+    PROJECT_ROOT="$root" SPRINT_STATUS_YAML="$root/.gaia/state/sprint-status.yaml" run "$SCRIPT"
+    [ "$status" -eq 0 ]
+    jq -e . "$root/.gaia/state/.sprint-progress-cache.json" >/dev/null
+  done
+  [ ! -e "$probe" ]
+  [ "$(grep -v '^[[:space:]]*#' "$SCRIPT" | grep -cw 'eval')" = "0" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -568,17 +671,30 @@ EOF
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
   write_story E900-S1 done 5
 
-  # Plant a symlink at the lock path pointing to a target
-  local target="$TEST_TMP/symlink-target"
-  echo "original" > "$target"
-  mkdir -p "$(dirname "$LOCK_FILE")"
-  ln -sf "$target" "$LOCK_FILE"
+  # Dangling symlink: following it would CREATE the target outside the project.
+  local target="$TEST_TMP/outside/created-through-symlink"
+  mkdir -p "$TEST_TMP/outside" "$(dirname "$LOCK_FILE")"
+  ln -s "$target" "$LOCK_FILE"
+  for backend in flock fallback; do
+    if [ "$backend" = "fallback" ]; then export GAIA_LOCK_FORCE_FALLBACK=1
+    else command -v flock >/dev/null 2>&1 || continue; fi
+    run --separate-stderr "$SCRIPT"
+    [ "$status" -eq 0 ]
+    [ ! -e "$target" ]
+    [ -L "$LOCK_FILE" ]
+    grep -q 'lock path is a symlink, refusing' <<< "$stderr"
+    [ ! -e "$CACHE" ]
+    unset GAIA_LOCK_FORCE_FALLBACK
+  done
 
-  # Snapshot should not follow the symlink for writing
+  # Existing target: its content is never touched either.
+  rm -f "$LOCK_FILE"
+  echo "original" > "$target"
+  ln -s "$target" "$LOCK_FILE"
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  # Target file must be unchanged (not overwritten via the symlink)
   [ "$(cat "$target")" = "original" ]
+  [ ! -e "$CACHE" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -603,12 +719,12 @@ YAML
   local ai_path="$PROJECT_ROOT/.gaia/state/action-items.yaml"
   cat > "$ai_path" <<'YAML'
 items:
-  - id: "AI-800"
+  - id: "AI-940"
     title: "Check"
     status: "open"
     assignee: '.*[]()^$|+?\\'
     created_at: "2026-10-05"
-  - id: "AI-801"
+  - id: "AI-941"
     title: "Unrelated"
     status: "open"
     assignee: "anything"
@@ -627,7 +743,7 @@ YAML
   # The regex-metachars alias should NOT match "anything" via .*
   # Only the exact-match item should appear as rule-c
   [ "$(jq '[.action_needed[] | select(.rule == "c")] | length' "$CACHE")" = "1" ]
-  [ "$(jq -r '.action_needed[] | select(.rule == "c") | .item_id' "$CACHE")" = "AI-800" ]
+  [ "$(jq -r '.action_needed[] | select(.rule == "c") | .item_id' "$CACHE")" = "AI-940" ]
 }
 
 @test "alias with control chars is stripped and empties are dropped" {
@@ -635,16 +751,29 @@ YAML
   write_story E900-S1 in-progress 5
 
   local config="$PROJECT_ROOT/.gaia/config/project-config.yaml"
-  printf 'sprint_status_mod:\n  user_aliases:\n    - "clean"\n    - "has\\ttab"\n    - ""\n' > "$config"
+  # Real TAB, ESC and BEL bytes inside the alias values.
+  printf 'sprint_status_mod:\n  user_aliases:\n    - "clean"\n    - "has\ttab"\n    - "e\033[31msc\007"\n    - ""\n' > "$config"
 
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   jq -e '.' "$CACHE"
+  [ "$(jq -c '.user_aliases' "$CACHE")" = '["clean","hastab","e[31msc"]' ]
+}
 
-  # "clean" survives, "has\ttab" has the tab stripped, empty is dropped
-  jq -e '.user_aliases | index("clean")' "$CACHE"
-  # No empty strings in aliases
-  [ "$(jq '[.user_aliases[] | select(. == "")] | length' "$CACHE")" = "0" ]
+@test "aliases are capped at 100 characters each and 20 entries" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5
+  local config="$PROJECT_ROOT/.gaia/config/project-config.yaml"
+  local long; long="$(printf 'a%.0s' $(seq 1 150))"
+  {
+    printf 'sprint_status_mod:\n  user_aliases:\n    - "%s"\n' "$long"
+    local i; for i in $(seq 1 24); do printf '    - "alias-%s"\n' "$i"; done
+  } > "$config"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.user_aliases | length' "$CACHE")" = "20" ]
+  [ "$(jq '.user_aliases[0] | length' "$CACHE")" = "100" ]
+  [ "$(jq -r '.user_aliases[19]' "$CACHE")" = "alias-19" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -712,4 +841,42 @@ YAML
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
+}
+
+# ---------------------------------------------------------------------------
+# Signals
+# ---------------------------------------------------------------------------
+
+@test "TERM releases the lock and exits without finishing the write" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  export GAIA_LOCK_FORCE_FALLBACK=1
+
+  # Stub jq: the cold assembly announces itself, then takes 2 s.
+  local stub="$TEST_TMP/stub-bin"; mkdir -p "$stub"
+  local real_jq; real_jq="$(command -v jq)"
+  cat > "$stub/jq" <<SH
+#!/usr/bin/env bash
+case "\$*" in *'inputs | split'*) : > "$TEST_TMP/assembling"; sleep 2 ;; esac
+exec "$real_jq" "\$@"
+SH
+  chmod +x "$stub/jq"
+
+  PATH="$stub:$PATH" "$SCRIPT" 2>/dev/null &
+  local pid=$!
+  local i=0
+  while [ ! -e "$TEST_TMP/assembling" ]; do
+    i=$((i + 1)); [ "$i" -le 100 ] || { kill "$pid" 2>/dev/null; return 1; }
+    sleep 0.1
+  done
+  [ -e "$LOCK_FILE" ]
+  kill -TERM "$pid"
+  local rc=0
+  wait "$pid" || rc=$?
+  [ "$rc" -eq 143 ]
+  # It stopped: no cache was published, the lock and temp files are gone.
+  [ ! -e "$CACHE" ]
+  [ ! -e "$LOCK_FILE" ]
+  [ -z "$(find "$PROJECT_ROOT/.gaia/state" -name '*.tmp.*')" ]
+  unset GAIA_LOCK_FORCE_FALLBACK
 }

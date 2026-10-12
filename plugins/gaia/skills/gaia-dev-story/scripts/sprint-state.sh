@@ -3581,6 +3581,10 @@ main() {
   local _dispatch_rc=0
   set +e
   ( set -e
+  # A subshell does not inherit the parent's traps: re-arm the temp-file
+  # cleanup so writers registered during dispatch are still reclaimed on
+  # exit or on INT/TERM.
+  trap '_cleanup_tmps' EXIT INT TERM
   case "$subcmd" in
     init|advance)
       # Bootstrap a fresh sprint-status.yaml (init) or advance to the next
@@ -3738,7 +3742,7 @@ main() {
       if command -v exec_with_timeout >/dev/null 2>&1; then
         (
           export GAIA_SNAPSHOT_HOOK_ACTIVE=1
-          export PROJECT_ROOT SPRINT_STATUS_YAML
+          export PROJECT_ROOT SPRINT_STATUS_YAML IMPLEMENTATION_ARTIFACTS
           exec_with_timeout 10 "$_hook_script"
         ) </dev/null >/dev/null 2>&1 &
       fi

@@ -4,6 +4,8 @@
 # plugin-root probe from both copies, detached execution, reconcile dry-run
 # gating, stdout-release, and timeout-absent PATH fallback.
 
+# bats file_tags=sprint-progress,hook
+
 load 'test_helper.bash'
 
 bats_require_minimum_version 1.5.0
@@ -123,6 +125,48 @@ _copy_plugin_tree() {
   printf '%s' "$dst/scripts/sprint-state.sh"
 }
 
+# _wait_for PATH [SECONDS] — poll until PATH exists (bounded, 0.1 s steps).
+_wait_for() {
+  local path="$1" limit="${2:-10}" i=0
+  while [ ! -e "$path" ]; do
+    i=$((i + 1))
+    [ "$i" -le $((limit * 10)) ] || return 1
+    sleep 0.1
+  done
+}
+
+# _wait_gone PID [SECONDS] — poll until PID has exited (bounded).
+_wait_gone() {
+  local pid="$1" limit="${2:-15}" i=0
+  while kill -0 "$pid" 2>/dev/null; do
+    i=$((i + 1))
+    [ "$i" -le $((limit * 10)) ] || return 1
+    sleep 0.1
+  done
+}
+
+# _install_marker_snapshot DIR MARKER — fake snapshot that records its
+# invocation (and the environment it was given) in MARKER, instantly.
+_install_marker_snapshot() {
+  local dir="$1" marker="$2"
+  cat > "$dir/sprint-progress-snapshot.sh" <<SH
+#!/usr/bin/env bash
+printf 'IMPLEMENTATION_ARTIFACTS=%s\nPROJECT_ROOT=%s\n' "\${IMPLEMENTATION_ARTIFACTS:-}" "\${PROJECT_ROOT:-}" > "$marker.tmp"
+mv "$marker.tmp" "$marker"
+SH
+  chmod +x "$dir/sprint-progress-snapshot.sh"
+}
+
+# _run_copied SS ARGS... — run a copied sprint-state.sh against the fixture.
+_run_copied() {
+  local ss="$1"; shift
+  run env SPRINT_STATE_SCRIPT_DIR="$(dirname "$ss")" \
+      PROJECT_ROOT="$PROJECT_ROOT" \
+      SPRINT_STATUS_YAML="$SPRINT_STATUS_YAML" \
+      MEMORY_PATH="$MEMORY_PATH" \
+      "$ss" "$@"
+}
+
 # ---------------------------------------------------------------------------
 # Hook isolation tests
 # ---------------------------------------------------------------------------
@@ -153,37 +197,50 @@ SH
       MEMORY_PATH="$MEMORY_PATH" \
       "$copied_ss" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
-  sleep 1
-  [ -f "$invoked_marker" ]
+  _wait_for "$invoked_marker"
 }
 
 @test "GAIA_SNAPSHOT_HOOK_DISABLE suppresses hook" {
-  grep -q 'GAIA_SNAPSHOT_HOOK_DISABLE' "$SCRIPT"
-  grep -q '_run_snapshot_hook' "$SCRIPT"
-
   _seed_sprint
   _seed_story E900-S1 in-progress
-  export GAIA_SNAPSHOT_HOOK_DISABLE=1
+  local ss; ss="$(_copy_plugin_tree)"
+  local marker="$TEST_TMP/invoked"
+  _install_marker_snapshot "$(dirname "$ss")" "$marker"
 
-  run "$SCRIPT" transition --story E900-S1 --to review
+  # Positive control: with the hook enabled the fake snapshot runs.
+  unset GAIA_SNAPSHOT_HOOK_DISABLE
+  _run_copied "$ss" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
-  sleep 0.5
-  [ ! -f "$CACHE" ]
+  _wait_for "$marker"
+  rm -f "$marker"
+
+  # Disabled: the same transition never invokes it (the instant fake would
+  # have written the marker long before the 3 s poll ends).
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
+  _seed_sprint; _seed_story E900-S1 in-progress
+  _run_copied "$ss" transition --story E900-S1 --to review
+  [ "$status" -eq 0 ]
+  if _wait_for "$marker" 3; then false; fi
 }
 
 @test "GAIA_SNAPSHOT_HOOK_ACTIVE prevents re-entry" {
-  grep -q 'GAIA_SNAPSHOT_HOOK_ACTIVE' "$SCRIPT"
-  grep -q '_run_snapshot_hook' "$SCRIPT"
-
   _seed_sprint
   _seed_story E900-S1 in-progress
   unset GAIA_SNAPSHOT_HOOK_DISABLE
-  export GAIA_SNAPSHOT_HOOK_ACTIVE=1
+  local ss; ss="$(_copy_plugin_tree)"
+  local marker="$TEST_TMP/invoked"
+  _install_marker_snapshot "$(dirname "$ss")" "$marker"
 
-  run "$SCRIPT" transition --story E900-S1 --to review
+  _run_copied "$ss" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
-  sleep 0.5
-  [ ! -f "$CACHE" ]
+  _wait_for "$marker"
+  rm -f "$marker"
+
+  export GAIA_SNAPSHOT_HOOK_ACTIVE=1
+  _seed_sprint; _seed_story E900-S1 in-progress
+  _run_copied "$ss" transition --story E900-S1 --to review
+  [ "$status" -eq 0 ]
+  if _wait_for "$marker" 3; then false; fi
   unset GAIA_SNAPSHOT_HOOK_ACTIVE
 }
 
@@ -210,8 +267,7 @@ SH
 
   run "$SCRIPT" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
-  sleep 1
-  [ -f "$CACHE" ]
+  _wait_for "$CACHE"
   jq -e '.' "$CACHE"
 }
 
@@ -228,8 +284,7 @@ SH
   export SPRINT_STATE_SCRIPT_DIR="$SCRIPTS_DIR"
   run "$DEVSTORY_SCRIPT" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
-  sleep 1
-  [ -f "$CACHE" ]
+  _wait_for "$CACHE"
   jq -e '.' "$CACHE"
 }
 
@@ -286,8 +341,7 @@ SNAP
       MEMORY_PATH="$MEMORY_PATH" \
       "$copied_ss" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
-  sleep 1
-  [ -f "$lock_check_marker" ]
+  _wait_for "$lock_check_marker"
   [ "$(cat "$lock_check_marker")" = "LOCK_FREE" ]
 }
 
@@ -310,7 +364,8 @@ SNAP
   local sleeper_pid_file="$TEST_TMP/sleeper-pid"
   cat > "$copied_dir/sprint-progress-snapshot.sh" <<SH
 #!/usr/bin/env bash
-echo \$\$ > "$sleeper_pid_file"
+echo \$\$ > "$sleeper_pid_file.tmp"
+mv "$sleeper_pid_file.tmp" "$sleeper_pid_file"
 sleep 30
 SH
   chmod +x "$copied_dir/sprint-progress-snapshot.sh"
@@ -322,15 +377,15 @@ SH
       "$copied_ss" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
 
-  # Wait for timeout to kill the sleeper
-  sleep 12
-  if [ -f "$sleeper_pid_file" ]; then
-    local spid
-    spid="$(cat "$sleeper_pid_file")"
-    ! kill -0 "$spid" 2>/dev/null || {
-      kill "$spid" 2>/dev/null || true
-      return 1
-    }
+  # The hook must actually have started the snapshot...
+  _wait_for "$sleeper_pid_file"
+  local spid; spid="$(cat "$sleeper_pid_file")"
+  [ -n "$spid" ]
+  kill -0 "$spid"
+  # ...and the 10 s timeout must kill it well before its 30 s sleep ends.
+  if ! _wait_gone "$spid" 16; then
+    kill "$spid" 2>/dev/null || true
+    return 1
   fi
 }
 
@@ -366,8 +421,7 @@ SH
     SPRINT_STATE_SCRIPT_DIR="$SCRIPTS_DIR" \
     "$SCRIPT" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
-  sleep 1
-  [ -f "$CACHE" ]
+  _wait_for "$CACHE"
   jq -e '.' "$CACHE"
 }
 
@@ -376,16 +430,21 @@ SH
 # ---------------------------------------------------------------------------
 
 @test "reconcile dry-run does not trigger snapshot hook" {
-  grep -q '_run_snapshot_hook' "$SCRIPT"
-  grep -q 'reconcile_dry_run' "$SCRIPT"
-
   _seed_sprint
   _seed_story E900-S1 in-progress
   unset GAIA_SNAPSHOT_HOOK_DISABLE
+  local ss; ss="$(_copy_plugin_tree)"
+  local marker="$TEST_TMP/invoked"
+  _install_marker_snapshot "$(dirname "$ss")" "$marker"
 
-  run "$SCRIPT" reconcile --dry-run
-  sleep 0.5
-  [ ! -f "$CACHE" ]
+  # Positive control: a real reconcile fires the hook.
+  _run_copied "$ss" reconcile
+  [ "$status" -eq 0 ]
+  _wait_for "$marker"
+  rm -f "$marker"
+
+  _run_copied "$ss" reconcile --dry-run
+  if _wait_for "$marker" 3; then false; fi
 }
 
 @test "reconcile without dry-run triggers snapshot hook" {
@@ -396,15 +455,13 @@ SH
   # First run a transition (known-good trigger)
   run "$SCRIPT" transition --story E900-S1 --to review
   [ "$status" -eq 0 ]
-  sleep 1
-  [ -f "$CACHE" ]
+  _wait_for "$CACHE"
 
   # Now verify reconcile also triggers it (remove old cache first)
   rm -f "$CACHE"
   run "$SCRIPT" reconcile
   [ "$status" -eq 0 ]
-  sleep 1
-  [ -f "$CACHE" ]
+  _wait_for "$CACHE"
   jq -e '.' "$CACHE"
 }
 
@@ -422,8 +479,10 @@ SH
   copied_ss="$(_copy_plugin_tree)"
   local copied_dir
   copied_dir="$(dirname "$copied_ss")"
-  cat > "$copied_dir/sprint-progress-snapshot.sh" <<'SH'
+  local slow_pid_file="$TEST_TMP/slow-pid"
+  cat > "$copied_dir/sprint-progress-snapshot.sh" <<SH
 #!/usr/bin/env bash
+echo \$\$ > "$slow_pid_file.tmp"; mv "$slow_pid_file.tmp" "$slow_pid_file"
 sleep 8
 SH
   chmod +x "$copied_dir/sprint-progress-snapshot.sh"
@@ -439,6 +498,9 @@ SH
   t_end="$(date +%s)"
   elapsed=$((t_end - t_start))
   [ "$elapsed" -lt 3 ]
+  # The hook did start the slow snapshot; stop it so nothing outlives the test.
+  _wait_for "$slow_pid_file"
+  kill "$(cat "$slow_pid_file")" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -446,17 +508,50 @@ SH
 # ---------------------------------------------------------------------------
 
 @test "errexit remains active inside subcommand dispatch" {
-  # A failing intermediate command inside a subcommand must cause the
-  # dispatch to exit non-zero. This guards against the || exit $? pattern
-  # disabling errexit inside the subshell.
   _seed_sprint
   _seed_story E900-S1 in-progress
 
-  # Transition to a non-existent state should fail
+  # An intermediate command fails with NO explicit die after it: the story
+  # status read (awk inside a command substitution) exits 3.  With errexit
+  # active the dispatch stops right there with that status; without it the
+  # empty result falls through to the "missing status" error (exit 1).
+  local stub="$TEST_TMP/stub-bin"; mkdir -p "$stub"
+  local real_awk; real_awk="$(command -v awk)"
+  cat > "$stub/awk" <<SH
+#!/bin/sh
+case "\$*" in *'in_fm && /^status:'*) exit 3 ;; esac
+exec "$real_awk" "\$@"
+SH
+  chmod +x "$stub/awk"
+
+  PATH="$stub:$PATH" run "$SCRIPT" get --story E900-S1
+  [ "$status" -eq 3 ]
+  [[ "$output" != *"missing 'status:'"* ]]
+
+  # Explicit validation failures still fail as before.
   run "$SCRIPT" transition --story E900-S1 --to bogus-state
   [ "$status" -ne 0 ]
+}
 
-  # Transition to done without all gates passed should fail
-  run "$SCRIPT" transition --story E900-S1 --to done
-  [ "$status" -ne 0 ]
+@test "dispatch subshell re-arms the temp-file cleanup trap" {
+  local f
+  for f in "$SCRIPT" "$DEVSTORY_SCRIPT"; do
+    # The first statement after the errexit subshell opens is the trap.
+    run awk '/^  \( set -e$/ { getline; while ($0 ~ /^[[:space:]]*#/) getline; print; exit }' "$f"
+    [ "$output" = "  trap '_cleanup_tmps' EXIT INT TERM" ]
+  done
+}
+
+@test "hook passes the project root and story tree to the snapshot" {
+  _seed_sprint
+  _seed_story E900-S1 in-progress
+  unset GAIA_SNAPSHOT_HOOK_DISABLE
+  local ss; ss="$(_copy_plugin_tree)"
+  local marker="$TEST_TMP/invoked"
+  _install_marker_snapshot "$(dirname "$ss")" "$marker"
+  _run_copied "$ss" transition --story E900-S1 --to review
+  [ "$status" -eq 0 ]
+  _wait_for "$marker"
+  grep -qx "IMPLEMENTATION_ARTIFACTS=$IMPL" "$marker"
+  grep -qx "PROJECT_ROOT=$PROJECT_ROOT" "$marker"
 }
