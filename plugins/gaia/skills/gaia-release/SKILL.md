@@ -230,7 +230,7 @@ Draft release notes from the changelog entry. If a changelog is missing, generat
 
 - Version bump: `skills/gaia-release/scripts/version-bump.js` (zero-dependency Node.js script).
 - Strategy resolver: `skills/gaia-release/scripts/resolve-release-version.sh` (reads `release.strategy` from config).
-- Commit classification: `scripts/classify-commits.js` (Conventional Commits parser, reused by the conventional-commits strategy).
+- Commit classification: `scripts/classify-commits.js` (Conventional Commits parser, shipped inside the plugin and reused by the conventional-commits strategy).
 - Config resolution: `scripts/resolve-config.sh` (foundation script with walk-up discovery).
 - Configuration: `release.version_files[]` and `release.strategy` in `project-config.yaml`.
 - Related: `/gaia-changelog` for release-note generation.

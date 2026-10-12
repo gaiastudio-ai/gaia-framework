@@ -15,9 +15,9 @@
 # First-release fallback: when no v* tag exists, fall through to the root
 # commit so the classifier sees the full history.
 #
-# CWD contract: release.yml runs with `gaia-framework/` as the workflow CWD
-# (verified by line 101: `node scripts/classify-commits.js` with no
-# `gaia-framework/` prefix). Invoke this helper as:
+# CWD contract: release.yml runs with `gaia-framework/` as the workflow CWD.
+# The commit classifier lives inside the plugin at
+# `plugins/gaia/scripts/classify-commits.js`. Invoke this helper as:
 #   BEFORE=$(./plugins/gaia/scripts/lib/resolve-release-anchor.sh)
 #
 # Exit codes:
