@@ -18,6 +18,9 @@ setup() {
   CANONICAL="$SCRIPTS_DIR/sprint-state.sh"
   WRAPPER="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts" && pwd)/sprint-state.sh"
   export CANONICAL WRAPPER
+  # Run from the per-test temp dir: the scripts treat the working directory
+  # as the project and create .gaia/state there.
+  cd "$TEST_TMP"
 }
 teardown() { common_teardown; }
 

@@ -12,6 +12,8 @@ bats_require_minimum_version 1.5.0
 setup() {
   common_setup
   SCRIPT="$(snapshot_script_under_test "$SCRIPTS_DIR/sprint-progress-snapshot.sh")"
+  # The shell that runs the script when a test sources it.
+  SNAP_BASH="${SNAPSHOT_TEST_BASH:-bash}"
   PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
 
   export PROJECT_ROOT="$TEST_TMP/project"
@@ -394,7 +396,7 @@ EOF
 
   # The one allowlist filter both the cold and the warm path use, fed
   # hostile values straight from the sourced script.
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"
     chk() { jq -n -r --argjson c "$1" "${_JQ_DEFS} \$c | allow" --args "${_ALLOWED_COMMANDS[@]}"; }
     for ok in "\"/gaia-test-manual\"" "\"/gaia-sprint-close\"" "\"/gaia-action-items\""; do
@@ -415,7 +417,7 @@ EOF
   write_story E900-S1 done 5
   # Rule d fires with /gaia-sprint-close.  With that command taken out of the
   # allowlist the cold assembly must write null, never the literal.
-  run bash -c '. "$1"; _ALLOWED_COMMANDS=("/gaia-test-manual" "/gaia-action-items"); _snapshot_main' _ "$SCRIPT"
+  run "$SNAP_BASH" -c '. "$1"; _ALLOWED_COMMANDS=("/gaia-test-manual" "/gaia-action-items"); _snapshot_main' _ "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq -c '[.action_needed[] | [.rule, .command]]' "$CACHE")" = '[["d",null]]' ]
   run grep -c 'gaia-sprint-close' "$CACHE"
@@ -626,17 +628,17 @@ EOF
   ln -s ../b/target "$d/a/hop2"
   ln -s hop2 "$d/a/hop1"
   local phys; phys="$(cd "$d/b" && pwd -P)/target"
-  run bash -c ". '$SCRIPT'; _realpath_one '$d/a/hop1'"
+  run "$SNAP_BASH" -c ". '$SCRIPT'; _realpath_one '$d/a/hop1'"
   [ "$status" -eq 0 ]
   [ "$output" = "$phys" ]
   # Dangling chain: no path is produced (BSD-safe guard on missing targets).
   ln -s nowhere "$d/a/dangling"
-  run bash -c ". '$SCRIPT'; _realpath_one '$d/a/dangling'"
+  run "$SNAP_BASH" -c ". '$SCRIPT'; _realpath_one '$d/a/dangling'"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
   # The batch form keeps one line per argument, in order, with a blank line
   # for the unresolvable one.
-  run bash -c ". '$SCRIPT'; _realpath_batch '$d/a/hop1' '$d/a/dangling' '$d/b/target'"
+  run "$SNAP_BASH" -c ". '$SCRIPT'; _realpath_batch '$d/a/hop1' '$d/a/dangling' '$d/b/target'"
   [ "$(printf '%s\n' "$output" | sed -n 1p)" = "$phys" ]
   [ "$(printf '%s\n' "$output" | sed -n 2p)" = "?" ]
   [ "$(printf '%s\n' "$output" | sed -n 3p)" = "$phys" ]
@@ -1188,7 +1190,7 @@ run_bounded() {
   # awk stops outright on a read error (BSD awk does so on a directory that
   # slips in between the checks and the read).  Simulate that: any parse
   # that includes E900-S2 fails.
-  run --separate-stderr bash -c '
+  run --separate-stderr "$SNAP_BASH" -c '
     . "$1"
     eval "real_$(declare -f _story_records)"
     _story_records() {
@@ -1411,7 +1413,7 @@ run_bounded() {
   mkdir -p "$TEST_TMP/state"
   # Seeding RANDOM makes the first temp name predictable; plant a dangling
   # link there.  An exclusive create must refuse it and pick another name.
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"
     RANDOM=4242; first="$2.tmp.$$.${RANDOM}${RANDOM}"
     ln -s "$3" "$first"
@@ -1454,7 +1456,7 @@ run_bounded() {
 # exactly that moment, then try to take the lock.  Prints the outcome, the
 # lock file's content and the number of leftover reap files.
 take_lock_racing() {
-  bash -c '
+  "$SNAP_BASH" -c '
     . "$1"; lock="$2"; hook="$3"
     GAIA_LOCK_FORCE_FALLBACK=1
     other_takes_lock() {
@@ -1509,7 +1511,7 @@ take_lock_racing() {
 @test "a stale lock is reaped by one run at a time" {
   : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
   # Another run is reaping the same file right now (it holds the mutex).
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"; lock="$2"; GAIA_LOCK_FORCE_FALLBACK=1
     _warn() { case "$*" in *"replacing an empty lock"*) mkdir "$lock.reaping" ;; esac; }
     if _try_snapshot_lock "$lock"; then echo TOOK; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
@@ -1526,7 +1528,7 @@ take_lock_racing() {
   # After the judgement another run links its own lock; any moment the lock
   # name is free, a third run links its lock there.  The reaper must notice
   # the new lock before it ever moves it aside.
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"; lock="$2"; third="$3"; GAIA_LOCK_FORCE_FALLBACK=1
     _warn() {
       case "$*" in *"replacing an empty lock"*)
@@ -1552,7 +1554,7 @@ take_lock_racing() {
   command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
   # Right after this run takes the flock, a fallback run replaces the file
   # (as a reaper of an old empty file would) and links its own live lock.
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"; lock="$2"; first=1
     eval "real_$(declare -f _lock_last)"
     _lock_last() {
@@ -1672,7 +1674,7 @@ wait_for() {
     : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"; : > "$log"
     local -a pids=()
     for r in $(seq 1 12); do
-      bash -c '
+      "$SNAP_BASH" -c '
         . "$1"; export GAIA_LOCK_FORCE_FALLBACK=1; LOG="$2"
         _warn() { :; }
         _snapshot_build() { echo "S $$" >> "$LOG"; sleep 0.05; echo "E $$" >> "$LOG"; }
@@ -1689,7 +1691,7 @@ wait_for() {
 
 @test "a lock file that disappears after a failed link is simply retried" {
   printf '%s %s\n' "$$" "$(date +%s)" > "$LOCK_FILE"
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"; lock="$2"; GAIA_LOCK_FORCE_FALLBACK=1; calls=0
     eval "real_$(declare -f _fallback_link)"
     # The holder releases right after this run failed to link.
@@ -1710,7 +1712,7 @@ wait_for() {
   local victim="$TEST_TMP/victim"
   # Seeding RANDOM makes the first temp name predictable; plant a dangling
   # link there.  The exclusive create must refuse it and pick another name.
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"; lock="$2"
     RANDOM=4242; first="$lock.tmp.$$.${RANDOM}${RANDOM}"
     ln -s "$3" "$first"
@@ -1747,7 +1749,7 @@ wait_for() {
   for backend in fallback flock; do
     if [ "$backend" = "flock" ]; then command -v flock >/dev/null 2>&1 || continue; fi
     rm -f "$LOCK_FILE"
-    run bash -c '
+    run "$SNAP_BASH" -c '
       . "$1"; lock="$2"
       if [ "$3" = "fallback" ]; then GAIA_LOCK_FORCE_FALLBACK=1; fi
       _try_snapshot_lock "$lock" || { echo "NOT TAKEN: $_SNAPSHOT_LOCK_REASON"; exit 0; }
@@ -1769,7 +1771,7 @@ wait_for() {
   # A fallback run is reaping (it holds the reap mutex) and judged the file
   # before this run announced itself.  While this run waits, the reaper
   # moves the file aside and another run links its own lock at the name.
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"; lock="$2"
     mkdir "$lock.reaping"
     sleep() {
@@ -1787,7 +1789,7 @@ wait_for() {
 
 @test "a flock-backend run keeps the lock when the reaper leaves its file alone" {
   command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"; lock="$2"; waited=0
     mkdir "$lock.reaping"
     # The reaper saw this run'"'"'s line and gave up without touching the file.
@@ -1804,7 +1806,7 @@ wait_for() {
 @test "a reap mutex left behind by a dead reaper does not block the flock backend" {
   command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
   mkdir "$LOCK_FILE.reaping"; touch -t 202001010000 "$LOCK_FILE.reaping"
-  run bash -c '
+  run "$SNAP_BASH" -c '
     . "$1"; lock="$2"
     sleep() { echo "WAITED"; }
     if _try_snapshot_lock "$lock"; then echo "TOOK"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
@@ -1831,44 +1833,72 @@ wait_for() {
   [ -e "$LOCK_FILE.reaping/stray" ]
 }
 
+# snap_has_subsecond_clock — true when the interpreter under test is bash 5
+# or later (it has EPOCHREALTIME).
+snap_has_subsecond_clock() {
+  [ "$("$SNAP_BASH" -c 'printf %s "${BASH_VERSINFO[0]}"')" -ge 5 ]
+}
+
 @test "the reap wait gives up after about 2 s of wall-clock time even when every pass is cheap" {
+  snap_has_subsecond_clock || skip "the interpreter has no sub-second clock; its whole-second bound is tested in the bash 3.2 suite"
   mkdir "$LOCK_FILE.reaping"; : > "$LOCK_FILE.reaping/stray"
   touch -t 202001010000 "$LOCK_FILE.reaping"
-  run_bounded 15 bash -c '
+  # 5 ms passes: the 1000-pass cap would take about 5 s, so only the 2 s
+  # deadline can end the wait this early.
+  local t0="${EPOCHREALTIME//[!0-9]/}" t1 ms
+  run_bounded 15 "$SNAP_BASH" -c '
     . "$1"; mutex="$2"
-    sleep() { :; }
-    t0=${EPOCHREALTIME//[!0-9]/}
+    sleep() { command sleep 0.005; }
     if _await_reap "$mutex"; then echo "CLEARED"; else echo "GAVE UP"; fi
-    t1=${EPOCHREALTIME//[!0-9]/}
-    echo "ms=$(( (10#$t1 - 10#$t0) / 1000 ))"
   ' _ "$SCRIPT" "$LOCK_FILE.reaping"
+  t1="${EPOCHREALTIME//[!0-9]/}"; ms=$(( (10#$t1 - 10#$t0) / 1000 ))
   [ "$status" -eq 0 ]
-  local -a lines; mapfile -t lines <<< "$output"
-  [ "${lines[0]}" = "GAVE UP" ]
-  [[ ${lines[1]} =~ ^ms=([0-9]+)$ ]]
-  [ "${BASH_REMATCH[1]}" -ge 1900 ]
-  [ "${BASH_REMATCH[1]}" -le 6000 ]
+  [ "$output" = "GAVE UP" ]
+  [ "$ms" -ge 1900 ]
+  [ "$ms" -le 4000 ]
 }
 
 @test "without a wall clock the reap wait gives up after 100 sleeps, counting passes that cannot clear an aged mutex" {
   mkdir "$LOCK_FILE.reaping"; : > "$LOCK_FILE.reaping/stray"
   touch -t 202001010000 "$LOCK_FILE.reaping"
-  run_bounded 15 bash -c '
+  # The sleep stub also holds whole-second time still (SECONDS=0), so only
+  # the pass count can end the wait.
+  run_bounded 15 "$SNAP_BASH" -c '
     . "$1"; mutex="$2"; unset EPOCHREALTIME; slept=0
-    sleep() { slept=$((slept + 1)); }
+    sleep() { slept=$((slept + 1)); SECONDS=0; }
     if _await_reap "$mutex"; then echo "CLEARED"; else echo "GAVE UP"; fi
     echo "slept=$slept"
   ' _ "$SCRIPT" "$LOCK_FILE.reaping"
   [ "$status" -eq 0 ]
-  local -a lines; mapfile -t lines <<< "$output"
-  [ "${lines[0]}" = "GAVE UP" ]
-  [ "${lines[1]}" = "slept=100" ]
+  local l0 l1; { read -r l0; read -r l1; } <<< "$output"
+  [ "$l0" = "GAVE UP" ]
+  [ "$l1" = "slept=100" ]
+}
+
+@test "a sub-second clock that does not move cannot hold the reap wait" {
+  mkdir "$LOCK_FILE.reaping"; : > "$LOCK_FILE.reaping/stray"
+  touch -t 202001010000 "$LOCK_FILE.reaping"
+  # After unset, EPOCHREALTIME is a plain variable that never moves.  bash 5
+  # still counts passes in clock mode (1000); an older shell ignores the
+  # value and falls back to the 100-pass bound.
+  local want=1000
+  snap_has_subsecond_clock || want=100
+  run_bounded 15 "$SNAP_BASH" -c '
+    . "$1"; mutex="$2"; unset EPOCHREALTIME; EPOCHREALTIME=1000.000001; slept=0
+    sleep() { slept=$((slept + 1)); SECONDS=0; }
+    if _await_reap "$mutex"; then echo "CLEARED"; else echo "GAVE UP"; fi
+    echo "slept=$slept"
+  ' _ "$SCRIPT" "$LOCK_FILE.reaping"
+  [ "$status" -eq 0 ]
+  local l0 l1; { read -r l0; read -r l1; } <<< "$output"
+  [ "$l0" = "GAVE UP" ]
+  [ "$l1" = "slept=$want" ]
 }
 
 @test "a lock file that vanishes while its age is read is retried without stat noise" {
   sleep 0 & local dead=$!; wait "$dead" || true
   printf '%s %s\n' "$dead" 1000000000 > "$LOCK_FILE"
-  run --separate-stderr bash -c '
+  run --separate-stderr "$SNAP_BASH" -c '
     . "$1"; lock="$2"; GAIA_LOCK_FORCE_FALLBACK=1; n=0
     eval "real_$(declare -f _stat_mtime)"
     # The holder releases right after this run judged its line.
@@ -2011,4 +2041,39 @@ SH
   [ "$(wc -l < "$TEST_TMP/builds" | tr -d ' ')" = "5" ]
   [ "$(jq -r '.stories[0].key' "$CACHE")" = "E900-S1" ]
   [ ! -e "$LOCK_FILE" ]
+}
+
+@test "a re-run marker that cannot be removed costs one build and a warning, not five" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5 >/dev/null
+  # A stray file inside the marker: rmdir fails on every pass.
+  mkdir "$LOCK_FILE.dirty"; : > "$LOCK_FILE.dirty/stray"
+  build_counting_jq "$IMPL/epic-test/E900-S1-e900-s1-enf/story.md"
+  PATH="$STUB_PATH" run_bounded 30 "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$TEST_TMP/builds" | tr -d ' ')" = "1" ]
+  [ "$(grep -c 're-run marker cannot be removed, building once: .*/\.sprint-progress-cache\.json\.lock\.dirty$' <<< "$stderr")" = "1" ]
+  [ "$(jq -r '.stories[0].key' "$CACHE")" = "E900-S1" ]
+  [ -e "$LOCK_FILE.dirty/stray" ]
+}
+
+@test "a flock-backend run refused by another flock holder leaves the re-run marker" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5 >/dev/null
+  # Another process holds the flock on the lock file (and writes no line).
+  : > "$LOCK_FILE"
+  flock "$LOCK_FILE" sleep 30 &
+  local holder=$! i=0
+  while flock -n "$LOCK_FILE" true 2>/dev/null; do
+    i=$((i + 1)); [ "$i" -lt 100 ] || { kill "$holder"; return 1; }
+    sleep 0.05
+  done
+  run --separate-stderr "$SCRIPT"
+  kill "$holder" 2>/dev/null || true; wait "$holder" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  grep -q 'lock not taken (held by another process), skipping' <<< "$stderr"
+  [ -d "$LOCK_FILE.dirty" ]
+  [ ! -L "$LOCK_FILE.dirty" ]
+  [ ! -e "$CACHE" ]
 }
