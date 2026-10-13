@@ -33,18 +33,19 @@ teardown() { common_teardown; }
 # ---------------------------------------------------------------------------
 
 # _now_ns — print the current epoch in nanoseconds.
-# Uses date +%s%N (GNU), gdate +%s%N (Homebrew), or perl fallback.
+# Uses date +%s%N (GNU), gdate +%s%N (Homebrew), or perl fallback.  An older
+# BSD date prints "<epoch>N" for %N, so the value must be all digits.
 _now_ns() {
   # GNU coreutils
   local ns
   ns="$(date +%s%N 2>/dev/null)" || ns=""
-  if [ -n "$ns" ] && [ "$ns" != "%N" ] && [ "${#ns}" -gt 10 ]; then
+  if [[ $ns =~ ^[0-9]{16,}$ ]]; then
     printf '%s' "$ns"
     return 0
   fi
   # Homebrew gdate
   ns="$(gdate +%s%N 2>/dev/null)" || ns=""
-  if [ -n "$ns" ] && [ "$ns" != "%N" ] && [ "${#ns}" -gt 10 ]; then
+  if [[ $ns =~ ^[0-9]{16,}$ ]]; then
     printf '%s' "$ns"
     return 0
   fi
@@ -87,10 +88,10 @@ _report() {
     "$label" "$*" "$(_median "$@")" "$budget" >&3
 }
 
-# backdate_tree — fixture files older than the run, so the warm path is not
-# defeated by files written in the snapshot's own second.
+# backdate_tree — fixture files and directories older than the run, so the
+# warm path is not defeated by entries written in the snapshot's own second.
 backdate_tree() {
-  find "$PROJECT_ROOT" -type f -exec touch -t 202610010000 {} + 2>/dev/null || true
+  find "$PROJECT_ROOT" \( -type f -o -type d \) -exec touch -t 202610010000 {} + 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -220,4 +221,68 @@ _generate_registry() {
   _report "cold 300 stories + 270-item registry" 10000 "$samples"
   [ "$samples" -lt 10000 ]
   [ "$(jq '.totals.total_stories' "$CACHE")" = "300" ]
+}
+
+# ---------------------------------------------------------------------------
+# Process count (a per-story fork would hide inside the time budgets)
+# ---------------------------------------------------------------------------
+
+# _install_exec_counter DIR LOG — PATH shims that log each external command
+# the snapshot starts, then run the real one.
+_install_exec_counter() {
+  local dir="$1" log="$2" tool real
+  mkdir -p "$dir"
+  for tool in awk cat cp date find flock git jq ln mkdir mktemp mv readlink realpath rm sed \
+              sleep sort stat touch tr wc yq; do
+    real="$(command -v "$tool" 2>/dev/null)" || continue
+    case "$real" in /*) ;; *) continue ;; esac
+    printf '#!/bin/sh\necho %s >> "%s"\nexec "%s" "$@"\n' "$tool" "$log" "$real" > "$dir/$tool"
+    chmod +x "$dir/$tool"
+  done
+}
+
+# _count_execs LOG — run the snapshot once through the shims; print the count.
+_count_execs() {
+  : > "$1"
+  PATH="$TEST_TMP/count-bin:$PATH" "$SCRIPT" >/dev/null 2>&1 || return 1
+  wc -l < "$1" | tr -d ' '
+}
+
+@test "process count: the warm path stays small and the cold path does not grow with story count" {
+  local log="$TEST_TMP/execs"
+  _install_exec_counter "$TEST_TMP/count-bin" "$log"
+
+  _generate_sprint 30
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  # Warm: a marker title proves the counted run took the warm path.
+  jq '.stories[0].title = "WARM-PATH-MARKER"' "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
+  local warm; warm="$(_count_execs "$log")"
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "WARM-PATH-MARKER" ]
+  local warm_list; warm_list="$(sort "$log" | uniq -c | tr -s ' ' | tr '\n' ',')"
+
+  rm -f "$CACHE" "$SIDECAR" "$PARSED"
+  local cold30; cold30="$(_count_execs "$log")"
+  [ "$(jq '.totals.total_stories' "$CACHE")" = "30" ]
+
+  _generate_sprint 60
+  backdate_tree
+  rm -f "$CACHE" "$SIDECAR" "$PARSED"
+  local cold60; cold60="$(_count_execs "$log")"
+  [ "$(jq '.totals.total_stories' "$CACHE")" = "60" ]
+
+  printf '# processes: warm=%s [%s] cold30=%s cold60=%s\n' "$warm" "$warm_list" "$cold30" "$cold60" >&3
+  [ "$warm" -le 8 ]
+  [ "$cold60" -eq "$cold30" ]
+}
+
+@test "the perf timer falls back when date has no nanosecond support" {
+  # An older BSD date prints "<epoch>N" for +%s%N; gdate is absent.
+  local stub="$TEST_TMP/old-date"; mkdir -p "$stub"
+  printf '#!/bin/sh\necho 1700000000N\n' > "$stub/date"
+  printf '#!/bin/sh\nexit 127\n' > "$stub/gdate"
+  chmod +x "$stub/date" "$stub/gdate"
+  local ns; ns="$(PATH="$stub:$PATH" _now_ns)"
+  [[ $ns =~ ^[0-9]{16,}$ ]]
 }
