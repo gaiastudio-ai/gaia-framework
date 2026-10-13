@@ -228,6 +228,31 @@ _snapshot_lock_path_policy() {
   return 0
 }
 
+# Both backends share one convention: whoever holds the lock has its
+# "PID EPOCH" line as the LAST line of the lock file, and an empty lock file
+# means nobody holds it.  The flock backend appends its line once it holds
+# the flock and empties the file again on release; a fallback holder links a
+# fresh file holding only its line.  So each backend sees the other's live
+# holder, and a lock file is only ever removed by renaming it to a name this
+# run alone uses (never check-then-remove).
+_SNAPSHOT_LOCK_LINE=""
+_LOCK_LAST=""
+_LOCK_IDENT=""
+
+# _lock_last FILE — set _LOCK_LAST to the last non-empty line of FILE ("" for
+# an empty file).  Returns 1 when FILE cannot be read (for example, it is
+# gone).  No subshell.
+_lock_last() {
+  _LOCK_LAST=""
+  [ -f "$1" ] && [ -r "$1" ] || return 1
+  local l
+  { while IFS= read -r l || [ -n "$l" ]; do [ -z "$l" ] || _LOCK_LAST="$l"; done < "$1"; } 2>/dev/null || return 1
+  return 0
+}
+
+# _lock_line — the "PID EPOCH" line this run writes as a holder.
+_lock_line() { _SNAPSHOT_LOCK_LINE="$$ ${EPOCHSECONDS:-$(date +%s)}"; }
+
 _try_snapshot_lock() {
   local lock_file="$1"
   _SNAPSHOT_LOCK_REFUSED=0
@@ -238,31 +263,53 @@ _try_snapshot_lock() {
   if command -v flock >/dev/null 2>&1 && [ "${GAIA_LOCK_FORCE_FALLBACK:-}" != "1" ]; then
     _SNAPSHOT_LOCK_BACKEND="flock"
     exec 9>>"$lock_file" || return 1
-    if flock -n 9 2>/dev/null; then _SNAPSHOT_LOCK_FILE="$lock_file"; return 0; fi
-    exec 9>&-
-    _SNAPSHOT_LOCK_REASON="held by another process"
-    return 1
+    if ! flock -n 9 2>/dev/null; then
+      exec 9>&-
+      _SNAPSHOT_LOCK_REASON="held by another process"
+      return 1
+    fi
+    # A fallback-backend holder takes no flock; its line says it holds.
+    local fholder=""
+    if _lock_last "$lock_file"; then fholder="${_LOCK_LAST%% *}"; fi
+    if [[ $fholder =~ ^[0-9]+$ ]] && [ "$fholder" != "$$" ] && kill -0 "$fholder" 2>/dev/null; then
+      exec 9>&-
+      _SNAPSHOT_LOCK_REASON="held by live process $fholder"
+      return 1
+    fi
+    # Announce this holder, then make sure the name still leads to the file
+    # this run locked: a fallback run may have replaced an empty lock file
+    # just before the line was written.
+    _lock_line
+    if ! printf '%s\n' "$_SNAPSHOT_LOCK_LINE" >&9 2>/dev/null \
+       || ! _lock_last "$lock_file" || [ "$_LOCK_LAST" != "$_SNAPSHOT_LOCK_LINE" ]; then
+      exec 9>&-
+      _SNAPSHOT_LOCK_REASON="taken by another process"
+      return 1
+    fi
+    _SNAPSHOT_LOCK_FILE="$lock_file"
+    return 0
   fi
 
-  # Fallback: atomic ln, single attempt, stale-holder reap.  A fallback holder
-  # always writes "PID EPOCH" before linking, so its lock file is never empty.
-  # An EMPTY lock file is what the flock backend leaves behind (flock never
-  # removes it), so it is not a holder at all and is replaced at once.  A
-  # holder whose PID is dead, or whose content is not a PID, is reaped once
-  # the file is older than 60 s.
+  # Fallback: atomic ln, stale-holder reap.  An EMPTY lock file has no
+  # holder (the flock backend empties it on release), so it is replaced at
+  # once.  A holder whose PID is dead, or whose line is not a PID, is reaped
+  # once the file is older than 60 s.  A lock file that disappears after a
+  # failed ln is simply retried.
   _SNAPSHOT_LOCK_BACKEND="fallback"
   _SNAPSHOT_LOCK_REASON=""
-  local attempt holder age ident
-  for attempt in 1 2; do
+  local attempt holder age ident rc
+  for attempt in 1 2 3; do
     _fallback_link "$lock_file" && return 0
-    [ "$attempt" = "1" ] || break
-    [ ! -L "$lock_file" ] && [ -f "$lock_file" ] || break
-    # Identity of the lock file being judged (inode plus content), so the
-    # removal below only ever removes this exact file.
-    ident="$(_lock_ident "$lock_file")" || break
-    holder=""
-    read -r holder _ < "$lock_file" 2>/dev/null || true
-    if [ ! -s "$lock_file" ]; then
+    [ "$attempt" -lt 3 ] || break
+    [ ! -L "$lock_file" ] || break
+    [ -e "$lock_file" ] || continue
+    [ -f "$lock_file" ] || break
+    # Identity of the lock file being judged (inode, size, holder line), so
+    # the removal below only ever removes this exact file.
+    _lock_ident "$lock_file" || continue
+    ident="$_LOCK_IDENT"
+    holder="${_LOCK_LAST%% *}"
+    if [ -z "$_LOCK_LAST" ]; then
       _warn "replacing an empty lock file left by the flock backend: $lock_file"
     elif [[ $holder =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
       _SNAPSHOT_LOCK_REASON="held by live process $holder"; return 1
@@ -273,38 +320,48 @@ _try_snapshot_lock() {
         return 1
       fi
     fi
-    _reap_lock "$lock_file" "$ident" || { _SNAPSHOT_LOCK_REASON="taken by another process"; return 1; }
+    rc=0; _reap_lock "$lock_file" "$ident" || rc=$?
+    case "$rc" in
+      0|2) ;;   # removed, or already gone: try ln again
+      *) _SNAPSHOT_LOCK_REASON="taken by another process"; return 1 ;;
+    esac
   done
   [ -n "$_SNAPSHOT_LOCK_REASON" ] || _SNAPSHOT_LOCK_REASON="the fallback lock could not be taken"
   return 1
 }
 
-# _lock_ident FILE — "inode size first-line" of FILE.  A fallback holder
-# always writes "PID EPOCH", so a lock linked after FILE was judged differs in
-# content even when the file system hands out the freed inode number again.
+# _lock_ident FILE — set _LOCK_IDENT to "inode size last-line" of FILE (and
+# _LOCK_LAST to its last line).  A holder line carries a PID and an epoch, so
+# a lock linked after FILE was judged differs even when the file system hands
+# out the freed inode number again.
 _lock_ident() {
-  local ino line=""
+  local ino
+  _LOCK_IDENT=""
   if [ "$_SNAP_STAT_FMT" = "gnu" ]; then ino="$(stat -c '%i %s' "$1" 2>/dev/null)" || return 1
   else ino="$(stat -f '%i %z' "$1" 2>/dev/null)" || return 1; fi
-  IFS= read -r line < "$1" 2>/dev/null || true
-  printf '%s %s' "$ino" "$line"
+  _lock_last "$1" || return 1
+  _LOCK_IDENT="$ino $_LOCK_LAST"
 }
 
 # _reap_lock LOCK IDENT — remove LOCK only when it is still the file judged as
 # IDENT.  The lock is first renamed to a name only this run uses (rename is
 # atomic, so two reapers can never both take it), then checked.  When another
 # run linked a fresh lock after the judgement, that lock is put back and the
-# reap is abandoned.  Returns 0 when the judged file was removed.
+# reap is abandoned.  Returns 0 when the judged file was removed, 2 when LOCK
+# was already gone, 1 when another run holds it.
 _reap_lock() {
   local lock_file="$1" ident="$2" reap="${1}.reap.$$.${RANDOM}${RANDOM}"
-  mv "$lock_file" "$reap" 2>/dev/null || return 1
-  if [ "$(_lock_ident "$reap" 2>/dev/null)" = "$ident" ]; then
+  if ! mv "$lock_file" "$reap" 2>/dev/null; then
+    [ -e "$lock_file" ] || return 2
+    return 1
+  fi
+  if _lock_ident "$reap" && [ "$_LOCK_IDENT" = "$ident" ]; then
     rm -f "$reap" 2>/dev/null || true
     return 0
   fi
   if ! ln "$reap" "$lock_file" 2>/dev/null; then
-    # A third run linked in the instant the lock was moved aside.  Both it
-    # and the restored holder may build once; every cache write is still an
+    # A third run linked in the instant the lock was moved aside.  It and
+    # the restored holder may each build once; every cache write is still an
     # atomic temp-file rename, so the worst case is one duplicate build.
     _warn "lock changed hands while a stale lock was being replaced: $lock_file"
   fi
@@ -312,13 +369,19 @@ _reap_lock() {
   return 1
 }
 
-# _fallback_link LOCK — write "PID EPOCH" to a temp file and hard-link it to
-# LOCK (atomic: fails when LOCK exists).
+# _fallback_link LOCK — write "PID EPOCH" to an exclusively created temp file
+# (noclobber: a planted file or link at the name is never followed) and
+# hard-link it to LOCK (atomic: fails when LOCK exists).
 _fallback_link() {
-  local lock_file="$1" tmp_lock="${1}.tmp.$$.${RANDOM}"
-  printf '%s %s\n' "$$" "$(date +%s)" > "$tmp_lock" 2>/dev/null || {
-    rm -f "$tmp_lock" 2>/dev/null || true; return 1
-  }
+  local lock_file="$1" tmp_lock n=0
+  _lock_line
+  while :; do
+    tmp_lock="${1}.tmp.$$.${RANDOM}${RANDOM}"
+    set -C
+    if { printf '%s\n' "$_SNAPSHOT_LOCK_LINE" > "$tmp_lock"; } 2>/dev/null; then set +C; break; fi
+    set +C
+    n=$((n + 1)); [ "$n" -lt 20 ] || return 1
+  done
   if ln "$tmp_lock" "$lock_file" 2>/dev/null; then
     rm -f "$tmp_lock" 2>/dev/null || true; _SNAPSHOT_LOCK_FILE="$lock_file"; return 0
   fi
@@ -337,14 +400,16 @@ _release_snapshot_lock() {
   fi
   local lock_file="${_SNAPSHOT_LOCK_FILE:-}"
   [ -n "$lock_file" ] || return 0
-  if [ "$_SNAPSHOT_LOCK_BACKEND" = "flock" ]; then
-    # Closing the only descriptor on the lock file releases the flock.
-    exec 9>&- 2>/dev/null || true
-  else
-    local holder=""
-    read -r holder _ < "$lock_file" 2>/dev/null || true
-    if [ "$holder" = "$$" ]; then rm -f "$lock_file" 2>/dev/null || true; fi
+  if _lock_last "$lock_file" && [ "$_LOCK_LAST" = "$_SNAPSHOT_LOCK_LINE" ]; then
+    if [ "$_SNAPSHOT_LOCK_BACKEND" = "flock" ]; then
+      # Empty the file while still holding the flock (empty = not held),
+      # then closing the only descriptor releases the flock.
+      : > "$lock_file" 2>/dev/null || true
+    else
+      rm -f "$lock_file" 2>/dev/null || true
+    fi
   fi
+  [ "$_SNAPSHOT_LOCK_BACKEND" != "flock" ] || exec 9>&- 2>/dev/null || true
   _SNAPSHOT_LOCK_FILE=""
 }
 
@@ -518,8 +583,15 @@ _story_records() {
       if (f[3] != "racy") ident[f[1] US f[2] US f[3]] = nw
     }
   }
-  $1 == "P" { id = $2 US $3 US $4; cur = (id in ident) ? ident[id] : 0; if (cur && !(cur in cached)) { cached[cur]=1; buf[cur]=$0 } else cur=0; next }
-  ($1 == "T" || $1 == "G") && cur { buf[cur] = buf[cur] "\n" $0; next }
+  $1 == "P" { id = $2 US $3 US $4; cur = (id in ident) ? ident[id] : 0; if (cur && !(cur in cached) && !(cur in bad)) { cached[cur]=1; buf[cur]=$0 } else cur=0; next }
+  # Only rows that belong to the story being copied are kept.  A row for any
+  # other key means the parse cache was tampered with: the cached
+  # record of that story is dropped and its file is parsed again.
+  ($1 == "T" || $1 == "G") && cur {
+    if ($2 == wk[cur]) buf[cur] = buf[cur] "\n" $0
+    else { delete cached[cur]; delete buf[cur]; bad[cur] = 1; cur = 0 }
+    next
+  }
   { cur = 0 }
   END {
     for (i = 1; i <= nw; i++) {
