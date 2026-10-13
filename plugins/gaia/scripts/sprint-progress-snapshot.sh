@@ -229,12 +229,13 @@ _snapshot_lock_path_policy() {
 }
 
 # Both backends share one convention: whoever holds the lock has its
-# "PID EPOCH" line as the LAST line of the lock file, and an empty lock file
-# means nobody holds it.  The flock backend appends its line once it holds
-# the flock and empties the file again on release; a fallback holder links a
-# fresh file holding only its line.  So each backend sees the other's live
-# holder, and a lock file is only ever removed by renaming it to a name this
-# run alone uses (never check-then-remove).
+# "PID EPOCH" line as the LAST line of the lock file.  The flock backend
+# appends its line once it holds the flock; a fallback holder links a fresh
+# file holding only its line; both remove the file on release.  So each
+# backend sees the other's live holder.  A lock file whose holder is dead, or
+# that is empty, is stale only once it is 60 s old; it is then removed by one
+# reaper at a time, by renaming it to a name only that reaper uses and checking
+# it is still the file that was judged (never check-then-remove).
 _SNAPSHOT_LOCK_LINE=""
 _LOCK_LAST=""
 _LOCK_IDENT=""
@@ -290,11 +291,11 @@ _try_snapshot_lock() {
     return 0
   fi
 
-  # Fallback: atomic ln, stale-holder reap.  An EMPTY lock file has no
-  # holder (the flock backend empties it on release), so it is replaced at
-  # once.  A holder whose PID is dead, or whose line is not a PID, is reaped
-  # once the file is older than 60 s.  A lock file that disappears after a
-  # failed ln is simply retried.
+  # Fallback: atomic ln, stale-holder reap.  A lock file that is empty (a
+  # flock-backend run between creating it and writing its line, or one left
+  # by an older version), or whose holder PID is dead or not a PID, is reaped
+  # once it is older than 60 s.  A lock file that disappears after a failed
+  # ln is simply retried.
   _SNAPSHOT_LOCK_BACKEND="fallback"
   _SNAPSHOT_LOCK_REASON=""
   local attempt holder age ident rc
@@ -309,16 +310,20 @@ _try_snapshot_lock() {
     _lock_ident "$lock_file" || continue
     ident="$_LOCK_IDENT"
     holder="${_LOCK_LAST%% *}"
-    if [ -z "$_LOCK_LAST" ]; then
-      _warn "replacing an empty lock file left by the flock backend: $lock_file"
-    elif [[ $holder =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
+    if [ -n "$_LOCK_LAST" ] && [[ $holder =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
       _SNAPSHOT_LOCK_REASON="held by live process $holder"; return 1
-    else
-      age="$(_stat_mtime_age "$lock_file")" || age=0
-      if [ "$age" -lt 60 ]; then
+    fi
+    age="$(_stat_mtime_age "$lock_file")" || age=0
+    if [ "$age" -lt 60 ]; then
+      if [ -z "$_LOCK_LAST" ]; then
+        _SNAPSHOT_LOCK_REASON="the lock file is empty but only ${age}s old"
+      else
         _SNAPSHOT_LOCK_REASON="holder '${holder:0:20}' is not running but the lock is only ${age}s old"
-        return 1
       fi
+      return 1
+    fi
+    if [ -z "$_LOCK_LAST" ]; then
+      _warn "replacing an empty lock file nobody holds: $lock_file"
     fi
     rc=0; _reap_lock "$lock_file" "$ident" || rc=$?
     case "$rc" in
@@ -343,30 +348,39 @@ _lock_ident() {
   _LOCK_IDENT="$ino $_LOCK_LAST"
 }
 
-# _reap_lock LOCK IDENT — remove LOCK only when it is still the file judged as
-# IDENT.  The lock is first renamed to a name only this run uses (rename is
-# atomic, so two reapers can never both take it), then checked.  When another
-# run linked a fresh lock after the judgement, that lock is put back and the
-# reap is abandoned.  Returns 0 when the judged file was removed, 2 when LOCK
-# was already gone, 1 when another run holds it.
+# _reap_lock LOCK IDENT — remove the stale LOCK only when it is still the file
+# judged as IDENT.  Reapers take turns through a mkdir mutex, so while one
+# reaps, no other run removes or replaces the file (a fallback run only links
+# a lock where none exists).  Under the mutex the file is checked again, then
+# renamed to a name only this run uses and checked once more: the one writer
+# left, a flock-backend run that announces itself in a file it just locked,
+# gets its file put back.  Returns 0 when the judged file was removed, 2 when
+# LOCK was already gone, 1 when another run holds it or is reaping it.
+_REAP_MUTEX=""
 _reap_lock() {
-  local lock_file="$1" ident="$2" reap="${1}.reap.$$.${RANDOM}${RANDOM}"
-  if ! mv "$lock_file" "$reap" 2>/dev/null; then
-    [ -e "$lock_file" ] || return 2
+  local lock_file="$1" ident="$2" reap="${1}.reap.$$.${RANDOM}${RANDOM}" mutex="${1}.reaping" rc=1 mage
+  if ! mkdir "$mutex" 2>/dev/null; then
+    # A reaper that died inside the mutex leaves it behind; clear it once old.
+    if [ -d "$mutex" ] && [ ! -L "$mutex" ]; then
+      mage="$(_stat_mtime_age "$mutex" 2>/dev/null)" || mage=0
+      if [ "$mage" -ge 60 ]; then rmdir "$mutex" 2>/dev/null || true; fi
+    fi
     return 1
   fi
-  if _lock_ident "$reap" && [ "$_LOCK_IDENT" = "$ident" ]; then
+  _REAP_MUTEX="$mutex"
+  if ! _lock_ident "$lock_file"; then
+    [ -e "$lock_file" ] && rc=1 || rc=2
+  elif [ "$_LOCK_IDENT" = "$ident" ] && mv "$lock_file" "$reap" 2>/dev/null; then
+    if _lock_ident "$reap" && [ "$_LOCK_IDENT" = "$ident" ]; then
+      rc=0
+    elif ! ln "$reap" "$lock_file" 2>/dev/null; then
+      _warn "lock changed hands while a stale lock was being replaced: $lock_file"
+    fi
     rm -f "$reap" 2>/dev/null || true
-    return 0
   fi
-  if ! ln "$reap" "$lock_file" 2>/dev/null; then
-    # A third run linked in the instant the lock was moved aside.  It and
-    # the restored holder may each build once; every cache write is still an
-    # atomic temp-file rename, so the worst case is one duplicate build.
-    _warn "lock changed hands while a stale lock was being replaced: $lock_file"
-  fi
-  rm -f "$reap" 2>/dev/null || true
-  return 1
+  rmdir "$mutex" 2>/dev/null || true
+  _REAP_MUTEX=""
+  return "$rc"
 }
 
 # _fallback_link LOCK — write "PID EPOCH" to an exclusively created temp file
@@ -398,16 +412,15 @@ _release_snapshot_lock() {
     done <<< "$_SNAP_TMP_FILES"
     _SNAP_TMP_FILES=""
   fi
+  if [ -n "$_REAP_MUTEX" ]; then rmdir "$_REAP_MUTEX" 2>/dev/null || true; _REAP_MUTEX=""; fi
   local lock_file="${_SNAPSHOT_LOCK_FILE:-}"
   [ -n "$lock_file" ] || return 0
+  # Remove the lock file only while it still carries this holder's line (a
+  # live holder's file is never replaced by anyone else).  The flock backend
+  # removes it while still holding the flock, then closing the descriptor
+  # releases the flock.
   if _lock_last "$lock_file" && [ "$_LOCK_LAST" = "$_SNAPSHOT_LOCK_LINE" ]; then
-    if [ "$_SNAPSHOT_LOCK_BACKEND" = "flock" ]; then
-      # Empty the file while still holding the flock (empty = not held),
-      # then closing the only descriptor releases the flock.
-      : > "$lock_file" 2>/dev/null || true
-    else
-      rm -f "$lock_file" 2>/dev/null || true
-    fi
+    rm -f "$lock_file" 2>/dev/null || true
   fi
   [ "$_SNAPSHOT_LOCK_BACKEND" != "flock" ] || exec 9>&- 2>/dev/null || true
   _SNAPSHOT_LOCK_FILE=""

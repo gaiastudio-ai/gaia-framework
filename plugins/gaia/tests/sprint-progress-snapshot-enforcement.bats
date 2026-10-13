@@ -1243,17 +1243,24 @@ YAML
 # Fallback lock and the empty lock file the flock backend leaves behind
 # ---------------------------------------------------------------------------
 
-@test "fallback lock replaces an empty lock file left by the flock backend" {
+@test "fallback lock replaces an old empty lock file but not a fresh one" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
   write_story E900-S1 done 5
-  # flock never removes its (empty) lock file; a later fallback run must not
-  # read it as held.
+  # A fresh empty lock file may be a flock-backend run that has not written
+  # its line yet, so it is left alone.
   : > "$LOCK_FILE"
   GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
   [ "$status" -eq 0 ]
-  grep -q 'replacing an empty lock file left by the flock backend' <<< "$stderr"
+  grep -q 'lock not taken (the lock file is empty but only [0-9]*s old), skipping' <<< "$stderr"
+  [ ! -e "$CACHE" ]
+  # An old empty lock file (left by an older version) holds nothing.
+  touch -t 202001010000 "$LOCK_FILE"
+  GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'replacing an empty lock file nobody holds' <<< "$stderr"
   jq -e . "$CACHE" >/dev/null
   [ ! -e "$LOCK_FILE" ]
+  [ ! -e "$LOCK_FILE.reaping" ]
 }
 
 # take_lock_racing SCRIPT LOCK HOOK — source the script, override HOOK (a
@@ -1273,15 +1280,26 @@ take_lock_racing() {
     case "$hook" in
       warn) _warn() { case "$*" in *"replacing an empty lock"*) other_takes_lock ;; esac; } ;;
       age)  _stat_mtime_age() { other_takes_lock; printf 120; } ;;
+      # A flock-backend run announces itself in the judged file right after
+      # the reaper checked it again under the reap mutex.
+      flockwrite)
+        _warn() { :; }
+        eval "real_$(declare -f _lock_ident)"
+        n=0
+        _lock_ident() {
+          real__lock_ident "$@" || return 1
+          n=$((n + 1))
+          if [ "$n" = "2" ]; then printf "%s %s\n" "$PPID" "$(date +%s)" >> "$lock"; fi
+        } ;;
     esac
     if _try_snapshot_lock "$lock"; then echo "TOOK"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
     echo "holder=$(cut -d" " -f1 < "$lock") other=$PPID self=$$"
-    echo "reap=$(find "${lock%/*}" -name "*.reap.*" | wc -l | tr -d " ")"
+    echo "reap=$(find "${lock%/*}" -name "*.reap.*" | wc -l | tr -d " ") mutex=$([ -e "$lock.reaping" ] && echo left || echo none)"
   ' _ "$SCRIPT" "$LOCK_FILE" "$1"
 }
 
 @test "replacing an empty lock never removes a lock another run linked after the check" {
-  : > "$LOCK_FILE"
+  : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
   run take_lock_racing warn
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "SKIPPED: taken by another process" ]
@@ -1289,7 +1307,18 @@ take_lock_racing() {
   [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
   [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
   [ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[3]}" ]
-  [ "${lines[2]}" = "reap=0" ]
+  [ "${lines[2]}" = "reap=0 mutex=none" ]
+}
+
+@test "reaping never removes a lock a flock-backend run announced itself in after the last check" {
+  : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
+  run take_lock_racing flockwrite
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  # The announcing run's file was put back, with its line last.
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+  [ "${lines[2]}" = "reap=0 mutex=none" ]
 }
 
 @test "reaping a stale lock never removes a lock another run linked after the check" {
@@ -1302,7 +1331,7 @@ take_lock_racing() {
   [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
   [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
   [ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[3]}" ]
-  [ "${lines[2]}" = "reap=0" ]
+  [ "${lines[2]}" = "reap=0 mutex=none" ]
 
   # Without a racing run the stale lock is reaped and taken.
   rm -f "$LOCK_FILE"
@@ -1313,7 +1342,7 @@ take_lock_racing() {
   [ "${lines[0]}" = "TOOK" ]
   [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
   [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[3]}" ]
-  [ "${lines[2]}" = "reap=0" ]
+  [ "${lines[2]}" = "reap=0 mutex=none" ]
 }
 
 # slow_build_stub — a jq stub whose cold assembly records a build, announces
@@ -1359,8 +1388,8 @@ wait_for() {
 
   : > "$TEST_TMP/go"
   wait "$pid"
-  # Released: the flock backend leaves an empty lock file (nobody holds it).
-  [ -f "$LOCK_FILE" ] && [ ! -s "$LOCK_FILE" ]
+  # Released: the flock backend removes its lock file too.
+  [ ! -e "$LOCK_FILE" ]
   jq -e . "$CACHE" >/dev/null
 }
 
@@ -1383,12 +1412,13 @@ wait_for() {
   [ ! -e "$LOCK_FILE" ]
 }
 
-@test "many fallback runs racing on an empty lock file never build at the same time" {
+@test "many fallback runs racing to reap a stale lock file never build at the same time" {
   # Every runner sources the script and replaces only the build with a
-  # start/end marker pair; the lock code is the real one.
+  # start/end marker pair; the lock code is the real one.  They all find the
+  # same old empty lock file, so they all try to reap it at once.
   local log="$TEST_TMP/overlap.log" trial r
-  for trial in 1 2 3 4 5; do
-    : > "$LOCK_FILE"; : > "$log"
+  for trial in 1 2 3 4 5 6 7 8; do
+    : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"; : > "$log"
     local -a pids=()
     for r in $(seq 1 12); do
       bash -c '
