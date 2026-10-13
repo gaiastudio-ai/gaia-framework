@@ -277,18 +277,31 @@ _holder_live() {
   kill -0 "$pid" 2>/dev/null
 }
 
-# _await_reap MUTEX — wait (about 2 s at most) until no fallback run is
-# reaping a stale lock.  A mutex left by a reaper that died is cleared once it
-# is 60 s old.  Returns 1 when a reap is still in progress.
+# _await_reap MUTEX — wait until no fallback run is reaping a stale lock.  A
+# mutex left by a reaper that died is cleared once it is 60 s old.  Every pass
+# counts and sleeps, including one that could not clear an aged mutex (for
+# example a non-empty directory).  The wait gives up after 2 s of wall-clock
+# time (or, on a shell without EPOCHREALTIME, after 100 passes of 20 ms plus
+# one age check each).  A run tries the lock at most twice, so a mutex that
+# never clears costs it about 4 s before it skips.  Returns 1 when a reap is
+# still in progress.
 _await_reap() {
-  local mutex="$1" n=0 mage
+  local mutex="$1" n=0 mage now deadline=""
+  if [ -n "${EPOCHREALTIME:-}" ]; then
+    now="${EPOCHREALTIME//[!0-9]/}"; deadline=$(( 10#$now + 2000000 ))
+  fi
   while [ -e "$mutex" ] || [ -L "$mutex" ]; do
     if mage="$(_stat_mtime_age "$mutex")" && [ "$mage" -ge 60 ] \
        && [ -d "$mutex" ] && [ ! -L "$mutex" ]; then
       rmdir "$mutex" 2>/dev/null || true
-      continue
+      [ -e "$mutex" ] || [ -L "$mutex" ] || continue
     fi
-    n=$((n + 1)); [ "$n" -le 100 ] || return 1
+    n=$((n + 1))
+    if [ -n "$deadline" ]; then
+      now="${EPOCHREALTIME//[!0-9]/}"; [ $(( 10#$now )) -lt "$deadline" ] || return 1
+    else
+      [ "$n" -le 100 ] || return 1
+    fi
     sleep 0.02
   done
   return 0
@@ -1004,17 +1017,19 @@ ${name}
       ri=$((ri + 1))
     done <<< "$resolved"
     [ "$ri" -eq "${#rp_in[@]}" ] || return 1
-    local li sj lok
-    for li in "${!link_key[@]}"; do
-      lok=0
+    # One lookup per link (keys were validated above, so they are safe as
+    # array subscripts).  A link whose key has no story path compares an
+    # empty string with a resolved path, so it fails too.
+    if [ "${#link_key[@]}" -gt 0 ]; then
+      local -A story_of=()
+      local sj li
       for sj in "${!rp_key[@]}"; do
-        if [ "${rp_kind[$sj]}" = "s" ] && [ "${rp_key[$sj]}" = "${link_key[$li]}" ]; then
-          [ "${rp_in[$sj]}" != "${link_res[$li]}" ] || lok=1
-          break
-        fi
+        if [ "${rp_kind[$sj]}" = "s" ]; then story_of[${rp_key[$sj]}]="${rp_in[$sj]}"; fi
       done
-      [ "$lok" = "1" ] || return 1
-    done
+      for li in "${!link_key[@]}"; do
+        [ "${story_of[${link_key[$li]}]:-}" = "${link_res[$li]}" ] || return 1
+      done
+    fi
   fi
 
   # ONE batch stat of every present tracked file.  An mtime that moved in

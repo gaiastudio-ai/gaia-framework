@@ -1814,6 +1814,57 @@ wait_for() {
   [ ! -e "$LOCK_FILE.reaping" ]
 }
 
+@test "an aged reap mutex that cannot be removed makes the flock backend give up within seconds" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  # A stray file inside an old mutex: rmdir fails on every pass.
+  mkdir "$LOCK_FILE.reaping"; : > "$LOCK_FILE.reaping/stray"
+  touch -t 202001010000 "$LOCK_FILE.reaping"
+  local t0=$SECONDS
+  run_bounded 20 "$SCRIPT"
+  local took=$((SECONDS - t0))
+  [ "$status" -eq 0 ]
+  grep -q 'lock not taken (taken by another process), skipping' <<< "$stderr"
+  # Two lock attempts of about 2 s each, plus the run itself.
+  [ "$took" -le 8 ]
+  [ -e "$LOCK_FILE.reaping/stray" ]
+}
+
+@test "the reap wait gives up after about 2 s of wall-clock time even when every pass is cheap" {
+  mkdir "$LOCK_FILE.reaping"; : > "$LOCK_FILE.reaping/stray"
+  touch -t 202001010000 "$LOCK_FILE.reaping"
+  run_bounded 15 bash -c '
+    . "$1"; mutex="$2"
+    sleep() { :; }
+    t0=${EPOCHREALTIME//[!0-9]/}
+    if _await_reap "$mutex"; then echo "CLEARED"; else echo "GAVE UP"; fi
+    t1=${EPOCHREALTIME//[!0-9]/}
+    echo "ms=$(( (10#$t1 - 10#$t0) / 1000 ))"
+  ' _ "$SCRIPT" "$LOCK_FILE.reaping"
+  [ "$status" -eq 0 ]
+  local -a lines; mapfile -t lines <<< "$output"
+  [ "${lines[0]}" = "GAVE UP" ]
+  [[ ${lines[1]} =~ ^ms=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" -ge 1900 ]
+  [ "${BASH_REMATCH[1]}" -le 6000 ]
+}
+
+@test "without a wall clock the reap wait gives up after 100 sleeps, counting passes that cannot clear an aged mutex" {
+  mkdir "$LOCK_FILE.reaping"; : > "$LOCK_FILE.reaping/stray"
+  touch -t 202001010000 "$LOCK_FILE.reaping"
+  run_bounded 15 bash -c '
+    . "$1"; mutex="$2"; unset EPOCHREALTIME; slept=0
+    sleep() { slept=$((slept + 1)); }
+    if _await_reap "$mutex"; then echo "CLEARED"; else echo "GAVE UP"; fi
+    echo "slept=$slept"
+  ' _ "$SCRIPT" "$LOCK_FILE.reaping"
+  [ "$status" -eq 0 ]
+  local -a lines; mapfile -t lines <<< "$output"
+  [ "${lines[0]}" = "GAVE UP" ]
+  [ "${lines[1]}" = "slept=100" ]
+}
+
 @test "a lock file that vanishes while its age is read is retried without stat noise" {
   sleep 0 & local dead=$!; wait "$dead" || true
   printf '%s %s\n' "$dead" 1000000000 > "$LOCK_FILE"
