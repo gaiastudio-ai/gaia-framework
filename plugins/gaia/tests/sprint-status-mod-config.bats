@@ -434,3 +434,80 @@ EOF
   val="$(jq '.properties.sprint_status_mod.properties.waiting_agent_threshold_seconds.default' "$SCHEMA")"
   [ "$val" = "120" ]
 }
+
+# ---------------------------------------------------------------------------
+# Degraded validator path (no ajv, no python jsonschema): the section's types
+# and ranges are still checked.
+# ---------------------------------------------------------------------------
+
+# _run_degraded <config-yaml> — run the validator with the python jsonschema
+# module masked, so it takes the jq-only path, and require that it did.
+_run_degraded() {
+  if command -v ajv >/dev/null 2>&1; then
+    skip "ajv on PATH takes precedence over the degraded path"
+  fi
+  local fakelib="$TEST_TMP/nojsonschema"
+  mkdir -p "$fakelib"
+  printf 'raise ImportError("masked")\n' > "$fakelib/jsonschema.py"
+  PYTHONPATH="$fakelib" run "$VALIDATOR" "$1"
+  [[ "$output" == *"running DEGRADED structural validation only"* ]]
+}
+
+_degraded_passes() {
+  _run_degraded "$1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS (DEGRADED)"* ]]
+}
+
+_degraded_rejects() {
+  _run_degraded "$1"
+  [ "$status" -eq 1 ]
+  [[ "$output" != *"PASS"* ]]
+  [[ "$output" == *"FAIL: \$.sprint_status_mod$2"* ]]
+}
+
+@test "degraded path accepts valid sprint_status_mod sections" {
+  _degraded_passes "$(_write_config 'sprint_status_mod:
+  user_aliases:
+    - alice
+  waiting_agent_threshold_seconds: 3600')"
+  _degraded_passes "$(_write_config 'sprint_status_mod:
+  waiting_agent_threshold_seconds: 0')"
+  _degraded_passes "$(_write_config 'sprint_status_mod:')"
+  _degraded_passes "$(_write_config 'sprint_status_mod: {}')"
+  _degraded_passes "$(_write_config 'sprint_status_mod:
+  user_aliases: []')"
+}
+
+@test "degraded path rejects a threshold outside 0 to 3600" {
+  _degraded_rejects "$(_write_config 'sprint_status_mod:
+  waiting_agent_threshold_seconds: 3601')" ".waiting_agent_threshold_seconds — must be between 0 and 3600"
+  _degraded_rejects "$(_write_config 'sprint_status_mod:
+  waiting_agent_threshold_seconds: -1')" ".waiting_agent_threshold_seconds — must be between 0 and 3600"
+}
+
+@test "degraded path rejects a threshold that is not an integer" {
+  local v
+  for v in 1.5 '"120"' 'null' 'true' '[1]'; do
+    _degraded_rejects "$(_write_config "sprint_status_mod:
+  waiting_agent_threshold_seconds: $v")" ".waiting_agent_threshold_seconds — must be an integer"
+  done
+}
+
+@test "degraded path rejects bad user_aliases values" {
+  _degraded_rejects "$(_write_config 'sprint_status_mod:
+  user_aliases: "alice"')" ".user_aliases — must be a list"
+  _degraded_rejects "$(_write_config 'sprint_status_mod:
+  user_aliases:
+    - alice
+    - ""')" ".user_aliases[1] — must be a non-empty string"
+  _degraded_rejects "$(_write_config 'sprint_status_mod:
+  user_aliases:
+    - 1')" ".user_aliases[0] — must be a non-empty string"
+}
+
+@test "degraded path rejects an unknown key and a non-object section" {
+  _degraded_rejects "$(_write_config 'sprint_status_mod:
+  unknown_key: true')" ".unknown_key — property is not allowed"
+  _degraded_rejects "$(_write_config 'sprint_status_mod: some-string')" " — must be an object or null"
+}

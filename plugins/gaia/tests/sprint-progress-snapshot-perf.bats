@@ -66,19 +66,55 @@ _median() {
 
 # _time_runs MODE RUNS — run the snapshot RUNS times and print the elapsed
 # milliseconds of each run on one line.  MODE "cold" removes the cache,
-# sidecar and parse cache before every run; "warm" leaves them in place.
+# sidecar and parse cache before every run; "warm" leaves them in place;
+# "yaml" is the shape of a run after a status transition: the sprint yaml
+# and one story file get a new mtime before every run, while the cache,
+# sidecar and parse cache stay.  Each mode checks that every sample really
+# ran the way it is labelled.
 _time_runs() {
-  local mode="$1" runs="$2" i t0 t1 out=""
+  local mode="$1" runs="$2" i t0 t1 out="" stamp prev=""
   for i in $(seq 1 "$runs"); do
-    if [ "$mode" = "cold" ]; then
-      rm -f "$CACHE" "$SIDECAR" "$PARSED"
-    fi
+    case "$mode" in
+      cold)
+        rm -f "$CACHE" "$SIDECAR" "$PARSED"
+        # Nothing for a warm path to serve: this sample is a cold build.
+        [ ! -e "$CACHE" ] && [ ! -e "$SIDECAR" ] && [ ! -e "$PARSED" ] || return 1 ;;
+      yaml)
+        prev="$(_sidecar_yaml_mtime)"
+        stamp="$(printf '2026090%d0000' "$i")"
+        touch -t "$stamp" "$SPRINT_STATUS_YAML" "$IMPL/epic-perf/E900-S1-e900-s1-perf/story.md" ;;
+    esac
     t0="$(_now_ns)"
     "$SCRIPT" >/dev/null 2>&1 || return 1
     t1="$(_now_ns)"
+    case "$mode" in
+      cold) [ -s "$CACHE" ] && [ -s "$SIDECAR" ] || return 1 ;;
+      # The sidecar now records the new yaml mtime (a warm run never
+      # rewrites it): the run rebuilt.
+      yaml) [ "$(_sidecar_yaml_mtime)" != "$prev" ] \
+              && [ "$(_sidecar_yaml_mtime)" = "$(_snap_mtime "$SPRINT_STATUS_YAML")" ] || return 1 ;;
+    esac
     out="${out:+$out }$(_elapsed_ms "$t0" "$t1")"
   done
   printf '%s' "$out"
+}
+
+# _sidecar_yaml_mtime — the sprint yaml mtime the sidecar recorded.
+_sidecar_yaml_mtime() {
+  awk -F'\t' '$1 == "meta" && $2 == "__sprint_status__" { print $4 }' "$SIDECAR"
+}
+
+# _snap_mtime FILE — the mtime in epoch seconds (GNU or BSD stat).
+_snap_mtime() {
+  if stat -c %Y / >/dev/null 2>&1; then stat -c %Y "$1"; else stat -f %m "$1"; fi
+}
+
+# _flat_top_level N — N plain files directly in the story tree root, the
+# shape of a legacy flat layout (every story and review file at the top).
+_flat_top_level() {
+  awk -v n="$1" -v impl="$IMPL" 'BEGIN {
+    for (i = 1; i <= n; i++) { f = impl "/flat-note-" i ".md"; printf "# note %d\n", i > f; close(f) }
+  }'
 }
 
 # _report LABEL BUDGET SAMPLES... — print samples + median to the TAP stream.
@@ -212,6 +248,41 @@ _generate_registry() {
   [ "$(jq '[.action_needed[] | select(.rule == "c")] | length' "$CACHE")" -gt 0 ]
 }
 
+@test "run after a status transition stays under 1.5 seconds with 30 stories" {
+  _generate_30_story_sprint
+  _generate_registry 270
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  local samples
+  samples="$(_time_runs yaml 5)"
+  # shellcheck disable=SC2086
+  _report "after a transition, 30 stories + 270-item registry" 1500 $samples
+  # shellcheck disable=SC2086
+  [ "$(_median $samples)" -lt 1500 ]
+  [ "$(jq '.totals.total_stories' "$CACHE")" = "30" ]
+}
+
+@test "a story tree with 3000 flat top-level files stays under 1.5 seconds" {
+  _generate_30_story_sprint
+  _flat_top_level 3000
+  backdate_tree
+  [ "$(find "$IMPL" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "3001" ]
+  local samples
+  samples="$(_time_runs cold 5)"
+  # shellcheck disable=SC2086
+  _report "cold 30 stories + 3000 flat top-level files" 1500 $samples
+  # shellcheck disable=SC2086
+  [ "$(_median $samples)" -lt 1500 ]
+  [ "$(jq '.totals.total_stories' "$CACHE")" = "30" ]
+
+  samples="$(_time_runs yaml 5)"
+  # shellcheck disable=SC2086
+  _report "after a transition, 30 stories + 3000 flat top-level files" 1500 $samples
+  # shellcheck disable=SC2086
+  [ "$(_median $samples)" -lt 1500 ]
+}
+
 @test "300-story sprint finishes inside the 10 second hook timeout" {
   _generate_sprint 300
   _generate_registry 270
@@ -271,9 +342,22 @@ _count_execs() {
   rm -f "$CACHE" "$SIDECAR" "$PARSED"
   local cold60; cold60="$(_count_execs "$log")"
   [ "$(jq '.totals.total_stories' "$CACHE")" = "60" ]
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  jq '.stories[0].title = "WARM-PATH-MARKER"' "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
+  local warm60; warm60="$(_count_execs "$log")"
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "WARM-PATH-MARKER" ]
 
-  printf '# processes: warm=%s [%s] cold30=%s cold60=%s\n' "$warm" "$warm_list" "$cold30" "$cold60" >&3
-  [ "$warm" -le 8 ]
+  printf '# processes: warm=%s [%s] warm60=%s cold30=%s cold60=%s\n' "$warm" "$warm_list" "$warm60" "$cold30" "$cold60" >&3
+  # The warm path runs 8 programs on this host: flock, jq, mv, rm, two
+  # realpath (a one-time probe for -e, then the batch) and two stat (the
+  # flavour probe at load, then the batch).  Two more are allowed for a host
+  # where a probe resolves differently (for example a stat or realpath that
+  # needs the per-path fallback); anything that grows with the story count
+  # is caught by the equality checks, which have no headroom.
+  [ "$warm" -le 10 ]
+  [ "$warm60" -eq "$warm" ]
   [ "$cold60" -eq "$cold30" ]
 }
 

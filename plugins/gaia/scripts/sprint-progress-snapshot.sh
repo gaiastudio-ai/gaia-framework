@@ -15,7 +15,9 @@
 # Incremental refresh: the mtime sidecar (.sprint-progress-mtimes) records
 # each tracked file with its project-relative path and mtime (0 = absent),
 # plus the story tree root and its direct subdirectories (a story directory
-# that appears, moves or disappears changes one of their mtimes).  The
+# that appears, moves or disappears changes one of their mtimes), and, for a
+# story file that is a symlink, the link itself (a link pointed at another
+# file is noticed).  The
 # per-story parse records are kept in .sprint-progress-parsed, so a run only
 # re-parses story files whose path or mtime changed.
 #
@@ -106,10 +108,13 @@ _stat_mtime_batch() {
   fi
 }
 
+# _stat_mtime_age PATH — seconds since PATH was modified.  Returns 1 (and
+# prints nothing) when PATH cannot be read, for example because it is gone.
 _stat_mtime_age() {
   local mt now
-  mt="$(_stat_mtime "$1")"
-  now="$(date +%s)"
+  mt="$(_stat_mtime "$1" 2>/dev/null)" || return 1
+  [[ $mt =~ ^[0-9]+$ ]] || return 1
+  now="${EPOCHSECONDS:-$(date +%s)}"
   printf '%s' "$(( now - mt ))"
 }
 
@@ -171,11 +176,13 @@ _realpath_batch() {
 # Input validation
 # ---------------------------------------------------------------------------
 
-# _validate_threshold STR — return a valid non-negative integer, or 120 with a warning
+# _validate_threshold STR — return an integer from 0 to 3600 (the range the
+# config schema allows), or 120 with a warning
 _validate_threshold() {
   local v="$1"
-  # Must be a plain non-negative integer (digits only, bounded length)
-  if [ -n "$v" ] && [ "${#v}" -le 10 ] && [[ $v =~ ^[0-9]+$ ]]; then
+  # Must be a plain non-negative integer (digits only, bounded length) no
+  # larger than one hour
+  if [ -n "$v" ] && [ "${#v}" -le 10 ] && [[ $v =~ ^[0-9]+$ ]] && [ "$((10#$v))" -le 3600 ]; then
     printf '%s' "$((10#$v))"
   else
     [ -z "$v" ] || _warn "invalid threshold value '${v:0:20}', using default 120"
@@ -254,6 +261,39 @@ _lock_last() {
 # _lock_line — the "PID EPOCH" line this run writes as a holder.
 _lock_line() { _SNAPSHOT_LOCK_LINE="$$ ${EPOCHSECONDS:-$(date +%s)}"; }
 
+# _holder_live LINE — true when LINE ("PID EPOCH") names a running process
+# that took the lock at most _LOCK_MAX_HOLD seconds ago.  A build never holds
+# the lock that long (the hook stops a build after 10 s), so a holder line
+# whose PID the system later handed to some other long-lived process stops
+# counting as a live holder once its epoch is that old (or lies in the future).
+_LOCK_MAX_HOLD=600
+_holder_live() {
+  local pid="${1%% *}" ep="${1#* }" now
+  case "$1" in *" "*) ;; *) return 1 ;; esac
+  [[ $pid =~ ^[0-9]+$ ]] && [[ $ep =~ ^[0-9]+$ ]] || return 1
+  [ "${#pid}" -le 10 ] && [ "${#ep}" -le 12 ] && [ "$((10#$pid))" -gt 0 ] || return 1
+  now="${EPOCHSECONDS:-$(date +%s)}"
+  [ $(( now - 10#$ep )) -le "$_LOCK_MAX_HOLD" ] && [ $(( 10#$ep - now )) -le 60 ] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+# _await_reap MUTEX — wait (about 2 s at most) until no fallback run is
+# reaping a stale lock.  A mutex left by a reaper that died is cleared once it
+# is 60 s old.  Returns 1 when a reap is still in progress.
+_await_reap() {
+  local mutex="$1" n=0 mage
+  while [ -e "$mutex" ] || [ -L "$mutex" ]; do
+    if mage="$(_stat_mtime_age "$mutex")" && [ "$mage" -ge 60 ] \
+       && [ -d "$mutex" ] && [ ! -L "$mutex" ]; then
+      rmdir "$mutex" 2>/dev/null || true
+      continue
+    fi
+    n=$((n + 1)); [ "$n" -le 100 ] || return 1
+    sleep 0.02
+  done
+  return 0
+}
+
 _try_snapshot_lock() {
   local lock_file="$1"
   _SNAPSHOT_LOCK_REFUSED=0
@@ -270,11 +310,9 @@ _try_snapshot_lock() {
       return 1
     fi
     # A fallback-backend holder takes no flock; its line says it holds.
-    local fholder=""
-    if _lock_last "$lock_file"; then fholder="${_LOCK_LAST%% *}"; fi
-    if [[ $fholder =~ ^[0-9]+$ ]] && [ "$fholder" != "$$" ] && kill -0 "$fholder" 2>/dev/null; then
+    if _lock_last "$lock_file" && [ "${_LOCK_LAST%% *}" != "$$" ] && _holder_live "$_LOCK_LAST"; then
       exec 9>&-
-      _SNAPSHOT_LOCK_REASON="held by live process $fholder"
+      _SNAPSHOT_LOCK_REASON="held by live process ${_LOCK_LAST%% *}"
       return 1
     fi
     # Announce this holder, then make sure the name still leads to the file
@@ -286,6 +324,20 @@ _try_snapshot_lock() {
       exec 9>&-
       _SNAPSHOT_LOCK_REASON="taken by another process"
       return 1
+    fi
+    # A fallback run reaping a stale lock may have judged this file before
+    # the line above was written, and may be moving it aside right now.  Let
+    # that reap finish, then check again that the name still leads to this
+    # run's line (a reaper that saw the line leaves the file alone, or puts
+    # it back; if another run took the name meanwhile, this run backs off).
+    # A reap that starts after this check sees the line and leaves the file.
+    if [ -e "${lock_file}.reaping" ] || [ -L "${lock_file}.reaping" ]; then
+      if ! _await_reap "${lock_file}.reaping" \
+         || ! _lock_last "$lock_file" || [ "$_LOCK_LAST" != "$_SNAPSHOT_LOCK_LINE" ]; then
+        exec 9>&-
+        _SNAPSHOT_LOCK_REASON="taken by another process"
+        return 1
+      fi
     fi
     _SNAPSHOT_LOCK_FILE="$lock_file"
     return 0
@@ -310,16 +362,20 @@ _try_snapshot_lock() {
     _lock_ident "$lock_file" || continue
     ident="$_LOCK_IDENT"
     holder="${_LOCK_LAST%% *}"
-    if [ -n "$_LOCK_LAST" ] && [[ $holder =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
+    if [ -n "$_LOCK_LAST" ] && _holder_live "$_LOCK_LAST"; then
       _SNAPSHOT_LOCK_REASON="held by live process $holder"; return 1
     fi
-    age="$(_stat_mtime_age "$lock_file")" || age=0
+    # The lock file can vanish (its holder released it) right after it was
+    # judged: link again.
+    age="$(_stat_mtime_age "$lock_file")" || continue
     if [ "$age" -lt 60 ]; then
       if [ -z "$_LOCK_LAST" ]; then
         _SNAPSHOT_LOCK_REASON="the lock file is empty but only ${age}s old"
       else
         _SNAPSHOT_LOCK_REASON="holder '${holder:0:20}' is not running but the lock is only ${age}s old"
       fi
+      [[ ! $holder =~ ^[0-9]+$ ]] || ! kill -0 "$holder" 2>/dev/null \
+        || _SNAPSHOT_LOCK_REASON="holder '${holder:0:20}' took the lock too long ago but the lock file is only ${age}s old"
       return 1
     fi
     if [ -z "$_LOCK_LAST" ]; then
@@ -859,17 +915,24 @@ _try_warm_fast_path() {
   [ ! -L "$CACHE_FILE" ] && [ ! -L "$SIDECAR_FILE" ] && [ ! -L "$PARSED_FILE" ] || return 1
 
   local typ a b c ver=0 seen_meta="" rest have_root=0
-  local -a st_paths=() st_exp=() rp_in=() rp_exp=() rp_key=() smt_parts=()
+  local -a st_paths=() st_exp=() rp_in=() rp_exp=() rp_key=() rp_kind=() smt_parts=()
+  local -a link_key=() link_res=()
   while IFS=$'\t' read -r typ a b c; do
     case "$typ" in
-      v3) ver=1 ;;
+      v4) ver=1 ;;
       v[0-9]*) ;;   # another format version: refused below as out of date
       story)
         _valid_story_key "$a" || _warm_reject "has an invalid story key" || return 1
         _rel_ok "$b" || _warm_reject "story path for $a is not project-relative" || return 1
         [[ $c =~ ^[0-9]+$ ]] || return 1
-        rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=("$c"); rp_key+=("$a")
+        rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=("$c"); rp_key+=("$a"); rp_kind+=("s")
         smt_parts+=("$a" "$c") ;;
+      link)
+        # The story file was found through this symlink; it must still lead
+        # to the recorded story path.
+        _valid_story_key "$a" || _warm_reject "has an invalid story key" || return 1
+        _rel_ok "$b" || _warm_reject "link path for $a is not project-relative" || return 1
+        rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=(""); rp_key+=("$a"); rp_kind+=("l") ;;
       dir)
         # The story tree root or one of its direct subdirectories.
         _has_ctl "$a" && { _warm_reject "has a story-tree entry with control characters"; return 1; }
@@ -917,22 +980,41 @@ ${name}
 "*) ;; *) _warm_reject "has no entry for ${name}"; return 1 ;; esac
   done <<< "$_SNAP_EXPECTED_META"
 
-  # Story paths must resolve (full symlink chain) inside the project root;
-  # the mtime that counts is the resolved file's, not a link's.
+  # Story paths must resolve (full symlink chain) inside the project root.
+  # The recorded story path is the resolved file itself, so it must still
+  # resolve to itself (a path that now leads elsewhere was replaced by a
+  # link), and a recorded link must still lead to its story's file.
   if [ "${#rp_in[@]}" -gt 0 ]; then
     local resolved line ri=0
     resolved="$(_realpath_batch "${rp_in[@]}")" || return 1
     while IFS= read -r line; do
       [ "$ri" -lt "${#rp_in[@]}" ] || return 1
       case "$line" in
+        "?") return 1 ;;   # gone: an ordinary change
         "${RESOLVED_ROOT}/"*) ;;
         *) _warm_reject "story path for ${rp_key[$ri]} resolves outside the project root"; return 1 ;;
       esac
       _has_ctl "$line" && { _warm_reject "story path for ${rp_key[$ri]} contains control characters"; return 1; }
-      st_paths+=("$line"); st_exp+=("${rp_exp[$ri]}")
+      if [ "${rp_kind[$ri]}" = "s" ]; then
+        [ "$line" = "${rp_in[$ri]}" ] || return 1
+        st_paths+=("$line"); st_exp+=("${rp_exp[$ri]}")
+      else
+        link_key+=("${rp_key[$ri]}"); link_res+=("$line")
+      fi
       ri=$((ri + 1))
     done <<< "$resolved"
     [ "$ri" -eq "${#rp_in[@]}" ] || return 1
+    local li sj lok
+    for li in "${!link_key[@]}"; do
+      lok=0
+      for sj in "${!rp_key[@]}"; do
+        if [ "${rp_kind[$sj]}" = "s" ] && [ "${rp_key[$sj]}" = "${link_key[$li]}" ]; then
+          [ "${rp_in[$sj]}" != "${link_res[$li]}" ] || lok=1
+          break
+        fi
+      done
+      [ "$lok" = "1" ] || return 1
+    done
   fi
 
   # ONE batch stat of every present tracked file.  An mtime that moved in
@@ -1118,15 +1200,18 @@ _snapshot_build() {
   # story directory that is added, removed or renamed changes one of their
   # mtimes, which forces a fresh search (so a duplicate that appears for an
   # already-resolved key is noticed).
+  # One find lists them (a glob over a large flat tree is slow in the C
+  # locale on recent bash).  -type d never matches a symlink.  The listing
+  # order is the directory's own order, which only changes when an entry is
+  # added or removed, and that moves the root's mtime anyway.
   local -a tree_dirs=()
   if [ -d "$IMPL_DIR" ] && [ ! -L "$IMPL_DIR" ]; then
     tree_dirs+=("$IMPL_DIR")
     local dd
-    for dd in "$IMPL_DIR"/*/ "$IMPL_DIR"/.[!.]*/; do
-      [ -d "$dd" ] && [ ! -L "${dd%/}" ] || continue
+    while IFS= read -r -d '' dd; do
       _has_ctl "$dd" && continue
-      tree_dirs+=("${dd%/}")
-    done
+      tree_dirs+=("$dd")
+    done < <(find "$IMPL_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
   fi
 
   # --- Meta files present / absent, story-tree dirs: ONE batch stat ---
@@ -1172,7 +1257,8 @@ _snapshot_build() {
       cached_out="$(SNAP_KEYS="${valid_keys[*]}" awk -F'\t' '
         BEGIN { n = split(ENVIRON["SNAP_KEYS"], ka, " ") }
         $1 == "story" && !($2 in rel) { rel[$2] = $3 }
-        END { for (i = 1; i <= n; i++) print ka[i] "\t" rel[ka[i]] }
+        $1 == "link" && !($2 in lnk) { lnk[$2] = $3 }
+        END { for (i = 1; i <= n; i++) print ka[i] "\t" ((ka[i] in lnk) ? lnk[ka[i]] : rel[ka[i]]) }
       ' "$SIDECAR_FILE" 2>/dev/null)" || cached_out=""
     fi
     for ki in "${!valid_keys[@]}"; do key_path+=(""); done
@@ -1220,7 +1306,7 @@ _snapshot_build() {
 
   # --- Containment: resolve the full symlink chain, keep paths inside the
   # root, and refuse any path holding a byte that could shift a record field.
-  local -a ok_keys=() ok_abs=() ok_rel=()
+  local -a ok_keys=() ok_abs=() ok_rel=() link_lines=()
   if [ "${#cand_keys[@]}" -gt 0 ]; then
     local -a exist_keys=() exist_paths=()
     local ci
@@ -1240,11 +1326,20 @@ _snapshot_build() {
         if _has_ctl "$rp"; then
           _warn "story path for ${exist_keys[$ri]} contains control characters, skipping"
           miss_arr+=("miss	${exist_keys[$ri]}")
-        elif _inside_root "$rp"; then
-          ok_keys+=("${exist_keys[$ri]}"); ok_abs+=("$rp"); ok_rel+=("${rp#"${RESOLVED_ROOT}"/}")
-        else
+        elif ! _inside_root "$rp"; then
           _warn "path escapes project root for ${exist_keys[$ri]}, skipping"
           miss_arr+=("miss	${exist_keys[$ri]}")
+        elif [ ! -f "$rp" ]; then
+          # A link to a directory, a FIFO or a device is not a story file;
+          # reading it would stop or hang the whole parse.
+          _warn "story file for ${exist_keys[$ri]} is not a regular file, skipping"
+          miss_arr+=("miss	${exist_keys[$ri]}")
+        else
+          ok_keys+=("${exist_keys[$ri]}"); ok_abs+=("$rp"); ok_rel+=("${rp#"${RESOLVED_ROOT}"/}")
+          if [ -L "${exist_paths[$ri]}" ]; then
+            _rel_of "${exist_paths[$ri]}"
+            if _rel_ok "$_REL"; then link_lines+=("link	${exist_keys[$ri]}	${_REL}"); fi
+          fi
         fi
         ri=$((ri + 1))
       done <<< "$resolved"
@@ -1295,7 +1390,23 @@ _snapshot_build() {
     printf -v s_lines '%s\n' "${s_arr[@]}"
     local parsed_src="/dev/null"
     if [ -f "$PARSED_FILE" ] && [ ! -L "$PARSED_FILE" ]; then parsed_src="$PARSED_FILE"; fi
-    story_rec="$(SNAP_WANT="$want" _story_records "$parsed_src")" || story_rec=""
+    if ! story_rec="$(SNAP_WANT="$want" _story_records "$parsed_src")"; then
+      # awk cannot recover from a read error, so one unreadable story file
+      # stops the whole parse.  Parse the stories one at a time instead: only
+      # the unreadable one is lost, and it is re-checked on the next run.
+      local -a one_arr=()
+      local one_rec
+      for oi in "${!want_arr[@]}"; do
+        if one_rec="$(SNAP_WANT="${want_arr[$oi]}" _story_records /dev/null)"; then
+          [ -z "$one_rec" ] || one_arr+=("$one_rec")
+        else
+          _warn "story file for ${ok_keys[$oi]} could not be read, skipping"
+          miss_arr+=("miss	${ok_keys[$oi]}")
+        fi
+      done
+      story_rec=""
+      [ "${#one_arr[@]}" -eq 0 ] || { printf -v story_rec '%s\n' "${one_arr[@]}"; story_rec="${story_rec%$'\n'}"; }
+    fi
   fi
 
   # --- Ledger verdicts ---
@@ -1379,8 +1490,9 @@ _snapshot_build() {
 
   # --- Parse cache + sidecar ---
   printf '%s\n' "$story_rec" | _write_atomic_from "$PARSED_FILE" || true
-  local -a side_arr=("v3")
+  local -a side_arr=("v4")
   [ "${#story_lines[@]}" -eq 0 ] || side_arr+=("${story_lines[@]}")
+  [ "${#link_lines[@]}" -eq 0 ] || side_arr+=("${link_lines[@]}")
   [ "${#dir_lines[@]}" -eq 0 ] || side_arr+=("${dir_lines[@]}")
   for mi in "${!meta_names[@]}"; do
     side_arr+=("meta	${meta_names[$mi]}	${meta_rels[$mi]}	${meta_rec[$mi]}")
