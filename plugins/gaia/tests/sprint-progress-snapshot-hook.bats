@@ -145,6 +145,16 @@ _wait_gone() {
   done
 }
 
+# _now_ms — current epoch time in milliseconds.
+_now_ms() {
+  if [ -n "${EPOCHREALTIME:-}" ]; then
+    local t="${EPOCHREALTIME/,/.}"
+    printf '%s' "$(( ${t%.*} * 1000 + 10#$(printf '%.3s' "${t#*.}") ))"
+  else
+    perl -MTime::HiRes -e 'printf "%d", Time::HiRes::time() * 1000'
+  fi
+}
+
 # _install_marker_snapshot DIR MARKER — fake snapshot that records its
 # invocation (and the environment it was given) in MARKER, instantly.
 _install_marker_snapshot() {
@@ -487,17 +497,19 @@ sleep 8
 SH
   chmod +x "$copied_dir/sprint-progress-snapshot.sh"
 
-  # Time the transition: must return in under 2 s even though snapshot sleeps 8 s
+  # Time the captured transition in milliseconds: it returns in about one
+  # second, while a hook that kept the caller's stdout would hold the capture
+  # open for the full 8 s sleep.  5000 ms separates the two with wide margin.
   local t_start t_end elapsed
-  t_start="$(date +%s)"
+  t_start="$(_now_ms)"
   out="$(env SPRINT_STATE_SCRIPT_DIR="$copied_dir" \
       PROJECT_ROOT="$PROJECT_ROOT" \
       SPRINT_STATUS_YAML="$SPRINT_STATUS_YAML" \
       MEMORY_PATH="$MEMORY_PATH" \
       "$copied_ss" transition --story E900-S1 --to review 2>&1)" || true
-  t_end="$(date +%s)"
+  t_end="$(_now_ms)"
   elapsed=$((t_end - t_start))
-  [ "$elapsed" -lt 3 ]
+  [ "$elapsed" -lt 5000 ]
   # The hook did start the slow snapshot; stop it so nothing outlives the test.
   _wait_for "$slow_pid_file"
   kill "$(cat "$slow_pid_file")" 2>/dev/null || true
@@ -554,4 +566,63 @@ SH
   _wait_for "$marker"
   grep -qx "IMPLEMENTATION_ARTIFACTS=$IMPL" "$marker"
   grep -qx "PROJECT_ROOT=$PROJECT_ROOT" "$marker"
+}
+
+# ---------------------------------------------------------------------------
+# Read-only subcommands
+# ---------------------------------------------------------------------------
+
+@test "read-only subcommands never fire the snapshot hook" {
+  _seed_sprint
+  _seed_story E900-S1 in-progress
+  unset GAIA_SNAPSHOT_HOOK_DISABLE
+  local ss; ss="$(_copy_plugin_tree)"
+  local marker="$TEST_TMP/invoked"
+  _install_marker_snapshot "$(dirname "$ss")" "$marker"
+
+  # Positive control: a mutating subcommand fires the instant fake.
+  _run_copied "$ss" transition --story E900-S1 --to review
+  [ "$status" -eq 0 ]
+  _wait_for "$marker"
+  rm -f "${marker:?}"
+
+  # Each read-only subcommand succeeds (the hook only runs after a
+  # successful dispatch, so a failing one would prove nothing) and never
+  # starts the snapshot.
+  local args
+  for args in "get --story E900-S1" "validate --story E900-S1" "get-goals --sprint sprint-hook" \
+              "lint-dependencies" "detect-auto-close"; do
+    # shellcheck disable=SC2086
+    _run_copied "$ss" $args
+    [ "$status" -eq 0 ]
+    if _wait_for "$marker" 2; then echo "hook fired for: $args" >&2; return 1; fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# A hook-started build is not left "racy"
+# ---------------------------------------------------------------------------
+
+@test "a hook-started build records real mtimes, so the next snapshot run is warm" {
+  _seed_sprint
+  _seed_story E900-S1 in-progress
+  unset GAIA_SNAPSHOT_HOOK_DISABLE
+  local sidecar="$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
+
+  # The transition rewrites the yaml and the story file, then the real hook
+  # builds the cache in the background.
+  run "$SCRIPT" transition --story E900-S1 --to review
+  [ "$status" -eq 0 ]
+  _wait_for "$sidecar"
+  jq -e . "$CACHE" >/dev/null
+  [ "$(jq -r '.stories[0].status' "$CACHE")" = "review" ]
+  if grep -q 'racy' "$sidecar"; then cat "$sidecar" >&2; return 1; fi
+
+  # So the very next run takes the warm path: it keeps a marker title that a
+  # cold rebuild would overwrite.
+  jq '.stories[0].title = "WARM-PATH-MARKER"' "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
+  run "$SNAPSHOT_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "WARM-PATH-MARKER" ]
 }

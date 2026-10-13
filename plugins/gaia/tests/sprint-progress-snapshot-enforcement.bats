@@ -108,28 +108,132 @@ depends_on: []
 EOF
 }
 
-# backdate_tree — move every fixture file's mtime well into the past, so a
-# snapshot run does not treat it as written in its own second (such files
-# are deliberately re-read by the next run).
+# backdate_tree — move every fixture file and directory mtime well into the
+# past, so a snapshot run does not treat it as written in its own second
+# (such entries are deliberately re-read by the next run).
 backdate_tree() {
-  find "$PROJECT_ROOT" -type f -exec touch -t 202610010000 {} + 2>/dev/null || true
+  find "$PROJECT_ROOT" \( -type f -o -type d \) -exec touch -t 202610010000 {} + 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
 # Single-writer enforcement sweep
 # ---------------------------------------------------------------------------
 
+# _cache_write_detector — awk program run once per candidate file.  It
+# prints "WRITER" when the file WRITES the cache, not when it merely names it:
+#   1. taint: a variable assigned a value that holds the cache file name, or
+#      a tainted variable, is tainted too (repeated until nothing changes);
+#   2. a line is a write when the target of a write form is the literal name
+#      or a tainted variable.  Shell: `>` / `>>` redirects, the last operand
+#      of mv/cp/install/ln/rsync, any operand of tee.  Python: open() with a
+#      w/a/x/+ mode, os.replace/os.rename/shutil.move/copy targets,
+#      write_text/write_bytes.  JS/TS: writeFile/appendFile/createWriteStream
+#      targets, rename/copyFile destinations.
+# A name built from pieces at run time (".sprint-progress-" + "cache.json")
+# is out of reach of any static sweep; that limit is accepted.
+_cache_write_detector() {
+  cat <<'AWK'
+function isref(tok,   v) {
+  if (index(tok, ".sprint-progress-cache.json") > 0) return 1
+  for (v in taint) if (tok ~ ("(^|[^A-Za-z0-9_])" v "([^A-Za-z0-9_]|$)")) return 1
+  return 0
+}
+function lastarg(call,   t) {
+  t = call; sub(/\).*$/, "", t)
+  if (index(t, ",") == 0) return ""
+  sub(/^.*,/, "", t); return t
+}
+function firstarg(call,   t) {
+  t = call; sub(/^[^(]*\(/, "", t); sub(/[,)].*$/, "", t); return t
+}
+function shell_write(l,   rest, after, pre, tok, segs, ns, i, seg, wds, nw, cmd, j) {
+  rest = l
+  while (match(rest, />>?[ \t]*/)) {
+    pre = (RSTART > 1) ? substr(rest, RSTART - 1, 1) : ""
+    after = substr(rest, RSTART + RLENGTH)
+    if (substr(after, 1, 1) != "&" && pre != "-" && pre != "=") {
+      tok = after; sub(/[ \t;|&)].*$/, "", tok)
+      if (isref(tok)) return 1
+    }
+    rest = after
+  }
+  ns = split(l, segs, /&&|\|\||;|\|/)
+  for (i = 1; i <= ns; i++) {
+    seg = segs[i]; sub(/^[ \t]+/, "", seg)
+    while (seg ~ /^(then|do|else|if|while|until|!|command|sudo|exec|time|\{|\()[ \t]+/) sub(/^[^ \t]+[ \t]+/, "", seg)
+    nw = split(seg, wds, /[ \t]+/)
+    while (nw > 1 && (wds[nw] == "" || wds[nw] ~ /^(\}|\)|fi|done)$/)) nw--
+    cmd = wds[1]
+    if (cmd ~ /^(mv|cp|install|ln|rsync)$/ && nw > 2 && isref(wds[nw])) return 1
+    if (cmd == "tee") for (j = 2; j <= nw; j++) if (wds[j] !~ /^-/ && isref(wds[j])) return 1
+  }
+  return 0
+}
+function py_write(l,   call) {
+  if (match(l, /open\(.*\)/)) {
+    call = substr(l, RSTART, RLENGTH)
+    if (isref(firstarg(call)) && call ~ /["'][rbt]*[wax+][rbt+]*["']/) return 1
+  }
+  if (match(l, /(os\.replace|os\.rename|shutil\.(move|copy|copyfile|copy2))\(.*\)/)) {
+    call = substr(l, RSTART, RLENGTH)
+    if (isref(lastarg(call))) return 1
+  }
+  if (l ~ /\.(write_text|write_bytes)\(/ && isref(l)) return 1
+  return 0
+}
+function js_write(l,   call) {
+  if (match(l, /(writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|outputFile|outputFileSync|writeJson|writeJsonSync)\(.*\)/)) {
+    call = substr(l, RSTART, RLENGTH)
+    if (isref(firstarg(call))) return 1
+  }
+  if (match(l, /(rename|renameSync|copyFile|copyFileSync)\(.*\)/)) {
+    call = substr(l, RSTART, RLENGTH)
+    if (isref(lastarg(call))) return 1
+  }
+  return 0
+}
+{ line[NR] = $0 }
+END {
+  for (pass = 0; pass < 8; pass++) {
+    changed = 0
+    for (i = 1; i <= NR; i++) {
+      l = line[i]
+      if (!match(l, /^[ \t]*((export|local|readonly|declare|const|let|var)[ \t]+)?[A-Za-z_][A-Za-z0-9_]*[ \t]*=[^=]/)) continue
+      name = substr(l, RSTART, RLENGTH - 1)
+      sub(/^[ \t]*((export|local|readonly|declare|const|let|var)[ \t]+)?/, "", name)
+      sub(/[ \t]*=.*$/, "", name)
+      val = substr(l, RSTART + RLENGTH - 1)
+      if (!(name in taint) && isref(val)) { taint[name] = 1; changed = 1 }
+    }
+    if (!changed) break
+  }
+  for (i = 1; i <= NR; i++) {
+    l = line[i]
+    if (l ~ /^[ \t]*(#|\/\/)/) continue
+    if (lang == "sh" && shell_write(l)) { print "WRITER"; exit }
+    if (lang == "py" && py_write(l)) { print "WRITER"; exit }
+    if (lang == "js" && js_write(l)) { print "WRITER"; exit }
+  }
+}
+AWK
+}
+
 # _cache_writer_sweep ROOT — print every plugin source file under ROOT's
-# scripts/, hooks/ and skills/ (tests excluded) that names the cache file.
-# Shared by the real sweep and the planted-writer check below.
+# scripts/, hooks/ and skills/ (tests excluded) that WRITES the cache file.
+# Shared by the real sweep and the planted writer/reader checks below.
 _cache_writer_sweep() {
-  local root="$1" d
+  local root="$1" d f lang prog
   local -a dirs=()
+  prog="$(_cache_write_detector)"
   for d in scripts hooks skills; do [ -d "$root/$d" ] && dirs+=("$root/$d/"); done
   grep -rlF '.sprint-progress-cache.json' "${dirs[@]}" \
     --include='*.sh' --include='*.bash' --include='*.js' --include='*.mjs' \
     --include='*.cjs' --include='*.ts' --include='*.py' 2>/dev/null \
-    | grep -v '/tests/' | grep -v '__tests__' || true
+    | grep -v '/tests/' | grep -v '__tests__' \
+    | while IFS= read -r f; do
+        case "$f" in *.py) lang="py" ;; *.sh|*.bash) lang="sh" ;; *) lang="js" ;; esac
+        [ "$(awk -v lang="$lang" "$prog" "$f")" = "WRITER" ] && printf '%s\n' "$f"
+      done || true
 }
 
 # _sweep_scanned_count ROOT — how many candidate files the sweep looked at.
@@ -137,6 +241,14 @@ _sweep_scanned_count() {
   find "$1/scripts" "$1/hooks" "$1/skills" -type f \( -name '*.sh' -o -name '*.bash' \
     -o -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.ts' -o -name '*.py' \) \
     2>/dev/null | grep -v '/tests/' | wc -l | tr -d ' '
+}
+
+# _copy_plugin_sources DEST — copy the plugin source trees the sweep reads.
+_copy_plugin_sources() {
+  mkdir -p "$1"
+  cp -R "$PLUGIN_ROOT/scripts" "$PLUGIN_ROOT/skills" "$1/"
+  [ -d "$PLUGIN_ROOT/hooks" ] && cp -R "$PLUGIN_ROOT/hooks" "$1/"
+  mkdir -p "$1/hooks"
 }
 
 @test "single-writer sweep finds only snapshot script" {
@@ -149,21 +261,74 @@ _sweep_scanned_count() {
 }
 
 @test "single-writer sweep mutant turns red when second writer planted" {
-  # Copy the real plugin source tree and plant a second writer in each
-  # language the sweep covers, then run the SAME sweep helper over the copy.
+  # Copy the real plugin source tree and plant a second writer in each form
+  # the sweep covers, then run the SAME sweep helper over the copy.
   local copy="$TEST_TMP/plugin-copy"
-  mkdir -p "$copy"
-  cp -R "$PLUGIN_ROOT/scripts" "$PLUGIN_ROOT/skills" "$copy/"
-  [ -d "$PLUGIN_ROOT/hooks" ] && cp -R "$PLUGIN_ROOT/hooks" "$copy/"
+  _copy_plugin_sources "$copy"
   [ "$(_cache_writer_sweep "$copy" | wc -l | tr -d ' ')" -eq 1 ]
 
-  local ext
-  for ext in sh py mjs; do
-    mkdir -p "$copy/hooks"
-    printf 'write(".gaia/state/.sprint-progress-cache.json")\n' > "$copy/hooks/rogue-writer.$ext"
-    [ "$(_cache_writer_sweep "$copy" | wc -l | tr -d ' ')" -eq 2 ]
-    rm -f "$copy/hooks/rogue-writer.$ext"
+  local -a names=(redirect.sh mv-var.sh tee.bash cp.sh open-w.py replace.py write.mjs rename.ts append.cjs)
+  local -a bodies=(
+    'echo "{}" > "$STATE/.sprint-progress-cache.json"'
+    'C="$STATE/.sprint-progress-cache.json"
+T="$C.next"
+jq . in.json > "$T" && mv -f "$T" "$C"'
+    'CACHE_PATH="$STATE/.sprint-progress-cache.json"
+printf "{}" | tee "$CACHE_PATH" >/dev/null'
+    'cache=".gaia/state/.sprint-progress-cache.json"
+if true; then cp new.json "${cache}"; fi'
+    'CACHE = os.path.join(state, ".sprint-progress-cache.json")
+with open(CACHE, "w") as f:
+    f.write("{}")'
+    'target = state / ".sprint-progress-cache.json"
+os.replace(tmp, target)'
+    'const cachePath = join(state, ".sprint-progress-cache.json");
+writeFileSync(cachePath, "{}");'
+    'const dest = `${state}/.sprint-progress-cache.json`;
+fs.renameSync(tmp, dest);'
+    'fs.appendFileSync(".gaia/state/.sprint-progress-cache.json", "x");'
+  )
+  local i
+  for i in "${!names[@]}"; do
+    printf '%s\n' "${bodies[$i]}" > "$copy/hooks/rogue-${names[$i]}"
+    if [ "$(_cache_writer_sweep "$copy" | wc -l | tr -d ' ')" -ne 2 ]; then
+      echo "planted writer not detected: ${names[$i]}" >&2; return 1
+    fi
+    unlink "$copy/hooks/rogue-${names[$i]}"
   done
+}
+
+@test "single-writer sweep stays green for read-only consumers of the cache" {
+  local copy="$TEST_TMP/plugin-copy"
+  _copy_plugin_sources "$copy"
+  local -a names=(statusline.sh band.bash dashboard.py sidebar.mjs panel.ts)
+  local -a bodies=(
+    'CACHE="$STATE/.sprint-progress-cache.json"
+[ -f "$CACHE" ] || exit 0
+pct="$(jq -r ".totals.progress_pct" "$CACHE" 2>/dev/null)"
+jq -c . "$CACHE" > "$OUT/copy.json"
+cp "$CACHE" "$OUT/backup.json"'
+    'cat "$STATE/.sprint-progress-cache.json" | jq -r .sprint.id >&2'
+    'CACHE = os.path.join(state, ".sprint-progress-cache.json")
+with open(CACHE) as f:
+    data = json.load(f)
+with open(CACHE, "r") as g:
+    g.read()'
+    'const cachePath = join(state, ".sprint-progress-cache.json");
+const data = JSON.parse(readFileSync(cachePath, "utf8"));
+const show = (x) => x > 0;'
+    'const p = `${root}/.gaia/state/.sprint-progress-cache.json`;
+copyFileSync(p, backupPath);'
+  )
+  local i
+  for i in "${!names[@]}"; do
+    printf '%s\n' "${bodies[$i]}" > "$copy/hooks/reader-${names[$i]}"
+  done
+  # Every reader names the cache, yet none of them writes it.
+  [ "$(grep -rlF '.sprint-progress-cache.json' "$copy/hooks" | wc -l | tr -d ' ')" -eq 5 ]
+  local writers; writers="$(_cache_writer_sweep "$copy")"
+  [ "$(printf '%s\n' "$writers" | wc -l | tr -d ' ')" -eq 1 ]
+  [ "$(basename "$writers")" = "sprint-progress-snapshot.sh" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -372,74 +537,63 @@ EOF
 # Realpath containment
 # ---------------------------------------------------------------------------
 
-@test "realpath containment skips symlink escaping project root" {
+# Both tests below reach the containment check: the story is first resolved
+# and cached by a normal run, then its file (or directory) is swapped for a
+# link out of the root.  The yaml and the story tree are unchanged, so the
+# cached path is reused and only containment can keep the data out.
+
+@test "realpath containment skips a story directory that is a symlink escaping the project root" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" \
     "E900-S1:done:5" "E900-S2:in-progress:3"
   write_story E900-S1 done 5
-
-  # Create a symlink that escapes the project root
-  local outside="$TEST_TMP/outside-project"
-  mkdir -p "$outside"
-  cat > "$outside/story.md" <<'EOF'
----
-template: 'story'
-key: "E900-S2"
-title: "ESCAPED story"
-status: in-progress
-points: 3
-manual_verification: false
-depends_on: []
----
-
-# Story: ESCAPED
-
-> **Status:** in-progress
-EOF
-  local escaped_dir="$IMPL/epic-test/E900-S2-escaped"
-  mkdir -p "$escaped_dir"
-  ln -sf "$outside/story.md" "$escaped_dir/story.md"
-
+  write_story E900-S2 in-progress 3
+  backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  jq -e '.' "$CACHE"
-  # The escaped story should NOT appear in the cache
+  [ "$(jq '[.stories[] | select(.key == "E900-S2")] | length' "$CACHE")" = "1" ]
+
+  # The story DIRECTORY becomes a link to a directory outside the root.
+  local outside="$TEST_TMP/outside-project"
+  mkdir -p "$outside"
+  printf -- '---\nkey: "E900-S2"\ntitle: "ESCAPED story"\nstatus: in-progress\npoints: 3\n---\n' > "$outside/story.md"
+  local dir="$IMPL/epic-test/E900-S2-e900-s2-enf"
+  rm -rf "${dir:?}"; ln -s "$outside" "$dir"
+  touch -t 202610010000 "$IMPL/epic-test"
+
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  jq -e '.' "$CACHE" >/dev/null
+  grep -q 'path escapes project root for E900-S2' <<< "$stderr"
   [ "$(jq '[.stories[] | select(.key == "E900-S2")] | length' "$CACHE")" = "0" ]
-  # But E900-S1 should still be there
   [ "$(jq '[.stories[] | select(.key == "E900-S1")] | length' "$CACHE")" = "1" ]
+  run grep -c 'ESCAPED story' "$CACHE"
+  [ "$output" = "0" ]
 }
 
 @test "file-level symlink to outside target is rejected by containment" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" \
     "E900-S1:done:5" "E900-S2:in-progress:3"
   write_story E900-S1 done 5
-
-  # Create a story directory inside the project with a file-level symlink
-  # pointing to a file OUTSIDE the project root
-  local outside="$TEST_TMP/outside-file"
-  mkdir -p "$outside"
-  cat > "$outside/real-story.md" <<'EOF'
----
-template: 'story'
-key: "E900-S2"
-title: "ESCAPED via file symlink"
-status: in-progress
-points: 3
-manual_verification: false
-depends_on: []
----
-# Story: ESCAPED
-EOF
-  local symlink_dir="$IMPL/epic-test/E900-S2-file-symlink"
-  mkdir -p "$symlink_dir"
-  ln -sf "$outside/real-story.md" "$symlink_dir/story.md"
-
+  write_story E900-S2 in-progress 3
+  backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  jq -e '.' "$CACHE"
-  # The symlinked story must NOT appear in the cache
+
+  # The story FILE becomes a single link to a file outside the root.
+  local outside="$TEST_TMP/outside-file"
+  mkdir -p "$outside"
+  printf -- '---\nkey: "E900-S2"\ntitle: "ESCAPED via file symlink"\nstatus: in-progress\npoints: 3\n---\n' > "$outside/real-story.md"
+  local sf="$IMPL/epic-test/E900-S2-e900-s2-enf/story.md"
+  rm -f "${sf:?}"; ln -s "$outside/real-story.md" "$sf"
+
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  jq -e '.' "$CACHE" >/dev/null
+  grep -q 'path escapes project root for E900-S2' <<< "$stderr"
   [ "$(jq '[.stories[] | select(.key == "E900-S2")] | length' "$CACHE")" = "0" ]
-  # But E900-S1 should still be there
   [ "$(jq '[.stories[] | select(.key == "E900-S1")] | length' "$CACHE")" = "1" ]
+  run grep -c 'ESCAPED via file symlink' "$CACHE"
+  [ "$output" = "0" ]
 }
 
 @test "realpath containment follows a two-hop symlink chain out of the root" {
@@ -841,6 +995,263 @@ YAML
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
+}
+
+# ---------------------------------------------------------------------------
+# Control bytes in story paths
+# ---------------------------------------------------------------------------
+
+@test "a story directory name with a unit separator, CR, LF or TAB is refused and cannot shift fields" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5" \
+    "E900-S2:in-progress:5" "E900-S3:in-progress:5" "E900-S4:in-progress:5" "E900-S5:in-progress:5"
+  # A shifted record would make the parser open the path's last field ("B")
+  # relative to the working directory, which is a link out of the root.
+  local outside="$TEST_TMP/outside-sep"; mkdir -p "$outside"
+  printf -- '---\ntitle: "OUTSIDE-VIA-SEP"\nstatus: done\n---\n' > "$outside/story.md"
+  ln -s "$outside" "$PROJECT_ROOT/B"
+  local -a keys=(E900-S1 E900-S2 E900-S3 E900-S4) bytes=($'\037' $'\r' $'\n' $'\t')
+  local i d
+  for i in 0 1 2 3; do
+    d="$IMPL/epic-test/${keys[$i]}-x${bytes[$i]}A${bytes[$i]}B"
+    mkdir -p "$d"
+    printf -- '---\ntitle: "INSIDE"\nstatus: in-progress\n---\n' > "$d/story.md"
+  done
+  write_story E900-S5 in-progress 5
+
+  cd "$PROJECT_ROOT"
+  run --separate-stderr "$SCRIPT"
+  local err="$stderr"
+  [ "$status" -eq 0 ]
+  jq -e . "$CACHE" >/dev/null
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S5"]' ]
+  for i in 0 1 2 3; do
+    grep -q "a story path for key ${keys[$i]} contains control characters" <<< "$err"
+  done
+  run grep -c 'OUTSIDE-VIA-SEP' "$CACHE"
+  [ "$output" = "0" ]
+  run grep -c 'INSIDE' "$CACHE"
+  [ "$output" = "0" ]
+}
+
+@test "a story link that resolves to a path with control bytes is refused without shifting other stories" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" \
+    "E900-S1:in-progress:5" "E900-S2:in-progress:5" "E900-S3:in-progress:5"
+  write_story E900-S1 in-progress 5
+  write_story E900-S2 in-progress 5
+  write_story E900-S3 in-progress 5
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+
+  # In-root targets whose directory names hold a unit separator and a
+  # newline; the story files of S1 and S2 become links to them.  The yaml and
+  # the story tree are unchanged, so the cached paths are reused and the
+  # resolved paths reach the containment check.
+  local t1="$PROJECT_ROOT/w"$'\037'"x" t2="$PROJECT_ROOT/w"$'\n'"y"
+  mkdir -p "$t1" "$t2"
+  printf -- '---\ntitle: "LINKED-TARGET"\nstatus: done\n---\n' > "$t1/story.md"
+  cp "$t1/story.md" "$t2/story.md"
+  local s1="$IMPL/epic-test/E900-S1-e900-s1-enf/story.md" s2="$IMPL/epic-test/E900-S2-e900-s2-enf/story.md"
+  rm -f "${s1:?}" "${s2:?}"; ln -s "$t1/story.md" "$s1"; ln -s "$t2/story.md" "$s2"
+
+  run --separate-stderr "$SCRIPT"
+  local err="$stderr"
+  [ "$status" -eq 0 ]
+  jq -e . "$CACHE" >/dev/null
+  grep -q 'story path for E900-S1 contains control characters' <<< "$err"
+  # The newline path cannot be resolved to one line, so it is refused too,
+  # and the story after it keeps its own data.
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S3"]' ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S3" ]
+  run grep -c 'LINKED-TARGET' "$CACHE"
+  [ "$output" = "0" ]
+}
+
+# ---------------------------------------------------------------------------
+# State-file writes stay inside the project root
+# ---------------------------------------------------------------------------
+
+@test "a symlink or directory at a state file name is refused, never followed" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5
+  local state="$PROJECT_ROOT/.gaia/state" outside="$TEST_TMP/outside-dir" n
+  mkdir -p "$outside"
+
+  # Links to an outside DIRECTORY at each name: a rename would drop the temp
+  # file inside the directory the link points to.
+  for n in .sprint-progress-cache.json .sprint-progress-mtimes .sprint-progress-parsed; do
+    ln -s "$outside" "$state/$n"
+  done
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$(ls -A "$outside")" ]
+  grep -q 'refusing to replace .sprint-progress-cache.json' <<< "$stderr"
+  for n in .sprint-progress-cache.json .sprint-progress-mtimes .sprint-progress-parsed; do
+    [ -L "$state/$n" ]; rm -f "${state:?}/${n:?}"
+  done
+
+  # A first run creates real files; then the parse cache and sidecar names
+  # become links (the cache itself stays a regular file).
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  rm -f "${CACHE:?}"
+  for n in .sprint-progress-mtimes .sprint-progress-parsed; do
+    rm -f "${state:?}/${n:?}"; ln -s "$outside" "$state/$n"
+  done
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'refusing to replace .sprint-progress-parsed' <<< "$stderr"
+  grep -q 'refusing to replace .sprint-progress-mtimes' <<< "$stderr"
+  jq -e . "$CACHE" >/dev/null
+  [ -z "$(ls -A "$outside")" ]
+  for n in .sprint-progress-mtimes .sprint-progress-parsed; do rm -f "${state:?}/${n:?}"; done
+
+  # A directory at the cache name: nothing is moved into it.
+  rm -f "${CACHE:?}"; mkdir "$CACHE"
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$(ls -A "$CACHE")" ]
+  grep -q 'refusing to replace .sprint-progress-cache.json' <<< "$stderr"
+  rmdir "$CACHE"
+
+  # A link to an outside FILE: the file is never touched.
+  echo "original" > "$TEST_TMP/outside-file"
+  ln -s "$TEST_TMP/outside-file" "$CACHE"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_TMP/outside-file")" = "original" ]
+  [ -L "$CACHE" ]
+}
+
+@test "a symlinked .gaia/state or .gaia directory is refused" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5
+  local outside="$TEST_TMP/outside-state"
+  mv "$PROJECT_ROOT/.gaia/state" "$outside"
+  ln -s "$outside" "$PROJECT_ROOT/.gaia/state"
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$(find "$outside" -name '.sprint-progress-*')" ]
+  grep -q 'state directory is a symlink, refusing to write' <<< "$stderr"
+
+  # The whole .gaia tree behind a link.
+  unlink "$PROJECT_ROOT/.gaia/state"; mv "$outside" "$PROJECT_ROOT/.gaia/state"
+  local outside2="$TEST_TMP/outside-gaia"
+  mv "$PROJECT_ROOT/.gaia" "$outside2"
+  ln -s "$outside2" "$PROJECT_ROOT/.gaia"
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$(find "$outside2" -name '.sprint-progress-*')" ]
+  grep -q 'state directory is a symlink, refusing to write' <<< "$stderr"
+}
+
+@test "sprint yaml, ledger, config and action-items outside the project root are not read" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:review:5"
+  local dir="$IMPL/epic-test/E900-S1-meta"; mkdir -p "$dir"
+  printf -- '---\ntitle: "T"\nstatus: review\nmanual_verification: true\n---\n' > "$dir/story.md"
+  local out="$TEST_TMP/outside-meta"; mkdir -p "$out"
+  printf 'E900-S1\tmanual-test\tp\tOUTSIDE-VERDICT\n' > "$out/ledger"
+  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 7\n  user_aliases:\n    - "outsider"\n' > "$out/cfg"
+  printf 'items:\n  - id: "AI-990"\n    status: open\n    assignee: outsider\n' > "$out/ai"
+  ln -s "$out/ledger" "$PROJECT_ROOT/.gaia/state/.review-gate-ledger"
+  ln -s "$out/cfg" "$PROJECT_ROOT/.gaia/config/project-config.yaml"
+  ln -s "$out/ai" "$PROJECT_ROOT/.gaia/state/action-items.yaml"
+
+  run --separate-stderr "$SCRIPT"
+  local err="$stderr"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.stories[0].manual_test.verdict' "$CACHE")" = "null" ]
+  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
+  [ "$(jq '[.action_needed[] | select(.rule == "c")] | length' "$CACHE")" = "0" ]
+  run grep -c 'outsider\|OUTSIDE-VERDICT' "$CACHE"
+  [ "$output" = "0" ]
+  grep -q 'review-gate-ledger resolves outside the project root, not reading it' <<< "$err"
+  grep -q 'project-config.yaml resolves outside the project root, not reading it' <<< "$err"
+  grep -q 'action-items.yaml resolves outside the project root, not reading it' <<< "$err"
+  # An entry that is not read is recorded unverified, so every run re-checks it.
+  [ "$(awk -F'\t' '$2 == "__review_gate_ledger__" { print $4 }' "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes")" = "racy" ]
+
+  # Explicit overrides are held to the same rule.
+  sed 's/^sprint_id: "sprint-test"/sprint_id: "sprint-outside"/' "$SPRINT_STATUS_YAML" > "$out/yaml"
+  SPRINT_STATUS_YAML="$out/yaml" REVIEW_GATE_LEDGER="$out/ledger" run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.sprint' "$CACHE")" = "null" ]
+  grep -q "$out/yaml resolves outside the project root" <<< "$stderr"
+}
+
+@test "a symlinked parse cache is never read" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  local parsed="$PROJECT_ROOT/.gaia/state/.sprint-progress-parsed"
+  # A crafted record set whose (key, path, mtime) matches the real story, so
+  # it would be reused verbatim if the link were followed.
+  local forged="$TEST_TMP/forged-parsed"
+  sed 's/Story E900-S1/FORGED-TITLE/' "$parsed" > "$forged"
+  grep -q 'FORGED-TITLE' "$forged"
+  unlink "$parsed" 2>/dev/null || rm -f "${parsed:?}"
+  ln -s "$forged" "$parsed"
+  rm -f "${CACHE:?}"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S1" ]
+  run grep -c 'FORGED-TITLE' "$CACHE"
+  [ "$output" = "0" ]
+}
+
+@test "temp files are created exclusively and never follow a planted link" {
+  local target="$TEST_TMP/state/cache.json" victim="$TEST_TMP/victim"
+  mkdir -p "$TEST_TMP/state"
+  # Seeding RANDOM makes the first temp name predictable; plant a dangling
+  # link there.  An exclusive create must refuse it and pick another name.
+  run bash -c '
+    . "$1"
+    RANDOM=4242; first="$2.tmp.$$.${RANDOM}${RANDOM}"
+    ln -s "$3" "$first"
+    RANDOM=4242; _new_tmp "$2" || exit 9
+    [ "$_TMP" != "$first" ] || exit 8
+    [ -f "$_TMP" ] && [ ! -L "$_TMP" ] || exit 7
+    printf "%s\n" "$_TMP"
+  ' _ "$SCRIPT" "$target" "$victim"
+  [ "$status" -eq 0 ]
+  [ ! -e "$victim" ]
+}
+
+# ---------------------------------------------------------------------------
+# Fallback lock and the empty lock file the flock backend leaves behind
+# ---------------------------------------------------------------------------
+
+@test "fallback lock replaces an empty lock file left by the flock backend" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  # flock never removes its (empty) lock file; a later fallback run must not
+  # read it as held.
+  : > "$LOCK_FILE"
+  GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'replacing an empty lock file left by the flock backend' <<< "$stderr"
+  jq -e . "$CACHE" >/dev/null
+  [ ! -e "$LOCK_FILE" ]
+}
+
+@test "fallback lock that gives up says why on stderr" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  # Live holder.
+  printf '%s %s\n' "$$" "$(date +%s)" > "$LOCK_FILE"
+  GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q "lock not taken (held by live process $$), skipping" <<< "$stderr"
+  [ ! -e "$CACHE" ]
+  # Dead holder, but the lock is too young to reap.
+  sleep 0 & local dead=$!; wait "$dead" || true
+  printf '%s %s\n' "$dead" "$(date +%s)" > "$LOCK_FILE"
+  GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q "lock not taken (holder '$dead' is not running but the lock is only" <<< "$stderr"
+  [ ! -e "$CACHE" ]
 }
 
 # ---------------------------------------------------------------------------
