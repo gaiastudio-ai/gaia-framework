@@ -11,7 +11,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
-  SCRIPT="$SCRIPTS_DIR/sprint-progress-snapshot.sh"
+  SCRIPT="$(snapshot_script_under_test "$SCRIPTS_DIR/sprint-progress-snapshot.sh")"
 
   # Fixture tree: mimic a .gaia project layout inside TEST_TMP
   export PROJECT_ROOT="$TEST_TMP/project"
@@ -1921,7 +1921,7 @@ expect_cold_because() {
   [ "$status" -eq 0 ]
   expect_warm_next
   sed '1d' "$SIDECAR" > "$SIDECAR.new" && mv "$SIDECAR.new" "$SIDECAR"
-  ! grep -q '^v' "$SIDECAR"
+  ! grep -q '^v' "$SIDECAR" || false
   expect_cold_because "format is out of date"
 }
 
@@ -2004,6 +2004,58 @@ expect_cold_because() {
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq -c '[.stories[0].title, .stories[0].status]' "$CACHE")" = '["TARGET-C","review"]' ]
+}
+
+# linked_baseline — one story reached through a symlink to a file in the
+# story tree, built cold and confirmed warm.
+linked_baseline() {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  mkdir -p "$IMPL/shared-notes" "$IMPL/epic-test/E900-S1-linked"
+  printf -- '---\nkey: "E900-S1"\ntitle: "Story E900-S1"\nstatus: in-progress\npoints: 5\n---\n' > "$IMPL/shared-notes/a.md"
+  ln -s "$IMPL/shared-notes/a.md" "$IMPL/epic-test/E900-S1-linked/story.md"
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^story	E900-S1	' "$SIDECAR")" = "1" ]
+  [ "$(grep -c '^link	E900-S1	' "$SIDECAR")" = "1" ]
+  expect_warm_next
+}
+
+# edit_sidecar AWK — rewrite the sidecar through an awk program (tab fields).
+edit_sidecar() {
+  awk -F'\t' -v OFS='\t' "$1" "$SIDECAR" > "$SIDECAR.new" && mv "$SIDECAR.new" "$SIDECAR"
+}
+
+@test "a sidecar link row whose story has no story row sends the run cold" {
+  linked_baseline
+  edit_sidecar '$1 != "story"'
+  [ "$(grep -c '^story	' "$SIDECAR")" = "0" ]
+  [ "$(grep -c '^link	E900-S1	' "$SIDECAR")" = "1" ]
+  jq '.stories[0].title = "PLANTED"' "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S1" ]
+  [ "$(grep -c '^story	E900-S1	' "$SIDECAR")" = "1" ]
+}
+
+@test "a sidecar link row with an invalid story key sends the run cold" {
+  linked_baseline
+  edit_sidecar '$1 == "link" { $2 = "E900-S1x" } { print }'
+  expect_cold_because "has an invalid story key"
+}
+
+@test "a sidecar story row with an invalid story key sends the run cold" {
+  # Without a link, so nothing but the key check refuses the row.
+  warm_baseline
+  edit_sidecar '$1 == "story" { $2 = "E900-S1x" } { print }'
+  [ "$(grep -c '^story	E900-S1x	' "$SIDECAR")" = "1" ]
+  expect_cold_because "has an invalid story key"
+  # The same with a link: the story row is refused for its key before the
+  # link is compared with it.
+  rm -rf "$IMPL/epic-test" "$CACHE" "$SIDECAR"
+  linked_baseline
+  edit_sidecar '$1 == "story" { $2 = "E900-S1x" } { print }'
+  expect_cold_because "has an invalid story key"
 }
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   common_setup
   SCRIPT="$SCRIPTS_DIR/sprint-state.sh"
-  SNAPSHOT_SCRIPT="$SCRIPTS_DIR/sprint-progress-snapshot.sh"
+  SNAPSHOT_SCRIPT="$(snapshot_script_under_test "$SCRIPTS_DIR/sprint-progress-snapshot.sh")"
   DEVSTORY_SCRIPT="$SCRIPTS_DIR/../skills/gaia-dev-story/scripts/sprint-state.sh"
 
   export PROJECT_ROOT="$TEST_TMP/project"

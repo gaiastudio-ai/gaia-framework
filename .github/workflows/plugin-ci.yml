@@ -696,6 +696,7 @@ jobs:
             plugins/gaia/skills/gaia-doctor/scripts/install-tools.sh
             plugins/gaia/scripts/lib/write-val-envelope.sh
             plugins/gaia/scripts/sprint-state.sh
+            plugins/gaia/scripts/sprint-progress-snapshot.sh
             plugins/gaia/scripts/review-gate.sh
             plugins/gaia/scripts/run-tests.sh
           )
@@ -726,3 +727,7 @@ jobs:
           if [ -f plugins/gaia/tests/af-2026-05-31-1-test12-findings.bats ]; then
             bats plugins/gaia/tests/af-2026-05-31-1-test12-findings.bats
           fi
+          # The sprint progress snapshot script must run on bash 3.2. On
+          # macOS this runs it with the stock /bin/bash (3.2); elsewhere only
+          # the static bash-4-construct check runs and the rest skip.
+          bats plugins/gaia/tests/sprint-progress-snapshot-bash32.bats

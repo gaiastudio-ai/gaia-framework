@@ -46,6 +46,12 @@
 set -euo pipefail
 LC_ALL=C; export LC_ALL
 
+# EPOCHSECONDS and EPOCHREALTIME are clock variables only from bash 5 on.  On
+# an older shell (macOS ships bash 3.2) a value inherited from the environment
+# is plain text that never moves, so it is dropped and the script falls back
+# to `date` and SECONDS.
+if [ "${BASH_VERSINFO[0]:-0}" -lt 5 ]; then unset EPOCHSECONDS EPOCHREALTIME; fi
+
 # ---------------------------------------------------------------------------
 # Resolve own directory and load libraries
 # ---------------------------------------------------------------------------
@@ -281,14 +287,18 @@ _holder_live() {
 # mutex left by a reaper that died is cleared once it is 60 s old.  Every pass
 # counts and sleeps, including one that could not clear an aged mutex (for
 # example a non-empty directory).  The wait gives up after 2 s of wall-clock
-# time (or, on a shell without EPOCHREALTIME, after 100 passes of 20 ms plus
-# one age check each).  A run tries the lock at most twice, so a mutex that
-# never clears costs it about 4 s before it skips.  Returns 1 when a reap is
-# still in progress.
+# time, read from EPOCHREALTIME on bash 5.  An older shell (bash 3.2 on macOS)
+# has only whole seconds, so it gives up once SECONDS has moved on by 2,
+# which is 1 to 2 s; there a pass (an age check and a 20 ms sleep) costs about
+# 40 ms.  Every path also stops after a fixed number of passes (100 without a
+# sub-second clock, 1000 with one), so a clock that does not move can never
+# hold the wait.  A run tries the lock at most twice, so a mutex that never
+# clears costs it at most about 4 s before it skips, well inside the hook's
+# 10 s limit.  Returns 1 when a reap is still in progress.
 _await_reap() {
-  local mutex="$1" n=0 mage now deadline=""
-  if [ -n "${EPOCHREALTIME:-}" ]; then
-    now="${EPOCHREALTIME//[!0-9]/}"; deadline=$(( 10#$now + 2000000 ))
+  local mutex="$1" n=0 cap=100 mage now deadline="" t0="$SECONDS"
+  if [ "${BASH_VERSINFO[0]:-0}" -ge 5 ] && [ -n "${EPOCHREALTIME:-}" ]; then
+    now="${EPOCHREALTIME//[!0-9]/}"; deadline=$(( 10#$now + 2000000 )); cap=1000
   fi
   while [ -e "$mutex" ] || [ -L "$mutex" ]; do
     if mage="$(_stat_mtime_age "$mutex")" && [ "$mage" -ge 60 ] \
@@ -297,10 +307,11 @@ _await_reap() {
       [ -e "$mutex" ] || [ -L "$mutex" ] || continue
     fi
     n=$((n + 1))
+    [ "$n" -le "$cap" ] || return 1
     if [ -n "$deadline" ]; then
       now="${EPOCHREALTIME//[!0-9]/}"; [ $(( 10#$now )) -lt "$deadline" ] || return 1
     else
-      [ "$n" -le 100 ] || return 1
+      [ $(( SECONDS - t0 )) -lt 2 ] || return 1
     fi
     sleep 0.02
   done
@@ -1017,18 +1028,24 @@ ${name}
       ri=$((ri + 1))
     done <<< "$resolved"
     [ "$ri" -eq "${#rp_in[@]}" ] || return 1
-    # One lookup per link (keys were validated above, so they are safe as
-    # array subscripts).  A link whose key has no story path compares an
-    # empty string with a resolved path, so it fails too.
+    # Every link must lead to its story's recorded path: ONE awk join over
+    # the story rows then the link rows (linear, and no associative arrays,
+    # which bash 3.2 lacks).  Keys, story paths and resolved link paths hold
+    # no tab or line break (checked above), so the fields cannot shift.  A
+    # link whose key has no story row fails.
     if [ "${#link_key[@]}" -gt 0 ]; then
-      local -A story_of=()
       local sj li
-      for sj in "${!rp_key[@]}"; do
-        if [ "${rp_kind[$sj]}" = "s" ]; then story_of[${rp_key[$sj]}]="${rp_in[$sj]}"; fi
-      done
-      for li in "${!link_key[@]}"; do
-        [ "${story_of[${link_key[$li]}]:-}" = "${link_res[$li]}" ] || return 1
-      done
+      {
+        for sj in "${!rp_key[@]}"; do
+          [ "${rp_kind[$sj]}" != "s" ] || printf 's\t%s\t%s\n' "${rp_key[$sj]}" "${rp_in[$sj]}"
+        done
+        for li in "${!link_key[@]}"; do
+          printf 'l\t%s\t%s\n' "${link_key[$li]}" "${link_res[$li]}"
+        done
+      } | awk -F '\t' '
+        $1 == "s" { p[$2] = $3; next }
+        !($2 in p) || p[$2] != $3 { bad = 1; exit }
+        END { exit bad }' || return 1
     fi
   fi
 
@@ -1585,7 +1602,7 @@ _snapshot_main() {
   trap '_release_snapshot_lock; exit 143' TERM
   trap '_release_snapshot_lock; exit 130' INT
 
-  local dirty="${LOCK_FILE}.dirty" pass=0
+  local dirty="${LOCK_FILE}.dirty" pass=0 stuck
   while :; do
     if ! _try_snapshot_lock "$LOCK_FILE"; then
       [ "$_SNAPSHOT_LOCK_REFUSED" = "0" ] || exit 0
@@ -1598,8 +1615,17 @@ _snapshot_main() {
     fi
     pass=$((pass + 1))
     _clear_dirty "$dirty"
+    # A marker that cannot be removed (for example a directory with a file in
+    # it) would ask for a rebuild on every pass of every run.  It gets one
+    # warning and this one build; a writer that keeps leaving a fresh marker
+    # still gets at most five builds per run.
+    stuck=0
+    if _is_dirty "$dirty"; then
+      stuck=1; _warn "re-run marker cannot be removed, building once: $dirty"
+    fi
     _snapshot_build
     _release_snapshot_lock
+    [ "$stuck" = "0" ] || break
     _is_dirty "$dirty" || break
     [ "$pass" -lt 5 ] || break
   done
