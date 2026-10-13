@@ -2098,3 +2098,38 @@ SH
   [ "$(jq -r '.stories[0].status' "$CACHE")" = "review" ]
   [ ! -e "$marker" ]
 }
+
+@test "a run refused the lock by a live holder leaves the re-run marker, and the next run clears it" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5 >/dev/null
+  local lock="$PROJECT_ROOT/.gaia/state/.sprint-progress-cache.json.lock"
+  local marker="$lock.dirty"
+  local backends="fallback" backend
+  if command -v flock >/dev/null 2>&1; then backends="fallback flock"; fi
+
+  for backend in $backends; do
+    local force=""
+    if [ "$backend" = "fallback" ]; then force=1; fi
+    rm -rf "$CACHE" "$marker"
+
+    # This test process holds the lock: a live PID that took it just now.
+    printf '%s %s\n' "$$" "$(date +%s)" > "$lock"
+    GAIA_LOCK_FORCE_FALLBACK="$force" run --separate-stderr "$SCRIPT"
+    [ "$status" -eq 0 ]
+    grep -q "lock not taken (held by live process $$), skipping" <<< "$stderr"
+    # The refused run asked the holder for one more build ...
+    [ -d "$marker" ]
+    [ ! -L "$marker" ]
+    # ... and built nothing itself.
+    [ ! -e "$CACHE" ]
+
+    # The holder releases; the next run builds and clears the marker.
+    rm -f "$lock"
+    GAIA_LOCK_FORCE_FALLBACK="$force" run --separate-stderr "$SCRIPT"
+    [ "$status" -eq 0 ]
+    if grep -q 'lock not taken' <<< "$stderr"; then return 1; fi
+    [ "$(jq -r '.stories[0].key' "$CACHE")" = "E900-S1" ]
+    [ ! -e "$marker" ]
+    [ ! -e "$lock" ]
+  done
+}

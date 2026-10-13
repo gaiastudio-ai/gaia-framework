@@ -294,6 +294,46 @@ _generate_registry() {
   [ "$(jq '.totals.total_stories' "$CACHE")" = "300" ]
 }
 
+@test "warm run with every story file symlinked costs about the same as with regular files" {
+  _generate_sprint 300
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  local regular
+  regular="$(_time_runs warm 5)"
+  # shellcheck disable=SC2086
+  _report "warm 300 regular story files" "-" $regular
+
+  # Move every story file into a store inside the project and leave a link
+  # in its place: each story is now found through a link.
+  local store="$PROJECT_ROOT/story-store" f n=0
+  mkdir -p "$store"
+  while IFS= read -r f; do
+    n=$((n + 1))
+    mv "$f" "$store/story-$n.md"
+    ln -s "$store/story-$n.md" "$f"
+  done < <(find "$IMPL/epic-perf" -name story.md -type f)
+  [ "$n" -eq 300 ]
+  backdate_tree
+  rm -f "$CACHE" "$SIDECAR" "$PARSED"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.totals.total_stories' "$CACHE")" = "300" ]
+  [ "$(awk -F'\t' '$1 == "link"' "$SIDECAR" | wc -l | tr -d ' ')" = "300" ]
+
+  local before linked
+  before="$(cksum < "$SIDECAR")"
+  linked="$(_time_runs warm 5)"
+  # The warm path served every sample: it never rewrites the sidecar.
+  [ "$(cksum < "$SIDECAR")" = "$before" ]
+  # shellcheck disable=SC2086
+  _report "warm 300 symlinked story files" "$(( 2 * $(_median $regular) ))" $linked
+  # A check that compares every link with every story grows with the square
+  # of the story count and takes several times longer here.
+  # shellcheck disable=SC2086
+  [ "$(_median $linked)" -le "$(( 2 * $(_median $regular) ))" ]
+}
+
 # ---------------------------------------------------------------------------
 # Process count (a per-story fork would hide inside the time budgets)
 # ---------------------------------------------------------------------------
