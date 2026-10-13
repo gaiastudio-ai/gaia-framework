@@ -72,6 +72,26 @@ common_teardown() {
   fi
 }
 
+# snapshot_script_under_test SCRIPT — print the path of the snapshot script a
+# suite runs.  Normally that is SCRIPT itself.  When SNAPSHOT_TEST_BASH names
+# an interpreter (for example /bin/bash, which is bash 3.2 on macOS), it is a
+# copy whose first line names that interpreter, placed next to a link to the
+# real lib/ directory, so every direct run of the script uses that shell.
+snapshot_script_under_test() {
+  local real="$1"
+  if [ -z "${SNAPSHOT_TEST_BASH:-}" ]; then printf '%s' "$real"; return 0; fi
+  if [ ! -x "$SNAPSHOT_TEST_BASH" ]; then
+    printf 'SNAPSHOT_TEST_BASH=%s is not an executable interpreter\n' "$SNAPSHOT_TEST_BASH" >&2
+    return 1
+  fi
+  local dir="$TEST_TMP/snapshot-under-test"
+  mkdir -p "$dir"
+  [ -e "$dir/lib" ] || ln -s "$SCRIPTS_DIR/lib" "$dir/lib"
+  { printf '#!%s\n' "$SNAPSHOT_TEST_BASH"; tail -n +2 "$real"; } > "$dir/sprint-progress-snapshot.sh"
+  chmod +x "$dir/sprint-progress-snapshot.sh"
+  printf '%s' "$dir/sprint-progress-snapshot.sh"
+}
+
 # run_script <basename> [args...] — run a foundation script by basename
 # (e.g. "resolve-config.sh") with $status, $output, $stderr populated by
 # bats' `run` built-in.

@@ -11,7 +11,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
-  SCRIPT="$SCRIPTS_DIR/sprint-progress-snapshot.sh"
+  SCRIPT="$(snapshot_script_under_test "$SCRIPTS_DIR/sprint-progress-snapshot.sh")"
   PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
 
   export PROJECT_ROOT="$TEST_TMP/project"
@@ -587,7 +587,7 @@ EOF
   [ "$status" -eq 0 ]
   [ "$(jq -c '[.stories[] | [.key, .title, .status]]' "$CACHE")" = '[["E900-S1","LINKED-INSIDE","review"]]' ]
   grep -q 'path escapes project root for E900-S2' <<< "$stderr"
-  ! grep -q 'no file found' <<< "$stderr"
+  ! grep -q 'no file found' <<< "$stderr" || false
   run grep -c 'LINKED-OUTSIDE' "$CACHE"
   [ "$output" = "0" ]
 }
@@ -1004,7 +1004,7 @@ YAML
   run --separate-stderr "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "3600" ]
-  ! grep -q 'invalid threshold' <<< "$stderr"
+  ! grep -q 'invalid threshold' <<< "$stderr" || false
 
   printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 3601\n' > "$config"
   rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
@@ -1140,7 +1140,7 @@ run_bounded() {
   [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S1","E900-S2"]' ]
   [ "$(jq '.totals.total_stories' "$CACHE")" = "2" ]
   grep -q 'story file for E900-S3 is not a regular file, skipping' <<< "$stderr"
-  ! grep -q 'i/o error' <<< "$stderr"
+  ! grep -q 'i/o error' <<< "$stderr" || false
   grep -q "^miss	E900-S3$" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
 
   # The next run is not served warm from what this run wrote: it looks
@@ -1219,7 +1219,7 @@ run_bounded() {
   run --separate-stderr "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -qx 'sprint-progress-snapshot: story path for E900-S1 contains control characters, skipping' <<< "$stderr"
-  ! grep -q 'escapes project root' <<< "$stderr"
+  ! grep -q 'escapes project root' <<< "$stderr" || false
   [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S2"]' ]
   run grep -c 'TAB-TARGET' "$CACHE"
   [ "$output" = "0" ]
@@ -1897,7 +1897,7 @@ wait_for() {
     rm -f "$CACHE"
     GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
     [ "$status" -eq 0 ]
-    ! grep -q 'held by live process' <<< "$stderr"
+    ! grep -q 'held by live process' <<< "$stderr" || false
     jq -e . "$CACHE" >/dev/null
     [ ! -e "$LOCK_FILE" ]
     if command -v flock >/dev/null 2>&1; then
@@ -1905,7 +1905,7 @@ wait_for() {
       rm -f "$CACHE"
       run --separate-stderr "$SCRIPT"
       [ "$status" -eq 0 ]
-      ! grep -q 'held by live process' <<< "$stderr"
+      ! grep -q 'held by live process' <<< "$stderr" || false
       jq -e . "$CACHE" >/dev/null
     fi
   done
@@ -1960,4 +1960,55 @@ SH
   [ ! -e "$LOCK_FILE" ]
   [ -z "$(find "$PROJECT_ROOT/.gaia/state" -name '*.tmp.*')" ]
   unset GAIA_LOCK_FORCE_FALLBACK
+}
+
+# build_counting_jq STORY_FILE [mark] — put a jq wrapper first on PATH that
+# appends one line to $TEST_TMP/builds per cold assembly and gives
+# STORY_FILE a new mtime, so a further build in the same run is cold too and
+# is counted.  With "mark", every assembly also leaves the re-run marker, the
+# way a writer that never stops would.
+build_counting_jq() {
+  local stub="$TEST_TMP/stub-bin" real_jq sf="$1" mark="${2:-}"
+  mkdir -p "$stub"; real_jq="$(command -v jq)"
+  cat > "$stub/jq" <<SH
+#!/usr/bin/env bash
+case "\$*" in
+  *'inputs | split'*)
+    echo build >> "$TEST_TMP/builds"
+    n="\$(wc -l < "$TEST_TMP/builds" | tr -d ' ')"
+    touch -t "20300101\$(printf '%02d' "\$n")00" "$sf"
+    if [ -n "$mark" ]; then mkdir "$LOCK_FILE.dirty" 2>/dev/null || true; fi ;;
+esac
+exec "$real_jq" "\$@"
+SH
+  chmod +x "$stub/jq"
+  STUB_PATH="$stub:$PATH"
+}
+
+@test "a re-run marker planted as a symlink to a directory never asks for another build" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5 >/dev/null
+  mkdir "$TEST_TMP/elsewhere"
+  ln -s "$TEST_TMP/elsewhere" "$LOCK_FILE.dirty"
+  build_counting_jq "$IMPL/epic-test/E900-S1-e900-s1-enf/story.md"
+  PATH="$STUB_PATH" run_bounded 30 "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$TEST_TMP/builds" | tr -d ' ')" = "1" ]
+  [ "$(jq -r '.stories[0].key' "$CACHE")" = "E900-S1" ]
+  # The planted link and its target are left alone.
+  [ -L "$LOCK_FILE.dirty" ]
+  [ -d "$TEST_TMP/elsewhere" ]
+}
+
+@test "a writer that keeps leaving the re-run marker gets at most five builds in one run" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5 >/dev/null
+  local sf="$IMPL/epic-test/E900-S1-e900-s1-enf/story.md"
+  [ -f "$sf" ]
+  build_counting_jq "$sf" mark
+  PATH="$STUB_PATH" run_bounded 30 "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$TEST_TMP/builds" | tr -d ' ')" = "5" ]
+  [ "$(jq -r '.stories[0].key' "$CACHE")" = "E900-S1" ]
+  [ ! -e "$LOCK_FILE" ]
 }

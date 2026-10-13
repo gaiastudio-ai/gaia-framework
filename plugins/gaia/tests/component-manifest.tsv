@@ -591,6 +591,7 @@ scripts-core	skill-md-claude-skill-dir-anti-pattern.bats
 scripts-core	skills/e117-s5-stack-dev-parity.bats
 scripts-core	sm-capacity-check-unchanged.bats
 scripts-core	spikes/E113-S1/detect-affected.bats
+scripts-core	sprint-progress-snapshot-bash32.bats
 scripts-core	sprint-progress-snapshot-enforcement.bats
 scripts-core	sprint-progress-snapshot-perf.bats
 scripts-core	sprint-progress-snapshot.bats
