@@ -304,6 +304,30 @@ _get_hydration_array() {
 }
 
 # ---------------------------------------------------------------------------
+# Scenario 6b: threshold upper bound is one hour (3600 seconds)
+# ---------------------------------------------------------------------------
+
+@test "waiting_agent_threshold_seconds of 3600 (upper bound) is accepted" {
+  _assert_schema_declares
+
+  _assert_validator_passes "$(_write_config 'sprint_status_mod:
+  waiting_agent_threshold_seconds: 3600')"
+}
+
+@test "waiting_agent_threshold_seconds of 3601 is rejected" {
+  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
+  waiting_agent_threshold_seconds: 3601')" "waiting_agent_threshold_seconds"
+}
+
+@test "lower bound 0 is still accepted alongside the upper bound" {
+  _assert_schema_declares
+  [ "$(jq '.properties.sprint_status_mod.properties.waiting_agent_threshold_seconds.maximum' "$SCHEMA")" = "3600" ]
+
+  _assert_validator_passes "$(_write_config 'sprint_status_mod:
+  waiting_agent_threshold_seconds: 0')"
+}
+
+# ---------------------------------------------------------------------------
 # Scenario 7: config-show extract displays section byte-verbatim
 # ---------------------------------------------------------------------------
 
