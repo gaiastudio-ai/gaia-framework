@@ -1209,14 +1209,18 @@ YAML
   local parsed="$PROJECT_ROOT/.gaia/state/.sprint-progress-parsed"
   # A task row keyed to E900-S2 planted inside E900-S1's cached record, and
   # E900-S2 changed so it is parsed fresh.
-  awk -v US=$'\037' '{ print } $1 ~ ("^P" US "E900-S1" US) { print "T" US "E900-S2" US "false" US "INJECTED-VIA-PARSE-CACHE" }' \
+  # A second, forged copy of E900-S1's record follows the tampered one: once
+  # a record is found tampered, no later copy of it is trusted either.
+  awk -v US=$'\037' '{ print } $1 ~ ("^P" US "E900-S1" US) { p = $0; print "T" US "E900-S2" US "false" US "INJECTED-VIA-PARSE-CACHE"; sub(/Story E900-S1/, "FORGED-SECOND-COPY", p); print p }' \
     "$parsed" > "$parsed.new" && mv "$parsed.new" "$parsed"
+  grep -q 'FORGED-SECOND-COPY' "$parsed"
   grep -q 'INJECTED-VIA-PARSE-CACHE' "$parsed"
   sed 's/^status: in-progress/status: review/' "$s2" > "$s2.new" && mv "$s2.new" "$s2"
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  run grep -c 'INJECTED-VIA-PARSE-CACHE' "$CACHE"
+  run grep -c 'INJECTED-VIA-PARSE-CACHE\|FORGED-SECOND-COPY' "$CACHE"
   [ "$output" = "0" ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S1" ]
   # Both stories keep exactly the tasks of their own files.
   [ "$(jq -c '[.stories[] | [.key, .status, .tasks.total]]' "$CACHE")" = '[["E900-S1","in-progress",1],["E900-S2","review",1]]' ]
 }
