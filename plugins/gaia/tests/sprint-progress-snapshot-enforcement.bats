@@ -390,61 +390,36 @@ EOF
   local bad
   bad="$(jq -r '[.action_needed[].command | select(. != null and . != "/gaia-test-manual" and . != "/gaia-sprint-close" and . != "/gaia-action-items")] | length' "$CACHE")"
   [ "$bad" = "0" ]
+  [ "$(jq -r '.action_needed[0].command' "$CACHE")" = "/gaia-sprint-close" ]
 
-  # Behavioural: source the script (main-guarded) and test _validate_command
-  # directly with hostile inputs
-  (
-    # Source the script for its functions (main guard prevents execution)
-    BASH_SOURCE_OVERRIDE=sourced
-    . "$SCRIPT"
-  ) 2>/dev/null || true
-
-  # Feed arbitrary strings through _validate_command by sourcing with override
-  local test_script="$TEST_TMP/test_allowlist.sh"
-  cat > "$test_script" <<TESTSH
-#!/usr/bin/env bash
-set -euo pipefail
-BASH_SOURCE[0]="sourced"
-. "$SCRIPT"
-# Test valid commands
-[ "\$(_validate_command "/gaia-test-manual")" = "/gaia-test-manual" ]
-[ "\$(_validate_command "/gaia-sprint-close")" = "/gaia-sprint-close" ]
-[ "\$(_validate_command "/gaia-action-items")" = "/gaia-action-items" ]
-# Test invalid commands — all must return "null"
-[ "\$(_validate_command "/gaia-test-manual; rm -rf x")" = "null" ]
-[ "\$(_validate_command "")" = "null" ]
-[ "\$(_validate_command "  /gaia-test-manual  ")" = "null" ]
-[ "\$(_validate_command "/unknown-command")" = "null" ]
-[ "\$(_validate_command "hello world")" = "null" ]
-echo "ALL_PASS"
-TESTSH
-  chmod +x "$test_script"
-  run "$test_script"
+  # The one allowlist filter both the cold and the warm path use, fed
+  # hostile values straight from the sourced script.
+  run bash -c '
+    . "$1"
+    chk() { jq -n -r --argjson c "$1" "${_JQ_DEFS} \$c | allow" --args "${_ALLOWED_COMMANDS[@]}"; }
+    for ok in "\"/gaia-test-manual\"" "\"/gaia-sprint-close\"" "\"/gaia-action-items\""; do
+      [ "$(chk "$ok")" = "$(jq -r . <<< "$ok")" ] || { echo "rejected $ok"; exit 1; }
+    done
+    for bad in "\"/gaia-test-manual; rm -rf x\"" "\"\"" "\"  /gaia-test-manual  \"" \
+               "\"/unknown-command\"" "\"hello world\"" "null" "42" "[\"/gaia-test-manual\"]"; do
+      [ "$(chk "$bad")" = "null" ] || { echo "accepted $bad"; exit 1; }
+    done
+    echo ALL_PASS
+  ' _ "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "ALL_PASS" ]
+}
 
-  # Mutation check: copy the script, remove one allowlist entry, verify the
-  # matching assertion would fail
-  local mutant="$TEST_TMP/mutant-snapshot.sh"
-  sed '/_ALLOWED_COMMANDS=/s/\/gaia-sprint-close//' "$SCRIPT" > "$mutant"
-  chmod +x "$mutant"
-  local test_mutant="$TEST_TMP/test_mutant.sh"
-  cat > "$test_mutant" <<TESTSH
-#!/usr/bin/env bash
-set -euo pipefail
-BASH_SOURCE[0]="sourced"
-. "$mutant"
-result="\$(_validate_command "/gaia-sprint-close")"
-if [ "\$result" = "/gaia-sprint-close" ]; then
-  echo "MUTANT_SURVIVED"
-else
-  echo "MUTANT_KILLED"
-fi
-TESTSH
-  chmod +x "$test_mutant"
-  run "$test_mutant"
+@test "cold run sends every rule command through the allowlist" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  # Rule d fires with /gaia-sprint-close.  With that command taken out of the
+  # allowlist the cold assembly must write null, never the literal.
+  run bash -c '. "$1"; _ALLOWED_COMMANDS=("/gaia-test-manual" "/gaia-action-items"); _snapshot_main' _ "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$output" = "MUTANT_KILLED" ]
+  [ "$(jq -c '[.action_needed[] | [.rule, .command]]' "$CACHE")" = '[["d",null]]' ]
+  run grep -c 'gaia-sprint-close' "$CACHE"
+  [ "$output" = "0" ]
 }
 
 @test "command allowlist source-code grep confirms no dynamic assignment" {
@@ -593,6 +568,27 @@ EOF
   [ "$(jq '[.stories[] | select(.key == "E900-S2")] | length' "$CACHE")" = "0" ]
   [ "$(jq '[.stories[] | select(.key == "E900-S1")] | length' "$CACHE")" = "1" ]
   run grep -c 'ESCAPED via file symlink' "$CACHE"
+  [ "$output" = "0" ]
+}
+
+@test "a story file that is a symlink is followed when it stays inside the root" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5" "E900-S2:in-progress:3"
+  # E900-S1: the story file is a link to a file elsewhere inside the root.
+  mkdir -p "$PROJECT_ROOT/shared" "$IMPL/epic-test/E900-S1-linked"
+  printf -- '---\nkey: "E900-S1"\ntitle: "LINKED-INSIDE"\nstatus: review\npoints: 5\n---\n' > "$PROJECT_ROOT/shared/E900-S1.md"
+  ln -s "$PROJECT_ROOT/shared/E900-S1.md" "$IMPL/epic-test/E900-S1-linked/story.md"
+  # E900-S2: the story file is a link out of the root.
+  local outside="$TEST_TMP/outside-linked"; mkdir -p "$outside" "$IMPL/epic-test/E900-S2-linked"
+  printf -- '---\nkey: "E900-S2"\ntitle: "LINKED-OUTSIDE"\nstatus: done\npoints: 3\n---\n' > "$outside/story.md"
+  ln -s "$outside/story.md" "$IMPL/epic-test/E900-S2-linked/story.md"
+
+  # First run: no sidecar, so both keys come from the story-tree search.
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[] | [.key, .title, .status]]' "$CACHE")" = '[["E900-S1","LINKED-INSIDE","review"]]' ]
+  grep -q 'path escapes project root for E900-S2' <<< "$stderr"
+  ! grep -q 'no file found' <<< "$stderr"
+  run grep -c 'LINKED-OUTSIDE' "$CACHE"
   [ "$output" = "0" ]
 }
 
@@ -1234,6 +1230,66 @@ YAML
   grep -q 'replacing an empty lock file left by the flock backend' <<< "$stderr"
   jq -e . "$CACHE" >/dev/null
   [ ! -e "$LOCK_FILE" ]
+}
+
+# take_lock_racing SCRIPT LOCK HOOK — source the script, override HOOK (a
+# function the fallback lock calls after it judged the existing lock and
+# before it removes it) so that another run swaps in its own live lock at
+# exactly that moment, then try to take the lock.  Prints the outcome, the
+# lock file's content and the number of leftover reap files.
+take_lock_racing() {
+  bash -c '
+    . "$1"; lock="$2"; hook="$3"
+    GAIA_LOCK_FORCE_FALLBACK=1
+    other_takes_lock() {
+      rm -f "$lock"
+      printf "%s %s\n" "$PPID" "$(date +%s)" > "$lock.other"
+      ln "$lock.other" "$lock"; rm -f "$lock.other"
+    }
+    case "$hook" in
+      warn) _warn() { case "$*" in *"replacing an empty lock"*) other_takes_lock ;; esac; } ;;
+      age)  _stat_mtime_age() { other_takes_lock; printf 120; } ;;
+    esac
+    if _try_snapshot_lock "$lock"; then echo "TOOK"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    echo "holder=$(cut -d" " -f1 < "$lock") other=$PPID self=$$"
+    echo "reap=$(find "${lock%/*}" -name "*.reap.*" | wc -l | tr -d " ")"
+  ' _ "$SCRIPT" "$LOCK_FILE" "$1"
+}
+
+@test "replacing an empty lock never removes a lock another run linked after the check" {
+  : > "$LOCK_FILE"
+  run take_lock_racing warn
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  # The other run's lock (a live PID that is not this run's) is still in place.
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+  [ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[3]}" ]
+  [ "${lines[2]}" = "reap=0" ]
+}
+
+@test "reaping a stale lock never removes a lock another run linked after the check" {
+  sleep 0 & local dead=$!; wait "$dead" || true
+  printf '%s %s\n' "$dead" 1000000000 > "$LOCK_FILE"
+  touch -t 202001010000 "$LOCK_FILE"
+  run take_lock_racing age
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+  [ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[3]}" ]
+  [ "${lines[2]}" = "reap=0" ]
+
+  # Without a racing run the stale lock is reaped and taken.
+  rm -f "$LOCK_FILE"
+  printf '%s %s\n' "$dead" 1000000000 > "$LOCK_FILE"
+  touch -t 202001010000 "$LOCK_FILE"
+  run take_lock_racing none
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "TOOK" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[3]}" ]
+  [ "${lines[2]}" = "reap=0" ]
 }
 
 @test "fallback lock that gives up says why on stderr" {

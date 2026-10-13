@@ -183,18 +183,9 @@ _validate_threshold() {
   fi
 }
 
-# _validate_command CMD — prints CMD when it is in the hardcoded allowlist,
-# otherwise prints null.  The jq assembly applies the same allowlist (it is
-# handed _ALLOWED_COMMANDS as positional arguments) on every run, cold or warm.
-_validate_command() {
-  local cmd="$1"
-  if [ -z "$cmd" ]; then printf 'null'; return 0; fi
-  local allowed
-  for allowed in "${_ALLOWED_COMMANDS[@]}"; do
-    if [ "$cmd" = "$allowed" ]; then printf '%s' "$cmd"; return 0; fi
-  done
-  printf 'null'
-}
+# The command allowlist has ONE implementation: the jq `allow` function in
+# _JQ_DEFS, handed _ALLOWED_COMMANDS as positional arguments.  The cold
+# assembly and the warm re-validation both run every command through it.
 
 _valid_story_key() {
   [[ $1 =~ ^E[0-9]+\-S[0-9]+$ ]]
@@ -261,17 +252,18 @@ _try_snapshot_lock() {
   # the file is older than 60 s.
   _SNAPSHOT_LOCK_BACKEND="fallback"
   _SNAPSHOT_LOCK_REASON=""
-  local attempt holder age
+  local attempt holder age ident
   for attempt in 1 2; do
     _fallback_link "$lock_file" && return 0
     [ "$attempt" = "1" ] || break
     [ ! -L "$lock_file" ] && [ -f "$lock_file" ] || break
+    # Identity of the lock file being judged (inode plus content), so the
+    # removal below only ever removes this exact file.
+    ident="$(_lock_ident "$lock_file")" || break
     holder=""
     read -r holder _ < "$lock_file" 2>/dev/null || true
     if [ ! -s "$lock_file" ]; then
       _warn "replacing an empty lock file left by the flock backend: $lock_file"
-      # Re-check right before removing: another run may have just linked.
-      [ ! -s "$lock_file" ] || { _SNAPSHOT_LOCK_REASON="taken by another process"; return 1; }
     elif [[ $holder =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
       _SNAPSHOT_LOCK_REASON="held by live process $holder"; return 1
     else
@@ -281,9 +273,42 @@ _try_snapshot_lock() {
         return 1
       fi
     fi
-    rm -f "$lock_file" 2>/dev/null || true
+    _reap_lock "$lock_file" "$ident" || { _SNAPSHOT_LOCK_REASON="taken by another process"; return 1; }
   done
   [ -n "$_SNAPSHOT_LOCK_REASON" ] || _SNAPSHOT_LOCK_REASON="the fallback lock could not be taken"
+  return 1
+}
+
+# _lock_ident FILE — "inode size first-line" of FILE.  A fallback holder
+# always writes "PID EPOCH", so a lock linked after FILE was judged differs in
+# content even when the file system hands out the freed inode number again.
+_lock_ident() {
+  local ino line=""
+  if [ "$_SNAP_STAT_FMT" = "gnu" ]; then ino="$(stat -c '%i %s' "$1" 2>/dev/null)" || return 1
+  else ino="$(stat -f '%i %z' "$1" 2>/dev/null)" || return 1; fi
+  IFS= read -r line < "$1" 2>/dev/null || true
+  printf '%s %s' "$ino" "$line"
+}
+
+# _reap_lock LOCK IDENT — remove LOCK only when it is still the file judged as
+# IDENT.  The lock is first renamed to a name only this run uses (rename is
+# atomic, so two reapers can never both take it), then checked.  When another
+# run linked a fresh lock after the judgement, that lock is put back and the
+# reap is abandoned.  Returns 0 when the judged file was removed.
+_reap_lock() {
+  local lock_file="$1" ident="$2" reap="${1}.reap.$$.${RANDOM}${RANDOM}"
+  mv "$lock_file" "$reap" 2>/dev/null || return 1
+  if [ "$(_lock_ident "$reap" 2>/dev/null)" = "$ident" ]; then
+    rm -f "$reap" 2>/dev/null || true
+    return 0
+  fi
+  if ! ln "$reap" "$lock_file" 2>/dev/null; then
+    # A third run linked in the instant the lock was moved aside.  Both it
+    # and the restored holder may build once; every cache write is still an
+    # atomic temp-file rename, so the worst case is one duplicate build.
+    _warn "lock changed hands while a stale lock was being replaced: $lock_file"
+  fi
+  rm -f "$reap" 2>/dev/null || true
   return 1
 }
 
@@ -542,6 +567,7 @@ def d2ep: if type == "string" then (try (strptime("%Y-%m-%d") | mktime) catch nu
 def ep2d: floor | strftime("%Y-%m-%d");
 def canon_gates: ["Code Review", "QA Tests", "Security Review", "Test Automation", "Test Review", "Performance Review"];
 def capstr($n): if type == "string" then cap($n) else . end;
+def natkey: [scan("[0-9]+|[^0-9]+") | (tonumber? // .)];
 def timefields($sm):
   (now | floor) as $now
   | ($now | ep2d | d2ep) as $tep
@@ -690,7 +716,7 @@ _JQ_COLD="${_JQ_DEFS}"'
              since: (([$done[] | ._mt] | max) as $m | if $m != null and $m > 0 then ($m | ep2d) else (now | ep2d) end),
              source: "sprint-status"}]
          else [] end)
-      | sort_by(.rule, (.story_keys[0] // ""), (.item_id // ""))
+      | sort_by(.rule, (.story_keys[0] // "" | natkey), (.item_id // "" | natkey))
       ) as $actions
     | {schema_version: "1.0",
        generated_at: "",
@@ -730,33 +756,42 @@ _JQ_COLD="${_JQ_DEFS}"'
 # Warm fast-path: nothing tracked changed — refresh time-derived fields only
 # ---------------------------------------------------------------------------
 
+# _warm_reject REASON — the sidecar cannot be trusted: say why on stderr and
+# fall back to a cold run.  An ordinary change (an mtime that moved, a file
+# that appeared) falls back silently instead; only a sidecar that is out of
+# date, malformed or points somewhere it must not is reported.
+_warm_reject() { _warn "sidecar $1, rebuilding"; return 1; }
+
 # Expected meta entries (name 0x09 project-relative-or-absolute path) are
 # provided by the caller in _SNAP_EXPECTED_META.  The sidecar must carry
-# exactly those entries; any story path must be project-relative, resolve
-# (full symlink chain) inside the project root, and match its mtime; a
-# tracked file recorded as absent (mtime 0) must still be absent.
+# exactly those entries and, when the story tree exists, an entry for the
+# tree root; any story path must be project-relative, resolve (full symlink
+# chain) inside the project root, and match its mtime; a tracked file
+# recorded as absent (mtime 0) must still be absent.
 _try_warm_fast_path() {
   [ -f "$CACHE_FILE" ] && [ -f "$SIDECAR_FILE" ] && [ -f "$PARSED_FILE" ] || return 1
   # Never trust (or follow) a link planted at one of the state file names.
   [ ! -L "$CACHE_FILE" ] && [ ! -L "$SIDECAR_FILE" ] && [ ! -L "$PARSED_FILE" ] || return 1
 
-  local typ a b c ver=0 seen_meta="" rest
-  local -a st_paths=() st_exp=() rp_in=() rp_exp=() smt_parts=()
+  local typ a b c ver=0 seen_meta="" rest have_root=0
+  local -a st_paths=() st_exp=() rp_in=() rp_exp=() rp_key=() smt_parts=()
   while IFS=$'\t' read -r typ a b c; do
     case "$typ" in
       v3) ver=1 ;;
+      v[0-9]*) ;;   # another format version: refused below as out of date
       story)
-        _valid_story_key "$a" || return 1
-        _rel_ok "$b" || return 1
+        _valid_story_key "$a" || _warm_reject "has an invalid story key" || return 1
+        _rel_ok "$b" || _warm_reject "story path for $a is not project-relative" || return 1
         [[ $c =~ ^[0-9]+$ ]] || return 1
-        rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=("$c")
+        rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=("$c"); rp_key+=("$a")
         smt_parts+=("$a" "$c") ;;
       dir)
         # The story tree root or one of its direct subdirectories.
-        _has_ctl "$a" && return 1
+        _has_ctl "$a" && { _warm_reject "has a story-tree entry with control characters"; return 1; }
         case "$a" in "$_SNAP_IMPL_REL"|"$_SNAP_IMPL_REL"/*) ;; *) return 1 ;; esac
         rest="${a#"$_SNAP_IMPL_REL"}"; rest="${rest#/}"
-        case "$rest" in */*|.|..) return 1 ;; esac
+        case "$rest" in */*|.|..) _warm_reject "has a story-tree entry outside the tree"; return 1 ;; esac
+        [ -n "$rest" ] || have_root=1
         [[ $b =~ ^[0-9]+$ ]] || return 1
         case "$a" in /*) st_paths+=("$a") ;; *) st_paths+=("${RESOLVED_ROOT}/${a}") ;; esac
         st_exp+=("$b") ;;
@@ -775,10 +810,17 @@ _try_warm_fast_path() {
         fi
         seen_meta="${seen_meta}${a}
 " ;;
-      *) return 1 ;;
+      # A key whose story file was missing is re-resolved by a cold run.
+      miss) return 1 ;;
+      *) _warm_reject "has an unknown entry"; return 1 ;;
     esac
   done < "$SIDECAR_FILE"
-  [ "$ver" = "1" ] || return 1
+  [ "$ver" = "1" ] || { _warm_reject "format is out of date"; return 1; }
+  # The cold run always records the story-tree root when the tree exists; a
+  # sidecar without it could hide a story directory that was added.
+  if [ "$have_root" = "0" ] && [ -d "$IMPL_DIR" ] && [ ! -L "$IMPL_DIR" ]; then
+    _warm_reject "has no story-tree entry"; return 1
+  fi
 
   # Every expected meta entry must be present.
   local name _p
@@ -787,7 +829,7 @@ _try_warm_fast_path() {
     case "
 ${seen_meta}" in *"
 ${name}
-"*) ;; *) return 1 ;; esac
+"*) ;; *) _warm_reject "has no entry for ${name}"; return 1 ;; esac
   done <<< "$_SNAP_EXPECTED_META"
 
   # Story paths must resolve (full symlink chain) inside the project root;
@@ -796,9 +838,12 @@ ${name}
     local resolved line ri=0
     resolved="$(_realpath_batch "${rp_in[@]}")" || return 1
     while IFS= read -r line; do
-      case "$line" in "${RESOLVED_ROOT}/"*) ;; *) return 1 ;; esac
-      _has_ctl "$line" && return 1
       [ "$ri" -lt "${#rp_in[@]}" ] || return 1
+      case "$line" in
+        "${RESOLVED_ROOT}/"*) ;;
+        *) _warm_reject "story path for ${rp_key[$ri]} resolves outside the project root"; return 1 ;;
+      esac
+      _has_ctl "$line" && { _warm_reject "story path for ${rp_key[$ri]} contains control characters"; return 1; }
       st_paths+=("$line"); st_exp+=("${rp_exp[$ri]}")
       ri=$((ri + 1))
     done <<< "$resolved"
@@ -823,8 +868,13 @@ ${name}
   [ "${#smt_parts[@]}" -eq 0 ] || smt="${smt_parts[*]}"
   _new_tmp "$CACHE_FILE" || return 1
   tmp="$_TMP"
-  if jq -c --arg smt "$smt" "$_JQ_WARM" "$CACHE_FILE" --args "${_ALLOWED_COMMANDS[@]}" > "$tmp" 2>/dev/null \
-     && [ -s "$tmp" ] && _replace_ok "$CACHE_FILE"; then
+  if ! jq -c --arg smt "$smt" "$_JQ_WARM" "$CACHE_FILE" --args "${_ALLOWED_COMMANDS[@]}" > "$tmp" 2>/dev/null \
+     || [ ! -s "$tmp" ]; then
+    rm -f "$tmp" 2>/dev/null || true
+    _warn "cache does not match the schema, rebuilding"
+    return 1
+  fi
+  if _replace_ok "$CACHE_FILE"; then
     mv -f "$tmp" "$CACHE_FILE"
     return 0
   fi
@@ -836,13 +886,16 @@ ${name}
 # Batched story-file resolution — ONE find over implementation-artifacts
 # ---------------------------------------------------------------------------
 
+# A story file that is a symlink is taken like a regular file; the
+# containment step then resolves its full chain and keeps it only when the
+# target lies inside the project root (or warns that it escapes).
 # Paths are read NUL-separated and every newline inside a path is turned into
 # 0x01 first, so a directory name with a newline can never split into two
 # lines; a path holding 0x01, 0x1f, CR or TAB is refused (BADPATH) instead of
 # being taken, because those bytes could shift a record field later on.
 _resolve_all_story_paths() {
   local impl_dir="$1"; shift
-  find "$impl_dir" -type f \( -name 'story.md' -o -name 'E*.md' \) -print0 2>/dev/null \
+  find "$impl_dir" \( -type f -o -type l \) \( -name 'story.md' -o -name 'E*.md' \) -print0 2>/dev/null \
     | tr '\n\000' '\001\n' | SNAP_KEYS="$*" awk '
   BEGIN { n=split(ENVIRON["SNAP_KEYS"],ka," "); for(i=1;i<=n;i++) wanted[ka[i]]=1 }
   # keyof(NAME) — the story key NAME starts with ("KEY" or "KEY-..."), or "".
