@@ -1321,6 +1321,72 @@ take_lock_racing() {
   [ "${lines[2]}" = "reap=0 mutex=none" ]
 }
 
+@test "a stale lock is reaped by one run at a time" {
+  : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
+  # Another run is reaping the same file right now (it holds the mutex).
+  run bash -c '
+    . "$1"; lock="$2"; GAIA_LOCK_FORCE_FALLBACK=1
+    _warn() { case "$*" in *"replacing an empty lock"*) mkdir "$lock.reaping" ;; esac; }
+    if _try_snapshot_lock "$lock"; then echo TOOK; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    [ -f "$lock" ] && [ ! -s "$lock" ] && echo UNTOUCHED
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [ "${lines[1]}" = "UNTOUCHED" ]
+}
+
+@test "a reaper re-checks the lock under the mutex before moving it aside" {
+  : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
+  sleep 30 & local third=$!
+  # After the judgement another run links its own lock; any moment the lock
+  # name is free, a third run links its lock there.  The reaper must notice
+  # the new lock before it ever moves it aside.
+  run bash -c '
+    . "$1"; lock="$2"; third="$3"; GAIA_LOCK_FORCE_FALLBACK=1
+    _warn() {
+      case "$*" in *"replacing an empty lock"*)
+        rm -f "$lock"; printf "%s %s\n" "$PPID" "$(date +%s)" > "$lock.o"; ln "$lock.o" "$lock"; rm -f "$lock.o" ;;
+      esac
+    }
+    eval "real_$(declare -f _lock_ident)"
+    _lock_ident() {
+      if [ ! -e "$lock" ]; then printf "%s %s\n" "$third" "$(date +%s)" > "$lock.t"; ln "$lock.t" "$lock"; rm -f "$lock.t"; fi
+      real__lock_ident "$@"
+    }
+    if _try_snapshot_lock "$lock"; then echo TOOK; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    echo "holder=$(cut -d" " -f1 < "$lock") other=$PPID"
+  ' _ "$SCRIPT" "$LOCK_FILE" "$third"
+  kill "$third" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+}
+
+@test "a flock-backend run that loses its lock file before announcing itself backs off" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  # Right after this run takes the flock, a fallback run replaces the file
+  # (as a reaper of an old empty file would) and links its own live lock.
+  run bash -c '
+    . "$1"; lock="$2"; first=1
+    eval "real_$(declare -f _lock_last)"
+    _lock_last() {
+      if [ "$first" = "1" ]; then
+        first=0
+        rm -f "$lock"; printf "%s %s\n" "$PPID" "$(date +%s)" > "$lock.o"; ln "$lock.o" "$lock"; rm -f "$lock.o"
+        _LOCK_LAST=""; return 1
+      fi
+      real__lock_last "$@"
+    }
+    if _try_snapshot_lock "$lock"; then echo "TOOK ($_SNAPSHOT_LOCK_BACKEND)"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    echo "holder=$(cut -d" " -f1 < "$lock") other=$PPID lines=$(wc -l < "$lock" | tr -d " ")"
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ lines=1$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+}
+
 @test "reaping a stale lock never removes a lock another run linked after the check" {
   sleep 0 & local dead=$!; wait "$dead" || true
   printf '%s %s\n' "$dead" 1000000000 > "$LOCK_FILE"
