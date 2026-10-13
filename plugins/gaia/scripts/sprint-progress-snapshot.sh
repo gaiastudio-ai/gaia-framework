@@ -183,18 +183,9 @@ _validate_threshold() {
   fi
 }
 
-# _validate_command CMD — prints CMD when it is in the hardcoded allowlist,
-# otherwise prints null.  The jq assembly applies the same allowlist (it is
-# handed _ALLOWED_COMMANDS as positional arguments) on every run, cold or warm.
-_validate_command() {
-  local cmd="$1"
-  if [ -z "$cmd" ]; then printf 'null'; return 0; fi
-  local allowed
-  for allowed in "${_ALLOWED_COMMANDS[@]}"; do
-    if [ "$cmd" = "$allowed" ]; then printf '%s' "$cmd"; return 0; fi
-  done
-  printf 'null'
-}
+# The command allowlist has ONE implementation: the jq `allow` function in
+# _JQ_DEFS, handed _ALLOWED_COMMANDS as positional arguments.  The cold
+# assembly and the warm re-validation both run every command through it.
 
 _valid_story_key() {
   [[ $1 =~ ^E[0-9]+\-S[0-9]+$ ]]
@@ -237,6 +228,32 @@ _snapshot_lock_path_policy() {
   return 0
 }
 
+# Both backends share one convention: whoever holds the lock has its
+# "PID EPOCH" line as the LAST line of the lock file.  The flock backend
+# appends its line once it holds the flock; a fallback holder links a fresh
+# file holding only its line; both remove the file on release.  So each
+# backend sees the other's live holder.  A lock file whose holder is dead, or
+# that is empty, is stale only once it is 60 s old; it is then removed by one
+# reaper at a time, by renaming it to a name only that reaper uses and checking
+# it is still the file that was judged (never check-then-remove).
+_SNAPSHOT_LOCK_LINE=""
+_LOCK_LAST=""
+_LOCK_IDENT=""
+
+# _lock_last FILE — set _LOCK_LAST to the last non-empty line of FILE ("" for
+# an empty file).  Returns 1 when FILE cannot be read (for example, it is
+# gone).  No subshell.
+_lock_last() {
+  _LOCK_LAST=""
+  [ -f "$1" ] && [ -r "$1" ] || return 1
+  local l
+  { while IFS= read -r l || [ -n "$l" ]; do [ -z "$l" ] || _LOCK_LAST="$l"; done < "$1"; } 2>/dev/null || return 1
+  return 0
+}
+
+# _lock_line — the "PID EPOCH" line this run writes as a holder.
+_lock_line() { _SNAPSHOT_LOCK_LINE="$$ ${EPOCHSECONDS:-$(date +%s)}"; }
+
 _try_snapshot_lock() {
   local lock_file="$1"
   _SNAPSHOT_LOCK_REFUSED=0
@@ -247,53 +264,138 @@ _try_snapshot_lock() {
   if command -v flock >/dev/null 2>&1 && [ "${GAIA_LOCK_FORCE_FALLBACK:-}" != "1" ]; then
     _SNAPSHOT_LOCK_BACKEND="flock"
     exec 9>>"$lock_file" || return 1
-    if flock -n 9 2>/dev/null; then _SNAPSHOT_LOCK_FILE="$lock_file"; return 0; fi
-    exec 9>&-
-    _SNAPSHOT_LOCK_REASON="held by another process"
-    return 1
+    if ! flock -n 9 2>/dev/null; then
+      exec 9>&-
+      _SNAPSHOT_LOCK_REASON="held by another process"
+      return 1
+    fi
+    # A fallback-backend holder takes no flock; its line says it holds.
+    local fholder=""
+    if _lock_last "$lock_file"; then fholder="${_LOCK_LAST%% *}"; fi
+    if [[ $fholder =~ ^[0-9]+$ ]] && [ "$fholder" != "$$" ] && kill -0 "$fholder" 2>/dev/null; then
+      exec 9>&-
+      _SNAPSHOT_LOCK_REASON="held by live process $fholder"
+      return 1
+    fi
+    # Announce this holder, then make sure the name still leads to the file
+    # this run locked: a fallback run may have replaced an empty lock file
+    # just before the line was written.
+    _lock_line
+    if ! printf '%s\n' "$_SNAPSHOT_LOCK_LINE" >&9 2>/dev/null \
+       || ! _lock_last "$lock_file" || [ "$_LOCK_LAST" != "$_SNAPSHOT_LOCK_LINE" ]; then
+      exec 9>&-
+      _SNAPSHOT_LOCK_REASON="taken by another process"
+      return 1
+    fi
+    _SNAPSHOT_LOCK_FILE="$lock_file"
+    return 0
   fi
 
-  # Fallback: atomic ln, single attempt, stale-holder reap.  A fallback holder
-  # always writes "PID EPOCH" before linking, so its lock file is never empty.
-  # An EMPTY lock file is what the flock backend leaves behind (flock never
-  # removes it), so it is not a holder at all and is replaced at once.  A
-  # holder whose PID is dead, or whose content is not a PID, is reaped once
-  # the file is older than 60 s.
+  # Fallback: atomic ln, stale-holder reap.  A lock file that is empty (a
+  # flock-backend run between creating it and writing its line, or one left
+  # by an older version), or whose holder PID is dead or not a PID, is reaped
+  # once it is older than 60 s.  A lock file that disappears after a failed
+  # ln is simply retried.
   _SNAPSHOT_LOCK_BACKEND="fallback"
   _SNAPSHOT_LOCK_REASON=""
-  local attempt holder age
-  for attempt in 1 2; do
+  local attempt holder age ident rc
+  for attempt in 1 2 3; do
     _fallback_link "$lock_file" && return 0
-    [ "$attempt" = "1" ] || break
-    [ ! -L "$lock_file" ] && [ -f "$lock_file" ] || break
-    holder=""
-    read -r holder _ < "$lock_file" 2>/dev/null || true
-    if [ ! -s "$lock_file" ]; then
-      _warn "replacing an empty lock file left by the flock backend: $lock_file"
-      # Re-check right before removing: another run may have just linked.
-      [ ! -s "$lock_file" ] || { _SNAPSHOT_LOCK_REASON="taken by another process"; return 1; }
-    elif [[ $holder =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
+    [ "$attempt" -lt 3 ] || break
+    [ ! -L "$lock_file" ] || break
+    [ -e "$lock_file" ] || continue
+    [ -f "$lock_file" ] || break
+    # Identity of the lock file being judged (inode, size, holder line), so
+    # the removal below only ever removes this exact file.
+    _lock_ident "$lock_file" || continue
+    ident="$_LOCK_IDENT"
+    holder="${_LOCK_LAST%% *}"
+    if [ -n "$_LOCK_LAST" ] && [[ $holder =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
       _SNAPSHOT_LOCK_REASON="held by live process $holder"; return 1
-    else
-      age="$(_stat_mtime_age "$lock_file")" || age=0
-      if [ "$age" -lt 60 ]; then
-        _SNAPSHOT_LOCK_REASON="holder '${holder:0:20}' is not running but the lock is only ${age}s old"
-        return 1
-      fi
     fi
-    rm -f "$lock_file" 2>/dev/null || true
+    age="$(_stat_mtime_age "$lock_file")" || age=0
+    if [ "$age" -lt 60 ]; then
+      if [ -z "$_LOCK_LAST" ]; then
+        _SNAPSHOT_LOCK_REASON="the lock file is empty but only ${age}s old"
+      else
+        _SNAPSHOT_LOCK_REASON="holder '${holder:0:20}' is not running but the lock is only ${age}s old"
+      fi
+      return 1
+    fi
+    if [ -z "$_LOCK_LAST" ]; then
+      _warn "replacing an empty lock file nobody holds: $lock_file"
+    fi
+    rc=0; _reap_lock "$lock_file" "$ident" || rc=$?
+    case "$rc" in
+      0|2) ;;   # removed, or already gone: try ln again
+      *) _SNAPSHOT_LOCK_REASON="taken by another process"; return 1 ;;
+    esac
   done
   [ -n "$_SNAPSHOT_LOCK_REASON" ] || _SNAPSHOT_LOCK_REASON="the fallback lock could not be taken"
   return 1
 }
 
-# _fallback_link LOCK — write "PID EPOCH" to a temp file and hard-link it to
-# LOCK (atomic: fails when LOCK exists).
+# _lock_ident FILE — set _LOCK_IDENT to "inode size last-line" of FILE (and
+# _LOCK_LAST to its last line).  A holder line carries a PID and an epoch, so
+# a lock linked after FILE was judged differs even when the file system hands
+# out the freed inode number again.
+_lock_ident() {
+  local ino
+  _LOCK_IDENT=""
+  if [ "$_SNAP_STAT_FMT" = "gnu" ]; then ino="$(stat -c '%i %s' "$1" 2>/dev/null)" || return 1
+  else ino="$(stat -f '%i %z' "$1" 2>/dev/null)" || return 1; fi
+  _lock_last "$1" || return 1
+  _LOCK_IDENT="$ino $_LOCK_LAST"
+}
+
+# _reap_lock LOCK IDENT — remove the stale LOCK only when it is still the file
+# judged as IDENT.  Reapers take turns through a mkdir mutex, so while one
+# reaps, no other run removes or replaces the file (a fallback run only links
+# a lock where none exists).  Under the mutex the file is checked again, then
+# renamed to a name only this run uses and checked once more: the one writer
+# left, a flock-backend run that announces itself in a file it just locked,
+# gets its file put back.  Returns 0 when the judged file was removed, 2 when
+# LOCK was already gone, 1 when another run holds it or is reaping it.
+_REAP_MUTEX=""
+_reap_lock() {
+  local lock_file="$1" ident="$2" reap="${1}.reap.$$.${RANDOM}${RANDOM}" mutex="${1}.reaping" rc=1 mage
+  if ! mkdir "$mutex" 2>/dev/null; then
+    # A reaper that died inside the mutex leaves it behind; clear it once old.
+    if [ -d "$mutex" ] && [ ! -L "$mutex" ]; then
+      mage="$(_stat_mtime_age "$mutex" 2>/dev/null)" || mage=0
+      if [ "$mage" -ge 60 ]; then rmdir "$mutex" 2>/dev/null || true; fi
+    fi
+    return 1
+  fi
+  _REAP_MUTEX="$mutex"
+  if ! _lock_ident "$lock_file"; then
+    [ -e "$lock_file" ] && rc=1 || rc=2
+  elif [ "$_LOCK_IDENT" = "$ident" ] && mv "$lock_file" "$reap" 2>/dev/null; then
+    if _lock_ident "$reap" && [ "$_LOCK_IDENT" = "$ident" ]; then
+      rc=0
+    elif ! ln "$reap" "$lock_file" 2>/dev/null; then
+      _warn "lock changed hands while a stale lock was being replaced: $lock_file"
+    fi
+    rm -f "$reap" 2>/dev/null || true
+  fi
+  rmdir "$mutex" 2>/dev/null || true
+  _REAP_MUTEX=""
+  return "$rc"
+}
+
+# _fallback_link LOCK — write "PID EPOCH" to an exclusively created temp file
+# (noclobber: a planted file or link at the name is never followed) and
+# hard-link it to LOCK (atomic: fails when LOCK exists).
 _fallback_link() {
-  local lock_file="$1" tmp_lock="${1}.tmp.$$.${RANDOM}"
-  printf '%s %s\n' "$$" "$(date +%s)" > "$tmp_lock" 2>/dev/null || {
-    rm -f "$tmp_lock" 2>/dev/null || true; return 1
-  }
+  local lock_file="$1" tmp_lock n=0
+  _lock_line
+  while :; do
+    tmp_lock="${1}.tmp.$$.${RANDOM}${RANDOM}"
+    set -C
+    if { printf '%s\n' "$_SNAPSHOT_LOCK_LINE" > "$tmp_lock"; } 2>/dev/null; then set +C; break; fi
+    set +C
+    n=$((n + 1)); [ "$n" -lt 20 ] || return 1
+  done
   if ln "$tmp_lock" "$lock_file" 2>/dev/null; then
     rm -f "$tmp_lock" 2>/dev/null || true; _SNAPSHOT_LOCK_FILE="$lock_file"; return 0
   fi
@@ -310,16 +412,17 @@ _release_snapshot_lock() {
     done <<< "$_SNAP_TMP_FILES"
     _SNAP_TMP_FILES=""
   fi
+  if [ -n "$_REAP_MUTEX" ]; then rmdir "$_REAP_MUTEX" 2>/dev/null || true; _REAP_MUTEX=""; fi
   local lock_file="${_SNAPSHOT_LOCK_FILE:-}"
   [ -n "$lock_file" ] || return 0
-  if [ "$_SNAPSHOT_LOCK_BACKEND" = "flock" ]; then
-    # Closing the only descriptor on the lock file releases the flock.
-    exec 9>&- 2>/dev/null || true
-  else
-    local holder=""
-    read -r holder _ < "$lock_file" 2>/dev/null || true
-    if [ "$holder" = "$$" ]; then rm -f "$lock_file" 2>/dev/null || true; fi
+  # Remove the lock file only while it still carries this holder's line (a
+  # live holder's file is never replaced by anyone else).  The flock backend
+  # removes it while still holding the flock, then closing the descriptor
+  # releases the flock.
+  if _lock_last "$lock_file" && [ "$_LOCK_LAST" = "$_SNAPSHOT_LOCK_LINE" ]; then
+    rm -f "$lock_file" 2>/dev/null || true
   fi
+  [ "$_SNAPSHOT_LOCK_BACKEND" != "flock" ] || exec 9>&- 2>/dev/null || true
   _SNAPSHOT_LOCK_FILE=""
 }
 
@@ -493,8 +596,15 @@ _story_records() {
       if (f[3] != "racy") ident[f[1] US f[2] US f[3]] = nw
     }
   }
-  $1 == "P" { id = $2 US $3 US $4; cur = (id in ident) ? ident[id] : 0; if (cur && !(cur in cached)) { cached[cur]=1; buf[cur]=$0 } else cur=0; next }
-  ($1 == "T" || $1 == "G") && cur { buf[cur] = buf[cur] "\n" $0; next }
+  $1 == "P" { id = $2 US $3 US $4; cur = (id in ident) ? ident[id] : 0; if (cur && !(cur in cached) && !(cur in bad)) { cached[cur]=1; buf[cur]=$0 } else cur=0; next }
+  # Only rows that belong to the story being copied are kept.  A row for any
+  # other key means the parse cache was tampered with: the cached
+  # record of that story is dropped and its file is parsed again.
+  ($1 == "T" || $1 == "G") && cur {
+    if ($2 == wk[cur]) buf[cur] = buf[cur] "\n" $0
+    else { delete cached[cur]; delete buf[cur]; bad[cur] = 1; cur = 0 }
+    next
+  }
   { cur = 0 }
   END {
     for (i = 1; i <= nw; i++) {
@@ -542,6 +652,7 @@ def d2ep: if type == "string" then (try (strptime("%Y-%m-%d") | mktime) catch nu
 def ep2d: floor | strftime("%Y-%m-%d");
 def canon_gates: ["Code Review", "QA Tests", "Security Review", "Test Automation", "Test Review", "Performance Review"];
 def capstr($n): if type == "string" then cap($n) else . end;
+def natkey: [scan("[0-9]+|[^0-9]+") | (tonumber? // .)];
 def timefields($sm):
   (now | floor) as $now
   | ($now | ep2d | d2ep) as $tep
@@ -690,7 +801,7 @@ _JQ_COLD="${_JQ_DEFS}"'
              since: (([$done[] | ._mt] | max) as $m | if $m != null and $m > 0 then ($m | ep2d) else (now | ep2d) end),
              source: "sprint-status"}]
          else [] end)
-      | sort_by(.rule, (.story_keys[0] // ""), (.item_id // ""))
+      | sort_by(.rule, (.story_keys[0] // "" | natkey), (.item_id // "" | natkey))
       ) as $actions
     | {schema_version: "1.0",
        generated_at: "",
@@ -730,33 +841,42 @@ _JQ_COLD="${_JQ_DEFS}"'
 # Warm fast-path: nothing tracked changed — refresh time-derived fields only
 # ---------------------------------------------------------------------------
 
+# _warm_reject REASON — the sidecar cannot be trusted: say why on stderr and
+# fall back to a cold run.  An ordinary change (an mtime that moved, a file
+# that appeared) falls back silently instead; only a sidecar that is out of
+# date, malformed or points somewhere it must not is reported.
+_warm_reject() { _warn "sidecar $1, rebuilding"; return 1; }
+
 # Expected meta entries (name 0x09 project-relative-or-absolute path) are
 # provided by the caller in _SNAP_EXPECTED_META.  The sidecar must carry
-# exactly those entries; any story path must be project-relative, resolve
-# (full symlink chain) inside the project root, and match its mtime; a
-# tracked file recorded as absent (mtime 0) must still be absent.
+# exactly those entries and, when the story tree exists, an entry for the
+# tree root; any story path must be project-relative, resolve (full symlink
+# chain) inside the project root, and match its mtime; a tracked file
+# recorded as absent (mtime 0) must still be absent.
 _try_warm_fast_path() {
   [ -f "$CACHE_FILE" ] && [ -f "$SIDECAR_FILE" ] && [ -f "$PARSED_FILE" ] || return 1
   # Never trust (or follow) a link planted at one of the state file names.
   [ ! -L "$CACHE_FILE" ] && [ ! -L "$SIDECAR_FILE" ] && [ ! -L "$PARSED_FILE" ] || return 1
 
-  local typ a b c ver=0 seen_meta="" rest
-  local -a st_paths=() st_exp=() rp_in=() rp_exp=() smt_parts=()
+  local typ a b c ver=0 seen_meta="" rest have_root=0
+  local -a st_paths=() st_exp=() rp_in=() rp_exp=() rp_key=() smt_parts=()
   while IFS=$'\t' read -r typ a b c; do
     case "$typ" in
       v3) ver=1 ;;
+      v[0-9]*) ;;   # another format version: refused below as out of date
       story)
-        _valid_story_key "$a" || return 1
-        _rel_ok "$b" || return 1
+        _valid_story_key "$a" || _warm_reject "has an invalid story key" || return 1
+        _rel_ok "$b" || _warm_reject "story path for $a is not project-relative" || return 1
         [[ $c =~ ^[0-9]+$ ]] || return 1
-        rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=("$c")
+        rp_in+=("${RESOLVED_ROOT}/${b}"); rp_exp+=("$c"); rp_key+=("$a")
         smt_parts+=("$a" "$c") ;;
       dir)
         # The story tree root or one of its direct subdirectories.
-        _has_ctl "$a" && return 1
+        _has_ctl "$a" && { _warm_reject "has a story-tree entry with control characters"; return 1; }
         case "$a" in "$_SNAP_IMPL_REL"|"$_SNAP_IMPL_REL"/*) ;; *) return 1 ;; esac
         rest="${a#"$_SNAP_IMPL_REL"}"; rest="${rest#/}"
-        case "$rest" in */*|.|..) return 1 ;; esac
+        case "$rest" in */*|.|..) _warm_reject "has a story-tree entry outside the tree"; return 1 ;; esac
+        [ -n "$rest" ] || have_root=1
         [[ $b =~ ^[0-9]+$ ]] || return 1
         case "$a" in /*) st_paths+=("$a") ;; *) st_paths+=("${RESOLVED_ROOT}/${a}") ;; esac
         st_exp+=("$b") ;;
@@ -775,10 +895,17 @@ _try_warm_fast_path() {
         fi
         seen_meta="${seen_meta}${a}
 " ;;
-      *) return 1 ;;
+      # A key whose story file was missing is re-resolved by a cold run.
+      miss) return 1 ;;
+      *) _warm_reject "has an unknown entry"; return 1 ;;
     esac
   done < "$SIDECAR_FILE"
-  [ "$ver" = "1" ] || return 1
+  [ "$ver" = "1" ] || { _warm_reject "format is out of date"; return 1; }
+  # The cold run always records the story-tree root when the tree exists; a
+  # sidecar without it could hide a story directory that was added.
+  if [ "$have_root" = "0" ] && [ -d "$IMPL_DIR" ] && [ ! -L "$IMPL_DIR" ]; then
+    _warm_reject "has no story-tree entry"; return 1
+  fi
 
   # Every expected meta entry must be present.
   local name _p
@@ -787,7 +914,7 @@ _try_warm_fast_path() {
     case "
 ${seen_meta}" in *"
 ${name}
-"*) ;; *) return 1 ;; esac
+"*) ;; *) _warm_reject "has no entry for ${name}"; return 1 ;; esac
   done <<< "$_SNAP_EXPECTED_META"
 
   # Story paths must resolve (full symlink chain) inside the project root;
@@ -796,9 +923,12 @@ ${name}
     local resolved line ri=0
     resolved="$(_realpath_batch "${rp_in[@]}")" || return 1
     while IFS= read -r line; do
-      case "$line" in "${RESOLVED_ROOT}/"*) ;; *) return 1 ;; esac
-      _has_ctl "$line" && return 1
       [ "$ri" -lt "${#rp_in[@]}" ] || return 1
+      case "$line" in
+        "${RESOLVED_ROOT}/"*) ;;
+        *) _warm_reject "story path for ${rp_key[$ri]} resolves outside the project root"; return 1 ;;
+      esac
+      _has_ctl "$line" && { _warm_reject "story path for ${rp_key[$ri]} contains control characters"; return 1; }
       st_paths+=("$line"); st_exp+=("${rp_exp[$ri]}")
       ri=$((ri + 1))
     done <<< "$resolved"
@@ -823,8 +953,13 @@ ${name}
   [ "${#smt_parts[@]}" -eq 0 ] || smt="${smt_parts[*]}"
   _new_tmp "$CACHE_FILE" || return 1
   tmp="$_TMP"
-  if jq -c --arg smt "$smt" "$_JQ_WARM" "$CACHE_FILE" --args "${_ALLOWED_COMMANDS[@]}" > "$tmp" 2>/dev/null \
-     && [ -s "$tmp" ] && _replace_ok "$CACHE_FILE"; then
+  if ! jq -c --arg smt "$smt" "$_JQ_WARM" "$CACHE_FILE" --args "${_ALLOWED_COMMANDS[@]}" > "$tmp" 2>/dev/null \
+     || [ ! -s "$tmp" ]; then
+    rm -f "$tmp" 2>/dev/null || true
+    _warn "cache does not match the schema, rebuilding"
+    return 1
+  fi
+  if _replace_ok "$CACHE_FILE"; then
     mv -f "$tmp" "$CACHE_FILE"
     return 0
   fi
@@ -836,13 +971,16 @@ ${name}
 # Batched story-file resolution — ONE find over implementation-artifacts
 # ---------------------------------------------------------------------------
 
+# A story file that is a symlink is taken like a regular file; the
+# containment step then resolves its full chain and keeps it only when the
+# target lies inside the project root (or warns that it escapes).
 # Paths are read NUL-separated and every newline inside a path is turned into
 # 0x01 first, so a directory name with a newline can never split into two
 # lines; a path holding 0x01, 0x1f, CR or TAB is refused (BADPATH) instead of
 # being taken, because those bytes could shift a record field later on.
 _resolve_all_story_paths() {
   local impl_dir="$1"; shift
-  find "$impl_dir" -type f \( -name 'story.md' -o -name 'E*.md' \) -print0 2>/dev/null \
+  find "$impl_dir" \( -type f -o -type l \) \( -name 'story.md' -o -name 'E*.md' \) -print0 2>/dev/null \
     | tr '\n\000' '\001\n' | SNAP_KEYS="$*" awk '
   BEGIN { n=split(ENVIRON["SNAP_KEYS"],ka," "); for(i=1;i<=n;i++) wanted[ka[i]]=1 }
   # keyof(NAME) — the story key NAME starts with ("KEY" or "KEY-..."), or "".

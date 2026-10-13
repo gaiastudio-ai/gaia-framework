@@ -390,61 +390,36 @@ EOF
   local bad
   bad="$(jq -r '[.action_needed[].command | select(. != null and . != "/gaia-test-manual" and . != "/gaia-sprint-close" and . != "/gaia-action-items")] | length' "$CACHE")"
   [ "$bad" = "0" ]
+  [ "$(jq -r '.action_needed[0].command' "$CACHE")" = "/gaia-sprint-close" ]
 
-  # Behavioural: source the script (main-guarded) and test _validate_command
-  # directly with hostile inputs
-  (
-    # Source the script for its functions (main guard prevents execution)
-    BASH_SOURCE_OVERRIDE=sourced
-    . "$SCRIPT"
-  ) 2>/dev/null || true
-
-  # Feed arbitrary strings through _validate_command by sourcing with override
-  local test_script="$TEST_TMP/test_allowlist.sh"
-  cat > "$test_script" <<TESTSH
-#!/usr/bin/env bash
-set -euo pipefail
-BASH_SOURCE[0]="sourced"
-. "$SCRIPT"
-# Test valid commands
-[ "\$(_validate_command "/gaia-test-manual")" = "/gaia-test-manual" ]
-[ "\$(_validate_command "/gaia-sprint-close")" = "/gaia-sprint-close" ]
-[ "\$(_validate_command "/gaia-action-items")" = "/gaia-action-items" ]
-# Test invalid commands — all must return "null"
-[ "\$(_validate_command "/gaia-test-manual; rm -rf x")" = "null" ]
-[ "\$(_validate_command "")" = "null" ]
-[ "\$(_validate_command "  /gaia-test-manual  ")" = "null" ]
-[ "\$(_validate_command "/unknown-command")" = "null" ]
-[ "\$(_validate_command "hello world")" = "null" ]
-echo "ALL_PASS"
-TESTSH
-  chmod +x "$test_script"
-  run "$test_script"
+  # The one allowlist filter both the cold and the warm path use, fed
+  # hostile values straight from the sourced script.
+  run bash -c '
+    . "$1"
+    chk() { jq -n -r --argjson c "$1" "${_JQ_DEFS} \$c | allow" --args "${_ALLOWED_COMMANDS[@]}"; }
+    for ok in "\"/gaia-test-manual\"" "\"/gaia-sprint-close\"" "\"/gaia-action-items\""; do
+      [ "$(chk "$ok")" = "$(jq -r . <<< "$ok")" ] || { echo "rejected $ok"; exit 1; }
+    done
+    for bad in "\"/gaia-test-manual; rm -rf x\"" "\"\"" "\"  /gaia-test-manual  \"" \
+               "\"/unknown-command\"" "\"hello world\"" "null" "42" "[\"/gaia-test-manual\"]"; do
+      [ "$(chk "$bad")" = "null" ] || { echo "accepted $bad"; exit 1; }
+    done
+    echo ALL_PASS
+  ' _ "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "ALL_PASS" ]
+}
 
-  # Mutation check: copy the script, remove one allowlist entry, verify the
-  # matching assertion would fail
-  local mutant="$TEST_TMP/mutant-snapshot.sh"
-  sed '/_ALLOWED_COMMANDS=/s/\/gaia-sprint-close//' "$SCRIPT" > "$mutant"
-  chmod +x "$mutant"
-  local test_mutant="$TEST_TMP/test_mutant.sh"
-  cat > "$test_mutant" <<TESTSH
-#!/usr/bin/env bash
-set -euo pipefail
-BASH_SOURCE[0]="sourced"
-. "$mutant"
-result="\$(_validate_command "/gaia-sprint-close")"
-if [ "\$result" = "/gaia-sprint-close" ]; then
-  echo "MUTANT_SURVIVED"
-else
-  echo "MUTANT_KILLED"
-fi
-TESTSH
-  chmod +x "$test_mutant"
-  run "$test_mutant"
+@test "cold run sends every rule command through the allowlist" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  # Rule d fires with /gaia-sprint-close.  With that command taken out of the
+  # allowlist the cold assembly must write null, never the literal.
+  run bash -c '. "$1"; _ALLOWED_COMMANDS=("/gaia-test-manual" "/gaia-action-items"); _snapshot_main' _ "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$output" = "MUTANT_KILLED" ]
+  [ "$(jq -c '[.action_needed[] | [.rule, .command]]' "$CACHE")" = '[["d",null]]' ]
+  run grep -c 'gaia-sprint-close' "$CACHE"
+  [ "$output" = "0" ]
 }
 
 @test "command allowlist source-code grep confirms no dynamic assignment" {
@@ -593,6 +568,27 @@ EOF
   [ "$(jq '[.stories[] | select(.key == "E900-S2")] | length' "$CACHE")" = "0" ]
   [ "$(jq '[.stories[] | select(.key == "E900-S1")] | length' "$CACHE")" = "1" ]
   run grep -c 'ESCAPED via file symlink' "$CACHE"
+  [ "$output" = "0" ]
+}
+
+@test "a story file that is a symlink is followed when it stays inside the root" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5" "E900-S2:in-progress:3"
+  # E900-S1: the story file is a link to a file elsewhere inside the root.
+  mkdir -p "$PROJECT_ROOT/shared" "$IMPL/epic-test/E900-S1-linked"
+  printf -- '---\nkey: "E900-S1"\ntitle: "LINKED-INSIDE"\nstatus: review\npoints: 5\n---\n' > "$PROJECT_ROOT/shared/E900-S1.md"
+  ln -s "$PROJECT_ROOT/shared/E900-S1.md" "$IMPL/epic-test/E900-S1-linked/story.md"
+  # E900-S2: the story file is a link out of the root.
+  local outside="$TEST_TMP/outside-linked"; mkdir -p "$outside" "$IMPL/epic-test/E900-S2-linked"
+  printf -- '---\nkey: "E900-S2"\ntitle: "LINKED-OUTSIDE"\nstatus: done\npoints: 3\n---\n' > "$outside/story.md"
+  ln -s "$outside/story.md" "$IMPL/epic-test/E900-S2-linked/story.md"
+
+  # First run: no sidecar, so both keys come from the story-tree search.
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[] | [.key, .title, .status]]' "$CACHE")" = '[["E900-S1","LINKED-INSIDE","review"]]' ]
+  grep -q 'path escapes project root for E900-S2' <<< "$stderr"
+  ! grep -q 'no file found' <<< "$stderr"
+  run grep -c 'LINKED-OUTSIDE' "$CACHE"
   [ "$output" = "0" ]
 }
 
@@ -1201,6 +1197,34 @@ YAML
   [ "$output" = "0" ]
 }
 
+@test "a planted parse-cache row for another story never reaches that story" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5" "E900-S2:in-progress:3"
+  write_story E900-S1 in-progress 5
+  write_story E900-S2 in-progress 3
+  local s2="$IMPL/epic-test/E900-S2-e900-s2-enf/story.md"
+  [ -f "$s2" ]
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  local parsed="$PROJECT_ROOT/.gaia/state/.sprint-progress-parsed"
+  # A task row keyed to E900-S2 planted inside E900-S1's cached record, and
+  # E900-S2 changed so it is parsed fresh.
+  # A second, forged copy of E900-S1's record follows the tampered one: once
+  # a record is found tampered, no later copy of it is trusted either.
+  awk -v US=$'\037' '{ print } $1 ~ ("^P" US "E900-S1" US) { p = $0; print "T" US "E900-S2" US "false" US "INJECTED-VIA-PARSE-CACHE"; sub(/Story E900-S1/, "FORGED-SECOND-COPY", p); print p }' \
+    "$parsed" > "$parsed.new" && mv "$parsed.new" "$parsed"
+  grep -q 'FORGED-SECOND-COPY' "$parsed"
+  grep -q 'INJECTED-VIA-PARSE-CACHE' "$parsed"
+  sed 's/^status: in-progress/status: review/' "$s2" > "$s2.new" && mv "$s2.new" "$s2"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  run grep -c 'INJECTED-VIA-PARSE-CACHE\|FORGED-SECOND-COPY' "$CACHE"
+  [ "$output" = "0" ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S1" ]
+  # Both stories keep exactly the tasks of their own files.
+  [ "$(jq -c '[.stories[] | [.key, .status, .tasks.total]]' "$CACHE")" = '[["E900-S1","in-progress",1],["E900-S2","review",1]]' ]
+}
+
 @test "temp files are created exclusively and never follow a planted link" {
   local target="$TEST_TMP/state/cache.json" victim="$TEST_TMP/victim"
   mkdir -p "$TEST_TMP/state"
@@ -1223,17 +1247,300 @@ YAML
 # Fallback lock and the empty lock file the flock backend leaves behind
 # ---------------------------------------------------------------------------
 
-@test "fallback lock replaces an empty lock file left by the flock backend" {
+@test "fallback lock replaces an old empty lock file but not a fresh one" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
   write_story E900-S1 done 5
-  # flock never removes its (empty) lock file; a later fallback run must not
-  # read it as held.
+  # A fresh empty lock file may be a flock-backend run that has not written
+  # its line yet, so it is left alone.
   : > "$LOCK_FILE"
   GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
   [ "$status" -eq 0 ]
-  grep -q 'replacing an empty lock file left by the flock backend' <<< "$stderr"
+  grep -q 'lock not taken (the lock file is empty but only [0-9]*s old), skipping' <<< "$stderr"
+  [ ! -e "$CACHE" ]
+  # An old empty lock file (left by an older version) holds nothing.
+  touch -t 202001010000 "$LOCK_FILE"
+  GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'replacing an empty lock file nobody holds' <<< "$stderr"
   jq -e . "$CACHE" >/dev/null
   [ ! -e "$LOCK_FILE" ]
+  [ ! -e "$LOCK_FILE.reaping" ]
+}
+
+# take_lock_racing SCRIPT LOCK HOOK — source the script, override HOOK (a
+# function the fallback lock calls after it judged the existing lock and
+# before it removes it) so that another run swaps in its own live lock at
+# exactly that moment, then try to take the lock.  Prints the outcome, the
+# lock file's content and the number of leftover reap files.
+take_lock_racing() {
+  bash -c '
+    . "$1"; lock="$2"; hook="$3"
+    GAIA_LOCK_FORCE_FALLBACK=1
+    other_takes_lock() {
+      rm -f "$lock"
+      printf "%s %s\n" "$PPID" "$(date +%s)" > "$lock.other"
+      ln "$lock.other" "$lock"; rm -f "$lock.other"
+    }
+    case "$hook" in
+      warn) _warn() { case "$*" in *"replacing an empty lock"*) other_takes_lock ;; esac; } ;;
+      age)  _stat_mtime_age() { other_takes_lock; printf 120; } ;;
+      # A flock-backend run announces itself in the judged file right after
+      # the reaper checked it again under the reap mutex.
+      flockwrite)
+        _warn() { :; }
+        eval "real_$(declare -f _lock_ident)"
+        n=0
+        _lock_ident() {
+          real__lock_ident "$@" || return 1
+          n=$((n + 1))
+          if [ "$n" = "2" ]; then printf "%s %s\n" "$PPID" "$(date +%s)" >> "$lock"; fi
+        } ;;
+    esac
+    if _try_snapshot_lock "$lock"; then echo "TOOK"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    echo "holder=$(cut -d" " -f1 < "$lock") other=$PPID self=$$"
+    echo "reap=$(find "${lock%/*}" -name "*.reap.*" | wc -l | tr -d " ") mutex=$([ -e "$lock.reaping" ] && echo left || echo none)"
+  ' _ "$SCRIPT" "$LOCK_FILE" "$1"
+}
+
+@test "replacing an empty lock never removes a lock another run linked after the check" {
+  : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
+  run take_lock_racing warn
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  # The other run's lock (a live PID that is not this run's) is still in place.
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+  [ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[3]}" ]
+  [ "${lines[2]}" = "reap=0 mutex=none" ]
+}
+
+@test "reaping never removes a lock a flock-backend run announced itself in after the last check" {
+  : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
+  run take_lock_racing flockwrite
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  # The announcing run's file was put back, with its line last.
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+  [ "${lines[2]}" = "reap=0 mutex=none" ]
+}
+
+@test "a stale lock is reaped by one run at a time" {
+  : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
+  # Another run is reaping the same file right now (it holds the mutex).
+  run bash -c '
+    . "$1"; lock="$2"; GAIA_LOCK_FORCE_FALLBACK=1
+    _warn() { case "$*" in *"replacing an empty lock"*) mkdir "$lock.reaping" ;; esac; }
+    if _try_snapshot_lock "$lock"; then echo TOOK; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    [ -f "$lock" ] && [ ! -s "$lock" ] && echo UNTOUCHED
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [ "${lines[1]}" = "UNTOUCHED" ]
+}
+
+@test "a reaper re-checks the lock under the mutex before moving it aside" {
+  : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
+  sleep 30 & local third=$!
+  # After the judgement another run links its own lock; any moment the lock
+  # name is free, a third run links its lock there.  The reaper must notice
+  # the new lock before it ever moves it aside.
+  run bash -c '
+    . "$1"; lock="$2"; third="$3"; GAIA_LOCK_FORCE_FALLBACK=1
+    _warn() {
+      case "$*" in *"replacing an empty lock"*)
+        rm -f "$lock"; printf "%s %s\n" "$PPID" "$(date +%s)" > "$lock.o"; ln "$lock.o" "$lock"; rm -f "$lock.o" ;;
+      esac
+    }
+    eval "real_$(declare -f _lock_ident)"
+    _lock_ident() {
+      if [ ! -e "$lock" ]; then printf "%s %s\n" "$third" "$(date +%s)" > "$lock.t"; ln "$lock.t" "$lock"; rm -f "$lock.t"; fi
+      real__lock_ident "$@"
+    }
+    if _try_snapshot_lock "$lock"; then echo TOOK; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    echo "holder=$(cut -d" " -f1 < "$lock") other=$PPID"
+  ' _ "$SCRIPT" "$LOCK_FILE" "$third"
+  kill "$third" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+}
+
+@test "a flock-backend run that loses its lock file before announcing itself backs off" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  # Right after this run takes the flock, a fallback run replaces the file
+  # (as a reaper of an old empty file would) and links its own live lock.
+  run bash -c '
+    . "$1"; lock="$2"; first=1
+    eval "real_$(declare -f _lock_last)"
+    _lock_last() {
+      if [ "$first" = "1" ]; then
+        first=0
+        rm -f "$lock"; printf "%s %s\n" "$PPID" "$(date +%s)" > "$lock.o"; ln "$lock.o" "$lock"; rm -f "$lock.o"
+        _LOCK_LAST=""; return 1
+      fi
+      real__lock_last "$@"
+    }
+    if _try_snapshot_lock "$lock"; then echo "TOOK ($_SNAPSHOT_LOCK_BACKEND)"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    echo "holder=$(cut -d" " -f1 < "$lock") other=$PPID lines=$(wc -l < "$lock" | tr -d " ")"
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ lines=1$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+}
+
+@test "reaping a stale lock never removes a lock another run linked after the check" {
+  sleep 0 & local dead=$!; wait "$dead" || true
+  printf '%s %s\n' "$dead" 1000000000 > "$LOCK_FILE"
+  touch -t 202001010000 "$LOCK_FILE"
+  run take_lock_racing age
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+  [ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[3]}" ]
+  [ "${lines[2]}" = "reap=0 mutex=none" ]
+
+  # Without a racing run the stale lock is reaped and taken.
+  rm -f "$LOCK_FILE"
+  printf '%s %s\n' "$dead" 1000000000 > "$LOCK_FILE"
+  touch -t 202001010000 "$LOCK_FILE"
+  run take_lock_racing none
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "TOOK" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[3]}" ]
+  [ "${lines[2]}" = "reap=0 mutex=none" ]
+}
+
+# slow_build_stub — a jq stub whose cold assembly records a build, announces
+# itself and then waits for $TEST_TMP/go (at most 10 s) before finishing.
+slow_build_stub() {
+  local stub="$TEST_TMP/stub-bin"; mkdir -p "$stub"
+  local real_jq; real_jq="$(command -v jq)"
+  cat > "$stub/jq" <<SH
+#!/usr/bin/env bash
+case "\$*" in
+  *'inputs | split'*)
+    echo build >> "$TEST_TMP/builds"
+    : > "$TEST_TMP/assembling"
+    i=0; while [ ! -e "$TEST_TMP/go" ] && [ "\$i" -lt 200 ]; do sleep 0.05; i=\$((i + 1)); done ;;
+esac
+exec "$real_jq" "\$@"
+SH
+  chmod +x "$stub/jq"
+  printf '%s' "$stub"
+}
+
+# wait_for FILE — wait up to 10 s for FILE to exist.
+wait_for() {
+  local i=0
+  while [ ! -e "$1" ]; do i=$((i + 1)); [ "$i" -le 200 ] || return 1; sleep 0.05; done
+}
+
+@test "a fallback run never takes the lock while a flock-backend run holds it" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  local stub; stub="$(slow_build_stub)"
+  PATH="$stub:$PATH" "$SCRIPT" 2>/dev/null &
+  local pid=$!
+  wait_for "$TEST_TMP/assembling" || { kill "$pid"; return 1; }
+  # The flock holder announces itself in the lock file.
+  [ "$(cut -d' ' -f1 < "$LOCK_FILE")" = "$pid" ]
+
+  GAIA_LOCK_FORCE_FALLBACK=1 PATH="$stub:$PATH" run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q "lock not taken (held by live process $pid), skipping" <<< "$stderr"
+  [ "$(wc -l < "$TEST_TMP/builds" | tr -d ' ')" = "1" ]
+
+  : > "$TEST_TMP/go"
+  wait "$pid"
+  # Released: the flock backend removes its lock file too.
+  [ ! -e "$LOCK_FILE" ]
+  jq -e . "$CACHE" >/dev/null
+}
+
+@test "a flock-backend run never takes the lock while a fallback run holds it" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  local stub; stub="$(slow_build_stub)"
+  GAIA_LOCK_FORCE_FALLBACK=1 PATH="$stub:$PATH" "$SCRIPT" 2>/dev/null &
+  local pid=$!
+  wait_for "$TEST_TMP/assembling" || { kill "$pid"; return 1; }
+
+  PATH="$stub:$PATH" run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q "lock not taken (held by live process $pid), skipping" <<< "$stderr"
+  [ "$(wc -l < "$TEST_TMP/builds" | tr -d ' ')" = "1" ]
+
+  : > "$TEST_TMP/go"
+  wait "$pid"
+  [ ! -e "$LOCK_FILE" ]
+}
+
+@test "many fallback runs racing to reap a stale lock file never build at the same time" {
+  # Every runner sources the script and replaces only the build with a
+  # start/end marker pair; the lock code is the real one.  They all find the
+  # same old empty lock file, so they all try to reap it at once.
+  local log="$TEST_TMP/overlap.log" trial r
+  for trial in 1 2 3 4 5 6 7 8; do
+    : > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"; : > "$log"
+    local -a pids=()
+    for r in $(seq 1 12); do
+      bash -c '
+        . "$1"; export GAIA_LOCK_FORCE_FALLBACK=1; LOG="$2"
+        _warn() { :; }
+        _snapshot_build() { echo "S $$" >> "$LOG"; sleep 0.05; echo "E $$" >> "$LOG"; }
+        _snapshot_main
+      ' _ "$SCRIPT" "$log" &
+      pids+=("$!")
+    done
+    wait "${pids[@]}"
+    # At most one build in flight at any moment, and at least one build ran.
+    [ "$(awk '$1 == "S" { a++; if (a > m) m = a } $1 == "E" { a-- } END { print m + 0 }' "$log")" = "1" ]
+    rm -f "$LOCK_FILE"
+  done
+}
+
+@test "a lock file that disappears after a failed link is simply retried" {
+  printf '%s %s\n' "$$" "$(date +%s)" > "$LOCK_FILE"
+  run bash -c '
+    . "$1"; lock="$2"; GAIA_LOCK_FORCE_FALLBACK=1; calls=0
+    eval "real_$(declare -f _fallback_link)"
+    # The holder releases right after this run failed to link.
+    _fallback_link() {
+      calls=$((calls + 1))
+      if [ "$calls" = "1" ]; then real__fallback_link "$@" && return 0; rm -f "$lock"; return 1; fi
+      real__fallback_link "$@"
+    }
+    if _try_snapshot_lock "$lock"; then echo "TOOK after $calls"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    [ "$(cut -d" " -f1 < "$lock")" = "$$" ] && echo OWNED
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "TOOK after 2" ]
+  [ "${lines[1]}" = "OWNED" ]
+}
+
+@test "the fallback temp lock is created exclusively and never follows a planted link" {
+  local victim="$TEST_TMP/victim"
+  # Seeding RANDOM makes the first temp name predictable; plant a dangling
+  # link there.  The exclusive create must refuse it and pick another name.
+  run bash -c '
+    . "$1"; lock="$2"
+    RANDOM=4242; first="$lock.tmp.$$.${RANDOM}${RANDOM}"
+    ln -s "$3" "$first"
+    RANDOM=4242; _fallback_link "$lock" || exit 9
+    [ -L "$first" ] || exit 8
+    [ "$(cut -d" " -f1 < "$lock")" = "$$" ] || exit 7
+    echo OK
+  ' _ "$SCRIPT" "$LOCK_FILE" "$victim"
+  [ "$status" -eq 0 ]
+  [ "$output" = "OK" ]
+  [ ! -e "$victim" ]
 }
 
 @test "fallback lock that gives up says why on stderr" {
