@@ -480,6 +480,51 @@ if jq -e '.compliance.regimes // empty' "$TMP_JSON" >/dev/null 2>&1; then
   done < <(jq -r '.compliance.regimes[]?' "$TMP_JSON")
 fi
 
+# sprint_status_mod — the schema engines check this section in full; this
+# path has no schema engine, so its types and ranges are checked here: the
+# section is an object or null with only the two known keys, user_aliases is
+# a list of non-empty strings, and waiting_agent_threshold_seconds is an
+# integer from 0 to 3600.  One tab-separated "location<TAB>message" line per
+# violation (@tsv escapes any tab or newline inside a key).
+# shellcheck disable=SC2016  # jq program text, not shell expansions
+ssm_jq='
+  if (has("sprint_status_mod") | not) or .sprint_status_mod == null then empty
+  else .sprint_status_mod as $s
+  | if ($s | type) != "object" then
+      ["$.sprint_status_mod", "must be an object or null; got \($s | type)"] | @tsv
+    else
+      ( $s | keys[] | select(. != "user_aliases" and . != "waiting_agent_threshold_seconds")
+        | ["$.sprint_status_mod.\(.)", "property is not allowed (allowed: user_aliases, waiting_agent_threshold_seconds)"] | @tsv ),
+      ( if ($s | has("user_aliases")) then
+          $s.user_aliases as $a
+          | if ($a | type) != "array" then
+              ["$.sprint_status_mod.user_aliases", "must be a list of non-empty strings; got \($a | type)"] | @tsv
+            else
+              $a | to_entries[] | select((.value | type) != "string" or (.value | length) == 0)
+              | ["$.sprint_status_mod.user_aliases[\(.key)]", "must be a non-empty string; got \(.value | tojson)"] | @tsv
+            end
+        else empty end ),
+      ( if ($s | has("waiting_agent_threshold_seconds")) then
+          $s.waiting_agent_threshold_seconds as $t
+          | if ($t | type) != "number" or $t != ($t | floor) then
+              ["$.sprint_status_mod.waiting_agent_threshold_seconds", "must be an integer between 0 and 3600; got \($t | tojson)"] | @tsv
+            elif $t < 0 or $t > 3600 then
+              ["$.sprint_status_mod.waiting_agent_threshold_seconds", "must be between 0 and 3600; got \($t | tojson)"] | @tsv
+            else empty end
+        else empty end )
+    end
+  end'
+if ssm_out="$(jq -r "$ssm_jq" "$TMP_JSON" 2>/dev/null)"; then
+  while IFS=$'\t' read -r ssm_loc ssm_msg; do
+    [ -z "$ssm_loc" ] && continue
+    fail "$ssm_loc" "$ssm_msg"
+    violations=$((violations + 1))
+  done <<< "$ssm_out"
+else
+  fail "\$.sprint_status_mod" "cannot read the section to check it"
+  violations=$((violations + 1))
+fi
+
 if [ "$violations" -gt 0 ]; then
   err "$violations violation(s) found"
   exit 1

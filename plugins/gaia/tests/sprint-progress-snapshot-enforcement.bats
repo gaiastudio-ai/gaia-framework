@@ -993,6 +993,34 @@ YAML
   [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
 }
 
+@test "threshold above one hour falls back to the default with a warning" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
+  write_story E900-S1 in-progress 5
+  local config="$PROJECT_ROOT/.gaia/config/project-config.yaml"
+
+  # 3600 is the largest value the config schema allows.
+  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 3600\n' > "$config"
+  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "3600" ]
+  ! grep -q 'invalid threshold' <<< "$stderr"
+
+  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 3601\n' > "$config"
+  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
+  grep -q "invalid threshold value '3601', using default 120" <<< "$stderr"
+
+  # Leading zeros are read as decimal, and still capped.
+  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 0003601\n' > "$config"
+  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
+}
+
 # ---------------------------------------------------------------------------
 # Control bytes in story paths
 # ---------------------------------------------------------------------------
@@ -1061,6 +1089,159 @@ YAML
   [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S3" ]
   run grep -c 'LINKED-TARGET' "$CACHE"
   [ "$output" = "0" ]
+}
+
+# ---------------------------------------------------------------------------
+# A story name that does not lead to a regular file
+# ---------------------------------------------------------------------------
+
+# three_story_sprint — E900-S1 and E900-S2 are ordinary stories; E900-S3's
+# story directory exists and is given its story.md by the test.
+three_story_sprint() {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" \
+    "E900-S1:in-progress:5" "E900-S2:review:3" "E900-S3:in-progress:2"
+  write_story E900-S1 in-progress 5
+  write_story E900-S2 review 3
+  mkdir -p "$IMPL/epic-test/E900-S3-linked"
+}
+
+# run_bounded SECS CMD... — run CMD in the background and fail when it is
+# still running after SECS seconds.  A run blocked on a FIFO is released by
+# opening the FIFO ($BOUNDED_FIFO) for writing before it is killed.  Sets
+# status, output (stdout) and stderr like `run --separate-stderr`.
+run_bounded() {
+  local secs="$1"; shift
+  "$@" > "$TEST_TMP/bounded.out" 2> "$TEST_TMP/bounded.err" &
+  local pid=$! i=0
+  while kill -0 "$pid" 2>/dev/null; do
+    i=$((i + 1))
+    if [ "$i" -gt $((secs * 20)) ]; then
+      if [ -n "${BOUNDED_FIFO:-}" ]; then exec 7<>"$BOUNDED_FIFO"; exec 7>&-; fi
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      echo "still running after ${secs}s" >&2
+      return 1
+    fi
+    sleep 0.05
+  done
+  status=0; wait "$pid" || status=$?
+  output="$(cat "$TEST_TMP/bounded.out")"
+  stderr="$(cat "$TEST_TMP/bounded.err")"
+}
+
+@test "a story link to a directory is skipped and the other stories stay in the cache" {
+  three_story_sprint
+  mkdir -p "$PROJECT_ROOT/somedir"
+  ln -s "$PROJECT_ROOT/somedir" "$IMPL/epic-test/E900-S3-linked/story.md"
+  backdate_tree
+
+  run_bounded 20 "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S1","E900-S2"]' ]
+  [ "$(jq '.totals.total_stories' "$CACHE")" = "2" ]
+  grep -q 'story file for E900-S3 is not a regular file, skipping' <<< "$stderr"
+  ! grep -q 'i/o error' <<< "$stderr"
+  grep -q "^miss	E900-S3$" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
+
+  # The next run is not served warm from what this run wrote: it looks
+  # again (a planted title is rebuilt) and still keeps the other stories.
+  jq '.stories[0].title = "PLANTED"' "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
+  run_bounded 20 "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S1" ]
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S1","E900-S2"]' ]
+  grep -q 'story file for E900-S3 is not a regular file, skipping' <<< "$stderr"
+
+  # Once the link leads to a story file, the story is picked up.
+  printf -- '---\nkey: "E900-S3"\ntitle: "NOW A FILE"\nstatus: done\npoints: 2\n---\n' > "$PROJECT_ROOT/real-s3.md"
+  rm -f "$IMPL/epic-test/E900-S3-linked/story.md"
+  ln -s "$PROJECT_ROOT/real-s3.md" "$IMPL/epic-test/E900-S3-linked/story.md"
+  run_bounded 20 "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S1","E900-S2","E900-S3"]' ]
+}
+
+@test "a story link to a FIFO is skipped without hanging the run" {
+  command -v mkfifo >/dev/null 2>&1 || skip "mkfifo not available"
+  three_story_sprint
+  mkfifo "$PROJECT_ROOT/fifo"
+  BOUNDED_FIFO="$PROJECT_ROOT/fifo"
+  ln -s "$PROJECT_ROOT/fifo" "$IMPL/epic-test/E900-S3-linked/story.md"
+  backdate_tree
+
+  run_bounded 20 "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S1","E900-S2"]' ]
+  grep -q 'story file for E900-S3 is not a regular file, skipping' <<< "$stderr"
+
+  # The following run does not hang either, and does not reuse the result.
+  jq '.stories[0].title = "PLANTED"' "$CACHE" > "$CACHE.new" && mv "$CACHE.new" "$CACHE"
+  run_bounded 20 "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.stories[0].title' "$CACHE")" = "Story E900-S1" ]
+  grep -q 'story file for E900-S3 is not a regular file, skipping' <<< "$stderr"
+}
+
+@test "a story file awk cannot read costs only that story" {
+  three_story_sprint
+  write_story E900-S3 in-progress 2
+  # awk stops outright on a read error (BSD awk does so on a directory that
+  # slips in between the checks and the read).  Simulate that: any parse
+  # that includes E900-S2 fails.
+  run --separate-stderr bash -c '
+    . "$1"
+    eval "real_$(declare -f _story_records)"
+    _story_records() {
+      case "$SNAP_WANT" in *E900-S2*) real__story_records "$@" > /dev/null; return 2 ;; esac
+      real__story_records "$@"
+    }
+    _snapshot_main
+  ' _ "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S1","E900-S3"]' ]
+  [ "$(jq -r '.stories[1].title' "$CACHE")" = "Story E900-S3" ]
+  grep -q 'story file for E900-S2 could not be read, skipping' <<< "$stderr"
+  # Recorded as missing, so the next run reads it again.
+  grep -q "^miss	E900-S2$" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
+}
+
+@test "a story link to a path with a TAB is refused by the cold containment check" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5" "E900-S2:in-progress:5"
+  write_story E900-S1 in-progress 5
+  write_story E900-S2 in-progress 5
+  local t="$PROJECT_ROOT/tab"$'\t'"dir"; mkdir -p "$t"
+  printf -- '---\ntitle: "TAB-TARGET"\nstatus: done\n---\n' > "$t/story.md"
+  local s1="$IMPL/epic-test/E900-S1-e900-s1-enf/story.md"
+  rm -f "${s1:?}"; ln -s "$t/story.md" "$s1"
+
+  # No sidecar yet, so this is a cold run: the link is found by the search
+  # and its resolved path is checked before anything is read.
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qx 'sprint-progress-snapshot: story path for E900-S1 contains control characters, skipping' <<< "$stderr"
+  ! grep -q 'escapes project root' <<< "$stderr"
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S2"]' ]
+  run grep -c 'TAB-TARGET' "$CACHE"
+  [ "$output" = "0" ]
+}
+
+@test "the warm path refuses a recorded story path that now leads to a path with a TAB" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5" "E900-S2:in-progress:5"
+  write_story E900-S1 in-progress 5
+  write_story E900-S2 in-progress 5
+  backdate_tree
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  local t="$PROJECT_ROOT/tab"$'\t'"dir"; mkdir -p "$t"
+  printf -- '---\ntitle: "TAB-TARGET"\nstatus: done\n---\n' > "$t/story.md"
+  local s1="$IMPL/epic-test/E900-S1-e900-s1-enf/story.md"
+  rm -f "${s1:?}"; ln -s "$t/story.md" "$s1"
+  backdate_tree
+
+  run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF 'sidecar story path for E900-S1 contains control characters, rebuilding' <<< "$stderr"
+  [ "$(jq -c '[.stories[].key]' "$CACHE")" = '["E900-S2"]' ]
 }
 
 # ---------------------------------------------------------------------------
@@ -1559,6 +1740,137 @@ wait_for() {
   [ "$status" -eq 0 ]
   grep -q "lock not taken (holder '$dead' is not running but the lock is only" <<< "$stderr"
   [ ! -e "$CACHE" ]
+}
+
+@test "releasing never removes a lock file whose last line belongs to another holder" {
+  local backend
+  for backend in fallback flock; do
+    if [ "$backend" = "flock" ]; then command -v flock >/dev/null 2>&1 || continue; fi
+    rm -f "$LOCK_FILE"
+    run bash -c '
+      . "$1"; lock="$2"
+      if [ "$3" = "fallback" ]; then GAIA_LOCK_FORCE_FALLBACK=1; fi
+      _try_snapshot_lock "$lock" || { echo "NOT TAKEN: $_SNAPSHOT_LOCK_REASON"; exit 0; }
+      echo "TOOK ($_SNAPSHOT_LOCK_BACKEND)"
+      # Another live holder owns the lock name now.
+      rm -f "$lock"; printf "%s %s\n" "$PPID" "$(date +%s)" > "$lock"
+      _release_snapshot_lock
+      if [ -e "$lock" ]; then echo "KEPT $(cut -d" " -f1 < "$lock") other=$PPID"; else echo "REMOVED"; fi
+    ' _ "$SCRIPT" "$LOCK_FILE" "$backend"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "TOOK ($backend)" ]
+    [[ ${lines[1]} =~ ^KEPT\ ([0-9]+)\ other=([0-9]+)$ ]]
+    [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+  done
+}
+
+@test "a flock-backend run waits for a reap in progress and backs off when the lock changed hands" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  # A fallback run is reaping (it holds the reap mutex) and judged the file
+  # before this run announced itself.  While this run waits, the reaper
+  # moves the file aside and another run links its own lock at the name.
+  run bash -c '
+    . "$1"; lock="$2"
+    mkdir "$lock.reaping"
+    sleep() {
+      rm -f "$lock"; printf "%s %s\n" "$PPID" "$(date +%s)" > "$lock.o"; ln "$lock.o" "$lock"; rm -f "$lock.o"
+      rmdir "$lock.reaping"
+    }
+    if _try_snapshot_lock "$lock"; then echo "TOOK"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    echo "holder=$(cut -d" " -f1 < "$lock") other=$PPID"
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "SKIPPED: taken by another process" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ other=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+}
+
+@test "a flock-backend run keeps the lock when the reaper leaves its file alone" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  run bash -c '
+    . "$1"; lock="$2"; waited=0
+    mkdir "$lock.reaping"
+    # The reaper saw this run'"'"'s line and gave up without touching the file.
+    sleep() { waited=1; rmdir "$lock.reaping"; }
+    if _try_snapshot_lock "$lock"; then echo "TOOK waited=$waited"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    echo "holder=$(cut -d" " -f1 < "$lock") self=$$"
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "TOOK waited=1" ]
+  [[ ${lines[1]} =~ ^holder=([0-9]+)\ self=([0-9]+)$ ]]
+  [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]
+}
+
+@test "a reap mutex left behind by a dead reaper does not block the flock backend" {
+  command -v flock >/dev/null 2>&1 || skip "needs flock for the flock backend"
+  mkdir "$LOCK_FILE.reaping"; touch -t 202001010000 "$LOCK_FILE.reaping"
+  run bash -c '
+    . "$1"; lock="$2"
+    sleep() { echo "WAITED"; }
+    if _try_snapshot_lock "$lock"; then echo "TOOK"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "$output" = "TOOK" ]
+  [ ! -e "$LOCK_FILE.reaping" ]
+}
+
+@test "a lock file that vanishes while its age is read is retried without stat noise" {
+  sleep 0 & local dead=$!; wait "$dead" || true
+  printf '%s %s\n' "$dead" 1000000000 > "$LOCK_FILE"
+  run --separate-stderr bash -c '
+    . "$1"; lock="$2"; GAIA_LOCK_FORCE_FALLBACK=1; n=0
+    eval "real_$(declare -f _stat_mtime)"
+    # The holder releases right after this run judged its line.
+    _stat_mtime() {
+      n=$((n + 1))
+      if [ "$n" = "1" ]; then rm -f "$lock"; fi
+      real__stat_mtime "$@"
+    }
+    if _try_snapshot_lock "$lock"; then echo "TOOK"; else echo "SKIPPED: $_SNAPSHOT_LOCK_REASON"; fi
+    [ "$(cut -d" " -f1 < "$lock")" = "$$" ] && echo OWNED
+  ' _ "$SCRIPT" "$LOCK_FILE"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "TOOK" ]
+  [ "${lines[1]}" = "OWNED" ]
+  [ -z "$stderr" ]
+}
+
+@test "a holder line that names a live process but is too old does not block the lock" {
+  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:done:5"
+  write_story E900-S1 done 5
+  # This test's own shell is alive; its PID in a line written long ago (or
+  # dated far in the future) is not a running build.
+  local line
+  for line in "$$ 1000000000" "$$ 99999999999"; do
+    printf '%s\n' "$line" > "$LOCK_FILE"; touch -t 202001010000 "$LOCK_FILE"
+    rm -f "$CACHE"
+    GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
+    [ "$status" -eq 0 ]
+    ! grep -q 'held by live process' <<< "$stderr"
+    jq -e . "$CACHE" >/dev/null
+    [ ! -e "$LOCK_FILE" ]
+    if command -v flock >/dev/null 2>&1; then
+      printf '%s\n' "$line" > "$LOCK_FILE"
+      rm -f "$CACHE"
+      run --separate-stderr "$SCRIPT"
+      [ "$status" -eq 0 ]
+      ! grep -q 'held by live process' <<< "$stderr"
+      jq -e . "$CACHE" >/dev/null
+    fi
+  done
+  # A live holder that took the lock just now still holds it, on both backends.
+  printf '%s %s\n' "$$" "$(date +%s)" > "$LOCK_FILE"
+  rm -f "$CACHE"
+  GAIA_LOCK_FORCE_FALLBACK=1 run --separate-stderr "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q "lock not taken (held by live process $$), skipping" <<< "$stderr"
+  [ ! -e "$CACHE" ]
+  if command -v flock >/dev/null 2>&1; then
+    run --separate-stderr "$SCRIPT"
+    [ "$status" -eq 0 ]
+    grep -q "lock not taken (held by live process $$), skipping" <<< "$stderr"
+    [ ! -e "$CACHE" ]
+  fi
 }
 
 # ---------------------------------------------------------------------------
