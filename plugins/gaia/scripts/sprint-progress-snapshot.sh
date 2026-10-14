@@ -269,7 +269,7 @@ _lock_line() { _SNAPSHOT_LOCK_LINE="$$ ${EPOCHSECONDS:-$(date +%s)}"; }
 
 # _holder_live LINE — true when LINE ("PID EPOCH") names a running process
 # that took the lock at most _LOCK_MAX_HOLD seconds ago.  A build never holds
-# the lock that long (the hook stops a build after 10 s), so a holder line
+# the lock that long (the hook stops a build after 30 s), so a holder line
 # whose PID the system later handed to some other long-lived process stops
 # counting as a live holder once its epoch is that old (or lies in the future).
 _LOCK_MAX_HOLD=600
@@ -294,7 +294,7 @@ _holder_live() {
 # sub-second clock, 1000 with one), so a clock that does not move can never
 # hold the wait.  A run tries the lock at most twice, so a mutex that never
 # clears costs it at most about 4 s before it skips, well inside the hook's
-# 10 s limit.  Returns 1 when a reap is still in progress.
+# 30 s limit.  Returns 1 when a reap is still in progress.
 _await_reap() {
   local mutex="$1" n=0 cap=100 mage now deadline="" t0="$SECONDS"
   if [ "${BASH_VERSINFO[0]:-0}" -ge 5 ] && [ -n "${EPOCHREALTIME:-}" ]; then

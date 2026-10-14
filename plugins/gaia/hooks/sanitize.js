@@ -1,6 +1,7 @@
 // Terminal escape sanitization for mod-rendered text.
-// Strips CSI, OSC, control characters, replacement characters,
-// and lone surrogates, then truncates to a per-field limit.
+// Strips CSI, OSC, control characters, replacement characters, lone
+// surrogates, and invisible bidi / zero-width format characters, then
+// truncates to a per-field limit on a code-point boundary.
 
 // Per-field length constants.
 export const TITLE_MAX = 80;
@@ -14,107 +15,147 @@ export const TASK_TEXT_MAX = 200;
 export const GATE_NAME_MAX = 60;
 export const BLOCKED_BY_MAX = 80;
 export const DRIFT_DETAIL_MAX = 200;
+// Limit for any other string in the cache, and for a maxLen that is not a
+// finite number.
+export const DEFAULT_MAX = 200;
+
+// How much raw input is looked at per output character. Anything beyond is
+// cut before the pattern passes run, so hostile input costs bounded time.
+const INPUT_FACTOR = 16;
+const INPUT_FLOOR = 256;
+
+// CSI: introducer, parameter bytes (0x30-0x3F), intermediate bytes
+// (0x20-0x2F), then the final byte (0x40-0x7E). The two byte classes do not
+// overlap and the final byte is optional, so a sequence cut short anywhere
+// (including at the end of the string) is consumed in one linear pass.
+const CSI = /(?:\x1b\[|\u009b)[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]?/g;
+// OSC: introducer, then a body that stops at BEL, ESC, U+009C (ST) or the
+// next U+009D, then an optional terminator (BEL, ESC \ or U+009C). An OSC with
+// no terminator is dropped up to wherever its body stopped.
+const OSC = /(?:\x1b\]|\u009d)[^\x07\x1b\u009c\u009d]*(?:\x07|\x1b\\|\u009c)?/g;
+// C0 controls except newline, and DEL.
+const C0 = /[\x00-\x09\x0b-\x1f\x7f]/g;
+// Remaining C1 controls.
+const C1 = /[\u0080-\u009f]/g;
+// Unicode replacement character.
+const REPLACEMENT = /�/g;
+// A high surrogate with no low surrogate after it, or a low surrogate with no
+// high surrogate before it. Well-formed pairs (emoji and other characters
+// beyond the basic plane) are kept.
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+// Invisible format characters that can reorder or hide text: Arabic letter
+// mark, LRM/RLM, bidi embeddings and overrides, bidi isolates, zero-width
+// space, word joiner, and the byte-order mark. Zero-width joiner and
+// non-joiner stay, since emoji sequences and some scripts need them.
+const BIDI_AND_ZERO_WIDTH = /[؜​‎‏‪-‮⁠⁦-⁩﻿]/g;
+
+function clampMaxLen(maxLen) {
+  if (typeof maxLen !== 'number' || !Number.isFinite(maxLen)) return DEFAULT_MAX;
+  return Math.floor(maxLen);
+}
+
+// Cuts s to at most n UTF-16 units without splitting a surrogate pair.
+function cutCodePoints(s, n) {
+  if (s.length <= n) return s;
+  let end = n;
+  const last = s.charCodeAt(end - 1);
+  if (end > 0 && last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return s.slice(0, end);
+}
 
 /**
  * Sanitize text for safe terminal rendering.
  * @param {unknown} text - input text (coerced to string)
- * @param {number} maxLen - maximum output length
+ * @param {number} maxLen - maximum output length in UTF-16 units; 0 or less
+ *   gives an empty string, a non-finite value uses DEFAULT_MAX
  * @returns {string} sanitized text
  */
 export function sanitize(text, maxLen) {
+  const limit = clampMaxLen(maxLen);
+  if (limit < 1) return '';
   let s = String(text ?? '');
 
-  // (b) Strip CSI sequences: ESC[ ... final-byte or U+009B ... final-byte.
-  // Params: 0x30-0x3F, intermediates: 0x20-0x2F, final: 0x40-0x7E.
-  // Incomplete trailing sequences (no final byte) are also stripped.
-  s = s.replace(/(?:\x1b\[|\u009b)[\x20-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, '');
-  // Strip incomplete trailing CSI (ESC[ or U+009B followed by params/intermediates but no final byte before end).
-  s = s.replace(/(?:\x1b\[|\u009b)[\x20-\x3f]*[\x20-\x2f]*$/g, '');
-
-  // (c) Strip OSC sequences: ESC] ... (BEL | ST) or U+009D ... (BEL | ST).
-  // ST = ESC\ (0x1b 0x5c). Handle incomplete trailing sequences.
-  s = s.replace(/(?:\x1b\]|\u009d)(?:[^\x07\x1b]|\x1b(?!\x5c))*(?:\x07|\x1b\x5c)/g, '');
-  // Strip incomplete trailing OSC (no terminator before end).
-  s = s.replace(/(?:\x1b\]|\u009d)(?:[^\x07\x1b]|\x1b(?!\x5c))*$/g, '');
-
-  // (d) Strip control characters 0x00-0x1F (except 0x0A newline) and DEL (0x7F).
-  s = s.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, '');
-
-  // (e) Strip remaining C1 control characters U+0080-U+009F.
-  // U+009B and U+009D were already consumed by CSI/OSC stripping above,
-  // but any remaining ones (standalone or after partial consumption) are removed here.
-  s = s.replace(/[\u0080-\u009f]/g, '');
-
-  // (f) Strip U+FFFD replacement characters.
-  s = s.replace(/�/g, '');
-
-  // (g) Strip lone surrogates U+D800-U+DFFF.
-  // In JS strings these appear as individual code units.
-  s = s.replace(/[\ud800-\udfff]/g, '');
-
-  // (h) Truncate to maxLen with ellipsis.
-  if (s.length > maxLen) {
-    s = s.slice(0, maxLen - 1) + '…';
+  const inputCap = Math.max(limit * INPUT_FACTOR, INPUT_FLOOR);
+  let cut = false;
+  if (s.length > inputCap) {
+    s = cutCodePoints(s, inputCap);
+    cut = true;
   }
 
+  s = s.replace(CSI, '');
+  s = s.replace(OSC, '');
+  s = s.replace(C0, '');
+  s = s.replace(C1, '');
+  s = s.replace(REPLACEMENT, '');
+  s = s.replace(LONE_SURROGATE, '');
+  s = s.replace(BIDI_AND_ZERO_WIDTH, '');
+
+  // Truncate with the ellipsis inside maxLen.
+  if (s.length > limit || (cut && s.length > 0)) {
+    s = cutCodePoints(s, limit - 1) + '…';
+  }
   return s;
 }
 
+// Per-field limits, by property name.
+const FIELD_MAX = {
+  id: SLUG_MAX,
+  key: SLUG_MAX,
+  slug: SLUG_MAX,
+  status: SLUG_MAX,
+  title: TITLE_MAX,
+  goal: GOAL_MAX,
+  capacity_utilization: DESCRIPTION_MAX,
+  epic_focus: DESCRIPTION_MAX,
+  description: DESCRIPTION_MAX,
+  blocked_by: BLOCKED_BY_MAX,
+  text: TASK_TEXT_MAX,
+  name: GATE_NAME_MAX,
+  detail: DRIFT_DETAIL_MAX,
+  message: MESSAGE_MAX,
+  command: COMMAND_MAX,
+};
+
+// Deeper than this, a value is replaced by null.
+const MAX_DEPTH = 32;
+
+function limitFor(prop) {
+  return typeof prop === 'string' && Object.prototype.hasOwnProperty.call(FIELD_MAX, prop)
+    ? FIELD_MAX[prop]
+    : DEFAULT_MAX;
+}
+
+function clean(value, prop, depth) {
+  if (typeof value === 'string') return sanitize(value, limitFor(prop));
+  if (value === null || typeof value !== 'object') return value;
+  if (depth >= MAX_DEPTH) return null;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) value[i] = clean(value[i], prop, depth + 1);
+    return value;
+  }
+  for (const k of Object.keys(value)) {
+    const v = clean(value[k], k, depth + 1);
+    const nk = sanitize(k, SLUG_MAX);
+    if (nk !== k) {
+      delete value[k];
+      if (nk === '' || Object.prototype.hasOwnProperty.call(value, nk)) continue;
+    }
+    // defineProperty, not assignment: a "__proto__" key from JSON.parse is an
+    // own property, and assigning to it would change the prototype instead.
+    Object.defineProperty(value, nk, { value: v, enumerable: true, writable: true, configurable: true });
+  }
+  return value;
+}
+
 /**
- * Sanitize all dynamic text fields in a parsed cache object.
- * Operates in place and returns the same object for chaining.
- * Field paths derived from sprint-progress-snapshot.sh jq output.
+ * Sanitize every string in a parsed cache object, in place: values and
+ * property names. Fields with a known limit (title, slug, message, ...) get
+ * it; any other string gets DEFAULT_MAX. Array items take the limit of the
+ * property that holds the array.
  * @param {object} data - parsed cache object
- * @returns {object} the same object with fields sanitized
+ * @returns {object} the same object with every string sanitized
  */
 export function sanitizeCache(data) {
   if (!data || typeof data !== 'object') return data;
-
-  // Sprint-level fields
-  if (data.sprint && typeof data.sprint === 'object') {
-    if (data.sprint.id != null) data.sprint.id = sanitize(data.sprint.id, SLUG_MAX);
-    if (data.sprint.goal != null) data.sprint.goal = sanitize(data.sprint.goal, GOAL_MAX);
-    if (data.sprint.status != null) data.sprint.status = sanitize(data.sprint.status, SLUG_MAX);
-    if (data.sprint.capacity_utilization != null) data.sprint.capacity_utilization = sanitize(data.sprint.capacity_utilization, DESCRIPTION_MAX);
-    if (data.sprint.epic_focus != null) data.sprint.epic_focus = sanitize(data.sprint.epic_focus, DESCRIPTION_MAX);
-  }
-
-  // Per-story fields
-  if (Array.isArray(data.stories)) {
-    for (const s of data.stories) {
-      if (s.title != null) s.title = sanitize(s.title, TITLE_MAX);
-      if (s.key != null) s.key = sanitize(s.key, SLUG_MAX);
-      if (s.slug != null) s.slug = sanitize(s.slug, SLUG_MAX);
-      if (s.blocked_by != null) s.blocked_by = sanitize(s.blocked_by, BLOCKED_BY_MAX);
-      // tasks.items[].text
-      if (s.tasks && Array.isArray(s.tasks.items)) {
-        for (const t of s.tasks.items) {
-          if (t.text != null) t.text = sanitize(t.text, TASK_TEXT_MAX);
-        }
-      }
-      // gates.rows[].name
-      if (s.gates && Array.isArray(s.gates.rows)) {
-        for (const g of s.gates.rows) {
-          if (g.name != null) g.name = sanitize(g.name, GATE_NAME_MAX);
-        }
-      }
-    }
-  }
-
-  // Drift fields
-  if (Array.isArray(data.drift)) {
-    for (const d of data.drift) {
-      if (d.detail != null) d.detail = sanitize(d.detail, DRIFT_DETAIL_MAX);
-    }
-  }
-
-  // Action needed fields
-  if (Array.isArray(data.action_needed)) {
-    for (const a of data.action_needed) {
-      if (a.message != null) a.message = sanitize(a.message, MESSAGE_MAX);
-      if (a.command != null) a.command = sanitize(a.command, COMMAND_MAX);
-    }
-  }
-
-  return data;
+  return clean(data, null, 0);
 }

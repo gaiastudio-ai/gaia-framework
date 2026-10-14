@@ -12,7 +12,7 @@ run_sanitize() {
   run node --input-type=module -e "
 import { sanitize, TITLE_MAX, SLUG_MAX, MESSAGE_MAX, COMMAND_MAX,
   DESCRIPTION_MAX, DETAIL_MAX, GOAL_MAX, TASK_TEXT_MAX,
-  GATE_NAME_MAX, BLOCKED_BY_MAX, DRIFT_DETAIL_MAX } from '$SANITIZE';
+  GATE_NAME_MAX, BLOCKED_BY_MAX, DRIFT_DETAIL_MAX, DEFAULT_MAX } from '$SANITIZE';
 $1
 "
 }
@@ -204,6 +204,133 @@ if (out !== "red then ") { process.stderr.write("got: " + JSON.stringify(out)); 
   [ "$status" -eq 0 ]
 }
 
+@test "strip NUL 0x00" {
+  run_sanitize '
+const out = sanitize("a\x00b", 200);
+if (out !== "ab") { process.stderr.write("got: " + JSON.stringify(out)); process.exit(1); }
+'
+  [ "$status" -eq 0 ]
+}
+
+@test "bare ESC is stripped: reset, save cursor, DCS, APC, PM and SOS leave no ESC" {
+  run_sanitize '
+const cases = [
+  ["\x1bcX", "cX"],
+  ["\x1b7X\x1b8", "7X8"],
+  ["\x1bPq#0;1\x1b\\X", "Pq#0;1\\X"],
+  ["\x1b_payload\x1b\\X", "_payload\\X"],
+  ["\x1b^pm\x1b\\X", "^pm\\X"],
+  ["\x1bXsos\x1b\\Y", "Xsos\\Y"]
+];
+for (const [input, want] of cases) {
+  const out = sanitize(input, 200);
+  if (out.includes("\x1b")) { process.stderr.write("ESC left in " + JSON.stringify(out)); process.exit(1); }
+  if (out !== want) { process.stderr.write(JSON.stringify(input) + " got " + JSON.stringify(out)); process.exit(1); }
+}
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "OSC hyperlink terminated by BEL becomes plain text Click" {
+  run_sanitize '
+const out = sanitize("\x1b]8;;https://evil.com\x07Click\x1b]8;;\x07", 200);
+if (out !== "Click") { process.stderr.write("got: " + JSON.stringify(out)); process.exit(1); }
+'
+  [ "$status" -eq 0 ]
+}
+
+@test "C1 OSC terminated by C1 string terminator keeps the text after it" {
+  run_sanitize '
+const out = sanitize("\u009d0;title\u009cVISIBLE", 200);
+if (out !== "VISIBLE") { process.stderr.write("got: " + JSON.stringify(out)); process.exit(1); }
+'
+  [ "$status" -eq 0 ]
+}
+
+@test "valid surrogate pairs are kept and lone ones of either half are stripped" {
+  run_sanitize '
+const checks = [
+  ["\u{1F600}ok", "\u{1F600}ok"],
+  ["日本\u{1F680}", "日本\u{1F680}"],
+  ["x\ud800y", "xy"],
+  ["x\udc00y", "xy"],
+  ["\udc00😀\ud800", "😀"]
+];
+for (const [input, want] of checks) {
+  const out = sanitize(input, 80);
+  if (out !== want) { process.stderr.write(JSON.stringify(input) + " got " + JSON.stringify(out)); process.exit(1); }
+}
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "truncation never splits a surrogate pair" {
+  run_sanitize '
+const input = "A".repeat(78) + "\u{1F600}\u{1F600}";
+const out = sanitize(input, 80);
+if (out !== "A".repeat(78) + "…") { process.stderr.write("got: " + JSON.stringify(out)); process.exit(1); }
+const out2 = sanitize("A".repeat(77) + "\u{1F600}\u{1F600}", 80);
+if (out2 !== "A".repeat(77) + "\u{1F600}…") { process.stderr.write("got2: " + JSON.stringify(out2)); process.exit(1); }
+if (/[\ud800-\udbff](?![\udc00-\udfff])/.test(out) || /[\ud800-\udbff](?![\udc00-\udfff])/.test(out2)) { process.stderr.write("lone surrogate"); process.exit(1); }
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "maxLen of zero, negative, NaN or undefined never gives longer output" {
+  run_sanitize '
+const long = "x".repeat(500);
+const want = { "0": "", "-1": "", "-5": "", "1": "…", "2": "x…" };
+for (const [m, w] of Object.entries(want)) {
+  const out = sanitize(long, Number(m));
+  if (out !== w) { process.stderr.write("maxLen " + m + " got " + JSON.stringify(out)); process.exit(1); }
+}
+for (const m of [NaN, undefined, Infinity, "80"]) {
+  const out = sanitize(long, m);
+  if (out.length !== 200) { process.stderr.write("maxLen " + String(m) + " length " + out.length); process.exit(1); }
+}
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "bidi controls and zero-width characters are stripped, joiners kept" {
+  run_sanitize '
+const out = sanitize("a‮b⁦c⁩d​e⁠f﻿g‎h‏i؜j", 200);
+if (out !== "abcdefghij") { process.stderr.write("got: " + JSON.stringify(out)); process.exit(1); }
+const fam = "\u{1F468}‍\u{1F469}‍\u{1F467}";
+if (sanitize(fam, 200) !== fam) { process.stderr.write("joiner sequence broken"); process.exit(1); }
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "hostile 100k-character fields are sanitised quickly" {
+  run_sanitize '
+const shapes = {
+  osc: "\x1b]".repeat(50000),
+  c1osc: "\u009d".repeat(100000),
+  csi: "\x1b[" + " ".repeat(100000),
+  csiParams: "\x1b[        ".repeat(10000),
+  mixed: "\x1b]\x1bx".repeat(33000)
+};
+const t0 = process.hrtime.bigint();
+for (const [name, s] of Object.entries(shapes)) {
+  for (const m of [200, Infinity]) {
+    const out = sanitize(s, m);
+    if (/[\x00-\x09\x0b-\x1f\x7f-\x9f]/.test(out)) { process.stderr.write(name + " left a control"); process.exit(1); }
+  }
+}
+const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+console.log("total ms: " + ms.toFixed(1));
+if (ms > 1000) { process.stderr.write("too slow: " + ms + " ms"); process.exit(1); }
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
 # -- sanitizeCache integration tests --
 
 # Helper: run a node ESM snippet that imports sanitizeCache.
@@ -211,7 +338,7 @@ run_sanitize_cache() {
   run node --input-type=module -e "
 import { sanitize, sanitizeCache, TITLE_MAX, SLUG_MAX, MESSAGE_MAX, COMMAND_MAX,
   DESCRIPTION_MAX, DETAIL_MAX, GOAL_MAX, TASK_TEXT_MAX,
-  GATE_NAME_MAX, BLOCKED_BY_MAX, DRIFT_DETAIL_MAX } from '$SANITIZE';
+  GATE_NAME_MAX, BLOCKED_BY_MAX, DRIFT_DETAIL_MAX, DEFAULT_MAX } from '$SANITIZE';
 $1
 "
 }
@@ -285,29 +412,94 @@ if (data.stories[0].title !== "titlehidden") { process.stderr.write("title: " + 
   [ "$status" -eq 0 ]
 }
 
-@test "sanitizeCache on real snapshot output with dirty fixture data" {
-  SNAPSHOT="$REPO_ROOT/plugins/gaia/scripts/sprint-progress-snapshot.sh"
-  [ -x "$SNAPSHOT" ] || false
+@test "sanitizeCache sanitises every string, not only a fixed field list" {
+  run_sanitize_cache '
+const c1 = "\u009b31m", bidi = "‮";
+const data = {
+  sprint: { id: "s1", status: c1 + "active", start_date: bidi + "2026-10-01" },
+  stories: [{ key: "E900-S1", status: c1 + "review", risk_level: "high" + bidi,
+    gates: { rows: [{ name: "val", status: "PASSED" + c1 }] },
+    tasks: { items: [{ text: "t\u0085" }] } }],
+  drift: [{ story_key: "E900-S1" + bidi, type: "status" + c1 + "_mismatch", detail: "d" }],
+  phases: [{ stories: ["E900-S1" + c1] }],
+  user_aliases: ["me⁦"],
+  by_status: { ["in" + bidi + "-progress"]: { count: 1 } }
+};
+sanitizeCache(data);
+let visited = 0;
+(function walk(v, path) {
+  if (typeof v === "string") {
+    visited++;
+    if (/[\x00-\x09\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]/.test(v)) { process.stderr.write("dirty " + path + "=" + JSON.stringify(v)); process.exit(1); }
+    return;
+  }
+  if (v && typeof v === "object") for (const k of Object.keys(v)) {
+    if (/[\x00-\x1f\x7f-\x9f‪-‮⁦-⁩]/.test(k)) { process.stderr.write("dirty key " + JSON.stringify(k)); process.exit(1); }
+    walk(v[k], path + "." + k);
+  }
+})(data, "$");
+if (visited !== 14) { process.stderr.write("visited " + visited); process.exit(1); }
+const want = [[data.stories[0].status, "review"], [data.stories[0].risk_level, "high"], [data.stories[0].gates.rows[0].status, "PASSED"], [data.drift[0].type, "status_mismatch"], [data.sprint.status, "active"]];
+for (const [got, w] of want) if (got !== w) { process.stderr.write("got " + JSON.stringify(got) + " want " + w); process.exit(1); }
+if (!data.by_status["in-progress"]) { process.stderr.write("key not cleaned"); process.exit(1); }
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
 
-  FIXTURE="${BATS_TMPDIR}/sanitize-fixture-$$"
-  mkdir -p "$FIXTURE/.gaia/config" "$FIXTURE/.gaia/state"
-  mkdir -p "$FIXTURE/.gaia/artifacts/implementation-artifacts/epic-e900/E900-S1-dirty-story"
+@test "sanitizeCache keeps per-field limits and gives other strings the default" {
+  run_sanitize_cache '
+const long = "x".repeat(500);
+const data = { sprint: { goal: long, other: long }, stories: [{ title: long, slug: long, status: long, risk_level: long }],
+  action_needed: [{ message: long, command: long }], drift: [{ detail: long, type: long }] };
+sanitizeCache(data);
+const want = [
+  [data.sprint.goal, GOAL_MAX], [data.sprint.other, DEFAULT_MAX], [data.stories[0].title, TITLE_MAX],
+  [data.stories[0].slug, SLUG_MAX], [data.stories[0].status, SLUG_MAX], [data.stories[0].risk_level, DEFAULT_MAX],
+  [data.action_needed[0].message, MESSAGE_MAX], [data.action_needed[0].command, COMMAND_MAX],
+  [data.drift[0].detail, DRIFT_DETAIL_MAX], [data.drift[0].type, DEFAULT_MAX]
+];
+for (const [v, n] of want) if (v.length !== n) { process.stderr.write("length " + v.length + " want " + n); process.exit(1); }
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
 
-  # Minimal project config
+@test "sanitizeCache does not let a __proto__ key change the prototype and caps depth" {
+  run_sanitize_cache '
+const data = JSON.parse("{\"__proto__\":{\"polluted\":1},\"a\":1}");
+sanitizeCache(data);
+if (Object.getPrototypeOf(data) !== Object.prototype) { process.stderr.write("prototype changed"); process.exit(1); }
+if (({}).polluted !== undefined || data.polluted !== undefined) { process.stderr.write("polluted"); process.exit(1); }
+let deep = "\x1b[2Jbottom";
+for (let i = 0; i < 100; i++) deep = [deep];
+const d = { deep };
+sanitizeCache(d);
+if (JSON.stringify(d).includes("\\u001b")) { process.stderr.write("deep escape kept"); process.exit(1); }
+'
+  echo "$output"
+  [ "$status" -eq 0 ]
+}
+
+# Builds a fixture project whose sprint yaml and story file carry C1 and
+# bidi characters (which the snapshot script does not strip) in fields the
+# script copies into the cache, then runs the real script on it.
+_dirty_fixture() {
+  FIXTURE="$BATS_TEST_TMPDIR/sanitize-fixture"
+  local story="$FIXTURE/.gaia/artifacts/implementation-artifacts/epic-e900/E900-S1-dirty-story"
+  mkdir -p "$FIXTURE/.gaia/config" "$FIXTURE/.gaia/state" "$story"
   cat > "$FIXTURE/.gaia/config/project-config.yaml" << 'YAML'
 project_name: sanitize-fixture
 stacks:
   - name: shell
     path: "."
 YAML
-
-  # Sprint status with dirty goal text (ESC bytes written via printf)
-  # The sprint-status.yaml goal and story title carry literal ESC bytes.
-  # The snapshot's jq clean() helper strips most of them, so the mod's
-  # sanitizeCache is defense-in-depth: we assert the output is clean
-  # regardless of whether the snapshot or the mod stripped the bytes.
-  ESC=$(printf '\033')
-  LONG200=$(printf '%0.sx' $(seq 1 250))
+  local CSI1 OSC1 ST1 RLO LONG
+  CSI1="$(printf '\302\233')"
+  OSC1="$(printf '\302\235')"
+  ST1="$(printf '\302\234')"
+  RLO="$(printf '\342\200\256')"
+  LONG="$(printf '%0.sx' $(seq 1 250))"
   cat > "$FIXTURE/.gaia/state/sprint-status.yaml" << YAML
 sprint_id: "sprint-dirty-1"
 status: active
@@ -315,116 +507,99 @@ start_date: "2026-10-01"
 end_date: "2026-10-14"
 total_points: 5
 goals:
-  - "${ESC}[2JDirty goal text${LONG200}"
+  - "${CSI1}2JDirty goal${RLO} text${LONG}"
 stories:
   - key: "E900-S1"
-    title: "${ESC}[31mDirty title${ESC}[0m with ${LONG200}"
-    status: "in-progress"
+    title: "Dirty title"
+    status: "review"
     points: 5
     phase: 1
-    blocked_by: "${ESC}[2JBlocked by dirty${LONG200}"
+    risk_level: "high${RLO}"
+    blocked_by: "${CSI1}31mBlocked${LONG}"
 YAML
-
-  # Story file with dirty task text and manual_verification in frontmatter
-  cat > "$FIXTURE/.gaia/artifacts/implementation-artifacts/epic-e900/E900-S1-dirty-story/story.md" << STORY
+  cat > "$story/story.md" << STORY
 ---
 id: E900-S1
-title: "${ESC}[31mDirty title${ESC}[0m"
+title: "${CSI1}31mDirty title${RLO}${LONG}"
 status: in-progress
 points: 5
 phase: 1
 epic_id: E900
 priority: medium
 created_at: "2026-10-01"
-manual_verification: false
 ---
 # Dirty story
 
-## Tasks
-- [ ] ${ESC}[2JDirty task text with escapes${LONG200}
+## Tasks / Subtasks
+
+- [ ] ${OSC1}0;x${ST1}Dirty task${LONG}
 
 ## Review Gate
-| Review | Status |
-|--------|--------|
-| ${ESC}[1mval${ESC}[0m | UNVERIFIED |
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED${RLO} | - |
 STORY
-
-  # Run real snapshot
-  run env PROJECT_ROOT="$FIXTURE" bash "$SNAPSHOT"
-  echo "snapshot exit: $status"
-
+  run env PROJECT_ROOT="$FIXTURE" bash "$REPO_ROOT/plugins/gaia/scripts/sprint-progress-snapshot.sh"
+  echo "snapshot: status=$status output=$output"
+  [ "$status" -eq 0 ]
   CACHE_FILE="$FIXTURE/.gaia/state/.sprint-progress-cache.json"
-  [ -f "$CACHE_FILE" ] || { echo "cache file missing"; false; }
+  [ -f "$CACHE_FILE" ] || false
+}
 
-  # Run sanitizeCache on the real output and verify all fields are clean
+# Checks a cache file with the sanitize module at $1: the raw cache must
+# carry dirty strings, and after sanitizeCache none may remain; the expected
+# paths must all be visited.
+_check_real_cache() {
   run node --input-type=module -e "
 import { readFileSync } from 'node:fs';
-import { sanitizeCache, TITLE_MAX, SLUG_MAX, GOAL_MAX, BLOCKED_BY_MAX,
-  TASK_TEXT_MAX, GATE_NAME_MAX, MESSAGE_MAX, COMMAND_MAX,
-  DRIFT_DETAIL_MAX } from '$SANITIZE';
-const raw = readFileSync('$CACHE_FILE', 'utf8');
-const data = JSON.parse(raw);
-sanitizeCache(data);
-const ESC = '\x1b';
-function assertClean(val, path, maxLen) {
-  if (typeof val !== 'string') return;
-  if (val.includes(ESC)) { process.stderr.write('ESC in ' + path); process.exit(1); }
-  if (val.match(/[\x00-\x09\x0b-\x1f\x7f]/)) { process.stderr.write('control in ' + path); process.exit(1); }
-  if (val.match(/[\u0080-\u009f]/)) { process.stderr.write('C1 in ' + path); process.exit(1); }
-  if (maxLen && val.length > maxLen) { process.stderr.write(path + ' too long: ' + val.length + ' > ' + maxLen); process.exit(1); }
+import { pathToFileURL } from 'node:url';
+const { sanitizeCache, TITLE_MAX, GOAL_MAX, BLOCKED_BY_MAX, TASK_TEXT_MAX, GATE_NAME_MAX } = await import(pathToFileURL(process.argv[1]).href);
+const raw = readFileSync(process.argv[2], 'utf8');
+const DIRTY = /[\x00-\x09\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]/;
+const before = JSON.parse(raw);
+let dirtyBefore = 0;
+(function walk(v) { if (typeof v === 'string') { if (DIRTY.test(v)) dirtyBefore++; } else if (v && typeof v === 'object') for (const k of Object.keys(v)) walk(v[k]); })(before);
+if (dirtyBefore < 5) { process.stderr.write('fixture too clean: ' + dirtyBefore); process.exit(1); }
+const data = sanitizeCache(JSON.parse(raw));
+let visited = 0;
+const bad = [];
+(function walk(v, path) {
+  if (typeof v === 'string') { visited++; if (DIRTY.test(v)) bad.push(path); return; }
+  if (v && typeof v === 'object') for (const k of Object.keys(v)) walk(v[k], path + '.' + k);
+})(data, '\$');
+if (bad.length) { process.stderr.write('dirty after sanitizeCache: ' + bad.join(', ')); process.exit(1); }
+const s = data.stories[0];
+const checks = [
+  [data.sprint.goal, GOAL_MAX], [s.title, TITLE_MAX], [s.blocked_by, BLOCKED_BY_MAX],
+  [s.tasks.items[0].text, TASK_TEXT_MAX], [s.gates.rows[0].name, GATE_NAME_MAX]
+];
+for (const [v, n] of checks) {
+  if (typeof v !== 'string' || v.length === 0 || v.length > n) { process.stderr.write('field ' + JSON.stringify(v) + ' limit ' + n); process.exit(1); }
 }
-// Sprint
-if (data.sprint) {
-  assertClean(data.sprint.id, 'sprint.id', SLUG_MAX);
-  assertClean(data.sprint.goal, 'sprint.goal', GOAL_MAX);
-  assertClean(data.sprint.status, 'sprint.status', SLUG_MAX);
-}
-// Stories
-for (const s of (data.stories || [])) {
-  assertClean(s.title, 'story.title', TITLE_MAX);
-  assertClean(s.key, 'story.key', SLUG_MAX);
-  assertClean(s.slug, 'story.slug', SLUG_MAX);
-  assertClean(s.blocked_by, 'story.blocked_by', BLOCKED_BY_MAX);
-  for (const t of (s.tasks?.items || [])) assertClean(t.text, 'task.text', TASK_TEXT_MAX);
-  for (const g of (s.gates?.rows || [])) assertClean(g.name, 'gate.name', GATE_NAME_MAX);
-}
-// Drift + actions
-for (const d of (data.drift || [])) assertClean(d.detail, 'drift.detail', DRIFT_DETAIL_MAX);
-for (const a of (data.action_needed || [])) {
-  assertClean(a.message, 'action.message', MESSAGE_MAX);
-  assertClean(a.command, 'action.command', COMMAND_MAX);
-}
-// Note: the snapshot's jq clean() helper already strips most control chars
-// and cap() truncates fields. sanitizeCache is defense-in-depth at the mod
-// layer. This test proves the combined pipeline always produces clean output.
-"
-  echo "sanitizeCache check: status=$status output=$output"
-  [ "$status" -eq 0 ]
-
-  rm -rf "$FIXTURE"
+if (s.risk_level !== 'high') { process.stderr.write('risk_level ' + JSON.stringify(s.risk_level)); process.exit(1); }
+if (s.gates.rows[0].status !== 'PASSED') { process.stderr.write('gate status ' + JSON.stringify(s.gates.rows[0].status)); process.exit(1); }
+console.log('visited ' + visited + ' strings, ' + dirtyBefore + ' dirty before');
+" "$1" "$CACHE_FILE"
 }
 
-@test "sanitizeCache mutation proof: removing slug sanitization leaves slug dirty" {
-  # This test verifies that if we remove the slug sanitization from sanitizeCache,
-  # a dirty slug survives. Simulates by calling sanitize on everything except slug.
-  run node --input-type=module -e "
-import { sanitize, SLUG_MAX } from '$SANITIZE';
-const data = {
-  stories: [{ key: 'k', title: 't', slug: '\x1b[2Jdirty', tasks: { items: [] }, gates: { rows: [] } }],
-  drift: [], action_needed: []
-};
-// Deliberately skip slug sanitization (simulate mutation)
-// data.stories[0].slug stays dirty
-if (!data.stories[0].slug.includes('\x1b')) {
-  process.stderr.write('slug should still be dirty without sanitization');
-  process.exit(1);
-}
-// Now apply proper sanitization
-data.stories[0].slug = sanitize(data.stories[0].slug, SLUG_MAX);
-if (data.stories[0].slug.includes('\x1b')) {
-  process.stderr.write('slug should be clean after sanitization');
-  process.exit(1);
-}
-"
+@test "sanitizeCache cleans every string of real snapshot output" {
+  _dirty_fixture
+  _check_real_cache "$REPO_ROOT/plugins/gaia/hooks/sanitize.js"
+  echo "$output"
   [ "$status" -eq 0 ]
+  [[ "$output" == "visited "* ]] || false
+}
+
+@test "a sanitizeCache that skips strings fails the real-output check" {
+  _dirty_fixture
+  local mutant="$BATS_TEST_TMPDIR/mutant-sanitize.js"
+  sed "s/if (typeof value === 'string') return sanitize(value, limitFor(prop));/if (typeof value === 'string') return value;/" \
+    "$REPO_ROOT/plugins/gaia/hooks/sanitize.js" > "$mutant"
+  run cmp -s "$REPO_ROOT/plugins/gaia/hooks/sanitize.js" "$mutant"
+  [ "$status" -ne 0 ]
+  _check_real_cache "$mutant"
+  echo "$output"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"dirty after sanitizeCache:"* ]] || false
 }

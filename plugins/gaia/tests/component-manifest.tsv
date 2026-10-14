@@ -264,7 +264,6 @@ core	manual-test-docs.bats
 core	meeting-dispatch-provenance-integration.bats
 core	meeting-val-bridge-anti-pattern.bats
 core	migrate-stories-to-canonical-layout.bats
-core	mod-cap-detect-direct.bats
 core	mod-empty-body.bats
 core	mod-mutant-kill.bats
 core	mod-validate-strict.bats
@@ -568,6 +567,7 @@ scripts-core	migrate-config-split.bats
 scripts-core	migrate-placeholder-substitution.bats
 scripts-core	migrate-test-environment-path.bats
 scripts-core	mod-cache-contract.bats
+scripts-core	mod-cap-detect-direct.bats
 scripts-core	mod-interleave.bats
 scripts-core	mod-sanitize.bats
 scripts-core	mod-shell-static-audit.bats
