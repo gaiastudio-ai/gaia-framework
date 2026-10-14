@@ -353,6 +353,7 @@ core	statusline/statusline-install.bats
 core	statusline/statusline-refresh.bats
 core	statusline/statusline-runtime.bats
 core	statusline/statusline-self-heal.bats
+core	statusline/statusline-sprint-progress.bats
 core	statusline/statusline-static-check.bats
 core	statusline/statusline-two-line-layout.bats
 core	step-boundary-telemetry.bats
