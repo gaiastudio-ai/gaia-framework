@@ -179,7 +179,9 @@ _sanitize_field() {
 
 _validate_story_key() {
   local v="$1"
-  if printf '%s' "$v" | grep -qE '^E[0-9]+-S[0-9]+$'; then
+  # Whole-string match — regex stored in a variable for bash 3.2 compat
+  local _re='^E[0-9]+-S[0-9]+$'
+  if [[ "$v" =~ $_re ]]; then
     printf '%s' "$v"
   else
     printf '?'
@@ -208,9 +210,11 @@ _validate_phase_status() {
 
 _validate_numeric() {
   local v="$1"
-  if [ "$v" = "null" ] || [ -z "$v" ]; then
-    printf '%s' "$v"
-  elif printf '%s' "$v" | grep -qE '^[0-9]+$'; then
+  # Whole-string match — regex stored in a variable for bash 3.2 compat
+  local _re='^[0-9]+$'
+  if [ -z "$v" ] || [ "$v" = "null" ]; then
+    printf '?'
+  elif [[ "$v" =~ $_re ]]; then
     printf '%s' "$v"
   else
     printf '?'
