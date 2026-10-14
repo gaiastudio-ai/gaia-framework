@@ -481,7 +481,7 @@ EOF
   [ "$before" = "$after" ]
 }
 
-# ---------- Blocker 1: malformed candidates must not abort the scan ----------
+# ---------- Malformed candidates must not abort the scan ----------
 
 @test "malformed file with no key line is skipped, scan continues" {
   # A ready-for-dev story.md with no key: line — should be skipped
@@ -525,7 +525,7 @@ EOF
   [ "$line_count" -eq 1 ]
 }
 
-# ---------- Blocker 2: NUL-safe path handling ----------
+# ---------- NUL-safe path handling ----------
 
 @test "paths with embedded newlines are handled safely" {
   # Create a directory name containing a newline
