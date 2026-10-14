@@ -10,14 +10,16 @@
 #   p95 wall < 100ms, ceiling < 300ms.
 #
 # Subprocess inventory:
-#   ALLOWED: jq, git symbolic-ref, cat, tput
-#   FORBIDDEN: any network primitive (structurally enforced by TC-9)
+#   ALLOWED: jq, git symbolic-ref, cat, tput, grep, head, sed, dirname, cmp, cp
+#   FORBIDDEN: any network primitive (structurally enforced by the static
+#              no-network check)
 #
 # File reads:
 #   - ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json                     (version, active plugin)
 #     Falls back to $PROJECT_PATH/gaia-framework/plugins/gaia/.claude-plugin/plugin.json (in-tree dev)
 #   - $HOME/.claude/gaia-statusline/cache/latest-release.json             (silent on miss)
-#   - $PROJECT_ROOT/.gaia/state/sprint-status.yaml                         (rich theme only — canonical location)
+#   - $PROJECT_ROOT/.gaia/state/.sprint-progress-cache.json                (rich theme, cache-first read)
+#   - $PROJECT_ROOT/.gaia/state/sprint-status.yaml                         (rich theme, yaml fallback only)
 #     Falls back to $PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml  (legacy read-compat)
 #
 # POSIX discipline: bash 3.2 compatible (macOS default).
@@ -365,17 +367,28 @@ else
 fi
 
 # ---- Rich-theme sprint status read ----------------------------------------
-# Walks UP from PROJECT_PATH looking for .gaia/artifacts/implementation-artifacts/
-# sprint-status.yaml. This handles the common layout where the terminal cwd
-# is inside a subproject (e.g., $PROJECT_ROOT/gaia-framework/) but the sprint
-# artifacts live at the project root. Capped at 5 levels to bound stat-call
-# cost.
+# Cache-first: reads .gaia/state/.sprint-progress-cache.json (one jq call) and
+# falls back to sprint-status.yaml (grep chain) only when the cache is missing,
+# unreadable, or carries invalid fields. Walks UP from PROJECT_ROOT (max 5
+# levels) looking for both the cache file and the yaml — shared walk-up loop,
+# no second loop, cache-absent subprocess count unchanged.
 SPRINT_ID=""
+_SPRINT_PCT=""
+_SPRINT_WARN=0
+_SPRINT_CACHE_HIT=0
 if [ "$GAIA_RICH" = "1" ]; then
   SPRINT_FILE=""
+  _SPRINT_CACHE_FILE=""
   _SEARCH_DIR="$PROJECT_ROOT"
   _DEPTH=0
   while [ "$_DEPTH" -lt 5 ]; do
+    # Check cache at this level (builtin test, no subprocess).
+    if [ -z "$_SPRINT_CACHE_FILE" ]; then
+      _CACHE_CANDIDATE="$_SEARCH_DIR/.gaia/state/.sprint-progress-cache.json"
+      if [ -r "$_CACHE_CANDIDATE" ]; then
+        _SPRINT_CACHE_FILE="$_CACHE_CANDIDATE"
+      fi
+    fi
     # Prefer .gaia/state/sprint-status.yaml (canonical location) over legacy docs/.
     _GAIA_CANDIDATE="$_SEARCH_DIR/.gaia/state/sprint-status.yaml"
     if [ -r "$_GAIA_CANDIDATE" ]; then
@@ -395,8 +408,59 @@ if [ "$GAIA_RICH" = "1" ]; then
     _SEARCH_DIR="$_PARENT"
     _DEPTH=$((_DEPTH + 1))
   done
-  if [ -n "$SPRINT_FILE" ] && [ -r "$SPRINT_FILE" ]; then
-    # Tiny grep — direct read (NOT routed through dashboard script).
+
+  # ---- Cache-first read: single jq invocation, SEG/NONE/FALLBACK tokens ----
+  # Precedence: (1) cache readable + sprint null or closed -> no segment, no
+  # yaml fallback; (2) cache readable + valid fields -> full segment from cache;
+  # (3) anything else -> yaml fallback.
+  if [ -n "$_SPRINT_CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
+    _SPRINT_JQ_OUT="$(jq -r '
+      if .sprint == null then "NONE"
+      elif (.sprint.status // "") == "closed" then "NONE"
+      else
+        (.sprint.id // null) as $id |
+        (.totals.progress_pct // null) as $pct |
+        (.action_needed // null) as $an |
+        if $id == null or $pct == null or $an == null then "FALLBACK"
+        elif ($id | type) != "string" then "FALLBACK"
+        elif ($pct | type) != "number" then "FALLBACK"
+        elif ($pct != ($pct | floor)) then "FALLBACK"
+        elif ($pct < 0 or $pct > 100) then "FALLBACK"
+        elif ($an | type) != "array" then "FALLBACK"
+        else
+          ($id | gsub("\u001b\\[[0-9;]*[A-Za-z]"; "")
+               | gsub("\u001b\\][^\u0007\u001b]*(\u0007|\u001b\\\\)"; "")
+               | gsub("[\u0000-\u001f]"; "")) as $clean_id |
+          if ($clean_id | test("^[A-Za-z0-9-]+$")) then
+            "SEG\t\($clean_id)\t\($pct)\t\($an | length)"
+          else "FALLBACK"
+          end
+        end
+      end
+    ' "$_SPRINT_CACHE_FILE" 2>/dev/null)" || _SPRINT_JQ_OUT="FALLBACK"
+
+    case "$_SPRINT_JQ_OUT" in
+      NONE)
+        # Precedence 1: sprint null or closed — no segment, no yaml fallback.
+        _SPRINT_CACHE_HIT=1
+        SPRINT_ID=""
+        ;;
+      SEG*)
+        # Precedence 2: valid cache — extract fields from tab-delimited line.
+        _SPRINT_CACHE_HIT=1
+        IFS=$'\t' read -r _ _S_ID _S_PCT _S_WARN_N <<< "$_SPRINT_JQ_OUT"
+        SPRINT_ID="$_S_ID"
+        _SPRINT_PCT="$_S_PCT"
+        [ "${_S_WARN_N:-0}" -gt 0 ] && _SPRINT_WARN=1
+        ;;
+      *)
+        # Precedence 3: fallback — let the yaml extraction below run.
+        ;;
+    esac
+  fi
+
+  # Yaml extraction — runs only when the cache did not provide the answer.
+  if [ "$_SPRINT_CACHE_HIT" != "1" ] && [ -n "$SPRINT_FILE" ] && [ -r "$SPRINT_FILE" ]; then
     SPRINT_ID="$(grep -E '^sprint_id:' "$SPRINT_FILE" 2>/dev/null | head -1 | sed 's/^sprint_id:[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//' || printf '')"
     # Suppress closed sprints — once /gaia-sprint-close stamps `status: closed`
     # the sprint_id refers to historical state until /gaia-sprint-plan rolls
@@ -521,7 +585,16 @@ if [ -n "$BRANCH" ]; then
 fi
 SPRINT_CHUNK=""
 if [ -n "$SPRINT_ID" ]; then
-  SPRINT_CHUNK="${COLOR_MUTED}${SPRINT_ID}${COLOR_RESET}"
+  if [ -n "$_SPRINT_PCT" ]; then
+    _SP_TEXT="${SPRINT_ID} ${_SPRINT_PCT}%"
+  else
+    _SP_TEXT="$SPRINT_ID"
+  fi
+  if [ "$_SPRINT_WARN" = "1" ]; then
+    SPRINT_CHUNK="${COLOR_WARN:-}${GLYPH_WARN:-!} ${_SP_TEXT}${COLOR_RESET}"
+  else
+    SPRINT_CHUNK="${COLOR_MUTED}${_SP_TEXT}${COLOR_RESET}"
+  fi
 fi
 
 # ---- Rate-limits chunk (redesigned per user req) ---------------------------
