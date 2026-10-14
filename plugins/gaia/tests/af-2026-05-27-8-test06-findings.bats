@@ -117,9 +117,27 @@ teardown() { common_teardown; }
   [ ! -f "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml" ]
 }
 
-@test "dashboard reads what init seeded (no 'not found' error)" {
+@test "dashboard reads what init seeded — fallback path (no 'not found' error)" {
   env PROJECT_PATH="$TEST_TMP" bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --sprint-id sprint-1 >/dev/null 2>&1
-  run env PROJECT_PATH="$TEST_TMP" bash "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
+  # Hide jq to force fallback so the yaml-resolution chain is tested.
+  mkdir -p "$TEST_TMP/nojq-bin"
+  printf '#!/bin/sh\nexit 127\n' > "$TEST_TMP/nojq-bin/jq"
+  chmod +x "$TEST_TMP/nojq-bin/jq"
+
+  run bash -c 'PATH="$1:$PATH" PROJECT_PATH="$2" bash "$3"' _ \
+    "$TEST_TMP/nojq-bin" "$TEST_TMP" "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint-1"* ]]
+  [[ "$output" != *"not found"* ]]
+}
+
+@test "dashboard reads what init seeded — cache path (no 'not found' error)" {
+  command -v jq >/dev/null 2>&1 || { echo "jq is required for this cache-path test" >&2; false; }
+  env PROJECT_PATH="$TEST_TMP" bash "$PLUGIN_ROOT/scripts/sprint-state.sh" init --sprint-id sprint-1 >/dev/null 2>&1
+  # No SPRINT_STATUS_YAML override — the dashboard resolves the yaml via
+  # PROJECT_ROOT and invokes the snapshot to build the cache.
+  run env PROJECT_PATH="$TEST_TMP" GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"sprint-1"* ]]
   [[ "$output" != *"not found"* ]]
@@ -128,12 +146,16 @@ teardown() { common_teardown; }
 @test "dashboard does NOT resolve a stale impl-artifacts copy (mirror retired)" {
   # The implementation-artifacts mirror has been retired. The dashboard must
   # NOT resolve a copy at the legacy path when the canonical .gaia/state/
-  # path is absent.
+  # path is absent. Hide jq to force the fallback yaml-resolution chain.
   mkdir -p "$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   printf 'sprint_id: "s9"\nstatus: active\ntotal_points: 5\ngoals: []\nitems: []\n' \
     > "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-status.yaml"
-  run env PROJECT_PATH="$TEST_TMP" bash "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
-  # Dashboard should report "not found" or fail — it must not read the retired path.
+  mkdir -p "$TEST_TMP/nojq-bin"
+  printf '#!/bin/sh\nexit 127\n' > "$TEST_TMP/nojq-bin/jq"
+  chmod +x "$TEST_TMP/nojq-bin/jq"
+  # The dashboard should NOT discover the retired mirror path.
+  run bash -c 'PATH="$1:$PATH" PROJECT_PATH="$2" bash "$3" 2>/dev/null' _ \
+    "$TEST_TMP/nojq-bin" "$TEST_TMP" "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
   [[ "$output" != *"s9"* ]] || [ "$status" -ne 0 ]
 }
 
