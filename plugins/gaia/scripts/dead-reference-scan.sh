@@ -225,8 +225,8 @@ is_allowlisted() {
   [[ "$path" == */plugins/gaia/scripts/checkpoint.sh ]] && return 0
   # Negated mandate in orchestrator.md ("NEVER execute workflow engine plumbing").
   [[ "$path" == */plugins/gaia/agents/orchestrator.md ]] && return 0
-  # Descriptive mention in _SCHEMA.md (documents what the native model replaces).
-  [[ "$path" == */plugins/gaia/agents/_SCHEMA.md ]] && return 0
+  # Descriptive mention in agent-frontmatter-schema.md (documents what the native model replaces).
+  [[ "$path" == */plugins/gaia/knowledge/agent-frontmatter-schema.md ]] && return 0
   # Test fixtures that must contain legacy paths (they simulate pre-cleanup state).
   [[ "$path" == */test/scripts/fixtures/* ]] && return 0
   # Dead-reference and cleanup tooling itself — the migration CLI and its tests

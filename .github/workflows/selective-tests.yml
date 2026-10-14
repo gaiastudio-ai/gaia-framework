@@ -208,6 +208,14 @@ jobs:
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
         with:
           bats-version: 1.10.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install Claude Code CLI (pinned, offline-safe)
+        env:
+          CLAUDE_CODE_DISABLE_TELEMETRY: '1'
+          NO_COLOR: '1'
+        run: npm install -g @anthropic-ai/claude-code@2.1.296
 
       - name: Run stack tests with retry
         run: |

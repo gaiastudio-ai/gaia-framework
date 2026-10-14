@@ -48,6 +48,14 @@ jobs:
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
         with:
           bats-version: 1.10.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install Claude Code CLI (pinned, offline-safe)
+        env:
+          CLAUDE_CODE_DISABLE_TELEMETRY: '1'
+          NO_COLOR: '1'
+        run: npm install -g @anthropic-ai/claude-code@2.1.296
       # kcov is not in the default apt repositories on Ubuntu 24.04 (noble),
       # which caused `apt-get install -y jq kcov` to fail with "E: Unable to
       # locate package kcov" on every PR and block the bats-tests job before
@@ -102,6 +110,16 @@ jobs:
             --threshold-seconds 240 \
             --label bats-tests \
             -- bash plugins/gaia/tests/run-with-coverage.sh
+      - name: Validate plugin (strict mode)
+        env:
+          CLAUDE_CODE_DISABLE_TELEMETRY: '1'
+          NO_COLOR: '1'
+        run: claude plugin validate --strict plugins/gaia
+      - name: Run plugin mod tests
+        env:
+          CLAUDE_CODE_DISABLE_TELEMETRY: '1'
+          NO_COLOR: '1'
+        run: claude plugin test plugins/gaia
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4

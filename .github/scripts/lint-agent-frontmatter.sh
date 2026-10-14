@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # lint-agent-frontmatter.sh
 # Lints YAML frontmatter of every plugins/gaia/agents/**/*.md file.
-# Required fields per _SCHEMA.md:
+# Required fields per knowledge/agent-frontmatter-schema.md:
 #   name, model, description, context, allowed-tools
 # Also validates:
 #   - context is one of: main | fork
 #   - allowed-tools is a non-empty list (inline [..] or block list)
-# Files starting with underscore (e.g. _SCHEMA.md) that do NOT contain
+# Files starting with underscore (e.g. the schema doc, moved to knowledge/) that do NOT contain
 # frontmatter are skipped as documentation. Abstract template files
 # (e.g. _base-dev.md) MUST still pass the schema.
 # Empty tree is a valid, passing state.
