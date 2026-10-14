@@ -1570,11 +1570,14 @@ _snapshot_main() {
   CONFIG_FILE="${RESOLVED_ROOT}/.gaia/config/project-config.yaml"
   YAML_FILE="${SPRINT_STATUS_YAML:-${STATE_DIR}/sprint-status.yaml}"
 
-  # Guard: when there is no GAIA project (no sprint-status.yaml and no .gaia/
-  # directory), exit silently without creating any files on disk.  Running the
-  # snapshot in an arbitrary non-project directory must leave the filesystem
-  # untouched.
-  if [ ! -f "$YAML_FILE" ] && [ ! -d "${RESOLVED_ROOT}/.gaia" ]; then
+  # Guard: when there is no GAIA project (no sprint-status.yaml and no
+  # .gaia/state/ directory), exit silently without creating any files on disk.
+  # Running the snapshot in an arbitrary non-project directory must leave the
+  # filesystem untouched.  We key on .gaia/state rather than .gaia because
+  # other tools (e.g. the status line) may legitimately create .gaia/memory/
+  # in any directory, and that alone must not trick the snapshot into treating
+  # the directory as a project.
+  if [ ! -f "$YAML_FILE" ] && [ ! -d "${RESOLVED_ROOT}/.gaia/state" ]; then
     exit 0
   fi
 
