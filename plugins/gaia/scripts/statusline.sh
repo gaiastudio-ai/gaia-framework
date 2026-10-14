@@ -10,7 +10,20 @@
 #   p95 wall < 100ms, ceiling < 300ms.
 #
 # Subprocess inventory:
-#   ALLOWED: jq, git symbolic-ref, cat, tput, grep, head, sed, dirname, cmp, cp
+#   ALLOWED (every external command this script can launch, by purpose):
+#     stdin + JSON:          cat, jq
+#     context snapshot:      mkdir, mv, rm
+#     paths + names:         dirname, basename
+#     git-state cache key:   cksum, awk
+#     plugin version scan:   ls, grep, sort, tail
+#     self-heal:             cmp, cp, chmod, mkdir
+#     model name:            sed
+#     branch probe:          git symbolic-ref
+#     release cache age:     date
+#     width:                 tput (only when COLUMNS is unset)
+#     sprint yaml fallback:  grep, head, sed
+#     background refresh:    the installed update-check helper (detached)
+#   A valid sprint progress cache costs one jq call and skips the yaml chain.
 #   FORBIDDEN: any network primitive (structurally enforced by the static
 #              no-network check)
 #
@@ -370,33 +383,62 @@ fi
 # Cache-first: reads .gaia/state/.sprint-progress-cache.json (one jq call) and
 # falls back to sprint-status.yaml (grep chain) only when the cache is missing,
 # unreadable, or carries invalid fields. Walks UP from PROJECT_ROOT (max 5
-# levels) looking for both the cache file and the yaml — shared walk-up loop,
-# no second loop, cache-absent subprocess count unchanged.
+# levels) in one shared loop: at each level the cache is checked first, then
+# the yaml. The loop stops at the first level that holds a yaml, so a cache
+# that sits above that level is not used. No second loop, so the cache-absent
+# subprocess count is unchanged. Only regular files are opened (a FIFO or a
+# device at either path is ignored, so a read can never block the render).
 SPRINT_ID=""
 _SPRINT_PCT=""
 _SPRINT_WARN=0
 _SPRINT_CACHE_HIT=0
+
+# _sl_clean_sprint_id VALUE — set _SL_CLEAN_ID to VALUE with terminal escape
+# sequences and control bytes removed, or to "" when the result is not a plain
+# sprint id. Pure bash (no subprocess, no subshell), bash 3.2 safe. The ASCII
+# allowlist and the length cap are the security control; the stripping only
+# recovers ids that carry a stray escape. Same rules as the cache read below.
+_sl_clean_sprint_id() {
+  local _v="$1" _re_csi _re_osc
+  _re_csi=$'\033''\[[0-9;]*[A-Za-z]'
+  _re_osc=$'\033'']'"[^"$'\007\033'"]*("$'\007'"|"$'\033''\\'")"
+  while [[ $_v =~ $_re_csi ]]; do
+    _v="${_v/"${BASH_REMATCH[0]}"/}"
+  done
+  while [[ $_v =~ $_re_osc ]]; do
+    _v="${_v/"${BASH_REMATCH[0]}"/}"
+  done
+  _v="${_v//[$'\001'-$'\037']/}"
+  _SL_CLEAN_ID=""
+  case "$_v" in
+    ''|*[!A-Za-z0-9-]*) return 0 ;;
+  esac
+  [ "${#_v}" -le 64 ] || return 0
+  _SL_CLEAN_ID="$_v"
+}
+_SL_TAB=$'\t'
+
 if [ "$GAIA_RICH" = "1" ]; then
   SPRINT_FILE=""
   _SPRINT_CACHE_FILE=""
   _SEARCH_DIR="$PROJECT_ROOT"
   _DEPTH=0
   while [ "$_DEPTH" -lt 5 ]; do
-    # Check cache at this level (builtin test, no subprocess).
+    # Check cache at this level (builtin tests, no subprocess).
     if [ -z "$_SPRINT_CACHE_FILE" ]; then
       _CACHE_CANDIDATE="$_SEARCH_DIR/.gaia/state/.sprint-progress-cache.json"
-      if [ -r "$_CACHE_CANDIDATE" ]; then
+      if [ -f "$_CACHE_CANDIDATE" ] && [ -r "$_CACHE_CANDIDATE" ]; then
         _SPRINT_CACHE_FILE="$_CACHE_CANDIDATE"
       fi
     fi
     # Prefer .gaia/state/sprint-status.yaml (canonical location) over legacy docs/.
     _GAIA_CANDIDATE="$_SEARCH_DIR/.gaia/state/sprint-status.yaml"
-    if [ -r "$_GAIA_CANDIDATE" ]; then
+    if [ -f "$_GAIA_CANDIDATE" ] && [ -r "$_GAIA_CANDIDATE" ]; then
       SPRINT_FILE="$_GAIA_CANDIDATE"
       break
     fi
     _CANDIDATE="$_SEARCH_DIR/docs/implementation-artifacts/sprint-status.yaml"
-    if [ -r "$_CANDIDATE" ]; then
+    if [ -f "$_CANDIDATE" ] && [ -r "$_CANDIDATE" ]; then
       SPRINT_FILE="$_CANDIDATE"
       break
     fi
@@ -412,10 +454,18 @@ if [ "$GAIA_RICH" = "1" ]; then
   # ---- Cache-first read: single jq invocation, SEG/NONE/FALLBACK tokens ----
   # Precedence: (1) cache readable + sprint null or closed -> no segment, no
   # yaml fallback; (2) cache readable + valid fields -> full segment from cache;
-  # (3) anything else -> yaml fallback.
+  # (3) anything else -> yaml fallback. Only an explicit `"sprint": null` in a
+  # cache object means "no active sprint"; a document that is not an object or
+  # has no `sprint` key at all (`{}`, `null`) counts as missing fields and
+  # falls back, so an active sprint is never hidden by a foreign file. The
+  # percentage is emitted in canonical integer form (50.0, -0 and 1E+2 render
+  # as 50, 0 and 100), and the id is capped at 64 characters.
   if [ -n "$_SPRINT_CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
     _SPRINT_JQ_OUT="$(jq -r '
-      if .sprint == null then "NONE"
+      if type != "object" then "FALLBACK"
+      elif (has("sprint") | not) then "FALLBACK"
+      elif .sprint == null then "NONE"
+      elif (.sprint | type) != "object" then "FALLBACK"
       elif (.sprint.status // "") == "closed" then "NONE"
       else
         (.sprint.id // null) as $id |
@@ -431,8 +481,8 @@ if [ "$GAIA_RICH" = "1" ]; then
           ($id | gsub("\u001b\\[[0-9;]*[A-Za-z]"; "")
                | gsub("\u001b\\][^\u0007\u001b]*(\u0007|\u001b\\\\)"; "")
                | gsub("[\u0000-\u001f]"; "")) as $clean_id |
-          if ($clean_id | test("^[A-Za-z0-9-]+$")) then
-            "SEG\t\($clean_id)\t\($pct)\t\($an | length)"
+          if ($clean_id | test("^[A-Za-z0-9-]+$")) and (($clean_id | length) <= 64) then
+            "SEG\t\($clean_id)\t\((($pct | floor) + 0) | tostring)\t\($an | length)"
           else "FALLBACK"
           end
         end
@@ -445,13 +495,27 @@ if [ "$GAIA_RICH" = "1" ]; then
         _SPRINT_CACHE_HIT=1
         SPRINT_ID=""
         ;;
-      SEG*)
-        # Precedence 2: valid cache — extract fields from tab-delimited line.
-        _SPRINT_CACHE_HIT=1
-        IFS=$'\t' read -r _ _S_ID _S_PCT _S_WARN_N <<< "$_SPRINT_JQ_OUT"
-        SPRINT_ID="$_S_ID"
-        _SPRINT_PCT="$_S_PCT"
-        [ "${_S_WARN_N:-0}" -gt 0 ] && _SPRINT_WARN=1
+      SEG"$_SL_TAB"*)
+        # Precedence 2: valid cache — split the tab-delimited line with
+        # parameter expansion (no here-string temp file, no subprocess).
+        _S_REST="${_SPRINT_JQ_OUT#SEG"$_SL_TAB"}"
+        _S_ID="${_S_REST%%"$_SL_TAB"*}"
+        _S_REST="${_S_REST#*"$_SL_TAB"}"
+        _S_PCT="${_S_REST%%"$_SL_TAB"*}"
+        _S_WARN_N="${_S_REST#*"$_SL_TAB"}"
+        # Re-check every field in the shell: one id, a 0-100 integer, a count.
+        # Anything else (for example a second JSON document) falls back.
+        _S_OK=1
+        case "$_S_ID" in ''|*[!A-Za-z0-9-]*) _S_OK=0 ;; esac
+        case "$_S_PCT" in ''|*[!0-9]*) _S_OK=0 ;; esac
+        case "$_S_WARN_N" in ''|*[!0-9]*) _S_OK=0 ;; esac
+        if [ "$_S_OK" = "1" ] && [ "${#_S_ID}" -le 64 ] && [ "${#_S_PCT}" -le 3 ] \
+          && [ "$_S_PCT" -le 100 ] && [ "${#_S_WARN_N}" -le 9 ]; then
+          _SPRINT_CACHE_HIT=1
+          SPRINT_ID="$_S_ID"
+          _SPRINT_PCT="$_S_PCT"
+          [ "$_S_WARN_N" -gt 0 ] && _SPRINT_WARN=1
+        fi
         ;;
       *)
         # Precedence 3: fallback — let the yaml extraction below run.
@@ -460,8 +524,12 @@ if [ "$GAIA_RICH" = "1" ]; then
   fi
 
   # Yaml extraction — runs only when the cache did not provide the answer.
-  if [ "$_SPRINT_CACHE_HIT" != "1" ] && [ -n "$SPRINT_FILE" ] && [ -r "$SPRINT_FILE" ]; then
+  # The yaml id goes through the same escape stripping and ASCII allowlist as
+  # the cache id; an id that fails them shows no sprint segment.
+  if [ "$_SPRINT_CACHE_HIT" != "1" ] && [ -n "$SPRINT_FILE" ] && [ -f "$SPRINT_FILE" ] && [ -r "$SPRINT_FILE" ]; then
     SPRINT_ID="$(grep -E '^sprint_id:' "$SPRINT_FILE" 2>/dev/null | head -1 | sed 's/^sprint_id:[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//' || printf '')"
+    _sl_clean_sprint_id "$SPRINT_ID"
+    SPRINT_ID="$_SL_CLEAN_ID"
     # Suppress closed sprints — once /gaia-sprint-close stamps `status: closed`
     # the sprint_id refers to historical state until /gaia-sprint-plan rolls
     # the next sprint forward. Showing a closed sprint id is misleading.
