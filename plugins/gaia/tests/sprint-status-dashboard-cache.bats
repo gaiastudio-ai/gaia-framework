@@ -30,12 +30,247 @@ SNAPSHOT="$SCRIPTS_DIR/sprint-progress-snapshot.sh"
 PLUGIN_TREE="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 
 # ---------------------------------------------------------------------------
-# setup_file — hard-fail when jq is missing (fixture generation needs it)
+# setup_file — generate fixture projects ONCE (real snapshot), then each
+# test copies from these via cp -R instead of re-running the snapshot.
 # ---------------------------------------------------------------------------
 setup_file() {
   if ! command -v jq >/dev/null 2>&1; then
     printf 'FATAL: jq is required for sprint-status-dashboard-cache.bats\n' >&2
     exit 1
+  fi
+
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
+
+  # --- Base fixture (4 stories, 2 phases + unphased, high-risk E900-S1) ---
+  export _SETUP_BASE="$BATS_FILE_TMPDIR/base-fixture"
+  mkdir -p "$_SETUP_BASE/.gaia/state" "$_SETUP_BASE/.gaia/artifacts/implementation-artifacts"
+  cat > "$_SETUP_BASE/.gaia/state/sprint-status.yaml" <<'YAML'
+sprint_id: "sprint-test"
+status: active
+total_points: 21
+start_date: "2026-01-01"
+end_date: "2026-01-14"
+goals:
+  - "Deliver cache dashboard"
+capacity_utilization: "85%"
+epic_focus: "E900 cache mod"
+stories:
+  - key: E900-S1
+    title: "Story with tasks and partial gates"
+    status: in-progress
+    points: 5
+    risk_level: high
+    phase: 1
+  - key: E900-S2
+    title: "Story all done"
+    status: done
+    points: 8
+    risk_level: low
+    phase: 1
+  - key: E900-S3
+    title: "Story in phase two"
+    status: ready-for-dev
+    points: 3
+    risk_level: medium
+    phase: 2
+  - key: E900-S4
+    title: "Unphased story no tasks"
+    status: backlog
+    points: 5
+    risk_level: low
+YAML
+  local epic_dir="$_SETUP_BASE/.gaia/artifacts/implementation-artifacts/epic-e900"
+  mkdir -p "$epic_dir/E900-S1-story-tasks"
+  cat > "$epic_dir/E900-S1-story-tasks/story.md" <<'MD'
+---
+key: "E900-S1"
+status: in-progress
+points: 5
+risk: high
+manual_verification: false
+title: "Story with tasks and partial gates"
+---
+# Story: Story with tasks and partial gates
+## Tasks / Subtasks
+- [x] **T1:** First done
+- [x] **T2:** Second done
+- [ ] **T3:** Third pending
+- [ ] **T4:** Fourth pending
+- [ ] **T5:** Fifth pending
+## Review Gate
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED | ... |
+| QA Tests | PASSED | ... |
+| Security Review | PASSED | ... |
+| Test Automation | PASSED | ... |
+| Test Review | UNVERIFIED | - |
+| Performance Review | UNVERIFIED | - |
+MD
+  mkdir -p "$epic_dir/E900-S2-story-done"
+  cat > "$epic_dir/E900-S2-story-done/story.md" <<'MD'
+---
+key: "E900-S2"
+status: done
+points: 8
+risk: low
+manual_verification: false
+title: "Story all done"
+---
+# Story: Story all done
+## Tasks / Subtasks
+- [x] **T1:** Only task
+## Review Gate
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED | ... |
+| QA Tests | PASSED | ... |
+| Security Review | PASSED | ... |
+| Test Automation | PASSED | ... |
+| Test Review | PASSED | ... |
+| Performance Review | PASSED | ... |
+MD
+  mkdir -p "$epic_dir/E900-S3-story-phase-two"
+  cat > "$epic_dir/E900-S3-story-phase-two/story.md" <<'MD'
+---
+key: "E900-S3"
+status: ready-for-dev
+points: 3
+risk: medium
+manual_verification: false
+title: "Story in phase two"
+---
+# Story: Story in phase two
+## Tasks / Subtasks
+- [ ] **T1:** Pending
+- [ ] **T2:** Also pending
+- [ ] **T3:** Third pending
+## Review Gate
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | - |
+| QA Tests | UNVERIFIED | - |
+| Security Review | UNVERIFIED | - |
+| Test Automation | UNVERIFIED | - |
+| Test Review | UNVERIFIED | - |
+| Performance Review | UNVERIFIED | - |
+MD
+  mkdir -p "$epic_dir/E900-S4-unphased"
+  cat > "$epic_dir/E900-S4-unphased/story.md" <<'MD'
+---
+key: "E900-S4"
+status: backlog
+points: 5
+risk: low
+manual_verification: false
+title: "Unphased story no tasks"
+---
+# Story: Unphased story no tasks
+## Tasks / Subtasks
+## Review Gate
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | - |
+| QA Tests | UNVERIFIED | - |
+| Security Review | UNVERIFIED | - |
+| Test Automation | UNVERIFIED | - |
+| Test Review | UNVERIFIED | - |
+| Performance Review | UNVERIFIED | - |
+MD
+  PROJECT_ROOT="$_SETUP_BASE" \
+    SPRINT_STATUS_YAML="$_SETUP_BASE/.gaia/state/sprint-status.yaml" \
+    GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$SNAPSHOT" 2>/dev/null
+
+  # --- All-done fixture (2 done stories, triggers auto-close) ---
+  export _SETUP_ALLDONE="$BATS_FILE_TMPDIR/alldone-fixture"
+  mkdir -p "$_SETUP_ALLDONE/.gaia/state" "$_SETUP_ALLDONE/.gaia/artifacts/implementation-artifacts"
+  cat > "$_SETUP_ALLDONE/.gaia/state/sprint-status.yaml" <<'YAML'
+sprint_id: "sprint-close"
+status: active
+total_points: 10
+start_date: "2026-02-01"
+end_date: "2026-02-14"
+stories:
+  - key: E900-S5
+    title: "Done alpha"
+    status: done
+    points: 5
+    risk_level: low
+    phase: 1
+  - key: E900-S6
+    title: "Done beta"
+    status: done
+    points: 5
+    risk_level: low
+    phase: 1
+YAML
+  local ad_epic="$_SETUP_ALLDONE/.gaia/artifacts/implementation-artifacts/epic-e900"
+  local key
+  for key in E900-S5 E900-S6; do
+    mkdir -p "$ad_epic/${key}-done"
+    cat > "$ad_epic/${key}-done/story.md" <<MD
+---
+key: "$key"
+status: done
+points: 5
+risk: low
+manual_verification: false
+title: "Done story $key"
+---
+# Story: Done story $key
+## Tasks / Subtasks
+- [x] **T1:** Complete
+## Review Gate
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED | ... |
+| QA Tests | PASSED | ... |
+| Security Review | PASSED | ... |
+| Test Automation | PASSED | ... |
+| Test Review | PASSED | ... |
+| Performance Review | PASSED | ... |
+MD
+  done
+  PROJECT_ROOT="$_SETUP_ALLDONE" \
+    SPRINT_STATUS_YAML="$_SETUP_ALLDONE/.gaia/state/sprint-status.yaml" \
+    GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$SNAPSHOT" 2>/dev/null
+
+  # Record checksums of the shared caches for integrity verification.
+  if command -v sha256sum >/dev/null 2>&1; then
+    _SETUP_BASE_SHA="$(sha256sum "$_SETUP_BASE/.gaia/state/.sprint-progress-cache.json" | awk '{print $1}')"
+    _SETUP_ALLDONE_SHA="$(sha256sum "$_SETUP_ALLDONE/.gaia/state/.sprint-progress-cache.json" | awk '{print $1}')"
+  else
+    _SETUP_BASE_SHA="$(shasum -a 256 "$_SETUP_BASE/.gaia/state/.sprint-progress-cache.json" | awk '{print $1}')"
+    _SETUP_ALLDONE_SHA="$(shasum -a 256 "$_SETUP_ALLDONE/.gaia/state/.sprint-progress-cache.json" | awk '{print $1}')"
+  fi
+  export _SETUP_BASE_SHA _SETUP_ALLDONE_SHA
+
+  # Make the shared trees read-only so any accidental write fails loudly.
+  chmod -R a-w "$_SETUP_BASE" "$_SETUP_ALLDONE"
+}
+
+teardown_file() {
+  # Restore write permission so bats can clean up BATS_FILE_TMPDIR.
+  chmod -R u+w "$_SETUP_BASE" "$_SETUP_ALLDONE" 2>/dev/null || true
+
+  # Verify shared caches were not mutated during the suite.
+  local base_sha alldone_sha
+  if command -v sha256sum >/dev/null 2>&1; then
+    base_sha="$(sha256sum "$_SETUP_BASE/.gaia/state/.sprint-progress-cache.json" | awk '{print $1}')"
+    alldone_sha="$(sha256sum "$_SETUP_ALLDONE/.gaia/state/.sprint-progress-cache.json" | awk '{print $1}')"
+  else
+    base_sha="$(shasum -a 256 "$_SETUP_BASE/.gaia/state/.sprint-progress-cache.json" | awk '{print $1}')"
+    alldone_sha="$(shasum -a 256 "$_SETUP_ALLDONE/.gaia/state/.sprint-progress-cache.json" | awk '{print $1}')"
+  fi
+  if [ "$base_sha" != "$_SETUP_BASE_SHA" ]; then
+    printf 'FAIL: shared base cache was mutated during the suite\n' >&2
+    return 1
+  fi
+  if [ "$alldone_sha" != "$_SETUP_ALLDONE_SHA" ]; then
+    printf 'FAIL: shared alldone cache was mutated during the suite\n' >&2
+    return 1
   fi
 }
 
@@ -92,223 +327,27 @@ _shim_count() {
 }
 
 # ---------------------------------------------------------------------------
-# Fixture helpers
+# Fixture helpers — copy from the pre-generated trees in BATS_FILE_TMPDIR.
 # ---------------------------------------------------------------------------
 
-# _mk_fixture_project — create a minimal project tree with sprint-status.yaml
-# and story files, then run the REAL snapshot to produce a cache.
-# Sets CACHE_PATH to the generated cache file.
+# _mk_fixture_project — point CACHE_PATH at the pre-generated cache.
+# Most tests set SPRINT_CACHE_JSON to a jq-mutated copy, so they only
+# need the cache JSON, not the full project tree. Tests that need the
+# full tree for snapshot invocation call _mk_fixture_project_full.
+# _mk_fixture_project — set CACHE_PATH to the pre-generated cache.
+# The shared tree under _SETUP_BASE is read-only; tests that need to
+# mutate get a copy via jq into $TEST_TMP and set SPRINT_CACHE_JSON.
+# Tests that need the full tree (snapshot shim, fallback, bash 3.2)
+# should cp -R _SETUP_BASE into TEST_TMP themselves.
 _mk_fixture_project() {
-  local root="$TEST_TMP/fixture"
-  mkdir -p "$root/.gaia/state"
-  mkdir -p "$root/.gaia/artifacts/implementation-artifacts"
-
-  cat > "$root/.gaia/state/sprint-status.yaml" <<'YAML'
-sprint_id: "sprint-test"
-status: active
-total_points: 21
-start_date: "2026-01-01"
-end_date: "2026-01-14"
-goals:
-  - "Deliver cache dashboard"
-capacity_utilization: "85%"
-epic_focus: "E900 cache mod"
-stories:
-  - key: E900-S1
-    title: "Story with tasks and partial gates"
-    status: in-progress
-    points: 5
-    risk_level: high
-    phase: 1
-  - key: E900-S2
-    title: "Story all done"
-    status: done
-    points: 8
-    risk_level: low
-    phase: 1
-  - key: E900-S3
-    title: "Story in phase two"
-    status: ready-for-dev
-    points: 3
-    risk_level: medium
-    phase: 2
-  - key: E900-S4
-    title: "Unphased story no tasks"
-    status: backlog
-    points: 5
-    risk_level: low
-YAML
-
-  local epic_dir="$root/.gaia/artifacts/implementation-artifacts/epic-e900"
-  mkdir -p "$epic_dir/E900-S1-story-tasks"
-  cat > "$epic_dir/E900-S1-story-tasks/story.md" <<'MD'
----
-key: "E900-S1"
-status: in-progress
-points: 5
-risk: high
-manual_verification: false
-title: "Story with tasks and partial gates"
----
-# Story: Story with tasks and partial gates
-## Tasks / Subtasks
-- [x] **T1:** First done
-- [x] **T2:** Second done
-- [ ] **T3:** Third pending
-- [ ] **T4:** Fourth pending
-- [ ] **T5:** Fifth pending
-## Review Gate
-| Review | Status | Report |
-|--------|--------|--------|
-| Code Review | PASSED | ... |
-| QA Tests | PASSED | ... |
-| Security Review | PASSED | ... |
-| Test Automation | PASSED | ... |
-| Test Review | UNVERIFIED | - |
-| Performance Review | UNVERIFIED | - |
-MD
-
-  mkdir -p "$epic_dir/E900-S2-story-done"
-  cat > "$epic_dir/E900-S2-story-done/story.md" <<'MD'
----
-key: "E900-S2"
-status: done
-points: 8
-risk: low
-manual_verification: false
-title: "Story all done"
----
-# Story: Story all done
-## Tasks / Subtasks
-- [x] **T1:** Only task
-## Review Gate
-| Review | Status | Report |
-|--------|--------|--------|
-| Code Review | PASSED | ... |
-| QA Tests | PASSED | ... |
-| Security Review | PASSED | ... |
-| Test Automation | PASSED | ... |
-| Test Review | PASSED | ... |
-| Performance Review | PASSED | ... |
-MD
-
-  mkdir -p "$epic_dir/E900-S3-story-phase-two"
-  cat > "$epic_dir/E900-S3-story-phase-two/story.md" <<'MD'
----
-key: "E900-S3"
-status: ready-for-dev
-points: 3
-risk: medium
-manual_verification: false
-title: "Story in phase two"
----
-# Story: Story in phase two
-## Tasks / Subtasks
-- [ ] **T1:** Pending
-- [ ] **T2:** Also pending
-- [ ] **T3:** Third pending
-## Review Gate
-| Review | Status | Report |
-|--------|--------|--------|
-| Code Review | UNVERIFIED | - |
-| QA Tests | UNVERIFIED | - |
-| Security Review | UNVERIFIED | - |
-| Test Automation | UNVERIFIED | - |
-| Test Review | UNVERIFIED | - |
-| Performance Review | UNVERIFIED | - |
-MD
-
-  mkdir -p "$epic_dir/E900-S4-unphased"
-  cat > "$epic_dir/E900-S4-unphased/story.md" <<'MD'
----
-key: "E900-S4"
-status: backlog
-points: 5
-risk: low
-manual_verification: false
-title: "Unphased story no tasks"
----
-# Story: Unphased story no tasks
-## Tasks / Subtasks
-## Review Gate
-| Review | Status | Report |
-|--------|--------|--------|
-| Code Review | UNVERIFIED | - |
-| QA Tests | UNVERIFIED | - |
-| Security Review | UNVERIFIED | - |
-| Test Automation | UNVERIFIED | - |
-| Test Review | UNVERIFIED | - |
-| Performance Review | UNVERIFIED | - |
-MD
-
-  PROJECT_ROOT="$root" \
-    SPRINT_STATUS_YAML="$root/.gaia/state/sprint-status.yaml" \
-    GAIA_SNAPSHOT_HOOK_DISABLE=1 \
-    bash "$SNAPSHOT" 2>/dev/null
-
-  CACHE_PATH="$root/.gaia/state/.sprint-progress-cache.json"
+  CACHE_PATH="$_SETUP_BASE/.gaia/state/.sprint-progress-cache.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
 }
 
-# _mk_alldone_fixture — sprint where all stories are done (triggers auto-close)
+# _mk_alldone_fixture — same pattern for the all-done fixture.
 _mk_alldone_fixture() {
-  local root="$TEST_TMP/alldonefixture"
-  mkdir -p "$root/.gaia/state"
-  mkdir -p "$root/.gaia/artifacts/implementation-artifacts"
-
-  cat > "$root/.gaia/state/sprint-status.yaml" <<'YAML'
-sprint_id: "sprint-close"
-status: active
-total_points: 10
-start_date: "2026-02-01"
-end_date: "2026-02-14"
-stories:
-  - key: E900-S5
-    title: "Done alpha"
-    status: done
-    points: 5
-    risk_level: low
-    phase: 1
-  - key: E900-S6
-    title: "Done beta"
-    status: done
-    points: 5
-    risk_level: low
-    phase: 1
-YAML
-
-  local epic_dir="$root/.gaia/artifacts/implementation-artifacts/epic-e900"
-  for key in E900-S5 E900-S6; do
-    mkdir -p "$epic_dir/${key}-done"
-    cat > "$epic_dir/${key}-done/story.md" <<MD
----
-key: "$key"
-status: done
-points: 5
-risk: low
-manual_verification: false
-title: "Done story $key"
----
-# Story: Done story $key
-## Tasks / Subtasks
-- [x] **T1:** Complete
-## Review Gate
-| Review | Status | Report |
-|--------|--------|--------|
-| Code Review | PASSED | ... |
-| QA Tests | PASSED | ... |
-| Security Review | PASSED | ... |
-| Test Automation | PASSED | ... |
-| Test Review | PASSED | ... |
-| Performance Review | PASSED | ... |
-MD
-  done
-
-  PROJECT_ROOT="$root" \
-    SPRINT_STATUS_YAML="$root/.gaia/state/sprint-status.yaml" \
-    GAIA_SNAPSHOT_HOOK_DISABLE=1 \
-    bash "$SNAPSHOT" 2>/dev/null
-
-  CACHE_PATH="$root/.gaia/state/.sprint-progress-cache.json"
+  CACHE_PATH="$_SETUP_ALLDONE/.gaia/state/.sprint-progress-cache.json"
+  export PROJECT_ROOT="$_SETUP_ALLDONE"
 }
 
 # ===========================================================================
@@ -318,7 +357,7 @@ MD
 @test "tasks column shows done/total for a story with tasks (e.g. 2/5)" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -329,7 +368,7 @@ MD
 @test "tasks column shows done/total for a fully-complete story (e.g. 1/1)" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -340,7 +379,7 @@ MD
 @test "tasks column shows 0/3 for a story with no done tasks" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -351,7 +390,7 @@ MD
 @test "tasks column shows standalone dash when tasks total is 0" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -374,7 +413,7 @@ MD
 @test "table header includes Tasks column" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -391,7 +430,7 @@ MD
 @test "gates column shows passed/6 for a partially-gated story (e.g. 4/6)" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -402,7 +441,7 @@ MD
 @test "gates column shows 6/6 for a fully-gated story" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -413,7 +452,7 @@ MD
 @test "gates column shows 0/6 for a story with no gates passed" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -424,7 +463,7 @@ MD
 @test "table header includes Gates column" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -441,7 +480,7 @@ MD
 @test "stories grouped by phase with phase header lines" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -454,7 +493,7 @@ MD
 @test "phase header shows status label (done/active/future)" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -467,7 +506,7 @@ MD
 @test "unphased stories appear in a separate Unphased group at the end" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -485,7 +524,7 @@ MD
 @test "stories within a phase preserve yaml order" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -568,7 +607,7 @@ MD
   jq '.action_needed = [{"rule":"a","type":"manual_test_due","message":"Test due for E900-S1","command":"","since":"","source":"","story_keys":["E900-S1"]}]' \
     "$CACHE_PATH" > "$TEST_TMP/has-action.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/has-action.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -582,7 +621,7 @@ MD
   _mk_fixture_project
   jq '.action_needed = []' "$CACHE_PATH" > "$TEST_TMP/empty-action.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/empty-action.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -596,7 +635,7 @@ MD
   jq '.action_needed = [{"rule":"a","type":"manual_test_due","message":"Manual test due for E900-S1","command":"/gaia-test-manual","since":"2026-01-01","source":"story-file","story_keys":["E900-S1"]}]' \
     "$CACHE_PATH" > "$TEST_TMP/one-action.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/one-action.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -613,7 +652,7 @@ MD
     {"rule":"c","type":"action_item_assigned","message":"Action item assigned","command":"","since":"","source":"","story_keys":[],"item_id":"item-1"}
   ]' "$CACHE_PATH" > "$TEST_TMP/multi-action.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/multi-action.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -645,7 +684,7 @@ MD
   items="$items]"
   jq --argjson items "$items" '.action_needed = $items' "$CACHE_PATH" > "$TEST_TMP/many-action.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/many-action.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -661,7 +700,7 @@ MD
 @test "high-risk story gets inline mitigation annotation from cache" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
   # The fixture's E900-S1 has risk_level: high in the yaml and cache.
 
   run bash "$DASHBOARD"
@@ -680,7 +719,7 @@ MD
 @test "high-risk story triggers the recommended mitigations block" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -694,7 +733,7 @@ MD
   # Mutate cache: make ALL stories medium risk (no high)
   jq '.stories |= map(.risk_level = "medium")' "$CACHE_PATH" > "$TEST_TMP/all-medium.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/all-medium.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -708,7 +747,7 @@ MD
   _mk_fixture_project
   jq '.stories |= map(.risk_level = "low")' "$CACHE_PATH" > "$TEST_TMP/all-low.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/all-low.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -726,7 +765,7 @@ MD
   _mk_fixture_project
   jq '.sprint = null' "$CACHE_PATH" > "$TEST_TMP/null-sprint.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/null-sprint.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -737,7 +776,7 @@ MD
   _mk_fixture_project
   jq '.sprint.status = "closed"' "$CACHE_PATH" > "$TEST_TMP/closed-sprint.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/closed-sprint.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -748,11 +787,13 @@ MD
   _mk_fixture_project
   jq '.sprint = null' "$CACHE_PATH" > "$TEST_TMP/null-sprint2.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/null-sprint2.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
 
-  mkdir -p "$TEST_TMP/fixture/.gaia/memory/validator-sidecar"
-  local art_dir="$TEST_TMP/fixture/.gaia/artifacts/implementation-artifacts"
-  cat > "$art_dir/E900-S9-stranded.md" <<'MD'
+  # The stranded scanner needs a writable project tree with story files
+  # and a decision log. Build a minimal one under TEST_TMP.
+  local sr_root="$TEST_TMP/stranded-project"
+  mkdir -p "$sr_root/.gaia/memory/validator-sidecar"
+  mkdir -p "$sr_root/.gaia/artifacts/implementation-artifacts"
+  cat > "$sr_root/.gaia/artifacts/implementation-artifacts/E900-S9-stranded.md" <<'MD'
 ---
 key: "E900-S9"
 status: ready-for-dev
@@ -761,12 +802,14 @@ title: "Stranded story"
 ---
 # Story: Stranded story
 MD
-  cat > "$TEST_TMP/fixture/.gaia/memory/validator-sidecar/decision-log.md" <<'MD'
+  cat > "$sr_root/.gaia/memory/validator-sidecar/decision-log.md" <<'MD'
 ### [2026-01-01] Story Validation: E900-S9
 ```json
 {"verdict":"PASSED"}
 ```
 MD
+  export PROJECT_ROOT="$sr_root"
+  export PROJECT_PATH="$sr_root"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -778,11 +821,12 @@ MD
 # ===========================================================================
 
 @test "absent cache triggers exactly 1 snapshot invocation" {
-  _mk_fixture_project
-  # Remove the cache so it is absent
-  rm -f "$CACHE_PATH"
+  # Needs its own copy — removes the cache file.
+  local root="$TEST_TMP/fixture"
+  cp -R "$_SETUP_BASE" "$root"; chmod -R u+w "$root"
+  rm -f "$root/.gaia/state/.sprint-progress-cache.json"
   _mk_snapshot_shim
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$root"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -792,16 +836,17 @@ MD
 }
 
 @test "stale cache (>60s) triggers exactly 1 snapshot invocation" {
-  _mk_fixture_project
+  # Needs its own copy — touches the cache mtime.
+  local root="$TEST_TMP/fixture"
+  cp -R "$_SETUP_BASE" "$root"; chmod -R u+w "$root"
   _mk_snapshot_shim
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$root"
 
-  # Age the cache beyond 60s
   local old_epoch
   old_epoch=$(( $(date +%s) - 120 ))
   local old_date
   old_date="$(_epoch_to_touchdate "$old_epoch")"
-  touch -t "$old_date" "$CACHE_PATH"
+  touch -t "$old_date" "$root/.gaia/state/.sprint-progress-cache.json"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -811,10 +856,13 @@ MD
 }
 
 @test "fresh cache without SPRINT_CACHE_JSON triggers 0 snapshot invocations" {
-  _mk_fixture_project
+  # Needs its own copy — runs dashboard without SPRINT_CACHE_JSON.
+  # Explicitly touch the cache to now so it is fresh regardless of suite duration.
+  local root="$TEST_TMP/fixture"
+  cp -R "$_SETUP_BASE" "$root"; chmod -R u+w "$root"
+  touch "$root/.gaia/state/.sprint-progress-cache.json"
   _mk_snapshot_shim
-  export PROJECT_ROOT="$TEST_TMP/fixture"
-  # Cache is fresh (just generated); do NOT set SPRINT_CACHE_JSON
+  export PROJECT_ROOT="$root"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -824,18 +872,19 @@ MD
 }
 
 @test "SPRINT_CACHE_JSON override triggers 0 snapshot invocations even when stale" {
-  _mk_fixture_project
+  # Needs its own copy — touches the cache mtime.
+  local root="$TEST_TMP/fixture"
+  cp -R "$_SETUP_BASE" "$root"; chmod -R u+w "$root"
+  local cache="$root/.gaia/state/.sprint-progress-cache.json"
   _mk_snapshot_shim
-  export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export SPRINT_CACHE_JSON="$cache"
+  export PROJECT_ROOT="$root"
 
-  # Make the override cache STALE (>60s). Without the override branch the
-  # non-override logic would invoke the snapshot because the file is old.
   local old_epoch
   old_epoch=$(( $(date +%s) - 120 ))
   local old_date
   old_date="$(_epoch_to_touchdate "$old_epoch")"
-  touch -t "$old_date" "$CACHE_PATH"
+  touch -t "$old_date" "$cache"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -848,8 +897,8 @@ MD
   _mk_fixture_project
   _mk_snapshot_shim
   export SPRINT_CACHE_JSON="$TEST_TMP/nonexistent-override.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
-  export SPRINT_STATUS_YAML="$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
+  export PROJECT_ROOT="$_SETUP_BASE"
+  export SPRINT_STATUS_YAML="$_SETUP_BASE/.gaia/state/sprint-status.yaml"
 
   run bash "$DASHBOARD"
   # Fallback renders, no crash
@@ -866,8 +915,8 @@ MD
 @test "SPRINT_CACHE_JSON nonexistent file: fallback with stderr notice" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$TEST_TMP/nonexistent-cache.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
-  export SPRINT_STATUS_YAML="$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
+  export PROJECT_ROOT="$_SETUP_BASE"
+  export SPRINT_STATUS_YAML="$_SETUP_BASE/.gaia/state/sprint-status.yaml"
 
   local stderr_file="$TEST_TMP/stderr-nonexist.log"
   run bash -c 'bash "$1" 2>"$2"' _ "$DASHBOARD" "$stderr_file"
@@ -886,9 +935,10 @@ MD
 }
 
 @test "SPRINT_STATUS_YAML set without SPRINT_CACHE_JSON: fallback with stderr notice" {
+  # SPRINT_STATUS_YAML forces fallback immediately — no snapshot, no
+  # shared-tree mutation. Safe to use the shared tree as PROJECT_ROOT.
   _mk_fixture_project
-  export SPRINT_STATUS_YAML="$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export SPRINT_STATUS_YAML="$_SETUP_BASE/.gaia/state/sprint-status.yaml"
 
   local stderr_file="$TEST_TMP/stderr-yamlonly.log"
   run bash -c 'bash "$1" 2>"$2"' _ "$DASHBOARD" "$stderr_file"
@@ -905,15 +955,13 @@ MD
 }
 
 @test "jq absent: fallback with stderr notice" {
+  # jq hidden by PATH shim. No SPRINT_STATUS_YAML — tests the jq-absent
+  # branch specifically. The fallback resolves the yaml from PROJECT_ROOT.
+  # Safe on the shared tree: the fallback path only reads.
   _mk_fixture_project
-  export PROJECT_ROOT="$TEST_TMP/fixture"
-  export SPRINT_STATUS_YAML="$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
 
   mkdir -p "$TEST_TMP/nojq-bin"
-  cat > "$TEST_TMP/nojq-bin/jq" <<'SH'
-#!/bin/sh
-exit 127
-SH
+  printf '#!/bin/sh\nexit 127\n' > "$TEST_TMP/nojq-bin/jq"
   chmod +x "$TEST_TMP/nojq-bin/jq"
 
   local stderr_file="$TEST_TMP/stderr-nojq.log"
@@ -930,8 +978,8 @@ SH
   _mk_fixture_project
   echo '{"invalid' > "$TEST_TMP/bad-cache.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/bad-cache.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
-  export SPRINT_STATUS_YAML="$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
+  export PROJECT_ROOT="$_SETUP_BASE"
+  export SPRINT_STATUS_YAML="$_SETUP_BASE/.gaia/state/sprint-status.yaml"
 
   local stderr_file="$TEST_TMP/stderr-badjson.log"
   run bash -c 'bash "$1" 2>"$2"' _ "$DASHBOARD" "$stderr_file"
@@ -951,8 +999,8 @@ SH
   _mk_fixture_project
   : > "$TEST_TMP/empty-cache.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/empty-cache.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
-  export SPRINT_STATUS_YAML="$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
+  export PROJECT_ROOT="$_SETUP_BASE"
+  export SPRINT_STATUS_YAML="$_SETUP_BASE/.gaia/state/sprint-status.yaml"
 
   local stderr_file="$TEST_TMP/stderr-empty.log"
   run bash -c 'bash "$1" 2>"$2"' _ "$DASHBOARD" "$stderr_file"
@@ -1004,16 +1052,15 @@ YAML
 
 @test "fresh empty cache without override: fallback with notice and active sprint rendered" {
   # A zero-byte cache with a fresh mtime must NOT be treated as valid.
-  # The dashboard must fall back to the yaml and render the active sprint.
-  _mk_fixture_project
-  # Overwrite the cache with an empty file (fresh mtime)
-  : > "$TEST_TMP/fixture/.gaia/state/.sprint-progress-cache.json"
-  # Point snapshot at a failing script so it cannot rebuild
+  # Needs a writable project tree since the cache is at PROJECT_ROOT.
+  local root="$TEST_TMP/empty-cache-proj"
+  cp -R "$_SETUP_BASE" "$root"; chmod -R u+w "$root"
+  : > "$root/.gaia/state/.sprint-progress-cache.json"
   mkdir -p "$TEST_TMP/failsnap"
   printf '#!/bin/sh\nexit 3\n' > "$TEST_TMP/failsnap/snap.sh"
   chmod +x "$TEST_TMP/failsnap/snap.sh"
   export SPRINT_PROGRESS_SNAPSHOT="$TEST_TMP/failsnap/snap.sh"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$root"
   # Do NOT set SPRINT_STATUS_YAML — let the dashboard use the non-override path
 
   local stderr_file="$TEST_TMP/stderr-fresh-empty.log"
@@ -1034,21 +1081,19 @@ YAML
 }
 
 @test "stale valid cache with failing snapshot: fallback with notice" {
-  # A stale cache that is valid JSON should NOT be silently rendered when
-  # the snapshot fails. AC6 requires fallback with a notice.
-  _mk_fixture_project
-  # Age the cache beyond 60s
+  # Needs its own copy — touches the cache mtime.
+  local root="$TEST_TMP/fixture"
+  cp -R "$_SETUP_BASE" "$root"; chmod -R u+w "$root"
   local old_epoch
   old_epoch=$(( $(date +%s) - 120 ))
   local old_date
   old_date="$(_epoch_to_touchdate "$old_epoch")"
-  touch -t "$old_date" "$CACHE_PATH"
-  # Point snapshot at a failing script
+  touch -t "$old_date" "$root/.gaia/state/.sprint-progress-cache.json"
   mkdir -p "$TEST_TMP/failsnap2"
   printf '#!/bin/sh\nexit 3\n' > "$TEST_TMP/failsnap2/snap.sh"
   chmod +x "$TEST_TMP/failsnap2/snap.sh"
   export SPRINT_PROGRESS_SNAPSHOT="$TEST_TMP/failsnap2/snap.sh"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$root"
   # Do NOT set SPRINT_STATUS_YAML
 
   local stderr_file="$TEST_TMP/stderr-stale-fail.log"
@@ -1068,16 +1113,15 @@ YAML
 }
 
 @test "fresh cache with wrong-shape JSON: fallback with notice, no ghost sprint" {
-  # A cache containing valid JSON but not the expected shape (missing
-  # sprint/stories keys) must trigger fallback — NOT print "No active sprint".
-  _mk_fixture_project
-  # Overwrite cache with valid but wrong-shape JSON
-  printf '[]' > "$TEST_TMP/fixture/.gaia/state/.sprint-progress-cache.json"
+  # A cache with valid JSON but wrong shape must trigger fallback.
+  local root="$TEST_TMP/wrongshape-proj"
+  cp -R "$_SETUP_BASE" "$root"; chmod -R u+w "$root"
+  printf '[]' > "$root/.gaia/state/.sprint-progress-cache.json"
   mkdir -p "$TEST_TMP/failsnap3"
   printf '#!/bin/sh\nexit 3\n' > "$TEST_TMP/failsnap3/snap.sh"
   chmod +x "$TEST_TMP/failsnap3/snap.sh"
   export SPRINT_PROGRESS_SNAPSHOT="$TEST_TMP/failsnap3/snap.sh"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$root"
   # Do NOT set SPRINT_STATUS_YAML
 
   local stderr_file="$TEST_TMP/stderr-wrong-shape.log"
@@ -1131,24 +1175,24 @@ YAML
 
 @test "enhanced path works with unreadable yaml and story files (behavioural proof)" {
   # The cache path must render the full enhanced table even when the
-  # sprint-status.yaml and story files are unreadable.
-  _mk_fixture_project
-  export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  # sprint-status.yaml and story files are unreadable. Needs a writable
+  # copy to chmod files.
+  local root="$TEST_TMP/unreadable-proof"
+  cp -R "$_SETUP_BASE" "$root"; chmod -R u+w "$root"
+  touch "$root/.gaia/state/.sprint-progress-cache.json"
+  export SPRINT_CACHE_JSON="$root/.gaia/state/.sprint-progress-cache.json"
+  export PROJECT_ROOT="$root"
 
-  # Make the yaml and all story files unreadable
-  chmod 000 "$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
-  find "$TEST_TMP/fixture/.gaia/artifacts" -name 'story.md' -exec chmod 000 {} \;
+  chmod 000 "$root/.gaia/state/sprint-status.yaml"
+  find "$root/.gaia/artifacts" -name 'story.md' -exec chmod 000 {} \;
 
   run bash "$DASHBOARD"
 
-  # Restore permissions before any assertion can fail (so teardown works)
-  chmod 644 "$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
-  find "$TEST_TMP/fixture/.gaia/artifacts" -name 'story.md' -exec chmod 644 {} \;
+  chmod 644 "$root/.gaia/state/sprint-status.yaml"
+  find "$root/.gaia/artifacts" -name 'story.md' -exec chmod 644 {} \;
 
   [ "$status" -eq 0 ]
   _assert_cache_columns
-  # Must render stories from cache
   [[ "$output" =~ "E900-S1" ]]
   [[ "$output" =~ "Phase 1" ]]
 }
@@ -1167,7 +1211,7 @@ YAML
   jq '.stories[0].title = "Evil\u001b[31mRed\u001b[0m Title"' \
     "$CACHE_PATH" > "$TEST_TMP/ansi-title.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/ansi-title.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1189,7 +1233,7 @@ YAML
   jq '.action_needed = [{"rule":"a","type":"manual_test_due","message":"Evil\u001b]0;pwned\u0007 msg","command":"","since":"","source":"","story_keys":["E900-S1"]}]' \
     "$CACHE_PATH" > "$TEST_TMP/osc-bel.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/osc-bel.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1212,7 +1256,7 @@ YAML
   jq '.stories[0].title = "Pre\u001b]0;title\u001b\\Post"' \
     "$CACHE_PATH" > "$TEST_TMP/osc-st.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/osc-st.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1232,7 +1276,7 @@ YAML
   jq '.sprint.goal = "Goal\u001b[?47hEvil\u001b[?47l"' \
     "$CACHE_PATH" > "$TEST_TMP/goal-esc.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/goal-esc.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1253,7 +1297,7 @@ YAML
   jq '.sprint.id = "sprint\u0001\u0002-evil"' \
     "$CACHE_PATH" > "$TEST_TMP/ctrl-id.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/ctrl-id.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1271,7 +1315,7 @@ YAML
   jq '.sprint.end_date = "2026-01-14\u007f"' \
     "$CACHE_PATH" > "$TEST_TMP/date-del.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/date-del.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1288,7 +1332,7 @@ YAML
   jq '.stories[0].title = "Pre\u009BmPost"' \
     "$CACHE_PATH" > "$TEST_TMP/c1-csi.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/c1-csi.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1306,7 +1350,7 @@ YAML
   jq '.sprint.capacity_utilization = "85%\u009Dpwned"' \
     "$CACHE_PATH" > "$TEST_TMP/c1-osc.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/c1-osc.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1323,7 +1367,7 @@ YAML
   jq '.sprint.epic_focus = "Focus\u0085evil"' \
     "$CACHE_PATH" > "$TEST_TMP/c1-nel.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/c1-nel.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1344,7 +1388,7 @@ YAML
   # We rely on the jq approach with surrogate-pair-like content
   jq '.sprint.start_date = "2026-�-01"' "$CACHE_PATH" > "$TEST_TMP/bad-utf8.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/bad-utf8.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1361,7 +1405,7 @@ YAML
   jq '.stories[0].title = "Title�here"' \
     "$CACHE_PATH" > "$TEST_TMP/fffd-title.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/fffd-title.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1382,7 +1426,7 @@ YAML
   jq '.stories[0].key = "; rm -rf /" | .phases[0].stories[0] = "; rm -rf /"' \
     "$CACHE_PATH" > "$TEST_TMP/bad-key.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/bad-key.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1398,7 +1442,7 @@ YAML
   jq '.stories[0].status = "hacked"' \
     "$CACHE_PATH" > "$TEST_TMP/bad-status.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/bad-status.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1413,7 +1457,7 @@ YAML
   jq '.phases[0].status = "evil"' \
     "$CACHE_PATH" > "$TEST_TMP/bad-phase-status.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/bad-phase-status.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1430,7 +1474,7 @@ YAML
 @test "header shows sprint id from cache" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1441,7 +1485,7 @@ YAML
 @test "header shows dates from cache" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1453,7 +1497,7 @@ YAML
 @test "header shows duration from cache total_days" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1465,7 +1509,7 @@ YAML
   _mk_fixture_project
   jq '.sprint.total_days = null' "$CACHE_PATH" > "$TEST_TMP/no-duration.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/no-duration.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1476,7 +1520,7 @@ YAML
 @test "utilization line shown when present in cache" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1489,7 +1533,7 @@ YAML
   _mk_fixture_project
   jq '.sprint.capacity_utilization = null' "$CACHE_PATH" > "$TEST_TMP/no-util.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/no-util.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1500,7 +1544,7 @@ YAML
 @test "focus line shown when present in cache" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1512,7 +1556,7 @@ YAML
   _mk_fixture_project
   jq '.sprint.epic_focus = null' "$CACHE_PATH" > "$TEST_TMP/no-focus.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/no-focus.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1523,7 +1567,7 @@ YAML
 @test "goal line shown when sprint.goal is non-null" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1536,7 +1580,7 @@ YAML
   _mk_fixture_project
   jq '.sprint.goal = null' "$CACHE_PATH" > "$TEST_TMP/no-goal.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/no-goal.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1547,7 +1591,7 @@ YAML
 @test "footer shows total stories and points from cache" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1587,7 +1631,7 @@ YAML
   _mk_fixture_project
   jq '.sprint.total_days = "abc"' "$CACHE_PATH" > "$TEST_TMP/nan-days.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-days.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1600,7 +1644,7 @@ YAML
   _mk_fixture_project
   jq '.sprint.total_days = null' "$CACHE_PATH" > "$TEST_TMP/null-days2.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/null-days2.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1612,7 +1656,7 @@ YAML
   _mk_fixture_project
   jq '.stories[0].points = "xyz"' "$CACHE_PATH" > "$TEST_TMP/nan-pts.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-pts.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1625,7 +1669,7 @@ YAML
   _mk_fixture_project
   jq '.stories[0].tasks.done = "bad"' "$CACHE_PATH" > "$TEST_TMP/nan-td.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-td.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1638,7 +1682,7 @@ YAML
   _mk_fixture_project
   jq '.stories[0].tasks.total = "nope"' "$CACHE_PATH" > "$TEST_TMP/nan-tt.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-tt.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1651,7 +1695,7 @@ YAML
   _mk_fixture_project
   jq '.stories[0].gates.passed = "err"' "$CACHE_PATH" > "$TEST_TMP/nan-gp.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-gp.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1664,7 +1708,7 @@ YAML
   _mk_fixture_project
   jq '.stories[0].gates.total = "oops"' "$CACHE_PATH" > "$TEST_TMP/nan-gt.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-gt.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1677,7 +1721,7 @@ YAML
   _mk_fixture_project
   jq '.phases[0].phase = "bogus"' "$CACHE_PATH" > "$TEST_TMP/nan-phase.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-phase.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1690,7 +1734,7 @@ YAML
   _mk_fixture_project
   jq '.totals.total_stories = "nan"' "$CACHE_PATH" > "$TEST_TMP/nan-ts.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-ts.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1703,7 +1747,7 @@ YAML
   _mk_fixture_project
   jq '.totals.total_points = "nan"' "$CACHE_PATH" > "$TEST_TMP/nan-tp.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/nan-tp.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1737,7 +1781,7 @@ YAML
   jq '.stories[0].title = "This is a very long story title that should definitely be truncated to fit within the table column width preserving alignment"' \
     "$CACHE_PATH" > "$TEST_TMP/long-title.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/long-title.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1756,7 +1800,7 @@ YAML
     .stories[1].risk_level = "high" | .stories[1].gates.passed = "bad"
   ' "$CACHE_PATH" > "$TEST_TMP/gates-align.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/gates-align.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1783,7 +1827,7 @@ YAML
   jq '.stories[0].title = "éééééééééééééééééééé"' \
     "$CACHE_PATH" > "$TEST_TMP/multibyte-title.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/multibyte-title.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1806,7 +1850,7 @@ YAML
 @test "nothing written outside BATS_TEST_TMPDIR" {
   _mk_fixture_project
   export SPRINT_CACHE_JSON="$CACHE_PATH"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   # Content-based snapshot: count + hash of files in write targets.
   local plugin_before
@@ -1853,7 +1897,7 @@ _require_bin_bash() {
   jq '.action_needed = [{"rule":"a","type":"manual_test_due","message":"Test due","command":"","since":"","source":"","story_keys":["E900-S1"]}]' \
     "$CACHE_PATH" > "$TEST_TMP/bash32-cache.json"
   export SPRINT_CACHE_JSON="$TEST_TMP/bash32-cache.json"
-  export PROJECT_ROOT="$TEST_TMP/fixture"
+  export PROJECT_ROOT="$_SETUP_BASE"
 
   run "$BIN_BASH" "$DASHBOARD"
   [ "$status" -eq 0 ]
@@ -1897,8 +1941,8 @@ YAML
 @test "bash 3.2: jq-absent fallback" {
   _require_bin_bash
   _mk_fixture_project
-  export PROJECT_ROOT="$TEST_TMP/fixture"
-  export SPRINT_STATUS_YAML="$TEST_TMP/fixture/.gaia/state/sprint-status.yaml"
+  export PROJECT_ROOT="$_SETUP_BASE"
+  export SPRINT_STATUS_YAML="$_SETUP_BASE/.gaia/state/sprint-status.yaml"
 
   # Shadow jq with a broken shim
   mkdir -p "$TEST_TMP/nojq32"
