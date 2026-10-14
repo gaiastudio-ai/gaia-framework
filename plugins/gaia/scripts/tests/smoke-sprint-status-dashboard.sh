@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# smoke-sprint-status-dashboard.sh — smoke test for sprint-status-dashboard.sh (E28-S61)
+# smoke-sprint-status-dashboard.sh — smoke test for sprint-status-dashboard.sh
 #
 # Validates the formatter script against the 7 test scenarios defined in the
-# E28-S61 story spec. Each assertion maps to a scenario number.
+# story spec. Each assertion maps to a scenario number.
 #
 # Usage: bash plugins/gaia/scripts/tests/smoke-sprint-status-dashboard.sh
 # Exit 0 when all assertions pass, 1 on any failure.
@@ -54,7 +54,8 @@ YAML
 }
 
 setup_valid_yaml
-output=$(PROJECT_PATH="$TMP" "$DASHBOARD" 2>/dev/null)
+# Force the fallback path so Scenario 1 tests the yaml reader.
+output=$(PROJECT_PATH="$TMP" SPRINT_STATUS_YAML="$ART/sprint-status.yaml" "$DASHBOARD" 2>/dev/null)
 rc=$?
 if [ "$rc" -eq 0 ] && echo "$output" | grep -q "E1-S1"; then
   ok "Scenario 1: happy path renders dashboard with story keys"
@@ -79,7 +80,8 @@ started: "2026-04-15"
 end_date: "2026-04-29"
 stories: []
 YAML
-output=$(PROJECT_PATH="$TMP" "$DASHBOARD" 2>/dev/null)
+# Force the fallback path.
+output=$(PROJECT_PATH="$TMP" SPRINT_STATUS_YAML="$ART/sprint-status.yaml" "$DASHBOARD" 2>/dev/null)
 rc=$?
 if [ "$rc" -eq 0 ]; then
   ok "Scenario 2: empty yaml renders header, exit 0"
@@ -87,31 +89,67 @@ else
   fail "Scenario 2: empty yaml" "exit=$rc, expected 0"
 fi
 
-# ---------- Scenario 3: Missing sprint-status.yaml ----------
+# ---------- Scenario 3: Missing sprint-status.yaml (fallback path) ----------
 rm -f "$ART/sprint-status.yaml"
-output=$(PROJECT_PATH="$TMP" "$DASHBOARD" 2>&1)
+# Force the fallback path so the yaml-missing exit 1 is tested.
+output=$(PROJECT_PATH="$TMP" SPRINT_STATUS_YAML="$ART/sprint-status.yaml" "$DASHBOARD" 2>&1)
 rc=$?
 if [ "$rc" -ne 0 ]; then
-  ok "Scenario 3: missing yaml exits non-zero"
+  ok "Scenario 3: missing yaml on fallback path exits non-zero"
 else
-  fail "Scenario 3: missing yaml" "exit=$rc, expected non-zero"
+  fail "Scenario 3: missing yaml on fallback path" "exit=$rc, expected non-zero"
 fi
 
-# ---------- Scenario 4: Malformed yaml ----------
+# ---------- Scenario 3b: Missing yaml — cache path (snapshot writes sprint null) ----------
+if command -v jq >/dev/null 2>&1; then
+  CACHE_TMP="$(mktemp -d)"
+  mkdir -p "$CACHE_TMP/.gaia/state"
+  # Create a cache with sprint: null (what the snapshot writes when no yaml)
+  printf '{"schema_version":"1.0","sprint":null,"totals":{"done_points":0,"total_points":0,"done_stories":0,"total_stories":0,"progress_pct":0},"phases":[],"unphased_stories":[],"stories":[],"action_needed":[],"readiness":{"sprint_review":false,"sprint_close":false}}\n' \
+    > "$CACHE_TMP/.gaia/state/.sprint-progress-cache.json"
+  output=$(PROJECT_ROOT="$CACHE_TMP" SPRINT_CACHE_JSON="$CACHE_TMP/.gaia/state/.sprint-progress-cache.json" "$DASHBOARD" 2>/dev/null)
+  rc=$?
+  if [ "$rc" -eq 0 ] && echo "$output" | grep -q "No active sprint"; then
+    ok "Scenario 3b: missing yaml on cache path prints No active sprint, exit 0"
+  else
+    fail "Scenario 3b: cache path missing yaml" "exit=$rc, expected 0 + 'No active sprint'"
+  fi
+  rm -rf "$CACHE_TMP"
+fi
+
+# ---------- Scenario 4: Malformed yaml (fallback path) ----------
 echo ":::invalid yaml{{{" > "$ART/sprint-status.yaml"
-output=$(PROJECT_PATH="$TMP" "$DASHBOARD" 2>&1)
+# Force the fallback path.
+output=$(PROJECT_PATH="$TMP" SPRINT_STATUS_YAML="$ART/sprint-status.yaml" "$DASHBOARD" 2>&1)
 rc=$?
 if [ "$rc" -ne 0 ]; then
-  ok "Scenario 4: malformed yaml exits non-zero"
+  ok "Scenario 4: malformed yaml on fallback path exits non-zero"
 else
-  fail "Scenario 4: malformed yaml" "exit=$rc, expected non-zero"
+  fail "Scenario 4: malformed yaml on fallback path" "exit=$rc, expected non-zero"
+fi
+
+# ---------- Scenario 4b: yaml without sprint_id — cache path ----------
+if command -v jq >/dev/null 2>&1; then
+  CACHE_TMP="$(mktemp -d)"
+  mkdir -p "$CACHE_TMP/.gaia/state"
+  printf '{"schema_version":"1.0","sprint":null,"totals":{"done_points":0,"total_points":0,"done_stories":0,"total_stories":0,"progress_pct":0},"phases":[],"unphased_stories":[],"stories":[],"action_needed":[],"readiness":{"sprint_review":false,"sprint_close":false}}\n' \
+    > "$CACHE_TMP/.gaia/state/.sprint-progress-cache.json"
+  output=$(PROJECT_ROOT="$CACHE_TMP" SPRINT_CACHE_JSON="$CACHE_TMP/.gaia/state/.sprint-progress-cache.json" "$DASHBOARD" 2>/dev/null)
+  rc=$?
+  if [ "$rc" -eq 0 ] && echo "$output" | grep -q "No active sprint"; then
+    ok "Scenario 4b: yaml without sprint_id on cache path prints No active sprint, exit 0"
+  else
+    fail "Scenario 4b: cache path no sprint_id" "exit=$rc, expected 0 + 'No active sprint'"
+  fi
+  rm -rf "$CACHE_TMP"
 fi
 
 # ---------- Scenario 5: Write-attempt guard — script never writes to yaml ----------
 setup_valid_yaml
-# Make the yaml read-only to verify the script does not attempt writes
+# Make the yaml read-only to verify the script does not attempt writes.
+# Force the fallback path.
 chmod 444 "$ART/sprint-status.yaml"
-output=$(PROJECT_PATH="$TMP" "$DASHBOARD" 2>/dev/null)
+output=$(PROJECT_PATH="$TMP" SPRINT_STATUS_YAML="$ART/sprint-status.yaml" "$DASHBOARD" 2>/dev/null)
 rc=$?
 chmod 644 "$ART/sprint-status.yaml"
 if [ "$rc" -eq 0 ]; then

@@ -948,16 +948,49 @@ _mask_timestamp() {
   esac
 }
 
-@test "sprint-status-dashboard.sh reads yaml from PROJECT_ROOT state tree (AC2)" {
+@test "sprint-status-dashboard.sh reads yaml from PROJECT_ROOT state tree — fallback path (AC2)" {
   export PROJECT_ROOT="$STATE_TREE"
   export PROJECT_PATH="$WORKTREE"
   unset CLAUDE_PROJECT_ROOT
-  unset SPRINT_STATUS_YAML
+  unset SPRINT_STATUS_YAML SPRINT_CACHE_JSON
+
+  # Force fallback by hiding jq so the cache path cannot activate.
+  mkdir -p "$TEST_TMP/nojq-bin"
+  printf '#!/bin/sh\nexit 127\n' > "$TEST_TMP/nojq-bin/jq"
+  chmod +x "$TEST_TMP/nojq-bin/jq"
+
+  run bash -c 'PATH="$1:$PATH" bash "$2"' _ "$TEST_TMP/nojq-bin" "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
+
+  [ "$status" -eq 0 ] || {
+    printf 'FAIL: dashboard fallback failed (did not find yaml via PROJECT_ROOT)\nexit=%d output=%s\n' \
+      "$status" "$output" >&2
+    return 1
+  }
+  case "$output" in
+    *"sprint-test"*)
+      : ;;
+    *)
+      printf 'FAIL: dashboard output does not contain sprint-test\noutput: %s\n' "$output" >&2
+      return 1
+      ;;
+  esac
+}
+
+@test "sprint-status-dashboard.sh reads yaml from PROJECT_ROOT state tree — cache path (AC2)" {
+  # When jq is available and no SPRINT_STATUS_YAML override is set, the
+  # dashboard invokes the snapshot which reads from PROJECT_ROOT. The
+  # state-tree content must appear in the output.
+  command -v jq >/dev/null 2>&1 || { echo "jq is required for this cache-path test" >&2; false; }
+  export PROJECT_ROOT="$STATE_TREE"
+  export PROJECT_PATH="$WORKTREE"
+  unset CLAUDE_PROJECT_ROOT
+  unset SPRINT_STATUS_YAML SPRINT_CACHE_JSON
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
 
   run bash "$PLUGIN_ROOT/scripts/sprint-status-dashboard.sh"
 
   [ "$status" -eq 0 ] || {
-    printf 'FAIL: sprint-status-dashboard.sh failed (did not find yaml via PROJECT_ROOT)\nexit=%d output=%s\n' \
+    printf 'FAIL: dashboard cache path failed\nexit=%d output=%s\n' \
       "$status" "$output" >&2
     return 1
   }

@@ -245,6 +245,8 @@ teardown() {
   mk_story_file    "$ARTIFACTS_DIR" "E99-S5" "in-progress" "high" > /dev/null
   mk_catalog "$MITIGATION_CATALOG"
 
+  # Force the fallback path (frontmatter-based risk lookup).
+  export SPRINT_STATUS_YAML="$SPRINT_YAML"
   run "$DASHBOARD"
   # RED PHASE: dashboard does not yet read mitigation-catalog.yaml or annotate
   # HIGH-risk stories — risk-surfacing code path is unimplemented.
@@ -269,6 +271,8 @@ teardown() {
   mk_story_file    "$ARTIFACTS_DIR" "E99-S6" "in-progress" "low" > /dev/null
   mk_catalog "$MITIGATION_CATALOG"
 
+  # Force the fallback path (frontmatter-based risk lookup).
+  export SPRINT_STATUS_YAML="$SPRINT_YAML"
   run "$DASHBOARD"
   # RED PHASE: dashboard risk-surfacing code path does not yet exist.
   [ "$status" -eq 0 ]
@@ -278,6 +282,141 @@ teardown() {
   [[ "$output" != *"Increased test coverage"* ]]
   [[ "$output" != *"Architect review"* ]]
   [[ "$output" != *"Security review"* ]]
+}
+
+# ===========================================================================
+# Cache-path risk: risk_level from the fixture yaml, via real snapshot
+# ===========================================================================
+
+@test "cache path: high risk_level story gets inline mitigation from cache" {
+  command -v jq >/dev/null 2>&1 || { echo "jq is required for this cache-path test" >&2; false; }
+  unset SPRINT_STATUS_YAML
+
+  local root="$TEST_TMP/cache-risk"
+  mkdir -p "$root/.gaia/state" "$root/.gaia/artifacts/implementation-artifacts/epic-e99/E99-S20-hi"
+  cat > "$root/.gaia/state/sprint-status.yaml" <<'YAML'
+sprint_id: "sprint-risk"
+status: active
+total_points: 5
+start_date: "2026-01-01"
+end_date: "2026-01-14"
+stories:
+  - key: E99-S20
+    title: "High risk cache story"
+    status: in-progress
+    points: 5
+    risk_level: high
+    phase: 1
+YAML
+  cat > "$root/.gaia/artifacts/implementation-artifacts/epic-e99/E99-S20-hi/story.md" <<'MD'
+---
+key: "E99-S20"
+status: in-progress
+points: 5
+risk: high
+manual_verification: false
+title: "High risk cache story"
+---
+# Story: High risk cache story
+## Tasks / Subtasks
+- [ ] **T1:** Task
+## Review Gate
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | - |
+| QA Tests | UNVERIFIED | - |
+| Security Review | UNVERIFIED | - |
+| Test Automation | UNVERIFIED | - |
+| Test Review | UNVERIFIED | - |
+| Performance Review | UNVERIFIED | - |
+MD
+  mk_catalog "$MITIGATION_CATALOG"
+
+  # Generate cache via real snapshot. Override IMPLEMENTATION_ARTIFACTS to
+  # point at the fixture tree (setup() sets it to the per-test TEST_TMP).
+  local snapshot_script="$SCRIPTS_DIR/sprint-progress-snapshot.sh"
+  PROJECT_ROOT="$root" \
+    SPRINT_STATUS_YAML="$root/.gaia/state/sprint-status.yaml" \
+    IMPLEMENTATION_ARTIFACTS="$root/.gaia/artifacts/implementation-artifacts" \
+    GAIA_SNAPSHOT_HOOK_DISABLE=1 bash "$snapshot_script" 2>/dev/null
+
+  export SPRINT_CACHE_JSON="$root/.gaia/state/.sprint-progress-cache.json"
+  export PROJECT_ROOT="$root"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+
+  # Cache-path columns must be present
+  [[ "$output" == *"Tasks"* ]]
+  [[ "$output" == *"Gates"* ]]
+  # HIGH-risk annotation must appear from cache risk_level
+  [[ "$output" == *"HIGH-risk: mitigation"* ]]
+  [[ "$output" == *"Pair programming"* ]] || \
+    [[ "$output" == *"Increased test coverage"* ]] || \
+    [[ "$output" == *"Architect review"* ]] || \
+    [[ "$output" == *"Security review"* ]]
+  # Recommended mitigations block
+  [[ "$output" == *"Recommended mitigations"* ]]
+}
+
+@test "cache path: medium risk_level story gets no mitigation annotation" {
+  command -v jq >/dev/null 2>&1 || { echo "jq is required for this cache-path test" >&2; false; }
+  unset SPRINT_STATUS_YAML
+
+  local root="$TEST_TMP/cache-med"
+  mkdir -p "$root/.gaia/state" "$root/.gaia/artifacts/implementation-artifacts/epic-e99/E99-S21-med"
+  cat > "$root/.gaia/state/sprint-status.yaml" <<'YAML'
+sprint_id: "sprint-med"
+status: active
+total_points: 5
+start_date: "2026-01-01"
+end_date: "2026-01-14"
+stories:
+  - key: E99-S21
+    title: "Medium risk story"
+    status: in-progress
+    points: 5
+    risk_level: medium
+    phase: 1
+YAML
+  cat > "$root/.gaia/artifacts/implementation-artifacts/epic-e99/E99-S21-med/story.md" <<'MD'
+---
+key: "E99-S21"
+status: in-progress
+points: 5
+risk: medium
+manual_verification: false
+title: "Medium risk story"
+---
+# Story: Medium risk story
+## Tasks / Subtasks
+- [ ] **T1:** Task
+## Review Gate
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | - |
+| QA Tests | UNVERIFIED | - |
+| Security Review | UNVERIFIED | - |
+| Test Automation | UNVERIFIED | - |
+| Test Review | UNVERIFIED | - |
+| Performance Review | UNVERIFIED | - |
+MD
+  mk_catalog "$MITIGATION_CATALOG"
+
+  local snapshot_script="$SCRIPTS_DIR/sprint-progress-snapshot.sh"
+  PROJECT_ROOT="$root" \
+    SPRINT_STATUS_YAML="$root/.gaia/state/sprint-status.yaml" \
+    IMPLEMENTATION_ARTIFACTS="$root/.gaia/artifacts/implementation-artifacts" \
+    GAIA_SNAPSHOT_HOOK_DISABLE=1 bash "$snapshot_script" 2>/dev/null
+
+  export SPRINT_CACHE_JSON="$root/.gaia/state/.sprint-progress-cache.json"
+  export PROJECT_ROOT="$root"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Tasks"* ]]
+  [[ "$output" != *"HIGH-risk"* ]]
+  [[ "$output" != *"Recommended mitigations"* ]]
 }
 
 # ===========================================================================
@@ -396,6 +535,8 @@ teardown() {
   mk_story_file    "$ARTIFACTS_DIR" "E99-S9" "in-progress" "high" > /dev/null
   # Deliberately do NOT create the catalog file.
 
+  # Force the fallback path (frontmatter-based risk lookup).
+  export SPRINT_STATUS_YAML="$SPRINT_YAML"
   run "$DASHBOARD"
   # RED PHASE: dashboard risk-surfacing code path does not yet exist.
   [ "$status" -eq 0 ]
@@ -428,6 +569,8 @@ mitigations:
     description: "An unexpected, never-before-cataloged mitigation strategy."
 CATALOG
 
+  # Force the fallback path (frontmatter-based risk lookup).
+  export SPRINT_STATUS_YAML="$SPRINT_YAML"
   run "$DASHBOARD"
   # RED PHASE: dashboard does not yet read or render the catalog.
   [ "$status" -eq 0 ]

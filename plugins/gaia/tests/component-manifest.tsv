@@ -348,6 +348,7 @@ core	sprint-state-split-repo-resolution.bats
 core	sprint-state-ssot-parity.bats
 core	sprint-state-wrapper-sync.bats
 core	sprint-state.bats
+core	sprint-status-dashboard-cache.bats
 core	sprint-status-mod-config.bats
 core	stacks-schema.bats
 core	stale-comment-sweep.bats

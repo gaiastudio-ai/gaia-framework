@@ -1,8 +1,8 @@
 ---
 name: gaia-sprint-status
-description: "Display the current sprint status dashboard. Delegates rendering to the sprint-status-dashboard.sh formatter script, which reads sprint-status.yaml and produces a deterministic plain-text dashboard. GAIA-native replacement for the legacy sprint-status XML engine workflow."
+description: "Display the current sprint status dashboard. Delegates rendering to the sprint-status-dashboard.sh formatter script, which reads the sprint-progress cache (with a fallback to sprint-status.yaml) and produces a deterministic plain-text dashboard with Tasks, Gates, phase grouping, and a warning header."
 allowed-tools: [Bash, Read]
-version: "1.0.0"
+version: "1.1.0"
 orchestration_class: light-procedural
 ---
 
@@ -33,10 +33,14 @@ Run the sprint-status-dashboard.sh formatter script:
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-status-dashboard.sh"
 ```
 
-If the script exits 0, present its stdout output to the user verbatim — do not reformat, filter, or enhance the dashboard output. The script produces the canonical dashboard rendering. When the current sprint contains at least one story with `risk: HIGH` in its story-file frontmatter, the dashboard appends a "Recommended mitigations for HIGH-risk stories" block listing every entry from the bundled mitigation catalog.
+The formatter uses a cache-first data model: it reads from the sprint-progress cache and renders an enhanced table with Tasks and Gates columns, phase grouping, and a warning header. When the cache is unavailable (jq absent, cache missing, snapshot failure), it falls back to the original four-column table from sprint-status.yaml.
+
+If the script exits 0, present its stdout output to the user verbatim — do not reformat, filter, or enhance the dashboard output. The script produces the canonical dashboard rendering. When the current sprint contains at least one story with a high risk level (read from the cache `stories[].risk_level` field on the cache path, or from story-file frontmatter `risk:` on the fallback path), the dashboard appends a "Recommended mitigations for HIGH-risk stories" block listing every entry from the bundled mitigation catalog.
+
+When no active sprint exists (cache reports the sprint as null or closed), the script prints "No active sprint" and exits 0. The stranded-ready advisory still runs independently after this line. This is not an error — suggest `/gaia-sprint-plan` to create a new sprint.
 
 If the script exits non-zero, display the error output and inform the user:
-- Exit 1 with "not found": `sprint-status.yaml` does not exist. Suggest running `/gaia-sprint-plan` first.
+- Exit 1 with "not found": `sprint-status.yaml` does not exist (fallback path only). Suggest running `/gaia-sprint-plan` first.
 - Exit 1 with "malformed": the YAML file is corrupt. Suggest running `/gaia-sprint-status` after fixing the file.
 
 ### Step 2 — Reconcile Sprint Status (Post-Dashboard)
@@ -59,9 +63,11 @@ Feature-flag escape hatch: a future rollout toggle may gate this call. If `GAIA_
 
 ### Sprint auto-close detection
 
-The dashboard renders an advisory banner immediately above the story table when **every** story under the active sprint has `status: done` AND the top-level `status:` field still reads `active` AND `total_count > 0` (vacuous "all done" guard). Detection is centralized in `sprint-state.sh detect-auto-close` (single-line JSON contract on stdout, empty when the condition is not met, always exits 0) so other consumers (`/gaia-retro`, `/gaia-sprint-plan`) can reuse the same probe.
+On the cache path, the dashboard renders an advisory banner when `readiness.sprint_close` is true in the cache and the rule-d entry is present in `action_needed[]`. The banner uses `totals.done_stories`, `totals.total_stories`, and `sprint.end_date` from the cache — no call to `sprint-state.sh detect-auto-close` is made on the cache path.
 
-**Subcommand contract:**
+On the fallback path (no cache), detection is delegated to `sprint-state.sh detect-auto-close` (single-line JSON contract on stdout, empty when the condition is not met, always exits 0) so other consumers (`/gaia-retro`, `/gaia-sprint-plan`) can reuse the same probe.
+
+**Subcommand contract (fallback path only):**
 
 ```bash
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" detect-auto-close
@@ -72,8 +78,6 @@ PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-stat
 ```
 
 **Advisory-only — never mutates `sprint-status.yaml`.** The detect path is strictly read-only. The boundary write (flipping `status: closed` and seeding the next sprint) remains a manual operator action — `sprint-state.sh` rejects self-transitions and cannot seed new sprints per `.gaia/memory/feedback_sprint_boundary_yaml_write.md`. Auto-flipping would create false confidence that the next sprint had also been scaffolded. The right ergonomic improvement is **signal, not action**.
-
-When the banner fires, the dashboard prints the sprint id, done / total counts, end_date, and the literal `yq -i '.status = "closed"' .gaia/state/sprint-status.yaml` remediation hint so operators can copy-paste the boundary write without re-deriving the exact yq syntax.
 
 ### Stranded ready stories
 
