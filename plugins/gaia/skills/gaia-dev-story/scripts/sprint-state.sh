@@ -1641,6 +1641,15 @@ EOF
 cmd_reconcile() {
   local dry_run="$1"
 
+  # Guard: when there is no GAIA project (no sprint-status.yaml), skip the
+  # mkdir and emit the summary line only.  Running reconcile in an arbitrary
+  # non-project directory must not create any files on disk.
+  if [ ! -f "$SPRINT_STATUS_YAML" ]; then
+    printf '%s: error: sprint-status.yaml not readable: %s\n' "$SCRIPT_NAME" "$SPRINT_STATUS_YAML" >&2
+    printf 'RECONCILE SUMMARY: 0 stories checked, 0 divergences CORRECTED\n'
+    return 1
+  fi
+
   mkdir -p "$(dirname "$SPRINT_STATUS_LOCK")" 2>/dev/null || true
 
   # Counters persisted across the subshell via a side-channel file.
