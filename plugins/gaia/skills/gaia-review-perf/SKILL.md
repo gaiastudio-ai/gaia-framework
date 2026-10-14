@@ -31,7 +31,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - This skill is READ-ONLY. Do NOT attempt to call Write or Edit tools -- the fork context allowlist enforces this.
 - Performance analysis MUST be dispatched to the Juno performance subagent -- do NOT perform inline analysis in the fork context.
 - The verdict uses PASSED or FAILED (canonical Review Gate vocabulary, per CLAUDE.md).
-- Verdict logic: NO critical or high severity findings = PASSED; ANY critical or high severity finding = FAILED.
+- Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`). The verdict is FAILED if and only if an unresolved blocker exists.
 - Auto-pass: if zero performance-relevant files are changed (only markdown, config, test files, static assets, CSS-only, copy/translations, lock files), verdict is PASSED with note "No performance-relevant code changes -- auto-passed".
 - Call `review-gate.sh` to update the Review Gate row -- do NOT manually edit the story file.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
@@ -114,8 +114,7 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
 
 ### Step 5 -- Verdict
 
-- If NO critical or high severity performance issues: verdict is **PASSED**
-- If ANY critical or high severity issue found: verdict is **FAILED** -- list blocking findings
+- The verdict is **PASSED** when no unresolved blocker exists, **FAILED** otherwise (per the shared findings rubric).
 - The verdict MUST appear as a machine-readable keyword in the report output.
 
 ### Step 6 -- Write Performance Review Report

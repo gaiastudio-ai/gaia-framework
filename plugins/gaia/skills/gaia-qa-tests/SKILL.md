@@ -75,7 +75,7 @@ The category+severity sets MUST match across two runs of identical inputs (deter
 
 ### Critical
 
-> Blocking. Produces `REQUEST_CHANGES` if the deterministic resolver did not already block. Critical promotion is restricted to (a) primary AC coverage gaps on P0/high-priority ACs, and (b) untested error paths on user-input boundaries with deterministic branch-coverage evidence.
+> Blocking. Produces `REQUEST_CHANGES` if the deterministic resolver did not already block. A finding is promoted to Critical only when it meets the shared blocker definition (`knowledge/shared-findings-rubric.md`): material required behaviour or risk is left unverified — specifically, primary AC coverage gaps where the uncovered behaviour is material, and untested error paths on user-input boundaries with deterministic branch-coverage evidence.
 
 Examples:
 

@@ -42,7 +42,7 @@
           <tr><td><code>--profile</code></td><td>Argument (optional)</td><td>Scan profile: baseline, full, or api.</td><td><code>/gaia-test-dast --profile baseline</code></td></tr>
         </tbody></table>
       </section>
-      <section id="outputs"><h2>Outputs</h2><p>Structured verdict with security findings ranked by severity.</p></section>
+      <section id="outputs"><h2>Outputs</h2><p>Structured verdict with security findings ranked by severity.</p><p>When given a story key, findings are recorded in a shared per-story findings register. The verdict rule uses the register: a gate is failed only when an unresolved blocker exists. The shared rubric defines severity levels, the blocker definition, and the verdict rule.</p></section>
       <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-test-dast --target-url https://staging.example.com
 
 Running...

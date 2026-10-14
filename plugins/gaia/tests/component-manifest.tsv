@@ -217,6 +217,7 @@ core	e85-s13-reconciler-writes-framework-version.bats
 core	embedded-dev-wiring.bats
 core	evidence-judgment-parity.bats
 core	expected-report-vocabulary.bats
+core	findings-register.bats
 core	framework-version.bats
 core	gaia-add-feature-setup.bats
 core	gaia-changelog-story-link.bats

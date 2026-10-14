@@ -351,10 +351,7 @@ When **no review-status story is identifiable** (no key in arguments, no story-k
 
 #### Step 6c — Map the verdict and write to the Review Gate
 
-Map the findings to the canonical Review Gate vocabulary (case-sensitive: `PASSED` | `FAILED`):
-
-- **PASSED** — zero critical or high severity findings (live-secrets are critical by construction, so any live-secret triggers FAILED).
-- **FAILED** — any critical or high severity finding exists. List blocking findings in the report.
+Map the findings to the canonical Review Gate vocabulary (case-sensitive: `PASSED` | `FAILED`). Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`). The verdict is FAILED if and only if an unresolved blocker exists; live-secrets are blocking by construction.
 
 Invoke the shared `review-gate.sh` script to update the story's `Security Review` row:
 

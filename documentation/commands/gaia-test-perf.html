@@ -80,7 +80,7 @@ This warning is shown once per session.
           <tr><td><code>--scenario</code></td><td>Argument (optional)</td><td>Named scenario to execute from the perf config.</td><td><code>/gaia-test-perf --scenario load-test</code></td></tr>
         </tbody></table>
       </section>
-      <section id="outputs"><h2>Outputs</h2><p>Structured verdict with SLO breach and baseline regression findings.</p></section>
+      <section id="outputs"><h2>Outputs</h2><p>Structured verdict with SLO breach and baseline regression findings.</p><p>When given a story key, findings are recorded in a shared per-story findings register. The verdict rule uses the register: a gate is failed only when an unresolved blocker exists. The shared rubric defines severity levels, the blocker definition, and the verdict rule.</p></section>
       <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-test-perf --target-url https://staging.example.com
 
 Running...

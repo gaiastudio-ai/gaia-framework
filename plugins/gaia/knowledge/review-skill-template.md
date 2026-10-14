@@ -99,11 +99,13 @@ Cache: cache key = `hash(File List contents + tool config + tool versions + reso
 
 ### Phase 5 — Verdict
 
-Invoke `plugins/gaia/scripts/verdict-resolver.sh --analysis-results <path> --llm-findings <path>`. The resolver applies strict first-match-wins precedence:
+Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`). When a findings register is present, findings are recorded through the register writer and the verdict uses `--register`. Forked skills call the writer from the parent context (fork isolation preserved); non-forked skills call it directly.
+
+Invoke `plugins/gaia/scripts/verdict-resolver.sh --analysis-results <path> --llm-findings <path>` (legacy path) or `verdict-resolver.sh --register <path> [--analysis-results <path>]` (register path). The resolver applies strict first-match-wins precedence:
 
 1. Any check `errored` → **BLOCKED**.
 2. Any tool `failed-blocking` → **REQUEST_CHANGES**. *The LLM cannot override this.*
-3. Any LLM finding `Critical` → **REQUEST_CHANGES**.
+3. Register rule (when `--register`): any unresolved blocker → **REQUEST_CHANGES**. Legacy rule (when `--llm-findings`): any LLM finding `Critical` → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
 Resolver stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. The LLM MUST NOT compute or override the verdict.

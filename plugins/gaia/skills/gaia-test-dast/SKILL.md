@@ -23,7 +23,7 @@ orchestration_class: light-procedural
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review and action skill. For `/gaia-test-dast` it means: the configured DAST adapter (OWASP ZAP by default, swappable via `test_execution.dast.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact. The LLM then performs a DAST severity-triage semantic judgment in Phase 3B — applying the project risk profile to ZAP findings — but cannot override a deterministic adapter failure or High-severity finding. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review and action skill. For `/gaia-test-dast` it means: the configured DAST adapter (OWASP ZAP by default, swappable via `test_execution.dast.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact. The LLM then performs a DAST severity-triage semantic judgment in Phase 3B — applying the project risk profile to ZAP findings — but cannot override a deterministic adapter failure. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
 
 This skill is a deployment-phase action skill and a peer of `/gaia-test-e2e` and `/gaia-test-perf` — same Phase 3A/3B/3C plumbing, DAST-specific rubric and env-allowlist credential isolation.
 

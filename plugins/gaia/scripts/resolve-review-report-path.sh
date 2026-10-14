@@ -71,7 +71,12 @@ else
   IMPL="docs/implementation-artifacts"
 fi
 
-basename_out="${RTYPE}-${KEY}.md"
+# Determine extension: .yaml for findings-register, .md for everything else.
+case "$RTYPE" in
+  findings-register) _ext=".yaml" ;;
+  *)                 _ext=".md" ;;
+esac
+basename_out="${RTYPE}-${KEY}${_ext}"
 flat_path="${IMPL}/${basename_out}"
 
 # Try to resolve the story file; if it is in the NEW per-story layout
