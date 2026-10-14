@@ -1773,6 +1773,257 @@ YAML
 }
 
 # ===========================================================================
+# Multi-line injection — numeric validators must match the WHOLE value
+# (not per-line via grep). A tampered cache can embed newlines to sneak
+# terminal escapes past a per-line regex.
+# ===========================================================================
+
+@test "multiline injection: points with embedded ESC+OSC rejected as non-numeric" {
+  _mk_fixture_project
+  # "3\n\e]0;PWNED\a\e[2J" — first line is "3" (passes per-line grep)
+  jq '.stories[0].points = "3\n\u001b]0;PWNED\u0007\u001b[2J"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-pts.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-pts.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  # No ESC byte (0x1b) in output
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  # No BEL byte (0x07) in output
+  local bel
+  bel=$(printf '\007')
+  [[ ! "$output" =~ $bel ]]
+  # The injected payload must not appear
+  [[ ! "$output" =~ "PWNED" ]]
+  [[ ! "$output" =~ "[2J" ]]
+  # The value must render as "?" (rejected)
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: tasks.done with embedded ESC rejected" {
+  _mk_fixture_project
+  jq '.stories[0].tasks.done = "2\n\u001b[31mRED\u001b[0m"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-td.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-td.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  [[ ! "$output" =~ "RED" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: tasks.total with embedded C1 CSI rejected" {
+  _mk_fixture_project
+  # C1 CSI is U+009B (UTF-8: 0xC2 0x9B)
+  jq '.stories[0].tasks.total = "5\n\u009B31mEVIL"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-tt.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-tt.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local c1_csi
+  c1_csi=$(printf '\xc2\x9b')
+  [[ ! "$output" =~ $c1_csi ]]
+  [[ ! "$output" =~ "EVIL" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: gates.passed with embedded ESC rejected" {
+  _mk_fixture_project
+  jq '.stories[0].gates.passed = "4\n\u001b]0;PWNED\u0007"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-gp.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-gp.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  [[ ! "$output" =~ "PWNED" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: gates.total with embedded ESC rejected" {
+  _mk_fixture_project
+  jq '.stories[0].gates.total = "6\n\u001b[2J"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-gt.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-gt.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  [[ ! "$output" =~ "[2J" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: phase number with embedded ESC rejected" {
+  _mk_fixture_project
+  jq '.phases[0].phase = "1\n\u001b]0;PWNED\u0007"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-phase.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-phase.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  [[ ! "$output" =~ "PWNED" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: totals.total_points with embedded ESC rejected" {
+  _mk_fixture_project
+  jq '.totals.total_points = "21\n\u001b[2JCLEAR"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-tp.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-tp.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  [[ ! "$output" =~ "CLEAR" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: totals.total_stories with embedded ESC rejected" {
+  _mk_fixture_project
+  jq '.totals.total_stories = "4\n\u001b]0;PWNED\u0007"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-ts.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-ts.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  [[ ! "$output" =~ "PWNED" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: totals.done_stories with embedded ESC rejected" {
+  _mk_alldone_fixture
+  jq '.totals.done_stories = "2\n\u001b[31mRED\u001b[0m" | .readiness.sprint_close = true' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-ds.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-ds.json"
+  export PROJECT_ROOT="$TEST_TMP/alldonefixture"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  [[ ! "$output" =~ "RED" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: total_days with embedded OSC rejected" {
+  _mk_fixture_project
+  jq '.sprint.total_days = "13\n\u001b]0;PWNED\u0007"' \
+    "$CACHE_PATH" > "$TEST_TMP/ml-days.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-days.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  [[ ! "$output" =~ "PWNED" ]]
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: story key with embedded newline rejected" {
+  _mk_fixture_project
+  # "E900-S1\n\e]0;PWNED\a" — first line matches the key regex (per-line
+  # grep would accept this). The whole-string [[ =~ ]] match must reject it.
+  # We tamper both .stories[0].key and .phases[0].stories[0] so the phase
+  # loop still attempts to render the story by its tampered key.
+  jq '
+    .stories[0].key = "E900-S1\n\u001b]0;PWNED\u0007" |
+    .phases[0].stories[0] = "E900-S1\n\u001b]0;PWNED\u0007"
+  ' "$CACHE_PATH" > "$TEST_TMP/ml-key.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/ml-key.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+
+  # No ESC byte in output
+  local esc
+  esc=$(printf '\033')
+  [[ ! "$output" =~ $esc ]]
+  # The OSC payload must not appear
+  [[ ! "$output" =~ "PWNED" ]]
+  # The tampered key should not render as if it were the real E900-S1
+  # (the story row either renders with "?" for the key, or the row is
+  # skipped because the phase→story lookup fails on the multiline key).
+  # Either way, no escape sequences reach the terminal.
+}
+
+@test "multiline injection: empty numeric field renders as question mark" {
+  _mk_fixture_project
+  jq '.stories[0].points = ""' \
+    "$CACHE_PATH" > "$TEST_TMP/empty-pts.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/empty-pts.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+  grep -qF '?' <<<"$output"
+}
+
+@test "multiline injection: null numeric field renders as question mark" {
+  _mk_fixture_project
+  jq '.stories[0].points = "null"' \
+    "$CACHE_PATH" > "$TEST_TMP/null-pts.json"
+  export SPRINT_CACHE_JSON="$TEST_TMP/null-pts.json"
+  export PROJECT_ROOT="$_SETUP_BASE"
+
+  run bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  _assert_cache_columns
+  grep -qF '?' <<<"$output"
+}
+
+# ===========================================================================
 # Title truncation
 # ===========================================================================
 
