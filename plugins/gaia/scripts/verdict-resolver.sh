@@ -106,6 +106,7 @@ SKILL=""
 ACTION_MODE=0
 COVERAGE_DELTA=""
 EXECUTION_EVIDENCE=""
+REGISTER=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -125,6 +126,13 @@ while [ "$#" -gt 0 ]; do
     --llm-findings)
       [ "$#" -ge 2 ] || die 1 "--llm-findings requires a path"
       LLM="$2"; shift 2 ;;
+    --register)
+      # Path to the shared findings register YAML file. When present,
+      # --llm-findings is forbidden (LLM findings go through the register
+      # instead) and --analysis-results becomes optional when not in
+      # action-mode. The register rule replaces the LLM-Critical rule.
+      [ "$#" -ge 2 ] || die 1 "--register requires a path"
+      REGISTER="$2"; shift 2 ;;
     --coverage-delta)
       # Optional. Path to coverage-delta.sh JSON output. When present, a
       # coverage_delta <= 0 inserts REQUEST_CHANGES between the LLM-Critical
@@ -147,11 +155,25 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$ANALYSIS" ] || die 1 "missing required --analysis-results <path>"
-# action-mode does not require --llm-findings (action-skill outcome flags
-# live in the analysis-results document itself).
-if [ "$ACTION_MODE" -eq 0 ]; then
-  [ -n "$LLM" ] || die 1 "missing required --llm-findings <path>"
+# --register and --llm-findings are mutually exclusive.
+if [ -n "$REGISTER" ] && [ -n "$LLM" ]; then
+  die 1 "--register and --llm-findings are mutually exclusive"
+fi
+
+# --analysis-results is required unless --register is given without
+# --action-mode (register-only skills have no analysis document).
+if [ -n "$REGISTER" ]; then
+  # action-mode always needs analysis inputs, even with register.
+  if [ "$ACTION_MODE" -eq 1 ] && [ -z "$ANALYSIS" ]; then
+    die 1 "missing required --analysis-results <path>"
+  fi
+else
+  [ -n "$ANALYSIS" ] || die 1 "missing required --analysis-results <path>"
+  # action-mode does not require --llm-findings (action-skill outcome flags
+  # live in the analysis-results document itself).
+  if [ "$ACTION_MODE" -eq 0 ]; then
+    [ -n "$LLM" ] || die 1 "missing required --llm-findings <path>"
+  fi
 fi
 
 # Provenance: log --skill if provided. Stderr is informational; does not alter
@@ -162,21 +184,101 @@ fi
 
 command -v jq >/dev/null 2>&1 || die 1 "jq is required but not on PATH"
 
+# When --register is given, yq is required for YAML parsing.
+if [ -n "$REGISTER" ]; then
+  command -v yq >/dev/null 2>&1 || {
+    printf '%s: BLOCKED — yq not found on PATH\n' "$SCRIPT_NAME" >&2
+    # Cannot emit here because emit() is defined below; inline it.
+    printf '%s\n' "BLOCKED"
+    exit 0
+  }
+fi
+
 emit() {
   printf '%s\n' "$1"
   exit 0
 }
 
-# --- 0. Malformed-input gate ---
-if [ ! -r "$ANALYSIS" ]; then
-  printf '%s: malformed analysis-results.json: file not found or unreadable: %s\n' "$SCRIPT_NAME" "$ANALYSIS" >&2
-  emit "BLOCKED"
+# --- Register structural pre-parse (before any rule) ---
+# When --register is given, parse and validate the register FIRST. A malformed
+# register is always BLOCKED regardless of other inputs.
+_VR_HAS_BLOCKER=""
+if [ -n "$REGISTER" ]; then
+  if [ ! -r "$REGISTER" ]; then
+    printf '%s: register parse error: file not readable: %s\n' "$SCRIPT_NAME" "$REGISTER" >&2
+    emit "BLOCKED"
+  fi
+  if ! yq '.' "$REGISTER" >/dev/null 2>&1; then
+    printf '%s: register parse error: invalid YAML: %s\n' "$SCRIPT_NAME" "$REGISTER" >&2
+    emit "BLOCKED"
+  fi
+  # Structural validation: schema_version, entries/gate_runs sequences,
+  # each entry has required fields.
+  _vr_valid="$(yq '
+    .schema_version == 1
+    and ((.entries | type) == "!!seq")
+    and ((.gate_runs | type) == "!!seq")
+    and ([.entries[] | select(
+      ((. | type) != "!!map") or (.id == null) or (.disposition == null)
+      or ((.blocking | type) != "!!bool")
+      or ((.gate_ratings | type) != "!!seq")
+    )] | length == 0)
+  ' "$REGISTER" 2>/dev/null)" || _vr_valid="__err"
+  case "$_vr_valid" in
+    true) ;; # valid
+    *)
+      printf '%s: register structural validation failed: %s\n' "$SCRIPT_NAME" "$REGISTER" >&2
+      emit "BLOCKED" ;;
+  esac
+  # Compute has-unresolved-blocker. No -e flag (under set -euo pipefail,
+  # yq -e returning "false" in a command substitution aborts the script).
+  _vr_entry_count="$(yq '.entries | length' "$REGISTER" 2>/dev/null)" || _vr_entry_count="__err"
+  case "$_vr_entry_count" in
+    0)
+      printf '%s: register: empty\n' "$SCRIPT_NAME" >&2
+      _VR_HAS_BLOCKER="false" ;;
+    *[!0-9]*)
+      printf '%s: register query returned unexpected entry count: %s\n' "$SCRIPT_NAME" "$_vr_entry_count" >&2
+      emit "BLOCKED" ;;
+    *)
+      _VR_HAS_BLOCKER="$(yq '
+        [.entries[]
+          | select(.disposition != "resolved")
+          | select(
+              (.material == true)
+              or (has("severity_resolution") and .severity_resolution.resolved_blocking == true)
+              or ((has("severity_resolution") | not) and
+                  ([.gate_ratings[] | select(.blocking == true)] | length > 0))
+              or ((has("severity_resolution") | not) and
+                  ([.gate_ratings[] | select(.blocking == true)] | length == 0) and
+                  .blocking == true)
+            )
+        ] | length > 0
+      ' "$REGISTER" 2>/dev/null)" || _VR_HAS_BLOCKER="__err"
+      case "$_VR_HAS_BLOCKER" in
+        true|false) ;; # valid
+        *)
+          printf '%s: register query returned unexpected value: %s\n' "$SCRIPT_NAME" "$_VR_HAS_BLOCKER" >&2
+          emit "BLOCKED" ;;
+      esac
+      ;;
+  esac
 fi
 
-# Parse the analysis JSON; capture jq failure as malformed.
-if ! jq -e . "$ANALYSIS" >/dev/null 2>&1; then
-  printf '%s: malformed analysis-results.json: invalid JSON\n' "$SCRIPT_NAME" >&2
-  emit "BLOCKED"
+# --- 0. Malformed-input gate ---
+# When --register is given and no analysis-results were provided, skip
+# the analysis-results checks entirely (the register pre-parse handled it).
+if [ -n "$ANALYSIS" ]; then
+  if [ ! -r "$ANALYSIS" ]; then
+    printf '%s: malformed analysis-results.json: file not found or unreadable: %s\n' "$SCRIPT_NAME" "$ANALYSIS" >&2
+    emit "BLOCKED"
+  fi
+
+  # Parse the analysis JSON; capture jq failure as malformed.
+  if ! jq -e . "$ANALYSIS" >/dev/null 2>&1; then
+    printf '%s: malformed analysis-results.json: invalid JSON\n' "$SCRIPT_NAME" >&2
+    emit "BLOCKED"
+  fi
 fi
 
 # --- Action-skill mode ---
@@ -213,20 +315,29 @@ if [ "$ACTION_MODE" -eq 1 ]; then
     emit "BLOCKED"
   fi
 
+  # Register rule in action mode: after no-plan/no-run BLOCKED, before APPROVE.
+  if [ -n "$REGISTER" ] && [ "$_VR_HAS_BLOCKER" = "true" ]; then
+    emit "REQUEST_CHANGES"
+  fi
+
   emit "APPROVE"
 fi
 
-# Required schema_version field check.
-if ! jq -e '(.schema_version // "") | length > 0' "$ANALYSIS" >/dev/null 2>&1; then
-  printf '%s: malformed analysis-results.json: missing schema_version\n' "$SCRIPT_NAME" >&2
-  emit "BLOCKED"
+# Required schema_version field check — skip when register-only (no analysis).
+if [ -n "$ANALYSIS" ]; then
+  if ! jq -e '(.schema_version // "") | length > 0' "$ANALYSIS" >/dev/null 2>&1; then
+    printf '%s: malformed analysis-results.json: missing schema_version\n' "$SCRIPT_NAME" >&2
+    emit "BLOCKED"
+  fi
 fi
 
 # LLM findings file: tolerate missing-or-empty by treating as no findings.
-if [ -r "$LLM" ] && jq -e . "$LLM" >/dev/null 2>&1; then
-  LLM_OK=1
-else
-  LLM_OK=0
+# Skip when --register is given (LLM findings go through the register).
+LLM_OK=0
+if [ -z "$REGISTER" ]; then
+  if [ -r "$LLM" ] && jq -e . "$LLM" >/dev/null 2>&1; then
+    LLM_OK=1
+  fi
 fi
 
 # --- Execution-evidence pre-check ---
@@ -247,6 +358,8 @@ if [ -n "$EXECUTION_EVIDENCE" ]; then
 fi
 
 # --- 1. errored check -> BLOCKED ---
+# Rules 1, 2 read from ANALYSIS; skip when register-only (no analysis).
+if [ -n "$ANALYSIS" ]; then
 if jq -e '[.checks[]? | select(.status == "errored")] | length > 0' "$ANALYSIS" >/dev/null 2>&1; then
   emit "BLOCKED"
 fi
@@ -308,13 +421,23 @@ if jq -e '
 ' "$ANALYSIS" >/dev/null 2>&1; then
   emit "REQUEST_CHANGES"
 fi
+fi  # end of [ -n "$ANALYSIS" ] conditional (rules 1, 2)
 
-# --- 3. LLM-Critical finding -> REQUEST_CHANGES ---
-if [ "$LLM_OK" = "1" ]; then
-  if jq -e '
-    (.findings // []) | map(select((.severity // "") | ascii_downcase == "critical")) | length > 0
-  ' "$LLM" >/dev/null 2>&1; then
+# --- 3. LLM-Critical / Register rule ---
+# When --register is given, the register rule replaces the LLM-Critical rule.
+# Without --register, the existing LLM-Critical logic runs unchanged.
+if [ -n "$REGISTER" ]; then
+  # Register rule: REQUEST_CHANGES iff an unresolved blocker exists.
+  if [ "$_VR_HAS_BLOCKER" = "true" ]; then
     emit "REQUEST_CHANGES"
+  fi
+else
+  if [ "$LLM_OK" = "1" ]; then
+    if jq -e '
+      (.findings // []) | map(select((.severity // "") | ascii_downcase == "critical")) | length > 0
+    ' "$LLM" >/dev/null 2>&1; then
+      emit "REQUEST_CHANGES"
+    fi
   fi
 fi
 

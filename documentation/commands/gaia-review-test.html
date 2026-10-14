@@ -28,7 +28,7 @@
         </tbody></table>
         <aside class="note">Note: The on-disk skill directory is <code>gaia-framework/plugins/gaia/skills/gaia-test-review/</code> (not <code>gaia-review-test/</code>). The skill's <code>name:</code> field declares the canonical command as <code>/gaia-review-test</code>.</aside>
       </section>
-      <section id="outputs"><h2>Outputs</h2><p>A review report is written to <code>.gaia/artifacts/implementation-artifacts/</code>. The story's Review Gate row is updated with PASSED or FAILED.</p></section>
+      <section id="outputs"><h2>Outputs</h2><p>A review report is written to <code>.gaia/artifacts/implementation-artifacts/</code>. The story's Review Gate row is updated with PASSED or FAILED.</p><p>Findings are recorded in a shared per-story findings register. The verdict rule uses the register: a gate is failed only when an unresolved blocker exists. The shared rubric defines severity levels, the blocker definition, and the verdict rule.</p></section>
       <section id="example"><h2>Example session</h2><pre><code>&gt; /gaia-review-test E3-S7
 
 Resolving story E3-S7...

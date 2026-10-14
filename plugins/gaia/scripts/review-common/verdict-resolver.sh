@@ -8,6 +8,7 @@
 #
 # Public API:
 #   review-common/verdict-resolver.sh [--skill <name>] --analysis-results <path> --llm-findings <path>
+#   review-common/verdict-resolver.sh [--skill <name>] --register <path> [--analysis-results <path>]
 #   review-common/verdict-resolver.sh --help
 #
 # Exit codes and stdout/stderr semantics: see ../verdict-resolver.sh.

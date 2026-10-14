@@ -195,6 +195,8 @@ For each short_name in run:
 
 **The "Per-reviewer LLM judgment blocks" pattern from the legacy SKILL.md is RETIRED.** Inline self-judgment by the orchestrator is forbidden; the per-review skills are the single source of verdicts. If a per-review skill is missing or broken, that is a defect to file — NOT a license for the orchestrator to substitute its own judgment.
 
+**Substep 2.3b — Findings register consolidation.** After all selected gates finish, the orchestrator consolidates the shared findings register (`knowledge/shared-findings-rubric.md`). A run ID is minted at round start and passed to every gate so each gate calls `register-write.sh record-run`. For each selected gate, `register-write.sh gate-status` determines whether the gate ran in this round; a gate with no record for the current run ID, or one with outcome `errored`, stays UNVERIFIED (never read as "zero blockers"). After consolidation, the orchestrator re-resolves every selected gate with `verdict-resolver.sh --register` plus that gate's saved deterministic inputs, rewrites each Review Gate row, and writes non-blocking triage-disposition entries as rows inside the story's Findings section by calling `register-write.sh findings-rows`.
+
 **Substep 2.4 — Record SKIPPED entries for the `skip` slice.** For each canonical short-name in `skip`, record a "SKIPPED (already PASSED)" line for the eventual summary block. The summary script (Step 3) consumes the current gate state directly, so SKIPPED rows already at PASSED need no rewrite.
 
 #### Per-reviewer skill-dispatch reference table

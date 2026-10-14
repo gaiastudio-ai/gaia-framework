@@ -9,6 +9,20 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Shared findings register and unified blocking rule (2026-10-14)
+
+#### Added
+- Shared findings register: all review skills (code review, QA tests, security review, test automation, test review, performance review) now record findings in a single per-story findings register and apply one verdict rule. A gate is failed only when an unresolved blocker exists in the register.
+- Shared findings rubric (`knowledge/shared-findings-rubric.md`) defines severity levels, the blocker definition, the register schema, and the single verdict rule.
+- `verdict-resolver.sh` gains a `--register` flag. When present, the register rule replaces the LLM-Critical rule. Without `--register`, output is byte-identical to before.
+- `resolve-review-report-path.sh` supports a `findings-register` type (`.yaml` extension).
+- `register-write.sh` — sole sanctioned writer for the findings register, with subcommands for adding, merging, resolving severity, setting disposition, recording gate runs, computing gate status, triaging non-blocking entries, and writing Findings rows.
+
+#### Changed
+- Test-DAST and test-performance now block on high-severity findings (previously only critical findings blocked via the resolver; aligns with the shared blocker definition).
+- QA-tests critical-promotion restriction now references the shared blocker definition instead of a local rule.
+- Security review and performance review no longer define local "failed on critical or high" verdict rules; they use the shared register rule.
+
 ### Repo rename — `gaia-public` → `gaia-framework`
 
 - The GitHub repo previously published at `https://github.com/gaiastudio-ai/gaia-public` is now `https://github.com/gaiastudio-ai/gaia-framework`. GitHub serves a permanent 301 redirect from the old URL so existing clones, web links, and `git fetch` calls continue to work for an extended window (~6 months by GitHub policy).

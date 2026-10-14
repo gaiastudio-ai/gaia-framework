@@ -155,3 +155,148 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "APPROVE" ]
 }
+
+# ---------------------------------------------------------------------------
+# Register-mode truth table: {blocking} x {disposition} x {material}
+# ---------------------------------------------------------------------------
+# Expected verdict: REQUEST_CHANGES iff (blocking OR material) AND disposition != resolved
+# "blocking OR material" because material:true forces blocking even when the
+# top-level blocking field is false.
+
+# Helper: build a register fixture with one entry of the given parameters
+_write_truth_table_register() {
+  local path="$1" blk="$2" disp="$3" mat="$4"
+  local rationale_field=""
+  if [ "$blk" = "true" ]; then
+    rationale_field=$'\n    blocking_rationale: "test rationale"'
+  fi
+  cat > "$path" <<YAML
+schema_version: 1
+story: TEST-S1
+gate_runs: []
+entries:
+  - id: RF-1
+    defect: "truth table entry"
+    type: bug
+    severity: medium
+    blocking: ${blk}${rationale_field}
+    material: ${mat}
+    disposition: ${disp}
+    dedup_key: "src/x.ts:1:truth"
+    originating_gates: [code-review]
+    gate_ratings:
+      - {gate: code-review, severity: medium, blocking: ${blk}, material: ${mat}}
+YAML
+}
+
+@test "register truth table: blocking=true disposition=open material=false -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" true open false
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+@test "register truth table: blocking=true disposition=triage material=false -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" true triage false
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+@test "register truth table: blocking=true disposition=resolved material=false -> APPROVE" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" true resolved false
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "register truth table: blocking=true disposition=unknown material=false -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" true wontfix false
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+@test "register truth table: blocking=false disposition=open material=false -> APPROVE" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" false open false
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "register truth table: blocking=false disposition=triage material=false -> APPROVE" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" false triage false
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "register truth table: blocking=false disposition=resolved material=false -> APPROVE" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" false resolved false
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "register truth table: blocking=false disposition=unknown material=false -> APPROVE" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" false wontfix false
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "register truth table: blocking=true disposition=open material=true -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" true open true
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+@test "register truth table: blocking=true disposition=triage material=true -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" true triage true
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+@test "register truth table: blocking=true disposition=resolved material=true -> APPROVE" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" true resolved true
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "register truth table: blocking=true disposition=unknown material=true -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" true wontfix true
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+@test "register truth table: blocking=false disposition=open material=true -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" false open true
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+@test "register truth table: blocking=false disposition=triage material=true -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" false triage true
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+@test "register truth table: blocking=false disposition=resolved material=true -> APPROVE" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" false resolved true
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "register truth table: blocking=false disposition=unknown material=true -> REQUEST_CHANGES" {
+  _write_truth_table_register "$TEST_TMP/reg.yaml" false wontfix true
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}

@@ -18,6 +18,9 @@ load 'test_helper.bash'
 
 bats_require_minimum_version 1.5.0
 
+setup() { common_setup; }
+teardown() { common_teardown; }
+
 # Canonical review-skill consumer list — extended in E66-S5 to add
 # /gaia-review-mobile per ADR-077. Each entry is the path
 # (relative to plugins/gaia/) of the SKILL.md file.
@@ -311,4 +314,177 @@ assert_analysis_results_schema_ref() {
       assert_analysis_results_schema_ref "$f"
     fi
   done
+}
+
+# ---------------------------------------------------------------------------
+# Shared findings rubric — gate-row-writer parity
+# ---------------------------------------------------------------------------
+
+# The ten gate-row-writing SKILL.md files (the existing REVIEW_SKILLS array
+# points at a different set — do not reuse it).
+GATE_ROW_WRITERS=(
+  "skills/gaia-code-review/SKILL.md"
+  "skills/gaia-qa-tests/SKILL.md"
+  "skills/gaia-review-security/SKILL.md"
+  "skills/gaia-test-automate/SKILL.md"
+  "skills/gaia-test-review/SKILL.md"
+  "skills/gaia-review-perf/SKILL.md"
+  "skills/gaia-security-review/SKILL.md"
+  "skills/gaia-performance-review/SKILL.md"
+  "skills/gaia-test-dast/SKILL.md"
+  "skills/gaia-test-perf/SKILL.md"
+)
+
+# The six primary review skills plus the template
+RUBRIC_CONSUMERS=(
+  "skills/gaia-code-review/SKILL.md"
+  "skills/gaia-qa-tests/SKILL.md"
+  "skills/gaia-review-security/SKILL.md"
+  "skills/gaia-test-automate/SKILL.md"
+  "skills/gaia-test-review/SKILL.md"
+  "skills/gaia-review-perf/SKILL.md"
+  "knowledge/review-skill-template.md"
+)
+
+RUBRIC_CONSUMERS_EXTRA=(
+  "skills/gaia-security-review/SKILL.md"
+  "skills/gaia-performance-review/SKILL.md"
+  "skills/gaia-test-dast/SKILL.md"
+  "skills/gaia-test-perf/SKILL.md"
+)
+
+RUBRIC_FILE="knowledge/shared-findings-rubric.md"
+
+@test "shared rubric: each of the six review skills and the template references shared-findings-rubric.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  [ -f "$base/$RUBRIC_FILE" ] || {
+    echo "rubric file not found: $base/$RUBRIC_FILE" >&2
+    false
+  }
+  local failed=0
+  for entry in "${RUBRIC_CONSUMERS[@]}"; do
+    local f="$base/$entry"
+    [ -f "$f" ] || { echo "SKILL.md not found: $f" >&2; failed=1; continue; }
+    if ! grep -qF 'shared-findings-rubric.md' "$f"; then
+      echo "missing rubric reference in: $entry" >&2
+      failed=1
+    fi
+  done
+  [ "$failed" -eq 0 ]
+}
+
+@test "shared rubric: perf-deepdive deprecated-security test-dast test-perf reference shared-findings-rubric.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  [ -f "$base/$RUBRIC_FILE" ] || {
+    echo "rubric file not found: $base/$RUBRIC_FILE" >&2
+    false
+  }
+  local failed=0
+  for entry in "${RUBRIC_CONSUMERS_EXTRA[@]}"; do
+    local f="$base/$entry"
+    [ -f "$f" ] || { echo "SKILL.md not found: $f" >&2; failed=1; continue; }
+    if ! grep -qF 'shared-findings-rubric.md' "$f"; then
+      echo "missing rubric reference in: $entry" >&2
+      failed=1
+    fi
+  done
+  [ "$failed" -eq 0 ]
+}
+
+@test "shared rubric: no gate-row writer contains a local critical-or-high verdict rule" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local failed=0
+  for entry in "${GATE_ROW_WRITERS[@]}"; do
+    local f="$base/$entry"
+    [ -f "$f" ] || { echo "SKILL.md not found: $f" >&2; failed=1; continue; }
+    # Check for local "critical or high" verdict rules — the pattern
+    # "FAILED" near "critical or high" or "critical/high"
+    if grep -iE '(FAILED|FAIL).*(critical|high).*(finding|severity)' "$f" >/dev/null 2>&1; then
+      # Exclude lines that are part of the shared rubric reference or
+      # the deterministic tool override (which is kept)
+      local matches
+      matches="$(grep -inE '(FAILED|FAIL).*(critical|high).*(finding|severity)' "$f" | grep -ivE 'shared-findings-rubric|deterministic|verdict-resolver' || true)"
+      if [ -n "$matches" ]; then
+        echo "local critical-or-high verdict rule found in: $entry" >&2
+        echo "$matches" >&2
+        failed=1
+      fi
+    fi
+  done
+  [ "$failed" -eq 0 ]
+}
+
+@test "shared rubric: deletion mutant of rubric reference fails the test" {
+  # This test creates a temp copy of a SKILL.md with the rubric reference
+  # removed, and verifies that a grep for the reference fails.
+  # In Red phase, the rubric reference does not exist yet, so this test
+  # verifies the detection mechanism (the reference MUST be present; if
+  # removed, the test catches it).
+  local base="$BATS_TEST_DIRNAME/.."
+  local target="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$target" ] || { echo "SKILL.md not found" >&2; false; }
+
+  # In Green, this file will have the reference. The test proves that
+  # removing it is detected.
+  if grep -qF 'shared-findings-rubric.md' "$target"; then
+    # Rubric reference exists — simulate deletion
+    local copy="$TEST_TMP/mutant-skill.md"
+    grep -vF 'shared-findings-rubric.md' "$target" > "$copy"
+    # The mutant must NOT pass the reference check
+    ! grep -qF 'shared-findings-rubric.md' "$copy"
+  else
+    # Rubric reference does not exist yet (Red phase) — the main test
+    # already fails, so this deletion mutant test also fails because
+    # the condition it guards is already violated.
+    echo "rubric reference not yet present in gaia-code-review — deletion mutant guard cannot run" >&2
+    false
+  fi
+}
+
+@test "shared rubric: rubric states the test-gap materiality rule" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rubric="$base/$RUBRIC_FILE"
+  [ -f "$rubric" ] || { echo "rubric not found: $rubric" >&2; false; }
+  # Must contain language about test gaps and materiality
+  grep -qiE 'test.gap.*material|material.*test.gap|material.*required.*behaviour|material.*unverified' "$rubric"
+}
+
+@test "shared rubric: rubric states deterministic blockers stay outside the register" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rubric="$base/$RUBRIC_FILE"
+  [ -f "$rubric" ] || { echo "rubric not found: $rubric" >&2; false; }
+  grep -qiE 'deterministic.*outside.*register|deterministic.*blocker.*not.*register|deterministic.*block.*exist.*rule' "$rubric"
+}
+
+@test "shared rubric: qa-tests expresses Critical promotion via shared blocker definition" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local f="$base/skills/gaia-qa-tests/SKILL.md"
+  [ -f "$f" ] || { echo "SKILL.md not found" >&2; false; }
+  # Must reference the shared rubric
+  grep -qF 'shared-findings-rubric.md' "$f"
+  # Must contain language about blocker definition for critical promotion
+  grep -qiE 'blocker.*definition|shared.*rubric.*blocker|shared-findings-rubric' "$f"
+}
+
+@test "shared rubric: qa-tests reword mutant restoring P0-only rule fails" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local f="$base/skills/gaia-qa-tests/SKILL.md"
+  [ -f "$f" ] || { echo "SKILL.md not found" >&2; false; }
+
+  # After the change, the old "P0 AC coverage gaps" wording should be
+  # replaced with shared blocker definition language. If the old wording
+  # is still present AND the shared rubric reference is also present,
+  # the test fails — the reword was not applied.
+  if grep -qF 'shared-findings-rubric.md' "$f"; then
+    # Rubric reference exists — the old local P0-only restriction
+    # wording must NOT be present as a standalone verdict rule
+    if grep -qiE 'Critical promotion is restricted to.*P0.*AC coverage' "$f"; then
+      echo "old P0-only Critical promotion rule still present" >&2
+      false
+    fi
+  else
+    # Rubric reference not yet present (Red phase)
+    echo "rubric reference not yet present in qa-tests" >&2
+    false
+  fi
 }

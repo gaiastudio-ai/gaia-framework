@@ -90,3 +90,17 @@ _write_story() { # $1 path ; $2 key
   grep -qF 'execution-evidence.json' "$P/skills/gaia-qa-tests/SKILL.md"
   grep -qF '.gaia/state/review/qa-tests/' "$P/skills/gaia-qa-tests/SKILL.md"
 }
+
+# ---------- findings-register type ----------
+
+@test "findings-register type resolves to findings-register-{key}.yaml in reviews dir" {
+  _write_story "$IA/epic-E5-z/E5-S1-test/story.md" "E5-S1"
+  run bash "$RES" --key E5-S1 --type findings-register
+  [ "$status" -eq 0 ]
+  # Use case instead of [[ ]] — bash 3.2 does not trigger ERR trap on [[ ]] failure
+  case "$output" in
+    */reviews/findings-register-E5-S1.yaml) : ;;
+    *) echo "expected .yaml path, got: $output" >&2; false ;;
+  esac
+  [ -d "$IA/epic-E5-z/E5-S1-test/reviews" ]
+}

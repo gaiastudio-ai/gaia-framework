@@ -76,6 +76,16 @@
           <a href="commands/gaia-tool-info.html"><code>/gaia-tool-info</code></a>.
         </dd>
 
+        <dt id="blocker">Blocker</dt>
+        <dd>
+          A demonstrated failure, or a credible unresolved risk, to required
+          behaviour, security, data integrity, supported platforms,
+          reliability, or an agreed performance limit. Only blockers cause a
+          review gate to fail. Everything else is non-blocking and goes to
+          triage with an owner and a priority. The shared findings rubric
+          defines the blocker criteria used by all review skills.
+        </dd>
+
         <dt id="atdd">ATDD (Acceptance Test-Driven Development)</dt>
         <dd>
           A testing methodology where acceptance tests are written before
@@ -178,6 +188,17 @@
           identified by keys like <code>E3</code>, <code>E15</code>.
           An epic groups related stories that together deliver a significant
           capability.
+        </dd>
+
+        <dt id="findings-register">Findings register</dt>
+        <dd>
+          A per-story YAML file that holds every review finding from all
+          review gates in one place. Each finding has a unique ID, a severity,
+          a blocking status, and a disposition. The register is the single
+          source of truth for the verdict rule: a gate is failed only when an
+          unresolved blocker exists in the register. The register writer is
+          the sole sanctioned writer; the verdict resolver reads it to
+          compute the verdict.
         </dd>
 
         <dt id="fork-context">Fork Context</dt>
