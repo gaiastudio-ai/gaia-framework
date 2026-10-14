@@ -19,8 +19,16 @@ assert_esm_parse() {
   cp "$f" "$tmpfile"
   run node --check "$tmpfile"
   rm -f "$tmpfile"
-  echo "ESM parse check: status=$status output=$output"
   [ "$status" -eq 0 ]
+}
+
+# Helper: assert output does NOT contain a module-load error.
+assert_no_load_error() {
+  local out="$1"
+  if [[ "$out" == *SyntaxError* ]] || [[ "$out" == *"Cannot find module"* ]] || [[ "$out" == *"Failed to load"* ]]; then
+    echo "FAIL: mutant failed due to module load error, not an assertion"
+    return 1
+  fi
 }
 
 # Helper: prepare a mutant dir with the plugin manifest and hooks files.
@@ -49,35 +57,23 @@ prepare_mutant() {
   MUTANT_DIR="${BATS_TMPDIR}/mutant-m1a-$$"
   prepare_mutant "$MUTANT_DIR"
 
-  # Surgical mutation: remove the try/catch around command.register.
-  # Without the guard, when command.register throws, session.start aborts
-  # before root detection, so gaiaRoot stays null and /sprint returns
-  # "No active sprint" instead of {} (active sprint).
   sed '/MARKER:CAP_DETECT_CMD$/d' "$MUTANT_DIR/hooks/index.js" > "$MUTANT_DIR/hooks/_t.js"
   mv "$MUTANT_DIR/hooks/_t.js" "$MUTANT_DIR/hooks/index.js"
   sed '/MARKER:CAP_DETECT_CMD_END$/d' "$MUTANT_DIR/hooks/index.js" > "$MUTANT_DIR/hooks/_t.js"
   mv "$MUTANT_DIR/hooks/_t.js" "$MUTANT_DIR/hooks/index.js"
 
-  # Assert the mutation changed the file
   run diff "$INDEX_JS" "$MUTANT_DIR/hooks/index.js"
   [ "$status" -ne 0 ]
 
-  # Assert mutated file still parses as ESM
   assert_esm_parse "$MUTANT_DIR/hooks/index.js"
 
-  # Run plugin test on mutant -- should FAIL
   run claude plugin test "$MUTANT_DIR"
-  echo "mutant test output: $output"
   [ "$status" -ne 0 ]
 
   # The partial-caps test must be the one that fails (assertion, not load error)
-  echo "$output" | grep -q 'command.register throws'
-  if echo "$output" | grep -qi 'SyntaxError\|Cannot find module\|Failed to load'; then
-    echo "FAIL: mutant failed due to module load error, not an assertion"
-    false
-  fi
+  [[ "$output" == *"command.register throws"* ]] || false
+  assert_no_load_error "$output"
 
-  # Original passes
   run claude plugin test "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
 
@@ -100,13 +96,8 @@ prepare_mutant() {
   assert_esm_parse "$MUTANT_DIR/hooks/index.js"
 
   run claude plugin test "$MUTANT_DIR"
-  echo "mutant test output: $output"
   [ "$status" -ne 0 ]
-
-  if echo "$output" | grep -qi 'SyntaxError\|Cannot find module\|Failed to load'; then
-    echo "FAIL: mutant failed due to module load error, not an assertion"
-    false
-  fi
+  assert_no_load_error "$output"
 
   run claude plugin test "$PLUGIN_DIR"
   [ "$status" -eq 0 ]
@@ -130,13 +121,8 @@ prepare_mutant() {
   assert_esm_parse "$MUTANT_DIR/hooks/index.js"
 
   run claude plugin test "$MUTANT_DIR"
-  echo "mutant test output: $output"
   [ "$status" -ne 0 ]
-
-  if echo "$output" | grep -qi 'SyntaxError\|Cannot find module\|Failed to load'; then
-    echo "FAIL: mutant failed due to module load error, not an assertion"
-    false
-  fi
+  assert_no_load_error "$output"
 
   run claude plugin test "$PLUGIN_DIR"
   [ "$status" -eq 0 ]

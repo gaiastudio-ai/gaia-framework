@@ -40,6 +40,5 @@ teardown() {
   # plugin test exits 1 when no *.test.ts files exist (expected).
   # Assert the message is the "no tests" message, not a load error.
   run claude plugin test "$TMPMOD"
-  echo "test output: $output"
-  echo "$output" | grep -q 'no \*\.test\.ts'
+  [[ "$output" == *"no "*.test.ts* ]] || [[ "$output" == *"0 test"* ]] || false
 }

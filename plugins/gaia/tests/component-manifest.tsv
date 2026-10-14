@@ -264,6 +264,10 @@ core	manual-test-docs.bats
 core	meeting-dispatch-provenance-integration.bats
 core	meeting-val-bridge-anti-pattern.bats
 core	migrate-stories-to-canonical-layout.bats
+core	mod-cap-detect-direct.bats
+core	mod-empty-body.bats
+core	mod-mutant-kill.bats
+core	mod-validate-strict.bats
 core	mode-b-docs.bats
 core	mode-b-parity.bats
 core	never-built-commands.bats
@@ -562,6 +566,10 @@ scripts-core	memory-writer.bats
 scripts-core	migrate-config-split.bats
 scripts-core	migrate-placeholder-substitution.bats
 scripts-core	migrate-test-environment-path.bats
+scripts-core	mod-cache-contract.bats
+scripts-core	mod-interleave.bats
+scripts-core	mod-sanitize.bats
+scripts-core	mod-shell-static-audit.bats
 scripts-core	next-step.bats
 scripts-core	observability-hardening.bats
 scripts-core	orchestration-warning-wiring.bats

@@ -326,8 +326,10 @@ copyFileSync(p, backupPath);'
   for i in "${!names[@]}"; do
     printf '%s\n' "${bodies[$i]}" > "$copy/hooks/reader-${names[$i]}"
   done
-  # Every reader names the cache, yet none of them writes it.
-  [ "$(grep -rlF '.sprint-progress-cache.json' "$copy/hooks" | wc -l | tr -d ' ')" -eq 5 ]
+  # Every planted reader names the cache, yet none of them writes it.
+  # Count only the planted reader-* files (other hooks files like index.js
+  # may also reference the cache path legitimately as a read-only consumer).
+  [ "$(grep -rlF '.sprint-progress-cache.json' "$copy/hooks" | grep '/reader-' | wc -l | tr -d ' ')" -eq 5 ]
   local writers; writers="$(_cache_writer_sweep "$copy")"
   [ "$(printf '%s\n' "$writers" | wc -l | tr -d ' ')" -eq 1 ]
   [ "$(basename "$writers")" = "sprint-progress-snapshot.sh" ]

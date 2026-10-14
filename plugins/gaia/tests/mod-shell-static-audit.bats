@@ -141,6 +141,6 @@ if (count === 0) {
 
   cd "$REPO_ROOT"
   run git ls-files -s "$SNAPSHOT_SH"
-  echo "$output"
-  echo "$output" | grep -q '100755'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *100755* ]] || false
 }
