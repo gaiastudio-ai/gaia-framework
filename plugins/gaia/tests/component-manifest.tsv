@@ -275,6 +275,7 @@ core	no-bare-gaia-path-antipattern.bats
 core	no-bsd-awk-incompatible-anchors.bats
 core	no-leaked-ids-in-prose.bats
 core	no-leaked-ids-in-test-names.bats
+core	no-stray-gaia-dir.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
 core	parallel-execution-config.bats
