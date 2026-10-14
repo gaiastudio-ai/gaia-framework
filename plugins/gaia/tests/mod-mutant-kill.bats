@@ -32,7 +32,7 @@ prepare_mutant() {
 # module load error.
 assert_failed_test() {
   local name="$1"
-  if ! printf '%s\n' "$output" | grep -qF "(fail) $name ["; then
+  if ! grep -qF -- "(fail) $name [" <<< "$output"; then
     echo "expected a failure of: $name" >&2
     return 1
   fi
