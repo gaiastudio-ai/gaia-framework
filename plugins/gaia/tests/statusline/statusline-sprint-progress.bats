@@ -209,26 +209,30 @@ _assert_printable() {
 }
 
 # _render_bytes_within SECS FILE — _render_bytes, but fail with 124 when the
-# render is still running after SECS seconds. On a timeout the render is
-# stopped and any reader left blocked on a FIFO in the fixture is released.
+# render is still running after SECS seconds. On a timeout every reader left
+# blocked on a FIFO in the fixture (FIFOS array) is released again and again
+# until the render has exited on its own, so no process outlives the test;
+# the render also never inherits the bats output descriptors.
 _render_bytes_within() {
-  local secs="$1" out="$2" pid i=0 f
-  _render_bytes "$out" &
+  local secs="$1" out="$2" pid i=0 f timed_out=0
+  _render_bytes "$out" 3>&- 4>&- &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     i=$((i + 1))
     if [ "$i" -gt $((secs * 20)) ]; then
-      kill "$pid" 2>/dev/null || true
+      timed_out=1
       for f in "${FIFOS[@]:-}"; do
-        [ -p "$f" ] && { exec 9<>"$f"; exec 9>&-; } 2>/dev/null || true
+        if [ -p "$f" ]; then { exec 9<>"$f"; exec 9>&-; } 2>/dev/null || true; fi
       done
-      wait "$pid" 2>/dev/null || true
-      echo "render still running after ${secs}s"
-      return 124
+      [ "$i" -lt $((secs * 40)) ] || { kill "$pid" 2>/dev/null || true; break; }
     fi
     sleep 0.05
   done
-  wait "$pid"
+  wait "$pid" 2>/dev/null || true
+  if [ "$timed_out" = "1" ]; then
+    echo "render still running after ${secs}s"
+    return 124
+  fi
 }
 
 # _set_pct_literal TEXT — replace the progress_pct number in the cache with
@@ -592,7 +596,7 @@ _setup_project_all_done() {
   rm -f "$CACHE_FILE"
   mkfifo "$CACHE_FILE"
   FIFOS=("$CACHE_FILE")
-  _render_bytes_within 10 "$TEST_TMP/out.txt"
+  _render_bytes_within 5 "$TEST_TMP/out.txt"
   [ ! -s "$TEST_TMP/out.txt.err" ]
   grep -qF "sprint-900" "$TEST_TMP/out.txt"
   run grep -qF "%" "$TEST_TMP/out.txt"
@@ -604,7 +608,7 @@ _setup_project_all_done() {
   rm -f "$CACHE_FILE" "$YAML_FILE"
   mkfifo "$YAML_FILE"
   FIFOS=("$YAML_FILE")
-  _render_bytes_within 10 "$TEST_TMP/out.txt"
+  _render_bytes_within 5 "$TEST_TMP/out.txt"
   [ ! -s "$TEST_TMP/out.txt.err" ]
   run grep -qF "sprint-" "$TEST_TMP/out.txt"
   [ "$status" -ne 0 ]
