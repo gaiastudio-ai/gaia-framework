@@ -150,6 +150,68 @@ YAML
 }
 
 # ------------------------------------------------------------------ #
+# Status-line false-positive: .gaia/memory/ exists but no project
+# ------------------------------------------------------------------ #
+# The status line creates .gaia/memory/ in any directory to write a
+# context-window snapshot.  That alone must not trick the snapshot or
+# dashboard into treating the directory as a GAIA project.
+
+@test "snapshot creates nothing when only .gaia/memory/ exists (bash 5)" {
+  mkdir -p "$EMPTY_DIR/.gaia/memory"
+  run --separate-stderr bash "$SNAPSHOT"
+  [ "$status" -eq 0 ]
+  # Only the pre-existing .gaia/memory/ may remain — nothing else.
+  run find "$EMPTY_DIR/.gaia" -mindepth 1 -not -path "$EMPTY_DIR/.gaia/memory"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "snapshot creates nothing when only .gaia/memory/ exists (bash 3.2)" {
+  need_bash32
+  mkdir -p "$EMPTY_DIR/.gaia/memory"
+  run --separate-stderr "$BASH32" "$SNAPSHOT"
+  [ "$status" -eq 0 ]
+  run find "$EMPTY_DIR/.gaia" -mindepth 1 -not -path "$EMPTY_DIR/.gaia/memory"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "dashboard prints no-sprint and creates nothing when only .gaia/memory/ exists (bash 5)" {
+  mkdir -p "$EMPTY_DIR/.gaia/memory"
+  run --separate-stderr bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No active sprint"* ]]
+  run find "$EMPTY_DIR/.gaia" -mindepth 1 -not -path "$EMPTY_DIR/.gaia/memory"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "dashboard prints no-sprint and creates nothing when only .gaia/memory/ exists (bash 3.2)" {
+  need_bash32
+  mkdir -p "$EMPTY_DIR/.gaia/memory"
+  run --separate-stderr "$BASH32" "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No active sprint"* ]]
+  run find "$EMPTY_DIR/.gaia" -mindepth 1 -not -path "$EMPTY_DIR/.gaia/memory"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "statusline context-window then dashboard creates no .gaia/state/ (bash 5)" {
+  # Simulate the status line writing a context-window snapshot, then verify
+  # that running the dashboard afterward does not materialise .gaia/state/.
+  local statusline="$SCRIPTS_DIR/statusline.sh"
+  # The status line needs a JSON context-window payload on stdin.
+  local payload='{"context_window":{"current_usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":10,"cache_read_input_tokens":5}}}'
+  run --separate-stderr bash -c "printf '%s' '$payload' | PROJECT_ROOT='$EMPTY_DIR' bash '$statusline' 2>/dev/null || true"
+  # Now run the dashboard
+  run --separate-stderr bash "$DASHBOARD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No active sprint"* ]]
+  [ ! -d "$EMPTY_DIR/.gaia/state" ]
+}
+
+# ------------------------------------------------------------------ #
 # Per-mutant proof: removing each guard makes the test go red
 # ------------------------------------------------------------------ #
 
