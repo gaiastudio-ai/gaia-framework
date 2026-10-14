@@ -1,4 +1,5 @@
-import { sanitizeCache } from './sanitize.js'
+import { sanitize, sanitizeCache, TITLE_MAX, MESSAGE_MAX, COMMAND_MAX, GOAL_MAX,
+  BLOCKED_BY_MAX, DRIFT_DETAIL_MAX, TASK_TEXT_MAX, GATE_NAME_MAX } from './sanitize.js'
 
 // -- tuning --
 var TICK_MS = 30000          // interval timer period
@@ -17,6 +18,35 @@ var paneOpen = false
 var timerHandle = null
 var unchangedRuns = 0   // consecutive snapshot runs that did not move the cache
 var backoffUntil = 0
+var selectedStoryKey = null
+var envNoColor = false
+var envAscii = false
+
+// -- exports for the agent-activity story to populate --
+export var ruleBItems = []
+export var activityByStory = new Map()
+export var unlinkedActivity = { items: [], overflow: 0 }
+
+// -- status rendering constants --
+var STATUS_COLORS = {
+  done: 'green', review: 'blue', 'in-progress': 'yellow',
+  blocked: 'red', ready: 'gray', backlog: 'dim', validating: 'dim'
+}
+var STATUS_GLYPHS = {
+  done: '✓', review: '☉', 'in-progress': '◑',
+  blocked: '✕', ready: '·', backlog: '–', validating: '–'
+}
+var STATUS_GLYPHS_ASCII = {
+  done: '[x]', review: '[o]', 'in-progress': '[~]',
+  blocked: '[!]', ready: '[-]', backlog: '[ ]', validating: '[ ]'
+}
+var STAGE_GLYPHS = { done: '✓', current: '◌', 'not-yet': '○' }
+var STAGE_GLYPHS_ASCII = { done: '[x]', current: '[.]', 'not-yet': '[ ]' }
+var FILLED_BLOCK = '█'
+var PACE_LABELS = {
+  'on-pace': 'on pace', 'behind-pace': 'behind pace',
+  overdue: 'overdue', starting: 'starting'
+}
 
 // -- helpers --
 
@@ -166,6 +196,11 @@ function runSnapshotAndRefresh($) {
       await refresh($)
       noteRunOutcome(before !== cacheStatKey, await nowMs($))
       try { $.ui.invalidate('ui.render') } catch (_) { /* stripped build */ }
+      // Close the pane when the sprint becomes inactive during the session.
+      if (paneOpen && (!cachedData || !cachedData.sprint || cachedData.sprint.status === 'closed')) {
+        try { await $.ui.close({ id: 'sprint-status' }) } catch (_) { /* already closed */ }
+        paneOpen = false
+      }
     } finally {
       if (inFlight === slot) inFlight = null
     }
@@ -205,6 +240,538 @@ function maybeRebuild($, now) {
 export function getPaneOpen() { return paneOpen }
 export function getCacheView() { return cachedData }
 
+// -- toggle --
+
+async function toggle($, withFocus) {
+  try {
+    var panes = await $.ui.panes()
+    var placed = panes.some(function (p) { return p.id === 'sprint-status' && p.isPlaced !== false })
+    if (placed) {
+      await $.ui.close({ id: 'sprint-status' })
+      paneOpen = false
+    } else {
+      var result = await $.ui.open({ id: 'sprint-status', title: 'Sprint', closeOnEscape: true, focus: withFocus })
+      if (result && typeof result === 'object' && 'isPlaced' in result) {
+        paneOpen = result.isPlaced
+      } else {
+        // Older builds return void; check panes() to determine placement.
+        var p2 = await $.ui.panes()
+        paneOpen = p2.some(function (p) { return p.id === 'sprint-status' })
+      }
+    }
+    try { $.ui.invalidate('ui.render') } catch (_) { /* stripped build */ }
+  } catch (_) { /* toggle failed silently */ }
+}
+
+// -- rendering helpers --
+
+function statusGlyph(status) {
+  if (envAscii) return STATUS_GLYPHS_ASCII[status] || STATUS_GLYPHS_ASCII.backlog
+  return STATUS_GLYPHS[status] || STATUS_GLYPHS.backlog
+}
+
+function stageGlyph(stage) {
+  if (envAscii) return STAGE_GLYPHS_ASCII[stage] || STAGE_GLYPHS_ASCII['not-yet']
+  return STAGE_GLYPHS[stage] || STAGE_GLYPHS['not-yet']
+}
+
+function statusColor(status) {
+  if (envNoColor) return undefined
+  return STATUS_COLORS[status] || STATUS_COLORS.backlog
+}
+
+function warnColor() { return envNoColor ? undefined : 'red' }
+function dimColor() { return envNoColor ? undefined : 'dim' }
+function greenColor() { return envNoColor ? undefined : 'green' }
+
+function sortByPhase(stories) {
+  return stories.slice().sort(function (a, b) {
+    var pa = a.phase != null ? a.phase : 999999
+    var pb = b.phase != null ? b.phase : 999999
+    return pa - pb
+  })
+}
+
+function mergedActionList(data) {
+  var actions = (data.action_needed || []).concat(ruleBItems)
+  actions.sort(function (a, b) { return (a.rule || '').localeCompare(b.rule || '') })
+  return actions
+}
+
+function driftForStory(data, key) {
+  if (!data.drift || !data.drift.length) return null
+  for (var i = 0; i < data.drift.length; i++) {
+    if (data.drift[i].story_key === key) return data.drift[i]
+  }
+  return null
+}
+
+function isHighRisk(story) { return story.risk_level === 'high' }
+
+function readyToMarkDone(story) {
+  if (story.status !== 'review') return false
+  if (!story.gates || story.gates.passed !== story.gates.total || story.gates.total !== 6) return false
+  if (story.manual_test && story.manual_test.required) {
+    return story.manual_test.verdict === 'PASSED'
+  }
+  return true
+}
+
+function sepLine(c) {
+  return h(c.Text, { color: dimColor() }, '─'.repeat(40))
+}
+
+function computeStages(story) {
+  var status = story.status || 'backlog'
+  if (status === 'done') return ['done', 'done', 'done', 'done']
+  if (status === 'review') return ['done', 'done', 'current', 'not-yet']
+  if (status === 'in-progress' || status === 'blocked') return ['done', 'current', 'not-yet', 'not-yet']
+  if (status === 'ready-for-dev' || status === 'ready') return ['current', 'not-yet', 'not-yet', 'not-yet']
+  return ['not-yet', 'not-yet', 'not-yet', 'not-yet']
+}
+
+// -- sidebar section renderers --
+// Each returns an h() element tree. All read only from in-memory data.
+
+function renderBanner(c, data) {
+  var actions = mergedActionList(data)
+  if (!actions.length) return null
+  var earliest = actions.reduce(function (m, a) {
+    if (!a.since) return m
+    return (!m || a.since < m) ? a.since : m
+  }, null)
+  var items = []
+  for (var i = 0; i < actions.length; i++) {
+    var a = actions[i]
+    var msg = sanitize(a.message || '', MESSAGE_MAX)
+    var cmd = sanitize(a.command || '', COMMAND_MAX)
+    var children = [h(c.Text, { key: 'am-' + i, color: warnColor(), bold: true }, ' ' + msg)]
+    if (cmd) children.push(h(c.Text, { key: 'ac-' + i, color: dimColor() }, '  → ' + cmd))
+    items.push(h(c.Box, { key: 'an-' + i, flexDirection: 'column' }, ...children))
+  }
+  return h(c.Box, { flexDirection: 'column' },
+    h(c.Text, { color: warnColor(), bold: true },
+      '⚠ ACTION NEEDED' + (earliest ? ' · since ' + earliest : '')),
+    ...items
+  )
+}
+
+function renderHeader(c, data) {
+  var sprint = data.sprint
+  var id = sanitize(sprint.id || '', TITLE_MAX)
+  var goal = sanitize(sprint.goal || '', GOAL_MAX)
+  return h(c.Box, { flexDirection: 'column' },
+    h(c.Box, { flexDirection: 'row' },
+      h(c.Text, { bold: true }, 'SPRINT  ' + id + '  '),
+      h(c.Text, { color: greenColor() }, '● live')
+    ),
+    goal ? h(c.Text, { wrap: 'truncate-end' }, goal) : null
+  )
+}
+
+function renderAggregate(c, data) {
+  var t = data.totals || {}
+  var done = t.done_stories || 0
+  var total = t.total_stories || 0
+  var donePts = t.done_points || 0
+  var totalPts = t.total_points || 0
+  var pct = t.progress_pct != null ? t.progress_pct : 0
+  return h(c.Text, null,
+    done + ' of ' + total + ' stories · ' +
+    donePts + ' of ' + totalPts + ' pts · ' + pct + '%')
+}
+
+function buildBarSegments(stories, availCols) {
+  if (!stories || !stories.length || availCols < 1) return []
+  var sorted = sortByPhase(stories)
+  var totalPts = 0
+  for (var i = 0; i < sorted.length; i++) totalPts += (sorted[i].points || 0)
+  var segs = []
+  for (var j = 0; j < sorted.length; j++) {
+    var pts = sorted[j].points || 0
+    var w = totalPts > 0
+      ? Math.max(1, Math.floor(pts / totalPts * availCols))
+      : 1
+    segs.push({ status: sorted[j].status || 'backlog', width: w })
+  }
+  // Merge adjacent same-status when stories exceed available columns.
+  if (sorted.length > availCols) {
+    var merged = [{ status: segs[0].status, width: segs[0].width }]
+    for (var m = 1; m < segs.length; m++) {
+      if (segs[m].status === merged[merged.length - 1].status) {
+        merged[merged.length - 1].width += segs[m].width
+      } else {
+        merged.push({ status: segs[m].status, width: segs[m].width })
+      }
+    }
+    segs = merged
+  }
+  // Adjust total to fit available columns.
+  var usedCols = 0
+  for (var n = 0; n < segs.length; n++) usedCols += segs[n].width
+  var idx = 0
+  while (usedCols < availCols && segs.length > 0) {
+    segs[idx % segs.length].width++
+    usedCols++
+    idx++
+  }
+  while (usedCols > availCols) {
+    var wide = -1
+    for (var k = segs.length - 1; k >= 0; k--) {
+      if (segs[k].width > 1 && (wide === -1 || segs[k].width > segs[wide].width)) wide = k
+    }
+    if (wide === -1) break
+    segs[wide].width--
+    usedCols--
+  }
+  return segs
+}
+
+function renderBar(c, data, bodyColumns) {
+  var stories = data.stories || []
+  if (!stories.length) return null
+  var cols = bodyColumns || 40
+  // Collect which statuses are present for the legend.
+  var presentStatuses = {}
+  for (var i = 0; i < stories.length; i++) presentStatuses[stories[i].status || 'backlog'] = true
+
+  if (envNoColor) {
+    // Text-only fallback: show counts per status.
+    var counts = {}
+    for (var j = 0; j < stories.length; j++) {
+      var st = stories[j].status || 'backlog'
+      counts[st] = (counts[st] || 0) + 1
+    }
+    var parts = []
+    var order = ['done', 'review', 'in-progress', 'blocked', 'ready', 'backlog', 'validating']
+    for (var k = 0; k < order.length; k++) {
+      if (counts[order[k]]) parts.push(counts[order[k]] + ' ' + order[k])
+    }
+    return h(c.Text, null, parts.join(' · '))
+  }
+
+  var segs = buildBarSegments(stories, cols)
+  if (!segs.length) return null
+  var barChildren = []
+  for (var s = 0; s < segs.length; s++) {
+    barChildren.push(
+      h(c.Text, { key: 'bar-' + s, color: statusColor(segs[s].status) },
+        FILLED_BLOCK.repeat(segs[s].width))
+    )
+  }
+  // Legend: one line with distinct glyphs per present status.
+  var legendParts = []
+  var legendOrder = ['done', 'review', 'in-progress', 'blocked', 'ready', 'backlog', 'validating']
+  for (var l = 0; l < legendOrder.length; l++) {
+    if (presentStatuses[legendOrder[l]]) {
+      legendParts.push(statusGlyph(legendOrder[l]) + ' ' + legendOrder[l])
+    }
+  }
+  return h(c.Box, { flexDirection: 'column' },
+    h(c.Box, { flexDirection: 'row' }, ...barChildren),
+    h(c.Text, { color: dimColor() }, legendParts.join('  '))
+  )
+}
+
+function renderSubLine(c, data) {
+  var parts = []
+  if (data.active_phase != null) {
+    var totalPhases = (data.phases || []).length
+    parts.push('Phase ' + data.active_phase + (totalPhases ? ' of ' + totalPhases : ''))
+  }
+  var d = data.day || {}
+  if (d.current != null) {
+    var dayStr = 'Day ' + (d.current + 1)
+    if (d.total != null) dayStr += ' of ' + d.total
+    parts.push(dayStr)
+  }
+  if (d.pace) parts.push(PACE_LABELS[d.pace] || d.pace)
+  // Count blocked stories.
+  var blocked = 0
+  var stories = data.stories || []
+  for (var i = 0; i < stories.length; i++) {
+    if (stories[i].status === 'blocked') blocked++
+  }
+  parts.push(blocked + ' blocked')
+  var children = []
+  for (var j = 0; j < parts.length; j++) {
+    if (j > 0) children.push(h(c.Text, { key: 'ssep-' + j }, ' · '))
+    var isOverdue = d.pace === 'overdue' && parts[j] === 'overdue'
+    var isBlocked = j === parts.length - 1 && blocked > 0
+    children.push(
+      h(c.Text, { key: 'sub-' + j, color: (isOverdue || isBlocked) ? warnColor() : undefined }, parts[j])
+    )
+  }
+  return h(c.Box, { flexDirection: 'row' }, ...children)
+}
+
+function renderReadiness(c, data) {
+  var r = data.readiness || {}
+  var children = []
+  children.push(h(c.Text, null,
+    'Ready for sprint review  ' + (r.sprint_review ? '( yes )' : '( no )')))
+  children.push(h(c.Text, null,
+    'Ready to close sprint   ' + (r.sprint_close ? '( yes )' : '( no )')))
+  // Ready-to-mark-done flag.
+  var readyCount = 0
+  var waitingManual = 0
+  var stories = data.stories || []
+  for (var i = 0; i < stories.length; i++) {
+    if (readyToMarkDone(stories[i])) readyCount++
+    if (stories[i].status === 'review' && stories[i].gates &&
+        stories[i].gates.passed === 6 && stories[i].gates.total === 6 &&
+        stories[i].manual_test && stories[i].manual_test.required &&
+        stories[i].manual_test.verdict !== 'PASSED') {
+      waitingManual++
+    }
+  }
+  if (readyCount > 0) {
+    children.push(h(c.Text, { color: greenColor() },
+      readyCount + ' stor' + (readyCount === 1 ? 'y' : 'ies') + ' ready to mark done'))
+  }
+  if (waitingManual > 0) {
+    children.push(h(c.Text, { color: warnColor() },
+      '⚠ ' + waitingManual + ' stor' + (waitingManual === 1 ? 'y' : 'ies') +
+      ' gates 6/6 — waiting on manual test'))
+  }
+  return h(c.Box, { flexDirection: 'column' }, ...children)
+}
+
+function renderNowRow(c, story, data, onPress) {
+  var glyph = statusGlyph(story.status)
+  var key = story.key || ''
+  var slug = story.slug || ''
+  var tasks = story.tasks || {}
+  var gates = story.gates || {}
+  var line = glyph + ' ' + key + ' ' + slug
+  line += '  tasks ' + (tasks.done || 0) + '/' + (tasks.total || 0)
+  line += '  gates ' + (gates.passed || 0) + '/' + (gates.total || 6)
+  if (story.blocked_by) {
+    var bb = sanitize(story.blocked_by, BLOCKED_BY_MAX)
+    line += '  blocked → ' + bb + (story.blocked_since ? ' since ' + story.blocked_since : '')
+  }
+  var drift = driftForStory(data, key)
+  if (drift) line += ' ⚠ drift'
+  if (isHighRisk(story)) line += ' HIGH'
+  var rowChildren = [
+    h(c.Button, { key: 'now-' + key, plain: true, onPress: onPress },
+      h(c.Text, { color: statusColor(story.status), wrap: 'truncate-end' }, ' ' + line))
+  ]
+  // Agent activity sub-lines from the agent-activity module.
+  var activity = activityByStory.get(key)
+  if (activity && activity.items && activity.items.length > 0) {
+    for (var a = 0; a < activity.items.length; a++) {
+      rowChildren.push(h(c.Text, { key: 'act-' + key + '-' + a, color: dimColor() },
+        '   → ' + (activity.items[a].label || 'agent') + ' ' + (activity.items[a].status || '')))
+    }
+    if (activity.overflow > 0) {
+      rowChildren.push(h(c.Text, { key: 'act-' + key + '-more', color: dimColor() },
+        '   +' + activity.overflow + ' more'))
+    }
+  }
+  return h(c.Box, { key: 'nowr-' + key, flexDirection: 'column' }, ...rowChildren)
+}
+
+function renderNow(c, data, $) {
+  var stories = data.stories || []
+  var active = []
+  for (var i = 0; i < stories.length; i++) {
+    var st = stories[i].status
+    if (st === 'in-progress' || st === 'review' || st === 'blocked') active.push(stories[i])
+  }
+  var children = [h(c.Text, { bold: true }, 'NOW')]
+  if (active.length === 0) {
+    children.push(h(c.Text, { color: dimColor() }, ' No active work'))
+    // Unlinked agent activity.
+    if (unlinkedActivity.items && unlinkedActivity.items.length > 0) {
+      for (var u = 0; u < unlinkedActivity.items.length; u++) {
+        children.push(h(c.Text, { key: 'uact-' + u, color: dimColor() },
+          '  → ' + (unlinkedActivity.items[u].label || 'agent') + ' ' +
+          (unlinkedActivity.items[u].status || '')))
+      }
+      if (unlinkedActivity.overflow > 0) {
+        children.push(h(c.Text, { key: 'uact-more', color: dimColor() },
+          '  +' + unlinkedActivity.overflow + ' more'))
+      }
+    }
+    return h(c.Box, { flexDirection: 'column' }, ...children)
+  }
+  for (var j = 0; j < active.length; j++) {
+    var story = active[j]
+    children.push(renderNowRow(c, story, data, (function (k) {
+      return function () {
+        selectedStoryKey = selectedStoryKey === k ? null : k
+        try { $.ui.invalidate('ui.render') } catch (_) { /* stripped build */ }
+      }
+    })(story.key)))
+  }
+  // Unlinked agent activity.
+  if (unlinkedActivity.items && unlinkedActivity.items.length > 0) {
+    for (var v = 0; v < unlinkedActivity.items.length; v++) {
+      children.push(h(c.Text, { key: 'uact-' + v, color: dimColor() },
+        '  → ' + (unlinkedActivity.items[v].label || 'agent') + ' ' +
+        (unlinkedActivity.items[v].status || '')))
+    }
+    if (unlinkedActivity.overflow > 0) {
+      children.push(h(c.Text, { key: 'uact-more', color: dimColor() },
+        '  +' + unlinkedActivity.overflow + ' more'))
+    }
+  }
+  return h(c.Box, { flexDirection: 'column' }, ...children)
+}
+
+function renderPhaseMatrix(c, data, $) {
+  var phases = data.phases || []
+  var stories = data.stories || []
+  var storyMap = {}
+  for (var i = 0; i < stories.length; i++) storyMap[stories[i].key] = stories[i]
+  var header = h(c.Text, { color: dimColor() },
+    '                         READY  DEV  REVIEW DONE')
+  var children = [header]
+  // Collapse done phases into a summary line.
+  var donePhases = []
+  for (var p = 0; p < phases.length; p++) {
+    if (phases[p].status === 'done') donePhases.push(phases[p])
+  }
+  if (donePhases.length > 0) {
+    var doneStories = 0
+    var donePts = 0
+    var minP = donePhases[0].phase
+    var maxP = donePhases[donePhases.length - 1].phase
+    for (var d = 0; d < donePhases.length; d++) {
+      doneStories += (donePhases[d].total_count || 0)
+      var dsKeys = donePhases[d].stories || []
+      for (var ds = 0; ds < dsKeys.length; ds++) {
+        var dStory = storyMap[dsKeys[ds]]
+        if (dStory) donePts += (dStory.points || 0)
+      }
+    }
+    var rangeStr = donePhases.length === 1 ? 'Phase ' + minP : 'Phases ' + minP + '–' + maxP
+    children.push(h(c.Text, { color: greenColor() },
+      stageGlyph('done') + ' ' + rangeStr + ' · ' + doneStories + ' stories · ' + donePts + ' pts'))
+  }
+  // Active and future phases.
+  for (var q = 0; q < phases.length; q++) {
+    var phase = phases[q]
+    if (phase.status === 'done') continue
+    var isActive = phase.status === 'active'
+    var phColor = isActive ? undefined : dimColor()
+    var phLabel = 'PHASE ' + phase.phase + (isActive ? ' (active)' : '')
+    if (!isActive) {
+      var phStories = phase.stories || []
+      var slugs = []
+      for (var fs = 0; fs < phStories.length && fs < 5; fs++) slugs.push(phStories[fs])
+      if (phStories.length > 5) slugs.push('...')
+      children.push(h(c.Text, { color: phColor }, phLabel + '  ' + slugs.join(' · ')))
+      continue
+    }
+    children.push(h(c.Text, { bold: true }, phLabel))
+    var phaseStories = phase.stories || []
+    for (var as = 0; as < phaseStories.length; as++) {
+      var aStory = storyMap[phaseStories[as]]
+      if (!aStory) continue
+      var stages = computeStages(aStory)
+      var stageStr = stages.map(function (sg) { return stageGlyph(sg) }).join('    ')
+      var highMark = isHighRisk(aStory) ? ' HIGH' : ''
+      var title = sanitize(aStory.title || '', TITLE_MAX)
+      children.push(
+        h(c.Button, {
+          key: 'mx-' + (aStory.key || as),
+          plain: true,
+          onPress: (function (k) {
+            return function () {
+              selectedStoryKey = selectedStoryKey === k ? null : k
+              try { $.ui.invalidate('ui.render') } catch (_) { /* stripped build */ }
+            }
+          })(aStory.key)
+        }, h(c.Text, { wrap: 'truncate-end' },
+          ' ' + (aStory.key || '') + ' ' + title + '   ' + stageStr + highMark))
+      )
+    }
+  }
+  // Unphased stories.
+  var unphased = data.unphased_stories || []
+  if (unphased.length > 0) {
+    var upPts = 0
+    var upStories = []
+    for (var u = 0; u < unphased.length; u++) {
+      var uKey = typeof unphased[u] === 'string' ? unphased[u] : (unphased[u].key || '')
+      var uStory = storyMap[uKey]
+      if (uStory) { upStories.push(uStory); upPts += (uStory.points || 0) }
+    }
+    var allDone = upStories.length > 0 && upStories.every(function (s) { return s.status === 'done' })
+    if (allDone) {
+      children.push(h(c.Text, { color: greenColor() },
+        stageGlyph('done') + ' Unphased · ' + upStories.length + ' stories · ' + upPts + ' pts'))
+    } else if (upStories.length > 0) {
+      children.push(h(c.Text, { color: dimColor() },
+        'Unphased · ' + upStories.length + ' stories · ' + upPts + ' pts'))
+      for (var up = 0; up < upStories.length; up++) {
+        var us = upStories[up]
+        var uStages = computeStages(us)
+        var uStageStr = uStages.map(function (sg) { return stageGlyph(sg) }).join('    ')
+        var uHighMark = isHighRisk(us) ? ' HIGH' : ''
+        children.push(
+          h(c.Button, {
+            key: 'mx-up-' + (us.key || up),
+            plain: true,
+            onPress: (function (k) {
+              return function () {
+                selectedStoryKey = selectedStoryKey === k ? null : k
+                try { $.ui.invalidate('ui.render') } catch (_) { /* stripped build */ }
+              }
+            })(us.key)
+          }, h(c.Text, { wrap: 'truncate-end' },
+            ' ' + (us.key || '') + ' ' + sanitize(us.title || '', TITLE_MAX) +
+            '   ' + uStageStr + uHighMark))
+        )
+      }
+    }
+  }
+  return h(c.Box, { flexDirection: 'column' }, ...children)
+}
+
+function renderDetail(c, data) {
+  if (!selectedStoryKey) return null
+  var stories = data.stories || []
+  var story = null
+  for (var i = 0; i < stories.length; i++) {
+    if (stories[i].key === selectedStoryKey) { story = stories[i]; break }
+  }
+  if (!story) return null
+  var children = []
+  var title = sanitize(story.title || '', TITLE_MAX)
+  var gates = story.gates || {}
+  var tasks = story.tasks || {}
+  var manual = story.manual_test || {}
+  var manualStr = ''
+  if (manual.required) {
+    manualStr = ' · manual ' + (manual.verdict === 'PASSED' ? stageGlyph('done') : stageGlyph('not-yet'))
+  }
+  children.push(h(c.Text, { bold: true },
+    '▾ ' + (story.key || '') + ' · ' + title +
+    ' · gates ' + (gates.passed || 0) + '/' + (gates.total || 6) + manualStr))
+  var items = tasks.items || []
+  for (var t = 0; t < items.length; t++) {
+    var check = items[t].done ? '[x]' : '[ ]'
+    var text = sanitize(items[t].text || '', TASK_TEXT_MAX)
+    children.push(h(c.Text, { key: 'task-' + t }, '  ' + check + ' ' + text))
+  }
+  var rows = gates.rows || []
+  for (var g = 0; g < rows.length; g++) {
+    var gName = sanitize(rows[g].name || '', GATE_NAME_MAX)
+    var gStatus = rows[g].status || 'UNVERIFIED'
+    var gColor = gStatus === 'PASSED' ? greenColor() : (gStatus === 'FAILED' ? warnColor() : dimColor())
+    children.push(h(c.Text, { key: 'gate-' + g, color: gColor }, '  ' + gName + ': ' + gStatus))
+  }
+  if (manual.required) {
+    var mVerdict = manual.verdict || 'pending'
+    var mColor = mVerdict === 'PASSED' ? greenColor() : (mVerdict === 'FAILED' ? warnColor() : dimColor())
+    children.push(h(c.Text, { color: mColor }, '  Manual test: ' + mVerdict))
+  }
+  return h(c.Box, { flexDirection: 'column' }, ...children)
+}
+
 // -- registration --
 
 export function register(on) {
@@ -219,8 +786,18 @@ export function register(on) {
     cacheMtimeMs = 0
     cacheStatKey = ''
     paneOpen = false
+    selectedStoryKey = null
     unchangedRuns = 0
     backoffUntil = 0
+
+    // Cache environment flags for colour and glyph switches.
+    try {
+      var ncVal = await $.env.get('NO_COLOR')
+      envNoColor = !!(ncVal && ncVal !== '0')
+    } catch (_) { envNoColor = false }
+    try {
+      envAscii = (await $.env.get('GAIA_STATUSLINE_ASCII')) === '1'
+    } catch (_) { envAscii = false }
 
     // Capability detection.
     try { // MARKER:CAP_DETECT_CMD
@@ -235,6 +812,11 @@ export function register(on) {
           await refresh($)
           var now = await $.clock.now()
           maybeRebuild($, now)
+          // Close the pane when the sprint becomes inactive.
+          if (paneOpen && (!cachedData || !cachedData.sprint || cachedData.sprint.status === 'closed')) {
+            try { await $.ui.close({ id: 'sprint-status' }) } catch (_) { /* already closed */ }
+            paneOpen = false
+          }
         } catch (err) { log($, 'timer tick failed: ' + errText(err)) }
       })
       caps.clock = true
@@ -254,6 +836,19 @@ export function register(on) {
         caps.process = false
         log($, 'snapshot probe failed: ' + errText(err))
       })
+
+      // Auto-open the sidebar when an active sprint is in cache.
+      if (cachedData && cachedData.sprint && cachedData.sprint.status !== 'closed') {
+        try {
+          var openResult = await $.ui.open({ id: 'sprint-status', title: 'Sprint', closeOnEscape: true })
+          if (openResult && typeof openResult === 'object' && 'isPlaced' in openResult) {
+            paneOpen = openResult.isPlaced
+          } else {
+            var panesCheck = await $.ui.panes()
+            paneOpen = panesCheck.some(function (p) { return p.id === 'sprint-status' })
+          }
+        } catch (_) { /* auto-open not available */ }
+      }
     }
 
     // Reconcile paneOpen with the runtime after a module reload.
@@ -278,6 +873,8 @@ export function register(on) {
       if (!cachedData || !cachedData.sprint || cachedData.sprint.status === 'closed') {
         return { text: NO_SPRINT }
       }
+      // Toggle the sidebar with focus.
+      await toggle($, true)
       return {}
     } catch (err) {
       // Never show error text to the user.
@@ -292,18 +889,102 @@ export function register(on) {
     if (cacheState === 'init' || cacheState === 'absent') return next(e)
     // Cache present but unparseable.
     if (cacheState === 'error' || cachedData === null) {
-      var components = $.ui.resolve(e)
-      return h(components.Box, { flexDirection: 'column' },
-        h(components.Text, null, 'Sprint data unavailable'))
+      var ec = $.ui.resolve(e)
+      return h(ec.Box, { flexDirection: 'column' },
+        h(ec.Text, null, 'Sprint data unavailable'))
     }
     if (!cachedData.sprint || cachedData.sprint.status === 'closed') return next(e)
-    // The active sprint view is drawn by the sidebar rendering.
-    return next(e)
+
+    // Full sidebar dashboard. All data comes from the in-memory cache.
+    var c = $.ui.resolve(e)
+    var data = cachedData
+    var bodyColumns = (e.props && e.props.bodyColumns) || 40
+    var sections = []
+
+    // Banner (conditional on non-empty merged action list).
+    var banner = renderBanner(c, data)
+    if (banner) { sections.push(banner); sections.push(sepLine(c)) }
+
+    // Header and aggregate.
+    sections.push(renderHeader(c, data))
+    sections.push(renderAggregate(c, data))
+
+    // Segmented bar with legend.
+    var bar = renderBar(c, data, bodyColumns)
+    if (bar) sections.push(bar)
+
+    // Sub-line: phase, day, pace, blocked.
+    sections.push(renderSubLine(c, data))
+    sections.push(sepLine(c))
+
+    // Readiness pills.
+    sections.push(renderReadiness(c, data))
+    sections.push(sepLine(c))
+
+    // NOW block.
+    sections.push(renderNow(c, data, $))
+    sections.push(sepLine(c))
+
+    // Phase matrix.
+    sections.push(renderPhaseMatrix(c, data, $))
+
+    // Selected story detail.
+    var detail = renderDetail(c, data)
+    if (detail) { sections.push(sepLine(c)); sections.push(detail) }
+
+    // Pane-level close button: digit 9 closes the pane when it has focus.
+    sections.push(h(c.Button, { hotkey: '9', plain: true, onPress: function () { toggle($, false) } }, '9'))
+
+    return h(c.Box, { flexDirection: 'column' }, ...sections)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    // Keeps what other mods draw in the band.
-    return await next(e)
+    var other = await next(e)
+    // No active sprint or null cache: band absent, keep other mods' content.
+    if (!cachedData || !cachedData.sprint || cachedData.sprint.status === 'closed') {
+      return other
+    }
+    if (!caps.process || !caps.gaiaRoot) return other
+
+    var c = $.ui.resolve(e)
+    var data = cachedData
+    var actions = mergedActionList(data)
+
+    if (actions.length > 0) {
+      // Warning variant.
+      var earliest = actions.reduce(function (m, a) {
+        if (!a.since) return m
+        return (!m || a.since < m) ? a.since : m
+      }, null)
+      return h(c.Box, { flexDirection: 'row' },
+        other,
+        h(c.Button, { hotkey: '9', plain: true, onPress: function () { toggle($, true) } }, '9'),
+        h(c.Text, { color: warnColor(), bold: true, wrap: 'truncate-end' },
+          ' ⚠ ACTION NEEDED · ' + actions.length + ' item' +
+          (actions.length === 1 ? '' : 's') +
+          (earliest ? ' since ' + earliest : '') + ' → press 9')
+      )
+    }
+
+    // Normal summary.
+    var t = data.totals || {}
+    var donePts = t.done_points || 0
+    var totalPts = t.total_points || 0
+    var done = t.done_stories || 0
+    var total = t.total_stories || 0
+    var blocked = 0
+    var stories = data.stories || []
+    for (var i = 0; i < stories.length; i++) {
+      if (stories[i].status === 'blocked') blocked++
+    }
+    var id = sanitize(data.sprint.id || '', TITLE_MAX)
+    return h(c.Box, { flexDirection: 'row' },
+      other,
+      h(c.Button, { hotkey: '9', plain: true, onPress: function () { toggle($, true) } }, '9'),
+      h(c.Text, { wrap: 'truncate-end' },
+        ' 9: sprint-' + id + ' · ' + donePts + '/' + totalPts + ' pts · ' +
+        done + '/' + total + ' done · ' + blocked + ' blocked')
+    )
   })
 
   on('ui.close', { id: 'sprint-status' }, async ($, e, next) => {
