@@ -857,6 +857,11 @@ fi
 
 # When the snapshot was attempted and failed, always fall back.
 if [ "$_snapshot_failed" = true ]; then
+  if [[ ! -f "$YAML_PATH" ]]; then
+    printf '  No active sprint\n'
+    printf '=%.0s' {1..72}; printf '\n'
+    exit 0
+  fi
   log "notice: cache unavailable, showing basic dashboard"
   _render_fallback_dashboard
   exit 0
@@ -864,6 +869,11 @@ fi
 
 # Re-check cache validity after potential rebuild.
 if ! _cache_is_valid "$CACHE_FILE"; then
+  if [[ ! -f "$YAML_PATH" ]]; then
+    printf '  No active sprint\n'
+    printf '=%.0s' {1..72}; printf '\n'
+    exit 0
+  fi
   log "notice: cache unavailable after rebuild, showing basic dashboard"
   _render_fallback_dashboard
   exit 0
