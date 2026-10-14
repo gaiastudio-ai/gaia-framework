@@ -1,15 +1,15 @@
 #!/usr/bin/env bats
-# mod-interleave.bats -- Concurrent read/write atomicity test.
-# Runs the REAL snapshot script in a loop while a reader loop
-# parses the cache, proving it is always valid JSON or absent.
+# mod-interleave.bats -- Concurrent read/write atomicity of the sprint cache.
+# Runs the REAL snapshot script repeatedly while a reader parses the cache,
+# proving the reader only ever sees a complete JSON object. A deliberately
+# non-atomic writer proves the reader's check can fail.
 
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
   SNAPSHOT="$REPO_ROOT/plugins/gaia/scripts/sprint-progress-snapshot.sh"
-  FIXTURE="${BATS_TMPDIR}/interleave-$$"
-  mkdir -p "$FIXTURE/.gaia/config"
-  mkdir -p "$FIXTURE/.gaia/state"
-  mkdir -p "$FIXTURE/.gaia/artifacts/implementation-artifacts/epic-e900/E900-S1-interleave"
+  FIXTURE="$BATS_TEST_TMPDIR/interleave"
+  mkdir -p "$FIXTURE/.gaia/config" "$FIXTURE/.gaia/state" \
+    "$FIXTURE/.gaia/artifacts/implementation-artifacts/epic-e900/E900-S1-interleave"
 
   cat > "$FIXTURE/.gaia/config/project-config.yaml" <<'YAML'
 project_name: interleave-test
@@ -52,64 +52,115 @@ STORY
 }
 
 teardown() {
-  rm -rf "$FIXTURE"
+  # Never leave a writer behind, whatever happened in the test.
+  if [ -n "${WRITER_PID:-}" ]; then
+    kill "$WRITER_PID" 2>/dev/null || true
+    wait "$WRITER_PID" 2>/dev/null || true
+  fi
 }
 
-# Guarantee overlap -- reader loops while writer process is alive (bounded),
-# assert reader performed >= N reads during the writer's lifetime and zero parse failures.
-@test "concurrent reader always gets valid JSON during repeated snapshot writes" {
+# _read_while_alive PID FILE LIMIT_SECONDS -- reads FILE while PID runs, for
+# at most LIMIT_SECONDS of wall-clock time. An empty file, a partial file or
+# anything that is not a JSON object counts as a bad read. Sets READS, BAD
+# and TIMED_OUT.
+_read_while_alive() {
+  local pid="$1" file="$2" limit="$3" deadline
+  READS=0
+  BAD=0
+  TIMED_OUT=0
+  deadline=$((SECONDS + limit))
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      TIMED_OUT=1
+      break
+    fi
+    if [ -e "$file" ]; then
+      READS=$((READS + 1))
+      if ! jq -e 'type == "object"' "$file" > /dev/null 2>&1; then
+        BAD=$((BAD + 1))
+      fi
+    fi
+  done
+}
+
+@test "a reader sees only complete cache objects during repeated snapshot writes" {
   [ -x "$SNAPSHOT" ] || false
+  local fails="$BATS_TEST_TMPDIR/writer-fails"
+  : > "$fails"
 
-  READER_LOG="${BATS_TMPDIR}/reader-log-$$"
-  WRITER_PID_FILE="${BATS_TMPDIR}/writer-pid-$$"
+  # The first write happens before the reader starts, so every read below
+  # overlaps a later write.
+  run env PROJECT_ROOT="$FIXTURE" bash "$SNAPSHOT"
+  [ "$status" -eq 0 ]
+  [ -f "$CACHE_FILE" ] || false
 
-  # Writer: run snapshot 15 times in sequence, record PID
   (
-    echo $$ > "$WRITER_PID_FILE"
     for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-      env PROJECT_ROOT="$FIXTURE" bash "$SNAPSHOT" 2>/dev/null
+      env PROJECT_ROOT="$FIXTURE" bash "$SNAPSHOT" > /dev/null 2>&1 || echo "run $i exited $?" >> "$fails"
     done
   ) &
   WRITER_PID=$!
 
-  # Reader: bounded loop while writer is alive, try to parse cache
-  PARSE_ERRORS=0
-  READ_COUNT=0
-  MAX_ITERS=200
-  ITER=0
-  while kill -0 "$WRITER_PID" 2>/dev/null && [ "$ITER" -lt "$MAX_ITERS" ]; do
-    ITER=$((ITER + 1))
-    if [ -f "$CACHE_FILE" ]; then
-      READ_COUNT=$((READ_COUNT + 1))
-      if ! jq '.' "$CACHE_FILE" > /dev/null 2>&1; then
-        PARSE_ERRORS=$((PARSE_ERRORS + 1))
-      fi
-    fi
-  done
+  _read_while_alive "$WRITER_PID" "$CACHE_FILE" 120
+  echo "reads: $READS, bad reads: $BAD, timed out: $TIMED_OUT"
+  [ "$TIMED_OUT" -eq 0 ]
+  wait "$WRITER_PID"
+  WRITER_PID=""
 
-  # Wait for writer (bounded)
-  wait "$WRITER_PID" 2>/dev/null || true
-
-  # Assert zero parse errors
-  echo "reads during writer lifetime: $READ_COUNT, parse errors: $PARSE_ERRORS"
-  [ "$PARSE_ERRORS" -eq 0 ]
-
-  # Reader performed >= 3 reads during writer lifetime
-  [ "$READ_COUNT" -ge 3 ] || {
-    echo "expected >= 3 reads during writer, got $READ_COUNT"
-    false
-  }
-
-  # The cache file should exist after writes
-  [ -f "$CACHE_FILE" ]
+  echo "writer failures: $(cat "$fails")"
+  [ ! -s "$fails" ]
+  [ "$BAD" -eq 0 ]
+  # At least one read per write on average.
+  [ "$READS" -ge 15 ]
 }
 
-@test "snapshot script uses mktemp plus mv atomic pattern" {
+@test "the reader's check catches a writer that truncates before it writes" {
+  local target="$BATS_TEST_TMPDIR/nonatomic.json"
+  printf '{"a":1}' > "$target"
+  (
+    i=0
+    while [ "$i" -lt 40 ]; do
+      : > "$target"
+      sleep 0.02
+      printf '{"a":' > "$target"
+      sleep 0.02
+      printf '{"a":1}' > "$target"
+      sleep 0.01
+      i=$((i + 1))
+    done
+  ) &
+  WRITER_PID=$!
+
+  _read_while_alive "$WRITER_PID" "$target" 60
+  wait "$WRITER_PID"
+  WRITER_PID=""
+  echo "reads: $READS, bad reads: $BAD, timed out: $TIMED_OUT"
+  [ "$TIMED_OUT" -eq 0 ]
+  [ "$READS" -gt 0 ]
+  [ "$BAD" -gt 0 ]
+}
+
+@test "the snapshot script writes the cache only through a same-directory temp file and mv" {
   [ -f "$SNAPSHOT" ] || false
+  # Code lines only: comments are dropped so a comment cannot satisfy a check.
+  local code="$BATS_TEST_TMPDIR/code.sh"
+  grep -v '^[[:space:]]*#' "$SNAPSHOT" > "$code"
 
-  # The script must use mktemp for atomic writes
-  grep -q 'mktemp' "$SNAPSHOT"
+  # The temp file is created next to its target.
+  grep -q '_TMP="\${1}\.tmp\.' "$code"
 
-  # The script must use mv to atomically replace the cache
-  grep -q 'mv ' "$SNAPSHOT"
+  # Every cache write is a temp file created for the cache, then renamed.
+  run grep -c '_new_tmp "\$CACHE_FILE"' "$code"
+  [ "$output" -ge 2 ]
+  run grep -cE 'mv -f "\$[a-z_]+" "\$CACHE_FILE"' "$code"
+  [ "$output" -ge 2 ]
+
+  # Nothing writes the cache in place.
+  run grep -nE '>>?[[:space:]]*"\$CACHE_FILE"|(cp|tee|install)[^|;]*"\$CACHE_FILE"' "$code"
+  echo "$output"
+  [ "$status" -eq 1 ]
+  run grep -nE 'mv [^|;]*"\$CACHE_FILE"' "$code"
+  echo "$output"
+  run grep -cvE 'mv -f "\$[a-z_]+" "\$CACHE_FILE"' <<< "$output"
+  [ "$output" -eq 0 ]
 }

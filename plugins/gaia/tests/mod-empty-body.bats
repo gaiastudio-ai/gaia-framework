@@ -1,12 +1,10 @@
 #!/usr/bin/env bats
-# mod-empty-body.bats -- An empty register body loads without error.
-# RED phase: This test passes independently (uses a temp scaffold),
-# but validates that the mod infrastructure works.
+# mod-empty-body.bats -- A hooks module whose register body is empty loads
+# without error, and the harness actually loads it.
 
 setup() {
-  TMPMOD="${BATS_TMPDIR}/mod-empty-body-$$"
-  mkdir -p "$TMPMOD/.claude-plugin"
-  mkdir -p "$TMPMOD/hooks"
+  TMPMOD="$BATS_TEST_TMPDIR/mod-empty-body"
+  mkdir -p "$TMPMOD/.claude-plugin" "$TMPMOD/hooks"
 
   cat > "$TMPMOD/.claude-plugin/plugin.json" <<'PJSON'
 {
@@ -24,10 +22,18 @@ HJSON
   cat > "$TMPMOD/hooks/index.js" <<'MOD'
 export function register(on, options) {}
 MOD
-}
 
-teardown() {
-  rm -rf "$TMPMOD"
+  # A test file makes the harness load the module and start a session
+  # through it: with no hooks registered, the session start reaches the
+  # bottom unchanged.
+  cat > "$TMPMOD/hooks/index.test.ts" <<'TEST'
+import { test, expect } from 'claude-code/testing'
+test('empty module passes session start through', async ($, on) => {
+  on('session.start', (_$: unknown, e: any) => ({ cwd: e.cwd }))
+  const result = await $.session.start({ cwd: '/somewhere', surface: 'terminal', isInteractive: true })
+  expect(result).toEqual({ cwd: '/somewhere' })
+})
+TEST
 }
 
 @test "empty register body loads without error" {
@@ -37,8 +43,12 @@ teardown() {
   echo "validate output: $output"
   [ "$status" -eq 0 ]
 
-  # plugin test exits 1 when no *.test.ts files exist (expected).
-  # Assert the message is the "no tests" message, not a load error.
   run claude plugin test "$TMPMOD"
-  [[ "$output" == *"no "*.test.ts* ]] || [[ "$output" == *"0 test"* ]] || false
+  echo "test output: $output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(pass) empty module passes session start through"* ]] || false
+  [[ "$output" == *" 1 pass"* ]] || false
+  [[ "$output" == *" 0 fail"* ]] || false
+  [[ "$output" != *rror* ]] || false
+  [[ "$output" != *arning* ]] || false
 }

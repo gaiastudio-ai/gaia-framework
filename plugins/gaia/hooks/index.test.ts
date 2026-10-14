@@ -1,7 +1,7 @@
 import { test, expect, mock, describe } from 'claude-code/testing'
 
-// Inline cache fixture matching the real snapshot schema.
-// The mod-cache-contract.bats test asserts these keys match the real output.
+// Cache fixture in the snapshot script's schema. mod-cache-contract.bats
+// checks every field path used here against the script's real output.
 const ACTIVE_CACHE = {
   schema_version: '1.0',
   generated_at: '2026-10-01T00:00:00Z',
@@ -38,16 +38,13 @@ const ACTIVE_CACHE = {
   waiting_agent_threshold_seconds: 900
 }
 
-const CLOSED_CACHE = {
-  ...ACTIVE_CACHE,
-  sprint: { ...ACTIVE_CACHE.sprint, status: 'closed' }
-}
+const CLOSED_CACHE = { ...ACTIVE_CACHE, sprint: { ...ACTIVE_CACHE.sprint, status: 'closed' } }
 
-// Helper: GAIA root with .gaia directory at /project
 const GAIA_ROOT = '/project'
-const GAIA_DIR = '/project/.gaia'
-
-const SESSION_START_EVENT = { cwd: GAIA_ROOT, surface: 'terminal' as const, isInteractive: true }
+const NO_SPRINT = { text: 'No active sprint' }
+const SCRIPT_SUFFIX = '/scripts/sprint-progress-snapshot.sh'
+// The plugin folder: this file lives in <plugin>/hooks/.
+const PLUGIN_ROOT = decodeURIComponent(new URL('..', import.meta.url).pathname).replace(/\/$/, '')
 const SPRINT_CMD = {
   command: 'sprint',
   args: '',
@@ -55,701 +52,527 @@ const SPRINT_CMD = {
   presentation: { isFullscreen: false, columns: 80 }
 }
 
-// Helper: register common bottom hooks for a GAIA-root scenario
-function registerGaiaRoot(on: any, clock: any, opts?: {
-  processRunFn?: () => any
-  fsStatFn?: () => any
-  fsReadFn?: () => any
-  panesList?: any[]
-}) {
-  // Bottom for session.start event (must return { cwd })
-  on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
+const OK_RUN = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
 
-  on('session.root', () => ({ value: GAIA_ROOT }))
-  on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-  on('command.register', () => ({ value: { command: 'sprint' } }))
-  on('process.run', opts?.processRunFn ?? (() => ({
-    value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-  })))
-  on('fs.stat', opts?.fsStatFn ?? (() => ({
-    value: { kind: 'file' as const, size: 100, mtimeMs: clock.now(), isLink: false }
-  })))
-  on('fs.read', opts?.fsReadFn ?? (() => ({ value: JSON.stringify(ACTIVE_CACHE) })))
-  on('ui.panes', () => ({ value: opts?.panesList ?? [] }))
-  on('ui.log', () => ({ value: undefined }))
-  on('ui.invalidate', () => ({ value: undefined }))
+type Run = { argv: string[]; init: { cwd?: string; env?: Record<string, string>; timeoutMs?: number } }
+type Cache = { content: string | null; mtimeMs: number }
+type WorldOptions = {
+  now?: number
+  sessionRoot?: string
+  home?: string
+  gaiaDirs?: string[]
+  cache?: Cache
+  // Answers one process.run call: a result, a promise of one, or a throw.
+  run?: (n: number, world: World) => unknown
+  panes?: unknown[]
+  // Replaces the fs.read answer.
+  read?: () => unknown
+  commandThrows?: boolean
+}
+type World = {
+  clock: ReturnType<typeof mock.clock>
+  cache: Cache
+  runs: Run[]
+  logs: { text: string; to?: string }[]
+  invalidates: number
+  stats: number
+  reads: number
+  sessionRoot: string
 }
 
-describe('session.start capability detection', () => {
-  test('registers all event hooks and detects capabilities', async ($, on) => {
-    const clock = mock.clock(on)
-    registerGaiaRoot(on, clock)
+// Stands in for the engine beneath the plugin. Counts every call the plugin
+// makes so tests can assert on exact numbers.
+function world(on: any, opts: WorldOptions = {}): World {
+  const clock = mock.clock(on, { now: opts.now ?? 100000 })
+  const w: World = {
+    clock,
+    cache: opts.cache ?? { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: opts.now ?? 100000 },
+    runs: [], logs: [], invalidates: 0, stats: 0, reads: 0,
+    sessionRoot: opts.sessionRoot ?? GAIA_ROOT
+  }
+  const gaiaDirs = opts.gaiaDirs ?? [GAIA_ROOT + '/.gaia']
+  if (opts.home !== undefined) mock.env(on, { HOME: opts.home })
+  on('session.start', (_$: unknown, e: any) => ({ cwd: e.cwd }))
+  on('session.root', () => ({ value: w.sessionRoot }))
+  on('fs.exists', (_$: unknown, e: any) => ({ value: gaiaDirs.includes(e.path) }))
+  on('command.register', () => {
+    if (opts.commandThrows) throw new Error('not available')
+    return { value: { command: 'sprint' } }
+  })
+  on('process.run', (_$: unknown, e: any) => {
+    w.runs.push({ argv: e.argv, init: e.init })
+    if (opts.run) return opts.run(w.runs.length, w)
+    return { value: OK_RUN }
+  })
+  on('fs.stat', () => {
+    w.stats++
+    if (w.cache.content === null) throw new Error('ENOENT')
+    return { value: { kind: 'file' as const, size: w.cache.content.length, mtimeMs: w.cache.mtimeMs, isLink: false } }
+  })
+  on('fs.read', () => {
+    w.reads++
+    if (opts.read) return opts.read()
+    if (w.cache.content === null) throw new Error('ENOENT')
+    return { value: w.cache.content }
+  })
+  on('ui.panes', () => ({ value: opts.panes ?? [] }))
+  on('ui.log', (_$: unknown, e: any) => {
+    w.logs.push({ text: String(e.text), to: e.to })
+    return { value: undefined }
+  })
+  on('ui.invalidate', () => { w.invalidates++; return { value: undefined } })
+  on('ui.render', { component: 'Pane' }, ($: any, e: any) => h($.ui.resolve(e).Text, null, 'BOTTOM PANE'))
+  on('ui.render', { component: 'AbovePrompt' }, ($: any, e: any) => h($.ui.resolve(e).Text, null, 'OTHER MOD BAND'))
+  return w
+}
 
-    await $.session.start(SESSION_START_EVENT)
+async function start($: any, w: World) {
+  await $.session.start({ cwd: w.sessionRoot, surface: 'terminal', isInteractive: true })
+  await w.clock.settle()
+}
 
-    const result = await $.command.run(SPRINT_CMD)
+function writer(w: World) {
+  return () => { w.cache.mtimeMs = w.clock.now(); return { value: OK_RUN } }
+}
 
-    // With an active sprint, the command returns empty (toggle deferred to S6)
-    expect(result).toBeDefined()
+function deferred() {
+  const pending: Array<() => void> = []
+  const run = () => new Promise(resolve => { pending.push(() => resolve({ value: OK_RUN })) })
+  const release = () => { while (pending.length) pending.shift()!() }
+  return { run, release, pending }
+}
+
+async function mountPane($: any) {
+  return $.ui.mount({ plugin: 'gaia', surface: 'terminal', component: 'Pane', requestId: 'sprint-status',
+    props: { bodyColumns: 40 } })
+}
+
+describe('registration and the snapshot call', () => {
+  test('active sprint: sprint returns an empty result', async ($, on) => {
+    const w = world(on, { run: (_n, wl) => writer(wl)() })
+    await start($, w)
+    expect(await $.command.run(SPRINT_CMD)).toEqual({})
+  })
+
+  test('the plugin script runs from the plugin folder with fixed options', async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    expect(w.runs.length).toBe(1)
+    expect(w.runs[0].argv).toEqual([PLUGIN_ROOT + SCRIPT_SUFFIX])
+    expect(w.runs[0].init).toEqual({ cwd: GAIA_ROOT, env: { PROJECT_ROOT: GAIA_ROOT }, timeoutMs: 30000 })
+  })
+
+  test('a snapshot script planted in the project is never run', async ($, on) => {
+    const w = world(on, { gaiaDirs: [GAIA_ROOT + '/.gaia', GAIA_ROOT + SCRIPT_SUFFIX] })
+    await start($, w)
+    await $.command.run(SPRINT_CMD)
+    await w.clock.advance(90000)
+    expect(w.runs.length).toBeGreaterThan(0)
+    for (const r of w.runs) {
+      expect(r.argv[0]).toBe(PLUGIN_ROOT + SCRIPT_SUFFIX)
+      expect(r.argv[0].startsWith(GAIA_ROOT + '/')).toBe(false)
+    }
   })
 })
 
 describe('graceful degradation', () => {
-  test('graceful degradation all members throw handlers return next no user-visible output', async ($, on) => {
-    let uiNoticeCalls = 0
-    let uiToastCalls = 0
-    let nonDebugLogCalls = 0
-    let processRunCalls = 0
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
+  test('all members throw: no user-visible output and no process run', async ($, on) => {
+    let notices = 0
+    let toasts = 0
+    let nonDebugLogs = 0
+    let runs = 0
+    on('session.start', (_$: unknown, e: any) => ({ cwd: e.cwd }))
     on('session.root', () => { throw new Error('not available') })
     on('fs.exists', () => { throw new Error('not available') })
     on('command.register', () => { throw new Error('not available') })
-    on('process.run', () => { processRunCalls++; throw new Error('not available') })
+    on('process.run', () => { runs++; throw new Error('not available') })
     on('ui.panes', () => { throw new Error('not available') })
-    on('ui.open', () => ({ value: { isPlaced: false, reason: 'none' } }))
-    on('ui.log', (_$: unknown, e: unknown) => {
-      const ev = e as { text: string; options?: { to?: string } }
-      if (!ev.options || ev.options.to !== 'debug') nonDebugLogCalls++
+    on('ui.log', (_$: unknown, e: any) => {
+      if (e.to !== 'debug') nonDebugLogs++
       return { value: undefined }
     })
-    on('ui.notice', () => { uiNoticeCalls++; return { value: undefined } })
-    on('ui.toast', () => { uiToastCalls++; return { value: undefined } })
+    on('ui.notice', () => { notices++; return { value: undefined } })
+    on('ui.toast', () => { toasts++; return { value: undefined } })
     on('ui.invalidate', () => ({ value: undefined }))
 
-    await $.session.start({ cwd: '/nowhere', surface: 'terminal', isInteractive: true })
+    const result = await $.session.start({ cwd: '/nowhere', surface: 'terminal', isInteractive: true })
+    expect(result).toEqual({ cwd: '/nowhere' })
+    expect(notices).toBe(0)
+    expect(toasts).toBe(0)
+    expect(nonDebugLogs).toBe(0)
+    expect(runs).toBe(0)
+  })
 
-    expect(uiNoticeCalls).toBe(0)
-    expect(uiToastCalls).toBe(0)
-    expect(nonDebugLogCalls).toBe(0)
-    expect(processRunCalls).toBe(0)
+  test('a process run that throws is logged and switches snapshots off', async ($, on) => {
+    const w = world(on, { run: () => { throw new Error('cannot start') } })
+    await start($, w)
+    expect(w.logs.some(l => l.text.startsWith('snapshot did not run') && l.to === 'debug')).toBe(true)
+    // The cache on disk is still read: the sprint is active.
+    expect(await $.command.run(SPRINT_CMD)).toEqual({})
+    // With the process capability off, /sprint re-reads instead of running again.
+    expect(w.runs.length).toBe(1)
+  })
+
+  test('pane passes through when the process capability is off', async ($, on) => {
+    const w = world(on, { run: () => { throw new Error('cannot start') }, cache: { content: '{"sprint":', mtimeMs: 100000 } })
+    await start($, w)
+    const ui = await mountPane($)
+    expect(await ui.find({ text: 'BOTTOM PANE' })).toBeDefined()
+    expect(await ui.find({ text: 'Sprint data unavailable' })).toBeUndefined()
+    await ui.unmount()
+  })
+})
+
+describe('session start does not wait for the snapshot', () => {
+  test('session start returns while the first snapshot is still running', async ($, on) => {
+    const slow = deferred()
+    const w = world(on, { run: n => (n === 1 ? slow.run() : { value: OK_RUN }) })
+    let started = false
+    const p = $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true }).then(() => { started = true })
+    await w.clock.settle()
+    expect(started).toBe(true)
+    expect(w.runs.length).toBe(1)
+    expect(slow.pending.length).toBe(1)
+    slow.release()
+    await p
+    await w.clock.settle()
+    // Probe resolved: /sprint now runs a snapshot of its own.
+    await $.command.run(SPRINT_CMD)
+    expect(w.runs.length).toBe(2)
   })
 })
 
 describe('/sprint command', () => {
-  test('sprint command returns no active sprint no ui.open no band content', async ($, on) => {
-    const clock = mock.clock(on)
-    let uiOpenCalls = 0
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: '/tmp/notgaia' }))
-    on('fs.exists', () => ({ value: false }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.open', () => { uiOpenCalls++; return { value: { isPlaced: false, reason: 'none' } } })
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start({ cwd: '/tmp/notgaia', surface: 'terminal', isInteractive: true })
-
-    const result = await $.command.run(SPRINT_CMD)
-
-    expect(result).toMatchObject({ text: 'No active sprint' })
-    expect(uiOpenCalls).toBe(0)
+  test('non-GAIA directory: no active sprint and no file or process call', async ($, on) => {
+    const w = world(on, { sessionRoot: '/tmp/notgaia', gaiaDirs: [] })
+    let opens = 0
+    on('ui.open', () => { opens++; return { value: { isPlaced: false, reason: 'none' } } })
+    await start($, w)
+    w.stats = 0
+    w.reads = 0
+    expect(await $.command.run(SPRINT_CMD)).toEqual(NO_SPRINT)
+    expect(w.stats).toBe(0)
+    expect(w.reads).toBe(0)
+    expect(w.runs.length).toBe(0)
+    expect(opens).toBe(0)
   })
 
-  test('sprint command with gaiaRoot set but process failed returns no active sprint not empty', async ($, on) => {
-    const clock = mock.clock(on)
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => { throw new Error('process start failed') })
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-
-    const result = await $.command.run(SPRINT_CMD)
-
-    expect(result).toMatchObject({ text: 'No active sprint' })
+  test('process failed and no cache: no active sprint', async ($, on) => {
+    const w = world(on, { run: () => { throw new Error('process start failed') }, cache: { content: null, mtimeMs: 0 } })
+    await start($, w)
+    expect(await $.command.run(SPRINT_CMD)).toEqual(NO_SPRINT)
   })
 
-  test('sprint command with gaiaRoot set but cache missing returns no active sprint', async ($, on) => {
-    const clock = mock.clock(on)
+  test('cache still missing after the snapshot: no active sprint', async ($, on) => {
+    const w = world(on, { cache: { content: null, mtimeMs: 0 } })
+    await start($, w)
+    expect(await $.command.run(SPRINT_CMD)).toEqual(NO_SPRINT)
+  })
 
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => ({
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    }))
-    on('fs.stat', () => { throw new Error('ENOENT') })
-    on('fs.read', () => { throw new Error('ENOENT') })
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
+  test('refresh runs first: a snapshot that creates the cache gives an active sprint', async ($, on) => {
+    const w = world(on, {
+      cache: { content: null, mtimeMs: 0 },
+      run: (n, wl) => {
+        // The probe leaves no cache; the run /sprint starts writes one.
+        if (n >= 2) { wl.cache.content = JSON.stringify(ACTIVE_CACHE); wl.cache.mtimeMs = wl.clock.now() }
+        return { value: OK_RUN }
+      }
+    })
+    await start($, w)
+    expect(w.runs.length).toBe(1)
+    expect(await $.command.run(SPRINT_CMD)).toEqual({})
+    expect(w.runs.length).toBe(2)
+  })
 
-    await $.session.start(SESSION_START_EVENT)
-
+  test('error text never reaches the user', async ($, on) => {
+    const w = world(on, {
+      run: () => { throw new Error('EACCES /secret/path') },
+      read: () => { throw new Error('EACCES /secret/cache') }
+    })
+    await start($, w)
     const result = await $.command.run(SPRINT_CMD)
+    expect(result).toEqual(NO_SPRINT)
+    expect(JSON.stringify(result).includes('secret')).toBe(false)
+  })
 
-    expect(result).toMatchObject({ text: 'No active sprint' })
+  test('a snapshot run that fails during /sprint shows no error text', async ($, on) => {
+    const w = world(on, {
+      run: n => { if (n >= 2) throw new Error('timed out in /secret/dir'); return { value: OK_RUN } }
+    })
+    await start($, w)
+    w.cache.content = null
+    const result = await $.command.run(SPRINT_CMD)
+    expect(w.runs.length).toBe(2)
+    expect(result).toEqual(NO_SPRINT)
+  })
+
+  test('sprint transition to closed: no active sprint', async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    expect(await $.command.run(SPRINT_CMD)).toEqual({})
+    w.cache.content = JSON.stringify(CLOSED_CACHE)
+    w.cache.mtimeMs = w.clock.now() + 1
+    await w.clock.advance(30000)
+    expect(await $.command.run(SPRINT_CMD)).toEqual(NO_SPRINT)
+  })
+})
+
+describe('exit codes', () => {
+  test('exit 0 logs nothing about the exit code', async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    expect(w.logs.filter(l => l.text.startsWith('snapshot exited')).length).toBe(0)
+  })
+
+  test('non-zero exit is logged to debug and the last good value is kept', async ($, on) => {
+    const w = world(on, { run: () => ({ value: { ...OK_RUN, exitCode: 1, stderr: 'boom' } }) })
+    await start($, w)
+    const exits = w.logs.filter(l => l.text.startsWith('snapshot exited'))
+    expect(exits).toEqual([{ text: 'snapshot exited 1', to: 'debug' }])
+    // The cache read before the failed run still answers /sprint.
+    expect(await $.command.run(SPRINT_CMD)).toEqual({})
   })
 })
 
 describe('clock and staleness', () => {
-  test('staleness guard 90s triggers rebuild 30s no-op and missing cache triggers rebuild', async ($, on) => {
-    const START_TIME = 100000
-    const clock = mock.clock(on, { now: START_TIME })
-    let processRunCount = 0
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => {
-      processRunCount++
-      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    })
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: START_TIME, isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-    const initialCount = processRunCount
-
-    // 30s: clock now=130000, mtime=100000, diff=30000 <= 60000 -> no rebuild
-    await clock.advance(30000)
-    expect(processRunCount).toBe(initialCount)
-
-    // +60s: clock now=190000, mtime=100000, diff=90000 > 60000 -> rebuild
-    await clock.advance(60000)
-    expect(processRunCount).toBe(initialCount + 1)
+  test('90 s old cache triggers one snapshot then one invalidate; 30 s triggers none', async ($, on) => {
+    const w = world(on, { now: 100000, cache: { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: 100000 } })
+    await start($, w)
+    const runs0 = w.runs.length
+    const inv0 = w.invalidates
+    await w.clock.advance(30000) // 30 s old: fresh
+    expect(w.runs.length).toBe(runs0)
+    expect(w.invalidates).toBe(inv0)
+    await w.clock.advance(30000) // 60 s old: still fresh
+    expect(w.runs.length).toBe(runs0)
+    await w.clock.advance(30000) // 90 s old: stale
+    expect(w.runs.length).toBe(runs0 + 1)
+    expect(w.invalidates).toBe(inv0 + 1)
   })
 
-  test('missing cache on timer tick triggers exactly one snapshot run', async ($, on) => {
-    const START_TIME = 100000
-    const clock = mock.clock(on, { now: START_TIME })
-    let processRunCount = 0
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => {
-      processRunCount++
-      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    })
-    on('fs.stat', () => { throw new Error('ENOENT') })
-    on('fs.read', () => { throw new Error('ENOENT') })
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-    const afterStartCount = processRunCount
-
-    // 30s: cacheMtimeMs=0, now=130000, diff>60000 -> rebuild
-    await clock.advance(30000)
-    expect(processRunCount).toBe(afterStartCount + 1)
+  test('missing cache on a timer tick triggers exactly one snapshot run', async ($, on) => {
+    const w = world(on, { cache: { content: null, mtimeMs: 0 } })
+    await start($, w)
+    const runs0 = w.runs.length
+    await w.clock.advance(30000)
+    expect(w.runs.length).toBe(runs0 + 1)
   })
 
-  test('30s fresh cache triggers zero snapshot runs', async ($, on) => {
-    const START_TIME = 100000
-    const clock = mock.clock(on, { now: START_TIME })
-    let processRunCount = 0
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => {
-      processRunCount++
-      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    })
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: START_TIME, isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-    const afterStartCount = processRunCount
-
-    await clock.advance(30000)
-    expect(processRunCount).toBe(afterStartCount)
+  test('future mtime is treated as fresh', async ($, on) => {
+    const w = world(on, { now: 100000, cache: { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: 100000 + 999999 } })
+    await start($, w)
+    const runs0 = w.runs.length
+    await w.clock.advance(90000)
+    expect(w.runs.length).toBe(runs0)
   })
 
-  test('future mtime treated as fresh no rebuild', async ($, on) => {
-    const NOW = 100000
-    const clock = mock.clock(on, { now: NOW })
-    let processRunCount = 0
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => {
-      processRunCount++
-      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    })
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: NOW + 999999, isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-    const initialCount = processRunCount
-
-    await clock.advance(90000)
-    expect(processRunCount).toBe(initialCount)
+  test('each tick stats the cache and re-reads it only when it changed', async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    const stats0 = w.stats
+    const reads0 = w.reads
+    await w.clock.advance(30000)
+    expect(w.stats).toBe(stats0 + 1)
+    expect(w.reads).toBe(reads0)
+    w.cache.mtimeMs = w.clock.now()
+    await w.clock.advance(30000)
+    expect(w.stats).toBe(stats0 + 2)
+    expect(w.reads).toBe(reads0 + 1)
   })
 })
 
-describe('single-flight deduplication', () => {
-  test('in-flight flag prevents concurrent rebuild and sprint joins pending', async ($, on) => {
-    const clock = mock.clock(on, { now: 100000 })
-    let processRunCount = 0
-    const resolvers: Array<() => void> = []
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => {
-      processRunCount++
-      if (processRunCount <= 1) {
-        // Session.start probe resolves immediately
-        return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-      }
-      // Subsequent calls: deferred
-      return new Promise<{ value: { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean; isStderrTruncated: boolean } }>(resolve => {
-        resolvers.push(() => resolve({ value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
-      })
-    })
-    // Cache mtime = 0 -> always stale
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: 0, isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-    const afterStartCount = processRunCount // 1 (the probe)
-
-    // First timer tick at 30s: stale, starts rebuild (deferred)
-    await clock.advance(30000)
-
-    // /sprint fires while rebuild is pending -- must join, not start another
-    const sprintPromise = $.command.run(SPRINT_CMD)
-
-    // Second timer tick at 60s: in-flight, rebuild skipped
-    await clock.advance(30000)
-    // Third timer tick at 90s: still in-flight, rebuild skipped
-    await clock.advance(30000)
-
-    // Only one rebuild should have started (the first tick)
-    expect(processRunCount).toBe(afterStartCount + 1)
-
-    // Resolve the pending rebuild
-    for (const r of resolvers) r()
-    const sprintResult = await sprintPromise
-    await clock.settle()
-
-    // /sprint completed with refreshed result
-    expect(sprintResult).toBeDefined()
-  })
-})
-
-describe('non-zero exit and error handling', () => {
-  test('non-zero exit logged last good value retained', async ($, on) => {
-    const clock = mock.clock(on, { now: 100000 })
-    const logMessages: string[] = []
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-
-    let callCount = 0
-    on('process.run', () => {
-      callCount++
-      if (callCount <= 1) {
-        return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-      }
-      return { value: { exitCode: 1, stdout: '', stderr: 'error', isStdoutTruncated: false, isStderrTruncated: false } }
-    })
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: 100000, isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', (_$: unknown, e: unknown) => {
-      logMessages.push(String((e as { text: string }).text))
-      return { value: undefined }
-    })
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-
-    await clock.advance(90000)
-
-    expect(logMessages.some(m => m.includes('exit'))).toBe(true)
-  })
-})
-
-describe('cache state semantics', () => {
-  test('truncated cache shows sprint data unavailable in pane', async ($, on) => {
-    const START_TIME = 100000
-    const clock = mock.clock(on, { now: START_TIME })
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => ({
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    }))
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 10, mtimeMs: START_TIME, isLink: false }
-    }))
-    on('fs.read', () => ({ value: '{"sprint":' }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-    on('ui.render', () => ({}))
-
-    await $.session.start(SESSION_START_EVENT)
-
-    const ui = await $.ui.mount({
-      plugin: 'gaia',
-      surface: 'terminal',
-      component: 'Pane',
-      requestId: 'sprint-status',
-      props: { bodyColumns: 40 }
-    })
-
-    const found = await ui.find({ text: 'Sprint data unavailable' })
-    expect(found).toBeDefined()
-
-    await ui.unmount()
+describe('single flight', () => {
+  test('timer tick and /sprint during a slow probe start no second snapshot', async ($, on) => {
+    const slow = deferred()
+    const w = world(on, { run: () => slow.run(), cache: { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: 0 } })
+    await start($, w)
+    expect(w.runs.length).toBe(1)
+    let sprintResult: unknown = 'pending'
+    const sprint = $.command.run(SPRINT_CMD).then((r: unknown) => { sprintResult = r })
+    await w.clock.advance(30000)
+    await w.clock.advance(30000)
+    expect(w.runs.length).toBe(1)
+    // /sprint joined the running snapshot: it has not answered yet.
+    expect(sprintResult).toBe('pending')
+    slow.release()
+    await sprint
+    expect(sprintResult).toEqual({})
+    expect(w.runs.length).toBe(1)
   })
 
-  test('absent cache file sprint returns no active sprint and pane passes through', async ($, on) => {
-    const clock = mock.clock(on)
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => ({
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    }))
-    // stat throws ENOENT -> cache absent
-    on('fs.stat', () => { throw new Error('ENOENT') })
-    on('fs.read', () => { throw new Error('ENOENT') })
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-
-    // Absent cache: /sprint returns "No active sprint" (sprint treated as null)
-    const result = await $.command.run(SPRINT_CMD)
-    expect(result).toMatchObject({ text: 'No active sprint' })
-  })
-
-  test('unparseable cache wipes previous good value', async ($, on) => {
-    const clock = mock.clock(on, { now: 100000 })
-    let cacheContent = JSON.stringify(ACTIVE_CACHE)
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => ({
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    }))
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: 100000, isLink: false }
-    }))
-    on('fs.read', () => ({ value: cacheContent }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-    on('ui.render', () => ({}))
-
-    // First session.start with valid cache
-    await $.session.start(SESSION_START_EVENT)
-
-    // Verify active sprint command works
-    const goodResult = await $.command.run(SPRINT_CMD)
-    expect(goodResult).toMatchObject({})
-
-    // Cache becomes corrupted
-    cacheContent = '{broken'
-    // Timer tick reads corrupted cache
-    await clock.advance(90000)
-
-    // Now pane should show "Sprint data unavailable"
-    const ui = await $.ui.mount({
-      plugin: 'gaia',
-      surface: 'terminal',
-      component: 'Pane',
-      requestId: 'sprint-status',
-      props: { bodyColumns: 40 }
-    })
-
-    const found = await ui.find({ text: 'Sprint data unavailable' })
-    expect(found).toBeDefined()
-
-    await ui.unmount()
-  })
-})
-
-describe('non-GAIA directory', () => {
-  test('non-GAIA directory gaiaRoot null no fs or process calls after clock advance', async ($, on) => {
-    const clock = mock.clock(on)
-    let processRunCalls = 0
-    let fsStatCalls = 0
-    let fsReadCalls = 0
-    let debugLogCalls = 0
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: '/tmp/notgaia' }))
-    on('fs.exists', () => ({ value: false }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => { debugLogCalls++; return { value: undefined } })
-    on('ui.invalidate', () => ({ value: undefined }))
-    on('process.run', () => {
-      processRunCalls++
-      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    })
-    on('fs.stat', () => { fsStatCalls++; throw new Error('ENOENT') })
-    on('fs.read', () => { fsReadCalls++; throw new Error('ENOENT') })
-
-    await $.session.start({ cwd: '/tmp/notgaia', surface: 'terminal', isInteractive: true })
-    expect(processRunCalls).toBe(0)
-
-    // Reset all counters after session.start (root detection used fs.exists, not fs.stat)
-    processRunCalls = 0
-    fsStatCalls = 0
-    fsReadCalls = 0
-    debugLogCalls = 0
-
-    // Advance 90s (3 timer ticks). With the gaiaRoot guard, the timer
-    // returns immediately on each tick. Without it, each tick calls
-    // readCache -> fs.stat("null/.gaia/...") and may log errors.
-    await clock.advance(90000)
-
-    expect(processRunCalls).toBe(0)
-    expect(fsStatCalls).toBe(0)
-    expect(fsReadCalls).toBe(0)
-    expect(debugLogCalls).toBe(0)
-  })
-})
-
-describe('partial capabilities', () => {
-  test('command.register throws but root detection and probe succeed sprint returns active', async ($, on) => {
-    // command.register throws (unsupported build for commands).
-    // With try/catch: catch fires, caps.command=false, execution continues ->
-    // gaiaRoot found, probe runs, active cache loaded -> /sprint returns {}.
-    // Without try/catch: the throw aborts session.start,
-    // gaiaRoot stays null -> /sprint returns { text: "No active sprint" }.
-    const clock = mock.clock(on)
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => { throw new Error('not available') })
-    on('process.run', () => ({
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    }))
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: clock.now(), isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-
-    const result = await $.command.run(SPRINT_CMD)
-    expect(result).toEqual({})
-  })
-
-  test('clock.every throws but command and probe succeed sprint returns active', async ($, on) => {
-    // clock.every bottom throws (unsupported build for timers).
-    // With try/catch: catch fires, caps.clock=false, execution continues ->
-    // gaiaRoot found, probe runs, active cache loaded -> /sprint returns {}.
-    // Without try/catch: the throw aborts session.start after
-    // command.register but before root detection.
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('clock.every', () => { throw new Error('not available') })
-    on('process.run', () => ({
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    }))
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: Date.now(), isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-
-    const result = await $.command.run(SPRINT_CMD)
-    expect(result).toEqual({})
-  })
-})
-
-describe('sprint transition to closed', () => {
-  test('sprint transition to closed clears pane and band', async ($, on) => {
-    const clock = mock.clock(on, { now: 100000 })
-    let cacheContent = JSON.stringify(ACTIVE_CACHE)
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => ({
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    }))
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: 100000, isLink: false }
-    }))
-    on('fs.read', () => ({ value: cacheContent }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start(SESSION_START_EVENT)
-
-    cacheContent = JSON.stringify(CLOSED_CACHE)
-    await clock.advance(90000)
-
-    const result = await $.command.run(SPRINT_CMD)
-    expect(result).toMatchObject({ text: 'No active sprint' })
+  test('re-entry keeps a running snapshot and joins it', async ($, on) => {
+    const slow = deferred()
+    const w = world(on, { run: () => slow.run() })
+    await start($, w)
+    await start($, w)
+    expect(w.runs.length).toBe(1)
+    slow.release()
+    await w.clock.settle()
+    expect(w.runs.length).toBe(1)
   })
 })
 
 describe('session re-entry', () => {
-  test('second session.start resets caps and runs probe fresh', async ($, on) => {
-    const clock = mock.clock(on, { now: 100000 })
-    let processRunCount = 0
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => {
-      processRunCount++
-      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  test('GAIA to GAIA re-entry: exactly one snapshot run per tick', async ($, on) => {
+    // The writer moves the mtime on every run but leaves it old, so every
+    // tick sees a stale cache and every live timer would start a run.
+    const w = world(on, {
+      now: 1000000,
+      cache: { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: 1 },
+      run: (_n, wl) => { wl.cache.mtimeMs += 1; return { value: OK_RUN } }
     })
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: clock.now(), isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    // First session.start
-    await $.session.start(SESSION_START_EVENT)
-    expect(processRunCount).toBe(1) // One probe
-
-    // Second session.start (re-entry with different cwd to prove caps reset)
-    processRunCount = 0
-    await $.session.start(SESSION_START_EVENT)
-
-    // Second probe ran (caps were reset, new probe executed)
-    expect(processRunCount).toBe(1)
-
-    // /sprint works correctly after re-entry (state fully reset)
-    const result = await $.command.run(SPRINT_CMD)
-    // Active cache loaded during second session.start
-    expect(result).toBeDefined()
+    await start($, w)
+    await start($, w)
+    await start($, w)
+    const runs0 = w.runs.length
+    await w.clock.advance(30000)
+    expect(w.runs.length).toBe(runs0 + 1)
+    await w.clock.advance(30000)
+    expect(w.runs.length).toBe(runs0 + 2)
   })
 
-  test('second session.start in non-GAIA dir silences old timer via gaiaRoot reset', async ($, on) => {
-    const clock = mock.clock(on, { now: 100000 })
-    let processRunCount = 0
-    let sessionRootValue = GAIA_ROOT
-
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
-    on('session.root', () => ({ value: sessionRootValue }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
-    on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => {
-      processRunCount++
-      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    })
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: 0, isLink: false }
-    }))
-    on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({ value: [] }))
-    on('ui.log', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    // First session.start in GAIA dir (timer starts, probe runs)
-    await $.session.start(SESSION_START_EVENT)
-    expect(processRunCount).toBe(1) // One probe
-
-    // Second session.start in non-GAIA dir (gaiaRoot resets to null)
-    sessionRootValue = '/tmp/notgaia'
-    processRunCount = 0
-    await $.session.start({ cwd: '/tmp/notgaia', surface: 'terminal', isInteractive: true })
-
-    // No probe ran (no gaiaRoot detected)
-    expect(processRunCount).toBe(0)
-
-    // Advance clock -- no timer fires process.run (gaiaRoot is null; timer guard protects)
-    await clock.advance(90000)
-    expect(processRunCount).toBe(0)
+  test('re-entry in a non-GAIA directory silences the old timer', async ($, on) => {
+    const w = world(on, { cache: { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: 0 } })
+    await start($, w)
+    expect(w.runs.length).toBe(1)
+    w.sessionRoot = '/tmp/notgaia'
+    await start($, w)
+    await w.clock.advance(90000)
+    expect(w.runs.length).toBe(1)
   })
 })
 
-describe('pane reconciliation', () => {
-  test('session.start reconciles pane state from panes list and sprint works', async ($, on) => {
-    const clock = mock.clock(on)
+describe('backoff', () => {
+  test('a writer that never moves the cache is retried less and less often', async ($, on) => {
+    const w = world(on, { now: 1000000, cache: { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: 1 } })
+    await start($, w)
+    await w.clock.advance(600000)
+    // Probe at 0 s, then 30 s, 90 s, 210 s and 450 s: 5 runs, not 21.
+    expect(w.runs.length).toBe(5)
+  })
 
-    on('session.start', (_$: unknown, e: unknown) => ({ cwd: (e as { cwd: string }).cwd }))
+  test('a run that moves the cache ends the backoff', async ($, on) => {
+    let moving = false
+    const w = world(on, {
+      now: 1000000,
+      cache: { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: 1 },
+      run: (_n, wl) => { if (moving) wl.cache.mtimeMs += 1; return { value: OK_RUN } }
+    })
+    await start($, w)
+    await w.clock.advance(210000) // runs at 0, 30, 90, 210 s
+    expect(w.runs.length).toBe(4)
+    moving = true
+    await w.clock.advance(240000) // run at 450 s moves the cache
+    expect(w.runs.length).toBe(5)
+    await w.clock.advance(30000) // back to one run per stale tick
+    expect(w.runs.length).toBe(6)
+    await w.clock.advance(30000)
+    expect(w.runs.length).toBe(7)
+  })
+})
+
+describe('cache state', () => {
+  test('truncated cache shows sprint data unavailable in the pane', async ($, on) => {
+    const w = world(on, { cache: { content: '{"sprint":', mtimeMs: 100000 } })
+    await start($, w)
+    const ui = await mountPane($)
+    expect(await ui.find({ text: 'Sprint data unavailable' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('absent cache: pane passes through', async ($, on) => {
+    const w = world(on, { cache: { content: null, mtimeMs: 0 } })
+    await start($, w)
+    const ui = await mountPane($)
+    expect(await ui.find({ text: 'BOTTOM PANE' })).toBeDefined()
+    expect(await ui.find({ text: 'Sprint data unavailable' })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('unparseable cache wipes the previous good value', async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    expect(await $.command.run(SPRINT_CMD)).toEqual({})
+    w.cache.content = '{broken'
+    w.cache.mtimeMs = w.clock.now() + 1
+    await w.clock.advance(30000)
+    const ui = await mountPane($)
+    expect(await ui.find({ text: 'Sprint data unavailable' })).toBeDefined()
+    await ui.unmount()
+  })
+})
+
+describe('render path', () => {
+  test('rendering the pane and the band does no file or process work', async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    const before = { stats: w.stats, reads: w.reads, runs: w.runs.length }
+    const pane = await mountPane($)
+    await pane.unmount()
+    const band = await $.ui.mount({ plugin: 'gaia', surface: 'terminal', component: 'AbovePrompt', props: {} })
+    await band.unmount()
+    expect({ stats: w.stats, reads: w.reads, runs: w.runs.length }).toEqual(before)
+  })
+
+  test('the band keeps what other mods draw', async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    const band = await $.ui.mount({ plugin: 'gaia', surface: 'terminal', component: 'AbovePrompt', props: {} })
+    expect(await band.find({ text: 'OTHER MOD BAND' })).toBeDefined()
+    await band.unmount()
+  })
+})
+
+describe('GAIA root detection', () => {
+  test('a subdirectory session finds the project root above it', async ($, on) => {
+    const w = world(on, { home: '/home/u', sessionRoot: '/home/u/project/pkg/sub', gaiaDirs: ['/home/u/project/.gaia'] })
+    await start($, w)
+    expect(w.runs.length).toBe(1)
+    expect(w.runs[0].init.cwd).toBe('/home/u/project')
+  })
+
+  test('the walk stops at the home directory', async ($, on) => {
+    const w = world(on, { home: '/home/u', sessionRoot: '/home/u/a/b', gaiaDirs: ['/home/.gaia', '/.gaia'] })
+    await start($, w)
+    expect(w.runs.length).toBe(0)
+    expect(await $.command.run(SPRINT_CMD)).toEqual(NO_SPRINT)
+  })
+
+  test('outside home only the session root itself is checked', async ($, on) => {
+    const shared = world(on, { home: '/home/u', sessionRoot: '/tmp/x/y', gaiaDirs: ['/tmp/.gaia', '/tmp/x/.gaia'] })
+    await start($, shared)
+    expect(shared.runs.length).toBe(0)
+  })
+
+  test('outside home a .gaia in the session root itself is found', async ($, on) => {
+    const w = world(on, { home: '/home/u', sessionRoot: '/srv/proj/', gaiaDirs: ['/srv/proj/.gaia'] })
+    await start($, w)
+    expect(w.runs.length).toBe(1)
+    expect(w.runs[0].init.cwd).toBe('/srv/proj')
+  })
+})
+
+describe('partial capabilities', () => {
+  test('command.register throws but root detection and probe succeed: sprint is active', async ($, on) => {
+    world(on, { commandThrows: true })
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    expect(await $.command.run(SPRINT_CMD)).toEqual({})
+  })
+
+  test('clock.every throws but command and probe succeed: sprint is active', async ($, on) => {
+    on('session.start', (_$: unknown, e: any) => ({ cwd: e.cwd }))
     on('session.root', () => ({ value: GAIA_ROOT }))
-    on('fs.exists', (_$: unknown, e: unknown) => ({ value: (e as { path: string }).path === GAIA_DIR }))
+    on('fs.exists', (_$: unknown, e: any) => ({ value: e.path === GAIA_ROOT + '/.gaia' }))
     on('command.register', () => ({ value: { command: 'sprint' } }))
-    on('process.run', () => ({
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    }))
-    on('fs.stat', () => ({
-      value: { kind: 'file' as const, size: 100, mtimeMs: clock.now(), isLink: false }
-    }))
+    on('clock.every', () => { throw new Error('not available') })
+    on('clock.now', () => ({ value: 100000 }))
+    on('process.run', () => ({ value: OK_RUN }))
+    on('fs.stat', () => ({ value: { kind: 'file' as const, size: 10, mtimeMs: 100000, isLink: false } }))
     on('fs.read', () => ({ value: JSON.stringify(ACTIVE_CACHE) }))
-    on('ui.panes', () => ({
-      value: [{ id: 'sprint-status', title: 'Sprint', isShown: true, isFocused: false, isPlaced: true }]
-    }))
+    on('ui.panes', () => ({ value: [] }))
     on('ui.log', () => ({ value: undefined }))
     on('ui.invalidate', () => ({ value: undefined }))
-
-    // session.start reconciles paneOpen from panes() listing sprint-status
-    await $.session.start(SESSION_START_EVENT)
-
-    // Sprint command works (active sprint loaded)
-    const result = await $.command.run(SPRINT_CMD)
-    expect(result).toBeDefined()
-    // The close handler test (paneOpen = false, mutant kill) is in
-    // mod-cap-detect-direct.bats using the direct-import approach,
-    // because the test kit does not expose $.ui.close.
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    expect(await $.command.run(SPRINT_CMD)).toEqual({})
   })
 })
