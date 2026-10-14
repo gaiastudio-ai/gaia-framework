@@ -103,7 +103,7 @@ _rw_validate_key() {
     *..* | */* | "")
       _rw_die 1 "invalid story key: $key" ;;
   esac
-  if ! printf '%s' "$key" | grep -qE '^[A-Za-z0-9]+-[A-Za-z0-9]+(-[A-Za-z0-9_-]+)*$'; then
+  if ! grep -qE '^[A-Za-z0-9]+-[A-Za-z0-9]+(-[A-Za-z0-9_-]+)*$' <<<"$key"; then
     _rw_die 1 "invalid story key: $key"
   fi
 }
@@ -1218,8 +1218,10 @@ _rw_sanitise_table_chars() {
   # Replace runs of 3+ dashes with spaced dashes (breaks table separators).
   val="$(printf '%s' "$val" | sed 's/---/- - -/g')"
   # Strip [ before TRIAGED or DISMISSED (repeat until none remain).
-  while printf '%s' "$val" | grep -q '\[TRIAGED\|\[DISMISSED'; do
-    val="$(printf '%s' "$val" | sed 's/\[TRIAGED/TRIAGED/g; s/\[DISMISSED/DISMISSED/g')"
+  # Use a case pattern instead of a pipe to avoid SIGPIPE under pipefail.
+  while case "$val" in *'[TRIAGED'*|*'[DISMISSED'*) true ;; *) false ;; esac; do
+    val="${val//\[TRIAGED/TRIAGED}"
+    val="${val//\[DISMISSED/DISMISSED}"
   done
   printf '%s' "$val"
 }

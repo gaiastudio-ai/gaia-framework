@@ -37,7 +37,7 @@ teardown() { common_teardown; }
   bash --version >&3
   local ver
   ver="$(bash --version | head -1)"
-  printf '%s\n' "$ver" | grep -qE '^GNU bash, version [35]\.' || {
+  grep -qE '^GNU bash, version [35]\.' <<<"$ver" || {
     echo "unexpected bash version: $ver" >&2
     false
   }
@@ -247,7 +247,7 @@ _write_legacy_story() {
   run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
     --severity medium --blocking false --rationale ""
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "rationale"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "rationale"; }
+  { grep -qF "rationale" <<<"$output"; } || { grep -qF "rationale" <<<"${stderr:-$output}"; }
 }
 
 @test "writer resolve-severity with whitespace-only rationale exits non-zero" {
@@ -259,7 +259,7 @@ _write_legacy_story() {
   run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
     --severity medium --blocking false --rationale "   "
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "rationale"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "rationale"; }
+  { grep -qF "rationale" <<<"$output"; } || { grep -qF "rationale" <<<"${stderr:-$output}"; }
 }
 
 @test "writer resolve-severity with valid rationale records resolution" {
@@ -304,7 +304,7 @@ _write_legacy_story() {
     blk="$(yq '.entries[0].blocking' "$reg")"
     [ "$blk" = "true" ]
   else
-    { printf '%s\n' "$output" | grep -qF "material"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "material"; }
+    { grep -qF "material" <<<"$output"; } || { grep -qF "material" <<<"${stderr:-$output}"; }
   fi
 }
 
@@ -317,10 +317,10 @@ _write_legacy_story() {
   run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
     --disposition triage
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "owner"; } \
-    || { printf '%s\n' "$output" | grep -qF "priority"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "owner"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "priority"; }
+  { grep -qF "owner" <<<"$output"; } \
+    || { grep -qF "priority" <<<"$output"; } \
+    || { grep -qF "owner" <<<"${stderr:-$output}"; } \
+    || { grep -qF "priority" <<<"${stderr:-$output}"; }
 }
 
 @test "writer set-disposition triage with owner and priority succeeds" {
@@ -347,10 +347,10 @@ _write_legacy_story() {
   run "$SCRIPT" add --story "../traversal" \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "story"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "story"; } \
-    || { printf '%s\n' "$output" | grep -qF "invalid"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "invalid"; }
+  { grep -qF "story" <<<"$output"; } \
+    || { grep -qF "story" <<<"${stderr:-$output}"; } \
+    || { grep -qF "invalid" <<<"$output"; } \
+    || { grep -qF "invalid" <<<"${stderr:-$output}"; }
 
   run "$SCRIPT" add --story "path/slash" \
     --defect "test" --type bug --severity low --gate code-review
@@ -365,14 +365,14 @@ _write_legacy_story() {
   run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
     --disposition wontfix-maybe
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "disposition"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "disposition"; }
+  { grep -qF "disposition" <<<"$output"; } || { grep -qF "disposition" <<<"${stderr:-$output}"; }
 }
 
 @test "writer rejects unknown severity" {
   run "$SCRIPT" add --story TEST-S1 \
     --defect "test" --type bug --severity Blocker --gate code-review
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "severity"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "severity"; }
+  { grep -qF "severity" <<<"$output"; } || { grep -qF "severity" <<<"${stderr:-$output}"; }
 }
 
 @test "writer normalises template tier names to canonical severity" {
@@ -431,17 +431,17 @@ _write_legacy_story() {
   run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
     --disposition triage --owner code-review --priority high
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "bug"; } \
-    || { printf '%s\n' "$output" | grep -qF "blocking"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "bug"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "blocking"; }
+  { grep -qF "bug" <<<"$output"; } \
+    || { grep -qF "blocking" <<<"$output"; } \
+    || { grep -qF "bug" <<<"${stderr:-$output}"; } \
+    || { grep -qF "blocking" <<<"${stderr:-$output}"; }
 }
 
 @test "writer rejects unknown type" {
   run "$SCRIPT" add --story TEST-S1 \
     --defect "unknown type" --type foobar --severity low --gate code-review
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "type"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "type"; }
+  { grep -qF "type" <<<"$output"; } || { grep -qF "type" <<<"${stderr:-$output}"; }
 }
 
 @test "writer rejects blocking true without blocking_rationale" {
@@ -449,7 +449,7 @@ _write_legacy_story() {
     --defect "missing rationale" --type bug --severity medium \
     --gate code-review --blocking
   [ "$status" -ne 0 ]
-  { printf '%s\n' "$output" | grep -qF "rationale"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "rationale"; }
+  { grep -qF "rationale" <<<"$output"; } || { grep -qF "rationale" <<<"${stderr:-$output}"; }
 }
 
 @test "writer round-trips YAML metacharacters without execution" {
@@ -467,7 +467,7 @@ _write_legacy_story() {
   readback="$(yq '.entries[0].defect' "$reg")"
   [ "$readback" = "$nasty_defect" ]
   # Verify nothing was executed — $(echo pwned) must be literal
-  printf '%s\n' "$readback" | grep -qF '$(echo pwned)'
+  grep -qF '$(echo pwned)' <<<"$readback"
 }
 
 @test "writer exits non-zero on malformed register" {
@@ -477,11 +477,11 @@ _write_legacy_story() {
   run "$SCRIPT" add --story TEST-S1 \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 2 ]
-  { printf '%s\n' "$output" | grep -qF "structural"; } \
-    || { printf '%s\n' "$output" | grep -qF "parse"; } \
-    || { printf '%s\n' "$output" | grep -qF "malformed"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "structural"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "parse"; }
+  { grep -qF "structural" <<<"$output"; } \
+    || { grep -qF "parse" <<<"$output"; } \
+    || { grep -qF "malformed" <<<"$output"; } \
+    || { grep -qF "structural" <<<"${stderr:-$output}"; } \
+    || { grep -qF "parse" <<<"${stderr:-$output}"; }
 }
 
 @test "writer exits non-zero on truncated register" {
@@ -491,11 +491,11 @@ _write_legacy_story() {
   run "$SCRIPT" add --story TEST-S1 \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 2 ]
-  { printf '%s\n' "$output" | grep -qF "structural"; } \
-    || { printf '%s\n' "$output" | grep -qF "parse"; } \
-    || { printf '%s\n' "$output" | grep -qF "validation"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "structural"; } \
-    || { printf '%s\n' "${stderr:-$output}" | grep -qF "parse"; }
+  { grep -qF "structural" <<<"$output"; } \
+    || { grep -qF "parse" <<<"$output"; } \
+    || { grep -qF "validation" <<<"$output"; } \
+    || { grep -qF "structural" <<<"${stderr:-$output}"; } \
+    || { grep -qF "parse" <<<"${stderr:-$output}"; }
 }
 
 @test "writer exits non-zero on register with entries as scalar string" {
@@ -510,7 +510,7 @@ YAML
   run "$SCRIPT" add --story TEST-S1 \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 2 ]
-  { printf '%s\n' "$output" | grep -qF "structural"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "structural"; }
+  { grep -qF "structural" <<<"$output"; } || { grep -qF "structural" <<<"${stderr:-$output}"; }
 }
 
 @test "writer exits non-zero on register with entries as scalar number" {
@@ -525,7 +525,7 @@ YAML
   run "$SCRIPT" add --story TEST-S1 \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 2 ]
-  { printf '%s\n' "$output" | grep -qF "structural"; } || { printf '%s\n' "${stderr:-$output}" | grep -qF "structural"; }
+  { grep -qF "structural" <<<"$output"; } || { grep -qF "structural" <<<"${stderr:-$output}"; }
 }
 
 @test "concurrent writers produce valid YAML with unique contiguous IDs under flock" {
@@ -673,9 +673,33 @@ YAML
   local findings_section
   findings_section="$(sed -n '/^## Findings/,/^## /p' "$story_file" | grep 'RF-1')"
   # pipe inside cell replaced with /
-  { ! printf '%s\n' "$findings_section" | grep -qF '| in output'; } || { printf '%s\n' "$findings_section" | grep -qF '/ in output'; }
+  { ! grep -qF '| in output' <<<"$findings_section"; } || { grep -qF '/ in output' <<<"$findings_section"; }
   # triple dash spaced
-  { ! printf '%s\n' "$findings_section" | grep -qF '---'; } || { printf '%s\n' "$findings_section" | grep -qF '- - -'; }
+  { ! grep -qF '---' <<<"$findings_section"; } || { grep -qF '- - -' <<<"$findings_section"; }
+}
+
+@test "sanitiser strips bracket markers from values larger than 128 KB" {
+  # Extract and eval the sanitiser function (the full script has top-level
+  # dispatch we skip).  The function is self-contained.
+  eval "$(sed -n '/_rw_sanitise_table_chars()/,/^}/p' "$SCRIPT")"
+
+  # Build a ~140 KB value with bracket-prefixed markers embedded.
+  local padding
+  padding="$(head -c 131072 < /dev/zero | tr '\0' 'x')"
+  local big="prefix [TRIAGED marker ${padding} middle [DISMISSED end [TRIAGED tail"
+
+  # Run under pipefail — the old pipe-based loop raced under pipefail
+  # with values this large (grep -q exits early, SIGPIPE kills the writer).
+  local result
+  set -o pipefail
+  result="$(_rw_sanitise_table_chars "$big")"
+
+  # No bracket-prefixed markers should remain.
+  ! grep -qF '[TRIAGED' <<<"$result"
+  ! grep -qF '[DISMISSED' <<<"$result"
+  # The keywords themselves must survive (only the bracket is stripped).
+  grep -qF 'TRIAGED' <<<"$result"
+  grep -qF 'DISMISSED' <<<"$result"
 }
 
 @test "writer findings-rows replaces placeholder row and is idempotent" {
@@ -738,7 +762,7 @@ YAML
   local row
   row="$(grep 'RF-1' "$story_file")"
   # Multi-line joined with " ; "
-  printf '%s\n' "$row" | grep -qF " ; " || { echo "expected ' ; ' in row but got: $row" >&2; false; }
+  grep -qF " ; " <<<"$row" || { echo "expected ' ; ' in row but got: $row" >&2; false; }
 }
 
 @test "writer findings-rows uses em dash separator before owner" {
@@ -765,7 +789,7 @@ YAML
   local row
   row="$(grep 'RF-1' "$story_file")"
   # Em dash (U+2014) not double hyphen
-  { printf '%s\n' "$row" | grep -qF $'\xe2\x80\x94'; } || { printf '%s\n' "$row" | grep -qF " — "; } || { echo "expected em dash in row but got: $row" >&2; false; }
+  { grep -qF $'\xe2\x80\x94' <<<"$row"; } || { grep -qF " — " <<<"$row"; } || { echo "expected em dash in row but got: $row" >&2; false; }
 }
 
 @test "material true with low severity is blocking" {
@@ -985,7 +1009,7 @@ YAML
 
   run "$REPORT_PATH" --key E99-S1 --type findings-register
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF "/reviews/findings-register-E99-S1.yaml" || { echo "expected reviews path in output but got: $output" >&2; false; }
+  grep -qF "/reviews/findings-register-E99-S1.yaml" <<<"$output" || { echo "expected reviews path in output but got: $output" >&2; false; }
 }
 
 @test "register path for two legacy-nested stories yields distinct files" {
@@ -1015,8 +1039,8 @@ EOF
   path1="$("$REPORT_PATH" --key LEG-S1 --type findings-register)"
   path2="$("$REPORT_PATH" --key LEG-S2 --type findings-register)"
   [ "$path1" != "$path2" ]
-  printf '%s\n' "$path1" | grep -qF "LEG-S1"
-  printf '%s\n' "$path2" | grep -qF "LEG-S2"
+  grep -qF "LEG-S1" <<<"$path1"
+  grep -qF "LEG-S2" <<<"$path2"
 }
 
 @test "open entry with non-blocking severity then material rating from second gate yields REQUEST_CHANGES" {
@@ -1164,7 +1188,7 @@ EOF
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
     --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF "APPROVE"
+  grep -qF "APPROVE" <<<"$output"
 }
 
 @test "test-perf verdict.sh with story key and register reflects register rule" {
@@ -1193,7 +1217,7 @@ EOF
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
     --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF "APPROVE"
+  grep -qF "APPROVE" <<<"$output"
 }
 
 @test "test-dast verdict.sh without register uses legacy llm-findings path unchanged" {
@@ -1218,7 +1242,7 @@ EOF
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
     --llm-findings "$TEST_TMP/f.json"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF "APPROVE"
+  grep -qF "APPROVE" <<<"$output"
 }
 
 @test "test-perf verdict.sh without register uses legacy llm-findings path unchanged" {
@@ -1243,7 +1267,7 @@ EOF
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
     --llm-findings "$TEST_TMP/f.json"
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF "APPROVE"
+  grep -qF "APPROVE" <<<"$output"
 }
 
 @test "test-dast verdict.sh standalone mints run-id and records run" {
@@ -1308,7 +1332,7 @@ EOF
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
     --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
   [ "$status" -eq 0 ]
-  ! printf '%s\n' "$output" | grep -qF "BLOCKED"
+  ! grep -qF "BLOCKED" <<<"$output"
 }
 
 @test "test-dast verdict.sh with register and Critical finding in register yields REQUEST_CHANGES" {
@@ -1337,7 +1361,7 @@ EOF
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
     --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
   [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qF "REQUEST_CHANGES"
+  grep -qF "REQUEST_CHANGES" <<<"$output"
 }
 
 @test "test-dast verdict.sh with two distinct findings produces two register entries" {
@@ -1453,9 +1477,9 @@ EOF
   [ "$status" -eq 0 ]
   # Should emit at least one finding line
   local line_count
-  line_count="$(printf '%s\n' "$output" | grep -c '|' || true)"
+  line_count="$(grep -c '|' <<<"$output" || true)"
   [ "$line_count" -ge 1 ]
   # Should contain the type and severity
-  printf '%s\n' "$output" | grep -qF "bug"
-  printf '%s\n' "$output" | grep -qF "low"
+  grep -qF "bug" <<<"$output"
+  grep -qF "low" <<<"$output"
 }

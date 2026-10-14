@@ -248,7 +248,7 @@ YAML
   run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
   [ "$status" -eq 0 ]
   [ "$output" = "APPROVE" ]
-  printf '%s\n' "$stderr" | grep -qF "register: empty"
+  grep -qF "register: empty" <<<"$stderr"
 }
 
 @test "register mode with truncated register yields BLOCKED exit 0" {
@@ -257,7 +257,7 @@ YAML
   [ "$status" -eq 0 ]
   [ "$output" = "BLOCKED" ]
   # Must assert stderr content so the unknown-argument exit 1 cannot satisfy this
-  { printf '%s\n' "$stderr" | grep -qF "parse"; } || { printf '%s\n' "$stderr" | grep -qF "structural"; } || { printf '%s\n' "$stderr" | grep -qF "malformed"; }
+  { grep -qF "parse" <<<"$stderr"; } || { grep -qF "structural" <<<"$stderr"; } || { grep -qF "malformed" <<<"$stderr"; }
 }
 
 @test "register mode with entries as scalar string yields BLOCKED exit 0" {
@@ -270,7 +270,7 @@ YAML
   run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
   [ "$status" -eq 0 ]
   [ "$output" = "BLOCKED" ]
-  { printf '%s\n' "$stderr" | grep -qF "structural"; } || { printf '%s\n' "$stderr" | grep -qF "parse"; }
+  { grep -qF "structural" <<<"$stderr"; } || { grep -qF "parse" <<<"$stderr"; }
 }
 
 @test "register mode with entries as scalar number yields BLOCKED exit 0" {
@@ -283,7 +283,7 @@ YAML
   run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
   [ "$status" -eq 0 ]
   [ "$output" = "BLOCKED" ]
-  { printf '%s\n' "$stderr" | grep -qF "structural"; } || { printf '%s\n' "$stderr" | grep -qF "parse"; }
+  { grep -qF "structural" <<<"$stderr"; } || { grep -qF "parse" <<<"$stderr"; }
 }
 
 @test "register mode with wrong schema_version yields BLOCKED exit 0" {
@@ -296,7 +296,7 @@ YAML
   run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml"
   [ "$status" -eq 0 ]
   [ "$output" = "BLOCKED" ]
-  { printf '%s\n' "$stderr" | grep -qF "structural"; } || { printf '%s\n' "$stderr" | grep -qF "schema"; }
+  { grep -qF "structural" <<<"$stderr"; } || { grep -qF "schema" <<<"$stderr"; }
 }
 
 @test "register mode with failed blocking tool and empty register yields REQUEST_CHANGES" {
@@ -338,7 +338,7 @@ JSON
   [ "$status" -eq 0 ]
   [ "$output" = "BLOCKED" ]
   # Malformed register is parsed first, so BLOCKED wins over REQUEST_CHANGES
-  { printf '%s\n' "$stderr" | grep -qF "parse"; } || { printf '%s\n' "$stderr" | grep -qF "structural"; } || { printf '%s\n' "$stderr" | grep -qF "malformed"; }
+  { grep -qF "parse" <<<"$stderr"; } || { grep -qF "structural" <<<"$stderr"; } || { grep -qF "malformed" <<<"$stderr"; }
 }
 
 @test "register mode same register same verdict across six gate names" {
@@ -411,11 +411,11 @@ YAML
   # not just "unknown argument: --register". Use case/grep instead of [[ ]]
   # because bash 3.2 does not trigger ERR trap on [[ ]] failure.
   local combined="${stderr:-}${output:-}"
-  echo "$combined" | grep -qF "llm-findings"
-  echo "$combined" | grep -qF "register"
+  grep -qF "llm-findings" <<<"$combined"
+  grep -qF "register" <<<"$combined"
   # Must NOT be the generic "unknown argument" rejection — the resolver
   # must have recognized --register and then rejected the combination.
-  ! echo "$combined" | grep -qE "unknown arg(ument)?"
+  ! grep -qE "unknown arg(ument)?" <<<"$combined"
 }
 
 @test "register mode action-mode with empty register and clean flags yields APPROVE" {
@@ -511,7 +511,7 @@ YAML
   # Action mode always requires analysis inputs. Use grep instead of [[ ]]
   # because bash 3.2 does not trigger ERR trap on [[ ]] failure.
   local combined="${stderr:-}${output:-}"
-  echo "$combined" | grep -qiE "analysis"
+  grep -qiE "analysis" <<<"$combined"
 }
 
 @test "register mode with no analysis-results evaluates register only" {

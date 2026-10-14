@@ -217,6 +217,7 @@ core	e85-s13-reconciler-writes-framework-version.bats
 core	embedded-dev-wiring.bats
 core	evidence-judgment-parity.bats
 core	expected-report-vocabulary.bats
+core	findings-register.bats
 core	framework-version.bats
 core	gaia-add-feature-setup.bats
 core	gaia-changelog-story-link.bats
@@ -275,6 +276,7 @@ core	no-bare-gaia-path-antipattern.bats
 core	no-bsd-awk-incompatible-anchors.bats
 core	no-leaked-ids-in-prose.bats
 core	no-leaked-ids-in-test-names.bats
+core	no-stray-gaia-dir.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
 core	parallel-execution-config.bats
