@@ -1570,6 +1570,14 @@ _snapshot_main() {
   CONFIG_FILE="${RESOLVED_ROOT}/.gaia/config/project-config.yaml"
   YAML_FILE="${SPRINT_STATUS_YAML:-${STATE_DIR}/sprint-status.yaml}"
 
+  # Guard: when there is no GAIA project (no sprint-status.yaml and no .gaia/
+  # directory), exit silently without creating any files on disk.  Running the
+  # snapshot in an arbitrary non-project directory must leave the filesystem
+  # untouched.
+  if [ ! -f "$YAML_FILE" ] && [ ! -d "${RESOLVED_ROOT}/.gaia" ]; then
+    exit 0
+  fi
+
   # Story tree: env override, canonical tree, then the legacy docs/ tree.
   if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
     IMPL_DIR="$IMPLEMENTATION_ARTIFACTS"
