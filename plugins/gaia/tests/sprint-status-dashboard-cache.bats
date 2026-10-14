@@ -1121,9 +1121,9 @@ YAML
     'YAML_PATH' 'yaml_val' 'flush_story' 'story_risk' \
     'IMPLEMENTATION_ARTIFACTS' 'sprint-status.yaml' 'story.md' \
     'sprint-state.sh' 'detect-auto-close'; do
-    if echo "$combined" | grep -qF "$forbidden"; then
+    if grep -qF "$forbidden" <<<"$combined"; then
       echo "FAIL: _render_cache_dashboard (or _render_cache_story_row) references forbidden symbol: $forbidden" >&2
-      echo "  Context: $(echo "$combined" | grep -F "$forbidden" | head -1)" >&2
+      echo "  Context: $(grep -F "$forbidden" <<<"$combined" | head -1)" >&2
       return 1
     fi
   done
@@ -1390,7 +1390,7 @@ YAML
 
   [[ ! "$output" =~ "; rm -rf /" ]]
   # The invalid key should render as "?" placeholder
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "validation: invalid story status replaced (not rendered literally)" {
@@ -1405,7 +1405,7 @@ YAML
   _assert_cache_columns
 
   [[ ! "$output" =~ "hacked" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "validation: invalid phase status label replaced (not rendered literally)" {
@@ -1420,7 +1420,7 @@ YAML
   _assert_cache_columns
 
   [[ ! "$output" =~ "evil" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 # ===========================================================================
@@ -1593,7 +1593,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "abc" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "null total_days omits duration line (not question mark)" {
@@ -1618,7 +1618,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "xyz" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "non-numeric tasks.done: question mark present" {
@@ -1631,7 +1631,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "bad/5" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "non-numeric tasks.total: question mark present" {
@@ -1644,7 +1644,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "2/nope" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "non-numeric gates.passed: question mark present" {
@@ -1657,7 +1657,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "err/6" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "non-numeric gates.total: question mark present" {
@@ -1670,7 +1670,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "4/oops" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "non-numeric phase: question mark present in phase header" {
@@ -1683,7 +1683,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "Phase bogus" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "non-numeric totals.total_stories: question mark in footer" {
@@ -1696,7 +1696,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "nan stories" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "non-numeric totals.total_points: question mark in footer" {
@@ -1709,7 +1709,7 @@ YAML
   [ "$status" -eq 0 ]
   _assert_cache_columns
   [[ ! "$output" =~ "nan points" ]]
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 @test "non-numeric totals.done_stories: question mark present" {
@@ -1725,7 +1725,7 @@ YAML
   _assert_cache_columns
   [[ ! "$output" =~ "boom" ]]
   # done_stories is used in the auto-close banner "N/N stories done"
-  echo "$output" | grep -qF '?'
+  grep -qF '?' <<<"$output"
 }
 
 # ===========================================================================
