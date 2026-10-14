@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [Unreleased]
+
+### Added
+
+- status line shows sprint progress percentage from cache, with a warning prefix when something needs your attention (a manual test is due, an action item is assigned to you, or every story in the sprint is done); the self-heal mechanism copies the updated runtime automatically after a plugin update, or run `/gaia-statusline-refresh` as a manual fallback
+
 ## [1.220.2] — 2026-10-12
 
 ### Fixed
