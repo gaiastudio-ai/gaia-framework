@@ -15,6 +15,7 @@ load 'test_helper.bash'
 setup() {
   common_setup
   AGENTS_DIR="$(cd "$BATS_TEST_DIRNAME/../agents" && pwd)"
+  SCHEMA_DOC="$(cd "$BATS_TEST_DIRNAME/../knowledge" && pwd)/agent-frontmatter-schema.md"
 }
 teardown() { common_teardown; }
 
@@ -25,7 +26,7 @@ teardown() { common_teardown; }
 
 @test "F-010: every agent that loads memory uses \${CLAUDE_PLUGIN_ROOT} in the header" {
   # Count agents with a memory-loader header; all such headers must be the
-  # CLAUDE_PLUGIN_ROOT form. (Excludes _SCHEMA.md template, also checked below.)
+  # CLAUDE_PLUGIN_ROOT form. (Schema doc moved to knowledge/agent-frontmatter-schema.md.)
   local total ok
   total=$(grep -rlE '^!\$\{(PLUGIN_DIR|CLAUDE_PLUGIN_ROOT)\}/scripts/memory-loader\.sh' "$AGENTS_DIR"/*.md 2>/dev/null | wc -l | tr -d ' ')
   ok=$(grep -rlF '!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh' "$AGENTS_DIR"/*.md 2>/dev/null | wc -l | tr -d ' ')
@@ -33,13 +34,13 @@ teardown() { common_teardown; }
   [ "$total" -eq "$ok" ]
 }
 
-@test "F-010: _SCHEMA.md template uses \${CLAUDE_PLUGIN_ROOT}, not \${PLUGIN_DIR}" {
-  grep -qF '!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent-name> ground-truth' "$AGENTS_DIR/_SCHEMA.md"
-  ! grep -qF '!${PLUGIN_DIR}/scripts/memory-loader.sh <agent-name> ground-truth' "$AGENTS_DIR/_SCHEMA.md"
+@test "F-010: agent-frontmatter-schema.md template uses \${CLAUDE_PLUGIN_ROOT}, not \${PLUGIN_DIR}" {
+  grep -qF '!${CLAUDE_PLUGIN_ROOT}/scripts/memory-loader.sh <agent-name> ground-truth' "$SCHEMA_DOC"
+  ! grep -qF '!${PLUGIN_DIR}/scripts/memory-loader.sh <agent-name> ground-truth' "$SCHEMA_DOC"
 }
 
-@test "F-010: _SCHEMA.md documents CLAUDE_PLUGIN_ROOT as the substrate var (not PLUGIN_DIR)" {
-  grep -qF '${CLAUDE_PLUGIN_ROOT}` is the canonical Claude Code substrate variable' "$AGENTS_DIR/_SCHEMA.md"
+@test "F-010: agent-frontmatter-schema.md documents CLAUDE_PLUGIN_ROOT as the substrate var (not PLUGIN_DIR)" {
+  grep -qF '${CLAUDE_PLUGIN_ROOT}` is the canonical Claude Code substrate variable' "$SCHEMA_DOC"
 }
 
 @test "F-010: validator.md self-defined bash-block \$PLUGIN_DIR fallback is preserved" {

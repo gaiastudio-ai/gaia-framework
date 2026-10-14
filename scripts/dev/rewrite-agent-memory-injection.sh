@@ -14,7 +14,7 @@
 # Idempotent: safe to re-run — if the Memory section is already in the
 # correct position with the ground-truth tier, no change is made.
 #
-# Scope: runs on every *.md file in plugins/gaia/agents/ except _SCHEMA.md.
+# Scope: runs on every *.md file in plugins/gaia/agents/ (schema doc moved to knowledge/).
 
 set -euo pipefail
 
@@ -141,13 +141,10 @@ PY
   mv "$tmp" "$file"
 }
 
-# Iterate every *.md except _SCHEMA.md.
+# Iterate every *.md (schema doc moved to knowledge/agent-frontmatter-schema.md).
 shopt -s nullglob
 for f in "$AGENTS_DIR"/*.md; do
-  case "$(basename "$f")" in
-    _SCHEMA.md) continue ;;
-  esac
   rewrite_file "$f"
 done
 
-echo "Rewrite complete across $(ls "$AGENTS_DIR"/*.md | wc -l | tr -d ' ') files (excluding _SCHEMA.md)."
+echo "Rewrite complete across $(ls "$AGENTS_DIR"/*.md | wc -l | tr -d ' ') agent files."

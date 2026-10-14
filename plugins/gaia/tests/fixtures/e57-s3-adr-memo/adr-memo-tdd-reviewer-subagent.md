@@ -58,7 +58,7 @@ This memo records **Option A** as the chosen path. The TDD-reviewer ships as a n
 
 ### Rationale
 
-The decisive argument is the schema in `agents/_SCHEMA.md`: the `name:` field is the canonical dispatch id, and the schema does not support a single persona spanning two context modes via two files with different `name:` values. Option B's "share the persona name across two files" is incompatible with the dispatch contract; Option B's "give them different `name:` values" collapses into Option A with a confusing `qa-` prefix on a non-Vera contract.
+The decisive argument is the schema in `knowledge/agent-frontmatter-schema.md`: the `name:` field is the canonical dispatch id, and the schema does not support a single persona spanning two context modes via two files with different `name:` values. Option B's "share the persona name across two files" is incompatible with the dispatch contract; Option B's "give them different `name:` values" collapses into Option A with a confusing `qa-` prefix on a non-Vera contract.
 
 Once that argument is accepted, the remaining differences favour Option A:
 
@@ -82,7 +82,7 @@ The chosen agent file uses `name: tdd-reviewer` and persona name **Tex** (TDD re
 
 ## References
 
-- `gaia-public/plugins/gaia/agents/_SCHEMA.md` — frontmatter schema (`name`, `context`, `allowed-tools`).
+- `gaia-public/plugins/gaia/knowledge/agent-frontmatter-schema.md` — frontmatter schema (`name`, `context`, `allowed-tools`).
 - `gaia-public/plugins/gaia/agents/validator.md` — reference fork-context, read-only review agent.
 - `gaia-public/plugins/gaia/agents/qa.md` — Vera, test-generation persona left intact under Option A.
 - `docs/planning-artifacts/architecture.md` §Decision Log — ADR-037, ADR-063, ADR-067.

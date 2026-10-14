@@ -127,4 +127,4 @@ Findings persist to `.gaia/memory/checkpoints/{story_key}-tdd-review-findings.md
 - `.gaia/artifacts/planning-artifacts/adr-memo-tdd-reviewer-subagent.md` — Option A vs B decision, this agent's contract origin.
 - `.gaia/artifacts/planning-artifacts/architecture.md` §Decision Log — finding shape, verdict surfacing, hard-CRITICAL halt.
 - `.gaia/artifacts/test-artifacts/test-plan.md` — CRITICAL halt, WARNING display, INFO suppression, timeout fallback.
-- `gaia-framework/plugins/gaia/agents/_SCHEMA.md` — frontmatter schema this file conforms to.
+- `gaia-framework/plugins/gaia/knowledge/agent-frontmatter-schema.md` — frontmatter schema this file conforms to.

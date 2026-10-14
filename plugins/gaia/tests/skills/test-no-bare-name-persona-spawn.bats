@@ -36,7 +36,7 @@ setup() {
 teardown() { common_teardown; }
 
 # The canonical persona alternation — taken from the `name:` field of every
-# `plugins/gaia/agents/*.md` file (excluding `_base-dev.md` and `_SCHEMA.md`).
+# `plugins/gaia/agents/*.md` file (excluding `_base-dev.md`; schema doc moved to `knowledge/agent-frontmatter-schema.md`).
 # Keep this in sync with the agents directory; a missing persona here means
 # a bare-name violation against that persona will not be caught.
 PERSONAS='architect|validator|pm|sm|tdd-reviewer|ux-designer|test-architect|design-thinking-coach|problem-solver|innovation-strategist|presentation-designer|stack-dev|qa|devops|brainstorming-coach|analyst|orchestrator|performance|data-engineer|angular-dev|flutter-dev|go-dev|java-dev|mobile-dev|python-dev|storyteller|security|tech-writer|typescript-dev'
