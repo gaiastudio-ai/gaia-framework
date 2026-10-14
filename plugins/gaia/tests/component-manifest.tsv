@@ -703,6 +703,7 @@ scripts-lib	research-mode-b.bats
 scripts-lib	resolve-env-kind.bats
 scripts-lib	resolve-publish-adapter.bats
 scripts-lib	safe-grep-log.bats
+scripts-lib	scan-stranded-ready.bats
 scripts-lib	schema-awareness-check.bats
 scripts-lib	shell-idioms.bats
 scripts-lib	skills/mode-b-lifecycle-docs.bats

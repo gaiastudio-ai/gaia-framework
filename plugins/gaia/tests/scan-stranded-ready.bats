@@ -206,36 +206,20 @@ SHIM
 
 @test "AC5 — output identical to original on 'one' fixture" {
   _load_stories "one"
-  # Generate golden output from the original script
-  local original_script="$TEST_TMP/scan-original.sh"
-  git -C "$REPO_ROOT" show origin/staging:plugins/gaia/scripts/lib/scan-stranded-ready.sh \
-    > "$original_script" 2>/dev/null
-  chmod +x "$original_script"
-
-  local golden new_out
-  golden=$(IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
-    VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
-    bash "$original_script" 2>/dev/null | cut -f1-2)
-  new_out=$(IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
-    VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
-    bash "$SCANNER" 2>/dev/null | cut -f1-2)
+  # Golden output generated from the original script (pre-fix) on these fixtures
+  local golden
+  golden=$(cat "$FIXTURE_ROOT/one/golden-output.tsv")
+  local new_out
+  new_out=$(_run_scanner bash 2>/dev/null | cut -f1-2)
   [ "$golden" = "$new_out" ]
 }
 
 @test "AC5 — output identical to original on 'multiple' fixture" {
   _load_stories "multiple"
-  local original_script="$TEST_TMP/scan-original.sh"
-  git -C "$REPO_ROOT" show origin/staging:plugins/gaia/scripts/lib/scan-stranded-ready.sh \
-    > "$original_script" 2>/dev/null
-  chmod +x "$original_script"
-
-  local golden new_out
-  golden=$(IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
-    VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
-    bash "$original_script" 2>/dev/null | cut -f1-2)
-  new_out=$(IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
-    VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
-    bash "$SCANNER" 2>/dev/null | cut -f1-2)
+  local golden
+  golden=$(cat "$FIXTURE_ROOT/multiple/golden-output.tsv")
+  local new_out
+  new_out=$(_run_scanner bash 2>/dev/null | cut -f1-2)
   [ "$golden" = "$new_out" ]
 }
 
