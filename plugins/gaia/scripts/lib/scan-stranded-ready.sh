@@ -159,23 +159,20 @@ _verdict_cache=$(_build_verdict_cache)
 #   Stage 1 — find narrows to story.md (per-story dirs) and legacy E*-S*-*.md
 #   Stage 2 — grep -l pre-selects only files containing 'status: ready-for-dev'
 # Non-story markdown (review reports, assessments, etc.) is never opened.
-candidate_files=$(find "$IMPLEMENTATION_ARTIFACTS" -type f \
-  \( -name 'story.md' -o -name 'E[0-9]*-S[0-9]*-*.md' \) \
-  -exec grep -l 'status: ready-for-dev' {} + 2>/dev/null) || true
-[[ -n "${candidate_files:-}" ]] || exit 0
-
 # Collect candidate story files: ready-for-dev + sprint_id null + PASSED verdict.
 matches=()
-while IFS= read -r story_file; do
+while IFS= read -r -d '' story_file; do
   [[ -n "$story_file" ]] || continue
   # parse frontmatter -> 4 lines: status, sprint_id, title, key
   fm=$(parse_story_fm "$story_file") || continue
   # Single multi-line read replaces four printf|sed fork pipelines.
+  # || : on each read prevents set -e from aborting when a trailing field
+  # is empty (command substitution strips trailing empty lines from awk output).
   {
-    IFS= read -r status
-    IFS= read -r sprint_id
-    IFS= read -r title
-    IFS= read -r key
+    IFS= read -r status || :
+    IFS= read -r sprint_id || :
+    IFS= read -r title || :
+    IFS= read -r key || :
   } <<< "$fm"
 
   [[ "$status" == "ready-for-dev" ]] || continue
@@ -194,7 +191,9 @@ while IFS= read -r story_file; do
   [[ "$verdict" == "PASSED" ]] || continue
 
   matches+=("$(printf '%s\t%s\t%s' "$key" "$title" "$story_file")")
-done <<< "$candidate_files"
+done < <(find "$IMPLEMENTATION_ARTIFACTS" -type f \
+  \( -name 'story.md' -o -name 'E[0-9]*-S[0-9]*-*.md' \) \
+  -exec grep -l --null 'status: ready-for-dev' {} + 2>/dev/null || true)
 
 # Sort by key ascending and emit.
 if [[ ${#matches[@]} -gt 0 ]]; then

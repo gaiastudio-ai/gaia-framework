@@ -76,6 +76,27 @@ _run_scanner() {
     "$@" "$SCANNER"
 }
 
+# Helper: create PATH shims that count invocations of awk/grep/sed/cat.
+# Sets FORK_SHIM_DIR and FORK_COUNTER_FILE. Run scanner with
+# PATH="$FORK_SHIM_DIR:$PATH" then read: wc -l < "$FORK_COUNTER_FILE"
+_mk_fork_counter() {
+  FORK_SHIM_DIR="$TEST_TMP/fork-shims"
+  FORK_COUNTER_FILE="$TEST_TMP/fork-counter"
+  mkdir -p "$FORK_SHIM_DIR"
+  : > "$FORK_COUNTER_FILE"
+
+  local tool real_path
+  for tool in awk grep sed cat; do
+    real_path=$(command -v "$tool")
+    cat > "$FORK_SHIM_DIR/$tool" <<SHIM
+#!/bin/sh
+printf '%s\n' "$tool" >> "$FORK_COUNTER_FILE"
+exec "$real_path" "\$@"
+SHIM
+    chmod +x "$FORK_SHIM_DIR/$tool"
+  done
+}
+
 # ---------- AC1: only story files are parsed ----------
 
 @test "AC1 — story.md in per-story dir is found" {
@@ -132,31 +153,59 @@ EOF
 
 # ---------- AC2: grep pre-filter ----------
 
-@test "AC2 — only ready-for-dev stories pass the pre-filter" {
+@test "AC2 — grep pre-filter prevents parsing non-ready files" {
+  # 1 ready-for-dev story + 20 non-ready story files with valid names
   _mk_story "E900-S1" "Ready story" "ready-for-dev" "null"
-  _mk_story "E900-S2" "In-progress" "in-progress" "sprint-99"
-  _mk_story "E900-S3" "Done" "done" "sprint-99"
-  _mk_story "E900-S4" "Review" "review" "sprint-99"
-  _mk_decision_log "E900-S1" "E900-S2" "E900-S3" "E900-S4"
-  run _run_scanner bash
+  local i
+  for i in $(seq 2 21); do
+    _mk_story "E900-S${i}" "Non-ready ${i}" "in-progress" "sprint-99"
+  done
+  _mk_decision_log "E900-S1"
+  _mk_fork_counter
+
+  # Run scanner with fork-counting shims
+  IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
+  VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
+  PATH="$FORK_SHIM_DIR:$PATH" \
+    run bash "$SCANNER"
   [ "$status" -eq 0 ]
-  # Only E900-S1 should appear
   [[ "$output" =~ "E900-S1" ]]
-  [[ ! "$output" =~ "E900-S2" ]]
-  [[ ! "$output" =~ "E900-S3" ]]
-  [[ ! "$output" =~ "E900-S4" ]]
+  # Count awk invocations: expect exactly 2 (1 verdict cache + 1 parse of the
+  # sole ready-for-dev candidate). Without the grep pre-filter, all 21 story
+  # files would be parsed (21 awk forks + 1 = 22).
+  local awk_count
+  awk_count=$(grep -c '^awk$' "$FORK_COUNTER_FILE" || true)
+  [ "$awk_count" -le 2 ]
 }
 
 # ---------- AC3: single-pass field extraction ----------
 
-@test "AC3 — no printf-sed pipelines in main loop" {
-  # Structural check: the script must not use printf|sed-n for field extraction
-  # in the main loop (lines after parse_story_fm call).
-  local main_loop
-  main_loop=$(sed -n '/^# Collect candidate/,$ p' "$SCANNER")
-  local sed_count
-  sed_count=$(printf '%s\n' "$main_loop" | grep -c "sed -n" || true)
-  [ "$sed_count" -eq 0 ]
+@test "AC3 — no per-candidate forking for field extraction" {
+  # Create 5 ready-for-dev stories that all reach the parse-and-extract phase
+  local i
+  for i in $(seq 1 5); do
+    _mk_story "E900-S${i}" "Story ${i}" "ready-for-dev" "null"
+  done
+  _mk_decision_log "E900-S1" "E900-S2" "E900-S3" "E900-S4" "E900-S5"
+  _mk_fork_counter
+
+  IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
+  VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
+  PATH="$FORK_SHIM_DIR:$PATH" \
+    run bash "$SCANNER"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "E900-S1" ]]
+  [[ "$output" =~ "E900-S5" ]]
+  # Expected forks: 1 awk (verdict cache) + 1 grep (find pre-filter) +
+  # 5 awk (parse_story_fm, one per candidate) = 7 total.
+  # A per-candidate field-splitting pipeline (printf|sed, printf|awk, head|tail)
+  # adds at least 4 extra forks per candidate = 20 more, pushing total >= 27.
+  # Allow a small margin for platform differences in find/grep, but reject any
+  # implementation that forks for field extraction.
+  local total_forks
+  total_forks=$(wc -l < "$FORK_COUNTER_FILE" | tr -d ' ')
+  # 7 expected + margin of 3 = max 10
+  [ "$total_forks" -le 10 ]
 }
 
 # ---------- AC4: decision log read once ----------
@@ -225,43 +274,56 @@ SHIM
 
 # ---------- AC6: fork count does not scale with non-story files ----------
 
-@test "AC6 — 2000 non-story markdown files do not increase fork count" {
+@test "AC6 — fork count flat across 2000 decoy non-story files" {
   _mk_story "E900-S1" "Sole story"
   _mk_decision_log "E900-S1"
+  _mk_fork_counter
 
-  # Baseline: count files entering the parse loop via find+grep
-  local baseline_candidates
-  baseline_candidates=$(find "$TEST_TMP/impl" -type f \
-    \( -name 'story.md' -o -name 'E[0-9]*-S[0-9]*-*.md' \) \
-    -exec grep -l 'status: ready-for-dev' {} + 2>/dev/null | wc -l | tr -d ' ')
+  # Baseline run: 1 story, no decoys
+  IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
+  VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
+  PATH="$FORK_SHIM_DIR:$PATH" \
+    run bash "$SCANNER"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "E900-S1" ]]
+  local baseline_forks
+  baseline_forks=$(wc -l < "$FORK_COUNTER_FILE" | tr -d ' ')
 
-  # Add 2000 non-story markdown files
+  # Add 2000 decoy files: plain non-story, legacy-named review summaries,
+  # and files containing the status text
   local i
-  for i in $(seq 1 2000); do
+  for i in $(seq 1 1800); do
     printf 'Non-story content %d\n' "$i" > "$TEST_TMP/impl/report-${i}.md"
   done
+  # 100 review-summary decoys with legacy naming matching the find pattern
+  mkdir -p "$TEST_TMP/impl/epic-test"
+  for i in $(seq 1 100); do
+    printf 'Review findings for sprint %d\n' "$i" \
+      > "$TEST_TMP/impl/epic-test/E900-S9-review-summary-${i}.md"
+  done
+  # 100 decoys containing the status text but with non-matching filenames
+  for i in $(seq 1 100); do
+    printf 'status: ready-for-dev\n' > "$TEST_TMP/impl/assessment-${i}.md"
+  done
 
-  # Verify non-story files exist
   local total_md
   total_md=$(find "$TEST_TMP/impl" -type f -name '*.md' | wc -l | tr -d ' ')
   [ "$total_md" -gt 2000 ]
 
-  # Re-count candidates after adding non-story files
-  local after_candidates
-  after_candidates=$(find "$TEST_TMP/impl" -type f \
-    \( -name 'story.md' -o -name 'E[0-9]*-S[0-9]*-*.md' \) \
-    -exec grep -l 'status: ready-for-dev' {} + 2>/dev/null | wc -l | tr -d ' ')
-
-  # The candidate count must not change (structural proof)
-  [ "$baseline_candidates" -eq "$after_candidates" ]
-
-  # The scanner output must also be the same
-  run _run_scanner bash
+  # Re-run with decoys
+  : > "$FORK_COUNTER_FILE"
+  IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
+  VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
+  PATH="$FORK_SHIM_DIR:$PATH" \
+    run bash "$SCANNER"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "E900-S1" ]]
-  local line_count
-  line_count=$(printf '%s\n' "$output" | wc -l | tr -d ' ')
-  [ "$line_count" -eq 1 ]
+  local after_forks
+  after_forks=$(wc -l < "$FORK_COUNTER_FILE" | tr -d ' ')
+
+  # Fork count must not grow (tolerance: at most 2 for minor find/grep overhead)
+  local diff=$((after_forks - baseline_forks))
+  [ "$diff" -le 2 ]
 }
 
 # ---------- AC7: bash 3.2 compatibility ----------
@@ -417,4 +479,91 @@ EOF
   [ "$status" -eq 0 ]
   after=$(find "$TEST_TMP" -type f -exec shasum {} \; | LC_ALL=C sort)
   [ "$before" = "$after" ]
+}
+
+# ---------- Blocker 1: malformed candidates must not abort the scan ----------
+
+@test "malformed file with no key line is skipped, scan continues" {
+  # A ready-for-dev story.md with no key: line — should be skipped
+  local dir="$TEST_TMP/impl/epic-test/E900-S99-nokey"
+  mkdir -p "$dir"
+  cat > "$dir/story.md" <<'EOF'
+---
+title: "Missing key"
+status: ready-for-dev
+sprint_id: null
+---
+# Story without a key field
+EOF
+  # A valid stranded story alongside
+  _mk_story "E900-S1" "Valid story"
+  _mk_decision_log "E900-S1"
+  run _run_scanner bash
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "E900-S1" ]]
+  [[ ! "$output" =~ "Missing key" ]]
+}
+
+@test "review summary with no frontmatter is skipped, scan continues" {
+  # A file matching the find pattern with status text but no YAML frontmatter
+  mkdir -p "$TEST_TMP/impl/epic-test"
+  cat > "$TEST_TMP/impl/epic-test/E900-S2-review-summary-pass1.md" <<'EOF'
+# Review Summary
+
+Findings from validation pass.
+
+The story had status: ready-for-dev before implementation began.
+EOF
+  # A valid stranded story alongside
+  _mk_story "E900-S1" "Valid story"
+  _mk_decision_log "E900-S1"
+  run _run_scanner bash
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "E900-S1" ]]
+  local line_count
+  line_count=$(printf '%s\n' "$output" | grep -c 'E900-S' || true)
+  [ "$line_count" -eq 1 ]
+}
+
+# ---------- Blocker 2: NUL-safe path handling ----------
+
+@test "paths with embedded newlines are handled safely" {
+  # Create a directory name containing a newline
+  local nldir="$TEST_TMP/impl/epic-test/E900-S8-weird"$'\n'"dir-slug"
+  mkdir -p "$nldir"
+  cat > "$nldir/story.md" <<'EOF'
+---
+key: "E900-S8"
+title: "Newline dir story"
+status: ready-for-dev
+sprint_id: null
+---
+# Newline directory test
+EOF
+  # A normal story alongside
+  _mk_story "E900-S1" "Normal story"
+  _mk_decision_log "E900-S1" "E900-S8"
+
+  # Create a decoy file outside IMPLEMENTATION_ARTIFACTS
+  mkdir -p "$TEST_TMP/outside"
+  cat > "$TEST_TMP/outside/story.md" <<'EOF'
+---
+key: "E900-S99"
+title: "Outside decoy"
+status: ready-for-dev
+sprint_id: null
+---
+# Should never appear
+EOF
+
+  # Capture only stdout (stderr may contain awk warnings on broken paths)
+  local scanner_out
+  scanner_out=$(_run_scanner bash 2>/dev/null)
+  local rc=$?
+  [ "$rc" -eq 0 ]
+  # Check TSV output lines (tab-separated key, title, path)
+  [[ "$scanner_out" =~ $'\t'"Normal story"$'\t' ]]
+  [[ "$scanner_out" =~ $'\t'"Newline dir story"$'\t' ]]
+  # Decoy outside the tree must not appear
+  [[ ! "$scanner_out" =~ "E900-S99" ]]
 }
