@@ -692,20 +692,30 @@ describe('rule-b items reach the rendered pane and band', () => {
       plugin: 'gaia', surface: 'terminal', component: 'Pane',
       requestId: 'sprint-status', props: { bodyColumns: 40 }
     })
-    // All four rules are present.
-    expect(await pane.find({ text: /rule-a-msg/ })).toBeDefined()
-    expect(await pane.find({ text: /rule-b-msg/ })).toBeDefined()
-    expect(await pane.find({ text: /rule-c-msg/ })).toBeDefined()
-    expect(await pane.find({ text: /rule-d-msg/ })).toBeDefined()
-    // The banner renders items in sorted order (a, b, c, d).  The rule-b
-    // item from agent data is merged with cache rules and sorted by the rule
-    // letter.  With d, a, c in the cache (unsorted) and b from the agent,
-    // all four messages must be present.  We also verify rule-b is present
-    // alongside cache items — if concat(ruleBItems) is dropped, rule-b-msg
-    // disappears.
-    // The sort itself is tested by the pure-function mergedActionList unit
-    // test in index.test.ts; this integration test verifies the merged list
-    // reaches the rendered pane.
+    // Probe: collect all leaf Text elements matching any rule message and
+    // check whether findAll returns them in render (document) order.
+    var allRuleTexts = await pane.findAll({ text: /rule-[abcd]-msg/ })
+    // Filter to leaf Text nodes only.
+    var leaves = allRuleTexts.filter((el: any) => el.type === 'Text')
+    // Extract the text content from each leaf.
+    var leafTexts = leaves.map((el: any) => {
+      var t = el.text ?? el.props?.children ?? ''
+      return String(t)
+    })
+    // Find the index of the first leaf containing each rule message.
+    var posA = leafTexts.findIndex((t: string) => t.includes('rule-a-msg'))
+    var posB = leafTexts.findIndex((t: string) => t.includes('rule-b-msg'))
+    var posC = leafTexts.findIndex((t: string) => t.includes('rule-c-msg'))
+    var posD = leafTexts.findIndex((t: string) => t.includes('rule-d-msg'))
+    // All four must be found.
+    expect(posA).toBeGreaterThanOrEqual(0)
+    expect(posB).toBeGreaterThanOrEqual(0)
+    expect(posC).toBeGreaterThanOrEqual(0)
+    expect(posD).toBeGreaterThanOrEqual(0)
+    // Assert sorted render order: a < b < c < d.
+    expect(posA).toBeLessThan(posB)
+    expect(posB).toBeLessThan(posC)
+    expect(posC).toBeLessThan(posD)
     await pane.unmount()
   })
 
