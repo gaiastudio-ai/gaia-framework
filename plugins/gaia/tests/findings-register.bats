@@ -650,9 +650,9 @@ YAML
   local story_file="$story_dir/TEST-S1-test-story.md"
   _write_story_file "$story_file" "TEST-S1"
 
-  # Defect text with pipes, triple dashes, and TRIAGED markers
+  # Defect text with pipes, triple dashes, and nested TRIAGED markers
   run "$SCRIPT" add --story TEST-S1 \
-    --defect "found | in output --- also [TRIAGED stuff" \
+    --defect "found | in output --- also [[TRIAGED stuff" \
     --type bug --severity low --gate code-review \
     --reproduction "echo test | grep ---"
   [ "$status" -eq 0 ]
@@ -668,46 +668,75 @@ YAML
   run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
   [ "$status" -eq 0 ]
 
-  # The row must not contain raw pipe (except as column separator)
-  # Triple dash must be spaced, TRIAGED marker brackets stripped
+  # The row must contain the sanitised forms
   local findings_section
   findings_section="$(sed -n '/^## Findings/,/^## /p' "$story_file" | grep 'RF-1')"
+
   # pipe inside cell replaced with /
-  if grep -qF '| in output' <<<"$findings_section"; then
-    grep -qF '/ in output' <<<"$findings_section" || { echo "expected pipe replaced with /" >&2; false; }
-  fi
+  grep -qF '/ in output' <<<"$findings_section" || { echo "expected pipe replaced with /" >&2; false; }
   # triple dash spaced
-  if grep -qF '---' <<<"$findings_section"; then
-    grep -qF ' - - - ' <<<"$findings_section" || { echo "expected dashes to be spaced" >&2; false; }
-  fi
-}
-
-@test "sanitiser strips bracket markers from values larger than 128 KB" {
-  # Extract and eval the sanitiser function (the full script has top-level
-  # dispatch we skip).  The function is self-contained.
-  eval "$(sed -n '/_rw_sanitise_table_chars()/,/^}/p' "$SCRIPT")"
-
-  # Build a ~140 KB value with bracket-prefixed markers embedded.
-  local padding
-  padding="$(head -c 131072 < /dev/zero | tr '\0' 'x')"
-  local big="prefix [TRIAGED marker ${padding} middle [DISMISSED end [TRIAGED tail"
-
-  # Run under pipefail — the old pipe-based loop raced under pipefail
-  # with values this large (grep -q exits early, SIGPIPE kills the writer).
-  local result
-  set -o pipefail
-  result="$(_rw_sanitise_table_chars "$big")"
-
-  # No bracket-prefixed markers should remain.
-  if grep -qF '[TRIAGED' <<<"$result"; then
+  grep -qF ' - - - ' <<<"$findings_section" || { echo "expected dashes to be spaced" >&2; false; }
+  # nested bracket-prefixed TRIAGED marker fully stripped
+  if grep -qF '[TRIAGED' <<<"$findings_section"; then
     echo "bracket-prefixed [TRIAGED marker survived sanitisation" >&2; false
   fi
-  if grep -qF '[DISMISSED' <<<"$result"; then
-    echo "bracket-prefixed [DISMISSED marker survived sanitisation" >&2; false
-  fi
-  # The keywords themselves must survive (only the bracket is stripped).
-  grep -qF 'TRIAGED' <<<"$result"
-  grep -qF 'DISMISSED' <<<"$result"
+  grep -qF 'TRIAGED' <<<"$findings_section" || { echo "TRIAGED keyword lost entirely" >&2; false; }
+}
+
+@test "findings-rows strips bracket markers when the rows total more than 128 KB" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  local story_file="$story_dir/TEST-S1-test-story.md"
+  _write_story_file "$story_file" "TEST-S1"
+
+  # Two ~100 KB defects: each stays under the per-argument limit Linux puts on
+  # a single command-line string, but together the rows exceed 128 KB, which
+  # is more than one environment string can carry there.
+  local padding
+  padding="$(head -c 100000 < /dev/zero | tr '\0' 'x')"
+  local big1="first [TRIAGED marker ${padding} middle [DISMISSED end [[TRIAGED tail"
+  local big2="second [DISMISSED marker ${padding} middle [TRIAGED end tail"
+
+  run "$SCRIPT" add --story TEST-S1 \
+    --defect "$big1" --type bug --severity low --gate code-review
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" add --story TEST-S1 \
+    --defect "$big2" --type tech-debt --severity low --gate code-review
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+    --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  local id
+  for id in RF-1 RF-2; do
+    run "$SCRIPT" set-disposition --story TEST-S1 --id "$id" \
+      --disposition triage --owner code-review --priority low
+    [ "$status" -eq 0 ]
+  done
+
+  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  [ "$status" -eq 0 ]
+
+  local section
+  section="$(sed -n '/^## Findings/,/^## /p' "$story_file")"
+  local row1 row2
+  row1="$(grep '| RF-1 |' <<<"$section")" || { echo "RF-1 row missing" >&2; false; }
+  row2="$(grep '| RF-2 |' <<<"$section")" || { echo "RF-2 row missing" >&2; false; }
+  [ "$(( ${#row1} + ${#row2} ))" -gt 131072 ] || { echo "rows do not exceed 128 KB in total" >&2; false; }
+
+  # No bracket-prefixed markers should remain, and the keywords must survive.
+  local row
+  for row in "$row1" "$row2"; do
+    if grep -qF '[TRIAGED' <<<"$row"; then
+      echo "bracket-prefixed [TRIAGED marker survived sanitisation" >&2; false
+    fi
+    if grep -qF '[DISMISSED' <<<"$row"; then
+      echo "bracket-prefixed [DISMISSED marker survived sanitisation" >&2; false
+    fi
+    grep -qF 'TRIAGED' <<<"$row" || { echo "TRIAGED keyword lost" >&2; false; }
+    grep -qF 'DISMISSED' <<<"$row" || { echo "DISMISSED keyword lost" >&2; false; }
+  done
 }
 
 @test "writer findings-rows replaces placeholder row and is idempotent" {
@@ -1698,7 +1727,7 @@ EOF
   local story_file="$story_dir/TEST-S1-test-story.md"
   _write_story_file "$story_file" "TEST-S1"
 
-  # Create 10+ entries to get RF-10, then add RF-1
+  # Create 10 entries to get RF-1 through RF-10
   local j=1
   while [ "$j" -le 10 ]; do
     run "$SCRIPT" add --story TEST-S1 --defect "entry $j" \
@@ -1712,22 +1741,42 @@ EOF
   [ "$status" -eq 0 ]
   run "$SCRIPT" triage-nonblocking --story TEST-S1 --run-id run-001
   [ "$status" -eq 0 ]
+
+  # Write ONLY RF-10 into the story file (manually, to simulate a prior run
+  # that wrote RF-10 but not RF-1 — e.g. RF-1 was open then, now triaged).
+  # Replace the placeholder row with just RF-10.
+  local sf
+  sf="$("$SCRIPTS_DIR/resolve-story-file.sh" TEST-S1)"
+  local emdash
+  emdash="$(printf '\xe2\x80\x94')"
+  # Portable in-place edit (BSD and GNU sed disagree on -i).
+  sed "s/| $emdash | $emdash | $emdash | $emdash | $emdash |/| RF-10 | bug | low | entry 10 (gates: code-review) | $emdash owner: ; priority: low |/" "$sf" > "$sf.new"
+  mv "$sf.new" "$sf"
+
+  # Verify RF-10 is present and RF-1 is absent
+  grep -q '| RF-10 |' "$sf" || { echo "RF-10 not seeded" >&2; false; }
+  if grep -q '| RF-1 |' "$sf"; then
+    echo "RF-1 should not be present yet" >&2; false
+  fi
+
+  # Now run findings-rows — RF-1 must be inserted, RF-10 must not be duplicated
   run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
   [ "$status" -eq 0 ]
 
-  local story_file
-  story_file="$("$SCRIPTS_DIR/resolve-story-file.sh" TEST-S1)"
+  # RF-1 must now appear (was new, must not have been confused with RF-10)
+  grep -q '| RF-1 |' "$sf" || { echo "RF-1 was not inserted (exact-cell match confused RF-1 with RF-10)" >&2; false; }
 
-  # Both RF-1 and RF-10 must appear as separate rows
-  grep -q '| RF-1 |' "$story_file"
-  grep -q '| RF-10 |' "$story_file"
+  # RF-10 must appear exactly once (not duplicated)
+  local rf10_count
+  rf10_count="$(grep -c '| RF-10 |' "$sf")"
+  [ "$rf10_count" -eq 1 ] || { echo "RF-10 appeared $rf10_count times (expected 1)" >&2; false; }
 }
 
 # ---------------------------------------------------------------------------
-# Item 7 — verdict.sh failed write gives BLOCKED; severity normalisation
+# verdict.sh severity normalisation and failed-write BLOCKED gate behaviour
 # ---------------------------------------------------------------------------
 
-@test "test-dast verdict.sh with failed register write gives BLOCKED" {
+@test "dast verdict.sh normalises non-standard severity labels to rubric scale" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
   _write_story_file "$story_dir/story.md" "TEST-S1"
@@ -2045,4 +2094,441 @@ EOF
   local gr_len
   gr_len="$(yq '.gate_runs | length' "$reg")"
   [ "$gr_len" -ge 1 ]
+}
+
+# ---------------------------------------------------------------------------
+# merge archives severity_resolution on open and triage targets
+# ---------------------------------------------------------------------------
+
+@test "merge into resolved open entry with severity_resolution archives the resolution" {
+  # Scenario: open entry with medium resolved non-blocking, then critical merged in.
+  # Resolver must return REQUEST_CHANGES after the merge, not APPROVE.
+  run "$SCRIPT" add --story TEST-S1 --defect "merge-sr-open" --type bug \
+    --severity medium --gate code-review --dedup-key "merge:sr:open:a"
+  [ "$status" -eq 0 ]
+
+  # Resolve as non-blocking
+  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+    --severity medium --blocking false --rationale "accepted medium"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  # Verdict before merge: APPROVE (resolved non-blocking)
+  run --separate-stderr "$RESOLVER" --register "$reg"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+
+  # Add a critical finding as a second entry
+  run "$SCRIPT" add --story TEST-S1 --defect "merge-sr-open-crit" --type security \
+    --severity critical --gate security-review \
+    --blocking --blocking-rationale "Critical severity" \
+    --dedup-key "merge:sr:open:b"
+  [ "$status" -eq 0 ]
+
+  # Merge the critical entry into the first (open, resolved non-blocking)
+  run "$SCRIPT" merge --story TEST-S1 --source-id RF-2 --target-id RF-1
+  [ "$status" -eq 0 ]
+
+  # After merge: severity_resolution must be archived, verdict REQUEST_CHANGES
+  run --separate-stderr "$RESOLVER" --register "$reg"
+  [ "$output" = "REQUEST_CHANGES" ] || {
+    echo "expected REQUEST_CHANGES after merging critical into resolved entry, got: $output" >&2; false
+  }
+
+  # severity_resolution must be gone
+  local has_sr
+  has_sr="$(yq '.entries[0] | has("severity_resolution")' "$reg")"
+  [ "$has_sr" = "false" ] || {
+    echo "severity_resolution was not archived on merge" >&2; false
+  }
+}
+
+@test "merge blocking entry into triage target reopens it to open" {
+  run "$SCRIPT" add --story TEST-S1 --defect "merge-triage" --type bug \
+    --severity low --gate code-review --dedup-key "merge:triage:a"
+  [ "$status" -eq 0 ]
+
+  # Triage the first entry
+  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+    --disposition triage --owner code-review --priority low
+  [ "$status" -eq 0 ]
+
+  # Add a critical blocking entry
+  run "$SCRIPT" add --story TEST-S1 --defect "merge-triage-crit" --type security \
+    --severity critical --gate security-review \
+    --blocking --blocking-rationale "Critical" --dedup-key "merge:triage:b"
+  [ "$status" -eq 0 ]
+
+  # Merge critical into triage target
+  run "$SCRIPT" merge --story TEST-S1 --source-id RF-2 --target-id RF-1
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  # The merged entry must be open (not triage), and blocking
+  local disp blk
+  disp="$(yq '.entries[0].disposition' "$reg")"
+  blk="$(yq '.entries[0].blocking' "$reg")"
+  [ "$disp" = "open" ] || { echo "expected open, got $disp" >&2; false; }
+  [ "$blk" = "true" ] || { echo "expected blocking true, got $blk" >&2; false; }
+}
+
+# ---------------------------------------------------------------------------
+# gate-status rejects unknown gate names
+# ---------------------------------------------------------------------------
+
+@test "gate-status rejects unknown gate names with a clear error" {
+  run "$SCRIPT" add --story TEST-S1 --defect "gate-val" --type bug \
+    --severity low --gate code-review
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+    --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  # Known gate: succeeds
+  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate code-review
+  [ "$status" -eq 0 ]
+
+  # Unknown gate: must fail with "unknown gate" message
+  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate review-perf
+  [ "$status" -ne 0 ]
+  grep -qF 'unknown gate' <<<"$output" || { echo "expected 'unknown gate' error, got: $output" >&2; false; }
+
+  # The correct register gate name works
+  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate performance-review
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# findings-rows pipeline failure exits non-zero (no silent swallowing)
+# ---------------------------------------------------------------------------
+
+@test "findings-rows exits non-zero when register has a non-string type field" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  local story_file="$story_dir/TEST-S1-test-story.md"
+  _write_story_file "$story_file" "TEST-S1"
+
+  # Create a valid register with one triage entry, then corrupt the type field
+  run "$SCRIPT" add --story TEST-S1 --defect "pipeline-fail" \
+    --type bug --severity low --gate code-review
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+    --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+    --disposition triage --owner code-review --priority low
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  # Corrupt the type field to a non-string (array)
+  yq -i '.entries[0].type = ["not","a","string"]' "$reg"
+
+  # findings-rows must fail (jq type mismatch on .type | sanitise_cell)
+  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  [ "$status" -ne 0 ] || { echo "expected non-zero exit on pipeline error, got 0" >&2; false; }
+
+  # Story file must be untouched (no zero-length rows written)
+  grep -qF 'RF-1' "$story_file" && { echo "story file was modified despite pipeline error" >&2; false; }
+  true
+}
+
+# ---------------------------------------------------------------------------
+# dast verdict.sh BLOCKED exit writes gate row FAILED
+# ---------------------------------------------------------------------------
+
+@test "dast verdict.sh BLOCKED from write failure still updates gate row to FAILED" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_file="$story_dir/story.md"
+  mkdir -p "$story_dir"
+  # Story file with canonical Review Gate section so review-gate.sh can update it
+  cat > "$story_file" <<'STORY'
+---
+template: 'story'
+key: "TEST-S1"
+title: "Test Story"
+status: in-progress
+epic: "TEST"
+---
+# Story: Test Story
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED | — |
+| QA Tests | PASSED | — |
+| Security Review | PASSED | — |
+| Test Automation | PASSED | — |
+| Test Review | PASSED | — |
+| Performance Review | PASSED | — |
+
+## Findings
+
+> Out-of-scope issues.
+
+| # | Type | Severity | Finding | Suggested Action |
+|---|------|----------|---------|-----------------|
+| — | — | — | — | — |
+STORY
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+EOF
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[{"category":"xss","severity":"critical","message":"reflected xss","file":"src/a.ts","line":1,"rule":"dast.xss"}]}
+EOF
+
+  # Make the register path unwritable so register-write.sh add fails
+  local reg_path
+  reg_path="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  mkdir -p "$(dirname "$reg_path")"
+  : > "$reg_path"
+  chmod 000 "$reg_path"
+
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --gate "Security Review"
+  chmod 644 "$reg_path" 2>/dev/null || true
+
+  # Verdict must be BLOCKED
+  grep -qF "BLOCKED" <<<"$output" || { echo "expected BLOCKED verdict, got: $output" >&2; false; }
+
+  # The Security Review gate row must now be FAILED (not the prior PASSED)
+  grep -q 'Security Review.*FAILED' "$story_file" || {
+    echo "expected Security Review gate row FAILED after BLOCKED verdict" >&2
+    grep 'Security Review' "$story_file" >&2
+    false
+  }
+}
+
+@test "perf verdict.sh BLOCKED from write failure still updates gate row to FAILED" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_file="$story_dir/story.md"
+  mkdir -p "$story_dir"
+  cat > "$story_file" <<'STORY'
+---
+template: 'story'
+key: "TEST-S1"
+title: "Test Story"
+status: in-progress
+epic: "TEST"
+---
+# Story: Test Story
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED | — |
+| QA Tests | PASSED | — |
+| Security Review | PASSED | — |
+| Test Automation | PASSED | — |
+| Test Review | PASSED | — |
+| Performance Review | PASSED | — |
+
+## Findings
+
+> Out-of-scope issues.
+
+| # | Type | Severity | Finding | Suggested Action |
+|---|------|----------|---------|-----------------|
+| — | — | — | — | — |
+STORY
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"perf","status":"passed","findings":[]}]}
+EOF
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[{"category":"slo","severity":"critical","message":"p95 breach","file":"src/b.ts","line":5,"rule":"perf.slo.p95"}]}
+EOF
+
+  # Make the register path unwritable
+  local reg_path
+  reg_path="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  mkdir -p "$(dirname "$reg_path")"
+  : > "$reg_path"
+  chmod 000 "$reg_path"
+
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --gate "Performance Review"
+  chmod 644 "$reg_path" 2>/dev/null || true
+
+  # Verdict must be BLOCKED
+  grep -qF "BLOCKED" <<<"$output" || { echo "expected BLOCKED verdict, got: $output" >&2; false; }
+
+  # The Performance Review gate row must now be FAILED
+  grep -q 'Performance Review.*FAILED' "$story_file" || {
+    echo "expected Performance Review gate row FAILED after BLOCKED verdict" >&2
+    grep 'Performance Review' "$story_file" >&2
+    false
+  }
+}
+
+# ---------------------------------------------------------------------------
+# round end-to-end: mint run ID, record gates, gate-status reports correctly
+# ---------------------------------------------------------------------------
+
+@test "round end-to-end: run ID minted once is used by all gate records and gate-status" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  _write_story_file "$story_dir/story.md" "TEST-S1"
+
+  local run_id="round-20260101T120000Z-99999"
+
+  # Each gate records a run with the shared run_id
+  local g
+  for g in code-review qa-tests security-review test-automate test-review performance-review; do
+    run "$SCRIPT" record-run --story TEST-S1 --run-id "$run_id" --gate "$g" --outcome completed
+    [ "$status" -eq 0 ]
+  done
+
+  # gate-status must report RAN for every gate with the same run_id
+  for g in code-review qa-tests security-review test-automate test-review performance-review; do
+    run "$SCRIPT" gate-status --story TEST-S1 --run-id "$run_id" --gate "$g"
+    [ "$status" -eq 0 ]
+    [ "$output" = "RAN" ] || { echo "expected RAN for $g, got: $output" >&2; false; }
+  done
+
+  # A different run_id must report UNVERIFIED
+  run "$SCRIPT" gate-status --story TEST-S1 --run-id "other-run" --gate code-review
+  [ "$status" -eq 0 ]
+  [ "$output" = "UNVERIFIED" ]
+}
+
+# ---------------------------------------------------------------------------
+# verdict.sh PASSED verdict does not use the report-missing escape hatch
+# ---------------------------------------------------------------------------
+
+@test "dast verdict.sh PASSED verdict does not write gate row via escape hatch" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_file="$story_dir/story.md"
+  mkdir -p "$story_dir"
+  cat > "$story_file" <<'STORY'
+---
+template: 'story'
+key: "TEST-S1"
+title: "Test Story"
+status: in-progress
+epic: "TEST"
+---
+# Story: Test Story
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | — |
+| QA Tests | UNVERIFIED | — |
+| Security Review | UNVERIFIED | — |
+| Test Automation | UNVERIFIED | — |
+| Test Review | UNVERIFIED | — |
+| Performance Review | UNVERIFIED | — |
+
+## Findings
+
+> Out-of-scope issues.
+
+| # | Type | Severity | Finding | Suggested Action |
+|---|------|----------|---------|-----------------|
+| — | — | — | — | — |
+STORY
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+EOF
+  # No findings — verdict will be APPROVE
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[]}
+EOF
+
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --gate "Security Review"
+  [ "$status" -eq 0 ]
+
+  # Verdict must be APPROVE
+  grep -qF "APPROVE" <<<"$output" || { echo "expected APPROVE verdict, got: $output" >&2; false; }
+
+  # The Security Review gate row must still be UNVERIFIED — PASSED must NOT be
+  # written without a real report file (proof-of-execution rejects it)
+  grep -q 'Security Review.*UNVERIFIED' "$story_file" || {
+    local row
+    row="$(grep 'Security Review' "$story_file")"
+    echo "expected gate row to stay UNVERIFIED (no report), got: $row" >&2
+    false
+  }
+}
+
+@test "perf verdict.sh PASSED verdict does not write gate row via escape hatch" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_file="$story_dir/story.md"
+  mkdir -p "$story_dir"
+  cat > "$story_file" <<'STORY'
+---
+template: 'story'
+key: "TEST-S1"
+title: "Test Story"
+status: in-progress
+epic: "TEST"
+---
+# Story: Test Story
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | — |
+| QA Tests | UNVERIFIED | — |
+| Security Review | UNVERIFIED | — |
+| Test Automation | UNVERIFIED | — |
+| Test Review | UNVERIFIED | — |
+| Performance Review | UNVERIFIED | — |
+
+## Findings
+
+> Out-of-scope issues.
+
+| # | Type | Severity | Finding | Suggested Action |
+|---|------|----------|---------|-----------------|
+| — | — | — | — | — |
+STORY
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"perf","status":"passed","findings":[]}]}
+EOF
+  # No findings — verdict will be APPROVE
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[]}
+EOF
+
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --gate "Performance Review"
+  [ "$status" -eq 0 ]
+
+  # Verdict must be APPROVE
+  grep -qF "APPROVE" <<<"$output" || { echo "expected APPROVE verdict, got: $output" >&2; false; }
+
+  # The Performance Review gate row must still be UNVERIFIED — PASSED must NOT be
+  # written without a real report file (proof-of-execution rejects it)
+  grep -q 'Performance Review.*UNVERIFIED' "$story_file" || {
+    local row
+    row="$(grep 'Performance Review' "$story_file")"
+    echo "expected gate row to stay UNVERIFIED (no report), got: $row" >&2
+    false
+  }
 }

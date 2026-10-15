@@ -353,7 +353,7 @@ When **no review-status story is identifiable** (no key in arguments, no story-k
 
 Map the findings to the canonical Review Gate vocabulary (case-sensitive: `PASSED` | `FAILED`). Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`). The verdict is FAILED if and only if an unresolved blocker exists; live-secrets are blocking by construction.
 
-**Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. When no orchestrator `run_id` is given, mint a standalone run ID (`standalone-<timestamp>-<pid>`):
+**Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \

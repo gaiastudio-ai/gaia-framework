@@ -162,7 +162,7 @@ Skill-dispatch contract:
 ```
 For each short_name in run:
   1. Invoke via the Skill tool:
-       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key}"})
+       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key} --run-id {run_id}"})
      Canonical short-name → skill mapping (one canonical name per skill — the listed name is authoritative; deprecated_aliases live on the skill's own frontmatter):
        code-review     → gaia:gaia-code-review
        qa-tests        → gaia:gaia-review-qa
@@ -195,11 +195,32 @@ For each short_name in run:
 
 **The "Per-reviewer LLM judgment blocks" pattern from the legacy SKILL.md is RETIRED.** Inline self-judgment by the orchestrator is forbidden; the per-review skills are the single source of verdicts. If a per-review skill is missing or broken, that is a defect to file — NOT a license for the orchestrator to substitute its own judgment.
 
-**Substep 2.3b — Findings register consolidation.** After all selected gates finish, the orchestrator consolidates the shared findings register. A run ID is minted at round start and passed to every gate dispatch so each gate calls `register-write.sh record-run`. The consolidation steps are:
+**Substep 2.3b — Findings register consolidation.** After all selected gates finish, the orchestrator consolidates the shared findings register.
 
-1. **Gate status.** For each selected gate, call `register-write.sh gate-status --story {key} --run-id {run_id} --gate {gate}`. Result `RAN` means the gate completed this round. `UNVERIFIED` means the gate did not record a run (absent or errored). An `UNVERIFIED` gate is NEVER read as "zero blockers".
+**Run ID lifecycle.** The orchestrator mints ONE run ID per review round at the start of Step 2, before any gate dispatch. The format is `round-<YYYYMMDD>T<HHMMSS>Z-<PID>` (e.g., `round-20260101T120000Z-12345`). The run ID is passed to every gate dispatch as a `--run-id` argument in the skill's `args` string:
+
+```
+Skill({skill: "gaia:<skill-name>", args: "{story_key} --run-id {run_id}"})
+```
+
+Each dispatched review skill forwards it to `register-write.sh record-run --run-id {run_id}`. When the skill does not receive `--run-id`, it falls back to minting a standalone ID — this is the backward-compatible solo-invocation path, not the orchestrated path.
+
+**Short-name to register gate-name mapping.** The `register-write.sh gate-status` and `record-run` subcommands validate gate names against a fixed allowlist. The orchestrator short-names do not always match the register gate names. Use this mapping when calling `gate-status`:
+
+| Orchestrator short-name | Register gate name     |
+|-------------------------|------------------------|
+| `code-review`           | `code-review`          |
+| `qa-tests`              | `qa-tests`             |
+| `security-review`       | `security-review`      |
+| `test-automate`         | `test-automate`        |
+| `test-review`           | `test-review`          |
+| `review-perf`           | `performance-review`   |
+
+The consolidation steps are:
+
+1. **Gate status.** For each selected gate, call `register-write.sh gate-status --story {key} --run-id {run_id} --gate {register_gate_name}`. Result `RAN` means the gate completed this round. `UNVERIFIED` means the gate did not record a run (absent or errored). An `UNVERIFIED` gate is NEVER read as "zero blockers".
 2. **Triage non-blocking entries.** Call `register-write.sh triage-nonblocking --story {key} --run-id {run_id}` to deterministically move non-blocking open entries to disposition `triage` with auto-derived owner and priority. Disagreement entries (mixed blocking ratings, no resolution) stay open.
-3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}` plus that gate's saved deterministic inputs (see the vocabulary table in the plan). A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED` via `review-gate.sh update`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict.
+3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`. Gates that produce an analysis-results file (`code-review`, `qa-tests`, `test-automate`, `test-review`) also pass `--analysis-results {path_to_analysis_results_json}` — the per-review skill writes this file alongside its report. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED` via `review-gate.sh update`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--report` and `--execution-evidence` for the gates that require them (see the reference table above).
 4. **Write findings rows.** Call `register-write.sh findings-rows --story {key} --run-id {run_id}` to write triage-disposition entries as pipe-delimited rows in the story's Findings section. Re-running is idempotent — existing rows are not duplicated.
 5. **Composite verdict.** An `UNVERIFIED` gate is passed as `BLOCKED` to `composite-verdict-aggregator.sh`. The composite comes from `review-gate.sh review-gate-check`.
 

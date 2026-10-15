@@ -676,26 +676,40 @@ _rw_cmd_merge() {
   tgt_disp="$(yq ".entries[$tgt_idx].disposition" "$tmp" 2>/dev/null)" || tgt_disp=""
   if [ "$tgt_disp" = "resolved" ] && [ "$src_disp" != "resolved" ]; then
     yq -i ".entries[$tgt_idx].disposition = \"open\"" "$tmp"
-    # Archive severity_resolution if present, so the new ratings are not masked.
-    local tgt_has_sr
-    tgt_has_sr="$(yq ".entries[$tgt_idx] | has(\"severity_resolution\")" "$tmp" 2>/dev/null)" || tgt_has_sr="false"
-    if [ "$tgt_has_sr" = "true" ]; then
-      local _merge_ts
-      _merge_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      export _RW_MERGE_TS="$_merge_ts"
-      yq -i ".entries[$tgt_idx].history += [{
-        \"at\": strenv(_RW_MERGE_TS),
-        \"gate\": \"merge\",
-        \"action\": \"severity_resolution_archived\",
-        \"note\": \"severity_resolution archived on merge reopen\"
-      }]" "$tmp"
-      yq -i ".entries[$tgt_idx].history[-1].archived_resolution = .entries[$tgt_idx].severity_resolution" "$tmp"
-      yq -i "del(.entries[$tgt_idx].severity_resolution)" "$tmp"
-      unset _RW_MERGE_TS
-    fi
-    # Recompute blocking after removing the stale resolution.
-    _rw_recompute_blocking "$tmp" "$tgt_idx" "merge reopen of ${target_id}"
   fi
+
+  # Archive severity_resolution when present, so the verdict-resolver uses the
+  # current gate_ratings rather than a stale resolution.  This covers three
+  # cases: (a) resolved target reopened above, (b) open target with a prior
+  # resolve-severity call, (c) triage target receiving a blocking merge.
+  local tgt_has_sr
+  tgt_has_sr="$(yq ".entries[$tgt_idx] | has(\"severity_resolution\")" "$tmp" 2>/dev/null)" || tgt_has_sr="false"
+  if [ "$tgt_has_sr" = "true" ]; then
+    local _merge_ts
+    _merge_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    export _RW_MERGE_TS="$_merge_ts"
+    yq -i ".entries[$tgt_idx].history += [{
+      \"at\": strenv(_RW_MERGE_TS),
+      \"gate\": \"merge\",
+      \"action\": \"severity_resolution_archived\",
+      \"note\": \"severity_resolution archived on merge — merged ratings take precedence\"
+    }]" "$tmp"
+    yq -i ".entries[$tgt_idx].history[-1].archived_resolution = .entries[$tgt_idx].severity_resolution" "$tmp"
+    yq -i "del(.entries[$tgt_idx].severity_resolution)" "$tmp"
+    unset _RW_MERGE_TS
+  fi
+
+  # When a blocking source is merged into a triage target, reopen it so the
+  # finding is not silently triaged away.
+  tgt_disp="$(yq ".entries[$tgt_idx].disposition" "$tmp" 2>/dev/null)" || tgt_disp=""
+  local tgt_blocking
+  tgt_blocking="$(yq ".entries[$tgt_idx].blocking" "$tmp" 2>/dev/null)" || tgt_blocking="false"
+  if [ "$tgt_disp" = "triage" ] && [ "$tgt_blocking" = "true" ]; then
+    yq -i ".entries[$tgt_idx].disposition = \"open\"" "$tmp"
+  fi
+
+  # Recompute blocking with the final merged state.
+  _rw_recompute_blocking "$tmp" "$tgt_idx" "merge post-resolution of ${target_id}"
 
   # Record merge in history.
   export _RW_MERGE_TIMESTAMP
@@ -1063,6 +1077,7 @@ _rw_cmd_gate_status() {
   [ -n "$gate" ] || _rw_die 1 "gate-status: --gate is required"
 
   _rw_validate_key "$key"
+  _rw_validate_gate "$gate"
 
   local reg_path
   reg_path="$(_rw_resolve_path "$key")"
@@ -1137,7 +1152,7 @@ _rw_cmd_findings_rows() {
   local emdash
   emdash="$(printf '\xe2\x80\x94')"
 
-  yq -o=json '[.entries[] | select(.disposition == "triage") | {
+  if yq -o=json '[.entries[] | select(.disposition == "triage") | {
     "id": .id,
     "type": .type,
     "severity": .severity,
@@ -1148,8 +1163,9 @@ _rw_cmd_findings_rows() {
     "priority": (.priority // "")
   }]' "$reg_path" 2>/dev/null \
   | jq -r --arg emdash "$emdash" '
-    def sanitise_cell: gsub("\n"; " ") | gsub("\\|"; "/") | gsub("---[-]*"; " - - - ") | gsub("\\[TRIAGED"; "TRIAGED") | gsub("\\[DISMISSED"; "DISMISSED");
-    def sanitise_repro: gsub("\n"; " ; ") | gsub("\\|"; "/") | gsub("---[-]*"; " - - - ") | gsub("\\[TRIAGED"; "TRIAGED") | gsub("\\[DISMISSED"; "DISMISSED");
+    def strip_brackets: until(test("\\[TRIAGED|\\[DISMISSED") | not; gsub("\\[TRIAGED"; "TRIAGED") | gsub("\\[DISMISSED"; "DISMISSED"));
+    def sanitise_cell: gsub("\n"; " ") | gsub("\\|"; "/") | gsub("---[-]*"; " - - - ") | strip_brackets;
+    def sanitise_repro: gsub("\n"; " ; ") | gsub("\\|"; "/") | gsub("---[-]*"; " - - - ") | strip_brackets;
     .[] |
       "| " + .id + " | " + (.type | sanitise_cell) + " | " + (.severity | sanitise_cell) +
       " | " + ((.defect | sanitise_cell) + " (gates: " + (.gates | sanitise_cell) + ")") +
@@ -1158,7 +1174,15 @@ _rw_cmd_findings_rows() {
       else
         $emdash + " owner: " + ((.owner // "") | sanitise_cell) + "; priority: " + ((.priority // "") | sanitise_cell)
       end) + " |"
-  ' > "$rows_file" 2>/dev/null || : > "$rows_file"
+  ' > "$rows_file" 2>"${rows_file}.err"; then
+    : # pipeline succeeded
+  else
+    local _diag=""
+    [ -s "${rows_file}.err" ] && _diag=" ($(head -1 "${rows_file}.err"))"
+    rm -f "$rows_file" "${rows_file}.err"
+    _rw_die 1 "findings-rows: extraction pipeline failed${_diag}"
+  fi
+  rm -f "${rows_file}.err"
 
   # If no rows, nothing to do.
   if [ ! -s "$rows_file" ]; then
@@ -1170,11 +1194,9 @@ _rw_cmd_findings_rows() {
   acquire_lock "${story_file}.lock" 15 9
 
   # Process with awk: find ## Findings section, insert rows, replace placeholder.
-  local new_rows
-  new_rows="$(cat "$rows_file")"
-  rm -f "$rows_file"
-
-  export _RW_NEW_ROWS="$new_rows"
+  # The rows are read from the temp file rather than an environment variable:
+  # Linux caps a single environment string at 128 KB, so a large finding would
+  # otherwise make awk fail to start.
 
   # Use awk to build the new file content.
   local output_file="${story_file}.tmp.$$"
@@ -1188,9 +1210,11 @@ _rw_cmd_findings_rows() {
   # the Findings section.  Second pass (END block) outputs lines, inserting
   # only truly new rows after the separator.  This prevents re-insertion of
   # rows that appear later in the section.
-  awk '
+  awk -v rowsfile="$rows_file" '
     BEGIN {
-      n_rows = split(ENVIRON["_RW_NEW_ROWS"], row_arr, "\n")
+      n_rows = 0
+      while ((getline row_line < rowsfile) > 0) row_arr[++n_rows] = row_line
+      close(rowsfile)
       placeholder = ENVIRON["_RW_PLACEHOLDER"]
 
       # Collect RF-IDs from new rows.
@@ -1241,52 +1265,25 @@ _rw_cmd_findings_rows() {
         }
       }
     }
-  ' "$story_file" > "$output_file"
+  ' "$story_file" > "$output_file" || {
+    rm -f "$output_file" "$rows_file"
+    unset _RW_PLACEHOLDER
+    release_lock 9 2>/dev/null || true
+    _rw_die 1 "findings-rows: failed to rewrite the story file"
+  }
+  rm -f "$rows_file"
 
   mv "$output_file" "$story_file"
 
-  unset _RW_NEW_ROWS _RW_PLACEHOLDER
+  unset _RW_PLACEHOLDER
 
   release_lock 9 2>/dev/null || true
 }
 
-# Shared sanitisation: pipe chars, triple-dash runs, bracket-prefixed keywords.
-_rw_sanitise_table_chars() {
-  local val="$1"
-  # Replace | with / (breaks pipe-delimited tables).
-  val="$(printf '%s' "$val" | tr '|' '/')"
-  # Replace runs of 3+ dashes with spaced dashes (breaks table separators).
-  val="$(printf '%s' "$val" | sed 's/---[-]*/ - - - /g')"
-  # Strip [ before TRIAGED or DISMISSED (repeat until none remain).
-  # Use a case pattern instead of a pipe to avoid SIGPIPE under pipefail.
-  while case "$val" in *'[TRIAGED'*|*'[DISMISSED'*) true ;; *) false ;; esac; do
-    val="${val//\[TRIAGED/TRIAGED}"
-    val="${val//\[DISMISSED/DISMISSED}"
-  done
-  printf '%s' "$val"
-}
-
-# Sanitise a cell value for pipe-delimited table (newlines become spaces).
-_rw_sanitise_cell() {
-  local val="$1"
-  if [ "$val" = "null" ] || [ -z "$val" ]; then printf ''; return 0; fi
-  val="$(printf '%s' "$val" | tr '\n' ' ')"
-  _rw_sanitise_table_chars "$val"
-}
-
-# Sanitise reproduction text (newlines joined with " ; ").
-_rw_sanitise_repro() {
-  local val="$1"
-  if [ "$val" = "null" ] || [ -z "$val" ]; then printf ''; return 0; fi
-  # Join newlines with " ; " (POSIX-portable, no GNU sed).
-  local _joined=""
-  while IFS= read -r _line || [ -n "$_line" ]; do
-    if [ -z "$_joined" ]; then _joined="$_line"; else _joined="$_joined ; $_line"; fi
-  done <<EOF
-$val
-EOF
-  _rw_sanitise_table_chars "$_joined"
-}
+# Sanitisation of table cells (pipe, triple-dash, bracket-prefixed markers) is
+# handled by the jq pipeline inside _rw_cmd_findings_rows.  The canonical
+# sanitiser is the jq strip_brackets / sanitise_cell / sanitise_repro defs.
+# No bash-side helpers are needed — production writes go through jq only.
 
 # ---------------------------------------------------------------------------
 # Usage

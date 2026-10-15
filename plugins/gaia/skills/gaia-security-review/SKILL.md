@@ -286,7 +286,7 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by the parameterized `verdict-resolver.sh` from `review-common/`. The LLM never computes or overrides it. The resolver consumes the per-skill `analysis-results.json` regardless of which review skill produced it — the file is validated against `plugins/gaia/schemas/analysis-results.schema.json` `schema_version: "1.0"` before precedence rules apply.
 
-- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. When no orchestrator `run_id` is given, mint a standalone run ID (`standalone-<timestamp>-<pid>`):
+- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
@@ -302,7 +302,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh \
 
   The parent context performs the `register-write.sh add` calls (fork isolation preserved). Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
 
-- **Legacy path.** When no `run_id` is provided, the legacy verdict path is used:
+- **Legacy path.** Only when no story key is available, the legacy verdict path is used:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh \

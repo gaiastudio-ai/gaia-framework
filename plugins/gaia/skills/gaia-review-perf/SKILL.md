@@ -116,7 +116,7 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
 
 - The verdict is **PASSED** when no unresolved blocker exists, **FAILED** otherwise (per the shared findings rubric).
 - The verdict MUST appear as a machine-readable keyword in the report output.
-- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. When no orchestrator `run_id` is given, mint a standalone run ID (`standalone-<timestamp>-<pid>`). The resolver runs `--register` without `--analysis-results` (this gate saves no analysis document):
+- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`). The resolver runs `--register` without `--analysis-results` (this gate saves no analysis document):
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
     --story {story_key} --defect "{finding}" --type {type} \
