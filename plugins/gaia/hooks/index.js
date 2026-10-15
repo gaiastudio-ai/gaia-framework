@@ -30,15 +30,15 @@ export var unlinkedActivity = { items: [], overflow: 0 }
 // -- status rendering constants --
 var STATUS_COLORS = {
   done: 'green', review: 'blue', 'in-progress': 'yellow',
-  blocked: 'red', ready: 'gray', backlog: 'dim', validating: 'dim'
+  blocked: 'red', 'ready-for-dev': 'gray', ready: 'gray', backlog: 'dim', validating: 'dim'
 }
 var STATUS_GLYPHS = {
   done: '✓', review: '☉', 'in-progress': '◑',
-  blocked: '✕', ready: '·', backlog: '–', validating: '–'
+  blocked: '✕', 'ready-for-dev': '·', ready: '·', backlog: '–', validating: '–'
 }
 var STATUS_GLYPHS_ASCII = {
   done: '[x]', review: '[o]', 'in-progress': '[~]',
-  blocked: '[!]', ready: '[-]', backlog: '[ ]', validating: '[ ]'
+  blocked: '[!]', 'ready-for-dev': '[-]', ready: '[-]', backlog: '[ ]', validating: '[ ]'
 }
 var STAGE_GLYPHS = { done: '✓', current: '◌', 'not-yet': '○' }
 var STAGE_GLYPHS_ASCII = { done: '[x]', current: '[.]', 'not-yet': '[ ]' }
@@ -345,8 +345,10 @@ function renderBanner(c, data) {
     var a = actions[i]
     var msg = sanitize(a.message || '', MESSAGE_MAX)
     var cmd = sanitize(a.command || '', COMMAND_MAX)
+    var since = a.since ? sanitize(String(a.since), TITLE_MAX) : null
     var children = [h(c.Text, { key: 'am-' + i, color: warnColor(), bold: true }, ' ' + msg)]
     if (cmd) children.push(h(c.Text, { key: 'ac-' + i, color: dimColor() }, '  → ' + cmd))
+    if (since) children.push(h(c.Text, { key: 'as-' + i, color: dimColor() }, '  since ' + since))
     items.push(h(c.Box, { key: 'an-' + i, flexDirection: 'column' }, ...children))
   }
   return h(c.Box, { flexDirection: 'column' },
@@ -381,21 +383,27 @@ function renderAggregate(c, data) {
     donePts + ' of ' + totalPts + ' pts · ' + pct + '%')
 }
 
+function safePoints(v) {
+  if (typeof v !== 'number' || !isFinite(v) || v < 0) return 0
+  return v
+}
+
 function buildBarSegments(stories, availCols) {
   if (!stories || !stories.length || availCols < 1) return []
+  var cols = Math.min(availCols, 500)
   var sorted = sortByPhase(stories)
   var totalPts = 0
-  for (var i = 0; i < sorted.length; i++) totalPts += (sorted[i].points || 0)
+  for (var i = 0; i < sorted.length; i++) totalPts += safePoints(sorted[i].points)
   var segs = []
   for (var j = 0; j < sorted.length; j++) {
-    var pts = sorted[j].points || 0
+    var pts = safePoints(sorted[j].points)
     var w = totalPts > 0
-      ? Math.max(1, Math.floor(pts / totalPts * availCols))
+      ? Math.max(1, Math.floor(pts / totalPts * cols))
       : 1
-    segs.push({ status: sorted[j].status || 'backlog', width: w })
+    segs.push({ status: sorted[j].status || 'backlog', width: Math.min(w, cols) })
   }
   // Merge adjacent same-status when stories exceed available columns.
-  if (sorted.length > availCols) {
+  if (sorted.length > cols) {
     var merged = [{ status: segs[0].status, width: segs[0].width }]
     for (var m = 1; m < segs.length; m++) {
       if (segs[m].status === merged[merged.length - 1].status) {
@@ -406,16 +414,20 @@ function buildBarSegments(stories, availCols) {
     }
     segs = merged
   }
+  // Cap each segment width to available columns.
+  for (var c = 0; c < segs.length; c++) {
+    if (segs[c].width > cols) segs[c].width = cols
+  }
   // Adjust total to fit available columns.
   var usedCols = 0
   for (var n = 0; n < segs.length; n++) usedCols += segs[n].width
   var idx = 0
-  while (usedCols < availCols && segs.length > 0) {
+  while (usedCols < cols && segs.length > 0) {
     segs[idx % segs.length].width++
     usedCols++
     idx++
   }
-  while (usedCols > availCols) {
+  while (usedCols > cols) {
     var wide = -1
     for (var k = segs.length - 1; k >= 0; k--) {
       if (segs[k].width > 1 && (wide === -1 || segs[k].width > segs[wide].width)) wide = k
@@ -443,7 +455,7 @@ function renderBar(c, data, bodyColumns) {
       counts[st] = (counts[st] || 0) + 1
     }
     var parts = []
-    var order = ['done', 'review', 'in-progress', 'blocked', 'ready', 'backlog', 'validating']
+    var order = ['done', 'review', 'in-progress', 'blocked', 'ready-for-dev', 'ready', 'backlog', 'validating']
     for (var k = 0; k < order.length; k++) {
       if (counts[order[k]]) parts.push(counts[order[k]] + ' ' + order[k])
     }
@@ -461,7 +473,7 @@ function renderBar(c, data, bodyColumns) {
   }
   // Legend: one line with distinct glyphs per present status.
   var legendParts = []
-  var legendOrder = ['done', 'review', 'in-progress', 'blocked', 'ready', 'backlog', 'validating']
+  var legendOrder = ['done', 'review', 'in-progress', 'blocked', 'ready-for-dev', 'ready', 'backlog', 'validating']
   for (var l = 0; l < legendOrder.length; l++) {
     if (presentStatuses[legendOrder[l]]) {
       legendParts.push(statusGlyph(legendOrder[l]) + ' ' + legendOrder[l])
@@ -982,7 +994,7 @@ export function register(on) {
       other,
       h(c.Button, { hotkey: '9', plain: true, onPress: function () { toggle($, true) } }, '9'),
       h(c.Text, { wrap: 'truncate-end' },
-        ' 9: sprint-' + id + ' · ' + donePts + '/' + totalPts + ' pts · ' +
+        ' 9: ' + id + ' · ' + donePts + '/' + totalPts + ' pts · ' +
         done + '/' + total + ' done · ' + blocked + ' blocked')
     )
   })

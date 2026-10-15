@@ -1,26 +1,10 @@
 import { test, expect, mock, describe } from 'claude-code/testing'
+import { WRITER_CACHE, GAIA_ROOT, OK_RUN } from './sprint-status-fixture.js'
 
-const ACTIVE_CACHE = {
-  schema_version: '1.0', generated_at: '2026-10-01T00:00:00Z',
-  sprint: { id: 'sprint-test-1', goal: 'Ship it', start_date: '2026-10-01', end_date: '2026-10-14', status: 'active', total_days: 14, capacity_utilization: null, epic_focus: null },
-  totals: { done_points: 3, total_points: 8, done_stories: 1, total_stories: 2, progress_pct: 37 },
-  by_status: {}, day: { current: 1, total: 14, pace: 'on-pace' }, active_phase: 1,
-  phases: [{ phase: 1, status: 'active', stories: ['E900-S1'], done_count: 0, total_count: 1 }],
-  unphased_stories: [],
-  stories: [
-    { key: 'E900-S1', title: 'Story one', slug: 'story-one', status: 'in-progress', points: 5, phase: 1, risk_level: 'low', blocked_by: null, blocked_since: null,
-      gates: { passed: 0, total: 6, rows: [] }, tasks: { done: 0, total: 1, items: [] }, manual_test: { required: false, verdict: null } }
-  ],
-  action_needed: [], drift: [], readiness: { sprint_review: false, sprint_close: false },
-  user_aliases: [], waiting_agent_threshold_seconds: 900
-}
-
-const GAIA_ROOT = '/project'
-const OK_RUN = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
 const SPRINT_CMD = { command: 'sprint', args: '', origin: { kind: 'plugin' as const, name: 'test' }, presentation: { isFullscreen: false, columns: 80 } }
 
 function world(on: any) {
-  const cache = { content: JSON.stringify(ACTIVE_CACHE), mtimeMs: 100000 }
+  const cache = { content: JSON.stringify(WRITER_CACHE), mtimeMs: 100000 }
   const clock = mock.clock(on, { now: 100000 })
   const w: any = { clock, cache, opens: 0, closes: 0, paneList: [] as any[], lastOpenArgs: null as any }
   on('session.start', (_$: unknown, e: any) => ({ cwd: e.cwd }))
@@ -78,8 +62,10 @@ describe('/sprint toggles sidebar', () => {
   })
 })
 
-describe('Esc closes focused pane', () => {
-  test('after Esc close, /sprint reopens the pane', async ($, on) => {
+describe('toggle cycle after close', () => {
+  // Esc close is verified in the live check; this test confirms the
+  // toggle cycle (close then reopen) works after the pane is dismissed.
+  test('after pane close, /sprint reopens the pane with focus', async ($, on) => {
     const w = world(on)
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
