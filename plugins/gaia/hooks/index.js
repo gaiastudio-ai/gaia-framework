@@ -247,6 +247,9 @@ async function refreshAgentActivity($) {
     caps.agent = true
   } catch (_) {
     caps.agent = false
+    ruleBItems = []
+    activityByStory = new Map()
+    unlinkedActivity = { items: [], overflow: 0 }
     return
   }
 
