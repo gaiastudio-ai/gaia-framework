@@ -44,6 +44,7 @@
           <li><a href="#outputs">Outputs</a></li>
           <li><a href="#example">Example session</a></li>
           <li><a href="#what-next">What to run next</a></li>
+          <li><a href="#degradation">Graceful degradation</a></li>
           <li><a href="#troubleshooting">Troubleshooting</a></li>
           <li><a href="#related">Related commands</a></li>
         </ul>
@@ -79,9 +80,14 @@
         <p>
           <code>/gaia-sprint-status</code> displays the current sprint
           dashboard -- a read-only summary of every story in the active
-          sprint with its status, points, risk level, and assignee. After
+          sprint with its status, points, risk level, task progress, and
+          review-gate count. Stories are grouped by dependency phase. After
           rendering the dashboard, it reconciles any drift between story
           files and the sprint tracking file to keep them in sync.
+        </p>
+        <p>
+          When no sprint is active, the command prints <em>"No active
+          sprint"</em> and exits.
         </p>
       </section>
 
@@ -118,10 +124,14 @@
         <ol class="step-list">
           <li>
             <span class="step-title">Render dashboard</span>
-            Reads the sprint tracking file and produces a formatted dashboard
-            showing each story's key, title, status, points, risk, and
-            assignee. If any story has <code>risk: HIGH</code>, appends
-            recommended mitigations.
+            Reads the sprint snapshot cache and produces a formatted
+            dashboard showing each story's key, title, status, points,
+            risk, task progress (Tasks X/Y), and review-gate count
+            (Gates X/6). Stories are grouped by dependency phase with a
+            phase header line; unphased stories appear in a separate group
+            at the end. When any ACTION NEEDED condition is active, a
+            warning header prints above the table. If any story has
+            <code>risk: HIGH</code>, appends recommended mitigations.
           </li>
           <li>
             <span class="step-title">Reconcile drift</span>
@@ -174,16 +184,27 @@
         <h2>Example session</h2>
         <pre><code>&gt; /gaia-sprint-status
 
+! ACTION NEEDED: 1 item -- Manual tests due for E5-S14
+
 Sprint-4 Dashboard (2 weeks, 21 points)
 
-| Key     | Title                    | Status       | Points | Risk   |
-|---------|--------------------------|--------------|--------|--------|
-| E5-S12  | Add webhook retry logic  | in-progress  | 3      | medium |
-| E5-S14  | Improve error messages   | done         | 2      | low    |
-| E3-S9   | Dashboard search         | ready-for-dev| 5      | high   |
-| E3-S10  | Export CSV               | review       | 3      | low    |
-| E4-S6   | Rate limiting middleware | ready-for-dev| 5      | medium |
-| E4-S7   | API key rotation         | ready-for-dev| 3      | high   |
+Phase 1
+| Key     | Title                    | Status       | Points | Tasks | Gates | Risk   |
+|---------|--------------------------|--------------|--------|-------|-------|--------|
+| E5-S14  | Improve error messages   | done         | 2      | 4/4   | 6/6   | low    |
+| E5-S12  | Add webhook retry logic  | in-progress  | 3      | 2/5   | 3/6   | medium |
+
+Phase 2
+| Key     | Title                    | Status       | Points | Tasks | Gates | Risk   |
+|---------|--------------------------|--------------|--------|-------|-------|--------|
+| E3-S9   | Dashboard search         | ready-for-dev| 5      | 0/6   | 0/6   | high   |
+| E3-S10  | Export CSV               | review       | 3      | 3/3   | 5/6   | low    |
+
+Unphased
+| Key     | Title                    | Status       | Points | Tasks | Gates | Risk   |
+|---------|--------------------------|--------------|--------|-------|-------|--------|
+| E4-S6   | Rate limiting middleware | ready-for-dev| 5      | 0/4   | 0/6   | medium |
+| E4-S7   | API key rotation         | ready-for-dev| 3      | 0/3   | 0/6   | high   |
 
 Progress: 2/21 points done (9%) | 1 in-progress | 1 in review
 
@@ -204,14 +225,36 @@ Suggested:
         </ul>
       </section>
 
+      <section id="degradation">
+        <h2>Graceful degradation</h2>
+        <p>
+          <code>/gaia-sprint-status</code> works on all Claude Code builds,
+          including those without mod support. The dashboard, Tasks/Gates
+          columns, phase grouping, and warning header are rendered by a
+          standalone script and do not depend on the mod hooks. The
+          <a href="../sprint-status-mod.html">sidebar and band</a> are the
+          only surfaces that require mod support.
+        </p>
+      </section>
+
       <section id="troubleshooting">
         <h2>Troubleshooting</h2>
+
+        <h3>"No active sprint"</h3>
+        <p>No sprint is currently active. Run <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> to plan one.</p>
 
         <h3>"sprint-status.yaml not found"</h3>
         <p>No sprint has been planned yet. Run <a href="gaia-sprint-plan.html"><code>/gaia-sprint-plan</code></a> first.</p>
 
         <h3>"sprint-status.yaml is malformed"</h3>
         <p>The YAML file may have been manually edited incorrectly. Check for syntax errors (indentation, unclosed quotes) and fix them before re-running.</p>
+
+        <h3>Stranded-ready advisory</h3>
+        <p>
+          If the dashboard detects stories left in <code>ready-for-dev</code>
+          from a previous sprint, it prints an advisory. This scan runs
+          independently of the snapshot cache.
+        </p>
       </section>
 
       <section id="related">
