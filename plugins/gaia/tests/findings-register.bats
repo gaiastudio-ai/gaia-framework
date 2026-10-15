@@ -683,47 +683,60 @@ YAML
   grep -qF 'TRIAGED' <<<"$findings_section" || { echo "TRIAGED keyword lost entirely" >&2; false; }
 }
 
-@test "findings-rows strips bracket markers from values larger than 128 KB end-to-end" {
+@test "findings-rows strips bracket markers when the rows total more than 128 KB" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
   local story_file="$story_dir/TEST-S1-test-story.md"
   _write_story_file "$story_file" "TEST-S1"
 
-  # Build a ~140 KB defect string with bracket-prefixed markers embedded.
+  # Two ~100 KB defects: each stays under the per-argument limit Linux puts on
+  # a single command-line string, but together the rows exceed 128 KB, which
+  # is more than one environment string can carry there.
   local padding
-  padding="$(head -c 131072 < /dev/zero | tr '\0' 'x')"
-  local big="prefix [TRIAGED marker ${padding} middle [DISMISSED end [TRIAGED tail"
+  padding="$(head -c 100000 < /dev/zero | tr '\0' 'x')"
+  local big1="first [TRIAGED marker ${padding} middle [DISMISSED end [[TRIAGED tail"
+  local big2="second [DISMISSED marker ${padding} middle [TRIAGED end tail"
 
   run "$SCRIPT" add --story TEST-S1 \
-    --defect "$big" --type bug --severity low --gate code-review
+    --defect "$big1" --type bug --severity low --gate code-review
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" add --story TEST-S1 \
+    --defect "$big2" --type tech-debt --severity low --gate code-review
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
-    --disposition triage --owner code-review --priority low
-  [ "$status" -eq 0 ]
+  local id
+  for id in RF-1 RF-2; do
+    run "$SCRIPT" set-disposition --story TEST-S1 --id "$id" \
+      --disposition triage --owner code-review --priority low
+    [ "$status" -eq 0 ]
+  done
 
   run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
   [ "$status" -eq 0 ]
 
-  # Read the findings section from the story file.
+  local section
+  section="$(sed -n '/^## Findings/,/^## /p' "$story_file")"
+  local row1 row2
+  row1="$(grep '| RF-1 |' <<<"$section")" || { echo "RF-1 row missing" >&2; false; }
+  row2="$(grep '| RF-2 |' <<<"$section")" || { echo "RF-2 row missing" >&2; false; }
+  [ "$(( ${#row1} + ${#row2} ))" -gt 131072 ] || { echo "rows do not exceed 128 KB in total" >&2; false; }
+
+  # No bracket-prefixed markers should remain, and the keywords must survive.
   local row
-  row="$(sed -n '/^## Findings/,/^## /p' "$story_file" | grep 'RF-1')" || true
-
-  # No bracket-prefixed markers should remain.
-  if grep -qF '[TRIAGED' <<<"$row"; then
-    echo "bracket-prefixed [TRIAGED marker survived sanitisation" >&2; false
-  fi
-  if grep -qF '[DISMISSED' <<<"$row"; then
-    echo "bracket-prefixed [DISMISSED marker survived sanitisation" >&2; false
-  fi
-  # The keywords themselves must survive (only the bracket is stripped).
-  grep -qF 'TRIAGED' <<<"$row" || { echo "TRIAGED keyword lost" >&2; false; }
-  grep -qF 'DISMISSED' <<<"$row" || { echo "DISMISSED keyword lost" >&2; false; }
-
+  for row in "$row1" "$row2"; do
+    if grep -qF '[TRIAGED' <<<"$row"; then
+      echo "bracket-prefixed [TRIAGED marker survived sanitisation" >&2; false
+    fi
+    if grep -qF '[DISMISSED' <<<"$row"; then
+      echo "bracket-prefixed [DISMISSED marker survived sanitisation" >&2; false
+    fi
+    grep -qF 'TRIAGED' <<<"$row" || { echo "TRIAGED keyword lost" >&2; false; }
+    grep -qF 'DISMISSED' <<<"$row" || { echo "DISMISSED keyword lost" >&2; false; }
+  done
 }
 
 @test "writer findings-rows replaces placeholder row and is idempotent" {
