@@ -2532,3 +2532,215 @@ EOF
     false
   }
 }
+
+# ---------------------------------------------------------------------------
+# Register-mode fail-closed tests for verdict.sh
+#
+# When --llm-findings is omitted, missing, unreadable, empty, or malformed
+# in register mode, verdict.sh must yield BLOCKED with outcome "errored"
+# so that a missing findings file never silently produces APPROVE.
+# ---------------------------------------------------------------------------
+
+# Helper: write a standard analysis-results fixture for DAST or perf.
+_failclosed_setup() {
+  local skill="$1"
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  _write_story_file "$story_dir/story.md" "TEST-S1"
+
+  cat > "$TEST_TMP/ar.json" <<EOF
+{
+  "schema_version": "1.0",
+  "story_key": "TEST-S1",
+  "skill": "$skill",
+  "skill_version": "1.0",
+  "model": "claude-opus-4-7",
+  "model_temperature": 0,
+  "prompt_hash": "sha256:test",
+  "tool_versions": {},
+  "file_hashes": {},
+  "checks": [{"name":"check","status":"passed","findings":[]}]
+}
+EOF
+}
+
+# Assert: last stdout line is BLOCKED and the register's last gate_runs
+# entry has outcome "errored".
+_assert_blocked_errored() {
+  local label="$1"
+  [ "$status" -eq 0 ] || { echo "$label: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || {
+    echo "$label: expected BLOCKED on last line, got: $last_line" >&2; false
+  }
+  # Check register outcome
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  if [ -f "$reg" ]; then
+    local outcome
+    outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
+    [ "$outcome" = "errored" ] || {
+      echo "$label: expected last gate_runs outcome=errored, got: $outcome" >&2; false
+    }
+  fi
+}
+
+# --- DAST verdict.sh fail-closed cases ---
+
+@test "dast verdict.sh register mode: omitted llm-findings yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-dast"
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "dast-omitted"
+}
+
+@test "dast verdict.sh register mode: missing llm-findings path yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-dast"
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/no-such-file.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "dast-missing"
+}
+
+@test "dast verdict.sh register mode: unreadable llm-findings yields BLOCKED with errored run" {
+  if [ "$(id -u)" -eq 0 ]; then skip "root bypasses permissions"; fi
+  _failclosed_setup "gaia-test-dast"
+  local f="$TEST_TMP/unreadable.json"
+  printf '{"findings":[]}' > "$f"
+  chmod 000 "$f"
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$f" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "dast-unreadable"
+}
+
+@test "dast verdict.sh register mode: empty llm-findings yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-dast"
+  : > "$TEST_TMP/empty.json"
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/empty.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "dast-empty"
+}
+
+@test "dast verdict.sh register mode: truncated json yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-dast"
+  printf '{"findings": [{"severity":' > "$TEST_TMP/truncated.json"
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/truncated.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "dast-truncated"
+}
+
+@test "dast verdict.sh register mode: json without findings array yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-dast"
+  printf '{"results": []}' > "$TEST_TMP/nofind.json"
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/nofind.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "dast-no-findings-key"
+}
+
+@test "dast verdict.sh register mode: valid empty findings array yields APPROVE with completed run" {
+  _failclosed_setup "gaia-test-dast"
+  printf '{"findings":[]}' > "$TEST_TMP/ok.json"
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/ok.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ]
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "APPROVE" ] || {
+    echo "dast-control: expected APPROVE on last line, got: $last_line" >&2; false
+  }
+  # Verify completed outcome
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  if [ -f "$reg" ]; then
+    local outcome
+    outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
+    [ "$outcome" = "completed" ] || {
+      echo "dast-control: expected last gate_runs outcome=completed, got: $outcome" >&2; false
+    }
+  fi
+}
+
+# --- Perf verdict.sh fail-closed cases ---
+
+@test "perf verdict.sh register mode: omitted llm-findings yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-perf"
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "perf-omitted"
+}
+
+@test "perf verdict.sh register mode: missing llm-findings path yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-perf"
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/no-such-file.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "perf-missing"
+}
+
+@test "perf verdict.sh register mode: unreadable llm-findings yields BLOCKED with errored run" {
+  if [ "$(id -u)" -eq 0 ]; then skip "root bypasses permissions"; fi
+  _failclosed_setup "gaia-test-perf"
+  local f="$TEST_TMP/unreadable.json"
+  printf '{"findings":[]}' > "$f"
+  chmod 000 "$f"
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$f" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "perf-unreadable"
+}
+
+@test "perf verdict.sh register mode: empty llm-findings yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-perf"
+  : > "$TEST_TMP/empty.json"
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/empty.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "perf-empty"
+}
+
+@test "perf verdict.sh register mode: truncated json yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-perf"
+  printf '{"findings": [{"severity":' > "$TEST_TMP/truncated.json"
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/truncated.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "perf-truncated"
+}
+
+@test "perf verdict.sh register mode: json without findings array yields BLOCKED with errored run" {
+  _failclosed_setup "gaia-test-perf"
+  printf '{"results": []}' > "$TEST_TMP/nofind.json"
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/nofind.json" \
+    --story-key TEST-S1 --register
+  _assert_blocked_errored "perf-no-findings-key"
+}
+
+@test "perf verdict.sh register mode: valid empty findings array yields APPROVE with completed run" {
+  _failclosed_setup "gaia-test-perf"
+  printf '{"findings":[]}' > "$TEST_TMP/ok.json"
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/ok.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ]
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "APPROVE" ] || {
+    echo "perf-control: expected APPROVE on last line, got: $last_line" >&2; false
+  }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  if [ -f "$reg" ]; then
+    local outcome
+    outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
+    [ "$outcome" = "completed" ] || {
+      echo "perf-control: expected last gate_runs outcome=completed, got: $outcome" >&2; false
+    }
+  fi
+}

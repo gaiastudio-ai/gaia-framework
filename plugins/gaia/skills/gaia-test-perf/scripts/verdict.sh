@@ -17,8 +17,10 @@
 # When --register is given (with --story-key), findings from the llm-findings
 # file are written to the shared findings register via register-write.sh,
 # a run record is created, and the verdict is resolved against the register
-# instead of the raw llm-findings file. The --llm-findings readability
-# requirement is relaxed in register mode (findings may be empty).
+# instead of the raw llm-findings file. In register mode, --llm-findings must
+# still point to a readable, non-empty JSON file with a .findings array;
+# omitted, unreadable, empty, or malformed input blocks the gate (never
+# silently approves).
 #
 # Contract:
 #   verdict.sh --analysis-results <path> --llm-findings <path>
@@ -104,9 +106,24 @@ if [ "$REGISTER_MODE" -eq 1 ]; then
   # Mint a standalone run-id when not orchestrated.
   RUN_ID="${RUN_ID:-standalone-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 
-  # Write each LLM finding to the register (if the file is readable).
-  if [ -n "$LLM" ] && [ -r "$LLM" ]; then
-    finding_count="$(jq '.findings | length' "$LLM" 2>/dev/null)" || finding_count="0"
+  # Validate and write each LLM finding to the register.
+  # In register mode every failure path must set _write_failed=1 so the
+  # gate becomes BLOCKED — a silently skipped findings file must never
+  # produce APPROVE.
+  if [ -z "$LLM" ]; then
+    log "llm findings path not provided; gate will be BLOCKED"
+    _write_failed=1
+  elif [ ! -r "$LLM" ]; then
+    log "llm findings not readable: $LLM; gate will be BLOCKED"
+    _write_failed=1
+  elif [ ! -s "$LLM" ]; then
+    log "llm findings file is empty: $LLM; gate will be BLOCKED"
+    _write_failed=1
+  elif ! jq -e '.findings | type == "array"' "$LLM" >/dev/null 2>&1; then
+    log "llm findings malformed (missing or non-array .findings): $LLM; gate will be BLOCKED"
+    _write_failed=1
+  else
+    finding_count="$(jq '.findings | length' "$LLM")"
     i=0
     while [ "$i" -lt "$finding_count" ]; do
       msg="$(jq -r ".findings[$i].message // .findings[$i].title // \"\"" "$LLM")"

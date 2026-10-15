@@ -220,7 +220,34 @@ The consolidation steps are:
 
 1. **Gate status.** For each selected gate, call `register-write.sh gate-status --story {key} --run-id {run_id} --gate {register_gate_name}`. Result `RAN` means the gate completed this round. `UNVERIFIED` means the gate did not record a run (absent or errored). An `UNVERIFIED` gate is NEVER read as "zero blockers".
 2. **Triage non-blocking entries.** Call `register-write.sh triage-nonblocking --story {key} --run-id {run_id}` to deterministically move non-blocking open entries to disposition `triage` with auto-derived owner and priority. Disagreement entries (mixed blocking ratings, no resolution) stay open.
-3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`. Gates that produce an analysis-results file (`code-review`, `qa-tests`, `test-automate`, `test-review`) also pass `--analysis-results {path_to_analysis_results_json}` — the per-review skill writes this file alongside its report. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED` via `review-gate.sh update`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--report` and `--execution-evidence` for the gates that require them (see the reference table above).
+3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`, adding `--analysis-results` and `--execution-evidence` when the gate produces those files. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED` via `review-gate.sh update`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--report` and `--execution-evidence` for the gates that require them (see the reference table above).
+
+   The per-gate analysis-results and execution-evidence paths live in `.gaia/state/review/<gate>/{story_key}/` (written by each gate's Phase 3A, not alongside the review report):
+
+   | Register gate name   | `--analysis-results`                                                         | `--execution-evidence`                                                        |
+   |----------------------|------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
+   | `code-review`        | `.gaia/state/review/code-review/{story_key}/analysis-results.json`           | —                                                                             |
+   | `qa-tests`           | `.gaia/state/review/qa-tests/{story_key}/analysis-results.json`              | `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json`             |
+   | `security-review`    | —                                                                            | —                                                                             |
+   | `test-automate`      | `.gaia/state/review/test-automate/{story_key}/analysis-results.json`         | —                                                                             |
+   | `test-review`        | `.gaia/state/review/test-review/{story_key}/analysis-results.json`           | —                                                                             |
+   | `performance-review` | —                                                                            | —                                                                             |
+
+   The re-resolve command for each gate therefore is:
+
+   ```bash
+   # code-review, test-automate, test-review (analysis-results only)
+   verdict-resolver.sh --register {register_path} \
+     --analysis-results .gaia/state/review/{gate}/{story_key}/analysis-results.json
+
+   # qa-tests (analysis-results + execution-evidence)
+   verdict-resolver.sh --register {register_path} \
+     --analysis-results .gaia/state/review/qa-tests/{story_key}/analysis-results.json \
+     --execution-evidence .gaia/state/review/qa-tests/{story_key}/execution-evidence.json
+
+   # security-review, performance-review (register only, no analysis document)
+   verdict-resolver.sh --register {register_path}
+   ```
 4. **Write findings rows.** Call `register-write.sh findings-rows --story {key} --run-id {run_id}` to write triage-disposition entries as pipe-delimited rows in the story's Findings section. Re-running is idempotent — existing rows are not duplicated.
 5. **Composite verdict.** An `UNVERIFIED` gate is passed as `BLOCKED` to `composite-verdict-aggregator.sh`. The composite comes from `review-gate.sh review-gate-check`.
 

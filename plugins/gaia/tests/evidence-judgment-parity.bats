@@ -720,3 +720,203 @@ _check_register_wiring() {
   done
   [ "$failed" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Step 3 analysis-results / execution-evidence path parity
+#
+# The run-all-reviews consolidation step 3 must name the EXACT paths that
+# each gate's own SKILL.md uses for analysis-results and execution-evidence.
+# These per-line tests catch wrong paths or dropped flags.
+# ---------------------------------------------------------------------------
+
+# Helper: extract the step-3 "Re-resolve each gate" section from run-all-reviews.
+_extract_step3_section() {
+  local f="$1"
+  awk '
+    /^[[:space:]]*3\.[[:space:]]+\*\*Re-resolve each gate/ { found=1 }
+    found && /^[[:space:]]*4\.[[:space:]]+\*\*/ { exit }
+    found { print }
+  ' "$f"
+}
+
+@test "step-3 parity: code-review analysis-results path matches gate SKILL.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local gate_skill="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$gate_skill" ] || { echo "code-review SKILL.md not found" >&2; false; }
+
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  # The gate skill uses this exact path for analysis-results
+  local expected_ar=".gaia/state/review/code-review/{story_key}/analysis-results.json"
+  grep -qF "$expected_ar" <<<"$step3" || {
+    echo "step 3 missing code-review analysis-results path: $expected_ar" >&2; false
+  }
+  # Verify gate SKILL.md also uses this path
+  grep -qF "$expected_ar" "$gate_skill" || {
+    echo "code-review SKILL.md missing expected path: $expected_ar" >&2; false
+  }
+}
+
+@test "step-3 parity: qa-tests analysis-results path matches gate SKILL.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  local gate_skill="$base/skills/gaia-qa-tests/SKILL.md"
+  [ -f "$rar" ] && [ -f "$gate_skill" ] || { echo "SKILL.md not found" >&2; false; }
+
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  local expected_ar=".gaia/state/review/qa-tests/{story_key}/analysis-results.json"
+  grep -qF "$expected_ar" <<<"$step3" || {
+    echo "step 3 missing qa-tests analysis-results path: $expected_ar" >&2; false
+  }
+  grep -qF "$expected_ar" "$gate_skill" || {
+    echo "qa-tests SKILL.md missing expected path: $expected_ar" >&2; false
+  }
+}
+
+@test "step-3 parity: qa-tests execution-evidence path matches gate SKILL.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  local gate_skill="$base/skills/gaia-qa-tests/SKILL.md"
+  [ -f "$rar" ] && [ -f "$gate_skill" ] || { echo "SKILL.md not found" >&2; false; }
+
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  local expected_ee=".gaia/state/review/qa-tests/{story_key}/execution-evidence.json"
+  grep -qF "$expected_ee" <<<"$step3" || {
+    echo "step 3 missing qa-tests execution-evidence path: $expected_ee" >&2; false
+  }
+  grep -qF "$expected_ee" "$gate_skill" || {
+    echo "qa-tests SKILL.md missing expected path: $expected_ee" >&2; false
+  }
+}
+
+@test "step-3 parity: test-automate analysis-results path matches gate SKILL.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  local gate_skill="$base/skills/gaia-test-automate/SKILL.md"
+  [ -f "$rar" ] && [ -f "$gate_skill" ] || { echo "SKILL.md not found" >&2; false; }
+
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  local expected_ar=".gaia/state/review/test-automate/{story_key}/analysis-results.json"
+  grep -qF "$expected_ar" <<<"$step3" || {
+    echo "step 3 missing test-automate analysis-results path: $expected_ar" >&2; false
+  }
+  grep -qF "$expected_ar" "$gate_skill" || {
+    echo "test-automate SKILL.md missing expected path: $expected_ar" >&2; false
+  }
+}
+
+@test "step-3 parity: test-review analysis-results path matches gate SKILL.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  local gate_skill="$base/skills/gaia-test-review/SKILL.md"
+  [ -f "$rar" ] && [ -f "$gate_skill" ] || { echo "SKILL.md not found" >&2; false; }
+
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  local expected_ar=".gaia/state/review/test-review/{story_key}/analysis-results.json"
+  grep -qF "$expected_ar" <<<"$step3" || {
+    echo "step 3 missing test-review analysis-results path: $expected_ar" >&2; false
+  }
+  grep -qF "$expected_ar" "$gate_skill" || {
+    echo "test-review SKILL.md missing expected path: $expected_ar" >&2; false
+  }
+}
+
+@test "step-3 parity: security-review and performance-review have no analysis-results in step 3 table" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  # The table row for security-review and performance-review should have a dash
+  # (meaning no analysis-results), not a path.
+  # Extract the security-review row and check it does NOT have an analysis-results path
+  local sec_row
+  sec_row="$(grep 'security-review' <<<"$step3" | head -1)"
+  [ -n "$sec_row" ] || { echo "no security-review row in step 3 table" >&2; false; }
+  if grep -qF 'analysis-results.json' <<<"$sec_row"; then
+    echo "security-review row should not have analysis-results path" >&2; false
+  fi
+
+  local perf_row
+  perf_row="$(grep 'performance-review' <<<"$step3" | head -1)"
+  [ -n "$perf_row" ] || { echo "no performance-review row in step 3 table" >&2; false; }
+  if grep -qF 'analysis-results.json' <<<"$perf_row"; then
+    echo "performance-review row should not have analysis-results path" >&2; false
+  fi
+}
+
+@test "step-3 parity: only qa-tests has execution-evidence in the step 3 code block" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  # The code block must mention execution-evidence for qa-tests
+  grep -qF 'execution-evidence' <<<"$step3" || {
+    echo "step 3 does not mention execution-evidence at all" >&2; false
+  }
+  # Execution evidence must appear in the qa-tests context
+  grep -qF 'qa-tests/{story_key}/execution-evidence.json' <<<"$step3" || {
+    echo "step 3 missing qa-tests execution-evidence path" >&2; false
+  }
+}
+
+@test "step-3 parity: deletion mutant removing qa-tests execution-evidence path is caught" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+
+  # Create a mutant with the qa-tests execution-evidence line removed
+  local copy="$TEST_TMP/mutant-rar.md"
+  grep -v 'qa-tests.*execution-evidence' "$rar" > "$copy"
+
+  # The mutant step 3 should no longer contain the qa-tests execution-evidence path
+  local mutant_step3
+  mutant_step3="$(_extract_step3_section "$copy")"
+  if grep -qF 'qa-tests/{story_key}/execution-evidence.json' <<<"$mutant_step3"; then
+    echo "deletion mutant still has the qa-tests execution-evidence path" >&2; false
+  fi
+  # And the real file must have it (sanity check that deletion changes something)
+  local real_step3
+  real_step3="$(_extract_step3_section "$rar")"
+  grep -qF 'qa-tests/{story_key}/execution-evidence.json' <<<"$real_step3" || {
+    echo "real file missing qa-tests execution-evidence path" >&2; false
+  }
+}
+
+@test "step-3 parity: deletion mutant removing code-review analysis-results path is caught" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+
+  # Create a mutant with the code-review analysis-results line removed from the table
+  local copy="$TEST_TMP/mutant-rar-cr.md"
+  sed '/code-review.*analysis-results\.json/d' "$rar" > "$copy"
+
+  local mutant_step3
+  mutant_step3="$(_extract_step3_section "$copy")"
+  if grep -qF '.gaia/state/review/code-review/{story_key}/analysis-results.json' <<<"$mutant_step3"; then
+    echo "deletion mutant still has code-review analysis-results path" >&2; false
+  fi
+  # Sanity: real file has it
+  local real_step3
+  real_step3="$(_extract_step3_section "$rar")"
+  grep -qF '.gaia/state/review/code-review/{story_key}/analysis-results.json' <<<"$real_step3" || {
+    echo "real file missing code-review analysis-results path" >&2; false
+  }
+}
