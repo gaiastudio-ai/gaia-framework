@@ -128,20 +128,49 @@ if [ "$REGISTER_MODE" -eq 1 ]; then
         dedup="${REGISTER_GATE}:${rule_val:-$cat_val}:${msg_hash}"
       fi
 
-      # DAST findings are always type "security".
-      "$REGISTER_WRITER" add \
+      # Normalise non-standard severity labels (e.g. "Critical Risk",
+      # "Informational") to the rubric scale before writing.
+      case "$(printf '%s' "$sev" | tr '[:upper:]' '[:lower:]')" in
+        critical*) sev="critical" ;;
+        high*)     sev="high" ;;
+        medium*|moderate*) sev="medium" ;;
+        low*|informational*|info*|none*) sev="low" ;;
+      esac
+
+      # DAST findings are always type "security". A failed write means a
+      # finding was lost; the gate must be BLOCKED, never APPROVE.
+      if ! "$REGISTER_WRITER" add \
         --story "$STORY_KEY" --defect "$msg" --type security \
         --severity "$sev" --gate "$REGISTER_GATE" \
-        --evidence "$evidence" --dedup-key "$dedup" || true
+        --evidence "$evidence" --dedup-key "$dedup" 2>>"$ANALYSIS.register-err.log"; then
+        log "register-write add failed for finding $i (severity=$sev); gate will be BLOCKED"
+        _write_failed=1
+      fi
 
       i=$((i + 1))
     done
   fi
 
+  # When any register write failed, record the run as errored so the gate
+  # stays BLOCKED; a lost finding must never produce APPROVE.
+  _run_outcome="completed"
+  if [ "${_write_failed:-0}" = "1" ]; then
+    _run_outcome="errored"
+  fi
+
   # Record this gate's run.
-  "$REGISTER_WRITER" record-run \
+  if ! "$REGISTER_WRITER" record-run \
     --story "$STORY_KEY" --run-id "$RUN_ID" \
-    --gate "$REGISTER_GATE" --outcome completed
+    --gate "$REGISTER_GATE" --outcome "$_run_outcome" 2>>"$ANALYSIS.register-err.log"; then
+    log "record-run failed; gate is BLOCKED"
+    printf '%s\n' "BLOCKED"
+    exit 0
+  fi
+
+  if [ "${_write_failed:-0}" = "1" ]; then
+    printf '%s\n' "BLOCKED"
+    exit 0
+  fi
 
   # Resolve verdict from the register.
   verdict="$("$RESOLVER" --skill gaia-test-dast --register "$REGISTER_PATH" --analysis-results "$ANALYSIS")" \

@@ -310,6 +310,27 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
 
+**Register path (primary).** When the orchestrator provides a `run_id`, record each finding through the shared register writer, record a run, and resolve via the register:
+
+```bash
+# For each LLM finding (parent context — fork isolation preserved):
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+  --story {story_key} --defect "{finding}" --type {type} \
+  --severity {severity} --gate qa-tests ...
+
+# Record this gate's run:
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+  --story {story_key} --run-id {run_id} --gate qa-tests --outcome completed
+
+# Resolve against the register:
+${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
+  --register {register_path} \
+  --analysis-results .gaia/state/review/qa-tests/{story_key}/analysis-results.json \
+  [--execution-evidence .gaia/state/review/qa-tests/{story_key}/execution-evidence.json]
+```
+
+**Legacy path.** Without a register, the existing invocation is preserved:
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --analysis-results .gaia/state/review/qa-tests/{story_key}/analysis-results.json \
@@ -322,7 +343,7 @@ The resolver applies strict first-match-wins precedence:
 1b. Any required-tier suite with `timeout: true` in `execution-evidence.json` → **BLOCKED**.
 2a. Any required-tier suite with non-zero `exit_code` (and not a timeout) in `execution-evidence.json` → **REQUEST_CHANGES**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
-3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
+3. Register rule (when `--register`): unresolved blocker → **REQUEST_CHANGES**. LLM-Critical rule (legacy): any Critical → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
 When `--execution-evidence` is omitted, rules 1b and 2a are skipped and the four-rule behavior is preserved (backward compat).

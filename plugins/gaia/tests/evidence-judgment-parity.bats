@@ -431,7 +431,9 @@ RUBRIC_FILE="knowledge/shared-findings-rubric.md"
     local copy="$TEST_TMP/mutant-skill.md"
     grep -vF 'shared-findings-rubric.md' "$target" > "$copy"
     # The mutant must NOT pass the reference check
-    ! grep -qF 'shared-findings-rubric.md' "$copy"
+    if grep -qF 'shared-findings-rubric.md' "$copy"; then
+      echo "deletion mutant still contains rubric reference" >&2; false
+    fi
   else
     # Rubric reference does not exist yet (Red phase) — the main test
     # already fails, so this deletion mutant test also fails because
@@ -486,5 +488,107 @@ RUBRIC_FILE="knowledge/shared-findings-rubric.md"
     # Rubric reference not yet present (Red phase)
     echo "rubric reference not yet present in qa-tests" >&2
     false
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Register wiring: each skill's verdict phase names register-write.sh add,
+# record-run, and verdict-resolver.sh --register
+# ---------------------------------------------------------------------------
+
+@test "register wiring: each review skill verdict phase names register-write.sh add" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local skills=(
+    "skills/gaia-code-review/SKILL.md"
+    "skills/gaia-qa-tests/SKILL.md"
+    "skills/gaia-review-security/SKILL.md"
+    "skills/gaia-test-automate/SKILL.md"
+    "skills/gaia-test-review/SKILL.md"
+    "skills/gaia-review-perf/SKILL.md"
+  )
+  local f
+  for f in "${skills[@]}"; do
+    local path="$base/$f"
+    [ -f "$path" ] || { echo "not found: $f" >&2; false; }
+    grep -qF 'register-write.sh add' "$path" || {
+      echo "$f does not mention register-write.sh add" >&2; false
+    }
+  done
+}
+
+@test "register wiring: each review skill verdict phase names record-run" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local skills=(
+    "skills/gaia-code-review/SKILL.md"
+    "skills/gaia-qa-tests/SKILL.md"
+    "skills/gaia-review-security/SKILL.md"
+    "skills/gaia-test-automate/SKILL.md"
+    "skills/gaia-test-review/SKILL.md"
+    "skills/gaia-review-perf/SKILL.md"
+  )
+  local f
+  for f in "${skills[@]}"; do
+    local path="$base/$f"
+    [ -f "$path" ] || { echo "not found: $f" >&2; false; }
+    grep -qF 'record-run' "$path" || {
+      echo "$f does not mention record-run" >&2; false
+    }
+  done
+}
+
+@test "register wiring: each review skill verdict phase names verdict-resolver --register" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local skills=(
+    "skills/gaia-code-review/SKILL.md"
+    "skills/gaia-qa-tests/SKILL.md"
+    "skills/gaia-review-security/SKILL.md"
+    "skills/gaia-test-automate/SKILL.md"
+    "skills/gaia-test-review/SKILL.md"
+    "skills/gaia-review-perf/SKILL.md"
+  )
+  local f
+  for f in "${skills[@]}"; do
+    local path="$base/$f"
+    [ -f "$path" ] || { echo "not found: $f" >&2; false; }
+    grep -qF -- '--register' "$path" || {
+      echo "$f does not mention --register" >&2; false
+    }
+  done
+}
+
+@test "register wiring: test-dast and test-perf SKILL.md mention --register in verdict.sh invocation" {
+  local base="$BATS_TEST_DIRNAME/.."
+  for f in "skills/gaia-test-dast/SKILL.md" "skills/gaia-test-perf/SKILL.md"; do
+    local path="$base/$f"
+    [ -f "$path" ] || { echo "not found: $f" >&2; false; }
+    grep -qF -- '--register' "$path" || {
+      echo "$f does not mention --register" >&2; false
+    }
+    grep -qF 'register-write.sh add' "$path" || {
+      echo "$f does not mention register-write.sh add" >&2; false
+    }
+  done
+}
+
+@test "register wiring: gaia-run-all-reviews mentions gate-status and triage-nonblocking and findings-rows" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local f="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$f" ] || { echo "not found: $f" >&2; false; }
+  grep -qF 'gate-status' "$f" || { echo "run-all-reviews does not mention gate-status" >&2; false; }
+  grep -qF 'triage-nonblocking' "$f" || { echo "run-all-reviews does not mention triage-nonblocking" >&2; false; }
+  grep -qF 'findings-rows' "$f" || { echo "run-all-reviews does not mention findings-rows" >&2; false; }
+  grep -qF 'UNVERIFIED' "$f" || { echo "run-all-reviews does not mention UNVERIFIED" >&2; false; }
+}
+
+@test "register wiring: deletion of register-write.sh add from code-review fails the wiring test" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$path" ] || { echo "not found" >&2; false; }
+  # Create a mutant with register-write.sh add removed
+  local copy="$TEST_TMP/mutant-cr.md"
+  grep -v 'register-write.sh add' "$path" > "$copy"
+  # The mutant must NOT pass the wiring check
+  if grep -qF 'register-write.sh add' "$copy"; then
+    echo "deletion mutant still contains register-write.sh add" >&2; false
   fi
 }

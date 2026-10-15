@@ -415,7 +415,9 @@ YAML
   grep -qF "register" <<<"$combined"
   # Must NOT be the generic "unknown argument" rejection — the resolver
   # must have recognized --register and then rejected the combination.
-  ! grep -qE "unknown arg(ument)?" <<<"$combined"
+  if grep -qE "unknown arg(ument)?" <<<"$combined"; then
+    echo "resolver fell through to generic unknown-argument rejection" >&2; false
+  fi
 }
 
 @test "register mode action-mode with empty register and clean flags yields APPROVE" {
@@ -647,6 +649,57 @@ YAML
   write_analysis "$TEST_TMP/a4.json" '[{"name":"tsc","status":"passed","findings":[]}]'
   write_findings "$TEST_TMP/f4.json" '[{"severity":"Critical","message":"x"}]'
   run "$SCRIPT" --analysis-results "$TEST_TMP/a4.json" --llm-findings "$TEST_TMP/f4.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+# ---------------------------------------------------------------------------
+# Item 8 — execution-evidence rules apply even without analysis-results
+# ---------------------------------------------------------------------------
+
+@test "register mode with timed-out required suite gives BLOCKED even without analysis-results" {
+  # Create a minimal valid register with no blockers
+  cat > "$TEST_TMP/reg.yaml" <<'YAML'
+schema_version: 1
+story: TEST-S1
+entries: []
+gate_runs: []
+YAML
+
+  # Create execution evidence with a timed-out required suite
+  cat > "$TEST_TMP/ee.json" <<'JSON'
+{
+  "suites": [
+    {"name": "unit-tests", "required": true, "timeout": true, "exit_code": 1}
+  ]
+}
+JSON
+
+  # No --analysis-results, only --register and --execution-evidence
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml" \
+    --execution-evidence "$TEST_TMP/ee.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "BLOCKED" ]
+}
+
+@test "register mode with failed required suite gives REQUEST_CHANGES even without analysis-results" {
+  cat > "$TEST_TMP/reg.yaml" <<'YAML'
+schema_version: 1
+story: TEST-S1
+entries: []
+gate_runs: []
+YAML
+
+  cat > "$TEST_TMP/ee.json" <<'JSON'
+{
+  "suites": [
+    {"name": "unit-tests", "required": true, "timeout": false, "exit_code": 1}
+  ]
+}
+JSON
+
+  run --separate-stderr "$SCRIPT" --register "$TEST_TMP/reg.yaml" \
+    --execution-evidence "$TEST_TMP/ee.json"
   [ "$status" -eq 0 ]
   [ "$output" = "REQUEST_CHANGES" ]
 }

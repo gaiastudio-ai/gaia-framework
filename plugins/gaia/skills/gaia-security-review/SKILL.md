@@ -286,6 +286,24 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by the parameterized `verdict-resolver.sh` from `review-common/`. The LLM never computes or overrides it. The resolver consumes the per-skill `analysis-results.json` regardless of which review skill produced it — the file is validated against `plugins/gaia/schemas/analysis-results.schema.json` `schema_version: "1.0"` before precedence rules apply.
 
+- **Register path (primary).** When the orchestrator provides a `run_id`, record each finding through the shared register writer, record a run, and resolve via the register:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+  --story {story_key} --defect <msg> --type security --severity <sev> --gate security-review ...
+
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+  --story {story_key} --run-id {run_id} --gate security-review --outcome completed
+
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh \
+  --register {register_path} \
+  --analysis-results .gaia/state/review/security-review/{story_key}/analysis-results.json
+```
+
+  The parent context performs the `register-write.sh add` calls (fork isolation preserved). Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
+
+- **Legacy path.** When no `run_id` is provided, the legacy verdict path is used:
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh \
   --analysis-results .gaia/state/review/security-review/{story_key}/analysis-results.json \
@@ -297,7 +315,7 @@ Legacy single-skill invocations of `${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolv
 The resolver applies strict first-match-wins precedence:
 1. Any check `status: errored` → **BLOCKED**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
-3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
+3. Register rule (when `--register`): any unresolved blocker → **REQUEST_CHANGES**. Legacy rule (when `--llm-findings`): any LLM finding `Critical` → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
 Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Review Gate canonical vocabulary is inline (no separate `verdict-normalizer.sh`):**

@@ -353,6 +353,22 @@ When **no review-status story is identifiable** (no key in arguments, no story-k
 
 Map the findings to the canonical Review Gate vocabulary (case-sensitive: `PASSED` | `FAILED`). Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`). The verdict is FAILED if and only if an unresolved blocker exists; live-secrets are blocking by construction.
 
+**Register path (primary).** When the orchestrator provides a `run_id`, record each finding through the shared register writer, record a run, and resolve via the register:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+  --story {story_key} --defect "{finding}" --type security \
+  --severity {severity} --gate security-review ...
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+  --story {story_key} --run-id {run_id} --gate security-review --outcome completed
+${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
+  --register {register_path}
+```
+
+The resolver resolves verdict from the register (no `--analysis-results` needed for this gate). The LLM does not compute the verdict.
+
+**Legacy path.** Without a register the reviewer maps findings to PASSED/FAILED per the shared blocker definition.
+
 Invoke the shared `review-gate.sh` script to update the story's `Security Review` row:
 
 ```bash

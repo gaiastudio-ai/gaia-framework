@@ -152,11 +152,12 @@ The fork is read-only; the parent context writes `llm-findings.json` to the outp
 
 ### Phase 4 — Verdict resolution + Review Gate update
 
-Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate "Security Review"]`. The script:
+Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate "Security Review"] [--register] [--run-id <id>]`. The script:
 
-1. Calls `verdict-resolver.sh --skill gaia-test-dast` to compute the verdict (precedence: errored > tool-failed-blocking > LLM-Critical > APPROVE).
-2. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
-3. Echoes the verdict on stdout for downstream chaining.
+1. **Register path.** When `--register` is given (with `--story-key`), each LLM finding is written to the shared findings register via `register-write.sh add`, a run record is created via `register-write.sh record-run`, and `verdict-resolver.sh --register` resolves the verdict. Non-standard severity labels (e.g. "Critical Risk", "Informational") are normalised to the rubric scale before writing. If any `register-write.sh add` call fails, the run is recorded as `errored` and the verdict is `BLOCKED` (a lost finding must never produce APPROVE).
+2. **Legacy path.** Without `--register`, calls `verdict-resolver.sh --skill gaia-test-dast` with `--llm-findings` (precedence: errored > tool-failed-blocking > LLM-Critical > APPROVE).
+3. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
+4. Echoes the verdict on stdout for downstream chaining.
 
 ### Phase 5 — Report generation
 
