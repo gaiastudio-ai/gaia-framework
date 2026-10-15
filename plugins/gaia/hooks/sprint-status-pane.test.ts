@@ -1,5 +1,5 @@
 import { test, expect, mock, describe } from 'claude-code/testing'
-import { WRITER_CACHE, GAIA_ROOT, OK_RUN, deepCopy } from './sprint-status-fixture.js'
+import { WRITER_CACHE, GAIA_ROOT, OK_RUN, deepCopy, findLeafText } from './sprint-status-fixture.js'
 
 function world(on: any, opts: any = {}) {
   const cache = opts.cache ?? { content: JSON.stringify(WRITER_CACHE), mtimeMs: opts.now ?? 100000 }
@@ -182,8 +182,9 @@ describe('overdue pace and readiness', () => {
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
     const ui = await mountPane($)
-    const el = await ui.find({ text: /overdue/, color: 'red' })
+    const el = await findLeafText(ui, /^overdue$/)
     expect(el).toBeDefined()
+    expect(el.props.color).toBe('red')
     await ui.unmount()
   })
 
@@ -192,8 +193,9 @@ describe('overdue pace and readiness', () => {
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
     const ui = await mountPane($)
-    const el = await ui.find({ text: /1 blocked/, color: 'red' })
+    const el = await findLeafText(ui, /^1 blocked$/)
     expect(el).toBeDefined()
+    expect(el.props.color).toBe('red')
     await ui.unmount()
   })
 
