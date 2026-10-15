@@ -137,24 +137,42 @@ _filter_allowed() {
 # ---------------------------------------------------------------------------
 
 # _check_links PAGE — extract href values from a page and verify each
-# target file exists relative to the page's directory.
+# target file exists relative to the page's directory.  When the href
+# contains a #fragment, the target page must contain a matching id="..."
+# attribute.
 _check_links() {
   local page="$1"
   local page_dir
   page_dir="$(dirname "$page")"
   local missing=""
   local href
-  # Extract href="..." values, skip external links, anchors, and mailto
+  # Extract href="..." values, skip external links and mailto
   while IFS= read -r href; do
-    # Strip anchor fragments
-    href="${href%%#*}"
-    [ -n "$href" ] || continue
     # Skip external URLs
     case "$href" in
       http://*|https://*|mailto:*) continue ;;
     esac
+    # Separate file path and fragment
+    local frag=""
+    case "$href" in
+      *"#"*)
+        frag="${href#*#}"
+        href="${href%%#*}"
+        ;;
+    esac
+    # Pure same-page anchor (e.g. href="#foo") — check anchor in source page
+    if [ -z "$href" ] && [ -n "$frag" ]; then
+      grep -q "id=\"${frag}\"" "$page" 2>/dev/null ||
+        missing="${missing}  dangling anchor: #${frag} (from $(basename "$page"))"$'\n'
+      continue
+    fi
     local target="$page_dir/$href"
-    [ -f "$target" ] || missing="${missing}  missing: ${href} (from $(basename "$page"))"$'\n'
+    if [ ! -f "$target" ]; then
+      missing="${missing}  missing: ${href} (from $(basename "$page"))"$'\n'
+    elif [ -n "$frag" ]; then
+      grep -q "id=\"${frag}\"" "$target" 2>/dev/null ||
+        missing="${missing}  dangling anchor: ${href}#${frag} (from $(basename "$page"))"$'\n'
+    fi
   done < <(grep -oE 'href="[^"]*"' "$page" | sed 's/^href="//;s/"$//')
   printf '%s' "$missing"
 }
@@ -223,4 +241,77 @@ _check_links() {
 
 @test "gaia-sprint-status.html has graceful degradation section" {
   grep -q 'id="degradation"' "$DOC_DIR/commands/gaia-sprint-status.html"
+}
+
+# ---------------------------------------------------------------------------
+# Configuration section presence (guards the id anchor and key content)
+# ---------------------------------------------------------------------------
+
+@test "sprint-status-mod.html has configuration section with anchor" {
+  grep -q 'id="configuration"' "$DOC_DIR/sprint-status-mod.html"
+}
+
+@test "sprint-status-mod.html configuration section documents user_aliases" {
+  # Verify the page contains user_aliases content between the configuration
+  # anchor and the next section.  A sed range extracts the config section.
+  local section
+  section="$(sed -n '/id="configuration"/,/<\/section>/p' "$DOC_DIR/sprint-status-mod.html")"
+  [ -n "$section" ] || fail "configuration section not found"
+  grep -q 'user_aliases' <<< "$section" ||
+    fail "user_aliases not documented in configuration section"
+}
+
+@test "sprint-status-mod.html configuration section documents waiting threshold default 120" {
+  local section
+  section="$(sed -n '/id="configuration"/,/<\/section>/p' "$DOC_DIR/sprint-status-mod.html")"
+  [ -n "$section" ] || fail "configuration section not found"
+  grep -q 'waiting_agent_threshold_seconds' <<< "$section" ||
+    fail "waiting_agent_threshold_seconds not documented in configuration section"
+  grep -q '120' <<< "$section" ||
+    fail "default value 120 not documented in configuration section"
+}
+
+# ---------------------------------------------------------------------------
+# Pace label guard — doc page must use the labels the code renders
+# ---------------------------------------------------------------------------
+
+@test "sprint-status-mod.html pace labels match code" {
+  # Read pace display labels from the hooks source of truth.
+  local hooks="$REPO_ROOT/plugins/gaia/hooks/index.js"
+  [ -f "$hooks" ] || { echo "hooks/index.js not found" >&2; return 1; }
+
+  # Extract the rendered display values (right-hand side of ':') from
+  # PACE_LABELS.  Keys such as 'on-pace' are skipped — only the values
+  # the user sees (e.g. 'on pace') are checked.
+  local code_labels
+  code_labels="$(sed -n '/^var PACE_LABELS/,/^}/p' "$hooks" |
+    grep -oE ":[[:space:]]*'[^']+'" |
+    sed "s/^:[[:space:]]*'//;s/'$//" |
+    sort -u)"
+  [ -n "$code_labels" ] || { echo "could not parse PACE_LABELS from hooks" >&2; return 1; }
+
+  # Every display label from the code must appear on the doc page.
+  local missing=""
+  local label
+  while IFS= read -r label; do
+    [ -z "$label" ] && continue
+    grep -qF "$label" "$DOC_DIR/sprint-status-mod.html" ||
+      missing="${missing}  missing pace label: '${label}'"$'\n'
+  done <<LABELS
+$code_labels
+LABELS
+
+  # The doc page must NOT use the old incorrect labels.
+  local old
+  for old in "on-track" "at-risk"; do
+    if grep -qF "$old" "$DOC_DIR/sprint-status-mod.html"; then
+      missing="${missing}  stale pace label: '${old}' still present"$'\n'
+    fi
+  done
+
+  [ -z "$missing" ] || {
+    echo "FAIL: pace label mismatches:" >&2
+    echo "$missing" >&2
+    return 1
+  }
 }
