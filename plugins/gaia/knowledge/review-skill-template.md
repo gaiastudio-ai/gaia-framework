@@ -99,7 +99,7 @@ Cache: cache key = `hash(File List contents + tool config + tool versions + reso
 
 ### Phase 5 — Verdict
 
-Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`). Whenever a story key is available, findings are recorded through the register writer (`register-write.sh add`), a run is recorded (`register-write.sh record-run`), and the verdict uses `verdict-resolver.sh --register`. When no orchestrator `run_id` is given, the skill mints a standalone run ID (`standalone-<timestamp>-<pid>`). Forked skills call the writer from the parent context (fork isolation preserved); non-forked skills call it directly. The legacy `--llm-findings` path applies only when no story key is present.
+Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`). Whenever a story key is available, findings are recorded through the register writer (`register-write.sh add`), a run is recorded (`register-write.sh record-run`), and the verdict uses `verdict-resolver.sh --register`. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run` and pass it to verdict scripts via `--run-id`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`). Forked skills call the writer from the parent context (fork isolation preserved); non-forked skills call it directly. The legacy `--llm-findings` path applies only when no story key is present.
 
 Invoke `verdict-resolver.sh --register <path> [--analysis-results <path>]` (register path, default when a story key is available) or `verdict-resolver.sh --analysis-results <path> --llm-findings <path>` (legacy path, no story key). The resolver applies strict first-match-wins precedence:
 

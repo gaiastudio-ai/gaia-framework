@@ -202,7 +202,7 @@ if [ -n "$STORY_KEY" ] && [ -n "$GATE_NAME" ] && [ -x "$GATE" ]; then
   esac
   _gate_args=""
   case "$gate_status" in
-    PASSED|FAILED)
+    FAILED)
       _gate_args="--report-missing-reason verdict-only:${verdict}"
       ;;
   esac

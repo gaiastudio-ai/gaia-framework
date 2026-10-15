@@ -544,15 +544,21 @@ _check_register_wiring() {
   if ! grep -qF 'record-run' <<<"$section"; then
     echo "$label: verdict section missing record-run" >&2; ok=1
   fi
-  # Verify that both verdict-resolver and --register appear in the section.
-  # They may be on different lines (multi-line code block), so check each
-  # separately. A section that has --register but NOT verdict-resolver is
-  # incomplete wiring.
-  if ! grep -qE '(verdict-resolver|RESOLVER)' <<<"$section"; then
-    echo "$label: verdict section missing verdict-resolver reference" >&2; ok=1
-  fi
-  if ! grep -qF -- '--register' <<<"$section"; then
-    echo "$label: verdict section missing --register flag" >&2; ok=1
+  # Verify that verdict-resolver.sh and --register appear connected — either
+  # on the same line or within a backslash-continuation block (2-line window).
+  # A section that mentions --register only in a prose sentence (e.g. "The
+  # --register flag is accepted for backward compatibility") without the
+  # resolver invocation is incomplete wiring.
+  local _vr_register_ok
+  _vr_register_ok="$(awk '
+    /verdict-resolver/ { saw_vr = NR }
+    /--register/ {
+      if (saw_vr > 0 && (NR - saw_vr) <= 2) { found = 1; exit }
+    }
+    END { print (found ? "yes" : "no") }
+  ' <<<"$section")"
+  if [ "$_vr_register_ok" != "yes" ]; then
+    echo "$label: verdict section missing verdict-resolver invocation with --register (connected within 2 lines)" >&2; ok=1
   fi
   return "$ok"
 }
@@ -637,4 +643,78 @@ _check_register_wiring() {
   if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
     echo "reword mutant passed the wiring check — test is broken" >&2; false
   fi
+}
+
+@test "register wiring: removing verdict-resolver.sh from test-perf register path paragraph fails the wiring check" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/skills/gaia-test-perf/SKILL.md"
+  [ -f "$path" ] || { echo "not found" >&2; false; }
+  # Baseline: the real file passes
+  _check_register_wiring "$path" "baseline" || {
+    echo "baseline failed — cannot test mutant" >&2; false
+  }
+  # Mutant: replace "verdict-resolver.sh --register" with "the verdict"
+  local copy="$TEST_TMP/mutant-perf-vr.md"
+  sed 's/`verdict-resolver\.sh --register`/the verdict/g' "$path" > "$copy"
+  if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
+    echo "mutant (verdict-resolver.sh --register removed from test-perf) passed — test is broken" >&2; false
+  fi
+}
+
+@test "register wiring: removing verdict-resolver from code-review verdict section fails the wiring check" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$path" ] || { echo "not found" >&2; false; }
+  _check_register_wiring "$path" "baseline" || {
+    echo "baseline failed" >&2; false
+  }
+  # Mutant: replace verdict-resolver.sh with generic-resolver.sh throughout
+  local copy="$TEST_TMP/mutant-cr-no-vr.md"
+  sed 's/verdict-resolver\.sh/generic-resolver.sh/g' "$path" > "$copy"
+  if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
+    echo "mutant (verdict-resolver removed from code-review) passed — test is broken" >&2; false
+  fi
+}
+
+@test "run-id forwarding: run-all-reviews dispatch contract passes --run-id" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local f="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$f" ] || { echo "not found" >&2; false; }
+  # Extract the Skill-dispatch contract code block (between Skill-dispatch
+  # contract and the next heading) and check the Invoke line carries --run-id
+  local dispatch_block
+  dispatch_block="$(awk '
+    /Skill-dispatch contract/ { found=1 }
+    found && /^[# ]*[0-9]+\. After the skill returns/ { exit }
+    found { print }
+  ' "$f")"
+  grep -qF -- '--run-id' <<<"$dispatch_block" || {
+    echo "dispatch contract code block does not pass --run-id" >&2; false
+  }
+}
+
+@test "run-id forwarding: each review skill documents how to obtain run_id from arguments" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local skills=(
+    "skills/gaia-code-review/SKILL.md"
+    "skills/gaia-qa-tests/SKILL.md"
+    "skills/gaia-review-security/SKILL.md"
+    "skills/gaia-test-automate/SKILL.md"
+    "skills/gaia-test-review/SKILL.md"
+    "skills/gaia-review-perf/SKILL.md"
+    "skills/gaia-test-dast/SKILL.md"
+    "skills/gaia-test-perf/SKILL.md"
+    "knowledge/review-skill-template.md"
+  )
+  local failed=0
+  local f
+  for f in "${skills[@]}"; do
+    local path="$base/$f"
+    [ -f "$path" ] || { echo "not found: $f" >&2; failed=1; continue; }
+    if ! grep -qF 'arguments contain' "$path"; then
+      echo "$f: missing run-id forwarding sentence (expected 'arguments contain')" >&2
+      failed=1
+    fi
+  done
+  [ "$failed" -eq 0 ]
 }

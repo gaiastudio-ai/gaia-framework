@@ -162,7 +162,7 @@ Skill-dispatch contract:
 ```
 For each short_name in run:
   1. Invoke via the Skill tool:
-       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key}"})
+       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key} --run-id {run_id}"})
      Canonical short-name → skill mapping (one canonical name per skill — the listed name is authoritative; deprecated_aliases live on the skill's own frontmatter):
        code-review     → gaia:gaia-code-review
        qa-tests        → gaia:gaia-review-qa

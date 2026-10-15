@@ -310,7 +310,7 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
 
-**Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. When no orchestrator `run_id` is given, mint a standalone run ID (`standalone-<timestamp>-<pid>`):
+**Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`):
 
 ```bash
 # For each LLM finding (parent context — fork isolation preserved):

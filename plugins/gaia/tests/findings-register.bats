@@ -1714,7 +1714,7 @@ EOF
   local story_file="$story_dir/TEST-S1-test-story.md"
   _write_story_file "$story_file" "TEST-S1"
 
-  # Create 10+ entries to get RF-10
+  # Create 10 entries to get RF-1 through RF-10
   local j=1
   while [ "$j" -le 10 ]; do
     run "$SCRIPT" add --story TEST-S1 --defect "entry $j" \
@@ -1728,25 +1728,32 @@ EOF
   [ "$status" -eq 0 ]
   run "$SCRIPT" triage-nonblocking --story TEST-S1 --run-id run-001
   [ "$status" -eq 0 ]
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
-  [ "$status" -eq 0 ]
 
+  # Write ONLY RF-10 into the story file (manually, to simulate a prior run
+  # that wrote RF-10 but not RF-1 — e.g. RF-1 was open then, now triaged).
+  # Replace the placeholder row with just RF-10.
   local sf
   sf="$("$SCRIPTS_DIR/resolve-story-file.sh" TEST-S1)"
+  local emdash
+  emdash="$(printf '\xe2\x80\x94')"
+  sed -i '' "s/| $emdash | $emdash | $emdash | $emdash | $emdash |/| RF-10 | bug | low | entry 10 (gates: code-review) | $emdash owner: ; priority: low |/" "$sf"
 
-  # Both RF-1 and RF-10 must appear as separate rows
-  grep -q '| RF-1 |' "$sf" || { echo "RF-1 missing on first write" >&2; false; }
-  grep -q '| RF-10 |' "$sf" || { echo "RF-10 missing on first write" >&2; false; }
+  # Verify RF-10 is present and RF-1 is absent
+  grep -q '| RF-10 |' "$sf" || { echo "RF-10 not seeded" >&2; false; }
+  if grep -q '| RF-1 |' "$sf"; then
+    echo "RF-1 should not be present yet" >&2; false
+  fi
 
-  # Second run — must be idempotent: RF-1 not duplicated, and RF-10 not lost
-  # This exercises the existing-row lookup with exact cell match.
+  # Now run findings-rows — RF-1 must be inserted, RF-10 must not be duplicated
   run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
   [ "$status" -eq 0 ]
 
-  local rf1_count rf10_count
-  rf1_count="$(grep -c '| RF-1 |' "$sf")"
+  # RF-1 must now appear (was new, must not have been confused with RF-10)
+  grep -q '| RF-1 |' "$sf" || { echo "RF-1 was not inserted (exact-cell match confused RF-1 with RF-10)" >&2; false; }
+
+  # RF-10 must appear exactly once (not duplicated)
+  local rf10_count
   rf10_count="$(grep -c '| RF-10 |' "$sf")"
-  [ "$rf1_count" -eq 1 ] || { echo "RF-1 appeared $rf1_count times (expected 1)" >&2; false; }
   [ "$rf10_count" -eq 1 ] || { echo "RF-10 appeared $rf10_count times (expected 1)" >&2; false; }
 }
 
@@ -2383,4 +2390,69 @@ EOF
   run "$SCRIPT" gate-status --story TEST-S1 --run-id "other-run" --gate code-review
   [ "$status" -eq 0 ]
   [ "$output" = "UNVERIFIED" ]
+}
+
+# ---------------------------------------------------------------------------
+# verdict.sh PASSED verdict does not use the report-missing escape hatch
+# ---------------------------------------------------------------------------
+
+@test "dast verdict.sh PASSED verdict does not write gate row via escape hatch" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_file="$story_dir/story.md"
+  mkdir -p "$story_dir"
+  cat > "$story_file" <<'STORY'
+---
+template: 'story'
+key: "TEST-S1"
+title: "Test Story"
+status: in-progress
+epic: "TEST"
+---
+# Story: Test Story
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | — |
+| QA Tests | UNVERIFIED | — |
+| Security Review | UNVERIFIED | — |
+| Test Automation | UNVERIFIED | — |
+| Test Review | UNVERIFIED | — |
+| Performance Review | UNVERIFIED | — |
+
+## Findings
+
+> Out-of-scope issues.
+
+| # | Type | Severity | Finding | Suggested Action |
+|---|------|----------|---------|-----------------|
+| — | — | — | — | — |
+STORY
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+EOF
+  # No findings — verdict will be APPROVE
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[]}
+EOF
+
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --gate "Security Review"
+  [ "$status" -eq 0 ]
+
+  # Verdict must be APPROVE
+  grep -qF "APPROVE" <<<"$output" || { echo "expected APPROVE verdict, got: $output" >&2; false; }
+
+  # The Security Review gate row must still be UNVERIFIED — PASSED must NOT be
+  # written without a real report file (proof-of-execution rejects it)
+  grep -q 'Security Review.*UNVERIFIED' "$story_file" || {
+    local row
+    row="$(grep 'Security Review' "$story_file")"
+    echo "expected gate row to stay UNVERIFIED (no report), got: $row" >&2
+    false
+  }
 }
