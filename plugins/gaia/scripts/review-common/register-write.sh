@@ -1194,11 +1194,9 @@ _rw_cmd_findings_rows() {
   acquire_lock "${story_file}.lock" 15 9
 
   # Process with awk: find ## Findings section, insert rows, replace placeholder.
-  local new_rows
-  new_rows="$(cat "$rows_file")"
-  rm -f "$rows_file"
-
-  export _RW_NEW_ROWS="$new_rows"
+  # The rows are read from the temp file rather than an environment variable:
+  # Linux caps a single environment string at 128 KB, so a large finding would
+  # otherwise make awk fail to start.
 
   # Use awk to build the new file content.
   local output_file="${story_file}.tmp.$$"
@@ -1212,9 +1210,11 @@ _rw_cmd_findings_rows() {
   # the Findings section.  Second pass (END block) outputs lines, inserting
   # only truly new rows after the separator.  This prevents re-insertion of
   # rows that appear later in the section.
-  awk '
+  awk -v rowsfile="$rows_file" '
     BEGIN {
-      n_rows = split(ENVIRON["_RW_NEW_ROWS"], row_arr, "\n")
+      n_rows = 0
+      while ((getline row_line < rowsfile) > 0) row_arr[++n_rows] = row_line
+      close(rowsfile)
       placeholder = ENVIRON["_RW_PLACEHOLDER"]
 
       # Collect RF-IDs from new rows.
@@ -1265,11 +1265,17 @@ _rw_cmd_findings_rows() {
         }
       }
     }
-  ' "$story_file" > "$output_file"
+  ' "$story_file" > "$output_file" || {
+    rm -f "$output_file" "$rows_file"
+    unset _RW_PLACEHOLDER
+    release_lock 9 2>/dev/null || true
+    _rw_die 1 "findings-rows: failed to rewrite the story file"
+  }
+  rm -f "$rows_file"
 
   mv "$output_file" "$story_file"
 
-  unset _RW_NEW_ROWS _RW_PLACEHOLDER
+  unset _RW_PLACEHOLDER
 
   release_lock 9 2>/dev/null || true
 }

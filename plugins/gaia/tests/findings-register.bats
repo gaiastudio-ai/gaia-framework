@@ -1736,7 +1736,9 @@ EOF
   sf="$("$SCRIPTS_DIR/resolve-story-file.sh" TEST-S1)"
   local emdash
   emdash="$(printf '\xe2\x80\x94')"
-  sed -i '' "s/| $emdash | $emdash | $emdash | $emdash | $emdash |/| RF-10 | bug | low | entry 10 (gates: code-review) | $emdash owner: ; priority: low |/" "$sf"
+  # Portable in-place edit (BSD and GNU sed disagree on -i).
+  sed "s/| $emdash | $emdash | $emdash | $emdash | $emdash |/| RF-10 | bug | low | entry 10 (gates: code-review) | $emdash owner: ; priority: low |/" "$sf" > "$sf.new"
+  mv "$sf.new" "$sf"
 
   # Verify RF-10 is present and RF-1 is absent
   grep -q '| RF-10 |' "$sf" || { echo "RF-10 not seeded" >&2; false; }
