@@ -259,7 +259,7 @@ describe('overdue pace and readiness', () => {
 })
 
 describe('action needed banner', () => {
-  test('banner renders with per-entry since date', async ($, on) => {
+  test('banner renders with per-entry since date, no since in header', async ($, on) => {
     const cache = deepCopy(WRITER_CACHE)
     cache.action_needed = [
       { rule: 'a', type: 'manual_test_due', story_keys: ['E900-S3'], message: 'Manual test due', command: '/gaia-test-manual', since: '2026-10-13', source: 'story-file' },
@@ -272,9 +272,12 @@ describe('action needed banner', () => {
     expect(await ui.find({ text: /ACTION NEEDED/ })).toBeDefined()
     expect(await ui.find({ text: /Manual test due/ })).toBeDefined()
     expect(await ui.find({ text: /gaia-test-manual/ })).toBeDefined()
-    // Per-entry since date
+    // Per-entry since dates
     expect(await ui.find({ text: /since 2026-10-13/ })).toBeDefined()
     expect(await ui.find({ text: /since 2026-10-14/ })).toBeDefined()
+    // Banner header line has no since date (entries have their own).
+    const headerEl = await findLeafText(ui, /^⚠ ACTION NEEDED$/)
+    expect(headerEl).toBeDefined()
     await ui.unmount()
   })
 
@@ -284,6 +287,52 @@ describe('action needed banner', () => {
     await w.clock.settle()
     const ui = await mountPane($)
     expect(await ui.find({ text: /ACTION NEEDED/ })).toBeUndefined()
+    await ui.unmount()
+  })
+})
+
+describe('goal wrapping', () => {
+  test('goal longer than one line renders fully with wrap, not truncated', async ($, on) => {
+    const cache = deepCopy(WRITER_CACHE)
+    cache.sprint.goal = 'This is a goal that is quite long and should wrap over multiple lines in the sidebar pane without being cut off with an ellipsis'
+    const w = world(on, { cache: { content: JSON.stringify(cache), mtimeMs: 100000 } })
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    // Full goal text should be present, not truncated.
+    expect(await ui.find({ text: /This is a goal.*without being cut off/ })).toBeDefined()
+    // The goal element uses wrap: 'wrap', not truncate-end.
+    const goalEl = await findLeafText(ui, /This is a goal/)
+    expect(goalEl).toBeDefined()
+    expect(goalEl.props.wrap).toBe('wrap')
+    await ui.unmount()
+  })
+
+  test('goal capped at GOAL_MAX still renders fully within cap', async ($, on) => {
+    const cache = deepCopy(WRITER_CACHE)
+    cache.sprint.goal = 'A'.repeat(200)
+    const w = world(on, { cache: { content: JSON.stringify(cache), mtimeMs: 100000 } })
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    const goalEl = await findLeafText(ui, /^A+$/)
+    expect(goalEl).toBeDefined()
+    // Should not be truncated (wrap, not truncate-end).
+    expect(goalEl.props.wrap).toBe('wrap')
+    await ui.unmount()
+  })
+})
+
+describe('close button label', () => {
+  test('pane close button shows "9 close", not "9: 9"', async ($, on) => {
+    const w = world(on)
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    // There should be no "9: 9" text anywhere.
+    expect(await ui.find({ text: /^9: 9$/ })).toBeUndefined()
+    // The close button shows "9 close".
+    expect(await ui.find({ text: /9 close/ })).toBeDefined()
     await ui.unmount()
   })
 })

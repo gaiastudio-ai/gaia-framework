@@ -336,10 +336,6 @@ function computeStages(story) {
 function renderBanner(c, data) {
   var actions = mergedActionList(data)
   if (!actions.length) return null
-  var earliest = actions.reduce(function (m, a) {
-    if (!a.since) return m
-    return (!m || a.since < m) ? a.since : m
-  }, null)
   var items = []
   for (var i = 0; i < actions.length; i++) {
     var a = actions[i]
@@ -352,8 +348,7 @@ function renderBanner(c, data) {
     items.push(h(c.Box, { key: 'an-' + i, flexDirection: 'column' }, ...children))
   }
   return h(c.Box, { flexDirection: 'column' },
-    h(c.Text, { color: warnColor(), bold: true },
-      '⚠ ACTION NEEDED' + (earliest ? ' · since ' + earliest : '')),
+    h(c.Text, { color: warnColor(), bold: true }, '⚠ ACTION NEEDED'),
     ...items
   )
 }
@@ -367,7 +362,7 @@ function renderHeader(c, data) {
       h(c.Text, { bold: true }, 'SPRINT  ' + id + '  '),
       h(c.Text, { color: greenColor() }, '● live')
     ),
-    goal ? h(c.Text, { wrap: 'truncate-end' }, goal) : null
+    goal ? h(c.Text, { wrap: 'wrap' }, goal) : null
   )
 }
 
@@ -388,37 +383,34 @@ function safePoints(v) {
   return v
 }
 
+var BAR_STATUS_ORDER = ['done', 'review', 'in-progress', 'blocked', 'ready-for-dev', 'ready', 'backlog', 'validating']
+
 function buildBarSegments(stories, availCols) {
   if (!stories || !stories.length || availCols < 1) return []
   var cols = Math.min(availCols, 500)
-  var sorted = sortByPhase(stories)
+  // Sum points per status, in the canonical display order.
+  var pointsByStatus = {}
   var totalPts = 0
-  for (var i = 0; i < sorted.length; i++) totalPts += safePoints(sorted[i].points)
+  for (var i = 0; i < stories.length; i++) {
+    var st = stories[i].status || 'backlog'
+    var pts = safePoints(stories[i].points)
+    // Map unknown statuses into backlog/dim.
+    if (!STATUS_COLORS[st]) st = 'backlog'
+    pointsByStatus[st] = (pointsByStatus[st] || 0) + pts
+    totalPts += pts
+  }
+  // Build one segment per present status, in canonical order.
   var segs = []
-  for (var j = 0; j < sorted.length; j++) {
-    var pts = safePoints(sorted[j].points)
+  for (var o = 0; o < BAR_STATUS_ORDER.length; o++) {
+    var status = BAR_STATUS_ORDER[o]
+    if (pointsByStatus[status] == null) continue
     var w = totalPts > 0
-      ? Math.max(1, Math.floor(pts / totalPts * cols))
+      ? Math.max(1, Math.floor(pointsByStatus[status] / totalPts * cols))
       : 1
-    segs.push({ status: sorted[j].status || 'backlog', width: Math.min(w, cols) })
+    segs.push({ status: status, width: Math.min(w, cols) })
   }
-  // Merge adjacent same-status when stories exceed available columns.
-  if (sorted.length > cols) {
-    var merged = [{ status: segs[0].status, width: segs[0].width }]
-    for (var m = 1; m < segs.length; m++) {
-      if (segs[m].status === merged[merged.length - 1].status) {
-        merged[merged.length - 1].width += segs[m].width
-      } else {
-        merged.push({ status: segs[m].status, width: segs[m].width })
-      }
-    }
-    segs = merged
-  }
-  // Cap each segment width to available columns.
-  for (var c = 0; c < segs.length; c++) {
-    if (segs[c].width > cols) segs[c].width = cols
-  }
-  // Adjust total to fit available columns.
+  if (!segs.length) return []
+  // Fit to available columns.
   var usedCols = 0
   for (var n = 0; n < segs.length; n++) usedCols += segs[n].width
   var idx = 0
@@ -439,25 +431,33 @@ function buildBarSegments(stories, availCols) {
   return segs
 }
 
+function presentStatuses(stories) {
+  var present = {}
+  for (var i = 0; i < stories.length; i++) {
+    var st = stories[i].status || 'backlog'
+    if (!STATUS_COLORS[st]) st = 'backlog'
+    present[st] = true
+  }
+  return present
+}
+
 function renderBar(c, data, bodyColumns) {
   var stories = data.stories || []
   if (!stories.length) return null
   var cols = bodyColumns || 40
-  // Collect which statuses are present for the legend.
-  var presentStatuses = {}
-  for (var i = 0; i < stories.length; i++) presentStatuses[stories[i].status || 'backlog'] = true
+  var present = presentStatuses(stories)
 
   if (envNoColor) {
     // Text-only fallback: show counts per status.
     var counts = {}
     for (var j = 0; j < stories.length; j++) {
       var st = stories[j].status || 'backlog'
+      if (!STATUS_COLORS[st]) st = 'backlog'
       counts[st] = (counts[st] || 0) + 1
     }
     var parts = []
-    var order = ['done', 'review', 'in-progress', 'blocked', 'ready-for-dev', 'ready', 'backlog', 'validating']
-    for (var k = 0; k < order.length; k++) {
-      if (counts[order[k]]) parts.push(counts[order[k]] + ' ' + order[k])
+    for (var k = 0; k < BAR_STATUS_ORDER.length; k++) {
+      if (counts[BAR_STATUS_ORDER[k]]) parts.push(counts[BAR_STATUS_ORDER[k]] + ' ' + BAR_STATUS_ORDER[k])
     }
     return h(c.Text, null, parts.join(' · '))
   }
@@ -471,17 +471,27 @@ function renderBar(c, data, bodyColumns) {
         FILLED_BLOCK.repeat(segs[s].width))
     )
   }
-  // Legend: one line with distinct glyphs per present status.
-  var legendParts = []
-  var legendOrder = ['done', 'review', 'in-progress', 'blocked', 'ready-for-dev', 'ready', 'backlog', 'validating']
-  for (var l = 0; l < legendOrder.length; l++) {
-    if (presentStatuses[legendOrder[l]]) {
-      legendParts.push(statusGlyph(legendOrder[l]) + ' ' + legendOrder[l])
+  // Colour key: one entry per present status with a coloured filled block + name.
+  // ASCII mode uses ASCII markers instead of the filled block glyph.
+  var keyChildren = []
+  for (var l = 0; l < BAR_STATUS_ORDER.length; l++) {
+    if (present[BAR_STATUS_ORDER[l]]) {
+      if (keyChildren.length > 0) keyChildren.push(h(c.Text, { key: 'ksep-' + l }, '  '))
+      if (envAscii) {
+        keyChildren.push(
+          h(c.Text, { key: 'kb-' + l }, STATUS_GLYPHS_ASCII[BAR_STATUS_ORDER[l]] + ' ' + BAR_STATUS_ORDER[l])
+        )
+      } else {
+        keyChildren.push(
+          h(c.Text, { key: 'kb-' + l, color: statusColor(BAR_STATUS_ORDER[l]) }, FILLED_BLOCK)
+        )
+        keyChildren.push(h(c.Text, { key: 'kn-' + l }, ' ' + BAR_STATUS_ORDER[l]))
+      }
     }
   }
   return h(c.Box, { flexDirection: 'column' },
     h(c.Box, { flexDirection: 'row' }, ...barChildren),
-    h(c.Text, { color: dimColor() }, legendParts.join('  '))
+    h(c.Box, { flexDirection: 'row' }, ...keyChildren)
   )
 }
 
@@ -630,6 +640,27 @@ function renderNow(c, data, $) {
     }
   }
   return h(c.Box, { flexDirection: 'column' }, ...children)
+}
+
+function renderGlyphLegend(c, data) {
+  var stories = data.stories || []
+  var present = presentStatuses(stories)
+  if (envAscii) {
+    var asciiParts = []
+    for (var i = 0; i < BAR_STATUS_ORDER.length; i++) {
+      if (present[BAR_STATUS_ORDER[i]]) {
+        asciiParts.push(STATUS_GLYPHS_ASCII[BAR_STATUS_ORDER[i]] + ' ' + BAR_STATUS_ORDER[i])
+      }
+    }
+    return h(c.Text, { color: dimColor() }, asciiParts.join('  '))
+  }
+  var parts = []
+  for (var j = 0; j < BAR_STATUS_ORDER.length; j++) {
+    if (present[BAR_STATUS_ORDER[j]]) {
+      parts.push(statusGlyph(BAR_STATUS_ORDER[j]) + ' ' + BAR_STATUS_ORDER[j])
+    }
+  }
+  return h(c.Text, { color: dimColor() }, parts.join('  '))
 }
 
 function renderPhaseMatrix(c, data, $) {
@@ -937,6 +968,9 @@ export function register(on) {
     sections.push(renderNow(c, data, $))
     sections.push(sepLine(c))
 
+    // Glyph legend directly above the phase matrix.
+    sections.push(renderGlyphLegend(c, data))
+
     // Phase matrix.
     sections.push(renderPhaseMatrix(c, data, $))
 
@@ -945,7 +979,7 @@ export function register(on) {
     if (detail) { sections.push(sepLine(c)); sections.push(detail) }
 
     // Pane-level close button: digit 9 closes the pane when it has focus.
-    sections.push(h(c.Button, { hotkey: '9', plain: true, onPress: function () { toggle($, false) } }, '9'))
+    sections.push(h(c.Button, { hotkey: '9', plain: true, onPress: function () { toggle($, false) } }, '9 close'))
 
     return h(c.Box, { flexDirection: 'column' }, ...sections)
   })
