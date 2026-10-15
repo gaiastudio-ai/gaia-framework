@@ -739,7 +739,7 @@ def timefields($sm):
   | (if .sprint == null then null else (.sprint.start_date | d2ep) end) as $sep
   | (if .sprint == null then null else (.sprint.end_date | d2ep) end) as $eep
   | (if $sep != null and $tep != null then ([((($tep - $sep) / 86400) | floor), 0] | max) else 0 end) as $cur
-  | (if $sep != null and $eep != null then ((($eep - $sep) / 86400) | floor) else null end) as $tot
+  | (if $sep != null and $eep != null then (((($eep - $sep) / 86400) | floor) + 1) else null end) as $tot
   | .generated_at = ($now | strftime("%Y-%m-%dT%H:%M:%SZ"))
   | (if .sprint != null then .sprint.total_days = $tot else . end)
   | .day = {

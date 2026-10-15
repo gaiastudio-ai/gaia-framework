@@ -1,21 +1,5 @@
 import { test, expect, mock, describe } from 'claude-code/testing'
-
-const GAIA_ROOT = '/project'
-const OK_RUN = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-
-function makeCache(stories: any[], opts: any = {}) {
-  return {
-    schema_version: '1.0', generated_at: '2026-10-01T00:00:00Z',
-    sprint: { id: 'sprint-test-1', goal: 'Ship it', start_date: '2026-10-01', end_date: '2026-10-14', status: 'active', total_days: 14, capacity_utilization: null, epic_focus: null },
-    totals: opts.totals ?? { done_points: 10, total_points: 20, done_stories: 1, total_stories: stories.length, progress_pct: 50 },
-    by_status: {}, day: { current: 3, total: 14, pace: 'on-pace' }, active_phase: 1,
-    phases: opts.phases ?? [{ phase: 1, status: 'active', stories: stories.map((s: any) => s.key), done_count: 0, total_count: stories.length }],
-    unphased_stories: opts.unphased ?? [],
-    stories: stories,
-    action_needed: [], drift: [], readiness: { sprint_review: false, sprint_close: false },
-    user_aliases: [], waiting_agent_threshold_seconds: 900
-  }
-}
+import { WRITER_CACHE, GAIA_ROOT, OK_RUN, deepCopy } from './sprint-status-fixture.js'
 
 function story(key: string, status: string, points: number, phase: number | null = 1, risk: string = 'low') {
   return {
@@ -24,6 +8,15 @@ function story(key: string, status: string, points: number, phase: number | null
     gates: { passed: 0, total: 6, rows: [] }, tasks: { done: 0, total: 0, items: [] },
     manual_test: { required: false, verdict: null }
   }
+}
+
+function makeCache(stories: any[], opts: any = {}) {
+  const cache = deepCopy(WRITER_CACHE)
+  cache.stories = stories
+  cache.totals = opts.totals ?? cache.totals
+  cache.phases = opts.phases ?? [{ phase: 1, status: 'active', stories: stories.map((s: any) => s.key), done_count: 0, total_count: stories.length }]
+  cache.unphased_stories = opts.unphased ?? []
+  return cache
 }
 
 function world(on: any, cacheData: any, opts: any = {}) {
@@ -63,16 +56,15 @@ describe('segmented bar', () => {
     const data = makeCache([
       story('E900-S1', 'done', 10),
       story('E900-S2', 'in-progress', 5),
-      story('E900-S3', 'ready', 5)
+      story('E900-S3', 'ready-for-dev', 5)
     ])
     const w = world(on, data)
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
     const ui = await mountPane($)
-    // Legend should show the statuses present
     expect(await ui.find({ text: /done/ })).toBeDefined()
     expect(await ui.find({ text: /in-progress/ })).toBeDefined()
-    expect(await ui.find({ text: /ready/ })).toBeDefined()
+    expect(await ui.find({ text: /ready-for-dev/ })).toBeDefined()
     await ui.unmount()
   })
 
@@ -82,7 +74,6 @@ describe('segmented bar', () => {
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
     const ui = await mountPane($)
-    // Should render a bar with filled blocks
     expect(await ui.find({ text: /█/ })).toBeDefined()
     await ui.unmount()
   })
@@ -91,7 +82,7 @@ describe('segmented bar', () => {
     const data = makeCache([
       story('E900-S1', 'done', 5),
       story('E900-S2', 'in-progress', 3),
-      story('E900-S3', 'ready', 2)
+      story('E900-S3', 'ready-for-dev', 2)
     ])
     const w = world(on, data, { noColor: '1' })
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
@@ -99,8 +90,7 @@ describe('segmented bar', () => {
     const ui = await mountPane($)
     expect(await ui.find({ text: /1 done/ })).toBeDefined()
     expect(await ui.find({ text: /1 in-progress/ })).toBeDefined()
-    expect(await ui.find({ text: /1 ready/ })).toBeDefined()
-    // No filled blocks in text-only mode
+    expect(await ui.find({ text: /1 ready-for-dev/ })).toBeDefined()
     expect(await ui.find({ text: /█/ })).toBeUndefined()
     await ui.unmount()
   })
@@ -125,7 +115,7 @@ describe('phase matrix', () => {
     const data = makeCache([
       story('E900-S1', 'done', 3, 1),
       story('E900-S2', 'in-progress', 5, 2),
-      story('E900-S3', 'ready', 2, 3)
+      story('E900-S3', 'ready-for-dev', 2, 3)
     ], {
       phases: [
         { phase: 1, status: 'done', stories: ['E900-S1'], done_count: 1, total_count: 1 },
@@ -137,11 +127,8 @@ describe('phase matrix', () => {
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
     const ui = await mountPane($)
-    // Done phase collapsed
     expect(await ui.find({ text: /Phase 1.*1 stories/ })).toBeDefined()
-    // Active phase expanded
     expect(await ui.find({ text: /PHASE 2 \(active\)/ })).toBeDefined()
-    // Future phase
     expect(await ui.find({ text: /PHASE 3/ })).toBeDefined()
     await ui.unmount()
   })
@@ -170,7 +157,6 @@ describe('phase matrix', () => {
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
     const ui = await mountPane($)
-    // ASCII stage markers: [x] for done, [.] for current, [ ] for not-yet
     expect(await ui.find({ text: /\[x\]/ })).toBeDefined()
     expect(await ui.find({ text: /\[\.\]/ })).toBeDefined()
     await ui.unmount()

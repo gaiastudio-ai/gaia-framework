@@ -1502,7 +1502,7 @@ YAML
   run bash "$DASHBOARD"
   [ "$status" -eq 0 ]
   _assert_cache_columns
-  [[ "$output" =~ "13 days" ]]
+  [[ "$output" =~ "14 days" ]]
 }
 
 @test "duration line omitted when sprint.total_days is null" {
