@@ -1,5 +1,6 @@
 import { sanitize, sanitizeCache, TITLE_MAX, MESSAGE_MAX, COMMAND_MAX, GOAL_MAX,
   BLOCKED_BY_MAX, DRIFT_DETAIL_MAX, TASK_TEXT_MAX, GATE_NAME_MAX } from './sanitize.js'
+import { computeAgentActivity } from './agent-activity.js'
 
 // -- tuning --
 var TICK_MS = 30000          // interval timer period
@@ -8,7 +9,8 @@ var BACKOFF_MAX_MS = 300000  // longest wait after runs that left the cache unto
 var NO_SPRINT = 'No active sprint'
 
 // -- module-level state (reset on reload) --
-var caps = { command: false, clock: false, process: false, gaiaRoot: null }
+var caps = { command: false, clock: false, process: false, agent: false, gaiaRoot: null }
+var agentWaitingMap = new Map() // agentId -> firstSeenWaitingAt (epoch ms)
 var cachedData = null
 var cacheState = 'init' // 'init' | 'absent' | 'error' | 'loaded'
 var cacheMtimeMs = 0
@@ -234,6 +236,46 @@ function maybeRebuild($, now) {
   runSnapshotAndRefresh($).catch(function (err) {
     log($, 'rebuild failed: ' + errText(err))
   })
+}
+
+// Refresh agent activity from $.agent.list(). Called on every timer tick.
+// Fills the module-level exports that S6's render code reads.
+async function refreshAgentActivity($) {
+  var agents
+  try {
+    agents = await $.agent.list()
+    caps.agent = true
+  } catch (_) {
+    caps.agent = false
+    return
+  }
+
+  // Collect story keys from the cache for linked-vs-unlinked classification.
+  var storyKeys = new Set()
+  if (cachedData && cachedData.stories) {
+    for (var i = 0; i < cachedData.stories.length; i++) {
+      if (cachedData.stories[i].key) storyKeys.add(cachedData.stories[i].key)
+    }
+  }
+
+  var threshold = 120
+  if (cachedData && cachedData.waiting_agent_threshold_seconds != null) {
+    threshold = cachedData.waiting_agent_threshold_seconds
+  }
+
+  var now = await nowMs($)
+
+  var result = computeAgentActivity({
+    agents: agents,
+    nowMs: now,
+    threshold: threshold,
+    storyKeys: storyKeys,
+    waitingMap: agentWaitingMap
+  })
+
+  ruleBItems = result.ruleBItems
+  activityByStory = result.activityByStory
+  unlinkedActivity = result.unlinkedActivity
 }
 
 // Read-only accessors for the sidebar rendering and the tests.
@@ -823,7 +865,11 @@ export function register(on) {
     // snapshot still running is kept: the single flight lets it finish.
     stopTimer(timerHandle)
     timerHandle = null
-    caps = { command: false, clock: false, process: false, gaiaRoot: null }
+    caps = { command: false, clock: false, process: false, agent: false, gaiaRoot: null }
+    agentWaitingMap = new Map()
+    ruleBItems = []
+    activityByStory = new Map()
+    unlinkedActivity = { items: [], overflow: 0 }
     cachedData = null
     cacheState = 'init'
     cacheMtimeMs = 0
@@ -853,6 +899,7 @@ export function register(on) {
         if (caps.gaiaRoot === null) return
         try {
           await refresh($)
+          await refreshAgentActivity($)
           var now = await $.clock.now()
           maybeRebuild($, now)
           // Close the pane when the sprint becomes inactive.
