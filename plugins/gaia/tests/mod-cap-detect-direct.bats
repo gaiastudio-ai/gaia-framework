@@ -97,7 +97,7 @@ _run_scenario() {
 _mutant() {
   local expr="$1" dir
   dir="$(mktemp -d "$BATS_TEST_TMPDIR/mutant.XXXXXX")"
-  cp "$HOOKS_DIR/index.js" "$HOOKS_DIR/sanitize.js" "$dir/"
+  cp "$HOOKS_DIR/index.js" "$HOOKS_DIR/sanitize.js" "$HOOKS_DIR/agent-activity.js" "$dir/"
   sed "$expr" "$HOOKS_DIR/index.js" > "$dir/index.js"
   if cmp -s "$HOOKS_DIR/index.js" "$dir/index.js"; then
     echo "mutation '$expr' changed nothing" >&2
