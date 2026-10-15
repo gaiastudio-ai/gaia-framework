@@ -951,6 +951,7 @@ export function register(on) {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    // Keeps what other mods draw in the band.
     var other = await next(e)
     // No active sprint or null cache: band absent, keep other mods' content.
     if (!cachedData || !cachedData.sprint || cachedData.sprint.status === 'closed') {
@@ -989,7 +990,7 @@ export function register(on) {
     for (var i = 0; i < stories.length; i++) {
       if (stories[i].status === 'blocked') blocked++
     }
-    var id = sanitize(data.sprint.id || '', TITLE_MAX)
+    var id = data.sprint.id || ''
     return h(c.Box, { flexDirection: 'row' },
       other,
       h(c.Button, { hotkey: '9', plain: true, onPress: function () { toggle($, true) } }, '9'),
