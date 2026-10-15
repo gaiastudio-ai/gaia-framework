@@ -88,6 +88,12 @@ done
 # Register gate ID for perf: maps "Performance Review" -> "performance-review"
 REGISTER_GATE="performance-review"
 
+# A story key implies register mode: the register is the default path
+# whenever a story is identified, so the prose and the code stay aligned.
+if [ -n "$STORY_KEY" ] && [ "$REGISTER_MODE" -eq 0 ]; then
+  REGISTER_MODE=1
+fi
+
 if [ "$REGISTER_MODE" -eq 1 ]; then
   [ -n "$STORY_KEY" ] || die "--story-key required when --register is given"
   [ -x "$REGISTER_WRITER" ] || die "register-write.sh not found at $REGISTER_WRITER"

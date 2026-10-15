@@ -1984,3 +1984,65 @@ EOF
   # Non-blocking low => APPROVE
   grep -qF "APPROVE" <<<"$output"
 }
+
+# ---------------------------------------------------------------------------
+# Story key implies register mode: verdict.sh auto-enables register
+# ---------------------------------------------------------------------------
+
+@test "test-dast verdict.sh with story-key but no --register still writes the register" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  _write_story_file "$story_dir/story.md" "TEST-S1"
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+EOF
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[{"category":"xss","severity":"medium","message":"reflected xss","file":"src/a.ts","line":1,"rule":"dast.xss"}]}
+EOF
+
+  # Invoke with --story-key but WITHOUT --register
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1
+  [ "$status" -eq 0 ]
+
+  # The register must exist and contain the finding
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ]
+  local count
+  count="$(yq '.entries | length' "$reg")"
+  [ "$count" -eq 1 ]
+  local gr_len
+  gr_len="$(yq '.gate_runs | length' "$reg")"
+  [ "$gr_len" -ge 1 ]
+}
+
+@test "test-perf verdict.sh with story-key but no --register still writes the register" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  _write_story_file "$story_dir/story.md" "TEST-S1"
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"perf","status":"passed","findings":[]}]}
+EOF
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[{"category":"slo","severity":"medium","message":"p95 too high","file":"src/b.ts","line":5,"rule":"perf.slo"}]}
+EOF
+
+  # Invoke with --story-key but WITHOUT --register
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1
+  [ "$status" -eq 0 ]
+
+  # The register must exist and contain the finding
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ]
+  local count
+  count="$(yq '.entries | length' "$reg")"
+  [ "$count" -eq 1 ]
+  local gr_len
+  gr_len="$(yq '.gate_runs | length' "$reg")"
+  [ "$gr_len" -ge 1 ]
+}

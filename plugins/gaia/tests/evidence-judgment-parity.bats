@@ -570,18 +570,22 @@ _check_register_wiring() {
   [ "$failed" -eq 0 ]
 }
 
-@test "register wiring: test-dast and test-perf SKILL.md mention --register in verdict.sh invocation" {
+@test "register wiring: test-dast and test-perf verdict section names register-write.sh add, record-run and --register" {
   local base="$BATS_TEST_DIRNAME/.."
+  local failed=0
   for f in "skills/gaia-test-dast/SKILL.md" "skills/gaia-test-perf/SKILL.md"; do
     local path="$base/$f"
-    [ -f "$path" ] || { echo "not found: $f" >&2; false; }
-    grep -qF -- '--register' "$path" || {
-      echo "$f does not mention --register" >&2; false
-    }
-    grep -qF 'register-write.sh add' "$path" || {
-      echo "$f does not mention register-write.sh add" >&2; false
-    }
+    [ -f "$path" ] || { echo "not found: $f" >&2; failed=1; continue; }
+    _check_register_wiring "$path" "$f" || failed=1
   done
+  [ "$failed" -eq 0 ]
+}
+
+@test "register wiring: review-skill-template verdict section names register-write.sh add, record-run and --register" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/knowledge/review-skill-template.md"
+  [ -f "$path" ] || { echo "not found: $path" >&2; false; }
+  _check_register_wiring "$path" "review-skill-template.md"
 }
 
 @test "register wiring: gaia-run-all-reviews mentions gate-status and triage-nonblocking and findings-rows" {
