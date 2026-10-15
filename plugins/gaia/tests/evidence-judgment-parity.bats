@@ -702,6 +702,8 @@ _check_register_wiring() {
     "skills/gaia-test-automate/SKILL.md"
     "skills/gaia-test-review/SKILL.md"
     "skills/gaia-review-perf/SKILL.md"
+    "skills/gaia-security-review/SKILL.md"
+    "skills/gaia-performance-review/SKILL.md"
     "skills/gaia-test-dast/SKILL.md"
     "skills/gaia-test-perf/SKILL.md"
     "knowledge/review-skill-template.md"
@@ -711,8 +713,8 @@ _check_register_wiring() {
   for f in "${skills[@]}"; do
     local path="$base/$f"
     [ -f "$path" ] || { echo "not found: $f" >&2; failed=1; continue; }
-    if ! grep -qF 'arguments contain' "$path"; then
-      echo "$f: missing run-id forwarding sentence (expected 'arguments contain')" >&2
+    if ! grep -qF 'arguments contain `--run-id <id>`, use that value as `{run_id}`' "$path"; then
+      echo "$f: missing run-id forwarding sentence" >&2
       failed=1
     fi
   done
