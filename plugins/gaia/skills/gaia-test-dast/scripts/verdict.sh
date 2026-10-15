@@ -151,6 +151,7 @@ if [ "$REGISTER_MODE" -eq 1 ]; then
         --evidence "$evidence" --dedup-key "$dedup" 2>>"$ANALYSIS.register-err.log"; then
         log "register-write add failed for finding $i (severity=$sev); gate will be BLOCKED"
         _write_failed=1
+        break  # stop immediately — remaining writes would each wait the full lock timeout
       fi
 
       i=$((i + 1))
@@ -169,18 +170,14 @@ if [ "$REGISTER_MODE" -eq 1 ]; then
     --story "$STORY_KEY" --run-id "$RUN_ID" \
     --gate "$REGISTER_GATE" --outcome "$_run_outcome" 2>>"$ANALYSIS.register-err.log"; then
     log "record-run failed; gate is BLOCKED"
-    printf '%s\n' "BLOCKED"
-    exit 0
+    verdict="BLOCKED"
+  elif [ "${_write_failed:-0}" = "1" ]; then
+    verdict="BLOCKED"
+  else
+    # Resolve verdict from the register.
+    verdict="$("$RESOLVER" --skill gaia-test-dast --register "$REGISTER_PATH" --analysis-results "$ANALYSIS")" \
+      || die "verdict-resolver.sh failed"
   fi
-
-  if [ "${_write_failed:-0}" = "1" ]; then
-    printf '%s\n' "BLOCKED"
-    exit 0
-  fi
-
-  # Resolve verdict from the register.
-  verdict="$("$RESOLVER" --skill gaia-test-dast --register "$REGISTER_PATH" --analysis-results "$ANALYSIS")" \
-    || die "verdict-resolver.sh failed"
 else
   # Legacy path: --llm-findings required.
   [ -n "$LLM" ]  || die "--llm-findings required"
@@ -197,7 +194,14 @@ if [ -n "$STORY_KEY" ] && [ -n "$GATE_NAME" ] && [ -x "$GATE" ]; then
     BLOCKED)         gate_status="FAILED" ;;
     *)               gate_status="UNVERIFIED" ;;
   esac
-  if "$GATE" update --story "$STORY_KEY" --gate "$GATE_NAME" --verdict "$gate_status" 2>>"$ANALYSIS.gate.log"; then
+  _gate_args=""
+  case "$gate_status" in
+    PASSED|FAILED)
+      _gate_args="--report-missing-reason verdict-only:${verdict}"
+      ;;
+  esac
+  # shellcheck disable=SC2086
+  if "$GATE" update --story "$STORY_KEY" --gate "$GATE_NAME" --verdict "$gate_status" $_gate_args 2>>"$ANALYSIS.gate.log"; then
     log "review-gate updated: story=$STORY_KEY gate=$GATE_NAME verdict=$gate_status"
   else
     log "WARN: review-gate update failed (see $ANALYSIS.gate.log)"

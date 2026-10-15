@@ -544,8 +544,15 @@ _check_register_wiring() {
   if ! grep -qF 'record-run' <<<"$section"; then
     echo "$label: verdict section missing record-run" >&2; ok=1
   fi
+  # Verify that both verdict-resolver and --register appear in the section.
+  # They may be on different lines (multi-line code block), so check each
+  # separately. A section that has --register but NOT verdict-resolver is
+  # incomplete wiring.
+  if ! grep -qE '(verdict-resolver|RESOLVER)' <<<"$section"; then
+    echo "$label: verdict section missing verdict-resolver reference" >&2; ok=1
+  fi
   if ! grep -qF -- '--register' <<<"$section"; then
-    echo "$label: verdict section missing --register" >&2; ok=1
+    echo "$label: verdict section missing --register flag" >&2; ok=1
   fi
   return "$ok"
 }
