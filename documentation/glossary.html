@@ -76,6 +76,16 @@
           <a href="commands/gaia-tool-info.html"><code>/gaia-tool-info</code></a>.
         </dd>
 
+        <dt id="band">Band</dt>
+        <dd>
+          A single summary line rendered above the Claude Code prompt by
+          the <a href="sprint-status-mod.html">sprint status mod</a>. It
+          shows sprint progress at a glance and switches to a warning
+          variant when ACTION NEEDED items are present. The band is absent
+          when no sprint is active. Toggle the sidebar from the band by
+          pressing the digit <code>9</code> on an empty prompt.
+        </dd>
+
         <dt id="blocker">Blocker</dt>
         <dd>
           A demonstrated failure, or a credible unresolved risk, to required
@@ -373,6 +383,18 @@
           validator, etc.) has its own sidecar. The
           <a href="commands/gaia-memory-hygiene.html"><code>/gaia-memory-hygiene</code></a>
           command detects stale or contradicted entries in sidecars.
+        </dd>
+
+        <dt id="sidebar">Sidebar (Sprint Status)</dt>
+        <dd>
+          A pane rendered by the <a href="sprint-status-mod.html">sprint
+          status mod</a> showing detailed sprint progress: an ACTION
+          NEEDED banner, aggregate stats, a segmented bar, the NOW block
+          with active stories, a phase matrix, and selected-story detail.
+          Toggle with <code>/sprint</code>, the digit <code>9</code> on an
+          empty prompt, or the band button. Claude Code decides the
+          placement: sidebar on the right in a wide fullscreen terminal,
+          inline above the prompt otherwise.
         </dd>
 
         <dt id="sprint">Sprint</dt>

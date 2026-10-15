@@ -352,6 +352,7 @@ core	sprint-state-wrapper-sync.bats
 core	sprint-state.bats
 core	sprint-status-dashboard-cache.bats
 core	sprint-status-mod-config.bats
+core	sprint-status-mod-docs.bats
 core	stacks-schema.bats
 core	stale-comment-sweep.bats
 core	stale-propagation.bats
