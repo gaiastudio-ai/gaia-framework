@@ -122,3 +122,21 @@ export const OK_RUN = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: 
 export function deepCopy<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj))
 }
+
+/**
+ * Find the leaf Text element whose text matches the given pattern.
+ *
+ * ui.find() returns the first element whose *subtree* text matches,
+ * which is often a parent Box.  ui.find({ color }) does not filter
+ * by colour either — the harness ignores that field.  This helper
+ * uses findAll() and picks the Text-typed leaf so callers can assert
+ * props.color on the actual rendering element.
+ */
+export async function findLeafText(ui: any, pattern: RegExp): Promise<any> {
+  const all = await ui.findAll({ text: pattern })
+  if (!all) return undefined
+  for (const el of all) {
+    if (el.type === 'Text') return el
+  }
+  return undefined
+}

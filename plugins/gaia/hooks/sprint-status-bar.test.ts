@@ -1,5 +1,5 @@
 import { test, expect, mock, describe } from 'claude-code/testing'
-import { WRITER_CACHE, GAIA_ROOT, OK_RUN, deepCopy } from './sprint-status-fixture.js'
+import { WRITER_CACHE, GAIA_ROOT, OK_RUN, deepCopy, findLeafText } from './sprint-status-fixture.js'
 
 function story(key: string, status: string, points: number, phase: number | null = 1, risk: string = 'low') {
   return {
@@ -65,6 +65,14 @@ describe('segmented bar', () => {
     expect(await ui.find({ text: /done/ })).toBeDefined()
     expect(await ui.find({ text: /in-progress/ })).toBeDefined()
     expect(await ui.find({ text: /ready-for-dev/ })).toBeDefined()
+    // Assert bar segments carry the correct colour props (not just text presence).
+    // Each segment is a leaf Text with filled-block chars and a colour from the status map.
+    const all = await ui.findAll({ text: /█/ })
+    const segments = (all || []).filter((e: any) => e.type === 'Text')
+    expect(segments.length).toBe(3)
+    expect(segments[0].props.color).toBe('green')       // done
+    expect(segments[1].props.color).toBe('yellow')       // in-progress
+    expect(segments[2].props.color).toBe('gray')         // ready-for-dev
     await ui.unmount()
   })
 
