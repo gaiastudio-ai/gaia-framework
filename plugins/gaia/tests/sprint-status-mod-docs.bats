@@ -355,3 +355,25 @@ LABELS
     return 1
   }
 }
+
+@test "sprint-status-mod.html example NOW rows use the code's row format" {
+  local hooks="$REPO_ROOT/plugins/gaia/hooks/index.js"
+  [ -f "$hooks" ] || { echo "hooks/index.js not found" >&2; return 1; }
+
+  # The code builds: glyph + ' ' + key + ' ' + slug + '  tasks d/t' + '  gates p/t'.
+  grep -qF "glyph + ' ' + key + ' ' + slug" "$hooks" ||
+    { echo "NOW row key/slug format not found in hooks" >&2; return 1; }
+  grep -qF "'  tasks '" "$hooks" ||
+    { echo "'  tasks ' literal not found in hooks" >&2; return 1; }
+  grep -qF "'  gates '" "$hooks" ||
+    { echo "'  gates ' literal not found in hooks" >&2; return 1; }
+
+  # Each example NOW row shows the story slug (lowercase, hyphenated), then
+  # tasks and gates with the same spacing the code uses.
+  local rows
+  rows="$(grep -cE ';[[:space:]]E[0-9]+-S[0-9]+ [a-z0-9]+(-[a-z0-9]+)*  tasks [0-9]+/[0-9]+  gates [0-9]+/[0-9]+' "$DOC_DIR/sprint-status-mod.html" || true)"
+  [ "$rows" -ge 2 ] || {
+    echo "FAIL: expected >= 2 NOW rows in the code's format, found $rows" >&2
+    return 1
+  }
+}
