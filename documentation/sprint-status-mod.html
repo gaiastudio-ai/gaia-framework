@@ -154,9 +154,9 @@
         <ul>
           <li>Done (green)</li>
           <li>Review (blue)</li>
-          <li>In-progress (amber)</li>
+          <li>In-progress (yellow)</li>
           <li>Blocked (red)</li>
-          <li>Ready-for-dev (grey)</li>
+          <li>Ready-for-dev (gray)</li>
           <li>Backlog/validating (dim)</li>
         </ul>
         <p>
@@ -172,22 +172,24 @@
         <h3>Sub-line</h3>
         <p>
           Shows the active dependency phase, the current day
-          (<code>Day N of T</code>), a pace flag (starting, on-track, at-risk,
-          or overdue), and the number of blocked stories (in red when
-          greater than zero).
+          (<code>Day N of T</code>), a pace flag (starting, on pace,
+          behind pace, or overdue), and the number of blocked stories (in
+          red when greater than zero). Parts are separated by a middle dot
+          (<code>&middot;</code>).
         </p>
 
         <h3>Readiness pills</h3>
         <p>
-          Contextual labels that appear when the sprint reaches a
-          milestone: <em>Ready for sprint review</em> and <em>Ready to
-          close sprint</em>.
+          Two labels that always show whether the sprint has reached key
+          milestones, each with a <code>( yes )</code> or
+          <code>( no )</code> indicator: <em>Ready for sprint review</em>
+          and <em>Ready to close sprint</em>.
         </p>
 
         <h3>NOW block</h3>
         <p>
           Lists every in-progress, review, or blocked story with its task
-          progress (Tasks X/Y), gate count (Gates X/6), a blocked-since
+          progress (<code>tasks X/Y</code>), gate count (<code>gates X/6</code>), a blocked-since
           marker when applicable, a drift marker when the story is behind
           schedule, and a HIGH-risk indicator. When nothing is actively
           being worked on, the block reads <em>"No active work"</em>.
@@ -206,8 +208,8 @@
           Unphased stories appear at the end. HIGH-risk stories are marked.
         </p>
         <p>
-          A glyph legend appears directly above the matrix explaining the
-          stage markers.
+          A glyph legend appears directly above the matrix labeling the
+          status glyphs for each status present in the sprint.
         </p>
 
         <h3>Selected-story detail</h3>
@@ -240,26 +242,31 @@
         </table>
 
         <h3>Example sidebar layout</h3>
-        <pre><code>ACTION NEEDED
-  Manual tests due for E5-S12 -- /gaia-test-manual (since Oct 10)
+        <pre><code>&#9888; ACTION NEEDED
+  Manual tests due for E5-S12
+    &#8594; /gaia-test-manual
+    since Oct 10
 
-sprint-12                                        [live]
+SPRINT  sprint-12  &#9679; live
   Improve search performance
 
-  3/6 stories done   12/21 pts   57%
+  3 of 6 stories &middot; 12 of 21 pts &middot; 57%
 
   [========------....      ]
-  done 12 | review 3 | in-progress 4 | ready 2
+  &#9608; done  &#9608; review  &#9608; in-progress  &#9608; ready
 
-  Phase 2 | Day 5 of 10 | on-track | 0 blocked
+  Phase 2 of 3 &middot; Day 5 of 10 &middot; on pace &middot; 0 blocked
+
+  Ready for sprint review  ( no )
+  Ready to close sprint   ( no )
 
   NOW
-  E3-S7   Refactor queries   Tasks 3/5  Gates 4/6  HIGH
+  &#9681; E3-S7   Refactor queries   tasks 3/5  gates 4/6  HIGH
     dev-fullstack: implementing task 4
-  E5-S18  Update search API  Tasks 1/4  Gates 2/6
+  &#9681; E5-S18  Update search API  tasks 1/4  gates 2/6
 
   -------- Phase matrix --------
-  Stage: &#10003; done  &#9676; current  &#9675; pending
+  &#10003; done  &#9737; review  &#9681; in-progress  &middot; ready-for-dev
   Phase 1 [done]  &#10003;&#10003;&#10003;
   Phase 2 [active]
     E3-S7   &#10003;&#9676;&#9675;&#9675;  HIGH
@@ -274,12 +281,12 @@ sprint-12                                        [live]
           The band is a single summary line rendered above the Claude Code
           prompt. It reads:
         </p>
-        <pre><code>9: sprint-12 . 12/21 pts . 3/6 done . 0 blocked</code></pre>
+        <pre><code>9: sprint-12 &middot; 12/21 pts &middot; 3/6 done &middot; 0 blocked</code></pre>
         <p>
           When ACTION NEEDED items exist in the same session, the band
           switches to a warning variant:
         </p>
-        <pre><code>! ACTION NEEDED . 2 items since Oct 10 -- press 9</code></pre>
+        <pre><code>&#9888; ACTION NEEDED &middot; 2 items since Oct 10 &#8594; press 9</code></pre>
         <p>
           The band is absent when no sprint is active.
         </p>
