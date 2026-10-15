@@ -1770,7 +1770,7 @@ EOF
 # Item 9 — resolve-severity --blocking rejects invalid values
 # ---------------------------------------------------------------------------
 
-@test "writer resolve-severity rejects uppercase TRUE for blocking" {
+@test "writer resolve-severity accepts and normalises uppercase TRUE for blocking" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
   _write_story_file "$story_dir/story.md" "TEST-S1"
@@ -1779,10 +1779,21 @@ EOF
     --type tech-debt --severity medium --gate code-review
   [ "$status" -eq 0 ]
 
-  # TRUE (uppercase) must be accepted and normalised to true
+  # TRUE (uppercase) must be accepted and normalised to lowercase true
   run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
     --severity medium --blocking TRUE --rationale "test uppercase"
   [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  # The stored resolved_blocking must be the boolean true
+  local rb
+  rb="$(yq '.entries[0].severity_resolution.resolved_blocking' "$reg")"
+  [ "$rb" = "true" ]
+  # The top-level blocking must also be true
+  local blk
+  blk="$(yq '.entries[0].blocking' "$reg")"
+  [ "$blk" = "true" ]
 }
 
 @test "writer resolve-severity rejects yes for blocking" {
@@ -1836,4 +1847,140 @@ EOF
   if grep -q -- '---' <<<"$data_row"; then
     echo "run of 3+ dashes survived sanitisation in data row: $data_row" >&2; false
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Settled disagreement resilience: identical re-report keeps resolution
+# ---------------------------------------------------------------------------
+
+@test "identical re-report from the same gate keeps severity resolution intact" {
+  # A settled disagreement must not be wiped by the same gate re-reporting
+  # the same medium severity on the next round.
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-stable" --type bug \
+    --severity medium --gate code-review --dedup-key "disagree:stable"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-stable" --type bug \
+    --severity high --gate qa-tests --dedup-key "disagree:stable" \
+    --blocking --blocking-rationale "High severity"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  # Resolve to non-blocking medium
+  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+    --severity medium --blocking false --rationale "agreed medium after review"
+  [ "$status" -eq 0 ]
+
+  run --separate-stderr "$RESOLVER" --register "$reg"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+
+  # Re-report identical medium from code-review (same dedup key, same gate, same severity)
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-stable" --type bug \
+    --severity medium --gate code-review --dedup-key "disagree:stable"
+  [ "$status" -eq 0 ]
+
+  # Resolution must survive — still APPROVE
+  run --separate-stderr "$RESOLVER" --register "$reg"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+
+  local has_sr
+  has_sr="$(yq '.entries[0] | has("severity_resolution")' "$reg")"
+  [ "$has_sr" = "true" ]
+}
+
+@test "new gate rating on a resolved disagreement archives the resolution" {
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-new-gate" --type bug \
+    --severity medium --gate code-review --dedup-key "disagree:newgate"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-new-gate" --type bug \
+    --severity high --gate qa-tests --dedup-key "disagree:newgate" \
+    --blocking --blocking-rationale "High severity"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+    --severity medium --blocking false --rationale "agreed medium"
+  [ "$status" -eq 0 ]
+
+  run --separate-stderr "$RESOLVER" --register "$reg"
+  [ "$output" = "APPROVE" ]
+
+  # A NEW gate (security-review) rates it critical
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-new-gate" --type security \
+    --severity critical --gate security-review --dedup-key "disagree:newgate"
+  [ "$status" -eq 0 ]
+
+  # Resolution must be archived — now REQUEST_CHANGES
+  run --separate-stderr "$RESOLVER" --register "$reg"
+  [ "$output" = "REQUEST_CHANGES" ]
+  local has_sr
+  has_sr="$(yq '.entries[0] | has("severity_resolution")' "$reg")"
+  [ "$has_sr" = "false" ]
+}
+
+@test "same gate raising its severity archives the resolution" {
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-raise" --type bug \
+    --severity medium --gate code-review --dedup-key "disagree:raise"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-raise" --type bug \
+    --severity high --gate qa-tests --dedup-key "disagree:raise" \
+    --blocking --blocking-rationale "High severity"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+    --severity medium --blocking false --rationale "agreed medium"
+  [ "$status" -eq 0 ]
+
+  run --separate-stderr "$RESOLVER" --register "$reg"
+  [ "$output" = "APPROVE" ]
+
+  # code-review re-reports with HIGHER severity (critical)
+  run "$SCRIPT" add --story TEST-S1 --defect "disagree-raise" --type bug \
+    --severity critical --gate code-review --dedup-key "disagree:raise" \
+    --blocking --blocking-rationale "Upgraded to critical"
+  [ "$status" -eq 0 ]
+
+  # Resolution archived — REQUEST_CHANGES
+  run --separate-stderr "$RESOLVER" --register "$reg"
+  [ "$output" = "REQUEST_CHANGES" ]
+  local has_sr
+  has_sr="$(yq '.entries[0] | has("severity_resolution")' "$reg")"
+  [ "$has_sr" = "false" ]
+}
+
+# ---------------------------------------------------------------------------
+# Severity normalisation in verdict.sh: non-standard labels
+# ---------------------------------------------------------------------------
+
+@test "test-dast verdict.sh normalises Informational to low" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  _write_story_file "$story_dir/story.md" "TEST-S1"
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+EOF
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[{"category":"info","severity":"Informational","message":"Info finding","file":"src/a.ts","line":1,"rule":"dast.info"}]}
+EOF
+
+  run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local sev
+  sev="$(yq '.entries[0].severity' "$reg")"
+  [ "$sev" = "low" ]
+  # Non-blocking low => APPROVE
+  grep -qF "APPROVE" <<<"$output"
 }

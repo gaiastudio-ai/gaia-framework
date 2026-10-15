@@ -293,7 +293,7 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
 
-**Register path (primary).** When the orchestrator provides a `run_id`, record each finding through the shared register writer, record a run, and resolve via the register:
+**Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. When no orchestrator `run_id` is given, mint a standalone run ID (`standalone-<timestamp>-<pid>`):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
@@ -306,7 +306,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --analysis-results .gaia/state/review/test-review/{story_key}/analysis-results.json
 ```
 
-**Legacy path.** Without a register, the existing invocation is preserved:
+**Legacy path.** Without a story key (and therefore no register), the existing invocation is preserved:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \

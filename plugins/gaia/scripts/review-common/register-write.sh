@@ -485,13 +485,34 @@ _rw_dedup_merge() {
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[$gr_last].blocking" "$blocking_bool"
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[$gr_last].material" "$material_bool"
 
-  _rw_recompute_blocking "$tmp" "$idx" "dedup merge from ${gate}"
-
-  # Archive any stale severity_resolution so the new rating is not masked.
-  # This applies regardless of disposition (open, triage, or resolved).
-  local has_sr
+  # Check whether an existing severity_resolution should be archived.
+  # A resolution is stale only when the incoming rating is genuinely new
+  # information: the gate had no prior rating, or its severity/blocking
+  # changed.  Re-reporting an identical rating from the same gate keeps
+  # the resolution intact so settled disagreements survive across rounds.
+  local has_sr _archive_sr="false"
   has_sr="$(yq ".entries[$idx] | has(\"severity_resolution\")" "$tmp" 2>/dev/null)" || has_sr="false"
   if [ "$has_sr" = "true" ]; then
+    # Look at all gate_ratings EXCEPT the one just appended (the last).
+    export _RW_CHK_GATE="$gate"
+    local _prev_count
+    _prev_count="$(yq "[.entries[$idx].gate_ratings[0:-1] | .[] | select(.gate == strenv(_RW_CHK_GATE))] | length" "$tmp" 2>/dev/null)" || _prev_count="0"
+    if [ "$_prev_count" = "0" ]; then
+      # Gate had no prior rating — new information.
+      _archive_sr="true"
+    else
+      # Gate already rated; check if the latest prior rating differs.
+      local _prev_sev _prev_blk
+      _prev_sev="$(yq "[.entries[$idx].gate_ratings[0:-1] | .[] | select(.gate == strenv(_RW_CHK_GATE))][-1].severity" "$tmp" 2>/dev/null)" || _prev_sev=""
+      _prev_blk="$(yq "[.entries[$idx].gate_ratings[0:-1] | .[] | select(.gate == strenv(_RW_CHK_GATE))][-1].blocking" "$tmp" 2>/dev/null)" || _prev_blk=""
+      if [ "$_prev_sev" != "$severity" ] || [ "$_prev_blk" != "$blocking_bool" ]; then
+        _archive_sr="true"
+      fi
+    fi
+    unset _RW_CHK_GATE
+  fi
+
+  if [ "$_archive_sr" = "true" ]; then
     export _RW_HIST_TIMESTAMP="$_RW_TIMESTAMP"
     export _RW_HIST_GATE="$gate"
     yq -i ".entries[$idx].history += [{
@@ -500,10 +521,28 @@ _rw_dedup_merge() {
       \"action\": \"severity_resolution_archived\",
       \"note\": \"severity_resolution moved to history on new rating\"
     }]" "$tmp"
-    # Archive the resolution data into the history entry.
     yq -i ".entries[$idx].history[-1].archived_resolution = .entries[$idx].severity_resolution" "$tmp"
     yq -i "del(.entries[$idx].severity_resolution)" "$tmp"
     unset _RW_HIST_TIMESTAMP _RW_HIST_GATE
+  fi
+
+  # Recompute blocking from gate_ratings.  When a severity_resolution is
+  # still in effect (identical re-report), restore its resolved values
+  # afterwards so the resolution is authoritative.
+  _rw_recompute_blocking "$tmp" "$idx" "dedup merge from ${gate}"
+
+  if [ "$has_sr" = "true" ] && [ "$_archive_sr" = "false" ]; then
+    # Restore the resolved values — the resolution is authoritative.
+    local _res_blk
+    _res_blk="$(yq ".entries[$idx].severity_resolution.resolved_blocking" "$tmp" 2>/dev/null)" || _res_blk="false"
+    _rw_force_bool "$tmp" ".entries[$idx].blocking" "$_res_blk"
+    local _res_sev
+    _res_sev="$(yq ".entries[$idx].severity_resolution.resolved_severity" "$tmp" 2>/dev/null)" || _res_sev=""
+    if [ -n "$_res_sev" ] && [ "$_res_sev" != "null" ]; then
+      export _RW_RES_SEV="$_res_sev"
+      yq -i ".entries[$idx].severity = strenv(_RW_RES_SEV)" "$tmp"
+      unset _RW_RES_SEV
+    fi
   fi
 
   # If the existing entry is resolved, reopen it.

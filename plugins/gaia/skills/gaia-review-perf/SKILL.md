@@ -116,7 +116,7 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
 
 - The verdict is **PASSED** when no unresolved blocker exists, **FAILED** otherwise (per the shared findings rubric).
 - The verdict MUST appear as a machine-readable keyword in the report output.
-- **Register path (primary).** When the orchestrator provides a `run_id`, record each finding through the shared register writer, record a run, and resolve via the register. The resolver runs `--register` without `--analysis-results` (this gate saves no analysis document):
+- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. When no orchestrator `run_id` is given, mint a standalone run ID (`standalone-<timestamp>-<pid>`). The resolver runs `--register` without `--analysis-results` (this gate saves no analysis document):
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
     --story {story_key} --defect "{finding}" --type {type} \
@@ -125,7 +125,7 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
     --story {story_key} --run-id {run_id} --gate performance-review --outcome completed
   ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh --register {register_path}
   ```
-- **Legacy path.** Without a register the reviewer maps findings to PASSED/FAILED per the shared blocker definition.
+- **Legacy path.** Without a story key (and therefore no register) the reviewer maps findings to PASSED/FAILED per the shared blocker definition.
 
 ### Step 6 -- Write Performance Review Report
 

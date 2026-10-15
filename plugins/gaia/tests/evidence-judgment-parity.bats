@@ -492,51 +492,65 @@ RUBRIC_FILE="knowledge/shared-findings-rubric.md"
 }
 
 # ---------------------------------------------------------------------------
-# Register wiring: each skill's verdict phase names register-write.sh add,
-# record-run, and verdict-resolver.sh --register
+# Register wiring: each skill's verdict section names register-write.sh add,
+# record-run, and verdict-resolver.sh --register.  The check targets the
+# verdict section only (not the whole file), and the mutant tests use the
+# same helper so they would catch a real regression.
 # ---------------------------------------------------------------------------
 
-@test "register wiring: each review skill verdict phase names register-write.sh add" {
-  local base="$BATS_TEST_DIRNAME/.."
-  local skills=(
-    "skills/gaia-code-review/SKILL.md"
-    "skills/gaia-qa-tests/SKILL.md"
-    "skills/gaia-review-security/SKILL.md"
-    "skills/gaia-test-automate/SKILL.md"
-    "skills/gaia-test-review/SKILL.md"
-    "skills/gaia-review-perf/SKILL.md"
-  )
-  local f
-  for f in "${skills[@]}"; do
-    local path="$base/$f"
-    [ -f "$path" ] || { echo "not found: $f" >&2; false; }
-    grep -qF 'register-write.sh add' "$path" || {
-      echo "$f does not mention register-write.sh add" >&2; false
-    }
-  done
+# Helper: extract the verdict/output section from a SKILL.md file.
+# Targets the Phase/Step heading that contains "Verdict" and register
+# wiring, or falls back to the bold "Register path" label.  Stops at
+# the next same-level heading.
+_extract_verdict_section() {
+  local file="$1"
+  # First try: the section whose heading contains "Phase" or "Step" AND "Verdict"
+  local section
+  section="$(awk '
+    /^##.*(Phase|Step).*[Vv]erdict/ { found=1 }
+    found && /^##[# ]/ && already { exit }
+    found { already=1; print }
+  ' "$file")"
+  if [ -n "$section" ]; then printf '%s\n' "$section"; return 0; fi
+  # Fallback: any heading containing Verdict
+  section="$(awk '
+    /^##.*[Vv]erdict/ { found=1 }
+    found && /^##[# ]/ && already { exit }
+    found { already=1; print }
+  ' "$file")"
+  if [ -n "$section" ]; then printf '%s\n' "$section"; return 0; fi
+  # Last resort: the Register path label
+  section="$(awk '
+    /^\*\*Register path/ { found=1 }
+    found && /^##[# ]/ && already { exit }
+    found { already=1; print }
+  ' "$file")"
+  printf '%s\n' "$section"
 }
 
-@test "register wiring: each review skill verdict phase names record-run" {
-  local base="$BATS_TEST_DIRNAME/.."
-  local skills=(
-    "skills/gaia-code-review/SKILL.md"
-    "skills/gaia-qa-tests/SKILL.md"
-    "skills/gaia-review-security/SKILL.md"
-    "skills/gaia-test-automate/SKILL.md"
-    "skills/gaia-test-review/SKILL.md"
-    "skills/gaia-review-perf/SKILL.md"
-  )
-  local f
-  for f in "${skills[@]}"; do
-    local path="$base/$f"
-    [ -f "$path" ] || { echo "not found: $f" >&2; false; }
-    grep -qF 'record-run' "$path" || {
-      echo "$f does not mention record-run" >&2; false
-    }
-  done
+# Helper: check that a file's verdict section mentions all three register
+# tokens.  Returns 0 when all are present, 1 otherwise with stderr detail.
+_check_register_wiring() {
+  local file="$1" label="$2"
+  local section
+  section="$(_extract_verdict_section "$file")"
+  if [ -z "$section" ]; then
+    echo "$label: no verdict section found" >&2; return 1
+  fi
+  local ok=0
+  if ! grep -qF 'register-write.sh add' <<<"$section"; then
+    echo "$label: verdict section missing register-write.sh add" >&2; ok=1
+  fi
+  if ! grep -qF 'record-run' <<<"$section"; then
+    echo "$label: verdict section missing record-run" >&2; ok=1
+  fi
+  if ! grep -qF -- '--register' <<<"$section"; then
+    echo "$label: verdict section missing --register" >&2; ok=1
+  fi
+  return "$ok"
 }
 
-@test "register wiring: each review skill verdict phase names verdict-resolver --register" {
+@test "register wiring: each review skill verdict section names register-write.sh add, record-run and --register" {
   local base="$BATS_TEST_DIRNAME/.."
   local skills=(
     "skills/gaia-code-review/SKILL.md"
@@ -546,14 +560,14 @@ RUBRIC_FILE="knowledge/shared-findings-rubric.md"
     "skills/gaia-test-review/SKILL.md"
     "skills/gaia-review-perf/SKILL.md"
   )
+  local failed=0
   local f
   for f in "${skills[@]}"; do
     local path="$base/$f"
-    [ -f "$path" ] || { echo "not found: $f" >&2; false; }
-    grep -qF -- '--register' "$path" || {
-      echo "$f does not mention --register" >&2; false
-    }
+    [ -f "$path" ] || { echo "not found: $f" >&2; failed=1; continue; }
+    _check_register_wiring "$path" "$f" || failed=1
   done
+  [ "$failed" -eq 0 ]
 }
 
 @test "register wiring: test-dast and test-perf SKILL.md mention --register in verdict.sh invocation" {
@@ -580,15 +594,36 @@ RUBRIC_FILE="knowledge/shared-findings-rubric.md"
   grep -qF 'UNVERIFIED' "$f" || { echo "run-all-reviews does not mention UNVERIFIED" >&2; false; }
 }
 
-@test "register wiring: deletion of register-write.sh add from code-review fails the wiring test" {
+@test "register wiring: deletion of register-write.sh add from code-review fails the wiring check" {
   local base="$BATS_TEST_DIRNAME/.."
   local path="$base/skills/gaia-code-review/SKILL.md"
   [ -f "$path" ] || { echo "not found" >&2; false; }
-  # Create a mutant with register-write.sh add removed
-  local copy="$TEST_TMP/mutant-cr.md"
+  # Baseline: the real file passes the helper
+  _check_register_wiring "$path" "baseline" || {
+    echo "baseline failed — cannot test mutant" >&2; false
+  }
+  # Deletion mutant: remove register-write.sh add
+  local copy="$TEST_TMP/mutant-cr-del.md"
   grep -v 'register-write.sh add' "$path" > "$copy"
-  # The mutant must NOT pass the wiring check
-  if grep -qF 'register-write.sh add' "$copy"; then
-    echo "deletion mutant still contains register-write.sh add" >&2; false
+  # The mutant must fail the same helper
+  if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
+    echo "deletion mutant passed the wiring check — test is broken" >&2; false
+  fi
+}
+
+@test "register wiring: reword mutant replacing --register with --llm-findings fails the wiring check" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$path" ] || { echo "not found" >&2; false; }
+  # Baseline: the real file passes the helper
+  _check_register_wiring "$path" "baseline" || {
+    echo "baseline failed — cannot test mutant" >&2; false
+  }
+  # Reword mutant: replace --register with --llm-findings in verdict section
+  local copy="$TEST_TMP/mutant-cr-rwd.md"
+  sed 's/--register/--llm-findings/g' "$path" > "$copy"
+  # The mutant must fail the helper
+  if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
+    echo "reword mutant passed the wiring check — test is broken" >&2; false
   fi
 }

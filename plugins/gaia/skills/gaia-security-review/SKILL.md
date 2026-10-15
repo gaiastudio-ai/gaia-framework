@@ -286,7 +286,7 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by the parameterized `verdict-resolver.sh` from `review-common/`. The LLM never computes or overrides it. The resolver consumes the per-skill `analysis-results.json` regardless of which review skill produced it — the file is validated against `plugins/gaia/schemas/analysis-results.schema.json` `schema_version: "1.0"` before precedence rules apply.
 
-- **Register path (primary).** When the orchestrator provides a `run_id`, record each finding through the shared register writer, record a run, and resolve via the register:
+- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. When no orchestrator `run_id` is given, mint a standalone run ID (`standalone-<timestamp>-<pid>`):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
