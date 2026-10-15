@@ -335,20 +335,54 @@ console.log("CLOSE_OK");
   [[ "$output" == *"SCENARIO FAILED: paneOpen should be true after reconciliation"* ]] || false
 }
 
-BAND_SCENARIO='
+BAND_NO_SPRINT_SCENARIO='
+const band = handlers["ui.render:" + JSON.stringify({ component: "AbovePrompt" })];
+if (!band) fail("no AbovePrompt handler captured");
+const $ = make$({ fs: { exists: async () => false, stat: async () => { throw new Error("no"); }, read: async () => { throw new Error("no"); } } });
+await sessionStart($, { cwd: "/project" }, (e) => ({ cwd: e.cwd }));
+const r = await band($, { component: "AbovePrompt" }, () => "chain-only");
+if (r !== "chain-only") fail("without a sprint the band handler should return next(e), got: " + JSON.stringify(r));
+console.log("BAND_NO_SPRINT_OK");
+'
+
+BAND_ACTIVE_SCENARIO='
+const calls = [];
+globalThis.h = function (type, props) { var kids = [].slice.call(arguments, 2); var node = { _h: true, type: type, props: props, children: kids }; calls.push(node); return node; };
 const band = handlers["ui.render:" + JSON.stringify({ component: "AbovePrompt" })];
 if (!band) fail("no AbovePrompt handler captured");
 const $ = make$({});
 await sessionStart($, { cwd: "/project" }, (e) => ({ cwd: e.cwd }));
 await sprintCmd($);
-const r = await band($, { component: "AbovePrompt" }, () => "band-chain-value");
-if (r !== "band-chain-value") fail("band handler returned " + JSON.stringify(r) + " instead of next(e)");
-console.log("BAND_OK");
+const otherMod = { _h: true, type: "OtherModContent", props: {}, children: [] };
+const r = await band($, { component: "AbovePrompt" }, () => otherMod);
+if (!r || !r._h) fail("band handler did not return an h() node: " + JSON.stringify(r));
+function findChild(node, target) {
+  if (node === target) return true;
+  if (node && node.children) { for (var i = 0; i < node.children.length; i++) { if (findChild(node.children[i], target)) return true; } }
+  return false;
+}
+if (!findChild(r, otherMod)) fail("band result does not include other mods content");
+console.log("BAND_ACTIVE_OK");
 '
 
-@test "the band handler returns exactly what the rest of the chain draws" {
-  _run_scenario "$INDEX_JS" "$BAND_SCENARIO"
+@test "the band handler passes through next(e) when no sprint is active" {
+  _run_scenario "$INDEX_JS" "$BAND_NO_SPRINT_SCENARIO"
   echo "$output"
   [ "$status" -eq 0 ]
-  [[ "$output" == *BAND_OK* ]] || false
+  [[ "$output" == *BAND_NO_SPRINT_OK* ]] || false
+}
+
+@test "the band handler includes other mods content with an active sprint" {
+  _run_scenario "$INDEX_JS" "$BAND_ACTIVE_SCENARIO"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *BAND_ACTIVE_OK* ]] || false
+}
+
+@test "removing other mods content from the band makes the active-sprint test fail" {
+  _mutant 's/      other,//'
+  _run_scenario "$MUTANT_INDEX" "$BAND_ACTIVE_SCENARIO"
+  echo "$output"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not include other mods"* ]] || false
 }
