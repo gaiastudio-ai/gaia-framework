@@ -2456,3 +2456,64 @@ EOF
     false
   }
 }
+
+@test "perf verdict.sh PASSED verdict does not write gate row via escape hatch" {
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_file="$story_dir/story.md"
+  mkdir -p "$story_dir"
+  cat > "$story_file" <<'STORY'
+---
+template: 'story'
+key: "TEST-S1"
+title: "Test Story"
+status: in-progress
+epic: "TEST"
+---
+# Story: Test Story
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | — |
+| QA Tests | UNVERIFIED | — |
+| Security Review | UNVERIFIED | — |
+| Test Automation | UNVERIFIED | — |
+| Test Review | UNVERIFIED | — |
+| Performance Review | UNVERIFIED | — |
+
+## Findings
+
+> Out-of-scope issues.
+
+| # | Type | Severity | Finding | Suggested Action |
+|---|------|----------|---------|-----------------|
+| — | — | — | — | — |
+STORY
+
+  cat > "$TEST_TMP/a.json" <<'EOF'
+{"schema_version":"1.0","checks":[{"name":"perf","status":"passed","findings":[]}]}
+EOF
+  # No findings — verdict will be APPROVE
+  cat > "$TEST_TMP/f.json" <<'EOF'
+{"findings":[]}
+EOF
+
+  run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --gate "Performance Review"
+  [ "$status" -eq 0 ]
+
+  # Verdict must be APPROVE
+  grep -qF "APPROVE" <<<"$output" || { echo "expected APPROVE verdict, got: $output" >&2; false; }
+
+  # The Performance Review gate row must still be UNVERIFIED — PASSED must NOT be
+  # written without a real report file (proof-of-execution rejects it)
+  grep -q 'Performance Review.*UNVERIFIED' "$story_file" || {
+    local row
+    row="$(grep 'Performance Review' "$story_file")"
+    echo "expected gate row to stay UNVERIFIED (no report), got: $row" >&2
+    false
+  }
+}
