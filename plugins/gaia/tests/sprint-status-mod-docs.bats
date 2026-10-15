@@ -257,7 +257,7 @@ _check_links() {
   local section
   section="$(sed -n '/id="configuration"/,/<\/section>/p' "$DOC_DIR/sprint-status-mod.html")"
   [ -n "$section" ] || fail "configuration section not found"
-  printf '%s' "$section" | grep -q 'user_aliases' ||
+  grep -q 'user_aliases' <<< "$section" ||
     fail "user_aliases not documented in configuration section"
 }
 
@@ -265,9 +265,9 @@ _check_links() {
   local section
   section="$(sed -n '/id="configuration"/,/<\/section>/p' "$DOC_DIR/sprint-status-mod.html")"
   [ -n "$section" ] || fail "configuration section not found"
-  printf '%s' "$section" | grep -q 'waiting_agent_threshold_seconds' ||
+  grep -q 'waiting_agent_threshold_seconds' <<< "$section" ||
     fail "waiting_agent_threshold_seconds not documented in configuration section"
-  printf '%s' "$section" | grep -q '120' ||
+  grep -q '120' <<< "$section" ||
     fail "default value 120 not documented in configuration section"
 }
 
