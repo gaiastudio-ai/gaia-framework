@@ -36,6 +36,7 @@ _ALLOWED_KEYS=(
   "E5-S12"    # sprint-status-mod.html example
   "E3-S7"     # sprint-status-mod.html example
   "E5-S18"    # sprint-status-mod.html example
+  "E5-S20"    # sprint-status-mod.html example (future phase)
 )
 
 # _filter_allowed FILE — grep for leaks, then strip allow-listed keys.
@@ -312,6 +313,45 @@ LABELS
   [ -z "$missing" ] || {
     echo "FAIL: pace label mismatches:" >&2
     echo "$missing" >&2
+    return 1
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Phase matrix guards — column header and active-phase label format
+# ---------------------------------------------------------------------------
+
+@test "sprint-status-mod.html example has phase matrix column header from code" {
+  local hooks="$REPO_ROOT/plugins/gaia/hooks/index.js"
+  [ -f "$hooks" ] || { echo "hooks/index.js not found" >&2; return 1; }
+
+  # Extract the column header text from renderPhaseMatrix (trimmed).
+  local code_header
+  code_header="$(grep -F 'READY' "$hooks" | grep -F 'DONE' |
+    grep -oE 'READY[[:space:]]+DEV[[:space:]]+REVIEW[[:space:]]+DONE' | head -1)"
+  [ -n "$code_header" ] || { echo "could not parse column header from hooks" >&2; return 1; }
+
+  # The doc page example must contain this header.
+  grep -qF "$code_header" "$DOC_DIR/sprint-status-mod.html" || {
+    echo "FAIL: phase matrix column header not found in example" >&2
+    echo "  expected from code: '$code_header'" >&2
+    return 1
+  }
+}
+
+@test "sprint-status-mod.html example has active phase label format from code" {
+  local hooks="$REPO_ROOT/plugins/gaia/hooks/index.js"
+  [ -f "$hooks" ] || { echo "hooks/index.js not found" >&2; return 1; }
+
+  # The code builds 'PHASE N (active)' from these two literals.
+  grep -qF "'PHASE '" "$hooks" ||
+    { echo "'PHASE ' literal not found in hooks" >&2; return 1; }
+  grep -qF "' (active)'" "$hooks" ||
+    { echo "' (active)' literal not found in hooks" >&2; return 1; }
+
+  # The doc page must contain 'PHASE <digit> (active)'.
+  grep -qE 'PHASE [0-9]+ \(active\)' "$DOC_DIR/sprint-status-mod.html" || {
+    echo "FAIL: 'PHASE <n> (active)' label not found in example" >&2
     return 1
   }
 }
