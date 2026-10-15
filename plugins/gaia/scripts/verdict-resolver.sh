@@ -363,8 +363,11 @@ if [ -n "$ANALYSIS" ]; then
 if jq -e '[.checks[]? | select(.status == "errored")] | length > 0' "$ANALYSIS" >/dev/null 2>&1; then
   emit "BLOCKED"
 fi
+fi  # end of [ -n "$ANALYSIS" ] conditional (rule 1)
 
 # --- 1b. execution-evidence: required-tier timeout -> BLOCKED ---
+# Runs even without --analysis-results (register-only skills with execution
+# evidence must still honour the timed-out-suite rule).
 if [ "$EE_OK" = "1" ]; then
   if jq -e '
     (.skipped // false) | not
@@ -400,6 +403,7 @@ if [ "$EE_OK" = "1" ]; then
 fi
 
 # --- 2. tool-failed-blocking -> REQUEST_CHANGES ---
+if [ -n "$ANALYSIS" ]; then
 # A check is failed-blocking if status == "failed". A failed check with no
 # findings is still treated as blocking (the tool itself signaled failure).
 # When findings exist we additionally honor an explicit blocking=true marker.
@@ -421,7 +425,7 @@ if jq -e '
 ' "$ANALYSIS" >/dev/null 2>&1; then
   emit "REQUEST_CHANGES"
 fi
-fi  # end of [ -n "$ANALYSIS" ] conditional (rules 1, 2)
+fi  # end of [ -n "$ANALYSIS" ] conditional (rule 2)
 
 # --- 3. LLM-Critical / Register rule ---
 # When --register is given, the register rule replaces the LLM-Critical rule.

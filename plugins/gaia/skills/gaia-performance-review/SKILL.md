@@ -257,7 +257,25 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 ### Phase 5 — Verdict
 
-The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
+The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
+
+- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. When no orchestrator `run_id` is given, mint a standalone run ID (`standalone-<timestamp>-<pid>`):
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+  --story {story_key} --defect <msg> --type tech-debt --severity <sev> --gate performance-review ...
+
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+  --story {story_key} --run-id {run_id} --gate performance-review --outcome completed
+
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh \
+  --register {register_path} \
+  --analysis-results .gaia/state/review/performance-review/{story_key}/analysis-results.json
+```
+
+  The parent context performs the `register-write.sh add` calls (fork isolation preserved).
+
+- **Legacy path.** When no `run_id` is provided:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
@@ -268,7 +286,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
 The resolver applies strict first-match-wins precedence:
 1. Any check `status: errored` → **BLOCKED**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
-3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
+3. Register rule (when `--register`): any unresolved blocker → **REQUEST_CHANGES**. Legacy rule (when `--llm-findings`): any LLM finding `Critical` → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
 Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Review Gate canonical vocabulary is inline (no separate `verdict-normalizer.sh`):**

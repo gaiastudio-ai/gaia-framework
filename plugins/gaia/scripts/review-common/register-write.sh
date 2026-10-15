@@ -485,29 +485,70 @@ _rw_dedup_merge() {
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[$gr_last].blocking" "$blocking_bool"
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[$gr_last].material" "$material_bool"
 
+  # Check whether an existing severity_resolution should be archived.
+  # A resolution is stale only when the incoming rating is genuinely new
+  # information: the gate had no prior rating, or its severity/blocking
+  # changed.  Re-reporting an identical rating from the same gate keeps
+  # the resolution intact so settled disagreements survive across rounds.
+  local has_sr _archive_sr="false"
+  has_sr="$(yq ".entries[$idx] | has(\"severity_resolution\")" "$tmp" 2>/dev/null)" || has_sr="false"
+  if [ "$has_sr" = "true" ]; then
+    # Look at all gate_ratings EXCEPT the one just appended (the last).
+    export _RW_CHK_GATE="$gate"
+    local _prev_count
+    _prev_count="$(yq "[.entries[$idx].gate_ratings[0:-1] | .[] | select(.gate == strenv(_RW_CHK_GATE))] | length" "$tmp" 2>/dev/null)" || _prev_count="0"
+    if [ "$_prev_count" = "0" ]; then
+      # Gate had no prior rating — new information.
+      _archive_sr="true"
+    else
+      # Gate already rated; check if the latest prior rating differs.
+      local _prev_sev _prev_blk
+      _prev_sev="$(yq "[.entries[$idx].gate_ratings[0:-1] | .[] | select(.gate == strenv(_RW_CHK_GATE))][-1].severity" "$tmp" 2>/dev/null)" || _prev_sev=""
+      _prev_blk="$(yq "[.entries[$idx].gate_ratings[0:-1] | .[] | select(.gate == strenv(_RW_CHK_GATE))][-1].blocking" "$tmp" 2>/dev/null)" || _prev_blk=""
+      if [ "$_prev_sev" != "$severity" ] || [ "$_prev_blk" != "$blocking_bool" ]; then
+        _archive_sr="true"
+      fi
+    fi
+    unset _RW_CHK_GATE
+  fi
+
+  if [ "$_archive_sr" = "true" ]; then
+    export _RW_HIST_TIMESTAMP="$_RW_TIMESTAMP"
+    export _RW_HIST_GATE="$gate"
+    yq -i ".entries[$idx].history += [{
+      \"at\": strenv(_RW_HIST_TIMESTAMP),
+      \"gate\": strenv(_RW_HIST_GATE),
+      \"action\": \"severity_resolution_archived\",
+      \"note\": \"severity_resolution moved to history on new rating\"
+    }]" "$tmp"
+    yq -i ".entries[$idx].history[-1].archived_resolution = .entries[$idx].severity_resolution" "$tmp"
+    yq -i "del(.entries[$idx].severity_resolution)" "$tmp"
+    unset _RW_HIST_TIMESTAMP _RW_HIST_GATE
+  fi
+
+  # Recompute blocking from gate_ratings.  When a severity_resolution is
+  # still in effect (identical re-report), restore its resolved values
+  # afterwards so the resolution is authoritative.
   _rw_recompute_blocking "$tmp" "$idx" "dedup merge from ${gate}"
+
+  if [ "$has_sr" = "true" ] && [ "$_archive_sr" = "false" ]; then
+    # Restore the resolved values — the resolution is authoritative.
+    local _res_blk
+    _res_blk="$(yq ".entries[$idx].severity_resolution.resolved_blocking" "$tmp" 2>/dev/null)" || _res_blk="false"
+    _rw_force_bool "$tmp" ".entries[$idx].blocking" "$_res_blk"
+    local _res_sev
+    _res_sev="$(yq ".entries[$idx].severity_resolution.resolved_severity" "$tmp" 2>/dev/null)" || _res_sev=""
+    if [ -n "$_res_sev" ] && [ "$_res_sev" != "null" ]; then
+      export _RW_RES_SEV="$_res_sev"
+      yq -i ".entries[$idx].severity = strenv(_RW_RES_SEV)" "$tmp"
+      unset _RW_RES_SEV
+    fi
+  fi
 
   # If the existing entry is resolved, reopen it.
   local cur_disp
   cur_disp="$(yq ".entries[$idx].disposition" "$tmp" 2>/dev/null)" || cur_disp=""
   if [ "$cur_disp" = "resolved" ]; then
-    # Move severity_resolution to history if present.
-    local has_sr
-    has_sr="$(yq ".entries[$idx] | has(\"severity_resolution\")" "$tmp" 2>/dev/null)" || has_sr="false"
-    if [ "$has_sr" = "true" ]; then
-      export _RW_HIST_TIMESTAMP="$_RW_TIMESTAMP"
-      export _RW_HIST_GATE="$gate"
-      yq -i ".entries[$idx].history += [{
-        \"at\": strenv(_RW_HIST_TIMESTAMP),
-        \"gate\": strenv(_RW_HIST_GATE),
-        \"action\": \"severity_resolution_archived\",
-        \"note\": \"severity_resolution moved to history on reopen\"
-      }]" "$tmp"
-      # Archive the resolution data into the history entry.
-      yq -i ".entries[$idx].history[-1].archived_resolution = .entries[$idx].severity_resolution" "$tmp"
-      yq -i "del(.entries[$idx].severity_resolution)" "$tmp"
-      unset _RW_HIST_TIMESTAMP _RW_HIST_GATE
-    fi
     yq -i ".entries[$idx].disposition = \"open\"" "$tmp"
     # Record reopen in history.
     export _RW_REOPEN_TIMESTAMP="$_RW_TIMESTAMP"
@@ -543,6 +584,11 @@ _rw_cmd_merge() {
   [ -n "$key" ] || _rw_die 1 "merge: --story is required"
   [ -n "$source_id" ] || _rw_die 1 "merge: --source-id is required"
   [ -n "$target_id" ] || _rw_die 1 "merge: --target-id is required"
+
+  # Self-merge is a no-op bug; reject it.
+  if [ "$source_id" = "$target_id" ]; then
+    _rw_die 1 "merge: source and target must differ (both are $source_id)"
+  fi
 
   _rw_validate_key "$key"
 
@@ -622,6 +668,35 @@ _rw_cmd_merge() {
 
   _rw_recompute_blocking "$tmp" "$tgt_idx" "merge of ${source_id} into ${target_id}"
 
+  # When the source was unresolved and the target is resolved, reopen the
+  # target so the blocker survives consolidation.  Also archive any stale
+  # severity_resolution so the verdict-resolver uses the new gate_ratings.
+  local src_disp tgt_disp
+  src_disp="$(yq ".entries[$src_idx].disposition" "$tmp" 2>/dev/null)" || src_disp=""
+  tgt_disp="$(yq ".entries[$tgt_idx].disposition" "$tmp" 2>/dev/null)" || tgt_disp=""
+  if [ "$tgt_disp" = "resolved" ] && [ "$src_disp" != "resolved" ]; then
+    yq -i ".entries[$tgt_idx].disposition = \"open\"" "$tmp"
+    # Archive severity_resolution if present, so the new ratings are not masked.
+    local tgt_has_sr
+    tgt_has_sr="$(yq ".entries[$tgt_idx] | has(\"severity_resolution\")" "$tmp" 2>/dev/null)" || tgt_has_sr="false"
+    if [ "$tgt_has_sr" = "true" ]; then
+      local _merge_ts
+      _merge_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      export _RW_MERGE_TS="$_merge_ts"
+      yq -i ".entries[$tgt_idx].history += [{
+        \"at\": strenv(_RW_MERGE_TS),
+        \"gate\": \"merge\",
+        \"action\": \"severity_resolution_archived\",
+        \"note\": \"severity_resolution archived on merge reopen\"
+      }]" "$tmp"
+      yq -i ".entries[$tgt_idx].history[-1].archived_resolution = .entries[$tgt_idx].severity_resolution" "$tmp"
+      yq -i "del(.entries[$tgt_idx].severity_resolution)" "$tmp"
+      unset _RW_MERGE_TS
+    fi
+    # Recompute blocking after removing the stale resolution.
+    _rw_recompute_blocking "$tmp" "$tgt_idx" "merge reopen of ${target_id}"
+  fi
+
   # Record merge in history.
   export _RW_MERGE_TIMESTAMP
   _RW_MERGE_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -677,6 +752,14 @@ _rw_cmd_resolve_severity() {
   _rw_validate_key "$key"
   severity="$(_rw_normalise_severity "$severity")"
   _rw_validate_severity "$severity"
+
+  # Normalise and validate --blocking: only true/false accepted.
+  local blocking_lower
+  blocking_lower="$(printf '%s' "$blocking" | tr '[:upper:]' '[:lower:]')"
+  case "$blocking_lower" in
+    true|false) blocking="$blocking_lower" ;;
+    *) _rw_die 1 "resolve-severity: --blocking must be true or false (got: $blocking)" ;;
+  esac
 
   local reg_path
   reg_path="$(_rw_resolve_path "$key")"
@@ -861,54 +944,34 @@ _rw_cmd_triage_nonblocking() {
   tmp="$(_rw_atomic_start "$reg_path")"
   _RW_CLEANUP_TMP="$tmp"
 
-  local entry_count
-  entry_count="$(yq '.entries | length' "$tmp" 2>/dev/null)" || entry_count="0"
-
-  local i=0
-  while [ "$i" -lt "$entry_count" ]; do
-    local disp blk
-    disp="$(yq ".entries[$i].disposition" "$tmp" 2>/dev/null)" || disp=""
-    blk="$(yq ".entries[$i].blocking" "$tmp" 2>/dev/null)" || blk=""
-
-    if [ "$disp" = "open" ] && [ "$blk" != "true" ]; then
-      # Check for disagreement (mixed blocking in gate_ratings, no resolution).
-      local has_mixed="false"
-      local has_any_blocking has_any_non_blocking
-      has_any_blocking="$(yq "[.entries[$i].gate_ratings[] | select(.blocking == true)] | length > 0" "$tmp" 2>/dev/null)" || has_any_blocking="false"
-      has_any_non_blocking="$(yq "[.entries[$i].gate_ratings[] | select(.blocking == false)] | length > 0" "$tmp" 2>/dev/null)" || has_any_non_blocking="false"
-      if [ "$has_any_blocking" = "true" ] && [ "$has_any_non_blocking" = "true" ]; then
-        local has_sr
-        has_sr="$(yq ".entries[$i] | has(\"severity_resolution\")" "$tmp" 2>/dev/null)" || has_sr="false"
-        if [ "$has_sr" != "true" ]; then
-          has_mixed="true"
-        fi
-      fi
-
-      if [ "$has_mixed" = "true" ]; then
-        # Skip disagreement entries.
-        i=$(( i + 1 ))
-        continue
-      fi
-
-      # Determine priority from severity.
-      local sev
-      sev="$(yq ".entries[$i].severity" "$tmp" 2>/dev/null)" || sev="low"
-      local auto_priority="$sev"
-
-      # Get first originating gate as owner.
-      local auto_owner
-      auto_owner="$(yq ".entries[$i].originating_gates[0]" "$tmp" 2>/dev/null)" || auto_owner="unknown"
-
-      export _RW_OWNER="$auto_owner"
-      export _RW_PRIORITY="$auto_priority"
-      yq -i ".entries[$i].disposition = \"triage\"" "$tmp"
-      yq -i ".entries[$i].owner = strenv(_RW_OWNER)" "$tmp"
-      yq -i ".entries[$i].priority = strenv(_RW_PRIORITY)" "$tmp"
-      unset _RW_OWNER _RW_PRIORITY
-    fi
-
-    i=$(( i + 1 ))
-  done
+  # Single yq pass: triage all eligible entries at once. An entry is eligible
+  # when disposition == open, blocking == false, and there is no unresolved
+  # disagreement (mixed blocking ratings without a severity_resolution).
+  yq -i '
+    .entries[] |= (
+      select(
+        .disposition == "open"
+        and .blocking != true
+        and (
+          (([.gate_ratings[] | select(.blocking == true)] | length > 0)
+           and ([.gate_ratings[] | select(.blocking == false)] | length > 0)
+           and (has("severity_resolution") | not)
+          ) | not
+        )
+      ) |= (
+        .disposition = "triage"
+        | .owner = .originating_gates[0]
+        | .priority = .severity
+      )
+    )
+  ' "$tmp" 2>/dev/null || {
+    _rw_err "triage-nonblocking: yq batch update failed"
+    _rw_atomic_abort "$tmp"
+    _RW_CLEANUP_TMP=""
+    release_lock 8
+    _RW_CLEANUP_FD=""
+    exit 1
+  }
 
   _rw_atomic_finish "$tmp" "$reg_path"
   _RW_CLEANUP_TMP=""
@@ -1062,58 +1125,40 @@ _rw_cmd_findings_rows() {
     _rw_die 1 "findings-rows: cannot resolve story file for: $key"
   [ -f "$story_file" ] || _rw_die 1 "findings-rows: story file not found: $story_file"
 
-  # Read triage entries from register.
-  local entry_count
-  entry_count="$(yq '.entries | length' "$reg_path" 2>/dev/null)" || entry_count="0"
-
-  # Build rows in a temp file.
+  # Extract triage entries in a single yq pass (tab-separated fields, one
+  # entry per line).  This keeps the yq spawn count constant regardless of
+  # the number of entries.
   local rows_file="$reg_path.rows.$$"
   : > "$rows_file"
 
-  local i=0
-  while [ "$i" -lt "$entry_count" ]; do
-    local disp
-    disp="$(yq ".entries[$i].disposition" "$reg_path" 2>/dev/null)" || disp=""
-    if [ "$disp" = "triage" ]; then
-      local entry_id ftype sev defect repro gates owner priority
-      entry_id="$(yq ".entries[$i].id" "$reg_path" 2>/dev/null)" || entry_id=""
-      ftype="$(yq ".entries[$i].type" "$reg_path" 2>/dev/null)" || ftype=""
-      sev="$(yq ".entries[$i].severity" "$reg_path" 2>/dev/null)" || sev=""
-      defect="$(yq ".entries[$i].defect" "$reg_path" 2>/dev/null)" || defect=""
-      repro="$(yq ".entries[$i].reproduction" "$reg_path" 2>/dev/null)" || repro=""
-      owner="$(yq ".entries[$i].owner" "$reg_path" 2>/dev/null)" || owner=""
-      priority="$(yq ".entries[$i].priority" "$reg_path" 2>/dev/null)" || priority=""
+  # Single yq→jq pipeline: extract triage entries and format as table rows
+  # in one pass.  The jq filter handles sanitisation (pipes, dashes, bracket
+  # keywords, newlines) so no per-entry subprocess loop is needed.
+  local emdash
+  emdash="$(printf '\xe2\x80\x94')"
 
-      # Get originating gates as comma-separated.
-      gates="$(yq '.entries['"$i"'].originating_gates | join(", ")' "$reg_path" 2>/dev/null)" || gates=""
-
-      # Sanitise cell values.
-      defect="$(_rw_sanitise_cell "$defect")"
-      repro="$(_rw_sanitise_repro "$repro")"
-      gates="$(_rw_sanitise_cell "$gates")"
-      owner="$(_rw_sanitise_cell "$owner")"
-      priority="$(_rw_sanitise_cell "$priority")"
-      ftype="$(_rw_sanitise_cell "$ftype")"
-      sev="$(_rw_sanitise_cell "$sev")"
-
-      # Build the finding column.
-      local finding="${defect} (gates: ${gates})"
-
-      # Build the action column with em dash separator.
-      local action=""
-      if [ -n "$repro" ] && [ "$repro" != "null" ] && [ "$repro" != "" ]; then
-        action="Reproduce: ${repro} \xe2\x80\x94 owner: ${owner}; priority: ${priority}"
+  yq -o=json '[.entries[] | select(.disposition == "triage") | {
+    "id": .id,
+    "type": .type,
+    "severity": .severity,
+    "defect": .defect,
+    "reproduction": (.reproduction // ""),
+    "gates": (.originating_gates | join(", ")),
+    "owner": (.owner // ""),
+    "priority": (.priority // "")
+  }]' "$reg_path" 2>/dev/null \
+  | jq -r --arg emdash "$emdash" '
+    def sanitise_cell: gsub("\n"; " ") | gsub("\\|"; "/") | gsub("---[-]*"; " - - - ") | gsub("\\[TRIAGED"; "TRIAGED") | gsub("\\[DISMISSED"; "DISMISSED");
+    def sanitise_repro: gsub("\n"; " ; ") | gsub("\\|"; "/") | gsub("---[-]*"; " - - - ") | gsub("\\[TRIAGED"; "TRIAGED") | gsub("\\[DISMISSED"; "DISMISSED");
+    .[] |
+      "| " + .id + " | " + (.type | sanitise_cell) + " | " + (.severity | sanitise_cell) +
+      " | " + ((.defect | sanitise_cell) + " (gates: " + (.gates | sanitise_cell) + ")") +
+      " | " + (if (.reproduction // "") != "" then
+        "Reproduce: " + (.reproduction | sanitise_repro) + " " + $emdash + " owner: " + ((.owner // "") | sanitise_cell) + "; priority: " + ((.priority // "") | sanitise_cell)
       else
-        action="\xe2\x80\x94 owner: ${owner}; priority: ${priority}"
-      fi
-      # Write the em dash as actual UTF-8.
-      action="$(printf '%b' "$action")"
-
-      printf '| %s | %s | %s | %s | %s |\n' \
-        "$entry_id" "$ftype" "$sev" "$finding" "$action" >> "$rows_file"
-    fi
-    i=$(( i + 1 ))
-  done
+        $emdash + " owner: " + ((.owner // "") | sanitise_cell) + "; priority: " + ((.priority // "") | sanitise_cell)
+      end) + " |"
+  ' > "$rows_file" 2>/dev/null || : > "$rows_file"
 
   # If no rows, nothing to do.
   if [ ! -s "$rows_file" ]; then
@@ -1139,67 +1184,62 @@ _rw_cmd_findings_rows() {
   export _RW_PLACEHOLDER
   _RW_PLACEHOLDER="$(printf '| \xe2\x80\x94 | \xe2\x80\x94 | \xe2\x80\x94 | \xe2\x80\x94 | \xe2\x80\x94 |')"
 
+  # Two-pass awk: first pass collects all lines and scans existing RF-IDs in
+  # the Findings section.  Second pass (END block) outputs lines, inserting
+  # only truly new rows after the separator.  This prevents re-insertion of
+  # rows that appear later in the section.
   awk '
     BEGIN {
-      in_findings = 0
-      after_sep = 0
-      rows_inserted = 0
       n_rows = split(ENVIRON["_RW_NEW_ROWS"], row_arr, "\n")
       placeholder = ENVIRON["_RW_PLACEHOLDER"]
 
-      # Collect RF-IDs from new rows for idempotency check.
+      # Collect RF-IDs from new rows.
       for (r = 1; r <= n_rows; r++) {
         if (match(row_arr[r], /RF-[0-9]+/)) {
           new_rfids[substr(row_arr[r], RSTART, RLENGTH)] = r
         }
       }
     }
-    /^## Findings/ { in_findings = 1 }
-    /^## [^F]/ && in_findings { in_findings = 0 }
     {
-      if (!in_findings) { print; next }
+      lines[NR] = $0
+      total = NR
 
-      # Placeholder row — replace it with new rows.
-      if (index($0, placeholder) > 0) {
-        for (r = 1; r <= n_rows; r++) {
-          if (row_arr[r] != "") print row_arr[r]
-        }
-        rows_inserted = 1
-        next
-      }
+      # Track Findings section boundaries.
+      if ($0 ~ /^## Findings/) { findings_start = NR; in_f = 1 }
+      if (in_f && NR > findings_start && $0 ~ /^## [^F]/) { findings_end = NR; in_f = 0 }
 
-      # Separator row — print it, then mark insertion point.
-      if ($0 ~ /^\|---/) {
-        print
-        after_sep = 1
-        next
-      }
-
-      # Existing data rows: check if any new RF-ID is already present.
-      for (rfid in new_rfids) {
-        if (index($0, rfid) > 0) {
-          # Already present — suppress this RF-ID from insertion.
-          delete new_rfids[rfid]
+      if (in_f) {
+        if (index($0, placeholder) > 0) placeholder_line = NR
+        if ($0 ~ /^\|---/) { if (sep_line == 0) sep_line = NR }
+        # Scan existing data rows for RF-IDs already present.
+        for (rfid in new_rfids) {
+          if (index($0, "| " rfid " |") > 0) delete new_rfids[rfid]
         }
       }
-
-      # If we just passed the separator and have not inserted, insert now.
-      if (after_sep && !rows_inserted) {
-        for (r = 1; r <= n_rows; r++) {
-          if (row_arr[r] == "") continue
-          # Only emit if the RF-ID has not been suppressed.
-          if (match(row_arr[r], /RF-[0-9]+/)) {
-            rfid = substr(row_arr[r], RSTART, RLENGTH)
-            if (rfid in new_rfids) print row_arr[r]
-          } else {
-            print row_arr[r]
+    }
+    END {
+      for (i = 1; i <= total; i++) {
+        # Placeholder row: replace with all new rows.
+        if (i == placeholder_line) {
+          for (r = 1; r <= n_rows; r++) {
+            if (row_arr[r] != "") print row_arr[r]
+          }
+          continue
+        }
+        print lines[i]
+        # Insert non-duplicate rows right after the separator.
+        if (i == sep_line && placeholder_line == 0) {
+          for (r = 1; r <= n_rows; r++) {
+            if (row_arr[r] == "") continue
+            if (match(row_arr[r], /RF-[0-9]+/)) {
+              rfid = substr(row_arr[r], RSTART, RLENGTH)
+              if (rfid in new_rfids) print row_arr[r]
+            } else {
+              print row_arr[r]
+            }
           }
         }
-        rows_inserted = 1
       }
-      after_sep = 0
-
-      print
     }
   ' "$story_file" > "$output_file"
 
@@ -1216,7 +1256,7 @@ _rw_sanitise_table_chars() {
   # Replace | with / (breaks pipe-delimited tables).
   val="$(printf '%s' "$val" | tr '|' '/')"
   # Replace runs of 3+ dashes with spaced dashes (breaks table separators).
-  val="$(printf '%s' "$val" | sed 's/---/- - -/g')"
+  val="$(printf '%s' "$val" | sed 's/---[-]*/ - - - /g')"
   # Strip [ before TRIAGED or DISMISSED (repeat until none remain).
   # Use a case pattern instead of a pipe to avoid SIGPIPE under pipefail.
   while case "$val" in *'[TRIAGED'*|*'[DISMISSED'*) true ;; *) false ;; esac; do
