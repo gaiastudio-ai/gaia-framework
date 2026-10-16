@@ -327,6 +327,97 @@ STUB
 }
 
 # -----------------------------------------------------------------------
+# Blocker 1 (AC3): multi-paragraph commit body with trailer at the end
+# -----------------------------------------------------------------------
+
+@test "a trailer after a multi-paragraph body is detected" {
+  make_fixture_repo
+  # Create a commit whose body has a description paragraph THEN the trailer.
+  fixture_git -C "$REPO" commit --allow-empty -q \
+    -m "$(printf 'implement feature X\n\nThis change adds the feature X integration\nwith full backward compatibility.\n\nCo-Authored-By: Claude <noreply@anthropic.com>')"
+  make_stub_gh
+  run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"noreply@anthropic.com"* ]]
+  run grep -F 'pr merge' "$GH_ARGS"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------
+# Blocker 2: gh pr checks error fails closed
+# -----------------------------------------------------------------------
+
+@test "gh pr checks returning an error fails closed with an actionable message" {
+  make_fixture_repo
+  # Override the gh stub to make pr checks exit non-zero (network/auth error)
+  mkdir -p "$TEST_TMP/bin"
+  cat > "$TEST_TMP/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_ARGS"
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  case "$*" in
+    *baseRefName*) printf 'staging\n'; exit 0 ;;
+    *headRefName*) printf 'feat/story-branch\n'; exit 0 ;;
+    *mergedAt*)    printf 'OPEN\n'; exit 0 ;;
+    *mergeCommit*) printf 'OPEN\n'; exit 0 ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "pr" ] && [ "$2" = "checks" ]; then
+  printf 'gh: could not reach api.github.com\n' >&2
+  exit 1
+fi
+if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then
+  printf 'merged\n'; exit 0
+fi
+exit 0
+STUB
+  chmod +x "$TEST_TMP/bin/gh"
+  export PATH="$TEST_TMP/bin:$PATH"
+  run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not query"* ]]
+  run grep -F 'pr merge' "$GH_ARGS"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------
+# Blocker 3: guard 1 must not skip when jq is absent
+# -----------------------------------------------------------------------
+
+@test "guard 1 catches a failing check when jq is absent on PATH" {
+  make_fixture_repo
+  make_stub_gh
+  export GH_CHECKS_JSON='[{"bucket":"fail","name":"broken-check"}]'
+  # Shadow jq with a stub that always fails, simulating jq not installed.
+  cat > "$TEST_TMP/bin/jq" <<'S'
+#!/usr/bin/env bash
+exit 1
+S
+  chmod +x "$TEST_TMP/bin/jq"
+  run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"broken-check"* ]]
+  run grep -F 'pr merge' "$GH_ARGS"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------
+# Blocker 4: empty check list must not pass silently
+# -----------------------------------------------------------------------
+
+@test "an empty check list refuses with a wait-and-retry message" {
+  make_fixture_repo
+  make_stub_gh
+  export GH_CHECKS_JSON='[]'
+  run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no checks reported"* ]]
+  run grep -F 'pr merge' "$GH_ARGS"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------
 # Happy path: all guards pass
 # -----------------------------------------------------------------------
 

@@ -134,18 +134,44 @@ assert_pr_target_from_chain "$PR_TARGET" || die "aborting: pr-target invariant f
 # Guard 1: every PR check must be pass or skipping.
 # gh pr checks returns a JSON array of {bucket,name} objects. The accepted
 # bucket values are "pass" and "skipping"; anything else (fail, pending, …)
-# blocks the merge.
+# blocks the merge. Fails closed: query errors, jq absence, and empty check
+# lists all exit non-zero with an actionable message.
+checks_json="$(gh pr checks "$PR_NUMBER" --json bucket,name 2>&1)" || {
+  log "aborting: could not query PR checks (gh pr checks failed)."
+  log "Check network connectivity, authentication, and rate limits, then retry."
+  exit 1
+}
+# Parse checks: try jq first, fall back to grep-based parsing if jq is
+# absent or fails.
+check_count=""
+bad_checks=""
 if command -v jq >/dev/null 2>&1; then
-  checks_json="$(gh pr checks "$PR_NUMBER" --json bucket,name 2>/dev/null || echo "[]")"
-  bad_checks="$(printf '%s' "$checks_json" | jq -r '.[] | select(.bucket != "pass" and .bucket != "skipping") | .name' 2>/dev/null || true)"
-  if [ -n "$bad_checks" ]; then
-    log "aborting: one or more PR checks have not passed:"
-    printf '%s\n' "$bad_checks" | while IFS= read -r chk; do
-      log "  - $chk"
-    done
-    log "Wait for pending checks to finish or fix failing ones, then retry."
-    exit 1
+  check_count="$(printf '%s' "$checks_json" | jq 'length' 2>/dev/null || true)"
+  if [ -n "$check_count" ]; then
+    bad_checks="$(printf '%s' "$checks_json" | jq -r '.[] | select(.bucket != "pass" and .bucket != "skipping") | .name' 2>/dev/null || true)"
   fi
+fi
+# Fallback: grep-based parsing when jq is absent or returned nothing.
+if [ -z "$check_count" ]; then
+  check_count="$(printf '%s' "$checks_json" | grep -c '"bucket"' 2>/dev/null || echo "0")"
+  bad_checks="$(printf '%s' "$checks_json" \
+    | grep -o '"bucket":"[^"]*","name":"[^"]*"' 2>/dev/null \
+    | grep -v '"bucket":"pass"' \
+    | grep -v '"bucket":"skipping"' \
+    | sed 's/.*"name":"\([^"]*\)".*/\1/' 2>/dev/null || true)"
+fi
+if [ "$check_count" -eq 0 ] 2>/dev/null || [ -z "$check_count" ]; then
+  log "aborting: no checks reported yet for PR #${PR_NUMBER}."
+  log "Wait for CI to register checks and retry."
+  exit 1
+fi
+if [ -n "$bad_checks" ]; then
+  log "aborting: one or more PR checks have not passed:"
+  printf '%s\n' "$bad_checks" | while IFS= read -r chk; do
+    log "  - $chk"
+  done
+  log "Wait for pending checks to finish or fix failing ones, then retry."
+  exit 1
 fi
 
 # Shared prerequisite for guards 2 and 3: resolve origin/<base>.
@@ -191,27 +217,22 @@ _build_trailer_regex() {
 }
 
 trailer_regex="$(_build_trailer_regex)"
-# Scan every commit body in the PR range for Co-Authored-By trailers that
-# match the assistant pattern list.
-while IFS= read -r line; do
-  [ -z "$line" ] && continue
-  commit_hash="${line%%	*}"
-  trailer_line="${line#*	}"
-  short_hash="$(git rev-parse --short "$commit_hash" 2>/dev/null || echo "$commit_hash")"
-  log "aborting: commit ${short_hash} carries an assistant attribution trailer:"
-  log "  ${trailer_line}"
-  log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
-  exit 1
-done < <(git log --format='%H %b' "origin/${PR_TARGET}..HEAD" 2>/dev/null \
-  | grep -iE "^[0-9a-f]{40} " \
-  | while IFS= read -r logline; do
-      hash="${logline%% *}"
-      body="${logline#* }"
-      if printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" >/dev/null 2>&1; then
-        matched="$(printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" | head -1)"
-        printf '%s\t%s\n' "$hash" "$matched"
-      fi
-    done)
+# Scan every line of every commit body in the PR range for Co-Authored-By
+# trailers that match the assistant pattern list. Uses NUL as the record
+# separator to handle multi-line bodies (including trailers after description
+# paragraphs).
+while IFS= read -r commit_hash; do
+  [ -z "$commit_hash" ] && continue
+  body="$(git log -1 --format='%B' "$commit_hash" 2>/dev/null || true)"
+  matched="$(printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" 2>/dev/null | head -1 || true)"
+  if [ -n "$matched" ]; then
+    short_hash="$(git rev-parse --short "$commit_hash" 2>/dev/null || echo "$commit_hash")"
+    log "aborting: commit ${short_hash} carries an assistant attribution trailer:"
+    log "  ${matched}"
+    log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
+    exit 1
+  fi
+done < <(git log --format='%H' "origin/${PR_TARGET}..HEAD" 2>/dev/null)
 
 # Build merge command
 MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\""
