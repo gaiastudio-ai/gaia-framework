@@ -1873,11 +1873,11 @@ fi
 # (partially addressed — other stories also trace to it and are not yet done).
 #
 # BEST-EFFORT: a committed transition must never be rolled back because the
-# issue-closure hook failed. Every gh call is wrapped in a non-fatal guard.
-# When gh is absent or returns non-zero, a WARNING is emitted and the
-# transition completes normally.
+# issue-closure hook failed. Every gh call is wrapped in a non-fatal guard
+# with a portable time bound. When gh is absent, returns non-zero, or exceeds
+# the timeout, a WARNING is emitted and the transition completes normally.
 #
-# Design: three small, independently-callable functions so sibling stories
+# Design: small, independently-callable functions so sibling stories
 # (task-box ticking, findings-triage guard) that later hook the same done
 # path can rebase cleanly around this block.
 
@@ -1908,44 +1908,93 @@ _parse_traces_to() {
   ' "$file"
 }
 
+# _gh_with_timeout — run a gh command with a portable time bound.
+# Uses timeout/gtimeout when available; falls back to background+kill.
+# Returns the gh exit code, or 124 on timeout. Stdout/stderr pass through.
+_gh_with_timeout() {
+  local limit="${GAIA_GH_TIMEOUT:-30}"
+  # Try timeout (Linux, Homebrew coreutils) then gtimeout (macOS brew)
+  local timeout_cmd=""
+  if command -v timeout >/dev/null 2>&1; then
+    timeout_cmd="timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    timeout_cmd="gtimeout"
+  fi
+  if [ -n "$timeout_cmd" ]; then
+    "$timeout_cmd" "$limit" gh "$@"
+    return $?
+  fi
+  # Portable fallback: background the call, wait up to $limit seconds
+  gh "$@" &
+  local gh_pid=$!
+  local elapsed=0
+  while [ "$elapsed" -lt "$limit" ]; do
+    if ! kill -0 "$gh_pid" 2>/dev/null; then
+      wait "$gh_pid" 2>/dev/null
+      return $?
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  # Timed out — kill the process
+  kill "$gh_pid" 2>/dev/null || true
+  wait "$gh_pid" 2>/dev/null || true
+  return 124
+}
+
 # _find_merged_pr_number — resolve the merged PR number for a story key.
 # Returns the PR number on stdout, or empty string on failure.
 _find_merged_pr_number() {
   local story_key="$1"
-  gh pr list --state merged --search "$story_key" \
-    --json number --jq '.[0].number' 2>/dev/null || true
+  local result
+  result="$(_gh_with_timeout pr list --state merged --search "$story_key" \
+    --json number --jq '.[0].number' 2>/dev/null)" || true
+  # Filter out non-numeric results (e.g. "null", empty)
+  case "$result" in
+    ''|null|*[!0-9]*) printf '' ;;
+    *) printf '%s' "$result" ;;
+  esac
 }
 
-# _is_issue_fully_addressed — determine whether this story fully addresses
-# a traced issue. Heuristic: if no OTHER story files in the implementation
-# artifacts also trace to the same issue while not yet done, the issue is
-# fully addressed by this story.
-# Returns 0 (fully addressed) or 1 (partially — other non-done tracers exist).
-_is_issue_fully_addressed() {
+# _find_other_tracers — find other non-done stories that trace the same issue.
+# Scans only story.md files (template: story) under IMPLEMENTATION_ARTIFACTS,
+# parses each with _parse_traces_to for exact issue-number matching, and
+# compares story keys exactly (not by substring).
+# Outputs one non-done story key per line. Empty output means fully addressed.
+_find_other_tracers() {
   local issue_num="$1" story_key="$2"
-  local other_file other_status
-  # Search for other story files that reference the same issue.
-  # Use grep -rl with a bounded search (maxdepth via find would be better but
-  # grep -rl is simpler and the artifact tree is small).
-  local other_files
-  other_files="$(grep -rl "GitHub #${issue_num}" "$IMPLEMENTATION_ARTIFACTS" 2>/dev/null || true)"
-  [ -n "$other_files" ] || return 0
-  while IFS= read -r other_file; do
-    [ -n "$other_file" ] || continue
-    # Skip the current story's own file
-    case "$other_file" in
-      *"${story_key}"*) continue ;;
-    esac
-    # Only consider actual story files (template: story)
-    if ! awk '/^---/ { n++; if (n==2) exit } n==1 && /^template:.*story/ { found=1; exit } END { exit(found?0:1) }' "$other_file" 2>/dev/null; then
+  local story_file other_key other_status other_nums
+  # Find all story files (files containing template: story in frontmatter).
+  # Use find to locate .md files, then filter by frontmatter template.
+  while IFS= read -r story_file; do
+    [ -n "$story_file" ] || continue
+    # Must be a story file (template: story in frontmatter)
+    if ! awk '/^---/ { n++; if (n==2) exit } n==1 && /^template:.*story/ { found=1; exit } END { exit(found?0:1) }' "$story_file" 2>/dev/null; then
       continue
     fi
-    other_status="$(read_frontmatter_status "$other_file" 2>/dev/null || true)"
+    # Read the key from frontmatter — exact match, not substring
+    other_key="$(read_frontmatter_field "$story_file" key 2>/dev/null || true)"
+    [ -n "$other_key" ] || continue
+    # Skip the current story (exact key comparison)
+    [ "$other_key" != "$story_key" ] || continue
+    # Parse traces_to and check for exact issue number match
+    other_nums="$(_parse_traces_to "$story_file")"
+    [ -n "$other_nums" ] || continue
+    local found_match=0
+    local n
+    while IFS= read -r n; do
+      if [ "$n" = "$issue_num" ]; then
+        found_match=1
+        break
+      fi
+    done <<< "$other_nums"
+    [ "$found_match" -eq 1 ] || continue
+    # Check status — only report non-done stories
+    other_status="$(read_frontmatter_status "$story_file" 2>/dev/null || true)"
     if [ -n "$other_status" ] && [ "$other_status" != "done" ]; then
-      return 1  # Another non-done story also traces to this issue
+      printf '%s\n' "$other_key"
     fi
-  done <<< "$other_files"
-  return 0
+  done < <(find "$IMPLEMENTATION_ARTIFACTS" -name '*.md' -type f 2>/dev/null)
 }
 
 # _close_traced_issues — post-transition hook entry point.
@@ -1977,17 +2026,31 @@ _close_traced_issues() {
   while IFS= read -r issue_num; do
     [ -n "$issue_num" ] || continue
 
-    if _is_issue_fully_addressed "$issue_num" "$story_key"; then
+    local remaining
+    remaining="$(_find_other_tracers "$issue_num" "$story_key")"
+    if [ -z "$remaining" ]; then
       # Fully addressed — close with comment
-      if ! gh issue close "$issue_num" --comment "Fixed by ${story_key}${pr_ref}." 2>/dev/null; then
-        log "WARNING: failed to close traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+      if ! _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${story_key}${pr_ref}." 2>/dev/null; then
+        local rc=$?
+        if [ "$rc" -eq 124 ]; then
+          log "WARNING: gh timed out closing traced issue #${issue_num} for ${story_key}"
+        else
+          log "WARNING: failed to close traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+        fi
       fi
     else
-      # Partially addressed — comment only, do not close
-      if ! gh issue comment "$issue_num" --body "Partially addressed by ${story_key}${pr_ref}. Other stories still reference this issue." 2>/dev/null; then
-        log "WARNING: failed to comment on traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+      # Partially addressed — comment naming what remains
+      local remaining_keys
+      remaining_keys="$(printf '%s' "$remaining" | tr '\n' ', ' | sed 's/,$//')"
+      if ! _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${story_key}${pr_ref}. Remaining: ${remaining_keys}." 2>/dev/null; then
+        local rc=$?
+        if [ "$rc" -eq 124 ]; then
+          log "WARNING: gh timed out commenting on traced issue #${issue_num} for ${story_key}"
+        else
+          log "WARNING: failed to comment on traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+        fi
       fi
-      log "WARNING: issue #${issue_num} partially addressed by ${story_key} — commented but not closed (other stories still trace to it)"
+      log "WARNING: issue #${issue_num} partially addressed by ${story_key} — commented but not closed (remaining: ${remaining_keys})"
     fi
   done <<< "$issue_nums"
 }
