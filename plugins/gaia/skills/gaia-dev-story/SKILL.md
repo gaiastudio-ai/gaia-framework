@@ -352,6 +352,20 @@ Resolve the developer persona via the shared resolver (it runs in the parent con
 
 **YOLO inheritance.** When the orchestrator is in YOLO mode, it MUST `export GAIA_YOLO_MODE=1` into the developer dispatch's environment — a child does not inherit YOLO intent implicitly (see the Subagent YOLO inheritance note at Step 4).
 
+### Step 3c -- REWORK round guard
+
+In REWORK mode (detect-mode.sh printed REWORK), before dispatching the developer (Step 4), verify the latest review round is complete and bind the correction brief:
+
+1. **Call `round-info --story {key}`.** Exit 1 (no orchestrated round, legacy story): skip `bind-brief`/`supersede-brief` below; `assert-round-complete` will print "no orchestrated round" and exit 0. Exit 0: capture `run_id`, `brief_path` and `brief_sha256` from the output.
+
+2. **Resolve the correction-brief path** via `resolve-review-report-path.sh --key {key} --type correction-brief`. Write the correction brief to the resolved path.
+
+3. **Bind or supersede the brief.** When `round-info` printed `brief_path none`: call `register-write.sh bind-brief --story {key} --run-id {id} --brief {path}`. When `round-info` printed `brief_path <existing-path>` and the file's current SHA-256 equals `brief_sha256`: call `bind-brief` (idempotent no-op, exit 0). Otherwise: call `register-write.sh supersede-brief --story {key} --run-id {id} --brief {path} --rationale <why the brief changed>`.
+
+4. **Call `register-write.sh assert-round-complete --story {key}`.** HALT on any non-zero exit. The only non-zero exit that does not halt REWORK is `round-info` exit 1 in step 1 above (legacy path — `assert-round-complete` then prints "no orchestrated round" and exits 0).
+
+For FRESH and RESUME modes, skip this step.
+
 ### Step 4 -- Plan Implementation
 
 <!-- design-gate begin -->

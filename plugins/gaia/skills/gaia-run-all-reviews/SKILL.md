@@ -146,6 +146,24 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-skip-check.sh --story {story_key} [--f
 
 The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
 
+**Substep 2.2b — Round-start sequence.** Before dispatching any gate, record the review round in the findings register. Execute these steps in order:
+
+1. **Resolve the story's code tree.** Read the dev-story checkpoint (`resume-checkpoint.sh read --skill gaia-dev-story --latest`) and extract `.key_variables.worktree_path`, but **only when `.key_variables.story_key` equals the current story key** (parallel stories write their own checkpoints — a mismatched key must fall through). Verify the path still appears in `git worktree list`. Otherwise match `refs/heads/feat/{story_key}-` in `git worktree list --porcelain` and use that worktree only when exactly one entry matches. Fall back to `${PROJECT_PATH}`. The resolved path is the code tree for the round.
+
+2. **Call `round-info`** to discover the previous round:
+   ```
+   register-write.sh round-info --story {key}
+   ```
+   Parse `run_id`, `commit_sha`, and every `last_completed_run <gate> <run-id|none>` line. Exit 1 (no orchestrated round) means every gate reports `none` — proceed with all gates selected.
+
+3. **Call `record-round`**, passing each selected gate from the `run` slice as `--gate <register-gate-name>=<reason>`, and each skip-list gate as either `--carry <gate>=<from-run-id>:<rationale>` when `round-info` reports a non-`none` `last_completed_run`, or promoted to the `run` slice: `--gate <gate>="no carryable evidence"` when `round-info` reports `none` — add the gate to the Step 2.3 `run` slice and remove it from the Step 2.4 SKIPPED lines.
+
+4. **Obtain the new round's commit SHA** by calling `round-info --run-id {new-run-id}` after `record-round` and parsing the `commit_sha` line.
+
+5. **When the previous SHA differs from the new round's SHA**, call `impact-assessment --story {key} --run-id {new} --from-run {old} --repo {tree}`.
+
+HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-info` exit 1 at round start (no previous round — proceed with all gates selected).
+
 **Substep 2.3 — Run the `run` slice (Skill dispatch + report assertion + gate write).** For each canonical short-name in `run` (in canonical order), **dispatch the corresponding per-review skill via the Skill tool** (NEVER inline-judge). After the skill returns, **assert the per-review report file exists on disk** before writing the verdict. The verdict write itself uses the proof-of-execution contract:
 
 ```bash
@@ -185,6 +203,8 @@ For each short_name in run:
 
   4. Write the verdict via review-gate.sh update with --report (and
      --execution-evidence for test-execution gates).
+
+  4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path}` to record the gate's report path and hash in the round.
 
   5. If the skill dispatch itself fails (skill not installed, subagent
      errors before returning), record a FAILED verdict with
@@ -303,12 +323,31 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/manual-test-review-dispatch.sh --story {story
 
 > Summary file is written by script, not LLM. The LLM produces optional one-line synopses via `--synopsis-file`; everything else is deterministic.
 
+**Substep 2.4b — Scope-revision check and round completion.** After consolidation and before the summary write:
+
+1. **Call `round-info`** again and compare `current_version` vs `accepted_version`. On a mismatch, HALT and ask the user to classify the change:
+   - For `essential_missing_requirement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind essential_missing_requirement --decision {text} --reassess {gate} ...`. After recording, re-run each reassessed gate under the same run id, record its report via `record-round-report`, then re-run the consolidation steps (gate-status, triage, re-resolve, findings-rows) for the reassessed gates.
+   - For `unrelated_enhancement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind unrelated_enhancement --decision {text} --followon {story-key}`. Tell the user to revert the out-of-scope AC edit, then re-run `complete-round`.
+
+2. **Call `complete-round`** — this runs after consolidation and before the summary write:
+   ```
+   register-write.sh complete-round --story {key} --run-id {run_id} --repo {tree}
+   ```
+   HALT on any non-zero exit.
+
+3. **Pass round-awareness flags to the summary writer.** The `--requirement-version` value is the round's `accepted_version` from the `round-info` output. Validate each value against its pattern before passing:
+   ```
+   _re_round_id='^round-[0-9]{8}T[0-9]{6}Z-[0-9]+$'
+   _re_sha='^([0-9a-f]{40}|[0-9a-f]{64})$'
+   _re_reqver='^sha256:[0-9a-f]{64}$'
+   ```
+
 After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in fixed order:
 
 1. **Write the summary file** via `review-summary-gen.sh`:
 
    ```bash
-   bash scripts/review-summary-gen.sh --story {story_key} [--synopsis-file <path>]
+   bash scripts/review-summary-gen.sh --story {story_key} --run-id {run_id} --commit-sha {sha} --requirement-version {accepted_version} [--synopsis-file <path>]
    ```
 
    The script reads the current Review Gate table and writes the V1-locked schema to `.gaia/artifacts/implementation-artifacts/{story_key}-review-summary.md`. If the script exits non-zero with a write failure (read-only filesystem / permission denied), HALT with an explicit write-failure message; story status is left untouched (AC-EC8).

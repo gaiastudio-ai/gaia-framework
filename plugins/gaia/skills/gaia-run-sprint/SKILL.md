@@ -146,6 +146,7 @@ intentional — please do not "fix" one to match the other.
   freed so the rest of the phase proceeds; the story is reported as timed out
   and **its worktree is preserved**, because a story that ran out of wall clock
   is the one most likely to hold work nobody has committed yet.
+- **Correction dispatch guard.** Correction dispatch after a FAILED review is guarded inside `/gaia-dev-story` REWORK mode (`assert-round-complete`). Run-sprint relies on that guard rather than dispatching corrections itself.
 - **Re-entry is safe.** A story whose worktree survived a previous run is
   attached rather than started twice, and orphans from a killed run are cleared
   before anything new is created.

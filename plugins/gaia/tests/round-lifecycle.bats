@@ -753,42 +753,26 @@ _make_commit() {
   local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
   _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
 
-  # Create a register with a round that has a carried gate with empty rationale.
+  # Create round via record-round to get the correct requirement version.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Manually inject a carried gate with empty rationale.
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
-  mkdir -p "$(dirname "$reg")"
-  local sha
-  sha="$(git -C "$repo_dir" rev-parse HEAD)"
-  cat > "$reg" <<YAML
-schema_version: 1
-story: TEST-S1
-gate_runs:
-  - run_id: "${VALID_RUN_ID}"
-    gate: code-review
-    at: "2026-01-01T00:00:00Z"
-    outcome: completed
-    seq: 1
-entries: []
-rounds:
-  - run_id: "${VALID_RUN_ID}"
-    commit_sha: "${sha}"
-    requirement_version: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-    accepted_version: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-    status: open
-    superseded_by: null
-    selected_gates:
-      - gate: code-review
-        reason: "test"
-        report_path: ""
-        report_sha256: ""
-    carried_gates:
-      - gate: security-review
-        from_run: "round-20261015T000000Z-99999"
-        applicability_rationale: ""
-    impact_assessment: null
-    scope_revisions: []
-    brief: null
-YAML
+  yq -i '(.rounds[] | select(.run_id == "round-20261016T120000Z-12345")).carried_gates = [{"gate": "security-review", "from_run": "round-20261015T000000Z-99999", "applicability_rationale": ""}]' "$reg"
+
+  # Record gate run for code-review.
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/cr-report.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" \
@@ -1285,18 +1269,25 @@ YAML
     --run-id "$VALID_RUN_ID" --brief "$brief"
   [ "$status" -eq 0 ]
 
-  # Now supersede the round.
+  # Create an OPEN round (round 2), then supersede it with round 3.
   run "$SCRIPT" record-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID_2" \
     --repo "$repo_dir" \
     --gate "code-review=test"
   [ "$status" -eq 0 ]
 
-  # bind-brief on superseded round should fail.
+  # Round 3 supersedes the open round 2.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_3" \
+    --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # bind-brief on superseded round 2 should fail.
   local brief2="$TEST_TMP/brief2.md"
   printf 'brief2\n' > "$brief2"
   run "$SCRIPT" bind-brief --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --brief "$brief2"
+    --run-id "$VALID_RUN_ID_2" --brief "$brief2"
   [ "$status" -eq 1 ]
   grep -qi "superseded" <<<"$output"
 }
@@ -1869,56 +1860,49 @@ YAML
 
 @test "carried gate cycle detected exits 1" {
   local repo_dir="$TEST_TMP/repo"
-  _init_git_repo "$repo_dir" >/dev/null
+  local sha
+  sha="$(_init_git_repo "$repo_dir")"
 
   local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
   _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
 
+  # Compute the requirement version so the fixture matches.
+  local req_ver
+  req_ver="$(env IMPLEMENTATION_ARTIFACTS="$IMPLEMENTATION_ARTIFACTS" PROJECT_ROOT="$PROJECT_ROOT" "$SCRIPT" round-info --story TEST-S1 2>&1 || true)"
+
+  # Create round 1 via record-round so the req version is correct.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "round-20261016T100000Z-1" --repo "$repo_dir" \
+    --gate "qa-tests=placeholder"
+  [ "$status" -eq 0 ]
+
+  # Create round 2 via record-round.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "round-20261016T100000Z-2" --repo "$repo_dir" \
+    --gate "qa-tests=placeholder"
+  [ "$status" -eq 0 ]
+
+  # Now manually edit the register to create a cycle:
+  # Round 1 carries code-review from round 2, round 2 carries from round 1.
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
 
-  # Manufacture a register with a cycle: round A carries from round B,
-  # round B carries from round A.
-  _minimal_register "$reg"
-  cat > "$reg" <<'CYCLE_YAML'
-schema_version: 1
-story: TEST-S1
-gate_runs: []
-entries: []
-rounds:
-  - run_id: "round-20261016T100000Z-1"
-    commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    requirement_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    accepted_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    status: complete
-    superseded_by: null
-    selected_gates: []
-    carried_gates:
-      - gate: code-review
-        from_run: "round-20261016T100000Z-2"
-        applicability_rationale: "carried from round 2"
-    impact_assessment: null
-    scope_revisions: []
-    brief: null
-  - run_id: "round-20261016T100000Z-2"
-    commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    requirement_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    accepted_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    status: open
-    superseded_by: null
-    selected_gates:
-      - gate: qa-tests
-        reason: "run"
-        report_path: ""
-        report_sha256: ""
-    carried_gates:
-      - gate: code-review
-        from_run: "round-20261016T100000Z-1"
-        applicability_rationale: "carried from round 1"
-    impact_assessment: null
-    scope_revisions: []
-    brief: null
-CYCLE_YAML
+  export _RW_CR1="round-20261016T100000Z-2" _RW_CR2="round-20261016T100000Z-1"
+  yq -i '(.rounds[] | select(.run_id == "round-20261016T100000Z-1")).carried_gates = [{"gate": "code-review", "from_run": strenv(_RW_CR1), "applicability_rationale": "carried from round 2"}]' "$reg"
+  yq -i '(.rounds[] | select(.run_id == "round-20261016T100000Z-2")).carried_gates = [{"gate": "code-review", "from_run": strenv(_RW_CR2), "applicability_rationale": "carried from round 1"}]' "$reg"
+  # Mark round 1 complete so round 2 is the open one.
+  yq -i '(.rounds[] | select(.run_id == "round-20261016T100000Z-1")).status = "complete"' "$reg"
+  unset _RW_CR1 _RW_CR2
+
+  # Record gate run for qa-tests so the selected gate passes.
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "round-20261016T100000Z-2" --gate qa-tests --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/qa-report.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "round-20261016T100000Z-2" --gate qa-tests --report "$rpt"
+  [ "$status" -eq 0 ]
 
   # complete-round should detect the cycle and exit 1.
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -1930,41 +1914,32 @@ CYCLE_YAML
 
 @test "carried gate hop to run-id not in rounds exits 1" {
   local repo_dir="$TEST_TMP/repo"
-  _init_git_repo "$repo_dir" >/dev/null
+  local sha
+  sha="$(_init_git_repo "$repo_dir")"
 
   local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
   _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
 
+  # Create round 1 normally.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "round-20261016T100000Z-1" --repo "$repo_dir" \
+    --gate "qa-tests=placeholder"
+  [ "$status" -eq 0 ]
+
+  # Manually add a carried gate referencing a non-existent round.
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  yq -i '(.rounds[] | select(.run_id == "round-20261016T100000Z-1")).carried_gates = [{"gate": "code-review", "from_run": "round-20261016T100000Z-999", "applicability_rationale": "from nonexistent"}]' "$reg"
 
-  # Manufacture a register where a carried gate references a non-existent round.
-  _minimal_register "$reg"
-  cat > "$reg" <<'MISSING_YAML'
-schema_version: 1
-story: TEST-S1
-gate_runs: []
-entries: []
-rounds:
-  - run_id: "round-20261016T100000Z-1"
-    commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    requirement_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    accepted_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    status: open
-    superseded_by: null
-    selected_gates:
-      - gate: qa-tests
-        reason: "run"
-        report_path: ""
-        report_sha256: ""
-    carried_gates:
-      - gate: code-review
-        from_run: "round-20261016T100000Z-999"
-        applicability_rationale: "carried from a round that does not exist"
-    impact_assessment: null
-    scope_revisions: []
-    brief: null
-MISSING_YAML
+  # Record gate run for qa-tests.
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "round-20261016T100000Z-1" --gate qa-tests --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/qa-report.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "round-20261016T100000Z-1" --gate qa-tests --report "$rpt"
+  [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "round-20261016T100000Z-1" --repo "$repo_dir"
@@ -1975,56 +1950,38 @@ MISSING_YAML
 
 @test "carried gate in neither selected nor carried at terminal round exits 1" {
   local repo_dir="$TEST_TMP/repo"
-  _init_git_repo "$repo_dir" >/dev/null
+  local sha
+  sha="$(_init_git_repo "$repo_dir")"
 
   local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
   _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
 
+  # Round 1 selects ONLY qa-tests (no code-review anywhere).
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "round-20261016T100000Z-1" --repo "$repo_dir" \
+    --gate "qa-tests=placeholder"
+  [ "$status" -eq 0 ]
+
+  # Round 2 selects security-review and carries code-review from round 1.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "round-20261016T100000Z-2" --repo "$repo_dir" \
+    --gate "security-review=placeholder"
+  [ "$status" -eq 0 ]
+
+  # Manually add a carried gate pointing to round 1, which doesn't have code-review.
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  yq -i '(.rounds[] | select(.run_id == "round-20261016T100000Z-2")).carried_gates = [{"gate": "code-review", "from_run": "round-20261016T100000Z-1", "applicability_rationale": "carried from round 1 which lacks it"}]' "$reg"
 
-  # Round 1 does not have code-review in either selected or carried.
-  _minimal_register "$reg"
-  cat > "$reg" <<'ABSENT_YAML'
-schema_version: 1
-story: TEST-S1
-gate_runs: []
-entries: []
-rounds:
-  - run_id: "round-20261016T100000Z-1"
-    commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    requirement_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    accepted_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    status: complete
-    superseded_by: null
-    selected_gates:
-      - gate: qa-tests
-        reason: "run"
-        report_path: ""
-        report_sha256: ""
-    carried_gates: []
-    impact_assessment: null
-    scope_revisions: []
-    brief: null
-  - run_id: "round-20261016T100000Z-2"
-    commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    requirement_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    accepted_version: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    status: open
-    superseded_by: null
-    selected_gates:
-      - gate: security-review
-        reason: "run"
-        report_path: ""
-        report_sha256: ""
-    carried_gates:
-      - gate: code-review
-        from_run: "round-20261016T100000Z-1"
-        applicability_rationale: "carried from round 1 which does not have it"
-    impact_assessment: null
-    scope_revisions: []
-    brief: null
-ABSENT_YAML
+  # Record gate runs for round 2 selected gates.
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "round-20261016T100000Z-2" --gate security-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/sec-report.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "round-20261016T100000Z-2" --gate security-review --report "$rpt"
+  [ "$status" -eq 0 ]
 
   # complete-round should fail: code-review carried from round 1, but round 1
   # has code-review in neither selected nor carried.
@@ -2131,10 +2088,15 @@ ABSENT_YAML
   local sha2
   sha2="$(_make_commit "$repo_dir" "file2.txt")"
 
-  # Round 2.
+  # Round 2: select all 6 gates so the all-gates check is satisfied.
   run "$SCRIPT" record-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
-    --gate "code-review=second"
+    --gate "code-review=second" \
+    --gate "qa-tests=second" \
+    --gate "security-review=second" \
+    --gate "test-automate=second" \
+    --gate "test-review=second" \
+    --gate "performance-review=second"
   [ "$status" -eq 0 ]
 
   # Record impact-assessment with valid data.
