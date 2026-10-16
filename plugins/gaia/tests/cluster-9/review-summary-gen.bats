@@ -378,7 +378,7 @@ SYN
 @test "output byte-identical without new flags (golden structural cmp)" {
   seed_all_passed
 
-  # Pin mtime for determinism.
+  # Pin mtime for determinism — must match the golden capture timestamp.
   TZ=UTC touch -t 202601011200.00 "$STORY_FILE"
 
   run "$SUMMARY_GEN" --story "$STORY_KEY"
@@ -397,11 +397,14 @@ SYN
   out_path2="$(printf '%s\n' "$output" | tail -1)"
   cmp "$first" "$out_path2"
 
-  # Structural checks from the golden reference.
-  grep -q '^story_key:' "$first"
-  grep -q '^date:' "$first"
-  grep -q '^overall_status: PASSED$' "$first"
-  grep -q '^reviewers: \[code-review' "$first"
+  # Strip run-specific absolute paths and compare against committed golden.
+  local golden="$FIXTURES_DIR/expected/golden-summary-no-round-flags.txt"
+  [ -f "$golden" ] || { echo "golden fixture missing: $golden" >&2; return 1; }
+
+  local stripped="$TEST_TMP/summary-stripped.md"
+  sed 's|`/[^`]*`|`PATH_STRIPPED`|g' "$first" > "$stripped"
+  cmp "$stripped" "$golden"
+
   # No round-awareness fields present without new flags.
   ! grep -q '^run_id:' "$first"
   ! grep -q '^commit_sha:' "$first"

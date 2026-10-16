@@ -17,7 +17,6 @@ bats_require_minimum_version 1.5.0
 # Constants
 # ---------------------------------------------------------------------------
 
-SCRATCHPAD="/private/tmp/claude-501/-Users-jlouage-Dev-GAIA-Framework/d21d61f7-c64a-462e-a618-bfe9ab06c17d/scratchpad"
 BASH_UNDER_TEST="${BASH_UNDER_TEST:-bash}"
 VALID_RUN_ID="round-20261016T120000Z-12345"
 VALID_RUN_ID_2="round-20261016T130000Z-67890"
@@ -46,7 +45,7 @@ setup() {
   fi
   REPORT_PATH="$SCRIPTS_DIR/resolve-review-report-path.sh"
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP"
-  export PROJECT_ROOT="$SCRATCHPAD/integ-$$-${BATS_TEST_NUMBER}"
+  export PROJECT_ROOT="${BATS_TMPDIR:-${TMPDIR:-/tmp}}/integ-$$-${BATS_TEST_NUMBER}"
   mkdir -p "$PROJECT_ROOT"
 
   echo "# Integration test running under: $("$BASH_UNDER_TEST" --version | head -1)" >&3
