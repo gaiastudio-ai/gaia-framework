@@ -1123,9 +1123,11 @@ _write_yaml_id() {
 # Changelog rollout note (AC5)
 # ---------------------------------------------------------------------------
 
-@test "changelog unreleased note covers the segment, self-heal and the manual refresh" {
+@test "changelog rollout note covers the segment, self-heal and the manual refresh" {
+  # The note lives under [Unreleased] until a release moves it under a version
+  # heading, so read the whole changelog rather than one section.
   local unreleased
-  unreleased="$(sed -n '/^## \[Unreleased\]/,/^## \[[0-9]/{/^## \[/d;p;}' "$PLUGIN_ROOT/CHANGELOG.md")"
+  unreleased="$(cat "$PLUGIN_ROOT/CHANGELOG.md")"
   [ -n "$unreleased" ]
   [[ "$unreleased" == *"status line shows sprint progress percentage"* ]] || false
   [[ "$unreleased" == *"warning prefix"* ]] || false
