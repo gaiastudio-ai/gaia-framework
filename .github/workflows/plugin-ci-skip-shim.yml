@@ -39,7 +39,9 @@ on:
     paths-ignore:
       - 'plugins/gaia/**'
       - '.github/workflows/plugin-ci.yml'
+      - '.github/scripts/**'
       - 'scripts/audit-v2-migration.sh'
+      - 'tests/**'
 
 jobs:
   frontmatter-lint:
