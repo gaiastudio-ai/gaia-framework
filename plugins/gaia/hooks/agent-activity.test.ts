@@ -639,6 +639,36 @@ describe('rule-b items reach the rendered pane and band', () => {
     return w
   }
 
+  test('50+ agents: lines are capped with "+N more" and the pane still renders quickly', async ($, on) => {
+    var agents = []
+    for (var i = 0; i < 55; i++) {
+      agents.push({ id: 's' + i, description: 'E900-S3: task ' + i, type: 'agent', status: 'running' })
+    }
+    for (var j = 0; j < 12; j++) {
+      agents.push({ id: 'u' + j, description: 'side job ' + j, type: 'agent', status: 'running' })
+    }
+    var w = worldWithAgents(on, agents)
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    await w.clock.advance(30000)
+
+    var start = Date.now()
+    var pane = await $.ui.mount({
+      plugin: 'gaia', surface: 'terminal', component: 'Pane',
+      requestId: 'sprint-status', props: { bodyColumns: 40 }
+    })
+    var elapsed = Date.now() - start
+    // Only the capped lines render: 5 story lines and 5 unlinked lines.
+    var storyLines = (await pane.findAll({ text: /task [0-9]+ running/ })).filter((el: any) => el.type === 'Text')
+    expect(storyLines.length).toBe(5)
+    expect(await pane.find({ text: /\+50 more/ })).toBeDefined()
+    var sideLines = (await pane.findAll({ text: /side job [0-9]+/ })).filter((el: any) => el.type === 'Text')
+    expect(sideLines.length).toBe(5)
+    expect(await pane.find({ text: /\+7 more/ })).toBeDefined()
+    expect(elapsed).toBeLessThan(2000)
+    await pane.unmount()
+  })
+
   test('waiting agent past threshold shows in pane banner and band', async ($, on) => {
     var cache = deepCopy(WRITER_CACHE)
     cache.waiting_agent_threshold_seconds = 0
