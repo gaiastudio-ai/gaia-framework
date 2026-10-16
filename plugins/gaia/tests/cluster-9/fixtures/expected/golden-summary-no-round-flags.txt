@@ -1,0 +1,25 @@
+# Golden structural reference for review-summary-gen.sh without round flags.
+# Captured from staging commit 258c72e5 with TZ=UTC, touch -t 202601011200.00.
+# This file contains the path-invariant lines of the summary output.
+# The test runs two identical invocations and cmp-compares them (byte-identical),
+# then verifies these structural lines are present.
+story_key: GOLDEN-FIXTURE
+date: 2026-01-01
+overall_status: PASSED
+reviewers: [code-review, qa-tests, security-review, test-automate, test-review, review-perf]
+# Review Summary: GOLDEN-FIXTURE
+## Code Review
+**Verdict:** PASSED
+## QA Tests
+**Verdict:** PASSED
+## Security Review
+**Verdict:** PASSED
+## Test Automation
+**Verdict:** PASSED
+## Test Review
+**Verdict:** PASSED
+## Performance Review
+**Verdict:** PASSED
+## Aggregate Gate Status
+| Review | Verdict | Report |
+**Overall Status:** PASSED

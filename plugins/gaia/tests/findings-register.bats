@@ -2932,3 +2932,49 @@ _assert_blocked_errored() {
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
   [ "$outcome" = "completed" ] || { echo "perf-inherit: expected completed, got: $outcome" >&2; false; }
 }
+
+# ---------------------------------------------------------------------------
+# record-run: seq field (per-round review record additive change)
+# ---------------------------------------------------------------------------
+
+@test "record-run appends seq monotonically" {
+  _minimal_register "$TEST_TMP/reg.yaml"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  mkdir -p "$stories_dir"
+  cat > "$stories_dir/TEST-S1-test-story.md" <<'STORY'
+---
+template: 'story'
+key: "TEST-S1"
+title: "Test Story"
+status: in-progress
+epic: "TEST"
+---
+# Story: Test Story
+
+## Findings
+
+| # | Type | Severity | Finding | Suggested Action |
+|---|------|----------|---------|-----------------|
+| — | — | — | — | — |
+STORY
+
+  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+    --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-run --story TEST-S1 --run-id run-002 \
+    --gate qa-tests --outcome completed
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local seq1
+  seq1="$(yq '.gate_runs[0].seq' "$reg")"
+  local seq2
+  seq2="$(yq '.gate_runs[1].seq' "$reg")"
+
+  # Both should have seq; seq2 > seq1.
+  [ "$seq1" -ge 1 ]
+  [ "$seq2" -gt "$seq1" ]
+}
