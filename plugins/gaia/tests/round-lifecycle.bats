@@ -2704,3 +2704,129 @@ YAML
   [ "$status" -eq 1 ]
   grep -qi "invalid story key" <<<"$output"
 }
+
+# ===================================================================
+# No STUB env vars active (INFO 1)
+# ===================================================================
+
+@test "record-round runs without any STUB env var and changes the register" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Assert no STUB var is leaking.
+  run env
+  ! grep -q '_STUB=' <<<"$output"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # The register must actually exist and contain the round.
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ]
+  local count
+  count="$(yq '.rounds | length' "$reg")"
+  [ "$count" -eq 1 ]
+}
+
+@test "complete-round runs without any STUB env var and marks round complete" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run env
+  ! grep -q '_STUB=' <<<"$output"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/cr-rpt.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local status_val
+  status_val="$(yq '.rounds[0].status' "$reg")"
+  [ "$status_val" = "complete" ]
+}
+
+@test "bind-brief runs without any STUB env var and stores the brief" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run env
+  ! grep -q '_STUB=' <<<"$output"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local brief="$TEST_TMP/stub-check-brief.md"
+  printf 'brief content\n' > "$brief"
+  run "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local bp
+  bp="$(yq '.rounds[0].brief.path' "$reg")"
+  [ -n "$bp" ] && [ "$bp" != "null" ]
+}
+
+# ===================================================================
+# complete-round: single message names every failure (INFO 3)
+# ===================================================================
+
+@test "complete-round names both HEAD mismatch and missing report in one message" {
+  local repo_dir="$TEST_TMP/repo"
+  local sha
+  sha="$(_init_git_repo "$repo_dir")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Record gate run but NOT the report (so report is missing).
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  # Move HEAD so we get BOTH a HEAD mismatch AND a missing report.
+  _make_commit "$repo_dir" "drift.txt" >/dev/null
+
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 1 ]
+
+  # The error must mention BOTH the HEAD mismatch and the gate report issue.
+  grep -qi "HEAD" <<<"$output"
+  grep -qi "code-review" <<<"$output"
+}

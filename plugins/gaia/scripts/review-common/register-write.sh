@@ -312,11 +312,17 @@ _rw_abort_and_exit() {
 _rw_check_brief_integrity() {
   local file="$1" prefix="$2"
   local brief_type
-  brief_type="$(yq "${prefix}.brief | type" "$file" 2>/dev/null)" || brief_type=""
+  brief_type="$(yq "${prefix}.brief | type" "$file" 2>/dev/null)" || {
+    _rw_err "failed to read brief type"; return 1
+  }
   if [ "$brief_type" = "!!map" ]; then
     local bp bs
-    bp="$(yq "${prefix}.brief.path" "$file" 2>/dev/null)" || bp=""
-    bs="$(yq "${prefix}.brief.sha256" "$file" 2>/dev/null)" || bs=""
+    bp="$(yq "${prefix}.brief.path" "$file" 2>/dev/null)" || {
+      _rw_err "failed to read brief path"; return 1
+    }
+    bs="$(yq "${prefix}.brief.sha256" "$file" 2>/dev/null)" || {
+      _rw_err "failed to read brief sha256"; return 1
+    }
     if [ -n "$bp" ] && [ "$bp" != "null" ]; then
       if [ ! -r "$bp" ]; then
         # Bound brief file is missing — refuse (fail closed).
@@ -339,9 +345,15 @@ _rw_gate_latest_outcome() {
   local file="$1"
   export _RW_GLO_RUN="$2" _RW_GLO_GATE="$3"
   local reassess_seq
-  reassess_seq="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_GLO_RUN))).scope_revisions[] | select(.kind == "essential_missing_requirement" and (.reassessed_gates[] == strenv(_RW_GLO_GATE)))] | sort_by(.seq) | .[-1].seq // 0' "$file" 2>/dev/null)" || reassess_seq="0"
+  # Use [... | .seq] | max // 0 instead of sort_by | .[-1] to avoid yq
+  # exit 1 on empty arrays ([-1] is out of range on an empty sequence).
+  reassess_seq="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_GLO_RUN))).scope_revisions[] | select(.kind == "essential_missing_requirement" and (.reassessed_gates[] == strenv(_RW_GLO_GATE))) | .seq] | max // 0' "$file" 2>/dev/null)" || _rw_die 2 "failed to compute reassess_seq for gate $3"
+  # Normalise empty/null to 0.
+  case "$reassess_seq" in
+    ""|null) reassess_seq="0" ;;
+  esac
   local outcome
-  if [ "$reassess_seq" != "0" ] && [ "$reassess_seq" != "null" ]; then
+  if [ "$reassess_seq" != "0" ]; then
     export _RW_GLO_SEQ="$reassess_seq"
     outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_GLO_RUN) and .gate == strenv(_RW_GLO_GATE) and (.seq // 0) > env(_RW_GLO_SEQ))] | sort_by(.seq // 0) | .[-1].outcome // ""' "$file" 2>/dev/null)" || outcome=""
     unset _RW_GLO_SEQ
@@ -1570,7 +1582,7 @@ _rw_cmd_record_round() {
   # Idempotency: if a round with the same run_id exists, compare fields.
   export _RW_RUN_ID="$run_id"
   local existing
-  existing="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID))] | length' "$tmp" 2>/dev/null)" || existing="0"
+  existing="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID))] | length' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "record-round: failed to query existing rounds"
   if [ "$existing" != "0" ] && [ "$existing" != "null" ]; then
     # Compare key fields: SHA, req version, sorted [gate,reason] pairs,
     # and sorted [gate,from_run,rationale] triples.
@@ -1862,13 +1874,17 @@ _rw_cmd_complete_round() {
     complete) _rw_abort_and_exit ;;  # Idempotent.
   esac
 
+  # Collect all mismatches into a single errors string so the caller sees
+  # every problem in one message.
+  local errors=""
+
   # HEAD check.
   local current_head
   current_head="$(_rw_resolve_code_tree "$repo")"
   local round_sha
-  round_sha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).commit_sha' "$tmp" 2>/dev/null)" || _rw_die 1 "complete-round: failed to read round SHA"
+  round_sha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).commit_sha' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read round SHA"
   if [ "$current_head" != "$round_sha" ]; then
-    _rw_abort_and_die 1 "HEAD ($current_head) does not equal round SHA ($round_sha)"
+    errors="${errors}HEAD ($current_head) does not equal round SHA ($round_sha); "
   fi
 
   # Requirement version check.
@@ -1877,29 +1893,27 @@ _rw_cmd_complete_round() {
   local current_ver
   current_ver="$(_rw_compute_requirement_version "$story_file")"
   local accepted_ver
-  accepted_ver="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).accepted_version' "$tmp" 2>/dev/null)" || _rw_die 1 "complete-round: failed to read accepted_version"
+  accepted_ver="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).accepted_version' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read accepted_version"
   if [ "$current_ver" != "$accepted_ver" ]; then
-    _rw_abort_and_die 1 "requirement version mismatch: current=$current_ver accepted=$accepted_ver"
+    errors="${errors}requirement version mismatch: current=$current_ver accepted=$accepted_ver; "
   fi
 
   # impact_assessment validation.
-  local has_impact
+  local has_impact ia_to_sha="" ia_from_run=""
   has_impact="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment | type' "$tmp" 2>/dev/null)" || has_impact=""
   if [ "$has_impact" = "!!map" ]; then
-    local ia_to_sha ia_from_run
     ia_to_sha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment.to_sha' "$tmp" 2>/dev/null)" || ia_to_sha=""
     ia_from_run="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment.from_run' "$tmp" 2>/dev/null)" || ia_from_run=""
     if [ "$ia_to_sha" != "$round_sha" ]; then
-      _rw_abort_and_die 1 "impact_assessment.to_sha ($ia_to_sha) does not match round SHA ($round_sha)"
+      errors="${errors}impact_assessment.to_sha ($ia_to_sha) does not match round SHA ($round_sha); "
     fi
-    # Verify from_run references a valid round.
     if [ -n "$ia_from_run" ] && [ "$ia_from_run" != "null" ]; then
       export _RW_FROM_RUN="$ia_from_run"
       local from_exists
       from_exists="$(yq '[.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))] | length' "$tmp" 2>/dev/null)" || from_exists="0"
       unset _RW_FROM_RUN
       if [ "$from_exists" = "0" ] || [ "$from_exists" = "null" ]; then
-        _rw_abort_and_die 1 "impact_assessment.from_run ($ia_from_run) not found in rounds"
+        errors="${errors}impact_assessment.from_run ($ia_from_run) not found in rounds; "
       fi
     fi
   fi
@@ -1914,16 +1928,16 @@ _rw_cmd_complete_round() {
     if [ "$pred_sha" != "$round_sha" ] && [ -n "$pred_sha" ] && [ "$pred_sha" != "null" ]; then
       # Different commit — need impact_assessment and all 6 gates.
       if [ "$has_impact" != "!!map" ]; then
-        _rw_abort_and_die 1 "impact_assessment required when commit changed from predecessor"
+        errors="${errors}impact_assessment required when commit changed from predecessor; "
       fi
       # Verify impact_assessment.from_run references the predecessor.
       local pred_run_id
       pred_run_id="$(yq ".rounds[$pred_idx].run_id" "$tmp" 2>/dev/null)" || pred_run_id=""
       if [ -n "$ia_from_run" ] && [ "$ia_from_run" != "null" ] && [ "$ia_from_run" != "$pred_run_id" ]; then
-        _rw_abort_and_die 1 "impact_assessment.from_run ($ia_from_run) is not the predecessor ($pred_run_id)"
+        errors="${errors}impact_assessment.from_run ($ia_from_run) is not the predecessor ($pred_run_id); "
       fi
       # Check all six gates are accounted for.
-      local _g errors=""
+      local _g
       for _g in $_RW_CANONICAL_GATES; do
         export _RW_CHECK_GATE="$_g"
         local in_sel in_car
@@ -1936,14 +1950,11 @@ _rw_cmd_complete_round() {
           fi
         fi
       done
-      if [ -n "$errors" ]; then
-        _rw_abort_and_die 1 "complete-round: $errors"
-      fi
     fi
   fi
 
   # Check each selected gate.
-  local sel_count errors=""
+  local sel_count
   sel_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[]] | length' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read selected_gates count"
   local si=0
   while [ "$si" -lt "$sel_count" ]; do
