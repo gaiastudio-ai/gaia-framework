@@ -278,6 +278,74 @@ _rw_atomic_abort() {
   rm -f "$tmp"
 }
 
+# Finish the atomic write and release the register lock.
+# Usage: _rw_commit_register <tmp> <reg_path>
+_rw_commit_register() {
+  _rw_atomic_finish "$1" "$2"
+  _RW_CLEANUP_TMP=""
+  release_lock 8
+  _RW_CLEANUP_FD=""
+}
+
+# Abort the in-flight atomic write, release the lock, and die.
+# Reads _RW_CLEANUP_TMP (already set by every mutating subcommand).
+# Usage: _rw_abort_and_die <exit_code> <message...>
+_rw_abort_and_die() {
+  local _rc="$1"; shift
+  _rw_atomic_abort "$_RW_CLEANUP_TMP"; _RW_CLEANUP_TMP=""
+  release_lock 8 2>/dev/null || true; _RW_CLEANUP_FD=""
+  _rw_die "$_rc" "$*"
+}
+
+# Abort and exit cleanly (for idempotent no-ops).
+# Usage: _rw_abort_and_exit [<exit_code>]
+_rw_abort_and_exit() {
+  _rw_atomic_abort "$_RW_CLEANUP_TMP"; _RW_CLEANUP_TMP=""
+  release_lock 8 2>/dev/null || true; _RW_CLEANUP_FD=""
+  exit "${1:-0}"
+}
+
+# Check brief SHA-256 integrity.
+# Usage: _rw_check_brief_integrity <file> <yq_round_prefix>
+# Returns 0 if integrity holds or no brief is bound, 1 on mismatch.
+_rw_check_brief_integrity() {
+  local file="$1" prefix="$2"
+  local brief_type
+  brief_type="$(yq "${prefix}.brief | type" "$file" 2>/dev/null)" || brief_type=""
+  if [ "$brief_type" = "!!map" ]; then
+    local bp bs
+    bp="$(yq "${prefix}.brief.path" "$file" 2>/dev/null)" || bp=""
+    bs="$(yq "${prefix}.brief.sha256" "$file" 2>/dev/null)" || bs=""
+    if [ -n "$bp" ] && [ "$bp" != "null" ] && [ -f "$bp" ]; then
+      local current_bsha
+      current_bsha="$(_rw_file_sha256 "$bp")" || current_bsha=""
+      if [ "$current_bsha" != "$bs" ]; then
+        return 1
+      fi
+    fi
+  fi
+}
+
+# Get the latest gate outcome for a run, respecting scope-revision reassess seq.
+# Usage: _rw_gate_latest_outcome <file> <run_id> <gate>
+# Prints the outcome ("completed", "errored", or "").
+_rw_gate_latest_outcome() {
+  local file="$1"
+  export _RW_GLO_RUN="$2" _RW_GLO_GATE="$3"
+  local reassess_seq
+  reassess_seq="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_GLO_RUN))).scope_revisions[] | select(.kind == "essential_missing_requirement" and (.reassessed_gates[] == strenv(_RW_GLO_GATE)))] | sort_by(.seq) | .[-1].seq // 0' "$file" 2>/dev/null)" || reassess_seq="0"
+  local outcome
+  if [ "$reassess_seq" != "0" ] && [ "$reassess_seq" != "null" ]; then
+    export _RW_GLO_SEQ="$reassess_seq"
+    outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_GLO_RUN) and .gate == strenv(_RW_GLO_GATE) and (.seq // 0) > env(_RW_GLO_SEQ))] | sort_by(.seq // 0) | .[-1].outcome // ""' "$file" 2>/dev/null)" || outcome=""
+    unset _RW_GLO_SEQ
+  else
+    outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_GLO_RUN) and .gate == strenv(_RW_GLO_GATE))] | sort_by(.seq // 0) | .[-1].outcome // ""' "$file" 2>/dev/null)" || outcome=""
+  fi
+  unset _RW_GLO_RUN _RW_GLO_GATE
+  printf '%s' "$outcome"
+}
+
 # Trap helper to clean up temp files and release lock on exit.
 _RW_CLEANUP_TMP=""
 _RW_CLEANUP_FD=""
@@ -496,10 +564,7 @@ _rw_cmd_add() {
       "$blocking_rationale" "$requirement_or_risk" "$dedup_key"
   fi
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 _rw_new_entry() {
@@ -858,10 +923,7 @@ _rw_cmd_merge() {
   # Remove source entry.
   yq -i "del(.entries[$src_idx])" "$tmp"
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -969,10 +1031,7 @@ _rw_cmd_resolve_severity() {
 
   unset _RW_RSEV _RW_RRAT
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -1051,10 +1110,7 @@ _rw_cmd_set_disposition() {
     unset _RW_PRIORITY
   fi
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -1111,18 +1167,10 @@ _rw_cmd_triage_nonblocking() {
       )
     )
   ' "$tmp" 2>/dev/null || {
-    _rw_err "triage-nonblocking: yq batch update failed"
-    _rw_atomic_abort "$tmp"
-    _RW_CLEANUP_TMP=""
-    release_lock 8
-    _RW_CLEANUP_FD=""
-    exit 1
+    _rw_abort_and_die 1 "triage-nonblocking: yq batch update failed"
   }
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -1189,10 +1237,7 @@ _rw_cmd_record_run() {
 
   unset _RW_RUN_ID _RW_GATE _RW_OUTCOME _RW_TIMESTAMP _RW_SEQ
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -1522,16 +1567,9 @@ _rw_cmd_record_round() {
     new_gates="$(printf '%s' "$selected_json" | jq -r '[.[].gate] | sort | join(",")')" || _rw_die 1 "record-round: jq failed"
     unset _RW_RUN_ID
     if [ "$ex_sha" = "$commit_sha" ] && [ "$ex_req" = "$req_ver" ] && [ "$ex_gates" = "$new_gates" ]; then
-      # Identical — no-op.
-      _rw_atomic_abort "$tmp"
-      _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      exit 0
+      _rw_abort_and_exit  # Identical — no-op.
     else
-      _rw_atomic_abort "$tmp"
-      _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      _rw_die 1 "conflicting record-round for run-id: $run_id"
+      _rw_abort_and_die 1 "conflicting record-round for run-id: $run_id"
     fi
   fi
   unset _RW_RUN_ID
@@ -1573,10 +1611,7 @@ _rw_cmd_record_round() {
 
   unset _RW_RUN_ID _RW_COMMIT_SHA _RW_REQ_VER _RW_SEL_TMP _RW_CAR_TMP
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -1626,21 +1661,14 @@ _rw_cmd_record_round_report() {
   export _RW_RUN_ID="$run_id" _RW_GATE="$gate" _RW_RPATH="$report" _RW_RHASH="$report_hash"
   local found
   found="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))] | length' "$tmp" 2>/dev/null)" || found="0"
-  [ "$found" != "0" ] && [ "$found" != "null" ] || {
-    unset _RW_RUN_ID _RW_GATE _RW_RPATH _RW_RHASH
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "record-round-report: gate $gate not found in round $run_id"
-  }
+  [ "$found" != "0" ] && [ "$found" != "null" ] || \
+    _rw_abort_and_die 1 "record-round-report: gate $gate not found in round $run_id"
 
   yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_path = strenv(_RW_RPATH) | (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_sha256 = strenv(_RW_RHASH)' "$tmp" || _rw_die 1 "record-round-report: yq write failed"
 
   unset _RW_RUN_ID _RW_GATE _RW_RPATH _RW_RHASH
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -1803,26 +1831,12 @@ _rw_cmd_complete_round() {
   export _RW_RUN_ID="$run_id"
   local round_status
   round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
-  [ -n "$round_status" ] && [ "$round_status" != "null" ] || {
-    unset _RW_RUN_ID
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "round not found for run-id: $run_id"
-  }
+  [ -n "$round_status" ] && [ "$round_status" != "null" ] || \
+    _rw_abort_and_die 1 "round not found for run-id: $run_id"
 
   case "$round_status" in
-    superseded)
-      unset _RW_RUN_ID
-      _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      _rw_die 1 "cannot complete a superseded round: $run_id"
-      ;;
-    complete)
-      unset _RW_RUN_ID
-      _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      exit 0  # Idempotent.
-      ;;
+    superseded) _rw_abort_and_die 1 "cannot complete a superseded round: $run_id" ;;
+    complete) _rw_abort_and_exit ;;  # Idempotent.
   esac
 
   # HEAD check.
@@ -1831,10 +1845,7 @@ _rw_cmd_complete_round() {
   local round_sha
   round_sha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).commit_sha' "$tmp" 2>/dev/null)" || _rw_die 1 "complete-round: failed to read round SHA"
   if [ "$current_head" != "$round_sha" ]; then
-    unset _RW_RUN_ID
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "HEAD ($current_head) does not equal round SHA ($round_sha)"
+    _rw_abort_and_die 1 "HEAD ($current_head) does not equal round SHA ($round_sha)"
   fi
 
   # Requirement version check.
@@ -1845,10 +1856,7 @@ _rw_cmd_complete_round() {
   local accepted_ver
   accepted_ver="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).accepted_version' "$tmp" 2>/dev/null)" || _rw_die 1 "complete-round: failed to read accepted_version"
   if [ "$current_ver" != "$accepted_ver" ]; then
-    unset _RW_RUN_ID
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "requirement version mismatch: current=$current_ver accepted=$accepted_ver"
+    _rw_abort_and_die 1 "requirement version mismatch: current=$current_ver accepted=$accepted_ver"
   fi
 
   # impact_assessment validation.
@@ -1859,10 +1867,7 @@ _rw_cmd_complete_round() {
     ia_to_sha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment.to_sha' "$tmp" 2>/dev/null)" || ia_to_sha=""
     ia_from_run="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment.from_run' "$tmp" 2>/dev/null)" || ia_from_run=""
     if [ "$ia_to_sha" != "$round_sha" ]; then
-      unset _RW_RUN_ID
-      _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      _rw_die 1 "impact_assessment.to_sha ($ia_to_sha) does not match round SHA ($round_sha)"
+      _rw_abort_and_die 1 "impact_assessment.to_sha ($ia_to_sha) does not match round SHA ($round_sha)"
     fi
     # Verify from_run references a valid round.
     if [ -n "$ia_from_run" ] && [ "$ia_from_run" != "null" ]; then
@@ -1871,10 +1876,7 @@ _rw_cmd_complete_round() {
       from_exists="$(yq '[.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))] | length' "$tmp" 2>/dev/null)" || from_exists="0"
       unset _RW_FROM_RUN
       if [ "$from_exists" = "0" ] || [ "$from_exists" = "null" ]; then
-        unset _RW_RUN_ID
-        _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-        release_lock 8; _RW_CLEANUP_FD=""
-        _rw_die 1 "impact_assessment.from_run ($ia_from_run) not found in rounds"
+        _rw_abort_and_die 1 "impact_assessment.from_run ($ia_from_run) not found in rounds"
       fi
     fi
   fi
@@ -1889,10 +1891,7 @@ _rw_cmd_complete_round() {
     if [ "$pred_sha" != "$round_sha" ] && [ -n "$pred_sha" ] && [ "$pred_sha" != "null" ]; then
       # Different commit — need impact_assessment and all 6 gates.
       if [ "$has_impact" != "!!map" ]; then
-        unset _RW_RUN_ID
-        _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-        release_lock 8; _RW_CLEANUP_FD=""
-        _rw_die 1 "impact_assessment required when commit changed from predecessor"
+        _rw_abort_and_die 1 "impact_assessment required when commit changed from predecessor"
       fi
       # Check all six gates are accounted for.
       local _g errors=""
@@ -1909,10 +1908,7 @@ _rw_cmd_complete_round() {
         fi
       done
       if [ -n "$errors" ]; then
-        unset _RW_RUN_ID
-        _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-        release_lock 8; _RW_CLEANUP_FD=""
-        _rw_die 1 "complete-round: $errors"
+        _rw_abort_and_die 1 "complete-round: $errors"
       fi
     fi
   fi
@@ -1934,21 +1930,8 @@ _rw_cmd_complete_round() {
     fi
     [ -f "$sg_report" ] || { errors="${errors}gate $sg: report file missing: $sg_report; "; si=$((si + 1)); continue; }
 
-    # Check if the gate was reassessed by a scope revision.
-    export _RW_CHECK_GATE="$sg"
-    local reassess_seq
-    reassess_seq="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).scope_revisions[] | select(.kind == "essential_missing_requirement" and (.reassessed_gates[] == strenv(_RW_CHECK_GATE)))] | sort_by(.seq) | .[-1].seq // 0' "$tmp" 2>/dev/null)" || reassess_seq="0"
-
-    # Find latest gate_runs entry for this gate+run-id with seq > reassess_seq.
     local latest_outcome
-    if [ "$reassess_seq" != "0" ] && [ "$reassess_seq" != "null" ]; then
-      export _RW_RSEQ="$reassess_seq"
-      latest_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_RUN_ID) and .gate == strenv(_RW_CHECK_GATE) and (.seq // 0) > env(_RW_RSEQ))] | sort_by(.seq // 0) | .[-1].outcome // ""' "$tmp" 2>/dev/null)" || latest_outcome=""
-      unset _RW_RSEQ
-    else
-      latest_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_RUN_ID) and .gate == strenv(_RW_CHECK_GATE))] | sort_by(.seq // 0) | .[-1].outcome // ""' "$tmp" 2>/dev/null)" || latest_outcome=""
-    fi
-    unset _RW_CHECK_GATE
+    latest_outcome="$(_rw_gate_latest_outcome "$tmp" "$run_id" "$sg")"
 
     if [ "$latest_outcome" != "completed" ]; then
       errors="${errors}gate $sg: not completed (outcome: ${latest_outcome:-none}); "
@@ -1998,16 +1981,8 @@ _rw_cmd_complete_round() {
       in_hop_sel="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$tmp" 2>/dev/null)" || in_hop_sel="0"
       if [ "$in_hop_sel" != "0" ] && [ "$in_hop_sel" != "null" ]; then
         # Terminal run — check gate completion.
-        local hop_reassess_seq
-        hop_reassess_seq="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).scope_revisions[] | select(.kind == "essential_missing_requirement" and (.reassessed_gates[] == strenv(_RW_HOP_GATE)))] | sort_by(.seq) | .[-1].seq // 0' "$tmp" 2>/dev/null)" || hop_reassess_seq="0"
         local hop_outcome
-        if [ "$hop_reassess_seq" != "0" ] && [ "$hop_reassess_seq" != "null" ]; then
-          export _RW_HRSEQ="$hop_reassess_seq"
-          hop_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_HOP_RUN) and .gate == strenv(_RW_HOP_GATE) and (.seq // 0) > env(_RW_HRSEQ))] | sort_by(.seq // 0) | .[-1].outcome // ""' "$tmp" 2>/dev/null)" || hop_outcome=""
-          unset _RW_HRSEQ
-        else
-          hop_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_HOP_RUN) and .gate == strenv(_RW_HOP_GATE))] | sort_by(.seq // 0) | .[-1].outcome // ""' "$tmp" 2>/dev/null)" || hop_outcome=""
-        fi
+        hop_outcome="$(_rw_gate_latest_outcome "$tmp" "$hop_run" "$hop_gate")"
         if [ "$hop_outcome" != "completed" ]; then
           errors="${errors}carried gate $cg: not completed at terminal run $hop_run; "
         fi
@@ -2054,36 +2029,19 @@ _rw_cmd_complete_round() {
   done
 
   # Brief check.
-  local brief_type
-  brief_type="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief | type' "$tmp" 2>/dev/null)" || brief_type=""
-  if [ "$brief_type" = "!!map" ]; then
-    local bp bs
-    bp="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.path' "$tmp" 2>/dev/null)" || bp=""
-    bs="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.sha256' "$tmp" 2>/dev/null)" || bs=""
-    if [ -n "$bp" ] && [ "$bp" != "null" ] && [ -f "$bp" ]; then
-      local current_bsha
-      current_bsha="$(_rw_file_sha256 "$bp")" || current_bsha=""
-      if [ "$current_bsha" != "$bs" ]; then
-        errors="${errors}silently widened brief; "
-      fi
-    fi
+  if ! _rw_check_brief_integrity "$tmp" "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID)))"; then
+    errors="${errors}silently widened brief; "
   fi
 
   if [ -n "$errors" ]; then
-    unset _RW_RUN_ID
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "complete-round: $errors"
+    _rw_abort_and_die 1 "complete-round: $errors"
   fi
 
   # Mark complete.
   yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status = "complete"' "$tmp" || _rw_die 1 "complete-round: yq write failed"
   unset _RW_RUN_ID
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -2126,20 +2084,8 @@ _rw_cmd_assert_round_complete() {
   latest_status="$(yq '.rounds[-1].status' "$reg_path" 2>/dev/null)" || latest_status=""
 
   # Brief integrity check (on any status).
-  local brief_type
-  brief_type="$(yq '.rounds[-1].brief | type' "$reg_path" 2>/dev/null)" || brief_type=""
-  if [ "$brief_type" = "!!map" ]; then
-    local bp bs
-    bp="$(yq '.rounds[-1].brief.path' "$reg_path" 2>/dev/null)" || bp=""
-    bs="$(yq '.rounds[-1].brief.sha256' "$reg_path" 2>/dev/null)" || bs=""
-    if [ -n "$bp" ] && [ "$bp" != "null" ] && [ -f "$bp" ]; then
-      local current_bsha
-      current_bsha="$(_rw_file_sha256 "$bp")" || current_bsha=""
-      if [ "$current_bsha" != "$bs" ]; then
-        _rw_die 1 "silently widened brief"
-      fi
-    fi
-  fi
+  _rw_check_brief_integrity "$reg_path" ".rounds[-1]" || \
+    _rw_die 1 "silently widened brief"
 
   case "$latest_status" in
     complete) exit 0 ;;
@@ -2193,10 +2139,7 @@ _rw_cmd_impact_assessment() {
   local cur_exists
   cur_exists="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID))] | length' "$tmp" 2>/dev/null)" || cur_exists="0"
   if [ "$cur_exists" = "0" ] || [ "$cur_exists" = "null" ]; then
-    unset _RW_RUN_ID
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "round not found for run-id: $run_id"
+    _rw_abort_and_die 1 "round not found for run-id: $run_id"
   fi
 
   local new_sha
@@ -2207,10 +2150,7 @@ _rw_cmd_impact_assessment() {
   local from_exists
   from_exists="$(yq '[.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))] | length' "$tmp" 2>/dev/null)" || from_exists="0"
   if [ "$from_exists" = "0" ] || [ "$from_exists" = "null" ]; then
-    unset _RW_RUN_ID _RW_FROM_RUN
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "round not found for from-run: $from_run"
+    _rw_abort_and_die 1 "round not found for from-run: $from_run"
   fi
 
   local old_sha
@@ -2220,19 +2160,12 @@ _rw_cmd_impact_assessment() {
   local current_head
   current_head="$(_rw_resolve_code_tree "$repo")"
   if [ "$current_head" != "$new_sha" ]; then
-    unset _RW_RUN_ID _RW_FROM_RUN
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "HEAD does not match round SHA"
+    _rw_abort_and_die 1 "HEAD does not match round SHA"
   fi
 
   # Verify old SHA exists in the repo.
-  git -C "$repo" cat-file -t "$old_sha" >/dev/null 2>&1 || {
-    unset _RW_RUN_ID _RW_FROM_RUN
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "earlier SHA not found in repo: $old_sha"
-  }
+  git -C "$repo" cat-file -t "$old_sha" >/dev/null 2>&1 || \
+    _rw_abort_and_die 1 "earlier SHA not found in repo: $old_sha"
 
   # Compute changed files via NUL-delimited diff + jq.
   local diff_tmp list_json
@@ -2252,10 +2185,7 @@ _rw_cmd_impact_assessment() {
 
   unset _RW_RUN_ID _RW_FROM_RUN _RW_OLD_SHA _RW_NEW_SHA _RW_LIST_JSON
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -2314,12 +2244,8 @@ _rw_cmd_record_scope_revision() {
   export _RW_RUN_ID="$run_id"
   local round_status
   round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
-  [ "$round_status" = "open" ] || {
-    unset _RW_RUN_ID
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "record-scope-revision: round $run_id is not open (status: $round_status)"
-  }
+  [ "$round_status" = "open" ] || \
+    _rw_abort_and_die 1 "record-scope-revision: round $run_id is not open (status: $round_status)"
 
   # Compute current max seq.
   local max_seq
@@ -2355,15 +2281,9 @@ _rw_cmd_record_scope_revision() {
     in_car="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == strenv(_RW_RG))] | length' "$tmp" 2>/dev/null)" || in_car="0"
     if [ "$in_sel" = "0" ] || [ "$in_sel" = "null" ]; then
       if [ "$in_car" = "0" ] || [ "$in_car" = "null" ]; then
-        unset _RW_RG
-        _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-        release_lock 8; _RW_CLEANUP_FD=""
-        _rw_die 1 "reassessed gate $rg is neither selected nor carried"
+        _rw_abort_and_die 1 "reassessed gate $rg is neither selected nor carried"
       fi
-      # Move from carried to selected.
-      local car_json
-      car_json="$(yq -o=json '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == strenv(_RW_RG))' "$tmp" 2>/dev/null)" || car_json=""
-      # Remove from carried_gates.
+      # Move from carried to selected; remove from carried_gates.
       yq -i 'del((.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == strenv(_RW_RG)))' "$tmp" || _rw_die 1 "record-scope-revision: yq delete failed"
       # Add to selected_gates with reason "reassessed by scope revision".
       export _RW_REASON="reassessed by scope revision"
@@ -2387,10 +2307,7 @@ _rw_cmd_record_scope_revision() {
   yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).scope_revisions += [load(strenv(_RW_REV_TMP))]' "$tmp" || _rw_die 1 "record-scope-revision: yq write failed"
   unset _RW_REV_TMP _RW_RUN_ID
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -2438,18 +2355,8 @@ _rw_cmd_bind_brief() {
   round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
   case "$round_status" in
     open|complete) ;;
-    superseded)
-      unset _RW_RUN_ID
-      _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      _rw_die 1 "cannot bind brief to a superseded round"
-      ;;
-    *)
-      unset _RW_RUN_ID
-      _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      _rw_die 1 "bind-brief: round not found for run-id: $run_id"
-      ;;
+    superseded) _rw_abort_and_die 1 "cannot bind brief to a superseded round" ;;
+    *) _rw_abort_and_die 1 "bind-brief: round not found for run-id: $run_id" ;;
   esac
 
   # Check existing brief.
@@ -2460,16 +2367,9 @@ _rw_cmd_bind_brief() {
     ex_path="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.path' "$tmp" 2>/dev/null)" || ex_path=""
     ex_hash="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.sha256' "$tmp" 2>/dev/null)" || ex_hash=""
     if [ "$ex_path" = "$brief" ] && [ "$ex_hash" = "$brief_hash" ]; then
-      # Idempotent re-bind.
-      unset _RW_RUN_ID
-      _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      exit 0
+      _rw_abort_and_exit  # Idempotent re-bind.
     fi
-    unset _RW_RUN_ID
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "brief already bound; use supersede-brief"
+    _rw_abort_and_die 1 "brief already bound; use supersede-brief"
   fi
 
   # Set brief.
@@ -2477,10 +2377,7 @@ _rw_cmd_bind_brief() {
   yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief = {"path": strenv(_RW_BPATH), "sha256": strenv(_RW_BHASH), "status": "active", "superseded_by": null, "history": []}' "$tmp" || _rw_die 1 "bind-brief: yq write failed"
   unset _RW_RUN_ID _RW_BPATH _RW_BHASH
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -2530,29 +2427,15 @@ _rw_cmd_supersede_brief() {
   round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
   case "$round_status" in
     open|complete) ;;
-    superseded)
-      unset _RW_RUN_ID
-      _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      _rw_die 1 "cannot supersede brief on a superseded round"
-      ;;
-    *)
-      unset _RW_RUN_ID
-      _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-      release_lock 8; _RW_CLEANUP_FD=""
-      _rw_die 1 "supersede-brief: round not found for run-id: $run_id"
-      ;;
+    superseded) _rw_abort_and_die 1 "cannot supersede brief on a superseded round" ;;
+    *) _rw_abort_and_die 1 "supersede-brief: round not found for run-id: $run_id" ;;
   esac
 
   # Must have an existing brief.
   local existing_brief_type
   existing_brief_type="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief | type' "$tmp" 2>/dev/null)" || existing_brief_type=""
-  [ "$existing_brief_type" = "!!map" ] || {
-    unset _RW_RUN_ID
-    _rw_atomic_abort "$tmp"; _RW_CLEANUP_TMP=""
-    release_lock 8; _RW_CLEANUP_FD=""
-    _rw_die 1 "supersede-brief: no brief bound to supersede"
-  }
+  [ "$existing_brief_type" = "!!map" ] || \
+    _rw_abort_and_die 1 "supersede-brief: no brief bound to supersede"
 
   # Preserve old brief in history.
   local old_path old_hash
@@ -2571,10 +2454,7 @@ _rw_cmd_supersede_brief() {
   yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.path = strenv(_RW_BPATH) | (.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.sha256 = strenv(_RW_BHASH) | (.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.status = "active" | (.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.superseded_by = null' "$tmp" || _rw_die 1 "supersede-brief: yq write failed"
   unset _RW_RUN_ID _RW_BPATH _RW_BHASH
 
-  _rw_atomic_finish "$tmp" "$reg_path"
-  _RW_CLEANUP_TMP=""
-  release_lock 8
-  _RW_CLEANUP_FD=""
+  _rw_commit_register "$tmp" "$reg_path"
 }
 
 # ---------------------------------------------------------------------------
