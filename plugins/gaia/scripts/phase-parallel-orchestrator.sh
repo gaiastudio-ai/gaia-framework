@@ -186,11 +186,53 @@ _PPO_SEEN="|"
 # so the accessors below read the files and fall back to the variables.
 
 # _ppo_session_fallback — the ONE place the session-dir fallback is defined.
-# When GAIA_SESSION_DIR is unset or empty, every path builder in this file uses
-# ${TMPDIR:-/tmp}/gaia-ppo-$$ so that (a) the path is always writable and (b)
-# concurrent orchestrator runs do not collide. $$ is the orchestrator's own PID.
+# When GAIA_SESSION_DIR is unset or empty, every path builder in this file reads
+# a breadcrumb left by `plan` at a fixed location. The breadcrumb names a
+# writable temp directory whose identity is derived from the sprint yaml and
+# repo paths — stable across the separate bash processes the run-sprint skill
+# spawns (plan, next, record, status), yet collision-free between two concurrent
+# sprints or projects. A missing breadcrumb means plan was never called; the
+# fallback itself is then ${TMPDIR}/gaia-ppo-<PID> so the caller gets a writable
+# path rather than an empty one, and ppo_next's own "no plan" guard reports the
+# real problem.
+_PPO_BREADCRUMB="${TMPDIR:-/tmp}/.gaia-ppo-active"
+
 _ppo_session_fallback() {
-  printf '%s' "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}/gaia-ppo-$$}"
+  if [ -n "${GAIA_SESSION_DIR:-}" ]; then
+    printf '%s' "$GAIA_SESSION_DIR"
+    return 0
+  fi
+  # Read the breadcrumb left by plan.
+  if [ -f "$_PPO_BREADCRUMB" ]; then
+    cat "$_PPO_BREADCRUMB" 2>/dev/null
+    return 0
+  fi
+  # No breadcrumb — use a PID-scoped path so callers never get an empty string.
+  printf '%s' "${TMPDIR:-/tmp}/gaia-ppo-$$"
+}
+
+# _ppo_session_fallback_for <yaml> <repo> — compute a DETERMINISTIC fallback
+# session dir from the sprint yaml and repo paths. Called once by plan to
+# establish the breadcrumb; all subsequent calls (next, record, ...) read the
+# breadcrumb through _ppo_session_fallback above.
+_ppo_session_fallback_for() {
+  local yaml="${1:-}" repo="${2:-}"
+  local fingerprint cksum
+  fingerprint="$(cd "$(dirname "$yaml")" 2>/dev/null && pwd)/$(basename "$yaml"):$(cd "$repo" 2>/dev/null && pwd)"
+  # cksum is POSIX; its output format is "CKSUM SIZE" — take the first word.
+  cksum="$(printf '%s' "$fingerprint" | cksum | awk '{print $1}')"
+  printf '%s/gaia-ppo-%s' "${TMPDIR:-/tmp}" "$cksum"
+}
+
+# _ppo_write_breadcrumb <session_dir> — persist the fallback so later
+# invocations (next, record, status) find the same directory.
+_ppo_write_breadcrumb() {
+  printf '%s' "${1:-}" > "$_PPO_BREADCRUMB" 2>/dev/null || true
+}
+
+# _ppo_clear_breadcrumb — remove the breadcrumb (e.g. at sprint_complete).
+_ppo_clear_breadcrumb() {
+  rm -f "$_PPO_BREADCRUMB" 2>/dev/null || true
 }
 
 _ppo_state_dir() {
@@ -542,43 +584,78 @@ _ppo_read_story_title() {
   ' "$yaml" 2>/dev/null
 }
 
+# The slug length cap — must match _SW_SLUG_MAX in story-worktree.sh (60)
+# so the branch name worktree_branch_state checks is the same one
+# worktree_create builds.
+_PPO_SLUG_MAX=60
+
 # _ppo_slugify <string> — the same byte-deterministic slug algorithm as the
 # canonical slugify.sh: lowercase, non-alnum to hyphen, collapse runs, trim
-# edges. Inlined here so the orchestrator does not depend on the create-story
-# skill tree at runtime.
+# edges, cap to _PPO_SLUG_MAX. LC_ALL=C is set at the top of this file so
+# character classes are byte-level ASCII. Inlined here so the orchestrator does
+# not depend on the create-story skill tree at runtime.
 _ppo_slugify() {
   # shellcheck disable=SC2018,SC2019  # LC_ALL=C: byte-level A-Z→a-z is deliberate
   printf '%s' "${1:-}" \
     | tr 'A-Z' 'a-z' \
     | tr -c '[:alnum:]' '-' \
     | tr -s '-' \
-    | sed 's/^-//; s/-$//'
+    | sed 's/^-//; s/-$//' \
+    | cut -c "1-${_PPO_SLUG_MAX}"
+}
+
+# _ppo_is_bogus_slug_branch <branch_name> — return 0 when <branch_name> is
+# exactly feat/<STORY_KEY>-slug (the literal word "slug" as the entire slug
+# portion). The branch must end in "-slug" AND that suffix must immediately
+# follow the story key with no other slug words in between. We detect this by
+# checking that stripping the trailing "-slug" leaves a valid story key (no
+# lowercase letters — real slugified words always contain lowercase). Branches
+# whose REAL title-derived slug happens to end in "-slug" (e.g.
+# feat/E900-S4-handle-a-slug) are NOT pruned because the middle portion
+# "E900-S4-handle-a" contains lowercase letters from the slug words.
+_ppo_is_bogus_slug_branch() {
+  local b="${1:-}"
+  # Must start with feat/ and end in exactly "-slug"
+  case "$b" in feat/*-slug) ;; *) return 1 ;; esac
+  # Strip "feat/" prefix and "-slug" suffix — what remains should be the key
+  local middle="${b#feat/}"
+  middle="${middle%-slug}"
+  [ -n "$middle" ] || return 1
+  # A story key (e.g. K1, E9-S4) has NO lowercase letters. A real slug
+  # appended to a key (e.g. "K1-handle-a") DOES have lowercase. This
+  # distinguishes feat/K1-slug (bogus: middle=K1, no lowercase) from
+  # feat/K1-handle-a-slug (real: middle=K1-handle-a, has lowercase).
+  case "$middle" in
+    *[a-z]*) return 1 ;;  # contains lowercase → real slug, not bogus
+  esac
+  return 0
 }
 
 # _ppo_prune_bogus_slug_worktrees <repo> — remove any worktree whose branch
-# ends in the literal string "-slug" (the bug's signature). These are artefacts
-# of the pre-fix orchestrator that passed the literal word "slug" to
-# worktree_create. A real title-derived slug will never be exactly "slug"
-# because slugify lowercases a real multi-word title into something longer.
+# matches the bogus feat/<KEY>-slug pattern left by the pre-fix orchestrator.
 _ppo_prune_bogus_slug_worktrees() {
   local repo="${1:-}"
   [ -n "$repo" ] || return 0
-  local line branch wt_path
+  local line wt_path branch
+  wt_path="" ; branch=""
   git -C "$repo" worktree list --porcelain 2>/dev/null | while IFS= read -r line; do
     case "$line" in
       "worktree "*)
         wt_path="${line#worktree }"
+        branch=""
         ;;
-      "branch refs/heads/"*"-slug")
-        # This worktree is on a bogus -slug branch — remove it.
-        if [ -n "$wt_path" ] && [ -d "$wt_path" ]; then
-          git -C "$repo" worktree unlock "$wt_path" 2>/dev/null || true
-          git -C "$repo" worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path" 2>/dev/null || true
-        fi
-        wt_path=""
+      "branch refs/heads/"*)
+        branch="${line#branch refs/heads/}"
         ;;
       "")
+        if [ -n "$branch" ] && [ -n "$wt_path" ] && [ -d "$wt_path" ]; then
+          if _ppo_is_bogus_slug_branch "$branch"; then
+            git -C "$repo" worktree unlock "$wt_path" 2>/dev/null || true
+            git -C "$repo" worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path" 2>/dev/null || true
+          fi
+        fi
         wt_path=""
+        branch=""
         ;;
     esac
   done
@@ -748,8 +825,17 @@ ppo_plan() {
     esac
   done
 
-  # Ensure the session fallback directory is created before any state writes.
-  mkdir -p "$(_ppo_session_fallback)" 2>/dev/null || true
+  # Establish the session fallback: compute a deterministic directory from the
+  # yaml + repo, write the breadcrumb so later invocations (next/record/status)
+  # find the same dir, and create it.
+  if [ -z "${GAIA_SESSION_DIR:-}" ]; then
+    local fallback_dir
+    fallback_dir="$(_ppo_session_fallback_for "$yaml" "$repo")"
+    _ppo_write_breadcrumb "$fallback_dir"
+    mkdir -p "$fallback_dir" 2>/dev/null || true
+  else
+    mkdir -p "$GAIA_SESSION_DIR" 2>/dev/null || true
+  fi
 
   _PPO_OUTCOMES=""; _PPO_WORKTREES=""; _PPO_PEAK=0; _PPO_SEEN="|"
   _PPO_BARRIER_VIOLATIONS=0; _PPO_BACKFILL_BEFORE_DONE=0

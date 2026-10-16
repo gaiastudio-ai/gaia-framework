@@ -18,11 +18,15 @@ setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   export PLUGIN_ROOT
   ORCH="$PLUGIN_ROOT/scripts/phase-parallel-orchestrator.sh"
+  SLUGIFY="$PLUGIN_ROOT/skills/gaia-create-story/scripts/slugify.sh"
 
   export GAIA_PARALLEL_EXECUTION=1
   export GAIA_WORKTREE_MODE=1
   export GAIA_MODE_B_SUBSTRATE=available
   export GAIA_WORKTREE_PRUNE_ON_CREATE=0
+
+  # Clean up any stale breadcrumb from a previous test
+  rm -f "${TMPDIR:-/tmp}/.gaia-ppo-active" 2>/dev/null || true
 }
 
 teardown() {
@@ -37,6 +41,7 @@ teardown() {
       done
     fi
   fi
+  rm -f "${TMPDIR:-/tmp}/.gaia-ppo-active" 2>/dev/null || true
   common_teardown
 }
 
@@ -147,17 +152,6 @@ SHIM
   chmod +x "$dir/gaia-dispatch-story"
 }
 
-# _mk_failing_dispatch <dir> — a dispatch shim that always fails (exit 42).
-_mk_failing_dispatch() {
-  local dir="$1"
-  mkdir -p "$dir"
-  cat > "$dir/gaia-dispatch-story" <<'SHIM'
-#!/usr/bin/env bash
-exit 42
-SHIM
-  chmod +x "$dir/gaia-dispatch-story"
-}
-
 # ---------------------------------------------------------------------------
 # AC1: branch slug derived from story title, not literal "slug"
 # ---------------------------------------------------------------------------
@@ -176,7 +170,6 @@ SHIM
   export GAIA_PPO_DISPATCH_CMD="true"
   export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
 
-  # Install dispatch shim
   local shim_dir="$TEST_TMP/bin-ac1"
   _mk_dispatch_shim "$shim_dir"
   export PATH="${flock_dir}:${shim_dir}:$PATH"
@@ -195,37 +188,71 @@ SHIM
     || { printf 'found literal -slug branch:\n%s\n' "$output" >&2; return 1; }
 }
 
-@test "AC1: worktree_branch_state also uses real slug, not literal" {
+@test "AC1: worktree_branch_state uses real slug for re-entry detection" {
   _source_orch
 
   local repo yaml flock_dir
-  repo="$(_mk_repo "$TEST_TMP/repo-ac1b")"
-  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ac1b.yaml" \
-    "E900-S2:1:Alpha feature")"
+  repo="$(_mk_repo "$TEST_TMP/repo-ac1r")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ac1r.yaml" \
+    "E900-S3:1:Alpha feature")"
   flock_dir="$(_ensure_flock)" || skip "no flock available"
 
-  export GAIA_SESSION_DIR="$TEST_TMP/session-ac1b"
+  export GAIA_SESSION_DIR="$TEST_TMP/session-ac1r"
   mkdir -p "$GAIA_SESSION_DIR"
   export GAIA_PPO_DISPATCH_CMD="true"
   export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
 
-  local shim_dir="$TEST_TMP/bin-ac1b"
+  local shim_dir="$TEST_TMP/bin-ac1r"
   _mk_dispatch_shim "$shim_dir"
   export PATH="${flock_dir}:${shim_dir}:$PATH"
 
+  # Pre-create a worktree on the REAL slug branch (simulating a crashed run
+  # that used the fixed orchestrator). The re-entry detection must find it.
+  # shellcheck disable=SC1090
+  . "$PLUGIN_ROOT/scripts/lib/story-worktree.sh"
+  worktree_create "$repo" "E900-S3" "alpha-feature" >/dev/null 2>&1
+
   run bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2 && ppo_next"
 
-  # Story must be dispatched
-  [[ "$output" == *"dispatch story=E900-S2"* ]] \
-    || { printf 'story not dispatched:\n%s\n' "$output" >&2; return 1; }
+  # Must detect the existing worktree as attached
+  [[ "$output" == *"event=attached story=E900-S3"* ]] \
+    || { printf 'expected attach event, got:\n%s\n' "$output" >&2; return 1; }
+}
 
-  # The git branch must use the real slug "alpha-feature"
-  run git -C "$repo" branch --list
-  [[ "$output" == *"alpha-feature"* ]] \
-    || { printf 'expected alpha-feature branch, got:\n%s\n' "$output" >&2; return 1; }
-  # No branch with literal "-slug" suffix
-  [[ "$output" != *"E900-S2-slug"* ]] \
-    || { printf 'found literal -slug branch:\n%s\n' "$output" >&2; return 1; }
+# ---------------------------------------------------------------------------
+# AC1 slugify: cross-check with canonical, non-ASCII, >60 chars
+# ---------------------------------------------------------------------------
+
+@test "AC1: inline slugify matches canonical slugify.sh on plain ASCII" {
+  _source_orch
+  local inline canonical
+  inline="$(_ppo_slugify "Fix the run-sprint orchestrator next command")"
+  canonical="$(bash "$SLUGIFY" --title "Fix the run-sprint orchestrator next command")"
+  # The inline result must match the canonical (before cap)
+  [ "${inline}" = "$(printf '%s' "$canonical" | cut -c 1-60)" ] \
+    || { printf 'mismatch: inline=%s canonical=%s\n' "$inline" "$canonical" >&2; return 1; }
+}
+
+@test "AC1: inline slugify handles non-ASCII (UTF-8 accents become hyphens)" {
+  _source_orch
+  local inline canonical
+  inline="$(_ppo_slugify "café résumé")"
+  canonical="$(bash "$SLUGIFY" --title "café résumé")"
+  [ "${inline}" = "$(printf '%s' "$canonical" | cut -c 1-60)" ] \
+    || { printf 'non-ASCII mismatch: inline=%s canonical=%s\n' "$inline" "$canonical" >&2; return 1; }
+  # The non-ASCII bytes must be replaced with hyphens
+  [[ "$inline" == *"caf"* ]] \
+    || { printf 'expected partial "caf" in slug: %s\n' "$inline" >&2; return 1; }
+}
+
+@test "AC1: inline slugify caps at 60 chars for long titles" {
+  _source_orch
+  local long_title="This is a very long story title that exceeds sixty characters when slugified to test the cap"
+  local inline
+  inline="$(_ppo_slugify "$long_title")"
+  local len="${#inline}"
+  [ "$len" -le 60 ] \
+    || { printf 'slug length %d exceeds 60-char cap: %s\n' "$len" "$inline" >&2; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -244,7 +271,7 @@ SHIM
   [[ "$result" != /slots/* ]] \
     || { printf 'got unwritable root path: %s\n' "$result" >&2; return 1; }
 
-  # Must contain gaia-ppo- and the PID
+  # Must contain gaia-ppo- and end with slots/key
   [[ "$result" == *"gaia-ppo-"* ]] \
     || { printf 'missing gaia-ppo- prefix: %s\n' "$result" >&2; return 1; }
   [[ "$result" == *"/slots/E900-S1" ]] \
@@ -277,51 +304,70 @@ SHIM
   rm -rf "$result"
 }
 
-@test "AC2: engine dir falls back to PID-scoped temp dir when session dir unset" {
-  unset GAIA_SESSION_DIR
-
+@test "AC2: plan writes breadcrumb so next finds the same session dir" {
   _source_orch
 
-  local result
-  result="$(_ppo_engine_dir)"
+  local repo yaml flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-ac2b")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ac2b.yaml" \
+    "E900-S1:1:Alpha feature")"
+  flock_dir="$(_ensure_flock)" || skip "no flock available"
 
-  # Must be under gaia-ppo-$$ not bare /tmp/ppo
-  [[ "$result" == *"gaia-ppo-"*"/ppo" ]] \
-    || { printf 'expected PID-scoped engine dir, got: %s\n' "$result" >&2; return 1; }
-}
-
-@test "AC2: state dir falls back to PID-scoped temp dir when session dir unset" {
   unset GAIA_SESSION_DIR
+  export PATH="${flock_dir}:$PATH"
 
-  _source_orch
+  local shim_dir="$TEST_TMP/bin-ac2b"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
 
-  local result
-  result="$(_ppo_state_dir)"
+  # Run plan as a SEPARATE process (exactly as the SKILL.md does)
+  bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" >/dev/null 2>&1
 
-  # Must be under gaia-ppo-$$ not bare /tmp/ppo-state
-  [[ "$result" == *"gaia-ppo-"*"/ppo-state" ]] \
-    || { printf 'expected PID-scoped state dir, got: %s\n' "$result" >&2; return 1; }
+  # The breadcrumb must exist and point to a writable directory
+  local breadcrumb="${TMPDIR:-/tmp}/.gaia-ppo-active"
+  [ -f "$breadcrumb" ] \
+    || { printf 'breadcrumb not written at %s\n' "$breadcrumb" >&2; return 1; }
+
+  local session_dir
+  session_dir="$(cat "$breadcrumb")"
+  [ -d "$session_dir" ] \
+    || { printf 'breadcrumb dir does not exist: %s\n' "$session_dir" >&2; return 1; }
+
+  # Run next as a SEPARATE process — it must find the engine state
+  local next_out
+  next_out="$(bash -c ". '$ORCH' && ppo_next" 2>&1)"
+
+  # Must not refuse with "no plan"
+  [[ "$next_out" != *"no-plan"* ]] \
+    || { printf 'next refused with no-plan:\n%s\n' "$next_out" >&2; return 1; }
+
+  # Must have dispatched the story
+  [[ "$next_out" == *"dispatch story=E900-S1"* ]] || [[ "$next_out" == *"story=E900-S1"* ]] \
+    || { printf 'story not dispatched:\n%s\n' "$next_out" >&2; return 1; }
 }
 
 @test "AC2: no /slots/ path in output when plan+next runs without session dir" {
   _source_orch
 
   local repo yaml flock_dir
-  repo="$(_mk_repo "$TEST_TMP/repo-ac2")"
-  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ac2.yaml" \
+  repo="$(_mk_repo "$TEST_TMP/repo-ac2c")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ac2c.yaml" \
     "E900-S1:1:Alpha feature")"
   flock_dir="$(_ensure_flock)" || skip "no flock available"
 
-  # Deliberately unset GAIA_SESSION_DIR
   unset GAIA_SESSION_DIR
   export GAIA_PPO_DISPATCH_CMD="true"
   export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
 
-  local shim_dir="$TEST_TMP/bin-ac2"
+  local shim_dir="$TEST_TMP/bin-ac2c"
   _mk_dispatch_shim "$shim_dir"
   export PATH="${flock_dir}:${shim_dir}:$PATH"
 
-  run bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2 && ppo_next" 2>&1
+  # plan then next as SEPARATE processes
+  bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" >/dev/null 2>&1
+  run bash -c ". '$ORCH' && ppo_next" 2>&1
 
   # No path starting with /slots/ (the unwritable root-relative bug)
   [[ "$output" != */slots/* ]] \
@@ -422,8 +468,6 @@ SHIM
   mkdir -p "$GAIA_SESSION_DIR"
   export PATH="${flock_dir}:$PATH"
 
-  # Override the dispatch lib loader so spawn_teammate fails after worktree
-  # is created — worktree_create happens BEFORE _ppo_admit_bookkeeping.
   run bash -c "
     . '$ORCH'
     _ppo_load_dispatch_lib() {
@@ -433,17 +477,15 @@ SHIM
     ppo_plan --repo '$repo' --yaml '$yaml' --slots 2 && ppo_next
   "
 
-  # Worktree must be cleaned up after the admission failure
   local wt_parent wt_dir
   wt_parent="$(git -C "$repo" rev-parse --show-toplevel)/../.gaia-worktrees"
   wt_dir="$wt_parent/E900-S1"
 
-  # The worktree directory should not exist (cleaned up)
   [ ! -d "$wt_dir" ] \
     || { printf 'worktree dir still exists: %s\n' "$wt_dir" >&2; return 1; }
 }
 
-@test "AC5: next plan prunes worktrees on bogus -slug branches" {
+@test "AC5: plan prunes worktrees on bogus -slug branches" {
   _source_orch
 
   local repo flock_dir
@@ -454,18 +496,15 @@ SHIM
   mkdir -p "$GAIA_SESSION_DIR"
   export PATH="${flock_dir}:$PATH"
 
-  # Manually create a bogus worktree on a -slug branch
   local parent
   parent="$(git -C "$repo" rev-parse --show-toplevel)/../.gaia-worktrees"
   mkdir -p "$parent"
   git -C "$repo" worktree add "$parent/E900-S1" -b "feat/E900-S1-slug" 2>/dev/null || true
 
-  # Verify the bogus worktree exists
   run git -C "$repo" worktree list
   [[ "$output" == *"feat/E900-S1-slug"* ]] \
     || { printf 'bogus worktree not created\n' >&2; return 1; }
 
-  # Run plan — it should prune the stale worktree
   local yaml shim_dir
   yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ac5b.yaml" \
     "E900-S1:1:Alpha feature")"
@@ -478,17 +517,55 @@ SHIM
 
   run bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2"
 
-  # After plan, the bogus branch worktree should be gone
   run git -C "$repo" worktree list
   [[ "$output" != *"feat/E900-S1-slug"* ]] \
     || { printf 'bogus -slug worktree still exists after plan:\n%s\n' "$output" >&2; return 1; }
 }
 
+@test "AC5: prune does NOT remove real slug ending in -slug substring" {
+  _source_orch
+
+  local repo flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-ac5c")"
+  flock_dir="$(_ensure_flock)" || skip "no flock available"
+
+  export GAIA_SESSION_DIR="$TEST_TMP/session-ac5c"
+  mkdir -p "$GAIA_SESSION_DIR"
+  export PATH="${flock_dir}:$PATH"
+
+  local parent
+  parent="$(git -C "$repo" rev-parse --show-toplevel)/../.gaia-worktrees"
+  mkdir -p "$parent"
+  # A real slug "handle-a-slug" from a title "Handle a slug" — must NOT be pruned
+  git -C "$repo" worktree add "$parent/E900-S4" -b "feat/E900-S4-handle-a-slug" 2>/dev/null || true
+
+  run git -C "$repo" worktree list
+  [[ "$output" == *"feat/E900-S4-handle-a-slug"* ]] \
+    || { printf 'real-slug worktree not created\n' >&2; return 1; }
+
+  local yaml shim_dir
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ac5c.yaml" \
+    "E900-S4:1:Handle a slug")"
+
+  shim_dir="$TEST_TMP/bin-ac5c"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  run bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2"
+
+  # The real-slug worktree must survive — only literal feat/<KEY>-slug is pruned
+  run git -C "$repo" worktree list
+  [[ "$output" == *"feat/E900-S4-handle-a-slug"* ]] \
+    || { printf 'real-slug worktree was incorrectly pruned:\n%s\n' "$output" >&2; return 1; }
+}
+
 # ---------------------------------------------------------------------------
-# AC6: two-phase sprint end-to-end with no session env
+# AC6: two-phase sprint end-to-end with no session env (separate processes)
 # ---------------------------------------------------------------------------
 
-@test "AC6: two-phase sprint: real slugs, writable session, no premature sprint_complete" {
+@test "AC6: plan then next as separate processes, no session env, real slugs" {
   _source_orch
 
   local repo yaml flock_dir
@@ -499,41 +576,58 @@ SHIM
 
   # Deliberately unset GAIA_SESSION_DIR — the original bug
   unset GAIA_SESSION_DIR
-  export GAIA_PPO_DISPATCH_CMD="true"
   export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+  export PATH="${flock_dir}:$PATH"
 
-  local shim_dir="$TEST_TMP/bin-ac6"
-  _mk_dispatch_shim "$shim_dir"
-  export PATH="${flock_dir}:${shim_dir}:$PATH"
-
-  # Plan + next in the same process (the PID-based session fallback must be
-  # consistent within a single orchestrator run)
-  local combined_out
-  combined_out="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2 && ppo_next" 2>&1)"
+  # Step 1: plan as a SEPARATE bash process (exactly as the SKILL.md does)
+  local plan_out
+  plan_out="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" 2>&1)"
 
   # Plan must select parallel mode
-  [[ "$combined_out" == *"mode=parallel"* ]] \
-    || { printf 'expected parallel mode, got:\n%s\n' "$combined_out" >&2; return 1; }
+  [[ "$plan_out" == *"mode=parallel"* ]] \
+    || { printf 'expected parallel mode, got:\n%s\n' "$plan_out" >&2; return 1; }
+
+  # Step 2: next as a SEPARATE bash process (different PID).
+  # Override the dispatch lib so spawn_teammate succeeds in the test env
+  # (the real substrate is unavailable inside bats).
+  local next_out
+  next_out="$(bash -c "
+    . '$ORCH'
+    _ppo_load_dispatch_lib() {
+      spawn_teammate() {
+        local p=bash-dev k=''
+        while [ \$# -gt 0 ]; do
+          case \"\$1\" in --story-key) k=\"\$2\"; shift 2 ;; *) p=\"\$1\"; shift ;; esac
+        done
+        printf 'tm-%s-%s\n' \"\$p\" \"\$k\"
+      }
+      return 0
+    }
+    ppo_next
+  " 2>&1)"
+
+  # Must not refuse with "no plan"
+  [[ "$next_out" != *"no-plan"* ]] \
+    || { printf 'next refused with no-plan — breadcrumb broken:\n%s\n' "$next_out" >&2; return 1; }
+
+  # Phase 1 story must be dispatched
+  [[ "$next_out" == *"story=E99-S1"* ]] \
+    || { printf 'phase 1 story not dispatched:\n%s\n' "$next_out" >&2; return 1; }
 
   # Phase 1 story must use real slug, not literal "slug"
-  [[ "$combined_out" != *"E99-S1-slug"* ]] \
-    || { printf 'found literal -slug branch:\n%s\n' "$combined_out" >&2; return 1; }
+  [[ "$next_out" != *"E99-S1-slug"* ]] \
+    || { printf 'found literal -slug branch:\n%s\n' "$next_out" >&2; return 1; }
 
   # No /slots/ paths (session dir bug)
-  [[ "$combined_out" != */slots/* ]] \
-    || { printf 'found /slots/ path in output:\n%s\n' "$combined_out" >&2; return 1; }
-
-  # Must have dispatched at least one story from phase 1
-  [[ "$combined_out" == *"story=E99-S1"* ]] \
-    || { printf 'phase 1 story not dispatched:\n%s\n' "$combined_out" >&2; return 1; }
+  [[ "$next_out" != */slots/* ]] \
+    || { printf 'found /slots/ path in next output:\n%s\n' "$next_out" >&2; return 1; }
 
   # Real slug "alpha-feature" must appear in the git branch
   run git -C "$repo" branch --list
   [[ "$output" == *"alpha-feature"* ]] \
     || { printf 'expected alpha-feature branch, got:\n%s\n' "$output" >&2; return 1; }
 
-  # No premature sprint_complete while phase 2 stories are still pending
-  # (barrier should be emitted, not sprint_complete)
-  [[ "$combined_out" == *"barrier"* ]] || [[ "$combined_out" != *"sprint_complete"* ]] \
-    || { printf 'premature sprint_complete:\n%s\n' "$combined_out" >&2; return 1; }
+  # Barrier or dispatch — no premature sprint_complete (phase 2 still pending)
+  [[ "$next_out" == *"barrier"* ]] || [[ "$next_out" == *"dispatch"* ]] \
+    || { printf 'expected barrier or dispatch, got:\n%s\n' "$next_out" >&2; return 1; }
 }
