@@ -503,7 +503,7 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
   bash "${CLAUDE_PLUGIN_ROOT}/scripts/tick-story-checkbox.sh" \
     --file "$STORY_FILE" --task {N}
   ```
-  The script is idempotent, atomic (temp-file + mv), and concurrent-safe (flock). It exits 0 on success or when the checkbox is already ticked; exit 1 means no matching line was found — surface the error and continue (do not halt the workflow on a tick failure).
+  The script is idempotent, atomic (temp-file + mv), and concurrent-safe (flock). It exits 0 on success or when the checkbox is already ticked; exit 1 means no matching line was found — surface the error and continue (a tick failure is non-blocking).
 
 ### Step 6a -- TDD Review Gate (Green phase)
 
