@@ -131,10 +131,115 @@ DECOY
   [ "$count" -eq 1 ]
 }
 
+@test "AC1 — reviews dir and review-summary files never opened by grep" {
+  # Build a fixture with: story.md, legacy story, reviews/ file, review summary
+  _mk_story "E900-S1" "Modern story"
+
+  # Legacy story under stories/
+  mkdir -p "$TEST_TMP/impl/epic-test/stories"
+  cat > "$TEST_TMP/impl/epic-test/stories/E900-S2-legacy-slug.md" <<'EOF'
+---
+key: "E900-S2"
+title: "Legacy story"
+epic: "E900"
+status: ready-for-dev
+sprint_id: null
+---
+# Story: Legacy story
+EOF
+
+  # Non-story file under reviews/ — has ready-for-dev to lure the grep
+  mkdir -p "$TEST_TMP/impl/epic-test/reviews"
+  cat > "$TEST_TMP/impl/epic-test/reviews/E900-S3-review.md" <<'EOF'
+---
+key: "E900-S3"
+title: "Review decoy"
+status: ready-for-dev
+sprint_id: null
+---
+# Decoy in reviews dir
+EOF
+
+  # story.md inside reviews/ — tests the reviews/ exclusion independently
+  # of the */stories/* path restriction
+  mkdir -p "$TEST_TMP/impl/epic-test/reviews/E900-S5-rogue"
+  cat > "$TEST_TMP/impl/epic-test/reviews/E900-S5-rogue/story.md" <<'EOF'
+---
+key: "E900-S5"
+title: "Story in reviews decoy"
+status: ready-for-dev
+sprint_id: null
+---
+# story.md inside a reviews dir must be excluded
+EOF
+
+  # Review-summary at the impl root — matches E*-S*-*.md but is non-story
+  cat > "$TEST_TMP/impl/E900-S4-review-summary.md" <<'EOF'
+---
+key: "E900-S4"
+title: "Review summary decoy"
+status: ready-for-dev
+sprint_id: null
+---
+# Decoy review summary
+EOF
+
+  _mk_decision_log "E900-S1" "E900-S2" "E900-S3" "E900-S4" "E900-S5"
+
+  # Shim grep to log which files it receives
+  local shim_dir="$TEST_TMP/grep-shim"
+  local opened_log="$TEST_TMP/grep-opened"
+  mkdir -p "$shim_dir"
+  : > "$opened_log"
+  local real_grep
+  real_grep=$(command -v grep)
+  cat > "$shim_dir/grep" <<SHIM
+#!/bin/sh
+# Log every file argument passed to grep
+for arg in "\$@"; do
+  case "\$arg" in
+    -*) ;; # skip flags
+    *)
+      if [ -f "\$arg" ]; then
+        printf '%s\n' "\$arg" >> "$opened_log"
+      fi
+      ;;
+  esac
+done
+exec "$real_grep" "\$@"
+SHIM
+  chmod +x "$shim_dir/grep"
+
+  IMPLEMENTATION_ARTIFACTS="$TEST_TMP/impl" \
+  VALIDATOR_DECISION_LOG="$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md" \
+  PATH="$shim_dir:$PATH" \
+    run bash "$SCANNER"
+  [ "$status" -eq 0 ]
+
+  # Both story layouts found
+  [[ "$output" =~ "E900-S1" ]]
+  [[ "$output" =~ "E900-S2" ]]
+
+  # reviews/ file never opened
+  local reviews_opened
+  reviews_opened=$(grep -c 'reviews/' "$opened_log" || true)
+  [ "$reviews_opened" -eq 0 ]
+
+  # review-summary file never opened
+  local summary_opened
+  summary_opened=$(grep -c 'review-summary' "$opened_log" || true)
+  [ "$summary_opened" -eq 0 ]
+
+  # The decoy keys must NOT appear in output
+  [[ ! "$output" =~ "E900-S3" ]]
+  [[ ! "$output" =~ "E900-S4" ]]
+  [[ ! "$output" =~ "E900-S5" ]]
+}
+
 @test "AC1 — legacy flat E*-S*-*.md layout is found" {
-  # Legacy layout: file named E900-S1-slug.md directly in an epic dir
-  mkdir -p "$TEST_TMP/impl/epic-test"
-  cat > "$TEST_TMP/impl/epic-test/E900-S1-legacy-story.md" <<'EOF'
+  # Legacy layout: file named E900-S1-slug.md under the stories/ subdirectory
+  mkdir -p "$TEST_TMP/impl/epic-test/stories"
+  cat > "$TEST_TMP/impl/epic-test/stories/E900-S1-legacy-story.md" <<'EOF'
 ---
 key: "E900-S1"
 title: "Legacy story"

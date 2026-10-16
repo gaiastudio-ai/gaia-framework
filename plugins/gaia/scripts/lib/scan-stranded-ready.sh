@@ -156,9 +156,14 @@ _build_verdict_cache() {
 _verdict_cache=$(_build_verdict_cache)
 
 # Two-stage candidate selection:
-#   Stage 1 — find narrows to story.md (per-story dirs) and legacy E*-S*-*.md
+#   Stage 1 — find narrows to:
+#       a) story.md       (modern per-story dirs, any depth)
+#       b) E*-S*-*.md     (legacy flat layout, only under */stories/ dirs)
+#     Explicitly excluded from the find:
+#       - */reviews/* directories (review reports, tdd-progress, etc.)
+#       - E*-S*-*.md files outside */stories/ (review summaries, audit reports,
+#         misc non-story artifacts at the epic or implementation root)
 #   Stage 2 — grep -l pre-selects only files containing 'status: ready-for-dev'
-# Non-story markdown (review reports, assessments, etc.) is never opened.
 # Collect candidate story files: ready-for-dev + sprint_id null + PASSED verdict.
 matches=()
 while IFS= read -r -d '' story_file; do
@@ -192,7 +197,8 @@ while IFS= read -r -d '' story_file; do
 
   matches+=("$(printf '%s\t%s\t%s' "$key" "$title" "$story_file")")
 done < <(find "$IMPLEMENTATION_ARTIFACTS" -type f \
-  \( -name 'story.md' -o -name 'E[0-9]*-S[0-9]*-*.md' \) \
+  -not -path '*/reviews/*' \
+  \( -name 'story.md' -o \( -name 'E[0-9]*-S[0-9]*-*.md' -path '*/stories/*' \) \) \
   -exec grep -l --null 'status: ready-for-dev' {} + 2>/dev/null || true)
 
 # Sort by key ascending and emit.
