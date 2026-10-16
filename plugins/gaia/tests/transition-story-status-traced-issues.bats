@@ -260,7 +260,7 @@ EOF
 
 # ── Blocker 2: self-skip must be exact key match ────────────────────────────
 
-@test "E900-S1 does not skip E900-S10 during other-tracer scan" {
+@test "self-skip uses exact key match, not substring" {
   # Primary story traces to #300
   _write_story_file "$STORY_KEY" review '["GitHub #300"]'
   # E900-S10 also traces to #300, in-progress — must be detected
