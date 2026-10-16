@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# bash32-portability-lint: skip (uses local -A for dedup; runs under bash 5 on CI only)
 # apply-test-policy.sh — per-trigger scope narrowing + always-run merge
 #
 # Purpose:

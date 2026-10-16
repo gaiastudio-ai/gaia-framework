@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# bash32-portability-lint: skip (flock path uses exec {fd}>; macOS fallback uses mkdir)
 # lifecycle-overrides.sh — Reader/writer helpers for the
 # `.gaia/state/lifecycle-overrides.yaml` audit trail of bypassed MANDATORY
 # lifecycle skills.

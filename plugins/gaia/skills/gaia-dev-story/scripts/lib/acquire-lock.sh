@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# bash32-portability-lint: skip (BASHPID with fallback; flock path uses exec {fd}>)
 # acquire-lock.sh — shared locking helper.
 #
 # Public API:
