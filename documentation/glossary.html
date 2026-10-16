@@ -134,6 +134,25 @@
           overview</a>.
         </dd>
 
+        <dt id="concurrent-sprints">Concurrent Sprints</dt>
+        <dd>
+          Multiple sprints active simultaneously, each in its own session,
+          with per-sprint state files and session binding. When enabled
+          (<code>sprint.max_concurrent_active</code> &gt; 1 in
+          <code>.gaia/config/project-config.yaml</code>), each session
+          binds to one sprint and operates on its own sprint-status file.
+          A cross-session resource ledger coordinates dev-slot budgets and
+          promotion-chain merges across sessions. Single-sprint mode
+          (the default, <code>max_concurrent_active: 1</code>) is
+          byte-identical to the original single-sprint behavior.
+          Concurrent sprints and
+          <a href="#phase-parallel-execution">phase-parallel execution</a>
+          are orthogonal features that can be used independently or together:
+          concurrent sprints run separate sprints in separate sessions,
+          while phase-parallel execution runs stories within one sprint
+          concurrently.
+        </dd>
+
         <dt id="design-gate">Design Gate</dt>
         <dd>
           A prerequisite that blocks phase-three entry points
@@ -305,6 +324,26 @@
           specific behavior: performance targets, scalability limits,
           reliability SLAs, security standards. NFRs are assessed by
           <a href="commands/gaia-nfr.html"><code>/gaia-nfr</code></a>.
+        </dd>
+
+        <dt id="phase-parallel-execution">Phase-Parallel Execution</dt>
+        <dd>
+          Concurrent execution of stories within a single sprint's
+          dependency phase, capped at the configured dev-slot budget
+          (<code>parallel_execution.max_parallel_dev_slots</code> in
+          <code>.gaia/config/project-config.yaml</code>). When enabled
+          (<code>GAIA_PARALLEL_EXECUTION=1</code>),
+          <a href="commands/gaia-run-sprint.html"><code>/gaia-run-sprint</code></a>
+          develops the stories of one phase concurrently, each in its own
+          <a href="commands/gaia-dev-story.html">worktree</a>, with a
+          barrier before the next phase. The orchestrator falls back to
+          one story at a time whenever concurrency is unavailable.
+          Phase-parallel execution and
+          <a href="#concurrent-sprints">concurrent sprints</a> are
+          orthogonal features that can be used independently or together:
+          phase-parallel execution runs stories within one sprint
+          concurrently, while concurrent sprints run separate sprints in
+          separate sessions.
         </dd>
 
         <dt id="product-design-project">Product Design Project</dt>
