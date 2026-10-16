@@ -585,6 +585,7 @@ scripts-core	next-step.bats
 scripts-core	observability-hardening.bats
 scripts-core	orchestration-warning-wiring.bats
 scripts-core	orchestration-warning.bats
+scripts-core	phase-parallel-orchestrator-next-fix.bats
 scripts-core	plugin-cache-recovery.bats
 scripts-core	pre-warm-script.bats
 scripts-core	probe-verdict-resolver-integration.bats
