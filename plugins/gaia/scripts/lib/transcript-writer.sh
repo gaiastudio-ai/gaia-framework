@@ -54,8 +54,10 @@ write_transcript() {
 }
 
 # assert_gitignored <pattern>
-#   HALT (non-zero exit) if `.gitignore` does not contain a line matching
-#   the given pattern. Walks up from CWD to find the nearest `.gitignore`.
+#   HALT (non-zero exit) if the given pattern is not ignored by git.
+#   Inside a git repo, uses `git check-ignore` to honour wildcards,
+#   directory entries, and double-star patterns. Outside a repo, falls
+#   back to a `grep -F` literal match against the nearest `.gitignore`.
 #   Canonical HALT message format applied.
 assert_gitignored() {
   local pattern="$1"
