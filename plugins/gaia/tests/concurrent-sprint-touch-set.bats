@@ -443,28 +443,9 @@ EPICS
 }
 
 _setup_project_config() {
-  # Use the real project config from the primary checkout as the resolve-
-  # config.sh schema requires many fields. Copy it into the test project
-  # root so path resolution works.
-  local real_cfg
-  real_cfg="$(cd "$PLUGIN_ROOT/../.." 2>/dev/null && pwd)/.gaia/config/project-config.yaml"
-  if [ ! -r "$real_cfg" ]; then
-    # Fallback: walk up from plugin root.
-    local _d="$PLUGIN_ROOT"
-    while [ "$_d" != "/" ]; do
-      if [ -r "$_d/.gaia/config/project-config.yaml" ]; then
-        real_cfg="$_d/.gaia/config/project-config.yaml"
-        break
-      fi
-      _d="$(dirname "$_d")"
-    done
-  fi
+  # Self-contained fixture covering every field resolve-config.sh requires.
   local cfg="$PROJECT_ROOT/.gaia/config/project-config.yaml"
-  if [ -r "$real_cfg" ]; then
-    cp "$real_cfg" "$cfg"
-  else
-    # Minimal fallback — enough for sizing_map resolution.
-    cat > "$cfg" <<'CFG'
+  cat > "$cfg" <<'CFG'
 project_name: test
 framework_version: "1.221.0"
 installed_path: "./_gaia"
@@ -491,7 +472,6 @@ environments:
   - name: local
     url: "http://localhost"
 CFG
-  fi
   printf '%s' "$cfg"
 }
 
@@ -587,6 +567,37 @@ CFG
   run "$SCAFFOLD" --template "$TEMPLATE" --output "$out" --frontmatter "$fm"
   [ "$status" -eq 0 ]
   grep -q 'predicted_touch_set: \[\]' "$out"
+}
+
+# ============================================================
+# Bulk materializer path omits field (Task 5.6)
+# ============================================================
+
+@test "bulk materializer frontmatter omits touch-set from scaffolded story" {
+  # Simulate the materialize-sprint-stories.sh frontmatter build path:
+  # a printf-constructed YAML with no predicted_touch_set key. The scaffold
+  # must drop the {predicted_touch_set} template line entirely.
+  local fm
+  fm="$(printf 'key: "%s"\ntitle: "%s"\nepic: "%s"\nstatus: backlog\npriority: "%s"\nsize: "%s"\npoints: %s\nrisk: "%s"\nsprint_id: null\npriority_flag: null\ndelivered: false\ndeferred_implementation: false\ndepends_on: []\nblocks: []\ntraces_to: []\ndate: "%s"\nauthor: "gaia-create-story"\n' \
+    "E900-S1" "Test story" "E900" "P1" "M" "3" "medium" "2026-01-01")"
+
+  local out="$TEST_TMP/scaffold-materializer.md"
+  run "$SCAFFOLD" --template "$TEMPLATE" --output "$out" --frontmatter "$fm"
+  [ "$status" -eq 0 ]
+  # The scaffolded story must not contain the field.
+  ! grep -q 'predicted_touch_set' "$out"
+  # The scaffolded story must not contain a stray blank line where the
+  # token was (no consecutive blank lines in frontmatter).
+  local consecutive_blanks
+  consecutive_blanks="$(awk '
+    /^---$/ { fence++; next }
+    fence == 1 {
+      if ($0 == "") { blanks++; if (blanks > 0) found = 1 }
+      else blanks = 0
+    }
+    END { print (found ? "yes" : "no") }
+  ' "$out")"
+  [ "$consecutive_blanks" = "no" ]
 }
 
 # ============================================================
