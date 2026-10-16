@@ -104,7 +104,7 @@ core	component-manifest-drift-guard.bats
 core	component-manifest-subdirectory-reach.bats
 core	component-stack-resolution.bats
 core	component-test-partition.bats
-core	concurrent-sprint-lock.bats
+core	concurrent-sprint-touch-set.bats
 core	config-brownfield-flag-coverage.bats
 core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats
@@ -321,9 +321,6 @@ core	review-parity/gaia-test-automate/action-skill-contract.bats
 core	review-parity/gaia-test-e2e/action-skill-contract.bats
 core	review-parity/gaia-test-perf/action-skill-contract.bats
 core	review-rubric-rebind.bats
-core	round-lifecycle-integration.bats
-core	round-lifecycle.bats
-core	round-wiring.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats

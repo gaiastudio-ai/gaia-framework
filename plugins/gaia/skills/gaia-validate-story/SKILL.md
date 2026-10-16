@@ -42,6 +42,7 @@ This skill is the native Claude Code conversion of the legacy validate-story wor
 - If the helper exits 1 (zero matches): fail with "story file not found for key {story_key}". The helper's stderr already includes the searched paths.
 - If the helper exits 2 (multiple matches — ambiguity): fail with "multiple story files matched key {story_key} -- resolve ambiguity". The helper's stderr lists each match.
 - Read the resolved story file and confirm it has a `## Review Gate` section.
+- **Touch-set syntax check.** When the story's frontmatter contains a `predicted_touch_set` field, run the deterministic syntax validator before Val dispatch: `${CLAUDE_PLUGIN_ROOT}/scripts/lib/validate-touch-set-syntax.sh --file <story-file>`. Non-zero exit adds a CRITICAL finding for the touch-set field. When the field is absent, skip silently (single-sprint backward compatibility).
 
 ### Step 2 -- Invoke Val Subagent (Main-Turn Dispatch)
 

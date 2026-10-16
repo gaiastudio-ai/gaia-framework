@@ -433,6 +433,25 @@ case "$review_gate_status" in
     ;;
 esac
 
+# ---------- Optional touch-set syntax check ----------
+#
+# When the predicted_touch_set field is present, validate its syntax via
+# the shared validate-touch-set-syntax.sh script. An absent field passes
+# silently (single-sprint backward compatibility).
+
+if field_present "predicted_touch_set"; then
+  _ts_validator="${SCRIPT_DIR}/../../../scripts/lib/validate-touch-set-syntax.sh"
+  if [ -x "$_ts_validator" ]; then
+    _ts_rc=0
+    _ts_out="$("$_ts_validator" --file "$file" 2>&1)" || _ts_rc=$?
+    if [ "$_ts_rc" -ne 0 ]; then
+      append_finding "CRITICAL" "predicted_touch_set" "syntax check failed: $_ts_out"
+    fi
+  else
+    log "validate-touch-set-syntax.sh not found at $_ts_validator; skipping touch-set syntax check"
+  fi
+fi
+
 # ---------- Canonical filename check ----------
 #
 # Skip when key or title was already flagged missing — emitting a noisy
