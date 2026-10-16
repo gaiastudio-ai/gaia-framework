@@ -2,6 +2,10 @@
 # Tests for the concurrent-sprints glossary entries and related catalogue updates.
 # Component: documentation
 
+# Unified ID-scrub pattern used by all AC5 tests (exempt: regex literals in this file).
+# Covers: FR-nnn, NFR-nnn, SR-nnn, ADR-nnn, E#-S#, TC-XXX-n, AF-20xx, AI-20xx
+_ID_PATTERN='FR-[0-9]{2,}|NFR-[0-9]{2,}|SR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   GLOSSARY="$REPO_ROOT/documentation/glossary.html"
@@ -21,7 +25,6 @@ setup() {
 }
 
 @test "concurrent-sprints entry defines multiple sprints active simultaneously" {
-  # Extract the dd block after the concurrent-sprints dt
   awk '/id="concurrent-sprints"/,/<\/dd>/' "$GLOSSARY" | grep -qi 'multiple sprints.*active.*simultaneously'
 }
 
@@ -38,7 +41,6 @@ setup() {
 }
 
 @test "concurrent-sprints anchor appears between artifact and edge-types anchors" {
-  # Verify the line number ordering: artifact < concurrent-sprints < edge-types
   art_line=$(grep -n 'id="artifact"' "$GLOSSARY" | head -1 | cut -d: -f1)
   cs_line=$(grep -n 'id="concurrent-sprints"' "$GLOSSARY" | head -1 | cut -d: -f1)
   et_line=$(grep -n 'id="edge-types"' "$GLOSSARY" | head -1 | cut -d: -f1)
@@ -66,15 +68,17 @@ setup() {
   awk '/id="phase-parallel-execution"/,/<\/dd>/' "$GLOSSARY" | grep -qi 'orthogonal'
 }
 
-@test "orthogonality statement says features can be used independently or together" {
+@test "concurrent-sprints entry says features can be used independently or together" {
   awk '/id="concurrent-sprints"/,/<\/dd>/' "$GLOSSARY" | grep -qi 'independently.*together\|together.*independently'
+}
+
+@test "phase-parallel-execution entry says features can be used independently or together" {
+  awk '/id="phase-parallel-execution"/,/<\/dd>/' "$GLOSSARY" | grep -qi 'independently.*together\|together.*independently'
 }
 
 # --- AC3: no parallel-sprint synonyms ---
 
 @test "no parallel sprint synonyms after stripping phase-parallel" {
-  # Scope: plugins/ and documentation/, excluding tests/fixtures/ and this test file.
-  # Restrict to text file extensions to avoid scanning binaries.
   hit_count=0
   while IFS= read -r file; do
     case "$file" in
@@ -96,7 +100,6 @@ setup() {
 # --- AC4: help routing ---
 
 @test "gaia-help.csv sprint-plan description contains concurrent sprints" {
-  # The row keyed by code=sprint-plan (column 4)
   awk -F',' '$4 ~ /^"?sprint-plan"?$/' "$HELP_CSV" | grep -qi 'concurrent sprints'
 }
 
@@ -109,7 +112,6 @@ setup() {
 }
 
 @test "gaia-help SKILL.md has Terminology note outside Quick Actions" {
-  # Terminology note must exist between Quick Actions and References
   qa_line=$(grep -n '## Quick Actions' "$HELP_SKILL" | head -1 | cut -d: -f1)
   ref_line=$(grep -n '## References' "$HELP_SKILL" | head -1 | cut -d: -f1)
   term_line=$(grep -n 'Terminology' "$HELP_SKILL" | head -1 | cut -d: -f1)
@@ -123,7 +125,6 @@ setup() {
 }
 
 @test "workflow-manifest.csv sprint-planning description contains concurrent sprints" {
-  # The row keyed by name=sprint-planning (column 1)
   awk -F',' '$1 ~ /^"?sprint-planning"?$/' "$MANIFEST_CSV" | grep -qi 'concurrent sprints'
 }
 
@@ -135,27 +136,126 @@ setup() {
   awk -F',' '$1 ~ /^"?sprint-status"?$/' "$MANIFEST_CSV" | grep -qi 'concurrent sprints'
 }
 
+# --- AC4: CSV non-description columns are byte-identical to staging ---
+
+@test "gaia-help.csv non-description columns unchanged from staging" {
+  # Compare non-description columns for the three touched rows.
+  # gaia-help.csv: columns are module,phase,name,code,command,required,agent-name,description,output-location
+  # description is column 8. Strip it and compare the rest.
+  for code in sprint-plan run-sprint sprint-status; do
+    branch_row=$(awk -F',' -v c="$code" '$4 ~ "\"?"c"\"?"' "$HELP_CSV")
+    staging_row=$(cd "$REPO_ROOT" && git show origin/staging:plugins/gaia/knowledge/gaia-help.csv | awk -F',' -v c="$code" '$4 ~ "\"?"c"\"?"')
+    # Extract non-description columns via python3 csv for correctness with quoted fields
+    branch_nondesc=$(python3 -I -c "
+import csv, io, sys
+for row in csv.reader(io.StringIO(sys.argv[1])):
+    if len(row) >= 9:
+        print(','.join([row[i] for i in range(len(row)) if i != 7]))
+" "$branch_row")
+    staging_nondesc=$(python3 -I -c "
+import csv, io, sys
+for row in csv.reader(io.StringIO(sys.argv[1])):
+    if len(row) >= 9:
+        print(','.join([row[i] for i in range(len(row)) if i != 7]))
+" "$staging_row")
+    if [ "$branch_nondesc" != "$staging_nondesc" ]; then
+      echo "Non-description columns differ for code=$code" >&2
+      echo "  staging: $staging_nondesc" >&2
+      echo "  branch:  $branch_nondesc" >&2
+      return 1
+    fi
+  done
+}
+
+@test "workflow-manifest.csv non-description columns unchanged from staging" {
+  # workflow-manifest.csv: columns are name,displayName,description,module,phase,path,command,agent
+  # description is column 3 (index 2). Strip it and compare the rest.
+  for name in sprint-planning run-sprint sprint-status; do
+    branch_row=$(awk -F',' -v n="$name" '$1 ~ "\"?"n"\"?"' "$MANIFEST_CSV")
+    staging_row=$(cd "$REPO_ROOT" && git show origin/staging:plugins/gaia/knowledge/workflow-manifest.csv | awk -F',' -v n="$name" '$1 ~ "\"?"n"\"?"')
+    branch_nondesc=$(python3 -I -c "
+import csv, io, sys
+for row in csv.reader(io.StringIO(sys.argv[1])):
+    if len(row) >= 8:
+        print(','.join([row[i] for i in range(len(row)) if i != 2]))
+" "$branch_row")
+    staging_nondesc=$(python3 -I -c "
+import csv, io, sys
+for row in csv.reader(io.StringIO(sys.argv[1])):
+    if len(row) >= 8:
+        print(','.join([row[i] for i in range(len(row)) if i != 2]))
+" "$staging_row")
+    if [ "$branch_nondesc" != "$staging_nondesc" ]; then
+      echo "Non-description columns differ for name=$name" >&2
+      echo "  staging: $staging_nondesc" >&2
+      echo "  branch:  $branch_nondesc" >&2
+      return 1
+    fi
+  done
+}
+
+# --- AC1 link integrity: every href added by this story resolves ---
+
+@test "hrefs in concurrent-sprints glossary entry resolve to existing files or anchors" {
+  # Extract hrefs from the concurrent-sprints entry
+  while IFS= read -r href; do
+    case "$href" in
+      \#*) # Anchor-only: check the anchor exists in the same file
+        anchor="${href#\#}"
+        grep -q "id=\"$anchor\"" "$GLOSSARY" || {
+          echo "Dead anchor: $href" >&2; return 1
+        }
+        ;;
+      *\#*) # File#anchor
+        file="${href%%#*}"
+        anchor="${href#*#}"
+        target="$REPO_ROOT/documentation/$file"
+        [ -f "$target" ] || { echo "Dead file: $target" >&2; return 1; }
+        grep -q "id=\"$anchor\"" "$target" || { echo "Dead anchor $anchor in $file" >&2; return 1; }
+        ;;
+      *) # Plain file
+        target="$REPO_ROOT/documentation/$href"
+        [ -f "$target" ] || { echo "Dead href: $href (expected $target)" >&2; return 1; }
+        ;;
+    esac
+  done < <(awk '/id="concurrent-sprints"/,/<\/dd>/' "$GLOSSARY" \
+    | grep -oE 'href="[^"]*"' | sed 's/href="//;s/"$//')
+}
+
+@test "hrefs in phase-parallel-execution glossary entry resolve to existing files or anchors" {
+  while IFS= read -r href; do
+    case "$href" in
+      \#*)
+        anchor="${href#\#}"
+        grep -q "id=\"$anchor\"" "$GLOSSARY" || {
+          echo "Dead anchor: $href" >&2; return 1
+        }
+        ;;
+      *\#*)
+        file="${href%%#*}"
+        anchor="${href#*#}"
+        target="$REPO_ROOT/documentation/$file"
+        [ -f "$target" ] || { echo "Dead file: $target" >&2; return 1; }
+        grep -q "id=\"$anchor\"" "$target" || { echo "Dead anchor $anchor in $file" >&2; return 1; }
+        ;;
+      *)
+        target="$REPO_ROOT/documentation/$href"
+        [ -f "$target" ] || { echo "Dead href: $href (expected $target)" >&2; return 1; }
+        ;;
+    esac
+  done < <(awk '/id="phase-parallel-execution"/,/<\/dd>/' "$GLOSSARY" \
+    | grep -oE 'href="[^"]*"' | sed 's/href="//;s/"$//')
+}
+
 # --- AC5: internal ID scrub on lines this story adds or changes ---
 
 @test "new glossary entries contain no internal traceability identifiers" {
-  # Extract the two new glossary entry blocks by their anchors
   cs_block=$(awk '/id="concurrent-sprints"/,/<\/dd>/' "$GLOSSARY")
   ppe_block=$(awk '/id="phase-parallel-execution"/,/<\/dd>/' "$GLOSSARY")
   combined="$cs_block
 $ppe_block"
-  # Check for leaked internal IDs (FR-nnn, NFR-nnn, SR-nnn, ADR-nnn,
-  # E<n>-S<n>, TC-nnn, T-<n>, F-<n>, AF-20xx, AI-20xx, "per the PRD")
-  # This bats file is exempt for regex literals.
-  if grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|SR-[0-9]{2,}|ADR-[0-9]{2,}' <<< "$combined"; then
-    echo "Found leaked requirement/ADR ID in glossary entries" >&2
-    return 1
-  fi
-  if grep -Eq 'E[0-9]+-S[0-9]+' <<< "$combined"; then
-    echo "Found leaked story key in glossary entries" >&2
-    return 1
-  fi
-  if grep -Eq 'TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}' <<< "$combined"; then
-    echo "Found leaked test/cascade ID in glossary entries" >&2
+  if grep -Eq "$_ID_PATTERN" <<< "$combined"; then
+    echo "Found leaked ID in glossary entries" >&2
     return 1
   fi
   if grep -qi 'per the PRD' <<< "$combined"; then
@@ -165,18 +265,16 @@ $ppe_block"
 }
 
 @test "updated CSV descriptions contain no internal traceability identifiers" {
-  # Extract the three updated descriptions from gaia-help.csv
   for code in sprint-plan run-sprint sprint-status; do
     desc=$(awk -F',' -v c="$code" '$4 ~ "\"?"c"\"?"' "$HELP_CSV")
-    if grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}' <<< "$desc"; then
+    if grep -Eq "$_ID_PATTERN" <<< "$desc"; then
       echo "Found leaked ID in gaia-help.csv description for $code" >&2
       return 1
     fi
   done
-  # Extract the three updated descriptions from workflow-manifest.csv
   for name in sprint-planning run-sprint sprint-status; do
     desc=$(awk -F',' -v n="$name" '$1 ~ "\"?"n"\"?"' "$MANIFEST_CSV")
-    if grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}' <<< "$desc"; then
+    if grep -Eq "$_ID_PATTERN" <<< "$desc"; then
       echo "Found leaked ID in workflow-manifest.csv description for $name" >&2
       return 1
     fi
@@ -184,11 +282,9 @@ $ppe_block"
 }
 
 @test "gaia-help SKILL.md Terminology note contains no internal traceability identifiers" {
-  # The Terminology note must exist first (prerequisite)
   grep -qi 'Terminology' "$HELP_SKILL"
-  # Extract lines around the Terminology note
   term_block=$(grep -i 'Terminology' "$HELP_SKILL" -A10 -B1)
-  if grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}' <<< "$term_block"; then
+  if grep -Eq "$_ID_PATTERN" <<< "$term_block"; then
     echo "Found leaked ID in SKILL.md Terminology note" >&2
     return 1
   fi
