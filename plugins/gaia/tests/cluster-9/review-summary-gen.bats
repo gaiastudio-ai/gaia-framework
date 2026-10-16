@@ -371,3 +371,98 @@ SYN
   [ -f "$custom" ]
   grep -q "^story_key: ${STORY_KEY}\$" "$custom"
 }
+
+# ---------- Round-awareness header flags (per-round review record) ----------
+# Golden captured from staging commit 258c72e5, TZ=UTC, touch -t 202601011200.00.
+
+@test "output byte-identical without new flags (golden structural cmp)" {
+  seed_all_passed
+
+  # Pin mtime for determinism — must match the golden capture timestamp.
+  TZ=UTC touch -t 202601011200.00 "$STORY_FILE"
+
+  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  [ "$status" -eq 0 ]
+  # stdout may include stderr (mirror line); the last line is the path.
+  local out_path
+  out_path="$(printf '%s\n' "$output" | tail -1)"
+  [ -f "$out_path" ]
+  local first="$TEST_TMP/summary-first.md"
+  cp "$out_path" "$first"
+
+  # Re-run — must be byte-identical (existing determinism contract).
+  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  [ "$status" -eq 0 ]
+  local out_path2
+  out_path2="$(printf '%s\n' "$output" | tail -1)"
+  cmp "$first" "$out_path2"
+
+  # Strip run-specific absolute paths and compare against committed golden.
+  local golden="$FIXTURES_DIR/expected/golden-summary-no-round-flags.txt"
+  [ -f "$golden" ] || { echo "golden fixture missing: $golden" >&2; return 1; }
+
+  local stripped="$TEST_TMP/summary-stripped.md"
+  sed 's|`/[^`]*`|`PATH_STRIPPED`|g' "$first" > "$stripped"
+  cmp "$stripped" "$golden"
+
+  # No round-awareness fields present without new flags.
+  run grep -q '^run_id:' "$first"
+  [ "$status" -ne 0 ]
+  run grep -q '^commit_sha:' "$first"
+  [ "$status" -ne 0 ]
+  ! grep -q '^requirement_version:' "$first"
+}
+
+@test "header fields present with --run-id, --commit-sha, --requirement-version" {
+  seed_all_passed
+
+  TZ=UTC touch -t 202601011200.00 "$STORY_FILE"
+
+  local rid="round-20261016T120000Z-12345"
+  local sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  local rver="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+  run "$SUMMARY_GEN" --story "$STORY_KEY" \
+    --run-id "$rid" --commit-sha "$sha" --requirement-version "$rver"
+  [ "$status" -eq 0 ]
+
+  local out_path
+  out_path="$(printf '%s\n' "$output" | tail -1)"
+  [ -f "$out_path" ]
+  grep -q "^run_id: ${rid}\$" "$out_path"
+  grep -q "^commit_sha: ${sha}\$" "$out_path"
+  grep -q "^requirement_version: ${rver}\$" "$out_path"
+}
+
+@test "invalid flag values rejected by review-summary-gen" {
+  seed_all_passed
+
+  # Invalid run-id pattern — must reject the VALUE, not the flag itself.
+  run "$SUMMARY_GEN" --story "$STORY_KEY" \
+    --run-id "not-a-valid-round-id" \
+    --commit-sha "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+    --requirement-version "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  [ "$status" -eq 2 ]
+  local out="$output"
+  # Must not be "unknown flag" — that means the flag is not implemented yet.
+  [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
+  grep -qi "invalid\|pattern\|run.id\|format" <<<"$out"
+
+  # Invalid commit-sha.
+  run "$SUMMARY_GEN" --story "$STORY_KEY" \
+    --run-id "round-20261016T120000Z-12345" \
+    --commit-sha "not-hex" \
+    --requirement-version "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  [ "$status" -eq 2 ]
+  out="$output"
+  [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
+
+  # Invalid requirement-version.
+  run "$SUMMARY_GEN" --story "$STORY_KEY" \
+    --run-id "round-20261016T120000Z-12345" \
+    --commit-sha "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+    --requirement-version "not-a-sha256"
+  [ "$status" -eq 2 ]
+  out="$output"
+  [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
+}
