@@ -31,8 +31,8 @@ set -euo pipefail
 LC_ALL=C; export LC_ALL
 
 SCRIPT_NAME="register-write.sh"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-SCRIPTS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null && pwd)"
+SCRIPTS_DIR="$(CDPATH='' cd -- "$SCRIPT_DIR/.." >/dev/null && pwd)"
 
 # Source the shared locking helper.
 # shellcheck source=../lib/acquire-lock.sh
@@ -108,11 +108,13 @@ _rw_recompute_blocking() {
 # Validate story key against safe pattern.
 _rw_validate_key() {
   local key="$1"
+  # Reject embedded newlines — a multi-line value would pass a line-based check.
   case "$key" in
+    *$'\n'*) _rw_die 1 "invalid story key: contains newline" ;;
     *..* | */* | "")
       _rw_die 1 "invalid story key: $key" ;;
   esac
-  if ! grep -qE '^[A-Za-z0-9]+-[A-Za-z0-9]+(-[A-Za-z0-9_-]+)*$' <<<"$key"; then
+  if ! [[ "$key" =~ ^[A-Za-z0-9]+-[A-Za-z0-9]+(-[A-Za-z0-9_-]+)*$ ]]; then
     _rw_die 1 "invalid story key: $key"
   fi
 }
@@ -218,7 +220,7 @@ _rw_validate_structure() {
 
   # Validate rounds[] when present.
   local rounds_type
-  rounds_type="$(yq '.rounds | type' "$path" 2>/dev/null)" || rounds_type=""
+  rounds_type="$(yq '.rounds | type' "$path" 2>/dev/null)" || _rw_die 2 "structural validation: failed to read rounds type"
   case "$rounds_type" in
     "!!null"|"") ;; # Missing or null — legacy, no rounds.
     "!!seq")
@@ -240,6 +242,15 @@ _rw_validate_structure() {
         true) ;;
         *)
           _rw_err "structural validation failed (rounds): $path"
+          exit 2 ;;
+      esac
+      # At most one round may be in the open state.
+      local open_count
+      open_count="$(yq '[.rounds[] | select(.status == "open")] | length' "$path" 2>/dev/null)" || open_count="__err"
+      case "$open_count" in
+        0|1) ;;
+        *)
+          _rw_err "structural validation failed (multiple open rounds): $path"
           exit 2 ;;
       esac
       ;;
@@ -418,8 +429,11 @@ _rw_file_sha256() {
 # Validate a round run-id against the canonical pattern.
 _rw_validate_round_id() {
   local id="$1"
-  local _rw_round_id_re='^round-[0-9]{8}T[0-9]{6}Z-[0-9]+$'
-  if ! grep -qE "$_rw_round_id_re" <<<"$id"; then
+  # Reject embedded newlines — a multi-line value would pass a line-based check.
+  case "$id" in
+    *$'\n'*) _rw_die 1 "invalid round run-id: contains newline" ;;
+  esac
+  if ! [[ "$id" =~ ^round-[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]]; then
     _rw_die 1 "invalid round run-id: $id"
   fi
 }
@@ -433,8 +447,11 @@ _rw_resolve_code_tree() {
   [ "$inside" = "true" ] || _rw_die 1 "not inside a git work tree: $repo"
   local sha
   sha="$(git -C "$repo" rev-parse HEAD 2>/dev/null)" || _rw_die 1 "failed to resolve HEAD in: $repo"
-  local _rw_sha_re='^([0-9a-f]{40}|[0-9a-f]{64})$'
-  if ! grep -qE "$_rw_sha_re" <<<"$sha"; then
+  # Reject embedded newlines — a multi-line value would pass a line-based check.
+  case "$sha" in
+    *$'\n'*) _rw_die 1 "HEAD is not a valid hex SHA: contains newline" ;;
+  esac
+  if ! [[ "$sha" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
     _rw_die 1 "HEAD is not a valid hex SHA: $sha"
   fi
   printf '%s' "$sha"
@@ -1549,7 +1566,7 @@ _rw_cmd_record_round() {
     local carg="${carry_args[$_c_idx]}"
     local cname="${carg%%=*}"
     local crest="${carg#*=}"
-    # W4: --carry needs <run-id>:<rationale>, refuse if no ':' present.
+    # Refuse carry values missing the <run-id>:<rationale> separator.
     case "$crest" in
       *:*) ;; # valid format
       *) _rw_die 1 "--carry needs <run-id>:<rationale> (got: $carg)" ;;
@@ -1592,9 +1609,9 @@ _rw_cmd_record_round() {
     # Extract existing selected/carried as JSON via yq, then normalise with jq.
     # yq -o=json on an empty sequence can emit [[]], so pipe through jq to flatten.
     ex_gates_reasons="$(yq -o=json '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates' "$tmp" 2>/dev/null \
-      | jq -c '[.[] | [.gate, .reason]] | sort')" || ex_gates_reasons="[]"
+      | jq -c '[.[] | [.gate, .reason]] | sort')" || _rw_abort_and_die 2 "record-round: failed to read existing selected gates"
     ex_carries="$(yq -o=json '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates' "$tmp" 2>/dev/null \
-      | jq -c '[.[] | [.gate, .from_run, .applicability_rationale]] | sort')" || ex_carries="[]"
+      | jq -c '[.[] | [.gate, .from_run, .applicability_rationale]] | sort')" || _rw_abort_and_die 2 "record-round: failed to read existing carried gates"
     local new_gates_reasons new_carries
     new_gates_reasons="$(printf '%s' "$selected_json" | jq -c '[.[] | [.gate, .reason]] | sort')" || _rw_die 1 "record-round: jq failed"
     new_carries="$(printf '%s' "$carried_json" | jq -c '[.[] | [.gate, .from_run, .applicability_rationale]] | sort')" || _rw_die 1 "record-round: jq failed"
@@ -1614,7 +1631,7 @@ _rw_cmd_record_round() {
 
   # Supersede any existing open round.
   export _RW_NEW_RUN_ID="$run_id"
-  yq -i '(.rounds[] | select(.status == "open")).status = "superseded" | (.rounds[] | select(.status == "superseded" and .superseded_by == null)).superseded_by = strenv(_RW_NEW_RUN_ID)' "$tmp" 2>/dev/null || true
+  yq -i '(.rounds[] | select(.status == "open")).status = "superseded" | (.rounds[] | select(.status == "superseded" and .superseded_by == null)).superseded_by = strenv(_RW_NEW_RUN_ID)' "$tmp" || _rw_abort_and_die 2 "record-round: failed to supersede previous open round"
   unset _RW_NEW_RUN_ID
 
   # Write selected_gates and carried_gates as JSON temp files, load via load().
@@ -1760,12 +1777,12 @@ _rw_cmd_round_info() {
   local target_round_json
   if [ -n "$run_id" ]; then
     export _RW_RUN_ID="$run_id"
-    target_round_json="$(yq -o=json '.rounds[] | select(.run_id == strenv(_RW_RUN_ID))' "$reg_path" 2>/dev/null)" || _rw_die 2 "round-info: round not found for run-id: $run_id"
+    target_round_json="$(yq -o=json '.rounds[] | select(.run_id == strenv(_RW_RUN_ID))' "$reg_path" 2>/dev/null)" || _rw_die 1 "round-info: round not found for run-id: $run_id"
     unset _RW_RUN_ID
   else
     target_round_json="$(yq -o=json '.rounds[-1]' "$reg_path" 2>/dev/null)" || _rw_die 2 "round-info: failed to read latest round"
   fi
-  [ -n "$target_round_json" ] && [ "$target_round_json" != "null" ] || _rw_die 2 "round-info: round not found"
+  [ -n "$target_round_json" ] && [ "$target_round_json" != "null" ] || _rw_die 1 "round-info: round not found"
 
   # Print round fields.
   local r_run_id r_status r_sha r_accepted
@@ -1794,7 +1811,7 @@ _rw_cmd_round_info() {
   printf 'brief_sha256 %s\n' "$brief_sha"
 
   # Compute last_completed_run for each gate.
-  local _g _rw_round_id_re='^round-[0-9]{8}T[0-9]{6}Z-[0-9]+$'
+  local _g
   for _g in $_RW_CANONICAL_GATES; do
     # Find the latest completed gate_runs entry ordered by seq.
     export _RW_GATE="$_g"
@@ -1808,7 +1825,7 @@ _rw_cmd_round_info() {
     fi
 
     # Must match the round pattern AND have a recorded report in rounds[].
-    if grep -qE "$_rw_round_id_re" <<<"$latest_run_id"; then
+    if [[ "$latest_run_id" =~ ^round-[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]]; then
       export _RW_CHECK_RID="$latest_run_id" _RW_CHECK_GATE="$_g"
       local has_report
       has_report="$(yq '[.rounds[] | select(.run_id == strenv(_RW_CHECK_RID)).selected_gates[] | select(.gate == strenv(_RW_CHECK_GATE) and .report_path != "")] | length' "$reg_path" 2>/dev/null)" || has_report="0"
@@ -1902,8 +1919,8 @@ _rw_cmd_complete_round() {
   local has_impact ia_to_sha="" ia_from_run=""
   has_impact="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment | type' "$tmp" 2>/dev/null)" || has_impact=""
   if [ "$has_impact" = "!!map" ]; then
-    ia_to_sha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment.to_sha' "$tmp" 2>/dev/null)" || ia_to_sha=""
-    ia_from_run="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment.from_run' "$tmp" 2>/dev/null)" || ia_from_run=""
+    ia_to_sha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment.to_sha' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read impact_assessment.to_sha"
+    ia_from_run="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).impact_assessment.from_run' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read impact_assessment.from_run"
     if [ "$ia_to_sha" != "$round_sha" ]; then
       errors="${errors}impact_assessment.to_sha ($ia_to_sha) does not match round SHA ($round_sha); "
     fi
@@ -1924,7 +1941,7 @@ _rw_cmd_complete_round() {
   if [ "$round_idx" != "0" ] && [ "$round_idx" != "null" ]; then
     local pred_idx=$(( round_idx - 1 ))
     local pred_sha
-    pred_sha="$(yq ".rounds[$pred_idx].commit_sha" "$tmp" 2>/dev/null)" || pred_sha=""
+    pred_sha="$(yq ".rounds[$pred_idx].commit_sha" "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read predecessor commit SHA"
     if [ "$pred_sha" != "$round_sha" ] && [ -n "$pred_sha" ] && [ "$pred_sha" != "null" ]; then
       # Different commit — need impact_assessment and all 6 gates.
       if [ "$has_impact" != "!!map" ]; then
@@ -2028,8 +2045,8 @@ _rw_cmd_complete_round() {
         fi
         # Check report exists and matches.
         local hop_rpath hop_rsha
-        hop_rpath="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_path' "$tmp" 2>/dev/null)" || hop_rpath=""
-        hop_rsha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_sha256' "$tmp" 2>/dev/null)" || hop_rsha=""
+        hop_rpath="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_path' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read carried gate report path"
+        hop_rsha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_sha256' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read carried gate report SHA"
         if [ -z "$hop_rpath" ] || [ "$hop_rpath" = "null" ] || [ "$hop_rpath" = '""' ] || ! [ -f "$hop_rpath" ]; then
           errors="${errors}carried gate $cg: report missing at terminal run $hop_run; "
         elif [ -n "$hop_rsha" ] && [ "$hop_rsha" != "null" ] && [ "$hop_rsha" != '""' ]; then
@@ -2113,7 +2130,7 @@ _rw_cmd_assert_round_complete() {
   _rw_validate_structure "$reg_path"
 
   local rounds_len
-  rounds_len="$(yq '.rounds | length // 0' "$reg_path" 2>/dev/null)" || rounds_len="0"
+  rounds_len="$(yq '.rounds | length // 0' "$reg_path" 2>/dev/null)" || _rw_die 2 "assert-round-complete: failed to read rounds length"
   if [ "$rounds_len" = "0" ] || [ "$rounds_len" = "null" ]; then
     printf 'no orchestrated round\n'
     exit 0
@@ -2121,7 +2138,7 @@ _rw_cmd_assert_round_complete() {
 
   # Get latest round.
   local latest_status
-  latest_status="$(yq '.rounds[-1].status' "$reg_path" 2>/dev/null)" || latest_status=""
+  latest_status="$(yq '.rounds[-1].status' "$reg_path" 2>/dev/null)" || _rw_die 2 "assert-round-complete: failed to read latest round status"
 
   # Brief integrity check (on any status).
   _rw_check_brief_integrity "$reg_path" ".rounds[-1]" || \
@@ -2267,7 +2284,9 @@ _rw_cmd_record_scope_revision() {
   _rw_validate_round_id "$run_id"
 
   case "$kind" in
-    essential_missing_requirement) ;;
+    essential_missing_requirement)
+      [ -n "$reassess_args" ] || _rw_die 1 "essential_missing_requirement requires at least one --reassess gate"
+      ;;
     unrelated_enhancement)
       [ -z "$reassess_args" ] || _rw_die 1 "cannot reassess gates with an unrelated enhancement"
       [ -n "$followon" ] || _rw_die 1 "unrelated_enhancement requires --followon"
@@ -2384,9 +2403,10 @@ _rw_cmd_bind_brief() {
   [ -f "$brief" ] || _rw_die 1 "bind-brief: brief file not found: $brief"
 
   # Store the absolute path so the integrity check works from any CWD.
+  # CDPATH= prevents cd from matching against CDPATH entries.
   case "$brief" in
     /*) ;; # already absolute
-    *) brief="$(cd "$(dirname "$brief")" && pwd)/$(basename "$brief")" ;;
+    *) brief="$(CDPATH='' cd -- "$(dirname -- "$brief")" >/dev/null && pwd)/$(basename -- "$brief")" ;;
   esac
 
   local brief_hash
@@ -2462,9 +2482,10 @@ _rw_cmd_supersede_brief() {
   [ -f "$brief" ] || _rw_die 1 "supersede-brief: brief file not found: $brief"
 
   # Store the absolute path so the integrity check works from any CWD.
+  # CDPATH= prevents cd from matching against CDPATH entries.
   case "$brief" in
     /*) ;; # already absolute
-    *) brief="$(cd "$(dirname "$brief")" && pwd)/$(basename "$brief")" ;;
+    *) brief="$(CDPATH='' cd -- "$(dirname -- "$brief")" >/dev/null && pwd)/$(basename -- "$brief")" ;;
   esac
 
   local brief_hash

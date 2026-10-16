@@ -851,7 +851,7 @@ _make_commit() {
     --repo "/nonexistent/dir"
   [ "$status" -eq 1 ]
   # Must fail because of the outside-git check, not "unknown subcommand".
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
 }
 
 # ===================================================================
@@ -1368,7 +1368,7 @@ _make_commit() {
     --gate code-review --report "/tmp/report.md"
   [ "$status" -eq 1 ]
   # Must be a run-id validation error, not "unknown subcommand".
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "invalid.*run.id\|run.id.*invalid\|round run-id" <<<"$output"
 }
 
@@ -1379,7 +1379,7 @@ _make_commit() {
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "not-valid" --repo "/tmp"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "invalid.*run.id\|run.id.*invalid\|round run-id" <<<"$output"
 }
 
@@ -1390,7 +1390,7 @@ _make_commit() {
   run "$SCRIPT" impact-assessment --story TEST-S1 \
     --run-id "not-valid" --from-run "$VALID_RUN_ID" --repo "/tmp"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "invalid.*run.id\|run.id.*invalid\|round run-id" <<<"$output"
 }
 
@@ -1401,7 +1401,7 @@ _make_commit() {
   run "$SCRIPT" impact-assessment --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --from-run "not-valid" --repo "/tmp"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "invalid.*run.id\|run.id.*invalid\|round run-id" <<<"$output"
 }
 
@@ -1413,7 +1413,7 @@ _make_commit() {
     --run-id "not-valid" --kind essential_missing_requirement \
     --decision "test" --reassess code-review
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "invalid.*run.id\|run.id.*invalid\|round run-id" <<<"$output"
 }
 
@@ -1424,7 +1424,7 @@ _make_commit() {
   run "$SCRIPT" bind-brief --story TEST-S1 \
     --run-id "not-valid" --brief "/tmp/brief.md"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "invalid.*run.id\|run.id.*invalid\|round run-id" <<<"$output"
 }
 
@@ -1435,7 +1435,7 @@ _make_commit() {
   run "$SCRIPT" supersede-brief --story TEST-S1 \
     --run-id "not-valid" --brief "/tmp/brief.md" --rationale "test"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "invalid.*run.id\|run.id.*invalid\|round run-id" <<<"$output"
 }
 
@@ -1445,7 +1445,7 @@ _make_commit() {
 
   run "$SCRIPT" round-info --story TEST-S1 --run-id "not-valid"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "invalid.*run.id\|run.id.*invalid\|round run-id" <<<"$output"
 }
 
@@ -1881,7 +1881,10 @@ YAML
   # reasons — but the carried gate itself must not be the failure reason.)
   # We cannot expect exit 0 here because not all 6 gates are accounted for.
   # Instead, check that the error does NOT name code-review as the problem.
-  ! grep -qi "code-review" <<<"$output" || [ "$status" -eq 0 ]
+  # shellcheck disable=SC2254
+  local output_lower
+  output_lower="$(tr '[:upper:]' '[:lower:]' <<<"$output")"
+  [[ "$output_lower" != *"code-review"* ]] || [ "$status" -eq 0 ]
 }
 
 @test "carried gate cycle detected exits 1" {
@@ -1934,7 +1937,7 @@ YAML
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "round-20261016T100000Z-2" --repo "$repo_dir"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "cycle" <<<"$output"
 }
 
@@ -1970,7 +1973,7 @@ YAML
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "round-20261016T100000Z-1" --repo "$repo_dir"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "not found in rounds\|not found" <<<"$output"
 }
 
@@ -2014,7 +2017,7 @@ YAML
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "round-20261016T100000Z-2" --repo "$repo_dir"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "gate not found in round\|not found" <<<"$output"
 }
 
@@ -2071,7 +2074,7 @@ YAML
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID_2" --repo "$repo_dir"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   # The failure should mention the carried gate that did not pass the seq rule.
   grep -qi "code-review\|carried\|seq\|reassess" <<<"$output"
 }
@@ -2092,7 +2095,7 @@ YAML
     --from-run "$VALID_RUN_ID_2" \
     --repo "$repo_dir"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "round not found\|not found" <<<"$output"
 }
 
@@ -2155,7 +2158,7 @@ YAML
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID_2" --repo "$repo_dir"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "to_sha\|impact.*mismatch\|sha.*mismatch" <<<"$output"
 }
 
@@ -2205,7 +2208,7 @@ YAML
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID_2" --repo "$repo_dir"
   [ "$status" -eq 1 ]
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "report.*edit\|sha.*mismatch\|report.*changed\|report.*integrity\|code-review" <<<"$output"
 }
 
@@ -2259,7 +2262,7 @@ YAML
   run "$SCRIPT" round-info --story TEST-S1
   [ "$status" -eq 0 ]
   grep -q "brief_path $new_brief" <<<"$output"
-  ! grep -q "brief_path $brief" <<<"$output"
+  [[ "$output" != *"brief_path $brief"* ]]
 }
 
 # ===================================================================
@@ -2288,7 +2291,7 @@ SHIM
     --gate "code-review=test"
   [ "$status" -eq 1 ]
   # Must fail because of the git check, not "unknown subcommand".
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "work.tree\|git\|repo\|not inside" <<<"$output"
 }
 
@@ -2317,12 +2320,12 @@ SHIM
     --gate "code-review=test"
   [ "$status" -eq 1 ]
   # Must fail because of the hex validation, not "unknown subcommand".
-  ! grep -q "unknown subcommand" <<<"$output"
+  [[ "$output" != *"unknown subcommand"* ]]
   grep -qi "hex\|SHA\|commit\|resolve" <<<"$output"
 }
 
 # ===================================================================
-# Temp file cleanup (W1)
+# Temp file cleanup on success and failure
 # ===================================================================
 
 @test "no rw-* temp files leak after record-round success" {
@@ -2366,7 +2369,7 @@ SHIM
 }
 
 # ===================================================================
-# Idempotency: reason and carry changes (W2)
+# Idempotency: reason and carry changes
 # ===================================================================
 
 @test "idempotency: changed reason gives exit 1" {
@@ -2411,7 +2414,7 @@ SHIM
 }
 
 # ===================================================================
-# Newline injection in --gate/--carry (W3)
+# Newline injection in --gate/--carry
 # ===================================================================
 
 @test "newline in gate reason stored literally, not as extra gate" {
@@ -2437,7 +2440,7 @@ line2"
 }
 
 # ===================================================================
-# --carry with no colon (W4)
+# --carry with no colon separator
 # ===================================================================
 
 @test "--carry with no colon separator is refused" {
@@ -2456,7 +2459,7 @@ line2"
 }
 
 # ===================================================================
-# Brief integrity: deleted brief, absolute path (W5)
+# Brief integrity: deleted brief, absolute path
 # ===================================================================
 
 @test "assert-round-complete exits 1 when bound brief file is deleted" {
@@ -2528,7 +2531,7 @@ line2"
 }
 
 # ===================================================================
-# yq failure handling (W6)
+# yq failure handling: injected yq error yields exit 2, register unchanged
 # ===================================================================
 
 @test "yq failure on complete-round yields exit 2 register unchanged" {
@@ -2558,28 +2561,14 @@ line2"
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
 
-  # Create a yq shim that fails on the 2nd call (the round_idx query).
+  # Create a yq shim that fails on the round_sha read.
   local shim_dir="$TEST_TMP/yq-fail-shim"
-  mkdir -p "$shim_dir"
-  local counter="$shim_dir/.yq_calls"
-  printf '0\n' > "$counter"
-  cat > "$shim_dir/yq" <<'SHIMEOF'
-#!/usr/bin/env bash
-count="$(cat "${0%/*}/.yq_calls")"
-count=$((count + 1))
-printf '%s\n' "$count" > "${0%/*}/.yq_calls"
-# Fail on 3rd+ call (after the round lookup and status read).
-if [ "$count" -ge 3 ]; then
-  exit 1
-fi
-exec /opt/homebrew/bin/yq "$@" 2>/dev/null || exec /usr/local/bin/yq "$@"
-SHIMEOF
-  chmod +x "$shim_dir/yq"
+  _build_yq_shim "$shim_dir" '.commit_sha'
 
   # complete-round with the failing yq should exit 2.
   run env PATH="$shim_dir:$PATH" "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
-  [ "$status" -eq 2 ] || [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   # The round must NOT have been marked complete.
   local reg_status
   reg_status="$(yq '.rounds[0].status' "$reg")"
@@ -2587,7 +2576,7 @@ SHIMEOF
 }
 
 # ===================================================================
-# impact-assessment guards (INFO 4)
+# impact-assessment guards
 # ===================================================================
 
 @test "impact-assessment refuses --from-run equal to --run-id" {
@@ -2649,7 +2638,7 @@ SHIMEOF
 }
 
 # ===================================================================
-# Structure validation: zero gates (INFO 7)
+# Structure validation: zero gates
 # ===================================================================
 
 @test "structure validation rejects round with empty selected_gates" {
@@ -2706,7 +2695,7 @@ YAML
 }
 
 # ===================================================================
-# No STUB env vars active (INFO 1)
+# No STUB env vars active
 # ===================================================================
 
 @test "record-round runs without any STUB env var and changes the register" {
@@ -2718,7 +2707,7 @@ YAML
 
   # Assert no STUB var is leaking.
   run env
-  ! grep -q '_STUB=' <<<"$output"
+  [[ "$output" != *"_STUB="* ]]
 
   run "$SCRIPT" record-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
@@ -2742,7 +2731,7 @@ YAML
   _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
 
   run env
-  ! grep -q '_STUB=' <<<"$output"
+  [[ "$output" != *"_STUB="* ]]
 
   run "$SCRIPT" record-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
@@ -2777,7 +2766,7 @@ YAML
   _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
 
   run env
-  ! grep -q '_STUB=' <<<"$output"
+  [[ "$output" != *"_STUB="* ]]
 
   run "$SCRIPT" record-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
@@ -2798,7 +2787,7 @@ YAML
 }
 
 # ===================================================================
-# complete-round: single message names every failure (INFO 3)
+# complete-round: single message names every failure
 # ===================================================================
 
 @test "complete-round names both HEAD mismatch and missing report in one message" {
@@ -2829,4 +2818,682 @@ YAML
   # The error must mention BOTH the HEAD mismatch and the gate report issue.
   grep -qi "HEAD" <<<"$output"
   grep -qi "code-review" <<<"$output"
+}
+
+# ===================================================================
+# Newline injection in run-id, story key, and from-run
+# ===================================================================
+
+@test "run-id with trailing newline is rejected" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  local nl_id="${VALID_RUN_ID}
+"
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$nl_id" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 1 ]
+  grep -qi "invalid\|newline" <<<"$output"
+}
+
+@test "run-id with embedded newline is rejected" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  local nl_id="${VALID_RUN_ID}
+evil: [injected]"
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$nl_id" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 1 ]
+  grep -qi "invalid\|newline" <<<"$output"
+}
+
+@test "story key with embedded newline is rejected" {
+  run "$SCRIPT" assert-round-complete --story "TEST-S1
+injected"
+  [ "$status" -eq 1 ]
+  grep -qi "invalid\|newline" <<<"$output"
+}
+
+@test "impact-assessment from-run with embedded newline is rejected" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local nl_from="${VALID_RUN_ID_2}
+evil"
+  run "$SCRIPT" impact-assessment --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --from-run "$nl_from" --repo "$repo_dir"
+  [ "$status" -eq 1 ]
+  grep -qi "invalid\|newline" <<<"$output"
+}
+
+# ===================================================================
+# essential_missing_requirement requires --reassess
+# ===================================================================
+
+@test "record-scope-revision essential_missing_requirement without --reassess is refused" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-scope-revision --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" \
+    --kind essential_missing_requirement \
+    --decision "found a gap"
+  [ "$status" -eq 1 ]
+  grep -qi "reassess" <<<"$output"
+}
+
+# ===================================================================
+# Structure validation rejects multiple open rounds
+# ===================================================================
+
+@test "structure validation rejects register with two open rounds" {
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  mkdir -p "$(dirname "$reg")"
+  cat > "$reg" <<YAML
+schema_version: 1
+story: TEST-S1
+gate_runs: []
+entries: []
+rounds:
+  - run_id: "${VALID_RUN_ID}"
+    commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    requirement_version: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    accepted_version: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    status: open
+    superseded_by: null
+    selected_gates:
+      - gate: code-review
+        reason: test
+        report_path: ""
+        report_sha256: ""
+    carried_gates: []
+    impact_assessment: null
+    scope_revisions: []
+    brief: null
+  - run_id: "${VALID_RUN_ID_2}"
+    commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    requirement_version: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    accepted_version: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    status: open
+    superseded_by: null
+    selected_gates:
+      - gate: qa-tests
+        reason: test
+        report_path: ""
+        report_sha256: ""
+    carried_gates: []
+    impact_assessment: null
+    scope_revisions: []
+    brief: null
+YAML
+
+  run "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 2 ]
+  grep -qi "multiple open\|structural" <<<"$output"
+}
+
+# ===================================================================
+# STUB env var checks for impact/supersede and scope-revision
+# ===================================================================
+
+@test "impact-assessment runs without any STUB env var" {
+  local repo_dir="$TEST_TMP/repo"
+  local sha1
+  sha1="$(_init_git_repo "$repo_dir")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/rpt.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  local sha2
+  sha2="$(_make_commit "$repo_dir" "change.txt")"
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "code-review=test2"
+  [ "$status" -eq 0 ]
+
+  run env
+  [[ "$output" != *"_STUB="* ]]
+
+  run "$SCRIPT" impact-assessment --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --from-run "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "record-scope-revision runs without any STUB env var" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  run env
+  [[ "$output" != *"_STUB="* ]]
+
+  run "$SCRIPT" record-scope-revision --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" \
+    --kind essential_missing_requirement \
+    --decision "discovered gap" \
+    --reassess code-review
+  [ "$status" -eq 0 ]
+}
+
+# ===================================================================
+# Per-site yq failure tests (supersede write, pred_sha, ia_from_run,
+# hop report SHA, rounds_len, rounds_type, idempotency carries)
+# ===================================================================
+
+# Helper: build a yq shim that fails when arguments match a pattern.
+# Captures the real yq path once; uses it for non-matching calls.
+# The pattern is stored in a companion file so no quoting issues arise.
+_build_yq_shim() {
+  local shim_dir="$1" pattern="$2" fail_n="${3:-}"
+  mkdir -p "$shim_dir"
+  local real_yq
+  real_yq="$(command -v yq)"
+  local counter="$shim_dir/.yq_cnt"
+  printf '0\n' > "$counter"
+  printf '%s' "$pattern" > "$shim_dir/.yq_pat"
+  printf '%s' "$fail_n" > "$shim_dir/.yq_fail_n"
+  printf '%s' "$real_yq" > "$shim_dir/.yq_real"
+  cat > "$shim_dir/yq" <<'SHIMEOF'
+#!/usr/bin/env bash
+_sd="${0%/*}"
+_pat="$(cat "$_sd/.yq_pat")"
+_fn="$(cat "$_sd/.yq_fail_n")"
+_real="$(cat "$_sd/.yq_real")"
+_cnt="$_sd/.yq_cnt"
+for a in "$@"; do
+  case "$a" in *"$_pat"*)
+    c=$(cat "$_cnt"); c=$((c+1)); printf '%s\n' "$c" > "$_cnt"
+    if [ -z "$_fn" ] || [ "$c" = "$_fn" ]; then
+      echo "yq shim: injected failure" >&2; exit 1
+    fi; break;;
+  esac
+done
+exec "$_real" "$@"
+SHIMEOF
+  chmod +x "$shim_dir/yq"
+}
+
+@test "yq failure on supersede write yields exit 2 and no second open round" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local before_sha
+  before_sha="$(shasum "$reg" | awk '{print $1}')"
+
+  local shim="$TEST_TMP/yqshim-supersede"
+  _build_yq_shim "$shim" 'select(.status == "open")).status = "superseded"'
+
+  run env PATH="$shim:$PATH" "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "code-review=test2"
+  [ "$status" -eq 2 ]
+
+  local after_sha
+  after_sha="$(shasum "$reg" | awk '{print $1}')"
+  [ "$before_sha" = "$after_sha" ]
+
+  local open_count
+  open_count="$(yq '[.rounds[] | select(.status == "open")] | length' "$reg")"
+  [ "$open_count" -eq 1 ]
+}
+
+@test "yq failure on pred_sha read yields exit 2 register unchanged" {
+  local repo_dir="$TEST_TMP/repo"
+  local sha1
+  sha1="$(_init_git_repo "$repo_dir")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1 complete.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/rpt.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2 with same SHA (no new commit).
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "code-review=test2"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt2="$TEST_TMP/rpt2.md"
+  printf 'report2\n' > "$rpt2"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$rpt2"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local before_sha
+  before_sha="$(shasum "$reg" | awk '{print $1}')"
+
+  local shim="$TEST_TMP/yqshim-predsha"
+  _build_yq_shim "$shim" '.commit_sha'
+
+  run env PATH="$shim:$PATH" "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir"
+  [ "$status" -eq 2 ]
+
+  local after_sha
+  after_sha="$(shasum "$reg" | awk '{print $1}')"
+  [ "$before_sha" = "$after_sha" ]
+
+  local round2_status
+  round2_status="$(yq '.rounds[1].status' "$reg")"
+  [ "$round2_status" = "open" ]
+}
+
+@test "yq failure on ia_from_run read yields exit 2 register unchanged" {
+  local repo_dir="$TEST_TMP/repo"
+  local sha1
+  sha1="$(_init_git_repo "$repo_dir")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1 complete.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/rpt.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2 with new commit and impact.
+  local sha2
+  sha2="$(_make_commit "$repo_dir" "change.txt")"
+  local G6="code-review qa-tests security-review test-automate test-review performance-review"
+  local args=()
+  local g
+  for g in $G6; do args+=(--gate "$g=test"); done
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" "${args[@]}"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" impact-assessment --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --from-run "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+  for g in $G6; do
+    run "$SCRIPT" record-run --story TEST-S1 \
+      --run-id "$VALID_RUN_ID_2" --gate "$g" --outcome completed
+    [ "$status" -eq 0 ]
+    local r="$TEST_TMP/${g}-report2.md"
+    printf 'report\n' > "$r"
+    run "$SCRIPT" record-round-report --story TEST-S1 \
+      --run-id "$VALID_RUN_ID_2" --gate "$g" --report "$r"
+    [ "$status" -eq 0 ]
+  done
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local before_sha
+  before_sha="$(shasum "$reg" | awk '{print $1}')"
+
+  local shim="$TEST_TMP/yqshim-iafromrun"
+  _build_yq_shim "$shim" 'impact_assessment.from_run'
+
+  run env PATH="$shim:$PATH" "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir"
+  [ "$status" -eq 2 ]
+
+  local after_sha
+  after_sha="$(shasum "$reg" | awk '{print $1}')"
+  [ "$before_sha" = "$after_sha" ]
+}
+
+@test "yq failure on hop report SHA read yields exit 2 register unchanged" {
+  local repo_dir="$TEST_TMP/repo"
+  local sha1
+  sha1="$(_init_git_repo "$repo_dir")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1 complete.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/rpt.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2 carries code-review from round 1.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "qa-tests=test" \
+    --carry "code-review=${VALID_RUN_ID}:same commit"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt2="$TEST_TMP/rpt2.md"
+  printf 'report2\n' > "$rpt2"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$rpt2"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local before_sha
+  before_sha="$(shasum "$reg" | awk '{print $1}')"
+
+  local shim="$TEST_TMP/yqshim-hoprsha"
+  _build_yq_shim "$shim" '| .report_sha256'
+
+  run env PATH="$shim:$PATH" "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir"
+  [ "$status" -eq 2 ]
+
+  local after_sha
+  after_sha="$(shasum "$reg" | awk '{print $1}')"
+  [ "$before_sha" = "$after_sha" ]
+}
+
+@test "yq failure on rounds_len in assert-round-complete yields exit 2" {
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/rpt.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  local shim="$TEST_TMP/yqshim-roundslen"
+  _build_yq_shim "$shim" '.rounds | length'
+
+  run env PATH="$shim:$PATH" "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 2 ]
+}
+
+@test "yq failure on rounds_type in validate_structure yields exit 2" {
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local shim="$TEST_TMP/yqshim-roundstype"
+  _build_yq_shim "$shim" '.rounds | type'
+
+  run env PATH="$shim:$PATH" "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 2 ]
+}
+
+@test "yq failure on idempotency carries read yields exit 2" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test" \
+    --carry "qa-tests=${VALID_RUN_ID_3}:rationale"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local before_sha
+  before_sha="$(shasum "$reg" | awk '{print $1}')"
+
+  local shim="$TEST_TMP/yqshim-carries"
+  _build_yq_shim "$shim" ').carried_gates' 1
+
+  # Re-send the same record-round (idempotency path).
+  run env PATH="$shim:$PATH" "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test" \
+    --carry "qa-tests=${VALID_RUN_ID_3}:rationale"
+  [ "$status" -eq 2 ]
+
+  local after_sha
+  after_sha="$(shasum "$reg" | awk '{print $1}')"
+  [ "$before_sha" = "$after_sha" ]
+}
+
+# ===================================================================
+# Existing yq shim test fix: portable yq path and exit 2 assertion
+# ===================================================================
+
+@test "yq failure on complete-round yields exit 2 register unchanged (fixed shim)" {
+  local repo_dir="$TEST_TMP/repo"
+  local sha
+  sha="$(_init_git_repo "$repo_dir")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Normal setup: record round, gate run, report.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local report="$TEST_TMP/code-review-report.md"
+  printf 'report\n' > "$report"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  # Fail on the round_sha read (.commit_sha inside complete-round's logic).
+  local shim="$TEST_TMP/yqshim-complete"
+  _build_yq_shim "$shim" '.commit_sha'
+
+  # complete-round with the failing yq should exit 2.
+  run env PATH="$shim:$PATH" "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 2 ]
+  # The round must NOT have been marked complete.
+  local reg_status
+  reg_status="$(yq '.rounds[0].status' "$reg")"
+  [ "$reg_status" = "open" ]
+}
+
+# ===================================================================
+# CDPATH interference test for bind-brief and supersede-brief
+# ===================================================================
+
+@test "bind-brief resolves correct absolute path with CDPATH set" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  mkdir -p "$TEST_TMP/briefdir"
+  local brief="$TEST_TMP/briefdir/brief.md"
+  printf 'brief content\n' > "$brief"
+
+  # Set CDPATH to a decoy directory.
+  run env CDPATH="/tmp:$TEST_TMP" "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local stored_path
+  stored_path="$(yq '.rounds[0].brief.path' "$reg")"
+  # Must be an absolute path matching the real location.
+  [[ "$stored_path" == /* ]]
+  [ "$stored_path" = "$brief" ]
+}
+
+@test "supersede-brief resolves correct absolute path with CDPATH set" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local brief="$TEST_TMP/initial-brief.md"
+  printf 'initial\n' > "$brief"
+  run "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief"
+  [ "$status" -eq 0 ]
+
+  mkdir -p "$TEST_TMP/newdir"
+  local new_brief="$TEST_TMP/newdir/updated.md"
+  printf 'updated\n' > "$new_brief"
+
+  run env CDPATH="/tmp:$TEST_TMP" "$SCRIPT" supersede-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$new_brief" --rationale "improved"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local stored_path
+  stored_path="$(yq '.rounds[0].brief.path' "$reg")"
+  [[ "$stored_path" == /* ]]
+  [ "$stored_path" = "$new_brief" ]
+}
+
+# ===================================================================
+# round-info --run-id not-found exits 1 (not 2)
+# ===================================================================
+
+@test "round-info with --run-id that does not exist exits 1" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # A different run-id that was never recorded.
+  run "$SCRIPT" round-info --story TEST-S1 --run-id "$VALID_RUN_ID_3"
+  [ "$status" -eq 1 ]
+  grep -qi "not found" <<<"$output"
 }

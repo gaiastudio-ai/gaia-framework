@@ -359,3 +359,56 @@ _delete_one_line() {
   run assert_rar_roundstart_halt_exception "$tmp"
   [ "$status" -ne 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Anchored assertions: complete-round command line, commit-SHA step,
+# and the exact "Call `record-round`" text
+# ---------------------------------------------------------------------------
+
+# The complete-round command line in the completion span.
+assert_rar_completion_command_line() {
+  _rar_completion_span "$1" | grep -q 'register-write\.sh complete-round --story.*--run-id.*--repo'
+}
+
+# The commit-SHA step: line 161 area, "commit SHA" by calling round-info.
+assert_rar_roundstart_commit_sha_step() {
+  _rar_round_start_span "$1" | grep -q '^4\..*commit SHA.*round-info\|round-info.*commit_sha'
+}
+
+# The exact text "Call `record-round`" in the round-start span.
+assert_rar_roundstart_call_record_round() {
+  _rar_round_start_span "$1" | grep -qF 'Call `record-round`'
+}
+
+@test "run-all-reviews completion: complete-round command line anchored" {
+  assert_rar_completion_command_line "$RAR_SKILL"
+}
+
+@test "run-all-reviews round-start: commit-SHA step anchored" {
+  assert_rar_roundstart_commit_sha_step "$RAR_SKILL"
+}
+
+@test "run-all-reviews round-start: exact Call record-round text anchored" {
+  assert_rar_roundstart_call_record_round "$RAR_SKILL"
+}
+
+@test "mutant: deleting complete-round command line kills wiring test" {
+  local tmp="$TEST_TMP/rar-mut.md"
+  _delete_one_line 'register-write\.sh complete-round --story' "$RAR_SKILL" "$tmp"
+  run assert_rar_completion_command_line "$tmp"
+  [ "$status" -ne 0 ]
+}
+
+@test "mutant: deleting commit-SHA step kills wiring test" {
+  local tmp="$TEST_TMP/rar-mut.md"
+  _delete_one_line 'commit SHA.*round-info\|round-info.*commit_sha' "$RAR_SKILL" "$tmp"
+  run assert_rar_roundstart_commit_sha_step "$tmp"
+  [ "$status" -ne 0 ]
+}
+
+@test "mutant: rewording Call record-round to Optionally call record-round kills wiring test" {
+  local tmp="$TEST_TMP/rar-mut.md"
+  sed 's/Call `record-round`/Optionally call `record-round`/' "$RAR_SKILL" > "$tmp"
+  run assert_rar_roundstart_call_record_round "$tmp"
+  [ "$status" -ne 0 ]
+}
