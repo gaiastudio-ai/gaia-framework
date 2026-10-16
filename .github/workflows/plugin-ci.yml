@@ -879,12 +879,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # awk: BSD awk does not support --version; GNU gawk does.
-          if /usr/bin/awk --version >/dev/null 2>&1; then
-            echo "::error::awk at /usr/bin/awk appears to be GNU awk; expected BSD awk"
+          # awk: BSD awk (One True Awk) prints "awk version YYYYMMDD";
+          # GNU gawk prints "GNU Awk x.y.z". Check the output for "GNU".
+          awk_ver="$(/usr/bin/awk --version 2>&1 | head -1 || true)"
+          if echo "$awk_ver" | grep -qi 'GNU'; then
+            echo "::error::awk at /usr/bin/awk is GNU awk ($awk_ver); expected BSD awk"
             exit 1
           fi
-          echo "OK: /usr/bin/awk is BSD awk"
+          echo "OK: /usr/bin/awk is BSD awk ($awk_ver)"
 
           # sed: BSD sed does not support --version; GNU sed does.
           if /usr/bin/sed --version >/dev/null 2>&1; then
