@@ -108,3 +108,59 @@ teardown() {
   [[ "$output" == *"HALT:"* ]]
   [[ "$output" == *"must be in .gitignore"* ]]
 }
+
+# --- Call-site integration test: track-b-dispatch.sh line ~220 ---
+
+@test "track-b-dispatch.sh gitignore check passes with absolute CLAUDE_PROJECT_ROOT at non-git root" {
+  # Integration test: run the real track-b-dispatch.sh through its gitignore
+  # pre-flight (line ~220). The fixture mirrors this project's layout: a
+  # non-git project root with CLAUDE_PROJECT_ROOT set to its absolute path
+  # and a .gitignore containing the literal checkpoint prefix.
+  #
+  # CWD is NOT inside a git repo, so assert_gitignored falls back to the
+  # grep -F path. The old bug built the pattern as
+  # "${PROJECT_ROOT}/.../.gaia/memory/checkpoints/sprint-review-" — an
+  # absolute path that grep -F could never match in .gitignore. With the
+  # fix, the call site passes the project-relative pattern and grep -F
+  # matches.
+
+  local TRACK_B="${BATS_TEST_DIRNAME}/../skills/gaia-sprint-review/scripts/track-b-dispatch.sh"
+  [ -f "$TRACK_B" ] || skip "track-b-dispatch.sh not found in source tree"
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+
+  # Build fixture: a plain directory (NOT a git repo) so the grep -F
+  # fallback is exercised.
+  local project_root="$TMPDIR_TEST/project"
+  mkdir -p "$project_root"
+  cd "$project_root"
+
+  # .gitignore with the literal checkpoint prefix — this is what grep -F
+  # must match. With the old absolute-path bug, the pattern was
+  # "/abs/path/.gaia/..." which grep -F could never find here.
+  printf '.gaia/memory/checkpoints/sprint-review-\n' > .gitignore
+
+  # Minimal project-config.yaml with one Track B stack.
+  mkdir -p .gaia/config
+  cat > .gaia/config/project-config.yaml <<'YAML'
+sprint_review:
+  plugin_commands:
+    fixture-stack: "true"
+YAML
+
+  # Run the script with CLAUDE_PROJECT_ROOT set to the absolute project root.
+  run env \
+    CLAUDE_PROJECT_ROOT="$project_root" \
+    PROJECT_ROOT="" \
+    PROJECT_PATH="" \
+    bash "$TRACK_B" --sprint sprint-fixture --config .gaia/config/project-config.yaml
+
+  # The script must NOT halt on the gitignore check.
+  if [[ "$output" == *"HALT:"*"must be in .gitignore"* ]]; then
+    printf 'FAIL: gitignore pre-flight halted — absolute-path pattern bug\noutput: %s\n' "$output" >&2
+    return 1
+  fi
+
+  # The script should exit 0 (the stack command is "true").
+  [ "$status" -eq 0 ]
+}
