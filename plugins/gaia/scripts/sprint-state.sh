@@ -981,7 +981,9 @@ cmd_transition() {
     if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
       die "lock timeout acquiring $SPRINT_STATUS_LOCK"
     fi
-    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
     do_transition_locked "$story_key" "$to_state"
   )
 }
@@ -1408,7 +1410,9 @@ cmd_inject() {
     if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
       die "lock timeout acquiring $SPRINT_STATUS_LOCK"
     fi
-    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
     do_inject_locked "$story_key" "$phase"
   )
 }
@@ -1660,10 +1664,12 @@ cmd_reconcile() {
   # which under `set -e` would kill the whole reconcile on Linux/bash 5.
   set +e
   (
-    if ! acquire_lock "$SPRINT_STATUS_LOCK" 10 9; then
+    if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
       exit 1
     fi
-    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
     do_reconcile_locked "$dry_run"
     printf '%s %s %s\n' "$RECONCILE_CHECKED" "$RECONCILE_DIVERGENCES" "$RECONCILE_ERRORS" \
       > "${SPRINT_STATUS_LOCK}.result"
@@ -2263,7 +2269,9 @@ cmd_record_escalation_override() {
     if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
       die "lock timeout acquiring $SPRINT_STATUS_LOCK"
     fi
-    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
     do_record_override_locked "$ids_raw" "$user" "$reason"
   )
 }
@@ -2575,7 +2583,9 @@ cmd_set_phase() {
     if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
       die "lock timeout acquiring $SPRINT_STATUS_LOCK"
     fi
-    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
     do_set_phase_locked "$story_key" "$new_phase"
   )
 }
@@ -2733,7 +2743,9 @@ _rollover_one() {
     if ! acquire_lock "$lock_file" 5 9; then
       die "lock timeout acquiring $lock_file"
     fi
-    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
     # AUDITED NESTED-LOCK EXCEPTION: _rollover_with_lock calls cmd_inject and
     # then cmd_set_phase (the explicit phase reset). Each acquires
     # $SPRINT_STATUS_LOCK on fd 9 in its own subshell — two SEQUENTIAL nested
@@ -3388,7 +3400,9 @@ _cmd_set_story_sprint() {
     if ! acquire_lock "$lock_file" 5 9; then
       die "lock timeout acquiring $lock_file"
     fi
-    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
     _rewrite_sprint_id
   )
   rc=$?

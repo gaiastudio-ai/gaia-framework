@@ -380,9 +380,8 @@ YAMLEOF
   }
 }
 
-@test "reconcile blocks when the sprint-status lock is held, honouring its 10s timeout (AC2)" {
-  # reconcile is the only site with a 10s (not 5s) timeout, so this also
-  # pins the per-site timeout value reaching the helper.
+@test "reconcile blocks when the sprint-status lock is held, honouring its 5s timeout (AC2)" {
+  # reconcile timeout is now aligned to the per-sprint state lock constant (5s).
   _create_story "ETEST-S11" "backlog" "\"test-sprint\""
   local holder_done="$TEST_TMP/reconcile-holder-done"
   rm -f "$holder_done"
@@ -408,9 +407,9 @@ YAMLEOF
     echo "$output" >&2
     false
   }
-  # It blocked for the site's own 10s budget, not the 5s used elsewhere.
-  [ "$elapsed" -ge 9 ] || {
-    echo "reconcile gave up after ${elapsed}s — its 10s timeout did not reach the helper" >&2
+  # It blocked for the site's own 5s budget (aligned to the per-sprint state constant).
+  [ "$elapsed" -ge 4 ] || {
+    echo "reconcile gave up after ${elapsed}s — its 5s timeout did not reach the helper" >&2
     false
   }
 }
