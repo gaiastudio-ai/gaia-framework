@@ -350,7 +350,6 @@ core	sprint-progress-snapshot-hook.bats
 core	sprint-review-yolo-fallback.bats
 core	sprint-state-goals-root-isolation.bats
 core	sprint-state-inject.bats
-core	sprint-state-root-isolation-lint.bats
 core	sprint-state-split-repo-resolution.bats
 core	sprint-state-ssot-parity.bats
 core	sprint-state-wrapper-sync.bats
@@ -757,6 +756,7 @@ scripts-sprint	sprint-state-detect-auto-close.bats
 scripts-sprint	sprint-state-goals-and-state-machine.bats
 scripts-sprint	sprint-state-inject-points-ux.bats
 scripts-sprint	sprint-state-rollover.bats
+scripts-sprint	sprint-state-root-isolation-lint.bats
 scripts-sprint	sprint-state-sweep.bats
 scripts-sprint	sprint-state-trap.bats
 scripts-sprint	sprint-state-usage-discoverability.bats
