@@ -25,7 +25,8 @@ setup() {
   mkdir -p "$TEST_TMP/.git"
 
   STORY_KEY="E900-S1"
-  STORY_FILE="$TEST_TMP/docs/implementation-artifacts/${STORY_KEY}-traced-issue-fixture.md"
+  mkdir -p "$TEST_TMP/docs/implementation-artifacts/epic-E900-traced-issue-test/${STORY_KEY}-traced-issue-fixture"
+  STORY_FILE="$TEST_TMP/docs/implementation-artifacts/epic-E900-traced-issue-test/${STORY_KEY}-traced-issue-fixture/story.md"
   SPRINT_YAML="$TEST_TMP/docs/implementation-artifacts/sprint-status.yaml"
   EPICS_MD="$TEST_TMP/docs/planning-artifacts/epics-and-stories.md"
   INDEX_YAML="$TEST_TMP/docs/implementation-artifacts/story-index.yaml"
@@ -80,7 +81,7 @@ stories:
     priority: "P1"
     risk: "low"
     author: "Test"
-    file: "${STORY_KEY}-traced-issue-fixture.md"
+    file: "${STORY_KEY}-traced-issue-fixture/story.md"
     status: "review"
 EOF
 
@@ -100,10 +101,14 @@ EOF
   export GAIA_GH_TIMEOUT=5
 }
 
-# Helper: write a story file with given status and traces_to
+# Helper: write a story file with given status and traces_to.
+# Uses per-story directory layout ({key}-slug/story.md) to match the
+# canonical naming that _find_other_tracers scans for.
 _write_story_file() {
   local key="$1" status="$2" traces_to="${3:-[]}"
-  local file="$TEST_TMP/docs/implementation-artifacts/${key}-traced-issue-fixture.md"
+  local dir="$TEST_TMP/docs/implementation-artifacts/epic-E900-traced-issue-test/${key}-traced-issue-fixture"
+  mkdir -p "$dir"
+  local file="$dir/story.md"
   cat > "$file" <<EOF
 ---
 template: 'story'
@@ -227,7 +232,9 @@ teardown() {
   _write_story_file "$STORY_KEY" review '["GitHub #50"]'
   # Another story does NOT trace to #50 but mentions it in body text
   local other_key="E900-S3"
-  local other_file="$TEST_TMP/docs/implementation-artifacts/${other_key}-traced-issue-fixture.md"
+  local other_dir="$TEST_TMP/docs/implementation-artifacts/epic-E900-traced-issue-test/${other_key}-traced-issue-fixture"
+  mkdir -p "$other_dir"
+  local other_file="$other_dir/story.md"
   cat > "$other_file" <<EOF
 ---
 template: 'story'
@@ -365,7 +372,7 @@ STUB
 
 # ── Blocker 4: gh call timeout — transition still completes ─────────────────
 
-@test "gh call that hangs is killed after timeout and transition completes" {
+@test "gh call that hangs is killed after timeout with timeout-specific WARNING" {
   cat > "$GH_STUB_DIR/gh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$GH_CALL_LOG"
@@ -388,9 +395,44 @@ STUB
   GAIA_GH_TIMEOUT=2 PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
   [ "$status" -eq 0 ]
 
-  # WARNING about timeout emitted
+  # Timeout-specific WARNING must mention "timed out" (not just generic failure)
+  [[ "$output" == *"timed out"* ]]
   [[ "$output" == *"WARNING"* ]]
   # Transition still completed
+  grep -q 'status: done' "$STORY_FILE"
+}
+
+@test "background+kill fallback exercises when timeout/gtimeout absent" {
+  # gh stub that hangs on issue calls
+  cat > "$GH_STUB_DIR/gh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$GH_CALL_LOG"
+case "\$1" in
+  pr)
+    if [ "\$2" = "list" ]; then
+      printf '666\n'
+      exit 0
+    fi ;;
+  issue)
+    # Simulate a hang — trap SIGTERM to test SIGKILL escalation
+    trap '' TERM
+    sleep 60
+    exit 0 ;;
+esac
+exit 0
+STUB
+  chmod +x "$GH_STUB_DIR/gh"
+
+  # Build a PATH without timeout/gtimeout but with gh stub + essential tools
+  local clean_path="$GH_STUB_DIR:/usr/bin:/bin"
+
+  # Short timeout; the fallback path (background+kill) must handle this
+  GAIA_GH_TIMEOUT=2 PATH="$clean_path" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
+  [ "$status" -eq 0 ]
+
+  # Timeout WARNING fires
+  [[ "$output" == *"timed out"* ]]
+  # Transition completed
   grep -q 'status: done' "$STORY_FILE"
 }
 

@@ -1924,7 +1924,8 @@ _gh_with_timeout() {
     "$timeout_cmd" "$limit" gh "$@"
     return $?
   fi
-  # Portable fallback: background the call, wait up to $limit seconds
+  # Portable fallback: background the call, wait up to $limit seconds.
+  # Escalates SIGTERM -> SIGKILL if the process ignores SIGTERM.
   gh "$@" &
   local gh_pid=$!
   local elapsed=0
@@ -1936,8 +1937,17 @@ _gh_with_timeout() {
     sleep 1
     elapsed=$((elapsed + 1))
   done
-  # Timed out — kill the process
+  # Timed out — SIGTERM first, then SIGKILL if still alive after 2s
   kill "$gh_pid" 2>/dev/null || true
+  local kill_wait=0
+  while [ "$kill_wait" -lt 2 ]; do
+    if ! kill -0 "$gh_pid" 2>/dev/null; then break; fi
+    sleep 1
+    kill_wait=$((kill_wait + 1))
+  done
+  if kill -0 "$gh_pid" 2>/dev/null; then
+    kill -9 "$gh_pid" 2>/dev/null || true
+  fi
   wait "$gh_pid" 2>/dev/null || true
   return 124
 }
@@ -1957,21 +1967,25 @@ _find_merged_pr_number() {
 }
 
 # _find_other_tracers — find other non-done stories that trace the same issue.
-# Scans only story.md files (template: story) under IMPLEMENTATION_ARTIFACTS,
-# parses each with _parse_traces_to for exact issue-number matching, and
-# compares story keys exactly (not by substring).
+# Two-phase scan for performance: (1) find story.md files and pre-filter with
+# a single grep -l for the issue number (fixed-string), then (2) parse only
+# the few candidates with _parse_traces_to for exact issue-number matching.
+# Compares story keys exactly (not by substring).
 # Outputs one non-done story key per line. Empty output means fully addressed.
 _find_other_tracers() {
   local issue_num="$1" story_key="$2"
   local story_file other_key other_status other_nums
-  # Find all story files (files containing template: story in frontmatter).
-  # Use find to locate .md files, then filter by frontmatter template.
+  # Phase 1: pre-filter with a single grep -l for the issue number.
+  # Restricts to story.md (canonical per-story layout) for speed (~0.2 s on
+  # ~500 files vs ~1.3 s on ~8000). Phase 2 then runs the per-file
+  # traces_to parser only on the handful of candidates (typically 0-2 files).
+  local candidates
+  candidates="$(find "$IMPLEMENTATION_ARTIFACTS" -name 'story.md' -type f \
+    -exec grep -l "GitHub #${issue_num}" {} + 2>/dev/null || true)"
+  [ -n "$candidates" ] || return 0
+  # Phase 2: parse only the candidates with the exact traces_to parser.
   while IFS= read -r story_file; do
     [ -n "$story_file" ] || continue
-    # Must be a story file (template: story in frontmatter)
-    if ! awk '/^---/ { n++; if (n==2) exit } n==1 && /^template:.*story/ { found=1; exit } END { exit(found?0:1) }' "$story_file" 2>/dev/null; then
-      continue
-    fi
     # Read the key from frontmatter — exact match, not substring
     other_key="$(read_frontmatter_field "$story_file" key 2>/dev/null || true)"
     [ -n "$other_key" ] || continue
@@ -1994,7 +2008,7 @@ _find_other_tracers() {
     if [ -n "$other_status" ] && [ "$other_status" != "done" ]; then
       printf '%s\n' "$other_key"
     fi
-  done < <(find "$IMPLEMENTATION_ARTIFACTS" -name '*.md' -type f 2>/dev/null)
+  done <<< "$candidates"
 }
 
 # _close_traced_issues — post-transition hook entry point.
@@ -2029,22 +2043,25 @@ _close_traced_issues() {
     local remaining
     remaining="$(_find_other_tracers "$issue_num" "$story_key")"
     if [ -z "$remaining" ]; then
-      # Fully addressed — close with comment
-      if ! _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${story_key}${pr_ref}." 2>/dev/null; then
-        local rc=$?
-        if [ "$rc" -eq 124 ]; then
+      # Fully addressed — close with comment.
+      # Capture the real exit code before `local` resets $?.
+      local gh_rc=0
+      _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${story_key}${pr_ref}." 2>/dev/null || gh_rc=$?
+      if [ "$gh_rc" -ne 0 ]; then
+        if [ "$gh_rc" -eq 124 ]; then
           log "WARNING: gh timed out closing traced issue #${issue_num} for ${story_key}"
         else
           log "WARNING: failed to close traced issue #${issue_num} for ${story_key} — gh returned non-zero"
         fi
       fi
     else
-      # Partially addressed — comment naming what remains
+      # Partially addressed — comment naming what remains.
       local remaining_keys
       remaining_keys="$(printf '%s' "$remaining" | tr '\n' ', ' | sed 's/,$//')"
-      if ! _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${story_key}${pr_ref}. Remaining: ${remaining_keys}." 2>/dev/null; then
-        local rc=$?
-        if [ "$rc" -eq 124 ]; then
+      local gh_rc=0
+      _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${story_key}${pr_ref}. Remaining: ${remaining_keys}." 2>/dev/null || gh_rc=$?
+      if [ "$gh_rc" -ne 0 ]; then
+        if [ "$gh_rc" -eq 124 ]; then
           log "WARNING: gh timed out commenting on traced issue #${issue_num} for ${story_key}"
         else
           log "WARNING: failed to comment on traced issue #${issue_num} for ${story_key} — gh returned non-zero"
