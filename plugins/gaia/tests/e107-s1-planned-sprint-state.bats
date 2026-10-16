@@ -13,7 +13,7 @@
 # Maps to AC1-AC5, AC-INT1. Refs: ADR-108 (extended), ADR-128, ADR-095, FR-557.
 
 setup() {
-  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   export GAIA_SNAPSHOT_HOOK_DISABLE=1
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SS="$REPO_ROOT/plugins/gaia/scripts/sprint-state.sh"

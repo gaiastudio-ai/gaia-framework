@@ -55,7 +55,7 @@ _epoch_to_touchdate() {
 # common_setup — called from every test's setup(). Creates a per-test temp
 # dir, namespaces it by $BATS_TEST_NAME, and exports TEST_TMP.
 common_setup() {
-  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   local slug
   slug="$(printf '%s' "${BATS_TEST_NAME:-unknown}" | tr -c '[:alnum:]' '_')"
   TEST_TMP="${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/gaia-${slug}-$$"

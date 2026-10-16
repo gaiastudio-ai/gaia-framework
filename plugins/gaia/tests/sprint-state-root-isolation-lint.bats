@@ -2,43 +2,72 @@
 # sprint-state-root-isolation-lint.bats
 #
 # Repo-wide lint: every .bats file that executes sprint-state.sh must
-# clear the ambient root variables (PROJECT_ROOT, CLAUDE_PROJECT_ROOT,
-# GAIA_PROJECT_ROOT) in its setup() function — either via common_setup
-# (the shared test helper) or an explicit unset.
+# clear the four ambient root variables (PROJECT_ROOT, CLAUDE_PROJECT_ROOT,
+# GAIA_PROJECT_ROOT, PROJECT_PATH) in its setup() function — either via
+# common_setup (the shared test helper) or an explicit unset.
 #
 # Without this, a caller's real project tree can be silently mutated when
-# bats inherits PROJECT_ROOT or CLAUDE_PROJECT_ROOT from the environment.
+# bats inherits any of these variables from the environment.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   TESTS_DIR="$REPO_ROOT/plugins/gaia/tests"
 }
 
 # _executes_sprint_state FILE
-#   Returns 0 if the file assigns a variable to a sprint-state.sh path
-#   (the reliable signal that the file will invoke the script).
-#   Returns 1 otherwise (reference is in a comment, string literal, or
-#   argument to another command).
+#   Returns 0 if the file sources, invokes, or assigns a variable to
+#   sprint-state.sh. Catches:
+#     - variable assignment:  SS="$DIR/sprint-state.sh"
+#     - direct bash call:     bash .../sprint-state.sh  or  run bash .../sprint-state.sh
+#     - inline call:          "$VAR/sprint-state.sh" get
+#     - source / dot:         source .../sprint-state.sh  or  . .../sprint-state.sh
+#   Skips references that are purely in comments or single-quoted strings
+#   (e.g. body='@test ... sprint-state.sh').
 _executes_sprint_state() {
   local file="$1"
-  # Match bare variable assignments whose value ends in sprint-state.sh,
-  # excluding lines inside single-quoted strings (e.g. body='...').
-  # The pattern: start of line (optional whitespace), VARNAME=, then a
-  # value containing sprint-state.sh that is NOT enclosed in single quotes.
   awk '
-    /^[[:space:]]*[A-Za-z_][A-Za-z_0-9]*=/ && /sprint-state\.sh/ {
-      # Skip if the RHS is inside single quotes (fixture bodies)
-      if ($0 ~ /='"'"'.*sprint-state\.sh.*'"'"'/) next
-      found = 1
-      exit
+    # Skip comment-only lines
+    /^[[:space:]]*#/ { next }
+
+    # Skip lines where sprint-state.sh is entirely inside single quotes
+    # (fixture bodies like body='"'"'...sprint-state.sh...'"'"')
+    {
+      line = $0
+      # Remove all single-quoted segments to see if sprint-state.sh remains
+      gsub(/'"'"'[^'"'"']*'"'"'/, "", line)
+      if (line !~ /sprint-state\.sh/) next
     }
+
+    # Form 1: variable assignment  VARNAME="...sprint-state.sh"
+    /^[[:space:]]*[A-Za-z_][A-Za-z_0-9]*=/ && /sprint-state\.sh/ {
+      found = 1; exit
+    }
+
+    # Form 2: bash/run invocation  bash .../sprint-state.sh  or  run bash .../sprint-state.sh
+    /[[:space:]]bash[[:space:]]/ && /sprint-state\.sh/ {
+      found = 1; exit
+    }
+
+    # Form 3: inline call via variable  "$VAR/sprint-state.sh" subcmd
+    # The variable expansion must immediately precede /sprint-state.sh
+    # (the script is the command, not an argument to another command).
+    /\$[A-Za-z_{][A-Za-z_0-9}]*\/sprint-state\.sh/ {
+      found = 1; exit
+    }
+
+    # Form 4: source / dot-source
+    /(^|[[:space:]])(source|\.)([[:space:]])/ && /sprint-state\.sh/ {
+      found = 1; exit
+    }
+
     END { exit (found ? 0 : 1) }
   ' "$file"
 }
 
 # _setup_clears_root_vars FILE
 #   Returns 0 if the file's setup() function calls common_setup or
-#   explicitly unsets the three root variables.
+#   explicitly unsets all four root variables.
 _setup_clears_root_vars() {
   local file="$1"
   # Extract the setup() function body (from "setup() {" to the matching "}")
@@ -51,25 +80,27 @@ _setup_clears_root_vars() {
 
   [ -n "$setup_body" ] || return 1
 
-  # Accept common_setup (the shared helper already clears the root vars)
+  # Accept common_setup (the shared helper clears all four root vars)
   if grep -q 'common_setup' <<<"$setup_body"; then
     return 0
   fi
 
-  # Accept explicit unset of at least PROJECT_ROOT and CLAUDE_PROJECT_ROOT
-  # (GAIA_PROJECT_ROOT is also required for full isolation)
-  local has_project_root=0 has_claude_root=0 has_gaia_root=0
+  # Accept explicit unset of all four root variables
+  local has_pr=0 has_cpr=0 has_gpr=0 has_pp=0
   if grep -qE 'unset[[:space:]].*PROJECT_ROOT' <<<"$setup_body"; then
-    has_project_root=1
+    has_pr=1
   fi
   if grep -qE 'unset[[:space:]].*CLAUDE_PROJECT_ROOT' <<<"$setup_body"; then
-    has_claude_root=1
+    has_cpr=1
   fi
   if grep -qE 'unset[[:space:]].*GAIA_PROJECT_ROOT' <<<"$setup_body"; then
-    has_gaia_root=1
+    has_gpr=1
+  fi
+  if grep -qE 'unset[[:space:]].*PROJECT_PATH' <<<"$setup_body"; then
+    has_pp=1
   fi
 
-  [ "$has_project_root" -eq 1 ] && [ "$has_claude_root" -eq 1 ] && [ "$has_gaia_root" -eq 1 ]
+  [ "$has_pr" -eq 1 ] && [ "$has_cpr" -eq 1 ] && [ "$has_gpr" -eq 1 ] && [ "$has_pp" -eq 1 ]
 }
 
 @test "all bats files that execute sprint-state.sh clear root variables in setup()" {
@@ -85,9 +116,11 @@ _setup_clears_root_vars() {
   }
 
   local violations=()
+  local exec_count=0
   for f in "${candidates[@]}"; do
     # Skip files that merely reference sprint-state.sh without executing it
     _executes_sprint_state "$f" || continue
+    exec_count=$((exec_count + 1))
 
     if ! _setup_clears_root_vars "$f"; then
       violations+=("$(basename "$f")")
@@ -99,16 +132,160 @@ _setup_clears_root_vars() {
     for v in "${violations[@]}"; do
       printf '  - %s\n' "$v" >&2
     done
-    printf '\nFix: add "unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT" to setup(),\n' >&2
-    printf 'or call common_setup which handles root variable clearing.\n' >&2
+    printf '\nFix: add "unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH"\n' >&2
+    printf 'to setup(), or call common_setup which handles root variable clearing.\n' >&2
     return 1
   fi
 
-  # Report scan statistics
-  local exec_count=0
-  for f in "${candidates[@]}"; do
-    _executes_sprint_state "$f" && exec_count=$((exec_count + 1))
-  done
+  [ "$exec_count" -gt 0 ] || {
+    printf 'no executing files found (expected >0)\n' >&2
+    return 1
+  }
+
   printf 'scanned %d candidate files, %d execute sprint-state.sh, 0 violations\n' \
-    "${#candidates[@]}" "$exec_count"
+    "${#candidates[@]}" "$exec_count" >&2
+}
+
+# ---------- self-tests: synthetic fixtures in tmpdir ----------
+
+# _make_fixture DIR NAME BODY — write a synthetic .bats in a temp dir.
+_make_fixture() {
+  local dir="$1" name="$2" body="$3"
+  printf '%s\n' "$body" > "$dir/$name"
+}
+
+@test "lint detects Form 1 (variable assignment) without root clearing" {
+  local d="$BATS_TEST_TMPDIR/form1-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "violator.bats" '#!/usr/bin/env bats
+setup() {
+  SS="$REPO_ROOT/plugins/gaia/scripts/sprint-state.sh"
+}
+@test "x" { true; }'
+  _executes_sprint_state "$d/violator.bats"
+  run _setup_clears_root_vars "$d/violator.bats"
+  [ "$status" -ne 0 ]
+}
+
+@test "lint detects Form 2 (bash invocation) without root clearing" {
+  local d="$BATS_TEST_TMPDIR/form2-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "violator.bats" '#!/usr/bin/env bats
+setup() {
+  REPO_ROOT="$(pwd)"
+}
+@test "x" { run bash "$REPO_ROOT/scripts/sprint-state.sh" init; }'
+  _executes_sprint_state "$d/violator.bats"
+  run _setup_clears_root_vars "$d/violator.bats"
+  [ "$status" -ne 0 ]
+}
+
+@test "lint detects Form 3 (inline variable call) without root clearing" {
+  local d="$BATS_TEST_TMPDIR/form3-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "violator.bats" '#!/usr/bin/env bats
+setup() {
+  SCRIPTS_DIR="$(pwd)/scripts"
+}
+@test "x" { run "$SCRIPTS_DIR/sprint-state.sh" get --story S1; }'
+  _executes_sprint_state "$d/violator.bats"
+  run _setup_clears_root_vars "$d/violator.bats"
+  [ "$status" -ne 0 ]
+}
+
+@test "lint detects Form 4 (source) without root clearing" {
+  local d="$BATS_TEST_TMPDIR/form4-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "violator.bats" '#!/usr/bin/env bats
+setup() {
+  true
+}
+@test "x" { source "$DIR/sprint-state.sh"; }'
+  _executes_sprint_state "$d/violator.bats"
+  run _setup_clears_root_vars "$d/violator.bats"
+  [ "$status" -ne 0 ]
+}
+
+@test "lint accepts common_setup as sufficient isolation" {
+  local d="$BATS_TEST_TMPDIR/common-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "compliant.bats" '#!/usr/bin/env bats
+setup() {
+  common_setup
+  SS="$REPO_ROOT/scripts/sprint-state.sh"
+}
+@test "x" { true; }'
+  _executes_sprint_state "$d/compliant.bats"
+  _setup_clears_root_vars "$d/compliant.bats"
+}
+
+@test "lint accepts explicit unset of all four root variables" {
+  local d="$BATS_TEST_TMPDIR/explicit-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "compliant.bats" '#!/usr/bin/env bats
+setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
+  SS="$REPO_ROOT/scripts/sprint-state.sh"
+}
+@test "x" { true; }'
+  _executes_sprint_state "$d/compliant.bats"
+  _setup_clears_root_vars "$d/compliant.bats"
+}
+
+@test "lint flags partial unset (missing PROJECT_PATH)" {
+  local d="$BATS_TEST_TMPDIR/partial-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "partial.bats" '#!/usr/bin/env bats
+setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT
+  SS="$REPO_ROOT/scripts/sprint-state.sh"
+}
+@test "x" { true; }'
+  _executes_sprint_state "$d/partial.bats"
+  run _setup_clears_root_vars "$d/partial.bats"
+  [ "$status" -ne 0 ]
+}
+
+@test "lint flags partial unset (missing GAIA_PROJECT_ROOT)" {
+  local d="$BATS_TEST_TMPDIR/partial2-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "partial.bats" '#!/usr/bin/env bats
+setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH
+  SS="$REPO_ROOT/scripts/sprint-state.sh"
+}
+@test "x" { true; }'
+  _executes_sprint_state "$d/partial.bats"
+  run _setup_clears_root_vars "$d/partial.bats"
+  [ "$status" -ne 0 ]
+}
+
+@test "lint ignores sprint-state.sh in comments" {
+  local d="$BATS_TEST_TMPDIR/comment-$$"
+  mkdir -p "$d"
+  _make_fixture "$d" "commented.bats" '#!/usr/bin/env bats
+# This file mentions sprint-state.sh only in comments
+setup() { true; }
+@test "x" { true; }'
+  run _executes_sprint_state "$d/commented.bats"
+  [ "$status" -ne 0 ]
+}
+
+@test "lint ignores sprint-state.sh passed as argument (not as command)" {
+  local d="$BATS_TEST_TMPDIR/argonly-$$"
+  mkdir -p "$d"
+  # shellcheck disable=SC2016
+  _make_fixture "$d" "argonly.bats" '#!/usr/bin/env bats
+setup() { true; }
+@test "x" { run "$DETECT" --files plugins/gaia/scripts/sprint-state.sh; }'
+  run _executes_sprint_state "$d/argonly.bats"
+  [ "$status" -ne 0 ]
 }
