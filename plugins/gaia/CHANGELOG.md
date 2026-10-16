@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 ### Added
 
+- status line shows sprint progress percentage from cache, with a warning prefix when something needs your attention (a manual test is due, an action item is assigned to you, or every story in the sprint is done); the self-heal mechanism copies the updated runtime automatically after a plugin update, or run `/gaia-statusline-refresh` as a manual fallback
 - (sprint-status) add agent activity mapping and dispatch description convention (#2190)
 - (sprint-status) sidebar layout improvements per user ruling
 - (sprint-status) add sidebar dashboard, band, toggle, and auto-open (#2182)
@@ -35,24 +36,19 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 - (sidebar) add drift line under readiness pills and show fallback for missing cache
 - (review) close multi-document and non-object findings bypass in verdict.sh (#2200)
 - (scan) restore root flat layout and add suffix-based report filter
-- (scan) exclude reviews and non-story markdown from stranded-ready find
-- (sidebar) add drift line under readiness pills and show fallback for missing cache
 - (docs) align phase matrix example with code rendering
 - (review) close fail-open in verdict.sh and correct step 3 paths (#2198)
 - (docs) show NOW rows as the sidebar renders them
-- (docs) align phase matrix example with code rendering
 - (tests) replace racy printf pipe with here-strings
 - (docs) align sprint status mod page with code behaviour
 - (sprint-status) assert banner render order via findAll leaf positions
 - (review) close round-two register gaps in sanitising, merge, run ids and gate rows (#2191)
-- (sprint-status) assert banner render order via findAll leaf positions
 - (sprint-status) clear agent data on failed list and add render/convention tests
 - (review) wire the findings register into the review gates and close writer gaps (#2183)
-- (sprint-status) remove sanitize from render handler, restore seed anchor
-- (sprint-status) resolve review blockers for sidebar dashboard
+- (sprint-status) sanitise cache values once at load instead of in the render handler
+- (sprint-status) fix sidebar dashboard rendering and sanitising issues
 - (snapshot) key no-project guard on .gaia/state instead of .gaia
 - (scanner) handle malformed candidates and use NUL-safe path iteration
-- (snapshot) key no-project guard on .gaia/state instead of .gaia
 - (tests) register no-stray-gaia-dir suite in the component manifest
 - (tests) use fixture-based golden output and regenerate manifest
 - (dev-story) mirror sprint-state.sh reconcile guard to dev-story copy
@@ -67,12 +63,6 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 - (sprint-state) harden snapshot sidecar trust, lock exclusion and allowlist tests (#2134)
 - (sprint-state) keep snapshot reads and writes in the project root and close its test gaps (#2133)
 - (sprint-state) harden progress snapshot assembly, refresh and locking (#2132)
-
-## [Unreleased]
-
-### Added
-
-- status line shows sprint progress percentage from cache, with a warning prefix when something needs your attention (a manual test is due, an action item is assigned to you, or every story in the sprint is done); the self-heal mechanism copies the updated runtime automatically after a plugin update, or run `/gaia-statusline-refresh` as a manual fallback
 
 ## [1.220.2] — 2026-10-12
 
