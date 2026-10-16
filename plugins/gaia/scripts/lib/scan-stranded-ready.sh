@@ -155,16 +155,37 @@ _build_verdict_cache() {
 # Build the verdict cache once (single awk pass over the entire decision log).
 _verdict_cache=$(_build_verdict_cache)
 
-# Two-stage candidate selection:
-#   Stage 1 — find narrows to:
+# Three-stage candidate selection:
+#   Stage 1 — find covers the three supported story layouts:
 #       a) story.md       (modern per-story dirs, any depth)
-#       b) E*-S*-*.md     (legacy flat layout, only under */stories/ dirs)
+#       b) E*-S*-*.md     (legacy nested layout, under */stories/ dirs)
+#       c) E*-S*-*.md     (legacy flat layout, root of IMPLEMENTATION_ARTIFACTS)
 #     Explicitly excluded from the find:
 #       - */reviews/* directories (review reports, tdd-progress, etc.)
-#       - E*-S*-*.md files outside */stories/ (review summaries, audit reports,
-#         misc non-story artifacts at the epic or implementation root)
+#   Stage 1b — basename filter excludes known non-story report files by exact
+#     slug match (review-summary, plan, review-report, test-automate, review-perf,
+#     security-review) without opening them.  A story whose slug merely ends in
+#     one of these words (e.g., *-excludes-review-summary.md) is NOT excluded
+#     because the regex anchors the slug start to S<digits>-.
 #   Stage 2 — grep -l pre-selects only files containing 'status: ready-for-dev'
 # Collect candidate story files: ready-for-dev + sprint_id null + PASSED verdict.
+
+# Regex for known non-story report filenames — exact slug match only.
+# shellcheck disable=SC2034  # used in [[ =~ ]] below
+_report_suffix_re='^E[0-9]+-S[0-9]+-(review-summary(-pass[0-9]+)?|plan|review-report|test-automate|review-perf|security-review)\.md$'
+
+# Filter a NUL-delimited path stream: drop paths whose basename matches a known
+# non-story report pattern.  Reads stdin, writes stdout, both NUL-delimited.
+_filter_report_names() {
+  local f bn
+  while IFS= read -r -d '' f; do
+    bn="${f##*/}"
+    case "$bn" in story.md) printf '%s\0' "$f"; continue ;; esac
+    [[ "$bn" =~ $_report_suffix_re ]] && continue
+    printf '%s\0' "$f"
+  done
+}
+
 matches=()
 while IFS= read -r -d '' story_file; do
   [[ -n "$story_file" ]] || continue
@@ -196,10 +217,17 @@ while IFS= read -r -d '' story_file; do
   [[ "$verdict" == "PASSED" ]] || continue
 
   matches+=("$(printf '%s\t%s\t%s' "$key" "$title" "$story_file")")
-done < <(find "$IMPLEMENTATION_ARTIFACTS" -type f \
-  -not -path '*/reviews/*' \
-  \( -name 'story.md' -o \( -name 'E[0-9]*-S[0-9]*-*.md' -path '*/stories/*' \) \) \
-  -exec grep -l --null 'status: ready-for-dev' {} + 2>/dev/null || true)
+done < <(
+  {
+    # Layout a+b: story.md + legacy nested E*-S*-*.md under */stories/
+    find "$IMPLEMENTATION_ARTIFACTS" -type f -not -path '*/reviews/*' \
+      \( -name 'story.md' -o \( -name 'E[0-9]*-S[0-9]*-*.md' -path '*/stories/*' \) \) -print0
+    # Layout c: legacy flat E*-S*-*.md at the implementation-artifacts root
+    find "$IMPLEMENTATION_ARTIFACTS" -maxdepth 1 -type f \
+      -name 'E[0-9]*-S[0-9]*-*.md' -print0
+  } | _filter_report_names \
+    | xargs -0 grep -l --null 'status: ready-for-dev' 2>/dev/null || true
+)
 
 # Sort by key ascending and emit.
 if [[ ${#matches[@]} -gt 0 ]]; then

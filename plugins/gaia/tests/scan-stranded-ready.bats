@@ -131,28 +131,40 @@ DECOY
   [ "$count" -eq 1 ]
 }
 
-@test "AC1 — reviews dir and review-summary files never opened by grep" {
-  # Build a fixture with: story.md, legacy story, reviews/ file, review summary
+@test "AC1 — reviews dir, report files, and review-summary files never opened" {
+  # Four story layouts + four decoy types, with a grep-logging shim.
   _mk_story "E900-S1" "Modern story"
 
-  # Legacy story under stories/
+  # Legacy nested under stories/
   mkdir -p "$TEST_TMP/impl/epic-test/stories"
   cat > "$TEST_TMP/impl/epic-test/stories/E900-S2-legacy-slug.md" <<'EOF'
 ---
 key: "E900-S2"
-title: "Legacy story"
+title: "Legacy nested story"
 epic: "E900"
 status: ready-for-dev
 sprint_id: null
 ---
-# Story: Legacy story
+# Story: Legacy nested story
 EOF
 
-  # Non-story file under reviews/ — has ready-for-dev to lure the grep
-  mkdir -p "$TEST_TMP/impl/epic-test/reviews"
-  cat > "$TEST_TMP/impl/epic-test/reviews/E900-S3-review.md" <<'EOF'
+  # Legacy flat at impl root
+  cat > "$TEST_TMP/impl/E900-S3-flat-story.md" <<'EOF'
 ---
 key: "E900-S3"
+title: "Legacy flat story"
+epic: "E900"
+status: ready-for-dev
+sprint_id: null
+---
+# Story: Legacy flat story
+EOF
+
+  # Decoy: file under reviews/ — has ready-for-dev to lure grep
+  mkdir -p "$TEST_TMP/impl/epic-test/reviews"
+  cat > "$TEST_TMP/impl/epic-test/reviews/E900-S10-review.md" <<'EOF'
+---
+key: "E900-S10"
 title: "Review decoy"
 status: ready-for-dev
 sprint_id: null
@@ -160,23 +172,22 @@ sprint_id: null
 # Decoy in reviews dir
 EOF
 
-  # story.md inside reviews/ — tests the reviews/ exclusion independently
-  # of the */stories/* path restriction
-  mkdir -p "$TEST_TMP/impl/epic-test/reviews/E900-S5-rogue"
-  cat > "$TEST_TMP/impl/epic-test/reviews/E900-S5-rogue/story.md" <<'EOF'
+  # Decoy: story.md inside reviews/ (tests reviews/ exclusion for story.md)
+  mkdir -p "$TEST_TMP/impl/epic-test/reviews/E900-S11-rogue"
+  cat > "$TEST_TMP/impl/epic-test/reviews/E900-S11-rogue/story.md" <<'EOF'
 ---
-key: "E900-S5"
+key: "E900-S11"
 title: "Story in reviews decoy"
 status: ready-for-dev
 sprint_id: null
 ---
-# story.md inside a reviews dir must be excluded
+# story.md inside reviews
 EOF
 
-  # Review-summary at the impl root — matches E*-S*-*.md but is non-story
-  cat > "$TEST_TMP/impl/E900-S4-review-summary.md" <<'EOF'
+  # Decoy: review-summary at impl root (suffix-filtered, not opened)
+  cat > "$TEST_TMP/impl/E900-S12-review-summary.md" <<'EOF'
 ---
-key: "E900-S4"
+key: "E900-S12"
 title: "Review summary decoy"
 status: ready-for-dev
 sprint_id: null
@@ -184,7 +195,31 @@ sprint_id: null
 # Decoy review summary
 EOF
 
-  _mk_decision_log "E900-S1" "E900-S2" "E900-S3" "E900-S4" "E900-S5"
+  # Decoy: plan file under stories/ (suffix-filtered, not opened)
+  cat > "$TEST_TMP/impl/epic-test/stories/E900-S13-plan.md" <<'EOF'
+---
+key: "E900-S13"
+title: "Plan decoy"
+status: ready-for-dev
+sprint_id: null
+---
+# Decoy plan
+EOF
+
+  # Non-decoy: story whose slug ENDS in a report suffix — must still be scanned
+  cat > "$TEST_TMP/impl/epic-test/stories/E900-S4-check-deps-glob-excludes-review-summary.md" <<'EOF'
+---
+key: "E900-S4"
+title: "Story with review-summary in slug"
+epic: "E900"
+status: ready-for-dev
+sprint_id: null
+---
+# A legitimate story with a slug ending in review-summary
+EOF
+
+  _mk_decision_log "E900-S1" "E900-S2" "E900-S3" "E900-S4" \
+    "E900-S10" "E900-S11" "E900-S12" "E900-S13"
 
   # Shim grep to log which files it receives
   local shim_dir="$TEST_TMP/grep-shim"
@@ -216,44 +251,76 @@ SHIM
     run bash "$SCANNER"
   [ "$status" -eq 0 ]
 
-  # Both story layouts found
+  # All four story types found
   [[ "$output" =~ "E900-S1" ]]
   [[ "$output" =~ "E900-S2" ]]
+  [[ "$output" =~ "E900-S3" ]]
+  [[ "$output" =~ "E900-S4" ]]
 
-  # reviews/ file never opened
+  # reviews/ files never opened
   local reviews_opened
   reviews_opened=$(grep -c 'reviews/' "$opened_log" || true)
   [ "$reviews_opened" -eq 0 ]
 
-  # review-summary file never opened
+  # review-summary report file never opened
   local summary_opened
-  summary_opened=$(grep -c 'review-summary' "$opened_log" || true)
+  summary_opened=$(grep -c 'E900-S12-review-summary' "$opened_log" || true)
   [ "$summary_opened" -eq 0 ]
 
-  # The decoy keys must NOT appear in output
-  [[ ! "$output" =~ "E900-S3" ]]
-  [[ ! "$output" =~ "E900-S4" ]]
-  [[ ! "$output" =~ "E900-S5" ]]
+  # plan report file never opened
+  local plan_opened
+  plan_opened=$(grep -c 'E900-S13-plan' "$opened_log" || true)
+  [ "$plan_opened" -eq 0 ]
+
+  # Story with slug ending in review-summary WAS opened (not false-excluded)
+  local slug_story_opened
+  slug_story_opened=$(grep -c 'excludes-review-summary' "$opened_log" || true)
+  [ "$slug_story_opened" -ge 1 ]
+
+  # Decoy keys must NOT appear in output
+  [[ ! "$output" =~ "E900-S10" ]]
+  [[ ! "$output" =~ "E900-S11" ]]
+  [[ ! "$output" =~ "E900-S12" ]]
+  [[ ! "$output" =~ "E900-S13" ]]
 }
 
-@test "AC1 — legacy flat E*-S*-*.md layout is found" {
-  # Legacy layout: file named E900-S1-slug.md under the stories/ subdirectory
+@test "AC1 — legacy flat E*-S*-*.md under stories/ is found" {
+  # Legacy nested layout under the stories/ subdirectory
   mkdir -p "$TEST_TMP/impl/epic-test/stories"
   cat > "$TEST_TMP/impl/epic-test/stories/E900-S1-legacy-story.md" <<'EOF'
 ---
 key: "E900-S1"
-title: "Legacy story"
+title: "Legacy nested story"
 epic: "E900"
 status: ready-for-dev
 sprint_id: null
 ---
-# Story: Legacy story
+# Story: Legacy nested story
 EOF
   _mk_decision_log "E900-S1"
   run _run_scanner bash
   [ "$status" -eq 0 ]
   [[ "$output" =~ "E900-S1" ]]
-  [[ "$output" =~ "Legacy story" ]]
+  [[ "$output" =~ "Legacy nested story" ]]
+}
+
+@test "AC1 — legacy flat E*-S*-*.md at root is found" {
+  # Legacy flat layout at the implementation-artifacts root (maxdepth 1)
+  cat > "$TEST_TMP/impl/E900-S1-root-story.md" <<'EOF'
+---
+key: "E900-S1"
+title: "Root flat story"
+epic: "E900"
+status: ready-for-dev
+sprint_id: null
+---
+# Story: Root flat story
+EOF
+  _mk_decision_log "E900-S1"
+  run _run_scanner bash
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "E900-S1" ]]
+  [[ "$output" =~ "Root flat story" ]]
 }
 
 # ---------- AC2: grep pre-filter ----------
