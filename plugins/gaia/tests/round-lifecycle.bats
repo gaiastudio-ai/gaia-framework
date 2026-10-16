@@ -3856,3 +3856,161 @@ SHIM
     --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 }
+
+# ===================================================================
+# round-info --run-id yq failure yields exit 2
+# ===================================================================
+
+@test "yq failure on round-info run-id select read yields exit 2" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local shim="$TEST_TMP/yqshim-ri-runid"
+  _build_yq_shim "$shim" 'select(.run_id == strenv(_RW_RUN_ID))'
+
+  run env PATH="$shim:$PATH" "$SCRIPT" round-info --story TEST-S1 \
+    --run-id "$VALID_RUN_ID"
+  [ "$status" -eq 2 ]
+}
+
+# ===================================================================
+# bind-brief yq failure on existing brief path/hash reads yields exit 2
+# ===================================================================
+
+@test "yq failure on bind-brief existing-brief-path read yields exit 2 register unchanged" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Bind a first brief so the existing-brief branch is entered.
+  local brief="$TEST_TMP/brief.md"
+  printf 'brief\n' > "$brief"
+  run "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local before_sha
+  before_sha="$(shasum "$reg" | awk '{print $1}')"
+
+  local shim="$TEST_TMP/yqshim-bb-expath"
+  _build_yq_shim "$shim" '.brief.path'
+
+  local brief2="$TEST_TMP/brief2.md"
+  printf 'brief2\n' > "$brief2"
+
+  run env PATH="$shim:$PATH" "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief2"
+  [ "$status" -eq 2 ]
+
+  local after_sha
+  after_sha="$(shasum "$reg" | awk '{print $1}')"
+  [ "$before_sha" = "$after_sha" ]
+}
+
+@test "yq failure on bind-brief existing-brief-hash read yields exit 2 register unchanged" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local brief="$TEST_TMP/brief.md"
+  printf 'brief\n' > "$brief"
+  run "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local before_sha
+  before_sha="$(shasum "$reg" | awk '{print $1}')"
+
+  local shim="$TEST_TMP/yqshim-bb-exhash"
+  _build_yq_shim "$shim" '.brief.sha256'
+
+  local brief2="$TEST_TMP/brief2.md"
+  printf 'brief2\n' > "$brief2"
+
+  run env PATH="$shim:$PATH" "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief2"
+  [ "$status" -eq 2 ]
+
+  local after_sha
+  after_sha="$(shasum "$reg" | awk '{print $1}')"
+  [ "$before_sha" = "$after_sha" ]
+}
+
+# ===================================================================
+# supersede-brief yq failure on old-hash read yields exit 2
+# ===================================================================
+
+@test "yq failure on supersede-brief old-hash read yields exit 2 register unchanged" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local brief="$TEST_TMP/brief.md"
+  printf 'brief\n' > "$brief"
+  run "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local before_sha
+  before_sha="$(shasum "$reg" | awk '{print $1}')"
+
+  # Shim targets .brief.sha256 — the old-hash read in supersede-brief.
+  # Must fail on the SECOND hit (.brief.sha256) because the first
+  # hit is the brief-type read (.brief | type) which does NOT contain
+  # ".brief.sha256". However, supersede-brief reads .brief.path first
+  # (which also does not match), then .brief.sha256. So the first match
+  # IS the old_hash read.
+  local shim="$TEST_TMP/yqshim-sb-hash"
+  _build_yq_shim "$shim" '.brief.sha256'
+
+  local new_brief="$TEST_TMP/new-brief.md"
+  printf 'new\n' > "$new_brief"
+
+  run env PATH="$shim:$PATH" "$SCRIPT" supersede-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$new_brief" --rationale "test"
+  [ "$status" -eq 2 ]
+
+  local after_sha
+  after_sha="$(shasum "$reg" | awk '{print $1}')"
+  [ "$before_sha" = "$after_sha" ]
+
+  # No empty history row must have been written.
+  local hist_len
+  hist_len="$(yq '(.rounds[0]).brief.history | length' "$reg")"
+  [ "$hist_len" = "0" ]
+}

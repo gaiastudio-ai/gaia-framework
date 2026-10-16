@@ -443,10 +443,10 @@ SYN
     --commit-sha "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     --requirement-version "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   [ "$status" -eq 2 ]
+  local out="$output"
   # Must not be "unknown flag" — that means the flag is not implemented yet.
-  run grep -qi "unknown flag" <<<"$output"
-  [ "$status" -ne 0 ]
-  grep -qi "invalid\|pattern\|run.id\|format" <<<"$output"
+  [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
+  grep -qi "invalid\|pattern\|run.id\|format" <<<"$out"
 
   # Invalid commit-sha.
   run "$SUMMARY_GEN" --story "$STORY_KEY" \
@@ -454,8 +454,8 @@ SYN
     --commit-sha "not-hex" \
     --requirement-version "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   [ "$status" -eq 2 ]
-  run grep -qi "unknown flag" <<<"$output"
-  [ "$status" -ne 0 ]
+  out="$output"
+  [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
 
   # Invalid requirement-version.
   run "$SUMMARY_GEN" --story "$STORY_KEY" \
@@ -463,6 +463,6 @@ SYN
     --commit-sha "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     --requirement-version "not-a-sha256"
   [ "$status" -eq 2 ]
-  run grep -qi "unknown flag" <<<"$output"
-  [ "$status" -ne 0 ]
+  out="$output"
+  [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
 }
