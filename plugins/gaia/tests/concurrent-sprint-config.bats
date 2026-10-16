@@ -39,9 +39,11 @@ teardown() { common_teardown; }
 # Helpers
 # ---------------------------------------------------------------------------
 
-# _write_config <extra-yaml> — compose base + extra, echo the path.
+# _write_config <extra-yaml> [suffix] — compose base + extra, echo the path.
+# An optional second argument distinguishes files within the same test.
 _write_config() {
-  local out="$TEST_TMP/config.yaml"
+  local suffix="${2:-}"
+  local out="$TEST_TMP/config${suffix:+-$suffix}.yaml"
   printf '%s\n%s\n' "$BASE_REQUIRED" "$1" > "$out"
   printf '%s' "$out"
 }
@@ -120,6 +122,61 @@ _write_config() {
 }
 
 # ---------------------------------------------------------------------------
+# Direct _post_validate_sprint hook tests — edge-case integer shapes
+# ---------------------------------------------------------------------------
+
+# Helper: write a JSON fixture with the given raw value for
+# sprint.max_concurrent_active, source the hook, and call it.
+_run_sprint_hook() {
+  local raw_json_value="$1"
+  local json_file="$TEST_TMP/hook-fixture.json"
+  printf '{"sprint":{"max_concurrent_active":%s}}\n' "$raw_json_value" > "$json_file"
+  # Source just the fail() and _post_validate_sprint from the validator.
+  run bash -c '
+    fail() { printf "FAIL: %s — %s\n" "${1:-unknown}" "${2:-violation}" >&2; }
+    eval "$(sed -n "/_post_validate_sprint()/,/^}/p" "'"$VALIDATOR"'")"
+    _post_validate_sprint "'"$json_file"'"
+  '
+}
+
+@test "sprint hook rejects hyphenated string 1-2" {
+  _run_sprint_hook '"1-2"'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must be an integer"* ]]
+}
+
+@test "sprint hook rejects double-negative --5" {
+  _run_sprint_hook '"--5"'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must be an integer"* ]]
+}
+
+@test "sprint hook rejects trailing hyphen 1-" {
+  _run_sprint_hook '"1-"'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must be an integer"* ]]
+}
+
+@test "sprint hook accepts valid integer 3" {
+  _run_sprint_hook '3'
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Wiring guard: proves _post_validate_sprint is called at all three backend
+# call sites. A grep-based structural test: if someone removes a call site,
+# this test fails.
+# ---------------------------------------------------------------------------
+
+@test "sprint hook is wired at all three validator backend call sites" {
+  # The validator has three exit paths (ajv, python3+jsonschema, jq-degraded).
+  # Each must call _post_validate_sprint. Count the non-comment call sites.
+  local count
+  count="$(/usr/bin/grep -c '_post_validate_sprint "\$TMP_JSON"' "$VALIDATOR")"
+  [ "$count" -ge 3 ]
+}
+
+# ---------------------------------------------------------------------------
 # Resolver default and configured value
 # ---------------------------------------------------------------------------
 
@@ -145,7 +202,6 @@ _write_config() {
 # ---------------------------------------------------------------------------
 
 @test "guard helper accepts activation when count is below the limit" {
-  source "$GUARD_LIB"
   run bash -c "source '$GUARD_LIB'; echo 'sprint-900' | concurrent_sprint_guard 2"
   [ "$status" -eq 0 ]
 }
@@ -201,9 +257,14 @@ _write_config() {
 
 @test "absent and explicit 1 resolve identically" {
   local cfg_absent cfg_explicit
-  cfg_absent="$(_write_config '')"
+  cfg_absent="$(_write_config '' absent)"
   cfg_explicit="$(_write_config 'sprint:
-  max_concurrent_active: 1')"
+  max_concurrent_active: 1' explicit)"
+
+  # Both files must exist and differ (the extra yaml is present in one).
+  [ -f "$cfg_absent" ]
+  [ -f "$cfg_explicit" ]
+  [ "$cfg_absent" != "$cfg_explicit" ]
 
   local val_absent val_explicit
   val_absent="$(bash "$RESOLVER" --config "$cfg_absent" --field sprint.max_concurrent_active)"
