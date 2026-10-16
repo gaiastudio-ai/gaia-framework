@@ -24,11 +24,10 @@ teardown() {
 
 @test "covering directory entry passes via git check-ignore" {
   # Scenario 1: .gitignore has ".gaia/memory/" — covers the checkpoint prefix.
+  # git check-ignore reads .gitignore without needing a commit.
   cd "$TMPDIR_TEST"
   git init -q .
   printf '.gaia/memory/\n' > .gitignore
-  git add .gitignore
-  git commit -q -m 'init'
 
   source "$HELPER"
   # Must exit 0 — git check-ignore sees ".gaia/memory/" as covering.
@@ -40,8 +39,6 @@ teardown() {
   cd "$TMPDIR_TEST"
   git init -q .
   printf '**/.gaia/memory/\n' > .gitignore
-  git add .gitignore
-  git commit -q -m 'init'
 
   source "$HELPER"
   assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
@@ -52,8 +49,6 @@ teardown() {
   cd "$TMPDIR_TEST"
   git init -q .
   printf '*.log\n' > .gitignore
-  git add .gitignore
-  git commit -q -m 'init'
 
   source "$HELPER"
   run assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
@@ -69,8 +64,6 @@ teardown() {
   cd "$TMPDIR_TEST"
   git init -q .
   printf '.gaia/memory/checkpoints/sprint-review-*\n' > .gitignore
-  git add .gitignore
-  git commit -q -m 'init'
 
   # Source with CLAUDE_PROJECT_ROOT set to an absolute path.
   export CLAUDE_PROJECT_ROOT="$TMPDIR_TEST"
