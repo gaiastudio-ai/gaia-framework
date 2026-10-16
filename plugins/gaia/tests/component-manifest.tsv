@@ -650,6 +650,7 @@ scripts-core	yolo-mode-session-binding.bats
 scripts-lib	af-2026-06-03-3-consumer-migration.bats
 scripts-lib	artifact-type-schemas.bats
 scripts-lib	assert-agent-envelope.bats
+scripts-lib	assert-gitignored-git-check-ignore.bats
 scripts-lib	assert-protected-jobs.bats
 scripts-lib	atdd-anti-stub-emit.bats
 scripts-lib	auto-rename-migration.bats
