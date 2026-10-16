@@ -299,14 +299,14 @@ _delete_one_line() {
 
 @test "mutant: deleting record-round step-3 heading kills roundstart test" {
   local tmp="$TEST_TMP/rar-mut.md"
-  _delete_one_line '^3\..*\`record-round\`' "$RAR_SKILL" "$tmp"
+  _delete_one_line '^3\..*`record-round`' "$RAR_SKILL" "$tmp"
   run assert_rar_roundstart_record_round "$tmp"
   [ "$status" -ne 0 ]
 }
 
 @test "mutant: deleting round-info step-2 heading kills roundstart test" {
   local tmp="$TEST_TMP/rar-mut.md"
-  _delete_one_line '^2\..*\`round-info\`.*discover' "$RAR_SKILL" "$tmp"
+  _delete_one_line '^2\..*`round-info`.*discover' "$RAR_SKILL" "$tmp"
   run assert_rar_roundstart_round_info "$tmp"
   [ "$status" -ne 0 ]
 }
@@ -320,7 +320,7 @@ _delete_one_line() {
 
 @test "mutant: deleting complete-round step-2 heading kills completion test" {
   local tmp="$TEST_TMP/rar-mut.md"
-  _delete_one_line '^2\..*\`complete-round\`' "$RAR_SKILL" "$tmp"
+  _delete_one_line '^2\..*`complete-round`' "$RAR_SKILL" "$tmp"
   run assert_rar_completion_complete_round "$tmp"
   [ "$status" -ne 0 ]
 }
