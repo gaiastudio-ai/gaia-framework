@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# bash32-portability-lint: skip (uses local -n namerefs; bash 4.3+ required)
 # retirement-sweep.sh -- provider-neutral retirement inventory sweep.
 #
 # Produces a markdown inventory of all word-bounded, case-insensitive hits

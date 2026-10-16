@@ -29,19 +29,36 @@
 # This excludes the entire file from the scan. Use only for scripts that
 # carry an explicit Bash-version preflight guard.
 #
+# Baseline: use --baseline <file> to supply a TSV of (path, max-count)
+# ceilings. A baselined file is allowed up to max-count violations; exceeding
+# the ceiling fails the lint. Files not in the baseline must have zero
+# violations. The baseline count may never increase.
+#
 # Usage:
-#   lint-bash32-portability.sh <scripts-dir> [<scripts-dir2> ...]
+#   lint-bash32-portability.sh [--baseline <file>] <scripts-dir> [<scripts-dir2> ...]
 #
 # Exit codes:
-#   0 — no violations found
-#   1 — one or more violations found (details on stdout)
+#   0 — no violations found (or all within baseline ceilings)
+#   1 — one or more violations exceed their ceiling (details on stdout)
 #   2 — usage error
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL
 
+BASELINE_FILE=""
+
+# Parse --baseline flag.
+if [ "${1:-}" = "--baseline" ]; then
+  if [ $# -lt 2 ] || [ ! -f "$2" ]; then
+    printf 'Error: --baseline requires a readable file path\n' >&2
+    exit 2
+  fi
+  BASELINE_FILE="$2"
+  shift 2
+fi
+
 if [ $# -lt 1 ]; then
-  printf 'Usage: lint-bash32-portability.sh <scripts-dir> [<scripts-dir2> ...]\n' >&2
+  printf 'Usage: lint-bash32-portability.sh [--baseline <file>] <scripts-dir> [<scripts-dir2> ...]\n' >&2
   exit 2
 fi
 
@@ -53,7 +70,31 @@ for d in "$@"; do
   fi
 done
 
+# Load baseline ceilings into a temp file for lookup (bash 3.2 compatible).
+baseline_tmp=""
+if [ -n "$BASELINE_FILE" ]; then
+  baseline_tmp="$(mktemp -t baseline.XXXXXX)"
+  # Strip comments and blank lines, output "path\tmax".
+  grep -v '^[[:space:]]*#' "$BASELINE_FILE" | grep -v '^[[:space:]]*$' > "$baseline_tmp" 2>/dev/null || true
+fi
+
+# Look up a file's baseline ceiling. Returns the ceiling on stdout, or empty
+# if the file is not baselined (meaning ceiling is 0).
+baseline_ceiling() {
+  local file_path="$1"
+  if [ -z "$baseline_tmp" ]; then
+    return 0
+  fi
+  # Match the path exactly in the first column.
+  awk -F'\t' -v p="$file_path" '$1 == p { print $2; exit }' "$baseline_tmp"
+}
+
 violations=0
+# Track per-file violation counts for baseline enforcement.
+# Use a temp file: "path\tcount" (bash 3.2 compatible, no associative arrays).
+file_counts_tmp="$(mktemp -t filecounts.XXXXXX)"
+# shellcheck disable=SC2064
+trap "rm -f '$baseline_tmp' '$file_counts_tmp'" EXIT
 
 scan_dir() {
   local scan_dir="$1"
@@ -71,64 +112,6 @@ scan_dir() {
     # checks each non-comment line for Bash 4+ constructs.  The awk output
     # format is "NR:content", so patterns must not assume ^ is start-of-line
     # content — the line number and colon precede the code.
-    #
-    # Pattern groups (each separated by | in the grep alternation):
-    #
-    # Group 1 — declare with -A flag (associative arrays):
-    #   declare[[:space:]]+-[a-zA-Z]*A
-    #
-    # Group 2 — declare with -g flag (global scope):
-    #   declare[[:space:]]+-[a-zA-Z]*g[[:space:]]
-    #   declare[[:space:]]+-gA
-    #
-    # Group 3 — local/typeset with -A flag (associative arrays):
-    #   (local|typeset)[[:space:]]+-[a-zA-Z]*A
-    #
-    # Group 4 — local with -n flag (namerefs):
-    #   local[[:space:]]+-[a-zA-Z]*n[[:space:]]
-    #
-    # Group 5 — local with -g flag (global scope):
-    #   local[[:space:]]+-[a-zA-Z]*g[[:space:]]
-    #
-    # Group 6 — declare with -n flag (namerefs):
-    #   declare[[:space:]]+-[a-zA-Z]*n[[:space:]]
-    #
-    # Group 7 — mapfile/readarray commands:
-    #   (^|[^a-zA-Z0-9_])(mapfile|readarray)([[:space:]]|$)
-    #
-    # Group 8 — case-modification expansion:
-    #   \$\{[^}]*(,,|\^\^)
-    #
-    # Group 9 — negative array index:
-    #   \$\{[^}]*\[-[0-9]
-    #
-    # Group 10 — [[ -v (variable-set test):
-    #   \[\[[[:space:]]+-v[[:space:]]
-    #
-    # Group 11 — &>> (append-redirect stdout+stderr):
-    #   &>>
-    #
-    # Group 12 — |& (pipe stderr shorthand):
-    #   Requires preceding whitespace to avoid false positives inside
-    #   string/regex character classes like [;|&=...].
-    #   [[:space:]]\|&
-    #
-    # Group 13 — coproc command:
-    #   (^|[^a-zA-Z0-9_])coproc([[:space:]]|$)
-    #
-    # Group 14 — $BASHPID variable:
-    #   \$BASHPID|\$\{BASHPID
-    #
-    # Group 15 — read -i / read -N:
-    #   Handles both single-group (read -i) and multi-group (read -e -i)
-    #   forms by allowing zero or more -flag groups before the one
-    #   containing i or N.
-    #   read[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*-[a-zA-Z]*[iN]
-    #
-    # Group 16 — {var}> named-fd redirection:
-    #   Requires that { is NOT preceded by $ (which would make it a
-    #   variable expansion like ${fd}>, not a named-fd redirect).
-    #   [^$]\{[a-zA-Z_][a-zA-Z0-9_]*\}[><]
 
     hits="$(awk '
       /^[[:space:]]*#/ { next }
@@ -139,15 +122,17 @@ scan_dir() {
       2>/dev/null || true)"
 
     if [ -n "$hits" ]; then
+      local file_hit_count=0
       while IFS= read -r hit; do
         [ -z "$hit" ] && continue
         lineno="${hit%%:*}"
         content="${hit#*:}"
         printf '%s:%s: %s\n' "$script" "$lineno" "$content"
-        violations=$((violations + 1))
+        file_hit_count=$((file_hit_count + 1))
       done <<EOF
 $hits
 EOF
+      printf '%s\t%d\n' "$script" "$file_hit_count" >> "$file_counts_tmp"
     fi
 
   done < <(find "$scan_dir" -name '*.sh' -type f 2>/dev/null | sort)
@@ -158,8 +143,28 @@ for d in "$@"; do
   scan_dir "$d"
 done
 
-if [ "$violations" -gt 0 ]; then
-  printf '\nbash32-portability-lint: %d violation(s) found.\n' "$violations" >&2
+# Enforce baseline ceilings.
+exceeded=0
+while IFS=$'\t' read -r filepath count; do
+  [ -z "$filepath" ] && continue
+  ceiling="$(baseline_ceiling "$filepath")"
+  if [ -z "$ceiling" ]; then
+    ceiling=0
+  fi
+  if [ "$count" -gt "$ceiling" ]; then
+    if [ "$ceiling" -eq 0 ]; then
+      printf 'FAIL: %s has %d violation(s) (no baseline; expected 0)\n' "$filepath" "$count" >&2
+    else
+      printf 'FAIL: %s has %d violation(s), exceeds baseline ceiling of %d\n' "$filepath" "$count" "$ceiling" >&2
+    fi
+    exceeded=$((exceeded + count))
+  else
+    printf 'BASELINE: %s has %d violation(s) (ceiling %d — OK)\n' "$filepath" "$count" "$ceiling" >&2
+  fi
+done < "$file_counts_tmp"
+
+if [ "$exceeded" -gt 0 ]; then
+  printf '\nbash32-portability-lint: %d violation(s) exceed baseline ceilings.\n' "$exceeded" >&2
   printf 'Bash 4+ constructs are not allowed in host-facing scripts that\n' >&2
   printf 'must run on macOS system bash 3.2. Detected constructs include:\n' >&2
   printf '  declare -A/-g/-n, local -A/-n/-g, typeset -A, mapfile, readarray,\n' >&2

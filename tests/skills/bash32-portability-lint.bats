@@ -16,6 +16,7 @@
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   SCANNER="$REPO_ROOT/.github/scripts/lint-bash32-portability.sh"
+  BASELINE="$REPO_ROOT/.github/scripts/bash32-portability-baseline.tsv"
   SCRIPTS_DIR="$REPO_ROOT/plugins/gaia/scripts"
   FIXTURE_DIR="$(mktemp -d -t bash32lint.XXXXXX)"
 }
@@ -521,19 +522,73 @@ SH
 
 # ---------- Tree-wide: actual directory trees pass the lint (AC4) ----------
 
-@test "scripts tree passes bash-3.2 portability lint (AC4)" {
-  run bash "$SCANNER" "$SCRIPTS_DIR"
+@test "scripts tree passes bash-3.2 portability lint with baseline (AC4)" {
+  # Run from REPO_ROOT so find produces relative paths matching the baseline.
+  cd "$REPO_ROOT"
+  run bash "$SCANNER" --baseline "$BASELINE" plugins/gaia/scripts
   [ "$status" -eq 0 ]
 }
 
-@test "skills scripts trees pass bash-3.2 portability lint (AC4)" {
+@test "skills scripts trees pass bash-3.2 portability lint with baseline (AC4)" {
+  cd "$REPO_ROOT"
   # Collect all skills/*/scripts/ directories that exist
   local -a skill_dirs=()
   while IFS= read -r d; do
     [ -d "$d" ] && skill_dirs+=("$d")
-  done < <(find "$REPO_ROOT/plugins/gaia/skills" -mindepth 2 -maxdepth 2 -name scripts -type d 2>/dev/null | sort)
+  done < <(find plugins/gaia/skills -mindepth 2 -maxdepth 2 -name scripts -type d 2>/dev/null | sort)
   # Only run if there are skill scripts directories
   [ "${#skill_dirs[@]}" -gt 0 ] || return 0
-  run bash "$SCANNER" "${skill_dirs[@]}"
+  run bash "$SCANNER" --baseline "$BASELINE" "${skill_dirs[@]}"
   [ "$status" -eq 0 ]
+}
+
+# ---------- Baseline enforcement: new violations exceed ceiling (AC4) ----------
+
+@test "baseline ceiling blocks a new violation in a baselined file (AC4)" {
+  # Create a fixture with a baselined file that EXCEEDS its ceiling.
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/baselined.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A first_violation
+  local -A second_violation
+}
+SH
+  # Baseline allows 1 violation, but the file has 2.
+  printf '%s\t%s\n' "$FIXTURE_DIR/scripts/baselined.sh" "1" \
+    > "$FIXTURE_DIR/baseline.tsv"
+  run bash "$SCANNER" --baseline "$FIXTURE_DIR/baseline.tsv" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"exceeds baseline ceiling"* ]]
+}
+
+@test "baseline ceiling allows violations at or below the ceiling (AC4)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/baselined.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A one_violation
+}
+SH
+  # Baseline allows 1 violation, file has exactly 1.
+  printf '%s\t%s\n' "$FIXTURE_DIR/scripts/baselined.sh" "1" \
+    > "$FIXTURE_DIR/baseline.tsv"
+  run bash "$SCANNER" --baseline "$FIXTURE_DIR/baseline.tsv" "$FIXTURE_DIR/scripts"
+  [ "$status" -eq 0 ]
+}
+
+@test "non-baselined file with violations fails even with a baseline file (AC4)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/other.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A unbaselined
+}
+SH
+  # Baseline does not include this file.
+  printf '%s\t%s\n' "some/other/file.sh" "1" \
+    > "$FIXTURE_DIR/baseline.tsv"
+  run bash "$SCANNER" --baseline "$FIXTURE_DIR/baseline.tsv" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no baseline; expected 0"* ]]
 }

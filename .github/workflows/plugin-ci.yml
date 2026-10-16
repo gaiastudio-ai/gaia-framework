@@ -819,9 +819,12 @@ jobs:
           # the static bash-4-construct check runs and the rest skip.
           bats plugins/gaia/tests/sprint-progress-snapshot-bash32.bats
 
-  # ---------- Static portability lint (runs on every PR) ----------
+  # ---------- Static portability lint ----------
   bash32-portability-lint:
     name: bash32-portability-lint
+    needs: [diff-classify]
+    # Gate on diff-classify: skip for docs-only changes with recorded reason.
+    if: needs.diff-classify.outputs.change_type != 'docs-only'
     runs-on: ubuntu-latest
     timeout-minutes: 2  # lint completes in under 2 seconds
     steps:
@@ -838,16 +841,20 @@ jobs:
           done
 
           echo "::group::Scanning plugins/gaia/scripts/"
-          .github/scripts/lint-bash32-portability.sh plugins/gaia/scripts/
+          .github/scripts/lint-bash32-portability.sh \
+            --baseline .github/scripts/bash32-portability-baseline.tsv \
+            plugins/gaia/scripts/
           echo "::endgroup::"
 
           if [ "${#skill_dirs[@]}" -gt 0 ]; then
             echo "::group::Scanning skill scripts directories (${#skill_dirs[@]} dirs)"
-            .github/scripts/lint-bash32-portability.sh "${skill_dirs[@]}"
+            .github/scripts/lint-bash32-portability.sh \
+              --baseline .github/scripts/bash32-portability-baseline.tsv \
+              "${skill_dirs[@]}"
             echo "::endgroup::"
           fi
 
-          echo "Portability lint passed: zero violations."
+          echo "Portability lint passed: all violations within baseline ceilings."
 
   # ---------- macOS bash 3.2 with real BSD tools ----------
   macos-bash32:
@@ -916,22 +923,33 @@ jobs:
           echo "PATH=$PATH" >> "$GITHUB_ENV"
           echo "Adjusted PATH (BSD tools first): $PATH"
 
+      - name: Install Python for YAML/JSON-schema backends
+        run: |
+          # Some bats tests degrade to skip when PyYAML/jsonschema are absent,
+          # reporting green on guards that never executed. Install to match
+          # the Linux CI environment.
+          python3 -m pip install --break-system-packages PyYAML jsonschema 2>/dev/null || true
+
       - name: Run shell bats suites under macOS bash 3.2
         env:
           BATS_FILTER_TAGS: '!hardware-dependent'
-          # Force the macOS system bash for all script execution.
-          BASH: /bin/bash
         run: |
-          # Use /bin/bash (3.2) to drive the bats runner. bats itself may run
-          # under a newer bash, but the scripts under test are invoked via the
-          # system bash through their shebang or explicit /bin/bash calls.
-          #
-          # Run the portability-sensitive bats suites. The full suite (7600+
-          # tests) includes tests that depend on GNU-only tools or Linux paths
-          # and would fail on macOS for reasons unrelated to bash 3.2.
-          # The scope here is the shell bats suites that exercise the
-          # framework's published scripts.
           set -euo pipefail
+
+          # Run the shell-script component test partitions on macOS with the
+          # system bash 3.2 and BSD tools. These are the same partitions the
+          # selective-tests workflow runs on Linux (scripts-lib, scripts-sprint),
+          # plus the portability-specific suites and the lint test suite.
+          # The full suite (7600+ tests) would be too expensive on macOS; the
+          # component partitions cover the script-testing surface (~100 tests).
+
+          echo "::group::scripts-lib component tests"
+          bash plugins/gaia/scripts/run-component-tests.sh scripts-lib
+          echo "::endgroup::"
+
+          echo "::group::scripts-sprint component tests"
+          bash plugins/gaia/scripts/run-component-tests.sh scripts-sprint
+          echo "::endgroup::"
 
           echo "::group::sprint-progress-snapshot-bash32.bats"
           bats plugins/gaia/tests/sprint-progress-snapshot-bash32.bats
