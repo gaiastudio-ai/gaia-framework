@@ -148,23 +148,27 @@ if command -v jq >/dev/null 2>&1; then
   fi
 fi
 
+# Shared prerequisite for guards 2 and 3: resolve origin/<base>.
+# A merge gate must fail closed — if the base ref cannot be resolved after a
+# fetch, exit non-zero rather than silently skipping the guard.
+git fetch origin "$PR_TARGET" --quiet 2>/dev/null || true
+if ! git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
+  log "aborting: cannot resolve origin/${PR_TARGET}."
+  log "Run 'git fetch origin ${PR_TARGET}' and retry."
+  exit 1
+fi
+
 # Guard 2: the branch must be based on the current base tip.
 # A stale base means the PR was opened against an older revision and needs a
-# rebase before it can land cleanly. Requires origin/<base> to be resolvable;
-# skipped when the remote ref cannot be fetched (e.g. no remote configured).
-git fetch origin "$PR_TARGET" --quiet 2>/dev/null || true
-if git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
-  if ! git merge-base --is-ancestor "origin/${PR_TARGET}" HEAD 2>/dev/null; then
-    head_ref="$(git rev-parse --short HEAD 2>/dev/null || echo "HEAD")"
-    log "aborting: branch head ${head_ref} is not based on origin/${PR_TARGET}."
-    log "Run 'git rebase origin/${PR_TARGET}' or 'git merge origin/${PR_TARGET}' and push, then retry."
-    exit 1
-  fi
+# rebase before it can land cleanly.
+if ! git merge-base --is-ancestor "origin/${PR_TARGET}" HEAD 2>/dev/null; then
+  head_ref="$(git rev-parse --short HEAD 2>/dev/null || echo "HEAD")"
+  log "aborting: branch head ${head_ref} is not based on origin/${PR_TARGET}."
+  log "Run 'git rebase origin/${PR_TARGET}' or 'git merge origin/${PR_TARGET}' and push, then retry."
+  exit 1
 fi
 
 # Guard 3: no commit in the PR range may carry an assistant attribution trailer.
-# Requires origin/<base> to be resolvable for the commit range; skipped when
-# the remote ref cannot be resolved.
 # Maintainable pattern list — extend by adding entries below.
 ASSISTANT_TRAILER_PATTERNS=(
   "noreply@anthropic.com"
@@ -186,30 +190,28 @@ _build_trailer_regex() {
   printf '%s' "$result"
 }
 
-if git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
-  trailer_regex="$(_build_trailer_regex)"
-  # Scan every commit body in the PR range for Co-Authored-By trailers that
-  # match the assistant pattern list.
-  while IFS= read -r line; do
-    [ -z "$line" ] && continue
-    commit_hash="${line%%	*}"
-    trailer_line="${line#*	}"
-    short_hash="$(git rev-parse --short "$commit_hash" 2>/dev/null || echo "$commit_hash")"
-    log "aborting: commit ${short_hash} carries an assistant attribution trailer:"
-    log "  ${trailer_line}"
-    log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
-    exit 1
-  done < <(git log --format='%H %b' "origin/${PR_TARGET}..HEAD" 2>/dev/null \
-    | grep -iE "^[0-9a-f]{40} " \
-    | while IFS= read -r logline; do
-        hash="${logline%% *}"
-        body="${logline#* }"
-        if printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" >/dev/null 2>&1; then
-          matched="$(printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" | head -1)"
-          printf '%s\t%s\n' "$hash" "$matched"
-        fi
-      done)
-fi
+trailer_regex="$(_build_trailer_regex)"
+# Scan every commit body in the PR range for Co-Authored-By trailers that
+# match the assistant pattern list.
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  commit_hash="${line%%	*}"
+  trailer_line="${line#*	}"
+  short_hash="$(git rev-parse --short "$commit_hash" 2>/dev/null || echo "$commit_hash")"
+  log "aborting: commit ${short_hash} carries an assistant attribution trailer:"
+  log "  ${trailer_line}"
+  log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
+  exit 1
+done < <(git log --format='%H %b' "origin/${PR_TARGET}..HEAD" 2>/dev/null \
+  | grep -iE "^[0-9a-f]{40} " \
+  | while IFS= read -r logline; do
+      hash="${logline%% *}"
+      body="${logline#* }"
+      if printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" >/dev/null 2>&1; then
+        matched="$(printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" | head -1)"
+        printf '%s\t%s\n' "$hash" "$matched"
+      fi
+    done)
 
 # Build merge command
 MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\""

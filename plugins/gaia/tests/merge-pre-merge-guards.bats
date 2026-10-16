@@ -300,6 +300,33 @@ STUB
 }
 
 # -----------------------------------------------------------------------
+# Unresolvable base ref fails closed
+# -----------------------------------------------------------------------
+
+@test "an unresolvable base ref blocks the merge and names the base" {
+  # Create a repo without any origin remote — origin/staging won't exist.
+  REPO="$TEST_TMP/repo-no-origin"
+  mkdir -p "$REPO"
+  fixture_git -C "$REPO" init -q -b main
+  fixture_git -C "$REPO" commit --allow-empty -q -m "base commit"
+  fixture_git -C "$REPO" checkout -q -b feat/story-branch
+  fixture_git -C "$REPO" commit --allow-empty -q -m "feature work"
+  export PROJECT_PATH="$REPO"
+
+  make_stub_gh
+  run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot resolve origin/staging"* ]]
+  [[ "$output" == *"git fetch"* ]]
+  # The fail-closed gate must exit BEFORE the stale-base guard fires.
+  # If the gate is disabled, guard 2 would print "is not based on".
+  [[ "$output" != *"is not based on"* ]]
+  # The merge command must not have been called
+  run grep -F 'pr merge' "$GH_ARGS"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------
 # Happy path: all guards pass
 # -----------------------------------------------------------------------
 
