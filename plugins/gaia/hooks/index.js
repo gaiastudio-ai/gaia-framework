@@ -601,6 +601,15 @@ function renderReadiness(c, data) {
       '⚠ ' + waitingManual + ' stor' + (waitingManual === 1 ? 'y' : 'ies') +
       ' gates 6/6 — waiting on manual test'))
   }
+  // Drift/waiting line under pills — shown only when drift entries exist.
+  var driftArr = data.drift || []
+  if (driftArr.length > 0) {
+    var dLine = '⚠ ' + driftArr.length + ' drift'
+    var firstDetail = sanitize(String(driftArr[0].detail || ''), DRIFT_DETAIL_MAX)
+    if (firstDetail) dLine += ': ' + firstDetail
+    if (driftArr.length > 1) dLine += ' +' + (driftArr.length - 1) + ' more'
+    children.push(h(c.Text, { color: warnColor() }, dLine))
+  }
   return h(c.Box, { flexDirection: 'column' }, ...children)
 }
 
@@ -978,8 +987,12 @@ export function register(on) {
 
   on('ui.render', { component: 'Pane', requestId: 'sprint-status' }, async ($, e, next) => {
     if (!caps.process || !caps.gaiaRoot) return next(e)
-    // Cache absent or not read yet: no sprint, nothing to draw.
-    if (cacheState === 'init' || cacheState === 'absent') return next(e)
+    // Cache absent or not read yet: show fallback.
+    if (cacheState === 'init' || cacheState === 'absent') {
+      var ec2 = $.ui.resolve(e)
+      return h(ec2.Box, { flexDirection: 'column' },
+        h(ec2.Text, null, 'Sprint data unavailable'))
+    }
     // Cache present but unparseable.
     if (cacheState === 'error' || cachedData === null) {
       var ec = $.ui.resolve(e)

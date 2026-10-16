@@ -172,6 +172,18 @@ describe('empty sprint and no-active-work states', () => {
     expect(await ui.find({ text: 'Sprint data unavailable' })).toBeDefined()
     await ui.unmount()
   })
+
+  test('init cache (not yet read) shows "Sprint data unavailable"', async ($, on) => {
+    // Pass null content so fs.stat throws ENOENT on first read, leaving cacheState 'init'.
+    // But we need caps.process && caps.gaiaRoot to be set, so the pane handler does not
+    // short-circuit before the cacheState check.  Use a cache that never resolves.
+    const w = world(on, { cache: { content: null, mtimeMs: 0 } })
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    expect(await ui.find({ text: 'Sprint data unavailable' })).toBeDefined()
+    await ui.unmount()
+  })
 })
 
 describe('overdue pace and readiness', () => {
@@ -254,6 +266,61 @@ describe('overdue pace and readiness', () => {
     await w.clock.settle()
     const ui = await mountPane($)
     expect(await ui.find({ text: /ready to mark done/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('drift line under readiness pills shows count and first entry', async ($, on) => {
+    const cache = deepCopy(WRITER_CACHE)
+    cache.drift = [
+      { story_key: 'E900-S3', type: 'status_mismatch', detail: 'Story file says in-progress, sprint yaml says done' }
+    ]
+    const w = world(on, { cache: { content: JSON.stringify(cache), mtimeMs: 100000 } })
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    expect(await ui.find({ text: /1 drift/ })).toBeDefined()
+    expect(await ui.find({ text: /Story file says in-progress, sprint yaml says done/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('drift line with multiple entries shows first and +N more', async ($, on) => {
+    const cache = deepCopy(WRITER_CACHE)
+    cache.drift = [
+      { story_key: 'E900-S3', type: 'status_mismatch', detail: 'Story file says in-progress, sprint yaml says done' },
+      { story_key: 'E900-S5', type: 'status_mismatch', detail: 'Story file says in-progress, sprint yaml says review' },
+      { story_key: 'E900-S8', type: 'status_mismatch', detail: 'Story file says blocked, sprint yaml says backlog' }
+    ]
+    const w = world(on, { cache: { content: JSON.stringify(cache), mtimeMs: 100000 } })
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    expect(await ui.find({ text: /3 drift/ })).toBeDefined()
+    expect(await ui.find({ text: /\+2 more/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('drift line absent when drift array is empty', async ($, on) => {
+    const w = world(on)
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    // Default fixture has empty drift
+    expect(await ui.find({ text: /drift/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('drift detail sanitized: escape sequence stripped', async ($, on) => {
+    const cache = deepCopy(WRITER_CACHE)
+    cache.drift = [
+      { story_key: 'E900-S3', type: 'status_mismatch', detail: '\x1b[31mevil\x1b[0m drift detail' }
+    ]
+    const w = world(on, { cache: { content: JSON.stringify(cache), mtimeMs: 100000 } })
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    expect(await ui.find({ text: /evil drift detail/ })).toBeDefined()
+    // The escape sequence markers should not be present
+    expect(await ui.find({ text: /\[31m/ })).toBeUndefined()
     await ui.unmount()
   })
 })

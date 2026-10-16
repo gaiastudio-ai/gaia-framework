@@ -183,7 +183,10 @@
           Two labels that always show whether the sprint has reached key
           milestones, each with a <code>( yes )</code> or
           <code>( no )</code> indicator: <em>Ready for sprint review</em>
-          and <em>Ready to close sprint</em>.
+          and <em>Ready to close sprint</em>. When stories are ready to
+          mark done, a count appears. A drift/waiting line appears under
+          the pills when the cache reports status mismatches between story
+          files and sprint state, showing the count and the first entry.
         </p>
 
         <h3>NOW block</h3>
@@ -481,6 +484,13 @@ sprint_status_mod:
           <code>session.start</code> hooks). On builds that do not expose
           these hooks, the mod silently skips registration -- no error or
           warning is emitted.
+        </p>
+        <p>
+          When the cache has not been read yet or the cache file is absent,
+          the sidebar pane shows <em>"Sprint data unavailable"</em> instead
+          of rendering nothing. The band remains absent in this state. Once
+          the cache loads successfully, the full dashboard replaces the
+          fallback message.
         </p>
         <p>
           The two non-mod surfaces continue to work on all builds:
