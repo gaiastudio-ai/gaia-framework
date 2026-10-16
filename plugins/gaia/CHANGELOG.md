@@ -3,6 +3,71 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.221.0] — 2026-10-16
+
+### Added
+
+- (sprint-status) add agent activity mapping and dispatch description convention (#2190)
+- (sprint-status) sidebar layout improvements per user ruling
+- (sprint-status) add sidebar dashboard, band, toggle, and auto-open (#2182)
+- (review) add one shared findings register and blocking rule for review gates (#2173)
+- (sprint-status) add tasks, gates and phase grouping to the sprint status dashboard (#2144)
+- (hooks) wire Mod shell, registration, and graceful degradation (#2143)
+- (statusline) wire Status line sprint progress segment (#2142)
+- (sprint-state) add sprint progress snapshot cache and post-transition hook (#2130)
+- (config) add sprint status mod config section (#2124)
+
+### Changed
+
+- (hooks) cover hotkey 9 placement in the band and 50+ agents
+- (scan) replace bash filter loop with grep -z and add missing report types
+- (hooks) cover the sidebar fallback outside a project and in the band
+- (sprint-status) add sprint status mod feature page and sync doc site (#2194)
+- (sprint-status) assert colour props on leaf Text elements
+- reword two section comments in the stranded-ready scan suite
+- (scanner) eliminate per-file forks in stranded-ready scan
+- (config) harden sprint-status-mod-config test suite (#2126)
+- (config) add type-constraint rejection tests for sprint status mod (#2125)
+
+### Fixed
+
+- (scan) exclude reviews and non-story markdown from stranded-ready find
+- (sidebar) add drift line under readiness pills and show fallback for missing cache
+- (review) close multi-document and non-object findings bypass in verdict.sh (#2200)
+- (scan) restore root flat layout and add suffix-based report filter
+- (scan) exclude reviews and non-story markdown from stranded-ready find
+- (sidebar) add drift line under readiness pills and show fallback for missing cache
+- (docs) align phase matrix example with code rendering
+- (review) close fail-open in verdict.sh and correct step 3 paths (#2198)
+- (docs) show NOW rows as the sidebar renders them
+- (docs) align phase matrix example with code rendering
+- (tests) replace racy printf pipe with here-strings
+- (docs) align sprint status mod page with code behaviour
+- (sprint-status) assert banner render order via findAll leaf positions
+- (review) close round-two register gaps in sanitising, merge, run ids and gate rows (#2191)
+- (sprint-status) assert banner render order via findAll leaf positions
+- (sprint-status) clear agent data on failed list and add render/convention tests
+- (review) wire the findings register into the review gates and close writer gaps (#2183)
+- (sprint-status) remove sanitize from render handler, restore seed anchor
+- (sprint-status) resolve review blockers for sidebar dashboard
+- (snapshot) key no-project guard on .gaia/state instead of .gaia
+- (scanner) handle malformed candidates and use NUL-safe path iteration
+- (snapshot) key no-project guard on .gaia/state instead of .gaia
+- (tests) register no-stray-gaia-dir suite in the component manifest
+- (tests) use fixture-based golden output and regenerate manifest
+- (dev-story) mirror sprint-state.sh reconcile guard to dev-story copy
+- (dashboard) prevent stray .gaia/ creation outside a GAIA project
+- (dashboard) use whole-string regex match in numeric and key validators
+- (hooks) harden the sprint mod shell timers, snapshot flow and sanitizer (#2146)
+- (statusline) harden the sprint progress segment and its tests (#2145)
+- (sprint-state) keep the progress snapshot bash 3.2 safe and test it there (#2141)
+- (sprint-state) bound reap wait, linear warm link check, test re-run marker (#2140)
+- (sprint-state) skip non-file story links, tighten snapshot lock and cap the wait threshold (#2136)
+- (config) cap waiting-agent threshold at one hour (#2135)
+- (sprint-state) harden snapshot sidecar trust, lock exclusion and allowlist tests (#2134)
+- (sprint-state) keep snapshot reads and writes in the project root and close its test gaps (#2133)
+- (sprint-state) harden progress snapshot assembly, refresh and locking (#2132)
+
 ## [Unreleased]
 
 ### Added
