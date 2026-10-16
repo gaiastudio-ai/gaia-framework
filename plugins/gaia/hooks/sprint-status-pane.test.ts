@@ -7,7 +7,7 @@ function world(on: any, opts: any = {}) {
   const w: any = { clock, cache, runs: [] as any[], logs: [] as any[], invalidates: 0, stats: 0, reads: 0 }
   on('session.start', (_$: unknown, e: any) => ({ cwd: e.cwd }))
   on('session.root', () => ({ value: GAIA_ROOT }))
-  on('fs.exists', (_$: unknown, e: any) => ({ value: e.path === GAIA_ROOT + '/.gaia' }))
+  on('fs.exists', (_$: unknown, e: any) => ({ value: opts.gaia !== false && e.path === GAIA_ROOT + '/.gaia' }))
   on('command.register', () => ({ value: { command: 'sprint' } }))
   on('process.run', () => { w.runs.push(1); return { value: OK_RUN } })
   on('fs.stat', () => {
@@ -173,15 +173,26 @@ describe('empty sprint and no-active-work states', () => {
     await ui.unmount()
   })
 
-  test('init cache (not yet read) shows "Sprint data unavailable"', async ($, on) => {
-    // Pass null content so fs.stat throws ENOENT on first read, leaving cacheState 'init'.
-    // But we need caps.process && caps.gaiaRoot to be set, so the pane handler does not
-    // short-circuit before the cacheState check.  Use a cache that never resolves.
+  test('missing cache file at start shows "Sprint data unavailable"', async ($, on) => {
+    // No cache file: the first read finds nothing, so the pane shows the fallback
+    // message once the snapshot capability is on.
     const w = world(on, { cache: { content: null, mtimeMs: 0 } })
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
     const ui = await mountPane($)
     expect(await ui.find({ text: 'Sprint data unavailable' })).toBeDefined()
+    await ui.unmount()
+  })
+})
+
+describe('fallback message only inside a GAIA project', () => {
+  test('missing cache outside a GAIA project shows nothing', async ($, on) => {
+    // No .gaia directory anywhere: the mod is inactive and the pane passes through.
+    const w = world(on, { cache: { content: null, mtimeMs: 0 }, gaia: false })
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountPane($)
+    expect(await ui.find({ text: 'Sprint data unavailable' })).toBeUndefined()
     await ui.unmount()
   })
 })

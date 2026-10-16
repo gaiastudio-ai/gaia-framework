@@ -121,6 +121,8 @@ describe('band absent states', () => {
     const ui = await mountBand($)
     expect(await ui.find({ text: 'OTHER MOD' })).toBeDefined()
     expect(await ui.find({ text: /ACTION NEEDED/ })).toBeUndefined()
+    // The band never shows the pane's fallback message.
+    expect(await ui.find({ text: /Sprint data unavailable/ })).toBeUndefined()
     await ui.unmount()
   })
 })
