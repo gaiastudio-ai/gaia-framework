@@ -288,6 +288,7 @@ core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
 core	phase-derivation.bats
+core	phase-parallel-orchestrator-next-fix.bats
 core	phase-parallel-orchestrator.bats
 core	pixel-diff-ac1-capture-and-diff.bats
 core	pixel-diff-unit.bats
@@ -585,7 +586,6 @@ scripts-core	next-step.bats
 scripts-core	observability-hardening.bats
 scripts-core	orchestration-warning-wiring.bats
 scripts-core	orchestration-warning.bats
-scripts-core	phase-parallel-orchestrator-next-fix.bats
 scripts-core	plugin-cache-recovery.bats
 scripts-core	pre-warm-script.bats
 scripts-core	probe-verdict-resolver-integration.bats
