@@ -124,7 +124,9 @@ EOF
 
 @test "issue-1403: yaml_single_quote doubles inner apostrophes (unit)" {
   # Source the helper out of the script without executing the pipeline.
-  helper="$(awk '/^yaml_single_quote\(\) \{/,/^\}/' "$SPRINT_STATE")"
+  # Use [{}] bracket expressions instead of \{ / \} — BSD awk (macOS)
+  # treats \{ as an interval-expression opener in ERE mode, not a literal.
+  helper="$(awk '/^yaml_single_quote[(][)] [{]/,/^[}]/' "$SPRINT_STATE")"
   eval "$helper"
   run yaml_single_quote "it's a \"test\""
   # Inner ' doubled, whole value single-quoted; the " is left as-is (safe in a
