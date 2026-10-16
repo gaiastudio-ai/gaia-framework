@@ -438,6 +438,23 @@ _rw_validate_round_id() {
   fi
 }
 
+# Validate a run-id: accept either the round pattern or the standalone pattern.
+# Rejects embedded newlines.
+_rw_validate_run_id() {
+  local id="$1"
+  case "$id" in
+    *$'\n'*) _rw_die 1 "invalid run-id: contains newline" ;;
+  esac
+  # Round pattern or standalone (alphanumeric with hyphens).
+  if [[ "$id" =~ ^round-[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]]; then
+    return 0
+  fi
+  if [[ "$id" =~ ^[A-Za-z0-9][-A-Za-z0-9]*$ ]]; then
+    return 0
+  fi
+  _rw_die 1 "invalid run-id: $id"
+}
+
 # Resolve the HEAD commit SHA from a --repo path.
 # Prints the 40- or 64-hex SHA; exits 1 on failure.
 _rw_resolve_code_tree() {
@@ -1235,6 +1252,7 @@ _rw_cmd_record_run() {
   [ -n "$outcome" ] || _rw_die 1 "record-run: --outcome is required"
 
   _rw_validate_key "$key"
+  _rw_validate_run_id "$run_id"
   _rw_validate_gate "$gate"
   _rw_validate_outcome "$outcome"
 
@@ -1764,7 +1782,7 @@ _rw_cmd_round_info() {
 
   # Check if rounds exist.
   local rounds_len
-  rounds_len="$(yq '.rounds | length // 0' "$reg_path" 2>/dev/null)" || rounds_len="0"
+  rounds_len="$(yq '.rounds | length // 0' "$reg_path" 2>/dev/null)" || _rw_die 2 "round-info: failed to read rounds length"
   if [ "$rounds_len" = "0" ] || [ "$rounds_len" = "null" ]; then
     local _g
     for _g in $_RW_CANONICAL_GATES; do
@@ -1777,7 +1795,7 @@ _rw_cmd_round_info() {
   local target_round_json
   if [ -n "$run_id" ]; then
     export _RW_RUN_ID="$run_id"
-    target_round_json="$(yq -o=json '.rounds[] | select(.run_id == strenv(_RW_RUN_ID))' "$reg_path" 2>/dev/null)" || _rw_die 1 "round-info: round not found for run-id: $run_id"
+    target_round_json="$(yq -o=json '.rounds[] | select(.run_id == strenv(_RW_RUN_ID))' "$reg_path" 2>/dev/null)" || _rw_die 2 "round-info: failed to read round for run-id: $run_id"
     unset _RW_RUN_ID
   else
     target_round_json="$(yq -o=json '.rounds[-1]' "$reg_path" 2>/dev/null)" || _rw_die 2 "round-info: failed to read latest round"
@@ -2362,6 +2380,11 @@ _rw_cmd_record_scope_revision() {
     reassess_json="$(printf '%s' "$reassess_json" | jq --arg g "$rg" '. + [$g]')" || _rw_die 1 "record-scope-revision: jq failed"
   done <<< "$reassess_args"
 
+  # Guard: essential kind must have at least one reassessed gate after parsing.
+  if [ "$kind" = "essential_missing_requirement" ] && [ "$reassess_json" = "[]" ]; then
+    _rw_abort_and_die 1 "record-scope-revision: reassess list is empty after parsing"
+  fi
+
   # Write scope revision entry.
   local rev_tmp
   _rw_mktemp "rev.json" rev_tmp
@@ -2427,7 +2450,7 @@ _rw_cmd_bind_brief() {
 
   export _RW_RUN_ID="$run_id"
   local round_status
-  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
+  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "bind-brief: failed to read round status"
   case "$round_status" in
     open|complete) ;;
     superseded) _rw_abort_and_die 1 "cannot bind brief to a superseded round" ;;
@@ -2436,11 +2459,11 @@ _rw_cmd_bind_brief() {
 
   # Check existing brief.
   local existing_brief_type
-  existing_brief_type="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief | type' "$tmp" 2>/dev/null)" || existing_brief_type=""
+  existing_brief_type="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief | type' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "bind-brief: failed to read existing brief"
   if [ "$existing_brief_type" = "!!map" ]; then
     local ex_path ex_hash
-    ex_path="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.path' "$tmp" 2>/dev/null)" || ex_path=""
-    ex_hash="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.sha256' "$tmp" 2>/dev/null)" || ex_hash=""
+    ex_path="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.path' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "bind-brief: failed to read existing brief path"
+    ex_hash="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.sha256' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "bind-brief: failed to read existing brief hash"
     if [ "$ex_path" = "$brief" ] && [ "$ex_hash" = "$brief_hash" ]; then
       _rw_abort_and_exit  # Idempotent re-bind.
     fi
@@ -2506,7 +2529,7 @@ _rw_cmd_supersede_brief() {
 
   export _RW_RUN_ID="$run_id"
   local round_status
-  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
+  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "supersede-brief: failed to read round status"
   case "$round_status" in
     open|complete) ;;
     superseded) _rw_abort_and_die 1 "cannot supersede brief on a superseded round" ;;
@@ -2515,14 +2538,14 @@ _rw_cmd_supersede_brief() {
 
   # Must have an existing brief.
   local existing_brief_type
-  existing_brief_type="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief | type' "$tmp" 2>/dev/null)" || existing_brief_type=""
+  existing_brief_type="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief | type' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "supersede-brief: failed to read existing brief"
   [ "$existing_brief_type" = "!!map" ] || \
     _rw_abort_and_die 1 "supersede-brief: no brief bound to supersede"
 
   # Preserve old brief in history.
   local old_path old_hash
-  old_path="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.path' "$tmp" 2>/dev/null)" || old_path=""
-  old_hash="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.sha256' "$tmp" 2>/dev/null)" || old_hash=""
+  old_path="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.path' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "supersede-brief: failed to read existing brief path"
+  old_hash="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.sha256' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "supersede-brief: failed to read existing brief hash"
 
   local hist_tmp
   _rw_mktemp "hist.json" hist_tmp

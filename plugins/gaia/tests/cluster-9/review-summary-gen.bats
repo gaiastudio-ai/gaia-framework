@@ -406,8 +406,10 @@ SYN
   cmp "$stripped" "$golden"
 
   # No round-awareness fields present without new flags.
-  ! grep -q '^run_id:' "$first"
-  ! grep -q '^commit_sha:' "$first"
+  run grep -q '^run_id:' "$first"
+  [ "$status" -ne 0 ]
+  run grep -q '^commit_sha:' "$first"
+  [ "$status" -ne 0 ]
   ! grep -q '^requirement_version:' "$first"
 }
 
@@ -442,7 +444,8 @@ SYN
     --requirement-version "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   [ "$status" -eq 2 ]
   # Must not be "unknown flag" — that means the flag is not implemented yet.
-  ! grep -qi "unknown flag" <<<"$output"
+  run grep -qi "unknown flag" <<<"$output"
+  [ "$status" -ne 0 ]
   grep -qi "invalid\|pattern\|run.id\|format" <<<"$output"
 
   # Invalid commit-sha.
@@ -451,7 +454,8 @@ SYN
     --commit-sha "not-hex" \
     --requirement-version "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   [ "$status" -eq 2 ]
-  ! grep -qi "unknown flag" <<<"$output"
+  run grep -qi "unknown flag" <<<"$output"
+  [ "$status" -ne 0 ]
 
   # Invalid requirement-version.
   run "$SUMMARY_GEN" --story "$STORY_KEY" \
@@ -459,5 +463,6 @@ SYN
     --commit-sha "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     --requirement-version "not-a-sha256"
   [ "$status" -eq 2 ]
-  ! grep -qi "unknown flag" <<<"$output"
+  run grep -qi "unknown flag" <<<"$output"
+  [ "$status" -ne 0 ]
 }
