@@ -155,11 +155,27 @@ _build_verdict_cache() {
 # Build the verdict cache once (single awk pass over the entire decision log).
 _verdict_cache=$(_build_verdict_cache)
 
-# Two-stage candidate selection:
-#   Stage 1 — find narrows to story.md (per-story dirs) and legacy E*-S*-*.md
+# Three-stage candidate selection:
+#   Stage 1 — find covers the three supported story layouts:
+#       a) story.md       (modern per-story dirs, any depth)
+#       b) E*-S*-*.md     (legacy nested layout, under */stories/ dirs)
+#       c) E*-S*-*.md     (legacy flat layout, root of IMPLEMENTATION_ARTIFACTS)
+#     Explicitly excluded from the find:
+#       - */reviews/* directories (review reports, tdd-progress, etc.)
+#   Stage 1b — a single grep -z -v filters the NUL-delimited path stream,
+#     dropping known non-story report filenames by exact slug match.
+#     A story whose slug merely ends in a report word (e.g.,
+#     *-excludes-review-summary.md) is NOT excluded because the regex
+#     anchors to /E<digits>-S<digits>-<suffix>.md$ (digits only, then
+#     the suffix with no extra slug words).
 #   Stage 2 — grep -l pre-selects only files containing 'status: ready-for-dev'
-# Non-story markdown (review reports, assessments, etc.) is never opened.
 # Collect candidate story files: ready-for-dev + sprint_id null + PASSED verdict.
+
+# ERE pattern for known non-story report basenames — exact slug match only.
+# Covers every report type the framework writes in the E<n>-S<n>-<type>.md and
+# E<n>-S<n>-<type>-pass<N>.md naming conventions.
+_REPORT_NAME_RE='/E[0-9]+-S[0-9]+-(review-summary|review|plan|review-report|test-automate|review-perf|security-review|code-review|qa-tests|test-review|performance-review|tdd-progress|test-automation)(-pass[0-9]+)?\.md$'
+
 matches=()
 while IFS= read -r -d '' story_file; do
   [[ -n "$story_file" ]] || continue
@@ -191,9 +207,17 @@ while IFS= read -r -d '' story_file; do
   [[ "$verdict" == "PASSED" ]] || continue
 
   matches+=("$(printf '%s\t%s\t%s' "$key" "$title" "$story_file")")
-done < <(find "$IMPLEMENTATION_ARTIFACTS" -type f \
-  \( -name 'story.md' -o -name 'E[0-9]*-S[0-9]*-*.md' \) \
-  -exec grep -l --null 'status: ready-for-dev' {} + 2>/dev/null || true)
+done < <(
+  {
+    # Layout a+b: story.md + legacy nested E*-S*-*.md under */stories/
+    find "$IMPLEMENTATION_ARTIFACTS" -type f -not -path '*/reviews/*' \
+      \( -name 'story.md' -o \( -name 'E[0-9]*-S[0-9]*-*.md' -path '*/stories/*' \) \) -print0
+    # Layout c: legacy flat E*-S*-*.md at the implementation-artifacts root
+    find "$IMPLEMENTATION_ARTIFACTS" -maxdepth 1 -type f \
+      -name 'E[0-9]*-S[0-9]*-*.md' -print0
+  } | grep -z -v -E "$_REPORT_NAME_RE" \
+    | xargs -0 grep -l --null 'status: ready-for-dev' 2>/dev/null || true
+)
 
 # Sort by key ascending and emit.
 if [[ ${#matches[@]} -gt 0 ]]; then
