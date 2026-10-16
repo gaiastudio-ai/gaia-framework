@@ -146,19 +146,19 @@ $ppe_block"
   # Check for leaked internal IDs (FR-nnn, NFR-nnn, SR-nnn, ADR-nnn,
   # E<n>-S<n>, TC-nnn, T-<n>, F-<n>, AF-20xx, AI-20xx, "per the PRD")
   # This bats file is exempt for regex literals.
-  if printf '%s\n' "$combined" | grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|SR-[0-9]{2,}|ADR-[0-9]{2,}'; then
+  if grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|SR-[0-9]{2,}|ADR-[0-9]{2,}' <<< "$combined"; then
     echo "Found leaked requirement/ADR ID in glossary entries" >&2
     return 1
   fi
-  if printf '%s\n' "$combined" | grep -Eq 'E[0-9]+-S[0-9]+'; then
+  if grep -Eq 'E[0-9]+-S[0-9]+' <<< "$combined"; then
     echo "Found leaked story key in glossary entries" >&2
     return 1
   fi
-  if printf '%s\n' "$combined" | grep -Eq 'TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}'; then
+  if grep -Eq 'TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}' <<< "$combined"; then
     echo "Found leaked test/cascade ID in glossary entries" >&2
     return 1
   fi
-  if printf '%s\n' "$combined" | grep -qi 'per the PRD'; then
+  if grep -qi 'per the PRD' <<< "$combined"; then
     echo "Found internal doc reference in glossary entries" >&2
     return 1
   fi
@@ -168,7 +168,7 @@ $ppe_block"
   # Extract the three updated descriptions from gaia-help.csv
   for code in sprint-plan run-sprint sprint-status; do
     desc=$(awk -F',' -v c="$code" '$4 ~ "\"?"c"\"?"' "$HELP_CSV")
-    if printf '%s\n' "$desc" | grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}'; then
+    if grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}' <<< "$desc"; then
       echo "Found leaked ID in gaia-help.csv description for $code" >&2
       return 1
     fi
@@ -176,7 +176,7 @@ $ppe_block"
   # Extract the three updated descriptions from workflow-manifest.csv
   for name in sprint-planning run-sprint sprint-status; do
     desc=$(awk -F',' -v n="$name" '$1 ~ "\"?"n"\"?"' "$MANIFEST_CSV")
-    if printf '%s\n' "$desc" | grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}'; then
+    if grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}' <<< "$desc"; then
       echo "Found leaked ID in workflow-manifest.csv description for $name" >&2
       return 1
     fi
@@ -188,11 +188,11 @@ $ppe_block"
   grep -qi 'Terminology' "$HELP_SKILL"
   # Extract lines around the Terminology note
   term_block=$(grep -i 'Terminology' "$HELP_SKILL" -A10 -B1)
-  if printf '%s\n' "$term_block" | grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}'; then
+  if grep -Eq 'FR-[0-9]{2,}|NFR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}' <<< "$term_block"; then
     echo "Found leaked ID in SKILL.md Terminology note" >&2
     return 1
   fi
-  if printf '%s\n' "$term_block" | grep -qi 'per the PRD'; then
+  if grep -qi 'per the PRD' <<< "$term_block"; then
     echo "Found internal doc reference in Terminology note" >&2
     return 1
   fi
