@@ -8,6 +8,7 @@
 # `sed -i` — all writes MUST route through sprint-state.sh subcommands.
 
 setup() {
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
   PLUGIN_DIR="${BATS_TEST_DIRNAME}/../skills"
   SPRINT_PLAN_DIR="$PLUGIN_DIR/gaia-sprint-plan"
   CORRECT_COURSE_DIR="$PLUGIN_DIR/gaia-correct-course"

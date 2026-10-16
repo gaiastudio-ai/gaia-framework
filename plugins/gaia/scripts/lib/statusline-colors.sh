@@ -9,7 +9,7 @@
 #   COLOR_WARN   = yellow            — warnings, dirty git tree
 #   COLOR_OK     = green             — success / fresh
 #   COLOR_MUTED  = grey              — secondary / subdued text
-#   COLOR_UPDATE = bold + UPDATE color — update-available signal (D10)
+#   COLOR_UPDATE = bold + UPDATE color — update-available signal
 #   COLOR_DIRTY  = orange            — git-dirty marker
 #
 # Two emission modes:

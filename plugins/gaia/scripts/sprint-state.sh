@@ -1641,6 +1641,15 @@ EOF
 cmd_reconcile() {
   local dry_run="$1"
 
+  # Guard: when there is no GAIA project (no sprint-status.yaml), skip the
+  # mkdir and emit the summary line only.  Running reconcile in an arbitrary
+  # non-project directory must not create any files on disk.
+  if [ ! -f "$SPRINT_STATUS_YAML" ]; then
+    printf '%s: error: sprint-status.yaml not readable: %s\n' "$SCRIPT_NAME" "$SPRINT_STATUS_YAML" >&2
+    printf 'RECONCILE SUMMARY: 0 stories checked, 0 divergences CORRECTED\n'
+    return 1
+  fi
+
   mkdir -p "$(dirname "$SPRINT_STATUS_LOCK")" 2>/dev/null || true
 
   # Counters persisted across the subshell via a side-channel file.
@@ -3578,6 +3587,13 @@ main() {
       -maxdepth 2 -name '*.tmp.??????' -mmin +60 -delete 2>/dev/null || true
   fi
 
+  local _dispatch_rc=0
+  set +e
+  ( set -e
+  # A subshell does not inherit the parent's traps: re-arm the temp-file
+  # cleanup so writers registered during dispatch are still reclaimed on
+  # exit or on INT/TERM.
+  trap '_cleanup_tmps' EXIT INT TERM
   case "$subcmd" in
     init|advance)
       # Bootstrap a fresh sprint-status.yaml (init) or advance to the next
@@ -3686,6 +3702,61 @@ main() {
     rollover)
       cmd_rollover "$rollover_from" "$to_state" "$rollover_keys" ;;
   esac
+  )
+  _dispatch_rc=$?
+  set -e
+  [ "$_dispatch_rc" -eq 0 ] || exit "$_dispatch_rc"
+
+  # --- Post-mutation snapshot hook ---
+  # Best-effort, background, detached. Never fails the parent.
+  local _run_snapshot_hook=0
+  case "$subcmd" in
+    init|advance|transition|inject|set-phase|set-story-sprint|\
+    set-goals|update-goals|set-shape|set-review-justification|\
+    rollover|record-escalation-override)
+      _run_snapshot_hook=1 ;;
+    reconcile)
+      [ "${reconcile_dry_run:-0}" != "1" ] && _run_snapshot_hook=1 || _run_snapshot_hook=0 ;;
+    *) _run_snapshot_hook=0 ;;
+  esac
+  if [ "${_run_snapshot_hook:-0}" = "1" ] \
+     && [ "${GAIA_SNAPSHOT_HOOK_DISABLE:-}" != "1" ] \
+     && [ "${GAIA_SNAPSHOT_HOOK_ACTIVE:-}" != "1" ]; then
+    local _hook_dir
+    _hook_dir="$(cd "$(dirname "$0")" && pwd)"
+    local _hook_script=""
+    local _hook_plugin_root=""
+    # Probe: sibling (scripts/ copy) then three levels up (dev-story copy).
+    # Reference only basenames after the directory variable so the firewall
+    # guard's regex extractor does not see a spurious relative path.
+    local _hook_scripts_dir="$_hook_dir"
+    if [ -x "${_hook_scripts_dir}/sprint-progress-snapshot.sh" ]; then
+      _hook_script="${_hook_scripts_dir}/sprint-progress-snapshot.sh"
+    else
+      _hook_plugin_root="$(cd "${_hook_dir}/../../.." 2>/dev/null && pwd)" || true
+      if [ -n "${_hook_plugin_root:-}" ]; then
+        _hook_scripts_dir="${_hook_plugin_root}/scripts"
+        if [ -x "${_hook_scripts_dir}/sprint-progress-snapshot.sh" ]; then
+          _hook_script="${_hook_scripts_dir}/sprint-progress-snapshot.sh"
+        fi
+      fi
+    fi
+    if [ -n "$_hook_script" ]; then
+      # Source exec-with-timeout from the resolved scripts directory
+      local _hook_lib_dir="${_hook_scripts_dir}/lib"
+      if [ -f "${_hook_lib_dir}/exec-with-timeout.sh" ]; then
+        # shellcheck source=lib/exec-with-timeout.sh
+        . "${_hook_lib_dir}/exec-with-timeout.sh"
+      fi
+      if command -v exec_with_timeout >/dev/null 2>&1; then
+        (
+          export GAIA_SNAPSHOT_HOOK_ACTIVE=1
+          export PROJECT_ROOT SPRINT_STATUS_YAML IMPLEMENTATION_ARTIFACTS
+          exec_with_timeout 10 "$_hook_script"
+        ) </dev/null >/dev/null 2>&1 &
+      fi
+    fi
+  fi || true
 
 }
 

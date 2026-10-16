@@ -29,7 +29,7 @@ This skill is the **canonical reference implementation** for the six review skil
 - The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
 - The story MUST be in `review` status. If not, fail with "story must be in review status before code review".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
-- The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
+- The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
 - Mapping to Review Gate canonical vocabulary (inline, no separate script): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
 - Determinism settings: `temperature: 0`, `model: claude-opus-4-7`, `prompt_hash` recorded in the report header. Re-running with identical `analysis-results.json` MUST yield findings that match by category and severity; textual variation is allowed.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
@@ -247,6 +247,26 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
 
+**Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`):
+
+```bash
+# For each LLM finding (parent context — fork isolation preserved):
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+  --story {story_key} --defect "{finding}" --type {type} \
+  --severity {severity} --gate code-review ...
+
+# Record this gate's run:
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+  --story {story_key} --run-id {run_id} --gate code-review --outcome completed
+
+# Resolve against the register:
+${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
+  --register {register_path} \
+  --analysis-results .gaia/state/review/code-review/{story_key}/analysis-results.json
+```
+
+**Legacy path.** Without a story key (and therefore no register), the existing invocation is preserved:
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --analysis-results .gaia/state/review/code-review/{story_key}/analysis-results.json \
@@ -256,7 +276,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
 The resolver applies strict first-match-wins precedence:
 1. Any check `status: errored` → **BLOCKED**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
-3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
+3. Register rule (when `--register`): unresolved blocker → **REQUEST_CHANGES**. LLM-Critical rule (legacy): any Critical → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
 Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Review Gate canonical vocabulary is inline (no separate `verdict-normalizer.sh`):**

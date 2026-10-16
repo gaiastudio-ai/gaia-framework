@@ -48,6 +48,21 @@ jobs:
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
         with:
           bats-version: 1.10.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: '22.12'
+      # Exact CLI version from a committed lockfile: npm ci checks every
+      # package against its integrity hash. Needs the npm registry.
+      - name: Install Claude Code CLI (pinned version and lockfile integrity)
+        env:
+          CLAUDE_CODE_DISABLE_TELEMETRY: '1'
+          NO_COLOR: '1'
+        run: |
+          # Installed outside the checkout so no repository scan sees node_modules.
+          mkdir -p "$RUNNER_TEMP/claude-cli"
+          cp .github/ci-tools/claude-cli/package.json .github/ci-tools/claude-cli/package-lock.json "$RUNNER_TEMP/claude-cli/"
+          npm ci --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund
+          echo "$RUNNER_TEMP/claude-cli/node_modules/.bin" >> "$GITHUB_PATH"
       # kcov is not in the default apt repositories on Ubuntu 24.04 (noble),
       # which caused `apt-get install -y jq kcov` to fail with "E: Unable to
       # locate package kcov" on every PR and block the bats-tests job before
@@ -102,6 +117,20 @@ jobs:
             --threshold-seconds 240 \
             --label bats-tests \
             -- bash plugins/gaia/tests/run-with-coverage.sh
+      - name: Validate plugin (strict mode)
+        # Runs even when the bats step failed, so its signal is never hidden.
+        if: ${{ !cancelled() }}
+        env:
+          CLAUDE_CODE_DISABLE_TELEMETRY: '1'
+          NO_COLOR: '1'
+        run: claude plugin validate --strict plugins/gaia
+      - name: Run plugin mod tests
+        # Runs even when the bats step failed, so its signal is never hidden.
+        if: ${{ !cancelled() }}
+        env:
+          CLAUDE_CODE_DISABLE_TELEMETRY: '1'
+          NO_COLOR: '1'
+        run: claude plugin test plugins/gaia
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
@@ -696,6 +725,7 @@ jobs:
             plugins/gaia/skills/gaia-doctor/scripts/install-tools.sh
             plugins/gaia/scripts/lib/write-val-envelope.sh
             plugins/gaia/scripts/sprint-state.sh
+            plugins/gaia/scripts/sprint-progress-snapshot.sh
             plugins/gaia/scripts/review-gate.sh
             plugins/gaia/scripts/run-tests.sh
           )
@@ -726,3 +756,7 @@ jobs:
           if [ -f plugins/gaia/tests/af-2026-05-31-1-test12-findings.bats ]; then
             bats plugins/gaia/tests/af-2026-05-31-1-test12-findings.bats
           fi
+          # The sprint progress snapshot script must run on bash 3.2. On
+          # macOS this runs it with the stock /bin/bash (3.2); elsewhere only
+          # the static bash-4-construct check runs and the rest skip.
+          bats plugins/gaia/tests/sprint-progress-snapshot-bash32.bats

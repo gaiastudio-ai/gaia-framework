@@ -31,7 +31,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - This skill is READ-ONLY. Do NOT attempt to call Write or Edit tools -- the fork context allowlist enforces this.
 - Performance analysis MUST be dispatched to the Juno performance subagent -- do NOT perform inline analysis in the fork context.
 - The verdict uses PASSED or FAILED (canonical Review Gate vocabulary, per CLAUDE.md).
-- Verdict logic: NO critical or high severity findings = PASSED; ANY critical or high severity finding = FAILED.
+- Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`). The verdict is FAILED if and only if an unresolved blocker exists.
 - Auto-pass: if zero performance-relevant files are changed (only markdown, config, test files, static assets, CSS-only, copy/translations, lock files), verdict is PASSED with note "No performance-relevant code changes -- auto-passed".
 - Call `review-gate.sh` to update the Review Gate row -- do NOT manually edit the story file.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
@@ -114,9 +114,18 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
 
 ### Step 5 -- Verdict
 
-- If NO critical or high severity performance issues: verdict is **PASSED**
-- If ANY critical or high severity issue found: verdict is **FAILED** -- list blocking findings
+- The verdict is **PASSED** when no unresolved blocker exists, **FAILED** otherwise (per the shared findings rubric).
 - The verdict MUST appear as a machine-readable keyword in the report output.
+- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`). The resolver runs `--register` without `--analysis-results` (this gate saves no analysis document):
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+    --story {story_key} --defect "{finding}" --type {type} \
+    --severity {severity} --gate performance-review ...
+  ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+    --story {story_key} --run-id {run_id} --gate performance-review --outcome completed
+  ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh --register {register_path}
+  ```
+- **Legacy path.** Without a story key (and therefore no register) the reviewer maps findings to PASSED/FAILED per the shared blocker definition.
 
 ### Step 6 -- Write Performance Review Report
 

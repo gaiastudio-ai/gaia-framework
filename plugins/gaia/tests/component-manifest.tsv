@@ -129,6 +129,7 @@ core	dev-story-yolo-activation.bats
 core	discover-inputs.bats
 core	discovery-firewall.bats
 core	discovery-leak-gate.bats
+core	dispatch-description-convention.bats
 core	dispatch-provenance-teammate.bats
 core	distribution-schema.bats
 core	doc-site-retirement.bats
@@ -217,6 +218,7 @@ core	e85-s13-reconciler-writes-framework-version.bats
 core	embedded-dev-wiring.bats
 core	evidence-judgment-parity.bats
 core	expected-report-vocabulary.bats
+core	findings-register.bats
 core	framework-version.bats
 core	gaia-add-feature-setup.bats
 core	gaia-changelog-story-link.bats
@@ -264,6 +266,9 @@ core	manual-test-docs.bats
 core	meeting-dispatch-provenance-integration.bats
 core	meeting-val-bridge-anti-pattern.bats
 core	migrate-stories-to-canonical-layout.bats
+core	mod-empty-body.bats
+core	mod-mutant-kill.bats
+core	mod-validate-strict.bats
 core	mode-b-docs.bats
 core	mode-b-parity.bats
 core	never-built-commands.bats
@@ -272,6 +277,7 @@ core	no-bare-gaia-path-antipattern.bats
 core	no-bsd-awk-incompatible-anchors.bats
 core	no-leaked-ids-in-prose.bats
 core	no-leaked-ids-in-test-names.bats
+core	no-stray-gaia-dir.bats
 core	non-git-cwd-guard.bats
 core	orchestrator-file-list-intersection.bats
 core	parallel-execution-config.bats
@@ -336,6 +342,7 @@ core	sprint-close-env-isolation-guard.bats
 core	sprint-close-sentinel-unconditional.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
 core	sprint-plan-phase-rendering.bats
+core	sprint-progress-snapshot-hook.bats
 core	sprint-review-yolo-fallback.bats
 core	sprint-state-goals-root-isolation.bats
 core	sprint-state-inject.bats
@@ -343,6 +350,9 @@ core	sprint-state-split-repo-resolution.bats
 core	sprint-state-ssot-parity.bats
 core	sprint-state-wrapper-sync.bats
 core	sprint-state.bats
+core	sprint-status-dashboard-cache.bats
+core	sprint-status-mod-config.bats
+core	sprint-status-mod-docs.bats
 core	stacks-schema.bats
 core	stale-comment-sweep.bats
 core	stale-propagation.bats
@@ -351,6 +361,7 @@ core	statusline/statusline-install.bats
 core	statusline/statusline-refresh.bats
 core	statusline/statusline-runtime.bats
 core	statusline/statusline-self-heal.bats
+core	statusline/statusline-sprint-progress.bats
 core	statusline/statusline-static-check.bats
 core	statusline/statusline-two-line-layout.bats
 core	step-boundary-telemetry.bats
@@ -560,6 +571,11 @@ scripts-core	memory-writer.bats
 scripts-core	migrate-config-split.bats
 scripts-core	migrate-placeholder-substitution.bats
 scripts-core	migrate-test-environment-path.bats
+scripts-core	mod-cache-contract.bats
+scripts-core	mod-cap-detect-direct.bats
+scripts-core	mod-interleave.bats
+scripts-core	mod-sanitize.bats
+scripts-core	mod-shell-static-audit.bats
 scripts-core	next-step.bats
 scripts-core	observability-hardening.bats
 scripts-core	orchestration-warning-wiring.bats
@@ -589,6 +605,10 @@ scripts-core	skill-md-claude-skill-dir-anti-pattern.bats
 scripts-core	skills/e117-s5-stack-dev-parity.bats
 scripts-core	sm-capacity-check-unchanged.bats
 scripts-core	spikes/E113-S1/detect-affected.bats
+scripts-core	sprint-progress-snapshot-bash32.bats
+scripts-core	sprint-progress-snapshot-enforcement.bats
+scripts-core	sprint-progress-snapshot-perf.bats
+scripts-core	sprint-progress-snapshot.bats
 scripts-core	stale-flag-registry.bats
 scripts-core	statusline/statusline-context-bar.bats
 scripts-core	statusline/statusline-git-dirty.bats
@@ -687,6 +707,7 @@ scripts-lib	research-mode-b.bats
 scripts-lib	resolve-env-kind.bats
 scripts-lib	resolve-publish-adapter.bats
 scripts-lib	safe-grep-log.bats
+scripts-lib	scan-stranded-ready.bats
 scripts-lib	schema-awareness-check.bats
 scripts-lib	shell-idioms.bats
 scripts-lib	skills/mode-b-lifecycle-docs.bats

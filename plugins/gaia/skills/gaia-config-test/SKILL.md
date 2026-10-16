@@ -67,4 +67,4 @@ Editing is comment-preserving: pre-existing comments and formatting OUTSIDE the 
 
 ## Notes
 
-- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `test_execution`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list. This skill ONLY edits `test_execution`.

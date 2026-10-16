@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sprint Status Mod - GAIA Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-logo">GAIA Docs</a>
+      <nav>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="glossary.html">Glossary</a></li>
+          <li><a href="lifecycle-diagram.html">Lifecycle Diagram</a></li>
+          <li><a href="gaia-brain.html">GAIA Brain</a></li>
+          <li><a href="mode-b.html">Mode B -- Agent Teams</a></li>
+          <li><a href="gaia-run-sprint.html">Running a Sprint</a></li>
+          <li><a href="sprint-status-mod.html" class="active">Sprint Status Mod</a></li>
+        </ul>
+        <p class="sidebar-section-title">Categories</p>
+        <ul>
+          <li><a href="categories/getting-started.html">Getting Started</a></li>
+          <li><a href="categories/discovery-research.html">Discovery &amp; Research</a></li>
+          <li><a href="categories/planning.html">Planning</a></li>
+          <li><a href="categories/sprint-management.html">Sprint Management</a></li>
+          <li><a href="categories/development.html">Development</a></li>
+          <li><a href="categories/testing.html">Testing</a></li>
+          <li><a href="categories/reviews.html">Reviews</a></li>
+          <li><a href="categories/validation.html">Validation</a></li>
+          <li><a href="categories/deployment.html">Deployment</a></li>
+          <li><a href="categories/configuration.html">Configuration</a></li>
+          <li><a href="categories/documentation.html">Documentation &amp; Editorial</a></li>
+          <li><a href="categories/creative.html">Creative &amp; Collaboration</a></li>
+          <li><a href="categories/internal.html">Internal Skills</a></li>
+        </ul>
+        <p class="sidebar-section-title">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#sprint-command">The /sprint command</a></li>
+          <li><a href="#sidebar">Sidebar</a></li>
+          <li><a href="#band">Band</a></li>
+          <li><a href="#statusline-segment">Status line segment</a></li>
+          <li><a href="#dashboard">Enhanced dashboard</a></li>
+          <li><a href="#agent-activity">Agent activity</a></li>
+          <li><a href="#action-needed">ACTION NEEDED indicators</a></li>
+          <li><a href="#configuration">Configuration</a></li>
+          <li><a href="#degradation">Graceful degradation</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="separator">/</span>
+        Sprint Status Mod
+      </nav>
+
+      <h1>Sprint Status Mod</h1>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          The sprint status mod adds a live sprint progress view to Claude
+          Code. It provides four complementary surfaces that keep sprint
+          status visible without running a command:
+        </p>
+        <ul>
+          <li><strong><a href="#sidebar">Sidebar</a></strong> -- a detailed
+            sprint dashboard in a pane alongside your conversation.</li>
+          <li><strong><a href="#band">Band</a></strong> -- a single summary
+            line above the prompt.</li>
+          <li><strong><a href="#statusline-segment">Status line segment</a></strong>
+            -- sprint progress in the persistent status line.</li>
+          <li><strong><a href="#dashboard">Enhanced <code>/gaia-sprint-status</code></a></strong>
+            -- added columns and phase grouping in the text dashboard.</li>
+        </ul>
+        <p>
+          All four surfaces read from a shared snapshot cache that is
+          refreshed automatically every 30 seconds and on every
+          <code>/sprint</code> toggle.
+        </p>
+      </section>
+
+      <!-- /sprint command -->
+      <section id="sprint-command">
+        <h2>The <code>/sprint</code> command</h2>
+        <p>
+          Type <code>/sprint</code> in the Claude Code prompt to toggle the
+          sidebar open or closed. When no sprint is active, the command
+          responds <em>"No active sprint"</em> and takes no further action.
+        </p>
+        <p>
+          Three other controls also toggle the sidebar:
+        </p>
+        <ul>
+          <li><strong>Band hotkey</strong> -- type the digit
+            <code>9</code> on an empty prompt.</li>
+          <li><strong>Band button</strong> -- click the toggle on the band
+            line above the prompt.</li>
+          <li><strong>Esc</strong> -- closes the sidebar when it is open.</li>
+        </ul>
+
+        <h3>Pane placement</h3>
+        <p>
+          Claude Code decides where the pane appears at runtime. In a wide
+          fullscreen terminal the sidebar docks on the right; in a narrower
+          or non-fullscreen terminal it appears inline above the prompt.
+        </p>
+
+        <h3>Auto-open</h3>
+        <p>
+          When a sprint is active, the sidebar opens automatically at
+          session start if the terminal is at least 144 columns wide. After
+          you have manually opened it at least once, the auto-open threshold
+          drops to 110 columns. You can open the sidebar manually at any
+          terminal width.
+        </p>
+      </section>
+
+      <!-- Sidebar -->
+      <section id="sidebar">
+        <h2>Sidebar</h2>
+        <p>
+          The sidebar is the primary sprint view. Its sections, from top to
+          bottom:
+        </p>
+
+        <h3>ACTION NEEDED banner</h3>
+        <p>
+          Appears at the top only when one or more items require attention.
+          Each entry shows what needs action, a suggested command, and a
+          since date. See <a href="#action-needed">ACTION NEEDED
+          indicators</a> for the full list of conditions.
+        </p>
+
+        <h3>Header and aggregate</h3>
+        <p>
+          The sprint identifier and a green live indicator, followed by the
+          first goal (text wraps over as many lines as needed). Below it: a
+          summary showing done/total stories, done/total points, and
+          overall percentage.
+        </p>
+
+        <h3>Segmented bar</h3>
+        <p>
+          A horizontal bar with one block per status group, each
+          proportional to that group's summed points:
+        </p>
+        <ul>
+          <li>Done (green)</li>
+          <li>Review (blue)</li>
+          <li>In-progress (yellow)</li>
+          <li>Blocked (red)</li>
+          <li>Ready-for-dev (gray)</li>
+          <li>Backlog/validating (dim)</li>
+        </ul>
+        <p>
+          Every present status gets at least one column. Directly under the
+          bar, a colour key labels each status block.
+        </p>
+        <p>
+          When <code>NO_COLOR</code> is set, the bar falls back to text
+          counts per status. In ASCII mode, single-character markers replace
+          the coloured blocks.
+        </p>
+
+        <h3>Sub-line</h3>
+        <p>
+          Shows the active dependency phase, the current day
+          (<code>Day N of T</code>), a pace flag (starting, on pace,
+          behind pace, or overdue), and the number of blocked stories (in
+          red when greater than zero). Parts are separated by a middle dot
+          (<code>&middot;</code>).
+        </p>
+
+        <h3>Readiness pills</h3>
+        <p>
+          Two labels that always show whether the sprint has reached key
+          milestones, each with a <code>( yes )</code> or
+          <code>( no )</code> indicator: <em>Ready for sprint review</em>
+          and <em>Ready to close sprint</em>. When stories are ready to
+          mark done, a count appears. A drift/waiting line appears under
+          the pills when the cache reports status mismatches between story
+          files and sprint state, showing the count and the first entry.
+        </p>
+
+        <h3>NOW block</h3>
+        <p>
+          Lists every in-progress, review, or blocked story with its task
+          progress (<code>tasks X/Y</code>), gate count (<code>gates X/6</code>), a blocked-since
+          marker when applicable, a drift marker when the story is behind
+          schedule, and a HIGH-risk indicator. When nothing is actively
+          being worked on, the block reads <em>"No active work"</em>.
+        </p>
+        <p>
+          Agent activity sub-lines appear under each story when agents are
+          running against it. See <a href="#agent-activity">Agent
+          activity</a>.
+        </p>
+
+        <h3>Phase matrix</h3>
+        <p>
+          A compact grid showing every dependency phase. Done phases are
+          collapsed; the active phase is expanded to show each story's
+          stage (ready, dev, review, done); future phases are dimmed.
+          Unphased stories appear at the end. HIGH-risk stories are marked.
+        </p>
+        <p>
+          A glyph legend appears directly above the matrix labeling the
+          status glyphs for each status present in the sprint.
+        </p>
+
+        <h3>Selected-story detail</h3>
+        <p>
+          Navigate story rows with Tab, arrow keys, or Enter to expand a
+          story's detail view. The detail shows the full task checklist,
+          the six-gate review table, and the manual-test state when
+          applicable.
+        </p>
+
+        <h3>Close button</h3>
+        <p>
+          The pane shows a <code>9 close</code> button that dismisses the
+          sidebar. The digit <code>9</code> on an empty prompt reopens it.
+        </p>
+
+        <h3>Status glyphs</h3>
+        <table>
+          <thead>
+            <tr><th>Status</th><th>Unicode</th><th>ASCII</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Done</td><td>&#10003;</td><td><code>[x]</code></td></tr>
+            <tr><td>Review</td><td>&#9737;</td><td><code>[o]</code></td></tr>
+            <tr><td>In-progress</td><td>&#9681;</td><td><code>[~]</code></td></tr>
+            <tr><td>Blocked</td><td>&#10005;</td><td><code>[!]</code></td></tr>
+            <tr><td>Ready-for-dev</td><td>&#183;</td><td><code>[-]</code></td></tr>
+            <tr><td>Backlog</td><td>&#8211;</td><td><code>[ ]</code></td></tr>
+          </tbody>
+        </table>
+
+        <h3>Example sidebar layout</h3>
+        <pre><code>&#9888; ACTION NEEDED
+  Manual tests due for E5-S12
+    &#8594; /gaia-test-manual
+    since Oct 10
+
+SPRINT  sprint-12  &#9679; live
+  Improve search performance
+
+  3 of 6 stories &middot; 12 of 21 pts &middot; 57%
+
+  &#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;
+  &#9608; done  &#9608; review  &#9608; in-progress  &#9608; ready-for-dev
+
+  Phase 2 of 3 &middot; Day 5 of 10 &middot; on pace &middot; 0 blocked
+
+  Ready for sprint review  ( no )
+  Ready to close sprint   ( no )
+
+  NOW
+  &#9681; E3-S7 refactor-queries  tasks 3/5  gates 4/6 HIGH
+    &#8594; dev-fullstack: implementing task 4
+  &#9737; E5-S18 update-search-api  tasks 1/4  gates 2/6
+
+  &#10003; done  &#9737; review  &#9681; in-progress  &middot; ready-for-dev
+                         READY  DEV  REVIEW DONE
+  &#10003; Phase 1 &middot; 3 stories &middot; 12 pts
+  PHASE 2 (active)
+   E3-S7 Refactor queries   &#10003;    &#9676;    &#9675;    &#9675; HIGH
+   E5-S18 Update search API   &#10003;    &#10003;    &#9676;    &#9675;
+  PHASE 3  E5-S20</code></pre>
+      </section>
+
+      <!-- Band -->
+      <section id="band">
+        <h2>Band</h2>
+        <p>
+          The band is a single summary line rendered above the Claude Code
+          prompt. It reads:
+        </p>
+        <pre><code>9: sprint-12 &middot; 12/21 pts &middot; 3/6 done &middot; 0 blocked</code></pre>
+        <p>
+          When ACTION NEEDED items exist in the same session, the band
+          switches to a warning variant:
+        </p>
+        <pre><code>&#9888; ACTION NEEDED &middot; 2 items since Oct 10 &#8594; press 9</code></pre>
+        <p>
+          The band is absent when no sprint is active.
+        </p>
+      </section>
+
+      <!-- Status line segment -->
+      <section id="statusline-segment">
+        <h2>Status line segment</h2>
+        <p>
+          When a sprint is active, the GAIA
+          <a href="commands/gaia-statusline.html">status line</a> includes a
+          sprint progress segment:
+        </p>
+        <pre><code>sprint-12 57%</code></pre>
+        <p>
+          When an ACTION NEEDED condition is active (manual tests due, user
+          action items, or sprint ready to close), the segment is prefixed
+          with a warning indicator:
+        </p>
+        <pre><code>! sprint-12 57%</code></pre>
+        <p>
+          If the snapshot cache is missing or unreadable, the segment falls
+          back to showing the sprint identifier only (no percentage, no
+          warning). When no sprint is active, the segment is absent.
+        </p>
+        <p>
+          <strong>Upgrade note:</strong> the sprint progress segment
+          appears automatically via status line self-heal after a plugin
+          update. If it does not appear, run
+          <a href="commands/gaia-statusline-refresh.html"><code>/gaia-statusline-refresh</code></a>
+          to install the updated runtime.
+        </p>
+      </section>
+
+      <!-- Enhanced dashboard -->
+      <section id="dashboard">
+        <h2>Enhanced <code>/gaia-sprint-status</code> dashboard</h2>
+        <p>
+          The <a href="commands/gaia-sprint-status.html"><code>/gaia-sprint-status</code></a>
+          text dashboard includes two additional columns:
+        </p>
+        <ul>
+          <li><strong>Tasks X/Y</strong> -- completed vs total tasks for
+            each story.</li>
+          <li><strong>Gates X/6</strong> -- passed review gates out of the
+            six standard gates.</li>
+        </ul>
+        <p>
+          Stories are grouped by dependency phase with a phase header line.
+          Unphased stories appear in a separate group at the end.
+        </p>
+        <p>
+          When any ACTION NEEDED condition is active, a warning header
+          prints above the table with the count and first item summary.
+        </p>
+        <p>
+          When no sprint is active, the command prints <em>"No active
+          sprint"</em> and exits. The stranded-ready advisory (stories left
+          in ready-for-dev across sprints) continues to run its own
+          independent scan.
+        </p>
+      </section>
+
+      <!-- Agent activity -->
+      <section id="agent-activity">
+        <h2>Agent activity</h2>
+        <p>
+          The NOW block in the sidebar shows agent activity sub-lines under
+          each story. Agents are linked to a story when their dispatch
+          description starts with the story key followed by a colon (e.g.,
+          <code>E5-S12: implementing task 4</code>). This is the convention
+          used by GAIA's <code>/gaia-dev-story</code> and
+          <code>/gaia-run-sprint</code> dispatches. Agents whose
+          descriptions do not follow this pattern appear as unlinked
+          activity.
+        </p>
+        <p>
+          Agent activity is visible only in the session that dispatched the
+          agents (same-session only). Up to five activity lines are shown
+          per story.
+        </p>
+      </section>
+
+      <!-- ACTION NEEDED indicators -->
+      <section id="action-needed">
+        <h2>ACTION NEEDED indicators</h2>
+        <p>
+          Four detection rules produce ACTION NEEDED entries:
+        </p>
+        <table>
+          <thead>
+            <tr><th>Condition</th><th>Suggested command</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Manual tests are due (all six review gates passed,
+                manual verification required, no verdict recorded)</td>
+              <td><code>/gaia-test-manual</code></td>
+            </tr>
+            <tr>
+              <td>An agent is waiting on the user (reported as waiting for
+                longer than the configured threshold, with no running
+                children)</td>
+              <td>(none)</td>
+            </tr>
+            <tr>
+              <td>An action item is assigned to the user (matched by
+                alias)</td>
+              <td><code>/gaia-action-items</code></td>
+            </tr>
+            <tr>
+              <td>All stories are done (the sprint can be closed)</td>
+              <td><code>/gaia-sprint-close</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          The sidebar, band, status line, and
+          <code>/gaia-sprint-status</code> all show ACTION NEEDED when
+          applicable, with one exception: <strong>"agent waiting on you"
+          appears only in the sidebar and band of the same session</strong>.
+          It does not appear in the status line or in
+          <code>/gaia-sprint-status</code> output.
+        </p>
+        <p>
+          Suggested commands come from a fixed allowlist
+          (<code>/gaia-test-manual</code>,
+          <code>/gaia-sprint-close</code>,
+          <code>/gaia-action-items</code>). ACTION NEEDED items in the
+          sidebar are display-only indicators -- they are never
+          auto-executed.
+        </p>
+        <p>
+          Each entry includes a since date derived from the review-gate
+          ledger timestamp or the story file modification time.
+        </p>
+      </section>
+
+      <!-- Configuration -->
+      <section id="configuration">
+        <h2>Configuration</h2>
+        <p>
+          The <code>sprint_status_mod</code> section in
+          <code>.gaia/config/project-config.yaml</code> accepts two
+          optional properties:
+        </p>
+
+        <h3><code>user_aliases</code></h3>
+        <p>
+          An array of strings used to match action items assigned to the
+          current user.
+        </p>
+        <ul>
+          <li><strong>Absent:</strong> defaults to
+            <code>["user"]</code> plus the git
+            <code>user.name</code>.</li>
+          <li><strong>Set:</strong> the provided list fully replaces the
+            default (it does not merge).</li>
+          <li><strong>Empty list (<code>[]</code>):</strong> disables
+            user-alias matching entirely.</li>
+        </ul>
+        <p>Matching is case-insensitive.</p>
+        <pre><code># Example
+sprint_status_mod:
+  user_aliases:
+    - "alice"
+    - "Alice Smith"</code></pre>
+
+        <h3><code>waiting_agent_threshold_seconds</code></h3>
+        <p>
+          An integer specifying how many seconds an agent must be in the
+          waiting state (with no running children) before triggering the
+          "agent waiting on you" indicator. Accepted range: 0--3600.
+        </p>
+        <p>Default: <code>120</code>.</p>
+        <pre><code># Example
+sprint_status_mod:
+  waiting_agent_threshold_seconds: 300</code></pre>
+
+        <p>
+          View the current values with
+          <code>/gaia-config-show sprint_status_mod</code>.
+        </p>
+      </section>
+
+      <!-- Graceful degradation -->
+      <section id="degradation">
+        <h2>Graceful degradation</h2>
+        <p>
+          The sidebar and band require Claude Code mod support (the
+          <code>ui.render</code>, <code>ui.press</code>, and
+          <code>session.start</code> hooks). On builds that do not expose
+          these hooks, the mod silently skips registration -- no error or
+          warning is emitted.
+        </p>
+        <p>
+          When the cache has not been read yet or the cache file is absent,
+          the sidebar pane shows <em>"Sprint data unavailable"</em> instead
+          of rendering nothing. The band remains absent in this state. Once
+          the cache loads successfully, the full dashboard replaces the
+          fallback message.
+        </p>
+        <p>
+          The two non-mod surfaces continue to work on all builds:
+        </p>
+        <ul>
+          <li><a href="commands/gaia-sprint-status.html"><code>/gaia-sprint-status</code></a>
+            renders the enhanced dashboard with Tasks/Gates columns and
+            phase grouping.</li>
+          <li>The <a href="commands/gaia-statusline.html">status line</a>
+            shows the sprint progress segment.</li>
+        </ul>
+      </section>
+
+      <footer class="page-footer">
+        <p><a href="categories/sprint-management.html">Back to Sprint Management</a></p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

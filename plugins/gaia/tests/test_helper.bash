@@ -10,10 +10,47 @@ LC_ALL=C
 export LC_ALL
 export TZ=UTC
 
+# Suppress the post-mutation snapshot hook during tests
+export GAIA_SNAPSHOT_HOOK_DISABLE=1
+
 # Resolve SCRIPTS_DIR once. BATS_TEST_DIRNAME is set by bats to the dir of
 # the .bats file — tests/ — so scripts live one level up under scripts/.
 SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
 export SCRIPTS_DIR
+
+# ---------------------------------------------------------------------------
+# Cross-platform helpers (detect once, use everywhere in tests)
+# ---------------------------------------------------------------------------
+
+if stat -c %Y / >/dev/null 2>&1; then
+  _TEST_STAT_FMT="gnu"
+else
+  _TEST_STAT_FMT="bsd"
+fi
+
+if date -u -d @0 +%s >/dev/null 2>&1; then
+  _TEST_DATE_FMT="gnu"
+else
+  _TEST_DATE_FMT="bsd"
+fi
+
+# _stat_mtime FILE — portable single-file mtime (epoch seconds)
+_stat_mtime() {
+  if [ "$_TEST_STAT_FMT" = "gnu" ]; then
+    stat -c %Y "$1"
+  else
+    stat -f %m "$1"
+  fi
+}
+
+# _epoch_to_touchdate EPOCH — print YYYYMMDDHHmm for touch -t
+_epoch_to_touchdate() {
+  if [ "$_TEST_DATE_FMT" = "gnu" ]; then
+    date -u -d "@$1" +%Y%m%d%H%M
+  else
+    date -u -r "$1" +%Y%m%d%H%M
+  fi
+}
 
 # common_setup — called from every test's setup(). Creates a per-test temp
 # dir, namespaces it by $BATS_TEST_NAME, and exports TEST_TMP.
@@ -33,6 +70,26 @@ common_teardown() {
   if [ -n "${TEST_TMP:-}" ] && [ -d "$TEST_TMP" ]; then
     rm -rf "$TEST_TMP" 2>/dev/null || true
   fi
+}
+
+# snapshot_script_under_test SCRIPT — print the path of the snapshot script a
+# suite runs.  Normally that is SCRIPT itself.  When SNAPSHOT_TEST_BASH names
+# an interpreter (for example /bin/bash, which is bash 3.2 on macOS), it is a
+# copy whose first line names that interpreter, placed next to a link to the
+# real lib/ directory, so every direct run of the script uses that shell.
+snapshot_script_under_test() {
+  local real="$1"
+  if [ -z "${SNAPSHOT_TEST_BASH:-}" ]; then printf '%s' "$real"; return 0; fi
+  if [ ! -x "$SNAPSHOT_TEST_BASH" ]; then
+    printf 'SNAPSHOT_TEST_BASH=%s is not an executable interpreter\n' "$SNAPSHOT_TEST_BASH" >&2
+    return 1
+  fi
+  local dir="$TEST_TMP/snapshot-under-test"
+  mkdir -p "$dir"
+  [ -e "$dir/lib" ] || ln -s "$SCRIPTS_DIR/lib" "$dir/lib"
+  { printf '#!%s\n' "$SNAPSHOT_TEST_BASH"; tail -n +2 "$real"; } > "$dir/sprint-progress-snapshot.sh"
+  chmod +x "$dir/sprint-progress-snapshot.sh"
+  printf '%s' "$dir/sprint-progress-snapshot.sh"
 }
 
 # run_script <basename> [args...] — run a foundation script by basename

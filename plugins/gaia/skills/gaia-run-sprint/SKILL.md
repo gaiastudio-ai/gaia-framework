@@ -57,7 +57,9 @@ its own). So this skill loops, one real turn at a time:
    handle=<id>` line names a story this call admitted (a real worktree, a
    real teammate registry entry) — for each one, spawn that persona's dev
    agent with the Agent tool in the background on `/gaia-dev-story <key>`
-   inside `worktree`. A `barrier phase=<n> waiting=<count>` line means the
+   inside `worktree` (include the story key as the first token in the
+   description field, followed by a colon and a task summary, so the
+   sprint dashboard can map the running agent to its story). A `barrier phase=<n> waiting=<count>` line means the
    phase is full or draining; wait for a dispatched agent to finish before
    calling `next` again. `sprint_complete` ends the loop.
 

@@ -1,0 +1,8 @@
+{
+  "name": "gaia-ci-claude-cli",
+  "private": true,
+  "description": "Pinned Claude Code CLI for the plugin CI jobs (validate and mod tests). Installed with npm ci so every package is checked against the lockfile integrity hashes.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.296"
+  }
+}

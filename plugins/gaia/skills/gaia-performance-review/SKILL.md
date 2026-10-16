@@ -17,7 +17,7 @@ orchestration_class: reviewer
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review skill. For `gaia-performance-review` it means: deterministic tools (per-stack ORM-pattern N+1 detector, complexity analyzer, static bundle/memory budget checks) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a semantic review **on top of** that artifact — it cannot disregard a high-confidence N+1 finding inside a hot-path loop, and it cannot relabel a tool failure as APPROVE. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review skill. For `gaia-performance-review` it means: deterministic tools (per-stack ORM-pattern N+1 detector, complexity analyzer, static bundle/memory budget checks) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a semantic review **on top of** that artifact — it cannot disregard a high-confidence N+1 finding inside a hot-path loop, and it cannot relabel a tool failure as APPROVE. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
 
 This skill pattern-matches against `gaia-code-review` as the canonical reference. Per-skill specialization here = (a) the performance toolkit (N+1 query detection + cyclomatic/cognitive complexity + bundle/memory budget checks) and (b) the performance-specific severity rubric examples (hot-path I/O, N+1, memory growth, complexity). Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to the canonical reference.
 
@@ -257,7 +257,25 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 ### Phase 5 — Verdict
 
-The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
+The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
+
+- **Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`):
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+  --story {story_key} --defect <msg> --type tech-debt --severity <sev> --gate performance-review ...
+
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+  --story {story_key} --run-id {run_id} --gate performance-review --outcome completed
+
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/verdict-resolver.sh \
+  --register {register_path} \
+  --analysis-results .gaia/state/review/performance-review/{story_key}/analysis-results.json
+```
+
+  The parent context performs the `register-write.sh add` calls (fork isolation preserved).
+
+- **Legacy path.** Only when no story key is available:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
@@ -268,7 +286,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
 The resolver applies strict first-match-wins precedence:
 1. Any check `status: errored` → **BLOCKED**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
-3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
+3. Register rule (when `--register`): any unresolved blocker → **REQUEST_CHANGES**. Legacy rule (when `--llm-findings`): any LLM finding `Critical` → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
 Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Review Gate canonical vocabulary is inline (no separate `verdict-normalizer.sh`):**

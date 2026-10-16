@@ -17,7 +17,7 @@ orchestration_class: reviewer
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review skill. For `gaia-test-review` it means: deterministic tools (test-smell detection, flakiness retry-history analysis, fixture analysis) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a test-quality semantic review **on top of** that artifact — it cannot disregard a >5% CI retry-rate finding, it cannot relabel a tool failure as APPROVE, and it cannot promote a Suggestion-tier finding into a verdict-blocker. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review skill. For `gaia-test-review` it means: deterministic tools (test-smell detection, flakiness retry-history analysis, fixture analysis) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a test-quality semantic review **on top of** that artifact — it cannot disregard a >5% CI retry-rate finding, it cannot relabel a tool failure as APPROVE, and it cannot promote a Suggestion-tier finding into a verdict-blocker. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
 
 This skill pattern-matches against `gaia-code-review` as the canonical reference. Per-skill specialization here = (a) the test-quality + flakiness + fixture toolkit and (b) the test-review-aligned severity rubric examples (flaky test, shared mutable fixture, hardcoded sleep, conditional-in-test, magic number). Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to the canonical reference.
 
@@ -293,6 +293,21 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
 
+**Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`):
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+  --story {story_key} --defect "{finding}" --type {type} \
+  --severity {severity} --gate test-review ...
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+  --story {story_key} --run-id {run_id} --gate test-review --outcome completed
+${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
+  --register {register_path} \
+  --analysis-results .gaia/state/review/test-review/{story_key}/analysis-results.json
+```
+
+**Legacy path.** Without a story key (and therefore no register), the existing invocation is preserved:
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --analysis-results .gaia/state/review/test-review/{story_key}/analysis-results.json \
@@ -302,7 +317,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
 The resolver applies strict first-match-wins precedence:
 1. Any check `status: errored` → **BLOCKED**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
-3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
+3. Register rule (when `--register`): unresolved blocker → **REQUEST_CHANGES**. LLM-Critical rule (legacy): any Critical → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
 Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Mapping to Review Gate canonical vocabulary is inline (no separate `verdict-normalizer.sh`):**

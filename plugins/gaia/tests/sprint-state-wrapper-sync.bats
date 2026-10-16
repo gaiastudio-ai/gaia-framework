@@ -1,20 +1,15 @@
 #!/usr/bin/env bats
-# sprint-state-wrapper-sync.bats — ADR-055 §10.29.3 wrapper-sync invariant.
+# sprint-state-wrapper-sync.bats — wrapper-sync invariant.
 #
-# Verifies the secondary-copy wrapper at
+# Verifies the secondary copy at
 #   plugins/gaia/skills/gaia-dev-story/scripts/sprint-state.sh
-# accepts every subcommand the canonical
+# stays in step with the canonical
 #   plugins/gaia/scripts/sprint-state.sh
-# advertises in its `--help` output.
 #
-# Per ADR-055 §10.29.3 the canonical script is the source of truth. The
-# wrapper MUST accept the full subcommand surface; byte-identical diff is
-# NOT required (the wrapper may transform args or add skill-local context).
-# At the time this test was added the two files happen to be byte-identical
-# duplicates, so every subcommand is trivially supported. The test is
-# nonetheless a regression guard: any future canonical addition that lands
-# without a matching wrapper update will fail this test mechanically rather
-# than relying on reviewer vigilance.
+# The canonical script is the source of truth and the secondary copy is kept
+# byte-identical to it (the post-transition snapshot hook and every other
+# change must land in both).  The last test fails on any byte of drift; the
+# subcommand tests name the surface a drifted copy would lose.
 
 load 'test_helper.bash'
 
@@ -23,6 +18,9 @@ setup() {
   CANONICAL="$SCRIPTS_DIR/sprint-state.sh"
   WRAPPER="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts" && pwd)/sprint-state.sh"
   export CANONICAL WRAPPER
+  # Run from the per-test temp dir: the scripts treat the working directory
+  # as the project and create .gaia/state there.
+  cd "$TEST_TMP"
 }
 teardown() { common_teardown; }
 
@@ -117,4 +115,9 @@ extract_subcommands() {
       "${#missing[@]}" "${missing[*]}" >&2
     return 1
   fi
+}
+
+@test "sprint-state-wrapper-sync: wrapper copy is byte-identical to the canonical script" {
+  run cmp "$CANONICAL" "$WRAPPER"
+  [ "$status" -eq 0 ]
 }

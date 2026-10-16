@@ -5,7 +5,7 @@
 setup() {
   REPO_ROOT="$(git rev-parse --show-toplevel)"
   AGENTS_DIR="${REPO_ROOT}/plugins/gaia/agents"
-  SCHEMA_FILE="${AGENTS_DIR}/_SCHEMA.md"
+  SCHEMA_FILE="${REPO_ROOT}/plugins/gaia/knowledge/agent-frontmatter-schema.md"
   LOADER="${REPO_ROOT}/plugins/gaia/scripts/memory-loader.sh"
   MEMORY_ROOT="${REPO_ROOT}/../_memory"
 
@@ -133,8 +133,8 @@ agent_file() {
   [ "$status" -ne 0 ]
 }
 
-# --- AC-EC9 + Task 9: _SCHEMA.md documents the canonical ground-truth convention
-@test "AC-EC9: _SCHEMA.md documents the ground-truth convention and placement rule" {
+# --- AC-EC9 + Task 9: agent-frontmatter-schema.md documents the canonical ground-truth convention
+@test "AC-EC9: agent-frontmatter-schema.md documents the ground-truth convention and placement rule" {
   run grep -F 'ground-truth' "$SCHEMA_FILE"
   [ "$status" -eq 0 ]
   # Should reference the post-persona / pre-behavioural placement somewhere.
@@ -148,13 +148,12 @@ agent_file() {
 }
 
 # --- Task 7: repo-wide scan counts ------------------------------------------
-# _SCHEMA.md is excluded — it is documentation, not a subagent. Its example
-# loader line is inside a fenced code block and does not count as an injection.
-@test "Task 7: exactly 28 loader injections and 28 ## Memory sections across subagent files (excluding _SCHEMA.md)" {
+# The schema doc (agent-frontmatter-schema.md) has been moved to knowledge/
+# and is no longer in the agents directory, so no exclusion is needed.
+@test "Task 7: exactly 28 loader injections and 28 ## Memory sections across subagent files" {
   total_loaders=0
   total_mem=0
   for f in "${AGENTS_DIR}"/*.md; do
-    case "$(basename "$f")" in _SCHEMA.md) continue ;; esac
     if grep -qE '^!\$\{PLUGIN_DIR\}/scripts/memory-loader.sh ' "$f"; then
       total_loaders=$((total_loaders + 1))
     fi
@@ -166,7 +165,6 @@ agent_file() {
   [ "$total_mem" = "28" ] || { echo "expected 28 ## Memory sections, got $total_mem"; return 1; }
   # No 'all' tier leftovers in subagent injection lines.
   for f in "${AGENTS_DIR}"/*.md; do
-    case "$(basename "$f")" in _SCHEMA.md) continue ;; esac
     if grep -qE '^!\$\{PLUGIN_DIR\}/scripts/memory-loader.sh [^ ]+ all$' "$f"; then
       echo "legacy 'all' tier found in $f"
       return 1

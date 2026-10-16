@@ -898,6 +898,26 @@
           "default": 90
         }
       }
+    },
+    "sprint_status_mod": {
+      "type": ["object", "null"],
+      "description": "Configuration for the sprint status mod — user alias matching and agent-wait detection thresholds. Optional; when absent or a bare key (null), built-in defaults apply at the read site.",
+      "additionalProperties": false,
+      "x-no-auto-hydration": true,
+      "properties": {
+        "user_aliases": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Names that identify the current user when matching action-item assignees (case-insensitive). When set, this list replaces the default entirely; an empty list disables matching. When absent, the default is [\"user\"] plus the git user.name."
+        },
+        "waiting_agent_threshold_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600,
+          "default": 120,
+          "description": "Seconds an agent must be in waiting state before it triggers a waiting-on-user action item. Allowed range 0-3600 (up to one hour). Default 120."
+        }
+      }
     }
   },
   "allOf": [

@@ -139,13 +139,10 @@ run_date="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 overall_fail=0
 agent_count=0
 
-# iterate .md files (skip _SCHEMA.md meta-doc)
+# iterate .md files (schema doc moved to knowledge/agent-frontmatter-schema.md)
 for agent_file in "$AGENTS_DIR"/*.md; do
   [ -f "$agent_file" ] || continue
   base="$(basename "$agent_file" .md)"
-  case "$base" in
-    _SCHEMA) continue ;;
-  esac
   agent_count=$((agent_count + 1))
 
   load_col="FAIL"

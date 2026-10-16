@@ -18,6 +18,9 @@ load 'test_helper.bash'
 
 bats_require_minimum_version 1.5.0
 
+setup() { common_setup; }
+teardown() { common_teardown; }
+
 # Canonical review-skill consumer list — extended in E66-S5 to add
 # /gaia-review-mobile per ADR-077. Each entry is the path
 # (relative to plugins/gaia/) of the SKILL.md file.
@@ -311,4 +314,675 @@ assert_analysis_results_schema_ref() {
       assert_analysis_results_schema_ref "$f"
     fi
   done
+}
+
+# ---------------------------------------------------------------------------
+# Shared findings rubric — gate-row-writer parity
+# ---------------------------------------------------------------------------
+
+# The ten gate-row-writing SKILL.md files (the existing REVIEW_SKILLS array
+# points at a different set — do not reuse it).
+GATE_ROW_WRITERS=(
+  "skills/gaia-code-review/SKILL.md"
+  "skills/gaia-qa-tests/SKILL.md"
+  "skills/gaia-review-security/SKILL.md"
+  "skills/gaia-test-automate/SKILL.md"
+  "skills/gaia-test-review/SKILL.md"
+  "skills/gaia-review-perf/SKILL.md"
+  "skills/gaia-security-review/SKILL.md"
+  "skills/gaia-performance-review/SKILL.md"
+  "skills/gaia-test-dast/SKILL.md"
+  "skills/gaia-test-perf/SKILL.md"
+)
+
+# The six primary review skills plus the template
+RUBRIC_CONSUMERS=(
+  "skills/gaia-code-review/SKILL.md"
+  "skills/gaia-qa-tests/SKILL.md"
+  "skills/gaia-review-security/SKILL.md"
+  "skills/gaia-test-automate/SKILL.md"
+  "skills/gaia-test-review/SKILL.md"
+  "skills/gaia-review-perf/SKILL.md"
+  "knowledge/review-skill-template.md"
+)
+
+RUBRIC_CONSUMERS_EXTRA=(
+  "skills/gaia-security-review/SKILL.md"
+  "skills/gaia-performance-review/SKILL.md"
+  "skills/gaia-test-dast/SKILL.md"
+  "skills/gaia-test-perf/SKILL.md"
+)
+
+RUBRIC_FILE="knowledge/shared-findings-rubric.md"
+
+@test "shared rubric: each of the six review skills and the template references shared-findings-rubric.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  [ -f "$base/$RUBRIC_FILE" ] || {
+    echo "rubric file not found: $base/$RUBRIC_FILE" >&2
+    false
+  }
+  local failed=0
+  for entry in "${RUBRIC_CONSUMERS[@]}"; do
+    local f="$base/$entry"
+    [ -f "$f" ] || { echo "SKILL.md not found: $f" >&2; failed=1; continue; }
+    if ! grep -qF 'shared-findings-rubric.md' "$f"; then
+      echo "missing rubric reference in: $entry" >&2
+      failed=1
+    fi
+  done
+  [ "$failed" -eq 0 ]
+}
+
+@test "shared rubric: perf-deepdive deprecated-security test-dast test-perf reference shared-findings-rubric.md" {
+  local base="$BATS_TEST_DIRNAME/.."
+  [ -f "$base/$RUBRIC_FILE" ] || {
+    echo "rubric file not found: $base/$RUBRIC_FILE" >&2
+    false
+  }
+  local failed=0
+  for entry in "${RUBRIC_CONSUMERS_EXTRA[@]}"; do
+    local f="$base/$entry"
+    [ -f "$f" ] || { echo "SKILL.md not found: $f" >&2; failed=1; continue; }
+    if ! grep -qF 'shared-findings-rubric.md' "$f"; then
+      echo "missing rubric reference in: $entry" >&2
+      failed=1
+    fi
+  done
+  [ "$failed" -eq 0 ]
+}
+
+@test "shared rubric: no gate-row writer contains a local critical-or-high verdict rule" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local failed=0
+  for entry in "${GATE_ROW_WRITERS[@]}"; do
+    local f="$base/$entry"
+    [ -f "$f" ] || { echo "SKILL.md not found: $f" >&2; failed=1; continue; }
+    # Check for local "critical or high" verdict rules — the pattern
+    # "FAILED" near "critical or high" or "critical/high"
+    if grep -iE '(FAILED|FAIL).*(critical|high).*(finding|severity)' "$f" >/dev/null 2>&1; then
+      # Exclude lines that are part of the shared rubric reference or
+      # the deterministic tool override (which is kept)
+      local matches
+      matches="$(grep -inE '(FAILED|FAIL).*(critical|high).*(finding|severity)' "$f" | grep -ivE 'shared-findings-rubric|deterministic|verdict-resolver' || true)"
+      if [ -n "$matches" ]; then
+        echo "local critical-or-high verdict rule found in: $entry" >&2
+        echo "$matches" >&2
+        failed=1
+      fi
+    fi
+  done
+  [ "$failed" -eq 0 ]
+}
+
+@test "shared rubric: deletion mutant of rubric reference fails the test" {
+  # This test creates a temp copy of a SKILL.md with the rubric reference
+  # removed, and verifies that a grep for the reference fails.
+  # In Red phase, the rubric reference does not exist yet, so this test
+  # verifies the detection mechanism (the reference MUST be present; if
+  # removed, the test catches it).
+  local base="$BATS_TEST_DIRNAME/.."
+  local target="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$target" ] || { echo "SKILL.md not found" >&2; false; }
+
+  # In Green, this file will have the reference. The test proves that
+  # removing it is detected.
+  if grep -qF 'shared-findings-rubric.md' "$target"; then
+    # Rubric reference exists — simulate deletion
+    local copy="$TEST_TMP/mutant-skill.md"
+    grep -vF 'shared-findings-rubric.md' "$target" > "$copy"
+    # The mutant must NOT pass the reference check
+    if grep -qF 'shared-findings-rubric.md' "$copy"; then
+      echo "deletion mutant still contains rubric reference" >&2; false
+    fi
+  else
+    # Rubric reference does not exist yet (Red phase) — the main test
+    # already fails, so this deletion mutant test also fails because
+    # the condition it guards is already violated.
+    echo "rubric reference not yet present in gaia-code-review — deletion mutant guard cannot run" >&2
+    false
+  fi
+}
+
+@test "shared rubric: rubric states the test-gap materiality rule" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rubric="$base/$RUBRIC_FILE"
+  [ -f "$rubric" ] || { echo "rubric not found: $rubric" >&2; false; }
+  # Must contain language about test gaps and materiality
+  grep -qiE 'test.gap.*material|material.*test.gap|material.*required.*behaviour|material.*unverified' "$rubric"
+}
+
+@test "shared rubric: rubric states deterministic blockers stay outside the register" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rubric="$base/$RUBRIC_FILE"
+  [ -f "$rubric" ] || { echo "rubric not found: $rubric" >&2; false; }
+  grep -qiE 'deterministic.*outside.*register|deterministic.*blocker.*not.*register|deterministic.*block.*exist.*rule' "$rubric"
+}
+
+@test "shared rubric: qa-tests expresses Critical promotion via shared blocker definition" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local f="$base/skills/gaia-qa-tests/SKILL.md"
+  [ -f "$f" ] || { echo "SKILL.md not found" >&2; false; }
+  # Must reference the shared rubric
+  grep -qF 'shared-findings-rubric.md' "$f"
+  # Must contain language about blocker definition for critical promotion
+  grep -qiE 'blocker.*definition|shared.*rubric.*blocker|shared-findings-rubric' "$f"
+}
+
+@test "shared rubric: qa-tests reword mutant restoring P0-only rule fails" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local f="$base/skills/gaia-qa-tests/SKILL.md"
+  [ -f "$f" ] || { echo "SKILL.md not found" >&2; false; }
+
+  # After the change, the old "P0 AC coverage gaps" wording should be
+  # replaced with shared blocker definition language. If the old wording
+  # is still present AND the shared rubric reference is also present,
+  # the test fails — the reword was not applied.
+  if grep -qF 'shared-findings-rubric.md' "$f"; then
+    # Rubric reference exists — the old local P0-only restriction
+    # wording must NOT be present as a standalone verdict rule
+    if grep -qiE 'Critical promotion is restricted to.*P0.*AC coverage' "$f"; then
+      echo "old P0-only Critical promotion rule still present" >&2
+      false
+    fi
+  else
+    # Rubric reference not yet present (Red phase)
+    echo "rubric reference not yet present in qa-tests" >&2
+    false
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Register wiring: each skill's verdict section names register-write.sh add,
+# record-run, and verdict-resolver.sh --register.  The check targets the
+# verdict section only (not the whole file), and the mutant tests use the
+# same helper so they would catch a real regression.
+# ---------------------------------------------------------------------------
+
+# Helper: extract the verdict/output section from a SKILL.md file.
+# Targets the Phase/Step heading that contains "Verdict" and register
+# wiring, or falls back to the bold "Register path" label.  Stops at
+# the next same-level heading.
+_extract_verdict_section() {
+  local file="$1"
+  # First try: the section whose heading contains "Phase" or "Step" AND "Verdict"
+  local section
+  section="$(awk '
+    /^##.*(Phase|Step).*[Vv]erdict/ { found=1 }
+    found && /^##[# ]/ && already { exit }
+    found { already=1; print }
+  ' "$file")"
+  if [ -n "$section" ]; then printf '%s\n' "$section"; return 0; fi
+  # Fallback: any heading containing Verdict
+  section="$(awk '
+    /^##.*[Vv]erdict/ { found=1 }
+    found && /^##[# ]/ && already { exit }
+    found { already=1; print }
+  ' "$file")"
+  if [ -n "$section" ]; then printf '%s\n' "$section"; return 0; fi
+  # Last resort: the Register path label
+  section="$(awk '
+    /^\*\*Register path/ { found=1 }
+    found && /^##[# ]/ && already { exit }
+    found { already=1; print }
+  ' "$file")"
+  printf '%s\n' "$section"
+}
+
+# Helper: check that a file's verdict section mentions all three register
+# tokens.  Returns 0 when all are present, 1 otherwise with stderr detail.
+_check_register_wiring() {
+  local file="$1" label="$2"
+  local section
+  section="$(_extract_verdict_section "$file")"
+  if [ -z "$section" ]; then
+    echo "$label: no verdict section found" >&2; return 1
+  fi
+  local ok=0
+  if ! grep -qF 'register-write.sh add' <<<"$section"; then
+    echo "$label: verdict section missing register-write.sh add" >&2; ok=1
+  fi
+  if ! grep -qF 'record-run' <<<"$section"; then
+    echo "$label: verdict section missing record-run" >&2; ok=1
+  fi
+  # Verify that verdict-resolver.sh and --register appear connected — either
+  # on the same line or within a backslash-continuation block (2-line window).
+  # A section that mentions --register only in a prose sentence (e.g. "The
+  # --register flag is accepted for backward compatibility") without the
+  # resolver invocation is incomplete wiring.
+  local _vr_register_ok
+  _vr_register_ok="$(awk '
+    /verdict-resolver/ { saw_vr = NR }
+    /--register/ {
+      if (saw_vr > 0 && (NR - saw_vr) <= 2) { found = 1; exit }
+    }
+    END { print (found ? "yes" : "no") }
+  ' <<<"$section")"
+  if [ "$_vr_register_ok" != "yes" ]; then
+    echo "$label: verdict section missing verdict-resolver invocation with --register (connected within 2 lines)" >&2; ok=1
+  fi
+  return "$ok"
+}
+
+@test "register wiring: each review skill verdict section names register-write.sh add, record-run and --register" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local skills=(
+    "skills/gaia-code-review/SKILL.md"
+    "skills/gaia-qa-tests/SKILL.md"
+    "skills/gaia-review-security/SKILL.md"
+    "skills/gaia-test-automate/SKILL.md"
+    "skills/gaia-test-review/SKILL.md"
+    "skills/gaia-review-perf/SKILL.md"
+  )
+  local failed=0
+  local f
+  for f in "${skills[@]}"; do
+    local path="$base/$f"
+    [ -f "$path" ] || { echo "not found: $f" >&2; failed=1; continue; }
+    _check_register_wiring "$path" "$f" || failed=1
+  done
+  [ "$failed" -eq 0 ]
+}
+
+@test "register wiring: test-dast and test-perf verdict section names register-write.sh add, record-run and --register" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local failed=0
+  for f in "skills/gaia-test-dast/SKILL.md" "skills/gaia-test-perf/SKILL.md"; do
+    local path="$base/$f"
+    [ -f "$path" ] || { echo "not found: $f" >&2; failed=1; continue; }
+    _check_register_wiring "$path" "$f" || failed=1
+  done
+  [ "$failed" -eq 0 ]
+}
+
+@test "register wiring: review-skill-template verdict section names register-write.sh add, record-run and --register" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/knowledge/review-skill-template.md"
+  [ -f "$path" ] || { echo "not found: $path" >&2; false; }
+  _check_register_wiring "$path" "review-skill-template.md"
+}
+
+@test "register wiring: gaia-run-all-reviews mentions gate-status and triage-nonblocking and findings-rows" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local f="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$f" ] || { echo "not found: $f" >&2; false; }
+  grep -qF 'gate-status' "$f" || { echo "run-all-reviews does not mention gate-status" >&2; false; }
+  grep -qF 'triage-nonblocking' "$f" || { echo "run-all-reviews does not mention triage-nonblocking" >&2; false; }
+  grep -qF 'findings-rows' "$f" || { echo "run-all-reviews does not mention findings-rows" >&2; false; }
+  grep -qF 'UNVERIFIED' "$f" || { echo "run-all-reviews does not mention UNVERIFIED" >&2; false; }
+}
+
+@test "register wiring: deletion of register-write.sh add from code-review fails the wiring check" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$path" ] || { echo "not found" >&2; false; }
+  # Baseline: the real file passes the helper
+  _check_register_wiring "$path" "baseline" || {
+    echo "baseline failed — cannot test mutant" >&2; false
+  }
+  # Deletion mutant: remove register-write.sh add
+  local copy="$TEST_TMP/mutant-cr-del.md"
+  grep -v 'register-write.sh add' "$path" > "$copy"
+  # The mutant must fail the same helper
+  if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
+    echo "deletion mutant passed the wiring check — test is broken" >&2; false
+  fi
+}
+
+@test "register wiring: reword mutant replacing --register with --llm-findings fails the wiring check" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$path" ] || { echo "not found" >&2; false; }
+  # Baseline: the real file passes the helper
+  _check_register_wiring "$path" "baseline" || {
+    echo "baseline failed — cannot test mutant" >&2; false
+  }
+  # Reword mutant: replace --register with --llm-findings in verdict section
+  local copy="$TEST_TMP/mutant-cr-rwd.md"
+  sed 's/--register/--llm-findings/g' "$path" > "$copy"
+  # The mutant must fail the helper
+  if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
+    echo "reword mutant passed the wiring check — test is broken" >&2; false
+  fi
+}
+
+@test "register wiring: removing verdict-resolver.sh from test-perf register path paragraph fails the wiring check" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/skills/gaia-test-perf/SKILL.md"
+  [ -f "$path" ] || { echo "not found" >&2; false; }
+  # Baseline: the real file passes
+  _check_register_wiring "$path" "baseline" || {
+    echo "baseline failed — cannot test mutant" >&2; false
+  }
+  # Mutant: replace "verdict-resolver.sh --register" with "the verdict"
+  local copy="$TEST_TMP/mutant-perf-vr.md"
+  sed 's/`verdict-resolver\.sh --register`/the verdict/g' "$path" > "$copy"
+  if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
+    echo "mutant (verdict-resolver.sh --register removed from test-perf) passed — test is broken" >&2; false
+  fi
+}
+
+@test "register wiring: removing verdict-resolver from code-review verdict section fails the wiring check" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local path="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$path" ] || { echo "not found" >&2; false; }
+  _check_register_wiring "$path" "baseline" || {
+    echo "baseline failed" >&2; false
+  }
+  # Mutant: replace verdict-resolver.sh with generic-resolver.sh throughout
+  local copy="$TEST_TMP/mutant-cr-no-vr.md"
+  sed 's/verdict-resolver\.sh/generic-resolver.sh/g' "$path" > "$copy"
+  if _check_register_wiring "$copy" "mutant" 2>/dev/null; then
+    echo "mutant (verdict-resolver removed from code-review) passed — test is broken" >&2; false
+  fi
+}
+
+@test "run-id forwarding: run-all-reviews dispatch contract passes --run-id" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local f="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$f" ] || { echo "not found" >&2; false; }
+  # Extract the Skill-dispatch contract code block (between Skill-dispatch
+  # contract and the next heading) and check the Invoke line carries --run-id
+  local dispatch_block
+  dispatch_block="$(awk '
+    /Skill-dispatch contract/ { found=1 }
+    found && /^[# ]*[0-9]+\. After the skill returns/ { exit }
+    found { print }
+  ' "$f")"
+  grep -qF -- '--run-id' <<<"$dispatch_block" || {
+    echo "dispatch contract code block does not pass --run-id" >&2; false
+  }
+}
+
+@test "run-id forwarding: each review skill documents how to obtain run_id from arguments" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local skills=(
+    "skills/gaia-code-review/SKILL.md"
+    "skills/gaia-qa-tests/SKILL.md"
+    "skills/gaia-review-security/SKILL.md"
+    "skills/gaia-test-automate/SKILL.md"
+    "skills/gaia-test-review/SKILL.md"
+    "skills/gaia-review-perf/SKILL.md"
+    "skills/gaia-security-review/SKILL.md"
+    "skills/gaia-performance-review/SKILL.md"
+    "skills/gaia-test-dast/SKILL.md"
+    "skills/gaia-test-perf/SKILL.md"
+    "knowledge/review-skill-template.md"
+  )
+  local failed=0
+  local f
+  for f in "${skills[@]}"; do
+    local path="$base/$f"
+    [ -f "$path" ] || { echo "not found: $f" >&2; failed=1; continue; }
+    if ! grep -qF 'arguments contain `--run-id <id>`, use that value as `{run_id}`' "$path"; then
+      echo "$f: missing run-id forwarding sentence" >&2
+      failed=1
+    fi
+  done
+  [ "$failed" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Step 3 analysis-results / execution-evidence path parity
+#
+# The run-all-reviews consolidation step 3 must name the EXACT paths that
+# each gate's own SKILL.md uses for analysis-results and execution-evidence.
+# Per-row table checks, per-gate command-block checks, and exclusivity
+# assertions catch wrong paths, dropped flags, and swapped rows.
+# ---------------------------------------------------------------------------
+
+# Helper: extract the step-3 "Re-resolve each gate" section from run-all-reviews.
+_extract_step3_section() {
+  local f="$1"
+  awk '
+    /^[[:space:]]*3\.[[:space:]]+\*\*Re-resolve each gate/ { found=1 }
+    found && /^[[:space:]]*4\.[[:space:]]+\*\*/ { exit }
+    found { print }
+  ' "$f"
+}
+
+# Helper: extract a specific table row from step 3 by gate name.
+_step3_table_row() {
+  local step3="$1" gate="$2"
+  grep "|.*\`$gate\`" <<<"$step3" | head -1
+}
+
+# Helper: extract a single command paragraph from the step-3 code block.
+# The code block has multiple commands separated by blank lines, each
+# preceded by a bash comment (e.g. "# qa-tests (analysis-results + ...)").
+# This helper returns only the comment + command lines for the matching
+# gate pattern, stopping at the next comment or end of block.
+_step3_command_for() {
+  local step3="$1" gate_pattern="$2"
+  awk -v pat="$gate_pattern" '
+    /^[[:space:]]*```bash/ { inblock=1; next }
+    inblock && /^[[:space:]]*```/ { inblock=0; if (matched) print buf; next }
+    inblock && /^[[:space:]]*#/ {
+      if (matched) { print buf; matched=0 }
+      buf=$0; if ($0 ~ pat) matched=1; next
+    }
+    inblock && matched { buf = buf "\n" $0 }
+  ' <<<"$step3"
+}
+
+# --- Per-row table assertions ---
+
+@test "step-3 table: code-review row has analysis-results and no execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "code-review")"
+  [ -n "$row" ] || { echo "no code-review row in step 3 table" >&2; false; }
+  grep -qF '.gaia/state/review/code-review/{story_key}/analysis-results.json' <<<"$row" || {
+    echo "code-review row missing analysis-results path" >&2; false
+  }
+  # Must NOT have execution-evidence path (cell should be a dash)
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "code-review row should not have execution-evidence" >&2; false
+  fi
+  # Cross-check against the gate's own SKILL.md
+  local gate_skill="$base/skills/gaia-code-review/SKILL.md"
+  [ -f "$gate_skill" ] || { echo "code-review SKILL.md not found" >&2; false; }
+  grep -qF '.gaia/state/review/code-review/{story_key}/analysis-results.json' "$gate_skill" || {
+    echo "code-review SKILL.md missing the analysis-results path" >&2; false
+  }
+}
+
+@test "step-3 table: qa-tests row has analysis-results and execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "qa-tests")"
+  [ -n "$row" ] || { echo "no qa-tests row in step 3 table" >&2; false; }
+  grep -qF '.gaia/state/review/qa-tests/{story_key}/analysis-results.json' <<<"$row" || {
+    echo "qa-tests row missing analysis-results path" >&2; false
+  }
+  grep -qF '.gaia/state/review/qa-tests/{story_key}/execution-evidence.json' <<<"$row" || {
+    echo "qa-tests row missing execution-evidence path" >&2; false
+  }
+  # Cross-check against the gate's own SKILL.md
+  local gate_skill="$base/skills/gaia-qa-tests/SKILL.md"
+  [ -f "$gate_skill" ] || { echo "qa-tests SKILL.md not found" >&2; false; }
+  grep -qF '.gaia/state/review/qa-tests/{story_key}/analysis-results.json' "$gate_skill" || {
+    echo "qa-tests SKILL.md missing the analysis-results path" >&2; false
+  }
+  grep -qF '.gaia/state/review/qa-tests/{story_key}/execution-evidence.json' "$gate_skill" || {
+    echo "qa-tests SKILL.md missing the execution-evidence path" >&2; false
+  }
+}
+
+@test "step-3 table: security-review row has no analysis-results and no execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "security-review")"
+  [ -n "$row" ] || { echo "no security-review row in step 3 table" >&2; false; }
+  if grep -qF 'analysis-results.json' <<<"$row"; then
+    echo "security-review row should not have analysis-results" >&2; false
+  fi
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "security-review row should not have execution-evidence" >&2; false
+  fi
+}
+
+@test "step-3 table: test-automate row has analysis-results and no execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "test-automate")"
+  [ -n "$row" ] || { echo "no test-automate row in step 3 table" >&2; false; }
+  grep -qF '.gaia/state/review/test-automate/{story_key}/analysis-results.json' <<<"$row" || {
+    echo "test-automate row missing analysis-results path" >&2; false
+  }
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "test-automate row should not have execution-evidence" >&2; false
+  fi
+  # Cross-check
+  local gate_skill="$base/skills/gaia-test-automate/SKILL.md"
+  [ -f "$gate_skill" ] || { echo "test-automate SKILL.md not found" >&2; false; }
+  grep -qF '.gaia/state/review/test-automate/{story_key}/analysis-results.json' "$gate_skill" || {
+    echo "test-automate SKILL.md missing the analysis-results path" >&2; false
+  }
+}
+
+@test "step-3 table: test-review row has analysis-results and no execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "test-review")"
+  [ -n "$row" ] || { echo "no test-review row in step 3 table" >&2; false; }
+  grep -qF '.gaia/state/review/test-review/{story_key}/analysis-results.json' <<<"$row" || {
+    echo "test-review row missing analysis-results path" >&2; false
+  }
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "test-review row should not have execution-evidence" >&2; false
+  fi
+  # Cross-check
+  local gate_skill="$base/skills/gaia-test-review/SKILL.md"
+  [ -f "$gate_skill" ] || { echo "test-review SKILL.md not found" >&2; false; }
+  grep -qF '.gaia/state/review/test-review/{story_key}/analysis-results.json' "$gate_skill" || {
+    echo "test-review SKILL.md missing the analysis-results path" >&2; false
+  }
+}
+
+@test "step-3 table: performance-review row has no analysis-results and no execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "performance-review")"
+  [ -n "$row" ] || { echo "no performance-review row in step 3 table" >&2; false; }
+  if grep -qF 'analysis-results.json' <<<"$row"; then
+    echo "performance-review row should not have analysis-results" >&2; false
+  fi
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "performance-review row should not have execution-evidence" >&2; false
+  fi
+}
+
+# --- Exclusivity: only qa-tests carries execution-evidence ---
+
+@test "step-3 table: only qa-tests row carries execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  local gate
+  for gate in code-review security-review test-automate test-review performance-review; do
+    local row
+    row="$(_step3_table_row "$step3" "$gate")"
+    [ -n "$row" ] || { echo "no $gate row in step 3 table" >&2; false; }
+    if grep -qF 'execution-evidence.json' <<<"$row"; then
+      echo "$gate row should not have execution-evidence (only qa-tests may)" >&2; false
+    fi
+  done
+  # Positive: qa-tests does carry it
+  local qa_row
+  qa_row="$(_step3_table_row "$step3" "qa-tests")"
+  grep -qF 'execution-evidence.json' <<<"$qa_row" || {
+    echo "qa-tests row must carry execution-evidence" >&2; false
+  }
+}
+
+# --- Per-gate command block assertions ---
+
+@test "step-3 command block: qa-tests resolver carries --analysis-results and --execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  local cmd
+  cmd="$(_step3_command_for "$step3" "qa-tests")"
+  [ -n "$cmd" ] || { echo "no command paragraph mentioning qa-tests" >&2; false; }
+  grep -qF -- '--analysis-results' <<<"$cmd" || {
+    echo "qa-tests command missing --analysis-results" >&2; false
+  }
+  grep -qF -- '--execution-evidence' <<<"$cmd" || {
+    echo "qa-tests command missing --execution-evidence" >&2; false
+  }
+  grep -qF -- '--register' <<<"$cmd" || {
+    echo "qa-tests command missing --register" >&2; false
+  }
+}
+
+@test "step-3 command block: analysis-results-only gates carry --analysis-results but not --execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  local cmd
+  cmd="$(_step3_command_for "$step3" "code-review.*test-automate.*test-review")"
+  [ -n "$cmd" ] || { echo "no command paragraph mentioning code-review, test-automate, test-review" >&2; false; }
+  grep -qF -- '--analysis-results' <<<"$cmd" || {
+    echo "analysis-results-only command missing --analysis-results" >&2; false
+  }
+  if grep -qF -- '--execution-evidence' <<<"$cmd"; then
+    echo "analysis-results-only command should not have --execution-evidence" >&2; false
+  fi
+  grep -qF -- '--register' <<<"$cmd" || {
+    echo "analysis-results-only command missing --register" >&2; false
+  }
+}
+
+@test "step-3 command block: register-only gates carry --register but not --analysis-results" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+
+  local cmd
+  cmd="$(_step3_command_for "$step3" "security-review.*performance-review")"
+  [ -n "$cmd" ] || { echo "no command paragraph mentioning security-review, performance-review" >&2; false; }
+  grep -qF -- '--register' <<<"$cmd" || {
+    echo "register-only command missing --register" >&2; false
+  }
+  if grep -qF -- '--analysis-results' <<<"$cmd"; then
+    echo "register-only command should not have --analysis-results" >&2; false
+  fi
+  if grep -qF -- '--execution-evidence' <<<"$cmd"; then
+    echo "register-only command should not have --execution-evidence" >&2; false
+  fi
 }

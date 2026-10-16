@@ -114,11 +114,11 @@ matches how Claude Code subagent prompts are assembled in the forked context
 and keeps the persona declarative at the top of the file for
 humans reading it.
 
-The placement rule is enforced by the ATDD suite at
-`tests/atdd/e28-s147-subagent-memory-injection.bats`; the mechanical rewrite
-helper lives at `scripts/dev/rewrite-agent-memory-injection.sh`. New agents
-added beyond the current 28 MUST inherit this shape — run the rewrite helper
-or copy `_base-dev.md`'s `## Memory` block as the template.
+The placement rule is enforced by the subagent memory-injection acceptance
+suite under `tests/atdd/`; the mechanical rewrite helper lives at
+`scripts/dev/rewrite-agent-memory-injection.sh`. New agents added beyond the
+current set MUST inherit this shape — run the rewrite helper or copy
+`_base-dev.md`'s `## Memory` block as the template.
 
 ## Validation
 

@@ -23,7 +23,7 @@ orchestration_class: light-procedural
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review and action skill. For `/gaia-test-dast` it means: the configured DAST adapter (OWASP ZAP by default, swappable via `test_execution.dast.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact. The LLM then performs a DAST severity-triage semantic judgment in Phase 3B — applying the project risk profile to ZAP findings — but cannot override a deterministic adapter failure or High-severity finding. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review and action skill. For `/gaia-test-dast` it means: the configured DAST adapter (OWASP ZAP by default, swappable via `test_execution.dast.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact. The LLM then performs a DAST severity-triage semantic judgment in Phase 3B — applying the project risk profile to ZAP findings — but cannot override a deterministic adapter failure. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
 
 This skill is a deployment-phase action skill and a peer of `/gaia-test-e2e` and `/gaia-test-perf` — same Phase 3A/3B/3C plumbing, DAST-specific rubric and env-allowlist credential isolation.
 
@@ -152,11 +152,12 @@ The fork is read-only; the parent context writes `llm-findings.json` to the outp
 
 ### Phase 4 — Verdict resolution + Review Gate update
 
-Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate "Security Review"]`. The script:
+Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate "Security Review"] [--run-id <id>]`. The script:
 
-1. Calls `verdict-resolver.sh --skill gaia-test-dast` to compute the verdict (precedence: errored > tool-failed-blocking > LLM-Critical > APPROVE).
-2. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
-3. Echoes the verdict on stdout for downstream chaining.
+1. **Register path (default when a story key is present).** Whenever `--story-key` is passed, the script enables register mode automatically. Each LLM finding is written to the shared findings register via `register-write.sh add`, a run record is created via `register-write.sh record-run`, and `verdict-resolver.sh --register` resolves the verdict. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run` and pass it to `verdict.sh --run-id`; otherwise a standalone run ID (`standalone-<timestamp>-<pid>`) is minted. Non-standard severity labels (e.g. "Critical Risk", "Informational") are normalised to the rubric scale before writing. If any `register-write.sh add` call fails, the run is recorded as `errored` and the verdict is `BLOCKED` (a lost finding must never produce APPROVE). The `--register` flag is still accepted for backward compatibility but is redundant when `--story-key` is given.
+2. **Legacy path.** Without a story key (deployment-phase runs with no associated story), calls `verdict-resolver.sh --skill gaia-test-dast` with `--llm-findings` (precedence: errored > tool-failed-blocking > LLM-Critical > APPROVE).
+3. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
+4. Echoes the verdict on stdout for downstream chaining.
 
 ### Phase 5 — Report generation
 

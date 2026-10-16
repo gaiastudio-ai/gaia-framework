@@ -80,4 +80,4 @@ After `add`, suggest running `/gaia-config-validate` to confirm the modified fil
 ## Notes
 
 - Documented platform identifiers (baseline): `web`, `ios`, `android`. The surface is left extensible.
-- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `platforms`.
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list. This skill ONLY edits `platforms`.

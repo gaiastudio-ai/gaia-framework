@@ -12,10 +12,11 @@
 #   GLYPH_BRANCH  = ⎇   git-branch
 #   GLYPH_SPARK   = *   activity / pulse (kept ASCII for terminal robustness)
 #   GLYPH_CLOCK   = ◷   timer / age
-#   GLYPH_UPDATE  = ↑   update available (D10 — paired with bold + colour + ASCII prefix)
+#   GLYPH_UPDATE  = ↑   update available (paired with bold + colour + ASCII prefix)
 #   GLYPH_CHEVRON = ▸   segment chevron
 #   GLYPH_DOT     = ·   middle dot, separator
 #   GLYPH_DIRTY   = *   git-dirty marker, suffixed to BRANCH
+#   GLYPH_WARN    = ⚠   warning, action needed
 #
 # Env-flag gates (exclusive, ASCII wins):
 #   GAIA_STATUSLINE_ASCII=1     → swap each glyph for an ASCII fallback.
@@ -34,6 +35,7 @@ GLYPH_UPDATE="↑"
 GLYPH_CHEVRON="▸"
 GLYPH_DOT="·"
 GLYPH_DIRTY="*"  # appended to BRANCH chunk when working tree is dirty
+GLYPH_WARN="⚠"    # warning, action needed (U+26A0, no variation selector)
 GLYPH_BAR_FILLED="█"  # context-bar filled block
 GLYPH_BAR_EMPTY="░"   # context-bar empty block
 
@@ -48,6 +50,7 @@ if [ "${GAIA_STATUSLINE_ASCII:-0}" = "1" ]; then
   GLYPH_CHEVRON=">"
   GLYPH_DOT="-"
   GLYPH_DIRTY="*"
+  GLYPH_WARN="!"
   GLYPH_BAR_FILLED="#"
   GLYPH_BAR_EMPTY="-"
 elif [ "${GAIA_STATUSLINE_NERDFONT:-0}" = "1" ]; then
@@ -60,6 +63,7 @@ elif [ "${GAIA_STATUSLINE_NERDFONT:-0}" = "1" ]; then
   GLYPH_UPDATE=$''  # nf-fa-arrow_up
   GLYPH_CHEVRON=$'' # nf-fa-chevron_right
   GLYPH_DOT=$''     # nf-md-circle_small
+  GLYPH_WARN=$''  # nf-fa-exclamation_triangle
 fi
 
-export GLYPH_BRAND GLYPH_BRANCH GLYPH_SPARK GLYPH_CLOCK GLYPH_UPDATE GLYPH_CHEVRON GLYPH_DOT GLYPH_DIRTY GLYPH_BAR_FILLED GLYPH_BAR_EMPTY
+export GLYPH_BRAND GLYPH_BRANCH GLYPH_SPARK GLYPH_CLOCK GLYPH_UPDATE GLYPH_CHEVRON GLYPH_DOT GLYPH_DIRTY GLYPH_WARN GLYPH_BAR_FILLED GLYPH_BAR_EMPTY

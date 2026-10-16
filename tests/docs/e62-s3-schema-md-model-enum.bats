@@ -1,20 +1,20 @@
 #!/usr/bin/env bats
-# E62-S3 — Update _SCHEMA.md model enum to include claude-opus-4-7 + refresh stale prose
+# E62-S3 — Update agent-frontmatter-schema.md model enum to include claude-opus-4-7 + refresh stale prose
 #
 # Coverage:
-#   - AC1: claude-opus-4-7 appears in the model enum row of _SCHEMA.md.
+#   - AC1: claude-opus-4-7 appears in the model enum row of agent-frontmatter-schema.md.
 #   - AC2: prose row mentions ADR-074 and Val's claude-opus-4-7 exception.
-#   - Test scenario 1: grep "claude-opus-4-7" _SCHEMA.md returns >= 1 hit.
+#   - Test scenario 1: grep "claude-opus-4-7" agent-frontmatter-schema.md returns >= 1 hit.
 #   - Test scenario 2 (regression): lint-agent-frontmatter.sh passes against validator.md.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-  SCHEMA_FILE="$REPO_ROOT/plugins/gaia/agents/_SCHEMA.md"
+  SCHEMA_FILE="$REPO_ROOT/plugins/gaia/knowledge/agent-frontmatter-schema.md"
   LINTER="$REPO_ROOT/.github/scripts/lint-agent-frontmatter.sh"
   VALIDATOR_FILE="$REPO_ROOT/plugins/gaia/agents/validator.md"
 }
 
-@test "E62-S3 AC1: _SCHEMA.md model enum row includes claude-opus-4-7" {
+@test "E62-S3 AC1: agent-frontmatter-schema.md model enum row includes claude-opus-4-7" {
   [ -f "$SCHEMA_FILE" ]
 
   # The model row enumerates allowed values inline. We require the literal
@@ -35,7 +35,7 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "E62-S3 AC2: _SCHEMA.md prose mentions ADR-074 and Val opus-4-7 exception" {
+@test "E62-S3 AC2: agent-frontmatter-schema.md prose mentions ADR-074 and Val opus-4-7 exception" {
   [ -f "$SCHEMA_FILE" ]
 
   # The prose update must call out ADR-074 explicitly.
@@ -48,7 +48,7 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "E62-S3 test scenario 1: grep claude-opus-4-7 _SCHEMA.md returns >= 1 hit" {
+@test "E62-S3 test scenario 1: grep claude-opus-4-7 agent-frontmatter-schema.md returns >= 1 hit" {
   run grep -c 'claude-opus-4-7' "$SCHEMA_FILE"
   [ "$status" -eq 0 ]
   [ "$output" -ge 1 ]

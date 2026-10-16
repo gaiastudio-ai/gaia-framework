@@ -164,7 +164,7 @@ Skipped under `--scaffold` mode (scaffolds intentionally generate no real covera
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review skill. For `gaia-test-automate` it means: deterministic tools (test-execution toolkit — per-stack test-runner availability probe, "tests-that-would-run" inventory listing, missing-fixture / missing-mock / untestable-assertion analysis) run first and emit a structured `analysis-results.json` artifact. The LLM then performs an automation semantic review **on top of** that artifact — it cannot disregard a missing-fixture finding on a P0 AC, it cannot relabel a tool-failure as APPROVE, and it cannot promote a Suggestion-tier finding into a verdict-blocker. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review skill. For `gaia-test-automate` it means: deterministic tools (test-execution toolkit — per-stack test-runner availability probe, "tests-that-would-run" inventory listing, missing-fixture / missing-mock / untestable-assertion analysis) run first and emit a structured `analysis-results.json` artifact. The LLM then performs an automation semantic review **on top of** that artifact — it cannot disregard a missing-fixture finding on a P0 AC, it cannot relabel a tool-failure as APPROVE, and it cannot promote a Suggestion-tier finding into a verdict-blocker. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
 
 This skill is the **plan-then-execute hybrid** of the six review skills. The seven canonical phases established by `gaia-code-review` execute INSIDE the planning phase (fork-isolated analysis). The plan-then-execute split-phase architecture is preserved verbatim — the user-approval gate, plan-tamper detection, and plan-id-keyed `review-gate.sh` invocation live AFTER the seven-phase block in a separate "Approval Gate" section. Phase 6 of this skill emits `analysis-results.json`, the review report, AND the plan file; it does NOT invoke `review-gate.sh`. `review-gate.sh` invocation is deferred to the Approval Gate section, keyed on `plan_id`, and runs only after user approval/rejection.
 
@@ -391,6 +391,21 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 
 The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.
 
+**Register path (primary).** Whenever a story key is available, record each finding through the shared register writer, record a run, and resolve via the register. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run`; otherwise mint a standalone run ID (`standalone-<timestamp>-<pid>`):
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
+  --story {story_key} --defect "{finding}" --type {type} \
+  --severity {severity} --gate test-automate ...
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
+  --story {story_key} --run-id {run_id} --gate test-automate --outcome completed
+${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
+  --register {register_path} \
+  --analysis-results .gaia/state/review/test-automate/{story_key}/analysis-results.json
+```
+
+**Legacy path.** Without a story key (and therefore no register), the existing invocation is preserved:
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --analysis-results .gaia/state/review/test-automate/{story_key}/analysis-results.json \
@@ -400,7 +415,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
 The resolver applies strict first-match-wins precedence:
 1. Any check `status: errored` → **BLOCKED**.
 2. Any check `status: failed` with blocking finding → **REQUEST_CHANGES**. *The LLM cannot override this — rule 2 wins over rule 4 (LLM APPROVE) every time.*
-3. Any LLM finding `severity: Critical` → **REQUEST_CHANGES**.
+3. Register rule (when `--register`): unresolved blocker → **REQUEST_CHANGES**. LLM-Critical rule (legacy): any Critical → **REQUEST_CHANGES**.
 4. Otherwise → **APPROVE**.
 
 Stdout is exactly one of `APPROVE | REQUEST_CHANGES | BLOCKED`. **Three-way mapping:**

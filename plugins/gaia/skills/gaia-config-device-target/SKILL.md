@@ -67,4 +67,4 @@ Examples: `390x844@3.0` (iPhone 15 portrait), `1024x1366@2.0` (iPad Pro 12.9"), 
 ## Notes
 
 - The schema enforces `os_versions`, `form_factors`, `screen_sizes` as required fields under `deviceTargetEntry` — partial blocks are rejected at validation time.
-- See `schemas/project-config.schema.json` `.properties` for the full top-level section list (40 properties in schema v2.0.0). This skill ONLY edits `device_targets` (a sibling top-level key).
+- See `schemas/project-config.schema.json` `.properties` for the full top-level section list. This skill ONLY edits `device_targets` (a sibling top-level key).

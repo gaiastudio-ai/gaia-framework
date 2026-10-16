@@ -41,6 +41,7 @@
           <li><a href="#source-of-truth">Source of truth</a></li>
           <li><a href="#update-check">Update check</a></li>
           <li><a href="#performance">Performance</a></li>
+          <li><a href="#sprint-segment">Sprint progress segment</a></li>
           <li><a href="#enable-disable">Enable / disable</a></li>
           <li><a href="#troubleshooting">Troubleshooting</a></li>
         </ul>
@@ -208,6 +209,30 @@
           <li><strong>Ceiling:</strong> 300 ms (hard maximum)</li>
         </ul>
         <p>These targets are met by reading only local files on the hot path and deferring network activity to the background refresh interval.</p>
+      </section>
+
+      <section id="sprint-segment">
+        <h2>Sprint progress segment</h2>
+        <p>
+          When a sprint is active, the statusline includes a sprint
+          progress segment showing the sprint identifier and completion
+          percentage:
+        </p>
+        <pre><code>&#9670; GAIA 1.220.2 | claude-opus-4-6 | my-project/feat-login | 42% | sprint-12 57%</code></pre>
+        <p>
+          When an ACTION NEEDED condition is active (manual tests due, user
+          action items, or sprint ready to close), the segment is prefixed
+          with a warning indicator (<code>!</code>). If the snapshot cache
+          is missing, the segment falls back to showing the sprint
+          identifier only.
+        </p>
+        <p>
+          <strong>Upgrade note:</strong> the sprint progress segment
+          appears automatically via status line self-heal after a plugin
+          update. If it does not appear, run
+          <a href="gaia-statusline-refresh.html"><code>/gaia-statusline-refresh</code></a>
+          to install the updated runtime.
+        </p>
       </section>
 
       <section id="enable-disable">

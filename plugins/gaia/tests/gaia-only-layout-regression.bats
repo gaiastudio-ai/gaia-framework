@@ -16,6 +16,7 @@
 # plugins/gaia/tests/fixtures/gaia-only-layout/setup.sh.
 
 setup() {
+  export GAIA_SNAPSHOT_HOOK_DISABLE=1
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd -P)"
   FIXTURE_SETUP="$REPO_ROOT/plugins/gaia/tests/fixtures/gaia-only-layout/setup.sh"

@@ -36,7 +36,7 @@ fi
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review and action skill. For `/gaia-test-perf` it means: the configured perf adapter (k6 or Lighthouse, swappable via `test_execution.perf.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact alongside the raw tool summary. The skill's `slo-check.sh` then evaluates each scenario's measured metrics against the declared SLOs (p95 latency, error rate, RPS for k6; performance score, LCP, CLS for Lighthouse), and `baseline-check.sh` compares the current p95 against the last-known baseline at `.gaia/perf-baselines/{scenario}.json`. The LLM then performs a perf-quality semantic judgment in Phase 3B — applying the perf rubric — but cannot override a deterministic SLO breach or adapter failure. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review and action skill. For `/gaia-test-perf` it means: the configured perf adapter (k6 or Lighthouse, swappable via `test_execution.perf.adapter` config or `--adapter` CLI flag) runs in Phase 3A and emits a structured `analysis-results.json` artifact alongside the raw tool summary. The skill's `slo-check.sh` then evaluates each scenario's measured metrics against the declared SLOs (p95 latency, error rate, RPS for k6; performance score, LCP, CLS for Lighthouse), and `baseline-check.sh` compares the current p95 against the last-known baseline at `.gaia/perf-baselines/{scenario}.json`. The LLM then performs a perf-quality semantic judgment in Phase 3B — applying the perf rubric — but cannot override a deterministic SLO breach or adapter failure. The verdict is computed by `verdict-resolver.sh`; the LLM never computes the verdict in natural language. Findings are classified per the shared findings rubric (`knowledge/shared-findings-rubric.md`).
 
 This skill is a deployment-phase action skill and a peer of `/gaia-test-e2e` — same Phase 3A/3B/3C plumbing, perf-specific rubric and SLO/baseline overlays.
 
@@ -146,11 +146,12 @@ The fork is read-only; the parent context writes `llm-findings.json` to the outp
 
 ### Phase 4 — Verdict + Review Gate
 
-Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate "Performance Review"]`. The script:
+Invoke `scripts/verdict.sh --analysis-results <path> --llm-findings <path> [--story-key <key>] [--gate "Performance Review"] [--run-id <id>]`. The script:
 
-1. Calls `verdict-resolver.sh --skill gaia-test-perf` to compute the verdict (precedence: errored > tool-failed-blocking > LLM-Critical > APPROVE).
-2. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
-3. Echoes the verdict on stdout for downstream chaining.
+1. **Register path (default when a story key is present).** Whenever `--story-key` is passed, the script enables register mode automatically. Each LLM finding is written to the shared findings register via `register-write.sh add`, a run record is created via `register-write.sh record-run`, and `verdict-resolver.sh --register` resolves the verdict. If the skill's arguments contain `--run-id <id>`, use that value as `{run_id}` for `record-run` and pass it to `verdict.sh --run-id`; otherwise a standalone run ID (`standalone-<timestamp>-<pid>`) is minted. Non-standard severity labels (e.g. "Critical Risk", "Informational") are normalised to the rubric scale before writing. If any `register-write.sh add` call fails, the run is recorded as `errored` and the verdict is `BLOCKED` (a lost finding must never produce APPROVE). The `--register` flag is still accepted for backward compatibility but is redundant when `--story-key` is given.
+2. **Legacy path.** Without a story key (deployment-phase runs with no associated story), calls `verdict-resolver.sh --skill gaia-test-perf` with `--llm-findings` (precedence: errored > tool-failed-blocking > LLM-Critical > APPROVE).
+3. When `--story-key` and `--gate` are provided, invokes `review-gate.sh update` to update the matching Review Gate row to PASSED (APPROVE) or FAILED (REQUEST_CHANGES, BLOCKED). Deployment-phase invocations without an associated story skip this step.
+4. Echoes the verdict on stdout for downstream chaining.
 
 After verdict resolution, the lifecycle hook `scripts/finalize.sh` writes a checkpoint and emits a `workflow_complete` lifecycle event.
 

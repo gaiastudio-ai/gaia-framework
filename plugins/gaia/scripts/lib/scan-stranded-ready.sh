@@ -88,119 +88,136 @@ parse_story_fm() {
   ' "$f"
 }
 
-# Determine the most-recent verdict for a story key from the decision log.
-# The log appends newest at the top — first match in document order is the
-# canonical most-recent.
-#
-# Heading patterns matched (case-sensitive) for `<key>`:
-#   ### [DATE] Story Validation: <key>
-#   ### [DATE] Story Validation (re-run): <key>
-#   ### [DATE] /gaia-<anything>: <key>
-#
-# The pattern allows trailing content after `<key>` (e.g., " (story title)")
-# so log entries that append a human-readable suffix still match.
-#
-# After locating a heading, read forward up to a configurable window (default
-# 30 lines or until the next `### ` heading, whichever comes first) and look
-# for either:
-#   verdict":"PASSED"   (canonical JSON-style payload)
-#   verdict: PASSED     (prose convention)
-#   Status: recorded    (older "recorded" prose — treated as PASSED only if
-#                        no explicit FAILED/UNVERIFIED verdict is present)
-#
-# Echoes one of: PASSED, FAILED, UNVERIFIED, NONE
-most_recent_verdict() {
-  local key="$1"
-  local log="$VALIDATOR_DECISION_LOG"
-  # `awk` walks top-to-bottom (== newest-to-oldest). On first matching heading,
-  # collect the body until the next `### ` heading, classify the verdict, and
-  # exit.
-  awk -v key="$key" '
-    BEGIN {
-      in_match = 0
-      done = 0
-      body = ""
-    }
-    done { next }
+# Build a key-to-verdict map from the entire decision log in a single awk pass.
+# Outputs lines of "key\tverdict". The log is ordered newest-first so the first
+# occurrence of each key is the most-recent verdict; duplicates are suppressed.
+_build_verdict_cache() {
+  awk '
+    BEGIN { current_key = ""; body = "" }
     /^### / {
-      if (in_match) {
-        # We just finished collecting the first matching block — classify
-        # and freeze. END will print the captured result.
-        done = 1
-        next
+      if (current_key != "" && !(current_key in seen)) {
+        v = classify(body)
+        print current_key "\t" v
+        seen[current_key] = 1
       }
+      current_key = ""
+      body = ""
       heading = $0
-      # Three union heading forms (case-sensitive):
-      #   ### [DATE] Story Validation: <key>
-      #   ### [DATE] Story Validation (re-run): <key>
-      #   ### [DATE] /gaia-<cmd>: <key>
-      # Trailing content after <key> is allowed (e.g., " (story title)").
-      if (match(heading, "(Story Validation: |Story Validation \\(re-run\\): |/gaia-[A-Za-z0-9_-]+: )" key "([^A-Za-z0-9_-]|$)")) {
-        in_match = 1
-        body = heading "\n"
-        next
+      tmp = heading
+      found = 0
+      # Order matters: try re-run first (longer match) before plain validation.
+      if (sub(/.*Story Validation \(re-run\): /, "", tmp)) found = 1
+      else {
+        tmp = heading
+        if (sub(/.*Story Validation: /, "", tmp)) found = 1
+        else {
+          tmp = heading
+          if (sub(/.*\/gaia-[A-Za-z0-9_-]+: /, "", tmp)) found = 1
+        }
       }
+      if (found) {
+        sub(/[^A-Za-z0-9_-].*/, "", tmp)
+        if (tmp ~ /^E[0-9]+-S[0-9]+$/) {
+          current_key = tmp
+          body = heading "\n"
+        }
+      }
+      next
     }
-    in_match { body = body $0 "\n" }
+    current_key != "" { body = body $0 "\n" }
     END {
-      if (in_match) {
-        print classify(body)
-      } else {
-        print "NONE"
+      if (current_key != "" && !(current_key in seen)) {
+        v = classify(body)
+        print current_key "\t" v
+        seen[current_key] = 1
       }
     }
     function classify(b,    has_passed, has_failed, has_unverified, has_recorded) {
       has_passed = 0; has_failed = 0; has_unverified = 0; has_recorded = 0
-      # Canonical JSON-style verdict payload (written by val-sidecar-write.sh).
       if (index(b, "verdict\":\"PASSED\"") > 0) has_passed = 1
       else if (b ~ /verdict:[[:space:]]*PASSED/) has_passed = 1
       if (index(b, "verdict\":\"FAILED\"") > 0) has_failed = 1
       else if (b ~ /verdict:[[:space:]]*FAILED/) has_failed = 1
       if (index(b, "verdict\":\"UNVERIFIED\"") > 0) has_unverified = 1
       else if (b ~ /verdict:[[:space:]]*UNVERIFIED/) has_unverified = 1
-      # Older prose convention from /gaia-validate-story:
-      #   - **Status:** recorded
-      #   - Status: recorded
-      # The bold markup variant (**Status:**) requires tolerating arbitrary
-      # markdown between `Status:` and `recorded`. We accept either plain or
-      # markdown-decorated forms.
       if (b ~ /\*?\*?Status:\*?\*?[[:space:]]+recorded/) has_recorded = 1
-      # Older "Result: PASS" / "Result: FAIL" prose convention (pre-canonical
-      # verdict-line entries — common in early-2026 sprint logs).
       if (b ~ /Result:[[:space:]]+PASS([^A-Z]|$)/) has_passed = 1
       if (b ~ /Result:[[:space:]]+FAIL/) has_failed = 1
-      # Explicit verdict wins. FAILED/UNVERIFIED dominate PASSED if both
-      # appear in the same block (defensive; should not happen in
-      # well-formed logs).
       if (has_failed) return "FAILED"
       if (has_unverified) return "UNVERIFIED"
       if (has_passed) return "PASSED"
       if (has_recorded) return "PASSED"
       return "NONE"
     }
-  ' "$log"
+  ' "$VALIDATOR_DECISION_LOG"
 }
 
-# Collect candidate story files: ready-for-dev + sprint_id null.
+# Build the verdict cache once (single awk pass over the entire decision log).
+_verdict_cache=$(_build_verdict_cache)
+
+# Three-stage candidate selection:
+#   Stage 1 — find covers the three supported story layouts:
+#       a) story.md       (modern per-story dirs, any depth)
+#       b) E*-S*-*.md     (legacy nested layout, under */stories/ dirs)
+#       c) E*-S*-*.md     (legacy flat layout, root of IMPLEMENTATION_ARTIFACTS)
+#     Explicitly excluded from the find:
+#       - */reviews/* directories (review reports, tdd-progress, etc.)
+#   Stage 1b — a single grep -z -v filters the NUL-delimited path stream,
+#     dropping known non-story report filenames by exact slug match.
+#     A story whose slug merely ends in a report word (e.g.,
+#     *-excludes-review-summary.md) is NOT excluded because the regex
+#     anchors to /E<digits>-S<digits>-<suffix>.md$ (digits only, then
+#     the suffix with no extra slug words).
+#   Stage 2 — grep -l pre-selects only files containing 'status: ready-for-dev'
+# Collect candidate story files: ready-for-dev + sprint_id null + PASSED verdict.
+
+# ERE pattern for known non-story report basenames — exact slug match only.
+# Covers every report type the framework writes in the E<n>-S<n>-<type>.md and
+# E<n>-S<n>-<type>-pass<N>.md naming conventions.
+_REPORT_NAME_RE='/E[0-9]+-S[0-9]+-(review-summary|review|plan|review-report|test-automate|review-perf|security-review|code-review|qa-tests|test-review|performance-review|tdd-progress|test-automation)(-pass[0-9]+)?\.md$'
+
 matches=()
 while IFS= read -r -d '' story_file; do
+  [[ -n "$story_file" ]] || continue
   # parse frontmatter -> 4 lines: status, sprint_id, title, key
   fm=$(parse_story_fm "$story_file") || continue
-  status=$(printf '%s\n' "$fm" | sed -n '1p')
-  sprint_id=$(printf '%s\n' "$fm" | sed -n '2p')
-  title=$(printf '%s\n' "$fm" | sed -n '3p')
-  key=$(printf '%s\n' "$fm" | sed -n '4p')
+  # Single multi-line read replaces four printf|sed fork pipelines.
+  # || : on each read prevents set -e from aborting when a trailing field
+  # is empty (command substitution strips trailing empty lines from awk output).
+  {
+    IFS= read -r status || :
+    IFS= read -r sprint_id || :
+    IFS= read -r title || :
+    IFS= read -r key || :
+  } <<< "$fm"
 
   [[ "$status" == "ready-for-dev" ]] || continue
   [[ "$sprint_id" == "null" ]] || continue
   [[ -n "$key" ]] || continue
 
-  # Cross-reference verdict.
-  verdict=$(most_recent_verdict "$key")
+  # Verdict lookup from pre-built cache (decision log is never re-read).
+  # Pure bash string matching — zero forks per candidate.
+  verdict=""
+  case "$_verdict_cache" in
+    "${key}"$'\t'*|*$'\n'"${key}"$'\t'*)
+      local_match="${_verdict_cache#*"${key}"$'\t'}"
+      verdict="${local_match%%$'\n'*}"
+      ;;
+  esac
   [[ "$verdict" == "PASSED" ]] || continue
 
   matches+=("$(printf '%s\t%s\t%s' "$key" "$title" "$story_file")")
-done < <(find "$IMPLEMENTATION_ARTIFACTS" -type f -name '*.md' -print0 2>/dev/null)
+done < <(
+  {
+    # Layout a+b: story.md + legacy nested E*-S*-*.md under */stories/
+    find "$IMPLEMENTATION_ARTIFACTS" -type f -not -path '*/reviews/*' \
+      \( -name 'story.md' -o \( -name 'E[0-9]*-S[0-9]*-*.md' -path '*/stories/*' \) \) -print0
+    # Layout c: legacy flat E*-S*-*.md at the implementation-artifacts root
+    find "$IMPLEMENTATION_ARTIFACTS" -maxdepth 1 -type f \
+      -name 'E[0-9]*-S[0-9]*-*.md' -print0
+  } | grep -z -v -E "$_REPORT_NAME_RE" \
+    | xargs -0 grep -l --null 'status: ready-for-dev' 2>/dev/null || true
+)
 
 # Sort by key ascending and emit.
 if [[ ${#matches[@]} -gt 0 ]]; then

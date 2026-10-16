@@ -30,19 +30,23 @@ load_fixture() {
   local name="$1"
   cp "$FIXTURE_ROOT/$name/sprint-status.yaml" "$IMPLEMENTATION_ARTIFACTS/sprint-status.yaml"
   cp "$FIXTURE_ROOT/$name/decision-log.md" "$TEST_TMP/.gaia/memory/validator-sidecar/decision-log.md"
-  # Copy all story-*.md files into the implementation-artifacts root (flat layout)
+  # Copy story-*.md fixtures into per-story directory layout (story.md inside
+  # E*-S*-* named directories), matching the real implementation-artifacts tree.
   for f in "$FIXTURE_ROOT/$name/"story-*.md; do
     [ -e "$f" ] || continue
-    cp "$f" "$IMPLEMENTATION_ARTIFACTS/$(basename "$f")"
+    local base; base=$(basename "$f" .md)
+    local skey="${base#story-}"
+    local storydir="$IMPLEMENTATION_ARTIFACTS/epic-test/${skey}-test"
+    mkdir -p "$storydir"
+    cp "$f" "$storydir/story.md"
   done
   export SPRINT_STATUS_YAML="$IMPLEMENTATION_ARTIFACTS/sprint-status.yaml"
 }
 
 snapshot_files() {
-  # Snapshot sha256+mtime for every story file plus sprint-status.yaml.
+  # Snapshot sha256+mtime for sprint-status.yaml and all story.md files.
   local file
-  for file in "$IMPLEMENTATION_ARTIFACTS/sprint-status.yaml" "$IMPLEMENTATION_ARTIFACTS"/story-*.md; do
-    [ -e "$file" ] || continue
+  while IFS= read -r file; do
     if command -v sha256sum >/dev/null 2>&1; then
       sha256sum "$file" | awk '{print $1}'
     else
@@ -53,7 +57,10 @@ snapshot_files() {
     else
       stat -c '%Y' "$file"
     fi
-  done
+  done < <(
+    printf '%s\n' "$IMPLEMENTATION_ARTIFACTS/sprint-status.yaml"
+    find "$IMPLEMENTATION_ARTIFACTS" -name 'story.md' -type f 2>/dev/null | LC_ALL=C sort
+  )
 }
 
 @test "none fixture — section suppressed (AC2)" {
