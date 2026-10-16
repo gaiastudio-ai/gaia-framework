@@ -59,6 +59,22 @@ describe('band normal mode', () => {
     await ui.unmount()
   })
 
+  test('the hotkey 9 button comes after other mods content in the band', async ($, on) => {
+    const w = world(on)
+    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
+    await w.clock.settle()
+    const ui = await mountBand($)
+    // When two mods register hotkey 9, the later button in the band wins, so the
+    // dashboard's button must render after what other mods drew.
+    const all = await ui.findAll({ text: /OTHER MOD|^9$/ })
+    const posOther = all.findIndex((el: any) => el.type === 'Text' && String(el.text).includes('OTHER MOD'))
+    const posButton = all.findIndex((el: any) => el.type === 'Button' && el.props && el.props.hotkey === '9')
+    expect(posOther).toBeGreaterThanOrEqual(0)
+    expect(posButton).toBeGreaterThanOrEqual(0)
+    expect(posOther).toBeLessThan(posButton)
+    await ui.unmount()
+  })
+
   test('band preserves other mods content', async ($, on) => {
     const w = world(on)
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
