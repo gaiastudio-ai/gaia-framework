@@ -321,6 +321,9 @@ core	review-parity/gaia-test-automate/action-skill-contract.bats
 core	review-parity/gaia-test-e2e/action-skill-contract.bats
 core	review-parity/gaia-test-perf/action-skill-contract.bats
 core	review-rubric-rebind.bats
+core	round-lifecycle-integration.bats
+core	round-lifecycle.bats
+core	round-wiring.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats
