@@ -632,6 +632,7 @@ scripts-core	test-policy-schema.bats
 scripts-core	test-policy-trigger-scope.bats
 scripts-core	test-review-gate-plan-id.bats
 scripts-core	test-val-integration.bats
+scripts-core	tick-story-checkbox.bats
 scripts-core	tool-availability-probe.bats
 scripts-core	val-sidecar-write-jq-cleanliness.bats
 scripts-core	val-validate-plan.bats
