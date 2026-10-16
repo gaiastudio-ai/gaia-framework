@@ -125,6 +125,92 @@ if [ -z "$PR_TARGET" ]; then
 fi
 assert_pr_target_from_chain "$PR_TARGET" || die "aborting: pr-target invariant failed"
 
+# ---------------------------------------------------------------------------
+# Pre-merge guards (run AFTER security invariants, BEFORE gh pr merge).
+# Guard order: (1) check state, (2) stale base, (3) attribution trailers.
+# Each guard exits on the first failure it finds.
+# ---------------------------------------------------------------------------
+
+# Guard 1: every PR check must be pass or skipping.
+# gh pr checks returns a JSON array of {bucket,name} objects. The accepted
+# bucket values are "pass" and "skipping"; anything else (fail, pending, …)
+# blocks the merge.
+if command -v jq >/dev/null 2>&1; then
+  checks_json="$(gh pr checks "$PR_NUMBER" --json bucket,name 2>/dev/null || echo "[]")"
+  bad_checks="$(printf '%s' "$checks_json" | jq -r '.[] | select(.bucket != "pass" and .bucket != "skipping") | .name' 2>/dev/null || true)"
+  if [ -n "$bad_checks" ]; then
+    log "aborting: one or more PR checks have not passed:"
+    printf '%s\n' "$bad_checks" | while IFS= read -r chk; do
+      log "  - $chk"
+    done
+    log "Wait for pending checks to finish or fix failing ones, then retry."
+    exit 1
+  fi
+fi
+
+# Guard 2: the branch must be based on the current base tip.
+# A stale base means the PR was opened against an older revision and needs a
+# rebase before it can land cleanly. Requires origin/<base> to be resolvable;
+# skipped when the remote ref cannot be fetched (e.g. no remote configured).
+git fetch origin "$PR_TARGET" --quiet 2>/dev/null || true
+if git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
+  if ! git merge-base --is-ancestor "origin/${PR_TARGET}" HEAD 2>/dev/null; then
+    head_ref="$(git rev-parse --short HEAD 2>/dev/null || echo "HEAD")"
+    log "aborting: branch head ${head_ref} is not based on origin/${PR_TARGET}."
+    log "Run 'git rebase origin/${PR_TARGET}' or 'git merge origin/${PR_TARGET}' and push, then retry."
+    exit 1
+  fi
+fi
+
+# Guard 3: no commit in the PR range may carry an assistant attribution trailer.
+# Requires origin/<base> to be resolvable for the commit range; skipped when
+# the remote ref cannot be resolved.
+# Maintainable pattern list — extend by adding entries below.
+ASSISTANT_TRAILER_PATTERNS=(
+  "noreply@anthropic.com"
+  "Claude"
+  "GitHub Copilot"
+  "copilot@github.com"
+  "Anthropic"
+)
+
+_build_trailer_regex() {
+  local pat result=""
+  for pat in "${ASSISTANT_TRAILER_PATTERNS[@]}"; do
+    if [ -n "$result" ]; then
+      result="${result}|${pat}"
+    else
+      result="$pat"
+    fi
+  done
+  printf '%s' "$result"
+}
+
+if git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
+  trailer_regex="$(_build_trailer_regex)"
+  # Scan every commit body in the PR range for Co-Authored-By trailers that
+  # match the assistant pattern list.
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    commit_hash="${line%%	*}"
+    trailer_line="${line#*	}"
+    short_hash="$(git rev-parse --short "$commit_hash" 2>/dev/null || echo "$commit_hash")"
+    log "aborting: commit ${short_hash} carries an assistant attribution trailer:"
+    log "  ${trailer_line}"
+    log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
+    exit 1
+  done < <(git log --format='%H %b' "origin/${PR_TARGET}..HEAD" 2>/dev/null \
+    | grep -iE "^[0-9a-f]{40} " \
+    | while IFS= read -r logline; do
+        hash="${logline%% *}"
+        body="${logline#* }"
+        if printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" >/dev/null 2>&1; then
+          matched="$(printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" | head -1)"
+          printf '%s\t%s\n' "$hash" "$matched"
+        fi
+      done)
+fi
+
 # Build merge command
 MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\""
 if [ "$DELETE_BRANCH" = true ]; then
