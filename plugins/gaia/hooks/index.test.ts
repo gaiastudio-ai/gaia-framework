@@ -480,12 +480,11 @@ describe('cache state', () => {
     await ui.unmount()
   })
 
-  test('absent cache: pane passes through', async ($, on) => {
+  test('absent cache: pane shows fallback', async ($, on) => {
     const w = world(on, { cache: { content: null, mtimeMs: 0 } })
     await start($, w)
     const ui = await mountPane($)
-    expect(await ui.find({ text: 'BOTTOM PANE' })).toBeDefined()
-    expect(await ui.find({ text: 'Sprint data unavailable' })).toBeUndefined()
+    expect(await ui.find({ text: 'Sprint data unavailable' })).toBeDefined()
     await ui.unmount()
   })
 
