@@ -882,7 +882,11 @@ v_ci_cd_ci_wait_timeout_minutes=$(merge_nested_key ci_cd ci_wait_timeout_minutes
 # review_gate.manual_test_mode — advisory (default) or gating.
 v_review_gate_manual_test_mode=$(merge_nested_key review_gate manual_test_mode)
 
+# sprint.max_concurrent_active — maximum number of simultaneously active sprints.
+v_sprint_max_concurrent_active=$(merge_nested_key sprint max_concurrent_active)
+
 # Defaults (applied when no layer set a value).
+[ -z "$v_sprint_max_concurrent_active" ]            && v_sprint_max_concurrent_active="1"
 [ -z "$v_dev_story_tdd_review_threshold" ]          && v_dev_story_tdd_review_threshold="medium"
 [ -z "$v_dev_story_tdd_review_phases" ]             && v_dev_story_tdd_review_phases="[red]"
 [ -z "$v_dev_story_tdd_review_qa_auto_in_yolo" ]    && v_dev_story_tdd_review_qa_auto_in_yolo="true"
@@ -1415,6 +1419,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_review_gate_manual_test_mode" ;;
     ci_cd.ci_wait_timeout_minutes)
       printf '%s\n' "$v_ci_cd_ci_wait_timeout_minutes" ;;
+    sprint.max_concurrent_active)
+      printf '%s\n' "$v_sprint_max_concurrent_active" ;;
     # Synthetic key mirroring positional dispatch (see above).
     project_config_path)
       printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;
