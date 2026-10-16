@@ -342,12 +342,27 @@ _al_enforce_path_type_strict() {
 
 # --- Internal: strict-mode post-lock identity re-check ---
 #
-# After the lock is held, verify that the lock file's dev:ino matches the
-# held fd's dev:ino. On mismatch, release and retry. Returns 0 on match,
+# After the lock is held, verify that the lock file's inode matches the
+# held fd's inode. On mismatch, release and retry. Returns 0 on match,
 # 1 on mismatch. Where stat is unavailable, degrades to pass (return 0).
+#
+# Uses inode-only comparison for the fd vs. lock-path check because the
+# fd path's device number is unreliable: on macOS /dev/fd/N is a devfs
+# device node whose stat reports the devfs device, not the real file's
+# device, so a dev:ino comparison always fails there. The inode alone is
+# sufficient to detect a replaced file (a swap produces a different inode).
+# The dev:ino helper is used for the LOCK PATH side only when comparing
+# two real paths (e.g. in the fallback identity re-check).
 
 _al_verify_identity_strict() {
   local lock_file="$1" fd="$2"
+
+  # Test-only hook: when _al_identity_hook is a function, call it to let
+  # tests inject a deterministic mismatch (e.g. swap the lock file between
+  # acquisition and re-check). Not a user-facing surface.
+  if declare -F _al_identity_hook >/dev/null 2>&1; then
+    _al_identity_hook "$lock_file" "$fd"
+  fi
 
   local fd_path=""
   if [ -e "/proc/self/fd/${fd}" ]; then
@@ -358,10 +373,11 @@ _al_verify_identity_strict() {
     return 0  # Cannot verify — degrade to pass.
   fi
 
-  local path_id fd_id
-  path_id="$(_al_dev_ino "$lock_file" 2>/dev/null)" || return 0
-  fd_id="$(_al_dev_ino "$fd_path" 2>/dev/null)" || return 0
-  [ "$path_id" = "$fd_id" ]
+  # Inode-only comparison (same strategy as _al_verify_opened_fd).
+  local path_ino fd_ino
+  path_ino="$(_al_inode "$lock_file" 2>/dev/null)" || return 0
+  fd_ino="$(_al_inode "$fd_path" 2>/dev/null)" || return 0
+  [ "$path_ino" = "$fd_ino" ]
 }
 
 # --- Internal: debug trace ---

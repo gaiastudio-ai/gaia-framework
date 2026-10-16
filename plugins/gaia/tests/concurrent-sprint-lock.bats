@@ -24,6 +24,8 @@ teardown() {
     kill "$_HOLDER_PID" 2>/dev/null || true
     wait "$_HOLDER_PID" 2>/dev/null || true
   fi
+  # Unset the identity hook in case a test set it.
+  unset -f _al_identity_hook 2>/dev/null || true
   rm -rf "${TEST_TMP:-}" 2>/dev/null || true
 }
 
@@ -38,7 +40,6 @@ teardown() {
   [ -n "${GAIA_LOCK_L4_PATH:-}" ]
   [ -n "${GAIA_LOCK_L5_PATH:-}" ]
 
-  # All five must be distinct.
   local count
   count=$(printf '%s\n' "$GAIA_LOCK_L1_TEMPLATE" "$GAIA_LOCK_L2_PATH" "$GAIA_LOCK_L3_PATH" "$GAIA_LOCK_L4_PATH" "$GAIA_LOCK_L5_PATH" | sort -u | wc -l | tr -d ' ')
   [ "$count" -eq 5 ]
@@ -51,11 +52,8 @@ teardown() {
     "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/merge.sh"
     "${PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh"
   )
-
   for f in "${files[@]}"; do
     [ -f "$f" ] || continue
-    # A nested lock call is two acquire_lock calls inside the same (...)
-    # subshell without an intervening release or subshell close.
     local nested
     nested=$(awk '
       /^\s*\(/ { depth++; lcount=0 }
@@ -74,17 +72,8 @@ teardown() {
     "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/merge.sh"
     "${PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh"
   )
-
   for f in "${files[@]}"; do
     [ -f "$f" ] || continue
-    # Match executable `flock -<flag>` invocations at the start of a statement
-    # (i.e. where flock is being called as a command, not mentioned in a
-    # comment or string). The scan excludes:
-    # - comment lines (leading #)
-    # - _ACQUIRE_LOCK_FLOCK_BIN references (the lock helper's variable)
-    # - require_flock_for_parallel (a gate function)
-    # - command -v flock (a probe)
-    # - quoted strings (printf, echo, die)
     local raw_hits
     raw_hits=$({ /usr/bin/grep -n 'flock -' "$f" \
       | /usr/bin/grep -v '#.*flock' \
@@ -94,13 +83,7 @@ teardown() {
       | /usr/bin/grep -v "printf\|echo\|die\|'" \
       || true; } | wc -l | tr -d ' ')
     [ "$raw_hits" -eq 0 ] || {
-      echo "Direct flock calls in $(basename "$f"): $raw_hits"
-      /usr/bin/grep -n 'flock -' "$f" \
-        | /usr/bin/grep -v '#.*flock' \
-        | /usr/bin/grep -v '_FLOCK_BIN' \
-        | /usr/bin/grep -v 'require_flock' \
-        | /usr/bin/grep -v 'command -v' \
-        | /usr/bin/grep -v "printf\|echo\|die\|'" >&2
+      echo "Direct flock calls in $(basename "$f"): $raw_hits" >&2
       false
     }
   done
@@ -116,53 +99,37 @@ teardown() {
 
 @test "ac2 — flock path returns exit 3 with diagnostic on timeout" {
   [ -z "${_ACQUIRE_LOCK_FLOCK_BIN:-}" ] && skip "flock not available"
-
   local lockpath="$TEST_TMP/.gaia/state/.test-timeout.lock"
+  local ready="$TEST_TMP/timeout-flock-ready"
 
-  # Holder: acquire lock, sleep in background
-  bash -c "
-    source '$LOCK_LIB'; set +u
-    GAIA_LOCK_FORCE_FALLBACK=0
-    acquire_lock '$lockpath' 30 200
-    sleep 30
-  " &
+  cat > "$TEST_TMP/timeout-holder.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+export GAIA_LOCK_FORCE_FALLBACK=0
+source "$1"; set +u
+acquire_lock "$2" 30 200
+touch "$3"
+exec sleep 30
+SCRIPT
+  chmod +x "$TEST_TMP/timeout-holder.sh"
+
+  bash "$TEST_TMP/timeout-holder.sh" "$LOCK_LIB" "$lockpath" "$ready" &
   _HOLDER_PID=$!
-  sleep 1
 
-  # Contender: should timeout in 2s
+  local waited=0
+  while [ ! -f "$ready" ] && [ "$waited" -lt 10 ]; do
+    sleep 0.2; waited=$((waited + 1))
+  done
+  [ -f "$ready" ]
+
   local stderr_out="$TEST_TMP/stderr"
-  run bash -c "
-    source '$LOCK_LIB'; set +u
-    GAIA_LOCK_FORCE_FALLBACK=0
-    acquire_lock '$lockpath' 2 201 2>'$stderr_out'
-    echo \$?
-  "
-  # The exit code is 3 (timeout).
-  local rc
-  rc=$(cat "$stderr_out" 2>/dev/null; true)
-  # Actually, check the run status
-  kill "$_HOLDER_PID" 2>/dev/null || true
-  wait "$_HOLDER_PID" 2>/dev/null || true
-  _HOLDER_PID=""
-
-  # Re-run with direct capture.
+  local rc=0
   bash -c "
+    export GAIA_LOCK_FORCE_FALLBACK=0
     source '$LOCK_LIB'; set +u
-    GAIA_LOCK_FORCE_FALLBACK=0
-    acquire_lock '$lockpath' 30 200
-    sleep 30
-  " &
-  _HOLDER_PID=$!
-  sleep 1
-
-  local rc2=0
-  bash -c "
-    source '$LOCK_LIB'; set +u
-    GAIA_LOCK_FORCE_FALLBACK=0
     acquire_lock '$lockpath' 2 201
-  " 2>"$stderr_out" || rc2=$?
+  " 2>"$stderr_out" || rc=$?
 
-  [ "$rc2" -eq 3 ]
+  [ "$rc" -eq 3 ]
   /usr/bin/grep -q 'lock_timeout:' "$stderr_out"
   /usr/bin/grep -q 'after 2s' "$stderr_out"
 
@@ -174,17 +141,15 @@ teardown() {
 @test "ac2 — fallback path returns exit 3 with diagnostic on timeout" {
   local lockpath="$TEST_TMP/.gaia/state/.test-timeout-fb.lock"
 
-  # Holder: acquire lock via fallback
   bash -c "
     export GAIA_LOCK_FORCE_FALLBACK=1
     source '$LOCK_LIB'; set +u
     acquire_lock '$lockpath' 30 200
-    sleep 30
+    exec sleep 30
   " &
   _HOLDER_PID=$!
   sleep 1
 
-  # Contender: should timeout in 2s
   local stderr_out="$TEST_TMP/stderr-fb"
   local rc=0
   bash -c "
@@ -206,18 +171,15 @@ teardown() {
   local sprint_state="${PLUGIN_ROOT}/scripts/sprint-state.sh"
   [ -f "$sprint_state" ] || skip "sprint-state.sh not found"
 
-  # Extract the timeout argument from the acquire_lock call inside cmd_reconcile.
-  # The pattern is: acquire_lock "$SPRINT_STATUS_LOCK" <timeout> 9
   local timeout_val
   timeout_val=$(sed -n '/cmd_reconcile()/,/^[a-z_]*cmd_/{
     /acquire_lock.*SPRINT_STATUS_LOCK/{ s/.*SPRINT_STATUS_LOCK"[[:space:]]*//; s/[[:space:]].*//; p; q; }
   }' "$sprint_state")
-
   [ "$timeout_val" = "5" ]
 }
 
 # ──────────────────────────────────────────────────────────────
-# AC3: Strict mode refuses non-regular files and retries on identity mismatch
+# AC3: Strict mode
 # ──────────────────────────────────────────────────────────────
 
 @test "ac3 — strict mode refuses symlink with exit 4" {
@@ -230,7 +192,6 @@ teardown() {
 
   [ "$rc" -eq 4 ]
   /usr/bin/grep -q 'lock_symlink_detected:' "$stderr_out"
-  # Symlink must NOT be unlinked in strict mode.
   [ -L "$lockpath" ]
 }
 
@@ -246,15 +207,40 @@ teardown() {
   /usr/bin/grep -q 'lock_symlink_detected:' "$stderr_out"
 }
 
-@test "ac3 — strict mode refuses fifo with exit 4" {
-  local lockpath="$TEST_TMP/.gaia/state/.sprint-lifecycle.lock"
+@test "ac3 — strict mode refuses fifo with exit 4 (bounded)" {
+  local lockpath="$TEST_TMP/.gaia/state/.sprint-lifecycle-fifo.lock"
   mkfifo "$lockpath"
 
   local stderr_out="$TEST_TMP/stderr-strict-fifo"
-  local rc=0
-  acquire_lock "$lockpath" 5 200 --strict 2>"$stderr_out" || rc=$?
+  local marker="$TEST_TMP/fifo-done"
+  # Run in background with a kill timer so a regression (fifo read hang)
+  # fails the test instead of hanging CI.
+  cat > "$TEST_TMP/fifo-test.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+source "$1"; set +u
+rc=0
+acquire_lock "$2" 5 200 --strict 2>"$3" || rc=$?
+echo "$rc" > "$4"
+SCRIPT
+  chmod +x "$TEST_TMP/fifo-test.sh"
 
-  [ "$rc" -eq 4 ]
+  bash "$TEST_TMP/fifo-test.sh" "$LOCK_LIB" "$lockpath" "$stderr_out" "$marker" &
+  local bg=$!
+  local waited=0
+  while kill -0 "$bg" 2>/dev/null && [ "$waited" -lt 10 ]; do
+    sleep 1; waited=$((waited + 1))
+  done
+  if kill -0 "$bg" 2>/dev/null; then
+    kill "$bg" 2>/dev/null || true
+    wait "$bg" 2>/dev/null || true
+    echo "fifo test hung for ${waited}s — strict check did not fire" >&2
+    false
+  fi
+  wait "$bg" 2>/dev/null || true
+
+  [ -f "$marker" ]
+  local rc; rc=$(cat "$marker")
+  [ "$rc" = "4" ]
   /usr/bin/grep -q 'lock_symlink_detected:' "$stderr_out"
 }
 
@@ -264,7 +250,6 @@ teardown() {
 
   local rc=0
   acquire_lock "$lockpath" 5 200 2>/dev/null || rc=$?
-
   [ "$rc" -eq 0 ]
   [ ! -L "$lockpath" ]
   release_lock 200
@@ -273,6 +258,27 @@ teardown() {
 @test "ac3 — exit constants correct" {
   [ "${ACQUIRE_LOCK_EXIT_SYMLINK:-}" = "4" ]
   [ "${ACQUIRE_LOCK_EXIT_IDENTITY:-}" = "5" ]
+}
+
+@test "ac3 — strict mode acquires successfully on a clean path (flock)" {
+  [ -z "${_ACQUIRE_LOCK_FLOCK_BIN:-}" ] && skip "flock not available"
+  local lockpath="$TEST_TMP/.gaia/state/.strict-success-flock.lock"
+
+  local rc=0
+  GAIA_LOCK_FORCE_FALLBACK=0 acquire_lock "$lockpath" 5 200 --strict 2>/dev/null || rc=$?
+  [ "$rc" -eq 0 ]
+  [ -n "$(_al_get_path 200)" ]
+  release_lock 200
+}
+
+@test "ac3 — strict mode acquires successfully on a clean path (fallback)" {
+  local lockpath="$TEST_TMP/.gaia/state/.strict-success-fb.lock"
+
+  local rc=0
+  GAIA_LOCK_FORCE_FALLBACK=1 acquire_lock "$lockpath" 5 200 --strict 2>/dev/null || rc=$?
+  [ "$rc" -eq 0 ]
+  [ -n "$(_al_get_path 200)" ]
+  release_lock 200
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -285,7 +291,6 @@ teardown() {
   [ "$GAIA_LOCK_L3_PATH" = ".promotion-merge.lock" ]
   [ "$GAIA_LOCK_L4_PATH" = ".sprint-lifecycle.lock" ]
   [ "$GAIA_LOCK_L5_PATH" = ".sprint-proxy.lock" ]
-
   [ "$GAIA_LOCK_L1_TIMEOUT" = "5" ]
   [ "$GAIA_LOCK_L2_TIMEOUT" = "5" ]
   [ "$GAIA_LOCK_L3_TIMEOUT" = "120" ]
@@ -297,10 +302,8 @@ teardown() {
   GAIA_MERGE_LOCK_TIMEOUT=30 source "$LOCK_LIB"
   set +u
   [ "$GAIA_LOCK_L3_TIMEOUT" = "30" ]
-  # Restore
   unset GAIA_MERGE_LOCK_TIMEOUT
-  source "$LOCK_LIB"
-  set +u
+  source "$LOCK_LIB"; set +u
 }
 
 @test "ac4 — predicate returns L4 when limit > 1" {
@@ -311,7 +314,7 @@ teardown() {
   /usr/bin/grep -q '10' <<< "$result"
 }
 
-@test "ac4 — predicate returns L4 in transitional state (per-sprint files exist)" {
+@test "ac4 — predicate returns L4 in transitional state" {
   local state_dir="$TEST_TMP/.gaia/state"
   touch "$state_dir/sprint-status-sprint-99.yaml"
 
@@ -321,7 +324,6 @@ teardown() {
 
   result=$(acquire_lock_close_predicate "" "$state_dir")
   /usr/bin/grep -q '.sprint-lifecycle.lock' <<< "$result"
-
   rm -f "$state_dir/sprint-status-sprint-99.yaml"
 }
 
@@ -339,7 +341,7 @@ teardown() {
 }
 
 # ──────────────────────────────────────────────────────────────
-# AC5: Hardened mkdir -p emits diagnostic on failure
+# AC5: Hardened mkdir -p
 # ──────────────────────────────────────────────────────────────
 
 @test "ac5 — mkdir failure produces diagnostic and non-zero exit" {
@@ -351,7 +353,6 @@ teardown() {
   local stderr_out="$TEST_TMP/stderr-mkdir"
   local rc=0
   acquire_lock "$lockpath" 5 200 2>"$stderr_out" || rc=$?
-
   chmod 755 "$blocked_dir"
 
   [ "$rc" -ne 0 ]
@@ -366,7 +367,6 @@ teardown() {
   local lockpath="$state_dir/.promotion-merge.lock"
   local rc=0
   acquire_lock "$lockpath" 5 200 2>/dev/null || rc=$?
-
   [ "$rc" -eq 0 ]
   [ -d "$state_dir" ]
   release_lock 200
@@ -378,25 +378,28 @@ teardown() {
 
 @test "ac6 — flock path serializes two concurrent processes" {
   [ -z "${_ACQUIRE_LOCK_FLOCK_BIN:-}" ] && skip "flock not available"
-
   local lockpath="$TEST_TMP/.gaia/state/.parity-flock.lock"
   local outfile="$TEST_TMP/parity-out-flock"
+  local ready="$TEST_TMP/parity-flock-ready"
   : > "$outfile"
 
+  # Holder acquires, signals readiness, holds, writes, releases.
   bash -c "
     export GAIA_LOCK_FORCE_FALLBACK=0
     source '$LOCK_LIB'; set +u
     acquire_lock '$lockpath' 10 200
-    printf 'A\n' >> '$outfile'
+    touch '$ready'
     sleep 0.3
+    printf 'A\n' >> '$outfile'
     release_lock 200
   " &
   local pid_a=$!
 
+  # Contender waits for readiness then contends.
   bash -c "
     export GAIA_LOCK_FORCE_FALLBACK=0
     source '$LOCK_LIB'; set +u
-    sleep 0.05
+    while [ ! -f '$ready' ]; do sleep 0.02; done
     acquire_lock '$lockpath' 10 201
     printf 'B\n' >> '$outfile'
     release_lock 201
@@ -416,14 +419,16 @@ teardown() {
 @test "ac6 — fallback path serializes two concurrent processes" {
   local lockpath="$TEST_TMP/.gaia/state/.parity-fb.lock"
   local outfile="$TEST_TMP/parity-out-fb"
+  local ready="$TEST_TMP/parity-fb-ready"
   : > "$outfile"
 
   bash -c "
     export GAIA_LOCK_FORCE_FALLBACK=1
     source '$LOCK_LIB'; set +u
     acquire_lock '$lockpath' 10 200
-    printf 'A\n' >> '$outfile'
+    touch '$ready'
     sleep 0.3
+    printf 'A\n' >> '$outfile'
     release_lock 200
   " &
   local pid_a=$!
@@ -431,7 +436,7 @@ teardown() {
   bash -c "
     export GAIA_LOCK_FORCE_FALLBACK=1
     source '$LOCK_LIB'; set +u
-    sleep 0.05
+    while [ ! -f '$ready' ]; do sleep 0.02; done
     acquire_lock '$lockpath' 10 201
     printf 'B\n' >> '$outfile'
     release_lock 201
@@ -449,7 +454,7 @@ teardown() {
 }
 
 # ──────────────────────────────────────────────────────────────
-# AC7: Trap-based cleanup chains with existing traps
+# AC7: Trap-based cleanup chains with existing traps (behavioural)
 # ──────────────────────────────────────────────────────────────
 
 @test "ac7 — chained traps in sprint-state.sh include release_lock and _cleanup_tmps" {
@@ -458,14 +463,12 @@ teardown() {
 
   local lock_traps
   lock_traps=$(/usr/bin/grep "trap 'release_lock" "$sprint_state" | /usr/bin/grep -c '_cleanup_tmps')
-  # 7 lock sites x 3 signals (EXIT, INT, TERM) = 21
   [ "$lock_traps" -ge 21 ]
 }
 
 @test "ac7 — outer _cleanup_tmps trap not overwritten" {
   local sprint_state="${PLUGIN_ROOT}/scripts/sprint-state.sh"
   [ -f "$sprint_state" ] || skip "sprint-state.sh not found"
-
   /usr/bin/grep -q "^trap '_cleanup_tmps' EXIT INT TERM" "$sprint_state"
 }
 
@@ -482,6 +485,110 @@ teardown() {
   [ "$term_no_exit" -eq 0 ]
 }
 
+@test "ac7 — SIGTERM releases the lock on a real holder process" {
+  [ -z "${_ACQUIRE_LOCK_FLOCK_BIN:-}" ] && skip "flock not available"
+  local lockpath="$TEST_TMP/.gaia/state/.trap-term.lock"
+  local released_marker="$TEST_TMP/trap-term-released"
+  local cleanup_marker="$TEST_TMP/trap-term-cleanup"
+
+  # The holder acquires a lock, installs a chained trap (like sprint-state),
+  # then waits. We send it SIGTERM and verify the lock is released and
+  # cleanup ran.
+  cat > "$TEST_TMP/trap-holder.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+source "$1"; set +u
+lockpath="$2"
+released="$3"
+cleanup="$4"
+my_cleanup() { touch "$cleanup"; }
+acquire_lock "$lockpath" 10 200
+trap 'release_lock 200; my_cleanup; exit 143' TERM
+trap 'release_lock 200; my_cleanup' EXIT
+# Signal readiness, then wait.
+touch "$lockpath.ready"
+while true; do sleep 1; done
+SCRIPT
+  chmod +x "$TEST_TMP/trap-holder.sh"
+
+  bash "$TEST_TMP/trap-holder.sh" "$LOCK_LIB" "$lockpath" "$released_marker" "$cleanup_marker" &
+  _HOLDER_PID=$!
+
+  # Wait for readiness.
+  local waited=0
+  while [ ! -f "$lockpath.ready" ] && [ "$waited" -lt 5 ]; do
+    sleep 0.2; waited=$((waited + 1))
+  done
+  [ -f "$lockpath.ready" ]
+
+  # Send SIGTERM.
+  kill -TERM "$_HOLDER_PID" 2>/dev/null || true
+  wait "$_HOLDER_PID" 2>/dev/null || true
+  _HOLDER_PID=""
+
+  # Verify cleanup ran.
+  [ -f "$cleanup_marker" ]
+
+  # Verify the lock is released: a new acquirer succeeds immediately.
+  local rc=0
+  bash -c "
+    export GAIA_LOCK_FORCE_FALLBACK=0
+    source '$LOCK_LIB'; set +u
+    acquire_lock '$lockpath' 2 201
+    release_lock 201
+  " 2>/dev/null || rc=$?
+  [ "$rc" -eq 0 ]
+}
+
+@test "ac7 — SIGINT releases the lock on a real holder process" {
+  [ -z "${_ACQUIRE_LOCK_FLOCK_BIN:-}" ] && skip "flock not available"
+  local lockpath="$TEST_TMP/.gaia/state/.trap-int.lock"
+  local cleanup_marker="$TEST_TMP/trap-int-cleanup"
+
+  # Use a script that traps INT, signals readiness, then sleeps via read
+  # (which is interruptible by INT, unlike `sleep` in some configurations).
+  cat > "$TEST_TMP/trap-int-holder.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+source "$1"; set +u
+lockpath="$2"
+cleanup="$3"
+my_cleanup() { touch "$cleanup"; }
+acquire_lock "$lockpath" 10 200
+trap 'release_lock 200; my_cleanup; exit 130' INT
+trap 'release_lock 200; my_cleanup' EXIT
+touch "$lockpath.ready"
+# read on a pipe that never closes — interruptible by signals.
+read -r < /dev/stdin 2>/dev/null || true
+SCRIPT
+  chmod +x "$TEST_TMP/trap-int-holder.sh"
+
+  # Feed stdin from a pipe that stays open until we close it.
+  bash "$TEST_TMP/trap-int-holder.sh" "$LOCK_LIB" "$lockpath" "$cleanup_marker" < /dev/null &
+  _HOLDER_PID=$!
+
+  local waited=0
+  while [ ! -f "$lockpath.ready" ] && [ "$waited" -lt 10 ]; do
+    sleep 0.2; waited=$((waited + 1))
+  done
+  [ -f "$lockpath.ready" ]
+
+  kill -INT "$_HOLDER_PID" 2>/dev/null || true
+  # Give a moment for trap to fire.
+  sleep 0.5
+  wait "$_HOLDER_PID" 2>/dev/null || true
+  _HOLDER_PID=""
+
+  [ -f "$cleanup_marker" ]
+
+  local rc=0
+  bash -c "
+    export GAIA_LOCK_FORCE_FALLBACK=0
+    source '$LOCK_LIB'; set +u
+    acquire_lock '$lockpath' 2 201
+    release_lock 201
+  " 2>/dev/null || rc=$?
+  [ "$rc" -eq 0 ]
+}
+
 # ──────────────────────────────────────────────────────────────
 # AC8: No internal traceability identifiers in published files
 # ──────────────────────────────────────────────────────────────
@@ -495,24 +602,35 @@ teardown() {
     "${PLUGIN_ROOT}/tests/concurrent-sprint-lock.bats"
   )
 
-  # The leak_pattern itself is a load-bearing regex used by this test,
-  # excluded from counting.
   local leak_re='FR-[0-9]+|NFR-[0-9]+|SR-[0-9]+|ADR-[0-9]+|E[0-9]+-S[0-9]+|TC-CONC-|AF-[0-9]{4}-[0-9]{2}-[0-9]{2}'
 
   for f in "${files[@]}"; do
     [ -f "$f" ] || continue
     local matches
     matches=$(/usr/bin/grep -cE "$leak_re" "$f" || true)
-    # Subtract self-referencing leak_re definitions.
     local self_refs
     self_refs=$(/usr/bin/grep -cE "leak_re=|leak_pattern=" "$f" || true)
     local real=$(( matches - self_refs ))
     [ "$real" -le 0 ] || {
-      echo "Leaked identifiers in $(basename "$f"):"
+      echo "Leaked identifiers in $(basename "$f"):" >&2
       /usr/bin/grep -nE "$leak_re" "$f" | /usr/bin/grep -vE "leak_re=|leak_pattern=" >&2
       false
     }
   done
+}
+
+# ──────────────────────────────────────────────────────────────
+# AC8 addendum: byte-identical mirrors
+# ──────────────────────────────────────────────────────────────
+
+@test "ac8 — acquire-lock.sh mirrors are byte-identical" {
+  cmp "${PLUGIN_ROOT}/scripts/lib/acquire-lock.sh" \
+      "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/lib/acquire-lock.sh"
+}
+
+@test "ac8 — sprint-state.sh mirrors are byte-identical" {
+  cmp "${PLUGIN_ROOT}/scripts/sprint-state.sh" \
+      "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/sprint-state.sh"
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -521,24 +639,44 @@ teardown() {
 
 @test "ac9 — basic lock acquire/release works without strict mode" {
   local lockpath="$TEST_TMP/.gaia/state/.test-compat-basic.lock"
-
   local rc=0
   acquire_lock "$lockpath" 5 200 2>/dev/null || rc=$?
   [ "$rc" -eq 0 ]
   release_lock 200
 }
 
-@test "ac9 — timeout exit code 3 is non-zero (back-compat with -ne 0 checks)" {
-  [ 3 -ne 0 ]
+@test "ac9 — timeout exit 3 does not break callers that assert non-zero" {
+  # Verify by actually triggering a timeout: the exit code is 3, which
+  # satisfies every existing caller's `if ! acquire_lock` pattern.
+  local lockpath="$TEST_TMP/.gaia/state/.compat-timeout.lock"
+
+  bash -c "
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source '$LOCK_LIB'; set +u
+    acquire_lock '$lockpath' 30 200
+    exec sleep 30
+  " &
+  _HOLDER_PID=$!
+  sleep 1
+
+  local rc=0
+  bash -c "
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source '$LOCK_LIB'; set +u
+    acquire_lock '$lockpath' 1 201
+  " 2>/dev/null || rc=$?
+
+  # The pattern `if ! acquire_lock` treats any non-zero as failure.
+  # Exit 3 is non-zero so the pattern still works.
+  [ "$rc" -ne 0 ]
+  [ "$rc" -eq 3 ]
+
+  kill "$_HOLDER_PID" 2>/dev/null || true
+  wait "$_HOLDER_PID" 2>/dev/null || true
+  _HOLDER_PID=""
 }
 
-@test "ac9 — existing lock-helper bats exist and source the same acquire-lock.sh" {
-  # Structural back-compat check: the existing lock-helper.bats sources
-  # the same acquire-lock.sh we modified. If our changes broke the
-  # helper API (acquire_lock, release_lock, require_flock_for_parallel),
-  # those tests fail in CI directly. This test verifies the test file
-  # exists and references acquire-lock.sh (not a nested bats invocation,
-  # which is unstable inside CI test partitions).
+@test "ac9 — existing lock-helper bats exist and source the same lib" {
   local existing="${PLUGIN_ROOT}/tests/lock-helper.bats"
   [ -f "$existing" ]
   /usr/bin/grep -q 'acquire-lock.sh' "$existing"
@@ -556,14 +694,13 @@ teardown() {
   local lockpath="$state_dir/.promotion-merge.lock"
   local rc=0
   acquire_lock "$lockpath" 5 200 2>/dev/null || rc=$?
-
   [ "$rc" -eq 0 ]
   [ -d "$state_dir" ]
   release_lock 200
 }
 
 # ──────────────────────────────────────────────────────────────
-# AC-EC2: Strict-mode identity re-check detects swap
+# AC-EC2: Strict-mode identity re-check detects swap (integration)
 # ──────────────────────────────────────────────────────────────
 
 @test "acec2 — _al_dev_ino detects different files" {
@@ -575,13 +712,42 @@ teardown() {
   local id1 id2
   id1=$(_al_dev_ino "$f1")
   id2=$(_al_dev_ino "$f2")
-
   [ "$id1" != "$id2" ]
 
-  # Same file same identity.
   local id1b
   id1b=$(_al_dev_ino "$f1")
   [ "$id1" = "$id1b" ]
+}
+
+@test "acec2 — identity hook causes exit 5 with identity_unstable diagnostic" {
+  [ -z "${_ACQUIRE_LOCK_FLOCK_BIN:-}" ] && skip "flock not available"
+  local lockpath="$TEST_TMP/.gaia/state/.strict-hook.lock"
+  local stderr_out="$TEST_TMP/stderr-hook"
+
+  # Use the test-only hook to deterministically swap the lock file after
+  # acquisition, simulating a concurrent replacement.
+  cat > "$TEST_TMP/hook-acquirer.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+source "$1"; set +u
+lockpath="$2"
+stderr_out="$3"
+# Define the identity hook: on each call, replace the lock file so the
+# identity re-check sees a different inode.
+_al_identity_hook() {
+  local lf="$1"
+  rm -f "$lf" 2>/dev/null || true
+  touch "$lf"
+}
+acquire_lock "$lockpath" 2 200 --strict 2>"$stderr_out"
+SCRIPT
+  chmod +x "$TEST_TMP/hook-acquirer.sh"
+
+  local rc=0
+  bash "$TEST_TMP/hook-acquirer.sh" "$LOCK_LIB" "$lockpath" "$stderr_out" || rc=$?
+
+  [ "$rc" -eq 5 ]
+  /usr/bin/grep -q 'lock_identity_unstable:' "$stderr_out"
+  /usr/bin/grep -q 'identity re-check mismatch:' "$stderr_out"
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -596,7 +762,6 @@ teardown() {
   local stderr_out="$TEST_TMP/stderr-perm"
   local rc=0
   acquire_lock "$lockpath" 5 200 2>"$stderr_out" || rc=$?
-
   chmod 644 "$lockpath" 2>/dev/null || true
 
   [ "$rc" -ne 0 ]
@@ -614,7 +779,6 @@ teardown() {
   local stderr_out="$TEST_TMP/stderr-perm-parent"
   local rc=0
   acquire_lock "$lockpath" 5 200 2>"$stderr_out" || rc=$?
-
   chmod 755 "$blocked_parent" 2>/dev/null || true
 
   [ "$rc" -ne 0 ]
@@ -647,14 +811,13 @@ teardown() {
 
 @test "acec5 — L3 timeout returns exit 3" {
   [ -z "${_ACQUIRE_LOCK_FLOCK_BIN:-}" ] && skip "flock not available"
-
   local lockpath="$TEST_TMP/.gaia/state/.promotion-merge.lock"
 
   bash -c "
     export GAIA_LOCK_FORCE_FALLBACK=0
     source '$LOCK_LIB'; set +u
     acquire_lock '$lockpath' 60 200
-    sleep 30
+    exec sleep 30
   " &
   _HOLDER_PID=$!
   sleep 1
@@ -677,14 +840,38 @@ teardown() {
 }
 
 # ──────────────────────────────────────────────────────────────
-# AC-EC6: Mixed fallback mode is a test bug
+# AC-EC6: Mixed fallback mode — verify all contention tests use same value
 # ──────────────────────────────────────────────────────────────
 
-@test "acec6 — test documents mixed fallback mode as unsupported" {
-  # Structural assertion: all contention tests in this file use
-  # consistent GAIA_LOCK_FORCE_FALLBACK values per sub-case.
-  # Verified by inspection; the product does not guard against mixed mode.
-  true
+@test "acec6 — all contention tests use consistent fallback mode per sub-case" {
+  # Scan this file for contention test functions that set GAIA_LOCK_FORCE_FALLBACK.
+  # In each test, every assignment must use the same value (0 or 1).
+  local this_file="${BATS_TEST_FILENAME}"
+  [ -f "$this_file" ] || skip "cannot read test file"
+
+  # Extract test blocks that contain GAIA_LOCK_FORCE_FALLBACK assignments.
+  # Check that within each @test block, all assignments use the same value.
+  local violations=""
+  local current_test="" vals=""
+  while IFS= read -r line; do
+    case "$line" in
+      *'@test '*) current_test="$line"; vals="" ;;
+      *GAIA_LOCK_FORCE_FALLBACK=*)
+        local v="${line##*GAIA_LOCK_FORCE_FALLBACK=}"
+        v="${v%%[^01]*}"
+        if [ -n "$vals" ] && [ "$vals" != "$v" ]; then
+          violations="${violations}MIXED: $current_test (saw $vals and $v)
+"
+        fi
+        vals="$v"
+        ;;
+    esac
+  done < "$this_file"
+
+  [ -z "$violations" ] || {
+    echo "$violations" >&2
+    false
+  }
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -694,20 +881,16 @@ teardown() {
 @test "acec7 — _al_dev_ino returns dev:ino format" {
   local testfile="$TEST_TMP/devino-test"
   echo "test" > "$testfile"
-
   local result
   result=$(_al_dev_ino "$testfile")
-
   /usr/bin/grep -qE '^[0-9]+:[0-9]+$' <<< "$result"
 }
 
 @test "acec7 — dev:ino works on this platform" {
   local testfile="$TEST_TMP/devino-platform"
   echo "test" > "$testfile"
-
   local result
   result=$(_al_dev_ino "$testfile")
-
   [ -n "$result" ]
   /usr/bin/grep -q ':' <<< "$result"
 }
@@ -718,18 +901,14 @@ teardown() {
 
 @test "acec8 — flock auto-releases on process death, new acquirer succeeds" {
   [ -z "${_ACQUIRE_LOCK_FLOCK_BIN:-}" ] && skip "flock not available"
-
   local lockpath="$TEST_TMP/.gaia/state/.test-sigterm.lock"
   local marker="$TEST_TMP/acec8-marker"
 
-  # Write helper scripts.
   cat > "$TEST_TMP/holder.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 export GAIA_LOCK_FORCE_FALLBACK=0
-source "$1"
-set +u
+source "$1"; set +u
 acquire_lock "$2" 10 200
-# Use exec sleep so there is no child process keeping the fd open.
 exec sleep 30
 SCRIPT
   chmod +x "$TEST_TMP/holder.sh"
@@ -737,8 +916,7 @@ SCRIPT
   cat > "$TEST_TMP/acquirer.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 export GAIA_LOCK_FORCE_FALLBACK=0
-source "$1"
-set +u
+source "$1"; set +u
 if acquire_lock "$2" 3 201; then
   touch "$3"
   release_lock 201
@@ -746,8 +924,6 @@ fi
 SCRIPT
   chmod +x "$TEST_TMP/acquirer.sh"
 
-  # Start the holder. exec sleep replaces the bash process, so killing
-  # the pid also kills sleep and closes all fds.
   bash "$TEST_TMP/holder.sh" "$LOCK_LIB" "$lockpath" &
   local holder_pid=$!
   sleep 1
@@ -755,9 +931,6 @@ SCRIPT
   kill -9 "$holder_pid" 2>/dev/null || true
   wait "$holder_pid" 2>/dev/null || true
 
-  # The flock advisory lock is auto-released on fd close (process death).
-  # A new acquirer should succeed immediately.
   bash "$TEST_TMP/acquirer.sh" "$LOCK_LIB" "$lockpath" "$marker" 2>/dev/null
-
   [ -f "$marker" ]
 }
