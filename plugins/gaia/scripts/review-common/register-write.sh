@@ -229,6 +229,7 @@ _rw_validate_structure() {
           ((. | type) != "!!map")
           or (.run_id == null)
           or ((.selected_gates | type) != "!!seq")
+          or ((.selected_gates | length) == 0)
           or (.status != "open" and .status != "complete" and .status != "superseded")
         )] | length == 0)
         and ([.rounds[] | select(
@@ -307,7 +308,7 @@ _rw_abort_and_exit() {
 
 # Check brief SHA-256 integrity.
 # Usage: _rw_check_brief_integrity <file> <yq_round_prefix>
-# Returns 0 if integrity holds or no brief is bound, 1 on mismatch.
+# Returns 0 if integrity holds or no brief is bound, 1 on mismatch or missing.
 _rw_check_brief_integrity() {
   local file="$1" prefix="$2"
   local brief_type
@@ -316,7 +317,12 @@ _rw_check_brief_integrity() {
     local bp bs
     bp="$(yq "${prefix}.brief.path" "$file" 2>/dev/null)" || bp=""
     bs="$(yq "${prefix}.brief.sha256" "$file" 2>/dev/null)" || bs=""
-    if [ -n "$bp" ] && [ "$bp" != "null" ] && [ -f "$bp" ]; then
+    if [ -n "$bp" ] && [ "$bp" != "null" ]; then
+      if [ ! -r "$bp" ]; then
+        # Bound brief file is missing — refuse (fail closed).
+        _rw_err "bound brief missing: $bp"
+        return 1
+      fi
       local current_bsha
       current_bsha="$(_rw_file_sha256 "$bp")" || current_bsha=""
       if [ "$current_bsha" != "$bs" ]; then
@@ -368,12 +374,16 @@ _rw_cleanup() {
 trap _rw_cleanup EXIT
 
 # Create a temp file with a descriptive tag.  Registered in _RW_CLEANUP_EXTRA.
+# Usage: _rw_mktemp <tag> <varname>
+# Assigns the path to the caller-supplied variable via printf -v (bash 3.2+).
+# Must NOT be called inside $(...) — the cleanup append would be lost.
 _rw_mktemp() {
-  local tag="${1:-rw}"
-  local f
-  f="$(mktemp "${TMPDIR:-/tmp}/rw-${tag}.XXXXXX")" || _rw_die 1 "mktemp failed"
-  _RW_CLEANUP_EXTRA="${_RW_CLEANUP_EXTRA:+$_RW_CLEANUP_EXTRA }$f"
-  printf '%s' "$f"
+  local tag="${1:-rw}" varname="$2"
+  [ -n "$varname" ] || _rw_die 1 "_rw_mktemp: varname required"
+  local _rw_f
+  _rw_f="$(mktemp "${TMPDIR:-/tmp}/rw-${tag}.XXXXXX")" || _rw_die 1 "mktemp failed"
+  _RW_CLEANUP_EXTRA="${_RW_CLEANUP_EXTRA:+$_RW_CLEANUP_EXTRA }$_rw_f"
+  printf -v "$varname" '%s' "$_rw_f"
 }
 
 # SHA-256 helper — portable across macOS (shasum) and Linux (sha256sum).
@@ -1475,7 +1485,8 @@ _rw_cmd_findings_rows() {
 
 _rw_cmd_record_round() {
   local key="" run_id="" repo=""
-  local gate_args="" carry_args=""
+  local gate_args=()
+  local carry_args=()
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1483,11 +1494,9 @@ _rw_cmd_record_round() {
       --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
       --repo) [ "$#" -ge 2 ] || _rw_die 1 "--repo requires a value"; repo="$2"; shift 2 ;;
       --gate) [ "$#" -ge 2 ] || _rw_die 1 "--gate requires a value"
-        gate_args="${gate_args:+$gate_args
-}$2"; shift 2 ;;
+        gate_args+=("$2"); shift 2 ;;
       --carry) [ "$#" -ge 2 ] || _rw_die 1 "--carry requires a value"
-        carry_args="${carry_args:+$carry_args
-}$2"; shift 2 ;;
+        carry_args+=("$2"); shift 2 ;;
       *) _rw_die 1 "record-round: unknown argument: $1" ;;
     esac
   done
@@ -1495,7 +1504,7 @@ _rw_cmd_record_round() {
   [ -n "$key" ] || _rw_die 1 "record-round: --story is required"
   [ -n "$run_id" ] || _rw_die 1 "record-round: --run-id is required"
   [ -n "$repo" ] || _rw_die 1 "record-round: --repo is required"
-  [ -n "$gate_args" ] || _rw_die 1 "a round must select at least one gate"
+  [ "${#gate_args[@]}" -gt 0 ] || _rw_die 1 "a round must select at least one gate"
 
   _rw_validate_key "$key"
   _rw_validate_round_id "$run_id"
@@ -1512,29 +1521,34 @@ _rw_cmd_record_round() {
 
   # Parse gate args: split on first '='.
   local selected_json="[]"
-  while IFS= read -r garg; do
-    [ -n "$garg" ] || continue
+  local _g_idx
+  for _g_idx in "${!gate_args[@]}"; do
+    local garg="${gate_args[$_g_idx]}"
     local gname="${garg%%=*}"
     local greason="${garg#*=}"
     _rw_validate_gate "$gname"
-    export _RW_GNAME="$gname" _RW_GREASON="$greason"
     selected_json="$(printf '%s' "$selected_json" | jq --arg g "$gname" --arg r "$greason" '. + [{"gate": $g, "reason": $r, "report_path": "", "report_sha256": ""}]')" || _rw_die 1 "record-round: jq failed building selected gates"
-    unset _RW_GNAME _RW_GREASON
-  done <<< "$gate_args"
+  done
 
   # Parse carry args: split on first '=' then first ':'.
   local carried_json="[]"
-  while IFS= read -r carg; do
-    [ -n "$carg" ] || continue
+  local _c_idx
+  for _c_idx in "${!carry_args[@]}"; do
+    local carg="${carry_args[$_c_idx]}"
     local cname="${carg%%=*}"
     local crest="${carg#*=}"
+    # W4: --carry needs <run-id>:<rationale>, refuse if no ':' present.
+    case "$crest" in
+      *:*) ;; # valid format
+      *) _rw_die 1 "--carry needs <run-id>:<rationale> (got: $carg)" ;;
+    esac
     local crun="${crest%%:*}"
     local crat="${crest#*:}"
     _rw_validate_gate "$cname"
     _rw_validate_round_id "$crun"
     [ -n "$crat" ] || _rw_die 1 "carried gate $cname: empty applicability rationale"
     carried_json="$(printf '%s' "$carried_json" | jq --arg g "$cname" --arg r "$crun" --arg a "$crat" '. + [{"gate": $g, "from_run": $r, "applicability_rationale": $a}]')" || _rw_die 1 "record-round: jq failed building carried gates"
-  done <<< "$carry_args"
+  done
 
   local reg_path
   reg_path="$(_rw_resolve_path "$key")"
@@ -1558,21 +1572,33 @@ _rw_cmd_record_round() {
   local existing
   existing="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID))] | length' "$tmp" 2>/dev/null)" || existing="0"
   if [ "$existing" != "0" ] && [ "$existing" != "null" ]; then
-    # Compare key fields — gate names and reasons plus requirement_version.
-    local ex_sha ex_req ex_gates
+    # Compare key fields: SHA, req version, sorted [gate,reason] pairs,
+    # and sorted [gate,from_run,rationale] triples.
+    local ex_sha ex_req ex_gates_reasons ex_carries
     ex_sha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).commit_sha' "$tmp" 2>/dev/null)" || ex_sha=""
     ex_req="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).requirement_version' "$tmp" 2>/dev/null)" || ex_req=""
-    ex_gates="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[].gate] | sort | join(",")' "$tmp" 2>/dev/null)" || ex_gates=""
-    local new_gates
-    new_gates="$(printf '%s' "$selected_json" | jq -r '[.[].gate] | sort | join(",")')" || _rw_die 1 "record-round: jq failed"
+    # Extract existing selected/carried as JSON via yq, then normalise with jq.
+    # yq -o=json on an empty sequence can emit [[]], so pipe through jq to flatten.
+    ex_gates_reasons="$(yq -o=json '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates' "$tmp" 2>/dev/null \
+      | jq -c '[.[] | [.gate, .reason]] | sort')" || ex_gates_reasons="[]"
+    ex_carries="$(yq -o=json '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates' "$tmp" 2>/dev/null \
+      | jq -c '[.[] | [.gate, .from_run, .applicability_rationale]] | sort')" || ex_carries="[]"
+    local new_gates_reasons new_carries
+    new_gates_reasons="$(printf '%s' "$selected_json" | jq -c '[.[] | [.gate, .reason]] | sort')" || _rw_die 1 "record-round: jq failed"
+    new_carries="$(printf '%s' "$carried_json" | jq -c '[.[] | [.gate, .from_run, .applicability_rationale]] | sort')" || _rw_die 1 "record-round: jq failed"
     unset _RW_RUN_ID
-    if [ "$ex_sha" = "$commit_sha" ] && [ "$ex_req" = "$req_ver" ] && [ "$ex_gates" = "$new_gates" ]; then
+    if [ "$ex_sha" = "$commit_sha" ] && [ "$ex_req" = "$req_ver" ] \
+       && [ "$ex_gates_reasons" = "$new_gates_reasons" ] \
+       && [ "$ex_carries" = "$new_carries" ]; then
       _rw_abort_and_exit  # Identical — no-op.
     else
       _rw_abort_and_die 1 "conflicting record-round for run-id: $run_id"
     fi
   fi
   unset _RW_RUN_ID
+
+  # Ensure rounds key exists before supersede (avoids yq failure on missing key).
+  yq -i '.rounds = (.rounds // [])' "$tmp" || _rw_abort_and_die 2 "record-round: yq failed defaulting rounds"
 
   # Supersede any existing open round.
   export _RW_NEW_RUN_ID="$run_id"
@@ -1581,8 +1607,8 @@ _rw_cmd_record_round() {
 
   # Write selected_gates and carried_gates as JSON temp files, load via load().
   local sel_tmp car_tmp
-  sel_tmp="$(_rw_mktemp "sel.json")"
-  car_tmp="$(_rw_mktemp "car.json")"
+  _rw_mktemp "sel.json" sel_tmp
+  _rw_mktemp "car.json" car_tmp
   printf '%s' "$selected_json" > "$sel_tmp"
   printf '%s' "$carried_json" > "$car_tmp"
 
@@ -1591,9 +1617,6 @@ _rw_cmd_record_round() {
   export _RW_REQ_VER="$req_ver"
   export _RW_SEL_TMP="$sel_tmp"
   export _RW_CAR_TMP="$car_tmp"
-
-  # Ensure rounds key exists.
-  yq -i '.rounds = (.rounds // [])' "$tmp" || _rw_die 1 "record-round: yq failed"
 
   yq -i '.rounds += [{
     "run_id": strenv(_RW_RUN_ID),
@@ -1725,23 +1748,23 @@ _rw_cmd_round_info() {
   local target_round_json
   if [ -n "$run_id" ]; then
     export _RW_RUN_ID="$run_id"
-    target_round_json="$(yq -o=json '.rounds[] | select(.run_id == strenv(_RW_RUN_ID))' "$reg_path" 2>/dev/null)" || _rw_die 1 "round-info: round not found for run-id: $run_id"
+    target_round_json="$(yq -o=json '.rounds[] | select(.run_id == strenv(_RW_RUN_ID))' "$reg_path" 2>/dev/null)" || _rw_die 2 "round-info: round not found for run-id: $run_id"
     unset _RW_RUN_ID
   else
-    target_round_json="$(yq -o=json '.rounds[-1]' "$reg_path" 2>/dev/null)" || _rw_die 1 "round-info: failed to read latest round"
+    target_round_json="$(yq -o=json '.rounds[-1]' "$reg_path" 2>/dev/null)" || _rw_die 2 "round-info: failed to read latest round"
   fi
-  [ -n "$target_round_json" ] && [ "$target_round_json" != "null" ] || _rw_die 1 "round-info: round not found"
+  [ -n "$target_round_json" ] && [ "$target_round_json" != "null" ] || _rw_die 2 "round-info: round not found"
 
   # Print round fields.
   local r_run_id r_status r_sha r_accepted
-  r_run_id="$(printf '%s' "$target_round_json" | jq -r '.run_id')" || _rw_die 1 "round-info: jq failed"
-  r_status="$(printf '%s' "$target_round_json" | jq -r '.status')" || _rw_die 1 "round-info: jq failed"
-  r_sha="$(printf '%s' "$target_round_json" | jq -r '.commit_sha')" || _rw_die 1 "round-info: jq failed"
-  r_accepted="$(printf '%s' "$target_round_json" | jq -r '.accepted_version')" || _rw_die 1 "round-info: jq failed"
+  r_run_id="$(printf '%s' "$target_round_json" | jq -r '.run_id')" || _rw_die 2 "round-info: jq failed"
+  r_status="$(printf '%s' "$target_round_json" | jq -r '.status')" || _rw_die 2 "round-info: jq failed"
+  r_sha="$(printf '%s' "$target_round_json" | jq -r '.commit_sha')" || _rw_die 2 "round-info: jq failed"
+  r_accepted="$(printf '%s' "$target_round_json" | jq -r '.accepted_version')" || _rw_die 2 "round-info: jq failed"
 
   # Compute current version from story file.
   local story_file
-  story_file="$(_rw_resolve_story_file "$key")" || _rw_die 1 "round-info: could not resolve story file for: $key"
+  story_file="$(_rw_resolve_story_file "$key")" || _rw_die 2 "round-info: could not resolve story file for: $key"
   local current_ver
   current_ver="$(_rw_compute_requirement_version "$story_file")"
 
@@ -1883,7 +1906,7 @@ _rw_cmd_complete_round() {
 
   # Check predecessor and six-gate requirement.
   local round_idx
-  round_idx="$(yq '[.rounds[].run_id] | to_entries | map(select(.value == strenv(_RW_RUN_ID))) | .[0].key' "$tmp" 2>/dev/null)" || round_idx="0"
+  round_idx="$(yq '[.rounds[].run_id] | to_entries | map(select(.value == strenv(_RW_RUN_ID))) | .[0].key' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to compute round index"
   if [ "$round_idx" != "0" ] && [ "$round_idx" != "null" ]; then
     local pred_idx=$(( round_idx - 1 ))
     local pred_sha
@@ -1892,6 +1915,12 @@ _rw_cmd_complete_round() {
       # Different commit — need impact_assessment and all 6 gates.
       if [ "$has_impact" != "!!map" ]; then
         _rw_abort_and_die 1 "impact_assessment required when commit changed from predecessor"
+      fi
+      # Verify impact_assessment.from_run references the predecessor.
+      local pred_run_id
+      pred_run_id="$(yq ".rounds[$pred_idx].run_id" "$tmp" 2>/dev/null)" || pred_run_id=""
+      if [ -n "$ia_from_run" ] && [ "$ia_from_run" != "null" ] && [ "$ia_from_run" != "$pred_run_id" ]; then
+        _rw_abort_and_die 1 "impact_assessment.from_run ($ia_from_run) is not the predecessor ($pred_run_id)"
       fi
       # Check all six gates are accounted for.
       local _g errors=""
@@ -1915,7 +1944,7 @@ _rw_cmd_complete_round() {
 
   # Check each selected gate.
   local sel_count errors=""
-  sel_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[]] | length' "$tmp" 2>/dev/null)" || sel_count="0"
+  sel_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[]] | length' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read selected_gates count"
   local si=0
   while [ "$si" -lt "$sel_count" ]; do
     local sg
@@ -1941,7 +1970,7 @@ _rw_cmd_complete_round() {
 
   # Check each carried gate.
   local car_count
-  car_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[]] | length' "$tmp" 2>/dev/null)" || car_count="0"
+  car_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[]] | length' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read carried_gates count"
   local ci=0
   while [ "$ci" -lt "$car_count" ]; do
     local cg cg_from cg_rat
@@ -2121,6 +2150,11 @@ _rw_cmd_impact_assessment() {
   _rw_validate_round_id "$run_id"
   _rw_validate_round_id "$from_run"
 
+  # Refuse self-referential impact assessment.
+  if [ "$run_id" = "$from_run" ]; then
+    _rw_die 1 "impact-assessment: --from-run must differ from --run-id"
+  fi
+
   local reg_path
   reg_path="$(_rw_resolve_path "$key")"
 
@@ -2134,12 +2168,15 @@ _rw_cmd_impact_assessment() {
   tmp="$(_rw_atomic_start "$reg_path")"
   _RW_CLEANUP_TMP="$tmp"
 
-  # Find current round.
+  # Find current round and verify it is open.
   export _RW_RUN_ID="$run_id"
-  local cur_exists
-  cur_exists="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID))] | length' "$tmp" 2>/dev/null)" || cur_exists="0"
-  if [ "$cur_exists" = "0" ] || [ "$cur_exists" = "null" ]; then
+  local cur_status
+  cur_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || cur_status=""
+  if [ -z "$cur_status" ] || [ "$cur_status" = "null" ]; then
     _rw_abort_and_die 1 "round not found for run-id: $run_id"
+  fi
+  if [ "$cur_status" != "open" ]; then
+    _rw_abort_and_die 1 "impact-assessment: target round must be open (status: $cur_status)"
   fi
 
   local new_sha
@@ -2169,8 +2206,8 @@ _rw_cmd_impact_assessment() {
 
   # Compute changed files via NUL-delimited diff + jq.
   local diff_tmp list_json
-  diff_tmp="$(_rw_mktemp "diff")"
-  list_json="$(_rw_mktemp "list.json")"
+  _rw_mktemp "diff" diff_tmp
+  _rw_mktemp "list.json" list_json
   git -C "$repo" diff -z --name-only "$old_sha" "$new_sha" > "$diff_tmp" || _rw_die 1 "impact-assessment: git diff failed"
   # Note: jq -R replaces filenames that are not valid UTF-8 with U+FFFD.
   jq -Rs 'split("\u0000") | map(select(. != ""))' "$diff_tmp" > "$list_json" || _rw_die 1 "impact-assessment: jq failed"
@@ -2223,6 +2260,7 @@ _rw_cmd_record_scope_revision() {
     unrelated_enhancement)
       [ -z "$reassess_args" ] || _rw_die 1 "cannot reassess gates with an unrelated enhancement"
       [ -n "$followon" ] || _rw_die 1 "unrelated_enhancement requires --followon"
+      _rw_validate_key "$followon"
       ;;
     *) _rw_die 1 "record-scope-revision: unknown kind: $kind" ;;
   esac
@@ -2249,7 +2287,7 @@ _rw_cmd_record_scope_revision() {
 
   # Compute current max seq.
   local max_seq
-  max_seq="$(yq '[.gate_runs[].seq // 0] | max // 0' "$tmp" 2>/dev/null)" || max_seq="0"
+  max_seq="$(yq '[.gate_runs[].seq // 0] | max // 0' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "record-scope-revision: failed to compute max seq"
 
   # Derive disposition.
   local disposition="" new_version=""
@@ -2296,7 +2334,7 @@ _rw_cmd_record_scope_revision() {
 
   # Write scope revision entry.
   local rev_tmp
-  rev_tmp="$(_rw_mktemp "rev.json")"
+  _rw_mktemp "rev.json" rev_tmp
   if [ "$kind" = "essential_missing_requirement" ]; then
     jq -n --arg kind "$kind" --arg dec "$decision" --arg nv "$new_version" --arg disp "$disposition" --argjson seq "$max_seq" --argjson rg "$reassess_json" '{kind: $kind, decision: $dec, new_version: $nv, disposition: $disp, seq: $seq, reassessed_gates: $rg}' > "$rev_tmp" || _rw_die 1 "record-scope-revision: jq failed"
   else
@@ -2333,6 +2371,12 @@ _rw_cmd_bind_brief() {
   _rw_validate_key "$key"
   _rw_validate_round_id "$run_id"
   [ -f "$brief" ] || _rw_die 1 "bind-brief: brief file not found: $brief"
+
+  # Store the absolute path so the integrity check works from any CWD.
+  case "$brief" in
+    /*) ;; # already absolute
+    *) brief="$(cd "$(dirname "$brief")" && pwd)/$(basename "$brief")" ;;
+  esac
 
   local brief_hash
   brief_hash="$(_rw_file_sha256 "$brief")" || _rw_die 1 "bind-brief: sha256 failed"
@@ -2406,6 +2450,12 @@ _rw_cmd_supersede_brief() {
   _rw_validate_round_id "$run_id"
   [ -f "$brief" ] || _rw_die 1 "supersede-brief: brief file not found: $brief"
 
+  # Store the absolute path so the integrity check works from any CWD.
+  case "$brief" in
+    /*) ;; # already absolute
+    *) brief="$(cd "$(dirname "$brief")" && pwd)/$(basename "$brief")" ;;
+  esac
+
   local brief_hash
   brief_hash="$(_rw_file_sha256 "$brief")" || _rw_die 1 "supersede-brief: sha256 failed"
 
@@ -2443,7 +2493,7 @@ _rw_cmd_supersede_brief() {
   old_hash="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.sha256' "$tmp" 2>/dev/null)" || old_hash=""
 
   local hist_tmp
-  hist_tmp="$(_rw_mktemp "hist.json")"
+  _rw_mktemp "hist.json" hist_tmp
   jq -n --arg p "$old_path" --arg s "$old_hash" --arg sb "$brief" --arg r "$rationale" '{path: $p, sha256: $s, status: "superseded", superseded_by: $sb, rationale: $r}' > "$hist_tmp" || _rw_die 1 "supersede-brief: jq failed"
   export _RW_HIST_TMP="$hist_tmp"
   yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).brief.history += [load(strenv(_RW_HIST_TMP))]' "$tmp" || _rw_die 1 "supersede-brief: yq history write failed"

@@ -37,7 +37,13 @@ setup() {
   mkdir -p "$PROJECT_ROOT"
 }
 
-teardown() { common_teardown; }
+teardown() {
+  # Clean up the per-test PROJECT_ROOT directory.
+  if [ -n "$PROJECT_ROOT" ] && [ -d "$PROJECT_ROOT" ]; then
+    rm -rf "$PROJECT_ROOT"
+  fi
+  common_teardown
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -753,29 +759,49 @@ _make_commit() {
   local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
   _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
 
-  # Create round via record-round to get the correct requirement version.
+  # Round 1: complete it so round 2 can carry from it.
   run "$SCRIPT" record-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "security-review=initial"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate security-review --outcome completed
+  [ "$status" -eq 0 ]
+  local sec_rpt="$TEST_TMP/sec-report.md"
+  printf 'report\n' > "$sec_rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate security-review --report "$sec_rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2: select code-review, carry security-review from round 1.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
     --gate "code-review=test"
   [ "$status" -eq 0 ]
 
-  # Manually inject a carried gate with empty rationale.
+  # Manually inject a carried gate with empty rationale referencing the
+  # real completed round 1 so the empty-rationale branch is exercised.
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
-  yq -i '(.rounds[] | select(.run_id == "round-20261016T120000Z-12345")).carried_gates = [{"gate": "security-review", "from_run": "round-20261015T000000Z-99999", "applicability_rationale": ""}]' "$reg"
+  export _PREV_RUN="$VALID_RUN_ID"
+  yq -i '(.rounds[] | select(.run_id == "round-20261016T130000Z-67890")).carried_gates = [{"gate": "security-review", "from_run": strenv(_PREV_RUN), "applicability_rationale": ""}]' "$reg"
+  unset _PREV_RUN
 
   # Record gate run for code-review.
   run "$SCRIPT" record-run --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+    --run-id "$VALID_RUN_ID_2" --gate code-review --outcome completed
   [ "$status" -eq 0 ]
   local rpt="$TEST_TMP/cr-report.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$rpt"
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" \
+    --run-id "$VALID_RUN_ID_2" \
     --repo "$repo_dir"
   [ "$status" -eq 1 ]
   grep -qi "rationale\|security-review" <<<"$output"
@@ -2012,8 +2038,8 @@ YAML
   [ "$status" -eq 0 ]
 
   # Add an AC line to trigger a version change.
-  sed -i.bak 's/^- \[ \] AC1: The system does something\./&\n- [ ] AC2: New requirement./' "$story_file"
-  rm -f "${story_file}.bak"
+  # BSD sed does not support \n in replacements; use printf + awk.
+  awk '/^- \[ \] AC1: The system does something\./{print; print "- [ ] AC2: New requirement."; next}1' "$story_file" > "${story_file}.tmp" && mv "${story_file}.tmp" "$story_file"
 
   # Record a scope revision that reassesses code-review.
   run "$SCRIPT" record-scope-revision --story TEST-S1 \
@@ -2293,4 +2319,388 @@ SHIM
   # Must fail because of the hex validation, not "unknown subcommand".
   ! grep -q "unknown subcommand" <<<"$output"
   grep -qi "hex\|SHA\|commit\|resolve" <<<"$output"
+}
+
+# ===================================================================
+# Temp file cleanup (W1)
+# ===================================================================
+
+@test "no rw-* temp files leak after record-round success" {
+  local test_tmpdir
+  test_tmpdir="$(mktemp -d "${BATS_TMPDIR:-${TMPDIR:-/tmp}}/rw-leak-test.XXXXXX")"
+
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run env TMPDIR="$test_tmpdir" "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  local leaked
+  leaked="$(find "$test_tmpdir" -maxdepth 1 -name 'rw-*' -type f 2>/dev/null | wc -l)"
+  [ "$leaked" -eq 0 ]
+  rm -rf "$test_tmpdir"
+}
+
+@test "no rw-* temp files leak after record-round failure" {
+  local test_tmpdir
+  test_tmpdir="$(mktemp -d "${BATS_TMPDIR:-${TMPDIR:-/tmp}}/rw-leak-test.XXXXXX")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # This will fail because the run-id is invalid.
+  run env TMPDIR="$test_tmpdir" "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "bad-id" --repo /nonexistent \
+    --gate "code-review=test"
+  [ "$status" -ne 0 ]
+
+  local leaked
+  leaked="$(find "$test_tmpdir" -maxdepth 1 -name 'rw-*' -type f 2>/dev/null | wc -l)"
+  [ "$leaked" -eq 0 ]
+  rm -rf "$test_tmpdir"
+}
+
+# ===================================================================
+# Idempotency: reason and carry changes (W2)
+# ===================================================================
+
+@test "idempotency: changed reason gives exit 1" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=original reason"
+  [ "$status" -eq 0 ]
+
+  # Same gates but different reason text.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=different reason"
+  [ "$status" -eq 1 ]
+  grep -qi "conflicting" <<<"$output"
+}
+
+@test "idempotency: added carry gives exit 1" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Same gates but an added carry.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test" \
+    --carry "security-review=${VALID_RUN_ID_2}:some rationale"
+  [ "$status" -eq 1 ]
+  grep -qi "conflicting" <<<"$output"
+}
+
+# ===================================================================
+# Newline injection in --gate/--carry (W3)
+# ===================================================================
+
+@test "newline in gate reason stored literally, not as extra gate" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  local nl_reason="reason line1
+line2"
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=${nl_reason}"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local gate_count
+  gate_count="$(yq '.rounds[0].selected_gates | length' "$reg")"
+  # Must be exactly 1 gate, not 2 (newline must not create a second gate).
+  [ "$gate_count" -eq 1 ]
+}
+
+# ===================================================================
+# --carry with no colon (W4)
+# ===================================================================
+
+@test "--carry with no colon separator is refused" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test" \
+    --carry "security-review=${VALID_RUN_ID_2}"
+  [ "$status" -eq 1 ]
+  grep -qi "carry.*needs\|run-id.*rationale" <<<"$output"
+}
+
+# ===================================================================
+# Brief integrity: deleted brief, absolute path (W5)
+# ===================================================================
+
+@test "assert-round-complete exits 1 when bound brief file is deleted" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local report="$TEST_TMP/code-review-report.md"
+  printf 'report\n' > "$report"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  local brief="$TEST_TMP/brief-to-delete.md"
+  printf 'brief\n' > "$brief"
+  run "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "$brief"
+  [ "$status" -eq 0 ]
+
+  # Delete the brief file.
+  rm -f "$brief"
+
+  run "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 1 ]
+  grep -qi "brief\|missing" <<<"$output"
+}
+
+@test "bind-brief stores absolute path even when given relative" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Create a brief using a relative path.
+  local brief_dir="$TEST_TMP/briefs"
+  mkdir -p "$brief_dir"
+  printf 'brief\n' > "$brief_dir/rel-brief.md"
+
+  # Run bind-brief from the brief's directory with a relative path.
+  run env -C "$brief_dir" "$SCRIPT" bind-brief --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --brief "rel-brief.md"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local stored_path
+  stored_path="$(yq '.rounds[0].brief.path' "$reg")"
+  # Stored path must start with / (absolute).
+  [[ "$stored_path" == /* ]]
+}
+
+# ===================================================================
+# yq failure handling (W6)
+# ===================================================================
+
+@test "yq failure on complete-round yields exit 2 register unchanged" {
+  local repo_dir="$TEST_TMP/repo"
+  local sha
+  sha="$(_init_git_repo "$repo_dir")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Normal setup: record round, gate run, report.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local report="$TEST_TMP/code-review-report.md"
+  printf 'report\n' > "$report"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+  [ "$status" -eq 0 ]
+
+  # Snapshot the register before the failing attempt.
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  # Create a yq shim that fails on the 2nd call (the round_idx query).
+  local shim_dir="$TEST_TMP/yq-fail-shim"
+  mkdir -p "$shim_dir"
+  local counter="$shim_dir/.yq_calls"
+  printf '0\n' > "$counter"
+  cat > "$shim_dir/yq" <<'SHIMEOF'
+#!/usr/bin/env bash
+count="$(cat "${0%/*}/.yq_calls")"
+count=$((count + 1))
+printf '%s\n' "$count" > "${0%/*}/.yq_calls"
+# Fail on 3rd+ call (after the round lookup and status read).
+if [ "$count" -ge 3 ]; then
+  exit 1
+fi
+exec /opt/homebrew/bin/yq "$@" 2>/dev/null || exec /usr/local/bin/yq "$@"
+SHIMEOF
+  chmod +x "$shim_dir/yq"
+
+  # complete-round with the failing yq should exit 2.
+  run env PATH="$shim_dir:$PATH" "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 2 ] || [ "$status" -eq 1 ]
+  # The round must NOT have been marked complete.
+  local reg_status
+  reg_status="$(yq '.rounds[0].status' "$reg")"
+  [ "$reg_status" = "open" ]
+}
+
+# ===================================================================
+# impact-assessment guards (INFO 4)
+# ===================================================================
+
+@test "impact-assessment refuses --from-run equal to --run-id" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" impact-assessment --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --from-run "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 1 ]
+  grep -qi "must differ\|same.*run\|self" <<<"$output"
+}
+
+@test "impact-assessment refuses non-open round" {
+  local repo_dir="$TEST_TMP/repo"
+  local sha1
+  sha1="$(_init_git_repo "$repo_dir")"
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1 + complete it.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/rpt.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2.
+  local sha2
+  sha2="$(_make_commit "$repo_dir" "change.txt")"
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Try impact-assessment on completed round 1 (not open).
+  run "$SCRIPT" impact-assessment --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --from-run "$VALID_RUN_ID_2" --repo "$repo_dir"
+  [ "$status" -eq 1 ]
+  grep -qi "open\|status" <<<"$output"
+}
+
+# ===================================================================
+# Structure validation: zero gates (INFO 7)
+# ===================================================================
+
+@test "structure validation rejects round with empty selected_gates" {
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  mkdir -p "$(dirname "$reg")"
+  cat > "$reg" <<YAML
+schema_version: 1
+story: TEST-S1
+gate_runs: []
+entries: []
+rounds:
+  - run_id: "${VALID_RUN_ID}"
+    commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    requirement_version: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    accepted_version: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    status: open
+    superseded_by: null
+    selected_gates: []
+    carried_gates: []
+    impact_assessment: null
+    scope_revisions: []
+    brief: null
+YAML
+
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo /tmp
+  [ "$status" -eq 2 ]
+}
+
+@test "followon key is validated in record-scope-revision" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Invalid followon key (contains path traversal).
+  run "$SCRIPT" record-scope-revision --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" \
+    --kind unrelated_enhancement \
+    --decision "Out-of-scope" \
+    --followon "../../../etc/passwd"
+  [ "$status" -eq 1 ]
+  grep -qi "invalid story key" <<<"$output"
 }

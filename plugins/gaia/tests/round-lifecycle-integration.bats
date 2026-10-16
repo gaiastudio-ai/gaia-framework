@@ -51,7 +51,13 @@ setup() {
   echo "# Integration test running under: $("$BASH_UNDER_TEST" --version | head -1)" >&3
 }
 
-teardown() { common_teardown; }
+teardown() {
+  # Clean up the per-test PROJECT_ROOT directory.
+  if [ -n "$PROJECT_ROOT" ] && [ -d "$PROJECT_ROOT" ]; then
+    rm -rf "$PROJECT_ROOT"
+  fi
+  common_teardown
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
