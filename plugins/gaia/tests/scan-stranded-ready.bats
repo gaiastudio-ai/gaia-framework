@@ -206,6 +206,20 @@ sprint_id: null
 # Decoy plan
 EOF
 
+  # Decoys for every framework report type — suffix-filtered, never opened
+  local rtype
+  for rtype in code-review qa-tests test-review performance-review tdd-progress test-automation review; do
+    cat > "$TEST_TMP/impl/epic-test/stories/E900-S20-${rtype}.md" <<DECOY
+---
+key: "E900-S20"
+title: "${rtype} decoy"
+status: ready-for-dev
+sprint_id: null
+---
+# Decoy ${rtype}
+DECOY
+  done
+
   # Non-decoy: story whose slug ENDS in a report suffix — must still be scanned
   cat > "$TEST_TMP/impl/epic-test/stories/E900-S4-check-deps-glob-excludes-review-summary.md" <<'EOF'
 ---
@@ -218,8 +232,20 @@ sprint_id: null
 # A legitimate story with a slug ending in review-summary
 EOF
 
-  _mk_decision_log "E900-S1" "E900-S2" "E900-S3" "E900-S4" \
-    "E900-S10" "E900-S11" "E900-S12" "E900-S13"
+  # Non-decoy: story whose slug ends in "review" — must still be scanned
+  cat > "$TEST_TMP/impl/epic-test/stories/E900-S5-wire-manual-test-per-story-review.md" <<'EOF'
+---
+key: "E900-S5"
+title: "Story ending in review"
+epic: "E900"
+status: ready-for-dev
+sprint_id: null
+---
+# A legitimate story with a slug ending in review
+EOF
+
+  _mk_decision_log "E900-S1" "E900-S2" "E900-S3" "E900-S4" "E900-S5" \
+    "E900-S10" "E900-S11" "E900-S12" "E900-S13" "E900-S20"
 
   # Shim grep to log which files it receives
   local shim_dir="$TEST_TMP/grep-shim"
@@ -251,11 +277,12 @@ SHIM
     run bash "$SCANNER"
   [ "$status" -eq 0 ]
 
-  # All four story types found
+  # All five story types found (modern, legacy nested, legacy flat, two slug-suffix)
   [[ "$output" =~ "E900-S1" ]]
   [[ "$output" =~ "E900-S2" ]]
   [[ "$output" =~ "E900-S3" ]]
   [[ "$output" =~ "E900-S4" ]]
+  [[ "$output" =~ "E900-S5" ]]
 
   # reviews/ files never opened
   local reviews_opened
@@ -272,16 +299,25 @@ SHIM
   plan_opened=$(grep -c 'E900-S13-plan' "$opened_log" || true)
   [ "$plan_opened" -eq 0 ]
 
-  # Story with slug ending in review-summary WAS opened (not false-excluded)
+  # Every framework report type excluded from grep (none of S20-* opened)
+  local report_opened
+  report_opened=$(grep -c 'E900-S20-' "$opened_log" || true)
+  [ "$report_opened" -eq 0 ]
+
+  # Stories with slugs ending in report words WERE opened (not false-excluded)
   local slug_story_opened
   slug_story_opened=$(grep -c 'excludes-review-summary' "$opened_log" || true)
   [ "$slug_story_opened" -ge 1 ]
+  local review_slug_opened
+  review_slug_opened=$(grep -c 'per-story-review' "$opened_log" || true)
+  [ "$review_slug_opened" -ge 1 ]
 
   # Decoy keys must NOT appear in output
   [[ ! "$output" =~ "E900-S10" ]]
   [[ ! "$output" =~ "E900-S11" ]]
   [[ ! "$output" =~ "E900-S12" ]]
   [[ ! "$output" =~ "E900-S13" ]]
+  [[ ! "$output" =~ "E900-S20" ]]
 }
 
 @test "AC1 — legacy flat E*-S*-*.md under stories/ is found" {

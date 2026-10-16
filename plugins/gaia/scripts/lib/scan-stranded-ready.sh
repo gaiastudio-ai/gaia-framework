@@ -162,29 +162,19 @@ _verdict_cache=$(_build_verdict_cache)
 #       c) E*-S*-*.md     (legacy flat layout, root of IMPLEMENTATION_ARTIFACTS)
 #     Explicitly excluded from the find:
 #       - */reviews/* directories (review reports, tdd-progress, etc.)
-#   Stage 1b — basename filter excludes known non-story report files by exact
-#     slug match (review-summary, plan, review-report, test-automate, review-perf,
-#     security-review) without opening them.  A story whose slug merely ends in
-#     one of these words (e.g., *-excludes-review-summary.md) is NOT excluded
-#     because the regex anchors the slug start to S<digits>-.
+#   Stage 1b — a single grep -z -v filters the NUL-delimited path stream,
+#     dropping known non-story report filenames by exact slug match.
+#     A story whose slug merely ends in a report word (e.g.,
+#     *-excludes-review-summary.md) is NOT excluded because the regex
+#     anchors to /E<digits>-S<digits>-<suffix>.md$ (digits only, then
+#     the suffix with no extra slug words).
 #   Stage 2 — grep -l pre-selects only files containing 'status: ready-for-dev'
 # Collect candidate story files: ready-for-dev + sprint_id null + PASSED verdict.
 
-# Regex for known non-story report filenames — exact slug match only.
-# shellcheck disable=SC2034  # used in [[ =~ ]] below
-_report_suffix_re='^E[0-9]+-S[0-9]+-(review-summary(-pass[0-9]+)?|plan|review-report|test-automate|review-perf|security-review)\.md$'
-
-# Filter a NUL-delimited path stream: drop paths whose basename matches a known
-# non-story report pattern.  Reads stdin, writes stdout, both NUL-delimited.
-_filter_report_names() {
-  local f bn
-  while IFS= read -r -d '' f; do
-    bn="${f##*/}"
-    case "$bn" in story.md) printf '%s\0' "$f"; continue ;; esac
-    [[ "$bn" =~ $_report_suffix_re ]] && continue
-    printf '%s\0' "$f"
-  done
-}
+# ERE pattern for known non-story report basenames — exact slug match only.
+# Covers every report type the framework writes in the E<n>-S<n>-<type>.md and
+# E<n>-S<n>-<type>-pass<N>.md naming conventions.
+_REPORT_NAME_RE='/E[0-9]+-S[0-9]+-(review-summary|review|plan|review-report|test-automate|review-perf|security-review|code-review|qa-tests|test-review|performance-review|tdd-progress|test-automation)(-pass[0-9]+)?\.md$'
 
 matches=()
 while IFS= read -r -d '' story_file; do
@@ -225,7 +215,7 @@ done < <(
     # Layout c: legacy flat E*-S*-*.md at the implementation-artifacts root
     find "$IMPLEMENTATION_ARTIFACTS" -maxdepth 1 -type f \
       -name 'E[0-9]*-S[0-9]*-*.md' -print0
-  } | _filter_report_names \
+  } | grep -z -v -E "$_REPORT_NAME_RE" \
     | xargs -0 grep -l --null 'status: ready-for-dev' 2>/dev/null || true
 )
 
