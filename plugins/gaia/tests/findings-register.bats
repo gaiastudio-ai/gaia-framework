@@ -2574,16 +2574,15 @@ _assert_blocked_errored() {
   [ "$last_line" = "BLOCKED" ] || {
     echo "$label: expected BLOCKED on last line, got: $last_line" >&2; false
   }
-  # Check register outcome
+  # Check register outcome — assert existence, then check the outcome.
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
-  if [ -f "$reg" ]; then
-    local outcome
-    outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
-    [ "$outcome" = "errored" ] || {
-      echo "$label: expected last gate_runs outcome=errored, got: $outcome" >&2; false
-    }
-  fi
+  [ -f "$reg" ] || { echo "$label: register file not found at $reg" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
+  [ "$outcome" = "errored" ] || {
+    echo "$label: expected last gate_runs outcome=errored, got: $outcome" >&2; false
+  }
 }
 
 # --- DAST verdict.sh fail-closed cases ---
@@ -2654,16 +2653,14 @@ _assert_blocked_errored() {
   [ "$last_line" = "APPROVE" ] || {
     echo "dast-control: expected APPROVE on last line, got: $last_line" >&2; false
   }
-  # Verify completed outcome
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
-  if [ -f "$reg" ]; then
-    local outcome
-    outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
-    [ "$outcome" = "completed" ] || {
-      echo "dast-control: expected last gate_runs outcome=completed, got: $outcome" >&2; false
-    }
-  fi
+  [ -f "$reg" ] || { echo "dast-control: register file not found at $reg" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
+  [ "$outcome" = "completed" ] || {
+    echo "dast-control: expected last gate_runs outcome=completed, got: $outcome" >&2; false
+  }
 }
 
 # --- Perf verdict.sh fail-closed cases ---
@@ -2736,11 +2733,202 @@ _assert_blocked_errored() {
   }
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
-  if [ -f "$reg" ]; then
-    local outcome
-    outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
-    [ "$outcome" = "completed" ] || {
-      echo "perf-control: expected last gate_runs outcome=completed, got: $outcome" >&2; false
-    }
-  fi
+  [ -f "$reg" ] || { echo "perf-control: register file not found at $reg" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
+  [ "$outcome" = "completed" ] || {
+    echo "perf-control: expected last gate_runs outcome=completed, got: $outcome" >&2; false
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Multi-document and non-object findings bypass tests
+#
+# Two concatenated JSON documents, or findings arrays containing non-object
+# items, must be rejected by the strict slurp-based validation and yield
+# BLOCKED with outcome "errored".
+# ---------------------------------------------------------------------------
+
+@test "dast verdict.sh register mode: two documents (critical first, empty second) yields BLOCKED" {
+  _failclosed_setup "gaia-test-dast"
+  printf '{"findings":[{"severity":"critical","message":"x"}]}\n{"findings":[]}\n' > "$TEST_TMP/twodoc.json"
+  run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/twodoc.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "dast-twodoc-crit: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || { echo "dast-twodoc-crit: expected BLOCKED, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "dast-twodoc-crit: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "errored" ] || { echo "dast-twodoc-crit: expected errored, got: $outcome" >&2; false; }
+}
+
+@test "dast verdict.sh register mode: two documents (empty first, critical second) yields BLOCKED" {
+  _failclosed_setup "gaia-test-dast"
+  printf '{"findings":[]}\n{"findings":[{"severity":"critical","message":"x"}]}\n' > "$TEST_TMP/twodoc2.json"
+  run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/twodoc2.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "dast-twodoc-empty: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || { echo "dast-twodoc-empty: expected BLOCKED, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "dast-twodoc-empty: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "errored" ] || { echo "dast-twodoc-empty: expected errored, got: $outcome" >&2; false; }
+}
+
+@test "dast verdict.sh register mode: non-object item in findings yields BLOCKED" {
+  _failclosed_setup "gaia-test-dast"
+  printf '{"findings":[1]}' > "$TEST_TMP/nonobj.json"
+  run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/nonobj.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "dast-nonobj: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || { echo "dast-nonobj: expected BLOCKED, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "dast-nonobj: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "errored" ] || { echo "dast-nonobj: expected errored, got: $outcome" >&2; false; }
+}
+
+@test "dast verdict.sh register mode: nested-array item in findings yields BLOCKED" {
+  _failclosed_setup "gaia-test-dast"
+  printf '{"findings":[[]]}' > "$TEST_TMP/nested.json"
+  run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/nested.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "dast-nested: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || { echo "dast-nested: expected BLOCKED, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "dast-nested: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "errored" ] || { echo "dast-nested: expected errored, got: $outcome" >&2; false; }
+}
+
+@test "perf verdict.sh register mode: two documents (critical first, empty second) yields BLOCKED" {
+  _failclosed_setup "gaia-test-perf"
+  printf '{"findings":[{"severity":"critical","message":"x"}]}\n{"findings":[]}\n' > "$TEST_TMP/twodoc.json"
+  run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/twodoc.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "perf-twodoc-crit: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || { echo "perf-twodoc-crit: expected BLOCKED, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "perf-twodoc-crit: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "errored" ] || { echo "perf-twodoc-crit: expected errored, got: $outcome" >&2; false; }
+}
+
+@test "perf verdict.sh register mode: two documents (empty first, critical second) yields BLOCKED" {
+  _failclosed_setup "gaia-test-perf"
+  printf '{"findings":[]}\n{"findings":[{"severity":"critical","message":"x"}]}\n' > "$TEST_TMP/twodoc2.json"
+  run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/twodoc2.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "perf-twodoc-empty: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || { echo "perf-twodoc-empty: expected BLOCKED, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "perf-twodoc-empty: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "errored" ] || { echo "perf-twodoc-empty: expected errored, got: $outcome" >&2; false; }
+}
+
+@test "perf verdict.sh register mode: non-object item in findings yields BLOCKED" {
+  _failclosed_setup "gaia-test-perf"
+  printf '{"findings":[1]}' > "$TEST_TMP/nonobj.json"
+  run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/nonobj.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "perf-nonobj: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || { echo "perf-nonobj: expected BLOCKED, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "perf-nonobj: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "errored" ] || { echo "perf-nonobj: expected errored, got: $outcome" >&2; false; }
+}
+
+@test "perf verdict.sh register mode: nested-array item in findings yields BLOCKED" {
+  _failclosed_setup "gaia-test-perf"
+  printf '{"findings":[[]]}' > "$TEST_TMP/nested.json"
+  run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/nested.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "perf-nested: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "BLOCKED" ] || { echo "perf-nested: expected BLOCKED, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "perf-nested: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "errored" ] || { echo "perf-nested: expected errored, got: $outcome" >&2; false; }
+}
+
+# ---------------------------------------------------------------------------
+# Control: inherited _write_failed must not block a valid run
+# ---------------------------------------------------------------------------
+
+@test "dast verdict.sh register mode: inherited _write_failed=1 does not block a valid run" {
+  _failclosed_setup "gaia-test-dast"
+  printf '{"findings":[]}' > "$TEST_TMP/ok.json"
+  _write_failed=1 run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/ok.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "dast-inherit: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "APPROVE" ] || { echo "dast-inherit: expected APPROVE, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "dast-inherit: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "completed" ] || { echo "dast-inherit: expected completed, got: $outcome" >&2; false; }
+}
+
+@test "perf verdict.sh register mode: inherited _write_failed=1 does not block a valid run" {
+  _failclosed_setup "gaia-test-perf"
+  printf '{"findings":[]}' > "$TEST_TMP/ok.json"
+  _write_failed=1 run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
+    --llm-findings "$TEST_TMP/ok.json" \
+    --story-key TEST-S1 --register
+  [ "$status" -eq 0 ] || { echo "perf-inherit: non-zero exit ($status)" >&2; false; }
+  local last_line
+  last_line="$(tail -n1 <<<"$output")"
+  [ "$last_line" = "APPROVE" ] || { echo "perf-inherit: expected APPROVE, got: $last_line" >&2; false; }
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  [ -f "$reg" ] || { echo "perf-inherit: register not found" >&2; false; }
+  local outcome
+  outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
+  [ "$outcome" = "completed" ] || { echo "perf-inherit: expected completed, got: $outcome" >&2; false; }
 }

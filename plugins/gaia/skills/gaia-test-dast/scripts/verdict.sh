@@ -109,6 +109,7 @@ if [ "$REGISTER_MODE" -eq 1 ]; then
   # In register mode every failure path must set _write_failed=1 so the
   # gate becomes BLOCKED — a silently skipped findings file must never
   # produce APPROVE.
+  _write_failed=0
   if [ -z "$LLM" ]; then
     log "llm findings path not provided; gate will be BLOCKED"
     _write_failed=1
@@ -118,13 +119,17 @@ if [ "$REGISTER_MODE" -eq 1 ]; then
   elif [ ! -s "$LLM" ]; then
     log "llm findings file is empty: $LLM; gate will be BLOCKED"
     _write_failed=1
-  elif ! jq -e '.findings | type == "array"' "$LLM" >/dev/null 2>&1; then
-    log "llm findings malformed (missing or non-array .findings): $LLM; gate will be BLOCKED"
+  elif ! jq -e -s 'length == 1 and (.[0] | type == "object") and (.[0].findings | type == "array") and all(.[0].findings[]; type == "object")' "$LLM" >/dev/null 2>&1; then
+    log "llm findings malformed (must be a single JSON object with an array of objects in .findings): $LLM; gate will be BLOCKED"
     _write_failed=1
   else
     finding_count="$(jq '.findings | length' "$LLM")"
+    # Guard: finding_count must be a non-negative integer.
+    case "$finding_count" in
+      ''|*[!0-9]*) log "finding_count is not a valid integer: $finding_count; gate will be BLOCKED"; _write_failed=1 ;;
+    esac
     i=0
-    while [ "$i" -lt "$finding_count" ]; do
+    while [ "$_write_failed" -eq 0 ] && [ "$i" -lt "$finding_count" ]; do
       msg="$(jq -r ".findings[$i].message // .findings[$i].title // \"\"" "$LLM")"
       sev="$(jq -r ".findings[$i].severity // \"medium\"" "$LLM")"
       cat_val="$(jq -r ".findings[$i].category // \"\"" "$LLM")"
