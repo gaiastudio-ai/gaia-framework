@@ -726,7 +726,8 @@ _check_register_wiring() {
 #
 # The run-all-reviews consolidation step 3 must name the EXACT paths that
 # each gate's own SKILL.md uses for analysis-results and execution-evidence.
-# These per-line tests catch wrong paths or dropped flags.
+# Per-row table checks, per-gate command-block checks, and exclusivity
+# assertions catch wrong paths, dropped flags, and swapped rows.
 # ---------------------------------------------------------------------------
 
 # Helper: extract the step-3 "Re-resolve each gate" section from run-all-reviews.
@@ -739,184 +740,249 @@ _extract_step3_section() {
   ' "$f"
 }
 
-@test "step-3 parity: code-review analysis-results path matches gate SKILL.md" {
+# Helper: extract a specific table row from step 3 by gate name.
+_step3_table_row() {
+  local step3="$1" gate="$2"
+  grep "|.*\`$gate\`" <<<"$step3" | head -1
+}
+
+# Helper: extract a single command paragraph from the step-3 code block.
+# The code block has multiple commands separated by blank lines, each
+# preceded by a bash comment (e.g. "# qa-tests (analysis-results + ...)").
+# This helper returns only the comment + command lines for the matching
+# gate pattern, stopping at the next comment or end of block.
+_step3_command_for() {
+  local step3="$1" gate_pattern="$2"
+  awk -v pat="$gate_pattern" '
+    /^[[:space:]]*```bash/ { inblock=1; next }
+    inblock && /^[[:space:]]*```/ { inblock=0; if (matched) print buf; next }
+    inblock && /^[[:space:]]*#/ {
+      if (matched) { print buf; matched=0 }
+      buf=$0; if ($0 ~ pat) matched=1; next
+    }
+    inblock && matched { buf = buf "\n" $0 }
+  ' <<<"$step3"
+}
+
+# --- Per-row table assertions ---
+
+@test "step-3 table: code-review row has analysis-results and no execution-evidence" {
   local base="$BATS_TEST_DIRNAME/.."
   local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
   [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "code-review")"
+  [ -n "$row" ] || { echo "no code-review row in step 3 table" >&2; false; }
+  grep -qF '.gaia/state/review/code-review/{story_key}/analysis-results.json' <<<"$row" || {
+    echo "code-review row missing analysis-results path" >&2; false
+  }
+  # Must NOT have execution-evidence path (cell should be a dash)
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "code-review row should not have execution-evidence" >&2; false
+  fi
+  # Cross-check against the gate's own SKILL.md
   local gate_skill="$base/skills/gaia-code-review/SKILL.md"
   [ -f "$gate_skill" ] || { echo "code-review SKILL.md not found" >&2; false; }
-
-  local step3
-  step3="$(_extract_step3_section "$rar")"
-
-  # The gate skill uses this exact path for analysis-results
-  local expected_ar=".gaia/state/review/code-review/{story_key}/analysis-results.json"
-  grep -qF "$expected_ar" <<<"$step3" || {
-    echo "step 3 missing code-review analysis-results path: $expected_ar" >&2; false
-  }
-  # Verify gate SKILL.md also uses this path
-  grep -qF "$expected_ar" "$gate_skill" || {
-    echo "code-review SKILL.md missing expected path: $expected_ar" >&2; false
+  grep -qF '.gaia/state/review/code-review/{story_key}/analysis-results.json' "$gate_skill" || {
+    echo "code-review SKILL.md missing the analysis-results path" >&2; false
   }
 }
 
-@test "step-3 parity: qa-tests analysis-results path matches gate SKILL.md" {
+@test "step-3 table: qa-tests row has analysis-results and execution-evidence" {
   local base="$BATS_TEST_DIRNAME/.."
   local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "qa-tests")"
+  [ -n "$row" ] || { echo "no qa-tests row in step 3 table" >&2; false; }
+  grep -qF '.gaia/state/review/qa-tests/{story_key}/analysis-results.json' <<<"$row" || {
+    echo "qa-tests row missing analysis-results path" >&2; false
+  }
+  grep -qF '.gaia/state/review/qa-tests/{story_key}/execution-evidence.json' <<<"$row" || {
+    echo "qa-tests row missing execution-evidence path" >&2; false
+  }
+  # Cross-check against the gate's own SKILL.md
   local gate_skill="$base/skills/gaia-qa-tests/SKILL.md"
-  [ -f "$rar" ] && [ -f "$gate_skill" ] || { echo "SKILL.md not found" >&2; false; }
-
-  local step3
-  step3="$(_extract_step3_section "$rar")"
-
-  local expected_ar=".gaia/state/review/qa-tests/{story_key}/analysis-results.json"
-  grep -qF "$expected_ar" <<<"$step3" || {
-    echo "step 3 missing qa-tests analysis-results path: $expected_ar" >&2; false
+  [ -f "$gate_skill" ] || { echo "qa-tests SKILL.md not found" >&2; false; }
+  grep -qF '.gaia/state/review/qa-tests/{story_key}/analysis-results.json' "$gate_skill" || {
+    echo "qa-tests SKILL.md missing the analysis-results path" >&2; false
   }
-  grep -qF "$expected_ar" "$gate_skill" || {
-    echo "qa-tests SKILL.md missing expected path: $expected_ar" >&2; false
+  grep -qF '.gaia/state/review/qa-tests/{story_key}/execution-evidence.json' "$gate_skill" || {
+    echo "qa-tests SKILL.md missing the execution-evidence path" >&2; false
   }
 }
 
-@test "step-3 parity: qa-tests execution-evidence path matches gate SKILL.md" {
+@test "step-3 table: security-review row has no analysis-results and no execution-evidence" {
   local base="$BATS_TEST_DIRNAME/.."
   local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
-  local gate_skill="$base/skills/gaia-qa-tests/SKILL.md"
-  [ -f "$rar" ] && [ -f "$gate_skill" ] || { echo "SKILL.md not found" >&2; false; }
-
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
   local step3
   step3="$(_extract_step3_section "$rar")"
-
-  local expected_ee=".gaia/state/review/qa-tests/{story_key}/execution-evidence.json"
-  grep -qF "$expected_ee" <<<"$step3" || {
-    echo "step 3 missing qa-tests execution-evidence path: $expected_ee" >&2; false
-  }
-  grep -qF "$expected_ee" "$gate_skill" || {
-    echo "qa-tests SKILL.md missing expected path: $expected_ee" >&2; false
-  }
+  local row
+  row="$(_step3_table_row "$step3" "security-review")"
+  [ -n "$row" ] || { echo "no security-review row in step 3 table" >&2; false; }
+  if grep -qF 'analysis-results.json' <<<"$row"; then
+    echo "security-review row should not have analysis-results" >&2; false
+  fi
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "security-review row should not have execution-evidence" >&2; false
+  fi
 }
 
-@test "step-3 parity: test-automate analysis-results path matches gate SKILL.md" {
+@test "step-3 table: test-automate row has analysis-results and no execution-evidence" {
   local base="$BATS_TEST_DIRNAME/.."
   local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "test-automate")"
+  [ -n "$row" ] || { echo "no test-automate row in step 3 table" >&2; false; }
+  grep -qF '.gaia/state/review/test-automate/{story_key}/analysis-results.json' <<<"$row" || {
+    echo "test-automate row missing analysis-results path" >&2; false
+  }
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "test-automate row should not have execution-evidence" >&2; false
+  fi
+  # Cross-check
   local gate_skill="$base/skills/gaia-test-automate/SKILL.md"
-  [ -f "$rar" ] && [ -f "$gate_skill" ] || { echo "SKILL.md not found" >&2; false; }
-
-  local step3
-  step3="$(_extract_step3_section "$rar")"
-
-  local expected_ar=".gaia/state/review/test-automate/{story_key}/analysis-results.json"
-  grep -qF "$expected_ar" <<<"$step3" || {
-    echo "step 3 missing test-automate analysis-results path: $expected_ar" >&2; false
-  }
-  grep -qF "$expected_ar" "$gate_skill" || {
-    echo "test-automate SKILL.md missing expected path: $expected_ar" >&2; false
+  [ -f "$gate_skill" ] || { echo "test-automate SKILL.md not found" >&2; false; }
+  grep -qF '.gaia/state/review/test-automate/{story_key}/analysis-results.json' "$gate_skill" || {
+    echo "test-automate SKILL.md missing the analysis-results path" >&2; false
   }
 }
 
-@test "step-3 parity: test-review analysis-results path matches gate SKILL.md" {
+@test "step-3 table: test-review row has analysis-results and no execution-evidence" {
   local base="$BATS_TEST_DIRNAME/.."
   local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "test-review")"
+  [ -n "$row" ] || { echo "no test-review row in step 3 table" >&2; false; }
+  grep -qF '.gaia/state/review/test-review/{story_key}/analysis-results.json' <<<"$row" || {
+    echo "test-review row missing analysis-results path" >&2; false
+  }
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "test-review row should not have execution-evidence" >&2; false
+  fi
+  # Cross-check
   local gate_skill="$base/skills/gaia-test-review/SKILL.md"
-  [ -f "$rar" ] && [ -f "$gate_skill" ] || { echo "SKILL.md not found" >&2; false; }
+  [ -f "$gate_skill" ] || { echo "test-review SKILL.md not found" >&2; false; }
+  grep -qF '.gaia/state/review/test-review/{story_key}/analysis-results.json' "$gate_skill" || {
+    echo "test-review SKILL.md missing the analysis-results path" >&2; false
+  }
+}
 
+@test "step-3 table: performance-review row has no analysis-results and no execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
+  local row
+  row="$(_step3_table_row "$step3" "performance-review")"
+  [ -n "$row" ] || { echo "no performance-review row in step 3 table" >&2; false; }
+  if grep -qF 'analysis-results.json' <<<"$row"; then
+    echo "performance-review row should not have analysis-results" >&2; false
+  fi
+  if grep -qF 'execution-evidence.json' <<<"$row"; then
+    echo "performance-review row should not have execution-evidence" >&2; false
+  fi
+}
+
+# --- Exclusivity: only qa-tests carries execution-evidence ---
+
+@test "step-3 table: only qa-tests row carries execution-evidence" {
+  local base="$BATS_TEST_DIRNAME/.."
+  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
+  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
   local step3
   step3="$(_extract_step3_section "$rar")"
 
-  local expected_ar=".gaia/state/review/test-review/{story_key}/analysis-results.json"
-  grep -qF "$expected_ar" <<<"$step3" || {
-    echo "step 3 missing test-review analysis-results path: $expected_ar" >&2; false
-  }
-  grep -qF "$expected_ar" "$gate_skill" || {
-    echo "test-review SKILL.md missing expected path: $expected_ar" >&2; false
+  local gate
+  for gate in code-review security-review test-automate test-review performance-review; do
+    local row
+    row="$(_step3_table_row "$step3" "$gate")"
+    [ -n "$row" ] || { echo "no $gate row in step 3 table" >&2; false; }
+    if grep -qF 'execution-evidence.json' <<<"$row"; then
+      echo "$gate row should not have execution-evidence (only qa-tests may)" >&2; false
+    fi
+  done
+  # Positive: qa-tests does carry it
+  local qa_row
+  qa_row="$(_step3_table_row "$step3" "qa-tests")"
+  grep -qF 'execution-evidence.json' <<<"$qa_row" || {
+    echo "qa-tests row must carry execution-evidence" >&2; false
   }
 }
 
-@test "step-3 parity: security-review and performance-review have no analysis-results in step 3 table" {
+# --- Per-gate command block assertions ---
+
+@test "step-3 command block: qa-tests resolver carries --analysis-results and --execution-evidence" {
   local base="$BATS_TEST_DIRNAME/.."
   local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
   [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
-
   local step3
   step3="$(_extract_step3_section "$rar")"
 
-  # The table row for security-review and performance-review should have a dash
-  # (meaning no analysis-results), not a path.
-  # Extract the security-review row and check it does NOT have an analysis-results path
-  local sec_row
-  sec_row="$(grep 'security-review' <<<"$step3" | head -1)"
-  [ -n "$sec_row" ] || { echo "no security-review row in step 3 table" >&2; false; }
-  if grep -qF 'analysis-results.json' <<<"$sec_row"; then
-    echo "security-review row should not have analysis-results path" >&2; false
-  fi
-
-  local perf_row
-  perf_row="$(grep 'performance-review' <<<"$step3" | head -1)"
-  [ -n "$perf_row" ] || { echo "no performance-review row in step 3 table" >&2; false; }
-  if grep -qF 'analysis-results.json' <<<"$perf_row"; then
-    echo "performance-review row should not have analysis-results path" >&2; false
-  fi
+  local cmd
+  cmd="$(_step3_command_for "$step3" "qa-tests")"
+  [ -n "$cmd" ] || { echo "no command paragraph mentioning qa-tests" >&2; false; }
+  grep -qF -- '--analysis-results' <<<"$cmd" || {
+    echo "qa-tests command missing --analysis-results" >&2; false
+  }
+  grep -qF -- '--execution-evidence' <<<"$cmd" || {
+    echo "qa-tests command missing --execution-evidence" >&2; false
+  }
+  grep -qF -- '--register' <<<"$cmd" || {
+    echo "qa-tests command missing --register" >&2; false
+  }
 }
 
-@test "step-3 parity: only qa-tests has execution-evidence in the step 3 code block" {
+@test "step-3 command block: analysis-results-only gates carry --analysis-results but not --execution-evidence" {
   local base="$BATS_TEST_DIRNAME/.."
   local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
   [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
-
   local step3
   step3="$(_extract_step3_section "$rar")"
 
-  # The code block must mention execution-evidence for qa-tests
-  grep -qF 'execution-evidence' <<<"$step3" || {
-    echo "step 3 does not mention execution-evidence at all" >&2; false
+  local cmd
+  cmd="$(_step3_command_for "$step3" "code-review.*test-automate.*test-review")"
+  [ -n "$cmd" ] || { echo "no command paragraph mentioning code-review, test-automate, test-review" >&2; false; }
+  grep -qF -- '--analysis-results' <<<"$cmd" || {
+    echo "analysis-results-only command missing --analysis-results" >&2; false
   }
-  # Execution evidence must appear in the qa-tests context
-  grep -qF 'qa-tests/{story_key}/execution-evidence.json' <<<"$step3" || {
-    echo "step 3 missing qa-tests execution-evidence path" >&2; false
+  if grep -qF -- '--execution-evidence' <<<"$cmd"; then
+    echo "analysis-results-only command should not have --execution-evidence" >&2; false
+  fi
+  grep -qF -- '--register' <<<"$cmd" || {
+    echo "analysis-results-only command missing --register" >&2; false
   }
 }
 
-@test "step-3 parity: deletion mutant removing qa-tests execution-evidence path is caught" {
+@test "step-3 command block: register-only gates carry --register but not --analysis-results" {
   local base="$BATS_TEST_DIRNAME/.."
   local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
   [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
+  local step3
+  step3="$(_extract_step3_section "$rar")"
 
-  # Create a mutant with the qa-tests execution-evidence line removed
-  local copy="$TEST_TMP/mutant-rar.md"
-  grep -v 'qa-tests.*execution-evidence' "$rar" > "$copy"
-
-  # The mutant step 3 should no longer contain the qa-tests execution-evidence path
-  local mutant_step3
-  mutant_step3="$(_extract_step3_section "$copy")"
-  if grep -qF 'qa-tests/{story_key}/execution-evidence.json' <<<"$mutant_step3"; then
-    echo "deletion mutant still has the qa-tests execution-evidence path" >&2; false
-  fi
-  # And the real file must have it (sanity check that deletion changes something)
-  local real_step3
-  real_step3="$(_extract_step3_section "$rar")"
-  grep -qF 'qa-tests/{story_key}/execution-evidence.json' <<<"$real_step3" || {
-    echo "real file missing qa-tests execution-evidence path" >&2; false
+  local cmd
+  cmd="$(_step3_command_for "$step3" "security-review.*performance-review")"
+  [ -n "$cmd" ] || { echo "no command paragraph mentioning security-review, performance-review" >&2; false; }
+  grep -qF -- '--register' <<<"$cmd" || {
+    echo "register-only command missing --register" >&2; false
   }
-}
-
-@test "step-3 parity: deletion mutant removing code-review analysis-results path is caught" {
-  local base="$BATS_TEST_DIRNAME/.."
-  local rar="$base/skills/gaia-run-all-reviews/SKILL.md"
-  [ -f "$rar" ] || { echo "run-all-reviews SKILL.md not found" >&2; false; }
-
-  # Create a mutant with the code-review analysis-results line removed from the table
-  local copy="$TEST_TMP/mutant-rar-cr.md"
-  sed '/code-review.*analysis-results\.json/d' "$rar" > "$copy"
-
-  local mutant_step3
-  mutant_step3="$(_extract_step3_section "$copy")"
-  if grep -qF '.gaia/state/review/code-review/{story_key}/analysis-results.json' <<<"$mutant_step3"; then
-    echo "deletion mutant still has code-review analysis-results path" >&2; false
+  if grep -qF -- '--analysis-results' <<<"$cmd"; then
+    echo "register-only command should not have --analysis-results" >&2; false
   fi
-  # Sanity: real file has it
-  local real_step3
-  real_step3="$(_extract_step3_section "$rar")"
-  grep -qF '.gaia/state/review/code-review/{story_key}/analysis-results.json' <<<"$real_step3" || {
-    echo "real file missing code-review analysis-results path" >&2; false
-  }
+  if grep -qF -- '--execution-evidence' <<<"$cmd"; then
+    echo "register-only command should not have --execution-evidence" >&2; false
+  fi
 }
