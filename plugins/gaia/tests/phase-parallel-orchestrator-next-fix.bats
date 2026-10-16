@@ -156,7 +156,7 @@ SHIM
 # AC1: branch slug derived from story title, not literal "slug"
 # ---------------------------------------------------------------------------
 
-@test "AC1: worktree_create receives real title slug, not literal slug" {
+@test "worktree_create receives real title slug, not literal slug" {
   _source_orch
 
   local repo yaml flock_dir
@@ -188,7 +188,7 @@ SHIM
     || { printf 'found literal -slug branch:\n%s\n' "$output" >&2; return 1; }
 }
 
-@test "AC1: worktree_branch_state uses real slug for re-entry detection" {
+@test "worktree_branch_state uses real slug for re-entry detection" {
   _source_orch
 
   local repo yaml flock_dir
@@ -223,7 +223,7 @@ SHIM
 # AC1 slugify: cross-check with canonical, non-ASCII, >60 chars
 # ---------------------------------------------------------------------------
 
-@test "AC1: inline slugify matches canonical slugify.sh on plain ASCII" {
+@test "inline slugify matches canonical slugify.sh on plain ASCII" {
   _source_orch
   local inline canonical
   inline="$(_ppo_slugify "Fix the run-sprint orchestrator next command")"
@@ -233,7 +233,7 @@ SHIM
     || { printf 'mismatch: inline=%s canonical=%s\n' "$inline" "$canonical" >&2; return 1; }
 }
 
-@test "AC1: inline slugify handles non-ASCII (UTF-8 accents become hyphens)" {
+@test "inline slugify handles non-ASCII (UTF-8 accents become hyphens)" {
   _source_orch
   local inline canonical
   inline="$(_ppo_slugify "café résumé")"
@@ -245,7 +245,7 @@ SHIM
     || { printf 'expected partial "caf" in slug: %s\n' "$inline" >&2; return 1; }
 }
 
-@test "AC1: inline slugify caps at 60 chars for long titles" {
+@test "inline slugify caps at 60 chars for long titles" {
   _source_orch
   local long_title="This is a very long story title that exceeds sixty characters when slugified to test the cap"
   local inline
@@ -259,7 +259,7 @@ SHIM
 # AC2: session dir fallback when GAIA_SESSION_DIR is unset
 # ---------------------------------------------------------------------------
 
-@test "AC2: ppo_slot_scratch_for falls back to writable temp dir when session dir unset" {
+@test "ppo_slot_scratch_for falls back to writable temp dir when session dir unset" {
   unset GAIA_SESSION_DIR
 
   _source_orch
@@ -284,7 +284,7 @@ SHIM
   rm -rf "$(dirname "$(dirname "$result")")"
 }
 
-@test "AC2: ppo_session_dir_for returns writable fallback when session dir unset" {
+@test "ppo_session_dir_for returns writable fallback when session dir unset" {
   unset GAIA_SESSION_DIR
 
   _source_orch
@@ -304,7 +304,7 @@ SHIM
   rm -rf "$result"
 }
 
-@test "AC2: plan writes breadcrumb so next finds the same session dir" {
+@test "plan writes breadcrumb so next finds the same session dir" {
   _source_orch
 
   local repo yaml flock_dir
@@ -348,7 +348,7 @@ SHIM
     || { printf 'story not dispatched:\n%s\n' "$next_out" >&2; return 1; }
 }
 
-@test "AC2: no /slots/ path in output when plan+next runs without session dir" {
+@test "no /slots/ path in output when plan+next runs without session dir" {
   _source_orch
 
   local repo yaml flock_dir
@@ -378,7 +378,7 @@ SHIM
 # AC3: admission failure degrades to sequential, no sprint_complete
 # ---------------------------------------------------------------------------
 
-@test "AC3: admission failure emits admission_failure and degrades to sequential" {
+@test "admission failure emits admission_failure and degrades to sequential" {
   _source_orch
 
   local repo yaml flock_dir
@@ -423,7 +423,7 @@ SHIM
 # AC4: flock-unavailable message includes brew install flock
 # ---------------------------------------------------------------------------
 
-@test "AC4: flock-unavailable reason includes brew install flock" {
+@test "flock-unavailable reason includes brew install flock" {
   _source_orch
 
   local repo yaml
@@ -442,7 +442,7 @@ SHIM
     || { printf 'missing brew install flock guidance:\n%s\n' "$output" >&2; return 1; }
 }
 
-@test "AC4: run-sprint SKILL.md mentions flock prerequisite" {
+@test "run-sprint SKILL.md mentions flock prerequisite" {
   local skillmd="$PLUGIN_ROOT/skills/gaia-run-sprint/SKILL.md"
   [ -f "$skillmd" ] \
     || { printf 'SKILL.md not found at %s\n' "$skillmd" >&2; return 1; }
@@ -455,7 +455,7 @@ SHIM
 # AC5: orphaned worktree cleaned on admission failure and on next plan
 # ---------------------------------------------------------------------------
 
-@test "AC5: admission failure cleans up worktree created on admission fail" {
+@test "admission failure cleans up worktree created on admission fail" {
   _source_orch
 
   local repo yaml flock_dir
@@ -485,7 +485,7 @@ SHIM
     || { printf 'worktree dir still exists: %s\n' "$wt_dir" >&2; return 1; }
 }
 
-@test "AC5: plan prunes worktrees on bogus -slug branches" {
+@test "plan prunes worktrees on bogus -slug branches" {
   _source_orch
 
   local repo flock_dir
@@ -522,7 +522,7 @@ SHIM
     || { printf 'bogus -slug worktree still exists after plan:\n%s\n' "$output" >&2; return 1; }
 }
 
-@test "AC5: prune does NOT remove real slug ending in -slug substring" {
+@test "prune does NOT remove real slug ending in -slug substring" {
   _source_orch
 
   local repo flock_dir
@@ -565,7 +565,7 @@ SHIM
 # AC6: two-phase sprint end-to-end with no session env (separate processes)
 # ---------------------------------------------------------------------------
 
-@test "AC6: plan then next as separate processes, no session env, real slugs" {
+@test "plan then next as separate processes, no session env, real slugs" {
   _source_orch
 
   local repo yaml flock_dir
