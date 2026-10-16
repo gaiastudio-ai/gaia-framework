@@ -307,8 +307,8 @@ teardown() {
   local state_dir="$TEST_TMP/.gaia/state"
   local result
   result=$(acquire_lock_close_predicate 2 "$state_dir")
-  echo "$result" | /usr/bin/grep -q '.sprint-lifecycle.lock'
-  echo "$result" | /usr/bin/grep -q '10'
+  /usr/bin/grep -q '.sprint-lifecycle.lock' <<< "$result"
+  /usr/bin/grep -q '10' <<< "$result"
 }
 
 @test "ac4 — predicate returns L4 in transitional state (per-sprint files exist)" {
@@ -317,10 +317,10 @@ teardown() {
 
   local result
   result=$(acquire_lock_close_predicate 1 "$state_dir")
-  echo "$result" | /usr/bin/grep -q '.sprint-lifecycle.lock'
+  /usr/bin/grep -q '.sprint-lifecycle.lock' <<< "$result"
 
   result=$(acquire_lock_close_predicate "" "$state_dir")
-  echo "$result" | /usr/bin/grep -q '.sprint-lifecycle.lock'
+  /usr/bin/grep -q '.sprint-lifecycle.lock' <<< "$result"
 
   rm -f "$state_dir/sprint-status-sprint-99.yaml"
 }
@@ -331,11 +331,11 @@ teardown() {
 
   local result
   result=$(acquire_lock_close_predicate 1 "$state_dir")
-  echo "$result" | /usr/bin/grep -q 'sprint-status-{sprint_id}.yaml.lock'
-  echo "$result" | /usr/bin/grep -q ' 5'
+  /usr/bin/grep -q 'sprint-status-{sprint_id}.yaml.lock' <<< "$result"
+  /usr/bin/grep -q ' 5' <<< "$result"
 
   result=$(acquire_lock_close_predicate "" "$state_dir")
-  echo "$result" | /usr/bin/grep -q 'sprint-status-{sprint_id}.yaml.lock'
+  /usr/bin/grep -q 'sprint-status-{sprint_id}.yaml.lock' <<< "$result"
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -698,7 +698,7 @@ teardown() {
   local result
   result=$(_al_dev_ino "$testfile")
 
-  echo "$result" | /usr/bin/grep -qE '^[0-9]+:[0-9]+$'
+  /usr/bin/grep -qE '^[0-9]+:[0-9]+$' <<< "$result"
 }
 
 @test "acec7 — dev:ino works on this platform" {
@@ -709,7 +709,7 @@ teardown() {
   result=$(_al_dev_ino "$testfile")
 
   [ -n "$result" ]
-  echo "$result" | /usr/bin/grep -q ':'
+  /usr/bin/grep -q ':' <<< "$result"
 }
 
 # ──────────────────────────────────────────────────────────────
