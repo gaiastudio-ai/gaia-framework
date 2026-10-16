@@ -1867,5 +1867,134 @@ if [ "$NEW_STATUS" = "done" ]; then
   fi
 fi
 
+# Traced-issue closure hook on the story→done path.
+# Reads the story's `traces_to` frontmatter list and, for each GitHub issue
+# reference, either closes the issue (fully addressed) or adds a comment
+# (partially addressed — other stories also trace to it and are not yet done).
+#
+# BEST-EFFORT: a committed transition must never be rolled back because the
+# issue-closure hook failed. Every gh call is wrapped in a non-fatal guard.
+# When gh is absent or returns non-zero, a WARNING is emitted and the
+# transition completes normally.
+#
+# Design: three small, independently-callable functions so sibling stories
+# (task-box ticking, findings-triage guard) that later hook the same done
+# path can rebase cleanly around this block.
+
+# _parse_traces_to — extract GitHub issue numbers from the traces_to
+# frontmatter field. Handles flow-style YAML lists: `["GitHub #1", "GitHub #2"]`.
+# Outputs one issue number per line; empty output when the field is absent,
+# empty, or contains no GitHub references.
+_parse_traces_to() {
+  local file="$1"
+  awk '
+    BEGIN { in_fm = 0; seen = 0 }
+    /^---[[:space:]]*$/ {
+      if (!in_fm && !seen) { in_fm = 1; seen = 1; next }
+      if (in_fm) exit
+    }
+    in_fm && /^traces_to:/ {
+      v = $0
+      sub(/^traces_to:[[:space:]]*/, "", v)
+      # Extract all GitHub #N references from the flow-style list
+      while (match(v, /GitHub #[0-9]+/)) {
+        s = substr(v, RSTART, RLENGTH)
+        sub(/^GitHub #/, "", s)
+        print s
+        v = substr(v, RSTART + RLENGTH)
+      }
+      exit
+    }
+  ' "$file"
+}
+
+# _find_merged_pr_number — resolve the merged PR number for a story key.
+# Returns the PR number on stdout, or empty string on failure.
+_find_merged_pr_number() {
+  local story_key="$1"
+  gh pr list --state merged --search "$story_key" \
+    --json number --jq '.[0].number' 2>/dev/null || true
+}
+
+# _is_issue_fully_addressed — determine whether this story fully addresses
+# a traced issue. Heuristic: if no OTHER story files in the implementation
+# artifacts also trace to the same issue while not yet done, the issue is
+# fully addressed by this story.
+# Returns 0 (fully addressed) or 1 (partially — other non-done tracers exist).
+_is_issue_fully_addressed() {
+  local issue_num="$1" story_key="$2"
+  local other_file other_status
+  # Search for other story files that reference the same issue.
+  # Use grep -rl with a bounded search (maxdepth via find would be better but
+  # grep -rl is simpler and the artifact tree is small).
+  local other_files
+  other_files="$(grep -rl "GitHub #${issue_num}" "$IMPLEMENTATION_ARTIFACTS" 2>/dev/null || true)"
+  [ -n "$other_files" ] || return 0
+  while IFS= read -r other_file; do
+    [ -n "$other_file" ] || continue
+    # Skip the current story's own file
+    case "$other_file" in
+      *"${story_key}"*) continue ;;
+    esac
+    # Only consider actual story files (template: story)
+    if ! awk '/^---/ { n++; if (n==2) exit } n==1 && /^template:.*story/ { found=1; exit } END { exit(found?0:1) }' "$other_file" 2>/dev/null; then
+      continue
+    fi
+    other_status="$(read_frontmatter_status "$other_file" 2>/dev/null || true)"
+    if [ -n "$other_status" ] && [ "$other_status" != "done" ]; then
+      return 1  # Another non-done story also traces to this issue
+    fi
+  done <<< "$other_files"
+  return 0
+}
+
+# _close_traced_issues — post-transition hook entry point.
+# Called after the done transition succeeds; never blocks the transition.
+_close_traced_issues() {
+  local story_key="$1" story_file="$2"
+
+  # Parse traced issue numbers from frontmatter
+  local issue_nums
+  issue_nums="$(_parse_traces_to "$story_file")"
+  [ -n "$issue_nums" ] || return 0
+
+  # Check gh availability
+  if ! command -v gh >/dev/null 2>&1; then
+    log "WARNING: gh CLI not available — skipping traced-issue closure for $story_key"
+    return 0
+  fi
+
+  # Resolve the story's merged PR number (best-effort)
+  local pr_number
+  pr_number="$(_find_merged_pr_number "$story_key")"
+
+  local pr_ref=""
+  if [ -n "$pr_number" ]; then
+    pr_ref=" (PR #${pr_number})"
+  fi
+
+  local issue_num
+  while IFS= read -r issue_num; do
+    [ -n "$issue_num" ] || continue
+
+    if _is_issue_fully_addressed "$issue_num" "$story_key"; then
+      # Fully addressed — close with comment
+      if ! gh issue close "$issue_num" --comment "Fixed by ${story_key}${pr_ref}." 2>/dev/null; then
+        log "WARNING: failed to close traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+      fi
+    else
+      # Partially addressed — comment only, do not close
+      if ! gh issue comment "$issue_num" --body "Partially addressed by ${story_key}${pr_ref}. Other stories still reference this issue." 2>/dev/null; then
+        log "WARNING: failed to comment on traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+      fi
+      log "WARNING: issue #${issue_num} partially addressed by ${story_key} — commented but not closed (other stories still trace to it)"
+    fi
+  done <<< "$issue_nums"
+}
+
+if [ "$NEW_STATUS" = "done" ]; then
+  _close_traced_issues "$STORY_KEY" "$STORY_FILE" || true
+fi
+
 log "$STORY_KEY transitioned $CURRENT_STATUS -> $NEW_STATUS"
 exit 0
