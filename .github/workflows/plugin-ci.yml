@@ -245,9 +245,21 @@ jobs:
   bats-tests:
     name: bats-tests
     needs: [bats-shard]
+    # Always run so the required check reports a clear FAIL (not "skipped")
+    # when any shard fails.  Without this, GitHub treats a skipped required
+    # check as passing, which would let a red shard through merge.
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require all shards to have succeeded
+        # Fail fast if any shard failed, was cancelled, or was skipped.
+        # This is the gate's primary safety mechanism: it converts a shard
+        # failure into a gate FAILURE (not a gate skip).
+        if: needs.bats-shard.result != 'success'
+        run: |
+          echo "::error::Shard result is '${{ needs.bats-shard.result }}', expected 'success'"
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
