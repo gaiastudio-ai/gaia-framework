@@ -388,6 +388,7 @@ core	test-manual-surface-docs.bats
 core	test-plan-schema-detection.bats
 core	transition-story-status-legacy-flat-mirror.bats
 core	transition-story-status-lifecycle-emit.bats
+core	transition-story-status-untriaged-findings.bats
 core	transition-story-status.bats
 core	triage-findings-fallback.bats
 core	triage-findings-finalize-sentinel.bats
@@ -776,7 +777,6 @@ scripts-sprint	story-state-path-resolution.bats
 scripts-sprint	transition-story-status-sweep.bats
 scripts-sprint	transition-story-status-traced-issues.bats
 scripts-sprint	transition-story-status-trap.bats
-scripts-sprint	transition-story-status-untriaged-findings.bats
 skills	af-2026-05-21-10-create-prd-canonical.bats
 skills	af-2026-05-21-11-create-arch-canonical.bats
 skills	af-2026-05-21-11-edit-arch-canonical.bats
