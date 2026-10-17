@@ -619,22 +619,55 @@ EOF
   line_count="$(wc -l < "$large_file")"
   [ "$line_count" -ge 20000 ]
 
-  # Time the run with a 5-second timeout.
-  run timeout 5 bash "$SCRIPT" --epics-file "$large_file" --shards-dir "$SHARDS_DIR"
+  # Time the run with a 5-second bound. Use timeout if available, else
+  # measure wall-clock with SECONDS (portable to bash 3.2+).
+  if command -v timeout >/dev/null 2>&1; then
+    run timeout 5 bash "$SCRIPT" --epics-file "$large_file" --shards-dir "$SHARDS_DIR"
+  else
+    SECONDS=0
+    run bash "$SCRIPT" --epics-file "$large_file" --shards-dir "$SHARDS_DIR"
+    [ "$SECONDS" -le 5 ]
+  fi
   [ "$status" -eq 0 ]
   # Should find the 4 flagged epics (25, 50, 75, 100).
   [ "$(wc -l <<<"$output")" -eq 4 ]
 }
 
 # ===========================================================================
-# AC6: infer-parent-epic.sh (not present in this plugin version)
+# AC6: infer-parent-epic.sh output unchanged with marker line
 # ===========================================================================
 
-@test "infer-parent-epic.sh is absent (AC6 coverage deferred)" {
-  # The story AC6 references infer-parent-epic.sh but no such script exists
-  # in the current plugin tree. This test documents the absence and ensures
-  # the task checkbox stays unticked until the script materializes.
-  local script="${PLUGIN_ROOT}/scripts/infer-parent-epic.sh"
-  local lib_script="${PLUGIN_ROOT}/scripts/lib/infer-parent-epic.sh"
-  [ ! -f "$script" ] && [ ! -f "$lib_script" ]
+@test "infer-parent-epic.sh output unchanged with marker line" {
+  local infer_script="${PLUGIN_ROOT}/skills/gaia-add-feature/scripts/lib/infer-parent-epic.sh"
+  [ -f "$infer_script" ] || skip "infer-parent-epic.sh not found"
+
+  # Build a minimal epics file with a skill reference inside the block body.
+  cat > "${TEST_DIR}/no-marker.md" <<'EOF'
+## E900 — Bugs and Enhancements
+
+Affected skills: gaia-sprint-plan, gaia-dev-story
+
+### Story E900-S1: Fix login
+- Epic: E900
+EOF
+  local output_without
+  output_without="$(bash "$infer_script" --affected-skills gaia-dev-story --epics-file "${TEST_DIR}/no-marker.md" 2>/dev/null)"
+
+  # Same file with the catch-all marker line below the heading.
+  cat > "${TEST_DIR}/with-marker.md" <<'EOF'
+## E900 — Bugs and Enhancements
+<!-- catch_all: true -->
+
+Affected skills: gaia-sprint-plan, gaia-dev-story
+
+### Story E900-S1: Fix login
+- Epic: E900
+EOF
+  local output_with
+  output_with="$(bash "$infer_script" --affected-skills gaia-dev-story --epics-file "${TEST_DIR}/with-marker.md" 2>/dev/null)"
+
+  # Both should produce the same deterministic match.
+  [ "$output_without" = "$output_with" ]
+  # Sanity: the output should reference E900.
+  grep -qF 'E900' <<<"$output_without"
 }
