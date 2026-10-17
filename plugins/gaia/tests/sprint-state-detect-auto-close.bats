@@ -15,6 +15,7 @@
 # Refs: AC1, AC3, TC-SAC-1, TC-SAC-2, feedback_sprint_boundary_yaml_write.md
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   export GAIA_SNAPSHOT_HOOK_DISABLE=1
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/sprint-state.sh"
