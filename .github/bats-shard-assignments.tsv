@@ -797,3 +797,4 @@
 4	write-val-sentinel-sprint-id-format.bats	7
 2	tick-story-checkbox.bats	25
 3	transition-story-status-traced-issues.bats	14
+4	concurrent-sprint-touch-set.bats	60
