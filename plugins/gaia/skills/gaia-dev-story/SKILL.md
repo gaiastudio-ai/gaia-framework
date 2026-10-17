@@ -807,7 +807,12 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 13 merge-pr {story_key}` to record the step-boundary event.
 
 - Run `scripts/merge.sh {pr_number} {story_key}` to merge the PR.
-- The script handles conflict detection, branch protection, and strategy selection.
+- The script handles conflict detection, branch protection, strategy selection, and — in concurrent mode — serialized promotion-merge locking and post-merge verification.
+- **Exit code handling:**
+  - **Exit 0:** Merge succeeded (and verified in concurrent mode). Proceed to Step 14.
+  - **Exit 1:** Merge or verification failed. Report the failure and halt.
+  - **Exit 3:** Merge deferred due to promotion-lock contention. The story stays in `review`, the worktree and branch are kept. Report "deferred" to the caller or orchestrator. **Step 14 is skipped when Step 13 returns exit 3.**
+  - **Exit 4, 5, 7:** Lock errors (symlink detected, identity mismatch, or lock directory failure). Surface the error and halt.
 
 ### Step 14 -- Post-Completion Gate
 

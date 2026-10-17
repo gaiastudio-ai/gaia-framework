@@ -66,13 +66,16 @@ its own). So this skill loops, one real turn at a time:
 3. **Report what you observed, per completion**:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" \
-     record <key> <done|failed|timeout|merged>
+     record <key> <done|failed|timeout|merged|deferred>
    ```
    `done`/`failed`/`timeout` are exactly what they say. `merged` means the
    dev agent's branch landed but you have not independently confirmed the
    review gate closed — the engine runs the real merge/gate audit and
    decides `done` or a bounded resume re-queue on your behalf; never guess
-   this one yourself.
+   this one yourself. `deferred` means merge.sh exited 3 (promotion-lock
+   contention): the dev slot is released, the worktree and branch are kept,
+   the story stays in `review`, and the next cycle's resume re-enters at
+   the merge step.
 
 4. **Check `status` every turn**, and record `timeout` for anything overdue:
    ```bash
