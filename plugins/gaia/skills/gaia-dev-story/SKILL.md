@@ -493,7 +493,17 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
 - The developer follows the playbook's design approach reasoning.
 - For each subtask: the developer implements the minimum code to make failing tests pass.
 - Run the test suite -- verify all tests PASS.
-- The developer marks each completed subtask in the story file.
+- The developer marks each completed subtask in the story file via the sanctioned writer:
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/tick-story-checkbox.sh" \
+    --file "$STORY_FILE" --task {N} --subtask {M}
+  ```
+  After all subtasks of a task are ticked, tick the parent task:
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/tick-story-checkbox.sh" \
+    --file "$STORY_FILE" --task {N}
+  ```
+  The script is idempotent, atomic (temp-file + mv), and concurrent-safe (flock). It exits 0 on success or when the checkbox is already ticked; exit 1 means no matching line was found — surface the error and continue (a tick failure is non-blocking).
 
 ### Step 6a -- TDD Review Gate (Green phase)
 
