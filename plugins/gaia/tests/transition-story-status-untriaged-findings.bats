@@ -357,3 +357,25 @@ STORYEOF
   [ "$status" -eq 8 ]
   [[ "$output" == *"Widget issue"* ]]
 }
+
+# -- Separator detection must not swallow data rows containing dashes --
+
+@test "finding text containing triple dashes is not skipped as separator" {
+  # A row whose finding text includes "---" must not be treated as a table
+  # separator. The real separator row has dashes-only cells.
+  _write_story '|---|------|----------|---------|-----------------|
+| 1 | bug | medium | Config parser crashes on --- delimiter | Fix parser |'
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"Config parser crashes"* ]]
+}
+
+@test "real table separator row is still skipped" {
+  # The actual separator row (dashes-only cells) must not be counted as a
+  # finding, while the triaged data row below it passes.
+  _write_story "| 1 | bug | medium | Widget crashes $(triaged_marker E900-S99) | Fix null check |"
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 0 ]
+}

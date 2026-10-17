@@ -1694,8 +1694,12 @@ _check_untriaged_findings() {
   while IFS= read -r line; do
     # Only pipe-delimited rows.
     case "$line" in *\|*) ;; *) continue ;; esac
-    # Skip separator rows (contain ---).
-    case "$line" in *---*) continue ;; esac
+    # Skip separator rows: every cell is dashes (optionally with colons for
+    # alignment). A loose `*---*` glob would skip any row whose finding text
+    # happens to contain three dashes, silently letting untriaged rows pass.
+    if printf '%s\n' "$line" | /usr/bin/grep -qE '^\|?([[:space:]]*:?-+:?[[:space:]]*\|)+[[:space:]]*$'; then
+      continue
+    fi
 
     trimmed="${line## }"; trimmed="${trimmed%% }"
     # Extract column 1 (row number) for the error message.  Read only
