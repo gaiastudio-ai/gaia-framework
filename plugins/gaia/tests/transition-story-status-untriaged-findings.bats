@@ -292,7 +292,55 @@ STORYEOF
   [ "$status" -eq 0 ]
 }
 
-# -- Partial or hand-written markers must NOT count as triaged --
+# -- Real marker variants from closed-sprint stories --
+
+@test "bare TRIAGED marker (legacy form) is accepted" {
+  # 18 rows across the project use [TRIAGED] without an arrow or target.
+  _write_story '| 1 | bug | medium | Widget issue [TRIAGED] | Fix it |'
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 0 ]
+}
+
+@test "TRIAGED with unicode arrow is accepted" {
+  # 8 rows use the unicode right arrow instead of ASCII ->.
+  _write_story '| 1 | bug | medium | Widget issue [TRIAGED → E900-S50] | Fix it |'
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 0 ]
+}
+
+@test "DISMISSED with explanation is accepted" {
+  # ~69 rows carry a colon-delimited reason after DISMISSED.
+  _write_story '| 1 | bug | medium | Widget issue [DISMISSED: tracked as GitHub #1953] | Filed upstream |
+| 2 | tech-debt | low | Pipeline flaw [DISMISSED: fixed in PR #1992] | Resolved |
+| 3 | documentation | low | Missing note [DISMISSED: internal planning artifact] | N/A |'
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 0 ]
+}
+
+@test "TRIAGED with multi-issue target is accepted" {
+  # Real form: [TRIAGED -> #2175, #2205]
+  _write_story '| 1 | bug | medium | Widget issue [TRIAGED -> #2175, #2205] | Split across issues |'
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 0 ]
+}
+
+@test "mixed real marker forms all pass in one table" {
+  _write_story "| 1 | bug | medium | Crash on null $(triaged_marker E900-S99) | Fix null check |
+| 2 | tech-debt | low | Hardcoded timeout [TRIAGED] | Extract to config |
+| 3 | bug | low | Unicode issue [TRIAGED → E900-S50] | Fix encoding |
+| 4 | documentation | low | Missing docs [DISMISSED: tracked as GitHub #1953] | Filed upstream |
+| 5 | bug | medium | Race condition [DISMISSED] | Known limitation |
+| 6 | tech-debt | low | Multi-target [TRIAGED -> #2175, #2205] | Split |"
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 0 ]
+}
+
+# -- Partial or unclosed markers must NOT count as triaged --
 
 @test "partial TRIAGED marker without closing bracket is untriaged" {
   _write_story '| 1 | bug | medium | Widget issue [TRIAGED -> but never closed | Fix it |'
@@ -302,17 +350,10 @@ STORYEOF
   [[ "$output" == *"Widget issue"* ]]
 }
 
-@test "partial DISMISSED marker with trailing text is untriaged" {
-  _write_story '| 1 | bug | medium | Widget issue [DISMISSED prematurely by bot] | Fix it |'
+@test "partial DISMISSED marker without closing bracket is untriaged" {
+  _write_story '| 1 | bug | medium | Widget issue [DISMISSED prematurely by bot | Fix it |'
 
   run "$TRANSITION" "$STORY_KEY" --to done
   [ "$status" -eq 8 ]
   [[ "$output" == *"Widget issue"* ]]
-}
-
-@test "bare TRIAGED without arrow and target is untriaged" {
-  _write_story '| 1 | bug | medium | Widget issue [TRIAGED] | Fix it |'
-
-  run "$TRANSITION" "$STORY_KEY" --to done
-  [ "$status" -eq 8 ]
 }

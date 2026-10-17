@@ -1705,10 +1705,16 @@ _check_untriaged_findings() {
     # Skip header rows.
     case "$col1" in '#'|'ID'|'—'|'') continue ;; esac
 
-    # Check the WHOLE row for exact triage markers written by the triage
-    # tool: [TRIAGED -> <non-empty target>] or [DISMISSED] (exact close).
-    # Partial text like "[DISMISSED prematurely" does NOT count.
-    if printf '%s\n' "$line" | /usr/bin/grep -qE '\[TRIAGED -> [^]]+\]|\[DISMISSED\]'; then
+    # Check the WHOLE row for a closed-bracket triage marker. Accepted
+    # forms (all require the closing bracket):
+    #   [TRIAGED]                         — bare (legacy)
+    #   [TRIAGED -> <target>]             — ASCII arrow
+    #   [TRIAGED → <target>]              — Unicode arrow
+    #   [DISMISSED]                       — bare
+    #   [DISMISSED: <explanation>]         — with reason
+    # Rejected: unclosed tokens like "[DISMISSED prematurely" or
+    # "[TRIAGED -> but never closed".
+    if printf '%s\n' "$line" | /usr/bin/grep -qE '\[TRIAGED( (->|→) [^]]+)?\]|\[DISMISSED(: [^]]+)?\]'; then
       continue
     fi
 
