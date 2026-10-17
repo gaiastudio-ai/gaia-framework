@@ -800,3 +800,4 @@
 4	concurrent-sprint-touch-set.bats	60
 1	merge-pre-merge-guards.bats	19
 2	concurrent-sprint-glossary.bats	28
+3	concurrent-sprint-catch-all.bats	34
