@@ -109,6 +109,7 @@ core	concurrent-sprint-config.bats
 core	concurrent-sprint-glossary.bats
 core	concurrent-sprint-ledger.bats
 core	concurrent-sprint-lock.bats
+core	concurrent-sprint-merge.bats
 core	concurrent-sprint-touch-set.bats
 core	config-brownfield-flag-coverage.bats
 core	config-phase-schema.bats

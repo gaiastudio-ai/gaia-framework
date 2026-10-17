@@ -804,6 +804,38 @@ acquire_lock_close_predicate() {
   return 0
 }
 
+# --- Public: acquire_lock_is_concurrent_mode <max_concurrent_active> <state_dir> ---
+#
+# Returns 0 when the project is in concurrent mode, 1 for single-sprint.
+# The library stays config-agnostic: callers resolve the concurrent-sprint
+# limit themselves and pass it as the first argument. The second argument is
+# the state directory to probe for per-sprint state files.
+#
+# Concurrent: max_concurrent_active > 1, OR per-sprint files exist in the
+# state directory (the transitional state where per-sprint files remain from
+# a reverse migration). Single-sprint: limit absent or 1 AND no per-sprint
+# files.
+
+acquire_lock_is_concurrent_mode() {
+  local limit="${1:-}" state_dir="${2:-}"
+
+  # Concurrent mode: limit > 1.
+  if [ -n "$limit" ] && [ "$limit" -gt 1 ] 2>/dev/null; then
+    return 0
+  fi
+
+  # Transitional state: per-sprint files exist even though limit is 1 or absent.
+  local _al_cm_psf=""
+  if [ -n "$state_dir" ] && [ -d "$state_dir" ]; then
+    _al_cm_psf="$(find "$state_dir" -maxdepth 1 -name 'sprint-status-*.yaml' ! -name '*.lock' ! -name '*.result' 2>/dev/null | head -1)" || _al_cm_psf=""
+  fi
+  if [ -n "$_al_cm_psf" ]; then
+    return 0
+  fi
+
+  return 1
+}
+
 # --- CLI entry point (only when executed directly, not sourced) ---
 
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "${1:-}" = "--check-parallel" ]; then
