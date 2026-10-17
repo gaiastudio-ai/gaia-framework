@@ -1682,12 +1682,15 @@ _check_untriaged_findings() {
     in_section { print }
   ' "$story_file")"
 
-  # No Findings section at all -> no-op (AC3).
+  # No Findings section at all -> no-op.
   [ -n "$findings_section" ] || return 0
 
   # Walk each pipe-delimited row, skipping header/separator/placeholder rows.
+  # Check the WHOLE row text for a triage marker rather than splitting on pipes,
+  # because finding text may itself contain pipe characters (e.g. `||`, `a | b`)
+  # that shift columns and push the marker into the unchecked tail.
   local untriaged_rows="" untriaged_count=0
-  local line col1 col4 col5 trimmed _blank _rest
+  local line col1 trimmed
   while IFS= read -r line; do
     # Only pipe-delimited rows.
     case "$line" in *\|*) ;; *) continue ;; esac
@@ -1695,28 +1698,25 @@ _check_untriaged_findings() {
     case "$line" in *---*) continue ;; esac
 
     trimmed="${line## }"; trimmed="${trimmed%% }"
-    IFS='|' read -r _blank col1 _col2 _col3 col4 col5 _rest <<EOF
-$trimmed
-EOF
-    col1="${col1## }"; col1="${col1%% }"
-    col4="${col4## }"; col4="${col4%% }"
-    col5="${col5## }"; col5="${col5%% }"
+    # Extract column 1 (row number) for the error message.  Read only
+    # the first two pipe-separated fields; the rest stays unsplit.
+    col1="$(printf '%s' "$trimmed" | awk -F'|' '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2 }')"
 
     # Skip header rows.
     case "$col1" in '#'|'ID'|'—'|'') continue ;; esac
 
-    # Check whether the Finding or Suggested Action column carries a triage
-    # marker. Both [TRIAGED -> ...] and [DISMISSED] count as triaged.
-    local combined="$col4 $col5"
-    case "$combined" in
-      *'[TRIAGED'*) continue ;;
-      *'[DISMISSED'*) continue ;;
-    esac
+    # Check the WHOLE row for exact triage markers written by the triage
+    # tool: [TRIAGED -> <non-empty target>] or [DISMISSED] (exact close).
+    # Partial text like "[DISMISSED prematurely" does NOT count.
+    if printf '%s\n' "$line" | /usr/bin/grep -qE '\[TRIAGED -> [^]]+\]|\[DISMISSED\]'; then
+      continue
+    fi
 
     # This row is untriaged.
     untriaged_count=$((untriaged_count + 1))
-    # Collect the row number and finding text for the error message.
-    local finding_text="$col4"
+    # Extract a snippet for the error message (column 4, best-effort).
+    local finding_text
+    finding_text="$(printf '%s' "$trimmed" | awk -F'|' '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5); print $5 }')"
     [ -n "$finding_text" ] || finding_text="(empty)"
     untriaged_rows="${untriaged_rows}  row ${col1}: ${finding_text}
 "

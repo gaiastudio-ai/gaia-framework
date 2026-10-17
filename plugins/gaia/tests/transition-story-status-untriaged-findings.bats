@@ -5,18 +5,23 @@
 # The gate blocks the transition when any Findings row lacks a
 # [TRIAGED -> ...] or [DISMISSED] marker, unless overridden.
 #
-# Public-function coverage (NFR-052):
-#   - _check_untriaged_findings  — the new gate function
+# Public-function coverage:
+#   - _check_untriaged_findings  — the untriaged-findings gate function
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPTS_DIR="$REPO_ROOT/plugins/gaia/scripts"
   TRANSITION="$SCRIPTS_DIR/transition-story-status.sh"
+  TRIAGED_MARKER_SH="$REPO_ROOT/plugins/gaia/skills/gaia-triage-findings/scripts/triaged-marker.sh"
 
   TEST_TMP="$BATS_TEST_TMPDIR/tss-utf-$$"
   mkdir -p "$TEST_TMP/docs/implementation-artifacts"
   mkdir -p "$TEST_TMP/docs/planning-artifacts"
   mkdir -p "$TEST_TMP/_memory"
+
+  # Source the canonical marker helper for fixture construction.
+  # shellcheck source=/dev/null
+  . "$TRIAGED_MARKER_SH"
 
   STORY_KEY="E900-S1"
   STORY_FILE="$TEST_TMP/docs/implementation-artifacts/${STORY_KEY}-findings-fixture.md"
@@ -122,13 +127,14 @@ teardown() {
 
 # -- AC1: untriaged rows block the done transition --
 
-@test "untriaged findings block review to done and name each untriaged row" {
-  _write_story '| 1 | bug | medium | Widget crashes on null input | Fix null check |
-| 2 | tech-debt | low | Hardcoded timeout value [TRIAGED -> E900-S99] | Extract to config |
-| 3 | bug | high | Race condition in queue handler | Add mutex |'
+@test "untriaged findings block review to done with exit 8 and name each untriaged row" {
+  local triaged_row="| 2 | tech-debt | low | Hardcoded timeout value $(triaged_marker E900-S99) | Extract to config |"
+  _write_story "| 1 | bug | medium | Widget crashes on null input | Fix null check |
+${triaged_row}
+| 3 | bug | high | Race condition in queue handler | Add mutex |"
 
   run "$TRANSITION" "$STORY_KEY" --to done
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 8 ]
 
   # Both untriaged rows (1 and 3) must be named in the output.
   [[ "$output" == *"Widget crashes on null input"* ]]
@@ -142,8 +148,8 @@ teardown() {
 # -- AC2: all triaged rows pass --
 
 @test "all findings triaged allows review to done" {
-  _write_story '| 1 | bug | medium | Widget crashes [TRIAGED -> E900-S99] | Fix null check |
-| 2 | tech-debt | low | Hardcoded timeout [DISMISSED] | No action needed |'
+  _write_story "| 1 | bug | medium | Widget crashes $(triaged_marker E900-S99) | Fix null check |
+| 2 | tech-debt | low | Hardcoded timeout [DISMISSED] | No action needed |"
 
   run "$TRANSITION" "$STORY_KEY" --to done
   [ "$status" -eq 0 ]
@@ -254,23 +260,59 @@ STORYEOF
   [ "$status" -eq 0 ]
 }
 
-# -- Fail-closed: unparseable section --
+# -- Non-table content passes (no pipe-delimited rows to check) --
 
-@test "gate fails closed when Findings section has rows but table cannot be parsed" {
-  # Write a malformed table (no pipe delimiters) inside the Findings section.
+@test "non-table content in Findings section is treated as no findings" {
+  # Write prose (no pipe delimiters) inside the Findings section.
   _write_story 'This is not a table row but has content'
 
-  # The gate should treat non-table content as no findings (no-op pass).
   run "$TRANSITION" "$STORY_KEY" --to done
   [ "$status" -eq 0 ]
 }
 
-# -- Mixed markers: TRIAGED in Finding column, DISMISSED in Action column --
+# -- Markers recognized regardless of which column they appear in --
 
 @test "markers recognized in both Finding and Suggested Action columns" {
-  _write_story '| 1 | bug | medium | Widget crashes [TRIAGED -> E900-S50] | Fix null check |
-| 2 | tech-debt | low | Hardcoded timeout | No action needed [DISMISSED] |'
+  _write_story "| 1 | bug | medium | Widget crashes $(triaged_marker E900-S50) | Fix null check |
+| 2 | tech-debt | low | Hardcoded timeout | No action needed [DISMISSED] |"
 
   run "$TRANSITION" "$STORY_KEY" --to done
   [ "$status" -eq 0 ]
+}
+
+# -- Pipe characters inside finding text do not break marker detection --
+
+@test "pipes in finding text do not prevent marker detection" {
+  # Real-world pattern from story findings: escaped pipes in code snippets.
+  # The column split would push the marker past column 5 without whole-row scanning.
+  _write_story "| 1 | bug | medium | Test hangs when stdin not redirected (the \`timeout 1s cat \|\| cat\` pattern reads from stdin); filed as GitHub #1982 $(triaged_marker '#1982') | Fix the stdin dependency |
+| 2 | tech-debt | low | Function uses \`a | b | c\` pipeline $(triaged_marker E900-S50) | Simplify |"
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 0 ]
+}
+
+# -- Partial or hand-written markers must NOT count as triaged --
+
+@test "partial TRIAGED marker without closing bracket is untriaged" {
+  _write_story '| 1 | bug | medium | Widget issue [TRIAGED -> but never closed | Fix it |'
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"Widget issue"* ]]
+}
+
+@test "partial DISMISSED marker with trailing text is untriaged" {
+  _write_story '| 1 | bug | medium | Widget issue [DISMISSED prematurely by bot] | Fix it |'
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"Widget issue"* ]]
+}
+
+@test "bare TRIAGED without arrow and target is untriaged" {
+  _write_story '| 1 | bug | medium | Widget issue [TRIAGED] | Fix it |'
+
+  run "$TRANSITION" "$STORY_KEY" --to done
+  [ "$status" -eq 8 ]
 }
