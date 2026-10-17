@@ -48,10 +48,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-1: Budget enforcement (2 sub-cases)
+# Budget enforcement (2 sub-cases)
 # ============================================================
 
-@test "TC-CONC-LED-1a: session A claims 3, session B claim for 2 refused (budget 4)" {
+@test "budget enforcement: session A claims 3, session B claim for 2 refused (budget 4)" {
   # Session A claims 3 dev slots.
   export CLAUDE_CODE_SESSION_ID="session-A"
   run bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 3 --teammates 0
@@ -64,7 +64,7 @@ _ledger_field() {
   [[ "$output" == *"budget exhausted"* ]]
 }
 
-@test "TC-CONC-LED-1b: after A releases 1, B retries claim 2 and succeeds (budget 4)" {
+@test "budget enforcement: after A releases 1, B retries claim 2 and succeeds (budget 4)" {
   # Session A claims 3.
   export CLAUDE_CODE_SESSION_ID="session-A"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 3 --teammates 0
@@ -79,10 +79,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-2: Flock serialization under contention
+# Flock serialization under contention
 # ============================================================
 
-@test "TC-CONC-LED-2a: concurrent claims serialized (flock)" {
+@test "lock serialization: concurrent claims serialized (flock)" {
   export GAIA_LOCK_FORCE_FALLBACK=0
 
   export CLAUDE_CODE_SESSION_ID="session-C1"
@@ -102,7 +102,7 @@ _ledger_field() {
   [ "$count" -eq 2 ]
 }
 
-@test "TC-CONC-LED-2b: concurrent claims serialized (fallback)" {
+@test "lock serialization: concurrent claims serialized (fallback)" {
   export GAIA_LOCK_FORCE_FALLBACK=1
 
   export CLAUDE_CODE_SESSION_ID="session-F1"
@@ -123,10 +123,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-3: Stale reaping (two-factor check)
+# Stale reaping (two-factor check)
 # ============================================================
 
-@test "TC-CONC-LED-3a: dead PID + stale heartbeat = reaped" {
+@test "stale reaping: dead PID + stale heartbeat = reaped" {
   export GAIA_LEDGER_STALE_TIMEOUT=1
   mkdir -p "${GAIA_STATE_DIR}/sessions/stale-session-3a"
 
@@ -159,7 +159,7 @@ _ledger_field() {
   [ "$has_stale" = "gone" ]
 }
 
-@test "TC-CONC-LED-3b: dead PID + fresh heartbeat = NOT reaped" {
+@test "stale reaping: dead PID + fresh heartbeat = NOT reaped" {
   export GAIA_LEDGER_STALE_TIMEOUT=300
   mkdir -p "${GAIA_STATE_DIR}/sessions/fresh-dead-session"
 
@@ -188,10 +188,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-4: PID-recycling safety
+# PID-recycling safety
 # ============================================================
 
-@test "TC-CONC-LED-4: alive PID with stale heartbeat NOT reaped (binding dir present)" {
+@test "pid recycling safety: alive PID with stale heartbeat NOT reaped (binding dir present)" {
   export GAIA_LEDGER_STALE_TIMEOUT=1
   local my_pid=$$
   mkdir -p "${GAIA_STATE_DIR}/sessions/alive-pid-session"
@@ -219,10 +219,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-5: Normal exit cleanup
+# Normal exit cleanup
 # ============================================================
 
-@test "TC-CONC-LED-5: cleanup removes session entry from ledger" {
+@test "cleanup removes session entry from ledger" {
   export CLAUDE_CODE_SESSION_ID="cleanup-session"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 2 --teammates 3
 
@@ -243,10 +243,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-6: Crash recovery
+# Crash recovery
 # ============================================================
 
-@test "TC-CONC-LED-6: next claimer reaps crashed session and reclaims slots" {
+@test "crash recovery: next claimer reaps crashed session and reclaims slots" {
   export GAIA_LEDGER_STALE_TIMEOUT=1
 
   # Simulate a crashed session with dead PID and stale heartbeat.
@@ -279,10 +279,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-7: Schema validation
+# Schema validation
 # ============================================================
 
-@test "TC-CONC-LED-7: ledger after claim/release has correct D7 schema" {
+@test "schema validation: ledger after claim/release has correct schema" {
   export CLAUDE_CODE_SESSION_ID="schema-session"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 2 --teammates 3
 
@@ -337,10 +337,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-corrupt: Corrupt JSON exits 6
+# Corrupt JSON exits 6
 # ============================================================
 
-@test "TC-CONC-LED-corrupt: truncated JSON exits 6 with diagnostic" {
+@test "corrupt ledger: truncated JSON exits 6 with diagnostic" {
   printf '{"schema_ver' > "${GAIA_STATE_DIR}/.concurrent-resource-ledger.json"
 
   export CLAUDE_CODE_SESSION_ID="corrupt-test"
@@ -350,10 +350,10 @@ _ledger_field() {
 }
 
 # ============================================================
-# TC-CONC-LED-inert: Single-sprint mode
+# Single-sprint mode
 # ============================================================
 
-@test "TC-CONC-LED-inert: single-sprint mode produces no ledger file" {
+@test "inert mode: single-sprint mode produces no ledger file" {
   # Override config to single-sprint.
   cat > "${TEST_DIR}/config/project-config.yaml" <<'YAML'
 sprint:
@@ -377,10 +377,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-budget-tamper: Tampered budget ignored
+# Tampered budget ignored
 # ============================================================
 
-@test "TC-CONC-LED-budget-tamper: tampered ledger budget ignored, config enforced" {
+@test "budget tamper: tampered ledger budget ignored, config enforced" {
   # Create ledger with tampered budget (99) but config says 4.
   jq -n '{
     schema_version: "1.0",
@@ -395,10 +395,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-binding-reap: Binding dir gone triggers reap
+# Binding dir gone triggers reap
 # ============================================================
 
-@test "TC-CONC-LED-binding-reap: session whose binding dir is gone is reaped" {
+@test "binding dir reap: session whose binding dir is gone is reaped" {
   # Create sessions root but NOT the session's binding dir.
   mkdir -p "${GAIA_STATE_DIR}/sessions"
   # Deliberately NOT creating "${GAIA_STATE_DIR}/sessions/orphan-session/"
@@ -423,10 +423,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-sessions-absent: Sessions root absent skips binding-dir check
+# Sessions root absent skips binding-dir check
 # ============================================================
 
-@test "TC-CONC-LED-sessions-absent: no sessions root, dead PID + stale = reaped via two-factor" {
+@test "sessions root absent: no sessions root, dead PID + stale = reaped via two-factor" {
   export GAIA_LEDGER_STALE_TIMEOUT=1
   # Ensure NO sessions root directory exists.
   rm -rf "${GAIA_STATE_DIR}/sessions"
@@ -452,10 +452,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-hb-pid-mismatch: Heartbeat PID mismatch refused
+# Heartbeat PID mismatch refused
 # ============================================================
 
-@test "TC-CONC-LED-hb-pid-mismatch: heartbeat with wrong PID is refused" {
+@test "heartbeat pid mismatch: heartbeat with wrong PID is refused" {
   export CLAUDE_CODE_SESSION_ID="hb-mismatch-session"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid 888 --dev 1 --teammates 0
 
@@ -466,10 +466,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-release-keep: Release decrements, entry stays
+# Release decrements, entry stays
 # ============================================================
 
-@test "TC-CONC-LED-release-keep: release decrements counts, entry stays, heartbeat refreshed" {
+@test "release keeps entry: release decrements counts, entry stays, heartbeat refreshed" {
   export CLAUDE_CODE_SESSION_ID="release-keep-session"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 3 --teammates 2
 
@@ -497,10 +497,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-teammate-cross: Teammate ceiling across sessions
+# Teammate ceiling across sessions
 # ============================================================
 
-@test "TC-CONC-LED-teammate-cross: combined teammate claims respect ceiling" {
+@test "teammate ceiling: combined teammate claims respect ceiling" {
   export CLAUDE_CODE_SESSION_ID="tm-session-A"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 0 --teammates 6
 
@@ -511,10 +511,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-lock-exit: Lock exit code pass-through
+# Lock exit code pass-through
 # ============================================================
 
-@test "TC-CONC-LED-lock-exit-a: lock timeout exit 3 passes through" {
+@test "lock exit code: lock timeout exit 3 passes through" {
   # Hold the L2 lock from a background process to cause timeout.
   local state_dir
   state_dir="$(_crl_state_dir_for_test)"
@@ -544,10 +544,10 @@ _crl_state_dir_for_test() {
 }
 
 # ============================================================
-# TC-CONC-LED-sole-writer: Static grep sweep
+# Static grep sweep
 # ============================================================
 
-@test "TC-CONC-LED-sole-writer: only concurrent-resource-ledger.sh writes to the ledger file" {
+@test "sole writer: only concurrent-resource-ledger.sh writes to the ledger file" {
   local scripts_dir="${BATS_TEST_DIRNAME}/../scripts"
 
   # Grep for writes to the ledger filename across all scripts, excluding the
@@ -576,10 +576,10 @@ _crl_state_dir_for_test() {
 }
 
 # ============================================================
-# TC-CONC-LED-hb-loop: Heartbeat loop lifecycle
+# Heartbeat loop lifecycle
 # ============================================================
 
-@test "TC-CONC-LED-hb-loop-a: heartbeat loop creates PID file and advances epoch" {
+@test "heartbeat loop: creates PID file and advances epoch" {
   export GAIA_LEDGER_HEARTBEAT_INTERVAL=2
   export CLAUDE_CODE_SESSION_ID="hb-loop-session"
 
@@ -615,7 +615,7 @@ _crl_state_dir_for_test() {
   ! kill -0 "$loop_pid" 2>/dev/null
 }
 
-@test "TC-CONC-LED-hb-loop-b: heartbeat loop self-exits when session PID dies" {
+@test "heartbeat loop: self-exits when session PID dies" {
   export GAIA_LEDGER_HEARTBEAT_INTERVAL=1
   export CLAUDE_CODE_SESSION_ID="hb-self-exit-session"
 
@@ -640,10 +640,10 @@ _crl_state_dir_for_test() {
 }
 
 # ============================================================
-# TC-CONC-LED-EC1: Mass crash reaping
+# Mass crash reaping
 # ============================================================
 
-@test "TC-CONC-LED-EC1: 3 crashed sessions reaped in one pass" {
+@test "mass crash: 3 crashed sessions reaped in one pass" {
   export GAIA_LEDGER_STALE_TIMEOUT=1
 
   local old_epoch
@@ -669,10 +669,10 @@ _crl_state_dir_for_test() {
 }
 
 # ============================================================
-# TC-CONC-LED-EC2: PID-recycling within timeout
+# PID-recycling within timeout
 # ============================================================
 
-@test "TC-CONC-LED-EC2: recycled PID with binding dir present not reaped" {
+@test "pid recycling: recycled PID with binding dir present not reaped" {
   export GAIA_LEDGER_STALE_TIMEOUT=1
   mkdir -p "${GAIA_STATE_DIR}/sessions/recycled-session"
 
@@ -699,10 +699,10 @@ _crl_state_dir_for_test() {
 }
 
 # ============================================================
-# TC-CONC-LED-EC3: Clock jump backward
+# Clock jump backward
 # ============================================================
 
-@test "TC-CONC-LED-EC3: backward clock jump makes heartbeat appear fresh" {
+@test "clock jump: backward clock jump makes heartbeat appear fresh" {
   export GAIA_LEDGER_STALE_TIMEOUT=300
 
   # Entry with heartbeat in the future (simulates backward clock jump).
@@ -728,10 +728,10 @@ _crl_state_dir_for_test() {
 }
 
 # ============================================================
-# TC-CONC-LED-EC6: Double-reap race
+# Double-reap race
 # ============================================================
 
-@test "TC-CONC-LED-EC6: L2 serializes double reap" {
+@test "double reap: lock serializes concurrent reap attempts" {
   export GAIA_LEDGER_STALE_TIMEOUT=1
 
   local old_epoch
@@ -760,10 +760,10 @@ _crl_state_dir_for_test() {
 }
 
 # ============================================================
-# TC-CONC-LED-EC7: Batch reap 10 stale entries
+# Batch reap 10 stale entries
 # ============================================================
 
-@test "TC-CONC-LED-EC7: 10 stale entries reaped in a single pass" {
+@test "batch reap: 10 stale entries reaped in a single pass" {
   export GAIA_LEDGER_STALE_TIMEOUT=1
 
   local old_epoch
@@ -786,10 +786,10 @@ _crl_state_dir_for_test() {
 }
 
 # ============================================================
-# TC-CONC-LED-EC8: Inert with pre-existing ledger
+# Inert with pre-existing ledger
 # ============================================================
 
-@test "TC-CONC-LED-EC8: single-sprint mode with existing ledger file ignores it" {
+@test "inert with existing ledger: single-sprint mode with existing ledger file ignores it" {
   # Create a ledger from a prior concurrent run.
   jq -n '{schema_version: "1.0", budget: {max_parallel_dev_slots: 4, teammate_dispatch_ceiling: 12}, sessions: {}}' \
     > "${GAIA_STATE_DIR}/.concurrent-resource-ledger.json"
@@ -819,10 +819,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-EC9: Missing-entry release and heartbeat
+# Missing-entry release and heartbeat
 # ============================================================
 
-@test "TC-CONC-LED-EC9: release on missing entry exits 0 (no-op)" {
+@test "missing entry release: release on missing entry exits 0 (no-op)" {
   # Create a ledger with no entry for this session.
   jq -n '{schema_version: "1.0", budget: {max_parallel_dev_slots: 4, teammate_dispatch_ceiling: 12}, sessions: {}}' \
     > "${GAIA_STATE_DIR}/.concurrent-resource-ledger.json"
@@ -833,7 +833,7 @@ YAML
   [[ "$output" == *"missing session entry"* ]] || [[ "$output" == *"no-op"* ]]
 }
 
-@test "TC-CONC-LED-EC9: heartbeat on missing entry refused, not recreated" {
+@test "missing entry heartbeat: heartbeat on missing entry refused, not recreated" {
   jq -n '{schema_version: "1.0", budget: {max_parallel_dev_slots: 4, teammate_dispatch_ceiling: 12}, sessions: {}}' \
     > "${GAIA_STATE_DIR}/.concurrent-resource-ledger.json"
 
@@ -849,10 +849,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-EC10: Double release clamps at zero
+# Double release clamps at zero
 # ============================================================
 
-@test "TC-CONC-LED-EC10: double release clamps dev_slots_claimed at 0" {
+@test "double release: double release clamps dev_slots_claimed at 0" {
   export CLAUDE_CODE_SESSION_ID="double-release"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 2 --teammates 0
 
@@ -871,10 +871,10 @@ YAML
 }
 
 # ============================================================
-# TC-CONC-LED-unused-grant: Unused grant released after ppo_next
+# Unused grant released after admission
 # ============================================================
 
-@test "TC-CONC-LED-unused-grant-a: claim 2, admit 1, ledger shows 1" {
+@test "unused grant release: claim 2, admit 1, ledger shows 1" {
   export CLAUDE_CODE_SESSION_ID="unused-grant-session"
 
   # Claim 2 dev slots.
@@ -891,7 +891,7 @@ YAML
   [ "$after" = "1" ]
 }
 
-@test "TC-CONC-LED-unused-grant-b: claim 2, ppo_next returns barrier, release full grant" {
+@test "unused grant release: claim 2, barrier returns, release full grant" {
   export CLAUDE_CODE_SESSION_ID="barrier-grant-session"
 
   # Claim 2 dev slots.
@@ -906,10 +906,10 @@ YAML
 }
 
 # ============================================================
-# Leak gate (AC7)
+# Leak gate
 # ============================================================
 
-@test "AC7: no internal traceability identifiers in published source" {
+@test "leak gate: no internal traceability identifiers in published source" {
   local scripts_dir="${BATS_TEST_DIRNAME}/../scripts"
 
   # Check the ledger script itself for leaked IDs.
