@@ -364,7 +364,7 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
   -v blocks_v="$blocks_v" \
   -v traces_to_v="$traces_to_v" \
   -v mverify_v="$mverify_v" \
-  -v pts_v="$pts_v" '
+  -v pts_v="$(printf '%s' "$pts_v" | sed 's/\\/\\\\/g')" '
   # esc_repl — make a string safe as a gsub() replacement argument.
   # In POSIX awk, `&` in the replacement is interpreted as the matched text,
   # and `\` is the escape char. Without escaping, any user-supplied value

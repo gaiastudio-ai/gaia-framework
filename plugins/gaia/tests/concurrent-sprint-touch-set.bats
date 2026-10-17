@@ -482,7 +482,9 @@ CFG
   run "$GEN_FM" --story-key E900-S1 --epics-file "$epics_file" --project-config "$cfg"
   [ "$status" -eq 0 ]
   # Field should not appear in the output.
-  ! grep -q 'predicted_touch_set' <<< "$output"
+  local fm_out="$output"
+  run grep -q 'predicted_touch_set' <<< "$fm_out"
+  [ "$status" -ne 0 ]
 }
 
 @test "generate-frontmatter emits field when touch-path supplied" {
@@ -553,7 +555,8 @@ CFG
   local out="$TEST_TMP/scaffold-notouch.md"
   run "$SCAFFOLD" --template "$TEMPLATE" --output "$out" --frontmatter "$fm"
   [ "$status" -eq 0 ]
-  ! grep -q 'predicted_touch_set' "$out"
+  run grep -q 'predicted_touch_set' "$out"
+  [ "$status" -ne 0 ]
 }
 
 @test "scaffold keeps empty list when touch-empty used" {
@@ -585,7 +588,8 @@ CFG
   run "$SCAFFOLD" --template "$TEMPLATE" --output "$out" --frontmatter "$fm"
   [ "$status" -eq 0 ]
   # The scaffolded story must not contain the field.
-  ! grep -q 'predicted_touch_set' "$out"
+  run grep -q 'predicted_touch_set' "$out"
+  [ "$status" -ne 0 ]
   # The scaffolded story must not contain a stray blank line where the
   # token was (no consecutive blank lines in frontmatter).
   local consecutive_blanks
@@ -739,6 +743,91 @@ AC
     fi
   done
   [ "$found" -eq 0 ]
+}
+
+# ============================================================
+# Writer failure propagation (blocker 1)
+# ============================================================
+
+@test "touch_set_write exits non-zero when yq fails" {
+  . "$SANITIZER"
+  local story="$TEST_TMP/yqfail-story.md"
+  _make_story "$story"
+
+  # Save the original file content to verify unchanged.
+  local orig
+  orig="$(cat "$story")"
+
+  local vals_file="$TEST_TMP/yqfail-vals.txt"
+  printf 'scripts/a.sh\n' > "$vals_file"
+
+  # Stub yq to always fail inside the run subshell.
+  run bash -c '
+    . "'"$SANITIZER"'"
+    yq() { return 1; }
+    touch_set_write "'"$story"'" "'"$vals_file"'" "'"$PROJECT_ROOT"'"
+  '
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"yq write failed"* ]]
+
+  # Story file must be unchanged (the stub prevented the write).
+  local after
+  after="$(cat "$story")"
+  [ "$orig" = "$after" ]
+}
+
+# ============================================================
+# Pre-write hook root containment (blocker 2)
+# ============================================================
+
+@test "prewrite hook rejects value outside project root" {
+  . "$SANITIZER"
+  local story="$TEST_TMP/hookroot-story.md"
+  _make_story "$story"
+
+  local vals_file="$TEST_TMP/hookroot-vals.txt"
+  printf '/etc/passwd\n' > "$vals_file"
+
+  run touch_set_prewrite_check "$story" "$vals_file" "$PROJECT_ROOT"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"outside project root"* ]]
+}
+
+# ============================================================
+# Quote/bracket round-trip through generate-frontmatter + scaffold (blocker 4)
+# ============================================================
+
+@test "quote-bracket path round-trips through generate + scaffold + reader" {
+  local epics_file; epics_file="$(_setup_epics_file)"
+  local cfg; cfg="$(_setup_project_config)"
+
+  local tricky_path="docs/it's \"quoted\" [v2].md"
+
+  # Generate frontmatter with the tricky path.
+  local fm
+  fm="$("$GEN_FM" --story-key E900-S1 --epics-file "$epics_file" --project-config "$cfg" \
+    --touch-path "$tricky_path" --project-root "$PROJECT_ROOT")"
+
+  # Verify the field appears in the frontmatter output.
+  run grep 'predicted_touch_set' <<< "$fm"
+  [ "$status" -eq 0 ]
+
+  # Scaffold the story.
+  local out="$TEST_TMP/scaffold-tricky.md"
+  run "$SCAFFOLD" --template "$TEMPLATE" --output "$out" --frontmatter "$fm"
+  [ "$status" -eq 0 ]
+
+  # Verify the field survived scaffolding.
+  run grep 'predicted_touch_set' "$out"
+  [ "$status" -eq 0 ]
+
+  # Read back via yq and verify byte-identical value.
+  . "$SANITIZER"
+  local readback=""
+  while IFS= read -r -d '' val; do
+    readback="$val"
+  done < <(touch_set_read_nul "$out")
+  [ "$readback" = "$tricky_path" ]
 }
 
 # ============================================================

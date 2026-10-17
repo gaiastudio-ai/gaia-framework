@@ -206,11 +206,12 @@ touch_set_validate_value() {
 
 # --- pre-write hook ---
 
-# touch_set_prewrite_check <story_file> <new_values_file>
-#   Validates every value in new_values_file. Override after sourcing
-#   to inject a custom gate (e.g. a continuous re-check gate).
+# touch_set_prewrite_check <story_file> <new_values_file> [<project_root>]
+#   Validates every value in new_values_file (denylist + root containment).
+#   Override after sourcing to inject a custom gate (e.g. a continuous
+#   re-check gate). project_root defaults to / when omitted.
 touch_set_prewrite_check() {
-  local story_file="$1" new_values_file="$2"
+  local story_file="$1" new_values_file="$2" project_root="${3:-/}"
   local line rc=0
 
   while IFS= read -r line || [ -n "$line" ]; do
@@ -218,6 +219,7 @@ touch_set_prewrite_check() {
     touch_set_check_nul_newline "$line" || rc=1
     touch_set_denylist_check "$line" || rc=1
     touch_set_check_climb_out "$line" || rc=1
+    touch_set_root_containment "$line" "$project_root" >/dev/null || rc=1
   done < "$new_values_file"
   return "$rc"
 }
@@ -245,33 +247,37 @@ touch_set_write() {
     return 1
   fi
 
-  # Hook check.
-  if ! touch_set_prewrite_check "$story_file" "$tmp_vals"; then
+  # Hook check (denylist + root containment).
+  if ! touch_set_prewrite_check "$story_file" "$tmp_vals" "$project_root"; then
     rm -f "$tmp_vals"
     return 1
   fi
 
-  # Build a JSON array from the normalised values, write to a temp JSON
-  # file, and use yq load() to inject it. This avoids the fromjson
-  # compatibility issue with --front-matter=process.
+  # Build a JSON array string from the normalised values, then write via
+  # yq strenv() + from_yaml. No path interpolation in the yq expression
+  # (safe when TMPDIR contains quotes). Explicit exit-code check so a yq
+  # failure propagates as non-zero.
   local field_name="$_TS_FIELD_NAME"
-  local json_file
-  json_file="$(mktemp "${TMPDIR:-/tmp}/ts-json.XXXXXX")"
-
-  awk '
+  local json_array
+  json_array="$(awk '
     BEGIN { printf "[" }
     NR > 1 { printf ", " }
     { gsub(/\\/, "\\\\", $0); gsub(/"/, "\\\"", $0); printf "\"%s\"", $0 }
     END { printf "]\n" }
-  ' "$tmp_vals" > "$json_file"
+  ' "$tmp_vals")"
 
   rm -f "$tmp_vals"
 
-  yq --front-matter=process -i \
-    ".${field_name} = load(\"${json_file}\")" \
-    "$story_file"
+  local yq_rc=0
+  TS_FIELD="$field_name" TS_VAL="$json_array" \
+    yq --front-matter=process -i \
+      '.[strenv(TS_FIELD)] = (strenv(TS_VAL) | from_yaml)' \
+      "$story_file" || yq_rc=$?
 
-  rm -f "$json_file"
+  if [ "$yq_rc" -ne 0 ]; then
+    printf 'touch_set_write: yq write failed (exit %d)\n' "$yq_rc" >&2
+    return 1
+  fi
 }
 
 # --- NUL-delimited reader ---
