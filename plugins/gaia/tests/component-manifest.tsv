@@ -106,6 +106,7 @@ core	component-stack-resolution.bats
 core	component-test-partition.bats
 core	concurrent-sprint-config.bats
 core	concurrent-sprint-lock.bats
+core	concurrent-sprint-touch-set.bats
 core	config-brownfield-flag-coverage.bats
 core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats

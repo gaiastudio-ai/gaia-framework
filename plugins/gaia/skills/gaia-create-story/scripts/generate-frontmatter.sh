@@ -78,6 +78,16 @@ Usage: generate-frontmatter.sh \
                              omitted the flag defaults to `false` (no
                              verification required), symmetric with how the
                              acceptance-test offer is opt-in by risk.
+  --touch-path <value>       Repeatable. Add a path or glob to the
+                             predicted touch-set field. Each value is validated
+                             via the sanitizer before emission. Mutually
+                             exclusive with --touch-empty.
+  --touch-empty              Emit an explicit empty touch-set (the author
+                             confirmed "touches no files"). Mutually exclusive
+                             with --touch-path.
+  --project-root <path>      Project root for touch-set root containment.
+                             Resolution: flag > CLAUDE_PROJECT_ROOT/PROJECT_ROOT
+                             env > walk up to first dir containing .gaia/.
 
 Output (stdout): YAML frontmatter block delimited by `---` lines, in the
 canonical 15-field order matching story-template.md.
@@ -100,6 +110,9 @@ origin_ref=""
 origin_set=0
 origin_ref_set=0
 manual_verification="false"
+touch_paths=()
+touch_empty=0
+gen_project_root=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -120,12 +133,25 @@ while [ $# -gt 0 ]; do
       origin_ref="$2"; origin_ref_set=1; shift 2 ;;
     --manual-verification)
       manual_verification="true"; shift ;;
+    --touch-path)
+      [ $# -ge 2 ] || die_usage "--touch-path requires a value"
+      touch_paths+=("$2"); shift 2 ;;
+    --touch-empty)
+      touch_empty=1; shift ;;
+    --project-root)
+      [ $# -ge 2 ] || die_usage "--project-root requires a value"
+      gen_project_root="$2"; shift 2 ;;
     -h|--help)
       usage; exit 0 ;;
     *)
       die_usage "unknown argument: $1" ;;
   esac
 done
+
+# Mutual exclusion: --touch-path and --touch-empty.
+if [ "$touch_empty" -eq 1 ] && [ "${#touch_paths[@]}" -gt 0 ]; then
+  die_usage "--touch-path and --touch-empty are mutually exclusive"
+fi
 
 [ -n "$story_key" ]      || die_usage "--story-key is required"
 [ -n "$epics_file" ]     || die_usage "--epics-file is required"
@@ -409,10 +435,59 @@ else
   origin_ref_yaml="null"
 fi
 
+# ---------- Touch-set processing ----------
+#
+# Resolve project root for sanitizer's root containment check.
+# Resolution: --project-root flag > CLAUDE_PROJECT_ROOT/PROJECT_ROOT env >
+# walk up to first directory containing .gaia/.
+
+_ts_project_root="$gen_project_root"
+if [ -z "$_ts_project_root" ]; then
+  _ts_project_root="${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-}}"
+fi
+if [ -z "$_ts_project_root" ]; then
+  _d="$(pwd)"
+  while [ "$_d" != "/" ]; do
+    if [ -d "$_d/.gaia" ]; then
+      _ts_project_root="$_d"
+      break
+    fi
+    _d="$(dirname "$_d")"
+  done
+fi
+_ts_project_root="${_ts_project_root:-/}"
+
+touch_set_line=""
+if [ "$touch_empty" -eq 1 ]; then
+  # Explicit "touches no files" — emit empty list.
+  _ts_fn="predicted_touch_set"
+  touch_set_line="${_ts_fn}: []"
+elif [ "${#touch_paths[@]}" -gt 0 ]; then
+  # Source the sanitizer for validation.
+  # shellcheck source=../../../scripts/lib/touch-set-sanitizer.sh
+  . "${SCRIPT_DIR}/../../../scripts/lib/touch-set-sanitizer.sh"
+
+  # Validate each value and build the flow array.
+  _ts_tmp="$(mktemp "${TMPDIR:-/tmp}/ts-gen.XXXXXX")"
+  trap 'rm -f "$_ts_tmp"' EXIT
+  for _tp in "${touch_paths[@]}"; do
+    _norm="$(touch_set_validate_value "$_tp" "$_ts_project_root")" || \
+      die_input "touch-path validation failed for: $_tp"
+    printf '%s\n' "$_norm" >> "$_ts_tmp"
+  done
+  _flow="$(touch_set_build_flow_array "$_ts_tmp")"
+  rm -f "$_ts_tmp"
+  trap - EXIT
+  _ts_fn="predicted_touch_set"
+  touch_set_line="${_ts_fn}: ${_flow}"
+fi
+# When neither --touch-path nor --touch-empty is supplied, touch_set_line
+# stays empty and the field is omitted from frontmatter (absent = default).
+
 # ---------- Buffer + emit YAML frontmatter ----------
 #
 # Field order matches story-template.md (template/version/used_by header,
-# then 15 fields).
+# then 15+ fields).
 
 output="$(cat <<EOF
 ---
@@ -432,6 +507,7 @@ priority_flag: null
 delivered: false
 deferred_implementation: false
 manual_verification: $manual_verification
+${touch_set_line}
 origin: $origin_yaml
 origin_ref: $origin_ref_yaml
 depends_on: $depends_on_yaml
@@ -442,5 +518,9 @@ author: "$author"
 ---
 EOF
 )"
+
+# Strip blank lines from the heredoc output that arise when
+# touch_set_line is empty (field absent).
+output="$(printf '%s\n' "$output" | grep -v '^[[:space:]]*$' || printf '%s\n' "$output")"
 
 printf '%s\n' "$output"

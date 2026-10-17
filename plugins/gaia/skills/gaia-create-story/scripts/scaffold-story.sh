@@ -298,6 +298,15 @@ case "$mverify_v" in
   *)          mverify_v="false" ;;
 esac
 
+# predicted_touch_set: optional field populated by --touch-path or
+# --touch-empty on generate-frontmatter.sh. The template carries the
+# {predicted_touch_set} token on its own line. When the caller's
+# frontmatter supplies the field, the template line is replaced with
+# the caller's value. When absent, the entire template line is dropped
+# (field absent from scaffolded story). extract_value_raw preserves the
+# flow array shape verbatim.
+pts_v="$(extract_value_raw predicted_touch_set)"
+
 # ---------- Read template ----------
 
 template_text="$(cat "$template")"
@@ -354,7 +363,8 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
   -v depends_on_v="$depends_on_v" \
   -v blocks_v="$blocks_v" \
   -v traces_to_v="$traces_to_v" \
-  -v mverify_v="$mverify_v" '
+  -v mverify_v="$mverify_v" \
+  -v pts_v="$(printf '%s' "$pts_v" | sed 's/\\/\\\\/g')" '
   # esc_repl — make a string safe as a gsub() replacement argument.
   # In POSIX awk, `&` in the replacement is interpreted as the matched text,
   # and `\` is the escape char. Without escaping, any user-supplied value
@@ -464,6 +474,16 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
       # comment line, which is `# manual_verification: ...`) matches.
       if (line ~ /^manual_verification:[[:space:]]*/) {
         print "manual_verification: " mverify_v
+        next
+      }
+      # predicted_touch_set: the template carries `{predicted_touch_set}`
+      # on its own line. When the caller supplies the field, emit it;
+      # when absent (pts_v is empty), drop the entire line so the field
+      # is absent from the scaffolded story.
+      if (line ~ /^\{predicted_touch_set\}$/) {
+        if (pts_v != "") {
+          print "predicted_touch_set: " pts_v
+        }
         next
       }
       print token_sub(line)
