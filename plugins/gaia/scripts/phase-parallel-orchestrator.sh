@@ -1998,13 +1998,25 @@ ppo_run_sprint() {
     fi
 
     # Ledger claim: one dev slot per ppo_next call, outside the engine lock.
+    # A refused claim (exit 1 = budget exhausted) blocks admission.
+    # Error exits (6 = corrupt ledger, 7 = lock unavailable) surface and stop.
     local _ppo_ledger_sprint="${GAIA_LEDGER_SPRINT:-}"
     local _ppo_ledger_pid="${GAIA_LEDGER_PID:-}"
     local _ppo_ledger_granted=0
     if [ -n "$_ppo_ledger_sprint" ] && [ -n "$_ppo_ledger_pid" ]; then
-      if _ppo_ledger_claim "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0; then
-        _ppo_ledger_granted=1
-      fi
+      local _ppo_claim_rc=0
+      _ppo_ledger_claim "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || _ppo_claim_rc=$?
+      case "$_ppo_claim_rc" in
+        0) _ppo_ledger_granted=1 ;;
+        1) # Budget exhausted -- emit barrier and loop back for retry.
+          _ppo_emit "barrier phase=ledger-budget waiting=1"
+          continue ;;
+        6|7) # Corrupt ledger or lock unavailable -- surface and stop.
+          _ppo_log "ledger_error: exit $_ppo_claim_rc — stopping"
+          return "$_ppo_claim_rc" ;;
+        *) # Lock exit codes (3/4/5) pass through.
+          return "$_ppo_claim_rc" ;;
+      esac
     fi
 
     local out rc=0
@@ -2382,10 +2394,43 @@ _ppo_cli() {
     next)
       shift
       # Ledger claim before admission (outside engine lock).
+      # A refused claim (exit 1 = budget exhausted) blocks admission.
+      # Error exits (6 = corrupt ledger, 7 = lock unavailable) surface and stop.
+      local _cli_ledger_granted=0
       if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
-        _ppo_ledger_claim "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+        local _cli_claim_rc=0
+        _ppo_ledger_claim "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || _cli_claim_rc=$?
+        case "$_cli_claim_rc" in
+          0) _cli_ledger_granted=1 ;;
+          1) # Budget exhausted -- emit barrier, do not admit.
+            printf 'barrier phase=ledger-budget waiting=1\n'
+            exit 0 ;;
+          6|7) # Corrupt ledger or lock unavailable -- surface and stop.
+            printf 'ledger_error: exit %d — stopping\n' "$_cli_claim_rc" >&2
+            exit "$_cli_claim_rc" ;;
+          *) # Lock exit codes (3/4/5) pass through.
+            exit "$_cli_claim_rc" ;;
+        esac
       fi
-      ppo_next "$@"
+      local _cli_next_out _cli_next_rc=0
+      _cli_next_out="$(ppo_next "$@")" || _cli_next_rc=$?
+      printf '%s\n' "$_cli_next_out"
+      # Release unused grant after ppo_next returns.
+      if [ "$_cli_ledger_granted" -eq 1 ] && [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+        local _cli_admitted=0
+        case "$_cli_next_out" in
+          *dispatch\ story=*) _cli_admitted=1 ;;
+        esac
+        case "$_cli_next_out" in
+          *sprint_complete*|*mode=sequential*)
+            _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true ;;
+          *)
+            if [ "$_cli_admitted" -eq 0 ]; then
+              _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+            fi ;;
+        esac
+      fi
+      exit "$_cli_next_rc"
       ;;
     record)
       shift

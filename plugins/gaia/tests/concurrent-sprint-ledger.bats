@@ -906,6 +906,128 @@ YAML
 }
 
 # ============================================================
+# CLI next path: unused grant release
+# ============================================================
+
+@test "cli next: claims before and releases unused grant after barrier" {
+  # Prepare a ledger with session A holding 3 of 4 slots.
+  export CLAUDE_CODE_SESSION_ID="cli-pre-session"
+  bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 3 --teammates 0
+
+  # Now the CLI next path as a separate process (session B) would try to claim 1.
+  # We test the ledger directly: claim 1, then release 1 (simulating barrier).
+  export CLAUDE_CODE_SESSION_ID="cli-next-session"
+  bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 1 --teammates 0
+
+  local before
+  before="$(_ledger_field '.sessions["cli-next-session"].dev_slots_claimed')"
+  [ "$before" = "1" ]
+
+  # Simulate barrier: release the full grant.
+  bash "$LEDGER_SH" release --sprint sprint-99 --pid $$ --dev 1 --teammates 0
+
+  local after
+  after="$(_ledger_field '.sessions["cli-next-session"].dev_slots_claimed')"
+  [ "$after" = "0" ]
+}
+
+# ============================================================
+# Budget enforcement blocks admission
+# ============================================================
+
+@test "budget exhausted: refused claim exits 1 and blocks admission" {
+  # Fill the budget completely.
+  export CLAUDE_CODE_SESSION_ID="full-budget-A"
+  bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 4 --teammates 0
+
+  # Next claim should be refused with exit 1.
+  export CLAUDE_CODE_SESSION_ID="full-budget-B"
+  run bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 1 --teammates 0
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"budget exhausted"* ]]
+
+  # The refused session should not have a ledger entry.
+  local has
+  has="$(_ledger_field '.sessions["full-budget-B"] // "absent"')"
+  [ "$has" = "absent" ]
+}
+
+@test "ledger error exit 6: corrupt ledger blocks claim" {
+  # Write corrupt JSON.
+  printf '{"broken' > "${GAIA_STATE_DIR}/.concurrent-resource-ledger.json"
+
+  export CLAUDE_CODE_SESSION_ID="error-6-session"
+  run bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 1 --teammates 0
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"corrupt ledger"* ]]
+}
+
+# ============================================================
+# Lock exit code pass-through: exits 4, 5, and 7
+# ============================================================
+
+@test "lock exit code: symlink at lock path exits 4" {
+  # Create a symlink at the L2 lock path to trigger exit 4 (strict-mode refusal).
+  mkdir -p "$GAIA_STATE_DIR"
+  ln -sf /dev/null "${GAIA_STATE_DIR}/.concurrent-resource-ledger.lock"
+
+  export CLAUDE_CODE_SESSION_ID="symlink-session"
+  run bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 1 --teammates 0
+  [ "$status" -eq 4 ]
+
+  rm -f "${GAIA_STATE_DIR}/.concurrent-resource-ledger.lock" 2>/dev/null || true
+}
+
+@test "lock exit code: identity mismatch exit 5 passes through" {
+  # Use a wrapper that overrides acquire_lock to return exit 5 (identity).
+  mkdir -p "$GAIA_STATE_DIR"
+  local wrapper="${TEST_DIR}/ledger-exit5-wrapper.sh"
+  cat > "$wrapper" <<WRAP
+#!/usr/bin/env bash
+set -euo pipefail
+LC_ALL=C; export LC_ALL
+. "${BATS_TEST_DIRNAME}/../scripts/concurrent-resource-ledger.sh"
+acquire_lock() { printf 'lock_identity_unstable: identity re-check mismatch: %s\n' "\$1" >&2; return "\$ACQUIRE_LOCK_EXIT_IDENTITY"; }
+_crl_main "\$@"
+WRAP
+  chmod +x "$wrapper"
+
+  export CLAUDE_CODE_SESSION_ID="exit5-session"
+  run bash "$wrapper" claim --sprint sprint-99 --pid $$ --dev 1 --teammates 0
+  [ "$status" -eq 5 ]
+}
+
+@test "lock exit code: generic lock failure maps to ledger exit 7" {
+  # Create a non-empty directory at the lock path. acquire_lock's
+  # _al_enforce_path_type_strict refuses non-regular files with exit 4,
+  # but a non-empty directory that cannot be rmdir'd produces a generic
+  # exit 1 from _al_enforce_path_type (non-strict) path. For the strict
+  # path, we need a different approach.
+  #
+  # Use a PATH-shimmed acquire_lock that returns exit 1 (generic failure).
+  # The ledger script sources acquire-lock.sh but we can override the
+  # function after sourcing by placing a wrapper that re-defines it.
+  mkdir -p "$GAIA_STATE_DIR"
+  local wrapper="${TEST_DIR}/ledger-exit7-wrapper.sh"
+  cat > "$wrapper" <<WRAP
+#!/usr/bin/env bash
+set -euo pipefail
+LC_ALL=C; export LC_ALL
+# Source the real script first (which sources acquire-lock.sh).
+. "${BATS_TEST_DIRNAME}/../scripts/concurrent-resource-ledger.sh"
+# Override acquire_lock to return generic exit 1 AFTER sourcing.
+acquire_lock() { printf 'acquire-lock: simulated generic failure\n' >&2; return 1; }
+_crl_main "\$@"
+WRAP
+  chmod +x "$wrapper"
+
+  export CLAUDE_CODE_SESSION_ID="exit7-session"
+  run bash "$wrapper" claim --sprint sprint-99 --pid $$ --dev 1 --teammates 0
+  [ "$status" -eq 7 ]
+  [[ "$output" == *"ledger lock unavailable"* ]]
+}
+
+# ============================================================
 # Leak gate
 # ============================================================
 
