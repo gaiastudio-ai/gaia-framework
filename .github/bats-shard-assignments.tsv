@@ -795,3 +795,5 @@
 4	write-checkpoint.bats	21
 4	write-val-envelope.bats	22
 4	write-val-sentinel-sprint-id-format.bats	7
+2	tick-story-checkbox.bats	25
+3	transition-story-status-traced-issues.bats	14
