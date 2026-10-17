@@ -49,6 +49,15 @@ _rw_require_tool() {
   command -v "$1" >/dev/null 2>&1 || _rw_die 1 "$1 is required but not on PATH"
 }
 
+# Guard: require value to be a non-negative integer (digits only).
+# Usage: _rw_require_integer <value> <context>
+# Dies with exit code 2 when the value is empty or contains non-digit chars.
+_rw_require_integer() {
+  case "$1" in
+    ''|*[!0-9]*) _rw_die 2 "expected integer but got '$1' ($2)" ;;
+  esac
+}
+
 # Find entry index by field value in a register file.
 # Usage: _rw_find_entry_idx <file> <field> <value>
 # Prints the 0-based index or -1 if not found.
@@ -218,6 +227,16 @@ _rw_validate_structure() {
       exit 2 ;;
   esac
 
+  # Validate that every gate_runs[].seq is an integer when present.
+  local bad_seq
+  bad_seq="$(yq '[.gate_runs[] | select(.seq != null) | .seq | type] | map(select(. != "!!int")) | length' "$path" 2>/dev/null)" || bad_seq="__err"
+  case "$bad_seq" in
+    0) ;; # all integers or no seq fields
+    *)
+      _rw_err "structural validation failed (non-integer seq in gate_runs): $path"
+      exit 2 ;;
+  esac
+
   # Validate rounds[] when present.
   local rounds_type
   rounds_type="$(yq '.rounds | type' "$path" 2>/dev/null)" || _rw_die 2 "structural validation: failed to read rounds type"
@@ -268,6 +287,7 @@ _rw_next_id() {
   case "$max_n" in
     null|"") max_n=0 ;;
   esac
+  _rw_require_integer "$max_n" "max entry id"
   local next=$(( max_n + 1 ))
   printf 'RF-%d' "$next"
 }
@@ -347,6 +367,152 @@ _rw_check_brief_integrity() {
       fi
     fi
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Read-only helper: collect per-gate errors for a round.
+#
+# Checks every selected gate (report recorded, file exists, SHA match,
+# latest run outcome) and every carried gate (hop-chain, terminal outcome,
+# report, SHA).  Prints the semicolon-separated error string to stdout
+# (empty when all gates pass).  Exits 2 via _rw_die on any yq read failure.
+#
+# Usage: _rw_collect_gate_errors <file> <run_id>
+# Does NOT take a lock — caller must ensure no concurrent mutation, or
+# accept a point-in-time read.
+# ---------------------------------------------------------------------------
+_rw_collect_gate_errors() {
+  local _cge_file="$1" _cge_run_id="$2"
+  local _cge_errors=""
+
+  export _RW_RUN_ID="$_cge_run_id"
+
+  # --- selected gates ---
+  local _cge_sel_count
+  _cge_sel_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[]] | length' "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to read selected_gates count"
+  _rw_require_integer "$_cge_sel_count" "selected_gates count"
+  local _cge_si=0
+  while [ "$_cge_si" -lt "$_cge_sel_count" ]; do
+    local _cge_sg
+    _cge_sg="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$_cge_si].gate" "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to read selected gate name"
+    local _cge_sg_report
+    _cge_sg_report="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$_cge_si].report_path" "$_cge_file" 2>/dev/null)" || _cge_sg_report=""
+
+    if [ -z "$_cge_sg_report" ] || [ "$_cge_sg_report" = "null" ] || [ "$_cge_sg_report" = '""' ] || [ "$_cge_sg_report" = "" ]; then
+      _cge_errors="${_cge_errors}gate $_cge_sg: no report recorded; "
+      _cge_si=$((_cge_si + 1))
+      continue
+    fi
+    if [ ! -f "$_cge_sg_report" ]; then
+      _cge_errors="${_cge_errors}gate $_cge_sg: report file missing: $_cge_sg_report; "
+      _cge_si=$((_cge_si + 1))
+      continue
+    fi
+
+    # Re-hash the report and compare with the recorded SHA.
+    local _cge_sg_rec_sha
+    _cge_sg_rec_sha="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$_cge_si].report_sha256" "$_cge_file" 2>/dev/null)" || _cge_sg_rec_sha=""
+    if [ -n "$_cge_sg_rec_sha" ] && [ "$_cge_sg_rec_sha" != "null" ] && [ "$_cge_sg_rec_sha" != '""' ]; then
+      local _cge_sg_cur_sha
+      _cge_sg_cur_sha="$(_rw_file_sha256 "$_cge_sg_report")" || _cge_sg_cur_sha=""
+      if [ "$_cge_sg_cur_sha" != "$_cge_sg_rec_sha" ]; then
+        _cge_errors="${_cge_errors}gate $_cge_sg: report edited after recording (SHA mismatch); "
+      fi
+    fi
+
+    local _cge_outcome
+    _cge_outcome="$(_rw_gate_latest_outcome "$_cge_file" "$_cge_run_id" "$_cge_sg")"
+    if [ "$_cge_outcome" != "completed" ]; then
+      _cge_errors="${_cge_errors}gate $_cge_sg: not completed (outcome: ${_cge_outcome:-none}); "
+    fi
+    _cge_si=$((_cge_si + 1))
+  done
+
+  # --- carried gates ---
+  local _cge_car_count
+  _cge_car_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[]] | length' "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to read carried_gates count"
+  _rw_require_integer "$_cge_car_count" "carried_gates count"
+  local _cge_ci=0
+  while [ "$_cge_ci" -lt "$_cge_car_count" ]; do
+    local _cge_cg _cge_cg_from _cge_cg_rat
+    _cge_cg="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[$_cge_ci].gate" "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to read carried gate name"
+    _cge_cg_from="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[$_cge_ci].from_run" "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to read carried gate from_run"
+    _cge_cg_rat="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[$_cge_ci].applicability_rationale" "$_cge_file" 2>/dev/null)" || _cge_cg_rat=""
+
+    if [ -z "$_cge_cg_rat" ] || [ "$_cge_cg_rat" = "null" ] || [ "$_cge_cg_rat" = '""' ]; then
+      _cge_errors="${_cge_errors}carried gate $_cge_cg: empty applicability rationale; "
+      _cge_ci=$((_cge_ci + 1))
+      continue
+    fi
+
+    # Hop-chain resolution.
+    local _cge_hop_run="$_cge_cg_from" _cge_hop_gate="$_cge_cg" _cge_hops=0 _cge_visited=":"
+    local _cge_terminal_found=false
+    while [ "$_cge_hops" -lt 10 ]; do
+      case "$_cge_visited" in
+        *":$_cge_hop_run:"*) _cge_errors="${_cge_errors}carried gate $_cge_cg: cycle detected in carry chain; "; break ;;
+      esac
+      _cge_visited="${_cge_visited}${_cge_hop_run}:"
+      _cge_hops=$((_cge_hops + 1))
+
+      export _RW_HOP_RUN="$_cge_hop_run" _RW_HOP_GATE="$_cge_hop_gate"
+      local _cge_hop_exists
+      _cge_hop_exists="$(yq '[.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))] | length' "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to query hop round"
+      if [ "$_cge_hop_exists" = "0" ] || [ "$_cge_hop_exists" = "null" ]; then
+        unset _RW_HOP_RUN _RW_HOP_GATE
+        _cge_errors="${_cge_errors}carried gate $_cge_cg: from_run $_cge_hop_run not found in rounds; "
+        break
+      fi
+
+      local _cge_in_hop_sel
+      _cge_in_hop_sel="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$_cge_file" 2>/dev/null)" || _cge_in_hop_sel="0"
+      if [ "$_cge_in_hop_sel" != "0" ] && [ "$_cge_in_hop_sel" != "null" ]; then
+        local _cge_hop_outcome
+        _cge_hop_outcome="$(_rw_gate_latest_outcome "$_cge_file" "$_cge_hop_run" "$_cge_hop_gate")"
+        if [ "$_cge_hop_outcome" != "completed" ]; then
+          _cge_errors="${_cge_errors}carried gate $_cge_cg: not completed at terminal run $_cge_hop_run; "
+        fi
+        local _cge_hop_rpath _cge_hop_rsha
+        _cge_hop_rpath="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_path' "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to read carried gate report path"
+        _cge_hop_rsha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_sha256' "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to read carried gate report SHA"
+        if [ -z "$_cge_hop_rpath" ] || [ "$_cge_hop_rpath" = "null" ] || [ "$_cge_hop_rpath" = '""' ] || ! [ -f "$_cge_hop_rpath" ]; then
+          _cge_errors="${_cge_errors}carried gate $_cge_cg: report missing at terminal run $_cge_hop_run; "
+        elif [ -n "$_cge_hop_rsha" ] && [ "$_cge_hop_rsha" != "null" ] && [ "$_cge_hop_rsha" != '""' ]; then
+          local _cge_current_rsha
+          _cge_current_rsha="$(_rw_file_sha256 "$_cge_hop_rpath")" || _cge_current_rsha=""
+          if [ "$_cge_current_rsha" != "$_cge_hop_rsha" ]; then
+            _cge_errors="${_cge_errors}carried gate $_cge_cg: report edited after recording (SHA mismatch); "
+          fi
+        fi
+        unset _RW_HOP_RUN _RW_HOP_GATE
+        _cge_terminal_found=true
+        break
+      fi
+
+      local _cge_in_hop_car
+      _cge_in_hop_car="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).carried_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$_cge_file" 2>/dev/null)" || _cge_in_hop_car="0"
+      if [ "$_cge_in_hop_car" != "0" ] && [ "$_cge_in_hop_car" != "null" ]; then
+        local _cge_next_hop
+        _cge_next_hop="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).carried_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .from_run' "$_cge_file" 2>/dev/null)" || _cge_next_hop=""
+        unset _RW_HOP_RUN _RW_HOP_GATE
+        _cge_hop_run="$_cge_next_hop"
+        continue
+      fi
+
+      unset _RW_HOP_RUN _RW_HOP_GATE
+      _cge_errors="${_cge_errors}carried gate $_cge_cg: gate not found in round $_cge_hop_run; "
+      break
+    done
+
+    if [ "$_cge_hops" -ge 10 ] && [ "$_cge_terminal_found" != "true" ]; then
+      _cge_errors="${_cge_errors}carried gate $_cge_cg: chain exceeds 10 hops; "
+    fi
+
+    _cge_ci=$((_cge_ci + 1))
+  done
+
+  unset _RW_RUN_ID
+  printf '%s' "$_cge_errors"
 }
 
 # Get the latest gate outcome for a run, respecting scope-revision reassess seq.
@@ -734,6 +900,7 @@ _rw_dedup_merge() {
   # Force boolean types on new gate_rating.
   local gr_len
   gr_len="$(yq ".entries[$idx].gate_ratings | length" "$tmp")"
+  _rw_require_integer "$gr_len" "gate_ratings length"
   local gr_last=$(( gr_len - 1 ))
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[$gr_last].blocking" "$blocking_bool"
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[$gr_last].material" "$material_bool"
@@ -901,6 +1068,7 @@ _rw_cmd_merge() {
   # Union gate_ratings from source into target.
   local src_gr_len
   src_gr_len="$(yq ".entries[$src_idx].gate_ratings | length" "$tmp" 2>/dev/null)" || src_gr_len="0"
+  _rw_require_integer "$src_gr_len" "source gate_ratings length"
   local i=0
   while [ "$i" -lt "$src_gr_len" ]; do
     local gr_yaml
@@ -1275,6 +1443,7 @@ _rw_cmd_record_run() {
   # Compute monotonically increasing seq.
   local max_seq
   max_seq="$(yq '[.gate_runs[].seq // 0] | max // 0' "$tmp" 2>/dev/null)" || _rw_die 1 "record-run: failed to compute max seq"
+  _rw_require_integer "$max_seq" "gate_runs max seq"
   local next_seq=$(( max_seq + 1 ))
 
   export _RW_RUN_ID="$run_id"
@@ -1711,6 +1880,12 @@ _rw_cmd_record_round_report() {
   _rw_validate_gate "$gate"
   [ -f "$report" ] || _rw_die 1 "record-round-report: report file not found: $report"
 
+  # Store an absolute path so integrity checks work from any CWD.
+  case "$report" in
+    /*) ;; # already absolute
+    *) report="$(CDPATH='' cd -- "$(dirname -- "$report")" >/dev/null && pwd)/$(basename -- "$report")" ;;
+  esac
+
   local report_hash
   report_hash="$(_rw_file_sha256 "$report")" || _rw_die 1 "record-round-report: sha256 failed"
 
@@ -1727,8 +1902,19 @@ _rw_cmd_record_round_report() {
   tmp="$(_rw_atomic_start "$reg_path")"
   _RW_CLEANUP_TMP="$tmp"
 
-  # Find the round and gate.
+  # Find the round and check its status.
   export _RW_RUN_ID="$run_id" _RW_GATE="$gate" _RW_RPATH="$report" _RW_RHASH="$report_hash"
+  local round_status
+  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
+  [ -n "$round_status" ] && [ "$round_status" != "null" ] || \
+    _rw_abort_and_die 1 "record-round-report: round not found for run-id: $run_id"
+  case "$round_status" in
+    open) ;; # allowed
+    complete) _rw_abort_and_die 1 "record-round-report: cannot record evidence on a complete round" ;;
+    superseded) _rw_abort_and_die 1 "record-round-report: cannot record evidence on a superseded round" ;;
+    *) _rw_abort_and_die 1 "record-round-report: unexpected round status: $round_status" ;;
+  esac
+
   local found
   found="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))] | length' "$tmp" 2>/dev/null)" || found="0"
   [ "$found" != "0" ] && [ "$found" != "null" ] || \
@@ -1956,6 +2142,7 @@ _rw_cmd_complete_round() {
   # Check predecessor and six-gate requirement.
   local round_idx
   round_idx="$(yq '[.rounds[].run_id] | to_entries | map(select(.value == strenv(_RW_RUN_ID))) | .[0].key' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to compute round index"
+  _rw_require_integer "$round_idx" "round index"
   if [ "$round_idx" != "0" ] && [ "$round_idx" != "null" ]; then
     local pred_idx=$(( round_idx - 1 ))
     local pred_sha
@@ -1988,122 +2175,15 @@ _rw_cmd_complete_round() {
     fi
   fi
 
-  # Check each selected gate.
-  local sel_count
-  sel_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[]] | length' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read selected_gates count"
-  local si=0
-  while [ "$si" -lt "$sel_count" ]; do
-    local sg
-    sg="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$si].gate" "$tmp" 2>/dev/null)" || sg=""
-    local sg_report
-    sg_report="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$si].report_path" "$tmp" 2>/dev/null)" || sg_report=""
-
-    if [ -z "$sg_report" ] || [ "$sg_report" = "null" ] || [ "$sg_report" = '""' ] || [ "$sg_report" = "" ]; then
-      errors="${errors}gate $sg: no report recorded; "
-      si=$((si + 1))
-      continue
-    fi
-    [ -f "$sg_report" ] || { errors="${errors}gate $sg: report file missing: $sg_report; "; si=$((si + 1)); continue; }
-
-    local latest_outcome
-    latest_outcome="$(_rw_gate_latest_outcome "$tmp" "$run_id" "$sg")"
-
-    if [ "$latest_outcome" != "completed" ]; then
-      errors="${errors}gate $sg: not completed (outcome: ${latest_outcome:-none}); "
-    fi
-    si=$((si + 1))
-  done
-
-  # Check each carried gate.
-  local car_count
-  car_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[]] | length' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read carried_gates count"
-  local ci=0
-  while [ "$ci" -lt "$car_count" ]; do
-    local cg cg_from cg_rat
-    cg="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[$ci].gate" "$tmp" 2>/dev/null)" || cg=""
-    cg_from="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[$ci].from_run" "$tmp" 2>/dev/null)" || cg_from=""
-    cg_rat="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[$ci].applicability_rationale" "$tmp" 2>/dev/null)" || cg_rat=""
-
-    if [ -z "$cg_rat" ] || [ "$cg_rat" = "null" ] || [ "$cg_rat" = '""' ]; then
-      errors="${errors}carried gate $cg: empty applicability rationale; "
-      ci=$((ci + 1))
-      continue
-    fi
-
-    # Hop-chain resolution.
-    local hop_run="$cg_from" hop_gate="$cg" hops=0 visited=":"
-    local terminal_found=false
-    while [ "$hops" -lt 10 ]; do
-      # Cycle detection.
-      case "$visited" in
-        *":$hop_run:"*) errors="${errors}carried gate $cg: cycle detected in carry chain; "; break ;;
-      esac
-      visited="${visited}${hop_run}:"
-      hops=$((hops + 1))
-
-      # Find this round in rounds[].
-      export _RW_HOP_RUN="$hop_run" _RW_HOP_GATE="$hop_gate"
-      local hop_exists
-      hop_exists="$(yq '[.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))] | length' "$tmp" 2>/dev/null)" || hop_exists="0"
-      if [ "$hop_exists" = "0" ] || [ "$hop_exists" = "null" ]; then
-        unset _RW_HOP_RUN _RW_HOP_GATE
-        errors="${errors}carried gate $cg: from_run $hop_run not found in rounds; "
-        break
-      fi
-
-      # Is the gate in selected_gates?
-      local in_hop_sel
-      in_hop_sel="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$tmp" 2>/dev/null)" || in_hop_sel="0"
-      if [ "$in_hop_sel" != "0" ] && [ "$in_hop_sel" != "null" ]; then
-        # Terminal run — check gate completion.
-        local hop_outcome
-        hop_outcome="$(_rw_gate_latest_outcome "$tmp" "$hop_run" "$hop_gate")"
-        if [ "$hop_outcome" != "completed" ]; then
-          errors="${errors}carried gate $cg: not completed at terminal run $hop_run; "
-        fi
-        # Check report exists and matches.
-        local hop_rpath hop_rsha
-        hop_rpath="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_path' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read carried gate report path"
-        hop_rsha="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_sha256' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read carried gate report SHA"
-        if [ -z "$hop_rpath" ] || [ "$hop_rpath" = "null" ] || [ "$hop_rpath" = '""' ] || ! [ -f "$hop_rpath" ]; then
-          errors="${errors}carried gate $cg: report missing at terminal run $hop_run; "
-        elif [ -n "$hop_rsha" ] && [ "$hop_rsha" != "null" ] && [ "$hop_rsha" != '""' ]; then
-          local current_rsha
-          current_rsha="$(_rw_file_sha256 "$hop_rpath")" || current_rsha=""
-          if [ "$current_rsha" != "$hop_rsha" ]; then
-            errors="${errors}carried gate $cg: report edited after recording (SHA mismatch); "
-          fi
-        fi
-        unset _RW_HOP_RUN _RW_HOP_GATE
-        terminal_found=true
-        break
-      fi
-
-      # Is the gate in carried_gates? Follow the chain.
-      local in_hop_car
-      in_hop_car="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).carried_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$tmp" 2>/dev/null)" || in_hop_car="0"
-      if [ "$in_hop_car" != "0" ] && [ "$in_hop_car" != "null" ]; then
-        local next_hop
-        next_hop="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).carried_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .from_run' "$tmp" 2>/dev/null)" || next_hop=""
-        unset _RW_HOP_RUN _RW_HOP_GATE
-        hop_run="$next_hop"
-        continue
-      fi
-
-      # Gate not found in this round.
-      unset _RW_HOP_RUN _RW_HOP_GATE
-      errors="${errors}carried gate $cg: gate not found in round $hop_run; "
-      break
-    done
-
-    if [ "$hops" -ge 10 ] && [ "$terminal_found" != "true" ]; then
-      errors="${errors}carried gate $cg: chain exceeds 10 hops; "
-    fi
-
-    ci=$((ci + 1))
-  done
+  # Check selected and carried gates via the shared helper.
+  # _rw_collect_gate_errors exits 2 on yq read failure, which propagates
+  # here and aborts the script (set -e + the trap cleans up tmp/lock).
+  local gate_errors
+  gate_errors="$(_rw_collect_gate_errors "$tmp" "$run_id")"
+  errors="${errors}${gate_errors}"
 
   # Brief check.
+  export _RW_RUN_ID="$run_id"
   if ! _rw_check_brief_integrity "$tmp" "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID)))"; then
     errors="${errors}silently widened brief; "
   fi
@@ -2164,7 +2244,20 @@ _rw_cmd_assert_round_complete() {
 
   case "$latest_status" in
     complete) exit 0 ;;
-    open) _rw_die 1 "latest round is not complete" ;;
+    open)
+      # Collect per-gate errors using the same helper that complete-round uses,
+      # so the two commands can never disagree about what is incomplete.
+      local latest_run_id
+      latest_run_id="$(yq '.rounds[-1].run_id' "$reg_path" 2>/dev/null)" || _rw_die 2 "assert-round-complete: failed to read latest run_id"
+      [ -n "$latest_run_id" ] && [ "$latest_run_id" != "null" ] || _rw_die 2 "assert-round-complete: latest round has no run_id"
+      local gate_errors
+      gate_errors="$(_rw_collect_gate_errors "$reg_path" "$latest_run_id")"
+      if [ -n "$gate_errors" ]; then
+        _rw_die 1 "latest round is not complete; $gate_errors"
+      else
+        _rw_die 1 "latest round is not complete"
+      fi
+      ;;
     superseded) _rw_die 1 "latest round is superseded" ;;
     *) _rw_die 1 "unexpected round status: $latest_status" ;;
   esac
@@ -2336,6 +2429,7 @@ _rw_cmd_record_scope_revision() {
   # Compute current max seq.
   local max_seq
   max_seq="$(yq '[.gate_runs[].seq // 0] | max // 0' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "record-scope-revision: failed to compute max seq"
+  _rw_require_integer "$max_seq" "gate_runs max seq"
 
   # Derive disposition.
   local disposition="" new_version=""
