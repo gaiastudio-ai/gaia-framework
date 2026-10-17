@@ -1867,5 +1867,214 @@ if [ "$NEW_STATUS" = "done" ]; then
   fi
 fi
 
+# Traced-issue closure hook on the story→done path.
+# Reads the story's `traces_to` frontmatter list and, for each GitHub issue
+# reference, either closes the issue (fully addressed) or adds a comment
+# (partially addressed — other stories also trace to it and are not yet done).
+#
+# BEST-EFFORT: a committed transition must never be rolled back because the
+# issue-closure hook failed. Every gh call is wrapped in a non-fatal guard
+# with a portable time bound. When gh is absent, returns non-zero, or exceeds
+# the timeout, a WARNING is emitted and the transition completes normally.
+#
+# Design: small, independently-callable functions so sibling stories
+# (task-box ticking, findings-triage guard) that later hook the same done
+# path can rebase cleanly around this block.
+
+# _parse_traces_to — extract GitHub issue numbers from the traces_to
+# frontmatter field. Handles flow-style YAML lists: `["GitHub #1", "GitHub #2"]`.
+# Outputs one issue number per line; empty output when the field is absent,
+# empty, or contains no GitHub references.
+_parse_traces_to() {
+  local file="$1"
+  awk '
+    BEGIN { in_fm = 0; seen = 0 }
+    /^---[[:space:]]*$/ {
+      if (!in_fm && !seen) { in_fm = 1; seen = 1; next }
+      if (in_fm) exit
+    }
+    in_fm && /^traces_to:/ {
+      v = $0
+      sub(/^traces_to:[[:space:]]*/, "", v)
+      # Extract all GitHub #N references from the flow-style list
+      while (match(v, /GitHub #[0-9]+/)) {
+        s = substr(v, RSTART, RLENGTH)
+        sub(/^GitHub #/, "", s)
+        print s
+        v = substr(v, RSTART + RLENGTH)
+      }
+      exit
+    }
+  ' "$file"
+}
+
+# _gh_with_timeout — run a gh command with a portable time bound.
+# Uses timeout/gtimeout when available; falls back to background+kill.
+# Returns the gh exit code, or 124 on timeout. Stdout/stderr pass through.
+_gh_with_timeout() {
+  local limit="${GAIA_GH_TIMEOUT:-30}"
+  # Try timeout (Linux, Homebrew coreutils) then gtimeout (macOS brew)
+  local timeout_cmd=""
+  if command -v timeout >/dev/null 2>&1; then
+    timeout_cmd="timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    timeout_cmd="gtimeout"
+  fi
+  if [ -n "$timeout_cmd" ]; then
+    "$timeout_cmd" "$limit" gh "$@"
+    return $?
+  fi
+  # Portable fallback: background the call, wait up to $limit seconds.
+  # Escalates SIGTERM -> SIGKILL if the process ignores SIGTERM.
+  gh "$@" &
+  local gh_pid=$!
+  local elapsed=0
+  while [ "$elapsed" -lt "$limit" ]; do
+    if ! kill -0 "$gh_pid" 2>/dev/null; then
+      wait "$gh_pid" 2>/dev/null
+      return $?
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  # Timed out — SIGTERM first, then SIGKILL if still alive after 2s
+  kill "$gh_pid" 2>/dev/null || true
+  local kill_wait=0
+  while [ "$kill_wait" -lt 2 ]; do
+    if ! kill -0 "$gh_pid" 2>/dev/null; then break; fi
+    sleep 1
+    kill_wait=$((kill_wait + 1))
+  done
+  if kill -0 "$gh_pid" 2>/dev/null; then
+    kill -9 "$gh_pid" 2>/dev/null || true
+  fi
+  wait "$gh_pid" 2>/dev/null || true
+  return 124
+}
+
+# _find_merged_pr_number — resolve the merged PR number for a story key.
+# Returns the PR number on stdout, or empty string on failure.
+_find_merged_pr_number() {
+  local story_key="$1"
+  local result
+  result="$(_gh_with_timeout pr list --state merged --search "$story_key" \
+    --json number --jq '.[0].number' 2>/dev/null)" || true
+  # Filter out non-numeric results (e.g. "null", empty)
+  case "$result" in
+    ''|null|*[!0-9]*) printf '' ;;
+    *) printf '%s' "$result" ;;
+  esac
+}
+
+# _find_other_tracers — find other non-done stories that trace the same issue.
+# Two-phase scan for performance: (1) find story.md files and pre-filter with
+# a single grep -l for the issue number (fixed-string), then (2) parse only
+# the few candidates with _parse_traces_to for exact issue-number matching.
+# Compares story keys exactly (not by substring).
+# Outputs one non-done story key per line. Empty output means fully addressed.
+_find_other_tracers() {
+  local issue_num="$1" story_key="$2"
+  local story_file other_key other_status other_nums
+  # Phase 1: pre-filter with a single grep -l for the issue number.
+  # Restricts to story.md (canonical per-story layout) for speed (~0.2 s on
+  # ~500 files vs ~1.3 s on ~8000). Phase 2 then runs the per-file
+  # traces_to parser only on the handful of candidates (typically 0-2 files).
+  local candidates
+  candidates="$(find "$IMPLEMENTATION_ARTIFACTS" -name 'story.md' -type f \
+    -exec grep -l "GitHub #${issue_num}" {} + 2>/dev/null || true)"
+  [ -n "$candidates" ] || return 0
+  # Phase 2: parse only the candidates with the exact traces_to parser.
+  while IFS= read -r story_file; do
+    [ -n "$story_file" ] || continue
+    # Read the key from frontmatter — exact match, not substring
+    other_key="$(read_frontmatter_field "$story_file" key 2>/dev/null || true)"
+    [ -n "$other_key" ] || continue
+    # Skip the current story (exact key comparison)
+    [ "$other_key" != "$story_key" ] || continue
+    # Parse traces_to and check for exact issue number match
+    other_nums="$(_parse_traces_to "$story_file")"
+    [ -n "$other_nums" ] || continue
+    local found_match=0
+    local n
+    while IFS= read -r n; do
+      if [ "$n" = "$issue_num" ]; then
+        found_match=1
+        break
+      fi
+    done <<< "$other_nums"
+    [ "$found_match" -eq 1 ] || continue
+    # Check status — only report non-done stories
+    other_status="$(read_frontmatter_status "$story_file" 2>/dev/null || true)"
+    if [ -n "$other_status" ] && [ "$other_status" != "done" ]; then
+      printf '%s\n' "$other_key"
+    fi
+  done <<< "$candidates"
+}
+
+# _close_traced_issues — post-transition hook entry point.
+# Called after the done transition succeeds; never blocks the transition.
+_close_traced_issues() {
+  local story_key="$1" story_file="$2"
+
+  # Parse traced issue numbers from frontmatter
+  local issue_nums
+  issue_nums="$(_parse_traces_to "$story_file")"
+  [ -n "$issue_nums" ] || return 0
+
+  # Check gh availability
+  if ! command -v gh >/dev/null 2>&1; then
+    log "WARNING: gh CLI not available — skipping traced-issue closure for $story_key"
+    return 0
+  fi
+
+  # Resolve the story's merged PR number (best-effort)
+  local pr_number
+  pr_number="$(_find_merged_pr_number "$story_key")"
+
+  local pr_ref=""
+  if [ -n "$pr_number" ]; then
+    pr_ref=" (PR #${pr_number})"
+  fi
+
+  local issue_num
+  while IFS= read -r issue_num; do
+    [ -n "$issue_num" ] || continue
+
+    local remaining
+    remaining="$(_find_other_tracers "$issue_num" "$story_key")"
+    if [ -z "$remaining" ]; then
+      # Fully addressed — close with comment.
+      # Capture the real exit code before `local` resets $?.
+      local gh_rc=0
+      _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${story_key}${pr_ref}." 2>/dev/null || gh_rc=$?
+      if [ "$gh_rc" -ne 0 ]; then
+        if [ "$gh_rc" -eq 124 ]; then
+          log "WARNING: gh timed out closing traced issue #${issue_num} for ${story_key}"
+        else
+          log "WARNING: failed to close traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+        fi
+      fi
+    else
+      # Partially addressed — comment naming what remains.
+      local remaining_keys
+      remaining_keys="$(printf '%s' "$remaining" | tr '\n' ', ' | sed 's/,$//')"
+      local gh_rc=0
+      _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${story_key}${pr_ref}. Remaining: ${remaining_keys}." 2>/dev/null || gh_rc=$?
+      if [ "$gh_rc" -ne 0 ]; then
+        if [ "$gh_rc" -eq 124 ]; then
+          log "WARNING: gh timed out commenting on traced issue #${issue_num} for ${story_key}"
+        else
+          log "WARNING: failed to comment on traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+        fi
+      fi
+      log "WARNING: issue #${issue_num} partially addressed by ${story_key} — commented but not closed (remaining: ${remaining_keys})"
+    fi
+  done <<< "$issue_nums"
+}
+
+if [ "$NEW_STATUS" = "done" ]; then
+  _close_traced_issues "$STORY_KEY" "$STORY_FILE" || true
+fi
+
 log "$STORY_KEY transitioned $CURRENT_STATUS -> $NEW_STATUS"
 exit 0
