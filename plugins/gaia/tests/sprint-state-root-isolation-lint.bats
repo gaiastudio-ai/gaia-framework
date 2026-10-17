@@ -256,11 +256,13 @@ _make_fixture() {
 @test "lint ignores sprint-state.sh in comments" {
   local d="$BATS_TEST_TMPDIR/comment-$$"
   mkdir -p "$d"
-  _make_fixture "$d" "commented.bats" \
-    '  true' 'true'
-  # Inject a comment referencing sprint-state.sh (not via _make_fixture)
-  sed -i '' '1a\
-# This file mentions sprint-state.sh only in comments' "$d/commented.bats"
+  # Build fixture directly — the only sprint-state.sh reference is in a comment
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf '# This file mentions sprint-state.sh only in comments\n'
+    printf 'setup() { true; }\n'
+    printf '%s "%s" { %s; }\n' '@test' 'x' 'true'
+  } > "$d/commented.bats"
   run _executes_sprint_state "$d/commented.bats"
   [ "$status" -ne 0 ]
 }
