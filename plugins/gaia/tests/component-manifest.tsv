@@ -388,6 +388,7 @@ core	test-manual-surface-docs.bats
 core	test-plan-schema-detection.bats
 core	transition-story-status-legacy-flat-mirror.bats
 core	transition-story-status-lifecycle-emit.bats
+core	transition-story-status-untriaged-findings.bats
 core	transition-story-status.bats
 core	triage-findings-fallback.bats
 core	triage-findings-finalize-sentinel.bats
